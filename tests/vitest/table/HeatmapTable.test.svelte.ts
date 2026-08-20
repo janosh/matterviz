@@ -5,7 +5,7 @@ import {
   type Label,
   type RowData,
   type SummaryStat,
-} from '$lib'
+} from '$lib/table'
 import { type ComponentProps, mount, tick, unmount } from 'svelte'
 import { assert, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { bind_props, doc_query, trigger_resize_observer } from '../setup'
@@ -122,18 +122,17 @@ describe(`HeatmapTable`, () => {
 
   it(`delegates and sanitizes tooltips across cell re-renders`, async () => {
     const cell = (text: string, tip: string) => `<span title="${tip}">${text}</span>`
-    const unsafe_title = `<img src=x onerror=alert(1)><a href="javascript:alert(1)">unsafe</a>`
+    const unsafe_title = `&lt;img src=x onerror=alert(1)&gt;unsafe`
     const rows: RowData[] = $state([
       { Model: cell(`alpha`, `tip alpha v1`), Score: 1 },
-      { Model: cell(`beta`, `tip beta v1`), Score: 2 },
+      { Model: cell(`beta`, `tip beta v1`), Score: `<span title="${unsafe_title}">2</span>` },
     ])
     const columns = plain_columns(`Model`, `Score`)
-    const component = mount_table({ data: rows, columns, row_title: () => unsafe_title })
+    const component = mount_table({ data: rows, columns })
     await tick()
 
-    const row = doc_query(`tbody tr`)
-    expect(row.dataset.title).toBe(unsafe_title)
-    row.dispatchEvent(new FocusEvent(`focusin`, { bubbles: true }))
+    const unsafe_cell = doc_query(`td[data-col="Score"] span[title]`)
+    unsafe_cell.dispatchEvent(new FocusEvent(`focusin`, { bubbles: true }))
     const tooltip_content = doc_query(`.custom-tooltip .tooltip-content`)
     expect(tooltip_content.innerHTML).not.toMatch(/onerror|javascript:/i)
     expect(tooltip_content.textContent).toContain(`unsafe`)
@@ -945,56 +944,6 @@ describe(`HeatmapTable`, () => {
       expect(state.hidden_columns).toEqual([])
     })
 
-    it(`migrates persisted grouped state to tuple IDs`, async () => {
-      const group = `Metrics`
-      const old_alpha = `alpha (${group})`
-      const old_beta = `beta (${group})`
-      const alpha_id = JSON.stringify([`alpha`, group])
-      const beta_id = JSON.stringify([`beta`, group])
-      const beta_prefs = {
-        width: 160,
-        filter: { kind: `numeric`, min: 2 },
-        color_scale: null,
-      } satisfies ColumnPrefs
-      const state = $state({
-        column_order: [old_beta, old_alpha],
-        column_prefs: { [old_beta]: beta_prefs } satisfies Record<string, ColumnPrefs>,
-        hidden_columns: [old_alpha, alpha_id],
-        sort: { column: old_beta, dir: `desc` as const },
-      })
-      mount_table(
-        bind_props(
-          {
-            data: [
-              { alpha: 1, beta: 1 },
-              { alpha: 2, beta: 2 },
-              { alpha: 3, beta: 3 },
-            ],
-            columns: [
-              { key: `alpha`, label: `Alpha`, group },
-              { key: `beta`, label: `Beta`, group },
-            ],
-          },
-          state,
-        ),
-      )
-      await tick()
-
-      expect(state.column_order).toEqual([beta_id, alpha_id])
-      expect(state.column_prefs).toEqual({ [beta_id]: beta_prefs })
-      expect(state.hidden_columns).toEqual([alpha_id])
-      expect(state.sort).toEqual({ column: beta_id, dir: `desc` })
-      state.hidden_columns = []
-      await tick()
-      const headers = Array.from(
-        document.querySelectorAll<HTMLElement>(`thead tr:last-child th[data-col-id]`),
-      )
-      expect(headers.map((header) => header.dataset.colId)).toEqual([beta_id, alpha_id])
-      expect(headers[0]?.style.width).toBe(`160px`)
-      // The migrated numeric filter and descending sort both remain active.
-      expect(col_values(`Beta`)).toEqual([`3`, `2`])
-    })
-
     // The two menus overlap, so only one may be open. ToggleMenu owns its own open state,
     // so the column side has to route through the shared `open_dropdown` slot to close.
     it.each([[`columns`], [`export`]] as const)(
@@ -1068,12 +1017,12 @@ describe(`HeatmapTable`, () => {
       expect(document.querySelectorAll(`tr.selected`)).toHaveLength(0)
     })
 
-    it(`contrasts selection badges against modern CSS highlight colors`, async () => {
+    it(`contrasts selection badges against the accent color`, async () => {
       mount_table({
         data: sample_data,
         columns: sample_columns,
         show_row_select: true,
-        style: `--highlight: rgb(0 0 0)`,
+        style: `--accent-color: rgb(0 0 0)`,
       })
       document.querySelector<HTMLInputElement>(`td.select-col input[type="checkbox"]`)?.click()
       await tick()
@@ -1132,39 +1081,6 @@ describe(`HeatmapTable`, () => {
         await tick()
         expect(value_header.textContent).toContain(expected_arrow)
       }
-    })
-
-    it.each<{ desc: string; value_col: Label }>([
-      {
-        desc: `show_sort_indicator=false`,
-        value_col: {
-          label: `Value`,
-          better: `lower`,
-          show_sort_indicator: false,
-        },
-      },
-      {
-        desc: `--hide-sort-indicator style token`,
-        value_col: {
-          label: `Value`,
-          better: `lower`,
-          style: `--hide-sort-indicator:1;`,
-        },
-      },
-    ])(`hides indicator for $desc but still sorts rows`, async ({ value_col }) => {
-      const columns: Label[] = [{ label: `Model` }, value_col]
-      const data = [
-        { Model: `A`, Value: 300 },
-        { Model: `B`, Value: 100 },
-        { Model: `C`, Value: 200 },
-      ]
-      const headers = render_table(columns, data)
-      const value_header = headers[1]
-      value_header.click()
-      await tick()
-
-      expect(value_header.textContent).not.toMatch(/[↑↓]/)
-      expect(col_values(`Value`)).toEqual([`100`, `200`, `300`])
     })
   })
 
@@ -1535,252 +1451,17 @@ describe(`HeatmapTable`, () => {
     // The strip_html functionality is tested in tests/vitest/table/index.test.ts
   })
 
-  describe(`Async Sort Feature`, () => {
-    const initial_data = [
-      { Model: `Model A`, Score: 0.95, Value: 100 },
-      { Model: `Model B`, Score: 0.85, Value: 200 },
-      { Model: `Model C`, Score: 0.75, Value: 300 },
-    ]
-
-    describe(`onsort callback prop`, () => {
-      it(`calls onsort with better-aware directions and toggles on re-click`, async () => {
-        const onsort_mock = vi.fn().mockResolvedValue(initial_data)
-        mount_table({ data: initial_data, columns: sample_columns, onsort: onsort_mock })
-
-        const headers = document.querySelectorAll(`th`)
-
-        // Score has better: higher → first click desc; then asc; then desc again
-        headers[1].click()
-        await vi.waitFor(() => expect(onsort_mock).toHaveBeenLastCalledWith(`Score`, `desc`))
-        headers[1].click()
-        await vi.waitFor(() => expect(onsort_mock).toHaveBeenLastCalledWith(`Score`, `asc`))
-        headers[1].click()
-        await vi.waitFor(() => expect(onsort_mock).toHaveBeenLastCalledWith(`Score`, `desc`))
-        expect(onsort_mock).toHaveBeenCalledTimes(3)
-
-        // Value has better: lower → first click asc
-        headers[2].click()
-        await vi.waitFor(() => expect(onsort_mock).toHaveBeenLastCalledWith(`Value`, `asc`))
-      })
-
-      it(`uses the resolved server order without client-side re-sorting`, async () => {
-        const server_data = [
-          { Model: `Server A`, Score: 0.77, Value: 999 },
-          { Model: `Server B`, Score: 0.88, Value: 888 },
-          { Model: `Server C`, Score: 0.99, Value: 777 },
-        ]
-        const onsort_mock = vi.fn().mockResolvedValue(server_data)
-        mount_table({ data: initial_data, columns: sample_columns, onsort: onsort_mock })
-
-        document.querySelectorAll(`th`)[1].click()
-        await tick()
-
-        // Score's first sort is descending, so client sorting would reverse this order.
-        await vi.waitFor(() =>
-          expect(col_values(`Model`)).toEqual([`Server A`, `Server B`, `Server C`]),
-        )
-      })
-
-      it(`does not call onsort for Shift+click or unsortable columns`, async () => {
-        const onsort_mock = vi.fn().mockResolvedValue(initial_data)
-        const cols: Label[] = [
-          { label: `Model`, sortable: false },
-          { label: `Score`, better: `higher` },
-        ]
-        mount_table({ data: initial_data, columns: cols, onsort: onsort_mock })
-
-        const headers = document.querySelectorAll(`th`)
-
-        // Click unsortable column
-        headers[0].click()
-        await tick()
-        expect(onsort_mock).not.toHaveBeenCalled()
-
-        // Shift+click for multi-sort
-        headers[1].dispatchEvent(new MouseEvent(`click`, { shiftKey: true, bubbles: true }))
-        await tick()
-        expect(onsort_mock).not.toHaveBeenCalled()
-      })
-
-      it(`works with grouped columns`, async () => {
-        const onsort_mock = vi.fn().mockResolvedValue(initial_data)
-        const grouped_columns: Label[] = [
-          { label: `Name` },
-          { label: `Value`, group: `Group A` },
-          { label: `Value`, group: `Group B` },
-        ]
-        mount_table({
-          data: [
-            { Name: `Item 1`, 'Value (Group A)': 10, 'Value (Group B)': 100 },
-            { Name: `Item 2`, 'Value (Group A)': 20, 'Value (Group B)': 50 },
-          ],
-          columns: grouped_columns,
-          onsort: onsort_mock,
-        })
-
-        // Click on Group B's "Value" header
-        const headers = document.querySelectorAll(`thead tr:last-child th`)
-        ;(headers[2] as HTMLElement).click()
-        await tick()
-
-        await vi.waitFor(() =>
-          expect(onsort_mock).toHaveBeenCalledWith(`["Value","Group B"]`, expect.any(String)),
-        )
-      })
-    })
-
-    describe(`loading state`, () => {
-      it(`renders and manages the overlay during async onsort`, async () => {
-        const pending_sort = Promise.withResolvers<typeof initial_data>()
-        const onsort_mock = vi.fn().mockReturnValue(pending_sort.promise)
-        mount_table({ data: initial_data, columns: sample_columns, onsort: onsort_mock })
-
-        const container = document.body.lastElementChild as HTMLElement
-        expect(container.querySelector(`.loading-overlay`)).toBeNull()
-
-        container.querySelectorAll(`th`)[1].click()
-        await tick()
-        const overlay = container.querySelector(`.loading-overlay`)
-        expect(overlay).not.toBeNull()
-        expect(container.querySelector(`[role="status"]`)).not.toBeNull()
-        expect(getComputedStyle(overlay as HTMLElement).position).toBe(`absolute`)
-
-        pending_sort.resolve(initial_data)
-        await tick()
-        await vi.waitFor(() => expect(container.querySelector(`.loading-overlay`)).toBeNull())
-      })
-    })
-
-    describe(`sort_data prop`, () => {
-      it(`sort_data=false preserves the original order`, async () => {
-        const unsorted = [
-          { Model: `X`, Score: 0.1, Value: 100 },
-          { Model: `Y`, Score: 0.5, Value: 200 },
-          { Model: `Z`, Score: 0.9, Value: 300 },
-        ]
-        mount_table({ data: unsorted, columns: sample_columns, sort_data: false })
-
-        document.querySelectorAll(`th`)[1].click()
-        await tick()
-        expect(col_values(`Model`)).toEqual([`X`, `Y`, `Z`])
-      })
-    })
-
-    describe(`integration scenarios`, () => {
-      it(`handles race condition: stale responses are ignored`, async () => {
-        // Simulate two async sorts where the first resolves after the second
-        const first_data = [{ Model: `First`, Score: 0.1, Value: 1 }]
-        const second_data = [{ Model: `Second`, Score: 0.2, Value: 2 }]
-        const first_sort = Promise.withResolvers<typeof first_data>()
-        const second_sort = Promise.withResolvers<typeof second_data>()
-        const onsort_mock = vi
-          .fn()
-          .mockReturnValueOnce(first_sort.promise)
-          .mockReturnValueOnce(second_sort.promise)
-
-        mount_table({ data: initial_data, columns: sample_columns, onsort: onsort_mock })
-
-        const table = document.body.lastElementChild as HTMLElement
-        const headers = table.querySelectorAll(`th`)
-
-        // Click first column (starts first async sort)
-        headers[1].click()
-        await tick()
-
-        // Click second column before first resolves (starts second async sort)
-        headers[2].click()
-        await tick()
-
-        expect(onsort_mock).toHaveBeenCalledTimes(2)
-
-        // Resolve second request first
-        second_sort.resolve(second_data)
-        await tick()
-
-        // Now resolve first (stale) request
-        first_sort.resolve(first_data)
-        await tick()
-
-        // Data should show second_data, not first_data (stale response ignored)
-        await vi.waitFor(() => expect(col_values(`Model`)).toEqual([`Second`]))
-      })
-
-      it(`reverts sort state and reports onsort callback failures`, async () => {
-        // First call succeeds, second call fails
-        const error = new Error(`Network error`)
-        const onsort_mock = vi
-          .fn()
-          .mockResolvedValueOnce(initial_data) // First sort succeeds
-          .mockRejectedValueOnce(error) // Second sort fails
-        const onsorterror_mock = vi.fn()
-
-        mount_table({
-          data: initial_data,
-          columns: sample_columns,
-          onsort: onsort_mock,
-          onsorterror: onsorterror_mock,
-        })
-
-        const headers = document.querySelectorAll(`th`)
-
-        // First sort by Model (succeeds)
-        headers[0].click()
-        await tick()
-        await vi.waitFor(() => expect(onsort_mock).toHaveBeenCalledTimes(1))
-
-        // Verify Model is sorted (check aria-sort attribute)
-        expect(headers[0].getAttribute(`aria-sort`)).not.toBe(`none`)
-
-        // Now click Score (will fail)
-        headers[1].click()
-        await tick()
-        await vi.waitFor(() => expect(onsort_mock).toHaveBeenCalledTimes(2))
-
-        // Sort state should revert to Model after failure (Score should be unsorted)
-        await vi.waitFor(() => {
-          expect(headers[1].getAttribute(`aria-sort`)).toBe(`none`)
-          expect(headers[0].getAttribute(`aria-sort`)).not.toBe(`none`)
-          expect(onsorterror_mock).toHaveBeenCalledExactlyOnceWith(error, `Score`, `desc`)
-        })
-      })
-    })
-  })
-
   describe(`Empty State`, () => {
-    it.each([
-      { desc: `default message`, props: {}, text: `No data`, visible: true },
-      {
-        desc: `custom message`,
-        props: { empty_message: `Nothing here` },
-        text: `Nothing here`,
-        visible: true,
-      },
-      {
-        desc: `hidden when empty string`,
-        props: { empty_message: `` },
-        text: null,
-        visible: false,
-      },
-    ])(`$desc`, ({ props, text, visible }) => {
-      mount_table({ data: [], columns: sample_columns, ...props })
-
-      const empty_row = document.querySelector(`.empty-row`)
-      if (visible) {
-        expect(empty_row?.textContent?.trim()).toBe(text)
-      } else {
-        expect(empty_row).toBeNull()
-      }
-    })
-
-    it(`colspan covers all columns including select and row-number`, () => {
+    it(`shows an empty row with colspan over every column, select and row-number`, () => {
       mount_table({
         data: [],
         columns: sample_columns,
         show_row_select: true,
         show_row_numbers: true,
       })
-      // 3 data columns + 1 select + 1 row number = 5
-      expect(document.querySelector(`.empty-row td`)?.getAttribute(`colspan`)).toBe(`5`)
+      const cell = doc_query(`.empty-row td`)
+      expect(cell.textContent?.trim()).toBe(`No data`)
+      expect(cell.getAttribute(`colspan`)).toBe(`5`) // 3 data + select + row number
     })
   })
 
@@ -1830,29 +1511,6 @@ describe(`HeatmapTable`, () => {
         expect(clicked[0]).toHaveProperty(`Model`, `Model A`)
       },
     )
-
-    it(`triggers row pointerdown before row click`, () => {
-      const pointer_down = vi.fn()
-      const click = vi.fn()
-      mount_table({
-        data: sample_data,
-        columns: sample_columns,
-        onrowpointerdown: pointer_down,
-        onrowclick: click,
-      })
-
-      const first_row = document.querySelector(`tbody tr`) as HTMLElement
-      const event = new Event(`pointerdown`, { bubbles: true }) as PointerEvent
-      Object.defineProperty(event, `button`, { value: 0 })
-      first_row.dispatchEvent(event)
-      first_row.click()
-
-      expect(pointer_down).toHaveBeenCalledWith(event, sample_data[0])
-      expect(click).toHaveBeenCalledWith(expect.any(MouseEvent), sample_data[0])
-      expect(pointer_down.mock.invocationCallOrder[0]).toBeLessThan(
-        click.mock.invocationCallOrder[0],
-      )
-    })
   })
 
   describe(`Filtering, summaries and per-column state`, () => {
@@ -1963,7 +1621,8 @@ describe(`HeatmapTable`, () => {
       expect(score_header.textContent).not.toMatch(/[↑↓]/)
     })
 
-    it(`keeps cycling asc/desc when tri_state_sort is off`, async () => {
+    // an initial_sort has no "unsorted" state to return to, so the cycle stays two-step
+    it(`keeps cycling asc/desc under an initial_sort`, async () => {
       const unsorted = [
         { Model: `A`, Score: 20 },
         { Model: `B`, Score: 10 },
@@ -1971,100 +1630,19 @@ describe(`HeatmapTable`, () => {
       mount_table({
         data: unsorted,
         columns: plain_columns(`Model`, `Score`),
-        tri_state_sort: false,
+        initial_sort: { column: `Score`, direction: `desc` },
       })
       const header = document.querySelectorAll(`thead th`)[1] as HTMLElement
+      expect(rendered_models()).toEqual([`A`, `B`])
       for (const expected of [
-        [`A`, `B`],
         [`B`, `A`],
         [`A`, `B`],
+        [`B`, `A`],
       ]) {
         header.click()
         await tick()
         expect(rendered_models()).toEqual(expected)
       }
-    })
-
-    // Wide tables render only the columns near the viewport, with spacer cells holding the
-    // scroll width. Sticky columns are exempt: they're pinned on screen at any scroll.
-    // 60 columns, one row: `extra` marks whichever of them is sticky or grouped
-    const wide_table = (extra: (idx: number) => Partial<Label> = () => ({})) => {
-      const columns: Label[] = Array.from({ length: 60 }, (_val, idx) => ({
-        label: `C${idx}`,
-        ...extra(idx),
-      }))
-      return {
-        columns,
-        data: [Object.fromEntries(columns.map((col, idx) => [col.label, idx]))],
-      }
-    }
-
-    it(`windows columns horizontally and always keeps sticky ones`, async () => {
-      mount_table({
-        ...wide_table((idx) => (idx < 10 ? { sticky: true } : {})),
-        virtual_columns: true,
-        scroll_style: `max-width: 400px`,
-      })
-      const scroller = doc_query(`.table-scroll`)
-      Object.defineProperty(scroller, `clientWidth`, { value: 400, configurable: true })
-      trigger_resize_observer(scroller)
-      await tick()
-
-      const rendered = [...document.querySelectorAll(`tbody td:not(.col-spacer)`)]
-      expect(rendered.length).toBeGreaterThan(0)
-      expect(rendered.length).toBeLessThan(60)
-      expect(document.querySelector(`td[data-col="C0"]`)).not.toBeNull()
-      expect(document.querySelector(`tbody td.col-spacer`)).not.toBeNull()
-      const initial_indices = rendered.map((cell) => Number(cell.getAttribute(`data-col-idx`)))
-      expect(initial_indices.slice(0, 10)).toEqual(Array.from({ length: 10 }, (_, idx) => idx))
-      expect(initial_indices.some((idx) => idx >= 10)).toBe(true)
-
-      // Scroll right: the window must move off zero, the sticky column must survive it,
-      // and indices must stay ABSOLUTE (a relative 0..N numbering would break selection
-      // coordinates and copy ranges).
-      Object.defineProperty(scroller, `scrollLeft`, { value: 3000, configurable: true })
-      scroller.dispatchEvent(new Event(`scroll`))
-      await tick()
-
-      const scrolled = [...document.querySelectorAll(`tbody td:not(.col-spacer)`)]
-      const indices = scrolled.map((cell) => Number(cell.getAttribute(`data-col-idx`)))
-      expect(indices).toEqual([...indices].toSorted((one, two) => one - two))
-      expect(indices[0]).toBe(0) // sticky C0 still rendered
-      expect(Math.max(...indices)).toBeGreaterThan(20) // window really moved right
-      expect(indices).not.toContain(15) // and left the early columns behind
-      // aria keeps the true column count/position for assistive tech
-      expect(document.querySelector(`table`)?.getAttribute(`aria-colcount`)).toBe(`60`)
-    })
-
-    // The label lives in the first cell of the summary row, so it disappears once the
-    // window scrolls column 0 out of the DOM unless it follows the window.
-    it(`keeps the summary label visible after scrolling right`, async () => {
-      mount_table({
-        ...wide_table(),
-        virtual_columns: true,
-        scroll_style: `max-width: 400px`,
-        summary: [`mean`] as SummaryStat[],
-      })
-      await tick()
-      const scroller = document.querySelector(`.table-scroll`) as HTMLElement
-      Object.defineProperty(scroller, `scrollLeft`, { value: 3000, configurable: true })
-      scroller.dispatchEvent(new Event(`scroll`))
-      await tick()
-
-      expect(document.querySelector(`td[data-col="C0"]`)).toBeNull() // window moved off 0
-      expect(document.querySelector(`.summary-label`)?.textContent).toBe(`mean`)
-    })
-
-    it.each([
-      [
-        `a sticky column isn't in the leading run`,
-        (idx: number) => (idx === 30 ? { sticky: true } : {}),
-      ],
-      [`group headers make windowing unsafe`, () => ({ group: `G` })],
-    ])(`renders every column when %s`, async (_reason, extra) => {
-      mount_table({ ...wide_table(extra), virtual_columns: true })
-      await tick()
-      expect(document.querySelectorAll(`tbody td:not(.col-spacer)`)).toHaveLength(60)
     })
 
     // column_prefs holds widths and colors as well as filters, so a resize must not look
@@ -2565,7 +2143,7 @@ describe(`HeatmapTable`, () => {
         data: many_rows,
         columns: two_cols,
         show_row_numbers: true,
-        sort_data: false,
+
         virtual: true,
         keyboard_cells: true,
       })
@@ -2614,7 +2192,7 @@ describe(`HeatmapTable`, () => {
         })
       onTestFinished(() => offset_height_spy.mockRestore())
       const state = $state({ data: [] as RowData[] })
-      mount_table(bind_props({ columns: two_cols, sort_data: false, virtual: true }, state))
+      mount_table(bind_props({ columns: two_cols, virtual: true }, state))
       await tick()
       expect(measurement_reads).toBe(0)
 
@@ -2648,7 +2226,7 @@ describe(`HeatmapTable`, () => {
     it(`does not force layout for every row when the virtual window moves`, async () => {
       const rect_spy = vi.spyOn(Element.prototype, `getBoundingClientRect`)
       onTestFinished(() => rect_spy.mockRestore())
-      mount_table({ data: many_rows, columns: two_cols, sort_data: false, virtual: true })
+      mount_table({ data: many_rows, columns: two_cols, virtual: true })
       await tick()
       rect_spy.mockClear()
 
@@ -2662,7 +2240,7 @@ describe(`HeatmapTable`, () => {
       mount_table({
         data: many_rows,
         columns: two_cols,
-        sort_data: false,
+
         virtual: true,
         onrowclick: () => {},
       })
@@ -2686,28 +2264,6 @@ describe(`HeatmapTable`, () => {
       )
       await tick()
       expect(document.activeElement).toBe(row_at(min_window - 1))
-    })
-
-    it(`reports the rendered range via on_visible_range`, async () => {
-      const on_visible_range = vi.fn()
-      mount_table({ data: many_rows, columns: two_cols, on_visible_range, virtual: true })
-      await tick()
-      expect(on_visible_range).toHaveBeenLastCalledWith({
-        start: 0,
-        end: min_window,
-        total: many_rows.length,
-      })
-
-      const initial_call_count = on_visible_range.mock.calls.length
-      for (const scroll_top of [1, 9 * row_height_px]) await scroll_to(scroll_top)
-      expect(on_visible_range).toHaveBeenCalledTimes(initial_call_count)
-
-      await scroll_to(30 * row_height_px)
-      expect(on_visible_range).toHaveBeenLastCalledWith({
-        start: 30 - overscan,
-        end: 30 - overscan + min_window,
-        total: many_rows.length,
-      })
     })
 
     it(`clamps the rendered window when data shrinks below the scroll position`, async () => {
@@ -2763,39 +2319,6 @@ describe(`HeatmapTable`, () => {
       expect(spacers()).toHaveLength(0)
       expect(document.querySelector(`.row-count-info`)).toBeNull()
       expect(document.querySelector(`.pagination`)).not.toBeNull()
-    })
-  })
-
-  describe(`controls_target`, () => {
-    const rows = [
-      { Model: `A`, Score: 1 },
-      { Model: `B`, Score: 2 },
-    ]
-    const cols = plain_columns(`Model`, `Score`)
-    const control_props = { search: true, export_data: true, show_controls: true }
-
-    it(`teleports control buttons into the host target, always visible`, async () => {
-      const target = document.createElement(`div`)
-      document.body.append(target)
-      mount_table({ data: rows, columns: cols, ...control_props, controls_target: target })
-      await tick() // attachments run in the effect phase
-
-      const section = target.querySelector(`.control-buttons`)
-      expect(section).not.toBeNull()
-      expect(section?.classList.contains(`portaled`)).toBe(true)
-      // settings gear travels with the row (it lives inside the section now)
-      expect(section?.querySelector(`.pane-toggle`)).not.toBeNull()
-      // no leftover controls row inside the table itself
-      expect(document.querySelector(`.table-container .control-buttons`)).toBeNull()
-    })
-
-    it(`renders controls inline (gear included) when no target is given`, () => {
-      mount_table({ data: rows, columns: cols, ...control_props })
-
-      const section = document.querySelector(`.table-container .control-buttons`)
-      expect(section).not.toBeNull()
-      expect(section?.classList.contains(`portaled`)).toBe(false)
-      expect(section?.querySelector(`.pane-toggle`)).not.toBeNull()
     })
   })
 })

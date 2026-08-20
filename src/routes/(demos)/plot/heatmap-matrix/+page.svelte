@@ -60,7 +60,6 @@
   let show_values = $state<boolean | string>(false)
   let show_row_summaries = $state(false)
   let show_col_summaries = $state(false)
-  let demo2_theme = $state<`default` | `light` | `dark` | `publication`>(`default`)
   const demo_symbols = `Li,Na,K,Mg,Ca,Al,Fe,Cu,Zn,Ag,Au,Pt,Ti,Ni,Co,Mn,Cr,V,Si,Ge`.split(
     `,`,
   ) as ElementSymbol[]
@@ -208,7 +207,6 @@
     {show_values}
     {show_row_summaries}
     {show_col_summaries}
-    theme={demo2_theme}
     tile_size="20px"
     gap="1px"
     ondblclick={(cell: CellContext) =>
@@ -232,7 +230,6 @@
     bind:show_values
     bind:show_row_summaries
     bind:show_col_summaries
-    bind:theme={demo2_theme}
     toggle_visible={show_secondary_controls_toggle}
   />
 </div>

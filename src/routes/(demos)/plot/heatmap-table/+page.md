@@ -350,7 +350,7 @@ All 118 chemical elements with physical and chemical properties. Features column
 />
 
 {#if selected_rows.length > 0}
-  <p style="margin-top: 0.5em; font-size: 0.9em; color: var(--text-muted)">
+  <p style="margin-top: 0.5em; font-size: 0.9em; color: var(--text-color-muted)">
     Double-click a row to open element page. Selected: {selected_rows
       .map((row) => row._symbol)
       .join(`, `)}
@@ -395,7 +395,7 @@ Drag columns to reorder them within a group (handy for side-by-side metrics):
   let column_order = $state([])
 </script>
 
-<p style="color: var(--text-muted); margin-bottom: 1em">
+<p style="color: var(--text-color-muted); margin-bottom: 1em">
   Drag column headers to reorder. Current order: {column_order.join(`, `) || `(default)`}
 </p>
 
@@ -489,7 +489,7 @@ ML model benchmark with a sticky first column. Scroll horizontally to compare mo
   ]
 </script>
 
-<p style="color: var(--text-muted); margin-bottom: 0.5em; font-size: 0.9em">
+<p style="color: var(--text-color-muted); margin-bottom: 0.5em; font-size: 0.9em">
   ↔️ Scroll horizontally to see all datasets &nbsp;|&nbsp; ↕️ Scroll vertically for all models
   &nbsp;|&nbsp; Model column stays pinned
 </p>
@@ -554,7 +554,7 @@ The table correctly handles numeric strings with uncertainty notation for both s
   ]
 </script>
 
-<p style="color: var(--text-muted); margin-bottom: 0.5em; font-size: 0.9em">
+<p style="color: var(--text-color-muted); margin-bottom: 0.5em; font-size: 0.9em">
   Click column headers to sort. Values are sorted by the primary number, ignoring the ±
   uncertainty
 </p>

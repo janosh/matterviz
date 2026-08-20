@@ -1,15 +1,35 @@
 import type { D3InterpolateName } from '$lib/colors'
-import type { CellVal } from '$lib/table'
+import type { CellVal, ColumnFilter, Label, RowData } from '$lib/table'
 import {
-  calc_cell_color,
+  cell_matches_filter,
+  compare_rows,
   compute_column_stats,
+  format_datetime,
+  fuzzy_match,
   get_column_id,
+  infer_datetime_kind,
   make_cell_color_scale,
   merge_domains,
+  parse_datetime_val,
+  parse_numeric_val,
   resolve_color_domain,
+  row_matches_query,
   strip_html,
+  table_to_delimited,
+  table_to_latex,
+  table_to_markdown,
+  virtual_window,
 } from '$lib/table'
 import { describe, expect, it } from 'vitest'
+
+// one-shot wrapper around the memoized factory, for the single-cell assertions below
+const calc_cell_color = (
+  val: number | null | undefined,
+  all_values: CellVal[],
+  better: `higher` | `lower` | undefined,
+  color_scale: D3InterpolateName | null = `interpolateViridis`,
+  scale_type: `linear` | `log` = `linear`,
+) => make_cell_color_scale(all_values, better, color_scale, scale_type)(val)
 
 it(`encodes grouped column IDs without changing ungrouped IDs`, () => {
   expect(get_column_id({ label: `x` })).toBe(`x`)
@@ -139,7 +159,7 @@ describe(`column stats and color domains`, () => {
   })
 })
 
-describe(`calc_cell_color`, () => {
+describe(`make_cell_color_scale`, () => {
   it.each<{
     name: string
     val: number | null | undefined
@@ -296,5 +316,207 @@ describe(`strip_html`, () => {
     [`<b>bold</b> and <i>italic</i>`, `bold and italic`],
   ])(`strip_html(%j) = %j`, (input, expected) => {
     expect(strip_html(input)).toBe(expected)
+  })
+})
+
+describe(`parse_numeric_val`, () => {
+  it.each<[CellVal, number | null]>([
+    [42, 42],
+    [Infinity, null],
+    [NaN, null],
+    [`1.23 ± 0.05`, 1.23],
+    [`-1.5 +- 0.2`, -1.5],
+    [`2.890(8)`, 2.89],
+    [`−3.5`, -3.5], // unicode minus
+    [`<b>10</b>`, 10],
+    [`<span data-sort-value="1000">1,000</span>`, 1000],
+    [`<span data-sort-value="zulu">9</span>`, null], // non-numeric sort value wins
+    [`abc`, null],
+    [``, null],
+    [null, null],
+    [new Date(0), null],
+  ])(`%j -> %j`, (val, expected) => {
+    expect(parse_numeric_val(val)).toBe(expected)
+  })
+})
+
+describe(`compare_rows`, () => {
+  const rows = (...vals: CellVal[]): RowData[] => vals.map((val) => ({ val }))
+  const order = (vals: CellVal[], ascending = true) =>
+    rows(...vals)
+      .toSorted((row1, row2) => compare_rows(row1, row2, [{ key: `val`, ascending }]))
+      .map((row) => row.val)
+
+  it(`sinks invalid values regardless of direction`, () => {
+    expect(order([null, 3, undefined, 1, NaN, 2])).toEqual([1, 2, 3, null, undefined, NaN])
+    expect(order([null, 3, 1, 2], false)).toEqual([3, 2, 1, null])
+  })
+
+  it(`puts numbers before strings and compares strings in natural order`, () => {
+    expect(order([`10`, `abc`, `9`, `a2`, `a10`, 2])).toEqual([
+      2,
+      `9`,
+      `10`,
+      `a2`,
+      `a10`,
+      `abc`,
+    ])
+    expect(order([`b`, `B`, `a`])).toEqual([`a`, `b`, `B`]) // case-insensitive keeps input order for ties
+  })
+
+  it(`sorts dates by time and honours later criteria on ties`, () => {
+    const data: RowData[] = [
+      { when: new Date(2024, 0, 2), name: `b` },
+      { when: new Date(2024, 0, 1), name: `z` },
+      { when: new Date(2024, 0, 2), name: `a` },
+    ]
+    const sorted = data.toSorted((row1, row2) =>
+      compare_rows(row1, row2, [
+        { key: `when`, ascending: false },
+        { key: `name`, ascending: true },
+      ]),
+    )
+    expect(sorted.map((row) => row.name)).toEqual([`a`, `b`, `z`])
+  })
+})
+
+describe(`search and filters`, () => {
+  it.each([
+    [`model a`, `mdla`, true], // callers lower-case both sides
+    [`model a`, `alm`, false],
+    [`abc`, ``, true],
+  ])(`fuzzy_match(%j, %j) = %j`, (text, query, expected) => {
+    expect(fuzzy_match(text, query)).toBe(expected)
+  })
+
+  it(`matches the query against all values or only the given keys, optionally fuzzily`, () => {
+    const row = { Model: `<b>Alpha</b>`, Score: 0.5, Note: null }
+    expect(row_matches_query(row, `alp`)).toBe(true)
+    expect(row_matches_query(row, `0.5`)).toBe(true)
+    expect(row_matches_query(row, `0.5`, { keys: [`Model`] })).toBe(false)
+    expect(row_matches_query(row, `aph`)).toBe(false)
+    expect(row_matches_query(row, `aph`, { fuzzy: true })).toBe(true)
+  })
+
+  it.each<[CellVal, ColumnFilter, boolean]>([
+    [`1.5 ± 0.1`, { kind: `numeric`, min: 1, max: 2 }, true],
+    [3, { kind: `numeric`, min: 1, max: 2 }, false],
+    [`abc`, { kind: `numeric`, min: 0 }, false],
+    [5, { kind: `numeric`, max: 5 }, true],
+    [`<i>oxide</i>`, { kind: `category`, values: [`oxide`] }, true],
+    [null, { kind: `category`, values: [``] }, true],
+    [`Fe2O3`, { kind: `text`, text: `e2o` }, true],
+    [`Fe2O3`, { kind: `text`, text: `cu` }, false],
+  ])(`cell_matches_filter(%j, %j) = %j`, (val, filter, expected) => {
+    expect(cell_matches_filter(val, filter)).toBe(expected)
+  })
+})
+
+describe(`date/time columns`, () => {
+  const plain: Label = { label: `When` }
+  const explicit: Label = { label: `When`, format_type: `datetime` }
+
+  it.each<[CellVal, Label, number | null]>([
+    [`2024-01-02`, plain, new Date(2024, 0, 2).getTime()], // local midnight, not UTC
+    [`2024-01-02T03:04:05Z`, plain, Date.UTC(2024, 0, 2, 3, 4, 5)],
+    [`2024-01-02 03:04`, plain, new Date(2024, 0, 2, 3, 4).getTime()],
+    [`2024-01-02T03:04:05.123456789Z`, plain, Date.UTC(2024, 0, 2, 3, 4, 5, 123)],
+    [1_700_000_000, plain, null], // bare numbers need an explicit datetime column
+    [1_700_000_000, explicit, 1_700_000_000_000], // epoch seconds scale to ms
+    [1_700_000_000_000, explicit, 1_700_000_000_000],
+    [12345, explicit, null], // too small to be a timestamp
+    [`<span data-sort-value="1700000000000">x</span>`, explicit, 1_700_000_000_000],
+    [`not a date`, explicit, null],
+    [new Date(NaN), plain, null],
+  ])(`parse_datetime_val(%j) = %j`, (val, col, expected) => {
+    expect(parse_datetime_val(val, col)).toBe(expected)
+  })
+
+  it(`infers the column kind from config first, then from a sample`, () => {
+    expect(infer_datetime_kind({ label: `x`, datetime_format: `time` }, [])).toBe(`time`)
+    expect(infer_datetime_kind(explicit, [])).toBe(`datetime`)
+    expect(infer_datetime_kind(plain, [`2024-01-02`, `2024-01-03`])).toBe(`date`)
+    // one value with a time of day upgrades the whole column
+    expect(infer_datetime_kind(plain, [`2024-01-02`, `2024-01-03T10:00`])).toBe(`datetime`)
+    expect(infer_datetime_kind(plain, [`abc`, 5, null])).toBeNull()
+  })
+
+  it(`formats in local time and as relative age`, () => {
+    const stamp = new Date(2024, 0, 2, 3, 4).getTime()
+    const now = new Date(2024, 0, 3, 5, 34).getTime()
+    expect(format_datetime(stamp, `date`)).toBe(`2024-01-02`)
+    expect(format_datetime(stamp, `time`)).toBe(`03:04`)
+    expect(format_datetime(stamp, `datetime`)).toBe(`2024-01-02 03:04`)
+    expect(format_datetime(stamp, `iso`)).toBe(new Date(stamp).toISOString())
+    expect(format_datetime(stamp, `relative`, now)).toBe(`1d 2h 30m ago`)
+    expect(format_datetime(now, `relative`, stamp)).toBe(`1d 2h 30m from now`)
+    // leading zero units are skipped and at most three units render
+    expect(format_datetime(new Date(2017, 6, 23, 9, 57).getTime(), `relative`, now)).toBe(
+      `6y 5mo 2w ago`,
+    )
+  })
+})
+
+describe(`virtual_window`, () => {
+  const base = { item_size: 10, count: 100, viewport: 50 }
+
+  it.each([
+    // [scroll, overscan, min_window] -> exact [start, end]
+    [0, 0, 0, [0, 5]],
+    [123, 0, 0, [12, 18]], // partially visible rows at both edges count
+    [120, 2, 0, [10, 19]],
+    [0, 2, 0, [0, 7]], // overscan clamped at the top
+    [990, 2, 0, [93, 100]], // past the end: clamped to the last page, then overscan
+    [5000, 0, 0, [95, 100]],
+    [0, 0, 30, [0, 30]], // min_window extends the window
+    [900, 0, 30, [90, 100]], // but never past count
+    [-40, 0, 0, [0, 1]], // negative scroll (leading label track): only the first row peeks in
+  ])(`scroll=%d overscan=%d min_window=%d -> %j`, (scroll, overscan, min_window, expected) => {
+    expect(virtual_window({ ...base, scroll, overscan, min_window })).toEqual({
+      start: expected[0],
+      end: expected[1],
+    })
+  })
+
+  it(`renders min_window rows while the viewport is unmeasured and nothing for empty data`, () => {
+    expect(virtual_window({ ...base, viewport: 0, scroll: 0, min_window: 60 })).toEqual({
+      start: 0,
+      end: 60,
+    })
+    expect(virtual_window({ ...base, count: 0, scroll: 0 })).toEqual({ start: 0, end: 0 })
+  })
+})
+
+describe(`table exporters`, () => {
+  const matrix = {
+    headers: [`Name`, `a|b`, `Val`],
+    rows: [
+      [`x, "q"`, `multi\nline`, `1`],
+      [`50% & $3_{}`, `^~\\`, `2`],
+    ],
+    numeric: [false, false, true],
+  }
+
+  it(`emits CSV with RFC 4180 quoting and TSV with flattened newlines`, () => {
+    expect(table_to_delimited(matrix, `,`)).toBe(
+      `Name,a|b,Val\n"x, ""q""","multi\nline",1\n50% & $3_{},^~\\,2`,
+    )
+    expect(table_to_delimited(matrix, `\t`).split(`\n`)[1]).toBe(`x, "q"\tmulti line\t1`)
+  })
+
+  it(`escapes markdown pipes and newlines and right-aligns numeric columns`, () => {
+    const [header, align, row] = table_to_markdown(matrix).split(`\n`)
+    expect(header).toBe(`| Name | a\\|b | Val |`)
+    expect(align).toBe(`| :--- | :--- | ---: |`)
+    expect(row).toBe(`| x, "q" | multi<br>line | 1 |`)
+  })
+
+  it(`escapes LaTeX specials once and builds a booktabs tabular`, () => {
+    const lines = table_to_latex(matrix).split(`\n`)
+    expect(lines[0]).toBe(`\\begin{tabular}{llr}`)
+    expect(lines[6]).toBe(
+      `  50\\% \\& \\$3\\_\\{\\} & \\textasciicircum{}\\textasciitilde{}\\textbackslash{} & 2 \\\\`,
+    )
+    expect(lines.at(-1)).toBe(`\\end{tabular}`)
   })
 })

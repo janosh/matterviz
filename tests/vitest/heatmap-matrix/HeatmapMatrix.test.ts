@@ -181,25 +181,6 @@ describe(`values and colors`, () => {
     expect(cells[1].style.opacity).toBe(``)
   })
 
-  test(`missing decorations follow the transformed value, matching cell background`, () => {
-    // value_transform maps 1 -> null, so cell B must get BOTH the missing
-    // background and the missing label/style (they previously disagreed:
-    // background used the transformed value, decorations the raw value)
-    mount_matrix({
-      x: [`A`, `B`],
-      y: [`X`],
-      values: [[2, 1]],
-      value_transform: (val: number) => (val === 1 ? null : val),
-      missing: { color: `red`, label: `N/A`, style: `opacity: 0.4` },
-    })
-    const cells = get_data_cells()
-    expect(cells[1].style.backgroundColor).toBe(`red`)
-    expect(cells[1].textContent?.trim()).toBe(`N/A`)
-    expect(cells[1].style.opacity).toBe(`0.4`)
-    expect(cells[0].style.backgroundColor).not.toBe(`red`)
-    expect(cells[0].textContent).not.toContain(`N/A`)
-  })
-
   test(`record-based values resolve by key with null handling`, () => {
     mount_matrix({
       x: [`A`, `B`],
@@ -256,6 +237,46 @@ describe(`values and colors`, () => {
     expect(red(1)).toBe(0)
     expect(Math.abs(red(2) - 127.5)).toBeLessThanOrEqual(1)
     expect(red(3)).toBe(255)
+  })
+
+  // 51 values 0..50: the 2nd/98th percentiles (interpolated, quantile_unordered) are 1 and 49,
+  // so under `robust` 1 maps to the bottom of the ramp, 49 to the top, 0 and 50 saturate.
+  test(`robust domain clips to the 2nd-98th percentile`, () => {
+    const values = [Array.from({ length: 51 }, (_val, idx) => idx)]
+    const x = values[0].map((val) => `c${val}`)
+    const red = (cell: HTMLElement) => Number(/\d+/.exec(cell.style.backgroundColor)?.[0])
+    mount_matrix({
+      x,
+      y: [`X`],
+      values,
+      domain_mode: `robust`,
+      color_scale: (val: number) => `rgb(${Math.round(val * 255)}, 0, 0)`,
+    })
+    const cells = get_data_cells()
+    expect(cells.map((cell) => red(cell)).slice(0, 3)).toEqual([0, 0, Math.round(255 / 48)])
+    expect(cells.map((cell) => red(cell)).slice(-2)).toEqual([255, 255])
+    expect(red(cells[25])).toBe(Math.round((24 / 48) * 255))
+  })
+
+  // A descending color_scale_range flips the legend's direction but must not flip which
+  // value gets which color: cells and the ColorBar read the same ramp.
+  test(`descending color_scale_range keeps value-to-color mapping consistent with the legend`, () => {
+    mount_matrix({
+      x: [`A`, `B`],
+      y: [`X`],
+      values: [[0, 10]],
+      color_scale_range: [10, 0],
+      domain_mode: `fixed`,
+      show_legend: true,
+      color_scale: (val: number) => `rgb(${Math.round(val * 255)}, 0, 0)`,
+    })
+    const cells = get_data_cells()
+    expect(cells[0].style.backgroundColor).toBe(`rgb(0, 0, 0)`)
+    expect(cells[1].style.backgroundColor).toBe(`rgb(255, 0, 0)`)
+    const gradient = doc_query(`.colorbar .bar`).getAttribute(`style`) ?? ``
+    const stops = gradient.match(/rgb\(\d+, 0, 0\)/g) ?? []
+    expect(stops[0]).toBe(`rgb(255, 0, 0)`) // value 10 sits at the left end
+    expect(stops.at(-1)).toBe(`rgb(0, 0, 0)`)
   })
 
   test(`log mode safely handles non-positive color range minimum`, () => {
@@ -630,7 +651,6 @@ describe(`milestone feature props`, () => {
       y: [`X`],
       values: [[1.234]],
       show_legend: true,
-      legend_ticks: 2,
       legend_format: `.1f`,
       color_scale_range: [1.234, 1.234],
     })
