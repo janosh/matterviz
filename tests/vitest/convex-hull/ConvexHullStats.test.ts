@@ -156,16 +156,28 @@ describe(`ConvexHullStats`, () => {
     expect(text).toContain(`0.456 / 0.089`)
   })
 
-  test(`each stat row has a copy button that writes "label: value"`, () => {
+  test(`renders flat stat sections without card chrome or copy controls`, () => {
     mount_stats()
-    const row = doc_query(`[data-testid="pd-total-entries"]`)
-    expect(row.textContent).toContain(`Total entries in Li-Fe-P-O`)
-    const copy_btn = row.querySelector<HTMLButtonElement>(`button.copy-button`)
-    if (!copy_btn) throw new Error(`copy button missing`)
-    copy_btn.click()
-    flushSync()
-    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
-      `Total entries in Li-Fe-P-O: 100`,
+    expect(document.querySelector(`.copy-button`)).toBeNull()
+    expect(document.querySelectorAll(`.info-cards.flat`)).toHaveLength(4)
+    expect(
+      Array.from(document.querySelectorAll(`.info-card h5`)).map((heading) =>
+        heading.textContent?.trim(),
+      ),
+    ).toEqual([`Stability`, `Eform distribution`, `Eabove hull distribution`])
+    expect(
+      Array.from(document.querySelectorAll(`.info-card, .subsystem-coverage`), (element) =>
+        element.textContent?.trim(),
+      ),
+    ).toEqual([
+      expect.stringContaining(`Total entries in Li-Fe-P-O`),
+      expect.stringContaining(`Binary subsystem coverage`),
+      expect.stringContaining(`Stability`),
+      expect.stringContaining(`Eform distribution`),
+      expect.stringContaining(`Eabove hull distribution`),
+    ])
+    expect(doc_query(`[data-testid="pd-total-entries"]`).textContent).toContain(
+      `Total entries in Li-Fe-P-O`,
     )
   })
 
@@ -918,11 +930,7 @@ describe(`ConvexHullStats`, () => {
       expect(chip_text).toContain(`Fe-O 1`)
       expect(chip_text).toContain(`Li-O 0`)
 
-      doc_query<HTMLButtonElement>(`.subsystem-coverage button.copy-button`).click()
-      flushSync()
-      expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
-        `Binary subsystem coverage: Fe-Li: 1 | Li-O: 0 | Fe-O: 1`,
-      )
+      expect(header.querySelector(`.copy-button`)).toBeNull()
     })
 
     test(`ternary entry line includes all 3 pairs`, () => {

@@ -23,6 +23,7 @@
     show_filter = true,
     show_copy = true,
     heading_level = 4,
+    variant = `cards`,
     page_size = Infinity,
     reveal_key = null,
     card_attrs,
@@ -37,6 +38,7 @@
     show_filter?: boolean
     show_copy?: boolean
     heading_level?: 4 | 5
+    variant?: `cards` | `flat`
     page_size?: number // cards per page; pager controls appear once the filtered list exceeds it
     // key (or title) of a card to page to and scroll into view, e.g. a site selected elsewhere
     reveal_key?: string | null
@@ -139,14 +141,16 @@
       </button>
     </nav>
   {/if}
-  <div {...rest} bind:this={cards_el} class={[`info-cards`, rest.class]}>
+  <div {...rest} bind:this={cards_el} class={[`info-cards`, variant, rest.class]}>
     {#each paged_cards as card (card.key ?? card.title)}
       {@const attrs = card_attrs?.(card) ?? {}}
       <section {...attrs} class={[`info-card`, attrs.class]}>
-        <svelte:element this={`h${heading_level}`}>
-          {card.title}
-          {#if card.subtitle}<span class="subtitle">{card.subtitle}</span>{/if}
-        </svelte:element>
+        {#if card.title || card.subtitle}
+          <svelte:element this={`h${heading_level}`}>
+            {@html sanitize_html(card.title)}
+            {#if card.subtitle}<span class="subtitle">{card.subtitle}</span>{/if}
+          </svelte:element>
+        {/if}
         {#each card.rows as row, row_idx (row_key(card, row, row_idx))}
           <div class="info-row" data-testid={row.key}>
             <span>{@html sanitize_html(row.label)}</span>
@@ -221,6 +225,18 @@
   .info-cards {
     display: grid;
     gap: 5pt;
+  }
+  .info-cards.flat {
+    gap: 0;
+    .info-card {
+      padding: 0 3pt;
+      border-left: 0;
+      border-radius: 0;
+      background: transparent;
+    }
+    .info-row {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
   }
   .info-card {
     padding: var(--info-card-padding, 5pt);

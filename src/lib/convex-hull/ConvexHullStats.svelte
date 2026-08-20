@@ -2,8 +2,7 @@
   // Phase statistics + entry table for a convex hull (standalone or inside the info pane)
   import { get_electro_neg_formula, get_reduced_formula } from '$lib/composition'
   import { format_num } from '$lib/labels'
-  import { create_clipboard_feedback, type InfoPaneCard } from '$lib/overlays'
-  import CopyButton from '$lib/overlays/CopyButton.svelte'
+  import type { InfoPaneCard } from '$lib/overlays'
   import InfoPaneCards from '$lib/overlays/InfoPaneCards.svelte'
   import Histogram from '$lib/plot/histogram/Histogram.svelte'
   import type { Label, RowData } from '$lib/table'
@@ -52,7 +51,6 @@
     entry_href?: (entry: ConvexHullEntry) => string | null // makes the ID column a link
   } = $props()
 
-  const { copied, copy } = create_clipboard_feedback()
   let view_mode = $state<`stats` | `table`>(`stats`)
   let formula_filter = $state(``) // table shows only this reduced formula when set
   const table_height = `var(--hull-stats-table-height, calc(var(--hull-stats-table-row-height, 2.35rem) * 10 + var(--hull-stats-table-header-height, 3.5rem)))`
@@ -106,7 +104,7 @@
     })
     return [
       {
-        title: `Phases`,
+        title: ``,
         rows: [
           {
             label: `Total entries in ${phase_stats.chemical_system}`,
@@ -139,7 +137,7 @@
   const e_form_card = $derived(
     phase_stats
       ? energy_card(
-          `Formation energy`,
+          `E<sub>form</sub> distribution`,
           `Min / avg / max (eV/atom)`,
           [
             phase_stats.energy_range.min,
@@ -153,7 +151,7 @@
   const e_hull_card = $derived(
     phase_stats
       ? energy_card(
-          `Energy above hull`,
+          `E<sub>above hull</sub> distribution`,
           `Max / avg (eV/atom)`,
           [phase_stats.hull_distance.max, phase_stats.hull_distance.avg],
           `pd-hull-distance`,
@@ -185,10 +183,6 @@
       }),
     )
   })
-  const subsystem_coverage_text = $derived(
-    subsystem_coverage?.map(({ pair, count }) => `${pair}: ${count}`).join(` | `) ?? ``,
-  )
-
   // === Table ===
   const composition_key = (comp: Record<string, number>): string =>
     get_electro_neg_formula(get_reduced_formula(comp), true, ``)
@@ -321,25 +315,22 @@
   const export_filename = $derived(
     phase_stats?.chemical_system?.toLowerCase().replaceAll(/\s+/g, `-`) ?? `convex-hull-stats`,
   )
-  const cards_props = { show_filter: false, empty_label: `stats`, heading_level: 5 } as const
+  const cards_props = {
+    show_filter: false,
+    show_copy: false,
+    empty_label: `stats`,
+    heading_level: 5,
+    variant: `flat`,
+  } as const
 </script>
 
 {#snippet stats_panel()}
   {#if phase_stats && e_form_card && e_hull_card}
-    <InfoPaneCards cards={count_cards} {...cards_props} />
+    <InfoPaneCards cards={count_cards.slice(0, 1)} {...cards_props} />
     {#if subsystem_coverage}
       <div class="subsystem-coverage" data-testid="pd-binary-subsystem-coverage">
         <span class="subsystem-label">
           Binary subsystem coverage ({subsystem_coverage.length} pairs)
-          <CopyButton
-            label="Copy binary subsystem coverage"
-            copied={copied.has(`binary-subsystem-coverage`)}
-            onclick={() =>
-              copy(
-                `Binary subsystem coverage: ${subsystem_coverage_text}`,
-                `binary-subsystem-coverage`,
-              )}
-          />
         </span>
         {#each subsystem_coverage as { pair, count } (pair)}
           <span class="subsystem-chip" class:has-entries={count > 0}>
@@ -349,6 +340,9 @@
         {/each}
       </div>
     {/if}
+    <hr />
+    <InfoPaneCards cards={count_cards.slice(1)} {...cards_props} />
+    <hr />
     <InfoPaneCards cards={[e_form_card]} {...cards_props} />
     {#if e_form_values.length > 0}
       <Histogram
@@ -358,6 +352,7 @@
         bar={{ color: `steelblue`, opacity: 0.7 }}
       />
     {/if}
+    <hr />
     <InfoPaneCards cards={[e_hull_card]} {...cards_props} />
     {#if e_hull_values.length > 0}
       <Histogram
@@ -544,15 +539,10 @@
   }
   .subsystem-coverage {
     display: flex;
+    align-items: center;
     flex-wrap: wrap;
-    gap: 4pt;
-    padding: 3pt;
-    .subsystem-label {
-      display: flex;
-      align-items: center;
-      gap: 4pt;
-      flex-basis: 100%;
-    }
+    gap: 4pt 1em;
+    padding: 1pt 3pt;
   }
   .subsystem-chip {
     display: inline-flex;
