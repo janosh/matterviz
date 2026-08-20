@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { DEFAULTS } from '$lib/settings'
+import { DEFAULTS } from '../../src/lib/settings'
 import { flushSync } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { MockModel } from './anywidget-mock-model'
