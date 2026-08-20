@@ -19,6 +19,7 @@
   },
   "scripts": {
     "build": "rm -rf build && vp build",
+    "typecheck": "tsc --noEmit",
     "prepublishOnly": "pnpm run build"
   },
   "devDependencies": {
@@ -29,6 +30,7 @@
     "matterviz": "file:../..",
     "svelte": "^5.56.8",
     "svelte-widgets": "^1.5.0",
+    "typescript": "^6.0.3",
     "vite": "^8.1.5",
     "vite-plus": "0.2.8"
   },

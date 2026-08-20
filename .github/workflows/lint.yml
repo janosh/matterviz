@@ -47,6 +47,13 @@ jobs:
           pnpm -C extensions/jupyterlab run typecheck
           pnpm -C extensions/jupyterlab test
 
+      # The widget passes component props by name from a table; a renamed or removed prop
+      # (e.g. BarPlot.point_tween) went stale silently until this ran somewhere.
+      - name: Type-check anywidget
+        env:
+          PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN: 'false'
+        run: pnpm -C extensions/anywidget run typecheck
+
   knip:
     name: Check unused code
     runs-on: ubuntu-latest

@@ -1,0 +1,21 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "../..",
+    "lib": ["esnext", "dom", "dom.iterable"],
+    "types": ["node"],
+    "paths": {
+      "$lib": ["../../src/lib"],
+      "$lib/*": ["../../src/lib/*"],
+      // The widget imports the published package name; the root `matterviz` alias in
+      // svelte.config.ts does the same for vitest, so both resolve to the sources.
+      "matterviz": ["../../src/lib"],
+      "matterviz/*": ["../../src/lib/*"],
+      // One svelte copy: src/lib resolves the root install, so the widget must too or every
+      // Snippet type splits into two unrelated declarations.
+      "svelte": ["../../node_modules/svelte"],
+      "svelte/*": ["../../node_modules/svelte/*"]
+    }
+  },
+  "include": ["anywidget.ts", "reactive.svelte.ts", "h5wasm-stub.ts"]
+}
