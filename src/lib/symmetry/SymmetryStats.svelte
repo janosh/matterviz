@@ -6,6 +6,7 @@
   import { SETTINGS_CONFIG } from '$lib/settings'
   import type { SymmetrySettings } from './analyze'
   import {
+    count_symmetry_op_kinds,
     default_sym_settings,
     spacegroup_settings,
     spacegroup_wyckoff_positions,
@@ -65,19 +66,7 @@
       ? crystal_sys
       : `${crystal_sys} (${lattice_sys} lattice)`
   })
-
-  // Operations split into pure translations (T), translation-free rotations (R) and the rest (RT)
-  const sym_ops_counts = $derived.by(() => {
-    const counts = { translations: 0, rotations: 0, roto_translations: 0 }
-    for (const { rotation, translation } of sym_data?.operations ?? []) {
-      const has_translation = translation.some((coord) => Math.abs(coord) > 1e-10)
-      const is_identity = String(rotation) === `1,0,0,0,1,0,0,0,1`
-      if (is_identity && has_translation) counts.translations++
-      else if (!has_translation) counts.rotations++
-      else counts.roto_translations++
-    }
-    return counts
-  })
+  const sym_ops_counts = $derived(count_symmetry_op_kinds(sym_data?.operations ?? []))
 
   const titles = {
     symprec: `Symmetry precision control in spglib/moyo. Lower values (e.g. 1e-4, the default) are more strict, higher values (e.g. 1e-1) are more tolerant of numerical errors in atomic positions.`,

@@ -782,25 +782,29 @@ describe(`wyckoff_sequence`, () => {
 describe(`enrich_wyckoff_rows`, () => {
   const db = [make_db_entry(`a`, `0,0,0`, `m-3m`, 1), make_db_entry(`c`, `x,1/4,0`, `mm2`, 4)]
 
-  test(`attaches ITA coordinates and site symmetry by letter`, () => {
-    const rows = enrich_wyckoff_rows([make_row(`1a`), make_row(`4c`)], db)
-    expect(rows[0].coordinates).toBe(`0,0,0`)
-    expect(rows[0].site_symmetry).toBe(`m-3m`)
-    expect(rows[1].coordinates).toBe(`x,1/4,0`)
-    expect(rows[1].site_symmetry).toBe(`mm2`)
-  })
-
-  test(`keeps moyo-provided site symmetry over database fallback`, () => {
-    const rows = enrich_wyckoff_rows([make_row(`1a`, { site_symmetry: `-43m` })], db)
-    expect(rows[0].site_symmetry).toBe(`-43m`)
-    expect(rows[0].coordinates).toBe(`0,0,0`)
-  })
-
-  test(`matches alpha (uppercase A) general positions`, () => {
-    const alpha_db = [make_db_entry(`A`, `x,y,z`, `1`, 8)]
-    const rows = enrich_wyckoff_rows([make_row(`8A`)], alpha_db)
-    expect(rows[0].coordinates).toBe(`x,y,z`)
-  })
+  test.each<[string, WyckoffPos, MoyoWyckoffPosition[], Partial<WyckoffPos>]>([
+    [`1a`, make_row(`1a`), db, { coordinates: `0,0,0`, site_symmetry: `m-3m` }],
+    [`4c`, make_row(`4c`), db, { coordinates: `x,1/4,0`, site_symmetry: `mm2` }],
+    // moyo-provided site symmetry wins over the database fallback
+    [
+      `1a with moyo site symmetry`,
+      make_row(`1a`, { site_symmetry: `-43m` }),
+      db,
+      { coordinates: `0,0,0`, site_symmetry: `-43m` },
+    ],
+    // alpha (uppercase A) general positions match too
+    [
+      `8A`,
+      make_row(`8A`),
+      [make_db_entry(`A`, `x,y,z`, `1`, 8)],
+      { coordinates: `x,y,z`, site_symmetry: `1` },
+    ],
+  ])(
+    `attaches ITA coordinates and site symmetry to %s`,
+    (_desc, row, db_positions, expected) => {
+      expect(enrich_wyckoff_rows([row], db_positions)[0]).toMatchObject(expected)
+    },
+  )
 
   test.each<[string, WyckoffPos[], MoyoWyckoffPosition[]]>([
     [`empty database`, [make_row(`1a`)], []],

@@ -71,8 +71,8 @@ export function calc_structure_id(
   if (!skip_csp) validate_csp_neighbors(n_csp_neighbors)
   // Fixed-cutoff CNA is DEFINED by its cutoff, so that query is the one it must see. Every
   // other case takes a k-nearest query sized for whichever analysis wants more neighbors.
-  const use_fixed_cutoff = cna_mode === `fixed` && !skip_cna
-  if (use_fixed_cutoff && !(cutoff !== undefined && cutoff > 0)) {
+  const fixed_cutoff = cna_mode === `fixed` && !skip_cna ? (cutoff ?? NaN) : null
+  if (fixed_cutoff !== null && !(fixed_cutoff > 0)) {
     throw new Error(
       `calc_structure_id: cna_mode 'fixed' needs a positive cutoff (0.854 * a_fcc or ` +
         `1.207 * a_bcc for the phase under study), got ${cutoff}`,
@@ -84,7 +84,7 @@ export function calc_structure_id(
   )
   const list = neighbor_query(
     structure,
-    use_fixed_cutoff && cutoff !== undefined ? { cutoff, pbc } : { k: k_neighbors, pbc },
+    fixed_cutoff === null ? { k: k_neighbors, pbc } : { cutoff: fixed_cutoff, pbc },
   )
 
   const cna_types = skip_cna ? null : calc_cna(list, cna_mode)
@@ -107,7 +107,7 @@ export function calc_structure_id(
     populations,
     n_atoms,
     cna_mode,
-    cutoff: use_fixed_cutoff ? (cutoff ?? null) : null,
+    cutoff: fixed_cutoff,
     n_csp_neighbors,
     n_csp_undefined,
     neighbor_cutoff: list.cutoff,

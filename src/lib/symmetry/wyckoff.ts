@@ -81,7 +81,9 @@ const wyckoff_multiplicity = (label: string): number => Number(/^\d+/.exec(label
 // but multiplicity 4). Rows sort by ascending multiplicity, then Wyckoff label. Returns []
 // for a bare MoyoDataset (only analyze_structure_symmetry attaches the input cell the grouping
 // needs), a singular std_linear, or per-site arrays that do not match the input cell.
-export function wyckoff_positions_from_moyo(sym_data: MoyoDataset | null): WyckoffPos[] {
+export function wyckoff_positions_from_moyo(
+  sym_data: MoyoDataset | SymmetryDataset | null,
+): WyckoffPos[] {
   if (!sym_data || !(`input_cell` in sym_data)) return []
   const {
     input_cell,
@@ -90,7 +92,7 @@ export function wyckoff_positions_from_moyo(sym_data: MoyoDataset | null): Wycko
     wyckoffs,
     site_symmetry_symbols,
     std_cell,
-  } = sym_data as SymmetryDataset
+  } = sym_data
   const n_input = input_cell.positions.length
   if (n_input === 0 || orbits?.length !== n_input || wyckoffs?.length !== n_input) return []
   const mapper = frac_coord_mapper(sym_data.std_linear, sym_data.std_origin_shift)
@@ -259,18 +261,22 @@ function candidate_display_frames(
 
 // Spatial hash over wrapped fractional coordinates for tolerance-based, mod-1 position
 // lookups. Cell size is chosen ≥ tolerance so probing the ±1 neighbor cells (with
-// wraparound) covers every point within tolerance of the query.
+// wraparound) covers every point within tolerance of the query. An optional `transform`
+// is applied to the stored coordinates and to every query alike.
 class WrappedPositionIndex {
   private readonly buckets = new Map<string, number[]>()
   private readonly n_cells: number
+  private readonly coords: Vec3[]
 
   constructor(
-    private readonly coords: Vec3[],
+    coords: Vec3[],
     private readonly tolerance: number,
+    private readonly transform?: (pos: Vec3) => Vec3,
   ) {
+    this.coords = transform ? coords.map(transform) : coords
     const inv_tolerance = Math.floor(1 / Math.max(tolerance, 1e-9))
     this.n_cells = Math.min(64, Math.max(1, inv_tolerance))
-    coords.forEach((pos, idx) => {
+    this.coords.forEach((pos, idx) => {
       const key = this.cell_key(pos, 0, 0, 0)
       const bucket = this.buckets.get(key)
       if (bucket) bucket.push(idx)
@@ -288,7 +294,8 @@ class WrappedPositionIndex {
   }
 
   // Indices of stored positions within `tolerance` of `query` modulo ℤ³
-  query(query: Vec3, out: Set<number>): void {
+  query(raw_query: Vec3, out: Set<number>): void {
+    const query = this.transform ? this.transform(raw_query) : raw_query
     const tol = this.tolerance
     for (let dx = -1; dx <= 1; dx++) {
       for (let dy = -1; dy <= 1; dy++) {
@@ -359,12 +366,11 @@ export function map_wyckoff_to_all_atoms(
     // P·x_F (matches input-lattice translations: d ∈ P⁻¹ℤ³ ⟺ P·d ∈ ℤ³)
     const direct_index = new WrappedPositionIndex(displayed_frame_coords, tolerance)
     const check = frame.input_translation_check
-    const check_index = check
-      ? new WrappedPositionIndex(
-          displayed_frame_coords.map((pos) => math.mat3x3_vec3_multiply(check, pos)),
-          tolerance,
-        )
-      : null
+    const check_index =
+      check &&
+      new WrappedPositionIndex(displayed_frame_coords, tolerance, (pos) =>
+        math.mat3x3_vec3_multiply(check, pos),
+      )
 
     let any_matched = false
     const rows = wyckoff_positions.map((wyckoff_pos) => {
@@ -393,10 +399,7 @@ export function map_wyckoff_to_all_atoms(
         const candidates = new Set<number>()
         for (const equiv_pos of equivalents.values()) {
           direct_index.query(equiv_pos, candidates)
-          check_index?.query(
-            math.mat3x3_vec3_multiply(check as Matrix3x3, equiv_pos),
-            candidates,
-          )
+          check_index?.query(equiv_pos, candidates)
         }
         for (const display_idx of candidates) {
           if (displayed_elements[display_idx] === element) matched.add(display_idx)

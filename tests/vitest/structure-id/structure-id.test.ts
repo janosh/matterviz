@@ -156,6 +156,7 @@ describe(`common neighbor analysis`, () => {
     const result = calc_structure_id(build(), { skip_csp: true })
     expect(result.n_atoms).toBe(n_atoms)
     expect(result.populations[expected]).toBe(n_atoms)
+    expect(result.cutoff).toBeNull() // adaptive: no global cutoff
   })
 
   test.each([
@@ -183,19 +184,17 @@ describe(`common neighbor analysis`, () => {
 
   // 0.05 Å (~2% of the 2.556 Å nn distance) is thermal noise CNA should ignore; 0.6 Å
   // (~23%) is past where any signature survives.
-  test(`small random displacements leave fcc intact`, () => {
-    const result = calc_structure_id(with_random_displacements(make_fcc([4, 4, 4]), 0.05, 1), {
-      skip_csp: true,
-    })
-    expect(result.populations.fcc).toBe(256)
-  })
-
-  test(`large random displacements degrade to Other`, () => {
-    const result = calc_structure_id(with_random_displacements(make_fcc([4, 4, 4]), 0.6, 0), {
-      skip_csp: true,
-    })
-    expect(result.populations.other / result.n_atoms).toBeGreaterThan(0.95)
-  })
+  test.each([
+    [0.05, 1, `fcc` as const, 1],
+    [0.6, 0, `other` as const, 0.95],
+  ])(
+    `%f A random displacements (seed %d): %s fraction >= %f`,
+    (amplitude, seed, type, min_frac) => {
+      const displaced = with_random_displacements(make_fcc([4, 4, 4]), amplitude, seed)
+      const result = calc_structure_id(displaced, { skip_csp: true })
+      expect(result.populations[type] / result.n_atoms).toBeGreaterThanOrEqual(min_frac)
+    },
+  )
 
   test(`a vacancy leaves its 12 neighbors unclassified and raises their CSP`, () => {
     const perfect = make_fcc([4, 4, 4])
@@ -333,7 +332,13 @@ describe(`calc_structure_id plumbing`, () => {
       `fixed mode without a cutoff`,
       undefined,
       { cna_mode: `fixed` as const },
-      /needs a positive cutoff/,
+      /needs a positive cutoff.*got undefined/,
+    ],
+    [
+      `fixed mode with a zero cutoff`,
+      undefined,
+      { cna_mode: `fixed` as const, cutoff: 0 },
+      /needs a positive cutoff.*got 0/,
     ],
   ])(`rejects %s`, (_label, structure, options, pattern) => {
     const input = structure ?? make_fcc([2, 2, 2])

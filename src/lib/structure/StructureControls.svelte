@@ -334,7 +334,8 @@
   })
   // A getter, not a const: the parent may rebind scene_props to a fresh object
   const scene_record = () => scene_props as Record<string, unknown>
-  const row_value = (current: Row): unknown => current.get?.() ?? scene_record()[current.key]
+  const row_value = (current: Row): unknown =>
+    current.get ? current.get() : scene_record()[current.key]
   const set_row_value = (current: Row, value: unknown): void => {
     if (current.set) current.set(value)
     else scene_record()[current.key] = value
@@ -360,6 +361,8 @@
     row(`show_site_indices`, `Site indices`),
     lattice_row(`show_cell_vectors`, `Lattice vectors`),
   ]
+  // Enum pickers rendered below the toggle grid, same section
+  const visibility_mode_rows = [row(`show_bonds`, `Bonds`), row(`show_polyhedra`, `Polyhedra`)]
   const atom_rows = [
     row(`atom_radius`, `Radius (Å)`, 0.05),
     row(`same_size_atoms`, `Same size`),
@@ -753,9 +756,8 @@
     )
 
   function update_label_offset(axis_idx: number, value: number) {
-    const offset = [...(scene_props.site_label_offset ?? DEFAULTS.structure.site_label_offset)]
-    offset[axis_idx] = value
-    scene_props.site_label_offset = offset as Vec3
+    const offset = scene_props.site_label_offset ?? DEFAULTS.structure.site_label_offset
+    scene_props.site_label_offset = offset.with(axis_idx, value) as Vec3
   }
 
   // Detect if structure has lattice (can create supercells)
@@ -772,9 +774,8 @@
   )
 
   function update_rotation(axis_idx: number, degrees: number) {
-    const rotation = [...(scene_props.rotation ?? [0, 0, 0])] as Vec3
-    rotation[axis_idx] = to_radians(((Math.max(0, Math.min(360, degrees)) % 360) + 360) % 360)
-    scene_props.rotation = rotation
+    const radians = to_radians(((Math.max(0, Math.min(360, degrees)) % 360) + 360) % 360)
+    scene_props.rotation = (scene_props.rotation ?? [0, 0, 0]).with(axis_idx, radians) as Vec3
   }
 
   // Sample colors for common elements, used to preview an element color scheme
@@ -918,11 +919,7 @@
           title="Visibility"
           layout="grid"
           {...scene_section(
-            [
-              ...visibility_rows,
-              row(`show_bonds`, `Bonds`),
-              row(`show_polyhedra`, `Polyhedra`),
-            ],
+            [...visibility_rows, ...visibility_mode_rows],
             vector_visibility_accessors(),
           )}
         >
@@ -964,10 +961,7 @@
               </label>
             {/each}
           </div>
-          {@render setting_rows([
-            row(`show_bonds`, `Bonds`),
-            row(`show_polyhedra`, `Polyhedra`),
-          ])}
+          {@render setting_rows(visibility_mode_rows)}
         </SettingsSection>
       {/key}
 

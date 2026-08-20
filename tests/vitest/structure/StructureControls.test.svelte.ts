@@ -7,7 +7,7 @@ import {
   STRUCTURE_VIEW_STATE_STORAGE_KEY,
 } from '$lib/settings/viewer-state'
 import type { AnyStructure } from '$lib'
-import type { Matrix3x3 } from '$lib/math'
+import type { Matrix3x3, Vec3 } from '$lib/math'
 import { default_vector_configs, StructureControls } from '$lib/structure'
 import { next_atom_color_config } from '$lib/structure/atom-properties'
 import { CNA_TYPE_PROPERTY } from '$lib/structure-id'
@@ -449,6 +449,32 @@ describe(`StructureControls schema rows`, () => {
     state.scene_props.auto_bond_order = true
     await tick()
     expect(target.querySelector(`[data-key="aromatic_display"] select`)).not.toBeNull()
+  })
+
+  test(`per-axis inputs replace one component and leave the others`, async () => {
+    const state = $state({
+      scene_props: {
+        ...DEFAULTS.structure,
+        show_site_labels: true,
+        site_label_offset: [0.1, 0.2, 0.3] as Vec3,
+        rotation: [0, Math.PI, 0] as Vec3,
+      },
+    })
+    const target = await mount_bound_controls(state)
+    const offset_inputs = target.querySelectorAll<HTMLInputElement>(
+      `[data-key="site_label_offset"] input`,
+    )
+    expect(offset_inputs).toHaveLength(3)
+    set_input(offset_inputs[2], `-0.5`)
+    const rotation_inputs = target.querySelectorAll<HTMLInputElement>(
+      `[data-key="rotation"] input[type="number"]`,
+    )
+    expect([...rotation_inputs].map((input) => input.valueAsNumber)).toEqual([0, 180, 0])
+    set_input(rotation_inputs[0], `450`) // clamped to 360, i.e. wraps to 0
+    set_input(rotation_inputs[2], `90`)
+    await tick()
+    expect(state.scene_props.site_label_offset).toEqual([0.1, 0.2, -0.5])
+    expect(state.scene_props.rotation).toEqual([0, Math.PI, Math.PI / 2])
   })
 })
 

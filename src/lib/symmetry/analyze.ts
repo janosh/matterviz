@@ -111,6 +111,21 @@ export async function analyze_structure_symmetry(
   }
 }
 
+// Operations split into pure translations, translation-free rotations and the rest
+export function count_symmetry_op_kinds(
+  operations: MoyoDataset[`operations`],
+): Record<`translations` | `rotations` | `roto_translations`, number> {
+  const counts = { translations: 0, rotations: 0, roto_translations: 0 }
+  for (const { rotation, translation } of operations) {
+    const has_translation = translation.some((coord) => Math.abs(coord) > 1e-10)
+    const is_identity = String(rotation) === `1,0,0,0,1,0,0,0,1`
+    if (is_identity && has_translation) counts.translations++
+    else if (!has_translation) counts.rotations++
+    else counts.roto_translations++
+  }
+  return counts
+}
+
 // All Wyckoff positions of the space-group setting given by hall_number (1-530), ordered
 // general-position-first. moyo returns [] for out-of-range hall numbers. Returns [] when the
 // WASM module is not initialized (SSR, unit tests) — callers treat the database as an optional

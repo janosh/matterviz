@@ -13,11 +13,14 @@
   import { element_by_symbol, type ElementSymbol } from '$lib/element'
   import { format_num } from '$lib/labels'
   import type { Vec2 } from '$lib/math'
-  import { sanitize_html } from '$lib/sanitize'
   import { colors } from '$lib/state.svelte'
   import type { AnyStructure } from '$lib/structure'
   import { get_density } from '$lib/structure'
-  import { wyckoff_positions_from_moyo, WyckoffTable } from '$lib/symmetry'
+  import {
+    count_symmetry_op_kinds,
+    wyckoff_positions_from_moyo,
+    WyckoffTable,
+  } from '$lib/symmetry'
   import type { MoyoDataset } from '@spglib/moyo-wasm'
   import type { HTMLAttributes } from 'svelte/elements'
 
@@ -161,7 +164,7 @@
   // Structure + Cell cards; Symmetry is rendered separately so the Wyckoff table can follow it.
   // Skipped while closed — ViewerPane keeps children mounted (display:none).
   let structure_cards = $derived.by((): InfoPaneCard[] => {
-    if (!pane_open || !structure) return []
+    if (!pane_open) return []
     const structure_rows: InfoPaneRow[] = [
       {
         label: `Formula`,
@@ -207,22 +210,10 @@
   })
 
   let symmetry_card = $derived.by((): InfoPaneCard | null => {
-    if (!pane_open || !structure || !(`lattice` in structure) || !sym_data) return null
+    if (!pane_open || !(`lattice` in structure) || !sym_data) return null
     const { operations } = sym_data
-    let [translations, rotations, roto_translations] = [0, 0, 0]
-    for (const op of operations) {
-      const has_translation = op.translation.some((offset) => offset !== 0)
-      const is_identity = String(op.rotation) === `1,0,0,0,1,0,0,0,1`
-      if (is_identity && has_translation) translations++
-      else if (!has_translation) rotations++
-      else roto_translations++
-    }
-    const international_symbol = (sym_data as MoyoDataset & { international_short?: string })
-      .international_short
-    const space_group_symbol = (sym_data.hm_symbol ?? international_symbol)?.replaceAll(
-      /\s+/g,
-      ``,
-    )
+    const { translations, rotations, roto_translations } = count_symmetry_op_kinds(operations)
+    const space_group_symbol = sym_data.hm_symbol.replaceAll(/\s+/g, ``)
     return {
       title: `Symmetry`,
       rows: [
@@ -252,18 +243,15 @@
     }
   })
 
-  let atom_count = $derived(structure?.sites.length ?? 0)
+  let atom_count = $derived(structure.sites.length)
   let sites_allowed_by_threshold = $derived(atom_count <= atom_count_thresholds[1])
   let sites_need_toggle = $derived(
     sites_allowed_by_threshold && atom_count >= atom_count_thresholds[0],
   )
-  let site_cards_visible = $derived(
-    pane_open && sites_allowed_by_threshold && (!sites_need_toggle || sites_expanded),
-  )
   let sites_hidden_by_threshold = $derived(sites_need_toggle && !sites_expanded)
 
   let site_cards = $derived.by((): SiteCard[] => {
-    if (!structure || !site_cards_visible) return []
+    if (!pane_open || !sites_allowed_by_threshold || sites_hidden_by_threshold) return []
     return structure.sites.map((site, idx) => {
       const element = site.species?.[0]?.element || `Unknown`
       const element_name = element_by_symbol.get(element as ElementSymbol)?.name ?? element
@@ -272,12 +260,8 @@
         [`Frac.`, `fractional`, site.abc, ``],
         [`Cart.`, `cartesian`, site.xyz, ` Å`],
       ] as const) {
-        if (!coords) continue
-        rows.push({
-          label,
-          key,
-          value: `(${coords.map((coord) => format_num(coord, `.3~f`)).join(`, `)})${unit}`,
-        })
+        const value = `(${coords.map((coord) => format_num(coord, `.3~f`)).join(`, `)})${unit}`
+        rows.push({ label, key, value })
       }
       for (const [prop_key, prop_value] of Object.entries(site.properties ?? {})) {
         const row = format_site_property(prop_key, prop_value)
@@ -404,8 +388,8 @@
       <h4>Usage Tips</h4>
       {#each USAGE_TIPS as [label, value] (label)}
         <div class="tips-item">
-          <span>{@html sanitize_html(label)}</span>
-          <span>{@html sanitize_html(value)}</span>
+          <span>{label}</span>
+          <span>{value}</span>
         </div>
       {/each}
     </section>

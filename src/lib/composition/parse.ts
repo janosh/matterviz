@@ -87,10 +87,7 @@ function tokenize_formula(formula: string, allow_wildcards = false): RawToken[] 
         pos++
         return tokens
       }
-      if (separators.includes(char)) {
-        if (closer) fail(`Unbalanced parentheses: missing "${closer}"`)
-        return tokens
-      }
+      if (separators.includes(char)) break
       if (char === `(` || char === `[`) {
         pos++
         const inner = parse_group(char === `(` ? `)` : `]`)
@@ -235,21 +232,24 @@ export const parse_composition = (
   return composition
 }
 
+const atomic_mass_of = (element: string): number => {
+  const mass = is_elem_symbol(element)
+    ? element_by_symbol.get(element)?.atomic_mass
+    : undefined
+  if (mass === undefined) throw new Error(`Unknown element: ${element}`)
+  return mass
+}
+
 // Atomic (default) or mass fractions of each element; zero/negative amounts are skipped
 export const fractional_composition = (
   composition: CompositionType,
   by_weight = false,
 ): CompositionType => {
-  const weighted: [ElementSymbol, number][] = []
+  const weighted: [string, number][] = []
   for (const [element, amount] of Object.entries(composition)) {
     if (!(amount > 0)) continue
-    const mass = by_weight
-      ? is_elem_symbol(element)
-        ? element_by_symbol.get(element)?.atomic_mass
-        : undefined
-      : 1
-    if (!mass || !is_elem_symbol(element)) throw new Error(`Unknown element: ${element}`)
-    weighted.push([element, amount * mass])
+    const mass = atomic_mass_of(element) // validates the symbol in both modes
+    weighted.push([element, by_weight ? amount * mass : amount])
   }
   const total = weighted.reduce((sum, [, weight]) => sum + weight, 0)
   return Object.fromEntries(weighted.map(([element, weight]) => [element, weight / total]))
@@ -257,10 +257,7 @@ export const fractional_composition = (
 
 // Sum of atomic masses times amounts (unknown elements throw)
 export const get_molecular_weight = (composition: CompositionType): number =>
-  Object.entries(composition).reduce((total, [element, amount]) => {
-    const mass = is_elem_symbol(element)
-      ? element_by_symbol.get(element)?.atomic_mass
-      : undefined
-    if (mass === undefined) throw new Error(`Unknown element: ${element}`)
-    return total + mass * amount
-  }, 0)
+  Object.entries(composition).reduce(
+    (total, [element, amount]) => total + atomic_mass_of(element) * amount,
+    0,
+  )

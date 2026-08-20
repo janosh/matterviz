@@ -42,6 +42,7 @@ describe(`parse_formula`, () => {
     [`CaSO4·0.5H2O`, { Ca: 1, S: 1, O: 4.5, H: 1 }],
     [`CuSO4·.5H2O`, { Cu: 1, S: 1, O: 4.5, H: 1 }],
     [`2H2O`, { H: 4, O: 2 }], // leading coefficient on the first segment too
+    [`Fe2O3··H2O`, { Fe: 2, O: 4, H: 2 }], // stray separators are harmless
     // fractional / partial occupancies
     [`Li0.5Na0.5Cl`, { Li: 0.5, Na: 0.5, Cl: 1 }],
     [`Li.5Na.5Cl`, { Li: 0.5, Na: 0.5, Cl: 1 }],
@@ -75,10 +76,8 @@ describe(`parse_formula`, () => {
     [`)(`, `Unbalanced parentheses`],
     [`(Fe2O3]`, `Unbalanced parentheses: unexpected "]"`],
     [`Mg()O2`, `Empty parentheses`],
-    [`Fe2O3··H2O`, {}], // stray separators are harmless
   ])(`%s -> %s`, (formula, expected) => {
-    if (typeof expected === `string`) expect(() => parse_formula(formula)).toThrow(expected)
-    else expect(() => parse_formula(formula)).not.toThrow()
+    expect(() => parse_formula(formula)).toThrow(expected)
   })
 })
 
@@ -303,8 +302,8 @@ describe(`fractional_composition`, () => {
     expect(Object.values(result).reduce((sum, frac) => sum + frac, 0)).toBeCloseTo(1, 12)
   })
 
-  test(`throws for unknown elements in mass mode`, () => {
-    expect(() => fractional_composition({ Xx: 1 } as CompositionType, true)).toThrow(
+  test.each([false, true])(`throws for unknown elements (by_weight=%s)`, (by_weight) => {
+    expect(() => fractional_composition({ Xx: 1 } as CompositionType, by_weight)).toThrow(
       `Unknown element: Xx`,
     )
   })

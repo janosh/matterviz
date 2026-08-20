@@ -38,14 +38,14 @@
   let bubbles = $derived.by(() => {
     const segments = composition_segments(composition, color_scheme)
     if (segments.length === 0) return []
-    const root = pack<{ children: ChartSegment[] } | ChartSegment>()
-      .size([size - 2 * padding, size - 2 * padding])
-      .padding(padding * 0.1)(
-      hierarchy<{ children: ChartSegment[] } | ChartSegment>({ children: segments }).sum(
-        (node) => (`amount` in node ? node.amount : 0),
-      ),
-    )
-    const leaves = root.leaves()
+    const root = hierarchy<{ children: ChartSegment[] } | ChartSegment>({
+      children: segments,
+    }).sum((node) => (`amount` in node ? node.amount : 0))
+    const inner_size = size - 2 * padding
+    const leaves = pack<typeof root.data>()
+      .size([inner_size, inner_size])
+      .padding(padding * 0.1)(root)
+      .leaves()
     const max_radius = Math.max(...leaves.map((leaf) => leaf.r))
     return leaves.map((leaf) => {
       const segment = leaf.data as ChartSegment
