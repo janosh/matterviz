@@ -1,30 +1,22 @@
-import type { ElementSymbol } from '$lib'
-import type { Point4D } from '$lib/convex-hull/thermodynamics'
-import type { Point2D, Point3D } from '$lib/math'
+import { composition_to_barycentric_nd } from '$lib/convex-hull/barycentric-coords'
 import {
-  build_lower_hull_model,
   calculate_e_above_hull,
-  compute_e_above_hull_4d,
-  compute_e_above_hull_for_points,
   compute_e_above_hull_nd,
   compute_e_form_per_atom,
-  compute_lower_hull_2d,
-  compute_lower_hull_4d,
   compute_lower_hull_nd,
-  compute_lower_hull_triangles,
-  compute_quickhull_4d,
   compute_quickhull_nd,
-  compute_quickhull_triangles,
-  e_hull_at_xy,
   find_lowest_energy_unary_refs,
   get_convex_hull_stats,
-  interpolate_hull_2d,
   normalize_hull_composition_keys,
   process_hull_entries,
   process_hull_for_stats,
 } from '$lib/convex-hull/thermodynamics'
-import type { ConvexHullTriangle, PhaseData } from '$lib/convex-hull/types'
+import type { PhaseData } from '$lib/convex-hull/types'
+import type { ElementSymbol } from '$lib/element'
+import { solve_linear_system } from '$lib/math'
 import { describe, expect, test } from 'vitest'
+import { load_json } from '../setup'
+import pymatgen_quinary from './fixtures/quinary_pymatgen_reference.json' with { type: 'json' }
 
 // Test fixture factory - derives total energy from energy_per_atom and composition
 const make_phase = (
@@ -35,6 +27,8 @@ const make_phase = (
   const atoms = Object.values(composition).reduce((sum, count) => sum + count, 0)
   return { composition, energy_per_atom, energy: energy_per_atom * atoms, ...overrides }
 }
+const make_elem = (el: string, energy = -1.0) =>
+  make_phase({ [el]: 1 }, energy, { entry_id: el })
 
 describe(`normalize_hull_composition_keys`, () => {
   test.each([
@@ -49,43 +43,25 @@ describe(`normalize_hull_composition_keys`, () => {
 })
 
 describe(`process_hull_entries`, () => {
-  test(`separates stable/unstable and extracts elements`, () => {
+  test(`normalizes keys, drops empty compositions and collects sorted elements`, () => {
     const entries: PhaseData[] = [
-      make_phase({ Fe: 1 }, -4.0, { is_stable: true }),
-      make_phase({ O: 1 }, -2.0, { is_stable: false }),
-      make_phase({ Fe: 1, O: 2 }, -6.0, { e_above_hull: 0 }),
-      make_phase({ Fe: 2, O: 3 }, -5.0, { e_above_hull: 0.1 }),
-    ]
-    const result = process_hull_entries(entries)
-    expect(result.stable_entries).toHaveLength(2)
-    expect(result.unstable_entries).toHaveLength(2)
-    expect(result.elements).toEqual([`Fe`, `O`])
-  })
-
-  test(`builds element refs from stable unary entries`, () => {
-    const entries: PhaseData[] = [
-      make_phase({ Fe: 1 }, -4.0, { is_stable: true }),
-      make_phase({ O: 1 }, -2.0, { is_stable: true }),
-      make_phase({ Fe: 1, O: 1 }, -6.0, { is_stable: true }),
-    ]
-    expect(Object.keys(process_hull_entries(entries).el_refs)).toEqual([`Fe`, `O`])
-  })
-
-  test(`filters entries with empty normalized compositions`, () => {
-    const entries: PhaseData[] = [
+      make_phase({ 'Fe3+': 1, 'O2-': 2 } as Partial<Record<ElementSymbol, number>>, -4.0),
       make_phase({ '123': 1 } as Partial<Record<ElementSymbol, number>>, -4.0),
-      make_phase({ Fe: 1 }, -3.0),
+      make_phase({ O: 1 }, -2.0),
     ]
     const result = process_hull_entries(entries)
-    expect(result.entries).toHaveLength(1)
-    expect(result.entries[0].composition).toEqual({ Fe: 1 })
+    expect(result.entries.map((entry) => entry.composition)).toEqual([
+      { Fe: 1, O: 2 },
+      { O: 1 },
+    ])
+    expect(result.elements).toEqual([`Fe`, `O`])
   })
 })
 
 describe(`compute_e_form_per_atom`, () => {
   const el_refs = { Fe: make_phase({ Fe: 1 }, -4.0), O: make_phase({ O: 1 }, -2.0) }
 
-  test(`calculates formation energy: FeO at -7.0 eV/atom → e_form = -4.0`, () => {
+  test(`FeO at -7.0 eV/atom → e_form = -4.0`, () => {
     expect(compute_e_form_per_atom(make_phase({ Fe: 1, O: 1 }, -7.0), el_refs)).toBeCloseTo(
       -4.0,
       10,
@@ -99,238 +75,194 @@ describe(`compute_e_form_per_atom`, () => {
     expect(compute_e_form_per_atom(make_phase(composition, -5.0), el_refs)).toBeNull()
   })
 
-  test(`handles correction field`, () => {
+  test(`corrections are total-energy (eV) values`, () => {
     const refs = { Fe: make_phase({ Fe: 1 }, -3.0, { correction: -1.0 }) }
-    const entry = make_phase({ Fe: 1 }, -4.5, { correction: 0.5 })
+    const entry = make_phase({ Fe: 2 }, -4.5, { correction: 1.0 }) // -9 + 1 = -8 → -4/atom
     expect(compute_e_form_per_atom(entry, refs)).toBeCloseTo(0.0, 10)
   })
 })
 
 describe(`find_lowest_energy_unary_refs`, () => {
-  test(`selects lowest energy polymorph per element`, () => {
+  test(`selects lowest energy polymorph per element, ignoring compounds`, () => {
     const entries = [
       make_phase({ Fe: 1 }, -3.5),
       make_phase({ Fe: 1 }, -4.0),
-      make_phase({ Fe: 1 }, -3.8),
       make_phase({ O: 1 }, -2.0),
       make_phase({ O: 1 }, -2.5),
+      make_phase({ Fe: 1, O: 1 }, -6.0),
     ]
     const refs = find_lowest_energy_unary_refs(entries)
-    expect(refs.Fe.energy_per_atom).toBe(-4.0)
-    expect(refs.O.energy_per_atom).toBe(-2.5)
-  })
-
-  test(`ignores non-unary entries`, () => {
-    const entries = [make_phase({ Fe: 1, O: 1 }, -6.0), make_phase({ Fe: 1 }, -4.0)]
-    expect(Object.keys(find_lowest_energy_unary_refs(entries))).toEqual([`Fe`])
+    expect(Object.keys(refs)).toEqual([`Fe`, `O`])
+    expect([refs.Fe.energy_per_atom, refs.O.energy_per_atom]).toEqual([-4.0, -2.5])
   })
 })
 
-describe(`2D Convex Hull`, () => {
-  test(`compute_lower_hull_2d returns correct hull vertices`, () => {
-    const points: Point2D[] = [
-      { x: 0, y: 0 },
-      { x: 0.5, y: -0.5 },
-      { x: 0.5, y: 0.2 },
-      { x: 1, y: 0 },
-    ]
-    const hull = compute_lower_hull_2d(points)
-    expect(hull).toHaveLength(3)
-    expect(hull).toEqual([
-      { x: 0, y: 0 },
-      { x: 0.5, y: -0.5 },
-      { x: 1, y: 0 },
-    ])
-  })
-
-  test.each([
-    [[{ x: 0.5, y: 0 }], 1, `single point`],
-    [
-      [
-        { x: 0, y: 0 },
-        { x: 0.5, y: -0.25 },
-        { x: 1, y: -0.5 },
-      ],
-      2,
-      `collinear (≥2)`,
-    ],
-  ])(`compute_lower_hull_2d handles %s`, (points, min_length) => {
-    expect(compute_lower_hull_2d(points).length).toBeGreaterThanOrEqual(min_length)
-  })
-
-  describe(`interpolate_hull_2d`, () => {
-    const hull: Point2D[] = [
-      { x: 0, y: 0 },
-      { x: 0.5, y: -0.5 },
-      { x: 1, y: 0 },
-    ]
-
-    test.each([
-      [0.25, -0.25],
-      [0.5, -0.5],
-      [0.75, -0.25],
-    ])(`interpolates x=%d → y≈%d`, (x_val, expected) => {
-      expect(interpolate_hull_2d(hull, x_val)).toBeCloseTo(expected, 10)
-    })
-
-    test.each([
-      [-0.5, 0],
-      [1.5, 0],
-    ])(`clamps x=%d to endpoint y=%d`, (x_val, expected) => {
-      expect(interpolate_hull_2d(hull, x_val)).toBe(expected)
-    })
-
-    test.each([
-      [[], `empty hull`],
-      [[{ x: 0, y: 0 }], `single point`],
-    ])(`returns null for %s`, (hull_points) => {
-      expect(interpolate_hull_2d(hull_points, 0.5)).toBeNull()
-    })
-  })
-})
-
-describe(`3D Convex Hull`, () => {
-  const tetrahedron: Point3D[] = [
-    { x: 0, y: 0, z: 0 },
-    { x: 1, y: 0, z: 0 },
-    { x: 0.5, y: Math.sqrt(3) / 2, z: 0 },
-    { x: 0.5, y: Math.sqrt(3) / 6, z: Math.sqrt(2 / 3) },
-  ]
-
-  test(`compute_quickhull_triangles: tetrahedron has 4 faces`, () => {
-    expect(compute_quickhull_triangles(tetrahedron)).toHaveLength(4)
-  })
-
-  test.each([
-    [
-      [
-        { x: 0, y: 0, z: 0 },
-        { x: 1, y: 0, z: 0 },
-        { x: 0, y: 1, z: 0 },
-      ],
-      `<4 points`,
-    ],
-    [
-      [
-        { x: 0, y: 0, z: 0 },
-        { x: 1, y: 0, z: 0 },
-        { x: 0, y: 1, z: 0 },
-        { x: 1, y: 1, z: 0 },
-      ],
-      `coplanar`,
-    ],
-  ])(`compute_quickhull_triangles returns empty for %s`, (points) => {
-    expect(compute_quickhull_triangles(points)).toHaveLength(0)
-  })
-
-  test(`compute_lower_hull_triangles filters downward-facing`, () => {
-    const points: Point3D[] = [
-      { x: 0, y: 0, z: 0 },
-      { x: 1, y: 0, z: 0 },
-      { x: 0, y: 1, z: 0 },
-      { x: 1, y: 1, z: 0 },
-      { x: 0.5, y: 0.5, z: -0.5 },
-    ]
-    for (const tri of compute_lower_hull_triangles(points)) {
-      expect(tri.normal.z).toBeLessThan(0)
+// Brute-force lower hull energy at `query`: min over all (d+1)-subsets containing the
+// query's projection of the barycentric interpolation (spatial dim d = coords - 1)
+function brute_force_e_hull(points: number[][], query: number[]): number {
+  const dim = query.length - 1
+  let best = Infinity
+  const visit = (start: number, chosen: number[]) => {
+    if (chosen.length === dim + 1) {
+      const verts = chosen.map((idx) => points[idx])
+      const matrix = Array.from({ length: dim }, (_, row) =>
+        verts.slice(1).map((vert) => vert[row] - verts[0][row]),
+      )
+      const rhs = Array.from({ length: dim }, (_, row) => query[row] - verts[0][row])
+      const lambda = solve_linear_system(matrix, rhs)
+      if (!lambda) return
+      const weights = [1 - lambda.reduce((sum, val) => sum + val, 0), ...lambda]
+      if (weights.every((val) => val >= -1e-9)) {
+        best = Math.min(
+          best,
+          weights.reduce((sum, wt, idx) => sum + wt * verts[idx][dim], 0),
+        )
+      }
+      return
     }
+    for (let idx = start; idx < points.length; idx++) visit(idx + 1, [...chosen, idx])
+  }
+  visit(0, [])
+  return best
+}
+
+// Deterministic LCG so failures reproduce
+let seed = 12345
+const rand = () => {
+  seed = (seed * 1103515245 + 12345) & 0x7fffffff
+  return seed / 0x7fffffff
+}
+// Random point in the composition simplex (reduced coords) with a random energy
+const random_point = (spatial_dim: number, energy: number): number[] => {
+  const weights = Array.from({ length: spatial_dim + 1 }, () => -Math.log(rand() + 1e-12))
+  const total = weights.reduce((sum, val) => sum + val, 0)
+  return [...weights.slice(1).map((val) => val / total), energy]
+}
+const corners = (spatial_dim: number): number[][] =>
+  Array.from({ length: spatial_dim + 1 }, (_, corner_idx) => {
+    const corner = Array(spatial_dim + 1).fill(0)
+    if (corner_idx > 0) corner[corner_idx - 1] = 1
+    return corner
   })
 
-  test(`e_hull_at_xy interpolates correctly`, () => {
-    const triangles: ConvexHullTriangle[] = [
-      {
-        vertices: [
-          { x: 0, y: 0, z: 0 },
-          { x: 1, y: 0, z: 0 },
-          { x: 0.5, y: 1, z: -1 },
-        ],
-        normal: { x: 0, y: Math.SQRT1_2, z: -Math.SQRT1_2 },
-        centroid: { x: 0.5, y: 1 / 3, z: -1 / 3 },
-      },
-    ]
-    const models = build_lower_hull_model(triangles)
-    expect(e_hull_at_xy(models, 0.5, 1 / 3)).toBeCloseTo(-1 / 3, 5)
-    expect(e_hull_at_xy(models, 10, 10)).toBeNull()
-  })
-
-  // Flat triangle on the z=0 plane (downward normal), shared by the cases below
-  const flat_models = build_lower_hull_model([
-    {
-      vertices: [
-        { x: 0, y: 0, z: 0 },
-        { x: 1, y: 0, z: 0 },
-        { x: 0.5, y: 1, z: 0 },
-      ],
-      normal: { x: 0, y: 0, z: -1 },
-      centroid: { x: 0.5, y: 1 / 3, z: 0 },
+describe(`N-dimensional quickhull`, () => {
+  test.each([2, 3, 4])(
+    `dim=%i: lower hull + e_above_hull agree with brute force to 1e-10 on random point sets`,
+    (dim) => {
+      const spatial_dim = dim - 1
+      let max_diff = 0
+      for (let trial = 0; trial < 8; trial++) {
+        const points = [
+          ...corners(spatial_dim),
+          ...Array.from({ length: 18 }, () => random_point(spatial_dim, 0.2 - 2 * rand())),
+        ]
+        // Duplicate point and a same-composition polymorph 0.3 eV higher
+        points.push(
+          [...points[6]],
+          [...points[5].slice(0, spatial_dim), points[5][spatial_dim] + 0.3],
+        )
+        const facets = compute_lower_hull_nd(points)
+        expect(facets.length).toBeGreaterThan(0)
+        for (const facet of facets) {
+          expect(facet.vertex_indices).toHaveLength(dim)
+          expect(facet.normal.at(-1)).toBeLessThan(0)
+        }
+        const queries = [
+          ...points,
+          ...Array.from({ length: 10 }, () => random_point(spatial_dim, 0)),
+        ]
+        const distances = compute_e_above_hull_nd(queries, facets, points)
+        for (const [idx, query] of queries.entries()) {
+          const reference = query[spatial_dim] - brute_force_e_hull(points, query)
+          max_diff = Math.max(max_diff, Math.abs(distances[idx] - reference))
+        }
+      }
+      expect(max_diff).toBeLessThan(1e-10)
     },
-  ])
+  )
 
-  test.each([
-    [{ x: 0.5, y: 0.3, z: 0 }, 0, `on hull`],
-    [{ x: 0.5, y: 0.3, z: 0.5 }, 0.5, `above hull`],
-    [{ x: 0.5, y: 0.3, z: -0.5 }, 0, `below hull`],
-  ])(`compute_e_above_hull_for_points: %s → %d`, (point, expected) => {
-    expect(compute_e_above_hull_for_points([point], flat_models)[0]).toBeCloseTo(expected, 10)
-  })
-
-  test(`compute_e_above_hull_for_points: point outside hull projection → NaN (unknown, not 0)`, () => {
-    // a point with no covering hull face has an unknown distance — must not collapse to 0
-    // (which would mislabel it as on-hull/stable)
-    expect(compute_e_above_hull_for_points([{ x: 10, y: 10, z: 0 }], flat_models)[0]).toBeNaN()
-  })
-})
-
-describe(`4D Convex Hull`, () => {
-  const simplex_4d: Point4D[] = [
-    { x: 0, y: 0, z: 0, w: 0 },
-    { x: 1, y: 0, z: 0, w: 0 },
-    { x: 0.5, y: Math.sqrt(3) / 2, z: 0, w: 0 },
-    { x: 0.5, y: Math.sqrt(3) / 6, z: Math.sqrt(2 / 3), w: 0 },
-    { x: 0.5, y: Math.sqrt(3) / 6, z: Math.sqrt(2 / 3) / 3, w: 1 },
-  ]
-
-  test(`compute_quickhull_4d: 4-simplex has 5 facets`, () => {
-    expect(compute_quickhull_4d(simplex_4d)).toHaveLength(5)
-  })
-
-  test(`compute_quickhull_4d returns empty for <5 points`, () => {
-    expect(compute_quickhull_4d(simplex_4d.slice(0, 4))).toHaveLength(0)
-  })
-
-  test(`compute_lower_hull_4d filters by w-normal`, () => {
-    const points: Point4D[] = [
-      ...simplex_4d.slice(0, 4).map((pt) => ({ ...pt, w: 0 })),
-      { x: 0.5, y: 0.3, z: 0.3, w: -0.5 },
-    ]
-    for (const tet of compute_lower_hull_4d(points)) {
-      expect(tet.normal.w).toBeLessThan(0)
+  test(`full hull of a simplex has dim+1 facets in 2D..6D`, () => {
+    for (let dim = 2; dim <= 6; dim++) {
+      const simplex = [...corners(dim - 1), [...Array(dim - 1).fill(1 / dim), -1]]
+      expect(compute_quickhull_nd(simplex)).toHaveLength(dim + 1)
+      // Only the facets not containing the apex... all dim facets touching the bottom apex
+      // point down; the top face (all corners at E = 0) is horizontal and excluded
+      expect(compute_lower_hull_nd(simplex)).toHaveLength(dim)
     }
   })
 
-  test(`compute_e_above_hull_4d returns ≥0`, () => {
-    const points: Point4D[] = [
-      { x: 0, y: 0, z: 0, w: 0 },
-      { x: 1, y: 0, z: 0, w: 0 },
-      { x: 0, y: 1, z: 0, w: 0 },
-      { x: 0, y: 0, z: 1, w: 0 },
-      { x: 0.25, y: 0.25, z: 0.25, w: -1 },
+  test.each([
+    [
+      `fewer than dim+1 points`,
+      [
+        [0, 0],
+        [1, 0],
+      ],
+    ],
+    [
+      `co-hyperplanar (all E = 0)`,
+      [
+        [0, 0],
+        [1, 0],
+        [0.5, 0],
+      ],
+    ],
+    [
+      `collinear in 3D`,
+      [
+        [0, 0, 0],
+        [1, 1, 1],
+        [2, 2, 2],
+        [3, 3, 3],
+      ],
+    ],
+    [`empty`, []],
+  ])(`returns no facets for %s`, (_desc, points) => {
+    expect(compute_quickhull_nd(points)).toEqual([])
+  })
+
+  test(`throws on mixed dimensions`, () => {
+    expect(() => compute_quickhull_nd([[0, 0], [1]])).toThrow(`dimension mismatch`)
+  })
+
+  test(`compute_e_above_hull_nd: NaN outside the hull's composition domain, without facets, or for NaN queries`, () => {
+    const points = [
+      [0, 0, 0],
+      [1, 0, 0],
+      [0, 1, 0],
+      [0.3, 0.3, -1],
     ]
-    const hull = compute_lower_hull_4d(points)
-    expect(hull.length).toBeGreaterThan(0)
-    expect(
-      compute_e_above_hull_4d([{ x: 0.25, y: 0.25, z: 0.25, w: 0 }], hull)[0],
-    ).toBeGreaterThanOrEqual(0)
+    const facets = compute_lower_hull_nd(points)
+    const [outside, degenerate, nan_query] = [
+      compute_e_above_hull_nd([[2, 2, 0]], facets, points)[0],
+      compute_e_above_hull_nd([[0.3, 0.3, 0]], [], points)[0],
+      compute_e_above_hull_nd([[0.3, NaN, 0]], facets, points)[0],
+    ]
+    expect([outside, degenerate, nan_query].every(Number.isNaN)).toBe(true)
+    // Inside: the apex sits 1 eV below the E = 0 corner plane... at the apex itself 0
+    expect(compute_e_above_hull_nd([[0.3, 0.3, 0]], facets, points)[0]).toBeCloseTo(1, 12)
+    expect(compute_e_above_hull_nd([[0.3, 0.3, -1]], facets, points)[0]).toBeCloseTo(0, 12)
+  })
+
+  test(`duplicate compositions: duplicates score 0, the higher polymorph its energy gap`, () => {
+    const points = [
+      [0, 0],
+      [1, 0],
+      [0.5, -1],
+      [0.5, -1],
+      [0.5, -0.5],
+    ]
+    const facets = compute_lower_hull_nd(points)
+    expect(facets).toHaveLength(2)
+    const dist = compute_e_above_hull_nd(points, facets, points)
+    expect(dist.map((val) => Math.round(val * 1e9) / 1e9)).toEqual([0, 0, 0, 0, 0.5])
   })
 })
 
 describe(`calculate_e_above_hull`, () => {
-  const fe_o_refs: PhaseData[] = [
-    make_phase({ Fe: 1 }, -4.0, { entry_id: `Fe` }),
-    make_phase({ O: 1 }, -2.0, { entry_id: `O` }),
-  ]
+  const fe_o_refs: PhaseData[] = [make_elem(`Fe`, -4.0), make_elem(`O`, -2.0)]
 
-  test(`unary: Fe at -3.5 → e_above = 0.5`, () => {
+  test(`unary: polymorph 0.5 eV/atom above the lowest → 0.5`, () => {
     const refs = [make_phase({ Fe: 1 }, -4.0, { entry_id: `Fe-stable` })]
     expect(
       calculate_e_above_hull(make_phase({ Fe: 1 }, -3.5, { entry_id: `Fe-high` }), refs),
@@ -340,158 +272,182 @@ describe(`calculate_e_above_hull`, () => {
   test(`binary: interpolates hull tie-line, on-hull entries ≈ 0`, () => {
     // Hull: Fe (x=0, e_form 0) — FeO (x=0.5, e_form -4.5) — O (x=1, e_form 0)
     const refs = [...fe_o_refs, make_phase({ Fe: 1, O: 1 }, -7.5, { entry_id: `FeO` })]
-    // FeO polymorph at -6.5 eV/atom has e_form -3.5 → exactly 1.0 above the hull
-    expect(
-      calculate_e_above_hull(
-        make_phase({ Fe: 1, O: 1 }, -6.5, { entry_id: `FeO-unstable` }),
-        refs,
-      ),
-    ).toBeCloseTo(1.0, 10)
-    // Fe3O at x=0.25: tie-line gives -2.25, entry e_form -1.75 → 0.5 above
-    expect(
-      calculate_e_above_hull(make_phase({ Fe: 3, O: 1 }, -5.25, { entry_id: `Fe3O` }), refs),
-    ).toBeCloseTo(0.5, 10)
-    expect(
-      calculate_e_above_hull(make_phase({ Fe: 1 }, -4.0, { entry_id: `Fe-test` }), refs),
-    ).toBeCloseTo(0, 10)
+    const results = calculate_e_above_hull(
+      [
+        make_phase({ Fe: 1, O: 1 }, -6.5, { entry_id: `FeO-unstable` }), // e_form -3.5 → 1.0
+        make_phase({ Fe: 3, O: 1 }, -5.25, { entry_id: `Fe3O` }), // tie-line -2.25, e_form -1.75
+        make_phase({ Fe: 1 }, -4.0, { entry_id: `Fe-test` }),
+        make_phase({ Fe: 1 }, -3.5, { entry_id: `Fe-high` }),
+      ],
+      refs,
+    )
+    expect(results[`FeO-unstable`]).toBeCloseTo(1.0, 10)
+    expect(results.Fe3O).toBeCloseTo(0.5, 10)
+    expect(results[`Fe-test`]).toBeCloseTo(0, 10)
+    expect(results[`Fe-high`]).toBeCloseTo(0.5, 10)
   })
 
   // A compound below the elemental tie-plane shapes the hull; a same-composition
-  // polymorph 0.5 eV/atom higher must land exactly 0.5 above it (N-dim hull branch)
-  test.each([
-    { arity: 3, comp: { Li: 1, Fe: 1, O: 1 } },
-    { arity: 4, comp: { Li: 1, Fe: 1, P: 1, O: 1 } },
-  ])(`arity-$arity: compound below tie-plane sets exact hull distance`, ({ comp }) => {
-    const refs: PhaseData[] = [
-      ...Object.keys(comp).map((el) => make_quinary_elem(el, 0)),
-      make_phase(comp, -1.0, { entry_id: `stable-compound` }),
-    ]
-    const query = make_phase(comp, -0.5, { entry_id: `query` })
-    expect(calculate_e_above_hull(query, refs)).toBeCloseTo(0.5, 5)
-  })
-
-  // exclude_from_hull guard exists in all arity branches (ternary, quaternary, N-D);
-  // each must skip the excluded entry when building the hull
+  // polymorph 0.5 eV/atom higher must land exactly 0.5 above it, and an excluded compound
+  // must not shape it at all
   test.each([
     { arity: 3, els: [`Li`, `Fe`, `O`] },
     { arity: 4, els: [`Li`, `Fe`, `P`, `O`] },
     { arity: 5, els: [`Li`, `Na`, `K`, `Rb`, `Cs`] },
-  ])(`arity-$arity exclude_from_hull entry doesn't shape the hull`, ({ els }) => {
+  ])(`arity-$arity: compounds shape the hull unless exclude_from_hull`, ({ els }) => {
     const comp = Object.fromEntries(els.map((el) => [el, 1])) as Partial<
       Record<ElementSymbol, number>
     >
     const refs = [
-      ...els.map((el) => make_quinary_elem(el, 0)),
-      // Very stable compound, but excluded → must not lower the hull
+      ...els.map((el) => make_elem(el, 0)),
+      make_phase(comp, -1.0, { entry_id: `stable-compound` }),
+    ]
+    expect(
+      calculate_e_above_hull(make_phase(comp, -0.5, { entry_id: `q` }), refs),
+    ).toBeCloseTo(0.5, 10)
+    const excluded_refs = [
+      ...els.map((el) => make_elem(el, 0)),
       make_phase(comp, -2.0, { entry_id: `excluded`, exclude_from_hull: true }),
     ]
-    // Same-composition query below the elemental tie-plane → clamped to 0. If the
-    // excluded compound wrongly shaped the hull, this would be ~1.0.
-    const query = make_phase(comp, -1.0, { entry_id: `query` })
-    expect(calculate_e_above_hull(query, refs)).toBeCloseTo(0, 10)
+    // Below the elemental tie-plane → clamped to 0 (would be ~1.0 if the excluded compound counted)
+    expect(
+      calculate_e_above_hull(make_phase(comp, -1.0, { entry_id: `q` }), excluded_refs),
+    ).toBeCloseTo(0, 10)
   })
 
-  const fe_ref = make_phase({ Fe: 1 }, -4.0)
   test.each([
-    [`empty refs`, fe_ref, [], /cannot be empty/],
-    [`missing element`, make_phase({ Li: 1 }, -2.0), [fe_ref], /not present in reference/],
+    { arity: 2, comp: { Fe: 1, O: 1 } },
+    { arity: 3, comp: { Li: 1, Fe: 1, O: 1 } },
+    { arity: 4, comp: { Li: 1, Fe: 1, P: 1, O: 1 } },
+  ])(`arity-$arity: all refs at e_form = 0 → hull is the tie-plane at 0`, ({ comp }) => {
+    const refs = Object.keys(comp).map((el) => make_elem(el, 0))
+    expect(
+      calculate_e_above_hull(make_phase(comp, 0.5, { entry_id: `above` }), refs),
+    ).toBeCloseTo(0.5, 10)
+    expect(calculate_e_above_hull(make_phase(comp, -0.2, { entry_id: `below` }), refs)).toBe(0)
+  })
+
+  test(`missing pure-element references default to e_form = 0 corners`, () => {
+    // Only Fe reference + precomputed e_form: the O corner is synthesized at 0
+    const refs = [
+      make_phase({ Fe: 1 }, 0, { entry_id: `Fe`, e_form_per_atom: 0 }),
+      make_phase({ Fe: 1, O: 1 }, -1, { entry_id: `FeO`, e_form_per_atom: -1 }),
+    ]
+    const query = make_phase({ Fe: 1, O: 3 }, 0, { entry_id: `FeO3`, e_form_per_atom: -0.25 })
+    // Tie-line FeO (x=0.5, -1) → O (x=1, 0) gives -0.5 at x=0.75
+    expect(calculate_e_above_hull(query, refs)).toBeCloseTo(0.25, 10)
+  })
+
+  test(`pre-computed e_form_per_atom wins over recomputation`, () => {
+    const entry = make_phase({ Fe: 1, O: 1 }, -6.0, { entry_id: `FeO`, e_form_per_atom: 0.5 })
+    expect(calculate_e_above_hull(entry, fe_o_refs)).toBeCloseTo(0.5, 10)
+  })
+
+  test.each([
+    [`empty refs`, make_elem(`Fe`), [], /cannot be empty/],
+    [
+      `missing element`,
+      make_phase({ Li: 1 }, -2.0),
+      [make_elem(`Fe`)],
+      /not present in reference/,
+    ],
   ] as const)(`throws for %s`, (_desc, entry, refs, err) => {
     expect(() => calculate_e_above_hull(entry, [...refs])).toThrow(err)
   })
 
-  // Quinary (5-element) system tests
-  const make_quinary_elem = (el: string, energy = -1.0) =>
-    make_phase({ [el]: 1 }, energy, {
-      entry_id: el,
-    })
-
-  test(`handles quinary system: stable/unstable phases`, () => {
-    const refs = [
-      make_quinary_elem(`Li`, -1.9),
-      make_quinary_elem(`Fe`, -4.0),
-      make_quinary_elem(`Mn`, -3.5),
-      make_quinary_elem(`P`, -2.5),
-      make_quinary_elem(`O`, -2.0),
-    ]
-    expect(
-      calculate_e_above_hull(make_phase({ Li: 1 }, -1.9, { entry_id: `Li-test` }), refs),
-    ).toBeCloseTo(0, 5)
-    expect(
-      calculate_e_above_hull(make_phase({ Li: 1 }, -1.5, { entry_id: `Li-unstable` }), refs),
-    ).toBeCloseTo(0.4, 5)
-  })
-
-  test(`quinary: compound phase below tie-plane shapes the hull (non-degenerate)`, () => {
-    // Stable equimolar compound at e_form = -1.0 eV/atom (elements at -1.0 eV/atom each)
-    const equimolar = { Li: 1, Na: 1, K: 1, Rb: 1, Cs: 1 }
-    const refs = [
-      ...Object.keys(equimolar).map((el) => make_quinary_elem(el)),
-      make_phase(equimolar, -2.0, { entry_id: `stable-quinary` }),
-    ]
-    // Same-composition queries sit (e_form + 1.0) eV/atom above the stable compound.
-    // A degenerate hull would wrongly report max(0, e_form) off the elemental tie-plane.
-    const query = make_phase(equimolar, -1.5, { entry_id: `above-hull` })
-    expect(calculate_e_above_hull(query, refs)).toBeCloseTo(0.5, 5)
-    const above_tie = make_phase(equimolar, -0.8, { entry_id: `above-tie-plane` })
-    expect(calculate_e_above_hull(above_tie, refs)).toBeCloseTo(1.2, 5)
-  })
-
-  test.each([
-    { arity: 3, comp: { Li: 1, Fe: 1, O: 1 } },
-    { arity: 4, comp: { Li: 1, Fe: 1, P: 1, O: 1 } },
-  ])(
-    `arity-$arity falls back to elemental tie-plane when all refs have e_form = 0`,
-    ({ comp }) => {
-      // All refs coplanar at e_form = 0 → no hull facets; tie-plane fallback must apply
-      const refs = Object.keys(comp).map((el) => make_quinary_elem(el, 0))
-      const above = make_phase(comp, 0.5, { entry_id: `above-tie-plane` })
-      expect(calculate_e_above_hull(above, refs)).toBeCloseTo(0.5, 10)
-      const below = make_phase(comp, -0.2, { entry_id: `below-tie-plane` })
-      expect(calculate_e_above_hull(below, refs)).toBeCloseTo(0, 10)
-    },
-  )
-
-  test.each([
-    { id: `Li-1`, energy: -1.0, expected: 0 },
-    { id: `Li-2`, energy: -0.5, expected: 0.5 },
-    { id: `Na-1`, energy: -1.0, expected: 0 },
-  ])(`quinary batch: $id at e=$energy → e_above=$expected`, ({ id, energy, expected }) => {
-    const refs = [`Li`, `Na`, `K`, `Rb`, `Cs`].map((el) => make_quinary_elem(el))
-    const el = id.split(`-`)[0] as ElementSymbol
-    const entry = make_phase({ [el]: 1 }, energy, {
-      entry_id: id,
-    })
-    expect(calculate_e_above_hull(entry, refs)).toBeCloseTo(expected, 5)
-  })
-
-  test(`batch mode`, () => {
-    const entries = [
-      make_phase({ Fe: 1 }, -4.0, { entry_id: `Fe-1` }),
-      make_phase({ Fe: 1 }, -3.5, { entry_id: `Fe-2` }),
-      make_phase({ O: 1 }, -2.0, { entry_id: `O-1` }),
-    ]
-    const results = calculate_e_above_hull(entries, fe_o_refs)
-    expect(results[`Fe-1`]).toBeCloseTo(0, 10)
-    expect(results[`Fe-2`]).toBeCloseTo(0.5, 10)
-    expect(results[`O-1`]).toBeCloseTo(0, 10)
-  })
-
-  test(`returns empty for empty input array`, () => {
+  test(`empty input → {} and unplaceable entries → NaN`, () => {
     expect(calculate_e_above_hull([], fe_o_refs)).toEqual({})
+    const no_atoms = make_phase({}, 0, { entry_id: `empty` })
+    expect(calculate_e_above_hull([no_atoms], fe_o_refs).empty).toBeNaN()
   })
 
   test(`keys same-composition polymorphs separately when entry_id is absent`, () => {
-    // Two FeO polymorphs (distinct energies, no entry_id) plus elemental refs.
-    // Old code keyed by composition alone → 3 keys (the two FeO collided); the fix
-    // includes energy in the fallback key → 4 distinct keys.
     const entries = [
       make_phase({ Fe: 1 }, -4.0),
       make_phase({ O: 1 }, -2.0),
       make_phase({ Fe: 1, O: 1 }, -3.0),
       make_phase({ Fe: 1, O: 1 }, -2.5),
     ]
-    const results = calculate_e_above_hull(entries, entries)
-    expect(Object.keys(results)).toHaveLength(4)
+    expect(Object.keys(calculate_e_above_hull(entries, entries))).toHaveLength(4)
+  })
+})
+
+// Cross-validation against pymatgen's PhaseDiagram: Materials Project quaternaries (with
+// their ternary and binary sub-systems, whose hulls are faces of the full hull) and a
+// synthetic quinary. e_above_hull comes from pymatgen, stored in the fixtures.
+describe(`pymatgen cross-validation`, () => {
+  const site_dir = `${import.meta.dirname}/../../../src/site/convex-hull/quaternaries`
+  const subsystem = (entries: PhaseData[], elements: string[]) => {
+    const element_set = new Set(elements)
+    return entries.filter((entry) =>
+      Object.entries(entry.composition).every(([el, amt]) => amt <= 0 || element_set.has(el)),
+    )
+  }
+  type PymatgenEntry = {
+    id: string
+    composition: Record<string, number>
+    e_form_per_atom: number
+    e_above_hull: number
+    is_stable: boolean
+  }
+  const quinary = (pymatgen_quinary as { entries: PymatgenEntry[] }).entries.map(
+    (entry): PhaseData => ({
+      composition: entry.composition,
+      e_form_per_atom: entry.e_form_per_atom,
+      energy: 0,
+      entry_id: entry.id,
+      e_above_hull: entry.e_above_hull,
+      is_stable: entry.is_stable,
+    }),
+  )
+  const fixtures: [string, PhaseData[]][] = [[`Li-Na-K-Rb-Cs (quinary)`, quinary]]
+  for (const name of [`Li-Co-Ni-O`, `Na-Fe-P-O`]) {
+    const entries = load_json<PhaseData[]>(`${site_dir}/${name}.json.gz`)
+    const [el_a, el_b, , el_d] = name.split(`-`)
+    fixtures.push(
+      [name, entries],
+      [`${el_a}-${el_b}-${el_d}`, subsystem(entries, [el_a, el_b, el_d])],
+      [`${el_b}-${el_d}`, subsystem(entries, [el_b, el_d])],
+    )
+  }
+
+  // Both from the stored e_form_per_atom and recomputed from raw energy + correction
+  test.each(fixtures)(`%s: e_above_hull matches pymatgen to 1e-10`, (_name, entries) => {
+    const without_hull = entries.map(({ e_above_hull: _e, is_stable: _s, ...rest }) => rest)
+    const without_e_form = without_hull.map(({ e_form_per_atom: _f, ...rest }) => rest)
+    for (const input of [without_hull, without_e_form]) {
+      if (input === without_e_form && entries === quinary) continue // quinary has no raw energies
+      const results = calculate_e_above_hull(input, input)
+      let max_diff = 0
+      for (const entry of entries) {
+        const id = entry.entry_id as string
+        max_diff = Math.max(max_diff, Math.abs(results[id] - (entry.e_above_hull as number)))
+        expect(results[id] < 1e-6).toBe(entry.is_stable)
+      }
+      expect(max_diff).toBeLessThan(1e-10)
+    }
+  })
+
+  test(`single-entry mode matches batch mode`, () => {
+    const batch = calculate_e_above_hull(quinary, quinary)
+    for (const entry of quinary) {
+      expect(calculate_e_above_hull(entry, quinary)).toBe(batch[entry.entry_id as string])
+    }
+  })
+
+  test(`Li-Co-Ni-O: quickhull builds the 4D hull of 775 entries in well under a frame`, () => {
+    const entries = fixtures[1][1]
+    const elements = [
+      ...new Set(entries.flatMap((entry) => Object.keys(entry.composition))),
+    ].toSorted() as ElementSymbol[]
+    const points = entries.map((entry) => [
+      ...composition_to_barycentric_nd(entry.composition, elements).slice(1),
+      entry.e_form_per_atom as number,
+    ])
+    const start = performance.now()
+    const facets = compute_lower_hull_nd(points)
+    expect(performance.now() - start).toBeLessThan(50) // ~1.6 ms typical, generous for CI
+    expect(facets.length).toBeGreaterThan(20)
   })
 })
 
@@ -500,109 +456,50 @@ describe(`get_convex_hull_stats`, () => {
     expect(get_convex_hull_stats([], [`Fe`], 3)).toBeNull()
   })
 
-  test(`calculates arity counts`, () => {
+  test(`arity counts, stability, energy stats and electronegativity-sorted system`, () => {
     const entries: PhaseData[] = [
-      make_phase({ Fe: 1 }, -4.0),
-      make_phase({ O: 1 }, -2.0),
-      make_phase({ Fe: 1, O: 1 }, -6.0),
-      make_phase({ Fe: 1, O: 2 }, -7.0),
-      make_phase({ Li: 1, Fe: 1, O: 2 }, -8.0),
-    ]
-    const { unary, binary, ternary, total } =
-      get_convex_hull_stats(entries, [`Li`, `Fe`, `O`], 3) ?? {}
-    expect([unary, binary, ternary, total]).toEqual([2, 2, 1, 5])
-  })
-
-  test(`calculates stable/unstable and energy stats`, () => {
-    const entries: PhaseData[] = [
-      make_phase({ Fe: 1 }, -4.0, {
-        is_stable: true,
-        e_form_per_atom: -1.0,
-        e_above_hull: 0,
-      }),
+      make_phase({ Fe: 1 }, -4.0, { is_stable: true, e_form_per_atom: -1.0, e_above_hull: 0 }),
       make_phase({ O: 1 }, -2.0, { e_above_hull: 0, e_form_per_atom: -0.5 }),
       make_phase({ Fe: 1, O: 1 }, -6.0, { e_above_hull: 0.2, e_form_per_atom: -2.0 }),
-    ]
-    const stats = get_convex_hull_stats(entries, [`Fe`, `O`], 3)
-    expect(stats).not.toBeNull()
-    expect(stats?.stable).toBe(2)
-    expect(stats?.unstable).toBe(1)
-    expect(stats?.energy_range.min).toBe(-2.0)
-    expect(stats?.energy_range.max).toBe(-0.5)
-    expect(stats?.hull_distance.max).toBe(0.2)
-  })
-
-  test.each([4, undefined])(`counts quaternary entry (max_arity=%s)`, (max_arity) => {
-    const entries = [make_phase({ Li: 1, Fe: 1, P: 1, O: 4 }, -10.0)]
-    expect(get_convex_hull_stats(entries, [`Li`, `Fe`, `P`, `O`], max_arity)?.quaternary).toBe(
-      1,
-    )
-  })
-
-  test(`sorts chemical system by electronegativity`, () => {
-    const entries = [make_phase({ Fe: 1 }, -4.0)]
-    expect(get_convex_hull_stats(entries, [`O`, `Fe`, `Li`], 3)?.chemical_system).toBe(
-      `Li-Fe-O`,
-    )
-  })
-
-  test(`counts quinary_plus entries for 5+ element compositions`, () => {
-    const entries: PhaseData[] = [
+      make_phase({ Fe: 1, O: 2 }, -7.0, { e_above_hull: 0.1, e_form_per_atom: -1.5 }),
+      make_phase({ Li: 1, Fe: 1, O: 2 }, -8.0, { e_above_hull: 0.3, e_form_per_atom: -1.0 }),
       make_phase({ Li: 1, Fe: 1, P: 1, O: 1, Mn: 1 }, -8.0),
-      make_phase({ Li: 1, Fe: 1, P: 1, O: 1, Mn: 1, Co: 1 }, -9.0),
-      make_phase({ Fe: 1, O: 1 }, -5.0),
     ]
-    const stats = get_convex_hull_stats(entries, [`Li`, `Fe`, `P`, `O`, `Mn`, `Co`])
-    expect(stats?.quinary_plus).toBe(2)
-    expect(stats?.binary).toBe(1)
+    const stats = get_convex_hull_stats(entries, [`O`, `Fe`, `Li`], 3)
+    expect(stats).toMatchObject({
+      total: 6,
+      unary: 2,
+      binary: 2,
+      ternary: 1,
+      quaternary: 0,
+      quinary_plus: 1,
+      stable: 2,
+      unstable: 4,
+      elements: 3,
+      chemical_system: `Li-Fe-O`,
+      max_arity: 3,
+    })
+    expect(stats?.energy_range.min).toBe(-8.0) // raw energy_per_atom fallback for the quinary
+    expect(stats?.energy_range.max).toBe(-0.5)
+    expect(stats?.hull_distance.max).toBe(0.3)
+    expect(stats?.hull_distance.avg).toBeCloseTo(0.6 / 5, 12)
   })
 
-  test(`zeroes binary when max_arity=1`, () => {
-    const entries: PhaseData[] = [
-      make_phase({ Fe: 1 }, -4.0),
-      make_phase({ Fe: 1, O: 1 }, -5.0),
-    ]
-    const stats = get_convex_hull_stats(entries, [`Fe`, `O`], 1)
-    expect(stats?.unary).toBe(1)
-    expect(stats?.binary).toBe(0)
-  })
-
-  test(`zeroes ternary when max_arity < 3 and quaternary when max_arity < 4`, () => {
+  test.each([
+    [1, { unary: 1, binary: 0, ternary: 0, quaternary: 0 }],
+    [2, { unary: 1, binary: 1, ternary: 0, quaternary: 0 }],
+    [3, { unary: 1, binary: 1, ternary: 1, quaternary: 0 }],
+    [undefined, { unary: 1, binary: 1, ternary: 1, quaternary: 1 }],
+  ])(`max_arity=%s zeroes counts beyond the system dimensionality`, (max_arity, expected) => {
     const entries: PhaseData[] = [
       make_phase({ Fe: 1 }, -4.0),
       make_phase({ Fe: 1, O: 1 }, -5.0),
       make_phase({ Li: 1, Fe: 1, O: 1 }, -6.0),
       make_phase({ Li: 1, Fe: 1, P: 1, O: 1 }, -7.0),
     ]
-    const stats_2 = get_convex_hull_stats(entries, [`Li`, `Fe`, `P`, `O`], 2)
-    expect(stats_2?.ternary).toBe(0)
-    expect(stats_2?.quaternary).toBe(0)
-    expect(stats_2?.binary).toBe(1)
-
-    const stats_3 = get_convex_hull_stats(entries, [`Li`, `Fe`, `P`, `O`], 3)
-    expect(stats_3?.ternary).toBe(1)
-    expect(stats_3?.quaternary).toBe(0)
-  })
-})
-
-describe(`Edge cases`, () => {
-  test(`pre-computed e_form_per_atom is used`, () => {
-    const refs = [
-      make_phase({ Fe: 1 }, -4.0, { entry_id: `Fe` }),
-      make_phase({ O: 1 }, -2.0, { entry_id: `O` }),
-    ]
-    // Set e_form_per_atom to a positive value that differs from what would be
-    // computed from energy_per_atom (-6.0 - (-3.0) = -3.0), so we can verify
-    // the function uses the pre-computed value instead of recomputing
-    const e_form_per_atom = 0.5
-    const entry = make_phase({ Fe: 1, O: 1 }, -6.0, {
-      entry_id: `FeO`,
-      e_form_per_atom,
-    })
-    // For Fe1O1, the hull is built from unary refs: Fe (x=0, e_form=0) and O (x=1, e_form=0)
-    // At x=0.5, the tie-line formation energy = 0
-    // e_above_hull = max(0, e_form_per_atom - 0) = e_form_per_atom
-    expect(calculate_e_above_hull(entry, refs)).toBeCloseTo(e_form_per_atom)
+    expect(get_convex_hull_stats(entries, [`Li`, `Fe`, `P`, `O`], max_arity)).toMatchObject(
+      expected,
+    )
   })
 })
 
@@ -611,43 +508,32 @@ describe(`process_hull_for_stats`, () => {
     expect(process_hull_for_stats([])).toBeNull()
   })
 
-  test(`computes formation energies and hull distances for binary system`, () => {
+  test(`computes formation energies + hull distances, keeps precomputed e_form`, () => {
     const entries: PhaseData[] = [
       make_phase({ Fe: 1 }, -4.0, { entry_id: `Fe` }),
       make_phase({ O: 1 }, -2.0, { entry_id: `O` }),
-      make_phase({ Fe: 1, O: 1 }, -2.5, { entry_id: `FeO` }),
-    ]
-    const result = process_hull_for_stats(entries)
-    expect(result).not.toBeNull()
-    const all = [...(result?.stable_entries ?? []), ...(result?.unstable_entries ?? [])]
-    // All entries should have computed e_form_per_atom
-    for (const entry of all) {
-      expect(typeof entry.e_form_per_atom).toBe(`number`)
-    }
-    // FeO should have e_above_hull computed
-    const feo = all.find((entry) => entry.entry_id === `FeO`)
-    expect(typeof feo?.e_above_hull).toBe(`number`)
-    // Unary refs are on the hull
-    expect(result?.stable_entries.length).toBeGreaterThanOrEqual(2)
-    // FeO at -2.5 eV/atom is above the tie-line (-3.0) → unstable
-    expect(result?.unstable_entries.some((entry) => entry.entry_id === `FeO`)).toBe(true)
-    // Phase stats should be populated
-    expect(result?.phase_stats?.total).toBe(3)
-    expect(result?.phase_stats?.unary).toBe(2)
-    expect(result?.phase_stats?.binary).toBe(1)
-  })
-
-  test(`sets is_element on returned entries`, () => {
-    const entries: PhaseData[] = [
-      make_phase({ Fe: 1 }, -4.0),
-      make_phase({ Fe: 1, O: 1 }, -3.5),
+      make_phase({ Fe: 1, O: 1 }, -2.5, { entry_id: `FeO` }), // tie-line -3.0 → 0.5 above
+      make_phase({ Fe: 1, O: 3 }, -3.5, { entry_id: `FeO3`, e_form_per_atom: 1 }), // would be -1 if recomputed
     ]
     const result = process_hull_for_stats(entries)
     if (!result) throw new Error(`expected result`)
-    const all = [...result.stable_entries, ...result.unstable_entries]
-    // Fe is unary → is_element
-    const fe_entry = all.find((entry) => Object.keys(entry.composition).length === 1)
-    expect(fe_entry?.is_element).toBe(true)
+    const by_id = Object.fromEntries(
+      [...result.stable_entries, ...result.unstable_entries].map((entry) => [
+        entry.entry_id,
+        entry,
+      ]),
+    )
+    expect(by_id.FeO.e_form_per_atom).toBeCloseTo(0.5, 10)
+    expect(by_id.FeO.e_above_hull).toBeCloseTo(0.5, 10)
+    expect(by_id.FeO3.e_form_per_atom).toBe(1)
+    expect(by_id.FeO3.e_above_hull).toBeCloseTo(1, 10)
+    expect(by_id.Fe.is_element).toBe(true)
+    expect(
+      result.stable_entries
+        .map((entry) => entry.entry_id)
+        .toSorted((id_a, id_b) => String(id_a).localeCompare(String(id_b))),
+    ).toEqual([`Fe`, `O`])
+    expect(result.phase_stats).toMatchObject({ total: 4, unary: 2, binary: 2, stable: 2 })
   })
 
   test(`exclude_from_hull entries don't shape the hull but are still scored`, () => {
@@ -659,196 +545,44 @@ describe(`process_hull_for_stats`, () => {
     ]
     const result = process_hull_for_stats(entries)
     const all = [...(result?.stable_entries ?? []), ...(result?.unstable_entries ?? [])]
-    // Excluded LiFe (-0.5 eV/atom) must not shape the hull: LiFe2 (-0.1) sits on the
-    // Li-Fe tie-line (else ~0.233 eV/atom above the Li-LiFe-Fe hull). LiFe itself is
-    // still scored as a query (below hull → clamped to 0) but never counted stable.
+    // LiFe2 (-0.1) sits on the Li-Fe tie-line (else ~0.233 above the Li-LiFe-Fe hull);
+    // LiFe is scored (below hull → 0) but never counted stable
     expect(all.find((entry) => entry.entry_id === `LiFe2`)?.e_above_hull).toBeCloseTo(0, 10)
     expect(all.find((entry) => entry.entry_id === `LiFe`)?.e_above_hull).toBeCloseTo(0, 10)
     expect(result?.stable_entries.some((entry) => entry.entry_id === `LiFe`)).toBe(false)
   })
 
-  test(`preserves pre-computed e_form_per_atom`, () => {
-    const entries: PhaseData[] = [
-      make_phase({ Fe: 1 }, -4.0),
-      make_phase({ O: 1 }, -2.0),
-      make_phase({ Fe: 1, O: 1 }, -3.5, { e_form_per_atom: -99 }),
-    ]
-    const result = process_hull_for_stats(entries)
-    const compound = [
-      ...(result?.stable_entries ?? []),
-      ...(result?.unstable_entries ?? []),
-    ].find((entry) => Object.keys(entry.composition).length === 2)
-    expect(compound?.e_form_per_atom).toBe(-99)
-  })
-
-  // Regression: keying hull distances by JSON.stringify(composition) collided for
-  // same-composition polymorphs without entry_id (last-processed distance won for all).
-  // Covers both the binary and N-dim (ternary) hull branches of calculate_e_above_hull.
+  // Hull distances are keyed by entry_id, else composition + energy: same-composition
+  // polymorphs without ids must not collide
   test.each([
     {
       system: `binary`,
       entries: [
-        make_phase({ Fe: 1 }, -4.0, { entry_id: `Fe` }),
-        make_phase({ O: 1 }, -2.0, { entry_id: `O` }),
-        // No entry_id: FeO on the tie-line (e_form 0) and FeO 0.5 eV/atom above it
-        make_phase({ Fe: 1, O: 1 }, -3.0), // energy -6.0
-        make_phase({ Fe: 1, O: 1 }, -2.5), // energy -5.0
+        make_elem(`Fe`, -4.0),
+        make_elem(`O`, -2.0),
+        make_phase({ Fe: 1, O: 1 }, -3.0), // on the tie-line
+        make_phase({ Fe: 1, O: 1 }, -2.5), // 0.5 above
       ],
-      on_hull_energy: -6.0,
-      above_hull_energy: -5.0,
     },
     {
       system: `ternary`,
       entries: [
-        make_phase({ Li: 1 }, 0, { entry_id: `Li` }),
-        make_phase({ Fe: 1 }, 0, { entry_id: `Fe` }),
-        make_phase({ O: 1 }, 0, { entry_id: `O` }),
-        // No entry_id: LiFeO2 on the hull and a polymorph 0.5 eV/atom above it
-        make_phase({ Li: 1, Fe: 1, O: 2 }, -1.0), // energy -4.0
-        make_phase({ Li: 1, Fe: 1, O: 2 }, -0.5), // energy -2.0
+        make_elem(`Li`, 0),
+        make_elem(`Fe`, 0),
+        make_elem(`O`, 0),
+        make_phase({ Li: 1, Fe: 1, O: 2 }, -1.0),
+        make_phase({ Li: 1, Fe: 1, O: 2 }, -0.5),
       ],
-      on_hull_energy: -4.0,
-      above_hull_energy: -2.0,
     },
   ])(
     `scores same-composition polymorphs without entry_id distinctly ($system)`,
-    ({ entries, on_hull_energy, above_hull_energy }) => {
+    ({ entries }) => {
       const result = process_hull_for_stats(entries)
       const all = [...(result?.stable_entries ?? []), ...(result?.unstable_entries ?? [])]
-      const on_hull = all.find((entry) => entry.energy === on_hull_energy)
-      const above_hull = all.find((entry) => entry.energy === above_hull_energy)
-      expect(on_hull?.e_above_hull).toBeCloseTo(0, 6)
-      expect(above_hull?.e_above_hull).toBeCloseTo(0.5, 6)
+      const compounds = all
+        .filter((entry) => !entry.is_element)
+        .toSorted((a, b) => a.energy - b.energy)
+      expect(compounds.map((entry) => entry.e_above_hull)).toEqual([0, 0.5])
     },
   )
-})
-
-describe(`N-Dimensional Convex Hull`, () => {
-  // 5D simplex: 6 points in 5-dimensional space (coords: x1, x2, x3, x4, w)
-  // This represents a 5-element system where coords[0-3] are barycentric and coords[4] is energy
-  const simplex_5d: number[][] = [
-    [1, 0, 0, 0, 0], // Corner 1
-    [0, 1, 0, 0, 0], // Corner 2
-    [0, 0, 1, 0, 0], // Corner 3
-    [0, 0, 0, 1, 0], // Corner 4
-    [0, 0, 0, 0, 0], // Corner 5 (implicit 5th barycentric coord = 1)
-    [0.2, 0.2, 0.2, 0.2, -1], // Interior point below corners
-  ]
-
-  test(`compute_quickhull_nd produces facets for 5D simplex`, () => {
-    expect(compute_quickhull_nd(simplex_5d).length).toBeGreaterThan(0)
-  })
-
-  test(`compute_quickhull_nd returns empty for <N+1 points`, () => {
-    // 5D needs at least 6 points
-    expect(compute_quickhull_nd(simplex_5d.slice(0, 5))).toHaveLength(0)
-  })
-
-  test(`compute_lower_hull_nd filters by energy normal direction`, () => {
-    const all_facets = compute_quickhull_nd(simplex_5d)
-    const lower_facets = compute_lower_hull_nd(all_facets)
-    // Lower facets should have negative normal in the last dimension (energy)
-    for (const facet of lower_facets) {
-      const energy_normal = facet.plane.normal[facet.plane.normal.length - 1]
-      expect(energy_normal).toBeLessThan(0)
-    }
-  })
-
-  test.each([
-    { point: [0.25, 0.25, 0.25, 0.25, 0], expect_zero: true, desc: `on hull` },
-    { point: [0.2, 0.2, 0.2, 0.2, 0.5], expect_zero: false, desc: `above hull` },
-  ])(`compute_e_above_hull_nd: $desc`, ({ point, expect_zero }) => {
-    const hull_facets = compute_lower_hull_nd(compute_quickhull_nd(simplex_5d))
-    const distances = compute_e_above_hull_nd([point], hull_facets, simplex_5d)
-    if (expect_zero) expect(distances[0]).toBeCloseTo(0, 5)
-    else expect(distances[0]).toBeGreaterThan(0)
-  })
-
-  test(`6-element (senary) system works`, () => {
-    // 6D simplex: 7 points
-    const simplex_6d: number[][] = [
-      [1, 0, 0, 0, 0, 0], // 6 corners at energy=0
-      [0, 1, 0, 0, 0, 0],
-      [0, 0, 1, 0, 0, 0],
-      [0, 0, 0, 1, 0, 0],
-      [0, 0, 0, 0, 1, 0],
-      [0, 0, 0, 0, 0, 0], // 6th corner (implicit coord = 1)
-      [0.16, 0.16, 0.16, 0.16, 0.16, -1], // Interior point below
-    ]
-    const hull = compute_quickhull_nd(simplex_6d)
-    expect(hull.length).toBeGreaterThan(0)
-
-    const lower_hull = compute_lower_hull_nd(hull)
-    const above_point = [0.16, 0.16, 0.16, 0.16, 0.16, 0.5]
-    const distances = compute_e_above_hull_nd([above_point], lower_hull, simplex_6d)
-    expect(distances[0]).toBeGreaterThan(0)
-  })
-
-  test(`compute_e_above_hull_nd: energy interpolation uses correct dimension`, () => {
-    // This test uses data where spatial coords differ significantly from energy
-    // to ensure the interpolation uses the correct index (energy dimension, not spatial)
-    // Spatial coords: corners at 1, energy at -10 (very different!)
-    const test_points: number[][] = [
-      [1, 0, 0, 0, -10], // Corner 1 at energy -10
-      [0, 1, 0, 0, -10], // Corner 2 at energy -10
-      [0, 0, 1, 0, -10], // Corner 3 at energy -10
-      [0, 0, 0, 1, -10], // Corner 4 at energy -10
-      [0, 0, 0, 0, -10], // Corner 5 at energy -10
-      [0.2, 0.2, 0.2, 0.2, -15], // Interior point at energy -15 (below corners)
-    ]
-
-    const hull = compute_quickhull_nd(test_points)
-    const lower_hull = compute_lower_hull_nd(hull)
-
-    // Query point at center with energy -8 (above hull which is at -10 for corners)
-    // e_above_hull should be approximately -8 - (-10) = 2
-    const query = [0.25, 0.25, 0.25, 0.25, -8]
-    const distances = compute_e_above_hull_nd([query], lower_hull, test_points)
-
-    // If the wrong dimension (spatial coord) was used for interpolation,
-    // the result would be very different (around 0.25 vs -10)
-    // This test explicitly checks that the energy dimension is used correctly
-    expect(distances[0]).toBeCloseTo(2, 1)
-  })
-
-  // Asymmetric hull with corners at different energies: -1, -2, -3, -4, -5
-  // Tests barycentric weighting and catches off-by-one errors in linear system solving
-  const asymmetric_hull: number[][] = [
-    [1, 0, 0, 0, -1],
-    [0, 1, 0, 0, -2],
-    [0, 0, 1, 0, -3],
-    [0, 0, 0, 1, -4],
-    [0, 0, 0, 0, -5],
-    [0.2, 0.2, 0.2, 0.2, -10],
-  ]
-
-  test.each([
-    { query: [1, 0, 0, 0, 0], expected: 1, desc: `corner 1 (hull_e=-1)` },
-    { query: [0, 0, 0, 0, 0], expected: 5, desc: `corner 5 (hull_e=-5)` },
-    {
-      query: [0.25, 0.25, 0.25, 0.25, 0],
-      expected: 2.5,
-      desc: `uniform mix (hull_e=-2.5)`,
-    },
-  ])(`barycentric interpolation: $desc → e_above=$expected`, ({ query, expected }) => {
-    const lower_hull = compute_lower_hull_nd(compute_quickhull_nd(asymmetric_hull))
-    const distances = compute_e_above_hull_nd([query], lower_hull, asymmetric_hull)
-    expect(distances[0]).toBeCloseTo(expected, 1)
-  })
-
-  test(`returns NaN for points outside valid composition domain`, () => {
-    // Point with spatial coords that don't sum to 1 (outside simplex)
-    const invalid_point = [0.9, 0.9, 0.9, 0.9, 0] // sum = 3.6, not 1
-    const lower_hull = compute_lower_hull_nd(compute_quickhull_nd(simplex_5d))
-    const distances = compute_e_above_hull_nd([invalid_point], lower_hull, simplex_5d)
-    expect(Number.isNaN(distances[0])).toBe(true)
-  })
-
-  test(`handles empty hull facets gracefully`, () => {
-    // Degenerate case: no lower hull facets
-    const query = [0.2, 0.2, 0.2, 0.2, 0]
-    const distances = compute_e_above_hull_nd([query], [], simplex_5d)
-    // With no facets to check, all points are "outside domain"
-    expect(Number.isNaN(distances[0])).toBe(true)
-  })
 })

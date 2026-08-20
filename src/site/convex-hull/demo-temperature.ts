@@ -1,4 +1,4 @@
-import type { PhaseData } from './types'
+import type { PhaseData } from '$lib/convex-hull/types'
 
 export const demo_temperatures = Array.from({ length: 13 }, (_, idx) => 300 + idx * 100)
 

@@ -156,23 +156,17 @@ describe(`ConvexHullStats`, () => {
     expect(text).toContain(`0.456 / 0.089`)
   })
 
-  test.each([
-    [`click`, (el: HTMLElement) => el.click()],
-    [
-      `Enter key`,
-      (el: HTMLElement) =>
-        el.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true })),
-    ],
-    [
-      `Space key`,
-      (el: HTMLElement) =>
-        el.dispatchEvent(new KeyboardEvent(`keydown`, { key: ` `, bubbles: true })),
-    ],
-  ])(`copies stat item on %s`, (_, trigger) => {
+  test(`each stat row has a copy button that writes "label: value"`, () => {
     mount_stats()
-    trigger(doc_query(`[data-testid="pd-total-entries"]`))
+    const row = doc_query(`[data-testid="pd-total-entries"]`)
+    expect(row.textContent).toContain(`Total entries in Li-Fe-P-O`)
+    const copy_btn = row.querySelector<HTMLButtonElement>(`button.copy-button`)
+    if (!copy_btn) throw new Error(`copy button missing`)
+    copy_btn.click()
     flushSync()
-    expect(navigator.clipboard.writeText).toHaveBeenCalled()
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+      `Total entries in Li-Fe-P-O: 100`,
+    )
   })
 
   test(`renders both histograms when entries have energy and hull data`, () => {
@@ -217,7 +211,7 @@ describe(`ConvexHullStats`, () => {
 
   test(`renders empty stat items when phase_stats is null`, () => {
     mount_stats({ phase_stats: null })
-    expect(doc_query(`.convex-hull-stats`).querySelectorAll(`.stat-item`)).toHaveLength(0)
+    expect(doc_query(`.convex-hull-stats`).querySelectorAll(`.info-row`)).toHaveLength(0)
   })
 
   test(`energy_per_atom fallback renders both histograms`, () => {
@@ -258,18 +252,6 @@ describe(`ConvexHullStats`, () => {
     })
     // NaN/Infinity are filtered out → no histogram data → 0 histograms
     expect(document.querySelectorAll(`.histogram`)).toHaveLength(0)
-  })
-
-  test(`stat items have accessibility attributes and copy hint`, () => {
-    mount_stats()
-    const items = Array.from(document.querySelectorAll(`.stat-item`))
-    for (const item of items) {
-      expect(item.getAttribute(`role`)).toBe(`button`)
-      expect(item.getAttribute(`tabindex`)).toBe(`0`)
-    }
-    expect(doc_query(`[data-testid="pd-total-entries"]`).getAttribute(`title`)).toContain(
-      `Click to copy`,
-    )
   })
 
   test(`passes through HTML attributes`, () => {
@@ -317,7 +299,7 @@ describe(`ConvexHullStats`, () => {
 
     test(`view toggle keeps both panels mounted while switching visibility`, () => {
       mount_stats({ stable_entries: stable, unstable_entries: unstable })
-      expect(document.querySelector(`.stat-item`)).toBeInstanceOf(HTMLElement)
+      expect(document.querySelector(`.info-row`)).toBeInstanceOf(HTMLElement)
       expect(document.querySelector(`.table-container`)).toBeInstanceOf(HTMLElement)
       const [stats_btn, table_btn] = Array.from(
         document.querySelectorAll<HTMLButtonElement>(`.view-toggle button`),
@@ -329,12 +311,12 @@ describe(`ConvexHullStats`, () => {
         panels.map((panel) => [
           panel.getAttribute(`aria-hidden`),
           panel.hasAttribute(`inert`),
-          getComputedStyle(panel).visibility,
+          getComputedStyle(panel).visibility === `hidden`,
         ])
       const expect_visible_panel = (active_idx: number) =>
         expect(panel_states()).toEqual(
           panels.map((_, panel_idx) =>
-            panel_idx === active_idx ? [`false`, false, `visible`] : [`true`, true, `hidden`],
+            panel_idx === active_idx ? [`false`, false, false] : [`true`, true, true],
           ),
         )
       expect_visible_panel(0)
@@ -544,25 +526,11 @@ describe(`ConvexHullStats`, () => {
         layout: `side-by-side`,
       })
       // Both should be visible at once (no toggle)
-      expect(document.querySelector(`.stat-item`)).toBeInstanceOf(HTMLElement)
+      expect(document.querySelector(`.info-row`)).toBeInstanceOf(HTMLElement)
       expect(document.querySelector(`.table-container`)).toBeInstanceOf(HTMLElement)
       expect(document.querySelector(`.side-by-side`)).toBeInstanceOf(HTMLElement)
       // No toggle buttons in side-by-side
       expect(document.querySelector(`.view-toggle`)).toBeNull()
-    })
-
-    test(`passes root_style to table container for left alignment`, () => {
-      mount_stats({
-        stable_entries: [mock_entry({ reduced_formula: `Fe` })],
-        unstable_entries: [],
-        layout: `side-by-side`,
-      })
-      const table_container = doc_query(`.table-container`)
-      const style = table_container.getAttribute(`style`) ?? ``
-      expect(style).toContain(`margin-inline: 0`)
-      expect(style).toContain(`min-height: var(--hull-stats-table-height`)
-      // flex: 1 1 0 gets normalized by browser to flex-grow/shrink/basis
-      expect(style).toMatch(/flex-grow:\s*1|flex:\s*1\s+1\s+0/)
     })
   })
 
@@ -941,7 +909,7 @@ describe(`ConvexHullStats`, () => {
           mock_entry({ composition: { Fe: 1, O: 1 }, reduced_formula: `FeO` }),
         ],
       })
-      const header = doc_query(`[data-testid="pd-binary-subsystem-coverage"]`)
+      const header = doc_query(`.subsystem-coverage`)
       expect(header.textContent).toContain(`Binary subsystem coverage (3 pairs)`)
       const chips = Array.from(document.querySelectorAll(`.subsystem-chip`))
       expect(chips).toHaveLength(3)
@@ -986,7 +954,7 @@ describe(`ConvexHullStats`, () => {
         phase_stats: system ? mock_stats({ chemical_system: system }) : null,
         stable_entries: system ? [mock_entry({ composition: { Fe: 1, O: 1 } })] : [],
       })
-      expect(document.querySelector(`[data-testid="pd-binary-subsystem-coverage"]`)).toBeNull()
+      expect(document.querySelector(`.subsystem-coverage`)).toBeNull()
     })
   })
 })

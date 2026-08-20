@@ -7,7 +7,9 @@
   import { ColorScaleSelect } from '$lib/plot'
   import { tooltip } from 'svelte-widgets/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { get_entry_category, marker_path_data } from './helpers'
+  import { marker_path_data } from './canvas-draw'
+  import { get_entry_category } from './helpers'
+  import type { EnergyModeInfo, EnergySourceMode } from './hull-state.svelte'
   import type {
     ConvexHullControlsType,
     ConvexHullEntry,
@@ -49,18 +51,16 @@
     hidden_categories = $bindable([]),
     show_stable_labels = $bindable(true),
     show_unstable_labels = $bindable(false),
+    // Hull face settings only exist for 3D/4D; the row renders when show_hull_faces is set
     show_hull_faces = $bindable(),
-    hull_face_color = $bindable(`#0072B2`),
-    hull_face_opacity = $bindable(0.03),
-    hull_face_color_mode = $bindable(`uniform` as HullFaceColorMode),
+    hull_face_color = $bindable(),
+    hull_face_opacity = $bindable(),
+    hull_face_color_mode = $bindable(),
     max_hull_dist_show_phases = $bindable(0),
     max_hull_dist_show_labels = $bindable(0.1),
     max_hull_dist_in_data = 0.5,
     energy_source_mode = $bindable(`precomputed`),
-    has_precomputed_hull = false,
-    can_compute_hull = false,
-    has_precomputed_e_form = false,
-    can_compute_e_form = false,
+    energy_info,
     stable_entries,
     unstable_entries,
     camera,
@@ -85,11 +85,10 @@
     hull_face_color?: string
     hull_face_opacity?: number
     hull_face_color_mode?: HullFaceColorMode
-    energy_source_mode?: `precomputed` | `on-the-fly` // whether to read formation and above hull distance from entries or compute them on the fly
-    has_precomputed_hull?: boolean
-    can_compute_hull?: boolean
-    has_precomputed_e_form?: boolean
-    can_compute_e_form?: boolean
+    // Read formation energies + hull distances from the entries or compute them on the fly;
+    // the toggle only renders when energy_info says both options are viable
+    energy_source_mode?: EnergySourceMode
+    energy_info?: EnergyModeInfo
     // Thresholds
     max_hull_dist_show_phases?: number
     max_hull_dist_show_labels?: number
@@ -221,7 +220,7 @@
 
   <SettingsSection title="Display" layout="grid">
     <!-- Energy source selection (only if both options are available) -->
-    {#if has_precomputed_e_form && has_precomputed_hull && can_compute_e_form && can_compute_hull}
+    {#if energy_info?.has_precomputed_e_form && energy_info.has_precomputed_hull && energy_info.can_compute}
       {@render toggle_row(`Energy source`, [
         [
           `Precomputed`,
@@ -426,7 +425,7 @@
             style="flex: 1; min-width: 80px"
           />
           <span style="font-size: 0.9em; min-width: 2em; text-align: right"
-            >{format_num(hull_face_opacity, `.1%`)}</span
+            >{format_num(hull_face_opacity ?? 0, `.1%`)}</span
           >
         </div>
       </div>

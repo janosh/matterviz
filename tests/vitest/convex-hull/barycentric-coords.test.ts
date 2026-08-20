@@ -1,216 +1,81 @@
-import type { CompositionType, ElementSymbol } from '$lib'
 import {
-  barycentric_to_ternary_xy,
-  barycentric_to_ternary_xyz,
-  barycentric_to_tetrahedral,
-  composition_to_barycentric_3d,
-  composition_to_barycentric_4d,
   composition_to_barycentric_nd,
-  compute_4d_coords,
-  get_ternary_3d_coordinates,
-  get_triangle_centroid,
-  get_triangle_edges,
-  get_triangle_vertical_edges,
+  composition_to_simplex_coords,
   TETRAHEDRON_VERTICES,
   TRIANGLE_VERTICES,
 } from '$lib/convex-hull/barycentric-coords'
-import type { PhaseData } from '$lib/convex-hull/types'
+import type { ElementSymbol } from '$lib/element'
 import { describe, expect, test } from 'vitest'
 
-describe(`ternary: constants and projections`, () => {
-  test(`triangle vertices are equilateral base`, () => {
-    expect(TRIANGLE_VERTICES).toHaveLength(3)
-    // side lengths: (0)-(1) and (1)-(2) should match
-    const d01 = Math.hypot(
-      TRIANGLE_VERTICES[0][0] - TRIANGLE_VERTICES[1][0],
-      TRIANGLE_VERTICES[0][1] - TRIANGLE_VERTICES[1][1],
-    )
-    const d12 = Math.hypot(
-      TRIANGLE_VERTICES[1][0] - TRIANGLE_VERTICES[2][0],
-      TRIANGLE_VERTICES[1][1] - TRIANGLE_VERTICES[2][1],
-    )
-    const d20 = Math.hypot(
-      TRIANGLE_VERTICES[2][0] - TRIANGLE_VERTICES[0][0],
-      TRIANGLE_VERTICES[2][1] - TRIANGLE_VERTICES[0][1],
-    )
-    expect(d01).toBeCloseTo(d12, 6)
-    expect(d12).toBeCloseTo(d20, 6)
-  })
-
-  test(`barycentric to triangular maps vertices correctly`, () => {
-    expect(barycentric_to_ternary_xy([1, 0, 0])).toEqual([1, 0])
-    const v1 = barycentric_to_ternary_xy([0, 1, 0])
-    expect(v1[0]).toBeCloseTo(0.5, 6)
-    expect(v1[1]).toBeCloseTo(Math.sqrt(3) / 2, 6)
-    expect(barycentric_to_ternary_xy([0, 0, 1])).toEqual([0, 0])
-  })
-
-  test(`barycentric to ternary 3d uses energy as z`, () => {
-    const point = barycentric_to_ternary_xyz([1, 0, 0], -0.5)
-    expect(point).toEqual({ x: 1, y: 0, z: -0.5 })
-  })
-
-  test(`triangle centroid is arithmetic mean of vertices`, () => {
-    const centroid = get_triangle_centroid()
-    const avg_x =
-      (TRIANGLE_VERTICES[0][0] + TRIANGLE_VERTICES[1][0] + TRIANGLE_VERTICES[2][0]) / 3
-    const avg_y =
-      (TRIANGLE_VERTICES[0][1] + TRIANGLE_VERTICES[1][1] + TRIANGLE_VERTICES[2][1]) / 3
-    expect(centroid.x).toBeCloseTo(avg_x, 6)
-    expect(centroid.y).toBeCloseTo(avg_y, 6)
-    expect(centroid.z).toBe(0)
-  })
-})
-
-describe(`ternary: composition and plotting`, () => {
-  test(`composition to barycentric validates element count and normalization`, () => {
-    const elements = [`A`, `B`, `C`] as unknown as ElementSymbol[]
-    const bc = composition_to_barycentric_3d({ A: 2, B: 2, C: 4 }, elements)
-    expect(bc[0]).toBeCloseTo(0.25, 6)
-    expect(bc[1]).toBeCloseTo(0.25, 6)
-    expect(bc[2]).toBeCloseTo(0.5, 6)
-  })
-
-  test(`composition to barycentric throws on invalid inputs`, () => {
-    expect(() =>
-      composition_to_barycentric_3d({ Li: 1 }, [`Li`, `O`] as unknown as ElementSymbol[]),
-    ).toThrow(`Ternary system requires exactly 3 elements`)
-    expect(() =>
-      composition_to_barycentric_3d({ Li: 0, O: 0, Na: 0 }, [`Li`, `O`, `Na`]),
-    ).toThrow(/Composition has no elements from the system/)
-  })
-
-  test(`get_ternary_3d_coordinates filters entries and projects coords`, () => {
-    const elements = [`A`, `B`, `C`] as unknown as ElementSymbol[]
-    const entries: PhaseData[] = [
-      {
-        composition: { A: 1 } as unknown as CompositionType,
-        energy: 0,
-        e_form_per_atom: 0,
-      },
-      {
-        composition: { A: 1, B: 1 } as unknown as CompositionType,
-        energy: 0,
-        e_form_per_atom: -1,
-      },
-      {
-        composition: { A: 1, D: 1 } as unknown as CompositionType,
-        energy: 0,
-        e_form_per_atom: -1,
-      }, // out-of-system
-    ]
-    const out = get_ternary_3d_coordinates(entries, elements)
-    expect(out).toHaveLength(2)
-    expect(out[0]).toHaveProperty(`x`)
-    expect(out[0]).toHaveProperty(`y`)
-    expect(out[0]).toHaveProperty(`z`)
-    expect(out[0]).toHaveProperty(`is_element`)
-  })
-
-  test(`edges and vertical edges are generated with correct counts`, () => {
-    const edges = get_triangle_edges()
-    expect(edges).toHaveLength(3)
-    const v_edges = get_triangle_vertical_edges(-2, 1)
-    expect(v_edges).toHaveLength(3)
-    for (const [lo, hi] of v_edges) {
-      expect(lo.z).toBe(-2)
-      expect(hi.z).toBe(1)
-      expect(lo.x).toBe(hi.x)
-      expect(lo.y).toBe(hi.y)
-    }
-  })
-})
-
-describe(`quaternary: barycentric and projection`, () => {
-  test(`tetrahedron vertex count and non-degenerate`, () => {
-    expect(TETRAHEDRON_VERTICES).toHaveLength(4)
-    // distances from vertex 3 (origin) are non-zero
-    for (let idx = 0; idx < 3; idx++) {
-      const dist = Math.hypot(
-        TETRAHEDRON_VERTICES[idx][0] - TETRAHEDRON_VERTICES[3][0],
-        TETRAHEDRON_VERTICES[idx][1] - TETRAHEDRON_VERTICES[3][1],
-        TETRAHEDRON_VERTICES[idx][2] - TETRAHEDRON_VERTICES[3][2],
-      )
-      expect(dist).toBeGreaterThan(0)
-    }
-  })
-
-  test(`composition_to_barycentric_4d normalizes or defaults to uniform`, () => {
-    const elems = [`A`, `B`, `C`, `D`] as unknown as ElementSymbol[]
-    const bc = composition_to_barycentric_4d({ A: 2, B: 2, C: 4, D: 2 }, elems)
-    expect(bc.reduce((sum, val) => sum + val, 0)).toBeCloseTo(1, 9)
-    expect(() => composition_to_barycentric_4d({ A: 0, B: 0, C: 0, D: 0 }, elems)).toThrow(
-      /Composition has no elements from the system: A-B-C-D/,
-    )
-  })
-
-  test(`barycentric_to_tetrahedral maps basis to vertices`, () => {
-    const p0 = barycentric_to_tetrahedral([1, 0, 0, 0])
-    expect(p0.x).toBeCloseTo(1, 6)
-    const p1 = barycentric_to_tetrahedral([0, 1, 0, 0])
-    expect(p1.x).toBeCloseTo(0.5, 6)
-    const p3 = barycentric_to_tetrahedral([0, 0, 0, 1])
-    expect(p3).toEqual({ x: 0, y: 0, z: 0 })
-    const p2 = barycentric_to_tetrahedral([0, 0, 1, 0])
-    expect(p2.y).toBeCloseTo(Math.sqrt(3) / 6, 6)
-    expect(p2.z).toBeCloseTo(Math.sqrt(6) / 3, 6)
-  })
-})
-
-describe(`quaternary: compute_4d_coords`, () => {
-  test(`filters entries outside chemical system and projects coords`, () => {
-    const elems = [`A`, `B`, `C`, `D`] as unknown as ElementSymbol[]
-    const entries: PhaseData[] = [
-      { composition: { A: 1 } as unknown as CompositionType, energy: 0 },
-      { composition: { A: 1, B: 1 } as unknown as CompositionType, energy: 0 },
-      { composition: { A: 1, E: 1 } as unknown as CompositionType, energy: 0 },
-    ]
-    const out = compute_4d_coords(entries, elems)
-    expect(out).toHaveLength(2)
-    expect(out[0]).toHaveProperty(`x`)
-    expect(out[0]).toHaveProperty(`y`)
-    expect(out[0]).toHaveProperty(`z`)
-    expect(out[0]).toHaveProperty(`is_element`)
-  })
-})
+// Rounded copies so toEqual compares tuples of nearby floats exactly
+const rounded = (values: readonly number[]): number[] =>
+  values.map((val) => Math.round(val * 1e12) / 1e12)
 
 describe(`composition_to_barycentric_nd`, () => {
-  test(`normalizes composition to sum to 1`, () => {
-    const elements = [`Li`, `Na`, `K`, `Rb`, `Cs`] as ElementSymbol[]
-    const result = composition_to_barycentric_nd(
-      { Li: 2, Na: 2, K: 2, Rb: 2, Cs: 2 },
-      elements,
+  test.each([
+    [{ Li: 1, Fe: 1, O: 2 }, [`Li`, `Fe`, `O`], [0.25, 0.25, 0.5]],
+    [{ Fe: 3 }, [`Li`, `Fe`, `O`], [0, 1, 0]],
+    [{ Li: 1, Na: NaN, K: 1, Rb: 2 }, [`Li`, `Na`, `K`, `Rb`, `Cs`], [0.25, 0, 0.25, 0.5, 0]],
+    [{ Li: 1, O: 3 }, [`Li`, `O`], [0.25, 0.75]],
+  ] as [Record<string, number>, ElementSymbol[], number[]][])(
+    `%o over %j → %j (missing/NaN amounts count as 0)`,
+    (composition, elements, expected) => {
+      expect(rounded(composition_to_barycentric_nd(composition, elements))).toEqual(expected)
+    },
+  )
+
+  test.each([
+    [{ Li: 1 }, [`Li`], /at least 2 elements/],
+    [{ Li: -1, O: 2 }, [`Li`, `O`], /negative amounts for: Li/],
+    [{ Na: 1 }, [`Li`, `O`], /no elements from the system: Li-O/],
+  ] as [Record<string, number>, ElementSymbol[], RegExp][])(
+    `throws for %o over %j`,
+    (composition, elements, error) => {
+      expect(() => composition_to_barycentric_nd(composition, elements)).toThrow(error)
+    },
+  )
+})
+
+describe(`composition_to_simplex_coords`, () => {
+  const elements = [`Li`, `Fe`, `P`, `O`] as ElementSymbol[]
+  const coords = (composition: Record<string, number>, n_elements: number) =>
+    rounded(composition_to_simplex_coords(composition, elements.slice(0, n_elements)))
+
+  test(`pure elements land on the simplex corners for 2, 3 and 4 components`, () => {
+    expect(coords({ Li: 1 }, 2)).toEqual([0])
+    expect(coords({ Fe: 1 }, 2)).toEqual([1])
+    for (const [idx, vertex] of TRIANGLE_VERTICES.entries()) {
+      expect(coords({ [elements[idx]]: 2 }, 3)).toEqual(rounded(vertex))
+    }
+    for (const [idx, vertex] of TETRAHEDRON_VERTICES.entries()) {
+      expect(coords({ [elements[idx]]: 1 }, 4)).toEqual(rounded(vertex))
+    }
+  })
+
+  test(`equimolar compositions land on the centroid; binary x is the second element's fraction`, () => {
+    expect(coords({ Li: 1, Fe: 3 }, 2)).toEqual([0.75])
+    expect(coords({ Li: 1, Fe: 1, P: 1 }, 3)).toEqual(rounded([0.5, Math.sqrt(3) / 6]))
+    expect(coords({ Li: 1, Fe: 1, P: 1, O: 1 }, 4)).toEqual(
+      rounded([0.5, Math.sqrt(3) / 6, Math.sqrt(6) / 12]),
     )
-    expect(result).toHaveLength(5)
-    expect(result.reduce((sum, val) => sum + val, 0)).toBeCloseTo(1, 10)
-    expect(result.every((val) => val === 0.2)).toBe(true)
   })
 
-  test(`handles missing elements as zero`, () => {
-    const elements = [`Li`, `Na`, `K`] as ElementSymbol[]
-    const result = composition_to_barycentric_nd({ Li: 1 }, elements)
-    expect(result).toEqual([1, 0, 0])
-  })
-
-  const elems = [`Li`, `Na`] as ElementSymbol[]
-
-  test(`throws for <2 elements`, () => {
-    expect(() => composition_to_barycentric_nd({ Li: 1 }, [`Li`] as ElementSymbol[])).toThrow(
-      /at least 2 elements/,
+  test(`rejects systems outside 2–4 elements`, () => {
+    expect(() => composition_to_simplex_coords({ Li: 1 }, elements.slice(0, 1))).toThrow(
+      /2, 3 or 4/,
     )
+    expect(() =>
+      composition_to_simplex_coords({ Li: 1 }, [...elements, `Na`] as ElementSymbol[]),
+    ).toThrow(/2, 3 or 4/)
   })
 
-  test(`throws for no matching elements`, () => {
-    expect(() => composition_to_barycentric_nd({ Fe: 1 }, elems)).toThrow(/no elements/)
-  })
-
-  test(`throws for negative amounts`, () => {
-    expect(() => composition_to_barycentric_nd({ Li: -1, Na: 2 }, elems)).toThrow(/negative/)
-  })
-
-  test(`treats NaN amounts as zero`, () => {
-    const elements = [`Li`, `Na`] as ElementSymbol[]
-    const result = composition_to_barycentric_nd({ Li: NaN, Na: 1 }, elements)
-    expect(result).toEqual([0, 1])
+  test(`the plotted triangle and tetrahedron are regular (unit edges)`, () => {
+    const edge = (pt_a: readonly number[], pt_b: readonly number[]) =>
+      Math.hypot(...pt_a.map((val, idx) => val - pt_b[idx]))
+    for (const vertices of [TRIANGLE_VERTICES, TETRAHEDRON_VERTICES]) {
+      for (const [idx, pt_a] of vertices.entries()) {
+        for (const pt_b of vertices.slice(idx + 1)) expect(edge(pt_a, pt_b)).toBeCloseTo(1, 12)
+      }
+    }
   })
 })

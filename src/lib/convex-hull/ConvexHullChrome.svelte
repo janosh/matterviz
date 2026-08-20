@@ -1,23 +1,29 @@
 <script lang="ts">
+  // Everything ConvexHull2D/3D/4D lay over their plot: title, loading spinner, control
+  // toolbar (reset, info pane, fullscreen, controls pane), hover tooltip, copy feedback,
+  // drag overlay, structure popup and the temperature/gas-pressure controls. Reset of the
+  // shared view settings lives here too since they are all bound through this component.
+  import type { D3InterpolateName } from '$lib/colors'
   import type { ShowControlsState } from '$lib/controls'
-  // Shared ConvexHull3D/4D chrome: control-buttons toolbar (reset, info pane, fullscreen,
-  // legend controls) plus the hover tooltip, copy feedback, drag overlay and structure
-  // popup driven by the shared canvas-interactions scaffold
-  import { ClickFeedback, DragOverlay } from '$lib/feedback'
-  import { Icon } from 'svelte-widgets'
-  import { Reset } from 'svelte-widgets/icons'
+  import { ClickFeedback, DragOverlay, Spinner } from '$lib/feedback'
   import { FullscreenButton } from '$lib/layout'
   import { PlotTooltip } from '$lib/plot'
-  import type { ComponentProps, Snippet } from 'svelte'
-  import type { create_canvas_interactions } from './canvas-interactions.svelte'
+  import { sanitize_html } from '$lib/sanitize'
+  import { DEFAULTS } from '$lib/settings'
+  import type { ComponentProps } from 'svelte'
+  import { Icon } from 'svelte-widgets'
+  import { Reset } from 'svelte-widgets/icons'
+  import type { HullSelection } from './canvas-interactions.svelte'
   import ConvexHullControls from './ConvexHullControls.svelte'
   import ConvexHullInfoPane from './ConvexHullInfoPane.svelte'
   import ConvexHullTooltip from './ConvexHullTooltip.svelte'
+  import GasPressureControls from './GasPressureControls.svelte'
   import type { create_hull_data_pipeline } from './hull-state.svelte'
   import type { ConvexHullTooltipProp } from './index'
   import { CONVEX_HULL_STYLE } from './index'
   import StructurePopup from './StructurePopup.svelte'
-  import type { ConvexHullEntry, HighlightStyle } from './types'
+  import TemperatureSlider from './TemperatureSlider.svelte'
+  import type { ConvexHullEntry, GasSpecies, HighlightStyle, HullFaceColorMode } from './types'
   import { MAGNETIC_ORDERING_CATEGORY } from './types'
 
   type ControlsProps = ComponentProps<typeof ConvexHullControls>
@@ -25,17 +31,18 @@
   let chrome = $state<HTMLElement>()
 
   let {
-    interactions, // canvas-interactions scaffold: hover/drag/popup/copy-feedback state
-    hull_data, // hull-state pipeline: energy-mode flags, polymorph stats, thresholds
+    kind,
+    selection,
+    hull_data,
     controls_config,
-    reset_all,
-    reset_title,
+    loading = false,
+    show_tooltip = true,
+    on_reset,
     enable_info_pane = true,
     phase_stats,
     label_threshold,
     fullscreen = $bindable(false),
     fullscreen_toggle = true,
-    fullscreen_bg_css_var = `--fullscreen-bg`,
     on_fullscreen_change,
     camera,
     merged_controls,
@@ -46,6 +53,8 @@
     is_highlighted,
     tooltip = undefined,
     selected_entry,
+    temperature = $bindable(),
+    gas_pressures = $bindable({}),
     show_hull_faces = $bindable(),
     hull_face_color = $bindable(),
     hull_face_opacity = $bindable(),
@@ -87,30 +96,73 @@
     | `hull_face_color_mode`
   > &
     Pick<ComponentProps<typeof ConvexHullInfoPane>, `phase_stats` | `label_threshold`> & {
-      interactions: ReturnType<typeof create_canvas_interactions>
-      hull_data: ReturnType<typeof create_hull_data_pipeline<ConvexHullEntry>>
+      kind: `binary` | `ternary` | `quaternary` // DEFAULTS.convex_hull section for reset
+      selection: HullSelection
+      hull_data: ReturnType<typeof create_hull_data_pipeline>
       controls_config: ShowControlsState
-      reset_all: () => void
-      reset_title: string
+      loading?: boolean
+      show_tooltip?: boolean // off when the host plot renders its own tooltip (2D)
+      on_reset?: () => void // host-specific reset (camera, face colour) after the shared one
       enable_info_pane?: boolean
       fullscreen?: boolean
       fullscreen_toggle?: boolean
-      fullscreen_bg_css_var?: string
       on_fullscreen_change?: (fullscreen: boolean) => void
       get_point_color: (entry: ConvexHullEntry) => string
       merged_highlight_style: HighlightStyle
       is_highlighted: (entry: ConvexHullEntry) => boolean
       tooltip?: ConvexHullTooltipProp<ConvexHullEntry>
       selected_entry: ConvexHullEntry | null
+      temperature?: number
+      gas_pressures?: Partial<Record<GasSpecies, number>>
       info_pane_open?: boolean
     } = $props()
+
+  const title = $derived(merged_controls.title || phase_stats?.chemical_system || ``)
+
+  export function reset_all() {
+    const defaults = DEFAULTS.convex_hull[kind]
+    fullscreen = defaults.fullscreen
+    info_pane_open = defaults.info_pane_open
+    controls_open = defaults.legend_pane_open
+    color_mode = defaults.color_mode
+    color_scale = defaults.color_scale as D3InterpolateName
+    show_stable = defaults.show_stable
+    show_unstable = defaults.show_unstable
+    hidden_categories = []
+    show_stable_labels = defaults.show_stable_labels
+    show_unstable_labels = defaults.show_unstable_labels
+    max_hull_dist_show_labels = defaults.max_hull_dist_show_labels
+    // Auto-computed threshold based on entry count instead of the static default
+    max_hull_dist_show_phases = hull_data.auto_default_threshold
+    if (`show_hull_faces` in defaults) {
+      show_hull_faces = defaults.show_hull_faces
+      hull_face_color = defaults.hull_face_color
+      hull_face_opacity = defaults.hull_face_opacity
+      hull_face_color_mode = defaults.hull_face_color_mode as HullFaceColorMode
+    }
+    on_reset?.()
+  }
 </script>
+
+<h3 class="hull-title">{@html sanitize_html(title)}</h3>
+
+{#if loading}
+  <Spinner
+    text="Loading data..."
+    style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center"
+  />
+{/if}
 
 <!-- Control buttons (top-right corner) -->
 {#if controls_config.mode !== `never`}
   <section bind:this={chrome} class={[`control-buttons`, controls_config.class]}>
     {#if controls_config.visible(`reset`)}
-      <button type="button" onclick={reset_all} title={reset_title} class="reset-camera-btn">
+      <button
+        type="button"
+        onclick={reset_all}
+        title="Reset view and settings"
+        class="reset-camera-btn"
+      >
         <Icon icon={Reset} />
       </button>
     {/if}
@@ -136,12 +188,11 @@
       <FullscreenButton
         bind:fullscreen
         wrapper={chrome?.parentElement ?? undefined}
-        bg_css_var={fullscreen_bg_css_var}
+        bg_css_var="--hull-bg-fullscreen"
         on_change={on_fullscreen_change}
       />
     {/if}
 
-    <!-- Legend controls pane -->
     {#if controls_config.visible(`controls`)}
       <ConvexHullControls
         bind:controls_open
@@ -166,33 +217,27 @@
         bind:hull_face_opacity
         bind:hull_face_color_mode
         bind:energy_source_mode
-        has_precomputed_e_form={hull_data.has_precomputed_e_form}
-        can_compute_e_form={hull_data.can_compute_e_form}
-        has_precomputed_hull={hull_data.has_precomputed_hull}
-        can_compute_hull={hull_data.can_compute_hull}
+        energy_info={hull_data.energy_info}
       />
     {/if}
   </section>
 {/if}
 
-<!-- Hover tooltip -->
-{#if interactions.hover_data}
-  {@const { entry, position } = interactions.hover_data}
-  {@const entry_highlight = is_highlighted(entry) ? merged_highlight_style : undefined}
-  {@const tooltip_style = `z-index: ${CONVEX_HULL_STYLE.z_index.tooltip}; backdrop-filter: blur(4px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);`}
+{#if show_tooltip && selection.hover_data}
+  {@const { entry, position } = selection.hover_data}
   <PlotTooltip
     x={position.x}
     y={position.y}
     offset={{ x: 10, y: -10 }}
     bg_color={get_point_color(entry)}
     fixed
-    style={tooltip_style}
+    style="z-index: {CONVEX_HULL_STYLE.z_index
+      .tooltip}; backdrop-filter: blur(4px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3)"
   >
     <ConvexHullTooltip
       {entry}
       polymorph_stats_map={hull_data.polymorph_stats_map}
-      highlight_style={entry_highlight}
+      highlight_style={is_highlighted(entry) ? merged_highlight_style : undefined}
       {entry_category}
       {tooltip}
     />
@@ -201,31 +246,56 @@
 
 <!-- Copy-to-clipboard feedback (double-click on point) -->
 <ClickFeedback
-  bind:visible={interactions.copy_feedback.visible}
-  position={interactions.copy_feedback.position}
+  visible={selection.copy_feedback.visible}
+  position={selection.copy_feedback.position}
 />
 
 <!-- z-index 1: above auto-stacked siblings after the chrome (3D gizmo, gas controls), below z-2 sliders -->
 <DragOverlay
-  visible={interactions.dragover}
+  visible={selection.dragover}
   message="Drop JSON file to load phase diagram data"
   style="z-index: 1"
 />
 
-{#if interactions.modal_open && interactions.selected_structure}
+{#if selection.modal_open && selection.selected_structure}
   <StructurePopup
-    structure={interactions.selected_structure}
-    place_right={interactions.modal_place_right}
+    structure={selection.selected_structure}
+    place_right={selection.modal_place_right}
     stats={{
       id: selected_entry?.entry_id,
       e_above_hull: selected_entry?.e_above_hull,
       e_form: selected_entry?.e_form_per_atom,
     }}
-    onclose={interactions.close_structure_popup}
+    onclose={selection.close_structure_popup}
   />
 {/if}
 
+{#if (hull_data.has_temp_data && temperature !== undefined) || (hull_data.gas_analysis.has_gas_dependent_elements && hull_data.merged_gas_config)}
+  <div class="right-controls">
+    {#if hull_data.has_temp_data && temperature !== undefined}
+      <TemperatureSlider
+        available_temperatures={hull_data.available_temperatures}
+        bind:temperature
+      />
+    {/if}
+    {#if hull_data.gas_analysis.has_gas_dependent_elements && hull_data.merged_gas_config}
+      <GasPressureControls
+        config={hull_data.merged_gas_config}
+        bind:pressures={gas_pressures}
+        temperature={temperature ?? 300}
+      />
+    {/if}
+  </div>
+{/if}
+
 <style>
+  .hull-title {
+    position: absolute;
+    left: 1em;
+    top: 1ex;
+    margin: 0;
+    font-weight: 500;
+  }
   .control-buttons {
     position: absolute;
     top: 1ex;
@@ -238,13 +308,8 @@
     opacity: 0;
     pointer-events: none;
   }
-  :global(.convex-hull-3d:hover) > .control-buttons.hover-visible,
-  :global(.convex-hull-3d:focus-within) > .control-buttons.hover-visible,
-  :global(.convex-hull-4d:hover) > .control-buttons.hover-visible,
-  :global(.convex-hull-4d:focus-within) > .control-buttons.hover-visible {
-    opacity: 1;
-    pointer-events: auto;
-  }
+  :global(:is(.convex-hull-2d, .convex-hull-3d, .convex-hull-4d):is(:hover, :focus-within))
+    .control-buttons.hover-visible,
   .control-buttons.always-visible {
     opacity: 1;
     pointer-events: auto;
@@ -265,5 +330,22 @@
   }
   .control-buttons :global(button):hover {
     background-color: color-mix(in srgb, currentColor 8%, transparent);
+  }
+  .right-controls {
+    position: absolute;
+    top: calc(1ex + 50px);
+    right: 1ex;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+  }
+  .right-controls :global(:is(.temperature-slider, .pressure-controls)) {
+    position: static;
+  }
+  /* align both vertical range inputs at the same x position */
+  .right-controls :global(.slider-wrapper) {
+    justify-content: flex-end;
   }
 </style>

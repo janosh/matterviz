@@ -1,6 +1,5 @@
 <script lang="ts">
-  import { ATOMIC_WEIGHTS } from '$lib/composition/parse'
-  import type { ElementSymbol } from '$lib/element'
+  import { element_by_symbol, type ElementSymbol } from '$lib/element'
   import { format_num } from '$lib/labels'
   import { sanitize_formula, sanitize_html } from '$lib/sanitize'
   import { TooltipContent } from '$lib/tooltip'
@@ -55,8 +54,8 @@
 
   // Convert atomic fraction to weight fraction: wt_B = (x_B * M_B) / (x_A * M_A + x_B * M_B)
   const wt_fraction_b = $derived.by(() => {
-    const mass_a = ATOMIC_WEIGHTS.get(component_a as ElementSymbol)
-    const mass_b = ATOMIC_WEIGHTS.get(component_b as ElementSymbol)
+    const mass_a = element_by_symbol.get(component_a as ElementSymbol)?.atomic_mass
+    const mass_b = element_by_symbol.get(component_b as ElementSymbol)?.atomic_mass
     if (!mass_a || !mass_b) return null
     const { composition: x_b } = hover_info
     const denom = (1 - x_b) * mass_a + x_b * mass_b

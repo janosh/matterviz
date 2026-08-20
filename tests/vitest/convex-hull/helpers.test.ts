@@ -1,105 +1,120 @@
-import type { D3InterpolateName } from '$lib/colors'
+import * as draw from '$lib/convex-hull/canvas-draw'
 import * as helpers from '$lib/convex-hull/helpers'
-import { get_convex_hull_stats } from '$lib/convex-hull/thermodynamics'
-import type { PhaseData } from '$lib/convex-hull/types'
+import type { ConvexHullEntry, PhaseData } from '$lib/convex-hull/types'
 import { MAGNETIC_ORDERING_CATEGORY } from '$lib/convex-hull/types'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
-class MockPath2D {
-  arc(
-    _x_pos: number,
-    _y_pos: number,
-    _radius: number,
-    _start_angle: number,
-    _end_angle: number,
-  ): void {}
-}
-
 describe(`helpers: energy color scale + point color`, () => {
-  test(`get_energy_color_scale returns null when not energy mode or empty`, () => {
-    const color_scale: D3InterpolateName = `interpolateViridis`
-    const scale_null = helpers.get_energy_color_scale(`stability`, color_scale, [])
-    expect(scale_null).toBeNull()
-  })
-
-  test(`get_energy_color_scale maps distances to colors and get_point_color_for_entry uses it`, () => {
-    const entries: { e_above_hull?: number }[] = [
-      { e_above_hull: 0 },
-      {
-        e_above_hull: 0.5,
-      },
-    ]
-    const color_scale: D3InterpolateName = `interpolateViridis`
-    const scale = helpers.get_energy_color_scale(`energy`, color_scale, entries)
-    expect(scale).not.toBeNull()
-    const c0 = helpers.get_point_color_for_entry(
-      { e_above_hull: 0 },
-      `energy`,
-      undefined,
-      scale,
-    )
-    const c1 = helpers.get_point_color_for_entry(
-      { e_above_hull: 0.5 },
-      `energy`,
-      undefined,
-      scale,
-    )
-    expect(typeof c0).toBe(`string`)
-    expect(typeof c1).toBe(`string`)
-    expect(c0).not.toBe(c1)
-  })
-
-  test(`get_energy_color_scale ignores non-finite distances`, () => {
+  test(`get_energy_color_scale: null outside energy mode/empty, distinct colours otherwise, non-finite ignored`, () => {
+    expect(helpers.get_energy_color_scale(`stability`, `interpolateViridis`, [])).toBeNull()
+    expect(helpers.get_energy_color_scale(`energy`, `interpolateViridis`, [])).toBeNull()
     const scale = helpers.get_energy_color_scale(`energy`, `interpolateViridis`, [
+      { e_above_hull: 0 },
       { e_above_hull: Number.NaN },
       { e_above_hull: Number.POSITIVE_INFINITY },
-      { e_above_hull: 0.2 },
+      { e_above_hull: 0.5 },
     ])
-    expect(scale).not.toBeNull()
-    expect(typeof scale?.(0.2)).toBe(`string`)
+    const color_at = (e_above_hull: number) =>
+      helpers.get_point_color_for_entry({ e_above_hull }, `energy`, undefined, scale)
+    expect(color_at(0)).toMatch(/^(?<prefix>#|rgb)/)
+    expect(color_at(0)).not.toBe(color_at(0.5))
+    // Domain is [0, 0.5]: the infinite value did not stretch it
+    expect(color_at(0.5)).toBe(color_at(0.5 + 1e-9))
+    // No distance → neutral grey
+    expect(helpers.get_point_color_for_entry({}, `energy`, undefined, scale)).toBe(`#666`)
   })
 
-  test(`get_point_color_for_entry stability mode`, () => {
-    const stable = helpers.get_point_color_for_entry(
-      { is_stable: true },
-      `stability`,
-      undefined,
-      null,
-    )
-    const unstable = helpers.get_point_color_for_entry(
-      { is_stable: false },
-      `stability`,
-      undefined,
-      null,
-    )
-    expect(stable).toBe(`#0072B2`)
-    expect(unstable).toBe(`#E69F00`)
-  })
-
-  test(`explicit is_stable false overrides zero hull distance`, () => {
+  test(`stability mode colours and explicit is_stable=false overriding zero distance`, () => {
+    const colors = { stable: `#111`, unstable: `#222` }
+    const point_color = (entry: { is_stable?: boolean; e_above_hull?: number }) =>
+      helpers.get_point_color_for_entry(entry, `stability`, colors, null)
+    expect(point_color({ is_stable: true })).toBe(`#111`)
+    expect(point_color({ e_above_hull: 0 })).toBe(`#111`)
+    expect(point_color({ e_above_hull: 0.1 })).toBe(`#222`)
     const entry = { is_stable: false, e_above_hull: 0 }
     expect(helpers.entry_is_stable(entry)).toBe(false)
-    expect(helpers.entry_is_unstable(entry)).toBe(true)
-    expect(helpers.entry_is_visible(entry, true, false)).toBe(false)
-    expect(helpers.entry_is_visible(entry, false, true)).toBe(true)
-    expect(helpers.get_point_color_for_entry(entry, `stability`, undefined, null)).toBe(
-      `#E69F00`,
+    expect(helpers.visible_entries([entry], true, false)).toEqual([])
+    expect(helpers.visible_entries([entry], false, true)).toEqual([entry])
+    expect(point_color(entry)).toBe(`#222`)
+    expect(
+      helpers.get_point_color_for_entry({ is_stable: true }, `stability`, undefined, null),
+    ).toBe(`#0072B2`)
+  })
+
+  test.each([
+    [undefined, false, { e_above_hull: undefined, is_stable: undefined }],
+    [NaN, false, { e_above_hull: undefined, is_stable: undefined }],
+    [1e-9, false, { e_above_hull: 0, is_stable: true }],
+    [-0.2, false, { e_above_hull: 0, is_stable: true }],
+    [0.3, false, { e_above_hull: 0.3, is_stable: false }],
+    [-0.2, true, { e_above_hull: -0.2, is_stable: false }],
+  ])(`compute_hull_stability(%s, exclude=%s) → %o`, (raw, exclude, expected) => {
+    expect(helpers.compute_hull_stability(raw, exclude)).toEqual(expected)
+  })
+
+  test(`entry_within_hull_dist keeps stable entries and finite distances within the cutoff`, () => {
+    expect(helpers.entry_within_hull_dist({ is_stable: true, e_above_hull: 5 }, 0.1)).toBe(
+      true,
     )
+    expect(helpers.entry_within_hull_dist({ e_above_hull: 0.1 }, 0.1)).toBe(true)
+    expect(helpers.entry_within_hull_dist({ e_above_hull: 0.2 }, 0.1)).toBe(false)
+    expect(helpers.entry_within_hull_dist({}, 0.1)).toBe(false) // unknown ≠ stable
+  })
+
+  test(`hull_distance_range floors the max at 0.1 and skips non-finite values`, () => {
+    const entry = (e_above_hull?: number) => ({ composition: {}, energy: 0, e_above_hull })
+    expect(helpers.hull_distance_range([])).toEqual([0, 0.1])
+    expect(helpers.hull_distance_range([entry(0.02), entry(NaN), entry(0.05)])).toEqual([
+      0.02, 0.1,
+    ])
+    expect(helpers.hull_distance_range([entry(0.3), entry(0.5)])).toEqual([0.3, 0.5])
   })
 })
 
-describe(`helpers: marker paths`, () => {
+describe(`canvas-draw: markers and hit testing`, () => {
   afterEach(() => vi.unstubAllGlobals())
 
-  // pins the Number.isFinite guard in create_marker_path — canvas hover/selection
-  // drawing must not throw on non-finite sizes
+  // canvas hover/selection drawing must not throw on non-finite sizes
   test.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
     `create_marker_path handles non-finite size %s`,
     (size) => {
-      vi.stubGlobal(`Path2D`, MockPath2D)
-      expect(() => helpers.create_marker_path(size)).not.toThrow()
+      class StubPath2D {
+        constructor(public data?: string) {}
+        arc(): void {}
+      }
+      vi.stubGlobal(`Path2D`, StubPath2D)
+      // Falls back to a zero-radius marker instead of throwing
+      expect(draw.create_marker_path(size)).toEqual(draw.create_marker_path(0))
     },
   )
+
+  test(`marker_path_data returns d3 symbols for known markers, null otherwise`, () => {
+    expect(draw.marker_path_data(5, `circle`)).toMatch(/^M/)
+    expect(draw.marker_path_data(5, `triangle`)).not.toBe(draw.marker_path_data(5, `circle`))
+    expect(draw.marker_path_data(5, `blob` as never)).toBeNull()
+  })
+
+  test(`find_hull_entry_at_mouse uses the projected marker radius plus 5px slack`, () => {
+    const canvas = {
+      getBoundingClientRect: () => ({ left: 10, top: 10 }),
+      clientWidth: 600,
+      clientHeight: 600,
+    } as unknown as HTMLCanvasElement
+    const entry = { x: 100, y: 100, z: 0, is_stable: false } as ConvexHullEntry
+    const project = (x: number, y: number) => ({ x, y, depth: 0 })
+    const hit = (client_x: number) =>
+      draw.find_hull_entry_at_mouse(
+        canvas,
+        { clientX: client_x, clientY: 110 } as MouseEvent,
+        [entry],
+        project,
+      )
+    expect(hit(118)).toBe(entry) // 8 px away < 4 + 5
+    expect(hit(120)).toBeNull() // 10 px away
+    expect(
+      draw.find_hull_entry_at_mouse(undefined, {} as MouseEvent, [entry], project),
+    ).toBeNull()
+  })
 })
 
 describe(`helpers: thresholds and tooltips`, () => {
@@ -109,7 +124,17 @@ describe(`helpers: thresholds and tooltips`, () => {
       { e_above_hull: 0 } as PhaseData,
       { e_above_hull: 0.2 } as PhaseData,
     ])
-    expect(val).toBeGreaterThan(0.2)
+    expect(val).toBeCloseTo(0.201, 10)
+  })
+
+  test(`auto_threshold_reset re-derives on source change unless the user moved the slider`, () => {
+    const next = helpers.auto_threshold_reset(0.1)
+    const source_a = [1]
+    const source_b = [2]
+    expect(next(source_a, 0.1, 0.4)).toBe(0.4) // first call: adopt auto value
+    expect(next(source_a, 0.4, 0.4)).toBeUndefined() // same source: leave alone
+    expect(next(source_b, 0.4, 0.3)).toBe(0.3) // new source, untouched slider: re-derive
+    expect(next(source_a, 0.25, 0.4)).toBeUndefined() // user changed it: preserve
   })
 
   test.each([
@@ -183,7 +208,7 @@ describe(`helpers: thresholds and tooltips`, () => {
       composition: { Li: 1 },
       energy: -1,
     })
-    expect(t1).toMatch(/Li/)
+    expect(t1).toBe(`Li (Lithium)\n`)
     const t2 = helpers.build_entry_tooltip_text({
       composition: { Li: 1, O: 1 },
       energy: -6,
@@ -191,99 +216,10 @@ describe(`helpers: thresholds and tooltips`, () => {
       e_above_hull: 0,
       entry_id: `mp-1`,
     })
-    expect(t2).toMatch(/E<sub>above hull<\/sub>/)
-    expect(t2).toMatch(/E<sub>form<\/sub>/)
-    expect(t2).toMatch(/ID/)
-  })
-})
-
-describe(`helpers: energy range preserves zero formation energy`, () => {
-  test(`zero e_form_per_atom is not dropped in energy range`, () => {
-    const entries: PhaseData[] = [
-      {
-        composition: { H: 1 },
-        energy: 0,
-        energy_per_atom: -1, // differs from e_form_per_atom to ensure we pick 0 over -1
-        e_form_per_atom: 0, // critical zero value
-        e_above_hull: 0,
-      },
-      {
-        composition: { He: 1 },
-        energy: -2,
-        energy_per_atom: -2,
-        e_form_per_atom: -2,
-        e_above_hull: 0,
-      },
-    ]
-    const stats = get_convex_hull_stats(entries, [`H`, `He`], 3)
-    // min should be -2, max should be 0, proving 0 was retained (not replaced by -1)
-    expect(stats?.energy_range.min).toBeCloseTo(-2)
-    expect(stats?.energy_range.max).toBeCloseTo(0)
-  })
-})
-
-describe(`helpers: mouse hit testing`, () => {
-  test(`find_hull_entry_at_mouse returns null when no canvas`, () => {
-    const hit = helpers.find_hull_entry_at_mouse(
-      undefined,
-      { clientX: 0, clientY: 0 } as unknown as MouseEvent,
-      [],
-      (x: number, y: number, _z: number) => ({ x, y }),
+    expect(t2).toBe(
+      `\nComposition: Li: ½, O: ½\nE<sub>above hull</sub>: 0 eV/atom\nE<sub>form</sub>: −3 eV/atom\nID: mp-1`,
     )
-    expect(hit).toBeNull()
   })
-
-  test(`find_hull_entry_at_mouse detects nearby entry`, () => {
-    // Fake canvas with size and client rect
-    const canvas = {
-      getBoundingClientRect: () => ({ left: 0, top: 0 }),
-      clientWidth: 600,
-      clientHeight: 600,
-    } as unknown as HTMLCanvasElement
-    const plot_entries: { x: number; y: number; z: number }[] = [
-      {
-        x: 100,
-        y: 100,
-        z: 0,
-      },
-    ]
-    const project = (x: number, y: number) => ({ x, y })
-    const hit = helpers.find_hull_entry_at_mouse(
-      canvas,
-      { clientX: 102, clientY: 102 } as unknown as MouseEvent,
-      plot_entries,
-      project,
-    )
-    expect(hit).toBe(plot_entries[0])
-  })
-})
-
-describe(`helpers: fractional composition`, () => {
-  test.each([
-    [
-      { Li: 1, O: 1 },
-      { Li: 0.5, O: 0.5 },
-    ],
-    [
-      { Li: 2, O: 2 },
-      { Li: 0.5, O: 0.5 },
-    ],
-    [
-      { Li: 1, O: 2 },
-      { Li: 1 / 3, O: 2 / 3 },
-    ],
-    [{}, {}], // empty composition
-    [{ Li: 1, O: 0 }, { Li: 1 }], // zero amounts dropped
-  ] as [Record<string, number>, Record<string, number>][])(
-    `get_fractional_composition(%j) → %j`,
-    (composition, expected) => {
-      const frac = helpers.get_fractional_composition(composition)
-      expect(Object.keys(frac)).toEqual(Object.keys(expected))
-      for (const [elem, value] of Object.entries(expected)) {
-        expect(frac[elem]).toBeCloseTo(value)
-      }
-    },
-  )
 })
 
 describe(`helpers: composition label entries`, () => {
@@ -551,58 +487,6 @@ describe(`helpers: batch polymorph stats computation`, () => {
   })
 })
 
-describe(`helpers: get_canvas_text_color`, () => {
-  const mock_css = (css_value: string) => {
-    globalThis.getComputedStyle = vi.fn(() => ({
-      getPropertyValue: () => css_value,
-    })) as unknown as typeof getComputedStyle
-  }
-
-  test.each([
-    // Fallback cases: empty CSS or unsupported functions
-    { css: ``, dark: true, expected: `#ffffff`, desc: `empty CSS (dark)` },
-    { css: ``, dark: false, expected: `#212121`, desc: `empty CSS (light)` },
-    {
-      css: `light-dark(#1f2937, #d0d0d0)`,
-      dark: true,
-      expected: `#ffffff`,
-      desc: `light-dark()`,
-    },
-    { css: `var(--color)`, dark: false, expected: `#212121`, desc: `var()` },
-    {
-      css: `var(--x, light-dark(#000, #fff))`,
-      dark: true,
-      expected: `#ffffff`,
-      desc: `nested`,
-    },
-    // Valid CSS colors returned as-is
-    { css: `#333`, dark: false, expected: `#333`, desc: `hex short` },
-    { css: `#333333`, dark: false, expected: `#333333`, desc: `hex full` },
-    { css: `rgb(51, 51, 51)`, dark: false, expected: `rgb(51, 51, 51)`, desc: `rgb()` },
-    {
-      css: `rgba(0, 0, 0, 0.87)`,
-      dark: false,
-      expected: `rgba(0, 0, 0, 0.87)`,
-      desc: `rgba()`,
-    },
-    { css: `white`, dark: true, expected: `white`, desc: `named color` },
-  ])(`$desc → $expected`, ({ css, dark, expected }) => {
-    mock_css(css)
-    expect(helpers.get_canvas_text_color(dark)).toBe(expected)
-  })
-
-  test(`uses provided element, falls back to documentElement when null`, () => {
-    const mock_elem = {} as HTMLElement
-    mock_css(`#abc`)
-    helpers.get_canvas_text_color(false, mock_elem)
-    expect(globalThis.getComputedStyle).toHaveBeenCalledWith(mock_elem)
-
-    mock_css(`#def`)
-    helpers.get_canvas_text_color(false, null)
-    expect(globalThis.getComputedStyle).toHaveBeenCalledWith(document.documentElement)
-  })
-})
-
 describe(`helpers: is_entry_highlighted`, () => {
   type E = { entry_id?: string; structure_id?: string }
   const both: E = { entry_id: `mp-1`, structure_id: `s-1` }
@@ -708,23 +592,6 @@ describe(`helpers: temperature interpolation`, () => {
     })
   })
 
-  describe(`can_interpolate_at_temperature`, () => {
-    const standard_entry = make_entry([300, 600, 900], [-1, -1.5, -2])
-    const sparse_entry = make_entry([300, 900], [-1, -2])
-
-    test.each([
-      [`bracketed within max_gap`, standard_entry, 450, 500, true],
-      [`bracketed at different position`, standard_entry, 750, 500, true],
-      [`T below data range`, standard_entry, 200, 500, false],
-      [`T above data range`, standard_entry, 1000, 500, false],
-      [`gap exceeds max_gap`, sparse_entry, 600, 500, false],
-      [`gap equals max_gap`, sparse_entry, 600, 600, true],
-      [`no temp data`, { composition: { Fe: 1 }, energy: -1 }, 450, 500, false],
-    ])(`%s → %s`, (_, entry, T, max_gap, expected) => {
-      expect(helpers.can_interpolate_at_temperature(entry, T, max_gap)).toBe(expected)
-    })
-  })
-
   describe(`interpolate_energy_at_temperature`, () => {
     test.each([
       [`midpoint of [300,600]`, make_entry([300, 600], [-1, -2]), 450, 500, -1.5],
@@ -767,6 +634,7 @@ describe(`helpers: temperature interpolation`, () => {
       const result = helpers.filter_entries_at_temperature(entries, 300)
       expect(result).toHaveLength(1)
       expect(result[0].energy).toBe(-1)
+      expect(result[0].energy_per_atom).toBe(-1) // G(T) is per atom; both fields updated
     })
 
     test(`interpolates when exact match missing but bracketed (default options)`, () => {

@@ -7,7 +7,7 @@ import ConvexHullSelectionHarness from './ConvexHullSelectionHarness.svelte'
 
 // Force the canvas hit-test to resolve to a real plot entry so hovering can be
 // exercised deterministically in jsdom (synthetic events can't land on points).
-vi.mock(`$lib/convex-hull/helpers`, async (import_actual) => {
+vi.mock(`$lib/convex-hull/canvas-draw`, async (import_actual) => {
   const actual = await import_actual()
   return {
     ...(actual as Record<string, unknown>),
