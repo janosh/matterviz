@@ -142,8 +142,12 @@ describe(`package.json exports`, () => {
   )
 
   test(`symmetry builds retain default and overridable WASM resolution`, () => {
-    const source = readFileSync(join(repo_root, `dist/symmetry/index.js`), `utf8`)
-    expect(source).toContain(`init(wasm_url ? { module_or_path: wasm_url } : undefined)`)
+    const source = readFileSync(join(repo_root, `dist/symmetry/analyze.js`), `utf8`)
+    // undefined must reach init() untouched so wasm-bindgen resolves the .wasm next to its
+    // glue module; the anywidget build below rewrites that resolution to a CDN/host URL
+    expect(source).toMatch(
+      /init\(source === undefined \? undefined : \{ module_or_path: source \}\)/,
+    )
     expect(source).not.toContain(`moyo_wasm_bg.wasm`)
     const widget_config = readFileSync(
       `${repo_root}/extensions/anywidget/vite.config.ts`,
