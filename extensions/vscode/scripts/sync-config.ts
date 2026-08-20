@@ -9,6 +9,9 @@ import {
 } from '$lib/constants'
 import { SETTINGS_CONFIG, type SettingType } from '$lib/settings'
 
+// VS Code settings read by extension.ts directly rather than forwarded to the webview
+const HOST_SETTING_KEYS = [`matterviz.theme`, `matterviz.auto_render`, `matterviz.open_beside`]
+
 // Formats with no decoder still get a useful "Reopen Editor With…" conversion hint.
 // JupyterLab does not claim these because its file types displace the default handler.
 const HINT_ONLY_EXTENSIONS = [`dcd`, `xtc`, `trr`]
@@ -76,7 +79,7 @@ function sync_package_config(): void {
       }
       return
     }
-    if (schema.context && ![`editor`, `all`].includes(schema.context)) return
+    if (schema.web_only) return
 
     const config: Record<string, unknown> = {
       type: vscode_setting_type(schema.value),
@@ -101,14 +104,13 @@ function sync_package_config(): void {
     process_setting_schema(value, `matterviz.${key}`)
   }
 
-  // Preserve existing non-schema settings (like auto_render, theme, etc.)
+  // Host-only settings the extension reads itself survive regeneration; everything else is
+  // owned by SETTINGS_CONFIG, so a group deleted from the schema disappears here too instead
+  // of lingering as a documented toggle wired to nothing.
   const existing_props = package_content.contributes?.configuration?.properties ?? {}
-  const schema_prefixes = Object.keys(SETTINGS_CONFIG).map((key) => `matterviz.${key}`)
-  // Match at a `.` boundary so a manually maintained matterviz.structurePreview survives
-  // alongside a generated matterviz.structure.* group.
   const preserved_props = Object.fromEntries(
-    Object.entries(existing_props).filter(([key]) =>
-      schema_prefixes.every((prefix) => key !== prefix && !key.startsWith(`${prefix}.`)),
+    HOST_SETTING_KEYS.flatMap((key) =>
+      key in existing_props ? [[key, existing_props[key]]] : [],
     ),
   )
 

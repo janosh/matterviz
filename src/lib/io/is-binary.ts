@@ -3,16 +3,21 @@
 // signatures, (3) extension/filename classification.
 
 // === (1) string-content heuristic ===
-// Detect binary from decoded text: a NUL byte or a high ratio of non-printable chars.
+// Detect binary from decoded text: a NUL byte or a high ratio of non-printable chars. Only
+// the leading window is inspected (like file(1)): a 25 MB trajectory is classified in
+// microseconds instead of a full 50 ms scan, and binary headers sit at the front anyway.
+const BINARY_SNIFF_CHARS = 8192
 export const is_binary = (content: string): boolean => {
   if (!content) return false
-  if (content.includes(`\0`)) return true
+  const sample =
+    content.length > BINARY_SNIFF_CHARS ? content.slice(0, BINARY_SNIFF_CHARS) : content
+  if (sample.includes(`\0`)) return true
 
   let binary_char_count = 0
   let printable_ascii_count = 0
 
-  for (let char_idx = 0; char_idx < content.length; char_idx += 1) {
-    const char_code = content.charCodeAt(char_idx)
+  for (let char_idx = 0; char_idx < sample.length; char_idx += 1) {
+    const char_code = sample.charCodeAt(char_idx)
     if (
       char_code <= 8 ||
       (char_code >= 14 && char_code <= 31) ||
@@ -23,9 +28,7 @@ export const is_binary = (content: string): boolean => {
     if (char_code >= 32 && char_code <= 126) printable_ascii_count += 1
   }
 
-  return (
-    binary_char_count / content.length > 0.1 || printable_ascii_count / content.length < 0.7
-  )
+  return binary_char_count / sample.length > 0.1 || printable_ascii_count / sample.length < 0.7
 }
 
 // === (2) magic-byte signatures ===
@@ -66,13 +69,8 @@ export const ext_of = (name: string): string => name.split(`.`).pop()?.toLowerCa
 
 // Binary data formats whose lossy UTF-8 decode would corrupt bytes (post-decompression)
 const BINARY_DATA_EXTENSIONS = new Set(`h5 hdf5 traj npz pkl dat brml raw`.split(` `))
-
-// All extensions treated as binary: data formats + compressed wrappers that must be
-// downloaded/kept as raw bytes (used for binary-fetch mode and .gz inner-format checks)
-export const BINARY_EXTENSIONS = new Set([
-  ...BINARY_DATA_EXTENSIONS,
-  ...`gz gzip zip bz2 xz`.split(` `),
-])
+export const is_binary_data_extension = (ext: string): boolean =>
+  BINARY_DATA_EXTENSIONS.has(ext)
 
 // Known text formats (plus extensionless VASP files) — safe to fetch/sniff as text
 const TEXT_EXTENSIONS = new Set(
@@ -82,16 +80,7 @@ const VASP_BASENAME_RE = /^(?:poscar|xdatcar|contcar)$/i
 export const is_known_text_file = (basename: string): boolean =>
   TEXT_EXTENSIONS.has(ext_of(basename)) || VASP_BASENAME_RE.test(basename)
 
-const GZ_EXT_RE = /\.(?:gz|gzip)$/i
-// Strip a trailing .gz/.gzip wrapper extension, leaving any inner extension intact
-export const strip_gz_ext = (filename: string): string => filename.replace(GZ_EXT_RE, ``)
-
-// Whether the file inside a .gz/.gzip wrapper is a known binary format that a lossy text
-// decode would corrupt (bytes >= 0x80 -> U+FFFD)
-export const has_binary_inner_ext = (filename: string): boolean =>
-  BINARY_EXTENSIONS.has(ext_of(strip_gz_ext(filename)))
-
 // Binary if the (post-decompression) extension is a known binary data format or the leading
 // bytes match a magic signature
 export const is_binary_payload = (filename: string, buffer: ArrayBuffer): boolean =>
-  BINARY_DATA_EXTENSIONS.has(ext_of(filename)) || has_binary_magic(magic_head(buffer))
+  is_binary_data_extension(ext_of(filename)) || has_binary_magic(magic_head(buffer))

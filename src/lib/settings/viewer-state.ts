@@ -109,9 +109,6 @@ const validate_setting_value = <Value>(value: unknown, setting: SettingType<Valu
   return same_primitive_type(value, setting.value) ? (value as Value) : fallback
 }
 
-const is_web_setting = (setting: SettingType): boolean =>
-  setting.context === undefined || setting.context === `all` || setting.context === `web`
-
 const in_range = (value: unknown, min: number, max: number): value is number =>
   typeof value === `number` && Number.isFinite(value) && value >= min && value <= max
 
@@ -150,7 +147,7 @@ const normalize_structure_settings = (
   for (const [raw_key, raw_setting] of Object.entries(SETTINGS_CONFIG.structure)) {
     const key = raw_key as StructureSettingKey
     const setting = raw_setting as SettingType<StructureSettings[StructureSettingKey]>
-    if (!is_web_setting(setting) || is_non_portable_structure_key(key)) continue
+    if (is_non_portable_structure_key(key)) continue
     Reflect.set(settings, key, validate_setting_value(setting_value(key), setting))
   }
   return settings

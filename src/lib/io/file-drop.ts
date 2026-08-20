@@ -2,6 +2,7 @@
 import { decompress_file } from './decompress'
 import { dropped_file_url, load_from_url } from './url-drop'
 import { to_error } from '$lib/utils'
+import type { Attachment } from 'svelte/attachments'
 import { files_from_data_transfer } from 'svelte-widgets/file-drop'
 import type { FileLoadCallback } from './types'
 
@@ -110,3 +111,40 @@ export const create_file_drop_handler = (
     return queue
   }
 }
+
+export interface FileDropZoneOptions extends FileDropOptions {
+  // Mirrors the hover state to the caller, e.g. for a bindable `dragover` prop
+  on_dragover?: (over: boolean) => void
+}
+
+// Attachment that makes `node` a drop zone in one line:
+//   <div {@attach file_drop_zone({ allow: () => allow_file_drop, on_drop, on_error, set_loading })}>
+// It toggles the node's `dragover` class while an allowed drag hovers it (so the viewer's
+// `.dragover` rule lights up), clears it on drop (browsers fire no dragleave then), and routes
+// the drop through create_file_drop_handler (URL drops, decompression, batch errors, queueing).
+export const file_drop_zone =
+  (options: FileDropZoneOptions): Attachment<HTMLElement> =>
+  (node) => {
+    const set_dragover = (over: boolean) => {
+      node.classList.toggle(`dragover`, over)
+      options.on_dragover?.(over)
+    }
+    const { ondragover, ondragleave } = drag_over_handlers({
+      allow: options.allow,
+      set_dragover,
+    })
+    const handle_drop = create_file_drop_handler(options)
+    const ondrop = (event: DragEvent) => {
+      set_dragover(false)
+      void handle_drop(event)
+    }
+    node.addEventListener(`dragover`, ondragover)
+    node.addEventListener(`dragleave`, ondragleave)
+    node.addEventListener(`drop`, ondrop)
+    return () => {
+      node.removeEventListener(`dragover`, ondragover)
+      node.removeEventListener(`dragleave`, ondragleave)
+      node.removeEventListener(`drop`, ondrop)
+      set_dragover(false)
+    }
+  }

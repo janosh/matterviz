@@ -47,8 +47,9 @@ export interface ExportItem {
   disabled?: boolean
   // Click handler for the ⬇ download button (omit to hide the button)
   on_download?: () => void
-  // Lazy clipboard content for the 📋 copy button (omit to hide); runs on click only, return null/empty to no-op, must not throw
-  copy_text?: () => string | null
+  // Lazy clipboard content for the 📋 copy button (omit to hide); runs on click only, return
+  // (or resolve) null/empty to no-op, must not throw
+  copy_text?: () => string | null | Promise<string | null>
   // Render the shared DPI input next to this item
   show_dpi?: boolean
 }

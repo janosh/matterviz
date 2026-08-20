@@ -24,38 +24,28 @@ export const format_num = (num: number, fmt?: string | number): string => {
   return strip_scientific_zero(format(fmt)(num), fmt, num)
 }
 
-// Symbol types and formatting utilities from d3-shape
-export type D3Symbol = keyof typeof d3_symbols & `symbol${Capitalize<string>}`
-export type D3SymbolName = Exclude<D3Symbol extends `symbol${infer Name}` ? Name : never, ``>
-
-const is_d3_symbol_name = (name: string): name is D3SymbolName =>
-  Object.hasOwn(d3_symbols, `symbol${name}`)
-
-function name_for_symbol(sym: unknown): D3SymbolName | null {
-  for (const [key, symbol] of Object.entries(d3_symbols)) {
-    if (symbol === sym && /^symbol[A-Z]/.test(key)) {
-      const name = key.slice(6)
-      if (is_d3_symbol_name(name)) return name
-    }
-  }
-  return null
-}
-
-export const symbol_names = [
-  ...new Set([...d3_symbols.symbolsFill, ...d3_symbols.symbolsStroke]),
-]
-  .map(name_for_symbol)
-  .filter((name): name is D3SymbolName => name !== null)
-
-const d3_symbols_by_name = Object.fromEntries(
+// d3-shape symbol names (`Circle`, `Cross`, ...) in d3's fill-then-stroke order, and the
+// matching SymbolType for each. `symbolX` aliases `symbolTimes`, so the first export
+// naming a symbol object wins.
+type D3SymbolExport = Extract<keyof typeof d3_symbols, `symbol${Capitalize<string>}`>
+export type D3SymbolName = Exclude<
+  D3SymbolExport extends `symbol${infer Name}` ? Name : never,
+  ``
+>
+const symbols_by_name = Object.fromEntries(
   Object.entries(d3_symbols)
     .filter(([key]) => /^symbol[A-Z]/.test(key))
     .map(([key, symbol]) => [key.slice(6), symbol]),
-) as Partial<Record<D3SymbolName, SymbolType>>
-
+) as Record<D3SymbolName, SymbolType>
+const name_by_symbol = new Map<SymbolType, D3SymbolName>()
+for (const [name, symbol] of Object.entries(symbols_by_name) as [D3SymbolName, SymbolType][]) {
+  if (!name_by_symbol.has(symbol)) name_by_symbol.set(symbol, name)
+}
+export const symbol_names = [
+  ...new Set([...d3_symbols.symbolsFill, ...d3_symbols.symbolsStroke]),
+].flatMap((symbol) => name_by_symbol.get(symbol) ?? [])
 export const symbol_map: Partial<Record<D3SymbolName, SymbolType>> = Object.fromEntries(
-  // Symbol lookup from d3-shape
-  symbol_names.map((name) => [name, d3_symbols_by_name[name]]),
+  symbol_names.map((name) => [name, symbols_by_name[name]]),
 )
 
 // Format standalone scientific notation as HTML, e.g. 1.2e-3 → 1.2×10<sup>-3</sup>.
@@ -72,11 +62,6 @@ export const format_power_ten = (text: string): string =>
 export function format_value(value: number, formatter?: string): string {
   if (!formatter) return `${value}`
   if (formatter.startsWith(`%`)) return timeFormat(formatter)(new Date(value))
-
-  // Handle special values consistently
-  if (value === -Infinity) return `-Infinity`
-  if (value === Infinity) return `Infinity`
-  if (Number.isNaN(value)) return `NaN`
 
   const formatted = normalize_unicode_minus(format(formatter)(value))
 
@@ -160,8 +145,9 @@ export const ELEM_HEATMAP_LABELS: Partial<Record<string, keyof ChemicalElement>>
     }),
   )
 
-// Unicode glyphs for common fractions used by format_fractional()
-export const FRACTION_GLYPHS: readonly (readonly [number, string])[] = [
+// Unicode glyphs for common fractions used by format_fractional(); every complement
+// (1/3 <-> 2/3, ...) is listed, so matching against wrapped values alone suffices
+const FRACTION_GLYPHS: readonly (readonly [number, string])[] = [
   [0, `0`],
   [1 / 12, `¹⁄₁₂`],
   [1 / 8, `⅛`],
@@ -262,20 +248,16 @@ export const format_bytes = (bytes?: number): string => {
   return unit_idx === 0 ? `${value} B` : `${format_num(value, `.2f`)} ${BYTE_UNITS[unit_idx]}`
 }
 
-// Replace common fractional values with unicode glyphs (e.g. 1/2 → ½)
+// Replace common fractional values with unicode glyphs (e.g. 1/2 → ½). The integer part is
+// dropped: callers format fractional coordinates and stoichiometric remainders.
 export function format_fractional(value: number): string {
   if (!Number.isFinite(value)) return String(value)
-  const wrapped_value = ((value % 1) + 1) % 1 // wrap into [0,1)
+  const wrapped = ((value % 1) + 1) % 1 // wrap into [0,1)
   const eps = 1e-3
-  for (const [target, glyph] of FRACTION_GLYPHS) {
-    if (target === 0) {
-      if (Math.abs(wrapped_value - target) <= eps) return glyph
-    } else if (Math.abs(wrapped_value - target) < eps) return glyph
-  }
-  for (const [target, glyph] of FRACTION_GLYPHS) {
-    if (target !== 0 && Math.abs(1 - wrapped_value - target) < eps) return glyph
-  }
-  return format_num(value, `.4~`)
+  const match = FRACTION_GLYPHS.find(([target]) =>
+    target === 0 ? wrapped <= eps : Math.abs(wrapped - target) < eps,
+  )
+  return match?.[1] ?? format_num(value, `.4~`)
 }
 
 export function parse_si_float<T extends string | number | null | undefined>(

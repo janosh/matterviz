@@ -1,5 +1,9 @@
 import type { FileDropOptions } from '$lib/io/file-drop'
-import { create_file_drop_handler, drag_over_handlers } from '$lib/io/file-drop'
+import {
+  create_file_drop_handler,
+  drag_over_handlers,
+  file_drop_zone,
+} from '$lib/io/file-drop'
 import { decompress_file } from '$lib/io/decompress'
 import { dropped_file_url, load_from_url } from '$lib/io/url-drop'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
@@ -314,5 +318,51 @@ describe(`drag_over_handlers`, () => {
     const handlers = drag_over_handlers({ allow: () => false, set_dragover })
     handlers.ondragleave()
     expect(set_dragover).toHaveBeenCalledWith(false)
+  })
+})
+
+describe(`file_drop_zone attachment`, () => {
+  test(`toggles the dragover class, clears it on drop, and detaches cleanly`, async () => {
+    vi.mocked(dropped_file_url).mockReturnValue(undefined)
+    vi.mocked(decompress_file).mockResolvedValue({ content: `ok`, filename: `f.cif` })
+    const node = document.createElement(`div`)
+    const on_drop = vi.fn()
+    const on_dragover = vi.fn()
+    const set_loading = vi.fn()
+    let allowed = true
+    const detach = file_drop_zone({
+      allow: () => allowed,
+      on_drop,
+      on_dragover,
+      set_loading,
+    })(node)
+
+    node.dispatchEvent(new Event(`dragover`, { cancelable: true }))
+    expect(node.classList.contains(`dragover`)).toBe(true)
+    node.dispatchEvent(new Event(`dragleave`))
+    expect(node.classList.contains(`dragover`)).toBe(false)
+    allowed = false
+    node.dispatchEvent(new Event(`dragover`, { cancelable: true }))
+    expect(node.classList.contains(`dragover`)).toBe(false)
+    allowed = true
+    node.dispatchEvent(new Event(`dragover`, { cancelable: true }))
+    expect(on_dragover.mock.calls.map(([over]) => over)).toEqual([true, false, false, true])
+
+    // a drop clears the hover state immediately (no dragleave follows) and reaches on_drop
+    const drop_event = new Event(`drop`, { cancelable: true }) as DragEvent
+    Object.defineProperty(drop_event, `dataTransfer`, {
+      value: { files: [new File([`ok`], `f.cif`)], items: [], getData: vi.fn() },
+    })
+    node.dispatchEvent(drop_event)
+    expect(drop_event.defaultPrevented).toBe(true)
+    expect(node.classList.contains(`dragover`)).toBe(false)
+    await vi.waitFor(() =>
+      expect(on_drop).toHaveBeenCalledWith(`ok`, `f.cif`, source_meta(`f.cif`)),
+    )
+    expect(set_loading.mock.calls.map(([loading]) => loading)).toEqual([true, false])
+
+    detach?.()
+    node.dispatchEvent(new Event(`dragover`, { cancelable: true }))
+    expect(node.classList.contains(`dragover`)).toBe(false)
   })
 })

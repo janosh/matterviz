@@ -79,7 +79,7 @@ describe(`Settings`, () => {
 
       expect(result.structure.atom_radius).toBe(2.0)
       expect(result.trajectory).toEqual(DEFAULTS.trajectory)
-      expect(result.composition).toEqual(DEFAULTS.composition)
+      expect(result.plot).toEqual(DEFAULTS.plot)
     })
   })
 
@@ -146,12 +146,13 @@ describe(`Settings`, () => {
   // Both viewers used to declare their defaults twice: once as parent $bindable() props and
   // once as a `defaults` object in their Controls, with nothing keeping the two in step.
   describe.each([
-    [`brillouin`, `brillouin/BrillouinZone`, `brillouin/BrillouinZoneControls`],
-    [`fermi`, `fermi-surface/FermiSurface`, `fermi-surface/FermiSurfaceControls`],
-  ] as const)(`%s defaults`, (section, viewer, controls) => {
+    [`brillouin`, [`brillouin/BrillouinZone`, `brillouin/BrillouinZoneControls`]],
+    [`fermi`, [`fermi-surface/FermiSurface`, `fermi-surface/FermiSurfaceControls`]],
+    [`trajectory`, [`trajectory/Trajectory`]], // fps shipped as 5 here and 10 in the schema
+  ] as const)(`%s defaults`, (section, components) => {
     const keys = Object.keys(DEFAULTS[section])
 
-    test.each([viewer, controls])(`%s.svelte takes them from the schema`, (component) => {
+    test.each(components)(`%s.svelte takes them from the schema`, (component) => {
       const source = readFileSync(join(`src`, `lib`, `${component}.svelte`), `utf8`)
       const literals = keys
         .map((key) => [key, new RegExp(`^ {4}${key} = (.+),$`, `m`).exec(source)?.[1]])
@@ -163,10 +164,13 @@ describe(`Settings`, () => {
       expect(literals, `${component} hardcodes defaults that belong to the schema`).toEqual([])
     })
 
-    test(`${controls} reads the schema section directly`, () => {
-      const source = readFileSync(join(`src`, `lib`, `${controls}.svelte`), `utf8`)
-      expect(source).toContain(`const defaults = DEFAULTS.${section}`)
-    })
+    test.each(components.filter((component) => component.endsWith(`Controls`)))(
+      `%s reads the schema section directly`,
+      (controls) => {
+        const source = readFileSync(join(`src`, `lib`, `${controls}.svelte`), `utf8`)
+        expect(source).toContain(`const defaults = DEFAULTS.${section}`)
+      },
+    )
   })
 
   describe(`Convex hull settings`, () => {
@@ -185,8 +189,8 @@ describe(`Settings`, () => {
 test(`settings builder groups structure props`, () => {
   const props = build_structure_props_from_settings(DEFAULTS)
 
-  expect(props.scene_props).toMatchObject(DEFAULTS.structure)
-  expect(props.scene_props.gizmo).toBe(DEFAULTS.structure.show_gizmo)
+  expect(props.scene_props).toEqual(DEFAULTS.structure)
+  expect(props.scene_props).not.toBe(DEFAULTS.structure) // embedders mutate scene_props
   expect(props.lattice_props.cell_edge_width).toBe(DEFAULTS.structure.cell_edge_width)
 })
 

@@ -1,15 +1,13 @@
 import {
-  BINARY_EXTENSIONS,
   ext_of,
-  has_binary_inner_ext,
   has_binary_magic,
   has_gzip_magic,
   has_hdf5_magic,
   is_binary,
+  is_binary_data_extension,
   is_binary_payload,
   is_known_text_file,
   magic_head,
-  strip_gz_ext,
 } from '$lib/io/is-binary'
 import { describe, expect, test } from 'vitest'
 
@@ -37,6 +35,9 @@ describe(`is_binary (string heuristic)`, () => {
     [`high-byte-ratio clause alone`, `\u00FF\u00FFabcdefgh`, true],
     // control chars (no high bytes) drop printable below 70% -> only the printable clause fires
     [`printable-ratio clause alone`, `${`\t`.repeat(8)}ab`, true],
+    // only the leading 8 KiB is sampled, so a large text file costs microseconds to classify
+    [`binary header on a large payload`, `\0${`a`.repeat(20_000)}`, true],
+    [`large text with a stray NUL past the sample window`, `${`a`.repeat(20_000)}\0`, false],
   ])(`%s -> %s`, (_desc, content, expected) => {
     expect(is_binary(content)).toBe(expected)
   })
@@ -99,27 +100,13 @@ describe(`extension / filename classification`, () => {
   })
 
   test.each([
-    [`a.h5.gz`, `a.h5`],
-    [`a.json.gzip`, `a.json`],
-    [`a.json`, `a.json`], // no wrapper -> unchanged
-  ])(`strip_gz_ext(%s) -> %s`, (name, expected) => {
-    expect(strip_gz_ext(name)).toBe(expected)
-  })
-
-  test.each([
-    [`traj.h5.gz`, true],
-    [`archive.zip.gz`, true], // zip is a binary wrapper
-    [`data.json.gz`, false],
-    [`notes.txt.gz`, false],
-  ])(`has_binary_inner_ext(%s) -> %s`, (name, expected) => {
-    expect(has_binary_inner_ext(name)).toBe(expected)
-  })
-
-  test.each([`h5`, `traj`, `npz`, `gz`, `zip`])(`BINARY_EXTENSIONS includes %s`, (ext) =>
-    expect(BINARY_EXTENSIONS.has(ext)).toBe(true),
-  )
-  test.each([`xyz`, `json`, `cif`])(`BINARY_EXTENSIONS excludes %s`, (ext) =>
-    expect(BINARY_EXTENSIONS.has(ext)).toBe(false),
+    [`h5`, true],
+    [`traj`, true],
+    [`npz`, true],
+    [`gz`, false], // wrappers are not data formats
+    [`xyz`, false],
+  ])(`is_binary_data_extension(%s) -> %s`, (ext, expected) =>
+    expect(is_binary_data_extension(ext)).toBe(expected),
   )
 })
 

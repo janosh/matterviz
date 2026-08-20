@@ -2,7 +2,7 @@
   import { contrast_text_color, resolve_backdrop } from '$lib/colors'
   import type { ChemicalElement, SplitLayout, TileSegment } from '$lib/element'
   import { format_num } from '$lib/labels'
-  import { colors, selected } from '$lib/state.svelte'
+  import { colors } from '$lib/state.svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
   let {
@@ -148,7 +148,6 @@
   class="element-tile"
   data-category={element.category}
   class:active
-  class:last-active={selected.last_element === element}
   class:clickable={Boolean(onclick)}
   style:background-color={fallback_bg_color}
   style:color={computed_text_color}
@@ -226,9 +225,6 @@
   }
   .element-tile.clickable {
     cursor: pointer;
-  }
-  .last-active {
-    border: 1px dotted;
   }
   .number {
     font-size: var(--elem-number-font-size, 22cqw);

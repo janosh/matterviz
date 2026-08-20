@@ -8,7 +8,6 @@ import {
   DEFAULT_CATEGORY_COLORS,
   ELEMENT_COLOR_SCHEMES,
   get_d3_interpolator,
-  get_page_background,
   is_color,
   is_concrete_color,
   is_dark_mode,
@@ -17,11 +16,10 @@ import {
   perceived_brightness,
   pick_contrast_color,
   PLOT_COLORS,
-  relative_luminance,
   watch_dark_mode,
 } from '$lib/colors'
 import { ELEM_SYMBOLS } from '$lib/labels'
-import { beforeEach, describe, expect, it, test, vi } from 'vitest'
+import { beforeEach, describe, expect, it, test } from 'vitest'
 
 // Generate expected element symbols from atomic numbers 1-109 (first 109 elements)
 const EXPECTED_ELEMENTS = Array.from({ length: 109 }, (_, idx) => ELEM_SYMBOLS[idx])
@@ -243,19 +241,18 @@ describe(`css_color_to_hex`, () => {
 })
 
 test.each([
-  [`#000000`, 0, 0],
-  [`#ffffff`, 1, 1],
-  [`#ff0000`, 0.299, 0.2126],
-  [`#00ff00`, 0.587, 0.7152],
-  [`#0000ff`, 0.114, 0.0722],
-  [`#808080`, 0.502, 0.2159],
-  [`#ff8000`, 0.594, 0.367],
-  [`red`, 0.299, 0.2126],
-  [`rgb(255, 0, 0)`, 0.299, 0.2126],
-  [`hsl(0, 100%, 50%)`, 0.299, 0.2126],
-])(`color metrics for %s`, (color, expected_brightness, expected_luminance) => {
+  [`#000000`, 0],
+  [`#ffffff`, 1],
+  [`#ff0000`, 0.299],
+  [`#00ff00`, 0.587],
+  [`#0000ff`, 0.114],
+  [`#808080`, 0.502],
+  [`#ff8000`, 0.594],
+  [`red`, 0.299],
+  [`rgb(255, 0, 0)`, 0.299],
+  [`hsl(0, 100%, 50%)`, 0.299],
+])(`perceived_brightness(%s) = %s`, (color, expected_brightness) => {
   expect(perceived_brightness(color)).toBeCloseTo(expected_brightness, 3)
-  expect(relative_luminance(color)).toBeCloseTo(expected_luminance, 3)
 })
 
 describe(`pick_contrast_color`, () => {
@@ -310,49 +307,6 @@ describe(`add_alpha`, () => {
     [`unknown-format`, 0.5, `unknown-format`], // passthrough unknown
   ])(`add_alpha(%s, %s) = %s`, (color, alpha, expected) => {
     expect(add_alpha(color, alpha)).toBe(expected)
-  })
-})
-
-describe(`get_page_background`, () => {
-  test(`returns empty string in SSR context`, () => {
-    const win = globalThis.window
-    // @ts-expect-error - SSR simulation
-    globalThis.window = undefined
-    expect(get_page_background()).toBe(``)
-    globalThis.window = win
-  })
-
-  test.each([
-    [`#f5f5f5`, `rgba(0, 0, 0, 0)`, false, `#f5f5f5`, `html background`],
-    [`transparent`, `#e0e0e0`, false, `#e0e0e0`, `body background`],
-    [`blue`, `rgba(255, 0, 0, 0.5)`, false, `rgb(128, 0, 128)`, `composited body`],
-    [`transparent`, `transparent`, true, `#1a1a1a`, `dark mode fallback`],
-    [`transparent`, `transparent`, false, `#ffffff`, `light mode fallback`],
-  ])(`$4`, (html_bg, body_bg, prefers_dark, expected) => {
-    const get_computed_style = (element: Element): CSSStyleDeclaration =>
-      ({
-        backgroundColor: element === document.body ? body_bg : html_bg,
-      }) as CSSStyleDeclaration
-    vi.stubGlobal(`getComputedStyle`, get_computed_style)
-    vi.stubGlobal(`matchMedia`, (query: string) => ({
-      matches: prefers_dark,
-      media: query,
-    }))
-    expect(get_page_background()).toBe(expected)
-    vi.unstubAllGlobals()
-  })
-
-  test(`custom fallback values`, () => {
-    vi.stubGlobal(
-      `getComputedStyle`,
-      () => ({ backgroundColor: `transparent` }) as CSSStyleDeclaration,
-    )
-    vi.stubGlobal(`matchMedia`, (query: string) => ({
-      matches: query.includes(`dark`),
-      media: query,
-    }))
-    expect(get_page_background(`#000`, `#fff`)).toBe(`#000`)
-    vi.unstubAllGlobals()
   })
 })
 

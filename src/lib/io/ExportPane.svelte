@@ -22,6 +22,7 @@
     icon_style = ``,
     toggle_props = {},
     pane_props = {},
+    header = undefined,
     children = undefined,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
@@ -32,6 +33,8 @@
     icon_style?: string
     toggle_props?: PaneToggleProps
     pane_props?: PaneProps
+    // Pane-specific controls rendered above the sections (e.g. a frame range shared by them)
+    header?: Snippet
     // Pane-specific extras rendered below the sections (e.g. video export controls)
     children?: Snippet
   } = $props()
@@ -49,9 +52,9 @@
   const { copied, copy } = create_clipboard_feedback(1000, (error) => {
     console.error(`Failed to copy ${copying_label} to clipboard`, error)
   })
-  const handle_copy = (item: ExportItem, key: string) => {
+  const handle_copy = async (item: ExportItem, key: string) => {
     if (item.disabled) return
-    const text = item.copy_text?.()
+    const text = await item.copy_text?.()
     if (!text) return
     copying_label = item.label
     void copy(text, key)
@@ -71,6 +74,7 @@
   closed_icon={export_variant}
   {icon_style}
 >
+  {@render header?.()}
   {#each sections as section, sec_idx (section.title ?? sec_idx)}
     {#if section.title}
       <h4

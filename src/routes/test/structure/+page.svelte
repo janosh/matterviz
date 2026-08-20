@@ -14,9 +14,10 @@
   let canvas = $state({ width: 600, height: 400 })
   let background_color = $state(`#1e1e1e`)
   let show_controls = $state<`always` | `hover` | `never`>(`hover`)
-  let scene_props: ComponentProps<typeof StructureScene> & { show_gizmo: boolean } = $state(
-    DEFAULTS.structure,
-  )
+  let scene_props: ComponentProps<typeof StructureScene> & { gizmo: boolean } = $state({
+    ...DEFAULTS.structure,
+    gizmo: true,
+  })
   let performance_mode = $state<`quality` | `speed`>(`quality`)
   // expose selection state for tests
   let selected_sites = $state<number[]>([])
@@ -211,8 +212,7 @@
     /></label
   ><br />
   <label>Background Color: <input type="color" bind:value={background_color} /></label><br />
-  <label>Show Gizmo: <input type="checkbox" bind:checked={scene_props.show_gizmo} /></label><br
-  />
+  <label>Show Gizmo: <input type="checkbox" bind:checked={scene_props.gizmo} /></label><br />
   <label>Show Atoms: <input type="checkbox" bind:checked={scene_props.show_atoms} /></label><br
   />
   <label>
@@ -309,7 +309,7 @@
 </div>
 <div data-testid="canvas-width-status">Canvas Width Status: {canvas.width}</div>
 <div data-testid="canvas-height-status">Canvas Height Status: {canvas.height}</div>
-<div data-testid="gizmo-status">Gizmo Status: {scene_props.show_gizmo}</div>
+<div data-testid="gizmo-status">Gizmo Status: {scene_props.gizmo}</div>
 <div data-testid="show-buttons-status">Show Buttons Status: {show_controls}</div>
 <div data-testid="measure-mode-status">Measure Mode: {measure_mode}</div>
 <div data-testid="bond-edit-mode-status">Bond Edit Mode: {bond_edit_mode}</div>

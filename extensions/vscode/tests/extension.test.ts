@@ -238,7 +238,7 @@ describe(`MatterViz Extension`, () => {
         return
       }
       const schema = node as SettingType
-      if (schema.context && ![`editor`, `all`].includes(schema.context)) return
+      if (schema.web_only) return
       const type =
         typeof schema.value === `boolean`
           ? `boolean`
@@ -1544,7 +1544,7 @@ describe(`MatterViz Extension`, () => {
         expect.objectContaining({
           structure: expect.any(Object),
           trajectory: expect.any(Object),
-          composition: expect.any(Object),
+          plot: expect.any(Object),
         }),
       )
     })

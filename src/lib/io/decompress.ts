@@ -13,12 +13,21 @@ export function strip_compression_extensions(filename: string): string {
 
 export type CompressionFormat = keyof typeof COMPRESSION_FORMATS
 export type CompressionExtension = (typeof COMPRESSION_EXTENSIONS)[number]
-export type BrowserCompressionFormat = Exclude<CompressionFormat, `zip` | `xz` | `bz2`>
+// Formats the platform DecompressionStream inflates natively
+export type StreamCompressionFormat = Exclude<CompressionFormat, `zip` | `xz` | `bz2`>
+// Formats this module can inflate in the browser: stream formats plus single-file ZIP
+// archives (via fflate). xz and bz2 have no decoder.
+export type BrowserCompressionFormat = StreamCompressionFormat | `zip`
+
+export const is_stream_compression_format = (
+  format: CompressionFormat | null,
+): format is StreamCompressionFormat =>
+  format !== null && format !== `zip` && format !== `xz` && format !== `bz2`
 
 export const is_browser_decompressible_format = (
   format: CompressionFormat | null,
 ): format is BrowserCompressionFormat =>
-  format !== null && format !== `zip` && format !== `xz` && format !== `bz2`
+  format === `zip` || is_stream_compression_format(format)
 
 export function detect_compression_format(filename: string): CompressionFormat | null {
   const lower = filename.toLowerCase()
@@ -28,40 +37,64 @@ export function detect_compression_format(filename: string): CompressionFormat |
   return null
 }
 
+type CompressedSource = ArrayBuffer | Blob | ReadableStream<Uint8Array<ArrayBuffer>>
+
+const unsupported_format_error = (format: CompressionFormat): Error =>
+  new Error(
+    `${format.toUpperCase()} decompression is not supported in the browser. ` +
+      `Please extract the ${format.toUpperCase()} file first.`,
+  )
+
 // Decompress data and return as text string
 export async function decompress_data(
-  data: ArrayBuffer | ReadableStream<Uint8Array> | null,
+  data: CompressedSource,
   format: CompressionFormat,
 ): Promise<string> {
   const buffer = await decompress_data_binary(data, format)
   return new TextDecoder().decode(buffer)
 }
 
+// The one payload file of a ZIP archive. Directory entries, macOS resource forks and
+// dotfiles are ignored; anything else ambiguous is an error rather than a silent pick.
+const unzip_single_entry = async (bytes: Uint8Array): Promise<Uint8Array> => {
+  const { unzipSync } = await import(`fflate`)
+  const entries = Object.entries(unzipSync(bytes)).filter(
+    ([name]) =>
+      !name.endsWith(`/`) && !name.startsWith(`__MACOSX/`) && !/(?:^|\/)\./.test(name),
+  )
+  if (entries.length !== 1) {
+    const names = entries.map(([name]) => name).join(`, `)
+    throw new Error(
+      entries.length === 0
+        ? `ZIP archive contains no files`
+        : `ZIP archive must contain exactly one file, found ${entries.length}: ${names}`,
+    )
+  }
+  return entries[0][1]
+}
+
 const consume_decompressed = async <Result>(
-  data: ArrayBuffer | Blob | ReadableStream<Uint8Array> | null,
+  data: CompressedSource,
   format: CompressionFormat,
   consume: (response: Response) => Promise<Result>,
   signal?: AbortSignal,
 ): Promise<Result> => {
   try {
-    if (!is_browser_decompressible_format(format)) {
-      throw new Error(
-        `${format.toUpperCase()} decompression is not supported in the browser. ` +
-          `Please extract the ${format.toUpperCase()} file first.`,
-      )
-    }
+    if (!is_browser_decompressible_format(format)) throw unsupported_format_error(format)
+    // Blobs and streams are piped through without buffering the compressed bytes first
     const stream =
       data instanceof ArrayBuffer
-        ? new ReadableStream({
-            start(controller) {
-              controller.enqueue(new Uint8Array(data))
-              controller.close()
-            },
-          })
+        ? new Blob([data]).stream()
         : data instanceof Blob
           ? data.stream()
           : data
-    if (!stream) throw new Error(`Invalid data stream`)
+    if (format === `zip`) {
+      const bytes = new Uint8Array(await new Response(stream).arrayBuffer())
+      signal?.throwIfAborted()
+      // copy: fflate may hand back a view into its own scratch buffer
+      const entry = new Uint8Array(await unzip_single_entry(bytes))
+      return await consume(new Response(entry))
+    }
     const decompressed = stream.pipeThrough(new DecompressionStream(format), { signal })
     return await consume(new Response(decompressed))
   } catch (error) {
@@ -71,14 +104,14 @@ const consume_decompressed = async <Result>(
 
 // Decompress data and return as ArrayBuffer (for binary files like .brml.gz)
 export const decompress_data_binary = (
-  data: ArrayBuffer | ReadableStream<Uint8Array> | null,
+  data: CompressedSource,
   format: CompressionFormat,
   signal?: AbortSignal,
 ): Promise<ArrayBuffer> =>
   consume_decompressed(data, format, (response) => response.arrayBuffer(), signal)
 
 export const decompress_data_blob = (
-  data: Blob | ReadableStream<Uint8Array>,
+  data: CompressedSource,
   format: CompressionFormat,
   signal?: AbortSignal,
 ): Promise<Blob> => consume_decompressed(data, format, (response) => response.blob(), signal)
@@ -101,22 +134,22 @@ export const content_byte_size = (content: string | ArrayBuffer | Blob): number 
       ? content.byteLength
       : new Blob([content]).size
 
-// Read a dropped file, decompressing supported formats. Binary payloads (by extension or
-// magic bytes) return as ArrayBuffer so parsers get raw bytes; text decodes to string.
+// Read a dropped file, decompressing supported formats (the compressed bytes are streamed
+// straight out of the File, never buffered). Binary payloads (by extension or magic bytes)
+// return as ArrayBuffer so parsers get raw bytes; text decodes to string. Archive formats
+// the browser cannot inflate (zip/xz/bz2) are rejected up front instead of being handed to
+// a parser as opaque bytes.
 export async function decompress_file(
   file: File,
 ): Promise<{ content: string | ArrayBuffer; filename: string }> {
   const format = detect_compression_format(file.name)
-  // zip/xz/bz2 are handled by their own code paths; null = not compressed
-  const decompressible = is_browser_decompressible_format(format) ? format : null
-  const buffer = await file.arrayBuffer()
-
-  if (decompressible) {
-    const filename = file.name.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
-    const decompressed = await decompress_data_binary(buffer, decompressible)
-    return { content: to_content(filename, decompressed), filename }
+  if (format === null) {
+    return { content: to_content(file.name, await file.arrayBuffer()), filename: file.name }
   }
-  return { content: to_content(file.name, buffer), filename: file.name }
+  if (!is_browser_decompressible_format(format)) throw unsupported_format_error(format)
+  const filename = file.name.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
+  const decompressed = await decompress_data_binary(file, format)
+  return { content: to_content(filename, decompressed), filename }
 }
 
 export const is_hdf5_filename = (filename: string): boolean => /\.(?:h5|hdf5)$/i.test(filename)
@@ -129,6 +162,8 @@ export const hdf5_compression_format = (filename: string): CompressionFormat | n
     : null
 }
 
+// Like decompress_file, but keeps HDF5 payloads (by name or magic bytes) as a Blob so h5wasm
+// can read them lazily instead of materializing the whole file.
 export async function decompress_trajectory_file(
   file: File,
   signal?: AbortSignal,
@@ -138,27 +173,22 @@ export async function decompress_trajectory_file(
     ? file.name.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
     : file.name
   const hdf5_by_name = is_hdf5_filename(source_filename)
-  const hdf5_by_magic =
-    format === null && has_hdf5_magic(new Uint8Array(await file.slice(0, 8).arrayBuffer()))
-  if (format !== null && format !== `gzip` && hdf5_by_name) {
+  const has_hdf5_head = async (blob: Blob) =>
+    has_hdf5_magic(new Uint8Array(await blob.slice(0, 8).arrayBuffer()))
+  if (format && !is_browser_decompressible_format(format) && hdf5_by_name) {
     throw new Error(
       `Compressed HDF5 ${format.toUpperCase()} files are not supported in the browser; use .h5 or .h5.gz`,
     )
   }
   if (format === null) {
-    if (!hdf5_by_name && !hdf5_by_magic) return decompress_file(file)
+    if (!hdf5_by_name && !(await has_hdf5_head(file))) return decompress_file(file)
     return {
       content: file,
       filename: hdf5_by_name ? source_filename : `${source_filename}.h5`,
     }
   }
-  if (format !== `gzip`) return decompress_file(file)
-
   const decompressed = await decompress_data_blob(file, format, signal)
-  const hdf5_by_decompressed_magic = has_hdf5_magic(
-    new Uint8Array(await decompressed.slice(0, 8).arrayBuffer()),
-  )
-  if (hdf5_by_name || hdf5_by_decompressed_magic) {
+  if (hdf5_by_name || (await has_hdf5_head(decompressed))) {
     return {
       content: decompressed,
       filename: hdf5_by_name ? source_filename : `${source_filename}.h5`,

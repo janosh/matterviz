@@ -79,22 +79,15 @@ const rgb_scheme_to_hex = (obj: Record<string, number[]>): Record<string, string
       .map(([key, val]) => [key, rgb(val[0], val[1], val[2]).formatHex()]),
   )
 
-export const vesta_hex = rgb_scheme_to_hex(vesta_colors)
-export const jmol_hex = rgb_scheme_to_hex(jmol_colors)
-export const alloy_hex = rgb_scheme_to_hex(alloy_colors)
-export const pastel_hex = rgb_scheme_to_hex(pastel_colors)
-export const muted_hex = rgb_scheme_to_hex(muted_colors)
-export const dark_mode_hex = rgb_scheme_to_hex(dark_mode_colors)
-
 export const ELEMENT_COLOR_SCHEMES = {
-  Vesta: vesta_hex,
-  Jmol: jmol_hex,
-  Alloy: alloy_hex,
-  Pastel: pastel_hex,
-  Muted: muted_hex,
-  'Dark Mode': dark_mode_hex,
+  Vesta: rgb_scheme_to_hex(vesta_colors),
+  Jmol: rgb_scheme_to_hex(jmol_colors),
+  Alloy: rgb_scheme_to_hex(alloy_colors),
+  Pastel: rgb_scheme_to_hex(pastel_colors),
+  Muted: rgb_scheme_to_hex(muted_colors),
+  'Dark Mode': rgb_scheme_to_hex(dark_mode_colors),
 } as const satisfies Record<ColorSchemeName, Record<string, string>>
-export const default_element_colors = { ...vesta_hex }
+export const default_element_colors = ELEMENT_COLOR_SCHEMES.Vesta
 
 // Detect if a value is a CSS color string. d3-color parses hex, rgb()/rgba(),
 // hsl()/hsla(), and named colors case-insensitively, rejecting arbitrary words like
@@ -197,6 +190,7 @@ export function perceived_brightness(color: string): number {
   return (0.299 * red + 0.587 * green + 0.114 * blue) / 255 // https://stackoverflow.com/a/596243
 }
 
+// WCAG relative luminance from linearized sRGB channels
 const rgb_luminance = ({ r: red, g: green, b: blue }: RGBColor): number => {
   const linearize = (channel: number): number => {
     const fraction = channel / 255
@@ -205,8 +199,6 @@ const rgb_luminance = ({ r: red, g: green, b: blue }: RGBColor): number => {
   return 0.2126 * linearize(red) + 0.7152 * linearize(green) + 0.0722 * linearize(blue)
 }
 
-// Calculate WCAG relative luminance from linearized sRGB channels.
-export const relative_luminance = (color: string): number => rgb_luminance(parse_rgb(color))
 const contrast_ratio = (first_luminance: number, second_luminance: number): number =>
   (Math.max(first_luminance, second_luminance) + 0.05) /
   (Math.min(first_luminance, second_luminance) + 0.05)
@@ -274,28 +266,6 @@ export function pick_contrast_color(paint: Paint): string {
 // currentcolor), where inheriting the surrounding text color is the only honest answer.
 export const contrast_text_color = (paint: Paint): string =>
   is_concrete_color(paint.background) ? pick_contrast_color(paint) : `currentColor`
-
-// Detect and return the page background color from html/body elements or user preferences
-export function get_page_background(
-  fallback_dark = `#1a1a1a`,
-  fallback_light = `#ffffff`,
-): string {
-  if (typeof window === `undefined`) return ``
-
-  const body_background = getComputedStyle(document.body).backgroundColor
-  if (is_opaque_color(body_background)) return body_background
-
-  const html_background = getComputedStyle(document.documentElement).backgroundColor
-  if (is_opaque_color(html_background)) {
-    return is_concrete_color(body_background)
-      ? composite_colors(body_background, html_background)
-      : html_background
-  }
-
-  // Fall back to prefers-color-scheme
-  const prefers_dark = globalThis.matchMedia?.(`(prefers-color-scheme: dark)`)?.matches
-  return prefers_dark ? fallback_dark : fallback_light
-}
 
 // Detect dark mode: checks data-theme attribute, then the persisted theme
 // preference (resolving `auto` against the OS), then falls back to OS preference.

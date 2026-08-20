@@ -5,11 +5,8 @@
 // while lib/trajectory/ handles parsing.
 
 import { normalize_browser_supported_filename } from '$lib/file-viewer/eligibility'
-import {
-  detect_compression_format,
-  is_browser_decompressible_format,
-} from '$lib/io/decompress'
-import type { BrowserCompressionFormat } from '$lib/io/decompress'
+import { detect_compression_format, is_stream_compression_format } from '$lib/io/decompress'
+import type { StreamCompressionFormat } from '$lib/io/decompress'
 import {
   indexed_trajectory_format,
   is_indexable_trajectory_filename,
@@ -54,7 +51,7 @@ export const decode_indexed_trajectory_text = (
 
 export const decompress_host_buffer = async (
   data: ArrayBuffer,
-  format: BrowserCompressionFormat,
+  format: StreamCompressionFormat,
   max_memory_size: number = MAX_STREAMING_FILE_SIZE,
   reserve_text_decoding: boolean = false,
 ): Promise<ArrayBuffer> => {
@@ -151,7 +148,7 @@ export const read_indexed_trajectory_file = async (
   on_progress?: (progress: StreamingProgress) => void,
 ): Promise<IndexedTrajectoryFile> => {
   const compression_format = detect_compression_format(filename)
-  if (compression_format && !is_browser_decompressible_format(compression_format)) {
+  if (compression_format && !is_stream_compression_format(compression_format)) {
     throw new Error(`Unsupported compression for indexed trajectory: ${compression_format}`)
   }
 

@@ -4,6 +4,7 @@ import {
   decompress_trajectory_file,
   detect_compression_format,
 } from '$lib/io/decompress'
+import { zipSync } from 'fflate'
 import { describe, expect, test, vi } from 'vitest'
 
 // Compress bytes with the platform CompressionStream for round-trip tests
@@ -57,10 +58,30 @@ describe(`decompress utility functions`, () => {
       globalThis.DecompressionStream = orig_decompression_stream
     })
 
-    test(`should throw error for ZIP format since browser doesn't support it`, async () => {
-      await expect(decompress_data(new ArrayBuffer(0), `zip`)).rejects.toThrow(
-        `ZIP decompression is not supported in the browser. Please extract the ZIP file first.`,
+    test.each([`bz2`, `xz`] as const)(`rejects %s (no browser decoder)`, async (format) => {
+      await expect(decompress_data(new ArrayBuffer(0), format)).rejects.toThrow(
+        `${format.toUpperCase()} decompression is not supported in the browser. Please extract the ${format.toUpperCase()} file first.`,
       )
+    })
+
+    test(`unzips the single payload file of a ZIP archive, skipping junk entries`, async () => {
+      const zip = zipSync({
+        'dir/': new Uint8Array(),
+        '__MACOSX/._a.cif': new Uint8Array([1]),
+        '.DS_Store': new Uint8Array([2]),
+        'a.cif': new TextEncoder().encode(`data_a`),
+      })
+      expect(await decompress_data(zip.buffer, `zip`)).toBe(`data_a`)
+    })
+
+    test.each([
+      [{}, `ZIP archive contains no files`],
+      [
+        { 'a.cif': new Uint8Array([1]), 'b.cif': new Uint8Array([2]) },
+        `ZIP archive must contain exactly one file, found 2: a.cif, b.cif`,
+      ],
+    ])(`rejects ambiguous ZIP archives %o`, async (entries, message) => {
+      await expect(decompress_data(zipSync(entries).buffer, `zip`)).rejects.toThrow(message)
     })
 
     test.each([[`gzip`], [`deflate`], [`deflate-raw`]] as const)(
@@ -118,8 +139,8 @@ describe(`decompress utility functions`, () => {
     )
 
     test.each([
-      [`zip`, `ZIP`],
-      [`deflate`, `DEFLATE`],
+      [`bz2`, `BZ2`],
+      [`xz`, `XZ`],
     ])(`rejects HDF5 %s wrappers`, async (extension, format) => {
       await expect(
         decompress_trajectory_file(new File([`bytes`], `trajectory.h5.${extension}`)),
@@ -154,16 +175,32 @@ describe(`decompress utility functions`, () => {
       expect(result.filename).toBe(`test.json`) // extension removed
     })
 
-    // unsupported compression (.bz2/.zip) is treated as uncompressed: extension kept
-    test.each([`test.json.bz2`, `test.json.zip`])(
-      `treats unsupported compression %s as uncompressed`,
-      async (filename) => {
-        const text = `fake compressed data`
-        const result = await decompress_file(new File([text], filename))
-        expect(result.content).toBe(text)
-        expect(result.filename).toBe(filename) // extension not removed
-      },
-    )
+    // archive formats the browser cannot inflate fail up front with a clear message rather
+    // than reaching a parser as opaque bytes
+    test(`unzips a dropped .zip and strips the extension`, async () => {
+      const zip = zipSync({ 'test.json': new TextEncoder().encode(`{"zipped": true}`) })
+      expect(await decompress_file(new File([zip], `test.json.zip`))).toEqual({
+        content: `{"zipped": true}`,
+        filename: `test.json`,
+      })
+    })
+
+    test.each([
+      [`test.json.bz2`, `BZ2`],
+      [`test.json.xz`, `XZ`],
+    ])(`rejects unsupported compression %s`, async (filename, label) => {
+      await expect(decompress_file(new File([`bytes`], filename))).rejects.toThrow(
+        `${label} decompression is not supported in the browser`,
+      )
+    })
+
+    test(`streams compressed bytes out of the File instead of buffering them`, async () => {
+      const text = `streamed`
+      const file = new File([await compress(new TextEncoder().encode(text))], `a.json.gz`)
+      const array_buffer = vi.spyOn(file, `arrayBuffer`)
+      expect(await decompress_file(file)).toEqual({ content: text, filename: `a.json` })
+      expect(array_buffer).not.toHaveBeenCalled()
+    })
 
     test(`rejects when a compressed file fails to decompress`, async () => {
       const invalid = new Uint8Array(10).fill(255)
