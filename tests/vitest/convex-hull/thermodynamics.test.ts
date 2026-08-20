@@ -151,7 +151,10 @@ describe(`N-dimensional quickhull`, () => {
     (dim) => {
       const spatial_dim = dim - 1
       let max_diff = 0
-      for (let trial = 0; trial < 8; trial++) {
+      // brute force enumerates C(24, dim) simplexes per query: 2D/3D are cheap, 4D is ~10k
+      // solves per query, so it gets fewer trials to stay well inside the CI timeout
+      const n_trials = dim === 4 ? 3 : 8
+      for (let trial = 0; trial < n_trials; trial++) {
         const points = [
           ...corners(spatial_dim),
           ...Array.from({ length: 18 }, () => random_point(spatial_dim, 0.2 - 2 * rand())),
