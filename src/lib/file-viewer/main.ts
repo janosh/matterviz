@@ -291,15 +291,12 @@ export const create_display = (
 
   // Get defaults and create props
   const defaults = merge(globalThis.matterviz_data?.defaults)
-  const common_props = {
-    allow_file_drop: false,
-    style: `height: 100%; border-radius: 0`,
-    enable_tips: false,
-    fullscreen_toggle: false,
-  }
+  const common_props = { style: `height: 100%; border-radius: 0`, fullscreen_toggle: false }
+  // Only viewers with a drop zone declare allow_file_drop; elsewhere it would land on the div
+  const no_file_drop = { ...common_props, allow_file_drop: false }
   const embedded_structure_props = {
     ...structure_props(defaults),
-    ...common_props,
+    ...no_file_drop,
     persist_settings: false,
   }
 
@@ -328,7 +325,7 @@ export const create_display = (
     const trajectory_mount_props = {
       trajectory: final_trajectory,
       ...trajectory_props(defaults),
-      ...common_props,
+      ...no_file_drop,
       ...(initial_step_idx !== undefined && { current_step_idx: initial_step_idx }),
       ...(on_step_change && {
         on_step_change: (data: TrajHandlerData) =>
@@ -378,7 +375,7 @@ export const create_display = (
     const parts = [bands ? `bands` : null, dos ? `DOS` : null].filter(Boolean).join(` + `)
     log_message = `Electronic structure rendered: ${filename} (${parts})`
   } else if (result.type === `fermi_surface`) {
-    const props: Record<string, unknown> = { ...common_props }
+    const props: Record<string, unknown> = { ...no_file_drop }
     if (is_fermi_surface_data(result.data as Parameters<typeof is_fermi_surface_data>[0])) {
       props.fermi_data = result.data
     } else props.band_data = result.data
@@ -398,7 +395,7 @@ export const create_display = (
     log_message = `Volumetric data rendered: ${filename}`
   } else if (result.type === `convex_hull`) {
     const entries = result.data as PhaseData[]
-    app = mount(ConvexHull, { target: container, props: { entries, ...common_props } })
+    app = mount(ConvexHull, { target: container, props: { entries, ...no_file_drop } })
     log_message = `Convex hull rendered: ${filename} (${entries.length} entries)`
   } else if (result.type === `phase_diagram`) {
     app = mount(IsobaricBinaryPhaseDiagram, {

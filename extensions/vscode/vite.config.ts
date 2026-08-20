@@ -5,6 +5,9 @@ import { three_compat_alias, vite_plugin_json_gz } from '../../src/vite-plugins.
 import { mock_vscode } from './tests/vscode-mock.ts'
 
 export default defineConfig(({ mode }) => ({
+  // Relative asset URLs: the webview loads dist/webview.js from a vscode-resource URL, so the
+  // default absolute `/assets/<worker>.js` would resolve against that origin's root and 404.
+  base: `./`,
   // vite@8's Plugin type and the svelte plugin's bundled copy are two instances
   // of the same type; comparing them exceeds TS's instantiation depth, so widen
   // to vite's own PluginOption[] to keep defineConfig's overload check shallow.
@@ -20,7 +23,9 @@ export default defineConfig(({ mode }) => ({
       : svelte(),
     mode === `test` ? mock_vscode() : null,
   ] as PluginOption[],
-  worker: { plugins: () => [vite_plugin_json_gz()] as PluginOption[] },
+  // ES-format workers keep code splitting: with the default iife format the parse worker
+  // inlined the lazily-imported h5wasm chunk and weighed 5 MB per fresh worker
+  worker: { format: `es`, plugins: () => [vite_plugin_json_gz()] as PluginOption[] },
   build: {
     outDir: `dist`,
     rollupOptions: {

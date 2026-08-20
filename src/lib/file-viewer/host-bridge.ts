@@ -17,10 +17,13 @@ import type {
   TrajectoryMetadata,
   TrajectoryType,
 } from '$lib/trajectory'
+import type { HostRequest, HostToWebviewMessage, WebviewToHostMessage } from './host-protocol'
 
 export interface VSCodeAPI {
-  postMessage(message: unknown): void
+  postMessage(message: WebviewToHostMessage): void
 }
+
+type HostReply = Extract<HostToWebviewMessage, { request_id: string }>
 
 declare global {
   // VSCode webview API
@@ -38,16 +41,16 @@ try {
 export const get_vscode_api = (): VSCodeAPI | null => host_api
 
 // Shared postMessage request/response plumbing for talking to the extension
-// host: tags the request with a UUID, forwards responses carrying that id to
+// host: tags the request with a UUID, forwards replies carrying that id to
 // on_response (which returns true once it settled the promise), and rejects
 // on timeout. Always removes the listener + timer once settled.
 function post_request<T>(
   api: VSCodeAPI,
-  message: Record<string, unknown>,
+  message: HostRequest,
   timeout_ms: number,
   timeout_error: string,
   on_response: (
-    data: Record<string, unknown>,
+    data: HostReply,
     resolve: (value: T) => void,
     reject: (error: Error) => void,
   ) => boolean,
@@ -58,7 +61,7 @@ function post_request<T>(
       globalThis.removeEventListener(`message`, handler)
       reject(new Error(timeout_error))
     }, timeout_ms)
-    const handler = (event: MessageEvent) => {
+    const handler = (event: MessageEvent<HostReply | undefined>) => {
       if (event.data?.request_id !== request_id) return
       if (on_response(event.data, resolve, reject)) {
         globalThis.removeEventListener(`message`, handler)
@@ -96,9 +99,9 @@ export async function request_large_file_content(
         return false
       }
       if (data.command !== `large_file_response`) return false
-      if (data.error) reject(new Error(data.error as string))
+      if (data.error) reject(new Error(data.error))
       else if (data.parsed_trajectory && typeof data.parsed_trajectory === `object`) {
-        resolve(data.parsed_trajectory as TrajectoryType)
+        resolve(data.parsed_trajectory)
       } else reject(new TypeError(`Malformed large-file response`))
       return true
     },
@@ -119,22 +122,21 @@ export class VSCodeFrameLoader implements FrameLoader {
     frame_index: number,
     timeout: number = 10, // 10 seconds
   ): Promise<TrajectoryFrame | null> {
-    const message = {
-      command: `request_frame`,
-      file_path: this.file_path,
-      // The host picks its per-format frame decoder from the name.
-      filename: this.filename,
-      frame_index,
-    }
     return post_request(
       this.vscode_api,
-      message,
+      // The host picks its per-format frame decoder from the name
+      {
+        command: `request_frame`,
+        file_path: this.file_path,
+        filename: this.filename,
+        frame_index,
+      },
       timeout * 1000,
       `Frame ${frame_index} timeout after ${timeout}s`,
       (data, resolve, reject) => {
         if (data.command !== `frame_response`) return false
-        if (data.error) reject(new Error(data.error as string))
-        else resolve(data.frame as TrajectoryFrame | null)
+        if (data.error) reject(new Error(data.error))
+        else resolve(data.frame ?? null)
         return true
       },
     )

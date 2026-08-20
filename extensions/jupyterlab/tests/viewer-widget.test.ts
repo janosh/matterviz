@@ -11,12 +11,16 @@ const create_display = vi.fn((root: HTMLElement) => {
 })
 let finish_unmount: () => void = () => {}
 const unmount = vi.fn(() => new Promise<void>((resolve) => (finish_unmount = resolve)))
+const parse_in_worker = vi.fn(
+  (
+    content: string,
+    filename: string,
+    _is_base64: boolean,
+    _options: { signal: AbortSignal },
+  ) => Promise.resolve({ type: `structure`, data: { sites: [] }, filename }),
+)
 
-vi.mock(`../src/viewer`, () => ({
-  create_display,
-  parse_file_content: vi.fn(() => Promise.resolve({ kind: `structure` })),
-  unmount,
-}))
+vi.mock(`../src/viewer`, () => ({ create_display, parse_in_worker, unmount }))
 vi.mock(`@jupyterlab/ui-components`, () => ({
   LabIcon: class {
     constructor(public readonly options: { name: string; svgstr: string }) {}
@@ -30,9 +34,7 @@ vi.mock(`@jupyterlab/docregistry`, () => ({
   DocumentWidget: class {},
 }))
 
-const { MatterVizViewer } = await import(`../src/index`)
-
-const MAX_PARSE_BYTES = 100 * 1024 * 1024
+const { MatterVizViewer, MAX_PARSE_BYTES } = await import(`../src/index`)
 
 // Handler is an arrow property, so the signal's thisArg can be ignored.
 const make_signal = () => {
@@ -69,6 +71,12 @@ test(`an oversize file's error must not clobber the render that superseded it`, 
   const context = make_context(`data`, Promise.resolve())
   const viewer = new_viewer(context)
   await vi.waitFor(() => expect(create_display).toHaveBeenCalledTimes(1))
+  expect(parse_in_worker).toHaveBeenCalledExactlyOnceWith(
+    `data`,
+    `Li2O.cif`,
+    false,
+    expect.objectContaining({ signal: expect.any(AbortSignal) }),
+  )
 
   // Size guard unmounts before writing its error.
   context.set_content(`x`.repeat(MAX_PARSE_BYTES + 1))
@@ -83,6 +91,11 @@ test(`an oversize file's error must not clobber the render that superseded it`, 
 
   expect(viewer.node.querySelector(`.mv-file-viewer-error`)).toBeNull()
   expect(viewer.node.textContent).toBe(`mounted`)
+  // The oversize revision never reached the parser; disposing aborts the last parse
+  expect(parse_in_worker).toHaveBeenCalledTimes(2)
+  const last_signal = parse_in_worker.mock.calls.at(-1)?.[3]?.signal
+  viewer.dispose()
+  expect(last_signal?.aborted).toBe(true)
 })
 
 test(`a context that fails to become ready reports the failure`, async () => {

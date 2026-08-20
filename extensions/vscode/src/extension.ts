@@ -9,6 +9,7 @@ import { plan_host_file_transfer } from '$lib/file-viewer/host-transfer'
 import type { HostTransferRejectReason } from '$lib/file-viewer/host-transfer'
 import type {
   FileData,
+  HostToWebviewMessage,
   WebviewBootstrapData,
   WebviewToHostMessage,
 } from '$lib/file-viewer/host-protocol'
@@ -44,7 +45,7 @@ type WebviewLike =
       onDidReceiveMessage: (
         listener: (message: unknown) => void,
       ) => { dispose(): void } | undefined
-      postMessage: (message: unknown) => Promise<boolean> | undefined
+      postMessage: (message: HostToWebviewMessage) => Promise<boolean> | undefined
       html: string
     }
 
@@ -54,8 +55,6 @@ type ExtensionContextLike =
       extensionUri: { fsPath: string }
       subscriptions: { dispose(): void }[]
     }
-
-export type MessageData = WebviewToHostMessage
 
 type WatcherMeta = { request_id?: string; filename?: string; frame_index?: number }
 
@@ -339,7 +338,10 @@ export const create_html = (
 }
 
 // Handle messages from webview
-export const handle_msg = async (msg: MessageData, webview?: WebviewLike): Promise<void> => {
+export const handle_msg = async (
+  msg: WebviewToHostMessage,
+  webview?: WebviewLike,
+): Promise<void> => {
   if (msg.command === `info` && msg.text) {
     vscode.window.showInformationMessage(msg.text)
   } else if (msg.command === `error` && msg.text) {
@@ -383,16 +385,11 @@ export const handle_msg = async (msg: MessageData, webview?: WebviewLike): Promi
         loader: frame_loader,
         file_data: indexed_file.data,
       })
-      webview.postMessage({
-        command,
-        request_id,
-        parsed_trajectory: webview_trajectory,
-      })
+      webview.postMessage({ command, request_id, parsed_trajectory: webview_trajectory })
     } catch (error) {
       const error_message = to_error(error).message
       console.error(`Failed to setup indexed parsing:`, error_message)
-      const { request_id } = msg
-      webview.postMessage({ command, request_id, error: error_message })
+      webview.postMessage({ command, request_id: msg.request_id, error: error_message })
     }
   } else if (msg.command === `request_frame` && msg.file_path && webview) {
     try {
@@ -409,14 +406,13 @@ export const handle_msg = async (msg: MessageData, webview?: WebviewLike): Promi
       if (!loader_data) throw new Error(`No frame loader found for file: ${file_path}`)
 
       const frame = await loader_data.loader.load_frame(loader_data.file_data, frame_index)
-      const command = `frame_response`
-      webview.postMessage({ command, request_id, frame, frame_index })
+      webview.postMessage({ command: `frame_response`, request_id, frame, frame_index })
     } catch (error) {
       const error_message = to_error(error).message
       console.error(`Failed to load frame ${msg.frame_index}:`, error_message)
       webview.postMessage({
         command: `frame_response`,
-        request_id: msg.request_id ?? ``,
+        request_id: msg.request_id,
         error: error_message,
         frame_index: msg.frame_index,
       })
@@ -517,7 +513,11 @@ function start_watching_file(
   }
 }
 
-function post_to_webview(webview: WebviewLike, message: unknown, label: string): void {
+function post_to_webview(
+  webview: WebviewLike,
+  message: HostToWebviewMessage,
+  label: string,
+): void {
   try {
     webview.postMessage(message)
   } catch (error) {
@@ -603,7 +603,7 @@ function setup_webview_panel(
   set_html(file_data)
 
   const message_listener = panel.webview.onDidReceiveMessage(
-    (msg: MessageData) => handle_msg(msg, panel.webview),
+    (msg: WebviewToHostMessage) => handle_msg(msg, panel.webview),
     undefined,
   )
 

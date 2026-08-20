@@ -1,12 +1,12 @@
 <script lang="ts">
   import { build_path } from '$lib/json-path'
+  import { format_bytes } from '$lib/labels'
   // oxlint-disable-next-line import/no-self-import -- recursive Svelte component
   import JsonNode from './JsonNode.svelte'
   import JsonValue from './JsonValue.svelte'
   import { get_json_tree_context } from './types'
   import {
     estimate_byte_size,
-    format_byte_size,
     format_preview,
     get_child_count,
     get_children,
@@ -52,7 +52,7 @@
   const is_selected = $derived(ctx.selected_paths.has(path))
   const diff_status = $derived(ctx.diff_map?.get(path)?.status ?? null)
   const byte_size = $derived(
-    expandable && is_collapsed ? format_byte_size(estimate_byte_size(value)) : ``,
+    expandable && is_collapsed ? format_bytes(estimate_byte_size(value)) : ``,
   )
 
   function toggle_collapse(event?: MouseEvent) {

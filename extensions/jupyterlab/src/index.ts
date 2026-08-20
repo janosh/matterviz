@@ -2,10 +2,10 @@
 // types MatterViz understands and document widget factories that render them, so
 // double-clicking a .cif or .traj in the Lab file browser opens a live viewer.
 //
-// The heavy lifting is the same code path the VS Code extension uses:
-// `parse_file_content` turns filename + content into a typed result and
-// `create_display` mounts the matching Svelte component. Only the host plumbing
-// (reading bytes, theming, widget lifecycle) is JupyterLab-specific.
+// The heavy lifting is the same code path the VS Code webview uses: `parse_in_worker`
+// turns filename + content into a typed result off the UI thread and `create_display`
+// mounts the matching Svelte component. Only the host plumbing (reading bytes, theming,
+// widget lifecycle) is JupyterLab-specific.
 
 import { ILayoutRestorer } from '@jupyterlab/application'
 import type { JupyterFrontEnd, JupyterFrontEndPlugin } from '@jupyterlab/application'
@@ -31,7 +31,7 @@ const load_viewer = (): Promise<typeof viewer_module> =>
 // the whole file by the time a widget factory runs. Past this size the browser tab
 // is the wrong place to do the work, since the parser copies the bytes again into
 // WASM memory on top of the string the model is already holding.
-const MAX_PARSE_BYTES = 100 * 1024 * 1024
+export const MAX_PARSE_BYTES = 100 * 1024 * 1024
 
 const matterviz_icon = new LabIcon({
   name: `matterviz:file`,
@@ -49,6 +49,8 @@ export class MatterVizViewer extends Widget {
   // Guards against an in-flight parse of a stale revision clobbering a newer one
   // when a watched file changes faster than it parses.
   private render_generation = 0
+  // Aborting also terminates the parse worker, so a superseded parse stops burning CPU
+  private parse_controller: AbortController | null = null
 
   constructor(private readonly context: DocumentRegistry.Context) {
     super()
@@ -95,6 +97,8 @@ export class MatterVizViewer extends Widget {
 
   private async render(): Promise<void> {
     const generation = ++this.render_generation
+    this.parse_controller?.abort()
+    const { signal } = (this.parse_controller = new AbortController())
     const filename = PathExt.basename(this.context.path)
     const is_base64 = this.context.contentsModel?.format === `base64`
     const content = this.context.model.toString()
@@ -109,8 +113,8 @@ export class MatterVizViewer extends Widget {
     }
 
     try {
-      const { create_display, parse_file_content } = await load_viewer()
-      const result = await parse_file_content(content, filename, is_base64)
+      const { create_display, parse_in_worker } = await load_viewer()
+      const result = await parse_in_worker(content, filename, is_base64, { signal })
       if (!(await this.clear_for(generation))) return
       this.mounted_app = create_display(this.viewer_root, result)
     } catch (error) {
@@ -143,6 +147,7 @@ export class MatterVizViewer extends Widget {
     // Bump the generation so a parse still in flight discards its result instead
     // of mounting into a detached node.
     this.render_generation++
+    this.parse_controller?.abort()
     this.context.model.contentChanged.disconnect(this.on_content_changed, this)
     void this.unmount_current()
     super.dispose()

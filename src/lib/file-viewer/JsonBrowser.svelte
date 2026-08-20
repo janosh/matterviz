@@ -180,16 +180,6 @@
     ),
   )
 
-  // Mark renderable tree nodes as draggable via attribute (no per-node listeners)
-  function mark_draggable_nodes(): void {
-    if (!sidebar_element) return
-    for (const node of sidebar_element.querySelectorAll(`[data-path]`)) {
-      const el = node as HTMLElement
-      const tree_path = el.getAttribute(`data-path`) ?? ``
-      el.draggable = renderable_tree_paths.has(tree_path)
-    }
-  }
-
   // Single delegated dragstart handler on sidebar (no per-node listeners needed)
   $effect(() => {
     if (!sidebar_element) return
@@ -229,28 +219,41 @@
   })
 
   // === Badge injection ===
+  // One pass over the tree's nodes: mark renderable ones draggable (no per-node listeners)
+  // and inject a badge per renderable path, keyed by the node's tree path
   function apply_badges(): void {
-    if (!sidebar_element || renderable_paths.size === 0) return
+    if (!sidebar_element) return
     for (const existing of sidebar_element.querySelectorAll(`.renderable-badge`)) {
       existing.remove()
     }
-    for (const [data_path, info] of renderable_paths) {
-      const node = sidebar_element.querySelector(
-        `[data-path="${CSS.escape(data_to_tree_path(data_path))}"]`,
-      )
-      if (!node) continue
-      const colon_el = node.querySelector(`.colon`)
-      const insert_after = colon_el ?? node.querySelector(`.node-key`) ?? node
-      const badge = document.createElement(`span`)
-      badge.className = `renderable-badge`
-      badge.textContent = info.label
-      badge.title = `Drag to canvas or click to render`
-      badge.dataset.renderable_path = data_path
-      badge.dataset.renderable_type = info.type
-      badge.style.background = TYPE_COLORS[info.type]
-      badge.style.color = pick_contrast_color({ background: TYPE_COLORS[info.type] })
-      badge.draggable = true
-      insert_after.after(badge)
+    const badges_by_tree_path = new Map<
+      string,
+      [string, { type: RenderableType; label: string }][]
+    >()
+    for (const entry of renderable_paths) {
+      const tree_path = data_to_tree_path(entry[0])
+      badges_by_tree_path.set(tree_path, [
+        ...(badges_by_tree_path.get(tree_path) ?? []),
+        entry,
+      ])
+    }
+    for (const node of sidebar_element.querySelectorAll<HTMLElement>(`[data-path]`)) {
+      const tree_path = node.dataset.path ?? ``
+      node.draggable = renderable_tree_paths.has(tree_path)
+      const insert_after =
+        node.querySelector(`.colon`) ?? node.querySelector(`.node-key`) ?? node
+      for (const [data_path, info] of badges_by_tree_path.get(tree_path) ?? []) {
+        const badge = document.createElement(`span`)
+        badge.className = `renderable-badge`
+        badge.textContent = info.label
+        badge.title = `Drag to canvas or click to render`
+        badge.dataset.renderable_path = data_path
+        badge.dataset.renderable_type = info.type
+        badge.style.background = TYPE_COLORS[info.type]
+        badge.style.color = pick_contrast_color({ background: TYPE_COLORS[info.type] })
+        badge.draggable = true
+        insert_after.after(badge)
+      }
     }
   }
 
@@ -294,7 +297,7 @@
     return () => globalThis.removeEventListener(`keydown`, on_keydown)
   })
 
-  // Re-apply badges + draggable attributes when tree DOM changes.
+  // Re-apply badges when tree DOM changes.
   // Guard with a flag so our own badge DOM mutations don't re-trigger the observer,
   // and coalesce rapid mutations into a single rAF.
   let applying_badges = false
@@ -309,7 +312,6 @@
         applying_badges = true
         try {
           apply_badges()
-          mark_draggable_nodes()
         } finally {
           applying_badges = false
         }
@@ -469,7 +471,6 @@
 
     const structure_mount_props = {
       allow_file_drop: false,
-      enable_tips: false,
       ...structure_props(merged_defaults),
       ...common_props,
     }

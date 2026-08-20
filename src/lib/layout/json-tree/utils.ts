@@ -414,13 +414,6 @@ export function build_ghost_map(diff_map: Map<string, DiffEntry>): Map<string, G
   return ghost_map
 }
 
-// Format byte size as human-readable string (e.g., "1.2 KB")
-export function format_byte_size(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
-
 // Compute diff between old and new values, returning path -> DiffEntry map
 // Only paths that differ are included (unchanged paths are omitted)
 export function compute_diff(

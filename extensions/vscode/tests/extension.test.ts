@@ -17,7 +17,7 @@ import { gzipSync } from 'node:zlib'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import type { ExtensionContext, Tab, TextEditor, Uri, WebviewOptions } from 'vscode'
 import pkg_json from '../package.json' with { type: 'json' }
-import type { MessageData } from '../src/extension'
+import type { WebviewToHostMessage } from '$lib/file-viewer/host-protocol'
 import { MAX_TEXT_TRAJECTORY_SIZE } from '../src/node-io'
 import {
   activate,
@@ -66,13 +66,13 @@ const mock_base64 = Buffer.from(`mock content`).toString(`base64`)
 // request envelopes: the protocol requires `filename` even though the VS Code host
 // re-derives it from file_path
 const basename_of = (file_path: string) => file_path.split(`/`).pop() ?? file_path
-const large_file_msg = (file_path: string, request_id: string): MessageData => ({
+const large_file_msg = (file_path: string, request_id: string): WebviewToHostMessage => ({
   command: `request_large_file`,
   request_id,
   file_path,
   filename: basename_of(file_path),
 })
-const frame_msg = (file_path: string, frame_index: number): MessageData => ({
+const frame_msg = (file_path: string, frame_index: number): WebviewToHostMessage => ({
   command: `request_frame`,
   request_id: `frame-request`,
   file_path,
@@ -82,7 +82,7 @@ const frame_msg = (file_path: string, frame_index: number): MessageData => ({
 const watch_msg = (
   file_path: string,
   command: `startWatching` | `stopWatching` = `startWatching`,
-): MessageData => ({ command, ...msg_args, file_path })
+): WebviewToHostMessage => ({ command, ...msg_args, file_path })
 
 type CommandCallback = (uri?: Uri) => Promise<void> | void
 
@@ -302,7 +302,6 @@ describe(`MatterViz Extension`, () => {
       })
 
     test(`should have matterviz.viewer custom editor defined`, () => {
-      expect(matterviz_editor).toBeDefined()
       expect(matterviz_editor?.displayName).toBe(`MatterViz Viewer`)
     })
 
@@ -774,7 +773,7 @@ describe(`MatterViz Extension`, () => {
     `malformed message handling: $command`,
     async (msg) => {
       await expect(
-        handle_msg({ ...msg, ...msg_args } as unknown as MessageData),
+        handle_msg({ ...msg, ...msg_args } as unknown as WebviewToHostMessage),
       ).resolves.toBeUndefined()
     },
   )
@@ -1323,7 +1322,7 @@ describe(`MatterViz Extension`, () => {
         expect(mock_file_system_watcher.onDidDelete).toHaveBeenCalledWith(expect.any(Function))
         mock_file_system_watcher.dispose.mockClear()
 
-        await expect(handle_msg(stop_watching)).resolves.not.toThrow()
+        await handle_msg(stop_watching) // no webview: must not touch the shared watcher
         expect(mock_file_system_watcher.dispose).not.toHaveBeenCalled()
         expect(active_watchers.has(watch_path)).toBe(true)
 
@@ -1344,7 +1343,7 @@ describe(`MatterViz Extension`, () => {
           webview: mock_webview,
         },
       ])(`should handle startWatching $label gracefully`, async ({ message, webview }) => {
-        await expect(handle_msg(message, webview)).resolves.not.toThrow()
+        await handle_msg(message, webview)
         expect(mock_vscode.workspace.createFileSystemWatcher).not.toHaveBeenCalled()
       })
 
@@ -1435,7 +1434,7 @@ describe(`MatterViz Extension`, () => {
       vi.useFakeTimers()
       try {
         stub_auto_render(auto_render)
-        expect(() => get_open_document_callback()({ uri })).not.toThrow()
+        get_open_document_callback()({ uri })
         await vi.advanceTimersByTimeAsync(200)
         expect(mock_vscode.window.createWebviewPanel).not.toHaveBeenCalled()
       } finally {
@@ -1449,8 +1448,7 @@ describe(`MatterViz Extension`, () => {
       // nested path checks that eligibility uses the basename, not the full path
       const mock_document = { uri: { scheme: `file`, fsPath: `/test/dist/structure.cif` } }
 
-      expect(() => get_open_document_callback()(mock_document)).not.toThrow()
-
+      get_open_document_callback()(mock_document)
       await vi.waitFor(() => {
         expect(mock_vscode.window.showErrorMessage).toHaveBeenCalledWith(
           expect.stringContaining(`MatterViz auto-render failed:`),
@@ -1539,7 +1537,6 @@ describe(`MatterViz Extension`, () => {
       ],
     ])(`handles %s without throwing`, (_label, make_config) => {
       mock_vscode.workspace.getConfiguration.mockImplementation(() => make_config())
-      expect(() => get_defaults()).not.toThrow()
       expect(get_defaults()).toEqual(
         expect.objectContaining({
           structure: expect.any(Object),

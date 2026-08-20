@@ -161,6 +161,24 @@ test(`falls back to compute_sync when Worker is missing`, async () => {
   expect(FakeWorker.instances).toHaveLength(0)
 })
 
+test(`falls back to compute_sync when the worker constructor throws, and stops retrying it`, async () => {
+  const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
+  const create_worker = vi.fn(() => {
+    throw new DOMException(`cannot be accessed from origin`, `SecurityError`)
+  })
+  const run = create_worker_client<{ tag: string }, Record<string, unknown>, string>({
+    label: `Test`,
+    create_worker,
+    compute_sync: ({ tag }) => `sync:${tag}`,
+    build_payload: (input) => input,
+  })
+  await expect(run({ tag: `a` }, {})).resolves.toBe(`sync:a`)
+  await expect(run({ tag: `b` }, {})).resolves.toBe(`sync:b`)
+  expect(create_worker).toHaveBeenCalledOnce()
+  expect(warn).toHaveBeenCalledOnce()
+  warn.mockRestore()
+})
+
 test(`an explicit null result is delivered rather than reported as missing`, async () => {
   const run = make_client<number | null>(() => 0)
   const pending = run({ tag: `a` }, {})

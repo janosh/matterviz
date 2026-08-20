@@ -1,8 +1,9 @@
 // Module worker that runs the worker-safe parse path off the UI thread so opening
-// large files (100+ MB HDF5) doesn't freeze the window. Protocol: receives
-// { id, content, filename, is_base64 }, answers { id, result } | { id, error }.
-// LARGE_FILE markers never reach this worker (they need the host postMessage
-// transport, available only on the main thread; see parse-in-worker.ts).
+// large files (100+ MB HDF5) doesn't freeze the window. Protocol: receives a
+// ParseWorkerRequest, posts `{ id, progress }` messages while parsing and answers once
+// with `{ id, result, frame_port? } | { id, error }`. LARGE_FILE markers never reach this
+// worker (they need the host postMessage transport, available only on the main thread;
+// see parse-in-worker.ts).
 //
 // Worker postMessage takes no targetOrigin argument (that's window.postMessage),
 // so unicorn's require-post-message-target-origin is a false positive here.
@@ -16,23 +17,16 @@ import type {
 import { trajectory_data_transferables } from '$lib/trajectory/helpers'
 import { parse_trajectory_async } from '$lib/trajectory/parse'
 import { Hdf5TrajectoryGroupSelectionError } from '$lib/trajectory/parse/hdf5'
-import { parse_file_content, type ParseResult } from './parse'
+import type { ParseResult } from './parse'
 import type {
-  AnyParseWorkerRequest,
   FrameWorkerRequest,
   ParseWorkerRequest,
   ParseWorkerResponse,
-  TrajectoryParseWorkerRequest,
 } from './parse-worker-protocol'
-import { dispose_frame_port, should_index_worker_xyz } from './parse-worker-protocol'
+import { dispose_frame_port, parse_file_content_indexed } from './parse-worker-protocol'
 
 const error_message = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
-
-const is_trajectory_request = (
-  request: AnyParseWorkerRequest,
-): request is TrajectoryParseWorkerRequest =>
-  `kind` in request && request.kind === `trajectory`
 
 const create_frame_loader_port = (
   frame_loader: FrameLoader,
@@ -118,6 +112,8 @@ const create_frame_loader_port = (
   return channel.port2
 }
 
+// Strip the non-cloneable frame loader off an indexed result: packed frame stores travel as
+// transferred buffers, anything else is served from this worker over a frame port.
 export const prepare_parse_result = (
   id: number,
   result: ParseResult,
@@ -130,10 +126,7 @@ export const prepare_parse_result = (
   const { frame_loader, frame_store } = trajectory
   trajectory.frame_loader = undefined
   if (frame_store) {
-    return {
-      response: { id, result },
-      transfer: trajectory_data_transferables(frame_store),
-    }
+    return { response: { id, result }, transfer: trajectory_data_transferables(frame_store) }
   }
   const frame_port = create_frame_loader_port(frame_loader, content)
   return { response: { id, result, frame_port }, transfer: [frame_port] }
@@ -141,67 +134,43 @@ export const prepare_parse_result = (
 
 export const handle_parse_worker_request = async (
   request: ParseWorkerRequest,
-): Promise<{ response: ParseWorkerResponse; transfer: Transferable[] }> => {
-  const { id, content, filename, is_base64 } = request
-  try {
-    const result: ParseResult = should_index_worker_xyz(content, filename, is_base64)
-      ? {
-          type: `trajectory`,
-          data: await parse_trajectory_async(content, filename, undefined, {
-            use_indexing: true,
-            extract_plot_metadata: true,
-          }),
-          filename,
-        }
-      : await parse_file_content(content, filename, is_base64)
-    return prepare_parse_result(id, result, content)
-  } catch (error) {
-    return { response: { id, error: error_message(error) }, transfer: [] }
-  }
-}
-
-export const handle_any_parse_worker_request = async (
-  request: AnyParseWorkerRequest,
   on_progress?: (progress: ParseProgress) => void,
 ): Promise<{ response: ParseWorkerResponse; transfer: Transferable[] }> => {
-  if (!is_trajectory_request(request)) {
-    return handle_parse_worker_request(request)
-  }
-  const { id, data, filename, options } = request
+  const { id, filename } = request
   try {
-    const trajectory = await parse_trajectory_async(data, filename, on_progress, options)
-    return prepare_parse_result(id, { type: `trajectory`, data: trajectory, filename }, data)
+    if (request.kind === `trajectory`) {
+      const { data, options } = request
+      const trajectory = await parse_trajectory_async(data, filename, on_progress, options)
+      return prepare_parse_result(id, { type: `trajectory`, data: trajectory, filename }, data)
+    }
+    const { content, is_base64 } = request
+    const result = await parse_file_content_indexed(content, filename, is_base64)
+    return prepare_parse_result(id, result, content)
   } catch (error) {
     return {
       response: {
         id,
         error: error_message(error),
-        ...(error instanceof Hdf5TrajectoryGroupSelectionError
-          ? { hdf5_group_paths: error.group_paths }
-          : {}),
+        ...(error instanceof Hdf5TrajectoryGroupSelectionError && {
+          hdf5_group_paths: error.group_paths,
+        }),
       },
       transfer: [],
     }
   }
 }
 
-self.addEventListener(`message`, (event: MessageEvent<AnyParseWorkerRequest>) => {
+self.addEventListener(`message`, (event: MessageEvent<ParseWorkerRequest>) => {
   const { id } = event.data
   void (async () => {
     const on_progress = (progress: ParseProgress): void =>
       self.postMessage({ id, progress } satisfies ParseWorkerResponse)
-    const { response, transfer } = await handle_any_parse_worker_request(
-      event.data,
-      on_progress,
-    )
+    const { response, transfer } = await handle_parse_worker_request(event.data, on_progress)
     try {
       self.postMessage(response, { transfer })
     } catch (error) {
       dispose_frame_port(response.frame_port)
-      self.postMessage({
-        id,
-        error: `Failed to clone parse result: ${error_message(error)}`,
-      })
+      self.postMessage({ id, error: `Failed to clone parse result: ${error_message(error)}` })
     }
   })()
 })

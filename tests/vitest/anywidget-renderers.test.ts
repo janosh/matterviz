@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { DEFAULTS } from '$lib/settings'
 import { flushSync } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { MockModel } from './anywidget-mock-model'
@@ -206,6 +207,17 @@ describe(`structure wiring`, () => {
     expect((stub.read().scene_props as { atom_radius?: number }).atom_radius).toBeUndefined()
   })
 
+  test(`unset auto_rotate/show_gizmo fall back to the settings defaults`, () => {
+    // A notebook structure must not spin when the page embed does not: the widget used to
+    // hardcode auto_rotate ?? 0.2 against a settings default of 0
+    const stub = run_widget(`structure`, new MockModel({ widget_type: `structure` }))
+    expect(stub.read().scene_props).toMatchObject({
+      auto_rotate: DEFAULTS.structure.auto_rotate,
+      gizmo: DEFAULTS.structure.gizmo,
+    })
+    expect(DEFAULTS.structure.auto_rotate).toBe(0)
+  })
+
   test(`show_site_labels rides in scene_props, not a dead top-level prop`, () => {
     // Structure forwards label settings to StructureScene via {...scene_props}; it has
     // no top-level show_site_labels prop, so a top-level drive key would be dropped.
@@ -216,6 +228,29 @@ describe(`structure wiring`, () => {
     )
     expect(`show_site_labels` in stub.read()).toBe(false)
   })
+})
+
+// allow_file_drop reaches only the viewers that declare it; on the others it would fall
+// through ...rest onto the wrapper element
+describe(`static props`, () => {
+  const drop_zone_widgets = new Set([
+    `structure`,
+    `trajectory`,
+    `convex_hull`,
+    `fermi_surface`,
+    `brillouin_zone`,
+    `xrd`,
+    `rdf_plot`,
+  ])
+  test.each(widget_entries)(
+    `%s gets allow_file_drop only if it has a drop zone`,
+    (widget_type, spec) => {
+      const stub = run_widget(widget_type, seeded_model(widget_type, spec))
+      expect(stub.read().allow_file_drop).toBe(
+        drop_zone_widgets.has(widget_type) ? false : undefined,
+      )
+    },
+  )
 })
 
 describe(`WIDGET_MODEL_KEYS contract`, () => {

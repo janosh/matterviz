@@ -192,14 +192,19 @@ describe(`vaspout.h5 electronic routing`, () => {
   )
 })
 
+// allow_file_drop goes only to viewers that declare it (the phase diagram has no drop zone,
+// so the prop would land on its wrapper div)
 test.each([
-  [`fermi_surface`, { energies: [] }, `band_data`],
-  [`convex_hull`, [], `entries`],
-  [`phase_diagram`, {}, `data`],
-  [`structure`, { sites: [] }, `structure`],
-] as const)(`create_display mounts %s data`, (type, data, prop_name) => {
+  [`fermi_surface`, { energies: [] }, `band_data`, false],
+  [`convex_hull`, [], `entries`, false],
+  [`phase_diagram`, {}, `data`, undefined],
+  [`structure`, { sites: [] }, `structure`, false],
+] as const)(`create_display mounts %s data`, (type, data, prop_name, allow_file_drop) => {
   create_display(make_container(), { type, data, filename: `test.json` })
-  expect(last_mount_props()[prop_name]).toBe(data)
+  const mount_props = last_mount_props()
+  expect(mount_props[prop_name]).toBe(data)
+  expect(mount_props.allow_file_drop).toBe(allow_file_drop)
+  expect(mount_props.fullscreen_toggle).toBe(false)
 })
 
 describe(`create_display trajectory display options`, () => {
@@ -243,6 +248,9 @@ describe(`create_display trajectory display options`, () => {
     }
     expect(mount_props).not.toHaveProperty(`show_parsing_progress`)
     expect(mount_props.spinner_props).toEqual({ show_progress: true })
+    // No component declares enable_tips; it used to be spread onto every viewer's wrapper div
+    expect(mount_props).not.toHaveProperty(`enable_tips`)
+    expect(mount_props).toMatchObject({ allow_file_drop: false, fullscreen_toggle: false })
     // create_display adapts Trajectory's TrajHandlerData callback to (step_idx, total)
     ;(mount_props.on_step_change as (data: unknown) => void)({
       step_idx: 7,

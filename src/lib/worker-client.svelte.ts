@@ -243,10 +243,23 @@ export function create_worker_client<
     })
   }
 
+  // Set when the constructor itself throws (CSP, a cross-origin script URL, or a host that
+  // inlined the bundle so `new URL(..., import.meta.url)` has no usable base): the module
+  // then computes on the main thread like an environment without Worker at all.
+  let worker_unusable = false
   const get_worker = (): Worker | null => {
-    if (typeof Worker === `undefined`) return null
+    if (typeof Worker === `undefined` || worker_unusable) return null
     if (!worker) {
-      worker = create_worker()
+      try {
+        worker = create_worker()
+      } catch (error) {
+        worker_unusable = true
+        console.warn(
+          `${label} worker could not be constructed; computing on the main thread:`,
+          error,
+        )
+        return null
+      }
       worker.addEventListener(`message`, ({ data: { id, result, error, progress } }) => {
         const request = pending.get(id)
         if (!request) return

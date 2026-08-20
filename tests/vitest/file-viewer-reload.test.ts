@@ -11,7 +11,27 @@ const test_mocks = vi.hoisted(() => {
   for (const key of [`cleanupMatterViz`, `initializeMatterViz`, `matterviz_data`]) {
     vi.stubGlobal(key, undefined)
   }
+  // jsdom has neither Worker nor object URLs; record what main.ts's shim hands the native
+  // constructor and what it turns into a blob
+  const native_worker_calls: { url: string; options?: WorkerOptions }[] = []
+  const object_url_blobs: Blob[] = []
+  vi.stubGlobal(
+    `Worker`,
+    class FakeWorker {
+      constructor(url: string | URL, options?: WorkerOptions) {
+        native_worker_calls.push({ url: String(url), options })
+      }
+      terminate(): void {}
+    },
+  )
+  URL.createObjectURL = (blob: Blob) => {
+    object_url_blobs.push(blob)
+    return `blob:${location.origin}/mock-${object_url_blobs.length}`
+  }
+  URL.revokeObjectURL = vi.fn()
   return {
+    native_worker_calls,
+    object_url_blobs,
     mount: vi.fn((_component: unknown, _options: { props: Record<string, unknown> }) => ({})),
     parse_file_content: vi.fn(),
     parse_in_worker: vi.fn(),
@@ -34,6 +54,8 @@ vi.mock(`svelte`, async (import_original) => ({
   unmount: test_mocks.unmount,
 }))
 const { mount, parse_file_content, parse_in_worker, post_message, unmount } = test_mocks
+// Captured now: afterEach's unstubAllGlobals would later drop the shimmed constructor
+const ShimmedWorker = globalThis.Worker
 
 parse_in_worker.mockImplementation((content, filename, is_base64) =>
   parse_file_content(content, filename, is_base64),
@@ -173,4 +195,28 @@ test(`serializes reloads and guards cleanup, markers, and initialization`, async
   initialization_parse.resolve(result(`pending-initialization`))
   expect(await pending_initialization).toBeNull()
   expect(mount).toHaveBeenCalledTimes(mount_count)
+})
+
+test(`routes cross-origin worker scripts through a same-origin blob module`, async () => {
+  const { native_worker_calls, object_url_blobs } = test_mocks
+  const resource_url = `https://file+.vscode-resource.vscode-cdn.net/ext/dist/assets/parse-worker.js`
+  const workers = [
+    new ShimmedWorker(resource_url, { type: `module` }),
+    new ShimmedWorker(new URL(resource_url), { type: `classic`, name: `msd` }),
+    new ShimmedWorker(`${location.origin}/assets/same-origin.js`, { type: `module` }),
+    new ShimmedWorker(`blob:${location.origin}/already-a-blob`),
+  ]
+  expect(workers).toHaveLength(4)
+  expect(native_worker_calls).toEqual([
+    { url: `blob:${location.origin}/mock-1`, options: { type: `module` } },
+    // blob wrappers are module workers regardless of what the caller asked for
+    { url: `blob:${location.origin}/mock-2`, options: { type: `module`, name: `msd` } },
+    { url: `${location.origin}/assets/same-origin.js`, options: { type: `module` } },
+    { url: `blob:${location.origin}/already-a-blob`, options: undefined },
+  ])
+  // A static import would be blocked by the webview CSP; only the dynamic form loads
+  expect(await Promise.all(object_url_blobs.map((blob) => blob.text()))).toEqual(
+    Array(2).fill(`await import(${JSON.stringify(resource_url)})`),
+  )
+  expect(URL.revokeObjectURL).toHaveBeenCalledTimes(2)
 })

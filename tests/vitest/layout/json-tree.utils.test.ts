@@ -5,7 +5,6 @@ import {
   compute_diff,
   estimate_byte_size,
   find_matching_paths,
-  format_byte_size,
   format_preview,
   get_ancestor_paths,
   get_child_count,
@@ -635,21 +634,6 @@ describe(`estimate_byte_size`, () => {
   it(`handles Map and Set`, () => {
     expect(estimate_byte_size(new Map([[`key`, `val`]]))).toBeGreaterThan(2)
     expect(estimate_byte_size(new Set([1, 2, 3]))).toBeGreaterThan(2)
-  })
-})
-
-describe(`format_byte_size`, () => {
-  it.each([
-    [0, `0 B`],
-    [100, `100 B`],
-    [1023, `1023 B`],
-    [1024, `1.0 KB`],
-    [1536, `1.5 KB`],
-    [10240, `10.0 KB`],
-    [1048576, `1.0 MB`],
-    [1572864, `1.5 MB`],
-  ])(`format_byte_size(%d) = %p`, (bytes, expected) => {
-    expect(format_byte_size(bytes)).toBe(expected)
   })
 })
 

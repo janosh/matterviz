@@ -1,14 +1,15 @@
-import { VASP_STRUCTURE_FILES, VASP_VOLUMETRIC_FILES } from '$lib/constants'
+import {
+  BINARY_VIEWER_EXTENSIONS,
+  TEXT_VIEWER_EXTENSIONS,
+  VASP_VIEWER_STEMS,
+} from '$lib/constants'
 import {
   is_auto_renderable_filename,
   is_matterviz_filename,
-  MATTERVIZ_FILE_EXTENSIONS,
   normalize_browser_supported_filename,
   should_encode_filename_as_base64,
 } from '$lib/file-viewer/eligibility'
 import { expect, test } from 'vitest'
-
-const vasp_filenames = [`xdatcar`, ...VASP_STRUCTURE_FILES, ...VASP_VOLUMETRIC_FILES]
 
 test.each([
   [`structure.cif`, true],
@@ -87,15 +88,18 @@ test.each([
   expect(should_encode_filename_as_base64(filename)).toBe(expected)
 })
 
-// The literal list and the predicate must never disagree: a host that filters an open
-// dialog by the list would silently hide a format the viewer gained, or offer one it
-// cannot open.
-test.each(MATTERVIZ_FILE_EXTENSIONS)(`MatterViz can open md_run.%s`, (extension) => {
-  expect(is_matterviz_filename(`md_run.${extension}`)).toBe(true)
-})
+// The host vocabularies (what VS Code's package.json and JupyterLab register) and the
+// predicate must never disagree: a host would otherwise offer a format the viewer cannot
+// open, or hide one it gained.
+test.each([...TEXT_VIEWER_EXTENSIONS, ...BINARY_VIEWER_EXTENSIONS])(
+  `MatterViz can open md_run.%s`,
+  (extension) => {
+    expect(is_matterviz_filename(`md_run.${extension}`)).toBe(true)
+  },
+)
 
 // The extensionless entries earn their place by matching a bare uppercase VASP filename.
-test.each(vasp_filenames.map((filename) => filename.toUpperCase()))(
+test.each(VASP_VIEWER_STEMS.map((filename) => filename.toUpperCase()))(
   `%s opens without an extension`,
   (filename) => {
     expect(is_matterviz_filename(filename)).toBe(true)
@@ -110,18 +114,3 @@ test.each([`OUTCAR`, `INCAR`, `KPOINTS`, `POTCAR`, `calc/INCAR`, `si_incar.txt`]
     expect(is_matterviz_filename(filename)).toBe(false)
   },
 )
-
-test(`extension list matches the explicit host allowlist`, () => {
-  // oxfmt-ignore
-  const expected_extensions = [
-    `cif`, `mcif`, `poscar`, `vasp`, `cube`, `lmp`, `data`, `dump`, `pdb`, `mol`, `mol2`,
-    `sdf`, `mmcif`, `traj`, `xtc`, `lammpstrj`, `xyz`, `extxyz`, `bxsf`, `frmsf`,
-    `xdatcar`, `contcar`, `chgcar`, `aeccar`, `aeccar0`, `aeccar1`, `aeccar2`, `elfcar`,
-    `locpot`, `parchg`,
-  ]
-  expect(MATTERVIZ_FILE_EXTENSIONS).toEqual(expected_extensions)
-  // JSON/YAML open only with a structure keyword in the name, so a blanket entry would
-  // claim every unrelated .json a host offers. Hosts that want them add their own.
-  expect(MATTERVIZ_FILE_EXTENSIONS).not.toContain(`json`)
-  expect(MATTERVIZ_FILE_EXTENSIONS).not.toContain(`yaml`)
-})

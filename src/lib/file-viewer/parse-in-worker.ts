@@ -1,8 +1,13 @@
-// parse_in_worker: run parse_file_content in a module Web Worker (parse-worker.ts) so
-// parsing large files doesn't block the UI thread. Whenever the worker path fails (blocked
-// construction, script/wasm asset that won't load, or a parse error) the same input is
-// re-parsed on the main thread, so callers see the behavior and errors they would have
-// without a worker at all.
+// Run the file-viewer and trajectory parsers in a module Web Worker (parse-worker.ts) so
+// parsing large files doesn't block the UI thread. Each request gets its own worker: a
+// fresh worker costs ~30 ms against parses that take hundreds, aborting one is a plain
+// terminate(), and a worker that ends up serving an indexed trajectory's frames simply
+// lives on until that loader is disposed.
+//
+// Only worker *infrastructure* failures (no Worker constructor, a CSP or cross-origin
+// SecurityError, a script that fails to load, a response that won't deserialize) fall back
+// to parsing on the main thread, and only within the size limits below. Parse errors are
+// the same on either thread and are reported as-is.
 //
 // Worker.postMessage takes no targetOrigin (that's window.postMessage) and vite's static
 // worker detection requires the literal `./` URL form, so both unicorn rules are false
@@ -18,22 +23,20 @@ import type {
   TrajectorySource,
   TrajectoryType,
 } from '$lib/trajectory'
-import { parse_trajectory_async } from '$lib/trajectory/parse'
-import type { LoadingOptions } from '$lib/trajectory/parse'
-import { Hdf5TrajectoryGroupSelectionError } from '$lib/trajectory/parse/hdf5'
 import { create_packed_frame_loader } from '$lib/trajectory/helpers'
+import type { LoadingOptions } from '$lib/trajectory/parse'
+import { parse_trajectory_async } from '$lib/trajectory/parse'
+import { Hdf5TrajectoryGroupSelectionError } from '$lib/trajectory/parse/hdf5'
 import { to_error } from '$lib/utils'
-import { SvelteMap, SvelteSet } from 'svelte/reactivity'
+import { SvelteMap } from 'svelte/reactivity'
 import type { ParseResult } from './parse'
-import { parse_file_content } from './parse'
 import type {
   FrameWorkerMethod,
   FrameWorkerResponse,
   ParseWorkerRequest,
   ParseWorkerResponse,
-  TrajectoryParseWorkerRequest,
 } from './parse-worker-protocol'
-import { dispose_frame_port, should_index_worker_xyz } from './parse-worker-protocol'
+import { dispose_frame_port, parse_file_content_indexed } from './parse-worker-protocol'
 
 export * from './parse-worker-protocol'
 
@@ -45,76 +48,139 @@ export interface ParseInWorkerOptions {
   worker_factory?: WorkerFactory
   // Injectable for tests; the default is the library's own parser, which handles
   // LARGE_FILE markers by asking the host for the file over the bridge.
-  fallback_parse?: typeof parse_file_content
-  fallback_on_worker_error?: boolean
+  fallback_parse?: typeof parse_file_content_indexed
   signal?: AbortSignal
-  timeout_ms?: number // tests use small values; default WORKER_TIMEOUT_MS
 }
 
 export interface ParseTrajectoryInWorkerOptions {
   worker_factory?: WorkerFactory
   fallback_parse?: typeof parse_trajectory_async
   signal?: AbortSignal
-  timeout_ms?: number
   // Transfer ownership instead of cloning a binary source. Intended for large File-backed
   // loads that can be read from the File again if group selection is required.
   transfer_source?: boolean
 }
 
-// Generous ceiling: a 231 MB spike file parsed in ~5 s; a request past two
-// minutes means a hung worker, and the fallback re-parse is the better UX.
-const WORKER_TIMEOUT_MS = 120_000
 const BYTES_PER_MIB = 1024 ** 2
-export const MAIN_THREAD_FALLBACK_TEXT_MAX_BYTES = 25 * 1024 * 1024
-export const MAIN_THREAD_FALLBACK_BINARY_MAX_BYTES = 50 * 1024 * 1024
+export const MAIN_THREAD_FALLBACK_TEXT_MAX_BYTES = 25 * BYTES_PER_MIB
+export const MAIN_THREAD_FALLBACK_BINARY_MAX_BYTES = 50 * BYTES_PER_MIB
 
 // `.js`, not `.ts`: svelte-package compiles the sibling into dist/file-viewer/parse-worker.js,
 // and Vite resolves the .js specifier back to the .ts source in dev and in source consumers.
 const default_worker_factory: WorkerFactory = () =>
   new Worker(new URL(`./parse-worker.js`, import.meta.url), { type: `module` })
 
-// One shared worker for all parses (its import graph includes h5wasm and every
-// parser, so per-parse construction would be wasteful). Module-level so it
-// survives component remounts; HMR-safe enough for dev (a stale worker is
-// simply replaced on next use after reset).
-let shared_worker: WorkerLike | null = null
-let worker_unusable = false
 let next_request_id = 0
-let fallback_task: Promise<ParseOutcome> | null = null
-let draining_queue = false
-const queued_jobs: ParseJob[] = []
-const active_frame_loader_disposers = new SvelteSet<(error?: Error) => void>()
 
 const parse_abort_error = (): DOMException => new DOMException(`Parse cancelled`, `AbortError`)
-const worker_error = (event: Event, fallback: string): Error =>
-  new Error(event instanceof ErrorEvent && event.message ? event.message : fallback)
 
-type ParseOutcome = { result: ParseResult } | { error: Error }
-
-interface ParseJob {
-  request: ParseWorkerRequest
-  options: ParseInWorkerOptions
-  fallback_only: boolean
-  fallback_error?: Error
-  resolve: (result: ParseResult) => void
-  reject: (error: Error) => void
-  phase: `queued` | `worker` | `fallback`
-  timeout: ReturnType<typeof setTimeout> | null
-  abort_request: () => void
+// The worker itself could not be used (as opposed to a parse that failed inside it)
+class WorkerUnavailableError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options)
+    this.name = 'WorkerUnavailableError'
+  }
 }
 
-const bind_indexed_frame_loader = (
-  result: ParseResult,
-  frame_port: MessagePort | undefined,
-  owning_worker?: WorkerLike,
-): ParseResult => {
+const worker_event_error = (event: Event, fallback: string): WorkerUnavailableError =>
+  new WorkerUnavailableError(
+    event instanceof ErrorEvent && event.message ? event.message : fallback,
+  )
+
+interface WorkerParseOutcome {
+  result: ParseResult
+  frame_port?: MessagePort
+  worker: WorkerLike
+}
+
+interface RunInWorkerOptions {
+  worker_factory: WorkerFactory
+  signal?: AbortSignal
+  on_progress?: (progress: ParseProgress) => void
+  transfer?: Transferable[]
+}
+
+// Post one request to a fresh worker and settle on its reply. The worker is terminated once
+// the request settles unless the reply carries a frame port, in which case the caller binds
+// the port and the loader's dispose terminates the worker instead.
+const run_in_worker = (
+  request: ParseWorkerRequest,
+  { worker_factory, signal, on_progress, transfer = [] }: RunInWorkerOptions,
+): Promise<WorkerParseOutcome> =>
+  new Promise<WorkerParseOutcome>((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(parse_abort_error())
+      return
+    }
+    let worker: WorkerLike
+    try {
+      worker = worker_factory()
+    } catch (error) {
+      reject(new WorkerUnavailableError(to_error(error).message, { cause: error }))
+      return
+    }
+    let settled = false
+    const settle = (outcome: WorkerParseOutcome | Error, keep_worker = false): void => {
+      if (settled) return
+      settled = true
+      signal?.removeEventListener(`abort`, abort)
+      if (!keep_worker) worker.terminate()
+      if (outcome instanceof Error) reject(outcome)
+      else resolve(outcome)
+    }
+    const abort = (): void => settle(parse_abort_error())
+    worker.addEventListener(`message`, ((event: MessageEvent<ParseWorkerResponse>) => {
+      const { id, result, error, progress, frame_port, hdf5_group_paths } = event.data ?? {}
+      if (settled || id !== request.id) {
+        dispose_frame_port(frame_port)
+        return
+      }
+      if (progress) return on_progress?.(progress)
+      if (!result) {
+        return settle(
+          hdf5_group_paths
+            ? new Hdf5TrajectoryGroupSelectionError(hdf5_group_paths, error)
+            : new Error(error ?? `Parse worker returned no result for ${request.filename}`),
+        )
+      }
+      settle({ result, frame_port, worker }, Boolean(frame_port))
+    }) as EventListener)
+    // `error` before a reply means the script itself failed (asset resolution, wasm
+    // instantiation at import time, CSP)
+    worker.addEventListener(`error`, (event) =>
+      settle(worker_event_error(event, `Parse worker failed to load`)),
+    )
+    worker.addEventListener(`messageerror`, () =>
+      settle(new WorkerUnavailableError(`Parse worker response failed to deserialize`)),
+    )
+    signal?.addEventListener(`abort`, abort, { once: true })
+    try {
+      worker.postMessage(request, { transfer })
+    } catch (error) {
+      settle(new WorkerUnavailableError(to_error(error).message, { cause: error }))
+    }
+  })
+
+// Wire an indexed trajectory's frame loader back up: packed frame stores are materialized
+// locally, anything else becomes an RPC proxy over the worker's frame port.
+const bind_indexed_frame_loader = ({
+  result,
+  frame_port,
+  worker,
+}: WorkerParseOutcome): ParseResult => {
   const trajectory = result.type === `trajectory` ? (result.data as TrajectoryType) : null
-  if (!trajectory?.is_indexed) {
+  // run_in_worker keeps the worker alive only for replies that carry a port
+  const release_port = (): void => {
+    if (!frame_port) return
     dispose_frame_port(frame_port)
+    worker.terminate()
+  }
+  if (!trajectory?.is_indexed) {
+    release_port()
     return result
   }
   if (trajectory.frame_store) {
-    dispose_frame_port(frame_port)
+    release_port()
     trajectory.frame_loader = create_packed_frame_loader(trajectory.frame_store)
     return result
   }
@@ -146,7 +212,6 @@ const bind_indexed_frame_loader = (
   const dispose = (error = new Error(`Indexed frame loader was disposed`)): void => {
     if (disposed_error) return
     disposed_error = error
-    active_frame_loader_disposers.delete(dispose)
     for (const request of pending.values()) request.reject(error)
     pending.clear()
     try {
@@ -155,19 +220,17 @@ const bind_indexed_frame_loader = (
       // Port may already be closed after a hard worker terminate.
     }
     frame_port.close()
-    owning_worker?.terminate()
+    worker.terminate()
   }
   frame_port.addEventListener(`messageerror`, () =>
     dispose(new Error(`Indexed frame loader response failed to deserialize`)),
   )
-  if (owning_worker) {
-    owning_worker.addEventListener(`error`, (event) =>
-      dispose(worker_error(event, `Parse worker failed while serving indexed frames`)),
-    )
-    owning_worker.addEventListener(`messageerror`, () =>
-      dispose(new Error(`Parse worker response failed to deserialize`)),
-    )
-  }
+  worker.addEventListener(`error`, (event) =>
+    dispose(worker_event_error(event, `Parse worker failed while serving indexed frames`)),
+  )
+  worker.addEventListener(`messageerror`, () =>
+    dispose(new Error(`Parse worker response failed to deserialize`)),
+  )
   frame_port.start()
 
   const rpc = <Result>(
@@ -189,7 +252,6 @@ const bind_indexed_frame_loader = (
       }
     })
   }
-  active_frame_loader_disposers.add(dispose)
   trajectory.frame_loader = {
     requires_source: false,
     dispose,
@@ -211,401 +273,118 @@ const bind_indexed_frame_loader = (
 const utf8_size_exceeds = (text: string, max_bytes: number): boolean =>
   text.length > max_bytes || new Blob([text]).size > max_bytes
 
-// Ordinary worker failures re-parse on the UI thread only within the limits above. base64
-// payloads are ASCII, so their 4-chars-per-3-bytes ratio bounds the decoded size.
-const ordinary_fallback_is_safe = ({ request }: ParseJob): boolean =>
-  !utf8_size_exceeds(
-    request.content,
-    request.is_base64
-      ? (MAIN_THREAD_FALLBACK_BINARY_MAX_BYTES * 4) / 3
-      : MAIN_THREAD_FALLBACK_TEXT_MAX_BYTES,
+const fallback_disabled_error = (filename: string, cause: Error): Error =>
+  new Error(
+    `Parse worker failed for ${filename}; main-thread fallback is disabled above ${
+      MAIN_THREAD_FALLBACK_TEXT_MAX_BYTES / BYTES_PER_MIB
+    } MiB text or ${MAIN_THREAD_FALLBACK_BINARY_MAX_BYTES / BYTES_PER_MIB} MiB decoded binary`,
+    { cause },
   )
 
-// Default fallback. Mirrors the worker's indexed-XYZ branch so a fallback parse yields the
-// same shape; materializing every frame of a long trajectory would blow up the UI thread.
-const parse_on_main_thread = async (
-  content: string,
-  filename: string,
-  is_base64 = false,
-): Promise<ParseResult> =>
-  should_index_worker_xyz(content, filename, is_base64)
-    ? {
-        type: `trajectory`,
-        filename,
-        data: await parse_trajectory_async(content, filename, undefined, {
-          use_indexing: true,
-          extract_plot_metadata: true,
-        }),
-      }
-    : parse_file_content(content, filename, is_base64)
-
-const settle_job = (job: ParseJob, outcome: ParseOutcome): void => {
-  const queue_idx = queued_jobs.indexOf(job)
-  if (queue_idx === -1) return
-  queued_jobs.splice(queue_idx, 1)
-  clearTimeout(job.timeout ?? undefined)
-  job.options.signal?.removeEventListener(`abort`, job.abort_request)
-  if (queue_idx === 0) queueMicrotask(drain_queue)
-  if (`result` in outcome) job.resolve(outcome.result)
-  else job.reject(outcome.error)
-}
-
-const terminate_worker = (): void => {
-  const worker = shared_worker
-  shared_worker = null
-  worker?.terminate()
-}
-
-const run_fallback = (job: ParseJob, error?: Error, warn = true): void => {
-  job.phase = `fallback`
-  clearTimeout(job.timeout ?? undefined)
-  job.timeout = null
-  if (error && job.options.fallback_on_worker_error === false) {
-    settle_job(job, { error })
-    return
-  }
-  if (error && !job.fallback_only && !ordinary_fallback_is_safe(job)) {
-    settle_job(job, {
-      error: new Error(
-        `Parse worker failed for a large file; main-thread fallback is disabled above ${MAIN_THREAD_FALLBACK_TEXT_MAX_BYTES / BYTES_PER_MIB} MiB text or ${MAIN_THREAD_FALLBACK_BINARY_MAX_BYTES / BYTES_PER_MIB} MiB decoded binary`,
-        { cause: error },
-      ),
-    })
-    return
-  }
-  if (error && warn) {
-    console.warn(
-      `parse_in_worker: worker parse failed for ${job.request.filename}, falling back to main thread:`,
-      error,
-    )
-  }
-  const fallback_parse = job.options.fallback_parse ?? parse_on_main_thread
-  const { content, filename, is_base64 } = job.request
-  const fallback = Promise.resolve()
-    .then(() => fallback_parse(content, filename, is_base64))
-    .then(
-      (result): ParseOutcome => ({ result }),
-      (fallback_error: unknown): ParseOutcome => ({ error: to_error(fallback_error) }),
-    )
-  fallback_task = fallback
-  void fallback.then((outcome) => {
-    if (fallback_task === fallback) fallback_task = null
-    settle_job(job, outcome)
-    drain_queue()
-  })
-}
-
-const fail_active_worker_job = (error: Error, disable_worker = false): void => {
-  const job = queued_jobs[0]?.phase === `worker` ? queued_jobs[0] : null
-  if (disable_worker) worker_unusable = true
-  terminate_worker()
-  if (job) run_fallback(job, error)
-  else queueMicrotask(drain_queue)
-}
-
-const handle_worker_message = (
-  worker: WorkerLike,
-  event: MessageEvent<ParseWorkerResponse>,
-): void => {
-  const { id, result, error, frame_port } = event.data ?? {}
-  const job = shared_worker === worker ? queued_jobs[0] : undefined
-  if (job?.phase !== `worker` || job.request.id !== id) {
-    dispose_frame_port(frame_port)
-    return
-  }
-  if (!result) {
-    run_fallback(job, new Error(error ?? `Parse worker returned no result`))
-    return
-  }
-  try {
-    // A worker serving a remote frame loader becomes trajectory-owned. Retire it from the
-    // parse pool immediately so later files parse concurrently; loader disposal terminates it.
-    const worker_owns_loader = Boolean(frame_port)
-    if (worker_owns_loader && shared_worker === worker) shared_worker = null
-    settle_job(job, {
-      result: bind_indexed_frame_loader(
-        result,
-        frame_port,
-        worker_owns_loader ? worker : undefined,
-      ),
-    })
-  } catch (bind_error) {
-    if (frame_port) worker.terminate()
-    run_fallback(job, to_error(bind_error))
-  }
-}
-
-// A worker `error` event means the script itself failed (asset resolution,
-// wasm instantiation at import time, CSP), stop using the worker entirely.
-const handle_worker_error = (worker: WorkerLike, event: Event): void => {
-  if (shared_worker !== worker) return
-  fail_active_worker_job(worker_error(event, `Parse worker failed to load`), true)
-}
-
-// A response deserialize failure invalidates this worker instance, but a fresh
-// worker can still handle later jobs.
-const handle_worker_messageerror = (worker: WorkerLike): void => {
-  if (shared_worker !== worker) return
-  const error = new Error(`Parse worker response failed to deserialize`)
-  for (const job of queued_jobs.slice(1)) {
-    if (job.options.fallback_on_worker_error === false) settle_job(job, { error })
-    else job.fallback_error = error
-  }
-  fail_active_worker_job(error)
-}
-
-const ensure_worker = (factory: WorkerFactory): WorkerLike | null => {
-  if (worker_unusable || shared_worker) return shared_worker
-  try {
-    const worker = factory()
-    shared_worker = worker
-    worker.addEventListener(`message`, ((event: MessageEvent<ParseWorkerResponse>) =>
-      handle_worker_message(worker, event)) as EventListener)
-    worker.addEventListener(`error`, (event) => handle_worker_error(worker, event))
-    worker.addEventListener(`messageerror`, () => handle_worker_messageerror(worker))
-  } catch {
-    shared_worker?.terminate()
-    shared_worker = null
-    worker_unusable = true
-  }
-  return shared_worker
-}
-
-const abort_job = (job: ParseJob): void => {
-  if (queued_jobs.indexOf(job) === 0) {
-    if (job.phase === `worker`) terminate_worker()
-    // Release the queue now; the orphaned fallback promise settles into a removed job.
-    else if (job.phase === `fallback`) fallback_task = null
-  }
-  settle_job(job, { error: parse_abort_error() })
-}
-
-const time_out_active_job = (job: ParseJob, timeout_ms: number): void => {
-  if (queued_jobs[0] !== job || job.phase !== `worker`) return
-  terminate_worker()
-  run_fallback(job, new Error(`Parse worker timed out after ${timeout_ms / 1000}s`))
-}
-
-function drain_queue(): void {
-  if (fallback_task || draining_queue) return
-  draining_queue = true
-  try {
-    const job = queued_jobs[0]
-    if (!job || job.phase !== `queued`) return
-    if (job.options.signal?.aborted) {
-      settle_job(job, { error: parse_abort_error() })
-      return
-    }
-    if (job.fallback_only || job.fallback_error) {
-      run_fallback(job, job.fallback_error, false)
-      return
-    }
-    const worker = ensure_worker(job.options.worker_factory ?? default_worker_factory)
-    if (queued_jobs[0] !== job) {
-      if (shared_worker === worker) terminate_worker()
-      return
-    }
-    if (!worker) {
-      run_fallback(job, new Error(`Parse worker is unavailable`), false)
-      return
-    }
-    job.phase = `worker`
-    const timeout_ms = job.options.timeout_ms ?? WORKER_TIMEOUT_MS
-    job.timeout = setTimeout(() => time_out_active_job(job, timeout_ms), timeout_ms)
-    try {
-      worker.postMessage(job.request)
-    } catch (post_error) {
-      terminate_worker()
-      run_fallback(job, to_error(post_error))
-    }
-  } finally {
-    draining_queue = false
-  }
-}
-
-// Release the shared worker and settle every active/queued job as cancelled. Tests call it
-// between cases; a host can call it to drop the worker's memory when no viewer is open.
-export const reset_parse_worker = (): void => {
-  const error = new Error(`Parse worker terminated`)
-  for (const dispose of active_frame_loader_disposers) dispose(error)
-  terminate_worker()
-  worker_unusable = false
-  fallback_task = null
-  while (queued_jobs[0]) settle_job(queued_jobs[0], { error: parse_abort_error() })
-}
-
-export const parse_in_worker = (
+export const parse_in_worker = async (
   content: string,
   filename: string,
   is_base64: boolean,
   options: ParseInWorkerOptions = {},
 ): Promise<ParseResult> => {
-  if (options.signal?.aborted) return Promise.reject(parse_abort_error())
-
-  return new Promise<ParseResult>((resolve, reject) => {
-    const job: ParseJob = {
-      request: { id: next_request_id++, content, filename, is_base64 },
-      options,
-      // LARGE_FILE markers resolve through a host bridge available only on the
-      // main thread, but still use the queue's abort/reset lifecycle.
-      fallback_only: content.startsWith(`LARGE_FILE:`),
-      resolve,
-      reject,
-      phase: `queued`,
-      timeout: null,
-      abort_request: () => {},
-    }
-    job.abort_request = () => abort_job(job)
-    queued_jobs.push(job)
-    options.signal?.addEventListener(`abort`, job.abort_request, { once: true })
-    if (options.signal?.aborted) abort_job(job)
-    else drain_queue()
-  })
+  const {
+    signal,
+    worker_factory = default_worker_factory,
+    fallback_parse = parse_file_content_indexed,
+  } = options
+  if (signal?.aborted) throw parse_abort_error()
+  // LARGE_FILE markers resolve through a host bridge available only on the main thread
+  if (content.startsWith(`LARGE_FILE:`)) return fallback_parse(content, filename, is_base64)
+  try {
+    const outcome = await run_in_worker(
+      { kind: `file`, id: next_request_id++, content, filename, is_base64 },
+      { worker_factory, signal },
+    )
+    return bind_indexed_frame_loader(outcome)
+  } catch (error) {
+    if (!(error instanceof WorkerUnavailableError)) throw error
+    // base64 payloads are ASCII, so their 4-chars-per-3-bytes ratio bounds the decoded size
+    const max_bytes = is_base64
+      ? (MAIN_THREAD_FALLBACK_BINARY_MAX_BYTES * 4) / 3
+      : MAIN_THREAD_FALLBACK_TEXT_MAX_BYTES
+    if (utf8_size_exceeds(content, max_bytes)) throw fallback_disabled_error(filename, error)
+    console.warn(
+      `parse_in_worker: no worker for ${filename}, parsing on the main thread:`,
+      error,
+    )
+    return fallback_parse(content, filename, is_base64)
+  }
 }
 
-// Trajectory component loads use a dedicated worker so aborting a superseded HDF5 parse can
-// terminate it immediately and an indexed frame loader cannot block later parse requests.
-export const parse_trajectory_in_worker = (
+// Trajectory component loads: progress, abort (terminates the worker), optional source
+// transfer, and HDF5 group selection surfaced as Hdf5TrajectoryGroupSelectionError.
+export const parse_trajectory_in_worker = async (
   data: TrajectorySource,
   filename: string,
   on_progress: ((progress: ParseProgress) => void) | undefined,
   loading_options: LoadingOptions,
   client_options: ParseTrajectoryInWorkerOptions = {},
 ): Promise<TrajectoryType> => {
-  if (client_options.signal?.aborted) return Promise.reject(parse_abort_error())
-
-  return new Promise<TrajectoryType>((resolve, reject) => {
-    let worker: WorkerLike | undefined
-    let source_transferred = false
-    let settled = false
-    let timeout: ReturnType<typeof setTimeout> | undefined
-    const finish = (dispose_worker = true): boolean => {
-      if (settled) return false
-      settled = true
-      if (timeout !== undefined) clearTimeout(timeout)
-      client_options.signal?.removeEventListener(`abort`, abort)
-      if (dispose_worker) worker?.terminate()
-      return true
-    }
-    const fail = (error: Error): void => {
-      if (!finish()) return
-      reject(error)
-    }
-    const fallback = (error: Error): void => {
-      if (settled) return
-      if (data instanceof Blob) {
-        return fail(
-          new Error(
-            `Blob-backed HDF5 parsing failed for ${filename}; reload the file after checking browser Web Worker and WebAssembly support`,
-            { cause: error },
-          ),
-        )
-      }
-      if (source_transferred) {
-        return fail(
-          new Error(
-            `Trajectory parse worker failed after taking ownership of ${filename}; reload the source file to retry`,
-            { cause: error },
-          ),
-        )
-      }
-      const byte_size = data instanceof ArrayBuffer ? data.byteLength : new Blob([data]).size
-      const max_bytes =
-        data instanceof ArrayBuffer
-          ? MAIN_THREAD_FALLBACK_BINARY_MAX_BYTES
-          : MAIN_THREAD_FALLBACK_TEXT_MAX_BYTES
-      if (byte_size > max_bytes) {
-        return fail(
-          new Error(
-            `Trajectory parse worker failed for ${filename}; main-thread fallback is disabled for ${byte_size} bytes above the ${max_bytes}-byte limit`,
-            { cause: error },
-          ),
-        )
-      }
-      if (!finish()) return
-      const fallback_parse = client_options.fallback_parse ?? parse_trajectory_async
-      void fallback_parse(data, filename, on_progress, loading_options).then(resolve, reject)
-    }
-    const abort = (): void => fail(parse_abort_error())
-
-    try {
-      worker = (client_options.worker_factory ?? default_worker_factory)()
-    } catch (error) {
-      fallback(to_error(error))
-      return
-    }
-
-    const request_id = next_request_id++
-    worker.addEventListener(`message`, ((event: MessageEvent<ParseWorkerResponse>) => {
-      const { id, result, error, progress, frame_port, hdf5_group_paths } = event.data ?? {}
-      if (id !== request_id || settled) {
-        dispose_frame_port(frame_port)
-        return
-      }
-      if (progress) {
-        return on_progress?.(progress)
-      }
-      if (!result) {
-        return fail(
-          hdf5_group_paths
-            ? new Hdf5TrajectoryGroupSelectionError(hdf5_group_paths, error)
-            : new Error(error ?? `Trajectory parse worker returned no result`),
-        )
-      }
-      try {
-        const keep_worker = Boolean(frame_port)
-        const bound = bind_indexed_frame_loader(
-          result,
-          frame_port,
-          keep_worker ? worker : undefined,
-        )
-        if (!finish(!keep_worker)) return
-        if (bound.type !== `trajectory`)
-          return reject(new Error(`Trajectory parse worker returned ${bound.type}`))
-        resolve(bound.data as TrajectoryType)
-      } catch (bind_error) {
-        fail(to_error(bind_error))
-      }
-    }) as EventListener)
-    worker.addEventListener(`error`, (event) =>
-      fallback(worker_error(event, `Trajectory parse worker failed to load`)),
-    )
-    worker.addEventListener(`messageerror`, () =>
-      fallback(new Error(`Trajectory parse worker response failed to deserialize`)),
-    )
-    client_options.signal?.addEventListener(`abort`, abort, { once: true })
-    if (client_options.signal?.aborted) {
-      abort()
-      return
-    }
-    const timeout_ms = client_options.timeout_ms ?? WORKER_TIMEOUT_MS
-    timeout = setTimeout(
-      () =>
-        fallback(new Error(`Trajectory parse worker timed out after ${timeout_ms / 1000}s`)),
-      timeout_ms,
-    )
-    const request_data: TrajectorySource =
-      data instanceof ArrayBuffer && !client_options.transfer_source ? data.slice(0) : data
-    const request: TrajectoryParseWorkerRequest = {
-      kind: `trajectory`,
-      id: request_id,
-      data: request_data,
-      filename,
-      options: {
-        ...loading_options,
-        ...(loading_options.atom_type_mapping && {
-          atom_type_mapping: { ...loading_options.atom_type_mapping },
-        }),
+  const {
+    signal,
+    transfer_source = false,
+    worker_factory = default_worker_factory,
+    fallback_parse = parse_trajectory_async,
+  } = client_options
+  if (signal?.aborted) throw parse_abort_error()
+  const transfer_buffer = data instanceof ArrayBuffer && transfer_source
+  const request_data = data instanceof ArrayBuffer && !transfer_buffer ? data.slice(0) : data
+  // Measured before the transfer detaches the buffer
+  const byte_size =
+    data instanceof Blob
+      ? data.size
+      : data instanceof ArrayBuffer
+        ? data.byteLength
+        : new Blob([data]).size
+  try {
+    const outcome = await run_in_worker(
+      {
+        kind: `trajectory`,
+        id: next_request_id++,
+        data: request_data,
+        filename,
+        // $state proxies are not cloneable; snapshot the one nested option object
+        options: {
+          ...loading_options,
+          ...(loading_options.atom_type_mapping && {
+            atom_type_mapping: { ...loading_options.atom_type_mapping },
+          }),
+        },
       },
-    }
-    try {
-      worker.postMessage(
-        request,
-        request_data instanceof ArrayBuffer ? { transfer: [request_data] } : undefined,
-      )
-      source_transferred = request_data === data && data instanceof ArrayBuffer
-    } catch (error) {
-      fallback(to_error(error))
-    }
-  })
+      {
+        worker_factory,
+        signal,
+        on_progress,
+        transfer: request_data instanceof ArrayBuffer ? [request_data] : [],
+      },
+    )
+    return bind_indexed_frame_loader(outcome).data as TrajectoryType
+  } catch (error) {
+    if (!(error instanceof WorkerUnavailableError)) throw error
+    const max_bytes =
+      data instanceof ArrayBuffer
+        ? MAIN_THREAD_FALLBACK_BINARY_MAX_BYTES
+        : MAIN_THREAD_FALLBACK_TEXT_MAX_BYTES
+    // Blob sources need the worker's WORKERFS mount, a transferred buffer is gone, and
+    // oversized sources would freeze the UI thread
+    const blocked_reason =
+      data instanceof Blob
+        ? `Blob-backed HDF5 parsing failed for ${filename}; reload the file after checking browser Web Worker and WebAssembly support`
+        : transfer_buffer
+          ? `Trajectory parse worker failed after taking ownership of ${filename}; reload the source file to retry`
+          : byte_size > max_bytes
+            ? `Trajectory parse worker failed for ${filename}; main-thread fallback is disabled for ${byte_size} bytes above the ${max_bytes}-byte limit`
+            : null
+    if (blocked_reason) throw new Error(blocked_reason, { cause: error })
+    console.warn(
+      `parse_trajectory_in_worker: no worker for ${filename}, parsing on the main thread:`,
+      error,
+    )
+    return fallback_parse(data, filename, on_progress, loading_options)
+  }
 }
