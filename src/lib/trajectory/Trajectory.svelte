@@ -181,8 +181,8 @@
     data_url,
     current_step_idx = $bindable(0),
     data_extractor = full_data_extractor,
-    allow_file_drop = true,
-    layout = `auto`,
+    allow_file_drop = DEFAULTS.trajectory.allow_file_drop,
+    layout = DEFAULTS.trajectory.layout,
     pane_ratio = $bindable(0.5),
     structure_props = {},
     supercell_scaling = $bindable(structure_props.supercell_scaling ?? `1x1x1`),
@@ -193,9 +193,9 @@
     error_snippet,
     show_controls,
     fullscreen_toggle = DEFAULTS.trajectory.fullscreen_toggle,
-    auto_play = false,
-    display_mode = $bindable(`structure+scatter`),
-    step_labels = 5,
+    auto_play = DEFAULTS.trajectory.auto_play,
+    display_mode = $bindable(DEFAULTS.trajectory.display_mode),
+    step_labels = DEFAULTS.trajectory.step_labels,
     x_quantity = $bindable(),
     visible_properties = $bindable(),
     property_labels,
@@ -211,7 +211,7 @@
     on_error,
     on_controller,
     fps_range = DEFAULTS.trajectory.fps_range,
-    fps = $bindable(5),
+    fps = $bindable(DEFAULTS.trajectory.fps),
     loading_options = {},
     atom_type_mapping,
     plot_skimming = true,
@@ -327,16 +327,11 @@
   let dragover = $state(false)
   let loading = $state(false)
   let error_msg = $state<string | null>(null)
-  // Non-fatal parse warnings from trajectory metadata (set by parser via attach_parse_warnings); dismissible
-  let parse_warning_msg = $state<string | undefined>(undefined)
-  $effect(() => {
+  // Non-fatal parse warnings (attach_parse_warnings); writable so the banner can be dismissed
+  let parse_warning_msg = $derived.by(() => {
     const warnings = trajectory?.metadata?.parse_warnings
-    parse_warning_msg =
-      Array.isArray(warnings) && warnings.length > 0
-        ? `${warnings.length} parse warning${warnings.length > 1 ? `s` : ``}: ${warnings.join(
-            `; `,
-          )}`
-        : undefined
+    if (!Array.isArray(warnings) || warnings.length === 0) return undefined
+    return `${warnings.length} parse warning${warnings.length > 1 ? `s` : ``}: ${warnings.join(`; `)}`
   })
   let controls_height = $state(0)
   let current_filename = $state<string | undefined>(undefined)
@@ -367,9 +362,10 @@
     io.load_trajectory_from_url,
   )
 
+  // A caller-supplied trajectory supersedes whatever load or HDF5 group choice was in flight
   $effect(() => {
     if (trajectory === load_owned_trajectory) return
-    clear_displayed_frame()
+    loaded_frame = null
     load_id += 1
     active_source_controller?.abort()
     active_source_controller = null
@@ -412,17 +408,11 @@
 
   // Avoid deep-proxying lattice_matrices: unwrapping measured 1917 ms proxied vs 1.1 ms raw.
   let trail_stream = $state.raw<TrajectoryPositionStream | null>(null)
-  let show_trajectory_lines = $state(
-    untrack(
-      () =>
-        structure_props.scene_props?.show_trajectory_lines ??
-        DEFAULTS.structure.show_trajectory_lines,
-    ),
+  // Writable: the structure controls toggle it, a host-side scene_props change resets it
+  let show_trajectory_lines = $derived(
+    structure_props.scene_props?.show_trajectory_lines ??
+      DEFAULTS.structure.show_trajectory_lines,
   )
-  $effect(() => {
-    const configured = structure_props.scene_props?.show_trajectory_lines
-    if (configured !== undefined) show_trajectory_lines = configured
-  })
   let trajectory_lines_available = $derived(
     Boolean(
       trajectory &&
@@ -489,32 +479,37 @@
     defer_expensive_geometry: spectroscopy_pane_open ? false : scrub_active,
   })
 
-  // Current frame - load on demand for indexed trajectories
-  // Frames can contain thousands of sites and the owning trajectory can contain tens of
-  // thousands of frames. Deep-proxying each selected frame makes pointer scrubbing pay proxy
-  // traps throughout structure normalization, bonding, and scene-buffer updates.
-  let current_frame = $state.raw<TrajectoryFrame | null>(null)
-  let current_frame_idx: number | undefined
+  // Frame the on-demand loader resolved for an indexed trajectory. Raw: frames can hold
+  // thousands of sites and deep-proxying each one makes scrubbing pay proxy traps throughout
+  // structure normalization, bonding, and scene-buffer updates.
+  let loaded_frame = $state.raw<{
+    owner: TrajectoryType
+    idx: number
+    frame: TrajectoryFrame
+  } | null>(null)
   let frame_read_active = false
   let pending_frame_idx: number | undefined
-  const set_current_frame = (frame: TrajectoryFrame | null, frame_idx?: number): void => {
-    current_frame = frame
-    current_frame_idx = frame ? frame_idx : undefined
+  const set_current_frame = (
+    owner: TrajectoryType,
+    frame_idx: number,
+    frame: TrajectoryFrame | null,
+  ): void => {
+    loaded_frame = frame ? { owner, idx: frame_idx, frame } : null
   }
+  // In-memory trajectories index straight into frames; indexed ones show the loaded frame
+  // only while it matches the step, so the info pane never describes a stale frame mid-load.
+  let current_frame = $derived.by((): TrajectoryFrame | null => {
+    if (!trajectory || current_step_idx < 0 || current_step_idx >= total_frames) return null
+    if (!trajectory.frame_loader) return trajectory.frames[current_step_idx] ?? null
+    return loaded_frame?.owner === trajectory && loaded_frame.idx === current_step_idx
+      ? loaded_frame.frame
+      : null
+  })
 
-  // Update current frame when step changes
+  // Indexed/streaming trajectories fetch the frame for the current step on demand
   $effect(() => {
-    if (trajectory && current_step_idx >= 0 && current_step_idx < total_frames) {
-      if (trajectory.frame_loader) {
-        // Load frame on demand (works for both indexed files and external streaming)
-        set_current_frame(null)
-        schedule_frame_load_on_demand(current_step_idx)
-      } else {
-        // Use in-memory frame for regular trajectories
-        set_current_frame(trajectory.frames[current_step_idx] || null, current_step_idx)
-      }
-    } else {
-      set_current_frame(null)
+    if (trajectory?.frame_loader && current_step_idx >= 0 && current_step_idx < total_frames) {
+      schedule_frame_load_on_demand(current_step_idx)
     }
   })
 
@@ -709,7 +704,7 @@
     const cached = cache_get(frame_idx)
     const frame = cached ?? load_trajectory.frames[frame_idx]
     if (!frame) return false
-    set_current_frame(frame, frame_idx)
+    set_current_frame(load_trajectory, frame_idx, frame)
     prefetch_frames(frame_idx)
     return true
   }
@@ -728,7 +723,7 @@
       const frame = load_trajectory.frame_loader.load_frame_sync(frame_idx)
       if (frame) {
         cache_put(frame_idx, frame)
-        set_current_frame(frame, frame_idx)
+        set_current_frame(load_trajectory, frame_idx, frame)
         prefetch_frames(frame_idx)
       }
       pending_frame_idx = undefined
@@ -780,12 +775,12 @@
       // cache the decoded frame even if it arrived stale (still valid data for that index)
       if (frame && frame_cache_owner === load_trajectory) cache_put(frame_idx, frame)
       if (!request_is_current()) return
-      set_current_frame(frame, frame_idx)
+      set_current_frame(load_trajectory, frame_idx, frame)
       prefetch_from_idx = frame_idx
     } catch (error) {
       if (!request_is_current()) return
       console.error(`Failed to load frame ${frame_idx}:`, error)
-      set_current_frame(null)
+      loaded_frame = null
       on_error?.({
         error_msg: `Failed to load frame ${frame_idx}: ${error}`,
         filename: current_filename,
@@ -798,17 +793,17 @@
     }
   }
 
-  // Current frame structure for display. Holds the last resolved structure so the 3D
-  // view doesn't blank while an uncached frame loads on demand (current_frame is nulled
-  // during loads to keep the info pane from showing the previous frame's data).
-  let current_structure = $state.raw<AnyStructure | undefined>(undefined)
-  const clear_displayed_frame = (): void => {
-    set_current_frame(null)
-    current_structure = undefined
+  // Structure on display. Holds the last resolved structure of the SAME trajectory so the 3D
+  // view doesn't blank while an uncached frame loads on demand (current_frame is null during
+  // loads), and resets on a swap so StructureScene never fits its camera to stale coordinates.
+  let displayed = {
+    owner: undefined as TrajectoryType | undefined,
+    structure: undefined as AnyStructure | undefined,
   }
-  $effect(() => {
-    if (current_frame?.structure) current_structure = current_frame.structure
-    else if (!trajectory) current_structure = undefined
+  let current_structure = $derived.by((): AnyStructure | undefined => {
+    if (displayed.owner !== trajectory) displayed = { owner: trajectory, structure: undefined }
+    if (current_frame) displayed.structure = current_frame.structure
+    return displayed.structure
   })
   // Track hidden elements (persists across frame changes)
   let hidden_elements = $state(new SvelteSet<ElementSymbol>())
@@ -946,12 +941,14 @@
   // trajectory whose steps are just 0, 1, 2, … offers nothing beyond the frame index.
   // Keep this priority explicit rather than coupling the default to the options' display order.
   // build_x_map validates explicit user choices, so x_map.quantity is the one actually in effect.
-  let requested_x_quantity = $state<TrajectoryXQuantity | undefined>(untrack(() => x_quantity))
-  let auto_picked_x_quantity = $state<TrajectoryXQuantity | undefined>(undefined)
-  let auto_pick_active = $state(false)
+  // The host's (or the user's, via the select) standing request; only an x_quantity value the
+  // component did not write back itself counts as one, and it survives trajectories that
+  // cannot honour it so it is restored once one can.
+  let requested_x_quantity: TrajectoryXQuantity | undefined = untrack(() => x_quantity)
+  let written_x_quantity: TrajectoryXQuantity | undefined
   let chosen_x_quantity = $derived.by((): TrajectoryXQuantity => {
-    const component_owned = auto_pick_active && x_quantity === auto_picked_x_quantity
-    const preferred = component_owned ? requested_x_quantity : x_quantity
+    if (x_quantity !== written_x_quantity) requested_x_quantity = x_quantity
+    const preferred = requested_x_quantity
     if (preferred !== undefined && x_quantity_options.includes(preferred)) return preferred
     if (x_quantity_options.includes(`time`)) return `time`
     if (x_quantity_options.includes(`step`)) return `step`
@@ -969,15 +966,8 @@
   // prevent time→step→frame auto-pick once the trajectory arrives.
   $effect(() => {
     if (frame_step_samples.frame_numbers.length === 0) return
-    const component_owned = auto_pick_active && x_quantity === auto_picked_x_quantity
-    if (!component_owned) requested_x_quantity = x_quantity
-    if (x_quantity !== x_map.quantity) {
-      x_quantity = x_map.quantity
-      auto_picked_x_quantity = x_map.quantity
-      auto_pick_active = true
-    } else if (!component_owned) {
-      auto_pick_active = false
-    }
+    written_x_quantity = x_map.quantity
+    if (x_quantity !== x_map.quantity) x_quantity = x_map.quantity
   })
   // Time between frames, so displacement analyses report D in real units instead of
   // asking the user to retype a timestep the file already stated
@@ -1043,30 +1033,26 @@
   })
   // The structure tracks every scrub frame, but repainting the entire plot merely to move its
   // small active-frame tick competes with that 3D update. Hold the tick still during a pointer
-  // burst and snap it to the selected frame when the scrub settles.
-  let settled_plot_step_idx = $state(current_step_idx)
-  $effect(() => {
-    if (!scrub_active) settled_plot_step_idx = current_step_idx
+  // burst (no current_step_idx read while scrubbing) and snap it when the scrub settles.
+  let last_settled_step = untrack(() => current_step_idx)
+  let settled_plot_step_idx = $derived.by(() => {
+    if (!scrub_active) last_settled_step = current_step_idx
+    return last_settled_step
   })
   // Report the current step to consumers after explicit slider, input, or plot navigation.
-  function notify_step_change(step_idx: number = current_step_idx) {
-    if (!trajectory || !Number.isFinite(step_idx)) return
-    const last_frame = Math.max(total_frames - 1, 0)
-    const clamped_step = Math.min(Math.max(Math.round(step_idx), 0), last_frame)
+  function notify_step_change() {
+    if (!trajectory) return
     on_step_change?.({
       trajectory,
-      step_idx: clamped_step,
+      step_idx: current_step_idx,
       frame_count: total_frames,
-      frame: current_frame_idx === clamped_step ? current_frame || undefined : undefined,
+      frame: current_frame ?? undefined,
     })
   }
   // Step navigation (streaming frame loading is handled by the reactive effect).
   function commit_step(idx: number) {
     if (idx < 0 || idx >= total_frames || idx === current_step_idx) return
     current_step_idx = idx
-    if (trajectory && !trajectory.frame_loader) {
-      set_current_frame(trajectory.frames[idx] || null, idx)
-    }
     notify_step_change()
     wrapper?.dispatchEvent(
       new CustomEvent(`matterviz:trajectory-step-commit`, { detail: { step_idx: idx } }),
@@ -1216,42 +1202,8 @@
     error_msg = null
   }
 
-  // Handle internal file format drops
-  async function handle_internal_file_drop(
-    internal_data: string,
-    should_commit: () => boolean,
-    signal?: AbortSignal,
-  ): Promise<boolean> {
-    try {
-      const file_info = JSON.parse(internal_data)
-      const source = { source_filename: file_info.name }
-      let filename = file_info.name
-
-      // Check if this is a binary file
-      let content = file_info.content
-      if (file_info.is_binary && !(content instanceof ArrayBuffer)) {
-        if (!file_info.content_url) {
-          console.warn(`Binary file without ArrayBuffer or blob URL:`, file_info.name)
-          return true
-        }
-        const response = await fetch(file_info.content_url, { signal })
-        if (!response.ok) throw new Error(`Fetch failed: ${response.status}`)
-        const loaded = await io.decompress_trajectory_file(
-          new File([await response.blob()], filename),
-          signal,
-        )
-        content = loaded.content
-        filename = loaded.filename
-      }
-      await load_trajectory_data(content, filename, { ...source, should_commit })
-      return true
-    } catch (error) {
-      console.warn(`Failed to parse internal file data:`, error)
-      return false
-    }
-  }
-
-  // Handle file drop events with optimized large file support
+  // Drops supersede any load in flight. Not the shared file_drop_zone: trajectories keep HDF5
+  // as a Blob for lazy h5wasm reads and abort a running decompression instead of queueing.
   async function handle_file_drop(event: DragEvent) {
     event.preventDefault()
     dragover = false
@@ -1266,61 +1218,31 @@
     clear_hdf5_group_picker()
     loading = true
     parsing_progress = null
-    let dropped_file: File | undefined
+    // FilePicker drops carry a URL; OS/IDE drops carry a File (often plus a text/plain path)
+    const dropped_url = io.dropped_file_url(event)
+    const dropped_file = dropped_url ? undefined : event.dataTransfer?.files[0]
 
     try {
-      // Check for our custom internal file format first
-      const internal_data = event.dataTransfer?.getData(`application/x-matterviz-file`)
-      if (internal_data) {
-        const handled = await handle_internal_file_drop(
-          internal_data,
-          should_commit,
-          source_controller.signal,
-        )
-        if (handled) return
-      }
-
-      // Handle URL-based files (e.g. from FilePicker)
-      const dropped_url = io.dropped_file_url(event)
-      if (dropped_url && io.hdf5_compression_format(dropped_url) === `gzip`) {
+      if (io.hdf5_compression_format(dropped_url ?? dropped_file?.name ?? ``) === `gzip`) {
         parsing_progress = hdf5_decompression_progress()
       }
-      const handled = dropped_url
-        ? await io.handle_trajectory_url_drop(
-            event,
-            (content, filename, metadata) =>
-              load_trajectory_data(content, filename, { ...metadata, should_commit }),
-            source_controller.signal,
-          )
-        : false
-
-      if (handled) return
-
-      // Handle file system drops with optimized large file support
-      const file = event.dataTransfer?.files[0]
-      if (file) {
-        dropped_file = file
-        if (io.hdf5_compression_format(file.name) === `gzip`) {
-          parsing_progress = hdf5_decompression_progress()
-        }
+      if (dropped_url) {
+        await io.load_trajectory_from_url(
+          dropped_url,
+          (content, filename, metadata) =>
+            load_trajectory_data(content, filename, { ...metadata, should_commit }),
+          source_controller.signal,
+        )
+      } else if (dropped_file) {
         const { content, filename } = await io.decompress_trajectory_file(
-          file,
+          dropped_file,
           source_controller.signal,
         )
         await load_trajectory_data(content, filename, {
-          source_filename: file.name,
-          file,
+          source_filename: dropped_file.name,
+          file: dropped_file,
           should_commit,
         })
-        // Don't fall through: drops from IDEs/file managers often also carry a
-        // text/plain payload (the file path) which would clobber the loaded data
-        return
-      }
-
-      // Check for plain text data (fallback)
-      const text_data = event.dataTransfer?.getData(`text/plain`)
-      if (text_data) {
-        await load_trajectory_data(text_data, `trajectory.json`, { should_commit })
       }
     } catch (error) {
       if (!should_commit()) return
@@ -1448,10 +1370,7 @@
         parsed_trajectory.frame_loader?.dispose?.()
         return
       }
-      // A newly parsed trajectory is a different viewing context. Keeping the previous
-      // structure for this render lets StructureScene fit its camera to stale coordinates
-      // before the selected trajectory's preview frame arrives.
-      clear_displayed_frame()
+      loaded_frame = null
       trajectory = parsed_trajectory
       load_owned_trajectory = trajectory
       on_trajectory_loaded?.(trajectory)

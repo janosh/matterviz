@@ -198,8 +198,9 @@ export const to_scalar_number = (data: unknown): number | null => {
   return to_finite_number(Array.isArray(data) ? data[0] : data)
 }
 
-export const unique_strings = (values: string[] | undefined): string[] =>
-  values?.filter((value, value_idx) => values.indexOf(value) === value_idx) ?? []
+export const unique_strings = (values: string[] | undefined): string[] => [
+  ...new Set(values ?? []),
+]
 
 export const positive_integer_stride = (value: number | undefined, label: string): number => {
   const stride = value ?? 1
@@ -328,15 +329,12 @@ export async function with_h5_file<T>(
   }
 }
 
-export interface OpenH5Source {
-  h5_file: h5wasm.File
-  close: () => void
-}
-
+// Opens an in-memory (ArrayBuffer) or WORKERFS-mounted (Blob) HDF5 file. `close` is
+// idempotent and always releases both the h5wasm handle and the backing FS entry.
 export async function open_h5_source(
   source: ArrayBuffer | Blob,
   filename?: string,
-): Promise<OpenH5Source> {
+): Promise<{ h5_file: h5wasm.File; close: () => void }> {
   const h5 = await import(`h5wasm`)
   const { FS } = await h5.ready
   const file_basename =

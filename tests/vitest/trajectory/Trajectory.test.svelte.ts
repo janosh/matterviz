@@ -1508,7 +1508,7 @@ describe(`Trajectory`, () => {
         items: [],
         getData: (type: string) =>
           type === `application/json`
-            ? JSON.stringify({ url: `https://example.com/trajectory.h5.zip` })
+            ? JSON.stringify({ url: `https://example.com/trajectory.h5.bz2` })
             : ``,
       },
     })
@@ -1516,7 +1516,7 @@ describe(`Trajectory`, () => {
 
     await vi.waitFor(() =>
       expect(on_error).toHaveBeenCalledWith(
-        expect.objectContaining({ error_msg: expect.stringContaining(`Compressed HDF5 ZIP`) }),
+        expect.objectContaining({ error_msg: expect.stringContaining(`Compressed HDF5 BZ2`) }),
       ),
     )
     expect(fetch_mock).not.toHaveBeenCalled()
@@ -1612,51 +1612,6 @@ describe(`Trajectory`, () => {
       expect(on_file_load).toHaveBeenCalledWith(expect.objectContaining({ frame_count: 3 }))
     },
   )
-
-  test(`keeps internal HDF5 content URLs Blob-backed`, async () => {
-    const array_buffer_spy = vi.fn()
-    const response = {
-      ok: true,
-      status: 200,
-      blob: vi.fn(async () => new Blob([new Uint8Array(8)])),
-      arrayBuffer: array_buffer_spy,
-    } as unknown as Response
-    const fetch_mock = vi.fn(async () => response)
-    stub_fetch(fetch_mock)
-    const worker_spy = vi
-      .spyOn(parse_worker, `parse_trajectory_in_worker`)
-      .mockResolvedValue(energy_traj(-1))
-    onTestFinished(() => worker_spy.mockRestore())
-    const on_file_load = vi.fn()
-    const target = mount_traj({
-      display_mode: `structure`,
-      show_controls: `never`,
-      on_file_load,
-    })
-    const viewer = target.querySelector<HTMLElement>(`.trajectory`)
-    if (!viewer) throw new Error(`Trajectory root not found`)
-    const event = new DragEvent(`drop`, { bubbles: true })
-    Object.defineProperty(event, `dataTransfer`, {
-      value: {
-        files: [],
-        items: [],
-        getData: (type: string) =>
-          type === `application/x-matterviz-file`
-            ? JSON.stringify({
-                name: `large.h5`,
-                is_binary: true,
-                content_url: `blob:large-hdf5`,
-              })
-            : ``,
-      },
-    })
-
-    viewer.dispatchEvent(event)
-    await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledOnce())
-    expect(fetch_mock).toHaveBeenCalledOnce()
-    expect(array_buffer_spy).not.toHaveBeenCalled()
-    expect(worker_spy.mock.calls[0][0]).toBeInstanceOf(Blob)
-  })
 
   test(`ignores a stale trajectory URL completion`, async () => {
     const responses = deferred_fetch_responses()

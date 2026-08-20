@@ -75,6 +75,34 @@ declare global {
 // host-bridge.ts owns the single acquireVsCodeApi() call; VS Code throws on a
 // second one.
 const vscode_api: VSCodeAPI | null = get_vscode_api()
+
+// VS Code serves the bundle from a resource origin (https://*.vscode-cdn.net) that differs
+// from the webview document's origin, and `new Worker(cross_origin_url)` throws a
+// SecurityError, so every worker (parsing, MSD, VACF, structure-id, isosurface geometry)
+// would fail to construct. A same-origin blob module that imports the real script is what the
+// webview CSP's `worker-src blob:` permits; the imported module keeps its own import.meta.url,
+// so its nested asset URLs still resolve. The import must be dynamic: a static `import` inside
+// the blob is blocked by the webview CSP (verified in Chromium). Same-origin URLs (Hive, the
+// docs site) construct as-is.
+const install_cross_origin_worker_shim = (): void => {
+  if (typeof Worker === `undefined`) return
+  const NativeWorker = Worker
+  globalThis.Worker = class extends NativeWorker {
+    constructor(script_url: string | URL, options?: WorkerOptions) {
+      const href = String(script_url)
+      const cross_origin =
+        /^https?:/i.test(href) && new URL(href).origin !== globalThis.location.origin
+      const blob_url = cross_origin
+        ? URL.createObjectURL(
+            new Blob([`await import(${JSON.stringify(href)})`], { type: `text/javascript` }),
+          )
+        : null
+      super(blob_url ?? script_url, blob_url ? { ...options, type: `module` } : options)
+      if (blob_url) URL.revokeObjectURL(blob_url)
+    }
+  }
+}
+if (vscode_api) install_cross_origin_worker_shim()
 let current_app: MatterVizApp | null = null
 let file_change_listener_registered = false
 let file_change_generation = 0
@@ -406,14 +434,18 @@ const trajectory_props = (defaults: DefaultSettings) => {
     show_grid: plot.grid_lines,
     show_axis_labels: plot.axis_labels,
   }
+  // Loading/UX settings are not Trajectory props; spreading them would land on the wrapper div
+  const {
+    bin_file_threshold,
+    text_file_threshold,
+    use_indexing,
+    show_parsing_progress,
+    ...trajectory_component_props
+  } = trajectory
   return {
-    ...trajectory,
+    ...trajectory_component_props,
     structure_props: { ...structure_props(defaults), persist_settings: false },
-    loading_options: {
-      bin_file_threshold: trajectory.bin_file_threshold,
-      text_file_threshold: trajectory.text_file_threshold,
-      use_indexing: trajectory.use_indexing,
-    },
+    loading_options: { bin_file_threshold, text_file_threshold, use_indexing },
     scatter_props: {
       markers: scatter.symbol_type,
       line_width: scatter.line.width,
@@ -427,7 +459,7 @@ const trajectory_props = (defaults: DefaultSettings) => {
       bin_count: histogram.bin_count,
       ...shared_plot_props,
     },
-    spinner_props: { show_progress: trajectory.show_parsing_progress },
+    spinner_props: { show_progress: show_parsing_progress },
     property_labels: {},
   }
 }

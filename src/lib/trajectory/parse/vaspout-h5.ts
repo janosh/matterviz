@@ -32,6 +32,7 @@ import {
   to_scalar_number,
   to_string_array,
 } from './h5-utils'
+import { traj_warn } from './diagnostics'
 import { read_vaspout_dos, read_vaspout_electronic } from './vaspout-electronic'
 
 const FINAL_ION_TYPES = `results/positions/ion_types`
@@ -49,6 +50,7 @@ const OSZICAR_ROWS = `intermediate/ion_dynamics/oszicar`
 const OSZICAR_LABELS = `intermediate/ion_dynamics/oszicar_label`
 const ELECTRONIC_STEP_ENERGIES = `intermediate/electronic_steps/energies`
 const INCAR_POTIM = `input/incar/POTIM`
+const INCAR_IBRION = `input/incar/IBRION`
 
 // vaspout.h5 root groups per the VASP 6.x schema. torch-sim files use flat
 // dataset names (positions/atomic_numbers/...) and never these groups.
@@ -282,9 +284,13 @@ export function parse_vaspout_h5_file(h5_file: h5wasm.File): TrajectoryType {
             traj_scale,
           ),
         )
-      } catch {
-        // Torn final step: keep the frames parsed so far.
+      } catch (error) {
+        // Torn final step: keep the frames parsed so far and say what was lost.
         dropped_steps = n_steps - step
+        traj_warn(
+          `Dropping ${dropped_steps} torn vaspout.h5 ionic step(s) from ${TRAJ_POSITIONS} starting at step ${step}`,
+          error,
+        )
         break
       }
     }
@@ -348,12 +354,15 @@ export function parse_vaspout_h5_file(h5_file: h5wasm.File): TrajectoryType {
   // electronic-only paths above, which are the sole consumers.
   const dos = read_vaspout_dos(h5_file)
 
-  // POTIM is simulation time per ionic step in fs.
+  // POTIM is the MD time step in fs only for IBRION=0 (VASP's default whenever NSW>0); for
+  // relaxations (IBRION=1/2/3) it scales the ionic step and carries no time.
   const potim = to_scalar_number(read_dataset(h5_file, INCAR_POTIM))
+  const ibrion = to_scalar_number(read_dataset(h5_file, INCAR_IBRION))
+  const is_md_run = ibrion === null || ibrion === 0
 
   return {
     frames,
-    ...(potim !== null && potim > 0 && !frames_are_scf_steps
+    ...(potim !== null && potim > 0 && is_md_run && !frames_are_scf_steps
       ? { time_step: potim, time_unit: `fs` }
       : {}),
     metadata: {

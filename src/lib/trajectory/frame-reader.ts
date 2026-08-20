@@ -13,10 +13,22 @@ import type {
   TrajectoryPositionStream,
   TrajectorySignal,
 } from './index'
-import { copy_numeric_fields, iter_xyz_frames, validate_3x3_matrix } from './helpers'
+import { to_error } from '$lib/utils'
+import {
+  copy_numeric_fields,
+  iter_xyz_frames,
+  validate_3x3_matrix,
+  type XyzFrameSpec,
+} from './helpers'
 import { indexed_trajectory_format } from '$lib/trajectory/format-detect'
 import { ase_calculator_data, decode_ase_frame, read_ase_header } from './parse/ase'
-import { build_xyz_frame, parse_extxyz_lattice, parse_xyz_comment_metadata } from './parse/xyz'
+import { traj_warn } from './parse/diagnostics'
+import {
+  build_xyz_frame,
+  may_be_torn_xyz_tail,
+  parse_extxyz_lattice,
+  parse_xyz_comment_metadata,
+} from './parse/xyz'
 
 const MAX_METADATA_SIZE = 50 * 1024 * 1024 // 50MB limit for metadata
 
@@ -510,19 +522,17 @@ const filter_properties = (metadata: TrajectoryMetadata, properties?: string[]):
 
 export class TrajFrameReader implements FrameLoader {
   private readonly format: `xyz` | `ase`
-  private global_numbers?: number[]
-  private xyz_cache?: {
-    data: string
-    lines: string[]
-    frames: { start: number; num_atoms: number; comment: string }[]
-  }
+  // ASE writes atomic numbers into the first frame only; cache them per source buffer so a
+  // reader reused on a different file cannot label its atoms with the previous file's species
+  private ase_numbers?: { data: ArrayBuffer; numbers: number[] }
+  private xyz_cache?: { data: string; lines: string[]; frames: XyzFrameSpec[] }
 
   constructor(filename: string) {
     this.format = indexed_trajectory_format(filename)
   }
 
   dispose(): void {
-    this.global_numbers = undefined
+    this.ase_numbers = undefined
     this.xyz_cache = undefined
   }
 
@@ -553,7 +563,13 @@ export class TrajFrameReader implements FrameLoader {
       const line_bytes = (idx: number): number =>
         utf8_byte_length(lines[idx], encoder) + newline_byte_len
 
-      let [cursor, byte_offset] = [0, 0]
+      // `lines` come from the trimmed payload; offsets are reported against the original
+      let leading_whitespace = 0
+      while (leading_whitespace < data_str.length && /\s/.test(data_str[leading_whitespace])) {
+        leading_whitespace++
+      }
+      let cursor = 0
+      let byte_offset = utf8_byte_length(data_str.slice(0, leading_whitespace), encoder)
 
       for (const [frame_number, { start, num_atoms }] of frames.entries()) {
         for (; cursor < start; cursor++) byte_offset += line_bytes(cursor)
@@ -654,37 +670,37 @@ export class TrajFrameReader implements FrameLoader {
           report(frame_number + 1, `Extracting: ${frame_number + 1}`)
         }
       }
-    } else if (this.format === `ase`) {
+    } else {
       const view = new DataView(data as ArrayBuffer)
       const { n_items, offsets_pos } = read_ase_header(view)
+      const decoder = new TextDecoder()
 
       for (let idx = 0; idx < n_items; idx += sample_rate) {
-        try {
-          const frame_offset = Number(view.getBigInt64(offsets_pos + idx * 8, true))
-          const json_length = Number(view.getBigInt64(frame_offset, true))
-
-          if (json_length > MAX_METADATA_SIZE) {
-            console.warn(
-              `Skipping large frame ${idx}: ${Math.round(json_length / 1024 / 1024)}MB`,
-            )
-            continue
-          }
-
-          const frame_data = JSON.parse(
-            new TextDecoder().decode(
-              new Uint8Array(data as ArrayBuffer, frame_offset + 8, json_length),
-            ),
+        const frame_offset = Number(view.getBigInt64(offsets_pos + idx * 8, true))
+        const json_length = Number(view.getBigInt64(frame_offset, true))
+        // A header this large can only be a corrupt offsets table pointing into payload bytes
+        if (!(json_length >= 0 && json_length <= MAX_METADATA_SIZE)) {
+          throw new Error(
+            `ASE trajectory frame ${idx} of ${n_items} (byte offset ${frame_offset}) declares a ${json_length} byte header`,
           )
-
-          const frame_metadata = this.parse_ase_metadata(frame_data, idx)
-          filter_properties(frame_metadata, properties)
-          metadata_list.push(frame_metadata)
-
-          // total_frames is read_ase_header(...).n_items, so the bound total matches
-          if (idx % 5000 === 0) report(idx, `Extracting ASE: ${idx}/${n_items}`)
-        } catch (error) {
-          console.warn(`Failed to extract metadata from ASE frame ${idx}:`, error)
         }
+        let frame_data: Record<string, unknown>
+        try {
+          frame_data = JSON.parse(
+            decoder.decode(new Uint8Array(data as ArrayBuffer, frame_offset + 8, json_length)),
+          )
+        } catch (error) {
+          throw new Error(
+            `ASE trajectory frame ${idx} of ${n_items} (byte offset ${frame_offset}): ${to_error(error).message}`,
+            { cause: error },
+          )
+        }
+        const frame_metadata = parse_ase_metadata(frame_data, idx)
+        filter_properties(frame_metadata, properties)
+        metadata_list.push(frame_metadata)
+
+        // total_frames is read_ase_header(...).n_items, so the bound total matches
+        if (idx % 5000 === 0) report(idx, `Extracting ASE: ${idx}/${n_items}`)
       }
     }
 
@@ -704,76 +720,96 @@ export class TrajFrameReader implements FrameLoader {
   private get_xyz_cache(data: string): NonNullable<TrajFrameReader[`xyz_cache`]> {
     if (this.xyz_cache?.data === data) return this.xyz_cache
     const lines = data.trim().split(/\r?\n/)
-    this.xyz_cache = { data, lines, frames: Array.from(iter_xyz_frames(lines)) }
+    const frames = Array.from(iter_xyz_frames(lines))
+    // Decode a frame that ends on the file's last line once now, so a half-written tail is
+    // excluded from total_frames instead of failing on the seek that reaches it
+    const last_idx = frames.length - 1
+    if (may_be_torn_xyz_tail(lines, frames, last_idx)) {
+      try {
+        this.build_xyz_frame(lines, frames[last_idx], last_idx)
+      } catch (error) {
+        traj_warn(
+          `Dropping truncated final XYZ frame ${last_idx} (line ${frames[last_idx].start + 1})`,
+          error,
+        )
+        frames.pop()
+      }
+    }
+    this.xyz_cache = { data, lines, frames }
     return this.xyz_cache
   }
 
-  private load_xyz_frame(data: string, frame_number: number): TrajectoryFrame | null {
-    const { lines, frames } = this.get_xyz_cache(data)
-    const frame = frames[frame_number]
-    if (!frame) return null
+  private build_xyz_frame(
+    lines: string[],
+    frame: XyzFrameSpec,
+    frame_number: number,
+  ): TrajectoryFrame {
     return build_xyz_frame(lines, frame, {
       frame_label: `indexed frame ${frame_number}`,
       default_step: frame_number,
     })
   }
 
+  private load_xyz_frame(data: string, frame_number: number): TrajectoryFrame | null {
+    const { lines, frames } = this.get_xyz_cache(data)
+    const frame = frames[frame_number]
+    return frame ? this.build_xyz_frame(lines, frame, frame_number) : null
+  }
+
+  // Null only past the end; a frame the offsets table points at but that fails to decode is
+  // corruption and throws with its index so the viewer can report it.
   private load_ase_frame(data: ArrayBuffer, frame_number: number): TrajectoryFrame | null {
+    const view = new DataView(data)
+    const { n_items, offsets_pos } = read_ase_header(view)
+    if (frame_number >= n_items) return null
+    if (this.ase_numbers?.data !== data) this.ase_numbers = undefined
+    // A random seek on a fresh reader has to decode frame 0 once before any later frame can
+    // name its atoms.
+    if (frame_number > 0 && !this.ase_numbers) this.load_ase_frame(data, 0)
+
+    const frame_offset = Number(view.getBigInt64(offsets_pos + frame_number * 8, true))
     try {
-      const view = new DataView(data)
-      const { n_items, offsets_pos } = read_ase_header(view)
-
-      if (frame_number >= n_items) return null
-
-      const frame_offset = Number(view.getBigInt64(offsets_pos + frame_number * 8, true))
       const { frame, numbers } = decode_ase_frame(view, data, frame_offset, frame_number, {
-        fallback_numbers: this.global_numbers,
+        fallback_numbers: this.ase_numbers?.numbers,
       })
-      this.global_numbers = numbers
+      this.ase_numbers = { data, numbers }
       return frame
     } catch (error) {
-      console.warn(`Failed to load ASE frame ${frame_number}:`, error)
-      return null
+      throw new Error(
+        `ASE trajectory frame ${frame_number} of ${n_items} (byte offset ${frame_offset}): ${to_error(error).message}`,
+        { cause: error },
+      )
     }
   }
+}
 
-  private parse_ase_metadata(
-    frame_data: Record<string, unknown>,
-    frame_number: number,
-  ): TrajectoryMetadata {
-    const properties: Record<string, number> = {}
-    const step = frame_number
+const ASE_PLOT_SCALARS = [
+  `energy`,
+  `potential_energy`,
+  `kinetic_energy`,
+  `total_energy`,
+  `force_max`,
+  `force_norm`,
+  `stress_max`,
+  `stress_frobenius`,
+  `pressure`,
+  `temperature`,
+  `bandgap`,
+]
 
-    // ASE puts computed results in the calculator and user-set values in `info`, but
-    // which scalar lands where is up to whoever wrote the file, so both sections get
-    // every alias. Reading one from a single section drops it from the other exactly
-    // as silently as the dotted-key bug did.
-    for (const section of [ase_calculator_data(frame_data), frame_data.info]) {
-      if (!section || typeof section !== `object`) continue
-      copy_numeric_fields(properties, section as Record<string, unknown>, [
-        `energy`,
-        `potential_energy`,
-        `kinetic_energy`,
-        `total_energy`,
-        `force_max`,
-        `force_norm`,
-        `stress_max`,
-        `stress_frobenius`,
-        `pressure`,
-        `temperature`,
-        `bandgap`,
-      ])
-    }
-
-    if (frame_data.cell && Array.isArray(frame_data.cell)) {
-      try {
-        const validated_cell = validate_3x3_matrix(frame_data.cell)
-        properties.volume = Math.abs(math.det_3x3(validated_cell))
-      } catch (error) {
-        console.warn(`Failed to calculate volume for ASE frame ${frame_number}:`, error)
-      }
-    }
-
-    return { frame_number, step, properties }
+// ASE puts computed results in the calculator and user-set values in `info`, but which
+// scalar lands where is up to whoever wrote the file, so both sections get every alias.
+const parse_ase_metadata = (
+  frame_data: Record<string, unknown>,
+  frame_number: number,
+): TrajectoryMetadata => {
+  const properties: Record<string, number> = {}
+  for (const section of [ase_calculator_data(frame_data), frame_data.info]) {
+    if (!section || typeof section !== `object`) continue
+    copy_numeric_fields(properties, section as Record<string, unknown>, ASE_PLOT_SCALARS)
   }
+  if (frame_data.cell) {
+    properties.volume = Math.abs(math.det_3x3(validate_3x3_matrix(frame_data.cell)))
+  }
+  return { frame_number, step: frame_number, properties }
 }

@@ -5,11 +5,7 @@ import type {
   TrajectoryFrameStore,
   TrajectoryType,
 } from '$lib/trajectory'
-import {
-  get_trajectory_stats,
-  pick_pane_orientation,
-  validate_trajectory,
-} from '$lib/trajectory'
+import { pick_pane_orientation, validate_trajectory } from '$lib/trajectory'
 import { create_packed_frame_loader, validate_3x3_matrix } from '$lib/trajectory/helpers'
 import { frame_loader_data, has_frame_loader_data } from '$lib/trajectory/analysis'
 import { describe, expect, test } from 'vitest'
@@ -125,19 +121,27 @@ describe(`validate_trajectory`, () => {
     expect(validate_trajectory(trajectory)).toContain(error)
   })
 
-  test.each<[number[], number]>([
-    [[], 4],
-    [[3], 4],
-    [[3, 3], 4],
-    [[4], 4],
-    [[4, 3], 4],
-  ])(`accepts supported trajectory signal shape %j`, (sample_shape, n_atoms) => {
+  // scalar, vec3, 3x3, per-atom scalar and per-atom vec3 are the supported sample shapes
+  test.each<[number[], number, boolean]>([
+    [[], 4, true],
+    [[3], 4, true],
+    [[3, 3], 4, true],
+    [[4], 4, true],
+    [[4, 3], 4, true],
+    [[2], 4, false],
+    [[4, 4], 4, false],
+    [[3, 4], 4, false],
+    [[3, 3, 3], 4, false],
+    [[5], 4, false],
+  ])(`signal shape %j for %i atoms supported: %s`, (sample_shape, n_atoms, supported) => {
     const sample_size = sample_shape.reduce((total, size) => total * size, 1)
     const trajectory = make_trajectory(1, { atoms_per_frame: n_atoms })
     trajectory.signals = {
       custom: { sample_shape, values: new Float64Array(sample_size), steps: [0] },
     }
-    expect(validate_trajectory(trajectory)).toEqual([])
+    const errors = validate_trajectory(trajectory)
+    if (supported) expect(errors).toEqual([])
+    else expect(errors).toContainEqual(expect.stringMatching(/custom\.sample_shape must be/))
   })
 
   test(`reports only the first non-finite value in a malformed signal`, () => {
@@ -534,64 +538,6 @@ describe(`validate_3x3_matrix`, () => {
       )
     },
   )
-})
-
-describe(`get_trajectory_stats`, () => {
-  test(`basic frame statistics`, () => {
-    const traj = make_trajectory(5)
-    const stats = get_trajectory_stats(traj)
-    expect(stats.frame_count).toBe(5)
-    expect(stats.step_range).toEqual([0, 40])
-    expect(stats.steps).toEqual([0, 10, 20, 30, 40])
-  })
-
-  test.each([
-    [`constant`, 5, { atoms_per_frame: 10 }, true, 10, undefined],
-    [`variable`, 5, { atoms_per_frame: [3, 5, 4, 6, 3] }, false, undefined, [3, 6]],
-    [`single frame`, 1, { atoms_per_frame: 5 }, true, 5, undefined],
-    // >100 frames exercises the sampled constant-count detection path
-    [`large constant (sampled)`, 1000, { atoms_per_frame: 2 }, true, 2, undefined],
-  ])(`atom count: %s`, (_desc, frame_count, options, const_count, total_atoms, range) => {
-    const stats = get_trajectory_stats(make_trajectory(frame_count, options))
-    expect(stats.constant_atom_count).toBe(const_count)
-    if (total_atoms !== undefined) expect(stats.total_atoms).toBe(total_atoms)
-    if (range !== undefined) expect(stats.atom_count_range).toEqual(range)
-  })
-
-  test(`streaming metadata`, () => {
-    const traj = make_trajectory(5, {
-      total_frames: 100,
-      with_indexed_frames: true,
-      with_plot_metadata: true,
-    })
-    const stats = get_trajectory_stats(traj)
-    expect(stats.frame_count).toBe(100)
-    expect(stats.indexed_frame_count).toBe(5)
-    expect(stats.plot_metadata_count).toBe(5)
-    expect(stats.is_indexed).toBe(true)
-  })
-
-  test(`is_indexed status`, () => {
-    expect(
-      get_trajectory_stats(make_trajectory(3, { with_indexed_frames: true })).is_indexed,
-    ).toBe(true)
-    expect(get_trajectory_stats(make_trajectory(3)).is_indexed).toBe(false)
-  })
-
-  test(`handles empty trajectory`, () => {
-    const stats = get_trajectory_stats({ frames: [] })
-    expect(stats.frame_count).toBe(0)
-    expect(stats.steps).toEqual([])
-    expect(stats.step_range).toBeUndefined()
-  })
-
-  test(`large trajectory with variable atom counts`, () => {
-    const atoms = Array.from({ length: 150 }, (_, idx) => (idx % 2 === 0 ? 3 : 5))
-    const stats = get_trajectory_stats(make_trajectory(150, { atoms_per_frame: atoms }))
-    expect(stats.frame_count).toBe(150)
-    expect(stats.constant_atom_count).toBe(false)
-    expect(stats.atom_count_range).toEqual([3, 5])
-  })
 })
 
 test.each([

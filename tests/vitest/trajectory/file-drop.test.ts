@@ -1,6 +1,6 @@
-// Regression: a single OS/IDE drag often carries BOTH a File and a text/plain
-// payload (e.g. the file path). The text/plain fallback must not run after a
-// file was successfully loaded, else it clobbers the trajectory with a parse error.
+// Drop handling on the Trajectory viewer: OS/IDE drags carry a File (often plus a text/plain
+// path that must be ignored), FilePicker drags carry a URL, and ambiguous HDF5 files open a
+// group picker whose pending choice must survive or yield to later drops correctly.
 import Trajectory from '$lib/trajectory/Trajectory.svelte'
 import * as parse_worker from '$lib/file-viewer/parse-in-worker'
 import * as trajectory_parse from '$lib/trajectory/parse'

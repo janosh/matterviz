@@ -1,11 +1,11 @@
-import { ATOMIC_NUMBER_TO_SYMBOL } from '$lib/composition/parse'
-import { is_elem_symbol } from '$lib/element/helpers'
-import type { ElementSymbol } from '$lib/element/types'
+import { ELEM_SYMBOLS, type ElementSymbol } from '$lib/element/types'
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { AnyStructure } from '$lib/structure/index'
+import { cart_to_frac_with_fallback } from '$lib/structure/parsers/shared'
 import type { Pbc } from '$lib/structure/pbc'
 import { make_site } from '$lib/structure/site'
+import { normalize_scientific_notation } from '$lib/utils'
 import type {
   FrameLoader,
   ParseProgress,
@@ -15,9 +15,17 @@ import type {
   TrajectoryPositionStream,
   TrajectorySignal,
 } from './index'
+import { traj_warn } from './parse/diagnostics'
 
-const is_valid_vec3 = (coords: unknown): coords is Vec3 =>
-  Array.isArray(coords) && math.is_finite_vec3_like(coords)
+// Strict numeric token parser for the text formats: Number() rejects the trailing junk and
+// `1,5` that parseFloat silently truncates, and the NaN retry keeps Fortran `1.0D-3`
+// exponents readable without paying for the normalisation on every well-formed token.
+// A missing or blank token is NaN, not the 0 that Number(``) returns.
+export const parse_float_token = (token: string | undefined): number => {
+  if (!token) return NaN
+  const num = Number(token)
+  return Number.isNaN(num) ? Number(normalize_scientific_notation(token)) : num
+}
 
 export const is_supported_trajectory_signal_shape = (
   sample_shape: number[],
@@ -50,10 +58,8 @@ export function validate_3x3_matrix(data: unknown): math.Matrix3x3 {
 
 export const convert_atomic_numbers = (numbers: number[]): ElementSymbol[] =>
   numbers.map((num) => {
-    const symbol = ATOMIC_NUMBER_TO_SYMBOL[num]
-    if (!symbol || !is_elem_symbol(symbol)) {
-      throw new Error(`Unknown atomic number in trajectory data: ${num}`)
-    }
+    const symbol = Number.isInteger(num) ? ELEM_SYMBOLS[num - 1] : undefined
+    if (!symbol) throw new Error(`Unknown atomic number in trajectory data: ${num}`)
     return symbol
   })
 
@@ -63,32 +69,57 @@ export const count_elements = (elements: readonly string[]): Record<string, numb
   return counts
 }
 
+// Singular cells (a 2D slab with a zero c vector, a molecule written with a zero Lattice)
+// cannot be inverted for fractional coordinates; fall back to per-axis-length division so
+// one degenerate frame does not make the whole trajectory unloadable. Warned once per parse.
+const cart_to_frac_for = (lattice_matrix: math.Matrix3x3): ((xyz: Vec3) => Vec3) => {
+  const { convert, exact } = cart_to_frac_with_fallback(lattice_matrix)
+  if (!exact) {
+    traj_warn(
+      `Singular lattice ${JSON.stringify(lattice_matrix)}; fractional coordinates use the axis-length approximation`,
+    )
+  }
+  return convert
+}
+
 export const create_structure = (
   positions: number[][],
   elements: ElementSymbol[],
   lattice_matrix?: math.Matrix3x3,
   pbc?: Pbc,
-  force_data?: number[][],
+  // One property bag per site, stored as-is (no copy) so hot parsers can build it in place
+  site_properties?: Record<string, unknown>[],
 ): AnyStructure => {
   if (positions.length !== elements.length) {
     throw new Error(
       `create_structure requires matching positions and elements lengths, got positions=${positions.length}, elements=${elements.length}`,
     )
   }
-  const cart_to_frac = lattice_matrix ? math.create_cart_to_frac(lattice_matrix) : null
+  if (site_properties && site_properties.length !== positions.length) {
+    throw new Error(
+      `create_structure got ${site_properties.length} site property bags for ${positions.length} positions`,
+    )
+  }
+  const cart_to_frac = lattice_matrix ? cart_to_frac_for(lattice_matrix) : null
 
   const sites = positions.map((pos, idx) => {
-    if (!is_valid_vec3(pos)) {
+    if (
+      pos.length !== 3 ||
+      !Number.isFinite(pos[0]) ||
+      !Number.isFinite(pos[1]) ||
+      !Number.isFinite(pos[2])
+    ) {
       throw new Error(`Invalid position at index ${idx}: expected 3 finite coordinates`)
     }
-
-    const xyz = pos
+    const xyz = pos as Vec3
     const abc = cart_to_frac ? cart_to_frac(xyz) : ([0, 0, 0] as Vec3)
-
-    const force = force_data?.[idx]
-    const properties = is_valid_vec3(force) ? { force } : {}
-
-    return make_site(elements[idx], abc, xyz, `${elements[idx]}${idx + 1}`, properties)
+    return make_site(
+      elements[idx],
+      abc,
+      xyz,
+      `${elements[idx]}${idx + 1}`,
+      site_properties?.[idx],
+    )
   })
 
   return lattice_matrix
@@ -110,8 +141,9 @@ export const create_trajectory_frame = (
   pbc: Pbc | undefined,
   step: number,
   metadata: Record<string, unknown> = {},
+  site_properties?: Record<string, unknown>[],
 ): TrajectoryFrame => ({
-  structure: create_structure(positions, elements, lattice_matrix, pbc),
+  structure: create_structure(positions, elements, lattice_matrix, pbc, site_properties),
   step,
   metadata,
 })
@@ -516,41 +548,51 @@ export function derive_time_step(
   return uniform ? time_step : undefined
 }
 
+// Symbol (<= 3 chars, non-numeric) followed by three numeric coordinates. Coordinates go
+// through the same strict parser as the frame reader so a Fortran `1.0D-3` token counts.
 export const is_xyz_atom_line = (parts: string[] | undefined): boolean =>
   parts !== undefined &&
   parts.length >= 4 &&
-  isNaN(Number(parts[0])) &&
+  Number.isNaN(Number(parts[0])) &&
   parts[0].length <= 3 &&
-  parts.slice(1, 4).every((coord) => coord !== `` && !isNaN(Number(coord)))
+  !Number.isNaN(parse_float_token(parts[1])) &&
+  !Number.isNaN(parse_float_token(parts[2])) &&
+  !Number.isNaN(parse_float_token(parts[3]))
 
-export function* iter_xyz_frames(
-  lines: string[],
-): Generator<{ start: number; num_atoms: number; comment: string }> {
+// Location of one XYZ frame in a split file: `start` is the 0-based index of its atom-count line
+export type XyzFrameSpec = { start: number; num_atoms: number; comment: string }
+
+// Walk XYZ frames by their atom-count lines, sampling the first three atom lines of each
+// candidate so stray numeric lines are not mistaken for a frame header. A frame whose atom
+// block runs past the end of the input (a writer still appending) is skipped, not yielded.
+export function* iter_xyz_frames(lines: string[]): Generator<XyzFrameSpec> {
   let line_idx = 0
   while (line_idx < lines.length) {
-    const num_atoms = Math.trunc(Number(lines[line_idx]?.trim()))
-    if (isNaN(num_atoms) || num_atoms <= 0 || line_idx + num_atoms + 2 > lines.length) {
+    const num_atoms = Math.trunc(Number(lines[line_idx].trim()))
+    if (Number.isNaN(num_atoms) || num_atoms <= 0 || line_idx + num_atoms + 2 > lines.length) {
       line_idx++
       continue
     }
     let valid_coords = 0
     const sample = Math.min(num_atoms, 3)
     for (let idx = 0; idx < sample; idx++) {
-      if (is_xyz_atom_line(lines[line_idx + 2 + idx]?.trim().split(/\s+/))) valid_coords++
+      if (is_xyz_atom_line(lines[line_idx + 2 + idx].trim().split(/\s+/))) valid_coords++
     }
     if (valid_coords < sample) {
       line_idx++
       continue
     }
-    yield { start: line_idx, num_atoms, comment: lines[line_idx + 1] || `` }
+    yield { start: line_idx, num_atoms, comment: lines[line_idx + 1] }
     line_idx += num_atoms + 2
   }
 }
 
-export function count_xyz_frames(data: string): number {
+// Count XYZ frames, stopping early once `limit` frames are found (format sniffing only
+// needs to know whether there are at least two).
+export function count_xyz_frames(data: string, limit = Number.POSITIVE_INFINITY): number {
   if (!data) return 0
-  const frames = iter_xyz_frames(data.trim().split(/\r?\n/))
   let frame_count = 0
-  while (!frames.next().done) frame_count += 1
+  const frames = iter_xyz_frames(data.trim().split(/\r?\n/))
+  while (frame_count < limit && !frames.next().done) frame_count += 1
   return frame_count
 }

@@ -1,27 +1,28 @@
 import type { ElementSymbol } from '$lib/element/types'
 import * as math from '$lib/math'
 import { coerce_elem_symbol } from '$lib/element/helpers'
+import { capitalize_symbol } from '$lib/structure/parsers/shared'
 import type { Pbc } from '$lib/structure/pbc'
 import {
   calc_force_stats,
   create_trajectory_frame,
   derive_time_step,
   iter_xyz_frames,
+  parse_float_token,
+  type XyzFrameSpec,
 } from '$lib/trajectory/helpers'
 import { get_traj_parse_warnings, traj_warn } from './diagnostics'
 import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory/index'
-import { normalize_scientific_notation } from '$lib/utils'
 
 export type ExtxyzColumn = { offset: number; ncols: number; type: string }
-export type ExtxyzColumns = {
+
+export function parse_extxyz_columns(comment: string): {
   species_col: number
   pos_col: number
   forces_col: number
   min_cols: number
   layout: Record<string, ExtxyzColumn> | null
-}
-
-export function parse_extxyz_columns(comment: string): ExtxyzColumns {
+} {
   const fields =
     /Properties\s*=\s*"?(?<properties>[^"\s]+)"?/i.exec(comment)?.[1].split(`:`) ?? []
   let layout: Record<string, ExtxyzColumn> | null = fields.length % 3 === 0 ? {} : null
@@ -51,11 +52,7 @@ export function parse_extxyz_columns(comment: string): ExtxyzColumns {
 export function parse_extxyz_lattice(comment: string): math.Matrix3x3 | undefined {
   const raw = /Lattice\s*=\s*"(?<lattice>[^"]*)"/i.exec(comment)?.[1]
   if (raw === undefined) return undefined
-  const vals = raw
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((token) => Number(normalize_scientific_notation(token)))
+  const vals = raw.trim().split(/\s+/).filter(Boolean).map(parse_float_token)
   if (vals.length !== 9 || !vals.every(Number.isFinite)) {
     throw new Error(`Invalid EXTXYZ Lattice: expected 9 finite numbers, got "${raw}"`)
   }
@@ -117,7 +114,7 @@ function read_extxyz_column(tokens: string[], column: ExtxyzColumn): unknown {
   const read_token = (token: string): number | string | boolean | undefined => {
     if (type === `s`) return token
     if (type === `l`) return EXTXYZ_BOOL.get(token.toLowerCase())
-    const num = Number(normalize_scientific_notation(token))
+    const num = parse_float_token(token)
     return Number.isFinite(num) ? num : undefined
   }
   const values = tokens.slice(offset, offset + ncols).map(read_token)
@@ -195,8 +192,10 @@ function parse_xyz_comment_signals(comment: string): Record<string, number[] | n
   return signals
 }
 
-type ForceStats = { forces: number[][]; force_max: number; force_norm: number }
-
+// Symbols are case-normalised (`FE` -> `Fe`) like the structure parsers do. Unknown symbols
+// are skipped (with a warning) rather than rejected because real files carry them: ASE writes
+// `X` for ghost/dummy atoms and some codes emit placeholder species. A frame with no
+// recognised atom at all, or a malformed coordinate, is corruption and names its line.
 function parse_xyz_atom_lines(
   lines: string[],
   start: number,
@@ -206,69 +205,97 @@ function parse_xyz_atom_lines(
 ): {
   elements: ElementSymbol[]
   positions: number[][]
-  force_stats: ForceStats | null
-  move_flags: [boolean, boolean, boolean][] | null
+  forces: number[][]
   site_properties: Record<string, unknown>[]
 } {
   const { species_col, pos_col, forces_col, min_cols, layout } = parse_extxyz_columns(comment)
   const elements: ElementSymbol[] = []
   const positions: number[][] = []
   const forces: number[][] = []
-  const move_flags: [boolean, boolean, boolean][] = []
   const site_properties: Record<string, unknown>[] = []
   const extra_columns = Object.entries(layout ?? {})
     .filter(([name]) => !RESERVED_EXTXYZ_COLUMNS.has(name))
     .map(([name, column]) => [EXTXYZ_COLUMN_ALIASES[name] ?? name, column] as const)
+  const has_move_flags = MOVE_FLAG_COLUMNS.some((name) => layout?.[name])
+  let move_flag_count = 0
 
   for (let idx = 0; idx < num_atoms; idx++) {
-    const parts = lines[start + idx]?.trim().split(/\s+/) ?? []
-    if (parts.length < min_cols) continue
-    const pos = parts.slice(pos_col, pos_col + 3).map(parseFloat)
-    if (!pos.every(Number.isFinite)) {
-      traj_warn(
-        `Skipping XYZ atom with invalid coordinates in ${frame_label} at line ${
-          start + idx + 1
-        }`,
+    const line_number = start + idx + 1
+    const parts = lines[start + idx].trim().split(/\s+/)
+    if (parts.length < min_cols) {
+      throw new Error(
+        `XYZ ${frame_label} line ${line_number} has ${parts.length} columns, expected at least ${min_cols}: "${lines[start + idx]}"`,
       )
-      continue
+    }
+    const pos = [
+      parse_float_token(parts[pos_col]),
+      parse_float_token(parts[pos_col + 1]),
+      parse_float_token(parts[pos_col + 2]),
+    ]
+    if (!Number.isFinite(pos[0]) || !Number.isFinite(pos[1]) || !Number.isFinite(pos[2])) {
+      throw new TypeError(
+        `XYZ ${frame_label} line ${line_number} has non-numeric coordinates: "${lines[start + idx]}"`,
+      )
     }
     const symbol = parts[species_col]
-    const element_symbol = coerce_elem_symbol(symbol)
+    const element_symbol =
+      coerce_elem_symbol(symbol) ?? coerce_elem_symbol(capitalize_symbol(symbol))
     if (!element_symbol) {
-      traj_warn(`Skipping XYZ atom with unknown element symbol "${symbol}" in ${frame_label}`)
+      traj_warn(
+        `Skipping XYZ atom with unknown element symbol "${symbol}" in ${frame_label} at line ${line_number}`,
+      )
       continue
     }
     elements.push(element_symbol)
     positions.push(pos)
-    if (forces_col >= 0 && parts.length >= forces_col + 3) {
-      const force_vec = parts.slice(forces_col, forces_col + 3).map(parseFloat)
-      if (force_vec.every(Number.isFinite)) forces.push(force_vec)
-    }
-    const flags = read_extxyz_move_flags(parts, layout)
-    if (flags) move_flags.push(flags)
-
     const props: Record<string, unknown> = {}
+    if (forces_col >= 0 && parts.length >= forces_col + 3) {
+      const force_vec = [
+        parse_float_token(parts[forces_col]),
+        parse_float_token(parts[forces_col + 1]),
+        parse_float_token(parts[forces_col + 2]),
+      ]
+      if (
+        Number.isFinite(force_vec[0]) &&
+        Number.isFinite(force_vec[1]) &&
+        Number.isFinite(force_vec[2])
+      ) {
+        forces.push(force_vec)
+        props.force = force_vec
+      }
+    }
     for (const [name, column] of extra_columns) {
       const value = read_extxyz_column(parts, column)
       if (value !== undefined) props[name] = value
     }
+    if (has_move_flags) {
+      const flags = read_extxyz_move_flags(parts, layout)
+      if (flags) {
+        props.selective_dynamics = flags
+        move_flag_count++
+      }
+    }
     site_properties.push(props)
   }
-
-  const stats = calc_force_stats(forces)
-  return {
-    elements,
-    positions,
-    force_stats: stats && { forces, ...stats },
-    move_flags:
-      move_flags.length === positions.length && positions.length > 0 ? move_flags : null,
-    site_properties,
+  if (positions.length === 0) {
+    throw new TypeError(
+      `XYZ ${frame_label} has no atom with a recognised element symbol in its ${num_atoms} atom lines (first species column: "${lines[start].trim().split(/\s+/)[species_col]}")`,
+    )
   }
+  // Forces and move flags are only meaningful when every kept atom has them
+  if (forces.length !== positions.length) {
+    forces.length = 0
+    for (const props of site_properties) delete props.force
+  }
+  if (move_flag_count > 0 && move_flag_count !== positions.length) {
+    for (const props of site_properties) delete props.selective_dynamics
+  }
+  return { elements, positions, forces, site_properties }
 }
 
 export function build_xyz_frame(
   lines: string[],
-  frame: { start: number; num_atoms: number; comment: string },
+  frame: XyzFrameSpec,
   opts: { frame_label: string; default_step: number },
 ): TrajectoryFrame {
   const { start, num_atoms, comment } = frame
@@ -285,44 +312,65 @@ export function build_xyz_frame(
     )
   }
   const pbc = parsed_pbc ?? ([true, true, true] satisfies Pbc)
-  const { elements, positions, force_stats, move_flags, site_properties } =
-    parse_xyz_atom_lines(lines, start + 2, num_atoms, comment, opts.frame_label)
+  const { elements, positions, forces, site_properties } = parse_xyz_atom_lines(
+    lines,
+    start + 2,
+    num_atoms,
+    comment,
+    opts.frame_label,
+  )
   const metadata: Record<string, unknown> = {
     ...properties,
     ...parse_xyz_comment_signals(comment),
-    ...force_stats,
   }
+  const force_stats = calc_force_stats(forces)
+  if (force_stats) Object.assign(metadata, { forces, ...force_stats })
   if (lattice_matrix) metadata.volume = math.calc_lattice_params(lattice_matrix).volume
-  const built = create_trajectory_frame(
+  return create_trajectory_frame(
     positions,
     elements,
     lattice_matrix,
     lattice_matrix ? pbc : undefined,
     step ?? opts.default_step,
     metadata,
+    site_properties,
   )
-  const { sites } = built.structure
-  const forces = force_stats?.forces.length === sites.length ? force_stats.forces : null
-  for (const [idx, site] of sites.entries()) {
-    site.properties = { ...site.properties, ...site_properties[idx] }
-    if (forces) site.properties.force = forces[idx]
-    if (move_flags) site.properties.selective_dynamics = move_flags[idx]
-  }
-  return built
 }
+
+// Only a frame that runs to the file's very last line can be half-written (a writer still
+// appending was cut mid-way through its final atom line); the same damage anywhere else is
+// corruption. iter_xyz_frames already skips a tail that is missing whole lines.
+export const may_be_torn_xyz_tail = (
+  lines: string[],
+  frames: XyzFrameSpec[],
+  frame_idx: number,
+): boolean =>
+  frame_idx > 0 &&
+  frame_idx === frames.length - 1 &&
+  frames[frame_idx].start + frames[frame_idx].num_atoms + 2 === lines.length
 
 export function parse_xyz_trajectory(content: string): TrajectoryType {
   const lines = content.trim().split(/\r?\n/)
+  const specs = Array.from(iter_xyz_frames(lines))
   const frames: TrajectoryFrame[] = []
 
-  for (const frame of iter_xyz_frames(lines)) {
-    frames.push(
-      build_xyz_frame(lines, frame, {
-        frame_label: `frame ${frames.length}`,
-        default_step: frames.length,
-      }),
-    )
+  for (const [frame_idx, spec] of specs.entries()) {
+    try {
+      frames.push(
+        build_xyz_frame(lines, spec, {
+          frame_label: `frame ${frame_idx} (line ${spec.start + 1})`,
+          default_step: frame_idx,
+        }),
+      )
+    } catch (error) {
+      if (!may_be_torn_xyz_tail(lines, specs, frame_idx)) throw error
+      traj_warn(
+        `Dropping truncated final XYZ frame ${frame_idx} (line ${spec.start + 1})`,
+        error,
+      )
+    }
   }
+  if (frames.length === 0) throw new Error(`No XYZ frames found`)
 
   const time_step = derive_time_step(
     frames.map(({ metadata }) => (typeof metadata?.time === `number` ? metadata.time : null)),
@@ -335,7 +383,7 @@ export function parse_xyz_trajectory(content: string): TrajectoryType {
     metadata: {
       source_format: `xyz_trajectory`,
       frame_count: frames.length,
-      total_atoms: frames[0]?.structure.sites.length || 0,
+      total_atoms: frames[0].structure.sites.length,
     },
   }
 }

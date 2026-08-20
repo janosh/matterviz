@@ -60,6 +60,9 @@ describe(`Force and Stress Data Extractor`, () => {
       expected: { Step: 1, force_max: 3.0, force_norm: expect.closeTo(2.16, 2) } },
     { name: `use metadata force values as fallback`, step: 2, metadata: fallback_forces,
       expected: { Step: 2, ...fallback_forces } },
+    // a relaxed structure reports force_max 0; a truthiness check used to drop it
+    { name: `keep a force_max of exactly 0`, step: 3, metadata: { force_max: 0, force_norm: 0 },
+      expected: { Step: 3, force_max: 0, force_norm: 0 } },
   ])(`should $name`, ({ step, metadata, expected }) => {
     const frame = make_trajectory_frame(step, 1, metadata)
     expect(force_stress_data_extractor(frame, { frames: [], metadata: {} })).toEqual(expected)

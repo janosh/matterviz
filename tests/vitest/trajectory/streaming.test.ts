@@ -71,57 +71,56 @@ describe(`Trajectory Streaming`, () => {
       ].join(`\n`),
     ).join(`\n`)
 
-  // Helper to create synthetic ASE trajectory data (minimal valid structure).
-  // `extra_fields` merge into every frame's JSON header, for cases that turn on
-  // which section a scalar was written to.
+  // Helper to create synthetic ASE trajectory data (minimal valid structure). `extra_fields`
+  // merge into every frame's JSON header (or per frame when given as a function), for cases
+  // that turn on which section a scalar was written to or which frames carry `numbers`.
   const create_synthetic_ase = (
     num_frames: number,
-    extra_fields: Record<string, unknown> = {},
+    extra_fields:
+      | Record<string, unknown>
+      | ((frame_idx: number) => Record<string, unknown>) = {},
   ): ArrayBuffer => {
-    // Create minimal valid ASE trajectory with proper header
     const signature = `- of Ulm\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0`
-    const frame_data = JSON.stringify({
-      positions: [
-        [0, 0, 0],
-        [1, 0, 0],
-      ],
-      numbers: [1, 1],
-      cell: [
-        [5, 0, 0],
-        [0, 5, 0],
-        [0, 0, 5],
-      ],
-      pbc: [true, true, true],
-      ...extra_fields,
-    })
-
-    const total_size = 48 + num_frames * 8 + frame_data.length * num_frames + num_frames * 8
-    const buffer = new ArrayBuffer(total_size)
+    const encoder = new TextEncoder()
+    const frame_payloads = Array.from({ length: num_frames }, (_unused, frame_idx) =>
+      encoder.encode(
+        JSON.stringify({
+          positions: [
+            [0, 0, 0],
+            [1, 0, 0],
+          ],
+          numbers: [1, 1],
+          cell: [
+            [5, 0, 0],
+            [0, 5, 0],
+            [0, 0, 5],
+          ],
+          pbc: [true, true, true],
+          ...(typeof extra_fields === `function` ? extra_fields(frame_idx) : extra_fields),
+        }),
+      ),
+    )
+    const offsets_pos = 48
+    const payload_bytes = frame_payloads.reduce(
+      (total, payload) => total + 8 + payload.length,
+      0,
+    )
+    const buffer = new ArrayBuffer(offsets_pos + num_frames * 8 + payload_bytes)
     const view = new DataView(buffer)
 
-    // Write header
-    new Uint8Array(buffer, 0, 24).set(new TextEncoder().encode(signature.slice(0, 24)))
+    new Uint8Array(buffer, 0, 24).set(encoder.encode(signature.slice(0, 24)))
     view.setBigInt64(24, BigInt(1), true) // version
     view.setBigInt64(32, BigInt(num_frames), true) // n_items
-    view.setBigInt64(40, BigInt(48), true) // offsets_pos
+    view.setBigInt64(40, BigInt(offsets_pos), true)
 
-    // Write frame offsets
-    let current_offset = 48 + num_frames * 8
-    for (let idx = 0; idx < num_frames; idx++) {
-      view.setBigInt64(48 + idx * 8, BigInt(current_offset), true)
-      current_offset += 8 + frame_data.length // 8 bytes for length + data
+    // Each frame is an 8-byte little-endian JSON length followed by the JSON bytes
+    let current_offset = offsets_pos + num_frames * 8
+    for (const [idx, payload] of frame_payloads.entries()) {
+      view.setBigInt64(offsets_pos + idx * 8, BigInt(current_offset), true)
+      view.setBigInt64(current_offset, BigInt(payload.length), true)
+      new Uint8Array(buffer, current_offset + 8, payload.length).set(payload)
+      current_offset += 8 + payload.length
     }
-
-    // Write frame data
-    current_offset = 48 + num_frames * 8
-    for (let idx = 0; idx < num_frames; idx++) {
-      view.setBigInt64(current_offset, BigInt(frame_data.length), true)
-      new Uint8Array(buffer, current_offset + 8, frame_data.length).set(
-        new TextEncoder().encode(frame_data),
-      )
-      current_offset += 8 + frame_data.length
-    }
-
     return buffer
   }
 
@@ -205,20 +204,34 @@ describe(`Trajectory Streaming`, () => {
   })
 
   describe(`Frame Indexing`, () => {
-    it(`releases cached XYZ and ASE payloads on disposal`, async () => {
-      const xyz_reader = new TrajFrameReader(`test.xyz`)
-      await xyz_reader.get_total_frames(create_synthetic_xyz(2))
-      const xyz_state = xyz_reader as unknown as { xyz_cache?: unknown }
-      expect(xyz_state.xyz_cache).toBeDefined()
-      xyz_reader.dispose()
-      expect(xyz_state.xyz_cache).toBeUndefined()
+    // ASE stores atomic numbers in frame 0 only, so later frames borrow them from a per-reader
+    // cache. That cache must follow the buffer: one reader reused on a second file must not
+    // label the second file's atoms with the first file's species.
+    it(`keys the cached ASE atomic numbers to the source buffer and survives disposal`, async () => {
+      const numbers_in_first_frame =
+        (atomic_number: number) =>
+        (frame_idx: number): Record<string, unknown> =>
+          frame_idx === 0
+            ? { numbers: [atomic_number, atomic_number] }
+            : { numbers: undefined }
+      const hydrogen = create_synthetic_ase(2, numbers_in_first_frame(1))
+      const helium = create_synthetic_ase(2, numbers_in_first_frame(2))
+      const reader = new TrajFrameReader(`test.traj`)
+      const species_of = async (data: ArrayBuffer, frame_idx: number) =>
+        (await reader.load_frame(data, frame_idx))?.structure.sites.map(
+          (site) => site.species[0].element,
+        )
 
-      const ase_reader = new TrajFrameReader(`test.traj`)
-      await ase_reader.load_frame(create_synthetic_ase(1), 0)
-      const ase_state = ase_reader as unknown as { global_numbers?: number[] }
-      expect(ase_state.global_numbers).toEqual([1, 1])
-      ase_reader.dispose()
-      expect(ase_state.global_numbers).toBeUndefined()
+      expect(await species_of(hydrogen, 1)).toEqual([`H`, `H`])
+      expect(await species_of(helium, 1)).toEqual([`He`, `He`])
+      reader.dispose()
+      expect(await species_of(hydrogen, 1)).toEqual([`H`, `H`])
+
+      const xyz_reader = new TrajFrameReader(`test.xyz`)
+      const xyz_data = create_synthetic_xyz(2)
+      expect(await xyz_reader.get_total_frames(xyz_data)).toBe(2)
+      xyz_reader.dispose()
+      expect((await xyz_reader.load_frame(xyz_data, 1))?.step).toBe(1)
     })
 
     it.each([

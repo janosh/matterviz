@@ -1,12 +1,18 @@
 import type { ElementSymbol } from '$lib'
 import { structure_to_xyz_str } from '$lib/structure/export'
 import { parse_xyz } from '$lib/structure/parse'
-import { validate_trajectory, type TrajectoryFrame } from '$lib/trajectory'
+import {
+  validate_trajectory,
+  type TrajectoryFrame,
+  type TrajectoryType,
+} from '$lib/trajectory'
+import { TrajFrameReader } from '$lib/trajectory/frame-reader'
 import {
   get_unsupported_format_message,
   is_trajectory_file,
   parse_trajectory_data,
 } from '$lib/trajectory/parse'
+import { ase_calculator_data, read_ase_header } from '$lib/trajectory/parse/ase'
 import { get_traj_parse_warnings } from '$lib/trajectory/parse/diagnostics'
 import {
   Hdf5TrajectoryGroupSelectionError,
@@ -21,14 +27,13 @@ import {
   to_number_array,
   to_scalar_number,
 } from '$lib/trajectory/parse/h5-utils'
-import { ase_calculator_data } from '$lib/trajectory/parse/ase'
 import { reference_checkpoint_interval } from '$lib/trajectory/parse/reference-md-h5'
 import { get_trajectory_type } from '$site/trajectories'
-import { readdirSync, statSync } from 'node:fs'
+import { readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import process from 'node:process'
 import { Dataset as H5Dataset } from 'h5wasm'
-import type { File as H5File } from 'h5wasm'
+import type { File as H5File, Group as H5Group } from 'h5wasm'
 import { describe, expect, it, onTestFinished, test, vi } from 'vitest'
 import {
   get_dummy_structure,
@@ -38,10 +43,1222 @@ import {
 } from '../setup'
 
 const TRAJECTORY_DIR = `src/site/trajectories`
-
-// Helper to read text trajectory files (auto-decompresses .gz)
 const read_test_file = (filename: string): string =>
   read_maybe_gz(join(process.cwd(), TRAJECTORY_DIR, filename))
+const read_fixture = (filename: string): string | ArrayBuffer =>
+  /\.(?:h5|hdf5|traj)$/.test(filename)
+    ? read_binary_test_file(filename)
+    : read_test_file(filename)
+
+const lattice_of = (frame: TrajectoryFrame) => {
+  if (!(`lattice` in frame.structure)) throw new Error(`frame has no lattice`)
+  return frame.structure.lattice
+}
+const elements_of = (frame: TrajectoryFrame): ElementSymbol[] =>
+  frame.structure.sites.map((site) => site.species[0].element)
+const expect_close = (actual: readonly number[], expected: readonly number[], digits = 6) => {
+  expect(actual).toHaveLength(expected.length)
+  for (const [idx, value] of expected.entries()) expect(actual[idx]).toBeCloseTo(value, digits)
+}
+
+// Parse through the public entry point and dispose any HDF5 loader when the test ends
+const parse = async (
+  content: unknown,
+  filename?: string,
+  ...rest: [atom_type_mapping?: Record<number, ElementSymbol>, hdf5_group_path?: string]
+): Promise<TrajectoryType> => {
+  const trajectory = await parse_trajectory_data(content, filename, ...rest)
+  onTestFinished(() => trajectory.frame_loader?.dispose?.())
+  return trajectory
+}
+
+// === Checked-in fixtures, pinned to their real values ===
+
+// abc/volume are [first frame, last frame]; site0_xyz is the first atom of frame 0
+// oxfmt-ignore
+const FIXTURES = [
+  { file: `vasp-XDATCAR.MD.gz`, format: `vasp_xdatcar`, n_frames: 5, n_atoms: 80, steps: [1, 5],
+    element_counts: { O: 48, Fe: 32 }, pbc: [true, true, true],
+    abc: [[9.39, 9.39, 9.39], [9.39, 9.39, 9.39]], volume: [827.936019, 827.936019],
+    site0_xyz: [8.0500211775, 4.1886668799, 3.6800131152],
+    metadata: { elements: [`O`, `Fe`], element_counts: [48, 32], total_atoms: 80 } },
+  { file: `vasp-XDATCAR-traj.gz`, format: `vasp_xdatcar`, n_frames: 100, n_atoms: 76, steps: [1, 100],
+    element_counts: { Li: 38, Si: 38 }, pbc: [true, true, true],
+    abc: [[10.805799, 10.805799, 10.805799], [10.805799, 10.805799, 10.805799]],
+    volume: [1261.7422758352, 1261.7422758352], site0_xyz: [5.320580923218, 4.589363310687, 0.900901074228],
+    metadata: { elements: [`Li`, `Si`], element_counts: [38, 38] } },
+  { file: `lammps-sample.lammpstrj.gz`, format: `lammps_trajectory`, n_frames: 5, n_atoms: 864,
+    steps: [0, 40000], element_counts: { H: 778, He: 86 }, pbc: [true, true, true],
+    abc: [[21.12, 21.12, 21.12], [21.33040849885696, 21.33040849885696, 21.33040849885696]],
+    volume: [9420.668928, 9705.044210504973], site0_xyz: [0, 0, 0],
+    frame0_metadata: { timestep: 0, coords_unwrapped: false, box_origin: [0, 0, 0] },
+    metadata: { atom_types: [1, 2], element_counts: { H: 778, He: 86 }, total_atoms: 864 },
+    // semi-grand-canonical MC swaps H<->He on fixed atom IDs, so species change per frame
+    validation_errors: [1, 2, 3, 4].map((idx) => `Frame ${idx} changes atom count or ordering`) },
+  { file: `mdanalysis-chain-dump.lammpstrj`, format: `lammps_trajectory`, n_frames: 6, n_atoms: 22,
+    steps: [0, 5], element_counts: { H: 2, He: 20 }, pbc: [true, true, true],
+    abc: [[10, 10, 10], [10, 10, 10]], volume: [1000, 1000], site0_xyz: [5.19899, 5.00015, 5.48947],
+    frame0_metadata: { coords_unwrapped: true }, site0_properties: { id: 1, mol: 0, type: 1, charge: 0 } },
+  { file: `mdanalysis-additional-columns.lammpstrj`, format: `lammps_trajectory`, n_frames: 1, n_atoms: 10,
+    steps: [0, 0], element_counts: { H: 1, He: 1, Li: 1, Be: 1, B: 1, C: 1, N: 1, O: 1, F: 1, Ne: 1 },
+    pbc: [true, true, false], abc: [[42.6, 44.2712, 50.2], [42.6, 44.2712, 50.2]],
+    volume: [94674.846624, 94674.846624], site0_xyz: [2.84, 8.17, 0.1],
+    frame0_metadata: { box_origin: [0, 0, -25.1] }, site0_properties: { id: 1, charge: 0.00258855, p: 1.1 },
+    metadata: { atom_types: [] } },
+  { file: `ase-images-Ag-0-to-97.xyz.gz`, format: `xyz_trajectory`, n_frames: 51, n_atoms: 119,
+    steps: [0, 50], element_counts: { Ag: 1, Al: 46, O: 72 }, pbc: [true, true, true],
+    abc: [[9.610054442, 9.610054442, 13.11625325], [9.610054442, 9.610054442, 13.11625325]],
+    volume: [1049.040176040141, 1049.040176040141], site0_xyz: [2.51924988, 1.32574328, 10.75235515],
+    frame0_metadata: { energy: -873.3574740297651, force_max: 0.03784708430501483, force_norm: 0.015001699666858478 },
+    last_metadata: { energy: -873.3572959118774 },
+    site0_properties: { force: [0.02835451, -0.0034239, 0.01183863], node_energy: 2.73641238 } },
+  { file: `Cr0.25Fe0.25Co0.25Ni0.25-mace-omat-qha.xyz.gz`, format: `xyz_trajectory`, n_frames: 9, n_atoms: 108,
+    steps: [0, 8], element_counts: { Fe: 27, Ni: 27, Cr: 27, Co: 27 }, pbc: [true, true, true],
+    abc: [[10.02726924, 10.02726924, 10.02726924], [11.40284021, 11.40284021, 11.40284021]],
+    volume: [1008.2031003331548, 1482.6516181369918], site0_xyz: [0.01378909, 0.00042791, 0.01532024],
+    frame0_metadata: { energy: -789.391026308538, force_max: 0.0005370598466879987 },
+    last_metadata: { energy: -789.3899303445564 } },
+  { file: `V8Ta12W71Re8-mace-omat.xyz`, format: `xyz_trajectory`, n_frames: 7, n_atoms: 99, steps: [0, 6],
+    element_counts: { Re: 8, W: 71, Ta: 12, V: 8 }, pbc: [true, true, true],
+    abc: [[6.997006001, 6.997006001, 25.65568867], [9.466537531, 9.466537531, 34.71063761]],
+    volume: [966.9105054969717, 2394.545108972451], site0_xyz: [0.00482629, 0.0119194, -0.03807456],
+    frame0_metadata: { energy: -701.3836929723975 } },
+  // Steps come from the file's own ionic_step= tags (frames from several MP tasks)
+  { file: `mp-1184225.extxyz`, format: `xyz_trajectory`, n_frames: 6, n_atoms: 4, steps: [2, 0],
+    element_counts: { Fe: 3, W: 1 }, pbc: [true, true, true],
+    abc: [[3.61568789, 3.61568789, 3.61568789], [3.615688, 3.615688, 3.615688]],
+    volume: [47.268607010985555, 47.26861132514134], site0_xyz: [0, 1.80784033, 1.80784033],
+    frame0_metadata: { energy: -38.06448831, bandgap: 0, force_max: 0, force_norm: 0 },
+    last_metadata: { energy: -38.10605112, force_max: 6.724155634724704e-5 },
+    site0_properties: { force: [0, 0, 0], magmoms: 0.756 },
+    validation_errors: [[1, 1], [2, 0], [4, 0], [5, 0]].map(([idx, step]) => `Frame ${idx} step (${step}) must be strictly increasing`) },
+  { file: `pymatgen-LiMnO2-chgnet-relax.json.gz`, format: `pymatgen_trajectory`, n_frames: 2, n_atoms: 8,
+    steps: [0, 1], element_counts: { Li: 2, Mn: 2, O: 4 }, pbc: [true, true, true],
+    abc: [[2.868779, 4.634475, 5.832507], [2.868779, 4.634475, 5.832507]],
+    volume: [77.54484024, 77.54484024], site0_xyz: [1.4343895, 2.3172375, 2.2148974495035],
+    frame0_metadata: { energy: -58.97273254394531, force_max: 0.025402992964072665, force_norm: 0.021125332177999983,
+      stress_max: 0.0021019913256168365, pressure: -0.0012979226206274082 },
+    last_metadata: { energy: -58.59364700317383, force_max: 1.2433049712799658 },
+    site0_properties: { momenta: [0, 0, 0], final_magmom: 0.005215555429458618 },
+    metadata: { species_list: [`Li`, `Mn`, `O`] } },
+  // Same relaxation written by ASE: frame 1 has the relaxed (larger) cell
+  { file: `ase-LiMnO2-chgnet-relax.traj`, format: `ase_trajectory`, n_frames: 2, n_atoms: 8, steps: [0, 1],
+    element_counts: { Li: 2, Mn: 2, O: 4 }, pbc: [true, true, true],
+    abc: [[2.868779, 4.634475, 5.832507], [2.876379428410527, 4.646357458548224, 5.846033084452466]],
+    volume: [77.5448402400077, 78.13040242854699], site0_xyz: [1.4343895, 2.3172375, 2.2148974495035],
+    frame0_metadata: { step: 0, name: `chgnetcalculator`, energy: -58.97273254394531 },
+    last_metadata: { energy: -58.59364700317383 }, metadata: { total_atoms: 8 } },
+  { file: `gold-nanoparticle-md.h5`, format: `hdf5_trajectory`, n_frames: 10, total_frames: 100, n_atoms: 55,
+    steps: [1, 91], last_loaded_step: 991, element_counts: { Au: 55 }, pbc: [false, false, false],
+    abc: [[25.816495895385742, 25.816495895385742, 25.816495895385742], [25.816495895385742, 25.816495895385742, 25.816495895385742]],
+    volume: [17206.47404956977, 17206.47404956977], site0_xyz: [12.910871505737305, 12.91317081451416, 12.907877922058105],
+    metadata: { num_atoms: 55, element_counts: { Au: 55 }, has_cell_info: true } },
+  { file: `flame-gold-cluster-55-atoms.h5`, format: `hdf5_trajectory`, n_frames: 10, total_frames: 20, n_atoms: 55,
+    steps: [25, 250], last_loaded_step: 500, element_counts: { Au: 55 }, pbc: [false, false, false],
+    abc: [[25.816495895385742, 25.816495895385742, 25.816495895385742], [25.816495895385742, 25.816495895385742, 25.816495895385742]],
+    volume: [17206.47404956977, 17206.47404956977], site0_xyz: [12.878666877746582, 12.954689025878906, 12.833800315856934],
+    metadata: { num_atoms: 55, element_counts: { Au: 55 } } },
+]
+
+describe(`site fixtures`, () => {
+  it.each(FIXTURES)(`$file: $n_frames x $n_atoms atoms ($format)`, async (fixture) => {
+    const { file, format, n_frames, n_atoms, steps, element_counts, pbc, abc, volume } =
+      fixture
+    const traj = await parse(read_fixture(file), file)
+    const first = traj.frames[0]
+    const last = traj.frames[traj.frames.length - 1]
+
+    expect(traj.metadata).toMatchObject({
+      source_format: format,
+      frame_count: fixture.total_frames ?? n_frames,
+      ...fixture.metadata,
+    })
+    expect(get_traj_parse_warnings()).toEqual([])
+    expect(traj.total_frames).toBe(fixture.total_frames)
+    expect(traj.frames).toHaveLength(n_frames)
+    expect(traj.frames.every((frame) => frame.structure.sites.length === n_atoms)).toBe(true)
+    expect([first.step, last.step]).toEqual(steps)
+    expect(validate_trajectory(traj)).toEqual(fixture.validation_errors ?? [])
+
+    const counts: Record<string, number> = {}
+    for (const element of elements_of(first)) counts[element] = (counts[element] ?? 0) + 1
+    expect(counts).toEqual(element_counts)
+    expect(lattice_of(first).pbc).toEqual(pbc)
+    for (const [idx, frame] of [first, last].entries()) {
+      const lattice = lattice_of(frame)
+      expect_close([lattice.a, lattice.b, lattice.c], abc[idx], 8)
+      expect(lattice.volume).toBeCloseTo(volume[idx], 6)
+      if (format !== `ase_trajectory` && format !== `pymatgen_trajectory`) {
+        expect(frame.metadata?.volume).toBeCloseTo(volume[idx], 6)
+      }
+    }
+    expect_close(first.structure.sites[0].xyz, fixture.site0_xyz, 9)
+    if (fixture.frame0_metadata) expect(first.metadata).toMatchObject(fixture.frame0_metadata)
+    if (fixture.last_metadata) expect(last.metadata).toMatchObject(fixture.last_metadata)
+    if (fixture.site0_properties) {
+      expect(first.structure.sites[0].properties).toEqual(fixture.site0_properties)
+    }
+    if (fixture.last_loaded_step !== undefined) {
+      const loaded = await traj.frame_loader?.load_frame(``, fixture.total_frames - 1)
+      expect(loaded?.step).toBe(fixture.last_loaded_step)
+    }
+    // Magic bytes / content sniffing must route the same file without a filename hint
+    const sniffed = await parse(read_fixture(file))
+    expect(sniffed.metadata?.source_format).toBe(format)
+  })
+
+  it(`covers every parsable sample file`, () => {
+    const unsupported = [`.bz2`, `.xz`, `.zip`, `.bin`]
+    const expected = readdirSync(join(process.cwd(), TRAJECTORY_DIR)).filter(
+      (name) =>
+        !name.startsWith(`.`) &&
+        !name.includes(`bad-file`) &&
+        !/\.(?:ts|js)$/.test(name) &&
+        !unsupported.some((ext) => name.endsWith(ext)),
+    )
+    // The GCMC dump is a byte-identical copy of lammps-sample.lammpstrj.gz
+    const covered = [
+      ...FIXTURES.map(({ file }) => file),
+      `cell_0_T_800.0_dmu_0.3129032258064516.lammpstrj.gz`,
+    ]
+    expect(covered.toSorted()).toEqual(expected.toSorted())
+  })
+})
+
+// === Filename and content detection ===
+
+test.each([
+  [`movie.H5.gz`, `hdf5`],
+  [`movie.json.gz`, `json`],
+  [`movie.extxyz.gz`, `xyz`],
+  [`vasp-XDATCAR.MD.gz`, `xdatcar`],
+  [`movie.traj.gz`, `traj`],
+] as const)(`classifies compressed site trajectory %s as %s`, (name, expected) => {
+  expect(get_trajectory_type({ name, url: name })).toBe(expected)
+})
+
+// oxfmt-ignore
+test.each([
+  // explicit trajectory extensions and bare VASP names
+  [`test.traj`, true], [`FILE.TRAJ`, true], [`test.lammpstrj`, true], [`XDATCAR`, true], [`XDATCAR.out`, true],
+  // HDF5 needs a trajectory keyword (or vaspout)
+  [`test.h5`, false], [`molecular_dynamics.h5`, true], [`relaxation.hdf5`, true], [`TRAJECTORY.H5`, true],
+  // xyz/extxyz are auto-rendered only with a trajectory keyword in the name
+  [`relax-simulation.xyz`, true], [`npt-dynamics.extxyz`, true], [`qha-analysis.xyz`, true],
+  [`md-run.xyz`, true], [`CuAgAu_chgnet_relax.xyz`, true], [`bulk_water_dpmd.xyz`, true],
+  [`a.xyz`, false], [`single-molecule.xyz`, false], [`V8Ta12W71Re8-mace-omat.xyz`, false],
+  [`dataset_structure_0001.xyz`, false],
+  // fallback extensions need a delimited keyword
+  [`trajectory.dat`, true], [`npt_dynamics.data`, true], [`trajectory_data.json`, true],
+  [`md/notes.log`, false], [`npt2.log`, false], [`md_simulation.out`, false],
+  // compression suffixes are stripped first
+  [`relax.extxyz.gz`, true], [`trajectory.traj.xz`, true], [`trajectory.traj.gz.gz`, true],
+  [`simulation.h5.gz`, true], [`XDATCAR.gz`, true], [`trajectory.txt.gz`, false], [`script.py.gz`, false],
+  // structure / document formats never are
+  [`test.cif`, false], [`md_simulation.cif`, false], [`relax_output.poscar`, false], [`POSCAR`, false],
+  [`test.xyz.backup`, false], [`trajectory.md`, false], [`npt_dynamics.csv`, false], [`a`, false],
+])(`is_trajectory_file("%s") by name → %s`, (filename, expected) => {
+  expect(is_trajectory_file(filename)).toBe(expected)
+})
+
+const VALID_XYZ_FRAME = `3\nvalid frame\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0`
+// Content path for xyz/extxyz is count_xyz_frames(content) >= 2; cases cover counting edges
+// oxfmt-ignore
+test.each([
+  [`single-frame.xyz`, VALID_XYZ_FRAME, false],
+  [`single-frame.extxyz`, `1\nLattice="5 0 0 0 5 0 0 0 5"\nH 0 0 0\n`, false],
+  [`trajectory.xyz`, `${VALID_XYZ_FRAME}\n${VALID_XYZ_FRAME}`, true],
+  [`trajectory-with-gaps.xyz`, `\n2\nframe 1\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\n\n2\nframe 2\nH 0.1 0.0 0.0\nH 1.1 0.0 0.0\n`, true],
+  [`mixed.xyz`, `invalid\ncomment\nH 0 0 0\n\n${VALID_XYZ_FRAME}\n\nnot_a_number\ninvalid frame\nH 0 0 0\n\n${VALID_XYZ_FRAME}`, true],
+  [`malformed.xyz`, `invalid\nno atom count\nH 0.0 0.0 0.0`, false],
+  [`incomplete.xyz`, `3\ncomment\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0`, false],
+  [`empty.xyz`, ``, false],
+  [`whitespace.xyz`, `   \n  \n  `, false],
+  [`bad-coords.xyz`, `2\ntest\nH not_a_number 0.0 0.0\nH 1.0 invalid 0.0`, false],
+  [`negative-count.xyz`, `-1\nshould be skipped\nH 0.0 0.0 0.0\n2\nvalid frame\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0`, false],
+  [`zero-count.xyz`, `0\nempty frame\n\n1\nvalid frame\nH 0.0 0.0 0.0`, false],
+  // md/nvt/nve.data are common LAMMPS *data* (single-structure) names: the trajectory
+  // keyword in the name must not outrank a file that plainly is a LAMMPS data file
+  [`md.data`, `# LAMMPS data\n\n1 atoms\n1 atom types\n0.0 4.0 xlo xhi\n0.0 4.0 ylo yhi\n0.0 4.0 zlo zhi\n\nAtoms # atomic\n\n1 1 0.0 0.0 0.0\n`, false],
+  [`md.data`, `step energy\n0 -1.5\n1 -1.6\n`, true],
+])(`is_trajectory_file("%s") by content → %s`, (filename, content, expected) => {
+  expect(is_trajectory_file(filename, content)).toBe(expected)
+})
+
+describe(`content sniffing without a filename hint (blob: URLs)`, () => {
+  const blob_uuid = `8a3bf2c4-d1e2-4f5a-9b8c-7d6e5f4a3b2c`
+  const lammps_content = `ITEM: TIMESTEP\n0\nITEM: NUMBER OF ATOMS\n2
+ITEM: BOX BOUNDS pp pp pp\n0.0 10.0\n0.0 10.0\n0.0 10.0
+ITEM: ATOMS id type x y z\n1 1 0.0 0.0 0.0\n2 1 5.0 0.0 0.0`
+
+  it.each([
+    [`multi-frame XYZ`, `${VALID_XYZ_FRAME}\n${VALID_XYZ_FRAME}`, `xyz_trajectory`, 2],
+    [`single-frame XYZ`, VALID_XYZ_FRAME, `single_xyz`, 1],
+    [`LAMMPS`, lammps_content, `lammps_trajectory`, 1],
+  ])(`detects %s by content`, async (_label, content, expected_format, n_frames) => {
+    for (const filename of [undefined, blob_uuid]) {
+      const trajectory = await parse(content, filename)
+      expect(trajectory.metadata?.source_format).toBe(expected_format)
+      expect(trajectory.frames).toHaveLength(n_frames)
+    }
+  })
+
+  it.each([
+    [`data.json`, `${VALID_XYZ_FRAME}\n${VALID_XYZ_FRAME}`, `Unsupported text format`],
+    [undefined, `not a trajectory`, `Unsupported text format`],
+    [`test.lammpstrj`, `This is not a LAMMPS file`, `Unsupported text format`],
+    [
+      `test.json`,
+      `{ "frames": [{ "structure": { "sites": [ invalid`,
+      `Unsupported text format`,
+    ],
+    [`bad.xyz`, `not\nan xyz\nfile at all`, `Failed to parse bad.xyz as XYZ`],
+  ])(
+    `rejects unparsable or extension-conflicting content (%s)`,
+    async (filename, content, msg) => {
+      await expect(parse(content, filename)).rejects.toThrow(msg)
+    },
+  )
+})
+
+// === VASP XDATCAR ===
+
+describe(`XDATCAR`, () => {
+  const xdatcar = (species_block: string, frames: string[], scale = `1.0`): string =>
+    [`title`, scale, `5 0 0`, `0 5 0`, `0 0 5`, species_block, ...frames].join(`\n`)
+  const config = (step: number, ...coords: string[]) =>
+    [`Direct configuration= ${step}`, ...coords].join(`\n`)
+  const two_frames = [config(1, `0.5 0.5 0.5`), config(2, `0.5 0.5 0.5`)]
+
+  it.each([
+    [`too short`, `too short`, `XDATCAR file too short`],
+    [
+      `missing configuration lines`,
+      `title\n1.0\n1 0 0\n0 1 0\n0 0 1\nH\n1\n`,
+      `XDATCAR file too short`,
+    ],
+    // Number(``) is 0, not NaN - a blank scale line must be a parse error
+    [`blank scale`, xdatcar(`H\n1`, two_frames, ``), `Invalid scale factor`],
+    [`two-value scale`, xdatcar(`H\n1`, two_frames, `1 2`), `Invalid scale factor`],
+    // XDATCAR refuses to invent element symbols: they go into the trajectory metadata,
+    // where an indexed fallback would be a silent lie
+    [
+      `VASP 4 header with no symbol line`,
+      xdatcar(`2 1`, two_frames),
+      `element symbols are missing`,
+    ],
+    [`blank symbol line`, xdatcar(`\n1`, two_frames), `Invalid element symbol in XDATCAR`],
+    [
+      `non-element symbol`,
+      xdatcar(`Xx\n1`, two_frames),
+      `Invalid element symbol in XDATCAR: Xx`,
+    ],
+    [
+      `fewer counts than symbols`,
+      xdatcar(`H O Na\n1 1`, two_frames),
+      `3 element symbol(s) but 2 atom count(s)`,
+    ],
+    [`fractional count`, xdatcar(`H\n1.5`, two_frames), `invalid atom counts`],
+    [`zero count`, xdatcar(`H\n0`, two_frames), `invalid atom counts`],
+    // Corruption inside the file names the frame and line instead of dropping the frame
+    [
+      `non-numeric coordinate`,
+      xdatcar(`H\n2`, [
+        config(1, `0.5 0.5 0.5`, `0.1 xx 0.1`),
+        config(2, `0.5 0.5 0.5`, `0.1 0.1 0.1`),
+      ]),
+      `XDATCAR frame 1 line 10 is not a fractional coordinate triple: "0.1 xx 0.1"`,
+    ],
+    [
+      `short coordinate line`,
+      xdatcar(`H\n2`, [
+        config(1, `0.5 0.5 0.5`, `0.1 0.1`),
+        config(2, `0.5 0.5 0.5`, `0.1 0.1 0.1`),
+      ]),
+      `XDATCAR frame 1 line 10 is not a fractional coordinate triple: "0.1 0.1"`,
+    ],
+  ])(`rejects an XDATCAR with %s`, async (_label, content, error) => {
+    await expect(parse(content, `XDATCAR`)).rejects.toThrow(error)
+  })
+
+  it.each([
+    [`2.0 ! scale`, [10, 10, 10]],
+    [`2 1 3`, [10, 5, 15]],
+  ])(`applies the shared VASP scale grammar "%s"`, async (scale, expected_abc) => {
+    const { lattice } = (await parse(xdatcar(`H\n1`, two_frames, scale), `XDATCAR`)).frames[0]
+      .structure as { lattice: { a: number; b: number; c: number } }
+    expect([lattice.a, lattice.b, lattice.c]).toEqual(expected_abc)
+  })
+
+  // A writer still appending leaves a frame with missing lines or a half-written last
+  // line: only that final frame is dropped, with a warning that says what was lost
+  it.each([
+    [
+      `missing coordinate lines`,
+      config(2, `0.5 0.5 0.5`),
+      `Dropping truncated final XDATCAR frame 2 (line 11): 1 of 2 coordinate lines`,
+    ],
+    [
+      `a half-written last line`,
+      config(2, `0.5 0.5 0.5`, `0.1 0.1`),
+      `Dropping truncated final XDATCAR frame 2: partial coordinate line 13 "0.1 0.1"`,
+    ],
+  ])(`drops a torn final frame with %s`, async (_label, torn_frame, warning) => {
+    const content = xdatcar(`H\n2`, [config(1, `0.5 0.5 0.5`, `0.1 0.1 0.1`), torn_frame])
+    const trajectory = await parse(content, `XDATCAR`)
+    expect(trajectory.frames.map(({ step }) => step)).toEqual([1])
+    expect(get_traj_parse_warnings()).toEqual([warning])
+  })
+
+  it(`re-reads variable-cell headers with wrapped species blocks from the frame cursor`, async () => {
+    const frame = (lat_a: number, idx: number) =>
+      `frame\n1.0\n${lat_a} 0 0\n0 ${lat_a} 0\n0 0 ${lat_a}\nH\nHe\n1\n1\nDirect configuration= ${idx}\n0.5 0.5 0.5\n0.25 0.25 0.25`
+    const trajectory = await parse(`${frame(10, 1)}\n${frame(20, 2)}`, `XDATCAR`)
+
+    expect(trajectory.frames.map(({ step }) => step)).toEqual([1, 2])
+    expect(trajectory.frames.map((traj_frame) => lattice_of(traj_frame).a)).toEqual([10, 20])
+    const second = trajectory.frames[1]
+    expect(second.structure.sites[0].xyz).toEqual([10, 10, 10])
+    expect(second.metadata?.volume).toBe(8000)
+    expect(elements_of(second)).toEqual([`H`, `He`])
+  })
+})
+
+// === LAMMPS dumps ===
+
+describe(`LAMMPS`, () => {
+  const lammps_frame = (
+    columns: string,
+    atom_lines: string[],
+    opts: { timestep?: number; pbc?: string; time?: number; n_atoms?: number } = {},
+  ): string => {
+    const { timestep = 0, pbc = `pp pp pp`, time, n_atoms = atom_lines.length } = opts
+    return [
+      ...(time === undefined ? [] : [`ITEM: TIME`, `${time}`]),
+      `ITEM: TIMESTEP`,
+      `${timestep}`,
+      `ITEM: NUMBER OF ATOMS`,
+      `${n_atoms}`,
+      `ITEM: BOX BOUNDS ${pbc}`,
+      `0.0 10.0`,
+      `0.0 10.0`,
+      `0.0 10.0`,
+      `ITEM: ATOMS ${columns}`,
+      ...atom_lines,
+    ].join(`\n`)
+  }
+  // Orthogonal 10x10x10 box frame(s) with one atom per entry of `types`, timesteps 0, 100, ...
+  const lammps_frames = (
+    types: number[],
+    opts: { n_frames?: number; pbc?: string; times?: (number | undefined)[] } = {},
+  ): string => {
+    const { n_frames = 1, pbc, times } = opts
+    const atom_lines = types.map(
+      (atom_type, atom_idx) => `${atom_idx + 1} ${atom_type} ${atom_idx}.0 0.0 0.0`,
+    )
+    return Array.from({ length: n_frames }, (_, frame_idx) =>
+      lammps_frame(`id type x y z`, atom_lines, {
+        timestep: frame_idx * 100,
+        pbc,
+        time: times?.[frame_idx],
+      }),
+    ).join(`\n`)
+  }
+  const frame_0 = lammps_frame(`id type x y z`, [`1 1 1 0 0`, `2 1 8 0 0`])
+
+  it(`parses inline frames, PBC flags and box-origin translation`, async () => {
+    const trajectory = await parse(
+      lammps_frames([1, 1, 2], { n_frames: 2, pbc: `ff pp pp` }),
+      `t.lammpstrj`,
+    )
+    expect(trajectory.metadata).toMatchObject({
+      source_format: `lammps_trajectory`,
+      frame_count: 2,
+      total_atoms: 3,
+      periodic_boundary_conditions: [false, true, true],
+      atom_types: [1, 2],
+      element_counts: { H: 2, He: 1 },
+    })
+    expect(trajectory.frames.map(({ step }) => step)).toEqual([0, 100])
+    expect(trajectory.frames[1].structure.sites.map(({ xyz }) => xyz[0])).toEqual([0, 1, 2])
+  })
+
+  // Corruption inside a frame is an error naming its line and timestep; it used to skip the
+  // atom or frame silently and surface only as "No valid frames found"
+  // oxfmt-ignore
+  it.each([
+    [`neither type nor element column`, lammps_frame(`id x y z`, [`1 0 0 0`]),
+      `LAMMPS frame at timestep 0 has neither a type nor an element column in "ITEM: ATOMS id x y z"`],
+    [`no position columns`, lammps_frame(`id type vx vy vz`, [`1 1 0 0 0`]),
+      `LAMMPS frame at timestep 0 has no position columns (x y z, xs ys zs, xu yu zu or xsu ysu zsu) in "ITEM: ATOMS id type vx vy vz"`],
+    [`atom type 0`, lammps_frame(`id type x y z`, [`1 0 0 0 0`]), `LAMMPS atom line 10 (timestep 0) has invalid type "0"`],
+    [`atom type 1.5`, lammps_frame(`id type x y z`, [`1 1.5 0 0 0`]), `LAMMPS atom line 10 (timestep 0) has invalid type "1.5"`],
+    [`atom type bad`, lammps_frame(`id type x y z`, [`1 bad 0 0 0`]), `LAMMPS atom line 10 (timestep 0) has invalid type "bad"`],
+    [`unknown element symbol`, lammps_frame(`id element x y z`, [`1 Xx 0 0 0`]),
+      `LAMMPS atom line 10 (timestep 0) has unknown element symbol "Xx"`],
+    [`short atom line`, lammps_frame(`id type x y z`, [`1 1 0 0`]), `LAMMPS atom line 10 (timestep 0) has 4 columns, expected 5`],
+    [`non-numeric coordinate`, lammps_frame(`id type x y z`, [`1 1 0 xx 0`]),
+      `LAMMPS atom line 10 (timestep 0) has non-numeric coordinates: "1 1 0 xx 0"`],
+    [`non-integer timestep`, lammps_frame(`id type x y z`, [`1 1 1 0 0`], { timestep: Number.NaN }),
+      `Invalid LAMMPS timestep "NaN" at line 2`],
+    [`zero atom count`, lammps_frame(`id type x y z`, [], { n_atoms: 0 }), `Invalid LAMMPS atom count "0" at timestep 0 (line 4)`],
+    [`malformed box bounds`, lammps_frame(`id type x y z`, [`1 1 1 0 0`]).replace(`0.0 10.0\n0.0 10.0\n0.0 10.0`, `0.0 10.0\n0.0 xx\n0.0 10.0`),
+      `Invalid LAMMPS orthogonal BOX BOUNDS at timestep 0 (lines 6-8): 0.0 10.0 | 0.0 xx | 0.0 10.0`],
+    [`duplicate atom IDs`, `${frame_0}\n${lammps_frame(`id type x y z`, [`1 1 1.5 0 0`, `1 1 7.5 0 0`], { timestep: 1 })}`,
+      `LAMMPS frame at timestep 1 has duplicate atom IDs`],
+    [`non-positive atom ID`, lammps_frame(`id type x y z`, [`0 1 1 0 0`]), `LAMMPS frame at timestep 0 has a non-positive-integer atom ID 0`],
+    [`a frame that loses the ID column`, `${frame_0}\n${lammps_frame(`type x y z`, [`1 1 0 0`, `1 8 0 0`], { timestep: 1 })}`,
+      `LAMMPS frame at timestep 1 lost the atom ID column`],
+    // An interior frame shorter than its atom count runs into the next header
+    [`an interior frame missing atoms`, `${lammps_frame(`id type x y z`, [`1 1 1 0 0`], { n_atoms: 2 })}\n${lammps_frame(`id type x y z`, [`1 1 1 0 0`, `2 1 8 0 0`], { timestep: 1 })}`,
+      `LAMMPS atom line 11 (timestep 0) has 2 columns, expected 5`],
+    [`no ID column across frames`, [lammps_frame(`type x y z`, [`1 1 0 0`]), lammps_frame(`type x y z`, [`1 1.5 0 0`], { timestep: 1 })].join(`\n`),
+      `Multi-frame LAMMPS trajectories must include an atom ID column`],
+    [`descending timesteps`, [lammps_frame(`id type x y z`, [`1 1 1 0 0`], { timestep: 1 }), lammps_frame(`id type x y z`, [`1 1 2 0 0`])].join(`\n`),
+      `LAMMPS timestep 0 at frame 1 must be greater than 1 at frame 0`],
+  ])(`rejects %s with line/frame context`, async (_label, content, error) => {
+    await expect(parse(content, `bad.lammpstrj`)).rejects.toThrow(error)
+  })
+
+  // Only the final frame of a dump may be incomplete: the writer is still appending
+  it.each([
+    [
+      `ends after 1 of 2 atoms`,
+      lammps_frame(`id type x y z`, [`1 1 1 0 0`], { timestep: 100, n_atoms: 2 }),
+      `LAMMPS frame at timestep 100 ends after 1 of 2 atoms`,
+    ],
+    [
+      `ends inside BOX BOUNDS`,
+      `ITEM: TIMESTEP\n100\nITEM: NUMBER OF ATOMS\n2\nITEM: BOX BOUNDS pp pp pp\n0 10\n0 10`,
+      `LAMMPS frame at timestep 100 ends inside BOX BOUNDS`,
+    ],
+    [
+      `ends before ITEM: ATOMS`,
+      `ITEM: TIMESTEP\n100\nITEM: NUMBER OF ATOMS\n2\nITEM: BOX BOUNDS pp pp pp\n0 10\n0 10\n0 10`,
+      `LAMMPS frame at timestep 100 ends before "ITEM: ATOMS"`,
+    ],
+    [
+      `ends before ITEM: NUMBER OF ATOMS`,
+      `ITEM: TIMESTEP\n100`,
+      `LAMMPS frame at timestep 100 ends before "ITEM: NUMBER OF ATOMS"`,
+    ],
+  ])(`drops a truncated final frame that %s`, async (_label, torn_frame, detail) => {
+    const trajectory = await parse(`${frame_0}\n${torn_frame}`, `torn.lammpstrj`)
+    expect(trajectory.frames.map(({ step }) => step)).toEqual([0])
+    expect(get_traj_parse_warnings()).toEqual([
+      `Dropping truncated final LAMMPS frame: ${detail}`,
+    ])
+  })
+
+  it(`sorts every frame by atom ID and skips frames whose atom set changed (GCMC)`, async () => {
+    const content = [
+      frame_0,
+      lammps_frame(`id type x y z`, [`2 1 7.5 0 0`, `1 1 1.5 0 0`], { timestep: 1 }),
+      lammps_frame(`id type x y z`, [`1 1 1 0 0`, `2 1 8 0 0`, `3 1 4 0 0`], { timestep: 2 }),
+      lammps_frame(`id type x y z`, [`1 1 2 0 0`, `3 1 8 0 0`], { timestep: 3 }),
+      lammps_frame(`id type x y z`, [`2 1 8.5 0 0`, `1 1 2 0 0`], { timestep: 4 }),
+    ].join(`\n`)
+    const trajectory = await parse(content, `unsorted.lammpstrj`)
+    expect(
+      trajectory.frames.map((frame) => [
+        frame.step,
+        ...frame.structure.sites.map(({ properties, xyz }) => [properties.id, xyz[0]]),
+      ]),
+    ).toEqual([
+      [0, [1, 1], [2, 8]],
+      [1, [1, 1.5], [2, 7.5]],
+      [4, [1, 2], [2, 8.5]],
+    ])
+    expect(get_traj_parse_warnings()).toEqual([
+      `Skipping LAMMPS frame at timestep 2: atom ID set changed (3 atoms vs 2 in the first frame)`,
+      `Skipping LAMMPS frame at timestep 3: atom ID set changed (2 atoms vs 2 in the first frame)`,
+    ])
+  })
+
+  // Coordinate values are 0.25, 0.5, 0.75, ... in column order, so the expected Cartesian
+  // position also pins which triple was picked and whether the 10 A cell was applied.
+  it.each([
+    { cols: `id type xu yu zu`, unwrapped: true, xyz: [0.25, 0.5, 0.75] },
+    { cols: `id type xs ys zs`, unwrapped: false, xyz: [2.5, 5, 7.5] },
+    { cols: `id type x y z`, unwrapped: false, xyz: [0.25, 0.5, 0.75] },
+    { cols: `id type xsu ysu zsu`, unwrapped: true, xyz: [2.5, 5, 7.5] },
+    // Unwrapped columns win over wrapped ones when a dump carries both
+    { cols: `id type x y z xu yu zu`, unwrapped: true, xyz: [1, 1.25, 1.5] },
+    { cols: `id type xs ys zs xsu ysu zsu`, unwrapped: true, xyz: [10, 12.5, 15] },
+  ])(
+    `flags coords_unwrapped=$unwrapped for columns "$cols"`,
+    async ({ cols, unwrapped, xyz }) => {
+      const n_coords = cols.split(/\s+/).length - 2
+      const coords = Array.from({ length: n_coords }, (_, idx) => 0.25 * (idx + 1)).join(` `)
+      const traj = await parse(lammps_frame(cols, [`1 1 ${coords}`]), `test.lammpstrj`)
+      expect(traj.frames[0].metadata?.coords_unwrapped).toBe(unwrapped)
+      expect(traj.frames[0].structure.sites[0].xyz).toEqual(xyz)
+    },
+  )
+
+  // Columns beyond identity + coordinates become site properties: vx/vy/vz and fx/fy/fz
+  // grouped into the vec3 keys the viewer's arrow layers look for, q renamed to `charge`,
+  // computes/variables passed through under their dump names, incomplete vectors kept scalar
+  // oxfmt-ignore
+  it.each([
+    [`vx vy vz fx fy fz q c_pe v_myvar`, `1.0 2.0 3.0 0.1 0.2 0.3 -0.5 -3.25 7`,
+      { velocity: [1, 2, 3], force: [0.1, 0.2, 0.3], charge: -0.5, c_pe: -3.25, v_myvar: 7 }],
+    [`vx vy vz fx fy fz q c_pe v_myvar`, `-1.0 -2.0 -3.0 0.4 0.5 0.6 0.5 N/A 8`,
+      { velocity: [-1, -2, -3], force: [0.4, 0.5, 0.6], charge: 0.5, v_myvar: 8 }], // N/A dropped, not NaN
+    [`vx vy vz fx fz`, `1 2 3 0.1 0.3`, { velocity: [1, 2, 3], fx: 0.1, fz: 0.3 }],
+    [`vx vz fx fy fz`, `1 3 0.1 0.2 0.3`, { vx: 1, vz: 3, force: [0.1, 0.2, 0.3] }],
+  ])(`maps dump columns "%s" onto site properties`, async (extra_cols, extra_values, expected) => {
+    const content = lammps_frame(`id type x y z ${extra_cols}`, [`1 1 0.0 0.0 0.0 ${extra_values}`])
+    const trajectory = await parse(content, `test.lammpstrj`)
+    expect(trajectory.frames[0].structure.sites[0].properties).toEqual({ ...expected, id: 1, type: 1 })
+  })
+
+  it(`reads a case-mangled element column`, async () => {
+    const traj = await parse(
+      lammps_frame(`id element x y z`, [`1 FE 0 0 0`, `2 si 1 0 0`]),
+      `e.lammpstrj`,
+    )
+    expect(elements_of(traj.frames[0])).toEqual([`Fe`, `Si`])
+  })
+
+  // ITEM: TIME is absolute and unitless; divide its intervals by the step intervals.
+  it.each([
+    { case: `uniform spacing`, times: [0, 0.1, 0.2], expected: 0.001 },
+    { case: `a stretched interval`, times: [0, 0.1, 0.5], expected: undefined },
+    { case: `a frame missing its time`, times: [0, undefined, 0.2], expected: undefined },
+    { case: `no ITEM: TIME at all`, times: undefined, expected: undefined },
+  ])(`derives time_step $expected from $case`, async ({ times, expected }) => {
+    const trajectory = await parse(
+      lammps_frames([1], { n_frames: 3, times }),
+      `test.lammpstrj`,
+    )
+    expect(trajectory.frames.map((frame) => frame.step)).toEqual([0, 100, 200])
+    expect(trajectory.time_step).toBe(expected)
+    expect(trajectory.time_unit).toBeUndefined()
+    expect(trajectory.frames[0].metadata?.time).toBe(times?.[0])
+  })
+
+  describe(`triclinic boxes`, () => {
+    // Bounds rows are [lo_bound hi_bound tilt] with tilts xy, xz, yz; a = (lx, 0, 0),
+    // b = (xy, ly, 0), c = (xz, yz, lz) after the bounding-box conversion
+    const triclinic_frame = (bounds: string[], pbc = `pp pp pp`, timestep = 0): string =>
+      `ITEM: TIMESTEP\n${timestep}\nITEM: NUMBER OF ATOMS\n1
+ITEM: BOX BOUNDS xy xz yz ${pbc}\n${bounds.join(`\n`)}
+ITEM: ATOMS id type x y z\n1 1 5.0 5.0 5.0`
+
+    // oxfmt-ignore
+    it.each([
+      [`positive tilts`, [`0.0 10.0 2.0`, `0.0 10.0 1.0`, `0.0 10.0 0.5`], [[7, 0, 0], [2, 9.5, 0], [1, 0.5, 10]], 665],
+      [`large tilts shift both bounds`, [`-3.0 13.0 3.0`, `-1.0 11.0 2.0`, `0.0 10.0 1.0`], [[11, 0, 0], [3, 11, 0], [2, 1, 10]], 1210],
+      [`negative tilts`, [`-2.5 12.5 -2.5`, `-1.5 11.5 -1.5`, `0.0 10.0 -0.5`], [[11, 0, 0], [-2.5, 12.5, 0], [-1.5, -0.5, 10]], 1375],
+      [`zero tilts (orthogonal)`, [`0.0 10.0 0.0`, `0.0 8.0 0.0`, `0.0 6.0 0.0`], [[10, 0, 0], [0, 8, 0], [0, 0, 6]], 480],
+    ])(`converts restricted-triclinic bounds with %s`, async (_name, bounds, matrix, volume) => {
+      const trajectory = await parse(triclinic_frame(bounds, `pp pp ff`), `test.lammpstrj`)
+      const lattice = lattice_of(trajectory.frames[0])
+      for (const [row_idx, row] of matrix.entries()) expect_close(lattice.matrix[row_idx], row, 10)
+      expect(lattice.pbc).toEqual([true, true, false])
+      expect(trajectory.frames[0].metadata?.volume).toBeCloseTo(volume, 8)
+    })
+
+    it(`keeps per-frame cell shapes`, async () => {
+      const content = [
+        triclinic_frame([`0.0 10.0 1.0`, `0.0 10.0 0.5`, `0.0 10.0 0.25`]),
+        triclinic_frame([`0.0 11.0 2.0`, `0.0 11.0 1.0`, `0.0 11.0 0.5`], `pp pp pp`, 100),
+      ].join(`\n`)
+      const trajectory = await parse(content, `test.lammpstrj`)
+      expect(
+        trajectory.frames.map((frame) => {
+          const { matrix } = lattice_of(frame)
+          return [matrix[1][0], matrix[2][0], matrix[2][1]]
+        }),
+      ).toEqual([
+        [1, 0.5, 0.25],
+        [2, 1, 0.5],
+      ])
+    })
+
+    it.each([
+      [`x y z`, `0.75 -0.375 -1.0`, false],
+      [`xu yu zu`, `0.75 -0.375 -1.0`, true],
+      [`xs ys zs`, `0.5 0.5 0.5`, false],
+      [`xsu ysu zsu`, `0.5 0.5 0.5`, true],
+    ])(`parses general triclinic %s coordinates`, async (columns, coordinates, unwrapped) => {
+      const content = `ITEM: TIMESTEP\n0\nITEM: NUMBER OF ATOMS\n1
+ITEM: BOX BOUNDS abc origin pp ff pp\n4 0 0 -2\n1 5 0 -3\n0.5 0.25 6 -4
+ITEM: ATOMS id type ${columns}\n1 1 ${coordinates}`
+      const { structure, metadata } = (await parse(content, `general.lammpstrj`)).frames[0]
+      const lattice = lattice_of({ structure, step: 0 })
+      expect(lattice.matrix).toEqual([
+        [4, 0, 0],
+        [1, 5, 0],
+        [0.5, 0.25, 6],
+      ])
+      expect(lattice.pbc).toEqual([true, false, true])
+      expect(structure.sites[0].xyz).toEqual([2.75, 2.625, 3])
+      expect(structure.sites[0].abc).toEqual([0.5, 0.5, 0.5])
+      expect(metadata).toMatchObject({ box_origin: [-2, -3, -4], coords_unwrapped: unwrapped })
+    })
+  })
+
+  it.each<[string, Record<number, ElementSymbol> | undefined, number[], ElementSymbol[]]>([
+    [`custom mapping`, { 1: `Na`, 2: `Cl` }, [1, 2, 1], [`Na`, `Cl`, `Na`]],
+    [
+      `partial mapping falls back to atomic numbers`,
+      { 1: `Na` },
+      [1, 2, 3],
+      [`Na`, `He`, `Li`],
+    ],
+    [`no mapping uses atomic numbers`, undefined, [1, 2], [`H`, `He`]],
+    [`high atomic numbers`, { 79: `Au`, 118: `Og` }, [79, 118], [`Au`, `Og`]],
+  ])(`atom_type_mapping: %s`, async (_name, mapping, types, expected_elements) => {
+    const traj = await parse(lammps_frames(types, { n_frames: 2 }), `test.lammpstrj`, mapping)
+    for (const frame of traj.frames) expect(elements_of(frame)).toEqual(expected_elements)
+  })
+})
+
+// === XYZ / extended XYZ ===
+
+describe(`XYZ`, () => {
+  const xyz_frame = (atoms: string[], comment = ``): string =>
+    `${atoms.length}\n${comment}\n${atoms.join(`\n`)}`
+  const extxyz_pbc_frame = (field: string) =>
+    xyz_frame(
+      [`Si 0 0 0`],
+      `Lattice="10 0 0 0 10 0 0 0 10" Properties=species:S:1:pos:R:3${field}`,
+    )
+  const four_atoms = (last = `H 1 1 1`) => [`H 0 0 0`, `H 1 0 0`, `H 0 1 0`, last]
+
+  it(`extracts comment-line properties, step and per-frame lattices`, async () => {
+    const content = [
+      xyz_frame(
+        [`H 0 0 0`, `H 1 0 0`],
+        `Lattice="5.0 0.0 0.0 0.0 5.0 0.0 0.0 0.0 5.0" energy=-10.5 volume=100.0 pressure=1.5 temperature=300 force_max=0.1 E_gap=2.0 step=42`,
+      ),
+      xyz_frame(
+        [`H 0 0 0`, `H 1 0 0`],
+        `Lattice="5.1 0 0 0 5.1 0 0 0 5.1" energy=-9.2 step=43`,
+      ),
+    ].join(`\n`)
+    const trajectory = await parse(content, `test.xyz`)
+    expect(trajectory.metadata).toEqual({
+      source_format: `xyz_trajectory`,
+      frame_count: 2,
+      total_atoms: 2,
+    })
+    expect(trajectory.frames.map(({ step }) => step)).toEqual([42, 43])
+    expect(trajectory.frames[0].metadata).toEqual({
+      energy: -10.5,
+      volume: 125, // the Lattice volume overrides a volume= token in the comment
+      pressure: 1.5,
+      temperature: 300,
+      force_max: 0.1,
+      bandgap: 2,
+    })
+    expect(trajectory.frames.map((frame) => lattice_of(frame).a)).toEqual([5, 5.1])
+    expect(trajectory.frames[1].metadata?.volume).toBeCloseTo(5.1 ** 3, 10)
+  })
+
+  it.each<[string, readonly [boolean, boolean, boolean]]>([
+    [` pbc="F F F"`, [false, false, false]],
+    [` pbc="T F T"`, [true, false, true]],
+    [` pbc='T F T'`, [true, false, true]],
+    [` pbc=T F T`, [true, false, true]],
+    [` pbc="true FALSE t"`, [true, false, true]],
+    [` pbc=TFT`, [true, false, true]],
+    // Compact bare must work mid-line (following Key= must not be swallowed)
+    [` pbc=TFF Energy=-1.0`, [true, false, false]],
+    [` Energy=-1 pbc=TFF step=3`, [true, false, false]],
+    [` pbc=F`, [false, false, false]],
+    [` pbc=1`, [true, true, true]],
+    [` pbc="1 0 1"`, [true, false, true]],
+    [` pbc="F F F extra"`, [false, false, false]],
+    // junk tokens must not resolve via Object.prototype (e.g. `constructor`)
+    [` pbc="constructor constructor constructor"`, [true, true, true]],
+    [` pbc="T F"`, [true, true, true]],
+    [``, [true, true, true]],
+  ])(`parses EXTXYZ pbc field %p`, async (field, expected) => {
+    const frame = extxyz_pbc_frame(field)
+    const { structure } = (await parse(`${frame}\n${frame}`, `pbc.extxyz`)).frames[0]
+    expect(`lattice` in structure && structure.lattice.pbc).toEqual(expected)
+  })
+
+  it(`warns once for repeated invalid EXTXYZ pbc across frames`, async () => {
+    const frame = extxyz_pbc_frame(` pbc="T F"`)
+    const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
+    onTestFinished(() => warn.mockRestore())
+    await parse(`${frame}\n${frame}\n${frame}`, `bad-pbc.extxyz`)
+    expect(get_traj_parse_warnings()).toEqual([
+      `Invalid EXTXYZ pbc (first seen in frame 0 (line 1)); defaulting to fully periodic [T, T, T]`,
+    ])
+  })
+
+  // oxfmt-ignore
+  it.each<[string, string, number[][]]>([
+    // forces directly after pos, after momenta, and after a scalar column
+    [`species:S:1:pos:R:3:forces:R:3`, `H 0 0 0 0.1 0 0\nH 1 0 0 0 0 0.3`, [[0.1, 0, 0], [0, 0, 0.3]]],
+    [`species:S:1:pos:R:3:momenta:R:3:forces:R:3`, `H 0 0 0 9.9 9.9 9.9 0.1 0.2 0.3`, [[0.1, 0.2, 0.3]]],
+    [`species:S:1:pos:R:3:node_energy:R:1:forces:R:3`, `H 0 0 0 9.9 0.1 0.2 0.3`, [[0.1, 0.2, 0.3]]],
+  ])(`reads forces at Properties column offset: %s`, async (properties, atom_lines, expected_forces) => {
+    const frame = xyz_frame(atom_lines.split(`\n`), `Properties=${properties}`)
+    const trajectory = await parse(`${frame}\n${frame}`, `test.extxyz`)
+    const { metadata, structure } = trajectory.frames[0]
+    expect(metadata?.forces).toEqual(expected_forces)
+    expect(structure.sites.map(({ properties: props }) => props.force)).toEqual(expected_forces)
+    const norms = expected_forces.map((vec) => Math.hypot(...vec))
+    expect(metadata?.force_max).toBeCloseTo(Math.max(...norms), 12)
+    expect(metadata?.force_norm).toBeCloseTo(
+      Math.sqrt(norms.reduce((sum, norm) => sum + norm ** 2, 0) / norms.length),
+      12,
+    )
+  })
+
+  it(`writes all declared extXYZ columns to site properties under canonical names`, async () => {
+    const properties = `species:S:1:pos:R:3:forces:R:3:charges:R:1:velocities:R:3:momenta:R:3:masses:R:1:tag:S:1:frozen:L:1`
+    const frame = xyz_frame(
+      [
+        `H 0 0 0 0.1 0.2 0.3 -0.5 1 2 3 4 5 6 1.008 core T`,
+        `O 1 0 0 0.4 0.5 0.6 1.25 -1 -2 -3 -4 -5 -6 15.999 shell F`,
+      ],
+      `Properties=${properties}`,
+    )
+    const trajectory = await parse(`${frame}\n${frame}`, `test.extxyz`)
+    const [site_h, site_o] = trajectory.frames[0].structure.sites
+
+    expect(site_h.properties).toEqual({
+      force: [0.1, 0.2, 0.3],
+      charge: -0.5,
+      velocity: [1, 2, 3],
+      momentum: [4, 5, 6],
+      mass: 1.008,
+      tag: `core`,
+      frozen: true,
+    })
+    expect(site_o.properties).toMatchObject({
+      charge: 1.25,
+      velocity: [-1, -2, -3],
+      frozen: false,
+    })
+    expect(trajectory.frames[0].metadata?.force_max).toBeCloseTo(Math.hypot(0.4, 0.5, 0.6))
+  })
+
+  // oxfmt-ignore
+  it.each([
+    // move_mask stays owned by read_extxyz_move_flags: one `selective_dynamics` triple,
+    // no second copy under the declared name
+    [`move_mask:L:3`, `H 0 0 0 T F T`, { selective_dynamics: [true, false, true] }],
+    [`move_mask:L:1`, `H 0 0 0 F`, { selective_dynamics: [false, false, false] }],
+    // A column too short on the line is dropped for that atom rather than stored as NaN
+    [`charge:R:1:extra:R:1`, `H 0 0 0 0.5`, { charge: 0.5 }],
+    // Non-finite numeric tokens are dropped the same way
+    [`charge:R:1`, `H 0 0 0 not_a_number`, {}],
+    // Fortran exponents are read in every numeric column
+    [`charge:R:1`, `H 1.0D3 0 0 -2.5d-1`, { charge: -0.25 }],
+  ])(`extXYZ column handling for Properties=...:%s`, async (tail, atom_line, expected) => {
+    const frame = xyz_frame([atom_line], `Properties=species:S:1:pos:R:3:${tail}`)
+    const trajectory = await parse(`${frame}\n${frame}`, `test.extxyz`)
+    expect(trajectory.frames[0].structure.sites[0].properties).toEqual(expected)
+    if (atom_line.includes(`1.0D3`)) expect(trajectory.frames[0].structure.sites[0].xyz).toEqual([1000, 0, 0])
+  })
+
+  it.each<[string, Record<string, number>]>([
+    [`frame=5`, {}], // 'e' of frame must not match energy
+    [`step=100 dt=0.5`, {}], // 'p' of step / 't' of dt must not match pressure/temperature
+    [`E = 2.0`, { energy: 2.0 }],
+    [`Temperature: 300`, { temperature: 300 }],
+  ])(`anchors comment metadata keys at word boundaries: %s`, async (comment, expected) => {
+    const frame = xyz_frame([`H 0.0 0.0 0.0`], comment)
+    const trajectory = await parse(`${frame}\n${frame}`, `test.xyz`)
+    const { energy, pressure, temperature } = trajectory.frames[0].metadata ?? {}
+    expect({ energy, pressure, temperature }).toEqual(expected)
+  })
+
+  it(`preserves quoted extXYZ dipoles and polarizability tensors`, async () => {
+    const frame = xyz_frame(
+      [`H 0 0 0`],
+      `step=4 lattice="10 0 0 0 10 0 0 0 10" dipole="1 2 3" polarizability="1 0 0 0 2 0 0 0 3"`,
+    )
+    const { metadata } = (await parse(`${frame}\n${frame}`, `signals.extxyz`)).frames[0]
+    expect(metadata?.lattice).toBeUndefined()
+    expect(metadata?.dipole).toEqual([1, 2, 3])
+    expect(metadata?.polarizability).toEqual([
+      [1, 0, 0],
+      [0, 2, 0],
+      [0, 0, 3],
+    ])
+  })
+
+  // Time= is an absolute snapshot time with no declared unit.
+  it.each([
+    { case: `uniform spacing`, times: [0, 2, 4], expected: 0.02 },
+    { case: `a stretched interval`, times: [0, 2, 10], expected: undefined },
+    { case: `no Time= at all`, times: undefined, expected: undefined },
+  ])(`derives extXYZ time_step $expected from $case`, async ({ times, expected }) => {
+    const content = [0, 1, 2]
+      .map((frame_idx) =>
+        xyz_frame(
+          [`H 0 0 0`],
+          `step=${frame_idx * 100}${times?.[frame_idx] === undefined ? `` : ` Time=${times[frame_idx]}`}`,
+        ),
+      )
+      .join(`\n`)
+    const trajectory = await parse(content, `md.extxyz`)
+    expect(trajectory.frames.map((frame) => frame.step)).toEqual([0, 100, 200])
+    expect(trajectory.time_step).toBe(expected)
+    expect(trajectory.frames[1].metadata?.time).toBe(times?.[1])
+  })
+
+  it(`round-trips exported forces to the same site key through both readers`, async () => {
+    const force = [-0.1, 0.2, 0.3]
+    const exported = structure_to_xyz_str(
+      make_crystal(5, [{ element: `Si`, xyz: [0, 0, 0], properties: { force } }]),
+    )
+    expect(exported).toContain(`forces:R:3`)
+    const as_trajectory = await parse(exported, `export.extxyz`)
+    expect(as_trajectory.frames[0].structure.sites[0].properties?.force).toEqual(force)
+    expect(parse_xyz(exported)?.sites[0].properties?.force).toEqual(force)
+  })
+
+  // oxfmt-ignore
+  it.each([
+    [`invalid text count`, `invalid\ncomment\nH 0.0 0.0 0.0\n${VALID_XYZ_FRAME}`, 1],
+    [`negative count`, `-1\ncomment\nH 0.0 0.0 0.0\n${VALID_XYZ_FRAME}`, 1],
+    [`zero count`, `0\ncomment\n\n${VALID_XYZ_FRAME}`, 1],
+    [`empty lines and malformed frames`, `\n\n${VALID_XYZ_FRAME}\n\ninvalid\ncomment\nH 0.0 0.0 0.0\n\n${VALID_XYZ_FRAME}`, 2],
+  ])(`skips %s and parses valid frames`, async (_name, content, expected_frames) => {
+    expect((await parse(content, `test.xyz`)).frames).toHaveLength(expected_frames)
+  })
+
+  it(`normalises symbol casing and skips unknown symbols with a warning`, async () => {
+    const frame = xyz_frame([`FE 0 0 0`, `si 1 0 0`, `X 2 0 0`, `O 3 0 0`])
+    const trajectory = await parse(`${frame}\n${frame}`, `ghost.xyz`)
+    expect(trajectory.frames.map(elements_of)).toEqual([
+      [`Fe`, `Si`, `O`],
+      [`Fe`, `Si`, `O`],
+    ])
+    expect(get_traj_parse_warnings()).toEqual([
+      `Skipping XYZ atom with unknown element symbol "X" in frame 0 (line 1) at line 5`,
+      `Skipping XYZ atom with unknown element symbol "X" in frame 1 (line 7) at line 11`,
+    ])
+  })
+
+  // Frame 1 starts at line 7 (frame 0 is lines 1-6); its 4th atom is line 12. A frame 2
+  // follows so the bad line cannot be mistaken for a torn tail.
+  it.each([
+    [
+      `a short atom line`,
+      `H 1 0`,
+      `XYZ frame 1 (line 7) line 12 has 3 columns, expected at least 4: "H 1 0"`,
+    ],
+    [
+      `a non-numeric coordinate`,
+      `H 1 abc 0`,
+      `XYZ frame 1 (line 7) line 12 has non-numeric coordinates: "H 1 abc 0"`,
+    ],
+    [
+      `parseFloat-style trailing junk`,
+      `H 1.0abc 0 0`,
+      `XYZ frame 1 (line 7) line 12 has non-numeric coordinates: "H 1.0abc 0 0"`,
+    ],
+  ])(`rejects %s with frame and line context`, async (_label, bad_line, error) => {
+    const content = [
+      xyz_frame(four_atoms()),
+      xyz_frame(four_atoms(bad_line)),
+      xyz_frame(four_atoms()),
+    ].join(`\n`)
+    await expect(parse(content, `corrupt.xyz`)).rejects.toThrow(error)
+  })
+
+  it(`rejects a frame without a single recognised element`, async () => {
+    const content = [
+      xyz_frame(four_atoms()),
+      xyz_frame([`Xx 0 0 0`, `Xx 1 0 0`]),
+      xyz_frame(four_atoms()),
+    ].join(`\n`)
+    await expect(parse(content, `ghosts.xyz`)).rejects.toThrow(
+      `XYZ frame 1 (line 7) has no atom with a recognised element symbol in its 2 atom lines (first species column: "Xx")`,
+    )
+  })
+
+  it(`drops a half-written final frame in both the eager parser and the indexed reader`, async () => {
+    const content = [xyz_frame(four_atoms()), xyz_frame(four_atoms(`H 1 0`))].join(`\n`)
+    const warning = `Dropping truncated final XYZ frame 1 (line 7): XYZ frame 1 (line 7) line 12 has 3 columns, expected at least 4: "H 1 0"`
+    const trajectory = await parse(content, `appending.xyz`)
+    expect(trajectory.frames.map(({ step }) => step)).toEqual([0])
+    expect(get_traj_parse_warnings()).toEqual([warning])
+
+    const reader = new TrajFrameReader(`appending.xyz`)
+    expect(await reader.get_total_frames(content)).toBe(1)
+    expect(await reader.load_frame(content, 1)).toBeNull()
+    expect(get_traj_parse_warnings()).toContain(warning)
+  })
+})
+
+// === ASE ULM trajectories ===
+
+describe(`ASE`, () => {
+  it(`removes ULM trailing dots from dipole and polarizability result keys`, () => {
+    const calculator = {
+      [`dipole.`]: { ndarray: [[3], `float64`, 0] },
+      [`polarizability.`]: { ndarray: [[3, 3], `float64`, 0] },
+    }
+    const results = ase_calculator_data({ [`calculator.`]: calculator }, ({ ndarray }) =>
+      (ndarray[0] as number[]).length === 1
+        ? [[1, 2, 3]]
+        : [
+            [1, 0, 0],
+            [0, 2, 0],
+            [0, 0, 3],
+          ],
+    )
+    expect(results).toEqual({
+      dipole: [1, 2, 3],
+      polarizability: [
+        [1, 0, 0],
+        [0, 2, 0],
+        [0, 0, 3],
+      ],
+    })
+  })
+
+  it(`skips malformed ASE ndarray descriptors without dropping scalar results`, () => {
+    const results = ase_calculator_data(
+      {
+        [`calculator.`]: {
+          energy: -1.25,
+          [`dipole.`]: { ndarray: [`not-a-shape`, `float64`, 0] },
+        },
+      },
+      () => {
+        throw new Error(`malformed descriptors must not be read`)
+      },
+    )
+    expect(results).toEqual({ energy: -1.25 })
+  })
+
+  // ASE always writes the calculator as a nested ULM item, so its key carries a trailing
+  // dot; `forces.`/`magmoms.` are ndarray pointers that must not leak into metadata
+  it(`reads dotted calculator keys without leaking ndarray pointers`, async () => {
+    const trajectory = await parse(
+      read_binary_test_file(`ase-LiMnO2-chgnet-relax.traj`),
+      `relax.traj`,
+    )
+    for (const frame of trajectory.frames) {
+      expect(JSON.stringify(frame.metadata)).not.toMatch(/ndarray/)
+      const stress = frame.metadata?.stress as number[][]
+      expect(stress.map((row) => row.length)).toEqual([3, 3, 3])
+    }
+  })
+
+  it(`names the frame and byte offset of a corrupt ULM item in every reader`, async () => {
+    const buffer = read_binary_test_file(`ase-LiMnO2-chgnet-relax.traj`).slice(0)
+    const view = new DataView(buffer)
+    const { offsets_pos } = read_ase_header(view)
+    const frame_1_offset = Number(view.getBigInt64(offsets_pos + 8, true))
+    new Uint8Array(buffer, frame_1_offset + 8, 4).fill(0xff) // smash frame 1's JSON header
+    const error = new RegExp(
+      `^ASE trajectory frame 1 of 2 \\(byte offset ${frame_1_offset}\\): `,
+    )
+
+    await expect(parse(buffer, `corrupt.traj`)).rejects.toThrow(error)
+    const reader = new TrajFrameReader(`corrupt.traj`)
+    expect((await reader.load_frame(buffer, 0))?.step).toBe(0)
+    await expect(reader.load_frame(buffer, 1)).rejects.toThrow(error)
+    await expect(reader.extract_plot_metadata(buffer)).rejects.toThrow(error)
+    expect(await reader.load_frame(buffer, 2)).toBeNull()
+  })
+
+  it.each([
+    [`an invalid signature`, [0x12, 0x34, 0x56, 0x78], 24],
+    [`HDF5 magic bytes on a truncated buffer`, [0x89, 0x48, 0x44, 0x46], 16],
+  ])(`rejects %s`, async (_name, magic_bytes, byte_length) => {
+    const buffer = new ArrayBuffer(byte_length)
+    new Uint8Array(buffer).set(magic_bytes)
+    await expect(parse(buffer, `test.traj`)).rejects.toThrow(`Unsupported binary format`)
+  })
+})
+
+// === JSON (pymatgen Trajectory, frame arrays, single structures) ===
+
+describe(`JSON`, () => {
+  const cubic = (len: number) => [
+    [len, 0, 0],
+    [0, len, 0],
+    [0, 0, len],
+  ]
+  const pymatgen = (fields: Record<string, unknown>) =>
+    JSON.stringify({
+      '@class': `Trajectory`,
+      species: [{ element: `H` }],
+      coords: [[[0.5, 0.5, 0.5]], [[0.5, 0.5, 0.5]]],
+      lattice: cubic(10),
+      ...fields,
+    })
+
+  // malformed fields are present-but-wrong-shape so they pass the routing gate, then hit
+  // the shape validation -> clear error instead of a cryptic `.map` throw
+  it.each<[string, Record<string, unknown>, RegExp | string]>([
+    [`species object`, { species: { element: `Si` } }, /species/],
+    [`null element`, { species: [{ element: null }] }, /species/],
+    [`blank element`, { species: [{ element: `  ` }] }, /species/],
+    [`coords object`, { coords: { a: 1 } }, /coords/],
+    [`2x3 lattice`, { lattice: cubic(1).slice(0, 2) }, /Expected 3x3 matrix/],
+    [
+      `3x2 lattice`,
+      {
+        lattice: [
+          [1, 0],
+          [0, 1],
+          [0, 0],
+        ],
+      },
+      /Invalid 3x3 matrix structure/,
+    ],
+    [`string lattice`, { lattice: `not a matrix` }, /Expected 3x3 matrix/],
+    [
+      `lattice stack of the wrong length`,
+      { lattice: [cubic(1)], constant_lattice: false },
+      `'lattice' holds 1 matrices for 2 frames`,
+    ],
+    [
+      `frame with the wrong site count`,
+      {
+        coords: [
+          [[0, 0, 0]],
+          [
+            [0, 0, 0],
+            [1, 1, 1],
+          ],
+        ],
+      },
+      `coords[1] has 2 sites, expected 1`,
+    ],
+    [
+      `non-finite coordinate`,
+      { coords: [[[0, 0, 0]], [[0, null, 0]]] },
+      `coords[1][0] is not a finite 3-vector`,
+    ],
+  ])(`throws a clear error on malformed pymatgen %s`, async (_label, fields, error) => {
+    await expect(parse(pymatgen(fields), `test.json`)).rejects.toThrow(error)
+  })
+
+  it(`applies per-frame lattices, site properties and the femtosecond time step`, async () => {
+    const trajectory = await parse(
+      pymatgen({
+        lattice: [cubic(4), cubic(8)],
+        constant_lattice: false,
+        site_properties: [{ magmom: [1] }, { magmom: [2] }],
+        frame_properties: [{ energy: -1 }, { energy: -2 }],
+        time_step: 2,
+      }),
+      `variable-cell.json`,
+    )
+    expect(trajectory.frames.map((frame) => frame.structure.sites[0].xyz)).toEqual([
+      [2, 2, 2],
+      [4, 4, 4],
+    ])
+    expect(trajectory.frames.map((frame) => lattice_of(frame).volume)).toEqual([64, 512])
+    expect(trajectory.frames.map((frame) => frame.structure.sites[0].properties)).toEqual([
+      { magmom: 1 },
+      { magmom: 2 },
+    ])
+    expect(trajectory.frames.map(({ metadata }) => metadata?.energy)).toEqual([-1, -2])
+    expect(trajectory).toMatchObject({ time_step: 2, time_unit: `fs` })
+  })
+
+  // coords_are_displacement: positions[i] = base_positions + cumsum(coords[0..i])
+  it(`integrates displacement coordinates from base_positions`, async () => {
+    const trajectory = await parse(
+      pymatgen({
+        coords: [[[0.1, 0, 0]], [[0.1, 0, 0]]],
+        coords_are_displacement: true,
+        base_positions: [[0.5, 0.5, 0.5]],
+      }),
+      `displacement.json`,
+    )
+    expect(trajectory.frames.map((frame) => frame.structure.sites[0].xyz)).toEqual([
+      [6, 5, 5],
+      [7, 5, 5],
+    ])
+    expect(trajectory.time_step).toBeUndefined()
+  })
+
+  // oxfmt-ignore
+  it.each([
+    [`array`, JSON.stringify([{ structure: get_dummy_structure(), step: 7 }]), 7],
+    [`object_with_frames`, JSON.stringify({ frames: [{ structure: get_dummy_structure(), step: 7 }] }), 7],
+    [`single_structure`, JSON.stringify(get_dummy_structure()), 0],
+  ])(`parses the %s format`, async (expected_format, content, step) => {
+    const trajectory = await parse(content, `test.json`)
+    expect(trajectory.metadata?.source_format).toBe(expected_format)
+    expect(trajectory.frames.map((frame) => frame.step)).toEqual([step])
+  })
+
+  it(`rejects inconsistent atom counts and coordinates across frames`, async () => {
+    const hydrogen = parse_xyz(`1\nframe\nH 0 0 0`)
+    const helium = parse_xyz(`1\nframe\nHe 0 0 0`)
+    if (!hydrogen || !helium) throw new Error(`test structures failed to parse`)
+
+    await expect(
+      parse({
+        frames: [
+          { structure: hydrogen, step: 0 },
+          { structure: { ...helium, sites: [...helium.sites, ...helium.sites] }, step: 1 },
+        ],
+      }),
+    ).rejects.toThrow(`frame 1 has 2 atoms, expected 1`)
+    await expect(
+      parse({
+        frames: [
+          {
+            structure: {
+              ...hydrogen,
+              sites: [{ ...hydrogen.sites[0], xyz: [Number.NaN, 0, 0] }],
+            },
+            step: 0,
+          },
+        ],
+      }),
+    ).rejects.toThrow(`atom 0 has invalid Cartesian coordinates`)
+  })
+
+  it.each([
+    [`invalid text`, `unknown.txt`],
+    [new ArrayBuffer(8), `unknown.bin`],
+    [``, `empty.txt`],
+    [`   `, `whitespace.txt`],
+    [null, `null.txt`],
+    [undefined, `undefined.txt`],
+    [{}, `empty-object.json`],
+  ])(`rejects invalid input %s`, async (content, filename) => {
+    await expect(parse(content, filename)).rejects.toThrow(/Unsupported|Invalid|Unrecognized/)
+  })
+})
+
+describe(`unsupported format messages`, () => {
+  it.each([
+    [`test.nc`, `NetCDF`],
+    [`test.dcd`, `DCD`],
+    [`test.lammpstrj.bz2`, `BZ2 compression not supported`],
+    [`trajectory.xyz.xz`, `XZ compression not supported`],
+    [`data.json.zip`, `ZIP compression not supported`],
+  ])(`names the unsupported format of %s`, (filename, expected) => {
+    expect(get_unsupported_format_message(filename, ``)).toContain(expected)
+  })
+
+  it.each([
+    [`unknown.bin`, String.fromCharCode(0, 1, 2, 3), `Binary format not supported`],
+    [`md.dump`, `ITEM: TIMESTEP\n0\n`, null],
+    [`test.xyz`, ``, null],
+    [`XDATCAR`, ``, null],
+    [`test.traj`, ``, null],
+  ])(`classifies %s content`, (filename, content, expected) => {
+    const message = get_unsupported_format_message(filename, content)
+    if (expected === null) expect(message).toBeNull()
+    else expect(message).toContain(expected)
+  })
+})
+
+// === HDF5 (h5-utils slicing + synthetic torch-sim / reference-MD files) ===
 
 it.each([
   { label: `finite`, value: 12n, expected: 12 },
@@ -152,1011 +1369,11 @@ it(`fills response arrays with capped HDF5 hyperslabs`, () => {
   expect(values.at(-1)).toBe(sample_count - 1)
 })
 
-test.each([
-  [`movie.H5.gz`, `hdf5`],
-  [`movie.hdf5.GZ`, `hdf5`],
-  [`movie.json.gz`, `json`],
-  [`movie.xyz.gz`, `xyz`],
-  [`movie.extxyz.gz`, `xyz`],
-  [`vasp-XDATCAR.MD.gz`, `xdatcar`],
-  [`movie.traj.gz`, `traj`],
-] as const)(`classifies compressed site trajectory %s as %s`, (name, expected) => {
-  expect(get_trajectory_type({ name, url: name })).toBe(expected)
-})
-
-describe(`Trajectory File Detection`, () => {
-  // only checking filename recognition, files don't need to exist
-  test.each([
-    // Standard trajectory file extensions
-    [`test.traj`, true],
-    [`test.h5`, false],
-    [`molecular_dynamics.h5`, true],
-    [`relaxation.hdf5`, true],
-
-    // LAMMPS trajectory files
-    [`test.lammpstrj`, true],
-    [`trajectory.lammpstrj.gz`, true],
-
-    // VASP trajectory files
-    [`XDATCAR`, true],
-    [`XDATCAR.out`, true],
-
-    // xyz/extxyz files with trajectory keywords are detected by filename for auto-render
-    [`relax-simulation.xyz`, true], // Has trajectory keyword "relax"
-    [`trajectory-data.extxyz`, true], // Has trajectory keyword "trajectory"
-    [`npt-dynamics.extxyz`, true], // Has trajectory keyword "npt"
-    [`nvt-simulation.xyz`, true], // Has trajectory keyword "nvt"
-    [`nve-dynamics.extxyz`, true], // Has trajectory keyword "nve"
-    [`qha-analysis.xyz`, true], // Has trajectory keyword "qha"
-    [`traj-data.xyz`, true], // Has trajectory keyword "traj"
-    [`relaxation.extxyz`, true],
-    [`md-run.xyz`, true], // Has trajectory keyword "md"
-
-    // Fallback extensions require a trajectory keyword
-    [`trajectory.dat`, true],
-    [`npt_dynamics.data`, true],
-    // Need trailing delimiter after keyword (rejects md/notes, npt2, etc.)
-    [`md/notes.log`, false],
-    [`npt2.log`, false],
-    // Special-cased md_simulation.* exclusion
-    [`md_simulation.out`, false],
-
-    // Compressed trajectory files
-    [`relax.extxyz.gz`, true], // Has trajectory keyword "relax"
-    [`trajectory.traj.gz`, true],
-    [`simulation.h5.gz`, true],
-    [`XDATCAR.gz`, true],
-    [`md.xyz.gz`, true], // Has trajectory keyword "md"
-    // Compressed with other extensions
-    [`trajectory.traj.xz`, true],
-    [`trajectory.traj.bz2`, true],
-    [`trajectory.traj.zip`, true],
-    // Double .gz
-    [`trajectory.traj.gz.gz`, true],
-    // Compressed but not valid base
-    [`trajectory.txt.gz`, false],
-    [`document.pdf.gz`, false],
-
-    // Case insensitive tests
-    [`FILE.TRAJ`, true],
-    [`TRAJECTORY.H5`, true],
-    [`RELAX.EXTXYZ`, true], // Has trajectory keyword "relax"
-
-    // Very short names
-    [`a.traj`, true],
-    [`a.h5`, false],
-    [`a.xyz`, false], // No trajectory keywords
-    [`a`, false],
-
-    // Specific regression tests
-    [`Cr0.25Fe0.25Co0.25Ni0.25-mace-omat-qha.xyz`, true], // Has trajectory keyword "qha"
-    [`single-molecule.xyz`, false], // No trajectory keywords
-    [`trajectory_data.json`, true], // JSON files with trajectory keywords are now supported
-    [`md_simulation.cif`, false],
-    [`relax_output.poscar`, false],
-
-    // Files that should NOT be detected as trajectory files
-    [`test.cif`, false],
-    [`test.json`, false],
-    [`random.txt`, false],
-    [`test.xyz.backup`, false],
-    [`POSCAR`, false],
-
-    // Files with trajectory keywords but excluded extensions
-    [`trajectory.md`, false],
-    [`npt_dynamics.csv`, false],
-    [`nve_dynamics.zip`, false],
-    [`TRAJECTORY.MD`, false], // mixed case with excluded extension
-
-    // Compressed files that should not be detected
-    [`script.py.gz`, false],
-
-    // Keyword matching edge cases - xyz files with trajectory keywords are detected by filename
-    [`trajectory_analysis.xyz`, true], // keyword as prefix
-    [`analysis_trajectory.xyz`, true], // keyword as suffix
-    // Machine learning potential trajectories (some have trajectory keywords)
-    [`V8Ta12W71Re8-mace-omat.xyz`, false], // No trajectory keywords
-    [`CuAgAu_chgnet_relax.xyz`, true], // Has trajectory keyword "relax"
-    [`bulk_water_dpmd.xyz`, true], // Has trajectory keyword "md"
-    [`alloy_simulation_m3gnet.xyz`, true], // Has trajectory keyword "simulation"
-    // Compressed JSON trajectories from various sources
-    [`pymatgen-trajectory-data.json.gz`, true],
-    // Edge cases that should still work
-    [`dataset_structure_0001.xyz`, false], // No trajectory keywords
-  ])(`trajectory detection: "%s" → %s`, (filename, expected) => {
-    expect(is_trajectory_file(filename)).toBe(expected)
-  })
-})
-
-describe(`Content-Based xyz/extxyz Trajectory Detection`, () => {
-  describe(`is_trajectory_file with content parameter`, () => {
-    const mixed_xyz = `
-        invalid
-        comment
-        H 0.0 0.0 0.0
-
-        3
-        valid frame 1
-        H 0.0 0.0 0.0
-        H 1.0 0.0 0.0
-        H 0.0 1.0 0.0
-
-        not_a_number
-        invalid frame
-        H 0.0 0.0 0.0
-
-        3
-        valid frame 2
-        H 0.1 0.0 0.0
-        H 1.1 0.0 0.0
-        H 0.1 1.0 0.0
-      `
-    // Content path for xyz/extxyz is count_xyz_frames(content) >= 2; cases below cover
-    // distinct counting edges (not comment/Properties style variants of the same count).
-    // oxfmt-ignore
-    test.each([
-      [`single-frame.xyz`,
-        `3\ncomment line\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0`, false],
-      [`single-frame.extxyz`, `1\nLattice="5 0 0 0 5 0 0 0 5"\nH 0 0 0\n`, false],
-      [`trajectory.xyz`,
-        `3\nframe 1\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0\n3\nframe 2\nH 0.1 0.0 0.0\nH 1.1 0.0 0.0\nH 0.1 1.0 0.0`,
-        true],
-      [`trajectory-with-gaps.xyz`,
-        `\n2\nframe 1\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\n\n2\nframe 2\nH 0.1 0.0 0.0\nH 1.1 0.0 0.0\n`,
-        true],
-      [`mixed.xyz`, mixed_xyz, true],
-      [`malformed.xyz`, `invalid\nno atom count\nH 0.0 0.0 0.0`, false],
-      [`broken-count.xyz`, `not_a_number\ncomment\nH 0.0 0.0 0.0`, false],
-      [`incomplete.xyz`, `3\ncomment\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0`, false],
-      [`empty.xyz`, ``, false],
-      [`whitespace.xyz`, `   \n  \n  `, false],
-      [`bad-coords.xyz`, `2\ntest\nH not_a_number 0.0 0.0\nH 1.0 invalid 0.0`, false],
-      [`negative-count.xyz`,
-        `-1\nshould be skipped\nH 0.0 0.0 0.0\n2\nvalid frame\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0`,
-        false],
-      [`zero-count.xyz`, `0\nempty frame\n\n1\nvalid frame\nH 0.0 0.0 0.0`, false],
-      // md/nvt/nve.data are common LAMMPS *data* (single-structure) names: the trajectory
-      // keyword in the name must not outrank a file that plainly is a LAMMPS data file
-      [`md.data`,
-        `# LAMMPS data\n\n1 atoms\n1 atom types\n0.0 4.0 xlo xhi\n0.0 4.0 ylo yhi\n0.0 4.0 zlo zhi\n\nAtoms # atomic\n\n1 1 0.0 0.0 0.0\n`,
-        false],
-      [`md.data`, `step energy\n0 -1.5\n1 -1.6\n`, true],
-    ])(`should detect "%s" as trajectory: %s`, (filename, content, expected) => {
-      expect(is_trajectory_file(filename, content)).toBe(expected)
-    })
-
-    test(`should handle large trajectories efficiently`, () => {
-      const frames = Array.from(
-        { length: 100 },
-        (_, idx) => `2\nstep=${idx}\nH ${idx * 0.01} 0.0 0.0\nH ${1 + idx * 0.01} 0.0 0.0`,
-      )
-      const start = performance.now()
-      expect(is_trajectory_file(`large-trajectory.xyz`, frames.join(`\n`))).toBe(true)
-      expect(performance.now() - start).toBeLessThan(500)
-    })
-  })
-})
-
-test(`production parsing rejects inconsistent atom counts and coordinates`, async () => {
-  const hydrogen = parse_xyz(`1\nframe\nH 0 0 0`)
-  const helium = parse_xyz(`1\nframe\nHe 0 0 0`)
-  if (!hydrogen || !helium) throw new Error(`test structures failed to parse`)
-
-  await expect(
-    parse_trajectory_data({
-      frames: [
-        { structure: hydrogen, step: 0 },
-        { structure: { ...helium, sites: [...helium.sites, ...helium.sites] }, step: 1 },
-      ],
-    }),
-  ).rejects.toThrow(`frame 1 has 2 atoms, expected 1`)
-  await expect(
-    parse_trajectory_data({
-      frames: [
-        {
-          structure: {
-            ...hydrogen,
-            sites: [{ ...hydrogen.sites[0], xyz: [Number.NaN, 0, 0] }],
-          },
-          step: 0,
-        },
-      ],
-    }),
-  ).rejects.toThrow(`atom 0 has invalid Cartesian coordinates`)
-})
-
-describe(`VASP XDATCAR Parser`, () => {
-  it(`should parse the MD fixture: frames, elements, volumes, metadata`, async () => {
-    const content = read_test_file(`vasp-XDATCAR.MD.gz`)
-    const trajectory = await parse_trajectory_data(content, `test-filename.xdatcar`)
-
-    expect(trajectory.metadata?.source_format).toBe(`vasp_xdatcar`)
-    expect(trajectory.metadata?.filename).toBe(`test-filename.xdatcar`)
-    expect(trajectory.frames).toHaveLength(5)
-    expect(trajectory.metadata?.frame_count).toBe(5)
-    expect(trajectory.frames[0].structure.sites).toHaveLength(80)
-    expect(trajectory.metadata?.periodic_boundary_conditions).toEqual([true, true, true])
-    expect(trajectory.metadata?.elements).toEqual([`O`, `Fe`])
-    expect(trajectory.metadata?.element_counts).toEqual([48, 32])
-    for (const frame of trajectory.frames) expect(frame.metadata?.volume).toBeGreaterThan(0)
-
-    // Content sniffing without a filename hint (blob: UUID basenames)
-    const sniffed = await parse_trajectory_data(content, undefined)
-    expect(sniffed.metadata?.source_format).toBe(`vasp_xdatcar`)
-    expect(sniffed.frames).toHaveLength(5)
-  })
-
-  it.each([
-    [`too short`, `too short`],
-    [`invalid header`, `invalid\nscale\nfactor`],
-    [`missing configuration lines`, `title\n1.0\n1 0 0\n0 1 0\n0 0 1\nH\n1\n`],
-  ])(`rejects truncated XDATCAR: %s`, async (_label, content) => {
-    await expect(parse_trajectory_data(content, `XDATCAR`)).rejects.toThrow(
-      `XDATCAR file too short`,
-    )
-  })
-
-  const xdatcar_with_scale = (scale: string) =>
-    `title\n${scale}\n5 0 0\n0 5 0\n0 0 5\nH\n1\nDirect configuration= 1\n0.5 0.5 0.5\nDirect configuration= 2\n0.5 0.5 0.5`
-
-  it(`uses the shared VASP scale grammar`, async () => {
-    // Number(``) is 0, not NaN - a blank scale line must be a parse error
-    await expect(parse_trajectory_data(xdatcar_with_scale(``), `XDATCAR`)).rejects.toThrow(
-      `Invalid scale factor`,
-    )
-    await expect(parse_trajectory_data(xdatcar_with_scale(`1 2`), `XDATCAR`)).rejects.toThrow(
-      `Invalid scale factor`,
-    )
-    const trajectory = await parse_trajectory_data(
-      xdatcar_with_scale(`2.0 ! scale`),
-      `XDATCAR`,
-    )
-    const structure = trajectory.frames[0].structure
-    expect(`lattice` in structure && structure.lattice.a).toBeCloseTo(10, 5)
-    const per_axis_structure = (
-      await parse_trajectory_data(xdatcar_with_scale(`2 1 3`), `XDATCAR`)
-    ).frames[0].structure
-    expect(
-      `lattice` in per_axis_structure
-        ? [
-            per_axis_structure.lattice.a,
-            per_axis_structure.lattice.b,
-            per_axis_structure.lattice.c,
-          ]
-        : null,
-    ).toEqual([10, 5, 15])
-  })
-
-  // Unlike POSCAR/CHGCAR, XDATCAR refuses to invent element symbols: they go straight into
-  // the trajectory metadata, where an indexed fallback would be a silent lie. The blank
-  // symbol used to slip past a falsy `if (bad_element)` guard and become an atom.
-  it.each([
-    [`VASP 4 header with no symbol line`, `2 1`, `element symbols are missing`],
-    [`blank symbol line`, `\n1`, `Invalid element symbol in XDATCAR`],
-    [`non-element symbol`, `Xx\n1`, `Invalid element symbol in XDATCAR: Xx`],
-    [`fewer counts than symbols`, `H O Na\n1 1`, `3 element symbol(s) but 2 atom count(s)`],
-    [`fractional count`, `H\n1.5`, `invalid atom counts`],
-    [`zero count`, `H\n0`, `invalid atom counts`],
-    [`negative count`, `H\n-1`, `invalid atom counts`],
-    [`non-finite count`, `H\nInfinity`, `invalid atom counts`],
-  ])(`rejects an XDATCAR %s`, async (_label, species_block, expected_error) => {
-    const content = [
-      `title`,
-      `1.0`,
-      `5 0 0`,
-      `0 5 0`,
-      `0 0 5`,
-      species_block,
-      `Direct configuration= 1`,
-      `0.5 0.5 0.5`,
-      `Direct configuration= 2`,
-      `0.5 0.5 0.5`,
-    ].join(`\n`)
-    await expect(parse_trajectory_data(content, `XDATCAR`)).rejects.toThrow(expected_error)
-  })
-
-  it(`re-reads variable-cell headers with wrapped species blocks from the frame cursor`, async () => {
-    const frame = (lat_a: number, idx: number) =>
-      `frame\n1.0\n${lat_a} 0 0\n0 ${lat_a} 0\n0 0 ${lat_a}\nH\nHe\n1\n1\nDirect configuration= ${idx}\n0.5 0.5 0.5\n0.25 0.25 0.25`
-    const trajectory = await parse_trajectory_data(
-      `${frame(10, 1)}\n${frame(20, 2)}`,
-      `XDATCAR`,
-    )
-
-    expect(trajectory.frames).toHaveLength(2)
-    const structure = trajectory.frames[1].structure
-    expect(`lattice` in structure && structure.lattice.a).toBeCloseTo(20)
-    expect(structure.sites[0].xyz).toEqual([10, 10, 10])
-    expect(structure.sites.map((site) => site.species[0].element)).toEqual([`H`, `He`])
-  })
-})
-
-describe(`LAMMPS Trajectory Format`, () => {
-  const lammps_frame = (
-    columns: string,
-    atom_lines: string[],
-    timestep = 0,
-    pbc = `pp pp pp`,
-    time?: number,
-  ): string =>
-    [
-      ...(time === undefined ? [] : [`ITEM: TIME`, `${time}`]),
-      `ITEM: TIMESTEP`,
-      `${timestep}`,
-      `ITEM: NUMBER OF ATOMS`,
-      `${atom_lines.length}`,
-      `ITEM: BOX BOUNDS ${pbc}`,
-      `0.0 10.0`,
-      `0.0 10.0`,
-      `0.0 10.0`,
-      `ITEM: ATOMS ${columns}`,
-      ...atom_lines,
-    ].join(`\n`)
-
-  // Orthogonal 10x10x10 box frame(s) with one atom per entry of `types`
-  const lammps_frames = (
-    types: number[],
-    opts: { n_frames?: number; pbc?: string; times?: (number | undefined)[] } = {},
-  ): string => {
-    const { n_frames = 1, pbc = `pp pp pp`, times } = opts
-    const atom_lines = types.map(
-      (atom_type, atom_idx) => `${atom_idx + 1} ${atom_type} ${atom_idx}.0 0.0 0.0`,
-    )
-    return Array.from({ length: n_frames }, (_, frame_idx) =>
-      lammps_frame(`id type x y z`, atom_lines, frame_idx * 100, pbc, times?.[frame_idx]),
-    ).join(`\n`)
-  }
-
-  it(`should parse the sample fixture: frames, lattice, elements, volumes`, async () => {
-    const content = read_test_file(`lammps-sample.lammpstrj.gz`)
-    const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
-
-    expect(trajectory.metadata?.source_format).toBe(`lammps_trajectory`)
-    expect(trajectory.metadata?.periodic_boundary_conditions).toEqual([true, true, true])
-    expect(trajectory.frames).toHaveLength(5)
-    expect(trajectory.frames[0].step).toBe(0)
-    for (const frame of trajectory.frames) {
-      expect(frame.structure.sites).toHaveLength(864)
-      expect(frame.metadata?.volume).toBeGreaterThan(0)
-    }
-
-    // Box is approximately 21.12 x 21.12 x 21.12
-    const structure = trajectory.frames[0].structure
-    if (!(`lattice` in structure)) throw new Error(`missing lattice`)
-    expect(structure.lattice.a).toBeCloseTo(21.12, 1)
-    expect(structure.lattice.b).toBeCloseTo(21.12, 1)
-    expect(structure.lattice.c).toBeCloseTo(21.12, 1)
-
-    // File has atom types 1 and 2, mapped to H and He
-    const elements = structure.sites.map((site) => site.species[0].element)
-    expect(elements).toContain(`H`)
-    expect(elements).toContain(`He`)
-    expect(trajectory.metadata?.atom_types).toEqual([1, 2])
-
-    // Compressed filename routes to the same parser
-    const gz_traj = await parse_trajectory_data(content, `lammps-sample.lammpstrj.gz`)
-    expect(gz_traj.metadata?.source_format).toBe(`lammps_trajectory`)
-    expect(gz_traj.frames).toHaveLength(5)
-  })
-
-  it(`parses element identity and extra columns from the MDAnalysis fixture`, async () => {
-    const filename = `mdanalysis-additional-columns.lammpstrj`
-    const trajectory = await parse_trajectory_data(read_test_file(filename), filename)
-    const { structure, metadata } = trajectory.frames[0]
-    const sites = structure.sites
-
-    // oxfmt-ignore
-    expect(sites.map((site) => site.species[0].element)).toEqual([`H`, `He`, `Li`, `Be`, `B`, `C`, `N`, `O`, `F`, `Ne`])
-    expect(sites[0].properties).toMatchObject({ id: 1, charge: 0.00258855, p: 1.1 })
-    expect(metadata?.box_origin).toEqual([0, 0, -25.1])
-    for (const [coord_idx, expected] of [2.84, 8.17, 0.1].entries()) {
-      expect(sites[0].xyz[coord_idx]).toBeCloseTo(expected, 12)
-    }
-    for (const [coord_idx, expected] of [2.84 / 42.6, 8.17 / 44.2712, 0.1 / 50.2].entries()) {
-      expect(sites[0].abc[coord_idx]).toBeCloseTo(expected, 12)
-    }
-    for (const site of sites) {
-      for (const coordinate of site.abc) {
-        expect(coordinate).toBeGreaterThanOrEqual(0)
-        expect(coordinate).toBeLessThanOrEqual(1)
-      }
-    }
-  })
-
-  it(`rejects a LAMMPS file without type or element columns`, async () => {
-    const content = lammps_frame(`id x y z`, [`1 0 0 0`])
-    await expect(
-      parse_trajectory_data(content, `mdanalysis-additional-columns.lammpstrj`),
-    ).rejects.toThrow(`No valid frames found in LAMMPS trajectory`)
-    expect(get_traj_parse_warnings()).toContain(
-      `Skipping LAMMPS frame at timestep 0: missing type/element column`,
-    )
-  })
-
-  it.each([`0`, `1.5`, `bad`])(
-    `rejects invalid LAMMPS atom type %s instead of coercing it to type 1`,
-    async (atom_type) => {
-      const content = lammps_frame(`id type x y z`, [`1 ${atom_type} 0 0 0`])
-      await expect(parse_trajectory_data(content, `invalid-type.lammpstrj`)).rejects.toThrow(
-        `No valid frames found in LAMMPS trajectory`,
-      )
-      expect(get_traj_parse_warnings()).toContain(
-        `Skipping LAMMPS atom with invalid type "${atom_type}" at timestep 0`,
-      )
-    },
-  )
-
-  it(`should parse inline LAMMPS content`, async () => {
-    const content = lammps_frames([1, 1, 2], { n_frames: 2 })
-    const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
-
-    expect(trajectory.metadata?.source_format).toBe(`lammps_trajectory`)
-    expect(trajectory.frames).toHaveLength(2)
-    expect(trajectory.frames.map((frame) => frame.step)).toEqual([0, 100])
-    expect(trajectory.frames[0].structure.sites).toHaveLength(3)
-  })
-
-  it(`sorts every LAMMPS frame by atom ID before comparing or analyzing it`, async () => {
-    const content = [
-      lammps_frame(`id type x y z`, [`1 1 1 0 0`, `2 1 8 0 0`], 0),
-      lammps_frame(`id type x y z`, [`2 1 7.5 0 0`, `1 1 1.5 0 0`], 1),
-    ].join(`\n`)
-    const trajectory = await parse_trajectory_data(content, `unsorted.lammpstrj`)
-    expect(
-      trajectory.frames.map((frame) =>
-        frame.structure.sites.map(({ properties, xyz }) => [properties.id, xyz[0]]),
-      ),
-    ).toEqual([
-      [
-        [1, 1],
-        [2, 8],
-      ],
-      [
-        [1, 1.5],
-        [2, 7.5],
-      ],
-    ])
-  })
-
-  it(`rejects unverifiable atom identity and non-increasing or invalid timesteps`, async () => {
-    const without_ids = [
-      lammps_frame(`type x y z`, [`1 1 0 0`, `1 8 0 0`], 0),
-      lammps_frame(`type x y z`, [`1 7.5 0 0`, `1 1.5 0 0`], 1),
-    ].join(`\n`)
-    await expect(parse_trajectory_data(without_ids, `no-ids.lammpstrj`)).rejects.toThrow(
-      `must include an atom ID column`,
-    )
-
-    const descending = [
-      lammps_frame(`id type x y z`, [`1 1 1 0 0`], 1),
-      lammps_frame(`id type x y z`, [`1 1 2 0 0`], 0),
-    ].join(`\n`)
-    await expect(parse_trajectory_data(descending, `descending.lammpstrj`)).rejects.toThrow(
-      `LAMMPS timestep 0 at frame 1 must be greater than 1 at frame 0`,
-    )
-
-    const invalid = lammps_frame(`id type x y z`, [`1 1 1 0 0`]).replace(
-      `ITEM: TIMESTEP\n0`,
-      `ITEM: TIMESTEP\nnot-a-step`,
-    )
-    await expect(parse_trajectory_data(invalid, `invalid.lammpstrj`)).rejects.toThrow(
-      `No valid frames found`,
-    )
-    expect(get_traj_parse_warnings()).toContain(
-      `Skipping LAMMPS frame with invalid timestep "not-a-step"`,
-    )
-  })
-
-  it.each([
-    [`duplicate`, [`1 1 1.5 0 0`, `1 1 7.5 0 0`], `duplicate atom IDs`],
-    [`changed`, [`1 1 1.5 0 0`, `3 1 7.5 0 0`], `atom ID set changed`],
-  ])(`skips a LAMMPS frame with a %s atom ID set`, async (_label, atoms, warning) => {
-    const content = [
-      lammps_frame(`id type x y z`, [`1 1 1 0 0`, `2 1 8 0 0`], 0),
-      lammps_frame(`id type x y z`, atoms, 1),
-    ].join(`\n`)
-    const trajectory = await parse_trajectory_data(content, `bad-ids.lammpstrj`)
-    expect(trajectory.frames).toHaveLength(1)
-    expect(get_traj_parse_warnings()).toContain(
-      `Skipping LAMMPS frame at timestep 1: ${warning}`,
-    )
-  })
-
-  // Coordinate values are 0.25, 0.5, 0.75, ... in column order, so the expected Cartesian
-  // position also pins which triple was picked and whether the 10 A cell was applied.
-  it.each([
-    { cols: `id type xu yu zu`, expected: true, xyz: [0.25, 0.5, 0.75] },
-    { cols: `id type xs ys zs`, expected: false, xyz: [2.5, 5, 7.5] },
-    { cols: `id type x y z`, expected: false, xyz: [0.25, 0.5, 0.75] },
-    // Scaled AND unwrapped: fractional coords that LAMMPS already un-imaged
-    { cols: `id type xsu ysu zsu`, expected: true, xyz: [2.5, 5, 7.5] },
-    // Unwrapped columns win over wrapped ones when a dump carries both
-    { cols: `id type x y z xu yu zu`, expected: true, xyz: [1, 1.25, 1.5] },
-    { cols: `id type xs ys zs xsu ysu zsu`, expected: true, xyz: [10, 12.5, 15] },
-  ])(
-    `flags coords_unwrapped=$expected for columns "$cols"`,
-    async ({ cols, expected, xyz }) => {
-      const n_coords = cols.split(/\s+/).length - 2
-      const coords = Array.from({ length: n_coords }, (_, idx) => 0.25 * (idx + 1)).join(` `)
-      const content = lammps_frame(cols, [`1 1 ${coords}`])
-      const traj = await parse_trajectory_data(content, `test.lammpstrj`)
-      expect(traj.frames[0].metadata?.coords_unwrapped).toBe(expected)
-      expect(traj.frames[0].structure.sites[0].xyz).toEqual(xyz)
-    },
-  )
-
-  // Columns beyond identity + coordinates become site properties: vx/vy/vz and fx/fy/fz
-  // grouped into the vec3 keys the viewer's arrow layers look for, q renamed to `charge`,
-  // computes/variables passed through under their dump names.
-  it(`maps remaining LAMMPS dump columns onto site properties`, async () => {
-    const content = lammps_frame(`id type x y z vx vy vz fx fy fz q c_pe v_myvar`, [
-      `1 1 0.0 0.0 0.0 1.0 2.0 3.0 0.1 0.2 0.3 -0.5 -3.25 7`,
-      `2 2 1.0 0.0 0.0 -1.0 -2.0 -3.0 0.4 0.5 0.6 0.5 N/A 8`,
-    ])
-    const traj = await parse_trajectory_data(content, `test.lammpstrj`)
-    const [site_1, site_2] = traj.frames[0].structure.sites
-
-    expect(site_1.properties).toEqual({
-      velocity: [1, 2, 3],
-      force: [0.1, 0.2, 0.3],
-      charge: -0.5,
-      c_pe: -3.25,
-      v_myvar: 7,
-      id: 1,
-      type: 1,
-    })
-    // Non-numeric entries are skipped rather than stored as NaN
-    expect(site_2.properties).not.toHaveProperty(`c_pe`)
-    expect(site_2.properties?.velocity).toEqual([-1, -2, -3])
-    expect(site_2.properties?.type).toBe(2)
-  })
-
-  it.each([
-    [`vx vy vz fx fz`, `1 2 3 0.1 0.3`, { velocity: [1, 2, 3], fx: 0.1, fz: 0.3 }],
-    [`vx vz fx fy fz`, `1 3 0.1 0.2 0.3`, { vx: 1, vz: 3, force: [0.1, 0.2, 0.3] }],
-  ])(
-    `keeps incomplete vector members scalar for "%s"`,
-    async (extra_cols, extra_values, expected) => {
-      const content = lammps_frame(`id type x y z ${extra_cols}`, [
-        `1 1 0.0 0.0 0.0 ${extra_values}`,
-      ])
-      const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
-      expect(trajectory.frames[0].structure.sites[0].properties).toEqual({
-        ...expected,
-        id: 1,
-        type: 1,
-      })
-    },
-  )
-
-  // ITEM: TIME is absolute and unitless; divide its intervals by the step intervals.
-  it.each([
-    { case: `uniform spacing`, times: [0, 0.1, 0.2], expected: 0.001 },
-    { case: `a stretched interval`, times: [0, 0.1, 0.5], expected: undefined },
-    { case: `a frame missing its time`, times: [0, undefined, 0.2], expected: undefined },
-    { case: `no ITEM: TIME at all`, times: undefined, expected: undefined },
-  ])(`derives time_step $expected from $case`, async ({ times, expected }) => {
-    const content = lammps_frames([1], { n_frames: 3, times })
-    const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
-    expect(trajectory.frames).toHaveLength(3)
-    expect(trajectory.frames.map((frame) => frame.step)).toEqual([0, 100, 200])
-    expect(trajectory.time_step).toBe(expected)
-    expect(trajectory.time_unit).toBeUndefined()
-    expect(trajectory.frames[0].metadata?.time).toBe(times?.[0])
-  })
-
-  it(`should reject invalid LAMMPS content`, async () => {
-    const invalid_content = `This is not a LAMMPS file`
-    await expect(parse_trajectory_data(invalid_content, `test.lammpstrj`)).rejects.toThrow(
-      `Unsupported text format`,
-    )
-  })
-
-  it(`should handle PBC flags from BOX BOUNDS`, async () => {
-    const content = lammps_frames([1, 1], { pbc: `ff pp pp` })
-    const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
-
-    // First dimension is non-periodic (ff), others are periodic (pp)
-    expect(trajectory.metadata?.periodic_boundary_conditions).toEqual([false, true, true])
-  })
-
-  describe(`triclinic box support`, () => {
-    // One triclinic frame: bounds are [lo_bound hi_bound tilt] rows with tilts xy, xz, yz
-    const triclinic_frame = (bounds: string[], pbc = `pp pp pp`, timestep = 0): string =>
-      `ITEM: TIMESTEP\n${timestep}\nITEM: NUMBER OF ATOMS\n1
-ITEM: BOX BOUNDS xy xz yz ${pbc}\n${bounds.join(`\n`)}
-ITEM: ATOMS id type x y z\n1 1 5.0 5.0 5.0`
-
-    const get_matrix = (structure: TrajectoryFrame[`structure`]) => {
-      if (!(`lattice` in structure)) throw new Error(`missing lattice`)
-      return structure.lattice.matrix
-    }
-
-    // oxfmt-ignore
-    it.each<[string, string[], { xy: number; xz: number; yz: number; diag?: number[] }]>([
-      [`positive tilts`, [`0.0 10.0 2.0`, `0.0 10.0 1.0`, `0.0 10.0 0.5`],
-        { xy: 2.0, xz: 1.0, yz: 0.5 }],
-      [`bounding box conversion with large tilts`,
-        [`-3.0 13.0 3.0`, `-1.0 11.0 2.0`, `0.0 10.0 1.0`], { xy: 3.0, xz: 2.0, yz: 1.0 }],
-      [`negative tilts`, [`-2.5 12.5 -2.5`, `-1.5 11.5 -1.5`, `0.0 10.0 -0.5`],
-        { xy: -2.5, xz: -1.5, yz: -0.5 }],
-      [`zero tilts (degenerate triclinic = orthogonal)`,
-        [`0.0 10.0 0.0`, `0.0 8.0 0.0`, `0.0 6.0 0.0`],
-        { xy: 0, xz: 0, yz: 0, diag: [10.0, 8.0, 6.0] }],
-    ])(`parses tilt factors: %s`, async (_name, bounds, { xy, xz, yz, diag }) => {
-      const trajectory = await parse_trajectory_data(triclinic_frame(bounds), `test.lammpstrj`)
-      expect(trajectory.frames).toHaveLength(1)
-      const matrix = get_matrix(trajectory.frames[0].structure)
-      // Lattice vectors: a = (lx, 0, 0), b = (xy, ly, 0), c = (xz, yz, lz)
-      expect(matrix[1][0]).toBeCloseTo(xy, 5)
-      expect(matrix[2][0]).toBeCloseTo(xz, 5)
-      expect(matrix[2][1]).toBeCloseTo(yz, 5)
-      for (const [idx, expected] of (diag ?? []).entries()) {
-        expect(matrix[idx][idx]).toBeCloseTo(expected, 5)
-      }
-    })
-
-    it(`should parse multiple triclinic frames with varying cell shapes`, async () => {
-      const content = [
-        triclinic_frame([`0.0 10.0 1.0`, `0.0 10.0 0.5`, `0.0 10.0 0.25`], `pp pp pp`, 0),
-        triclinic_frame([`0.0 11.0 2.0`, `0.0 11.0 1.0`, `0.0 11.0 0.5`], `pp pp pp`, 100),
-      ].join(`\n`)
-      const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
-
-      expect(trajectory.frames).toHaveLength(2)
-      const expected_tilts = [
-        [1.0, 0.5, 0.25],
-        [2.0, 1.0, 0.5],
-      ]
-      for (const [frame_idx, tilts] of expected_tilts.entries()) {
-        const matrix = get_matrix(trajectory.frames[frame_idx].structure)
-        const actual = [matrix[1][0], matrix[2][0], matrix[2][1]]
-        tilts.forEach((tilt, idx) => expect(actual[idx]).toBeCloseTo(tilt, 5))
-      }
-    })
-
-    it(`should handle triclinic box with mixed PBC flags`, async () => {
-      const content = triclinic_frame(
-        [`0.0 10.0 1.0`, `0.0 10.0 0.5`, `0.0 20.0 0.0`],
-        `pp pp ff`,
-      )
-      const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
-
-      // z-direction is non-periodic (ff); triclinic cell still parsed
-      expect(trajectory.metadata?.periodic_boundary_conditions).toEqual([true, true, false])
-      const matrix = get_matrix(trajectory.frames[0].structure)
-      expect(matrix[1][0]).toBeCloseTo(1.0, 5)
-      expect(matrix[2][0]).toBeCloseTo(0.5, 5)
-    })
-
-    it(`should calculate correct volume for triclinic cell`, async () => {
-      // Bounding-box conversion gives lx = 10 - max(0,2,1,3) = 7, ly = 10 - max(0,0.5) = 9.5,
-      // lz = 10 → volume = det(lattice) = 7 * 9.5 * 10 = 665
-      const content = triclinic_frame([`0.0 10.0 2.0`, `0.0 10.0 1.0`, `0.0 10.0 0.5`])
-      const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
-      expect(trajectory.frames[0].metadata?.volume).toBeCloseTo(665, 0)
-    })
-
-    it.each([
-      [`x y z`, `0.75 -0.375 -1.0`, false],
-      [`xu yu zu`, `0.75 -0.375 -1.0`, true],
-      [`xs ys zs`, `0.5 0.5 0.5`, false],
-      [`xsu ysu zsu`, `0.5 0.5 0.5`, true],
-    ])(`parses general triclinic %s coordinates`, async (columns, coordinates, unwrapped) => {
-      const content = `ITEM: TIMESTEP
-0
-ITEM: NUMBER OF ATOMS
-1
-ITEM: BOX BOUNDS abc origin pp ff pp
-4 0 0 -2
-1 5 0 -3
-0.5 0.25 6 -4
-ITEM: ATOMS id type ${columns}
-1 1 ${coordinates}`
-      const trajectory = await parse_trajectory_data(content, `general.lammpstrj`)
-      const { structure, metadata } = trajectory.frames[0]
-      if (!(`lattice` in structure)) throw new Error(`missing lattice`)
-
-      expect(structure.lattice.matrix).toEqual([
-        [4, 0, 0],
-        [1, 5, 0],
-        [0.5, 0.25, 6],
-      ])
-      expect(structure.lattice.pbc).toEqual([true, false, true])
-      expect(structure.sites[0].xyz).toEqual([2.75, 2.625, 3])
-      expect(structure.sites[0].abc).toEqual([0.5, 0.5, 0.5])
-      expect(metadata).toMatchObject({
-        box_origin: [-2, -3, -4],
-        coords_unwrapped: unwrapped,
-      })
-    })
-  })
-
-  describe(`atom_type_mapping support`, () => {
-    it.each<[string, Record<number, ElementSymbol> | undefined, number[], ElementSymbol[]]>([
-      [`custom mapping`, { 1: `Na`, 2: `Cl` }, [1, 2, 1], [`Na`, `Cl`, `Na`]],
-      [`partial mapping falls back to defaults`, { 1: `Na` }, [1, 2, 3], [`Na`, `He`, `Li`]],
-      [`no mapping uses defaults`, undefined, [1, 2], [`H`, `He`]],
-      [`high atomic numbers`, { 79: `Au`, 118: `Og` }, [79, 118], [`Au`, `Og`]],
-    ])(`%s`, async (_name, mapping, types, expected_elements) => {
-      const traj = await parse_trajectory_data(lammps_frames(types), `test.lammpstrj`, mapping)
-      const elements = traj.frames[0].structure.sites.map((site) => site.species[0].element)
-      expect(elements).toEqual(expected_elements)
-    })
-
-    it(`should apply mapping consistently across multiple frames`, async () => {
-      const content = lammps_frames([1, 2], { n_frames: 2 })
-      const trajectory = await parse_trajectory_data(content, `test.lammpstrj`, {
-        1: `Fe`,
-        2: `O`,
-      })
-
-      expect(trajectory.frames).toHaveLength(2)
-      for (const frame of trajectory.frames) {
-        const elements = frame.structure.sites.map((site) => site.species[0].element)
-        expect(elements).toEqual([`Fe`, `O`])
-      }
-    })
-  })
-})
-
-describe(`XYZ Trajectory Format`, () => {
-  const extxyz_pbc_frame = (field: string) => `1
-Lattice="10 0 0 0 10 0 0 0 10" Properties=species:S:1:pos:R:3${field}
-Si 0 0 0
-`
-
-  // oxfmt-ignore
-  it.each([
-    [`multi-frame`,
-      `3\nenergy=-10.5\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0\n3\nenergy=-9.2\nH 0.1 0.0 0.0\nH 1.1 0.0 0.0\nH 0.1 1.0 0.0`,
-      `xyz_trajectory`, 2],
-    [`single-frame`, `3\ncomment\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0`, `single_xyz`, 1],
-  ])(`should parse %s XYZ`, async (_, content, expected_format, expected_frames) => {
-    const trajectory = await parse_trajectory_data(content, `test.xyz`)
-    expect(trajectory.metadata?.source_format).toBe(expected_format)
-    expect(trajectory.frames).toHaveLength(expected_frames)
-  })
-
-  it(`should extract comment-line properties and step`, async () => {
-    const content = `3\nenergy=-10.5 volume=100.0 pressure=1.5 temperature=300 force_max=0.1 E_gap=2.0 step=42\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0\n3\nenergy=-9.2 step=43\nH 0.1 0.0 0.0\nH 1.1 0.0 0.0\nH 0.1 1.0 0.0`
-    const trajectory = await parse_trajectory_data(content, `test.xyz`)
-    const metadata = trajectory.frames[0]?.metadata
-    expect(metadata?.energy).toBe(-10.5)
-    expect(metadata?.volume).toBe(100.0)
-    expect(metadata?.pressure).toBe(1.5)
-    expect(metadata?.temperature).toBe(300)
-    expect(metadata?.force_max).toBe(0.1)
-    expect(metadata?.bandgap).toBe(2.0)
-    expect(trajectory.frames[0]?.step).toBe(42)
-  })
-
-  it(`should parse lattice matrix from comment line`, async () => {
-    const content = `3\nLattice="5.0 0.0 0.0 0.0 5.0 0.0 0.0 0.0 5.0"\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0\n3\nLattice="5.1 0.0 0.0 0.0 5.1 0.0 0.0 0.0 5.1"\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0`
-    const trajectory = await parse_trajectory_data(content, `test.xyz`)
-
-    const structure = trajectory.frames[0].structure
-    if (!(`lattice` in structure)) throw new Error(`missing lattice`)
-    expect(structure.lattice.matrix).toEqual([
-      [5.0, 0.0, 0.0],
-      [0.0, 5.0, 0.0],
-      [0.0, 0.0, 5.0],
-    ])
-  })
-
-  it.each<[string, readonly [boolean, boolean, boolean]]>([
-    [` pbc="F F F"`, [false, false, false]],
-    [` pbc="T F T"`, [true, false, true]],
-    [` pbc='T F T'`, [true, false, true]],
-    [` pbc=T F T`, [true, false, true]],
-    [` pbc="true FALSE t"`, [true, false, true]],
-    [` pbc=TFT`, [true, false, true]],
-    // Compact bare must work mid-line (following Key= must not be swallowed)
-    [` pbc=TFF Energy=-1.0`, [true, false, false]],
-    [` Energy=-1 pbc=TFF step=3`, [true, false, false]],
-    [` pbc=F`, [false, false, false]],
-    [` pbc=1`, [true, true, true]],
-    [` pbc="1 0 1"`, [true, false, true]],
-    [` pbc="F F F extra"`, [false, false, false]],
-    // junk tokens must not resolve via Object.prototype (e.g. `constructor`)
-    [` pbc="constructor constructor constructor"`, [true, true, true]],
-    [` pbc="T F"`, [true, true, true]],
-    [``, [true, true, true]],
-  ])(`should parse EXTXYZ PBC field %p`, async (field, expected) => {
-    const frame = extxyz_pbc_frame(field)
-    const { structure } = (await parse_trajectory_data(frame + frame, `pbc.extxyz`)).frames[0]
-    expect(`lattice` in structure && structure.lattice.pbc).toEqual(expected)
-  })
-
-  it(`warns once for repeated invalid EXTXYZ pbc across frames`, async () => {
-    const frame = extxyz_pbc_frame(` pbc="T F"`)
-    const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
-    await parse_trajectory_data(frame + frame + frame, `bad-pbc.extxyz`)
-    expect(
-      get_traj_parse_warnings().filter((msg) => msg.includes(`Invalid EXTXYZ pbc`)),
-    ).toHaveLength(1)
-    warn.mockRestore()
-  })
-
-  // oxfmt-ignore
-  it.each<[string, string, number[][]]>([
-    // forces directly after pos, after momenta, and after a scalar column
-    [`species:S:1:pos:R:3:forces:R:3`, `H 0 0 0 0.1 0 0\nH 1 0 0 0 0 0.3`,
-      [[0.1, 0, 0], [0, 0, 0.3]]],
-    [`species:S:1:pos:R:3:momenta:R:3:forces:R:3`, `H 0 0 0 9.9 9.9 9.9 0.1 0.2 0.3`,
-      [[0.1, 0.2, 0.3]]],
-    [`species:S:1:pos:R:3:node_energy:R:1:forces:R:3`, `H 0 0 0 9.9 0.1 0.2 0.3`,
-      [[0.1, 0.2, 0.3]]],
-  ])(
-    `should read forces at Properties column offset: %s`,
-    async (properties, atom_lines, expected_forces) => {
-      const n_atoms = atom_lines.split(`\n`).length
-      const frame = `${n_atoms}\nProperties=${properties}\n${atom_lines}`
-      const trajectory = await parse_trajectory_data(`${frame}\n${frame}`, `test.extxyz`)
-
-      const metadata = trajectory.frames[0]?.metadata
-      expect(metadata?.forces).toEqual(expected_forces)
-      expect(metadata?.force_max).toBeCloseTo(
-        Math.max(...expected_forces.map((vec) => Math.hypot(...vec))),
-      )
-    },
-  )
-
-  it(`writes all declared extXYZ columns to site properties under canonical names`, async () => {
-    const properties = `species:S:1:pos:R:3:forces:R:3:charges:R:1:velocities:R:3:momenta:R:3:masses:R:1:tag:S:1:frozen:L:1`
-    const frame =
-      `2\nProperties=${properties}\n` +
-      `H 0 0 0 0.1 0.2 0.3 -0.5 1 2 3 4 5 6 1.008 core T\n` +
-      `O 1 0 0 0.4 0.5 0.6 1.25 -1 -2 -3 -4 -5 -6 15.999 shell F`
-    const trajectory = await parse_trajectory_data(`${frame}\n${frame}`, `test.extxyz`)
-    const [site_h, site_o] = trajectory.frames[0].structure.sites
-
-    expect(site_h.properties).toEqual({
-      force: [0.1, 0.2, 0.3],
-      charge: -0.5,
-      velocity: [1, 2, 3],
-      momentum: [4, 5, 6],
-      mass: 1.008,
-      tag: `core`,
-      frozen: true,
-    })
-    expect(site_o.properties?.charge).toBe(1.25)
-    expect(site_o.properties?.velocity).toEqual([-1, -2, -3])
-    expect(site_o.properties?.frozen).toBe(false)
-    expect(trajectory.frames[0].metadata?.forces).toEqual([
-      [0.1, 0.2, 0.3],
-      [0.4, 0.5, 0.6],
-    ])
-    expect(trajectory.frames[0].metadata?.force_max).toBeCloseTo(Math.hypot(0.4, 0.5, 0.6))
-  })
-
-  // Time= is an absolute snapshot time with no declared unit.
-  it.each([
-    { case: `uniform spacing`, times: [0, 2, 4], expected: 0.02 },
-    { case: `a stretched interval`, times: [0, 2, 10], expected: undefined },
-    { case: `no Time= at all`, times: undefined, expected: undefined },
-  ])(`derives extXYZ time_step $expected from $case`, async ({ times, expected }) => {
-    const content = [0, 1, 2]
-      .map(
-        (frame_idx) =>
-          `1\nstep=${frame_idx * 100}${
-            times?.[frame_idx] === undefined ? `` : ` Time=${times[frame_idx]}`
-          }\nH 0 0 0`,
-      )
-      .join(`\n`)
-    const trajectory = await parse_trajectory_data(content, `md.extxyz`)
-    expect(trajectory.frames.map((frame) => frame.step)).toEqual([0, 100, 200])
-    expect(trajectory.time_step).toBe(expected)
-    expect(trajectory.time_unit).toBeUndefined()
-    expect(trajectory.frames[1].metadata?.time).toBe(times?.[1])
-  })
-
-  it(`round-trips exported forces to the same site key through both readers`, async () => {
-    const force = [-0.1, 0.2, 0.3]
-    const exported = structure_to_xyz_str(
-      make_crystal(5, [{ element: `Si`, xyz: [0, 0, 0], properties: { force } }]),
-    )
-    expect(exported).toContain(`forces:R:3`)
-
-    const as_trajectory = await parse_trajectory_data(exported, `export.extxyz`)
-    expect(as_trajectory.frames[0].structure.sites[0].properties?.force).toEqual(force)
-    expect(parse_xyz(exported)?.sites[0].properties?.force).toEqual(force)
-  })
-
-  // oxfmt-ignore
-  it.each([
-    // move_mask stays owned by read_extxyz_move_flags: one `selective_dynamics` triple,
-    // no second copy under the declared name
-    [`move_mask:L:3`, `H 0 0 0 T F T`, { selective_dynamics: [true, false, true] }],
-    [`move_mask:L:1`, `H 0 0 0 F`, { selective_dynamics: [false, false, false] }],
-    // A column too short on the line is dropped for that atom rather than stored as NaN
-    [`charge:R:1:extra:R:1`, `H 0 0 0 0.5`, { charge: 0.5 }],
-    // Non-finite numeric tokens are dropped the same way
-    [`charge:R:1`, `H 0 0 0 not_a_number`, {}],
-  ])(`extXYZ column handling for Properties=...:%s`, async (tail, atom_line, expected) => {
-    const frame = `1\nProperties=species:S:1:pos:R:3:${tail}\n${atom_line}`
-    const trajectory = await parse_trajectory_data(`${frame}\n${frame}`, `test.extxyz`)
-    expect(trajectory.frames[0].structure.sites[0].properties).toEqual(expected)
-  })
-
-  it.each<[string, Record<string, number>]>([
-    [`frame=5`, {}], // 'e' of frame must not match energy
-    [`step=100 dt=0.5`, {}], // 'p' of step / 't' of dt must not match pressure/temperature
-    [`E = 2.0`, { energy: 2.0 }],
-    [`Temperature: 300`, { temperature: 300 }],
-  ])(
-    `should anchor comment metadata keys at word boundaries: %s`,
-    async (comment, expected) => {
-      const frame = `1\n${comment}\nH 0.0 0.0 0.0`
-      const trajectory = await parse_trajectory_data(`${frame}\n${frame}`, `test.xyz`)
-
-      const { energy, pressure, temperature } = trajectory.frames[0]?.metadata ?? {}
-      expect({ energy, pressure, temperature }).toEqual(expected)
-    },
-  )
-
-  it(`preserves quoted extXYZ dipoles and polarizability tensors`, async () => {
-    const frame = `1\nstep=4 lattice="10 0 0 0 10 0 0 0 10" dipole="1 2 3" polarizability="1 0 0 0 2 0 0 0 3"\nH 0 0 0`
-    const trajectory = await parse_trajectory_data(`${frame}\n${frame}`, `signals.extxyz`)
-    expect(trajectory.frames[0].metadata?.lattice).toBeUndefined()
-    expect(trajectory.frames[0].metadata?.dipole).toEqual([1, 2, 3])
-    expect(trajectory.frames[0].metadata?.polarizability).toEqual([
-      [1, 0, 0],
-      [0, 2, 0],
-      [0, 0, 3],
-    ])
-  })
-
-  const valid_frame = `3\nvalid frame\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0`
-  // oxfmt-ignore
-  it.each([
-    [`invalid text count`, `invalid\ncomment\nH 0.0 0.0 0.0\n${valid_frame}`, 1],
-    [`negative count`, `-1\ncomment\nH 0.0 0.0 0.0\n${valid_frame}`, 1],
-    [`zero count`, `0\ncomment\n\n${valid_frame}`, 1],
-    [`empty lines and malformed frames`,
-      `\n\n${valid_frame}\n\ninvalid\ncomment\nH 0.0 0.0 0.0\n\n${valid_frame}`, 2],
-  ])(`skips %s and parses valid frames`, async (_name, content, expected_frames) => {
-    const trajectory = await parse_trajectory_data(content, `test.xyz`)
-    expect(trajectory.frames).toHaveLength(expected_frames)
-  })
-})
-
-describe(`HDF5 Format`, () => {
-  it(`should parse the gold-cluster fixture: frames, elements, discovery metadata`, async () => {
-    const content = read_binary_test_file(`flame-gold-cluster-55-atoms.h5`)
-    const trajectory = await parse_trajectory_data(content, `test.h5`)
-
-    expect(trajectory.metadata?.source_format).toBe(`hdf5_trajectory`)
-    expect(trajectory.frames).toHaveLength(10)
-    expect(trajectory.total_frames).toBe(20)
-    expect((await trajectory.frame_loader?.load_frame(``, 19))?.step).toBe(500)
-    expect(trajectory.metadata?.num_atoms).toBe(55)
-    expect(trajectory.frames[0].structure.sites[0].species[0].element).toBe(`Au`)
-    expect(trajectory.metadata?.element_counts).toEqual({ Au: 55 })
-    expect(trajectory.metadata?.periodic_boundary_conditions).toHaveLength(3)
-    expect(trajectory.metadata?.has_cell_info).toBeDefined()
-
-    // Dataset discovery information shows resolved dataset paths
-    const discovery = trajectory.metadata?.discovered_datasets as Record<string, string>
-    expect(discovery?.positions).toContain(`/`)
-    expect(discovery?.atomic_numbers).toContain(`/`)
-    expect(trajectory.metadata?.total_groups_found).toBeGreaterThan(0)
-
-    for (const frame of trajectory.frames) {
-      if (frame.metadata?.energy !== undefined) {
-        expect(typeof frame.metadata.energy).toBe(`number`)
-      }
-      if (frame.metadata?.volume !== undefined) {
-        expect(frame.metadata.volume).toBeGreaterThan(0)
-      }
-    }
-
-    // HDF5 magic-byte sniff works without a filename hint
-    expect((await parse_trajectory_data(content)).metadata?.source_format).toBe(
-      `hdf5_trajectory`,
-    )
-  })
-
+describe(`HDF5`, () => {
+  const ds = (group: H5File | H5Group, name: string, data: number[], shape: number[]) =>
+    group.create_dataset({ name, data, shape })
+  const flat_frames = (n_frames: number, frame: (frame_idx: number) => number[]): number[] =>
+    Array.from({ length: n_frames }, (_unused, frame_idx) => frame(frame_idx)).flat()
   // Build a minimal torch-sim-layout HDF5 file in h5wasm's in-memory FS and
   // return its bytes, for torn-file scenarios no checked-in fixture covers
   const h5_bytes = async (
@@ -1189,11 +1406,10 @@ describe(`HDF5 Format`, () => {
     }
   }
 
-  const make_h5_buffer = (
-    datasets: { name: string; data: number[]; shape: number[] }[],
-  ): Promise<ArrayBuffer> =>
+  type H5Spec = [name: string, data: number[], shape: number[]]
+  const make_h5_buffer = (datasets: H5Spec[]): Promise<ArrayBuffer> =>
     h5_bytes(`torn-tail`, (file) => {
-      for (const { name, data, shape } of datasets) file.create_dataset({ name, data, shape })
+      for (const [name, data, shape] of datasets) ds(file, name, data, shape)
     })
 
   const make_grouped_h5_buffer = (
@@ -1203,20 +1419,16 @@ describe(`HDF5 Format`, () => {
     h5_bytes(`grouped`, (file) => {
       for (const [group_idx, { name, atomic_number, x_position }] of groups.entries()) {
         const group = file.create_group(name)
-        group.create_dataset({
-          name: `positions`,
-          data: [x_position, 0, 0],
-          shape: [1, 1, 3],
-        })
-        group.create_dataset({ name: `atomic_numbers`, data: [atomic_number], shape: [1] })
+        ds(group, `positions`, [x_position, 0, 0], [1, 1, 3])
+        ds(group, `atomic_numbers`, [atomic_number], [1])
         group.create_attribute(`temperature_kelvin`, 300 + group_idx)
         group.create_attribute(`dt_fs`, 0.5)
       }
       if (include_unrelated_data_signals) {
         const data = file.create_group(`data`)
-        data.create_dataset({ name: `masses`, data: [2], shape: [1] })
-        data.create_dataset({ name: `dipole`, data: [1, 0, 0, 0, 1, 0], shape: [2, 3] })
-        file.create_group(`steps`).create_dataset({ name: `dipole`, data: [0, 1], shape: [2] })
+        ds(data, `masses`, [2], [1])
+        ds(data, `dipole`, [1, 0, 0, 0, 1, 0], [2, 3])
+        ds(file.create_group(`steps`), `dipole`, [0, 1], [2])
       }
     })
 
@@ -1227,30 +1439,25 @@ describe(`HDF5 Format`, () => {
     h5_bytes(`torch-sim-signals`, (file) => {
       const data = file.create_group(`data`)
       const steps = file.create_group(`steps`)
-      data.create_dataset({
-        name: `positions`,
-        data: Array.from({ length: 4 }, (_unused, frame_idx) => [
-          frame_idx * 0.01,
-          0,
-          0,
-          1 + frame_idx * 0.01,
-          0,
-          0,
-        ]).flat(),
-        shape: [4, 2, 3],
-      })
-      data.create_dataset({ name: `atomic_numbers`, data: [1, 8], shape: [2] })
-      data.create_dataset({ name: `masses`, data: [1.008, 15.999], shape: [2] })
-      const velocities = data.create_dataset({
-        name: `velocities`,
-        data: Array.from({ length: 24 }, (_unused, idx) => idx / 10),
-        shape: [4, 2, 3],
-      })
-      velocities.create_attribute(`unit`, `A/fs`)
-      data.create_dataset({ name: `dipole`, data: [1, 0, 0, 0, 1, 0], shape: [2, 3] })
-      data.create_dataset({
-        name: `polarizability`,
-        data: Array.from({ length: 3 }, (_unused, sample_idx) => [
+      ds(
+        data,
+        `positions`,
+        flat_frames(4, (frame_idx) => [frame_idx * 0.01, 0, 0, 1 + frame_idx * 0.01, 0, 0]),
+        [4, 2, 3],
+      )
+      ds(data, `atomic_numbers`, [1, 8], [2])
+      ds(data, `masses`, [1.008, 15.999], [2])
+      ds(
+        data,
+        `velocities`,
+        Array.from({ length: 24 }, (_unused, idx) => idx / 10),
+        [4, 2, 3],
+      ).create_attribute(`unit`, `A/fs`)
+      ds(data, `dipole`, [1, 0, 0, 0, 1, 0], [2, 3])
+      ds(
+        data,
+        `polarizability`,
+        flat_frames(3, (sample_idx) => [
           1 + sample_idx,
           0,
           0,
@@ -1260,15 +1467,15 @@ describe(`HDF5 Format`, () => {
           0,
           0,
           3 + sample_idx,
-        ]).flat(),
-        shape: [3, 3, 3],
-      })
-      steps.create_dataset({ name: `positions`, data: [0, 1, 2, 3], shape: [4] })
-      steps.create_dataset({ name: `velocities`, data: [0, 1, 2, 3], shape: [4] })
+        ]),
+        [3, 3, 3],
+      )
+      ds(steps, `positions`, [0, 1, 2, 3], [4])
+      ds(steps, `velocities`, [0, 1, 2, 3], [4])
       if (include_dipole_steps) {
-        steps.create_dataset({ name: `dipole`, data: dipole_steps, shape: [2] })
+        ds(steps, `dipole`, dipole_steps, [2])
       }
-      steps.create_dataset({ name: `polarizability`, data: [0, 2, 4], shape: [3] })
+      ds(steps, `polarizability`, [0, 2, 4], [3])
       file.create_attribute(`time_step`, 0.5)
       file.create_attribute(`time_unit`, `fs`)
       file.create_attribute(`temperature`, 300)
@@ -1284,94 +1491,66 @@ describe(`HDF5 Format`, () => {
   ): Promise<ArrayBuffer> =>
     h5_bytes(`reference-md`, (file) => {
       const frames = file.create_group(`frames`)
-      frames.create_dataset({
-        name: `production_step`,
-        data: Array.from({ length: n_frames }, (_unused, frame_idx) => frame_idx * 2),
-        shape: [n_frames],
-      })
-      frames.create_dataset({
-        name: `time_ps`,
-        data: Array.from({ length: n_frames }, (_unused, frame_idx) => frame_idx * 0.5),
-        shape: [n_frames],
-      })
+      ds(
+        frames,
+        `production_step`,
+        Array.from({ length: n_frames }, (_unused, frame_idx) => frame_idx * 2),
+        [n_frames],
+      )
+      ds(
+        frames,
+        `time_ps`,
+        Array.from({ length: n_frames }, (_unused, frame_idx) => frame_idx * 0.5),
+        [n_frames],
+      )
       const simulation = file.create_group(`simulation`)
       simulation.create_attribute(`integration_timestep_ps`, 0.25)
       simulation.create_attribute(`sample_stride_steps`, 2)
       simulation.create_attribute(`sample_interval_ps`, 0.5)
       simulation.create_attribute(`ensemble`, `NVE`)
-      file
-        .create_group(`replicas`)
-        .create_dataset({ name: `global_ids`, data: global_ids, shape: [global_ids.length] })
+      ds(file.create_group(`replicas`), `global_ids`, global_ids, [global_ids.length])
 
       const molecule = file.create_group(`molecules`).create_group(`h2o`)
       const topology = molecule.create_group(`topology`)
-      topology.create_dataset({ name: `atomic_numbers`, data: [1, 8], shape: [2] })
-      topology.create_dataset({ name: `masses_amu`, data: [1.008, 15.999], shape: [2] })
-      topology.create_dataset({ name: `pbc`, data: [0, 0, 0], shape: [3] })
-      molecule
-        .create_group(`replicas`)
-        .create_dataset({ name: `member_seeds`, data: [7, 8], shape: [2] })
+      ds(topology, `atomic_numbers`, [1, 8], [2])
+      ds(topology, `masses_amu`, [1.008, 15.999], [2])
+      ds(topology, `pbc`, [0, 0, 0], [3])
+      ds(molecule.create_group(`replicas`), `member_seeds`, [7, 8], [2])
 
       const initial_state = molecule.create_group(`production_initial_state`)
-      initial_state.create_dataset({
-        name: `positions_angstrom`,
-        data: [0, 0, 0, 0, 1, 0, 5, 0, 0, 5, 1, 0],
-        shape: [2, 2, 3],
-      })
-      initial_state.create_dataset({
-        name: `momenta_sqrt_ev_amu`,
-        data: Array(12).fill(0),
-        shape: [2, 2, 3],
-      })
-      initial_state.create_dataset({
-        name: `cells_angstrom`,
-        data: [...cell_matrix, ...cell_matrix],
-        shape: [2, 3, 3],
-      })
+      ds(initial_state, `positions_angstrom`, [0, 0, 0, 0, 1, 0, 5, 0, 0, 5, 1, 0], [2, 2, 3])
+      ds(initial_state, `momenta_sqrt_ev_amu`, Array(12).fill(0), [2, 2, 3])
+      ds(initial_state, `cells_angstrom`, [...cell_matrix, ...cell_matrix], [2, 3, 3])
 
       const observables = molecule.create_group(`observables`)
-      observables.create_dataset({
-        name: `atomic_velocity_angstrom_per_ps`,
-        data: Array.from({ length: n_frames }, () => [
-          0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0,
-        ]).flat(),
-        shape: [n_frames, 2, 2, 3],
-      })
-      observables.create_dataset({
-        name: `total_dipole_e_angstrom`,
-        data: Array.from({ length: n_frames }, (_unused, frame_idx) => [
-          0,
-          0,
-          0,
-          10 + frame_idx,
-          0,
-          0,
-        ]).flat(),
-        shape: [n_frames, 2, 3],
-      })
-      observables.create_dataset({
-        name: `total_energy_ev`,
-        data: Array.from({ length: n_frames }, (_unused, frame_idx) => [
-          1 + frame_idx,
-          10 + frame_idx,
-        ]).flat(),
-        shape: [n_frames, 2],
-      })
-      observables.create_dataset({
-        name: `vibrational_temperature_kelvin`,
-        data: Array.from({ length: n_frames }, (_unused, frame_idx) => [
-          300 + frame_idx,
-          310 + frame_idx,
-        ]).flat(),
-        shape: [n_frames, 2],
-      })
+      ds(
+        observables,
+        `atomic_velocity_angstrom_per_ps`,
+        flat_frames(n_frames, () => [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0]),
+        [n_frames, 2, 2, 3],
+      )
+      ds(
+        observables,
+        `total_dipole_e_angstrom`,
+        flat_frames(n_frames, (frame_idx) => [0, 0, 0, 10 + frame_idx, 0, 0]),
+        [n_frames, 2, 3],
+      )
+      ds(
+        observables,
+        `total_energy_ev`,
+        flat_frames(n_frames, (frame_idx) => [1 + frame_idx, 10 + frame_idx]),
+        [n_frames, 2],
+      )
+      ds(
+        observables,
+        `vibrational_temperature_kelvin`,
+        flat_frames(n_frames, (frame_idx) => [300 + frame_idx, 310 + frame_idx]),
+        [n_frames, 2],
+      )
     })
 
   it(`collects TorchSim signals with independent steps, shapes, units, and provenance`, async () => {
-    const trajectory = await parse_trajectory_data(
-      await make_torch_sim_signal_buffer(),
-      `torch-sim.h5`,
-    )
+    const trajectory = await parse(await make_torch_sim_signal_buffer(), `torch-sim.h5`)
     expect(trajectory.frames.map(({ step }) => step)).toEqual([0, 1, 2, 3])
     expect(trajectory.atom_masses).toEqual([1.008, 15.999])
     expect(trajectory.signals).toBeUndefined()
@@ -1423,8 +1602,8 @@ describe(`HDF5 Format`, () => {
   it(`materializes singleton TorchSim and Reference MD HDF5 inputs`, async () => {
     const torch_buffer = await h5_bytes(`singleton-torch`, (file) => {
       const data = file.create_group(`data`)
-      data.create_dataset({ name: `positions`, data: [0, 0, 0], shape: [1, 3] })
-      data.create_dataset({ name: `atomic_numbers`, data: [1], shape: [1] })
+      ds(data, `positions`, [0, 0, 0], [1, 3])
+      ds(data, `atomic_numbers`, [1], [1])
     })
     const torch = await parse_hdf5_trajectory(torch_buffer, `singleton.h5`)
     const reference = await parse_hdf5_trajectory(
@@ -1445,11 +1624,12 @@ describe(`HDF5 Format`, () => {
       h5_bytes(`torn-steps`, (file) => {
         const data = file.create_group(`data`)
         const steps = file.create_group(`steps`)
-        data.create_dataset({
-          name: `positions`,
-          data: [...frame_positions, ...frame_positions, ...zero_positions],
-          shape: [3, 2, 3],
-        })
+        ds(
+          data,
+          `positions`,
+          [...frame_positions, ...frame_positions, ...zero_positions],
+          [3, 2, 3],
+        )
         data.create_dataset({
           name: `atomic_numbers`,
           data: dynamic_topology
@@ -1457,16 +1637,8 @@ describe(`HDF5 Format`, () => {
             : two_gold_atoms,
           shape: dynamic_topology ? [3, 2] : [2],
         })
-        data.create_dataset({
-          name: `pbc`,
-          data: [1, 1, 1, 1, 1, 1, 0, 0, 0],
-          shape: [3, 3],
-        })
-        steps.create_dataset({
-          name: `positions`,
-          data: position_steps,
-          shape: [3],
-        })
+        ds(data, `pbc`, [1, 1, 1, 1, 1, 1, 0, 0, 0], [3, 3])
+        ds(steps, `positions`, position_steps, [3])
       })
     const torn = await make_buffer([0, 1, 0])
     const trajectory = await parse_hdf5_trajectory(torn, `torn-steps.h5`)
@@ -1493,24 +1665,22 @@ describe(`HDF5 Format`, () => {
     const content = await h5_bytes(`torn-response-steps`, (file) => {
       const data = file.create_group(`data`)
       const steps = file.create_group(`steps`)
-      data.create_dataset({
-        name: `positions`,
-        data: [...frame_positions, ...frame_positions, ...zero_positions],
-        shape: [3, 2, 3],
-      })
-      data.create_dataset({
-        name: `atomic_numbers`,
-        data: [...two_gold_atoms, ...two_gold_atoms, 0, 0],
-        shape: [3, 2],
-      })
-      data.create_dataset({
-        name: `velocities`,
-        data: [...frame_positions, ...frame_positions, ...zero_positions],
-        shape: [3, 2, 3],
-      })
-      data.create_dataset({ name: `energy`, data: [-1, -2, 0], shape: [3] })
+      ds(
+        data,
+        `positions`,
+        [...frame_positions, ...frame_positions, ...zero_positions],
+        [3, 2, 3],
+      )
+      ds(data, `atomic_numbers`, [...two_gold_atoms, ...two_gold_atoms, 0, 0], [3, 2])
+      ds(
+        data,
+        `velocities`,
+        [...frame_positions, ...frame_positions, ...zero_positions],
+        [3, 2, 3],
+      )
+      ds(data, `energy`, [-1, -2, 0], [3])
       for (const name of [`positions`, `velocities`, `energy`]) {
-        steps.create_dataset({ name, data: [0, 1, 0], shape: [3] })
+        ds(steps, name, [0, 1, 0], [3])
       }
     })
 
@@ -1530,19 +1700,16 @@ describe(`HDF5 Format`, () => {
     const content = await h5_bytes(`native-energy`, (file) => {
       const data = file.create_group(`data`)
       const steps = file.create_group(`steps`)
-      data.create_dataset({
-        name: `positions`,
-        data: Array.from({ length: 4 }, (_unused, frame_idx) => [frame_idx, 0, 0]).flat(),
-        shape: [4, 1, 3],
-      })
-      data.create_dataset({ name: `atomic_numbers`, data: [1], shape: [1] })
-      data.create_dataset({ name: `energy`, data: [-1, -2, -3], shape: [3] })
-      steps.create_dataset({
-        name: `positions`,
-        data: [0, 1, 2, 3],
-        shape: [4],
-      })
-      steps.create_dataset({ name: `energy`, data: [0, 2, 4], shape: [3] })
+      ds(
+        data,
+        `positions`,
+        flat_frames(4, (frame_idx) => [frame_idx, 0, 0]),
+        [4, 1, 3],
+      )
+      ds(data, `atomic_numbers`, [1], [1])
+      ds(data, `energy`, [-1, -2, -3], [3])
+      ds(steps, `positions`, [0, 1, 2, 3], [4])
+      ds(steps, `energy`, [0, 2, 4], [3])
     })
     const trajectory = await parse_hdf5_trajectory(content, `native-energy.h5`)
     const stream = await trajectory.frame_loader?.stream_positions?.(``, {
@@ -1564,20 +1731,17 @@ describe(`HDF5 Format`, () => {
       h5_bytes(`dynamic-pbc`, (file) => {
         const n_frames = pbc.length / 3
         const data = file.create_group(`data`)
-        data.create_dataset({
-          name: `positions`,
-          data: Array.from({ length: n_frames }, (_unused, frame_idx) => [
-            frame_idx,
-            0,
-            0,
-          ]).flat(),
-          shape: [n_frames, 1, 3],
-        })
-        data.create_dataset({ name: `atomic_numbers`, data: [1], shape: [1] })
-        data.create_dataset({ name: `pbc`, data: pbc, shape: [n_frames, 3] })
+        ds(
+          data,
+          `positions`,
+          flat_frames(n_frames, (frame_idx) => [frame_idx, 0, 0]),
+          [n_frames, 1, 3],
+        )
+        ds(data, `atomic_numbers`, [1], [1])
+        ds(data, `pbc`, pbc, [n_frames, 3])
       })
     const uniform = await parse_hdf5_trajectory(
-      await make_buffer(Array.from({ length: 12 }, () => [1, 0, 1]).flat()),
+      await make_buffer(flat_frames(12, () => [1, 0, 1])),
       `uniform-pbc.h5`,
     )
     expect(await uniform.frame_loader?.stream_positions?.(``)).toMatchObject({
@@ -1604,41 +1768,30 @@ describe(`HDF5 Format`, () => {
     const content = await h5_bytes(`long-generic`, (file) => {
       const data = file.create_group(`data`)
       const steps = file.create_group(`steps`)
-      data.create_dataset({
-        name: `positions`,
-        data: Array.from({ length: n_frames }, (_unused, frame_idx) => [
-          frame_idx,
-          0,
-          0,
-        ]).flat(),
-        shape: [n_frames, 1, 3],
-      })
-      data.create_dataset({ name: `atomic_numbers`, data: [1], shape: [1] })
-      data.create_dataset({
-        name: `cells`,
-        data: Array.from({ length: n_frames }, (_unused, frame_idx) => [
-          10 + frame_idx,
-          0,
-          0,
-          0,
-          10,
-          0,
-          0,
-          0,
-          10,
-        ]).flat(),
-        shape: [n_frames, 3, 3],
-      })
-      steps.create_dataset({
-        name: `positions`,
-        data: Array.from({ length: n_frames }, (_unused, frame_idx) => frame_idx * 2),
-        shape: [n_frames],
-      })
+      ds(
+        data,
+        `positions`,
+        flat_frames(n_frames, (frame_idx) => [frame_idx, 0, 0]),
+        [n_frames, 1, 3],
+      )
+      ds(data, `atomic_numbers`, [1], [1])
+      ds(
+        data,
+        `cells`,
+        flat_frames(n_frames, (frame_idx) => [10 + frame_idx, 0, 0, 0, 10, 0, 0, 0, 10]),
+        [n_frames, 3, 3],
+      )
+      ds(
+        steps,
+        `positions`,
+        Array.from({ length: n_frames }, (_unused, frame_idx) => frame_idx * 2),
+        [n_frames],
+      )
     })
 
     const slice_spy = vi.spyOn(H5Dataset.prototype, `slice`)
     onTestFinished(() => slice_spy.mockRestore())
-    const trajectory = await parse_trajectory_data(content, `long-generic.h5`)
+    const trajectory = await parse(content, `long-generic.h5`)
 
     expect(trajectory).toMatchObject({
       total_frames: n_frames,
@@ -1673,7 +1826,7 @@ describe(`HDF5 Format`, () => {
 
   it(`reconstructs a selected replica trajectory from reference MD velocities`, async () => {
     const content = await make_reference_md_h5_buffer()
-    const error = await parse_trajectory_data(content, `reference-md.h5`).then(
+    const error = await parse(content, `reference-md.h5`).then(
       () => undefined,
       (reason: unknown) => reason,
     )
@@ -1683,7 +1836,7 @@ describe(`HDF5 Format`, () => {
       `/molecules/h2o/replicas/1`,
     ])
 
-    const trajectory = await parse_trajectory_data(
+    const trajectory = await parse(
       content,
       `reference-md.h5`,
       undefined,
@@ -1752,7 +1905,7 @@ describe(`HDF5 Format`, () => {
 
   it(`keeps long reference MD trajectories compact while preserving random access`, async () => {
     const content = await make_reference_md_h5_buffer([100, 101], 12)
-    const trajectory = await parse_trajectory_data(
+    const trajectory = await parse(
       content,
       `reference-md-long.h5`,
       undefined,
@@ -1854,11 +2007,11 @@ describe(`HDF5 Format`, () => {
       file.create_group(`simulation`)
       for (const name of [`run_a`, `run_b`]) {
         const group = file.create_group(name)
-        group.create_dataset({ name: `positions`, data: [0, 0, 0], shape: [1, 1, 3] })
-        group.create_dataset({ name: `atomic_numbers`, data: [1], shape: [1] })
+        ds(group, `positions`, [0, 0, 0], [1, 1, 3])
+        ds(group, `atomic_numbers`, [1], [1])
       }
     })
-    const error = await parse_trajectory_data(content, `generic-with-reference-names.h5`).then(
+    const error = await parse(content, `generic-with-reference-names.h5`).then(
       () => undefined,
       (reason: unknown) => reason,
     )
@@ -1868,7 +2021,7 @@ describe(`HDF5 Format`, () => {
 
   it(`rejects a truncated Reference MD replica identifier array`, async () => {
     await expect(
-      parse_trajectory_data(
+      parse(
         await make_reference_md_h5_buffer([100]),
         `reference-md-invalid-ids.h5`,
         undefined,
@@ -1879,7 +2032,7 @@ describe(`HDF5 Format`, () => {
 
   it(`rejects a singular Reference MD cell`, async () => {
     await expect(
-      parse_trajectory_data(
+      parse(
         await make_reference_md_h5_buffer([100, 101], 3, [10, 0, 0, 0, 10, 0, 0, 0, 0]),
         `reference-md-singular.h5`,
         undefined,
@@ -1889,7 +2042,7 @@ describe(`HDF5 Format`, () => {
   })
 
   it(`prefers the canonical TorchSim /data structure over unrelated complete groups`, async () => {
-    const trajectory = await parse_trajectory_data(
+    const trajectory = await parse(
       await make_grouped_h5_buffer([
         { name: `data`, atomic_number: 79, x_position: 1 },
         { name: `model`, atomic_number: 1, x_position: 9 },
@@ -1907,7 +2060,7 @@ describe(`HDF5 Format`, () => {
       { name: `run_a`, atomic_number: 79, x_position: 1 },
       { name: `run_b`, atomic_number: 1, x_position: 9 },
     ])
-    const error = await parse_trajectory_data(content, `ambiguous-groups.h5`).then(
+    const error = await parse(content, `ambiguous-groups.h5`).then(
       () => undefined,
       (reason: unknown) => reason,
     )
@@ -1915,12 +2068,7 @@ describe(`HDF5 Format`, () => {
 
     expect(error.group_paths).toEqual([`/run_a`, `/run_b`])
 
-    const trajectory = await parse_trajectory_data(
-      content,
-      `ambiguous-groups.h5`,
-      undefined,
-      `/run_b`,
-    )
+    const trajectory = await parse(content, `ambiguous-groups.h5`, undefined, `/run_b`)
     expect(trajectory.frames[0].structure.sites[0]).toMatchObject({ xyz: [9, 0, 0] })
     expect(trajectory.time_step).toBe(0.5)
     expect(trajectory.time_unit).toBe(`fs`)
@@ -1928,7 +2076,7 @@ describe(`HDF5 Format`, () => {
   })
 
   it(`does not mix /data signals into an explicitly selected generic group`, async () => {
-    const trajectory = await parse_trajectory_data(
+    const trajectory = await parse(
       await make_grouped_h5_buffer(
         [
           { name: `run_a`, atomic_number: 79, x_position: 1 },
@@ -1953,54 +2101,25 @@ describe(`HDF5 Format`, () => {
         const run = file.create_group(run_name)
         const data = run.create_group(`data`)
         const steps = run.create_group(`steps`)
-        data.create_dataset({
-          name: `positions`,
-          data: [offset, 0, 0, offset + 0.1, 0, 0],
-          shape: [2, 1, 3],
-        })
-        data.create_dataset({
-          name: `atomic_numbers`,
-          data: [atomic_number],
-          shape: [1],
-        })
-        data.create_dataset({
-          name: `masses`,
-          data: [run_name === `run_a` ? 197 : 1],
-          shape: [1],
-        })
-        data.create_dataset({
-          name: `dipole`,
-          data: [offset, 0, 0, offset + 1, 0, 0],
-          shape: [2, 3],
-        })
-        steps.create_dataset({ name: `positions`, data: [0, 2], shape: [2] })
-        steps.create_dataset({ name: `dipole`, data: [0, 2], shape: [2] })
+        ds(data, `positions`, [offset, 0, 0, offset + 0.1, 0, 0], [2, 1, 3])
+        ds(data, `atomic_numbers`, [atomic_number], [1])
+        ds(data, `masses`, [run_name === `run_a` ? 197 : 1], [1])
+        ds(data, `dipole`, [offset, 0, 0, offset + 1, 0, 0], [2, 3])
+        ds(steps, `positions`, [0, 2], [2])
+        ds(steps, `dipole`, [0, 2], [2])
         run.create_attribute(`temperature`, run_name === `run_a` ? 300 : 600)
         run.create_attribute(`dt_fs`, run_name === `run_a` ? 0.5 : 1)
       }
       const data = file.create_group(`data`)
-      data.create_dataset({
-        name: `positions`,
-        data: [50, 0, 0],
-        shape: [1, 1, 3],
-      })
-      data.create_dataset({ name: `atomic_numbers`, data: [8], shape: [1] })
-      data.create_dataset({ name: `masses`, data: [16], shape: [1] })
-      data.create_dataset({
-        name: `dipole`,
-        data: [50, 0, 0, 51, 0, 0],
-        shape: [2, 3],
-      })
+      ds(data, `positions`, [50, 0, 0], [1, 1, 3])
+      ds(data, `atomic_numbers`, [8], [1])
+      ds(data, `masses`, [16], [1])
+      ds(data, `dipole`, [50, 0, 0, 51, 0, 0], [2, 3])
       const steps = file.create_group(`steps`)
-      steps.create_dataset({ name: `positions`, data: [0], shape: [1] })
-      steps.create_dataset({ name: `dipole`, data: [0, 1], shape: [2] })
+      ds(steps, `positions`, [0], [1])
+      ds(steps, `dipole`, [0, 1], [2])
     })
-    const trajectory = await parse_trajectory_data(
-      content,
-      `nested-runs.h5`,
-      undefined,
-      `/run_b/data`,
-    )
+    const trajectory = await parse(content, `nested-runs.h5`, undefined, `/run_b/data`)
     expect(trajectory.frames.map(({ step }) => step)).toEqual([0, 2])
     expect(trajectory.frames[0].structure.sites[0]).toMatchObject({
       xyz: [9, 0, 0],
@@ -2032,16 +2151,13 @@ describe(`HDF5 Format`, () => {
 
   it(`rejects non-increasing independent TorchSim signal steps with the dataset path`, async () => {
     await expect(
-      parse_trajectory_data(await make_torch_sim_signal_buffer([2, 2]), `bad-steps.h5`),
+      parse(await make_torch_sim_signal_buffer([2, 2]), `bad-steps.h5`),
     ).rejects.toThrow(/\/steps\/dipole must increase strictly/)
   })
 
   it(`rejects a known TorchSim signal without its independent step axis`, async () => {
     await expect(
-      parse_trajectory_data(
-        await make_torch_sim_signal_buffer([0, 2], false),
-        `missing-signal-steps.h5`,
-      ),
+      parse(await make_torch_sim_signal_buffer([0, 2], false), `missing-signal-steps.h5`),
     ).rejects.toThrow(/signal \/data\/dipole is missing \/steps\/dipole/)
   })
 
@@ -2053,16 +2169,12 @@ describe(`HDF5 Format`, () => {
 
   it(`honors an explicit non-periodic PBC dataset even when cells are present`, async () => {
     const buffer = await make_h5_buffer([
-      { name: `positions`, data: frame_positions, shape: [1, 2, 3] },
-      { name: `atomic_numbers`, data: two_gold_atoms, shape: [2] },
-      {
-        name: `cell`,
-        data: cubic_cell,
-        shape: [3, 3],
-      },
-      { name: `pbc`, data: [0, 0, 0], shape: [3] },
+      [`positions`, frame_positions, [1, 2, 3]],
+      [`atomic_numbers`, two_gold_atoms, [2]],
+      [`cell`, cubic_cell, [3, 3]],
+      [`pbc`, [0, 0, 0], [3]],
     ])
-    const trajectory = await parse_trajectory_data(buffer, `non-periodic-cell.h5`)
+    const trajectory = await parse(buffer, `non-periodic-cell.h5`)
     expect(trajectory.frames[0].structure).toMatchObject({
       lattice: { pbc: [false, false, false] },
     })
@@ -2071,26 +2183,22 @@ describe(`HDF5 Format`, () => {
 
   it(`identifies an inherited PBC attribute in validation errors`, async () => {
     const content = await h5_bytes(`invalid-pbc-attribute`, (file) => {
-      file.create_dataset({ name: `positions`, data: [0, 0, 0], shape: [1, 1, 3] })
-      file.create_dataset({ name: `atomic_numbers`, data: [1], shape: [1] })
+      ds(file, `positions`, [0, 0, 0], [1, 1, 3])
+      ds(file, `atomic_numbers`, [1], [1])
       file.create_attribute(`pbc`, [0, 2, 1])
     })
-    await expect(parse_trajectory_data(content, `invalid-pbc.h5`)).rejects.toThrow(
+    await expect(parse(content, `invalid-pbc.h5`)).rejects.toThrow(
       `HDF5 PBC attribute pbc/periodic_boundary_conditions must contain only 0/1 values`,
     )
   })
 
   it(`reuses a singleton framed HDF5 cell across every position frame`, async () => {
     const buffer = await make_h5_buffer([
-      { name: `positions`, data: [1, 2, 3].flatMap(() => frame_positions), shape: [3, 2, 3] },
-      { name: `atomic_numbers`, data: two_gold_atoms, shape: [2] },
-      {
-        name: `cell`,
-        data: cubic_cell,
-        shape: [1, 3, 3],
-      },
+      [`positions`, [1, 2, 3].flatMap(() => frame_positions), [3, 2, 3]],
+      [`atomic_numbers`, two_gold_atoms, [2]],
+      [`cell`, cubic_cell, [1, 3, 3]],
     ])
-    const trajectory = await parse_trajectory_data(buffer, `singleton-cell.h5`)
+    const trajectory = await parse(buffer, `singleton-cell.h5`)
     expect(trajectory.frames).toHaveLength(3)
     expect(
       trajectory.frames.every(
@@ -2099,50 +2207,36 @@ describe(`HDF5 Format`, () => {
     ).toBe(true)
   })
 
-  it.each([
+  it.each<[string, H5Spec[], RegExp]>([
     [
       `atomic numbers`,
-      { name: `atomic_numbers`, data: [...two_gold_atoms, ...two_gold_atoms], shape: [2, 2] },
-      { name: `cell`, data: [], shape: [0] },
+      [[`atomic_numbers`, [...two_gold_atoms, ...two_gold_atoms], [2, 2]]],
       /atomic numbers have shape \[2, 2\].*\[3, 2\]/,
     ],
     [
       `cells`,
-      { name: `atomic_numbers`, data: two_gold_atoms, shape: [2] },
-      {
-        name: `cell`,
-        data: [1, 2].flatMap(() => cubic_cell),
-        shape: [2, 3, 3],
-      },
+      [
+        [`atomic_numbers`, two_gold_atoms, [2]],
+        [`cell`, [1, 2].flatMap(() => cubic_cell), [2, 3, 3]],
+      ],
       /cells have shape \[2, 3, 3\].*\[3, 3, 3\]/,
     ],
-  ])(`rejects partial per-frame HDF5 %s`, async (_label, numbers, cells, expected) => {
-    const datasets = [
-      { name: `positions`, data: [1, 2, 3].flatMap(() => frame_positions), shape: [3, 2, 3] },
-      numbers,
+  ])(`rejects partial per-frame HDF5 %s`, async (_label, partial, expected) => {
+    const datasets: H5Spec[] = [
+      [`positions`, [1, 2, 3].flatMap(() => frame_positions), [3, 2, 3]],
+      ...partial,
     ]
-    if (cells.data.length > 0) datasets.push(cells)
-    await expect(
-      parse_trajectory_data(await make_h5_buffer(datasets), `partial.h5`),
-    ).rejects.toThrow(expected)
+    await expect(parse(await make_h5_buffer(datasets), `partial.h5`)).rejects.toThrow(expected)
   })
 
   // Interrupted writers zero-fill trailing chunks; atomic number 0 marks the
   // torn tail. Same per-step resiliency contract as the vaspout.h5 parser.
   it(`keeps parsed frames and reports dropped_steps for a torn trailing frame`, async () => {
     const buffer = await make_h5_buffer([
-      {
-        name: `positions`,
-        data: [...frame_positions, ...frame_positions, ...zero_positions],
-        shape: [3, 2, 3],
-      },
-      {
-        name: `atomic_numbers`,
-        data: [...two_gold_atoms, ...two_gold_atoms, 0, 0],
-        shape: [3, 2],
-      },
+      [`positions`, [...frame_positions, ...frame_positions, ...zero_positions], [3, 2, 3]],
+      [`atomic_numbers`, [...two_gold_atoms, ...two_gold_atoms, 0, 0], [3, 2]],
     ])
-    const trajectory = await parse_trajectory_data(buffer, `torn-tail.h5`)
+    const trajectory = await parse(buffer, `torn-tail.h5`)
 
     expect(trajectory.frames).toHaveLength(2)
     expect(trajectory.metadata?.dropped_steps).toBe(1)
@@ -2157,28 +2251,14 @@ describe(`HDF5 Format`, () => {
   ])(
     `rejects a torn HDF5 tail with %s`,
     async (_label, tail_positions, tail_atoms, tail_cell) => {
-      const datasets = [
-        {
-          name: `positions`,
-          data: [...frame_positions, ...tail_positions],
-          shape: [2, 2, 3],
-        },
-        {
-          name: `atomic_numbers`,
-          data: [...two_gold_atoms, ...tail_atoms],
-          shape: [2, 2],
-        },
+      const datasets: H5Spec[] = [
+        [`positions`, [...frame_positions, ...tail_positions], [2, 2, 3]],
+        [`atomic_numbers`, [...two_gold_atoms, ...tail_atoms], [2, 2]],
       ]
       if (tail_cell) {
-        datasets.push({
-          name: `cell`,
-          data: [...cubic_cell, ...tail_cell],
-          shape: [2, 3, 3],
-        })
+        datasets.push([`cell`, [...cubic_cell, ...tail_cell], [2, 3, 3]])
       }
-      await expect(
-        parse_trajectory_data(await make_h5_buffer(datasets), `invalid-tail.h5`),
-      ).rejects.toThrow(
+      await expect(parse(await make_h5_buffer(datasets), `invalid-tail.h5`)).rejects.toThrow(
         _label === `non-finite positions`
           ? /dataset \/positions hyperslab must contain finite numbers/
           : /Invalid HDF5 trajectory frame 1/,
@@ -2188,409 +2268,24 @@ describe(`HDF5 Format`, () => {
 
   it(`rejects corrupt interior frames instead of truncating valid later data`, async () => {
     const buffer = await make_h5_buffer([
-      { name: `positions`, data: [1, 2, 3].flatMap(() => frame_positions), shape: [3, 2, 3] },
-      {
-        name: `atomic_numbers`,
-        data: [...two_gold_atoms, 0, 0, ...two_gold_atoms],
-        shape: [3, 2],
-      },
+      [`positions`, [1, 2, 3].flatMap(() => frame_positions), [3, 2, 3]],
+      [`atomic_numbers`, [...two_gold_atoms, 0, 0, ...two_gold_atoms], [3, 2]],
     ])
-    await expect(parse_trajectory_data(buffer, `interior-corruption.h5`)).rejects.toThrow(
+    await expect(parse(buffer, `interior-corruption.h5`)).rejects.toThrow(
       /Invalid HDF5 trajectory frame 1/,
     )
   })
 
   it(`still throws when the very first frame is unparsable`, async () => {
     const buffer = await make_h5_buffer([
-      { name: `positions`, data: frame_positions, shape: [1, 2, 3] },
-      { name: `atomic_numbers`, data: [0, 0], shape: [1, 2] },
+      [`positions`, frame_positions, [1, 2, 3]],
+      [`atomic_numbers`, [0, 0], [1, 2]],
     ])
-    await expect(parse_trajectory_data(buffer, `torn-all.h5`)).rejects.toThrow(
-      /Unknown atomic number/,
-    )
+    await expect(parse(buffer, `torn-all.h5`)).rejects.toThrow(/Unknown atomic number/)
   })
 
   it(`detailed error for missing HDF5 datasets`, async () => {
     const content = read_binary_test_file(`flame-water-cluster-bad-file.h5`)
-    await expect(parse_trajectory_data(content, `bad.h5`)).rejects.toThrow(
-      /Missing required.*dataset/i,
-    )
+    await expect(parse(content, `bad.h5`)).rejects.toThrow(/Missing required.*dataset/i)
   })
-})
-
-describe(`ASE Trajectory Format`, () => {
-  it(`removes ULM trailing dots from dipole and polarizability result keys`, () => {
-    const calculator = {
-      [`dipole.`]: { ndarray: [[3], `float64`, 0] },
-      [`polarizability.`]: { ndarray: [[3, 3], `float64`, 0] },
-    }
-    const results = ase_calculator_data({ [`calculator.`]: calculator }, ({ ndarray }) =>
-      (ndarray[0] as number[]).length === 1
-        ? [[1, 2, 3]]
-        : [
-            [1, 0, 0],
-            [0, 2, 0],
-            [0, 0, 3],
-          ],
-    )
-    expect(results).toEqual({
-      dipole: [1, 2, 3],
-      polarizability: [
-        [1, 0, 0],
-        [0, 2, 0],
-        [0, 0, 3],
-      ],
-    })
-  })
-
-  it(`skips malformed ASE ndarray descriptors without dropping scalar results`, () => {
-    const results = ase_calculator_data(
-      {
-        [`calculator.`]: {
-          energy: -1.25,
-          [`dipole.`]: { ndarray: [`not-a-shape`, `float64`, 0] },
-        },
-      },
-      () => {
-        throw new Error(`malformed descriptors must not be read`)
-      },
-    )
-    expect(results).toEqual({ energy: -1.25 })
-  })
-
-  it.each([
-    [`invalid signature`, [0x12, 0x34, 0x56, 0x78], 24],
-    // HDF5 magic bytes but truncated - rejects incomplete files with valid-looking headers
-    [`truncated buffer with HDF5 magic bytes`, [0x89, 0x48, 0x44, 0x46], 16],
-  ])(`should reject %s`, async (_name, magic_bytes, byte_length) => {
-    const buffer = new ArrayBuffer(byte_length)
-    new Uint8Array(buffer).set(magic_bytes)
-    await expect(parse_trajectory_data(buffer, `test.traj`)).rejects.toThrow(
-      `Unsupported binary format`,
-    )
-  })
-})
-
-describe(`JSON Formats`, () => {
-  // malformed fields are present-but-wrong-shape so they pass the routing gate, then hit
-  // the shape validation -> clear error instead of a cryptic `.map` throw
-  it.each<[string, Record<string, unknown>, RegExp]>([
-    [`species`, { species: { element: `Si` }, coords: [[[0, 0, 0]]] }, /species/],
-    [`null element`, { species: [{ element: null }], coords: [[[0, 0, 0]]] }, /species/],
-    [`empty element`, { species: [{ element: `  ` }], coords: [[[0, 0, 0]]] }, /species/],
-    [`coords`, { species: [{ element: `Si` }], coords: { a: 1 } }, /coords/],
-  ])(`throws a clear error on malformed pymatgen %s`, async (_label, fields, pattern) => {
-    const lattice = [
-      [1, 0, 0],
-      [0, 1, 0],
-      [0, 0, 1],
-    ]
-    const content = JSON.stringify({ '@class': `Trajectory`, lattice, ...fields })
-    await expect(parse_trajectory_data(content, `test.json`)).rejects.toThrow(pattern)
-  })
-
-  it(`should parse compressed pymatgen trajectory with forces and stress`, async () => {
-    const content = read_test_file(`pymatgen-LiMnO2-chgnet-relax.json.gz`)
-    const trajectory = await parse_trajectory_data(content, `test.json.gz`)
-
-    expect(trajectory.frames.length).toBeGreaterThan(0)
-    expect(trajectory.metadata?.source_format).toBe(`pymatgen_trajectory`)
-    expect(trajectory.metadata?.species_list).toBeDefined()
-    expect(trajectory.metadata?.periodic_boundary_conditions).toEqual([true, true, true])
-
-    for (const frame of trajectory.frames) {
-      expect(Array.isArray(frame.metadata?.forces)).toBe(true)
-      expect(frame.metadata?.force_max).toBeDefined()
-      expect(frame.metadata?.force_norm).toBeDefined()
-      expect(Array.isArray(frame.metadata?.stress)).toBe(true)
-      expect(frame.metadata?.stress_max).toBeDefined()
-      expect(frame.metadata?.pressure).toBeDefined()
-    }
-  })
-
-  // oxfmt-ignore
-  it.each([
-    [`array`, JSON.stringify([{ structure: get_dummy_structure(), step: 0 }]), `array`],
-    [`object_with_frames`,
-      JSON.stringify({ frames: [{ structure: get_dummy_structure(), step: 0 }] }),
-      `object_with_frames`],
-    [`single_structure`, JSON.stringify(get_dummy_structure()), `single_structure`],
-  ])(`should parse %s format`, async (_, content, expected_format) => {
-    const trajectory = await parse_trajectory_data(content, `test.json`)
-    expect(trajectory.metadata?.source_format).toBe(expected_format)
-    expect(trajectory.frames).toHaveLength(1)
-  })
-
-  it(`should handle malformed JSON gracefully`, async () => {
-    const malformed_json = `{ "frames": [{ "structure": { "sites": [ invalid`
-    await expect(parse_trajectory_data(malformed_json, `test.json`)).rejects.toThrow(
-      `Unsupported text format`,
-    )
-  })
-})
-
-describe(`Format Detection`, () => {
-  // Filenames from blob: object URLs (URL.createObjectURL) are UUIDs without extension,
-  // so detection must fall back to content sniffing (https://github.com/janosh/matterviz/issues/353)
-  describe(`content-based detection without filename hint`, () => {
-    const single_frame = `3\ncomment\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0`
-    const blob_uuid = `8a3bf2c4-d1e2-4f5a-9b8c-7d6e5f4a3b2c`
-    const lammps_content = `ITEM: TIMESTEP\n0\nITEM: NUMBER OF ATOMS\n2
-ITEM: BOX BOUNDS pp pp pp\n0.0 10.0\n0.0 10.0\n0.0 10.0
-ITEM: ATOMS id type x y z\n1 1 0.0 0.0 0.0\n2 1 5.0 0.0 0.0`
-
-    it.each([
-      [`multi`, `${single_frame}\n${single_frame}`, `xyz_trajectory`, 2],
-      [`single`, single_frame, `single_xyz`, 1],
-    ])(
-      `detects %s-frame XYZ by content sniffing`,
-      async (_label, content, expected_format, n_frames) => {
-        for (const filename of [undefined, blob_uuid]) {
-          const trajectory = await parse_trajectory_data(content, filename)
-          expect(trajectory.metadata?.source_format).toBe(expected_format)
-          expect(trajectory.frames).toHaveLength(n_frames)
-        }
-      },
-    )
-
-    it(`detects LAMMPS content without filename`, async () => {
-      const trajectory = await parse_trajectory_data(lammps_content, undefined)
-      expect(trajectory.metadata?.source_format).toBe(`lammps_trajectory`)
-    })
-
-    // ASE always writes the calculator as a nested ULM item, so its key carries a
-    // trailing dot. Reading only the undotted name dropped every relaxation's energy.
-    it(`reads calculator energies ASE wrote under the dotted key`, async () => {
-      const buffer = read_binary_test_file(`ase-LiMnO2-chgnet-relax.traj`)
-      const trajectory = await parse_trajectory_data(buffer, `ase-LiMnO2-chgnet-relax.traj`)
-      const energies = trajectory.frames.map((frame) => frame.metadata?.energy)
-      expect(energies).toEqual([-58.97273254394531, -58.59364700317383])
-      // `forces.`/`magmoms.` are ndarray pointers, not values; metadata must not
-      // carry them as unresolved `{ndarray}` objects.
-      for (const frame of trajectory.frames) {
-        for (const [key, value] of Object.entries(frame.metadata ?? {})) {
-          expect(`${key}: ${JSON.stringify(value)}`).not.toMatch(/ndarray/)
-        }
-      }
-      // ULM signature sniff works without a filename hint
-      expect((await parse_trajectory_data(buffer)).metadata?.source_format).toBe(
-        `ase_trajectory`,
-      )
-    })
-
-    it.each([
-      [`data.json`, `${single_frame}\n${single_frame}`, `Unsupported text format`],
-      [undefined, `not a trajectory`, `Unsupported text format`],
-    ])(
-      `rejects unparsable or extension-conflicting content`,
-      async (filename, content, msg) => {
-        await expect(parse_trajectory_data(content, filename)).rejects.toThrow(msg)
-      },
-    )
-  })
-})
-
-describe(`Unsupported Formats`, () => {
-  it.each([
-    [`test.nc`, `NetCDF`, false],
-    [`test.dcd`, `DCD`, false],
-    [`test.lammpstrj.bz2`, `BZ2`, true],
-    [`trajectory.xyz.xz`, `XZ`, true],
-    [`data.json.zip`, `ZIP`, true],
-  ])(`detects unsupported format %s`, (filename, expected, compression) => {
-    const message = get_unsupported_format_message(filename, ``)
-    expect(message).toContain(expected)
-    if (compression) expect(message).toContain(`compression not supported`)
-  })
-
-  it(`accepts a text LAMMPS dump, which both the structure and frame parsers read`, () => {
-    expect(get_unsupported_format_message(`md.dump`, `ITEM: TIMESTEP\n0\n`)).toBeNull()
-  })
-
-  it(`should detect binary content as unsupported`, () => {
-    const message = get_unsupported_format_message(`unknown.bin`, `\u0000\u0001\u0002\u0003`)
-    expect(message).toContain(`Binary format not supported`)
-  })
-
-  it.each([`test.xyz`, `test.json`, `XDATCAR`, `test.h5`, `test.traj`, `test.lammpstrj`])(
-    `should return null for supported format: %s`,
-    (filename) => {
-      expect(get_unsupported_format_message(filename, ``)).toBeNull()
-    },
-  )
-})
-
-describe(`Error Handling`, () => {
-  it.each([
-    [`invalid text`, `unknown.txt`],
-    [new ArrayBuffer(8), `unknown.bin`],
-    [``, `empty.txt`],
-    [`   `, `whitespace.txt`],
-    [null, `null.txt`],
-    [undefined, `undefined.txt`],
-    [{}, `empty-object.json`],
-  ])(`should reject invalid input: %s`, async (content, filename) => {
-    await expect(parse_trajectory_data(content, filename)).rejects.toThrow(
-      /Unsupported|Invalid|Unrecognized/,
-    )
-  })
-
-  it.each([
-    {
-      desc: `2x3 matrix (only 2 rows)`,
-      lattice: [
-        [1, 0, 0],
-        [0, 1, 0],
-      ],
-      error: /Expected 3x3 matrix/,
-    },
-    {
-      desc: `3x2 matrix (rows with only 2 elements)`,
-      lattice: [
-        [1, 0],
-        [0, 1],
-        [0, 0],
-      ],
-      error: /Invalid 3x3 matrix structure/,
-    },
-    {
-      desc: `non-array lattice`,
-      lattice: `not a matrix`,
-      error: /Expected 3x3 matrix/,
-    },
-  ])(`should validate 3x3 matrix structure ($desc)`, async ({ lattice, error }) => {
-    const invalid_pymatgen = {
-      '@class': `Trajectory`,
-      species: [{ element: `H` }],
-      coords: [[[0, 0, 0]]],
-      lattice,
-    }
-    await expect(parse_trajectory_data(invalid_pymatgen)).rejects.toThrow(error)
-  })
-})
-
-// Reference data for exact assertions on trajectory files
-// Each entry specifies known values for validation
-const TRAJECTORY_REFERENCE_DATA: {
-  file: string
-  frames: number
-  atoms: number
-  elements: ElementSymbol[]
-  format: string
-}[] = [
-  {
-    file: `ase-LiMnO2-chgnet-relax.traj`,
-    frames: 2,
-    atoms: 8,
-    elements: [`Li`, `Mn`, `O`],
-    format: `ase_trajectory`,
-  },
-  {
-    file: `ase-images-Ag-0-to-97.xyz.gz`,
-    frames: 51,
-    atoms: 119,
-    elements: [`Ag`, `Al`, `O`],
-    format: `xyz_trajectory`,
-  },
-  {
-    file: `Cr0.25Fe0.25Co0.25Ni0.25-mace-omat-qha.xyz.gz`,
-    frames: 9,
-    atoms: 108,
-    elements: [`Co`, `Cr`, `Fe`, `Ni`],
-    format: `xyz_trajectory`,
-  },
-  {
-    file: `V8Ta12W71Re8-mace-omat.xyz`,
-    frames: 7,
-    atoms: 99,
-    elements: [`Re`, `Ta`, `V`, `W`],
-    format: `xyz_trajectory`,
-  },
-  {
-    file: `mp-1184225.extxyz`,
-    frames: 6,
-    atoms: 4,
-    elements: [`Fe`, `W`],
-    format: `xyz_trajectory`,
-  },
-  {
-    file: `vasp-XDATCAR-traj.gz`,
-    frames: 100,
-    atoms: 76,
-    elements: [`Li`, `Si`],
-    format: `vasp_xdatcar`,
-  },
-  {
-    file: `mdanalysis-chain-dump.lammpstrj`,
-    frames: 6,
-    atoms: 22,
-    elements: [],
-    format: `lammps_trajectory`,
-  },
-]
-
-describe(`Trajectory Files with Exact Reference Data`, () => {
-  it.each(TRAJECTORY_REFERENCE_DATA)(
-    `$file: $frames frames, $atoms atoms`,
-    async ({ file, frames, atoms, elements, format }) => {
-      const is_binary = /\.(?:h5|hdf5|traj)$/.exec(file)
-      const content = is_binary ? read_binary_test_file(file) : read_test_file(file)
-
-      const traj = await parse_trajectory_data(content, file)
-
-      // Core assertions
-      expect(traj.frames).toHaveLength(frames)
-      expect(traj.frames[0].structure.sites).toHaveLength(atoms)
-      expect(traj.metadata?.source_format).toBe(format)
-
-      // Verify elements (skip for LAMMPS which uses type IDs)
-      if (elements.length > 0) {
-        const found = new Set(
-          traj.frames[0].structure.sites.map((site) => site.species[0]?.element),
-        )
-        expect([...found].toSorted()).toEqual(elements.toSorted())
-      }
-
-      expect(`lattice` in traj.frames[0].structure).toBe(true)
-
-      // All frames should have same atom count
-      expect(traj.frames.every((frame) => frame.structure.sites.length === atoms)).toBe(true)
-    },
-  )
-})
-
-describe(`Comprehensive File Coverage`, () => {
-  // Dynamically get all trajectory files from the sample directory
-  const trajectory_dir = join(process.cwd(), TRAJECTORY_DIR)
-  // Unsupported compression formats (not available in browser DecompressionStream)
-  const unsupported_compression = [`.bz2`, `.xz`, `.zip`]
-  const all_trajectory_files = readdirSync(trajectory_dir).filter((name: string) => {
-    const file_path = join(trajectory_dir, name)
-    return (
-      statSync(file_path).isFile() &&
-      !name.startsWith(`.`) &&
-      !name.includes(`bad-file`) && // Exclude intentionally broken test files
-      !name.endsWith(`.ts`) && // Exclude TypeScript files
-      !name.endsWith(`.js`) &&
-      !unsupported_compression.some((ext) => name.endsWith(ext))
-    ) // Exclude unsupported compression
-  })
-
-  it.each(all_trajectory_files)(
-    `should successfully parse sample file: %s`,
-    async (filename) => {
-      const is_binary = /\.(?:h5|hdf5|traj)$/.exec(filename)
-      const content = is_binary ? read_binary_test_file(filename) : read_test_file(filename)
-
-      const trajectory = await parse_trajectory_data(content, filename)
-
-      expect(trajectory.frames.length).toBeGreaterThan(0)
-      expect(trajectory.metadata?.source_format).toBeDefined()
-
-      trajectory.frames.forEach((frame) => {
-        expect(frame.structure.sites.length).toBeGreaterThan(0)
-        expect(typeof frame.step).toBe(`number`)
-      })
-    },
-  )
 })

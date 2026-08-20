@@ -5,7 +5,8 @@ import * as math from '$lib/math'
 import type { Pbc } from '$lib/structure/pbc'
 import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory/index'
 import { lines_cursor, parse_vasp_header } from '$lib/structure/parsers/vasp-header'
-import { create_trajectory_frame } from '$lib/trajectory/helpers'
+import { create_trajectory_frame, parse_float_token } from '$lib/trajectory/helpers'
+import { traj_warn } from './diagnostics'
 
 // The XDATCAR header is the POSCAR one minus the coordinate-mode line, because its
 // `Direct configuration= N` line doubles as the frame marker and the frame loop needs to
@@ -68,26 +69,52 @@ export function parse_vasp_xdatcar(content: string, filename?: string): Trajecto
     const step_match = /configuration=\s*(?<step>\d+)/.exec(config_line)
     const step = step_match ? Math.trunc(Number(step_match[1])) : frames.length + 1
 
-    const positions = []
-    for (let idx = 0; idx < elements.length && line_idx < lines.length; idx++) {
+    // A frame cut off by the end of the file (missing lines, or a half-written final line) is
+    // a writer still appending: drop it with a warning. A malformed line anywhere else is
+    // corruption and names itself.
+    if (line_idx + elements.length > lines.length) {
+      traj_warn(
+        `Dropping truncated final XDATCAR frame ${step} (line ${config_idx + 1}): ${lines.length - line_idx} of ${elements.length} coordinate lines`,
+      )
+      break
+    }
+    const positions: Vec3[] = []
+    let torn_last_line = false
+    for (let idx = 0; idx < elements.length; idx++, line_idx++) {
       // Read the tokens directly: slice().map(Number) allocated two throwaway arrays per line
       const tokens = lines[line_idx].trim().split(/\s+/)
-      if (tokens.length >= 3) {
-        const coords: Vec3 = [Number(tokens[0]), Number(tokens[1]), Number(tokens[2])]
-        if (!coords.some(isNaN)) positions.push(frac_to_cart(coords))
+      const coords: Vec3 = [
+        parse_float_token(tokens[0]),
+        parse_float_token(tokens[1]),
+        parse_float_token(tokens[2]),
+      ]
+      if (
+        !Number.isFinite(coords[0]) ||
+        !Number.isFinite(coords[1]) ||
+        !Number.isFinite(coords[2])
+      ) {
+        if (line_idx === lines.length - 1) {
+          torn_last_line = true
+          break
+        }
+        throw new Error(
+          `XDATCAR frame ${step} line ${line_idx + 1} is not a fractional coordinate triple: "${lines[line_idx]}"`,
+        )
       }
-      line_idx++
+      positions.push(frac_to_cart(coords))
+    }
+    if (torn_last_line) {
+      traj_warn(
+        `Dropping truncated final XDATCAR frame ${step}: partial coordinate line ${lines.length} "${lines[lines.length - 1]}"`,
+      )
+      break
     }
 
-    if (positions.length === elements.length) {
-      const pbc: Pbc = [true, true, true]
-      const { volume } = math.calc_lattice_params(lattice_matrix)
-      frames.push(
-        create_trajectory_frame(positions, elements, lattice_matrix, pbc, step, {
-          volume,
-        }),
-      )
-    }
+    const pbc: Pbc = [true, true, true]
+    const { volume } = math.calc_lattice_params(lattice_matrix)
+    frames.push(
+      create_trajectory_frame(positions, elements, lattice_matrix, pbc, step, { volume }),
+    )
   }
 
   return {

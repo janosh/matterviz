@@ -231,6 +231,18 @@ describe(`create_display trajectory display options`, () => {
     const mount_props = last_mount_props()
     expect(mount_props.current_step_idx).toBe(42)
     expect(mount_props.on_controller).toBe(on_trajectory_controller)
+    // Loading settings travel in loading_options; as top-level props they would land on the
+    // wrapper div as unknown HTML attributes
+    expect(mount_props.loading_options).toEqual({
+      bin_file_threshold: 50_000_000,
+      text_file_threshold: 25_000_000,
+      use_indexing: false,
+    })
+    for (const key of [`bin_file_threshold`, `text_file_threshold`, `use_indexing`]) {
+      expect(mount_props).not.toHaveProperty(key)
+    }
+    expect(mount_props).not.toHaveProperty(`show_parsing_progress`)
+    expect(mount_props.spinner_props).toEqual({ show_progress: true })
     // create_display adapts Trajectory's TrajHandlerData callback to (step_idx, total)
     ;(mount_props.on_step_change as (data: unknown) => void)({
       step_idx: 7,

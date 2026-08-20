@@ -6,6 +6,7 @@ import {
   validate_3x3_matrix,
 } from '$lib/trajectory/helpers'
 import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory/index'
+import { to_error } from '$lib/utils'
 
 const MAX_SAFE_STRING_LENGTH = 0x1fffffe8 * 0.5 // 50% of JS max string length as safety
 
@@ -99,13 +100,7 @@ export function decode_ase_frame(
     ...ase_calculator_data(frame_data, read_ndarray),
     ...frame_data.info,
   }
-  if (cell) {
-    try {
-      metadata.volume = Math.abs(math.det_3x3(cell))
-    } catch (error) {
-      console.warn(`Failed to calculate volume for frame ${step}:`, error)
-    }
-  }
+  if (cell) metadata.volume = Math.abs(math.det_3x3(cell))
 
   const frame = create_trajectory_frame(
     positions,
@@ -140,6 +135,8 @@ export function parse_ase_trajectory(buffer: ArrayBuffer, filename?: string): Tr
   const frames: TrajectoryFrame[] = []
   let global_numbers: number[] | undefined
 
+  // ASE rewrites the ULM header only after a frame is fully written, so every frame the
+  // offsets table points at should decode; one that does not is corruption, not a torn tail.
   for (let idx = 0; idx < n_items; idx++) {
     try {
       const { frame, numbers } = decode_ase_frame(view, buffer, frame_offsets[idx], idx, {
@@ -149,22 +146,21 @@ export function parse_ase_trajectory(buffer: ArrayBuffer, filename?: string): Tr
       global_numbers = numbers
       frames.push(frame)
     } catch (error) {
-      console.warn(`Error processing frame ${idx + 1}/${n_items}:`, error)
+      throw new Error(
+        `ASE trajectory frame ${idx} of ${n_items} (byte offset ${frame_offsets[idx]}): ${to_error(error).message}`,
+        { cause: error },
+      )
     }
   }
 
-  if (frames.length === 0) throw new Error(`No valid frames found`)
-
-  const first_struct = frames[0]?.structure
-  const periodic_boundary_conditions =
-    first_struct && `lattice` in first_struct ? first_struct.lattice.pbc : [true, true, true]
-
+  const first_struct = frames[0].structure
   const metadata = {
     filename,
     source_format: `ase_trajectory`,
     frame_count: frames.length,
-    total_atoms: global_numbers?.length ?? 0,
-    periodic_boundary_conditions,
+    total_atoms: first_struct.sites.length,
+    periodic_boundary_conditions:
+      `lattice` in first_struct ? first_struct.lattice.pbc : [true, true, true],
   }
   return { frames, metadata }
 }

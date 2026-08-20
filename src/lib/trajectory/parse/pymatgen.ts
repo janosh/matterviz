@@ -1,13 +1,13 @@
 // Pymatgen Trajectory JSON parsing
 import type { ElementSymbol } from '$lib/element/types'
-import type { Vec3 } from '$lib/math'
+import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import {
   calc_force_stats,
   create_trajectory_frame,
   validate_3x3_matrix,
 } from '$lib/trajectory/helpers'
-import type { TrajectoryType } from '$lib/trajectory/index'
+import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory/index'
 import { is_plain_object } from '$lib/utils'
 import { traj_warn } from './diagnostics'
 
@@ -25,6 +25,22 @@ const is_species_array = (val: unknown): val is { element: ElementSymbol }[] =>
       sp.element.trim().length > 0,
   )
 
+const frac_coords_of = (value: unknown, frame_idx: number, n_sites: number): Vec3[] => {
+  if (!Array.isArray(value) || value.length !== n_sites) {
+    throw new Error(
+      `Invalid pymatgen Trajectory: coords[${frame_idx}] has ${Array.isArray(value) ? value.length : `no`} sites, expected ${n_sites}`,
+    )
+  }
+  return value.map((abc, site_idx) => {
+    if (!math.is_finite_vec3_like(abc as ArrayLike<unknown>)) {
+      throw new Error(
+        `Invalid pymatgen Trajectory: coords[${frame_idx}][${site_idx}] is not a finite 3-vector`,
+      )
+    }
+    return [abc[0], abc[1], abc[2]] as Vec3
+  })
+}
+
 // Parse an already-JSON-parsed pymatgen Trajectory object (detected via @class === 'Trajectory' with species/coords/lattice present)
 export function parse_pymatgen_trajectory(
   obj: Record<string, unknown>,
@@ -41,65 +57,111 @@ export function parse_pymatgen_trajectory(
     throw new TypeError(`Invalid pymatgen Trajectory: 'coords' must be an array of frames`)
   }
   const frame_elements = obj.species.map((specie) => specie.element)
-  const coords = obj.coords as number[][][]
-  const matrix = validate_3x3_matrix(obj.lattice)
-  const frame_properties = (obj.frame_properties as Record<string, unknown>[]) || []
-  const frac_to_cart = math.create_frac_to_cart(matrix)
+  const n_sites = frame_elements.length
+  const n_frames = obj.coords.length
+  // `lattice` is one 3x3 matrix when constant_lattice is true, else a [n_frames, 3, 3] stack
+  const { lattice } = obj
+  const per_frame_lattice =
+    Array.isArray(lattice) && Array.isArray(lattice[0]) && Array.isArray(lattice[0][0])
+  if (per_frame_lattice && lattice.length !== n_frames) {
+    throw new Error(
+      `Invalid pymatgen Trajectory: 'lattice' holds ${lattice.length} matrices for ${n_frames} frames`,
+    )
+  }
+  const lattices: Matrix3x3[] = per_frame_lattice
+    ? lattice.map((matrix) => validate_3x3_matrix(matrix))
+    : Array(n_frames).fill(validate_3x3_matrix(lattice))
+  const frame_properties = Array.isArray(obj.frame_properties)
+    ? (obj.frame_properties as Record<string, unknown>[])
+    : []
+  // site_properties: one {name: per-site values} dict per frame (a single dict applies to all)
+  const site_property_frames: unknown[] = Array.isArray(obj.site_properties)
+    ? obj.site_properties
+    : is_plain_object(obj.site_properties)
+      ? [obj.site_properties]
+      : []
+  const site_properties_for = (frame_idx: number): Record<string, unknown>[] | undefined => {
+    const per_site = site_property_frames[site_property_frames.length === 1 ? 0 : frame_idx]
+    if (!is_plain_object(per_site)) return undefined
+    const bags = Array.from({ length: n_sites }, (): Record<string, unknown> => ({}))
+    for (const [key, values] of Object.entries(per_site)) {
+      if (!Array.isArray(values) || values.length !== n_sites) continue
+      for (const [site_idx, value] of values.entries()) bags[site_idx][key] = value
+    }
+    return bags
+  }
 
-  const frames = coords.map((frame_coords, idx) => {
-    const positions = frame_coords.map((abc) => frac_to_cart(abc as Vec3))
+  // coords_are_displacement: coords[i] is the fractional displacement since frame i-1 and
+  // positions[i] = base_positions + cumsum(coords[0..i]) (pymatgen Trajectory.to_positions)
+  let cumulative: Vec3[] | null = null
+  if (obj.coords_are_displacement === true) {
+    cumulative = frac_coords_of(obj.base_positions, -1, n_sites)
+  }
 
-    // Process frame properties to extract numpy arrays
-    const raw_properties = frame_properties[idx] || {}
+  const frames: TrajectoryFrame[] = obj.coords.map((frame_coords, idx) => {
+    let frac_coords = frac_coords_of(frame_coords, idx, n_sites)
+    if (cumulative) {
+      cumulative = cumulative.map(
+        (base, site_idx) =>
+          [
+            base[0] + frac_coords[site_idx][0],
+            base[1] + frac_coords[site_idx][1],
+            base[2] + frac_coords[site_idx][2],
+          ] as Vec3,
+      )
+      frac_coords = cumulative
+    }
+    const frac_to_cart = math.create_frac_to_cart(lattices[idx])
+    const positions = frac_coords.map((abc) => frac_to_cart(abc))
+
+    // Unwrap pymatgen's numpy-array wrappers ({"@class": "array", "data": [...]})
     const processed_properties: Record<string, unknown> = {}
-
-    Object.entries(raw_properties).forEach(([key, value]) => {
-      if (is_plain_object(value) && value[`@class`] === `array`) {
-        processed_properties[key] = value.data
-
-        if (key === `forces` && Array.isArray(value.data)) {
-          // Object.assign ignores the null calc_force_stats returns for empty forces
-          Object.assign(processed_properties, calc_force_stats(value.data as number[][]))
-        }
-
-        if (key === `stress` && Array.isArray(value.data)) {
-          const stress_tensor = value.data
-          if (!math.is_square_matrix(stress_tensor, 3)) {
-            traj_warn(`Invalid stress tensor structure in frame ${idx}`)
-          } else {
-            // Calculate stress components (diagonal elements represent normal stresses)
-            const normal_stresses = [
-              stress_tensor[0][0],
-              stress_tensor[1][1],
-              stress_tensor[2][2],
-            ]
-            processed_properties.stress_max = Math.max(...normal_stresses.map(Math.abs))
-            // Calculate hydrostatic pressure (negative of mean normal stress)
-            processed_properties.pressure =
-              -(normal_stresses[0] + normal_stresses[1] + normal_stresses[2]) / 3
-          }
-        }
-      } else {
+    for (const [key, value] of Object.entries(frame_properties[idx] ?? {})) {
+      if (!(is_plain_object(value) && value[`@class`] === `array`)) {
         processed_properties[key] = value
+        continue
       }
-    })
+      processed_properties[key] = value.data
+      if (key === `forces` && Array.isArray(value.data)) {
+        // Object.assign ignores the null calc_force_stats returns for empty forces
+        Object.assign(processed_properties, calc_force_stats(value.data as number[][]))
+      }
+      if (key === `stress` && Array.isArray(value.data)) {
+        const stress_tensor = value.data
+        if (!math.is_square_matrix(stress_tensor, 3)) {
+          traj_warn(`Invalid stress tensor structure in frame ${idx}`)
+        } else {
+          // Normal stresses are the diagonal; pressure is minus their mean
+          const normal_stresses = [stress_tensor[0][0], stress_tensor[1][1], stress_tensor[2][2]]
+          processed_properties.stress_max = Math.max(...normal_stresses.map(Math.abs))
+          processed_properties.pressure =
+            -(normal_stresses[0] + normal_stresses[1] + normal_stresses[2]) / 3
+        }
+      }
+    }
 
     return create_trajectory_frame(
       positions,
       frame_elements,
-      matrix,
+      lattices[idx],
       [true, true, true],
       idx,
       processed_properties,
+      site_properties_for(idx),
     )
   })
 
-  const metadata = {
-    filename,
-    source_format: `pymatgen_trajectory`,
-    frame_count: frames.length,
-    species_list: [...new Set(frame_elements)],
-    periodic_boundary_conditions: [true, true, true],
+  // pymatgen records time_step in femtoseconds
+  const time_step = typeof obj.time_step === `number` && obj.time_step > 0 ? obj.time_step : null
+  return {
+    frames,
+    ...(time_step === null ? {} : { time_step, time_unit: `fs` }),
+    metadata: {
+      filename,
+      source_format: `pymatgen_trajectory`,
+      frame_count: frames.length,
+      species_list: [...new Set(frame_elements)],
+      periodic_boundary_conditions: [true, true, true],
+    },
   }
-  return { frames, metadata }
 }

@@ -21,31 +21,11 @@ export {
   full_data_extractor,
   structural_data_extractor,
 } from './extract'
-export {
-  collect_frame_property_rows,
-  create_poscar_frame_range_zip,
-  frame_rows_to_csv,
-  frame_rows_to_json,
-  serialize_extxyz_frame_range,
-} from './file-export'
 export type {
   TrajectoryFrameResolver,
   TrajectoryPropertyRow,
   TrajectoryPropertyTable,
 } from './file-export'
-export {
-  available_x_quantities,
-  build_x_map,
-  FRAME_X_MAP,
-  generate_axis_labels,
-  generate_axis_scale_types,
-  generate_plot_series,
-  generate_streaming_plot_series,
-  get_frame_step_samples,
-  get_frame_time_step,
-  should_hide_plot,
-  X_QUANTITY_LABELS,
-} from './plotting'
 export type {
   FrameStepSamples,
   PlotSeriesOptions,
@@ -486,48 +466,4 @@ export function validate_trajectory(trajectory: TrajectoryType): string[] {
   }
 
   return errors
-}
-
-export function get_trajectory_stats(trajectory: TrajectoryType): Record<string, unknown> {
-  const { frames, total_frames, indexed_frames, plot_metadata } = trajectory
-  const frame_count = total_frames ?? frames.length
-  const stats: Record<string, unknown> = {
-    frame_count,
-    is_indexed: trajectory.is_indexed ?? false,
-  }
-
-  if (frames.length > 0) {
-    const [first_frame, last_frame] = [frames[0], frames.at(-1) ?? frames[0]]
-    const max_sample = 100
-
-    const sampled =
-      frames.length <= max_sample
-        ? frames
-        : (() => {
-            const interval = Math.floor(frames.length / max_sample)
-            const result = [first_frame]
-            for (let idx = interval; idx < frames.length - 1; idx += interval) {
-              result.push(frames[idx])
-            }
-            if (result.at(-1) !== last_frame) result.push(last_frame)
-            return result
-          })()
-
-    const counts = sampled.map((frame) => frame.structure.sites.length)
-    const constant = counts.every((count) => count === counts[0])
-    const all_counts = constant
-      ? [first_frame.structure.sites.length]
-      : frames.map((frame) => frame.structure.sites.length)
-
-    stats.steps = frames.map((frame) => frame.step)
-    stats.step_range = [first_frame.step, last_frame.step]
-    stats.constant_atom_count = constant
-    if (constant) stats.total_atoms = first_frame.structure.sites.length
-    else stats.atom_count_range = [Math.min(...all_counts), Math.max(...all_counts)]
-  } else stats.steps = [] // empty trajectory
-
-  // Additional metadata for large files
-  if (indexed_frames) stats.indexed_frame_count = indexed_frames.length
-  if (plot_metadata) stats.plot_metadata_count = plot_metadata.length
-  return stats
 }

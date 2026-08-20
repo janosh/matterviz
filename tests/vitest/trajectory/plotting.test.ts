@@ -473,7 +473,9 @@ describe(`streaming visibility characterization`, () => {
     expect(assignments(streaming)).toEqual(assignments(eager))
   })
 
-  it(`limits default visibility to two prioritized axis groups`, () => {
+  // Streamed series follow the same rule as eager ones: only requested unit groups show, no
+  // "first two series are always visible" special case that put volume next to energy
+  it(`shows only the requested unit groups`, () => {
     const series = generate_streaming_plot_series(plot_metadata, {
       property_config,
       default_visible_properties: new Set([`energy`]),
@@ -484,9 +486,11 @@ describe(`streaming visibility characterization`, () => {
 
     expect(axis_assignments).toEqual([
       { label: `Energy`, visible: true, y_axis: `y1` },
-      { label: `Temperature`, visible: true, y_axis: `y2` },
+      { label: `Temperature`, visible: false, y_axis: `y1` },
       { label: `Volume`, visible: false, y_axis: `y1` },
     ])
+    // visible series lead the legend
+    expect(series[0].label).toBe(`Energy`)
   })
 
   it(`omits navigation coordinates instead of plotting time against time`, () => {
@@ -509,7 +513,7 @@ describe(`streaming visibility characterization`, () => {
         .map(({ label }) => label)
         .toSorted((left, right) => (left ?? ``).localeCompare(right ?? ``)),
     ).toEqual([`Energy`, `Temperature`])
-    expect(series.every(({ visible }) => visible)).toBe(true)
+    expect(find_series_by_label(series, `energy`)?.visible).toBe(true)
   })
 
   it.each([`energy`, `total_energy`, `potential_energy`])(

@@ -26,9 +26,9 @@
   averages |r(t₀+Δt) − r(t₀)|² over all atoms and all time origins, unwraps trajectories across
   periodic boundaries first (honouring LAMMPS <code>xu/yu/zu</code> coordinates, which are
   already unwrapped), decomposes by element, and fits <code>D = slope / 2d</code> over an adjustable
-  lag window. The lag axis is labelled in frames unless you supply a timestep, since no trajectory
-  format we read records one. Indexed (streamed) trajectories are swept in full rather than analysed
-  over the handful of frames kept in memory.
+  lag window. The lag axis is labelled in frames unless the file records a timestep (seeded into
+  the pane) or you enter one. Indexed (streamed) trajectories are swept in full rather than analysed
+  over the handful of frames kept in memory. The VACF / vibrational-DOS pane shares the same controls.
 </p>
 
 {#each trajectory_files_paths as file (file)}

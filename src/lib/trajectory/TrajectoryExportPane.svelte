@@ -1,6 +1,5 @@
 <script lang="ts">
   import type { PaneProps, PaneToggleProps } from '$lib/overlays'
-  import { create_clipboard_feedback } from '$lib/overlays'
   import {
     estimate_video_bitrate,
     export_trajectory_video,
@@ -9,6 +8,7 @@
   } from '$lib/io/export'
   import { download } from '$lib/io/fetch'
   import ExportPane from '$lib/io/ExportPane.svelte'
+  import type { ExportSection } from '$lib/io/types'
   import { format_num } from '$lib/labels'
   import { NumberRangeInput, SettingsSection } from '$lib/layout'
   import type { TrajectoryType } from '$lib/trajectory'
@@ -37,15 +37,12 @@
     toggle_props = {},
     ...rest
   }: {
-    // Control pane state
     export_pane_open?: boolean
     // Trajectory data for generating filename
     trajectory?: TrajectoryType
     // Canvas wrapper for video export
     wrapper?: HTMLDivElement
-    // Filename for export
     filename?: string
-    // Export settings
     video_fps?: number
     resolution_multiplier?: number
     // Function to change trajectory step during export
@@ -53,34 +50,41 @@
     // Loads one frame by index. Indexed trajectories keep only a few frames in `frames`, so
     // without this the data exports below would silently write a truncated file.
     resolve_frame?: TrajectoryFrameResolver
-    // Pane customization
     pane_props?: PaneProps
     toggle_props?: PaneToggleProps
   } = $props()
 
-  // extXYZ/POSCAR write out the structures; CSV/JSON write out the per-frame numbers
-  type StructureFormat = `extxyz` | `poscar`
+  type VideoFormat = `webm` | `mp4`
   type TableFormat = `csv` | `json`
 
-  let is_exporting = $state(false)
-  let export_progress = $state(0)
-  let export_format = $state<`webm` | `mp4`>(`webm`)
+  // Which export is running (one at a time) and how far along it is
+  let running = $state<{ label: string; progress: number } | null>(null)
   let export_error = $state<string | null>(null)
-  // Which data export is running, so only the clicked button shows its percentage
-  let data_export_format = $state<StructureFormat | TableFormat | null>(null)
-  let data_export_progress = $state(0)
-  let is_exporting_data = $derived(data_export_format !== null)
 
   let total_frames_available = $derived(
     trajectory?.total_frames || trajectory?.frames?.length || 0,
   )
   let last_frame_idx = $derived(Math.max(0, total_frames_available - 1))
-
   let start_frame = $state(0)
   let end_frame = $derived(last_frame_idx)
+  // Validate and constrain frame range
+  $effect(() => {
+    start_frame = Math.min(Math.max(0, start_frame), last_frame_idx)
+    end_frame = Math.min(Math.max(start_frame, end_frame), last_frame_idx)
+  })
+  let export_frame_count = $derived(end_frame >= start_frame ? end_frame - start_frame + 1 : 0)
+  let range = $derived(`${start_frame}-${end_frame}`)
+  let data_export_disabled = $derived(
+    running !== null || !trajectory || export_frame_count === 0,
+  )
 
   let canvas = $derived(wrapper?.querySelector(`canvas`) as HTMLCanvasElement)
-
+  let has_canvas = $state(false)
+  $effect(() => observe_canvas_presence(wrapper, (val) => (has_canvas = val)))
+  let is_video_supported = $derived(
+    typeof MediaRecorder !== `undefined` &&
+      MediaRecorder.isTypeSupported(`video/webm;codecs=vp9`),
+  )
   // Estimated file size in MB
   let file_size_mb = $derived.by(() => {
     if (!canvas) return 0
@@ -89,87 +93,30 @@
     return (bitrate * export_frame_count) / video_fps / 8 / 1024 / 1024
   })
 
-  // Validate and constrain frame range
-  $effect(() => {
-    start_frame = Math.min(Math.max(0, start_frame), last_frame_idx)
-    end_frame = Math.min(Math.max(start_frame, end_frame), last_frame_idx)
-  })
-
-  let export_frame_count = $derived(end_frame >= start_frame ? end_frame - start_frame + 1 : 0)
-
-  let data_export_disabled = $derived(
-    is_exporting || is_exporting_data || !trajectory || export_frame_count === 0,
-  )
-
-  async function handle_video_export(format: `webm` | `mp4`) {
-    export_error = null
-
-    // Validate
-    if (!trajectory || !on_step_change || !canvas || export_frame_count === 0) {
-      export_error = !trajectory
-        ? `No trajectory`
-        : !canvas
-          ? `Canvas not ready`
-          : `Invalid frame range`
-      return
-    }
-
-    export_format = format
-    is_exporting = true
-    export_progress = 0
-
-    try {
-      await export_trajectory_video(canvas, `${filename}.webm`, {
-        fps: video_fps,
-        total_frames: export_frame_count,
-        resolution_multiplier,
-        on_progress: (progress) => (export_progress = progress),
-        on_step: (idx) => on_step_change(start_frame + idx),
-      })
-
-      if (format === `mp4`) {
-        navigator.clipboard
-          .writeText(get_ffmpeg_conversion_command(`${filename}.webm`))
-          .catch(console.warn)
-      }
-
-      export_progress = 100
-      setTimeout(() => {
-        is_exporting = false
-        export_progress = 0
-      }, 1000)
-    } catch (error) {
-      console.error(`Export failed:`, error)
-      export_error = to_error(error).message
-      is_exporting = false
-      export_progress = 0
-    }
-  }
-
   // Falls back to the in-memory frame when the host supplied no loader (eager trajectories)
   const frame_at: TrajectoryFrameResolver = (idx) =>
     resolve_frame ? resolve_frame(idx) : (trajectory?.frames?.[idx] ?? null)
 
-  const on_export_progress = (done: number, total: number) =>
-    (data_export_progress = (done / total) * 100)
+  const on_progress = (done: number, total: number) => {
+    if (running) running.progress = (done / total) * 100
+  }
 
-  // Run one data export, keeping the clicked button's progress/error state in sync. The task
-  // acts through side effects (a download or a clipboard write) rather than a return value.
-  async function run_data_export(
-    format: StructureFormat | TableFormat,
-    task: () => Promise<void>,
-  ) {
+  // Run one export, surfacing its progress and error. The task acts through side effects (a
+  // download or a clipboard write) or returns the text to copy.
+  async function run_export<Result>(
+    label: string,
+    task: () => Promise<Result>,
+  ): Promise<Result | null> {
     export_error = null
-    data_export_format = format
-    data_export_progress = 0
+    running = { label, progress: 0 }
     try {
-      await task()
+      return await task()
     } catch (error) {
-      console.error(`Trajectory data export failed:`, error)
+      console.error(`Trajectory ${label} export failed:`, error)
       export_error = to_error(error).message
+      return null
     } finally {
-      data_export_format = null
-      data_export_progress = 0
+      running = null
     }
   }
 
@@ -183,72 +130,112 @@
       end_frame,
       frame_at,
       trajectory,
-      on_export_progress,
+      on_progress,
     )
     return format === `csv` ? frame_rows_to_csv(table) : frame_rows_to_json(table)
   }
 
-  const export_data = (format: StructureFormat | TableFormat) =>
-    run_data_export(format, async () => {
-      const base = trajectory_export_basename(filename)
-      const range = `${start_frame}-${end_frame}`
-      if (format === `extxyz`) {
-        const content = await serialize_extxyz_frame_range(
-          start_frame,
-          end_frame,
-          frame_at,
-          on_export_progress,
-        )
-        download(content, `${base}.extxyz`, `chemical/x-xyz`)
-      } else if (format === `poscar`) {
-        const blob = await create_poscar_frame_range_zip(
-          start_frame,
-          end_frame,
-          frame_at,
-          filename,
-          total_frames_available,
-          on_export_progress,
-        )
-        download(blob, `${base}_poscar_${range}.zip`, `application/zip`)
-      } else {
-        download(
-          await serialize_table(format),
-          `${base}_frames_${range}.${format}`,
-          format === `csv` ? `text/csv` : `application/json`,
-        )
+  const download_table = (format: TableFormat) =>
+    run_export(format.toUpperCase(), async () =>
+      download(
+        await serialize_table(format),
+        `${trajectory_export_basename(filename)}_frames_${range}.${format}`,
+        format === `csv` ? `text/csv` : `application/json`,
+      ),
+    )
+
+  async function export_video(format: VideoFormat) {
+    if (!trajectory || !on_step_change || !canvas || export_frame_count === 0) {
+      export_error = !trajectory
+        ? `No trajectory`
+        : !canvas
+          ? `Canvas not ready`
+          : `Invalid frame range`
+      return
+    }
+    await run_export(format.toUpperCase(), async () => {
+      await export_trajectory_video(canvas, `${filename}.webm`, {
+        fps: video_fps,
+        total_frames: export_frame_count,
+        resolution_multiplier,
+        on_progress: (progress) => {
+          if (running) running.progress = progress
+        },
+        on_step: (idx) => on_step_change(start_frame + idx),
+      })
+      if (format === `mp4`) {
+        navigator.clipboard
+          .writeText(get_ffmpeg_conversion_command(`${filename}.webm`))
+          .catch(console.warn)
       }
     })
+  }
 
-  const { copied, copy } = create_clipboard_feedback()
-
-  const copy_table = (format: TableFormat) =>
-    run_data_export(format, async () => {
-      await copy(await serialize_table(format), format)
-    })
-
-  let is_video_supported = $derived(
-    typeof MediaRecorder !== `undefined` &&
-      MediaRecorder.isTypeSupported(`video/webm;codecs=vp9`),
-  )
-
-  let has_canvas = $state(false)
-
-  $effect(() => observe_canvas_presence(wrapper, (val) => (has_canvas = val)))
+  let sections = $derived<ExportSection[]>([
+    {
+      title: `Export Data`,
+      items: [
+        {
+          label: `extXYZ`,
+          hint: `All frames ${range} as one extended XYZ file`,
+          disabled: data_export_disabled,
+          on_download: () =>
+            run_export(`extXYZ`, async () =>
+              download(
+                await serialize_extxyz_frame_range(
+                  start_frame,
+                  end_frame,
+                  frame_at,
+                  on_progress,
+                ),
+                `${trajectory_export_basename(filename)}.extxyz`,
+                `chemical/x-xyz`,
+              ),
+            ),
+        },
+        {
+          label: `POSCAR ZIP`,
+          hint: `One numbered POSCAR per frame, zipped`,
+          disabled: data_export_disabled,
+          on_download: () =>
+            run_export(`POSCAR ZIP`, async () =>
+              download(
+                await create_poscar_frame_range_zip(
+                  start_frame,
+                  end_frame,
+                  frame_at,
+                  filename,
+                  total_frames_available,
+                  on_progress,
+                ),
+                `${trajectory_export_basename(filename)}_poscar_${range}.zip`,
+                `application/zip`,
+              ),
+            ),
+        },
+      ],
+    },
+    {
+      title: `Export Properties`,
+      items: [
+        {
+          label: `CSV`,
+          hint: `One row per frame over ${range}: frame index, MD step, then every extracted property with its unit in the header`,
+          disabled: data_export_disabled,
+          on_download: () => download_table(`csv`),
+          copy_text: () => run_export(`CSV`, () => serialize_table(`csv`)),
+        },
+        {
+          label: `JSON`,
+          hint: `Same per-frame numbers as the CSV, with a separate units map`,
+          disabled: data_export_disabled,
+          on_download: () => download_table(`json`),
+          copy_text: () => run_export(`JSON`, () => serialize_table(`json`)),
+        },
+      ],
+    },
+  ])
 </script>
-
-{#snippet download_button(format: StructureFormat | TableFormat, hint: string, label: string)}
-  <button
-    type="button"
-    onclick={() => export_data(format)}
-    disabled={data_export_disabled}
-    aria-label="Download {label}"
-    {@attach tooltip({ content: hint })}
-  >
-    {#if data_export_format === format && data_export_progress > 0}
-      {format_num(data_export_progress, `.0f`)}%
-    {:else}⬇{/if}
-  </button>
-{/snippet}
 
 <ExportPane
   bind:export_pane_open
@@ -258,59 +245,36 @@
     ...toggle_props,
     class: [`trajectory-export-toggle`, toggle_props?.class],
   }}
+  {sections}
   {...rest}
 >
-  <!-- Shared by the data and video exports below, so it sits outside the MediaRecorder gate -->
-  <SettingsSection
-    title="Frame Range"
-    current_values={{ start_frame, end_frame }}
-    on_reset={() => {
-      start_frame = 0
-      end_frame = last_frame_idx
-    }}
-  >
-    <NumberRangeInput min={0} max={last_frame_idx} step={1} bind:value={start_frame}
-      >Start Frame</NumberRangeInput
+  {#snippet header()}
+    <!-- Shared by the data and video exports, so it sits outside the MediaRecorder gate -->
+    <SettingsSection
+      title="Frame Range"
+      current_values={{ start_frame, end_frame }}
+      on_reset={() => {
+        start_frame = 0
+        end_frame = last_frame_idx
+      }}
     >
-    <NumberRangeInput min={start_frame} max={last_frame_idx} step={1} bind:value={end_frame}
-      >End Frame</NumberRangeInput
-    >
-  </SettingsSection>
+      <NumberRangeInput min={0} max={last_frame_idx} step={1} bind:value={start_frame}
+        >Start Frame</NumberRangeInput
+      >
+      <NumberRangeInput min={start_frame} max={last_frame_idx} step={1} bind:value={end_frame}
+        >End Frame</NumberRangeInput
+      >
+    </SettingsSection>
+  {/snippet}
 
+  {#if running}
+    <div class="export-info">
+      Exporting {running.label}… {format_num(running.progress, `.0f`)}%
+    </div>
+  {/if}
   {#if export_error}
     <div class="error-message">⚠️ {export_error}</div>
   {/if}
-
-  <h4>Export Data</h4>
-
-  <div class="export-buttons">
-    {#each [{ label: `extXYZ`, format: `extxyz`, hint: `All frames ${start_frame}–${end_frame} as one extended XYZ file` }, { label: `POSCAR ZIP`, format: `poscar`, hint: `One numbered POSCAR per frame, zipped` }] as const as { label, format, hint } (format)}
-      <div style="display: flex; align-items: center; gap: 4pt">
-        {label}
-        {@render download_button(format, hint, label)}
-      </div>
-    {/each}
-  </div>
-
-  <h4>Export Properties</h4>
-
-  <div class="export-buttons">
-    {#each [{ label: `CSV`, format: `csv`, hint: `One row per frame over ${start_frame}–${end_frame}: frame index, MD step, then every extracted property with its unit in the header` }, { label: `JSON`, format: `json`, hint: `Same per-frame numbers as the CSV, with a separate units map` }] as const as { label, format, hint } (format)}
-      <div style="display: flex; align-items: center; gap: 4pt">
-        {label}
-        {@render download_button(format, hint, label)}
-        <button
-          type="button"
-          onclick={() => copy_table(format)}
-          disabled={data_export_disabled}
-          aria-label="Copy {label} to clipboard"
-          {@attach tooltip({ content: `Copy ${label} to clipboard` })}
-        >
-          {copied.has(format) ? `✅` : `📋`}
-        </button>
-      </div>
-    {/each}
-  </div>
 
   <h4>Export Video</h4>
 
@@ -333,17 +297,14 @@
         Resolution
         <div class="resolution-buttons">
           {#each [0.5, 1, 2, 4, 8] as multiplier (multiplier)}
-            {@const width_px = canvas ? Math.round(canvas.width * multiplier) : 0}
-            {@const height_px = canvas ? Math.round(canvas.height * multiplier) : 0}
+            {@const size = canvas
+              ? ` (${Math.round(canvas.width * multiplier)}×${Math.round(canvas.height * multiplier)})`
+              : ``}
             <button
               type="button"
               class:active={resolution_multiplier === multiplier}
               onclick={() => (resolution_multiplier = multiplier)}
-              {@attach tooltip({
-                content: canvas
-                  ? `${multiplier}x (${width_px}×${height_px})`
-                  : `${multiplier}x`,
-              })}
+              {@attach tooltip({ content: `${multiplier}x${size}` })}
             >
               {multiplier}x
             </button>
@@ -358,25 +319,23 @@
           {label}
           <button
             type="button"
-            onclick={() => handle_video_export(format)}
-            disabled={is_exporting || is_exporting_data || !trajectory || !has_canvas}
+            onclick={() => export_video(format)}
+            disabled={running !== null || !trajectory || !has_canvas}
             aria-label="Download {label}"
             {@attach tooltip({ content: hint })}
           >
-            {#if is_exporting && export_format === format}
-              {export_progress.toFixed(0)}%
-            {:else}⬇{/if}
+            ⬇
           </button>
         </div>
       {/each}
     </div>
 
     <div class="export-info">
-      {(export_frame_count / video_fps).toFixed(1)}s ({export_frame_count} frames: {start_frame}–{end_frame})
+      {format_num(export_frame_count / video_fps, `.1f`)}s ({export_frame_count} frames: {range})
       {#if file_size_mb > 0}
         • ~{file_size_mb < 1
-          ? `${(file_size_mb * 1024).toFixed(0)} KB`
-          : `${file_size_mb.toFixed(1)} MB`}
+          ? `${format_num(file_size_mb * 1024, `.0f`)} KB`
+          : `${format_num(file_size_mb, `.1f`)} MB`}
       {/if}
     </div>
 
@@ -426,26 +385,25 @@
   .resolution-buttons {
     display: inline-flex;
     gap: 3pt;
-    margin: 0;
     margin-left: auto;
     white-space: nowrap;
-  }
-  .resolution-buttons button {
-    flex: 0 0 auto;
-    min-width: 2.8em;
-    padding: 1pt 3pt;
-    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.2));
-    background: var(--btn-bg, rgba(255, 255, 255, 0.1));
-    color: var(--text-color);
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-  .resolution-buttons button:hover {
-    background: var(--btn-bg-hover, rgba(255, 255, 255, 0.2));
-  }
-  .resolution-buttons button.active {
-    background: var(--accent-color, #4a9eff);
-    border-color: var(--accent-color, #4a9eff);
-    color: white;
+    button {
+      flex: 0 0 auto;
+      min-width: 2.8em;
+      padding: 1pt 3pt;
+      border: 1px solid var(--border-color, rgba(255, 255, 255, 0.2));
+      background: var(--btn-bg, rgba(255, 255, 255, 0.1));
+      color: var(--text-color);
+      cursor: pointer;
+      transition: all 0.2s;
+      &:hover {
+        background: var(--btn-bg-hover, rgba(255, 255, 255, 0.2));
+      }
+      &.active {
+        background: var(--accent-color, #4a9eff);
+        border-color: var(--accent-color, #4a9eff);
+        color: white;
+      }
+    }
   }
 </style>

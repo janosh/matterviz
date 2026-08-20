@@ -2,13 +2,15 @@ import { is_binary } from '$lib/io/is-binary'
 import { is_plain_object } from '$lib/utils'
 import { DEFAULTS } from '$lib/settings'
 import type { AnyStructure } from '$lib/structure/index'
-import { is_parsed_structure, parse_xyz } from '$lib/structure/parse'
+import { is_structure_like, parse_xyz } from '$lib/structure/parse'
+import { get_parse_errors, reset_parse_diagnostics } from '$lib/structure/parsers/shared'
 import {
-  ext_hint,
   FORMAT_PATTERNS,
   indexed_trajectory_format,
   is_indexable_trajectory_filename,
+  xyz_ext_hint,
 } from '$lib/trajectory/format-detect'
+import { HDF5_EXT_REGEX } from '$lib/trajectory/filename'
 import { TrajFrameReader } from '$lib/trajectory/frame-reader'
 import { count_xyz_frames } from '$lib/trajectory/helpers'
 import type {
@@ -28,7 +30,7 @@ import { parse_vasp_xdatcar } from './vasp'
 import { parse_xyz_trajectory } from './xyz'
 
 const assert_frame_structure = (structure: unknown, label: string | number): void => {
-  if (!is_parsed_structure(structure)) {
+  if (!is_structure_like(structure)) {
     const context = typeof label === `number` ? `trajectory frame ${label}` : label
     throw new Error(
       `Invalid structure in ${context}: expected non-empty 'sites' array with species and coordinates`,
@@ -42,20 +44,21 @@ export const MAX_BIN_FILE_SIZE = DEFAULTS.trajectory.bin_file_threshold // 50MB
 export const MAX_TEXT_FILE_SIZE = DEFAULTS.trajectory.text_file_threshold // 25MB
 export type { AtomTypeMapping, LoadingOptions } from '$lib/trajectory/types'
 export {
-  ext_hint,
-  FORMAT_PATTERNS,
   indexed_trajectory_format,
   is_indexable_trajectory_filename,
   is_trajectory_file,
 } from '$lib/trajectory/format-detect'
-export {
-  calc_force_stats,
-  count_xyz_frames,
-  iter_xyz_frames,
-  read_ndarray_from_view,
-  validate_3x3_matrix,
-} from '$lib/trajectory/helpers'
 export { TrajFrameReader } from '$lib/trajectory/frame-reader'
+
+// UTF-8 size of a payload without encoding it: a 400 MB string would otherwise be copied
+// into a throwaway Uint8Array just to compare against the large-file threshold. Every UTF-16
+// unit is 1-3 UTF-8 bytes, so only the 1x-3x band needs the exact count.
+const payload_bytes = (data: TrajectorySource, threshold: number): number => {
+  if (data instanceof Blob) return data.size
+  if (data instanceof ArrayBuffer) return data.byteLength
+  if (data.length > threshold || data.length * 3 <= threshold) return data.length
+  return new TextEncoder().encode(data).byteLength
+}
 
 const assert_parsed_trajectory_consistency = (
   trajectory: TrajectoryType,
@@ -107,7 +110,7 @@ async function parse_trajectory_data_unchecked(
 ): Promise<TrajectoryType> {
   reset_traj_parse_warnings()
   if (data instanceof Blob) {
-    if (!/\.(?:h5|hdf5)$/i.test(filename ?? ``)) {
+    if (!HDF5_EXT_REGEX.test(filename ?? ``)) {
       throw new Error(`Blob trajectory sources require an HDF5 filename, got ${filename}`)
     }
     return parse_hdf5_trajectory(data, filename, hdf5_group_path)
@@ -129,14 +132,21 @@ async function parse_trajectory_data_unchecked(
       return parse_lammps_trajectory(content, filename, atom_type_mapping)
     }
 
-    const xyz_hint = ext_hint(filename, /\.(?:xyz|extxyz)$/)
-    if (xyz_hint || (xyz_hint === null && count_xyz_frames(content) === 1)) {
+    const xyz_hint = xyz_ext_hint(filename)
+    if (xyz_hint || (xyz_hint === null && count_xyz_frames(content, 2) === 1)) {
+      reset_parse_diagnostics()
       const structure = parse_xyz(content)
       if (structure) {
         return {
           frames: [{ structure, step: 0, metadata: {} }],
           metadata: { source_format: `single_xyz`, frame_count: 1 },
         }
+      }
+      // The extension says XYZ, so the structure parser's reasons beat a JSON fallback
+      if (xyz_hint) {
+        throw new Error(
+          `Failed to parse ${filename} as XYZ: ${get_parse_errors().join(`; `) || `no valid frame found`}`,
+        )
       }
     }
 
@@ -191,10 +201,19 @@ export async function parse_trajectory_data(
   atom_type_mapping?: AtomTypeMapping,
   hdf5_group_path?: string,
 ): Promise<TrajectoryType> {
-  return assert_parsed_trajectory_consistency(
-    await parse_trajectory_data_unchecked(data, filename, atom_type_mapping, hdf5_group_path),
+  const trajectory = await parse_trajectory_data_unchecked(
+    data,
     filename,
+    atom_type_mapping,
+    hdf5_group_path,
   )
+  try {
+    return assert_parsed_trajectory_consistency(trajectory, filename)
+  } catch (error) {
+    // An HDF5 loader owns an open h5wasm handle; a rejected result must not leak it
+    trajectory.frame_loader?.dispose?.()
+    throw error
+  }
 }
 
 export function get_unsupported_format_message(
@@ -256,12 +275,7 @@ export async function parse_trajectory_async(
   try {
     update_progress(0, `Detecting format...`)
 
-    const data_size =
-      data instanceof Blob
-        ? data.size
-        : data instanceof ArrayBuffer
-          ? data.byteLength
-          : new TextEncoder().encode(data).byteLength
+    const data_size = payload_bytes(data, LARGE_FILE_THRESHOLD)
     const is_large_file = data_size > LARGE_FILE_THRESHOLD
     const should_use_indexing = use_indexing ?? is_large_file
 
@@ -273,8 +287,8 @@ export async function parse_trajectory_async(
       !(data instanceof Blob) &&
       (is_indexable_trajectory_filename(filename) ||
         (typeof data === `string` &&
-          ext_hint(filename, /\.(?:xyz|extxyz)$/) === null &&
-          count_xyz_frames(data.slice(0, 2 ** 20)) >= 1))
+          xyz_ext_hint(filename) === null &&
+          count_xyz_frames(data.slice(0, 2 ** 20), 1) >= 1))
     if (should_use_indexing && can_index) {
       return attach_parse_warnings(
         assert_parsed_trajectory_consistency(
@@ -374,30 +388,5 @@ async function parse_with_unified_loader(
     plot_metadata,
     is_indexed: true,
     frame_loader: loader,
-  }
-}
-
-export async function load_binary_traj(
-  resp: Response,
-  type: string,
-  fallback = false,
-): Promise<ArrayBuffer | string> {
-  try {
-    return await resp.clone().arrayBuffer()
-  } catch (binary_error) {
-    if (fallback) {
-      console.warn(`Binary load failed for ${type}, using text fallback:`, binary_error)
-      try {
-        return await resp.text()
-      } catch (text_error) {
-        const combined_error = new AggregateError(
-          [binary_error, text_error],
-          `Failed to load ${type} as binary or text`,
-        )
-        console.error(`Binary and text fallback both failed for ${type}:`, combined_error)
-        throw combined_error
-      }
-    }
-    throw new Error(`Failed to load ${type} as binary`, { cause: binary_error })
   }
 }
