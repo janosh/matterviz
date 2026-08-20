@@ -391,7 +391,8 @@ export const WIDGETS: Record<string, WidgetSpec> = {
       // Traits carry nested JSON grids; the renderer stores flat typed arrays
       derived_prop(`volumetric_data`, [`volumetric_data`], (model) => {
         const raw = get_prop(model, `volumetric_data`)
-        return Array.isArray(raw) ? raw.map(volume_from_json) : undefined
+        if (raw == null) return undefined
+        return (Array.isArray(raw) ? raw : [raw]).map(volume_from_json)
       }),
       writeback_prop(`active_volume_idx`, 0),
       writeback_prop(`display_mode`, `structure`),
