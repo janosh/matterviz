@@ -33,7 +33,7 @@ import {
 import { get_domain_color_data } from '$lib/chempot-diagram/color'
 import type { CompositionType } from '$lib/composition'
 import { get_hill_formula } from '$lib/composition/format'
-import { get_reduced_formula } from '$lib/composition/parse'
+import { get_reduced_formula } from '$lib/composition/reduce'
 import { filter_entries_at_temperature } from '$lib/convex-hull/helpers'
 import type { PhaseData } from '$lib/convex-hull/types'
 import type { Vec2 } from '$lib/math'
@@ -1252,30 +1252,23 @@ describe(`formula_key_from_composition`, () => {
     { comp: { Fe: 2, O: 4 }, expected: `FeO2`, label: `reduces to lowest terms` },
     { comp: { Fe: 1, O: 0 }, expected: `Fe`, label: `ignores zero amounts` },
     { comp: { Fe: 0.5, Li: 0.5 }, expected: `FeLi`, label: `fractional halves` },
-    { comp: { Fe: 0.67, Li: 0.33 }, expected: `Fe2Li`, label: `fractional 2:1 ratio` },
+    { comp: { Fe: 2 / 3, Li: 1 / 3 }, expected: `Fe2Li`, label: `fractional 2:1 ratio` },
+    // 0.67:0.33 is not 2:1 to within 1/10000, so it stays a distinct composition from Fe2Li
+    { comp: { Fe: 0.67, Li: 0.33 }, expected: `Fe67Li33`, label: `rounded 2:1 stays 67:33` },
     {
-      comp: { Li: 0.33, Fe: 0.33, O: 0.34 },
+      comp: { Li: 1 / 3, Fe: 1 / 3, O: 1 / 3 },
       expected: `FeLiO`,
-      label: `fractional ternary ~1:1:1`,
+      label: `fractional ternary 1:1:1`,
     },
     { comp: { Fe: 0.25, Li: 0.5, O: 0.25 }, expected: `FeLi2O`, label: `fractional quarters` },
-    {
-      comp: { Fe: 0.005, O: 0.995 },
-      expected: `Fe0.005O0.995`,
-      label: `tiny fraction falls through`,
-    },
-    // within pymatgen's 3% tolerance the amount is rounded, whether or not a gcd > 1 exists
-    { comp: { Fe: 1.01, O: 2 }, expected: `FeO2`, label: `near-integer rounds at gcd 1` },
-    { comp: { Fe: 2.02, O: 4 }, expected: `FeO2`, label: `near-integer rounds at gcd 2` },
-    {
-      comp: { Fe: 1.04, O: 2 },
-      expected: `Fe13O25`,
-      label: `4% off scales to an integer ratio`,
-    },
+    { comp: { Fe: 0.005, O: 0.995 }, expected: `FeO199`, label: `dilute ratio resolves` },
+    { comp: { Fe: 1.01, O: 2 }, expected: `Fe101O200`, label: `1% off is a real ratio` },
+    { comp: { Fe: 2.02, O: 4 }, expected: `Fe101O200`, label: `same ratio at gcd 2` },
+    { comp: { Fe: 1.04, O: 2 }, expected: `Fe13O25`, label: `4% off scales to 13:25` },
   ])(`$label → $expected`, ({ comp, expected }) => {
     const key = formula_key_from_composition(comp as Record<string, number>)
     expect(key).toBe(expected)
-    // the worker-local reduced formula must keep matching $lib/composition's
+    // keys are the shared get_reduced_formula in Hill order
     expect(get_hill_formula(get_reduced_formula(comp as CompositionType), true)).toBe(
       get_hill_formula(key, true),
     )

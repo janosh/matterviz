@@ -9,6 +9,7 @@ export * from './format'
 export { default as Formula } from './Formula.svelte'
 export { default as FormulaFilter } from './FormulaFilter.svelte'
 export * from './parse'
+export * from './reduce'
 export { default as PieChart } from './PieChart.svelte'
 
 export type CompositionType = Partial<Record<ElementSymbol, number>>

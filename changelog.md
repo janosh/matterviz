@@ -52,7 +52,7 @@
 - 80×80×96 CHGCAR parse 112 → 39 ms, Fermi-surface geometry 18.7 → 1.0 ms with indexed buffers, Brillouin zone orders 1/2/3 2.3/40/200 → 0.6/8/36 ms, 1008-atom CNA+CSP 10.6 → 5.7 ms, RDF 1.5–4× faster, `pbc_dist` 2.3× and in-place FFT 3× faster https://github.com/janosh/matterviz/pull/438
 - `TrajectoryInfoPane` rebuilds only when open (closed pane per step 1.95 → 0.001 ms); `Trajectory` text/plain drop fallback removed; `is_binary` samples the first 8 KiB (25 MB text: 49 → 0.8 ms) https://github.com/janosh/matterviz/pull/438
 - VS Code parse worker 5.0 MB → 425 KB (h5wasm loaded only for `.h5`); anywidget reads `DEFAULTS` for `auto_rotate`/`gizmo` and JupyterLab parses via `parse_in_worker` with an `AbortController` per render https://github.com/janosh/matterviz/pull/438
-- `BoxPlot` quartiles pinned as type-7 (numpy/R/d3); `PeriodicTable` tiles and `ColorBar` share `resolve_color_ramp`; Composition "Copy Formula" copies plain text; `get_reduced_formula` scales fractional compositions to the smallest integer formula; `ChemPotDiagram3D` outlines come from PCA hull edges and `EdgesGeometry` crease edges https://github.com/janosh/matterviz/pull/438
+- `BoxPlot` quartiles pinned as type-7 (numpy/R/d3); `PeriodicTable` tiles and `ColorBar` share `resolve_color_ramp`; Composition "Copy Formula" copies plain text; `get_reduced_formula` scales fractional compositions to the smallest integer formula via a float gcd resolved to 1/10000 (pymatgen's `get_integer_formula_and_factor`; `Fe0.01O0.99` → `FeO99`, rounded `0.3333/0.6667` → `FeO2`) and lives in `composition/reduce.ts`, shared with the chempot worker; `ChemPotDiagram3D` outlines come from PCA hull edges and `EdgesGeometry` crease edges https://github.com/janosh/matterviz/pull/438
 
 ### 💡 Refactoring
 

@@ -7,41 +7,12 @@ import {
   combinations,
   convex_hull_2d,
   EPS,
-  gcd_all,
   polygon_centroid,
   solve_linear_system,
 } from '$lib/math'
 import type { Vec2, Vec3 } from '$lib/math'
+import { count_atoms_in_composition, get_reduced_formula } from '$lib/composition/reduce'
 import { CHEMPOT_DEFAULTS, type ChemPotDiagramConfig, type ChemPotDiagramData } from './types'
-
-// Verbatim copies of $lib/composition/parse's count_atoms_in_composition and
-// get_reduced_formula, kept here so chempot-worker's bundle stays small: that module pulls
-// in the gzipped element data table, which the worker has no use for. compute.test.ts pins
-// both copies equal to the originals over a table of integer/fractional compositions.
-const count_atoms_in_composition = (composition: Record<string, number>): number =>
-  Object.values(composition).reduce((sum, count) => sum + (count ?? 0), 0)
-
-// Smallest whole-number formula with the same ratios (Fe2O4 -> FeO2, Li0.5Na0.5Cl -> LiNaCl2).
-// Fractional amounts are scaled by the smallest integer (<= 100) that makes every amount a
-// positive integer within 3% (pymatgen's tolerance); otherwise the composition is returned as is.
-const get_reduced_formula = (composition: Record<string, number>): Record<string, number> => {
-  const entries = Object.entries(composition).filter(([, amt]) => amt > 0)
-  if (entries.length === 0) return {}
-  const amounts = entries.map(([, amt]) => amt)
-  const is_integral = (scale: number) =>
-    amounts.every((amt) => {
-      const scaled = amt * scale
-      return Math.round(scaled) >= 1 && Math.abs(scaled - Math.round(scaled)) < 0.03
-    })
-  let scale = 1
-  while (scale <= 100 && !is_integral(scale)) scale++
-  if (scale > 100) return composition
-  const int_amounts = amounts.map((amt) => Math.round(amt * scale))
-  // gcd is unreliable past 2^53, where consecutive integers stop being distinguishable
-  if (!int_amounts.every(Number.isSafeInteger)) return composition
-  const divisor = gcd_all(int_amounts)
-  return Object.fromEntries(entries.map(([elem], idx) => [elem, int_amounts[idx] / divisor]))
-}
 
 // === Entry Helpers ===
 

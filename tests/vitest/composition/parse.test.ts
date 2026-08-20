@@ -365,15 +365,27 @@ describe(`get_reduced_formula`, () => {
     [
       { Fe: 0.3333, O: 0.6667 },
       { Fe: 1, O: 2 },
-    ], // within 3% after scaling by 3
+    ], // rounded input: fractions match 1:2 within 1e-4
     [
       { Fe: 0.123456, O: 1 },
-      { Fe: 1, O: 8 },
-    ], // 8 * 0.123456 = 0.988, within 3% of 1
+      { Fe: 10, O: 81 },
+    ], // 10/81 = 0.123457: the 3% snap used to give FeO8
+    [
+      { Fe: 0.01, O: 0.99 },
+      { Fe: 1, O: 99 },
+    ], // dilute ratios resolve exactly (the 3% snap gave FeO97)
     [
       { Fe: 0.005, O: 1 },
-      { Fe: 0.005, O: 1 },
-    ], // no multiple <= 100 keeps Fe >= 1
+      { Fe: 1, O: 200 },
+    ],
+    [
+      { Fe: 1.01, O: 2 },
+      { Fe: 101, O: 200 },
+    ], // 1% off an integer is a real ratio, not rounding noise
+    [
+      { Fe: 0.00001, O: 1 },
+      { Fe: 0.00001, O: 1 },
+    ], // finer than 1/MAX_FORMULA_DENOMINATOR: left fractional rather than dropping Fe
     [
       { Fe: 1e300, O: 2 },
       { Fe: 1e300, O: 2 },

@@ -3,7 +3,6 @@ import type { ElementSymbol } from '$lib/element'
 import { element_by_symbol } from '$lib/element/data'
 import { is_elem_symbol } from '$lib/element/helpers'
 import { ELEM_SYMBOLS } from '$lib/element/types'
-import { gcd_all } from '$lib/math'
 
 // One element (with optional oxidation state) of a formula, in source order. Amounts are
 // already multiplied through enclosing groups and hydrate coefficients.
@@ -236,10 +235,6 @@ export const parse_composition = (
   return composition
 }
 
-// Total number of atoms
-export const count_atoms_in_composition = (composition: CompositionType): number =>
-  Object.values(composition).reduce((sum, count) => sum + count, 0)
-
 // Atomic (default) or mass fractions of each element; zero/negative amounts are skipped
 export const fractional_composition = (
   composition: CompositionType,
@@ -258,32 +253,6 @@ export const fractional_composition = (
   }
   const total = weighted.reduce((sum, [, weight]) => sum + weight, 0)
   return Object.fromEntries(weighted.map(([element, weight]) => [element, weight / total]))
-}
-
-// Smallest whole-number formula with the same ratios: Fe2O4 -> FeO2, Li0.5Na0.5Cl -> LiNaCl2.
-// Fractional amounts are scaled by the smallest integer (up to 100) that makes every amount
-// a positive integer within 3% (pymatgen's tolerance); compositions that never become
-// integral are returned unchanged
-export const get_reduced_formula = (composition: CompositionType): CompositionType => {
-  const entries = Object.entries(composition).filter(([, amt]) => amt > 0) as [
-    ElementSymbol,
-    number,
-  ][]
-  if (entries.length === 0) return {}
-  const amounts = entries.map(([, amt]) => amt)
-  const is_integral = (scale: number) =>
-    amounts.every((amt) => {
-      const scaled = amt * scale
-      return Math.round(scaled) >= 1 && Math.abs(scaled - Math.round(scaled)) < 0.03
-    })
-  let scale = 1
-  while (scale <= 100 && !is_integral(scale)) scale++
-  if (scale > 100) return composition
-  const int_amounts = amounts.map((amt) => Math.round(amt * scale))
-  // gcd is unreliable past 2^53, where consecutive integers stop being distinguishable
-  if (!int_amounts.every(Number.isSafeInteger)) return composition
-  const divisor = gcd_all(int_amounts)
-  return Object.fromEntries(entries.map(([elem], idx) => [elem, int_amounts[idx] / divisor]))
 }
 
 // Sum of atomic masses times amounts (unknown elements throw)
