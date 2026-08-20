@@ -83,7 +83,7 @@ describe(`filter_series_to_ranges`, () => {
     expect(result.filtered_data.map((pt) => pt.x)).toEqual([1])
   })
 
-  test(`rejects NaN range bounds; tolerates holes in series/y`, () => {
+  test(`rejects NaN range bounds; tolerates missing series arrays`, () => {
     expect(
       filter_series_to_ranges([{ x: [-1, 1], y: [2, 2], markers: `points` }], {
         ...ranges,
@@ -91,12 +91,30 @@ describe(`filter_series_to_ranges`, () => {
       }),
     ).toEqual([])
     const result = filter_series_to_ranges(
-      [undefined, { y: [1] }, { x: [1] }, { x: [1, 2, 3], y: [4] }] as unknown as DataSeries[],
+      [undefined, { y: [1] }, { x: [1] }, { x: [1], y: [4] }] as unknown as DataSeries[],
       ranges,
     )
     expect(result).toHaveLength(1)
     expect(result[0].filtered_data.map((pt) => [pt.x, pt.y])).toEqual([[1, 4]])
     expect(result[0].orig_series_idx).toBe(3)
+  })
+
+  test.each<[string, DataSeries, string, string?]>([
+    [`short y`, { id: `energy`, x: [0, 1], y: [2] }, `x=2, y=1`],
+    [`long y`, { id: `energy`, x: [0], y: [1, 2] }, `x=1, y=2`],
+    [`short raw_y`, { id: `energy`, x: [0, 1], y: [2, 3], raw_y: [2] }, `x=2, y=2, raw_y=1`],
+    [`long raw_y`, { id: `energy`, x: [0], y: [1], raw_y: [1, 2] }, `x=1, y=1, raw_y=2`],
+    [`hidden series`, { id: `energy`, x: [0, 1], y: [2], visible: false }, `x=2, y=1`],
+    [
+      `misaligned underlay`,
+      { id: `energy`, x: [0, 1], y: [2, 3], line_underlays: [{ x: [0, 1], y: [2] }] },
+      `x=2, y=1`,
+      ` line_underlays[0]`,
+    ],
+  ])(`rejects %s`, (_name, series, lengths, group = ``) => {
+    expect(() => filter_series_to_ranges([series], ranges)).toThrow(
+      `Series "energy"${group}: aligned arrays must have equal lengths, got ${lengths}`,
+    )
   })
 
   test(`augments points with array or scalar per-point props`, () => {

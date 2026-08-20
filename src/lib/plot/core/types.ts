@@ -151,6 +151,11 @@ export interface DataSeries<Metadata = Record<string, unknown>> {
   id?: string | number // Optional stable identifier for the series (used for keying)
   x: readonly number[]
   y: readonly number[]
+  // Original values for transformed series, exposed to hover handlers alongside y.
+  // When present, raw_y must have the same one-to-one alignment as x and y.
+  raw_y?: readonly number[]
+  // Extra paths rendered behind the main line without becoming independent semantic series.
+  line_underlays?: Pick<DataSeries<Metadata>, `x` | `y` | `line_style`>[]
   // Optional marker display type override for this specific series
   markers?: Markers
   // Specify which x-axis to use: 'x1' (bottom, default) or 'x2' (top)
@@ -186,6 +191,44 @@ export interface DataSeries<Metadata = Record<string, unknown>> {
   filtered_data?: InternalPoint<Metadata>[]
   _id?: string | number
   orig_series_idx?: number // Original series index for consistent auto-cycling colors/symbols
+}
+
+// Throw when arrays that are indexed in lockstep have different lengths. Absent arrays are skipped.
+export function assert_aligned_lengths(
+  where: string,
+  arrays: Record<string, ArrayLike<unknown> | undefined>,
+): void {
+  const present = Object.entries(arrays).filter(([, arr]) => arr !== undefined)
+  if (new Set(present.map(([, arr]) => arr?.length)).size <= 1) return
+  const detail = present.map(([name, arr]) => `${name}=${arr?.length}`).join(`, `)
+  throw new RangeError(`${where}: aligned arrays must have equal lengths, got ${detail}`)
+}
+
+// Per-point arrays of any plot series (bar, scatter, 3D, dense). Only the aligned fields matter.
+type AlignedSeries = {
+  id?: string | number
+  label?: string
+  x: ArrayLike<unknown>
+  y: ArrayLike<unknown>
+  z?: ArrayLike<unknown>
+  raw_y?: ArrayLike<unknown>
+  line_underlays?: readonly { x: ArrayLike<unknown>; y: ArrayLike<unknown> }[]
+}
+
+export function assert_series_lengths(series: AlignedSeries, series_idx?: number): void {
+  const { id, label, x, y, z, raw_y } = series
+  const name = id ?? label
+  const where =
+    name === undefined
+      ? `Series${series_idx === undefined ? `` : ` at index ${series_idx}`}`
+      : `Series "${name}"`
+  assert_aligned_lengths(where, { x, y, z, raw_y })
+  series.line_underlays?.forEach((underlay, idx) =>
+    assert_aligned_lengths(`${where} line_underlays[${idx}]`, {
+      x: underlay.x,
+      y: underlay.y,
+    }),
+  )
 }
 
 // Represents the internal structure used within ScatterPlot, merging series-level and point-level data
@@ -225,6 +268,7 @@ export interface ScatterHandlerProps<
   cy: number
   x_formatted: string
   y_formatted: string
+  raw_y?: number
   color_value?: number | null
   color_bar?: {
     value?: number | null

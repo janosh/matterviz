@@ -19,13 +19,18 @@ import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { MoyoDataset } from '@spglib/moyo-wasm'
 
-export type SymmetryElementKind =
-  | `rotation`
-  | `screw`
-  | `mirror`
-  | `glide`
-  | `inversion`
-  | `rotoinversion`
+// All element kinds in display order (axes first, then planes, then point elements).
+// Single source of truth for ordering — both the controls legend and the element list
+// returned by symmetry_elements_from_ops follow this sequence.
+export const SYM_ELEM_KINDS = [
+  `rotation`,
+  `screw`,
+  `rotoinversion`,
+  `mirror`,
+  `glide`,
+  `inversion`,
+] as const
+export type SymmetryElementKind = (typeof SYM_ELEM_KINDS)[number]
 
 export type SymmetryElement = {
   kind: SymmetryElementKind
@@ -43,18 +48,6 @@ export type SymmetryElement = {
   // Intrinsic screw/glide translation in fractional coordinates (null if none)
   translation: Vec3 | null
 }
-
-// All element kinds in display order (axes first, then planes, then point elements).
-// Single source of truth for ordering — both the controls legend and the element list
-// returned by symmetry_elements_from_ops follow this sequence.
-export const SYM_ELEM_KINDS = [
-  `rotation`,
-  `screw`,
-  `rotoinversion`,
-  `mirror`,
-  `glide`,
-  `inversion`,
-] as const satisfies readonly SymmetryElementKind[]
 
 // Per-kind overlay visibility. Kinds absent from the record are hidden.
 export type ShowSymmetryKinds = Partial<Record<SymmetryElementKind, boolean>>

@@ -114,7 +114,6 @@
     bind:controls_open
     controls_name="scatter-3d"
     toggle_title="3D plot"
-    toggle_style=""
     pane_style="--pane-max-height: 80cqh"
     {toggle_props}
     pane_props={{

@@ -418,6 +418,7 @@ describe(`TrajectoryExportPane property export`, () => {
     document.body.replaceChildren()
     vi.mocked(download).mockClear()
     vi.mocked(navigator.clipboard.writeText).mockClear()
+    vi.unstubAllGlobals()
   })
 
   const open_pane = (props: Record<string, unknown>) =>
@@ -444,6 +445,14 @@ describe(`TrajectoryExportPane property export`, () => {
     if (typeof content !== `string`) throw new Error(`expected text, got ${typeof content}`)
     return content.split(`\n`)
   }
+
+  test(`names every download action`, () => {
+    vi.stubGlobal(`MediaRecorder`, { isTypeSupported: () => true })
+    open_pane({ trajectory })
+    for (const label of [`extXYZ`, `POSCAR ZIP`, `CSV`, `JSON`, `WebM`, `MP4`]) {
+      expect(document.querySelector(`button[aria-label="Download ${label}"]`)).not.toBeNull()
+    }
+  })
 
   test(`downloads the whole frame range as CSV`, async () => {
     open_pane({ trajectory })

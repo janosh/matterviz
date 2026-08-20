@@ -9,7 +9,7 @@ import {
   get_series_symbol,
 } from '$lib/plot/core/data-transform'
 import { is_fill_gradient } from '$lib/plot/core/fill-utils'
-import { type AxisRanges, DEFAULT_MARKERS } from '$lib/plot/core/types'
+import { assert_series_lengths, type AxisRanges, DEFAULT_MARKERS } from '$lib/plot/core/types'
 
 export { type AxisRanges } from '$lib/plot/core/types'
 
@@ -49,11 +49,13 @@ export function filter_series_to_ranges<Metadata = Record<string, unknown>>(
 
   for (let series_idx = 0; series_idx < series.length; series_idx++) {
     const data_series = series[series_idx]
-    // Missing and hidden series yield no points, and empty series are dropped below
-    if (!data_series || !(data_series.visible ?? true)) continue
+    // Missing series yield no points, and empty series are dropped below
+    if (!data_series) continue
 
     const { x: xs, y: ys, color_values, size_values } = data_series
     if (!Array.isArray(xs) || !Array.isArray(ys)) continue
+    assert_series_lengths(data_series, series_idx)
+    if (!(data_series.visible ?? true)) continue
     const [x_lo, x_hi] = (data_series.x_axis ?? `x1`) === `x2` ? x2_bounds : x_bounds
     const [y_lo, y_hi] = (data_series.y_axis ?? `y1`) === `y2` ? y2_bounds : y_bounds
 

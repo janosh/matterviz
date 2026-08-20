@@ -111,6 +111,11 @@ describe(`Settings`, () => {
         if (!node || typeof node !== `object` || Array.isArray(node)) return
         const record = node as Record<string, unknown>
         if (`value` in record) {
+          if (`enum` in record) {
+            expect(record.enum, `${path.join(`.`)} enum omits its default`).toHaveProperty([
+              String(record.value),
+            ])
+          }
           leaf_paths.push(path.join(`.`))
           return
         }

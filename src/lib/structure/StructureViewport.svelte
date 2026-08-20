@@ -233,7 +233,7 @@
 
   // Both optional keys can be absent — a perspective camera has no zoom, and the orbit target
   // is unknown until the controls bind. Omit rather than emit undefined: JSON.stringify drops
-  // such keys, so the payload the Dash and VS Code hosts receive would otherwise differ in
+  // such keys, so serialized host payloads would otherwise differ in
   // shape from the one in-process listeners see.
   const camera_event = (
     camera_has_moved: boolean,

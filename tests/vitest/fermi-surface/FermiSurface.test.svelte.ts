@@ -85,16 +85,8 @@ test(`a slow first data_url cannot overwrite a newer one`, async () => {
     `# Fermi energy: ${fermi_energy} eV\nBEGIN_BLOCK_BANDGRID_3D\n  band_energies\n  BEGIN_BANDGRID_3D\n    1\n    3 3 3\n    0.0 0.0 0.0\n    1.0 0.0 0.0\n    0.0 1.0 0.0\n    0.0 0.0 1.0\n    BAND:   1\n    5.0 6.0 5.0\n    6.0 7.0 6.0\n    5.0 6.0 5.0\n    6.0 7.0 6.0\n    7.0 8.0 7.0\n    6.0 7.0 6.0\n    5.0 6.0 5.0\n    6.0 7.0 6.0\n    5.0 6.0 5.0\n  END_BANDGRID_3D\nEND_BLOCK_BANDGRID_3D\n`
   const frame_callbacks = mock_animation_frames()
   const responses = new Map<string, (response: Response) => void>()
-  vi.spyOn(globalThis, `fetch`).mockImplementation((input, init) => {
+  vi.spyOn(globalThis, `fetch`).mockImplementation((input) => {
     const url = input instanceof Request ? input.url : input.toString()
-    if (init?.headers) {
-      return Promise.resolve(
-        new Response(`text`, {
-          status: 206,
-          headers: { 'content-range': `bytes 0-3/100` },
-        }),
-      )
-    }
     return new Promise((resolve) => responses.set(url, resolve))
   })
 

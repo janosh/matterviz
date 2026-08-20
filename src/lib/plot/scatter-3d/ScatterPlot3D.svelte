@@ -24,7 +24,7 @@
     StyleOverrides3D,
     Surface3DConfig,
   } from '$lib/plot/core/types'
-  import { SCALE_DEFAULTS } from '$lib/plot/core/types'
+  import { assert_series_lengths, SCALE_DEFAULTS } from '$lib/plot/core/types'
   import { Canvas } from '@threlte/core'
   import * as extras from '@threlte/extras'
   import { onMount } from 'svelte'
@@ -152,6 +152,9 @@
   // Track mounted state to avoid SSR/hydration mismatch with Canvas
   let mounted = $state(false)
   onMount(() => (mounted = true))
+
+  // Points are built inside the Canvas scene, so fail fast on misaligned arrays out here
+  $effect.pre(() => series.forEach(assert_series_lengths))
 
   const series_visibility_keys = $derived.by((): string[] => {
     const id_counts = new SvelteMap<string | number, number>()
@@ -317,12 +320,7 @@
       <ScatterPlot3DControls
         bind:show_controls
         bind:controls_open
-        toggle_props={{
-          ...controls_toggle_props,
-          style: `--ctrl-btn-right: var(--fullscreen-btn-offset, 32px); ${
-            controls_toggle_props?.style ?? ``
-          }`,
-        }}
+        toggle_props={controls_toggle_props}
         pane_props={{
           ...controls_pane_props,
           // z-index must exceed fullscreen z-index to remain clickable in fullscreen mode
@@ -380,6 +378,8 @@
 
 <style>
   div.scatter-3d {
+    --ctrl-btn-top: 5pt;
+    --ctrl-btn-default-right: 32px;
     position: relative;
     width: var(--scatter3d-width, 100%);
     height: var(--scatter3d-height, auto);
@@ -429,11 +429,7 @@
     align-items: center;
     gap: 8px;
   }
-  /* Position the pane toggle in top right, next to fullscreen button */
   div.scatter-3d :global(.pane-toggle) {
-    position: absolute;
-    top: var(--ctrl-btn-top, 5pt);
-    right: var(--ctrl-btn-right, 36px);
     z-index: var(--pane-toggle-z-index, 10);
   }
   /* Hide controls on default, show on hover */

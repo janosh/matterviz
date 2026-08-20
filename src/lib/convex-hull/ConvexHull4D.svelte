@@ -18,6 +18,7 @@
   import { create_canvas_interactions } from './canvas-interactions.svelte'
   import ConvexHullChrome from './ConvexHullChrome.svelte'
   import GasPressureControls from './GasPressureControls.svelte'
+  import MissingConvexHullData from './MissingConvexHullData.svelte'
   import * as helpers from './helpers'
   import { create_hull_data_pipeline } from './hull-state.svelte'
   import type { BaseConvexHullProps, Hull3DProps } from './index'
@@ -30,7 +31,7 @@
   import { compute_hull_stability } from './helpers'
 
   let {
-    entries = [],
+    entries: entries_prop,
     controls = {},
     config = {},
     show_controls,
@@ -86,6 +87,7 @@
     Hull3DProps & {
       highlight_style?: HighlightStyle
     } = $props()
+  const entries = $derived(entries_prop ?? [])
 
   const merged_controls = $derived({ ...default_controls, ...controls })
   const controls_config = $derived(normalize_show_controls(show_controls))
@@ -685,122 +687,130 @@
 </script>
 
 <svelte:document
-  onmousemove={interactions.handle_mouse_move}
-  onmouseup={interactions.handle_mouse_up}
+  onmousemove={entries_prop === undefined ? undefined : interactions.handle_mouse_move}
+  onmouseup={entries_prop === undefined ? undefined : interactions.handle_mouse_up}
 />
 
-<div
-  {...rest}
-  class={[`convex-hull-4d`, rest.class, { dragover: interactions.dragover }]}
-  style={`${style}; ${rest.style ?? ``}`}
-  data-has-selection={selected_entry !== null}
-  data-has-hover={interactions.hover_data !== null}
-  data-is-dragging={interactions.is_dragging}
-  data-rotation-x={camera.rotation_x.toFixed(4)}
-  data-rotation-y={camera.rotation_y.toFixed(4)}
-  bind:this={wrapper}
-  role="application"
-  tabindex="-1"
-  {...interactions.wrapper_handlers}
-  aria-label="Convex hull visualization"
->
-  {@render children?.({
-    stable_entries,
-    unstable_entries,
-    highlighted_entries,
-    selected_entry,
-  })}
-  <h3 style="position: absolute; left: 1em; top: 1ex; margin: 0">
-    {@html sanitize_html(merged_controls.title || phase_stats?.chemical_system || ``)}
-  </h3>
-
-  <canvas
-    bind:this={canvas}
-    tabindex="0"
-    aria-label={merged_controls.title || phase_stats?.chemical_system || `4D Convex Hull`}
-    {...interactions.canvas_handlers}
-  ></canvas>
-  <canvas bind:this={overlay_canvas} class="pulse-overlay" aria-hidden="true"></canvas>
-
-  {#if entries.length === 0}
-    <Spinner
-      text="Loading data..."
-      style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center"
-    />
-  {/if}
-
-  <!-- Energy above hull Color Bar -->
-  {#if color_mode === `energy` && plot_entries.length > 0}
-    <ColorBar
-      title="Energy above hull (eV/atom)"
-      range={helpers.hull_distance_range(plot_entries)}
-      scale={color_scale}
-      wrapper_style="position: absolute; bottom: 2em; left: 1em; width: 200px;"
-      bar_style="height: 12px;"
-      title_style="margin-bottom: 4px;"
-    />
-  {/if}
-
-  <!-- Toolbar + tooltip/copy-feedback/drag/structure-popup chrome -->
-  <ConvexHullChrome
-    {interactions}
-    {hull_data}
-    {controls_config}
-    {reset_all}
-    reset_title="Reset view and settings"
-    {enable_info_pane}
-    {phase_stats}
-    {label_threshold}
-    bind:fullscreen
-    {fullscreen_toggle}
-    fullscreen_bg_css_var="--hull-4d-bg-fullscreen"
-    on_fullscreen_change={() => {
-      camera.center_x = 0
-      camera.center_y = 20
-    }}
-    {camera}
-    {merged_controls}
-    {stable_entries}
-    {unstable_entries}
-    {get_point_color}
-    {merged_highlight_style}
-    {is_highlighted}
-    {tooltip}
-    {selected_entry}
-    bind:show_hull_faces
-    bind:hull_face_color
-    bind:hull_face_opacity
-    bind:hull_face_color_mode
-    bind:info_pane_open
-    bind:controls_open
-    bind:color_mode
-    bind:color_scale
-    bind:show_stable
-    bind:show_unstable
-    {entry_category}
-    bind:hidden_categories
-    bind:show_stable_labels
-    bind:show_unstable_labels
-    bind:max_hull_dist_show_phases
-    bind:max_hull_dist_show_labels
-    bind:energy_source_mode
+{#if entries_prop === undefined}
+  <MissingConvexHullData
+    {...rest}
+    style={`${style}; height: var(--hull-height, 500px); ${rest.style ?? ``}`}
   />
+{:else}
+  <div
+    {...rest}
+    hidden={rest.hidden}
+    class={[`convex-hull-4d`, rest.class, { dragover: interactions.dragover }]}
+    style={`${style}; ${rest.style ?? ``}`}
+    data-has-selection={selected_entry !== null}
+    data-has-hover={interactions.hover_data !== null}
+    data-is-dragging={interactions.is_dragging}
+    data-rotation-x={camera.rotation_x.toFixed(4)}
+    data-rotation-y={camera.rotation_y.toFixed(4)}
+    bind:this={wrapper}
+    role="application"
+    tabindex="-1"
+    {...interactions.wrapper_handlers}
+    aria-label="Convex hull visualization"
+  >
+    {@render children?.({
+      stable_entries,
+      unstable_entries,
+      highlighted_entries,
+      selected_entry,
+    })}
+    <h3 style="position: absolute; left: 1em; top: 1ex; margin: 0">
+      {@html sanitize_html(merged_controls.title || phase_stats?.chemical_system || ``)}
+    </h3>
 
-  {#if hull_data.has_temp_data && temperature !== undefined}
-    <TemperatureSlider
-      available_temperatures={hull_data.available_temperatures}
-      bind:temperature
-    />
-  {/if}
+    <canvas
+      bind:this={canvas}
+      tabindex="0"
+      aria-label={merged_controls.title || phase_stats?.chemical_system || `4D Convex Hull`}
+      {...interactions.canvas_handlers}
+    ></canvas>
+    <canvas bind:this={overlay_canvas} class="pulse-overlay" aria-hidden="true"></canvas>
 
-  {#if hull_data.gas_analysis.has_gas_dependent_elements && merged_gas_config}
-    <GasPressureControls
-      config={merged_gas_config}
-      bind:pressures={gas_pressures}
-      temperature={temperature ?? 300}
+    {#if entries.length === 0}
+      <Spinner
+        text="Loading data..."
+        style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center"
+      />
+    {/if}
+
+    <!-- Energy above hull Color Bar -->
+    {#if color_mode === `energy` && plot_entries.length > 0}
+      <ColorBar
+        title="Energy above hull (eV/atom)"
+        range={helpers.hull_distance_range(plot_entries)}
+        scale={color_scale}
+        wrapper_style="position: absolute; bottom: 2em; left: 1em; width: 200px;"
+        bar_style="height: 12px;"
+        title_style="margin-bottom: 4px;"
+      />
+    {/if}
+
+    <!-- Toolbar + tooltip/copy-feedback/drag/structure-popup chrome -->
+    <ConvexHullChrome
+      {interactions}
+      {hull_data}
+      {controls_config}
+      {reset_all}
+      reset_title="Reset view and settings"
+      {enable_info_pane}
+      {phase_stats}
+      {label_threshold}
+      bind:fullscreen
+      {fullscreen_toggle}
+      fullscreen_bg_css_var="--hull-4d-bg-fullscreen"
+      on_fullscreen_change={() => {
+        camera.center_x = 0
+        camera.center_y = 20
+      }}
+      {camera}
+      {merged_controls}
+      {stable_entries}
+      {unstable_entries}
+      {get_point_color}
+      {merged_highlight_style}
+      {is_highlighted}
+      {tooltip}
+      {selected_entry}
+      bind:show_hull_faces
+      bind:hull_face_color
+      bind:hull_face_opacity
+      bind:hull_face_color_mode
+      bind:info_pane_open
+      bind:controls_open
+      bind:color_mode
+      bind:color_scale
+      bind:show_stable
+      bind:show_unstable
+      {entry_category}
+      bind:hidden_categories
+      bind:show_stable_labels
+      bind:show_unstable_labels
+      bind:max_hull_dist_show_phases
+      bind:max_hull_dist_show_labels
+      bind:energy_source_mode
     />
-  {/if}
-</div>
+
+    {#if hull_data.has_temp_data && temperature !== undefined}
+      <TemperatureSlider
+        available_temperatures={hull_data.available_temperatures}
+        bind:temperature
+      />
+    {/if}
+
+    {#if hull_data.gas_analysis.has_gas_dependent_elements && merged_gas_config}
+      <GasPressureControls
+        config={merged_gas_config}
+        bind:pressures={gas_pressures}
+        temperature={temperature ?? 300}
+      />
+    {/if}
+  </div>
+{/if}
 
 <style>
   .convex-hull-4d {

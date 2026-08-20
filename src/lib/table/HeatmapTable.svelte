@@ -3489,11 +3489,6 @@
     padding-right: var(--heatmap-row-num-padding-right, 8px) !important;
   }
   .page-size-select {
-    padding: 2px 4px;
-    border: 1px solid light-dark(rgba(0, 0, 0, 0.2), rgba(255, 255, 255, 0.2));
-    border-radius: 3px;
-    background: light-dark(#fff, #333);
-    color: inherit;
     font-size: 0.9em;
   }
 </style>

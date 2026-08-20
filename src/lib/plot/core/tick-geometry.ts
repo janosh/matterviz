@@ -4,7 +4,8 @@
 type TickLabelId = string | number
 type TickLabelLine = string
 export type TickAxisSide = `x` | `x2` | `y` | `y2`
-export type TickLabelAnchor = `start` | `middle` | `end`
+const ANCHORS = [`start`, `middle`, `end`] as const
+export type TickLabelAnchor = (typeof ANCHORS)[number]
 export type TickLabelRotation = number
 type TickStaggerRow = number
 
@@ -94,8 +95,6 @@ export interface TickGeometryOptions {
   gap?: number
   edge_gap?: number
 }
-
-const ANCHORS: readonly TickLabelAnchor[] = [`start`, `middle`, `end`]
 
 const assert_finite = (value: number, name: string): void => {
   if (!Number.isFinite(value)) throw new TypeError(`${name} must be finite, got ${value}`)

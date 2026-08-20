@@ -10,6 +10,7 @@ import {
   generate_streaming_plot_series,
   get_frame_step_samples,
   get_frame_time_step,
+  prepare_trajectory_scatter_series,
   should_hide_plot,
 } from '$lib/trajectory/plotting'
 import type { PlotSeriesOptions } from '$lib/trajectory/plotting'
@@ -240,6 +241,73 @@ describe(`generate_plot_series`, () => {
     expect(call_count).toBe(11 + COMMON_TRAJECTORIES.multi_property.length)
   })
 
+  it(`renders long eager data as a smoothed trend over a faint peak-preserving trace`, () => {
+    const frames = Array.from({ length: 24_001 }, (_unused, frame_number) => ({
+      energy:
+        frame_number === 12_000
+          ? 100
+          : frame_number === 12_001
+            ? Infinity
+            : Math.sin(frame_number),
+    }))
+    const raw_series = generate_plot_series(create_trajectory(frames), test_extractor)
+    expect(raw_series[0].y).toHaveLength(24_001)
+    expect(raw_series[0].line_underlays).toBeUndefined()
+
+    const [smoothed] = prepare_trajectory_scatter_series(raw_series, 500)
+    const underlay = smoothed.line_underlays?.[0]
+    const raw_y = smoothed.raw_y
+    if (!underlay || !raw_y) throw new Error(`Expected aligned raw trajectory data`)
+
+    expect([smoothed.x.length, raw_y.length, underlay.x.length]).toEqual([500, 500, 500])
+    expect(smoothed.x).toEqual(underlay.x)
+    expect(raw_y).toEqual(underlay.y)
+    expect(Math.max(...smoothed.y)).toBeLessThan(20)
+    expect(Math.max(...underlay.y)).toBe(100)
+    expect(raw_y).toEqual(smoothed.x.map((x) => raw_series[0].y[x]))
+
+    const [resampled] = prepare_trajectory_scatter_series([smoothed], 250)
+    const resampled_underlay = resampled.line_underlays?.[0]
+    if (!resampled_underlay || !resampled.raw_y) {
+      throw new Error(`Expected resampled raw trajectory data`)
+    }
+    expect(resampled.raw_y).toEqual(resampled_underlay.y)
+    expect(Math.max(...resampled_underlay.y)).toBe(100)
+
+    const duplicate_x = {
+      x: [0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5],
+      y: [0, 20, -5, 9, 2, 50, -10, 7, 3, 40, -1, 11],
+    }
+    const [once_sampled] = prepare_trajectory_scatter_series([duplicate_x], 8)
+    const [twice_sampled] = prepare_trajectory_scatter_series([once_sampled], 4)
+    expect({ x: twice_sampled.x, raw_y: twice_sampled.raw_y }).toEqual({
+      x: [0, 2, 3, 5],
+      raw_y: [0, 50, -10, 11],
+    })
+
+    const large_values = Array(10_000).fill(1e306)
+    const [large_smoothed] = prepare_trajectory_scatter_series(
+      [{ x: large_values.map((_value, idx) => idx), y: large_values }],
+      64,
+    )
+    expect(large_smoothed.y).toEqual(Array(64).fill(1e306))
+  })
+
+  it.each([Number.NaN, Number.POSITIVE_INFINITY, 1, 0, -1])(
+    `rejects an invalid scatter point budget of %s`,
+    (max_points) => {
+      expect(() => prepare_trajectory_scatter_series([], max_points)).toThrow(
+        `max_points must be finite and at least 2`,
+      )
+    },
+  )
+
+  it(`rejects misaligned raw values before the short-series early return`, () => {
+    expect(() =>
+      prepare_trajectory_scatter_series([{ x: [0, 1], y: [2, 3], raw_y: [2] }], 100),
+    ).toThrow(`aligned arrays`)
+  })
+
   it.each([
     { name: `empty trajectory`, frames: [], expected_length: 0 },
     { name: `single frame`, frames: [{ energy: -10.0 }], expected_length: 0 },
@@ -445,7 +513,7 @@ describe(`streaming visibility characterization`, () => {
   })
 
   it.each([`energy`, `total_energy`, `potential_energy`])(
-    `bucket-averages long noisy %s series instead of drawing an extrema wall`,
+    `renders long noisy %s as a smoothed trend over a faint peak-preserving trace`,
     (energy_key) => {
       const energy_metadata = Array.from({ length: 24_001 }, (_unused, frame_number) => ({
         frame_number,
@@ -455,17 +523,23 @@ describe(`streaming visibility characterization`, () => {
         },
       }))
 
-      const [energy] = generate_streaming_plot_series(energy_metadata, {
+      const raw_series = generate_streaming_plot_series(energy_metadata, {
         property_config,
-        max_points: 64,
       })
-      expect(energy.x).toHaveLength(64)
-      expect([energy.x[0], energy.x.at(-1)]).toEqual([0, 24_000])
-      expect(Math.max(...energy.y)).toBeLessThan(2)
-      expect(energy.y.slice(1, -1).reduce((sum, value) => sum + value, 0) / 62).toBeCloseTo(
-        0,
-        1,
-      )
+      const [smoothed] = prepare_trajectory_scatter_series(raw_series, 64)
+      const underlay = smoothed.line_underlays?.[0]
+      if (!underlay) throw new Error(`Expected a raw line underlay`)
+      expect([smoothed.x.length, underlay.x.length]).toEqual([64, 64])
+      expect([smoothed.x[0], smoothed.x.at(-1)]).toEqual([0, 24_000])
+      expect([underlay.x[0], underlay.x.at(-1)]).toEqual([0, 24_000])
+      expect(Math.max(...smoothed.y)).toBeLessThan(2)
+      expect(Math.max(...underlay.y)).toBe(100)
+      expect(smoothed.line_style).toMatchObject({ stroke_width: 2.5, curve: `monotone` })
+      expect(underlay.line_style).toEqual({
+        stroke: `color-mix(in srgb, #63b3ed 18%, transparent)`,
+        stroke_width: 1,
+        curve: `linear`,
+      })
     },
   )
 })

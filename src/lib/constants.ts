@@ -32,6 +32,18 @@ export const FPS_STEP = 0.1
 // export helpers themselves — it was previously written out as a literal in 11 files.
 export const DEFAULT_PNG_DPI = 150
 
+// Canonical element-color scheme names live in this dependency-free module because settings
+// and extension build scripts need the choices without loading the color tables themselves.
+export const ELEMENT_COLOR_SCHEME_NAMES = [
+  `Vesta`,
+  `Jmol`,
+  `Alloy`,
+  `Pastel`,
+  `Muted`,
+  `Dark Mode`,
+] as const
+export type ColorSchemeName = (typeof ELEMENT_COLOR_SCHEME_NAMES)[number]
+
 // === file type detection ===
 
 // compression formats and their file extensions

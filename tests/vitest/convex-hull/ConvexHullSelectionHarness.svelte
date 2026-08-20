@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ConvexHull2D, ConvexHull3D, ConvexHull4D } from '$lib/convex-hull'
+  import { ConvexHull, ConvexHull2D, ConvexHull3D, ConvexHull4D } from '$lib/convex-hull'
   import type { ConvexHullEntry, PhaseData } from '$lib/convex-hull'
 
   const elements_by_dim = {
@@ -13,12 +13,16 @@
     dim,
     include_element_refs = true,
     allow_file_drop = true,
+    start_missing = false,
+    use_wrapper = false,
   }: {
     dim: keyof typeof elements_by_dim
     include_element_refs?: boolean
     allow_file_drop?: boolean
+    start_missing?: boolean
+    use_wrapper?: boolean
   } = $props()
-  let Hull = $derived(components[dim])
+  let Hull = $derived(use_wrapper ? ConvexHull : components[dim])
 
   const entries_for = (prefix: string): PhaseData[] => {
     const elements = elements_by_dim[dim]
@@ -34,7 +38,9 @@
     ]
   }
 
-  let entries = $state.raw(entries_for(`old`))
+  let entries = $derived<PhaseData[] | undefined>(
+    start_missing ? undefined : entries_for(`old`),
+  )
   let stable_entries = $state.raw<ConvexHullEntry[]>([])
   let unstable_entries = $state.raw<ConvexHullEntry[]>([])
   // Plain (deeply-proxied) $state, matching how the demo binds selected_entry: the
@@ -53,6 +59,9 @@
 >
   Replace Entries
 </button>
+<button type="button" data-testid="clear-convex-entries" onclick={() => (entries = undefined)}>
+  Clear Entries
+</button>
 <button
   type="button"
   data-testid="refresh-convex-entries"
@@ -61,6 +70,8 @@
   Refresh Entries
 </button>
 <span data-testid="selected-entry">{selected_entry?.entry_id ?? `none`}</span>
+<span data-testid="stable-count">{stable_entries.length}</span>
+<span data-testid="unstable-count">{unstable_entries.length}</span>
 <button
   type="button"
   data-testid="select-entry"

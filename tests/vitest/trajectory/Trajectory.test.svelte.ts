@@ -137,6 +137,12 @@ const mount_traj = (props: Record<string, unknown>) => {
   onTestFinished(() => unmount(component).finally(() => target.remove()))
   return target
 }
+const next_animation_frame = (): Promise<number> => new Promise(requestAnimationFrame)
+const dispatch_mouse = (
+  target: EventTarget,
+  type: string,
+  init: MouseEventInit = {},
+): boolean => target.dispatchEvent(new MouseEvent(type, { bubbles: true, ...init }))
 const press_key = (target: Element, key: string, init: KeyboardEventInit = {}) => {
   const event = new KeyboardEvent(`keydown`, {
     key,
@@ -342,6 +348,77 @@ describe(`Trajectory`, () => {
     expect(plot.querySelector(`.pane-open`)).not.toBeNull()
   })
 
+  test(`histograms use one complete raw distribution for long trajectories`, async () => {
+    const on_bar_hover = vi.fn()
+    const values = Array.from({ length: 300 }, (_unused, frame_number) =>
+      frame_number === 150 ? 100 : Math.sin(frame_number),
+    )
+    const target = mount_traj({
+      trajectory: energy_traj(...values),
+      display_mode: `histogram`,
+      show_controls: false,
+      histogram_props: { bins: 20, show_legend: true, on_bar_hover },
+    })
+    await flush_render()
+    const plot = target.querySelector<HTMLElement>(`.histogram`)
+    if (!plot) throw new Error(`Trajectory histogram not found`)
+    await resize_element(plot, 600, 400)
+
+    expect(plot.querySelectorAll(`g.histogram-series`)).toHaveLength(1)
+    expect(plot.querySelectorAll(`.legend .legend-item`)).toHaveLength(1)
+    for (const bar of plot.querySelectorAll(`g.histogram-series path[role="button"]`)) {
+      bar.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
+    }
+    expect(
+      on_bar_hover.mock.calls.reduce((total, [hovered]) => total + hovered.count, 0),
+    ).toBe(values.length)
+  })
+
+  test.each([
+    { name: `finite`, raw_value: 100, expected_raw: `100`, expected_smoothed: `9.09` },
+    { name: `NaN`, raw_value: NaN, expected_raw: `NaN`, expected_smoothed: `0` },
+    {
+      name: `infinite`,
+      raw_value: Infinity,
+      expected_raw: `Infinity`,
+      expected_smoothed: `0`,
+    },
+  ])(
+    `labels $name raw and smoothed values in long-trajectory tooltips`,
+    async ({ raw_value, expected_raw, expected_smoothed }) => {
+      mount_traj({
+        trajectory: energy_traj(
+          raw_value,
+          ...Array<number>(500).fill(0),
+          1,
+          ...Array<number>(499).fill(0),
+        ),
+        display_mode: `scatter`,
+        show_controls: false,
+      })
+      await flush_render()
+      const plot = doc_query(`.scatter`)
+      const svg = doc_query<SVGSVGElement>(`.scatter svg[role="application"]`)
+      const clip_rect = doc_query<SVGRectElement>(`.scatter defs clipPath rect`)
+      await resize_element(plot, 600, 400)
+      Object.defineProperty(svg, `getBoundingClientRect`, {
+        value: () => DOMRect.fromRect({ width: 600, height: 400 }),
+      })
+      const client_x = Number(clip_rect.getAttribute(`x`))
+      const client_y = Number(clip_rect.getAttribute(`y`))
+      dispatch_mouse(svg, `mousemove`, { clientX: client_x, clientY: client_y })
+      await next_animation_frame()
+      await tick()
+
+      const tooltip = plot.querySelector<HTMLElement>(`.plot-tooltip`)
+      const raw_annotation = tooltip?.querySelector<HTMLElement>(`small`)
+      expect(tooltip?.querySelectorAll(`br`)).toHaveLength(1)
+      expect(tooltip?.textContent).toContain(`Energy (eV): ${expected_smoothed}`)
+      expect(raw_annotation?.textContent?.trim()).toBe(`(raw: ${expected_raw})`)
+      expect(raw_annotation?.style.opacity).toBe(`0.65`)
+    },
+  )
+
   test.each([
     [`scatter`, `.scatter`],
     [`histogram`, `.histogram`],
@@ -391,19 +468,16 @@ describe(`Trajectory`, () => {
 
     const far_y = marker_y < 150 ? 290 : 10
     const plot_svg = plot.querySelector(`svg[role="application"]`)
+    if (!plot_svg) throw new Error(`Trajectory scatter plot SVG not found`)
     const dispatch_plot_event = (type: `click` | `mousemove`) =>
-      plot_svg?.dispatchEvent(
-        new MouseEvent(type, {
-          bubbles: true,
-          clientX: marker_x,
-          clientY: far_y,
-        }),
-      )
+      dispatch_mouse(plot_svg, type, { clientX: marker_x, clientY: far_y })
     dispatch_plot_event(`mousemove`)
     expect(props.current_step_idx).toBe(0)
-    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    await next_animation_frame()
     await tick()
-    expect(plot.querySelector(`.plot-tooltip`)?.textContent).toContain(`Energy`)
+    const tooltip_text = plot.querySelector(`.plot-tooltip`)?.textContent
+    expect(tooltip_text).toContain(`Energy`)
+    expect(tooltip_text).not.toMatch(/Raw|Smoothed/)
 
     dispatch_plot_event(`click`)
     flushSync()
@@ -930,7 +1004,7 @@ describe(`Trajectory`, () => {
     }
     flushSync()
     expect(step_events).toHaveLength(events_before_scrub)
-    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    await next_animation_frame()
     expect(step_events.at(-1)).toMatchObject({
       step_idx: 1,
       frame_count: 3,
@@ -1031,7 +1105,7 @@ describe(`Trajectory`, () => {
   test(`spectroscopy replaces the plot and stays mounted while closed`, async () => {
     const props: Record<string, unknown> = $state({
       trajectory: energy_traj(-1.5, -2.5),
-      show_controls: `always` as const,
+      show_controls: `hover` as const,
       spectroscopy_pane_open: false,
     })
     const target = mount_traj(props)
@@ -1056,6 +1130,9 @@ describe(`Trajectory`, () => {
     expect(target.querySelector(`.explorer-controls`)).toBeNull()
     expect(target.querySelector(`.trajectory.spectroscopy-mode`)).not.toBeNull()
     expect(target.querySelector(`.trajectory.show-both-views`)).toBeNull()
+    expect(doc_query(`.content-area`).style.getPropertyValue(`--viewer-buttons-top`)).toMatch(
+      /^calc\(.+\)$/,
+    )
 
     doc_query(`.analysis-button`).click()
     await tick()

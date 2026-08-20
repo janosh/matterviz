@@ -4,7 +4,7 @@
 // live in ./data-cleaning-signal and are re-exported here so the public API is unchanged.
 
 import type { Vec2 } from '$lib/math'
-import type { DataSeries } from '$lib/plot/core/types'
+import { assert_series_lengths, type DataSeries } from '$lib/plot/core/types'
 import { apply_gaussian_smearing } from '$lib/spectral/helpers'
 import {
   detect_instability,
@@ -20,8 +20,6 @@ import type {
 
 export * from '$lib/plot/core/data-cleaning-signal'
 
-// --- Data Cleaning Types ---
-
 // How to handle invalid values (NaN, Infinity)
 export type InvalidValueMode = `remove` | `propagate` | `interpolate`
 
@@ -35,7 +33,6 @@ export interface PhysicalBounds {
   mode?: `clamp` | `filter` | `null` // How to handle violations
 }
 
-// Main cleaning configuration
 export interface CleaningConfig {
   // Oscillation detection
   oscillation_threshold?: number // Combined score threshold (default: 3.0)
@@ -55,7 +52,6 @@ export interface CleaningConfig {
   in_place?: boolean // Mutate input arrays (default: true)
 }
 
-// Quality report from cleaning operation
 export interface CleaningQuality {
   points_removed: number
   invalid_values_found: number // NaN/Infinity count
@@ -67,33 +63,37 @@ export interface CleaningQuality {
   truncated_at_x?: number // x value if hard_cut mode
 }
 
-// Result of a cleaning operation
 export interface CleaningResult<T = DataSeries> {
   series: T // Cleaned data (same ref if in_place)
   quality: CleaningQuality
 }
 
-// Apply smoothing based on config
+const create_cleaning_quality = (
+  points_removed = 0,
+  invalid_values_found = 0,
+): CleaningQuality => ({
+  points_removed,
+  invalid_values_found,
+  oscillation_detected: false,
+  bounds_violations: 0,
+})
+
 function apply_smoothing(
   x_values: number[],
   y_values: number[],
   config: SmoothingConfig,
 ): number[] {
-  if (config.type === `moving_avg`) {
-    return smooth_moving_average(y_values, config.window)
-  } else if (config.type === `savgol`) {
+  if (config.type === `moving_avg`) return smooth_moving_average(y_values, config.window)
+  if (config.type === `savgol`) {
     // pass polynomial_order through: when it's undefined, smooth_savitzky_golay's
     // default parameter applies (JS defaults also kick in for an explicit undefined)
     return smooth_savitzky_golay(y_values, config.window, config.polynomial_order)
-  } else if (config.type === `gaussian`) {
-    return apply_gaussian_smearing(x_values, y_values, config.sigma)
   }
-  return y_values
+  return config.type === `gaussian`
+    ? apply_gaussian_smearing(x_values, y_values, config.sigma)
+    : y_values
 }
 
-// --- Helper Functions ---
-
-// Handle NaN/Infinity based on mode
 export function handle_invalid_values(
   values: number[],
   mode: InvalidValueMode,
@@ -101,27 +101,18 @@ export function handle_invalid_values(
   const removed_indices: number[] = []
   let invalid_count = 0
 
-  if (mode === `propagate`) {
-    for (const val of values) {
-      if (!Number.isFinite(val)) invalid_count++
-    }
-    return { cleaned: [...values], removed_indices: [], invalid_count }
-  }
-
-  if (mode === `remove`) {
+  if (mode === `propagate` || mode === `remove`) {
     const cleaned: number[] = []
     for (let idx = 0; idx < values.length; idx++) {
-      if (Number.isFinite(values[idx])) {
-        cleaned.push(values[idx])
-      } else {
-        removed_indices.push(idx)
-        invalid_count++
-      }
+      const value = values[idx]
+      const is_valid = Number.isFinite(value)
+      if (!is_valid) invalid_count++
+      if (is_valid || mode === `propagate`) cleaned.push(value)
+      else removed_indices.push(idx)
     }
     return { cleaned, removed_indices, invalid_count }
   }
 
-  // Interpolate mode
   const cleaned = [...values]
   for (let idx = 0; idx < cleaned.length; idx++) {
     if (!Number.isFinite(cleaned[idx])) {
@@ -152,7 +143,6 @@ export function handle_invalid_values(
   return { cleaned, removed_indices: [], invalid_count }
 }
 
-// Apply physical bounds
 export function apply_bounds(
   x_values: readonly number[],
   y_values: number[],
@@ -190,31 +180,36 @@ export function apply_bounds(
   return { y: result, violations, filtered_indices }
 }
 
-// Sync metadata arrays with filtered data
-export function sync_metadata<M>(
-  metadata: M[] | M | undefined,
-  kept_indices: number[],
-): M[] | M | undefined {
-  if (metadata === undefined) return undefined
-  if (!Array.isArray(metadata)) return metadata // Scalar metadata unchanged
-
-  return kept_indices.map((idx) => metadata[idx])
-}
-
-// Filter arrays by kept indices
 const filter_by_indices = <T>(arr: readonly T[], kept_indices: number[]): T[] =>
   kept_indices.map((idx) => arr[idx])
 
-// Resolve static or x-dependent min/max bounds at a given x value
-function resolve_physical_bounds(
+export const sync_metadata = <M>(
+  metadata: M[] | M | undefined,
+  kept_indices: number[],
+): M[] | M | undefined =>
+  Array.isArray(metadata) ? filter_by_indices(metadata, kept_indices) : metadata
+
+const index_range = (length: number): number[] => Array.from({ length }, (_, idx) => idx)
+
+const finite_aligned_indices = (
+  arrays: readonly (readonly number[])[],
+  length: number,
+): number[] =>
+  index_range(length).filter((idx) => arrays.every((arr) => Number.isFinite(arr[idx])))
+
+const count_invalid = (values: readonly number[], length: number): number => {
+  let count = 0
+  for (let idx = 0; idx < length; idx++) if (!Number.isFinite(values[idx])) count++
+  return count
+}
+
+const resolve_physical_bounds = (
   x_val: number,
   bounds: PhysicalBounds,
-): { min: number | undefined; max: number | undefined } {
-  return {
-    min: typeof bounds.min === `function` ? bounds.min(x_val) : bounds.min,
-    max: typeof bounds.max === `function` ? bounds.max(x_val) : bounds.max,
-  }
-}
+): { min: number | undefined; max: number | undefined } => ({
+  min: typeof bounds.min === `function` ? bounds.min(x_val) : bounds.min,
+  max: typeof bounds.max === `function` ? bounds.max(x_val) : bounds.max,
+})
 
 // Check if value is within bounds (static or x-dependent).
 // NB: NaN values compare false on both checks and therefore count as in-bounds.
@@ -225,19 +220,16 @@ function is_in_bounds(val: number, x_val: number, bounds: PhysicalBounds): boole
   return true
 }
 
-// Compute kept indices by excluding removed indices
 function kept_indices_excluding(length: number, removed: number[]): number[] {
   const removed_set = new Set(removed)
-  return Array.from({ length }, (_, idx) => idx).filter((idx) => !removed_set.has(idx))
+  return index_range(length).filter((idx) => !removed_set.has(idx))
 }
 
-// --- Main API ---
-
-// Clean a single series - main entry point
 export function clean_series<T extends DataSeries>(
   series: T,
   config: CleaningConfig = {},
 ): CleaningResult<T> {
+  assert_series_lengths(series)
   const in_place = config.in_place ?? true
   const invalid_mode = config.invalid_values ?? `remove`
   const truncation_mode = config.truncation_mode ?? `mark_unstable`
@@ -245,30 +237,23 @@ export function clean_series<T extends DataSeries>(
   // Always work with copies initially
   let x_arr = [...series.x]
   let y_arr = [...series.y]
+  let raw_y = series.raw_y ? [...series.raw_y] : undefined
   let metadata = series.metadata
   let color_values = series.color_values ? [...series.color_values] : undefined
   let size_values = series.size_values ? [...series.size_values] : undefined
 
-  const quality: CleaningQuality = {
-    points_removed: 0,
-    invalid_values_found: 0,
-    oscillation_detected: false,
-    bounds_violations: 0,
-  }
+  const quality = create_cleaning_quality()
 
-  // Helper to apply filtering to all arrays
   const apply_filter = (kept: number[], removed_count: number) => {
     x_arr = filter_by_indices(x_arr, kept)
     y_arr = filter_by_indices(y_arr, kept)
-    if (Array.isArray(metadata)) {
-      metadata = filter_by_indices(metadata, kept)
-    }
+    if (raw_y) raw_y = filter_by_indices(raw_y, kept)
+    metadata = sync_metadata(metadata, kept)
     if (color_values) color_values = filter_by_indices(color_values, kept)
     if (size_values) size_values = filter_by_indices(size_values, kept)
     quality.points_removed += removed_count
   }
 
-  // Step 1: Handle invalid values
   const invalid_result = handle_invalid_values(y_arr, invalid_mode)
   quality.invalid_values_found = invalid_result.invalid_count
 
@@ -279,7 +264,6 @@ export function clean_series<T extends DataSeries>(
     y_arr = invalid_result.cleaned
   }
 
-  // Step 2: Apply physical bounds
   if (config.bounds) {
     const bounds_result = apply_bounds(x_arr, y_arr, config.bounds)
     y_arr = bounds_result.y
@@ -291,7 +275,6 @@ export function clean_series<T extends DataSeries>(
     }
   }
 
-  // Step 3: Remove local outliers (if configured)
   if (config.local_outliers) {
     const outlier_result = remove_local_outliers(y_arr, config.local_outliers)
     quality.outliers_removed = outlier_result.removed_indices.length
@@ -301,19 +284,15 @@ export function clean_series<T extends DataSeries>(
     }
   }
 
-  // Step 4: Apply smoothing
-  if (config.smooth) {
-    y_arr = apply_smoothing(x_arr, y_arr, config.smooth)
-  }
+  if (config.smooth) y_arr = apply_smoothing(x_arr, y_arr, config.smooth)
 
-  // Step 5: Detect instability
   const instability = detect_instability(x_arr, y_arr, config)
   quality.oscillation_detected = instability.detected
   quality.oscillation_score = instability.combined_score
 
   if (instability.detected && instability.onset_index >= 0) {
     if (truncation_mode === `hard_cut`) {
-      const kept = Array.from({ length: instability.onset_index }, (_, idx) => idx)
+      const kept = index_range(instability.onset_index)
       quality.truncated_at_x = instability.onset_x
       apply_filter(kept, x_arr.length - instability.onset_index)
     } else {
@@ -321,10 +300,10 @@ export function clean_series<T extends DataSeries>(
     }
   }
 
-  // Build result series
   const result_series = in_place ? series : { ...series }
   result_series.x = x_arr
   result_series.y = y_arr
+  if (raw_y) result_series.raw_y = raw_y
   if (metadata !== undefined) result_series.metadata = metadata
   if (color_values) result_series.color_values = color_values
   if (size_values) result_series.size_values = size_values
@@ -338,65 +317,33 @@ export function clean_multi_series(
   y_arrays: number[][],
   config: CleaningConfig = {},
 ): { x: number[]; cleaned_y: number[][]; quality: CleaningQuality[] } {
-  if (y_arrays.length === 0) {
-    return { x: [...x_values], cleaned_y: [], quality: [] }
-  }
-
   const invalid_mode = config.invalid_values ?? `remove`
-  const length = Math.min(x_values.length, ...y_arrays.map((arr) => arr.length))
   const { bounds, smooth } = config
-
-  // Find indices valid across ALL y series (remove mode filters invalid values)
-  let kept_indices = Array.from({ length }, (_, idx) => idx)
-  if (invalid_mode === `remove`) {
+  const length = Math.min(x_values.length, ...y_arrays.map((array) => array.length))
+  let kept_indices =
+    invalid_mode === `remove` ? finite_aligned_indices(y_arrays, length) : index_range(length)
+  if (bounds?.mode === `filter`) {
     kept_indices = kept_indices.filter((idx) =>
-      y_arrays.every((y_arr) => Number.isFinite(y_arr[idx])),
+      y_arrays.every((array) => is_in_bounds(array[idx], x_values[idx], bounds)),
     )
   }
 
-  // Apply bounds filter across all series
-  if (bounds?.mode === `filter`) {
-    kept_indices = kept_indices.filter((idx) => {
-      const x_val = x_values[idx]
-      return y_arrays.every((y_arr) => is_in_bounds(y_arr[idx], x_val, bounds))
-    })
-  }
-
-  const filtered_x = kept_indices.map((idx) => x_values[idx])
-  const cleaned_y: number[][] = []
-  const quality_reports: CleaningQuality[] = []
-
-  for (const y_arr of y_arrays) {
-    let filtered_y = kept_indices.map((idx) => y_arr[idx])
-    // Count invalid values only in aligned prefix (not beyond length)
-    let invalid_count = 0
-    for (let idx = 0; idx < length; idx++) {
-      if (!Number.isFinite(y_arr[idx])) invalid_count++
-    }
-    const quality: CleaningQuality = {
-      points_removed: length - kept_indices.length,
-      invalid_values_found: invalid_count,
-      oscillation_detected: false,
-      bounds_violations: 0,
-    }
-
-    if (invalid_mode === `interpolate`) {
-      filtered_y = handle_invalid_values(filtered_y, `interpolate`).cleaned
-    }
+  const x = filter_by_indices(x_values, kept_indices)
+  const quality = y_arrays.map((array) =>
+    create_cleaning_quality(length - kept_indices.length, count_invalid(array, length)),
+  )
+  const cleaned_y = y_arrays.map((array, array_idx) => {
+    let cleaned = filter_by_indices(array, kept_indices)
+    if (invalid_mode === `interpolate`)
+      cleaned = handle_invalid_values(cleaned, `interpolate`).cleaned
     if (bounds && bounds.mode !== `filter`) {
-      const result = apply_bounds(filtered_x, filtered_y, bounds)
-      filtered_y = result.y
-      quality.bounds_violations = result.violations
+      const result = apply_bounds(x, cleaned, bounds)
+      cleaned = result.y
+      quality[array_idx].bounds_violations = result.violations
     }
-    if (smooth) {
-      filtered_y = apply_smoothing(filtered_x, filtered_y, smooth)
-    }
-
-    cleaned_y.push(filtered_y)
-    quality_reports.push(quality)
-  }
-
-  return { x: filtered_x, cleaned_y, quality: quality_reports }
+    return smooth ? apply_smoothing(x, cleaned, smooth) : cleaned
+  })
+  return { x, cleaned_y, quality }
 }
 
 // Clean correlated x/y/z for 3D data
@@ -410,21 +357,17 @@ export function clean_xyz(
   const invalid_mode = config.invalid_values ?? `remove`
   const length = Math.min(x_values.length, y_values.length, z_values.length)
 
-  const all_arrays = [x_values, y_values, z_values] as const
   const { bounds, smooth } = config
 
-  // Count invalid values across all arrays
+  const kept_indices: number[] = []
   let invalid_count = 0
   for (let idx = 0; idx < length; idx++) {
-    if (!all_arrays.every((arr) => Number.isFinite(arr[idx]))) invalid_count++
-  }
-
-  // Find indices where ALL values are valid (remove mode filters)
-  let kept_indices = Array.from({ length }, (_, idx) => idx)
-  if (invalid_mode === `remove`) {
-    kept_indices = kept_indices.filter((idx) =>
-      all_arrays.every((arr) => Number.isFinite(arr[idx])),
-    )
+    const x_is_valid = Number.isFinite(x_values[idx])
+    const y_is_valid = Number.isFinite(y_values[idx])
+    const z_is_valid = Number.isFinite(z_values[idx])
+    invalid_count += Number(!x_is_valid) + Number(!y_is_valid) + Number(!z_is_valid)
+    const is_valid = x_is_valid && y_is_valid && z_is_valid
+    if (is_valid || invalid_mode !== `remove`) kept_indices.push(idx)
   }
 
   let filtered = {
@@ -433,12 +376,7 @@ export function clean_xyz(
     z: kept_indices.map((idx) => z_values[idx]),
   }
 
-  const quality: CleaningQuality = {
-    points_removed: length - kept_indices.length,
-    invalid_values_found: invalid_count,
-    oscillation_detected: false,
-    bounds_violations: 0,
-  }
+  const quality = create_cleaning_quality(length - kept_indices.length, invalid_count)
 
   if (invalid_mode === `interpolate`) {
     filtered.x = handle_invalid_values(filtered.x, `interpolate`).cleaned
@@ -483,70 +421,32 @@ export function clean_trajectory_props(
   config: CleaningConfig & { independent_axis?: string } = {},
 ): { props: Record<string, number[]>; quality: Record<string, CleaningQuality> } {
   const entries = Object.entries(props)
-  if (entries.length === 0) {
-    return { props: {}, quality: {} }
-  }
+  if (entries.length === 0) return { props: {}, quality: {} }
 
-  const independent_axis = config.independent_axis ?? `Step`
-  const invalid_mode = config.invalid_values ?? `remove`
-  const { smooth } = config
-  const length = Math.min(...entries.map(([, arr]) => arr.length))
-
-  // Use existing or generate independent axis
-  const x_values = props[independent_axis] ?? Array.from({ length }, (_, idx) => idx)
-
-  // Count invalid values per property (only within aligned prefix)
-  const invalid_counts: Record<string, number> = Object.fromEntries(
-    entries.map(([key, arr]) => {
-      let count = 0
-      for (let idx = 0; idx < length; idx++) {
-        if (!Number.isFinite(arr[idx])) count++
-      }
-      return [key, count]
-    }),
+  const { independent_axis = `Step`, invalid_values, smooth } = config
+  const property_arrays = entries.map(([, values]) => values)
+  const length = Math.min(...property_arrays.map((values) => values.length))
+  const result = clean_multi_series(
+    props[independent_axis] ?? index_range(length),
+    property_arrays,
+    { invalid_values },
   )
-
-  // Find indices valid across ALL properties (remove mode filters)
-  let kept_indices = Array.from({ length }, (_, idx) => idx)
-  if (invalid_mode === `remove`) {
-    kept_indices = kept_indices.filter((idx) =>
-      entries.every(([, arr]) => Number.isFinite(arr[idx])),
-    )
-  }
-
-  const filtered_x = kept_indices.map((idx) => x_values[idx])
   const result_props: Record<string, number[]> = {}
   const quality_reports: Record<string, CleaningQuality> = {}
 
-  for (const [key, arr] of entries) {
-    let filtered = kept_indices.map((idx) => arr[idx])
-    const quality: CleaningQuality = {
-      points_removed: length - kept_indices.length,
-      invalid_values_found: invalid_counts[key],
-      oscillation_detected: false,
-      bounds_violations: 0,
-    }
-
-    if (invalid_mode === `interpolate`) {
-      filtered = handle_invalid_values(filtered, `interpolate`).cleaned
-    }
-    if (smooth && key !== independent_axis) {
-      filtered = apply_smoothing(filtered_x, filtered, smooth)
-    }
-
-    result_props[key] = filtered
-    quality_reports[key] = quality
+  for (const [array_idx, [key]] of entries.entries()) {
+    const cleaned = result.cleaned_y[array_idx]
+    result_props[key] =
+      smooth && key !== independent_axis ? apply_smoothing(result.x, cleaned, smooth) : cleaned
+    quality_reports[key] = result.quality[array_idx]
   }
 
   // Add independent axis if not in original props
   if (!props[independent_axis]) {
-    result_props[independent_axis] = filtered_x
-    quality_reports[independent_axis] = {
-      points_removed: length - kept_indices.length,
-      invalid_values_found: 0,
-      oscillation_detected: false,
-      bounds_violations: 0,
-    }
+    result_props[independent_axis] = result.x
+    quality_reports[independent_axis] = create_cleaning_quality(
+      result.quality[0].points_removed,
+    )
   }
 
   return { props: result_props, quality: quality_reports }

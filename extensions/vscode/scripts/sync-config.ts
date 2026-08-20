@@ -28,6 +28,7 @@ const vscode_scalar_type = (value: unknown) =>
   typeof value === `boolean` || typeof value === `number` ? typeof value : `string`
 const vscode_setting_type = (value: unknown) =>
   Array.isArray(value) ? `array` : vscode_scalar_type(value)
+const is_setting_type = (value: object): value is SettingType => `value` in value
 
 const case_variants = (stems: readonly string[]): string[] =>
   stems.flatMap((stem) => [stem.toUpperCase(), stem])
@@ -66,12 +67,12 @@ function sync_package_config(): void {
 
   const vscode_config: Record<string, unknown> = {}
 
-  function process_setting_schema(schema: SettingType, key_path: string): void {
+  function process_setting_schema(schema: unknown, key_path: string): void {
     if (!schema || typeof schema !== `object`) return
-    if (!(`value` in schema)) {
+    if (!is_setting_type(schema)) {
       for (const [key, value] of Object.entries(schema)) {
         const nested_key = key_path ? `${key_path}.${key}` : key
-        process_setting_schema(value as SettingType, nested_key)
+        process_setting_schema(value, nested_key)
       }
       return
     }

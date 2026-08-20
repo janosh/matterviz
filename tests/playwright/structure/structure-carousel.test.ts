@@ -65,47 +65,56 @@ test(`carousel scrolls and fits vertical cards while tooltips cross horizontal c
   const tooltip = active_card.locator(`[role='tooltip']:has(.coordinates)`)
   const box = await active_canvas.boundingBox()
   if (!box) throw new Error(`Carousel canvas has no bounding box`)
-  for (const [x_fraction, y_fraction] of [
+  const hover_positions = [
     [0.7, 0.4],
     [0.6, 0.4],
     [0.5, 0.5],
     [0.4, 0.5],
     [0.7, 0.5],
-  ]) {
-    await active_canvas.hover({
-      force: true,
-      position: { x: box.width * x_fraction, y: box.height * y_fraction },
-    })
-    await page.waitForTimeout(50)
-    if (await tooltip.isVisible()) break
-  }
-  await expect(tooltip).toBeVisible()
-
-  expect(
-    await tooltip.evaluate((element) => {
-      const card = element.closest<HTMLElement>(`.structure-card`)
-      const viewport = element.closest(`.viewport-cell`)
-      const canvas_host = viewport?.querySelector(`canvas`)?.parentElement
-      if (!card || !viewport || !canvas_host)
-        throw new Error(`Missing tooltip layout ancestors`)
-      element.style.pointerEvents = `auto`
-      const tooltip_rect = element.getBoundingClientRect()
-      const card_rect = card.getBoundingClientRect()
-      const probe_x = card_rect.right + 8
-      const hit = document.elementFromPoint(probe_x, tooltip_rect.top + 8)
-      return {
-        portaled_to_viewport: element.parentElement?.parentElement?.parentElement === viewport,
-        canvas_overflow: getComputedStyle(canvas_host).overflow,
-        card_overflow: getComputedStyle(card).overflow,
-        crosses_card: tooltip_rect.right > probe_x,
-        visible_across_card: hit === element || element.contains(hit),
-      }
-    }),
-  ).toEqual({
+  ] as const
+  const expected_layout = {
     portaled_to_viewport: true,
     canvas_overflow: `hidden`,
     card_overflow: `visible`,
     crosses_card: true,
     visible_across_card: true,
-  })
+  }
+  await expect
+    .poll(
+      async () => {
+        for (const [x_fraction, y_fraction] of hover_positions) {
+          await active_canvas.hover({
+            force: true,
+            position: { x: box.width * x_fraction, y: box.height * y_fraction },
+          })
+          await page.waitForTimeout(50)
+          if (!(await tooltip.isVisible())) continue
+          const layout = await tooltip
+            .evaluate((element) => {
+              const card = element.closest<HTMLElement>(`.structure-card`)
+              const viewport = element.closest(`.viewport-cell`)
+              const canvas_host = viewport?.querySelector(`canvas`)?.parentElement
+              if (!card || !viewport || !canvas_host) return null
+              element.style.pointerEvents = `auto`
+              const tooltip_rect = element.getBoundingClientRect()
+              const card_rect = card.getBoundingClientRect()
+              const probe_x = card_rect.right + 8
+              const hit = document.elementFromPoint(probe_x, tooltip_rect.top + 8)
+              return {
+                portaled_to_viewport:
+                  element.parentElement?.parentElement?.parentElement === viewport,
+                canvas_overflow: getComputedStyle(canvas_host).overflow,
+                card_overflow: getComputedStyle(card).overflow,
+                crosses_card: tooltip_rect.right > probe_x,
+                visible_across_card: hit === element || element.contains(hit),
+              }
+            })
+            .catch(() => null)
+          if (layout) return layout
+        }
+        return null
+      },
+      { timeout: 30_000 },
+    )
+    .toEqual(expected_layout)
 })

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { DEFAULT_PNG_DPI } from '$lib/constants'
+  import EmptyState from '$lib/EmptyState.svelte'
   import { create_file_drop_handler } from '$lib/io/file-drop'
   import { format_num } from '$lib/labels'
   import { FullscreenButton } from '$lib/layout'
@@ -9,7 +10,7 @@
   import { constrain_tooltip_position } from '$lib/plot/core/layout'
   import { unique_id } from '$lib/plot/core/utils'
   import { scaleLinear } from 'd3-scale'
-  import type { ComponentProps, Snippet } from 'svelte'
+  import { type ComponentProps, type Snippet, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { build_diagram } from './build-diagram'
   import type { DiagramInput } from './diagram-input'
@@ -48,7 +49,7 @@
   } from './utils'
 
   let {
-    data,
+    data: data_prop,
     config = $bindable({}),
     on_phase_hover,
     fullscreen = $bindable(false),
@@ -77,7 +78,7 @@
     children,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
-    data: PhaseDiagramData
+    data?: PhaseDiagramData
     config?: Partial<PhaseDiagramConfig>
     // Hover callback
     on_phase_hover?: (info: PhaseHoverInfo | null) => void
@@ -117,6 +118,14 @@
     children?: Snippet<[{ width: number; height: number; fullscreen: boolean }]>
   } = $props()
 
+  // Keep calculations safe while the template renders the missing-data state.
+  const missing_data_placeholder: PhaseDiagramData = {
+    components: [``, ``],
+    temperature_range: [0, 1],
+    regions: [],
+    boundaries: [],
+  }
+
   // Shared icon/toggle styling for controls and export panes
   const pane_icon_style = `width: 14px; height: 14px`
   const pane_toggle_props = { style: `padding: 0` }
@@ -137,16 +146,9 @@
     }
   })
 
-  // Override from direct PhaseDiagramData edits in the editor pane
-  let data_override = $state<PhaseDiagramData | null>(null)
-
-  // Clear data_override when source data changes (e.g. new SVG dropped or data prop updated)
-  $effect(() => {
-    if (diagram_input || data) data_override = null
-  })
-
-  // Use editor override first (clears rebuilt_data path), then rebuilt, then data prop
-  const effective_data = $derived(data_override ?? rebuilt_data ?? data)
+  // Direct editor edits can override this value until either source changes.
+  let source_data = $derived(rebuilt_data ?? data_prop)
+  const effective_data = $derived(source_data ?? missing_data_placeholder)
 
   // Handle SVG file drop directly on the component. The shared handler reads the file,
   // expands dropped folders and serializes overlapping drops; only the SVG filter and the
@@ -188,12 +190,9 @@
   // Scales
   const x_scale = $derived(scaleLinear().domain(x_domain).range([left, right]))
 
-  // Temperature units (guard for initial render when data may be undefined)
-  const data_temp_unit = $derived<TempUnit>(
-    (effective_data?.temperature_unit ?? `K`) as TempUnit,
-  )
+  const data_temp_unit = $derived<TempUnit>(effective_data.temperature_unit ?? `K`)
   const temp_unit = $derived<TempUnit>(display_temp_unit ?? data_temp_unit)
-  const temp_range = $derived(effective_data?.temperature_range ?? [0, 1000])
+  const temp_range = $derived(effective_data.temperature_range)
 
   // Convert temperature range for display
   const display_temp_range = $derived<Vec2>([
@@ -218,7 +217,7 @@
 
   // Transform regions to SVG coordinates
   const transformed_regions = $derived(
-    (effective_data?.regions ?? []).map((region) => {
+    effective_data.regions.map((region) => {
       const svg_vertices = transform_vertices(region.vertices, x_scale, y_scale)
       const { width: box_width, height: box_height } = compute_bounding_box_2d(svg_vertices)
       const label_props = compute_label_properties(
@@ -247,7 +246,7 @@
 
   // Transform boundaries to SVG coordinates
   const transformed_boundaries = $derived(
-    (effective_data?.boundaries ?? []).map((boundary) => ({
+    effective_data.boundaries.map((boundary) => ({
       ...boundary,
       svg_path: generate_boundary_path(transform_vertices(boundary.points, x_scale, y_scale)),
     })),
@@ -255,7 +254,7 @@
 
   // Transform special points to SVG coordinates
   const transformed_special_points = $derived(
-    (effective_data?.special_points ?? []).map((point) => ({
+    (effective_data.special_points ?? []).map((point) => ({
       ...point,
       svg_x: x_scale(point.position[0]),
       svg_y: y_scale(point.position[1]),
@@ -273,6 +272,16 @@
     hovered_region = null
     on_phase_hover?.(null)
   }
+
+  // Hover and lock state describe the previous data, so drop them when the data changes
+  $effect(() => {
+    void source_data
+    untrack(() => {
+      if (!hover_info && !locked_hover_info && !hovered_region) return
+      locked_hover_info = null
+      clear_hover()
+    })
+  })
 
   // Handle click to lock/unlock tooltip
   function handle_click() {
@@ -360,7 +369,7 @@
     const svg_y = event.clientY - rect.top
 
     // Check if within plot area
-    if (svg_x < left || svg_x > right || svg_y < top || svg_y > bottom || !effective_data) {
+    if (svg_x < left || svg_x > right || svg_y < top || svg_y > bottom) {
       clear_hover()
       return
     }
@@ -422,13 +431,12 @@
     }
   })
 
-  // Component labels (guard for initial render when data may be undefined)
-  const component_a = $derived(effective_data?.components?.[0] ?? ``)
-  const component_b = $derived(effective_data?.components?.[1] ?? ``)
-  const comp_unit = $derived(effective_data?.composition_unit ?? `at%`)
+  const component_a = $derived(effective_data.components[0])
+  const component_b = $derived(effective_data.components[1])
+  const comp_unit = $derived(effective_data.composition_unit ?? `at%`)
 
   // Pseudo-binary support: format compound names with subscripts when enabled
-  const use_subscripts = $derived(effective_data?.pseudo_binary?.use_subscripts ?? true)
+  const use_subscripts = $derived(effective_data.pseudo_binary?.use_subscripts ?? true)
 
   // Formatted component labels for SVG axis labels (with tspan subscripts if compound)
   const component_a_svg = $derived(format_formula_svg(component_a, use_subscripts))
@@ -509,11 +517,18 @@
   bind:clientWidth={width}
   bind:clientHeight={height}
   role="img"
-  aria-label="{component_a}-{component_b} binary phase diagram"
+  aria-label={source_data === undefined
+    ? `Missing phase diagram data. Provide diagram data through the data prop.`
+    : `${component_a}-${component_b} binary phase diagram`}
   ondrop={handle_svg_drop}
   ondragover={(ev) => ev.preventDefault()}
 >
-  {#if width > 0 && height > 0}
+  {#if source_data === undefined}
+    <EmptyState role="status">
+      <h3>Missing phase diagram data</h3>
+      <p>Provide diagram data through the <code>data</code> prop.</p>
+    </EmptyState>
+  {:else if width > 0 && height > 0}
     <!-- Header controls -->
     <div class="header-controls">
       {#if show_controls}
@@ -551,7 +566,7 @@
         bind:editor_open
         bind:diagram_input
         data={effective_data}
-        ondata={(edited) => (data_override = edited)}
+        ondata={(edited) => (source_data = edited)}
         icon_style={pane_icon_style}
         toggle_props={pane_toggle_props}
       />
@@ -792,7 +807,7 @@
           font-size={merged_config.font_size + 2}
         >
           {@html sanitize_svg(
-            x_axis.label || effective_data?.x_axis_label || default_x_axis_label,
+            x_axis.label || effective_data.x_axis_label || default_x_axis_label,
           )}
         </text>
       </g>
@@ -831,7 +846,7 @@
           font-size={merged_config.font_size + 2}
         >
           {@html sanitize_svg(
-            y_axis.label || effective_data?.y_axis_label || `Temperature (${temp_unit})`,
+            y_axis.label || effective_data.y_axis_label || `Temperature (${temp_unit})`,
           )}
         </text>
       </g>
@@ -874,7 +889,7 @@
             composition_unit={comp_unit}
             {component_a}
             {component_b}
-            boundaries={effective_data?.boundaries ?? []}
+            boundaries={effective_data.boundaries}
             {lever_rule_mode}
             {use_subscripts}
             {tooltip}

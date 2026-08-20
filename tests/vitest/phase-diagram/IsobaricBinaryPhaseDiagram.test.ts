@@ -2,8 +2,9 @@ import { format_hover_info_text, IsobaricBinaryPhaseDiagram } from '$lib/phase-d
 import type { LeverRuleResult, PhaseDiagramData } from '$lib/phase-diagram/types'
 import { type ComponentProps, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { create_drop_event, mount_sized } from '../setup'
+import { create_drop_event, doc_query, mount_sized } from '../setup'
 import { create_hover_info } from './fixtures/test-data'
+import IsobaricBinaryPhaseDiagramHarness from './IsobaricBinaryPhaseDiagramHarness.svelte'
 
 // Simple eutectic-style system: Liquid on top, two-phase field below. With a 500x400
 // mount and default margins (l=60 r=25 t=25 b=50) the plot area spans x: [60, 475],
@@ -86,6 +87,58 @@ const hover_at = async (
 }
 
 describe(`IsobaricBinaryPhaseDiagram`, () => {
+  test(`recovers across missing, loaded, cleared, and reloaded data`, async () => {
+    const wrapper = await mount_sized(
+      IsobaricBinaryPhaseDiagramHarness,
+      { loaded_data: eutectic },
+      { selector: `.binary-phase-diagram`, width, height },
+    )
+    const click = async (test_id: string) => {
+      doc_query<HTMLButtonElement>(`[data-testid="${test_id}"]`).click()
+      await tick()
+    }
+
+    expect(wrapper.textContent).toContain(`Missing phase diagram data`)
+    expect(wrapper.textContent).toContain(`Provide diagram data through the data prop.`)
+    expect(wrapper.querySelector(`.empty-state`)?.getAttribute(`role`)).toBe(`status`)
+    expect(wrapper.getAttribute(`aria-label`)).toBe(
+      `Missing phase diagram data. Provide diagram data through the data prop.`,
+    )
+    expect(wrapper.querySelector(`svg`)).toBeNull()
+    await click(`load-phase-data`)
+    expect(wrapper.querySelector(`svg`)).not.toBeNull()
+
+    const component_value = Array.from(
+      document.querySelectorAll<HTMLElement>(`.json-value.string`),
+    ).find((element) => element.textContent?.trim() === `"Al"`)
+    if (!component_value) throw new Error(`Editable Al component value not found`)
+    component_value.dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
+    await tick()
+    const edit_input = doc_query<HTMLInputElement>(`.edit-input`)
+    edit_input.value = `Edited`
+    edit_input.dispatchEvent(new InputEvent(`input`, { bubbles: true }))
+    edit_input.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }))
+    await tick()
+    expect(wrapper.getAttribute(`aria-label`)).toBe(`Edited-Cu binary phase diagram`)
+
+    const svg = await hover_at(wrapper, 0.5, 750)
+    expect(doc_query(`[data-testid="hovered-region"]`).textContent).toBe(`liq`)
+    svg.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+    await tick()
+    expect(wrapper.querySelector(`.tooltip-container.locked`)).not.toBeNull()
+
+    await click(`clear-phase-data`)
+    expect(wrapper.textContent).toContain(`Missing phase diagram data`)
+    expect(wrapper.querySelector(`svg`)).toBeNull()
+    expect(doc_query(`[data-testid="hovered-region"]`).textContent).toBe(`none`)
+    await click(`load-phase-data`)
+    expect(wrapper.querySelector(`svg`)).not.toBeNull()
+    expect(wrapper.getAttribute(`aria-label`)).toBe(`Al-Cu binary phase diagram`)
+    expect(wrapper.querySelector(`.tooltip-container`)).toBeNull()
+    document.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape` }))
+    await tick()
+  })
+
   test(`renders regions, boundaries, labels, special points and axes`, async () => {
     const wrapper = await mount_diagram()
     expect(wrapper.querySelectorAll(`.phase-regions path`)).toHaveLength(2)

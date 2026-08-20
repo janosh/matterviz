@@ -399,6 +399,19 @@ describe(`smooth_moving_average`, () => {
   it(`handles NaN in window`, () => {
     expect(Number.isFinite(smooth_moving_average([1, 2, NaN, 4, 5], 3)[2])).toBe(true)
   })
+
+  it(`keeps finite local means finite when an unbounded prefix sum would overflow`, () => {
+    const values = Array(1000).fill(1e306)
+    expect(smooth_moving_average(values, 3)).toEqual(values)
+  })
+
+  it(`does not retain cancellation error after large values leave the window`, () => {
+    const values = [1e16, -1e16, 1e16, -1e16, 1, 2, 3, 4, 5]
+    expect(smooth_moving_average(values, 5).slice(6)).toEqual([3, 3.5, 4])
+
+    const separated_magnitudes = [1e100, 1e50, 1, -1e100, -1e50]
+    expect(smooth_moving_average(separated_magnitudes, 5)[2]).toBe(0.2)
+  })
 })
 
 describe(`smooth_savitzky_golay`, () => {
@@ -470,6 +483,12 @@ describe(`sync_metadata`, () => {
 })
 
 describe(`clean_series`, () => {
+  it(`rejects misaligned raw values before cleaning`, () => {
+    expect(() => clean_series({ id: `energy`, x: [0, 1], y: [2, 3], raw_y: [2] })).toThrow(
+      `aligned arrays`,
+    )
+  })
+
   it(`handles empty series`, () => {
     const result = clean_series({ x: [], y: [] })
     expect(result.series.x).toEqual([])
@@ -623,6 +642,7 @@ describe(`clean_series`, () => {
       {
         x,
         y,
+        raw_y: x.map((val) => val * 4),
         metadata: x.map((val) => ({ id: val })),
         color_values: x.map((val) => val * 2),
         size_values: x.map((val) => val * 3),
@@ -634,12 +654,14 @@ describe(`clean_series`, () => {
     )
     // All arrays should have same length
     expect(result.series.y).toHaveLength(result.series.x.length)
+    expect(result.series.raw_y).toHaveLength(result.series.x.length)
     expect((result.series.metadata as { id: number }[])?.length).toBe(result.series.x.length)
     expect(result.series.color_values?.length).toBe(result.series.x.length)
     expect(result.series.size_values?.length).toBe(result.series.x.length)
     // Metadata should not contain id=50 (the outlier)
     const ids = (result.series.metadata as { id: number }[]).map((meta) => meta.id)
     expect(ids).not.toContain(50)
+    expect(result.series.raw_y).not.toContain(200)
   })
 })
 
@@ -745,12 +767,16 @@ describe(`clean_multi_series`, () => {
 
 describe(`clean_xyz`, () => {
   it(`cleans 3D correlated data with interpolation`, () => {
-    const result = clean_xyz([0, 1, 2, 3, 4], [0, 1, 2, 3, 4], [0, NaN, 4, 6, 8], {
-      invalid_values: `interpolate`,
-    })
+    const result = clean_xyz(
+      [0, NaN, 2, 3, 4],
+      [0, Number.POSITIVE_INFINITY, 2, 3, 4],
+      [0, NaN, 4, 6, 8],
+      { invalid_values: `interpolate` },
+    )
     expect(result.x).toHaveLength(5)
     expect(result.y).toHaveLength(5)
     expect(result.z).toHaveLength(5)
+    expect(result.quality.invalid_values_found).toBe(3)
   })
 
   it.each([`x`, `y`, `z`] as const)(`respects primary_axis=%s option`, (axis) => {

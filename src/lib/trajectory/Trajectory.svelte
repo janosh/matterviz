@@ -90,6 +90,7 @@
     generate_streaming_plot_series,
     get_frame_step_samples,
     get_frame_time_step,
+    prepare_trajectory_scatter_series,
     should_hide_plot,
     X_QUANTITY_LABELS,
   } from './plotting'
@@ -882,11 +883,9 @@
     const keys_set = keys ? new SvelteSet(keys) : undefined
 
     if (traj?.plot_metadata) {
-      const width_point_limit = Math.floor(content_size.width / 2)
       plot_series = generate_streaming_plot_series(traj.plot_metadata, {
         property_config: config,
         default_visible_properties: keys_set,
-        max_points: Math.max(128, Math.min(1000, width_point_limit)),
         x_map: active_x_map,
       })
     } else if (traj) {
@@ -899,6 +898,10 @@
       plot_series = []
     }
   })
+  let scatter_point_limit = $derived(Math.max(128, Math.min(1000, content_size.width / 2)))
+  let scatter_series = $derived(
+    prepare_trajectory_scatter_series(plot_series, scatter_point_limit),
+  )
 
   // Update visible_properties binding when user toggles series visibility in legend
   $effect(() => {
@@ -2023,7 +2026,7 @@
           />
         {:else if display_mode === `scatter` || display_mode === `structure+scatter`}
           <ScatterPlot
-            series={plot_series}
+            series={scatter_series}
             {x_axis}
             {y_axis}
             {y2_axis}
@@ -2037,10 +2040,14 @@
             hover_config={trajectory_hover_config}
             legend={trajectory_scatter_legend}
           >
-            {#snippet tooltip({ x, y, metadata, label }: ScatterHandlerProps)}
-              {@const formatted_y = typeof y === `number` ? format_num(y) : y}
+            {#snippet tooltip({ x, y, raw_y, metadata, label }: ScatterHandlerProps)}
               {x_axis.label}: {format_num(x, `~g`)}<br />
-              {@html sanitize_html(metadata?.series_label || label || `Value`)}: {formatted_y}
+              {@html sanitize_html(metadata?.series_label || label || `Value`)}: {format_num(
+                y,
+              )}
+              {#if typeof raw_y === `number`}
+                <small style="opacity: 0.65">&nbsp;(raw: {format_num(raw_y)})</small>
+              {/if}
             {/snippet}
           </ScatterPlot>
         {:else if display_mode === `histogram` || display_mode === `structure+histogram`}

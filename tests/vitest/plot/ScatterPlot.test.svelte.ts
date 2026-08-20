@@ -40,6 +40,28 @@ const hover = async (element: Element): Promise<void> => {
 }
 const next_animation_frame = (): Promise<void> =>
   new Promise((resolve) => requestAnimationFrame(() => resolve()))
+const move_to_marker = async (
+  plot: HTMLElement,
+  marker_idx: number,
+  client_y?: number,
+): Promise<void> => {
+  const svg = plot.querySelector<SVGSVGElement>(`svg[role="application"]`)
+  const marker = plot.querySelectorAll<SVGPathElement>(`.marker`).item(marker_idx)
+  const transform = marker.parentElement?.getAttribute(`transform`) ?? ``
+  const match = /translate\((?<x>[-\d.]+) (?<y>[-\d.]+)\)/.exec(transform)
+  if (!svg || !match?.groups) throw new Error(`Expected marker ${marker_idx}`)
+  Object.defineProperty(svg, `getBoundingClientRect`, {
+    value: () => DOMRect.fromRect({ width: 500, height: 300 }),
+  })
+  svg.dispatchEvent(
+    new MouseEvent(`mousemove`, {
+      bubbles: true,
+      clientX: Number(match.groups.x),
+      clientY: client_y ?? Number(match.groups.y),
+    }),
+  )
+  await next_animation_frame()
+}
 const scatter_clip_rect = (element: ParentNode): Rect => {
   const rect = element.querySelector(`defs clipPath rect`)
   if (!rect) throw new Error(`Scatter clip rectangle not found`)
@@ -414,22 +436,59 @@ describe(`ScatterPlot`, () => {
       on_point_hover,
       legend: null,
     })
-    const svg = plot.querySelector<SVGSVGElement>(`svg[role="application"]`)
-    const marker = plot.querySelectorAll<SVGPathElement>(`.marker`).item(2)
-    const transform = marker.parentElement?.getAttribute(`transform`) ?? ``
-    const match = /translate\((?<x>[-\d.]+) (?<y>[-\d.]+)\)/.exec(transform)
-    if (!svg || !match?.groups) throw new Error(`expected the last duplicate-x marker`)
-    Object.defineProperty(svg, `getBoundingClientRect`, {
-      value: () => DOMRect.fromRect({ width: 500, height: 300 }),
+    await move_to_marker(plot, 2)
+    expect(on_point_hover).toHaveBeenCalledOnce()
+    expect(on_point_hover.mock.calls[0][0]).toMatchObject({ x: 1, y: 1 })
+  })
+
+  test(`line underlays stay out of legends, controls, and hover`, async () => {
+    const on_point_hover = vi.fn()
+    const plot = await mount_sized_scatter_plot({
+      series: [
+        {
+          id: `trend`,
+          x: [0, 1, 2],
+          y: [0, 1, 0],
+          label: `Energy`,
+          markers: `line+points`,
+          line_style: { stroke: `red`, stroke_width: 2 },
+          line_underlays: [
+            {
+              x: [0, 1, 2],
+              y: [100, 100, 100],
+              line_style: { stroke: `blue`, stroke_width: 1 },
+            },
+          ],
+        },
+      ],
+      x_axis: { range: [0, 2] },
+      hover_config: { mode: `x`, threshold_px: 5, show_tooltip: false },
+      point_tween: { duration: 0 },
+      on_point_hover,
+      show_legend: true,
+      controls_open: true,
     })
-    svg.dispatchEvent(
-      new MouseEvent(`mousemove`, {
-        bubbles: true,
-        clientX: Number(match.groups.x),
-        clientY: Number(match.groups.y),
-      }),
+
+    const lines = plot.querySelectorAll(`g[data-series-id="trend"] path[fill="none"]`)
+    expect(lines).toHaveLength(2)
+    expect(plot.querySelector(`.y-axis`)?.textContent).toContain(`100`)
+    expect(plot.querySelectorAll(`.legend .legend-item`)).toHaveLength(1)
+    expect(
+      [...plot.querySelectorAll(`label > span`)].some(
+        (element) => element.textContent === `Series`,
+      ),
+    ).toBe(false)
+
+    const line_width_input = doc_query(
+      `[data-key="line.width"] input[type="range"]`,
+      HTMLInputElement,
     )
-    await next_animation_frame()
+    line_width_input.value = `5`
+    line_width_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+    await tick()
+    expect([...lines].map((line) => line.getAttribute(`stroke-width`))).toEqual([`1`, `5`])
+
+    await move_to_marker(plot, 1)
     expect(on_point_hover).toHaveBeenCalledOnce()
     expect(on_point_hover.mock.calls[0][0]).toMatchObject({ x: 1, y: 1 })
   })
@@ -718,13 +777,13 @@ describe(`ScatterPlot`, () => {
       x_axis: { ticks: `month`, scale_type: `time` as const, format: `%b %Y` },
     },
   ])(`tick formatting`, async ({ x, x_axis, y_axis }) => {
-    const y = [12, 24, 36, 48, 60, 72]
+    const y = x.map((_value, idx) => 12 * (idx + 1))
     const plot = await mount_sized_scatter_plot({
       series: [{ x, y, point_style: { fill: `steelblue`, radius: 5 } }],
       x_axis,
       y_axis,
     })
-    expect(plot.querySelectorAll(`.marker`)).toHaveLength(6)
+    expect(plot.querySelectorAll(`.marker`)).toHaveLength(x.length)
     const x_tick_labels = [...plot.querySelectorAll(`.x-axis .tick text`)].map(
       (tick_label) => tick_label.textContent,
     )
@@ -810,7 +869,7 @@ describe(`ScatterPlot`, () => {
       },
       null,
       undefined,
-      { x: [10, 20, 30, 40, 50], y: [10, 20, 30] },
+      { x: [10, 20, 30, 40, 50], y: [10, 20, 30, NaN, NaN] },
       { x: [100, 200, 300], y: [10, 20, 30] },
     ] as DataSeries[]
     const invalid_plot = await mount_sized_scatter_plot({ series: invalid })

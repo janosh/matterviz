@@ -3,10 +3,8 @@ name: Tests
 on:
   pull_request:
     branches: [main]
-    paths-ignore: [extensions/dash/**]
   push:
     branches: [main]
-    paths-ignore: [extensions/dash/**]
   workflow_dispatch:
   workflow_call:
 

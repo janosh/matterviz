@@ -131,6 +131,21 @@ describe(`resolve_boundary_points`, () => {
     ])
   })
 
+  it.each([
+    [
+      { type: `series`, series_idx: 0 },
+      [{ id: `fill`, x: [0, 1], y: [2] }],
+      `Series "fill": aligned arrays must have equal lengths, got x=2, y=1`,
+    ],
+    [
+      { type: `data`, x: [0, 10], values: [1] },
+      series,
+      `Fill boundary: aligned arrays must have equal lengths, got x=2, values=1`,
+    ],
+  ] as const)(`rejects misaligned boundary %#`, (boundary, input_series, message) => {
+    expect(() => resolve_boundary_points(boundary, input_series, domains)).toThrow(message)
+  })
+
   // a series fill edge inherits the series' line_style.curve so it matches the rendered line
   it.each([
     [undefined, `monotoneX`], // no curve -> default

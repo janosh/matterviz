@@ -60,7 +60,7 @@ export interface BaseConvexHullProps<AnyDimEntry = PhaseData> extends Omit<
   HTMLAttributes<HTMLDivElement>,
   `entries` | `children`
 > {
-  entries: PhaseData[]
+  entries?: PhaseData[]
   controls?: Partial<ConvexHullControlsType>
   config?: Partial<ConvexHullConfig>
   // Controls visibility configuration.

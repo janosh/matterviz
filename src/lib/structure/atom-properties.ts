@@ -33,10 +33,6 @@ export type AtomColorConfig =
   | (AtomColorBase & { mode: `property`; property_key: string })
   | (AtomColorBase & { mode: `custom`; color_fn: AtomColorFn })
 
-// JSON-safe subset accepted from Dash. Runtime Svelte callers can still use custom
-// functions through AtomColorConfig, but serialized payloads cannot represent them.
-export type DashAtomColorConfig = Exclude<AtomColorConfig, { mode: `custom` }>
-
 export interface AtomPropertyColors {
   colors: string[] // Color for each site index
   values: (number | string)[] // Property value for each site index

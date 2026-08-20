@@ -584,12 +584,7 @@
 
   {#if show_controls}
     <SankeyControls
-      toggle_props={{
-        ...controls_toggle_props,
-        style: `--ctrl-btn-right: var(--fullscreen-btn-offset, 30px); ${
-          controls_toggle_props?.style ?? ``
-        }`,
-      }}
+      toggle_props={controls_toggle_props}
       pane_props={controls_pane_props}
       bind:show_controls
       bind:controls_open
@@ -609,6 +604,7 @@
 
 <style>
   .sankey {
+    --ctrl-btn-default-right: 30px;
     position: relative;
     width: var(--sankey-width, 100%);
     height: var(--sankey-height, auto);

@@ -1,5 +1,6 @@
 import { color as d3_color, rgb, type RGBColor } from 'd3-color'
 import * as d3_sc from 'd3-scale-chromatic'
+import type { ColorSchemeName } from '$lib/constants'
 import {
   COLOR_THEMES,
   get_system_mode,
@@ -18,6 +19,7 @@ import pastel_colors from './pastel-colors.json' with { type: 'json' }
 import vesta_colors from './vesta-colors.json' with { type: 'json' }
 
 export * from './backdrop.svelte'
+export { ELEMENT_COLOR_SCHEME_NAMES, type ColorSchemeName } from '$lib/constants'
 
 // Extract color scheme interpolate function names from d3-scale-chromatic
 // Color scale names are always the prefixed d3 export name (`interpolateViridis`), which
@@ -91,9 +93,7 @@ export const ELEMENT_COLOR_SCHEMES = {
   Pastel: pastel_hex,
   Muted: muted_hex,
   'Dark Mode': dark_mode_hex,
-} as const
-
-export type ColorSchemeName = keyof typeof ELEMENT_COLOR_SCHEMES
+} as const satisfies Record<ColorSchemeName, Record<string, string>>
 export const default_element_colors = { ...vesta_hex }
 
 // Detect if a value is a CSS color string. d3-color parses hex, rgb()/rgba(),

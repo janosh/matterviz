@@ -10,7 +10,7 @@ the widget's traitlet values as props. The build is a single self-contained ESM
 file (`build/matterviz.js`) plus its CSS (`build/matterviz.css`), with all
 dependencies (matterviz components, Svelte runtime, three.js, ...) inlined.
 
-This is a peer of `extensions/dash` and `extensions/vscode`: a framework adapter
+This is a peer of `extensions/vscode`: a framework adapter
 that wraps the MatterViz component library for a specific host runtime.
 
 ## Bundle size

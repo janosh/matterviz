@@ -10,7 +10,8 @@ import {
   axis_scale_types as get_axis_scale_types,
   group_axis_series,
 } from '$lib/plot/core/axis-assignment'
-import type { DataSeries } from '$lib/plot/core/types'
+import { smooth_moving_average } from '$lib/plot/core/data-cleaning-signal'
+import { assert_series_lengths, type DataSeries } from '$lib/plot/core/types'
 import type {
   TrajectoryDataExtractor,
   TrajectoryFrame,
@@ -75,7 +76,7 @@ export interface PlotSeriesOptions {
 // available), `step` the MD/ionic step recorded in the file, `time` that step scaled by
 // the file's timestep. Plotting a 500-step-interval dump against the frame index and
 // labelling it "Step" is the bug this type exists to prevent.
-export type TrajectoryXQuantity = `frame` | `step` | `time`
+export type TrajectoryXQuantity = keyof typeof X_QUANTITY_LABELS
 
 export interface TrajectoryXMap {
   quantity: TrajectoryXQuantity
@@ -124,7 +125,7 @@ export function available_x_quantities(
   return quantities
 }
 
-export const X_QUANTITY_LABELS: Record<TrajectoryXQuantity, string> = {
+export const X_QUANTITY_LABELS = {
   frame: `Frame`,
   step: `Step`,
   time: `Time`,
@@ -529,19 +530,9 @@ export const generate_axis_scale_types = (plot_series: DataSeries[]) =>
     min_log_decades: 3,
   })
 
-// Streaming plot generation (simplified)
-interface StreamingPlotOptions {
-  property_config?: Record<string, TrajPropertyConfig>
-  colors?: readonly string[]
-  default_visible_properties?: Set<string>
-  max_points?: number
-  // Maps frame number to x coordinate. Defaults to the frame number itself.
-  x_map?: TrajectoryXMap
-}
-
 export function generate_streaming_plot_series(
   metadata_list: TrajectoryMetadata[],
-  options: StreamingPlotOptions = {},
+  options: PlotSeriesOptions = {},
 ): DataSeries[] {
   if (metadata_list.length === 0) return []
 
@@ -549,7 +540,6 @@ export function generate_streaming_plot_series(
     property_config = trajectory_property_config,
     colors = PLOT_COLORS,
     default_visible_properties = DEFAULT_VISIBLE,
-    max_points = 1000,
     x_map = FRAME_X_MAP,
   } = options
 
@@ -582,9 +572,6 @@ export function generate_streaming_plot_series(
     const is_energy = is_energy_property(property_key)
     const values = full_data_points.map((point) => point.y)
     if (!is_energy && get_coefficient_of_variation(values) < 1e-6) continue
-    const data_points = is_energy
-      ? downsample_mean_points(full_data_points, max_points)
-      : downsample_data_points(full_data_points, max_points)
 
     const { clean_label, unit, axis_group } = extract_label_and_unit(
       property_key,
@@ -593,15 +580,14 @@ export function generate_streaming_plot_series(
     const is_visible =
       is_default_visible(property_key, default_visible_properties) || color_idx < 2
     const color = colors[color_idx % colors.length]
-
     all_series.push({
-      x: data_points.map((point) => point.x),
-      y: data_points.map((point) => point.y),
+      x: full_data_points.map((point) => point.x),
+      y: full_data_points.map((point) => point.y),
       label: clean_label,
       unit,
       ...(axis_group ? { axis_group } : {}),
       visible: is_visible,
-      markers: data_points.length < 1000 ? `line+points` : `line`,
+      markers: full_data_points.length < 1000 ? `line+points` : `line`,
       metadata: {
         series_label: unit ? `${clean_label} (${unit})` : clean_label,
         property_key, // Store original property key for robust lookups
@@ -615,48 +601,60 @@ export function generate_streaming_plot_series(
   return assign_trajectory_axes(all_series, series_is_visible)
 }
 
-type PlotDataPoint = { x: number; y: number }
-const point_limit = (target_points: number): number =>
-  Number.isFinite(target_points) ? Math.max(2, Math.floor(target_points)) : 1000
+type PlotDataPoint = { x: number; y: number; source_idx: number }
 
-// Thermal energies often alternate rapidly between nearby values. Connecting extrema chosen
-// by shape sampling turns that harmless high-frequency noise into a solid wall; plot one mean
-// per horizontal bucket instead while leaving the full metadata available to analyses.
-function downsample_mean_points(
-  data_points: PlotDataPoint[],
-  target_points: number,
-): PlotDataPoint[] {
-  const limit = point_limit(target_points)
-  if (data_points.length <= limit) return data_points
-  if (limit === 2) return [data_points[0], data_points[data_points.length - 1]]
-  const sampled = [data_points[0]]
-  const interior_count = data_points.length - 2
-  const bucket_count = limit - 2
-  for (let bucket_idx = 0; bucket_idx < bucket_count; bucket_idx++) {
-    const bucket_start = 1 + Math.floor((bucket_idx * interior_count) / bucket_count)
-    const bucket_end = 1 + Math.floor(((bucket_idx + 1) * interior_count) / bucket_count)
-    let x_sum = 0
-    let y_sum = 0
-    for (let point_idx = bucket_start; point_idx < bucket_end; point_idx++) {
-      x_sum += data_points[point_idx].x
-      y_sum += data_points[point_idx].y
-    }
-    const bucket_size = bucket_end - bucket_start
-    sampled.push({ x: x_sum / bucket_size, y: y_sum / bucket_size })
+export function prepare_trajectory_scatter_series(
+  series: readonly DataSeries[],
+  max_points: number,
+): DataSeries[] {
+  if (!Number.isFinite(max_points) || max_points < 2) {
+    throw new RangeError(`max_points must be finite and at least 2, got ${max_points}`)
   }
-  sampled.push(data_points[data_points.length - 1])
-  return sampled
+  const limit = Math.floor(max_points)
+  return series.map((data_series, series_idx) => {
+    assert_series_lengths(data_series, series_idx)
+    if (data_series.x.length <= limit) return data_series
+    const source_raw_y = data_series.raw_y ?? data_series.y
+    let window_size = Math.max(5, Math.round(data_series.x.length / 50))
+    if (window_size % 2 === 0) window_size++
+    const smoothed_y = smooth_moving_average(data_series.y, window_size)
+    const sampled_points = downsample_data_points(
+      data_series.x.map((x, source_idx) => ({ x, y: source_raw_y[source_idx], source_idx })),
+      limit,
+    )
+    const sampled_x = sampled_points.map((point) => point.x)
+    const sampled_raw_y = sampled_points.map((point) => point.y)
+    const color = data_series.line_style?.stroke ?? `currentColor`
+    return {
+      ...data_series,
+      x: sampled_x,
+      y: sampled_points.map(({ source_idx }) => smoothed_y[source_idx]),
+      raw_y: sampled_raw_y,
+      markers: `line`,
+      metadata: Array.isArray(data_series.metadata)
+        ? data_series.metadata[0]
+        : data_series.metadata,
+      line_underlays: [
+        {
+          x: sampled_x,
+          y: sampled_raw_y,
+          line_style: {
+            stroke: `color-mix(in srgb, ${color} 18%, transparent)`,
+            stroke_width: 1,
+            curve: `linear`,
+          },
+        },
+      ],
+      line_style: { stroke: color, stroke_width: 2.5, curve: `monotone` },
+    }
+  })
 }
 
 // Largest-Triangle-Three-Buckets keeps endpoints and visually important extrema while
 // limiting long trajectories to roughly one point per plot pixel. Uniform decimation can
 // miss narrow energy spikes; drawing all 24k+ samples turns quantized thermal noise into a
 // solid wall and makes hover/layout work scale with the file instead of the viewport.
-function downsample_data_points(
-  data_points: PlotDataPoint[],
-  target_points: number,
-): PlotDataPoint[] {
-  const limit = point_limit(target_points)
+function downsample_data_points(data_points: PlotDataPoint[], limit: number): PlotDataPoint[] {
   if (data_points.length <= limit) return data_points
   const last_point = data_points[data_points.length - 1]
   if (limit === 2) return [data_points[0], last_point]
@@ -665,6 +663,7 @@ function downsample_data_points(
   const bucket_width = (data_points.length - 2) / (limit - 2)
   let anchor_idx = 0
   for (let bucket_idx = 0; bucket_idx < limit - 2; bucket_idx++) {
+    const anchor = data_points[anchor_idx]
     const average_start = Math.floor((bucket_idx + 1) * bucket_width) + 1
     const average_end = Math.min(
       Math.floor((bucket_idx + 2) * bucket_width) + 1,
@@ -672,33 +671,44 @@ function downsample_data_points(
     )
     let average_x = 0
     let average_y = 0
-    const average_count = average_end - average_start
+    let average_count = 0
     for (let point_idx = average_start; point_idx < average_end; point_idx++) {
-      average_x += data_points[point_idx].x
-      average_y += data_points[point_idx].y
+      const point = data_points[point_idx]
+      if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) continue
+      average_x += point.x
+      average_y += point.y
+      average_count++
     }
-    average_x /= average_count
-    average_y /= average_count
+    if (average_count > 0) {
+      average_x /= average_count
+      average_y /= average_count
+    } else {
+      average_x = Number.isFinite(anchor.x) ? anchor.x : 0
+      average_y = Number.isFinite(anchor.y) ? anchor.y : 0
+    }
 
     const bucket_start = Math.floor(bucket_idx * bucket_width) + 1
     const bucket_end = Math.min(
       Math.floor((bucket_idx + 1) * bucket_width) + 1,
       data_points.length - 1,
     )
-    const anchor = data_points[anchor_idx]
-    let selected_idx = bucket_start
+    const anchor_x = Number.isFinite(anchor.x) ? anchor.x : average_x
+    const anchor_y = Number.isFinite(anchor.y) ? anchor.y : average_y
+    let selected_idx = -1
     let max_area = -1
     for (let point_idx = bucket_start; point_idx < bucket_end; point_idx++) {
       const point = data_points[point_idx]
+      if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) continue
       const area = Math.abs(
-        (anchor.x - average_x) * (point.y - anchor.y) -
-          (anchor.x - point.x) * (average_y - anchor.y),
+        (anchor_x - average_x) * (point.y - anchor_y) -
+          (anchor_x - point.x) * (average_y - anchor_y),
       )
       if (area > max_area) {
         max_area = area
         selected_idx = point_idx
       }
     }
+    if (selected_idx < 0) selected_idx = bucket_start
     sampled.push(data_points[selected_idx])
     anchor_idx = selected_idx
   }

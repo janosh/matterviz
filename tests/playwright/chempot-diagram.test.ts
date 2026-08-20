@@ -156,6 +156,7 @@ test.describe(`ChemPot Diagram interactions`, () => {
     )
 
     const controls_toggle = diagram.locator(`button.plot-controls-toggle`).first()
+    await expect(controls_toggle).toHaveCSS(`right`, `68px`)
     const controls_pane = diagram
       .locator(`.draggable-pane`)
       .filter({

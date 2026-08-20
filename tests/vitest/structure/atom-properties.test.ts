@@ -403,19 +403,19 @@ describe(`Custom`, () => {
 })
 
 describe(`normalize_atom_color_config`, () => {
-  // Models a payload that arrived as JSON (Dash props, saved settings), not a deep clone:
+  // Models a payload that arrived as JSON (for example, saved settings), not a deep clone:
   // structuredClone throws on a color_fn where serialization silently drops it, and coping
   // with that loss is exactly what these cases check.
   // oxlint-disable-next-line unicorn/prefer-structured-clone
   const as_serialized = <T>(value: T): T => JSON.parse(JSON.stringify(value))
 
   test(`preserves valid JSON-safe configurations and serialized payloads`, () => {
-    const config: ap.DashAtomColorConfig = {
+    const config = {
       mode: `property`,
       property_key: `charge`,
       scale: `interpolatePlasma`,
       scale_type: `categorical`,
-    }
+    } as const satisfies ap.AtomColorConfig
     expect(ap.normalize_atom_color_config(config)).toBe(config)
     expect(ap.normalize_atom_color_config(as_serialized(config))).toEqual(config)
   })

@@ -118,7 +118,6 @@ export default defineConfig({
     ignorePatterns: [
       `static/**`,
       `src/scripts/**`,
-      `extensions/dash/**`,
       `extensions/anywidget/**`,
       `extensions/jupyterlab/**`,
       `extensions/vscode/**`,
