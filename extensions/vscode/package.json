@@ -964,6 +964,16 @@
             "never"
           ]
         },
+        "matterviz.histogram.normalize": {
+          "type": "string",
+          "default": "count",
+          "description": "Bar heights: raw counts, fraction of samples in the plotted range, or probability density (integrates to 1)",
+          "enum": [
+            "count",
+            "probability",
+            "density"
+          ]
+        },
         "matterviz.histogram.bin_count": {
           "type": "number",
           "default": 100,

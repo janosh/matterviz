@@ -42,6 +42,7 @@
   import { LOG_EPS } from '$lib/math'
   import type { IndexedRefLine } from '$lib/plot/core/reference-line'
   import { group_ref_lines_by_z, index_ref_lines } from '$lib/plot/core/reference-line'
+  import { get_relative_coords } from '$lib/plot/core/interactions'
   import { get_nice_data_range } from '$lib/plot/core/scales'
   import { DEFAULT_SERIES_COLORS } from '$lib/plot/core/types'
   import { resolve_plot_display, sync_category_zero_display } from '$lib/plot/core/display'
@@ -91,7 +92,7 @@
     y_axis = $bindable({}),
     y2_axis: y2_axis_prop = $bindable({}),
     // Clone so controls / categorical sync never mutate shared DEFAULTS.
-    display = $bindable({ ...DEFAULTS.box.display }),
+    display = $bindable({ ...DEFAULTS.plot.display }),
     range_padding = 0,
     padding = {},
     title,
@@ -114,9 +115,6 @@
     bandwidth = DEFAULTS.box.bandwidth,
     violin_width = DEFAULTS.box.violin_width,
     violin_style = {},
-    kde_points = 100,
-    kde_cut = 0,
-    kde_max_samples = 5000,
     kde_clip = undefined,
     tooltip,
     user_content,
@@ -163,10 +161,7 @@
       bandwidth?: BandwidthOption
       violin_width?: number
       violin_style?: ViolinStyle
-      kde_points?: number
-      kde_cut?: number // bandwidths to extend support beyond observed extrema (default 0)
-      kde_max_samples?: number
-      kde_clip?: [number | null, number | null]
+      kde_clip?: [number | null, number | null] // hard KDE bounds for every series (e.g. [0, null])
       tooltip?: Snippet<[BoxHandlerProps<Metadata>]>
       user_content?: Snippet<[UserContentProps]>
       header_controls?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
@@ -186,6 +181,10 @@
       marginals?: MarginalsProp
       facet_layout?: FacetLayoutContext
     } = $props()
+
+  // Violin KDE grid: 100 points over the observed support (no tail extension), densities summed
+  // over at most 5000 stride-sampled values (bandwidth still comes from the full sample)
+  const KDE_OPTS = { n_points: 100, cut: 0, max_samples: 5000 } as const
 
   let box_state = $derived({ ...DEFAULTS.box.box, ...box })
   let whisker_state = $derived({ ...DEFAULTS.box.whisker, ...whisker })
@@ -295,7 +294,7 @@
   $effect.pre(() => {
     category_zero_sync = sync_category_zero_display(
       display,
-      DEFAULTS.box.display,
+      DEFAULTS.plot.display,
       slot_list.length > 0 ? cat_axis : null,
       category_zero_sync,
     )
@@ -304,7 +303,7 @@
   const resolved_display = $derived(
     resolve_plot_display(
       display,
-      DEFAULTS.box.display,
+      DEFAULTS.plot.display,
       slot_list.length > 0 ? cat_axis : null,
     ),
   )
@@ -360,11 +359,9 @@
         }
       }
       const kde = gaussian_kde(samples, {
+        ...KDE_OPTS,
         bandwidth: box_item.series.bandwidth ?? bandwidth,
-        n_points: kde_points,
-        cut: kde_cut,
         clip,
-        max_samples: kde_max_samples,
       })
       let max_density = 0
       for (const density of kde.density) {
@@ -600,15 +597,13 @@
 
   const handle_box_hover = (box_item: Box, color: string) => (event: MouseEvent) => {
     hovered = true
-    const data = get_box_data(box_item, color)
-    // Anchor the tooltip at the cursor (cx/cy default to the box center) so it follows the
-    // mouse — boxes/violins are wide, and a center anchor lands far from the pointer.
-    const rect = frame.svg_element?.getBoundingClientRect()
-    if (rect) {
-      data.cx = event.clientX - rect.left
-      data.cy = event.clientY - rect.top
+    // Anchor the tooltip at the cursor (cx/cy default to the whisker tip) so it follows the
+    // mouse — boxes/violins are wide, and a fixed anchor lands far from the pointer.
+    const pointer = get_relative_coords(event, frame.svg_element)
+    hover_info = {
+      ...get_box_data(box_item, color),
+      ...(pointer && { cx: pointer.x, cy: pointer.y }),
     }
-    hover_info = data
     on_box_hover?.({ ...hover_info, event })
   }
 

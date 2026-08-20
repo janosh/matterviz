@@ -5,6 +5,7 @@
   import type { BarStyle, DataSeries, PlotConfig } from '$lib/plot'
   import { PlotControls } from '$lib/plot'
   import type { PlotControlsProps } from '$lib/plot/core/types'
+  import { HISTOGRAM_NORMALIZE, type HistogramNormalize } from '$lib/plot/histogram/histogram'
   import { legend_mode_to_prop } from '$lib/plot/core/utils/series-visibility'
   import { DEFAULTS } from '$lib/settings'
   import type { Snippet } from 'svelte'
@@ -12,6 +13,7 @@
   let {
     series = [],
     bins = $bindable(DEFAULTS.histogram.bin_count),
+    normalize = $bindable(DEFAULTS.histogram.normalize),
     mode = $bindable(DEFAULTS.histogram.mode),
     bar = $bindable({}),
     // explicit type arg keeps `undefined` (auto) in the prop type
@@ -36,6 +38,7 @@
     series?: readonly DataSeries[]
     // Histogram-specific controls
     bins?: number
+    normalize?: HistogramNormalize
     mode?: `single` | `overlay`
     bar?: BarStyle
     // undefined = auto (same contract as Histogram / resolve_legend_visibility)
@@ -76,9 +79,9 @@
   {@render children?.({ x_axis, x2_axis, y_axis, y2_axis, display })}
   <SettingsSection
     title="Histogram"
-    current_values={{ bins, mode, show_legend }}
+    current_values={{ bins, normalize, mode, show_legend }}
     on_reset={() => {
-      ;({ bin_count: bins, mode } = DEFAULTS.histogram)
+      ;({ bin_count: bins, normalize, mode } = DEFAULTS.histogram)
       // Resets to the configured mode, `auto` (undefined) by default, so a one-series
       // plot does not suddenly grow a legend
       show_legend = legend_mode_to_prop(DEFAULTS.histogram.show_legend)
@@ -86,6 +89,14 @@
     layout="grid"
   >
     <NumberRangeInput min={5} max={100} step={5} bind:value={bins}>Bins</NumberRangeInput>
+    <label>
+      <span>Normalize</span>
+      <select bind:value={normalize}>
+        {#each HISTOGRAM_NORMALIZE as option (option)}
+          <option value={option}>{option}</option>
+        {/each}
+      </select>
+    </label>
     {#if has_multiple_series}
       <label>
         <span>Mode</span>
@@ -98,7 +109,6 @@
         <label>
           <span>Property</span>
           <select bind:value={selected_property}>
-            <option value="">All</option>
             {#each series_options as option, option_idx (option_idx)}
               <option value={option}>{option}</option>
             {/each}

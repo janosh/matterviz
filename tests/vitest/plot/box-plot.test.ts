@@ -23,6 +23,27 @@ describe(`compute_box_stats`, () => {
     expect(stats.outliers).toEqual([])
   })
 
+  // Reference values hand-computed with the type-7 rule q(p) = x[(n-1)p] (linear interpolation
+  // between order statistics), which is numpy.percentile's and R quantile()'s default. The
+  // 9-point sample would give Tukey hinges of 4 / 18 (medians of the halves excluding the
+  // median) — this implementation deliberately does not use hinges.
+  // oxfmt-ignore
+  test.each([
+    { desc: `9 points, exact order statistics`, data: [2, 3, 5, 7, 11, 13, 17, 19, 23], q1: 5, median: 11, q3: 17, whiskers: [2, 23], outliers: [] },
+    // IQR = 36.5 -> upper fence 94.75: 128 is an outlier
+    { desc: `8 points, interpolated`, data: [1, 2, 4, 8, 16, 32, 64, 128], q1: 3.5, median: 12, q3: 40, whiskers: [1, 64], outliers: [128] },
+    // IQR = 13 -> fences [-14, 38]: 40 is an outlier and the upper whisker stops at 23
+    { desc: `10 points with a 1.5 IQR outlier`, data: [40, 2, 3, 5, 7, 11, 13, 17, 19, 23], q1: 5.5, median: 12, q3: 18.5, whiskers: [2, 23], outliers: [40] },
+  ])(`type-7 quartiles and tukey whiskers: $desc`, ({ data, q1, median, q3, whiskers, outliers }) => {
+    const stats = compute_box_stats(data)
+    expect([stats.q1, stats.median, stats.q3]).toEqual([q1, median, q3])
+    expect([stats.whisker_low, stats.whisker_high]).toEqual(whiskers)
+    expect(stats.outliers).toEqual(outliers)
+    expect([stats.q1, stats.median, stats.q3]).toEqual(
+      [0.25, 0.5, 0.75].map((prob) => d3_quantile(data, prob)),
+    )
+  })
+
   test(`tukey flags a high outlier and shrinks the upper whisker`, () => {
     const stats = compute_box_stats([1, 2, 3, 4, 5, 6, 7, 8, 9, 100], {
       whisker_mode: `tukey`,

@@ -251,6 +251,8 @@ Compare distributions with vastly different scales using **dual y-axes**. Some d
 
 ## Logarithmic Scales
 
+Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear axis, `bins` equal-ratio bins (uniform in `log10 x`) on a log axis, and uniform in `asinh(x / threshold)` on an arcsinh axis. Switching the x scale below re-bins the same samples so every bar stays the same width on screen.
+
 ```svelte example
 <script lang="ts">
   import { Histogram } from 'matterviz'
@@ -520,6 +522,43 @@ Compare distributions with vastly different scales using **dual y-axes**. Some d
 </Histogram>
 ```
 
+## Normalization: Counts, Probabilities and Densities
+
+`normalize` scales the bar heights: `count` (default) shows raw counts, `probability` the fraction of in-range samples per bin (bars sum to 1), and `density` a probability density (count / (N · bin width), so the bars integrate to 1 even on log-spaced bins). Two samples of different size and bin count become comparable under `density`:
+
+```svelte example
+<script lang="ts">
+  import { Histogram } from 'matterviz'
+  import { generate_normal } from '$site/plot-utils'
+
+  let normalize = $state(`density`)
+  let bins = $state(40)
+  const series = [
+    {
+      y: generate_normal(5000, 0, 1),
+      label: `N(0, 1), n=5000`,
+      line_style: { stroke: `steelblue` },
+    },
+    {
+      y: generate_normal(500, 1, 2),
+      label: `N(1, 2), n=500`,
+      line_style: { stroke: `darkorange` },
+    },
+  ]
+</script>
+
+<div style="display: flex; gap: 1.5em; align-items: center; flex-wrap: wrap">
+  {#each [`count`, `probability`, `density`] as option (option)}
+    <label><input type="radio" bind:group={normalize} value={option} /> {option}</label>
+  {/each}
+  <label
+    >Bins: {bins}<input type="range" bind:value={bins} min="10" max="100" step="5" /></label
+  >
+</div>
+
+<Histogram {series} {normalize} {bins} mode="overlay" show_legend style="height: 400px" />
+```
+
 ## Bin Size Comparison
 
 ```svelte example
@@ -594,6 +633,8 @@ Compare distributions with vastly different scales using **dual y-axes**. Some d
     engineering: `.2~s`,
   }
   const y_formats = { count: `d`, percentage: `.1%`, thousands: `,.0f`, scientific: `.1e` }
+  // percentages need per-bin fractions, not counts formatted as percent
+  let normalize = $derived(y_format === `percentage` ? `probability` : `count`)
 
   let x_axis = $state({})
   let y_axis = $state({})
@@ -646,6 +687,7 @@ Compare distributions with vastly different scales using **dual y-axes**. Some d
   {series}
   {x_axis}
   {y_axis}
+  {normalize}
   bins={35}
   style="height: 450px; border: 2px solid {color_schemes[
     color_scheme

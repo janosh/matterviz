@@ -4,7 +4,9 @@ import {
   compute_group_info,
   compute_stacked_offsets,
   normalize_categorical,
+  on_secondary_value_axis,
 } from '$lib/plot/bar/data'
+import type { AxisConfig } from '$lib/plot/core/types'
 import {
   compute_bar_rect,
   compute_line_points,
@@ -19,35 +21,20 @@ const bar = (overrides: Partial<NumericBarSeries> = {}): NumericBarSeries => ({
   ...overrides,
 })
 
-const make_opts = (overrides: Partial<BarAutoRangeOpts> = {}): BarAutoRangeOpts => ({
-  visible_series: [],
-  y1_series: [],
-  y2_series: [],
-  x2_series: [],
-  mode: `overlay`,
-  orientation: `vertical`,
-  range_padding: 0,
-  category_count: 0,
-  x_range: [null, null],
-  x_scale_type: `linear`,
-  x_is_time: false,
-  x2_range: [null, null],
-  x2_scale_type: `linear`,
-  x2_is_time: false,
-  y_range: [null, null],
-  y_scale_type: `linear`,
-  y2_range: [null, null],
-  y2_scale_type: `linear`,
-  ...overrides,
-})
-
+type AxisOverrides = Partial<Record<`x` | `x2` | `y` | `y2`, AxisConfig>>
 const auto_ranges = (
   series: readonly NumericBarSeries[],
-  overrides: Partial<BarAutoRangeOpts> = {},
+  overrides: Partial<Omit<BarAutoRangeOpts, `axes`>> & { axes?: AxisOverrides } = {},
 ) =>
-  compute_bar_auto_ranges(
-    make_opts({ visible_series: series, y1_series: series, ...overrides }),
-  )
+  compute_bar_auto_ranges({
+    visible_series: series,
+    mode: `overlay`,
+    orientation: `vertical`,
+    range_padding: 0,
+    category_count: 0,
+    ...overrides,
+    axes: { x: {}, x2: {}, y: {}, y2: {}, ...overrides.axes },
+  })
 const scale_by = (factor: number) => (value: number) => value * factor
 
 describe(`normalize_categorical`, () => {
@@ -164,7 +151,7 @@ describe(`compute_bar_auto_ranges`, () => {
     [
       `explicit y_range`,
       {
-        y_range: [2, 6] as [number, number],
+        axes: { y: { range: [2, 6] as [number, number] } },
         series: [bar({ y: [4, 5] })],
         key: `y`,
         range: [2, 6],
@@ -180,18 +167,35 @@ describe(`compute_bar_auto_ranges`, () => {
     const no_finite_points = [bar({ x: [NaN], y: [Infinity] })]
     expect(
       auto_ranges(no_finite_points, {
-        x_range: [2, null],
-        x2_range: [null, 20],
-        x2_scale_type: `log`,
-        y_range: [3, 7],
-        y2_scale_type: `log`,
+        axes: {
+          x: { range: [2, null] },
+          x2: { range: [null, 20], scale_type: `log` },
+          y: { range: [3, 7] },
+          y2: { scale_type: `log` },
+        },
       }),
     ).toEqual({ x: [2, 3], x2: [2, 20], y: [3, 7], y2: [1, 10] })
+    // a time category axis pads a lone point by one day
+    const day = 86_400_000
+    expect(
+      auto_ranges([bar({ x: [NaN], y: [1] })], {
+        axes: { x: { range: [day, null], scale_type: `time` } },
+      }).x,
+    ).toEqual([day, 2 * day])
   })
 
-  test(`log scale skips zero-clamping`, () => {
-    const log = auto_ranges([bar({ y: [4, 5] })], { y_scale_type: `log` })
+  test(`log value axis skips zero-clamping and ignores zero bars`, () => {
+    const log = auto_ranges([bar({ y: [4, 5] })], { axes: { y: { scale_type: `log` } } })
     expect(log.y[0]).toBeGreaterThan(0)
+    // zero-height bars have no log image: the range comes from the positive bars alone
+    const with_zeros = auto_ranges([bar({ x: [0, 1, 2], y: [0, 10, 1000] })], {
+      axes: { y: { scale_type: `log` } },
+    })
+    expect(with_zeros.y).toEqual(
+      auto_ranges([bar({ x: [1, 2], y: [10, 1000] })], { axes: { y: { scale_type: `log` } } })
+        .y,
+    )
+    expect(with_zeros.y[0]).toBeGreaterThan(0)
   })
 
   test(`categorical range reserves slots and expands for wider bars`, () => {
@@ -208,7 +212,7 @@ describe(`compute_bar_auto_ranges`, () => {
   test(`numeric category range includes the outer bar edges`, () => {
     const series = [bar({ x: [1, 7], bar_width: 0.5 })]
     expect(auto_ranges(series).x).toEqual([0.75, 7.25])
-    expect(auto_ranges(series, { x_range: [1, 7] }).x).toEqual([1, 7])
+    expect(auto_ranges(series, { axes: { x: { range: [1, 7] } } }).x).toEqual([1, 7])
     expect(auto_ranges([bar({ x: [1, 7], bar_width: 4, render_mode: `line` })]).x).toEqual([
       1, 7,
     ])
@@ -221,13 +225,25 @@ describe(`compute_bar_auto_ranges`, () => {
       x: [0, 5],
       y: [-0.25, 10.25],
     })
+    // horizontal: x2 carries the secondary values and the value axes honour x/x2 limits
+    const with_secondary = [...series, bar({ x: [0, 10], y: [-30, -10], x_axis: `x2` })]
+    expect(
+      auto_ranges(with_secondary, {
+        orientation: `horizontal`,
+        axes: { x: { range: [null, 8] }, x2: { range: [-40, null] } },
+      }),
+    ).toEqual({ x: [1, 8], x2: [-40, -10], y: [-0.25, 10.25], y2: [0, 1] })
   })
 
-  test(`x2 series get their own range; x stays sentinel without x1 series`, () => {
+  test(`vertical x2 series get their own category range; x stays sentinel without x1 series`, () => {
     const x2_srs = bar({ x: [100, 200], y: [1, 2], x_axis: `x2` })
-    const result = auto_ranges([x2_srs], { x2_series: [x2_srs] })
+    const result = auto_ranges([x2_srs])
     expect(result.x2).toEqual([99.75, 200.25])
     expect(result.x).toEqual([0, 1])
+    expect(result.y).toEqual([0, 2])
+    // y2 series drive y2 only
+    const y2_srs = bar({ y: [-4, -2], y_axis: `y2` })
+    expect(auto_ranges([bar(), y2_srs])).toMatchObject({ y: [0, 2], y2: [-4, 0] })
   })
 
   test(`non-finite pairs do not affect category or stacked value ranges`, () => {
@@ -289,6 +305,31 @@ describe(`compute_stacked_offsets`, () => {
   ])(`offsets $desc`, ({ series, expected }) => {
     expect(compute_stacked_offsets(series, `stacked`)).toEqual(expected)
   })
+
+  test(`horizontal bars stack per x2/x1 value axis`, () => {
+    const series = [bar({ y: [1, 1] }), bar({ y: [2, 2], x_axis: `x2` }), bar({ y: [3, 3] })]
+    expect(compute_stacked_offsets(series, `stacked`, `horizontal`)).toEqual([
+      [0, 0],
+      [0, 0],
+      [1, 1],
+    ])
+    // vertical bars ignore x_axis for stacking (x2 is a second category axis there)
+    expect(compute_stacked_offsets(series, `stacked`, `vertical`)).toEqual([
+      [0, 0],
+      [1, 1],
+      [3, 3],
+    ])
+  })
+})
+
+test.each([
+  [{ y_axis: `y2` }, `vertical`, true],
+  [{ y_axis: `y2` }, `horizontal`, false],
+  [{ x_axis: `x2` }, `horizontal`, true],
+  [{ x_axis: `x2` }, `vertical`, false],
+  [{}, `vertical`, false],
+] as const)(`on_secondary_value_axis(%j, %s) -> %s`, (srs, orientation, expected) => {
+  expect(on_secondary_value_axis(srs, orientation)).toBe(expected)
 })
 
 describe(`compute_group_info`, () => {
@@ -395,6 +436,11 @@ describe(`bar geometry`, () => {
     [{ val: 0.001, orientation: `horizontal` }, { rect_w: 1 }],
     [{ val: -0.001 }, { rect_y: -1, rect_h: 1 }],
     [{ val: -0.001, orientation: `horizontal` }, { rect_x: -1, rect_w: 1 }],
+    // tip exactly on the base (clamped log floor): the sign picks the side of the 1px sliver
+    [{ val: 5, val_scale: () => 100 }, { rect_y: 99, rect_h: 1 }],
+    [{ val: -5, val_scale: () => 100 }, { rect_y: 100, rect_h: 1 }],
+    [{ val: 5, val_scale: () => 100, orientation: `horizontal` }, { rect_x: 100, rect_w: 1 }],
+    [{ val: -5, val_scale: () => 100, orientation: `horizontal` }, { rect_x: 99, rect_w: 1 }],
     // category thickness has its own 1px floor
     [{ bar_width_val: 0.001 }, { rect_w: 1 }],
     [{ bar_width_val: 0.001, orientation: `horizontal` }, { rect_h: 1 }],

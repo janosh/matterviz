@@ -39,17 +39,19 @@ export function violin_path(
 // Generate SVG path for a bar with rounded corners on the "free" end (away from axis).
 // For vertical bars, rounds top corners. For horizontal bars, rounds right corners.
 // `flip` moves the rounding to the opposite end (bottom / left) for bars whose tip
-// points the other way, i.e. negative values.
+// points the other way, i.e. negative values. The radius is clamped to half the bar's
+// width and height so thin bars degrade to plain rectangles instead of self-intersecting arcs.
 export function bar_path(
   x: number,
   y: number,
   w: number,
   h: number,
-  r: number,
+  radius: number,
   vertical: boolean = true,
   flip: boolean = false,
 ): string {
-  if (r <= 0) return `M${x},${y}h${w}v${h}h${-w}Z`
+  const r = Math.min(radius, w / 2, h / 2)
+  if (!(r > 0)) return `M${x},${y}h${w}v${h}h${-w}Z`
 
   const sweep = flip ? 0 : 1
   if (vertical) {

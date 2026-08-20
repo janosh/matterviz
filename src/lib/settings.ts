@@ -835,6 +835,11 @@ export const SETTINGS_CONFIG = define_settings({
       enum: { overlay: `Overlay`, single: `Single` },
     },
     show_legend: legend_visibility_setting(`histogram`),
+    normalize: {
+      value: `count` as const,
+      description: `Bar heights: raw counts, fraction of samples in the plotted range, or probability density (integrates to 1)`,
+      enum: { count: `Count`, probability: `Probability`, density: `Density` },
+    },
     bin_count: {
       // Wider than the HistogramControls slider (5..100 in steps of 5) on purpose: the
       // component accepts any positive bin count and tests drive it with 2 and 3.
