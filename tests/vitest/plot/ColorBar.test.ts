@@ -417,6 +417,20 @@ describe(`ColorBar Other Features`, () => {
       ticks: [`100`, `80`, `60`, `40`, `20`, `0`],
       left: [0, 20, 40, 60, 80, 100],
     },
+    // positive bounds below the LOG_EPS axis floor (1e-9) keep their full span
+    {
+      scale_type: `log`,
+      range: [1e-12, 1e-6],
+      ticks: [`1e-12`, `1e-11`, `1e-10`, `1e-9`, `1e-8`, `1e-7`, `0.000001`],
+      left: [0, 100 / 6, 200 / 6, 50, 400 / 6, 500 / 6, 100],
+    },
+    // a descending log range runs high-to-low instead of collapsing to one point
+    {
+      scale_type: `log`,
+      range: [1000, 1],
+      ticks: [`1k`, `1`],
+      left: [0, 100],
+    },
   ] as const)(`$scale_type ticks for range $range`, ({ scale_type, range, ticks, left }) => {
     mount(ColorBar, {
       target: document.body,
@@ -427,6 +441,16 @@ describe(`ColorBar Other Features`, () => {
     spans.forEach((span, idx) =>
       expect(Number(span.style.left.replace(`%`, ``))).toBeCloseTo(left[idx], 6),
     )
+  })
+
+  test(`log gradient spans positive bounds below LOG_EPS`, () => {
+    mount(ColorBar, {
+      target: document.body,
+      props: { range: [1e-12, 1e-6], scale_type: `log`, steps: 3, tick_labels: 4 },
+    })
+    const gradient = doc_query(`.colorbar .bar`).getAttribute(`style`) ?? ``
+    // with the floor clamped at 1e-9 the midpoint 1e-9 would render the bottom color
+    expect(gradient.match(/#[0-9a-f]{6}/g)).toEqual([0, 0.5, 1].map(d3_sc.interpolateViridis))
   })
 
   test(`descending range reverses the gradient and reports the niced range`, async () => {

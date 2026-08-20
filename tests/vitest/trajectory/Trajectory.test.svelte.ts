@@ -8,12 +8,13 @@ import {
   type TrajHandlerData,
 } from '$lib/trajectory'
 import type { TrajectorySpectroscopyResult } from '$lib/spectral'
+import type { Structure } from '$lib/structure'
 import * as trajectory_parse from '$lib/trajectory/parse'
 import { Hdf5TrajectoryGroupSelectionError } from '$lib/trajectory/parse/hdf5'
 import * as parse_worker from '$lib/file-viewer/parse-in-worker'
 import * as io from '$lib/io'
 import * as symmetry from '$lib/symmetry'
-import { flushSync, mount, tick, unmount } from 'svelte'
+import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { Info } from 'svelte-widgets/icons'
 import { describe, expect, onTestFinished, test, vi } from 'vitest'
 import {
@@ -315,7 +316,7 @@ describe(`Trajectory`, () => {
         show_controls: false,
         controls_open: true,
         spectroscopy_pane_open: false,
-        structure_props: { show_controls: `always` },
+        structure_props: { show_controls: `always` } as ComponentProps<typeof Structure>,
       })
       mount_traj(props)
       await flush_render()
@@ -328,6 +329,13 @@ describe(`Trajectory`, () => {
 
       trail_toggle.click()
       await vi.waitFor(() => expect(document.body.textContent).toContain(`Trail length`))
+
+      // A host rebuilding structure_props (anywidget trait sync, PhononModeExplorer's
+      // show_vectors toggle) without a show_trajectory_lines entry must not reset the toggle
+      props.structure_props = { show_controls: `always`, scene_props: { show_bonds: false } }
+      await flush_render()
+      expect(trail_toggle.checked).toBe(true)
+      expect(document.body.textContent).toContain(`Trail length`)
 
       props.spectroscopy_pane_open = true
       await flush_render()
@@ -1612,6 +1620,45 @@ describe(`Trajectory`, () => {
       expect(on_file_load).toHaveBeenCalledWith(expect.objectContaining({ frame_count: 3 }))
     },
   )
+
+  test(`unmounting mid-parse aborts the worker without reporting the abort through on_error`, async () => {
+    let signal: AbortSignal | undefined
+    const worker_spy = vi.spyOn(parse_worker, `parse_trajectory_in_worker`).mockImplementation(
+      (_data, _filename, _on_progress, _options, client_options = {}) =>
+        new Promise((_resolve, reject) => {
+          signal = client_options.signal
+          signal?.addEventListener(`abort`, () =>
+            reject(new DOMException(`Parse cancelled`, `AbortError`)),
+          )
+        }),
+    )
+    onTestFinished(() => worker_spy.mockRestore())
+    const on_error = vi.fn()
+    const target = document.createElement(`div`)
+    document.body.append(target)
+    const component = mount(Trajectory, {
+      target,
+      props: {
+        display_mode: `structure`,
+        show_controls: `never`,
+        loading_options: { bin_file_threshold: 1 },
+        on_error,
+      },
+    })
+    onTestFinished(() => target.remove())
+    const viewer = target.querySelector<HTMLElement>(`.trajectory`)
+    if (!viewer) throw new Error(`Trajectory root not found`)
+    const file = new File([new Uint8Array(8)], `large.h5`)
+    viewer.dispatchEvent(create_drop_event(file))
+    await vi.waitFor(() => expect(worker_spy).toHaveBeenCalledOnce())
+    expect(signal?.aborted).toBe(false)
+
+    await unmount(component)
+    expect(signal?.aborted).toBe(true)
+    await tick()
+    await Promise.resolve()
+    expect(on_error).not.toHaveBeenCalled()
+  })
 
   test(`ignores a stale trajectory URL completion`, async () => {
     const responses = deferred_fetch_responses()

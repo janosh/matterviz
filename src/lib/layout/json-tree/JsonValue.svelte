@@ -23,8 +23,11 @@
 
   let just_changed = $state(false)
   let change_timeout: ReturnType<typeof setTimeout> | undefined
-  // Click-to-copy is delayed while editable so a double-click can cancel it
+  // Click-to-copy is delayed while editable so a double-click can cancel it. Cleared on unmount
+  // only: the change-flash effect below re-runs on every value update and must not eat a
+  // pending copy.
   let click_timer: ReturnType<typeof setTimeout> | undefined
+  $effect(() => () => clearTimeout(click_timer))
 
   // Expanded state for long strings
   let is_expanded = $state(false)
@@ -43,10 +46,7 @@
       }
       ctx.prev_values.set(path, value)
     }
-    return () => {
-      clearTimeout(change_timeout)
-      clearTimeout(click_timer)
-    }
+    return () => clearTimeout(change_timeout)
   })
 
   // Trimmed string for URL/color detection (avoids using raw whitespace in href/style)

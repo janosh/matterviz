@@ -1009,6 +1009,26 @@ describe(`PeriodicTable`, () => {
       expect([Math.min(...ticks), Math.max(...ticks)]).toEqual([0, 10])
     })
 
+    // a non-positive explicit min has no log image: tiles and bar start at the smallest
+    // positive value instead of flooring at LOG_EPS and squashing every tile to the top
+    test(`log mode lifts a non-positive color_scale_range min to the smallest positive value`, () => {
+      const color_scale = (frac: number) => `rgb(${Math.round(frac * 255)}, 0, 0)`
+      mount(PeriodicTable, {
+        target: document.body,
+        props: {
+          heatmap_values: [1, 10, 100],
+          log: true,
+          color_scale,
+          color_scale_range: [0, 100],
+        },
+      })
+      const tiles = document.querySelectorAll<HTMLElement>(`.element-tile`)
+      const red = (idx: number) => Number(/\d+/.exec(tiles[idx].style.backgroundColor)?.[0])
+      expect([0, 1, 2].map(red)).toEqual([0, 128, 255])
+      const ticks = get_tick_values(document.querySelector(`.colorbar`))
+      expect([Math.min(...ticks), Math.max(...ticks)]).toEqual([1, 100])
+    })
+
     test(`customizes via color_bar_props`, () => {
       mount(PeriodicTable, {
         target: document.body,

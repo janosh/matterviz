@@ -101,12 +101,20 @@ export function create_hull_selection(inputs: HullSelectionInputs) {
     inputs.set_selected_entry(null)
   }
 
+  // One pending hide at a time: a second copy restarts the 1.5 s window instead of letting the
+  // first copy's timer hide the fresh feedback early; cleared on unmount
+  let copy_feedback_timeout: ReturnType<typeof setTimeout> | undefined
+  $effect(() => () => clearTimeout(copy_feedback_timeout))
   async function copy_entry_data(entry: ConvexHullEntry, position: { x: number; y: number }) {
     await navigator.clipboard.writeText(
       build_entry_tooltip_text(entry, inputs.entry_category()),
     )
     copy_feedback = { visible: true, position }
-    setTimeout(() => (copy_feedback = { visible: false, position }), 1500)
+    clearTimeout(copy_feedback_timeout)
+    copy_feedback_timeout = setTimeout(
+      () => (copy_feedback = { visible: false, position }),
+      1500,
+    )
   }
 
   const handle_keydown = (event: KeyboardEvent) => {

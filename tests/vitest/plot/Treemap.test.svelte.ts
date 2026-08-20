@@ -182,6 +182,25 @@ describe(`Treemap`, () => {
     expect(plot.querySelector(`.breadcrumbs`)).toBeNull()
   })
 
+  test(`a zoom inside the settle window does not make the next zoom-out snap`, async () => {
+    let now = 0
+    vi.spyOn(performance, `now`).mockImplementation(() => now)
+    const plot = await mount_sized(
+      Treemap,
+      { data: tree }, // default 400ms zoom tween
+      { selector: `.treemap`, width: 500, height: 360 },
+    )
+    now = 100 // still settling: this zoom snaps by design
+    await fire(cell_rect(plot, `A`))
+    expect(shown_idxs(plot)).toEqual([IDX.A2, IDX.A1])
+    now = 2000
+    plot.querySelector<HTMLButtonElement>(`.breadcrumb`)?.click() // 'all'
+    flushSync()
+    // animated: B (zero-size while zoomed into A) is not rendered on the first frame
+    expect(shown_idxs(plot)).not.toContain(IDX.B)
+    vi.restoreAllMocks()
+  })
+
   test.each([
     {
       name: `zoom_root_id re-roots the view`,

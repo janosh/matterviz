@@ -65,6 +65,10 @@
   let focused_path = $state<string | null>(null)
   let copy_feedback = $state<{ error: boolean; pos: CopyEventPosition | null } | null>(null)
   let copy_feedback_timeout: ReturnType<typeof setTimeout> | undefined
+  $effect(() => () => {
+    clearTimeout(search_debounce_timeout)
+    clearTimeout(copy_feedback_timeout)
+  })
   // Paths expanded explicitly (overrides auto-fold thresholds)
   let force_expanded = $state(new SvelteSet<string>())
   // Index into sorted_matches (-1 means no selection)

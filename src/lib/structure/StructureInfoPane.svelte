@@ -75,7 +75,6 @@
 
   const { copy } = create_clipboard_feedback()
   let sites_expanded = $state(false)
-  let pane_el = $state<HTMLElement>()
 
   function set_site_hover(site_idx: number | null) {
     highlighted_sites = site_idx === null ? [] : [site_idx]
@@ -311,14 +310,10 @@
   })
 
   // Keep the selected site's card in view when the selection comes from elsewhere (Wyckoff
-  // table, 3D scene). Cards on another page stay put: InfoPaneCards owns the pager.
-  $effect(() => {
-    const selected_site_idx = selected_sites[0]
-    if (!pane_open || selected_site_idx === undefined) return
-    pane_el
-      ?.querySelector(`[data-site-idx="${selected_site_idx}"]`)
-      ?.scrollIntoView({ block: `nearest` })
-  })
+  // table, 3D scene): InfoPaneCards pages to it and scrolls it into view
+  const selected_site_key = $derived(
+    site_cards.find((card) => card.idx === selected_sites[0])?.key ?? null,
+  )
 
   let wyckoff_positions = $derived(pane_open ? wyckoff_positions_from_moyo(sym_data) : [])
   let wyckoff_table_expanded = $derived(wyckoff_positions.length < atom_count_thresholds[0])
@@ -339,7 +334,7 @@
   closed_icon={info_pane_icon}
   {...rest}
 >
-  <div bind:this={pane_el} class="structure-info">
+  <div class="structure-info">
     <InfoPaneCards cards={structure_cards} empty_label="structure info" show_filter={false} />
 
     {#if symmetry_card}
@@ -396,6 +391,7 @@
             filter_placeholder="Filter sites by element, index, coordinate, or property"
             empty_label="sites"
             page_size={SITE_PAGE_SIZE}
+            reveal_key={selected_site_key}
             card_attrs={site_card_attrs}
             show_copy={false}
             class="site-cards"

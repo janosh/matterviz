@@ -1,7 +1,7 @@
 // Component tests for JsonTree, JsonNode, and JsonValue
 import { JsonTree } from '$lib/layout'
 import { serialize_for_copy } from '$lib/layout/json-tree/utils'
-import { type ComponentProps, flushSync, mount, tick } from 'svelte'
+import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, it, test, vi } from 'vitest'
 import { doc_query } from '../setup'
 import JsonTreeReplacementHarness from './JsonTreeReplacementHarness.svelte'
@@ -433,7 +433,7 @@ describe(`copy and download`, () => {
     expect(feedback.style.left).toBe(`40px`)
   })
 
-  it(`Shift+click and middle-click on a key copy its path`, async () => {
+  it(`Shift+click and middle-click on a key or node row copy only that path`, async () => {
     const write_text = mock_clipboard()
     mount_tree({ value: { my_key: { inner: 1 } }, show_header: false, default_fold_level: 5 })
     fire(
@@ -441,8 +441,15 @@ describe(`copy and download`, () => {
       mouse(`click`, { shiftKey: true }),
     )
     fire(node_at(`my_key`)?.querySelector(`.node-key`), mouse(`auxclick`, { button: 1 }))
+    // middle-click on the nested row itself must not bubble into ancestor rows (which would
+    // overwrite the clipboard with their paths)
+    fire(node_at(`my_key.inner`), mouse(`auxclick`, { button: 1 }))
     await tick()
-    expect(write_text.mock.calls.map(([text]) => text)).toEqual([`my_key.inner`, `my_key`])
+    expect(write_text.mock.calls.map(([text]) => text)).toEqual([
+      `my_key.inner`,
+      `my_key`,
+      `my_key.inner`,
+    ])
   })
 })
 
@@ -541,14 +548,20 @@ describe(`keyboard navigation and selection`, () => {
     expect(onselect).toHaveBeenLastCalledWith(`a`, { b: 1 })
   })
 
-  it(`click selects a node and onselect resolves Map entry paths through their wrapper`, async () => {
+  it(`click focuses only the clicked node and onselect resolves Map entry paths through their wrapper`, async () => {
     const onselect = vi.fn()
     const value = { m: new Map([[`k`, { deep: `v` }]]) }
     mount_tree({ value, default_fold_level: 10, onselect })
     await click_and_tick(node_at(`m[0].value.deep`))
+    // the click must not bubble into ancestor rows, which would re-focus each of them in
+    // turn (ending on the root) and fire onselect once per ancestor
+    expect(onselect).toHaveBeenCalledTimes(1)
     expect(onselect).toHaveBeenCalledWith(`m[0].value.deep`, `v`)
+    expect(doc_query(`.path-breadcrumb`).textContent?.trim()).toBe(`m[0].value.deep`)
+    expect(document.querySelectorAll(`.json-node.focused`)).toHaveLength(1)
     await click_and_tick(node_at(`m[0]`))
-    expect(onselect).toHaveBeenCalledWith(`m[0]`, { key: `k`, value: { deep: `v` } })
+    expect(onselect).toHaveBeenCalledTimes(2)
+    expect(onselect).toHaveBeenLastCalledWith(`m[0]`, { key: `k`, value: { deep: `v` } })
   })
 
   it(`focused node: Enter/Space copy leaves and toggle containers, arrows fold/unfold`, async () => {
@@ -736,5 +749,42 @@ describe(`inline editing`, () => {
     fire(doc_query(`.edit-input`), keydown(`Escape`))
     expect(document.querySelector(`.edit-input`)).toBeNull()
     expect(onchange).toHaveBeenCalledTimes(1)
+  })
+
+  test(`a value update inside the click-to-copy delay does not cancel the pending copy`, async () => {
+    mock_clipboard()
+    const oncopy = vi.fn()
+    mount(JsonTreeReplacementHarness, {
+      target: document.body,
+      props: { editable: true, onchange: vi.fn(), oncopy },
+    })
+    flushSync()
+    fire(node_at(`nested.findme`)?.querySelector(`.json-value`), mouse(`click`))
+    // live data: the leaf re-renders with a new value before the 250 ms copy delay elapses
+    await click_and_tick(doc_query(`[data-testid="replace-json"]`))
+    await vi.waitFor(() => expect(oncopy).toHaveBeenCalledWith(`nested.findme`, `new`))
+  })
+})
+
+describe(`unmount`, () => {
+  test(`pending search debounce and copy feedback timers are cleared`, async () => {
+    vi.useFakeTimers()
+    try {
+      mock_clipboard()
+      const component = mount(JsonTree, { target: document.body, props: { value: { a: 1 } } })
+      flushSync()
+      const input = doc_query<HTMLInputElement>(`.search-input`)
+      input.value = `a`
+      fire(input, new Event(`input`, { bubbles: true }))
+      control_group(2)[0].click()
+      await vi.advanceTimersByTimeAsync(0) // let the clipboard promise resolve and arm the timer
+      flushSync()
+      expect(doc_query(`.copy-feedback`).textContent).toBe(`Copied!`)
+      expect(vi.getTimerCount()).toBe(2)
+      await unmount(component)
+      expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

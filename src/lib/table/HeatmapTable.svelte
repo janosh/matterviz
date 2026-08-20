@@ -32,7 +32,7 @@
   import { download } from '$lib/io/fetch'
   import { format_num } from '$lib/labels'
   import { ControlPane } from '$lib/overlays'
-  import { sanitize_html } from '$lib/sanitize'
+  import { sanitize_html, sanitize_html_ssr } from '$lib/sanitize'
   import type {
     CellColor,
     CellSnippet,
@@ -100,7 +100,7 @@
     Filter,
     Search as SearchIcon,
   } from 'svelte-widgets/icons'
-  import { onDestroy, type Snippet, tick, untrack } from 'svelte'
+  import { onDestroy, onMount, type Snippet, tick, untrack } from 'svelte'
   import type { ClassValue, HTMLAttributes } from 'svelte/elements'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
 
@@ -211,6 +211,15 @@
     // Custom header renderer. Falls back to {@html col.label}.
     header_cell?: Snippet<[{ col: Label }]>
   } = $props()
+
+  // DOMPurify and the DOM-free SSR sanitizer can serialize equivalent markup differently.
+  // Keep the hydration hash stable, then let DOMPurify replace the HTML after mounting.
+  let hydration_complete = $state(false)
+  onMount(() => {
+    hydration_complete = true
+  })
+  const render_html = (value: unknown): string =>
+    hydration_complete ? sanitize_html(value) : sanitize_html_ssr(value)
 
   let columns = $derived(given_columns.length > 0 ? given_columns : discover_columns(data))
 
@@ -591,10 +600,13 @@
   }
 
   // === Pagination and row virtualisation ===
-  // Writable: resets to page 1 whenever the row set changes (search, filter, data, sort), and
-  // is clamped below so a shrinking page count can't strand the user on an empty page.
+  // Writable: resets to page 1 when the row count, search query or sort changes, and is
+  // clamped below so a shrinking page count can't strand the user on an empty page. Deliberately
+  // not keyed on sorted_data itself: a same-length refresh of live data (dashboard polling, an
+  // edited cell) must not bounce the user back to page 1.
+  let row_count = $derived(sorted_data.length)
   let current_page = $derived.by(() => {
-    void sorted_data
+    void [row_count, search_query, sort, multi_sort]
     return 1
   })
   let total_pages = $derived(Math.max(1, Math.ceil(sorted_data.length / page_size)))
@@ -1594,7 +1606,7 @@
             {#each colored_columns as col (get_col_id(col))}
               {@const col_id = get_col_id(col)}
               <div class="col-color-row">
-                <span class="col-color-label">{@html sanitize_html(col.label)}</span>
+                <span class="col-color-label">{@html render_html(col.label)}</span>
                 <select
                   value={color_scale_of(col) ?? `interpolateViridis`}
                   onchange={(event) => {
@@ -1654,7 +1666,7 @@
                   title={col.description}
                   colspan={visible_columns.filter((one) => one.group === col.group).length}
                 >
-                  {@html sanitize_html(col.group)}
+                  {@html render_html(col.group)}
                 </th>
               {/if}
             {/each}
@@ -1729,7 +1741,7 @@
               {#if header_cell}
                 {@render header_cell({ col })}
               {:else}
-                {@html sanitize_html(col.label)}
+                {@html render_html(col.label)}
               {/if}
               {#if sorted_by}
                 <span style="font-size: 0.8em"
@@ -1918,7 +1930,7 @@
                 {:else if typeof val === `string` && !is_html_str(val)}
                   {@render plain_text(val)}
                 {:else}
-                  {@html sanitize_html(val)}
+                  {@html render_html(val)}
                 {/if}
               </td>
             {/each}

@@ -2,7 +2,8 @@
   // Phase statistics + entry table for a convex hull (standalone or inside the info pane)
   import { get_electro_neg_formula, get_reduced_formula } from '$lib/composition'
   import { format_num } from '$lib/labels'
-  import type { InfoPaneCard } from '$lib/overlays'
+  import { create_clipboard_feedback, type InfoPaneCard } from '$lib/overlays'
+  import CopyButton from '$lib/overlays/CopyButton.svelte'
   import InfoPaneCards from '$lib/overlays/InfoPaneCards.svelte'
   import Histogram from '$lib/plot/histogram/Histogram.svelte'
   import type { Label, RowData } from '$lib/table'
@@ -51,6 +52,7 @@
     entry_href?: (entry: ConvexHullEntry) => string | null // makes the ID column a link
   } = $props()
 
+  const { copied, copy } = create_clipboard_feedback()
   let view_mode = $state<`stats` | `table`>(`stats`)
   let formula_filter = $state(``) // table shows only this reduced formula when set
   const table_height = `var(--hull-stats-table-height, calc(var(--hull-stats-table-row-height, 2.35rem) * 10 + var(--hull-stats-table-header-height, 3.5rem)))`
@@ -183,6 +185,9 @@
       }),
     )
   })
+  const subsystem_coverage_text = $derived(
+    subsystem_coverage?.map(({ pair, count }) => `${pair}: ${count}`).join(` | `) ?? ``,
+  )
 
   // === Table ===
   const composition_key = (comp: Record<string, number>): string =>
@@ -323,9 +328,18 @@
   {#if phase_stats && e_form_card && e_hull_card}
     <InfoPaneCards cards={count_cards} {...cards_props} />
     {#if subsystem_coverage}
-      <div class="subsystem-coverage">
+      <div class="subsystem-coverage" data-testid="pd-binary-subsystem-coverage">
         <span class="subsystem-label">
           Binary subsystem coverage ({subsystem_coverage.length} pairs)
+          <CopyButton
+            label="Copy binary subsystem coverage"
+            copied={copied.has(`binary-subsystem-coverage`)}
+            onclick={() =>
+              copy(
+                `Binary subsystem coverage: ${subsystem_coverage_text}`,
+                `binary-subsystem-coverage`,
+              )}
+          />
         </span>
         {#each subsystem_coverage as { pair, count } (pair)}
           <span class="subsystem-chip" class:has-entries={count > 0}>
@@ -534,6 +548,9 @@
     gap: 4pt;
     padding: 3pt;
     .subsystem-label {
+      display: flex;
+      align-items: center;
+      gap: 4pt;
       flex-basis: 100%;
     }
   }

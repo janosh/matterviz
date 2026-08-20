@@ -190,6 +190,26 @@ describe(`StructureInfoPane`, () => {
     expect(document.querySelector(`.pager`)?.textContent).toContain(`21-120 of 120`)
   })
 
+  // A site selected elsewhere (Wyckoff table, 3D scene) on another page must page to it
+  test(`pages to the selected site when it sits beyond the first page`, async () => {
+    const structure = get_dummy_structure(`H`, 120, true)
+    const scroll_spy = vi.spyOn(HTMLElement.prototype, `scrollIntoView`)
+    mount_info_pane({
+      structure,
+      pane_open: true,
+      atom_count_thresholds: [200, 500],
+      selected_sites: [110],
+    })
+    await tick()
+
+    expect(document.querySelector(`.pager`)?.textContent).toContain(`21-120 of 120`)
+    const selected_card = document.querySelector(`.site-card[data-site-idx="110"]`)
+    expect(selected_card?.classList.contains(`selected`)).toBe(true)
+    expect(scroll_spy).toHaveBeenCalledWith({ block: `nearest` })
+    expect(scroll_spy.mock.instances[0]).toBe(selected_card)
+    scroll_spy.mockRestore()
+  })
+
   test(`renders symmetry section only when sym_data exists`, () => {
     const periodic_structure = get_dummy_structure(`H`, 4, true)
 

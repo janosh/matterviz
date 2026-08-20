@@ -44,10 +44,11 @@
   // shared pane's frame-stride control stays hidden and `max_frames` caps the sample instead.
   const collect = (
     target: TrajectoryType,
-    { raw_data: bytes, on_progress }: AnalysisCollectOptions,
+    { raw_data: bytes, on_progress, signal }: AnalysisCollectOptions,
   ): Promise<StructureIdSweep> =>
     collect_structure_id_sweep(target, {
       raw_data: bytes,
+      signal,
       max_frames: safe_max_frames,
       // CSP is not plotted here, and skipping it drops the second neighbor pass per frame
       options: { skip_csp: true },
@@ -70,6 +71,8 @@
   {collect}
   compute_label="Identify structure types"
   recollect_label="Recompute"
+  collecting_label="Identifying…"
+  indexed_note="Sampled frames are loaded on demand"
   {...pane_options}
 >
   <!-- with no stride control, collected_frames is the trajectory's total frame count -->
@@ -93,12 +96,13 @@
       × {n_atoms} atoms ≈ {format_num(plan.frame_numbers.length * n_atoms * 14e-6, `.2~g`)} s
     </p>
   {/snippet}
-  {#snippet children({ input })}
+  {#snippet children({ input, collecting })}
     <StructureTypePlot
       id_results={input?.results ?? []}
       frame_labels={input?.frame_numbers}
       layout="over_frames"
       {normalize}
+      loading={collecting}
       {error_msg}
     />
   {/snippet}

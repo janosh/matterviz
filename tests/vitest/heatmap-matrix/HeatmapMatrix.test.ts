@@ -239,6 +239,37 @@ describe(`values and colors`, () => {
     expect(red(3)).toBe(255)
   })
 
+  // the legend reads the same lifted floor as the cells: a zero in the data must not floor
+  // the bar at LOG_EPS while cells start at the smallest positive value
+  test(`log legend spans the lifted cell floor, not LOG_EPS`, () => {
+    mount_matrix({
+      x: [`A`, `B`, `C`],
+      y: [`X`],
+      values: [[0, 0.01, 100]],
+      log: true,
+      show_legend: true,
+      legend_format: `~g`,
+    })
+    const ticks = [...document.querySelectorAll(`.colorbar .tick-label`)].map((span) =>
+      Number(span.textContent),
+    )
+    expect([Math.min(...ticks), Math.max(...ticks)]).toEqual([0.01, 100])
+  })
+
+  // the shared ramp must not floor positive log bounds at LOG_EPS (1e-9): 1e-12 is the
+  // bottom, 1e-9 the log midpoint, not the bottom color twice
+  test(`log mode keeps positive values below 1e-9 spread over the ramp`, () => {
+    mount_matrix({
+      x: [`A`, `B`, `C`],
+      y: [`X`],
+      values: [[1e-12, 1e-9, 1e-6]],
+      log: true,
+      color_scale: (val: number) => `rgb(${Math.round(val * 255)}, 0, 0)`,
+    })
+    const red = (cell: HTMLElement) => Number(/\d+/.exec(cell.style.backgroundColor)?.[0])
+    expect(get_data_cells().map(red)).toEqual([0, 128, 255])
+  })
+
   // 51 values 0..50: the 2nd/98th percentiles (interpolated, quantile_unordered) are 1 and 49,
   // so under `robust` 1 maps to the bottom of the ramp, 49 to the top, 0 and 50 saturate.
   test(`robust domain clips to the 2nd-98th percentile`, () => {

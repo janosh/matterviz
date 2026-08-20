@@ -24,6 +24,7 @@
     show_copy = true,
     heading_level = 4,
     page_size = Infinity,
+    reveal_key = null,
     card_attrs,
     row_value,
     ...rest
@@ -37,12 +38,15 @@
     show_copy?: boolean
     heading_level?: 4 | 5
     page_size?: number // cards per page; pager controls appear once the filtered list exceeds it
+    // key (or title) of a card to page to and scroll into view, e.g. a site selected elsewhere
+    reveal_key?: string | null
     card_attrs?: (card: Card) => HTMLAttributes<HTMLElement>
     row_value?: Snippet<[InfoPaneRow, Card]>
   } = $props()
 
   let filter = $state(``)
   let filter_open = $state(false)
+  let cards_el = $state<HTMLDivElement>()
   const { copied, copy } = create_clipboard_feedback()
   const row_key = (card: Card, row: InfoPaneRow, row_idx: number): string =>
     row.key ?? `${card.title}:${row.label}:${row.value}:${row_idx}`
@@ -69,6 +73,17 @@
       ? filtered_cards.slice(first_idx, page_end)
       : filtered_cards,
   )
+  // Jump to the page holding `reveal_key`, then scroll its card into view once rendered
+  $effect(() => {
+    if (reveal_key == null) return
+    const idx = filtered_cards.findIndex((card) => (card.key ?? card.title) === reveal_key)
+    if (idx === -1) return
+    if (idx < first_idx || idx >= page_end) {
+      page_start = Math.floor(idx / page_size) * page_size
+      return // re-runs with the new page rendered
+    }
+    cards_el?.children[idx - first_idx]?.scrollIntoView({ block: `nearest` })
+  })
 </script>
 
 {#if title || (filter_placeholder && (show_filter || filter))}
@@ -124,7 +139,7 @@
       </button>
     </nav>
   {/if}
-  <div {...rest} class={[`info-cards`, rest.class]}>
+  <div {...rest} bind:this={cards_el} class={[`info-cards`, rest.class]}>
     {#each paged_cards as card (card.key ?? card.title)}
       {@const attrs = card_attrs?.(card) ?? {}}
       <section {...attrs} class={[`info-card`, attrs.class]}>

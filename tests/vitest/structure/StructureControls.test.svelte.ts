@@ -338,6 +338,104 @@ describe(`StructureControls schema rows`, () => {
     expect(state.scene_props.show_image_atoms).toBe(DEFAULTS.structure.show_image_atoms)
   })
 
+  // The full row inventory with every conditional section open, in pane order. A row that
+  // silently drops out of the schema tables (or loses its data-key) fails here by name.
+  test(`render every control row and write each back to its own target`, async () => {
+    const vector_structure = {
+      ...simple_structure,
+      sites: simple_structure.sites.map((site) => ({
+        ...site,
+        properties: { ...site.properties, force: [0.1, 0, 0], magmom: [0, 0.2, 0] },
+      })),
+    }
+    const stream = trail_stream()
+    const state = $state({
+      scene_props: {
+        ...DEFAULTS.structure,
+        show_bonds: `always` as const,
+        show_polyhedra: `always` as const,
+        show_site_labels: true,
+        auto_bond_order: true,
+        polyhedra_color_mode: `uniform` as const,
+        vector_color_mode: `uniform` as const,
+        trajectory_position_stream: { ...stream, elements: [`H`, `O`], n_atoms: 2 },
+      },
+      lattice_props: {
+        show_cell_vectors: true,
+        cell_edge_color: DEFAULTS.structure.cell_edge_color,
+        cell_edge_opacity: DEFAULTS.structure.cell_edge_opacity,
+        cell_surface_color: DEFAULTS.structure.cell_surface_color,
+        cell_surface_opacity: DEFAULTS.structure.cell_surface_opacity,
+      },
+      show_image_atoms: true,
+      show_trajectory_lines: true,
+      multi_view: false,
+    })
+    const target = await mount_bound_controls(state, {
+      structure: vector_structure,
+      displacement_summary: { rmsd: 0.1, max_displacement: 0.2, error: null },
+    })
+    // oxfmt-ignore
+    expect([...target.querySelectorAll<HTMLElement>(`[data-key]`)].map((row) => row.dataset.key)).toEqual([
+      // Visibility
+      `show_atoms`, `show_image_atoms`, `show_site_labels`, `show_site_indices`, `show_cell_vectors`, `vector_config:force`, `vector_config:magmom`, `show_bonds`, `show_polyhedra`,
+      // Atoms
+      `atom_radius`, `same_size_atoms`, `color_scheme`, `atom_color_mode`,
+      // Bonds
+      `bonding_strategy`, `auto_bond_order`, `aromatic_display`, `bond_color`, `bond_thickness`,
+      // Polyhedra
+      `polyhedra_opacity`, `polyhedra_color`, `polyhedra_edges`, `polyhedra_hide_center_atoms`, `polyhedra_min_neighbors`, `polyhedra_max_neighbors`, `polyhedra_centers`,
+      // Labels
+      `site_label_color`, `site_label_size`, `site_label_padding`, `site_label_bg_hex`, `site_label_bg_opacity`, `site_label_offset`,
+      // Site vectors
+      `vector_scale`, `vector_normalize`, `vector_uniform_thickness`, `vector_color_mode`, `vector_color`, `vector_origin_gap`, `vector_scale:force`, `vector_scale:magmom`,
+      // Cell
+      `cell_type`, `supercell_scaling`, `cell_edge_color`, `cell_edge_opacity`, `cell_surface_color`, `cell_surface_opacity`,
+      // Camera
+      `camera_projection`, `auto_rotate`, `zoom_to_cursor`, `multi_view`, `rotation`, `zone_axis`,
+      `rotate_speed`, `zoom_speed`, `pan_speed`, `rotation_damping`,
+      // Scene
+      `background_color`, `background_opacity`, `directional_light`, `ambient_light`,
+      // Overlays
+      `show_displacement_arrows`, `displacement_arrow_scale`, `displacement_arrow_color`,
+      `show_trajectory_lines`, `trajectory_line_elements`, `trajectory_line_trail_frames`, `trajectory_line_frame_stride`, `trajectory_line_color_mode`, `trajectory_line_wrap_mode`,
+    ])
+
+    // Every schema-backed slider writes a number (never the input's string) to the object
+    // that owns the key, and every schema-backed checkbox flips its own target.
+    const owner_of = (key: string): Record<string, unknown> =>
+      key in state.lattice_props
+        ? state.lattice_props
+        : key in state && key !== `scene_props`
+          ? state
+          : state.scene_props
+    const schema_rows = [...target.querySelectorAll<HTMLElement>(`label[data-key]`)].filter(
+      (row) => (row.dataset.key ?? ``) in SETTINGS_CONFIG.structure,
+    )
+    expect(schema_rows.length).toBeGreaterThan(40)
+    for (const row of schema_rows) {
+      const key = row.dataset.key ?? ``
+      const owner = owner_of(key)
+      const number = row.querySelector<HTMLInputElement>(`input[type="number"]`)
+      const checkbox = row.querySelector<HTMLInputElement>(`input[type="checkbox"]`)
+      if (number) {
+        const written = (Number(number.min) + Number(number.max)) / 2
+        set_input(number, `${written}`)
+        await tick()
+        expect(owner[key], key).toBe(written)
+      } else if (checkbox && !key.startsWith(`show_`)) {
+        // (show_* toggles unmount the sections the later rows live in)
+        const before = owner[key]
+        checkbox.click()
+        await tick()
+        expect(owner[key], key).toBe(!before)
+      }
+    }
+    // accessor rows wrote to their own owners, not scene_props
+    expect(state.lattice_props.cell_edge_opacity).toBe(0.5)
+    expect(state.scene_props.cell_edge_opacity).toBe(DEFAULTS.structure.cell_edge_opacity)
+  })
+
   test(`conditional rows follow their gate`, async () => {
     const state = $state({
       scene_props: {

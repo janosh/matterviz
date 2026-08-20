@@ -335,8 +335,8 @@ describe(`Histogram`, () => {
     expect(document.querySelectorAll(`g.histogram-series`)).toHaveLength(2)
   })
 
-  test(`binds style controls to the public bar config`, async () => {
-    const state = { bar: { color: `#112233` } }
+  test(`binds style and normalize controls to the public props`, async () => {
+    const state = { bar: { color: `#112233` }, normalize: `count` as const }
     mount_histogram(
       bind_props(
         {
@@ -353,6 +353,21 @@ describe(`Histogram`, () => {
     fill_input.value = `#abcdef`
     fill_input.dispatchEvent(new Event(`input`, { bubbles: true }))
     expect(state.bar).toEqual({ color: `#abcdef` })
+    // the controls pane's normalize select writes back into a bound normalize prop
+    const normalize_select = [...document.querySelectorAll<HTMLSelectElement>(`select`)].find(
+      (select) => select.parentElement?.textContent?.includes(`Normalize`),
+    )
+    if (!normalize_select) throw new Error(`Histogram normalize select not found`)
+    expect(normalize_select.value).toBe(`count`)
+    normalize_select.value = `density`
+    // Svelte's select binding reads the chosen option via querySelector(':checked'), which
+    // happy-dom doesn't match on <option> (it would fall back to the first option)
+    vi.spyOn(normalize_select, `querySelector`).mockImplementation(
+      () => normalize_select.selectedOptions[0],
+    )
+    normalize_select.dispatchEvent(new Event(`change`, { bubbles: true }))
+    await tick()
+    expect(state.normalize).toBe(`density`)
   })
 
   test(`touch gestures keep finite axis ranges`, async () => {
@@ -566,6 +581,14 @@ describe(`Histogram`, () => {
     expect(Array.from(counts)).toEqual([2, 2, 3])
     // values exactly on a log edge snap to the upper bin even though log10(1000) rounds below 3
     expect(counts_of([1000, 10], [1, 10_000], 4, `log`)).toEqual([0, 1, 0, 1])
+    // a domain a few ulps wide collapses in log10 space (scale would be Infinity and every
+    // sample would be dropped): treat it as one bin holding the in-domain samples
+    const lo = 1e10
+    const hi = lo * (1 + 4 * Number.EPSILON)
+    expect(bin_values([lo, (lo + hi) / 2, hi, 2e10], [lo, hi], 3, `log`)).toEqual({
+      edges: Float64Array.of(lo, hi),
+      counts: Uint32Array.of(3),
+    })
     // a zero/negative log lower bound is clamped to LOG_EPS instead of producing NaN edges
     const clamped = bin_values([0.5, 1], [0, 1], 2, `log`)
     expect(clamped.edges[0]).toBe(1e-9)

@@ -70,12 +70,16 @@ test(`passes the typed max-frames cap and skip_csp to the sweep, relays progress
   expect(controls.textContent).toContain(`3 of 20 frames (every 7)`)
 
   const button = doc_query(`.trajectory-structure-id-controls button`, HTMLButtonElement)
+  expect(document.body.textContent).toContain(`No structure-type data to display`)
   button.click()
   await settle()
   expect(sweep).toHaveBeenCalledWith(
     state.trajectory,
     expect.objectContaining({ max_frames: 3, options: { skip_csp: true }, raw_data: null }),
   )
+  // the sweep is the identification itself, so both the button and the plot slot say so
+  expect(button.textContent).toContain(`Identifying…`)
+  expect(document.body.textContent).toContain(`Identifying structure types…`)
   sweep.mock.calls[0][1]?.on_progress?.(2, 3)
   await settle()
   expect(controls.textContent).toContain(`frame 2 of 3`)
@@ -84,6 +88,23 @@ test(`passes the typed max-frames cap and skip_csp to the sweep, relays progress
   await vi.waitFor(() => expect(button.disabled).toBe(false))
   expect(state.result).toEqual(sweep_result)
   expect(button.textContent).toContain(`Recompute`)
+  expect(document.body.textContent).not.toContain(`Identifying structure types…`)
+})
+
+test(`preserves a caller-supplied result on mount and says sampled frames load on demand`, async () => {
+  const state = $state<{ trajectory: TrajectoryType; result?: StructureIdSweep }>({
+    trajectory: { ...make_trajectory(2), total_frames: 50, is_indexed: true },
+    result: sweep_result,
+  })
+  mounted_component = mount(TrajectoryStructureIdPane, {
+    target: document.body,
+    props: bind_props({ pane_open: true }, state),
+  })
+  await settle()
+  expect(state.result).toEqual(sweep_result)
+  expect(document.body.textContent).toContain(
+    `2 of 50 frames are in memory. Sampled frames are loaded on demand, but the raw file bytes are unavailable here.`,
+  )
 })
 
 test(`a failed sweep surfaces in the plot slot and drops the result`, async () => {

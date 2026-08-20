@@ -257,11 +257,17 @@
       .map(to_heat_num)
       .filter((num): num is number => num !== null && (!log || num > 0)),
   )
-  // data span shared by tile colors and the auto ColorBar; explicit color_scale_range wins
-  let heat_range = $derived.by((): Vec2 => [
-    color_scale_range[0] ?? (heat_nums.length > 0 ? Math.min(...heat_nums) : 0),
-    color_scale_range[1] ?? (heat_nums.length > 0 ? Math.max(...heat_nums) : 1),
-  ])
+  // data span shared by tile colors and the auto ColorBar; explicit color_scale_range wins,
+  // except a non-positive log min, which has no log image and would otherwise floor the ramp
+  // at LOG_EPS and squash every tile into its top end: the smallest positive value stands in
+  let heat_range = $derived.by((): Vec2 => {
+    const [min_override, max_override] = color_scale_range
+    const min_lifted = log && min_override !== null && min_override <= 0 ? null : min_override
+    return [
+      min_lifted ?? (heat_nums.length > 0 ? Math.min(...heat_nums) : 0),
+      max_override ?? (heat_nums.length > 0 ? Math.max(...heat_nums) : 1),
+    ]
+  })
   let color_bar_scale = $derived(
     typeof color_scale === `string` ? color_scale : { interpolator: color_scale },
   )

@@ -28,6 +28,8 @@ export interface StructureIdSweepOptions {
   max_frames?: number
   options?: StructureIdOptions
   on_progress?: (done: number, total: number) => void
+  // Stops the sweep between frames and drops the in-flight worker request
+  signal?: AbortSignal
 }
 
 export interface StructureIdSweep {
@@ -126,6 +128,7 @@ export async function collect_structure_id_sweep(
     max_frames = DEFAULT_MAX_SWEEP_FRAMES,
     options = {},
     on_progress,
+    signal,
   } = sweep_options
 
   const total = trajectory_total_frames(trajectory)
@@ -140,8 +143,9 @@ export async function collect_structure_id_sweep(
   // buys nothing but a progress bar that jumps from 0 to 100 and n_frames structures
   // snapshotted into memory at once.
   for (const [done, frame_number] of frame_numbers.entries()) {
+    signal?.throwIfAborted()
     const structure = await resolve_frame(frame_number)
-    const result = await compute_structure_id_async(structure, options)
+    const result = await compute_structure_id_async(structure, options, { signal })
     if (results.length > 0 && result.n_atoms !== results[0].n_atoms) {
       throw new Error(
         `collect_structure_id_sweep: frame ${frame_number} has ${result.n_atoms} atoms but ` +

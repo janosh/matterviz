@@ -2,6 +2,7 @@
   import { WINDOW_TYPES, type WindowType } from '$lib/fft'
   import type { ViewerPaneOptions } from '$lib/overlays'
   import type { TrajectoryType } from '$lib/trajectory'
+  import type { AnalysisPaneContext } from '$lib/trajectory/analysis-pane'
   import TrajectoryAnalysisPane from '$lib/trajectory/TrajectoryAnalysisPane.svelte'
   import { collect_vacf_input, suggest_vacf_frame_stride } from './collect'
   import { thz_per_inverse_time, TIME_UNIT_TO_THZ, VACF_FREQUENCY_UNITS } from './index'
@@ -37,23 +38,18 @@
   let error_msg = $state<string | undefined>(undefined)
 
   // A lag axis in an unconvertible unit (e.g. `steps`) still gets real lag times, but the
-  // VDOS can only be reported per frame
-  const effective_frequency_unit = (
-    has_valid_dt: boolean,
-    time_unit: string,
-  ): VacfFrequencyUnit =>
-    has_valid_dt && thz_per_inverse_time(time_unit) !== undefined ? frequency_unit : `1/frame`
-  const vacf_options = (
-    has_valid_dt: boolean,
-    dt: number,
-    time_unit: string,
-  ): VacfOptions => ({
-    ...(has_valid_dt ? { dt, time_unit } : {}),
+  // VDOS can only be reported per frame. The context is not destructured: its fields are
+  // getters and VacfPlot recomputes on every new options object, so dt/time_unit are only
+  // read once a timestep is actually in use.
+  type Ctx = AnalysisPaneContext<VacfInput>
+  const effective_frequency_unit = (ctx: Ctx): VacfFrequencyUnit =>
+    ctx.has_valid_dt && thz_per_inverse_time(ctx.time_unit) !== undefined
+      ? frequency_unit
+      : `1/frame`
+  const vacf_options = (ctx: Ctx): VacfOptions => ({
+    ...(ctx.has_valid_dt ? { dt: ctx.dt_collected, time_unit: ctx.time_unit } : {}),
     max_lag_fraction,
-    vdos: {
-      window: window_type,
-      frequency_unit: effective_frequency_unit(has_valid_dt, time_unit),
-    },
+    vdos: { window: window_type, frequency_unit: effective_frequency_unit(ctx) },
   })
 </script>
 
@@ -79,7 +75,7 @@
   on_clear={() => (result = undefined)}
   {...pane_options}
 >
-  {#snippet controls({ has_valid_dt, time_unit })}
+  {#snippet controls(ctx)}
     <label>
       Max lag
       <input type="number" min="0.05" max="1" step="0.05" bind:value={max_lag_fraction} />
@@ -96,13 +92,13 @@
       Frequency axis
       <select
         bind:value={frequency_unit}
-        disabled={effective_frequency_unit(has_valid_dt, time_unit) === `1/frame`}
+        disabled={effective_frequency_unit(ctx) === `1/frame`}
       >
         {#each VACF_FREQUENCY_UNITS.filter((unit) => unit !== `1/frame`) as unit (unit)}
           <option value={unit}>{unit}</option>
         {/each}
       </select>
-      <span class="hint">{effective_frequency_unit(has_valid_dt, time_unit)}</span>
+      <span class="hint">{effective_frequency_unit(ctx)}</span>
     </label>
     <label>
       Show
@@ -120,10 +116,10 @@
       {`· ${time_unit} is not one of ${Object.keys(TIME_UNIT_TO_THZ).join(`, `)}, so lag time keeps ${time_unit} while the VDOS axis stays in inverse frames`}
     {/if}
   {/snippet}
-  {#snippet children({ input, has_valid_dt, dt_collected, time_unit })}
+  {#snippet children(ctx)}
     <VacfPlot
-      {input}
-      vacf_options={vacf_options(has_valid_dt, dt_collected, time_unit)}
+      input={ctx.input}
+      vacf_options={vacf_options(ctx)}
       {panel}
       bind:result
       bind:loading={plotting}

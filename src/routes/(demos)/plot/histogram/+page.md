@@ -556,7 +556,14 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
   >
 </div>
 
-<Histogram {series} {normalize} {bins} mode="overlay" show_legend style="height: 400px" />
+<Histogram
+  {series}
+  bind:normalize
+  bind:bins
+  mode="overlay"
+  show_legend
+  style="height: 400px"
+/>
 ```
 
 ## Bin Size Comparison

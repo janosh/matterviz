@@ -31,7 +31,11 @@
   } from '$lib/plot/core/layout'
   import { get_series_color } from '$lib/plot/core/data-transform'
   import type { MarginalSeriesInput, MarginalsProp } from '$lib/plot/core/marginals'
-  import { normalize_marginals } from '$lib/plot/core/marginals'
+  import {
+    add_sides,
+    normalize_marginals,
+    reserve_marginal_pad,
+  } from '$lib/plot/core/marginals'
   import {
     build_pick_index,
     bin_points,
@@ -202,14 +206,23 @@
     measure_text: point_labels.measure_text,
   })
 
-  // Only scan the data for extents when an axis range bound is left to auto
+  // Only scan the data for extents when an axis range bound is left to auto. Explicit
+  // bounds are merged in per bound so a facet grid receives the pinned range as this panel's
+  // intrinsic range (never the [0, 1] no-scan sentinel) and the facet padding pass measures
+  // the ticks that actually render.
   const needs_data_range = (range: AxisConfig[`range`]): boolean =>
     range?.[0] == null || range?.[1] == null
-  const auto_ranges = $derived(
-    needs_data_range(x_axis.range) || needs_data_range(y_axis.range)
-      ? series_extents(series, x_scale_type, y_scale_type, range_padding)
-      : { x: unit_range, y: unit_range },
-  )
+  const pin_range = (axis: AxisConfig, fallback: Vec2): Vec2 => [
+    axis.range?.[0] ?? fallback[0],
+    axis.range?.[1] ?? fallback[1],
+  ]
+  const auto_ranges = $derived.by(() => {
+    const data_ranges =
+      needs_data_range(x_axis.range) || needs_data_range(y_axis.range)
+        ? series_extents(series, x_scale_type, y_scale_type, range_padding)
+        : { x: unit_range, y: unit_range }
+    return { x: pin_range(x_axis, data_ranges.x), y: pin_range(y_axis, data_ranges.y) }
+  })
 
   const frame = create_cartesian_frame({
     axes: () => ({ x: final_x_axis, x2: empty_axis, y: final_y_axis, y2: empty_axis }),
@@ -256,13 +269,14 @@
     height: frame.chart_height,
   })
 
-  // Density bins depend only on the decoration-independent base padding: their occupied
-  // cells are the obstacle field the decoration solver routes around, so deriving them from
-  // the solved pad would feed each reservation back into the next solve.
+  // Density bins depend only on the decoration-independent base padding (plus the fixed
+  // marginal strips, so bins stay `bin_px` wide): their occupied cells are the obstacle field
+  // the decoration solver routes around, so deriving them from the solved pad would feed
+  // each reservation back into the next solve.
   const density_bin_count = (total: number, start: number, end: number): number =>
     Math.max(8, Math.ceil(Math.max(1, total - start - end) / density_settings.bin_px))
   const density_bins = $derived.by(() => {
-    const { effective_base_pad: base } = frame
+    const base = add_sides(frame.effective_base_pad, reserve_marginal_pad(resolved_marginals))
     return {
       x: density_bin_count(width, base.l, base.r),
       y: density_bin_count(height, base.t, base.b),
@@ -904,9 +918,10 @@
     ></foreignObject>
 
     <g class="reference-lines">
+      <!-- sorted bounds so an inverted axis range (e.g. [1, 0]) keeps its lines -->
       <ReferenceLinesLayer
         lines={indexed_ref_lines}
-        ranges={frame.ranges.current}
+        ranges={{ x: range_bounds(x_range), y: range_bounds(y_range) }}
         scales={{ x: x_scale_fn, y: y_scale_fn }}
         clip_path_id={frame.clip_path_id}
         decoration_solution={frame.decoration_solution}

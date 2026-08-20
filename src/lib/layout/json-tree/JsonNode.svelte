@@ -122,16 +122,14 @@
   aria-selected={is_selected}
   tabindex={is_focused ? 0 : -1}
   onclick={(event) => {
-    if (event.ctrlKey || event.metaKey) {
-      event.stopPropagation()
-      ctx.toggle_select(path, event.shiftKey)
-    } else {
-      ctx.set_focused(path)
-    }
+    event.stopPropagation() // ancestors would otherwise re-focus/select themselves
+    if (event.ctrlKey || event.metaKey) ctx.toggle_select(path, event.shiftKey)
+    else ctx.set_focused(path)
   }}
   onauxclick={(event) => {
     if (event.button === 1) {
       event.preventDefault()
+      event.stopPropagation()
       ctx.copy_path(path, event)
     }
   }}

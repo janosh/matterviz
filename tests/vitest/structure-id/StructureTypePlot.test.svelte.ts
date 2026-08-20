@@ -2,6 +2,7 @@ import type { StructureIdResult } from '$lib/structure-id'
 import { calc_structure_id, StructureTypePlot } from '$lib/structure-id'
 import * as async_compute from '$lib/structure-id/async-compute.svelte'
 import type { AnyStructure } from '$lib/structure'
+import { to_error } from '$lib/utils'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { bind_props, mount_sized } from '../setup'
@@ -83,15 +84,25 @@ describe(`StructureTypePlot`, { timeout: 30_000 }, () => {
     }
   })
 
-  test(`discards a pending compute when structures are cleared`, async () => {
+  test(`discards a pending compute when structures are cleared, and aborts it on unmount`, async () => {
     const pending_compute = Promise.withResolvers<StructureIdResult>()
-    vi.spyOn(async_compute, `compute_structure_id_async`).mockReturnValue(
-      pending_compute.promise,
+    const signals: (AbortSignal | undefined)[] = []
+    vi.spyOn(async_compute, `compute_structure_id_async`).mockImplementation(
+      (_structure, _options, request_options) => {
+        const signal = request_options?.signal
+        signals.push(signal)
+        // like the worker client: settle with the shared result, or reject once aborted
+        return new Promise((resolve, reject) => {
+          signal?.addEventListener(`abort`, () => reject(to_error(signal.reason)))
+          void pending_compute.promise.then(resolve)
+        })
+      },
     )
     const state = $state({
       structures: [make_fcc([1, 1, 1])] as AnyStructure[] | undefined,
       id_results: [] as StructureIdResult[],
       loading: false,
+      error_msg: undefined as string | undefined,
     })
     const component = mount(StructureTypePlot, {
       target: document.body,
@@ -100,17 +111,28 @@ describe(`StructureTypePlot`, { timeout: 30_000 }, () => {
     try {
       flushSync()
       expect(state.loading).toBe(true)
+      expect(signals[0]?.aborted).toBe(false)
       state.structures = undefined
       flushSync()
       expect(state.loading).toBe(false)
+      expect(signals[0]?.aborted).toBe(true)
 
       pending_compute.resolve(fcc_result)
       await tick()
       await Promise.resolve()
       expect(state.id_results).toEqual([])
+
+      state.structures = [make_fcc([1, 1, 1])]
+      flushSync()
+      expect(signals).toHaveLength(2)
+      expect(signals[1]?.aborted).toBe(false)
     } finally {
       await unmount(component)
     }
+    // unmount aborts the worker request without reporting the abort as an error
+    expect(signals[1]?.aborted).toBe(true)
+    await tick()
+    expect(state.error_msg).toBeUndefined()
   })
 
   test(`equivalent recreated ID options do not recompute`, async () => {
@@ -132,6 +154,15 @@ describe(`StructureTypePlot`, { timeout: 30_000 }, () => {
     flushSync()
     await tick()
     expect(compute_spy).toHaveBeenCalledTimes(2)
-    expect(compute_spy).toHaveBeenLastCalledWith(structure, { skip_csp: false })
+    expect(compute_spy).toHaveBeenLastCalledWith(
+      structure,
+      { skip_csp: false },
+      { signal: expect.any(AbortSignal) },
+    )
+    // the superseded request was told to stop; the live one was not
+    expect(compute_spy.mock.calls.map(([, , opts]) => opts?.signal?.aborted)).toEqual([
+      true,
+      false,
+    ])
   })
 })

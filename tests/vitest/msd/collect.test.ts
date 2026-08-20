@@ -561,6 +561,23 @@ describe(`TrajectoryMsdPane`, () => {
     expect(text).toContain(`1 in 2 frames`)
   })
 
+  // Without a timestep the options do not depend on the stride, so editing it must not
+  // hand MsdPlot a fresh options object and send the buffer back through the worker
+  it(`does not recompute the MSD when the stride changes without a timestep`, async () => {
+    const compute = vi.spyOn(async_compute, `compute_msd_async`)
+    await mount_pane({ trajectory: in_memory })
+    await run_collect()
+    expect(compute).toHaveBeenCalledTimes(1)
+    const stride_input = document.querySelector<HTMLInputElement>(
+      `.trajectory-msd-controls input[min='1'][step='1']`,
+    )
+    if (!stride_input) throw new Error(`no frame-stride input in the MSD pane`)
+    stride_input.value = `3`
+    stride_input.dispatchEvent(new Event(`input`))
+    await settle()
+    expect(compute).toHaveBeenCalledTimes(1)
+  })
+
   // Same defect MsdPlot had: clearing only `positions` leaves its effect early-returning,
   // so the old curves stay up and the message area never shows the failure
   it(`drops stale curves when a recollect fails`, async () => {

@@ -1,13 +1,14 @@
 import type { Vec3 } from '$lib/math'
 import type { AnyStructure } from '$lib/structure'
 import { calc_structure_id } from '$lib/structure-id'
+import * as async_compute from '$lib/structure-id/async-compute.svelte'
 import {
   collect_structure_id_sweep,
   DEFAULT_MAX_SWEEP_FRAMES,
   sweep_frame_plan,
 } from '$lib/structure-id/collect'
 import type { FrameLoader, TrajectoryType } from '$lib/trajectory'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { make_fcc, with_vacancy } from './lattices'
 
 const in_memory = (structures: AnyStructure[]): TrajectoryType => ({
@@ -90,6 +91,26 @@ describe(`collect_structure_id_sweep`, () => {
       [3, 4],
       [4, 4],
     ])
+  })
+
+  it(`stops between frames once its signal aborts and hands the signal to every compute`, async () => {
+    const controller = new AbortController()
+    const compute_spy = vi.spyOn(async_compute, `compute_structure_id_async`)
+    const sweep = collect_structure_id_sweep(repeat_fcc(20), {
+      max_frames: 4,
+      options: { skip_csp: true },
+      signal: controller.signal,
+      on_progress: (done) => {
+        if (done === 2) controller.abort(new Error(`pane closed`))
+      },
+    })
+    await expect(sweep).rejects.toThrow(`pane closed`)
+    // frames 0 and 5 were analysed; the abort landed before frame 10 was requested
+    expect(compute_spy).toHaveBeenCalledTimes(2)
+    for (const call of compute_spy.mock.calls) {
+      expect(call[2]).toEqual({ signal: controller.signal })
+    }
+    compute_spy.mockRestore()
   })
 
   it(`refuses a sweep whose frames disagree on the atom count`, async () => {

@@ -5,11 +5,12 @@
   import type { Vec2 } from '$lib/math'
   import {
     color_ramp_gradient,
+    color_ramp_scale,
     resolve_color_ramp,
     sample_color_ramp,
   } from '$lib/plot/core/color-ramp'
   import PortalSelect from '$lib/plot/core/components/PortalSelect.svelte'
-  import { create_scale, generate_arcsinh_ticks } from '$lib/plot/core/scales'
+  import { generate_arcsinh_ticks } from '$lib/plot/core/scales'
   import type {
     AxisOption,
     ColorBarDataLoaderFn,
@@ -108,7 +109,7 @@
   // Maps tick values to their position along the bar in percent. Generated ticks snap by
   // nicing this scale's domain (arcsinh scales have no nice(); explicit ticks never snap).
   const tick_scale = $derived.by(() => {
-    const percent = create_scale(scale_type, range, is_vertical ? [100, 0] : [0, 100])
+    const percent = color_ramp_scale(scale_type, range, is_vertical ? [100, 0] : [0, 100])
     if (snap_ticks && !Array.isArray(tick_labels) && `nice` in percent) percent.nice(n_ticks)
     return percent
   })
@@ -124,7 +125,7 @@
     }
     if (!snap_ticks) {
       // exactly n_ticks, evenly spaced in scale space
-      const position = create_scale(scale_type, [lo, hi], [0, 1])
+      const position = color_ramp_scale(scale_type, [lo, hi], [0, 1])
       return d3_range(n_ticks).map((idx) => position.invert(idx / (n_ticks - 1)))
     }
     if (type_name === `log`) {

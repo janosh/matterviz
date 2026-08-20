@@ -318,6 +318,13 @@
     }
     return resolve_color_ramp(color_bar_scale, [lo, hi], use_log ? `log` : `linear`)
   })
+  // Legend span in the caller's bound order: the cell ramp's domain, so a lifted log floor
+  // shows on the bar too instead of the raw cs_min <= 0 flooring it at LOG_EPS
+  let legend_range = $derived.by((): Vec2 => {
+    if (typeof ramp !== `object` || ramp === null) return [cs_min, cs_max]
+    const [lo, hi] = ramp.domain
+    return cs_min <= cs_max ? [lo, hi] : [hi, lo]
+  })
   let color_scale_fn = $derived(
     typeof color_scale === `function`
       ? color_scale
@@ -1012,7 +1019,7 @@
       orientation={legend_position === `right` ? `vertical` : `horizontal`}
       tick_labels={5}
       tick_format={legend_format}
-      range={[cs_min, cs_max]}
+      range={legend_range}
       scale_type={use_log ? `log` : `linear`}
       scale={color_bar_scale}
       wrapper_style={legend_position === `right`

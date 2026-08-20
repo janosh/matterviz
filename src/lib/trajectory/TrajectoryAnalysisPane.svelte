@@ -18,7 +18,7 @@
     AnalysisPaneContext,
   } from '$lib/trajectory/analysis-pane'
   import { to_error } from '$lib/utils'
-  import type { Snippet } from 'svelte'
+  import { type Snippet, untrack } from 'svelte'
   import { Graph, type IconData } from 'svelte-widgets/icons'
 
   let {
@@ -37,6 +37,8 @@
     suggest_stride,
     compute_label,
     recollect_label,
+    collecting_label = `Reading frames…`,
+    indexed_note,
     bytes_per_atom_frame = 24,
     default_dt = null,
     default_time_unit,
@@ -69,6 +71,11 @@
     suggest_stride?: (trajectory: TrajectoryType) => number | null
     compute_label: string
     recollect_label: string
+    // Button text while `collect` runs
+    collecting_label?: string
+    // How the analysis copes with an indexed trajectory, for the warning; defaults to
+    // `${analysis_name} streams the full payload`
+    indexed_note?: string
     // Size of one atom-frame in the collected buffer for the estimate line (3 × f64 = 24)
     bytes_per_atom_frame?: number
     // Time between two SOURCE frames as recorded in the file, seeded into the timestep
@@ -118,8 +125,10 @@
 
   // Drop stale input whenever the underlying trajectory is swapped out, and re-seed the
   // timestep from the file rather than carrying the previous one over. Seeding also keys on
-  // the defaults so metadata that only becomes known later still lands.
-  let analysed_trajectory: TrajectoryType | undefined
+  // the defaults so metadata that only becomes known later still lands. Mount is not a swap:
+  // an `input` the caller supplied alongside the trajectory must survive it (seeding still
+  // runs on mount because `seeded_dt` starts out undefined).
+  let analysed_trajectory = untrack(() => trajectory)
   let seeded_dt: number | null | undefined
   let seeded_time_unit: string | undefined
   $effect(() => {
@@ -127,6 +136,9 @@
     if (trajectory_changed) {
       analysed_trajectory = trajectory
       clear()
+      // a collect still running for the old trajectory may no longer report here
+      progress = null
+      abort_collect()
     }
     if (
       time_unit_fallback &&
@@ -158,25 +170,60 @@
       dt_source > 0 &&
       time_unit.length > 0,
   )
-  let context = $derived<AnalysisPaneContext<Input>>({
-    input,
-    has_valid_dt,
-    dt_collected,
-    time_unit,
-    safe_stride,
-    collected_frames,
-    n_atoms,
-  })
+  // Getters rather than one $derived object: a single object would change identity on every
+  // field (a stride keystroke, a progress tick), re-running every snippet expression that
+  // touched any of it and with it the module's compute on identical options.
+  const context: AnalysisPaneContext<Input> = {
+    get input() {
+      return input
+    },
+    get has_valid_dt() {
+      return has_valid_dt
+    },
+    get dt_collected() {
+      return dt_collected
+    },
+    get time_unit() {
+      return time_unit
+    },
+    get safe_stride() {
+      return safe_stride
+    },
+    get collected_frames() {
+      return collected_frames
+    },
+    get n_atoms() {
+      return n_atoms
+    },
+    get collecting() {
+      return collecting
+    },
+  }
 
   // A sweep outlives a trajectory swap; its result belongs to the run that is no longer on
   // screen, so only the request for the current trajectory may write back. A newer request
   // on the same trajectory likewise supersedes an older one.
   let request_id = 0
+  // Aborted whenever a collect's answer can no longer be used, so a collector that honours
+  // the signal stops reading frames (and posting worker jobs) instead of running to the end
+  let collect_controller: AbortController | undefined
+  const abort_collect = (): void => {
+    collect_controller?.abort()
+    collect_controller = undefined
+  }
+  // Unmount: invalidate first so the abort rejection is not reported as a collect error
+  $effect(() => () => {
+    request_id++
+    abort_collect()
+  })
   async function run_collect() {
     if (!trajectory) return
     const requested = trajectory
     const this_request = ++request_id
     const is_current = () => trajectory === requested && this_request === request_id
+    abort_collect()
+    const controller = new AbortController()
+    collect_controller = controller
     collecting = true
     error_msg = undefined
     progress = null
@@ -184,6 +231,7 @@
       const collected = await collect(requested, {
         raw_data,
         frame_stride: safe_stride,
+        signal: controller.signal,
         on_progress: (parse_progress) => {
           if (is_current()) progress = parse_progress
         },
@@ -194,6 +242,7 @@
       clear()
       error_msg = to_error(exc).message
     } finally {
+      if (collect_controller === controller) collect_controller = undefined
       // the button must re-enable even when the answer was discarded
       if (this_request === request_id) {
         collecting = false
@@ -221,7 +270,8 @@
     {:else if is_lazy}
       <StatusMessage
         type="warning"
-        message="Indexed trajectory: {loaded_frames} of {total_frames} frames are in memory. {analysis_name} streams the full payload{loader_data_available
+        message="Indexed trajectory: {loaded_frames} of {total_frames} frames are in memory. {indexed_note ??
+          `${analysis_name} streams the full payload`}{loader_data_available
           ? ``
           : `, but the raw file bytes are unavailable here`}."
         style="font-size: 0.8em"
@@ -259,21 +309,23 @@
           />
         </label>
       {/if}
-      <p class="hint">
-        {#if suggest_stride}
-          {collected_frames} frames × {n_atoms} atoms ≈ {format_bytes(estimated_bytes)}
-        {/if}
-        {#if time_unit_fallback}
-          {#if has_valid_dt}
-            · {format_num(dt_collected, `.4~g`)} {time_unit} per collected frame
-          {:else}
-            · no valid timestep is available: lag axis in frames
+      {#if suggest_stride || time_unit_fallback || hint}
+        <p class="hint">
+          {#if suggest_stride}
+            {collected_frames} frames × {n_atoms} atoms ≈ {format_bytes(estimated_bytes)}
           {/if}
-        {/if}
-        {@render hint?.(context)}
-      </p>
+          {#if time_unit_fallback}
+            {#if has_valid_dt}
+              · {format_num(dt_collected, `.4~g`)} {time_unit} per collected frame
+            {:else}
+              · no valid timestep is available: lag axis in frames
+            {/if}
+          {/if}
+          {@render hint?.(context)}
+        </p>
+      {/if}
       <button onclick={run_collect} disabled={collecting || busy}>
-        {collecting ? `Reading frames…` : input ? recollect_label : compute_label}
+        {collecting ? collecting_label : input ? recollect_label : compute_label}
       </button>
       {#if progress}<span class="hint">{progress.stage}</span>{/if}
     </div>

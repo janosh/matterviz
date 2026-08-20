@@ -909,7 +909,7 @@ describe(`ConvexHullStats`, () => {
           mock_entry({ composition: { Fe: 1, O: 1 }, reduced_formula: `FeO` }),
         ],
       })
-      const header = doc_query(`.subsystem-coverage`)
+      const header = doc_query(`[data-testid="pd-binary-subsystem-coverage"]`)
       expect(header.textContent).toContain(`Binary subsystem coverage (3 pairs)`)
       const chips = Array.from(document.querySelectorAll(`.subsystem-chip`))
       expect(chips).toHaveLength(3)
@@ -917,6 +917,12 @@ describe(`ConvexHullStats`, () => {
       expect(chip_text).toContain(`Fe-Li 1`)
       expect(chip_text).toContain(`Fe-O 1`)
       expect(chip_text).toContain(`Li-O 0`)
+
+      doc_query<HTMLButtonElement>(`.subsystem-coverage button.copy-button`).click()
+      flushSync()
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+        `Binary subsystem coverage: Fe-Li: 1 | Li-O: 0 | Fe-O: 1`,
+      )
     })
 
     test(`ternary entry line includes all 3 pairs`, () => {

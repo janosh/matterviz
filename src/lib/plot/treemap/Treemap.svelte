@@ -191,8 +191,8 @@
   // Animate only zoom transitions; resizes, data swaps and padding tweaks snap
   // instantly (animating a container drag-resize would chase the pointer with a
   // 400ms lerp on every width change, and morphing between unrelated datasets
-  // is meaningless). `live` runs once per target change and compares against the
-  // previous zoom root/data to classify it. untrack reads the options once at init.
+  // is meaningless). `live` compares against the previous zoom root/data to classify
+  // the change. untrack reads the options once at init.
   let prev_zoom_idx = untrack(() => zoom_idx)
   let prev_arcs = untrack(() => chart_state.arcs)
   const rects_tween = create_settling_tween<Rect[]>(
@@ -204,13 +204,18 @@
       interpolate: (from: Rect[], to: Rect[]) => (t: number) => lerp_rects(from, to, t),
     })),
     {
-      live: () => {
-        const zoom_changed = zoom_idx !== prev_zoom_idx && chart_state.arcs === prev_arcs
-        ;[prev_zoom_idx, prev_arcs] = [zoom_idx, chart_state.arcs]
-        return zoom_changed ? undefined : { duration: 0 }
-      },
+      live: () =>
+        zoom_idx !== prev_zoom_idx && chart_state.arcs === prev_arcs
+          ? undefined
+          : { duration: 0 },
     },
   )
+  // Bookkeeping lives outside `live`, which the tween skips while the plot is still settling:
+  // a zoom inside that window would otherwise leave prev_* stale and snap the next zoom back.
+  // Created after the tween so it runs after `live` has read the previous values.
+  $effect.pre(() => {
+    ;[prev_zoom_idx, prev_arcs] = [zoom_idx, chart_state.arcs]
+  })
   let rects = $derived(rects_tween.current)
 
   // Deepest level rendered below the current zoom root (0 = unlimited)

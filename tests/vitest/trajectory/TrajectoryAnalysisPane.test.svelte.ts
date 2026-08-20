@@ -1,9 +1,13 @@
 // The shared chrome every whole-trajectory analysis pane (MSD, VACF, ...) is built on: the
 // timestep seeding, stride normalisation, indexed-trajectory warnings and stale-state rules
 // are tested once here against a stub collector rather than once per analysis.
-import type { TrajectoryType } from '$lib/trajectory'
-import type { AnalysisCollectOptions } from '$lib/trajectory/analysis-pane'
+import type { ParseProgress, TrajectoryType } from '$lib/trajectory'
+import type {
+  AnalysisCollectOptions,
+  AnalysisPaneContext,
+} from '$lib/trajectory/analysis-pane'
 import TrajectoryAnalysisPane from '$lib/trajectory/TrajectoryAnalysisPane.svelte'
+import { to_error } from '$lib/utils'
 import { type ComponentProps, createRawSnippet, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { bind_props, doc_query, make_crystal } from '../setup'
@@ -191,11 +195,12 @@ describe(`frame stride`, () => {
     expect(pane_text()).not.toContain(`needs ≥`)
   })
 
-  test(`omits the stride control and size estimate for analyses without a buffer to budget`, async () => {
+  test(`omits the stride control, size estimate and hint line for analyses without a buffer to budget`, async () => {
     mount_pane({ suggest_stride: undefined })
     await settle()
     expect(document.querySelector(`.stub-controls input[min='1'][step='1']`)).toBeNull()
     expect(pane_text()).not.toContain(`atoms ≈`)
+    expect(document.querySelector(`.stub-controls p.hint`)).toBeNull()
   })
 })
 
@@ -211,6 +216,14 @@ describe(`trajectory state`, () => {
     expect(
       text.includes(`20 of 500 frames are in memory. Stub streams the full payload`),
     ).toBe(expects_warning)
+  })
+
+  test(`lets an analysis that does not stream everything say so in the indexed warning`, async () => {
+    mount_pane({ trajectory: lazy, indexed_note: `Sampled frames are loaded on demand` })
+    await settle()
+    const text = document.body.textContent ?? ``
+    expect(text).toContain(`in memory. Sampled frames are loaded on demand, but the raw file`)
+    expect(text).not.toContain(`streams the full payload`)
   })
 
   // trajectory_total_frames throws here, and is_lazy/the stride suggestion both route
@@ -229,17 +242,18 @@ describe(`trajectory state`, () => {
     expect(document.querySelector(`.stub-controls`)).toBeNull()
   })
 
-  test(`stores the collected input, relabels the button, and clears on trajectory swap`, async () => {
+  test(`keeps a caller-supplied input across mount, stores the collected one, relabels the button, and clears on trajectory swap`, async () => {
     const on_clear = vi.fn()
     const state = $state<{ trajectory: TrajectoryType; input?: Collected }>({
       trajectory: make_trajectory(20),
-      input: undefined,
+      input: { frame_stride: 1, n: 0 },
     })
     mount_pane(bind_props({ on_clear }, state))
     await settle()
-    // mount itself counts as a swap from "no trajectory", so the module starts clean
-    expect(on_clear).toHaveBeenCalledTimes(1)
-    expect(doc_query(`.stub-controls button`).textContent).toContain(`Compute stub`)
+    // mount is not a swap: a precomputed input passed in with the trajectory survives it
+    expect(on_clear).not.toHaveBeenCalled()
+    expect(state.input).toEqual({ frame_stride: 1, n: 0 })
+    expect(doc_query(`.stub-controls button`).textContent).toContain(`Recollect stub`)
     const button = await click_collect()
     expect(state.input).toEqual({ frame_stride: 1, n: 1 })
     expect(button.textContent).toContain(`Recollect stub`)
@@ -247,31 +261,82 @@ describe(`trajectory state`, () => {
     state.trajectory = make_trajectory(30)
     await settle()
     expect(state.input).toBeUndefined()
-    expect(on_clear).toHaveBeenCalledTimes(2)
+    expect(on_clear).toHaveBeenCalledTimes(1)
     expect(doc_query(`.stub-controls button`).textContent).toContain(`Compute stub`)
   })
 
   test(`a collect that finishes after a trajectory swap is discarded, but re-enables the button`, async () => {
     const pending = Promise.withResolvers<Collected>()
+    let report: ((progress: ParseProgress) => void) | undefined
+    let signal: AbortSignal | undefined
     const state = $state<{ trajectory: TrajectoryType; input?: Collected }>({
       trajectory: make_trajectory(20),
       input: undefined,
     })
     mount_pane(
       bind_props({}, state),
-      vi.fn<Collect>(() => pending.promise),
+      vi.fn<Collect>((_trajectory, options) => {
+        report = options.on_progress
+        signal = options.signal
+        return pending.promise
+      }),
     )
     await settle()
     const button = doc_query(`.stub-controls button`, HTMLButtonElement)
     button.click()
     await settle()
     expect(button.disabled).toBe(true)
+    expect(signal?.aborted).toBe(false)
+    report?.({ current: 3, total: 20, stage: `frame 3 of 20` })
+    await settle()
+    expect(pane_text()).toContain(`frame 3 of 20`)
     state.trajectory = make_trajectory(30)
     await settle()
+    // the old run's progress is dropped with its trajectory, its collector is told to stop,
+    // and later reports are ignored
+    expect(signal?.aborted).toBe(true)
+    expect(pane_text()).not.toContain(`frame 3 of 20`)
+    report?.({ current: 4, total: 20, stage: `frame 4 of 20` })
+    await settle()
+    expect(pane_text()).not.toContain(`frame 4 of 20`)
     pending.resolve({ frame_stride: 1, n: 99 })
     await settle()
     expect(state.input).toBeUndefined()
     expect(button.disabled).toBe(false)
+  })
+
+  test(`a superseding collect and unmount abort the collect in flight; its abort rejection is not reported`, async () => {
+    const signals: AbortSignal[] = []
+    const state = $state<{ input?: Collected; error_msg?: string }>({
+      input: undefined,
+      error_msg: undefined,
+    })
+    mount_pane(
+      bind_props({}, state),
+      vi.fn<Collect>(
+        (_trajectory, { signal }) =>
+          new Promise((_resolve, reject) => {
+            signals.push(signal)
+            signal.addEventListener(`abort`, () => reject(to_error(signal.reason)))
+          }),
+      ),
+    )
+    await settle()
+    const button = doc_query(`.stub-controls button`, HTMLButtonElement)
+    button.click()
+    await settle()
+    // the button is disabled while collecting, so a second run only starts programmatically
+    button.disabled = false
+    button.click()
+    await settle()
+    expect(signals.map((signal) => signal.aborted)).toEqual([true, false])
+    expect(state.error_msg).toBeUndefined()
+
+    if (mounted) await unmount(mounted)
+    mounted = undefined
+    await settle()
+    expect(signals[1].aborted).toBe(true)
+    expect(state.error_msg).toBeUndefined()
   })
 
   test(`a failed collect drops the input and shows the error in the bound slot`, async () => {
@@ -288,17 +353,29 @@ describe(`trajectory state`, () => {
     await click_collect()
     expect(state.input).toBeUndefined()
     expect(state.error_msg).toBe(`stream exploded`)
-    expect(on_clear).toHaveBeenCalledTimes(2)
+    expect(on_clear).toHaveBeenCalledTimes(1)
   })
 
   test(`disables the button while the module's own compute is busy and shows progress`, async () => {
     const pending = Promise.withResolvers<Collected>()
-    let report:
-      | ((progress: { current: number; total: number; stage: string }) => void)
-      | undefined
+    let report: ((progress: ParseProgress) => void) | undefined
     const state = $state({ busy: true })
     mount_pane(
-      bind_props({}, state),
+      bind_props(
+        {
+          collecting_label: `Sweeping…`,
+          // the plot snippet sees `collecting` so it can show its own in-progress state
+          children: createRawSnippet((ctx: () => AnalysisPaneContext<Collected>) => ({
+            render: () => `<span class="plot"></span>`,
+            setup: (plot) => {
+              $effect(() => {
+                plot.textContent = ctx().collecting ? `busy` : `idle`
+              })
+            },
+          })),
+        },
+        state,
+      ),
       vi.fn<Collect>((_trajectory, { on_progress }) => {
         report = on_progress
         return pending.promise
@@ -310,9 +387,11 @@ describe(`trajectory state`, () => {
     state.busy = false
     await settle()
     expect(button.disabled).toBe(false)
+    expect(doc_query(`.plot`).textContent).toBe(`idle`)
     button.click()
     await settle()
-    expect(button.textContent).toContain(`Reading frames…`)
+    expect(button.textContent).toContain(`Sweeping…`)
+    expect(doc_query(`.plot`).textContent).toBe(`busy`)
     report?.({ current: 3, total: 20, stage: `frame 3 of 20` })
     await settle()
     expect(pane_text()).toContain(`frame 3 of 20`)
@@ -320,5 +399,6 @@ describe(`trajectory state`, () => {
     await settle()
     expect(pane_text()).not.toContain(`frame 3 of 20`)
     expect(button.disabled).toBe(false)
+    expect(doc_query(`.plot`).textContent).toBe(`idle`)
   })
 })

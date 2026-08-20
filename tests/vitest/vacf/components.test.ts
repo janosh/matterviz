@@ -302,6 +302,26 @@ describe(`TrajectoryVacfPane`, () => {
     expect(state.result?.times[1]).toBe(2)
   })
 
+  // Without a timestep the options do not depend on the stride, so editing it must not
+  // hand VacfPlot a fresh options object and send the buffer back through the worker
+  it(`does not recompute the VACF when the stride changes without a timestep`, async () => {
+    const compute = vi.spyOn(vacf_async_module, `compute_vacf_async`)
+    await mount_and_read(TrajectoryVacfPane, {
+      trajectory: make_trajectory(40),
+      pane_open: true,
+    })
+    await run_collect()
+    expect(compute).toHaveBeenCalledTimes(1)
+    const stride_input = document.querySelector<HTMLInputElement>(
+      `.trajectory-vacf-controls input[min='1'][step='1']`,
+    )
+    if (!stride_input) throw new Error(`no frame-stride input in the VACF pane`)
+    stride_input.value = `3`
+    stride_input.dispatchEvent(new Event(`input`))
+    await settle()
+    expect(compute).toHaveBeenCalledTimes(1)
+  })
+
   it(`surfaces a collect failure in the same message slot`, async () => {
     // total_frames without the frames in memory and without a loader is the indexed trap
     const trajectory = { ...make_trajectory(40), total_frames: 900, is_indexed: true }

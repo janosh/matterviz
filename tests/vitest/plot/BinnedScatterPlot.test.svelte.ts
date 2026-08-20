@@ -1,4 +1,5 @@
 import type { Vec2 } from '$lib/math'
+import type { FacetLayoutContext } from '$lib/plot/core/facets'
 import { COLOR_BAR_DEFAULTS } from '$lib/plot/core/types'
 import type { BinnedDensityConfig } from '$lib/plot/scatter/binned-scatter-types'
 import BinnedScatterPlot from '$lib/plot/scatter/BinnedScatterPlot.svelte'
@@ -79,6 +80,10 @@ const plot_rect = (): TestRect => {
   const num = (attr: string) => Number(clip.getAttribute(attr))
   return { x: num(`x`), y: num(`y`), width: num(`width`), height: num(`height`) }
 }
+const tick_labels = (axis: `x` | `y`): string[] =>
+  [...document.querySelectorAll(`.binned-scatter .${axis}-axis text`)].map(
+    (label) => label.textContent?.trim() ?? ``,
+  )
 // Point radii reach the canvas only as arc() calls, so capture them off a mocked context.
 const capture_radii = (overrides: Partial<CanvasRenderingContext2D> = {}): number[] => {
   const radii: number[] = []
@@ -535,18 +540,25 @@ describe(`BinnedScatterPlot`, () => {
   test(`drops declarative RefLines that resolve outside the axis ranges`, async () => {
     mount_plot({
       series: [{ x: [0, 1], y: [0, 1] }],
-      ...unit_axes,
+      // inverted x range: visibility must use sorted bounds, not [min, max] as given
+      x_axis: { range: [1, 0] },
+      y_axis: { range: [0, 1] },
       overlays: {
         ref_lines: [
           { type: `vertical`, x: 5 }, // outside x range -> dropped
           { type: `horizontal`, y: 0.5, visible: false }, // explicitly hidden
+          { type: `vertical`, x: 0.5 }, // inside the inverted range -> kept
         ],
       },
       ...hidden_colorbar,
     })
     await settle()
 
-    expect(document.querySelectorAll(`.reference-lines line`)).toHaveLength(0)
+    // one kept line = one visible stroke (each ReferenceLine also draws a transparent hit line)
+    const visible_lines = [...document.querySelectorAll(`.reference-lines line`)].filter(
+      (line) => line.getAttribute(`stroke`) !== `transparent`,
+    )
+    expect(visible_lines).toHaveLength(1)
   })
 
   test(`renders solver-placed non-overlapping RefLine annotations`, async () => {
@@ -753,7 +765,11 @@ describe(`BinnedScatterPlot`, () => {
 
   test(`rect zoom writes axis ranges, swallows its trailing click, and double-click resets`, async () => {
     const on_density_zoom = vi.fn()
-    const state = { x_axis: { range: [0, 1] as Vec2 }, y_axis: { range: [0, 1] as Vec2 } }
+    // $state so the parent's later range writes propagate in, not only write-backs out
+    const state = $state({
+      x_axis: { range: [0, 1] as Vec2 },
+      y_axis: { range: [0, 1] as Vec2 },
+    })
     mount_plot(
       bind_props(
         {
@@ -822,6 +838,98 @@ describe(`BinnedScatterPlot`, () => {
     expect(bin.x_range[0]).toBe(0.5)
     expect(bin.x_range[1]).toBeGreaterThan(0.5)
     expect(bin.y_range[0]).toBe(0.5)
+
+    // A range the parent writes after a user zoom replaces the zoomed view
+    state.x_axis = { range: [2, 4] }
+    await settle()
+    expect(tick_labels(`x`)).toEqual(expect.arrayContaining([`2`, `3`, `4`]))
+
+    // Shift-drag pans the current view (half the plot width = half the range) without
+    // touching the axis props, as in ScatterPlot
+    const panned = plot_rect()
+    const [pan_x, pan_y] = [panned.x + panned.width / 2, panned.y + panned.height / 2]
+    svg.dispatchEvent(
+      new MouseEvent(`mousedown`, {
+        bubbles: true,
+        button: 0,
+        shiftKey: true,
+        clientX: pan_x,
+        clientY: pan_y,
+      }),
+    )
+    window.dispatchEvent(
+      new MouseEvent(`mousemove`, {
+        buttons: 1,
+        clientX: pan_x - panned.width / 2,
+        clientY: pan_y,
+      }),
+    )
+    window.dispatchEvent(new MouseEvent(`mouseup`))
+    await settle()
+    expect(tick_labels(`x`)).toEqual(expect.arrayContaining([`3`, `4`, `5`]))
+    expect(tick_labels(`x`)).not.toContain(`2`)
+    expect(state.x_axis.range).toEqual([2, 4])
+  })
+
+  test(`reports pinned axis ranges (not the no-scan sentinel) to a facet grid`, async () => {
+    const report_layout = vi.fn()
+    const facet_layout: FacetLayoutContext = {
+      padding: {},
+      ranges: {},
+      axis_visibility: { x: true, x2: true, y: true, y2: true },
+      report_layout,
+      update_range: vi.fn(),
+    }
+    const series = [{ x: [100, 200], y: [5, 10] }]
+    const last_report = () => report_layout.mock.calls.at(-1)?.[0]
+    // both axes pinned: no data scan, yet the report must carry the pinned ranges
+    mount_plot({
+      series,
+      x_axis: { range: [90, 210] },
+      y_axis: { range: [0, 20] },
+      facet_layout,
+      ...hidden_colorbar,
+    })
+    await settle()
+    expect(last_report().ranges).toMatchObject({ x: [90, 210], y: [0, 20] })
+
+    // one pinned bound: the other falls back to the data extent
+    document.body.replaceChildren()
+    mount_plot({
+      series,
+      x_axis: { range: [90, null] },
+      range_padding: 0,
+      facet_layout,
+      ...hidden_colorbar,
+    })
+    await settle()
+    expect(last_report().ranges).toMatchObject({ x: [90, 200], y: [5, 10] })
+  })
+
+  test(`keeps density bins bin_px wide when marginal strips shrink the plot area`, async () => {
+    const on_density_zoom = vi.fn()
+    const bin_px = 20
+    mount_plot({
+      series: [{ x: Array(20).fill(0.5), y: Array(20).fill(0.5) }],
+      ...unit_axes,
+      ...density_mode({ bin_px }),
+      marginals: { top: { type: `histogram`, size: 64 }, right: { type: `kde`, size: 64 } },
+      on_density_zoom,
+    })
+    await settle()
+    // Without decorations the plot rect is the base pad plus the marginal strips, so the bin
+    // grid must tile exactly that rect at bin_px
+    const area = plot_rect()
+    const center = plot_center()
+    click_plot(center.x + 1, center.y - 1)
+    await tick()
+    const { bin } = on_density_zoom.mock.calls[0][0]
+    expect(Math.round(1 / (bin.x_range[1] - bin.x_range[0]))).toBe(
+      Math.ceil(area.width / bin_px),
+    )
+    expect(Math.round(1 / (bin.y_range[1] - bin.y_range[0]))).toBe(
+      Math.ceil(area.height / bin_px),
+    )
   })
 
   test.each([

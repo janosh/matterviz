@@ -408,10 +408,14 @@
 
   // Avoid deep-proxying lattice_matrices: unwrapping measured 1917 ms proxied vs 1.1 ms raw.
   let trail_stream = $state.raw<TrajectoryPositionStream | null>(null)
-  // Writable: the structure controls toggle it, a host-side scene_props change resets it
+  // Writable: the structure controls toggle it, a host-side scene_props change resets it.
+  // Goes through a value-level derived so a host rebuilding structure_props (anywidget trait
+  // sync) with the same configured value does not discard the user's toggle.
+  let configured_trajectory_lines = $derived(
+    structure_props.scene_props?.show_trajectory_lines,
+  )
   let show_trajectory_lines = $derived(
-    structure_props.scene_props?.show_trajectory_lines ??
-      DEFAULTS.structure.show_trajectory_lines,
+    configured_trajectory_lines ?? DEFAULTS.structure.show_trajectory_lines,
   )
   let trajectory_lines_available = $derived(
     Boolean(
@@ -571,6 +575,9 @@
     if (scrub_settle_timeout !== undefined) clearTimeout(scrub_settle_timeout)
     if (prefetch_timeout !== undefined) clearTimeout(prefetch_timeout)
     active_frame_loader?.dispose?.()
+    // Invalidate in-flight loads first: the abort below rejects them, and without a
+    // fresh load_id their catch would report the AbortError through on_error
+    load_id += 1
     active_source_controller?.abort()
     active_parse_controller?.abort()
   })

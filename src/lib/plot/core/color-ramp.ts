@@ -2,10 +2,12 @@
 // ColorBarScale into a data→color function, sample it evenly in scale space (linear, log
 // or arcsinh spacing) and emit the CSS gradient for a swatch or bar.
 import { get_d3_interpolator } from '$lib/colors'
-import type { Vec2 } from '$lib/math'
+import { LOG_EPS, type Vec2 } from '$lib/math'
 import { create_scale } from '$lib/plot/core/scales'
 import type { ColorBarScale, ScaleType } from '$lib/plot/core/types'
+import { get_scale_type_name } from '$lib/plot/core/types'
 import { clamp01 } from '$lib/utils'
+import { scaleLog } from 'd3-scale'
 
 export interface ColorRamp {
   color_fn: (value: number) => string // data value -> color
@@ -14,9 +16,20 @@ export interface ColorRamp {
 
 const ascending = ([start, end]: Vec2): Vec2 => (start <= end ? [start, end] : [end, start])
 
+// Scale for positioning colors and ticks along a ramp. Unlike create_scale, log keeps any
+// positive bound (diffusivities, rates etc. sit far below the LOG_EPS axis floor) and the
+// bound order (a descending range runs high-to-low); only non-positive bounds fall back to
+// LOG_EPS, so a domain entirely <= 0 collapses to a flat ramp instead of going NaN.
+export const color_ramp_scale = (scale_type: ScaleType, domain: Vec2, output: Vec2) => {
+  if (get_scale_type_name(scale_type) !== `log`)
+    return create_scale(scale_type, domain, output)
+  const log_domain = domain.map((bound) => (bound > 0 ? bound : LOG_EPS)) as Vec2
+  return scaleLog().domain(log_domain).range(output)
+}
+
 // A prebuilt `fn` scale maps data itself over the domain it declares (else `range`);
 // interpolator names/functions are stretched across `range` with `scale_type` spacing
-// (log clamps non-positive bounds like every other log axis; equal bounds hit the midpoint).
+// (log floors non-positive bounds at LOG_EPS; equal bounds hit the midpoint).
 // A descending `range` keeps its order in `domain`, so the ramp samples high-to-low.
 export const resolve_color_ramp = (
   scale: ColorBarScale,
@@ -28,7 +41,7 @@ export const resolve_color_ramp = (
   }
   const interpolator =
     typeof scale === `object` ? scale.interpolator : get_d3_interpolator(scale)
-  const position = create_scale(scale_type, ascending(range), [0, 1])
+  const position = color_ramp_scale(scale_type, ascending(range), [0, 1])
   return { color_fn: (value) => interpolator(clamp01(position(value))), domain: range }
 }
 
@@ -39,7 +52,7 @@ export const sample_color_ramp = (
   steps = 50,
 ): string[] => {
   const n_steps = Math.max(2, Math.floor(steps))
-  const position = create_scale(scale_type, ascending(domain), [0, 1])
+  const position = color_ramp_scale(scale_type, ascending(domain), [0, 1])
   const colors = Array.from({ length: n_steps }, (_, idx) =>
     color_fn(position.invert(idx / (n_steps - 1))),
   )
