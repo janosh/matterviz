@@ -166,7 +166,6 @@ describe(`build_legend_data`, () => {
         series_idx: 0,
         label: `alpha`,
         visible: true,
-        has_explicit_label: true,
         display_style: {
           symbol_type: `Square`,
           symbol_color: get_series_color(0),
@@ -176,7 +175,6 @@ describe(`build_legend_data`, () => {
       {
         series_idx: 1,
         label: `Series 2`,
-        has_explicit_label: false,
         display_style: { symbol_type: get_series_symbol(1) },
       },
       {

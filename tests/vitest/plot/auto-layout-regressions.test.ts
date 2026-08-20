@@ -5,14 +5,15 @@ import {
   type ReferenceAnnotationCandidate,
 } from '$lib/plot/core/decorations'
 import { rect_within_rect, rects_overlap, type Rect } from '$lib/plot/core/layout'
-import { analyze_tick_label_geometry, type TickLabelItem } from '$lib/plot/core/tick-geometry'
-import { TICK_STRATEGIES } from '$lib/plot/core/tick-strategies'
 import {
+  analyze_tick_label_geometry,
   clear_tick_metrics_cache,
   measure_text_width,
   resolve_tick_layout,
   TICK_LABEL_GAP,
+  TICK_STRATEGIES,
   type MeasuredAxis,
+  type TickLabelItem,
   type TickLayoutSide,
 } from '$lib/plot/core/tick-layout'
 import { DEFAULT_FONT_SPEC, type FontSpec } from '$lib/plot/core/text-metrics'

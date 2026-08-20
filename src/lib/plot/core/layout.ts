@@ -320,7 +320,7 @@ function measure_full_footprint(element: HTMLElement): ElementFootprint {
 }
 
 // Full footprint once the element is laid out, else `fallback` (offset dims read 0
-// before first render). NOT interchangeable with auto-place's measured_footprint:
+// before first render). NOT interchangeable with decorations' measured_footprint:
 // that returns the offset box, which underestimates elements with overflowing
 // absolutely-positioned descendants like colorbar tick labels.
 export const full_footprint_or = (

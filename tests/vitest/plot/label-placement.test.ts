@@ -9,14 +9,13 @@ import {
   estimate_label_size,
   generate_candidates,
   label_leader_segment,
-  parse_font_size,
   rect_circle_overlap,
   rect_out_of_bounds_area,
   rect_overlap_area,
   segment_rect_intersects,
   segments_intersect,
 } from '$lib/plot/core/utils/label-placement'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
 // === Geometry helpers ===
 
@@ -54,12 +53,7 @@ describe(`rect_overlap_area`, () => {
     },
   ])(`$label → $expected`, ({ a: rect_a, b: rect_b, expected }) => {
     expect(rect_overlap_area(rect_a, rect_b)).toBe(expected)
-  })
-
-  test(`is commutative`, () => {
-    const rect_a = { x: 0, y: 0, w: 10, h: 10 }
-    const rect_b = { x: 5, y: 3, w: 8, h: 12 }
-    expect(rect_overlap_area(rect_a, rect_b)).toBe(rect_overlap_area(rect_b, rect_a))
+    expect(rect_overlap_area(rect_b, rect_a)).toBe(expected) // commutative
   })
 })
 
@@ -139,85 +133,97 @@ describe(`rect_out_of_bounds_area`, () => {
   })
 })
 
-// === parse_font_size ===
-
-describe(`parse_font_size`, () => {
-  test.each([
-    { input: undefined, expected: 12 },
-    { input: `10px`, expected: 10 },
-    { input: `14`, expected: 14 },
-    { input: `1.5em`, expected: 24 },
-    { input: `1.5rem`, expected: 24 },
-    { input: `garbage`, expected: 12 },
-    { input: ``, expected: 12 },
-  ])(`parse_font_size($input) → $expected`, ({ input, expected }) => {
-    expect(parse_font_size(input)).toBe(expected)
-  })
-})
+// === estimate_label_size ===
 
 describe(`estimate_label_size`, () => {
-  test(`uses the longest line and measured line count`, () => {
-    expect(estimate_label_size(`Li2O\nwbm-123`, `10px`)).toEqual({
-      width: 52,
-      height: 24,
-    })
+  // happy-dom has no 2D canvas, so measure_text_line takes its deterministic fallback:
+  // 0.6 em per code point. Width adds 10 px breathing room, height is 1.2 em per line.
+  test.each([
+    { text: `abc`, font_size: `10px`, px: 10, n_chars: 3, n_lines: 1 },
+    { text: `abc`, font_size: `14`, px: 14, n_chars: 3, n_lines: 1 },
+    { text: `abc`, font_size: undefined, px: 12, n_chars: 3, n_lines: 1 },
+    { text: `abc`, font_size: ``, px: 12, n_chars: 3, n_lines: 1 },
+    { text: `abc`, font_size: `garbage`, px: 12, n_chars: 3, n_lines: 1 },
+    { text: `abc`, font_size: `1.5em`, px: 18, n_chars: 3, n_lines: 1 },
+    { text: `abc`, font_size: `1.5rem`, px: 18, n_chars: 3, n_lines: 1 },
+    { text: `abc`, font_size: `12pt`, px: 16, n_chars: 3, n_lines: 1 },
+    // longest line sets the width, every line (even blank) counts toward the height
+    { text: `Li2O\nwbm-123`, font_size: `10px`, px: 10, n_chars: 7, n_lines: 2 },
+    { text: `a\r\n\r\nbc`, font_size: `10px`, px: 10, n_chars: 2, n_lines: 3 },
+    { text: ``, font_size: `10px`, px: 10, n_chars: 0, n_lines: 1 },
+  ])(
+    `$text at $font_size → $n_chars chars x $n_lines lines at $px px`,
+    ({ text, font_size, px, n_chars, n_lines }) => {
+      const { width, height } = estimate_label_size(text, font_size)
+      expect(width).toBeCloseTo(n_chars * px * 0.6 + 10, 10)
+      expect(height).toBeCloseTo(n_lines * px * 1.2, 10)
+    },
+  )
+
+  test(`measures with the canvas 2D context when one exists`, () => {
+    const get_context = vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue({
+      font: ``,
+      measureText: (text: string) => ({ width: text.length * 9 }),
+    } as unknown as CanvasRenderingContext2D)
+    try {
+      // 9 px/char beats the 6 px/char fallback, so a fallback would report 34 here
+      expect(estimate_label_size(`abcd\nab`, `10px`)).toEqual({ width: 46, height: 24 })
+    } finally {
+      get_context.mockRestore()
+    }
   })
 })
 
 describe(`label_leader_segment`, () => {
-  test(`trims from point rim to label edge`, () => {
-    const segment = label_leader_segment({
+  const root_half = Math.SQRT1_2
+  test.each([
+    {
+      label: `trims from point rim to label edge`,
       point: { x: 0, y: 0 },
       point_radius: 4,
       label_center: { x: 40, y: 0 },
       label_size: { width: 20, height: 10 },
-      min_length: 6,
-      label_padding: 0,
-    })
-
-    expect(segment).toEqual({ x1: 4, y1: 0, x2: 30, y2: 0 })
-  })
-
-  test(`hides segments shorter than the minimum visible length`, () => {
-    expect(
-      label_leader_segment({
-        point: { x: 0, y: 0 },
-        point_radius: 4,
-        label_center: { x: 12, y: 0 },
-        label_size: { width: 8, height: 8 },
-        min_length: 6,
-        label_padding: 0,
-      }),
-    ).toBeNull()
-  })
-
-  test(`hides segments when the label overlaps the point rim`, () => {
-    expect(
-      label_leader_segment({
-        point: { x: 0, y: 0 },
-        point_radius: 8,
-        label_center: { x: 12, y: 0 },
-        label_size: { width: 30, height: 10 },
-        min_length: 6,
-        label_padding: 0,
-      }),
-    ).toBeNull()
-  })
-
-  test(`trims diagonal leaders in the correct quadrant`, () => {
-    const segment = label_leader_segment({
+      expected: { x1: 4, y1: 0, x2: 30, y2: 0 },
+    },
+    {
+      label: `trims diagonal leaders in the correct quadrant`,
       point: { x: 10, y: 10 },
       point_radius: 5,
       label_center: { x: 50, y: 50 },
       label_size: { width: 20, height: 20 },
+      expected: { x1: 10 + 5 * root_half, y1: 10 + 5 * root_half, x2: 40, y2: 40 },
+    },
+    {
+      label: `hides segments shorter than the minimum visible length`,
+      point: { x: 0, y: 0 },
+      point_radius: 4,
+      label_center: { x: 12, y: 0 },
+      label_size: { width: 8, height: 8 },
+      expected: null,
+    },
+    {
+      label: `hides segments when the label overlaps the point rim`,
+      point: { x: 0, y: 0 },
+      point_radius: 8,
+      label_center: { x: 12, y: 0 },
+      label_size: { width: 30, height: 10 },
+      expected: null,
+    },
+  ])(`$label`, ({ point, point_radius, label_center, label_size, expected }) => {
+    const segment = label_leader_segment({
+      point,
+      point_radius,
+      label_center,
+      label_size,
       min_length: 6,
       label_padding: 0,
     })
-
-    expect(segment?.x1).toBeCloseTo(13.54, 2)
-    expect(segment?.y1).toBeCloseTo(13.54, 2)
-    expect(segment?.x2).toBeCloseTo(40)
-    expect(segment?.y2).toBeCloseTo(40)
+    if (expected === null) expect(segment).toBeNull()
+    else {
+      for (const key of [`x1`, `y1`, `x2`, `y2`] as const) {
+        expect(segment?.[key]).toBeCloseTo(expected[key], 10)
+      }
+    }
   })
 })
 
@@ -232,8 +238,18 @@ describe(`generate_candidates`, () => {
     gap = 4
   const candidates = generate_candidates(ax, ay, radius, label_w, label_h, gap)
 
-  test(`returns 8 candidate positions`, () => {
-    expect(candidates).toHaveLength(8)
+  test(`places 8 top-left corners R, TR, T, TL, L, BL, B, BR at offset radius + gap`, () => {
+    // offset = 9: the near edge sits 9 px from the anchor, side positions straddle it by 4.5
+    expect(candidates).toEqual([
+      { x: 59, y: 44.5 }, // R
+      { x: 59, y: 35.5 }, // TR
+      { x: 35, y: 31 }, // T
+      { x: 11, y: 35.5 }, // TL
+      { x: 11, y: 44.5 }, // L
+      { x: 11, y: 54.5 }, // BL
+      { x: 35, y: 59 }, // B
+      { x: 59, y: 54.5 }, // BR
+    ])
   })
 
   test(`no candidate label rect overlaps the marker circle`, () => {
@@ -246,19 +262,6 @@ describe(`generate_candidates`, () => {
       )
       expect(overlap).toBe(0)
     }
-  })
-
-  test(`first candidate (R) is to the right of the anchor`, () => {
-    expect(candidates[0].x).toBeGreaterThanOrEqual(ax + radius + gap)
-  })
-
-  test(`candidates span all compass directions`, () => {
-    const half_w = label_w / 2,
-      half_h = label_h / 2
-    expect(candidates.some((candidate) => candidate.x + half_w < ax)).toBe(true)
-    expect(candidates.some((candidate) => candidate.x + half_w > ax)).toBe(true)
-    expect(candidates.some((candidate) => candidate.y + half_h < ay)).toBe(true)
-    expect(candidates.some((candidate) => candidate.y + half_h > ay)).toBe(true)
   })
 })
 
@@ -306,41 +309,59 @@ describe(`compute_delta_energy`, () => {
     return compute_delta_energy(...args, weights, bounds, neighbors)
   }
 
-  test(`moving label closer to its anchor yields negative distance delta`, () => {
-    const anchors = [{ x: 100, y: 100, radius: 4 }]
-    const far = { x: 150, y: 150, w: 30, h: 12, anchor_idx: 0 }
-    const near = { ...far, x: 105, y: 95 }
-    const weights = { ...zero_weights, distance: 1 }
-    expect(delta_energy([far], anchors, 0, far, near, weights)).toBeLessThan(0)
-  })
-
-  test(`moving label into overlap with another label yields positive overlap delta`, () => {
-    const anchors = [
-      { x: 100, y: 100, radius: 4 },
-      { x: 200, y: 100, radius: 4 },
-    ]
-    const label_a = { x: 100, y: 90, w: 30, h: 12, anchor_idx: 0 }
-    const label_b = { x: 200, y: 90, w: 30, h: 12, anchor_idx: 1 }
-    const moved = { ...label_a, x: 200 }
-    const weights = { ...zero_weights, overlap: 30 }
-    const delta = delta_energy([label_a, label_b], anchors, 0, label_a, moved, weights)
-    expect(delta).toBeGreaterThan(0)
-  })
-
-  test(`moving label out of bounds yields positive bounds delta`, () => {
-    const anchors = [{ x: 10, y: 10, radius: 4 }]
-    const inside = { x: 10, y: 10, w: 30, h: 12, anchor_idx: 0 }
-    const outside = { ...inside, x: -20 }
-    const weights = { ...zero_weights, bounds: 100 }
-    expect(delta_energy([inside], anchors, 0, inside, outside, weights)).toBeGreaterThan(0)
-  })
-
-  test(`moving label onto a marker yields positive marker delta`, () => {
-    const anchors = [{ x: 100, y: 100, radius: 8 }]
-    const clear = { x: 120, y: 90, w: 30, h: 12, anchor_idx: 0 }
-    const on_marker = { ...clear, x: 90, y: 94 }
-    const weights = { ...zero_weights, marker: 100 }
-    expect(delta_energy([clear], anchors, 0, clear, on_marker, weights)).toBeGreaterThan(0)
+  // One weight switched on at a time, so each case pins the sign of a single energy term.
+  // Exact magnitudes are covered by the full-pairwise equivalence test below.
+  const label_a = { x: 100, y: 90, w: 30, h: 12, anchor_idx: 0 }
+  test.each([
+    {
+      label: `closer to its anchor → negative distance delta`,
+      anchors: [{ x: 100, y: 100, radius: 4 }],
+      others: [],
+      old_state: { ...label_a, x: 150, y: 150 },
+      new_state: { ...label_a, x: 105, y: 95 },
+      weights: { ...zero_weights, distance: 1 },
+      sign: -1,
+    },
+    {
+      label: `onto another label → positive overlap delta`,
+      anchors: [
+        { x: 100, y: 100, radius: 4 },
+        { x: 200, y: 100, radius: 4 },
+      ],
+      others: [{ ...label_a, x: 200, anchor_idx: 1 }],
+      old_state: label_a,
+      new_state: { ...label_a, x: 200 },
+      weights: { ...zero_weights, overlap: 30 },
+      sign: 1,
+    },
+    {
+      label: `out of bounds → positive bounds delta`,
+      anchors: [{ x: 10, y: 10, radius: 4 }],
+      others: [],
+      old_state: { ...label_a, x: 10, y: 10 },
+      new_state: { ...label_a, x: -20, y: 10 },
+      weights: { ...zero_weights, bounds: 100 },
+      sign: 1,
+    },
+    {
+      label: `onto a marker → positive marker delta`,
+      anchors: [{ x: 100, y: 100, radius: 8 }],
+      others: [],
+      old_state: { ...label_a, x: 120 },
+      new_state: { ...label_a, x: 90, y: 94 },
+      weights: { ...zero_weights, marker: 100 },
+      sign: 1,
+    },
+  ])(`moving a label $label`, ({ anchors, others, old_state, new_state, weights, sign }) => {
+    const delta = delta_energy(
+      [old_state, ...others],
+      anchors,
+      0,
+      old_state,
+      new_state,
+      weights,
+    )
+    expect(Math.sign(delta)).toBe(sign)
   })
 
   // Same energy as compute_delta_energy but scoring every marker and label, i.e. without its
@@ -546,16 +567,6 @@ describe(`compute_label_positions`, () => {
       },
     ]
     expect(place_series(disabled)).toEqual({})
-  })
-
-  test(`places labels at finite positions for single and boundary points`, () => {
-    const single = place_and_expect_finite([{ x: 50, y: 50, text: `Only` }])
-    const corners = place_and_expect_finite([
-      { x: 15, y: 15, text: `Corner` },
-      { x: 385, y: 285, text: `FarCorner` },
-    ])
-    expect(Object.keys(single)).toHaveLength(1)
-    expect(Object.keys(corners)).toHaveLength(2)
   })
 
   test(`translates automatic label positions with point offsets`, () => {

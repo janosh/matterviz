@@ -38,9 +38,7 @@ export interface FillEdgeStyle {
 export interface FillHoverStyle {
   fill?: string
   fill_opacity?: number
-  edge?: FillEdgeStyle
   cursor?: string
-  scale?: number // Scale factor for hover effect
   stroke?: string // Outline color drawn around the region on hover (default: theme-aware contrast)
   stroke_width?: number // Outline width in px on hover (default: 1.5)
 }
@@ -62,19 +60,17 @@ export interface FillHandlerEvent {
 export type LayerZIndex = `below-grid` | `below-lines` | `below-points` | `above-all`
 
 // Curve types supported for fill path generation (matching d3-shape curves)
-export const FILL_CURVE_TYPES = [
-  `linear`,
-  `monotoneX`,
-  `monotoneY`,
-  `step`,
-  `stepBefore`,
-  `stepAfter`,
-  `basis`,
-  `cardinal`,
-  `catmullRom`,
-  `natural`,
-] as const
-export type FillCurveType = (typeof FILL_CURVE_TYPES)[number]
+export type FillCurveType =
+  | `linear`
+  | `monotoneX`
+  | `monotoneY`
+  | `step`
+  | `stepBefore`
+  | `stepAfter`
+  | `basis`
+  | `cardinal`
+  | `catmullRom`
+  | `natural`
 
 // Main configuration for a fill region
 export interface FillRegion {
@@ -100,7 +96,6 @@ export interface FillRegion {
   edge_upper?: FillEdgeStyle
   edge_lower?: FillEdgeStyle
   curve?: FillCurveType
-  step_position?: number // For step curves: 0 = step, 0.5 = stepMiddle, 1 = stepEnd
 
   // Rendering
   z_index?: LayerZIndex

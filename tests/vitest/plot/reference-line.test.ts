@@ -33,15 +33,16 @@ describe(`normalize_value`, () => {
   })
 
   test.each([
-    ...[`invalid`, `Infinity`, Infinity, -Infinity, Number.NaN, new Date(`invalid`)].map(
-      (input) => [input, `Invalid RefLineValue`] as const,
-    ),
-    ...[``, ` `, `  \t  `].map((input) => [input, `empty string`] as const),
-  ])(`returns 0 for invalid value %j`, (input, warning) => {
-    const warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
-    expect(normalize_value(input)).toBe(0)
-    expect(warn_spy).toHaveBeenCalledWith(expect.stringContaining(warning))
-    warn_spy.mockRestore()
+    `invalid`,
+    `Infinity`,
+    Infinity,
+    -Infinity,
+    Number.NaN,
+    new Date(`invalid`),
+    ``,
+    ` `,
+  ])(`throws for invalid value %j`, (input) => {
+    expect(() => normalize_value(input)).toThrow(`Invalid reference line value`)
   })
 })
 
@@ -159,19 +160,26 @@ describe(`resolve_line_endpoints`, () => {
     )
   })
 
-  test(`segment with x_span and y_span clips to span bounds`, () => {
+  test.each([
     // 45° line clipped to [20,80] x [30,70]; y_span is tighter so dominates
-    const line: RefLine = {
-      type: `segment`,
-      p1: [-10, -10],
-      p2: [110, 110],
-      x_span: [20, 80],
-      y_span: [30, 70],
-    }
-    expect(resolve_line_endpoints(line, bounds, scales)).toEqual(
-      scaled_endpoints([30, 30, 70, 70]),
-    )
-  })
+    { x_span: [20, 80], y_span: [30, 70], expected: [30, 30, 70, 70] },
+    // spans wider than the plot never extend the clip rect past the visible bounds
+    { x_span: [-500, 500], y_span: [null, 1000], expected: [0, 0, 100, 100] },
+  ] as const)(
+    `segment with x_span $x_span and y_span $y_span`,
+    ({ x_span, y_span, expected }) => {
+      const line: RefLine = {
+        type: `segment`,
+        p1: [-10, -10],
+        p2: [110, 110],
+        x_span: [...x_span],
+        y_span: [...y_span],
+      }
+      expect(resolve_line_endpoints(line, bounds, scales)).toEqual(
+        scaled_endpoints([...expected]),
+      )
+    },
+  )
 
   // Lines outside bounds should return null
   test.each([

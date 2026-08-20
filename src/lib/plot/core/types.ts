@@ -9,7 +9,7 @@ import type { Sides } from '$lib/plot/core/layout'
 import type PlotLegend from '$lib/plot/core/components/PlotLegend.svelte'
 import type { PlotTitleConfig } from '$lib/plot/core/plot-title'
 import type { TicksOption } from '$lib/plot/core/scales'
-import type { TickStrategy } from '$lib/plot/core/tick-strategies'
+import type { TickStrategy } from '$lib/plot/core/tick-layout'
 import type { FillGradient } from '$lib/plot/core/types/fills'
 
 export type { TweenOptions } from 'svelte/motion'
@@ -86,7 +86,6 @@ export interface PointStyle {
   fill_opacity?: number
   symbol_type?: D3SymbolName
   symbol_size?: number | null // Optional override for marker size
-  shape?: string // Add optional shape (string for flexibility)
   cursor?: string // Cursor style for the point
   // Highlight support for phase diagrams and other use cases
   is_highlighted?: boolean
@@ -132,16 +131,6 @@ export interface LineStyle {
   width?: number
   dash?: string
   [key: string]: unknown
-}
-
-// Extend the base Point type to include optional styling and metadata
-export interface PlotPoint<Metadata = Record<string, unknown>> extends Point<Metadata> {
-  color_value?: number | null
-  point_style?: PointStyle
-  point_hover?: HoverStyle
-  point_label?: LabelStyle
-  point_offset?: Point2D // Individual point offset (distinct from label offset)
-  point_tween?: TweenOptions<Point2D>
 }
 
 export type Markers = `line` | `points` | `line+points` | `none`
@@ -231,21 +220,17 @@ export function assert_series_lengths(series: AlignedSeries, series_idx?: number
   )
 }
 
-// Represents the internal structure used within ScatterPlot, merging series-level and point-level data
-export interface InternalPoint<
-  Metadata = Record<string, unknown>,
-> extends PlotPoint<Metadata> {
+// Internal ScatterPlot point: a Point merged with its series-level and per-point styling
+export interface InternalPoint<Metadata = Record<string, unknown>> extends Point<Metadata> {
   series_idx: number // Index of the series this point belongs to
   point_idx: number // Index of the point within its series
-  size_value?: number | null // Size value for the point
-}
-
-export interface Tooltip {
-  show: boolean
-  x: number
-  y: number
-  title?: string
-  items?: { label: string; value: string; color?: string }[]
+  color_value?: number | null
+  size_value?: number | null
+  point_style?: PointStyle
+  point_hover?: HoverStyle
+  point_label?: LabelStyle
+  point_offset?: Point2D // Individual point offset (distinct from label offset)
+  point_tween?: TweenOptions<Point2D>
 }
 
 export interface HandlerProps<Metadata = Record<string, unknown>> {
@@ -392,13 +377,6 @@ export function get_arcsinh_threshold(scale_type: ScaleType | undefined): number
 export const is_time_scale = (scale_type: ScaleType | undefined): boolean =>
   get_scale_type_name(scale_type) === `time`
 
-export type QuadrantCounts = {
-  top_left: number
-  top_right: number
-  bottom_left: number
-  bottom_right: number
-}
-
 // Energy weights for the simulated annealing label placement
 export interface LabelPlacementWeights {
   overlap?: number // Label-label overlap penalty (default: 30)
@@ -452,8 +430,6 @@ export interface LegendItem {
   visible: boolean
   series_idx: number
   legend_group?: string // Optional group name for grouped legend rendering
-  // False when `label` is the generated `Series N` fallback rather than user-supplied
-  has_explicit_label?: boolean
   // Type of item: 'series' for data series (default), 'fill' for fill regions
   item_type?: `series` | `fill`
   // For fill regions, the index in the computed_fills array (for unique keying)
@@ -761,27 +737,6 @@ export interface BasePlotProps {
   // Children
   children?: Snippet<[{ height: number; width: number; fullscreen?: boolean }]>
 }
-export const LINE_TYPES = [`solid`, `dashed`, `dotted`] as const
-export type LineType = (typeof LINE_TYPES)[number]
-
-// Define grid cell identifiers
-export const CELLS_3X3 = [
-  `top-left`,
-  `top-center`,
-  `top-right`,
-  `middle-left`,
-  `middle-center`,
-  `middle-right`,
-  `bottom-left`,
-  `bottom-center`,
-  `bottom-right`,
-] as const
-export const CORNER_CELLS = [`top-left`, `top-right`, `bottom-left`, `bottom-right`] as const
-
-// Define the structure for GridCell and GridCellCounts for 3x3 grid
-export type Cell3x3 = (typeof CELLS_3X3)[number]
-export type Corner = (typeof CORNER_CELLS)[number]
-
 // Default grid line style (SSOT for all plot components)
 export const DEFAULT_GRID_STYLE = {
   stroke: `var(--border-color, gray)`,
@@ -819,5 +774,5 @@ export const DEFAULT_SERIES_SYMBOLS = [
 // Sub-domain types live in ./types/* and are re-exported so existing
 // `$lib/plot/core/types` import paths keep working.
 export type * from '$lib/plot/core/types/plot-3d'
-export * from '$lib/plot/core/types/fills'
+export type * from '$lib/plot/core/types/fills'
 export * from '$lib/plot/core/types/reference-lines'

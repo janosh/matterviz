@@ -5,7 +5,7 @@
 import { as_text, create_file_drop_handler } from '$lib/io'
 import type { FileLoadCallback } from '$lib/io'
 import type { AnyStructure } from '$lib/structure'
-import { parse_any_structure } from '$lib/structure/parse'
+import { parse_structure_file } from '$lib/structure/parse'
 import { to_error } from '$lib/utils'
 
 export interface StructureEntry {
@@ -51,7 +51,7 @@ export const create_structure_drop_handler = (opts: {
       const custom_handler = opts.on_file_drop?.()
       if (custom_handler) return custom_handler(content, filename, metadata)
       try {
-        const structure = parse_any_structure(as_text(content), filename)
+        const structure = parse_structure_file(as_text(content), filename)
         if (!structure?.sites?.length) {
           opts.on_error(`${filename} has no sites, nothing to plot`)
           return

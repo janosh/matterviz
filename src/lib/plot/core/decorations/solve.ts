@@ -1,5 +1,4 @@
-import type { Rect } from '$lib/plot/core/layout'
-import { place_interior_decoration } from './interior'
+import { compute_element_placement, type Rect } from '$lib/plot/core/layout'
 import { project_obstacles } from './obstacles'
 import { get_outside_placement, place_outside_decorations } from './outside'
 import { place_reference_annotation } from './reference-annotations'
@@ -125,11 +124,14 @@ export const solve_decorations = (scene: DecorationScene): DecorationSolution =>
       continue
     }
 
-    const result = place_interior_decoration({
-      item,
+    // Earlier decoration footprints act as exclusion rectangles, so interior decorations are
+    // mutually exclusive while the scorer keeps its data-overlap behavior.
+    const result = compute_element_placement({
       plot_bounds,
-      obstacles,
-      exclude_rects: decoration_rects,
+      element_size: item.footprint,
+      axis_clearance: item.clearance,
+      exclude_rects: [...decoration_rects],
+      points: obstacles,
       grid_resolution: scene.grid_resolution,
     })
     const placement: DecorationPlacement = {

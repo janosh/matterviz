@@ -2,8 +2,11 @@ import {
   build_obstacles_norm,
   clip_bar,
   clip_segment_to_unit_square,
-  place_decorations,
-} from '$lib/plot/core/auto-place'
+  type DecorationItem,
+  type DecorationScene,
+  type DecorationSize,
+  place_outside_decorations,
+} from '$lib/plot/core/decorations'
 import { describe, expect, test } from 'vitest'
 
 const base_pad = { t: 5, b: 50, l: 50, r: 20 }
@@ -18,12 +21,30 @@ for (let x_idx = 0; x_idx <= 20; x_idx++) {
   }
 }
 
-// place_decorations over the shared plot box; tests override only what they vary (obstacles default
-// to the fully-dense field that forces every interior decoration to overlap data)
-const place = (overrides: Partial<Parameters<typeof place_decorations>[0]> = {}) =>
-  place_decorations({ base_pad, width, height, obstacles_norm: dense, ...overrides })
+// Outside placement over the shared plot box; tests override only what they vary (obstacles
+// default to the fully-dense field that forces every interior decoration to overlap data)
+const place = ({
+  legend,
+  colorbar,
+  ...overrides
+}: Partial<Omit<DecorationScene, `items`>> & {
+  legend?: { footprint: DecorationSize }
+  colorbar?: { footprint: DecorationSize; horizontal?: boolean }
+} = {}) => {
+  const items: DecorationItem[] = []
+  if (legend) items.push({ id: `legend`, kind: `legend`, ...legend })
+  if (colorbar) items.push({ id: `colorbar`, kind: `colorbar`, ...colorbar })
+  return place_outside_decorations({
+    base_pad,
+    width,
+    height,
+    obstacles_norm: dense,
+    items,
+    ...overrides,
+  })
+}
 
-describe(`place_decorations`, () => {
+describe(`place_outside_decorations`, () => {
   test.each([
     { horizontal: true, edge: `top` },
     { horizontal: false, edge: `right` },
