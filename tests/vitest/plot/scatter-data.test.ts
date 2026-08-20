@@ -100,15 +100,11 @@ describe(`filter_series_to_ranges`, () => {
   })
 
   test.each<[string, DataSeries, string, string?]>([
-    [`short y`, { id: `energy`, x: [0, 1], y: [2] }, `x=2, y=1, raw_y=absent`],
-    [`long y`, { id: `energy`, x: [0], y: [1, 2] }, `x=1, y=2, raw_y=absent`],
+    [`short y`, { id: `energy`, x: [0, 1], y: [2] }, `x=2, y=1`],
+    [`long y`, { id: `energy`, x: [0], y: [1, 2] }, `x=1, y=2`],
     [`short raw_y`, { id: `energy`, x: [0, 1], y: [2, 3], raw_y: [2] }, `x=2, y=2, raw_y=1`],
     [`long raw_y`, { id: `energy`, x: [0], y: [1], raw_y: [1, 2] }, `x=1, y=1, raw_y=2`],
-    [
-      `hidden series`,
-      { id: `energy`, x: [0, 1], y: [2], visible: false },
-      `x=2, y=1, raw_y=absent`,
-    ],
+    [`hidden series`, { id: `energy`, x: [0, 1], y: [2], visible: false }, `x=2, y=1`],
     [
       `misaligned underlay`,
       { id: `energy`, x: [0, 1], y: [2, 3], line_underlays: [{ x: [0, 1], y: [2] }] },
@@ -117,7 +113,7 @@ describe(`filter_series_to_ranges`, () => {
     ],
   ])(`rejects %s`, (_name, series, lengths, group = ``) => {
     expect(() => filter_series_to_ranges([series], ranges)).toThrow(
-      `Series "energy"${group}: ${lengths}; aligned arrays must have equal lengths`,
+      `Series "energy"${group}: aligned arrays must have equal lengths, got ${lengths}`,
     )
   })
 

@@ -193,46 +193,41 @@ export interface DataSeries<Metadata = Record<string, unknown>> {
   orig_series_idx?: number // Original series index for consistent auto-cycling colors/symbols
 }
 
+// Throw when arrays that are indexed in lockstep have different lengths. Absent arrays are skipped.
 export function assert_aligned_lengths(
-  series: Pick<DataSeries, 'id' | 'label'>,
+  where: string,
   arrays: Record<string, ArrayLike<unknown> | undefined>,
-  options: { series_idx?: number; array_group?: string; subject?: string } = {},
 ): void {
-  const length_entries = Object.entries(arrays).map(
-    ([name, values]) => [name, values?.length] as const,
-  )
-  const expected_length = length_entries.find(([, length]) => length !== undefined)?.[1]
-  if (length_entries.every(([, length]) => length === undefined || length === expected_length))
-    return
-
-  const { array_group, series_idx, subject = `Series` } = options
-  const identifier = series.id ?? series.label
-  const location =
-    identifier !== undefined
-      ? ` ${JSON.stringify(String(identifier))}`
-      : series_idx === undefined
-        ? ``
-        : ` at index ${series_idx}`
-  const lengths = length_entries
-    .map(([name, length]) => `${name}=${length ?? `absent`}`)
-    .join(`, `)
-  throw new RangeError(
-    `${subject}${location}${array_group ? ` ${array_group}` : ``}: ${lengths}; aligned arrays must have equal lengths`,
-  )
+  const present = Object.entries(arrays).filter(([, arr]) => arr !== undefined)
+  if (new Set(present.map(([, arr]) => arr?.length)).size <= 1) return
+  const detail = present.map(([name, arr]) => `${name}=${arr?.length}`).join(`, `)
+  throw new RangeError(`${where}: aligned arrays must have equal lengths, got ${detail}`)
 }
 
-export function assert_series_lengths(
-  series: Pick<DataSeries, 'id' | 'label' | 'x' | 'y' | 'raw_y' | 'line_underlays'>,
-  series_idx?: number,
-): void {
-  const { x, y, raw_y } = series
-  assert_aligned_lengths(series, { x, y, raw_y }, { series_idx })
-  series.line_underlays?.forEach(({ x: underlay_x, y: underlay_y }, underlay_idx) =>
-    assert_aligned_lengths(
-      series,
-      { x: underlay_x, y: underlay_y },
-      { series_idx, array_group: `line_underlays[${underlay_idx}]` },
-    ),
+// Per-point arrays of any plot series (bar, scatter, 3D, dense). Only the aligned fields matter.
+type AlignedSeries = {
+  id?: string | number
+  label?: string
+  x: ArrayLike<unknown>
+  y: ArrayLike<unknown>
+  z?: ArrayLike<unknown>
+  raw_y?: ArrayLike<unknown>
+  line_underlays?: readonly { x: ArrayLike<unknown>; y: ArrayLike<unknown> }[]
+}
+
+export function assert_series_lengths(series: AlignedSeries, series_idx?: number): void {
+  const { id, label, x, y, z, raw_y } = series
+  const name = id ?? label
+  const where =
+    name === undefined
+      ? `Series${series_idx === undefined ? `` : ` at index ${series_idx}`}`
+      : `Series "${name}"`
+  assert_aligned_lengths(where, { x, y, z, raw_y })
+  series.line_underlays?.forEach((underlay, idx) =>
+    assert_aligned_lengths(`${where} line_underlays[${idx}]`, {
+      x: underlay.x,
+      y: underlay.y,
+    }),
   )
 }
 

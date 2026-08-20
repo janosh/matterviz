@@ -300,7 +300,7 @@ export function resolve_boundary_points(
     if (boundary.values.length === 0) return null
     if (boundary.x) {
       const { x, values } = boundary
-      assert_aligned_lengths({}, { x, values }, { subject: `Fill boundary` })
+      assert_aligned_lengths(`Fill boundary`, { x, values })
       return curved_edge(finite_points(x, values))
     }
     // No x: align values to the companion's x by index (or fraction when lengths differ)

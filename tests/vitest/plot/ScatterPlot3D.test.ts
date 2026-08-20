@@ -107,9 +107,7 @@ describe(`ScatterPlot3D smoke tests`, () => {
         },
       })
       flushSync()
-    }).toThrow(
-      `Series "points": x=3, y=2, z=4, raw_y=absent; aligned arrays must have equal lengths`,
-    )
+    }).toThrow(`Series "points": aligned arrays must have equal lengths, got x=3, y=2, z=4`)
     mounted_component = null
   })
 

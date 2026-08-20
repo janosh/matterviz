@@ -10,7 +10,7 @@
   import { constrain_tooltip_position } from '$lib/plot/core/layout'
   import { unique_id } from '$lib/plot/core/utils'
   import { scaleLinear } from 'd3-scale'
-  import type { ComponentProps, Snippet } from 'svelte'
+  import { type ComponentProps, type Snippet, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { build_diagram } from './build-diagram'
   import type { DiagramInput } from './diagram-input'
@@ -273,19 +273,14 @@
     on_phase_hover?.(null)
   }
 
-  let source_initialized = false
-  let previous_source_data: PhaseDiagramData | undefined
+  // Hover and lock state describe the previous data, so drop them when the data changes
   $effect(() => {
-    const next_source_data = source_data
-    if (!source_initialized) {
-      source_initialized = true
-      previous_source_data = next_source_data
-      return
-    }
-    if (next_source_data === previous_source_data) return
-    previous_source_data = next_source_data
-    locked_hover_info = null
-    clear_hover()
+    void source_data
+    untrack(() => {
+      if (!hover_info && !locked_hover_info && !hovered_region) return
+      locked_hover_info = null
+      clear_hover()
+    })
   })
 
   // Handle click to lock/unlock tooltip

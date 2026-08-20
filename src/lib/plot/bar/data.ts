@@ -6,7 +6,7 @@
 import type { Vec2 } from '$lib/math'
 import { get_nice_data_range } from '$lib/plot/core/scales'
 import type { BarMode, BarSeries, Orientation, ScaleType } from '$lib/plot/core/types'
-import { assert_aligned_lengths, get_scale_type_name } from '$lib/plot/core/types'
+import { assert_series_lengths, get_scale_type_name } from '$lib/plot/core/types'
 
 // Internal series shape with guaranteed numeric x (string categories mapped to integer indices)
 export type NumericBarSeries<Metadata = Record<string, unknown>> = Omit<
@@ -20,9 +20,7 @@ export function normalize_categorical<Metadata = Record<string, unknown>>(
   series: readonly BarSeries<Metadata>[],
   explicit_categories?: readonly string[],
 ): { category_list: string[]; internal_series: NumericBarSeries<Metadata>[] } {
-  series.forEach((srs, series_idx) =>
-    assert_aligned_lengths(srs, { x: srs.x, y: srs.y }, { series_idx }),
-  )
+  series.forEach(assert_series_lengths)
   const is_categorical = series.some((srs) => srs.x.some((val) => typeof val === `string`))
   const category_list = !is_categorical
     ? []

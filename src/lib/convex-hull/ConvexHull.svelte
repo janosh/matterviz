@@ -7,7 +7,6 @@
   import ConvexHull2D from './ConvexHull2D.svelte'
   import ConvexHull3D from './ConvexHull3D.svelte'
   import ConvexHull4D from './ConvexHull4D.svelte'
-  import MissingConvexHullData from './MissingConvexHullData.svelte'
   import type { BaseConvexHullProps, Hull3DProps } from './index'
 
   // Union type combining all possible props from 2D, 3D, and 4D components
@@ -51,7 +50,6 @@
     children,
     ...rest
   }: ConvexHullProps = $props()
-  const entries = $derived(entries_prop ?? [])
 
   // Lightweight element extraction - count unique elements, stripping oxidation states
   // (e.g. "V4+" -> "V") to avoid counting the same element multiple times
@@ -71,7 +69,7 @@
   }
 
   // Detect dimensionality by counting unique elements (lightweight operation)
-  const elements = $derived(extract_unique_elements(entries))
+  const elements = $derived(extract_unique_elements(entries_prop ?? []))
   const element_count = $derived(elements.length)
 
   const hull_defaults = $derived(
@@ -92,30 +90,22 @@
       max_hull_dist_show_phases_prop = max_hull_dist_show_phases
     }
   })
-  $effect(() => {
-    if (entries_prop !== undefined) return
-    stable_entries = []
-    unstable_entries = []
-    selected_entry = null
-    phase_stats = null
-  })
 
   // Map element count to component. Deliberate cast: the wrapper passes the prop superset
   // while each component declares only its dimension's props (2D lacks Hull3DProps, 3D/4D
   // lack x/y_axis), so a constructor union wouldn't compile. Svelte ignores extra props.
+  // Missing entries (data not loaded yet) go to 2D, which renders the missing-data state
+  // and zeroes the bound outputs like every dimension does.
   const ConvexHullComponent = $derived(
-    { 2: ConvexHull2D, 3: ConvexHull3D, 4: ConvexHull4D }[element_count] ?? null,
+    entries_prop === undefined
+      ? ConvexHull2D
+      : ({ 2: ConvexHull2D, 3: ConvexHull3D, 4: ConvexHull4D }[element_count] ?? null),
   ) as Component<ConvexHullProps> | null
 </script>
 
-{#if entries_prop === undefined}
-  <MissingConvexHullData
-    {...rest}
-    style={`height: var(--hull-height, 500px); ${rest.style ?? ``}`}
-  />
-{:else if ConvexHullComponent}
+{#if ConvexHullComponent}
   <ConvexHullComponent
-    {entries}
+    entries={entries_prop}
     {...rest}
     bind:fullscreen
     bind:wrapper

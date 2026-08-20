@@ -24,7 +24,7 @@
     StyleOverrides3D,
     Surface3DConfig,
   } from '$lib/plot/core/types'
-  import { assert_aligned_lengths, SCALE_DEFAULTS } from '$lib/plot/core/types'
+  import { assert_series_lengths, SCALE_DEFAULTS } from '$lib/plot/core/types'
   import { Canvas } from '@threlte/core'
   import * as extras from '@threlte/extras'
   import { onMount } from 'svelte'
@@ -153,11 +153,12 @@
   let mounted = $state(false)
   onMount(() => (mounted = true))
 
+  // Points are built inside the Canvas scene, so fail fast on misaligned arrays out here
+  $effect.pre(() => series.forEach(assert_series_lengths))
+
   const series_visibility_keys = $derived.by((): string[] => {
     const id_counts = new SvelteMap<string | number, number>()
-    for (const [series_idx, srs] of series.entries()) {
-      const { x, y, z, raw_y } = srs
-      assert_aligned_lengths(srs, { x, y, z, raw_y }, { series_idx })
+    for (const srs of series) {
       if (srs?.id !== undefined && srs.id !== ``) {
         id_counts.set(srs.id, (id_counts.get(srs.id) ?? 0) + 1)
       }

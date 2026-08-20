@@ -6,7 +6,7 @@ import {
 } from '$lib/plot/core/spatial-index'
 import type { ScaleType } from '$lib/plot/core/types'
 import {
-  assert_aligned_lengths,
+  assert_series_lengths,
   get_arcsinh_threshold,
   get_scale_type_name,
 } from '$lib/plot/core/types'
@@ -129,14 +129,6 @@ const in_bounds = (value: number, min: number, max: number): boolean =>
 const value_bin = (value: number, min: number, span: number, bins: number): number =>
   Math.min(bins - 1, Math.max(0, Math.floor(((value - min) / span) * bins)))
 
-const series_length = <Metadata>(
-  srs: DensePointSeries<Metadata>,
-  series_idx: number,
-): number => {
-  assert_aligned_lengths(srs, { x: srs.x, y: srs.y }, { series_idx })
-  return srs.x.length
-}
-
 const padded_extent = (
   min: number,
   max: number,
@@ -167,6 +159,7 @@ export function series_extents(
   y_scale_type?: ScaleType,
   range_padding = 0.05,
 ): { x: Vec2; y: Vec2 } {
+  series.forEach(assert_series_lengths)
   let x_min = Infinity
   let x_max = -Infinity
   let y_min = Infinity
@@ -174,8 +167,8 @@ export function series_extents(
   const log_x = get_scale_type_name(x_scale_type) === `log`
   const log_y = get_scale_type_name(y_scale_type) === `log`
 
-  for (const [series_idx, srs] of series.entries()) {
-    const n_points = series_length(srs, series_idx)
+  for (const srs of series) {
+    const n_points = srs.x.length
     for (let idx = 0; idx < n_points; idx++) {
       const x = srs.x[idx]
       const y = srs.y[idx]
@@ -203,6 +196,7 @@ export function bin_points(
   y_bins: number,
   transforms?: BinTransforms,
 ): DensityBinResult {
+  series.forEach(assert_series_lengths)
   const counts = new Uint32Array(x_bins * y_bins)
   const first_point_idxs = new Int32Array(counts.length)
   const first_series_idxs = new Int32Array(counts.length)
@@ -222,7 +216,7 @@ export function bin_points(
 
   for (let series_idx = 0; series_idx < series.length; series_idx++) {
     const srs = series[series_idx]
-    const n_points = series_length(srs, series_idx)
+    const n_points = srs.x.length
     for (let point_idx = 0; point_idx < n_points; point_idx++) {
       const x = srs.x[point_idx]
       const y = srs.y[point_idx]
@@ -326,6 +320,7 @@ export function build_pick_index<Metadata>(
   series: readonly DensePointSeries<Metadata>[],
   options: PickNearestOptions,
 ): PickIndex<Metadata> {
+  series.forEach(assert_series_lengths)
   const { x_range, y_range, x_scale, y_scale, radius_px = 12 } = options
   const [x_min, x_max] = range_bounds(x_range)
   const [y_min, y_max] = range_bounds(y_range)
@@ -335,7 +330,7 @@ export function build_pick_index<Metadata>(
   function* in_range_points(): Generator<DenseInternalPoint<Metadata>> {
     for (let series_idx = 0; series_idx < series.length; series_idx++) {
       const srs = series[series_idx]
-      const n_points = series_length(srs, series_idx)
+      const n_points = srs.x.length
       for (let point_idx = 0; point_idx < n_points; point_idx++) {
         const x = srs.x[point_idx]
         const y = srs.y[point_idx]
