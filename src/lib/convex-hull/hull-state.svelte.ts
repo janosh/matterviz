@@ -21,11 +21,13 @@ import { DEFAULT_GAS_TEMP } from './types'
 const DIM_TO_KIND = { 2: `binary`, 3: `ternary`, 4: `quaternary` } as const
 
 // Lower hull of the plotted entries. Facet vertex indices point into `entries`; `points`
-// are the hull coordinates ([x, E_form], [x, y, E_form] or [x, y, z, E_form]) of the same.
+// are the hull coordinates ([x, E_form], [x, y, E_form] or [x, y, z, E_form]) of the same,
+// and `facet_entries` the vertex entries of each facet (same order as `facets`).
 export interface HullGeometry {
   entries: ConvexHullEntry[]
   points: number[][]
   facets: thermo.HullFacet[]
+  facet_entries: ConvexHullEntry[][]
 }
 
 export interface HullDataPipelineInputs {
@@ -235,7 +237,11 @@ export function create_hull_data_pipeline(inputs: HullDataPipelineInputs) {
   const hull = $derived.by((): HullGeometry => {
     const entries = coords_entries.filter((entry) => !entry.exclude_from_hull)
     const points = entries.map((entry) => hull_point(entry, dim))
-    return { entries, points, facets: thermo.compute_lower_hull_nd(points) }
+    const facets = thermo.compute_lower_hull_nd(points)
+    const facet_entries = facets.map((facet) =>
+      facet.vertex_indices.map((idx) => entries[idx]),
+    )
+    return { entries, points, facets, facet_entries }
   })
 
   // Entries with e_above_hull/is_stable: from the data when precomputed, else from the hull

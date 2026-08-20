@@ -20,8 +20,8 @@
     style = ``,
   }: Props = $props()
 
-  const { phases, functions, parameters } = $derived(result.data)
-  const reference = $derived(extract_tdb_reference(result.data.comments))
+  const { elements, phases, functions, parameters, comments } = $derived(result.data)
+  const reference = $derived(extract_tdb_reference(comments))
   const model_summary = $derived(summarize_models(phases))
   const sys = $derived(system_name || result.binary_system?.join(`-`) || `Unknown`)
   const [t_min, t_max] = $derived(result.temperature_range)
@@ -63,7 +63,7 @@
       {/if}
     </p>
   {:else}
-    {@const elems = result.data.elements
+    {@const elems = elements
       .map((element) => element.symbol)
       .filter((symbol) => symbol !== `VA` && symbol !== `/-`)}
     {@const [el_a, el_b] = [elems[0] ?? `EL1`, elems[1] ?? `EL2`]}

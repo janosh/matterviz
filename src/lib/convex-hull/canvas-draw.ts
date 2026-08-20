@@ -4,7 +4,7 @@ import type { D3InterpolateName } from '$lib/colors'
 import { get_formula_label_segments } from '$lib/composition/format'
 import type { FormulaLabelSegment } from '$lib/composition/format'
 import type { ElementSymbol } from '$lib/element'
-import { symbol_map } from '$lib/labels'
+import { type D3SymbolName, symbol_map } from '$lib/labels'
 import { array_min } from '$lib/math'
 import {
   centered_rect,
@@ -34,12 +34,17 @@ const point_radius = (entry: ConvexHullEntry): number =>
 
 // === Markers ===
 
+// D3 symbol name of a marker (`circle` → `Circle`), undefined for unknown marker names
+export function marker_d3_name(marker: MarkerSymbol): D3SymbolName | undefined {
+  const name = marker.charAt(0).toUpperCase() + marker.slice(1)
+  return name in symbol_map ? (name as D3SymbolName) : undefined
+}
+
 // SVG path data for a marker symbol of given radius, or null for unknown marker names.
 // Uses d3-shape for consistent rendering with ScatterPlot.
 export function marker_path_data(radius: number, marker: MarkerSymbol): string | null {
-  // Capitalize first letter to get D3 symbol name (e.g. 'circle' -> 'Circle')
-  const d3_name = marker.charAt(0).toUpperCase() + marker.slice(1)
-  const symbol_type = symbol_map[d3_name as keyof typeof symbol_map]
+  const d3_name = marker_d3_name(marker)
+  const symbol_type = d3_name && symbol_map[d3_name]
   return symbol_type
     ? symbol()
         .type(symbol_type)
@@ -229,6 +234,21 @@ export function find_hull_entry_at_mouse(
 }
 
 // === Labels ===
+
+// Centered notice in place of the plot, e.g. when the dataset's arity doesn't match the diagram
+export function draw_notice(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  text_color: string,
+  width: number,
+  height: number,
+): void {
+  ctx.fillStyle = text_color
+  ctx.font = `16px Arial`
+  ctx.textAlign = `center`
+  ctx.textBaseline = `middle`
+  ctx.fillText(text, width / 2, height / 2)
+}
 
 const LABEL_FONT_SIZE = 12
 const LABEL_FONT = `${LABEL_FONT_SIZE}px Arial`

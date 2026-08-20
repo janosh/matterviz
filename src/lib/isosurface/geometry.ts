@@ -5,7 +5,7 @@ import { marching_cubes_buffers } from '$lib/marching-cubes'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import type { ScalarGrid3D } from './grid'
 import { type DisplayRange, prepare_geometry_grid } from './sampling'
-import { MAX_GRID_POINTS, type VolumeGrid } from './types'
+import type { VolumeGrid } from './types'
 
 export interface GeometryVolumeJob {
   token: number
@@ -54,12 +54,8 @@ export const finite_grid_options = (vertex_shift: Vec3) =>
 export function compute_isosurface_geometries(input: GeometryInput): GeometryResult {
   const volumes = input.volumes.map((job): GeometryVolumeResult => {
     const prepare_start = performance.now()
-    const source = job.volume
-    let grid: ScalarGrid3D<Float64Array> = source
-    let { lattice, origin } = source
-    if (job.range || source.values.length > MAX_GRID_POINTS) {
-      ;({ grid, lattice, origin } = prepare_geometry_grid(source, job.range))
-    }
+    // Returns the source grid itself when there is no range and it is within budget
+    const { grid, lattice, origin } = prepare_geometry_grid(job.volume, job.range)
     const prepare_geometry_ms = performance.now() - prepare_start
     const vertex_shift: Vec3 = [
       origin[0] - job.reference_origin[0],

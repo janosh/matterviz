@@ -91,73 +91,59 @@
     style: `height: 100px; --histogram-min-height: 100px`,
   } as const
 
-  // Stat cards: phase counts + stability, then one card per energy distribution (each
-  // followed by its histogram in the markup)
-  const count_cards = $derived.by((): InfoPaneCard[] => {
-    if (!phase_stats) return []
-    const pct = (count: number) =>
-      phase_stats.total > 0 ? format_num(count / phase_stats.total, `.1~%`) : `0%`
+  // Stat cards: phase counts, stability, then one per energy distribution (each followed
+  // by its histogram in the markup)
+  type StatCard = `counts` | `stability` | `e_form` | `e_hull`
+  const stat_cards = $derived.by((): Record<StatCard, InfoPaneCard> | null => {
+    if (!phase_stats) return null
+    const { total, chemical_system, max_arity, energy_range, hull_distance } = phase_stats
     const count_row = (label: string, count: number, key: string) => ({
       label,
-      value: `${format_num(count)} (${pct(count)})`,
+      value: `${format_num(count)} (${total > 0 ? format_num(count / total, `.1~%`) : `0%`})`,
       key: `pd-${key}`,
     })
-    return [
-      {
+    const energy_card = (title: string, label: string, values: number[], key: string) => ({
+      title,
+      rows: [{ label, value: values.map((val) => format_num(val, `.3f`)).join(` / `), key }],
+    })
+    return {
+      counts: {
         title: ``,
         rows: [
           {
-            label: `Total entries in ${phase_stats.chemical_system}`,
-            value: format_num(phase_stats.total),
+            label: `Total entries in ${chemical_system}`,
+            value: format_num(total),
             key: `pd-total-entries`,
           },
           // Only arities that exist or fit the system dimensionality (respects zeroed counts)
           ...arity_types
-            .filter(
-              ([, field, arity]) => phase_stats[field] > 0 || phase_stats.max_arity >= arity,
-            )
+            .filter(([, field, arity]) => phase_stats[field] > 0 || max_arity >= arity)
             .map(([display, field]) =>
               count_row(`${display} phases`, phase_stats[field], `${field}-phases`),
             ),
         ],
       },
-      {
+      stability: {
         title: `Stability`,
         rows: [
           count_row(`Stable phases`, phase_stats.stable, `stable-phases`),
           count_row(`Unstable phases`, phase_stats.unstable, `unstable-phases`),
         ],
       },
-    ]
+      e_form: energy_card(
+        `E<sub>form</sub> distribution`,
+        `Min / avg / max (eV/atom)`,
+        [energy_range.min, energy_range.avg, energy_range.max],
+        `pd-formation-energy`,
+      ),
+      e_hull: energy_card(
+        `E<sub>above hull</sub> distribution`,
+        `Max / avg (eV/atom)`,
+        [hull_distance.max, hull_distance.avg],
+        `pd-hull-distance`,
+      ),
+    }
   })
-  const energy_card = (title: string, label: string, values: number[], key: string) => ({
-    title,
-    rows: [{ label, value: values.map((val) => format_num(val, `.3f`)).join(` / `), key }],
-  })
-  const e_form_card = $derived(
-    phase_stats
-      ? energy_card(
-          `E<sub>form</sub> distribution`,
-          `Min / avg / max (eV/atom)`,
-          [
-            phase_stats.energy_range.min,
-            phase_stats.energy_range.avg,
-            phase_stats.energy_range.max,
-          ],
-          `pd-formation-energy`,
-        )
-      : null,
-  )
-  const e_hull_card = $derived(
-    phase_stats
-      ? energy_card(
-          `E<sub>above hull</sub> distribution`,
-          `Max / avg (eV/atom)`,
-          [phase_stats.hull_distance.max, phase_stats.hull_distance.avg],
-          `pd-hull-distance`,
-        )
-      : null,
-  )
 
   // Binary subsystem coverage: entries per element pair (ternary to 10-component systems)
   const subsystem_coverage = $derived.by(() => {
@@ -223,11 +209,11 @@
     return [entry.entry_id, data?.mat_id, data?.structure_id].includes(highlighted_entry_id)
   }
 
-  // Table rows plus a WeakMap from row → entry for the click handler. Cell HTML is
-  // sanitized by HeatmapTable (unsafe hrefs are dropped there).
-  const { table_data, entry_by_row } = $derived.by(() => {
-    const map = new WeakMap<RowData, ConvexHullEntry>()
-    const rows = table_entries.map((entry, idx) => {
+  // Table rows, index-aligned with table_entries (the `#` column is idx + 1, which is how
+  // a clicked row maps back to its entry). Cell HTML is sanitized by HeatmapTable (unsafe
+  // hrefs are dropped there).
+  const table_data = $derived(
+    table_entries.map((entry, idx): RowData => {
       const formula = get_electro_neg_formula(get_reduced_formula(entry.composition))
       const row: RowData = {
         '#': idx + 1,
@@ -254,14 +240,12 @@
       if (is_highlighted(entry)) {
         row.style = `background: color-mix(in srgb, var(--hull-stable-color, #22c55e) 15%, transparent)`
       }
-      map.set(row, entry)
       return row
-    })
-    return { table_data: rows, entry_by_row: map }
-  })
+    }),
+  )
 
   function handle_row_click(_event: KeyboardEvent | MouseEvent, row: RowData): void {
-    const entry = entry_by_row.get(row)
+    const entry = table_entries[Number(row[`#`]) - 1]
     if (entry) on_entry_click?.(entry)
   }
 
@@ -325,8 +309,8 @@
 </script>
 
 {#snippet stats_panel()}
-  {#if phase_stats && e_form_card && e_hull_card}
-    <InfoPaneCards cards={count_cards.slice(0, 1)} {...cards_props} />
+  {#if stat_cards}
+    <InfoPaneCards cards={[stat_cards.counts]} {...cards_props} />
     {#if subsystem_coverage}
       <div class="subsystem-coverage" data-testid="pd-binary-subsystem-coverage">
         <span class="subsystem-label">
@@ -341,9 +325,9 @@
       </div>
     {/if}
     <hr />
-    <InfoPaneCards cards={count_cards.slice(1)} {...cards_props} />
+    <InfoPaneCards cards={[stat_cards.stability]} {...cards_props} />
     <hr />
-    <InfoPaneCards cards={[e_form_card]} {...cards_props} />
+    <InfoPaneCards cards={[stat_cards.e_form]} {...cards_props} />
     {#if e_form_values.length > 0}
       <Histogram
         {...histogram_props}
@@ -353,7 +337,7 @@
       />
     {/if}
     <hr />
-    <InfoPaneCards cards={[e_hull_card]} {...cards_props} />
+    <InfoPaneCards cards={[stat_cards.e_hull]} {...cards_props} />
     {#if e_hull_values.length > 0}
       <Histogram
         {...histogram_props}

@@ -79,3 +79,26 @@ export function flatten_grid(grid: number[][][]): ScalarGrid3D<Float64Array> {
   }
   return { values, dims, order: `z_fastest` }
 }
+
+// Reorder an x-fastest (Fortran/VASP) value block into a z-fastest Float64Array,
+// dividing by `divisor` on the way. A short block (truncated file) leaves the
+// unwritten tail at zero.
+export function transpose_x_fastest(
+  data: ArrayLike<number>,
+  [nx, ny, nz]: Vec3,
+  divisor: number,
+): Float64Array {
+  const values = new Float64Array(nx * ny * nz)
+  const data_len = Math.min(data.length, values.length)
+  const ny_nz = ny * nz
+  let flat_idx = 0
+  for (let iz = 0; iz < nz && flat_idx < data_len; iz++) {
+    for (let iy = 0; iy < ny && flat_idx < data_len; iy++) {
+      const out_base = iy * nz + iz
+      for (let ix = 0; ix < nx && flat_idx < data_len; ix++) {
+        values[ix * ny_nz + out_base] = data[flat_idx++] / divisor
+      }
+    }
+  }
+  return values
+}

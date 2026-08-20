@@ -397,7 +397,6 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
     // since <svelte:document> rejects spread attributes
     handle_mouse_move,
     handle_mouse_up,
-    render_once,
     render_overlay_once,
   }
 }

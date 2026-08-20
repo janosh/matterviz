@@ -168,10 +168,10 @@ describe(`sample_volume_at_positions`, () => {
   })
 })
 
-describe(`prepare_volume_sampler cache`, () => {
-  // Cache signature covers lattice, origin, and periodic — pin each field so a
-  // future "optimization" dropping one from the signature fails a test
-  test(`invalidates when lattice changes on the same volume object`, () => {
+describe(`create_volume_sampler reads the current volume fields`, () => {
+  // Pin lattice, origin, and periodic so a future cache keyed on volume identity
+  // that misses one of them fails a test
+  test(`follows a lattice change on the same volume object`, () => {
     const vol = linear_volume(11, cubic, false)
     // frac (0.5, 0.5, 0.5) → 3.5
     expect(create_volume_sampler(vol)([5, 5, 5])).toBeCloseTo(3.5, 10) // frac 0.5³
@@ -184,7 +184,7 @@ describe(`prepare_volume_sampler cache`, () => {
     expect(create_volume_sampler(vol)([5, 5, 5])).toBeCloseTo(1.75, 10) // frac 0.25³
   })
 
-  test(`invalidates when origin changes on the same volume object`, () => {
+  test(`follows an origin change on the same volume object`, () => {
     const vol = linear_volume(11, cubic, false)
     expect(create_volume_sampler(vol)([5, 5, 5])).toBeCloseTo(3.5, 10)
     vol.origin = [5, 5, 5]
@@ -192,7 +192,7 @@ describe(`prepare_volume_sampler cache`, () => {
     expect(create_volume_sampler(vol)([5, 5, 5])).toBeCloseTo(0, 10) // frac 0
   })
 
-  test(`invalidates when periodic changes on the same volume object`, () => {
+  test(`follows a periodic change on the same volume object`, () => {
     const vol = linear_volume(10, cubic, true)
     // frac (1.5, 0.5, 0.5) wraps to (0.5, 0.5, 0.5) → index (5, 5, 5) → 3.5
     expect(create_volume_sampler(vol)([15, 5, 5])).toBeCloseTo(3.5, 10) // wraps

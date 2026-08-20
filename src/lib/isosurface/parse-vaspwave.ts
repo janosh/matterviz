@@ -25,6 +25,7 @@ import {
   to_string_array,
   with_h5_file,
 } from '$lib/trajectory/parse/h5-utils'
+import { transpose_x_fastest } from './grid'
 import { make_volume, type VolumetricData, type VolumetricFileData } from './types'
 
 const CHARGE_PATH = `charge/charge`
@@ -91,15 +92,19 @@ const charge_axis_order = (spatial_shape: number[], grid_dims: number[]): `zyx` 
   )
 }
 
-const is_numeric_array = (value: unknown): value is ArrayLike<number> =>
+// Any numeric typed array (h5wasm decodes float and integer datasets into one)
+type NumericArray = ArrayLike<number> & {
+  subarray(begin: number, end: number): ArrayLike<number>
+}
+const is_numeric_array = (value: unknown): value is NumericArray =>
   ArrayBuffer.isView(value) && !(value instanceof DataView)
 
 function parse_vaspwave_charge_file(h5_file: h5wasm.File): VolumetricFileData {
   const charge_entity = h5_file.get(CHARGE_PATH)
-  const shape = is_hdf5_dataset(charge_entity) ? (charge_entity.shape ?? null) : null
-  if (!shape || !is_hdf5_dataset(charge_entity)) {
+  if (!is_hdf5_dataset(charge_entity) || !charge_entity.shape) {
     throw new Error(`vaspwave.h5 file has no charge density (missing ${CHARGE_PATH})`)
   }
+  const shape = charge_entity.shape
   // Only the dimension count is checked here — the spatial axis order (zyx vs
   // xyz) is disambiguated later by charge_axis_order against CHARGE_GRID_PATH.
   if (shape.length !== 4) {
@@ -120,8 +125,7 @@ function parse_vaspwave_charge_file(h5_file: h5wasm.File): VolumetricFileData {
   }
   const axis_order = charge_axis_order(shape.slice(1), grid_dims)
   const dims: Vec3 = [grid_dims[0], grid_dims[1], grid_dims[2]]
-  const [nx, ny, nz] = dims
-  const points_per_component = nx * ny * nz
+  const points_per_component = dims[0] * dims[1] * dims[2]
 
   const structure = read_embedded_structure(h5_file)
   const lattice = structure.lattice.matrix
@@ -147,23 +151,12 @@ function parse_vaspwave_charge_file(h5_file: h5wasm.File): VolumetricFileData {
     { length: n_components },
     (_, component_idx) => {
       const base = component_idx * points_per_component
-      const values = new Float64Array(points_per_component)
-      if (axis_order === `xyz`) {
-        for (let idx = 0; idx < points_per_component; idx++) {
-          values[idx] = charge_data[base + idx] / divisor
-        }
-      } else {
-        // source index (z, y, x) -> destination (x, y, z)
-        let src_idx = base
-        for (let z_idx = 0; z_idx < nz; z_idx++) {
-          for (let y_idx = 0; y_idx < ny; y_idx++) {
-            const dst_base = y_idx * nz + z_idx
-            for (let x_idx = 0; x_idx < nx; x_idx++) {
-              values[x_idx * ny * nz + dst_base] = charge_data[src_idx++] / divisor
-            }
-          }
-        }
-      }
+      const component = charge_data.subarray(base, base + points_per_component)
+      // zyx in C order is x fastest, the same layout CHGCAR uses
+      const values =
+        axis_order === `xyz`
+          ? Float64Array.from(component, (val) => val / divisor)
+          : transpose_x_fastest(component, dims, divisor)
       return make_volume(values, dims, {
         lattice,
         origin: [0, 0, 0],

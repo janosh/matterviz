@@ -1,8 +1,6 @@
 <script lang="ts">
   import type { D3InterpolateName } from '$lib/colors'
   import { normalize_show_controls } from '$lib/controls'
-  import type { D3SymbolName } from '$lib/labels'
-  import { symbol_map } from '$lib/labels'
   import { array_extent, type Vec2 } from '$lib/math'
   import type {
     AxisConfig,
@@ -13,6 +11,7 @@
   } from '$lib/plot'
   import { ScatterPlot } from '$lib/plot'
   import { DEFAULTS } from '$lib/settings'
+  import { marker_d3_name } from './canvas-draw'
   import { create_hull_selection } from './canvas-interactions.svelte'
   import ConvexHullChrome from './ConvexHullChrome.svelte'
   import ConvexHullTooltip from './ConvexHullTooltip.svelte'
@@ -136,13 +135,11 @@
   // Lower hull polyline: the vertices of the lower facets (edges), left to right. Without
   // facets every hull point is at E_form = 0 and the hull is the segment between the elements.
   const hull_points = $derived.by(() => {
-    const { entries: hull_entries, facets } = hull_data.hull
+    const { entries: hull_entries, facet_entries } = hull_data.hull
     const vertices =
-      facets.length === 0
+      facet_entries.length === 0
         ? hull_entries.filter((entry) => entry.is_element)
-        : [...new Set(facets.flatMap((facet) => facet.vertex_indices))].map(
-            (idx) => hull_entries[idx],
-          )
+        : [...new Set(facet_entries.flat())]
     return vertices.toSorted((left, right) => left.x - right.x)
   })
 
@@ -176,13 +173,6 @@
     return [min_y - pad, max_y + pad]
   })
 
-  // Map MarkerSymbol to D3SymbolName (type-safe via symbol_map lookup)
-  const marker_to_d3_symbol = (marker?: string): D3SymbolName | undefined => {
-    if (!marker) return undefined
-    const name = marker.charAt(0).toUpperCase() + marker.slice(1)
-    return name in symbol_map ? (name as D3SymbolName) : undefined
-  }
-
   const scatter_points_series = $derived.by(() => {
     const is_energy_mode = color_mode === `energy`
     const point_style = visible_entries.map((entry): PointStyle => {
@@ -202,7 +192,7 @@
               : unstable_color,
         stroke: is_stable ? `#ffffff` : `#000000`,
         radius: sized ? base_radius * (hl?.size_multiplier ?? 1) : base_radius,
-        symbol_type: marker_to_d3_symbol(entry.marker),
+        symbol_type: entry.marker && marker_d3_name(entry.marker),
         is_highlighted: Boolean(hl),
         highlight_effect: hl?.effect,
         highlight_color: hl?.color,
@@ -230,7 +220,13 @@
         x: hull_points.map((point) => point.x),
         y: hull_points.map((point) => point.y),
         markers: `line` as const,
-        line_style: { stroke: color, stroke_width: line_width, line_dash: dash.join(`,`) },
+        // Hull facets are straight segments between stable entries: never spline them
+        line_style: {
+          stroke: color,
+          stroke_width: line_width,
+          line_dash: dash.join(`,`),
+          curve: `linear` as const,
+        },
       },
     ]
   })

@@ -15,6 +15,7 @@ import {
 import { wrap_to_unit_cell } from '$lib/structure/pbc'
 import { make_site } from '$lib/structure/site'
 import { normalize_scientific_notation, parse_leading_num } from '$lib/utils'
+import { transpose_x_fastest } from './grid'
 import { make_volume, type VolumetricData, type VolumetricFileData } from './types'
 
 // === Parse error contract ===
@@ -33,6 +34,10 @@ const vol_error = (message: string): void => {
 // Exact powers of ten up to 1e22 (all representable exactly in binary64)
 const POWERS_OF_TEN = Float64Array.from({ length: 23 }, (_, exp) => Number(`1e${exp}`))
 const MAX_SAFE_MANTISSA = 2 ** 53
+
+// General path for tokens the fast path cannot handle (also normalizes Fortran exponents)
+const parse_token_slow = (text: string, start: number, end: number): number =>
+  Number(normalize_scientific_notation(text.slice(start, end)))
 
 // Parse the decimal token text[start, end) into a double. Digits, one optional `.`, and an
 // e/E/d/D exponent (Fortran) are consumed directly from char codes. When the integer
@@ -63,14 +68,13 @@ export function parse_decimal_token(text: string, start: number, end: number): n
       seen_dot = true
     } else break
   }
-  if (n_digits === 0 || mantissa >= MAX_SAFE_MANTISSA) {
-    return Number(normalize_scientific_notation(text.slice(start, end)))
-  }
+  if (n_digits === 0 || mantissa >= MAX_SAFE_MANTISSA)
+    return parse_token_slow(text, start, end)
   if (pos < end) {
     code = text.charCodeAt(pos)
     // e E d D
     if (code !== 101 && code !== 69 && code !== 100 && code !== 68) {
-      return Number(normalize_scientific_notation(text.slice(start, end)))
+      return parse_token_slow(text, start, end)
     }
     pos++
     let exp_negative = false
@@ -87,16 +91,12 @@ export function parse_decimal_token(text: string, start: number, end: number): n
       exp_value = exp_value * 10 + (code - 48)
       n_exp_digits++
     }
-    if (pos < end || n_exp_digits === 0) {
-      return Number(normalize_scientific_notation(text.slice(start, end)))
-    }
+    if (pos < end || n_exp_digits === 0) return parse_token_slow(text, start, end)
     exponent += exp_negative ? -exp_value : exp_value
   }
-  let value: number
-  if (exponent === 0) value = mantissa
-  else if (exponent > 0 && exponent <= 22) value = mantissa * POWERS_OF_TEN[exponent]
-  else if (exponent < 0 && exponent >= -22) value = mantissa / POWERS_OF_TEN[-exponent]
-  else return Number(normalize_scientific_notation(text.slice(start, end)))
+  if (Math.abs(exponent) > 22) return parse_token_slow(text, start, end)
+  const value =
+    exponent >= 0 ? mantissa * POWERS_OF_TEN[exponent] : mantissa / POWERS_OF_TEN[-exponent]
   return negative ? -value : value
 }
 
@@ -158,29 +158,6 @@ function find_line_offset(text: string, target_line: number): number {
     pos++
   }
   return pos
-}
-
-// Reorder a Fortran-ordered (x fastest) value block into the z-fastest layout
-// VolumetricData stores, dividing by `divisor` on the way. Unparsed tail entries
-// (short files) stay zero, matching a zero-filled Float64Array.
-function transpose_x_fastest(
-  data: Float64Array,
-  [nx, ny, nz]: Vec3,
-  divisor: number,
-): Float64Array {
-  const values = new Float64Array(nx * ny * nz)
-  const data_len = Math.min(data.length, values.length)
-  const ny_nz = ny * nz
-  let flat_idx = 0
-  for (let iz = 0; iz < nz && flat_idx < data_len; iz++) {
-    for (let iy = 0; iy < ny && flat_idx < data_len; iy++) {
-      const out_base = iy * nz + iz
-      for (let ix = 0; ix < nx && flat_idx < data_len; ix++) {
-        values[ix * ny_nz + out_base] = data[flat_idx++] / divisor
-      }
-    }
-  }
-  return values
 }
 
 // === CHGCAR Parser ===

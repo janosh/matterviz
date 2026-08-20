@@ -4,7 +4,7 @@ import type { Matrix3x3, Vec2, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { MoyoDataset } from '@spglib/moyo-wasm'
 import { Vector3 } from 'three/webgpu'
-import { ConvexHull } from 'three/examples/jsm/math/ConvexHull.js'
+import { ConvexHull, type VertexNode } from 'three/examples/jsm/math/ConvexHull.js'
 import type { BrillouinZoneData, ConvexHullData, IrreducibleBZData } from './types'
 
 const TOL = 1e-8
@@ -52,16 +52,17 @@ export function fractional_to_cartesian_rotation(
 // Bragg plane of reciprocal lattice vector G: its perpendicular bisector n·x = |G|/2
 type BraggPlane = { normal: Vec3; dist: number }
 
-// Non-zero reciprocal lattice vectors G = Σᵢ nᵢ·bᵢ with |nᵢ| ≤ rangeᵢ and |G| ≤ max_len,
-// nearest first. To enumerate a radius exactly, callers pass ranges = ⌊max_len·|cᵢ|⌋ with cᵢ
-// the dual rows (bᵢ·cⱼ = δᵢⱼ): nᵢ = G·cᵢ, so |nᵢ| ≤ |G|·|cᵢ| bounds the index search.
-function k_lattice_vectors(
+// Bragg planes of the non-zero reciprocal lattice vectors G = Σᵢ nᵢ·bᵢ with |nᵢ| ≤ rangeᵢ and
+// |G| ≤ max_len, nearest first; `key` is the integer index triple. To enumerate a radius
+// exactly, callers pass ranges = ⌊max_len·|cᵢ|⌋ with cᵢ the dual rows (bᵢ·cⱼ = δᵢⱼ):
+// nᵢ = G·cᵢ, so |nᵢ| ≤ |G|·|cᵢ| bounds the index search.
+function bragg_planes(
   k_lattice: Matrix3x3,
   ranges: Vec3,
   max_len = Infinity,
-): { g_vec: Vec3; key: string }[] {
+): (BraggPlane & { key: string })[] {
   const [b1, b2, b3] = k_lattice
-  const vectors: { g_vec: Vec3; key: string; len_sq: number }[] = []
+  const planes: (BraggPlane & { key: string; len_sq: number })[] = []
   for (let n1 = -ranges[0]; n1 <= ranges[0]; n1++) {
     for (let n2 = -ranges[1]; n2 <= ranges[1]; n2++) {
       for (let n3 = -ranges[2]; n3 <= ranges[2]; n3++) {
@@ -70,16 +71,14 @@ function k_lattice_vectors(
           (axis) => n1 * b1[axis] + n2 * b2[axis] + n3 * b3[axis],
         ) as Vec3
         const len_sq = g_vec[0] ** 2 + g_vec[1] ** 2 + g_vec[2] ** 2
-        if (len_sq <= max_len ** 2) vectors.push({ g_vec, key: `${n1},${n2},${n3}`, len_sq })
+        if (len_sq > max_len ** 2) continue
+        const len = Math.hypot(...g_vec)
+        const normal: Vec3 = [g_vec[0] / len, g_vec[1] / len, g_vec[2] / len]
+        planes.push({ normal, dist: len / 2, key: `${n1},${n2},${n3}`, len_sq })
       }
     }
   }
-  return vectors.toSorted((vec_a, vec_b) => vec_a.len_sq - vec_b.len_sq)
-}
-
-function bragg_plane(g_vec: Vec3): BraggPlane {
-  const len = Math.hypot(...g_vec)
-  return { normal: [g_vec[0] / len, g_vec[1] / len, g_vec[2] / len], dist: len / 2 }
+  return planes.toSorted((plane_a, plane_b) => plane_a.len_sq - plane_b.len_sq)
 }
 
 // O(1) duplicate vertex detection using spatial hashing
@@ -231,12 +230,9 @@ export function reduce_basis(basis: Matrix3x3): Matrix3x3 {
 const MAX_NEW_PLANES_PER_PASS = 32
 function first_bz_vertices(k_lattice: Matrix3x3, dual: Matrix3x3): Vec3[] {
   const dual_norms = dual.map((row) => Math.hypot(...row))
-  const g_vectors = k_lattice_vectors(k_lattice, [1, 1, 1])
+  const planes = bragg_planes(k_lattice, [1, 1, 1])
   for (let pass = 0; pass < 256; pass++) {
-    const vertices = intersect_bragg_planes(
-      g_vectors.map((vec) => bragg_plane(vec.g_vec)),
-      1,
-    )
+    const vertices = intersect_bragg_planes(planes, 1)
     if (vertices.length < 4) {
       throw new Error(
         `Brillouin zone has ${vertices.length} vertices (need ≥4) for k_lattice ${JSON.stringify(k_lattice)}`,
@@ -245,14 +241,13 @@ function first_bz_vertices(k_lattice: Matrix3x3, dual: Matrix3x3): Vec3[] {
     const radius = Math.max(...vertices.map((vertex) => Math.hypot(...vertex)))
     const max_len = 2 * radius * (1 + 1e-9)
     const ranges = dual_norms.map((norm) => Math.floor(max_len * norm)) as Vec3
-    const have = new Set(g_vectors.map((vec) => vec.key))
-    const cutting = k_lattice_vectors(k_lattice, ranges, max_len).filter((vec) => {
-      if (have.has(vec.key)) return false
-      const { normal, dist } = bragg_plane(vec.g_vec)
-      return vertices.some((vertex) => math.dot(vertex, normal) > dist + TOL)
-    })
+    const have = new Set(planes.map((plane) => plane.key))
+    const cutting = bragg_planes(k_lattice, ranges, max_len).filter(
+      ({ key, normal, dist }) =>
+        !have.has(key) && vertices.some((vertex) => math.dot(vertex, normal) > dist + TOL),
+    )
     if (cutting.length === 0) return vertices
-    g_vectors.push(...cutting.slice(0, MAX_NEW_PLANES_PER_PASS))
+    planes.push(...cutting.slice(0, MAX_NEW_PLANES_PER_PASS))
   }
   throw new Error(
     `Brillouin zone plane set did not converge for k_lattice ${JSON.stringify(k_lattice)}`,
@@ -275,13 +270,9 @@ export function generate_bz_vertices(
   if (clamped_order === 1) return first_bz_vertices(basis, dual)
 
   const max_planes = max_planes_by_order[clamped_order] ?? 150
-  const g_vectors = k_lattice_vectors(basis, [
-    clamped_order,
-    clamped_order,
-    clamped_order,
-  ]).slice(0, max_planes)
+  const ranges: Vec3 = [clamped_order, clamped_order, clamped_order]
   return intersect_bragg_planes(
-    g_vectors.map((vec) => bragg_plane(vec.g_vec)),
+    bragg_planes(basis, ranges).slice(0, max_planes),
     clamped_order,
   )
 }
@@ -321,23 +312,21 @@ export function compute_convex_hull(
     distinct.push(vertex)
   }
 
-  const points = distinct.map((vertex) => new Vector3(...vertex))
-  const point_to_input = new Map(points.map((point, idx) => [point, idx]))
-  const hull = new ConvexHull().setFromPoints(points)
+  const hull = new ConvexHull().setFromPoints(distinct.map((vertex) => new Vector3(...vertex)))
 
   // Compact to the vertices referenced by some face, in first-seen order
   const unique_verts: Vec3[] = []
-  const input_to_unique = new Map<number, number>()
+  const node_to_unique = new Map<VertexNode, number>()
   const faces: number[][] = hull.faces.map((face) => {
     const tri: number[] = []
     let half_edge = face.edge
     do {
-      const input_idx = point_to_input.get(half_edge.head().point)
-      if (input_idx === undefined) throw new Error(`Convex hull returned an unknown vertex`)
-      let unique_idx = input_to_unique.get(input_idx)
+      const node = half_edge.head()
+      let unique_idx = node_to_unique.get(node)
       if (unique_idx === undefined) {
-        unique_idx = unique_verts.push(distinct[input_idx]) - 1
-        input_to_unique.set(input_idx, unique_idx)
+        const { x, y, z } = node.point
+        unique_idx = unique_verts.push([x, y, z]) - 1
+        node_to_unique.set(node, unique_idx)
       }
       tri.push(unique_idx)
       half_edge = half_edge.next

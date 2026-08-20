@@ -698,29 +698,23 @@ export function get_3d_domain_simplexes_and_ann_loc(points_3d: number[][]): {
   const { unique, orig_indices } = dedup_points(points_3d)
 
   if (unique.length < 3) {
-    if (unique.length === 2) {
-      const midpoint = unique[0].map((val, dim) => (val + unique[1][dim]) / 2)
-      return {
-        simplex_indices: [[orig_indices[0], orig_indices[1]]],
-        ann_loc: midpoint,
-        is_planar: true,
-      }
-    }
+    // a single vertex (or none) has no edges; a segment is its own outline
+    const is_segment = unique.length === 2
     return {
-      simplex_indices: [],
-      ann_loc: unique[0] ?? points_3d[0] ?? [0, 0, 0],
+      simplex_indices: is_segment ? [[orig_indices[0], orig_indices[1]]] : [],
+      ann_loc: is_segment
+        ? unique[0].map((val, dim) => (val + unique[1][dim]) / 2)
+        : (unique[0] ?? [0, 0, 0]),
       is_planar: true,
     }
   }
 
+  // simple_pca always returns k=2 components for >= 3 points
   const { scores, eigenvectors } = simple_pca(unique, 2)
-  const n_dims = unique[0].length
-  const mean_3d = Array.from(
-    { length: n_dims },
+  const [first_eigenvector, second_eigenvector] = eigenvectors
+  const mean_3d = unique[0].map(
     (_, dim) => unique.reduce((sum, pt) => sum + pt[dim], 0) / unique.length,
   )
-  const first_eigenvector = eigenvectors[0] ?? Array(n_dims).fill(0)
-  const second_eigenvector = eigenvectors[1] ?? Array(n_dims).fill(0)
   const unproject = (score_x: number, score_y: number): number[] =>
     mean_3d.map(
       (mean, dim) =>
@@ -728,12 +722,12 @@ export function get_3d_domain_simplexes_and_ann_loc(points_3d: number[][]): {
     )
 
   // Out-of-plane residual of the 2-component reconstruction, relative to the domain size
-  let max_residual = 0
-  for (let idx = 0; idx < unique.length; idx++) {
-    const reconstructed = unproject(scores[idx][0], scores[idx][1])
-    const residual = Math.hypot(...unique[idx].map((val, dim) => val - reconstructed[dim]))
-    if (residual > max_residual) max_residual = residual
-  }
+  const max_residual = Math.max(
+    ...unique.map((point, idx) => {
+      const reconstructed = unproject(scores[idx][0], scores[idx][1])
+      return Math.hypot(...point.map((val, dim) => val - reconstructed[dim]))
+    }),
+  )
   const is_planar = max_residual <= 1e-6 * bbox_diagonal(unique)
 
   // 2D convex hull of PCA-projected unique points → only boundary edges

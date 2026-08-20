@@ -188,8 +188,8 @@ describe(`N-dimensional quickhull`, () => {
     for (let dim = 2; dim <= 6; dim++) {
       const simplex = [...corners(dim - 1), [...Array(dim - 1).fill(1 / dim), -1]]
       expect(compute_quickhull_nd(simplex)).toHaveLength(dim + 1)
-      // Only the facets not containing the apex... all dim facets touching the bottom apex
-      // point down; the top face (all corners at E = 0) is horizontal and excluded
+      // The dim facets touching the bottom apex point down; the top face (all corners at
+      // E = 0) is horizontal and excluded
       expect(compute_lower_hull_nd(simplex)).toHaveLength(dim)
     }
   })
@@ -242,7 +242,7 @@ describe(`N-dimensional quickhull`, () => {
       compute_e_above_hull_nd([[0.3, NaN, 0]], facets, points)[0],
     ]
     expect([outside, degenerate, nan_query].every(Number.isNaN)).toBe(true)
-    // Inside: the apex sits 1 eV below the E = 0 corner plane... at the apex itself 0
+    // Inside: the apex sits 1 eV below the E = 0 corner plane; the apex itself scores 0
     expect(compute_e_above_hull_nd([[0.3, 0.3, 0]], facets, points)[0]).toBeCloseTo(1, 12)
     expect(compute_e_above_hull_nd([[0.3, 0.3, -1]], facets, points)[0]).toBeCloseTo(0, 12)
   })

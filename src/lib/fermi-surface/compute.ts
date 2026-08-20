@@ -98,14 +98,10 @@ export function upsample_grid(
   const cx = new Float64Array(4)
   const cy = new Float64Array(4)
   const cz = new Float64Array(4 * new_nz)
-  const z_tap = new Int32Array(4)
-  const z_coeff = new Float64Array(4)
   for (let iz = 0; iz < new_nz; iz++) {
     const fz = fz_arr[iz]
-    wrapped_stencil(fz, pz, stride_z, z_tap)
-    catmull_rom_coeffs(fz - Math.floor(fz), z_coeff)
-    z_offsets.set(z_tap, 4 * iz)
-    cz.set(z_coeff, 4 * iz)
+    wrapped_stencil(fz, pz, stride_z, z_offsets.subarray(4 * iz, 4 * iz + 4))
+    catmull_rom_coeffs(fz - Math.floor(fz), cz.subarray(4 * iz, 4 * iz + 4))
   }
 
   const out = new Float64Array(new_nx * new_ny * new_nz)

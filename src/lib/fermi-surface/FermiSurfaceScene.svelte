@@ -355,54 +355,8 @@
   // Throttle state for pointer move events to avoid O(n) vertex lookups causing jank
   let last_hover_time = 0
 
-  // Create hover data from pointer event on a surface
-  function create_hover_data(
-    event: ThreltePointerEvent,
-    surface: FermiIsosurface,
-    geometry: BufferGeometry,
-    surface_color: string,
-    sym_idx: number,
-    sym_matrix: Matrix4Tuple,
-  ): FermiHoverData {
-    // event.point is in world space (after sym_matrix transformation)
-    const position_cartesian: Vec3 = [event.point.x, event.point.y, event.point.z]
-    const position_fractional = cartesian_to_fractional(k_lattice_inv, position_cartesian)
-
-    // Transform world-space point to local space for nearest-vertex lookup: the geometry's
-    // positions are the raw surface vertices before sym_matrix
-    const local_point = event.point.clone()
-    const inv_matrix = new Matrix4().fromArray(sym_matrix).invert()
-    local_point.applyMatrix4(inv_matrix)
-
-    // Find nearest vertex for property lookup (in local space)
-    const nearest_idx = nearest_vertex_index(geometry, [
-      local_point.x,
-      local_point.y,
-      local_point.z,
-    ])
-    const property_value = surface.properties?.[nearest_idx]
-    const has_velocities = fermi_data?.metadata?.has_velocities
-    const property_name =
-      property_value != null ? (has_velocities ? `velocity` : `custom`) : undefined
-
-    const { clientX, clientY } = event.nativeEvent
-    return {
-      band_index: surface.band_index,
-      spin: surface.spin,
-      position_cartesian,
-      position_fractional,
-      screen_position: { x: clientX, y: clientY },
-      surface_color,
-      property_value,
-      property_name,
-      is_tiled: effective_tile_bz,
-      symmetry_index: sym_idx,
-      n_symmetry_ops: symmetry_ops.length,
-    }
-  }
-
-  // Throttled handler for pointer move events
-  // Skips expensive nearest-vertex lookups if called too frequently
+  // Build hover data from a pointer event on a (possibly symmetry-tiled) surface mesh,
+  // skipping the O(n) nearest-vertex lookup when called too frequently
   function handle_pointer_move(
     event: ThreltePointerEvent,
     surface: FermiIsosurface,
@@ -414,14 +368,39 @@
     const now = performance.now()
     if (now - last_hover_time < constants.HOVER_THROTTLE_MS) return
     last_hover_time = now
-    hover_data = create_hover_data(
-      event,
-      surface,
-      geometry,
+
+    // event.point is in world space (after sym_matrix transformation)
+    const position_cartesian: Vec3 = [event.point.x, event.point.y, event.point.z]
+    const position_fractional = cartesian_to_fractional(k_lattice_inv, position_cartesian)
+
+    // Nearest vertex for the property lookup is found in local space: the geometry's
+    // positions are the raw surface vertices before sym_matrix
+    const local_point = event.point
+      .clone()
+      .applyMatrix4(new Matrix4().fromArray(sym_matrix).invert())
+    const nearest_idx = nearest_vertex_index(geometry, [
+      local_point.x,
+      local_point.y,
+      local_point.z,
+    ])
+    const property_value = surface.properties?.[nearest_idx]
+    const has_velocities = fermi_data?.metadata?.has_velocities
+
+    const { clientX, clientY } = event.nativeEvent
+    hover_data = {
+      band_index: surface.band_index,
+      spin: surface.spin,
+      position_cartesian,
+      position_fractional,
+      screen_position: { x: clientX, y: clientY },
       surface_color,
-      sym_idx,
-      sym_matrix,
-    )
+      property_value,
+      property_name:
+        property_value != null ? (has_velocities ? `velocity` : `custom`) : undefined,
+      is_tiled: effective_tile_bz,
+      symmetry_index: sym_idx,
+      n_symmetry_ops: symmetry_ops.length,
+    }
   }
 
   const clear_hover = () => {

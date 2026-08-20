@@ -95,32 +95,6 @@ export interface BulkVolumeSamplerOptions extends VolumeSamplerOptions {
 // (e.g. marching-cubes output at fractional coordinate 1.0 + 1e-16) still sample.
 const OOB_TOL = 1e-6
 
-interface PreparedVolumeSampler {
-  lattice: Matrix3x3 // snapshot of the lattice the inverse was computed from
-  inv: Matrix3x3 // Cartesian→fractional matrix (reciprocal lattice rows)
-}
-
-const prepared_sampler_cache = new WeakMap<VolumeGrid, PreparedVolumeSampler>()
-
-// The lattice inverse is the only derived state; keyed by volume identity and
-// invalidated when the lattice matrix entries change on that object
-const prepare_volume_sampler = (volume: VolumeGrid): PreparedVolumeSampler => {
-  const cached = prepared_sampler_cache.get(volume)
-  if (
-    cached?.lattice.every((row, row_idx) =>
-      row.every((val, col_idx) => val === volume.lattice[row_idx][col_idx]),
-    )
-  ) {
-    return cached
-  }
-  const prepared = {
-    lattice: volume.lattice.map((row) => [...row]) as Matrix3x3,
-    inv: reciprocal_lattice(volume.lattice),
-  }
-  prepared_sampler_cache.set(volume, prepared)
-  return prepared
-}
-
 // Create a sampler that maps absolute Cartesian positions (in the same physical
 // frame as the volume's `origin`) to trilinearly-interpolated scalar values.
 // Handles non-orthogonal lattices, origin offsets, and periodic wrapping, so it
@@ -133,7 +107,8 @@ export function create_volume_sampler(
   options: VolumeSamplerOptions = {},
 ): (position: Vec3) => number {
   const { out_of_bounds = `clamp` } = options
-  const { inv } = prepare_volume_sampler(volume)
+  // Cartesian→fractional matrix (reciprocal lattice rows)
+  const inv = reciprocal_lattice(volume.lattice)
   const { periodic } = volume
   const [ox, oy, oz] = volume.origin
 
@@ -177,18 +152,13 @@ export function sample_volume_at_positions(
   options: BulkVolumeSamplerOptions = {},
 ): Float32Array {
   const { out_of_bounds = `clamp`, position_offset = [0, 0, 0] } = options
-  const { inv } = prepare_volume_sampler(volume)
-  const { values, periodic } = volume
-  const [nx, ny, nz] = volume.dims
+  const inv = reciprocal_lattice(volume.lattice)
+  const { periodic } = volume
   const [offset_x, offset_y, offset_z] = position_offset
   const [origin_x, origin_y, origin_z] = volume.origin
   const n_points = Math.floor(positions.length / 3)
   const out = options.out?.length === n_points ? options.out : new Float32Array(n_points)
-  if (nx === 0 || ny === 0 || nz === 0) {
-    out.fill(0)
-    return out
-  }
-  const stride_x = ny * nz
+  if (volume.dims.some((dim) => dim === 0)) return out.fill(0)
   for (let idx = 0; idx < n_points; idx++) {
     const position_idx = idx * 3
     const cart_x = positions[position_idx] + offset_x - origin_x
@@ -219,27 +189,7 @@ export function sample_volume_at_positions(
       frac_y = Math.min(1, Math.max(0, frac_y))
       frac_z = Math.min(1, Math.max(0, frac_z))
     }
-
-    const grid_x = frac_x * (periodic ? nx : nx - 1)
-    const grid_y = frac_y * (periodic ? ny : ny - 1)
-    const grid_z = frac_z * (periodic ? nz : nz - 1)
-    const [x_lower, x_upper] = voxel_corners(nx, Math.floor(grid_x), periodic)
-    const [y_lower, y_upper] = voxel_corners(ny, Math.floor(grid_y), periodic)
-    const [z_lower, z_upper] = voxel_corners(nz, Math.floor(grid_z), periodic)
-    out[idx] = interpolate_cell(
-      values,
-      stride_x,
-      nz,
-      x_lower,
-      x_upper,
-      y_lower,
-      y_upper,
-      z_lower,
-      z_upper,
-      grid_x - x_lower,
-      grid_y - y_lower,
-      grid_z - z_lower,
-    )
+    out[idx] = trilinear_interpolate(volume, frac_x, frac_y, frac_z, periodic)
   }
   return out
 }

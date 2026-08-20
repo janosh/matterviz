@@ -11,6 +11,7 @@
     draw_face,
     draw_hull_labels,
     draw_hull_points,
+    draw_notice,
     face_color_resolver,
     type HullFace,
     type HullPointOpts,
@@ -123,11 +124,7 @@
   const visible_entries = $derived(hull_data.visible_entries)
 
   // Lower hull tetrahedra: vertex entries (x, y, z in the tetrahedron, E_form separate)
-  const hull_tetrahedra = $derived(
-    hull_data.hull.facets.map((facet) =>
-      facet.vertex_indices.map((idx) => hull_data.hull.entries[idx]),
-    ),
-  )
+  const hull_tetrahedra = $derived(hull_data.hull.facet_entries)
   // Most negative formation energy, for the uniform-mode face opacity
   const e_form_min = $derived(
     Math.min(0, ...hull_data.all_enriched_entries.map((entry) => entry.e_form_per_atom ?? 0)),
@@ -325,15 +322,8 @@
     ctx.clearRect(0, 0, width, height)
     if (elements.length !== 4) {
       if (elements.length > 0) {
-        ctx.fillStyle = interactions.text_color
-        ctx.font = `16px Arial`
-        ctx.textAlign = `center`
-        ctx.textBaseline = `middle`
-        ctx.fillText(
-          `Quaternary convex hull requires exactly 4 elements (got ${elements.length})`,
-          width / 2,
-          height / 2,
-        )
+        const notice = `Quaternary convex hull requires exactly 4 elements (got ${elements.length})`
+        draw_notice(ctx, notice, interactions.text_color, width, height)
       }
       return
     }

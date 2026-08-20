@@ -24,7 +24,7 @@
   import StructurePopup from './StructurePopup.svelte'
   import TemperatureSlider from './TemperatureSlider.svelte'
   import type { ConvexHullEntry, GasSpecies, HighlightStyle, HullFaceColorMode } from './types'
-  import { MAGNETIC_ORDERING_CATEGORY } from './types'
+  import { DEFAULT_GAS_TEMP, MAGNETIC_ORDERING_CATEGORY } from './types'
 
   type ControlsProps = ComponentProps<typeof ConvexHullControls>
 
@@ -51,7 +51,7 @@
     get_point_color,
     merged_highlight_style,
     is_highlighted,
-    tooltip = undefined,
+    tooltip,
     selected_entry,
     temperature = $bindable(),
     gas_pressures = $bindable({}),
@@ -118,6 +118,12 @@
     } = $props()
 
   const title = $derived(merged_controls.title || phase_stats?.chemical_system || ``)
+  // Gas pressure controls only make sense when the system contains gas-derived elements
+  const gas_config = $derived(
+    hull_data.gas_analysis.has_gas_dependent_elements
+      ? hull_data.merged_gas_config
+      : undefined,
+  )
 
   export function reset_all() {
     const defaults = DEFAULTS.convex_hull[kind]
@@ -270,7 +276,7 @@
   />
 {/if}
 
-{#if (hull_data.has_temp_data && temperature !== undefined) || (hull_data.gas_analysis.has_gas_dependent_elements && hull_data.merged_gas_config)}
+{#if (hull_data.has_temp_data && temperature !== undefined) || gas_config}
   <div class="right-controls">
     {#if hull_data.has_temp_data && temperature !== undefined}
       <TemperatureSlider
@@ -278,11 +284,11 @@
         bind:temperature
       />
     {/if}
-    {#if hull_data.gas_analysis.has_gas_dependent_elements && hull_data.merged_gas_config}
+    {#if gas_config}
       <GasPressureControls
-        config={hull_data.merged_gas_config}
+        config={gas_config}
         bind:pressures={gas_pressures}
-        temperature={temperature ?? 300}
+        temperature={temperature ?? DEFAULT_GAS_TEMP}
       />
     {/if}
   </div>

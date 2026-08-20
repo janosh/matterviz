@@ -147,18 +147,18 @@ export function calculate_e_above_hull(
     typeof entry.e_form_per_atom === `number`
       ? entry.e_form_per_atom
       : compute_e_form_per_atom(entry, refs)
+  // Clamp raw distances to ≥ 0 (NaN stays NaN) and key them by entry
+  const to_result = (distances: number[]): number | Record<string, number> =>
+    is_single
+      ? Math.max(0, distances[0])
+      : Object.fromEntries(
+          entries_of_interest.map((entry, idx) => [id_of(entry), Math.max(0, distances[idx])]),
+        )
 
   const arity = elements.length
-  const results: Record<string, number> = {}
-
-  if (arity === 1) {
-    // The stable element sits at E_form = 0, so E_form is the hull distance
-    for (const entry of entries_of_interest) {
-      results[id_of(entry)] = Math.max(0, e_form_of(entry) ?? NaN)
-    }
-    if (is_single) return results[id_of(entries_of_interest[0])]
-    return results
-  }
+  // The stable element sits at E_form = 0, so E_form is the hull distance
+  if (arity === 1)
+    return to_result(entries_of_interest.map((entry) => e_form_of(entry) ?? NaN))
 
   // Hull points: reduced barycentric coords (first dropped — all N sum to 1 and would
   // confine the points to an affine subspace) + E_form. NaN E_form marks unplaceable.
@@ -171,23 +171,19 @@ export function calculate_e_above_hull(
     }
     return [...composition_to_barycentric_nd(entry.composition, elements).slice(1), e_form]
   }
-  const is_placed = (point: number[]): boolean => point.every(Number.isFinite)
 
   const ref_points = reference_entries
     .filter((ref) => !ref.exclude_from_hull) // shown but not part of the hull
     .map(to_point)
-    .filter(is_placed)
+    .filter((point) => point.every(Number.isFinite))
   // Missing pure-element corners default to E_form = 0. In reduced coordinates element 0 is
   // the origin and element k > 0 has (k-1)th coordinate 1.
   for (let el_idx = 0; el_idx < arity; el_idx++) {
     const corner: number[] = Array(arity).fill(0)
     if (el_idx > 0) corner[el_idx - 1] = 1
-    const present = ref_points.some((pt) => {
-      for (let dim = 0; dim < arity - 1; dim++) {
-        if (Math.abs(pt[dim] - corner[dim]) > HULL_EPS) return false
-      }
-      return true
-    })
+    const present = ref_points.some((pt) =>
+      pt.slice(0, -1).every((val, dim) => Math.abs(val - corner[dim]) <= HULL_EPS),
+    )
     if (!present) ref_points.push(corner)
   }
 
@@ -195,16 +191,11 @@ export function calculate_e_above_hull(
   const query_points = entries_of_interest.map(to_point)
   // With every corner present, the points are co-hyperplanar only when all E_form are 0,
   // so the hull is the plane E = 0 and the distance is E_form itself.
-  const distances =
+  return to_result(
     facets.length === 0
       ? query_points.map((point) => point.at(-1) ?? NaN)
-      : compute_e_above_hull_nd(query_points, facets, ref_points)
-  for (const [idx, entry] of entries_of_interest.entries()) {
-    results[id_of(entry)] = Math.max(0, distances[idx])
-  }
-
-  if (is_single) return results[id_of(entries_of_interest[0])]
-  return results
+      : compute_e_above_hull_nd(query_points, facets, ref_points),
+  )
 }
 
 export function get_convex_hull_stats(
@@ -289,7 +280,7 @@ export function process_hull_for_stats(
       ...entry,
       e_above_hull: known ? dist : undefined,
       is_stable: known ? dist < HULL_STABILITY_TOL : undefined,
-      is_element: get_arity(entry) === 1,
+      is_element: is_unary_entry(entry),
       x: 0,
       y: 0,
       z: 0,
@@ -411,23 +402,18 @@ function initial_simplex(points: number[][]): number[] | null {
   const chosen = [first, second]
   const origin = points[first]
   const basis = [math.normalize_vec(math.subtract(points[second], origin))]
-  const residual: number[] = Array(dim).fill(0)
   while (chosen.length < dim + 1) {
     let [best_idx, best_norm] = [-1, HULL_EPS]
     let best_residual: number[] = []
     for (let idx = 0; idx < points.length; idx++) {
       if (chosen.includes(idx)) continue
       // Component of (point - origin) orthogonal to the span of the chosen points
-      for (let dim_idx = 0; dim_idx < dim; dim_idx++) {
-        residual[dim_idx] = points[idx][dim_idx] - origin[dim_idx]
-      }
+      let residual = math.subtract(points[idx], origin)
       for (const vec of basis) {
-        const proj = math.dot(residual, vec)
-        for (let dim_idx = 0; dim_idx < dim; dim_idx++)
-          residual[dim_idx] -= proj * vec[dim_idx]
+        residual = math.subtract(residual, math.scale(vec, math.dot(residual, vec)))
       }
       const norm = Math.hypot(...residual)
-      if (norm > best_norm) [best_idx, best_norm, best_residual] = [idx, norm, [...residual]]
+      if (norm > best_norm) [best_idx, best_norm, best_residual] = [idx, norm, residual]
     }
     if (best_idx === -1) return null
     chosen.push(best_idx)

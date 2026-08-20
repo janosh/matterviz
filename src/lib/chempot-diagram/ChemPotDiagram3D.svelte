@@ -577,14 +577,14 @@
       }
     }
 
+    // round so a shared edge whose endpoints came from different hyperplane triples
+    // (equal to ~1e-12, not bit-identical) is still drawn once
+    const point_key = (point: number[]) => point.map((val) => val.toFixed(4)).join(`,`)
     const seen = new SvelteSet<string>()
     const positions: number[] = []
     for (const domain of render_domains) {
       if (domain.is_draw_formula) continue
       for (const [pt_a, pt_b] of domain.edges) {
-        // round so a shared edge whose endpoints came from different hyperplane triples
-        // (equal to ~1e-12, not bit-identical) is still drawn once
-        const point_key = (point: number[]) => point.map((val) => val.toFixed(4)).join(`,`)
         const key = edge_key(point_key(pt_a), point_key(pt_b))
         if (seen.has(key)) continue
         seen.add(key)

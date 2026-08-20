@@ -325,4 +325,26 @@ describe(`magnetic ordering rendering (ConvexHull2D)`, () => {
       }
     },
   )
+
+  test(`hull facets are straight segments, never splined`, async () => {
+    const entries: PhaseData[] = [
+      { ...compound({ Li: 1 }, `ref-li`, 0), e_form_per_atom: 0 },
+      { ...compound({ O: 1 }, `ref-o`, 0), e_form_per_atom: 0 },
+      { ...compound({ Li: 3, O: 1 }, `li3o`, 0), e_form_per_atom: -0.4 },
+      { ...compound({ Li: 1, O: 1 }, `lio`, 0), e_form_per_atom: -0.6 },
+      { ...compound({ Li: 1, O: 3 }, `lio3`, 0), e_form_per_atom: -0.4 },
+    ]
+    const plot = await mount_sized(
+      ConvexHull2D,
+      { entries },
+      { selector: `.scatter`, on_mount: track_component },
+    )
+    // the hull polyline visits the three stable compounds between the two element corners
+    const hull_path = [...plot.querySelectorAll<SVGPathElement>(`path`)]
+      .map((path) => path.getAttribute(`d`) ?? ``)
+      .find((d) => d.startsWith(`M`) && d.split(`L`).length === 5)
+    expect(hull_path).toBeDefined()
+    // a monotone spline would emit cubic (C) commands; facets must be M followed by L only
+    expect(hull_path).toMatch(/^M[-\d.,]+(?:L[-\d.,]+){4}$/)
+  })
 })

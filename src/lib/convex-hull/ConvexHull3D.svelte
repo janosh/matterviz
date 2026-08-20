@@ -19,6 +19,7 @@
     draw_face,
     draw_hull_labels,
     draw_hull_points,
+    draw_notice,
     face_color_resolver,
     type HullFace,
     type HullPointOpts,
@@ -132,11 +133,7 @@
   const visible_entries = $derived(hull_data.visible_entries)
 
   // Lower hull triangles: vertex entries (x, y on the triangle, z = E_form)
-  const hull_faces = $derived(
-    hull_data.hull.facets.map((facet) =>
-      facet.vertex_indices.map((idx) => hull_data.hull.entries[idx]),
-    ),
-  )
+  const hull_faces = $derived(hull_data.hull.facet_entries)
 
   // Formation energy range drives the z scaling (funnel depth) and the energy axis
   const energy_range = $derived.by(() => {
@@ -300,7 +297,7 @@
   // Sync: main canvas drag → Three.js gizmo camera
   $effect(() => {
     if (gizmo_active || !gizmo_cam_ref) return
-    const { position, up } = gizmo_camera(camera.elevation, camera.azimuth)
+    const { position, up } = gizmo_cam_state
     gizmo_cam_ref.position.set(...position)
     gizmo_cam_ref.up.set(...up)
     gizmo_cam_ref.lookAt(0, 0, 0)
@@ -328,14 +325,8 @@
 
   // `placement` positions the wrapper div, not the gizmo inside its canvas, so it is split
   // off from the appearance options forwarded to <Gizmo> (which fills its own canvas here)
-  const gizmo_placement = $derived(
-    typeof gizmo === `object` && gizmo?.placement ? gizmo.placement : `top-right`,
-  )
-  const gizmo_props = $derived.by(() => {
-    const overrides: ConvexHullGizmoOptions = typeof gizmo === `object` && gizmo ? gizmo : {}
-    const { placement: _placement, ...appearance } = overrides
-    return { ...appearance, placement: `fill` as const }
-  })
+  const { placement: gizmo_placement = `top-right`, ...gizmo_props } =
+    $derived<ConvexHullGizmoOptions>(typeof gizmo === `object` && gizmo ? gizmo : {})
 
   // === Drawing ===
 
@@ -507,15 +498,8 @@
     ctx.clearRect(0, 0, width, height)
     if (elements.length !== 3) {
       if (elements.length > 0) {
-        ctx.fillStyle = interactions.text_color
-        ctx.font = `16px Arial`
-        ctx.textAlign = `center`
-        ctx.textBaseline = `middle`
-        ctx.fillText(
-          `Ternary convex hull requires exactly 3 elements (got ${elements.length})`,
-          width / 2,
-          height / 2,
-        )
+        const notice = `Ternary convex hull requires exactly 3 elements (got ${elements.length})`
+        draw_notice(ctx, notice, interactions.text_color, width, height)
       }
       return
     }
@@ -672,6 +656,7 @@
             >
               <Gizmo
                 {...gizmo_props}
+                placement="fill"
                 onstart={() => (gizmo_active = true)}
                 onchange={sync_gizmo_to_camera}
                 onend={() => {

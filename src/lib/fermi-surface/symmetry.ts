@@ -72,20 +72,18 @@ export function lattice_point_group_matrices(k_lattice: Matrix3x3): Matrix4Tuple
   // non-reduced basis (sheared supercell) expresses most operations with larger entries
   const basis_t = math.transpose_3x3_matrix(reduce_basis(k_lattice))
   const basis_t_inv = math.matrix_inverse_3x3(basis_t)
-  const rotations: Matrix3x3[] = []
+  const matrices: Matrix4Tuple[] = []
   for (const int_mat of unimodular_candidates()) {
     const rot = math.dot(math.dot(basis_t, int_mat), basis_t_inv)
-    if (is_orthogonal(rot)) rotations.push(rot)
-  }
-
-  // Identity first so symmetry_index 0 is the untransformed copy; the rest in a stable order
-  const is_identity = (rot: Matrix3x3) =>
-    rot.every((row, row_idx) =>
-      row.every((val, col_idx) => Math.abs(val - (row_idx === col_idx ? 1 : 0)) < 1e-9),
+    if (!is_orthogonal(rot)) continue
+    // M = I (the one candidate whose R is the identity) goes first so symmetry_index 0 is
+    // the untransformed copy; the rest keep enumeration order
+    const is_identity = int_mat.every((row, row_idx) =>
+      row.every((val, col_idx) => val === (row_idx === col_idx ? 1 : 0)),
     )
-  const matrices = rotations
-    .toSorted((rot_a, rot_b) => Number(is_identity(rot_b)) - Number(is_identity(rot_a)))
-    .map(to_matrix4)
+    if (is_identity) matrices.unshift(to_matrix4(rot))
+    else matrices.push(to_matrix4(rot))
+  }
   point_group_cache.set(cache_key, matrices)
   return matrices
 }

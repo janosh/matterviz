@@ -30,10 +30,9 @@ const parse_floats = (line: string): number[] =>
 // the buffer. Returns the new fill count. Writing in place (rather than `push(...floats)`)
 // keeps memory flat and avoids the argument-count limit a spread hits on very long lines.
 function fill_floats(values: Float64Array, offset: number, line: string): number {
-  const tokens = parse_number_tokens(normalize_scientific_notation(line))
-  const count = Math.min(tokens.length, values.length - offset)
-  for (let idx = 0; idx < count; idx++) values[offset + idx] = Number(tokens[idx])
-  return offset + count
+  const floats = parse_floats(line).slice(0, values.length - offset)
+  values.set(floats, offset)
+  return offset + floats.length
 }
 
 // Leading number of a trimmed, non-empty line. FRMSF bodies are tens of thousands of

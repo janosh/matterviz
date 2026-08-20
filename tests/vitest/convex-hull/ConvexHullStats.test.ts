@@ -102,8 +102,11 @@ const mount_table_with_single_entry = (
 
 describe(`ConvexHullStats`, () => {
   beforeEach(() => vi.clearAllMocks())
-  const get_polymorph_select = (): HTMLSelectElement | null =>
-    get_table_filter_select(`Polymorphs`)
+  const get_polymorph_select = (): HTMLSelectElement => {
+    const select = get_table_filter_select(`Polymorphs`)
+    if (!select) throw new Error(`Polymorphs select not rendered`)
+    return select
+  }
 
   test(`renders view toggle buttons and all phase type counts`, () => {
     mount_stats({
@@ -181,12 +184,6 @@ describe(`ConvexHullStats`, () => {
     )
   })
 
-  test(`renders both histograms when entries have energy and hull data`, () => {
-    // mock_entry has both e_form_per_atom and e_above_hull by default
-    mount_stats({ stable_entries: [mock_entry()] })
-    expect(document.querySelectorAll(`.histogram`)).toHaveLength(2)
-  })
-
   test.each([
     {
       system: `Li-Fe`,
@@ -226,25 +223,35 @@ describe(`ConvexHullStats`, () => {
     expect(doc_query(`.convex-hull-stats`).querySelectorAll(`.info-row`)).toHaveLength(0)
   })
 
-  test(`energy_per_atom fallback renders both histograms`, () => {
-    mount_stats({
-      stable_entries: [
-        mock_entry({
-          e_form_per_atom: undefined,
-          energy_per_atom: -0.3,
-          e_above_hull: 0.1,
-        }),
+  // One histogram per energy distribution with finite data: E_form (falling back to
+  // energy_per_atom) and E_above_hull; NaN/Infinity are dropped
+  test.each([
+    { desc: `E_form and E_hull`, entries: [{}], n_histograms: 2 },
+    {
+      desc: `energy_per_atom fallback`,
+      entries: [{ e_form_per_atom: undefined, energy_per_atom: -0.3, e_above_hull: 0.1 }],
+      n_histograms: 2,
+    },
+    {
+      desc: `missing energies (E_hull only)`,
+      entries: [{ e_form_per_atom: undefined, energy_per_atom: undefined }],
+      n_histograms: 1,
+    },
+    {
+      desc: `non-finite energies`,
+      entries: [
+        { e_form_per_atom: NaN, e_above_hull: Infinity },
+        { e_form_per_atom: Infinity, e_above_hull: NaN },
       ],
-    })
-    expect(document.querySelectorAll(`.histogram`)).toHaveLength(2)
-  })
-
-  test(`missing energy fields render without errors`, () => {
-    mount_stats({
-      stable_entries: [mock_entry({ e_form_per_atom: undefined, energy_per_atom: undefined })],
-    })
-    expect(doc_query(`.convex-hull-stats`)).toBeInstanceOf(HTMLElement)
-  })
+      n_histograms: 0,
+    },
+  ] as { desc: string; entries: Partial<ConvexHullEntry>[]; n_histograms: number }[])(
+    `renders $n_histograms histogram(s) for entries with $desc`,
+    ({ entries, n_histograms }) => {
+      mount_stats({ stable_entries: entries.map(mock_entry) })
+      expect(document.querySelectorAll(`.histogram`)).toHaveLength(n_histograms)
+    },
+  )
 
   test(`zero totals does not produce NaN in percentages`, () => {
     mount_stats({
@@ -253,17 +260,6 @@ describe(`ConvexHullStats`, () => {
     })
     const text = document.body.textContent ?? ``
     expect(text).not.toContain(`NaN`)
-  })
-
-  test(`non-finite energy values are excluded from histograms`, () => {
-    mount_stats({
-      stable_entries: [
-        mock_entry({ e_form_per_atom: NaN, e_above_hull: Infinity }),
-        mock_entry({ e_form_per_atom: Infinity, e_above_hull: NaN }),
-      ],
-    })
-    // NaN/Infinity are filtered out → no histogram data → 0 histograms
-    expect(document.querySelectorAll(`.histogram`)).toHaveLength(0)
   })
 
   test(`passes through HTML attributes`, () => {
@@ -505,28 +501,23 @@ describe(`ConvexHullStats`, () => {
       expect(all_cells.some((td) => td.innerHTML.includes(`<strong>`))).toBe(true)
     })
 
-    test(`on_entry_click callback fires on row click`, () => {
+    test(`on_entry_click receives the clicked row's entry after sorting reorders rows`, () => {
       const clicked: ConvexHullEntry[] = []
       mount_stats({
-        stable_entries: stable,
-        unstable_entries: [],
+        stable_entries: [],
+        unstable_entries: unstable, // LiFeO2 (0.15) before Li2O (0.05) in the input
         on_entry_click: (entry: ConvexHullEntry) => clicked.push(entry),
       })
       switch_to_table()
 
-      const first_row = document.querySelector(`tbody tr`) as HTMLElement
-      expect(first_row).toBeInstanceOf(HTMLElement)
-      first_row.click()
+      doc_query(`tbody tr`).click() // first row under the default E_hull ascending sort
       flushSync()
-      expect(clicked).toHaveLength(1)
-      expect(clicked[0].reduced_formula).toBe(stable[0].reduced_formula)
+      expect(clicked.map((entry) => entry.reduced_formula)).toEqual([`Li2O`])
     })
 
     test(`shows entry count in filter bar`, () => {
       mount_stats_table({ stable_entries: stable, unstable_entries: unstable })
-      const count_el = document.querySelector(`.filter-count`)
-      expect(count_el).toBeInstanceOf(HTMLElement)
-      expect(count_el?.textContent?.trim()).toBe(`4 entries`)
+      expect(doc_query(`.filter-count`).textContent?.trim()).toBe(`4 entries`)
     })
   })
 
@@ -776,8 +767,7 @@ describe(`ConvexHullStats`, () => {
       expect(received_entries.length).toBeGreaterThanOrEqual(1)
       expect(received_entries[0].entry_id).toBe(`mp-123`)
 
-      const link = document.querySelector(`td a[href]`) as HTMLAnchorElement
-      expect(link).toBeInstanceOf(HTMLElement)
+      const link = doc_query(`td a[href]`)
       expect(link.getAttribute(`href`)).toBe(`/materials/mp-123`)
       expect(link.textContent).toBe(`mp-123`)
       expect(link.getAttribute(`target`)).toBe(`_blank`)
@@ -808,9 +798,7 @@ describe(`ConvexHullStats`, () => {
       // The raw <img> tag must NOT appear as an element — it should be escaped
       expect(document.querySelector(`td img`)).toBeNull()
       // The link should still be rendered (escaping doesn't break the <a> tag)
-      const link = document.querySelector(`td a[href]`) as HTMLAnchorElement
-      expect(link).toBeInstanceOf(HTMLElement)
-      expect(link.getAttribute(`href`)).toBe(`/materials/test`)
+      expect(doc_query(`td a[href]`).getAttribute(`href`)).toBe(`/materials/test`)
     })
 
     test(`escapes HTML special chars in fallback ID rendering (no link)`, () => {
@@ -870,11 +858,9 @@ describe(`ConvexHullStats`, () => {
     test(`appears with correct options when polymorphs exist`, () => {
       mount_stats_table({ stable_entries: polymorph_entries })
 
-      const poly_select = get_polymorph_select()
-      expect(poly_select).toBeInstanceOf(HTMLElement)
-      if (!poly_select) return
-
-      const options = Array.from(poly_select.options).map((opt) => opt.textContent?.trim())
+      const options = Array.from(get_polymorph_select().options).map((opt) =>
+        opt.textContent?.trim(),
+      )
       expect(options[0]).toBe(`all`)
       // Fe2O3 has 2 polymorphs → option shows count
       expect(options.some((opt) => opt?.includes(`2`))).toBe(true)
@@ -886,14 +872,10 @@ describe(`ConvexHullStats`, () => {
       mount_stats_table({ stable_entries: polymorph_entries })
 
       const poly_select = get_polymorph_select()
-      expect(poly_select).toBeInstanceOf(HTMLElement)
-      if (!poly_select) return
-
       const first_polymorph_option = Array.from(poly_select.options).find(
         (option) => option.value !== ``,
       )
-      expect(first_polymorph_option).toBeDefined()
-      if (!first_polymorph_option) return
+      if (!first_polymorph_option) throw new Error(`no polymorph option rendered`)
 
       set_select_value(poly_select, first_polymorph_option.value)
       expect(poly_select.value).toBe(first_polymorph_option.value)

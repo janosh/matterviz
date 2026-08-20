@@ -369,12 +369,13 @@ function marching_cubes_core<Arr extends Float32Array | Float64Array>(
   const [offset_x, offset_y, offset_z] = position_offset ?? [0, 0, 0]
 
   const [nx, ny, nz] = grid_dimensions(grid)
-  const empty = {
-    positions: new make_array(0),
-    indices: new Uint32Array(0),
-    normals: new make_array(0),
+  if (nx < 2 || ny < 2 || nz < 2) {
+    return {
+      positions: new make_array(0),
+      indices: new Uint32Array(0),
+      normals: new make_array(0),
+    }
   }
-  if (nx < 2 || ny < 2 || nz < 2) return empty
 
   const scalar_grid = Array.isArray(grid) ? flatten_grid(grid) : grid
   const values = scalar_grid.values
@@ -418,10 +419,10 @@ function marching_cubes_core<Arr extends Float32Array | Float64Array>(
   let z_edge_current = new Int32Array(edge_plane_size).fill(-1)
   let z_edge_next = new Int32Array(edge_plane_size).fill(-1)
 
-  // Central-difference gradient component along one axis at grid point (ix, iy, iz):
-  // wraps for periodic grids, clamps to a one-sided difference at open boundaries.
-  // Written per axis below via `axis_gradient`; the sign is flipped so normals point
-  // toward decreasing values (outward for a density blob, inward for E < E_F pockets).
+  // Central-difference gradient component along one axis at a grid point: wraps for
+  // periodic grids, falls back to a one-sided difference at open boundaries. The sign is
+  // flipped so normals point toward decreasing values (outward for a density blob,
+  // inward for E < E_F pockets).
   const axis_gradient = (
     base_offset: number,
     idx: number,
@@ -434,31 +435,24 @@ function marching_cubes_core<Arr extends Float32Array | Float64Array>(
       lo_idx = (lo_idx + dim) % dim
       hi_idx %= dim
     } else {
-      if (lo_idx < 0) lo_idx = 0
-      if (hi_idx > dim - 1) hi_idx = dim - 1
+      lo_idx = Math.max(lo_idx, 0)
+      hi_idx = Math.min(hi_idx, dim - 1)
     }
-    const span = periodic ? 2 : Math.max(1, hi_idx - lo_idx)
+    const span = periodic ? 2 : hi_idx - lo_idx
     const lo_val = values[base_offset + lo_idx * stride]
     const hi_val = values[base_offset + hi_idx * stride]
     return -(hi_val - lo_val) / span
   }
-  // Scratch for the gradient at a grid point, in index space scaled to fractional units
+  // Scratch for the gradient at grid point (ix, iy, iz), in index space scaled to
+  // fractional units. Periodic cubes reach index n on their far face (= grid point 0);
+  // non-periodic cubes never exceed n - 1, so the modulo is a no-op there.
   let grad_x = 0
   let grad_y = 0
   let grad_z = 0
   const gradient_at = (ix: number, iy: number, iz: number): void => {
-    let wx = ix
-    let wy = iy
-    let wz = iz
-    if (periodic) {
-      wx %= nx
-      wy %= ny
-      wz %= nz
-    } else {
-      if (wx > nx - 1) wx = nx - 1
-      if (wy > ny - 1) wy = ny - 1
-      if (wz > nz - 1) wz = nz - 1
-    }
+    const wx = ix % nx
+    const wy = iy % ny
+    const wz = iz % nz
     const x_off = wx * stride_x
     const y_off = wy * stride_y
     const z_off = wz * stride_z
