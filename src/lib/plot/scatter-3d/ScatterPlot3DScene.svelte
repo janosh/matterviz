@@ -19,7 +19,14 @@
   } from '$lib/plot/core/types'
   import { SCALE_DEFAULTS } from '$lib/plot/core/types'
   import type { GizmoOptions } from '$lib/scene'
-  import { bind_renderer, create_orthographic_zoom, Gizmo, line_geometry } from '$lib/scene'
+  import {
+    bind_renderer,
+    build_orbit_props,
+    create_orthographic_zoom,
+    dispose_on_change,
+    line_geometry,
+    SceneCamera,
+  } from '$lib/scene'
   import { T, useTask, useThrelte } from '@threlte/core'
   import * as extras from '@threlte/extras'
   import { scaleLinear } from 'd3-scale'
@@ -37,7 +44,6 @@
 
   let {
     series = [],
-    series_visibility = [],
     x_axis = {},
     y_axis = {},
     z_axis = {},
@@ -74,7 +80,6 @@
     height = 0,
   }: {
     series?: DataSeries3D<Metadata>[]
-    series_visibility?: boolean[]
     x_axis?: AxisConfig3D
     y_axis?: AxisConfig3D
     z_axis?: AxisConfig3D
@@ -290,11 +295,15 @@
     colors: string[]
   }
 
-  let radius_groups = $derived.by((): RadiusGroup[] => {
+  const point_key = (pt: InternalPoint3D<Metadata>) => `${pt.series_idx}-${pt.point_idx}`
+
+  // point_radii lets the hover highlight look up a point's radius in O(1) instead of scanning
+  // every group's points
+  let { radius_groups, point_radii } = $derived.by(() => {
     const groups: Record<string, RadiusGroup> = {}
+    const radii = new Map<string, number>()
     for (const pt of processed_points) {
-      const srs = series[pt.series_idx]
-      if (!(series_visibility[pt.series_idx] ?? srs?.visible ?? true)) continue
+      if (!(series[pt.series_idx]?.visible ?? true)) continue
       const color =
         pt.color_value != null
           ? color_scale_fn(pt.color_value)
@@ -306,8 +315,9 @@
       const key = radius.toFixed(4)
       ;(groups[key] ??= { radius, points: [], colors: [] }).points.push(pt)
       groups[key].colors.push(color)
+      radii.set(point_key(pt), radius)
     }
-    return Object.values(groups)
+    return { radius_groups: Object.values(groups), point_radii: radii }
   })
 
   // Projection settings - render point shadows on background planes
@@ -355,8 +365,7 @@
     for (let series_idx = 0; series_idx < series.length; series_idx++) {
       const srs = series[series_idx]
       const line_style = srs?.line_style
-      if (!line_style) continue
-      if (!(series_visibility[series_idx] ?? srs.visible ?? true)) continue
+      if (!line_style || !(srs.visible ?? true)) continue
       const positions: number[] = []
       positions_by_series.set(series_idx, positions)
       const color =
@@ -428,16 +437,12 @@
     })
   })
 
-  // Cleanup on component destroy
+  // Lines reused across effect runs are only released here (axis geometries are derived and
+  // disposed by dispose_on_change below)
   onDestroy(() => {
     for (const { geometry, material } of series_lines) {
       geometry.dispose()
       material.dispose()
-    }
-    Object.values(axis_geometries).forEach((geom) => geom.dispose())
-    for (const data of Object.values(axis_geom_data)) {
-      data.tick_geoms.forEach((geom) => geom.dispose())
-      data.grid_geoms.flat().forEach((geom) => geom.dispose())
     }
   })
 
@@ -454,28 +459,30 @@
   let y_ticks = $derived(gen_ticks(y_range, y_axis.ticks))
   let z_ticks = $derived(gen_ticks(z_range, z_axis.ticks))
 
-  // Build event data for point interactions
+  // Build event data for point interactions. The point carries scene coordinates, so the
+  // original data values are read straight from the series (null if the series shrank under a
+  // stale hovered point).
   function make_event_data(
     point: InternalPoint3D<Metadata>,
     event?: MouseEvent,
   ): Scatter3DHandlerEvent<Metadata> | null {
-    const orig = all_points.find(
-      (pt) => pt.series_idx === point.series_idx && pt.point_idx === point.point_idx,
-    )
-    if (!orig) return null
+    const { series_idx, point_idx } = point
+    const srs = series[series_idx]
+    if (!srs || point_idx >= srs.x.length) return null
+    const [x, y, z] = [srs.x[point_idx], srs.y[point_idx], srs.z[point_idx]]
     return {
-      x: orig.x,
-      y: orig.y,
-      z: orig.z,
+      x,
+      y,
+      z,
       metadata: point.metadata ?? null,
-      label: series[point.series_idx]?.label ?? null,
-      series_idx: point.series_idx,
+      label: srs.label ?? null,
+      series_idx,
       x_axis,
       y_axis,
       z_axis,
-      x_formatted: format_num(orig.x, x_axis.format || `.3~g`),
-      y_formatted: format_num(orig.y, y_axis.format || `.3~g`),
-      z_formatted: format_num(orig.z, z_axis.format || `.3~g`),
+      x_formatted: format_num(x, x_axis.format || `.3~g`),
+      y_formatted: format_num(y, y_axis.format || `.3~g`),
+      z_formatted: format_num(z, z_axis.format || `.3~g`),
       color_value: point.color_value,
       fullscreen: false,
       event,
@@ -494,209 +501,162 @@
     if (data) on_point_click?.(data)
   }
 
-  // Gizmo props - parent (ScatterPlot3D) handles className and ColorBar offset adjustments
-  let gizmo_props = $derived(
-    gizmo === false ? null : gizmo === true ? { offset: { left: 5, bottom: 5 } } : gizmo,
-  )
-
-  // Orbit controls - snappy with minimal inertia
+  // Orbit controls - snappy with minimal inertia; the orbit target is the cube center
   const orbit_target: Vec3 = [0, 0, 0]
-  let orbit_controls_props = $derived({
-    enableRotate: rotate_speed > 0,
-    rotateSpeed: rotate_speed,
-    enableZoom: zoom_speed > 0,
-    zoomSpeed: zoom_speed,
-    enablePan: pan_speed > 0,
-    panSpeed: pan_speed,
-    target: orbit_target,
-    maxZoom: ortho_zoom.max_zoom,
-    minZoom: ortho_zoom.min_zoom,
-    autoRotate: Boolean(auto_rotate),
-    autoRotateSpeed: auto_rotate,
-    enableDamping: rotation_damping > 0,
-    dampingFactor: rotation_damping,
-    onend: () => {
-      const controls_camera = orbit_controls?.object
-      if (controls_camera instanceof THREE.OrthographicCamera) {
-        ortho_zoom.zoom = controls_camera.zoom
-      }
-    },
-  })
+  let orbit_props = $derived(
+    build_orbit_props({
+      camera_projection,
+      target: orbit_target,
+      rotate_speed,
+      zoom_speed,
+      zoom_to_cursor: false,
+      pan_speed,
+      max_zoom: ortho_zoom.max_zoom,
+      min_zoom: ortho_zoom.min_zoom,
+      auto_rotate,
+      rotation_damping,
+      // keep the user's zoom as the baseline the next resize rescales from
+      onend_extra: () => {
+        if (camera instanceof THREE.OrthographicCamera) ortho_zoom.zoom = camera.zoom
+      },
+    }),
+  )
 
   // Axis configuration for rendering
   const tick_length = 0.15
   type AxisKey = `x` | `y` | `z`
-  const AXIS_KEYS: readonly AxisKey[] = [`x`, `y`, `z`]
 
-  // Main axis line geometries - updated when backside positions change
-  let axis_geometries: Record<AxisKey, THREE.BufferGeometry> = $state({
-    x: line_geometry([-half_x, -half_z, -half_y], [half_x, -half_z, -half_y]),
-    y: line_geometry([-half_x, -half_z, -half_y], [-half_x, -half_z, half_y]),
-    z: line_geometry([-half_x, -half_z, -half_y], [-half_x, half_z, -half_y]),
-  })
-
-  $effect(() => {
-    // Capture pos values for dependency tracking
-    const { x: px, y: py, z: pz } = pos
-    untrack(() => {
-      for (const key of AXIS_KEYS) axis_geometries[key].dispose()
-    })
-    // X-axis: spans full X, positioned at backside Y and Z
-    axis_geometries.x = line_geometry([-half_x, py, pz], [half_x, py, pz])
-    // Y-axis (user Y → Three.js Z): spans full Z, positioned at backside X and Y
-    axis_geometries.y = line_geometry([px, py, -half_y], [px, py, half_y])
-    // Z-axis (user Z → Three.js Y): spans full Y, positioned at backside X and Z
-    axis_geometries.z = line_geometry([px, -half_z, pz], [px, half_z, pz])
-  })
-
-  // Axis rendering config - all positions use backside `pos` values
-  let axes_config = $derived([
-    {
-      key: `x` as AxisKey,
-      color: `#ef4444`,
-      axis: x_axis,
-      ticks: x_ticks,
-      range: x_range,
-      get_tick_pos: (val: number): Vec3 => [normalize_x(val), pos.y, pos.z],
-      get_tick_end: (val: number): Vec3 => [
-        normalize_x(val),
-        pos.y + sign_y * tick_length,
-        pos.z,
-      ],
-      get_grid_lines: (val: number): [Vec3, Vec3][] => {
-        const px = normalize_x(val)
-        return [
-          [
-            [px, -half_z, pos.z],
-            [px, half_z, pos.z],
-          ],
-          [
-            [px, pos.y, -half_y],
-            [px, pos.y, half_y],
-          ],
-        ]
+  // Axis rendering config - all positions use backside `pos` values. Each entry also owns its
+  // line geometries (main axis, ticks, grid), rebuilt as a whole when pos/ticks/ranges change.
+  // Main axis lines: X spans full X at backside Y/Z; user Y (Three.js Z) spans full Z at
+  // backside X/Y; user Z (Three.js Y) spans full Y at backside X/Z.
+  let axes_config = $derived(
+    [
+      {
+        key: `x` as AxisKey,
+        color: `#ef4444`,
+        axis: x_axis,
+        ticks: x_ticks,
+        line_geom: line_geometry([-half_x, pos.y, pos.z], [half_x, pos.y, pos.z]),
+        get_tick_pos: (val: number): Vec3 => [normalize_x(val), pos.y, pos.z],
+        get_tick_end: (val: number): Vec3 => [
+          normalize_x(val),
+          pos.y + sign_y * tick_length,
+          pos.z,
+        ],
+        get_grid_lines: (val: number): [Vec3, Vec3][] => {
+          const px = normalize_x(val)
+          return [
+            [
+              [px, -half_z, pos.z],
+              [px, half_z, pos.z],
+            ],
+            [
+              [px, pos.y, -half_y],
+              [px, pos.y, half_y],
+            ],
+          ]
+        },
+        tick_label_pos: (val: number): Vec3 => [normalize_x(val), pos.y + sign_y * 0.4, pos.z],
+        axis_label_pos: [0, pos.y + sign_y * 0.9, pos.z] as Vec3,
       },
-      tick_label_pos: (val: number): Vec3 => [normalize_x(val), pos.y + sign_y * 0.4, pos.z],
-      axis_label_pos: [0, pos.y + sign_y * 0.9, pos.z] as Vec3,
-    },
-    {
-      key: `y` as AxisKey,
-      color: `#22c55e`,
-      axis: y_axis,
-      ticks: y_ticks,
-      range: y_range,
-      get_tick_pos: (val: number): Vec3 => [pos.x, pos.y, normalize_y(val)],
-      get_tick_end: (val: number): Vec3 => [
-        pos.x,
-        pos.y + sign_y * tick_length,
-        normalize_y(val),
-      ],
-      get_grid_lines: (val: number): [Vec3, Vec3][] => {
-        const py = normalize_y(val)
-        return [
-          [
-            [-half_x, pos.y, py],
-            [half_x, pos.y, py],
-          ],
-          [
-            [pos.x, -half_z, py],
-            [pos.x, half_z, py],
-          ],
-        ]
+      {
+        key: `y` as AxisKey,
+        color: `#22c55e`,
+        axis: y_axis,
+        ticks: y_ticks,
+        line_geom: line_geometry([pos.x, pos.y, -half_y], [pos.x, pos.y, half_y]),
+        get_tick_pos: (val: number): Vec3 => [pos.x, pos.y, normalize_y(val)],
+        get_tick_end: (val: number): Vec3 => [
+          pos.x,
+          pos.y + sign_y * tick_length,
+          normalize_y(val),
+        ],
+        get_grid_lines: (val: number): [Vec3, Vec3][] => {
+          const py = normalize_y(val)
+          return [
+            [
+              [-half_x, pos.y, py],
+              [half_x, pos.y, py],
+            ],
+            [
+              [pos.x, -half_z, py],
+              [pos.x, half_z, py],
+            ],
+          ]
+        },
+        tick_label_pos: (val: number): Vec3 => [
+          pos.x + sign_x * 0.5,
+          pos.y + sign_y * 0.4,
+          normalize_y(val),
+        ],
+        axis_label_pos: [
+          pos.x,
+          pos.y + sign_y * 0.9,
+          pos.z < 0 ? half_y + 0.5 : -half_y - 0.5,
+        ] as Vec3,
       },
-      tick_label_pos: (val: number): Vec3 => [
-        pos.x + sign_x * 0.5,
-        pos.y + sign_y * 0.4,
-        normalize_y(val),
-      ],
-      axis_label_pos: [
-        pos.x,
-        pos.y + sign_y * 0.9,
-        pos.z < 0 ? half_y + 0.5 : -half_y - 0.5,
-      ] as Vec3,
-    },
-    {
-      key: `z` as AxisKey,
-      color: `#3b82f6`,
-      axis: z_axis,
-      ticks: z_ticks,
-      range: z_range,
-      get_tick_pos: (val: number): Vec3 => [pos.x, normalize_z(val), pos.z],
-      get_tick_end: (val: number): Vec3 => [
-        pos.x + sign_x * tick_length,
-        normalize_z(val),
-        pos.z,
-      ],
-      get_grid_lines: (val: number): [Vec3, Vec3][] => {
-        const pz = normalize_z(val)
-        return [
-          [
-            [-half_x, pz, pos.z],
-            [half_x, pz, pos.z],
-          ],
-          [
-            [pos.x, pz, -half_y],
-            [pos.x, pz, half_y],
-          ],
-        ]
+      {
+        key: `z` as AxisKey,
+        color: `#3b82f6`,
+        axis: z_axis,
+        ticks: z_ticks,
+        line_geom: line_geometry([pos.x, -half_z, pos.z], [pos.x, half_z, pos.z]),
+        get_tick_pos: (val: number): Vec3 => [pos.x, normalize_z(val), pos.z],
+        get_tick_end: (val: number): Vec3 => [
+          pos.x + sign_x * tick_length,
+          normalize_z(val),
+          pos.z,
+        ],
+        get_grid_lines: (val: number): [Vec3, Vec3][] => {
+          const pz = normalize_z(val)
+          return [
+            [
+              [-half_x, pz, pos.z],
+              [half_x, pz, pos.z],
+            ],
+            [
+              [pos.x, pz, -half_y],
+              [pos.x, pz, half_y],
+            ],
+          ]
+        },
+        tick_label_pos: (val: number): Vec3 => [pos.x + sign_x * 0.5, normalize_z(val), pos.z],
+        axis_label_pos: [pos.x + sign_x, 0, pos.z] as Vec3,
       },
-      tick_label_pos: (val: number): Vec3 => [pos.x + sign_x * 0.5, normalize_z(val), pos.z],
-      axis_label_pos: [pos.x + sign_x, 0, pos.z] as Vec3,
-    },
-  ])
+    ].map((entry) => ({
+      ...entry,
+      tick_geoms: entry.ticks.map((val) =>
+        line_geometry(entry.get_tick_pos(val), entry.get_tick_end(val)),
+      ),
+      grid_geoms: entry.ticks.map((val) =>
+        entry.get_grid_lines(val).map(([start, end]) => line_geometry(start, end)),
+      ),
+    })),
+  )
 
-  // Pre-computed geometries for tick marks and grid lines, indexed by axis and tick position
-  type AxisGeomData = {
-    tick_geoms: THREE.BufferGeometry[]
-    grid_geoms: THREE.BufferGeometry[][]
-  }
-  const empty_geom_data = (): AxisGeomData => ({ tick_geoms: [], grid_geoms: [] })
-  let axis_geom_data: Record<AxisKey, AxisGeomData> = $state({
-    x: empty_geom_data(),
-    y: empty_geom_data(),
-    z: empty_geom_data(),
-  })
-
-  // Recreate tick/grid geometries when axes config changes
-  $effect(() => {
-    const config = axes_config
-    // Dispose old geometries (untracked to avoid dependency cycle)
-    untrack(() => {
-      for (const key of AXIS_KEYS) {
-        axis_geom_data[key].tick_geoms.forEach((geom) => geom.dispose())
-        axis_geom_data[key].grid_geoms.flat().forEach((geom) => geom.dispose())
-      }
-    })
-    for (const { key, ticks, get_tick_pos, get_tick_end, get_grid_lines } of config) {
-      axis_geom_data[key] = {
-        tick_geoms: ticks.map((val) => line_geometry(get_tick_pos(val), get_tick_end(val))),
-        grid_geoms: ticks.map((val) =>
-          get_grid_lines(val).map(([start, end]) => line_geometry(start, end)),
-        ),
-      }
-    }
-  })
+  // Release the previous axis/tick/grid geometries whenever axes_config rebuilds and on unmount
+  dispose_on_change(() =>
+    axes_config.flatMap(({ line_geom, tick_geoms, grid_geoms }) => [
+      line_geom,
+      ...tick_geoms,
+      ...grid_geoms.flat(),
+    ]),
+  )
 </script>
 
-{#if camera_projection === `perspective`}
-  <T.PerspectiveCamera makeDefault position={camera_position} {fov} near={0.1} far={1000}>
-    <extras.OrbitControls bind:ref={orbit_controls} {...orbit_controls_props}>
-      {#if gizmo_props}<Gizmo {...gizmo_props} />{/if}
-    </extras.OrbitControls>
-  </T.PerspectiveCamera>
-{:else}
-  <T.OrthographicCamera
-    makeDefault
-    position={camera_position}
-    zoom={ortho_zoom.zoom}
-    near={-100}
-    far={1000}
-  >
-    <extras.OrbitControls bind:ref={orbit_controls} {...orbit_controls_props}>
-      {#if gizmo_props}<Gizmo {...gizmo_props} />{/if}
-    </extras.OrbitControls>
-  </T.OrthographicCamera>
-{/if}
+<SceneCamera
+  {camera_projection}
+  position={camera_position}
+  {fov}
+  zoom={ortho_zoom.zoom}
+  near={0.1}
+  ortho_near={-100}
+  far={1000}
+  {orbit_props}
+  {gizmo}
+  bind:orbit_controls
+/>
 
 <!-- Lighting -->
 <T.DirectionalLight position={[10, 20, 10]} intensity={directional_light} />
@@ -728,22 +688,20 @@
 
 <!-- Axes with ticks and grid -->
 {#if display.show_axes !== false}
-  {#each axes_config as { key, color, axis, ticks, tick_label_pos, axis_label_pos } (key)}
+  {#each axes_config as { key, color, axis, ticks, tick_label_pos, axis_label_pos, line_geom, tick_geoms, grid_geoms } (key)}
     <!-- Main axis line -->
     <T.Line>
-      <T is={axis_geometries[key]} />
+      <T is={line_geom} />
       <T.LineBasicMaterial {color} linewidth={2} />
     </T.Line>
     <!-- Ticks and grid -->
     {#each ticks as tick_val, tick_idx (tick_val)}
-      {#if axis_geom_data[key].tick_geoms[tick_idx]}
-        <T.Line>
-          <T is={axis_geom_data[key].tick_geoms[tick_idx]} />
-          <T.LineBasicMaterial {color} />
-        </T.Line>
-      {/if}
+      <T.Line>
+        <T is={tick_geoms[tick_idx]} />
+        <T.LineBasicMaterial {color} />
+      </T.Line>
       {#if display.show_grid !== false}
-        {#each axis_geom_data[key].grid_geoms[tick_idx] ?? [] as grid_geom, grid_idx (grid_idx)}
+        {#each grid_geoms[tick_idx] as grid_geom, grid_idx (grid_idx)}
           <T.Line>
             <T is={grid_geom} />
             <T.LineBasicMaterial color="#888" opacity={0.4} transparent />
@@ -755,9 +713,11 @@
       </extras.HTML>
     {/each}
     <!-- Axis label -->
-    <extras.HTML position={axis_label_pos} center>
-      <span class="axis-label" style:color>{axis.label || key.toUpperCase()}</span>
-    </extras.HTML>
+    {#if display.show_axis_labels !== false}
+      <extras.HTML position={axis_label_pos} center>
+        <span class="axis-label" style:color>{axis.label || key.toUpperCase()}</span>
+      </extras.HTML>
+    {/if}
   {/each}
 {/if}
 
@@ -838,10 +798,7 @@
 <!-- Hover highlight -->
 {#if hovered_point}
   {@const hp = hovered_point}
-  {@const group = radius_groups.find((grp) =>
-    grp.points.some((pt) => pt.series_idx === hp.series_idx && pt.point_idx === hp.point_idx),
-  )}
-  <T.Mesh position={[hp.x, hp.y, hp.z]} scale={(group?.radius ?? 0.1) * 1.5}>
+  <T.Mesh position={[hp.x, hp.y, hp.z]} scale={(point_radii.get(point_key(hp)) ?? 0.1) * 1.5}>
     <T.SphereGeometry args={[1, 16, 16]} />
     <T.MeshStandardMaterial
       color="white"

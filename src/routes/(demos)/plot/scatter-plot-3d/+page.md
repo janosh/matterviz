@@ -1,6 +1,6 @@
 # 3D Scatter Plot
 
-`ScatterPlot3D` uses instanced Three.js/Threlte points and supports multiple series, `color_values`, and optional surfaces.
+`ScatterPlot3D` uses instanced Three.js/Threlte points and supports multiple series, `color_values`, and optional surfaces. Legend clicks toggle a series' `visible` flag in place, so `bind:series` if you want to read or restore those toggles from the outside (as with the 2D `ScatterPlot`).
 
 ## Basic 3D Scatter Plot
 

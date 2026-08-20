@@ -1,5 +1,4 @@
-import { ScatterPlot3D } from '$lib'
-import { ScatterPlot3DControls } from '$lib/plot'
+import { ScatterPlot3D, ScatterPlot3DControls } from '$lib/plot'
 import type { DataSeries3D, Surface3DConfig } from '$lib/plot/core/types'
 import scatter_plot_3d_source from '$lib/plot/scatter-3d/ScatterPlot3D.svelte?raw'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'

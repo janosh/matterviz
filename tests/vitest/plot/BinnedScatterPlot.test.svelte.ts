@@ -1,10 +1,19 @@
 import type { Vec2 } from '$lib/math'
-import { BinnedScatterPlot, type BinnedDensityConfig, COLOR_BAR_DEFAULTS } from '$lib/plot'
+import { COLOR_BAR_DEFAULTS } from '$lib/plot/core/types'
+import type { BinnedDensityConfig } from '$lib/plot/scatter/binned-scatter-types'
+import BinnedScatterPlot from '$lib/plot/scatter/BinnedScatterPlot.svelte'
 import { get_series_color } from '$lib/plot/core/data-transform'
 import { interpolateViridis } from 'd3-scale-chromatic'
 import { createRawSnippet, mount, tick, type ComponentProps } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { doc_query, svg_query, trigger_intersection } from '../setup'
+import {
+  bind_props,
+  doc_query,
+  resize_element,
+  svg_query,
+  trigger_intersection,
+  trigger_resize_observer,
+} from '../setup'
 
 // Shared deterministic point cloud; spreads y values without RNG overhead.
 const PSEUDO_RANDOM_MULTIPLIER = 48_271
@@ -28,8 +37,6 @@ const point_mode = (config: BinnedDensityConfig = {}): BinnedProps => ({
 afterEach(() => {
   document.body.replaceChildren()
   vi.restoreAllMocks()
-  vi.unstubAllGlobals()
-  emit_test_plot_resize = undefined
 })
 
 const settle = async () => {
@@ -37,9 +44,10 @@ const settle = async () => {
   await tick()
 }
 const mount_plot = (props: ComponentProps<typeof BinnedScatterPlot>): void => {
+  // Object.assign (not spread) keeps bind_props accessors intact
   mount(BinnedScatterPlot, {
     target: document.body,
-    props: { style: `width: 800px; height: 600px`, ...props },
+    props: Object.assign(props, { style: props.style ?? `width: 800px; height: 600px` }),
   })
 }
 // Pinning both axes to [0,1] makes client coordinates map to known data values, so
@@ -54,12 +62,23 @@ const plot_center = (): { x: number; y: number } => {
 }
 const binned_plot = (): HTMLElement => doc_query(`.binned-scatter`)
 const render_mode = (): string | undefined => binned_plot().dataset.renderMode
+// Pointer events land on the frame's SVG (the canvases underneath take none)
+const plot_svg = (): SVGElement => svg_query(`.binned-scatter svg[role="application"]`)
 const click_plot = (clientX: number, clientY: number): boolean =>
-  binned_plot().dispatchEvent(new MouseEvent(`click`, { bubbles: true, clientX, clientY }))
+  plot_svg().dispatchEvent(new MouseEvent(`click`, { bubbles: true, clientX, clientY }))
 const hover_plot = (clientX: number, clientY: number): boolean =>
-  binned_plot().dispatchEvent(
-    new PointerEvent(`pointermove`, { bubbles: true, clientX, clientY }),
-  )
+  plot_svg().dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true, clientX, clientY }))
+// bind:clientWidth reads the element, so both the mocked size and its observer must update
+const resize_plot = async (next_width: number, next_height: number) => {
+  await resize_element(binned_plot(), next_width, next_height)
+  trigger_resize_observer(binned_plot())
+  await settle()
+}
+const plot_rect = (): TestRect => {
+  const clip = svg_query(`clipPath[id^="binned-scatter-plot-area-"] rect`)
+  const num = (attr: string) => Number(clip.getAttribute(attr))
+  return { x: num(`x`), y: num(`y`), width: num(`width`), height: num(`height`) }
+}
 // Point radii reach the canvas only as arc() calls, so capture them off a mocked context.
 const capture_radii = (overrides: Partial<CanvasRenderingContext2D> = {}): number[] => {
   const radii: number[] = []
@@ -120,31 +139,6 @@ const uniform_density_series = (columns = 32, rows = 24) => [
     ),
   },
 ]
-let emit_test_plot_resize: ((next_width: number, next_height: number) => void) | undefined
-class TestResizeObserver {
-  constructor(private readonly callback: ResizeObserverCallback) {}
-  observe(target: Element): void {
-    if (!(target instanceof HTMLElement) || !target.classList.contains(`binned-scatter`))
-      return
-    emit_test_plot_resize = (next_width: number, next_height: number) =>
-      this.callback(
-        [
-          {
-            target,
-            contentRect: DOMRect.fromRect({ width: next_width, height: next_height }),
-            borderBoxSize: [],
-            contentBoxSize: [],
-            devicePixelContentBoxSize: [],
-          },
-        ],
-        this,
-      )
-    queueMicrotask(() => emit_test_plot_resize?.(800, 600))
-  }
-  unobserve(): void {}
-  disconnect(): void {}
-}
-
 function mock_canvas_context(overrides: Partial<CanvasRenderingContext2D> = {}) {
   const ctx = {
     font: ``,
@@ -348,13 +342,7 @@ describe(`BinnedScatterPlot`, () => {
       const colorbar = doc_query(`.binned-scatter .color-bar`)
       expect(colorbar.dataset.decorationLocation).toBe(expected_location)
       expect(colorbar.dataset.decorationSide ?? null).toBe(expected_side)
-      const clip_rect = svg_query(`clipPath[id^="binned-scatter-plot-area-"] rect`)
-      expect({
-        x: svg_num(clip_rect, `x`),
-        y: svg_num(clip_rect, `y`),
-        width: svg_num(clip_rect, `width`),
-        height: svg_num(clip_rect, `height`),
-      }).toEqual(expected_plot_rect)
+      expect(plot_rect()).toEqual(expected_plot_rect)
     },
   )
 
@@ -378,29 +366,19 @@ describe(`BinnedScatterPlot`, () => {
 
     const colorbar = doc_query(`.binned-scatter .color-bar`)
     const visual_rect = decoration_rect(`.binned-scatter .color-bar`)
-    const clip_rect = svg_query(`clipPath[id^="binned-scatter-plot-area-"] rect`)
-    const plot_rect = {
-      x: svg_num(clip_rect, `x`),
-      y: svg_num(clip_rect, `y`),
-      width: svg_num(clip_rect, `width`),
-      height: svg_num(clip_rect, `height`),
-    }
+    const area = plot_rect()
     expect(visual_rect).toMatchObject({ width: 240, height: 46 })
-    expect(visual_rect.x).toBeGreaterThanOrEqual(
-      plot_rect.x + COLOR_BAR_DEFAULTS.axis_clearance,
-    )
-    expect(visual_rect.y).toBeGreaterThanOrEqual(
-      plot_rect.y + COLOR_BAR_DEFAULTS.axis_clearance,
-    )
+    expect(visual_rect.x).toBeGreaterThanOrEqual(area.x + COLOR_BAR_DEFAULTS.axis_clearance)
+    expect(visual_rect.y).toBeGreaterThanOrEqual(area.y + COLOR_BAR_DEFAULTS.axis_clearance)
     expect(visual_rect.x + visual_rect.width).toBeLessThanOrEqual(
-      plot_rect.x + plot_rect.width - COLOR_BAR_DEFAULTS.axis_clearance,
+      area.x + area.width - COLOR_BAR_DEFAULTS.axis_clearance,
     )
     expect(visual_rect.y + visual_rect.height).toBeLessThanOrEqual(
-      plot_rect.y + plot_rect.height - COLOR_BAR_DEFAULTS.axis_clearance,
+      area.y + area.height - COLOR_BAR_DEFAULTS.axis_clearance,
     )
     const horizontal_gap = Math.min(
-      visual_rect.x - plot_rect.x,
-      plot_rect.x + plot_rect.width - (visual_rect.x + visual_rect.width),
+      visual_rect.x - area.x,
+      area.x + area.width - (visual_rect.x + visual_rect.width),
     )
     expect(horizontal_gap).toBe(COLOR_BAR_DEFAULTS.axis_clearance)
     expect(css_px(colorbar.style.left)).toBe(visual_rect.x + 10)
@@ -448,7 +426,6 @@ describe(`BinnedScatterPlot`, () => {
   })
 
   test(`keeps solver padding stable across repeated resizes`, async () => {
-    vi.stubGlobal(`ResizeObserver`, TestResizeObserver)
     mount_plot({
       series: uniform_density_series(),
       ...density_mode_with_colorbar({ bin_px: 20 }),
@@ -457,28 +434,18 @@ describe(`BinnedScatterPlot`, () => {
     })
     await settle()
 
-    const clip_rect = svg_query(`clipPath[id^="binned-scatter-plot-area-"] rect`)
-    const plot_rect = (): TestRect => ({
-      x: svg_num(clip_rect, `x`),
-      y: svg_num(clip_rect, `y`),
-      width: svg_num(clip_rect, `width`),
-      height: svg_num(clip_rect, `height`),
-    })
     const initial_rect = plot_rect()
-    if (!emit_test_plot_resize)
-      throw new Error(`Binned scatter ResizeObserver was not attached`)
-    emit_test_plot_resize(620, 420)
-    await settle()
+    await resize_plot(620, 420)
     const resized_rect = plot_rect()
     expect(resized_rect).not.toEqual(initial_rect)
+    expect(resized_rect.x + resized_rect.width).toBeLessThanOrEqual(620)
+    expect(resized_rect.y + resized_rect.height).toBeLessThanOrEqual(420)
 
     for (let repeat_idx = 0; repeat_idx < 3; repeat_idx++) {
-      emit_test_plot_resize(620, 420)
-      await settle()
+      await resize_plot(620, 420)
       expect(plot_rect()).toEqual(resized_rect)
     }
-    emit_test_plot_resize(800, 600)
-    await settle()
+    await resize_plot(800, 600)
     expect(plot_rect()).toEqual(initial_rect)
   })
 
@@ -784,77 +751,77 @@ describe(`BinnedScatterPlot`, () => {
     expect(request_frame).not.toHaveBeenCalled()
   })
 
-  test(`gates drag zoom starts, suppresses its trailing click, and resets zoom`, async () => {
+  test(`rect zoom writes axis ranges, swallows its trailing click, and double-click resets`, async () => {
     const on_density_zoom = vi.fn()
-    mount_plot({
-      series: [{ x: Array(20).fill(0.5), y: Array(20).fill(0.5) }],
-      ...density_mode({ bin_px: 100 }),
-      ...unit_axes,
-      on_density_zoom,
-    })
+    const state = { x_axis: { range: [0, 1] as Vec2 }, y_axis: { range: [0, 1] as Vec2 } }
+    mount_plot(
+      bind_props(
+        {
+          series: [{ x: Array(20).fill(0.5), y: Array(20).fill(0.5) }],
+          ...density_mode({ bin_px: 100 }),
+          on_density_zoom,
+        },
+        state,
+      ),
+    )
     await settle()
-
-    const plot = binned_plot()
-    const canvas = plot.querySelector(`canvas`)
-    if (!canvas) throw new Error(`binned scatter canvas not found`)
-    // Fullscreen adds a 32px wrapper border above the canvas. Pointer coordinates
-    // must remain canvas-relative rather than inheriting that wrapper offset.
-    const canvas_rect = DOMRect.fromRect({ x: 0, y: 32, width: 800, height: 600 })
-    vi.spyOn(canvas, `getBoundingClientRect`).mockReturnValue(canvas_rect)
-    const client_coords = (x: number, y: number) => ({
-      clientX: canvas_rect.left + x,
-      clientY: canvas_rect.top + y,
-    })
-    const pointer = (type: string, x: number, y: number, button?: number) =>
-      plot.dispatchEvent(
-        new PointerEvent(type, {
+    const svg = plot_svg()
+    const area = plot_rect()
+    const drag = async (start: Vec2, end: Vec2) => {
+      svg.dispatchEvent(
+        new MouseEvent(`mousedown`, {
           bubbles: true,
-          button,
-          pointerId: 1,
-          ...client_coords(x, y),
+          button: 0,
+          clientX: start[0],
+          clientY: start[1],
         }),
       )
-    const click = (x: number, y: number) =>
-      plot.dispatchEvent(new MouseEvent(`click`, { bubbles: true, ...client_coords(x, y) }))
-    const drag = async (start: Vec2, end: Vec2) => {
-      pointer(`pointerdown`, ...start, 0)
-      pointer(`pointermove`, ...end)
-      pointer(`pointerup`, ...end)
+      window.dispatchEvent(
+        new MouseEvent(`mousemove`, { buttons: 1, clientX: end[0], clientY: end[1] }),
+      )
+      window.dispatchEvent(new MouseEvent(`mouseup`, { clientX: end[0], clientY: end[1] }))
       await tick()
     }
 
-    // A drag starting in the fullscreen-only border above the canvas is outside.
-    await drag([400, -7], [200, 200])
-    expect(document.querySelector(`.reset-view`)).toBeNull()
+    // A drag starting in the x-label margin below the plot area must not zoom
+    await drag([400, area.y + area.height + 20], [200, 200])
+    expect(state.x_axis.range).toEqual([0, 1])
 
-    // The bottom x-label margin must not initiate a drag zoom.
-    await drag([400, 590], [200, 200])
-    expect(document.querySelector(`.reset-view`)).toBeNull()
+    // A drag inside the plot area zooms both axes to the dragged fraction of the unit range
+    const [x0, x1] = [area.x + 0.25 * area.width, area.x + 0.75 * area.width]
+    const [y0, y1] = [area.y + 0.25 * area.height, area.y + 0.75 * area.height]
+    await drag([x0, y0], [x1, y1])
+    expect(state.x_axis.range[0]).toBeCloseTo(0.25, 2)
+    expect(state.x_axis.range[1]).toBeCloseTo(0.75, 2)
+    expect(state.y_axis.range[0]).toBeCloseTo(0.25, 2)
+    expect(state.y_axis.range[1]).toBeCloseTo(0.75, 2)
 
-    // Where the single populated bin (every point is at (0.5, 0.5)) sits in the pointer
-    // frame these events use, which the mocked canvas rect offsets from the SVG. Measured,
-    // not derived from the clip rect. A zoom moves it, so only click it while unzoomed.
-    const [bin_x, bin_y] = [420, 220]
-    await drag([bin_x - 150, bin_y + 100], [bin_x + 150, bin_y - 100])
-
-    // The drag's trailing click is swallowed rather than zooming the bin under it
-    click(bin_x, bin_y)
+    // The drag's trailing click is swallowed rather than zooming the bin under it. Nudge off
+    // the exact centre: data at 0.5 falls in the upper-right of the two bins meeting there.
+    const center = plot_center()
+    const [bin_x, bin_y] = [center.x + 1, center.y - 1]
+    click_plot(bin_x, bin_y)
     expect(on_density_zoom).not.toHaveBeenCalled()
 
-    const reset_btn = doc_query<HTMLButtonElement>(`.reset-view`)
-    expect(reset_btn.getAttribute(`aria-label`)).toBe(`Reset view`)
-    reset_btn.click()
-    await tick()
-    expect(document.querySelector(`.reset-view`)).toBeNull()
+    // Double-click clears the overrides; the auto range of a single (0.5, 0.5) bin is [0, 1]
+    svg.dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
+    await settle()
+    expect(state.x_axis.range).toEqual([null, null])
+    expect(state.y_axis.range).toEqual([null, null])
+    expect(plot_rect()).toEqual(area)
 
-    // Reset restores the pre-zoom geometry, so the bin is back under the centre
-    click(bin_x, bin_y)
+    // With the view restored, clicking the populated bin zooms into it
+    await new Promise((resolve) => setTimeout(resolve, 0)) // suppress_click clears next tick
+    click_plot(bin_x, bin_y)
+    await tick()
     expect(on_density_zoom).toHaveBeenCalledOnce()
-    await tick()
-
-    // Only the start is gated: an interior start may end outside the plot.
-    await drag([400, 300], [10, 100])
-    expect(document.querySelector(`.reset-view`)).not.toBeNull()
+    const { bin } = on_density_zoom.mock.calls[0][0]
+    expect(state.x_axis.range).toEqual(bin.x_range)
+    expect(state.y_axis.range).toEqual(bin.y_range)
+    // the bin is the one just right of and above the (0.5, 0.5) data point
+    expect(bin.x_range[0]).toBe(0.5)
+    expect(bin.x_range[1]).toBeGreaterThan(0.5)
+    expect(bin.y_range[0]).toBe(0.5)
   })
 
   test.each([
@@ -981,7 +948,6 @@ describe(`BinnedScatterPlot`, () => {
   })
 
   test(`places the title below an outer top marginal`, async () => {
-    vi.stubGlobal(`ResizeObserver`, TestResizeObserver)
     mount_plot({
       series: [{ x: [0.2, 0.8], y: [0.3, 0.7] }],
       title: `Density map`,
@@ -1185,8 +1151,7 @@ describe(`BinnedScatterPlot`, () => {
     })
     await settle()
 
-    const clip_rect = svg_query(`clipPath[id^="binned-scatter-plot-area-"] rect`)
-    expect(svg_num(clip_rect, `x`)).toBeGreaterThan(60)
+    expect(plot_rect().x).toBeGreaterThan(60)
   })
 
   test(`renders rotated y-axis label as SVG text with subscript tspans`, async () => {

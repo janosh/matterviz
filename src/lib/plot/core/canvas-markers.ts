@@ -28,7 +28,11 @@ const style_key = (marker: CanvasMarker): string =>
 const symbol_path_cache = new Map<string, Path2D>()
 const MAX_SYMBOL_CACHE = 512
 
-const color_opacity = (color: string): number => d3_color(color)?.opacity ?? 1
+// Colour-scale output (`rgb(...)`) and 3/6-digit hex carry no alpha, so skip the d3 parse
+// those 100k-marker plots would otherwise pay twice per marker.
+const OPAQUE_COLOR = /^(?:rgb\(|hsl\(|#[\da-f]{3}$|#[\da-f]{6}$)/i
+const color_opacity = (color: string): number =>
+  OPAQUE_COLOR.test(color) ? 1 : (d3_color(color)?.opacity ?? 1)
 const normalize_alpha = (value: number): number =>
   Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0
 

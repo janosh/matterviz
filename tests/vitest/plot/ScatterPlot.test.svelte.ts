@@ -1,6 +1,6 @@
-import { ScatterPlot } from '$lib'
+import ScatterPlot from '$lib/plot/scatter/ScatterPlot.svelte'
 import type { Vec2 } from '$lib/math'
-import { COLOR_BAR_DEFAULTS, type DataSeries, type FillRegion } from '$lib/plot'
+import { COLOR_BAR_DEFAULTS, type DataSeries, type FillRegion } from '$lib/plot/core/types'
 import type { FacetLayoutContext } from '$lib/plot/core/facets'
 import { rects_overlap, type Rect } from '$lib/plot/core/layout'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
@@ -1495,6 +1495,133 @@ describe(`ScatterPlot`, () => {
     // a quarter of the plot height can't span more than a quarter of the 10..30 data range
     // (plus nicing slack), so this stays well under the full span
     expect(y2_range[1] - y2_range[0]).toBeLessThan(12)
+  })
+
+  // NaN/null colour and size values must neither widen the scales nor paint a NaN colour:
+  // those points fall back to the series colour and default radius.
+  test(`color_values and size_values with NaN fall back per point without widening the scales`, async () => {
+    const plot = await mount_sized_scatter_plot({
+      series: [
+        {
+          x: [1, 2, 3, 4],
+          y: [1, 2, 3, 4],
+          color_values: [0, NaN, 100, null] as number[],
+          size_values: [1, NaN, 9, null] as number[],
+        },
+      ],
+      size_scale: { radius_range: [2, 10] },
+      color_scale: `interpolateViridis`,
+      color_bar: {},
+      point_tween: { duration: 0 },
+      legend: null,
+      show_controls: false,
+    })
+    const tick_labels = [...plot.querySelectorAll(`.colorbar .tick-label`)].map(
+      (label) => label.textContent,
+    )
+    expect(tick_labels[0]).toBe(`0`)
+    expect(tick_labels.at(-1)).toBe(`100`)
+    const markers = [...plot.querySelectorAll<SVGPathElement>(`path.marker`)]
+    expect(markers.map(marker_radius)).toEqual([2, 2.5, 10, 2.5])
+    // --point-fill-color is set on the wrapper Svelte adds for component CSS custom props
+    const fills = markers.map((marker) =>
+      marker.parentElement?.parentElement?.style.getPropertyValue(`--point-fill-color`),
+    )
+    expect(fills[0]).toBe(`#440154`) // viridis(0)
+    expect(fills[2]).toBe(`#fde725`) // viridis(1)
+    expect(fills[1]).toBe(fills[3])
+    expect(fills[1]).not.toMatch(/NaN/)
+  })
+
+  test(`log y axis holds non-positive line points at the domain floor and drops their markers`, async () => {
+    const plot = await mount_sized_scatter_plot({
+      series: [
+        {
+          x: [1, 2, 3, 4],
+          y: [0, 10, -5, 1000],
+          markers: `line+points`,
+          line_style: { curve: `linear` },
+        },
+      ],
+      y_axis: { scale_type: `log` },
+      point_tween: { duration: 0 },
+      line_tween: { duration: 0 },
+      legend: null,
+      show_controls: false,
+    })
+    const clip = scatter_clip_rect(plot)
+    expect(plot.querySelectorAll(`path.marker`)).toHaveLength(2)
+    const line_d = plot.querySelector(`g[data-series-id] path[fill="none"]`)?.getAttribute(`d`)
+    const ys = [...(line_d ?? ``).matchAll(/[ML][-\d.]+,(?<y>[-\d.]+)/g)].map((match) =>
+      Number(match.groups?.y),
+    )
+    expect(ys).toHaveLength(4)
+    const bottom = clip.y + clip.height
+    // Non-positive values sit on the bottom edge, not at -Infinity/NaN
+    expect(ys[0]).toBeCloseTo(bottom, 6)
+    expect(ys[2]).toBeCloseTo(bottom, 6)
+    expect(ys[3]).toBeLessThan(ys[1])
+    expect(ys.every(Number.isFinite)).toBe(true)
+  })
+
+  // Shift-drag pans by a constant data offset: moving the cursor by a quarter of the plot
+  // width shifts the view by a quarter of the x span. Unlike rect zoom, a pan only moves the
+  // live view; the bound axis props keep the pre-pan range (so a later reset has a target).
+  test(`shift-drag pan shifts the view by the dragged data span`, async () => {
+    const state = { x_axis: { range: [0, 100] as Vec2 }, y_axis: { range: [0, 10] as Vec2 } }
+    const plot = await mount_sized_scatter_plot(
+      bind_props(
+        {
+          series: [{ x: [10, 50, 90], y: [1, 5, 9] }],
+          point_tween: { duration: 0 },
+          legend: null,
+          show_controls: false,
+        },
+        state,
+      ),
+    )
+    const svg = plot.querySelector<SVGSVGElement>(`svg[role="application"]`)
+    if (!svg) throw new Error(`scatter SVG not found`)
+    const clip = scatter_clip_rect(plot)
+    const start = { x: clip.x + clip.width / 2, y: clip.y + clip.height / 2 }
+    svg.dispatchEvent(
+      new MouseEvent(`mousedown`, {
+        bubbles: true,
+        button: 0,
+        shiftKey: true,
+        clientX: start.x,
+        clientY: start.y,
+      }),
+    )
+    // Drag left by a quarter of the plot: the view follows the data, so the range moves right
+    window.dispatchEvent(
+      new MouseEvent(`mousemove`, {
+        buttons: 1,
+        clientX: start.x - clip.width / 4,
+        clientY: start.y,
+      }),
+    )
+    await tick()
+    window.dispatchEvent(new MouseEvent(`mouseup`, { clientX: start.x - clip.width / 4 }))
+    await tick()
+    expect(state.x_axis.range).toEqual([0, 100])
+    expect(state.y_axis.range).toEqual([0, 10])
+    // The view is now [25, 125]: x=10 scrolled out, x=50 sits a quarter of the way along the
+    // plot, x=90 at 65%, and the x ticks moved with them
+    const marker_xs = [...plot.querySelectorAll(`path.marker`)].map((marker) =>
+      Number(
+        /translate\((?<x>[-\d.]+)/.exec(marker.parentElement?.getAttribute(`transform`) ?? ``)
+          ?.groups?.x,
+      ),
+    )
+    expect(marker_xs).toHaveLength(2)
+    expect(marker_xs[0]).toBeCloseTo(clip.x + clip.width * 0.25, 6)
+    expect(marker_xs[1]).toBeCloseTo(clip.x + clip.width * 0.65, 6)
+    const tick_labels = [...plot.querySelectorAll(`.x-axis .tick text`)].map(
+      (label) => label.textContent,
+    )
+    expect(tick_labels).toContain(`120`)
+    expect(tick_labels).not.toContain(`0`)
   })
 
   // Regression guard for effect_update_depth_exceeded: with an explicit y range the

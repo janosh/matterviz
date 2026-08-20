@@ -5,7 +5,8 @@
   import type { D3InterpolateName } from '$lib/colors'
   import { FullscreenButton } from '$lib/layout'
   import type { Vec2, Vec3 } from '$lib/math'
-  import { ColorBar, PlotLegend } from '$lib/plot'
+  import ColorBar from '$lib/plot/core/components/ColorBar.svelte'
+  import PlotLegend from '$lib/plot/core/components/PlotLegend.svelte'
   import { build_legend_items, get_series_color } from '$lib/plot/core/data-transform'
   import type { Sides } from '$lib/plot/core/layout'
   import type {
@@ -30,28 +31,28 @@
   import { onMount } from 'svelte'
   import type { ComponentProps, Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import type { Camera, Scene } from 'three/webgpu'
   import { accumulate_extent, create_color_scale, empty_extent } from '$lib/plot/core/scales'
-  import { resolve_legend_visibility } from '$lib/plot/core/utils/series-visibility'
+  import {
+    create_legend_visibility,
+    resolve_legend_visibility,
+  } from '$lib/plot/core/utils/series-visibility'
   import { create_renderer, type GizmoOptions, webgpu_available } from '$lib/scene'
-  import ScatterPlot3DControls from '$lib/plot/scatter-3d/ScatterPlot3DControls.svelte'
+  import ScatterPlot3DControls, {
+    DISPLAY_DEFAULTS_3D,
+  } from '$lib/plot/scatter-3d/ScatterPlot3DControls.svelte'
   import ScatterPlot3DScene from '$lib/plot/scatter-3d/ScatterPlot3DScene.svelte'
 
   let {
     // Data props
-    series = [],
+    series = $bindable([]),
     surfaces = [],
     ref_lines = [],
     ref_planes = [],
     x_axis = $bindable({}),
     y_axis = $bindable({}),
     z_axis = $bindable({}),
-    display = $bindable({
-      show_axes: true,
-      show_grid: true,
-      show_axis_labels: true,
-    }),
+    display = $bindable({}),
     styles = {},
     // Color and size scaling
     color_scale = SCALE_DEFAULTS.color,
@@ -89,7 +90,6 @@
     // Callbacks
     on_point_click,
     on_point_hover,
-    on_series_visibility_change,
     // Fullscreen
     fullscreen = $bindable(false),
     fullscreen_toggle = true,
@@ -136,7 +136,6 @@
     tooltip_point?: InternalPoint3D<Metadata> | null
     on_point_click?: (data: Scatter3DHandlerEvent<Metadata>) => void
     on_point_hover?: (data: Scatter3DHandlerEvent<Metadata> | null) => void
-    on_series_visibility_change?: (series_idx: number, visible: boolean) => void
     wrapper?: HTMLDivElement
     scene?: Scene
     camera?: Camera
@@ -156,50 +155,17 @@
   // Points are built inside the Canvas scene, so fail fast on misaligned arrays out here
   $effect.pre(() => series.forEach(assert_series_lengths))
 
-  const series_visibility_keys = $derived.by((): string[] => {
-    const id_counts = new SvelteMap<string | number, number>()
-    for (const srs of series) {
-      if (srs?.id !== undefined && srs.id !== ``) {
-        id_counts.set(srs.id, (id_counts.get(srs.id) ?? 0) + 1)
-      }
-    }
-    // Prefix classes stay disjoint: `idx:` keys have `x` at index 2 where `id:` keys
-    // have `:`, and `dup:` keys differ in first char. Within a class, idx is unique
-    // and bare ids are only used when they occur exactly once.
-    return series.map((srs, idx) => {
-      if (srs?.id === undefined || srs.id === ``) return `idx:${idx}`
-      // include typeof so numeric/string ids (1 vs "1") don't collide on the same key
-      const id_key = `${typeof srs.id}:${String(srs.id)}`
-      return id_counts.get(srs.id) === 1 ? `id:${id_key}` : `dup:${idx}:${id_key}`
-    })
-  })
-
-  // User overrides merged with series.visible defaults.
-  // Prefer explicit ids; id-less and duplicate-id series get index-qualified keys.
-  const visibility_overrides = new SvelteMap<string, boolean>()
-  let series_visibility_key_set = $derived(new SvelteSet(series_visibility_keys))
-  $effect(() => {
-    for (const key of visibility_overrides.keys()) {
-      if (!series_visibility_key_set.has(key)) visibility_overrides.delete(key)
-    }
-  })
-  let series_visibility = $derived(
-    series.map(
-      (srs, idx) =>
-        visibility_overrides.get(series_visibility_keys[idx]) ?? srs?.visible ?? true,
-    ),
+  // Legend toggles write `visible` back into the (bindable) series array, like ScatterPlot
+  const legend_vis = create_legend_visibility(
+    () => series,
+    (next) => (series = next),
   )
 
   const axis_defaults = { format: `.3~g`, scale_type: `linear` as const }
   let resolved_x_axis = $derived({ label: `X`, ...axis_defaults, ...x_axis })
   let resolved_y_axis = $derived({ label: `Y`, ...axis_defaults, ...y_axis })
   let resolved_z_axis = $derived({ label: `Z`, ...axis_defaults, ...z_axis })
-  let resolved_display = $derived({
-    show_axes: true,
-    show_grid: true,
-    show_axis_labels: true,
-    ...display,
-  })
+  let resolved_display = $derived({ ...DISPLAY_DEFAULTS_3D, ...display })
   // Normalize color_scale to always be an object
   let normalized_color_scale = $derived(
     typeof color_scale === `string`
@@ -218,35 +184,21 @@
 
   // Legend data
   let legend_data = $derived(
-    build_legend_items(
-      series.map((srs, series_idx) => ({
-        ...srs,
-        visible: series_visibility[series_idx] ?? true,
-      })),
-      (srs, series_idx) => ({
-        symbol_type: `Circle` as const,
-        symbol_color:
-          (Array.isArray(srs.point_style)
-            ? srs.point_style[0]?.fill
-            : srs.point_style?.fill) ?? get_series_color(series_idx),
-      }),
-    ),
+    build_legend_items(series, (srs, series_idx) => ({
+      symbol_type: `Circle` as const,
+      symbol_color:
+        (Array.isArray(srs.point_style) ? srs.point_style[0]?.fill : srs.point_style?.fill) ??
+        get_series_color(series_idx),
+    })),
   )
-  // Compute gizmo props - move up when color bar is shown
-  let has_color_bar = $derived(color_bar && color_extent.n_finite > 0)
+  // Lift the gizmo above the color bar when one is shown; otherwise pass `gizmo` through as-is
+  // (SceneCamera takes `true` or GizmoOptions directly; its default offset gap is 5px)
+  let has_color_bar = $derived(Boolean(color_bar) && color_extent.n_finite > 0)
   let computed_gizmo = $derived.by(() => {
-    if (gizmo === false) return false
-    const base_offset = { left: 5, bottom: has_color_bar ? 70 : 5 }
-    const base = { offset: base_offset }
-    if (gizmo === true) return base
-    return { ...base, ...gizmo, offset: { ...base_offset, ...gizmo.offset } }
+    if (gizmo === false || !has_color_bar) return gizmo
+    const opts = gizmo === true ? {} : gizmo
+    return { ...opts, offset: { bottom: 70, ...opts.offset } }
   })
-
-  function toggle_series_visibility(idx: number) {
-    const visible = !series_visibility[idx]
-    visibility_overrides.set(series_visibility_keys[idx], visible)
-    on_series_visibility_change?.(idx, visible)
-  }
 
   // Handle point hover
   function handle_point_hover(data: Scatter3DHandlerEvent<Metadata> | null) {
@@ -276,7 +228,6 @@
       <Canvas createRenderer={create_renderer}>
         <ScatterPlot3DScene
           {series}
-          {series_visibility}
           {surfaces}
           {ref_lines}
           {ref_planes}
@@ -341,7 +292,7 @@
     {/if}
 
     <!-- Color Bar -->
-    {#if color_bar && color_extent.n_finite > 0}
+    {#if has_color_bar && color_bar}
       {@const color_domain = [
         normalized_color_scale.value_range?.[0] ?? auto_color_range[0],
         normalized_color_scale.value_range?.[1] ?? auto_color_range[1],
@@ -363,10 +314,12 @@
     {#if resolve_legend_visibility(show_legend, legend, legend_data.length)}
       <PlotLegend
         series_data={legend_data}
-        on_toggle={toggle_series_visibility}
         active_series_idx={tooltip_point?.series_idx ?? null}
         draggable={legend?.draggable ?? true}
         {...legend}
+        on_toggle={legend?.on_toggle ?? legend_vis.on_toggle}
+        on_double_click={legend?.on_double_click ?? legend_vis.on_double_click}
+        on_group_toggle={legend?.on_group_toggle ?? legend_vis.on_group_toggle}
         style={`position: absolute; top: 2.5em; right: 1em; ${legend?.style ?? ``}`}
       />
     {/if}

@@ -1,8 +1,7 @@
 <script lang="ts">
   import { type D3SymbolName, symbol_map } from '$lib/labels'
-  import type { HoverStyle, LabelStyle, Point } from '$lib/plot'
   import type { Point2D } from '$lib/math'
-  import type { PointStyle } from '$lib/plot/core/types'
+  import type { HoverStyle, LabelStyle, Point, PointStyle } from '$lib/plot/core/types'
   import { create_settling_tween } from '$lib/plot/core/settling-tween.svelte'
   import {
     estimate_label_size,

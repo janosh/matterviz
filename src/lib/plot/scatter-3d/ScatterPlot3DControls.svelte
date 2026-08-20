@@ -1,3 +1,18 @@
+<script module lang="ts">
+  import type { DisplayConfig3D } from '$lib/plot/core/types'
+
+  // Shared with ScatterPlot3D, which fills these in before handing `display` to the scene
+  export const DISPLAY_DEFAULTS_3D = {
+    show_axes: true,
+    show_grid: true,
+    show_axis_labels: true,
+    show_bounding_box: false,
+    projections: { xy: false, xz: false, yz: false },
+    projection_opacity: 0.3,
+    projection_scale: 0.5,
+  } satisfies DisplayConfig3D
+</script>
+
 <script lang="ts">
   import { ControlPane, type PaneProps, type PaneToggleProps } from '$lib/overlays'
   // NOTE: Axis config objects must be reassigned (not mutated) to trigger $bindable reactivity.
@@ -8,7 +23,6 @@
     AxisConfig3D,
     CameraProjection3D,
     DataSeries3D,
-    DisplayConfig3D,
     Surface3DConfig,
   } from '$lib/plot/core/types'
   import { calc_auto_range } from '$lib/plot/core/utils'
@@ -17,13 +31,7 @@
   const defaults = {
     camera_projection: `perspective` as CameraProjection3D,
     auto_rotate: 0,
-    show_axes: true,
-    show_grid: true,
-    show_axis_labels: true,
-    show_bounding_box: false,
-    projections: { xy: false, xz: false, yz: false },
-    projection_opacity: 0.3,
-    projection_scale: 0.5,
+    ...DISPLAY_DEFAULTS_3D,
   }
 
   let {

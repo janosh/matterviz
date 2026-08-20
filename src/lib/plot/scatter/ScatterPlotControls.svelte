@@ -1,6 +1,6 @@
 <script lang="ts">
   import { NumberRangeInput, SettingsSection } from '$lib/layout'
-  import { PlotControls } from '$lib/plot'
+  import PlotControls from '$lib/plot/core/components/PlotControls.svelte'
   import type {
     DataSeries,
     PlotConfig,

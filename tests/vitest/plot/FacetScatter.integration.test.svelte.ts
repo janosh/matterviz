@@ -201,7 +201,8 @@ describe(`FacetGrid + Cartesian plots`, () => {
       await unmount(component)
       target.remove()
     }
-    ControlledResizeObserver.instances.length = 0
+    // Svelte's bind:clientWidth shares one ResizeObserver for the whole page, created on the
+    // first mount; clearing `instances` here would disconnect later tests' resizes from it
     vi.restoreAllMocks()
   })
 
