@@ -40,7 +40,9 @@
 
     {#if hover_data.is_tiled && hover_data.symmetry_index != null && hover_data.symmetry_index > 0}
       <div class="tiling-info">
-        Symmetry copy #{hover_data.symmetry_index + 1}/48
+        Symmetry copy #{hover_data.symmetry_index + 1}{hover_data.n_symmetry_ops
+          ? `/${hover_data.n_symmetry_ops}`
+          : ``}
       </div>
     {/if}
   </div>

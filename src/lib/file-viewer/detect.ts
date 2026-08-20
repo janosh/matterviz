@@ -111,21 +111,23 @@ function is_convex_hull_entries(obj: unknown): boolean {
   })
 }
 
-// VolumetricData: 3D scalar grid with lattice info
+// VolumetricData JSON: a 3D scalar grid (nested `grid` [x][y][z] or flat `values` + `dims`)
+// with lattice info. volume_from_json turns either encoding into typed-array storage.
 function is_volumetric(obj: unknown): boolean {
   const data = as_record(obj)
-  if (!data || !has_array(data, `grid`)) return false
-  // grid must be a 3D array (array of arrays of arrays)
-  const grid = data.grid as unknown[]
-  if (grid.length === 0) return false
-  const first_slice = grid[0]
-  if (!Array.isArray(first_slice) || !first_slice.length || !Array.isArray(first_slice[0]))
-    return false
+  if (!data) return false
+  let has_grid = false
+  if (has_array(data, `grid`)) {
+    const first_slice = (data.grid as unknown[])[0]
+    has_grid =
+      Array.isArray(first_slice) && first_slice.length > 0 && Array.isArray(first_slice[0])
+  } else if (has_array(data, `values`) && has_array(data, `dims`, 3)) {
+    has_grid = (data.values as unknown[]).length > 0
+  }
   return (
-    has_array(data, `grid_dims`, 3) &&
+    has_grid &&
     has_array(data, `lattice`, 3) &&
     has_array(data, `origin`, 3) &&
-    Boolean(as_record(data.data_range)) &&
     typeof data.periodic === `boolean`
   )
 }

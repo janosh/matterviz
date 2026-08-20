@@ -15,6 +15,7 @@ import { create_frac_to_cart } from '$lib/math'
 import { describe, expect, test } from 'vitest'
 import {
   cubic_matrix,
+  grid_value,
   make_grid,
   make_linear_volume as linear_volume,
   make_volume,
@@ -150,14 +151,13 @@ describe(`sample_volume_at_positions`, () => {
   test.each([
     {
       label: `empty dims`,
-      vol: () => make_volume([], { grid_dims: [0, 0, 0], lattice: cubic, periodic: false }),
+      vol: () => make_volume([], { lattice: cubic, periodic: false }),
       positions: [1, 2, 3, 4, 5, 6],
       expected: [0, 0],
     },
     {
       label: `singleton cell`,
-      vol: () =>
-        make_volume([[[42]]], { grid_dims: [1, 1, 1], lattice: cubic, periodic: false }),
+      vol: () => make_volume([[[42]]], { lattice: cubic, periodic: false }),
       positions: [0, 0, 0, 5, 5, 5],
       expected: [42, 42],
     },
@@ -394,9 +394,9 @@ describe(`extract_volume_range`, () => {
       [0, 1],
     ])
     // width 2 at density 10 → 21 inclusive points at exactly the grid positions
-    expect(extracted.grid_dims).toEqual([21, 11, 11])
+    expect(extracted.dims).toEqual([21, 11, 11])
     // Sample 13 sits at fx = 1.3 → wraps to grid index 3 → exact value 0.3
-    expect(extracted.grid[13][0][0]).toBeCloseTo(0.3, 10)
+    expect(grid_value(extracted, 13, 0, 0)).toBeCloseTo(0.3, 10)
     // Lattice spans the range; origin unchanged for a range starting at 0
     expect(extracted.lattice[0][0]).toBeCloseTo(20)
     expect(extracted.origin).toEqual([0, 0, 0])
@@ -416,7 +416,7 @@ describe(`extract_volume_range`, () => {
       [0, 1],
     ])
     const isovalue = 0.15
-    const surface = marching_cubes(extracted.grid, isovalue, extracted.lattice, {
+    const surface = marching_cubes(extracted, isovalue, extracted.lattice, {
       periodic: false,
       centered: false,
       interpolate: true,
@@ -436,12 +436,12 @@ describe(`extract_volume_range`, () => {
       [0, 1],
       [0, 1],
     ])
-    expect(extracted.grid_dims[0]).toBe(24) // round(2.3 * 10) + 1
+    expect(extracted.dims[0]).toBe(24) // round(2.3 * 10) + 1
     // First/last planes wrap: fx=-0.15→0.85, fx=2.15→0.15
     // First plane sits at fx = -0.15 → wraps to 0.85 → interpolated value 0.85
-    expect(extracted.grid[0][0][0]).toBeCloseTo(0.85, 10)
+    expect(grid_value(extracted, 0, 0, 0)).toBeCloseTo(0.85, 10)
     // Last plane sits at fx = 2.15 → wraps to 0.15
-    expect(extracted.grid[23][0][0]).toBeCloseTo(0.15, 10)
+    expect(grid_value(extracted, 23, 0, 0)).toBeCloseTo(0.15, 10)
     // Origin shifts by range_min·lattice; lattice row spans the width
     expect(extracted.origin[0]).toBeCloseTo(-1.5)
     expect(extracted.lattice[0][0]).toBeCloseTo(23)
@@ -460,7 +460,7 @@ describe(`extract_volume_range`, () => {
       ],
       1000,
     )
-    const [nx, ny, nz] = extracted.grid_dims
+    const [nx, ny, nz] = extracted.dims
     expect(nx * ny * nz).toBeLessThanOrEqual(1000)
     expect(Math.min(nx, ny, nz)).toBeGreaterThanOrEqual(2)
     // Lattice still spans the full requested range despite reduced resolution
@@ -476,7 +476,7 @@ describe(`extract_volume_range`, () => {
     ])
     // Values still wrap correctly: first plane at fx = -0.5 → grid value 0.5
     expect(extracted.origin).toEqual([3 - 5, -2, 5]) // -0.5 * 10 along x
-    expect(extracted.grid[0][0][0]).toBeCloseTo(0.5, 10) // fx=-0.5 → 0.5
+    expect(grid_value(extracted, 0, 0, 0)).toBeCloseTo(0.5, 10) // fx=-0.5 → 0.5
   })
 
   test(`non-periodic volumes are cropped, never repeated`, () => {
@@ -488,11 +488,11 @@ describe(`extract_volume_range`, () => {
     // x clamps to [0, 1]; y crops to half the cell
     expect(extracted.lattice[0][0]).toBeCloseTo(10)
     expect(extracted.lattice[1][1]).toBeCloseTo(5)
-    expect(extracted.grid[0][0][0]).toBeCloseTo(0, 10)
-    const [nx, ny] = extracted.grid_dims
-    expect(extracted.grid_dims).toEqual([11, 6, 11])
+    expect(grid_value(extracted, 0, 0, 0)).toBeCloseTo(0, 10)
+    const [nx, ny] = extracted.dims
+    expect(extracted.dims).toEqual([11, 6, 11])
     // Endpoint values match the source field at the crop bounds
-    expect(extracted.grid[nx - 1][0][0]).toBeCloseTo(1, 10)
-    expect(extracted.grid[0][ny - 1][0]).toBeCloseTo(1, 10) // 2 * 0.5
+    expect(grid_value(extracted, nx - 1, 0, 0)).toBeCloseTo(1, 10)
+    expect(grid_value(extracted, 0, ny - 1, 0)).toBeCloseTo(1, 10) // 2 * 0.5
   })
 })

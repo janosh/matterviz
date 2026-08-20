@@ -1,6 +1,5 @@
 // HKL plane slicing for volumetric data: samples a 3D grid along an arbitrary
 // crystallographic plane defined by Miller indices, using trilinear interpolation.
-import { reciprocal_lattice } from '$lib/brillouin'
 import type { Vec2, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import { create_volume_sampler, sanitize_display_range, type DisplayRange } from './sampling'
@@ -216,7 +215,7 @@ export function sample_plane_slice(
     options.resolution,
     u_span,
     v_span,
-    Math.max(...volume.grid_dims),
+    Math.max(...volume.dims),
     options.max_pixels ?? DEFAULT_MAX_PIXELS,
   )
   const data = new Float64Array(width * height)
@@ -282,7 +281,8 @@ export function sample_hkl_slice(
   if (h_idx === 0 && k_idx === 0 && l_idx === 0) return null
 
   // Plane normal G = h*b1 + k*b2 + l*b3 where b_i are reciprocal lattice rows
-  const recip = reciprocal_lattice(volume.lattice)
+  // normalized below, so the 2π convention is immaterial
+  const recip = math.reciprocal_lattice(volume.lattice)
   const plane_normal: Vec3 = [
     h_idx * recip[0][0] + k_idx * recip[1][0] + l_idx * recip[2][0],
     h_idx * recip[0][1] + k_idx * recip[1][1] + l_idx * recip[2][1],
@@ -302,7 +302,7 @@ export function sample_hkl_slice(
     d_cartesian * unit_normal[1],
     d_cartesian * unit_normal[2],
   ]
-  const resolution = n_points ?? Math.max(...volume.grid_dims)
+  const resolution = n_points ?? Math.max(...volume.dims)
   return sample_plane_slice(
     volume,
     { point, normal: unit_normal },

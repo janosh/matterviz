@@ -1,5 +1,10 @@
 import type { AnyStructure, ElementSymbol, Vec3 } from '$lib'
-import type { VolumetricData } from '$lib/isosurface/types'
+import { flatten_grid } from '$lib/isosurface/grid'
+import {
+  make_volume as make_volume_from_values,
+  volume_index,
+  type VolumetricData,
+} from '$lib/isosurface/types'
 import * as math from '$lib/math'
 import { clear_tick_metrics_cache } from '$lib/plot/core/tick-layout'
 import { clear_text_metrics_cache } from '$lib/plot/core/text-metrics'
@@ -426,23 +431,34 @@ export const make_grid = (
     ),
   )
 
-// Minimal VolumetricData fixture with sensible defaults; grid_dims derive from grid shape
+// Minimal VolumetricData fixture from a nested [x][y][z] grid; values are flattened
+// z-fastest, data_range is computed from them, and overrides win over every default
 export const make_volume = (
   grid: number[][][],
   overrides: Partial<VolumetricData> = {},
-): VolumetricData => ({
-  grid,
-  grid_dims: [grid.length, grid[0]?.length ?? 0, grid[0]?.[0]?.length ?? 0],
-  lattice: [
-    [5, 0, 0],
-    [0, 5, 0],
-    [0, 0, 5],
-  ],
-  origin: [0, 0, 0],
-  data_range: { min: 0, max: 1, abs_max: 1, mean: 0.5 },
-  periodic: true,
-  ...overrides,
-})
+): VolumetricData => {
+  const flat = flatten_grid(grid)
+  return {
+    ...make_volume_from_values(flat.values, flat.dims, {
+      lattice: [
+        [5, 0, 0],
+        [0, 5, 0],
+        [0, 0, 5],
+      ],
+      origin: [0, 0, 0],
+      periodic: true,
+    }),
+    ...overrides,
+  }
+}
+
+// Value at grid point (ix, iy, iz) of a flat volume
+export const grid_value = (
+  volume: Pick<VolumetricData, `values` | `dims`>,
+  ix: number,
+  iy: number,
+  iz: number,
+): number => volume.values[volume_index(volume.dims, ix, iy, iz)]
 
 // Linear fractional field; trilinear interpolation reproduces it exactly.
 export const make_linear_volume = (

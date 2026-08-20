@@ -7,6 +7,7 @@ import {
   detect_compression_format,
 } from '$lib/io/decompress'
 import { parse_volumetric_file } from '$lib/isosurface/parse'
+import { volume_from_json } from '$lib/isosurface/types'
 import { is_vaspwave_filename, parse_vaspwave_charge } from '$lib/isosurface/parse-vaspwave'
 import { parse_structure_file } from '$lib/structure/parse'
 import { is_indexable_trajectory_filename } from '$lib/trajectory/format-detect'
@@ -104,17 +105,8 @@ export const parse_file_content = async (
     // or compressed ASE .traj files): decompress to binary first — generic text
     // decompression would corrupt their bytes — so routing sees the inner name.
     const is_binary_format = /\.(?:h5|hdf5|traj)$/i.test(filename)
-    if (compression_format === `zip`) {
-      const { unzipSync } = await import(`fflate`)
-      const payload = Object.entries(unzipSync(new Uint8Array(buffer))).find(
-        ([entry_name]) => !entry_name.endsWith(`/`),
-      )?.[1]
-      if (!payload) throw new Error(`ZIP archive contains no files: ${filename}`)
-      if (is_binary_format) buffer = payload.slice().buffer
-      else content = new TextDecoder().decode(payload)
-    } else if (compression_format) {
-      // Unified handling for all supported compression formats
-      // Unsupported formats fail here with a clear extraction error
+    if (compression_format) {
+      // gzip/deflate/zip inflate here; unsupported formats fail with a clear extraction error
       if (is_binary_format) buffer = await decompress_data_binary(buffer, compression_format)
       else content = await decompress_data(buffer, compression_format)
     }
@@ -183,12 +175,13 @@ export const parse_file_content = async (
             // generic JSON handling below
           }
         }
-        // Volumetric JSON needs wrapping in { structure, volumes } for the isosurface renderer
+        // Volumetric JSON (nested grid or flat values) becomes a typed-array volume and
+        // is wrapped in { structure, volumes } for the isosurface renderer
         if (detected === `volumetric`) {
-          const vol = parsed_json as { lattice?: unknown }
+          const volume = volume_from_json(parsed_json)
           return {
             type: `isosurface`,
-            data: { structure: { sites: [], lattice: vol.lattice }, volumes: [parsed_json] },
+            data: { structure: { sites: [], lattice: volume.lattice }, volumes: [volume] },
             filename,
           }
         }

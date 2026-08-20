@@ -1,5 +1,6 @@
 // Type definitions for Fermi surface visualization
 import type { FileLoadData } from '$lib/io/types'
+import type { ScalarGrid3D } from '$lib/isosurface/grid'
 import type { Matrix3x3, Point2D, Vec2, Vec3 } from '$lib/math'
 import type { TooltipConfig, TooltipProp } from '$lib/tooltip'
 
@@ -19,7 +20,7 @@ export type ReciprocalCellType = `wigner_seitz` | `parallelepiped`
 export type SurfaceDimensionality = `1D` | `2D` | `quasi-2D` | `3D`
 
 // Core isosurface data (output of marching cubes algorithm)
-export interface Isosurface {
+export interface FermiIsosurface {
   vertices: Vec3[]
   faces: number[][] // triangle indices (each array has 3 indices)
   normals: Vec3[] // per-vertex normals
@@ -36,7 +37,7 @@ export interface Isosurface {
 
 // Complete Fermi surface with multiple bands/isosurfaces
 export interface FermiSurfaceData {
-  isosurfaces: Isosurface[]
+  isosurfaces: FermiIsosurface[]
   k_lattice: Matrix3x3 // reciprocal lattice vectors
   fermi_energy: number // Fermi level in eV
   reciprocal_cell: ReciprocalCellType
@@ -56,16 +57,16 @@ export interface FermiSurfaceMetadata {
   is_irreducible?: boolean // true if data covers only irreducible BZ wedge (needs tiling)
 }
 
-// 5D grid types for band data. Indexing: `[spin][band][kx][ky][kz]`
-// - spin: 0=up, 1=down (non-spin-polarized has only spin=0)
-// - band: 0-based index
-// - kx/ky/kz: k-point indices (0 to k_grid[i]-1)
-export type EnergyGrid5D = number[][][][][] // scalar energies
-export type VectorGrid5D = Vec3[][][][][] // vector quantities (velocities, spin texture)
+// One band's energies on the k-grid as a flat z-fastest Float64Array: the value at grid
+// point (ix, iy, iz) sits at index (ix * ny + iy) * nz + iz, with dims = k_grid.
+export type BandEnergyGrid = ScalarGrid3D<Float64Array>
+// Vector quantities (velocities, spin texture) indexed `[spin][band][kx][ky][kz]`
+export type VectorGrid5D = Vec3[][][][][]
 
 // Input band energies on a 3D k-point grid (from BXSF/FRMSF files)
 export interface BandGridData {
-  energies: EnergyGrid5D // [spin][band][kx][ky][kz]
+  // [spin][band] → flat grid. spin: 0=up, 1=down (non-spin-polarized has only spin=0)
+  energies: BandEnergyGrid[][]
   k_grid: Vec3 // grid dimensions
   k_lattice: Matrix3x3 // reciprocal lattice vectors
   fermi_energy: number
@@ -144,7 +145,9 @@ export interface FermiHoverData {
   property_value?: number // nearest vertex property value
   property_name?: string // "velocity" | "custom" | undefined
   is_tiled?: boolean // true if from symmetry copy
-  symmetry_index?: number // 0-47 (0 = identity)
+  // Index into lattice_point_group_matrices(k_lattice) (0 = identity; up to 47 for cubic)
+  symmetry_index?: number
+  n_symmetry_ops?: number // size of the lattice point group used for tiling (48 cubic, 24 hexagonal, …)
 }
 
 // Tooltip config for prefix/suffix content

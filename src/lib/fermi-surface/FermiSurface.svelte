@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { BrillouinZoneData } from '$lib/brillouin'
-  import { compute_brillouin_zone, reciprocal_lattice } from '$lib/brillouin'
+  import { compute_brillouin_zone } from '$lib/brillouin'
+  import { reciprocal_lattice } from '$lib/math'
   import type { D3InterpolateName } from '$lib/colors'
   import { normalize_show_controls, type ShowControlsProp } from '$lib/controls'
   import EmptyState from '$lib/EmptyState.svelte'
@@ -259,7 +260,9 @@
     const k_lattice =
       fermi_data?.k_lattice ??
       band_data?.k_lattice ??
-      (structure?.lattice?.matrix ? reciprocal_lattice(structure.lattice.matrix) : null)
+      (structure?.lattice?.matrix
+        ? reciprocal_lattice(structure.lattice.matrix, { two_pi: true })
+        : null)
 
     if (!k_lattice) {
       bz_data = undefined
@@ -309,7 +312,7 @@
     }),
   )
 
-  const handle_file_drop = io.create_file_drop_handler({
+  const file_drop_zone = io.file_drop_zone({
     allow: () => allow_file_drop,
     on_drop: async (content, filename, metadata) => {
       await (on_file_drop || safe_parse)(content, filename, metadata)
@@ -320,8 +323,9 @@
     },
     set_loading: (val) => {
       loading = val
-      if (val) [error_msg, dragover] = [undefined, false]
+      if (val) error_msg = undefined
     },
+    on_dragover: (over) => (dragover = over),
   })
 
   function handle_keydown(event: KeyboardEvent) {
@@ -345,13 +349,9 @@
   bind:clientHeight={height}
   onmouseenter={() => (hovered = true)}
   onmouseleave={() => (hovered = false)}
-  ondrop={handle_file_drop}
-  {...io.drag_over_handlers({
-    allow: () => allow_file_drop,
-    set_dragover: (over) => (dragover = over),
-  })}
   {...rest}
-  class={[`fermi-surface`, rest.class, { dragover, active: controls_open }]}
+  class={[`fermi-surface`, rest.class, { active: controls_open }]}
+  {@attach file_drop_zone}
 >
   {@render children?.({ fermi_data, bz_data })}
   {#if loading}

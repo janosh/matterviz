@@ -24,6 +24,7 @@ import {
   Structure,
   Trajectory,
   Treemap,
+  volume_from_json,
   XrdPlot,
 } from 'matterviz'
 import app_css from 'matterviz/app.css?raw'
@@ -379,11 +380,15 @@ export const WIDGETS: Record<string, WidgetSpec> = {
         `fullscreen_toggle`,
         `png_dpi`,
         `isosurface_settings`,
-        `volumetric_data`,
         // highlighted_sites stays drive-only: the component sets it from info-pane
         // hover (high frequency), so writeback would flood the comm channel.
         `highlighted_sites`,
       ]),
+      // Traits carry nested JSON grids; the renderer stores flat typed arrays
+      derived_prop(`volumetric_data`, [`volumetric_data`], (model) => {
+        const raw = get_prop(model, `volumetric_data`)
+        return Array.isArray(raw) ? raw.map(volume_from_json) : undefined
+      }),
       writeback_prop(`active_volume_idx`, 0),
       writeback_prop(`display_mode`, `structure`),
       writeback_prop(`slice_settings`, {}),

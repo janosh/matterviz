@@ -4,13 +4,15 @@ export type ScalarGridArray = Float32Array | Float64Array
 export type ScalarGridOrder = `x_fastest` | `z_fastest`
 
 // Contiguous scalar storage with explicit dimensions and linearization order.
-// Nested [x][y][z] grids remain supported through ScalarGridLike.
+// `z_fastest` is C order: index = (ix * ny + iy) * nz + iz. `x_fastest` is the
+// Fortran/VASP layout: index = (iz * ny + iy) * nx + ix.
 export interface ScalarGrid3D<ArrayType extends ScalarGridArray = ScalarGridArray> {
   values: ArrayType
   dims: Vec3
   order: ScalarGridOrder
 }
 
+// Nested [x][y][z] arrays are accepted at JSON boundaries and by marching cubes
 export type ScalarGridLike = ScalarGrid3D | number[][][]
 
 const is_scalar_grid = (grid: unknown): grid is ScalarGrid3D =>
@@ -59,29 +61,24 @@ export function scalar_grid_strides({ dims: [nx, ny, nz], order }: ScalarGrid3D)
   throw new RangeError(`Unsupported scalar grid order: ${String(order)}`)
 }
 
+// Copy a nested [x][y][z] array into a z-fastest Float64Array. Rows must all have the
+// same length; ragged input throws instead of silently producing a misaligned grid.
 export function flatten_grid(grid: number[][][]): ScalarGrid3D<Float64Array> {
   const dims = grid_dimensions(grid)
-  const values = new Float64Array(dims[0] * dims[1] * dims[2])
+  const [, ny, nz] = dims
+  const values = new Float64Array(dims[0] * ny * nz)
   let offset = 0
   for (const plane of grid) {
+    if (plane.length !== ny) {
+      throw new RangeError(`Ragged grid: expected ${ny} rows per plane, got ${plane.length}`)
+    }
     for (const row of plane) {
+      if (row.length !== nz) {
+        throw new RangeError(`Ragged grid: expected ${nz} values per row, got ${row.length}`)
+      }
       values.set(row, offset)
-      offset += row.length
+      offset += nz
     }
   }
   return { values, dims, order: `z_fastest` }
-}
-
-export function inflate_grid(values: Float64Array, [nx, ny, nz]: Vec3): number[][][] {
-  const grid: number[][][] = Array(nx)
-  let offset = 0
-  for (let x_idx = 0; x_idx < nx; x_idx++) {
-    const plane: number[][] = Array(ny)
-    for (let y_idx = 0; y_idx < ny; y_idx++) {
-      plane[y_idx] = Array.from(values.subarray(offset, offset + nz))
-      offset += nz
-    }
-    grid[x_idx] = plane
-  }
-  return grid
 }

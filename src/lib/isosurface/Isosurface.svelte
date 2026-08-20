@@ -25,12 +25,9 @@
     is_signed_range,
     scalars_to_vertex_colors,
   } from './coloring'
-  import type {
-    GeometryWorkerRequest,
-    GeometryWorkerResponse,
-    TransferableVolume,
-  } from './geometry-worker-types'
-  import { flatten_grid, grid_point_count, inflate_grid } from './grid'
+  import { compute_geometries_async } from './async-geometry.svelte'
+  import { finite_grid_options, type GeometryVolumeJob } from './geometry'
+  import type { ScalarGrid3D } from './grid'
   import { profile_stage, record_profile, type IsosurfaceProfiler } from './profile'
   import type { DisplayRange } from './sampling'
   import {
@@ -128,7 +125,7 @@
   // ones (which ignore tiling and halo entirely).
   type PreparedGrid = {
     key: string
-    grid: number[][][]
+    grid: ScalarGrid3D<Float64Array>
     lattice: Matrix3x3
     // Cartesian shift applied to marching-cubes vertices: range offset plus this
     // volume's origin delta relative to the scene reference (first volume's origin)
@@ -170,7 +167,7 @@
     }
     prepared_cache.set(vol, prepared)
     record_profile(profiler, `prepare_geometry`, performance.now() - profile_start, {
-      output_points: grid_point_count(grid),
+      output_points: grid.values.length,
       extracted_range: range !== null,
     })
     return prepared
@@ -198,13 +195,12 @@
   function extract_surface(isovalue: number, prepared: PreparedGrid): BufferGeometry | null {
     if (isovalue === 0) return null
     const result = profile_stage(profiler, `marching_cubes`, () =>
-      marching_cubes_buffers(prepared.grid, isovalue, prepared.lattice, {
-        periodic: false,
-        interpolate: true,
-        centered: false,
-        normals: false,
-        position_offset: prepared.vertex_shift,
-      }),
+      marching_cubes_buffers(
+        prepared.grid,
+        isovalue,
+        prepared.lattice,
+        finite_grid_options(prepared.vertex_shift),
+      ),
     )
     return profile_stage(
       profiler,
@@ -237,14 +233,13 @@
   let raf_id = 0
   let debounce_id = 0
   let rebuild_generation = 0
-  let geometry_worker: Worker | undefined
-  let reject_worker_job: ((error: Error) => void) | undefined
+  // Aborting rejects this component's pending worker request; the shared client tears the
+  // worker down once no caller awaits it, so a superseded extraction stops burning CPU
+  let geometry_abort: AbortController | undefined
 
   function cancel_geometry_worker(): void {
-    reject_worker_job?.(new Error(`Isosurface geometry job superseded`))
-    reject_worker_job = undefined
-    geometry_worker?.terminate()
-    geometry_worker = undefined
+    geometry_abort?.abort(new Error(`Isosurface geometry job superseded`))
+    geometry_abort = undefined
   }
 
   function dispose_all() {
@@ -288,11 +283,9 @@
 
   const estimated_prepared_points = (vol: VolumetricData): number => {
     const range = effective_range(vol)
-    if (!range) return Math.min(grid_point_count(vol.grid), MAX_GRID_POINTS)
+    if (!range) return Math.min(vol.values.length, MAX_GRID_POINTS)
     const estimate = range.reduce((total, [lower, upper], axis) => {
-      const intervals = vol.periodic
-        ? vol.grid_dims[axis]
-        : Math.max(vol.grid_dims[axis] - 1, 1)
+      const intervals = vol.periodic ? vol.dims[axis] : Math.max(vol.dims[axis] - 1, 1)
       return total * Math.max(2, Math.round((upper - lower) * intervals) + 1)
     }, 1)
     return Math.min(estimate, MAX_GRID_POINTS)
@@ -307,71 +300,24 @@
         estimated_prepared_points(surface.volume) >= 200_000,
     )
 
-  function request_worker_geometries(
-    pending: PendingSurface[],
-  ): Promise<GeometryWorkerResponse> {
+  // Group pending surfaces by volume so each volume is posted and prepared once
+  function worker_jobs(pending: PendingSurface[]): GeometryVolumeJob[] {
     const grouped = new Map<VolumetricData, PendingSurface[]>()
     for (const surface of pending) {
       const surfaces = grouped.get(surface.volume) ?? []
       surfaces.push(surface)
       grouped.set(surface.volume, surfaces)
     }
-    const transfer: Transferable[] = []
-    const request: GeometryWorkerRequest = {
-      volumes: [...grouped].map(([vol, surfaces]) => {
-        const serialize_start = profiler ? performance.now() : 0
-        const transferred_volume: TransferableVolume = {
-          grid_values: flatten_grid(vol.grid).values,
-          grid_dims: [...vol.grid_dims],
-          lattice: vol.lattice.map((row) => [...row]) as Matrix3x3,
-          origin: [...vol.origin],
-          periodic: vol.periodic,
-        }
-        transfer.push(transferred_volume.grid_values.buffer)
-        record_profile(profiler, `prepare_geometry`, performance.now() - serialize_start, {
-          worker: true,
-          serialize: true,
-          source_points: transferred_volume.grid_values.length,
-        })
-        return {
-          token: vol_id(vol),
-          volume: transferred_volume,
-          range: effective_range(vol),
-          reference_origin: [...reference_origin],
-          surfaces: surfaces.map((surface) => ({
-            token: surface.key,
-            isovalue: surface.isovalue,
-          })),
-        }
-      }),
-    }
-
-    return new Promise((resolve, reject) => {
-      const worker = new Worker(new URL(`geometry.worker`, import.meta.url), {
-        type: `module`,
-      })
-      geometry_worker = worker
-      reject_worker_job = reject
-      const cleanup = (): void => {
-        worker.terminate()
-        if (geometry_worker === worker) geometry_worker = undefined
-        reject_worker_job = undefined
-      }
-      worker.addEventListener(`message`, ({ data }: MessageEvent<GeometryWorkerResponse>) => {
-        cleanup()
-        resolve(data)
-      })
-      worker.addEventListener(`error`, (event) => {
-        cleanup()
-        reject(new Error(event.message || `Isosurface geometry worker failed`))
-      })
-      try {
-        worker.postMessage(request, transfer)
-      } catch (error) {
-        cleanup()
-        reject(error instanceof Error ? error : new Error(String(error)))
-      }
-    })
+    return [...grouped].map(([vol, surfaces]) => ({
+      token: vol_id(vol),
+      volume: vol,
+      range: effective_range(vol),
+      reference_origin,
+      surfaces: surfaces.map((surface) => ({
+        token: surface.key,
+        isovalue: surface.isovalue,
+      })),
+    }))
   }
 
   async function rebuild_geometries(
@@ -420,32 +366,24 @@
     const geometries = new Map<string, BufferGeometry>()
     let build_synchronously = !use_geometry_worker(pending)
     if (!build_synchronously) {
+      cancel_geometry_worker()
+      const abort = new AbortController()
+      geometry_abort = abort
       try {
-        const response = await request_worker_geometries(pending)
-        if (generation !== rebuild_generation || `error` in response) {
-          if (`error` in response && generation === rebuild_generation) {
-            throw new Error(response.error)
-          }
-          return
-        }
+        const response = await compute_geometries_async(
+          { volumes: worker_jobs(pending) },
+          { signal: abort.signal },
+        )
+        if (generation !== rebuild_generation) return
         const volume_by_token = new Map(
           pending.map(({ volume: source }) => [vol_id(source), source]),
         )
         for (const volume_result of response.volumes) {
           const source_volume = volume_by_token.get(volume_result.token)
           if (source_volume) {
-            const grid = profile_stage(
-              profiler,
-              `prepare_geometry`,
-              () => inflate_grid(volume_result.prepared_values, volume_result.grid_dims),
-              {
-                worker: true,
-                inflate: true,
-              },
-            )
             prepared_cache.set(source_volume, {
               key: prepared_key(source_volume),
-              grid,
+              grid: volume_result.grid,
               lattice: volume_result.lattice,
               vertex_shift: vertex_shift(volume_result.origin),
             })
@@ -471,7 +409,7 @@
           }
         }
       } catch (error) {
-        if (generation !== rebuild_generation) return
+        if (generation !== rebuild_generation || abort.signal.aborted) return
         const message = error instanceof Error ? error.message : String(error)
         record_profile(profiler, `prepare_geometry`, 0, {
           worker_fallback: true,
@@ -479,6 +417,8 @@
         })
         console.warn(`Isosurface geometry worker failed; using synchronous fallback`, error)
         build_synchronously = true
+      } finally {
+        if (geometry_abort === abort) geometry_abort = undefined
       }
     }
     if (build_synchronously) {

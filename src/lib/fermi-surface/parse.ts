@@ -8,12 +8,13 @@ import {
   parse_leading_num,
   to_error,
 } from '$lib/utils'
+import { flatten_grid } from '$lib/isosurface/grid'
 import { compute_vertex_normals } from '$lib/marching-cubes'
 import type {
+  BandEnergyGrid,
   BandGridData,
-  EnergyGrid5D,
   FermiSurfaceData,
-  Isosurface,
+  FermiIsosurface,
   SpinChannel,
   SurfaceDimensionality,
 } from './types'
@@ -24,6 +25,33 @@ const parse_number_tokens = (line: string): string[] => line.split(/\s+/).filter
 // (`0.1234D+01`) which Fortran codes emit in BXSF/FRMSF and Number() rejects
 const parse_floats = (line: string): number[] =>
   parse_number_tokens(normalize_scientific_notation(line)).map(Number)
+
+// Append a line's floats to `values` starting at `offset`, dropping tokens past the end of
+// the buffer. Returns the new fill count. Writing in place (rather than `push(...floats)`)
+// keeps memory flat and avoids the argument-count limit a spread hits on very long lines.
+function fill_floats(values: Float64Array, offset: number, line: string): number {
+  const tokens = parse_number_tokens(normalize_scientific_notation(line))
+  const count = Math.min(tokens.length, values.length - offset)
+  for (let idx = 0; idx < count; idx++) values[offset + idx] = Number(tokens[idx])
+  return offset + count
+}
+
+// Leading number of a trimmed, non-empty line. FRMSF bodies are tens of thousands of
+// one-number lines, so try Number() on the bare token first and only fall back to the
+// regex-based Fortran D-exponent / unicode-minus normalization when that yields NaN.
+function parse_leading_energy(line: string): number {
+  let end = line.indexOf(` `)
+  const tab_idx = line.indexOf(`\t`)
+  if (tab_idx !== -1 && (end === -1 || tab_idx < end)) end = tab_idx
+  const fast = Number(end === -1 ? line : line.slice(0, end))
+  return Number.isNaN(fast) ? parse_leading_num(normalize_scientific_notation(line)) : fast
+}
+
+const make_band_grid = (values: Float64Array, dims: Vec3): BandEnergyGrid => ({
+  values,
+  dims,
+  order: `z_fastest`,
+})
 
 // Parse whitespace-separated integers from a line
 const parse_ints = (line: string): number[] =>
@@ -99,11 +127,10 @@ function parse_bxsf(content: string): BandGridData {
     }
   }
 
-  // Parse band data
-  // Format: BAND: band_number followed by energy values on grid
-  const energies: EnergyGrid5D = [[]] // [spin=1][band][kx][ky][kz]
-  const [nx, ny, nz] = k_grid
-  const total_points = nx * ny * nz
+  // Parse band data. Format: BAND: band_number followed by energy values in z-fastest
+  // order, which is exactly the flat BandEnergyGrid layout — no reshaping needed.
+  const energies: BandEnergyGrid[][] = [[]] // [spin=1][band]
+  const total_points = k_grid[0] * k_grid[1] * k_grid[2]
 
   for (let band_idx = 0; band_idx < n_bands; band_idx++) {
     // Find BAND: line
@@ -113,8 +140,9 @@ function parse_bxsf(content: string): BandGridData {
     }
 
     // Read energy values for this band
-    const energy_values: number[] = []
-    while (energy_values.length < total_points) {
+    const energy_values = new Float64Array(total_points)
+    let n_read = 0
+    while (n_read < total_points) {
       const line = next_line()
       if (line.startsWith(`END_BANDGRID`) || line.startsWith(`BAND:`)) {
         // Unread this line: after next_line() returns, line_idx points past the
@@ -122,23 +150,13 @@ function parse_bxsf(content: string): BandGridData {
         line_idx--
         break
       }
-      energy_values.push(...parse_floats(line))
+      n_read = fill_floats(energy_values, n_read, line)
     }
 
-    if (energy_values.length < total_points) {
-      throw new Error(
-        `Band ${band_idx}: expected ${total_points} values, got ${energy_values.length}`,
-      )
+    if (n_read < total_points) {
+      throw new Error(`Band ${band_idx}: expected ${total_points} values, got ${n_read}`)
     }
-
-    // Reshape into 3D grid [kx][ky][kz]
-    const band_grid: number[][][] = Array.from({ length: nx }, (_x_row, ix) =>
-      Array.from({ length: ny }, (_y_row, iy) => {
-        const offset = (ix * ny + iy) * nz
-        return energy_values.slice(offset, offset + nz)
-      }),
-    )
-    energies[0].push(band_grid)
+    energies[0].push(make_band_grid(energy_values, k_grid))
   }
 
   // Try to find Fermi energy (often in a comment or as FERMI_ENERGY keyword)
@@ -205,39 +223,29 @@ function parse_frmsf(content: string): BandGridData {
       .map((val) => val * inv_bohr) as Vec3
   const k_lattice: Matrix3x3 = [parse_k_vector(), parse_k_vector(), parse_k_vector()]
 
-  const [nx, ny, nz] = k_grid
-  const total_points = nx * ny * nz
+  const total_points = k_grid[0] * k_grid[1] * k_grid[2]
 
   // Parse band energies (FRMSF has a single spin channel — no spin-polarized support
-  // in the standard format). One energy value per line per grid point; any additional
-  // columns (e.g. auxiliary color/velocity data) are ignored to prevent grid corruption.
-  const energies: EnergyGrid5D = [[]]
+  // in the standard format). One energy value per line per grid point in z-fastest order;
+  // any additional columns (e.g. auxiliary color/velocity data) are ignored to prevent
+  // grid corruption. Values are converted from Hartree to eV as they are read.
+  const energies: BandEnergyGrid[][] = [[]]
   for (let band_idx = 0; band_idx < n_bands; band_idx++) {
-    const energy_values: number[] = []
+    const energy_values = new Float64Array(total_points)
+    let n_read = 0
 
-    // Read energy values (first value per line only, ignore auxiliary columns;
-    // normalize Fortran D-exponents like parse_floats does)
-    while (energy_values.length < total_points && line_idx < lines.length) {
-      const energy = parse_leading_num(normalize_scientific_notation(lines[line_idx] ?? ``))
+    // Read energy values (first value per line only, ignore auxiliary columns)
+    while (n_read < total_points && line_idx < lines.length) {
+      const energy = parse_leading_energy(lines[line_idx])
       if (isNaN(energy)) break
-      energy_values.push(energy)
+      energy_values[n_read++] = energy * HARTREE_TO_EV
       line_idx++
     }
 
-    if (energy_values.length < total_points) {
-      throw new Error(
-        `FRMSF band ${band_idx}: expected ${total_points} values, got ${energy_values.length}`,
-      )
+    if (n_read < total_points) {
+      throw new Error(`FRMSF band ${band_idx}: expected ${total_points} values, got ${n_read}`)
     }
-
-    // Reshape into 3D grid [kx][ky][kz], converting Hartree to eV
-    const band_grid: number[][][] = Array.from({ length: nx }, (_x_row, ix) =>
-      Array.from({ length: ny }, (_y_row, iy) => {
-        const offset = (ix * ny + iy) * nz
-        return energy_values.slice(offset, offset + nz).map((energy) => energy * HARTREE_TO_EV)
-      }),
-    )
-    energies[0].push(band_grid)
+    energies[0].push(make_band_grid(energy_values, k_grid))
   }
 
   return {
@@ -251,8 +259,8 @@ function parse_frmsf(content: string): BandGridData {
   }
 }
 
-// Validate that an object has the required Isosurface shape
-function is_valid_isosurface(obj: unknown): obj is Isosurface {
+// Validate that an object has the required FermiIsosurface shape
+function is_valid_isosurface(obj: unknown): obj is FermiIsosurface {
   if (!is_plain_object(obj)) return false
   const { vertices, faces, normals, band_index, spin } = obj
 
@@ -282,8 +290,11 @@ function is_valid_fermi_surface_data(obj: unknown): obj is FermiSurfaceData {
   return obj.isosurfaces.every(is_valid_isosurface)
 }
 
-// Validate BandGridData shape: non-empty energies grid, 3 k-grid dims, 3x3 k-lattice
-function is_valid_band_grid_data(obj: unknown): obj is BandGridData {
+// BandGridData as it appears in JSON: energies are nested [spin][band][kx][ky][kz] arrays
+type BandGridJson = Omit<BandGridData, `energies`> & { energies: number[][][][][] }
+
+// Validate the JSON BandGridData shape: non-empty energies grid, 3 k-grid dims, 3x3 k-lattice
+function is_valid_band_grid_json(obj: unknown): obj is BandGridJson {
   if (!is_plain_object(obj)) return false
   const { energies, k_grid, k_lattice } = obj
   if (!Array.isArray(energies) || energies.length === 0) return false
@@ -295,6 +306,36 @@ function is_valid_band_grid_data(obj: unknown): obj is BandGridData {
     return false
   return math.is_square_matrix(k_lattice, 3)
 }
+
+// Flatten nested JSON band grids into BandEnergyGrid storage, checking that every band
+// matches k_grid (a ragged or mis-sized band would otherwise read garbage in marching cubes)
+function normalize_band_grid_json(json: BandGridJson): BandGridData {
+  const { k_grid } = json
+  const energies = json.energies.map((bands, spin_idx) => {
+    if (!Array.isArray(bands)) {
+      throw new TypeError(`BandGridData JSON: energies[${spin_idx}] is not an array of bands`)
+    }
+    return bands.map((band, band_idx) => {
+      if (!Array.isArray(band)) {
+        throw new TypeError(
+          `BandGridData JSON: energies[${spin_idx}][${band_idx}] is not a [kx][ky][kz] grid`,
+        )
+      }
+      const grid = flatten_grid(band)
+      if (grid.dims.some((dim, axis) => dim !== k_grid[axis])) {
+        throw new Error(
+          `BandGridData JSON: energies[${spin_idx}][${band_idx}] has shape ${grid.dims.join(`×`)} but k_grid is ${k_grid.join(`×`)}`,
+        )
+      }
+      return grid
+    })
+  })
+  return { ...json, energies }
+}
+
+// First non-zero number in a fallback chain (an explicit 0 falls through like undefined)
+const first_nonzero = (...values: unknown[]): number | undefined =>
+  values.find((val): val is number => typeof val === `number` && val !== 0)
 
 // Parse Matterviz/IFermi JSON format for Fermi surface data
 // Throws on invalid input; returns parsed data on success
@@ -322,12 +363,12 @@ function parse_fermi_json(content: string): FermiSurfaceData | BandGridData {
 
   // Check if it's BandGridData (raw grid data)
   if (data.energies && data.k_grid && data.k_lattice) {
-    if (!is_valid_band_grid_data(data)) {
+    if (!is_valid_band_grid_json(data)) {
       throw new Error(
         `Invalid BandGridData JSON: expected non-empty 'energies' grid, 3 'k_grid' dims, and 3x3 'k_lattice'`,
       )
     }
-    return data
+    return normalize_band_grid_json(data)
   }
 
   // Try to extract from nested structure (e.g. IFermi output)
@@ -347,17 +388,15 @@ function parse_fermi_json(content: string): FermiSurfaceData | BandGridData {
       k_grid: bs.k_grid ?? bs.kgrid,
       k_lattice: bs.k_lattice ?? bs.reciprocal_lattice,
       fermi_energy: bs.fermi_energy ?? bs.efermi ?? 0,
-      // oxlint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- numeric fallback chain (0 falls through)
-      n_bands: (bs.n_bands ?? bs.nbands) || bs.energies[0]?.length || 0,
-      // oxlint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- numeric fallback chain (0 falls through)
-      n_spins: (bs.n_spins ?? bs.nspins) || bs.energies.length || 1,
+      n_bands: first_nonzero(bs.n_bands, bs.nbands, bs.energies[0]?.length) ?? 0,
+      n_spins: first_nonzero(bs.n_spins, bs.nspins, bs.energies.length) ?? 1,
     }
-    if (!is_valid_band_grid_data(grid_data)) {
+    if (!is_valid_band_grid_json(grid_data)) {
       throw new Error(
         `Invalid band_structure JSON: expected non-empty 'energies' grid, 3 'k_grid' dims, and 3x3 'k_lattice'`,
       )
     }
-    return grid_data
+    return normalize_band_grid_json(grid_data)
   }
 
   // Check for pymatgen BandStructure format (k-path, not k-grid)
@@ -373,7 +412,7 @@ function parse_fermi_json(content: string): FermiSurfaceData | BandGridData {
   throw new Error(`Unrecognized JSON format: missing required fields for Fermi surface data`)
 }
 
-// Helper type for IFermi Isosurface format
+// Helper type for IFermi isosurface JSON
 interface IFermiIsosurface {
   vertices: number[][]
   faces: number[][]
@@ -404,7 +443,7 @@ function parse_ifermi_surface(data: Record<string, unknown>): FermiSurfaceData {
       ]
 
   // Convert IFermi isosurfaces to our format
-  const isosurfaces: Isosurface[] = []
+  const isosurfaces: FermiIsosurface[] = []
   const band_indices = new Set<number>()
   let has_spin = false
 

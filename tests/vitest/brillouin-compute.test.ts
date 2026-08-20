@@ -68,6 +68,100 @@ const edge_key = (v1: Vec3, v2: Vec3) =>
     .toSorted()
     .join(`|`)
 
+// Real-space lattice from cell parameters (a along x, b in the xy plane), angles in degrees
+const lattice_from_params = (
+  a_len: number,
+  b_len: number,
+  c_len: number,
+  alpha: number,
+  beta: number,
+  gamma: number,
+): Matrix3x3 => {
+  const to_rad = Math.PI / 180
+  const [cos_a, cos_b, cos_g, sin_g] = [
+    Math.cos(alpha * to_rad),
+    Math.cos(beta * to_rad),
+    Math.cos(gamma * to_rad),
+    Math.sin(gamma * to_rad),
+  ]
+  const c_x = c_len * cos_b
+  const c_y = (c_len * (cos_a - cos_b * cos_g)) / sin_g
+  return [
+    [a_len, 0, 0],
+    [b_len * cos_g, b_len * sin_g, 0],
+    [c_x, c_y, Math.sqrt(c_len ** 2 - c_x ** 2 - c_y ** 2)],
+  ]
+}
+
+const A_CUBIC = 4 // conventional cube edge shared by the cubic, fcc and bcc cells below
+const HEX_A = 3
+const HEX_C = 5
+// Real-space lattices (rows) whose first Brillouin zones have known shapes. The non-reduced
+// row basis spans the same lattice as [[4,0,0],[-0.5,1,0],[0,0,4]] but its ±1 reciprocal
+// shell misses one ± pair of the zone's side faces, which used to inflate the volume by 3.5%.
+const REAL_LATTICES: Record<string, Matrix3x3> = {
+  cubic: cubic_matrix(A_CUBIC),
+  fcc: [
+    [0, A_CUBIC / 2, A_CUBIC / 2],
+    [A_CUBIC / 2, 0, A_CUBIC / 2],
+    [A_CUBIC / 2, A_CUBIC / 2, 0],
+  ],
+  bcc: [
+    [-A_CUBIC / 2, A_CUBIC / 2, A_CUBIC / 2],
+    [A_CUBIC / 2, -A_CUBIC / 2, A_CUBIC / 2],
+    [A_CUBIC / 2, A_CUBIC / 2, -A_CUBIC / 2],
+  ],
+  hexagonal: lattice_from_params(HEX_A, HEX_A, HEX_C, 90, 90, 120),
+  orthorhombic: lattice_from_params(4, 5, 6, 90, 90, 90),
+  triclinic: lattice_from_params(4, 5, 6, 80, 85, 70),
+  non_reduced: [
+    [4, 0, 0],
+    [3.5, 1, 0],
+    [0, 0, 4],
+  ],
+}
+
+type Polygon = { normal: Vec3; dist: number; vertex_ids: Set<number> }
+// Group the hull's triangles into planar polygons: same outward unit normal and plane offset
+// within 1e-8 (the hull is unit-scale, so this is ~1e8 × f64 eps and far below any dihedral)
+const polygon_faces = (vertices: Vec3[], faces: number[][]): Polygon[] => {
+  const polygons: Polygon[] = []
+  for (const face of faces) {
+    const [v0, v1, v2] = face.map((idx) => vertices[idx])
+    const normal = math.normalize_vec(
+      math.cross_3d(math.subtract(v1, v0), math.subtract(v2, v0)),
+      [0, 0, 0],
+    )
+    const dist = math.dot(normal, v0)
+    const match = polygons.find(
+      (poly) =>
+        Math.abs(poly.dist - dist) < 1e-8 && math.euclidean_dist(poly.normal, normal) < 1e-8,
+    )
+    if (match) face.forEach((idx) => match.vertex_ids.add(idx))
+    else polygons.push({ normal, dist, vertex_ids: new Set(face) })
+  }
+  return polygons
+}
+// polygon side count → number of such faces, e.g. { 4: 6, 6: 8 } for a truncated octahedron
+const polygon_histogram = (polygons: Polygon[]): Record<number, number> => {
+  const hist: Record<number, number> = {}
+  for (const poly of polygons)
+    hist[poly.vertex_ids.size] = (hist[poly.vertex_ids.size] ?? 0) + 1
+  return hist
+}
+const polygon_centroid = (vertices: Vec3[], poly: Polygon): Vec3 =>
+  math.scale(
+    [...poly.vertex_ids].reduce<Vec3>((acc, idx) => math.add(acc, vertices[idx]), [0, 0, 0]),
+    1 / poly.vertex_ids.size,
+  )
+const min_dist_to = (points: Vec3[], target: Vec3) =>
+  Math.min(...points.map((point) => math.euclidean_dist(point, target)))
+const edge_midpoints = (edges: Vec3[][]) =>
+  edges.map(([from, to]) => math.scale(math.add(from, to), 0.5))
+// Number of sharp edges meeting at `point` (vertex degree)
+const vertex_degree = (edges: Vec3[][], point: Vec3) =>
+  edges.filter((edge) => edge.some((end) => math.euclidean_dist(end, point) < 1e-9)).length
+
 // a_i · b_j = 2π δ_ij itself is covered in math.test.ts; this pins the 2π convention the BZ
 // reference data (numpy) was generated with
 test(`reciprocal_lattice with two_pi matches the reference data for all crystal systems`, () => {
@@ -93,11 +187,126 @@ describe(`compute_brillouin_zone`, () => {
     }
   })
 
-  test(`cubic BZ: 8 vertices, 12 triangulated faces, 12 edges`, () => {
-    const bz = compute_brillouin_zone(reference_data.cubic.reciprocal_lattice as Matrix3x3, 1)
-    expect(bz.vertices).toHaveLength(8)
-    expect(bz.faces).toHaveLength(12)
-    expect(bz.edges).toHaveLength(12)
+  // The first zone is the Wigner-Seitz cell of the reciprocal lattice, so its volume is exactly
+  // (2π)³/V_real. 1e-12 relative is ~5000 f64 ulps: the hull vertices are f64 three-plane
+  // intersections, so anything looser would hide a float32 round trip (8e-8) or a missing face.
+  test.each(Object.entries(REAL_LATTICES))(
+    `%s: first BZ volume = (2π)³/|det(real)| to 1e-12 relative`,
+    (_name, real) => {
+      const bz = compute_brillouin_zone(recip_2pi(real), 1)
+      const expected = (2 * Math.PI) ** 3 / Math.abs(math.det_3x3(real))
+      expect(Math.abs(bz.volume - expected)).toBeLessThan(1e-12 * expected)
+    },
+  )
+
+  // Polygonal faces (coplanar hull triangles merged), distinct vertices and sharp edges of the
+  // textbook zone shapes. Euler: V − E + F = 2 for each row.
+  test.each([
+    [`cubic`, `cube`, { 4: 6 }, 8, 12],
+    [`fcc`, `truncated octahedron`, { 4: 6, 6: 8 }, 24, 36],
+    [`bcc`, `rhombic dodecahedron`, { 4: 12 }, 14, 24],
+    [`hexagonal`, `hexagonal prism`, { 4: 6, 6: 2 }, 12, 18],
+    [`orthorhombic`, `cuboid`, { 4: 6 }, 8, 12],
+    // generic lattice: the 14-faced Wigner-Seitz cell (8 hexagons + 6 parallelograms)
+    [`triclinic`, `truncated octahedron (generic)`, { 4: 6, 6: 8 }, 24, 36],
+    // oblique 2D lattice × c axis: hexagonal prism, not the parallelepiped the ±1 shell gives
+    [`non_reduced`, `hexagonal prism`, { 4: 6, 6: 2 }, 12, 18],
+  ] as [string, string, Record<number, number>, number, number][])(
+    `%s: %s with faces %o, %d vertices, %d edges`,
+    (name, _shape, face_hist, n_vertices, n_edges) => {
+      const bz = compute_brillouin_zone(recip_2pi(REAL_LATTICES[name]), 1)
+      const polygons = polygon_faces(bz.vertices, bz.faces)
+      expect(polygon_histogram(polygons)).toEqual(face_hist)
+      expect(bz.vertices).toHaveLength(n_vertices)
+      expect(bz.edges).toHaveLength(n_edges)
+      // every hull vertex is a corner of some polygon (no stray coplanar points)
+      expect(new Set(polygons.flatMap((poly) => [...poly.vertex_ids])).size).toBe(n_vertices)
+    },
+  )
+
+  // Setyawan–Curtarolo high-symmetry points in Cartesian k-space (a = conventional cube edge)
+  describe(`high-symmetry points sit on the zone`, () => {
+    const two_pi_a = (2 * Math.PI) / A_CUBIC
+    const pi_a = Math.PI / A_CUBIC
+    const hex_k = (4 * Math.PI) / (3 * HEX_A) // |ΓK| of the hexagonal zone
+    const pi_c = Math.PI / HEX_C
+
+    test.each([
+      // cubic zone is the cube [−π/a, π/a]³: R corner, X face centre, M edge midpoint
+      [`cubic`, `R`, `vertex`, [pi_a, pi_a, pi_a], 3],
+      [`cubic`, `X`, `face`, [pi_a, 0, 0], 4],
+      [`cubic`, `M`, `edge`, [pi_a, pi_a, 0], null],
+      // fcc: squares from G = (2π/a)(±2,0,0) centred on X, hexagons from (2π/a)(±1,±1,±1)
+      // centred on L, W where a square meets two hexagons, K/U on hexagon-hexagon/-square edges
+      [`fcc`, `W`, `vertex`, [two_pi_a, two_pi_a / 2, 0], 3],
+      [`fcc`, `X`, `face`, [two_pi_a, 0, 0], 4],
+      [`fcc`, `L`, `face`, [pi_a, pi_a, pi_a], 6],
+      [`fcc`, `K`, `edge`, [(3 / 4) * two_pi_a, (3 / 4) * two_pi_a, 0], null],
+      [`fcc`, `U`, `edge`, [two_pi_a, two_pi_a / 4, two_pi_a / 4], null],
+      // bcc: rhombi from G = (2π/a)(±1,±1,0) perms centred on N; H is the 4-fold corner on
+      // the axis, P the 3-fold corner on the body diagonal
+      [`bcc`, `H`, `vertex`, [0, 0, two_pi_a], 4],
+      [`bcc`, `P`, `vertex`, [two_pi_a / 2, two_pi_a / 2, two_pi_a / 2], 3],
+      [`bcc`, `N`, `face`, [two_pi_a / 2, two_pi_a / 2, 0], 4],
+      // hexagonal prism: K = (b₁+b₂)/3 on a vertical edge, H above it, M = b₁/2 centres a
+      // side rectangle, A = b₃/2 centres a hexagonal cap, L = M + b₃/2 on a cap edge
+      [`hexagonal`, `H`, `vertex`, [hex_k / 2, (hex_k * Math.sqrt(3)) / 2, pi_c], 3],
+      [`hexagonal`, `K`, `edge`, [hex_k / 2, (hex_k * Math.sqrt(3)) / 2, 0], null],
+      [`hexagonal`, `M`, `face`, [Math.PI / HEX_A, Math.PI / (HEX_A * Math.sqrt(3)), 0], 4],
+      [`hexagonal`, `A`, `face`, [0, 0, pi_c], 6],
+      [
+        `hexagonal`,
+        `L`,
+        `edge`,
+        [Math.PI / HEX_A, Math.PI / (HEX_A * Math.sqrt(3)), pi_c],
+        null,
+      ],
+    ] as [string, string, `vertex` | `face` | `edge`, Vec3, number | null][])(
+      `%s %s is a %s point`,
+      (name, _label, kind, point, count) => {
+        const bz = compute_brillouin_zone(recip_2pi(REAL_LATTICES[name]), 1)
+        if (kind === `vertex`) {
+          expect(min_dist_to(bz.vertices, point)).toBeLessThan(1e-9)
+          expect(vertex_degree(bz.edges, point)).toBe(count)
+        } else if (kind === `face`) {
+          const polygons = polygon_faces(bz.vertices, bz.faces)
+          const centroids = polygons.map((poly) => polygon_centroid(bz.vertices, poly))
+          const face_idx = centroids.findIndex((ctr) => math.euclidean_dist(ctr, point) < 1e-9)
+          expect(face_idx, `no face centred on the point`).toBeGreaterThanOrEqual(0)
+          expect(polygons[face_idx].vertex_ids.size).toBe(count)
+          // on the surface: exactly on that face's plane, inside every other
+          expect(
+            Math.abs(math.dot(polygons[face_idx].normal, point) - polygons[face_idx].dist),
+          ).toBeLessThan(1e-9)
+          for (const poly of polygons) {
+            expect(math.dot(poly.normal, point) - poly.dist).toBeLessThan(1e-9)
+          }
+        } else {
+          expect(min_dist_to(edge_midpoints(bz.edges), point)).toBeLessThan(1e-9)
+        }
+      },
+    )
+  })
+
+  // A coplanar real lattice has no reciprocal lattice; the error must surface, not NaN geometry
+  test(`singular real or reciprocal lattice throws`, () => {
+    const coplanar: Matrix3x3 = [
+      [1, 0, 0],
+      [0, 1, 0],
+      [1, 1, 0],
+    ]
+    expect(() => recip_2pi(coplanar)).toThrow(/singular/)
+    expect(() => compute_brillouin_zone(coplanar, 1)).toThrow(/singular/)
+    expect(() =>
+      compute_brillouin_zone(
+        [
+          [1, 0, 0],
+          [0, NaN, 0],
+          [0, 0, 1],
+        ],
+        1,
+      ),
+    ).toThrow(/non-finite/)
   })
 })
 
@@ -158,7 +367,7 @@ describe(`generate_bz_vertices`, () => {
     expect(vertices).toHaveLength(8)
     const k_max = Math.PI / 5
     vertices.forEach((vertex) =>
-      vertex.forEach((coord) => expect(Math.abs(coord)).toBeCloseTo(k_max, 5)),
+      vertex.forEach((coord) => expect(Math.abs(Math.abs(coord) - k_max)).toBeLessThan(1e-14)),
     )
   })
 
@@ -223,58 +432,27 @@ describe(`compute_convex_hull`, () => {
   })
 })
 
-describe(`BZ volume`, () => {
-  test.each([5.0, 3.0])(`cubic a=%d → volume ≈ (2π)³/a³`, (a_len) => {
-    const real: Matrix3x3 = [
-      [a_len, 0, 0],
-      [0, a_len, 0],
-      [0, 0, a_len],
-    ]
-    const bz = compute_brillouin_zone(recip_2pi(real), 1)
-    expect(bz.volume).toBeCloseTo((2 * Math.PI) ** 3 / a_len ** 3, 4)
-  })
-
-  test(`volume = |b1 · (b2 × b3)|`, () => {
-    const k_lattice = recip_2pi([
-      [4, 0, 0],
-      [0, 5, 0],
-      [0, 0, 6],
-    ])
-    const bz = compute_brillouin_zone(k_lattice, 1)
-    const [b1, b2, b3] = k_lattice
-    const cross: Vec3 = [
-      b2[1] * b3[2] - b2[2] * b3[1],
-      b2[2] * b3[0] - b2[0] * b3[2],
-      b2[0] * b3[1] - b2[1] * b3[0],
-    ]
-    expect(bz.volume).toBeCloseTo(
-      Math.abs(b1.reduce((sum, val, idx) => sum + val * cross[idx], 0)),
-      6,
-    )
-  })
-})
-
 describe(`BZ order`, () => {
-  test(`higher order grows vertices; order >3 clamps to 3`, () => {
+  // Higher orders return the convex hull of zones 1..n. For the simple cubic lattice the union
+  // of zones 1+2 is the rhombic dodecahedron |kx|+|ky| ≤ 2π/a (& perms): 14 vertices, 24 edges,
+  // volume exactly 2·V₁. The union of zones 1..3 is not convex, so its hull overshoots 3·V₁
+  // (measured 4·V₁); only the volume is pinned since coplanar points on the hull's faces make
+  // its vertex/edge counts a triangulation detail.
+  test.each([
+    [2, 2, 14, 24],
+    [3, 4, null, null],
+  ])(`cubic order %d: hull volume = %d·V₁`, (order, ratio, n_verts, n_edges) => {
     const k_lattice = recip_2pi(CUBIC_5)
-    const bz1 = compute_brillouin_zone(k_lattice, 1)
-    const bz2 = compute_brillouin_zone(k_lattice, 2)
-    expect(bz2.vertices.length).toBeGreaterThan(bz1.vertices.length)
-    expect(compute_brillouin_zone(k_lattice, 4 as 3).order).toBe(3)
+    const bz = compute_brillouin_zone(k_lattice, order as 2 | 3)
+    const vol_1 = (2 * Math.PI) ** 3 / 125
+    expect(Math.abs(bz.volume - ratio * vol_1)).toBeLessThan(1e-12 * vol_1)
+    expect(bz.order).toBe(order)
+    if (n_verts !== null) expect(bz.vertices).toHaveLength(n_verts)
+    if (n_edges !== null) expect(bz.edges).toHaveLength(n_edges)
   })
-})
 
-describe(`error handling`, () => {
-  test(`throws for degenerate lattice`, () => {
-    // two parallel lattice vectors (a uniformly tiny cell is not degenerate, just small)
-    const degenerate: Matrix3x3 = [
-      [1, 0, 0],
-      [2, 0, 0],
-      [0, 0, 1],
-    ]
-    expect(() => compute_brillouin_zone(recip_2pi(degenerate), 1)).toThrow(
-      /singular|Insufficient vertices/,
-    )
+  test(`order >3 clamps to 3`, () => {
+    expect(compute_brillouin_zone(recip_2pi(CUBIC_5), 4 as 3).order).toBe(3)
   })
 })
 
@@ -368,6 +546,46 @@ describe(`compute_ibz_clipping_planes`, () => {
   })
 })
 
+// Closure of integer generator matrices under multiplication (finite point groups only)
+const group_closure = (generators: Matrix3x3[]): Matrix3x3[] => {
+  const key = (mat: Matrix3x3) => mat.flat().map(Math.round).join(`,`)
+  const ops = new Map<string, Matrix3x3>([[key(IDENTITY_MAT), IDENTITY_MAT]])
+  let frontier: Matrix3x3[] = [IDENTITY_MAT]
+  while (frontier.length > 0) {
+    const next: Matrix3x3[] = []
+    for (const op of frontier) {
+      for (const gen of generators) {
+        const prod = math.dot(op, gen)
+        if (ops.has(key(prod))) continue
+        ops.set(key(prod), prod)
+        next.push(prod)
+      }
+    }
+    frontier = next
+  }
+  return [...ops.values()]
+}
+
+// Hexagonal point group D6h in fractional coordinates of a₁ = (a,0,0), a₂ = a(−½, √3/2, 0):
+// the 60° rotation sends a₁ → a₁+a₂ and a₂ → −a₁ (columns of W), C2 about a₁ sends
+// a₂ → −a₁−a₂ and a₃ → −a₃, plus the horizontal mirror.
+const C6_HEX: Matrix3x3 = [
+  [1, -1, 0],
+  [1, 0, 0],
+  [0, 0, 1],
+]
+const C2_HEX_A1: Matrix3x3 = [
+  [1, -1, 0],
+  [0, -1, 0],
+  [0, 0, -1],
+]
+const MIRROR_Z_MAT: Matrix3x3 = [
+  [1, 0, 0],
+  [0, 1, 0],
+  [0, 0, -1],
+]
+const D6H_OPS = group_closure([C6_HEX, C2_HEX_A1, MIRROR_Z_MAT])
+
 describe(`compute_irreducible_bz`, () => {
   const bz = compute_brillouin_zone(recip_2pi(CUBIC_5), 1)
 
@@ -391,6 +609,46 @@ describe(`compute_irreducible_bz`, () => {
       oh_ops.push(mat)
     }
   }
+
+  test(`generated point groups have the right order`, () => {
+    expect(group_closure(oh_ops)).toHaveLength(48)
+    expect(D6H_OPS).toHaveLength(24)
+    // fcc Oh ops are integer in the primitive basis and still form a 48-element group
+    for (const w_frac of fcc_oh_frac) {
+      for (const val of w_frac.flat())
+        expect(Math.abs(val - Math.round(val))).toBeLessThan(1e-12)
+    }
+    expect(group_closure(fcc_oh_ops)).toHaveLength(48)
+    // C6 really is a 60° rotation of the hexagonal reciprocal lattice: trace = 1 + 2cos60° = 2
+    const rot = fractional_to_cartesian_rotation(C6_HEX, recip_2pi(REAL_LATTICES.hexagonal))
+    expect(rot[0][0] + rot[1][1] + rot[2][2]).toBeCloseTo(2, 12)
+  })
+
+  // Oh in the fractional basis of the fcc primitive cell: W = B·R·B⁻¹ inverts
+  // fractional_to_cartesian_rotation (R orthogonal), and must come out integer
+  const fcc_k = recip_2pi(REAL_LATTICES.fcc)
+  const fcc_k_inv = math.matrix_inverse_3x3(fcc_k)
+  const fcc_oh_frac = oh_ops.map((rot) => math.dot(math.dot(fcc_k, rot), fcc_k_inv))
+  const fcc_oh_ops = fcc_oh_frac.map(
+    (w_frac) => w_frac.map((row) => row.map(Math.round)) as Matrix3x3,
+  )
+
+  // The Dirichlet wedge is an exact fundamental domain: V_IBZ = V_BZ/|G|. 1e-8 relative leaves
+  // room for the clip-then-rehull rounding while catching a single dropped plane (factor 2).
+  test.each([
+    [`cubic Oh`, 48, REAL_LATTICES.cubic, oh_ops],
+    [`fcc Oh (primitive basis)`, 48, REAL_LATTICES.fcc, fcc_oh_ops],
+    [`hexagonal D6h`, 24, REAL_LATTICES.hexagonal, D6H_OPS],
+  ] as [string, number, Matrix3x3, Matrix3x3[]][])(
+    `%s: IBZ volume = BZ volume / %i`,
+    (_label, order, real, ops) => {
+      const full_bz = compute_brillouin_zone(recip_2pi(real), 1)
+      const ibz = compute_irreducible_bz(full_bz, ops)
+      expect(ibz).not.toBeNull()
+      if (!ibz) return
+      expect(Math.abs(ibz.volume * order - full_bz.volume)).toBeLessThan(1e-8 * full_bz.volume)
+    },
+  )
 
   test(`P1 (identity only) → full BZ`, () => {
     const ibz = compute_irreducible_bz(bz, [IDENTITY_MAT])
@@ -420,7 +678,6 @@ describe(`compute_irreducible_bz`, () => {
       ratio: 1 / 4,
       digits: 6,
     },
-    { label: `Oh (48 ops)`, ops: oh_ops, ratio: 1 / 48, digits: 8 },
   ])(`$label → volume ratio $ratio`, ({ ops, ratio, digits, check_faces }) => {
     const ibz = compute_irreducible_bz(bz, ops)
     expect(ibz).not.toBeNull()
@@ -507,15 +764,14 @@ describe(`fractional_to_cartesian_rotation`, () => {
     [0, 0, 0],
     [0, 0, 0],
   ]
+  // rotations are never singular, so a failed inversion is corrupt input, not a case to
+  // paper over with an identity (which would silently drop that op's IBZ clipping plane)
   test.each([
     [`singular W`, singular_w, k_lattice],
     [`singular k_lattice`, IDENTITY_MAT, zero_mat],
-  ] as [string, Matrix3x3, Matrix3x3][])(
-    `returns identity matrix for %s`,
-    (_, w_matrix, k_matrix) => {
-      expect(fractional_to_cartesian_rotation(w_matrix, k_matrix)).toEqual(IDENTITY_MAT)
-    },
-  )
+  ] as [string, Matrix3x3, Matrix3x3][])(`throws for %s`, (_, w_matrix, k_matrix) => {
+    expect(() => fractional_to_cartesian_rotation(w_matrix, k_matrix)).toThrow(/singular/)
+  })
 })
 
 const cube_vertices: Vec3[] = [

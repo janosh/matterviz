@@ -309,7 +309,7 @@
       <div class="volume-group">
         <div class="volume-header">
           <span class="volume-label" title={vol_label(vol_idx)}>{vol_label(vol_idx)}</span>
-          <span class="volume-dims">{vol.grid_dims.join(`×`)}</span>
+          <span class="volume-dims">{vol.dims.join(`×`)}</span>
           {#if entries.length === 0}
             <span
               class="volume-note"
@@ -552,7 +552,7 @@
 
   {#if !is_multi_layer && volumes[active_volume_idx]}
     <div class="grid-info">
-      {volumes[active_volume_idx].grid_dims.join(` × `)} grid &nbsp;|&nbsp; [{format_num(
+      {volumes[active_volume_idx].dims.join(` × `)} grid &nbsp;|&nbsp; [{format_num(
         data_range.min,
         `.3~g`,
       )}, {format_num(data_range.max, `.3~g`)}]

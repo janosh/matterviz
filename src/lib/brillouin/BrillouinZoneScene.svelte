@@ -53,7 +53,7 @@
     initial_zoom = DEFAULTS.structure.initial_zoom,
     ambient_light = DEFAULTS.structure.ambient_light,
     directional_light = DEFAULTS.structure.directional_light,
-    gizmo = DEFAULTS.structure.show_gizmo,
+    gizmo = DEFAULTS.structure.gizmo,
     auto_rotate = DEFAULTS.structure.auto_rotate,
     scene = $bindable(),
     camera = $bindable(),

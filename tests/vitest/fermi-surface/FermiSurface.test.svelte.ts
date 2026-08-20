@@ -1,5 +1,5 @@
 import FermiSurface from '$lib/fermi-surface/FermiSurface.svelte'
-import { mount, unmount, type ComponentProps } from 'svelte'
+import { mount, tick, unmount, type ComponentProps } from 'svelte'
 import { afterEach, expect, test, vi } from 'vitest'
 import { create_drop_event } from '../setup'
 
@@ -11,8 +11,12 @@ const mock_animation_frames = (): FrameRequestCallback[] => {
   )
   return callbacks
 }
-const drop_file = (file: File, props: ComponentProps<typeof FermiSurface> = {}): void => {
+const drop_file = async (
+  file: File,
+  props: ComponentProps<typeof FermiSurface> = {},
+): Promise<void> => {
   mounted.push(mount(FermiSurface, { target: document.body, props }))
+  await tick() // the drop-zone attachment is wired one flush after mount
   const drop_zone = document.querySelector<HTMLElement>(`.fermi-surface`)
   if (!drop_zone) throw new Error(`Fermi surface drop zone not found`)
   drop_zone.dispatchEvent(create_drop_event(file))
@@ -29,7 +33,7 @@ test(`custom file drop handler receives content and bypasses default parsing`, a
   const on_error = vi.fn()
   const content = `custom Fermi surface content`
   const file = new File([content], `custom.txt`)
-  drop_file(file, { on_file_drop, on_error })
+  await drop_file(file, { on_file_drop, on_error })
 
   await vi.waitFor(() => {
     expect(on_file_drop).toHaveBeenCalledWith(content, file.name, {
@@ -60,7 +64,7 @@ test(`default file parsing yields while loading state renders`, async () => {
     metadata: { n_bands: 1, n_surfaces: 0, total_area: 0 },
   })
   const file = new File([content], `fermi.json`)
-  drop_file(file, { on_file_load })
+  await drop_file(file, { on_file_load })
 
   await vi.waitFor(() => expect(frame_callbacks).toHaveLength(1))
   expect(document.body.textContent).toContain(`Loading Fermi surface...`)

@@ -117,12 +117,20 @@ describe(`FermiSurfaceTooltip`, () => {
   })
 
   describe(`tiling info`, () => {
-    test(`shows symmetry info when tiled and symmetry_index > 0`, () => {
-      mount_tooltip({
-        hover_data: mock_hover_data({ is_tiled: true, symmetry_index: 5 }),
-      })
-      expect(document.body.textContent).toContain(`Symmetry copy #6/48`)
-    })
+    test.each([
+      { n_symmetry_ops: 48, expected: `Symmetry copy #6/48` },
+      { n_symmetry_ops: 24, expected: `Symmetry copy #6/24` },
+      { n_symmetry_ops: undefined, expected: `Symmetry copy #6` },
+    ])(
+      `shows symmetry info when tiled and symmetry_index > 0 (n_ops=$n_symmetry_ops)`,
+      ({ n_symmetry_ops, expected }) => {
+        mount_tooltip({
+          hover_data: mock_hover_data({ is_tiled: true, symmetry_index: 5, n_symmetry_ops }),
+        })
+        expect(document.body.textContent).toContain(expected)
+        if (!n_symmetry_ops) expect(document.body.textContent).not.toContain(`#6/`)
+      },
+    )
 
     test.each([
       { is_tiled: false, symmetry_index: 5, reason: `not tiled` },

@@ -2,7 +2,8 @@
 import type { D3InterpolateName } from '$lib/colors'
 import type { Matrix3x3, Vec2, Vec3 } from '$lib/math'
 import { scale_lattice_matrix } from '$lib/math'
-import type { ParsedStructure } from '$lib/structure/parse'
+import type { Crystal } from '$lib/structure'
+import { flatten_grid, type ScalarGrid3D } from './grid'
 
 // Precomputed statistics for a volumetric grid (min, max, abs_max, mean)
 export interface DataRange {
@@ -12,16 +13,16 @@ export interface DataRange {
   mean: number
 }
 
-// Volumetric scalar data on a 3D grid (e.g. charge density, electrostatic potential)
-export interface VolumetricData {
-  grid: number[][][] // scalar values [nx][ny][nz]
-  grid_dims: Vec3 // [nx, ny, nz]
+// Volumetric scalar data on a 3D grid (e.g. charge density, electrostatic potential).
+// Values are stored flat in C order (z fastest: index = (ix * ny + iy) * nz + iz) so the
+// volume itself is a ScalarGrid3D that marching cubes and the geometry worker consume
+// without copying. Parsers transpose Fortran-ordered sources (VASP) once at load time.
+export interface VolumetricData extends ScalarGrid3D<Float64Array> {
+  order: `z_fastest`
+  dims: Vec3 // [nx, ny, nz]
   lattice: Matrix3x3 // real-space lattice vectors (rows are a, b, c)
   origin: Vec3 // grid origin in Cartesian coordinates
   data_range: DataRange // precomputed min/max/mean statistics
-  // Linearization order of values in the source file.
-  // VASP files are x-fastest; Gaussian .cube is z-fastest.
-  data_order?: `x_fastest` | `z_fastest`
   // Whether the grid has periodic boundary conditions (affects coordinate scaling).
   // Periodic grids (CHGCAR) span [0,1) with spacing 1/N; non-periodic (.cube molecular)
   // span [0,1] with spacing 1/(N-1).
@@ -32,6 +33,76 @@ export interface VolumetricData {
   source?: string
   // Original filename including compression suffix, for picker/URL identity.
   source_filename?: string
+}
+
+// The geometric core of a VolumetricData: enough to sample, resample, and contour it.
+// Also the structured-cloneable shape posted to the geometry worker.
+export type VolumeGrid = Pick<
+  VolumetricData,
+  `values` | `dims` | `order` | `lattice` | `origin` | `periodic`
+>
+
+// Flat index of grid point (ix, iy, iz) in a VolumetricData values array
+export const volume_index = ([, ny, nz]: Vec3, ix: number, iy: number, iz: number): number =>
+  (ix * ny + iy) * nz + iz
+
+// Assemble a VolumetricData from flat values, computing data_range in the same pass
+export function make_volume(
+  values: Float64Array,
+  dims: Vec3,
+  fields: Omit<VolumetricData, `values` | `dims` | `order` | `data_range`>,
+): VolumetricData {
+  const expected = dims[0] * dims[1] * dims[2]
+  if (values.length !== expected) {
+    throw new RangeError(
+      `Volume values length ${values.length} does not match dims ${dims.join(`×`)} (${expected})`,
+    )
+  }
+  return { values, dims, order: `z_fastest`, data_range: grid_data_range(values), ...fields }
+}
+
+// Coerce a JSON/IPC payload (pymatviz widget traits, dropped .json files) into a
+// VolumetricData. Accepts flat `values` (typed array or number[]) with `dims`, or the
+// nested `grid` [x][y][z] encoding JSON producers emit, and recomputes data_range.
+export function volume_from_json(raw: unknown): VolumetricData {
+  if (typeof raw !== `object` || raw === null) {
+    throw new TypeError(`Volumetric data must be an object, got ${typeof raw}`)
+  }
+  const data = raw as Record<string, unknown>
+  const is_vec3 = (value: unknown): value is Vec3 =>
+    Array.isArray(value) && value.length === 3 && value.every(Number.isFinite)
+  const is_matrix = (value: unknown): value is Matrix3x3 =>
+    Array.isArray(value) && value.length === 3 && value.every(is_vec3)
+  if (!is_matrix(data.lattice)) throw new TypeError(`Volumetric data needs a 3x3 lattice`)
+  if (!is_vec3(data.origin)) throw new TypeError(`Volumetric data needs a Vec3 origin`)
+  if (typeof data.periodic !== `boolean`) {
+    throw new TypeError(`Volumetric data needs a boolean periodic flag`)
+  }
+
+  let grid: ScalarGrid3D<Float64Array>
+  if (Array.isArray(data.grid)) {
+    grid = flatten_grid(data.grid as number[][][])
+  } else if (data.values !== undefined) {
+    const { dims } = data
+    if (!is_vec3(dims)) throw new TypeError(`Volumetric data with flat values needs dims`)
+    const values =
+      data.values instanceof Float64Array
+        ? data.values
+        : Float64Array.from(data.values as ArrayLike<number>)
+    grid = { values, dims: [...dims], order: `z_fastest` }
+  } else {
+    throw new TypeError(`Volumetric data needs a nested grid or flat values + dims`)
+  }
+  const optional = (key: `label` | `source` | `source_filename`) =>
+    typeof data[key] === `string` ? { [key]: data[key] } : {}
+  return make_volume(grid.values, grid.dims, {
+    lattice: data.lattice,
+    origin: data.origin,
+    periodic: data.periodic,
+    ...optional(`label`),
+    ...optional(`source`),
+    ...optional(`source_filename`),
+  })
 }
 
 // Reset an out-of-range active volume index while preserving valid or empty states.
@@ -45,7 +116,7 @@ export const normalize_active_volume_idx = (
 
 // Result of parsing a volumetric file (contains both structure and volumetric data)
 export interface VolumetricFileData {
-  structure: ParsedStructure
+  structure: Crystal
   volumes: VolumetricData[] // one or more volumes (e.g. total + magnetization for spin-polarized)
 }
 
@@ -104,30 +175,22 @@ export const LAYER_COLORS = [
   `#ec4899`, // pink
 ] as const
 
-// Compute min/max/abs_max/mean of a 3D grid.
-// Prefer using the precomputed `data_range` field on VolumetricData when available.
-export function grid_data_range(grid: number[][][]): DataRange {
-  if (grid.length === 0 || !grid[0]?.length || !grid[0][0]?.length) {
-    return { min: 0, max: 0, abs_max: 0, mean: 0 }
-  }
-  let [min_val, max_val] = [Infinity, -Infinity]
-  let sum = 0
-  let count = 0
-  for (const plane of grid) {
-    for (const row of plane) {
-      for (const val of row) {
-        if (val < min_val) min_val = val
-        if (val > max_val) max_val = val
-        sum += val
-        count++
-      }
-    }
+// Compute min/max/abs_max/mean of flat grid values in one pass.
+// Prefer the precomputed `data_range` field on VolumetricData when available.
+export function grid_data_range(values: ArrayLike<number>): DataRange {
+  const count = values.length
+  if (count === 0) return { min: 0, max: 0, abs_max: 0, mean: 0 }
+  let [min_val, max_val, sum] = [Infinity, -Infinity, 0]
+  for (let idx = 0; idx < count; idx++) {
+    const val = values[idx]
+    if (val < min_val) min_val = val
+    if (val > max_val) max_val = val
+    sum += val
   }
   const abs_max = Math.max(Math.abs(min_val), Math.abs(max_val))
-  return { min: min_val, max: max_val, abs_max, mean: count > 0 ? sum / count : 0 }
+  return { min: min_val, max: max_val, abs_max, mean: sum / count }
 }
 
-const wrap_grid_idx = (val: number, size: number) => ((val % size) + size) % size
 const clamp_dim = (src: number, fac: number) =>
   Math.min(src, Math.max(2, Math.ceil(src / fac)))
 const partition_ranges = (n_out: number, n_src: number): Vec2[] =>
@@ -136,61 +199,22 @@ const partition_ranges = (n_out: number, n_src: number): Vec2[] =>
     Math.round(((idx + 1) * n_src) / n_out),
   ])
 
-// Pad a periodic 3D grid with halo cells from the opposite face so isosurfaces
-// extend beyond the unit cell and close into complete enclosed shapes.
-// Returns a larger grid with dims [nx+2*pad, ny+2*pad, nz+2*pad] and the
-// fractional offset that the padded grid's origin has shifted by.
-export function pad_periodic_grid(
-  grid: number[][][],
-  dims: Vec3,
-  pad_fraction: number,
-): { grid: number[][][]; dims: Vec3; offset: Vec3 } {
-  const [nx, ny, nz] = dims
-  const frac = Math.max(0, pad_fraction)
-  const px = Math.min(Math.ceil(nx * frac), Math.floor(nx / 2))
-  const py = Math.min(Math.ceil(ny * frac), Math.floor(ny / 2))
-  const pz = Math.min(Math.ceil(nz * frac), Math.floor(nz / 2))
-  if (px === 0 && py === 0 && pz === 0) return { grid, dims, offset: [0, 0, 0] }
-
-  const out_nx = nx + 2 * px
-  const out_ny = ny + 2 * py
-  const out_nz = nz + 2 * pz
-
-  const out: number[][][] = Array(out_nx)
-  for (let ix = 0; ix < out_nx; ix++) {
-    const plane: number[][] = Array(out_ny)
-    const src_x = wrap_grid_idx(ix - px, nx)
-    for (let iy = 0; iy < out_ny; iy++) {
-      const row: number[] = Array(out_nz)
-      const src_y = wrap_grid_idx(iy - py, ny)
-      for (let iz = 0; iz < out_nz; iz++) {
-        row[iz] = grid[src_x][src_y][wrap_grid_idx(iz - pz, nz)]
-      }
-      plane[iy] = row
-    }
-    out[ix] = plane
-  }
-
-  // Fractional offset: the padded grid starts at -pad/n in each axis
-  const offset: Vec3 = [-px / nx, -py / ny, -pz / nz]
-  return { grid: out, dims: [out_nx, out_ny, out_nz], offset }
-}
-
 // Max total grid points before downsampling is applied for isosurface extraction.
 // 500K balances visual quality with interactive performance (<200ms marching cubes).
 export const MAX_GRID_POINTS = 500_000
 
-// Downsample a 3D volumetric grid to keep total point count under a budget.
-// Uses block averaging to preserve data fidelity while reducing grid dimensions.
-// Returns original grid/dims if already within budget.
+// Downsample a z-fastest grid to keep its point count under a budget via block
+// averaging. Returns the input grid unchanged (factor 1) when already within budget.
 export function downsample_grid(
-  grid: number[][][],
-  dims: Vec3,
+  grid: ScalarGrid3D<Float64Array>,
   max_points: number = MAX_GRID_POINTS,
-): { grid: number[][][]; dims: Vec3; factor: number } {
-  const [nx, ny, nz] = dims
+): { grid: ScalarGrid3D<Float64Array>; factor: number } {
+  const [nx, ny, nz] = grid.dims
   const total = nx * ny * nz
-  if (total <= max_points) return { grid, dims, factor: 1 }
+  if (total <= max_points) return { grid, factor: 1 }
+  if (grid.order !== `z_fastest`) {
+    throw new RangeError(`downsample_grid expects z_fastest values, got ${grid.order}`)
+  }
   // Floor at 1 to avoid Infinity in cbrt(total/0)
   max_points = Math.max(1, max_points)
 
@@ -219,33 +243,29 @@ export function downsample_grid(
   const y_ranges = partition_ranges(new_ny, ny)
   const z_ranges = partition_ranges(new_nz, nz)
 
-  const out: number[][][] = Array(new_nx)
+  const src = grid.values
+  const out = new Float64Array(new_nx * new_ny * new_nz)
+  let out_idx = 0
   for (let ix = 0; ix < new_nx; ix++) {
-    const plane: number[][] = Array(new_ny)
     const [sx_start, sx_end] = x_ranges[ix]
     for (let iy = 0; iy < new_ny; iy++) {
-      const row: number[] = Array(new_nz)
       const [sy_start, sy_end] = y_ranges[iy]
       for (let iz = 0; iz < new_nz; iz++) {
-        let sum = 0
         const [sz_start, sz_end] = z_ranges[iz]
+        let sum = 0
         for (let sx = sx_start; sx < sx_end; sx++) {
-          const src_plane = grid[sx]
           for (let sy = sy_start; sy < sy_end; sy++) {
-            const src_row = src_plane[sy]
-            for (let sz = sz_start; sz < sz_end; sz++) {
-              sum += src_row[sz]
-            }
+            const row_offset = (sx * ny + sy) * nz
+            for (let sz = sz_start; sz < sz_end; sz++) sum += src[row_offset + sz]
           }
         }
-        row[iz] = sum / ((sx_end - sx_start) * (sy_end - sy_start) * (sz_end - sz_start))
+        out[out_idx++] =
+          sum / ((sx_end - sx_start) * (sy_end - sy_start) * (sz_end - sz_start))
       }
-      plane[iy] = row
     }
-    out[ix] = plane
   }
 
-  return { grid: out, dims: [new_nx, new_ny, new_nz], factor }
+  return { grid: { values: out, dims: [new_nx, new_ny, new_nz], order: `z_fastest` }, factor }
 }
 
 // Default isosurface rendering settings
@@ -464,42 +484,36 @@ export function tile_volumetric_data(volume: VolumetricData, scaling: Vec3): Vol
   if (!volume.periodic || (sx === 1 && sy === 1 && sz === 1)) return volume
 
   const total_cells = sx * sy * sz
-  let src_grid = volume.grid
-  let [nx, ny, nz] = volume.grid_dims
+  let source: ScalarGrid3D<Float64Array> = volume
+  let [nx, ny, nz] = volume.dims
 
   // Pre-downsample source grid so the tiled result stays within budget.
   // Clamp budget to 8 (minimum downsample output = 2^3) to prevent infinite
   // loops in downsample_grid when total_cells is very large.
   if (nx * ny * nz * total_cells > MAX_GRID_POINTS) {
     const budget = Math.max(8, Math.floor(MAX_GRID_POINTS / total_cells))
-    const ds = downsample_grid(src_grid, [nx, ny, nz], budget)
-    src_grid = ds.grid
-    ;[nx, ny, nz] = ds.dims
+    source = downsample_grid(volume, budget).grid
+    ;[nx, ny, nz] = source.dims
   }
 
   const new_nx = nx * sx
   const new_ny = ny * sy
   const new_nz = nz * sz
-  const new_grid: number[][][] = Array(new_nx)
+  const src = source.values
+  const values = new Float64Array(new_nx * new_ny * new_nz)
+  let out_idx = 0
   for (let ix = 0; ix < new_nx; ix++) {
-    const plane: number[][] = Array(new_ny)
     const src_x = ix % nx
     for (let iy = 0; iy < new_ny; iy++) {
-      const row: number[] = Array(new_nz)
-      const src_y = iy % ny
-      const src_row = src_grid[src_x][src_y]
-      for (let iz = 0; iz < new_nz; iz++) {
-        row[iz] = src_row[iz % nz]
-      }
-      plane[iy] = row
+      const row_offset = (src_x * ny + (iy % ny)) * nz
+      for (let iz = 0; iz < new_nz; iz++) values[out_idx++] = src[row_offset + (iz % nz)]
     }
-    new_grid[ix] = plane
   }
 
   return {
     ...volume,
-    grid: new_grid,
-    grid_dims: [new_nx, new_ny, new_nz],
+    values,
+    dims: [new_nx, new_ny, new_nz],
     lattice: scale_lattice_matrix(volume.lattice, scaling),
   }
 }

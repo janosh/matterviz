@@ -2,7 +2,9 @@
 // Text dumps reuse the trajectory reader in $lib/trajectory/parse/lammps rather than
 // duplicating its ITEM: section, triclinic-box and column-preference handling.
 import type { ElementSymbol } from '$lib/element'
-import { element_data } from '$lib/element'
+// `$lib/element/data`, not the index: the index re-exports Svelte components, which the
+// parse worker bundle (no svelte plugin) cannot compile
+import { default as element_data } from '$lib/element/data'
 import { coerce_elem_symbol } from '$lib/element/helpers'
 import { ELEM_SYMBOLS } from '$lib/labels'
 import type { Vec3 } from '$lib/math'

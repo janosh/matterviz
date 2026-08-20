@@ -287,7 +287,7 @@
     }),
   )
 
-  const handle_file_drop = io.create_file_drop_handler({
+  const file_drop_zone = io.file_drop_zone({
     allow: () => allow_file_drop,
     on_drop: async (content, filename, metadata) => {
       await (on_file_drop || safe_parse)(content, filename, metadata)
@@ -298,8 +298,9 @@
     },
     set_loading: (val) => {
       loading = val
-      if (val) [error_msg, dragover] = [undefined, false]
+      if (val) error_msg = undefined
     },
+    on_dragover: (over) => (dragover = over),
   })
 
   function onkeydown(event: KeyboardEvent) {
@@ -320,7 +321,6 @@
 </script>
 
 <div
-  class:dragover
   class:active={info_pane_open || controls_open || export_pane_open}
   role="region"
   aria-label="Brillouin zone viewer"
@@ -329,14 +329,10 @@
   bind:clientHeight={height}
   onmouseenter={() => (hovered = true)}
   onmouseleave={() => (hovered = false)}
-  ondrop={handle_file_drop}
-  {...io.drag_over_handlers({
-    allow: () => allow_file_drop,
-    set_dragover: (over) => (dragover = over),
-  })}
   {onkeydown}
   {...rest}
   class={[`brillouin-zone`, rest.class]}
+  {@attach file_drop_zone}
 >
   {@render children?.({ structure, bz_data })}
   {#if loading}

@@ -1,8 +1,25 @@
 // Tests for isosurface volumetric file parsers (CHGCAR, .cube)
 import { BOHR_TO_ANGSTROM } from '$lib/constants'
-import { parse_chgcar, parse_cube, parse_volumetric_file } from '$lib/isosurface/parse'
+import {
+  parse_chgcar,
+  parse_cube,
+  parse_decimal_token,
+  parse_volumetric_file,
+} from '$lib/isosurface/parse'
+import type { VolumetricFileData } from '$lib/isosurface/types'
 import type { Vec3 } from '$lib/math'
 import { describe, expect, test, vi } from 'vitest'
+import { normalize_scientific_notation } from '$lib/utils'
+import { grid_value, read_maybe_gz } from '../setup'
+import { create_volume_sampler } from '$lib/isosurface/sampling'
+import * as math from '$lib/math'
+
+// Value accessor for the first volume of a parse result: at(ix, iy, iz)
+const grid_at = (result: VolumetricFileData | null, vol_idx = 0) => {
+  if (!result) throw new Error(`parse returned null`)
+  return (ix: number, iy: number, iz: number) =>
+    grid_value(result.volumes[vol_idx], ix, iy, iz)
+}
 
 // === Helper to build minimal CHGCAR content ===
 function make_chgcar({
@@ -40,6 +57,56 @@ function make_chgcar({
   return lines.join(`\n`)
 }
 
+// === Token parsing ===
+
+describe(`parse_decimal_token`, () => {
+  // Fast path (integer mantissa < 2^53, |exp10| <= 22) and every fallback trigger must
+  // agree with Number(normalize_scientific_notation(token)) bit for bit (Object.is, so
+  // -0 and NaN are distinguished)
+  test.each([
+    `0`,
+    `-0`,
+    `1`,
+    `+1`,
+    `.5`,
+    `5.`,
+    `1.e2`,
+    `+.5e-1`,
+    `0.1`,
+    `0.7`,
+    `3.14159265358979`,
+    `0.12345678901E+02`,
+    `-1.5D+02`,
+    `1d5`,
+    `1D-05`,
+    `1.0D-04`,
+    `9.42600000000E-125`,
+    `123456789012345678`,
+    `9007199254740993`,
+    `1e23`,
+    `1e-23`,
+    `1e22`,
+    `1e-22`,
+    `0.0000000000000000000001`,
+    `1.7976931348623157e308`,
+    `5e-324`,
+    `abc`,
+    `1.2.3`,
+    `1e`,
+    `e5`,
+    `.e2`,
+    `1e+`,
+    `--1`,
+    `1-2`,
+    `−1.5`,
+    `1*^5`,
+  ])(`%s matches Number()`, (token) => {
+    const padded = `  ${token}\n`
+    const reference = Number(normalize_scientific_notation(token))
+    expect(Object.is(parse_decimal_token(padded, 2, 2 + token.length), reference)).toBe(true)
+  })
+})
+
 // === CHGCAR Tests ===
 
 describe(`parse_chgcar`, () => {
@@ -70,21 +137,19 @@ describe(`parse_chgcar`, () => {
     expect(result?.structure.lattice?.a).toBeCloseTo(5.43, 2)
     // Volume metadata
     expect(result?.volumes).toHaveLength(1)
-    expect(result?.volumes[0].grid_dims).toEqual([2, 2, 2])
+    expect(result?.volumes[0].dims).toEqual([2, 2, 2])
     expect(result?.volumes[0].label).toBe(`charge density`)
-    expect(result?.volumes[0].data_order).toBe(`x_fastest`)
     expect(result?.volumes[0].lattice[0][0]).toBeCloseTo(5.43)
     expect(result?.volumes[0].origin).toEqual([0, 0, 0])
     expect(result?.volumes[0].periodic).toBe(true) // VASP grids are periodic
-    // Grid shape
-    const grid = result?.volumes[0].grid
-    expect(grid?.length).toBe(2) // nx
-    expect(grid?.[0].length).toBe(2) // ny
-    expect(grid?.[0][0].length).toBe(2) // nz
+    // Flat z-fastest storage
+    expect(result?.volumes[0].values).toHaveLength(8)
+    expect(result?.volumes[0].order).toBe(`z_fastest`)
     // Volume normalization: values divided by cell volume
     const cell_volume = result?.structure.lattice?.volume ?? 1
-    expect(grid?.[0][0][0]).toBeCloseTo(1.0 / cell_volume, 5)
-    expect(grid?.[1][1][1]).toBeCloseTo(8.0 / cell_volume, 5)
+    const at = grid_at(result)
+    expect(at(0, 0, 0)).toBeCloseTo(1.0 / cell_volume, 5)
+    expect(at(1, 1, 1)).toBeCloseTo(8.0 / cell_volume, 5)
   })
 
   test(`maps CHGCAR flattened data using x-fastest order`, () => {
@@ -95,15 +160,15 @@ describe(`parse_chgcar`, () => {
       }),
     )
     expect(result).not.toBeNull()
-    const grid = result?.volumes[0].grid
+    const at = grid_at(result)
     const cell_volume = result?.structure.lattice?.volume ?? 1
 
-    expect(grid?.[0][0][0]).toBeCloseTo(1 / cell_volume, 8)
-    expect(grid?.[1][0][0]).toBeCloseTo(2 / cell_volume, 8)
-    expect(grid?.[0][1][0]).toBeCloseTo(3 / cell_volume, 8)
-    expect(grid?.[1][1][0]).toBeCloseTo(4 / cell_volume, 8)
-    expect(grid?.[0][0][1]).toBeCloseTo(7 / cell_volume, 8)
-    expect(grid?.[1][2][1]).toBeCloseTo(12 / cell_volume, 8)
+    expect(at(0, 0, 0)).toBeCloseTo(1 / cell_volume, 8)
+    expect(at(1, 0, 0)).toBeCloseTo(2 / cell_volume, 8)
+    expect(at(0, 1, 0)).toBeCloseTo(3 / cell_volume, 8)
+    expect(at(1, 1, 0)).toBeCloseTo(4 / cell_volume, 8)
+    expect(at(0, 0, 1)).toBeCloseTo(7 / cell_volume, 8)
+    expect(at(1, 2, 1)).toBeCloseTo(12 / cell_volume, 8)
   })
 
   test(`handles scale factor != 1.0`, () => {
@@ -249,7 +314,7 @@ describe(`parse_chgcar`, () => {
     expect(result?.volumes).toHaveLength(2)
     expect(result?.volumes[0].label).toBe(`charge density`)
     expect(result?.volumes[1].label).toBe(`magnetization density`)
-    expect(result?.volumes[1].grid_dims).toEqual([2, 2, 2])
+    expect(result?.volumes[1].dims).toEqual([2, 2, 2])
   })
 
   test(`handles VASP 4 format (no element symbols)`, () => {
@@ -293,7 +358,7 @@ describe(`parse_chgcar`, () => {
     })
     const result = parse_chgcar(content)
     expect(result).not.toBeNull()
-    expect(result?.volumes[0].grid_dims).toEqual([2, 2, 2])
+    expect(result?.volumes[0].dims).toEqual([2, 2, 2])
   })
 
   test(`wraps fractional coords to [0, 1)`, () => {
@@ -376,10 +441,10 @@ describe(`parse_chgcar`, () => {
       }),
     )
     expect(result).not.toBeNull()
-    const grid = result?.volumes[0].grid
+    const at = grid_at(result)
     const cell_vol = result?.structure.lattice?.volume ?? 1
-    expect(grid?.[0][0][0]).toBeCloseTo(1.0 / cell_vol, 5)
-    expect(grid?.[1][1][1]).toBeCloseTo(8.0 / cell_vol, 5)
+    expect(at(0, 0, 0)).toBeCloseTo(1.0 / cell_vol, 5)
+    expect(at(1, 1, 1)).toBeCloseTo(8.0 / cell_vol, 5)
   })
 
   test(`non-orthogonal lattice produces correct lattice params`, () => {
@@ -456,12 +521,9 @@ describe(`parse_cube`, () => {
     expect(result?.structure.sites).toHaveLength(2)
     expect(result?.volumes).toHaveLength(1)
     expect(result?.volumes[0].label).toBe(`volumetric data`)
-    expect(result?.volumes[0].data_order).toBe(`z_fastest`)
     // Grid dimensions
-    expect(result?.volumes[0].grid_dims).toEqual([2, 2, 2])
-    expect(result?.volumes[0].grid.length).toBe(2)
-    expect(result?.volumes[0].grid[0].length).toBe(2)
-    expect(result?.volumes[0].grid[0][0].length).toBe(2)
+    expect(result?.volumes[0].dims).toEqual([2, 2, 2])
+    expect(result?.volumes[0].values).toHaveLength(8)
     // Pin CODATA 2022 through parser output so conversion changes must be deliberate.
     expect(result?.structure.lattice?.a).toBeCloseTo(2 * 1.889726 * 0.529177210544, 10)
   })
@@ -512,18 +574,20 @@ describe(`parse_cube`, () => {
     )
     expect(result).not.toBeNull()
     expect(result?.structure.sites).toHaveLength(1)
-    expect(result?.volumes[0].grid_dims).toEqual([2, 2, 2])
+    expect(result?.volumes[0].dims).toEqual([2, 2, 2])
   })
 
   test(`reads volumetric data values correctly`, () => {
     const result = parse_cube(make_cube())
-    const grid = result?.volumes[0].grid
-    // Data: 0.001 0.002 0.003 0.004 0.005 0.006 0.007 0.008
-    // Grid [0][0][0]=0.001, [0][0][1]=0.002, [0][1][0]=0.003, [0][1][1]=0.004
-    // Grid [1][0][0]=0.005, [1][0][1]=0.006, [1][1][0]=0.007, [1][1][1]=0.008
-    expect(grid?.[0][0][0]).toBeCloseTo(0.001, 5)
-    expect(grid?.[0][0][1]).toBeCloseTo(0.002, 5)
-    expect(grid?.[1][1][1]).toBeCloseTo(0.008, 5)
+    const at = grid_at(result)
+    // Data: 0.001 0.002 0.003 0.004 0.005 0.006 0.007 0.008, z fastest
+    // (0,0,0)=0.001, (0,0,1)=0.002, (0,1,0)=0.003, (0,1,1)=0.004
+    // (1,0,0)=0.005, (1,0,1)=0.006, (1,1,0)=0.007, (1,1,1)=0.008
+    expect(at(0, 0, 0)).toBeCloseTo(0.001, 5)
+    expect(at(0, 0, 1)).toBeCloseTo(0.002, 5)
+    expect(at(0, 1, 0)).toBeCloseTo(0.003, 5)
+    expect(at(1, 0, 0)).toBeCloseTo(0.005, 5)
+    expect(at(1, 1, 1)).toBeCloseTo(0.008, 5)
   })
 
   test(`handles non-zero grid origin`, () => {
@@ -539,8 +603,8 @@ describe(`parse_cube`, () => {
         data: `1.0E-03  2.0E-03  3.0E-03  4.0E-03\n  5.0E-03  6.0E-03  7.0E-03  8.0E-03`,
       }),
     )
-    expect(result?.volumes[0].grid[0][0][0]).toBeCloseTo(0.001, 5)
-    expect(result?.volumes[0].grid[1][1][1]).toBeCloseTo(0.008, 5)
+    expect(grid_at(result)(0, 0, 0)).toBeCloseTo(0.001, 5)
+    expect(grid_at(result)(1, 1, 1)).toBeCloseTo(0.008, 5)
   })
 
   test(`returns null for too-short file`, () => {
@@ -595,15 +659,15 @@ describe(`parse_cube`, () => {
       }),
     )
     expect(result).not.toBeNull()
-    expect(result?.volumes[0].grid[0][0][0]).toBeCloseTo(0.001, 5)
-    expect(result?.volumes[0].grid[1][1][1]).toBeCloseTo(0.008, 5)
+    expect(grid_at(result)(0, 0, 0)).toBeCloseTo(0.001, 5)
+    expect(grid_at(result)(1, 1, 1)).toBeCloseTo(0.008, 5)
   })
 
   test(`handles incomplete data gracefully`, () => {
     const result = parse_cube(make_cube({ data: `1.0  2.0  3.0  4.0` }))
     expect(result).not.toBeNull()
-    expect(result?.volumes[0].grid[0][0][0]).toBeCloseTo(1.0, 5)
-    expect(result?.volumes[0].grid[1][1][1]).toBeCloseTo(0.0, 5)
+    expect(grid_at(result)(0, 0, 0)).toBeCloseTo(1.0, 5)
+    expect(grid_at(result)(1, 1, 1)).toBeCloseTo(0.0, 5)
   })
 
   test(`periodic option overrides origin-based heuristic`, () => {
@@ -649,6 +713,179 @@ describe(`parse_cube`, () => {
     expect(result?.structure.sites).toHaveLength(2)
     expect(result?.structure.sites[0].species[0].element).toBe(`C`)
     expect(result?.structure.sites[1].species[0].element).toBe(`O`)
+  })
+})
+
+describe(`parse_cube geometry`, () => {
+  const bohr = BOHR_TO_ANGSTROM
+
+  test.each([
+    { origin: [0, 0, 0] as Vec3, n_pts: 5, extent_pts: 5, label: `periodic: N voxels` },
+    { origin: [-2, -2, -2] as Vec3, n_pts: 5, extent_pts: 4, label: `finite: N-1 voxels` },
+  ])(`$label span the data box`, ({ origin, n_pts, extent_pts }) => {
+    const voxel = 0.8 // Bohr
+    const result = parse_cube(
+      make_cube({
+        origin,
+        grid_n: [n_pts, n_pts, n_pts],
+        voxels: [
+          [voxel, 0, 0],
+          [0, voxel, 0],
+          [0, 0, voxel],
+        ],
+        n_atoms: 1,
+        atoms: [[6, 0, 0, 0, 0]],
+        data: Array(n_pts ** 3)
+          .fill(`1.0`)
+          .join(`  `),
+      }),
+    )
+    expect(result?.volumes[0].lattice[0][0]).toBeCloseTo(extent_pts * voxel * bohr, 12)
+    expect(result?.volumes[0].lattice[2][2]).toBeCloseTo(extent_pts * voxel * bohr, 12)
+  })
+
+  test(`finite grid geometry: sampling at an atom position returns the field there`, () => {
+    // Field f(x, y, z) = x + 2y + 3z in Bohr at each grid point origin + i*voxel. With the
+    // (N-1)*voxel extent the sampler maps Cartesian atom positions onto the right voxels;
+    // the old N*voxel extent shifted samples by up to one voxel at the far corner.
+    const n_pts = 6
+    const voxel = 0.5
+    const origin: Vec3 = [-1.25, -1.25, -1.25]
+    const values: string[] = []
+    for (let ix = 0; ix < n_pts; ix++) {
+      for (let iy = 0; iy < n_pts; iy++) {
+        for (let iz = 0; iz < n_pts; iz++) {
+          const [x, y, z] = [ix, iy, iz].map((idx, axis) => origin[axis] + idx * voxel)
+          values.push((x + 2 * y + 3 * z).toFixed(6))
+        }
+      }
+    }
+    const atoms = [
+      [6, 0, 0.75, -0.25, 1.25], // on grid points
+      [1, 0, -1.25, -1.25, -1.25], // first corner
+      [1, 0, 1.25, 1.25, 1.25], // last corner
+      [1, 0, 0.1, -0.3, 0.6], // off-grid: trilinear on a linear field is exact
+    ]
+    const result = parse_cube(
+      make_cube({
+        origin,
+        grid_n: [n_pts, n_pts, n_pts],
+        voxels: [
+          [voxel, 0, 0],
+          [0, voxel, 0],
+          [0, 0, voxel],
+        ],
+        n_atoms: atoms.length,
+        atoms,
+        data: values.join(`  `),
+      }),
+    )
+    if (!result) throw new Error(`parse failed`)
+    const [volume] = result.volumes
+    expect(volume.periodic).toBe(false)
+    const sample = create_volume_sampler(volume, { out_of_bounds: `fallback` })
+    for (const [site_idx, [, , x, y, z]] of atoms.entries()) {
+      const site = result.structure.sites[site_idx]
+      // Sites store lattice-frame coordinates (origin subtracted); the sampler works in
+      // absolute Cartesian coordinates, so add the origin back
+      const absolute = math.add(site.xyz, volume.origin)
+      expect(absolute.map((val) => val / bohr)).toEqual(
+        [x, y, z].map((val) => expect.closeTo(val, 10)),
+      )
+      expect(sample(absolute)).toBeCloseTo(x + 2 * y + 3 * z, 6)
+    }
+  })
+
+  test(`returns null for coplanar voxel vectors instead of placing atoms with identity`, () => {
+    const result = parse_cube(
+      make_cube({
+        voxels: [
+          [1, 0, 0],
+          [0, 1, 0],
+          [1, 1, 0],
+        ],
+      }),
+    )
+    expect(result).toBeNull()
+  })
+})
+
+// === Real fixtures ===
+
+describe(`site fixtures`, () => {
+  const load = (name: string) => {
+    const parsed = parse_volumetric_file(
+      read_maybe_gz(`src/site/isosurfaces/${name}.gz`),
+      name,
+    )
+    if (!parsed) throw new Error(`failed to parse ${name}`)
+    return parsed
+  }
+  // Integral of rho over the cell: mean density times cell volume
+  const electron_count = (parsed: VolumetricFileData) =>
+    parsed.volumes[0].data_range.mean * Math.abs(parsed.structure.lattice.volume)
+
+  // VASP PAW valence: Fe 8e, O 6e (Fe6O8 = 96), Ni_pv 16e, O 6e (Ni2O2 = 44)
+  test.each([
+    { name: `pymatgen-CHGCAR.Fe3O4`, dims: [36, 36, 36], n_sites: 14, n_electrons: 96 },
+    { name: `pymatgen-CHGCAR.NiO_SOC`, dims: [28, 28, 28], n_sites: 4, n_electrons: 44 },
+  ])(`$name integrates to $n_electrons electrons`, ({ name, dims, n_sites, n_electrons }) => {
+    const parsed = load(name)
+    expect(parsed.structure.sites).toHaveLength(n_sites)
+    expect(parsed.volumes[0].dims).toEqual(dims)
+    expect(parsed.volumes[0].values).toHaveLength(dims[0] * dims[1] * dims[2])
+    // rho*V on the VASP grid sums to the electron count; divided by V and averaged it
+    // reproduces N to the 5-digit precision of the file
+    expect(electron_count(parsed)).toBeCloseTo(n_electrons, 3)
+  })
+
+  test(`Fe3O4 axis order: every nucleus sits in the densest tenth of the grid`, () => {
+    const parsed = load(`pymatgen-CHGCAR.Fe3O4`)
+    const [volume] = parsed.volumes
+    const [nx, ny, nz] = volume.dims
+    const sorted = volume.values.toSorted()
+    const top_decile = sorted[Math.floor(0.9 * sorted.length)]
+    for (const site of parsed.structure.sites) {
+      const [fx, fy, fz] = site.abc
+      const density = grid_value(
+        volume,
+        Math.round(fx * nx) % nx,
+        Math.round(fy * ny) % ny,
+        Math.round(fz * nz) % nz,
+      )
+      expect(density, `${site.species[0].element} at ${site.abc}`).toBeGreaterThanOrEqual(
+        top_decile,
+      )
+    }
+  })
+
+  test(`spin-polarized CHGCAR yields a magnetization block with far less integrated charge`, () => {
+    const parsed = load(`pymatgen-CHGCAR.Fe3O4`)
+    expect(parsed.volumes.map((vol) => vol.label)).toEqual([
+      `charge density`,
+      `magnetization density`,
+    ])
+    const [charge, magnetization] = parsed.volumes
+    const cell_volume = Math.abs(parsed.structure.lattice.volume)
+    // net moment of the ferrimagnetic Fe6O8 cell in the file
+    expect(magnetization.data_range.mean * cell_volume).toBeCloseTo(14.07, 2)
+    expect(magnetization.data_range.min).toBeLessThan(0)
+    expect(charge.data_range.min).toBeGreaterThan(0)
+  })
+
+  test(`molecular .cube keeps the (N-1)*voxel box and atoms inside it`, () => {
+    const parsed = load(`glycine-density.cube`)
+    const [volume] = parsed.volumes
+    expect(volume.periodic).toBe(false)
+    expect(volume.dims).toEqual([50, 50, 50])
+    // generator: 10 A box, 50 points => voxel 0.2 A => 49 * 0.2 = 9.8 A extent
+    // (voxel written with 6 decimals in Bohr, hence ~1e-5 A slack)
+    expect(volume.lattice[0][0]).toBeCloseTo(9.8, 4)
+    expect(volume.origin[0]).toBeCloseTo(-5, 4)
+    for (const site of parsed.structure.sites) {
+      for (const frac of site.abc) expect(frac).toBeGreaterThanOrEqual(0)
+      for (const frac of site.abc) expect(frac).toBeLessThanOrEqual(1)
+    }
   })
 })
 

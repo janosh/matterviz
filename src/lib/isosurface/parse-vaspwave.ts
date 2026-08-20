@@ -10,8 +10,7 @@
 // (scf_charge_rms frame metadata); diffing charge grids between live reloads
 // is explicitly out of scope here.
 import { calc_lattice_params, create_frac_to_cart, type Vec3 } from '$lib/math'
-import type { Site } from '$lib/structure'
-import type { ParsedStructure } from '$lib/structure/parse'
+import type { Crystal, Site } from '$lib/structure'
 import { wrap_to_unit_cell } from '$lib/structure/pbc'
 import { make_site } from '$lib/structure/site'
 import type * as h5wasm from 'h5wasm'
@@ -26,8 +25,7 @@ import {
   to_string_array,
   with_h5_file,
 } from '$lib/trajectory/parse/h5-utils'
-import { grid_data_range } from './types'
-import type { VolumetricData, VolumetricFileData } from './types'
+import { make_volume, type VolumetricData, type VolumetricFileData } from './types'
 
 const CHARGE_PATH = `charge/charge`
 const CHARGE_GRID_PATH = `charge/grid`
@@ -40,14 +38,7 @@ export const is_vaspwave_filename = (filename: string): boolean => {
   return /vaspwave.*\.(?:h5|hdf5)$/i.test(basename)
 }
 
-const dataset_shape = (h5_file: h5wasm.File, path: string): number[] | null => {
-  const entity = h5_file.get(path)
-  return is_hdf5_dataset(entity) ? (entity.shape ?? null) : null
-}
-
-const read_embedded_structure = (
-  h5_file: h5wasm.File,
-): ParsedStructure & { lattice: NonNullable<ParsedStructure[`lattice`]> } => {
+const read_embedded_structure = (h5_file: h5wasm.File): Crystal => {
   const lattice_data = read_dataset(h5_file, `${STRUCTURE_PREFIX}/lattice_vectors`)
   if (!lattice_data) {
     throw new Error(
@@ -100,9 +91,13 @@ const charge_axis_order = (spatial_shape: number[], grid_dims: number[]): `zyx` 
   )
 }
 
+const is_numeric_array = (value: unknown): value is ArrayLike<number> =>
+  ArrayBuffer.isView(value) && !(value instanceof DataView)
+
 function parse_vaspwave_charge_file(h5_file: h5wasm.File): VolumetricFileData {
-  const shape = dataset_shape(h5_file, CHARGE_PATH)
-  if (!shape) {
+  const charge_entity = h5_file.get(CHARGE_PATH)
+  const shape = is_hdf5_dataset(charge_entity) ? (charge_entity.shape ?? null) : null
+  if (!shape || !is_hdf5_dataset(charge_entity)) {
     throw new Error(`vaspwave.h5 file has no charge density (missing ${CHARGE_PATH})`)
   }
   // Only the dimension count is checked here — the spatial axis order (zyx vs
@@ -124,49 +119,59 @@ function parse_vaspwave_charge_file(h5_file: h5wasm.File): VolumetricFileData {
     )
   }
   const axis_order = charge_axis_order(shape.slice(1), grid_dims)
-  const [nx, ny, nz] = grid_dims
+  const dims: Vec3 = [grid_dims[0], grid_dims[1], grid_dims[2]]
+  const [nx, ny, nz] = dims
+  const points_per_component = nx * ny * nz
 
   const structure = read_embedded_structure(h5_file)
   const lattice = structure.lattice.matrix
 
-  const charge_data = read_dataset(h5_file, CHARGE_PATH) as number[][][][] | null
-  if (!charge_data) throw new Error(`Failed to read ${CHARGE_PATH} data`)
+  // The flat dataset buffer, C order [component][axis0][axis1][axis2]
+  const charge_data = charge_entity.value
+  if (!is_numeric_array(charge_data)) throw new Error(`Failed to read ${CHARGE_PATH} data`)
   // Metadata shape and decoded data can disagree in torn/corrupt files — fail
   // loudly instead of silently rendering fewer components than the file claims
-  if (charge_data.length !== n_components) {
+  if (charge_data.length !== n_components * points_per_component) {
     throw new Error(
-      `${CHARGE_PATH} decoded ${charge_data.length} components but its shape claims ${n_components}`,
+      `${CHARGE_PATH} decoded ${charge_data.length} values but its shape [${shape}] claims ${n_components * points_per_component}`,
     )
   }
 
+  // vaspwave.h5 stores the same rho * V_cell grid VASP writes to CHGCAR, so divide by
+  // the cell volume to get e/A^3 like parse_chgcar does
+  const cell_volume = Math.abs(structure.lattice.volume)
+  const divisor = cell_volume > 1e-30 ? cell_volume : 1
+
   const component_labels = [`charge density`, `magnetization density`]
-  const volumes: VolumetricData[] = charge_data.map((component, component_idx) => {
-    const grid: number[][][] = Array(nx)
-    for (let x_idx = 0; x_idx < nx; x_idx++) {
-      const plane: number[][] = Array(ny)
-      for (let y_idx = 0; y_idx < ny; y_idx++) {
-        const row: number[] = Array(nz)
-        for (let z_idx = 0; z_idx < nz; z_idx++) {
-          row[z_idx] =
-            axis_order === `zyx`
-              ? component[z_idx][y_idx][x_idx]
-              : component[x_idx][y_idx][z_idx]
+  const volumes: VolumetricData[] = Array.from(
+    { length: n_components },
+    (_, component_idx) => {
+      const base = component_idx * points_per_component
+      const values = new Float64Array(points_per_component)
+      if (axis_order === `xyz`) {
+        for (let idx = 0; idx < points_per_component; idx++) {
+          values[idx] = charge_data[base + idx] / divisor
         }
-        plane[y_idx] = row
+      } else {
+        // source index (z, y, x) -> destination (x, y, z)
+        let src_idx = base
+        for (let z_idx = 0; z_idx < nz; z_idx++) {
+          for (let y_idx = 0; y_idx < ny; y_idx++) {
+            const dst_base = y_idx * nz + z_idx
+            for (let x_idx = 0; x_idx < nx; x_idx++) {
+              values[x_idx * ny * nz + dst_base] = charge_data[src_idx++] / divisor
+            }
+          }
+        }
       }
-      grid[x_idx] = plane
-    }
-    return {
-      grid,
-      grid_dims: [nx, ny, nz] as Vec3,
-      lattice,
-      origin: [0, 0, 0] as Vec3,
-      data_range: grid_data_range(grid),
-      data_order: `x_fastest` as const,
-      periodic: true,
-      label: component_labels[component_idx],
-    }
-  })
+      return make_volume(values, dims, {
+        lattice,
+        origin: [0, 0, 0],
+        periodic: true,
+        label: component_labels[component_idx],
+      })
+    },
+  )
 
   return { structure, volumes }
 }

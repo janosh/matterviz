@@ -12,9 +12,7 @@
     ReciprocalVectors,
   } from '$lib/brillouin'
   import type { D3InterpolateName } from '$lib/colors'
-  import { get_d3_interpolator } from '$lib/colors'
   import type { Matrix4Tuple, Vec2, Vec3 } from '$lib/math'
-  import * as math from '$lib/math'
   import {
     bind_renderer,
     build_orbit_props,
@@ -30,10 +28,8 @@
   import { SvelteMap } from 'svelte/reactivity'
   import {
     BackSide,
-    BufferAttribute,
     BufferGeometry,
     ClippingGroup,
-    Color,
     DoubleSide,
     FrontSide,
     Matrix4,
@@ -42,12 +38,13 @@
     Vector3,
   } from 'three/webgpu'
   import * as constants from './constants'
-  import { IDENTITY_4x4, OH_SYMMETRY_MATRICES } from './symmetry'
+  import { build_isosurface_geometry, nearest_vertex_index } from './geometry'
+  import { IDENTITY_4x4, lattice_point_group_matrices } from './symmetry'
   import type {
     ColorProperty,
     FermiHoverData,
     FermiSurfaceData,
-    Isosurface,
+    FermiIsosurface,
     RepresentationMode,
   } from './types'
 
@@ -88,7 +85,7 @@
     initial_zoom = DEFAULTS.structure.initial_zoom,
     ambient_light = DEFAULTS.structure.ambient_light,
     directional_light = DEFAULTS.structure.directional_light,
-    gizmo = DEFAULTS.structure.show_gizmo,
+    gizmo = DEFAULTS.structure.gizmo,
     auto_rotate = DEFAULTS.structure.auto_rotate,
     scene = $bindable(),
     camera = $bindable(),
@@ -121,14 +118,11 @@
     hover_data?: FermiHoverData | null
   } = $props()
 
-  const threlte = bind_renderer(
-    (threlte_scene, threlte_camera) => {
-      scene = threlte_scene
-      camera = threlte_camera
-    },
-    // Enable object sorting for proper depth ordering of transparent surfaces
-    (renderer) => (renderer.sortObjects = true),
-  )
+  // Transparent surfaces depth-sort correctly because renderer.sortObjects defaults to true
+  const threlte = bind_renderer((threlte_scene, threlte_camera) => {
+    scene = threlte_scene
+    camera = threlte_camera
+  })
 
   // Characteristic scene size, used for clipping and camera positioning
   const scene_size = $derived(k_space_size(fermi_data?.k_lattice))
@@ -175,7 +169,7 @@
   // Compute average vertex distance from origin for each surface (used for render ordering)
   // Smaller distance = inner surface = render first (lower renderOrder)
   // Larger distance = outer surface = render last (higher renderOrder)
-  function compute_surface_radius(surface: Isosurface): number {
+  function compute_surface_radius(surface: FermiIsosurface): number {
     if (surface.vertices.length === 0) return 0
     let sum = 0
     for (const vertex of surface.vertices) {
@@ -185,7 +179,7 @@
   }
 
   // Map from surface to its render order based on size (inner surfaces first)
-  let surface_render_orders = $derived.by((): Map<Isosurface, number> => {
+  let surface_render_orders = $derived.by((): Map<FermiIsosurface, number> => {
     const by_radius = visible_surfaces
       .map((surface) => ({ surface, radius: compute_surface_radius(surface) }))
       .toSorted((surf_a, surf_b) => surf_a.radius - surf_b.radius)
@@ -193,11 +187,15 @@
     return new SvelteMap(by_radius.map(({ surface }, idx) => [surface, idx]))
   })
 
+  // Per-vertex scalar colouring applies to velocity/custom properties; band/spin colouring is
+  // a single material colour per surface
+  const use_vertex_colors = $derived(
+    color_property === `velocity` || color_property === `custom`,
+  )
+
   // Compute property range for color scaling
   let property_range = $derived.by((): Vec2 => {
-    if (color_property !== `velocity` && color_property !== `custom`) {
-      return [0, 1]
-    }
+    if (!use_vertex_colors) return [0, 1]
     let [min_val, max_val] = [Infinity, -Infinity]
     for (const surface of visible_surfaces) {
       if (!surface.properties) continue
@@ -210,125 +208,29 @@
     return [min_val, max_val]
   })
 
-  // Get color for a surface/vertex
-  function get_surface_color(surface: Isosurface, vertex_idx?: number): string {
-    if (
-      (color_property === `velocity` || color_property === `custom`) &&
-      surface.properties &&
-      vertex_idx !== undefined
-    ) {
-      const prop = surface.properties[vertex_idx]
-      const [min_val, max_val] = property_range
-      const normalized = max_val > min_val ? (prop - min_val) / (max_val - min_val) : 0.5
-      return get_d3_interpolator(color_scale)(normalized)
-    }
-    // Spin coloring
+  // Flat colour for a surface (material colour, tooltip background)
+  function get_surface_color(surface: FermiIsosurface): string {
     if (color_property === `spin` && surface.spin) {
       return surface.spin === `up` ? `#e41a1c` : `#377eb8`
     }
     return constants.BAND_COLORS[surface.band_index % constants.BAND_COLORS.length]
   }
 
-  // Create geometry for an isosurface
-  function create_isosurface_geometry(
-    surface: Isosurface,
-  ): { geometry: BufferGeometry; dispose: () => void } | null {
-    if (surface.vertices.length === 0 || surface.faces.length === 0) return null
-
-    const positions: number[] = []
-    const normals: number[] = []
-    const colors: number[] = []
-
-    const use_vertex_colors = color_property === `velocity` || color_property === `custom`
-
-    const n_vertices = surface.vertices.length
-
-    for (const face of surface.faces) {
-      if (face.length < 3) continue
-
-      // Fan triangulation: for polygon with N vertices, create N-2 triangles
-      // e.g. quad [0,1,2,3] becomes triangles [0,1,2] and [0,2,3]
-      for (let fan_idx = 1; fan_idx < face.length - 1; fan_idx++) {
-        const idx0 = face[0]
-        const idx1 = face[fan_idx]
-        const idx2 = face[fan_idx + 1]
-
-        // Validate face indices are within bounds (protects against malformed JSON files)
-        if (
-          idx0 < 0 ||
-          idx0 >= n_vertices ||
-          idx1 < 0 ||
-          idx1 >= n_vertices ||
-          idx2 < 0 ||
-          idx2 >= n_vertices
-        ) {
-          continue
-        }
-
-        const v0 = surface.vertices[idx0]
-        const v1 = surface.vertices[idx1]
-        const v2 = surface.vertices[idx2]
-
-        positions.push(...v0, ...v1, ...v2)
-
-        // Use per-vertex normals if available, otherwise compute face normal
-        if (surface.normals && surface.normals.length > 0) {
-          const n0 = surface.normals[idx0] ?? [0, 0, 1]
-          const n1 = surface.normals[idx1] ?? [0, 0, 1]
-          const n2 = surface.normals[idx2] ?? [0, 0, 1]
-          normals.push(...n0, ...n1, ...n2)
-        } else {
-          const e1: Vec3 = math.subtract(v1, v0)
-          const e2: Vec3 = math.subtract(v2, v0)
-          const normal = math.cross_3d(e1, e2)
-          const len = Math.hypot(...normal)
-          const unit_normal = len > 1e-10 ? normal.map((coord) => coord / len) : [0, 0, 1]
-          normals.push(...unit_normal, ...unit_normal, ...unit_normal)
-        }
-
-        // Per-vertex colors for this triangle
-        if (use_vertex_colors) {
-          for (const vert_idx of [idx0, idx1, idx2]) {
-            const color_str = get_surface_color(surface, vert_idx)
-            const color = new Color(color_str)
-            colors.push(color.r, color.g, color.b)
-          }
-        }
-      }
-    }
-
-    const geometry = new BufferGeometry()
-    geometry.setAttribute(`position`, new BufferAttribute(new Float32Array(positions), 3))
-    geometry.setAttribute(`normal`, new BufferAttribute(new Float32Array(normals), 3))
-
-    if (use_vertex_colors) {
-      geometry.setAttribute(`color`, new BufferAttribute(new Float32Array(colors), 3))
-    }
-
-    geometry.computeBoundingSphere()
-
-    return { geometry, dispose: () => geometry.dispose() }
-  }
-
-  // Memoized geometry cache - pre-compute geometries to avoid recomputation on every render
-  type GeometryData = { geometry: BufferGeometry; dispose: () => void }
-  let geometry_cache = $derived.by((): Map<string, GeometryData | null> => {
-    const cache = new SvelteMap<string, GeometryData | null>()
-    for (let idx = 0; idx < visible_surfaces.length; idx++) {
-      const surface = visible_surfaces[idx]
-      const key = `${surface.band_index}-${surface.spin}-${idx}`
-      cache.set(key, create_isosurface_geometry(surface))
-    }
-    return cache
+  // Indexed geometries, one per visible surface (same order as visible_surfaces). Rebuilt when
+  // the surfaces, the colour property or the colour scale change; the previous set is disposed
+  // by the effect below. Custom BufferGeometries are the only three resources needing manual
+  // disposal here — materials created via <T.Mesh*Material> in the template are Threlte-owned.
+  let geometries = $derived.by((): (BufferGeometry | null)[] => {
+    const color_spec = use_vertex_colors
+      ? { colormap: color_scale, color_range: property_range }
+      : undefined
+    return visible_surfaces.map((surface) => build_isosurface_geometry(surface, color_spec))
   })
 
-  // Cleanup geometries when cache changes
   $effect(() => {
-    const current_cache = geometry_cache
+    const current = geometries
     return () => {
-      for (const geo_data of current_cache.values()) {
-        geo_data?.dispose()
-      }
+      for (const geometry of current) geometry?.dispose()
     }
   })
 
@@ -416,7 +318,7 @@
   // This avoids z-fighting while showing both sides correctly
   const get_material_props = (
     surface_color: string,
-    use_vertex_colors: boolean,
+    has_vertex_colors: boolean,
     surface_idx: number,
     pass: `front` | `back`,
   ) => {
@@ -435,36 +337,29 @@
       polygonOffsetUnits: 1 + surface_idx * 0.5,
     }
 
-    if (use_vertex_colors) {
-      return { ...base, vertexColors: true }
-    }
+    if (has_vertex_colors) return { ...base, vertexColors: true }
     return { ...base, color: surface_color }
   }
 
   // Inverse of k_lattice for Cartesian->fractional conversion (cached)
   const k_lattice_inv = $derived(k_lattice_inverse(fermi_data?.k_lattice))
 
+  // Point-group operations used to tile the stored wedge/cell over the full zone. Derived from
+  // the lattice so hexagonal/tetragonal data is not replicated with spurious cubic copies.
+  const symmetry_ops = $derived(
+    effective_tile_bz && fermi_data
+      ? lattice_point_group_matrices(fermi_data.k_lattice)
+      : [IDENTITY_4x4],
+  )
+
   // Throttle state for pointer move events to avoid O(n) vertex lookups causing jank
   let last_hover_time = 0
-
-  // Find index of nearest vertex to a point in a surface
-  function find_nearest_vertex(surface: Isosurface, point: Vec3): number {
-    let [min_dist, nearest_idx] = [Infinity, 0]
-    for (let idx = 0; idx < surface.vertices.length; idx++) {
-      const vertex = surface.vertices[idx]
-      const dist = Math.hypot(point[0] - vertex[0], point[1] - vertex[1], point[2] - vertex[2])
-      if (dist < min_dist) {
-        min_dist = dist
-        nearest_idx = idx
-      }
-    }
-    return nearest_idx
-  }
 
   // Create hover data from pointer event on a surface
   function create_hover_data(
     event: ThreltePointerEvent,
-    surface: Isosurface,
+    surface: FermiIsosurface,
+    geometry: BufferGeometry,
     surface_color: string,
     sym_idx: number,
     sym_matrix: Matrix4Tuple,
@@ -473,15 +368,18 @@
     const position_cartesian: Vec3 = [event.point.x, event.point.y, event.point.z]
     const position_fractional = cartesian_to_fractional(k_lattice_inv, position_cartesian)
 
-    // Transform world-space point to local space for nearest-vertex lookup
-    // surface.vertices are in local space (raw geometry before sym_matrix)
+    // Transform world-space point to local space for nearest-vertex lookup: the geometry's
+    // positions are the raw surface vertices before sym_matrix
     const local_point = event.point.clone()
     const inv_matrix = new Matrix4().fromArray(sym_matrix).invert()
     local_point.applyMatrix4(inv_matrix)
-    const local_position: Vec3 = [local_point.x, local_point.y, local_point.z]
 
     // Find nearest vertex for property lookup (in local space)
-    const nearest_idx = find_nearest_vertex(surface, local_position)
+    const nearest_idx = nearest_vertex_index(geometry, [
+      local_point.x,
+      local_point.y,
+      local_point.z,
+    ])
     const property_value = surface.properties?.[nearest_idx]
     const has_velocities = fermi_data?.metadata?.has_velocities
     const property_name =
@@ -499,6 +397,7 @@
       property_name,
       is_tiled: effective_tile_bz,
       symmetry_index: sym_idx,
+      n_symmetry_ops: symmetry_ops.length,
     }
   }
 
@@ -506,7 +405,8 @@
   // Skips expensive nearest-vertex lookups if called too frequently
   function handle_pointer_move(
     event: ThreltePointerEvent,
-    surface: Isosurface,
+    surface: FermiIsosurface,
+    geometry: BufferGeometry,
     surface_color: string,
     sym_idx: number,
     sym_matrix: Matrix4Tuple,
@@ -514,7 +414,14 @@
     const now = performance.now()
     if (now - last_hover_time < constants.HOVER_THROTTLE_MS) return
     last_hover_time = now
-    hover_data = create_hover_data(event, surface, surface_color, sym_idx, sym_matrix)
+    hover_data = create_hover_data(
+      event,
+      surface,
+      geometry,
+      surface_color,
+      sym_idx,
+      sym_matrix,
+    )
   }
 
   const clear_hover = () => {
@@ -562,23 +469,30 @@
 
   <!-- Fermi surfaces (with optional symmetry tiling) -->
   {#each visible_surfaces as surface, surface_idx (`surface-${surface.band_index}-${surface.spin}-${surface_idx}`)}
-    {@const geo_key = `${surface.band_index}-${surface.spin}-${surface_idx}`}
-    {@const geo_data = geometry_cache.get(geo_key)}
+    {@const geometry = geometries[surface_idx]}
     {@const surface_color = get_surface_color(surface)}
-    {@const use_vertex_colors = color_property === `velocity` || color_property === `custom`}
-    {@const symmetry_ops = effective_tile_bz ? OH_SYMMETRY_MATRICES : [IDENTITY_4x4]}
     {@const renderOrder = surface_render_orders.get(surface) ?? surface_idx}
 
-    {#if geo_data}
+    <!-- A surface without per-vertex properties falls back to its flat colour even in
+         velocity/custom mode, otherwise vertexColors would read a missing attribute -->
+    {#if geometry}
+      {@const has_vertex_colors = geometry.hasAttribute(`color`)}
       {#each symmetry_ops as sym_matrix, sym_idx (`sym-${sym_idx}`)}
         {#snippet mesh_pass(order: number, pass: `wireframe` | `front` | `back`)}
           <T.Mesh
-            geometry={geo_data.geometry}
+            {geometry}
             matrix={sym_matrix}
             matrixAutoUpdate={false}
             renderOrder={order}
             onpointermove={(event: ThreltePointerEvent) =>
-              handle_pointer_move(event, surface, surface_color, sym_idx, sym_matrix)}
+              handle_pointer_move(
+                event,
+                surface,
+                geometry,
+                surface_color,
+                sym_idx,
+                sym_matrix,
+              )}
             onpointerleave={clear_hover}
           >
             {#if pass === `wireframe`}
@@ -592,7 +506,7 @@
               />
             {:else}
               <T.MeshStandardMaterial
-                {...get_material_props(surface_color, use_vertex_colors, surface_idx, pass)}
+                {...get_material_props(surface_color, has_vertex_colors, surface_idx, pass)}
                 metalness={0.1}
                 roughness={0.6}
                 flatShading={false}

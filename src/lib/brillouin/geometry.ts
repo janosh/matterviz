@@ -43,7 +43,7 @@ export function polyhedron_geometry(
 export function k_lattice_inverse(k_lattice: Matrix3x3 | undefined): Matrix3x3 | null {
   if (!k_lattice) return null
   try {
-    return math.create_cart_to_frac_matrix(k_lattice)
+    return math.reciprocal_lattice(k_lattice)
   } catch {
     return null
   }
@@ -82,8 +82,9 @@ const FIT_PADDING = 1 / 0.92
 // Padded diameter of the sphere enclosing the centered parallelepiped k_latticeᵀ·[-0.5, 0.5]³,
 // whose half-extent along Cartesian axis j is 0.5·Σᵢ|k_lattice[i][j]|. Marching cubes leaves
 // Fermi surfaces in that cell rather than in the Wigner-Seitz zone, and for a skew lattice the
-// cell reaches well outside the zone. Duplicated from analyze_surface_topology in
-// fermi-surface/compute.ts, which runs in a worker and so cannot import this three.js module.
+// cell reaches well outside the zone. analyze_surface_topology in fermi-surface/compute.ts
+// computes the same half-extent for its own purpose (surface dimensionality) and stays
+// independent of this three.js-importing module.
 export const k_cell_fit_extent = (
   k_lattice: Matrix3x3 | undefined,
   padding = FIT_PADDING,

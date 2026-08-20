@@ -15,7 +15,7 @@ import {
 import { wrap_to_unit_cell } from '$lib/structure/pbc'
 import { make_site } from '$lib/structure/site'
 import { normalize_scientific_notation, parse_leading_num } from '$lib/utils'
-import type { DataRange, VolumetricData, VolumetricFileData } from './types'
+import { make_volume, type VolumetricData, type VolumetricFileData } from './types'
 
 // === Parse error contract ===
 // parse_chgcar/parse_cube return null and record reasons here (mirrored to console.error).
@@ -29,6 +29,76 @@ const vol_error = (message: string): void => {
 }
 
 // === Fast number parsing utilities ===
+
+// Exact powers of ten up to 1e22 (all representable exactly in binary64)
+const POWERS_OF_TEN = Float64Array.from({ length: 23 }, (_, exp) => Number(`1e${exp}`))
+const MAX_SAFE_MANTISSA = 2 ** 53
+
+// Parse the decimal token text[start, end) into a double. Digits, one optional `.`, and an
+// e/E/d/D exponent (Fortran) are consumed directly from char codes. When the integer
+// mantissa stays below 2^53 and the decimal exponent is within ±22, `mantissa * 10^exp`
+// is a single correctly-rounded IEEE operation (Clinger's fast path) and matches Number()
+// bit for bit; anything else (very long mantissas, `*^`, unicode minus, NaN tokens) takes
+// the general string path.
+export function parse_decimal_token(text: string, start: number, end: number): number {
+  let pos = start
+  let negative = false
+  let code = text.charCodeAt(pos)
+  if (code === 45 || code === 43) {
+    // '-' / '+'
+    negative = code === 45
+    pos++
+  }
+  let mantissa = 0
+  let n_digits = 0
+  let exponent = 0
+  let seen_dot = false
+  for (; pos < end; pos++) {
+    code = text.charCodeAt(pos)
+    if (code >= 48 && code <= 57) {
+      mantissa = mantissa * 10 + (code - 48)
+      n_digits++
+      if (seen_dot) exponent--
+    } else if (code === 46 && !seen_dot) {
+      seen_dot = true
+    } else break
+  }
+  if (n_digits === 0 || mantissa >= MAX_SAFE_MANTISSA) {
+    return Number(normalize_scientific_notation(text.slice(start, end)))
+  }
+  if (pos < end) {
+    code = text.charCodeAt(pos)
+    // e E d D
+    if (code !== 101 && code !== 69 && code !== 100 && code !== 68) {
+      return Number(normalize_scientific_notation(text.slice(start, end)))
+    }
+    pos++
+    let exp_negative = false
+    code = text.charCodeAt(pos)
+    if (code === 45 || code === 43) {
+      exp_negative = code === 45
+      pos++
+    }
+    let exp_value = 0
+    let n_exp_digits = 0
+    for (; pos < end; pos++) {
+      code = text.charCodeAt(pos)
+      if (code < 48 || code > 57) break
+      exp_value = exp_value * 10 + (code - 48)
+      n_exp_digits++
+    }
+    if (pos < end || n_exp_digits === 0) {
+      return Number(normalize_scientific_notation(text.slice(start, end)))
+    }
+    exponent += exp_negative ? -exp_value : exp_value
+  }
+  let value: number
+  if (exponent === 0) value = mantissa
+  else if (exponent > 0 && exponent <= 22) value = mantissa * POWERS_OF_TEN[exponent]
+  else if (exponent < 0 && exponent >= -22) value = mantissa / POWERS_OF_TEN[-exponent]
+  else return Number(normalize_scientific_notation(text.slice(start, end)))
+  return negative ? -value : value
+}
 
 // Parse whitespace-separated numbers directly from a string, starting at `pos`.
 // Writes into a pre-allocated Float64Array and returns { count, end_pos }.
@@ -72,8 +142,7 @@ function parse_float_block(
     const start = pos
     while (pos < len && text.charCodeAt(pos) > 32) pos++
 
-    // Parse number (including Fortran-style D exponents)
-    const num = Number(normalize_scientific_notation(text.slice(start, pos)))
+    const num = parse_decimal_token(text, start, pos)
     if (!Number.isNaN(num)) data[idx++] = num
   }
   return { count: idx - data_offset, end_pos: pos }
@@ -91,90 +160,27 @@ function find_line_offset(text: string, target_line: number): number {
   return pos
 }
 
-// Build 3D grid directly from Float64Array, computing data_range in the same pass.
-type BuildGridOptions = {
-  data: Float64Array
-  nx: number
-  ny: number
-  nz: number
-  divisor?: number
-  data_order?: `x_fastest` | `z_fastest`
-}
-
-function build_grid({
-  data,
-  nx,
-  ny,
-  nz,
-  divisor = 1,
-  data_order = `z_fastest`,
-}: BuildGridOptions): { grid: number[][][]; data_range: DataRange } {
-  const grid: number[][][] = Array(nx)
-  let [min_val, max_val, sum] = [Infinity, -Infinity, 0]
-  const total = nx * ny * nz
-  const data_len = Math.min(data.length, total)
-
-  if (data_len === 0) {
-    // Empty data: return zeroed grid with neutral data_range
-    for (let ix = 0; ix < nx; ix++) {
-      const plane: number[][] = Array(ny)
-      for (let iy = 0; iy < ny; iy++) plane[iy] = Array(nz).fill(0)
-      grid[ix] = plane
-    }
-    return { grid, data_range: { min: 0, max: 0, abs_max: 0, mean: 0 } }
-  }
-
-  if (data_order === `z_fastest`) {
-    // .cube convention: z varies fastest, then y, then x.
-    const ny_nz = ny * nz
-    for (let ix = 0; ix < nx; ix++) {
-      const plane: number[][] = Array(ny)
-      for (let iy = 0; iy < ny; iy++) {
-        const row = Array(nz).fill(0)
-        const base = ix * ny_nz + iy * nz
-        const row_end = Math.min(base + nz, data_len)
-        for (let flat_idx = base; flat_idx < row_end; flat_idx++) {
-          const val = data[flat_idx] / divisor
-          row[flat_idx - base] = val
-          if (val < min_val) min_val = val
-          if (val > max_val) max_val = val
-          sum += val
-        }
-        plane[iy] = row
+// Reorder a Fortran-ordered (x fastest) value block into the z-fastest layout
+// VolumetricData stores, dividing by `divisor` on the way. Unparsed tail entries
+// (short files) stay zero, matching a zero-filled Float64Array.
+function transpose_x_fastest(
+  data: Float64Array,
+  [nx, ny, nz]: Vec3,
+  divisor: number,
+): Float64Array {
+  const values = new Float64Array(nx * ny * nz)
+  const data_len = Math.min(data.length, values.length)
+  const ny_nz = ny * nz
+  let flat_idx = 0
+  for (let iz = 0; iz < nz && flat_idx < data_len; iz++) {
+    for (let iy = 0; iy < ny && flat_idx < data_len; iy++) {
+      const out_base = iy * nz + iz
+      for (let ix = 0; ix < nx && flat_idx < data_len; ix++) {
+        values[ix * ny_nz + out_base] = data[flat_idx++] / divisor
       }
-      grid[ix] = plane
-    }
-  } else {
-    // VASP CHGCAR/ELFCAR/LOCPOT convention: x varies fastest, then y, then z.
-    for (let ix = 0; ix < nx; ix++) {
-      const plane: number[][] = Array(ny)
-      for (let iy = 0; iy < ny; iy++) plane[iy] = Array(nz).fill(0)
-      grid[ix] = plane
-    }
-    let [flat_idx, data_exhausted] = [0, false]
-    for (let iz = 0; iz < nz; iz++) {
-      for (let iy = 0; iy < ny; iy++) {
-        for (let ix = 0; ix < nx; ix++) {
-          if (flat_idx >= data_len) {
-            data_exhausted = true
-            break
-          }
-          const val = data[flat_idx] / divisor
-          grid[ix][iy][iz] = val
-          if (val < min_val) min_val = val
-          if (val > max_val) max_val = val
-          sum += val
-          flat_idx++
-        }
-        if (data_exhausted) break
-      }
-      if (data_exhausted) break
     }
   }
-
-  const abs_max = Math.max(Math.abs(min_val), Math.abs(max_val))
-  const data_range = { min: min_val, max: max_val, abs_max, mean: sum / data_len }
-  return { grid, data_range }
+  return values
 }
 
 // === CHGCAR Parser ===
@@ -302,25 +308,16 @@ export function parse_chgcar(content: string): VolumetricFileData | null {
     // Use Math.abs to guard against negative determinant (left-handed lattice).
     const cell_volume = Math.abs(lattice_params.volume)
     const divisor = cell_volume > 1e-30 ? cell_volume : 1
-    const { grid, data_range } = build_grid({
-      data: data.subarray(0, parsed_count),
-      nx: ngx,
-      ny: ngy,
-      nz: ngz,
-      divisor,
-      data_order: `x_fastest`,
-    })
-
-    volumes.push({
-      grid,
-      grid_dims: [ngx, ngy, ngz],
-      lattice,
-      origin: [0, 0, 0],
-      data_range,
-      data_order: `x_fastest`,
-      periodic: true, // VASP grids span [0,1) with N points, wrapping at boundaries
-      label: volume_labels[vol_idx],
-    })
+    const dims: Vec3 = [ngx, ngy, ngz]
+    const values = transpose_x_fastest(data.subarray(0, parsed_count), dims, divisor)
+    volumes.push(
+      make_volume(values, dims, {
+        lattice,
+        origin: [0, 0, 0],
+        periodic: true, // VASP grids span [0,1) with N points, wrapping at boundaries
+        label: volume_labels[vol_idx],
+      }),
+    )
 
     // Skip augmentation occupancies and any remaining non-numeric lines
     while (pos < content.length) {
@@ -404,14 +401,6 @@ export function parse_cube(
   const [voxel_a, voxel_b, voxel_c] = voxel_lines.map((line) =>
     math.scale(line.slice(1, 4) as Vec3, unit_scale),
   )
-
-  // Lattice vectors = grid_dim * voxel_vector
-  const lattice: Matrix3x3 = [
-    math.scale(voxel_a, n_grid[0]),
-    math.scale(voxel_b, n_grid[1]),
-    math.scale(voxel_c, n_grid[2]),
-  ]
-
   const origin = math.scale(raw_origin, unit_scale)
 
   // Periodicity: use explicit override if provided, else heuristic based on origin.
@@ -420,14 +409,25 @@ export function parse_cube(
   // override when the heuristic is wrong (e.g. molecule centered at origin).
   const is_periodic = options.periodic ?? Math.hypot(...origin) < 1e-6
 
+  // Grid point i sits at origin + i * voxel. A periodic grid's N points tile the
+  // full cell (extent N * voxel); a finite grid's data ends at its last point, so
+  // its bounding box is (N - 1) * voxel. Using N * voxel for finite grids would
+  // stretch the rendered field by N / (N - 1) relative to the atoms.
+  const extent = (n_points: number) => (is_periodic ? n_points : Math.max(n_points - 1, 1))
+  const lattice: Matrix3x3 = [
+    math.scale(voxel_a, extent(n_grid[0])),
+    math.scale(voxel_b, extent(n_grid[1])),
+    math.scale(voxel_c, extent(n_grid[2])),
+  ]
+
   // Parse atomic positions
   const sites: Site[] = []
   let cube_cart_to_frac: (v: Vec3) => Vec3
   try {
     cube_cart_to_frac = math.create_cart_to_frac(lattice)
   } catch {
-    // Non-periodic system (molecule), use identity
-    cube_cart_to_frac = (vec: Vec3): Vec3 => [vec[0], vec[1], vec[2]]
+    vol_error(`.cube voxel vectors are singular (coplanar); cannot place atoms in the grid`)
+    return null
   }
 
   for (let atom_idx = 0; atom_idx < n_atoms; atom_idx++) {
@@ -488,25 +488,15 @@ export function parse_cube(
     }
   }
 
-  const { grid, data_range } = build_grid({
-    data: data.subarray(0, parsed_count),
-    nx: n_grid[0],
-    ny: n_grid[1],
-    nz: n_grid[2],
-    data_order: `z_fastest`,
-  })
-
+  // .cube data is already z-fastest (z varies fastest, then y, then x); an
+  // incomplete block leaves its zero-initialized tail in place
   const volumes: VolumetricData[] = [
-    {
-      grid,
-      grid_dims: n_grid,
+    make_volume(data, n_grid, {
       lattice,
       origin,
-      data_range,
-      data_order: `z_fastest`,
       periodic: is_periodic, // periodic systems wrap; molecular .cube files include both endpoints
       label: `volumetric data`,
-    },
+    }),
   ]
 
   return { structure, volumes }

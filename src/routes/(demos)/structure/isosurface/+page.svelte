@@ -204,12 +204,12 @@
   {@const vol = active_volume}
   <div class="stats-bar">
     {#if vol}
-      <span title="Grid dimensions">Grid: {vol.grid_dims.join(` × `)}</span>
+      <span title="Grid dimensions">Grid: {vol.dims.join(` × `)}</span>
       <span title="Data minimum">Min: {format_num(data_range.min, `.3~g`)}</span>
       <span title="Data maximum">Max: {format_num(data_range.max, `.3~g`)}</span>
       <span title="Data mean">Mean: {format_num(data_range.mean, `.3~g`)}</span>
       <span title="Total grid points">
-        Points: {format_num(vol.grid_dims[0] * vol.grid_dims[1] * vol.grid_dims[2])}
+        Points: {format_num(vol.values.length)}
       </span>
     {/if}
     {#if parse_time_ms !== undefined}
