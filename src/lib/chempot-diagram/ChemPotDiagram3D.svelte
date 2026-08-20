@@ -10,14 +10,13 @@
   import Spinner from '$lib/feedback/Spinner.svelte'
   import type { ExportSection } from '$lib/io'
   import ExportPane from '$lib/io/ExportPane.svelte'
-  import { format_num } from '$lib/labels'
   import { FullscreenButton, SettingsSection } from '$lib/layout'
   import { ViewerPane } from '$lib/overlays'
   import type { Vec2, Vec3 } from '$lib/math'
-  import { convex_hull_2d, cross_3d, merge_coplanar_triangles, normalize_vec } from '$lib/math'
+  import { cross_3d, merge_coplanar_triangles, normalize_vec } from '$lib/math'
   import { ColorBar, ScatterPlot3DControls } from '$lib/plot'
   import { create_renderer, dispose_on_change, webgpu_available } from '$lib/scene'
-  import { constrain_tooltip_position, pad_rect, rects_overlap } from '$lib/plot/core/layout'
+  import { pad_rect, rects_overlap } from '$lib/plot/core/layout'
   import type {
     AxisConfig3D,
     CameraProjection3D,
@@ -32,6 +31,7 @@
   import { ConvexGeometry } from 'three/examples/jsm/geometries/ConvexGeometry.js'
   import { compute_chempot_async } from './async-compute.svelte'
   import ChemPotScene3D from './ChemPotScene3D.svelte'
+  import ChemPotTooltip from './ChemPotTooltip.svelte'
   import { ARITY_COLORS, get_chempot_interpolator, get_domain_color_data } from './color'
   import { rescale_zoom_to_fit } from './camera'
   import {
@@ -79,7 +79,9 @@
   import { CHEMPOT_DEFAULTS } from './types'
 
   type SceneProps = ComponentProps<typeof ChemPotScene3D>
-  type RenderDomain = SceneProps[`render_domains`][number]
+  // Boundary edges are kept in data coords (point pairs) so edge/hover geometry can swizzle
+  // them with whatever axis stretch is current
+  type RenderDomain = SceneProps[`render_domains`][number] & { edges: [number[], number[]][] }
   type HoverMesh = SceneProps[`hover_meshes`][number]
 
   const edge_key = (key_a: string, key_b: string): string =>
@@ -95,7 +97,6 @@
     interpolate_temperature = CHEMPOT_DEFAULTS.interpolate_temperature,
     max_interpolation_gap = CHEMPOT_DEFAULTS.max_interpolation_gap,
     hover_info = $bindable<ChemPotHoverInfo | null>(null),
-    render_local_tooltip = true,
     wrapper = $bindable(),
     fullscreen = $bindable(false),
     fullscreen_toggle = true,
@@ -110,7 +111,6 @@
     interpolate_temperature?: boolean
     max_interpolation_gap?: number
     hover_info?: ChemPotHoverInfo | null
-    render_local_tooltip?: boolean
     // bindable: top-level wrapper element
     wrapper?: HTMLDivElement
     // bindable: fullscreen state
@@ -349,21 +349,54 @@
     return available_formulas.filter((formula) => formula.toLowerCase().includes(query))
   })
 
-  const domain_annotation_cache = new Map<string, number[]>()
+  // Outline (boundary edges) and label anchor per domain. Planar domains (every domain of a
+  // true ternary lies on its entry's hyperplane) take the PCA-projected 2D hull; projections
+  // of quaternary+ systems yield polyhedra, whose crease edges come from a 3D hull instead.
+  // Cached by vertex content: domains recur unchanged across control toggles that rebuild
+  // render_domains (colors, overlays), and the hulls are the costly part.
+  const domain_outline_cache = new Map<
+    string,
+    { edges: [number[], number[]][]; ann_loc: number[] }
+  >()
+  function get_domain_outline(points_3d: number[][]) {
+    const cache_key = points_3d.map((point) => point.join(`,`)).join(`;`)
+    const cached = domain_outline_cache.get(cache_key)
+    if (cached) return cached
+    const { simplex_indices, ann_loc, is_planar } =
+      get_3d_domain_simplexes_and_ann_loc(points_3d)
+    const planar_edges = simplex_indices.map(([idx_a, idx_b]): [number[], number[]] => [
+      points_3d[idx_a],
+      points_3d[idx_b],
+    ])
+    const outline = { edges: is_planar ? planar_edges : hull_crease_edges(points_3d), ann_loc }
+    domain_outline_cache.set(cache_key, outline)
+    return outline
+  }
 
-  function get_domain_ann_loc(points_3d: number[][]): number[] {
-    if (points_3d.length >= 3) {
-      const cache_key = points_3d.map((point) => point.join(`,`)).join(`;`)
-      const cached = domain_annotation_cache.get(cache_key)
-      if (cached) return cached
-      const ann_loc = get_3d_domain_simplexes_and_ann_loc(points_3d).ann_loc
-      domain_annotation_cache.set(cache_key, ann_loc)
-      return ann_loc
+  // Crease edges (dihedral angle > 1°) of the 3D convex hull, as point pairs in the input
+  // coordinates. Degenerate hulls (ConvexGeometry throws) fall back to an empty outline.
+  function hull_crease_edges(points_3d: number[][]): [number[], number[]][] {
+    try {
+      const hull = new ConvexGeometry(
+        dedup_3d(points_3d).map(
+          ([x_val, y_val, z_val]) => new THREE.Vector3(x_val, y_val, z_val),
+        ),
+      )
+      const creases = new THREE.EdgesGeometry(hull)
+      hull.dispose()
+      const coords = creases.getAttribute(`position`).array
+      creases.dispose()
+      const edges: [number[], number[]][] = []
+      for (let offset = 0; offset + 5 < coords.length; offset += 6) {
+        edges.push([
+          [coords[offset], coords[offset + 1], coords[offset + 2]],
+          [coords[offset + 3], coords[offset + 4], coords[offset + 5]],
+        ])
+      }
+      return edges
+    } catch {
+      return []
     }
-    return points_3d[0].map(
-      (_, col_idx) =>
-        points_3d.reduce((sum, point) => sum + point[col_idx], 0) / points_3d.length,
-    )
   }
 
   const render_domains = $derived.by((): RenderDomain[] => {
@@ -387,10 +420,12 @@
         ? pad_domain_points(pts, indices, new_lims, default_min_limit, element_padding)
         : pts
       if (padded.length < 2) continue
+      const { edges, ann_loc } = get_domain_outline(padded)
       result.push({
         formula,
         points_3d: padded,
-        ann_loc: get_domain_ann_loc(padded),
+        edges,
+        ann_loc,
         is_draw_formula: formulas_to_draw.includes(formula),
         label_font_size: bbox_diagonal(padded),
       })
@@ -521,107 +556,6 @@
   let last_data_center: Vec3 | null = null
   let last_default_zoom: number | null = null
 
-  // Compute domain boundary edges via axis-aligned 2D convex hull projection.
-  // Each domain in a chem pot diagram is a convex polygon/polyhedron. We project
-  // to 2D (trying all 3 axis-aligned planes) and use the best projection's
-  // convex hull boundary. This reliably handles both flat and 3D domains.
-  function get_domain_edges(pts: number[][]): [number[], number[]][] {
-    const unique = dedup_3d(pts)
-    if (unique.length < 2) return []
-    if (unique.length === 2) return [[unique[0], unique[1]]]
-    if (unique.length === 3) {
-      return [
-        [unique[0], unique[1]],
-        [unique[1], unique[2]],
-        [unique[0], unique[2]],
-      ]
-    }
-    return get_2d_hull_edges(unique)
-  }
-
-  function polygon_area_2d(points_2d: Vec2[]): number {
-    if (points_2d.length < 3) return 0
-    let area_twice = 0
-    for (let idx = 0; idx < points_2d.length; idx++) {
-      const current = points_2d[idx]
-      const next = points_2d[(idx + 1) % points_2d.length]
-      area_twice += current[0] * next[1] - next[0] * current[1]
-    }
-    return Math.abs(area_twice) / 2
-  }
-
-  // Compute domain edges from the single best axis-aligned projection
-  // (largest non-degenerate hull area). Unioning multiple projections can add
-  // non-physical diagonals for nearly coplanar domains.
-  // Called only from get_domain_edges with 4+ unique points
-  function get_2d_hull_edges(pts: number[][]): [number[], number[]][] {
-    let selected_hull: Vec2[] = []
-    let selected_coord_to_idx: SvelteMap<string, number> | null = null
-    let selected_hull_area = -1
-
-    for (const drop of [0, 1, 2]) {
-      const axes = [0, 1, 2].filter((ax) => ax !== drop)
-
-      // Skip this projection if points collapse to a line (near-zero range in
-      // either projected axis). This avoids spurious edges from edge-on views.
-      let min0 = Infinity,
-        max0 = -Infinity,
-        min1 = Infinity,
-        max1 = -Infinity
-      for (const pt of pts) {
-        const v0 = pt[axes[0]],
-          v1 = pt[axes[1]]
-        if (v0 < min0) min0 = v0
-        if (v0 > max0) max0 = v0
-        if (v1 < min1) min1 = v1
-        if (v1 > max1) max1 = v1
-      }
-      const range0 = max0 - min0,
-        range1 = max1 - min1
-      const max_2d_range = Math.max(range0, range1)
-      if (max_2d_range < 1e-6 || Math.min(range0, range1) < max_2d_range * 0.01) {
-        continue
-      }
-
-      // Build coordinate lookup for this projection
-      const coord_to_idx = new SvelteMap<string, number>()
-      const pts_2d: Vec2[] = []
-      for (let idx = 0; idx < pts.length; idx++) {
-        const p2 = [pts[idx][axes[0]], pts[idx][axes[1]]] as Vec2
-        pts_2d.push(p2)
-        const key = `${p2[0].toFixed(6)},${p2[1].toFixed(6)}`
-        if (!coord_to_idx.has(key)) coord_to_idx.set(key, idx)
-      }
-
-      const hull = convex_hull_2d(pts_2d)
-      if (hull.length < 3) continue
-      const hull_area = polygon_area_2d(hull)
-      if (hull_area <= selected_hull_area) continue
-      selected_hull = hull
-      selected_coord_to_idx = coord_to_idx
-      selected_hull_area = hull_area
-    }
-
-    if (!selected_coord_to_idx || selected_hull.length < 3) return []
-
-    const edges: [number[], number[]][] = []
-    for (let idx = 0; idx < selected_hull.length; idx++) {
-      const point_a = selected_hull[idx]
-      const point_b = selected_hull[(idx + 1) % selected_hull.length]
-      const point_a_idx = selected_coord_to_idx.get(
-        `${point_a[0].toFixed(6)},${point_a[1].toFixed(6)}`,
-      )
-      const point_b_idx = selected_coord_to_idx.get(
-        `${point_b[0].toFixed(6)},${point_b[1].toFixed(6)}`,
-      )
-      // Hull vertices come from pts_2d, so lookups always succeed
-      if (point_a_idx == null || point_b_idx == null) continue
-      edges.push([pts[point_a_idx], pts[point_b_idx]])
-    }
-
-    return edges
-  }
-
   // Build globally deduplicated edge geometry for domain boundaries using
   // 3D convex hull crease edges (not 2D projected hull).
   const edge_geometry = $derived.by(() => {
@@ -647,15 +581,14 @@
     const positions: number[] = []
     for (const domain of render_domains) {
       if (domain.is_draw_formula) continue
-      // Compute edges in swizzled (Three.js) coords since ConvexGeometry works there
-      const swizzled = domain.points_3d.map((point) => to_render_xyz(point))
-      for (const [pa, pb] of get_domain_edges(swizzled)) {
-        const ka = pa.map((coord) => coord.toFixed(4)).join(`,`)
-        const kb = pb.map((coord) => coord.toFixed(4)).join(`,`)
-        const key = edge_key(ka, kb)
+      for (const [pt_a, pt_b] of domain.edges) {
+        // round so a shared edge whose endpoints came from different hyperplane triples
+        // (equal to ~1e-12, not bit-identical) is still drawn once
+        const point_key = (point: number[]) => point.map((val) => val.toFixed(4)).join(`,`)
+        const key = edge_key(point_key(pt_a), point_key(pt_b))
         if (seen.has(key)) continue
         seen.add(key)
-        positions.push(pa[0], pa[1], pa[2], pb[0], pb[1], pb[2])
+        positions.push(...to_render_xyz(pt_a), ...to_render_xyz(pt_b))
       }
     }
     const geom = new THREE.BufferGeometry()
@@ -692,10 +625,9 @@
   // normal component (pointing toward 0 eV / the elemental reference).
   const hull_base_geometry = $derived.by((): THREE.BufferGeometry | null => {
     if (!occlusion_hull_geometry) return null
-    const src = occlusion_hull_geometry.index
-      ? occlusion_hull_geometry.toNonIndexed()
-      : occlusion_hull_geometry.clone()
-    const pos = src.getAttribute(`position`)
+    // merge_coplanar_geometry already returns non-indexed geometry, so read its positions
+    // directly (the filter below builds a fresh buffer and never mutates this one)
+    const pos = occlusion_hull_geometry.getAttribute(`position`)
     const n_verts = pos.count
     const n_faces = n_verts / 3
     // Hull centroid for orienting face normals outward
@@ -1023,11 +955,10 @@
     for (const domain of render_domains) {
       if (!domain.is_draw_formula) continue
       const color_idx = formulas_to_draw.indexOf(domain.formula) % formula_colors.length
-      const swizzled = domain.points_3d.map((point) => to_render_xyz(point))
-      const positions: number[] = []
-      for (const [pa, pb] of get_domain_edges(swizzled)) {
-        positions.push(pa[0], pa[1], pa[2], pb[0], pb[1], pb[2])
-      }
+      const positions = domain.edges.flatMap(([pt_a, pt_b]) => [
+        ...to_render_xyz(pt_a),
+        ...to_render_xyz(pt_b),
+      ])
       const geom = new THREE.BufferGeometry()
       geom.setAttribute(`position`, new THREE.Float32BufferAttribute(positions, 3))
       result.push({ geometry: geom, color: formula_colors[color_idx] })
@@ -1164,8 +1095,6 @@
       if (!hover_geometry) continue
       const { geometry, n_vertices } = hover_geometry
 
-      const swizzled_points = domain.points_3d.map((point) => to_render_xyz(point))
-      const edge_count = get_domain_edges(swizzled_points).length
       const axis_ranges = build_axis_ranges(domain.points_3d, plot_elements)
       const touches_limits = get_touches_limits(domain.points_3d, lims)
       const energy_stats = energy_stats_by_formula.get(domain.formula) ?? {
@@ -1178,7 +1107,7 @@
         formula: domain.formula,
         view: `3d`,
         n_vertices,
-        n_edges: edge_count,
+        n_edges: domain.edges.length,
         n_points: domain.points_3d.length,
         ann_loc: domain.ann_loc,
         axis_ranges,
@@ -1494,21 +1423,6 @@
   })
 
   let locked_hover_formula = $state<string | null>(null)
-  let tooltip_el = $state<HTMLElement>()
-
-  const tooltip_pos = $derived.by(() => {
-    const pointer = hover_info?.pointer
-    if (!pointer) return { x: 4, y: 4 }
-    return constrain_tooltip_position(
-      pointer.x,
-      pointer.y,
-      tooltip_el?.offsetWidth ?? 200,
-      tooltip_el?.offsetHeight ?? 100,
-      container_width,
-      container_height,
-      { offset: 0 },
-    )
-  })
 
   function set_hover_info(domain_data: HoverMesh, raw_event: unknown): void {
     hover_info = with_hover_pointer<ChemPotHoverInfo>(
@@ -1886,48 +1800,13 @@
       </div>
     {/if}
   {/if}
-  {#if render_local_tooltip && show_tooltip && hover_info?.view === `3d`}
-    <aside
-      bind:this={tooltip_el}
-      class="phase-tooltip"
-      style="left: {tooltip_pos.x}px; top: {tooltip_pos.y}px"
-    >
-      <h4>
-        {#each formula_label_segments(hover_info.formula) as segment}
-          <span class:formula-subscript={segment.subscript}>{segment.text}</span>
-        {/each}
-      </h4>
-      {#if locked_hover_formula === hover_info.formula}
-        <p>Pinned · Press Esc to unlock</p>
-      {/if}
-      <p>
-        Vertices: {hover_info.n_vertices} · Edges: {hover_info.n_edges} · Points:
-        {hover_info.n_points}
-      </p>
-      <p>
-        Entries: {hover_info.matching_entry_count}
-        {#if hover_info.min_energy_per_atom !== null && hover_info.max_energy_per_atom !== null}
-          · E/atom: {format_num(hover_info.min_energy_per_atom, `.4~g`)}
-          to {format_num(hover_info.max_energy_per_atom, `.4~g`)} eV
-        {/if}
-      </p>
-      {#if tooltip_detail_level === `detailed`}
-        <h5>Axis ranges</h5>
-        {#each hover_info.axis_ranges as axis_range (axis_range.element)}
-          <p>
-            {axis_range.element}: {format_num(axis_range.min_val, `.4~g`)} to
-            {format_num(axis_range.max_val, `.4~g`)} eV
-          </p>
-        {/each}
-        <p>
-          Centroid: ({hover_info.ann_loc.map((value) => format_num(value, `.3~g`)).join(`, `)})
-        </p>
-        {#if hover_info.touches_limits.length > 0}
-          <h5>Touches bounds</h5>
-          <p>{hover_info.touches_limits.join(`, `)}</p>
-        {/if}
-      {/if}
-    </aside>
+  {#if show_tooltip && hover_info?.view === `3d`}
+    <ChemPotTooltip
+      {hover_info}
+      pinned={locked_hover_formula === hover_info.formula}
+      detail_level={tooltip_detail_level}
+      constrain_to={{ width: container_width, height: container_height }}
+    />
   {/if}
 </div>
 
@@ -2108,40 +1987,6 @@
     justify-content: center;
     height: 100%;
     color: var(--text-color, #666);
-  }
-  .formula-subscript {
-    font-size: calc(11em / 12);
-    vertical-align: -0.28em;
-  }
-  .phase-tooltip {
-    position: absolute;
-    max-width: min(32rem, 92vw);
-    background: var(--tooltip-bg, light-dark(rgba(255, 255, 255, 0.95), rgba(0, 0, 0, 0.9)));
-    color: var(--tooltip-text, var(--text-color, #222));
-    border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
-    border-radius: 6px;
-    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
-    padding: 4px 6px;
-    font-size: 12px;
-    line-height: 1.25;
-    pointer-events: none;
-    z-index: 100;
-  }
-  .phase-tooltip h4 {
-    margin: 0 0 2px;
-    font-size: 13px;
-  }
-  .phase-tooltip p {
-    margin: 1px 0;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .phase-tooltip h5 {
-    margin-top: 4px;
-    margin-bottom: 0;
-    font-size: 12px;
-    font-weight: 600;
   }
   .arity-legend {
     position: absolute;

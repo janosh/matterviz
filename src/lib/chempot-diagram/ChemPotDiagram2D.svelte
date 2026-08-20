@@ -8,10 +8,9 @@
   import ExportPane from '$lib/io/ExportPane.svelte'
   import { export_svg_as_png, export_svg_as_svg } from '$lib/io/export'
   import { ColorBar, ScatterPlot } from '$lib/plot'
-  import { constrain_tooltip_position } from '$lib/plot/core/layout'
   import type { DataSeries, UserContentProps } from '$lib/plot/core/types'
-  import { sanitize_html } from '$lib/sanitize'
   import { compute_chempot_async } from './async-compute.svelte'
+  import ChemPotTooltip from './ChemPotTooltip.svelte'
   import { ARITY_COLORS, get_chempot_interpolator, get_domain_color_data } from './color'
   import {
     CHEMPOT_COLOR_MODE_OPTIONS,
@@ -42,7 +41,6 @@
     interpolate_temperature = CHEMPOT_DEFAULTS.interpolate_temperature,
     max_interpolation_gap = CHEMPOT_DEFAULTS.max_interpolation_gap,
     hover_info = $bindable<ChemPotHoverInfo | null>(null),
-    render_local_tooltip = true,
     wrapper = $bindable(),
     fullscreen = $bindable(false),
     export_pane_open = $bindable(false),
@@ -55,7 +53,6 @@
     interpolate_temperature?: boolean
     max_interpolation_gap?: number
     hover_info?: ChemPotHoverInfo | null
-    render_local_tooltip?: boolean
     // bindable: plot wrapper element (used for export and pointer hit-testing)
     wrapper?: HTMLDivElement
     // bindable: fullscreen state (managed by the internal ScatterPlot)
@@ -291,21 +288,6 @@
     set_hover_info(formula, pts, data.event)
   }
 
-  let tooltip_el = $state<HTMLElement>()
-  const tooltip_pos = $derived.by(() => {
-    const pointer = hover_info?.pointer
-    if (!pointer) return { x: 4, y: 4 }
-    return constrain_tooltip_position(
-      pointer.x,
-      pointer.y,
-      tooltip_el?.offsetWidth ?? 150,
-      tooltip_el?.offsetHeight ?? 40,
-      render_width,
-      render_height,
-      { offset: 0 },
-    )
-  })
-
   // === Export ===
   const get_svg_element = (): SVGSVGElement | null =>
     wrapper?.querySelector<SVGSVGElement>(`svg`) ?? null
@@ -526,19 +508,13 @@
         {/each}
       </div>
     {/if}
-    {#if render_local_tooltip && show_tooltip && hover_info?.view === `2d`}
-      <aside
-        bind:this={tooltip_el}
-        class="tooltip"
-        style="left: {tooltip_pos.x}px; top: {tooltip_pos.y}px"
-      >
-        <strong>
-          {@html sanitize_html(get_electro_neg_formula(hover_info.formula, false, ``, `.3~s`))}
-        </strong>
-        {#if locked_hover_formula === hover_info.formula}
-          <br />Pinned · Press Esc to unlock
-        {/if}
-      </aside>
+    {#if show_tooltip && hover_info?.view === `2d`}
+      <ChemPotTooltip
+        {hover_info}
+        pinned={locked_hover_formula === hover_info.formula}
+        detail_level={config.tooltip_detail_level ?? CHEMPOT_DEFAULTS.tooltip_detail_level}
+        constrain_to={{ width: render_width, height: render_height }}
+      />
     {/if}
     {#if show_temperature_slider && temperature !== undefined}
       <TemperatureSlider
@@ -598,17 +574,6 @@
     fill: var(--text-color, currentColor);
     opacity: 0.7;
     pointer-events: none;
-  }
-  .tooltip {
-    position: absolute;
-    background: var(--tooltip-bg, light-dark(rgba(255, 255, 255, 0.95), rgba(0, 0, 0, 0.9)));
-    color: var(--tooltip-text, var(--text-color, #fff));
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 12px;
-    pointer-events: none;
-    white-space: nowrap;
-    z-index: 10;
   }
   .arity-legend {
     position: absolute;

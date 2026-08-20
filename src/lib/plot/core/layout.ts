@@ -545,40 +545,6 @@ export const calc_auto_padding = ({
   }
 }
 
-const constrain_axis_position = (
-  cursor: number,
-  size: number,
-  viewport_size: number,
-  offset: number,
-): number => {
-  const distance = Math.abs(offset)
-  const after = cursor + distance
-  const before = cursor - distance - size
-  const preferred = offset >= 0 ? after : before
-  const alternate = offset >= 0 ? before : after
-  const overflow = offset >= 0 ? preferred + size > viewport_size : preferred < 0
-  return Math.max(0, Math.min(overflow ? alternate : preferred, viewport_size - size))
-}
-
-// Positive offsets prefer right/down; negative offsets prefer left/up.
-export function constrain_tooltip_position(
-  cursor_x: number,
-  cursor_y: number,
-  tooltip_width: number,
-  tooltip_height: number,
-  viewport_width: number,
-  viewport_height: number,
-  options: { offset?: number; offset_x?: number; offset_y?: number } = {},
-): { x: number; y: number } {
-  const { offset = 10 } = options
-  const offset_x = options.offset_x ?? offset
-  const offset_y = options.offset_y ?? offset
-  return {
-    x: constrain_axis_position(cursor_x, tooltip_width, viewport_width, offset_x),
-    y: constrain_axis_position(cursor_y, tooltip_height, viewport_height, offset_y),
-  }
-}
-
 // Continuous placement algorithm with grid sampling and overlap scoring
 // Finds the optimal position for a legend/colorbar by sampling a grid of candidates
 // and scoring each by data point overlap and distance to exclusion zones

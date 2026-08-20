@@ -37,9 +37,9 @@ export const PHASE_DIAGRAM_DEFAULTS = Object.freeze({
   // Appearance
   font_size: 12,
   special_point_radius: 5,
-  // Axes
+  // Axes (tick *targets* for d3 scale.ticks; 5 keeps a 1600 K span at 500 K steps)
   x_ticks: 5,
-  y_ticks: 6,
+  y_ticks: 5,
   // Tie-line
   tie_line: Object.freeze({
     stroke_width: 1.5,
@@ -73,7 +73,7 @@ export const merge_phase_diagram_config = (config: Partial<PhaseDiagramConfig>) 
 
 // Phase colors as hex - single source of truth
 // Extended palette supports 3+ phase regions (Greek letters α through λ)
-export const PHASE_COLOR_HEX = {
+const PHASE_COLOR_HEX = {
   liquid: `#87cefc`, // light sky blue
   alpha: `#90ee90`, // light green
   beta: `#ffb6c1`, // light pink
@@ -88,33 +88,11 @@ export const PHASE_COLOR_HEX = {
   lambda: `#bc8f8f`, // rosy brown
   two_phase: `#c8c8c8`,
   default: `#b4b4b4`,
-  tie_line: `#ff6b6b`,
 } as const
 
-export type PhaseColorKey = keyof typeof PHASE_COLOR_HEX
+type PhaseColorKey = keyof typeof PHASE_COLOR_HEX
 
-// Derive RGB string format (e.g. "135, 206, 250") for custom alpha usage
-export const PHASE_COLOR_RGB = Object.freeze(
-  Object.fromEntries(
-    Object.entries(PHASE_COLOR_HEX).map(([key, hex]) => {
-      const red = parseInt(hex.slice(1, 3), 16)
-      const green = parseInt(hex.slice(3, 5), 16)
-      const blue = parseInt(hex.slice(5, 7), 16)
-      return [key, `${red}, ${green}, ${blue}`]
-    }),
-  ),
-) as Record<PhaseColorKey, string>
-
-// Derive rgba() format with default alpha using add_alpha
-const PHASE_ALPHA = { two_phase: 0.5, default: 0.5, tie_line: 1 } as const
-export const PHASE_COLORS = Object.freeze(
-  Object.fromEntries(
-    Object.entries(PHASE_COLOR_HEX).map(([key, hex]) => [
-      key,
-      add_alpha(hex, key in PHASE_ALPHA ? PHASE_ALPHA[key as keyof typeof PHASE_ALPHA] : 0.6),
-    ]),
-  ),
-) as Record<PhaseColorKey, string>
+export const TIE_LINE_COLOR = `#ff6b6b`
 
 // Phase pattern matching rules: [substrings to match, color key, optional prefix check]
 // Order matters: theta before eta (since "theta" contains "eta" as substring)
@@ -134,7 +112,7 @@ const PHASE_PATTERNS: [string[], PhaseColorKey, string?][] = [
 ]
 
 // Get color key for a single phase name (supports Greek letters and common phase notation)
-export function get_phase_color_key(name: string): PhaseColorKey {
+function get_phase_color_key(name: string): PhaseColorKey {
   const lower = name.toLowerCase().trim()
   if (lower === `l`) return `liquid` // exact match for shorthand "L"
   for (const [patterns, key, prefix] of PHASE_PATTERNS) {
@@ -144,21 +122,21 @@ export function get_phase_color_key(name: string): PhaseColorKey {
   return `default`
 }
 
-// Get phase color - returns rgba() by default, or RGB string if format='rgb'
-export function get_phase_color(name: string, format: `rgba` | `rgb` = `rgba`): string {
+// Phase fill color: translucent rgba() for region fills (two-phase/unknown regions are
+// a bit more transparent), or the opaque hex for markers.
+export function get_phase_color(name: string, format: `rgba` | `hex` = `rgba`): string {
   const key: PhaseColorKey = name.includes(`+`) ? `two_phase` : get_phase_color_key(name)
-  return format === `rgb` ? PHASE_COLOR_RGB[key] : PHASE_COLORS[key]
-}
-
-// Gradient stop for multi-phase region gradients
-export interface GradientStop {
-  offset: number // 0-1 range
-  color: string // hex color
+  const hex = PHASE_COLOR_HEX[key]
+  if (format === `hex`) return hex
+  return add_alpha(hex, key === `two_phase` || key === `default` ? 0.5 : 0.6)
 }
 
 // Get gradient colors for multi-phase regions (2+ phases separated by '+')
-// Returns array of evenly-spaced gradient stops, or null for single-phase regions
-export function get_multi_phase_gradient(name: string): GradientStop[] | null {
+// Returns array of evenly-spaced gradient stops (offset in [0, 1], hex color), or null
+// for single-phase regions
+export function get_multi_phase_gradient(
+  name: string,
+): { offset: number; color: string }[] | null {
   if (!name.includes(`+`)) return null
   const phases = name
     .split(`+`)
@@ -541,8 +519,9 @@ export function summarize_models(
 
 // Chemical Formula Parsing Utilities (for pseudo-binary phase diagrams)
 
-// Token from formula tokenization - can be text, subscript, or superscript
-export interface FormulaToken {
+// Markup token for rendering a formula - plain text, subscript, or superscript run.
+// (Not $lib/composition's FormulaToken, which is an element/amount pair.)
+interface FormulaMarkupToken {
   text?: string
   sub?: string
   sup?: string
@@ -568,7 +547,7 @@ export function is_compound(name: string): boolean {
 //   "Al2O3" -> [{text: "Al"}, {sub: "2"}, {text: "O"}, {sub: "3"}]
 //   "Fe" -> [{text: "Fe"}]
 //   "α-Fe" -> [{text: "α-Fe"}] (Greek phases pass through unchanged)
-export function tokenize_formula(formula: string): FormulaToken[] {
+export function tokenize_formula(formula: string): FormulaMarkupToken[] {
   if (!formula) return []
 
   // If it contains Greek letters or special phase notation, return as-is
@@ -576,7 +555,7 @@ export function tokenize_formula(formula: string): FormulaToken[] {
     return [{ text: formula }]
   }
 
-  const tokens: FormulaToken[] = []
+  const tokens: FormulaMarkupToken[] = []
   let idx = 0
 
   while (idx < formula.length) {

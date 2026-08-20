@@ -7,7 +7,6 @@ import {
   centered_rect,
   clear_tick_metrics_cache,
   compute_element_placement,
-  constrain_tooltip_position,
   DEFAULT_PLOT_PADDING,
   filter_padding,
   full_footprint_or,
@@ -110,38 +109,6 @@ describe(`layout utility functions`, () => {
       [{ t: -5 }, { t: -5, b: 60, l: 60, r: 20 }],
     ])(`filter_padding(%j) -> %j`, (padding, expected) => {
       expect(filter_padding(padding, defaults)).toEqual(expected)
-    })
-  })
-
-  describe(`constrain_tooltip_position`, () => {
-    test.each([
-      [`within bounds`, 300, 200, 100, 50, 800, 600, 310, 210],
-      [`flips left`, 750, 200, 100, 50, 800, 600, 640, 210],
-      [`flips up`, 300, 560, 100, 50, 800, 600, 310, 500],
-      [`bottom-right corner (flips both)`, 800, 600, 100, 50, 800, 600, 690, 540],
-      [`top-left corner (clamp)`, -10, -10, 100, 50, 800, 600, 0, 0],
-      [`zero-size tooltip`, 300, 200, 0, 0, 800, 600, 310, 210],
-      [`tooltip > viewport`, 300, 200, 900, 700, 800, 600, 0, 0],
-      [`at flip threshold`, 690, 200, 100, 50, 800, 600, 700, 210],
-      [`past flip threshold`, 691, 200, 100, 50, 800, 600, 581, 210],
-    ] as const)(`%s`, (_, cx, cy, tw, th, vw, vh, ex, ey) => {
-      expect(constrain_tooltip_position(cx, cy, tw, th, vw, vh)).toEqual({ x: ex, y: ey })
-    })
-
-    // Custom offsets use a 100x50 tooltip in an 800x600 viewport.
-    test.each([
-      [`neg y above cursor`, 300, 200, 5, -10, 305, 140],
-      [`neg y flips down near top`, 300, 50, 5, -10, 305, 60],
-      [`neg x left of cursor`, 400, 300, -10, 10, 290, 310],
-      [`neg x flips right near left`, 50, 300, -10, 10, 60, 310],
-      [`both negative`, 400, 300, -10, -10, 290, 240],
-    ] as const)(`offset: %s`, (_, cx, cy, ox, oy, ex, ey) => {
-      expect(
-        constrain_tooltip_position(cx, cy, 100, 50, 800, 600, {
-          offset_x: ox,
-          offset_y: oy,
-        }),
-      ).toEqual({ x: ex, y: ey })
     })
   })
 

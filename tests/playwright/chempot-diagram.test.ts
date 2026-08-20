@@ -144,7 +144,7 @@ test.describe(`ChemPot Diagram interactions`, () => {
     )
     const svg_surface = diagram.locator(`svg[role="application"]`).first()
     await expect(svg_surface).toBeVisible()
-    const tooltip = diagram.locator(`.tooltip`)
+    const tooltip = diagram.locator(`.chempot-tooltip`)
     await assert_pin_toggle_and_escape(page, svg_surface, tooltip, diagram)
   })
 
@@ -273,7 +273,7 @@ test.describe(`ChemPot Diagram interactions`, () => {
     await expect.poll(() => diagram.locator(`.tick-label`).count()).toBeGreaterThan(5)
     await expect.poll(() => diagram.locator(`.domain-label`).count()).toBeGreaterThan(0)
 
-    const phase_tooltip = diagram.locator(`.phase-tooltip`)
+    const phase_tooltip = diagram.locator(`.chempot-tooltip`)
     await assert_pin_toggle_and_escape(page, canvas, phase_tooltip, diagram)
 
     const export_pane = await open_export_pane(diagram)

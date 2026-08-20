@@ -3,11 +3,9 @@ import type { TdbParseResult } from '$lib/phase-diagram/parse'
 import { mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 
-// Create a successful TDB parse result for testing.
 const create_tdb_result = (
-  overrides: Partial<NonNullable<TdbParseResult[`data`]>> = {},
+  overrides: Partial<TdbParseResult[`data`]> = {},
 ): TdbParseResult => ({
-  success: true,
   data: {
     elements: [
       { symbol: `AL`, reference_phase: `FCC_A1`, mass: 26.98, enthalpy: 0, entropy: 0 },
@@ -44,7 +42,6 @@ const create_tdb_result = (
       },
     ],
     comments: [],
-    raw_content: ``,
     ...overrides,
   },
   binary_system: [`AL`, `ZN`],
@@ -170,19 +167,6 @@ describe(`TdbInfoPanel`, () => {
       expect(code?.textContent).toContain(`from pycalphad import Database, binplot`)
       expect(code?.textContent).toMatch(/\['AL', 'ZN', 'VA'\]/)
     })
-  })
-
-  test(`displays error message on parse failure`, () => {
-    const result: TdbParseResult = {
-      success: false,
-      data: null,
-      error: `Invalid TDB syntax at line 42`,
-    }
-    mount(TdbInfoPanel, { target: document.body, props: { result } })
-
-    expect(document.querySelector(`.error`)?.textContent).toContain(
-      `Invalid TDB syntax at line 42`,
-    )
   })
 
   test(`falls back to binary_system when no system_name provided`, () => {

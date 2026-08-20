@@ -10,114 +10,93 @@ import { describe, expect, test } from 'vitest'
 import { SAMPLE_TDB_CONTENT } from './fixtures/test-data'
 
 describe(`parse_tdb`, () => {
-  test(`successfully parses valid TDB content`, () => {
-    const result = parse_tdb(SAMPLE_TDB_CONTENT)
-    expect(result.success).toBe(true)
-    expect(result.data).not.toBeNull()
-    expect(result.error).toBeUndefined()
+  const sample = parse_tdb(SAMPLE_TDB_CONTENT)
+
+  test.each([``, `$ only a comment\n$ and another`, `{"not": "a tdb"}`])(
+    `throws for content without TDB statements: %j`,
+    (content) => {
+      expect(() => parse_tdb(content)).toThrow(`Not a TDB file`)
+    },
+  )
+
+  test(`parses the Al-Zn sample: counts, elements, binary system, T range`, () => {
+    const { data, binary_system, temperature_range } = sample
+    expect(data.comments).toEqual([
+      `Al-Zn binary system test database`,
+      `Comment line should be captured`,
+    ])
+    expect(data.elements.map((el) => el.symbol)).toEqual([`/-`, `VA`, `AL`, `ZN`])
+    expect(data.elements[2]).toEqual({
+      symbol: `AL`,
+      reference_phase: `FCC_A1`,
+      mass: 0.026982,
+      enthalpy: 4577.3,
+      entropy: 28.322,
+    })
+    expect(data.phases.map((phase) => phase.name)).toEqual([`LIQUID`, `FCC_A1`, `HCP_ZN`])
+    expect(data.functions.map((func) => func.name)).toEqual([`GHSERAL`, `GHSERZN`])
+    expect(data.parameters).toHaveLength(3)
+    expect(binary_system).toEqual([`AL`, `ZN`])
+    // min over all FUNCTION ranges (298.15) and max (GHSERAL's last breakpoint, 2900 K)
+    expect(temperature_range).toEqual([298.15, 2900])
   })
 
-  test(`extracts comments from $ lines`, () => {
-    const result = parse_tdb(SAMPLE_TDB_CONTENT)
-    expect(result.data?.comments.length).toBeGreaterThan(0)
-    expect(result.data?.comments[0]).toContain(`Al-Zn binary system`)
+  test(`multi-line FUNCTION bodies become consecutive temperature ranges`, () => {
+    const ghseral = sample.data.functions[0]
+    expect(ghseral.temperature_ranges.map(({ min, max }) => [min, max])).toEqual([
+      [298.15, 700],
+      [700, 933.47],
+      [933.47, 2900],
+    ])
+    expect(ghseral.temperature_ranges[0].expr).toMatch(/^-7976\.15\+137\.093038\*T/)
+    expect(ghseral.temperature_ranges[2].expr).not.toMatch(/\sN$/)
   })
 
-  test(`parses elements with full data`, () => {
-    const result = parse_tdb(SAMPLE_TDB_CONTENT)
-    const elements = result.data?.elements ?? []
-    // Parser may exclude some special elements like /- depending on format
-    expect(elements.length).toBeGreaterThanOrEqual(2)
-    const aluminum = elements.find((el) => el.symbol === `AL`)
-    expect(aluminum).toBeDefined()
-    expect(aluminum?.reference_phase).toBe(`FCC_A1`)
-    expect(aluminum?.mass).toBeCloseTo(0.026982, 4)
+  test(`PHASE sublattices and CONSTITUENT lists`, () => {
+    const [liquid, fcc] = sample.data.phases
+    expect(liquid).toMatchObject({ sublattice_count: 1, sublattice_sites: [1] })
+    expect(liquid.constituents).toEqual([[`AL`, `ZN`]])
+    expect(fcc).toMatchObject({
+      model_hints: `%A`,
+      sublattice_count: 2,
+      sublattice_sites: [1, 1],
+    })
+    expect(fcc.constituents).toEqual([[`AL`, `ZN`], [`VA`]])
   })
 
-  test(`parses phases with sublattice information`, () => {
-    // Use explicit single-line content to test phase parsing
-    const content = `PHASE LIQUID % 1 1.0 !
-PHASE FCC_A1 %A 2 1 1 !`
-    const result = parse_tdb(content)
-    const phases = result.data?.phases ?? []
-    expect(phases).toHaveLength(2)
-    const liquid = phases.find((phase) => phase.name === `LIQUID`)
-    expect(liquid?.sublattice_count).toBe(1)
-    expect(liquid?.sublattice_sites).toEqual([1.0])
-  })
-
-  test(`parses constituent definitions`, () => {
-    const result = parse_tdb(SAMPLE_TDB_CONTENT)
-    const fcc = result.data?.phases.find((phase) => phase.name === `FCC_A1`)
-    // FCC_A1 has constituents defined
-    expect(fcc?.constituents).toBeDefined()
-    if (fcc?.constituents) {
-      expect(fcc.constituents[0]).toContain(`AL`)
-      expect(fcc.constituents[0]).toContain(`ZN`)
-    }
-  })
-
-  test(`parses GHSER functions with temperature ranges`, () => {
-    // Use explicit content to test function parsing
-    const content = `FUNCTION GHSERAL 298.15 -7976.15+137*T; 700 Y -11276+223*T; 933.47 Y -11278+188*T; 2900 N !`
-    const result = parse_tdb(content)
-    expect(result.data?.functions.length).toBe(1)
-    const ghseral = result.data?.functions[0]
-    expect(ghseral?.name).toBe(`GHSERAL`)
-    expect(ghseral?.temperature_ranges.length).toBeGreaterThan(0)
-    expect(ghseral?.temperature_ranges[0].min).toBe(298.15)
-  })
-
-  test(`parses parameters`, () => {
-    const result = parse_tdb(SAMPLE_TDB_CONTENT)
-    expect(result.data?.parameters.length).toBeGreaterThanOrEqual(1)
-    const l_param = result.data?.parameters.find((param) => param.type === `L`)
-    expect(l_param?.constituents).toContain(`AL`)
-    expect(l_param?.constituents).toContain(`ZN`)
-  })
-
-  test(`correctly identifies binary system`, () => {
-    const result = parse_tdb(SAMPLE_TDB_CONTENT)
-    expect(result.binary_system).toEqual([`AL`, `ZN`])
-  })
-
-  test(`extracts temperature range`, () => {
-    const result = parse_tdb(SAMPLE_TDB_CONTENT)
-    expect(result.temperature_range?.[0]).toBe(298.15)
-    // Max temp is set by function parsing; may vary based on parser behavior
-    expect(result.temperature_range?.[1]).toBeGreaterThanOrEqual(1000)
-  })
-
-  test(`handles empty content`, () => {
-    const result = parse_tdb(``)
-    expect(result.success).toBe(true)
-    expect(result.data?.elements).toEqual([])
-    expect(result.binary_system).toBeUndefined()
+  test(`PARAMETER spec splits into type, phase, constituents and order`, () => {
+    expect(sample.data.parameters[2]).toEqual({
+      type: `L`,
+      phase: `LIQUID`,
+      constituents: [`AL`, `ZN`],
+      order: 0,
+      expression: `298.15 +10465.55-3.39259*T; 6000 N `,
+    })
   })
 
   test(`uses default temperature range when no functions`, () => {
     const result = parse_tdb(`ELEMENT AL FCC_A1 0.02698 4577.3 28.32!`)
-    expect(result.temperature_range?.[0]).toBe(298.15)
-    expect(result.temperature_range?.[1]).toBe(3000)
+    expect(result.temperature_range).toEqual([298.15, 3000])
+    expect(result.binary_system).toBeUndefined()
   })
 
   test(`handles Windows line endings`, () => {
     const content = `ELEMENT AL FCC_A1 0.02698 4577.3 28.32!\r\nELEMENT ZN HCP_ZN 0.06538 5656.8 41.63!`
-    const result = parse_tdb(content)
-    expect(result.data?.elements.length).toBe(2)
+    expect(parse_tdb(content).data.elements.map((el) => el.symbol)).toEqual([`AL`, `ZN`])
   })
 
-  test(`handles line continuation`, () => {
+  test(`joins continuation lines until the closing !`, () => {
     const content = `FUNCTION TEST 298.15 +100\n+200\n+300; 1000 N !`
-    const result = parse_tdb(content)
-    expect(result.data?.functions[0].expression).toContain(`+200`)
+    expect(parse_tdb(content).data.functions[0].temperature_ranges).toEqual([
+      { min: 298.15, max: 1000, expr: `+100 +200 +300` },
+    ])
   })
 
   test(`is case-insensitive for keywords`, () => {
     const content = `element al fcc_a1 0.02698 4577.3 28.32!\nPHASE liquid % 1 1.0 !`
-    const result = parse_tdb(content)
-    expect(result.data?.elements.length).toBe(1)
-    expect(result.data?.phases.length).toBe(1)
+    const { data } = parse_tdb(content)
+    expect(data.elements[0].symbol).toBe(`AL`)
+    expect(data.phases[0].name).toBe(`liquid`)
   })
 })
 
@@ -146,7 +125,6 @@ describe(`is_binary_system`, () => {
     functions: [],
     parameters: [],
     comments: [],
-    raw_content: ``,
   })
 
   test.each([
@@ -191,15 +169,15 @@ describe(`parse_tdb edge cases`, () => {
   test(`handles PHASE line with special model hints`, () => {
     const content = `PHASE BCC_A2 %& 2 1 3 !\nCONSTITUENT BCC_A2 :AL,FE : VA% : !`
     const result = parse_tdb(content)
-    expect(result.data?.phases[0]?.model_hints).toBe(`%&`)
-    expect(result.data?.phases[0]?.sublattice_count).toBe(2)
+    expect(result.data.phases[0]?.model_hints).toBe(`%&`)
+    expect(result.data.phases[0]?.sublattice_count).toBe(2)
   })
 
   test(`handles nested parentheses in PARAMETER expressions`, () => {
     const content = `PARAMETER G(FCC_A1,AL:VA;0) 298.15 +GHSER(AL)+1000*(T-298.15); 6000 N !`
     const result = parse_tdb(content)
-    expect(result.data?.parameters.length).toBe(1)
-    expect(result.data?.parameters[0]?.expression).toContain(`GHSER(AL)`)
+    expect(result.data.parameters).toHaveLength(1)
+    expect(result.data.parameters[0]?.expression).toContain(`GHSER(AL)`)
   })
 
   test(`handles multiple comment lines with metadata`, () => {
@@ -211,14 +189,14 @@ $ Reference: Test Reference
 ELEMENT AL FCC_A1 0.02698 4577.3 28.32!
 `
     const result = parse_tdb(content)
-    expect(result.data?.comments.length).toBeGreaterThanOrEqual(4)
-    expect(result.data?.comments.some((cmt) => cmt.includes(`Author`))).toBe(true)
+    expect(result.data.comments.length).toBeGreaterThanOrEqual(4)
+    expect(result.data.comments.some((cmt) => cmt.includes(`Author`))).toBe(true)
   })
 
   test(`handles scientific notation with lowercase e`, () => {
     const content = `ELEMENT AL FCC_A1 2.698e-02 4.577e+03 2.832e+01!`
     const result = parse_tdb(content)
-    expect(result.data?.elements[0]?.mass).toBeCloseTo(0.02698, 4)
+    expect(result.data.elements[0]?.mass).toBeCloseTo(0.02698, 4)
   })
 
   test(`handles TYPE_DEFINITION and DEFINE_SYSTEM_DEFAULT gracefully`, () => {
@@ -228,16 +206,14 @@ DEFINE_SYSTEM_DEFAULT ELEMENT 2 !
 DEFAULT_COMMAND DEF_SYS_ELEMENT VA !
 ELEMENT AL FCC_A1 0.02698 4577.3 28.32!
 `
-    const result = parse_tdb(content)
-    expect(result.success).toBe(true)
-    expect(result.data?.elements.length).toBe(1)
+    expect(parse_tdb(content).data.elements).toHaveLength(1)
   })
 
   test(`handles elements with ELECTRON_GAS reference phase`, () => {
     const content = `ELEMENT /-   ELECTRON_GAS 0 0 0!`
     const result = parse_tdb(content)
-    expect(result.data?.elements[0]?.symbol).toBe(`/-`)
-    expect(result.data?.elements[0]?.reference_phase).toBe(`ELECTRON_GAS`)
+    expect(result.data.elements[0]?.symbol).toBe(`/-`)
+    expect(result.data.elements[0]?.reference_phase).toBe(`ELECTRON_GAS`)
   })
 
   test(`correctly excludes /- and VA from binary system detection`, () => {
@@ -256,7 +232,7 @@ ELEMENT MG   HCP_A3 0.02431 4998 32.67!
     const content = `PHASE CU2MG %  2 2 1 !
 CONSTITUENT CU2MG :CU,MG : CU,MG : !`
     const result = parse_tdb(content)
-    const phase = result.data?.phases.find(
+    const phase = result.data.phases.find(
       (candidate_phase) => candidate_phase.name === `CU2MG`,
     )
     expect(phase?.constituents?.[0]).toEqual([`CU`, `MG`])
@@ -279,10 +255,18 @@ PHASE FCC_A1  %&  2 1   1 !
 PHASE HCP_A3  %  2 1   .5 !
 PHASE CU2MG  %  2 2 1 !
 `
-    const result = parse_tdb(content)
-    expect(result.success).toBe(true)
-    expect(result.binary_system).toEqual([`CU`, `MG`])
-    expect(result.data?.phases.length).toBe(4)
-    expect(result.data?.functions.length).toBeGreaterThanOrEqual(1)
+    const { data, binary_system, temperature_range } = parse_tdb(content)
+    expect(binary_system).toEqual([`CU`, `MG`])
+    expect(data.phases.map((phase) => phase.name)).toEqual([
+      `LIQUID:L`,
+      `FCC_A1`,
+      `HCP_A3`,
+      `CU2MG`,
+    ])
+    expect(data.functions[0].temperature_ranges.map(({ min, max }) => [min, max])).toEqual([
+      [298.15, 1358.02],
+      [1358.02, 3200],
+    ])
+    expect(temperature_range).toEqual([298.15, 3200])
   })
 })

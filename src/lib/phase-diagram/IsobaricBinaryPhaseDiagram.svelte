@@ -1,13 +1,13 @@
 <script lang="ts">
   import { DEFAULT_PNG_DPI } from '$lib/constants'
   import EmptyState from '$lib/EmptyState.svelte'
+  import { ClickFeedback } from '$lib/feedback'
   import { create_file_drop_handler } from '$lib/io/file-drop'
   import { format_num } from '$lib/labels'
   import { FullscreenButton } from '$lib/layout'
   import { sanitize_svg } from '$lib/sanitize'
   import { compute_bounding_box_2d, polygon_centroid, type Vec2 } from '$lib/math'
-  import type { AxisConfig } from '$lib/plot'
-  import { constrain_tooltip_position } from '$lib/plot/core/layout'
+  import { type AxisConfig, PlotTooltip } from '$lib/plot'
   import { unique_id } from '$lib/plot/core/utils'
   import { scaleLinear } from 'd3-scale'
   import { type ComponentProps, type Snippet, untrack } from 'svelte'
@@ -44,7 +44,8 @@
     get_multi_phase_gradient,
     get_phase_color,
     merge_phase_diagram_config,
-    PHASE_COLOR_RGB,
+    PHASE_DIAGRAM_DEFAULTS,
+    TIE_LINE_COLOR,
     transform_vertices,
   } from './utils'
 
@@ -210,10 +211,12 @@
     scaleLinear().domain(display_temp_range).range([bottom, top]),
   )
 
-  const tick_count = (axis: AxisConfig): number =>
-    typeof axis.ticks === `number` ? axis.ticks : 5
-  const x_ticks = $derived(x_scale.ticks(tick_count(x_axis)))
-  const y_ticks = $derived(y_scale_display.ticks(tick_count(y_axis)))
+  const tick_count = (axis: AxisConfig, fallback: number): number =>
+    typeof axis.ticks === `number` ? axis.ticks : fallback
+  const x_ticks = $derived(x_scale.ticks(tick_count(x_axis, PHASE_DIAGRAM_DEFAULTS.x_ticks)))
+  const y_ticks = $derived(
+    y_scale_display.ticks(tick_count(y_axis, PHASE_DIAGRAM_DEFAULTS.y_ticks)),
+  )
 
   // Transform regions to SVG coordinates
   const transformed_regions = $derived(
@@ -297,18 +300,20 @@
   // Effective hover info - locked takes precedence
   const effective_hover_info = $derived(locked_hover_info ?? hover_info)
 
-  // Copy feedback state
+  // Copy feedback: ClickFeedback's CSS animation fades it out; the template keys it on the
+  // position object so back-to-back copies each remount and restart the animation
   let copy_feedback_visible = $state(false)
   let copy_feedback_pos = $state({ x: 0, y: 0 })
   let copy_feedback_timeout: ReturnType<typeof setTimeout> | undefined
 
   // Handle double-click to copy tooltip data
   async function handle_double_click(event: MouseEvent) {
-    if (!hover_info) return
+    const info = effective_hover_info
+    if (!info) return
     try {
       await navigator.clipboard.writeText(
         format_hover_info_text(
-          hover_info,
+          info,
           temp_unit,
           comp_unit,
           component_a,
@@ -317,35 +322,14 @@
           lever_rule_mode,
         ),
       )
-      if (copy_feedback_timeout) clearTimeout(copy_feedback_timeout)
+      clearTimeout(copy_feedback_timeout)
       copy_feedback_pos = { x: event.clientX, y: event.clientY }
       copy_feedback_visible = true
-      copy_feedback_timeout = setTimeout(() => {
-        copy_feedback_visible = false
-        copy_feedback_timeout = undefined
-      }, 1500)
+      copy_feedback_timeout = setTimeout(() => (copy_feedback_visible = false), 1500)
     } catch (error) {
       console.error(`Failed to copy phase data:`, error)
     }
   }
-
-  // Tooltip element reference for measuring actual size
-  let tooltip_el = $state<HTMLDivElement | null>(null)
-
-  // Tooltip positioning using shared utility (uses effective_hover_info for locked state)
-  const tooltip_pos = $derived.by(() => {
-    const info = effective_hover_info
-    if (!info) return { x: 0, y: 0 }
-    return constrain_tooltip_position(
-      info.position.x,
-      info.position.y,
-      tooltip_el?.offsetWidth ?? 200,
-      tooltip_el?.offsetHeight ?? 150,
-      globalThis.innerWidth ?? 1000,
-      globalThis.innerHeight ?? 800,
-      { offset: 15 },
-    )
-  })
 
   // Find nearest special point within threshold (in SVG pixels)
   function find_nearby_special_point(svg_x: number, svg_y: number, threshold: number = 20) {
@@ -425,11 +409,7 @@
   }
 
   // Cleanup timeout on unmount to prevent memory leaks
-  $effect(() => {
-    return () => {
-      if (copy_feedback_timeout) clearTimeout(copy_feedback_timeout)
-    }
-  })
+  $effect(() => () => clearTimeout(copy_feedback_timeout))
 
   const component_a = $derived(effective_data.components[0])
   const component_b = $derived(effective_data.components[1])
@@ -476,7 +456,7 @@
 )}
   {@const tl = merged_config.tie_line}
   <g class="tie-line" class:locked={locked_hover_info}>
-    {#each [`white`, `rgb(${PHASE_COLOR_RGB.tie_line})`] as stroke (stroke)}
+    {#each [`white`, TIE_LINE_COLOR] as stroke (stroke)}
       <line
         {x1}
         {y1}
@@ -492,7 +472,7 @@
         cx={ep.cx}
         cy={ep.cy}
         r={tl.endpoint_radius}
-        fill="rgb({ep.color})"
+        fill={ep.color}
         stroke="white"
         stroke-width={1.5}
       />
@@ -501,7 +481,7 @@
       cx={cursor_cx}
       cy={cursor_cy}
       r={tl.cursor_radius}
-      fill="rgb({PHASE_COLOR_RGB.tie_line})"
+      fill={TIE_LINE_COLOR}
       stroke="white"
       stroke-width={2}
     />
@@ -709,8 +689,8 @@
           cx,
           y_top,
           [
-            { cx, cy: y_bot, color: get_phase_color(vlr.bottom_phase, `rgb`) },
-            { cx, cy: y_top, color: get_phase_color(vlr.top_phase, `rgb`) },
+            { cx, cy: y_bot, color: get_phase_color(vlr.bottom_phase, `hex`) },
+            { cx, cy: y_top, color: get_phase_color(vlr.top_phase, `hex`) },
           ],
           cx,
           y_scale(effective_hover_info.temperature),
@@ -726,8 +706,8 @@
           x_r,
           cy,
           [
-            { cx: x_l, cy, color: get_phase_color(lr.left_phase, `rgb`) },
-            { cx: x_r, cy, color: get_phase_color(lr.right_phase, `rgb`) },
+            { cx: x_l, cy, color: get_phase_color(lr.left_phase, `hex`) },
+            { cx: x_r, cy, color: get_phase_color(lr.right_phase, `hex`) },
           ],
           x_scale(effective_hover_info.composition),
           cy,
@@ -871,10 +851,16 @@
     <!-- Tooltip (uses effective_hover_info which respects locked state) -->
     <!-- tooltip={false} disables tooltip entirely -->
     {#if effective_hover_info && tooltip !== false}
-      <div
-        bind:this={tooltip_el}
-        class={['tooltip-container', { locked: locked_hover_info }]}
-        style="left: {tooltip_pos.x}px; top: {tooltip_pos.y}px"
+      <PlotTooltip
+        x={effective_hover_info.position.x}
+        y={effective_hover_info.position.y}
+        fixed
+        offset={{ x: 15, y: 15 }}
+        fallback_size={{ width: 200, height: 150 }}
+        class={[`tooltip-container`, { locked: locked_hover_info }]}
+        style="--plot-tooltip-padding: 0; white-space: normal{locked_hover_info
+          ? `; pointer-events: auto`
+          : ``}"
       >
         {#if locked_hover_info}
           <div class="tooltip-lock-indicator" title="Click diagram to unlock">🔒</div>
@@ -895,18 +881,12 @@
             {tooltip}
           />
         {/if}
-      </div>
+      </PlotTooltip>
     {/if}
 
-    <!-- Copy feedback indicator -->
-    {#if copy_feedback_visible}
-      <div
-        class="copy-feedback"
-        style="left: {copy_feedback_pos.x}px; top: {copy_feedback_pos.y}px"
-      >
-        ✓ Copied
-      </div>
-    {/if}
+    {#key copy_feedback_pos}
+      <ClickFeedback visible={copy_feedback_visible} position={copy_feedback_pos} />
+    {/key}
 
     <!-- Custom children -->
     {@render children?.({ width, height, fullscreen })}
@@ -975,37 +955,23 @@
   .special-point-marker {
     pointer-events: none; /* Let hit-area handle events */
   }
-  /* Grouped pointer-events: none */
-  .tie-line,
-  .tooltip-container,
-  .copy-feedback {
-    pointer-events: none;
-  }
   .region-label {
     user-select: none;
   }
   .tie-line {
+    pointer-events: none;
     animation: tie-line-fade-in 150ms ease-out;
-
-    &.locked {
-      filter: drop-shadow(0 0 3px rgba(255, 107, 107, 0.5));
-    }
+  }
+  .tie-line.locked {
+    filter: drop-shadow(0 0 3px rgba(255, 107, 107, 0.5));
   }
   @keyframes tie-line-fade-in {
     from {
       opacity: 0;
     }
   }
-  :is(.tooltip-container, .copy-feedback) {
-    position: fixed;
-  }
-  .tooltip-container {
-    z-index: 1000;
-
-    &.locked {
-      pointer-events: auto; /* Allow interaction when locked */
-      filter: drop-shadow(0 0 4px rgba(99, 102, 241, 0.4));
-    }
+  .binary-phase-diagram :global(.tooltip-container.locked) {
+    filter: drop-shadow(0 0 4px rgba(99, 102, 241, 0.4));
   }
   .tooltip-lock-indicator {
     position: absolute;
@@ -1021,27 +987,5 @@
     justify-content: center;
     cursor: pointer;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-  }
-  .copy-feedback {
-    z-index: 1001;
-    background: rgba(76, 175, 80, 0.95);
-    color: white;
-    padding: 6px 12px;
-    border-radius: 4px;
-    font-size: 13px;
-    font-weight: 500;
-    transform: translate(-50%, calc(-100% - 10px));
-    animation: copy-fade-up 1.5s ease-out forwards;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-  }
-  @keyframes copy-fade-up {
-    0%,
-    70% {
-      opacity: 1;
-    }
-    100% {
-      opacity: 0;
-      transform: translate(-50%, calc(-100% - 30px));
-    }
   }
 </style>

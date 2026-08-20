@@ -14,43 +14,33 @@ import {
 import type { Vec2, Vec3 } from '$lib/math'
 import { CHEMPOT_DEFAULTS, type ChemPotDiagramConfig, type ChemPotDiagramData } from './types'
 
-// Inlined from $lib/composition/parse to keep chempot-worker's bundle small: the
-// $lib/composition barrel transitively pulls in the gzipped element data table, which
-// the worker build can load (vite.config.ts registers the .json.gz plugin for workers)
-// but has no use for.
+// Verbatim copies of $lib/composition/parse's count_atoms_in_composition and
+// get_reduced_formula, kept here so chempot-worker's bundle stays small: that module pulls
+// in the gzipped element data table, which the worker has no use for. compute.test.ts pins
+// both copies equal to the originals over a table of integer/fractional compositions.
 const count_atoms_in_composition = (composition: Record<string, number>): number =>
   Object.values(composition).reduce((sum, count) => sum + (count ?? 0), 0)
 
-// Deliberately NOT $lib/composition/parse's get_reduced_formula: that one leaves
-// non-integer compositions untouched (pinned by its own test: {Fe: 1.5, O: 3} stays put),
-// while this one first scales fractional amounts to integers (multiplier <= 100, 0.03
-// tolerance) to match pymatgen. Merging the two would silently relabel every fractional
-// composition, so don't.
+// Smallest whole-number formula with the same ratios (Fe2O4 -> FeO2, Li0.5Na0.5Cl -> LiNaCl2).
+// Fractional amounts are scaled by the smallest integer (<= 100) that makes every amount a
+// positive integer within 3% (pymatgen's tolerance); otherwise the composition is returned as is.
 const get_reduced_formula = (composition: Record<string, number>): Record<string, number> => {
-  const amounts = Object.values(composition).filter((amt) => amt > 0)
-  if (amounts.length === 0) return {}
+  const entries = Object.entries(composition).filter(([, amt]) => amt > 0)
+  if (entries.length === 0) return {}
+  const amounts = entries.map(([, amt]) => amt)
+  const is_integral = (scale: number) =>
+    amounts.every((amt) => {
+      const scaled = amt * scale
+      return Math.round(scaled) >= 1 && Math.abs(scaled - Math.round(scaled)) < 0.03
+    })
   let scale = 1
-  if (!amounts.every((amt) => Number.isInteger(amt))) {
-    scale = 0
-    for (let mult = 1; mult <= 100; mult++) {
-      if (amounts.every((amt) => Math.abs(amt * mult - Math.round(amt * mult)) < 0.03)) {
-        scale = mult
-        break
-      }
-    }
-    if (scale === 0) return composition
-  }
+  while (scale <= 100 && !is_integral(scale)) scale++
+  if (scale > 100) return composition
   const int_amounts = amounts.map((amt) => Math.round(amt * scale))
   // gcd is unreliable past 2^53, where consecutive integers stop being distinguishable
-  if (!int_amounts.every((amt) => Number.isSafeInteger(amt))) return composition
+  if (!int_amounts.every(Number.isSafeInteger)) return composition
   const divisor = gcd_all(int_amounts)
-  if (scale === 1 && divisor <= 1) return composition
-  const factor = scale / divisor
-  return Object.fromEntries(
-    Object.entries(composition)
-      .filter(([, amt]) => amt > 0)
-      .map(([elem, amt]) => [elem, Math.round(amt * factor)]),
-  )
+  return Object.fromEntries(entries.map(([elem], idx) => [elem, int_amounts[idx] / divisor]))
 }
 
 // === Entry Helpers ===
@@ -625,8 +615,16 @@ export function simple_pca(
   const work_cov = cov.map((row) => [...row])
 
   for (let comp = 0; comp < k; comp++) {
-    let vec = Array(n_cols).fill(0)
-    vec[comp % n_cols] = 1 // initial guess
+    // Initial guess: the (deflated) covariance row with the largest norm. A fixed basis
+    // vector can sit in the null space (elemental domains have zero variance along their
+    // own axis), where power iteration stalls on the first step and returns a spurious
+    // zero-eigenvalue direction ahead of the real principal axes.
+    const row_norms = work_cov.map((row) => Math.hypot(...row))
+    const seed_idx = row_norms.indexOf(Math.max(...row_norms))
+    let vec: number[] =
+      row_norms[seed_idx] > EPS
+        ? work_cov[seed_idx].map((val) => val / row_norms[seed_idx])
+        : Array(n_cols).fill(0).with(seed_idx, 1)
 
     for (let iter = 0; iter < 100; iter++) {
       // Matrix-vector multiply
@@ -704,12 +702,16 @@ export function dedup_points(
   return { unique, orig_indices }
 }
 
-// For a 3D domain, compute convex hull boundary edges and annotation location.
-// Deduplicates vertices first, then uses PCA to project to 2D for the convex
-// hull computation. Returns only the outer boundary edges, not interior lines.
+// Outline of a 3D domain: boundary edges (as index pairs into points_3d) and the label
+// anchor. Vertices are deduplicated, projected onto their two principal axes and hulled in
+// 2D, so only the outer polygon comes back, never interior diagonals. `is_planar` reports
+// whether that projection was lossless (max out-of-plane residual below 1e-6 of the bounding
+// box diagonal): every domain of a true ternary lies on its entry's hyperplane, but
+// projections of quaternary+ systems produce polyhedra whose edges need a 3D hull instead.
 export function get_3d_domain_simplexes_and_ann_loc(points_3d: number[][]): {
   simplex_indices: number[][]
   ann_loc: number[]
+  is_planar: boolean
 } {
   // Deduplicate vertices to avoid cluttered interior edges
   const { unique, orig_indices } = dedup_points(points_3d)
@@ -717,31 +719,47 @@ export function get_3d_domain_simplexes_and_ann_loc(points_3d: number[][]): {
   if (unique.length < 3) {
     if (unique.length === 2) {
       const midpoint = unique[0].map((val, dim) => (val + unique[1][dim]) / 2)
-      return { simplex_indices: [[orig_indices[0], orig_indices[1]]], ann_loc: midpoint }
+      return {
+        simplex_indices: [[orig_indices[0], orig_indices[1]]],
+        ann_loc: midpoint,
+        is_planar: true,
+      }
     }
-    return { simplex_indices: [], ann_loc: unique[0] ?? points_3d[0] ?? [0, 0, 0] }
+    return {
+      simplex_indices: [],
+      ann_loc: unique[0] ?? points_3d[0] ?? [0, 0, 0],
+      is_planar: true,
+    }
   }
 
   const { scores, eigenvectors } = simple_pca(unique, 2)
-
-  // 2D convex hull of PCA-projected unique points → only boundary edges
-  const pts_2d: Vec2[] = scores.map((row) => [row[0], row[1]])
-  const hull = convex_hull_2d(pts_2d)
-  const centroid = polygon_centroid(hull)
-
-  // Map centroid back to 3D
   const n_dims = unique[0].length
   const mean_3d = Array.from(
     { length: n_dims },
     (_, dim) => unique.reduce((sum, pt) => sum + pt[dim], 0) / unique.length,
   )
-  const centroid_x = centroid[0] ?? 0
-  const centroid_y = centroid[1] ?? 0
   const first_eigenvector = eigenvectors[0] ?? Array(n_dims).fill(0)
   const second_eigenvector = eigenvectors[1] ?? Array(n_dims).fill(0)
-  const ann_loc = mean_3d.map(
-    (m, dim) => m + centroid_x * first_eigenvector[dim] + centroid_y * second_eigenvector[dim],
-  )
+  const unproject = (score_x: number, score_y: number): number[] =>
+    mean_3d.map(
+      (mean, dim) =>
+        mean + score_x * first_eigenvector[dim] + score_y * second_eigenvector[dim],
+    )
+
+  // Out-of-plane residual of the 2-component reconstruction, relative to the domain size
+  let max_residual = 0
+  for (let idx = 0; idx < unique.length; idx++) {
+    const reconstructed = unproject(scores[idx][0], scores[idx][1])
+    const residual = Math.hypot(...unique[idx].map((val, dim) => val - reconstructed[dim]))
+    if (residual > max_residual) max_residual = residual
+  }
+  const is_planar = max_residual <= 1e-6 * bbox_diagonal(unique)
+
+  // 2D convex hull of PCA-projected unique points → only boundary edges
+  const pts_2d: Vec2[] = scores.map((row) => [row[0], row[1]])
+  const hull = convex_hull_2d(pts_2d)
+  const [centroid_x, centroid_y] = polygon_centroid(hull)
+  const ann_loc = unproject(centroid_x, centroid_y)
 
   // Map hull vertices back to original point indices using nearest projected
   // vertex instead of stringified coordinates to avoid precision aliasing.
@@ -769,7 +787,7 @@ export function get_3d_domain_simplexes_and_ann_loc(points_3d: number[][]): {
     simplex_indices.push([orig_indices[ui_a], orig_indices[ui_b]])
   }
 
-  return { simplex_indices, ann_loc }
+  return { simplex_indices, ann_loc, is_planar }
 }
 
 // === Label Sizing ===
