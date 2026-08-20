@@ -2,8 +2,7 @@
 // unit cell and CONECT connectivity records.
 import type { ElementSymbol } from '$lib/element'
 import type { Vec3 } from '$lib/math'
-import type { Site } from '$lib/structure'
-import type { ParsedStructure } from '$lib/structure/parse'
+import type { AnyStructure, Site } from '$lib/structure'
 import { make_site } from '$lib/structure/site'
 import {
   cart_to_frac_with_fallback,
@@ -69,8 +68,7 @@ const pdb_element = (line: string, atom_idx: number): ElementSymbol => {
   return element_from_candidates([line.slice(76, 78).trim(), ...from_name], atom_idx)
 }
 
-// @internal parser exported for tests; public entry points: parse_structure_file/parse_any_structure. Parse PDB.
-export const parse_pdb = (content: string): ParsedStructure | null =>
+export const parse_pdb = (content: string): AnyStructure | null =>
   guard_parse(`PDB`, () => {
     const lines = content.split(/\r?\n/)
 

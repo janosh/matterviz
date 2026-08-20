@@ -1,11 +1,11 @@
 // Parsers for volumetric data file formats (VASP CHGCAR, Gaussian .cube)
-import { ATOMIC_NUMBER_TO_SYMBOL } from '$lib/composition/parse'
 import { BOHR_TO_ANGSTROM, VASP_VOLUMETRIC_REGEX } from '$lib/constants'
 import type { ElementSymbol } from '$lib/element'
+import { ELEM_SYMBOLS } from '$lib/element/types'
 import { strip_compression_extensions } from '$lib/io/decompress'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
-import type { Site } from '$lib/structure'
+import type { Crystal, Site } from '$lib/structure'
 import {
   apply_axis_scale,
   parse_vasp_header,
@@ -13,7 +13,6 @@ import {
   text_cursor,
 } from '$lib/structure/parsers/vasp-header'
 import { wrap_to_unit_cell } from '$lib/structure/pbc'
-import type { ParsedStructure } from '$lib/structure/parse'
 import { make_site } from '$lib/structure/site'
 import { normalize_scientific_notation, parse_leading_num } from '$lib/utils'
 import type { DataRange, VolumetricData, VolumetricFileData } from './types'
@@ -254,7 +253,7 @@ export function parse_chgcar(content: string): VolumetricFileData | null {
 
   // Build the structure (volumetric files are always periodic)
   const lattice_params = math.calc_lattice_params(lattice)
-  const structure: ParsedStructure = {
+  const structure: Crystal = {
     sites,
     lattice: { matrix: lattice, pbc: [true, true, true], ...lattice_params },
   }
@@ -461,7 +460,7 @@ export function parse_cube(
 
   // Build structure
   const lattice_params = math.calc_lattice_params(lattice)
-  const structure: ParsedStructure = {
+  const structure: Crystal = {
     sites,
     lattice: {
       matrix: lattice,
@@ -515,7 +514,7 @@ export function parse_cube(
 
 // Convert atomic number to element symbol (falls back to H for unknown numbers)
 const atomic_number_to_symbol = (atomic_number: number): ElementSymbol =>
-  ATOMIC_NUMBER_TO_SYMBOL[atomic_number] ?? `H`
+  ELEM_SYMBOLS[atomic_number - 1] ?? `H`
 
 // Auto-detect and parse volumetric file by filename + content (see parse error contract at top)
 export function parse_volumetric_file(

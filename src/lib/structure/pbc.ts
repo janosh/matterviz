@@ -8,7 +8,7 @@ import {
   is_spectator_center,
   pack_cell_key,
 } from './bonding'
-import type { ParsedStructure } from './parse'
+import type { AnyStructure, Site } from './index'
 
 export type Pbc = readonly [boolean, boolean, boolean]
 
@@ -45,7 +45,7 @@ export const wrap_to_unit_cell = (frac: Vec3): Vec3 => [
 
 // Trajectory-like data: >10% of atoms far outside the unit cell. Image-atom
 // generation is skipped for such structures.
-const is_scattered_trajectory = (sites: ParsedStructure[`sites`]): boolean => {
+const is_scattered_trajectory = (sites: Site[]): boolean => {
   const atoms_outside_cell = sites.filter(({ abc }) =>
     abc.some((coord) => coord < -0.1 || coord > 1.1),
   )
@@ -53,13 +53,13 @@ const is_scattered_trajectory = (sites: ParsedStructure[`sites`]): boolean => {
 }
 
 export function find_image_atoms(
-  structure: ParsedStructure,
+  structure: AnyStructure,
   { tolerance }: { tolerance?: number } = {},
 ): [number, Vec3, Vec3, boolean?][] {
   // Find image atoms for PBC. Returns [atom_idx, image_xyz, image_abc, is_completion?]
   // tuples; is_completion marks phase-2 images that only complete bonds / coordination
   // polyhedra at cell faces (renderers may hide them). Skips scattered trajectories.
-  if (!structure.lattice || !structure.sites || structure.sites.length === 0) return []
+  if (!(`lattice` in structure) || structure.sites.length === 0) return []
   if (is_scattered_trajectory(structure.sites)) return []
 
   const image_sites: [number, Vec3, Vec3, boolean?][] = []
@@ -78,7 +78,7 @@ export function find_image_atoms(
     (vec_len) => tolerance ?? (vec_len > 0 ? PHYSICAL_TOLERANCE / vec_len : 0.05),
   )
 
-  const pbc: Pbc = structure.lattice.pbc ?? [true, true, true] // no images across vacuum
+  const { pbc } = structure.lattice // no images across vacuum
 
   // Faces this atom sits on, as ±(dim + 1) so axis and direction fit one number. Reused
   // across sites: interior atoms are the vast majority in a supercell and touch no face,
@@ -288,7 +288,7 @@ export function find_image_atoms(
 // e.g. for scattered trajectory-like data)
 export function get_pbc_image_sites(
   ...args: Parameters<typeof find_image_atoms>
-): ParsedStructure {
+): AnyStructure {
   const structure = args[0]
   const image_sites = find_image_atoms(...args)
   if (image_sites.length === 0) return structure

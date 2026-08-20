@@ -1,7 +1,7 @@
 <script lang="ts">
   import { ChemPotDiagram, ChemPotDiagram2D, ChemPotDiagram3D } from '$lib/chempot-diagram'
   import type { PhaseData } from '$lib/convex-hull'
-  import { create_temp_ternary_entries_li_fe_o } from '$lib/convex-hull/demo-temperature'
+  import { create_temp_ternary_entries_li_fe_o } from '$site/convex-hull/demo-temperature'
   import Spinner from '$lib/feedback/Spinner.svelte'
   import { onMount } from 'svelte'
   import { SvelteSet } from 'svelte/reactivity'

@@ -3,8 +3,7 @@
 import type { ElementSymbol } from '$lib/element'
 import type { Vec3 } from '$lib/math'
 import type * as math from '$lib/math'
-import type { BondOrder, Site } from '$lib/structure'
-import type { ParsedStructure } from '$lib/structure/parse'
+import type { AnyStructure, BondOrder, Site } from '$lib/structure'
 import { make_site } from '$lib/structure/site'
 import {
   cart_to_frac_with_fallback,
@@ -69,8 +68,7 @@ const mol2_element = (
   return element_from_candidates(candidates, atom_idx)
 }
 
-// @internal parser exported for tests; public entry points: parse_structure_file/parse_any_structure. Parse Tripos MOL2.
-export const parse_mol2 = (content: string): ParsedStructure | null =>
+export const parse_mol2 = (content: string): AnyStructure | null =>
   guard_parse(`MOL2`, () => {
     // Multi-molecule MOL2 files repeat @<TRIPOS>MOLECULE; only the first is parsed
     const molecule_headers = [...content.matchAll(/^@<TRIPOS>MOLECULE/gim)]

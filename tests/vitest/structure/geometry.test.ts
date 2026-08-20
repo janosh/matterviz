@@ -177,7 +177,6 @@ describe(`write_bond_transform vs quaternion_from_direction`, () => {
         site_idx_1: 0,
         site_idx_2: 1,
         bond_length: 1,
-        strength: 1,
         ...(order === undefined ? {} : { bond_order: order }),
       }
       const matrix_buffer = new Float32Array(3 * 16)
@@ -205,7 +204,6 @@ describe(`write_bond_transform vs quaternion_from_direction`, () => {
       site_idx_1: 0,
       site_idx_2: 1,
       bond_length: 1,
-      strength: 1,
       bond_order: 3,
     }
     expect(() => write_bond_instance_matrices(new Float32Array(32), [bond], 0.1, 3)).toThrow(

@@ -1,7 +1,6 @@
 import type { CompositionType } from '$lib/composition'
-import { ATOMIC_WEIGHTS } from '$lib/composition/parse'
 import type { ElementSymbol } from '$lib/element'
-import { element_data } from '$lib/element'
+import { element_by_symbol, element_data } from '$lib/element'
 import type { FileLoadData } from '$lib/io/types'
 import type { VolumeSliceSettings } from '$lib/isosurface/slice-settings'
 import type { Vec3 } from '$lib/math'
@@ -23,7 +22,7 @@ export * from './camera-fit'
 export * from './measure'
 export * from './pbc'
 export * from './polyhedra'
-export * from './serialize'
+export * from './export'
 export * from './site'
 export { default as Structure } from './Structure.svelte'
 export { default as StructureCarousel } from './StructureCarousel.svelte'
@@ -81,8 +80,7 @@ export type Site = {
   properties: Record<string, unknown>
 }
 
-export const LATTICE_PARAM_KEYS = [`a`, `b`, `c`, `alpha`, `beta`, `gamma`] as const
-export type LatticeParams = Record<(typeof LATTICE_PARAM_KEYS)[number], number>
+export type LatticeParams = Record<`a` | `b` | `c` | `alpha` | `beta` | `gamma`, number>
 
 export type LatticeType = {
   matrix: math.Matrix3x3
@@ -118,7 +116,6 @@ export type BondPair = {
   site_idx_1: number
   site_idx_2: number
   bond_length: number
-  strength: number
   bond_order?: BondOrder
   cell_shift?: Vec3
 }
@@ -156,7 +153,7 @@ export function get_density(structure: Crystal): number {
   const elements = get_element_counts(structure)
   let mass = 0
   for (const [element, amount] of Object.entries(elements)) {
-    const weight = ATOMIC_WEIGHTS.get(element as ElementSymbol)
+    const weight = element_by_symbol.get(element as ElementSymbol)?.atomic_mass
     if (weight !== undefined) mass += amount * weight
   }
   return (AMU_PER_A3_TO_G_PER_CM3 * mass) / structure.lattice.volume
@@ -169,7 +166,7 @@ export function get_center_of_mass(structure: AnyStructure): Vec3 {
   for (const site of structure.sites) {
     // Handle disordered sites by summing contributions from all species
     for (const species of site.species) {
-      const atomic_weight = ATOMIC_WEIGHTS.get(species.element) ?? 1
+      const atomic_weight = element_by_symbol.get(species.element)?.atomic_mass ?? 1
       const weight = atomic_weight * species.occu
 
       const scaled_pos = math.scale(site.xyz, weight)
@@ -185,7 +182,7 @@ export function get_center_of_mass(structure: AnyStructure): Vec3 {
 // Recognized prefixes for per-site vector data (force, magnetic moment, spin, velocity).
 // Both singular and plural forms are accepted. Keys matching exactly or starting
 // with one of these followed by `_` (e.g. `force_DFT`) are treated as vectors.
-export const VECTOR_KEY_PREFIXES = [
+const VECTOR_KEY_PREFIXES = [
   `force`,
   `forces`,
   `magmom`,

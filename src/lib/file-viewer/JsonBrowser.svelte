@@ -23,8 +23,9 @@
   import type { AnyStructure, LatticeType } from '$lib/structure'
   import {
     is_optimade_raw,
-    normalize_fractional_coords,
+    is_structure_like,
     parse_optimade_from_raw,
+    structure_from_json,
   } from '$lib/structure/parse'
   import Structure from '$lib/structure/Structure.svelte'
   import type { XrdPattern } from '$lib/xrd'
@@ -440,13 +441,7 @@
       const result = parse_optimade_from_raw(val)
       if (result) return result
     }
-    const record = val as Record<string, unknown>
-    if (Array.isArray(record.sites) && record.lattice) {
-      return normalize_fractional_coords(
-        val as Parameters<typeof normalize_fractional_coords>[0],
-      )
-    }
-    return val
+    return is_structure_like(val) ? structure_from_json(val) : val
   }
 
   // Merge defaults once (reused across all panel mounts)

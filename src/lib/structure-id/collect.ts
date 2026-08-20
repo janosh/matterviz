@@ -11,10 +11,9 @@ import {
   trajectory_total_frames,
 } from '$lib/trajectory/analysis'
 import type { AnyStructure } from '$lib/structure'
-import { normalize_fractional_coords } from '$lib/structure/parse'
 import type { TrajectoryType } from '$lib/trajectory'
 import { compute_structure_id_async } from './async-compute.svelte'
-import type { StructureIdOptions, StructureIdResult } from './index'
+import type { StructureIdOptions, StructureIdResult } from './calc-structure-id'
 
 // a-CNA costs ~9-14 µs per atom, so a 5000-frame run of 10k atoms is 8-12 minutes of
 // worker time. Every sweep therefore samples an evenly spaced subset rather than the whole
@@ -66,13 +65,6 @@ export function sweep_frame_plan(
   return { frame_numbers, frame_stride }
 }
 
-// Normalize fully periodic cells only; wrapping a nonperiodic axis can change slab geometry.
-function analysis_structure(structure: AnyStructure): AnyStructure {
-  const fully_periodic =
-    `lattice` in structure && (structure.lattice.pbc ?? [true, true, true]).every(Boolean)
-  return fully_periodic ? normalize_fractional_coords(structure) : structure
-}
-
 // Resolve a source frame number to the structure to analyse. Built once per sweep so the
 // indexed-trajectory preconditions are checked before any compute happens rather than
 // failing on frame 0 of a run the user already waited on.
@@ -91,7 +83,7 @@ function make_frame_resolver(
             `that reports all ${total} frames in memory (frames.length is ${frames.length})`,
         )
       }
-      return Promise.resolve(analysis_structure(frame.structure))
+      return Promise.resolve(frame.structure)
     }
   }
 
@@ -121,7 +113,7 @@ function make_frame_resolver(
         `${indexed} and its frame_loader returned no frame for frame ${frame_number}`,
       )
     }
-    return analysis_structure(frame.structure)
+    return frame.structure
   }
 }
 

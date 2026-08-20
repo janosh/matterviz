@@ -1,16 +1,15 @@
 import type { OptimadeStructure } from '$lib/api/optimade'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import { mat3x3_vec3_multiply, transpose_3x3_matrix } from '$lib/math'
+import type { AnyStructure } from '$lib/structure'
 import { explicit_only } from '$lib/structure/bonding'
-import type { ParsedStructure } from '$lib/structure/parse'
 import {
   detect_structure_type,
-  is_optimade_json,
+  is_optimade_raw,
   is_structure_file,
   optimade_to_crystal,
-  parse_any_structure,
   parse_cif,
-  parse_optimade_json,
+  parse_optimade_from_raw,
   parse_phonopy_yaml,
   parse_poscar,
   parse_structure_file,
@@ -223,7 +222,7 @@ describe(`POSCAR Parser`, () => {
 
   it(`should keep all fractional coordinates within unit cell for aviary-CuF3K-triolith.poscar`, () => {
     const result = parse_poscar(aviary_CuF3K_triolith)
-    assert(result?.lattice, `Failed to parse aviary-CuF3K-triolith.poscar`)
+    assert(result && `lattice` in result, `Failed to parse aviary-CuF3K-triolith.poscar`)
 
     expect(result.sites).toHaveLength(10) // 2 Zr + 2 Zn + 6 N atoms
     const elements = [0, 2, 4].map((idx) => result.sites[idx].species[0].element)
@@ -273,10 +272,11 @@ describe(`XYZ Parser`, () => {
     expect(result.sites).toHaveLength(sites)
     expect(result.sites[0].species[0].element).toBe(element)
     if (!lattice_a) {
-      expect(result.lattice).toBeUndefined()
+      expect(`lattice` in result).toBe(false)
       return
     }
-    expect(result.lattice?.a).toBeCloseTo(lattice_a)
+    assert(`lattice` in result)
+    expect(result.lattice.a).toBeCloseTo(lattice_a)
     // extended XYZ carries Cartesian coords, so every site's xyz must reconstruct
     // exactly from the abc the parser wrapped into [0, 1)
     for (const site of result.sites) expect_abc_in_unit_cell(site)
@@ -303,7 +303,7 @@ describe(`XYZ Parser`, () => {
     for (const abc of [[-0.1, 0.2, 0.3], [0.4, 1.2, 0.6], [0.7, 0.8, -0.9]]) {
       const xyz = mat3x3_vec3_multiply(transpose_3x3_matrix(lattice), abc as Vec3)
       const result = parse_xyz(xyz_frame(lattice, xyz))
-      assert(result?.lattice, `Failed to parse parametric lattice`)
+      assert(result && `lattice` in result, `Failed to parse parametric lattice`)
       expect_abc_in_unit_cell(result.sites[0])
       expect_xyz_matches_abc(result.sites[0], result.lattice.matrix)
     }
@@ -321,7 +321,7 @@ describe(`XYZ Parser`, () => {
   it(`selects last frame lattice when lattices differ`, () => {
     const content = `1\nLattice="1 0 0 0 1 0 0 0 1"\nH 0 0 0\n1\nLattice="2 0 0 0 2 0 0 0 2"\nH 1 1 1`
     const result = parse_xyz(content)
-    assert(result?.lattice, `Failed to parse multi-frame with lattices`)
+    assert(result && `lattice` in result, `Failed to parse multi-frame with lattices`)
     expect_vec3_close([result.lattice.a, result.lattice.b, result.lattice.c], [2, 2, 2], 12)
     // abc should be 0.5 after wrapping from xyz [1,1,1] in a=2 cell
     expect_abc_in_unit_cell(result.sites[0])
@@ -345,7 +345,7 @@ describe(`XYZ Parser`, () => {
   ])(`honors %s from the comment line`, (pbc_field, expected) => {
     const content = `1\nLattice="5 0 0 0 5 0 0 0 5" ${pbc_field}\nH 6.0 6.0 6.0\n`
     const result = parse_xyz(content)
-    assert(result?.lattice, `Failed to parse pbc-annotated XYZ`)
+    assert(result && `lattice` in result, `Failed to parse pbc-annotated XYZ`)
     expect(result.lattice.pbc).toEqual(expected)
     // aperiodic axes keep the atom where the file put it instead of wrapping it to 1.0
     for (const [axis, periodic] of expected.entries()) {
@@ -357,7 +357,7 @@ describe(`XYZ Parser`, () => {
 
   it(`still wraps into the cell when the file declares no pbc`, () => {
     const result = parse_xyz(`1\nLattice="5 0 0 0 5 0 0 0 5"\nH 6.0 6.0 6.0\n`)
-    assert(result?.lattice, `Failed to parse XYZ without pbc`)
+    assert(result && `lattice` in result, `Failed to parse XYZ without pbc`)
     expect(result.lattice.pbc).toEqual([true, true, true])
     expect_abc_in_unit_cell(result.sites[0])
   })
@@ -418,7 +418,7 @@ Properties=id:I:1:species:S:1:pos:R:3
     ` \t4 0 0 0 4 0 0 0 4 `,
   ])(`parses an extended XYZ Lattice value %#`, (latt) => {
     const result = parse_xyz(`1\nLattice="${latt}"\nH 1 1 1\n`)
-    assert(result?.lattice, `Failed to parse scientific notation lattice`)
+    assert(result && `lattice` in result, `Failed to parse scientific notation lattice`)
     expect(result.lattice.a).toBeCloseTo(4, 12)
     expect_abc_in_unit_cell(result.sites[0])
     expect_xyz_matches_abc(result.sites[0], result.lattice.matrix)
@@ -595,9 +595,9 @@ O2   O   0.410  0.140  0.880  1.000`
     [`content`, undefined],
   ])(`should detect CIF format by %s`, (_mode, filename) => {
     const result = parse_structure_file(QUARTZ_CIF, filename)
-    assert(result, `Failed to parse CIF`)
+    assert(`lattice` in result)
     expect(result.sites).toHaveLength(3)
-    expect(result.lattice?.a).toBeCloseTo(4.916, 6)
+    expect(result.lattice.a).toBeCloseTo(4.916, 6)
   })
 
   // regression: tokens.at(-1) made trailing comments break cell-parameter parsing
@@ -716,16 +716,17 @@ O2   O   0.410  0.140  0.880  1.000`
     })
 
     test(`rejects centering when only the total reconciles, not per-element counts`, () => {
-      // I symbol implies ×2. Expected Fe 1 / O 3 (total 4). Centering both atoms at
-      // the origin yields Fe 2 / O 2 (total 4) — total matches but composition is
-      // wrong, so centering must be rejected and the 2 base sites kept.
+      // I symbol implies ×2. Expected Fe 1 / O 3 (total 4). Centering the shared Fe/O
+      // site at the origin yields Fe 2 / O 2 (total 4) — total matches but composition
+      // is wrong, so centering must be rejected and the single base site kept.
       const cif = make_cif(`I m -3 m`, {
         atom_types: [`Fe 1`, `O 3`],
         atom_sites: [`Fe1 Fe 0 0 0`, `O1 O 0 0 0`],
       })
       const result = parse_cif(cif)
       assert(result, `Failed to parse`)
-      expect(result.sites).toHaveLength(2)
+      expect(result.sites).toHaveLength(1)
+      expect(result.sites[0].species.map((spec) => spec.element)).toEqual([`Fe`, `O`])
     })
 
     test(`sums _atom_type rows that normalize to the same element (Fe2+/Fe3+)`, () => {
@@ -865,7 +866,10 @@ O2   O   0.410  0.140  0.880  1.000`
     // rutile has no coordinates outside [0,1), so wrapping must be a no-op here
     test.each([true, false])(`parses TiO2 CIF with wrap_frac=%s`, (wrap_frac) => {
       const result = parse_cif(tio2_cif, wrap_frac)
-      assert(result?.lattice, `Failed to parse TiO2 CIF with wrap_frac=${wrap_frac}`)
+      assert(
+        result && `lattice` in result,
+        `Failed to parse TiO2 CIF with wrap_frac=${wrap_frac}`,
+      )
 
       const { a, b, c, alpha, beta, gamma, volume } = result.lattice
       expect_vec3_close([a, b, c], [4.59983732, 4.59983732, 2.95921356], 8)
@@ -946,24 +950,23 @@ O3 O2- 0.75 0.25 0.75`
     })
   })
 
-  test(`parses CIF with fractional occupancies and mixed species`, () => {
+  // Rows sharing a position are ONE disordered site (pymatgen CifParser semantics): its
+  // species list carries each row's element and occupancy, same-element rows sum, and a
+  // symmetry image landing on an existing image of the same row is dropped, not doubled.
+  test(`merges CIF rows at one position into a disordered site and expands them by symmetry`, () => {
     const mixed_occupancy_cif = `data_mixed_occupancy
-_chemical_name_common                  'Mysterious something'
 _cell_length_a                         5.50000
 _cell_length_b                         5.50000
 _cell_length_c                         5.50000
 _cell_angle_alpha                      90
 _cell_angle_beta                       90
 _cell_angle_gamma                      90
-_space_group_name_H-M_alt              'F m -3 m'
-_space_group_IT_number                 225
 
 loop_
 _space_group_symop_operation_xyz
    'x, y, z'
    '-x, -y, -z'
    'x+1/2, y+1/2, z+1/2'
-   '-x+1/2, -y+1/2, -z+1/2'
 
 loop_
    _atom_site_label
@@ -971,31 +974,31 @@ loop_
    _atom_site_fract_x
    _atom_site_fract_y
    _atom_site_fract_z
-   _atom_site_adp_type
-   _atom_site_B_iso_or_equiv
    _atom_site_type_symbol
-   Na         0.7500  0.000000      0.000000      0.000000     Biso  1.000000 Na
-   K          0.2500  0.000000      0.000000      0.000000     Biso  1.000000 K
-   Cl         0.3000  0.500000      0.500000      0.500000     Biso  1.000000 Cl
-   I          0.5000  0.250000      0.250000      0.250000     Biso  1.000000 I`
+   Na1        0.7500  0.000000      0.000000      0.000000     Na
+   K1         0.2500  0.000000      0.000000      0.000000     K
+   Cl1        0.3000  0.250000      0.250000      0.250000     Cl
+   I1         0.5000  0.250000      0.250000      0.250000     I
+   Fe1        0.4000  0.500000      0.000000      0.000000     Fe
+   Fe2        0.6000  0.500000      0.000000      0.000000     Fe`
 
     const result = parse_cif(mixed_occupancy_cif)
-    // Should have 4 unique sites × 2 non-identity symmetry operations = 8 total sites
-    // (x,y,z is identity and gets skipped, some operations generate additional sites)
-    expect(result?.sites.length).toBe(8)
-    expect(result?.lattice?.a).toBeCloseTo(5.5, 8)
-
-    // Check that mixed occupancy site (Na/K) is handled correctly
-    const na_sites = result?.sites.filter((site) => site.species[0].element === `Na`)
-    const k_sites = result?.sites.filter((site) => site.species[0].element === `K`)
-    expect(na_sites?.length).toBe(2) // 1 original + 1 from non-identity operations
-    expect(k_sites?.length).toBe(2)
-
-    // Check that symmetry operations with translations are applied
-    const translated_sites = result?.sites.filter((site) =>
-      site.abc.some((coord) => coord === 0.5),
-    )
-    expect(translated_sites?.length).toBe(3) // 3 sites with 0.5 coordinates from translations
+    assert(result)
+    expect(result.lattice.a).toBeCloseTo(5.5, 8)
+    const species_at = (abc: number[]) =>
+      result.sites
+        .find((site) => site.abc.every((coord, axis) => Math.abs(coord - abc[axis]) < 1e-9))
+        ?.species.map(({ element, occu }) => `${element}:${occu}`)
+    // Na/K: (0,0,0) is its own inversion image; the translation adds (1/2,1/2,1/2)
+    expect(species_at([0, 0, 0])).toEqual([`Na:0.75`, `K:0.25`])
+    expect(species_at([0.5, 0.5, 0.5])).toEqual([`Na:0.75`, `K:0.25`])
+    // Cl/I: inversion gives (3/4,3/4,3/4), the translation lands on both again
+    expect(species_at([0.25, 0.25, 0.25])).toEqual([`Cl:0.3`, `I:0.5`])
+    expect(species_at([0.75, 0.75, 0.75])).toEqual([`Cl:0.3`, `I:0.5`])
+    // two Fe rows (e.g. Fe2+/Fe3+) sum into one fully occupied Fe species
+    expect(species_at([0.5, 0, 0])).toEqual([`Fe:1`])
+    expect(species_at([0, 0.5, 0.5])).toEqual([`Fe:1`])
+    expect(result.sites).toHaveLength(6)
   })
 
   test(`parses ICSD-like CIF with specific symmetry format`, () => {
@@ -1150,15 +1153,26 @@ loop_
     const result = parse_cif(pf_sd_1601634_cif)
     assert(result, `Failed to parse PF-sd-1601634 CIF`)
 
-    // 5 unique oxygen sites, one per label (no symmetry ops defined, so no expansion)
-    const oxygen_sites = result.sites.filter(
-      (site) => site.species[0].element === `O` || site.label === `OH` || site.label === `OH2`,
-    )
-    const oxygen_labels = oxygen_sites.map((site) => site.label).toSorted()
-    expect(oxygen_labels).toEqual([`O1`, `O2`, `O3`, `OH`, `OH2`])
+    // 4 oxygen sites (no symmetry ops, so no expansion): the OH2 (0.655) and OH (0.345)
+    // rows share one position and merge into a single fully occupied O site
+    const oxygen_sites = result.sites.filter((site) => site.species[0].element === `O`)
+    expect(oxygen_sites.map((site) => site.label).toSorted()).toEqual([
+      `O1`,
+      `O2`,
+      `O3`,
+      `OH2`,
+    ])
+    const hydroxyl = oxygen_sites.find((site) => site.label === `OH2`)
+    expect(hydroxyl?.species).toEqual([{ element: `O`, occu: 1, oxidation_state: 0 }])
 
-    // Check total sites (5 O + 1 As + 3 Zn/Fe/Pb (mixed occupancy) + 1 Pb)
-    expect(result.sites).toHaveLength(10)
+    // 4 O + 1 As + 1 disordered Zn/Fe/Pb + 1 Pb
+    expect(result.sites).toHaveLength(7)
+    const mixed = result.sites.find((site) => site.species.length === 3)
+    expect(mixed?.species.map(({ element, occu }) => [element, occu])).toEqual([
+      [`Zn`, 0.645],
+      [`Fe`, 0.345],
+      [`Pb`, 0.01],
+    ])
 
     // Verify lattice parameters
     expect(result.lattice?.a).toBeCloseTo(9.143, 3)
@@ -1172,11 +1186,16 @@ loop_
     expect(result).not.toBeNull()
     if (!result) return
 
-    // P42/nmc (space group 137), 16 symmetry ops, 9 unique sites
-    // After expansion: 62 sites (Ge1/P1 share position but are separate entries)
-    expect(result.sites).toHaveLength(62)
-
-    expect(element_counts(result)).toEqual({ Li: 28, Ge: 4, P: 6, S: 24 })
+    // P42/nmc (space group 137), 16 symmetry ops, 9 unique rows. After expansion: 58
+    // sites, 4 of them the disordered Ge1 (0.515) / P1 (0.485) site
+    expect(result.sites).toHaveLength(58)
+    expect(element_counts(result)).toEqual({ Li: 28, Ge: 4, P: 2, S: 24 })
+    const ge_p = result.sites.filter((site) => site.species.length === 2)
+    expect(ge_p).toHaveLength(4)
+    expect(ge_p[0].species.map(({ element, occu }) => [element, occu])).toEqual([
+      [`Ge`, 0.515],
+      [`P`, 0.485],
+    ])
 
     expect(result.lattice?.a).toBeCloseTo(8.694, 2)
     expect(result.lattice?.c).toBeCloseTo(12.599, 2)
@@ -1259,7 +1278,7 @@ unit_cell:
 
   it(`reads elements, fractional coordinates and masses off the primitive cell`, () => {
     const structure = parse_phonopy_yaml(simple_phonopy_yaml)
-    assert(structure?.lattice, `Failed to parse phonopy YAML`)
+    assert(structure && `lattice` in structure, `Failed to parse phonopy YAML`)
     expect(structure.lattice.a).toBeCloseTo(4.55634056126959, 6)
     expect(structure.lattice.volume).toBeGreaterThan(120)
     expect(structure.sites.map((site) => site.species[0].element)).toEqual([`Ag`, `I`])
@@ -1311,8 +1330,7 @@ describe(`parse_structure_file`, () => {
   ])(`detects %s content with blob-URL UUID filename`, (_label, fixture) => {
     const content = read_maybe_gz(`./src/site/structures/${fixture}`)
     const result = parse_structure_file(content, `8a3bf2c4-d1e2-4f5a-9b8c-7d6e5f4a3b2c`)
-    expect(result, `failed to content-detect ${fixture}`).not.toBeNull()
-    expect(result?.sites.length).toBeGreaterThan(0)
+    expect(result.sites.length).toBeGreaterThan(0)
   })
 
   test(`still trusts conflicting extension over content`, () => {
@@ -1326,19 +1344,11 @@ describe(`parse_structure_file`, () => {
     const content = read_maybe_gz(`./src/site/structures/${hea_hcp_filename}`)
 
     const result = parse_structure_file(content, hea_hcp_filename)
-
-    expect(result?.sites.length).toBe(180)
-    expect(result?.lattice?.volume).toBeGreaterThan(120)
-
-    // Check first site
-    const first_site = result?.sites[0]
-    expect(first_site?.species[0]?.element).toBe(`Ta`)
-    expect(first_site?.abc).toHaveLength(3)
-    expect(first_site?.xyz).toHaveLength(3)
-
-    // Check lattice
-    expect(result?.lattice?.matrix.every((row) => row.length === 3)).toBe(true)
-    expect(result?.lattice?.volume).toBeCloseTo(3218.0139605153627, 5)
+    assert(`lattice` in result)
+    expect(result.sites).toHaveLength(180)
+    expect(result.sites[0].species[0].element).toBe(`Ta`)
+    expect(result.lattice.matrix.every((row) => row.length === 3)).toBe(true)
+    expect(result.lattice.volume).toBeCloseTo(3218.0139605153627, 5)
   })
 
   test(`parses simple JSON structure correctly`, () => {
@@ -1347,9 +1357,8 @@ describe(`parse_structure_file`, () => {
       lattice: cubic_lattice_json(1),
     }
     const result = parse_structure_file(JSON.stringify(simple_structure), `simple.json`)
-
-    expect(result?.sites.length).toBe(1)
-    expect(result?.sites[0].species[0].element).toBe(`H`)
+    expect(result.sites).toHaveLength(1)
+    expect(result.sites[0].species[0].element).toBe(`H`)
   })
 
   describe(`comprehensive nested structure parsing`, () => {
@@ -1365,9 +1374,10 @@ describe(`parse_structure_file`, () => {
       [`multiple items with structure`, [{ id: 1 }, { structure: fe_struct() }]],
     ])(`finds structure in %s`, (_description, wrapper) => {
       const result = parse_structure_file(JSON.stringify(wrapper), `test.json`)
-      expect(result?.sites.length).toBe(1)
-      expect(result?.sites[0].species[0].element).toBe(`Fe`)
-      expect(result?.lattice?.volume).toBe(125)
+      assert(`lattice` in result)
+      expect(result.sites).toHaveLength(1)
+      expect(result.sites[0].species[0].element).toBe(`Fe`)
+      expect(result.lattice.volume).toBe(125)
     })
 
     test.each([
@@ -1381,7 +1391,7 @@ describe(`parse_structure_file`, () => {
       [`array of invalid objects`, [{ no_structure: true }, { also_invalid: true }]],
     ])(`throws for %s`, (_description, invalid_data) => {
       expect(() => parse_structure_file(JSON.stringify(invalid_data), `invalid.json`)).toThrow(
-        /JSON file does not contain a valid structure format/,
+        /JSON content does not contain a valid structure format/,
       )
     })
 
@@ -1390,14 +1400,14 @@ describe(`parse_structure_file`, () => {
       let nested_obj: object = fe_struct()
       for (let idx = 0; idx < depth; idx++) nested_obj = { [`level_${idx}`]: nested_obj }
       const result = parse_structure_file(JSON.stringify(nested_obj), `deep.json`)
-      expect(result?.sites[0].species[0].element).toBe(`Fe`)
+      expect(result.sites[0].species[0].element).toBe(`Fe`)
     })
 
     test(`passes through raw string species like ['H'] unchanged`, () => {
-      const raw = { data: { sites: [{ species: [`H`], abc: [0, 0, 0] }] } }
+      const raw = { data: { sites: [{ species: [`H`], xyz: [0, 0, 0] }] } }
       const result = parse_structure_file(JSON.stringify(raw), `test.json`)
-      expect(result?.sites).toHaveLength(1)
-      expect(result?.sites[0].species[0]).toBe(`H`)
+      expect(result.sites).toHaveLength(1)
+      expect(result.sites[0].species[0]).toBe(`H`)
     })
 
     test(`handles arrays with mixed valid/invalid structures`, () => {
@@ -1408,109 +1418,64 @@ describe(`parse_structure_file`, () => {
         { another: `structure`, ...fe_struct() }, // Another valid one with Fe
       ]
       const result = parse_structure_file(JSON.stringify(mixed_array), `mixed.json`)
-      expect(result?.sites[0].species[0].element).toBe(`Cu`) // Should find first valid structure
+      expect(result.sites[0].species[0].element).toBe(`Cu`) // Should find first valid structure
     })
   })
 
-  describe(`data passing and transformation logic`, () => {
-    const bare_site = (element: string) => ({ species: [{ element }], abc: [0, 0, 0] })
-    // oxfmt-ignore
+  describe(`JSON structure promotion`, () => {
+    const bare_site = (element: string) => ({ species: [{ element }], xyz: [1, 2, 3] })
     test.each([
-      // charge is included on the direct structure to match the default the others get
-      [`simple direct structure`, { sites: [bare_site(`H`)], charge: 0 }],
+      [`simple direct structure`, { sites: [bare_site(`H`)] }],
       [`nested in object`, { structure: { sites: [bare_site(`He`)] } }],
       [`nested in array`, [{ structure: { sites: [bare_site(`Li`)] } }]],
-    ])(`parse_any_structure handles %s correctly`, (_description, input) => {
-      const result = parse_any_structure(JSON.stringify(input), `test.json`)
-      expect(result?.sites.length).toBe(1)
-      expect(result?.charge).toBe(0)
+    ])(`finds a lattice-free structure %s`, (_description, input) => {
+      const result = parse_structure_file(JSON.stringify(input), `test.json`)
+      expect(result.sites).toHaveLength(1)
+      expect(`lattice` in result).toBe(false)
+      // molecules get a placeholder abc so every Site carries both coordinate kinds
+      expect(result.sites[0].abc).toEqual([0, 0, 0])
     })
 
-    test(`transforms lattice properties correctly`, () => {
-      // oxfmt-ignore
-      const matrix = [[2, 0, 0], [0, 2, 0], [0, 0, 2]]
-      const structure = { sites: [bare_site(`C`)], lattice: { matrix, volume: 8 } }
-      const content = JSON.stringify({ data: { structure } })
-      const result = parse_any_structure(content, `test.json`)
-
-      assert(result && `lattice` in result, `invalid parse result`)
-      expect(result.lattice.pbc).toEqual([true, true, true])
-      expect(result.lattice.volume).toBe(8)
-      expect(result.lattice.matrix).toEqual(matrix)
-    })
-
-    test(`finalizes direct JSON properties without sharing mutable data`, () => {
-      const direct_structure = parse_poscar(na_cl_cubic)
-      if (direct_structure === null) throw new Error(`invalid fixture structure`)
-      direct_structure.properties = {
-        ...direct_structure.properties,
-        bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 2, cell_shift: [1, 0, 0] }],
-        forces: [1, 2, 3],
-        stability: { energy_above_hull: 0 },
-      }
-      const parse_spy = vi.spyOn(JSON, `parse`).mockReturnValueOnce(direct_structure)
-
-      try {
-        type MutableStructureProperties = NonNullable<ParsedStructure[`properties`]> & {
-          forces: number[]
-          stability: { energy_above_hull: number }
-        }
-
-        const source_properties = direct_structure.properties as MutableStructureProperties
-        const result_properties = parse_any_structure(`{}`, `direct.json`)?.properties as
-          | MutableStructureProperties
-          | undefined
-        const source_bonds = source_properties?.bonds
-        const result_bonds = result_properties?.bonds
-        assert(result_properties && source_bonds && result_bonds, `missing explicit bonds`)
-        const source_cell_shift = source_bonds[0].cell_shift
-        const result_cell_shift = result_bonds[0].cell_shift
-        assert(source_cell_shift && result_cell_shift, `missing cell shift`)
-
-        expect(result_bonds).toEqual(source_bonds)
-        expect(result_bonds).not.toBe(source_bonds)
-        expect(result_cell_shift).not.toBe(source_cell_shift)
-        expect(result_properties.forces).not.toBe(source_properties.forces)
-        expect(result_properties.stability).not.toBe(source_properties.stability)
-
-        result_cell_shift[0] = 2
-        result_properties.forces[0] = 9
-        result_properties.stability.energy_above_hull = 1
-        expect(source_cell_shift).toEqual([1, 0, 0])
-        expect(source_properties.forces).toEqual([1, 2, 3])
-        expect(source_properties.stability.energy_above_hull).toBe(0)
-      } finally {
-        parse_spy.mockRestore()
-      }
-    })
-
-    // A slab's pbc is what tells the file viewer not to draw periodic images through the
-    // vacuum, so parse_structure_file must pass it through. parse_any_structure keeps its
-    // older contract that a JSON lattice is fully periodic.
-    test.each([
-      [`parse_structure_file`, parse_structure_file, [true, true, false]],
-      [`parse_any_structure`, parse_any_structure, [true, true, true]],
-    ])(`%s reports a pymatgen slab's pbc as %j`, (_name, parse, expected_pbc) => {
-      // oxfmt-ignore
-      const lattice = { matrix: [[4, 0, 0], [0, 4, 0], [0, 0, 20]], pbc: [true, true, false] }
-      const slab = JSON.stringify({ lattice, sites: [make_json_site(`Si`, [0, 0, 0.1])] })
-      const result = parse(slab, `slab.json`)
-      assert(result && `lattice` in result, `expected slab lattice`)
-      expect(result.lattice?.pbc).toEqual(expected_pbc)
+    test(`derives abc from xyz (and vice versa) when a JSON site carries only one`, () => {
+      const lattice = cubic_lattice_json(2)
+      const sites = [
+        { species: [{ element: `C` }], xyz: [1, 0.5, 3] },
+        { species: [{ element: `C` }], abc: [0.25, 0.5, 0.75] },
+      ]
+      const result = parse_structure_file(JSON.stringify({ sites, lattice }), `test.json`)
+      // xyz outside the cell wraps: abc 1.5 -> 0.5 and xyz is recomputed to match
+      expect_vec3_close(result.sites[0].abc, [0.5, 0.25, 0.5], 12)
+      expect_vec3_close(result.sites[0].xyz, [1, 0.5, 1], 12)
+      expect_vec3_close(result.sites[1].xyz, [0.5, 1, 1.5], 12)
+      expect(result.sites).toHaveLength(2)
     })
 
     test.each([
-      [`malformed JSON`, `{invalid json`],
-      [`completely invalid structure`, `{ "no_structure": true }`],
-      [`empty string`, ``],
-      [`only whitespace`, `   \n\t   `],
-    ])(`handles invalid input gracefully: %s`, (_description, invalid_content) => {
-      expect(() => parse_any_structure(invalid_content, `test.json`)).toThrow(
-        `Failed to parse structure from 'test.json'`,
-      )
+      [
+        `no xyz and no lattice`,
+        { sites: [{ species: [{ element: `H` }], abc: [0, 0, 0] }] },
+        /has no xyz/,
+      ],
+      [
+        `2-row lattice matrix`,
+        {
+          sites: [bare_site(`H`)],
+          lattice: {
+            matrix: [
+              [1, 0, 0],
+              [0, 1, 0],
+            ],
+          },
+        },
+        /JSON lattice matrix row 3/,
+      ],
+    ])(`fails fast on %s`, (_description, input, message) => {
+      expect(() => parse_structure_file(JSON.stringify(input), `test.json`)).toThrow(message)
     })
 
-    test(`preserves all structure properties during transformation`, () => {
+    // A slab's pbc is what tells the viewer not to draw periodic images through the vacuum,
+    // and a charged cell's charge is data: neither is overridden by defaults.
+    test(`keeps declared pbc, charge, id and properties`, () => {
       const site = {
         species: [{ element: `Au`, occu: 0.8, oxidation_state: 1 }],
         abc: [0.5, 0.5, 0.5],
@@ -1520,29 +1485,33 @@ describe(`parse_structure_file`, () => {
       }
       const structure = {
         sites: [site],
-        // pbc and charge are deliberately non-default; both must be overridden
         lattice: { ...cubic_lattice_json(3), pbc: [true, false, true] },
         properties: { formula: `Au`, energy: -5.2 },
         charge: 2,
+        id: `mp-1`,
       }
-      const content = JSON.stringify({ result: { structure } })
-      const result = parse_any_structure(content, `test.json`)
-
-      // Check site properties are preserved
-      const parsed_site = result?.sites[0]
-      expect(parsed_site?.species[0].occu).toBe(0.8)
-      expect(parsed_site?.properties?.magnetic_moment).toBe(2.5)
-      expect(parsed_site?.label).toBe(`Au1_site`)
-
-      // Check lattice properties are preserved but PBC is overridden (for crystal structures)
-      assert(result && `lattice` in result, `invalid parse result`)
+      const result = parse_structure_file(
+        JSON.stringify({ result: { structure } }),
+        `test.json`,
+      )
+      assert(`lattice` in result)
+      expect(result.lattice.pbc).toEqual([true, false, true])
       expect(result.lattice.volume).toBe(27)
-      expect(result.lattice.pbc).toEqual([true, true, true])
-      expect(result.charge).toBe(0)
-
-      // Check structure-level properties are preserved
+      expect(result.charge).toBe(2)
+      expect(result.id).toBe(`mp-1`)
       expect(result.properties).toEqual({ formula: `Au`, energy: -5.2 })
-      expect(result.sites).toHaveLength(1)
+      expect(result.sites[0]).toEqual(site)
+    })
+
+    test.each([
+      [`malformed JSON`, `{invalid json`],
+      [`completely invalid structure`, `{ "no_structure": true }`],
+      [`empty string`, ``],
+      [`only whitespace`, `   \n\t   `],
+    ])(`handles invalid input gracefully: %s`, (_description, invalid_content) => {
+      expect(() => parse_structure_file(invalid_content, `test.json`)).toThrow(
+        `Failed to parse structure from 'test.json'`,
+      )
     })
   })
 })
@@ -1563,7 +1532,7 @@ const optimade_structure_from = (lattice_vectors: number[][], positions: number[
     species_at_sites: positions.map(() => `Fe`),
   })
 
-// Cartesian→fractional conversion cases shared by the parse_optimade_json and
+// Cartesian→fractional conversion cases shared by the parse_optimade_from_raw and
 // optimade_to_crystal coordinate tests (both go through build_optimade_sites)
 // oxfmt-ignore
 const OPTIMADE_COORD_CASES = [
@@ -1618,9 +1587,7 @@ describe(`OPTIMADE JSON parser`, () => {
       species_at_sites: [`C`],
     } },
   ])(`should parse $name`, ({ name, attributes, first_element, wrap = (obj: object) => obj }) => {
-    const result = parse_optimade_json(
-      JSON.stringify(wrap({ id: name, type: `structures`, attributes })),
-    )
+    const result = parse_optimade_from_raw(wrap({ id: name, type: `structures`, attributes }))
     assert(result, `Failed to parse OPTIMADE JSON`)
 
     const { lattice_vectors, cartesian_site_positions } = attributes as {
@@ -1631,10 +1598,11 @@ describe(`OPTIMADE JSON parser`, () => {
     expect(result.sites[0].species[0].element).toBe(first_element)
 
     if (!lattice_vectors) {
-      expect(result.lattice).toBeUndefined()
+      expect(`lattice` in result).toBe(false)
       return
     }
-    expect(result.lattice?.matrix).toEqual(lattice_vectors)
+    assert(`lattice` in result)
+    expect(result.lattice.matrix).toEqual(lattice_vectors)
     expect_sites_reconstruct(result)
   })
 
@@ -1648,45 +1616,40 @@ describe(`OPTIMADE JSON parser`, () => {
     // null entry (missing species) is skipped in skip mode, not crashed on (was a null.replace throw)
     [undefined, [`Fe`, null], [`Fe`]],
   ])(`should resolve species_at_sites %#`, (species, species_at_sites, expected) => {
-    const result = parse_optimade_json(
-      JSON.stringify({
-        id: `test-species`,
-        type: `structures`,
-        attributes: {
-          cartesian_site_positions: species_at_sites.map((_, idx) => [idx, 0, 0]),
-          species_at_sites,
-          species, // undefined is dropped by JSON.stringify
-        },
-      }),
-    )
+    const result = parse_optimade_from_raw({
+      id: `test-species`,
+      type: `structures`,
+      attributes: {
+        cartesian_site_positions: species_at_sites.map((_, idx) => [idx, 0, 0]),
+        species_at_sites,
+        species,
+      },
+    })
     assert(result, `Failed to parse OPTIMADE JSON`)
     expect(result.sites.map((site) => site.species[0].element)).toEqual(expected)
   })
 
   // oxfmt-ignore
   it.each([
-    [`missing required fields`, JSON.stringify({ id: `x`, type: `structures`, attributes: { elements: [`Fe`] } }), `OPTIMADE JSON missing required position or species data`],
+    [`missing required fields`, { elements: [`Fe`] }, `OPTIMADE JSON missing required position or species data`],
     // only one species for two positions
-    [`mismatched positions and species count`, JSON.stringify({ id: `x`, type: `structures`, attributes: { cartesian_site_positions: [[0, 0, 0], [1, 1, 1]], species_at_sites: [`Fe`] } }), `OPTIMADE JSON position/species count mismatch`],
+    [`mismatched positions and species count`, { cartesian_site_positions: [[0, 0, 0], [1, 1, 1]], species_at_sites: [`Fe`] }, `OPTIMADE JSON position/species count mismatch`],
     // too few components, a non-numeric component and a non-finite one
-    [`no valid sites after filtering invalid positions`, JSON.stringify({ id: `x`, type: `structures`, attributes: { cartesian_site_positions: [[0, 0], [0, `bad`, 0], [Infinity, 0, 0]], species_at_sites: [`Fe`, `Fe`, `Fe`] } }), `No valid sites found in OPTIMADE JSON`],
-    [`invalid JSON`, `{ invalid json }`, `Error parsing OPTIMADE JSON:`],
-    [`empty string`, ``, `Error parsing OPTIMADE JSON:`],
-  ])(`should handle %s gracefully`, (_name, content, expected_error) => {
-    expect(parse_optimade_json(content)).toBeNull()
+    [`no valid sites after filtering invalid positions`, { cartesian_site_positions: [[0, 0], [0, `bad`, 0], [Infinity, 0, 0]], species_at_sites: [`Fe`, `Fe`, `Fe`] }, `No valid sites found in OPTIMADE JSON`],
+  ])(`should handle %s gracefully`, (_name, attributes, expected_error) => {
+    expect(parse_optimade_from_raw({ id: `x`, type: `structures`, attributes })).toBeNull()
     expect_only_error(expected_error)
   })
 
   it.each(OPTIMADE_COORD_CASES)(
     `should handle $name`,
     ({ lattice_vectors, positions, expected_abc }) => {
-      const result = parse_optimade_json(
-        JSON.stringify(optimade_structure_from(lattice_vectors, positions)),
+      const result = parse_optimade_from_raw(
+        optimade_structure_from(lattice_vectors, positions),
       )
-      assert(result, `Failed to parse OPTIMADE JSON`)
-
+      assert(result && `lattice` in result, `Failed to parse OPTIMADE JSON`)
       expect(result.sites).toHaveLength(positions.length)
-      expect(result.lattice?.matrix).toEqual(lattice_vectors)
+      expect(result.lattice.matrix).toEqual(lattice_vectors)
       result.sites.forEach((site, idx) => expect_vec3_close(site.abc, expected_abc[idx], 12))
       expect_sites_reconstruct(result)
     },
@@ -1706,14 +1669,7 @@ describe(`OPTIMADE JSON Detection`, () => {
     [`null value`, null, false],
     [`non-structure JSON`, { name: `test`, value: 123 }, false],
   ])(`should detect %s correctly`, (_name, data, expected) => {
-    expect(is_optimade_json(JSON.stringify(data))).toBe(expected)
-  })
-
-  it.each([
-    [`invalid JSON`, `{ invalid json }`],
-    [`empty string`, ``],
-  ])(`should detect %s as non-OPTIMADE`, (_name, content) => {
-    expect(is_optimade_json(content)).toBe(false)
+    expect(is_optimade_raw(data)).toBe(expected)
   })
 })
 
@@ -1989,10 +1945,9 @@ describe(`Coordinate Normalization`, () => {
     { abc: [1.0, 0.0, 0.5], expected: [0.0, 0.0, 0.5], name: `exactly 1.0 → 0` },
     { abc: [-1.0, 0.5, 0.25], expected: [0.0, 0.5, 0.25], name: `exactly -1.0 → 0` },
   ])(`wraps $name: $abc → $expected`, ({ abc, expected }) => {
-    const result = parse_any_structure(JSON.stringify(make_raw_structure(abc)), `test.json`)
-    expect(result).not.toBeNull()
-    expected.forEach((val, idx) => expect(result?.sites[0].abc[idx]).toBeCloseTo(val, 10))
-    expect_abc_in_unit_cell(result?.sites[0])
+    const result = parse_structure_file(JSON.stringify(make_raw_structure(abc)), `test.json`)
+    expected.forEach((val, idx) => expect(result.sites[0].abc[idx]).toBeCloseTo(val, 10))
+    expect_abc_in_unit_cell(result.sites[0])
   })
 
   // Test nested pymatgen structures from Materials Project API format.
@@ -2004,9 +1959,9 @@ describe(`Coordinate Normalization`, () => {
   ])(`normalizes nested %s`, (_name, wrapper, abc, expected_abc, expected_xyz) => {
     const inner = { charge: 0, lattice: cubic_lattice_json(5), sites: [make_json_site(`Li`, abc)] }
     const result = parse_structure_file(JSON.stringify(wrapper(inner)), `test.json`)
-    expect(result).not.toBeNull()
-    expect_vec3_close(result?.sites[0].abc, expected_abc, 10)
-    expect_vec3_close(result?.sites[0].xyz, expected_xyz, 10)
+    expect(result.sites).toHaveLength(1)
+    expect_vec3_close(result.sites[0].abc, expected_abc, 10)
+    expect_vec3_close(result.sites[0].xyz, expected_xyz, 10)
   })
 
   // hexagonal lattice: a negative b coordinate must wrap without shearing xyz, which a
@@ -2031,8 +1986,8 @@ describe(`Coordinate Normalization`, () => {
     ],
     [`multiple negative-coord sites`, hex_lattice(6.22, 224), hex_negative_sites],
   ])(`wraps and reconstructs xyz for a hexagonal cell with %s`, (_name, lattice, sites) => {
-    const result = parse_any_structure(JSON.stringify({ lattice, sites }), `hex.json`)
-    assert(`lattice` in result && result.lattice, `expected hexagonal lattice`)
+    const result = parse_structure_file(JSON.stringify({ lattice, sites }), `hex.json`)
+    assert(`lattice` in result, `expected hexagonal lattice`)
     expect(result.sites).toHaveLength(sites.length)
     for (const site of result.sites) {
       expect_abc_in_unit_cell(site)
@@ -2043,11 +1998,11 @@ describe(`Coordinate Normalization`, () => {
   test(`wraps whole and half negative fractional coordinates exactly`, () => {
     const lattice = hex_lattice(6.22, 224)
     const struct = { output: { structure: { lattice, sites: hex_negative_sites } } }
-    const result = parse_any_structure(JSON.stringify(struct), `test.json`)
+    const result = parse_structure_file(JSON.stringify(struct), `test.json`)
     // [0, -1, 0] → [0, 0, 0], [0, -1, -0.5] → [0, 0, 0.5], [0.5, -0.5, -0.25] → [0.5, 0.5, 0.75]
-    expect(result?.sites[0].abc).toEqual([0, 0, 0])
-    expect(result?.sites[1].abc[2]).toBeCloseTo(0.5, 10)
-    expect(result?.sites[2].abc).toEqual([0.5, 0.5, 0.75])
+    expect(result.sites[0].abc).toEqual([0, 0, 0])
+    expect(result.sites[1].abc[2]).toBeCloseTo(0.5, 10)
+    expect(result.sites[2].abc).toEqual([0.5, 0.5, 0.75])
   })
 })
 
@@ -2078,10 +2033,10 @@ describe(`lattice params derived from matrix-only lattices`, () => {
     ],
   })
 
-  // parse_any_structure throws on failure, so only the lattice presence needs guarding
+  // parse_structure_file throws on failure, so only the lattice presence needs guarding
   const parsed_lattice = (input: object) => {
-    const result = parse_any_structure(JSON.stringify(input), `test.json`)
-    if (!(`lattice` in result) || !result.lattice) throw new Error(`expected lattice`)
+    const result = parse_structure_file(JSON.stringify(input), `test.json`)
+    if (!(`lattice` in result)) throw new Error(`expected lattice`)
     return result.lattice
   }
 
@@ -2093,6 +2048,12 @@ describe(`lattice params derived from matrix-only lattices`, () => {
     // Deliberately wrong/junk partial params prove the matrix wins over them
     [`partial numeric params`, identity, { a: 1, b: 2 }],
     [`non-numeric params`, identity, { a: `3.9`, b: null, volume: NaN }],
+    // fully specified but inconsistent with the matrix: the matrix still wins
+    [
+      `inconsistent full params`,
+      identity,
+      { a: 1, b: 2, c: 3, alpha: 90, beta: 90, gamma: 90, volume: 6 },
+    ],
   ])(`computes a/b/c/angles/volume for %s`, (_name, wrap, extra_lattice) => {
     const lattice = parsed_lattice(wrap(matrix_only_structure(extra_lattice)))
     expect(lattice.a).toBeCloseTo(3.887614, 5)
@@ -2103,20 +2064,12 @@ describe(`lattice params derived from matrix-only lattices`, () => {
     expect(lattice.gamma).toBeCloseTo(90, 5)
     expect(lattice.volume).toBeCloseTo(3.887614 * 3.887614 * 49.0954, 2)
   })
-
-  test(`leaves fully-specified lattices untouched`, () => {
-    const lattice_params = { a: 1, b: 2, c: 3, alpha: 90, beta: 90, gamma: 90, volume: 6 }
-    const lattice = parsed_lattice(matrix_only_structure(lattice_params))
-    // Deliberately inconsistent params prove the no-op path: matrix is not consulted
-    expect(lattice.a).toBe(1)
-    expect(lattice.volume).toBe(6)
-  })
 })
 
 // === PDB / MOL / SDF / MOL2 / mmCIF / LAMMPS ===
 
 // Bonds as [site_idx_1, site_idx_2, order] triples, sorted for order-independent compare
-const bond_tuples = (structure: ParsedStructure) =>
+const bond_tuples = (structure: AnyStructure) =>
   (structure.properties?.bonds ?? [])
     .map((bond) => [bond.site_idx_1, bond.site_idx_2, bond.order] as const)
     .toSorted((bond_a, bond_b) => bond_a[0] - bond_b[0] || bond_a[1] - bond_b[1])
@@ -2155,8 +2108,8 @@ describe(`molecular and LAMMPS structure formats`, () => {
     const result = parse_structure_file(text, file)
     expect(result.sites).toHaveLength(n_sites)
     expect(result.sites.slice(0, 3).map((site) => site.species[0].element)).toEqual(elements)
-    expect(Boolean(result.lattice)).toBe(periodic)
-    if (periodic) {
+    expect(`lattice` in result).toBe(periodic)
+    if (`lattice` in result) {
       expect_sites_reconstruct(result)
       // Every fixture sits inside its cell, so fractional coordinates must too —
       // negative abc means the parser ignored the box origin and breaks PBC images
@@ -2205,7 +2158,7 @@ describe(`molecular and LAMMPS structure formats`, () => {
 
   test(`PDB CRYST1 builds the lattice and fractional coordinates`, () => {
     const result = parse_structure_file(nacl_rocksalt_pdb, `NaCl-rocksalt.pdb`)
-    assert(result.lattice, `expected CRYST1 lattice`)
+    assert(`lattice` in result, `expected CRYST1 lattice`)
     expect(result.lattice.a).toBeCloseTo(5.64, 6)
     expect(result.lattice.alpha).toBeCloseTo(90, 6)
     expect_vec3_close(result.sites[4].abc, [0.5, 0.5, 0.5], 3)
@@ -2228,12 +2181,12 @@ describe(`molecular and LAMMPS structure formats`, () => {
     const cryst1 = `CRYST1    1.000    1.000    1.000  90.00  90.00  90.00 P 1           1`
     const content = `${cryst1}\n${pdb_atom_line(1, ` C  `, [1, 2, 3], `C`)}`
     const result = parse_structure_file(content, `dummy.pdb`)
-    expect(result.lattice).toBeUndefined()
+    expect(`lattice` in result).toBe(false)
     expect(result.sites[0].abc).toEqual([0, 0, 0])
   })
 
   test(`explicit MOL bonds feed the explicit_only bonding strategy`, () => {
-    const structure = parse_any_structure(ethanol_mol, `ethanol.mol`)
+    const structure = parse_structure_file(ethanol_mol, `ethanol.mol`)
     const bond_pairs = explicit_only(structure)
     expect(bond_pairs).toHaveLength(8)
     const carbon_bond = bond_pairs.find(
@@ -2283,7 +2236,7 @@ describe(`molecular and LAMMPS structure formats`, () => {
   test(`MOL2 CRYSIN section yields a lattice`, () => {
     const content = `@<TRIPOS>MOLECULE\ncrystal\n 1 0 1 0 0\nSMALL\nNO_CHARGES\n\n@<TRIPOS>ATOM\n      1 C1     1.0000 2.0000 3.0000 C.3    1 RES1  0.0000\n@<TRIPOS>CRYSIN\n 4.0000 5.0000 6.0000 90.0000 90.0000 90.0000 1 1`
     const result = parse_structure_file(content, `crystal.mol2`)
-    assert(result.lattice, `expected CRYSIN lattice`)
+    assert(`lattice` in result, `expected CRYSIN lattice`)
     expect([result.lattice.a, result.lattice.b, result.lattice.c]).toEqual([4, 5, 6])
     expect_vec3_close(result.sites[0].abc, [0.25, 0.4, 0.5], 6)
     expect_sites_reconstruct(result)
@@ -2323,7 +2276,8 @@ describe(`molecular and LAMMPS structure formats`, () => {
       `_cell.length_a_esd 0.001\n_cell.length_a 5`,
     )
     const result = parse_structure_file(content, `esd.mmcif`)
-    expect(result.lattice?.a).toBeCloseTo(5, 8)
+    assert(`lattice` in result)
+    expect(result.lattice.a).toBeCloseTo(5, 8)
     expect_vec3_close(result.sites[0].abc, [0.2, 0, 0], 8)
   })
 
@@ -2360,9 +2314,10 @@ describe(`molecular and LAMMPS structure formats`, () => {
     // mass 26.9815 identifies Al; the `xy xz yz` line adds a 1 Å tilt on the b vector
     const content = `# triclinic Al\n\n2 atoms\n1 atom types\n0.0 4.0 xlo xhi\n0.0 4.0 ylo yhi\n0.0 4.0 zlo zhi\n1.0 0.0 0.0 xy xz yz\n\nMasses\n\n1 26.9815\n\nAtoms # atomic\n\n1 1 0.0 0.0 0.0\n2 1 2.0 2.0 2.0`
     const result = parse_structure_file(content, `Al.lmp`)
+    assert(`lattice` in result)
     expect(result.sites.map((site) => site.species[0].element)).toEqual([`Al`, `Al`])
     // oxfmt-ignore
-    expect(result.lattice?.matrix).toEqual([[4, 0, 0], [1, 4, 0], [0, 0, 4]])
+    expect(result.lattice.matrix).toEqual([[4, 0, 0], [1, 4, 0], [0, 0, 4]])
     expect_sites_reconstruct(result)
   })
 
@@ -2453,8 +2408,8 @@ describe(`molecular and LAMMPS structure formats`, () => {
       `1 1 0.75 -0.375 -1.0`,
     ].join(`\n`)
     const result = parse_structure_file(content, `general.lmp`)
-
-    expect(result.lattice?.matrix).toEqual([
+    assert(`lattice` in result)
+    expect(result.lattice.matrix).toEqual([
       [4, 0, 0],
       [1, 5, 0],
       [0.5, 0.25, 6],
@@ -2516,7 +2471,7 @@ describe(`molecular and LAMMPS structure formats`, () => {
     [`ff ff ff`, [false, false, false]],
   ])(`LAMMPS dump box flags %s survive as pbc %j`, (box_flags, expected_pbc) => {
     const content = lammps_dump(box_flags, `id element x y z`, [`1 Cu 1.0 1.0 1.0`])
-    const structure = parse_any_structure(content, `test.dump`)
+    const structure = parse_structure_file(content, `test.dump`)
     assert(`lattice` in structure, `expected dump lattice`)
     expect(structure.lattice.pbc).toEqual(expected_pbc)
   })
@@ -2535,8 +2490,8 @@ describe(`molecular and LAMMPS structure formats`, () => {
     { file: `ethanol.mol`, text: ethanol_mol, n_bonds: 8 },
     { file: `benzene.mol2`, text: benzene_mol2, n_bonds: 12 },
     { file: `glycine.pdb`, text: glycine_pdb, n_bonds: 4 },
-  ])(`$file stays aperiodic through parse_any_structure`, ({ file, text, n_bonds }) => {
-    const structure = parse_any_structure(text, file)
+  ])(`$file stays aperiodic through parse_structure_file`, ({ file, text, n_bonds }) => {
+    const structure = parse_structure_file(text, file)
     expect(`lattice` in structure).toBe(false)
     expect(structure.properties?.bonds).toHaveLength(n_bonds)
   })

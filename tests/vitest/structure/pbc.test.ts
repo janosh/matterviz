@@ -432,17 +432,11 @@ test.each([
   ({ content, filename, expected_min_images, expected_max_images, min_dist, tol }) => {
     // Parse the structure
     let structure: Crystal
-
     if (filename.endsWith(`.json`)) structure = content as Crystal
     else {
       const parsed = parse_structure_file(content as string, filename)
-      if (!parsed?.lattice) {
-        throw new Error(`Failed to parse structure or no lattice found`)
-      }
-      structure = {
-        sites: parsed.sites,
-        lattice: { ...parsed.lattice, pbc: [true, true, true] },
-      }
+      if (!(`lattice` in parsed)) throw new Error(`no lattice found in ${filename}`)
+      structure = parsed
     }
 
     // Test find_image_atoms

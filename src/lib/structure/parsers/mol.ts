@@ -1,8 +1,7 @@
 // MDL MOL / SDF (structure-data file) V2000 and V3000 connection tables. Both carry
 // Cartesian coordinates without a unit cell and an authoritative bond block.
 import type { ElementSymbol } from '$lib/element'
-import type { BondOrder, Site } from '$lib/structure'
-import type { ParsedStructure } from '$lib/structure/parse'
+import type { BondOrder, Molecule, Site } from '$lib/structure'
 import { make_site } from '$lib/structure/site'
 import {
   diag_error,
@@ -177,8 +176,7 @@ const parse_v3000 = (lines: string[]): MolBlock | null => {
   return { sites, bonds, site_idx_by_atom_id }
 }
 
-// @internal parser exported for tests; public entry points: parse_structure_file/parse_any_structure. Parse MDL MOL/SDF.
-export const parse_mol = (content: string): ParsedStructure | null =>
+export const parse_mol = (content: string): Molecule | null =>
   guard_parse(`MOL/SDF`, () => {
     const all_lines = content.split(/\r?\n/)
     // SDF concatenates records separated by `$$$$`; only the first is parsed
@@ -217,7 +215,7 @@ export const parse_mol = (content: string): ParsedStructure | null =>
     return finalize_mol_block(is_v3000 ? parse_v3000(lines) : parse_v2000(lines, counts_idx))
   })
 
-const finalize_mol_block = (block: MolBlock | null): ParsedStructure | null =>
+const finalize_mol_block = (block: MolBlock | null): Molecule | null =>
   block &&
   parsed_result(
     block.sites,

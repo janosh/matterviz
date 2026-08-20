@@ -99,15 +99,19 @@ describe(`package.json exports`, () => {
     `built structure and element entry points retain strict public exports`,
     { timeout: 15_000 },
     async () => {
-      const structure_export = await import(`../../dist/structure/serialize.js`)
+      const structure_export = await import(`../../dist/structure/export.js`)
       expect(pkg.exports[`./structure/export`]).toEqual({
-        types: `./dist/structure/serialize.d.ts`,
-        default: `./dist/structure/serialize.js`,
+        types: `./dist/structure/export.d.ts`,
+        default: `./dist/structure/export.js`,
       })
       expect(Object.keys(structure_export).toSorted()).toEqual(
         [
+          `convert_instanced_meshes_to_regular`,
           `create_structure_filename`,
           `export_structure_as`,
+          `export_structure_as_glb`,
+          `export_structure_as_obj`,
+          `generate_mtl_content`,
           `STRUCT_TEXT_FORMATS`,
           `structure_to_cif_str`,
           `structure_to_json_str`,

@@ -42,7 +42,6 @@ const make_bond = (site_idx_1: number, site_idx_2: number): BondPair => ({
   site_idx_1,
   site_idx_2,
   bond_length: 1,
-  strength: 1,
 })
 // Bonds from a center site to each listed neighbor site
 const bonds_from = (center: number, neighbor_idxs: number[]): BondPair[] =>

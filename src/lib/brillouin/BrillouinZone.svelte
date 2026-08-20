@@ -11,7 +11,7 @@
   import { create_renderer, webgpu_available } from '$lib/scene'
   import { type CameraProjection, DEFAULTS } from '$lib/settings'
   import type { Crystal } from '$lib/structure'
-  import { parse_any_structure } from '$lib/structure/parse'
+  import { parse_structure_file } from '$lib/structure/parse'
   import { analyze_structure_symmetry } from '$lib/symmetry'
   import { Canvas } from '@threlte/core'
   import type { ComponentProps, Snippet } from 'svelte'
@@ -28,8 +28,8 @@
     compute_brillouin_zone,
     compute_irreducible_bz,
     extract_point_group_from_operations,
-    reciprocal_lattice,
   } from './compute'
+  import { reciprocal_lattice } from '$lib/math'
   import { to_error } from '$lib/utils'
   import type {
     BrillouinZoneData,
@@ -177,7 +177,7 @@
     metadata?: io.FileLoadMeta,
   ): boolean {
     try {
-      const parsed = parse_any_structure(io.as_text(content), filename)
+      const parsed = parse_structure_file(io.as_text(content), filename)
       if (!parsed) throw new Error(`Failed to parse structure from ${filename}`)
 
       structure = parsed as Crystal
@@ -203,7 +203,7 @@
     }
 
     try {
-      const k_lattice = reciprocal_lattice(structure.lattice.matrix)
+      const k_lattice = reciprocal_lattice(structure.lattice.matrix, { two_pi: true })
       // Ensure bz_order is 1, 2, or 3
       const valid_order = Math.min(Math.max(1, bz_order), 3) as 1 | 2 | 3
       bz_data = compute_brillouin_zone(k_lattice, valid_order)
