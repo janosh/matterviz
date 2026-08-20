@@ -777,13 +777,13 @@ describe(`ScatterPlot`, () => {
       x_axis: { ticks: `month`, scale_type: `time` as const, format: `%b %Y` },
     },
   ])(`tick formatting`, async ({ x, x_axis, y_axis }) => {
-    const y = [12, 24, 36, 48, 60, 72]
+    const y = x.map((_value, idx) => 12 * (idx + 1))
     const plot = await mount_sized_scatter_plot({
       series: [{ x, y, point_style: { fill: `steelblue`, radius: 5 } }],
       x_axis,
       y_axis,
     })
-    expect(plot.querySelectorAll(`.marker`)).toHaveLength(6)
+    expect(plot.querySelectorAll(`.marker`)).toHaveLength(x.length)
     const x_tick_labels = [...plot.querySelectorAll(`.x-axis .tick text`)].map(
       (tick_label) => tick_label.textContent,
     )
@@ -869,7 +869,7 @@ describe(`ScatterPlot`, () => {
       },
       null,
       undefined,
-      { x: [10, 20, 30, 40, 50], y: [10, 20, 30] },
+      { x: [10, 20, 30, 40, 50], y: [10, 20, 30, NaN, NaN] },
       { x: [100, 200, 300], y: [10, 20, 30] },
     ] as DataSeries[]
     const invalid_plot = await mount_sized_scatter_plot({ series: invalid })

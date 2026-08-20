@@ -54,8 +54,9 @@ const count_canvas_clears = (): { base: number; overlay: number } => {
 }
 const let_frames_run = () => new Promise((resolve) => setTimeout(resolve, 60))
 const button = (test_id: string): HTMLButtonElement => doc_query(`[data-testid="${test_id}"]`)
-const selected_text = (): string =>
-  doc_query(`[data-testid="selected-entry"]`).textContent ?? ``
+const test_text = (test_id: string): string =>
+  doc_query(`[data-testid="${test_id}"]`).textContent ?? ``
+const selected_text = (): string => test_text(`selected-entry`)
 const mounted_components: ReturnType<typeof mount>[] = []
 const track_component = (component: ReturnType<typeof mount>): void => {
   mounted_components.push(component)
@@ -93,13 +94,17 @@ describe(`convex hull replacement state`, () => {
     async (_name, component) => {
       for (const hidden of [false, true]) {
         const target = document.createElement(`div`)
+        const onclick = vi.fn()
         document.body.append(target)
         track_component(
           mount(component, {
             target,
             props: {
+              id: `missing-hull`,
+              'aria-label': `Missing hull`,
               class: `consumer-class`,
               hidden,
+              onclick,
               style: `--hull-height: 300px`,
             },
           }),
@@ -112,8 +117,13 @@ describe(`convex hull replacement state`, () => {
         )
         const empty_state = target.querySelector<HTMLElement>(`.empty-state`)
         expect(empty_state?.hidden).toBe(hidden)
+        expect(empty_state?.getAttribute(`role`)).toBe(`status`)
+        expect(empty_state?.id).toBe(`missing-hull`)
+        expect(empty_state?.getAttribute(`aria-label`)).toBe(`Missing hull`)
         expect(empty_state?.classList.contains(`consumer-class`)).toBe(true)
         expect(empty_state?.style.getPropertyValue(`--hull-height`)).toBe(`300px`)
+        empty_state?.click()
+        expect(onclick).toHaveBeenCalledOnce()
         expect(
           target.querySelector(`.convex-hull-2d, .convex-hull-3d, .convex-hull-4d, canvas`),
         ).toBeNull()
@@ -132,9 +142,27 @@ describe(`convex hull replacement state`, () => {
       await mount_harness({ dim, start_missing: true, use_wrapper })
       expect(document.body.textContent).toContain(`Missing convex hull data`)
 
-      button(`load-convex-entries`).click()
+      button(`refresh-convex-entries`).click()
       await tick()
       expect(document.body.textContent).not.toContain(`Missing convex hull data`)
+      expect(document.body.querySelector(plot_selector)).not.toBeNull()
+      button(`select-entry`).click()
+      await tick()
+      expect(selected_text()).not.toBe(`none`)
+      expect(
+        Number(test_text(`stable-count`)) + Number(test_text(`unstable-count`)),
+      ).toBeGreaterThan(0)
+
+      button(`clear-convex-entries`).click()
+      await tick()
+      expect(document.body.textContent).toContain(`Missing convex hull data`)
+      expect(document.body.querySelector(plot_selector)).toBeNull()
+      expect(selected_text()).toBe(`none`)
+      expect(test_text(`stable-count`)).toBe(`0`)
+      expect(test_text(`unstable-count`)).toBe(`0`)
+
+      button(`refresh-convex-entries`).click()
+      await tick()
       expect(document.body.querySelector(plot_selector)).not.toBeNull()
     },
   )

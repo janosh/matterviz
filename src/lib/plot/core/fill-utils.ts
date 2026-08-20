@@ -20,14 +20,16 @@ import {
   curveStepBefore,
   line,
 } from 'd3-shape'
-import type {
-  DataSeries,
-  ErrorBand,
-  FillBoundary,
-  FillCurveType,
-  FillGradient,
-  FillRegion,
-  LineCurve,
+import {
+  assert_aligned_lengths,
+  assert_series_lengths,
+  type DataSeries,
+  type ErrorBand,
+  type FillBoundary,
+  type FillCurveType,
+  type FillGradient,
+  type FillRegion,
+  type LineCurve,
 } from '$lib/plot/core/types'
 
 // A 2D point in data (or pixel) coordinates
@@ -216,12 +218,7 @@ const clean_pts = (pts: Pt[]): Pt[] =>
 
 // Zip parallel x/y arrays into finite, x-sorted points
 const finite_points = (xs: readonly number[], ys: readonly number[]): Pt[] =>
-  clean_pts(
-    Array.from({ length: Math.min(xs.length, ys.length) }, (_, idx) => ({
-      x: xs[idx],
-      y: ys[idx],
-    })),
-  )
+  clean_pts(xs.map((x, idx) => ({ x, y: ys[idx] })))
 
 interface DomainContext {
   x_domain: Vec2
@@ -273,6 +270,7 @@ export function resolve_boundary_points(
   if (boundary.type === `series`) {
     const resolved = resolve_series_ref(boundary, series)
     if (!resolved) return null
+    assert_series_lengths(resolved)
     return curved_edge(
       finite_points(resolved.x, resolved.y),
       line_curve_to_fill(resolved.line_style?.curve),
@@ -300,7 +298,11 @@ export function resolve_boundary_points(
   }
   if (boundary.type === `data`) {
     if (boundary.values.length === 0) return null
-    if (boundary.x) return curved_edge(finite_points(boundary.x, boundary.values))
+    if (boundary.x) {
+      const { x, values } = boundary
+      assert_aligned_lengths({}, { x, values }, { subject: `Fill boundary` })
+      return curved_edge(finite_points(x, values))
+    }
     // No x: align values to the companion's x by index (or fraction when lengths differ)
     const num_values = boundary.values.length
     const companion_x = (idx: number): number =>

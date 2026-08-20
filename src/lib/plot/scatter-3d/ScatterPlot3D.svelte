@@ -24,7 +24,7 @@
     StyleOverrides3D,
     Surface3DConfig,
   } from '$lib/plot/core/types'
-  import { SCALE_DEFAULTS } from '$lib/plot/core/types'
+  import { assert_aligned_lengths, SCALE_DEFAULTS } from '$lib/plot/core/types'
   import { Canvas } from '@threlte/core'
   import * as extras from '@threlte/extras'
   import { onMount } from 'svelte'
@@ -155,7 +155,9 @@
 
   const series_visibility_keys = $derived.by((): string[] => {
     const id_counts = new SvelteMap<string | number, number>()
-    for (const srs of series) {
+    for (const [series_idx, srs] of series.entries()) {
+      const { x, y, z, raw_y } = srs
+      assert_aligned_lengths(srs, { x, y, z, raw_y }, { series_idx })
       if (srs?.id !== undefined && srs.id !== ``) {
         id_counts.set(srs.id, (id_counts.get(srs.id) ?? 0) + 1)
       }

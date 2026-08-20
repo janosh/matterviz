@@ -78,7 +78,7 @@
     children,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
-    data: PhaseDiagramData
+    data?: PhaseDiagramData
     config?: Partial<PhaseDiagramConfig>
     // Hover callback
     on_phase_hover?: (info: PhaseHoverInfo | null) => void
@@ -146,16 +146,8 @@
     }
   })
 
-  // Override from direct PhaseDiagramData edits in the editor pane
-  let data_override = $state<PhaseDiagramData | null>(null)
-
-  // Clear data_override when source data changes (e.g. new SVG dropped or data prop updated)
-  $effect(() => {
-    if (diagram_input || data_prop) data_override = null
-  })
-
-  // Use editor override first (clears rebuilt_data path), then rebuilt, then data prop
-  const source_data = $derived(data_override ?? rebuilt_data ?? data_prop)
+  // Direct editor edits can override this value until either source changes.
+  let source_data = $derived(rebuilt_data ?? data_prop)
   const effective_data = $derived(source_data ?? missing_data_placeholder)
 
   // Handle SVG file drop directly on the component. The shared handler reads the file,
@@ -280,6 +272,21 @@
     hovered_region = null
     on_phase_hover?.(null)
   }
+
+  let source_initialized = false
+  let previous_source_data: PhaseDiagramData | undefined
+  $effect(() => {
+    const next_source_data = source_data
+    if (!source_initialized) {
+      source_initialized = true
+      previous_source_data = next_source_data
+      return
+    }
+    if (next_source_data === previous_source_data) return
+    previous_source_data = next_source_data
+    locked_hover_info = null
+    clear_hover()
+  })
 
   // Handle click to lock/unlock tooltip
   function handle_click() {
@@ -522,7 +529,7 @@
   ondragover={(ev) => ev.preventDefault()}
 >
   {#if source_data === undefined}
-    <EmptyState>
+    <EmptyState role="status">
       <h3>Missing phase diagram data</h3>
       <p>Provide diagram data through the <code>data</code> prop.</p>
     </EmptyState>
@@ -564,7 +571,7 @@
         bind:editor_open
         bind:diagram_input
         data={effective_data}
-        ondata={(edited) => (data_override = edited)}
+        ondata={(edited) => (source_data = edited)}
         icon_style={pane_icon_style}
         toggle_props={pane_toggle_props}
       />

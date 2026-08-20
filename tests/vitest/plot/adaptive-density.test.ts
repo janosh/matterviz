@@ -24,6 +24,22 @@ describe(`adaptive density utilities`, () => {
       metadata: [{ id: `a` }, { id: `b` }, { id: `c` }, { id: `d` }, { id: `outside` }],
     },
   ]
+  const misaligned_series = [{ label: `dense`, x: [0, 1], y: [2] }]
+  const pick_options = {
+    x_range: [0, 2] as Vec2,
+    y_range: [0, 2] as Vec2,
+    x_scale: (x: number) => x * 100,
+    y_scale: (y: number) => y * 100,
+    radius_px: 20,
+  }
+
+  it.each([
+    [`extent calculation`, () => series_extents(misaligned_series)],
+    [`density binning`, () => bin_points(misaligned_series, [0, 1], [0, 2], 2, 2)],
+    [`pick indexing`, () => build_pick_index(misaligned_series, pick_options)],
+  ] as const)(`rejects misaligned coordinates during %s`, (_name, run) => {
+    expect(run).toThrow(`aligned arrays`)
+  })
 
   it(`bins only visible points and tracks max bin count`, () => {
     const result = bin_points(series, [0, 2], [0, 2], 2, 2)
@@ -61,14 +77,6 @@ describe(`adaptive density utilities`, () => {
     expect(should_render_points(30_000, 300 * 300, 25_000, 0.5)).toBe(true)
     expect(should_render_points(30_000, 300 * 300, 25_000, 0.12)).toBe(false)
   })
-
-  const pick_options = {
-    x_range: [0, 2] as Vec2,
-    y_range: [0, 2] as Vec2,
-    x_scale: (x: number) => x * 100,
-    y_scale: (y: number) => y * 100,
-    radius_px: 20,
-  }
 
   it(`indexes visible points for fast nearest-neighbor picking`, () => {
     const index = build_pick_index(series, pick_options)

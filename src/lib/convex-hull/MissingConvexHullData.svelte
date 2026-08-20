@@ -5,7 +5,7 @@
   let { ...rest }: HTMLAttributes<HTMLDivElement> = $props()
 </script>
 
-<EmptyState {...rest}>
+<EmptyState role="status" {...rest}>
   <h3>Missing convex hull data</h3>
   <p>Provide convex hull data through the <code>entries</code> prop.</p>
 </EmptyState>

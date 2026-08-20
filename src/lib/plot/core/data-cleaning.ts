@@ -4,7 +4,7 @@
 // live in ./data-cleaning-signal and are re-exported here so the public API is unchanged.
 
 import type { Vec2 } from '$lib/math'
-import type { DataSeries } from '$lib/plot/core/types'
+import { assert_series_lengths, type DataSeries } from '$lib/plot/core/types'
 import { apply_gaussian_smearing } from '$lib/spectral/helpers'
 import {
   detect_instability,
@@ -229,6 +229,7 @@ export function clean_series<T extends DataSeries>(
   series: T,
   config: CleaningConfig = {},
 ): CleaningResult<T> {
+  assert_series_lengths(series)
   const in_place = config.in_place ?? true
   const invalid_mode = config.invalid_values ?? `remove`
   const truncation_mode = config.truncation_mode ?? `mark_unstable`

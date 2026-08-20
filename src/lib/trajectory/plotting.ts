@@ -11,7 +11,7 @@ import {
   group_axis_series,
 } from '$lib/plot/core/axis-assignment'
 import { smooth_moving_average } from '$lib/plot/core/data-cleaning-signal'
-import type { DataSeries } from '$lib/plot/core/types'
+import { assert_series_lengths, type DataSeries } from '$lib/plot/core/types'
 import type {
   TrajectoryDataExtractor,
   TrajectoryFrame,
@@ -611,7 +611,8 @@ export function prepare_trajectory_scatter_series(
     throw new RangeError(`max_points must be finite and at least 2, got ${max_points}`)
   }
   const limit = Math.floor(max_points)
-  return series.map((data_series) => {
+  return series.map((data_series, series_idx) => {
+    assert_series_lengths(data_series, series_idx)
     if (data_series.x.length <= limit) return data_series
     const source_raw_y = data_series.raw_y ?? data_series.y
     let window_size = Math.max(5, Math.round(data_series.x.length / 50))

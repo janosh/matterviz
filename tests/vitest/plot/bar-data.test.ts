@@ -51,6 +51,10 @@ const auto_ranges = (
 const scale_by = (factor: number) => (value: number) => value * factor
 
 describe(`normalize_categorical`, () => {
+  test(`rejects a misaligned series`, () => {
+    expect(() => normalize_categorical([{ x: [1, 2], y: [3] }])).toThrow(`aligned arrays`)
+  })
+
   test(`passes numeric-only series through with same identity`, () => {
     const series: BarSeries[] = [{ x: [1, 2], y: [3, 4] }]
     const { category_list, internal_series } = normalize_categorical(series)

@@ -152,6 +152,7 @@ export interface DataSeries<Metadata = Record<string, unknown>> {
   x: readonly number[]
   y: readonly number[]
   // Original values for transformed series, exposed to hover handlers alongside y.
+  // When present, raw_y must have the same one-to-one alignment as x and y.
   raw_y?: readonly number[]
   // Extra paths rendered behind the main line without becoming independent semantic series.
   line_underlays?: Pick<DataSeries<Metadata>, `x` | `y` | `line_style`>[]
@@ -190,6 +191,49 @@ export interface DataSeries<Metadata = Record<string, unknown>> {
   filtered_data?: InternalPoint<Metadata>[]
   _id?: string | number
   orig_series_idx?: number // Original series index for consistent auto-cycling colors/symbols
+}
+
+export function assert_aligned_lengths(
+  series: Pick<DataSeries, 'id' | 'label'>,
+  arrays: Record<string, ArrayLike<unknown> | undefined>,
+  options: { series_idx?: number; array_group?: string; subject?: string } = {},
+): void {
+  const length_entries = Object.entries(arrays).map(
+    ([name, values]) => [name, values?.length] as const,
+  )
+  const expected_length = length_entries.find(([, length]) => length !== undefined)?.[1]
+  if (length_entries.every(([, length]) => length === undefined || length === expected_length))
+    return
+
+  const { array_group, series_idx, subject = `Series` } = options
+  const identifier = series.id ?? series.label
+  const location =
+    identifier !== undefined
+      ? ` ${JSON.stringify(String(identifier))}`
+      : series_idx === undefined
+        ? ``
+        : ` at index ${series_idx}`
+  const lengths = length_entries
+    .map(([name, length]) => `${name}=${length ?? `absent`}`)
+    .join(`, `)
+  throw new RangeError(
+    `${subject}${location}${array_group ? ` ${array_group}` : ``}: ${lengths}; aligned arrays must have equal lengths`,
+  )
+}
+
+export function assert_series_lengths(
+  series: Pick<DataSeries, 'id' | 'label' | 'x' | 'y' | 'raw_y' | 'line_underlays'>,
+  series_idx?: number,
+): void {
+  const { x, y, raw_y } = series
+  assert_aligned_lengths(series, { x, y, raw_y }, { series_idx })
+  series.line_underlays?.forEach(({ x: underlay_x, y: underlay_y }, underlay_idx) =>
+    assert_aligned_lengths(
+      series,
+      { x: underlay_x, y: underlay_y },
+      { series_idx, array_group: `line_underlays[${underlay_idx}]` },
+    ),
+  )
 }
 
 // Represents the internal structure used within ScatterPlot, merging series-level and point-level data

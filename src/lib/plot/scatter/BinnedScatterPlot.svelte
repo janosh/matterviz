@@ -699,7 +699,7 @@
     const [y_min, y_max] = range_bounds(ranges.y)
     for (const [series_idx, srs] of series.entries()) {
       const color = srs.color ?? get_series_color(series_idx)
-      const n_points = Math.min(srs.x.length, srs.y.length)
+      const n_points = srs.x.length
       for (let point_idx = 0; point_idx < n_points; point_idx++) {
         const x = srs.x[point_idx]
         const y = srs.y[point_idx]
@@ -866,7 +866,7 @@
     const payloads: BinnedPointPayload<Metadata, PointData>[] = []
     for (let series_idx = 0; series_idx < series.length; series_idx++) {
       const srs = series[series_idx]
-      const n_points = Math.min(srs.x.length, srs.y.length)
+      const n_points = srs.x.length
       for (let point_idx = 0; point_idx < n_points; point_idx++) {
         const x = srs.x[point_idx]
         const y = srs.y[point_idx]

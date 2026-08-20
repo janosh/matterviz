@@ -5,7 +5,11 @@ import {
   type SpatialIndex,
 } from '$lib/plot/core/spatial-index'
 import type { ScaleType } from '$lib/plot/core/types'
-import { get_arcsinh_threshold, get_scale_type_name } from '$lib/plot/core/types'
+import {
+  assert_aligned_lengths,
+  get_arcsinh_threshold,
+  get_scale_type_name,
+} from '$lib/plot/core/types'
 
 export type NumericArray = ArrayLike<number>
 
@@ -125,8 +129,13 @@ const in_bounds = (value: number, min: number, max: number): boolean =>
 const value_bin = (value: number, min: number, span: number, bins: number): number =>
   Math.min(bins - 1, Math.max(0, Math.floor(((value - min) / span) * bins)))
 
-const series_length = (srs: Pick<DensePointSeries, `x` | `y`>): number =>
-  Math.min(srs.x.length, srs.y.length)
+const series_length = <Metadata>(
+  srs: DensePointSeries<Metadata>,
+  series_idx: number,
+): number => {
+  assert_aligned_lengths(srs, { x: srs.x, y: srs.y }, { series_idx })
+  return srs.x.length
+}
 
 const padded_extent = (
   min: number,
@@ -165,8 +174,8 @@ export function series_extents(
   const log_x = get_scale_type_name(x_scale_type) === `log`
   const log_y = get_scale_type_name(y_scale_type) === `log`
 
-  for (const srs of series) {
-    const n_points = series_length(srs)
+  for (const [series_idx, srs] of series.entries()) {
+    const n_points = series_length(srs, series_idx)
     for (let idx = 0; idx < n_points; idx++) {
       const x = srs.x[idx]
       const y = srs.y[idx]
@@ -213,7 +222,7 @@ export function bin_points(
 
   for (let series_idx = 0; series_idx < series.length; series_idx++) {
     const srs = series[series_idx]
-    const n_points = series_length(srs)
+    const n_points = series_length(srs, series_idx)
     for (let point_idx = 0; point_idx < n_points; point_idx++) {
       const x = srs.x[point_idx]
       const y = srs.y[point_idx]
@@ -326,7 +335,7 @@ export function build_pick_index<Metadata>(
   function* in_range_points(): Generator<DenseInternalPoint<Metadata>> {
     for (let series_idx = 0; series_idx < series.length; series_idx++) {
       const srs = series[series_idx]
-      const n_points = series_length(srs)
+      const n_points = series_length(srs, series_idx)
       for (let point_idx = 0; point_idx < n_points; point_idx++) {
         const x = srs.x[point_idx]
         const y = srs.y[point_idx]

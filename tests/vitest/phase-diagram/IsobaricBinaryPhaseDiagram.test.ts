@@ -87,21 +87,6 @@ const hover_at = async (
 }
 
 describe(`IsobaricBinaryPhaseDiagram`, () => {
-  test(`renders a useful error while the required data prop is missing`, async () => {
-    const wrapper = await mount_sized(
-      IsobaricBinaryPhaseDiagram,
-      {},
-      { selector: `.binary-phase-diagram`, width, height },
-    )
-
-    expect(wrapper.textContent).toContain(`Missing phase diagram data`)
-    expect(wrapper.textContent).toContain(`Provide diagram data through the data prop.`)
-    expect(wrapper.getAttribute(`aria-label`)).toBe(
-      `Missing phase diagram data. Provide diagram data through the data prop.`,
-    )
-    expect(wrapper.querySelector(`svg`)).toBeNull()
-  })
-
   test(`recovers across missing, loaded, cleared, and reloaded data`, async () => {
     const wrapper = await mount_sized(
       IsobaricBinaryPhaseDiagramHarness,
@@ -114,13 +99,44 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     }
 
     expect(wrapper.textContent).toContain(`Missing phase diagram data`)
-    await click(`load-phase-data`)
-    expect(wrapper.querySelector(`svg`)).not.toBeNull()
-    await click(`clear-phase-data`)
-    expect(wrapper.textContent).toContain(`Missing phase diagram data`)
+    expect(wrapper.textContent).toContain(`Provide diagram data through the data prop.`)
+    expect(wrapper.querySelector(`.empty-state`)?.getAttribute(`role`)).toBe(`status`)
+    expect(wrapper.getAttribute(`aria-label`)).toBe(
+      `Missing phase diagram data. Provide diagram data through the data prop.`,
+    )
     expect(wrapper.querySelector(`svg`)).toBeNull()
     await click(`load-phase-data`)
     expect(wrapper.querySelector(`svg`)).not.toBeNull()
+
+    const component_value = Array.from(
+      document.querySelectorAll<HTMLElement>(`.json-value.string`),
+    ).find((element) => element.textContent?.trim() === `"Al"`)
+    if (!component_value) throw new Error(`Editable Al component value not found`)
+    component_value.dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
+    await tick()
+    const edit_input = doc_query<HTMLInputElement>(`.edit-input`)
+    edit_input.value = `Edited`
+    edit_input.dispatchEvent(new InputEvent(`input`, { bubbles: true }))
+    edit_input.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }))
+    await tick()
+    expect(wrapper.getAttribute(`aria-label`)).toBe(`Edited-Cu binary phase diagram`)
+
+    const svg = await hover_at(wrapper, 0.5, 750)
+    expect(doc_query(`[data-testid="hovered-region"]`).textContent).toBe(`liq`)
+    svg.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+    await tick()
+    expect(wrapper.querySelector(`.tooltip-container.locked`)).not.toBeNull()
+
+    await click(`clear-phase-data`)
+    expect(wrapper.textContent).toContain(`Missing phase diagram data`)
+    expect(wrapper.querySelector(`svg`)).toBeNull()
+    expect(doc_query(`[data-testid="hovered-region"]`).textContent).toBe(`none`)
+    await click(`load-phase-data`)
+    expect(wrapper.querySelector(`svg`)).not.toBeNull()
+    expect(wrapper.getAttribute(`aria-label`)).toBe(`Al-Cu binary phase diagram`)
+    expect(wrapper.querySelector(`.tooltip-container`)).toBeNull()
+    document.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape` }))
+    await tick()
   })
 
   test(`renders regions, boundaries, labels, special points and axes`, async () => {

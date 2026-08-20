@@ -408,6 +408,9 @@ describe(`smooth_moving_average`, () => {
   it(`does not retain cancellation error after large values leave the window`, () => {
     const values = [1e16, -1e16, 1e16, -1e16, 1, 2, 3, 4, 5]
     expect(smooth_moving_average(values, 5).slice(6)).toEqual([3, 3.5, 4])
+
+    const separated_magnitudes = [1e100, 1e50, 1, -1e100, -1e50]
+    expect(smooth_moving_average(separated_magnitudes, 5)[2]).toBe(0.2)
   })
 })
 
@@ -480,6 +483,12 @@ describe(`sync_metadata`, () => {
 })
 
 describe(`clean_series`, () => {
+  it(`rejects misaligned raw values before cleaning`, () => {
+    expect(() => clean_series({ id: `energy`, x: [0, 1], y: [2, 3], raw_y: [2] })).toThrow(
+      `aligned arrays`,
+    )
+  })
+
   it(`handles empty series`, () => {
     const result = clean_series({ x: [], y: [] })
     expect(result.series.x).toEqual([])

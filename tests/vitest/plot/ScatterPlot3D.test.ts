@@ -90,17 +90,27 @@ describe(`ScatterPlot3D smoke tests`, () => {
     ],
     [`open controls`, { series: [basic_series], controls_open: true }],
     [`surface-only plot without series`, { series: [], surfaces: [grid_surface] }],
-    // mismatched array lengths (y shorter, z longer) must not throw
-    [
-      `mismatched series array lengths`,
-      { series: [{ x: [1, 2, 3], y: [1, 2], z: [1, 2, 3, 4] }] },
-    ],
   ])(`mounts with %s`, async (_desc, props) => {
     await mount_plot(props)
     expect(container.querySelector(`.scatter-3d`)).toBeInstanceOf(HTMLElement)
     const pane = container.querySelector(`.draggable-pane`)
     if (!(pane instanceof HTMLElement)) throw new Error(`controls pane not rendered`)
     expect(pane.style.display).toBe(props.controls_open ? `grid` : `none`)
+  })
+
+  test(`rejects misaligned 3D coordinates`, () => {
+    expect(() => {
+      mounted_component = mount(ScatterPlot3D, {
+        target: container,
+        props: {
+          series: [{ id: `points`, x: [1, 2, 3], y: [1, 2], z: [1, 2, 3, 4] }],
+        },
+      })
+      flushSync()
+    }).toThrow(
+      `Series "points": x=3, y=2, z=4, raw_y=absent; aligned arrays must have equal lengths`,
+    )
+    mounted_component = null
   })
 
   const multi_series = [basic_series, { ...basic_series, label: `Other` }]

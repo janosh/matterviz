@@ -41,8 +41,6 @@
   let entries = $derived<PhaseData[] | undefined>(
     start_missing ? undefined : entries_for(`old`),
   )
-  // Deliberately violate the required prop at runtime to exercise recovery when data arrives.
-  const runtime_entries = $derived(entries as PhaseData[])
   let stable_entries = $state.raw<ConvexHullEntry[]>([])
   let unstable_entries = $state.raw<ConvexHullEntry[]>([])
   // Plain (deeply-proxied) $state, matching how the demo binds selected_entry: the
@@ -61,12 +59,8 @@
 >
   Replace Entries
 </button>
-<button
-  type="button"
-  data-testid="load-convex-entries"
-  onclick={() => (entries = entries_for(`old`))}
->
-  Load Entries
+<button type="button" data-testid="clear-convex-entries" onclick={() => (entries = undefined)}>
+  Clear Entries
 </button>
 <button
   type="button"
@@ -76,6 +70,8 @@
   Refresh Entries
 </button>
 <span data-testid="selected-entry">{selected_entry?.entry_id ?? `none`}</span>
+<span data-testid="stable-count">{stable_entries.length}</span>
+<span data-testid="unstable-count">{unstable_entries.length}</span>
 <button
   type="button"
   data-testid="select-entry"
@@ -97,7 +93,7 @@
 </button>
 
 <Hull
-  entries={runtime_entries}
+  {entries}
   {config}
   {allow_file_drop}
   bind:selected_entry

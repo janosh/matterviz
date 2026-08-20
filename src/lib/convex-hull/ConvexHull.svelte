@@ -48,6 +48,7 @@
     selected_entry = $bindable(null),
     temperature = $bindable(),
     gas_pressures = $bindable({}),
+    children,
     ...rest
   }: ConvexHullProps = $props()
   const entries = $derived(entries_prop ?? [])
@@ -91,6 +92,13 @@
       max_hull_dist_show_phases_prop = max_hull_dist_show_phases
     }
   })
+  $effect(() => {
+    if (entries_prop !== undefined) return
+    stable_entries = []
+    unstable_entries = []
+    selected_entry = null
+    phase_stats = null
+  })
 
   // Map element count to component. Deliberate cast: the wrapper passes the prop superset
   // while each component declares only its dimension's props (2D lacks Hull3DProps, 3D/4D
@@ -102,9 +110,8 @@
 
 {#if entries_prop === undefined}
   <MissingConvexHullData
-    class={[`convex-hull-error`, rest.class]}
-    hidden={rest.hidden}
-    style={rest.style}
+    {...rest}
+    style={`height: var(--hull-height, 500px); ${rest.style ?? ``}`}
   />
 {:else if ConvexHullComponent}
   <ConvexHullComponent
@@ -134,6 +141,7 @@
     bind:selected_entry
     bind:temperature
     bind:gas_pressures
+    {children}
   />
 {:else}
   <!-- Error state for unsupported dimensionalities -->
@@ -156,7 +164,7 @@
     align-items: center;
     justify-content: center;
     box-sizing: border-box;
-    height: var(--convex-hull-height, 500px);
+    height: var(--hull-height, 500px);
     padding: 2em;
     text-align: center;
     color: var(--convex-hull-text-color, #666);

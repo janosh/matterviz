@@ -302,6 +302,12 @@ describe(`generate_plot_series`, () => {
     },
   )
 
+  it(`rejects misaligned raw values before the short-series early return`, () => {
+    expect(() =>
+      prepare_trajectory_scatter_series([{ x: [0, 1], y: [2, 3], raw_y: [2] }], 100),
+    ).toThrow(`aligned arrays`)
+  })
+
   it.each([
     { name: `empty trajectory`, frames: [], expected_length: 0 },
     { name: `single frame`, frames: [{ energy: -10.0 }], expected_length: 0 },
