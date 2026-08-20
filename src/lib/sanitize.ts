@@ -146,20 +146,11 @@ const cache_sanitize = (key: string, result: string): string => {
   return result
 }
 
-const ssr_sanitize_cache = new Map<string, string>()
-
 // Use this for both SSR and the first client render when byte-identical HTML is required
 // for hydration. Browser code should switch to sanitize_html() after mounting.
 export function sanitize_html_ssr(html: unknown): string {
   const str = stringify_html_input(html)
-  const cached = ssr_sanitize_cache.get(str)
-  if (cached !== undefined) return cached
-  const result = str.includes(`<`)
-    ? sanitize_allowlist_ssr(str, SAFE_TAG_SET, SAFE_ATTR_SET)
-    : str
-  if (ssr_sanitize_cache.size >= 4096) ssr_sanitize_cache.clear()
-  ssr_sanitize_cache.set(str, result)
-  return result
+  return str.includes(`<`) ? sanitize_allowlist_ssr(str, SAFE_TAG_SET, SAFE_ATTR_SET) : str
 }
 
 // Sanitize HTML string, allowing only safe formatting tags and links.

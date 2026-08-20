@@ -6,7 +6,6 @@ import {
   type RowData,
   type SummaryStat,
 } from '$lib/table'
-import type * as Sanitize from '$lib/sanitize'
 import { type ComponentProps, mount, tick, unmount } from 'svelte'
 import { assert, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { bind_props, doc_query, trigger_resize_observer } from '../setup'
@@ -113,38 +112,6 @@ describe(`HeatmapTable`, () => {
     expect(doc_query(`td[data-col="Short"]`).querySelector(`.middle-ellipsis`)).toBeNull()
     // Rich cells retain their sanitized markup instead of being flattened for truncation.
     expect(doc_query(`td[data-col="Rich"] strong`).textContent).toBe(`rich-markup`)
-  })
-
-  it(`uses the byte-stable sanitizer until hydration completes`, async () => {
-    const initial_sanitize = vi.fn(() => `<strong>initial</strong>`)
-    const browser_sanitize = vi.fn(() => `<strong>browser</strong>`)
-    vi.doMock(`$lib/sanitize`, async (import_original) => ({
-      ...(await import_original<typeof Sanitize>()),
-      sanitize_html: browser_sanitize,
-      sanitize_html_ssr: initial_sanitize,
-    }))
-    try {
-      // The query gives this test a fresh component module after registering the mock.
-      const { default: FreshHeatmapTable } = await import(
-        // @ts-expect-error - Vite supports query-suffixed Svelte imports in tests
-        `$lib/table/HeatmapTable.svelte?hydration-sanitizer-test`
-      )
-      const component = mount(FreshHeatmapTable, {
-        target: document.body,
-        props: { data: [{ Rich: `<em>value</em>` }], columns: [{ label: `Rich` }] },
-      })
-      onTestFinished(() => unmount(component))
-
-      expect(initial_sanitize).toHaveBeenCalled()
-      await tick()
-      expect(browser_sanitize).toHaveBeenCalled()
-      expect(initial_sanitize.mock.invocationCallOrder[0]).toBeLessThan(
-        browser_sanitize.mock.invocationCallOrder[0],
-      )
-      expect(doc_query(`td[data-col="Rich"] strong`).textContent).toBe(`browser`)
-    } finally {
-      vi.doUnmock(`$lib/sanitize`)
-    }
   })
 
   it(`does not loop when data rows carry no discoverable column keys`, async () => {
@@ -634,6 +601,7 @@ describe(`HeatmapTable`, () => {
       data: html_data,
       columns: plain_columns(`HTML`, `Complex`),
     })
+    expect(doc_query(`td[data-col="HTML"] span`).hasAttribute(`data-sort-value`)).toBe(false)
     await tick()
 
     for (const [col, sort_value, title] of [

@@ -214,12 +214,10 @@
 
   // DOMPurify and the DOM-free SSR sanitizer can serialize equivalent markup differently.
   // Keep the hydration hash stable, then let DOMPurify replace the HTML after mounting.
-  let hydration_complete = $state(false)
+  let render_html = $state(sanitize_html_ssr)
   onMount(() => {
-    hydration_complete = true
+    render_html = sanitize_html
   })
-  const render_html = (value: unknown): string =>
-    hydration_complete ? sanitize_html(value) : sanitize_html_ssr(value)
 
   let columns = $derived(given_columns.length > 0 ? given_columns : discover_columns(data))
 
