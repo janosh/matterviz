@@ -123,15 +123,14 @@ describe(`StructureInfoPane`, () => {
           state,
         ),
       )
-      const site_cards = () =>
-        Array.from(document.querySelectorAll<HTMLDivElement>(`.site-card`))
+      const site_cards = () => Array.from(document.querySelectorAll<HTMLElement>(`.site-card`))
       expect(site_cards()).toHaveLength(3)
       expect(site_cards()[0].textContent).toContain(`Frac.`)
       expect(site_cards()[0].textContent).toContain(`Cart.`)
       expect(document.querySelector(`.site-color`)).toBeNull()
 
       const site_row = site_cards()[1]
-      expect(site_row).toBeInstanceOf(HTMLDivElement)
+      expect(site_row).toBeInstanceOf(HTMLElement)
       site_row.dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
       expect(state.highlighted_sites).toEqual([1])
       expect(state.hovered_site_idx).toBe(1)
@@ -139,7 +138,7 @@ describe(`StructureInfoPane`, () => {
       expect(state.highlighted_sites).toEqual([])
       expect(state.hovered_site_idx).toBeNull()
 
-      const filter_input = document.querySelector(`input.site-filter`) as HTMLInputElement
+      const filter_input = document.querySelector(`input.info-filter`) as HTMLInputElement
       filter_input.value = `H2`
       filter_input.dispatchEvent(new Event(`input`, { bubbles: true }))
       await tick()
@@ -179,20 +178,16 @@ describe(`StructureInfoPane`, () => {
     await tick()
 
     expect(document.querySelectorAll(`.site-card`)).toHaveLength(100)
-    expect(document.querySelector(`.site-window-controls`)?.textContent).toContain(
-      `1-100 of 120`,
-    )
+    expect(document.querySelector(`.pager`)?.textContent).toContain(`1-100 of 120`)
 
-    const next_button = Array.from(
-      document.querySelectorAll(`.site-window-controls button`),
-    ).find((button) => button.textContent?.trim() === `Next`) as HTMLButtonElement
+    const next_button = Array.from(document.querySelectorAll(`.pager button`)).find(
+      (button) => button.textContent?.trim() === `Next`,
+    ) as HTMLButtonElement
     next_button.click()
     await tick()
 
     expect(document.querySelectorAll(`.site-card`)).toHaveLength(100)
-    expect(document.querySelector(`.site-window-controls`)?.textContent).toContain(
-      `21-120 of 120`,
-    )
+    expect(document.querySelector(`.pager`)?.textContent).toContain(`21-120 of 120`)
   })
 
   test(`renders symmetry section only when sym_data exists`, () => {
@@ -227,7 +222,7 @@ describe(`StructureInfoPane`, () => {
     })
 
     const section_titles = Array.from(document.querySelectorAll(`h4`)).map(
-      (heading) => heading.textContent ?? ``,
+      (heading) => heading.textContent?.trim() ?? ``,
     )
     const cell_idx = section_titles.indexOf(`Cell`)
     const symmetry_idx = section_titles.indexOf(`Symmetry`)

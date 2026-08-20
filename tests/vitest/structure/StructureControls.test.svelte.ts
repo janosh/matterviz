@@ -6,6 +6,8 @@ import {
   serialize_structure_view_state,
   STRUCTURE_VIEW_STATE_STORAGE_KEY,
 } from '$lib/settings/viewer-state'
+import type { AnyStructure } from '$lib'
+import type { Matrix3x3 } from '$lib/math'
 import { default_vector_configs, StructureControls } from '$lib/structure'
 import { next_atom_color_config } from '$lib/structure/atom-properties'
 import { CNA_TYPE_PROPERTY } from '$lib/structure-id'
@@ -14,6 +16,7 @@ import { type ComponentProps, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import {
   bind_props,
+  cubic_matrix,
   doc_query,
   expect_labelled_settings_grid,
   make_crystal,
@@ -83,6 +86,272 @@ const trail_stream = (): TrajectoryPositionStream => ({
   coords_unwrapped: true,
   frame_stride: 1,
   steps: [0, 1, 2],
+})
+
+describe(`StructureControls inputs`, () => {
+  test.each([
+    {
+      scaling: `2x2x2`,
+      aria: `false`,
+      has_error: false,
+      border_includes: ``,
+      title_includes: `Valid supercell scaling: 2x2x2`,
+    },
+    { scaling: `1`, aria: `false`, has_error: false, border_includes: `` },
+    {
+      scaling: `invalid`,
+      aria: `true`,
+      has_error: true,
+      border_includes: `dashed red`,
+      title_includes: `Invalid format. Use "2x2x2", "3x1x2", or "2"`,
+    },
+    { scaling: `2x2`, aria: `true`, has_error: true, border_includes: `dashed red` },
+  ])(
+    `supercell input state: $scaling`,
+    async ({ scaling, aria, has_error, border_includes, title_includes }) => {
+      await mount_controls({
+        structure: simple_structure,
+        controls_open: true,
+        supercell_scaling: scaling,
+      })
+      const input = doc_query<HTMLInputElement>(`input[placeholder="1x1x1"]`)
+      expect(input.getAttribute(`aria-invalid`)).toBe(aria)
+      const error_message = document.querySelector(`[data-testid="supercell-input-error"]`)
+      expect(error_message !== null).toBe(has_error)
+      if (border_includes) expect(input.style.border).toContain(border_includes)
+      else expect(input.style.border).toBe(``)
+      if (title_includes) expect(input.title).toContain(title_includes)
+    },
+  )
+
+  // The supercell input needs a lattice, so neither a lattice-less structure nor no
+  // structure at all may render one - and neither may crash the controls
+  test.each<[string, AnyStructure | undefined]>([
+    [`structure without lattice`, { id: `test_no_lattice`, sites: simple_structure.sites }],
+    [`undefined structure`, undefined],
+  ])(`renders no supercell input for %s`, async (_name, structure) => {
+    await mount_controls({ structure, controls_open: true })
+    expect(document.querySelectorAll(`input[placeholder="1x1x1"]`)).toHaveLength(0)
+  })
+
+  const mount_zone_axis = async (matrix: Matrix3x3 = cubic_matrix(10)) => {
+    await mount_controls({
+      structure: make_crystal(matrix, [[`H`, [0, 0, 0]]]),
+      controls_open: true,
+    })
+    const miller_input = doc_query<HTMLInputElement>(`.zone-axis .miller-input input`)
+    return async (typed: string) => {
+      miller_input.value = typed
+      miller_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      await tick()
+    }
+  }
+  const zone_axis_error = () => document.querySelector(`.zone-axis .control-error`)
+  const view_button = () =>
+    [...document.querySelectorAll(`button`)].find((btn) => btn.textContent?.trim() === `View`)
+
+  // zone_axis_direction throws on a cell it cannot resolve a direction in, and
+  // MillerIndexInput accepts `000`. Resolving both in a $derived means the button is
+  // disabled and the reason shown BEFORE any click, so the throw can never escape the
+  // handler. The hkl/singular variant is covered directly in
+  // scene/camera-orientation.test.ts — the mode is just an argument to the identical
+  // guarded call, and happy-dom cannot drive a Svelte <select> binding.
+  // oxfmt-ignore
+  test.each([
+    [`a well-formed cell`, cubic_matrix(10), `001`, null],
+    [`a cell with a zero c vector`, [[10, 0, 0], [0, 10, 0], [0, 0, 0]], `001`, /Degenerate uvw direction/],
+    [`all-zero indices`, cubic_matrix(10), `000`, /uvw indices must be finite and not all zero/],
+  ] as [string, Matrix3x3, string, RegExp | null][])(
+    `zone axis View button on %s`,
+    async (_name, matrix, typed, expected_error) => {
+      const type_indices = await mount_zone_axis(matrix)
+      await type_indices(typed)
+      expect(view_button()?.disabled).toBe(expected_error !== null)
+      if (expected_error) expect(zone_axis_error()?.textContent).toMatch(expected_error)
+      else expect(zone_axis_error()).toBeNull()
+    },
+  )
+
+  // ...and typing a usable direction clears it again, since the message is derived
+  test(`zone axis error clears when the indices become valid`, async () => {
+    const type_indices = await mount_zone_axis()
+    await type_indices(`000`)
+    expect(zone_axis_error()).not.toBeNull()
+    await type_indices(`110`)
+    expect(zone_axis_error()).toBeNull()
+  })
+
+  test.each([
+    {
+      site_label_bg_color: `color-mix(in srgb, #ff0000 60%, transparent)`,
+      expected_hex_color: `#ff0000`,
+      expected_opacity: 0.6,
+    },
+    {
+      site_label_bg_color: `color-mix(in srgb, #00ff00 150%, transparent)`,
+      expected_hex_color: `#00ff00`,
+      expected_opacity: 1,
+    },
+  ])(
+    `parses and resets site label background from $site_label_bg_color`,
+    async ({ site_label_bg_color, expected_hex_color, expected_opacity }) => {
+      await mount_controls({
+        structure: simple_structure,
+        controls_open: true,
+        scene_props: { show_site_labels: true, site_label_bg_color },
+      })
+
+      const bg_color_input = doc_query<HTMLInputElement>(
+        `input[aria-label="Site label background color"]`,
+      )
+      const opacity_input = doc_query<HTMLInputElement>(
+        `[data-key="site_label_bg_opacity"] input[type="number"]`,
+      )
+      expect(bg_color_input.value).toBe(expected_hex_color)
+      expect(opacity_input.valueAsNumber).toBe(expected_opacity)
+
+      bg_color_input.value = `#123456`
+      bg_color_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      opacity_input.value = `0.5`
+      opacity_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      await tick()
+
+      doc_query<HTMLButtonElement>(`button[aria-label="Reset labels to defaults"]`).click()
+      await tick()
+
+      // reset restores what the pane mounted with, so the two halves of the one bg string come
+      // back together even though a separate row drives each
+      expect(bg_color_input.value).toBe(expected_hex_color)
+      expect(opacity_input.valueAsNumber).toBe(expected_opacity)
+    },
+  )
+})
+
+describe(`StructureControls schema rows`, () => {
+  // Every uniform row is generated from SETTINGS_CONFIG: the entry's value type picks the
+  // control and the control shows the bound value. Rows with accessors (lattice_props, the
+  // show_image_atoms bindable) write back to their own target, not scene_props.
+  test(`render the control matching each setting's type, value and bounds`, async () => {
+    const state = $state({
+      scene_props: {
+        ...DEFAULTS.structure,
+        show_bonds: `always` as const,
+        show_polyhedra: `always` as const,
+        show_site_labels: true,
+        auto_bond_order: true,
+        polyhedra_color_mode: `uniform` as const,
+        bond_thickness: 0.2,
+      },
+      lattice_props: { cell_edge_color: `#123456`, show_cell_vectors: false },
+      show_image_atoms: false,
+    })
+    const target = await mount_bound_controls(state, {
+      displacement_summary: { rmsd: 0.1, max_displacement: 0.2, error: null },
+    })
+    const query = (selector: string): HTMLElement => {
+      const node = target.querySelector<HTMLElement>(selector)
+      if (!node) throw new Error(`No element found for selector: ${selector}`)
+      return node
+    }
+    const row_of = (key: string) => query(`[data-key="${key}"]`)
+
+    const selects = [
+      [`bonding_strategy`, DEFAULTS.structure.bonding_strategy],
+      [`aromatic_display`, DEFAULTS.structure.aromatic_display],
+      [`camera_projection`, DEFAULTS.structure.camera_projection],
+      [`vector_color_mode`, undefined], // no vectors on this structure, so no row
+      [`trajectory_line_wrap_mode`, undefined], // no trajectory stream either
+    ] as const
+    for (const [key, expected] of selects) {
+      const select = target.querySelector<HTMLSelectElement>(`[data-key="${key}"] select`)
+      expect(select?.value, key).toBe(expected)
+      if (!select) continue
+      expect([...select.options].map((option) => option.value)).toEqual(
+        Object.keys(SETTINGS_CONFIG.structure[key].enum ?? {}),
+      )
+    }
+
+    const checkboxes = [
+      [`auto_bond_order`, true],
+      [`same_size_atoms`, false],
+      [`zoom_to_cursor`, false],
+      [`show_cell_vectors`, false], // lattice_props row
+      [`show_image_atoms`, false], // local bindable row
+      [`show_displacement_arrows`, true],
+    ] as const
+    for (const [key, expected] of checkboxes) {
+      const checkbox = row_of(key).querySelector<HTMLInputElement>(`input[type="checkbox"]`)
+      expect(checkbox?.checked, key).toBe(expected)
+    }
+
+    const swatches = [
+      [`bond_color`, DEFAULTS.structure.bond_color],
+      [`cell_edge_color`, `#123456`], // lattice_props row
+      [`displacement_arrow_color`, DEFAULTS.structure.displacement_arrow_color],
+      [`site_label_color`, DEFAULTS.structure.site_label_color],
+    ] as const
+    for (const [key, expected] of swatches) {
+      const swatch = row_of(key).querySelector<HTMLInputElement>(`input[type="color"]`)
+      expect(swatch?.value, key).toBe(expected)
+    }
+    // uniform polyhedra color mode pairs the mode select with its color swatch in ONE row
+    const polyhedra_color_row = row_of(`polyhedra_color`)
+    expect(polyhedra_color_row.querySelector(`select`)?.value).toBe(`uniform`)
+    expect(
+      polyhedra_color_row.querySelector<HTMLInputElement>(`input[type="color"]`)?.value,
+    ).toBe(DEFAULTS.structure.polyhedra_color)
+
+    for (const [key, expected] of [
+      [`bond_thickness`, 0.2],
+      [`directional_light`, DEFAULTS.structure.directional_light],
+      [`polyhedra_min_neighbors`, DEFAULTS.structure.polyhedra_min_neighbors],
+    ] as const) {
+      const schema = SETTINGS_CONFIG.structure[key]
+      const inputs = [...row_of(key).querySelectorAll<HTMLInputElement>(`input`)]
+      expect(inputs.map((input) => input.type).toSorted()).toEqual([`number`, `range`])
+      for (const input of inputs) {
+        expect(input.valueAsNumber, key).toBe(expected)
+        expect(input.min).toBe(`${schema.minimum}`)
+        expect(input.max).toBe(`${schema.maximum}`)
+      }
+    }
+
+    // writes land on the row's own target
+    const bond_color = query(`[data-key="bond_color"] input[type="color"]`)
+    if (!(bond_color instanceof HTMLInputElement)) throw new Error(`bond color swatch missing`)
+    set_input(bond_color, `#abcdef`)
+    const cell_vectors = row_of(`show_cell_vectors`).querySelector<HTMLInputElement>(`input`)
+    cell_vectors?.click()
+    const image_atoms = row_of(`show_image_atoms`).querySelector<HTMLInputElement>(`input`)
+    image_atoms?.click()
+    const thickness =
+      row_of(`bond_thickness`).querySelector<HTMLInputElement>(`input[type="number"]`)
+    if (!thickness) throw new Error(`bond thickness input missing`)
+    set_input(thickness, `0.35`)
+    await tick()
+    expect(state.scene_props.bond_color).toBe(`#abcdef`)
+    expect(state.scene_props.bond_thickness).toBe(0.35)
+    expect(state.lattice_props.show_cell_vectors).toBe(true)
+    expect(state.show_image_atoms).toBe(true)
+    // ...and nothing leaked onto scene_props from the accessor rows
+    expect(state.scene_props.show_cell_vectors).toBe(DEFAULTS.structure.show_cell_vectors)
+    expect(state.scene_props.show_image_atoms).toBe(DEFAULTS.structure.show_image_atoms)
+  })
+
+  test(`conditional rows follow their gate`, async () => {
+    const state = $state({
+      scene_props: {
+        ...DEFAULTS.structure,
+        show_bonds: `always` as const,
+        auto_bond_order: false,
+      },
+    })
+    const target = await mount_bound_controls(state)
+    expect(target.querySelector(`[data-key="aromatic_display"]`)).toBeNull()
+    state.scene_props.auto_bond_order = true
+    await tick()
+    expect(target.querySelector(`[data-key="aromatic_display"] select`)).not.toBeNull()
+  })
 })
 
 describe(`StructureControls layout`, () => {

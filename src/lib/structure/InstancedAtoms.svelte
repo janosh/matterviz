@@ -11,7 +11,6 @@
   import type { Vec3 } from '$lib/math'
   import { T, useThrelte } from '@threlte/core'
   import { untrack } from 'svelte'
-  import { SvelteMap } from 'svelte/reactivity'
   import {
     Color,
     InstancedMesh,
@@ -138,7 +137,9 @@
     const limit = Math.min(atoms.length, current.count)
     // Color.set(string) parses CSS with regexes. Atoms draw from a handful of distinct
     // colors, so resolve each one once per update instead of once per atom (>10k here).
-    const resolved = new SvelteMap<string | undefined, Color>()
+    // Plain Map: a scratch cache scoped to this effect run, so reactive entries would only
+    // add a signal per color.
+    const resolved = new Map<string | undefined, Color>()
     const resolve_color = (color: string | undefined): Color => {
       let hit = resolved.get(color)
       if (!hit) {

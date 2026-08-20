@@ -22,7 +22,7 @@
     next_atom_color_config,
   } from '$lib/structure/atom-properties'
   import type { MoyoDataset } from '@spglib/moyo-wasm'
-  import type { Snippet } from 'svelte'
+  import { type Snippet, untrack } from 'svelte'
   import { click_outside, tooltip } from 'svelte-widgets/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
@@ -97,13 +97,13 @@
   let mode_menu_open = $state(false)
   let mode_toggle_visible = $derived(show_mode_toggle || mode_menu_open)
 
-  // Clear hidden property values when switching modes (since they may not be valid)
-  let prev_mode = $state(atom_color_config.mode)
+  // Clear hidden property values when switching modes (since they may not be valid).
+  // prev_mode is bookkeeping for this effect only, so it stays a plain variable.
+  let prev_mode = untrack(() => atom_color_config.mode)
   $effect(() => {
-    if (atom_color_config.mode !== prev_mode) {
-      hidden_prop_vals.clear()
-      prev_mode = atom_color_config.mode
-    }
+    if (atom_color_config.mode === prev_mode) return
+    prev_mode = atom_color_config.mode
+    untrack(() => hidden_prop_vals.clear())
   })
 
   // Normalize incoming Map to SvelteMap at boundary for reactivity
@@ -114,7 +114,7 @@
     }
   })
   // Format display values based on mode
-  let format_value = (val: number | string): string => {
+  const format_value = (val: number | string): string => {
     if (typeof val === `number`) return format_num(val, `.3~f`)
 
     if (typeof val === `string` && val.includes(`|`)) {
@@ -130,8 +130,10 @@
 
   // Map each property value to its first color in a single O(n) pass (reused in
   // categorical and discrete legends). Skips undefined colors if arrays ever drift.
+  // Plain Map: built and consumed inside deriveds, so per-entry reactivity would only
+  // add a signal per value.
   let color_map = $derived.by(() => {
-    const map = new SvelteMap<number | string, string>()
+    const map = new Map<number | string, string>()
     const { values = [], colors: value_colors = [] } = property_colors ?? {}
     for (const [idx, val] of values.entries()) {
       const color = value_colors[idx]
@@ -817,6 +819,7 @@
     cursor: pointer;
     transition: background-color 0.15s ease;
     font-size: 0.85rem;
+    white-space: nowrap;
   }
   .mode-option:first-child {
     border-top-left-radius: var(--legend-menu-border-radius, 4px);
@@ -827,7 +830,7 @@
     border-bottom-right-radius: var(--legend-menu-border-radius, 4px);
   }
   .mode-option:hover:not(.disabled) {
-    background: var(--pane-btn-bg-hover, rgba(128, 128, 128, 0.1));
+    background: var(--btn-bg-hover, rgba(128, 128, 128, 0.1));
   }
   .mode-option.selected {
     color: var(--accent-color);
@@ -836,9 +839,6 @@
   .mode-option.disabled {
     opacity: 0.5;
     cursor: not-allowed;
-  }
-  .mode-option {
-    white-space: nowrap;
   }
   /* Discrete color bar: contiguous integer-labeled segments (e.g. coordination numbers) */
   .discrete-colorbar {

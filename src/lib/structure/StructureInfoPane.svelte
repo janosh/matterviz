@@ -3,66 +3,50 @@
     ViewerPane,
     create_clipboard_feedback,
     info_pane_icon,
+    type InfoPaneCard,
+    type InfoPaneRow,
     type PaneProps,
     type PaneToggleProps,
   } from '$lib/overlays'
+  import InfoPaneCards from '$lib/overlays/InfoPaneCards.svelte'
   import { get_electro_neg_formula } from '$lib/composition'
   import { element_by_symbol, type ElementSymbol } from '$lib/element'
-  import { Icon } from 'svelte-widgets'
-  import { Check } from 'svelte-widgets/icons'
   import { format_num } from '$lib/labels'
-  import type { InfoItem } from '$lib/layout'
   import type { Vec2 } from '$lib/math'
   import { sanitize_html } from '$lib/sanitize'
   import { colors } from '$lib/state.svelte'
-  import type { AnyStructure, Site } from '$lib/structure'
+  import type { AnyStructure } from '$lib/structure'
   import { get_density } from '$lib/structure'
   import { wyckoff_positions_from_moyo, WyckoffTable } from '$lib/symmetry'
   import type { MoyoDataset } from '@spglib/moyo-wasm'
   import type { HTMLAttributes } from 'svelte/elements'
 
-  type SiteDetail = {
-    label: string
-    value: string
-    key: string
-    tooltip?: string
-  }
-  type SiteCard = {
-    idx: number
-    element: string
-    element_name: string
-    title: string
-    details: SiteDetail[]
-    search_text: string
-  }
+  type SiteCard = InfoPaneCard & { idx: number; element: string; element_name: string }
 
-  const SITE_WINDOW_SIZE = 100
-  const USAGE_TIP_ITEMS: InfoItem[] = [
-    {
-      label: `File Drop`,
-      value: `Drop POSCAR, XYZ, CIF or JSON files to load structures`,
-    },
-    {
-      label: `Atom Selection`,
-      value: `Click atoms to select them, then pick distance or angle mode to measure all pairwise distances/angles`,
-    },
-    {
-      label: `Navigation`,
-      value: `Drag to rotate, scroll to zoom, hold Shift/Cmd/Ctrl + drag to pan. Rotate, zoom and pan sensitivity are adjustable under Camera in the settings pane`,
-    },
-    {
-      label: `Camera Reset`,
-      value: `Press r, double-click the canvas, or use Reset view at the top of the settings pane`,
-    },
-    {
-      label: `Colors`,
-      value: `Click legend labels to change colors, double-click to reset, right-click to remap elements`,
-    },
-    {
-      label: `Keyboard`,
-      value: `Press Ctrl/Cmd+f for fullscreen, Ctrl/Cmd+i to toggle this pane, r to reset the view`,
-    },
-  ]
+  const SITE_PAGE_SIZE = 100
+  const USAGE_TIPS = [
+    [`File Drop`, `Drop POSCAR, XYZ, CIF or JSON files to load structures`],
+    [
+      `Atom Selection`,
+      `Click atoms to select them, then pick distance or angle mode to measure all pairwise distances/angles`,
+    ],
+    [
+      `Navigation`,
+      `Drag to rotate, scroll to zoom, hold Shift/Cmd/Ctrl + drag to pan. Rotate, zoom and pan sensitivity are adjustable under Camera in the settings pane`,
+    ],
+    [
+      `Camera Reset`,
+      `Press r, double-click the canvas, or use Reset view at the top of the settings pane`,
+    ],
+    [
+      `Colors`,
+      `Click legend labels to change colors, double-click to reset, right-click to remap elements`,
+    ],
+    [
+      `Keyboard`,
+      `Press Ctrl/Cmd+f for fullscreen, Ctrl/Cmd+i to toggle this pane, r to reset the view`,
+    ],
+  ] as const
 
   let {
     structure,
@@ -78,7 +62,9 @@
   }: Omit<HTMLAttributes<HTMLDivElement>, `onclose`> & {
     structure: AnyStructure
     pane_open?: boolean
-    atom_count_thresholds?: Vec2 // if atom count is less than min_threshold, show sites, if atom count is greater than max_threshold, hide sites. in between, show sites behind a toggle button.
+    // Below the first threshold the site list shows by default, above the second it is
+    // omitted entirely; in between it sits behind a toggle button
+    atom_count_thresholds?: Vec2
     toggle_props?: PaneToggleProps
     pane_props?: PaneProps
     highlighted_sites?: number[] // Sites highlighted from Wyckoff table hover
@@ -87,18 +73,9 @@
     sym_data?: MoyoDataset | null // Symmetry analysis data (bindable for external access)
   } = $props()
 
-  const { copied, copy } = create_clipboard_feedback()
+  const { copy } = create_clipboard_feedback()
   let sites_expanded = $state(false)
-  let site_filter = $state(``)
-  let site_window_start = $state(0)
-  let site_cards_el = $state<HTMLDivElement>()
-
-  const copy_to_clipboard = (label: string, value: string, key: string): Promise<boolean> =>
-    copy(`${label}: ${value}`, key)
-
-  function copy_info_item(item: InfoItem) {
-    copy_to_clipboard(item.label, String(item.value), item.key ?? item.label)
-  }
+  let pane_el = $state<HTMLElement>()
 
   function set_site_hover(site_idx: number | null) {
     highlighted_sites = site_idx === null ? [] : [site_idx]
@@ -116,62 +93,42 @@
       selected_sites.length === 1 && selected_sites[0] === site_idx ? [] : [site_idx]
   }
 
-  function update_site_filter(event: Event): void {
-    if (!(event.currentTarget instanceof HTMLInputElement)) return
-    site_filter = event.currentTarget.value
-    site_window_start = 0
-  }
+  const site_summary = (card: SiteCard): string =>
+    [card.element_name, ...card.rows.map(({ label, value }) => `${label}: ${value}`)].join(
+      `; `,
+    )
 
-  function handle_site_keydown(
-    event: KeyboardEvent & { currentTarget: HTMLDivElement },
-    card: SiteCard,
-  ) {
+  function handle_site_keydown(event: KeyboardEvent, card: SiteCard) {
     const plain_key = !event.altKey && !event.ctrlKey && !event.metaKey
     if ([`Enter`, ` `].includes(event.key)) {
       event.preventDefault()
       select_site(card.idx, event)
-      return
-    }
-    if (event.key === `c` && plain_key) {
+    } else if (event.key === `c` && plain_key) {
       event.preventDefault()
-      copy_to_clipboard(card.title, site_summary(card), `site-${card.idx}-summary`)
-      return
+      copy(`${card.title}: ${site_summary(card)}`, `site-${card.idx}-summary`)
+    } else if ([`ArrowDown`, `ArrowUp`].includes(event.key)) {
+      event.preventDefault()
+      const current_card = event.currentTarget
+      if (!(current_card instanceof HTMLElement)) return
+      const sibling_cards = [
+        ...(current_card.parentElement?.querySelectorAll<HTMLElement>(`.site-card`) ?? []),
+      ]
+      const current_idx = sibling_cards.indexOf(current_card)
+      const next_idx =
+        event.key === `ArrowDown`
+          ? Math.min(current_idx + 1, sibling_cards.length - 1)
+          : Math.max(current_idx - 1, 0)
+      sibling_cards[next_idx]?.focus()
     }
-    if (![`ArrowDown`, `ArrowUp`].includes(event.key)) return
-    event.preventDefault()
-    const current_card = event.currentTarget
-    const sibling_cards = Array.from(
-      current_card.parentElement?.querySelectorAll<HTMLDivElement>(`.site-card`) ?? [],
-    )
-    const current_idx = sibling_cards.indexOf(current_card)
-    const next_idx =
-      event.key === `ArrowDown`
-        ? Math.min(current_idx + 1, sibling_cards.length - 1)
-        : Math.max(current_idx - 1, 0)
-    sibling_cards[next_idx]?.focus()
   }
 
-  const site_summary = (card: SiteCard): string =>
-    [card.element_name, ...card.details.map(({ label, value }) => `${label}: ${value}`)].join(
-      `; `,
-    )
-
-  function compact_site_detail_label(detail: SiteDetail): string {
-    if (detail.key === `fractional`) return `Frac.`
-    if (detail.key === `cartesian`) return `Cart.`
-    return detail.label
+  const format_numeric = (value: unknown): string | null => {
+    const numeric_value = Number(value)
+    return Number.isNaN(numeric_value) ? null : format_num(numeric_value, `.3~f`)
   }
 
-  function format_site_property(prop_key: string, prop_value: unknown): SiteDetail | null {
+  function format_site_property(prop_key: string, prop_value: unknown): InfoPaneRow | null {
     if (prop_value == null) return null
-    const format_numeric_value = (value: unknown): string | null => {
-      const numeric_value = Number(value)
-      return Number.isNaN(numeric_value) ? null : format_num(numeric_value, `.3~f`)
-    }
-    const format_value_list = (values: unknown[]): string =>
-      `(${values.map((value) => format_numeric_value(value) ?? String(value)).join(`, `)})`
-    let tooltip: string | undefined
-
     if (
       prop_key === `force` &&
       Array.isArray(prop_value) &&
@@ -179,63 +136,56 @@
       prop_value.every((value) => typeof value === `number`)
     ) {
       const force_values = prop_value as [number, number, number]
-      const value = `${format_num(Math.hypot(...force_values), `.3~f`)} eV/Å`
-      tooltip = `Force vector: ${force_values
-        .map((force) => format_num(force, `.3~f`))
-        .join(`, `)} eV/Å`
-      return { label: prop_key, value, key: prop_key, tooltip }
+      return {
+        label: prop_key,
+        key: prop_key,
+        value: `${format_num(Math.hypot(...force_values), `.3~f`)} eV/Å`,
+        tooltip: `Force vector: ${force_values.map((force) => format_num(force, `.3~f`)).join(`, `)} eV/Å`,
+      }
     }
     if (prop_key === `magmom` || prop_key.includes(`magnet`)) {
-      const formatted_value = format_numeric_value(prop_value)
+      const formatted_value = format_numeric(prop_value)
       if (!formatted_value) return null
-      tooltip = `Magnetic moment in Bohr magnetons`
-      return { label: prop_key, value: `${formatted_value} μB`, key: prop_key, tooltip }
+      return {
+        label: prop_key,
+        key: prop_key,
+        value: `${formatted_value} μB`,
+        tooltip: `Magnetic moment in Bohr magnetons`,
+      }
     }
-
     const value = Array.isArray(prop_value)
-      ? format_value_list(prop_value)
-      : (format_numeric_value(prop_value) ?? String(prop_value))
-    return { label: prop_key, value, key: prop_key }
+      ? `(${prop_value.map((item) => format_numeric(item) ?? String(item)).join(`, `)})`
+      : (format_numeric(prop_value) ?? String(prop_value))
+    return { label: prop_key, key: prop_key, value }
   }
 
-  let pane_data = $derived.by(() => {
-    // Skip while closed — ViewerPane keeps children mounted (display:none).
+  // Structure + Cell cards; Symmetry is rendered separately so the Wyckoff table can follow it.
+  // Skipped while closed — ViewerPane keeps children mounted (display:none).
+  let structure_cards = $derived.by((): InfoPaneCard[] => {
     if (!pane_open || !structure) return []
-    const sections: { title: string; items: InfoItem[] }[] = []
-
-    // Structure Info
-    const structure_items: InfoItem[] = [
+    const structure_rows: InfoPaneRow[] = [
       {
         label: `Formula`,
         value: `${get_electro_neg_formula(structure)} (${structure.sites.length} sites)`,
         key: `structure-formula`,
       },
-      {
-        label: `Charge`,
-        value: `${structure.charge || 0}e`,
-        key: `structure-charge`,
-      },
+      { label: `Charge`, value: `${structure.charge || 0}e`, key: `structure-charge` },
     ]
-
-    if (`properties` in structure) {
-      for (const [key, value] of Object.entries(structure.properties ?? {})) {
-        // Only display scalar values (skip arrays and objects)
-        if (value == null || typeof value === `object`) continue
-        structure_items.push({
-          label: key.replaceAll('_', ` `).replaceAll(/\b\w/g, (char) => char.toUpperCase()),
-          value: String(value),
-          key: `structure-prop-${key}`,
-        })
-      }
+    // Only display scalar values (skip arrays and objects)
+    for (const [key, value] of Object.entries(structure.properties ?? {})) {
+      if (value == null || typeof value === `object`) continue
+      structure_rows.push({
+        label: key.replaceAll(`_`, ` `).replaceAll(/\b\w/g, (char) => char.toUpperCase()),
+        value: String(value),
+        key: `structure-prop-${key}`,
+      })
     }
-    sections.push({ title: `Structure`, items: structure_items })
-
-    // Cell Info
+    const cards: InfoPaneCard[] = [{ title: `Structure`, rows: structure_rows }]
     if (`lattice` in structure) {
       const { a, b, c, alpha, beta, gamma, volume } = structure.lattice
-      sections.push({
+      cards.push({
         title: `Cell`,
-        items: [
+        rows: [
           {
             label: `Volume, Density`,
             value: `${format_num(volume, `.3~s`)} Å³, ${format_num(get_density(structure), `.3~f`)} g/cm³`,
@@ -254,58 +204,53 @@
         ],
       })
     }
+    return cards
+  })
 
-    // Symmetry Info
-    if (`lattice` in structure && sym_data) {
-      const { operations } = sym_data
-      let translations = 0,
-        rotations = 0,
-        roto_translations = 0
-      for (const op of operations) {
-        const has_translation = op.translation.some((offset) => offset !== 0)
-        const is_identity = String(op.rotation) === `1,0,0,0,1,0,0,0,1`
-        if (is_identity && has_translation) translations++
-        else if (!has_translation) rotations++
-        else roto_translations++
-      }
-
-      const international_symbol = (
-        sym_data as MoyoDataset & {
-          international_short?: string
-        }
-      ).international_short
-      const space_group_symbol = (sym_data.hm_symbol ?? international_symbol)?.replaceAll(
-        /\s+/g,
-        ``,
-      )
-      const space_group_value = space_group_symbol
-        ? `${sym_data.number} (${space_group_symbol})`
-        : String(sym_data.number)
-
-      sections.push({
-        title: `Symmetry`,
-        items: [
-          { label: `Space Group`, value: space_group_value, key: `symmetry-space-group` },
-          {
-            label: `Hall Number`,
-            value: String(sym_data.hall_number),
-            key: `symmetry-hall-number`,
-          },
-          {
-            label: `Pearson Symbol`,
-            value: sym_data.pearson_symbol,
-            key: `symmetry-pearson-symbol`,
-          },
-          {
-            label: `Symmetry Ops`,
-            value: `${operations.length} (${translations} trans, ${rotations} rot, ${roto_translations} roto-trans)`,
-            key: `symmetry-operations-total`,
-          },
-        ],
-      })
+  let symmetry_card = $derived.by((): InfoPaneCard | null => {
+    if (!pane_open || !structure || !(`lattice` in structure) || !sym_data) return null
+    const { operations } = sym_data
+    let [translations, rotations, roto_translations] = [0, 0, 0]
+    for (const op of operations) {
+      const has_translation = op.translation.some((offset) => offset !== 0)
+      const is_identity = String(op.rotation) === `1,0,0,0,1,0,0,0,1`
+      if (is_identity && has_translation) translations++
+      else if (!has_translation) rotations++
+      else roto_translations++
     }
-
-    return sections
+    const international_symbol = (sym_data as MoyoDataset & { international_short?: string })
+      .international_short
+    const space_group_symbol = (sym_data.hm_symbol ?? international_symbol)?.replaceAll(
+      /\s+/g,
+      ``,
+    )
+    return {
+      title: `Symmetry`,
+      rows: [
+        {
+          label: `Space Group`,
+          value: space_group_symbol
+            ? `${sym_data.number} (${space_group_symbol})`
+            : String(sym_data.number),
+          key: `symmetry-space-group`,
+        },
+        {
+          label: `Hall Number`,
+          value: String(sym_data.hall_number),
+          key: `symmetry-hall-number`,
+        },
+        {
+          label: `Pearson Symbol`,
+          value: sym_data.pearson_symbol,
+          key: `symmetry-pearson-symbol`,
+        },
+        {
+          label: `Symmetry Ops`,
+          value: `${operations.length} (${translations} trans, ${rotations} rot, ${roto_translations} roto-trans)`,
+          key: `symmetry-operations-total`,
+        },
+      ],
+    }
   })
 
   let atom_count = $derived(structure?.sites.length ?? 0)
@@ -316,78 +261,61 @@
   let site_cards_visible = $derived(
     pane_open && sites_allowed_by_threshold && (!sites_need_toggle || sites_expanded),
   )
+  let sites_hidden_by_threshold = $derived(sites_need_toggle && !sites_expanded)
 
   let site_cards = $derived.by((): SiteCard[] => {
     if (!structure || !site_cards_visible) return []
-    return structure.sites.map((site: Site, idx: number) => {
+    return structure.sites.map((site, idx) => {
       const element = site.species?.[0]?.element || `Unknown`
       const element_name = element_by_symbol.get(element as ElementSymbol)?.name ?? element
-      const details: SiteDetail[] = []
+      const rows: InfoPaneRow[] = []
       for (const [label, key, coords, unit] of [
-        [`Fractional`, `fractional`, site.abc, ``],
-        [`Cartesian`, `cartesian`, site.xyz, ` Å`],
+        [`Frac.`, `fractional`, site.abc, ``],
+        [`Cart.`, `cartesian`, site.xyz, ` Å`],
       ] as const) {
         if (!coords) continue
-        details.push({
+        rows.push({
           label,
           key,
           value: `(${coords.map((coord) => format_num(coord, `.3~f`)).join(`, `)})${unit}`,
         })
       }
-      if (site.properties) {
-        for (const [prop_key, prop_value] of Object.entries(site.properties)) {
-          const detail = format_site_property(prop_key, prop_value)
-          if (detail) details.push(detail)
-        }
+      for (const [prop_key, prop_value] of Object.entries(site.properties ?? {})) {
+        const row = format_site_property(prop_key, prop_value)
+        if (row) rows.push(row)
       }
       const title = `${element}${idx + 1}`
-      return {
-        idx,
-        element,
-        element_name,
-        title,
-        details,
-        search_text: `${title} ${element} ${element_name} ${details
-          .map(({ label, value }) => `${label} ${value}`)
-          .join(` `)}`.toLowerCase(),
-      }
+      return { idx, element, element_name, title, subtitle: element_name, key: title, rows }
     })
   })
 
-  let visible_site_cards = $derived.by(() => {
-    const filter = site_filter.trim().toLowerCase()
-    if (!filter) return site_cards
-    return site_cards.filter(({ search_text }) => search_text.includes(filter))
+  const site_card_attrs = (card: SiteCard): HTMLAttributes<HTMLElement> => ({
+    class: [
+      `site-card`,
+      {
+        highlighted: highlighted_sites.includes(card.idx) || hovered_site_idx === card.idx,
+        selected: selected_sites.includes(card.idx),
+      },
+    ],
+    'data-site-idx': card.idx,
+    style: `--site-color: ${colors.element?.[card.element as ElementSymbol] ?? `#888`}`,
+    title: `Click to select ${card.title}. Press c to copy.`,
+    role: `button`,
+    tabindex: 0,
+    onmouseenter: () => set_site_hover(card.idx),
+    onmouseleave: () => set_site_hover(null),
+    onfocus: () => set_site_hover(card.idx),
+    onblur: () => set_site_hover(null),
+    onclick: (event) => select_site(card.idx, event),
+    onkeydown: (event) => handle_site_keydown(event, card),
   })
 
-  let rendered_site_cards = $derived(
-    visible_site_cards.slice(site_window_start, site_window_start + SITE_WINDOW_SIZE),
-  )
-  let site_window_end = $derived(
-    Math.min(site_window_start + SITE_WINDOW_SIZE, visible_site_cards.length),
-  )
-  let sites_hidden_by_threshold = $derived(sites_need_toggle && !sites_expanded)
-  let show_sites_section = $derived(
-    pane_open && (site_cards.length > 0 || sites_hidden_by_threshold || sites_need_toggle),
-  )
-
-  $effect(() => {
-    if (site_window_start >= visible_site_cards.length) {
-      site_window_start = Math.max(0, visible_site_cards.length - SITE_WINDOW_SIZE)
-    }
-  })
-
+  // Keep the selected site's card in view when the selection comes from elsewhere (Wyckoff
+  // table, 3D scene). Cards on another page stay put: InfoPaneCards owns the pager.
   $effect(() => {
     const selected_site_idx = selected_sites[0]
     if (!pane_open || selected_site_idx === undefined) return
-    const visible_idx = visible_site_cards.findIndex(({ idx }) => idx === selected_site_idx)
-    if (visible_idx === -1) return
-    const selected_window_start = Math.floor(visible_idx / SITE_WINDOW_SIZE) * SITE_WINDOW_SIZE
-    if (selected_window_start !== site_window_start) {
-      site_window_start = selected_window_start
-      return
-    }
-    site_cards_el
+    pane_el
       ?.querySelector(`[data-site-idx="${selected_site_idx}"]`)
       ?.scrollIntoView({ block: `nearest` })
   })
@@ -411,194 +339,98 @@
   closed_icon={info_pane_icon}
   {...rest}
 >
-  <h4 style="margin-top: 0">Structure Info</h4>
-  {#each pane_data as section, sec_idx (section.title)}
-    {#if sec_idx > 0}<hr />{/if}
-    <section>
-      {#if section.title && section.title !== `Structure`}
-        <h4>{section.title}</h4>
-      {/if}
-      {#each section.items as item (item.key ?? item.label)}
-        {@const { key, label, value, tooltip } = item}
-        <div
-          class="info-row clickable"
-          title={`Click to copy: ${label}: ${value}`}
-          onclick={() => copy_info_item(item)}
-          role="button"
-          tabindex="0"
-          onkeydown={(event) => {
-            if ([`Enter`, ` `].includes(event.key)) {
-              event.preventDefault()
-              copy_info_item(item)
-            }
-          }}
-        >
-          <span>{@html sanitize_html(label)}</span>
-          <span title={tooltip}>{@html sanitize_html(value)}</span>
-          {#if key && copied.has(key)}
-            <Icon
-              icon={Check}
-              style="color: var(--success-color, #10b981); width: 12px; height: 12px"
-              class="copy-checkmark"
-            />
-          {/if}
-        </div>
-      {/each}
+  <div bind:this={pane_el} class="structure-info">
+    <InfoPaneCards cards={structure_cards} empty_label="structure info" show_filter={false} />
 
-      {#if section.title === `Symmetry` && wyckoff_positions.length > 0}
-        <button
-          type="button"
-          class="section-toggle"
-          aria-expanded={wyckoff_table_expanded}
-          onclick={() => (wyckoff_table_expanded = !wyckoff_table_expanded)}
-          style="display: block; margin: 2pt 0 0 auto"
-        >
-          {wyckoff_table_expanded ? `Hide` : `Show`} Wyckoff table ({wyckoff_positions.length})
-        </button>
-        {#if wyckoff_table_expanded}
-          <WyckoffTable
-            {wyckoff_positions}
-            on_hover={(site_indices) => (highlighted_sites = site_indices ?? [])}
-            on_click={(site_indices) => (selected_sites = site_indices ?? [])}
-            style="width: 100%; margin-top: 2pt; font-size: 0.8em"
-          />
-        {/if}
-      {/if}
-    </section>
-  {/each}
-
-  {#if show_sites_section}
-    <hr />
-    <section>
-      <div class="sites-header">
-        <h4>Sites</h4>
-        {#if sites_need_toggle}
+    {#if symmetry_card}
+      <section>
+        <InfoPaneCards
+          cards={[symmetry_card]}
+          empty_label="symmetry info"
+          show_filter={false}
+        />
+        {#if wyckoff_positions.length > 0}
           <button
             type="button"
             class="section-toggle"
-            onclick={() => (sites_expanded = !sites_expanded)}
-            title="{sites_expanded ? `Hide` : `Show`} all site information"
+            aria-expanded={wyckoff_table_expanded}
+            onclick={() => (wyckoff_table_expanded = !wyckoff_table_expanded)}
+            style="display: block; margin: 2pt 0 0 auto"
           >
-            {sites_expanded ? `Hide` : `Show ${structure.sites.length} sites`}
+            {wyckoff_table_expanded ? `Hide` : `Show`} Wyckoff table ({wyckoff_positions.length})
           </button>
-        {/if}
-      </div>
-      {#if sites_hidden_by_threshold}
-        <p class="sites-note">
-          Site list hidden for this {structure.sites.length}-site structure.
-        </p>
-      {:else if site_cards.length > 0}
-        <input
-          class="site-filter"
-          type="search"
-          value={site_filter}
-          oninput={update_site_filter}
-          placeholder="Filter sites by element, index, coordinate, or property"
-          aria-label="Filter sites"
-        />
-        {#if visible_site_cards.length === 0}
-          <p class="sites-note">No sites match "{site_filter}".</p>
-        {:else}
-          {#if visible_site_cards.length > SITE_WINDOW_SIZE}
-            <div class="site-window-controls">
-              <button
-                type="button"
-                disabled={site_window_start === 0}
-                onclick={() =>
-                  (site_window_start = Math.max(0, site_window_start - SITE_WINDOW_SIZE))}
-              >
-                Previous
-              </button>
-              <span
-                >{site_window_start + 1}-{site_window_end} of {visible_site_cards.length}</span
-              >
-              <button
-                type="button"
-                disabled={site_window_end >= visible_site_cards.length}
-                onclick={() =>
-                  (site_window_start = Math.min(
-                    Math.max(0, visible_site_cards.length - SITE_WINDOW_SIZE),
-                    site_window_start + SITE_WINDOW_SIZE,
-                  ))}
-              >
-                Next
-              </button>
-            </div>
+          {#if wyckoff_table_expanded}
+            <WyckoffTable
+              {wyckoff_positions}
+              on_hover={(site_indices) => (highlighted_sites = site_indices ?? [])}
+              on_click={(site_indices) => (selected_sites = site_indices ?? [])}
+              style="width: 100%; margin-top: 2pt; font-size: 0.8em"
+            />
           {/if}
-          <div class="site-cards" bind:this={site_cards_el}>
-            {#each rendered_site_cards as card (card.idx)}
-              {@const is_highlighted =
-                highlighted_sites.includes(card.idx) || hovered_site_idx === card.idx}
-              {@const is_selected = selected_sites.includes(card.idx)}
-              <div
-                class={['site-card', { highlighted: is_highlighted, selected: is_selected }]}
-                data-site-idx={card.idx}
-                style:--site-color={colors.element?.[card.element as ElementSymbol] ?? `#888`}
-                title="Click to select {card.title}. Press c to copy."
-                role="button"
-                tabindex="0"
-                onmouseenter={() => set_site_hover(card.idx)}
-                onmouseleave={() => set_site_hover(null)}
-                onfocus={() => set_site_hover(card.idx)}
-                onblur={() => set_site_hover(null)}
-                onclick={(event) => select_site(card.idx, event)}
-                onkeydown={(event) => handle_site_keydown(event, card)}
-              >
-                <span class="site-title">
-                  <strong>{card.title}</strong>
-                  <span style="opacity: 0.75">{card.element_name}</span>
-                </span>
-                <div class="site-card-details">
-                  {#each card.details as detail (`site-${card.idx}-${detail.key}`)}
-                    <div class="site-detail">
-                      <span title={detail.label}
-                        >{@html sanitize_html(compact_site_detail_label(detail))}</span
-                      >
-                      <span title={detail.tooltip}>{@html sanitize_html(detail.value)}</span>
-                    </div>
-                  {/each}
-                </div>
-              </div>
-            {/each}
-          </div>
         {/if}
-      {/if}
-    </section>
-  {/if}
+      </section>
+    {/if}
 
-  <hr />
-  <section>
-    <h4>Usage Tips</h4>
-    {#each USAGE_TIP_ITEMS as { label, value } (label)}
-      <div class="tips-item">
-        <span>{@html sanitize_html(label)}</span>
-        <span>{@html sanitize_html(value)}</span>
-      </div>
-    {/each}
-  </section>
+    {#if pane_open && (site_cards.length > 0 || sites_need_toggle)}
+      <section>
+        <div class="sites-header">
+          <h4>Sites</h4>
+          {#if sites_need_toggle}
+            <button
+              type="button"
+              class="section-toggle"
+              onclick={() => (sites_expanded = !sites_expanded)}
+              title="{sites_expanded ? `Hide` : `Show`} all site information"
+            >
+              {sites_expanded ? `Hide` : `Show ${structure.sites.length} sites`}
+            </button>
+          {/if}
+        </div>
+        {#if sites_hidden_by_threshold}
+          <p class="sites-note">
+            Site list hidden for this {structure.sites.length}-site structure.
+          </p>
+        {:else}
+          <InfoPaneCards
+            cards={site_cards}
+            filter_placeholder="Filter sites by element, index, coordinate, or property"
+            empty_label="sites"
+            page_size={SITE_PAGE_SIZE}
+            card_attrs={site_card_attrs}
+            show_copy={false}
+            class="site-cards"
+          />
+        {/if}
+      </section>
+    {/if}
+
+    <section>
+      <h4>Usage Tips</h4>
+      {#each USAGE_TIPS as [label, value] (label)}
+        <div class="tips-item">
+          <span>{@html sanitize_html(label)}</span>
+          <span>{@html sanitize_html(value)}</span>
+        </div>
+      {/each}
+    </section>
+  </div>
 </ViewerPane>
 
 <style>
-  h4 {
-    margin: 2pt 0;
-    font-size: 0.95em;
-  }
-  hr {
-    margin: 2pt 0;
-  }
-  .info-row {
-    display: flex;
-    justify-content: space-between;
+  .structure-info {
+    display: grid;
     gap: 4pt;
-    padding: 0 1pt;
-    font-size: 0.9em;
-    line-height: 1.3;
-  }
-  .info-row.clickable {
-    cursor: pointer;
-    position: relative;
-    &:hover {
-      background: var(--pane-btn-bg-hover, rgba(255, 255, 255, 0.03));
+    --info-card-accent: 0;
+    --info-card-padding: 2pt 4pt;
+    --info-row-padding: 0;
+    --info-card-heading-gap: 1pt;
+    h4 {
+      margin: 2pt 0;
+      font-size: 0.95em;
+    }
+    section {
+      padding-top: 3pt;
+      border-top: 1px solid color-mix(in srgb, currentColor 15%, transparent);
     }
   }
   .sites-header {
@@ -607,110 +439,36 @@
     justify-content: space-between;
     gap: 4pt;
   }
-  .section-toggle,
-  .site-window-controls button {
+  .section-toggle {
+    padding: 2pt 5pt;
     border: 0;
     border-radius: var(--border-radius, 3pt);
     background: color-mix(in srgb, currentColor 8%, transparent);
     color: inherit;
-    cursor: pointer;
-  }
-  .section-toggle {
-    padding: 2pt 5pt;
     font-size: 0.8em;
-  }
-  .site-filter {
-    box-sizing: border-box;
-    width: 100%;
-    margin-bottom: 3pt;
-    padding: 3pt 5pt;
-    border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
-    border-radius: var(--border-radius, 3pt);
-    background: color-mix(in srgb, var(--pane-bg, Canvas) 88%, currentColor);
-    color: inherit;
+    cursor: pointer;
   }
   .sites-note {
     margin: 0.25em 0 0.5em;
     opacity: 0.75;
     font-size: 0.85em;
   }
-  .site-window-controls {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 4pt;
-    margin-bottom: 3pt;
+  .structure-info :global(.site-cards) {
+    --info-card-padding: 4pt 8pt;
+    --info-row-padding: 0;
     font-size: 0.8em;
-    button {
-      padding: 2pt 5pt;
-      &:disabled {
-        cursor: not-allowed;
-        opacity: 0.45;
-      }
-    }
   }
-  .site-cards {
-    display: grid;
-    gap: 6pt;
-  }
-  .site-card {
+  .structure-info :global(.site-card) {
     border-left: 3px solid var(--site-color, #888);
-    background: color-mix(in srgb, currentColor 4%, transparent);
-    padding: 4pt 8pt;
     cursor: pointer;
     outline: none;
-    &:is(:hover, :focus-visible, .highlighted) {
-      background: color-mix(in srgb, var(--site-color, currentColor) 18%, transparent);
-    }
-    &.selected {
-      box-shadow: inset 0 0 0 1px var(--site-color, currentColor);
-      background: color-mix(in srgb, var(--site-color, currentColor) 25%, transparent);
-    }
   }
-  .site-title,
-  .site-detail {
-    display: flex;
-    align-items: center;
-    gap: 5pt;
+  .structure-info :global(.site-card:is(:hover, :focus-visible, .highlighted)) {
+    background: color-mix(in srgb, var(--site-color, currentColor) 18%, transparent);
   }
-  .site-card-details {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 1pt 4pt;
-    margin-top: 2pt;
-    font-size: 0.73em;
-    line-height: 1.3;
-  }
-  .site-detail {
-    gap: 2pt;
-    min-width: 0;
-    max-width: 100%;
-    span:first-child {
-      opacity: 0.75;
-    }
-    span:nth-child(2) {
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-  }
-  section :global(.copy-checkmark) {
-    position: absolute;
-    top: 50%;
-    right: 3pt;
-    transform: translateY(-50%);
-    background: var(--pane-bg);
-    border-radius: 50%;
-    padding: 3pt;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    animation: fade-in 0.1s ease-out;
-  }
-  @keyframes fade-in {
-    0% {
-      opacity: 0;
-    }
+  .structure-info :global(.site-card.selected) {
+    box-shadow: inset 0 0 0 1px var(--site-color, currentColor);
+    background: color-mix(in srgb, var(--site-color, currentColor) 25%, transparent);
   }
   .tips-item {
     display: grid;

@@ -785,6 +785,7 @@ describe(`Structure`, () => {
       show_controls: true,
       on_file_drop,
     })
+    await tick() // the drop-zone attachment is wired one flush after mount
 
     doc_query(`.structure`).dispatchEvent(
       create_drop_event(new File([SAMPLE_POSCAR_CONTENT], filename)),
@@ -808,6 +809,7 @@ describe(`Structure`, () => {
       on_file_load,
     })
 
+    await tick()
     const file = new File([SAMPLE_POSCAR_CONTENT], `test.poscar`, { type: `text/plain` })
     doc_query(`.structure`).dispatchEvent(create_drop_event(file))
 
@@ -832,8 +834,8 @@ describe(`Structure`, () => {
 
     const first_site_row = document.querySelector(
       `.site-card[title^="Click to select ${structure.sites[0].species[0].element}1"]`,
-    ) as HTMLDivElement
-    expect(first_site_row).toBeInstanceOf(HTMLDivElement)
+    ) as HTMLElement
+    expect(first_site_row).toBeInstanceOf(HTMLElement)
 
     first_site_row.dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
     expect(state.highlighted_sites).toEqual([0])
