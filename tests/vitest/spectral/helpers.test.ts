@@ -1,318 +1,151 @@
+import { THZ_TO_INVERSE_CM } from '$lib/constants'
 import type { Matrix3x3, Vec2, Vec3 } from '$lib/math'
 import type { PymatgenCompleteDos } from '$lib/spectral/helpers'
 import {
   ACOUSTIC_FREQ_THRESHOLD,
   are_qpoints_equivalent,
   apply_gaussian_smearing,
-  axis_with_range,
+  branch_segment_keys,
   build_point_metadata,
   classify_acoustic,
   compute_frequency_range,
-  compute_slope,
   convert_frequencies,
-  detect_zoom_change,
   extract_k_path_points,
   find_gamma_indices,
-  find_qpoint_at_distance,
   find_qpoint_at_rescaled_x,
   generate_ribbon_path,
-  get_band_xaxis_ticks,
   get_ribbon_config,
-  is_valid_range,
   negative_fraction,
   normalize_band_structure,
   normalize_densities,
   normalize_dos,
   pretty_sym_point,
   qpoint_x_position,
-  ranges_equal,
   scale_segment_distances,
   shift_to_fermi,
-  sync_axis_range,
 } from '$lib/spectral/helpers'
-import type { BaseBandStructure, RibbonConfig } from '$lib/spectral/types'
+import type { BaseBandStructure, QPoint } from '$lib/spectral/types'
 import { describe, expect, it, vi } from 'vitest'
-import { IDENTITY_MATRIX3 } from '../setup'
 
-describe(`is_valid_range`, () => {
-  it.each([
-    // Valid: finite 2-element arrays
-    [[0, 10], true],
-    [[-5, 5], true],
-    [[0, 0], true],
-    [[Number.MIN_VALUE, Number.MAX_VALUE], true],
-    // Invalid: non-arrays
-    [null, false],
-    [undefined, false],
-    [`[0, 10]`, false],
-    [{ 0: 0, 1: 10 }, false],
-    // Invalid: wrong length
-    [[], false],
-    [[5], false],
-    [[1, 2, 3], false],
-    // Invalid: non-finite numbers (NaN, Infinity)
-    [[NaN, 5], false],
-    [[5, NaN], false],
-    [[Infinity, 5], false],
-    [[5, -Infinity], false],
-    // Invalid: non-number elements
-    [[`0`, 10], false],
-    [[0, null], false],
-  ])(`is_valid_range(%j) -> %s`, (input, expected) => {
-    expect(is_valid_range(input)).toBe(expected)
-  })
-})
+// Band structure along a labelled path with unit spacing; `labels[idx]` null for interior points
+const make_bs = (
+  labels: (string | null)[],
+  overrides: Partial<BaseBandStructure> = {},
+): BaseBandStructure => {
+  const qpoints: QPoint[] = labels.map((label, idx) => ({
+    label,
+    frac_coords: [idx / Math.max(1, labels.length - 1), 0, 0],
+  }))
+  const label_indices = labels.flatMap((label, idx) => (label ? [idx] : []))
+  const branches = label_indices.slice(1).map((end_index, branch_idx) => ({
+    start_index: label_indices[branch_idx],
+    end_index,
+    name: `${labels[label_indices[branch_idx]]}-${labels[end_index]}`,
+  }))
+  const bands = overrides.bands ?? [qpoints.map((_, idx) => idx)]
+  return {
+    qpoints,
+    branches: branches.length
+      ? branches
+      : [{ start_index: 0, end_index: qpoints.length - 1, name: `path` }],
+    distance: qpoints.map((_, idx) => idx),
+    bands,
+    nb_bands: bands.length,
+    labels_dict: {},
+    ...overrides,
+  }
+}
 
 it.each([
   [[0, 0, 0], [1, -1, 2], true],
   [[0.25, 0, 0.5], [1.25, -1, 0.5], true],
   [[0.25, 0, 0.5], [0.250002, 0, 0.5], false],
 ] as [Vec3, Vec3, boolean][])(
-  `compares periodic q-points %j and %j`,
+  `are_qpoints_equivalent(%j, %j) → %s`,
   (first, second, expected) => {
     expect(are_qpoints_equivalent(first, second)).toBe(expected)
   },
 )
 
-describe(`ranges_equal`, () => {
-  it.each([
-    // Equal within default tolerance (0.001)
-    [[0, 10], [0, 10], true],
-    [[0, 10], [0.0001, 10.0001], true],
-    // Beyond tolerance
-    [[0, 10], [0.01, 10], false],
-    [[0, 10], [5, 15], false],
-    // Invalid inputs (leverages is_valid_range)
-    [null, [0, 10], false],
-    [[0, 10], undefined, false],
-    [[NaN, 10], [0, 10], false],
-    [[1, 2, 3], [1, 2], false],
-  ])(`ranges_equal(%j, %j) -> %s`, (a, b, expected) => {
-    expect(ranges_equal(a as Vec2, b as Vec2)).toBe(expected)
-  })
-
-  it(`respects custom tolerance`, () => {
-    expect(ranges_equal([0, 10], [0.5, 10], 1)).toBe(true)
-    expect(ranges_equal([0, 10], [2, 10], 1)).toBe(false)
-  })
-})
-
-describe(`axis_with_range`, () => {
-  it(`lets explicit label override axis label`, () => {
-    expect(axis_with_range({ label: `Density` }, [0, 1], ``)).toEqual({
-      label: ``,
-      range: [0, 1],
-    })
-  })
-
-  it.each([
-    {
-      name: `invalid range`,
-      axis: { label: `Y` },
-      range: [NaN, 10] as Vec2,
-      expected: { label: `Y` },
-    },
-    {
-      name: `undefined range`,
-      axis: { label: `Y` },
-      range: undefined,
-      expected: { label: `Y` },
-    },
-    {
-      name: `extra axis props`,
-      axis: { label: `X`, ticks: 5 },
-      range: [0, 10] as Vec2,
-      expected: { label: `X`, ticks: 5, range: [0, 10] },
-    },
-  ])(`preserves axis config with $name`, ({ axis, range, expected }) => {
-    expect(axis_with_range(axis, range)).toEqual(expected)
-  })
-})
-
-describe(`sync_axis_range`, () => {
-  it.each([
-    {
-      name: `applies a new valid range`,
-      axis: { label: `Y` },
-      range: [0, 10] as Vec2,
-      expected: { label: `Y`, range: [0, 10] },
-    },
-    {
-      name: `updates a differing range`,
-      axis: { label: `Y`, range: [0, 5] as Vec2 },
-      range: [0, 10] as Vec2,
-      expected: { label: `Y`, range: [0, 10] },
-    },
-    {
-      name: `clears range when new range is invalid`,
-      axis: { label: `Y`, range: [0, 5] as Vec2 },
-      range: [NaN, 10] as Vec2,
-      expected: { label: `Y` },
-    },
-    {
-      name: `clears range when new range is undefined`,
-      axis: { label: `Y`, range: [0, 5] as Vec2 },
-      range: undefined,
-      expected: { label: `Y` },
-    },
-  ])(`$name`, ({ axis, range, expected }) => {
-    expect(sync_axis_range(axis, range)).toEqual(expected)
-  })
-
-  it.each([
-    { name: `unchanged valid range`, axis: { label: `Y`, range: [0, 10] as Vec2 } },
-    { name: `invalid range with no existing range`, axis: { label: `Y` } },
-  ])(`returns same reference for $name (skips reactive churn)`, ({ axis }) => {
-    const range = `range` in axis ? axis.range : ([NaN, 1] as Vec2)
-    expect(sync_axis_range(axis, range)).toBe(axis)
-  })
-})
-
-describe(`detect_zoom_change`, () => {
-  const shared: Vec2 = [0, 10]
-  const zoomed: Vec2 = [2, 8]
-  const other: Vec2 = [3, 7]
-
-  // Returns null (reset): bands/dos returns to shared or becomes invalid
-  it.each([
-    { bands: shared, dos: zoomed, synced: zoomed, dos_en: true, expected: null },
-    { bands: zoomed, dos: shared, synced: zoomed, dos_en: true, expected: null },
-    { bands: null, dos: zoomed, synced: zoomed, dos_en: true, expected: null },
-    { bands: zoomed, dos: null, synced: zoomed, dos_en: true, expected: null },
-  ])(`returns null for reset: $bands,$dos`, ({ bands, dos, synced, dos_en, expected }) => {
-    expect(detect_zoom_change(bands, dos, shared, synced, dos_en)).toBe(expected)
-  })
-
-  // Returns new zoom range
-  it.each([
-    { bands: zoomed, dos: shared, synced: null, dos_en: true, expected: zoomed },
-    { bands: shared, dos: zoomed, synced: null, dos_en: true, expected: zoomed },
-    { bands: zoomed, dos: other, synced: other, dos_en: true, expected: zoomed },
-  ])(`returns new zoom: $bands`, ({ bands, dos, synced, dos_en, expected }) => {
-    expect(detect_zoom_change(bands, dos, shared, synced, dos_en)).toEqual(expected)
-  })
-
-  // Returns undefined (no change)
-  it.each([
-    { bands: shared, dos: shared, synced: null, dos_en: true },
-    { bands: zoomed, dos: zoomed, synced: zoomed, dos_en: true },
-    { bands: [1, 9], dos: [2, 6], synced: null, dos_en: true },
-  ])(`returns undefined for no change: $bands,$dos`, ({ bands, dos, synced, dos_en }) => {
-    expect(detect_zoom_change(bands, dos, shared, synced, dos_en)).toBeUndefined()
-  })
-
-  // dos_enabled=false: ignores DOS
-  it(`ignores dos when dos_enabled=false`, () => {
-    expect(detect_zoom_change(shared, zoomed, shared, null, false)).toBeUndefined()
-    expect(detect_zoom_change(zoomed, null, shared, zoomed, false)).toBeUndefined()
-    expect(detect_zoom_change(zoomed, shared, shared, null, false)).toEqual(zoomed)
-  })
-})
-
-describe(`pretty_sym_point`, () => {
-  it.each([
-    { input: `GAMMA`, expected: `Γ` },
-    { input: `DELTA`, expected: `Δ` },
-    { input: `SIGMA`, expected: `Σ` },
-  ])(`converts $input to $expected`, ({ input, expected }) => {
-    expect(pretty_sym_point(input)).toBe(expected)
-  })
-
-  it.each([
-    { input: `X1`, expected_subscript: `₁` },
-    { input: `K2`, expected_subscript: `₂` },
-    { input: `M3`, expected_subscript: `₃` },
-  ])(
-    `converts $input to include subscript $expected_subscript`,
-    ({ input, expected_subscript }) => {
-      expect(pretty_sym_point(input)).toContain(expected_subscript)
-    },
-  )
-
-  it(`removes underscores`, () => {
-    expect(pretty_sym_point(`S_0`)).not.toContain(`_`)
-    expect(pretty_sym_point(`GAMMA_1`)).toContain(`₁`)
-  })
-
-  it(`converts Unicode letters with subscripts`, () => {
-    expect(pretty_sym_point(`GAMMA1`)).toBe(`Γ₁`)
-    expect(pretty_sym_point(`DELTA2`)).toBe(`Δ₂`)
-    expect(pretty_sym_point(`SIGMA3`)).toBe(`Σ₃`)
-  })
+it.each([
+  [`GAMMA`, `Γ`],
+  [`\\Gamma`, `Γ`],
+  [`DELTA2`, `Δ₂`],
+  [`SIGMA3`, `Σ₃`],
+  [`LAMBDA`, `Λ`],
+  [`X1`, `X₁`],
+  [`K12`, `K₁₂`],
+  [`S_0`, `S₀`],
+  [`GAMMA_1`, `Γ₁`],
+  [``, ``],
+])(`pretty_sym_point(%s) → %s`, (input, expected) => {
+  expect(pretty_sym_point(input)).toBe(expected)
 })
 
 describe(`convert_frequencies`, () => {
+  // CODATA 2018: h·1 THz = 4.135667696e-3 eV; 1 THz = 33.35640952 cm^-1; 1 Ha = 27.211386 eV
   it.each([
-    { unit: `THz` as const, input: [1.0, 2.0, 3.0], expected: [1.0, 2.0, 3.0] },
-    { unit: `eV` as const, input: [1.0], expected_range: [0.001, 0.01] },
-    { unit: `meV` as const, input: [1.0], expected_range: [1, 10] },
-  ])(`converts $input from THz to $unit`, ({ unit, input, expected, expected_range }) => {
-    const result = convert_frequencies(input, unit)
-    if (expected) {
-      expect(result).toEqual(expected)
-    } else if (expected_range) {
-      expect(result[0]).toBeGreaterThan(expected_range[0])
-      expect(result[0]).toBeLessThan(expected_range[1])
-    }
+    [`THz`, 1],
+    [`eV`, 4.135667696e-3],
+    [`meV`, 4.135667696],
+    [`cm-1`, 33.35640951981521],
+    [`Ha`, 4.135667696e-3 / 27.211386245981],
+  ] as const)(`1 THz = %f %s to 1e-9 relative`, (unit, per_thz) => {
+    const [value] = convert_frequencies([1], unit)
+    expect(Math.abs(value / per_thz - 1)).toBeLessThan(1e-9)
+  })
+
+  it(`maps every element, returns the same array for THz and rejects unknown units`, () => {
+    const [one, two] = convert_frequencies([1, 2], `meV`)
+    expect(one).toBeCloseTo(4.135667696, 8)
+    expect(two).toBeCloseTo(8.271335392, 8)
+    const input = [1, 2]
+    expect(convert_frequencies(input, `THz`)).toBe(input)
+    expect(() => convert_frequencies([1], `GHz` as never)).toThrow(/Invalid unit: GHz/)
   })
 })
 
 describe(`normalize_densities`, () => {
-  const densities = [1.0, 2.0, 3.0, 2.0, 1.0]
+  const densities = [1, 2, 3, 2, 1]
   const energies = [0, 1, 2, 3, 4]
-
   it.each([
-    { mode: `max` as const, expected: densities.map((density) => density / 3) },
-    { mode: `sum` as const, expected: densities.map((density) => density / 9) },
-    { mode: null, expected: densities },
-  ])(`normalizes densities by $mode`, ({ mode, expected }) => {
-    const result = normalize_densities(densities, energies, mode)
-    expect(result).toEqual(expected)
+    [`max`, densities.map((val) => val / 3)],
+    [`sum`, densities.map((val) => val / 9)],
+    [`integral`, densities.map((val) => val / 9)], // bin width 1
+    [null, densities],
+  ] as const)(`mode %s`, (mode, expected) => {
+    expect(normalize_densities(densities, energies, mode)).toEqual(expected)
   })
 
-  it(`normalizes by integral preserves area ≈ 1`, () => {
-    const result = normalize_densities(densities, energies, `integral`)
-    const bin = energies[1] - energies[0]
-    const area = result.reduce((acc, dens) => acc + dens, 0) * bin
-    expect(area).toBeCloseTo(1, 6)
+  it(`integral mode divides by the bin width and leaves degenerate input alone`, () => {
+    const half_step = normalize_densities(densities, [0, 0.5, 1, 1.5, 2], `integral`)
+    expect(half_step.reduce((acc, val) => acc + val, 0) * 0.5).toBeCloseTo(1, 12)
+    expect(normalize_densities([0, 0], [0, 1], `max`)).toEqual([0, 0])
+    expect(normalize_densities([1], [0], `integral`)).toEqual([1])
   })
 })
 
 describe(`apply_gaussian_smearing`, () => {
   const energies = [0, 1, 2, 3, 4]
+  const spike = [0, 0, 10, 0, 0]
 
-  it(`returns original data when sigma is 0`, () => {
-    const densities = [1, 2, 3, 2, 1]
-    expect(apply_gaussian_smearing(energies, densities, 0)).toEqual(densities)
+  it(`returns the input untouched for sigma 0 or an all-zero DOS`, () => {
+    expect(apply_gaussian_smearing(energies, spike, 0)).toBe(spike)
+    expect(apply_gaussian_smearing(energies, [0, 0, 0, 0, 0], 0.5)).toEqual([0, 0, 0, 0, 0])
   })
 
-  it(`smooths sharp peak with gaussian kernel`, () => {
-    const densities = [0, 0, 10, 0, 0]
-    const result = apply_gaussian_smearing(energies, densities, 0.5)
-    expect(result[2]).toBeLessThan(10)
-    expect(result[1]).toBeGreaterThan(0)
-    expect(result[3]).toBeGreaterThan(0)
-  })
-
-  it(`preserves total integral after smearing`, () => {
-    const densities = [0, 0, 10, 0, 0]
-    const smeared = apply_gaussian_smearing(energies, densities, 0.5)
-    const bin = energies[1] - energies[0]
-    const area_orig = densities.reduce((acc, dens) => acc + dens, 0) * bin
-    const area_smeared = smeared.reduce((acc, dens) => acc + dens, 0) * bin
-    expect(area_smeared).toBeCloseTo(area_orig, 6)
-  })
-
-  it(`handles all-zero densities without NaN`, () => {
-    const densities = [0, 0, 0, 0, 0]
-    const smeared = apply_gaussian_smearing(energies, densities, 0.5)
-    expect(smeared).toEqual(densities)
-    expect(smeared.every((val) => !Number.isNaN(val))).toBe(true)
+  it(`spreads a spike symmetrically and preserves its sum`, () => {
+    const smeared = apply_gaussian_smearing(energies, spike, 0.5)
+    expect(smeared[2]).toBeLessThan(10)
+    expect(smeared[1]).toBeCloseTo(smeared[3], 12)
+    expect(smeared[1]).toBeGreaterThan(0)
+    // Gaussian ratio exp(-1/(2·0.25)) = e^-2 between the first neighbour and the centre
+    expect(smeared[1] / smeared[2]).toBeCloseTo(Math.exp(-2), 12)
+    expect(smeared.reduce((acc, val) => acc + val, 0)).toBeCloseTo(10, 10)
   })
 
   // The two-pointer window is only valid on an ascending grid; anything else falls back to
-  // scanning every point. Pin that fallback to an unwindowed reference so the optimization
-  // can't silently start dropping terms on grids that arrive out of order.
+  // scanning every point. Pin that fallback to an unwindowed reference.
   const brute_force = (xs: number[], ys: number[], sigma: number): number[] => {
     const raw = xs.map((energy) =>
       xs.reduce((sum, other, jdx) => {
@@ -322,13 +155,12 @@ describe(`apply_gaussian_smearing`, () => {
       }, 0),
     )
     const total = raw.reduce((acc, val) => acc + val, 0)
-    if (total === 0) return ys
     const orig = ys.reduce((acc, val) => acc + val, 0)
     return raw.map((val) => val * (orig / total))
   }
-
   const grid = Array.from({ length: 60 }, (_, idx) => idx * 0.1)
   it.each([
+    [`ascending`, grid],
     [`descending`, grid.toReversed()],
     [`ascending then descending`, [...grid.slice(0, 30), ...grid.slice(30).toReversed()]],
     [
@@ -340,636 +172,304 @@ describe(`apply_gaussian_smearing`, () => {
     const ys = xs.map((_, idx) => ((idx * 37) % 11) + 0.5)
     const smeared = apply_gaussian_smearing(xs, ys, 0.25)
     const expected = brute_force(xs, ys, 0.25)
-    smeared.forEach((val, idx) => expect(val).toBeCloseTo(expected[idx], 10))
+    let max_abs_error = 0
+    for (const [idx, val] of smeared.entries())
+      max_abs_error = Math.max(max_abs_error, Math.abs(val - expected[idx]))
+    expect(max_abs_error).toBeLessThan(1e-10)
   })
 })
 
-describe(`get_band_xaxis_ticks`, () => {
-  it(`preserves branch order (not alphabetical)`, () => {
-    // Create a band structure with segments that would sort differently alphabetically
-    // Physical path: Z→Γ→X (alphabetically would be: Γ→X→Z)
-    const band_struct = {
-      qpoints: [
-        { label: `Z`, frac_coords: [0, 0, 0.5] as Vec3, distance: 0 },
-        { label: null, frac_coords: [0, 0, 0.25] as Vec3, distance: 0.5 },
-        { label: `GAMMA`, frac_coords: [0, 0, 0] as Vec3, distance: 1.0 },
-        { label: null, frac_coords: [0.25, 0, 0] as Vec3, distance: 1.5 },
-        { label: `X`, frac_coords: [0.5, 0, 0] as Vec3, distance: 2.0 },
-      ],
-      branches: [
-        { start_index: 0, end_index: 2, name: `Z-GAMMA` },
-        { start_index: 2, end_index: 4, name: `GAMMA-X` },
-      ],
-      distance: [0, 0.5, 1.0, 1.5, 2.0],
-      bands: [[0, 1, 2, 3, 4]],
-      nb_bands: 1,
-      labels_dict: {
-        Z: [0, 0, 0.5] as Vec3,
-        GAMMA: [0, 0, 0] as Vec3,
-        X: [0.5, 0, 0] as Vec3,
-      },
-      recip_lattice: {
-        matrix: [
-          [1, 0, 0],
-          [0, 1, 0],
-          [0, 0, 1],
-        ] satisfies Matrix3x3,
-      },
-    }
-
-    const [positions, labels] = get_band_xaxis_ticks(band_struct)
-
-    // Should preserve physical order: Z, then branch transition combines Γ|X
-    // If alphabetically sorted, would have been: Γ|X, Z (incorrect)
-    expect(labels).toEqual([`Z`, `Γ|X`])
-    expect(positions).toEqual([0, 2.0]) // X is at distance 2.0
-
-    // Verify Z comes first (physical order), not Γ (alphabetical order)
-    expect(labels[0]).toBe(`Z`)
+describe(`branch_segment_keys`, () => {
+  it(`keys labelled branches by label pair, numbers repeats and positions unlabeled ones`, () => {
+    // Γ→X→Γ→X→(unlabeled)
+    const bs = make_bs([`GAMMA`, null, `X`, null, `GAMMA`, `X`])
+    bs.branches.push({ start_index: 5, end_index: 5, name: `tail` })
+    bs.qpoints[5] = { label: null, frac_coords: [1, 0, 0] }
+    expect(branch_segment_keys(bs)).toEqual([`GAMMA_X`, `X_GAMMA`, `GAMMA_null`, `branch:3`])
+    const repeated = make_bs([`GAMMA`, `X`, `GAMMA`, `X`])
+    expect(branch_segment_keys(repeated)).toEqual([`GAMMA_X`, `X_GAMMA`, `GAMMA_X#2`])
   })
 })
 
-describe(`find_qpoint_at_distance`, () => {
-  // Create a simple band structure: Γ→X→K→Γ
-  const test_bs: BaseBandStructure = {
-    qpoints: [
-      { label: `GAMMA`, frac_coords: [0, 0, 0] as Vec3 },
-      { label: null, frac_coords: [0.25, 0, 0] as Vec3 },
-      { label: `X`, frac_coords: [0.5, 0, 0] as Vec3 },
-      { label: null, frac_coords: [0.5, 0.25, 0] as Vec3 },
-      { label: `K`, frac_coords: [0.5, 0.5, 0] as Vec3 },
-      { label: null, frac_coords: [0.25, 0.25, 0] as Vec3 },
-      { label: `GAMMA`, frac_coords: [0, 0, 0] as Vec3 },
-    ],
-    branches: [
-      { start_index: 0, end_index: 2, name: `GAMMA-X` },
-      { start_index: 2, end_index: 4, name: `X-K` },
-      { start_index: 4, end_index: 6, name: `K-GAMMA` },
-    ],
-    distance: [0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0],
-    bands: [[0, 1, 2, 3, 4, 5, 6]],
-    nb_bands: 1,
-    labels_dict: {
-      GAMMA: [0, 0, 0] as Vec3,
-      X: [0.5, 0, 0] as Vec3,
-      K: [0.5, 0.5, 0] as Vec3,
-    },
-    recip_lattice: {
-      matrix: [
-        [1, 0, 0],
-        [0, 1, 0],
-        [0, 0, 1],
-      ] satisfies Matrix3x3,
-    },
-  }
+describe(`qpoint_x_position / find_qpoint_at_rescaled_x`, () => {
+  // Γ→X (3 steps) and X→K (2 steps), plotted into [0, 1] and [1, 1.5]
+  const bs = make_bs([`GAMMA`, null, null, `X`, null, `K`])
+  const x_pos: Record<string, Vec2> = { GAMMA_X: [0, 1], X_K: [1, 1.5] }
 
   it.each([
-    { dist: 0.0, expected: 0, label: `First Γ` },
-    { dist: 1.0, expected: 2, label: `X` },
-    { dist: 2.0, expected: 4, label: `K` },
-    { dist: 3.0, expected: 6, label: `Second Γ` },
-    { dist: 0.4, expected: 1, label: `between Γ and X, closer to intermediate` },
-    { dist: 0.7, expected: 1, label: `0.7: |0.7-0.5|=0.2 < |0.7-1.0|=0.3` },
-    { dist: 1.5, expected: 3, label: `middle of X-K` },
-    { dist: -0.1, expected: 0, label: `clamp to start` },
-    { dist: 3.5, expected: 6, label: `clamp to end` },
-    { dist: 0.99, expected: 2, label: `just before X` },
-    { dist: 1.01, expected: 2, label: `just after X` },
-  ])(`finds qpoint at distance $dist ($label)`, ({ dist, expected }) => {
-    expect(find_qpoint_at_distance(test_bs, dist)).toBe(expected)
+    [0, 0],
+    [3, 1],
+    [5, 1.5],
+    [4, 1.25],
+    [1, 1 / 3],
+  ])(`q-point %i sits at x = %f and maps back`, (idx, expected_x) => {
+    const x_val = qpoint_x_position(bs, idx, x_pos)
+    expect(x_val).toBeCloseTo(expected_x, 12)
+    expect(find_qpoint_at_rescaled_x(bs, x_val ?? NaN, x_pos)).toBe(idx)
   })
 
-  it(`returns null for empty or invalid band structure`, () => {
-    expect(
-      find_qpoint_at_distance({ distance: [] } as unknown as BaseBandStructure, 1.0),
-    ).toBeNull()
-    expect(
-      find_qpoint_at_distance({ distance: undefined } as unknown as BaseBandStructure, 1.0),
-    ).toBeNull()
+  it(`rounds interior x to the nearest q-point and snaps off-path x to the nearest endpoint`, () => {
+    expect(find_qpoint_at_rescaled_x(bs, 0.6, x_pos)).toBe(2) // 0.6 · 3 = 1.8 → idx 2
+    expect(find_qpoint_at_rescaled_x(bs, 9, { GAMMA_X: [0, 1] })).toBe(3) // beyond the only segment
+    expect(find_qpoint_at_rescaled_x(bs, 0.5, {})).toBe(0) // no segments: fallback index
+    expect(qpoint_x_position(bs, 4, { GAMMA_X: [0, 1] })).toBeNull() // branch not plotted
+  })
+
+  it(`distinguishes a repeated Gamma and resolves a zero-length discontinuity`, () => {
+    const loop = make_bs([`GAMMA`, null, `X`, null, `GAMMA`])
+    const loop_pos: Record<string, Vec2> = { GAMMA_X: [0, 1], X_GAMMA: [1, 2] }
+    expect(find_qpoint_at_rescaled_x(loop, 0, loop_pos)).toBe(0)
+    expect(find_qpoint_at_rescaled_x(loop, 2, loop_pos)).toBe(4)
+    const disc = make_bs([`GAMMA`, `X`, `K`])
+    const disc_pos: Record<string, Vec2> = { GAMMA_X: [0, 0.5], X_K: [0.5, 0.5] }
+    expect(find_qpoint_at_rescaled_x(disc, 0.5, disc_pos)).toBe(1)
+    expect(qpoint_x_position(disc, 2, disc_pos)).toBe(0.5)
   })
 })
 
 describe(`extract_k_path_points`, () => {
-  const identity_lattice = IDENTITY_MATRIX3
-
-  it(`converts fractional coordinates to Cartesian reciprocal space`, () => {
-    const band_struct: BaseBandStructure = {
-      qpoints: [
-        { label: `GAMMA`, frac_coords: [0, 0, 0] as Vec3 },
-        { label: `X`, frac_coords: [0.5, 0, 0] as Vec3 },
-        { label: `K`, frac_coords: [1 / 3, 1 / 3, 0] as Vec3 },
-      ],
-      branches: [{ start_index: 0, end_index: 2, name: `GAMMA-K` }],
-      distance: [0, 1.0, 2.0],
-      bands: [[0, 1, 2]],
-      nb_bands: 1,
-      labels_dict: {
-        GAMMA: [0, 0, 0] as Vec3,
-        X: [0.5, 0, 0] as Vec3,
-        K: [1 / 3, 1 / 3, 0] as Vec3,
-      },
-      recip_lattice: {
-        matrix: [
-          [2, 0, 0],
-          [0, 2, 0],
-          [0, 0, 1],
-        ] satisfies Matrix3x3,
-      },
-    }
-
-    const recip_lattice: Matrix3x3 = [
-      [2, 0, 0],
+  it(`maps fractional to Cartesian with row-vector reciprocal lattice vectors`, () => {
+    const bs = make_bs([`GAMMA`, `X`, `K`])
+    bs.qpoints[2].frac_coords = [1 / 3, 1 / 3, 0]
+    const recip: Matrix3x3 = [
+      [2, 0.5, 0],
       [0, 2, 0],
       [0, 0, 1],
     ]
-    // Disable BZ wrapping to test basic coordinate transformation
-    const result = extract_k_path_points(band_struct, recip_lattice, {
-      wrap_to_bz: false,
-    })
-
-    expect(result[0]).toEqual([0, 0, 0]) // Γ: [0,0,0] -> [0,0,0]
-    expect(result[1]).toEqual([1, 0, 0]) // X: [0.5,0,0] -> [1, 0, 0]
-    expect(result[2][0]).toBeCloseTo(2 / 3, 10) // K: [1/3,1/3,0] -> [2/3, 2/3, 0]
-    expect(result[2][1]).toBeCloseTo(2 / 3, 10)
-    expect(result[2][2]).toBe(0)
+    const [gamma, x_point, k_point] = extract_k_path_points(bs, recip, { wrap_to_bz: false })
+    expect(gamma).toEqual([0, 0, 0])
+    expect(x_point).toEqual([1, 0.25, 0]) // 0.5·b1
+    expect(k_point[0]).toBeCloseTo(2 / 3, 12)
+    expect(k_point[1]).toBeCloseTo(0.5 / 3 + 2 / 3, 12)
+    expect(extract_k_path_points(make_bs([], { qpoints: [] }), recip)).toEqual([])
+    expect(() => extract_k_path_points(bs, [[1, 0]] as never)).toThrow(/3×3/)
   })
 
-  it(`handles arbitrary reciprocal lattice matrices`, () => {
-    const band_struct: BaseBandStructure = {
-      qpoints: [
-        { label: `GAMMA`, frac_coords: [0, 0, 0] as Vec3 },
-        { label: `X`, frac_coords: [1, 0, 0] as Vec3 },
-      ],
-      branches: [{ start_index: 0, end_index: 1, name: `GAMMA-X` }],
-      distance: [0, 1.0],
-      bands: [[0, 1]],
-      nb_bands: 1,
-      labels_dict: { GAMMA: [0, 0, 0] as Vec3, X: [1, 0, 0] as Vec3 },
-      recip_lattice: { matrix: identity_lattice },
-    }
-
-    // Non-orthogonal: frac[0]*recip[0] + frac[1]*recip[1] + frac[2]*recip[2]
-    // X: 1*[1,0.5,0] + 0*[0,2,0] + 0*[0,0,1] = [1, 0.5, 0]
-    // Disable BZ wrapping to test basic coordinate transformation
-    const result = extract_k_path_points(
-      band_struct,
-      [
-        [1, 0.5, 0],
-        [0, 2, 0],
-        [0, 0, 1],
-      ],
-      {
-        wrap_to_bz: false,
-      },
-    )
-    expect(result[1]).toEqual([1, 0.5, 0])
-  })
-
-  it(`folds k-path points into the first (Wigner-Seitz) Brillouin zone`, () => {
-    // FCC reciprocal lattice (rows = b vectors). For non-orthogonal lattices,
-    // per-axis centered_frac wrapping alone leaves some points outside the WS zone.
+  it(`folds to the minimum-image point of the first Brillouin zone`, () => {
+    // FCC reciprocal lattice; a point near K where per-axis wrapping is not the WS image
     const fcc_recip: Matrix3x3 = [
       [-1, 1, 1],
       [1, -1, 1],
       [1, 1, -1],
     ]
-    // Off-symmetry sample near the K point (3/8, 3/8, 3/4). The old per-axis wrap
-    // placed this at [-0.26, -0.26, 1.0] (norm 1.064) — outside the zone — instead
-    // of the minimum-image representative [0.74, 0.74, 0] (norm 1.05).
-    const band_struct: BaseBandStructure = {
-      qpoints: [{ label: `K`, frac_coords: [0.3713, 0.3713, 0.7425] as Vec3 }],
-      branches: [{ start_index: 0, end_index: 0, name: `K` }],
-      distance: [0],
-      bands: [[0]],
-      nb_bands: 1,
-      labels_dict: {},
-      recip_lattice: { matrix: fcc_recip },
-    }
-
-    const [k_point] = extract_k_path_points(band_struct, fcc_recip)
+    const bs = make_bs([`K`], {
+      qpoints: [{ label: `K`, frac_coords: [0.3713, 0.3713, 0.7425] }],
+    })
+    const [k_point] = extract_k_path_points(bs, fcc_recip)
     const norm_sq = (vec: Vec3) => vec[0] ** 2 + vec[1] ** 2 + vec[2] ** 2
-    // Returned point must be the minimum image: no reciprocal-lattice translate is closer to Γ
+    expect(k_point.map((val) => Math.round(val * 1e4) / 1e4)).toEqual([0.7425, 0.7425, 0.0001])
     for (const n1 of [-1, 0, 1]) {
       for (const n2 of [-1, 0, 1]) {
         for (const n3 of [-1, 0, 1]) {
-          const translated: Vec3 = [
-            k_point[0] + n1 * fcc_recip[0][0] + n2 * fcc_recip[1][0] + n3 * fcc_recip[2][0],
-            k_point[1] + n1 * fcc_recip[0][1] + n2 * fcc_recip[1][1] + n3 * fcc_recip[2][1],
-            k_point[2] + n1 * fcc_recip[0][2] + n2 * fcc_recip[1][2] + n3 * fcc_recip[2][2],
-          ]
+          const translated: Vec3 = [0, 1, 2].map(
+            (axis) =>
+              k_point[axis] +
+              n1 * fcc_recip[0][axis] +
+              n2 * fcc_recip[1][axis] +
+              n3 * fcc_recip[2][axis],
+          ) as Vec3
           expect(norm_sq(k_point)).toBeLessThanOrEqual(norm_sq(translated) + 1e-9)
         }
       }
     }
   })
-
-  it(`returns empty array for invalid inputs`, () => {
-    const empty_bs: BaseBandStructure = {
-      qpoints: [],
-      branches: [],
-      distance: [],
-      bands: [],
-      nb_bands: 0,
-      labels_dict: {},
-      recip_lattice: { matrix: identity_lattice },
-    }
-    expect(extract_k_path_points(empty_bs, identity_lattice)).toEqual([])
-  })
-})
-
-describe(`find_qpoint_at_rescaled_x`, () => {
-  const identity_lattice = IDENTITY_MATRIX3
-
-  // Test band structure: Γ→X→K with rescaled segments
-  const rescaled_bs: BaseBandStructure = {
-    qpoints: [
-      { label: `GAMMA`, frac_coords: [0, 0, 0] as Vec3 },
-      { label: null, frac_coords: [0.125, 0, 0] as Vec3 },
-      { label: null, frac_coords: [0.25, 0, 0] as Vec3 },
-      { label: `X`, frac_coords: [0.5, 0, 0] as Vec3 },
-      { label: null, frac_coords: [0.5, 0.25, 0] as Vec3 },
-      { label: `K`, frac_coords: [0.5, 0.5, 0] as Vec3 },
-    ],
-    branches: [
-      { start_index: 0, end_index: 3, name: `GAMMA-X` },
-      { start_index: 3, end_index: 5, name: `X-K` },
-    ],
-    distance: [0, 1.0, 2.0, 3.0, 4.0, 5.0], // Original distances
-    bands: [[0, 1, 2, 3, 4, 5]],
-    nb_bands: 1,
-    labels_dict: {
-      GAMMA: [0, 0, 0] as Vec3,
-      X: [0.5, 0, 0] as Vec3,
-      K: [0.5, 0.5, 0] as Vec3,
-    },
-    recip_lattice: { matrix: identity_lattice },
-  }
-
-  const x_pos = { GAMMA_X: [0, 1.0], X_K: [1.0, 1.5] } as Record<string, Vec2>
-
-  it.each([
-    { x: 0.0, expected: 0, label: `Γ` },
-    { x: 1.0, expected: 3, label: `X` },
-    { x: 1.5, expected: 5, label: `K` },
-    { x: 1.25, expected: 4, label: `middle of X-K segment` },
-  ])(`maps rescaled x=$x to qpoint index $expected ($label)`, ({ x, expected }) => {
-    expect(find_qpoint_at_rescaled_x(rescaled_bs, x, x_pos)).toBe(expected)
-  })
-
-  it.each([
-    { idx: 0, expected: 0.0, label: `Γ` },
-    { idx: 3, expected: 1.0, label: `X` },
-    { idx: 5, expected: 1.5, label: `K` },
-    { idx: 4, expected: 1.25, label: `middle of X-K` },
-  ])(
-    `qpoint_x_position maps index $idx to rescaled x=$expected ($label)`,
-    ({ idx, expected }) => {
-      expect(qpoint_x_position(rescaled_bs, idx, x_pos)).toBeCloseTo(expected, 6)
-    },
-  )
-
-  it(`qpoint_x_position round-trips with find_qpoint_at_rescaled_x`, () => {
-    for (const idx of [0, 3, 5]) {
-      const x = qpoint_x_position(rescaled_bs, idx, x_pos)
-      expect(x).not.toBeNull()
-      expect(find_qpoint_at_rescaled_x(rescaled_bs, x as number, x_pos)).toBe(idx)
-    }
-  })
-
-  it(`maps intermediate rescaled x in GAMMA-X correctly`, () => {
-    // rescaled_x=0.5 → middle of segment → closest to idx 1 or 2
-    const idx = find_qpoint_at_rescaled_x(rescaled_bs, 0.5, x_pos)
-    expect([1, 2]).toContain(idx)
-  })
-
-  it(`handles repeated symmetry points (second Gamma)`, () => {
-    const bs: BaseBandStructure = {
-      qpoints: [
-        { label: `GAMMA`, frac_coords: [0, 0, 0] as Vec3 },
-        { label: null, frac_coords: [0.25, 0, 0] as Vec3 },
-        { label: `X`, frac_coords: [0.5, 0, 0] as Vec3 },
-        { label: null, frac_coords: [0.25, 0.25, 0] as Vec3 },
-        { label: `GAMMA`, frac_coords: [0, 0, 0] as Vec3 },
-      ],
-      branches: [
-        { start_index: 0, end_index: 2, name: `GAMMA-X` },
-        { start_index: 2, end_index: 4, name: `X-GAMMA` },
-      ],
-      distance: [0, 1.0, 2.0, 3.0, 4.0],
-      bands: [[0, 1, 2, 3, 4]],
-      nb_bands: 1,
-      labels_dict: { GAMMA: [0, 0, 0] as Vec3, X: [0.5, 0, 0] as Vec3 },
-      recip_lattice: { matrix: identity_lattice },
-    }
-    const x_pos_repeat = { GAMMA_X: [0, 1.0], X_GAMMA: [1.0, 2.0] } as Record<string, Vec2>
-
-    const idx_first = find_qpoint_at_rescaled_x(bs, 0.0, x_pos_repeat)
-    const idx_second = find_qpoint_at_rescaled_x(bs, 2.0, x_pos_repeat)
-    expect(idx_first).toBe(0)
-    expect(idx_second).toBe(4)
-    expect(idx_first).not.toBe(idx_second)
-  })
-
-  it(`handles discontinuous segments (zero-length)`, () => {
-    const bs: BaseBandStructure = {
-      qpoints: [
-        { label: `GAMMA`, frac_coords: [0, 0, 0] as Vec3 },
-        { label: `X`, frac_coords: [0.5, 0, 0] as Vec3 },
-        { label: `K`, frac_coords: [0.5, 0.5, 0] as Vec3 },
-      ],
-      branches: [
-        { start_index: 0, end_index: 1, name: `GAMMA-X` },
-        { start_index: 1, end_index: 2, name: `X-K` },
-      ],
-      distance: [0, 1.0, 2.0],
-      bands: [[0, 1, 2]],
-      nb_bands: 1,
-      labels_dict: {
-        GAMMA: [0, 0, 0] as Vec3,
-        X: [0.5, 0, 0] as Vec3,
-        K: [0.5, 0.5, 0] as Vec3,
-      },
-      recip_lattice: { matrix: identity_lattice },
-    }
-    const x_pos_disc = { GAMMA_X: [0, 0.5], X_K: [0.5, 0.5] } as Record<string, Vec2>
-
-    // At discontinuity, should return X (idx 1)
-    expect(find_qpoint_at_rescaled_x(bs, 0.5, x_pos_disc)).toBe(1)
-  })
-
-  it(`returns null for empty or invalid inputs`, () => {
-    expect(find_qpoint_at_rescaled_x(rescaled_bs, 0.5, {})).toBe(0) // Fallback
-    expect(
-      find_qpoint_at_rescaled_x({ branches: [] } as unknown as BaseBandStructure, 0.5, {}),
-    ).toBeNull()
-  })
 })
 
 describe(`normalize_band_structure`, () => {
-  const ident = IDENTITY_MATRIX3
-  const make_pmg = (opts: Record<string, unknown>) => ({
+  const pmg = (opts: Record<string, unknown>) => ({
     '@class': `PhononBandStructureSymmLine`,
     ...opts,
   })
+  const line = (n_points: number) =>
+    Array.from({ length: n_points }, (_, idx) => [idx / (n_points - 1), 0, 0])
 
-  describe(`matterviz format`, () => {
-    it(`validates valid band structure`, () => {
-      const result = normalize_band_structure({
-        qpoints: [
-          { label: `GAMMA`, frac_coords: [0, 0, 0] },
-          { label: `X`, frac_coords: [0.5, 0, 0] },
-        ],
-        branches: [{ start_index: 0, end_index: 1, name: `GAMMA-X` }],
-        bands: [
-          [0, 1],
-          [2, 3],
-        ],
-        distance: [0, 1.0],
-        nb_bands: 2,
-        labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
-        recip_lattice: { matrix: ident },
-      })
-      expect(result?.qpoints).toHaveLength(2)
-      expect(result?.bands).toHaveLength(2)
-    })
-
-    it.each([{}, { qpoints: [] }, { qpoints: [], branches: [] }])(
-      `returns null for %p`,
-      (input) => {
-        expect(normalize_band_structure(input)).toBeNull()
-      },
-    )
-
-    it.each([
-      [`empty matrix`, []],
-      [`wrong row count`, [[1, 0, 0]]],
-      [
-        `short rows`,
-        [
-          [1, 0],
-          [0, 1],
-          [0, 0],
-        ],
+  it(`passes matterviz input through, filling nb_bands and labels_dict`, () => {
+    const result = normalize_band_structure({
+      qpoints: [
+        { label: `GAMMA`, frac_coords: [0, 0, 0] },
+        { label: `X`, frac_coords: [0.5, 0, 0] },
       ],
-      [
-        `non-finite entries`,
-        [
-          [1, 0, 0],
-          [0, NaN, 0],
-          [0, 0, 1],
-        ],
+      branches: [{ start_index: 0, end_index: 1, name: `GAMMA-X` }],
+      bands: [
+        [0, 1],
+        [2, 3],
       ],
-      [
-        `non-numeric entries`,
-        [
-          [1, 0, 0],
-          [0, `a`, 0],
-          [0, 0, 1],
-        ],
+      distance: [0, 1],
+    })
+    expect(result).toMatchObject({
+      nb_bands: 2,
+      labels_dict: {},
+      bands: [
+        [0, 1],
+        [2, 3],
       ],
-    ])(`falls back to identity recip_lattice for %s`, (_desc, matrix) => {
-      const result = normalize_band_structure({
-        qpoints: [
-          { label: `GAMMA`, frac_coords: [0, 0, 0] },
-          { label: `X`, frac_coords: [0.5, 0, 0] },
-        ],
-        branches: [{ start_index: 0, end_index: 1, name: `GAMMA-X` }],
-        bands: [[0, 1]],
-        distance: [0, 1.0],
-        recip_lattice: { matrix },
-      })
-      expect(result?.recip_lattice.matrix).toEqual(ident)
-    })
-
-    it.each([
-      {
-        desc: `mismatched lengths`,
-        input: {
-          qpoints: [{ label: `Γ`, frac_coords: [0, 0, 0] }],
-          branches: [{ start_index: 0, end_index: 0, name: `t` }],
-          bands: [[0, 1]],
-          distance: [0],
-        },
-      },
-      {
-        desc: `invalid branch`,
-        input: {
-          qpoints: [{ label: `Γ`, frac_coords: [0, 0, 0] }],
-          branches: [{ start_index: 0, end_index: 5, name: `t` }],
-          bands: [[0]],
-          distance: [0],
-        },
-      },
-    ])(`returns null for $desc`, ({ input }) =>
-      expect(normalize_band_structure(input)).toBeNull(),
-    )
-  })
-
-  describe(`pymatgen format`, () => {
-    it.each([
-      { desc: `default THz (no conversion)`, unit: undefined, input: 5.0, expected: 5.0 },
-      { desc: `explicit unit='thz'`, unit: `thz`, input: 5.0, expected: 5.0 },
-      { desc: `eV→THz (factor 241.8)`, unit: `ev`, input: 0.001, expected: 0.2418 },
-      { desc: `cm-1→THz`, unit: `cm-1`, input: 333.5641, expected: 10.0 },
-    ])(`converts band values: $desc`, ({ unit, input, expected }) => {
-      const result = normalize_band_structure(
-        make_pmg({
-          qpoints: [
-            [0, 0, 0],
-            [1, 0, 0],
-          ],
-          bands: [[0, input]],
-          labels_dict: { GAMMA: [0, 0, 0], X: [1, 0, 0] },
-          ...(unit && { unit }),
-        }),
-      )
-      expect(result?.bands[0][1]).toBeCloseTo(expected, 2)
-    })
-
-    it.each([
-      { desc: `@class`, input: make_pmg({ qpoints: [[0, 0, 0]], bands: [[0]] }) },
-      {
-        desc: `structure`,
-        input: {
-          qpoints: [
-            [0, 0, 0],
-            [0.5, 0, 0],
-          ],
-          bands: [[0, 1]],
-          labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
-        },
-      },
-    ])(`detects pymatgen by $desc`, ({ input }) =>
-      expect(normalize_band_structure(input)).not.toBeNull(),
-    )
-
-    it(`handles Kpoint objects with labels`, () => {
-      const result = normalize_band_structure({
-        qpoints: [
-          { frac_coords: [0, 0, 0], label: `GAMMA` },
-          {
-            frac_coords: [0.5, 0, 0],
-            label: `X`,
-          },
-        ],
-        bands: [[0, 1]],
-        labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
-      })
-      expect(result?.qpoints.map((qpt) => qpt.label)).toEqual([`GAMMA`, `X`])
-    })
-
-    it(`matches labels from labels_dict`, () => {
-      const result = normalize_band_structure(
-        make_pmg({
-          qpoints: [
-            [0, 0, 0],
-            [0.5, 0, 0],
-          ],
-          bands: [[0, 1]],
-          labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
-        }),
-      )
-      expect(result?.qpoints.map((qpt) => qpt.label)).toEqual([`GAMMA`, `X`])
-    })
-
-    it(`creates branches covering k-path`, () => {
-      const result = normalize_band_structure(
-        make_pmg({
-          qpoints: [
-            [0, 0, 0],
-            [0.25, 0, 0],
-            [0.5, 0, 0],
-          ],
-          bands: [[0, 1, 2]],
-          labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
-        }),
-      )
-      expect(result?.branches[0].start_index).toBe(0)
-      expect(result?.branches.at(-1)?.end_index).toBe(2)
-    })
-
-    it(`calculates monotonic distance array`, () => {
-      const result = normalize_band_structure(
-        make_pmg({
-          qpoints: [
-            [0, 0, 0],
-            [0.5, 0, 0],
-            [1, 0, 0],
-          ],
-          bands: [[0, 1, 2]],
-          labels_dict: { GAMMA: [0, 0, 0], X: [1, 0, 0] },
-        }),
-      )
-      expect(result?.distance[0]).toBe(0)
-      expect(
-        result?.distance.every((dist, idx, arr) => idx === 0 || dist >= arr[idx - 1]),
-      ).toBe(true)
-    })
-
-    it(`handles discontinuities`, () => {
-      const result = normalize_band_structure(
-        make_pmg({
-          qpoints: [
-            [0, 0, 0],
-            [0.05, 0, 0],
-            [0.1, 0, 0],
-            [0.9, 0.9, 0.9],
-            [0.95, 0.95, 0.95],
-            [1, 1, 1],
-          ],
-          bands: [[0, 1, 2, 3, 4, 5]],
-          labels_dict: { GAMMA: [0, 0, 0], L: [1, 1, 1] },
-        }),
-      )
-      expect(Math.max(...(result?.distance ?? []))).toBeLessThan(1.0) // Jump not accumulated
-    })
-
-    it(`tolerates floating point in labels_dict matching`, () => {
-      const result = normalize_band_structure(
-        make_pmg({
-          qpoints: [
-            [0.00001, -0.00001, 0],
-            [0.49999, 0.00001, 0],
-          ],
-          bands: [[0, 1]],
-          labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
-        }),
-      )
-      expect(result?.qpoints.map((qpt) => qpt.label)).toEqual([`GAMMA`, `X`])
     })
   })
 
-  describe(`branch inference fallback (no pmg.branches)`, () => {
-    const spy_info = () => vi.spyOn(console, `warn`).mockImplementation(() => {})
+  it.each([
+    [`null`, null],
+    [`a string`, `bands`],
+    [`an empty object`, {}],
+    [`empty qpoints`, { qpoints: [], branches: [], bands: [], distance: [] }],
+    [
+      `a distance/qpoints length mismatch`,
+      {
+        qpoints: [{ label: null, frac_coords: [0, 0, 0] }],
+        branches: [],
+        bands: [[0]],
+        distance: [0, 1],
+      },
+    ],
+    [
+      `a band of the wrong length`,
+      {
+        qpoints: [{ label: null, frac_coords: [0, 0, 0] }],
+        branches: [],
+        bands: [[0, 1]],
+        distance: [0],
+      },
+    ],
+    [
+      `a branch past the last q-point`,
+      {
+        qpoints: [{ label: null, frac_coords: [0, 0, 0] }],
+        branches: [{ start_index: 0, end_index: 5, name: `t` }],
+        bands: [[0]],
+        distance: [0],
+      },
+    ],
+    [`pymatgen input without bands`, pmg({ qpoints: line(2), bands: null })],
+    [
+      `pymatgen input with an unknown unit`,
+      pmg({ qpoints: line(2), bands: [[0, 1]], unit: `GHz` }),
+    ],
+    [`pymatgen input with empty kpoints`, { kpoints: [], bands: { '1': [] } }],
+  ])(`returns null for %s`, (_label, input) => {
+    expect(normalize_band_structure(input)).toBeNull()
+  })
+
+  // Bands are stored in THz; the factor is the module's own unit table, so the test pins the
+  // direction of the conversion and the unit aliases rather than re-deriving constants
+  it.each([
+    [undefined, 5, 5],
+    [`thz`, 5, 5],
+    [`ev`, 4.135667696e-3, 1],
+    [`meV`, 4.135667696, 1],
+    [`cm-1`, THZ_TO_INVERSE_CM, 1],
+    [`cm^-1`, 2 * THZ_TO_INVERSE_CM, 2],
+  ])(`converts pymatgen bands declared in %s to THz`, (unit, input, expected_thz) => {
+    const result = normalize_band_structure(
+      pmg({ qpoints: line(2), bands: [[0, input]], ...(unit && { unit }) }),
+    )
+    expect(result?.bands[0][1]).toBeCloseTo(expected_thz, 9)
+  })
+
+  it(`transposes the frequencies_cm layout (q-points × branches, in cm^-1)`, () => {
+    const result = normalize_band_structure(
+      pmg({
+        qpoints: line(2),
+        frequencies_cm: [
+          [THZ_TO_INVERSE_CM, 2 * THZ_TO_INVERSE_CM],
+          [3 * THZ_TO_INVERSE_CM, 4 * THZ_TO_INVERSE_CM],
+        ],
+      }),
+    )
+    expect(
+      result?.bands.map((band) => band.map((val) => Math.round(val * 1e9) / 1e9)),
+    ).toEqual([
+      [1, 3],
+      [2, 4],
+    ])
+  })
+
+  it(`labels q-points from Kpoint objects or by matching labels_dict within 1e-4`, () => {
+    const from_kpoints = normalize_band_structure({
+      qpoints: [
+        { frac_coords: [0, 0, 0], label: `GAMMA` },
+        { frac_coords: [0.5, 0, 0], label: `X` },
+      ],
+      bands: [[0, 1]],
+    })
+    expect(from_kpoints?.qpoints.map((qpt) => qpt.label)).toEqual([`GAMMA`, `X`])
+    const from_dict = normalize_band_structure(
+      pmg({
+        qpoints: [
+          [0.00001, -0.00001, 0],
+          [0.49999, 0.00001, 0],
+        ],
+        bands: [[0, 1]],
+        labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
+      }),
+    )
+    expect(from_dict?.qpoints.map((qpt) => qpt.label)).toEqual([`GAMMA`, `X`])
+  })
+
+  it(`accumulates distance along the path but not across a discontinuity`, () => {
+    const result = normalize_band_structure(
+      pmg({
+        qpoints: [
+          [0, 0, 0],
+          [0.05, 0, 0],
+          [0.1, 0, 0],
+          [0.9, 0.9, 0.9],
+          [0.95, 0.95, 0.95],
+          [1, 1, 1],
+        ],
+        bands: [[0, 1, 2, 3, 4, 5]],
+      }),
+    )
+    const expected = [
+      0,
+      0.05,
+      0.1,
+      0.1,
+      0.1 + Math.hypot(0.05, 0.05, 0.05),
+      0.1 + 2 * Math.hypot(0.05, 0.05, 0.05),
+    ]
+    result?.distance.forEach((val, idx) => expect(val).toBeCloseTo(expected[idx], 12))
+  })
+
+  describe(`branches`, () => {
+    const warn = () => vi.spyOn(console, `warn`).mockImplementation(() => {})
 
     it.each([
-      {
-        desc: `logs info and covers unlabeled qpoints`,
-        qpoints: [
+      [
+        `a single unlabeled path`,
+        [
           [0.1, 0, 0],
           [0.25, 0, 0],
           [0.4, 0, 0],
         ],
-        labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
-        expected: [{ start_index: 0, end_index: 2, name: `?-?` }],
-      },
-      {
-        desc: `creates branches at single discontinuity`,
-        qpoints: [
+        {},
+        [{ start_index: 0, end_index: 2, name: `?-?` }],
+      ],
+      [
+        `labelled endpoints`,
+        [
+          [0, 0, 0],
+          [0.25, 0, 0],
+          [0.5, 0, 0],
+        ],
+        { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
+        [{ start_index: 0, end_index: 2, name: `GAMMA-X` }],
+      ],
+      [
+        `one discontinuity`,
+        [
           [0, 0, 0],
           [0.1, 0, 0],
           [0.9, 0.9, 0.9],
           [1, 1, 1],
         ],
-        labels_dict: { GAMMA: [0, 0, 0], L: [1, 1, 1] },
-        expected: [
+        { GAMMA: [0, 0, 0], L: [1, 1, 1] },
+        [
           { start_index: 0, end_index: 1, name: `GAMMA-?` },
           { start_index: 2, end_index: 3, name: `?-L` },
         ],
-      },
-      {
-        desc: `creates branches at multiple discontinuities`,
-        qpoints: [
+      ],
+      [
+        `two discontinuities`,
+        [
           [0, 0, 0],
           [0.1, 0, 0],
           [0.5, 0.5, 0],
@@ -977,1125 +477,549 @@ describe(`normalize_band_structure`, () => {
           [1, 1, 1],
           [1.1, 1, 1],
         ],
-        labels_dict: { GAMMA: [0, 0, 0], K: [0.5, 0.5, 0], L: [1, 1, 1] },
-        expected: [
+        { GAMMA: [0, 0, 0], K: [0.5, 0.5, 0], L: [1, 1, 1] },
+        [
           { start_index: 0, end_index: 1, name: `GAMMA-?` },
           { start_index: 2, end_index: 3, name: `K-?` },
           { start_index: 4, end_index: 5, name: `L-?` },
         ],
+      ],
+    ])(
+      `infers branches from discontinuities for %s (with a warning)`,
+      (_label, qpoints, labels_dict, expected) => {
+        const spy = warn()
+        const result = normalize_band_structure(
+          pmg({ qpoints, bands: [qpoints.map((_, idx) => idx)], labels_dict }),
+        )
+        expect(result?.branches).toEqual(expected)
+        expect(spy).toHaveBeenCalledWith(
+          expect.stringContaining(`inferring from path discontinuities`),
+        )
+        spy.mockRestore()
       },
-      {
-        desc: `creates single branch with no discontinuities or labels`,
-        qpoints: [
-          [0, 0, 0],
-          [0.1, 0, 0],
-          [0.2, 0, 0],
-          [0.3, 0, 0],
-        ],
-        labels_dict: {},
-        expected: [{ start_index: 0, end_index: 3, name: `?-?` }],
-      },
-      {
-        desc: `uses labels for branch names`,
-        qpoints: [
-          [0, 0, 0],
-          [0.25, 0, 0],
-          [0.5, 0, 0],
-        ],
-        labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
-        expected: [{ start_index: 0, end_index: 2, name: `GAMMA-X` }],
-      },
-    ])(`$desc`, ({ qpoints, labels_dict, expected }) => {
-      const spy = spy_info()
-      const bands = [qpoints.map((_, idx) => idx)]
-      const result = normalize_band_structure(make_pmg({ qpoints, bands, labels_dict }))
-      expect(result?.branches).toEqual(expected)
-      expect(spy).toHaveBeenCalledWith(
-        `Band structure missing 'branches' field - inferring from path discontinuities`,
-      )
-      spy.mockRestore()
-    })
+    )
 
-    it(`prefers explicit branches over fallback`, () => {
-      const spy = spy_info()
-      const result = normalize_band_structure({
-        '@class': `PhononBandStructureSymmLine`,
-        qpoints: [
-          [0, 0, 0],
-          [0.5, 0, 0],
-          [1, 0, 0],
-        ],
-        bands: [[0, 1, 2]],
-        branches: [
-          { start_index: 0, end_index: 1, name: `custom-1` },
-          { start_index: 1, end_index: 2, name: `custom-2` },
-        ],
-        labels_dict: { GAMMA: [0, 0, 0], X: [1, 0, 0] },
-      })
-      expect(result?.branches?.map((br) => br.name)).toEqual([`custom-1`, `custom-2`])
-      expect(spy).not.toHaveBeenCalled()
-      spy.mockRestore()
-    })
-
-    it.each([
-      { desc: `empty branches array`, branches: [] },
-      {
-        desc: `all invalid branches`,
-        branches: [
-          { start_index: -1, end_index: 0, name: `invalid` },
-          { start_index: 0, end_index: 99, name: `out-of-bounds` },
-        ],
-      },
-    ])(`triggers fallback with $desc`, ({ branches }) => {
-      const spy = spy_info()
-      const result = normalize_band_structure({
-        '@class': `PhononBandStructureSymmLine`,
-        qpoints: [
-          [0, 0, 0],
-          [0.5, 0, 0],
-        ],
-        bands: [[0, 1]],
-        branches,
-        labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
-      })
-      expect(result?.branches).toHaveLength(1)
-      expect(spy).toHaveBeenCalled()
-      spy.mockRestore()
-    })
-  })
-
-  describe(`edge cases`, () => {
-    it.each([
-      null,
-      undefined,
-      `string`,
-      123,
-      [],
-      {
-        '@class': `X`,
-        qpoints: [],
-        bands: [],
-      },
-    ])(`returns null for %p`, (input) => expect(normalize_band_structure(input)).toBeNull())
-  })
-
-  describe(`electronic band structures (pymatgen BandStructureSymmLine)`, () => {
-    it(`converts BandStructureSymmLine with kpoints`, () => {
-      const result = normalize_band_structure({
-        kpoints: [
-          [0, 0, 0],
-          [0.5, 0, 0],
-          [0.5, 0.5, 0],
-        ],
-        bands: {
-          '1': [
-            [0, 1.5, 3.0],
-            [-2, -1, 0],
+    it(`keeps valid explicit branches and drops invalid ones before falling back`, () => {
+      const spy = warn()
+      const explicit = normalize_band_structure(
+        pmg({
+          qpoints: line(3),
+          bands: [[0, 1, 2]],
+          branches: [
+            { start_index: 0, end_index: 1, name: `a` },
+            { start_index: 1, end_index: 2, name: `b` },
           ],
-        }, // 2 bands, spin-keyed
-        labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0], K: [0.5, 0.5, 0] },
-        lattice_rec: { matrix: ident },
-        efermi: 0,
-      })
-      expect(result?.qpoints).toHaveLength(3)
-      expect(result?.bands).toHaveLength(2)
-      expect(result?.qpoints[0].label).toBe(`GAMMA`)
-      expect(result?.qpoints[2].label).toBe(`K`)
+        }),
+      )
+      expect(explicit?.branches.map((branch) => branch.name)).toEqual([`a`, `b`])
+      expect(spy).not.toHaveBeenCalled()
+      const invalid = normalize_band_structure(
+        pmg({
+          qpoints: line(2),
+          bands: [[0, 1]],
+          branches: [
+            { start_index: -1, end_index: 0, name: `x` },
+            { start_index: 0, end_index: 99, name: `y` },
+          ],
+        }),
+      )
+      expect(invalid?.branches).toEqual([{ start_index: 0, end_index: 1, name: `?-?` }])
+      expect(spy).toHaveBeenCalledTimes(1)
+      spy.mockRestore()
     })
+  })
 
-    it(`extracts first spin channel from spin-keyed bands`, () => {
-      const result = normalize_band_structure({
-        kpoints: [
-          [0, 0, 0],
-          [0.5, 0, 0],
-        ],
+  describe(`electronic (kpoints, spin-keyed bands)`, () => {
+    it(`reads both spin channels and drops a malformed spin-down channel`, () => {
+      const both = normalize_band_structure({
+        kpoints: line(2),
         bands: {
           '1': [
             [0, 1],
             [2, 3],
-          ], // spin-up: 2 bands
+          ],
           '-1': [
             [0.1, 1.1],
             [2.1, 3.1],
-          ], // spin-down
+          ],
         },
-        labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
+        efermi: 0,
       })
-      expect(result?.bands).toEqual([
-        [0, 1],
-        [2, 3],
-      ]) // First spin channel
-      expect(result?.spin_down_bands).toEqual([
-        [0.1, 1.1],
-        [2.1, 3.1],
-      ])
-    })
-
-    it(`drops malformed spin-down channel when band shapes mismatch`, () => {
-      const result = normalize_band_structure({
-        kpoints: [
-          [0, 0, 0],
-          [0.5, 0, 0],
+      expect(both).toMatchObject({
+        bands: [
+          [0, 1],
+          [2, 3],
         ],
+        spin_down_bands: [
+          [0.1, 1.1],
+          [2.1, 3.1],
+        ],
+        nb_bands: 2,
+      })
+      const ragged = normalize_band_structure({
+        kpoints: line(2),
         bands: {
           '1': [
             [0, 1],
             [2, 3],
           ],
-          '-1': [[0.1], [2.1, 3.1]], // first spin-down band has wrong length
+          '-1': [[0.1], [2.1, 3.1]],
         },
-        labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
       })
-      expect(result?.bands).toEqual([
-        [0, 1],
-        [2, 3],
-      ])
-      expect(result?.spin_down_bands).toBeUndefined()
+      expect(ragged?.spin_down_bands).toBeUndefined()
     })
 
-    it(`handles BandStructure base class (not just SymmLine)`, () => {
-      const result = normalize_band_structure({
-        kpoints: [
-          [0, 0, 0],
-          [0.25, 0, 0],
-          [0.5, 0, 0],
-        ],
-        bands: { '1': [[0, 0.5, 1.0]] },
-        labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
-      })
-      expect(result?.qpoints).toHaveLength(3)
-    })
-
-    it(`handles pymatgen electronic with branches field`, () => {
-      // Pymatgen BandStructureSymmLine can include branches. When branches are
-      // present, is_pymatgen_format relies on the @class marker (structural
-      // kpoints detection is skipped for branch-containing inputs).
-      const result = normalize_band_structure({
-        '@class': `BandStructureSymmLine`,
-        kpoints: [
-          [0, 0, 0],
-          [0.5, 0, 0],
-          [0.5, 0.5, 0],
-        ],
-        bands: { '1': [[0, 1, 2]] },
-        branches: [
-          { name: `\\Gamma-X`, start_index: 0, end_index: 1 },
-          { name: `X-K`, start_index: 1, end_index: 2 },
-        ],
-        labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0], K: [0.5, 0.5, 0] },
-      })
-      // Should still normalize correctly despite having branches
-      expect(result?.qpoints).toHaveLength(3)
-      expect(result?.branches).toHaveLength(2)
-    })
-
-    it(`handles electronic bands with array format (already extracted)`, () => {
-      const result = normalize_band_structure({
-        kpoints: [
-          [0, 0, 0],
-          [0.5, 0, 0],
-        ],
-        bands: [
-          [0, 1],
-          [2, 3],
-        ], // Already an array, not spin-keyed
-        labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
-      })
-      expect(result?.bands).toEqual([
-        [0, 1],
-        [2, 3],
-      ])
-    })
-
-    it(`detects electronic format by @module containing electronic_structure`, () => {
-      // branches present -> is_pymatgen_format skips structural (kpoints) detection, so the
-      // @module marker is what's load-bearing here
-      const pmg_input = {
-        kpoints: [
-          [0, 0, 0],
-          [0.5, 0, 0],
-        ],
+    it(`recognises pymatgen input by kpoints, @class or @module, but not bare branched input`, () => {
+      const branched = {
+        kpoints: line(2),
         bands: { '1': [[0, 1]] },
         branches: [{ name: `\\Gamma-X`, start_index: 0, end_index: 1 }],
-        labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
       }
-      const result = normalize_band_structure({
-        '@module': `pymatgen.electronic_structure.bandstructure`,
-        ...pmg_input,
-      })
-      expect(result?.qpoints).toHaveLength(2)
-      // without the marker the same branched input is not recognized (mutation guard)
-      expect(normalize_band_structure(pmg_input)).toBeNull()
-    })
-
-    it(`returns null for electronic structure with empty kpoints`, () => {
-      const result = normalize_band_structure({
-        kpoints: [],
-        bands: { '1': [] },
-        labels_dict: {},
-      })
-      expect(result).toBeNull()
-    })
-
-    it(`returns null for electronic structure with null bands`, () => {
-      const result = normalize_band_structure({
-        kpoints: [
-          [0, 0, 0],
-          [0.5, 0, 0],
-        ],
-        bands: null,
-        labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
-      })
-      expect(result).toBeNull()
-    })
-
-    it(`detects pymatgen format via kpoints without @class/@module markers`, () => {
-      // This tests the fallback detection in is_pymatgen_format
-      const result = normalize_band_structure({
-        // No @class or @module - relies on kpoints detection
-        kpoints: [
-          [0, 0, 0],
-          [0.5, 0, 0],
-        ],
-        bands: [
-          [0, 1],
-          [2, 3],
-        ],
-        labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
-      })
-      expect(result?.qpoints).toHaveLength(2)
-      expect(result?.bands).toHaveLength(2)
+      expect(normalize_band_structure(branched)).toBeNull()
+      expect(
+        normalize_band_structure({ '@class': `BandStructureSymmLine`, ...branched })?.branches,
+      ).toHaveLength(1)
+      expect(
+        normalize_band_structure({
+          '@module': `pymatgen.electronic_structure.bandstructure`,
+          ...branched,
+        })?.qpoints,
+      ).toHaveLength(2)
+      expect(
+        normalize_band_structure({
+          kpoints: line(2),
+          bands: [
+            [0, 1],
+            [2, 3],
+          ],
+        })?.nb_bands,
+      ).toBe(2)
     })
   })
 })
 
 describe(`normalize_dos`, () => {
-  describe(`spin-keyed densities (pymatgen format)`, () => {
-    it.each([
-      {
-        desc: `numeric spin keys {1, -1}`,
-        densities: { '1': [0.5, 1.0, 0.5], '-1': [0.4, 0.9, 0.4] },
-        expected: [0.5, 1.0, 0.5],
-      },
-      {
-        desc: `string spin keys {Spin.up, Spin.down}`,
-        densities: { 'Spin.up': [0.3, 0.8, 0.3], 'Spin.down': [0.2, 0.7, 0.2] },
-        expected: [0.3, 0.8, 0.3],
-      },
-      {
-        desc: `spin-up key picked even when listed second`,
-        densities: { '-1': [0.4, 0.9, 0.4], '1': [0.5, 1.0, 0.5] },
-        expected: [0.5, 1.0, 0.5],
-      },
-      {
-        desc: `plain array densities (non-spin-polarized)`,
-        densities: [0.2, 0.6, 0.2],
-        expected: [0.2, 0.6, 0.2],
-      },
-    ])(`extracts spin-up channel from $desc`, ({ densities, expected }) => {
-      const result = normalize_dos({ energies: [-5, 0, 5], densities })
-      expect(result?.type).toBe(`electronic`)
-      if (result?.type === `electronic`) expect(result.densities).toEqual(expected)
-    })
-
-    it(`returns null for empty spin-keyed densities object`, () => {
-      expect(normalize_dos({ energies: [-1, 0, 1], densities: {} })).toBeNull()
+  it.each([
+    [
+      `numeric spin keys`,
+      { '1': [0.5, 1, 0.5], '-1': [0.4, 0.9, 0.4] },
+      [0.5, 1, 0.5],
+      [0.4, 0.9, 0.4],
+    ],
+    [
+      `Spin.up/Spin.down keys`,
+      { 'Spin.up': [0.3, 0.8, 0.3], 'Spin.down': [0.2, 0.7, 0.2] },
+      [0.3, 0.8, 0.3],
+      [0.2, 0.7, 0.2],
+    ],
+    [
+      `spin-up listed second`,
+      { '-1': [0.4, 0.9, 0.4], '1': [0.5, 1, 0.5] },
+      [0.5, 1, 0.5],
+      [0.4, 0.9, 0.4],
+    ],
+    [`a plain array`, [0.2, 0.6, 0.2], [0.2, 0.6, 0.2], undefined],
+  ])(`electronic densities as %s`, (_label, densities, up, down) => {
+    expect(normalize_dos({ energies: [-5, 0, 5], densities })).toEqual({
+      type: `electronic`,
+      energies: [-5, 0, 5],
+      densities: up,
+      spin_down_densities: down,
+      spin_polarized: down !== undefined,
     })
   })
 
-  it(`preserves phonon frequencies without guessing their unit`, () => {
-    const frequencies = [0, 200, 333.5641]
-    const dos = {
-      frequencies,
-      densities: frequencies.map((_frequency, frequency_idx) => frequency_idx),
-    }
-    expect(normalize_dos(dos)).toMatchObject({ type: `phonon`, frequencies })
-  })
-
-  it.each([`cm-1`, `cm^-1`, `cm⁻¹`] as const)(
-    `normalizes explicitly declared %s phonon frequencies to THz`,
-    (unit) => {
-      const result = normalize_dos({
-        frequencies: [0, 333.5640951981521],
-        densities: [0, 1],
-        frequency_unit: unit,
-      })
-      expect(result).toMatchObject({ type: `phonon` })
-      if (result?.type !== `phonon`) throw new Error(`Expected normalized phonon DOS`)
-      expect(result.frequencies[1]).toBeCloseTo(10, 12)
-    },
-  )
-
-  describe(`electronic DOS`, () => {
-    it(`validates with energies array`, () => {
-      const result = normalize_dos({
-        energies: [-5, -2.5, 0, 2.5, 5],
-        densities: [0.1, 0.5, 1, 0.5, 0.1],
-      })
-      expect(result?.type).toBe(`electronic`)
-      if (result?.type === `electronic`) {
-        expect(result.energies).toEqual([-5, -2.5, 0, 2.5, 5])
-      }
-    })
-
-    it(`preserves spin_polarized flag`, () => {
-      const result = normalize_dos({
-        energies: [-1, 0, 1],
-        densities: [0.5, 1, 0.5],
-        spin_polarized: true,
-      })
-      expect(result?.type).toBe(`electronic`)
-      if (result?.type === `electronic`) expect(result.spin_polarized).toBe(true)
+  it(`honours an explicit spin_polarized flag and an explicit spin_down_densities field`, () => {
+    expect(
+      normalize_dos({ energies: [0, 1], densities: [1, 1], spin_polarized: true }),
+    ).toMatchObject({ spin_polarized: true })
+    expect(
+      normalize_dos({ energies: [0, 1], densities: [1, 1], spin_down_densities: [2, 2] }),
+    ).toMatchObject({
+      spin_polarized: true,
+      spin_down_densities: [2, 2],
     })
   })
 
-  describe(`pymatgen format`, () => {
-    it(`warns on incomplete pymatgen DOS`, () => {
-      const spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
-      expect(normalize_dos({ '@class': `PhononDos`, densities: [0, 0.5, 1] })).toBeNull()
-      expect(spy).toHaveBeenCalledWith(expect.stringContaining(`Pymatgen DOS format detected`))
-      spy.mockRestore()
+  it.each([
+    [undefined, 1],
+    [`THz`, 1],
+    [`cm-1`, 1 / THZ_TO_INVERSE_CM],
+    [`cm^-1`, 1 / THZ_TO_INVERSE_CM],
+    [`cm⁻¹`, 1 / THZ_TO_INVERSE_CM],
+    [`meV`, 1 / 4.135667696],
+  ])(`phonon frequencies declared in %s are stored in THz`, (frequency_unit, thz_per_unit) => {
+    const result = normalize_dos({
+      frequencies: [0, 10],
+      densities: [0, 1],
+      ...(frequency_unit && { frequency_unit }),
     })
-
-    it(`accepts pymatgen with frequencies`, () => {
-      const result = normalize_dos({
-        '@class': `PhononDos`,
-        frequencies: [0, 5, 10],
-        densities: [0, 1, 0],
-      })
-      expect(result?.type).toBe(`phonon`)
-    })
+    expect(result?.type).toBe(`phonon`)
+    if (result?.type === `phonon`)
+      expect(result.frequencies[1]).toBeCloseTo(10 * thz_per_unit, 8)
   })
 
-  describe(`validation`, () => {
-    it.each([
-      { frequencies: [1, 2, 3] }, // missing densities
-      { frequencies: [1, 2, 3], densities: [0, 1] }, // length mismatch
-      null,
-      undefined,
-      `string`, // non-object
-    ])(`returns null for %p`, (input) => expect(normalize_dos(input)).toBeNull())
+  it.each([
+    [`null`, null],
+    [`a string`, `dos`],
+    [`missing densities`, { frequencies: [1, 2] }],
+    [`a length mismatch`, { frequencies: [1, 2, 3], densities: [0, 1] }],
+    [`an empty spin record`, { energies: [0, 1], densities: {} }],
+    [`an unknown frequency unit`, { frequencies: [1], densities: [1], unit: `GHz` }],
+    [`pymatgen input without an axis`, { '@class': `PhononDos`, densities: [0, 1] }],
+  ])(`returns null for %s`, (_label, input) => {
+    const spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
+    expect(normalize_dos(input)).toBeNull()
+    spy.mockRestore()
   })
 })
 
 describe(`shift_to_fermi`, () => {
-  const make_dos = (efermi: number, energies: number[]): PymatgenCompleteDos => ({
+  const dos = (
+    efermi: number,
+    energies: number[],
+    extra: Partial<PymatgenCompleteDos> = {},
+  ): PymatgenCompleteDos => ({
     energies,
-    densities: energies.map(() => 1.0), // Dummy densities
+    densities: energies.map(() => 1),
     efermi,
+    ...extra,
   })
 
   it.each([
-    {
-      desc: `positive efermi`,
-      efermi: 5.0,
-      energies: [-10, -5, 0, 5, 10],
-      expected: [-15, -10, -5, 0, 5],
-    },
-    { desc: `zero efermi (no-op)`, efermi: 0, energies: [-5, 0, 5], expected: [-5, 0, 5] },
-    {
-      desc: `negative efermi`,
-      efermi: -2.5,
-      energies: [-10, -5, 0, 5],
-      expected: [-7.5, -2.5, 2.5, 7.5],
-    },
-    {
-      desc: `typical pymatgen efermi (mp-865805)`,
-      efermi: 5.36,
-      energies: [0, 2.68, 5.36, 8.04, 10.72],
-      expected: [-5.36, -2.68, 0, 2.68, 5.36],
-    },
-  ])(`shifts energies so E_F = 0: $desc`, ({ efermi, energies, expected }) => {
-    const shifted = shift_to_fermi(make_dos(efermi, energies))
+    [5, [-10, 0, 10], [-15, -5, 5]],
+    [0, [-5, 0, 5], [-5, 0, 5]],
+    [-2.5, [-10, 0, 5], [-7.5, 2.5, 7.5]],
+  ])(`shifts efermi %f to 0 without mutating the input`, (efermi, energies, expected) => {
+    const input = dos(efermi, energies)
+    const shifted = shift_to_fermi(input)
     expect(shifted.efermi).toBe(0)
-    expected.forEach((val, idx) => expect(shifted.energies[idx]).toBeCloseTo(val, 10))
+    expect(shifted.energies).toEqual(expected)
+    expect(input.energies).toEqual(energies)
+    expect(shifted.densities).toBe(input.densities)
   })
 
-  it(`preserves non-energy DOS properties`, () => {
-    const dos: PymatgenCompleteDos = {
+  it(`shifts nested atom_dos and spd_dos and keeps every other field`, () => {
+    const nested = {
+      '@class': `Dos`,
+      energies: [0, 5, 10],
+      densities: [0.3, 0.6, 0.3],
+      efermi: 5,
+    }
+    const shifted = shift_to_fermi(
+      dos(5, [0, 5, 10], {
+        '@class': `LobsterCompleteDos`,
+        structure: { lattice: {} },
+        atom_dos: { Fe: nested },
+        spd_dos: { s: nested },
+      }),
+    )
+    expect(shifted).toMatchObject({
       '@class': `LobsterCompleteDos`,
-      '@module': `Lobster`,
-      energies: [0, 5, 10],
-      densities: { '1': [0.5, 1.0, 0.5], '-1': [0.4, 0.9, 0.4] },
-      efermi: 5.0,
       structure: { lattice: {} },
+      efermi: 0,
+      energies: [-5, 0, 5],
+    })
+    for (const inner of [shifted.atom_dos?.Fe, shifted.spd_dos?.s]) {
+      expect(inner).toEqual({ ...nested, efermi: 0, energies: [-5, 0, 5] })
     }
-    const shifted = shift_to_fermi(dos)
-
-    expect(shifted[`@class`]).toBe(`LobsterCompleteDos`)
-    expect(shifted[`@module`]).toBe(`Lobster`)
-    expect(shifted.densities).toEqual(dos.densities) // Unchanged
-    expect(shifted.structure).toEqual(dos.structure) // Preserved
-  })
-
-  it(`shifts nested atom_dos and spd_dos energies`, () => {
-    const dos: PymatgenCompleteDos = {
-      energies: [0, 5, 10],
-      densities: [0.5, 1.0, 0.5],
-      efermi: 5.0,
-      atom_dos: {
-        Fe: {
-          '@class': `Dos`,
-          '@module': `pymatgen.electronic_structure.dos`,
-          energies: [0, 5, 10],
-          densities: [0.3, 0.6, 0.3],
-          efermi: 5.0,
-        },
-        O: {
-          energies: [0, 5, 10],
-          densities: [0.2, 0.4, 0.2],
-          efermi: 5.0,
-        },
-      },
-      spd_dos: {
-        s: {
-          '@class': `Dos`,
-          '@module': `pymatgen.electronic_structure.dos`,
-          energies: [0, 5, 10],
-          densities: [0.1, 0.2, 0.1],
-          efermi: 5.0,
-        },
-      },
-    }
-    const shifted = shift_to_fermi(dos)
-
-    // Main DOS shifted
-    expect(shifted.efermi).toBe(0)
-    expect(shifted.energies).toEqual([-5, 0, 5])
-
-    // Nested atom_dos shifted
-    expect(shifted.atom_dos?.Fe.efermi).toBe(0)
-    expect(shifted.atom_dos?.Fe.energies).toEqual([-5, 0, 5])
-    expect(shifted.atom_dos?.Fe.densities).toEqual([0.3, 0.6, 0.3]) // Unchanged
-    expect(shifted.atom_dos?.O.efermi).toBe(0)
-    expect(shifted.atom_dos?.O.energies).toEqual([-5, 0, 5])
-
-    // Nested spd_dos shifted
-    expect(shifted.spd_dos?.s.efermi).toBe(0)
-    expect(shifted.spd_dos?.s.energies).toEqual([-5, 0, 5])
-    expect(shifted.spd_dos?.s.densities).toEqual([0.1, 0.2, 0.1]) // Unchanged
-
-    // Nested pymatgen markers preserved through the shift (spread in shift_dos_energies)
-    expect(shifted.atom_dos?.Fe[`@class`]).toBe(`Dos`)
-    expect(shifted.atom_dos?.Fe[`@module`]).toBe(`pymatgen.electronic_structure.dos`)
-    expect(shifted.spd_dos?.s[`@class`]).toBe(`Dos`)
-  })
-
-  it(`returns new object (immutable)`, () => {
-    const dos = make_dos(5.0, [0, 5, 10])
-    const shifted = shift_to_fermi(dos)
-
-    expect(shifted).not.toBe(dos)
-    expect(shifted.energies).not.toBe(dos.energies)
-    // Original unchanged
-    expect(dos.efermi).toBe(5.0)
-    expect(dos.energies).toEqual([0, 5, 10])
   })
 })
 
-describe(`scale_segment_distances`, () => {
-  it.each([
-    { distances: [0, 0.5, 1], x_start: 0, x_end: 100, expected: [0, 50, 100] },
-    { distances: [10, 15, 20], x_start: 0, x_end: 1, expected: [0, 0.5, 1] },
-    { distances: [0, 2, 4, 8], x_start: 0, x_end: 8, expected: [0, 2, 4, 8] },
-    {
-      distances: [0, 1, 2, 3],
-      x_start: 10,
-      x_end: 20,
-      expected: [10, 10 + 10 / 3, 10 + 20 / 3, 20],
-    },
-    // Zero-range and single-point segments placed at midpoint
-    { distances: [5, 5, 5], x_start: 10, x_end: 20, expected: [15, 15, 15] },
-    { distances: [42], x_start: 0, x_end: 10, expected: [5] },
-    { distances: [], x_start: 0, x_end: 10, expected: [] },
-  ])(
-    `maps $distances to [$x_start, $x_end] → $expected`,
-    ({ distances, x_start, x_end, expected }) => {
-      const result = scale_segment_distances(distances, x_start, x_end)
-      expect(result).toHaveLength(expected.length)
-      expected.forEach((val, idx) => expect(result[idx]).toBeCloseTo(val, 10))
-    },
-  )
+it.each([
+  [[0, 0.5, 1], 0, 100, [0, 50, 100]],
+  [[10, 15, 20], 0, 1, [0, 0.5, 1]],
+  [[0, 1, 2, 3], 10, 20, [10, 10 + 10 / 3, 10 + 20 / 3, 20]],
+  [[5, 5, 5], 10, 20, [15, 15, 15]], // zero-length segment → midpoint
+  [[42], 0, 10, [5]],
+  [[], 0, 10, []],
+])(`scale_segment_distances(%j, %f, %f) → %j`, (distances, x_start, x_end, expected) => {
+  const result = scale_segment_distances(distances, x_start, x_end)
+  expect(result).toHaveLength(expected.length)
+  expected.forEach((val, idx) => expect(result[idx]).toBeCloseTo(val, 12))
 })
 
 describe(`get_ribbon_config`, () => {
+  const defaults = { opacity: 0.3, max_width: 6, scale: 1 }
   it.each([
-    { cfg: {}, label: `any`, expected: { opacity: 0.3, max_width: 6, scale: 1 } },
-    {
-      cfg: { opacity: 0.5 },
-      label: `any`,
-      expected: { opacity: 0.5, max_width: 6, scale: 1 },
-    },
-    {
-      cfg: { A: { opacity: 0.4 } },
-      label: `A`,
-      expected: { opacity: 0.4, max_width: 6, scale: 1 },
-    },
-    {
-      cfg: { A: { opacity: 0.4 } },
-      label: `B`,
-      expected: { opacity: 0.3, max_width: 6, scale: 1 },
-    },
-  ])(`$cfg for label "$label" → $expected`, ({ cfg, label, expected }) => {
-    expect(get_ribbon_config(cfg, label)).toEqual(expected)
-  })
-
-  it.each([
-    [`opacity`, { color: `red` }],
-    [`max_width`, { opacity: 0.4 }],
-    [`scale`, { color: `blue` }],
-    [`color`, { max_width: 4 }],
-  ] satisfies [string, RibbonConfig][])(
-    `distinguishes structure named "%s" from primitive config key`,
-    (primitive_key, label_config) => {
-      // Bug case: { opacity: {...} } should be per-structure, not single config.
-      expect(get_ribbon_config({ [primitive_key]: label_config }, primitive_key)).toEqual({
-        opacity: 0.3,
-        max_width: 6,
-        scale: 1,
-        ...label_config,
-      })
-    },
-  )
-
-  it(`treats primitive ribbon keys as global config`, () => {
-    expect(get_ribbon_config({ opacity: 0.5 }, `any`).opacity).toBe(0.5)
+    [{}, `A`, defaults],
+    [{ opacity: 0.5, color: `red` }, `A`, { ...defaults, opacity: 0.5, color: `red` }],
+    [{ A: { opacity: 0.4 } }, `A`, { ...defaults, opacity: 0.4 }],
+    [{ A: { opacity: 0.4 } }, `B`, defaults],
+    [{ A: { opacity: 0.4 } }, ``, defaults],
+    // a structure named like a primitive key is still a per-structure config
+    [{ opacity: { color: `red` } }, `opacity`, { ...defaults, color: `red` }],
+  ])(`%j for label "%s"`, (config, label, expected) => {
+    expect(get_ribbon_config(config, label)).toEqual(expected)
   })
 })
 
 describe(`generate_ribbon_path`, () => {
   const id = (val: number) => val
-
-  it(`generates valid SVG path with lower edge reversed`, () => {
-    const path = generate_ribbon_path([0, 1, 2], [0, 0, 0], [1, 1, 1], id, id, 5)
-    expect(path).toMatch(/^M[\d.,-]+(?: L[\d.,-]+)+ Z$/)
-    // Verify polygon structure: upper edge 0→1→2, lower edge 2→1→0
-    const points = path.match(/[\d.-]+,[\d.-]+/g) ?? []
-    expect(points).toHaveLength(6)
-    expect(points.slice(0, 3).map((point) => point.split(`,`)[0])).toEqual([
-      `0.00`,
-      `1.00`,
-      `2.00`,
-    ])
-    expect(points.slice(3).map((point) => point.split(`,`)[0])).toEqual([
-      `2.00`,
-      `1.00`,
-      `0.00`,
-    ])
+  it(`traces the upper edge forward and the lower edge back, widths normalised to the max`, () => {
+    // max width 2 at x = 1: half-width 10 px, so y = 5 ± 10; width 1 gives ± 5
+    const path = generate_ribbon_path([0, 1, 2], [5, 5, 5], [1, 2, 1], id, id, 10)
+    expect(path).toBe(
+      `M0.00,0.00 L1.00,-5.00 L2.00,0.00 L2.00,10.00 L1.00,15.00 L0.00,10.00 Z`,
+    )
+    expect(generate_ribbon_path([0, 1], [5, 5], [1, 1], (val) => 2 * val, id, 10, 2)).toBe(
+      `M0.00,-15.00 L2.00,-15.00 L2.00,25.00 L0.00,25.00 Z`,
+    )
+    // non-finite widths count as 0
+    expect(generate_ribbon_path([0, 1, 2], [0, 0, 0], [1, Infinity, 1], id, id, 10)).toContain(
+      `L1.00,0.00`,
+    )
   })
 
   it.each([
-    [`too few points`, [0], [0, 1], [1, 1]],
+    [`too few points`, [0], [0], [1]],
     [`mismatched y`, [0, 1, 2], [0, 1], [1, 1, 1]],
-    [`mismatched width`, [0, 1, 2], [0, 1, 2], [1, 1]],
-    [`zero widths`, [0, 1, 2], [0, 1, 0], [0, 0, 0]],
-    [`negative widths`, [0, 1], [0, 1], [-1, -2]],
-  ])(`returns "" for %s`, (_, x, y, widths) => {
-    expect(generate_ribbon_path(x, y, widths, id, id, 10)).toBe(``)
-  })
-
-  it(`normalizes widths and applies scale`, () => {
-    // width=2 is max, so at x=1: half_width=10, upper=5-10=-5, lower=5+10=15
-    expect(generate_ribbon_path([0, 1, 2], [5, 5, 5], [1, 2, 1], id, id, 10)).toContain(
-      `1.00,-5.00`,
-    )
-    // scale=2 doubles the width offset
-    expect(generate_ribbon_path([0, 1], [5, 5], [1, 1], id, id, 10, 2)).toContain(`,-15.00`)
-  })
-
-  it(`applies custom scale functions`, () => {
-    const path = generate_ribbon_path([0, 1, 2], [0, 0, 0], [1, 1, 1], (val) => val * 2, id, 5)
-    expect(path).toContain(`0.00,`)
-    expect(path).toContain(`2.00,`)
-    expect(path).toContain(`4.00,`) // x doubled: 0→0, 1→2, 2→4
-  })
-
-  it(`handles Infinity in widths`, () => {
-    expect(generate_ribbon_path([0, 1, 2], [0, 1, 0], [1, Infinity, 1], id, id, 10)).not.toBe(
-      ``,
-    )
+    [`mismatched widths`, [0, 1, 2], [0, 1, 2], [1, 1]],
+    [`no positive width`, [0, 1, 2], [0, 1, 0], [0, -1, NaN]],
+  ])(`returns "" for %s`, (_label, x_vals, y_vals, widths) => {
+    expect(generate_ribbon_path(x_vals, y_vals, widths, id, id, 10)).toBe(``)
   })
 })
 
 describe(`compute_frequency_range`, () => {
-  // Create valid band structure with matching array lengths (distinct from module-level make_bs)
-  const make_freq_bs = (bands: number[][]) => {
-    const num_kpoints = bands[0]?.length ?? 0
-    return {
-      qpoints: Array.from({ length: num_kpoints }, (_, idx) => ({
-        label: idx === 0 ? `Γ` : idx === num_kpoints - 1 ? `X` : null,
-        frac_coords: [idx / (num_kpoints - 1 || 1), 0, 0] as Vec3,
-      })),
-      branches: [{ start_index: 0, end_index: num_kpoints - 1, name: `Γ-X` }],
-      bands,
-      distance: Array.from({ length: num_kpoints }, (_, idx) => idx),
-      nb_bands: bands.length,
-      labels_dict: { Γ: [0, 0, 0] as Vec3, X: [1, 0, 0] as Vec3 },
-      recip_lattice: {
-        matrix: [
-          [1, 0, 0],
-          [0, 1, 0],
-          [0, 0, 1],
-        ] as Matrix3x3,
+  const bands_of = (bands: number[][]) =>
+    make_bs(
+      Array.from({ length: bands[0].length }, () => null),
+      { bands },
+    )
+
+  it.each([
+    [
+      `phonon bands`,
+      bands_of([
+        [0, 5, 10],
+        [2, 8, 15],
+      ]),
+      undefined,
+      [0, 15.3],
+    ],
+    [`a phonon DOS`, undefined, { frequencies: [0, 5, 15], densities: [0, 1, 0] }, [0, 15.3]],
+    [
+      `bands plus DOS`,
+      bands_of([[0, 5]]),
+      { frequencies: [0, 20], densities: [0, 1] },
+      [0, 20.4],
+    ],
+    [
+      `a dict of band structures`,
+      { a: bands_of([[0, 5]]), b: bands_of([[2, 12]]) },
+      undefined,
+      [0, 12.24],
+    ],
+    [
+      `a dict of DOS`,
+      undefined,
+      {
+        a: { frequencies: [0, 8], densities: [0, 1] },
+        b: { frequencies: [0, 15], densities: [0, 1] },
       },
-    }
-  }
-
-  it(`computes range from band structure`, () => {
-    const bs = make_freq_bs([
-      [0, 5, 10],
-      [2, 8, 15],
-    ])
-    const range = compute_frequency_range(bs, undefined)
-    expect(range).toBeDefined()
-    // Phonon with min>=0 clamps to 0, plus 2% padding on max
-    expect(range?.[0]).toBe(0)
-    expect(range?.[1]).toBeCloseTo(15.3, 1)
+      [0, 15.3],
+    ],
+    [
+      `an electronic DOS (no clamp, padded both sides)`,
+      undefined,
+      { energies: [-10, 0, 10], densities: [0, 1, 0] },
+      [-10.4, 10.4],
+    ],
+    [`non-finite band values`, bands_of([[0, NaN, 5, Infinity, 10]]), undefined, [0, 10.2]],
+    [
+      `negative noise under 0.5% (clamped)`,
+      bands_of([
+        [-0.01, 5, 10],
+        [0, 8, 15],
+      ]),
+      undefined,
+      [0, 15.3],
+    ],
+    [`real imaginary modes (kept)`, bands_of([[-2, -1, 0, 5, 10]]), undefined, [-2.24, 10.24]],
+    [
+      `an electronic DOS overriding phonon-looking bands`,
+      bands_of([[-0.01, 5, 10]]),
+      { type: `electronic`, energies: [-5, 0, 5], densities: [0, 1, 0] },
+      [-5.3, 10.3],
+    ],
+  ])(`%s`, (_label, bands, doses, expected) => {
+    const range = compute_frequency_range(bands, doses)
+    expect(range?.[0]).toBeCloseTo(expected[0], 9)
+    expect(range?.[1]).toBeCloseTo(expected[1], 9)
   })
 
-  it(`computes range from DOS`, () => {
-    const dos = { frequencies: [0, 5, 10, 15], densities: [0, 1, 1, 0] }
-    const range = compute_frequency_range(undefined, dos)
-    expect(range).toBeDefined()
-    expect(range?.[0]).toBe(0)
-    expect(range?.[1]).toBeCloseTo(15.3, 1)
-  })
-
-  it(`combines bands and DOS ranges`, () => {
-    const bs = make_freq_bs([
-      [0, 5],
-      [1, 3],
-    ])
-    const dos = { frequencies: [0, 10, 20], densities: [0, 1, 0] }
-    const range = compute_frequency_range(bs, dos)
-    expect(range?.[0]).toBe(0)
-    expect(range?.[1]).toBeCloseTo(20.4, 1)
-  })
-
-  it(`handles electronic DOS with negative energies`, () => {
-    const dos = { energies: [-10, -5, 0, 5, 10], densities: [0, 0.5, 1, 0.5, 0] }
-    const range = compute_frequency_range(undefined, dos)
-    expect(range).toBeDefined()
-    // Electronic: no clamping, 2% padding both sides
-    expect(range?.[0]).toBeCloseTo(-10.4, 1)
-    expect(range?.[1]).toBeCloseTo(10.4, 1)
-  })
-
-  it(`handles multiple band structures`, () => {
-    const bs1 = make_freq_bs([
-      [0, 5],
-      [1, 4],
-    ])
-    const bs2 = make_freq_bs([
-      [2, 12],
-      [3, 10],
-    ])
-    const range = compute_frequency_range({ bs1, bs2 }, undefined)
-    expect(range?.[0]).toBe(0)
-    expect(range?.[1]).toBeCloseTo(12.24, 1)
-  })
-
-  it(`handles multiple DOS`, () => {
-    const dos1 = { frequencies: [0, 8], densities: [0, 1] }
-    const dos2 = { frequencies: [0, 15], densities: [0, 1] }
-    const range = compute_frequency_range(undefined, { dos1, dos2 })
-    expect(range?.[0]).toBe(0)
-    expect(range?.[1]).toBeCloseTo(15.3, 1)
-  })
-
-  it(`returns undefined for empty/invalid input`, () => {
+  it(`returns undefined without data and honours the padding factor`, () => {
     expect(compute_frequency_range(undefined, undefined)).toBeUndefined()
     expect(compute_frequency_range({}, {})).toBeUndefined()
+    expect(
+      compute_frequency_range(undefined, { frequencies: [0, 10], densities: [0, 1] }, 0.1),
+    ).toEqual([0, 11])
   })
 
-  it(`respects custom padding factor`, () => {
-    const dos = { frequencies: [0, 10], densities: [0, 1] }
-    const range = compute_frequency_range(undefined, dos, 0.1)
-    expect(range?.[1]).toBeCloseTo(11, 1)
-  })
-
-  it(`ignores non-finite values`, () => {
-    const bs = make_freq_bs([[0, NaN, 5, Infinity, 10]])
-    const range = compute_frequency_range(bs, undefined)
-    expect(range?.[0]).toBe(0)
-    expect(range?.[1]).toBeCloseTo(10.2, 1)
-  })
-
-  it(`clamps small negative numerical noise to 0 for phonon DOS`, () => {
-    // Small negative values (< 0.5% of total area) should be treated as noise
-    // 100 points from -0.1 to 10, with most density at positive frequencies
-    const frequencies = Array.from({ length: 101 }, (_, idx) => -0.1 + idx * 0.101)
-    const densities = frequencies.map((freq) =>
-      freq < 0 ? 0.001 : Math.exp(-((freq - 5) ** 2)),
+  // Raw electronic markers must be read before normalisation strips them: with a small
+  // negative value, phonon input clamps to 0 while electronic input keeps it
+  it.each([
+    [`efermi`, { efermi: 5 }, true],
+    [`kpoints`, { kpoints: [{ frac_coords: [0, 0, 0] }] }, true],
+    [`an electronic @class`, { '@class': `BandStructureSymmLine` }, true],
+    [`a phonon @class`, { '@class': `PhononBandStructureSymmLine` }, false],
+  ])(`detects electronic bands via %s`, (_label, marker, is_electronic) => {
+    const range = compute_frequency_range(
+      { ...bands_of([[-0.01, 5, 10]]), ...marker },
+      undefined,
     )
-    const dos = { frequencies, densities }
-    const range = compute_frequency_range(undefined, dos)
-    expect(range).toBeDefined()
-    // Should clamp to 0 since negative area is negligible
-    expect(range?.[0]).toBe(0)
-  })
-
-  it(`preserves significant imaginary modes in phonon DOS`, () => {
-    // Significant negative area (> 0.5% of total) should be preserved
-    // DOS with substantial density at negative frequencies (imaginary modes)
-    const frequencies = [-3, -2, -1, 0, 1, 2, 3, 4, 5]
-    const densities = [0.5, 1, 0.5, 0.1, 0.5, 1, 1, 0.5, 0.1] // significant at negative
-    const dos = { frequencies, densities }
-    const range = compute_frequency_range(undefined, dos)
-    expect(range).toBeDefined()
-    // Should preserve negative range since imaginary modes are significant
-    expect(range?.[0]).toBeLessThan(0)
-  })
-
-  it(`clamps small negative noise in phonon bands`, () => {
-    // Bands with tiny negative values (< 0.5% of total |freq|)
-    const bs = make_freq_bs([
-      [-0.01, 5, 10],
-      [0, 8, 15],
-    ])
-    const range = compute_frequency_range(bs, undefined)
-    expect(range).toBeDefined()
-    // Should clamp to 0 since negative contribution is negligible
-    expect(range?.[0]).toBe(0)
-  })
-
-  it(`preserves significant imaginary modes in phonon bands`, () => {
-    // Bands with substantial negative frequencies (imaginary modes)
-    const bs = make_freq_bs([
-      [-2, -1, 0, 5, 10],
-      [-3, 0, 2, 8, 15],
-    ])
-    const range = compute_frequency_range(bs, undefined)
-    expect(range).toBeDefined()
-    // Should preserve negative range since imaginary modes are significant
-    expect(range?.[0]).toBeLessThan(0)
-  })
-
-  // Tests electronic detection via different markers (efermi, kpoints, @class)
-  // Uses small negative values (< 0.5% of total) that would be clamped for phonon but preserved for electronic
-  it.each([
-    { marker: { efermi: 5 }, is_electronic: true, desc: `efermi field` },
-    {
-      marker: { kpoints: [{ frac_coords: [0, 0, 0], label: `Γ` }] },
-      is_electronic: true,
-      desc: `kpoints array`,
-    },
-    {
-      marker: { '@class': `BandStructureSymmLine` },
-      is_electronic: true,
-      desc: `electronic @class`,
-    },
-    {
-      marker: { '@class': `PhononBandStructureSymmLine` },
-      is_electronic: false,
-      desc: `phonon @class`,
-    },
-  ])(`detects band structure type via $desc`, ({ marker, is_electronic }) => {
-    const bs = { ...make_freq_bs([[-0.01, 5, 10]]), ...marker }
-    const range = compute_frequency_range(bs, undefined)
-    expect(range).toBeDefined()
-    // Electronic preserves small negatives, phonon clamps to 0
-    if (is_electronic) {
-      expect(range?.[0]).toBeLessThan(0)
-    } else {
-      expect(range?.[0]).toBe(0)
-    }
-  })
-
-  it(`handles electronic DOS overriding phonon band structure detection`, () => {
-    // Mixed: phonon-like band structure with electronic DOS - DOS type is authoritative
-    const bs = make_freq_bs([[0, 5, 10]])
-    const dos = {
-      type: `electronic` as const,
-      energies: [-5, 0, 5],
-      densities: [0, 1, 0],
-    }
-    const range = compute_frequency_range(bs, dos)
-    expect(range).toBeDefined()
-    // Electronic DOS should override phonon band structure assumption
-    expect(range?.[0]).toBeCloseTo(-5.3, 1)
+    expect(range?.[0]).toBeCloseTo(is_electronic ? -0.01 - 10.01 * 0.02 : 0, 9)
   })
 })
 
-describe(`negative_fraction`, () => {
-  it.each([
-    { values: [], expected: 0, desc: `empty array` },
-    { values: [1, 2, 3], expected: 0, desc: `all positive` },
-    { values: [-1, -2, -3], expected: 1, desc: `all negative` },
-    { values: [0, 0, 0], expected: 0, desc: `all zeros` },
-    { values: [-1, 1], expected: 0.5, desc: `equal positive and negative` },
-    { values: [-1, 3], expected: 0.25, desc: `-1 and 3 → 1/4` },
-    { values: [-2, -1, 7], expected: 0.3, desc: `-2, -1, 7 → 3/10` },
-  ])(`returns $expected for $desc`, ({ values, expected }) => {
-    expect(negative_fraction(values)).toBeCloseTo(expected, 5)
-  })
-
-  it(`ignores NaN and Infinity`, () => {
-    expect(negative_fraction([NaN, -1, 1, Infinity])).toBeCloseTo(0.5, 5)
-    expect(negative_fraction([NaN, Infinity, -Infinity])).toBe(0)
-  })
+it.each([
+  [[], 0],
+  [[1, 2, 3], 0],
+  [[-1, -2, -3], 1],
+  [[0, 0], 0],
+  [[-1, 3], 0.25],
+  [[-2, -1, 7], 0.3],
+  [[NaN, -1, 1, Infinity], 0.5],
+  [[NaN, Infinity, -Infinity], 0],
+])(`negative_fraction(%j) → %f`, (values, expected) => {
+  expect(negative_fraction(values)).toBeCloseTo(expected, 12)
 })
 
-// === Band Tooltip Helper Tests ===
-
-// Shared factory for BaseBandStructure test fixtures
-function make_bs(overrides: Partial<BaseBandStructure> = {}): BaseBandStructure {
-  const qpoints = overrides.qpoints ?? [
-    { label: `GAMMA`, frac_coords: [0, 0, 0] as Vec3 },
-    { label: null, frac_coords: [0.25, 0, 0] as Vec3 },
-    { label: `X`, frac_coords: [0.5, 0, 0] as Vec3 },
-  ]
-  const bands = overrides.bands ?? []
-  return {
-    qpoints,
-    branches: [
-      {
-        start_index: 0,
-        end_index: Math.max(0, qpoints.length - 1),
-        name: `GAMMA-X`,
-      },
-    ],
-    distance: qpoints.map((_, idx) => idx),
-    bands,
-    nb_bands: bands.length,
-    labels_dict: { GAMMA: [0, 0, 0] as Vec3, X: [0.5, 0, 0] as Vec3 },
-    recip_lattice: {
-      matrix: [
-        [1, 0, 0],
-        [0, 1, 0],
-        [0, 0, 1],
-      ] satisfies Matrix3x3,
-    },
-    ...overrides,
-  }
-}
-
-describe(`compute_slope`, () => {
+describe(`acoustic classification`, () => {
   it.each([
-    { x: [0, 1], y: [0, 2], idx: 0, expected: 2, desc: `forward diff at start` },
-    { x: [0, 1], y: [0, 2], idx: 1, expected: 2, desc: `backward diff at end` },
-    { x: [0, 1, 2], y: [0, 2, 6], idx: 1, expected: 3, desc: `central diff interior` },
-    {
-      x: [0, 1, 2, 3],
-      y: [1, 3, 3, 7],
-      idx: 1,
-      expected: 1,
-      desc: `central (3-3)/(2-0)`,
-    },
-    {
-      x: [0, 1, 2, 3],
-      y: [1, 3, 3, 7],
-      idx: 2,
-      expected: 2,
-      desc: `central (7-3)/(3-1)`,
-    },
-    { x: [0, 5], y: [10, 0], idx: 0, expected: -2, desc: `negative slope` },
-  ])(`$desc → $expected`, ({ x, y, idx, expected }) => {
-    expect(compute_slope(x, y, idx)).toBeCloseTo(expected, 10)
-  })
-
-  it.each([
-    { x: [0], y: [5], idx: 0, desc: `single point` },
-    { x: [] as number[], y: [] as number[], idx: 0, desc: `empty arrays` },
-    { x: [3, 3], y: [1, 2], idx: 0, desc: `forward dx=0` },
-    { x: [3, 3], y: [1, 2], idx: 1, desc: `backward dx=0` },
-    { x: [0, 5, 0], y: [1, 2, 3], idx: 1, desc: `central dx=0` },
-    { x: [0, 1, 2], y: [1, 2, 3], idx: -1, desc: `negative idx` },
-    { x: [0, 1, 2], y: [1, 2, 3], idx: 3, desc: `idx = length (out of bounds)` },
-    { x: [0, 1, 2], y: [1, 2, 3], idx: 99, desc: `idx >> length` },
-    { x: [0, 1, 2], y: [0, 2], idx: 2, desc: `x longer than y` },
-    { x: [0, 1], y: [0, 2, 6], idx: 2, desc: `y longer than x` },
-  ])(`returns null for $desc`, ({ x, y, idx }) => {
-    expect(compute_slope(x, y, idx)).toBeNull()
-  })
-})
-
-describe(`find_gamma_indices`, () => {
-  it.each([
-    {
-      desc: `exact Gamma [0,0,0]`,
-      qpoints: [
+    [
+      [
         [`GAMMA`, [0, 0, 0]],
         [`X`, [0.5, 0, 0]],
       ],
-      expected: [0],
-    },
-    {
-      desc: `periodic images [1,0,0] and [-1,0,0]`,
-      qpoints: [
+      [0],
+    ],
+    [
+      [
         [null, [1, 0, 0]],
         [null, [0.5, 0, 0]],
         [null, [-1, 0, 0]],
       ],
-      expected: [0, 2],
-    },
-    {
-      desc: `multiple Gamma in path (Γ→X→Γ)`,
-      qpoints: [
+      [0, 2],
+    ],
+    [
+      [
         [`GAMMA`, [0, 0, 0]],
         [`X`, [0.5, 0, 0]],
         [`GAMMA`, [0, 0, 0]],
       ],
-      expected: [0, 2],
-    },
-    {
-      desc: `no Gamma points`,
-      qpoints: [
-        [`X`, [0.5, 0, 0]],
-        [`K`, [0.5, 0.5, 0]],
-      ],
-      expected: [],
-    },
-    { desc: `empty qpoints`, qpoints: [], expected: [] },
-    {
-      desc: `excludes 0.02 (outside tolerance)`,
-      qpoints: [[null, [0.02, 0, 0]]],
-      expected: [],
-    },
-    {
-      desc: `includes within 0.01 tolerance`,
-      qpoints: [[null, [0.009, -0.005, 0.001]]],
-      expected: [0],
-    },
-  ] as { desc: string; qpoints: [string | null, Vec3][]; expected: number[] }[])(
-    `$desc → $expected`,
-    ({ qpoints, expected }) => {
-      const bs = make_bs({
+      [0, 2],
+    ],
+    [[[`X`, [0.5, 0, 0]]], []],
+    [[], []],
+    [[[null, [0.02, 0, 0]]], []],
+    [[[null, [0.009, -0.005, 0.001]]], [0]],
+  ] as [[string | null, Vec3][], number[]][])(
+    `find_gamma_indices(%j) → %j`,
+    (qpoints, expected) => {
+      const bs = make_bs([], {
         qpoints: qpoints.map(([label, frac_coords]) => ({ label, frac_coords })),
       })
       expect(find_gamma_indices(bs)).toEqual(expected)
     },
   )
-})
-
-describe(`classify_acoustic`, () => {
-  it(`returns null when no Gamma indices`, () => {
-    expect(classify_acoustic(make_bs({ bands: [[5, 10, 15]] }), 0, [])).toBeNull()
-  })
 
   it.each([
-    { freq: 0, expected: true, desc: `zero at Gamma` },
-    { freq: 0.3, expected: true, desc: `below threshold` },
-    { freq: -0.3, expected: true, desc: `negative (imaginary acoustic)` },
-    { freq: ACOUSTIC_FREQ_THRESHOLD, expected: false, desc: `at threshold boundary` },
-    { freq: 2.5, expected: false, desc: `above threshold` },
-  ])(`$desc (freq=$freq) → $expected`, ({ freq, expected }) => {
-    expect(classify_acoustic(make_bs({ bands: [[freq, 5, 10]] }), 0, [0])).toBe(expected)
+    [0, [0], true],
+    [0.3, [0], true],
+    [-0.3, [0], true],
+    [ACOUSTIC_FREQ_THRESHOLD, [0], false],
+    [2.5, [0], false],
+    [5, [], null], // no Gamma point: undecidable
+  ])(`a band at %f THz at Gamma %j → %s`, (freq, gamma_indices, expected) => {
+    expect(
+      classify_acoustic(
+        make_bs([null, null, null], { bands: [[freq, 5, 10]] }),
+        0,
+        gamma_indices,
+      ),
+    ).toBe(expected)
   })
 
-  it(`acoustic if ANY Gamma point has near-zero freq`, () => {
-    // freq at idx 0 is 5 (optical), but at idx 2 is 0.1 (acoustic)
-    expect(classify_acoustic(make_bs({ bands: [[5, 10, 0.1]] }), 0, [0, 2])).toBe(true)
-  })
-
-  it(`returns false for out-of-range band_idx`, () => {
-    expect(classify_acoustic(make_bs({ bands: [[0, 5, 10]] }), 99, [0])).toBe(false)
-  })
-
-  it.each([
-    { band_idx: 0, freq: 0, expected: true },
-    { band_idx: 1, freq: 0.1, expected: true },
-    { band_idx: 2, freq: 0.2, expected: true },
-    { band_idx: 3, freq: 3.0, expected: false },
-    { band_idx: 4, freq: 5.0, expected: false },
-  ])(`mixed bands: band $band_idx (freq=$freq) → $expected`, ({ band_idx, expected }) => {
-    const bs = make_bs({
-      bands: [
-        [0, 2, 4],
-        [0.1, 3, 6],
-        [0.2, 4, 8],
-        [3.0, 5, 10],
-        [5.0, 8, 12],
-      ],
-    })
-    expect(classify_acoustic(bs, band_idx, [0])).toBe(expected)
+  it(`is acoustic if any Gamma point is near zero and false for a missing band`, () => {
+    const bs = make_bs([null, null, null], { bands: [[5, 10, 0.1]] })
+    expect(classify_acoustic(bs, 0, [0, 2])).toBe(true)
+    expect(classify_acoustic(bs, 99, [0])).toBe(false)
   })
 })
 
 describe(`build_point_metadata`, () => {
-  const test_bs = make_bs({
+  const bs = make_bs([`GAMMA`, null, `X`], {
     bands: [
       [0, 5, 10],
       [3, 6, 9],
     ],
+    band_widths: [
+      [0.1, 0.2, 0.3],
+      [0.4, 0.5, 0.6],
+    ],
   })
-
-  // Helper: fill defaults so each test only specifies what it cares about
-  const bpm = (overrides: Partial<Parameters<typeof build_point_metadata>[0]> = {}) =>
+  const build = (overrides: Partial<Parameters<typeof build_point_metadata>[0]> = {}) =>
     build_point_metadata({
       x_vals: [0, 1, 2],
       y_vals: [0, 5, 10],
       band_idx: 0,
       spin: `up`,
       is_acoustic: true,
-      bs: test_bs,
+      bs,
       start_idx: 0,
       ...overrides,
     })
 
-  it(`populates per-series fields correctly`, () => {
-    const result = bpm({
-      x_vals: [0, 1],
-      y_vals: [0, 5],
-      band_idx: 1,
-      spin: `down`,
-      is_acoustic: false,
-    })
-    expect(result).toHaveLength(2)
-    expect(result[0]).toMatchObject({
-      aria_label: `Select band 2, q-point 1`,
-      band_idx: 1,
-      spin: `down`,
-      is_acoustic: false,
-      nb_bands: 2,
+  it(`fills per-point q-point data, band widths and central-difference slopes`, () => {
+    const [first, middle, last] = build()
+    expect(first).toEqual({
+      aria_label: `Select band 1, q-point 1`,
+      band_idx: 0,
       qpoint_idx: 0,
+      spin: `up`,
+      is_acoustic: true,
+      nb_bands: 2,
+      frac_coords: [0, 0, 0],
+      qpoint_label: `GAMMA`,
+      band_width: 0.1,
+      slope: 5,
     })
+    expect(middle).toMatchObject({
+      qpoint_label: null,
+      qpoint_idx: 1,
+      band_width: 0.2,
+      slope: 5,
+    })
+    expect(last).toMatchObject({ qpoint_label: `X`, band_width: 0.3, slope: 5 })
   })
 
-  it(`resolves qpoint labels and frac_coords via start_idx`, () => {
-    const result = bpm()
-    expect(result[0]).toMatchObject({ qpoint_label: `GAMMA`, frac_coords: [0, 0, 0] })
-    expect(result[1]).toMatchObject({ qpoint_label: null, frac_coords: [0.25, 0, 0] })
-    expect(result[2]).toMatchObject({ qpoint_label: `X`, frac_coords: [0.5, 0, 0] })
-  })
-
-  it(`offsets into qpoints via start_idx`, () => {
-    const result = bpm({
-      x_vals: [0, 1],
-      y_vals: [5, 10],
+  it(`offsets into the path with start_idx and uses one-sided slopes at the ends`, () => {
+    const [first, last] = build({
+      x_vals: [0, 2],
+      y_vals: [5, 9],
+      band_idx: 1,
+      spin: `down`,
       is_acoustic: null,
       start_idx: 1,
     })
-    expect(result[0]).toMatchObject({
-      frac_coords: [0.25, 0, 0],
-      is_acoustic: null,
+    expect(first).toMatchObject({
       qpoint_idx: 1,
+      band_idx: 1,
+      spin: `down`,
+      is_acoustic: null,
+      band_width: 0.5,
+      slope: 2,
+      aria_label: `Select band 2, q-point 2`,
     })
-    expect(result[1]).toMatchObject({ qpoint_label: `X`, qpoint_idx: 2 })
-  })
-
-  it(`band_width is null when absent, populated when present`, () => {
-    expect(bpm({ x_vals: [0], y_vals: [5] })[0].band_width).toBeNull()
-
-    const bs_widths = make_bs({
-      bands: [
-        [0, 5, 10],
-        [3, 6, 9],
-      ],
-      band_widths: [
-        [0.1, 0.2, 0.3],
-        [0.4, 0.5, 0.6],
-      ],
+    expect(last).toMatchObject({ qpoint_idx: 2, qpoint_label: `X`, band_width: 0.6, slope: 2 })
+    const without_widths = build({
+      bs: make_bs([`GAMMA`, null, `X`]),
+      x_vals: [0],
+      y_vals: [5],
     })
-    const result = bpm({ band_idx: 1, is_acoustic: false, bs: bs_widths })
-    expect(result.map((pt) => pt.band_width)).toEqual([0.4, 0.5, 0.6])
-  })
-
-  it(`computes slopes for each point`, () => {
-    for (const pt of bpm()) expect(pt.slope).toBeCloseTo(5, 10)
-  })
-
-  it(`returns empty array for empty input`, () => {
-    expect(bpm({ x_vals: [], y_vals: [], is_acoustic: null })).toEqual([])
+    expect(without_widths[0]).toMatchObject({ band_width: null, slope: null }) // single point: dx = 0
+    expect(build({ x_vals: [], y_vals: [] })).toEqual([])
   })
 })

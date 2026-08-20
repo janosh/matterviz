@@ -277,16 +277,12 @@ export function parse_phonon_modes(content: string): PhononModeData {
   }
 
   const lattice = parse_matrix3x3(parsed.lattice, `phonopy YAML 'lattice'`)
-  const reciprocal_lattice = parse_matrix3x3(
-    parsed.reciprocal_lattice,
-    `phonopy YAML 'reciprocal_lattice'`,
-  )
   const path_segments = parse_path_segments(parsed, qpoints.length)
   if (path_segments.length > 0 && qpoints.some(({ distance }) => distance === null)) {
     throw new Error(`phonopy band path contains a q-point without a finite 'distance'`)
   }
 
-  return { n_atoms, atoms, lattice, reciprocal_lattice, qpoints, path_segments }
+  return { n_atoms, atoms, lattice, qpoints, path_segments }
 }
 
 // Strip phonopy BORN comments (everything from '#') and blank lines, then tokenise.

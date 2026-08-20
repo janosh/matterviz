@@ -1,94 +1,63 @@
+// Parsers for measured powder-diffraction files. Every parser either returns a pattern or
+// throws an Error naming the format and what was missing — no parser guesses a start angle
+// or step size, because a wrong x axis looks exactly like a real scan.
+import { to_error } from '$lib/utils'
 import type { XrdPattern } from './index'
 
-// Maximum number of data points to keep after subsampling for performance
+// Maximum number of data points to keep after subsampling for rendering performance
 const MAX_POINTS = 1000
 
-// Default step size in degrees for XRD scans when not specified in file
-const DEFAULT_STEP_SIZE = 0.02
+const NUMBER_RE = /^[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?$/
 
-// Create normalized XrdPattern from scan metadata (start angle, step size) and intensities.
-// Returns null if no intensity data. Used by all parsers as final step.
-function create_pattern(
-  start: number,
-  step: number,
-  intensities: number[],
-): XrdPattern | null {
-  if (intensities.length === 0) return null
-  const x_values = intensities.map((_, idx) => start + idx * step)
-  return normalize_and_subsample(x_values, intensities)
-}
-
-// Parse whitespace-separated numbers from text. Used by multiple formats.
-const parse_number_list = (text: string): number[] =>
-  text
-    .trim()
-    .split(/\s+/)
-    .map(parseFloat)
-    .filter((val) => !isNaN(val))
-
-// Return the first parseable number from the text content of any of `tags`
-// (in order) that also passes the optional `ok` predicate. Null when none match.
-const query_first_number = (
-  doc: Document,
-  tags: readonly string[],
-  ok: (val: number) => boolean = () => true,
-): number | null => {
-  for (const tag of tags) {
-    const text = doc.querySelector(tag)?.textContent?.trim()
-    const val = text ? Number(text) : NaN
-    if (!isNaN(val) && ok(val)) return val
+// Leading numeric tokens of a whitespace/comma separated line (a trailing `,` or `.` on a
+// token is tolerated: PSI writes `18000000.,`). Stops at the first non-numeric token.
+const leading_numbers = (line: string): number[] => {
+  const values: number[] = []
+  for (const token of line.trim().split(/[\s,]+/)) {
+    const cleaned = token.replace(/[.,]$/, ``)
+    if (!NUMBER_RE.test(cleaned)) break
+    values.push(Number(cleaned))
   }
-  return null
+  return values
 }
 
-// Extract numeric value from header line matching "KEY=VALUE" or "KEY VALUE" pattern.
-// Returns null if not found or not a valid number.
-function extract_header_value(lines: string[], key_pattern: RegExp): number | null {
+// Value of the first header line matching `pattern` (capture group `value`), else null
+const header_number = (lines: string[], pattern: RegExp): number | null => {
   for (const line of lines) {
-    const match = line.match(key_pattern)
-    if (match?.[1]) {
-      const val = Number(match[1])
-      if (!isNaN(val)) return val
-    }
+    const value = pattern.exec(line)?.groups?.value
+    if (value !== undefined && NUMBER_RE.test(value)) return Number(value)
   }
   return null
 }
 
-// Normalize y values to 0-100 range and subsample if too many points.
-// This ensures consistent scaling across different file formats and improves rendering performance.
-function normalize_and_subsample(
-  x_values: number[],
-  y_values: number[],
-): { x: number[]; y: number[] } {
-  if (x_values.length === 0) return { x: [], y: [] }
+// x from a uniform grid; the count is the intensity count so the two stay aligned
+const uniform_grid = (start: number, step: number, count: number): number[] =>
+  Array.from({ length: count }, (_, idx) => start + idx * step)
 
-  // Normalize y to 0-100
-  const max_y = Math.max(...y_values)
-  const scale = max_y > 0 ? 100 / max_y : 1
-  let norm_y = y_values.map((val) => val * scale)
-  let norm_x = x_values
-
-  // Subsample if too many points using LTTB-like algorithm (preserving peaks)
-  if (norm_x.length > MAX_POINTS) {
-    const result = subsample_preserve_peaks(norm_x, norm_y, MAX_POINTS)
-    norm_x = result.x
-    norm_y = result.y
+// Normalize y to 0-100 and subsample long scans, preserving the strongest local maxima.
+// Shared final step so every format renders on the same scale.
+function finalize(x_values: number[], y_values: number[], format: string): XrdPattern {
+  if (x_values.length === 0) throw new Error(`${format}: no intensity data found`)
+  if (x_values.length !== y_values.length) {
+    throw new Error(`${format}: ${x_values.length} angles but ${y_values.length} intensities`)
   }
-
-  return { x: norm_x, y: norm_y }
+  let max_y = -Infinity
+  for (const val of y_values) if (val > max_y) max_y = val
+  const scale = max_y > 0 ? 100 / max_y : 1
+  const norm_y = y_values.map((val) => val * scale)
+  return x_values.length > MAX_POINTS
+    ? subsample_preserve_peaks(x_values, norm_y, MAX_POINTS)
+    : { x: x_values, y: norm_y }
 }
 
-// Subsample data while preserving peaks (local maxima).
-// Uses a combination of uniform sampling and peak preservation.
+// Uniform sampling plus the strongest local maxima (up to 30% of the slots), so peaks that
+// fall between uniform samples survive
 function subsample_preserve_peaks(
   x_vals: number[],
   y_vals: number[],
   target_points: number,
-): { x: number[]; y: number[] } {
+): XrdPattern {
   const num_points = x_vals.length
-  if (num_points <= target_points) return { x: x_vals, y: y_vals }
-
-  // Find peaks (local maxima with significant height)
   const peaks: number[] = []
   const threshold = Math.max(...y_vals) * 0.05 // 5% of max as significance threshold
   for (let idx = 1; idx < num_points - 1; idx++) {
@@ -100,737 +69,421 @@ function subsample_preserve_peaks(
       peaks.push(idx)
     }
   }
-
-  // Reserve slots for peaks, distribute remaining uniformly
   const peak_slots = Math.min(peaks.length, Math.floor(target_points * 0.3))
   const uniform_slots = target_points - peak_slots
-
-  // Select top peaks by height
   const top_peaks = peaks
-    .map((idx) => ({ idx, y: y_vals[idx] }))
-    .toSorted((a, b) => b.y - a.y)
+    .toSorted((idx_a, idx_b) => y_vals[idx_b] - y_vals[idx_a])
     .slice(0, peak_slots)
-    .map((peak) => peak.idx)
-
-  // Uniform sampling (guard against division by zero)
-  const uniform_indices = new Set<number>()
-  if (uniform_slots > 1) {
-    const step = (num_points - 1) / (uniform_slots - 1)
-    for (let idx = 0; idx < uniform_slots; idx++) {
-      uniform_indices.add(Math.round(idx * step))
-    }
-  } else if (uniform_slots === 1) {
-    uniform_indices.add(0) // Just include the first point
-  }
-
-  // Merge and sort all selected indices
-  const selected = [...new Set([...uniform_indices, ...top_peaks])].toSorted((a, b) => a - b)
-
-  return {
-    x: selected.map((idx) => x_vals[idx]),
-    y: selected.map((idx) => y_vals[idx]),
-  }
+  const step = (num_points - 1) / Math.max(1, uniform_slots - 1)
+  const uniform = Array.from({ length: uniform_slots }, (_, idx) => Math.round(idx * step))
+  const selected = [...new Set([...uniform, ...top_peaks])].toSorted(
+    (idx_a, idx_b) => idx_a - idx_b,
+  )
+  return { x: selected.map((idx) => x_vals[idx]), y: selected.map((idx) => y_vals[idx]) }
 }
 
-// Parse a two-column ASCII file containing XRD data (2θ, intensity).
-// Supports space, tab, or comma delimiters. Ignores comment lines starting with #, ;, or !
-// Also handles .xye (third error column ignored), .csv, .dat, .asc formats.
-export function parse_xy_file(content: string): XrdPattern | null {
-  const lines = content.split(/\r?\n/)
+// Column data: every data row has at least two leading numbers (2θ, intensity[, error]).
+// Comment lines start with #, ; or !. 2θ has to run one way: a stitched multi-range scan may
+// restart a few times, but a block of bare counts misread as columns reverses on roughly every
+// other row, so more than 10% reversals means this was never a two-column scan.
+export function parse_xy_file(content: string, format = `XY`): XrdPattern {
   const x_values: number[] = []
   const y_values: number[] = []
-
-  for (const line of lines) {
+  for (const line of content.split(/\r?\n/)) {
     const trimmed = line.trim()
-    // Skip empty lines and common comment prefixes
     if (!trimmed || /^[#;!]/.test(trimmed)) continue
-
-    // Split by whitespace or comma
-    const parts = trimmed.split(/[\s,]+/).filter(Boolean)
-    if (parts.length < 2) continue
-
-    const two_theta = Number(parts[0])
-    const intensity = Number(parts[1])
-
-    if (!isNaN(two_theta) && !isNaN(intensity)) {
-      x_values.push(two_theta)
-      y_values.push(intensity)
-    }
+    const values = leading_numbers(trimmed)
+    if (values.length < 2) continue
+    x_values.push(values[0])
+    y_values.push(values[1])
   }
-
-  if (x_values.length === 0) return null
-
-  return normalize_and_subsample(x_values, y_values)
+  if (x_values.length === 0) {
+    throw new Error(`${format}: no rows with two numeric columns (2theta, intensity)`)
+  }
+  const direction = Math.sign(x_values[x_values.length - 1] - x_values[0])
+  let reversals = 0
+  for (let idx = 1; idx < x_values.length; idx++) {
+    if (Math.sign(x_values[idx] - x_values[idx - 1]) === -direction) reversals++
+  }
+  if (reversals > 0.1 * (x_values.length - 1)) {
+    throw new Error(
+      `${format}: 2theta reverses direction in ${reversals} of ${x_values.length - 1} steps; not a two-column scan`,
+    )
+  }
+  return finalize(x_values, y_values, format)
 }
 
-// Parse a Rigaku .ras file (ASCII format with structured header).
-// Format: *RAS_HEADER_START ... *RAS_HEADER_END followed by *RAS_INT_START ... *RAS_INT_END
-// Data can be single-column (intensity only) or multi-column (2-theta, intensity, [error])
-export function parse_ras_file(content: string): XrdPattern | null {
+// Header-and-block layout shared by the ILL (D1A/D2B) and PSI (DMC/HRPT) neutron formats: one
+// line `start step stop [monitor]` followed by n = (stop − start)/step + 1 counts, usually
+// ten per line, often followed by n standard deviations which are ignored.
+export function parse_block_scan(content: string, format = `block scan`): XrdPattern {
   const lines = content.split(/\r?\n/)
-
-  // Extract header values (used as fallback for single-column data)
-  const header_start =
-    extract_header_value(lines, /\*MEAS_SCAN_START\s*=\s*(?<value>[\d.+-]+)/i) ??
-    extract_header_value(lines, /\*SCAN_START\s*=\s*(?<value>[\d.+-]+)/i) ??
-    0
-  const header_step =
-    extract_header_value(lines, /\*MEAS_SCAN_STEP\s*=\s*(?<value>[\d.+-]+)/i) ??
-    extract_header_value(lines, /\*SCAN_STEP\s*=\s*(?<value>[\d.+-]+)/i) ??
-    DEFAULT_STEP_SIZE
-
-  // Find intensity data section between *RAS_INT_START and *RAS_INT_END
-  // Also handle older format with *RAS_DATA_START
-  let in_data_section = false
-  const data_lines: string[] = []
-
-  for (const line of lines) {
-    const trimmed = line.trim()
-    if (/^\*RAS_INT_START/i.test(trimmed) || /^\*RAS_DATA_START/i.test(trimmed)) {
-      in_data_section = true
-      continue
+  for (let line_idx = 0; line_idx < lines.length; line_idx++) {
+    const [start, step, stop] = leading_numbers(lines[line_idx])
+    if (step === undefined || stop === undefined || !(step > 0) || !(stop > start)) continue
+    const count = Math.round((stop - start) / step) + 1
+    if (count < 2 || Math.abs(start + (count - 1) * step - stop) > step / 2) continue
+    const values: number[] = []
+    for (const line of lines.slice(line_idx + 1)) {
+      if (!line.trim()) continue
+      const row = leading_numbers(line)
+      if (row.length === 0 || row.length !== line.trim().split(/[\s,]+/).length) break
+      values.push(...row)
+      if (values.length >= count) break
     }
-    if (/^\*RAS_INT_END/i.test(trimmed) || /^\*RAS_DATA_END/i.test(trimmed)) break
-    if (in_data_section && trimmed) data_lines.push(trimmed)
-  }
-
-  // Fallback: if no section markers, try parsing all numeric lines after header
-  if (data_lines.length === 0) {
-    let past_header = false
-    for (const line of lines) {
-      const trimmed = line.trim()
-      if (/^\*RAS_HEADER_END/i.test(trimmed)) {
-        past_header = true
-        continue
-      }
-      if (past_header && trimmed && !trimmed.startsWith(`*`)) {
-        const values = parse_number_list(trimmed)
-        if (values.length > 0) data_lines.push(trimmed)
-      }
-    }
-  }
-
-  if (data_lines.length === 0) return null
-
-  // Multi-column (2-theta, intensity, [error]): reuse parse_xy_file
-  // Detect by: 2-3 values per line, multiple rows, first column monotonically increasing
-  // (angles increase during a scan, intensities do not follow this pattern)
-  const first_values = parse_number_list(data_lines[0])
-  const has_column_structure =
-    first_values.length >= 2 && first_values.length <= 3 && data_lines.length > 1
-
-  if (has_column_structure) {
-    // Check if first column values are monotonically increasing (characteristic of angle data)
-    // Sample a few lines to verify the pattern
-    const sample_count = Math.min(5, data_lines.length)
-    let [is_monotonic, prev_angle] = [true, first_values[0]]
-
-    for (let idx = 1; idx < sample_count; idx++) {
-      const values = parse_number_list(data_lines[idx])
-      if (values.length < 2 || values[0] <= prev_angle) {
-        is_monotonic = false
-        break
-      }
-      prev_angle = values[0]
-    }
-
-    if (is_monotonic) return parse_xy_file(data_lines.join(`\n`))
-  }
-
-  // Single-column or many space-separated intensities: use header start/step
-  const intensities = data_lines.flatMap(parse_number_list)
-  return create_pattern(header_start, header_step, intensities)
-}
-
-// Parse a Siemens/Bruker .uxd file (ASCII format with underscore-prefixed header).
-// Format: _KEY=VALUE or _KEY VALUE header lines, followed by _COUNTS section.
-export function parse_uxd_file(content: string): XrdPattern | null {
-  const lines = content.split(/\r?\n/)
-
-  // Extract header values (underscore-prefixed keys)
-  const start =
-    extract_header_value(lines, /_2THETA_?START\s*=?\s*(?<value>[\d.+-]+)/i) ??
-    extract_header_value(lines, /_START\s*=?\s*(?<value>[\d.+-]+)/i) ??
-    0
-  const step =
-    extract_header_value(lines, /_STEP_?SIZE\s*=?\s*(?<value>[\d.+-]+)/i) ??
-    extract_header_value(lines, /_STEPWIDTH\s*=?\s*(?<value>[\d.+-]+)/i) ??
-    DEFAULT_STEP_SIZE
-
-  // Find intensity data after _COUNTS marker
-  let in_data_section = false
-  const intensities: number[] = []
-
-  for (const line of lines) {
-    const trimmed = line.trim()
-    // Skip comments
-    if (trimmed.startsWith(`;`)) continue
-
-    if (/^_COUNTS/i.test(trimmed)) {
-      in_data_section = true
-      continue
-    }
-    // New header section ends data
-    if (in_data_section && trimmed.startsWith(`_`)) {
-      break
-    }
-    if (in_data_section && trimmed) {
-      const values = parse_number_list(trimmed)
-      intensities.push(...values)
-    }
-  }
-
-  // Fallback: if no _COUNTS marker, try two-column format
-  if (intensities.length === 0) return parse_xy_file(content)
-
-  return create_pattern(start, step, intensities)
-}
-
-// Parse a GSAS powder diffraction file.
-// Handles both STD (constant step) and ESD (explicit positions) formats.
-// BANK header contains metadata: BANK n NPTS NCHAN BINTYPE BCOEF1 BCOEF2 ...
-export function parse_gsas_file(content: string): XrdPattern | null {
-  const lines = content.split(/\r?\n/)
-
-  // Find BANK header line (format varies by GSAS version)
-  let start = 0
-  let step = DEFAULT_STEP_SIZE
-  let bin_type = `CONST` // CONST, RALF, or others
-  let found_bank = false
-
-  for (const line of lines) {
-    const bank_match =
-      /BANK\s+\d+\s+(?<npts>\d+)\s+\d+\s+(?<bin_type>\w+)\s+(?<bcoef1>[\d.+-]+)\s+(?<bcoef2>[\d.+-]+)/i.exec(
-        line,
+    if (values.length < count) {
+      throw new Error(
+        `${format}: header '${lines[line_idx].trim()}' announces ${count} points but only ${values.length} follow`,
       )
-    if (bank_match) {
-      bin_type = bank_match[2].toUpperCase()
-      // For CONST type: BCOEF1 is start*100 (centidegrees), BCOEF2 is step*100
-      if (bin_type === `CONST`) {
-        start = Number(bank_match[3]) / 100 // Convert centidegrees to degrees
-        step = Number(bank_match[4]) / 100
-      } else if (bin_type !== `FXYE`) {
-        // Other bin types like RALF (time-of-flight) are not fully supported
-        console.warn(
-          `GSAS bin type "${bin_type}" not fully supported, treating as constant-step`,
-        )
-      }
-      found_bank = true
-      break
     }
+    return finalize(uniform_grid(start, step, count), values.slice(0, count), format)
   }
-
-  // Collect intensity values after BANK header
-  const intensities: number[] = []
-  const is_fxye = bin_type === `FXYE` // Only use triplet parsing if BANK explicitly says FXYE
-  let past_bank = !found_bank // If no BANK header, try parsing all data
-
-  for (const line of lines) {
-    if (line.includes(`BANK`)) {
-      past_bank = true
-      continue
-    }
-    // Skip header/title lines
-    if (!past_bank || line.startsWith(`#`) || line.startsWith(`!`)) continue
-    const trimmed = line.trim()
-    if (!trimmed) continue
-
-    // GSAS uses fixed-width columns or space-separated values
-    const values = parse_number_list(trimmed)
-    // For FXYE format (x, y, e triplets), extract y values at indices 1, 4, 7, ...
-    if (is_fxye && values.length >= 3) {
-      for (let idx = 1; idx < values.length; idx += 3) {
-        intensities.push(values[idx])
-      }
-    } else {
-      intensities.push(...values)
-    }
-  }
-
-  return create_pattern(start, step, intensities)
+  throw new Error(`${format}: no 'start step stop' header line followed by a block of counts`)
 }
 
-// Bruker RAW V2 header byte offsets (little-endian)
-const RAW_V2_HEADER_SIZE_OFFSET = 4
-const RAW_V2_START_OFFSET = 48
-const RAW_V2_STEP_OFFSET = 56
-const RAW_V2_COUNT_OFFSET = 64
+// `.dat`/`.asc`/`.txt` are catch-all extensions: two-column scans, ILL/PSI count blocks and
+// Rigaku ASCII all ship under them. Dispatch on content, reporting both failures if neither fits.
+export function parse_ascii_scan(content: string, format = `ASCII`): XrdPattern {
+  if (/^\*START\s*=/m.test(content)) return parse_rigaku_asc_file(content)
+  try {
+    return parse_xy_file(content, format)
+  } catch (xy_error) {
+    try {
+      return parse_block_scan(content, format)
+    } catch (block_error) {
+      throw new Error(`${to_error(xy_error).message}; ${to_error(block_error).message}`, {
+        cause: block_error,
+      })
+    }
+  }
+}
 
-// Bruker RAW V4 header byte offsets (little-endian)
-const RAW_V4_HEADER_SIZE_OFFSET = 4
-const RAW_V4_START_OFFSET = 140
-const RAW_V4_STEP_OFFSET = 148
-const RAW_V4_COUNT_OFFSET = 156
-// Alternative V4 offsets for some instrument variants
-const RAW_V4_ALT_START_OFFSET = 76
-const RAW_V4_ALT_STEP_OFFSET = 84
-const RAW_V4_ALT_COUNT_OFFSET = 92
+// Rigaku ASCII (.asc): `*KEY = value` header with *START, *STOP, *STEP (degrees) and *COUNT,
+// then the counts between *BEGIN and *END, several per line, comma separated.
+export function parse_rigaku_asc_file(content: string): XrdPattern {
+  const lines = content.split(/\r?\n/)
+  const key = (name: string) => new RegExp(`^\\*${name}\\s*=\\s*(?<value>[-+.\\deE]+)`)
+  const start = header_number(lines, key(`START`))
+  const step = header_number(lines, key(`STEP`))
+  const stop = header_number(lines, key(`STOP`))
+  const count = header_number(lines, key(`COUNT`))
+  if (start === null || step === null || !(step > 0)) {
+    throw new Error(`Rigaku ASC: missing *START or positive *STEP header`)
+  }
+  const values = lines
+    .filter((line) => line.trim() && !line.trim().startsWith(`*`))
+    .flatMap(leading_numbers)
+  const expected =
+    count ?? (stop === null ? values.length : Math.round((stop - start) / step) + 1)
+  if (values.length !== expected) {
+    throw new Error(
+      `Rigaku ASC: header implies ${expected} points (*START ${start}, *STEP ${step}, *STOP ${stop}, *COUNT ${count}) but ${values.length} counts were read`,
+    )
+  }
+  return finalize(uniform_grid(start, step, values.length), values, `Rigaku ASC`)
+}
 
-// Parse a Bruker binary .raw file.
-// Detects format version from magic bytes and extracts scan parameters + intensities.
-export function parse_bruker_raw_file(data: ArrayBuffer): XrdPattern | null {
-  const view = new DataView(data)
+// Rigaku RAS: `*RAS_HEADER_START … *RAS_HEADER_END` then `*RAS_INT_START … *RAS_INT_END`. Data
+// rows are `2theta intensity attenuation` (or just intensities, in which case the quoted
+// *MEAS_SCAN_START / *MEAS_SCAN_STEP header values set the grid). Only the first scan is read.
+export function parse_ras_file(content: string): XrdPattern {
+  const lines = content.split(/\r?\n/)
+  const start_idx = lines.findIndex((line) => /^\*RAS_INT_START/i.test(line.trim()))
+  if (start_idx === -1) throw new Error(`Rigaku RAS: no *RAS_INT_START section`)
+  const data_lines: string[] = []
+  for (const line of lines.slice(start_idx + 1)) {
+    if (/^\*RAS_INT_END/i.test(line.trim())) break
+    if (line.trim()) data_lines.push(line.trim())
+  }
+  if (data_lines.length === 0) throw new Error(`Rigaku RAS: empty *RAS_INT_START section`)
+  // Column rows (2theta intensity [attenuation]) versus counts listed several per line: a
+  // scan has many rows, and a column row never carries more than three numbers
+  const is_column_data =
+    data_lines.length > 1 &&
+    data_lines.every((line) => [2, 3].includes(leading_numbers(line).length))
+  if (is_column_data) return parse_xy_file(data_lines.join(`\n`), `Rigaku RAS`)
+  const quoted = (name: string) => new RegExp(`^\\*${name}\\s+"?(?<value>[-+.\\deE]+)"?`)
+  const start = header_number(lines, quoted(`MEAS_SCAN_START`))
+  const step = header_number(lines, quoted(`MEAS_SCAN_STEP`))
+  if (start === null || step === null || !(step > 0)) {
+    throw new Error(
+      `Rigaku RAS: single-column intensities need *MEAS_SCAN_START and a positive *MEAS_SCAN_STEP`,
+    )
+  }
+  const values = data_lines.flatMap(leading_numbers)
+  return finalize(uniform_grid(start, step, values.length), values, `Rigaku RAS`)
+}
+
+// Siemens/Bruker UXD: `_KEY=VALUE` header, then either a `_2THETACOUNTS` section of
+// `2theta counts` rows or a `_COUNTS` section of bare counts on the `_START`/`_STEPSIZE` grid.
+export function parse_uxd_file(content: string): XrdPattern {
+  const lines = content.split(/\r?\n/).filter((line) => !line.trim().startsWith(`;`))
+  const section_idx = lines.findIndex((line) => /^_(?:2THETA)?COUNTS\b/i.test(line.trim()))
+  if (section_idx === -1) throw new Error(`UXD: no _COUNTS or _2THETACOUNTS section`)
+  const two_column = /^_2THETACOUNTS/i.test(lines[section_idx].trim())
+  const data_lines: string[] = []
+  for (const line of lines.slice(section_idx + 1)) {
+    if (line.trim().startsWith(`_`)) break // next header block ends the data
+    if (line.trim()) data_lines.push(line.trim())
+  }
+  if (two_column) return parse_xy_file(data_lines.join(`\n`), `UXD`)
+  const start = header_number(lines, /^_(?:2THETA|START)\s*=\s*(?<value>[-+.\deE]+)/i)
+  const step = header_number(lines, /^_STEP(?:SIZE|WIDTH)\s*=\s*(?<value>[-+.\deE]+)/i)
+  if (start === null || step === null || !(step > 0)) {
+    throw new Error(`UXD: _COUNTS section needs _START (or _2THETA) and a positive _STEPSIZE`)
+  }
+  const values = data_lines.flatMap(leading_numbers)
+  return finalize(uniform_grid(start, step, values.length), values, `UXD`)
+}
+
+// GSAS powder data. The BANK header reads
+//   BANK n NCHAN NREC BINTYP BCOEF1 BCOEF2 BCOEF3 BCOEF4 [TYPE]
+// with BINTYP CONST (BCOEF1 = start, BCOEF2 = step, both in centidegrees) and TYPE one of
+// STD (counts), ESD (count, sigma pairs) or FXYE (x, y, sigma triplets, x in centidegrees).
+// Time-of-flight banks (RALF, SLOG, …) have no 2θ axis and are rejected.
+export function parse_gsas_file(content: string): XrdPattern {
+  const lines = content.split(/\r?\n/)
+  const bank_idx = lines.findIndex((line) => /^BANK\s/i.test(line))
+  if (bank_idx === -1) throw new Error(`GSAS: no BANK header line`)
+  const tokens = lines[bank_idx].trim().split(/\s+/)
+  const [, , nchan_text, , bintyp = ``, bcoef1, bcoef2] = tokens
+  const type = (tokens.at(-1) ?? `STD`).toUpperCase()
+  const nchan = Number(nchan_text)
+  if (!Number.isInteger(nchan) || nchan < 1) {
+    throw new Error(`GSAS: BANK header '${lines[bank_idx].trim()}' has no valid NCHAN`)
+  }
+  if (bintyp.toUpperCase() !== `CONST`) {
+    throw new Error(
+      `GSAS: BINTYP '${bintyp}' is not a constant-step 2theta bank (only CONST is supported)`,
+    )
+  }
+  const start = Number(bcoef1) / 100
+  const step = Number(bcoef2) / 100
+  if (type !== `FXYE` && (!Number.isFinite(start) || !(step > 0))) {
+    throw new Error(
+      `GSAS: BCOEF1/BCOEF2 '${bcoef1} ${bcoef2}' are not a valid start/step in centidegrees`,
+    )
+  }
+  const values = lines
+    .slice(bank_idx + 1)
+    .filter((line) => line.trim() && !/^[#!]/.test(line))
+    .flatMap(leading_numbers)
+  const stride = type === `FXYE` ? 3 : type === `ESD` ? 2 : 1
+  if (values.length < nchan * stride) {
+    throw new Error(
+      `GSAS: BANK declares ${nchan} channels of ${type} data (${nchan * stride} values) but ${values.length} follow`,
+    )
+  }
+  const intensities = Array.from(
+    { length: nchan },
+    (_, idx) => values[idx * stride + (stride === 3 ? 1 : 0)],
+  )
+  const x_values =
+    type === `FXYE`
+      ? Array.from({ length: nchan }, (_, idx) => values[idx * 3] / 100)
+      : uniform_grid(start, step, nchan)
+  return finalize(x_values, intensities, `GSAS`)
+}
+
+// Bruker DIFFRAC RAW1.01 layout (little-endian), as documented by xylib: a 712-byte file
+// header (range count at byte 12), then per range a 304-byte range header — step count at
+// byte 4, start 2θ (double) at 16, step size (double) at 176, supplementary header size at
+// 256 — followed by float32 counts. Only the first range is read.
+const RAW101_FILE_HEADER = 712
+export function parse_bruker_raw_file(data: ArrayBuffer): XrdPattern {
   const bytes = new Uint8Array(data)
-
-  // Check magic bytes to determine version
-  const magic = String.fromCharCode(...bytes.slice(0, 4))
-
-  // RAW1.01 format (older)
-  if (magic === `RAW1` || magic === `RAW `) {
-    return parse_bruker_raw_v1(view, bytes)
+  const magic = String.fromCharCode(...bytes.slice(0, 7))
+  if (!magic.startsWith(`RAW`)) {
+    throw new Error(`Bruker RAW: bad magic '${magic.slice(0, 4)}', expected 'RAW1.01'`)
   }
-  // RAW2.00 format
-  if (magic === `RAW2`) {
-    return parse_bruker_raw_v2(view)
-  }
-  // RAW4 format (newer)
-  if (magic === `RAW4`) {
-    return parse_bruker_raw_v4(view)
-  }
-
-  // Try Rigaku RAW format (different structure)
-  // Rigaku files often start with different magic or have no magic
-  return parse_rigaku_raw_file(data)
-}
-
-// Parse Bruker RAW version 1 format
-function parse_bruker_raw_v1(view: DataView, bytes: Uint8Array): XrdPattern | null {
-  try {
-    // V1 has ASCII header with scan parameters followed by binary data
-    const header_text = String.fromCharCode(...bytes.slice(0, 512))
-
-    // Try to find scan parameters in ASCII header
-    const start_match = /START\s*=\s*(?<value>[\d.+-]+)/i.exec(header_text)
-    const step_match = /STEP\s*=\s*(?<value>[\d.+-]+)/i.exec(header_text)
-    const count_match = /(?:COUNT|POINTS|NPTS)\s*=\s*(?<value>\d+)/i.exec(header_text)
-
-    const start = start_match ? Number(start_match[1]) : 0
-    const step = step_match ? Number(step_match[1]) : DEFAULT_STEP_SIZE
-
-    // Find where binary data starts (after header)
-    let data_offset = 512
-    if (count_match) {
-      const expected_count = Math.trunc(Number(count_match[1]))
-      // Binary data is typically 4 bytes per intensity (float32)
-      data_offset = bytes.length - expected_count * 4
-    }
-
-    const intensities = read_float32_array(view, data_offset)
-    return create_pattern(start, step, intensities)
-  } catch {
-    return null
-  }
-}
-
-// Parse Bruker RAW version 2 format
-function parse_bruker_raw_v2(view: DataView): XrdPattern | null {
-  try {
-    const header_size = view.getUint32(RAW_V2_HEADER_SIZE_OFFSET, true)
-    const start = view.getFloat64(RAW_V2_START_OFFSET, true)
-    const step = view.getFloat64(RAW_V2_STEP_OFFSET, true)
-    const count = view.getUint32(RAW_V2_COUNT_OFFSET, true)
-
-    if (count === 0 || step <= 0) return null
-
-    const intensities = read_float32_array(view, header_size, count)
-    return create_pattern(start, step, intensities)
-  } catch {
-    return null
-  }
-}
-
-// Parse Bruker RAW version 4 format
-function parse_bruker_raw_v4(view: DataView): XrdPattern | null {
-  try {
-    const header_size = view.getUint32(RAW_V4_HEADER_SIZE_OFFSET, true)
-    let start = view.getFloat64(RAW_V4_START_OFFSET, true)
-    let step = view.getFloat64(RAW_V4_STEP_OFFSET, true)
-    let count = view.getUint32(RAW_V4_COUNT_OFFSET, true)
-
-    // Try alternative offsets for different V4 variants
-    if (count === 0 || step <= 0 || isNaN(start)) {
-      start = view.getFloat64(RAW_V4_ALT_START_OFFSET, true)
-      step = view.getFloat64(RAW_V4_ALT_STEP_OFFSET, true)
-      count = view.getUint32(RAW_V4_ALT_COUNT_OFFSET, true)
-      if (count === 0 || step <= 0 || isNaN(start)) return null
-    }
-
-    const intensities = read_float32_array(view, header_size, count)
-    return create_pattern(start, step, intensities)
-  } catch {
-    return null
-  }
-}
-
-// Parse Rigaku binary .raw file format
-function parse_rigaku_raw_file(data: ArrayBuffer): XrdPattern | null {
-  try {
-    const view = new DataView(data)
-    const bytes = new Uint8Array(data)
-
-    // Try to find ASCII header section with scan parameters
-    const header_text = String.fromCharCode(...bytes.slice(0, Math.min(2048, bytes.length)))
-
-    const start_match = /(?:START|2THETA_START|SCAN_START)\s*[:=]?\s*(?<value>[\d.+-]+)/i.exec(
-      header_text,
+  if (magic !== `RAW1.01`) {
+    throw new Error(
+      `Bruker RAW: version '${magic}' is not supported (only RAW1.01). Export the scan as .uxd, .xy or .brml instead.`,
     )
-    const step_match = /(?:STEP|STEP_SIZE|SCAN_STEP)\s*[:=]?\s*(?<value>[\d.+-]+)/i.exec(
-      header_text,
+  }
+  const view = new DataView(data)
+  if (bytes.length < RAW101_FILE_HEADER + 304) {
+    throw new Error(
+      `Bruker RAW1.01: file is ${bytes.length} bytes, shorter than the 1016-byte headers`,
     )
-    const count_match = /(?:COUNT|POINTS|NPTS|STEPS)\s*[:=]?\s*(?<value>\d+)/i.exec(
-      header_text,
+  }
+  const range_offset = RAW101_FILE_HEADER
+  const header_len = view.getUint32(range_offset, true)
+  const steps = view.getUint32(range_offset + 4, true)
+  const start = view.getFloat64(range_offset + 16, true)
+  const step = view.getFloat64(range_offset + 176, true)
+  const supplementary = view.getUint32(range_offset + 256, true)
+  const data_offset = range_offset + header_len + supplementary
+  if (!(steps > 0) || !(step > 0) || !Number.isFinite(start)) {
+    throw new Error(
+      `Bruker RAW1.01: range header has steps=${steps}, start=${start}, step=${step}`,
     )
-
-    if (!start_match && !step_match && !count_match) return null // Not a recognizable Rigaku format
-
-    const start = start_match ? Number(start_match[1]) : 0
-    const step = step_match ? Number(step_match[1]) : DEFAULT_STEP_SIZE
-    const expected_count = count_match ? Math.trunc(Number(count_match[1])) : 0
-
-    // Find binary data section
-    // Rigaku typically stores intensities as 32-bit floats or integers
-    let data_offset = 0
-    for (let offset = 256; offset < Math.min(4096, bytes.length); offset += 4) {
-      // Look for start of reasonable intensity values
-      const val = view.getFloat32(offset, true)
-      if (val >= 0 && val < 1e10 && !isNaN(val)) {
-        data_offset = offset
-        break
-      }
-    }
-
-    const intensities = read_float32_array(view, data_offset, expected_count || undefined)
-    return create_pattern(start, step, intensities)
-  } catch {
-    return null
   }
+  if (data_offset + 4 * steps > bytes.length) {
+    throw new Error(
+      `Bruker RAW1.01: range announces ${steps} float32 counts at byte ${data_offset} but the file ends at ${bytes.length}`,
+    )
+  }
+  const values = Array.from({ length: steps }, (_, idx) =>
+    view.getFloat32(data_offset + 4 * idx, true),
+  )
+  return finalize(uniform_grid(start, step, steps), values, `Bruker RAW1.01`)
 }
 
-// Read array of 32-bit floats from DataView starting at offset.
-// Note: Negative values are allowed since background-subtracted XRD data can
-// legitimately have negative intensities.
-function read_float32_array(view: DataView, offset: number, count?: number): number[] {
-  const values: number[] = []
-  const max_offset = view.byteLength - 4
-  const max_count = count ?? Math.floor((view.byteLength - offset) / 4)
-
-  // Track invalid values in the first N points to detect wrong offset.
-  // Trade-off: This heuristic may reject legitimate data with corrupted initial
-  // measurements, but such cases are rare. If >50% of the first 20 values are
-  // invalid (NaN/Infinity), we assume the offset is incorrect and return early.
-  const EARLY_CHECK_COUNT = 20
-  const INVALID_THRESHOLD = 0.5
-  let invalid_count = 0
-
-  for (let idx = 0; idx < max_count && offset + idx * 4 <= max_offset; idx++) {
-    const val = view.getFloat32(offset + idx * 4, true) // little-endian
-    // Filter out invalid values (NaN, Infinity)
-    if (isNaN(val) || !isFinite(val)) {
-      if (idx < EARLY_CHECK_COUNT) {
-        invalid_count++
-        if (invalid_count > EARLY_CHECK_COUNT * INVALID_THRESHOLD) break
-      }
-      values.push(0) // Replace isolated bad values
-    } else values.push(val)
-  }
-
-  return values
+const parse_xml = (content: string, format: string): Document => {
+  const doc = new DOMParser().parseFromString(content, `application/xml`)
+  const parse_error = doc.querySelector(`parsererror`)?.textContent?.trim()
+  if (parse_error) throw new Error(`${format}: invalid XML (${parse_error.split(`\n`)[0]})`)
+  return doc
 }
 
-// Parse a Bruker .brml file (ZIP archive containing XML data).
-// Extracts 2θ and intensity data from the RawData XML within the archive.
-export async function parse_brml_file(data: ArrayBuffer): Promise<XrdPattern | null> {
+// Bruker .brml: a ZIP whose Experiment0/RawData0.xml holds the scan, either as <Datum>
+// rows (`time,flag,2theta,theta,…,intensity` — 2θ is column 3, intensity the last column)
+// or as an <Intensities>/<Counts> list on the <Start>/<Step> (or <Start>/<Stop>) grid.
+export async function parse_brml_file(data: ArrayBuffer): Promise<XrdPattern> {
+  const { unzipSync } = await import(`fflate`) // lazy, keeps fflate out of SSR bundles
+  let files: Record<string, Uint8Array>
   try {
-    // Lazy import fflate to avoid bundling in SSR
-    const { unzipSync } = await import(`fflate`)
-    const files = unzipSync(new Uint8Array(data))
-
-    // Find the RawData XML file (usually named RawData0.xml or similar)
-    let raw_data_xml: string | null = null
-    for (const [filename, file_data] of Object.entries(files)) {
-      if (filename.toLowerCase().includes(`rawdata`) && filename.endsWith(`.xml`)) {
-        raw_data_xml = new TextDecoder().decode(file_data)
-        break
-      }
-    }
-
-    // If no RawData file found, try to find any XML file with intensity data
-    if (!raw_data_xml) {
-      for (const [filename, file_data] of Object.entries(files)) {
-        if (filename.endsWith(`.xml`)) {
-          const file_content = new TextDecoder().decode(file_data)
-          // Check for various data formats used by different Bruker versions
-          if (
-            [`<Intensities>`, `<Counts>`, `<Datum>`].some((tag) => file_content.includes(tag))
-          ) {
-            raw_data_xml = file_content
-            break
-          }
-        }
-      }
-    }
-
-    if (!raw_data_xml) return null
-
-    return parse_brml_xml(raw_data_xml)
-  } catch (error) {
-    console.error(`Failed to parse BRML file:`, error)
-    return null
+    files = unzipSync(new Uint8Array(data))
+  } catch (exc) {
+    throw new Error(`BRML: not a ZIP archive (${to_error(exc).message})`, { cause: exc })
   }
+  const xml_names = Object.keys(files).filter((name) => name.toLowerCase().endsWith(`.xml`))
+  const raw_name =
+    xml_names.find((name) => name.toLowerCase().includes(`rawdata`)) ??
+    xml_names.find((name) => {
+      const text = new TextDecoder().decode(files[name])
+      return [`<Datum>`, `<Intensities>`, `<Counts>`].some((tag) => text.includes(tag))
+    })
+  if (!raw_name) {
+    throw new Error(`BRML: no RawData XML among ${Object.keys(files).length} archive entries`)
+  }
+  return parse_brml_xml(new TextDecoder().decode(files[raw_name]))
 }
 
-// Parse the XML content from a BRML file to extract XRD data.
-// Bruker BRML files contain scan parameters and intensity counts.
-function parse_brml_xml(xml_content: string): XrdPattern | null {
-  try {
-    const parser = new DOMParser()
-    const doc = parser.parseFromString(xml_content, `application/xml`)
-
-    // Check for parsing errors
-    const parse_error = doc.querySelector(`parsererror`)
-    if (parse_error) return null
-
-    // Extract scan parameters - try multiple possible structures
-    // Bruker BRML files can have different XML schemas
-    const scan_info = extract_scan_parameters_xml(doc)
-    if (!scan_info) return null
-
-    const { start_angle, step_size, intensities } = scan_info
-    return create_pattern(start_angle, step_size, intensities)
-  } catch (error) {
-    console.error(`Failed to parse BRML XML:`, error)
+export function parse_brml_xml(xml_content: string): XrdPattern {
+  const doc = parse_xml(xml_content, `BRML`)
+  const datum_rows = Array.from(doc.querySelectorAll(`Datum`), (el) =>
+    (el.textContent ?? ``).trim().split(`,`).map(Number),
+  ).filter(
+    (row) =>
+      row.length >= 5 && Number.isFinite(row[2]) && Number.isFinite(row[row.length - 1]),
+  )
+  if (datum_rows.length > 0) {
+    return finalize(
+      datum_rows.map((row) => row[2]),
+      datum_rows.map((row) => row[row.length - 1]),
+      `BRML`,
+    )
+  }
+  const list_text =
+    doc.querySelector(`Intensities`)?.textContent ?? doc.querySelector(`Counts`)?.textContent
+  if (!list_text?.trim()) {
+    throw new Error(
+      `BRML: RawData XML has neither <Datum> rows nor an <Intensities>/<Counts> list`,
+    )
+  }
+  const values = leading_numbers(list_text)
+  const tag_number = (tags: string[]): number | null => {
+    for (const tag of tags) {
+      const text = doc.querySelector(tag)?.textContent?.trim() ?? ``
+      if (NUMBER_RE.test(text)) return Number(text)
+    }
     return null
   }
-}
-
-// Extract scan parameters and intensities from BRML XML document.
-// Handles multiple possible XML structures used by different Bruker versions.
-function extract_scan_parameters_xml(
-  doc: Document,
-): { start_angle: number; step_size: number; intensities: number[] } | null {
-  // Try to find intensity data - multiple possible tag names
-  let intensities: number[] | null = null
-  let two_theta_values: number[] | null = null
-
-  // Method 1: <Intensities> or <Counts> tag with space-separated values
-  for (const tag of [`Intensities`, `Counts`]) {
-    const text = doc.querySelector(tag)?.textContent
-    if (text) intensities = parse_number_list(text)
-    if (intensities?.length) break
-  }
-
-  // Method 2: Individual <I> or <Count> elements
-  if (!intensities?.length) {
-    const intensity_elements = doc.querySelectorAll(`I, Count`)
-    if (intensity_elements.length > 0) {
-      intensities = Array.from(intensity_elements)
-        .map((el) => Number(el.textContent?.trim() || NaN))
-        .filter((val) => !isNaN(val))
-    }
-  }
-
-  // Method 3: <Datum> elements with comma-separated values
-  // Bruker uses different formats depending on instrument/software version:
-  // - 8-column HRXRD: "1,1,TwoTheta,Omega,...,Intensity" (indices 2 and 7)
-  // - 5-column powder: "time,1,TwoTheta,Theta,Intensity" (indices 2 and 4)
-  // The intensity is always the LAST column, 2Theta is always index 2
-  if (!intensities?.length) {
-    const datum_elements = Array.from(doc.querySelectorAll(`Datum`))
-    if (datum_elements.length > 0) {
-      two_theta_values = []
-      intensities = []
-      for (const datum of datum_elements) {
-        const text = datum.textContent?.trim()
-        if (!text) continue
-        const parts = text.split(`,`)
-        // Need at least 5 columns: time, flag, 2Theta, Theta/Omega, Intensity
-        if (parts.length >= 5) {
-          const two_theta = Number(parts[2])
-          // Intensity is always the last column
-          const intensity = Number(parts[parts.length - 1])
-          if (!isNaN(two_theta) && !isNaN(intensity)) {
-            two_theta_values.push(two_theta)
-            intensities.push(intensity)
-          }
-        }
-      }
-      // If we have extracted 2θ values directly, return early with them
-      if (two_theta_values.length > 0 && intensities.length > 0) {
-        // Calculate step size from actual data (fallback 0.002° typical for HRXRD)
-        const step_size =
-          two_theta_values.length > 1
-            ? (two_theta_values[two_theta_values.length - 1] - two_theta_values[0]) /
-              (two_theta_values.length - 1)
-            : DEFAULT_STEP_SIZE
-        return { start_angle: two_theta_values[0], step_size, intensities }
-      }
-    }
-  }
-
-  if (!intensities?.length) return null
-
-  // Extract scan range parameters
-  // Try multiple possible tag names, returning the first that parses (and passes `ok`)
-  const start_candidates = [
+  const start = tag_number([
     `Start`,
     `TwoThetaStart`,
     `StartPosition`,
-    `2ThetaBegin`,
     `ScanAxisBeginPosition`,
-    `Begin`,
-  ]
-  const step_candidates = [
-    `Step`,
-    `StepSize`,
-    `Increment`,
-    `2ThetaIncrement`,
-    `ScanAxisIncrement`,
-    `StepWidth`,
-  ]
-  const start_angle = query_first_number(doc, start_candidates) ?? 0
-  let step_size =
-    query_first_number(doc, step_candidates, (val) => val > 0) ?? DEFAULT_STEP_SIZE
-
-  // Alternative: calculate step from start/end and count
-  if (step_size === DEFAULT_STEP_SIZE) {
-    const end_candidates = [`Stop`, `TwoThetaEnd`, `EndPosition`, `2ThetaEnd`, `End`]
-    for (const tag of end_candidates) {
-      const el = doc.querySelector(tag)
-      if (el?.textContent) {
-        const end_val = Number(el.textContent)
-        if (!isNaN(end_val) && end_val > start_angle && intensities.length > 1) {
-          step_size = (end_val - start_angle) / (intensities.length - 1)
-          break
-        }
-      }
-    }
+  ])
+  const stop = tag_number([`Stop`, `TwoThetaEnd`, `EndPosition`])
+  const step =
+    tag_number([`Step`, `StepSize`, `Increment`, `ScanAxisIncrement`, `StepWidth`]) ??
+    (stop !== null && start !== null && values.length > 1
+      ? (stop - start) / (values.length - 1)
+      : null)
+  if (start === null || step === null || !(step > 0)) {
+    throw new Error(`BRML: intensity list without a usable <Start> and <Step> (or <Stop>)`)
   }
-
-  return { start_angle, step_size, intensities }
+  return finalize(uniform_grid(start, step, values.length), values, `BRML`)
 }
 
-// Parse a PANalytical .xrdml file (XML format).
-// Extracts 2θ range and intensities from the XML structure.
-export function parse_xrdml_file(content: string): XrdPattern | null {
-  try {
-    const parser = new DOMParser()
-    const doc = parser.parseFromString(content, `application/xml`)
-
-    // Check for parsing errors
-    const parse_error = doc.querySelector(`parsererror`)
-    if (parse_error) return null
-
-    // Find dataPoints section
-    const data_points = doc.querySelector(`dataPoints`)
-    if (!data_points) return null
-
-    // Extract 2θ positions (start and end)
-    const two_theta_positions = data_points.querySelector(`positions[axis="2Theta"]`)
-    if (!two_theta_positions) return null
-
-    const start_el = two_theta_positions.querySelector(`startPosition`)
-    const end_el = two_theta_positions.querySelector(`endPosition`)
-    if (!start_el?.textContent || !end_el?.textContent) return null
-
-    const start_angle = Number(start_el.textContent)
-    const end_angle = Number(end_el.textContent)
-    if (isNaN(start_angle) || isNaN(end_angle)) return null
-
-    // Extract intensities
-    const intensities_el = data_points.querySelector(`intensities`)
-    if (!intensities_el?.textContent) return null
-
-    const intensities = parse_number_list(intensities_el.textContent)
-    const step =
-      intensities.length > 1
-        ? (end_angle - start_angle) / (intensities.length - 1)
-        : DEFAULT_STEP_SIZE
-    return create_pattern(start_angle, step, intensities)
-  } catch (error) {
-    console.error(`Failed to parse XRDML file:`, error)
-    return null
+// PANalytical .xrdml: <dataPoints> with <positions axis="2Theta"> start/end and a
+// space-separated <intensities> list; the grid is uniform between start and end.
+export function parse_xrdml_file(content: string): XrdPattern {
+  const doc = parse_xml(content, `XRDML`)
+  const data_points = doc.querySelector(`dataPoints`)
+  if (!data_points) throw new Error(`XRDML: no <dataPoints> element`)
+  const positions = data_points.querySelector(`positions[axis="2Theta"]`)
+  const start = Number(positions?.querySelector(`startPosition`)?.textContent ?? NaN)
+  const end = Number(positions?.querySelector(`endPosition`)?.textContent ?? NaN)
+  if (!Number.isFinite(start) || !Number.isFinite(end)) {
+    throw new TypeError(
+      `XRDML: <positions axis="2Theta"> needs numeric startPosition and endPosition`,
+    )
   }
+  const values = leading_numbers(data_points.querySelector(`intensities`)?.textContent ?? ``)
+  if (values.length === 0) throw new Error(`XRDML: empty <intensities>`)
+  const step = values.length > 1 ? (end - start) / (values.length - 1) : 0
+  return finalize(uniform_grid(start, step, values.length), values, `XRDML`)
 }
 
-// Two-column ASCII format extensions (all use parse_xy_file)
-const ASCII_XY_EXTENSIONS = [`xy`, `xye`, `csv`, `dat`, `asc`, `txt`] as const
-
-// Header-based ASCII format extensions
-const GSAS_EXTENSIONS = [`gsas`, `gsa`, `gda`, `fxye`] as const
-const ASCII_HEADER_EXTENSIONS = [`ras`, `uxd`, ...GSAS_EXTENSIONS] as const
-
-// XML-based format extensions
-const XML_EXTENSIONS = [`xrdml`] as const
-
-// Binary format extensions
-const BINARY_EXTENSIONS = [`brml`, `raw`] as const
+// Extension → parser. `.gz` is stripped by the caller-facing entry points below.
+const TEXT_PARSERS: Record<string, (content: string) => XrdPattern> = {
+  xy: parse_xy_file,
+  xye: parse_xy_file,
+  csv: parse_xy_file,
+  dat: parse_ascii_scan,
+  asc: parse_ascii_scan,
+  txt: parse_ascii_scan,
+  ras: parse_ras_file,
+  uxd: parse_uxd_file,
+  gsas: parse_gsas_file,
+  gsa: parse_gsas_file,
+  gda: parse_gsas_file,
+  fxye: parse_gsas_file,
+  xrdml: parse_xrdml_file,
+}
+const BINARY_PARSERS: Record<string, (data: ArrayBuffer) => XrdPattern | Promise<XrdPattern>> =
+  {
+    brml: parse_brml_file,
+    raw: parse_bruker_raw_file,
+  }
 
 // All supported XRD data file extensions (base formats, without .gz)
 export const XRD_FILE_EXTENSIONS = [
-  ...ASCII_XY_EXTENSIONS,
-  ...ASCII_HEADER_EXTENSIONS,
-  ...XML_EXTENSIONS,
-  ...BINARY_EXTENSIONS,
+  ...Object.keys(TEXT_PARSERS),
+  ...Object.keys(BINARY_PARSERS),
 ] as const
 
-export type XrdFileExtension = (typeof XRD_FILE_EXTENSIONS)[number]
+const base_extension = (filename: string): string =>
+  filename.toLowerCase().replace(/\.gz$/, ``).split(`.`).pop() ?? ``
 
-// Main entry point for parsing XRD data files.
-// Detects file type by extension and delegates to appropriate parser.
-// Handles both plain and gzipped filenames (content should already be decompressed)
+// Check if a filename represents a supported XRD data file format (plain or gzipped)
+export const is_xrd_data_file = (filename: string): boolean =>
+  XRD_FILE_EXTENSIONS.includes(base_extension(filename))
+
+// Parse an XRD data file by extension. Content must already be decompressed; text parsers
+// accept an ArrayBuffer (decoded as UTF-8) and binary parsers accept a string (encoded).
 export async function parse_xrd_file(
   content: string | ArrayBuffer,
   filename: string,
-): Promise<XrdPattern | null> {
-  // Strip .gz suffix if present to get base extension
-  const base_name = filename.toLowerCase().replace(/\.gz$/, ``)
-  const ext = base_name.split(`.`).pop() as XrdFileExtension | undefined
-
-  if (!ext) return null
-
-  // Helper to get text content
-  const get_text = (): string =>
-    typeof content === `string` ? content : new TextDecoder().decode(content)
-
-  // Helper to get binary content
-  const get_buffer = (): ArrayBuffer => {
-    if (typeof content === `string`) {
-      const encoded = new TextEncoder().encode(content)
-      // Create a new ArrayBuffer and copy the data to avoid SharedArrayBuffer type issues
-      const buffer = new ArrayBuffer(encoded.byteLength)
-      new Uint8Array(buffer).set(encoded)
-      return buffer
-    }
-    return content
+): Promise<XrdPattern> {
+  const ext = base_extension(filename)
+  const text_parser = TEXT_PARSERS[ext]
+  if (text_parser) {
+    return text_parser(
+      typeof content === `string` ? content : new TextDecoder().decode(content),
+    )
   }
-
-  // Two-column ASCII formats
-  if ((ASCII_XY_EXTENSIONS as readonly string[]).includes(ext)) {
-    return parse_xy_file(get_text())
+  const binary_parser = BINARY_PARSERS[ext]
+  if (binary_parser) {
+    const buffer =
+      typeof content === `string` ? new TextEncoder().encode(content).buffer : content
+    return binary_parser(buffer)
   }
-
-  // Header-based ASCII formats
-  if (ext === `ras`) return parse_ras_file(get_text())
-  if (ext === `uxd`) return parse_uxd_file(get_text())
-  if ((GSAS_EXTENSIONS as readonly string[]).includes(ext)) {
-    return parse_gsas_file(get_text())
-  }
-
-  // XML formats
-  if (ext === `xrdml`) return parse_xrdml_file(get_text())
-
-  // Binary formats
-  if (ext === `brml`) return parse_brml_file(get_buffer()) // async due to lazy fflate import
-  if (ext === `raw`) return parse_bruker_raw_file(get_buffer())
-
-  return null
-}
-
-// Check if a filename represents a supported XRD data file format.
-// Recognizes both plain and gzipped versions (e.g. .xy and .xy.gz)
-export function is_xrd_data_file(filename: string): boolean {
-  // Strip .gz suffix if present to get base extension
-  const base_name = filename.toLowerCase().replace(/\.gz$/, ``)
-  const ext = base_name.split(`.`).pop()
-  return ext !== undefined && (XRD_FILE_EXTENSIONS as readonly string[]).includes(ext)
+  throw new Error(
+    `Unsupported XRD file extension '.${ext}' (${filename}). Supported: ${XRD_FILE_EXTENSIONS.join(`, `)} (+ .gz)`,
+  )
 }

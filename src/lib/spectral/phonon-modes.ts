@@ -108,12 +108,6 @@ export function phonon_band_structure_from_modes(data: PhononModeData): PhononBa
       `Phonon mode data has no band path metadata. Use q-point and mode selectors for qpoints.yaml or mesh.yaml data.`,
     )
   }
-  const reciprocal_lattice =
-    data.reciprocal_lattice ??
-    (data.lattice ? math.transpose_3x3_matrix(math.matrix_inverse_3x3(data.lattice)) : null)
-  if (!reciprocal_lattice) {
-    throw new Error(`Phonon band data needs a real or reciprocal lattice`)
-  }
   const distances = data.qpoints.map(({ distance: qpoint_distance }) => {
     if (qpoint_distance === null) {
       throw new Error(`Phonon band path contains a q-point without a distance`)
@@ -156,7 +150,6 @@ export function phonon_band_structure_from_modes(data: PhononModeData): PhononBa
   )
 
   return {
-    recip_lattice: { matrix: reciprocal_lattice },
     qpoints,
     branches,
     labels_dict,

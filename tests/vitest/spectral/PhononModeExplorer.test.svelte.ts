@@ -113,7 +113,7 @@ test(`updates views atomically with the dataset`, async () => {
   )
 
   props.dataset = {
-    modes: { ...modes, lattice: null, reciprocal_lattice: null },
+    modes: { ...modes, path_segments: [] },
     filename: `modes-only.yaml`,
   }
   await vi.waitFor(() => {

@@ -5,6 +5,7 @@
   import type { Vec2 } from '$lib/math'
   import type { AxisConfig, DataSeries } from '$lib/plot/core/types'
   import ScatterPlot from '$lib/plot/scatter/ScatterPlot.svelte'
+  import { sync_axis_range } from '$lib/plot/core/shared-axes'
   import { extent } from 'd3-array'
   import type { ComponentProps } from 'svelte'
   import {
@@ -12,7 +13,6 @@
     FREQUENCY_UNITS,
     NORMALIZATION_MODES,
     normalize_densities,
-    sync_axis_range,
   } from './helpers'
   import { broaden_spectrum, spectrum_sticks, to_transmittance } from './ir-raman'
   import type {

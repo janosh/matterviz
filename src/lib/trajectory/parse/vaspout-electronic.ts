@@ -7,8 +7,7 @@
 //
 // Schema reference: ferrox src/io/vasp/hdf5/mod.rs path constants (which follow
 // py4vasp's VASP 6.x schema definitions).
-import { reciprocal_lattice } from '$lib/brillouin/compute'
-import { create_frac_to_cart, euclidean_dist } from '$lib/math'
+import { create_frac_to_cart, euclidean_dist, reciprocal_lattice } from '$lib/math'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import { pretty_sym_point } from '$lib/spectral/helpers'
 import type { Branch, ElectronicBandStructure, ElectronicDos, QPoint } from '$lib/spectral'
@@ -103,11 +102,10 @@ const read_lattice = (h5_file: h5wasm.File): Matrix3x3 | null => {
 }
 
 // B = 2π (A⁻¹)ᵀ, falling back to 2π·identity so bands-only files without an invertible
-// lattice still get monotonic path distances. Builds a fresh array per call: the result
-// escapes into recip_lattice.matrix, so a shared constant would alias across parses.
+// lattice still get monotonic path distances.
 const reciprocal_lattice_or_identity = (lattice: Matrix3x3 | null): Matrix3x3 => {
   try {
-    if (lattice) return reciprocal_lattice(lattice)
+    if (lattice) return reciprocal_lattice(lattice, { two_pi: true })
   } catch {
     // singular lattice — fall through to identity
   }
@@ -225,7 +223,6 @@ export const read_vaspout_bands = (
       ...(spin_down_bands ? { spin_down_bands } : {}),
       nb_bands: n_bands,
       labels_dict,
-      recip_lattice: { matrix: recip },
       is_spin_polarized: spin_down_bands !== undefined,
       ...(efermi !== undefined ? { efermi } : {}),
     }

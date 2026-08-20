@@ -6,13 +6,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { bind_props, expect_plot_controls, mount_sized } from '../setup'
 
 const base_band_structure: BaseBandStructure = {
-  recip_lattice: {
-    matrix: [
-      [1, 0, 0],
-      [0, 1, 0],
-      [0, 0, 1],
-    ],
-  },
   qpoints: [
     { label: `GAMMA`, frac_coords: [0, 0, 0] },
     { label: null, frac_coords: [0.25, 0, 0] },

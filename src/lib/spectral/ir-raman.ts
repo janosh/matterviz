@@ -292,24 +292,21 @@ export function broaden_spectrum(
   // broaden" as a no-op rather than one throwing and the other returning empty
   if (sticks.x.length === 0) return { x: [], y: [] }
 
-  if (!Number.isFinite(shape_factor) || shape_factor < 0 || shape_factor > 1) {
-    // clamp01 maps NaN to NaN, so pseudo_voigt would return an all-NaN curve
-    throw new Error(`broaden_spectrum: shape_factor must be in [0, 1], got ${shape_factor}`)
-  }
-  // NaN poisons every grid point; a negative is silently dropped by broaden_peaks' relative
-  // intensity floor, coming back as an all-zero curve indistinguishable from "no such mode".
-  // Neither is producible by ir_intensity/raman_activity (both sums of squares).
+  // broaden_peaks rejects NaN/Infinity and an out-of-range shape_factor itself, but silently
+  // drops a negative intensity via its relative floor, coming back as an all-zero curve
+  // indistinguishable from "no such mode". Not producible by ir_intensity/raman_activity
+  // (both sums of squares), so it is a caller bug.
   for (const [stick_idx, intensity] of sticks.y.entries()) {
-    if (!Number.isFinite(intensity) || intensity < 0) {
+    if (intensity < 0) {
       throw new Error(
-        `broaden_spectrum: stick ${stick_idx} at ${sticks.x[stick_idx]} has intensity ` +
-          `${intensity}, expected a finite non-negative value`,
+        `broaden_spectrum: stick ${stick_idx} at ${sticks.x[stick_idx]} has negative ` +
+          `intensity ${intensity}`,
       )
     }
   }
 
-  // fwhm_fn is caller-supplied, so its output needs the same check the constant path gets.
-  // Named per peak because broaden_peaks' own check reports the position too.
+  // Widths are needed up front to size the grid, so validate them here rather than letting
+  // a NaN step_size fail inside broaden_peaks with no peak named.
   const width_at = fwhm_fn ?? (() => fwhm)
   const widths = sticks.x.map((peak_center) => {
     const width = width_at(peak_center)

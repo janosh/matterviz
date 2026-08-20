@@ -37,7 +37,6 @@ function make_mode_data(
       coordinates: [atom_idx / 2, 0, 0],
     })),
     lattice: IDENTITY_MATRIX3,
-    reciprocal_lattice: IDENTITY_MATRIX3,
     qpoints: [
       {
         q_position,
@@ -399,18 +398,6 @@ describe(`phonon band helpers`, () => {
     ])
     expect(bands.qpoints.map(({ label }) => label)).toEqual([`GAMMA`, `X`])
     expect(bands.labels_dict).toEqual({ GAMMA: [0, 0, 0], X: [0.5, 0, 0] })
-  })
-
-  it(`derives a crystallographic reciprocal lattice without a 2 pi factor`, () => {
-    const data = make_mode_data()
-    data.reciprocal_lattice = null
-    data.path_segments = [
-      { start_index: 0, end_index: 0, start_label: `GAMMA`, end_label: `GAMMA` },
-    ]
-    data.qpoints[0].distance = 0
-    expect(phonon_band_structure_from_modes(data).recip_lattice.matrix).toEqual(
-      IDENTITY_MATRIX3,
-    )
   })
 
   it(`rejects band conversion without path metadata`, () => {

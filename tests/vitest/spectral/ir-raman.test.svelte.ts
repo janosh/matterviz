@@ -185,6 +185,20 @@ describe(`IR intensities against closed-form results`, () => {
     expect(co2_spectrum.modes[mode_idx].ir_intensity).toBeCloseTo(expected, 12)
   })
 
+  // Hand-computed: I = sum_alpha |sum_{kappa,beta} Z*_{kappa,alpha beta} e_{kappa beta} / sqrt(M_kappa)|^2
+  // with a complex eigenvector and an off-diagonal Z* so every index of the contraction is
+  // exercised. Atom 0 (M = 4, weight 1/2): mu_x = (1*(0.6,0) + 2*(0,0.8))/2 = (0.3, 0.8),
+  // mu_y = (0,0.8)/2 = (0, 0.4). Atom 1 (M = 1): mu_y += -1*(0.5,0). Total
+  // |(0.3,0.8)|^2 + |(-0.5,0.4)|^2 = 0.73 + 0.41 = 1.14.
+  it(`reproduces a hand-computed two-atom contraction`, () => {
+    const eigenvector = [cvec3([0.6, 0], [0, 0.8], [0, 0]), cvec3([0, 0], [0.5, 0], [0, 0])]
+    const born_charges = [
+      mat3([1, 2, 0], [0, 1, 0], [0, 0, 3]),
+      mat3([-1, 0, 0], [0, -1, 0], [0, 0, -3]),
+    ]
+    expect(ir_intensity(eigenvector, [4, 1], born_charges)).toBeCloseTo(1.14, 14)
+  })
+
   it(`throws when Born charge and eigenvector atom counts disagree`, () => {
     const born = { ...nacl_born_data, born_charges: [nacl_born_data.born_charges[0]] }
     const compute = () => compute_ir_raman_spectrum(nacl_data.qpoints[0], nacl_masses, born)
@@ -527,10 +541,16 @@ describe(`broaden_spectrum`, () => {
   })
 
   // NaN would otherwise come back as a full curve of NaN, a negative as an all-zero curve
-  // (broaden_peaks drops it under the relative intensity floor), neither with any signal
+  // (broaden_peaks drops it under the relative intensity floor), neither with any signal.
+  // NaN and shape_factor are broaden_peaks' own checks; the negative one is local.
   it.each([
-    [`a NaN stick intensity`, { y: [NaN] }, {}, /stick 0 at 1000 has intensity NaN/],
-    [`a negative stick intensity`, { y: [-5] }, {}, /has intensity -5, expected a finite/],
+    [`a NaN stick intensity`, { y: [NaN] }, {}, /intensities must be finite, got NaN/],
+    [
+      `a negative stick intensity`,
+      { y: [-5] },
+      {},
+      /stick 0 at 1000 has negative intensity -5/,
+    ],
     [`a NaN shape_factor`, {}, { shape_factor: NaN }, /shape_factor must be in \[0, 1\]/],
     [
       `an out-of-range shape_factor`,
@@ -741,13 +761,12 @@ phonon:
     expect(qpoints[0].modes[2].eigenvector?.[0][2]).toEqual([0, -1])
   })
 
-  it(`retains reciprocal lattice and normalizes band path segments`, () => {
+  it(`normalizes band path segments`, () => {
     const yaml = `natom: 1
 nqpoint: 2
 segment_nqpoint: [2]
 labels: [[GAMMA, X]]
 lattice: [[1,0,0],[0,1,0],[0,0,1]]
-reciprocal_lattice: [[6.283,0,0],[0,6.283,0],[0,0,6.283]]
 points: [{symbol: H, coordinates: [0,0,0], mass: 1.008}]
 phonon:
 - q-position: [0,0,0]
@@ -763,13 +782,7 @@ phonon:
   - {frequency: 3, eigenvector: [[[0,0],[1,0],[0,0]]]}
   - {frequency: 4, eigenvector: [[[0,0],[0,0],[1,0]]]}
 `
-    const parsed = parse_phonon_modes(yaml)
-    expect(parsed.reciprocal_lattice).toEqual([
-      [6.283, 0, 0],
-      [0, 6.283, 0],
-      [0, 0, 6.283],
-    ])
-    expect(parsed.path_segments).toEqual([
+    expect(parse_phonon_modes(yaml).path_segments).toEqual([
       { start_index: 0, end_index: 1, start_label: `GAMMA`, end_label: `X` },
     ])
   })

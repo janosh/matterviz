@@ -189,7 +189,7 @@ describe(`XrdPlot`, () => {
     expect(text_content).toContain(`1${bar}2${bar}0`) // [1, -12, 0]
   })
 
-  // Axis labels live in .axis-label divs (inside foreignObject), not SVG text
+  // Axis labels are SVG text (.axis-label) whose textContent is the plain title
   test.each([
     [
       `vertical orientation with custom labels`,
@@ -370,7 +370,6 @@ describe(`XrdPlot`, () => {
   test.each([
     [`pattern.xy.gz`, `pattern.xy`, false, `10 100\n20 50`],
     [`Sample.BRML.gz`, `Sample.BRML`, true, `10 100\n20 50`],
-    [`empty.xy`, `empty.xy`, false, ``],
   ] as const)(
     `file drop %s preserves content and source identity`,
     async (source_filename, logical_filename, binary, content) => {
@@ -392,11 +391,19 @@ describe(`XrdPlot`, () => {
         expect(on_file_drop).toHaveBeenCalledWith(
           binary ? expect.any(ArrayBuffer) : content,
           logical_filename,
-          {
-            source_filename,
-          },
+          { source_filename, file },
         ),
       )
     },
   )
+
+  test(`an empty dropped file is reported, not forwarded`, async () => {
+    const on_file_drop = vi.fn()
+    const target = await mount_xrd({ patterns: [], on_file_drop })
+    const drop_zone = target.querySelector<HTMLElement>(`.xrd-empty-state`)
+    if (!drop_zone) throw new Error(`XRD drop zone not found`)
+    drop_zone.dispatchEvent(create_drop_event(new File([``], `empty.xy`)))
+    await vi.waitFor(() => expect(target.textContent).toContain(`empty.xy: file is empty`))
+    expect(on_file_drop).not.toHaveBeenCalled()
+  })
 })

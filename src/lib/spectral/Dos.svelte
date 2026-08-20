@@ -4,6 +4,7 @@
   import { SettingsSection } from '$lib/layout'
   import type { Vec2 } from '$lib/math'
   import ScatterPlot from '$lib/plot/scatter/ScatterPlot.svelte'
+  import { sync_axis_range } from '$lib/plot/core/shared-axes'
   import type { AxisConfig, DataSeries } from '$lib/plot/core/types'
   import { extent } from 'd3-array'
   import type { ComponentProps } from 'svelte'
@@ -23,7 +24,6 @@
     normalize_densities,
     normalize_dos,
     SPIN_MODES,
-    sync_axis_range,
     validate_sigma_range,
   } from './helpers'
   import type {

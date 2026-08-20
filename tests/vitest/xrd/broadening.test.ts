@@ -175,6 +175,29 @@ describe(`compute_broadened_pattern`, () => {
 })
 
 describe(`broaden_peaks`, () => {
+  // Area normalisation and FWHM of each profile, through the public API. The Lorentzian
+  // integral is the analytic (2/π) atan(40) of the ±20 FWHM window, the Gaussian's tails
+  // are gone by then.
+  test.each([
+    [`Gaussian`, 0, 1],
+    [`half-and-half`, 0.5, 0.5 + 0.5 * (2 / Math.PI) * Math.atan(40)],
+    [`Lorentzian`, 1, (2 / Math.PI) * Math.atan(40)],
+  ])(`%s: unit peak integrates to %f and halves at ±FWHM/2`, (_name, eta, expected_area) => {
+    const step = 0.002
+    const fwhm = 2
+    const { x, y } = broaden_peaks({ x: [50], y: [1] }, () => fwhm, eta, [0, 100], step)
+    expect(y.reduce((sum, val) => sum + val, 0) * step).toBeCloseTo(expected_area, 4)
+    const peak_idx = x.indexOf(50)
+    const half_idx = x.findIndex((val) => Math.abs(val - (50 + fwhm / 2)) < step / 2)
+    expect(y[half_idx] / y[peak_idx]).toBeCloseTo(0.5, 4)
+  })
+
+  test.each([NaN, -0.1, 1.2])(`rejects shape_factor %s`, (shape_factor) => {
+    expect(() =>
+      broaden_peaks({ x: [1], y: [1] }, () => 1, shape_factor, [0, 2], 0.1),
+    ).toThrow(/shape_factor must be in \[0, 1\]/)
+  })
+
   test(`compute_broadened_pattern is exactly the Caglioti closure over broaden_peaks`, () => {
     const pattern = { x: [22.5, 37.1, 58.9], y: [100, 61.3, 12.7] }
     const params = { U: 0.07, V: -0.03, W: 0.015, shape_factor: 0.35 }
