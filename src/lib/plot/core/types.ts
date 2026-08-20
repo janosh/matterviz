@@ -151,6 +151,8 @@ export interface DataSeries<Metadata = Record<string, unknown>> {
   id?: string | number // Optional stable identifier for the series (used for keying)
   x: readonly number[]
   y: readonly number[]
+  // Extra paths rendered behind the main line without becoming independent semantic series.
+  line_underlays?: Pick<DataSeries<Metadata>, `x` | `y` | `line_style`>[]
   // Optional marker display type override for this specific series
   markers?: Markers
   // Specify which x-axis to use: 'x1' (bottom, default) or 'x2' (top)

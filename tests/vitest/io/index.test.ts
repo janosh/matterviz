@@ -36,7 +36,6 @@ describe(`load_trajectory_from_url`, () => {
       url: `https://example.com/run.h5`,
       headers: new Headers(),
       source_filename: `run.h5`,
-      fetch_count: 1,
     },
     {
       source: `direct URL with a generic response filename`,
@@ -45,10 +44,9 @@ describe(`load_trajectory_from_url`, () => {
         'content-disposition': `attachment; filename="download"`,
       }),
       source_filename: `download`,
-      fetch_count: 1,
     },
   ])(`loads HDF5 from a $source as one Blob`, async (test_case) => {
-    const { url, headers, source_filename, fetch_count } = test_case
+    const { url, headers, source_filename } = test_case
     const source_blob = new Blob([new Uint8Array([1, 2, 3])])
     const blob = vi.fn().mockResolvedValue(source_blob)
     const array_buffer = vi.fn()
@@ -62,7 +60,7 @@ describe(`load_trajectory_from_url`, () => {
 
     await load_trajectory_from_url(url, callback)
 
-    expect(fetch).toHaveBeenCalledTimes(fetch_count)
+    expect(fetch).toHaveBeenCalledOnce()
     expect(blob).toHaveBeenCalledOnce()
     expect(array_buffer).not.toHaveBeenCalled()
     expect(callback).toHaveBeenCalledWith(source_blob, `run.h5`, {
@@ -71,30 +69,19 @@ describe(`load_trajectory_from_url`, () => {
     })
   })
 
-  test(`range-sniffs HDF5 from a generic URL before fetching the full Blob`, async () => {
+  test(`classifies HDF5 from one generic URL Blob`, async () => {
     const hdf5_bytes = new Uint8Array([0x89, 0x48, 0x44, 0x46, 0x0d, 0x0a, 0x1a, 0x0a])
-    vi.mocked(fetch)
-      .mockResolvedValueOnce(
-        new Response(hdf5_bytes, {
-          status: 206,
-          headers: { 'content-range': `bytes 0-7/8` },
-        }),
-      )
-      .mockResolvedValueOnce(
-        new Response(hdf5_bytes, {
-          headers: { 'content-disposition': `attachment; filename="run.h5"` },
-        }),
-      )
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(hdf5_bytes, {
+        headers: { 'content-disposition': `attachment; filename="run.h5"` },
+      }),
+    )
     const callback = vi.fn()
     const url = `https://example.com/download.bin`
 
     await load_trajectory_from_url(url, callback)
 
-    expect(fetch).toHaveBeenCalledTimes(2)
-    expect(fetch).toHaveBeenNthCalledWith(1, url, {
-      headers: { Range: `bytes=0-15` },
-    })
-    expect(fetch).toHaveBeenNthCalledWith(2, url)
+    expect(fetch).toHaveBeenCalledExactlyOnceWith(url)
     expect(callback).toHaveBeenCalledOnce()
     const [content, filename, metadata] = callback.mock.calls[0]
     expect(content).toBeInstanceOf(Blob)
@@ -126,23 +113,13 @@ describe(`load_trajectory_from_url`, () => {
     })
   })
 
-  test(`falls back from a rejected Range request without decoding HDF5 as text`, async () => {
-    const hdf5_bytes = new Uint8Array([0x89, 0x48, 0x44, 0x46, 0x0d, 0x0a, 0x1a, 0x0a])
-    vi.mocked(fetch)
-      .mockResolvedValueOnce(new Response(null, { status: 416 }))
-      .mockResolvedValueOnce(
-        new Response(hdf5_bytes, {
-          headers: { 'content-disposition': `attachment; filename="run.h5"` },
-        }),
-      )
-    const callback = vi.fn()
+  test(`rejects a failed generic response before classification`, async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(null, { status: 416 }))
 
-    await load_trajectory_from_url(`https://example.com/download`, callback)
-
-    expect(fetch).toHaveBeenCalledTimes(2)
-    const [content, filename] = callback.mock.calls[0]
-    expect(content).toBeInstanceOf(Blob)
-    expect(filename).toBe(`run.h5`)
+    await expect(
+      load_trajectory_from_url(`https://example.com/download`, vi.fn()),
+    ).rejects.toThrow(`Fetch failed: 416`)
+    expect(fetch).toHaveBeenCalledOnce()
   })
 
   test(`rejects a header-named unsupported HDF5 wrapper`, async () => {
@@ -228,23 +205,17 @@ describe(`load_trajectory_from_url`, () => {
       const response_array_buffer = vi.fn()
       const response_blob = vi.fn().mockResolvedValue(compressed_blob)
       mock_decompress_blob.mockResolvedValueOnce(hdf5_blob)
-      vi.mocked(fetch)
-        .mockResolvedValueOnce(
-          new Response(new Uint8Array([0x1f, 0x8b]), {
-            status: 206,
-            headers: { 'content-range': `bytes 0-1/4` },
-          }),
-        )
-        .mockResolvedValueOnce({
-          ok: true,
-          headers: new Headers(headers),
-          blob: response_blob,
-          arrayBuffer: response_array_buffer,
-        } as unknown as Response)
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
+        headers: new Headers(headers),
+        blob: response_blob,
+        arrayBuffer: response_array_buffer,
+      } as unknown as Response)
       const callback = vi.fn()
 
       await load_trajectory_from_url(`https://example.com/download`, callback)
 
+      expect(fetch).toHaveBeenCalledOnce()
       expect(response_blob).toHaveBeenCalledOnce()
       expect(response_array_buffer).not.toHaveBeenCalled()
       expect(mock_decompress_blob).toHaveBeenCalledWith(compressed_blob, `gzip`)
@@ -331,34 +302,13 @@ describe(`handle_url_drop`, () => {
 })
 
 describe(`load_from_url`, () => {
-  const create_mock_response = (content: string | ArrayBuffer, headers = {}, status = 200) => {
-    const response = new Response(content, { headers, status })
-    if (content instanceof ArrayBuffer) {
-      Object.defineProperty(response, `arrayBuffer`, {
-        value: () => Promise.resolve(content),
-        writable: true,
-      })
-      Object.defineProperty(response, `text`, {
-        value: () => Promise.resolve(``),
-        writable: true,
-      })
-    } else {
-      Object.defineProperty(response, `text`, {
-        value: () => Promise.resolve(content),
-        writable: true,
-      })
-      Object.defineProperty(response, `arrayBuffer`, {
-        value: () => Promise.resolve(new TextEncoder().encode(content).buffer),
-        writable: true,
-      })
-    }
-    return response
-  }
+  const create_mock_response = (content: string | ArrayBuffer, headers = {}) =>
+    new Response(content, { headers })
 
   const load_test_url = async (
     url: string,
     content: string | ArrayBuffer,
-    headers: Record<string, string>,
+    headers: Record<string, string> = {},
   ): Promise<{
     received_content: string | ArrayBuffer | null
     received_filename: string | null
@@ -396,41 +346,39 @@ describe(`load_from_url`, () => {
   })
 
   test.each([
-    [`https://example.com/test.h5`, `test.h5`],
-    [`https://example.com/trajectory.hdf5`, `trajectory.hdf5`],
-    [`https://example.com/data.traj`, `data.traj`],
-    [`https://example.com/data.zip`, `data.zip`],
-    [`https://example.com/backup.bz2`, `backup.bz2`],
-    [`https://example.com/archive.xz`, `archive.xz`],
-    [`https://example.com/model.npz`, `model.npz`],
-    [`https://example.com/data.pkl`, `data.pkl`],
-    [`https://example.com/output.dat`, `output.dat`],
-    [`https://example.com/scan.raw`, `scan.raw`], // Bruker/Rigaku XRD binary
-  ])(`binary extensions %s`, async (url, expected_filename) => {
+    `test.h5`,
+    `trajectory.hdf5`,
+    `data.traj`,
+    `data.zip`,
+    `backup.bz2`,
+    `archive.xz`,
+    `model.npz`,
+    `data.pkl`,
+    `output.dat`,
+    `scan.raw`, // Bruker/Rigaku XRD binary
+  ])(`binary extension %s`, async (filename) => {
     const { received_content, received_filename } = await load_test_url(
-      url,
+      `https://example.com/${filename}`,
       new ArrayBuffer(8),
       { 'content-type': `application/octet-stream` },
     )
     expect(received_content).toBeInstanceOf(ArrayBuffer)
-    expect(received_filename).toBe(expected_filename)
+    expect(received_filename).toBe(filename)
   })
 
-  test.each([
-    [`https://example.com/data.txt`, `data.txt`],
-    [`https://example.com/config.json`, `config.json`],
-    [`https://example.com/README.md`, `README.md`],
-    [`https://example.com/script.py`, `script.py`],
-    [`https://example.com/style.css`, `style.css`],
-  ])(`text files %s`, async (url, expected_filename) => {
-    const { received_content, received_filename } = await load_test_url(url, `text content`, {
-      'content-type': `text/plain`,
-    })
-    expect(received_content).toBe(`text content`)
-    expect(received_filename).toBe(expected_filename)
-    // Known text formats skip the Range sniff and fetch directly, exactly once
-    expect(globalThis.fetch).toHaveBeenCalledTimes(1)
-  })
+  test.each([`data.txt`, `config.json`, `README.md`, `script.py`, `style.css`])(
+    `text file %s`,
+    async (filename) => {
+      const { received_content, received_filename } = await load_test_url(
+        `https://example.com/${filename}`,
+        `text content`,
+        { 'content-type': `text/plain` },
+      )
+      expect(received_content).toBe(`text content`)
+      expect(received_filename).toBe(filename)
+      expect(globalThis.fetch).toHaveBeenCalledOnce()
+    },
+  )
 
   // Body already inflated (fetch transparently decoded a Content-Encoding: gzip response, the
   // GitHub Pages way of serving a stored .gz). Text formats arrive as string, binary inner
@@ -444,7 +392,7 @@ describe(`load_from_url`, () => {
       body,
       { 'content-encoding': `gzip` },
     )
-    if (kind === `binary`) expect(received_content).toBe(body)
+    if (kind === `binary`) expect(received_content).toEqual(body)
     else expect(received_content).toBe(`decompressed content`)
     expect(received_filename).toBe(name.replace(/\.gz$/, ``))
     expect(received_metadata?.source_filename).toBe(name)
@@ -479,21 +427,16 @@ describe(`load_from_url`, () => {
     },
   )
 
-  test(`propagates decompress errors instead of falling through to a text fetch`, async () => {
-    // Once magic bytes commit to gzip, a decompress failure must throw rather than be
-    // swallowed and re-fetched as text (which would parse the binary bytes as garbage)
+  test(`propagates corrupt gzip errors`, async () => {
+    // Once magic bytes identify gzip, corrupt compressed content must fail explicitly.
     mock_decompress_binary.mockRejectedValue(new Error(`corrupt gzip`))
-    const gzip_header = new Uint8Array([0x1f, 0x8b, ...Array(14).fill(0)]).buffer
-    globalThis.fetch = vi
-      .fn()
-      .mockResolvedValueOnce(
-        create_mock_response(gzip_header, { 'content-range': `bytes 0-15/100` }, 206),
-      )
-      .mockResolvedValue(create_mock_response(new ArrayBuffer(8), {}))
+    const gzip_body = new Uint8Array([0x1f, 0x8b, ...Array(14).fill(0)]).buffer
+    globalThis.fetch = vi.fn().mockResolvedValueOnce(create_mock_response(gzip_body))
 
     await expect(load_from_url(`https://example.com/blob-uuid`, () => {})).rejects.toThrow(
       `corrupt gzip`,
     )
+    expect(globalThis.fetch).toHaveBeenCalledOnce()
   })
 
   test(`query string and hash are stripped before extension detection`, async () => {
@@ -538,25 +481,14 @@ describe(`load_from_url`, () => {
         ...magic_bytes,
         ...Array(16 - magic_bytes.length).fill(0),
       ])
-      const mock_head_response = create_mock_response(
-        header.buffer,
-        {
-          'content-type': `application/octet-stream`,
-          'content-range': `bytes 0-15/100`,
-        },
-        206,
-      )
-      const mock_full_response = create_mock_response(
-        expected_content ?? new ArrayBuffer(100),
-        {
-          'content-type': expected_content ? `text/plain` : `application/octet-stream`,
-        },
-      )
+      const response_body =
+        expected_content ??
+        new Uint8Array([...header, ...Array(100 - header.length).fill(0)]).buffer
+      const mock_response = create_mock_response(response_body, {
+        'content-type': expected_content ? `text/plain` : `application/octet-stream`,
+      })
 
-      globalThis.fetch = vi
-        .fn()
-        .mockResolvedValueOnce(mock_head_response)
-        .mockResolvedValueOnce(mock_full_response)
+      globalThis.fetch = vi.fn().mockResolvedValueOnce(mock_response)
 
       let received_content: string | ArrayBuffer | null = null
       let received_filename: string | null = null
@@ -573,7 +505,7 @@ describe(`load_from_url`, () => {
         await expect(load_from_url(`https://example.com/data.bin`, callback)).rejects.toThrow(
           callback_error,
         )
-        expect(globalThis.fetch).toHaveBeenCalledTimes(2)
+        expect(globalThis.fetch).toHaveBeenCalledOnce()
         return
       }
 
@@ -586,7 +518,7 @@ describe(`load_from_url`, () => {
         expect(received_content).toBeInstanceOf(ArrayBuffer)
       }
       expect(received_filename).toBe(`data.bin`)
-      expect(globalThis.fetch).toHaveBeenCalledTimes(2)
+      expect(globalThis.fetch).toHaveBeenCalledOnce()
     },
   )
 
@@ -602,25 +534,18 @@ describe(`load_from_url`, () => {
   ] as const)(`sniffed gzip -> %s (%s)`, async (expected_name, kind, headers) => {
     const inner = new TextEncoder().encode(`inner bytes`).buffer
     mock_decompress_binary.mockResolvedValue(inner)
-    const gzip_header = new Uint8Array([0x1f, 0x8b, ...Array(14).fill(0)]).buffer
-    const full_body = new ArrayBuffer(100)
-    globalThis.fetch = vi
-      .fn()
-      .mockResolvedValueOnce(
-        create_mock_response(gzip_header, { 'content-range': `bytes 0-15/100` }, 206),
-      )
-      .mockResolvedValueOnce(create_mock_response(full_body, headers))
+    const gzip_body = new Uint8Array([0x1f, 0x8b, ...Array(14).fill(0)]).buffer
 
-    let received_content: string | ArrayBuffer | null = null
-    let received_filename: string | null = null
-    await load_from_url(`https://example.com/data.bin`, (content, filename) => {
-      received_content = content
-      received_filename = filename
-    })
+    const { received_content, received_filename } = await load_test_url(
+      `https://example.com/data.bin`,
+      gzip_body,
+      headers,
+    )
 
     expect(received_content).toBe(kind === `string` ? `inner bytes` : inner)
     expect(received_filename).toBe(expected_name)
-    expect(mock_decompress_binary).toHaveBeenCalledWith(full_body, `gzip`)
+    expect(mock_decompress_binary).toHaveBeenCalledWith(gzip_body, `gzip`)
+    expect(globalThis.fetch).toHaveBeenCalledOnce()
   })
 
   test(`blob: object URL with text content passes UUID basename to callback`, async () => {
@@ -628,7 +553,6 @@ describe(`load_from_url`, () => {
     const { received_content, received_filename } = await load_test_url(
       `blob:http://localhost:5173/8a3bf2c4-d1e2-4f5a-9b8c-7d6e5f4a3b2c`,
       xyz_content,
-      {},
     )
     expect(received_content).toBe(xyz_content)
     expect(received_filename).toBe(`8a3bf2c4-d1e2-4f5a-9b8c-7d6e5f4a3b2c`)
@@ -641,28 +565,16 @@ describe(`load_from_url`, () => {
     )
   })
 
-  test(`HEAD request failure falls back to text`, async () => {
-    const mock_full_response = create_mock_response(`fallback content`, {
-      'content-type': `text/plain`,
-    })
-    globalThis.fetch = vi
-      .fn()
-      .mockResolvedValueOnce(new Response(null, { status: 404 }))
-      .mockResolvedValueOnce(mock_full_response)
+  test(`classifies generic text from one full response`, async () => {
+    const { received_content, received_filename } = await load_test_url(
+      `https://example.com/data.unknown`,
+      `fallback content`,
+      { 'content-type': `text/plain` },
+    )
 
-    let received_content: string | ArrayBuffer | null = null
-    let received_filename: string | null = null
-
-    // Use an unknown format that will trigger Range request
-    await load_from_url(`https://example.com/data.unknown`, (content, filename) => {
-      received_content = content
-      received_filename = filename
-    })
-
-    expect(typeof received_content).toBe(`string`)
     expect(received_content).toBe(`fallback content`)
     expect(received_filename).toBe(`data.unknown`)
-    expect(globalThis.fetch).toHaveBeenCalledTimes(2)
+    expect(globalThis.fetch).toHaveBeenCalledOnce()
   })
 
   test.each([
@@ -753,7 +665,7 @@ describe(`load_from_url`, () => {
       )
       expect(received_content).toBe(poscar)
       expect(received_filename).toBe(basename)
-      expect(globalThis.fetch).toHaveBeenCalledTimes(1) // No Range request for VASP files
+      expect(globalThis.fetch).toHaveBeenCalledOnce()
     },
   )
 

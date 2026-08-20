@@ -10,7 +10,8 @@ import { clamp01 } from '$lib/utils'
 
 // === Box plot types ===
 // How box plot whiskers are computed from a raw distribution
-export type WhiskerMode = `tukey` | `minmax` | `percentile` | `std`
+export const WHISKER_MODES = [`tukey`, `minmax`, `percentile`, `std`] as const
+export type WhiskerMode = (typeof WHISKER_MODES)[number]
 
 // Which glyph(s) to draw per series: a box, a violin (KDE density), or both
 export type ViolinKind = `box` | `violin` | `violin+box`
@@ -81,8 +82,6 @@ export interface BoxStatsOptions {
   // Skips materializing outlier arrays when the caller only needs quartiles/whiskers.
   collect_outliers?: boolean
 }
-
-export const WHISKER_MODES = [`tukey`, `minmax`, `percentile`, `std`] as const
 
 const WHISKER_MODE_SET = new Set<string>(WHISKER_MODES)
 export const is_whisker_mode = (val: string): val is WhiskerMode => WHISKER_MODE_SET.has(val)

@@ -1,6 +1,9 @@
 <script lang="ts">
-  import { DEFAULT_PNG_DPI } from '$lib/constants'
-  import type { ColorSchemeName } from '$lib/colors'
+  import {
+    DEFAULT_PNG_DPI,
+    ELEMENT_COLOR_SCHEME_NAMES,
+    type ColorSchemeName,
+  } from '$lib/constants'
   import type { CompositionType } from '$lib/composition'
   import { ActionMenu, Icon, type IconData } from 'svelte-widgets'
   import {
@@ -56,9 +59,7 @@
     action: () => (mode = id),
   }))
 
-  const color_scheme_actions = (
-    [`Vesta`, `Jmol`, `Alloy`, `Pastel`, `Muted`, `Dark Mode`] as const
-  ).map((id) => ({
+  const color_scheme_actions = ELEMENT_COLOR_SCHEME_NAMES.map((id) => ({
     id,
     icon: ColorPalette,
     label: id,

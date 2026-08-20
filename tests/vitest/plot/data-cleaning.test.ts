@@ -399,6 +399,16 @@ describe(`smooth_moving_average`, () => {
   it(`handles NaN in window`, () => {
     expect(Number.isFinite(smooth_moving_average([1, 2, NaN, 4, 5], 3)[2])).toBe(true)
   })
+
+  it(`keeps finite local means finite when an unbounded prefix sum would overflow`, () => {
+    const values = Array(1000).fill(1e306)
+    expect(smooth_moving_average(values, 3)).toEqual(values)
+  })
+
+  it(`does not retain cancellation error after large values leave the window`, () => {
+    const values = [1e16, -1e16, 1e16, -1e16, 1, 2, 3, 4, 5]
+    expect(smooth_moving_average(values, 5).slice(6)).toEqual([3, 3.5, 4])
+  })
 })
 
 describe(`smooth_savitzky_golay`, () => {

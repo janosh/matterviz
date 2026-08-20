@@ -1,32 +1,12 @@
 // MatterViz settings schema - single source of truth for all MatterViz settings
 // Used by both main package and VSCode extension
 
-import type { ColorScaleType, D3InterpolateName } from '$lib/colors'
-import { DEFAULT_FPS_RANGE, FPS_STEP } from '$lib/constants'
+import type { D3InterpolateName } from '$lib/colors'
+import { DEFAULT_FPS_RANGE, ELEMENT_COLOR_SCHEME_NAMES, FPS_STEP } from '$lib/constants'
 import type { HullFaceColorMode } from '$lib/convex-hull/types'
-import type { ColorProperty, RepresentationMode } from '$lib/fermi-surface/types'
-import type { D3SymbolName } from '$lib/labels'
 import { symbol_names } from '$lib/labels'
 import type { Vec2, Vec3 } from '$lib/math'
-import type {
-  BandwidthOption,
-  Orientation,
-  SankeyNodeAlign,
-  SunburstLabelRotation,
-  SunburstLabelText,
-  SunburstShape,
-  SunburstValueMode,
-  ViolinKind,
-  ViolinSide,
-  WhiskerMode,
-} from '$lib/plot'
 import type { LegendVisibilityMode } from '$lib/plot/core/utils/series-visibility'
-import type { BondingStrategy } from '$lib/structure/bonding'
-import type { PolyhedraColorMode } from '$lib/structure/polyhedra'
-import type {
-  TrajectoryLineColorMode,
-  TrajectoryLineWrapMode,
-} from '$lib/structure/trajectory-lines'
 import { is_plain_object, merge_nested } from './utils'
 
 // SettingType interface with optional context to control where settings apply
@@ -54,7 +34,6 @@ const self_labeled_enum = <Value extends string>(
   values: readonly Value[],
 ): Readonly<Record<Value, Value>> =>
   Object.fromEntries(values.map((value) => [value, value])) as Record<Value, Value>
-const COLOR_SCHEME_NAMES = [`Vesta`, `Jmol`, `Alloy`, `Pastel`, `Muted`, `Dark Mode`] as const
 
 // Shared enum labels for the tri-state legend settings. 'auto' defers to the shared
 // resolve_legend_visibility rule so single-entry plots don't grow a pointless legend.
@@ -116,353 +95,31 @@ export const ATOM_COLOR_MODE_OPTIONS = [
 ] as const
 export type AtomColorMode = (typeof ATOM_COLOR_MODE_OPTIONS)[number]
 
-// Reusable type definitions for common setting patterns
-type DisplayConfigType = {
-  x_grid: SettingType<boolean>
-  y_grid: SettingType<boolean>
-  y2_grid: SettingType<boolean>
-  x_zero_line: SettingType<boolean>
-  y_zero_line: SettingType<boolean>
+type SettingDefinition = Omit<SettingType, `enum`> & {
+  enum?: Readonly<Record<string, string>>
 }
-
-type FillStyleType = {
-  color: SettingType<string>
-  opacity: SettingType<number>
+type SettingsDefinition = {
+  [key: string]: SettingDefinition | SettingsDefinition
 }
-
-type ColorStrokeStyleType = FillStyleType & {
-  stroke_width: SettingType<number>
-  stroke_color: SettingType<string>
+type DefinedSettingValue<Definition> = Definition extends {
+  enum: Readonly<Record<infer Value extends string, string>>
 }
-
-type MarkStyleType = ColorStrokeStyleType & { stroke_opacity: SettingType<number> }
-type PointStyleType = MarkStyleType & { size: SettingType<number> }
-
-type SimpleLineStyleType = { width: SettingType<number>; color: SettingType<string> }
-
-type LineStyleType = SimpleLineStyleType & {
-  opacity: SettingType<number>
-  dash: SettingType<string>
+  ? Value
+  : Definition extends { value: infer Value }
+    ? Value extends number
+      ? number
+      : Value extends boolean
+        ? boolean
+        : Value
+    : never
+type NormalizeSettings<Definition> = {
+  [Key in keyof Definition]: Definition[Key] extends SettingDefinition
+    ? SettingType<DefinedSettingValue<Definition[Key]>>
+    : NormalizeSettings<Definition[Key]>
 }
-
-type SimpleBarStyleType = FillStyleType & {
-  border_radius: SettingType<number>
-}
-
-type BoxStyleType = ColorStrokeStyleType & { border_radius: SettingType<number> }
-
-type BoxWhiskerStyleType = SimpleLineStyleType & { cap_fraction: SettingType<number> }
-
-type BoxViolinStyleType = {
-  opacity: SettingType<number>
-  stroke_width: SettingType<number>
-}
-
-type BoxOutlierStyleType = BoxViolinStyleType & { radius: SettingType<number> }
-
-type ConvexHullCommonType = {
-  camera_zoom: SettingType<number>
-  color_mode: SettingType<`stability` | `energy`>
-  color_scale: SettingType<string>
-  show_stable: SettingType<boolean>
-  show_unstable: SettingType<boolean>
-  show_stable_labels: SettingType<boolean>
-  show_unstable_labels: SettingType<boolean>
-  max_hull_dist_show_phases: SettingType<number>
-  max_hull_dist_show_labels: SettingType<number>
-  fullscreen: SettingType<boolean>
-  info_pane_open: SettingType<boolean>
-  legend_pane_open: SettingType<boolean>
-}
-
-type ConvexHullWith3DType = ConvexHullCommonType & {
-  show_hull_faces: SettingType<boolean>
-  hull_face_color: SettingType<string>
-  hull_face_opacity: SettingType<number>
-  hull_face_color_mode: SettingType<HullFaceColorMode>
-}
-
-// Options shared by the hierarchy charts (sunburst + treemap), which consume the
-// same node trees and value semantics
-type HierarchyChartSettingsSchema = {
-  value_mode: SettingType<SunburstValueMode>
-  max_depth: SettingType<number>
-  min_fraction: SettingType<number>
-  show_labels: SettingType<boolean>
-  label_text: SettingType<SunburstLabelText>
-  zoom_on_click: SettingType<boolean>
-  show_breadcrumbs: SettingType<boolean>
-}
-
-export interface SettingsConfig {
-  // General display settings
-  color_scheme: SettingType<string>
-  background_color: SettingType<string>
-  background_opacity: SettingType<number>
-
-  // Symmetry Analysis
-  symmetry: {
-    symprec: SettingType<number>
-    algo: SettingType<`Moyo` | `Spglib`>
-  }
-
-  structure: {
-    // Structure viewer settings
-    // Atoms & Bonds
-    atom_radius: SettingType<number>
-    same_size_atoms: SettingType<boolean>
-    show_atoms: SettingType<boolean>
-    show_image_atoms: SettingType<boolean>
-    sphere_segments: SettingType<number>
-    bond_thickness: SettingType<number>
-    auto_bond_order: SettingType<boolean>
-    aromatic_display: SettingType<`aromatic` | `kekule`>
-    show_bonds: SettingType<ShowBonds>
-    bond_color: SettingType<string>
-    bonding_strategy: SettingType<BondingStrategy>
-    // Coordination Polyhedra
-    show_polyhedra: SettingType<ShowBonds>
-    polyhedra_opacity: SettingType<number>
-    polyhedra_show_edges: SettingType<boolean>
-    polyhedra_edge_color: SettingType<string>
-    polyhedra_color_mode: SettingType<PolyhedraColorMode>
-    polyhedra_color: SettingType<string>
-    polyhedra_hide_center_atoms: SettingType<boolean>
-    polyhedra_min_neighbors: SettingType<number>
-    polyhedra_max_neighbors: SettingType<number>
-    polyhedra_excluded_elements: SettingType<readonly string[]>
-    polyhedra_included_elements: SettingType<readonly string[]>
-    atom_color_mode: SettingType<AtomColorMode>
-    atom_color_scale: SettingType<D3InterpolateName>
-    atom_color_scale_type: SettingType<ColorScaleType>
-
-    // Camera & Controls
-    show_gizmo: SettingType<boolean>
-    camera_position: SettingType<Vec3>
-    camera_projection: SettingType<CameraProjection>
-    initial_zoom: SettingType<number>
-    fov: SettingType<number>
-    rotation_damping: SettingType<number>
-    rotate_speed: SettingType<number>
-    zoom_speed: SettingType<number>
-    pan_speed: SettingType<number>
-    zoom_to_cursor: SettingType<boolean>
-    max_zoom: SettingType<number | undefined>
-    min_zoom: SettingType<number | undefined>
-    auto_rotate: SettingType<number>
-    // Manual rotation controls [x, y, z] in radians
-    rotation: SettingType<Vec3>
-
-    // Labels & Lighting
-    show_site_labels: SettingType<boolean>
-    show_site_indices: SettingType<boolean>
-    site_label_size: SettingType<number>
-    site_label_color: SettingType<string>
-    site_label_bg_color: SettingType<string>
-    site_label_padding: SettingType<number>
-    site_label_offset: SettingType<Vec3>
-    ambient_light: SettingType<number>
-    directional_light: SettingType<number>
-
-    // Site Vectors (force, magmom, spin) & Lattice
-    vector_configs: SettingType<Record<string, VectorLayerConfig>>
-    vector_scale: SettingType<number>
-    vector_color: SettingType<string>
-    vector_color_mode: SettingType<VectorColorMode>
-    vector_color_scale: SettingType<D3InterpolateName>
-    vector_normalize: SettingType<boolean>
-    vector_uniform_thickness: SettingType<boolean>
-    vector_origin_gap: SettingType<number>
-    vector_shaft_radius: SettingType<number>
-    vector_arrow_head_radius: SettingType<number>
-    vector_arrow_head_length: SettingType<number>
-    // Displacement overlay (current structure vs a reference structure)
-    show_displacement_arrows: SettingType<boolean>
-    displacement_arrow_scale: SettingType<number>
-    displacement_arrow_color: SettingType<string>
-    // Per-atom trajectory trails (needs a whole-trajectory position stream, so only the
-    // trajectory viewer can turn these on)
-    show_trajectory_lines: SettingType<boolean>
-    trajectory_line_trail_frames: SettingType<number>
-    trajectory_line_frame_stride: SettingType<number>
-    trajectory_line_color_mode: SettingType<TrajectoryLineColorMode>
-    trajectory_line_wrap_mode: SettingType<TrajectoryLineWrapMode>
-    show_cell_vectors: SettingType<boolean>
-    cell_edge_opacity: SettingType<number>
-    cell_surface_opacity: SettingType<number>
-    cell_edge_color: SettingType<string>
-    cell_surface_color: SettingType<string>
-    cell_edge_width: SettingType<number>
-    fullscreen_toggle: SettingType<boolean>
-  }
-
-  brillouin: {
-    bz_order: SettingType<number>
-    surface_color: SettingType<string>
-    surface_opacity: SettingType<number>
-    edge_color: SettingType<string>
-    edge_width: SettingType<number>
-    show_vectors: SettingType<boolean>
-    vector_scale: SettingType<number>
-    camera_projection: SettingType<CameraProjection>
-    // Irreducible BZ
-    show_ibz: SettingType<boolean>
-    ibz_color: SettingType<string>
-    ibz_opacity: SettingType<number>
-    fullscreen_toggle: SettingType<boolean>
-  }
-
-  fermi: {
-    mu: SettingType<number>
-    color_property: SettingType<ColorProperty>
-    color_scale: SettingType<D3InterpolateName>
-    representation: SettingType<RepresentationMode>
-    surface_opacity: SettingType<number>
-    show_bz: SettingType<boolean>
-    bz_opacity: SettingType<number>
-    show_vectors: SettingType<boolean>
-    tile_bz: SettingType<boolean>
-    // Clipping plane
-    clip_enabled: SettingType<boolean>
-    clip_axis: SettingType<`x` | `y` | `z`>
-    clip_position: SettingType<number>
-    clip_flip: SettingType<boolean>
-    interpolation_factor: SettingType<number>
-    camera_projection: SettingType<CameraProjection>
-    fullscreen_toggle: SettingType<boolean>
-  }
-
-  trajectory: {
-    // Trajectory viewer settings
-    // Core trajectory settings
-    auto_play: SettingType<boolean>
-    fps: SettingType<number>
-    fps_range: SettingType<Readonly<Vec2>>
-    display_mode: SettingType<
-      `structure+scatter` | `structure` | `scatter` | `histogram` | `structure+histogram`
-    >
-    show_controls: SettingType<boolean>
-    fullscreen_toggle: SettingType<boolean>
-    step_labels: SettingType<number>
-    layout: SettingType<`auto` | Orientation>
-
-    // File handling and loading
-    allow_file_drop: SettingType<boolean>
-    bin_file_threshold: SettingType<number>
-    text_file_threshold: SettingType<number>
-    use_indexing: SettingType<boolean>
-
-    // UI/UX
-    show_parsing_progress: SettingType<boolean>
-  }
-
-  plot: {
-    // General plot settings
-    grid_lines: SettingType<boolean>
-    axis_labels: SettingType<boolean>
-    show_x_zero_line: SettingType<boolean>
-    show_y_zero_line: SettingType<boolean>
-    x_format: SettingType<string>
-    x2_format: SettingType<string>
-    y_format: SettingType<string>
-    y2_format: SettingType<string>
-    x_scale_type: SettingType<string>
-    y_scale_type: SettingType<string>
-    x_ticks: SettingType<number>
-    y_ticks: SettingType<number>
-  }
-
-  scatter: {
-    // Scatter plot settings
-    show_legend: SettingType<LegendVisibilityMode>
-    show_points: SettingType<boolean>
-    show_lines: SettingType<boolean>
-    symbol_type: SettingType<D3SymbolName>
-    display: DisplayConfigType
-    point: PointStyleType
-    line: LineStyleType
-  }
-
-  histogram: {
-    // Histogram settings
-    mode: SettingType<`overlay` | `single`>
-    show_legend: SettingType<LegendVisibilityMode>
-    bin_count: SettingType<number>
-    bar: MarkStyleType
-    display: DisplayConfigType
-  }
-
-  bar: {
-    // Bar plot settings
-    display: DisplayConfigType
-    bar: SimpleBarStyleType
-    line: SimpleLineStyleType
-  }
-
-  box: {
-    // Box / violin plot settings
-    whisker_mode: SettingType<WhiskerMode>
-    box_width: SettingType<number>
-    show_outliers: SettingType<boolean>
-    show_mean: SettingType<boolean>
-    kind: SettingType<ViolinKind>
-    side: SettingType<ViolinSide>
-    bandwidth: SettingType<Exclude<BandwidthOption, number>>
-    violin_width: SettingType<number>
-    violin_box_width: SettingType<number>
-    box: BoxStyleType
-    whisker: BoxWhiskerStyleType
-    median: SimpleLineStyleType
-    outlier: BoxOutlierStyleType
-    violin: BoxViolinStyleType
-    display: DisplayConfigType
-  }
-
-  sankey: {
-    // Sankey diagram settings
-    orientation: SettingType<Orientation>
-    node_align: SettingType<SankeyNodeAlign>
-    node_width: SettingType<number>
-    node_padding: SettingType<number>
-    link_opacity: SettingType<number>
-    show_node_labels: SettingType<boolean>
-    iterations: SettingType<number>
-  }
-
-  // Settings shared by the hierarchy charts (sunburst geometry-only fields are
-  // added per chart below)
-  sunburst: HierarchyChartSettingsSchema & {
-    shape: SettingType<SunburstShape>
-    inner_radius: SettingType<number>
-    pad_angle: SettingType<number>
-    label_rotation: SettingType<SunburstLabelRotation>
-  }
-
-  treemap: HierarchyChartSettingsSchema & {
-    padding_inner: SettingType<number>
-    padding_top: SettingType<number>
-    padding_outer: SettingType<number>
-  }
-
-  composition: {
-    // Composition specific settings
-    display_mode: SettingType<`pie` | `bubble` | `bar`>
-    color_scheme: SettingType<string>
-  }
-
-  convex_hull: {
-    // Convex hull defaults (binary/ternary/quaternary)
-    binary: ConvexHullCommonType
-    ternary: ConvexHullWith3DType & {
-      camera_elevation: SettingType<number>
-      camera_azimuth: SettingType<number>
-    }
-    quaternary: ConvexHullWith3DType & {
-      camera_rotation_x: SettingType<number>
-      camera_rotation_y: SettingType<number>
-    }
-  }
-}
+const define_settings = <Definition extends SettingsDefinition>(definition: Definition) =>
+  definition as unknown as NormalizeSettings<Definition>
+const typed_setting = <Value>(definition: SettingType<Value>): SettingType<Value> => definition
 
 const DISPLAY_CONFIG = {
   x_grid: { value: true, description: `Show X-axis grid lines` },
@@ -479,7 +136,7 @@ const hierarchy_chart_settings = (
   node: `arc` | `cell`,
   levels: `rings` | `levels`,
   zoom_desc: string,
-): HierarchyChartSettingsSchema => ({
+) => ({
   value_mode: {
     value: `leaf-sum` as const,
     description: `How node values are interpreted (plotly branchvalues semantics): leaf-sum ignores parent values, total treats every value as authoritative, remainder adds a node's own value on top of its children`,
@@ -533,7 +190,7 @@ const convex_hull_settings = (
     camera_zoom_max: number
     max_hull_dist_show_phases: number
   },
-): ConvexHullCommonType => {
+) => {
   const dim = { binary: `2D`, ternary: `3D`, quaternary: `4D` }[system]
   const hull = `${dim} convex hull`
   return {
@@ -587,10 +244,7 @@ const convex_hull_settings = (
 const hull_face_settings = (
   dim: `3D` | `4D`,
   values: { opacity: number; color_mode: HullFaceColorMode },
-): Pick<
-  ConvexHullWith3DType,
-  `show_hull_faces` | `hull_face_color` | `hull_face_opacity` | `hull_face_color_mode`
-> => ({
+) => ({
   show_hull_faces: { value: true, description: `Show hull faces in ${dim} convex hull` },
   hull_face_color: {
     value: `#4caf50`,
@@ -613,13 +267,13 @@ const hull_face_settings = (
 })
 
 // Complete settings configuration with values, descriptions, and constraints
-export const SETTINGS_CONFIG: SettingsConfig = {
+export const SETTINGS_CONFIG = define_settings({
   // General display settings
-  color_scheme: {
+  color_scheme: typed_setting<string>({
     value: `Vesta`,
     description: `Color scheme for atoms and bonds`,
-    enum: self_labeled_enum(COLOR_SCHEME_NAMES),
-  },
+    enum: self_labeled_enum(ELEMENT_COLOR_SCHEME_NAMES),
+  }),
   background_color: {
     value: `#000000`,
     description: `Background color of the 3D viewport`,
@@ -757,10 +411,10 @@ export const SETTINGS_CONFIG: SettingsConfig = {
         property: `Site Property`,
       } as Readonly<Record<AtomColorMode, string>>,
     },
-    atom_color_scale: {
+    atom_color_scale: typed_setting<D3InterpolateName>({
       value: `interpolateViridis`,
       description: `D3 color scale for property-based coloring (e.g. interpolateViridis, interpolatePlasma)`,
-    },
+    }),
     atom_color_scale_type: {
       value: `continuous`,
       description: `Color scale type for property-based coloring`,
@@ -773,7 +427,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       description: `Show orientation gizmo in the corner of structure viewer`,
     },
     camera_position: {
-      value: [0, 0, 0] as const,
+      value: [0, 0, 0] satisfies Vec3,
       description: `Initial camera position [x, y, z]`,
       minItems: 3,
       maxItems: 3,
@@ -827,14 +481,14 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       value: false,
       description: `Zoom toward the cursor instead of the scene center (the view drifts off-center as you zoom)`,
     },
-    max_zoom: {
+    max_zoom: typed_setting<number | undefined>({
       value: 500,
       description: `Maximum zoom level (orthographic: larger = more zoomed out, perspective: larger = further away)`,
-    },
-    min_zoom: {
+    }),
+    min_zoom: typed_setting<number | undefined>({
       value: 10,
       description: `Minimum zoom level (orthographic: smaller = more zoomed in, perspective: smaller = closer)`,
-    },
+    }),
     auto_rotate: {
       // Off by default: a permanently spinning scene is hard to read, keeps the render loop
       // running every frame (no on-demand rendering, so it costs battery on every embed),
@@ -845,7 +499,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       maximum: 2,
     },
     rotation: {
-      value: [0, 0, 0] as const,
+      value: [0, 0, 0] satisfies Vec3,
       description: `Manual rotation around X, Y, Z axes, displayed in degrees [0, 360] but normalized as radians to [-π, π] for each of [x, y, z]. Combines additively with auto-rotation when both are active.`,
       minItems: 3,
       maxItems: 3,
@@ -872,7 +526,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       maximum: 10,
     },
     site_label_offset: {
-      value: [0, 0.5, 0] as const,
+      value: [0, 0.5, 0] satisfies Vec3,
       description: `3D offset for atom labels [x, y, z]`,
       minItems: 3,
       maxItems: 3,
@@ -891,10 +545,10 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     },
 
     // Site Vectors (force, magmom, spin) & Lattice
-    vector_configs: {
+    vector_configs: typed_setting<Record<string, VectorLayerConfig>>({
       value: {},
       description: `Per-key configuration for site vector layers. Keys map to site property names (e.g. force, magmom, force_DFT). Auto-populated when a structure with vector data loads.`,
-    },
+    }),
     vector_scale: {
       value: 0.75,
       description: `Scale factor for site vector arrows`,
@@ -905,14 +559,14 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       value: `#ff0000`,
       description: `Color for site vector arrows (used in uniform mode and as fallback)`,
     },
-    vector_color_mode: {
+    vector_color_mode: typed_setting<VectorColorMode>({
       value: `auto`,
       description: `How to color arrows. auto = element for force, spin-direction for magmom/spin. element = majority species color. spin_direction = red/blue by z-component. magnitude = continuous color scale by vector length. uniform = single color (vector_color).`,
-    },
-    vector_color_scale: {
+    }),
+    vector_color_scale: typed_setting<D3InterpolateName>({
       value: `interpolateViridis`,
       description: `D3 color scale for magnitude coloring mode`,
-    },
+    }),
     vector_normalize: {
       value: false,
       description: `Show all arrows at the same length (direction only). Useful for spin/magmom visualization where orientation matters but magnitude does not.`,
@@ -1047,10 +701,10 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       description: `Quantity mapped onto the Fermi surface color scale`,
       enum: { band: `Band`, velocity: `Velocity`, spin: `Spin`, custom: `Custom` },
     },
-    color_scale: {
+    color_scale: typed_setting<D3InterpolateName>({
       value: `interpolateViridis`,
       description: `D3 color scale for the Fermi surface (e.g. interpolateViridis, interpolatePlasma)`,
-    },
+    }),
     representation: {
       value: `solid`,
       description: `How to render the Fermi surface`,
@@ -1108,7 +762,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       maximum: DEFAULT_FPS_RANGE[1],
       multipleOf: FPS_STEP,
     },
-    fps_range: {
+    fps_range: typed_setting<Readonly<Vec2>>({
       value: DEFAULT_FPS_RANGE,
       description: `Allowed range for playback speed [min, max], where 0 means paused`,
       minItems: 2,
@@ -1118,7 +772,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
         maximum: DEFAULT_FPS_RANGE[1],
         multipleOf: FPS_STEP,
       },
-    },
+    }),
     display_mode: {
       value: `structure+scatter` as const,
       description: `Visualization mode for trajectory data`,
@@ -1449,11 +1103,11 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       description: `Display mode for composition data`,
       enum: { pie: `Pie`, bubble: `Bubble`, bar: `Bar` },
     },
-    color_scheme: {
+    color_scheme: typed_setting<string>({
       value: `Vesta`,
       description: `Color scheme for composition visualization`,
-      enum: self_labeled_enum(COLOR_SCHEME_NAMES),
-    },
+      enum: self_labeled_enum(ELEMENT_COLOR_SCHEME_NAMES),
+    }),
   },
 
   // Scatter plot specific
@@ -1526,16 +1180,16 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       value: ``,
       description: `Number format for secondary Y-axis ticks (D3 format specifier)`,
     },
-    x_scale_type: {
+    x_scale_type: typed_setting<string>({
       value: `linear`,
       description: `Scale type for X-axis`,
       enum: { linear: `Linear`, log: `Log` },
-    },
-    y_scale_type: {
+    }),
+    y_scale_type: typed_setting<string>({
       value: `linear`,
       description: `Scale type for Y-axis`,
       enum: { linear: `Linear`, log: `Log` },
-    },
+    }),
     x_ticks: {
       value: 8,
       description: `Number of ticks on X-axis`,
@@ -1598,7 +1252,9 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       },
     },
   },
-}
+})
+
+export type SettingsConfig = typeof SETTINGS_CONFIG
 
 // Recursively extract each setting's runtime value type from the schema.
 type SettingsValues<Config> = {

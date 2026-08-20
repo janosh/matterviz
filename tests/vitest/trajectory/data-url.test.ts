@@ -12,8 +12,7 @@ import { MULTI_FRAME_XYZ } from '../setup'
 const BLOB_URL = `blob:http://localhost:5173/8a3bf2c4-d1e2-4f5a-9b8c-7d6e5f4a3b2c`
 const BLOB_FILENAME = BLOB_URL.split(`/`).at(-1) ?? BLOB_URL
 
-// Fresh response per fetch call since load_from_url may fetch twice (magic-byte
-// sniff via Range request, then full body)
+// Fresh response per fetch call because response bodies are single-use streams.
 const mock_fetch_text = (content: string, headers = new Headers()) =>
   vi.fn().mockImplementation(() => Promise.resolve(new Response(content, { headers })))
 

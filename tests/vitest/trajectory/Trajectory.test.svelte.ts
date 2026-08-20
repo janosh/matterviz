@@ -342,6 +342,32 @@ describe(`Trajectory`, () => {
     expect(plot.querySelector(`.pane-open`)).not.toBeNull()
   })
 
+  test(`histograms use one complete raw distribution for long trajectories`, async () => {
+    const on_bar_hover = vi.fn()
+    const values = Array.from({ length: 300 }, (_unused, frame_number) =>
+      frame_number === 150 ? 100 : Math.sin(frame_number),
+    )
+    const target = mount_traj({
+      trajectory: energy_traj(...values),
+      display_mode: `histogram`,
+      show_controls: false,
+      histogram_props: { bins: 20, show_legend: true, on_bar_hover },
+    })
+    await flush_render()
+    const plot = target.querySelector<HTMLElement>(`.histogram`)
+    if (!plot) throw new Error(`Trajectory histogram not found`)
+    await resize_element(plot, 600, 400)
+
+    expect(plot.querySelectorAll(`g.histogram-series`)).toHaveLength(1)
+    expect(plot.querySelectorAll(`.legend .legend-item`)).toHaveLength(1)
+    for (const bar of plot.querySelectorAll(`g.histogram-series path[role="button"]`)) {
+      bar.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
+    }
+    expect(
+      on_bar_hover.mock.calls.reduce((total, [hovered]) => total + hovered.count, 0),
+    ).toBe(values.length)
+  })
+
   test.each([
     [`scatter`, `.scatter`],
     [`histogram`, `.histogram`],
@@ -1031,7 +1057,7 @@ describe(`Trajectory`, () => {
   test(`spectroscopy replaces the plot and stays mounted while closed`, async () => {
     const props: Record<string, unknown> = $state({
       trajectory: energy_traj(-1.5, -2.5),
-      show_controls: `always` as const,
+      show_controls: `hover` as const,
       spectroscopy_pane_open: false,
     })
     const target = mount_traj(props)
@@ -1056,6 +1082,9 @@ describe(`Trajectory`, () => {
     expect(target.querySelector(`.explorer-controls`)).toBeNull()
     expect(target.querySelector(`.trajectory.spectroscopy-mode`)).not.toBeNull()
     expect(target.querySelector(`.trajectory.show-both-views`)).toBeNull()
+    expect(doc_query(`.content-area`).style.getPropertyValue(`--viewer-buttons-top`)).toMatch(
+      /^calc\(.+\)$/,
+    )
 
     doc_query(`.analysis-button`).click()
     await tick()

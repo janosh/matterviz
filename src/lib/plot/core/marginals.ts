@@ -14,7 +14,8 @@ import type { Snippet } from 'svelte'
 import type { ClassValue } from 'svelte/elements'
 
 // Which side of the plot a marginal strip sits on
-export type MarginalSide = `top` | `bottom` | `left` | `right`
+export const MARGINAL_SIDES = [`top`, `bottom`, `left`, `right`] as const
+export type MarginalSide = (typeof MARGINAL_SIDES)[number]
 // Built-in marginal renderers (a custom `snippet` handles anything else)
 export type MarginalType = `histogram` | `kde` | `cdf` | `rug`
 // Strip position within its reserved band: `flush` hugs the plot edge, `outer` sits beyond
@@ -23,8 +24,6 @@ export type MarginalPlacement = `auto` | `flush` | `outer`
 export type MarginalNormalize = `count` | `density` | `probability`
 // Which plot axis a marginal binds to (defaults to the primary axis for its side)
 export type MarginalAxisBinding = `x1` | `x2` | `y1` | `y2`
-
-export const MARGINAL_SIDES = [`top`, `bottom`, `left`, `right`] as const
 
 // Top/bottom strips run along the x (horizontal) positional axis; left/right run along y
 const is_x_side = (side: MarginalSide): boolean => side === `top` || side === `bottom`

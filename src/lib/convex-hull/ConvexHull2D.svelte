@@ -39,7 +39,7 @@
 
   // Binary convex hull rendered as energy vs composition (x in [0, 1])
   let {
-    entries = [],
+    entries,
     controls = {},
     config = {},
     show_controls,

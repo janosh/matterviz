@@ -30,7 +30,7 @@
   import { compute_hull_stability } from './helpers'
 
   let {
-    entries = [],
+    entries,
     controls = {},
     config = {},
     show_controls,

@@ -188,12 +188,9 @@
   // Scales
   const x_scale = $derived(scaleLinear().domain(x_domain).range([left, right]))
 
-  // Temperature units (guard for initial render when data may be undefined)
-  const data_temp_unit = $derived<TempUnit>(
-    (effective_data?.temperature_unit ?? `K`) as TempUnit,
-  )
+  const data_temp_unit = $derived<TempUnit>(effective_data.temperature_unit ?? `K`)
   const temp_unit = $derived<TempUnit>(display_temp_unit ?? data_temp_unit)
-  const temp_range = $derived(effective_data?.temperature_range ?? [0, 1000])
+  const temp_range = $derived(effective_data.temperature_range)
 
   // Convert temperature range for display
   const display_temp_range = $derived<Vec2>([
@@ -218,7 +215,7 @@
 
   // Transform regions to SVG coordinates
   const transformed_regions = $derived(
-    (effective_data?.regions ?? []).map((region) => {
+    effective_data.regions.map((region) => {
       const svg_vertices = transform_vertices(region.vertices, x_scale, y_scale)
       const { width: box_width, height: box_height } = compute_bounding_box_2d(svg_vertices)
       const label_props = compute_label_properties(
@@ -247,7 +244,7 @@
 
   // Transform boundaries to SVG coordinates
   const transformed_boundaries = $derived(
-    (effective_data?.boundaries ?? []).map((boundary) => ({
+    effective_data.boundaries.map((boundary) => ({
       ...boundary,
       svg_path: generate_boundary_path(transform_vertices(boundary.points, x_scale, y_scale)),
     })),
@@ -255,7 +252,7 @@
 
   // Transform special points to SVG coordinates
   const transformed_special_points = $derived(
-    (effective_data?.special_points ?? []).map((point) => ({
+    (effective_data.special_points ?? []).map((point) => ({
       ...point,
       svg_x: x_scale(point.position[0]),
       svg_y: y_scale(point.position[1]),
@@ -360,7 +357,7 @@
     const svg_y = event.clientY - rect.top
 
     // Check if within plot area
-    if (svg_x < left || svg_x > right || svg_y < top || svg_y > bottom || !effective_data) {
+    if (svg_x < left || svg_x > right || svg_y < top || svg_y > bottom) {
       clear_hover()
       return
     }
@@ -422,13 +419,12 @@
     }
   })
 
-  // Component labels (guard for initial render when data may be undefined)
-  const component_a = $derived(effective_data?.components?.[0] ?? ``)
-  const component_b = $derived(effective_data?.components?.[1] ?? ``)
-  const comp_unit = $derived(effective_data?.composition_unit ?? `at%`)
+  const component_a = $derived(effective_data.components[0])
+  const component_b = $derived(effective_data.components[1])
+  const comp_unit = $derived(effective_data.composition_unit ?? `at%`)
 
   // Pseudo-binary support: format compound names with subscripts when enabled
-  const use_subscripts = $derived(effective_data?.pseudo_binary?.use_subscripts ?? true)
+  const use_subscripts = $derived(effective_data.pseudo_binary?.use_subscripts ?? true)
 
   // Formatted component labels for SVG axis labels (with tspan subscripts if compound)
   const component_a_svg = $derived(format_formula_svg(component_a, use_subscripts))
@@ -792,7 +788,7 @@
           font-size={merged_config.font_size + 2}
         >
           {@html sanitize_svg(
-            x_axis.label || effective_data?.x_axis_label || default_x_axis_label,
+            x_axis.label || effective_data.x_axis_label || default_x_axis_label,
           )}
         </text>
       </g>
@@ -831,7 +827,7 @@
           font-size={merged_config.font_size + 2}
         >
           {@html sanitize_svg(
-            y_axis.label || effective_data?.y_axis_label || `Temperature (${temp_unit})`,
+            y_axis.label || effective_data.y_axis_label || `Temperature (${temp_unit})`,
           )}
         </text>
       </g>
@@ -874,7 +870,7 @@
             composition_unit={comp_unit}
             {component_a}
             {component_b}
-            boundaries={effective_data?.boundaries ?? []}
+            boundaries={effective_data.boundaries}
             {lever_rule_mode}
             {use_subscripts}
             {tooltip}

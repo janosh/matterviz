@@ -365,23 +365,26 @@
     for (const srs of series_with_ids) {
       if (!srs) continue
       const {
-        x: xs,
-        y: ys,
+        line_underlays = [],
         visible = true,
         y_axis: series_y_axis = `y1`,
         x_axis: x_ax = `x1`,
-      } = srs as DataSeries
-      // x drives the point count: a y array of a different length is read through xs.length
-      const n_points = xs.length
-      accumulate_extent(all_x, xs, n_points)
-      if (visible) {
+      } = srs
+      for (const { x: layer_x, y: layer_y } of [srs, ...line_underlays]) {
+        // x drives the point count: a y array of a different length is read through x.length
+        const n_points = layer_x.length
+        accumulate_extent(all_x, layer_x, n_points)
+        if (!visible) continue
         const y_extent = series_y_axis === `y2` ? y2 : y1
-        accumulate_extent(y_extent, ys, n_points)
-        if (x_ax === `x2`) accumulate_extent(x2, xs, n_points)
+        accumulate_extent(y_extent, layer_y, n_points)
+        if (x_ax === `x2`) accumulate_extent(x2, layer_x, n_points)
+        const needs_axis_probe: boolean =
+          (x_ax === `x2` && !has_x2_points) || (series_y_axis === `y2` && !has_y2_points)
         const has_drawable_point: boolean =
-          ((x_ax === `x2` && !has_x2_points) || (series_y_axis === `y2` && !has_y2_points)) &&
-          xs.some(
-            (x_value, point_idx) => Number.isFinite(x_value) && Number.isFinite(ys[point_idx]),
+          needs_axis_probe &&
+          layer_x.some(
+            (x_value, point_idx) =>
+              Number.isFinite(x_value) && Number.isFinite(layer_y[point_idx]),
           )
         has_x2_points ||= x_ax === `x2` && has_drawable_point
         has_y2_points ||= series_y_axis === `y2` && has_drawable_point
@@ -698,8 +701,9 @@
     let [n_series, n_points] = [0, 0]
     for (const srs of filtered_series) {
       if (!(srs.markers ?? DEFAULT_MARKERS).includes(`line`)) continue
-      n_series += 1
-      n_points += srs.x.length
+      const line_layers = [srs, ...(srs.line_underlays ?? [])]
+      n_series += line_layers.length
+      n_points += line_layers.reduce((sum, layer) => sum + layer.x.length, 0)
     }
     return { series: n_series, points: n_points }
   })
@@ -1324,6 +1328,13 @@
 
     return [screen_x, screen_y]
   }
+  const screen_line_points = (
+    line: Pick<DataSeries, `x` | `y`>,
+    series_data: DataSeries,
+  ): Vec2[] =>
+    line.x
+      .map((x, point_idx) => get_screen_coords({ x, y: line.y[point_idx] }, series_data))
+      .filter(([screen_x, screen_y]) => isFinite(screen_x) && isFinite(screen_y))
 
   // Helper function to construct ScatterHandlerProps synchronously from InternalPoint
   function construct_handler_props(
@@ -1644,13 +1655,24 @@
             : 1}
         >
           {#if series_markers.includes(`line`)}
-            {@const all_line_points = series_data.x.map((x, idx) => ({
-              x,
-              y: series_data.y[idx],
-            }))}
-            {@const finite_screen_points = all_line_points
-              .map((point) => get_screen_coords(point, series_data))
-              .filter(([sx, sy]) => isFinite(sx) && isFinite(sy))}
+            {@const line_origin = [
+              is_time_x ? x_scale_fn(new Date(x_min)) : x_scale_fn(x_min),
+              series_data.y_axis === `y2` ? y2_scale_fn(y2_min) : y_scale_fn(y_min),
+            ] as Vec2}
+            {#each series_data.line_underlays ?? [] as underlay}
+              {@const underlay_points = screen_line_points(underlay, series_data)}
+              <Line
+                points={underlay_points}
+                origin={line_origin}
+                line_color={underlay.line_style?.stroke ?? series_default_color}
+                line_width={underlay.line_style?.stroke_width ?? 1}
+                line_dash={underlay.line_style?.line_dash}
+                curve={underlay.line_style?.curve}
+                area_color="transparent"
+                line_tween={effective_line_tween}
+              />
+            {/each}
+            {@const finite_screen_points = screen_line_points(series_data, series_data)}
             {@const apply_line_controls = applies_style_controls(series_data)}
             {@const ls = series_data.line_style}
             {@const tc = (key: string) => apply_line_controls && touched.has(key)}
@@ -1664,10 +1686,7 @@
                 : series_default_color)}
             <Line
               points={finite_screen_points}
-              origin={[
-                is_time_x ? x_scale_fn(new Date(x_min)) : x_scale_fn(x_min),
-                series_data.y_axis === `y2` ? y2_scale_fn(y2_min) : y_scale_fn(y_min),
-              ]}
+              origin={line_origin}
               line_color={(tc(`line.color`) ? styles.line?.color : null) ?? color_fallback}
               line_width={(tc(`line.width`) ? styles.line?.width : null) ??
                 ls?.stroke_width ??

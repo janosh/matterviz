@@ -311,28 +311,24 @@ export function detect_instability(
 
 // --- Smoothing Functions ---
 
-// Moving average - O(n)
-export function smooth_moving_average(values: number[], window: number): number[] {
+// Centered finite-aware moving average
+export function smooth_moving_average(values: readonly number[], window: number): number[] {
   if (values.length === 0 || window <= 1) return [...values]
+  if (Number.isNaN(window)) return [...values]
 
-  const result: number[] = Array(values.length)
   const half_window = Math.floor(window / 2)
-
+  const result = Array<number>(values.length)
   for (let idx = 0; idx < values.length; idx++) {
     const start = Math.max(0, idx - half_window)
     const end = Math.min(values.length, idx + half_window + 1)
     let [sum, count] = [0, 0]
-
-    for (let jdx = start; jdx < end; jdx++) {
-      if (Number.isFinite(values[jdx])) {
-        sum += values[jdx]
-        count++
-      }
+    for (let value_idx = start; value_idx < end; value_idx++) {
+      if (!Number.isFinite(values[value_idx])) continue
+      sum += values[value_idx]
+      count++
     }
-
     result[idx] = count > 0 ? sum / count : values[idx]
   }
-
   return result
 }
 

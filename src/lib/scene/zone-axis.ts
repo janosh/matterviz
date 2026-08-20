@@ -9,12 +9,11 @@
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import { matrix_inverse_3x3, transpose_3x3_matrix } from '$lib/math'
 
-export type ZoneAxisMode = `uvw` | `hkl`
-
-export const ZONE_AXIS_MODE_LABELS: Readonly<Record<ZoneAxisMode, string>> = {
+export const ZONE_AXIS_MODE_LABELS = {
   uvw: `Zone axis [uvw]`,
   hkl: `Plane normal (hkl)`,
-}
+} as const
+export type ZoneAxisMode = keyof typeof ZONE_AXIS_MODE_LABELS
 
 // Linear combination of the ROWS of `matrix` (matterviz stores lattice vectors as rows).
 const combine_rows = (matrix: Matrix3x3, coeffs: Vec3): Vec3 => [

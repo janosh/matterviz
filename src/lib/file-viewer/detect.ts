@@ -6,24 +6,8 @@ import { is_optimade_raw } from '$lib/structure/parse'
 
 export { resolve_path } from '$lib/json-path'
 
-// Visualization types supported by the file viewer.
-export type RenderableType =
-  | `structure`
-  | `fermi_surface`
-  | `band_grid`
-  | `convex_hull`
-  | `volumetric`
-  | `phase_diagram`
-  | `band_structure`
-  | `dos`
-  | `bands_and_dos`
-  | `brillouin_zone`
-  | `xrd`
-  | `table`
-  | `plot`
-
-// Human-readable labels for badge display
-export const TYPE_LABELS: Record<RenderableType, string> = {
+// Visualization types supported by the file viewer and their badge labels.
+export const TYPE_LABELS = {
   structure: `Structure`,
   fermi_surface: `Fermi Surface`,
   band_grid: `Band Grid`,
@@ -38,6 +22,7 @@ export const TYPE_LABELS: Record<RenderableType, string> = {
   table: `Table`,
   plot: `Plot`,
 }
+export type RenderableType = keyof typeof TYPE_LABELS
 
 // Badge colors per type (CSS color values)
 export const TYPE_COLORS: Record<RenderableType, string> = {

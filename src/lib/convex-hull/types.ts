@@ -102,18 +102,13 @@ export type MarkerSymbol = // Marker symbol types for convex hull entries
   `circle` | `star` | `triangle` | `cross` | `diamond` | `square` | `wye`
 
 // Hull face coloring modes for 3D/4D convex hull visualizations
-export type HullFaceColorMode =
-  | `uniform` // Single user-selected color (default)
-  | `formation_energy` // Color by average formation energy of face vertices
-  | `dominant_element` // Color by element with highest concentration at centroid
-  | `facet_index` // Distinct categorical color per facet
-
-export const HULL_FACE_COLOR_MODES: readonly HullFaceColorMode[] = [
-  `uniform`,
-  `formation_energy`,
-  `dominant_element`,
-  `facet_index`,
+export const HULL_FACE_COLOR_MODES = [
+  `uniform`, // Single user-selected color (default)
+  `formation_energy`, // Color by average formation energy of face vertices
+  `dominant_element`, // Color by element with highest concentration at centroid
+  `facet_index`, // Distinct categorical color per facet
 ] as const
+export type HullFaceColorMode = (typeof HULL_FACE_COLOR_MODES)[number]
 
 // Plot entry with 3D coordinates for quaternary diagrams
 export interface ConvexHullEntry extends PhaseData, Point3D {
@@ -229,19 +224,9 @@ export interface HighlightStyle {
 // Default temperature (Kelvin) for gas corrections when no temperature is specified
 export const DEFAULT_GAS_TEMP = 300
 
-// Supported gas species for chemical potential calculations
-export type GasSpecies = `O2` | `N2` | `H2` | `CO` | `CO2` | `H2O` | `F2`
-
-// All supported gas species as an array (for iteration)
-export const GAS_SPECIES: readonly GasSpecies[] = [
-  `O2`,
-  `N2`,
-  `H2`,
-  `CO`,
-  `CO2`,
-  `H2O`,
-  `F2`,
-] as const
+// Supported gas species for chemical potential calculations and iteration
+export const GAS_SPECIES = [`O2`, `N2`, `H2`, `CO`, `CO2`, `H2O`, `F2`] as const
+export type GasSpecies = (typeof GAS_SPECIES)[number]
 
 // Default atmospheric partial pressures (in bar)
 export const DEFAULT_GAS_PRESSURES: Readonly<Record<GasSpecies, number>> = {

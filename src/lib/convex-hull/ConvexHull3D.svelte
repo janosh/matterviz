@@ -54,7 +54,7 @@
   import { MAGNETIC_ORDERING_CATEGORY } from './types'
 
   let {
-    entries = [],
+    entries,
     controls = {},
     config = {},
     show_controls,
