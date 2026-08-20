@@ -260,7 +260,9 @@
         </label>
       {/if}
       <p class="hint">
-        {collected_frames} frames × {n_atoms} atoms ≈ {format_bytes(estimated_bytes)}
+        {#if suggest_stride}
+          {collected_frames} frames × {n_atoms} atoms ≈ {format_bytes(estimated_bytes)}
+        {/if}
         {#if time_unit_fallback}
           {#if has_valid_dt}
             · {format_num(dt_collected, `.4~g`)} {time_unit} per collected frame

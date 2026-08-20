@@ -4,7 +4,7 @@
 import type { AnyStructure } from '$lib/structure'
 import { create_worker_client } from '$lib/worker-client.svelte'
 import { calc_structure_id } from './calc-structure-id'
-import type { StructureIdOptions, StructureIdResult } from './index'
+import type { StructureIdOptions, StructureIdResult } from './calc-structure-id'
 
 const run_structure_id = create_worker_client<
   AnyStructure,

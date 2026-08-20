@@ -191,10 +191,11 @@ describe(`frame stride`, () => {
     expect(pane_text()).not.toContain(`needs ≥`)
   })
 
-  test(`omits the stride control for analyses without a buffer to budget`, async () => {
+  test(`omits the stride control and size estimate for analyses without a buffer to budget`, async () => {
     mount_pane({ suggest_stride: undefined })
     await settle()
     expect(document.querySelector(`.stub-controls input[min='1'][step='1']`)).toBeNull()
+    expect(pane_text()).not.toContain(`atoms ≈`)
   })
 })
 

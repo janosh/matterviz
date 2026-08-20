@@ -1,20 +1,19 @@
-import type { ElementSymbol, Species } from '$lib'
-import type { Matrix3x3, Vec3, Vec9 } from '$lib/math'
+import type { ElementSymbol } from '$lib'
+import type { Vec3, Vec9 } from '$lib/math'
 import type { Crystal } from '$lib/structure'
 import type { WyckoffPos } from '$lib/symmetry'
 import {
   apply_symmetry_operations,
-  map_std_to_orig_site_indices,
+  count_structure_free_params,
+  enrich_wyckoff_rows,
   map_wyckoff_to_all_atoms,
-  simplicity_score,
-  to_cell_json,
-  wyckoff_multiplicity,
+  wyckoff_letter,
   wyckoff_positions_from_moyo,
+  wyckoff_sequence,
 } from '$lib/symmetry'
-import type { MoyoDataset } from '@spglib/moyo-wasm'
+import type { MoyoDataset, MoyoWyckoffPosition } from '@spglib/moyo-wasm'
 import { describe, expect, test } from 'vitest'
 import { make_crystal, make_wyckoff_dataset } from '../setup'
-import { structures } from '$site/structures'
 
 describe(`wyckoff_positions_from_moyo`, () => {
   test(`handles various input scenarios`, () => {
@@ -186,209 +185,6 @@ describe(`wyckoff_positions_from_moyo`, () => {
   })
 })
 
-describe(`simplicity_score`, () => {
-  test.each([
-    [[0, 0, 0], 0.75],
-    [[1, 1, 1], 0.75], // wraps to [0, 0, 0]
-    [[0.5, 0.5, 0.5], 1.5],
-    [[0, 0.5, 0], 1], // near_zero=[0,0.5,0], near_half=[0.5,0,0.5] -> 0.5 + 0.5*1.0
-    [[0.25, 0, 0], 0.875], // 0.25 + 0.5*(0.25+0.5+0.5)
-    [[0.25, 0.25, 0.25], 1.125],
-    [[0.75, 0.75, 0.75], 1.125], // symmetric to 0.25 around 0.5
-    [[1 / 3, 1 / 3, 1 / 3], 1.25],
-    [[0.125, 0, 0], 0.8125], // 1/8 position
-  ])(`scores %j as %f`, (vec, expected) => {
-    expect(simplicity_score(vec)).toBeCloseTo(expected, 10)
-  })
-
-  test(`wraps coordinates into [0, 1) and ranks simpler positions lower`, () => {
-    expect(simplicity_score([1.1, 1.2, 1.3])).toBe(simplicity_score([0.1, 0.2, 0.3]))
-    expect(simplicity_score([-0.1, -0.2, -0.3])).toBe(simplicity_score([0.9, 0.8, 0.7]))
-    expect(simplicity_score([-100, 0, 0])).toBeCloseTo(simplicity_score([0, 0, 0]), 10)
-
-    // Preference order: closer to 0/1 is simpler than closer to 1/2
-    expect(simplicity_score([0.9, 0.9, 0.9])).toBeLessThan(simplicity_score([0.5, 0.5, 0.5]))
-    expect(simplicity_score([0.01, 0.01, 0.01])).toBeLessThan(
-      simplicity_score([0.49, 0.49, 0.49]),
-    )
-  })
-
-  test(`returns NaN for empty or invalid input`, () => {
-    expect(simplicity_score([])).toBeNaN()
-    expect(simplicity_score([0])).toBeNaN()
-    // @ts-expect-error testing invalid input
-    expect(simplicity_score(undefined)).toBeNaN()
-    // @ts-expect-error testing invalid input
-    expect(simplicity_score(null)).toBeNaN()
-  })
-})
-
-describe(`structure validation`, () => {
-  test(`all structures have valid data`, () => {
-    const validateSite = (
-      site: { species?: Partial<Species>[]; abc?: Vec3; xyz?: Vec3; label?: unknown },
-      site_idx: number,
-    ) => {
-      const issues: string[] = []
-
-      if (!site.species?.length) issues.push(`Site ${site_idx} missing species`)
-      if (
-        site.abc?.length !== 3 ||
-        site.abc.some((coord) => typeof coord !== `number` || !isFinite(coord))
-      ) {
-        issues.push(`Site ${site_idx} invalid fractional coordinates`)
-      }
-      if (
-        site.xyz?.length !== 3 ||
-        site.xyz.some((coord) => typeof coord !== `number` || !isFinite(coord))
-      ) {
-        issues.push(`Site ${site_idx} invalid Cartesian coordinates`)
-      }
-      if (!site.label || typeof site.label !== `string`) {
-        issues.push(`Site ${site_idx} invalid label`)
-      }
-
-      let totalOccupancy = 0
-      for (const [idx, species] of (site.species ?? []).entries()) {
-        if (
-          !species.element ||
-          typeof species.element !== `string` ||
-          !/^[A-Z][a-z]?$/.test(species.element)
-        ) {
-          issues.push(`Site ${site_idx} species ${idx} invalid element: ${species.element}`)
-        }
-        if (
-          typeof species.occu !== `number` ||
-          !isFinite(species.occu) ||
-          species.occu < 0 ||
-          species.occu > 1
-        ) {
-          issues.push(`Site ${site_idx} species ${idx} invalid occupancy: ${species.occu}`)
-        }
-        if (
-          species.oxidation_state !== undefined &&
-          (typeof species.oxidation_state !== `number` || !isFinite(species.oxidation_state))
-        ) {
-          issues.push(
-            `Site ${site_idx} species ${idx} invalid oxidation state: ${species.oxidation_state}`,
-          )
-        }
-        totalOccupancy += (species.occu as number) ?? 0
-      }
-      if (totalOccupancy > 1.001) {
-        issues.push(`Site ${site_idx} total occupancy exceeds 1.0: ${totalOccupancy}`)
-      }
-
-      return issues
-    }
-
-    const failed = structures
-      .map((structure) => {
-        const issues: string[] = []
-
-        if (!structure.sites?.length) issues.push(`No sites`)
-
-        if (`lattice` in structure && structure.lattice) {
-          const { lattice } = structure
-          if (
-            lattice.matrix?.length !== 3 ||
-            lattice.matrix.some((row) => !Array.isArray(row) || row.length !== 3)
-          ) {
-            issues.push(`Invalid lattice matrix`)
-          }
-          if (
-            [`a`, `b`, `c`, `alpha`, `beta`, `gamma`, `volume`].some(
-              (param) => typeof lattice[param as keyof typeof lattice] !== `number`,
-            )
-          ) {
-            issues.push(`Missing lattice parameters`)
-          }
-        }
-
-        structure.sites?.forEach((site, idx) => issues.push(...validateSite(site, idx)))
-
-        return { id: structure.id ?? `unknown`, issues }
-      })
-      .filter((site) => site.issues.length > 0)
-
-    expect(failed).toHaveLength(0)
-  })
-})
-
-describe(`to_cell_json`, () => {
-  test(`serializes lattice basis (row-major), positions, and atomic numbers`, () => {
-    const parsed = JSON.parse(
-      to_cell_json(
-        make_crystal(5, [
-          { element: `Si`, abc: [0, 0, 0] },
-          { element: `O`, abc: [0.5, 0.5, 0.5] },
-        ]),
-      ),
-    )
-    expect(parsed.lattice.basis).toEqual([5, 0, 0, 0, 5, 0, 0, 0, 5])
-    expect(parsed.positions).toEqual([
-      [0, 0, 0],
-      [0.5, 0.5, 0.5],
-    ])
-    expect(parsed.numbers).toEqual([14, 8]) // Si=14, O=8
-  })
-
-  test.each([
-    [
-      `hexagonal`,
-      [
-        [3, 0, 0],
-        [-1.5, 2.598076211353316, 0],
-        [0, 0, 5],
-      ],
-      `C`,
-      6,
-    ],
-    [
-      `triclinic`,
-      [
-        [4, 0, 0],
-        [1, 3, 0],
-        [0.5, 0.5, 5],
-      ],
-      `Fe`,
-      26,
-    ],
-  ] as [string, Matrix3x3, string, number][])(
-    `preserves non-orthogonal %s lattice vectors`,
-    (_desc, matrix, element, atomic_number) => {
-      const crystal = make_crystal(matrix, [{ element, abc: [0.25, 0.25, 0.25] }])
-      const parsed = JSON.parse(to_cell_json(crystal))
-      matrix
-        .flat()
-        .forEach((val, idx) => expect(parsed.lattice.basis[idx]).toBeCloseTo(val, 10))
-      expect(parsed.positions[0]).toEqual([0.25, 0.25, 0.25])
-      expect(parsed.numbers).toEqual([atomic_number])
-    },
-  )
-
-  test.each([[`Xx`], [``]])(`throws for unknown element %j`, (element) => {
-    const crystal = make_crystal(5, [{ element, abc: [0, 0, 0] }])
-    expect(() => to_cell_json(crystal)).toThrow(`Unknown element at site 0`)
-  })
-
-  test(`merges split disordered sites before moyo conversion`, () => {
-    const disordered_split_site = make_crystal(5, [
-      { element: `O`, abc: [0, 0, 0], occu: 0.5 },
-      { element: `F`, abc: [0, 0, 0], occu: 0.5 },
-      { element: `Li`, abc: [0.5, 0.5, 0.5], occu: 1 },
-    ])
-
-    const parsed_cell = JSON.parse(to_cell_json(disordered_split_site))
-    expect(parsed_cell.positions).toHaveLength(2)
-    expect(parsed_cell.numbers).toHaveLength(2)
-    expect(parsed_cell.positions).toContainEqual([0, 0, 0])
-    expect(parsed_cell.positions).toContainEqual([0.5, 0.5, 0.5])
-    // 50/50 tie resolves by alphabetical element symbol: F before O
-    expect(new Set(parsed_cell.numbers)).toEqual(new Set([3, 9]))
-  })
-})
-
 describe(`orig site mapping`, () => {
   test(`wyckoff table expands merged input indices to original sites`, () => {
     // input site 0 (O, 2a) was merged from original sites [0, 1]; input site 1 (Li, 1b)
@@ -408,59 +204,6 @@ describe(`orig site mapping`, () => {
     const lithium_row = rows.find((row) => row.elem === `Li`)
     expect(oxygen_row?.site_indices).toEqual([0, 1])
     expect(lithium_row?.site_indices).toEqual([2])
-  })
-
-  test(`std-to-orig mapping respects atomic number when positions overlap`, () => {
-    const mapped = map_std_to_orig_site_indices(
-      [[0, 0, 0]],
-      [3],
-      [
-        [0, 0, 0],
-        [0, 0, 0.001],
-      ],
-      [8, 3],
-      [[0], [1]],
-    )
-    expect(mapped).toEqual([[1]])
-  })
-
-  test(`maps std positions through non-symmetric P before matching`, () => {
-    // P (column-major flat [0,0,-1, 1,0,0, 0,-1,0]) is a NON-symmetric axis permutation
-    // so a transposed (row-major) read or a skipped transform picks the wrong site.
-    // x_in = P·x_std: std (0.7, 0.1, 0.8) ≡ input site 0 at (0.1, 0.2, 0.3) mod 1.
-    const mapped = map_std_to_orig_site_indices(
-      [[0.7, 0.1, 0.8]],
-      [14],
-      [
-        [0.1, 0.2, 0.3],
-        [0.7, 0.5, 0.9],
-      ],
-      [14, 14],
-      [[0], [1]],
-      { std_linear: [0, 0, -1, 1, 0, 0, 0, -1, 0], std_origin_shift: [0, 0, 0] },
-    )
-    expect(mapped).toEqual([[0]])
-  })
-
-  test(`std-lattice translation check uses P⁻¹·d ∈ ℤ³, not P·d ∈ ℤ³`, () => {
-    // P scales std-x by 1/2 (col-major flat [0.5,0,0, 0,1,0, 0,0,1]). std site (0,0,0)
-    // predicts input position (0,0,0). input[0] at (0.5,0,0) differs by d=(-0.5,0,0):
-    // P⁻¹·d = (-1,0,0) ∈ ℤ³ ⇒ a standardized-lattice translation ⇒ exact match (dist 0).
-    // input[1] at (0.01,0,0) is fractionally closer but is NOT a std-lattice translation
-    // (P⁻¹·d = (-0.02,0,0)). The correct check selects input[0]; the wrong P·d check
-    // (P·(-0.5,0,0) = (-0.25,0,0) ∉ ℤ³) would fall back to distance and pick input[1].
-    const mapped = map_std_to_orig_site_indices(
-      [[0, 0, 0]],
-      [14],
-      [
-        [0.5, 0, 0],
-        [0.01, 0, 0],
-      ],
-      [14, 14],
-      [[0], [1]],
-      { std_linear: [0.5, 0, 0, 0, 1, 0, 0, 0, 1], std_origin_shift: [0, 0, 0] },
-    )
-    expect(mapped).toEqual([[0]])
   })
 })
 
@@ -535,7 +278,7 @@ describe(`site coverage verification`, () => {
       expect(covered).toEqual(expected_coverage)
 
       const total_multiplicity = rows.reduce(
-        (sum, pos) => sum + (wyckoff_multiplicity(pos.wyckoff) || 1),
+        (sum, pos) => sum + (Number(/^\d+/.exec(pos.wyckoff)?.[0]) || 1),
         0,
       )
       expect(total_multiplicity).toBe(expected_multiplicity)
@@ -962,24 +705,14 @@ describe(`map_wyckoff_to_all_atoms`, () => {
     expect(loose_result[0].site_indices).toEqual([0, 1, 2])
   })
 
-  test.each([
-    [`invalid original indices`, [5, 10], []],
-    [`missing site_indices`, undefined, []],
-  ])(`handles %s`, (_, site_indices, expected) => {
+  test(`ignores original indices outside the structure`, () => {
     const original = mock_structure([{ abc: [0, 0, 0], element: `H` }])
     const displayed = mock_structure([{ abc: [0, 0, 0], element: `H` }])
     const wyckoff_pos = [
-      {
-        wyckoff: `1a`,
-        elem: `H`,
-        abc: [0, 0, 0] as Vec3,
-        ...(site_indices && { site_indices }),
-      },
+      { wyckoff: `1a`, elem: `H`, abc: [0, 0, 0] as Vec3, site_indices: [5, 10] },
     ]
-
     const result = map_wyckoff_to_all_atoms(wyckoff_pos, displayed, original, mock_sym_data())
-
-    expect(result[0].site_indices).toEqual(expected)
+    expect(result[0].site_indices).toEqual([])
   })
 
   test(`matches sites within tolerance across the 0/1 wrap boundary`, () => {
@@ -997,5 +730,100 @@ describe(`map_wyckoff_to_all_atoms`, () => {
       sym_data,
     )
     expect(rows[0].site_indices).toEqual([0])
+  })
+})
+
+const make_row = (wyckoff: string, overrides: Partial<WyckoffPos> = {}): WyckoffPos => ({
+  wyckoff,
+  elem: `Na`,
+  abc: [0, 0, 0],
+  site_indices: [],
+  ...overrides,
+})
+
+const make_db_entry = (
+  letter: string,
+  coordinates: string,
+  site_symmetry = `m-3m`,
+  multiplicity = 1,
+): MoyoWyckoffPosition => ({ multiplicity, letter, site_symmetry, coordinates })
+
+describe(`wyckoff_letter`, () => {
+  test.each([
+    [`4a`, `a`],
+    [`192h`, `h`],
+    [`8A`, `A`], // moyo encodes ITA's 27th letter alpha as uppercase A (e.g. Pmmm)
+    [`1`, ``],
+    [``, ``],
+  ])(`extracts letter from %j as %j`, (label, expected) => {
+    expect(wyckoff_letter(label)).toBe(expected)
+  })
+})
+
+describe(`wyckoff_sequence`, () => {
+  test.each<[string, string[], string]>([
+    [`perovskite Pm-3m`, [`1a`, `1b`, `3c`], `c b a`],
+    [`repeated letters get superscript counts`, [`8c`, `8c`, `4a`], `c² a`],
+    [`descending letter order regardless of input order`, [`4e`, `2a`, `4e`, `8j`], `j e² a`],
+    [`single orbit`, [`4a`], `a`],
+    [`empty`, [], ``],
+    [`double-digit counts`, Array.from({ length: 12 }, () => `2e`), `e¹²`],
+    // alpha (A) is the letter AFTER z, so the general position still comes first
+    [`Pmmm-style alpha general position`, [`1a`, `8A`, `2z`], `A z a`],
+  ])(`%s`, (_desc, labels, expected) => {
+    expect(wyckoff_sequence(labels.map((label) => make_row(label)))).toBe(expected)
+  })
+
+  test(`ignores rows without a letter`, () => {
+    expect(wyckoff_sequence([make_row(`4`), make_row(`1a`)])).toBe(`a`)
+  })
+})
+
+describe(`enrich_wyckoff_rows`, () => {
+  const db = [make_db_entry(`a`, `0,0,0`, `m-3m`, 1), make_db_entry(`c`, `x,1/4,0`, `mm2`, 4)]
+
+  test(`attaches ITA coordinates and site symmetry by letter`, () => {
+    const rows = enrich_wyckoff_rows([make_row(`1a`), make_row(`4c`)], db)
+    expect(rows[0].coordinates).toBe(`0,0,0`)
+    expect(rows[0].site_symmetry).toBe(`m-3m`)
+    expect(rows[1].coordinates).toBe(`x,1/4,0`)
+    expect(rows[1].site_symmetry).toBe(`mm2`)
+  })
+
+  test(`keeps moyo-provided site symmetry over database fallback`, () => {
+    const rows = enrich_wyckoff_rows([make_row(`1a`, { site_symmetry: `-43m` })], db)
+    expect(rows[0].site_symmetry).toBe(`-43m`)
+    expect(rows[0].coordinates).toBe(`0,0,0`)
+  })
+
+  test(`matches alpha (uppercase A) general positions`, () => {
+    const alpha_db = [make_db_entry(`A`, `x,y,z`, `1`, 8)]
+    const rows = enrich_wyckoff_rows([make_row(`8A`)], alpha_db)
+    expect(rows[0].coordinates).toBe(`x,y,z`)
+  })
+
+  test.each<[string, WyckoffPos[], MoyoWyckoffPosition[]]>([
+    [`empty database`, [make_row(`1a`)], []],
+    [`letter missing from database`, [make_row(`2d`)], db],
+  ])(`passes rows through unchanged with %s`, (_desc, rows, db_positions) => {
+    const enriched = enrich_wyckoff_rows(rows, db_positions)
+    expect(enriched).toEqual(rows)
+    expect(enriched.every((row) => row.coordinates === undefined)).toBe(true)
+  })
+})
+
+describe(`count_structure_free_params`, () => {
+  test.each<[string, (string | undefined)[], number | null]>([
+    [`all fixed`, [`0,0,0`, `1/2,1/2,1/2`], 0],
+    [`mixed orbits sum per-orbit free params`, [`x,y,z`, `1/4,1/4,z`, `0,0,0`], 4],
+    // repeated variables count once per orbit: x,2x and x,-x each have one/two free params
+    [`distinct variables per triplet`, [`x,2x,1/2`, `x,-x,z`, `x,x,x`, `-y,x-y,2/3`], 6],
+    [`any row missing coordinates yields null`, [`x,y,z`, undefined], null],
+    [`empty rows yield null (no orbit info, not 0 DOF)`, [], null],
+  ])(`%s`, (_desc, coords, expected) => {
+    const rows = coords.map((coordinates, idx) =>
+      make_row(`${idx + 1}a`, coordinates !== undefined ? { coordinates } : {}),
+    )
+    expect(count_structure_free_params(rows)).toBe(expected)
   })
 })

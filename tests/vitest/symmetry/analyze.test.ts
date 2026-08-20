@@ -1,6 +1,10 @@
 import type { Vec3 } from '$lib/math'
 import type { CellType } from '$lib/symmetry'
-import { moyo_cell_to_structure, transform_cell } from '$lib/symmetry'
+import {
+  spacegroup_settings,
+  spacegroup_wyckoff_positions,
+  transform_cell,
+} from '$lib/symmetry'
 import type { MoyoCell, MoyoDataset } from '@spglib/moyo-wasm'
 import { describe, expect, test } from 'vitest'
 import { make_crystal } from '../setup'
@@ -35,11 +39,13 @@ const make_mock_sym_data = (std_cell: MoyoCell, prim_std_cell: MoyoCell): MoyoDa
   angle_tolerance: { type: `Default` },
 })
 
-// moyo_cell_to_structure only reads pbc/charge/id/properties from the original structure.
+// The cell conversion only reads pbc/charge/id/properties from the original structure.
 // Distinct lattice parameter (a=4) detects whether a transformation happened.
 const original = make_crystal(4, [])
+const to_structure = (std_cell: MoyoCell, structure = original) =>
+  transform_cell(structure, `conventional`, make_mock_sym_data(std_cell, std_cell))
 
-describe(`moyo_cell_to_structure`, () => {
+describe(`moyo cell → structure`, () => {
   test(`converts cubic cell correctly`, () => {
     const moyo_cell = make_moyo_cell(
       [5, 0, 0, 0, 5, 0, 0, 0, 5], // 5Å cubic cell
@@ -50,7 +56,7 @@ describe(`moyo_cell_to_structure`, () => {
       [14, 8], // Si, O
     )
 
-    const result = moyo_cell_to_structure(moyo_cell, original)
+    const result = to_structure(moyo_cell)
 
     expect(result.lattice.matrix).toEqual([
       [5, 0, 0],
@@ -69,7 +75,7 @@ describe(`moyo_cell_to_structure`, () => {
   test(`converts fractional to Cartesian coordinates correctly`, () => {
     const moyo_cell = make_moyo_cell([4, 0, 0, 0, 4, 0, 0, 0, 4], [[0.5, 0.5, 0.5]], [26])
 
-    const result = moyo_cell_to_structure(moyo_cell, original)
+    const result = to_structure(moyo_cell)
 
     expect(result.sites[0].abc).toEqual([0.5, 0.5, 0.5])
     result.sites[0].xyz.forEach((coord) => expect(coord).toBeCloseTo(2, 5)) // 0.5 * 4
@@ -79,7 +85,7 @@ describe(`moyo_cell_to_structure`, () => {
     // Hexagonal cell: a=3, b=3, c=5, gamma=120°
     const moyo_cell = make_moyo_cell([3, 0, 0, -1.5, 2.598, 0, 0, 0, 5], [[0, 0, 0]], [6])
 
-    const result = moyo_cell_to_structure(moyo_cell, original)
+    const result = to_structure(moyo_cell)
 
     expect(result.lattice.matrix[0][0]).toBeCloseTo(3, 3)
     expect(result.lattice.matrix[1][0]).toBeCloseTo(-1.5, 3)
@@ -91,20 +97,14 @@ describe(`moyo_cell_to_structure`, () => {
   test(`throws error for unknown atomic number`, () => {
     const moyo_cell = make_moyo_cell([5, 0, 0, 0, 5, 0, 0, 0, 5], [[0, 0, 0]], [999])
 
-    expect(() => moyo_cell_to_structure(moyo_cell, original)).toThrow(
-      `Unknown atomic number: 999`,
-    )
+    expect(() => to_structure(moyo_cell)).toThrow(`Unknown atomic number: 999`)
   })
 
   test(`preserves pbc from original structure`, () => {
     const moyo_cell = make_moyo_cell([5, 0, 0, 0, 5, 0, 0, 0, 5], [[0, 0, 0]], [14])
     const original_2d = make_crystal(5, [], { pbc: [true, true, false] }) // 2D periodic
 
-    expect(moyo_cell_to_structure(moyo_cell, original_2d).lattice.pbc).toEqual([
-      true,
-      true,
-      false,
-    ])
+    expect(to_structure(moyo_cell, original_2d).lattice.pbc).toEqual([true, true, false])
   })
 
   test(`wraps fractional coordinates outside [0, 1) to unit cell`, () => {
@@ -118,7 +118,7 @@ describe(`moyo_cell_to_structure`, () => {
       [26, 26], // Fe
     )
 
-    const result = moyo_cell_to_structure(moyo_cell, original)
+    const result = to_structure(moyo_cell)
 
     const expected_abc = [
       [0.2, 0.7, 0.5], // 1.2 -> 0.2, -0.3 -> 0.7, 0.5 stays
@@ -185,4 +185,15 @@ describe(`transform_cell`, () => {
       expect(result.properties).toEqual({ custom_metadata: `kept` })
     },
   )
+})
+
+describe(`wasm database wrappers without initialized module`, () => {
+  // In happy-dom unit tests the moyo WASM module is never initialized, so the
+  // wrappers must degrade to empty results instead of throwing
+  test.each([
+    [`spacegroup_wyckoff_positions`, () => spacegroup_wyckoff_positions(523)],
+    [`spacegroup_settings`, () => spacegroup_settings(225)],
+  ])(`%s returns [] when WASM is not ready`, (_name, getter) => {
+    expect(getter()).toEqual([])
+  })
 })

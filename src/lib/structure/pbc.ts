@@ -27,7 +27,7 @@ const MIN_BOND_DIST = 0.4 // Å
 // to 15 digits to suppress floating-point noise.
 // NOTE on epsilon: the tightest of three intentionally different wrap helpers. Coordinates
 // here come almost straight from file parsing, so a 1e-10 snap + toFixed(15) preserves
-// maximal precision. Compare wrap_frac @1e-9 [[src/lib/symmetry/index.ts:80]] (post-moyo)
+// maximal precision. Compare wrap_frac @1e-9 [[src/lib/symmetry/wyckoff.ts]] (post-moyo)
 // and wrap_point @1e-8 [[src/lib/symmetry/symmetry-elements.ts:214]] (feeds dedup keys).
 // Do not unify: loosening this changes snapping near cell boundaries for parsed structures.
 export const wrap_frac_coord = (coord: number): number => {

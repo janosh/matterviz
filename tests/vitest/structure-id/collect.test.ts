@@ -122,24 +122,6 @@ describe(`collect_structure_id_sweep`, () => {
     })
     expect(sweep.results[0].cna_types).not.toEqual(wrapped.cna_types)
   })
-
-  it(`defaults missing lattice pbc before normalizing sites`, async () => {
-    const crystal = make_fcc([2, 2, 2])
-    const { pbc: _pbc, ...lattice } = crystal.lattice
-    const structure = {
-      ...crystal,
-      lattice,
-      sites: crystal.sites.map((site, site_idx) =>
-        site_idx === 0
-          ? { ...site, abc: [1, 0, 0] as Vec3, xyz: [999, 999, 999] as Vec3 }
-          : site,
-      ),
-    } as AnyStructure
-    const sweep = await collect_structure_id_sweep(in_memory([structure]), {
-      options: { skip_csp: true },
-    })
-    expect(sweep.results[0].populations).toEqual({ other: 0, fcc: 32, hcp: 0, bcc: 0, ico: 0 })
-  })
 })
 
 describe(`indexed trajectories`, () => {

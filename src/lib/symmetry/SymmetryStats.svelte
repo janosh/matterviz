@@ -4,17 +4,19 @@
   import { tooltip } from 'svelte-widgets/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SETTINGS_CONFIG } from '$lib/settings'
-  import type { SymmetrySettings } from './index'
+  import type { SymmetrySettings } from './analyze'
   import {
-    count_structure_free_params,
     default_sym_settings,
-    enrich_wyckoff_rows,
     spacegroup_settings,
     spacegroup_wyckoff_positions,
+  } from './analyze'
+  import { spacegroup_to_crystal_sys, spacegroup_to_lattice_system } from './spacegroups'
+  import {
+    count_structure_free_params,
+    enrich_wyckoff_rows,
     wyckoff_positions_from_moyo,
     wyckoff_sequence,
-  } from './index'
-  import * as spg from './spacegroups'
+  } from './wyckoff'
 
   type SymmetrySnippet = Snippet<
     [{ sym_data?: MoyoDataset | null; settings: SymmetrySettings }]
@@ -49,7 +51,6 @@
   const occupied_rows = $derived(
     sym_data ? enrich_wyckoff_rows(wyckoff_positions_from_moyo(sym_data), wyckoff_db) : [],
   )
-  const wyckoff_count = $derived(occupied_rows.length)
   const wyckoff_seq = $derived(wyckoff_sequence(occupied_rows))
   // Internal degrees of freedom (null when ITA coordinates are unavailable)
   const free_params = $derived(count_structure_free_params(occupied_rows))
@@ -57,34 +58,25 @@
   // Crystal system, plus the lattice system in parens when it differs (e.g. trigonal
   // space groups split into rhombohedral R-centered and hexagonal P lattices)
   const crystal_system_label = $derived.by(() => {
-    if (!sym_data) return `?`
-    const crystal_sys = spg.spacegroup_to_crystal_sys(sym_data.number)
-    const lattice_sys = spg.spacegroup_num_to_lattice_system(sym_data.number)
-    if (!crystal_sys) return `?`
-    const suffix =
-      lattice_sys && lattice_sys !== crystal_sys ? ` (${lattice_sys} lattice)` : ``
-    return `${crystal_sys}${suffix}`
+    const crystal_sys = sym_data ? spacegroup_to_crystal_sys(sym_data.number) : null
+    if (!sym_data || !crystal_sys) return `?`
+    const lattice_sys = spacegroup_to_lattice_system(sym_data.number)
+    return lattice_sys === crystal_sys
+      ? crystal_sys
+      : `${crystal_sys} (${lattice_sys} lattice)`
   })
 
+  // Operations split into pure translations (T), translation-free rotations (R) and the rest (RT)
   const sym_ops_counts = $derived.by(() => {
-    const EPS = 1e-10
-    if (!sym_data?.operations) {
-      return { translations: 0, rotations: 0, roto_translations: 0 }
+    const counts = { translations: 0, rotations: 0, roto_translations: 0 }
+    for (const { rotation, translation } of sym_data?.operations ?? []) {
+      const has_translation = translation.some((coord) => Math.abs(coord) > 1e-10)
+      const is_identity = String(rotation) === `1,0,0,0,1,0,0,0,1`
+      if (is_identity && has_translation) counts.translations++
+      else if (!has_translation) counts.rotations++
+      else counts.roto_translations++
     }
-
-    return sym_data.operations.reduce(
-      (acc, op) => {
-        const has_translation = op.translation.some((coord) => Math.abs(coord) > EPS)
-        const is_identity = String(op.rotation) === `1,0,0,0,1,0,0,0,1`
-
-        if (is_identity && has_translation) acc.translations++
-        else if (!has_translation) acc.rotations++
-        else acc.roto_translations++
-
-        return acc
-      },
-      { translations: 0, rotations: 0, roto_translations: 0 },
-    )
+    return counts
   })
 
   const titles = {
@@ -102,13 +94,12 @@
   }
   const tooltips: Record<string, string> = $derived(show_tooltips ? titles : {})
 
-  function get_step_from_order_of_magnitude(value: number): number {
-    if (!Number.isFinite(value) || value <= 0) return 1e-5
-    const exponent = Math.floor(Math.log10(value))
-    return 10 ** exponent
-  }
-
-  const symprec_step = $derived(get_step_from_order_of_magnitude(settings.symprec))
+  // Step the precision input by its own order of magnitude (1e-4 steps in 1e-4 increments)
+  const symprec_step = $derived(
+    Number.isFinite(settings.symprec) && settings.symprec > 0
+      ? 10 ** Math.floor(Math.log10(settings.symprec))
+      : 1e-5,
+  )
 </script>
 
 <div {...rest} class={[`symmetry-stats`, rest.class]}>
@@ -131,18 +122,12 @@
         step={symprec_step}
         value={settings.symprec}
         oninput={(evt) => {
-          const { value } = evt.currentTarget
-          if (value === ``) return
-          const parsed = Number(value)
-          if (Number.isFinite(parsed)) {
+          const parsed = Number(evt.currentTarget.value)
+          if (evt.currentTarget.value !== `` && Number.isFinite(parsed)) {
             settings = { ...settings, symprec: parsed }
           }
         }}
-        onkeydown={(evt) => {
-          if (evt.key === `Escape`) {
-            evt.currentTarget.blur()
-          }
-        }}
+        onkeydown={(evt) => evt.key === `Escape` && evt.currentTarget.blur()}
       />
     </label>
     <label>
@@ -184,7 +169,11 @@
         }`,
       },
       { label: `Pearson`, title: tooltips?.pearson_symbol, value: sym_data.pearson_symbol },
-      { label: `Wyckoff Positions`, title: tooltips?.distinct_orbits, value: wyckoff_count },
+      {
+        label: `Wyckoff Positions`,
+        title: tooltips?.distinct_orbits,
+        value: occupied_rows.length,
+      },
       wyckoff_seq && {
         label: `Wyckoff Sequence`,
         title: tooltips?.wyckoff_sequence,

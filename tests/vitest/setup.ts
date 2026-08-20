@@ -5,7 +5,8 @@ import { clear_tick_metrics_cache } from '$lib/plot/core/tick-layout'
 import { clear_text_metrics_cache } from '$lib/plot/core/text-metrics'
 import type { Crystal, Pbc, Site } from '$lib/structure'
 import type { TrajectoryFrame } from '$lib/trajectory'
-import init, { type MoyoDataset } from '@spglib/moyo-wasm'
+import { ensure_moyo_wasm_ready } from '$lib/symmetry/analyze'
+import type { MoyoDataset } from '@spglib/moyo-wasm'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { gunzipSync } from 'node:zlib'
@@ -47,8 +48,7 @@ const MOYO_WASM_PATH = resolve(
 let moyo_initialized = false
 export async function init_moyo_for_tests(): Promise<void> {
   if (moyo_initialized) return
-  const wasm_bytes = readFileSync(MOYO_WASM_PATH)
-  await init({ module_or_path: wasm_bytes })
+  await ensure_moyo_wasm_ready(readFileSync(MOYO_WASM_PATH))
   moyo_initialized = true
 }
 
@@ -723,7 +723,8 @@ export const make_wyckoff_dataset = (
     wyckoffs: wyckoffs.map((wyckoff) => wyckoff ?? ``),
     orbits,
     std_linear: [1, 0, 0, 0, 1, 0, 0, 0, 1],
-    ...(orig_site_indices_by_input_idx ? { orig_site_indices_by_input_idx } : {}),
+    orig_site_indices_by_input_idx:
+      orig_site_indices_by_input_idx ?? positions.map((_pos, idx) => [idx]),
   } as unknown as MoyoDataset
 }
 

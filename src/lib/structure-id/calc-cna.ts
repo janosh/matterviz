@@ -17,9 +17,12 @@
 // The `n_longest_chain` index is the number of bonds in the LARGEST CONNECTED COMPONENT of the
 // common-neighbor bond graph, not the longest simple path. That is what makes a 6-bond ring
 // score 6 and two disjoint bonds score 1, and it matches OVITO's calcMaxChainLength().
-import type { CnaMode } from './index'
-import type { NeighborList } from './neighbors'
-import { neighbor_count } from './neighbors'
+import type { NeighborList } from '$lib/structure/bonding'
+
+// `adaptive` derives a per-atom cutoff from that atom's own neighbor distances (Stukowski 2012)
+// and needs no lattice constant. `fixed` uses one global cutoff for the whole structure and
+// requires `cutoff` to be set to 0.854 * a_fcc or 1.207 * a_bcc for the phase under study.
+export type CnaMode = `adaptive` | `fixed`
 
 // Numeric CNA codes. These are the values written to `site.properties.cna_type`, chosen over
 // strings so an atom color mode keyed on numeric site properties renders them with no mapping
@@ -185,13 +188,13 @@ function analyze_bcc_signature(): CnaTypeCode {
 }
 
 // Conventional fixed-cutoff CNA. The atom must have exactly 12 or exactly 14 neighbors inside
-// `cutoff` — an atom whose count lands anywhere else is Other by construction, which is why the
-// cutoff has to be picked for the phase under study (0.854 * a_fcc, 1.207 * a_bcc).
-function classify_fixed(list: NeighborList, center_idx: number, cutoff: number): CnaTypeCode {
-  const n_neighbors = neighbor_count(list, center_idx)
+// the list's cutoff — an atom whose count lands anywhere else is Other by construction, which is
+// why the cutoff has to be picked for the phase under study (0.854 * a_fcc, 1.207 * a_bcc).
+function classify_fixed(list: NeighborList, center_idx: number): CnaTypeCode {
+  const n_neighbors = list.offsets[center_idx + 1] - list.offsets[center_idx]
   if (n_neighbors !== N_CLOSE_PACKED && n_neighbors !== N_BCC) return CNA_TYPES.other
   const base = list.offsets[center_idx] * 3
-  fill_bond_masks(list.deltas, base, n_neighbors, cutoff)
+  fill_bond_masks(list.deltas, base, n_neighbors, list.cutoff)
   return n_neighbors === N_CLOSE_PACKED
     ? analyze_close_packed_signature()
     : analyze_bcc_signature()
@@ -201,7 +204,7 @@ function classify_fixed(list: NeighborList, center_idx: number, cutoff: number):
 // neighbor distances, so no lattice constant is needed and elastic strain does not shift the
 // classification. Each candidate structure gets its own local cutoff and is tested in turn.
 function classify_adaptive(list: NeighborList, center_idx: number): CnaTypeCode {
-  const n_neighbors = neighbor_count(list, center_idx)
+  const n_neighbors = list.offsets[center_idx + 1] - list.offsets[center_idx]
   const base = list.offsets[center_idx] * 3
   const dist_base = list.offsets[center_idx]
   const { distances, deltas } = list
@@ -227,25 +230,14 @@ function classify_adaptive(list: NeighborList, center_idx: number): CnaTypeCode 
   return CNA_TYPES.other
 }
 
-// Per-atom CNA type codes. `cutoff` is required (and only used) in `fixed` mode, where it must
-// equal the radius `list` was built at: the 12-or-14 neighbor count that drives that branch is
-// read off `list`, so a list built at a different radius would count neighbors at one cutoff and
-// bond them at another — silently classifying against a structure nobody asked for. A list
-// always carries a positive cutoff, so this one check also rejects a missing or non-positive one.
-export function calc_cna(list: NeighborList, mode: CnaMode, cutoff?: number): Int8Array {
-  if (mode === `fixed` && cutoff !== list.cutoff) {
-    throw new Error(
-      `calc_cna: fixed mode needs a cutoff equal to the ${list.cutoff} Å the neighbor list ` +
-        `was built with, got ${cutoff}; rebuild the list at the analysis cutoff`,
-    )
-  }
-  const fixed_cutoff = mode === `fixed` ? list.cutoff : null
+// Per-atom CNA type codes. In `fixed` mode the bond cutoff is the radius `list` was built at:
+// the 12-or-14 neighbor count that drives that branch is read off `list`, so counting neighbors
+// at one cutoff and bonding them at another would classify against a structure nobody asked for.
+export function calc_cna(list: NeighborList, mode: CnaMode): Int8Array {
+  const classify = mode === `fixed` ? classify_fixed : classify_adaptive
   const types = new Int8Array(list.n_centers)
   for (let center_idx = 0; center_idx < list.n_centers; center_idx++) {
-    types[center_idx] =
-      fixed_cutoff === null
-        ? classify_adaptive(list, center_idx)
-        : classify_fixed(list, center_idx, fixed_cutoff)
+    types[center_idx] = classify(list, center_idx)
   }
   return types
 }

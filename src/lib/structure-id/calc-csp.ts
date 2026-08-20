@@ -13,8 +13,7 @@
 // the N/2 smallest. It does NOT force each neighbor into exactly one pair, so a strongly
 // non-centrosymmetric site can reuse one neighbor in several of the summed terms. That is a
 // known quirk of the reference implementations, reproduced here so the numbers are comparable.
-import type { NeighborList } from './neighbors'
-import { neighbor_count } from './neighbors'
+import type { NeighborList } from '$lib/structure/bonding'
 
 // Reused across atoms; N is capped so the pair buffer can be allocated once
 const MAX_CSP_NEIGHBORS = 32
@@ -88,7 +87,7 @@ export function calc_centrosymmetry(
 
   const csp = new Float64Array(list.n_centers)
   for (let center_idx = 0; center_idx < list.n_centers; center_idx++) {
-    if (neighbor_count(list, center_idx) < n_csp_neighbors) {
+    if (list.offsets[center_idx + 1] - list.offsets[center_idx] < n_csp_neighbors) {
       csp[center_idx] = NaN
       continue
     }

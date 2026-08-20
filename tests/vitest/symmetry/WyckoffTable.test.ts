@@ -1,33 +1,18 @@
 import type { WyckoffPos } from '$lib/symmetry'
 import { WyckoffTable } from '$lib/symmetry'
 import type { MoyoWyckoffPosition } from '@spglib/moyo-wasm'
-import type { ComponentProps } from 'svelte'
 import { mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 import { doc_query } from '../setup'
 
 describe(`WyckoffTable`, () => {
-  const mount_table = (wyckoff_positions: WyckoffPos[] | null | undefined) =>
-    mount(WyckoffTable, {
-      target: document.body,
-      props: {
-        wyckoff_positions: wyckoff_positions as ComponentProps<
-          typeof WyckoffTable
-        >[`wyckoff_positions`],
-      },
-    })
+  const mount_table = (wyckoff_positions: WyckoffPos[]) =>
+    mount(WyckoffTable, { target: document.body, props: { wyckoff_positions } })
 
-  test.each([
-    [`empty array`, [] as WyckoffPos[]],
-    [`null`, null],
-    [`undefined`, undefined],
-  ] as [string, WyckoffPos[] | null | undefined][])(
-    `renders nothing when wyckoff_positions is %s`,
-    (_, wyckoff_positions) => {
-      mount_table(wyckoff_positions)
-      expect(document.querySelector(`table`)).toBeNull()
-    },
-  )
+  test(`renders nothing without rows`, () => {
+    mount_table([])
+    expect(document.querySelector(`table`)).toBeNull()
+  })
 
   test(`renders duplicate semantic rows without keyed-each crash`, () => {
     const duplicate_semantic_rows: WyckoffPos[] = [

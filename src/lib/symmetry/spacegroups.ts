@@ -38,45 +38,43 @@ export const CRYSTAL_SYSTEMS = [
 ] as const
 export type CrystalSystem = (typeof CRYSTAL_SYSTEMS)[number]
 
-// Convert space group number to crystal system
-export function spacegroup_num_to_crystal_sys(spacegroup: number): CrystalSystem | null {
+// Crystal system of a space group given as number, Hermann-Mauguin symbol or numeric string
+export function spacegroup_to_crystal_sys(spacegroup: number | string): CrystalSystem | null {
+  const num = normalize_spacegroup(spacegroup)
+  if (num === null) return null
   for (const [system, [min, max]] of Object.entries(CRYSTAL_SYSTEM_RANGES)) {
-    if (spacegroup >= min && spacegroup <= max) {
-      return system as CrystalSystem
-    }
+    if (num >= min && num <= max) return system as CrystalSystem
   }
   return null
 }
 
-// Convert space group (number or symbol) to crystal system
-export function spacegroup_to_crystal_sys(spacegroup: number | string): CrystalSystem | null {
-  const num = normalize_spacegroup(spacegroup)
-  return num == null ? null : spacegroup_num_to_crystal_sys(num)
-}
-
 // Trigonal space groups with rhombohedral (R-centered) Bravais lattices. All other
 // trigonal groups have primitive hexagonal lattices.
-export const RHOMBOHEDRAL_SPACEGROUPS: readonly number[] = [146, 148, 155, 160, 161, 166, 167]
+const RHOMBOHEDRAL_SPACEGROUPS = new Set([146, 148, 155, 160, 161, 166, 167])
 
 // The 7 lattice systems: like crystal systems except the trigonal crystal system splits
 // into rhombohedral (R-centered groups) and hexagonal (P groups) lattice systems.
 export type LatticeSystem = Exclude<CrystalSystem, `trigonal`> | `rhombohedral`
 
-// Convert space group number to lattice system (classification of the Bravais lattice).
-// Differs from the crystal system only for trigonal groups: R-centered ones (R3, R-3m, …)
-// have rhombohedral lattices while P-trigonal ones (P3, P-3m1, …) have hexagonal lattices.
-export function spacegroup_num_to_lattice_system(spacegroup: number): LatticeSystem | null {
-  const crystal_sys = spacegroup_num_to_crystal_sys(spacegroup)
-  if (crystal_sys === null) return null
+// Lattice system (classification of the Bravais lattice). Differs from the crystal system
+// only for trigonal groups: R-centered ones (R3, R-3m, …) have rhombohedral lattices while
+// P-trigonal ones (P3, P-3m1, …) have hexagonal lattices.
+export function spacegroup_to_lattice_system(
+  spacegroup: number | string,
+): LatticeSystem | null {
+  const crystal_sys = spacegroup_to_crystal_sys(spacegroup)
   if (crystal_sys !== `trigonal`) return crystal_sys
-  return RHOMBOHEDRAL_SPACEGROUPS.includes(spacegroup) ? `rhombohedral` : `hexagonal`
+  const num = normalize_spacegroup(spacegroup)
+  return num !== null && RHOMBOHEDRAL_SPACEGROUPS.has(num) ? `rhombohedral` : `hexagonal`
 }
 
 // Normalize space group input (number, Hermann-Mauguin symbol, or numeric string
 // like "225") to a space group number in [1, 230], or null if invalid
 export function normalize_spacegroup(spacegroup: number | string): number | null {
   if (typeof spacegroup === `number`) {
-    return spacegroup >= 1 && spacegroup <= 230 ? spacegroup : null
+    return Number.isInteger(spacegroup) && spacegroup >= 1 && spacegroup <= 230
+      ? spacegroup
+      : null
   }
   const from_symbol = SPACEGROUP_SYMBOL_TO_NUM[spacegroup]
   if (from_symbol !== undefined) return from_symbol
@@ -452,7 +450,7 @@ export function spacegroup_sunburst_data(
   // Emit crystal systems in canonical (space group number) order, only those present
   return CRYSTAL_SYSTEMS.flatMap((system) => {
     const nums = [...counts.keys()]
-      .filter((num) => spacegroup_num_to_crystal_sys(num) === system)
+      .filter((num) => spacegroup_to_crystal_sys(num) === system)
       .toSorted((num_a, num_b) => num_a - num_b)
     if (nums.length === 0) return []
     return [

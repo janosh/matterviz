@@ -9,7 +9,7 @@
   import { compute_structure_id_async } from './async-compute.svelte'
   import type { CnaTypeName } from './calc-cna'
   import { CNA_TYPE_COLORS, CNA_TYPE_LABELS, CNA_TYPE_NAMES } from './calc-cna'
-  import type { StructureIdOptions, StructureIdResult } from './index'
+  import type { StructureIdOptions, StructureIdResult } from './calc-structure-id'
 
   type PlotMetadata = Record<string, unknown>
 
