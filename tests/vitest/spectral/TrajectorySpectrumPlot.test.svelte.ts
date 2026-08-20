@@ -116,7 +116,7 @@ describe(`TrajectorySpectrumPlot`, () => {
     expect(target.textContent).toContain(`Mass-weighted VDOS`)
     await vi.waitFor(() => {
       const legend_y = target.querySelector<HTMLElement>(`.legend`)?.dataset.decorationY
-      expect(Number(legend_y)).toBeLessThan(72)
+      expect(Number(legend_y)).toBeGreaterThanOrEqual(72)
     })
   })
 

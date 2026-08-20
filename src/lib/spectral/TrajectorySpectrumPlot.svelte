@@ -130,6 +130,15 @@
         ),
       ),
   )
+  let spectroscopy_legend = $derived(
+    rest.legend === null
+      ? null
+      : {
+          ...rest.legend,
+          // Reserve the top-right plot chrome occupied by spectroscopy's info/settings toggles.
+          axis_clearance: Math.max(72, rest.legend?.axis_clearance ?? 0),
+        },
+  )
 </script>
 
 {#snippet spectrum_panel(
@@ -162,6 +171,7 @@
   ] satisfies DataSeries[]}
   <ScatterPlot
     {...rest}
+    legend={spectroscopy_legend}
     bind:show_controls
     {series}
     on_point_click={handle_point_click}

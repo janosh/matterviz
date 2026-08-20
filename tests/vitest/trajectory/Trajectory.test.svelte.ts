@@ -372,7 +372,7 @@ describe(`Trajectory`, () => {
     [`scatter`, `.scatter`],
     [`histogram`, `.histogram`],
   ] as const)(
-    `keeps %s controls at their native position`,
+    `aligns %s controls with the sequence bar`,
     async (display_mode, plot_selector) => {
       const target = mount_traj({
         trajectory: energy_traj(-1, -2),
@@ -382,7 +382,7 @@ describe(`Trajectory`, () => {
       await flush_render()
 
       const content = doc_query(`.content-area`)
-      expect(content.style.getPropertyValue(`--viewer-buttons-top`)).toBe(``)
+      expect(content.style.getPropertyValue(`--viewer-buttons-top`)).toMatch(/^calc\(.+\)$/)
       expect(content.style.getPropertyValue(`--ctrl-btn-top`)).toBe(``)
       const plot = target.querySelector<HTMLElement>(plot_selector)
       if (!plot) throw new Error(`Trajectory ${display_mode} plot not found`)
@@ -1082,7 +1082,9 @@ describe(`Trajectory`, () => {
     expect(target.querySelector(`.explorer-controls`)).toBeNull()
     expect(target.querySelector(`.trajectory.spectroscopy-mode`)).not.toBeNull()
     expect(target.querySelector(`.trajectory.show-both-views`)).toBeNull()
-    expect(doc_query(`.content-area`).style.getPropertyValue(`--viewer-buttons-top`)).toBe(``)
+    expect(doc_query(`.content-area`).style.getPropertyValue(`--viewer-buttons-top`)).toMatch(
+      /^calc\(.+\)$/,
+    )
 
     doc_query(`.analysis-button`).click()
     await tick()
