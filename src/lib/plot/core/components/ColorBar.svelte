@@ -152,7 +152,7 @@
       is_vertical ? `to top` : `to right`,
     ),
   )
-  // Colors the scale can't resolve (CSS variables, unparseable strings) inherit the text color
+  // Colors the scale can't resolve (CSS variables, unparsable strings) inherit the text color
   const inside_tick_color = (value: number): string => {
     try {
       return pick_contrast_color({

@@ -520,7 +520,7 @@ export function summarize_models(
 // Chemical Formula Parsing Utilities (for pseudo-binary phase diagrams)
 
 // Markup token for rendering a formula - plain text, subscript, or superscript run.
-// (Not $lib/composition's FormulaToken, which is an element/amount pair.)
+// (Not $lib/composition's FormulaSpecies, which is an element/amount pair.)
 interface FormulaMarkupToken {
   text?: string
   sub?: string

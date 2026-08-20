@@ -198,9 +198,7 @@ export const to_scalar_number = (data: unknown): number | null => {
   return to_finite_number(Array.isArray(data) ? data[0] : data)
 }
 
-export const unique_strings = (values: string[] | undefined): string[] => [
-  ...new Set(values ?? []),
-]
+export const unique_strings = (values: string[] | undefined): string[] => [...new Set(values)]
 
 export const positive_integer_stride = (value: number | undefined, label: string): number => {
   const stride = value ?? 1
