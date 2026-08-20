@@ -8,7 +8,6 @@ import {
   fractional_to_cartesian_rotation,
   generate_bz_vertices,
   IBZ_REFERENCE_DIRECTIONS,
-  reciprocal_lattice,
 } from '$lib/brillouin/compute'
 import { DEFAULT_FIT_PADDING } from '$lib/structure/camera-fit'
 import {
@@ -26,6 +25,8 @@ import * as math from '$lib/math'
 import type { MoyoDataset } from '@spglib/moyo-wasm'
 import { describe, expect, test } from 'vitest'
 import { col_major, cubic_matrix, IDENTITY_MATRIX3 as IDENTITY_MAT, load_json } from './setup'
+
+const recip_2pi = (lattice: Matrix3x3) => math.reciprocal_lattice(lattice, { two_pi: true })
 
 type BzReference = {
   real_lattice: number[][]
@@ -67,44 +68,15 @@ const edge_key = (v1: Vec3, v2: Vec3) =>
     .toSorted()
     .join(`|`)
 
-describe(`reciprocal_lattice`, () => {
-  test(`correct for all crystal systems`, () => {
-    for (const [_type, data] of Object.entries(reference_data)) {
-      const computed = reciprocal_lattice(data.real_lattice as Matrix3x3)
-      const expected = data.reciprocal_lattice as Matrix3x3
-      computed.forEach((row, idx_i) =>
-        row.forEach((val, idx_j) => expect(val).toBeCloseTo(expected[idx_i][idx_j], 10)),
-      )
-    }
-  })
-
-  test(`double reciprocal preserves cubic structure`, () => {
-    const double_recip = reciprocal_lattice(reciprocal_lattice(CUBIC_5))
-    // Off-diagonal elements should be zero
-    for (let row = 0; row < 3; row++) {
-      for (let col = 0; col < 3; col++) {
-        if (row !== col) expect(double_recip[row][col]).toBeCloseTo(0, 10)
-      }
-    }
-    // Diagonal elements equal and positive
-    expect(double_recip[0][0]).toBeCloseTo(double_recip[1][1], 10)
-    expect(double_recip[0][0]).toBeGreaterThan(0)
-  })
-
-  test(`non-orthogonal FCC: a_i · b_j = 2π δ_ij`, () => {
-    const fcc: Matrix3x3 = [
-      [0, 2.5, 2.5],
-      [2.5, 0, 2.5],
-      [2.5, 2.5, 0],
-    ]
-    const recip = reciprocal_lattice(fcc)
-    for (let idx_i = 0; idx_i < 3; idx_i++) {
-      for (let idx_j = 0; idx_j < 3; idx_j++) {
-        const dot = fcc[idx_i].reduce((sum, val, idx_k) => sum + val * recip[idx_j][idx_k], 0)
-        expect(dot).toBeCloseTo(idx_i === idx_j ? 2 * Math.PI : 0, 8)
-      }
-    }
-  })
+// a_i · b_j = 2π δ_ij itself is covered in math.test.ts; this pins the 2π convention the BZ
+// reference data (numpy) was generated with
+test(`reciprocal_lattice with two_pi matches the reference data for all crystal systems`, () => {
+  for (const data of Object.values(reference_data)) {
+    const computed = recip_2pi(data.real_lattice as Matrix3x3)
+    expect(computed).toEqual(
+      data.reciprocal_lattice.map((row) => row.map((val) => expect.closeTo(val, 10))),
+    )
+  }
 })
 
 describe(`compute_brillouin_zone`, () => {
@@ -179,7 +151,7 @@ describe(`BZ edge filtering`, () => {
 })
 
 describe(`generate_bz_vertices`, () => {
-  const k_lattice = reciprocal_lattice(CUBIC_5)
+  const k_lattice = recip_2pi(CUBIC_5)
 
   test(`cubic BZ: 8 vertices at corners`, () => {
     const vertices = generate_bz_vertices(k_lattice, 1)
@@ -191,7 +163,7 @@ describe(`generate_bz_vertices`, () => {
   })
 
   test(`max_planes_by_order parameter`, () => {
-    const skew_lattice = reciprocal_lattice([
+    const skew_lattice = recip_2pi([
       [3, 0.5, 0.2],
       [0.1, 4, 0.3],
       [0.2, 0.4, 5],
@@ -258,12 +230,12 @@ describe(`BZ volume`, () => {
       [0, a_len, 0],
       [0, 0, a_len],
     ]
-    const bz = compute_brillouin_zone(reciprocal_lattice(real), 1)
+    const bz = compute_brillouin_zone(recip_2pi(real), 1)
     expect(bz.volume).toBeCloseTo((2 * Math.PI) ** 3 / a_len ** 3, 4)
   })
 
   test(`volume = |b1 · (b2 × b3)|`, () => {
-    const k_lattice = reciprocal_lattice([
+    const k_lattice = recip_2pi([
       [4, 0, 0],
       [0, 5, 0],
       [0, 0, 6],
@@ -284,7 +256,7 @@ describe(`BZ volume`, () => {
 
 describe(`BZ order`, () => {
   test(`higher order grows vertices; order >3 clamps to 3`, () => {
-    const k_lattice = reciprocal_lattice(CUBIC_5)
+    const k_lattice = recip_2pi(CUBIC_5)
     const bz1 = compute_brillouin_zone(k_lattice, 1)
     const bz2 = compute_brillouin_zone(k_lattice, 2)
     expect(bz2.vertices.length).toBeGreaterThan(bz1.vertices.length)
@@ -294,12 +266,13 @@ describe(`BZ order`, () => {
 
 describe(`error handling`, () => {
   test(`throws for degenerate lattice`, () => {
+    // two parallel lattice vectors (a uniformly tiny cell is not degenerate, just small)
     const degenerate: Matrix3x3 = [
-      [1e-15, 0, 0],
-      [0, 1e-15, 0],
-      [0, 0, 1e-15],
+      [1, 0, 0],
+      [2, 0, 0],
+      [0, 0, 1],
     ]
-    expect(() => compute_brillouin_zone(reciprocal_lattice(degenerate), 1)).toThrow(
+    expect(() => compute_brillouin_zone(recip_2pi(degenerate), 1)).toThrow(
       /singular|Insufficient vertices/,
     )
   })
@@ -396,7 +369,7 @@ describe(`compute_ibz_clipping_planes`, () => {
 })
 
 describe(`compute_irreducible_bz`, () => {
-  const bz = compute_brillouin_zone(reciprocal_lattice(CUBIC_5), 1)
+  const bz = compute_brillouin_zone(recip_2pi(CUBIC_5), 1)
 
   // All 48 signed permutation matrices (proper + improper rotations of the cube)
   const oh_ops: Matrix3x3[] = []
@@ -495,7 +468,7 @@ describe(`fractional_to_cartesian_rotation`, () => {
   test.each([
     [`hexagonal C3 (120°)`, C3_HEX, k_lattice, 0],
     [`hexagonal C3² (240°)`, C3_HEX_SQ, k_lattice, 0],
-    [`cubic C4z (90°)`, ROT_Z_90, reciprocal_lattice(CUBIC_5), 1],
+    [`cubic C4z (90°)`, ROT_Z_90, recip_2pi(CUBIC_5), 1],
   ] as [string, Matrix3x3, Matrix3x3, number][])(
     `%s: R is a proper rotation mapping the reciprocal lattice onto itself`,
     (_, frac_rot, k_latt, trace) => {

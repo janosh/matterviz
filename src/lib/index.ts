@@ -1,31 +1,4 @@
-// Named rather than star exports: bond-angles' SPLIT_MODES/SplitMode clash with
-// coordination's, its NormalizeMode with heatmap-matrix's, and its barrel re-exports
-// plot/core/structure-input, which already reaches here through './plot'
-export {
-  angle_bin_centers,
-  angle_bin_index,
-  bin_bond_angles,
-  BondAnglePlot,
-  calc_bond_angle_distribution,
-  compute_bond_angles,
-  DEFAULT_BIN_WIDTH as BOND_ANGLE_DEFAULT_BIN_WIDTH,
-  MAX_BOND_ANGLE,
-  NORMALIZE_MODES as BOND_ANGLE_NORMALIZE_MODES,
-  resolve_angle_bins,
-  SPLIT_MODES as BOND_ANGLE_SPLIT_MODES,
-  to_angle_bar_series,
-  to_angle_density,
-  TOTAL_TRIPLET_LABEL,
-} from './bond-angles'
-export type {
-  BondAngleData,
-  BondAngleMetadata,
-  BondAngleOptions,
-  BondAngleSeries,
-  BondAngleTriplet,
-  NormalizeMode as BondAngleNormalizeMode,
-  SplitMode as BondAngleSplitMode,
-} from './bond-angles'
+export * from './bond-angles'
 export * from './brillouin'
 export * from './chempot-diagram'
 export * from './colors'
@@ -131,7 +104,6 @@ export * from './structure-id'
 export * from './symmetry'
 export * from './table'
 export * from './theme'
-export * from './time'
 export * from './trajectory'
 export * from './url-params'
 export * from './utils'
