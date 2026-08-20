@@ -142,14 +142,19 @@
     Math.max(0, Number.isFinite(value) ? value : fallback)
 
   // Run `on_change` (untracked) whenever `get_value` yields a new value or tuple, skipping the
-  // mount-time value so parent-provided state survives the first render.
+  // mount-time value so parent-provided state survives the first render. Runs as a pre-effect
+  // so site-indexed state (selection, radius overrides) is already reset when the scene
+  // template renders the new structure: a post-render $effect would let the scene draw the
+  // stale selection against a shrunken site list first (e.g. image-atom indices after
+  // disabling image atoms), and a throw in that render aborts the whole Svelte flush,
+  // dropping the pending clear along with it.
   function track_change(get_value: () => unknown, on_change: () => void): void {
     const same = (left: unknown, right: unknown): boolean =>
       Array.isArray(left) && Array.isArray(right)
         ? left.length === right.length && left.every((item, idx) => item === right[idx])
         : left === right
     let previous = untrack(get_value)
-    $effect(() => {
+    $effect.pre(() => {
       const value = get_value()
       if (same(value, previous)) return
       previous = value

@@ -29,13 +29,7 @@ const download_extxyz = async (page: Page, explorer: Locator): Promise<string> =
   await expect(export_pane).toBeVisible()
   await export_pane.locator(`label:has-text("End Frame") input[type="number"]`).fill(`1`)
   const extxyz_download = page.waitForEvent(`download`)
-  await export_pane
-    .locator(`.export-buttons`)
-    .first()
-    .locator(`div`)
-    .filter({ hasText: `extXYZ` })
-    .getByRole(`button`)
-    .click()
+  await export_pane.getByRole(`button`, { name: `Download extXYZ` }).click()
   const download = await extxyz_download
   const download_path = await download.path()
   if (!download_path) throw new Error(`Unable to read downloaded extXYZ trajectory`)

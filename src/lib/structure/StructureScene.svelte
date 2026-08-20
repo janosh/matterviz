@@ -1034,7 +1034,9 @@
     })
   })
 
-  $effect(() => {
+  // Pre-effect: drop out-of-range indices before the measurement overlays below index
+  // structure.sites with them, not after that render has already run against stale picks.
+  $effect.pre(() => {
     const count = structure?.sites?.length ?? 0
     if (count <= 0) {
       if (untrack(() => measured_sites.length) > 0) measured_sites = []
@@ -2504,26 +2506,35 @@
             {#each measured_sites.slice(loop_idx + 1) as idx_j (idx_i + `-` + idx_j)}
               {@const site_i = structure.sites[idx_i]}
               {@const site_j = structure.sites[idx_j]}
-              {@const pos_i = site_i.xyz}
-              {@const pos_j = site_j.xyz}
-              <Cylinder from={pos_i} to={pos_j} thickness={0.12} color={measure_line_color} />
-              {@const mid_pos = midpoint(pos_i, pos_j)}
-              {@const direct = math.euclidean_dist(pos_i, pos_j)}
-              {@const pbc = lattice
-                ? math.pbc_dist(pos_i, pos_j, lattice.matrix, undefined, lattice.pbc)
-                : direct}
-              {@const differ = lattice ? Math.abs(pbc - direct) > 1e-6 : false}
-              <extras.HTML center position={mid_pos}>
-                <span class="measure-label">
-                  {#if differ}
-                    PBC: {format_num(pbc, float_fmt)} Å<br /><small>
-                      Direct: {format_num(direct, float_fmt)} Å</small
-                    >
-                  {:else}
-                    {format_num(pbc, float_fmt)} Å
-                  {/if}
-                </span>
-              </extras.HTML>
+              <!-- indices can outlive their sites (image atoms toggled off, supercell
+                shrunk); skip rather than throw mid-render like the angle/dihedral branches -->
+              {#if site_i && site_j}
+                {@const pos_i = site_i.xyz}
+                {@const pos_j = site_j.xyz}
+                <Cylinder
+                  from={pos_i}
+                  to={pos_j}
+                  thickness={0.12}
+                  color={measure_line_color}
+                />
+                {@const mid_pos = midpoint(pos_i, pos_j)}
+                {@const direct = math.euclidean_dist(pos_i, pos_j)}
+                {@const pbc = lattice
+                  ? math.pbc_dist(pos_i, pos_j, lattice.matrix, undefined, lattice.pbc)
+                  : direct}
+                {@const differ = lattice ? Math.abs(pbc - direct) > 1e-6 : false}
+                <extras.HTML center position={mid_pos}>
+                  <span class="measure-label">
+                    {#if differ}
+                      PBC: {format_num(pbc, float_fmt)} Å<br /><small>
+                        Direct: {format_num(direct, float_fmt)} Å</small
+                      >
+                    {:else}
+                      {format_num(pbc, float_fmt)} Å
+                    {/if}
+                  </span>
+                </extras.HTML>
+              {/if}
             {/each}
           {/each}
         {:else if measure_mode === `angle` && measured_sites.length === 3}

@@ -478,6 +478,27 @@ describe(`TrajectoryExportPane property export`, () => {
     expect(lines[0]).toContain(`energy (eV)`)
   })
 
+  // The phonon explorer E2E drives this exact path (End Frame → Download extXYZ) to compare
+  // frames, so the button name and the range it honours are a contract, not a detail
+  test(`downloads only the selected frame range as extXYZ`, async () => {
+    open_pane({ trajectory })
+    await tick()
+    const [, end_input] = document.querySelectorAll<HTMLInputElement>(
+      `.settings-section input[type="number"]`,
+    )
+    end_input.value = `1`
+    end_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+    await tick()
+
+    await click(`Download extXYZ`)
+    await vi.waitFor(() => expect(download).toHaveBeenCalledTimes(1))
+    const [, name, mime] = vi.mocked(download).mock.calls[0]
+    expect(name).toBe(`run.extxyz`)
+    expect(mime).toBe(`chemical/x-xyz`)
+    const { frames: exported } = parse_xyz_trajectory(downloaded_text().join(`\n`))
+    expect(exported.map(({ step }) => step)).toEqual([0, 5])
+  })
+
   test(`copies JSON to the clipboard`, async () => {
     open_pane({ trajectory })
     await click(`Copy JSON to clipboard`)
