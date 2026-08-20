@@ -338,7 +338,6 @@
           )}`
         : undefined
   })
-  let controls_height = $state(0)
   let current_filename = $state<string | undefined>(undefined)
   let current_file_path = $state<string | null>(null)
   let file_size = $state<number | undefined>(undefined)
@@ -1755,11 +1754,7 @@
       />
     {/if}
     <!-- Trajectory Controls -->
-    <SequenceControlBar
-      class="trajectory-controls"
-      {controls_config}
-      bind:height={controls_height}
-    >
+    <SequenceControlBar class="trajectory-controls" {controls_config}>
       {#if hdf5_group_selection}
         <button
           type="button"
@@ -1976,9 +1971,6 @@
       class:show-both={show_structure && show_plot}
       class:show-structure-only={show_structure && !show_plot}
       class:show-plot-only={!show_structure && show_plot}
-      style:--viewer-buttons-top={controls_config.mode === `hover`
-        ? `calc(${controls_height}px + 1ex)`
-        : undefined}
     >
       {#if show_structure}
         <Structure
