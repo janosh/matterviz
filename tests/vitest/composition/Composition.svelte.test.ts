@@ -33,10 +33,26 @@ describe(`Composition component`, () => {
     expect(on_parse).toHaveBeenCalledWith({ H: 2, O: 1 })
   })
 
-  test(`rejects invalid input`, () => {
+  test.each([
+    [`invalid`, `Unexpected character "i"`],
+    [`Xx2O`, `Invalid element symbol: Xx`],
+  ])(`rejects invalid input %s`, (composition, error) => {
     expect(() =>
-      mount(Composition, { target: document.body, props: { composition: `invalid` } }),
-    ).toThrow(`No valid elements`)
+      mount(Composition, { target: document.body, props: { composition } }),
+    ).toThrow(error)
+  })
+
+  test(`copies a plain-text electronegativity formula (no HTML subscripts)`, async () => {
+    const write_text = vi.fn()
+    vi.stubGlobal(`navigator`, { clipboard: { writeText: write_text } })
+    mount(Composition, { target: document.body, props: { composition: `O3Fe2` } })
+    await open_context_menu()
+    const copy_btn = [
+      ...document.querySelectorAll<HTMLButtonElement>(`.action-menu button`),
+    ].find((btn) => btn.textContent?.includes(`Copy Formula`))
+    copy_btn?.click()
+    expect(write_text).toHaveBeenCalledExactlyOnceWith(`Fe2 O3`)
+    vi.unstubAllGlobals()
   })
 
   test(`applies custom styling`, () => {

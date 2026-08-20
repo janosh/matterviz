@@ -16,9 +16,11 @@
   } from 'svelte-widgets/icons'
   import { export_svg_as_png, export_svg_as_svg } from '$lib/io/export'
   import type { SVGAttributes } from 'svelte/elements'
+  import BarChart from './BarChart.svelte'
+  import BubbleChart from './BubbleChart.svelte'
   import { get_electro_neg_formula } from './format'
-  import { BarChart, BubbleChart, PieChart } from './index'
   import { parse_composition } from './parse'
+  import PieChart from './PieChart.svelte'
 
   type CompositionChartMode = `pie` | `bubble` | `bar`
   let {
@@ -81,23 +83,18 @@
     { title: `Export`, actions: export_actions },
   ])
 
-  function handle_export(export_type: string) {
+  function handle_export(export_type: (typeof export_actions)[number][`id`]) {
     try {
       if (export_type === `copy_formula`) {
-        const formula = get_electro_neg_formula(composition)
-        navigator.clipboard.writeText(formula)
+        navigator.clipboard.writeText(get_electro_neg_formula(parsed, true))
       } else if (export_type === `copy_data`) {
-        const data = JSON.stringify(parsed, null, 2)
-        navigator.clipboard.writeText(data)
-      } else if (export_type === `export_svg`) {
-        const filename = `${get_electro_neg_formula(composition, true, ``)}.svg`
-        if (svg_node) export_svg_as_svg(svg_node, filename)
-        else console.warn(`Chart SVG not available for SVG export`)
-      } else if (export_type === `export_png`) {
-        const filename = `${get_electro_neg_formula(composition, true, ``)}.png`
-        if (svg_node) export_svg_as_png(svg_node, filename, DEFAULT_PNG_DPI)
-        else console.warn(`Chart SVG not available for PNG export`)
-      } else console.warn(`Invalid export type:`, export_type)
+        navigator.clipboard.writeText(JSON.stringify(parsed, null, 2))
+      } else if (!svg_node) console.warn(`Chart SVG not available for export`)
+      else {
+        const filename = `${get_electro_neg_formula(parsed, true, ``)}.${export_type.slice(7)}`
+        if (export_type === `export_svg`) export_svg_as_svg(svg_node, filename)
+        else export_svg_as_png(svg_node, filename, DEFAULT_PNG_DPI)
+      }
     } catch (error) {
       console.error(`Export failed:`, error)
     }

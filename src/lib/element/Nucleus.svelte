@@ -16,7 +16,6 @@
     protons,
     neutrons,
     size = 100,
-    radius = $bindable(size / 2),
     proton: proton_paint = {},
     neutron: neutron_paint = {},
     symbol_paint = {},
@@ -27,7 +26,6 @@
   }: SVGAttributes<SVGSVGElement> & {
     protons: number
     neutrons: number
-    radius?: number
     size?: number
     // Per-part paints. Each nucleon owns its fill, label suffix and label color rather
     // than sharing one flat `text_color` across parts that sit on different backgrounds.
@@ -54,9 +52,7 @@
     text: neutron_paint.text,
   })
 
-  $effect(() => {
-    radius = size / 2
-  })
+  const radius = $derived(size / 2)
   let proton_frac = $derived(protons / (protons + neutrons))
   let neutron_frac = $derived(1 - proton_frac)
   let proton_circ = $derived(Math.PI * radius * proton_frac)

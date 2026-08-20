@@ -1,8 +1,8 @@
 import type { ElementSymbol } from '$lib/element'
-import { format_num } from '$lib/labels'
 
 export { default as BarChart } from './BarChart.svelte'
 export { default as BubbleChart } from './BubbleChart.svelte'
+export * from './chart'
 export * from './chem-sys'
 export { default as Composition } from './Composition.svelte'
 export * from './format'
@@ -13,54 +13,3 @@ export { default as PieChart } from './PieChart.svelte'
 
 export type CompositionType = Partial<Record<ElementSymbol, number>>
 export type FormulaSearchMode = `elements` | `chemsys` | `exact`
-
-// Base data type for args of all (bar, bubble, pie) chart segment snippets
-export type ChartSegmentData = {
-  element: ElementSymbol
-  amount: number
-  fraction: number
-  color: string
-  font_scale: number
-  text_color: string
-}
-
-// Amount/percentage suffix rendered after the element symbol in bar/pie chart
-// segments; `=` separates amount from percentage when both are shown (Fe2=20%).
-// format_num (not toString) so float noise like 0.30000000000000004 can't leak
-// into labels; same format convention as format_composition_formula subscripts
-// (`.3~s`, avoiding SI prefixes for sub-1 amounts where `s` renders 0.5 as 500m)
-export const chart_segment_suffix = (
-  amount: number | undefined,
-  fraction: number,
-  show_amounts: boolean,
-  show_percentages: boolean,
-): string =>
-  (show_amounts && amount !== undefined
-    ? format_num(amount, Math.abs(amount) < 1 ? `.3~g` : `.3~s`)
-    : ``) +
-  (show_amounts && show_percentages ? `=` : ``) +
-  (show_percentages ? format_num(fraction, `.1~%`) : ``)
-
-// Full segment label used to estimate label width for font scaling; must match
-// the text the charts actually render (element symbol + chart_segment_suffix)
-export const chart_segment_label = (
-  element: string,
-  amount: number | undefined,
-  fraction: number,
-  show_amounts: boolean,
-  show_percentages: boolean,
-): string => element + chart_segment_suffix(amount, fraction, show_amounts, show_percentages)
-
-export function get_chart_font_scale(
-  base_scale: number,
-  label_text: string,
-  available_space: number,
-  min_scale_factor = 0.7,
-  base_font_size = 16,
-): number {
-  const text_width = label_text.length * 0.6 * base_font_size * base_scale
-
-  return available_space > 0 && text_width > available_space
-    ? Math.max(base_scale * (available_space / text_width), base_scale * min_scale_factor)
-    : base_scale
-}

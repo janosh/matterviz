@@ -8,8 +8,8 @@
   import type { FormulaSearchMode } from './index'
   import {
     extract_formula_elements,
-    has_wildcards,
     normalize_element_symbols,
+    normalize_formula_unicode,
     parse_formula,
     parse_formula_with_wildcards,
   } from './parse'
@@ -62,13 +62,7 @@
     },
   ]
 
-  // Unicode subscript/superscript digits and signs -> ASCII equivalents
-  const UNICODE_TO_ASCII: Record<string, string> = {
-    ...Object.fromEntries([...`₀₁₂₃₄₅₆₇₈₉`].map((char, digit) => [char, `${digit}`])),
-    ...Object.fromEntries([...`⁰¹²³⁴⁵⁶⁷⁸⁹`].map((char, digit) => [char, `${digit}`])),
-    [`⁺`]: `+`,
-    [`⁻`]: `-`,
-  }
+  const has_wildcards = (input: string): boolean => input.includes(`*`)
 
   let {
     value = $bindable(``),
@@ -284,22 +278,8 @@
   // Cycle through modes: elements → chemsys → exact → elements
   const MODE_CYCLE: FormulaSearchMode[] = [`elements`, `chemsys`, `exact`]
 
-  function normalize_unicode_formula(input: string): string {
-    let normalized = input
-    for (const [unicode_char, ascii] of Object.entries(UNICODE_TO_ASCII)) {
-      normalized = normalized.replaceAll(unicode_char, ascii)
-    }
-    return (
-      normalized
-        // keep hydrate dots (deleting would glue digits: CuSO4·5H2O -> CuSO45H2O)
-        .replaceAll(`⋅`, `·`)
-        .replaceAll(`−`, `-`)
-        .replaceAll(/\s+/g, ``)
-    )
-  }
-
   function normalize_exact_formula(input: string): string {
-    const sanitized_input = normalize_unicode_formula(input.trim())
+    const sanitized_input = normalize_formula_unicode(input)
     if (!sanitize_exact_formula(sanitized_input).is_valid) return sanitized_input
 
     if (!has_wildcards(sanitized_input)) {
@@ -309,29 +289,20 @@
 
     try {
       const tokens = parse_formula_with_wildcards(sanitized_input)
-      const explicit = tokens
-        .filter(
-          (token): token is { element: ElementSymbol; count: number } =>
-            token.element !== null,
-        )
-        .map((token) => ({ element: token.element, count: token.count }))
-      const wildcard_tokens = tokens.filter((token) => token.element === null)
-
-      // Merge explicit element counts before sorting.
-      const merged_explicit: { element: string; count: number }[] = []
-      for (const token of explicit) {
-        const existing = merged_explicit.find((item) => item.element === token.element)
-        if (existing) existing.count += token.count
-        else merged_explicit.push(token)
+      // Merge explicit element amounts, then sort alphabetically; wildcards trail
+      const merged = new Map<ElementSymbol, number>()
+      for (const { element, amount } of tokens) {
+        if (element) merged.set(element, (merged.get(element) ?? 0) + amount)
       }
-      const sorted_explicit = merged_explicit.toSorted((elem_a, elem_b) =>
-        elem_a.element.localeCompare(elem_b.element),
-      )
-      const wildcard_str = wildcard_tokens
-        .map((token) => (token.count > 1 ? `*${token.count}` : `*`))
+      const with_amount = (symbol: string, amount: number) =>
+        amount === 1 ? symbol : `${symbol}${amount}`
+      const explicit_str = [...merged]
+        .toSorted(([elem_a], [elem_b]) => elem_a.localeCompare(elem_b))
+        .map(([element, amount]) => with_amount(element, amount))
         .join(``)
-      const explicit_str = sorted_explicit
-        .map((token) => (token.count > 1 ? `${token.element}${token.count}` : token.element))
+      const wildcard_str = tokens
+        .filter((token) => token.element === null)
+        .map((token) => with_amount(`*`, token.amount))
         .join(``)
       return `${explicit_str}${wildcard_str}`
     } catch {
@@ -580,7 +551,7 @@
   }
 
   function sync_value(): void {
-    const trimmed = normalize_unicode_formula(input_value).trim()
+    const trimmed = normalize_formula_unicode(input_value)
     if (!trimmed) return set_value(``)
 
     const mode = mode_locked ? search_mode : infer_mode(trimmed)
@@ -746,7 +717,7 @@
     {oninput}
     onpaste={() => {
       requestAnimationFrame(() => {
-        input_value = normalize_unicode_formula(input_value)
+        input_value = normalize_formula_unicode(input_value)
         oninput()
       })
     }}

@@ -83,7 +83,6 @@
       '--tooltip-font-size': `${tooltip_font_size}px`,
       '--tooltip-bg': tooltip_bg_color,
       '--elem-tile-border-radius': `${tile_border_radius}pt`,
-      '--ptable-spacer-ratio': `${1 / inner_transition_offset}`,
       '--elem-tile-transition-duration': `${tile_transition_duration}s`,
       '--elem-tile-hover-border-width': `${hover_border_width}px`,
       '--elem-symbol-font-weight': `${symbol_font_weight}`,

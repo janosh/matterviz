@@ -994,6 +994,21 @@ describe(`PeriodicTable`, () => {
       expect(red(2)).toBe(255)
     })
 
+    // tiles and the auto ColorBar share one ramp: an explicit color_scale_range clamps
+    // out-of-range values to the end colors instead of extrapolating
+    test(`color_scale_range clamps tile colors to the ramp ends`, () => {
+      const color_scale = (frac: number) => `rgb(${Math.round(frac * 255)}, 0, 0)`
+      mount(PeriodicTable, {
+        target: document.body,
+        props: { heatmap_values: [-5, 0, 5, 10, 20], color_scale, color_scale_range: [0, 10] },
+      })
+      const tiles = document.querySelectorAll<HTMLElement>(`.element-tile`)
+      const red = (idx: number) => Number(/\d+/.exec(tiles[idx].style.backgroundColor)?.[0])
+      expect([0, 1, 2, 3, 4].map(red)).toEqual([0, 0, 128, 255, 255])
+      const ticks = get_tick_values(document.querySelector(`.colorbar`))
+      expect([Math.min(...ticks), Math.max(...ticks)]).toEqual([0, 10])
+    })
+
     test(`customizes via color_bar_props`, () => {
       mount(PeriodicTable, {
         target: document.body,

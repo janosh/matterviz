@@ -1,7 +1,6 @@
 <script lang="ts">
   import {
     type D3InterpolateName,
-    get_d3_interpolator,
     is_color,
     is_dark_mode,
     pick_contrast_color,
@@ -19,6 +18,7 @@
   import { ELEM_SYMBOLS } from '$lib/labels'
   import type { Point2D, Vec2 } from '$lib/math'
   import { ColorBar } from '$lib/plot'
+  import { resolve_color_ramp } from '$lib/plot/core/color-ramp'
   import { colors } from '$lib/state.svelte'
   import type { ComponentProps, Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -183,7 +183,6 @@
 
   let tooltip_element = $state<ChemicalElement | null>(null)
   let tooltip_pos = $state<Point2D>({ x: 0, y: 0 })
-  let tooltip_visible = $state(false)
 
   function handle_key(event: KeyboardEvent & { currentTarget: HTMLDivElement }): void {
     on_table_keydown?.(event)
@@ -234,21 +233,14 @@
     if (tooltip === false || disabled) return
     tooltip_element = element
     const target = event.currentTarget
-    if (!(target instanceof HTMLElement)) return
+    if (!(target instanceof HTMLElement) || !table_node) return
     const rect = target.getBoundingClientRect()
-    const container_rect = target.closest(`.periodic-table`)?.getBoundingClientRect()
-    if (container_rect) {
-      tooltip_pos = {
-        x: rect.left - container_rect.left + rect.width / 2,
-        y: rect.bottom - container_rect.top + 8,
-      }
+    const container_rect = table_node.getBoundingClientRect()
+    tooltip_pos = {
+      x: rect.left - container_rect.left + rect.width / 2,
+      y: rect.bottom - container_rect.top + 8,
     }
-    tooltip_visible = true
   }
-
-  let color_scale_fn = $derived(
-    typeof color_scale === `string` ? get_d3_interpolator(color_scale) : color_scale,
-  )
 
   // finite numeric heat value (numeric strings coerced; colors, null/false and non-finite
   // excluded so they can't poison the color-scale domain). null => not a mappable number
@@ -258,28 +250,22 @@
     return Number.isFinite(num) ? num : null
   }
 
+  // finite numeric heat values usable by the active scale (log excludes non-positive)
   let heat_nums = $derived(
     heat_values
       .flat()
       .map(to_heat_num)
-      .filter((num): num is number => num !== null),
+      .filter((num): num is number => num !== null && (!log || num > 0)),
   )
-  // values usable by the active scale (log excludes non-positive)
-  let usable_heat_nums = $derived(log ? heat_nums.filter((num) => num > 0) : heat_nums)
-
-  let cs_min = $derived(
+  // data span shared by tile colors and the auto ColorBar; explicit color_scale_range wins
+  let heat_range = $derived.by((): Vec2 => [
     color_scale_range[0] ?? (heat_nums.length > 0 ? Math.min(...heat_nums) : 0),
-  )
-  let cs_max = $derived(
     color_scale_range[1] ?? (heat_nums.length > 0 ? Math.max(...heat_nums) : 1),
+  ])
+  let color_bar_scale = $derived(
+    typeof color_scale === `string` ? color_scale : { interpolator: color_scale },
   )
-
-  // smallest positive bound for log color mapping (matches the auto ColorBar's log scale)
-  let cs_min_pos = $derived.by(() => {
-    if (cs_min > 0) return cs_min
-    const pos = heat_nums.filter((num) => num > 0)
-    return pos.length > 0 ? Math.min(...pos) : cs_max
-  })
+  let ramp = $derived(resolve_color_ramp(color_bar_scale, heat_range, log ? `log` : `linear`))
 
   // whether a value maps to a heatmap color (false => use the missing fallback). 0 is a
   // real value; only absent/null/non-finite (and <=0 in log mode) count as missing. a
@@ -305,16 +291,7 @@
       return missing.color || (heat_values.length ? `#666` : category_color)
     }
 
-    // map value to [0, 1] range
-    const num = Number(value)
-    const span = cs_max - cs_min
-    if (span === 0) return color_scale_fn(0.5) // midpoint when all values equal
-    if (log) {
-      const log_span = Math.log(cs_max) - Math.log(cs_min_pos)
-      if (log_span === 0) return color_scale_fn(0.5)
-      return color_scale_fn((Math.log(num) - Math.log(cs_min_pos)) / log_span)
-    }
-    return color_scale_fn((num - cs_min) / span)
+    return ramp.color_fn(Number(value))
   }
 
   // Keep each segment's fill and optional label together.
@@ -334,14 +311,7 @@
     }))
   }
 
-  let should_show_color_bar = $derived(show_color_bar && !inset && usable_heat_nums.length > 0)
-
-  let heat_range = $derived.by((): Vec2 => {
-    if (!should_show_color_bar) return [0, 1]
-    const min = color_scale_range[0] ?? Math.min(...usable_heat_nums)
-    const max = color_scale_range[1] ?? Math.max(...usable_heat_nums)
-    return [min, max]
-  })
+  let should_show_color_bar = $derived(show_color_bar && !inset && heat_nums.length > 0)
   // Resolve the shared surface once rather than installing a theme observer per tile.
   let table_node = $state<HTMLDivElement>()
   const page_backdrop = resolve_backdrop(() => table_node)
@@ -370,7 +340,7 @@
   {#if should_show_color_bar}
     <TableInset class="auto-colorbar-inset">
       <ColorBar
-        scale={typeof color_scale === `string` ? color_scale : { interpolator: color_scale }}
+        scale={color_bar_scale}
         range={heat_range}
         tick_labels={color_bar_props.tick_labels ?? 3}
         tick_side="primary"
@@ -414,7 +384,6 @@
       }}
       onmouseleave={() => {
         set_active_element(null)
-        tooltip_visible = false
         tooltip_element = null
       }}
       onfocus={() => {
@@ -469,35 +438,33 @@
   {/if}
 
   <!-- Tooltip -->
-  {#if tooltip_visible && tooltip_element}
+  {#if tooltip_element && tooltip !== false}
     {@const el = tooltip_element}
-    {@const style = `left: ${tooltip_pos.x}px; top: ${tooltip_pos.y}px;`}
     {@const tooltip_value = heat_values[el.number - 1]}
-    {#if tooltip !== false}
-      <div
-        class="tooltip"
-        {style}
-        bind:this={tooltip_node}
-        style:--tooltip-auto-color={tooltip_text_color}
-      >
-        {#if typeof tooltip === `function`}
-          {@render tooltip({
-            element: el,
-            value: tooltip_value ?? null,
-            active: active_category === el.category || active_element?.name === el.name,
-            bg_color: color_overrides[el.symbol] ?? bg_color(tooltip_value, el),
-            scale_context: { min: log ? cs_min_pos : cs_min, max: cs_max, color_scale },
-          })}
-        {:else}
-          {el.name}<br />
-          <small>{el.symbol} • {el.number}</small>
-          {#if Array.isArray(tooltip_value)}
-            <br />
-            <small>Values: {tooltip_value.join(`, `)}</small>
-          {/if}
+    <div
+      class="tooltip"
+      style:left="{tooltip_pos.x}px"
+      style:top="{tooltip_pos.y}px"
+      bind:this={tooltip_node}
+      style:--tooltip-auto-color={tooltip_text_color}
+    >
+      {#if typeof tooltip === `function`}
+        {@render tooltip({
+          element: el,
+          value: tooltip_value ?? null,
+          active: active_category === el.category || active_element?.name === el.name,
+          bg_color: color_overrides[el.symbol] ?? bg_color(tooltip_value, el),
+          scale_context: { min: heat_range[0], max: heat_range[1], color_scale },
+        })}
+      {:else}
+        {el.name}<br />
+        <small>{el.symbol} • {el.number}</small>
+        {#if Array.isArray(tooltip_value)}
+          <br />
+          <small>Values: {tooltip_value.join(`, `)}</small>
         {/if}
-      </div>
-    {/if}
+      {/if}
+    </div>
   {/if}
 
   {@render children?.()}
@@ -523,7 +490,6 @@
   }
   div.spacer {
     grid-row: 8;
-    aspect-ratio: var(--ptable-spacer-ratio, 2);
   }
   .tooltip {
     position: absolute;

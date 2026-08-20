@@ -7,8 +7,8 @@
   import { format_num } from '$lib/labels'
   import type { HTMLAttributes } from 'svelte/elements'
   import { format_oxi_state, sort_by_electronegativity, sort_by_hill_notation } from './format'
-  import type { ElementWithOxidation, OxiComposition } from './parse'
-  import { oxi_composition_to_elements, parse_formula_with_oxidation } from './parse'
+  import type { FormulaSpecies, OxiComposition } from './parse'
+  import { parse_formula_with_oxidation } from './parse'
 
   type FormulaOrdering = `electronegativity` | `alphabetical` | `original` | `hill`
   type TooltipSide = `top` | `bottom` | `left` | `right`
@@ -33,33 +33,39 @@
     on_click?: (element: ElementSymbol, event: MouseEvent | KeyboardEvent) => void
   } = $props()
 
-  const parsed_elements = $derived.by(() => {
+  const parsed_elements = $derived.by((): FormulaSpecies[] => {
+    if (typeof formula !== `string`) {
+      return Object.entries(formula).map(([element, { amount, oxidation_state }]) => ({
+        element: element as ElementSymbol,
+        amount,
+        oxidation_state,
+      }))
+    }
     try {
-      return typeof formula === `string`
-        ? parse_formula_with_oxidation(formula)
-        : oxi_composition_to_elements(formula)
+      return parse_formula_with_oxidation(formula)
     } catch (error) {
       console.error(`Failed to parse formula:`, error)
       return []
     }
   })
 
-  const COMPARATORS: Record<
-    FormulaOrdering,
-    (el1: ElementWithOxidation, el2: ElementWithOxidation) => number
+  // symbol sorters for the non-original orderings; tokens are ranked by their element
+  const SORTERS: Record<
+    Exclude<FormulaOrdering, `original`>,
+    (symbols: ElementSymbol[]) => ElementSymbol[]
   > = {
-    alphabetical: (el1, el2) => el1.element.localeCompare(el2.element),
-    original: (el1, el2) => el1.orig_idx - el2.orig_idx,
-    electronegativity: (el1, el2) => {
-      const sorted = sort_by_electronegativity([el1.element, el2.element])
-      return sorted[0] === el1.element ? -1 : 1
-    },
-    hill: (el1, el2) => {
-      const sorted = sort_by_hill_notation([el1.element, el2.element])
-      return sorted[0] === el1.element ? -1 : 1
-    },
+    alphabetical: (symbols) => symbols.toSorted(),
+    electronegativity: sort_by_electronegativity,
+    hill: sort_by_hill_notation,
   }
-  const sorted_elements = $derived([...parsed_elements].toSorted(COMPARATORS[ordering]))
+  const sorted_elements = $derived.by(() => {
+    if (ordering === `original`) return parsed_elements
+    const symbols = [...new Set(parsed_elements.map((token) => token.element))]
+    const rank = new Map(SORTERS[ordering](symbols).map((symbol, idx) => [symbol, idx]))
+    return parsed_elements.toSorted(
+      (tok_a, tok_b) => (rank.get(tok_a.element) ?? 0) - (rank.get(tok_b.element) ?? 0),
+    )
+  })
 
   let hovered_element = $state<ElementSymbol | null>(null)
   let tooltip_pos = $state({ x: 0, y: 0 })
@@ -117,7 +123,7 @@
 </script>
 
 <svelte:element this={as} {...rest} class={[`formula`, rest.class]} oncopy={handle_copy}>
-  {#each sorted_elements as { element, amount, oxidation_state } (element)}
+  {#each sorted_elements as { element, amount, oxidation_state }, idx (idx)}
     {@const color = ELEMENT_COLOR_SCHEMES[color_scheme]?.[element] ?? `#666666`}
     {@const brightness = perceived_brightness(color)}
     {@const has_oxidation = oxidation_state !== undefined && oxidation_state !== 0}
