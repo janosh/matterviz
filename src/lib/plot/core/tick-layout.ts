@@ -125,7 +125,7 @@ export interface TickLabelItem {
   anchor?: TickLabelAnchor
   stagger_row?: number
 }
-export interface TickLabelGeometry extends Required<TickLabelItem> {
+interface TickLabelGeometry extends Required<TickLabelItem> {
   item_idx: number
   side: TickLayoutSide
   aabb: TickAabb
@@ -802,7 +802,7 @@ export const measured_axis = <Tick extends string | number>(
   tick_font,
 })
 
-export interface ResolvedTickLabel {
+interface ResolvedTickLabel {
   tick_index: number
   full_text: string
   lines: readonly string[]

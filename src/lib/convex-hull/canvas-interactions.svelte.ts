@@ -393,5 +393,3 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
     render_overlay_once,
   }
 }
-
-export type CanvasInteractions = ReturnType<typeof create_canvas_interactions>

@@ -15,10 +15,25 @@
   import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
   import { PerspectiveCamera } from 'three/webgpu'
   import { TRIANGLE_VERTICES } from './barycentric-coords'
-  import * as draw from './canvas-draw'
+  import {
+    draw_face,
+    draw_hull_labels,
+    draw_hull_points,
+    face_color_resolver,
+    type HullFace,
+    type HullPointOpts,
+    type Projected,
+  } from './canvas-draw'
   import { create_canvas_interactions } from './canvas-interactions.svelte'
   import ConvexHullChrome from './ConvexHullChrome.svelte'
-  import * as helpers from './helpers'
+  import {
+    get_energy_color_scale,
+    get_point_color_for_entry,
+    hull_distance_range,
+    hull_style_css,
+    is_entry_highlighted,
+    merge_highlight_style,
+  } from './helpers'
   import { create_hull_data_pipeline } from './hull-state.svelte'
   import type { BaseConvexHullProps, ConvexHullGizmoOptions, Hull3DProps } from './index'
   import { CONVEX_HULL_STYLE, default_controls, default_hull_config } from './index'
@@ -147,19 +162,14 @@
   const reset_camera = () => Object.assign(camera, camera_default)
 
   let hull_face_color = $state(defaults.hull_face_color)
-  const merged_highlight_style = $derived(helpers.merge_highlight_style(highlight_style))
+  const merged_highlight_style = $derived(merge_highlight_style(highlight_style))
   const is_highlighted = (entry: ConvexHullEntry): boolean =>
-    helpers.is_entry_highlighted(entry, highlighted_entries)
+    is_entry_highlighted(entry, highlighted_entries)
   const energy_color_scale = $derived(
-    helpers.get_energy_color_scale(color_mode, color_scale, plot_entries),
+    get_energy_color_scale(color_mode, color_scale, plot_entries),
   )
   const get_point_color = (entry: ConvexHullEntry): string =>
-    helpers.get_point_color_for_entry(
-      entry,
-      color_mode,
-      merged_config.colors,
-      energy_color_scale,
-    )
+    get_point_color_for_entry(entry, color_mode, merged_config.colors, energy_color_scale)
 
   // Triangle centroid: rotation centre of the view
   const [centroid_x, centroid_y] = [0, 1].map(
@@ -167,7 +177,7 @@
   )
 
   // Rz(azimuth) then Rx(-elevation) about the centroid, energy scaled into the view
-  function project_3d_point(x: number, y: number, z: number): draw.Projected {
+  function project_3d_point(x: number, y: number, z: number): Projected {
     const { width, height } = interactions.canvas_dims
     const [elev, azim] = [to_radians(camera.elevation), to_radians(camera.azimuth)]
     const [cos_az, sin_az, cos_el, sin_el] = [
@@ -188,7 +198,7 @@
     }
   }
 
-  const hull_point_opts = (): draw.HullPointOpts => ({
+  const hull_point_opts = (): HullPointOpts => ({
     scale: interactions.canvas_dims.scale,
     shadow_factor: 0.1,
     selected_entry,
@@ -430,7 +440,7 @@
 
   function draw_convex_hull_faces(ctx: CanvasRenderingContext2D): void {
     if (!show_hull_faces || hull_faces.length === 0) return
-    const faces: draw.HullFace[] = hull_faces.map((vertices, facet_idx) => {
+    const faces: HullFace[] = hull_faces.map((vertices, facet_idx) => {
       const projected = vertices.map((vertex) =>
         project_3d_point(vertex.x, vertex.y, vertex.z),
       )
@@ -443,7 +453,7 @@
       }
     })
     faces.sort((left, right) => left.depth - right.depth) // back to front
-    const face_color = draw.face_color_resolver(faces, {
+    const face_color = face_color_resolver(faces, {
       mode: hull_face_color_mode,
       uniform_color: hull_face_color,
       color_scale,
@@ -455,7 +465,7 @@
       const color = face_color(face)
       if (hull_face_color_mode !== `uniform`) {
         const fill = add_alpha(color, hull_face_opacity)
-        draw.draw_face(
+        draw_face(
           ctx,
           face.projected,
           fill,
@@ -489,7 +499,7 @@
         grad.addColorStop(1, add_alpha(color, alpha_max))
         fill = grad
       }
-      draw.draw_face(ctx, face.projected, fill, add_alpha(color, Math.min(0.6, alpha_max * 3)))
+      draw_face(ctx, face.projected, fill, add_alpha(color, Math.min(0.6, alpha_max * 3)))
     }
   }
 
@@ -512,9 +522,9 @@
     draw_structure_outline(ctx)
     draw_convex_hull_faces(ctx) // behind points
     draw_z_axis_ticks(ctx) // after faces for visibility at high opacity
-    draw.draw_hull_points(ctx, interactions.sorted_points_cache, hull_point_opts())
+    draw_hull_points(ctx, interactions.sorted_points_cache, hull_point_opts())
     if (merged_config.show_labels) {
-      draw.draw_hull_labels(ctx, visible_entries, {
+      draw_hull_labels(ctx, visible_entries, {
         project: project_3d_point,
         elements,
         scale: interactions.canvas_dims.scale,
@@ -539,9 +549,7 @@
       add_alpha(hull_face_color, (1 - clamp01((value - min_fe) / denom)) * hull_face_opacity)
   })
 
-  const style = $derived(
-    `${helpers.hull_style_css(merged_config.colors)}; ${rest.style ?? ``}`,
-  )
+  const style = $derived(`${hull_style_css(merged_config.colors)}; ${rest.style ?? ``}`)
 </script>
 
 <svelte:document
@@ -583,7 +591,7 @@
     {#if color_mode === `energy` && plot_entries.length > 0}
       <ColorBar
         title="Energy above hull (eV/atom)"
-        range={helpers.hull_distance_range(plot_entries)}
+        range={hull_distance_range(plot_entries)}
         scale={color_scale}
         wrapper_style="position: absolute; bottom: 16px; left: 1em; width: 200px;"
         bar_style="height: 12px;"

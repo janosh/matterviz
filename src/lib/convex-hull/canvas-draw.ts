@@ -27,7 +27,7 @@ export type Projected = { x: number; y: number; depth: number }
 export type ProjectPoint = (x: number, y: number, z: number) => Projected
 
 // Marker radius in CSS px before the container scale (stable points are larger)
-export const point_radius = (entry: ConvexHullEntry): number =>
+const point_radius = (entry: ConvexHullEntry): number =>
   // `||` (not ??) on purpose: size=0 falls back to the default
   // oxlint-disable-next-line typescript/prefer-nullish-coalescing
   entry.size || (entry_is_stable(entry) ? 6 : 4)
@@ -248,7 +248,7 @@ function label_priority_energy(entry: ConvexHullEntry): number {
   return Number.POSITIVE_INFINITY
 }
 
-export type LabelOpts = {
+type LabelOpts = {
   project: ProjectPoint
   elements: ElementSymbol[]
   scale: number
@@ -261,7 +261,7 @@ export type LabelOpts = {
 }
 
 // Compound labels that pass the label toggles, one per composition, most stable first
-export function hull_label_entries(
+function hull_label_entries(
   entries: ConvexHullEntry[],
   { show_stable_labels, show_unstable_labels, max_hull_dist_show_labels }: LabelOpts,
 ): ConvexHullEntry[] {
@@ -359,7 +359,7 @@ export type HullFace = {
   facet_idx: number
 }
 
-export type FaceColorOpts = {
+type FaceColorOpts = {
   mode: HullFaceColorMode
   uniform_color: string
   color_scale: D3InterpolateName

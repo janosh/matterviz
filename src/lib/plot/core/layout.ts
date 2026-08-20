@@ -45,7 +45,7 @@ const DEFAULT_AXIS_TITLE_FONT: Readonly<FontSpec> = Object.freeze({
   line_height: AXIS_LABEL_HEIGHT,
 })
 
-export interface AxisTitleSegment {
+interface AxisTitleSegment {
   readonly text: string
   readonly shift?: `sub` | `super`
 }

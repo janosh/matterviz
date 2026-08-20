@@ -52,9 +52,6 @@ export const grid_dimensions = (grid: ScalarGridLike): Vec3 => {
   return dimensions
 }
 
-export const grid_point_count = (grid: ScalarGridLike): number =>
-  grid_dimensions(grid).reduce((product, count) => product * count, 1)
-
 export function scalar_grid_strides({ dims: [nx, ny, nz], order }: ScalarGrid3D): Vec3 {
   if (order === `x_fastest`) return [1, nx, nx * ny]
   if (order === `z_fastest`) return [ny * nz, nz, 1]

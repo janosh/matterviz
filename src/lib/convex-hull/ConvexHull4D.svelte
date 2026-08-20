@@ -7,10 +7,25 @@
   import { DEFAULTS } from '$lib/settings'
   import { clamp01 } from '$lib/utils'
   import { TETRAHEDRON_VERTICES } from './barycentric-coords'
-  import * as draw from './canvas-draw'
+  import {
+    draw_face,
+    draw_hull_labels,
+    draw_hull_points,
+    face_color_resolver,
+    type HullFace,
+    type HullPointOpts,
+    type Projected,
+  } from './canvas-draw'
   import { create_canvas_interactions } from './canvas-interactions.svelte'
   import ConvexHullChrome from './ConvexHullChrome.svelte'
-  import * as helpers from './helpers'
+  import {
+    get_energy_color_scale,
+    get_point_color_for_entry,
+    hull_distance_range,
+    hull_style_css,
+    is_entry_highlighted,
+    merge_highlight_style,
+  } from './helpers'
   import { create_hull_data_pipeline } from './hull-state.svelte'
   import type { BaseConvexHullProps, Hull3DProps } from './index'
   import { CONVEX_HULL_STYLE, default_controls, default_hull_config } from './index'
@@ -132,19 +147,14 @@
   const reset_camera = () => Object.assign(camera, camera_default)
 
   let hull_face_color = $state(defaults.hull_face_color)
-  const merged_highlight_style = $derived(helpers.merge_highlight_style(highlight_style))
+  const merged_highlight_style = $derived(merge_highlight_style(highlight_style))
   const is_highlighted = (entry: ConvexHullEntry): boolean =>
-    helpers.is_entry_highlighted(entry, highlighted_entries)
+    is_entry_highlighted(entry, highlighted_entries)
   const energy_color_scale = $derived(
-    helpers.get_energy_color_scale(color_mode, color_scale, plot_entries),
+    get_energy_color_scale(color_mode, color_scale, plot_entries),
   )
   const get_point_color = (entry: ConvexHullEntry): string =>
-    helpers.get_point_color_for_entry(
-      entry,
-      color_mode,
-      merged_config.colors,
-      energy_color_scale,
-    )
+    get_point_color_for_entry(entry, color_mode, merged_config.colors, energy_color_scale)
 
   // Tetrahedron centroid: rotation centre of the view
   const centroid = [0, 1, 2].map(
@@ -152,7 +162,7 @@
   )
 
   // Ry(rotation_y) then Rx(rotation_x) about the centroid (Materials Project camera)
-  function project_3d_point(x: number, y: number, z: number): draw.Projected {
+  function project_3d_point(x: number, y: number, z: number): Projected {
     const { width, height } = interactions.canvas_dims
     const [cx, cy, cz] = [x - centroid[0], y - centroid[1], z - centroid[2]]
     const [cos_x, sin_x] = [Math.cos(camera.rotation_x), Math.sin(camera.rotation_x)]
@@ -167,7 +177,7 @@
     }
   }
 
-  const hull_point_opts = (): draw.HullPointOpts => ({
+  const hull_point_opts = (): HullPointOpts => ({
     scale: interactions.canvas_dims.scale,
     shadow_factor: 2,
     selected_entry,
@@ -270,7 +280,7 @@
   // Each lower-hull tetrahedron contributes its 4 triangular faces, depth sorted
   function draw_convex_hull_faces(ctx: CanvasRenderingContext2D): void {
     if (!show_hull_faces || hull_tetrahedra.length === 0) return
-    const faces: draw.HullFace[] = []
+    const faces: HullFace[] = []
     for (const [facet_idx, tetrahedron] of hull_tetrahedra.entries()) {
       const projected = tetrahedron.map((vertex) =>
         project_3d_point(vertex.x, vertex.y, vertex.z),
@@ -288,7 +298,7 @@
       }
     }
     faces.sort((left, right) => left.depth - right.depth) // back to front
-    const face_color = draw.face_color_resolver(faces, {
+    const face_color = face_color_resolver(faces, {
       mode: hull_face_color_mode,
       uniform_color: hull_face_color,
       color_scale,
@@ -302,7 +312,7 @@
           ? clamp01(face.e_form / Math.min(e_form_min, -1e-6)) * hull_face_opacity
           : hull_face_opacity
       const color = face_color(face)
-      draw.draw_face(
+      draw_face(
         ctx,
         face.projected,
         add_alpha(color, alpha),
@@ -329,9 +339,9 @@
     }
     draw_structure_outline(ctx)
     draw_convex_hull_faces(ctx) // behind points
-    draw.draw_hull_points(ctx, interactions.sorted_points_cache, hull_point_opts())
+    draw_hull_points(ctx, interactions.sorted_points_cache, hull_point_opts())
     if (merged_config.show_labels) {
-      draw.draw_hull_labels(ctx, visible_entries, {
+      draw_hull_labels(ctx, visible_entries, {
         project: project_3d_point,
         elements,
         scale: interactions.canvas_dims.scale,
@@ -345,9 +355,7 @@
     }
   }
 
-  const style = $derived(
-    `${helpers.hull_style_css(merged_config.colors)}; ${rest.style ?? ``}`,
-  )
+  const style = $derived(`${hull_style_css(merged_config.colors)}; ${rest.style ?? ``}`)
 </script>
 
 <svelte:document
@@ -391,7 +399,7 @@
     {#if color_mode === `energy` && plot_entries.length > 0}
       <ColorBar
         title="Energy above hull (eV/atom)"
-        range={helpers.hull_distance_range(plot_entries)}
+        range={hull_distance_range(plot_entries)}
         scale={color_scale}
         wrapper_style="position: absolute; bottom: 2em; left: 1em; width: 200px;"
         bar_style="height: 12px;"

@@ -16,7 +16,14 @@
   import { create_hull_selection } from './canvas-interactions.svelte'
   import ConvexHullChrome from './ConvexHullChrome.svelte'
   import ConvexHullTooltip from './ConvexHullTooltip.svelte'
-  import * as helpers from './helpers'
+  import {
+    entry_is_stable,
+    get_point_color_for_entry,
+    hull_style_css,
+    is_entry_highlighted,
+    merge_highlight_style,
+    same_entry,
+  } from './helpers'
   import { create_hull_data_pipeline } from './hull-state.svelte'
   import type { BaseConvexHullProps } from './index'
   import { CONVEX_HULL_STYLE, default_controls, default_hull_config } from './index'
@@ -92,9 +99,9 @@
   const unstable_color = $derived(merged_config.colors?.unstable)
   const show_hull_line = $derived(merged_config.show_hull)
 
-  const merged_highlight_style = $derived(helpers.merge_highlight_style(highlight_style))
+  const merged_highlight_style = $derived(merge_highlight_style(highlight_style))
   const is_highlighted = (entry: ConvexHullEntry): boolean =>
-    helpers.is_entry_highlighted(entry, highlighted_entries)
+    is_entry_highlighted(entry, highlighted_entries)
 
   // Shared reactive data pipeline (temperature → gas → energies → coordinates → hull)
   const hull_data = create_hull_data_pipeline({
@@ -179,7 +186,7 @@
   const scatter_points_series = $derived.by(() => {
     const is_energy_mode = color_mode === `energy`
     const point_style = visible_entries.map((entry): PointStyle => {
-      const is_stable = helpers.entry_is_stable(entry)
+      const is_stable = entry_is_stable(entry)
       // oxlint-disable-next-line typescript/prefer-nullish-coalescing -- size=0 → default
       const base_radius = entry.size || (is_stable ? 6 : 4)
       const hl = is_highlighted(entry) ? merged_highlight_style : null
@@ -234,7 +241,7 @@
   // by same_entry since selected_entry may be a proxied copy of the visible entry
   const selected_scatter_point = $derived.by(() => {
     if (!selected_entry) return null
-    const idx = visible_entries.findIndex((entry) => helpers.same_entry(entry, selected_entry))
+    const idx = visible_entries.findIndex((entry) => same_entry(entry, selected_entry))
     return idx === -1 ? null : { series_idx: 0, point_idx: idx }
   })
 
@@ -249,7 +256,7 @@
     const now = Date.now()
     if (
       last_clicked &&
-      helpers.same_entry(last_clicked.entry, entry) &&
+      same_entry(last_clicked.entry, entry) &&
       now - last_clicked.time < 300
     ) {
       last_clicked = null
@@ -261,9 +268,7 @@
     if (selection.modal_open) event.stopPropagation()
   }
 
-  const style = $derived(
-    `${helpers.hull_style_css(merged_config.colors)}; ${rest.style ?? ``}`,
-  )
+  const style = $derived(`${hull_style_css(merged_config.colors)}; ${rest.style ?? ``}`)
 </script>
 
 <!-- Hover tooltip matching 3D/4D style (content only; container handled by ScatterPlot) -->
@@ -375,7 +380,7 @@
       {stable_entries}
       {unstable_entries}
       get_point_color={(entry) =>
-        helpers.get_point_color_for_entry(entry, color_mode, merged_config.colors, null)}
+        get_point_color_for_entry(entry, color_mode, merged_config.colors, null)}
       {merged_highlight_style}
       {is_highlighted}
       tooltip={custom_tooltip}

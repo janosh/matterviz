@@ -20,14 +20,14 @@ export interface GeometryInput {
   volumes: GeometryVolumeJob[]
 }
 
-export interface GeometrySurfaceResult {
+interface GeometrySurfaceResult {
   token: string
   positions: Float32Array
   indices: Uint32Array
   marching_cubes_ms: number
 }
 
-export interface GeometryVolumeResult {
+interface GeometryVolumeResult {
   token: number
   // The prepared grid, returned so the caller can cache it for later sync extractions
   grid: ScalarGrid3D<Float64Array>

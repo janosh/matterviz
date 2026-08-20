@@ -150,7 +150,7 @@ function interpolate(xs: readonly number[], ys: readonly number[], value: number
 }
 
 // Frame numbering for a trajectory with no samples to grid on
-export const FRAME_X_MAP: TrajectoryXMap = {
+const FRAME_X_MAP: TrajectoryXMap = {
   quantity: `frame`,
   label: X_QUANTITY_LABELS.frame,
   unit: ``,
