@@ -1,37 +1,146 @@
-// State/interaction helpers shared by the hierarchical part-of-whole charts
-// (Sunburst, Treemap): metric coloring, hover/mute dimming, handler payloads,
-// breadcrumbs and keyboard plumbing. All pure functions over the flat pre-order
-// arc arrays that compute_sunburst_layout produces — each component keeps only
-// its geometry-specific logic (polar projection vs squarified tiling).
+// Pure helpers shared by the hierarchical part-of-whole charts (Sunburst, Treemap):
+// label strings + measured variants, metric coloring, hover/mute dimming, handler
+// payloads, breadcrumbs, color-bar layout, keyboard navigation and SVG/PNG export.
+// Everything operates on the flat pre-order arc arrays compute_sunburst_layout
+// produces, so each chart keeps only its geometry (polar projection vs tiling).
 
 import type { D3InterpolateName } from '$lib/colors'
+import { is_opaque_color, pick_contrast_color } from '$lib/colors'
+import { DEFAULT_PNG_DPI } from '$lib/constants'
+import { export_svg_as_png, export_svg_as_svg } from '$lib/io/export'
+import { format_value } from '$lib/labels'
 import type { Vec2 } from '$lib/math'
-import { get_relative_coords } from '$lib/plot/core/interactions'
 import { create_color_scale } from '$lib/plot/core/scales'
+import type { FontSpec } from '$lib/plot/core/text-metrics'
+import {
+  DEFAULT_FONT_SPEC,
+  measure_text_line,
+  resolve_font_spec,
+} from '$lib/plot/core/text-metrics'
 import type { LegendItem } from '$lib/plot/core/types'
-import { node_display_name, node_label_variants } from '$lib/plot/core/utils/hierarchy-labels'
 import type {
   PositionedArc,
   SunburstLabelText,
-  SunburstLayoutOptions,
-  SunburstLayoutResult,
-  SunburstNode,
   SunburstNodeHandlerProps,
 } from '$lib/plot/sunburst/sunburst'
-import { compute_sunburst_layout } from '$lib/plot/sunburst/sunburst'
 
-// Degrade to an empty layout (instead of crashing the host page) on invalid data
-export function safe_hierarchy_layout<Metadata>(
-  data: SunburstNode<Metadata> | SunburstNode<Metadata>[],
-  opts: SunburstLayoutOptions,
-): SunburstLayoutResult<Metadata> {
-  try {
-    return compute_sunburst_layout(data, opts)
-  } catch (err) {
-    console.error(err)
-    return { arcs: [], root: null, max_depth: 0 }
-  }
+// === Labels ===
+
+// The semantic node fields label formatting needs (subset of PositionedArc)
+interface LabeledNode {
+  id: string | number
+  label?: string
+  label_short?: string
+  value: number
+  fraction: number
+  parent_fraction?: number
 }
+
+export const node_display_name = (node: LabeledNode): string => node.label ?? `${node.id}`
+
+// What a node's label displays, per the label_text mode (plotly textinfo
+// equivalent); percent is of the root total, parent-percent of the parent node
+export function node_label_str(
+  node: LabeledNode,
+  label_text: SunburstLabelText,
+  value_format: string,
+): string {
+  const name = node_display_name(node)
+  if (label_text === `label`) return name
+  const val = format_value(node.value, value_format)
+  if (label_text === `value`) return val
+  if (label_text === `label+value`) return `${name} ${val}`
+  if (label_text === `label+parent-percent`) {
+    return `${name} (${format_value(node.parent_fraction ?? node.fraction, `.0%`)})`
+  }
+  const pct = format_value(node.fraction, `.1%`)
+  if (label_text === `percent`) return pct
+  return `${name} ${pct}` // label+percent
+}
+
+// Base + optional richer/compact variants for fit-aware rendering: compound
+// modes degrade to the bare label when the full text doesn't fit its node,
+// and nodes with a `label_short` degrade once more to that compact form
+// before the label is hidden entirely.
+export function node_label_variants(
+  node: LabeledNode,
+  label_text: SunburstLabelText,
+  value_format: string,
+): { text: string; extended?: string; short?: string } {
+  const short = node.label_short
+  const text = node_label_str(node, label_text, value_format)
+  if (!label_text.startsWith(`label+`)) return { text, short }
+  return { text: node_display_name(node), extended: text, short }
+}
+
+// Chart svgs default to 11px labels (--<chart>-font-size); text-metrics' 12px default
+// would otherwise be measured whenever the svg isn't mounted yet.
+const LABEL_FONT_FALLBACK: Readonly<FontSpec> = { ...DEFAULT_FONT_SPEC, font_size: 11 }
+
+// The font node labels actually render in, for canvas-measured label fitting
+export const resolve_label_font = (svg_element: SVGSVGElement | null): FontSpec =>
+  resolve_font_spec(svg_element, LABEL_FONT_FALLBACK)
+
+export interface HierarchyNodeInfo {
+  // Fit-aware label fallback chain, richest first: extended -> base label ->
+  // compact label_short. Rendering picks the first variant whose measured
+  // width fits its node; empty when the node has no base label at all.
+  variants: { text: string; width: number }[]
+  aria: string
+  fill: string
+  label_fill: string
+  clickable?: boolean
+}
+
+// Per-node label text, measured widths, fill/label colors, aria string (and
+// optional clickability) — all zoom-independent, so computed once per
+// layout/option change instead of per animation frame (format_value, canvas
+// measureText, contrast picking and color resolution would otherwise run per
+// visible node per frame during zoom tweens)
+export function compute_node_infos<Metadata>(
+  arcs: readonly PositionedArc<Metadata>[],
+  opts: {
+    label_text: SunburstLabelText
+    value_format: string
+    font: Readonly<FontSpec>
+    color_for: (arc: PositionedArc<Metadata>) => string
+    clickable?: (arc: PositionedArc<Metadata>) => boolean
+  },
+): HierarchyNodeInfo[] {
+  const { label_text, value_format, font } = opts
+  // Black/white label text for opaque fills; unresolved/translucent fills inherit.
+  // Memoized per fill: categorical coloring repeats a handful of fills across thousands
+  // of nodes, and parsing + luminance per node would dominate this pass.
+  const contrast_cache = new Map<string, string>()
+  const contrast = (fill: string): string => {
+    let label_fill = contrast_cache.get(fill)
+    if (label_fill === undefined) {
+      label_fill = is_opaque_color(fill)
+        ? pick_contrast_color({ background: fill })
+        : `currentColor`
+      contrast_cache.set(fill, label_fill)
+    }
+    return label_fill
+  }
+  return arcs.map((arc) => {
+    const { text, extended, short } = node_label_variants(arc, label_text, value_format)
+    const fill = opts.color_for(arc)
+    const variants = (text ? [extended, text, short] : []).flatMap((variant) =>
+      variant === undefined
+        ? []
+        : [{ text: variant, width: measure_text_line(variant, font).width }],
+    )
+    return {
+      variants,
+      aria: `${node_display_name(arc)}: ${arc.value}`,
+      fill,
+      label_fill: contrast(fill),
+      ...(opts.clickable ? { clickable: opts.clickable(arc) } : {}),
+    }
+  })
+}
+
+// === Coloring + dimming ===
 
 // Continuous metric coloring: when color_values is given, nodes are colored by
 // their metric on a d3 colormap (nodes returning null keep their categorical
@@ -93,15 +202,6 @@ export function compute_node_dim<Metadata>(
   })
 }
 
-// Drop muted ids that no longer exist in the current layout (e.g. after a data swap)
-export function prune_muted_ids<Metadata>(
-  arcs: readonly PositionedArc<Metadata>[],
-  muted_ids: Set<string | number>,
-): void {
-  const valid = new Set(arcs.filter((arc) => arc.depth === 1).map((arc) => arc.id))
-  for (const id of muted_ids) if (!valid.has(id)) muted_ids.delete(id)
-}
-
 // Toggle one depth-1 category's muted state (legend click)
 export function toggle_muted(
   muted_ids: Set<string | number>,
@@ -123,6 +223,8 @@ export function hierarchy_legend_items<Metadata>(
     display_style: { symbol_type: `Square` as const, symbol_color: color_for(arc) },
   }))
 }
+
+// === Events + navigation ===
 
 // Handler props are the node minus its layout geometry (screen coords are an
 // implementation detail), plus the resolved parent id
@@ -168,85 +270,47 @@ export function ancestor_chain<Metadata>(
   return chain
 }
 
-export interface HierarchyNodeInfo {
-  // Fit-aware label fallback chain, richest first: extended -> base label ->
-  // compact label_short. Rendering picks the first variant whose measured
-  // width fits its node; empty when the node has no base label at all.
-  variants: { text: string; width: number }[]
-  aria: string
-  fill: string
-  label_fill: string
-  clickable?: boolean
-}
+// Structural subset shared by every hierarchy chart's pre-order node representation.
+type PreorderNode = Pick<PositionedArc, `node_idx` | `subtree_end` | `parent_idx` | `depth`>
 
-// Per-node label text, measured widths, fill/label colors, aria string (and
-// optional clickability) — all zoom-independent, so computed once per
-// layout/option change instead of per animation frame (format_value, canvas
-// measureText, contrast picking and color resolution would otherwise run per
-// visible node per frame during zoom tweens)
-export function compute_node_infos<Metadata>(
-  arcs: readonly PositionedArc<Metadata>[],
-  opts: {
-    label_text: SunburstLabelText
-    value_format: string
-    label_font: string
-    color_for: (arc: PositionedArc<Metadata>) => string
-    text_width: (text: string, font: string) => number
-    contrast: (fill: string) => string
-    clickable?: (arc: PositionedArc<Metadata>) => boolean
-  },
-): HierarchyNodeInfo[] {
-  const { label_text, value_format, label_font } = opts
-  return arcs.map((arc) => {
-    const { text, extended, short } = node_label_variants(arc, label_text, value_format)
-    const fill = opts.color_for(arc)
-    const variants = (text ? [extended, text, short] : []).flatMap((variant) =>
-      variant === undefined
-        ? []
-        : [{ text: variant, width: opts.text_width(variant, label_font) }],
-    )
-    return {
-      variants,
-      aria: `${node_display_name(arc)}: ${arc.value}`,
-      fill,
-      label_fill: opts.contrast(fill),
-      ...(opts.clickable ? { clickable: opts.clickable(arc) } : {}),
-    }
-  })
-}
-
-// Attachment factory reporting an element's rendered size (immediately, on
-// resize, and zeroed on unmount) without an extra measuring wrapper div.
-export const observe_size =
-  (on_size: (size: { height: number; width: number }) => void) => (element: Element) => {
-    const update = () => on_size({ height: element.clientHeight, width: element.clientWidth })
-    const observer = new ResizeObserver(update)
-    observer.observe(element)
-    update()
-    return () => {
-      observer.disconnect()
-      on_size({ height: 0, width: 0 })
-    }
+// Arrow-key navigation over the pre-order node array: ArrowLeft/ArrowRight cycle
+// through visible siblings (wrapping), ArrowDown enters the first child, ArrowUp
+// returns to the parent (never the hidden root at depth 0). Visibility is delegated
+// to is_visible (the component supplies screen-space collapse state). Returns the
+// target node_idx, or null when the key isn't an arrow key or no target qualifies.
+export function arrow_nav_target(
+  nodes: readonly PreorderNode[],
+  is_visible: (idx: number) => boolean,
+  current_idx: number,
+  key: string,
+): number | null {
+  const current = nodes[current_idx]
+  if (!current) return null
+  if (key === `ArrowDown`) {
+    // pre-order: a branch's first child directly follows it
+    const child = nodes[current.node_idx + 1]
+    return child && child.parent_idx === current.node_idx && is_visible(child.node_idx)
+      ? child.node_idx
+      : null
   }
-
-// The font node labels actually render in (respects the chart's font-size CSS
-// var instead of assuming 11px), for canvas-measured label fitting
-export function svg_label_font(svg_element: SVGSVGElement | null): string {
-  if (!svg_element) return `11px sans-serif`
-  const { fontSize, fontFamily } = getComputedStyle(svg_element)
-  return `${fontSize} ${fontFamily}`
+  const parent = current.parent_idx != null ? nodes[current.parent_idx] : null
+  if (key === `ArrowUp`) {
+    return parent && parent.depth > 0 && is_visible(parent.node_idx) ? parent.node_idx : null
+  }
+  if (key !== `ArrowRight` && key !== `ArrowLeft`) return null
+  // Walk siblings via the contiguous pre-order subtree ranges (each sibling starts right
+  // after the previous one's subtree ends) - pre-order already lists siblings in draw
+  // order, so no sorting is needed and no full scan runs per keypress
+  const last = parent?.subtree_end ?? nodes.length - 1
+  const siblings: number[] = []
+  for (let idx = (parent?.node_idx ?? 0) + 1; idx <= last; idx = nodes[idx].subtree_end + 1) {
+    if (is_visible(idx)) siblings.push(idx)
+  }
+  if (siblings.length < 2) return null
+  const current_pos = siblings.indexOf(current.node_idx)
+  const step = key === `ArrowRight` ? 1 : -1
+  return siblings[(current_pos + step + siblings.length) % siblings.length]
 }
-
-// Anchor tooltips at the cursor (mouse hover) so they follow the pointer across
-// wide nodes; callers fall back to the node center on keyboard focus (no cursor).
-export const pointer_pos = (
-  event: MouseEvent | FocusEvent | undefined,
-  svg_element: SVGSVGElement | null,
-): { x: number; y: number } | null =>
-  event instanceof MouseEvent ? get_relative_coords(event, svg_element) : null
-
-export const is_activation_key = (evt: KeyboardEvent): boolean =>
-  [`Enter`, ` `].includes(evt.key)
 
 // === Color bar layout ===
 
@@ -313,44 +377,53 @@ export function color_bar_layout(opts: {
   }
 }
 
-// Structural subset shared by every hierarchy chart's pre-order node representation.
-type PreorderNode = Pick<PositionedArc, `node_idx` | `subtree_end` | `parent_idx` | `depth`>
+// Attachment factory reporting an element's rendered size (immediately, on
+// resize, and zeroed on unmount) without an extra measuring wrapper div.
+export const observe_size =
+  (on_size: (size: { height: number; width: number }) => void) => (element: Element) => {
+    const update = () => on_size({ height: element.clientHeight, width: element.clientWidth })
+    const observer = new ResizeObserver(update)
+    observer.observe(element)
+    update()
+    return () => {
+      observer.disconnect()
+      on_size({ height: 0, width: 0 })
+    }
+  }
 
-// Arrow-key navigation over the pre-order node array: ArrowLeft/ArrowRight cycle
-// through visible siblings (wrapping), ArrowDown enters the first child, ArrowUp
-// returns to the parent (never the hidden root at depth 0). Visibility is delegated
-// to is_visible (the component supplies screen-space collapse state). Returns the
-// target node_idx, or null when the key isn't an arrow key or no target qualifies.
-export function arrow_nav_target(
-  nodes: readonly PreorderNode[],
-  is_visible: (idx: number) => boolean,
-  current_idx: number,
-  key: string,
-): number | null {
-  const current = nodes[current_idx]
-  if (!current) return null
-  if (key === `ArrowDown`) {
-    // pre-order: a branch's first child directly follows it
-    const child = nodes[current.node_idx + 1]
-    return child && child.parent_idx === current.node_idx && is_visible(child.node_idx)
-      ? child.node_idx
-      : null
+// === Export ===
+
+// Styles these components apply via CSS that exported standalone SVGs must carry
+// as presentation attributes (inlined onto a clone by the io/export helpers)
+const EXPORT_INLINE_STYLES = [
+  `fill`,
+  `stroke`,
+  `stroke-width`,
+  `text-anchor`,
+  `dominant-baseline`,
+  `font-size`,
+  `font-family`,
+  `font-weight`,
+  `opacity`,
+]
+const EXPORT_OPTIONS = { viewbox_padding: `stroke` } as const
+
+export function export_hierarchy_chart(
+  svg_element: SVGSVGElement | null,
+  base_filename: string,
+  format: `svg` | `png`,
+): void {
+  if (!svg_element) return
+  const filename = `${base_filename}.${format}`
+  if (format === `svg`) {
+    export_svg_as_svg(svg_element, filename, EXPORT_INLINE_STYLES, EXPORT_OPTIONS)
+  } else {
+    export_svg_as_png(
+      svg_element,
+      filename,
+      DEFAULT_PNG_DPI,
+      EXPORT_INLINE_STYLES,
+      EXPORT_OPTIONS,
+    )
   }
-  const parent = current.parent_idx != null ? nodes[current.parent_idx] : null
-  if (key === `ArrowUp`) {
-    return parent && parent.depth > 0 && is_visible(parent.node_idx) ? parent.node_idx : null
-  }
-  if (key !== `ArrowRight` && key !== `ArrowLeft`) return null
-  // Walk siblings via the contiguous pre-order subtree ranges (each sibling starts right
-  // after the previous one's subtree ends) - pre-order already lists siblings in draw
-  // order, so no sorting is needed and no full scan runs per keypress
-  const last = parent?.subtree_end ?? nodes.length - 1
-  const siblings: number[] = []
-  for (let idx = (parent?.node_idx ?? 0) + 1; idx <= last; idx = nodes[idx].subtree_end + 1) {
-    if (is_visible(idx)) siblings.push(idx)
-  }
-  if (siblings.length < 2) return null
-  const current_pos = siblings.indexOf(current.node_idx)
-  const step = key === `ArrowRight` ? 1 : -1
-  return siblings[(current_pos + step + siblings.length) % siblings.length]
 }

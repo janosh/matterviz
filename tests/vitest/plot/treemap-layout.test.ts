@@ -6,7 +6,12 @@ import {
   sunburst_from_paths,
   tile_rects,
 } from '$lib/plot'
-import { normalize_treemap_label_lines, place_treemap_label } from '$lib/plot/treemap/labels'
+import { DEFAULT_FONT_SPEC } from '$lib/plot/core/text-metrics'
+import {
+  measure_treemap_label_block,
+  normalize_treemap_label_lines,
+  place_treemap_label,
+} from '$lib/plot/treemap/labels'
 import { describe, expect, test } from 'vitest'
 
 const size = { width: 400, height: 300 }
@@ -42,21 +47,19 @@ describe(`compute_treemap_layout`, () => {
       fraction: expect.closeTo(0.2, 9),
       parent_fraction: expect.closeTo(0.4, 9),
     })
-    // with zero padding, areas are exactly proportional to values
-    const total_area = size.width * size.height
-    expect(area(rects[0])).toBeCloseTo(total_area, 6)
-    expect(area(rects[1])).toBeCloseTo(total_area / 2, 6) // A = 10/20
-    expect(area(rects[3])).toBeCloseTo(total_area * 0.2, 6) // A1 = 4/20
-    expect(area(rects[4])).toBeCloseTo(total_area / 2, 6) // B = 10/20
-    // children nest inside their parent
-    const [rect_a, rect_a2, rect_a1] = [rects[1], rects[2], rects[3]]
-    expect(rect_a1.x).toBeGreaterThanOrEqual(rect_a.x)
-    expect(rect_a1.y).toBeGreaterThanOrEqual(rect_a.y)
-    expect(rect_a1.x + rect_a1.width).toBeLessThanOrEqual(rect_a.x + rect_a.width + 1e-6)
-    expect(rect_a1.y + rect_a1.height).toBeLessThanOrEqual(rect_a.y + rect_a.height + 1e-6)
-    // the larger A2 child owns its parent's top-left corner
-    expect(rect_a2.x).toBe(rect_a.x)
-    expect(rect_a2.y).toBe(rect_a.y)
+    // d3's squarify (golden-ratio target) tiles the 400x300 area as two 400x150
+    // rows for the equal-value A/B pair; inside A's row, A2 (6) and A1 (4) sit side
+    // by side at 240px and 160px. Zero padding -> areas exactly proportional.
+    const rect_entries = rects.map(({ x, y, width, height }) => [x, y, width, height])
+    for (const [actual, expected] of [
+      [rect_entries[0], [0, 0, 400, 300]],
+      [rect_entries[1], [0, 0, 400, 150]], // A
+      [rect_entries[2], [0, 0, 240, 150]], // A2
+      [rect_entries[3], [240, 0, 160, 150]], // A1
+      [rect_entries[4], [0, 150, 400, 150]], // B
+    ]) {
+      actual.forEach((val, idx) => expect(val).toBeCloseTo(expected[idx], 9))
+    }
     // opt-out restores input order
     const unsorted = compute_treemap_layout(tree, size, { ...no_pad, sort: `none` })
     expect(unsorted.arcs.map((arc) => arc.id)).toEqual([``, `A`, `A/A1`, `A/A2`, `B`])
@@ -245,20 +248,32 @@ test(`normalize_treemap_label_lines ignores nullish and empty-label array entrie
 })
 
 describe(`place_treemap_label`, () => {
-  // deterministic char-width measure: width = chars * font_size * 0.5
-  const measure_line = (line: { text: string }, font_size: number) =>
-    line.text.length * font_size * 0.5
+  // happy-dom has no canvas, so text-metrics' fallback measures 0.6px per character
+  // per px of font size: 'label' at 10px = 30px wide, 11px tall (1.1 line height)
+  const font = DEFAULT_FONT_SPEC
+  const block = (
+    lines: { text: string; font_scale?: number; font_weight?: number }[] = [{ text: `label` }],
+    font_size = 10,
+  ) => measure_treemap_label_block(lines, font_size, font)
   const base = {
-    lines: [{ text: `label` }], // 5 chars -> width 2.5x font size, height 1.1x
+    block: block(),
     header: false,
     fit: `hide` as const,
     min_font_size: 6,
-    max_font_size: 10,
     padding_top: 0,
     margin: 0,
-    measure_line,
   }
   const rect = (width: number, height: number) => ({ x: 0, y: 0, width, height })
+
+  test(`measures the widest line and stacks line heights; weight/scale per line`, () => {
+    expect(block()).toMatchObject({ font_size: 10, width: 30, height: 11 })
+    const two = block([
+      { text: `ab`, font_scale: 0.5 },
+      { text: `cd`, font_weight: 700 },
+    ])
+    expect(two.width).toBeCloseTo(12, 9) // 'cd' at 10px (the half-size 'ab' is 6px)
+    expect(two.height).toBeCloseTo(5.5 + 11, 9)
+  })
 
   test.each([
     { name: `fits horizontally at max size`, rect: rect(100, 50), rotated: false },
@@ -268,18 +283,24 @@ describe(`place_treemap_label`, () => {
     expect(placement).not.toBeNull()
     expect(Boolean(placement?.transform?.includes(`rotate(-90`))).toBe(rotated)
     expect(placement?.font_size).toBe(10)
+    // the single line sits on the cell's vertical center
+    expect(placement?.lines.map((line) => line.y)).toEqual([cell.height / 2])
   })
 
   test(`leaf fitting reserves margin on every edge`, () => {
-    const cell = rect(40, 12)
+    const cell = rect(40, 12) // 30x11 block fits with margin 0 but not 4 (32x4 left)
     expect(place_treemap_label({ ...base, rect: cell })).not.toBeNull()
     expect(place_treemap_label({ ...base, rect: cell, margin: 4 })).toBeNull()
-    expect(place_treemap_label({ ...base, rect: cell, margin: 6 })).toBeNull()
   })
 
   test.each([
-    // 'label' at 10px = 25px wide; a 20px-wide cell gives ratio 0.8
-    { name: `shrink scales to the exact fit ratio`, fit: `shrink`, width: 20, font_px: 8 },
+    // 'label' at 10px = 30px wide; a 20px-wide cell gives ratio 2/3
+    {
+      name: `shrink scales to the exact fit ratio`,
+      fit: `shrink`,
+      width: 20,
+      font_px: 20 / 3,
+    },
     { name: `shrink clamps at min_font_size`, fit: `shrink`, width: 3, font_px: 6 },
     { name: `clip keeps the max size on overflow`, fit: `clip`, width: 3, font_px: 10 },
   ] as const)(`$name`, ({ fit, width, font_px }) => {
@@ -291,12 +312,13 @@ describe(`place_treemap_label`, () => {
       padding_top: 100,
       rect: rect(width, 100),
     })
-    expect(placement?.font_size).toBeCloseTo(font_px, 6)
+    expect(placement?.font_size).toBeCloseTo(font_px, 9)
+    expect(placement?.x).toBe(0) // header labels left-align at the margin
   })
 
   test.each([
     { name: `hide drops overflowing labels`, opts: { rect: rect(3, 3) } },
-    { name: `empty lines`, opts: { rect: rect(100, 50), lines: [] } },
+    { name: `empty lines`, opts: { rect: rect(100, 50), block: block([]) } },
     { name: `NaN width`, opts: { rect: rect(Number.NaN, 50) } },
     { name: `zero-height sliver`, opts: { rect: rect(100, 0) } },
     { name: `header without a strip`, opts: { rect: rect(100, 50), header: true } },
@@ -305,12 +327,10 @@ describe(`place_treemap_label`, () => {
   })
 
   test(`min > max collapses to max; font_scale lines stack cumulatively`, () => {
-    const lines = [{ text: `ab`, font_scale: 0.5 }, { text: `cd` }]
     const placement = place_treemap_label({
       ...base,
-      lines,
+      block: block([{ text: `ab`, font_scale: 0.5 }, { text: `cd` }]),
       min_font_size: 99,
-      max_font_size: 10,
       rect: rect(100, 50),
     })
     expect(placement?.font_size).toBe(10)

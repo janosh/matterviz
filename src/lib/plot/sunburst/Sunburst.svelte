@@ -12,18 +12,20 @@
   } from '$lib/plot'
   import { SunburstControls } from '$lib/plot'
   import HierarchyShell from '$lib/plot/core/components/HierarchyShell.svelte'
+  import { is_activation_key } from '$lib/plot/core/interactions'
   import type { Sides } from '$lib/plot/core/layout'
+  import { create_settling_tween } from '$lib/plot/core/settling-tween.svelte'
   import { SCALE_DEFAULTS } from '$lib/plot/core/types'
-  import { is_activation_key } from '$lib/plot/core/utils/hierarchy-chart'
+  import { node_display_name } from '$lib/plot/core/utils/hierarchy-chart'
   import {
     HierarchyChartState,
     type HierarchyChartProps,
   } from '$lib/plot/core/utils/hierarchy-state.svelte'
-  import { node_display_name } from '$lib/plot/core/utils/hierarchy-labels'
   import {
     arc_label_transform,
     project_arcs,
     type ScreenArc as ScreenArcOf,
+    type ViewWindow,
   } from '$lib/plot/sunburst/render'
   import type { PositionedArc } from '$lib/plot/sunburst/sunburst'
   import { DEFAULTS } from '$lib/settings'
@@ -31,7 +33,7 @@
   import { type Snippet, untrack } from 'svelte'
   import { cubicInOut } from 'svelte/easing'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { Tween, type TweenOptions } from 'svelte/motion'
+  import type { TweenOptions } from 'svelte/motion'
 
   // Preserve the established outer inset; pass `padding` to override chart-edge space.
   const DEFAULT_PADDING: Required<Sides> = { t: 10, b: 10, l: 10, r: 10 }
@@ -98,7 +100,7 @@
       pad_angle?: number // degrees between sibling arcs
       label_rotation?: SunburstLabelRotation
       group_gap?: SunburstGroupGap<Metadata> | null
-      tween?: TweenOptions<{ x0: number; x1: number; y0: number; n_rings: number }>
+      tween?: TweenOptions<ViewWindow> // zoom transition timing
       // Fully replace the default arc path. NOTE: this also replaces the built-in
       // hover/focus/click + tooltip wiring, so re-implement any interactivity you
       // need inside the snippet.
@@ -158,7 +160,7 @@
     // placement is stable during zoom tweens and runs once per zoom instead of
     // once per frame
     legend_points: () =>
-      project_arcs(chart_state.arcs, view.target, screen_geom, { group_gap }).visible.map(
+      project_arcs(chart_state.arcs, view_target, screen_geom, { group_gap }).visible.map(
         arc_center,
       ),
     // In icicle mode focus the new root's first child (pre-order: node_idx + 1):
@@ -176,7 +178,7 @@
 
   // The view window in normalized partition coordinates: the zoom root's angular
   // span + how many rings to show below it
-  let view_target = $derived.by(() => {
+  let view_target: ViewWindow = $derived.by(() => {
     const { layout, zoom_root } = chart_state
     const below = layout.root ? layout.max_depth - (zoom_root?.depth ?? 0) : 1
     return {
@@ -189,13 +191,19 @@
 
   // Zooming tweens this single object; all arc geometry re-derives from view.current
   // each frame via clamping scales (the classic zoomable-sunburst trick - no per-arc
-  // tweens, no re-layout). Tween.of seeds it at view_target (charts load fully drawn)
-  // then re-targets on change via a render-effect that reads only view_target, never
-  // view.current - so the tween can't feed back into its own target. untrack reads the
-  // tween options once at init (they're not meant to update reactively).
-  const view = Tween.of(
+  // tweens, no re-layout). Seeded at view_target so charts load fully drawn; the
+  // structural is_same keeps a data swap that re-derives an identical window from
+  // restarting the tween. untrack reads the tween options once at init.
+  const view = create_settling_tween(
     () => view_target,
     untrack(() => ({ duration: 400, easing: cubicInOut, ...tween })),
+    {
+      is_same: (prev, next) =>
+        prev.x0 === next.x0 &&
+        prev.x1 === next.x1 &&
+        prev.y0 === next.y0 &&
+        prev.n_rings === next.n_rings,
+    },
   )
 
   // Pixel geometry
@@ -216,7 +224,7 @@
   })
 
   // Projected with view.current once per animation frame; project_arcs is also called
-  // with view.target where settled geometry suffices (e.g. legend placement, which
+  // with view_target where settled geometry suffices (e.g. legend placement, which
   // shouldn't rerun per frame)
   let projection = $derived(
     project_arcs(chart_state.arcs, view.current, screen_geom, { group_gap }),

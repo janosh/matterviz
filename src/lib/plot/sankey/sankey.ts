@@ -125,6 +125,47 @@ export function sankey_from_links(
   return { nodes, links }
 }
 
+// Iterative DFS over the resolved links. Returns the first cycle found as a closed
+// node-index walk (first === last), or null for a DAG. d3-sankey only reports
+// "circular link" without saying where, so this runs first to name the offenders.
+function find_cycle(
+  links: readonly { source: number; target: number }[],
+  n_nodes: number,
+): number[] | null {
+  const out_edges: number[][] = Array.from({ length: n_nodes }, () => [])
+  for (const { source, target } of links) out_edges[source].push(target)
+  const state = new Uint8Array(n_nodes) // 0 = unvisited, 1 = on stack, 2 = done
+  const parent = new Int32Array(n_nodes).fill(-1)
+  for (let root = 0; root < n_nodes; root++) {
+    if (state[root] !== 0) continue
+    const stack: [number, number][] = [[root, 0]] // [node, next out-edge position]
+    state[root] = 1
+    while (stack.length > 0) {
+      const frame = stack[stack.length - 1]
+      const [node, edge_pos] = frame
+      if (edge_pos === out_edges[node].length) {
+        state[node] = 2
+        stack.pop()
+        continue
+      }
+      frame[1] += 1
+      const next = out_edges[node][edge_pos]
+      if (state[next] === 1) {
+        const cycle = [next]
+        for (let cur = node; cur !== next; cur = parent[cur]) cycle.push(cur)
+        cycle.push(next)
+        return cycle.toReversed()
+      }
+      if (state[next] === 0) {
+        state[next] = 1
+        parent[next] = node
+        stack.push([next, 0])
+      }
+    }
+  }
+  return null
+}
+
 // Vertical ribbon path: mirror of d3's sankeyLinkHorizontal but flowing top->bottom.
 // Reads the raw d3 layout fields (link.y0/y1 are stacking-axis centers, which in
 // vertical mode map to screen x; source.x1/target.x0 are depth positions = screen y).
@@ -239,6 +280,13 @@ export function compute_sankey_layout<Metadata = Record<string, unknown>>(
     linked_node_idxs.add(link.target)
   }
   const used_nodes = node_copies.filter((node) => linked_node_idxs.has(node.node_idx))
+  const cycle = find_cycle(link_copies, data.nodes.length)
+  if (cycle) {
+    const names = cycle.map((idx) => node_copies[idx].label ?? `${node_copies[idx].id}`)
+    throw new Error(
+      `Sankey: links must form a DAG but contain the cycle ${names.join(` -> `)}`,
+    )
+  }
 
   const is_vertical = orientation === `vertical`
   // d3 lays out left->right (depth on x). For vertical we run in a transposed
@@ -261,14 +309,9 @@ export function compute_sankey_layout<Metadata = Record<string, unknown>>(
     .iterations(iterations)
     .extent(extent)
 
-  let graph: { nodes: PositionedNode[]; links: PositionedLink[] }
-  try {
-    graph = layout({ nodes: used_nodes, links: link_copies }) as typeof graph
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    throw new Error(`Sankey layout failed (graph must be a DAG without cycles): ${msg}`, {
-      cause: err,
-    })
+  const graph = layout({ nodes: used_nodes, links: link_copies }) as {
+    nodes: PositionedNode[]
+    links: PositionedLink[]
   }
 
   // Build link ribbon paths from raw d3 fields BEFORE transposing node boxes.

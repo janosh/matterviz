@@ -18,7 +18,6 @@
   import type { HierarchyChartState } from '$lib/plot/core/utils/hierarchy-state.svelte'
   import type { SunburstNodeHandlerProps } from '$lib/plot/sunburst/sunburst'
   import type { Snippet } from 'svelte'
-  import { untrack } from 'svelte'
 
   let {
     chart_state,
@@ -68,13 +67,6 @@
       exclude_rects: [],
       points: chart_state.legend_points(),
     })
-  })
-
-  // untrack avoids a self-trigger loop from reading/writing muted ids and hover
-  // state in the same effect
-  $effect(() => {
-    const { arcs } = chart_state.layout
-    untrack(() => chart_state.reset_for_layout(arcs))
   })
 
   // Color bar anchored beside (vertical) or below (horizontal) the chart; `--<chart>-colorbar-*`

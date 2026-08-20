@@ -6,6 +6,7 @@
   import { TreemapControls } from '$lib/plot'
   import HierarchyShell from '$lib/plot/core/components/HierarchyShell.svelte'
   import type { Rect, Sides } from '$lib/plot/core/layout'
+  import { create_settling_tween } from '$lib/plot/core/settling-tween.svelte'
   import { SCALE_DEFAULTS } from '$lib/plot/core/types'
   import {
     HierarchyChartState,
@@ -13,14 +14,15 @@
   } from '$lib/plot/core/utils/hierarchy-state.svelte'
   import type { PositionedArc } from '$lib/plot/sunburst/sunburst'
   import {
+    measure_treemap_label_block,
     normalize_treemap_label_lines,
     place_treemap_label,
     safe_font_size,
   } from '$lib/plot/treemap/labels'
   import type {
+    TreemapLabelBlock,
     TreemapLabelFit,
     TreemapLabelFormatter,
-    TreemapLabelLine,
     TreemapLabelPlacement,
   } from '$lib/plot/treemap/labels'
   import { lerp_rects, tile_rects } from '$lib/plot/treemap/treemap'
@@ -29,11 +31,12 @@
   import { untrack } from 'svelte'
   import { cubicInOut } from 'svelte/easing'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { Tween, type TweenOptions } from 'svelte/motion'
+  import type { TweenOptions } from 'svelte/motion'
 
   // no outer inset by default: cells tile flush with the container (pass
   // `padding` to reserve chart-edge space, e.g. for host-drawn annotations)
   const DEFAULT_PADDING: Required<Sides> = { t: 0, b: 0, l: 0, r: 0 }
+  const LABEL_MARGIN = 6 // px clearance between label text and cell edges
 
   let {
     data = $bindable([]),
@@ -176,40 +179,38 @@
   // squarified aspect ratios stay correct at every zoom level, unlike projecting
   // one fixed tiling through a window, which would distort cells and scale the
   // fixed-px header strips). Zoom animation interpolates between tilings.
+  let zoom_idx = $derived(chart_state.zoom_root?.node_idx ?? 0)
   let target_rects = $derived(
     tile_rects(
       chart_state.arcs,
-      chart_state.zoom_root?.node_idx ?? 0,
+      zoom_idx,
       { width: chart_state.inner_width, height: chart_state.inner_height },
       { padding_inner, padding_top, padding_outer },
     ),
   )
-  // Seeded at the current target (charts load fully drawn); untrack reads the
-  // tween options once at init (not meant to be reactive). The rect interpolator
-  // is applied after the user's options: Svelte's default interpolator throws
-  // when the rect-array length changes (data swaps), so it must not be overridable.
-  const rects_tween = new Tween<Rect[]>(
-    untrack(() => target_rects),
+  // Animate only zoom transitions; resizes, data swaps and padding tweaks snap
+  // instantly (animating a container drag-resize would chase the pointer with a
+  // 400ms lerp on every width change, and morphing between unrelated datasets
+  // is meaningless). `live` runs once per target change and compares against the
+  // previous zoom root/data to classify it. untrack reads the options once at init.
+  let prev_zoom_idx = untrack(() => zoom_idx)
+  let prev_arcs = untrack(() => chart_state.arcs)
+  const rects_tween = create_settling_tween<Rect[]>(
+    () => target_rects,
     untrack(() => ({
       duration: 400,
       easing: cubicInOut,
       ...tween,
       interpolate: (from: Rect[], to: Rect[]) => (t: number) => lerp_rects(from, to, t),
     })),
+    {
+      live: () => {
+        const zoom_changed = zoom_idx !== prev_zoom_idx && chart_state.arcs === prev_arcs
+        ;[prev_zoom_idx, prev_arcs] = [zoom_idx, chart_state.arcs]
+        return zoom_changed ? undefined : { duration: 0 }
+      },
+    },
   )
-  // Animate only zoom transitions; resizes, data swaps and padding tweaks snap
-  // instantly (animating a container drag-resize would chase the pointer with a
-  // 400ms lerp on every width change, and morphing between unrelated datasets
-  // is meaningless)
-  let prev_zoom_idx = untrack(() => chart_state.zoom_root?.node_idx ?? 0)
-  let prev_arcs = untrack(() => chart_state.arcs)
-  $effect(() => {
-    const zoom_idx = chart_state.zoom_root?.node_idx ?? 0
-    const [target, arcs] = [target_rects, chart_state.arcs]
-    const zoom_changed = zoom_idx !== prev_zoom_idx && arcs === prev_arcs
-    ;[prev_zoom_idx, prev_arcs] = [zoom_idx, arcs]
-    rects_tween.set(target, zoom_changed ? undefined : { duration: 0 })
-  })
   let rects = $derived(rects_tween.current)
 
   // Deepest level rendered below the current zoom root (0 = unlimited)
@@ -223,7 +224,7 @@
   // hold zero rects from tile_rects.
   const cell_visible = (arc: PositionedArc<Metadata>, rect: Rect): boolean =>
     arc.depth > 0 &&
-    (arc.node_idx !== chart_state.zoom_root?.node_idx || arc.is_leaf) &&
+    (arc.node_idx !== zoom_idx || arc.is_leaf) &&
     arc.depth <= depth_cutoff &&
     rect.width > 0.5 &&
     rect.height > 0.5
@@ -262,93 +263,68 @@
   // Uniform now that any cell zooms (plotly semantics), not just branches
   let cells_clickable = $derived(Boolean(on_node_click) || zoom_on_click)
 
-  // leading "<n>px" of the CSS font shorthand (e.g. "11px sans-serif")
-  let label_font_size = $derived.by(() => {
-    const leading_num = Number(chart_state.label_font.match(/^[\d.]+/)?.[0])
-    return safe_font_size(leading_num, 11)
-  })
-  let resolved_parent_label_font_size = $derived(safe_font_size(parent_label_font_size, 14))
-
-  const LABEL_MARGIN = 6 // px clearance between label text and cell edges
-  const label_clip_id = (idx: number) => `treemap-label-clip-${uid}-${idx}`
-  const font_for_line = (line: TreemapLabelLine, font_size: number): string => {
-    const sized_font = chart_state.label_font.replace(
-      /(?:\d+(?:\.\d+)?|\.\d+)px/,
-      `${font_size}px`,
-    )
-    return line.font_weight == null ? sized_font : `${line.font_weight} ${sized_font}`
-  }
-  const measure_label_line = (line: TreemapLabelLine, font_size: number): number => {
-    const measured_width = chart_state.text_width(line.text, font_for_line(line, font_size))
-    // Canvas text metrics can be unavailable during SSR and in lightweight DOM
-    // environments. A conservative fallback keeps fitting deterministic there.
-    return measured_width > 0 ? measured_width : line.text.length * font_size * 0.6
-  }
-
-  // Formatter output is layout-independent, so resolve it once per node instead
-  // of on every frame of a zoom tween. Without a formatter, fit modes use the
-  // richest built-in variant (compound text when configured).
-  // The depth-0 root never renders a cell, so the formatter is never invoked
-  // for it (for array data it's synthetic and e.g. carries no metadata).
-  let label_lines = $derived(
-    chart_state.arcs.map((arc, idx) =>
-      arc.depth === 0
-        ? []
-        : normalize_treemap_label_lines(
-            label_formatter
-              ? label_formatter(arc)
-              : chart_state.node_infos[idx].variants[0]?.text,
-          ),
-    ),
+  // Branches with visible children only ever label their header strip: a centered
+  // label would paint over the descendant cells that cover the rest of the cell
+  const is_header = (arc: PositionedArc<Metadata>): boolean =>
+    !arc.is_leaf && arc.depth < depth_cutoff
+  // Header labels render bold (600) and at their own size ceiling
+  let header_font = $derived({ ...chart_state.label_font, font_weight: `600` })
+  let header_font_size = $derived(safe_font_size(parent_label_font_size, 14))
+  let leaf_font_size = $derived(
+    safe_font_size(label_max_font_size ?? chart_state.label_font.font_size, 11),
   )
 
-  // Label text + placement for a cell; null means hide the label.
-  // Branch cells label their header strip (top-left); leaves (and branches at the
-  // depth cutoff, which render as plain cells) center their label, rotating 90°
-  // in thin-but-tall cells like the icicle shape does.
-  function place_label(
-    arc: PositionedArc<Metadata>,
-    rect: Rect,
-  ): TreemapLabelPlacement | null {
-    // Branches with visible children only ever label their header strip: a
-    // centered label would paint over the descendant cells that cover the rest
-    // of the cell, so when the strip is missing/too thin the label is dropped
-    const has_visible_children = !arc.is_leaf && arc.depth < depth_cutoff
+  // Per-node label candidates, richest first. Without a formatter, shrink/clip fit
+  // the richest built-in variant, while hide mode falls back through the compact
+  // variants before dropping the label. Formatter output is font- and layout-
+  // independent, so it resolves once per data/option change. The depth-0 root
+  // never renders a cell, so the formatter is never invoked for it (for array
+  // data it's synthetic and e.g. carries no metadata).
+  let label_lines = $derived(
+    chart_state.arcs.map((arc, idx) => {
+      if (arc.depth === 0) return []
+      if (label_formatter) return [normalize_treemap_label_lines(label_formatter(arc))]
+      const { variants } = chart_state.node_infos[idx]
+      if (label_fit === `hide`) return variants.map(({ text }) => [{ text }])
+      return [normalize_treemap_label_lines(variants[0]?.text)]
+    }),
+  )
+  // Measured at their maximum size once per font/zoom change rather than per
+  // frame of a zoom tween; placement below is arithmetic on these metrics
+  let label_blocks: TreemapLabelBlock[][] = $derived(
+    label_lines.map((candidates, idx) => {
+      const header = is_header(chart_state.arcs[idx])
+      const font = header ? header_font : chart_state.label_font
+      const font_size = header ? header_font_size : leaf_font_size
+      return candidates.map((lines) => measure_treemap_label_block(lines, font_size, font))
+    }),
+  )
 
-    const place = (lines: TreemapLabelLine[]) =>
-      place_treemap_label({
-        rect,
-        lines,
-        header: has_visible_children,
+  // Label text + placement for a cell; null means hide the label. Branch cells
+  // label their header strip (top-left); leaves (and branches at the depth
+  // cutoff, which render as plain cells) center their label, rotating 90° in
+  // thin-but-tall cells like the icicle shape does.
+  function place_label(idx: number): TreemapLabelPlacement | null {
+    const header = is_header(chart_state.arcs[idx])
+    for (const block of label_blocks[idx]) {
+      const placement = place_treemap_label({
+        rect: rects[idx],
+        block,
+        header,
         fit: label_fit,
         min_font_size: label_min_font_size,
-        max_font_size: has_visible_children
-          ? resolved_parent_label_font_size
-          : (label_max_font_size ?? label_font_size),
         padding_top,
         margin: LABEL_MARGIN,
-        measure_line: (line, font_size) =>
-          measure_label_line(
-            has_visible_children && line.font_weight == null
-              ? { ...line, font_weight: 600 }
-              : line,
-            font_size,
-          ),
       })
-
-    if (!label_formatter && label_fit === `hide`) {
-      for (const { text } of chart_state.node_infos[arc.node_idx].variants) {
-        const placement = place([{ text }])
-        if (placement) return placement
-      }
-      return null
+      if (placement) return placement
     }
-    return place(label_lines[arc.node_idx])
+    return null
   }
 
   // hide mode never overflows (unfitting labels return null), so clipPaths are
   // only rendered/applied for the shrink/clip modes (with or without formatter)
   let clip_labels = $derived(label_fit !== `hide`)
+  const label_clip_id = (idx: number) => `treemap-label-clip-${uid}-${idx}`
   const label_clip_rect = (rect: Rect, header: boolean): Rect => {
     const inset = 1
     const clip_height = header ? Math.min(rect.height, padding_top) : rect.height
@@ -359,11 +335,9 @@
       height: Math.max(0, clip_height - 2 * inset),
     }
   }
-  // Defs and visible text share these placements, avoiding duplicate text
-  // measurement and fitting work on every frame of a zoom tween.
-  let label_placements = $derived(
-    new Map(visible_idxs.map((idx) => [idx, place_label(chart_state.arcs[idx], rects[idx])])),
-  )
+  // Defs and visible text share these placements, avoiding duplicate fitting
+  // work on every frame of a zoom tween.
+  let label_placements = $derived(new Map(visible_idxs.map((idx) => [idx, place_label(idx)])))
 </script>
 
 <div

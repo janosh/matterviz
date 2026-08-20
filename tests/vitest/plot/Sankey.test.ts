@@ -33,12 +33,28 @@ describe(`Sankey`, () => {
     },
   )
 
-  test(`toggles node labels with show_node_labels`, async () => {
-    const shown = await mount_sized_sankey({ data, show_node_labels: true })
-    expect(shown.querySelectorAll(`.node-label`)).toHaveLength(data.nodes.length)
-    document.body.innerHTML = ``
-    const hidden = await mount_sized_sankey({ data, show_node_labels: false })
-    expect(hidden.querySelectorAll(`.node-label`)).toHaveLength(0)
+  test.each([
+    [true, data.nodes.length],
+    [false, 0],
+  ])(`show_node_labels=%s renders %i labels`, async (show_node_labels, n_labels) => {
+    const plot = await mount_sized_sankey({ data, show_node_labels })
+    expect(plot.querySelectorAll(`.node-label`)).toHaveLength(n_labels)
+  })
+
+  test(`a cyclic graph renders the error naming the cycle instead of a diagram`, async () => {
+    const plot = await mount_sized_sankey({
+      data: {
+        nodes: [{ label: `A` }, { label: `B` }],
+        links: [
+          { source: 0, target: 1, value: 1 },
+          { source: 1, target: 0, value: 1 },
+        ],
+      },
+    })
+    expect(plot.querySelector(`.status-message.error`)?.textContent).toContain(
+      `cycle A -> B -> A`,
+    )
+    expect(plot.querySelectorAll(`.nodes rect`)).toHaveLength(0)
   })
 
   test(`uses explicit node colors and cycles palette for the rest`, async () => {
@@ -59,32 +75,49 @@ describe(`Sankey`, () => {
     expect(first_path?.getAttribute(`stroke`)?.startsWith(`url(#`)).toBe(true)
   })
 
-  test(`shows a tooltip and fires hover callback on node hover`, async () => {
-    const on_node_hover = vi.fn()
-    const plot = await mount_sized_sankey({ data, on_node_hover })
+  test(`hovering a node then a link swaps the tooltip and fires each callback once`, async () => {
+    const [on_node_hover, on_link_hover] = [vi.fn(), vi.fn()]
+    const plot = await mount_sized_sankey({ data, on_node_hover, on_link_hover })
     const rect = plot.querySelector<SVGRectElement>(`.nodes rect`)
-    rect?.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
-    await tick()
-    expect(plot.querySelector(`.plot-tooltip`)).not.toBeNull()
+    const hover = (el: Element | null, x = 0, y = 0) => {
+      el?.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true, clientX: x, clientY: y }))
+      return tick()
+    }
+    await hover(rect, 30, 40)
+    const tooltip = () => plot.querySelector<HTMLElement>(`.plot-tooltip`)
+    expect(tooltip()?.textContent).toMatch(/A.*8/)
+    // anchored at the cursor + offset (10, 5), constrained to the 500x360 chart
+    expect([tooltip()?.style.left, tooltip()?.style.top]).toEqual([`40px`, `45px`])
     expect(on_node_hover).toHaveBeenCalledOnce()
-    const arg = on_node_hover.mock.calls[0][0] as SankeyNodeHandlerProps
-    expect(arg.type).toBe(`node`)
-    expect(arg.label).toBe(`A`)
-    expect(arg.value).toBe(8)
-  })
+    expect(on_node_hover.mock.calls[0][0] as SankeyNodeHandlerProps).toMatchObject({
+      type: `node`,
+      label: `A`,
+      value: 8,
+      color: `#e15759`,
+    })
+    // moving within the same node only moves the chip, no second callback
+    await hover(rect, 35, 40)
+    expect(on_node_hover).toHaveBeenCalledOnce()
+    // a cursor near the right edge flips the chip to the left of the anchor
+    await hover(rect, 490, 40)
+    expect(tooltip()?.style.left).toBe(`340px`) // 490 - 10 - 140 (flipped left)
 
-  test(`fires link hover callback with source/target labels`, async () => {
-    const on_link_hover = vi.fn()
-    const plot = await mount_sized_sankey({ data, on_link_hover })
-    const path = plot.querySelector<SVGPathElement>(`.links path`)
-    path?.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
-    await tick()
+    await hover(plot.querySelector(`.links path`), 200, 100)
+    expect(on_node_hover).toHaveBeenLastCalledWith(null)
     expect(on_link_hover).toHaveBeenCalledOnce()
-    const arg = on_link_hover.mock.calls[0][0] as SankeyLinkHandlerProps
-    expect(arg.type).toBe(`link`)
-    expect(arg.source_label).toBe(`A`)
-    expect(arg.target_label).toBe(`C`)
-    expect(arg.value).toBe(8)
+    expect(on_link_hover.mock.calls[0][0] as SankeyLinkHandlerProps).toMatchObject({
+      type: `link`,
+      source_label: `A`,
+      target_label: `C`,
+      value: 8,
+    })
+    expect(tooltip()?.textContent).toMatch(/A\s*→\s*C.*8/)
+    // leaving the svg clears everything once
+    plot.querySelector(`svg[role="application"]`)?.dispatchEvent(new MouseEvent(`mouseleave`))
+    await tick()
+    expect(tooltip()).toBeNull()
+    expect(on_link_hover).toHaveBeenLastCalledWith(null)
+    expect(on_link_hover).toHaveBeenCalledTimes(2)
   })
 
   test(`fires node click callback`, async () => {

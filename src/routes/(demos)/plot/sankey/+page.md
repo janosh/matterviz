@@ -32,8 +32,7 @@ Pass `data` as `{ nodes, links }`. Each link references nodes by `id` (defaults 
 <Sankey {data} style="height: 380px" />
 ```
 
-Note nodes reference each other by `label` here because no explicit `id` is set, so the
-label doubles as the id. Set `id` explicitly when labels are not unique.
+Note nodes reference each other by `label` here because no explicit `id` is set, so the label doubles as the id. Set `id` explicitly when labels are not unique. Links must form a DAG: a cyclic graph renders an error naming the cycle (e.g. `Grid -> Homes -> Grid`) in place of the diagram, and `compute_sankey_layout` throws the same message.
 
 ## Multi-layer flow (5 levels)
 
