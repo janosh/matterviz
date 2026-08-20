@@ -302,6 +302,26 @@ describe(`scales`, () => {
         ticks: 5,
         expected: [0.92, 0.93, 0.94, 0.95, 0.96, 0.97, 0.98, 0.99],
       },
+      // a generous count on a domain holding fewer than two 1-2-5 mantissas must still
+      // produce ticks (the mantissa list alone was [] for [0.92, 0.99] and [7, 8], [2] for [2, 3])
+      {
+        min: 0.92,
+        max: 0.99,
+        ticks: 8,
+        expected: [0.92, 0.93, 0.94, 0.95, 0.96, 0.97, 0.98, 0.99],
+      },
+      {
+        min: 7,
+        max: 8,
+        ticks: 8,
+        expected: [7, 7.1, 7.2, 7.3, 7.4, 7.5, 7.6, 7.7, 7.8, 7.9, 8],
+      },
+      {
+        min: 2,
+        max: 3,
+        ticks: 8,
+        expected: [2, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 2.9, 3],
+      },
       // non-positive bounds clamp to LOG_EPS before the power scan
       {
         min: -10,

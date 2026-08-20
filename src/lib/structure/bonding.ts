@@ -859,11 +859,14 @@ function neighbor_query_cutoff(
     const cell_x = Math.floor(cloud_pos[idx * 3] / cutoff)
     const cell_y = Math.floor(cloud_pos[idx * 3 + 1] / cutoff)
     const cell_z = Math.floor(cloud_pos[idx * 3 + 2] / cutoff)
-    if (Math.max(Math.abs(cell_x), Math.abs(cell_y), Math.abs(cell_z)) >= MAX_GRID_COORD) {
+    // Negated comparison so a NaN/Infinity coordinate fails too: Map keys treat NaN as equal,
+    // so a NaN position would otherwise bin every NaN image into one cell and the center
+    // would collect each of them 27 times with NaN distances
+    if (!(Math.max(Math.abs(cell_x), Math.abs(cell_y), Math.abs(cell_z)) < MAX_GRID_COORD)) {
       throw new Error(
         `neighbor_query: position (${cloud_pos[idx * 3]}, ${cloud_pos[idx * 3 + 1]}, ` +
-          `${cloud_pos[idx * 3 + 2]}) at cutoff ${cutoff} A exceeds the ±${MAX_GRID_COORD} ` +
-          `cell window of the spatial grid`,
+          `${cloud_pos[idx * 3 + 2]}) at cutoff ${cutoff} A is non-finite or exceeds the ` +
+          `±${MAX_GRID_COORD} cell window of the spatial grid`,
       )
     }
     const key = pack_cell_key(cell_x, cell_y, cell_z)

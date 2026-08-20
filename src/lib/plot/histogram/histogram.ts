@@ -80,17 +80,21 @@ export function bin_values(
     hi = Math.max(hi, LOG_EPS)
   }
   const n_values = values.length
-  if (!(hi > lo) || !Number.isFinite(lo) || !Number.isFinite(hi)) {
-    // collapsed (or invalid) domain: one bin holding the samples that sit exactly on it
-    let count = 0
-    for (let idx = 0; idx < n_values; idx++) if (values[idx] === lo) count++
-    return { edges: Float64Array.of(lo, hi), counts: Uint32Array.of(count) }
-  }
-  const n = Math.max(1, Math.floor(n_bins))
   const is_linear = get_scale_type_name(scale_type) === `linear`
   const { fwd, inv } = bin_transform(scale_type)
   const pos_lo = fwd(lo)
-  const scale = n / (fwd(hi) - pos_lo)
+  const pos_hi = fwd(hi)
+  // A domain that is collapsed, invalid, or so narrow that it rounds to one point in bin space
+  // (log10 of two adjacent doubles) gets one bin holding the samples inside it
+  if (!(hi > lo) || !Number.isFinite(lo) || !Number.isFinite(hi) || !(pos_hi > pos_lo)) {
+    let count = 0
+    for (let idx = 0; idx < n_values; idx++) {
+      if (values[idx] >= lo && values[idx] <= hi) count++
+    }
+    return { edges: Float64Array.of(lo, hi), counts: Uint32Array.of(count) }
+  }
+  const n = Math.max(1, Math.floor(n_bins))
+  const scale = n / (pos_hi - pos_lo)
   const edges = new Float64Array(n + 1)
   for (let idx = 1; idx < n; idx++) {
     edges[idx] = is_linear ? lo + idx / scale : inv(pos_lo + idx / scale)

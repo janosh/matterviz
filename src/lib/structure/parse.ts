@@ -917,7 +917,12 @@ const is_pbc = (value: unknown): value is Pbc =>
 // Promote a structure-like JSON object to an AnyStructure: the lattice is rebuilt from its
 // matrix (scalar params recomputed, pbc kept when declared, else fully periodic), every
 // site gets both abc and xyz, and periodic fractional coordinates are wrapped into [0, 1).
-export function structure_from_json(raw: StructureLike): AnyStructure {
+// `wrap: false` keeps the coordinates as written, like every other trajectory reader does
+// for its frames (MSD/VACF unwrap by minimum image and the viewer wraps for display).
+export function structure_from_json(
+  raw: StructureLike,
+  { wrap = true }: { wrap?: boolean } = {},
+): AnyStructure {
   const { lattice: raw_lattice, sites: raw_sites, ...rest } = raw
   if (!raw_lattice) {
     const sites = raw_sites.map((site, idx) => {
@@ -938,7 +943,8 @@ export function structure_from_json(raw: StructureLike): AnyStructure {
     if (site.xyz) return { ...site, xyz: site.xyz, abc: cart_to_frac(site.xyz) }
     throw new Error(`JSON site ${idx} has neither abc nor xyz coordinates`)
   })
-  return normalize_fractional_coords({ ...rest, lattice, sites })
+  const structure = { ...rest, lattice, sites }
+  return wrap ? normalize_fractional_coords(structure) : structure
 }
 
 // Wrap the fractional coordinates of periodic axes into [0, 1) and recompute xyz from them.

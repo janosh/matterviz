@@ -857,6 +857,31 @@ describe(`simple_pca`, () => {
       expect(ann_loc[flat_axis]).toBeCloseTo(-6.6, 9)
     },
   )
+
+  // Regression: near-square planar domains have two almost-equal eigenvalues, so power
+  // iteration does not converge in 100 steps; without re-orthogonalization the second
+  // component drifted (v1·v2 up to 1.5e-3) and a planar rectangle was reported non-planar
+  test.each([0.999, 0.99, 0.97, 0.95])(
+    `tilted rectangle with side ratio %d has orthonormal components and is planar`,
+    (ratio) => {
+      const u_axis = [1, 1, 0].map((val) => val / Math.SQRT2)
+      const w_axis = [-1, 1, 2].map((val) => val / Math.sqrt(6))
+      const rect = [-1, 1].flatMap((s_val) =>
+        [-ratio, ratio].map((t_val) =>
+          [0, 1, 2].map((dim) => -3 + s_val * u_axis[dim] + t_val * w_axis[dim]),
+        ),
+      )
+      const { eigenvectors } = simple_pca(rect, 2)
+      const dot = eigenvectors[0].reduce(
+        (sum, val, idx) => sum + val * eigenvectors[1][idx],
+        0,
+      )
+      expect(Math.abs(dot)).toBeLessThan(1e-12)
+      const { simplex_indices, is_planar } = get_3d_domain_simplexes_and_ann_loc(rect)
+      expect(is_planar).toBe(true)
+      expect(simplex_indices).toHaveLength(4)
+    },
+  )
 })
 
 describe(`orthonormal_2d`, () => {

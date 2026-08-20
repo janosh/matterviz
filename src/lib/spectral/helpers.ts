@@ -329,12 +329,9 @@ function convert_pymatgen_band_structure(
   const labels_dict = pmg.labels_dict as Record<string, Vec3> | undefined
   // Bands are stored in THz. Electronic pymatgen objects carry no `unit`, so their eV values
   // pass through untouched; an unrecognised declared unit is a malformed input, not THz.
+  // `unit: null` counts as undeclared, as it does for normalize_dos.
   const source_unit =
-    pmg.unit === undefined
-      ? has_frequencies_cm
-        ? `cm-1`
-        : `THz`
-      : parse_frequency_unit(pmg.unit)
+    pmg.unit == null ? (has_frequencies_cm ? `cm-1` : `THz`) : parse_frequency_unit(pmg.unit)
   if (!source_unit) return null
 
   if (

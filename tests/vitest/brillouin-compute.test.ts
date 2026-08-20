@@ -119,6 +119,13 @@ const REAL_LATTICES: Record<string, Matrix3x3> = {
     [3.5, 1, 0],
     [0, 0, 4],
   ],
+  // simple cubic lattice in a [[1,0,0],[10,1,0],[0,0,1]] supercell setting: its reciprocal
+  // basis is a sliver whose ±1 Bragg shell bounds a cell ~100× too large along one axis
+  sheared_cubic: [
+    [A_CUBIC, 0, 0],
+    [10 * A_CUBIC, A_CUBIC, 0],
+    [0, 0, A_CUBIC],
+  ],
 }
 
 type Polygon = { normal: Vec3; dist: number; vertex_ids: Set<number> }
@@ -211,6 +218,9 @@ describe(`compute_brillouin_zone`, () => {
     [`triclinic`, `truncated octahedron (generic)`, { 4: 6, 6: 8 }, 24, 36],
     // oblique 2D lattice × c axis: hexagonal prism, not the parallelepiped the ±1 shell gives
     [`non_reduced`, `hexagonal prism`, { 4: 6, 6: 2 }, 12, 18],
+    // same cube as `cubic`: the basis is reduced first, so this takes ~1 ms rather than the
+    // hours an unreduced radius-bounded G search needs (47 s already at shear 3)
+    [`sheared_cubic`, `cube`, { 4: 6 }, 8, 12],
   ] as [string, string, Record<number, number>, number, number][])(
     `%s: %s with faces %o, %d vertices, %d edges`,
     (name, _shape, face_hist, n_vertices, n_edges) => {

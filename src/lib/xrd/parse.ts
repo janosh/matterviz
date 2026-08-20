@@ -227,7 +227,11 @@ export function parse_uxd_file(content: string): XrdPattern {
     if (line.trim()) data_lines.push(line.trim())
   }
   if (two_column) return parse_xy_file(data_lines.join(`\n`), `UXD`)
-  const start = header_number(lines, /^_(?:2THETA|START)\s*=\s*(?<value>[-+.\deE]+)/i)
+  // _START is the scanned drive's first position; _2THETA is the detector position at the
+  // start, which only coincides for coupled scans, so it serves as the fallback
+  const start =
+    header_number(lines, /^_START\s*=\s*(?<value>[-+.\deE]+)/i) ??
+    header_number(lines, /^_2THETA\s*=\s*(?<value>[-+.\deE]+)/i)
   const step = header_number(lines, /^_STEP(?:SIZE|WIDTH)\s*=\s*(?<value>[-+.\deE]+)/i)
   if (start === null || step === null || !(step > 0)) {
     throw new Error(`UXD: _COUNTS section needs _START (or _2THETA) and a positive _STEPSIZE`)
@@ -264,11 +268,28 @@ export function parse_gsas_file(content: string): XrdPattern {
       `GSAS: BCOEF1/BCOEF2 '${bcoef1} ${bcoef2}' are not a valid start/step in centidegrees`,
     )
   }
+  const stride = type === `FXYE` ? 3 : type === `ESD` ? 2 : 1
+  // STD records are fixed-width 10(I2,F6.0): a 2-char detector count NCTR (blank or 1-99)
+  // glued to a 6-char intensity. Split on whitespace a multi-detector bank yields NCTR and
+  // intensity as separate tokens, interleaving 1..10 into the counts. Free-format STD lines
+  // (length not a multiple of 8) still split on whitespace.
+  const std_fields = (line: string): number[] | null => {
+    if (stride !== 1 || line.length === 0 || line.length % 8 !== 0) return null
+    const fields: number[] = []
+    for (let pos = 0; pos < line.length; pos += 8) {
+      const nctr = line.slice(pos, pos + 2)
+      const count = line.slice(pos + 2, pos + 8)
+      if (!/^\s*\d*$/.test(nctr)) return null
+      if (!count.trim()) break // blank fields pad the last record
+      if (!NUMBER_RE.test(count.trim())) return null
+      fields.push(Number(count))
+    }
+    return fields
+  }
   const values = lines
     .slice(bank_idx + 1)
     .filter((line) => line.trim() && !/^[#!]/.test(line))
-    .flatMap(leading_numbers)
-  const stride = type === `FXYE` ? 3 : type === `ESD` ? 2 : 1
+    .flatMap((line) => std_fields(line) ?? leading_numbers(line))
   if (values.length < nchan * stride) {
     throw new Error(
       `GSAS: BANK declares ${nchan} channels of ${type} data (${nchan * stride} values) but ${values.length} follow`,

@@ -164,7 +164,11 @@ export function calculate_e_above_hull(
   // confine the points to an affine subspace) + E_form. NaN E_form marks unplaceable.
   const to_point = (entry: PhaseData): number[] => {
     const e_form = e_form_of(entry)
-    if (e_form === null) return [...Array(arity - 1).fill(NaN), NaN]
+    // A zero-atom composition with an explicit e_form_per_atom skips the null check above
+    // and would make composition_to_barycentric_nd throw instead of yielding NaN
+    if (e_form === null || count_atoms_in_composition(entry.composition) <= 0) {
+      return Array(arity).fill(NaN)
+    }
     return [...composition_to_barycentric_nd(entry.composition, elements).slice(1), e_form]
   }
   const is_placed = (point: number[]): boolean => point.every(Number.isFinite)

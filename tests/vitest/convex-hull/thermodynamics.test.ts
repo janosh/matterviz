@@ -362,6 +362,18 @@ describe(`calculate_e_above_hull`, () => {
     expect(calculate_e_above_hull([], fe_o_refs)).toEqual({})
     const no_atoms = make_phase({}, 0, { entry_id: `empty` })
     expect(calculate_e_above_hull([no_atoms], fe_o_refs).empty).toBeNaN()
+    // an explicit e_form_per_atom must not turn the zero-atom case into a throw
+    const no_atoms_with_e_form = make_phase({ Fe: 0 }, 0, {
+      entry_id: `zero`,
+      e_form_per_atom: -0.1,
+    })
+    expect(calculate_e_above_hull([no_atoms_with_e_form], fe_o_refs).zero).toBeNaN()
+    expect(
+      calculate_e_above_hull(
+        [no_atoms_with_e_form],
+        [...fe_o_refs, make_phase({ Li: 1 }, -2.0, { entry_id: `Li` })],
+      ).zero,
+    ).toBeNaN()
   })
 
   test(`keys same-composition polymorphs separately when entry_id is absent`, () => {

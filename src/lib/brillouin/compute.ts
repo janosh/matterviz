@@ -188,18 +188,51 @@ function intersect_bragg_planes(planes: BraggPlane[], order: number): Vec3[] {
   return vertices
 }
 
+// Pairwise (Lagrange–Gauss) size reduction of a lattice basis: subtract the nearest integer
+// multiple of one vector from another while that shortens it. Every step is unimodular, so
+// the lattice (and its Wigner-Seitz cell) is unchanged, but the ±1 index shell of the result
+// bounds a cell close to the true one. Without it a sheared basis (e.g. the reciprocal of a
+// [[1,0,0],[s,1,0],[0,0,1]] supercell) starts from a sliver of radius ~s², and the radius-bounded
+// G enumeration below grows as s⁴ (47 s at s = 3, out of memory by s = 30). Also used by
+// lattice_point_group_matrices, whose {-1,0,1} integer-matrix search assumes a reduced basis.
+export function reduce_basis(basis: Matrix3x3): Matrix3x3 {
+  const reduced = basis.map((row) => [...row]) as Matrix3x3
+  for (let iter = 0; iter < 64; iter++) {
+    let changed = false
+    for (let idx_i = 0; idx_i < 3; idx_i++) {
+      for (let idx_j = 0; idx_j < 3; idx_j++) {
+        if (idx_i === idx_j) continue
+        const len_sq_j = math.dot(reduced[idx_j], reduced[idx_j])
+        const coeff = Math.round(math.dot(reduced[idx_i], reduced[idx_j]) / len_sq_j)
+        if (coeff === 0) continue
+        const candidate = math.subtract(reduced[idx_i], math.scale(reduced[idx_j], coeff))
+        const len_sq_i = math.dot(reduced[idx_i], reduced[idx_i])
+        if (math.dot(candidate, candidate) < len_sq_i * (1 - 1e-12)) {
+          reduced[idx_i] = candidate
+          changed = true
+        }
+      }
+    }
+    if (!changed) break
+  }
+  return reduced
+}
+
 // Exact first zone (Wigner-Seitz cell of the reciprocal lattice). Pass 1 uses the ±1 index
 // shell: ±b₁, ±b₂, ±b₃ alone bound a parallelepiped, so it always yields a bounded cell that
 // contains the true one. Its faces need not come from that shell though — a non-reduced basis
 // (long, nearly parallel bᵢ) has Wigner-Seitz faces from G with |nᵢ| ≥ 2. A Bragg plane can
-// only cut a cell whose farthest vertex is at radius R if |G|/2 ≤ R, so re-run with every G
-// inside 2R: the cell can only shrink, hence R only decreases and the loop ends once the
-// radius-selected set is already covered (two passes for any lattice, one for reduced ones).
+// only cut a cell whose farthest vertex is at radius R if |G|/2 ≤ R, so every G inside 2R is
+// checked against the current vertices; the cell is exact once none of them cuts it. Planes
+// that do cut are added nearest-first in small batches: a Wigner-Seitz cell has at most 14
+// faces, all from short G, so a batch collapses the cell (and with it the radius-bounded
+// candidate set), whereas intersecting every candidate at once is O(n³) in thousands of
+// planes for a non-reduced basis.
+const MAX_NEW_PLANES_PER_PASS = 32
 function first_bz_vertices(k_lattice: Matrix3x3, dual: Matrix3x3): Vec3[] {
   const dual_norms = dual.map((row) => Math.hypot(...row))
-  let g_vectors = k_lattice_vectors(k_lattice, [1, 1, 1])
-  // two passes suffice (see above); the cap only guards against an unforeseen numerical loop
-  for (let pass = 0; pass < 4; pass++) {
+  const g_vectors = k_lattice_vectors(k_lattice, [1, 1, 1])
+  for (let pass = 0; pass < 256; pass++) {
     const vertices = intersect_bragg_planes(
       g_vectors.map((vec) => bragg_plane(vec.g_vec)),
       1,
@@ -212,10 +245,14 @@ function first_bz_vertices(k_lattice: Matrix3x3, dual: Matrix3x3): Vec3[] {
     const radius = Math.max(...vertices.map((vertex) => Math.hypot(...vertex)))
     const max_len = 2 * radius * (1 + 1e-9)
     const ranges = dual_norms.map((norm) => Math.floor(max_len * norm)) as Vec3
-    const needed = k_lattice_vectors(k_lattice, ranges, max_len)
     const have = new Set(g_vectors.map((vec) => vec.key))
-    if (needed.every((vec) => have.has(vec.key))) return vertices
-    g_vectors = needed
+    const cutting = k_lattice_vectors(k_lattice, ranges, max_len).filter((vec) => {
+      if (have.has(vec.key)) return false
+      const { normal, dist } = bragg_plane(vec.g_vec)
+      return vertices.some((vertex) => math.dot(vertex, normal) > dist + TOL)
+    })
+    if (cutting.length === 0) return vertices
+    g_vectors.push(...cutting.slice(0, MAX_NEW_PLANES_PER_PASS))
   }
   throw new Error(
     `Brillouin zone plane set did not converge for k_lattice ${JSON.stringify(k_lattice)}`,
@@ -231,11 +268,14 @@ export function generate_bz_vertices(
   max_planes_by_order: Record<number, number> = { 2: 80, 3: 150 },
 ): Vec3[] {
   const clamped_order = Math.min(order, 3) as typeof order
-  const dual = math.reciprocal_lattice(k_lattice) // throws for a singular k_lattice
-  if (clamped_order === 1) return first_bz_vertices(k_lattice, dual)
+  // Vertices are Cartesian, so any basis of the same lattice gives the same zones; a
+  // reduced one keeps the index shells small and meaningful
+  const basis = reduce_basis(k_lattice)
+  const dual = math.reciprocal_lattice(basis) // throws for a singular k_lattice
+  if (clamped_order === 1) return first_bz_vertices(basis, dual)
 
   const max_planes = max_planes_by_order[clamped_order] ?? 150
-  const g_vectors = k_lattice_vectors(k_lattice, [
+  const g_vectors = k_lattice_vectors(basis, [
     clamped_order,
     clamped_order,
     clamped_order,

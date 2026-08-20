@@ -542,6 +542,22 @@ describe(`LAMMPS`, () => {
       `ITEM: TIMESTEP\n100`,
       `LAMMPS frame at timestep 100 ends before "ITEM: NUMBER OF ATOMS"`,
     ],
+    [
+      `ends after the ITEM: NUMBER OF ATOMS header`,
+      `ITEM: TIMESTEP\n100\nITEM: NUMBER OF ATOMS`,
+      `LAMMPS frame at timestep 100 ends after "ITEM: NUMBER OF ATOMS"`,
+    ],
+    // The writer was cut mid-way through the last atom line
+    [
+      `ends in a short final atom line`,
+      lammps_frame(`id type x y z`, [`1 1 1 0 0`, `2 1 8 0`], { timestep: 100 }),
+      `LAMMPS atom line 22 (timestep 100) has 4 columns, expected 5`,
+    ],
+    [
+      `ends in a half-written coordinate`,
+      lammps_frame(`id type x y z`, [`1 1 1 0 0`, `2 1 8 0 -`], { timestep: 100 }),
+      `LAMMPS atom line 22 (timestep 100) has non-numeric coordinates: "2 1 8 0 -"`,
+    ],
   ])(`drops a truncated final frame that %s`, async (_label, torn_frame, detail) => {
     const trajectory = await parse(`${frame_0}\n${torn_frame}`, `torn.lammpstrj`)
     expect(trajectory.frames.map(({ step }) => step)).toEqual([0])
@@ -1191,6 +1207,58 @@ describe(`JSON`, () => {
     const trajectory = await parse(content, `test.json`)
     expect(trajectory.metadata?.source_format).toBe(expected_format)
     expect(trajectory.frames.map((frame) => frame.step)).toEqual([step])
+  })
+
+  // pymatgen's default verbosity writes matrix + pbc only; older dumps have no pbc at all.
+  // Frames are promoted like single JSON structures (lattice params, pbc, abc+xyz) but are
+  // NOT wrapped: other trajectory readers keep coordinates as written, and MSD/VACF unwrap
+  // by minimum image from them.
+  it.each([
+    [`array`, (structure: unknown) => [{ structure, step: 0 }]],
+    [`object_with_frames`, (structure: unknown) => ({ frames: [{ structure, step: 0 }] })],
+    [`single_structure`, (structure: unknown) => structure],
+  ])(`rebuilds matrix-only frame lattices in the %s format`, async (_format, wrap_frame) => {
+    const raw_structure = {
+      lattice: {
+        matrix: [
+          [4, 0, 0],
+          [0, 4, 0],
+          [0, 0, 4],
+        ],
+      },
+      sites: [
+        {
+          species: [{ element: `Na`, occu: 1 }],
+          abc: [1.25, 0, 0],
+          label: `Na`,
+          properties: {},
+        },
+        { species: [{ element: `Cl`, occu: 1 }], xyz: [2, 2, 2], label: `Cl`, properties: {} },
+      ],
+    }
+    const trajectory = await parse(JSON.stringify(wrap_frame(raw_structure)), `test.json`)
+    const structure = trajectory.frames[0].structure
+    if (!(`lattice` in structure)) throw new Error(`frame lost its lattice`)
+    expect(structure.lattice).toEqual({
+      matrix: [
+        [4, 0, 0],
+        [0, 4, 0],
+        [0, 0, 4],
+      ],
+      a: 4,
+      b: 4,
+      c: 4,
+      alpha: 90,
+      beta: 90,
+      gamma: 90,
+      volume: 64,
+      pbc: [true, true, true],
+    })
+    // derived coordinates filled in, written ones kept unwrapped
+    expect(structure.sites[0].abc).toEqual([1.25, 0, 0])
+    expect(structure.sites[0].xyz).toEqual([5, 0, 0])
+    expect(structure.sites[1].abc).toEqual([0.5, 0.5, 0.5])
+    expect(structure.sites[1].xyz).toEqual([2, 2, 2])
   })
 
   it(`rejects inconsistent atom counts and coordinates across frames`, async () => {

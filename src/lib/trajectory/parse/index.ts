@@ -2,7 +2,7 @@ import { is_binary } from '$lib/io/is-binary'
 import { is_plain_object } from '$lib/utils'
 import { DEFAULTS } from '$lib/settings'
 import type { AnyStructure } from '$lib/structure/index'
-import { is_structure_like, parse_xyz } from '$lib/structure/parse'
+import { is_structure_like, parse_xyz, structure_from_json } from '$lib/structure/parse'
 import { get_parse_errors, reset_parse_diagnostics } from '$lib/structure/parsers/shared'
 import {
   FORMAT_PATTERNS,
@@ -29,13 +29,18 @@ import { parse_pymatgen_trajectory } from './pymatgen'
 import { parse_vasp_xdatcar } from './vasp'
 import { parse_xyz_trajectory } from './xyz'
 
-const assert_frame_structure = (structure: unknown, label: string | number): void => {
+// A JSON frame's structure as a real AnyStructure: pymatgen's default verbosity writes
+// matrix + pbc and no scalar lattice params, older dumps no pbc at all, so the lattice is
+// rebuilt from its matrix (no consumer defaults a missing pbc any more). Coordinates stay as
+// written, like every other trajectory reader's frames.
+const frame_structure = (structure: unknown, label: string | number): AnyStructure => {
   if (!is_structure_like(structure)) {
     const context = typeof label === `number` ? `trajectory frame ${label}` : label
     throw new Error(
       `Invalid structure in ${context}: expected non-empty 'sites' array with species and coordinates`,
     )
   }
+  return structure_from_json(structure, { wrap: false })
 }
 
 export const LARGE_FILE_THRESHOLD = 400 * 1024 * 1024 // 400MB
@@ -161,10 +166,8 @@ async function parse_trajectory_data_unchecked(
     const frames = data.map((frame_data, idx) => {
       const frame_obj = frame_data as Record<string, unknown>
       const frame_step = frame_obj.step
-      const structure = frame_obj.structure ?? frame_obj
-      assert_frame_structure(structure, idx)
       return {
-        structure: structure as AnyStructure,
+        structure: frame_structure(frame_obj.structure ?? frame_obj, idx),
         step: typeof frame_step === `number` ? frame_step : idx,
         metadata: (frame_obj.metadata as Record<string, unknown>) || {},
       }
@@ -180,14 +183,17 @@ async function parse_trajectory_data_unchecked(
 
   if (Array.isArray(data.frames)) {
     const metadata = (data.metadata ?? {}) as Record<string, unknown>
-    const frames = data.frames as TrajectoryFrame[]
-    frames.forEach((frame, idx) => assert_frame_structure(frame?.structure, idx))
+    const frames = (data.frames as TrajectoryFrame[]).map((frame, idx) => ({
+      ...frame,
+      structure: frame_structure(frame?.structure, idx),
+    }))
     return { frames, metadata: { ...metadata, source_format: `object_with_frames` } }
   }
 
   if (data.sites) {
-    assert_frame_structure(data, `single structure`)
-    const frames = [{ structure: data as AnyStructure, step: 0, metadata: {} }]
+    const frames = [
+      { structure: frame_structure(data, `single structure`), step: 0, metadata: {} },
+    ]
     const metadata = { source_format: `single_structure`, frame_count: 1 }
     return { frames, metadata }
   }

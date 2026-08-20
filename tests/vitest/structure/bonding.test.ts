@@ -1426,6 +1426,20 @@ describe(`neighbor_query`, () => {
     const big = make_random_structure(200)
     expect(() => bonding.neighbor_query(big, { cutoff: 400 })).toThrow(/refusing to build/)
   })
+
+  test.each([Number.NaN, Infinity])(`rejects a %s coordinate instead of binning it`, (bad) => {
+    // Map keys compare NaN equal, so without the guard the NaN site collected each of its
+    // own 26 images 27 times with NaN distances
+    const crystal = make_crystal(4, [
+      { element: `Na`, abc: [0, 0, 0] },
+      { element: `Na`, xyz: [bad, 2, 2] },
+    ])
+    expect(() => bonding.neighbor_query(crystal, { cutoff: 3 })).toThrow(/non-finite/)
+    const molecule = {
+      sites: crystal.sites.map((site) => ({ ...site, abc: [0, 0, 0] as Vec3 })),
+    }
+    expect(() => bonding.neighbor_query(molecule, { cutoff: 3 })).toThrow(/non-finite/)
+  })
 })
 
 test(`pack_cell_key is injective in a dense block and safe-integer at ±512 range corners`, () => {

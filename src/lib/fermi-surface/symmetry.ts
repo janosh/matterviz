@@ -1,4 +1,5 @@
 // Point group symmetry operations for Fermi surface tiling
+import { reduce_basis } from '$lib/brillouin/compute'
 import * as math from '$lib/math'
 import type { Matrix3x3, Matrix4Tuple } from '$lib/math'
 import { SvelteMap } from 'svelte/reactivity'
@@ -23,7 +24,7 @@ const to_matrix4 = (rot: Matrix3x3): Matrix4Tuple => {
 
 // Enumerate every integer matrix M with entries in {-1, 0, 1} (3^9 = 19683 candidates).
 // Point-group operations of a lattice in a reduced basis always have entries in this
-// range, so these candidates cover every Bravais lattice holohedry.
+// range, so these candidates cover every Bravais lattice holohedry (callers reduce first).
 function* unimodular_candidates(): Generator<Matrix3x3> {
   const entries = new Int8Array(9)
   for (let code = 0; code < 19683; code++) {
@@ -67,7 +68,9 @@ export function lattice_point_group_matrices(k_lattice: Matrix3x3): Matrix4Tuple
   const cached = point_group_cache.get(cache_key)
   if (cached) return cached
 
-  const basis_t = math.transpose_3x3_matrix(k_lattice)
+  // The Cartesian R does not depend on the basis, but the {-1,0,1} search for M does: a
+  // non-reduced basis (sheared supercell) expresses most operations with larger entries
+  const basis_t = math.transpose_3x3_matrix(reduce_basis(k_lattice))
   const basis_t_inv = math.matrix_inverse_3x3(basis_t)
   const rotations: Matrix3x3[] = []
   for (const int_mat of unimodular_candidates()) {

@@ -683,9 +683,18 @@ describe(`lattice_point_group_matrices`, () => {
     expect(lattice_point_group_matrices(k_lattice)).toBe(ops)
   })
 
-  // The cubic ops are exactly the 48 axis permutations × sign flips (Oh in Cartesian space)
-  test(`cubic operations are the 48 signed axis permutations`, () => {
-    const ops = lattice_point_group_matrices(k_lattice_of(`cubic`))
+  // The cubic ops are exactly the 48 axis permutations × sign flips (Oh in Cartesian space),
+  // also when the lattice arrives in a sheared (non-reduced) basis, where the {-1,0,1}
+  // integer-matrix search alone finds only 4 of them
+  test.each([
+    [`reduced`, (k_lattice: Matrix3x3) => k_lattice],
+    [
+      `sheared`,
+      ([b1, b2, b3]: Matrix3x3): Matrix3x3 => [b1, math.add(math.scale(b1, 5), b2), b3],
+    ],
+  ])(`cubic operations are the 48 signed axis permutations (%s basis)`, (_name, rebase) => {
+    const ops = lattice_point_group_matrices(rebase(k_lattice_of(`cubic`)))
+    expect(ops).toHaveLength(48)
     for (const op of ops) {
       const rotation = [0, 1, 2].map((row) => [0, 1, 2].map((col) => op[col * 4 + row]))
       for (const line of rotation) {

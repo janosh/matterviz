@@ -157,6 +157,11 @@ describe(`parse_uxd_file`, () => {
       `; comment\n_START=10.0\n_STEPSIZE=10.0\n_COUNTS\n100 200\n300`,
     ],
     [`_2THETA / _STEPWIDTH aliases`, `_2THETA=10.0\n_STEPWIDTH=10.0\n_COUNTS\n100\n200\n300`],
+    // _2THETA is the detector position at the start; _START is the scan start even when listed later
+    [
+      `_START over a preceding _2THETA`,
+      `_2THETA=40\n_START=10\n_STEPSIZE=10\n_COUNTS\n100 200 300`,
+    ],
   ])(`parses %s`, (_name, content) =>
     expect(rounded(parse_uxd_file(content))).toEqual(THREE_POINTS),
   )
@@ -179,6 +184,15 @@ describe(`parse_gsas_file`, () => {
       THREE_POINTS,
     )
     expect(result.x).toEqual([10, 20, 30])
+  })
+
+  test(`fixed-width STD records keep the F6.0 intensity and drop the I2 detector count`, () => {
+    // 10(I2,F6.0) with NCTR 1..10 glued to the counts, as multi-detector neutron banks write
+    const record = ` 1   100 2   200 3   300 4   400 5   500 6   600 7   700 8   80010   90010  1000`
+    const padded = `10   500 0     0                                                                `
+    const result = parse_gsas_file(`BANK 1 11 2 CONST 1000 100 0 0\n${record}\n${padded}`)
+    expect(result.y).toEqual([10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 50])
+    expect(result.x[10]).toBeCloseTo(20, 9)
   })
 
   test(`ESD banks interleave sigmas and FXYE banks carry their own centidegree x`, () => {
@@ -468,6 +482,15 @@ describe(`real example files`, () => {
     expect(result.x[result.x.length - 1]).toBeCloseTo(last, 3)
     expect(Math.max(...result.y)).toBeCloseTo(100, 9)
     expect(result.y.every(Number.isFinite)).toBe(true)
+  })
+
+  // The garnet bank is 10(I2,F6.0) with 1..10 overlapping detectors per point; split on
+  // whitespace, the detector counts interleave with the intensities and the 2664-count peak
+  // at 71.75° lands at 157.9° (the last channel)
+  test(`garnet-neutron.gsas.gz reads fixed-width STD records field by field`, async () => {
+    const result = await load(`garnet-neutron.gsas.gz`)
+    expect(result.y[0]).toBeCloseTo((162 / 2664) * 100, 9)
+    expect(result.x[result.y.indexOf(100)]).toBeCloseTo(71.75, 9)
   })
 
   test(`every example file is covered above`, () => {

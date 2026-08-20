@@ -634,6 +634,16 @@ export function simple_pca(
           new_vec[idx] += work_cov[idx][jdx] * vec[jdx]
         }
       }
+      // Re-orthogonalize against the components already found: when two eigenvalues are
+      // close (near-square domains) 100 iterations don't converge, deflation with the
+      // unconverged vector is inexact and the next component would drift out of
+      // orthogonality (v1·v2 up to 1e-3 on planar rectangles with side ratio > 0.96),
+      // which breaks the lossless-reconstruction check behind is_planar.
+      for (const prev_ev of eigenvectors) {
+        let proj = 0
+        for (let idx = 0; idx < n_cols; idx++) proj += new_vec[idx] * prev_ev[idx]
+        for (let idx = 0; idx < n_cols; idx++) new_vec[idx] -= proj * prev_ev[idx]
+      }
 
       // Normalize
       const norm = Math.hypot(...new_vec)

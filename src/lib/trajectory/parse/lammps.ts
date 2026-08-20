@@ -146,6 +146,11 @@ export function parse_lammps_trajectory(
     const num_atoms_text = read_line()
     const num_atoms = Math.trunc(Number(num_atoms_text))
     if (!(num_atoms > 0)) {
+      if (idx > lines.length) {
+        throw new TornLammpsFrameError(
+          `LAMMPS frame at timestep ${timestep} ends after "ITEM: NUMBER OF ATOMS"`,
+        )
+      }
       throw new Error(
         `Invalid LAMMPS atom count "${num_atoms_text}" at timestep ${timestep} (line ${idx})`,
       )
@@ -222,10 +227,12 @@ export function parse_lammps_trajectory(
       }
       const line_number = idx + 1
       const parts = read_line().split(/\s+/)
+      // A malformed last line after at least one complete frame is a half-written tail, not
+      // corruption; a lone frame still reports the line so the problem is visible
+      const torn_tail = idx >= lines.length && frames.length > 0
       if (parts.length < cols.length) {
-        throw new Error(
-          `LAMMPS atom line ${line_number} (timestep ${timestep}) has ${parts.length} columns, expected ${cols.length}`,
-        )
+        const message = `LAMMPS atom line ${line_number} (timestep ${timestep}) has ${parts.length} columns, expected ${cols.length}`
+        throw torn_tail ? new TornLammpsFrameError(message) : new Error(message)
       }
       const coords: Vec3 = [Number(parts[x_col]), Number(parts[y_col]), Number(parts[z_col])]
       if (
@@ -233,9 +240,8 @@ export function parse_lammps_trajectory(
         !Number.isFinite(coords[1]) ||
         !Number.isFinite(coords[2])
       ) {
-        throw new TypeError(
-          `LAMMPS atom line ${line_number} (timestep ${timestep}) has non-numeric coordinates: "${lines[idx - 1]}"`,
-        )
+        const message = `LAMMPS atom line ${line_number} (timestep ${timestep}) has non-numeric coordinates: "${lines[idx - 1]}"`
+        throw torn_tail ? new TornLammpsFrameError(message) : new TypeError(message)
       }
       const xyz: Vec3 = frac_to_cart
         ? frac_to_cart(coords)

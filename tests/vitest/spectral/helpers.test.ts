@@ -352,6 +352,7 @@ describe(`normalize_band_structure`, () => {
   // direction of the conversion and the unit aliases rather than re-deriving constants
   it.each([
     [undefined, 5, 5],
+    [null, 5, 5], // undeclared, like normalize_dos treats `unit: null`
     [`thz`, 5, 5],
     [`ev`, 4.135667696e-3, 1],
     [`meV`, 4.135667696, 1],
@@ -359,7 +360,7 @@ describe(`normalize_band_structure`, () => {
     [`cm^-1`, 2 * THZ_TO_INVERSE_CM, 2],
   ])(`converts pymatgen bands declared in %s to THz`, (unit, input, expected_thz) => {
     const result = normalize_band_structure(
-      pmg({ qpoints: line(2), bands: [[0, input]], ...(unit && { unit }) }),
+      pmg({ qpoints: line(2), bands: [[0, input]], ...(unit !== undefined && { unit }) }),
     )
     expect(result?.bands[0][1]).toBeCloseTo(expected_thz, 9)
   })

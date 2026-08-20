@@ -544,7 +544,12 @@ export function generate_log_ticks(
   const in_range = (tick: number): boolean => tick >= min && tick <= max
   const powers = range(min_power, max_power + 1).map((power: number) => 10 ** power)
   if (max_power - min_power < 3 && typeof ticks_option === `number` && ticks_option > 5) {
-    return powers.flatMap((power) => [power, power * 2, power * 5]).filter(in_range)
+    const mantissa_ticks = powers
+      .flatMap((power) => [power, power * 2, power * 5])
+      .filter(in_range)
+    // A sub-decade domain between mantissas (e.g. [0.92, 0.99] or [7, 8]) fits fewer than two
+    // of them; fall through to d3's fine ticks instead of leaving the axis bare
+    if (mantissa_ticks.length >= 2) return mantissa_ticks
   }
   const in_range_powers = powers.filter(in_range)
   if (in_range_powers.length >= 2) return in_range_powers
