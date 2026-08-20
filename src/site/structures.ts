@@ -6,6 +6,7 @@ import {
   parse_optimade_from_raw,
   structure_from_json,
 } from '$lib/structure/parse'
+import { is_crystal } from '$lib/structure/validation'
 import { glob_text } from '$site/imports'
 import { SvelteMap } from 'svelte/reactivity'
 
@@ -20,7 +21,7 @@ export const structures = Object.entries(
       : is_structure_like(data)
         ? structure_from_json(data)
         : null
-    return structure && `lattice` in structure ? [{ ...structure, id }] : []
+    return structure && is_crystal(structure) ? [{ ...structure, id }] : []
   })
   .toSorted((struct_a, struct_b) =>
     (struct_a.id?.split(`-`)[1] ?? ``)

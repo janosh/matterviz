@@ -1,418 +1,303 @@
-import type { ElementSymbol, Vec3 } from '$lib'
+import type { Vec3 } from '$lib'
 import * as math from '$lib/math'
 import type { Matrix3x3 } from '$lib/math'
 import { calculate_all_pair_rdfs, calculate_rdf } from '$lib/rdf'
-import type { Pbc } from '$lib/structure'
+import type { RdfPattern } from '$lib/rdf'
+import type { Crystal, Pbc } from '$lib/structure'
+import { is_crystal } from '$lib/structure/validation'
 import { structure_map } from '$site/structures'
 import { describe, expect, test } from 'vitest'
 import { make_crystal } from '../setup'
 
-const lu_al_structure = structure_map.get(`mp-1234`) // Lu-Al structure (binary compound)
-const pd_structure = structure_map.get(`mp-2`) // Pd (simple metallic FCC)
-const bi2zr2o8_structure = structure_map.get(`Bi2Zr2O8-Fm3m`) // Complex multi-element oxide
-
-if (!lu_al_structure || !pd_structure || !bi2zr2o8_structure) {
-  throw new Error(`Required test structures not found in structure_map`)
+const fixture = (id: string): Crystal => {
+  const structure = structure_map.get(id)
+  if (!structure || !is_crystal(structure)) throw new Error(`Test crystal ${id} not found`)
+  return structure
 }
+const lu_al_structure = fixture(`mp-1234`)
+const pd_structure = fixture(`mp-2`)
+const bi2zr2o8_structure = fixture(`Bi2Zr2O8-Fm3m`)
 
-const make_site = (element: ElementSymbol, xyz: Vec3) => ({ element, xyz })
+const bin_width = ({ r }: RdfPattern) => r[1] - r[0]
+const max_abs_diff = (left: number[], right: number[]) =>
+  Math.max(...left.map((val, idx) => Math.abs(val - right[idx])))
 
-function check_basic_rdf_properties(radii: number[], g_r: number[], n_bins: number): void {
-  expect(radii).toHaveLength(n_bins)
-  expect(g_r).toHaveLength(n_bins)
-  expect(g_r.every((val) => val >= 0)).toBe(true)
-  expect(g_r[0]).toBe(0)
-  expect(radii.every((radius, idx) => idx === 0 || radius > radii[idx - 1])).toBe(true)
-}
-
-// n(r) = ∫ 4πr² ρ g(r) dr over (r_lo, r_hi); ρ = 1/a³ for cubic 1-atom cells
+// n = ∫ 4πr² ρ g(r) dr over bins whose centre lies in (r_lo, r_hi): the number of `density`
+// atoms around one centre in that shell
 const shell_coordination = (
-  r: number[],
-  g_r: number[],
-  bin_size: number,
+  pattern: RdfPattern,
   density: number,
   r_lo = 0,
   r_hi = Infinity,
 ): number =>
-  r.reduce(
+  pattern.r.reduce(
     (sum, rad, idx) =>
       rad > r_lo && rad < r_hi
-        ? sum + 4 * Math.PI * rad ** 2 * g_r[idx] * bin_size * density
+        ? sum + 4 * Math.PI * rad ** 2 * pattern.g_r[idx] * bin_width(pattern) * density
         : sum,
     0,
   )
 
-describe(`calculate_rdf`, () => {
-  test.each([
-    { n_bins: 50, cutoff: 10, structure: pd_structure, name: `pd_structure` },
-    { n_bins: 100, cutoff: 15, structure: lu_al_structure, name: `lu_al_structure` },
-  ])(
-    `should return correct array lengths ($name, n_bins=$n_bins)`,
-    ({ n_bins, cutoff, structure }) => {
-      const result = calculate_rdf(structure, { n_bins, cutoff })
-      check_basic_rdf_properties(result.r, result.g_r, n_bins)
-      expect(Math.max(...result.r)).toBeCloseTo((n_bins - 0.5) * (cutoff / n_bins), 2)
-    },
-  )
-
-  test.each([
-    { sites: [], name: `empty structure` },
-    { sites: [make_site(`Si`, [0, 0, 0])], name: `single atom` },
-    {
-      sites: [make_site(`Si`, [0, 0, 0]), make_site(`Si`, [4.5, 4.5, 4.5])],
-      name: `distant atoms (cutoff 0.1)`,
-      cutoff: 0.1,
-    },
-  ])(`should handle edge cases: $name`, ({ sites, cutoff = 5 }) => {
-    const structure = make_crystal(5, sites)
-    const result = calculate_rdf(structure, { n_bins: 50, cutoff, pbc: [false, false, false] })
-    check_basic_rdf_properties(result.r, result.g_r, 50)
-    expect(result.g_r.every((val) => val === 0)).toBe(true)
-  })
-
-  test.each([
-    { center: `Bi`, neighbor: `O`, has_signal: true, structure: bi2zr2o8_structure },
-    { center: `Pd`, neighbor: `Pd`, has_signal: true, structure: pd_structure },
-    { center: `Au`, neighbor: `Au`, has_signal: false, structure: pd_structure },
-  ])(`element pairs: $center-$neighbor`, ({ center, neighbor, has_signal, structure }) => {
-    const result = calculate_rdf(structure, {
-      center_species: center,
-      neighbor_species: neighbor,
-      n_bins: 50,
-    })
-    expect(result.element_pair).toEqual([center, neighbor])
-    expect(result.g_r.some((val) => val > 0)).toBe(has_signal)
-  })
-
-  test.each([
-    [-5, 50],
-    [10, 0],
-    [-1, -1],
-  ])(`should throw error for invalid parameters (cutoff=%s, n_bins=%s)`, (cutoff, n_bins) => {
-    expect(() => calculate_rdf(pd_structure, { cutoff, n_bins })).toThrow(
-      /cutoff and n_bins must be positive/,
-    )
-  })
-
-  test(`should have correct radii spacing`, () => {
-    const [cutoff, n_bins] = [15, 75]
-    const result = calculate_rdf(pd_structure, { cutoff, n_bins })
-    const bin_size = cutoff / n_bins
-    for (let idx = 0; idx < n_bins; idx++) {
-      expect(result.r[idx]).toBeCloseTo((idx + 0.5) * bin_size, 10)
+// Every shell of a simple cubic lattice with parameter `a_len` inside `cutoff`: shell radius
+// and the number of lattice points on it
+const simple_cubic_shells = (a_len: number, cutoff: number): Map<number, number> => {
+  const reach = Math.ceil(cutoff / a_len)
+  const span = Array.from({ length: 2 * reach + 1 }, (_unused, idx) => idx - reach)
+  const shells = new Map<number, number>()
+  for (const ii of span) {
+    for (const jj of span) {
+      for (const kk of span) {
+        const dist = a_len * Math.hypot(ii, jj, kk)
+        if (dist > 0 && dist < cutoff) shells.set(dist, (shells.get(dist) ?? 0) + 1)
+      }
     }
+  }
+  return shells
+}
+
+// Rocksalt NaCl in the conventional cell: Na-Cl at a/2 (6), Na-Na at a/√2 (12)
+const ROCKSALT_A = 5.6
+const rocksalt = make_crystal(ROCKSALT_A, [
+  [`Na`, [0, 0, 0]],
+  [`Na`, [0.5, 0.5, 0]],
+  [`Na`, [0.5, 0, 0.5]],
+  [`Na`, [0, 0.5, 0.5]],
+  [`Cl`, [0.5, 0, 0]],
+  [`Cl`, [0, 0.5, 0]],
+  [`Cl`, [0, 0, 0.5]],
+  [`Cl`, [0.5, 0.5, 0.5]],
+])
+
+describe(`calculate_rdf`, () => {
+  test(`simple cubic: every shell's height and coordination number are exact`, () => {
+    const [a_len, cutoff, n_bins] = [4, 15, 150]
+    const pattern = calculate_rdf(make_crystal(a_len, [[`Si`, [0, 0, 0]]]), { cutoff, n_bins })
+    const density = 1 / a_len ** 3
+    const delta_r = bin_width(pattern)
+    expect(pattern.r).toHaveLength(n_bins)
+    expect(pattern.r.every((rad, idx) => Math.abs(rad - (idx + 0.5) * delta_r) < 1e-12)).toBe(
+      true,
+    )
+    // Each shell lands wholly in the bin holding its radius, at height n / (ρ 4π r_bin² Δr)
+    const expected = Array<number>(n_bins).fill(0)
+    for (const [dist, count] of simple_cubic_shells(a_len, cutoff)) {
+      const bin = Math.floor(dist / delta_r + 1e-9)
+      expected[bin] += count / (density * 4 * Math.PI * pattern.r[bin] ** 2 * delta_r)
+    }
+    expect(max_abs_diff(pattern.g_r, expected)).toBeLessThan(1e-9)
+    expect(shell_coordination(pattern, density, 0, 1.2 * a_len)).toBeCloseTo(6, 9)
+    expect(shell_coordination(pattern, density, 1.2 * a_len, 1.6 * a_len)).toBeCloseTo(12, 9)
+    expect(shell_coordination(pattern, density, 1.6 * a_len, 1.9 * a_len)).toBeCloseTo(8, 9)
   })
 
-  test(`RDF should approach 1 for large separations (random structure)`, () => {
-    const n_atoms = 100
+  // For uncorrelated points g(r) = 1 up to counting noise: each bin holds on average
+  // N ρ 4π r² Δr pairs (≈ 1900 at r = 10 Å here), so its relative standard deviation is
+  // ~2.3% and the mean over the last 8 bins ~0.8%; 0.05 is a > 5σ bound.
+  test(`random positions: g(r) → 1 within 0.05 in the tail (ideal-gas limit)`, () => {
     let seed = 12345
     const random = () => ((seed = (seed * 1664525 + 1013904223) % 2 ** 32), seed / 2 ** 32)
-
-    const sites = Array.from({ length: n_atoms }, () =>
-      make_site(`Si`, [random() * 30, random() * 30, random() * 30]),
-    )
-
-    const large_structure = make_crystal(30, sites)
-    const result = calculate_rdf(large_structure, { cutoff: 12, n_bins: 75 })
-    check_basic_rdf_properties(result.r, result.g_r, 75)
-
-    const last_values = result.g_r.slice(Math.floor(0.9 * 75))
-    const avg_last = last_values.reduce((sum, val) => sum + val, 0) / last_values.length
-    expect(avg_last).toBeGreaterThan(0.9)
-    expect(avg_last).toBeLessThan(1.1)
+    const sites = Array.from({ length: 500 }, () => ({
+      element: `Si`,
+      xyz: [random() * 30, random() * 30, random() * 30] as Vec3,
+    }))
+    const { g_r } = calculate_rdf(make_crystal(30, sites), { cutoff: 12, n_bins: 75 })
+    const tail = g_r.slice(-8)
+    const tail_mean = tail.reduce((sum, val) => sum + val, 0) / tail.length
+    expect(Math.abs(tail_mean - 1)).toBeLessThan(0.05)
   })
 
-  const corner_sites = [
-    make_site(`Si`, [0.5, 0.5, 0.5]),
-    make_site(`Si`, [9.5, 0.5, 0.5]),
-    make_site(`Si`, [0.5, 9.5, 0.5]),
-    make_site(`Si`, [9.5, 9.5, 0.5]),
-  ]
-  const slab_sites = [make_site(`Si`, [0.5, 0.5, 5.0]), make_site(`Si`, [9.5, 0.5, 5.0])]
+  test(`rocksalt partials: Na-Cl first shell is 6 at a/2, Na-Na is 12 at a/√2, Cl-Na = Na-Cl`, () => {
+    const opts = { cutoff: 6, n_bins: 60 }
+    const partial = (center: string, neighbor: string) =>
+      calculate_rdf(rocksalt, { ...opts, center_species: center, neighbor_species: neighbor })
+    const [na_cl, na_na, cl_na] = [
+      partial(`Na`, `Cl`),
+      partial(`Na`, `Na`),
+      partial(`Cl`, `Na`),
+    ]
+    const species_density = 4 / ROCKSALT_A ** 3
+    expect(na_cl.element_pair).toEqual([`Na`, `Cl`])
+    // exactly one shell below 3.5 Å, centred on a/2 = 2.8 Å
+    const [first_bin] = na_cl.g_r.flatMap((val, idx) => (val > 0 ? [idx] : []))
+    expect(na_cl.r[first_bin]).toBeCloseTo(ROCKSALT_A / 2 + bin_width(na_cl) / 2, 12)
+    expect(shell_coordination(na_cl, species_density, 0, 3.5)).toBeCloseTo(6, 9)
+    expect(shell_coordination(na_na, species_density, 0, 4.5)).toBeCloseTo(12, 9)
+    expect(max_abs_diff(na_cl.g_r, cl_na.g_r)).toBeLessThan(1e-12)
+  })
+
+  // The full g(r) is the concentration-weighted sum Σ_ab c_a c_b g_ab(r) over ORDERED pairs;
+  // a naive mean of the unordered partials is wrong for anything but a 1:1 binary
+  test.each([
+    [`rocksalt`, rocksalt],
+    [`Bi2Zr2O8`, bi2zr2o8_structure],
+    [`Lu-Al`, lu_al_structure],
+  ])(`full g(r) of %s equals Σ c_a c_b g_ab(r) over the partials`, (_name, structure) => {
+    const opts = { cutoff: 7, n_bins: 70 }
+    const full = calculate_rdf(structure, opts)
+    const partials = calculate_all_pair_rdfs(structure, opts)
+    const counts: Record<string, number> = {}
+    for (const { species } of structure.sites) {
+      for (const { element, occu } of species) counts[element] = (counts[element] ?? 0) + occu
+    }
+    const n_atoms = Object.values(counts).reduce((sum, count) => sum + count, 0)
+    const weighted = full.r.map((_rad, idx) =>
+      partials.reduce((sum, { element_pair, g_r }) => {
+        if (!element_pair) throw new Error(`partial without element_pair`)
+        const [el_a, el_b] = element_pair
+        const multiplicity = el_a === el_b ? 1 : 2
+        return sum + (multiplicity * counts[el_a] * counts[el_b] * g_r[idx]) / n_atoms ** 2
+      }, 0),
+    )
+    expect(max_abs_diff(full.g_r, weighted)).toBeLessThan(1e-12)
+    const naive_mean = full.r.map(
+      (_rad, idx) => partials.reduce((sum, { g_r }) => sum + g_r[idx], 0) / partials.length,
+    )
+    expect(max_abs_diff(full.g_r, naive_mean)).toBeGreaterThan(0.1)
+  })
+
+  test(`mixed-occupancy sites weight pairs by the occupancy product`, () => {
+    // Na0.5K0.5Cl: the disordered cation site counts half towards each partial, so the
+    // Na-Cl and K-Cl partials coincide and each cation sees the full 6 Cl neighbours
+    const mixed: Crystal = {
+      ...rocksalt,
+      sites: rocksalt.sites.map((site) =>
+        site.species[0].element === `Na`
+          ? {
+              ...site,
+              species: [
+                { element: `Na`, occu: 0.5, oxidation_state: 1 },
+                { element: `K`, occu: 0.5, oxidation_state: 1 },
+              ],
+            }
+          : site,
+      ),
+    }
+    const opts = { cutoff: 4, n_bins: 40 }
+    const partials = calculate_all_pair_rdfs(mixed, opts)
+    expect(partials.map((partial) => partial.element_pair)).toEqual([
+      [`Cl`, `Cl`],
+      [`Cl`, `K`],
+      [`Cl`, `Na`],
+      [`K`, `K`],
+      [`K`, `Na`],
+      [`Na`, `Na`],
+    ])
+    const by_pair = Object.fromEntries(
+      partials.map((partial) => [partial.element_pair?.join(`-`), partial]),
+    )
+    expect(max_abs_diff(by_pair[`Cl-K`].g_r, by_pair[`Cl-Na`].g_r)).toBeLessThan(1e-12)
+    // N_Cl / V is the density of the neighbour species around each (half-occupied) K
+    expect(shell_coordination(by_pair[`Cl-K`], 4 / ROCKSALT_A ** 3, 0, 3.5)).toBeCloseTo(6, 9)
+    // K-Na: 12 cation neighbours at a/√2, half of them Na, seen from a half-K site
+    expect(shell_coordination(by_pair[`K-Na`], 2 / ROCKSALT_A ** 3, 3.5, 4)).toBeCloseTo(6, 9)
+  })
 
   test.each([
-    { pbc: [true, true, true] as Pbc, name: `full PBC`, sites: corner_sites },
-    { pbc: [false, false, false] as Pbc, name: `no PBC`, sites: corner_sites },
-    { pbc: [true, true, false] as Pbc, name: `slab PBC (xy only)`, sites: slab_sites },
-  ])(`PBC effects: $name`, ({ pbc, sites }) => {
-    expect.assertions(5)
-    const structure = make_crystal(10, sites)
-    const options = { cutoff: 8, n_bins: 100, pbc, auto_expand: false }
-    const result = calculate_rdf(structure, options)
-    check_basic_rdf_properties(result.r, result.g_r, 100)
-  })
-
-  test(`different PBC settings should give different neighbor counts`, () => {
-    const sites = [make_site(`Si`, [0.5, 0.5, 0.5]), make_site(`Si`, [9.5, 0.5, 0.5])]
-    const structure = make_crystal(10, sites)
-
-    const opts = { cutoff: 8, n_bins: 100, auto_expand: false }
-    const result_pbc = calculate_rdf(structure, { ...opts, pbc: [true, true, true] })
-    const result_no_pbc = calculate_rdf(structure, { ...opts, pbc: [false, false, false] })
-
-    const sum_pbc = result_pbc.g_r.reduce((sum, val) => sum + val, 0)
-    const sum_no_pbc = result_no_pbc.g_r.reduce((sum, val) => sum + val, 0)
-    expect(sum_pbc).toBeGreaterThan(sum_no_pbc)
-  })
-
-  test(`auto_expand 1-atom with no PBC stays all-zero`, () => {
-    const { g_r } = calculate_rdf(make_crystal(5, [make_site(`Si`, [0, 0, 0])]), {
-      cutoff: 8,
-      n_bins: 80,
-      auto_expand: true,
-      pbc: [false, false, false],
+    [`1D chain`, [true, false, false] as Pbc, 2],
+    [`2D square net`, [true, true, false] as Pbc, 4],
+    [`3D`, [true, true, true] as Pbc, 6],
+  ])(`%s: pbc %j images only along periodic axes`, (_name, pbc, first_shell) => {
+    const a_len = 5
+    const pattern = calculate_rdf(make_crystal(a_len, [[`Si`, [0, 0, 0]]]), {
+      cutoff: 9,
+      n_bins: 90,
+      pbc,
     })
+    expect(shell_coordination(pattern, 1 / a_len ** 3, 4.5, 5.5)).toBeCloseTo(first_shell, 9)
+  })
+
+  test(`pbc defaults to the lattice's own flags`, () => {
+    const open = make_crystal(5, [[`Si`, [0, 0, 0]]], { pbc: [false, false, false] })
+    const opts = { cutoff: 8, n_bins: 40 }
+    expect(calculate_rdf(open, opts).g_r.every((val) => val === 0)).toBe(true)
+    expect(
+      calculate_rdf(open, { ...opts, pbc: [true, true, true] }).g_r.some((val) => val > 0),
+    ).toBe(true)
+  })
+
+  test(`distances are binned over the half-open range [0, cutoff)`, () => {
+    const one_atom = make_crystal(5, [[`Si`, [0, 0, 0]]])
+    // nearest images sit exactly at the cutoff and are excluded...
+    expect(
+      calculate_rdf(one_atom, { cutoff: 5, n_bins: 50 }).g_r.every((val) => val === 0),
+    ).toBe(true)
+    // ...and a shell exactly on a bin edge lands in the upper bin, as one shell, not split
+    const at_edge = calculate_rdf(one_atom, { cutoff: 6, n_bins: 60 })
+    const nonzero = at_edge.g_r.flatMap((val, idx) => (val > 0 ? [idx] : []))
+    expect(nonzero).toEqual([50])
+    expect(at_edge.r[50]).toBeCloseTo(5.05, 12)
+  })
+
+  test(`species absent from the structure give an all-zero partial`, () => {
+    const { g_r, element_pair } = calculate_rdf(pd_structure, {
+      center_species: `Au`,
+      neighbor_species: `Au`,
+    })
+    expect(element_pair).toEqual([`Au`, `Au`])
     expect(g_r.every((val) => val === 0)).toBe(true)
   })
 
-  // 1D chain: no y/z bleed + first-shell amplitude exactly 2 (not 1×/4×)
-  test(`mixed-PBC auto_expand: first-shell coordination exactly 2`, () => {
-    const [a_len, cutoff, n_bins] = [5, 9, 90]
-    const { r, g_r } = calculate_rdf(make_crystal(a_len, [make_site(`Si`, [0, 0, 0])]), {
-      cutoff,
-      n_bins,
-      auto_expand: true,
-      pbc: [true, false, false],
-    })
-    const density = 1 / a_len ** 3
-    const bin_size = cutoff / n_bins
-    expect(g_r.every((val, idx) => val === 0 || r[idx] < 6)).toBe(true)
-    expect(shell_coordination(r, g_r, bin_size, density, 4.5, 5.5)).toBeCloseTo(2, 6)
-    expect(shell_coordination(r, g_r, bin_size, density, 0, cutoff)).toBeCloseTo(2, 6)
-  })
-
-  test(`simple cubic auto-expansion: coordination numbers exact`, () => {
-    const [a_len, cutoff, n_bins] = [4, 15, 150]
-    const { r, g_r } = calculate_rdf(make_crystal(a_len, [[`Si`, [0, 0, 0]]]), {
-      cutoff,
-      n_bins,
-      auto_expand: true,
-    })
-    const bin_size = cutoff / n_bins
-    const density = 1 / a_len ** 3
-    // First shell: 6 neighbors at r = a (second shell at a·√2 ≈ 5.66)
-    expect(shell_coordination(r, g_r, bin_size, density, 0, 1.2 * a_len)).toBeCloseTo(6, 1)
-
-    const span = Array.from({ length: 9 }, (_, idx) => idx - 4)
-    const exact_count = span
-      .flatMap((ii) => span.flatMap((jj) => span.map((kk) => a_len * Math.hypot(ii, jj, kk))))
-      .filter((dist) => dist > 0 && dist < cutoff).length
-    expect(shell_coordination(r, g_r, bin_size, density)).toBeCloseTo(exact_count, 0)
-  })
-
-  // Regression: calculate_all_pair_rdfs used to force pbc=[false,false,false], discarding
-  // the caller's pbc (e.g. from RdfPlot) and dropping cross-boundary pairs
-  test(`calculate_all_pair_rdfs preserves caller pbc`, () => {
-    // min-image distance between the sites is 1 Å, reachable only with PBC; without PBC
-    // the nearest pair sits at 9 Å, beyond the cutoff, leaving g(r) all zero
-    const structure = make_crystal(10, [
-      [`Si`, [0.05, 0.05, 0.05]],
-      [`Si`, [0.95, 0.05, 0.05]],
-    ])
-    const opts = { cutoff: 8, n_bins: 80, auto_expand: false, pbc: [true, true, true] as Pbc }
-    const [all_pair] = calculate_all_pair_rdfs(structure, opts)
-    const direct = calculate_rdf(structure, {
-      ...opts,
-      center_species: `Si`,
-      neighbor_species: `Si`,
-    })
-    const first_peak_idx = all_pair.g_r.findIndex((val) => val > 0)
-    expect(first_peak_idx).not.toBe(-1)
-    expect(all_pair.r[first_peak_idx]).toBeCloseTo(1, 0)
-    expect(all_pair.g_r).toEqual(direct.g_r)
-  })
-
-  test(`omitted pbc option defaults to structure.lattice.pbc`, () => {
-    const open = make_crystal(5, [
-      [`Si`, [0, 0, 0]],
-      [`Si`, [0.5, 0, 0]],
-    ])
-    open.lattice.pbc = [false, false, false]
-    const opts = { cutoff: 8, n_bins: 40 }
-    const from_lattice = calculate_rdf(open, opts)
-    expect(from_lattice.g_r).toEqual(
-      calculate_rdf(open, { ...opts, pbc: open.lattice.pbc }).g_r,
-    )
-    expect(from_lattice.g_r).not.toEqual(
-      calculate_rdf(open, { ...opts, pbc: [true, true, true] }).g_r,
-    )
-  })
-
-  // Guards against input mutation (e.g. by auto-expand supercell construction)
-  test(`repeated calls on the same structure give identical results`, () => {
-    const result1 = calculate_rdf(lu_al_structure, { cutoff: 5, n_bins: 50 })
-    const result2 = calculate_rdf(lu_al_structure, { cutoff: 5, n_bins: 50 })
-    expect(result1.r).toEqual(result2.r)
-    expect(result1.g_r).toEqual(result2.g_r)
-  })
-
-  test(`RDF regression: skewed triclinic nearest image lands in correct bin`, () => {
+  test(`skewed triclinic cell: the first shell is the minimum-image pair distance`, () => {
     const lattice: Matrix3x3 = [
-      [1.9705932249259481, -3.955757771584847, 1.6595752827868262],
-      [-2.0392732691684845, 3.498999611184008, -1.7465434512400368],
-      [3.716215074235551, 3.996782696347811, 1.0904649182023587],
+      [5, 0, 0],
+      [1, 6, 0],
+      [0.5, 1.5, 7],
     ]
-    const structure = make_crystal(
-      lattice,
-      [
-        { element: `Si`, xyz: [3.395535765213964, 4.297261971797731, 0.837260400991752] },
-        { element: `Si`, xyz: [1.6425399077772327, -1.0582437501479167, 0.9390064337754569] },
-      ],
-      { pbc: [true, true, true] },
+    // Second atom sits near the far corner, so the short contact only exists through images
+    const structure = make_crystal(lattice, [
+      { element: `Si`, xyz: [0.2, 0.3, 0.4] },
+      { element: `Si`, xyz: [5.9, 6.8, 6.6] },
+    ])
+    const [cutoff, n_bins] = [4.5, 45]
+    const pattern = calculate_rdf(structure, { cutoff, n_bins })
+    const nearest = math.pbc_dist(structure.sites[0].xyz, structure.sites[1].xyz, lattice)
+    expect(nearest).toBeLessThan(2)
+    expect(pattern.g_r.findIndex((val) => val > 0)).toBe(
+      Math.floor(nearest / (cutoff / n_bins)),
     )
-    const cutoff = 2
-    const n_bins = 20
-    const result = calculate_rdf(structure, { cutoff, n_bins, auto_expand: false })
-    const expected_dist = math.pbc_dist(
-      structure.sites[0].xyz,
-      structure.sites[1].xyz,
-      lattice,
-    )
-    const bin_width = cutoff / n_bins
-    const expected_bin = Math.floor(expected_dist / bin_width)
-    const nonzero_bins = result.g_r
-      .map((value, idx) => ({ value, idx }))
-      .filter(({ value }) => value > 0)
-
-    expect(nonzero_bins).toHaveLength(1)
-    expect(nonzero_bins[0]?.idx).toBe(expected_bin)
+    // exactly one partner at that distance per atom (density of the 2-atom cell is 2/V)
+    const volume = math.calc_lattice_params(lattice).volume
+    expect(shell_coordination(pattern, 2 / volume, 0, nearest + 0.1)).toBeCloseTo(1, 9)
   })
 
-  // Non-orthogonal lattices: triclinic has all angles ≠ 90°, monoclinic has β ≠ 90°
   test.each([
-    {
-      name: `triclinic`,
-      lattice: [
-        [5, 0, 0],
-        [1, 6, 0],
-        [0.5, 1.5, 7],
-      ] satisfies Matrix3x3,
-      sites: [
-        make_site(`Si`, [0, 0, 0]),
-        make_site(`Si`, [2.5, 3, 3.5]),
-        make_site(`O`, [1, 1, 1]),
-        make_site(`O`, [3, 4, 4.5]),
-      ],
-      cutoff: 10,
-      n_bins: 100,
-    },
-    {
-      name: `monoclinic`,
-      lattice: [
-        [5, 0, 0],
-        [0, 6, 0],
-        [2, 0, 7],
-      ] satisfies Matrix3x3,
-      sites: [make_site(`Na`, [0, 0, 0]), make_site(`Cl`, [2.5, 3, 3.5])],
-      cutoff: 8,
-      n_bins: 80,
-    },
-  ])(
-    `should calculate RDF correctly for $name lattice`,
-    ({ lattice, sites, cutoff, n_bins }) => {
-      const structure = make_crystal(lattice, sites)
-      const result = calculate_rdf(structure, { cutoff, n_bins, pbc: [true, true, true] })
+    [`negative cutoff`, { cutoff: -5, n_bins: 50 }, /cutoff and n_bins must be positive/],
+    [`zero bins`, { cutoff: 10, n_bins: 0 }, /cutoff and n_bins must be positive/],
+    [`NaN cutoff`, { cutoff: Number.NaN, n_bins: 10 }, /cutoff and n_bins must be positive/],
+  ])(`throws on %s`, (_name, opts, pattern) => {
+    expect(() => calculate_rdf(pd_structure, opts)).toThrow(pattern)
+  })
 
-      check_basic_rdf_properties(result.r, result.g_r, n_bins)
-      expect(result.g_r.some((val) => val > 0)).toBe(true)
-      expect(result.g_r.every(isFinite)).toBe(true)
-    },
-  )
+  test(`throws without a lattice to normalise against`, () => {
+    const { lattice: _lattice, ...no_lattice } = pd_structure
+    expect(() => calculate_rdf(no_lattice as Crystal)).toThrow(/must have a lattice/)
+  })
 })
 
 describe(`calculate_all_pair_rdfs`, () => {
   test.each([
-    { structure: lu_al_structure, expected_pairs: 3, name: `binary compound (Lu-Al)` },
-    { structure: pd_structure, expected_pairs: 1, name: `single element (Pd)` },
-  ])(`should calculate all unique pairs: $name`, ({ structure, expected_pairs }) => {
-    const patterns = calculate_all_pair_rdfs(structure, { cutoff: 8, n_bins: 50 })
-    expect(patterns).toHaveLength(expected_pairs)
-
-    for (const pattern of patterns) {
-      check_basic_rdf_properties(pattern.r, pattern.g_r, 50)
-      expect(pattern.element_pair).toBeDefined()
-    }
-  })
-
-  test.each([
-    { structure: lu_al_structure, cutoff: 8, n_bins: 80, max_peak: 20, name: `Lu-Al` },
-    {
-      structure: pd_structure,
-      cutoff: 15,
-      n_bins: 150,
-      max_peak: 50,
-      auto_expand: true,
-      name: `Pd (auto_expand)`,
-    },
-    {
-      structure: bi2zr2o8_structure,
-      cutoff: 10,
-      n_bins: 100,
-      max_peak: 100,
-      name: `Bi2Zr2O8`,
-    },
+    [
+      `Lu-Al`,
+      lu_al_structure,
+      [
+        [`Al`, `Al`],
+        [`Al`, `Lu`],
+        [`Lu`, `Lu`],
+      ],
+    ],
+    [`Pd`, pd_structure, [[`Pd`, `Pd`]]],
   ])(
-    `RDF should have reasonable peak values: $name`,
-    ({ structure, cutoff, n_bins, max_peak, auto_expand = false }) => {
-      const result = calculate_rdf(structure, { cutoff, n_bins, auto_expand })
-      check_basic_rdf_properties(result.r, result.g_r, n_bins)
-
-      const max_g_r = Math.max(...result.g_r)
-      expect(max_g_r).toBeGreaterThan(0)
-      expect(max_g_r).toBeLessThan(max_peak)
-      expect(result.g_r.every(isFinite)).toBe(true)
+    `%s: one pattern per unordered pair, sorted, matching calculate_rdf`,
+    (_name, structure, pairs) => {
+      const opts = { cutoff: 8, n_bins: 50 }
+      const patterns = calculate_all_pair_rdfs(structure, opts)
+      expect(patterns.map((pattern) => pattern.element_pair)).toEqual(pairs)
+      for (const { element_pair, r, g_r } of patterns) {
+        const [center_species, neighbor_species] = element_pair ?? []
+        const direct = calculate_rdf(structure, { ...opts, center_species, neighbor_species })
+        expect(r).toBe(patterns[0].r)
+        expect(max_abs_diff(g_r, direct.g_r)).toBeLessThan(1e-12)
+      }
     },
   )
-
-  test.each([
-    { cutoff: 0.1, n_bins: 10, auto_expand: false, name: `tiny cutoff`, should_be_zero: true },
-    { cutoff: 10, n_bins: 1000, auto_expand: true, name: `many bins`, should_be_zero: false },
-    { cutoff: 5, n_bins: 20, auto_expand: true, name: `few bins`, should_be_zero: false },
-  ])(`extreme parameters: $name`, ({ cutoff, n_bins, auto_expand, should_be_zero }) => {
-    const result = calculate_rdf(pd_structure, { cutoff, n_bins, auto_expand })
-    check_basic_rdf_properties(result.r, result.g_r, n_bins)
-    if (should_be_zero) {
-      expect(result.g_r.every((val) => val === 0)).toBe(true)
-    } else {
-      expect(result.g_r.some((val) => val > 0)).toBe(true)
-    }
-  })
-
-  test(`auto_expand yields physical Pd RDF`, () => {
-    const [cutoff, n_bins] = [10, 100]
-    const result = calculate_rdf(pd_structure, { cutoff, n_bins, auto_expand: true })
-    check_basic_rdf_properties(result.r, result.g_r, n_bins)
-    const zero_bins = Math.floor(2.0 / (cutoff / n_bins)) // Pd NN ~2.75 Å
-    const max_g_r = Math.max(...result.g_r)
-    expect(max_g_r).toBeGreaterThan(0)
-    expect(max_g_r).toBeLessThan(50)
-    expect(result.g_r.slice(0, zero_bins).every((val) => val === 0)).toBe(true)
-
-    const [all_pair] = calculate_all_pair_rdfs(pd_structure, { cutoff, n_bins: 50 })
-    expect(all_pair.element_pair).toEqual([`Pd`, `Pd`])
-    check_basic_rdf_properties(all_pair.r, all_pair.g_r, 50)
-  })
-
-  test(`full RDF should properly weight element pairs`, () => {
-    const [cutoff, n_bins] = [5, 50]
-
-    const full_rdf_correct = calculate_rdf(bi2zr2o8_structure, { cutoff, n_bins })
-
-    // Naive uniform averaging would give wrong result for multicomponent structures
-    const partial_rdfs = calculate_all_pair_rdfs(bi2zr2o8_structure, { cutoff, n_bins })
-    const full_rdf_wrong = {
-      r: partial_rdfs[0]?.r ?? [],
-      g_r: partial_rdfs[0].r.map(
-        (_, idx) =>
-          partial_rdfs.reduce((sum, partial) => sum + partial.g_r[idx], 0) /
-          partial_rdfs.length,
-      ),
-    }
-
-    const max_diff = Math.max(
-      ...full_rdf_correct.g_r.map((val, idx) => Math.abs(val - full_rdf_wrong.g_r[idx])),
-    )
-    expect(max_diff).toBeGreaterThan(0.1)
-    check_basic_rdf_properties(full_rdf_correct.r, full_rdf_correct.g_r, n_bins)
-  })
 })

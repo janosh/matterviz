@@ -3,12 +3,11 @@
   import { get_electro_neg_formula } from '$lib/composition'
   import { StatusMessage } from '$lib/feedback'
   import { format_num } from '$lib/labels'
-  import type { DataSeries } from '$lib/plot'
+  import type { DataSeries, RefLine } from '$lib/plot'
   import { ScatterPlot } from '$lib/plot'
   import type { RadiationType } from '$lib/scattering'
   import type { Crystal, Pbc } from '$lib/structure'
   import type { ComponentProps } from 'svelte'
-  import BaselineLine from './BaselineLine.svelte'
   import {
     calculate_total_pdf,
     label_structures,
@@ -83,6 +82,21 @@
   })
 
   const is_reduced = $derived(quantity === `reduced_g_r`)
+  // Baseline every PDF is read against: g(r) = 1 (ideal gas) or G(r) = 0
+  const ref_lines = $derived<RefLine[]>([
+    {
+      type: `horizontal`,
+      y: is_reduced ? 0 : 1,
+      style: { color: `gray`, dash: `4`, opacity: 0.5 },
+      annotation: {
+        text: is_reduced ? `G(r) = 0` : `g(r) = 1`,
+        position: `end`,
+        side: `above`,
+        color: `gray`,
+      },
+    },
+    ...(rest.ref_lines ?? []),
+  ])
 
   const series = $derived<DataSeries[]>(
     computed.totals.flatMap(({ label, total }, struct_idx) => {
@@ -164,20 +178,12 @@ the whole story and claiming there was nothing to plot would contradict it -->
     bind:show_controls
     bind:controls_open
     {series}
+    {ref_lines}
     x_axis={{ label: `r (Å)`, range: [0, cutoff], ...x_axis }}
     y_axis={{ label: is_reduced ? `G(r) (Å⁻²)` : `g(r)`, ...y_axis }}
     styles={{ show_lines: true, show_points: false }}
     style={rest.style ?? `height: 450px;`}
-  >
-    {#snippet user_content({ width, y_scale_fn, pad })}
-      <BaselineLine
-        {width}
-        {pad}
-        y_value={y_scale_fn(is_reduced ? 0 : 1)}
-        label={is_reduced ? `G(r) = 0` : `g(r) = 1`}
-      />
-    {/snippet}
-  </ScatterPlot>
+  />
   {#if weight_summary}
     <p class="weights">{weight_summary}</p>
   {/if}

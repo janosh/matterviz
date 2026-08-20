@@ -9,7 +9,7 @@
   import type { BarHandlerProps, BarSeries } from '$lib/plot/core/types'
   import { calc_structure_coordination } from '$lib/structure/atom-properties'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
-  import type { SplitMode } from './index'
+  import type { CoordinationSplitMode } from './index'
 
   // Series identity travels as string metadata, which StructureBarPlot turns into the tooltip
   // prefix; `element` and `structure_label` are only ever set one at a time.
@@ -34,7 +34,7 @@
     show_controls = $bindable(true),
     controls_open = $bindable(false),
     ...rest
-  }: StructurePlotProps & { split_mode?: SplitMode } = $props()
+  }: StructurePlotProps & { split_mode?: CoordinationSplitMode } = $props()
 
   let dropped_entries = $state<StructureEntry[]>([])
 

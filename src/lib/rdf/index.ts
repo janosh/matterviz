@@ -37,10 +37,12 @@ export interface RdfEntry {
 export interface RdfOptions {
   center_species?: string
   neighbor_species?: string
+  // Half-open distance range [0, cutoff) in Å, split into n_bins equal bins. `r` holds the
+  // bin centres (idx + 0.5) · cutoff / n_bins.
   cutoff?: number
   n_bins?: number
+  // Periodic axes to image along; defaults to the lattice's own pbc flags
   pbc?: Pbc
-  auto_expand?: boolean
 }
 
 // An RdfPattern plus the reduced PDF G(r) and the number density it was built from

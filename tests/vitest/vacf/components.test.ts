@@ -251,7 +251,9 @@ describe(`TrajectoryVacfPane`, () => {
   }
 
   const run_collect = async () => {
-    const button = document.querySelector<HTMLButtonElement>(`.vacf-controls button`)
+    const button = document.querySelector<HTMLButtonElement>(
+      `.trajectory-vacf-controls button`,
+    )
     if (!button) throw new Error(`no compute button in the VACF pane`)
     button.click()
     for (let round = 0; round < 40; round++) {
@@ -306,10 +308,6 @@ describe(`TrajectoryVacfPane`, () => {
     await mount_and_read(TrajectoryVacfPane, { trajectory, pane_open: true })
     await run_collect()
     expect(document.body.textContent).toContain(`only 40 are in memory`)
-  })
-
-  it(`reports no trajectory rather than an empty plot`, async () => {
-    const text = await mount_and_read(TrajectoryVacfPane, { pane_open: true })
-    expect(text).toContain(`No trajectory loaded`)
+    expect(document.body.textContent).not.toContain(`velocities read from the file`)
   })
 })

@@ -13,7 +13,7 @@ import { SvelteMap, SvelteSet } from 'svelte/reactivity'
 
 // Angles are undirected, so the whole distribution lives in [0, 180]
 export const MAX_BOND_ANGLE = 180
-export const DEFAULT_BIN_WIDTH = 2 // degrees
+export const BOND_ANGLE_DEFAULT_BIN_WIDTH = 2 // degrees
 // Element label for sites whose majority species cannot be resolved
 const UNKNOWN_ELEMENT = `Unknown`
 // Label used for the combined (all triplet types) series
@@ -87,7 +87,7 @@ export function resolve_angle_bins({
     }
     return { n_bins, bin_width: MAX_BOND_ANGLE / n_bins }
   }
-  const width = bin_width ?? DEFAULT_BIN_WIDTH
+  const width = bin_width ?? BOND_ANGLE_DEFAULT_BIN_WIDTH
   if (!Number.isFinite(width) || width <= 0 || width > MAX_BOND_ANGLE) {
     throw new Error(`bin_width must be a number in (0, ${MAX_BOND_ANGLE}], got ${bin_width}`)
   }

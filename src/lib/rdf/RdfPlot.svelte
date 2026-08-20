@@ -2,14 +2,15 @@
   import { PLOT_COLORS } from '$lib/colors'
   import { get_electro_neg_formula } from '$lib/composition'
   import { StatusMessage } from '$lib/feedback'
-  import { drag_over_handlers, type FileLoadCallback } from '$lib/io'
-  import type { DataSeries } from '$lib/plot'
+  import type { FileLoadCallback } from '$lib/io'
+  import { as_text, file_drop_zone } from '$lib/io'
+  import type { DataSeries, RefLine } from '$lib/plot'
   import { ScatterPlot } from '$lib/plot'
-  import { create_structure_drop_handler } from '$lib/plot/core/structure-input'
   import type { Crystal, Pbc } from '$lib/structure'
+  import { parse_structure_file } from '$lib/structure/parse'
   import { is_crystal } from '$lib/structure/validation'
+  import { to_error } from '$lib/utils'
   import type { ComponentProps, Snippet } from 'svelte'
-  import BaselineLine from './BaselineLine.svelte'
   import { calculate_all_pair_rdfs, calculate_rdf, label_structures } from './index'
   import type { RdfEntry } from './index'
 
@@ -29,7 +30,6 @@
     error_msg = $bindable(),
     children,
     drag_dropped = $bindable([]),
-    dragover = $bindable(false),
     show_controls = $bindable(true),
     controls_open = $bindable(false),
     ...rest
@@ -42,37 +42,33 @@
     n_bins?: number
     pbc?: Pbc
     allow_file_drop?: boolean
+    // Replaces the built-in "parse as a crystal and plot it" handling of dropped files
     on_file_drop?: FileLoadCallback
     loading?: boolean
     error_msg?: string
     children?: Snippet<[{ drag_dropped: Crystal[] }]>
     drag_dropped?: Crystal[]
-    dragover?: boolean
   } & ComponentProps<typeof ScatterPlot> = $props()
 
-  const handle_drop = create_structure_drop_handler({
+  const drop_zone = file_drop_zone({
     allow: () => allow_file_drop,
-    on_file_drop: () => on_file_drop,
-    // an RDF needs a cell to normalise against, so a lattice-less molecule is rejected here
-    // rather than in the shared handler, which only insists on sites
-    on_entry: ({ structure }) => {
-      if (is_crystal(structure)) drag_dropped = [...drag_dropped, structure]
-      else error_msg = `Crystal has no lattice or sites; cannot compute RDF`
+    on_drop: (content, filename, metadata) => {
+      if (on_file_drop) return on_file_drop(content, filename, metadata)
+      try {
+        const structure = parse_structure_file(as_text(content), filename)
+        // an RDF needs a cell to normalise against, so a lattice-less molecule is rejected
+        if (is_crystal(structure)) drag_dropped = [...drag_dropped, structure]
+        else error_msg = `${filename} has no lattice or sites; cannot compute an RDF`
+      } catch (exc) {
+        error_msg = `Failed to process structure: ${to_error(exc).message}`
+      }
     },
-    on_error: (msg) => {
-      error_msg = msg
-    },
+    on_error: (msg) => (error_msg = msg),
     set_loading: (val) => {
       loading = val
-      if (val) [error_msg, dragover] = [undefined, false]
+      if (val) error_msg = undefined
     },
   })
-
-  const set_dragover = (over: boolean) => (dragover = over)
-  const drop_zone = {
-    ondrop: handle_drop,
-    ...drag_over_handlers({ allow: () => allow_file_drop, set_dragover }),
-  }
 
   const entries = $derived.by(() => {
     // Normalize structures prop (single, array, or dict) plus dropped files to labeled list
@@ -113,6 +109,17 @@
       },
     })),
   )
+  // Ideal-gas baseline g(r) = 1, ahead of any reference lines the caller adds
+  const baseline: RefLine = {
+    type: `horizontal`,
+    y: 1,
+    style: { color: `gray`, dash: `4`, opacity: 0.5 },
+    annotation: { text: `g(r) = 1`, position: `end`, side: `above`, color: `gray` },
+  }
+  const ref_lines = $derived<RefLine[]>([
+    ...(show_reference_line ? [baseline] : []),
+    ...(rest.ref_lines ?? []),
+  ])
 </script>
 
 <StatusMessage bind:message={error_msg} type="error" dismissible />
@@ -125,8 +132,7 @@
 {/if}
 
 {#if series.length === 0}
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class={[`empty-drop`, dragover && `dragover`]} {...drop_zone}>
+  <div class="empty-drop" {@attach drop_zone}>
     <StatusMessage
       message={allow_file_drop
         ? `Drag and drop structure files here to visualize RDFs`
@@ -140,19 +146,13 @@
     bind:show_controls
     bind:controls_open
     {series}
+    {ref_lines}
     x_axis={{ label: `r (Å)`, range: [0, max_r], ...x_axis }}
     y_axis={{ label: `g(r)`, range: [0, max_g * 1.05], ...y_axis }}
     styles={{ show_lines: true, show_points: false }}
-    class={[rest.class, dragover && `dragover`]}
     style={rest.style ?? `height: 400px;`}
-    {...drop_zone}
+    {@attach drop_zone}
   >
-    {#snippet user_content({ width, y_scale_fn, pad })}
-      {#if show_reference_line}
-        <BaselineLine {width} {pad} y_value={y_scale_fn(1)} label="g(r) = 1" />
-      {/if}
-    {/snippet}
-
     {@render children?.({ drag_dropped })}
   </ScatterPlot>
 {/if}
@@ -172,16 +172,16 @@
     margin-bottom: 0.5em;
     background: #f0f0f0;
     border-radius: 4px;
-  }
-  button {
-    margin-left: 1em;
-    padding: 0.25em 0.75em;
-    background: #e0e0e0;
-    border: 1px solid #ccc;
-    border-radius: 3px;
-    cursor: pointer;
-  }
-  button:hover {
-    background: #d0d0d0;
+    button {
+      margin-left: 1em;
+      padding: 0.25em 0.75em;
+      background: #e0e0e0;
+      border: 1px solid #ccc;
+      border-radius: 3px;
+      cursor: pointer;
+      &:hover {
+        background: #d0d0d0;
+      }
+    }
   }
 </style>

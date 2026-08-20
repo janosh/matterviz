@@ -66,7 +66,11 @@
 
   <div class="demo-controls">
     <EnumSelect label="Strategy" options={strategies} bind:value={single_strategy} />
-    <EnumSelect label="Split Mode" options={COORDINATION_SPLIT_MODES} bind:value={single_split_mode} />
+    <EnumSelect
+      label="Split Mode"
+      options={COORDINATION_SPLIT_MODES}
+      bind:value={single_split_mode}
+    />
   </div>
 
   <StructurePicker bind:selected={single_id} />
@@ -92,7 +96,11 @@
 
   <div class="demo-controls">
     <EnumSelect label="Strategy" options={strategies} bind:value={multi_strategy} />
-    <EnumSelect label="Split Mode" options={COORDINATION_SPLIT_MODES} bind:value={multi_split_mode} />
+    <EnumSelect
+      label="Split Mode"
+      options={COORDINATION_SPLIT_MODES}
+      bind:value={multi_split_mode}
+    />
   </div>
 
   <StructurePicker bind:selected={selected_ids} />

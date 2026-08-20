@@ -29,7 +29,7 @@
 import type { Vec3 } from '$lib/math'
 import { is_finite_vec3_like } from '$lib/math'
 import type { AnyStructure } from '$lib/structure'
-import { parse_any_structure } from '$lib/structure/parse'
+import { parse_structure_file } from '$lib/structure/parse'
 import { count_xyz_frames, iter_xyz_frames } from '$lib/trajectory/helpers'
 import { build_xyz_frame, parse_xyz_comment_metadata } from '$lib/trajectory/parse/xyz'
 import type { NebImage, ReactionPath } from './index'
@@ -70,7 +70,7 @@ function parse_image(raw: unknown, context: string): NebImage {
   if (!is_record(raw.structure)) {
     throw new Error(`${context} is missing a "structure" object`)
   }
-  const structure = parse_any_structure(JSON.stringify(raw.structure), `${context}.json`)
+  const structure = parse_structure_file(JSON.stringify(raw.structure), `${context}.json`)
   const forces = parse_forces(raw.forces, context)
   if (forces && forces.length !== structure.sites.length) {
     throw new Error(
@@ -238,7 +238,7 @@ export function parse_dropped_paths(files: DroppedFile[]): Record<string, Reacti
       paths[filename] = parse_xyz_reaction_path(content, filename)
       continue
     }
-    const structure = parse_any_structure(content, filename)
+    const structure = parse_structure_file(content, filename)
     loose.push({
       structure,
       // content is trimmed like parse_xyz_reaction_path does it, else a leading blank

@@ -5,6 +5,7 @@ import { to_structure_entries } from '$lib'
 import type { StructureEntry, StructureInput } from '$lib'
 import { calc_coordination_nums, CoordinationBarPlot } from '$lib/coordination'
 import type { Molecule } from '$lib/structure'
+import { calc_structure_coordination } from '$lib/structure/atom-properties'
 import { tick } from 'svelte'
 import { describe, expect, test } from 'vitest'
 import { make_crystal, mount_sized } from '../setup'
@@ -45,15 +46,38 @@ test.each([
 })
 
 describe(`calc_coordination_nums`, () => {
-  test(`computes per-element coordination`, () => {
-    const result = calc_coordination_nums(simple_cubic, `electroneg_ratio`)
-    expect(result.sites).toHaveLength(4)
-    expect(result.cn_histogram.size).toBeGreaterThan(0)
-    expect(result.cn_by_element.size).toBe(2) // Na and Cl
-    for (const elem of [`Na`, `Cl`] as const) {
-      expect(result.cn_by_element.has(elem)).toBe(true)
-      expect(result.cn_histogram_by_element.has(elem)).toBe(true)
+  // Rocksalt: every ion is octahedrally coordinated by 6 counter-ions. Without image atoms a
+  // conventional-cell ion only sees the 3 partners inside the box, so the PBC-aware entry
+  // point (what the bar plot and the 3D viewer use) must restore the full 6.
+  test(`rocksalt gives CN 6 with counter-ion neighbours once images are included`, () => {
+    const rocksalt = make_crystal(5.64, [
+      [`Na`, [0, 0, 0]],
+      [`Na`, [0.5, 0.5, 0]],
+      [`Na`, [0.5, 0, 0.5]],
+      [`Na`, [0, 0.5, 0.5]],
+      [`Cl`, [0.5, 0, 0]],
+      [`Cl`, [0, 0.5, 0]],
+      [`Cl`, [0, 0, 0.5]],
+      [`Cl`, [0.5, 0.5, 0.5]],
+    ])
+    const bare = calc_coordination_nums(rocksalt, `electroneg_ratio`)
+    expect(bare.sites.map((site) => site.coordination_num)).toEqual(Array(8).fill(3))
+
+    const { sites, cn_by_element, cn_histogram, cn_histogram_by_element } =
+      calc_structure_coordination(rocksalt)
+    expect(sites.map((site) => site.coordination_num)).toEqual(Array(8).fill(6))
+    for (const { element, neighbor_elements } of sites) {
+      expect(neighbor_elements).toEqual(Array(6).fill(element === `Na` ? `Cl` : `Na`))
     }
+    expect([...cn_by_element]).toEqual([
+      [`Na`, [6, 6, 6, 6]],
+      [`Cl`, [6, 6, 6, 6]],
+    ])
+    expect([...cn_histogram]).toEqual([[6, 8]])
+    expect([...cn_histogram_by_element].map(([el, hist]) => [el, [...hist]])).toEqual([
+      [`Na`, [[6, 4]]],
+      [`Cl`, [[6, 4]]],
+    ])
   })
 
   test(`should handle structure with distant atoms`, () => {

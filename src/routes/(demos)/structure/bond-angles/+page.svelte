@@ -5,7 +5,7 @@
   import {
     BondAnglePlot,
     BOND_ANGLE_DEFAULT_BIN_WIDTH,
-    BOND_ANGLE_BOND_ANGLE_NORMALIZE_MODES,
+    BOND_ANGLE_NORMALIZE_MODES,
     BOND_ANGLE_SPLIT_MODES,
   } from '$lib/bond-angles'
   import FilePicker from '$lib/FilePicker.svelte'
@@ -50,7 +50,11 @@
 
   <div class="demo-controls">
     <EnumSelect label="Strategy" options={strategies} bind:value={single_strategy} />
-    <EnumSelect label="Split Mode" options={BOND_ANGLE_SPLIT_MODES} bind:value={single_split_mode} />
+    <EnumSelect
+      label="Split Mode"
+      options={BOND_ANGLE_SPLIT_MODES}
+      bind:value={single_split_mode}
+    />
     <label>
       Bin width:
       <input type="range" min="0.5" max="10" step="0.5" bind:value={bin_width} />
@@ -84,7 +88,11 @@
 
   <div class="demo-controls">
     <EnumSelect label="Strategy" options={strategies} bind:value={multi_strategy} />
-    <EnumSelect label="Normalization" options={BOND_ANGLE_NORMALIZE_MODES} bind:value={multi_normalize} />
+    <EnumSelect
+      label="Normalization"
+      options={BOND_ANGLE_NORMALIZE_MODES}
+      bind:value={multi_normalize}
+    />
   </div>
 
   <StructurePicker bind:selected={selected_ids} />

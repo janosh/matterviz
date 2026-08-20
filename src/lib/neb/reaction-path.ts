@@ -11,9 +11,8 @@
 // interpolated value as if it were a computed image is a common reporting error.
 
 import type { LatticeConverters, Matrix3x3, Vec3 } from '$lib/math'
-import { create_lattice_converters } from '$lib/math'
+import { create_lattice_converters, min_image_displacement } from '$lib/math'
 import type { AnyStructure } from '$lib/structure'
-import { displacement_pbc } from '$lib/structure/measure'
 import type { Pbc } from '$lib/structure/pbc'
 import type {
   EnergyReference,
@@ -76,26 +75,20 @@ export function assert_path(
   return images
 }
 
-// Cached lattice geometry so a whole path is walked with one matrix inversion.
-type PathGeometry = {
-  lattice_matrix: Matrix3x3 | null
-  converters?: LatticeConverters
-  pbc?: Pbc
-}
+// Cached lattice geometry so a whole path is walked with one matrix inversion; null means
+// raw Cartesian differences (no lattice, or `metric: cartesian`, which is only meaningful
+// when no atom crosses a cell boundary).
+type PathGeometry = { lattice: Matrix3x3; converters: LatticeConverters; pbc: Pbc } | null
 
 function path_geometry(
   reference: AnyStructure,
   options: PathMetricOptions = {},
 ): PathGeometry {
-  // `cartesian` deliberately drops the lattice so displacement_pbc falls through to
-  // raw subtraction — only meaningful when no atom crosses a cell boundary.
-  if (options.metric === `cartesian` || !(`lattice` in reference)) {
-    return { lattice_matrix: null }
-  }
-  const lattice_matrix = reference.lattice.matrix
+  if (options.metric === `cartesian` || !(`lattice` in reference)) return null
+  const lattice = reference.lattice.matrix
   return {
-    lattice_matrix,
-    converters: create_lattice_converters(lattice_matrix),
+    lattice,
+    converters: create_lattice_converters(lattice),
     pbc: options.pbc ?? reference.lattice.pbc,
   }
 }
@@ -112,10 +105,17 @@ function image_displacements(
         `reaction-path images must contain the same atoms in the same order`,
     )
   }
-  const { lattice_matrix, converters, pbc } = geometry
-  return from.sites.map((site, site_idx) =>
-    displacement_pbc(site.xyz, to.sites[site_idx].xyz, lattice_matrix, converters, pbc),
-  )
+  return from.sites.map(({ xyz }, site_idx) => {
+    const target = to.sites[site_idx].xyz
+    if (!geometry) return [target[0] - xyz[0], target[1] - xyz[1], target[2] - xyz[2]]
+    return min_image_displacement(
+      xyz,
+      target,
+      geometry.lattice,
+      geometry.converters,
+      geometry.pbc,
+    )
+  })
 }
 
 // Euclidean norm of a 3N vector held as one Vec3 per atom.

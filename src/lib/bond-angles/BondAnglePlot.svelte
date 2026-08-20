@@ -9,10 +9,10 @@
   import {
     bin_bond_angles,
     compute_bond_angles,
-    DEFAULT_BIN_WIDTH,
+    BOND_ANGLE_DEFAULT_BIN_WIDTH,
     MAX_BOND_ANGLE,
   } from './calc-bond-angles'
-  import type { NormalizeMode, SplitMode } from './index'
+  import type { BondAngleNormalizeMode, BondAngleSplitMode } from './index'
   import { type BondAngleMetadata, to_angle_bar_series } from './series'
 
   let {
@@ -20,7 +20,7 @@
     strategy = `electroneg_ratio`,
     split_mode = `by_triplet`,
     normalize = `counts`,
-    bin_width = DEFAULT_BIN_WIDTH,
+    bin_width = BOND_ANGLE_DEFAULT_BIN_WIDTH,
     center_elements,
     neighbor_elements,
     mode = $bindable(`grouped`),
@@ -30,8 +30,8 @@
     controls_open = $bindable(false),
     ...rest
   }: StructurePlotProps & {
-    split_mode?: SplitMode
-    normalize?: NormalizeMode
+    split_mode?: BondAngleSplitMode
+    normalize?: BondAngleNormalizeMode
     bin_width?: number
     center_elements?: readonly string[]
     neighbor_elements?: readonly string[]

@@ -415,7 +415,7 @@ const settle = async () => {
 // single settle() leaves it mid-sweep. The button re-enables once collecting AND the
 // downstream MsdPlot compute have both finished.
 const run_collect = async () => {
-  const button = document.querySelector<HTMLButtonElement>(`.msd-controls button`)
+  const button = document.querySelector<HTMLButtonElement>(`.trajectory-msd-controls button`)
   if (!button) throw new Error(`no compute button in the MSD pane`)
   button.click()
   for (let round = 0; round < 40; round++) {
@@ -518,91 +518,54 @@ describe(`MsdPlot`, () => {
 })
 
 describe(`TrajectoryMsdPane`, () => {
+  // Chrome (timestep seeding, stride normalisation, indexed warnings, clearing) is covered by
+  // tests/vitest/trajectory/TrajectoryAnalysisPane.test.svelte.ts; only MSD-specific wiring here
   const in_memory = make_drift_trajectory(20)
-  const lazy = { ...in_memory, total_frames: 500, is_indexed: true }
 
-  const mount_pane = (trajectory: TrajectoryType): Promise<string> =>
-    mount_and_read(TrajectoryMsdPane, { trajectory, pane_open: true })
-
-  const type_stride = async (raw_stride: string) => {
-    // the only whole-number input in the pane; the others step in fractions
-    const stride_input = document.querySelector<HTMLInputElement>(
-      `.msd-controls input[min='1'][step='1']`,
-    )
-    if (!stride_input) throw new Error(`no frame-stride input in the MSD pane`)
-    stride_input.value = raw_stride
-    stride_input.dispatchEvent(new Event(`input`))
-    await settle()
-  }
-
-  it.each([
-    [`in-memory trajectory`, in_memory, false],
-    [`indexed trajectory`, lazy, true],
-  ])(`warns only for an %s`, async (_label, trajectory, expects_warning) => {
-    const text = await mount_pane(trajectory)
-    expect(text).toContain(`Mean Squared Displacement`)
-    expect(text.includes(`of 500 frames are in memory`)).toBe(expects_warning)
-  })
-
-  it(`surfaces the lazy-loading error instead of computing over the loaded window`, async () => {
-    await mount_pane(lazy)
-    document.querySelector<HTMLButtonElement>(`.msd-controls button`)?.click()
-    await settle()
-    expect(document.body.textContent).toContain(`no frame_loader`)
-  })
+  const mount_pane = (props: ComponentProps<typeof TrajectoryMsdPane>): Promise<string> =>
+    mount_and_read(TrajectoryMsdPane, { pane_open: true, ...props })
 
   it(`does not claim raw bytes are unavailable for a source-independent loader`, async () => {
     const text = await mount_pane({
-      ...lazy,
-      frame_loader: {
-        requires_source: false,
-        get_total_frames: async () => 500,
-        build_frame_index: async () => [],
-        load_frame: async () => null,
-        extract_plot_metadata: async () => [],
-        stream_positions: async () => collect_msd_positions(make_drift_trajectory(500)),
+      trajectory: {
+        ...in_memory,
+        total_frames: 500,
+        is_indexed: true,
+        frame_loader: {
+          requires_source: false,
+          get_total_frames: async () => 500,
+          build_frame_index: async () => [],
+          load_frame: async () => null,
+          extract_plot_metadata: async () => [],
+          stream_positions: async () => collect_msd_positions(make_drift_trajectory(500)),
+        },
       },
     })
-
     expect(text).toContain(`MSD streams the full payload`)
     expect(text).not.toContain(`raw file bytes are unavailable`)
   })
 
-  // trajectory_total_frames throws here, and is_lazy/the stride suggestion both route
-  // through it, so an unguarded derived would take the whole pane down
-  it(`renders the pane when the frame count cannot be determined`, async () => {
-    const text = await mount_pane({ ...in_memory, is_indexed: true })
-    expect(text).toContain(`Mean Squared Displacement`)
-    expect(text).toContain(`reports no total_frames`)
-  })
-
-  // A fraction is the case that bit: `Math.max(1, stride)` passed 2.5 straight through to
-  // accumulate_positions, which rejects any non-integer stride. Cleared/zero input was
-  // already coerced to 1, so those rows only pin that behaviour against regressions.
-  it.each([``, `0`, `2.5`])(`normalises a frame stride of %j`, async (raw_stride) => {
-    await mount_pane(in_memory)
-    await type_stride(raw_stride)
-    const hint = document.querySelector(`.msd-controls p.hint`)?.textContent ?? ``
-    expect(hint).not.toContain(`NaN`)
-    // stride 2.5 floors to 2, everything invalid falls back to 1
-    expect(hint).toContain(`${raw_stride === `2.5` ? 10 : 20} frames`)
-  })
-
-  // ...and the stride the hint advertises has to be the one collection actually uses,
-  // else accumulate_positions rejects the fraction outright
-  it(`collects with a floored stride rather than rejecting a fractional one`, async () => {
-    await mount_pane(in_memory)
-    await type_stride(`2.5`)
+  // The pane's dt is per COLLECTED frame: source dt × stride must reach the Einstein fit's units
+  it(`carries the seeded timestep and stride into the diffusion units`, async () => {
+    await mount_pane({ trajectory: in_memory, default_dt: 2, default_time_unit: `fs` })
+    const stride_input = document.querySelector<HTMLInputElement>(
+      `.trajectory-msd-controls input[min='1'][step='1']`,
+    )
+    if (!stride_input) throw new Error(`no frame-stride input in the MSD pane`)
+    stride_input.value = `2`
+    stride_input.dispatchEvent(new Event(`input`))
     await run_collect()
-    expect(document.body.textContent).not.toContain(`must be a positive integer`)
-    expect(document.body.textContent).toContain(`1 in 2 frames`)
+    const text = document.body.textContent ?? ``
+    expect(text).toContain(`4 fs per collected frame`)
+    expect(text).toContain(`Å²/fs`)
+    expect(text).toContain(`1 in 2 frames`)
   })
 
   // Same defect MsdPlot had: clearing only `positions` leaves its effect early-returning,
   // so the old curves stay up and the message area never shows the failure
   it(`drops stale curves when a recollect fails`, async () => {
     const trajectory = { ...make_drift_trajectory(20) }
-    await mount_pane(trajectory)
+    await mount_pane({ trajectory })
     await run_collect()
     expect(document.body.textContent).toContain(`R²`)
     // mutated in place so the trajectory-swap effect (which compares by reference, and

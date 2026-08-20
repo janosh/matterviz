@@ -9,6 +9,8 @@ import { is_supported_trajectory_signal_shape } from './helpers'
 
 export * from './analysis'
 export { default as Trajectory } from './Trajectory.svelte'
+export type * from './analysis-pane'
+export { default as TrajectoryAnalysisPane } from './TrajectoryAnalysisPane.svelte'
 export { default as TrajectoryDataInspectorPane } from './TrajectoryDataInspectorPane.svelte'
 export { default as TrajectoryError } from './TrajectoryError.svelte'
 export { default as TrajectoryExportPane } from './TrajectoryExportPane.svelte'

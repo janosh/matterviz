@@ -5,7 +5,7 @@
   import { normalize_show_controls } from '$lib/controls'
   import type { ShowControlsProp } from '$lib/controls'
   import { StatusMessage } from '$lib/feedback'
-  import { as_text, create_file_drop_handler, drag_over_handlers } from '$lib/io'
+  import { as_text, file_drop_zone } from '$lib/io'
   import { format_num } from '$lib/labels'
   import { FullscreenButton } from '$lib/layout'
   import PaneDivider from '$lib/layout/PaneDivider.svelte'
@@ -86,7 +86,6 @@
   } = $props()
 
   let dropped_paths = $state(new SvelteMap<string, ReactionPath>())
-  let dragover = $state(false)
   let controls_height = $state(0)
   let controls_config = $derived(normalize_show_controls(show_controls))
 
@@ -127,7 +126,7 @@
     if (active_image_idx !== image_idx) active_image_idx = image_idx
   })
 
-  const handle_drop = create_file_drop_handler({
+  const drop_zone = file_drop_zone({
     allow: () => allow_file_drop,
     on_drop: (content, filename) => {
       try {
@@ -141,19 +140,11 @@
         error_msg = `${filename}: ${to_error(exc).message}`
       }
     },
-    on_error: (msg) => {
-      error_msg = msg
-    },
+    on_error: (msg) => (error_msg = msg),
     set_loading: (loading) => {
-      if (loading) [error_msg, dragover] = [undefined, false]
+      if (loading) error_msg = undefined
     },
   })
-
-  const set_dragover = (over: boolean) => (dragover = over)
-  const drop_zone = {
-    ondrop: handle_drop,
-    ...drag_over_handlers({ allow: () => allow_file_drop, set_dragover }),
-  }
 
   // Energy of the shown image on the same reference as the plot's y axis
   const shown_energy = $derived(
@@ -180,10 +171,10 @@
 </script>
 
 <div
-  {...drop_zone}
   {...rest}
   bind:this={wrapper}
-  class={[`neb-viewer sequence-viewer`, dragover && `dragover`, rest.class]}
+  class={[`neb-viewer sequence-viewer`, rest.class]}
+  {@attach drop_zone}
 >
   <StatusMessage bind:message={error_msg} type="error" dismissible />
 
