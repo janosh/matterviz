@@ -633,6 +633,7 @@ describe(`clean_series`, () => {
       {
         x,
         y,
+        raw_y: x.map((val) => val * 4),
         metadata: x.map((val) => ({ id: val })),
         color_values: x.map((val) => val * 2),
         size_values: x.map((val) => val * 3),
@@ -644,12 +645,14 @@ describe(`clean_series`, () => {
     )
     // All arrays should have same length
     expect(result.series.y).toHaveLength(result.series.x.length)
+    expect(result.series.raw_y).toHaveLength(result.series.x.length)
     expect((result.series.metadata as { id: number }[])?.length).toBe(result.series.x.length)
     expect(result.series.color_values?.length).toBe(result.series.x.length)
     expect(result.series.size_values?.length).toBe(result.series.x.length)
     // Metadata should not contain id=50 (the outlier)
     const ids = (result.series.metadata as { id: number }[]).map((meta) => meta.id)
     expect(ids).not.toContain(50)
+    expect(result.series.raw_y).not.toContain(200)
   })
 })
 

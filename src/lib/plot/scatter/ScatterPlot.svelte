@@ -1365,6 +1365,7 @@
       series_idx,
       x_formatted: format_value_or_num(x, active_x_config.format),
       y_formatted: format_value_or_num(y, active_y_config.format),
+      raw_y: hovered_series.raw_y?.[point.point_idx],
       color_value: color_value ?? null,
       color_bar: {
         value: color_value ?? null,

@@ -2,7 +2,7 @@
 // detection, smoothing (moving average, Savitzky-Golay) and local (MAD-based) outlier removal.
 // Pure numeric helpers with no plot/series dependencies; orchestration lives in ./data-cleaning.
 
-import { median as d3_median } from 'd3-array'
+import { Adder, median as d3_median } from 'd3-array'
 
 // Oscillation detection weights (all default to 1.0)
 export interface OscillationWeights {
@@ -317,17 +317,21 @@ export function smooth_moving_average(values: readonly number[], window: number)
   if (Number.isNaN(window)) return [...values]
 
   const half_window = Math.floor(window / 2)
+  // Scaling by a power of two prevents same-sign windows from overflowing without
+  // introducing division roundoff into individual values.
+  const normalizer = 2 ** Math.ceil(Math.log2(2 * half_window + 1))
   const result = Array<number>(values.length)
   for (let idx = 0; idx < values.length; idx++) {
     const start = Math.max(0, idx - half_window)
     const end = Math.min(values.length, idx + half_window + 1)
-    let [sum, count] = [0, 0]
+    const sum = new Adder()
+    let count = 0
     for (let value_idx = start; value_idx < end; value_idx++) {
       if (!Number.isFinite(values[value_idx])) continue
-      sum += values[value_idx]
+      sum.add(values[value_idx] / normalizer)
       count++
     }
-    result[idx] = count > 0 ? sum / count : values[idx]
+    result[idx] = count > 0 ? (Number(sum) / count) * normalizer : values[idx]
   }
   return result
 }

@@ -242,20 +242,55 @@ describe(`generate_plot_series`, () => {
   })
 
   it(`renders long eager data as a smoothed trend over a faint peak-preserving trace`, () => {
-    const frames = Array.from({ length: 300 }, (_unused, frame_number) => ({
-      energy: frame_number === 150 ? 100 : Math.sin(frame_number),
+    const frames = Array.from({ length: 24_001 }, (_unused, frame_number) => ({
+      energy:
+        frame_number === 12_000
+          ? 100
+          : frame_number === 12_001
+            ? Infinity
+            : Math.sin(frame_number),
     }))
     const raw_series = generate_plot_series(create_trajectory(frames), test_extractor)
-    expect(raw_series[0].y).toHaveLength(300)
+    expect(raw_series[0].y).toHaveLength(24_001)
     expect(raw_series[0].line_underlays).toBeUndefined()
 
-    const [smoothed] = prepare_trajectory_scatter_series(raw_series, 64)
+    const [smoothed] = prepare_trajectory_scatter_series(raw_series, 500)
     const underlay = smoothed.line_underlays?.[0]
-    if (!underlay) throw new Error(`Expected a raw line underlay`)
+    const raw_y = smoothed.raw_y
+    if (!underlay || !raw_y) throw new Error(`Expected aligned raw trajectory data`)
 
-    expect([smoothed.x.length, underlay.x.length]).toEqual([64, 64])
+    expect([smoothed.x.length, raw_y.length, underlay.x.length]).toEqual([500, 500, 500])
+    expect(smoothed.x).toEqual(underlay.x)
+    expect(raw_y).toEqual(underlay.y)
     expect(Math.max(...smoothed.y)).toBeLessThan(20)
     expect(Math.max(...underlay.y)).toBe(100)
+    expect(raw_y).toEqual(smoothed.x.map((x) => raw_series[0].y[x]))
+
+    const [resampled] = prepare_trajectory_scatter_series([smoothed], 250)
+    const resampled_underlay = resampled.line_underlays?.[0]
+    if (!resampled_underlay || !resampled.raw_y) {
+      throw new Error(`Expected resampled raw trajectory data`)
+    }
+    expect(resampled.raw_y).toEqual(resampled_underlay.y)
+    expect(Math.max(...resampled_underlay.y)).toBe(100)
+
+    const duplicate_x = {
+      x: [0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5],
+      y: [0, 20, -5, 9, 2, 50, -10, 7, 3, 40, -1, 11],
+    }
+    const [once_sampled] = prepare_trajectory_scatter_series([duplicate_x], 8)
+    const [twice_sampled] = prepare_trajectory_scatter_series([once_sampled], 4)
+    expect({ x: twice_sampled.x, raw_y: twice_sampled.raw_y }).toEqual({
+      x: [0, 2, 3, 5],
+      raw_y: [0, 50, -10, 11],
+    })
+
+    const large_values = Array(10_000).fill(1e306)
+    const [large_smoothed] = prepare_trajectory_scatter_series(
+      [{ x: large_values.map((_value, idx) => idx), y: large_values }],
+      64,
+    )
+    expect(large_smoothed.y).toEqual(Array(64).fill(1e306))
   })
 
   it.each([Number.NaN, Number.POSITIVE_INFINITY, 1, 0, -1])(

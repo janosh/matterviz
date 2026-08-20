@@ -1,6 +1,6 @@
-import { ConvexHull2D } from '$lib/convex-hull'
+import { ConvexHull, ConvexHull2D, ConvexHull3D, ConvexHull4D } from '$lib/convex-hull'
 import type { PhaseData } from '$lib/convex-hull/types'
-import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
+import { type Component, type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { doc_query, mount_sized } from '../setup'
 import ConvexHullSelectionHarness from './ConvexHullSelectionHarness.svelte'
@@ -82,6 +82,62 @@ describe(`convex hull replacement state`, () => {
     })
     vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue(canvas_context)
   })
+
+  test.each([
+    [`automatic`, ConvexHull],
+    [`2D`, ConvexHull2D],
+    [`3D`, ConvexHull3D],
+    [`4D`, ConvexHull4D],
+  ] as [string, Component][])(
+    `renders a useful missing-entries error from the %s component`,
+    async (_name, component) => {
+      for (const hidden of [false, true]) {
+        const target = document.createElement(`div`)
+        document.body.append(target)
+        track_component(
+          mount(component, {
+            target,
+            props: {
+              class: `consumer-class`,
+              hidden,
+              style: `--hull-height: 300px`,
+            },
+          }),
+        )
+        await tick()
+
+        expect(target.textContent).toContain(`Missing convex hull data`)
+        expect(target.textContent).toContain(
+          `Provide convex hull data through the entries prop.`,
+        )
+        const empty_state = target.querySelector<HTMLElement>(`.empty-state`)
+        expect(empty_state?.hidden).toBe(hidden)
+        expect(empty_state?.classList.contains(`consumer-class`)).toBe(true)
+        expect(empty_state?.style.getPropertyValue(`--hull-height`)).toBe(`300px`)
+        expect(
+          target.querySelector(`.convex-hull-2d, .convex-hull-3d, .convex-hull-4d, canvas`),
+        ).toBeNull()
+      }
+    },
+  )
+
+  test.each([
+    [`automatic`, `2d`, true, `.convex-hull-2d`],
+    [`2D`, `2d`, false, `.convex-hull-2d`],
+    [`3D`, `3d`, false, `.convex-hull-3d`],
+    [`4D`, `4d`, false, `.convex-hull-4d`],
+  ] as const)(
+    `recovers the %s component when entries arrive`,
+    async (_name, dim, use_wrapper, plot_selector) => {
+      await mount_harness({ dim, start_missing: true, use_wrapper })
+      expect(document.body.textContent).toContain(`Missing convex hull data`)
+
+      button(`load-convex-entries`).click()
+      await tick()
+      expect(document.body.textContent).not.toContain(`Missing convex hull data`)
+      expect(document.body.querySelector(plot_selector)).not.toBeNull()
+    },
+  )
 
   test.each([
     [{ dim: `2d` }, `none`],

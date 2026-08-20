@@ -37,6 +37,7 @@
   import { create_canvas_interactions } from './canvas-interactions.svelte'
   import ConvexHullChrome from './ConvexHullChrome.svelte'
   import GasPressureControls from './GasPressureControls.svelte'
+  import MissingConvexHullData from './MissingConvexHullData.svelte'
   import * as helpers from './helpers'
   import { create_hull_data_pipeline } from './hull-state.svelte'
   import type { BaseConvexHullProps, ConvexHullGizmoOptions, Hull3DProps } from './index'
@@ -54,7 +55,7 @@
   import { MAGNETIC_ORDERING_CATEGORY } from './types'
 
   let {
-    entries,
+    entries: entries_prop,
     controls = {},
     config = {},
     show_controls,
@@ -111,6 +112,7 @@
     Hull3DProps & {
       highlight_style?: HighlightStyle
     } = $props()
+  const entries = $derived(entries_prop ?? [])
 
   const merged_controls = $derived({ ...default_controls, ...controls })
   const controls_config = $derived(normalize_show_controls(show_controls))
@@ -963,167 +965,175 @@
 </script>
 
 <svelte:document
-  onmousemove={interactions.handle_mouse_move}
-  onmouseup={interactions.handle_mouse_up}
+  onmousemove={entries_prop === undefined ? undefined : interactions.handle_mouse_move}
+  onmouseup={entries_prop === undefined ? undefined : interactions.handle_mouse_up}
 />
 
-<div
-  {...rest}
-  class={[`convex-hull-3d`, rest.class, { dragover: interactions.dragover }]}
-  style={`${style}; ${rest.style ?? ``}`}
-  data-has-selection={selected_entry !== null}
-  data-has-hover={interactions.hover_data !== null}
-  data-is-dragging={interactions.is_dragging}
-  bind:this={wrapper}
-  role="application"
-  tabindex="-1"
-  {...interactions.wrapper_handlers}
-  aria-label="Ternary convex hull visualization"
->
-  {@render children?.({
-    stable_entries,
-    unstable_entries,
-    highlighted_entries,
-    selected_entry,
-  })}
-  <h3 style="position: absolute; left: 1em; top: 1ex; margin: 0; font-weight: 500">
-    {@html sanitize_html(merged_controls.title || phase_stats?.chemical_system || ``)}
-  </h3>
-  <canvas
-    bind:this={canvas}
-    tabindex="0"
-    aria-label={merged_controls.title || phase_stats?.chemical_system || `3D Convex Hull`}
-    {...interactions.canvas_handlers}
-  ></canvas>
-  <canvas bind:this={overlay_canvas} class="pulse-overlay" aria-hidden="true"></canvas>
-
-  {#if entries.length === 0}
-    <Spinner
-      text="Loading data..."
-      style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center"
-    />
-  {/if}
-
-  <!-- Formation Energy Color Bar (bottom-left corner) -->
-  {#if color_mode === `energy` && plot_entries.length > 0}
-    <ColorBar
-      title="Energy above hull (eV/atom)"
-      range={helpers.hull_distance_range(plot_entries)}
-      scale={color_scale}
-      wrapper_style="position: absolute; bottom: 16px; left: 1em; width: 200px;"
-      bar_style="height: 12px;"
-      title_style="margin-bottom: 4px;"
-    />
-  {/if}
-
-  <!-- Formation Energy Faces Color Bar (bottom-right corner) -->
-  <!-- Only show for uniform/formation_energy modes where face color relates to E_form -->
-  {#if plot_entries.length > 0 && show_hull_faces && (hull_face_color_mode === `uniform` || hull_face_color_mode === `formation_energy`)}
-    <ColorBar
-      title="Formation energy (eV/atom)"
-      scale={{ fn: e_form_color_scale_fn, domain: e_form_range }}
-      range={e_form_range}
-      wrapper_style="position: absolute; bottom: 16px; right: 1em; width: 200px;"
-      bar_style="height: 12px;"
-      title_style="margin-bottom: 4px;"
-    />
-  {/if}
-
-  <!-- Toolbar + tooltip/copy-feedback/drag/structure-popup chrome -->
-  <ConvexHullChrome
-    {interactions}
-    {hull_data}
-    {controls_config}
-    {reset_all}
-    reset_title="Reset view and settings"
-    {enable_info_pane}
-    {phase_stats}
-    {label_threshold}
-    bind:fullscreen
-    {fullscreen_toggle}
-    fullscreen_bg_css_var="--hull-3d-bg-fullscreen"
-    on_fullscreen_change={() => {
-      camera.center_x = 0
-      camera.center_y = -50
-    }}
-    {camera}
-    {merged_controls}
-    {stable_entries}
-    {unstable_entries}
-    {get_point_color}
-    {merged_highlight_style}
-    {is_highlighted}
-    {tooltip}
-    {selected_entry}
-    bind:show_hull_faces
-    bind:hull_face_color
-    bind:hull_face_opacity
-    bind:hull_face_color_mode
-    bind:info_pane_open
-    bind:controls_open
-    bind:color_mode
-    bind:color_scale
-    bind:show_stable
-    bind:show_unstable
-    {entry_category}
-    bind:hidden_categories
-    bind:show_stable_labels
-    bind:show_unstable_labels
-    bind:max_hull_dist_show_phases
-    bind:max_hull_dist_show_labels
-    bind:energy_source_mode
+{#if entries_prop === undefined}
+  <MissingConvexHullData
+    {...rest}
+    style={`${style}; height: var(--hull-height, 500px); ${rest.style ?? ``}`}
   />
+{:else}
+  <div
+    {...rest}
+    hidden={rest.hidden}
+    class={[`convex-hull-3d`, rest.class, { dragover: interactions.dragover }]}
+    style={`${style}; ${rest.style ?? ``}`}
+    data-has-selection={selected_entry !== null}
+    data-has-hover={interactions.hover_data !== null}
+    data-is-dragging={interactions.is_dragging}
+    bind:this={wrapper}
+    role="application"
+    tabindex="-1"
+    {...interactions.wrapper_handlers}
+    aria-label="Ternary convex hull visualization"
+  >
+    {@render children?.({
+      stable_entries,
+      unstable_entries,
+      highlighted_entries,
+      selected_entry,
+    })}
+    <h3 style="position: absolute; left: 1em; top: 1ex; margin: 0; font-weight: 500">
+      {@html sanitize_html(merged_controls.title || phase_stats?.chemical_system || ``)}
+    </h3>
+    <canvas
+      bind:this={canvas}
+      tabindex="0"
+      aria-label={merged_controls.title || phase_stats?.chemical_system || `3D Convex Hull`}
+      {...interactions.canvas_handlers}
+    ></canvas>
+    <canvas bind:this={overlay_canvas} class="pulse-overlay" aria-hidden="true"></canvas>
 
-  <!-- Orientation gizmo (configurable placement, default top-right) -->
-  {#if gizmo && webgpu_available()}
-    <div class={[`gizmo-wrapper`, controls_config.class]} data-placement={gizmo_placement}>
-      <Canvas createRenderer={create_renderer}>
-        <T.PerspectiveCamera
-          makeDefault
-          bind:ref={gizmo_cam_ref}
-          position={gizmo_cam_state.position}
-          up={gizmo_cam_state.up}
-          fov={50}
-        >
-          <extras.OrbitControls
-            bind:ref={gizmo_orbit_ref}
-            enableRotate={false}
-            enableZoom={false}
-            enablePan={false}
+    {#if entries.length === 0}
+      <Spinner
+        text="Loading data..."
+        style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center"
+      />
+    {/if}
+
+    <!-- Formation Energy Color Bar (bottom-left corner) -->
+    {#if color_mode === `energy` && plot_entries.length > 0}
+      <ColorBar
+        title="Energy above hull (eV/atom)"
+        range={helpers.hull_distance_range(plot_entries)}
+        scale={color_scale}
+        wrapper_style="position: absolute; bottom: 16px; left: 1em; width: 200px;"
+        bar_style="height: 12px;"
+        title_style="margin-bottom: 4px;"
+      />
+    {/if}
+
+    <!-- Formation Energy Faces Color Bar (bottom-right corner) -->
+    <!-- Only show for uniform/formation_energy modes where face color relates to E_form -->
+    {#if plot_entries.length > 0 && show_hull_faces && (hull_face_color_mode === `uniform` || hull_face_color_mode === `formation_energy`)}
+      <ColorBar
+        title="Formation energy (eV/atom)"
+        scale={{ fn: e_form_color_scale_fn, domain: e_form_range }}
+        range={e_form_range}
+        wrapper_style="position: absolute; bottom: 16px; right: 1em; width: 200px;"
+        bar_style="height: 12px;"
+        title_style="margin-bottom: 4px;"
+      />
+    {/if}
+
+    <!-- Toolbar + tooltip/copy-feedback/drag/structure-popup chrome -->
+    <ConvexHullChrome
+      {interactions}
+      {hull_data}
+      {controls_config}
+      {reset_all}
+      reset_title="Reset view and settings"
+      {enable_info_pane}
+      {phase_stats}
+      {label_threshold}
+      bind:fullscreen
+      {fullscreen_toggle}
+      fullscreen_bg_css_var="--hull-3d-bg-fullscreen"
+      on_fullscreen_change={() => {
+        camera.center_x = 0
+        camera.center_y = -50
+      }}
+      {camera}
+      {merged_controls}
+      {stable_entries}
+      {unstable_entries}
+      {get_point_color}
+      {merged_highlight_style}
+      {is_highlighted}
+      {tooltip}
+      {selected_entry}
+      bind:show_hull_faces
+      bind:hull_face_color
+      bind:hull_face_opacity
+      bind:hull_face_color_mode
+      bind:info_pane_open
+      bind:controls_open
+      bind:color_mode
+      bind:color_scale
+      bind:show_stable
+      bind:show_unstable
+      {entry_category}
+      bind:hidden_categories
+      bind:show_stable_labels
+      bind:show_unstable_labels
+      bind:max_hull_dist_show_phases
+      bind:max_hull_dist_show_labels
+      bind:energy_source_mode
+    />
+
+    <!-- Orientation gizmo (configurable placement, default top-right) -->
+    {#if gizmo && webgpu_available()}
+      <div class={[`gizmo-wrapper`, controls_config.class]} data-placement={gizmo_placement}>
+        <Canvas createRenderer={create_renderer}>
+          <T.PerspectiveCamera
+            makeDefault
+            bind:ref={gizmo_cam_ref}
+            position={gizmo_cam_state.position}
+            up={gizmo_cam_state.up}
+            fov={50}
           >
-            <Gizmo
-              {...gizmo_props}
-              onstart={() => (gizmo_active = true)}
-              onchange={sync_gizmo_to_camera}
-              onend={() => {
-                sync_gizmo_to_camera()
-                gizmo_active = false
-              }}
-            />
-          </extras.OrbitControls>
-        </T.PerspectiveCamera>
-      </Canvas>
-    </div>
-  {/if}
+            <extras.OrbitControls
+              bind:ref={gizmo_orbit_ref}
+              enableRotate={false}
+              enableZoom={false}
+              enablePan={false}
+            >
+              <Gizmo
+                {...gizmo_props}
+                onstart={() => (gizmo_active = true)}
+                onchange={sync_gizmo_to_camera}
+                onend={() => {
+                  sync_gizmo_to_camera()
+                  gizmo_active = false
+                }}
+              />
+            </extras.OrbitControls>
+          </T.PerspectiveCamera>
+        </Canvas>
+      </div>
+    {/if}
 
-  {#if (has_temp_data && temperature !== undefined) || (gas_analysis.has_gas_dependent_elements && merged_gas_config)}
-    <div class="right-controls">
-      {#if has_temp_data && temperature !== undefined}
-        <TemperatureSlider
-          available_temperatures={hull_data.available_temperatures}
-          bind:temperature
-        />
-      {/if}
-      {#if gas_analysis.has_gas_dependent_elements && merged_gas_config}
-        <GasPressureControls
-          config={merged_gas_config}
-          bind:pressures={gas_pressures}
-          temperature={temperature ?? 300}
-        />
-      {/if}
-    </div>
-  {/if}
-</div>
+    {#if (has_temp_data && temperature !== undefined) || (gas_analysis.has_gas_dependent_elements && merged_gas_config)}
+      <div class="right-controls">
+        {#if has_temp_data && temperature !== undefined}
+          <TemperatureSlider
+            available_temperatures={hull_data.available_temperatures}
+            bind:temperature
+          />
+        {/if}
+        {#if gas_analysis.has_gas_dependent_elements && merged_gas_config}
+          <GasPressureControls
+            config={merged_gas_config}
+            bind:pressures={gas_pressures}
+            temperature={temperature ?? 300}
+          />
+        {/if}
+      </div>
+    {/if}
+  </div>
+{/if}
 
 <style>
   .convex-hull-3d {

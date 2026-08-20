@@ -1,5 +1,6 @@
 <script lang="ts">
   import { DEFAULT_PNG_DPI } from '$lib/constants'
+  import EmptyState from '$lib/EmptyState.svelte'
   import { create_file_drop_handler } from '$lib/io/file-drop'
   import { format_num } from '$lib/labels'
   import { FullscreenButton } from '$lib/layout'
@@ -48,7 +49,7 @@
   } from './utils'
 
   let {
-    data,
+    data: data_prop,
     config = $bindable({}),
     on_phase_hover,
     fullscreen = $bindable(false),
@@ -117,6 +118,14 @@
     children?: Snippet<[{ width: number; height: number; fullscreen: boolean }]>
   } = $props()
 
+  // Keep calculations safe while the template renders the missing-data state.
+  const missing_data_placeholder: PhaseDiagramData = {
+    components: [``, ``],
+    temperature_range: [0, 1],
+    regions: [],
+    boundaries: [],
+  }
+
   // Shared icon/toggle styling for controls and export panes
   const pane_icon_style = `width: 14px; height: 14px`
   const pane_toggle_props = { style: `padding: 0` }
@@ -142,11 +151,12 @@
 
   // Clear data_override when source data changes (e.g. new SVG dropped or data prop updated)
   $effect(() => {
-    if (diagram_input || data) data_override = null
+    if (diagram_input || data_prop) data_override = null
   })
 
   // Use editor override first (clears rebuilt_data path), then rebuilt, then data prop
-  const effective_data = $derived(data_override ?? rebuilt_data ?? data)
+  const source_data = $derived(data_override ?? rebuilt_data ?? data_prop)
+  const effective_data = $derived(source_data ?? missing_data_placeholder)
 
   // Handle SVG file drop directly on the component. The shared handler reads the file,
   // expands dropped folders and serializes overlapping drops; only the SVG filter and the
@@ -505,11 +515,18 @@
   bind:clientWidth={width}
   bind:clientHeight={height}
   role="img"
-  aria-label="{component_a}-{component_b} binary phase diagram"
+  aria-label={source_data === undefined
+    ? `Missing phase diagram data. Provide diagram data through the data prop.`
+    : `${component_a}-${component_b} binary phase diagram`}
   ondrop={handle_svg_drop}
   ondragover={(ev) => ev.preventDefault()}
 >
-  {#if width > 0 && height > 0}
+  {#if source_data === undefined}
+    <EmptyState>
+      <h3>Missing phase diagram data</h3>
+      <p>Provide diagram data through the <code>data</code> prop.</p>
+    </EmptyState>
+  {:else if width > 0 && height > 0}
     <!-- Header controls -->
     <div class="header-controls">
       {#if show_controls}

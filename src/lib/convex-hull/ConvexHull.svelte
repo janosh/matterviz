@@ -7,6 +7,7 @@
   import ConvexHull2D from './ConvexHull2D.svelte'
   import ConvexHull3D from './ConvexHull3D.svelte'
   import ConvexHull4D from './ConvexHull4D.svelte'
+  import MissingConvexHullData from './MissingConvexHullData.svelte'
   import type { BaseConvexHullProps, Hull3DProps } from './index'
 
   // Union type combining all possible props from 2D, 3D, and 4D components
@@ -19,7 +20,7 @@
     }
 
   let {
-    entries,
+    entries: entries_prop,
     // bindable props not part of rest because Svelte 5 doesn't support spreading bindable props.
     fullscreen = $bindable(false),
     wrapper = $bindable(),
@@ -49,6 +50,7 @@
     gas_pressures = $bindable({}),
     ...rest
   }: ConvexHullProps = $props()
+  const entries = $derived(entries_prop ?? [])
 
   // Lightweight element extraction - count unique elements, stripping oxidation states
   // (e.g. "V4+" -> "V") to avoid counting the same element multiple times
@@ -98,7 +100,13 @@
   ) as Component<ConvexHullProps> | null
 </script>
 
-{#if ConvexHullComponent}
+{#if entries_prop === undefined}
+  <MissingConvexHullData
+    class={[`convex-hull-error`, rest.class]}
+    hidden={rest.hidden}
+    style={rest.style}
+  />
+{:else if ConvexHullComponent}
   <ConvexHullComponent
     {entries}
     {...rest}

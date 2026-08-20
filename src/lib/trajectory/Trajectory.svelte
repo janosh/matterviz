@@ -2040,10 +2040,15 @@
             hover_config={trajectory_hover_config}
             legend={trajectory_scatter_legend}
           >
-            {#snippet tooltip({ x, y, metadata, label }: ScatterHandlerProps)}
-              {@const formatted_y = typeof y === `number` ? format_num(y) : y}
+            {#snippet tooltip({ x, y, raw_y, metadata, label }: ScatterHandlerProps)}
               {x_axis.label}: {format_num(x, `~g`)}<br />
-              {@html sanitize_html(metadata?.series_label || label || `Value`)}: {formatted_y}
+              {@html sanitize_html(metadata?.series_label || label || `Value`)}
+              {#if typeof raw_y === `number`}
+                <br />Raw: {format_num(raw_y)}
+                <br />Smoothed: {format_num(y)}
+              {:else}
+                : {format_num(y)}
+              {/if}
             {/snippet}
           </ScatterPlot>
         {:else if display_mode === `histogram` || display_mode === `structure+histogram`}

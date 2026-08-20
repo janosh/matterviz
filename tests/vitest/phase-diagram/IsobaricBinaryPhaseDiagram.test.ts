@@ -2,8 +2,9 @@ import { format_hover_info_text, IsobaricBinaryPhaseDiagram } from '$lib/phase-d
 import type { LeverRuleResult, PhaseDiagramData } from '$lib/phase-diagram/types'
 import { type ComponentProps, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { create_drop_event, mount_sized } from '../setup'
+import { create_drop_event, doc_query, mount_sized } from '../setup'
 import { create_hover_info } from './fixtures/test-data'
+import IsobaricBinaryPhaseDiagramHarness from './IsobaricBinaryPhaseDiagramHarness.svelte'
 
 // Simple eutectic-style system: Liquid on top, two-phase field below. With a 500x400
 // mount and default margins (l=60 r=25 t=25 b=50) the plot area spans x: [60, 475],
@@ -86,6 +87,42 @@ const hover_at = async (
 }
 
 describe(`IsobaricBinaryPhaseDiagram`, () => {
+  test(`renders a useful error while the required data prop is missing`, async () => {
+    const wrapper = await mount_sized(
+      IsobaricBinaryPhaseDiagram,
+      {},
+      { selector: `.binary-phase-diagram`, width, height },
+    )
+
+    expect(wrapper.textContent).toContain(`Missing phase diagram data`)
+    expect(wrapper.textContent).toContain(`Provide diagram data through the data prop.`)
+    expect(wrapper.getAttribute(`aria-label`)).toBe(
+      `Missing phase diagram data. Provide diagram data through the data prop.`,
+    )
+    expect(wrapper.querySelector(`svg`)).toBeNull()
+  })
+
+  test(`recovers across missing, loaded, cleared, and reloaded data`, async () => {
+    const wrapper = await mount_sized(
+      IsobaricBinaryPhaseDiagramHarness,
+      { loaded_data: eutectic },
+      { selector: `.binary-phase-diagram`, width, height },
+    )
+    const click = async (test_id: string) => {
+      doc_query<HTMLButtonElement>(`[data-testid="${test_id}"]`).click()
+      await tick()
+    }
+
+    expect(wrapper.textContent).toContain(`Missing phase diagram data`)
+    await click(`load-phase-data`)
+    expect(wrapper.querySelector(`svg`)).not.toBeNull()
+    await click(`clear-phase-data`)
+    expect(wrapper.textContent).toContain(`Missing phase diagram data`)
+    expect(wrapper.querySelector(`svg`)).toBeNull()
+    await click(`load-phase-data`)
+    expect(wrapper.querySelector(`svg`)).not.toBeNull()
+  })
+
   test(`renders regions, boundaries, labels, special points and axes`, async () => {
     const wrapper = await mount_diagram()
     expect(wrapper.querySelectorAll(`.phase-regions path`)).toHaveLength(2)

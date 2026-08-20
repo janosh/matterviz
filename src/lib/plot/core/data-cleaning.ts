@@ -236,6 +236,7 @@ export function clean_series<T extends DataSeries>(
   // Always work with copies initially
   let x_arr = [...series.x]
   let y_arr = [...series.y]
+  let raw_y = series.raw_y ? [...series.raw_y] : undefined
   let metadata = series.metadata
   let color_values = series.color_values ? [...series.color_values] : undefined
   let size_values = series.size_values ? [...series.size_values] : undefined
@@ -245,6 +246,7 @@ export function clean_series<T extends DataSeries>(
   const apply_filter = (kept: number[], removed_count: number) => {
     x_arr = filter_by_indices(x_arr, kept)
     y_arr = filter_by_indices(y_arr, kept)
+    if (raw_y) raw_y = filter_by_indices(raw_y, kept)
     metadata = sync_metadata(metadata, kept)
     if (color_values) color_values = filter_by_indices(color_values, kept)
     if (size_values) size_values = filter_by_indices(size_values, kept)
@@ -300,6 +302,7 @@ export function clean_series<T extends DataSeries>(
   const result_series = in_place ? series : { ...series }
   result_series.x = x_arr
   result_series.y = y_arr
+  if (raw_y) result_series.raw_y = raw_y
   if (metadata !== undefined) result_series.metadata = metadata
   if (color_values) result_series.color_values = color_values
   if (size_values) result_series.size_values = size_values

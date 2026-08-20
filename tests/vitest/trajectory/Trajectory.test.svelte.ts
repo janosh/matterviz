@@ -137,6 +137,12 @@ const mount_traj = (props: Record<string, unknown>) => {
   onTestFinished(() => unmount(component).finally(() => target.remove()))
   return target
 }
+const next_animation_frame = (): Promise<number> => new Promise(requestAnimationFrame)
+const dispatch_mouse = (
+  target: EventTarget,
+  type: string,
+  init: MouseEventInit = {},
+): boolean => target.dispatchEvent(new MouseEvent(type, { bubbles: true, ...init }))
 const press_key = (target: Element, key: string, init: KeyboardEventInit = {}) => {
   const event = new KeyboardEvent(`keydown`, {
     key,
@@ -369,6 +375,48 @@ describe(`Trajectory`, () => {
   })
 
   test.each([
+    { name: `finite`, raw_value: 100, expected_raw: `100`, expected_smoothed: `9.09` },
+    { name: `NaN`, raw_value: NaN, expected_raw: `NaN`, expected_smoothed: `0` },
+    {
+      name: `infinite`,
+      raw_value: Infinity,
+      expected_raw: `Infinity`,
+      expected_smoothed: `0`,
+    },
+  ])(
+    `labels $name raw and smoothed values in long-trajectory tooltips`,
+    async ({ raw_value, expected_raw, expected_smoothed }) => {
+      mount_traj({
+        trajectory: energy_traj(
+          raw_value,
+          ...Array<number>(500).fill(0),
+          1,
+          ...Array<number>(499).fill(0),
+        ),
+        display_mode: `scatter`,
+        show_controls: false,
+      })
+      await flush_render()
+      const plot = doc_query(`.scatter`)
+      const svg = doc_query<SVGSVGElement>(`.scatter svg[role="application"]`)
+      const clip_rect = doc_query<SVGRectElement>(`.scatter defs clipPath rect`)
+      await resize_element(plot, 600, 400)
+      Object.defineProperty(svg, `getBoundingClientRect`, {
+        value: () => DOMRect.fromRect({ width: 600, height: 400 }),
+      })
+      const client_x = Number(clip_rect.getAttribute(`x`))
+      const client_y = Number(clip_rect.getAttribute(`y`))
+      dispatch_mouse(svg, `mousemove`, { clientX: client_x, clientY: client_y })
+      await next_animation_frame()
+      await tick()
+
+      const tooltip_text = plot.querySelector(`.plot-tooltip`)?.textContent
+      expect(tooltip_text).toContain(`Raw: ${expected_raw}`)
+      expect(tooltip_text).toContain(`Smoothed: ${expected_smoothed}`)
+    },
+  )
+
+  test.each([
     [`scatter`, `.scatter`],
     [`histogram`, `.histogram`],
   ] as const)(
@@ -417,19 +465,16 @@ describe(`Trajectory`, () => {
 
     const far_y = marker_y < 150 ? 290 : 10
     const plot_svg = plot.querySelector(`svg[role="application"]`)
+    if (!plot_svg) throw new Error(`Trajectory scatter plot SVG not found`)
     const dispatch_plot_event = (type: `click` | `mousemove`) =>
-      plot_svg?.dispatchEvent(
-        new MouseEvent(type, {
-          bubbles: true,
-          clientX: marker_x,
-          clientY: far_y,
-        }),
-      )
+      dispatch_mouse(plot_svg, type, { clientX: marker_x, clientY: far_y })
     dispatch_plot_event(`mousemove`)
     expect(props.current_step_idx).toBe(0)
-    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    await next_animation_frame()
     await tick()
-    expect(plot.querySelector(`.plot-tooltip`)?.textContent).toContain(`Energy`)
+    const tooltip_text = plot.querySelector(`.plot-tooltip`)?.textContent
+    expect(tooltip_text).toContain(`Energy`)
+    expect(tooltip_text).not.toMatch(/Raw|Smoothed/)
 
     dispatch_plot_event(`click`)
     flushSync()
@@ -956,7 +1001,7 @@ describe(`Trajectory`, () => {
     }
     flushSync()
     expect(step_events).toHaveLength(events_before_scrub)
-    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    await next_animation_frame()
     expect(step_events.at(-1)).toMatchObject({
       step_idx: 1,
       frame_count: 3,

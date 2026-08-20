@@ -601,7 +601,7 @@ export function generate_streaming_plot_series(
   return assign_trajectory_axes(all_series, series_is_visible)
 }
 
-type PlotDataPoint = { x: number; y: number }
+type PlotDataPoint = { x: number; y: number; source_idx: number }
 
 export function prepare_trajectory_scatter_series(
   series: readonly DataSeries[],
@@ -613,29 +613,30 @@ export function prepare_trajectory_scatter_series(
   const limit = Math.floor(max_points)
   return series.map((data_series) => {
     if (data_series.x.length <= limit) return data_series
-
-    const downsample = (values: readonly number[]) =>
-      downsample_data_points(
-        data_series.x.map((x, point_idx) => ({ x, y: values[point_idx] })),
-        limit,
-      )
+    const source_raw_y = data_series.raw_y ?? data_series.y
     let window_size = Math.max(5, Math.round(data_series.x.length / 50))
     if (window_size % 2 === 0) window_size++
-    const smoothed_points = downsample(smooth_moving_average(data_series.y, window_size))
-    const raw_points = downsample(data_series.y)
+    const smoothed_y = smooth_moving_average(data_series.y, window_size)
+    const sampled_points = downsample_data_points(
+      data_series.x.map((x, source_idx) => ({ x, y: source_raw_y[source_idx], source_idx })),
+      limit,
+    )
+    const sampled_x = sampled_points.map((point) => point.x)
+    const sampled_raw_y = sampled_points.map((point) => point.y)
     const color = data_series.line_style?.stroke ?? `currentColor`
     return {
       ...data_series,
-      x: smoothed_points.map((point) => point.x),
-      y: smoothed_points.map((point) => point.y),
+      x: sampled_x,
+      y: sampled_points.map(({ source_idx }) => smoothed_y[source_idx]),
+      raw_y: sampled_raw_y,
       markers: `line`,
       metadata: Array.isArray(data_series.metadata)
         ? data_series.metadata[0]
         : data_series.metadata,
       line_underlays: [
         {
-          x: raw_points.map((point) => point.x),
-          y: raw_points.map((point) => point.y),
+          x: sampled_x,
+          y: sampled_raw_y,
           line_style: {
             stroke: `color-mix(in srgb, ${color} 18%, transparent)`,
             stroke_width: 1,
@@ -661,6 +662,7 @@ function downsample_data_points(data_points: PlotDataPoint[], limit: number): Pl
   const bucket_width = (data_points.length - 2) / (limit - 2)
   let anchor_idx = 0
   for (let bucket_idx = 0; bucket_idx < limit - 2; bucket_idx++) {
+    const anchor = data_points[anchor_idx]
     const average_start = Math.floor((bucket_idx + 1) * bucket_width) + 1
     const average_end = Math.min(
       Math.floor((bucket_idx + 2) * bucket_width) + 1,
@@ -668,33 +670,44 @@ function downsample_data_points(data_points: PlotDataPoint[], limit: number): Pl
     )
     let average_x = 0
     let average_y = 0
-    const average_count = average_end - average_start
+    let average_count = 0
     for (let point_idx = average_start; point_idx < average_end; point_idx++) {
-      average_x += data_points[point_idx].x
-      average_y += data_points[point_idx].y
+      const point = data_points[point_idx]
+      if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) continue
+      average_x += point.x
+      average_y += point.y
+      average_count++
     }
-    average_x /= average_count
-    average_y /= average_count
+    if (average_count > 0) {
+      average_x /= average_count
+      average_y /= average_count
+    } else {
+      average_x = Number.isFinite(anchor.x) ? anchor.x : 0
+      average_y = Number.isFinite(anchor.y) ? anchor.y : 0
+    }
 
     const bucket_start = Math.floor(bucket_idx * bucket_width) + 1
     const bucket_end = Math.min(
       Math.floor((bucket_idx + 1) * bucket_width) + 1,
       data_points.length - 1,
     )
-    const anchor = data_points[anchor_idx]
-    let selected_idx = bucket_start
+    const anchor_x = Number.isFinite(anchor.x) ? anchor.x : average_x
+    const anchor_y = Number.isFinite(anchor.y) ? anchor.y : average_y
+    let selected_idx = -1
     let max_area = -1
     for (let point_idx = bucket_start; point_idx < bucket_end; point_idx++) {
       const point = data_points[point_idx]
+      if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) continue
       const area = Math.abs(
-        (anchor.x - average_x) * (point.y - anchor.y) -
-          (anchor.x - point.x) * (average_y - anchor.y),
+        (anchor_x - average_x) * (point.y - anchor_y) -
+          (anchor_x - point.x) * (average_y - anchor_y),
       )
       if (area > max_area) {
         max_area = area
         selected_idx = point_idx
       }
     }
+    if (selected_idx < 0) selected_idx = bucket_start
     sampled.push(data_points[selected_idx])
     anchor_idx = selected_idx
   }

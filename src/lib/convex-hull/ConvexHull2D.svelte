@@ -27,6 +27,7 @@
   import ConvexHullInfoPane from './ConvexHullInfoPane.svelte'
   import ConvexHullTooltip from './ConvexHullTooltip.svelte'
   import GasPressureControls from './GasPressureControls.svelte'
+  import MissingConvexHullData from './MissingConvexHullData.svelte'
   import * as helpers from './helpers'
   import { create_hull_data_pipeline } from './hull-state.svelte'
   import type { BaseConvexHullProps } from './index'
@@ -39,7 +40,7 @@
 
   // Binary convex hull rendered as energy vs composition (x in [0, 1])
   let {
-    entries,
+    entries: entries_prop,
     controls = {},
     config = {},
     show_controls,
@@ -94,6 +95,7 @@
     x_axis?: AxisConfig
     y_axis?: AxisConfig
   } = $props()
+  const entries = $derived(entries_prop ?? [])
 
   const merged_controls = $derived({ ...default_controls, ...controls })
   const controls_config = $derived(normalize_show_controls(show_controls))
@@ -592,101 +594,109 @@
   <line y1={pad.t} y2={height - pad.b} {x1} x2={x1} {...stroke} />
   <line x1={pad.l} x2={width - pad.r} y1={y0} y2={y0} {...stroke} />
 {/snippet}
-{#key reset_counter}
-  <ScatterPlot
+{#if entries_prop === undefined}
+  <MissingConvexHullData
     {...rest}
-    class={[`convex-hull-2d`, rest.class, dragover && `dragover`]}
-    style={`${style}; ${rest.style ?? ``}`}
-    title={title ?? undefined}
-    data-has-selection={selected_entry !== null}
-    bind:wrapper
-    bind:fullscreen
-    role="application"
-    tabindex={-1}
-    onkeydown={handle_keydown}
-    {...drop_zone}
-    aria-label="Binary convex hull visualization"
-    series={scatter_series}
-    bind:display
-    show_controls={false}
-    fullscreen_toggle={false}
-    x_axis={{
-      label: elements.length === 2 ? `x in ${elements[0]}₁₋ₓ ${elements[1]}ₓ` : `x`,
-      range: x_domain,
-      ticks: 4,
-      ...x_axis,
-    }}
-    y_axis={{
-      label: `E<sub>form</sub> (eV/atom)`,
-      range: y_domain,
-      ticks: 4,
-      label_shift: { y: 15 },
-      ...y_axis,
-    }}
-    legend={null}
-    color_bar={{
-      title: `E<sub>above hull</sub> (eV/atom)`,
-      bar_style: `width: 220px; height: 16px;`,
-    }}
-    {tooltip}
-    {user_content}
-    header_controls={pd_header_controls}
-    selected_point={selected_scatter_point}
-    on_point_click={handle_point_click_internal}
-    on_point_hover={(data: ScatterHandlerEvent<ConvexHullEntry> | null) => {
-      if (!data) {
-        hover_data = null
-        on_point_hover?.(null)
-        return
-      }
-      const { metadata: entry, event } = data
-      hover_data = entry ? { entry, position: { x: event.clientX, y: event.clientY } } : null
-      on_point_hover?.(hover_data)
-    }}
-    padding={{ t: 30, b: 60, l: 60, r: 30 }}
-  >
-    {@render children?.({
-      stable_entries,
-      unstable_entries,
-      highlighted_entries,
-      selected_entry,
-    })}
-    <h3 style="position: absolute; left: 1em; top: 1ex; margin: 0">
-      {@html sanitize_html(merged_controls.title || phase_stats?.chemical_system || ``)}
-    </h3>
+    style={`${style}; height: var(--hull-height, 500px); ${rest.style ?? ``}`}
+  />
+{:else}
+  {#key reset_counter}
+    <ScatterPlot
+      {...rest}
+      hidden={rest.hidden}
+      class={[`convex-hull-2d`, rest.class, dragover && `dragover`]}
+      style={`${style}; ${rest.style ?? ``}`}
+      title={title ?? undefined}
+      data-has-selection={selected_entry !== null}
+      bind:wrapper
+      bind:fullscreen
+      role="application"
+      tabindex={-1}
+      onkeydown={handle_keydown}
+      {...drop_zone}
+      aria-label="Binary convex hull visualization"
+      series={scatter_series}
+      bind:display
+      show_controls={false}
+      fullscreen_toggle={false}
+      x_axis={{
+        label: elements.length === 2 ? `x in ${elements[0]}₁₋ₓ ${elements[1]}ₓ` : `x`,
+        range: x_domain,
+        ticks: 4,
+        ...x_axis,
+      }}
+      y_axis={{
+        label: `E<sub>form</sub> (eV/atom)`,
+        range: y_domain,
+        ticks: 4,
+        label_shift: { y: 15 },
+        ...y_axis,
+      }}
+      legend={null}
+      color_bar={{
+        title: `E<sub>above hull</sub> (eV/atom)`,
+        bar_style: `width: 220px; height: 16px;`,
+      }}
+      {tooltip}
+      {user_content}
+      header_controls={pd_header_controls}
+      selected_point={selected_scatter_point}
+      on_point_click={handle_point_click_internal}
+      on_point_hover={(data: ScatterHandlerEvent<ConvexHullEntry> | null) => {
+        if (!data) {
+          hover_data = null
+          on_point_hover?.(null)
+          return
+        }
+        const { metadata: entry, event } = data
+        hover_data = entry ? { entry, position: { x: event.clientX, y: event.clientY } } : null
+        on_point_hover?.(hover_data)
+      }}
+      padding={{ t: 30, b: 60, l: 60, r: 30 }}
+    >
+      {@render children?.({
+        stable_entries,
+        unstable_entries,
+        highlighted_entries,
+        selected_entry,
+      })}
+      <h3 style="position: absolute; left: 1em; top: 1ex; margin: 0">
+        {@html sanitize_html(merged_controls.title || phase_stats?.chemical_system || ``)}
+      </h3>
 
-    <ClickFeedback bind:visible={copy_feedback.visible} position={copy_feedback.position} />
-    <DragOverlay visible={dragover} message="Drop JSON file to load phase diagram data" />
+      <ClickFeedback bind:visible={copy_feedback.visible} position={copy_feedback.position} />
+      <DragOverlay visible={dragover} message="Drop JSON file to load phase diagram data" />
 
-    {#if hull_data.has_temp_data && temperature !== undefined}
-      <TemperatureSlider
-        available_temperatures={hull_data.available_temperatures}
-        bind:temperature
-      />
-    {/if}
+      {#if hull_data.has_temp_data && temperature !== undefined}
+        <TemperatureSlider
+          available_temperatures={hull_data.available_temperatures}
+          bind:temperature
+        />
+      {/if}
 
-    {#if hull_data.gas_analysis.has_gas_dependent_elements && merged_gas_config}
-      <GasPressureControls
-        config={merged_gas_config}
-        bind:pressures={gas_pressures}
-        temperature={temperature ?? 300}
-      />
-    {/if}
+      {#if hull_data.gas_analysis.has_gas_dependent_elements && merged_gas_config}
+        <GasPressureControls
+          config={merged_gas_config}
+          bind:pressures={gas_pressures}
+          temperature={temperature ?? 300}
+        />
+      {/if}
 
-    {#if structure_popup.open && structure_popup.structure}
-      <StructurePopup
-        structure={structure_popup.structure}
-        place_right={structure_popup.place_right}
-        stats={{
-          id: structure_popup.entry?.entry_id,
-          e_above_hull: structure_popup.entry?.e_above_hull,
-          e_form: structure_popup.entry?.e_form_per_atom,
-        }}
-        onclose={close_structure_popup}
-      />
-    {/if}
-  </ScatterPlot>
-{/key}
+      {#if structure_popup.open && structure_popup.structure}
+        <StructurePopup
+          structure={structure_popup.structure}
+          place_right={structure_popup.place_right}
+          stats={{
+            id: structure_popup.entry?.entry_id,
+            e_above_hull: structure_popup.entry?.e_above_hull,
+            e_form: structure_popup.entry?.e_form_per_atom,
+          }}
+          onclose={close_structure_popup}
+        />
+      {/if}
+    </ScatterPlot>
+  {/key}
+{/if}
 
 <style>
   :global(.convex-hull-2d:fullscreen) {

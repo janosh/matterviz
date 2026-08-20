@@ -151,6 +151,8 @@ export interface DataSeries<Metadata = Record<string, unknown>> {
   id?: string | number // Optional stable identifier for the series (used for keying)
   x: readonly number[]
   y: readonly number[]
+  // Original values for transformed series, exposed to hover handlers alongside y.
+  raw_y?: readonly number[]
   // Extra paths rendered behind the main line without becoming independent semantic series.
   line_underlays?: Pick<DataSeries<Metadata>, `x` | `y` | `line_style`>[]
   // Optional marker display type override for this specific series
@@ -227,6 +229,7 @@ export interface ScatterHandlerProps<
   cy: number
   x_formatted: string
   y_formatted: string
+  raw_y?: number
   color_value?: number | null
   color_bar?: {
     value?: number | null
