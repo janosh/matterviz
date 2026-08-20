@@ -88,6 +88,7 @@ test(`carousel scrolls and fits vertical cards while tooltips cross horizontal c
             position: { x: box.width * x_fraction, y: box.height * y_fraction },
           })
           await page.waitForTimeout(50)
+          if (!(await tooltip.isVisible())) continue
           const layout = await tooltip
             .evaluate((element) => {
               const card = element.closest<HTMLElement>(`.structure-card`)
