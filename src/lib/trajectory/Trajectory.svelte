@@ -2042,12 +2042,11 @@
           >
             {#snippet tooltip({ x, y, raw_y, metadata, label }: ScatterHandlerProps)}
               {x_axis.label}: {format_num(x, `~g`)}<br />
-              {@html sanitize_html(metadata?.series_label || label || `Value`)}
+              {@html sanitize_html(metadata?.series_label || label || `Value`)}: {format_num(
+                y,
+              )}
               {#if typeof raw_y === `number`}
-                <br />Raw: {format_num(raw_y)}
-                <br />Smoothed: {format_num(y)}
-              {:else}
-                : {format_num(y)}
+                <small style="opacity: 0.65">&nbsp;(raw: {format_num(raw_y)})</small>
               {/if}
             {/snippet}
           </ScatterPlot>

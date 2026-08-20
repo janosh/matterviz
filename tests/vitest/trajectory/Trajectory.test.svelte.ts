@@ -410,9 +410,12 @@ describe(`Trajectory`, () => {
       await next_animation_frame()
       await tick()
 
-      const tooltip_text = plot.querySelector(`.plot-tooltip`)?.textContent
-      expect(tooltip_text).toContain(`Raw: ${expected_raw}`)
-      expect(tooltip_text).toContain(`Smoothed: ${expected_smoothed}`)
+      const tooltip = plot.querySelector<HTMLElement>(`.plot-tooltip`)
+      const raw_annotation = tooltip?.querySelector<HTMLElement>(`small`)
+      expect(tooltip?.querySelectorAll(`br`)).toHaveLength(1)
+      expect(tooltip?.textContent).toContain(`Energy (eV): ${expected_smoothed}`)
+      expect(raw_annotation?.textContent?.trim()).toBe(`(raw: ${expected_raw})`)
+      expect(raw_annotation?.style.opacity).toBe(`0.65`)
     },
   )
 
