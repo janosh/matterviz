@@ -182,20 +182,21 @@ describe(`ScatterPlot3D smoke tests`, () => {
     })
     const first_hidden = () =>
       container.querySelector<HTMLElement>(`.legend-item`)?.classList.contains(`hidden`)
+    // the legend renders once the threlte canvas has mounted, so poll rather than flush
+    await vi.waitFor(() => expect(container.querySelector(`.legend-item`)).not.toBeNull())
     container.querySelector<HTMLElement>(`.legend-item`)?.click()
-    flushSync()
-    expect(first_hidden()).toBe(true)
+    await vi.waitFor(() => expect(first_hidden()).toBe(true))
     expect(state.series[0].visible).toBeUndefined()
 
     // parent rebuilds the array (anywidget trait sync, notebook re-render, ...)
     state.series = make_series()
     flushSync()
-    expect(first_hidden()).toBe(true)
+    await vi.waitFor(() => expect(first_hidden()).toBe(true))
 
     // parent explicitly shows it again: the user's override yields
     state.series = make_series({ visible: true })
     flushSync()
-    expect(first_hidden()).toBe(false)
+    await vi.waitFor(() => expect(first_hidden()).toBe(false))
   })
 
   test(`browser exit updates the fullscreen binding`, async () => {
