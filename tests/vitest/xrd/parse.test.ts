@@ -46,25 +46,64 @@ describe(`parse_xy_file`, () => {
     expect(parse_xy_file(`10 0\n20 0`).y).toEqual([0, 0]) // all-zero: no division by zero
   })
 
+  // Deterministic pseudo-random counts, so x reverses on roughly every other row
+  const noise = (row: number) => (row * 7919) % 100
+
   test.each([
     [`empty content`, ``, /no rows with two numeric columns/],
     [`only comments`, `# a\n# b`, /no rows with two numeric columns/],
-    // ten counts per row read as columns: x is the first count of each row, reversing ~50%
+    // five counts per row read as columns: x is the first count of each row
     [
       `a block of counts`,
-      Array.from({ length: 20 }, (_, row) => `${(row * 7919) % 100} 2 3 4 5`).join(`\n`),
-      /reverses direction in \d+ of 19 steps/,
+      Array.from({ length: 20 }, (_, row) => `${noise(row)} 2 3 4 5`).join(`\n`),
+      /column 1 reverses direction in 3 of 19 steps.* look like a block of bare counts, 5 per row/,
+    ],
+    // a tiny block still alternates: 2 reversals in 4 steps is more than one glitch
+    [
+      `a five-row block of counts`,
+      `10 1 29\n500 1 2 3 4\n1 2 3 4 5\n500 1 2 3 4\n1 2 3 4 5`,
+      /reverses direction in 2 of 4 steps/,
+    ],
+    [
+      `two columns of (intensity, error) pairs`,
+      Array.from({ length: 30 }, (_, row) => `${noise(row)} ${Math.sqrt(noise(row))}`).join(
+        `\n`,
+      ),
+      /column 1 reverses direction in \d+ of 29 steps.*the 30 rows look like \(intensity, error\) pairs/,
     ],
   ])(`throws on %s`, (_name, content, pattern) => {
     expect(() => parse_xy_file(content)).toThrow(pattern)
   })
 
-  test(`tolerates the range restart of a stitched multi-range scan`, () => {
-    const first_range = Array.from({ length: 12 }, (_, idx) => `${30 + idx} 1`)
-    const second_range = Array.from({ length: 12 }, (_, idx) => `${40.5 + idx} 2`)
-    const result = parse_xy_file([...first_range, ...second_range].join(`\n`))
-    expect(result.x).toHaveLength(24)
-    expect(result.x[12]).toBe(40.5)
+  test.each([
+    // two ranges, the second restarting below the end of the first
+    [
+      `a stitched two-range scan`,
+      [
+        ...Array.from({ length: 12 }, (_, idx) => 30 + idx),
+        ...Array.from({ length: 12 }, (_, idx) => 40.5 + idx),
+      ],
+    ],
+    // three ranges: 2 restarts in 35 steps are within one per ten
+    [
+      `a stitched three-range scan`,
+      [
+        ...Array.from({ length: 12 }, (_, idx) => 10 + idx),
+        ...Array.from({ length: 12 }, (_, idx) => 21.5 + idx),
+        ...Array.from({ length: 12 }, (_, idx) => 33 + idx),
+      ],
+    ],
+    // one reversal is a glitch whatever the length: 1 of 8 steps is 12.5%
+    [`a 9-point scan with one glitch`, [10, 11, 12, 13, 15, 14, 16, 17, 18]],
+    [`a descending scan with one glitch`, [18, 17, 16, 14, 15, 13, 12, 11, 10]],
+    // the first and last angle coincide, so the direction has to come from the majority
+    [
+      `a scan whose restart lands on its first angle`,
+      [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 10],
+    ],
+  ])(`tolerates %s`, (_name, angles) => {
+    const result = parse_xy_file(angles.map((angle, idx) => `${angle} ${idx + 1}`).join(`\n`))
+    expect(result.x).toEqual(angles)
   })
 
   test.each([
@@ -221,32 +260,56 @@ describe(`parse_gsas_file`, () => {
 })
 
 describe(`parse_bruker_raw_file (RAW1.01)`, () => {
-  // Build a RAW1.01 file: 712-byte file header, 304-byte range header (+ supplementary
-  // bytes), then float32 counts
-  const make_raw101 = (counts: number[], start = 10, step = 0.5, supplementary = 40) => {
-    const buffer = new ArrayBuffer(712 + 304 + supplementary + 4 * counts.length)
-    const bytes = new Uint8Array(buffer)
-    const view = new DataView(buffer)
-    bytes.set(new TextEncoder().encode(`RAW1.01`), 0)
-    view.setUint32(12, 1, true) // one range
-    view.setUint32(712, 304, true) // range header length
-    view.setUint32(716, counts.length, true)
-    view.setFloat64(712 + 16, start, true)
-    view.setFloat64(712 + 176, step, true)
-    view.setUint32(712 + 256, supplementary, true)
-    counts.forEach((val, idx) =>
-      view.setFloat32(712 + 304 + supplementary + 4 * idx, val, true),
-    )
-    return buffer
+  // RAW1.01 byte layout (little-endian), as in the BT86.raw / Cu3Au-1.raw fixtures:
+  //   file header, 712 bytes: `RAW1.01` at 0, uint32 range count at 12
+  //   per range, one block after another:
+  //     range header, 304 bytes: uint32 header length (304) at 0, uint32 step count at 4,
+  //       float64 start 2θ at 16, float64 step size at 176, uint32 supplementary size at 256
+  //     supplementary header bytes (the size just read)
+  //     float32 counts, one per step
+  type Range = { counts: number[]; start: number; step: number; supplementary?: number }
+  const range_block = ({ counts, start, step, supplementary = 0 }: Range) => {
+    const block = new Uint8Array(304 + supplementary + 4 * counts.length)
+    const view = new DataView(block.buffer)
+    view.setUint32(0, 304, true)
+    view.setUint32(4, counts.length, true)
+    view.setFloat64(16, start, true)
+    view.setFloat64(176, step, true)
+    view.setUint32(256, supplementary, true)
+    counts.forEach((val, idx) => view.setFloat32(304 + supplementary + 4 * idx, val, true))
+    return block
   }
+  const make_raw101 = (ranges: Range[]) => {
+    const blocks = ranges.map(range_block)
+    const bytes = new Uint8Array(712 + blocks.reduce((sum, block) => sum + block.length, 0))
+    bytes.set(new TextEncoder().encode(`RAW1.01`), 0)
+    new DataView(bytes.buffer).setUint32(12, ranges.length, true)
+    let offset = 712
+    for (const block of blocks) {
+      bytes.set(block, offset)
+      offset += block.length
+    }
+    return bytes.buffer
+  }
+  const one_range = (counts: number[], start = 10, step = 0.5, supplementary = 40) =>
+    make_raw101([{ counts, start, step, supplementary }])
 
   test.each([0, 40])(
     `decodes the range header with %i supplementary bytes`,
     (supplementary) => {
-      const result = parse_bruker_raw_file(make_raw101([100, 200, 300], 10, 10, supplementary))
+      const result = parse_bruker_raw_file(one_range([100, 200, 300], 10, 10, supplementary))
       expect(rounded(result)).toEqual(THREE_POINTS)
     },
   )
+
+  test(`concatenates every range in 2theta order, each on its own grid`, () => {
+    // stored high range first, with different step sizes and supplementary header sizes
+    const high = { counts: [50, 400], start: 40, step: 10, supplementary: 24 }
+    const low = { counts: [100, 200, 300], start: 10, step: 10 }
+    const result = parse_bruker_raw_file(make_raw101([high, low]))
+    expect(result.x).toEqual([10, 20, 30, 40, 50])
+    expect(result.y).toEqual([25, 50, 75, 12.5, 100])
+  })
 
   test.each([
     [
@@ -267,8 +330,26 @@ describe(`parse_bruker_raw_file (RAW1.01)`, () => {
     ],
     [
       `a range that overruns the file`,
-      () => make_raw101([1, 2, 3]).slice(0, 712 + 304 + 40 + 8),
-      /announces 3 float32 counts .* but the file ends/,
+      () => one_range([1, 2, 3]).slice(0, 712 + 304 + 40 + 8),
+      /range 1 of 1 announces 3 float32 counts .* but the file ends/,
+    ],
+    [
+      `a second range header cut off by the end of the file`,
+      () => {
+        const buffer = one_range([1, 2, 3])
+        new DataView(buffer).setUint32(12, 2, true)
+        return buffer
+      },
+      /range 2 of 2 header at byte 1068 runs past the end of the 1068-byte file/,
+    ],
+    [
+      `a second range with a zero step size`,
+      () =>
+        make_raw101([
+          { counts: [1], start: 10, step: 1 },
+          { counts: [1], start: 20, step: 0 },
+        ]),
+      /range 2 of 2 header has steps=1, start=20, step=0/,
     ],
   ])(`throws on %s`, (_name, make_buffer, pattern) => {
     expect(() => parse_bruker_raw_file(make_buffer())).toThrow(pattern)

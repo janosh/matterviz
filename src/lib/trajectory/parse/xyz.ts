@@ -6,12 +6,13 @@ import type { Pbc } from '$lib/structure/pbc'
 import {
   calc_force_stats,
   create_trajectory_frame,
-  iter_xyz_frames,
+  index_xyz_frames,
   parse_float_token,
+  type XyzFrameIndex,
   type XyzFrameSpec,
 } from '$lib/trajectory/helpers'
 import type { TrajectoryFrame } from '$lib/trajectory/index'
-import type { ParsedTrajectory, WarningCollector } from './shared'
+import type { ParsedTrajectory, WarnFn, WarningCollector } from './shared'
 
 export type ExtxyzColumn = { offset: number; ncols: number; type: string }
 
@@ -337,47 +338,48 @@ export function build_xyz_frame(
   )
 }
 
-// Only a frame that runs to the file's very last line can be half-written (a writer still
-// appending was cut mid-way through its final atom line); the same damage anywhere else is
-// corruption. iter_xyz_frames already skips a tail that is missing whole lines.
-export const may_be_torn_xyz_tail = (
+// A writer still appending leaves one of two tails: a frame whose atom block runs past the end
+// of the file (index_xyz_frames reports it as `torn`) or a final frame whose last atom line,
+// the file's last line, is half-written. Either is removed from the index with a warning. Any
+// other defect in a complete final frame is corruption and throws like in every other frame.
+export function drop_torn_xyz_tail(
   lines: string[],
-  frames: XyzFrameSpec[],
-  frame_idx: number,
-): boolean =>
-  frame_idx > 0 &&
-  frame_idx === frames.length - 1 &&
-  frames[frame_idx].start + frames[frame_idx].num_atoms + 2 === lines.length
+  { specs, torn }: XyzFrameIndex,
+  warn: WarnFn,
+): void {
+  const drop = (frame_idx: number, spec: XyzFrameSpec, reason: string) =>
+    warn(`Dropping truncated final XYZ frame ${frame_idx} (line ${spec.start + 1}): ${reason}`)
+  if (torn) {
+    const atom_lines = Math.max(0, lines.length - torn.start - 2)
+    return drop(specs.length, torn, `${atom_lines} of ${torn.num_atoms} atom lines`)
+  }
+  const last = specs.at(-1)
+  if (!last || last.start + last.num_atoms + 2 !== lines.length) return
+  const { pos_col, min_cols } = parse_extxyz_columns(last.comment)
+  const parts = lines[lines.length - 1].trim().split(/\s+/)
+  const complete =
+    parts.length >= min_cols &&
+    [0, 1, 2].every((axis) => Number.isFinite(parse_float_token(parts[pos_col + axis])))
+  if (complete) return
+  specs.pop()
+  drop(specs.length, last, `partial atom line ${lines.length} "${lines[lines.length - 1]}"`)
+}
 
 export function parse_xyz_trajectory(
   content: string,
   collector: WarningCollector,
 ): ParsedTrajectory {
   const lines = content.trim().split(/\r?\n/)
-  const specs = Array.from(iter_xyz_frames(lines))
-  const frames: TrajectoryFrame[] = []
-
-  for (const [frame_idx, spec] of specs.entries()) {
-    try {
-      frames.push(
-        build_xyz_frame(
-          lines,
-          spec,
-          {
-            frame_label: `frame ${frame_idx} (line ${spec.start + 1})`,
-            default_step: frame_idx,
-          },
-          collector,
-        ),
-      )
-    } catch (error) {
-      if (!may_be_torn_xyz_tail(lines, specs, frame_idx)) throw error
-      collector.warn(
-        `Dropping truncated final XYZ frame ${frame_idx} (line ${spec.start + 1})`,
-        error,
-      )
-    }
-  }
+  const index = index_xyz_frames(lines)
+  drop_torn_xyz_tail(lines, index, collector.warn)
+  const frames = index.specs.map((spec, frame_idx) =>
+    build_xyz_frame(
+      lines,
+      spec,
+      { frame_label: `frame ${frame_idx} (line ${spec.start + 1})`, default_step: frame_idx },
+      collector,
+    ),
+  )
   if (frames.length === 0) throw new Error(`No XYZ frames found`)
   return { format: `xyz`, frames, metadata: {} }
 }

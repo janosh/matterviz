@@ -104,12 +104,15 @@ function subsample_preserve_peaks(
 }
 
 // Column data: every data row has at least two leading numbers (2θ, intensity[, error]).
-// Comment lines start with #, ; or !. 2θ has to run one way: a stitched multi-range scan may
-// restart a few times, but a block of bare counts misread as columns reverses on roughly every
-// other row, so more than 10% reversals means this was never a two-column scan.
+// Comment lines start with #, ; or !. 2θ has to run one way (the majority direction): a
+// stitched multi-range scan restarts once per range and a glitch reverses one step, so one
+// reversal is always tolerated and longer scans one per ten steps. A column that is not 2θ,
+// i.e. bare counts misread as columns or (intensity, error) pairs, reverses on roughly every
+// other step whatever the file length.
 export function parse_xy_file(content: string, format = `XY`): XrdPattern {
   const x_values: number[] = []
   const y_values: number[] = []
+  let max_cols = 0
   for (const line of content.split(/\r?\n/)) {
     const trimmed = line.trim()
     if (!trimmed || /^[#;!]/.test(trimmed)) continue
@@ -117,18 +120,26 @@ export function parse_xy_file(content: string, format = `XY`): XrdPattern {
     if (values.length < 2) continue
     x_values.push(values[0])
     y_values.push(values[1])
+    max_cols = Math.max(max_cols, values.length)
   }
   if (x_values.length === 0) {
     throw new Error(`${format}: no rows with two numeric columns (2theta, intensity)`)
   }
-  const direction = Math.sign(x_values[x_values.length - 1] - x_values[0])
-  let reversals = 0
+  let ups = 0
+  let downs = 0
   for (let idx = 1; idx < x_values.length; idx++) {
-    if (Math.sign(x_values[idx] - x_values[idx - 1]) === -direction) reversals++
+    const delta = x_values[idx] - x_values[idx - 1]
+    if (delta > 0) ups++
+    else if (delta < 0) downs++
   }
-  if (reversals > 0.1 * (x_values.length - 1)) {
+  const reversals = Math.min(ups, downs)
+  if (reversals > Math.max(1, 0.1 * (ups + downs))) {
+    const shape =
+      max_cols >= 4
+        ? `a block of bare counts, ${max_cols} per row`
+        : `(intensity, error) pairs`
     throw new Error(
-      `${format}: 2theta reverses direction in ${reversals} of ${x_values.length - 1} steps; not a two-column scan`,
+      `${format}: column 1 reverses direction in ${reversals} of ${ups + downs} steps, so it is not 2theta; the ${x_values.length} rows look like ${shape}`,
     )
   }
   return finalize(x_values, y_values, format)
@@ -311,9 +322,10 @@ export function parse_gsas_file(content: string): XrdPattern {
 }
 
 // Bruker DIFFRAC RAW1.01 layout (little-endian), as documented by xylib: a 712-byte file
-// header (range count at byte 12), then per range a 304-byte range header — step count at
-// byte 4, start 2θ (double) at 16, step size (double) at 176, supplementary header size at
-// 256 — followed by float32 counts. Only the first range is read.
+// header (range count at byte 12), then per range a range header — its own length (304) at
+// byte 0, step count at 4, start 2θ (double) at 16, step size (double) at 176, supplementary
+// header size at 256 — followed by that range's float32 counts; the next range header starts
+// right after them. Ranges are concatenated in 2θ order.
 export function parse_bruker_raw_file(data: ArrayBuffer): XrdPattern {
   const bytes = new Uint8Array(data)
   const magic = String.fromCharCode(...bytes.slice(0, 7))
@@ -326,32 +338,48 @@ export function parse_bruker_raw_file(data: ArrayBuffer): XrdPattern {
     )
   }
   const view = new DataView(data)
-  const range_offset = 712 // the first range header follows the file header
-  if (bytes.length < range_offset + 304) {
+  if (bytes.length < 712 + 304) {
     throw new Error(
       `Bruker RAW1.01: file is ${bytes.length} bytes, shorter than the 1016-byte headers`,
     )
   }
-  const header_len = view.getUint32(range_offset, true)
-  const steps = view.getUint32(range_offset + 4, true)
-  const start = view.getFloat64(range_offset + 16, true)
-  const step = view.getFloat64(range_offset + 176, true)
-  const supplementary = view.getUint32(range_offset + 256, true)
-  const data_offset = range_offset + header_len + supplementary
-  if (!(steps > 0) || !(step > 0) || !Number.isFinite(start)) {
-    throw new Error(
-      `Bruker RAW1.01: range header has steps=${steps}, start=${start}, step=${step}`,
+  const range_count = view.getUint32(12, true)
+  if (range_count < 1) throw new Error(`Bruker RAW1.01: file header announces 0 ranges`)
+  const ranges: { start: number; x: number[]; y: number[] }[] = []
+  let range_offset = 712 // the first range header follows the file header
+  for (let range_idx = 1; range_idx <= range_count; range_idx++) {
+    const label = `Bruker RAW1.01: range ${range_idx} of ${range_count}`
+    if (range_offset + 304 > bytes.length) {
+      throw new Error(
+        `${label} header at byte ${range_offset} runs past the end of the ${bytes.length}-byte file`,
+      )
+    }
+    const header_len = view.getUint32(range_offset, true)
+    const steps = view.getUint32(range_offset + 4, true)
+    const start = view.getFloat64(range_offset + 16, true)
+    const step = view.getFloat64(range_offset + 176, true)
+    const supplementary = view.getUint32(range_offset + 256, true)
+    const data_offset = range_offset + header_len + supplementary
+    if (!(steps > 0) || !(step > 0) || !Number.isFinite(start)) {
+      throw new Error(`${label} header has steps=${steps}, start=${start}, step=${step}`)
+    }
+    if (data_offset + 4 * steps > bytes.length) {
+      throw new Error(
+        `${label} announces ${steps} float32 counts at byte ${data_offset} but the file ends at ${bytes.length}`,
+      )
+    }
+    const y_values = Array.from({ length: steps }, (_, idx) =>
+      view.getFloat32(data_offset + 4 * idx, true),
     )
+    ranges.push({ start, x: uniform_grid(start, step, steps), y: y_values })
+    range_offset = data_offset + 4 * steps
   }
-  if (data_offset + 4 * steps > bytes.length) {
-    throw new Error(
-      `Bruker RAW1.01: range announces ${steps} float32 counts at byte ${data_offset} but the file ends at ${bytes.length}`,
-    )
-  }
-  const values = Array.from({ length: steps }, (_, idx) =>
-    view.getFloat32(data_offset + 4 * idx, true),
+  ranges.sort((range_a, range_b) => range_a.start - range_b.start)
+  return finalize(
+    ranges.flatMap((range) => range.x),
+    ranges.flatMap((range) => range.y),
+    `Bruker RAW1.01`,
   )
-  return finalize(uniform_grid(start, step, steps), values, `Bruker RAW1.01`)
 }
 
 const parse_xml = (content: string, format: string): Document => {

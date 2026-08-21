@@ -723,26 +723,45 @@ describe(`XYZ`, () => {
     await expect(open(content, `corrupt.xyz`)).rejects.toThrow(error)
   })
 
-  it(`drops a half-written final frame in both the eager parser and the indexed run`, async () => {
-    const content = [xyz_frame(four_atoms()), xyz_frame(four_atoms(`H 1 0`))].join(`\n`)
-    const warning = `Dropping truncated final XYZ frame 1 (line 7): XYZ frame 1 (line 7) line 12 has 3 columns, expected at least 4: "H 1 0"`
+  // Frames 0-1 are complete (lines 1-12); the tail starts at line 13. Only a tail a writer can
+  // leave behind mid-write counts as truncation: missing atom lines, a missing comment line,
+  // or a half-written last atom line.
+  // oxfmt-ignore
+  it.each([
+    [`missing atom lines`, `4\ncomment\nH 0 0 0\nH 1 0 0`, `Dropping truncated final XYZ frame 2 (line 13): 2 of 4 atom lines`],
+    [`a missing comment line`, `4`, `Dropping truncated final XYZ frame 2 (line 13): 0 of 4 atom lines`],
+    [`a half-written last atom line`, xyz_frame(four_atoms(`H 1 0`)), `Dropping truncated final XYZ frame 2 (line 13): partial atom line 18 "H 1 0"`],
+    [`a non-numeric coordinate on the last atom line`, xyz_frame(four_atoms(`H 1 1 1.2e`)), `Dropping truncated final XYZ frame 2 (line 13): partial atom line 18 "H 1 1 1.2e"`],
+  ])(`drops a final frame with %s in both the eager parser and the indexed run`, async (_label, tail, warning) => {
+    const content = [xyz_frame(four_atoms()), xyz_frame(four_atoms()), tail].join(`\n`)
     const eager = await open(content, `appending.xyz`)
-    expect(await steps_of(eager)).toEqual([0])
+    expect(await steps_of(eager)).toEqual([0, 1])
     expect(eager.warnings).toEqual([warning])
 
-    // The indexed run decodes the tail once at open so frame_count excludes it
+    // The indexed run drops the tail at open so frame_count excludes it
     const indexed = await open(content, `appending.xyz`, { index_above_bytes: 0 })
-    expect(indexed.frame_count).toBe(1)
-    expect(indexed.warnings).toEqual([
-      expect.stringMatching(
-        /^Dropping truncated final XYZ frame 1 \(line 7\): .*line 12 has 3 columns/,
-      ),
-    ])
-    expect(() => indexed.read_frame(1)).toThrow(RangeError)
+    expect(indexed.frame_count).toBe(2)
+    expect(indexed.warnings).toEqual([warning])
+    expect(() => indexed.read_frame(2)).toThrow(RangeError)
     await indexed.properties.done
-    expect(
-      indexed.properties.rows.map(({ frame_number, step }) => [frame_number, step]),
-    ).toEqual([[0, 0]])
+    expect(indexed.properties.rows.map(({ frame_number }) => frame_number)).toEqual([0, 1])
+  })
+
+  // A complete final frame with a defect is corruption, not truncation: both readers throw
+  // the same error as for any other frame instead of dropping it with a "truncated" warning
+  // oxfmt-ignore
+  it.each([
+    [`a corrupt Lattice`, xyz_frame(four_atoms(), `Lattice="1 0 0 0 1 0"`), `Invalid EXTXYZ Lattice: expected 9 finite numbers, got "1 0 0 0 1 0"`],
+    [`no recognised element`, xyz_frame([`Xx 0 0 0`, `Xx 1 0 0`]), `XYZ frame 1 (line 7) has no atom with a recognised element symbol in its 2 atom lines (first species column: "Xx")`],
+    [`a short atom line before the last`, xyz_frame([...four_atoms(`H 1 0`), `H 1 1 1`]), `XYZ frame 1 (line 7) line 12 has 3 columns, expected at least 4: "H 1 0"`],
+  ])(`throws for a complete final frame with %s in both readers`, async (_label, last_frame, error) => {
+    const content = [xyz_frame(four_atoms()), last_frame].join(`\n`)
+    await expect(open(content, `corrupt.xyz`)).rejects.toThrow(error)
+    const indexed = await open(content, `corrupt.xyz`, { index_above_bytes: 0 })
+    expect(indexed.frame_count).toBe(2)
+    expect(() => indexed.read_frame(1)).toThrow(error.replace(`frame 1 (line 7)`, `indexed frame 1`))
+    await indexed.properties.done
+    expect(indexed.warnings).not.toContainEqual(expect.stringContaining(`truncated`))
   })
 })
 
