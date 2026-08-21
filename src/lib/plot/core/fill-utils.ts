@@ -39,13 +39,13 @@ export interface Pt {
 }
 
 // A boundary resolved to its native points (sorted by x) plus the curve used to trace it
-export interface ResolvedBoundary {
+interface ResolvedBoundary {
   points: Pt[]
   curve: FillCurveType
 }
 
 // One renderable fill slice: the upper and lower edges (data coords) with their curves
-export interface FillSegment {
+interface FillSegment {
   upper: Pt[]
   lower: Pt[]
   upper_curve: FillCurveType

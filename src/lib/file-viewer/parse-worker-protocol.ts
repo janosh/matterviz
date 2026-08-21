@@ -5,15 +5,10 @@
 // MessagePort.postMessage takes no targetOrigin (that's window.postMessage), so
 // unicorn's require-post-message-target-origin is a false positive here.
 // oxlint-disable eslint-plugin-unicorn/require-post-message-target-origin
-import type {
-  OpenTrajectoryOptions,
-  ParseProgress,
-  TrajectoryRunSummary,
-  TrajectorySource,
-} from '$lib/trajectory'
+import type { OpenTrajectoryOptions, ParseProgress, TrajectorySource } from '$lib/trajectory'
 import type { ParseResult, TrajectoryLoadOptions } from './parse'
 
-export interface FileParseWorkerRequest {
+interface FileParseWorkerRequest {
   kind: `file`
   id: number
   content: string
@@ -22,7 +17,7 @@ export interface FileParseWorkerRequest {
   load_options?: TrajectoryLoadOptions
 }
 
-export interface TrajectoryParseWorkerRequest {
+interface TrajectoryParseWorkerRequest {
   kind: `trajectory`
   id: number
   data: TrajectorySource
@@ -42,5 +37,3 @@ export interface ParseWorkerResponse {
   // worker and is served through run_port.
   run_port?: MessagePort
 }
-
-export type WorkerTrajectoryResult = ParseResult & { data: TrajectoryRunSummary }

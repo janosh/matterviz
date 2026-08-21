@@ -680,36 +680,3 @@ export function clean_xyz(
   }
   return { ...filtered, quality }
 }
-
-// Clean trajectory properties, filtering to intersection of valid indices
-export function clean_trajectory_props(
-  props: Record<string, number[]>,
-  config: CleaningConfig & { independent_axis?: string } = {},
-): { props: Record<string, number[]>; quality: Record<string, CleaningQuality> } {
-  const entries = Object.entries(props)
-  if (entries.length === 0) return { props: {}, quality: {} }
-  const { independent_axis = `Step`, invalid_values, smooth } = config
-  const property_arrays = entries.map(([, values]) => values)
-  const length = Math.min(...property_arrays.map((values) => values.length))
-  const result = clean_multi_series(
-    props[independent_axis] ?? index_range(length),
-    property_arrays,
-    { invalid_values },
-  )
-  const result_props: Record<string, number[]> = {}
-  const quality_reports: Record<string, CleaningQuality> = {}
-  for (const [array_idx, [key]] of entries.entries()) {
-    const cleaned = result.cleaned_y[array_idx]
-    result_props[key] =
-      smooth && key !== independent_axis ? apply_smoothing(result.x, cleaned, smooth) : cleaned
-    quality_reports[key] = result.quality[array_idx]
-  }
-  // Add independent axis if not in original props
-  if (!props[independent_axis]) {
-    result_props[independent_axis] = result.x
-    quality_reports[independent_axis] = create_cleaning_quality(
-      result.quality[0].points_removed,
-    )
-  }
-  return { props: result_props, quality: quality_reports }
-}

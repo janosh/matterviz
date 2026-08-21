@@ -10,7 +10,6 @@ import {
   cna_type_name,
   CNA_TYPE_PROPERTY,
   CNA_TYPES,
-  structure_type_fractions,
 } from '$lib/structure-id'
 import { describe, expect, test } from 'vitest'
 import {
@@ -352,8 +351,6 @@ describe(`calc_structure_id plumbing`, () => {
     )
     const total = Object.values(result.populations).reduce((sum, count) => sum + count, 0)
     expect(total).toBe(result.n_atoms)
-    const fractions = structure_type_fractions(result)
-    expect(Object.values(fractions).reduce((sum, value) => sum + value, 0)).toBeCloseTo(1, 12)
   })
 
   test(`a cluster too small to supply 12 neighbors reports NaN instead of guessing`, () => {

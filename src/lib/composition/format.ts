@@ -127,15 +127,6 @@ export function get_formula_label_segments(formula: string): FormulaLabelSegment
   return segments.length > 0 ? segments : [{ text: formula, subscript: false }]
 }
 
-// Create Hill notation formula (C first, H second, then alphabetical)
-export const get_hill_formula = (
-  input: string | CompositionType | AnyStructure,
-  plain_text = false,
-  delim = ` `,
-  amount_format = `.3~s`,
-): string =>
-  format_formula_generic(input, sort_by_hill_notation, plain_text, delim, amount_format)
-
 export function format_oxi_state(oxidation?: number): string {
   if (oxidation === undefined || oxidation === 0) return ``
   const sign = oxidation > 0 ? `+` : `-`

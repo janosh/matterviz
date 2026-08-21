@@ -34,7 +34,7 @@ export type VelocitySource = `stored` | `central_difference`
 export const VACF_FREQUENCY_UNITS = [`THz`, `cm^-1`, `1/frame`] as const
 export type VacfFrequencyUnit = (typeof VACF_FREQUENCY_UNITS)[number]
 
-export interface VdosOptions {
+interface VdosOptions {
   // Hann by default: it reaches exactly zero with zero slope at the truncation lag, so
   // the mirrored (even) signal stays C1-continuous and sidelobes fall off as f^-3 instead
   // of the rectangular window's f^-1. A raw truncated VACF rings hard enough to bury real

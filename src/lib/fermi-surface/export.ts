@@ -14,7 +14,7 @@ export async function export_to_stl(scene: Scene, filename: string): Promise<voi
 }
 
 // Export scene to OBJ format (widely compatible)
-export async function export_to_obj(scene: Scene, filename: string): Promise<void> {
+async function export_to_obj(scene: Scene, filename: string): Promise<void> {
   const { OBJExporter } = await import(`three/addons/exporters/OBJExporter.js`)
   const exporter = new OBJExporter()
   const result = exporter.parse(scene)

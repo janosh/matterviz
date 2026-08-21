@@ -10,8 +10,6 @@ import type { AxisConfig } from '$lib/plot/core/types'
 
 export {
   clear_tick_metrics_cache,
-  measure_max_tick_width,
-  measure_text_width,
   measured_axis,
   resolve_tick_layout,
   TICK_LABEL_HEIGHT,
@@ -56,7 +54,7 @@ interface AxisTitleLine {
   readonly metrics: TextLineMetrics
 }
 
-export interface AxisTitleLayout {
+interface AxisTitleLayout {
   // Accessible plain-text label, including the selected option's unit for interactive axes.
   readonly label: string
   readonly lines: readonly AxisTitleLine[]
@@ -582,7 +580,7 @@ export const rect_within_rect = (rect: Rect, bounds: Rect): boolean =>
   rect.y >= bounds.y &&
   rect.y + rect.height <= bounds.y + bounds.height
 
-export interface ElementPlacementConfig {
+interface ElementPlacementConfig {
   // Bounds of the plot area (in SVG coordinates)
   plot_bounds: Rect
   // Fallback size of the element to place (used before `element` first renders)
@@ -601,7 +599,7 @@ export interface ElementPlacementConfig {
   grid_resolution?: number
 }
 
-export interface ElementPlacementResult {
+interface ElementPlacementResult {
   x: number
   y: number
   score: number // Higher is better (fewer overlaps, farther from points)

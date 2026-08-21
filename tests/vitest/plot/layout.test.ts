@@ -11,8 +11,6 @@ import {
   filter_padding,
   full_footprint_or,
   LABEL_GAP_DEFAULT,
-  measure_max_tick_width,
-  measure_text_width,
   type MeasuredAxis,
   pad_rect,
   point_in_rect,
@@ -909,16 +907,7 @@ describe(`layout utility functions`, () => {
     })
   })
 
-  describe(`measure_max_tick_width`, () => {
-    it(`returns 0 when there are no ticks to measure`, () => {
-      expect(measure_max_tick_width([], `.2s`)).toBe(0)
-    })
-
-    it(`uses deterministic pre-mount metrics when canvas has no text metrics`, () => {
-      expect(measure_text_width(`hello`)).toBe(36)
-      expect(measure_max_tick_width([1, 2, 3])).toBeCloseTo(7.2)
-    })
-
+  describe(`tick label texts`, () => {
     // Records the exact strings handed to the canvas, which is what proves the formatter
     // and the custom-label lookup ran before measurement rather than after it.
     const with_recorded_labels = <T>(
@@ -941,25 +930,32 @@ describe(`layout utility functions`, () => {
         context_spy.mockRestore()
       }
     }
+    const y_layout = (tick_values: (string | number)[], axis: Partial<MeasuredAxis> = {}) =>
+      resolve_tick_layout(slot_axis(tick_values, axis, 300), 300, `y`)
+
+    it(`lays out no labels when there are no ticks`, () => {
+      expect(y_layout([]).labels).toEqual([])
+    })
 
     it(`uses the same adaptive formatter as rendered numeric ticks`, () => {
-      const { result, measured_labels } = with_recorded_labels(1, () =>
-        measure_max_tick_width([4500]),
-      )
-      expect(result).toBe(4)
-      expect(measured_labels).toEqual([`4.5k`])
+      const { result, measured_labels } = with_recorded_labels(1, () => y_layout([4500]))
+      expect(result.labels.map(({ lines }) => lines)).toEqual([[`4.5k`]])
+      expect(measured_labels).toContain(`4.5k`)
+      expect(measured_labels).not.toContain(`4500`)
     })
 
     it(`prefers a custom ticks Record over the numeric format`, () => {
+      const ticks = { 0: `QUEUE_HOLD`, 1: `RUNNING`, 2: `DONE` }
       const { result, measured_labels } = with_recorded_labels(7, () =>
-        measure_max_tick_width([0, 1, 2], `.2~g`, {
-          0: `QUEUE_HOLD`,
-          1: `RUNNING`,
-          2: `DONE`,
-        }),
+        y_layout([0, 1, 2], { format: `.2~g`, ticks }),
       )
-      expect(result).toBe(`QUEUE_HOLD`.length * 7)
-      expect(measured_labels).toEqual([`QUEUE_HOLD`, `RUNNING`, `DONE`])
+      expect(result.labels.map(({ lines }) => lines)).toEqual([
+        [`QUEUE_HOLD`],
+        [`RUNNING`],
+        [`DONE`],
+      ])
+      expect(measured_labels).toEqual(expect.arrayContaining(Object.values(ticks)))
+      expect(measured_labels).not.toContain(`0`)
     })
   })
 

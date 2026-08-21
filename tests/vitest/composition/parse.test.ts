@@ -4,7 +4,6 @@ import {
   element_symbols_in,
   extract_formula_elements,
   fractional_composition,
-  get_molecular_weight,
   get_reduced_formula,
   normalize_element_symbols,
   normalize_formula_unicode,
@@ -391,24 +390,5 @@ describe(`get_reduced_formula`, () => {
     ], // beyond safe integer range
   ])(`%j -> %j`, (input, expected) => {
     expect(get_reduced_formula(input)).toEqual(expected)
-  })
-})
-
-describe(`get_molecular_weight`, () => {
-  test.each([
-    [{ H: 2, O: 1 }, 18.015],
-    [{ Na: 1, Cl: 1 }, 58.439769282],
-    [{ C: 1 }, 12.011],
-    [parse_formula(`CuSO4·5H2O`), 249.6773],
-    [parse_formula(`LiFePO4`), 157.7549619985],
-    [{}, 0],
-  ])(`%j -> %s`, (input, expected) => {
-    expect(Math.abs(get_molecular_weight(input) - expected)).toBeLessThan(1e-9)
-  })
-
-  test(`throws for unknown elements`, () => {
-    expect(() => get_molecular_weight({ Xx: 1 } as CompositionType)).toThrow(
-      `Unknown element: Xx`,
-    )
   })
 })

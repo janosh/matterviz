@@ -46,7 +46,7 @@ export const index_ref_lines = (ref_lines: RefLine[] | undefined): IndexedRefLin
     .map((line, idx) => ({ ...line, idx }))
 
 // Z-index groups for ordered rendering
-export interface RefLinesByZIndex {
+interface RefLinesByZIndex {
   below_grid: IndexedRefLine[]
   below_lines: IndexedRefLine[]
   below_points: IndexedRefLine[]
@@ -269,7 +269,7 @@ export function resolve_line_endpoints(
   return pixels.every(Number.isFinite) ? pixels : null
 }
 
-export interface AnnotationPosition {
+interface AnnotationPosition {
   x: number
   y: number
   text_anchor: ReferenceAnnotationTextAnchor
@@ -373,7 +373,7 @@ export function calculate_annotation_position(
   }
 }
 
-export interface ReferenceAnnotationMetrics {
+interface ReferenceAnnotationMetrics {
   text_width: number
   font_size: number
   text_ascent: number
@@ -598,7 +598,7 @@ export const get_reference_annotation_placement = (
 ): ReferenceAnnotationCandidate | undefined =>
   get_decoration_placement(solution, reference_annotation_id(line_idx))?.reference_annotation
 
-export interface Scene3DParams {
+interface Scene3DParams {
   scene_x: number
   scene_y: number
   scene_z: number

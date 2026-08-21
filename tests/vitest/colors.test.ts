@@ -4,7 +4,6 @@ import {
   composite_colors,
   contrast_text_color,
   css_color_to_hex,
-  D3_INTERPOLATE_NAMES,
   DEFAULT_CATEGORY_COLORS,
   ELEMENT_COLOR_SCHEMES,
   get_d3_interpolator,
@@ -19,6 +18,7 @@ import {
   watch_dark_mode,
 } from '$lib/colors'
 import { ELEM_SYMBOLS } from '$lib/labels'
+import * as d3_sc from 'd3-scale-chromatic'
 import { beforeEach, describe, expect, it, test } from 'vitest'
 
 // Generate expected element symbols from atomic numbers 1-109 (first 109 elements)
@@ -31,9 +31,12 @@ test.each([
   expect(is_d3_interpolate_name(name)).toBe(expected)
 })
 
-test(`registered D3 interpolation names resolve to functions`, () => {
-  for (const name of D3_INTERPOLATE_NAMES) {
-    expect(get_d3_interpolator(name)).toBeTypeOf(`function`)
+test(`every d3-scale-chromatic interpolate* export is a registered interpolator`, () => {
+  const names = Object.keys(d3_sc).filter((name) => name.startsWith(`interpolate`))
+  expect(names.length).toBeGreaterThan(20)
+  for (const name of names) {
+    expect(is_d3_interpolate_name(name)).toBe(true)
+    if (is_d3_interpolate_name(name)) expect(get_d3_interpolator(name)).toBeTypeOf(`function`)
   }
   // @ts-expect-error exercise the runtime guard for JavaScript callers
   expect(() => get_d3_interpolator(`invalid`)).toThrow(

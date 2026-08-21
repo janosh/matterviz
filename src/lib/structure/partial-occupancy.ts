@@ -7,14 +7,14 @@ const MIN_PHI_LENGTH = 1e-4
 const MERGE_DISTANCE_TOLERANCE = 1e-8
 const CAP_ARC_START = Math.PI / 2
 
-export type RenderSite = {
+type RenderSite = {
   site_idx: number
   site: Site
   is_image_atom: boolean
   source_site_indices: number[]
 }
 
-export type SliceGeometry = {
+type SliceGeometry = {
   element: string
   occupancy: number
   start_phi: number
@@ -24,7 +24,7 @@ export type SliceGeometry = {
   render_end_cap: boolean
 }
 
-export type CapArcConfig = {
+type CapArcConfig = {
   start_cap_arc_start: number
   end_cap_arc_start: number
   arc_length: number

@@ -19,7 +19,7 @@ export type RepresentationMode = `solid` | `wireframe` | `transparent`
 export type ColorProperty = `band` | `velocity` | `spin` | `custom`
 
 // Reciprocal cell type
-export type ReciprocalCellType = `wigner_seitz` | `parallelepiped`
+type ReciprocalCellType = `wigner_seitz` | `parallelepiped`
 
 // Dimensionality classification (following IFermi conventions)
 export type SurfaceDimensionality = `1D` | `2D` | `quasi-2D` | `3D`
@@ -66,7 +66,7 @@ export interface FermiSurfaceMetadata {
 // point (ix, iy, iz) sits at index (ix * ny + iy) * nz + iz, with dims = k_grid.
 export type BandEnergyGrid = ScalarGrid3D<Float64Array>
 // Vector quantities (velocities, spin texture) indexed `[spin][band][kx][ky][kz]`
-export type VectorGrid5D = Vec3[][][][][]
+type VectorGrid5D = Vec3[][][][][]
 
 // Input band energies on a 3D k-point grid (from BXSF/FRMSF files)
 export interface BandGridData {

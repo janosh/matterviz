@@ -57,7 +57,7 @@ export const COMPRESSION_FORMATS = {
 } as const satisfies Record<string, readonly string[]>
 
 // All detectable compression extensions
-export const COMPRESSION_EXTENSIONS = Object.freeze(Object.values(COMPRESSION_FORMATS).flat())
+const COMPRESSION_EXTENSIONS = Object.freeze(Object.values(COMPRESSION_FORMATS).flat())
 
 // Keywords that indicate a file is likely a trajectory file.
 // `dpmd` (DeePMD trajectory outputs) precedes `md` so the longer token wins.
@@ -120,7 +120,7 @@ export const TRAJ_FALLBACK_EXTENSIONS_REGEX = ext_regex([
 // Bare VASP filenames that the structure parser supports. OUTCAR, INCAR, KPOINTS and
 // POTCAR are left out because advertising unparsable run inputs only earns the caller
 // `Unable to determine file format`.
-export const VASP_STRUCTURE_FILES = Object.freeze([`poscar`, `contcar`])
+const VASP_STRUCTURE_FILES = Object.freeze([`poscar`, `contcar`])
 export const VASP_FILES_REGEX = filename_token_regex(VASP_STRUCTURE_FILES)
 // oxfmt-ignore
 export const VASP_VOLUMETRIC_FILES = Object.freeze([

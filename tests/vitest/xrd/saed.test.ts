@@ -7,10 +7,17 @@ import {
   electron_wavelength,
   laue_zone_label,
   saed_pattern_radius,
-  saed_spot_angle,
 } from '$lib/xrd'
 import { describe, expect, test } from 'vitest'
 import { make_crystal } from '../setup'
+
+// Angle in degrees between two spots as seen from the direct beam
+const saed_spot_angle = (spot_a: Vec2, spot_b: Vec2): number => {
+  const cos_angle =
+    (spot_a[0] * spot_b[0] + spot_a[1] * spot_b[1]) /
+    (Math.hypot(...spot_a) * Math.hypot(...spot_b))
+  return (Math.acos(Math.min(1, Math.max(-1, cos_angle))) * 180) / Math.PI
+}
 
 const make_simple_cubic = (a_len: number): Crystal =>
   make_crystal(a_len, [{ element: `Al`, abc: [0, 0, 0], label: `A1` }])
@@ -260,11 +267,6 @@ describe(`compute_saed_pattern validation`, () => {
     [`invalid voltage`, { accelerating_voltage: 0 }, /Invalid accelerating voltage/],
   ] as const)(`%s throws`, (_label, options, expected) => {
     expect(() => compute_saed_pattern(make_simple_cubic(4), options)).toThrow(expected)
-  })
-
-  test(`saed_spot_angle rejects the direct beam`, () => {
-    const origin: Vec2 = [0, 0]
-    expect(() => saed_spot_angle(origin, [1, 0])).toThrow(/zero-length spot vector/)
   })
 
   test(`intensities follow |f_e|²·sinc²(t·s_g), scaled to 100 and sorted strongest-first`, () => {

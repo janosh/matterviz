@@ -19,7 +19,7 @@ export type GizmoAxisStyle = {
 // Where the gizmo sits inside its canvas. `fill` uses the whole canvas, for callers that give
 // the gizmo its own <Canvas> and place that element with CSS (ConvexHull3D). Not named
 // GizmoPlacement because $lib/convex-hull exports that already (its CSS-level corner).
-export type GizmoAnchor = `top-left` | `top-right` | `bottom-left` | `bottom-right` | `fill`
+type GizmoAnchor = `top-left` | `top-right` | `bottom-left` | `bottom-right` | `fill`
 
 export type GizmoOptions = {
   // Hide without unmounting. Callers that reveal the gizmo on hover (Structure) must keep it
@@ -34,7 +34,7 @@ export type GizmoOptions = {
   fade_duration?: number
 } & Partial<Record<GizmoAxisKey, GizmoAxisStyle>>
 
-export type GizmoRect = { x: number; y: number; width: number; height: number }
+type GizmoRect = { x: number; y: number; width: number; height: number }
 
 // Where the gizmo draws, in CSS px from the canvas's top-left — the origin WebGPU viewports,
 // Renderer.setViewport/setScissor and pointer coordinates all share. Kept inside the canvas:

@@ -10,7 +10,7 @@ export interface KdeResult {
   bandwidth: number // bandwidth actually used
 }
 
-export interface KdeOptions {
+interface KdeOptions {
   bandwidth?: number | `silverman` | `scott` // default 'silverman'
   n_points?: number // grid resolution (default 100, min 2)
   cut?: number // extend grid by cut*bandwidth beyond data extremes (default 2)

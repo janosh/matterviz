@@ -31,9 +31,6 @@ const d3_interpolators = Object.fromEntries(
     ([name, candidate]) => name.startsWith(`interpolate`) && typeof candidate === `function`,
   ),
 ) as Record<D3InterpolateName, (t: number) => string>
-export const D3_INTERPOLATE_NAMES = Object.keys(
-  d3_interpolators,
-) as readonly D3InterpolateName[]
 export const is_d3_interpolate_name = (name: string): name is D3InterpolateName =>
   Object.hasOwn(d3_interpolators, name)
 export const get_d3_interpolator = (name: D3InterpolateName): ((t: number) => string) => {

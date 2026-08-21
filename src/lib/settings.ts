@@ -70,7 +70,7 @@ const fullscreen_toggle_setting = (): SettingType<boolean> => ({
   web_only: true,
 })
 
-export const VECTOR_COLOR_MODES = [
+const VECTOR_COLOR_MODES = [
   `auto`,
   `element`,
   `spin_direction`,
@@ -1220,7 +1220,7 @@ export const SETTINGS_CONFIG = define_settings({
   },
 })
 
-export type SettingsConfig = typeof SETTINGS_CONFIG
+type SettingsConfig = typeof SETTINGS_CONFIG
 
 // Recursively extract each setting's runtime value type from the schema.
 type SettingsValues<Config> = {

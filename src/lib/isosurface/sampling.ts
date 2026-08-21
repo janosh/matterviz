@@ -80,13 +80,13 @@ const interpolate_cell = (
 // Policy for sampling positions that fall outside a non-periodic volume's grid.
 // 'clamp' samples the nearest edge value; 'fallback' returns NaN so callers can
 // substitute a solid fallback color. Periodic volumes always wrap and never go OOB.
-export type OutOfBoundsPolicy = `clamp` | `fallback`
+type OutOfBoundsPolicy = `clamp` | `fallback`
 
-export interface VolumeSamplerOptions {
+interface VolumeSamplerOptions {
   out_of_bounds?: OutOfBoundsPolicy
 }
 
-export interface BulkVolumeSamplerOptions extends VolumeSamplerOptions {
+interface BulkVolumeSamplerOptions extends VolumeSamplerOptions {
   position_offset?: Vec3
   out?: Float32Array
 }
@@ -195,7 +195,7 @@ export function sample_volume_at_positions(
 }
 
 // Result of a strict VESTA-style grid compatibility check between two volumes.
-export interface GridCompatibility {
+interface GridCompatibility {
   ok: boolean
   reason?: string // identifies the first mismatching property when ok is false
 }
@@ -279,7 +279,7 @@ export function sanitize_display_range(range: DisplayRange, periodic: boolean): 
   }) as DisplayRange
 }
 
-export interface VolumeDisplayRangeOptions {
+interface VolumeDisplayRangeOptions {
   display_range?: DisplayRange
   tiling?: Vec3
   halo?: number

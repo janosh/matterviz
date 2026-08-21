@@ -6,7 +6,7 @@ import type { SunburstNode } from '$lib/plot/core/types'
 import { is_elem_symbol } from '$lib/element'
 import { parse_formula } from './parse'
 
-export interface ChemSysSunburstMetadata {
+interface ChemSysSunburstMetadata {
   chem_sys: string // alphabetically sorted element string, e.g. "Fe-Li-O"
   arity: number // number of distinct elements
   [key: string]: unknown // assignable to SunburstNode's default Record<string, unknown>

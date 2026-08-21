@@ -1,6 +1,6 @@
 // Exercises the real spectroscopy Web Worker request path, including structured cloning
 // of every typed-array signal and the nested finite-field geometry payload.
-import type { compute_trajectory_spectroscopy_async as ComputeSpectroscopyAsync } from '$lib/spectral/trajectory-spectroscopy-async.svelte'
+import type { create_trajectory_spectroscopy_async_runner } from '$lib/spectral/trajectory-spectroscopy-async.svelte'
 import {
   calc_trajectory_spectroscopy,
   type TrajectorySpectroscopyInput,
@@ -137,13 +137,16 @@ class StubWorker {
   }
 }
 
-let compute_spectroscopy_async: typeof ComputeSpectroscopyAsync
+let compute_spectroscopy_async: ReturnType<
+  typeof create_trajectory_spectroscopy_async_runner
+>[`compute`]
 
 beforeAll(async () => {
   vi.stubGlobal(`Worker`, StubWorker)
-  ;({ compute_trajectory_spectroscopy_async: compute_spectroscopy_async } = await import(
+  const { create_trajectory_spectroscopy_async_runner: create_runner } = await import(
     `$lib/spectral/trajectory-spectroscopy-async.svelte`
-  ))
+  )
+  compute_spectroscopy_async = create_runner().compute
 })
 
 afterEach(() => {

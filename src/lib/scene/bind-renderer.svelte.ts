@@ -10,7 +10,7 @@ export const webgpu_available = (): boolean =>
 
 // What three passes to renderer.onDeviceLost. Losses from our own dispose() are filtered out
 // upstream (three skips reason === 'destroyed'), so any call is a real eviction or reset.
-export type DeviceLostInfo = Parameters<WebGPURenderer[`onDeviceLost`]>[0]
+type DeviceLostInfo = Parameters<WebGPURenderer[`onDeviceLost`]>[0]
 
 // three's shipped types stop at Backend's public surface, so spell out the DataMap methods the
 // destroyAttribute override below reaches for.

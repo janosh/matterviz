@@ -15,18 +15,18 @@ export type LegendTrackSuggestionConfig = {
   gap?: number
 }
 
-export type LegendGridItem = {
+type LegendGridItem = {
   label: string
   legend_group?: string
 }
 
-export type LegendGridCell =
+type LegendGridCell =
   | { kind: `filter` }
   | { kind: `empty` }
   | { kind: `group`; group: string }
   | { kind: `item`; item_idx: number }
 
-export type LegendDecorationConfig = {
+type LegendDecorationConfig = {
   axis_clearance?: number
   layout_tracks?: number | `auto`
   layout?: LegendOrientation

@@ -63,7 +63,7 @@ type PerAxis<Value> = Partial<Record<FacetAxis, Value>>
 // Tick counts each axis asks for when the axis config leaves `ticks` unset
 const DEFAULT_TICK_COUNTS: Record<FacetAxis, number> = { x: 8, x2: 8, y: 5, y2: 5 }
 
-export interface CartesianFrameOptions {
+interface CartesianFrameOptions {
   // Axis configs with component defaults already merged in. Drive scales, ticks,
   // range resolution and pan/zoom.
   axes: () => FrameAxes

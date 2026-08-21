@@ -1,11 +1,10 @@
 import type { Vec3 } from '$lib/math'
-import type { NebImage } from '$lib/neb'
+import type { NebImage, PathMetricOptions } from '$lib/neb'
 import {
   analyze_barrier,
   assert_path,
   eval_hermite,
   fit_path_spline,
-  image_distance,
   natural_cubic_slopes,
   nearest_image_idx,
   normalize_paths,
@@ -15,7 +14,7 @@ import {
   reaction_coordinate,
   relative_energies,
 } from '$lib/neb/reaction-path'
-import type { Crystal } from '$lib/structure'
+import type { AnyStructure, Crystal } from '$lib/structure'
 import { describe, expect, test } from 'vitest'
 import { make_crystal as build_crystal } from '../setup'
 
@@ -103,6 +102,19 @@ describe(`periodic reaction coordinate`, () => {
   // through the cell face. Raw subtraction reports 9.0 Å — nearly the whole cell.
   const start = make_crystal([[9.5, 0, 0]])
   const end = make_crystal([[0.5, 0, 0]])
+  // Configuration-space distance between two images: the arc length of a two-image path
+  const image_distance = (
+    from: AnyStructure,
+    to: AnyStructure,
+    options: PathMetricOptions = {},
+  ): number =>
+    reaction_coordinate(
+      [
+        { structure: from, energy: 0 },
+        { structure: to, energy: 0 },
+      ],
+      options,
+    )[1]
 
   test(`migrating atom crossing a cell boundary gives the short distance`, () => {
     const min_image = image_distance(start, end)

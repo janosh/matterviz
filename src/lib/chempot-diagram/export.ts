@@ -53,7 +53,7 @@ export const export_view_json_file = (
   basename: string,
 ): void => download_json(view_settings, `${basename}-view.json`)
 
-export interface OverlayTextItem {
+interface OverlayTextItem {
   x: number
   y: number
   text: string
@@ -65,7 +65,7 @@ export interface OverlayTextItem {
 }
 
 // Collect HTML overlay text (tick/axis/domain labels) positioned relative to the canvas
-export function get_overlay_text_items(
+function get_overlay_text_items(
   wrapper: HTMLElement,
   canvas_rect: DOMRect,
 ): OverlayTextItem[] {
@@ -166,7 +166,7 @@ export function export_svg_file(
   download(svg, `${basename}.svg`, `image/svg+xml`)
 }
 
-export interface ChemPotGlbParts {
+interface ChemPotGlbParts {
   hull_geometry?: THREE.BufferGeometry | null
   hull_opacity?: number
   edge_geometry: THREE.BufferGeometry

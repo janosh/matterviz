@@ -27,7 +27,7 @@ export interface FillGradient {
 }
 
 // Edge/stroke styling for fill region boundaries
-export interface FillEdgeStyle {
+interface FillEdgeStyle {
   color?: string
   width?: number
   dash?: string
@@ -35,7 +35,7 @@ export interface FillEdgeStyle {
 }
 
 // Hover state styling for fill regions
-export interface FillHoverStyle {
+interface FillHoverStyle {
   fill?: string
   fill_opacity?: number
   cursor?: string

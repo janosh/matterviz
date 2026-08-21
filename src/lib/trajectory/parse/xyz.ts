@@ -14,7 +14,7 @@ import {
 import type { TrajectoryFrame } from '$lib/trajectory/index'
 import type { ParsedTrajectory, WarnFn, WarningCollector } from './shared'
 
-export type ExtxyzColumn = { offset: number; ncols: number; type: string }
+type ExtxyzColumn = { offset: number; ncols: number; type: string }
 
 export function parse_extxyz_columns(comment: string): {
   species_col: number

@@ -30,14 +30,14 @@ type VisSeries = {
   y?: unknown
 }
 
-export type SeriesAxisAccessor<Series extends VisSeries> = (
+type SeriesAxisAccessor<Series extends VisSeries> = (
   series: Series,
   series_idx: number,
 ) => string | undefined
 
 type SeriesSource = [string, string, string, ...unknown[]]
 
-export type SeriesVisibilitySnapshot = {
+type SeriesVisibilitySnapshot = {
   visibility: boolean[]
   source: SeriesSource[]
 }

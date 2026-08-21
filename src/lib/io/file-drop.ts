@@ -118,7 +118,7 @@ export const create_file_drop_handler = (
   }
 }
 
-export type FileDropZoneOptions = FileDropOptions & {
+type FileDropZoneOptions = FileDropOptions & {
   // Mirrors the hover state to the caller, e.g. for a bindable `dragover` prop
   on_dragover?: (over: boolean) => void
 }

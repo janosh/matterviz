@@ -14,7 +14,7 @@ import type {
 } from '$lib/plot/core/types'
 
 // 3D point extending base Point with z coordinate (prefixed to avoid conflict with convex-hull)
-export interface ScatterPoint3D<Metadata = Record<string, unknown>> extends Point<Metadata> {
+interface ScatterPoint3D<Metadata = Record<string, unknown>> extends Point<Metadata> {
   z: number
 }
 
@@ -40,7 +40,7 @@ export interface InternalPoint3D<
 }
 
 // Surface types for 3D visualization
-export type SurfaceType = `grid` | `parametric` | `triangulated`
+type SurfaceType = `grid` | `parametric` | `triangulated`
 
 // Configuration for 3D surfaces
 export interface Surface3DConfig {
@@ -97,7 +97,7 @@ export interface DisplayConfig3D extends DisplayConfig {
 }
 
 // 3D scatter handler props
-export interface Scatter3DHandlerProps<Metadata = Record<string, unknown>> extends Omit<
+interface Scatter3DHandlerProps<Metadata = Record<string, unknown>> extends Omit<
   HandlerProps<Metadata>,
   `x_axis` | `x2_axis` | `y_axis` | `y2_axis`
 > {
@@ -119,14 +119,6 @@ export type Scatter3DHandlerEvent<Metadata = Record<string, unknown>> =
 
 // Camera projection types for 3D
 export type { CameraProjection as CameraProjection3D } from '$lib/settings'
-
-// 3D plot config extending base
-export interface PlotConfig3D {
-  x_axis?: AxisConfig3D
-  y_axis?: AxisConfig3D
-  z_axis?: AxisConfig3D
-  display?: DisplayConfig3D
-}
 
 // 3D style overrides
 export interface StyleOverrides3D extends StyleOverrides {

@@ -36,7 +36,7 @@ export interface DenseInternalPoint<Metadata = Record<string, unknown>> {
   cy: number
 }
 
-export interface DensityBinResult {
+interface DensityBinResult {
   counts: Uint32Array
   first_point_idxs: Int32Array
   first_series_idxs: Int32Array
@@ -54,7 +54,7 @@ export interface DensityBin {
   y_range: Vec2
 }
 
-export interface PickNearestOptions {
+interface PickNearestOptions {
   x_range: Vec2
   y_range: Vec2
   x_scale: (value: number) => number
@@ -62,9 +62,7 @@ export interface PickNearestOptions {
   radius_px?: number
 }
 
-export type PickIndex<Metadata = Record<string, unknown>> = SpatialIndex<
-  DenseInternalPoint<Metadata>
->
+type PickIndex<Metadata = Record<string, unknown>> = SpatialIndex<DenseInternalPoint<Metadata>>
 
 export interface PlotRect {
   x: number
@@ -75,11 +73,11 @@ export interface PlotRect {
 
 // Monotonic transform pair: density bins are uniform in transformed (scale) space so
 // they align with the axis pixel grid on log/arcsinh axes
-export interface BinTransform {
+interface BinTransform {
   forward: (value: number) => number
   inverse: (value: number) => number
 }
-export type BinTransforms = { x?: BinTransform; y?: BinTransform }
+type BinTransforms = { x?: BinTransform; y?: BinTransform }
 
 const identity: BinTransform = { forward: (val) => val, inverse: (val) => val }
 

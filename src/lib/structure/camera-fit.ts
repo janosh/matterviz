@@ -23,7 +23,7 @@ export type StructureFitOpts = {
   site_radius_overrides?: ReadonlyMap<number, number>
 }
 
-export type StructureFitFrame = { center: Vec3; extent: number }
+type StructureFitFrame = { center: Vec3; extent: number }
 
 const empty_frame = (): StructureFitFrame => ({ center: [0, 0, 0], extent: 10 })
 

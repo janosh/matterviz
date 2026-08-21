@@ -57,7 +57,7 @@ export type {
   SunburstValueMode,
 } from '$lib/plot/sunburst/sunburst'
 
-export type XyShift = { x?: number; y?: number } // For optional shift/offset values
+type XyShift = { x?: number; y?: number } // For optional shift/offset values
 
 // Snapshot of axis ranges at interaction start (shared by pan/zoom/touch handlers)
 export type InitialRanges = {
@@ -288,7 +288,7 @@ export interface HistogramHandlerProps<
 export type TimeInterval = `day` | `month` | `year`
 
 // Base scale type names
-export type ScaleTypeName = `linear` | `log` | `arcsinh` | `time`
+type ScaleTypeName = `linear` | `log` | `arcsinh` | `time`
 
 // Arcsinh scale configuration with optional threshold parameter
 // threshold controls where linear→log transition occurs (default: 1)
@@ -503,7 +503,7 @@ export interface BarSeries<Metadata = Record<string, unknown>> {
   point_offset?: Point2D[] | Point2D
 }
 
-export type TickEndpointPolicy = `preserve` | `adaptive`
+type TickEndpointPolicy = `preserve` | `adaptive`
 
 export interface TickAutoLayoutConfig {
   // Defaults to upright, wrap, rotate, thin, and collision-gated stagger. Ellipsis is opt-in.
@@ -521,7 +521,7 @@ export interface TickAutoLayoutConfig {
 }
 
 // Tick label configuration
-export interface TickLabelConfig {
+interface TickLabelConfig {
   inside?: boolean // Render tick labels inside the plot area (default: false/outside)
   shift?: XyShift
   // Angle in degrees, or `auto` (default on x/x2) to wrap/rotate. Pass 0 for upright/unwrapped.
@@ -586,7 +586,7 @@ export interface AxisConfig {
 
 // Result from data loader - returns complete series array
 // SeriesType defaults to DataSeries but can be BarSeries for bar plots
-export interface DataLoaderResult<
+interface DataLoaderResult<
   Metadata = Record<string, unknown>,
   SeriesType = DataSeries<Metadata>,
 > {
@@ -687,7 +687,7 @@ export interface PanConfig {
   touch_enabled?: boolean // default: true - whether touch gestures are enabled
 }
 
-export type ControlsState = Required<PlotConfig> & {
+type ControlsState = Required<PlotConfig> & {
   show_controls: boolean
   controls_open: boolean
   range_inputs: Record<string, [number | null, number | null]>

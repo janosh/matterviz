@@ -7,11 +7,11 @@ export type ElementCategory = (typeof ELEMENT_CATEGORIES)[number]
 export type ElementSymbol = (typeof ELEM_SYMBOLS)[number]
 
 // Shannon radii structure: oxidation_state -> coordination -> spin -> radii
-export type ShannonRadiusPair = {
+type ShannonRadiusPair = {
   crystal_radius: number
   ionic_radius: number
 }
-export type ShannonRadii = Record<string, Record<string, Record<string, ShannonRadiusPair>>>
+type ShannonRadii = Record<string, Record<string, Record<string, ShannonRadiusPair>>>
 
 export type ChemicalElement = {
   'cpk-hex': string | null

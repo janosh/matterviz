@@ -23,7 +23,7 @@ import type {
   QPoint,
 } from './types'
 
-export interface PhononModeTrajectoryOptions {
+interface PhononModeTrajectoryOptions {
   amplitude?: number
   supercell?: Vec3
   n_frames?: number

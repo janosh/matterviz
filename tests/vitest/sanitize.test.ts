@@ -4,7 +4,6 @@ import {
   sanitize_formula,
   sanitize_html,
   sanitize_html_ssr,
-  sanitize_icon_svg,
   sanitize_svg,
 } from '$lib'
 import type * as Sanitize from '$lib/sanitize'
@@ -257,57 +256,6 @@ describe(`sanitize_svg`, () => {
   })
 })
 
-describe(`sanitize_icon_svg`, () => {
-  test.each(XSS_PAYLOADS)(`strips XSS from: %s`, (payload) => {
-    assertNoXss(sanitize_icon_svg(payload))
-  })
-
-  test.each([
-    [`path`, `<path d="M0 0 L10 10"></path>`],
-    [`circle`, `<circle cx="12" cy="12" r="10"></circle>`],
-    [`rect`, `<rect x="0" y="0" width="24" height="24"></rect>`],
-    [`polyline`, `<polyline points="0,0 10,10 20,0"></polyline>`],
-    [`polygon`, `<polygon points="0,0 10,10 20,0"></polygon>`],
-    [`group + transform`, `<g transform="translate(2,2)"><path d="M0 0"></path></g>`],
-    [
-      `stroke attrs`,
-      `<path d="M0 0" stroke="red" stroke-width="2" stroke-linecap="round"></path>`,
-    ],
-    [`line`, `<line x1="0" y1="0" x2="10" y2="10" stroke="black"></line>`],
-    [`ellipse`, `<ellipse cx="12" cy="8" rx="10" ry="6" fill="blue"></ellipse>`],
-    [`title`, `<title>icon label</title>`],
-    [`mask + use`, `<mask id="m1"><rect x="0" y="0" width="24" height="24"></rect></mask>`],
-    [
-      `defs + clipPath`,
-      `<defs><clipPath id="c1"><rect x="0" y="0" width="10" height="10"></rect></clipPath></defs>`,
-    ],
-    [
-      `opacity + clip-path`,
-      `<path d="M0 0" opacity="0.5" clip-path="url(#c1)" fill-rule="evenodd"></path>`,
-    ],
-  ])(`preserves %s`, (_name, input) => {
-    expect(sanitize_icon_svg(input)).toBe(input)
-  })
-
-  test(`strips event handlers from SVG elements`, () => {
-    expect(sanitize_icon_svg(`<path d="M0 0" onclick="alert(1)"></path>`)).toBe(
-      `<path d="M0 0"></path>`,
-    )
-  })
-
-  test(`strips non-SVG elements like script and iframe`, () => {
-    const result = sanitize_icon_svg(`<path d="M0 0"></path><script>alert(1)</script>`)
-    expect(result).not.toContain(`<script`)
-    expect(result).toContain(`<path d="M0 0"></path>`)
-  })
-
-  test.each([`href`, `xlink:href`])(`strips %s to prevent SVG-based XSS`, (attr) => {
-    const result = sanitize_icon_svg(`<use ${attr}="javascript:alert(1)"></use>`)
-    expect(result).not.toContain(attr)
-    expect(result).not.toContain(`javascript:`)
-  })
-})
-
 // === SSR (no browser DOM) ===
 
 const without_browser_dom = async <T>(
@@ -346,17 +294,15 @@ describe(`sanitizers without a browser DOM`, () => {
     expect(globalThis.window).toBeDefined()
   })
 
-  test.each([`sanitize_svg`, `sanitize_icon_svg`] as const)(
-    `%s strips XSS on SSR instead of returning markup unchanged`,
-    async (name) => {
-      await without_browser_dom((sanitizers) => {
-        expect(sanitizers[name](`<path d="M0 0" /><script>alert(1)</script>`)).not.toContain(
-          `script`,
-        )
-        expect(sanitizers[name](`<path d="M0 0" onclick="alert(1)"></path>`)).not.toContain(
-          `onclick`,
-        )
-      })
-    },
-  )
+  test(`sanitize_svg strips XSS on SSR instead of returning markup unchanged`, async () => {
+    await without_browser_dom((sanitizers) => {
+      const { sanitize_svg: ssr_sanitize_svg } = sanitizers
+      expect(ssr_sanitize_svg(`<path d="M0 0" /><script>alert(1)</script>`)).not.toContain(
+        `script`,
+      )
+      expect(ssr_sanitize_svg(`<path d="M0 0" onclick="alert(1)"></path>`)).not.toContain(
+        `onclick`,
+      )
+    })
+  })
 })

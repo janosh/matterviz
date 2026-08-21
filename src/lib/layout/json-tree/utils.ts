@@ -2,7 +2,7 @@
 import { build_path, format_path, parse_path } from '../../json-path'
 import type { DiffEntry, JsonValueType } from './types'
 
-export type JsonChild = { key: string | number; value: unknown }
+type JsonChild = { key: string | number; value: unknown }
 
 // Circular-safe JSON.stringify helper (hoisted for reuse)
 function safe_stringify(val: unknown): string {
@@ -50,7 +50,7 @@ export const is_expandable_type = (value_type: JsonValueType): boolean =>
   value_type === `set`
 
 // Check if a value type is a primitive (searchable as string)
-export const is_primitive_type = (value_type: JsonValueType): boolean =>
+const is_primitive_type = (value_type: JsonValueType): boolean =>
   value_type === `string` ||
   value_type === `number` ||
   value_type === `boolean` ||

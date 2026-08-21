@@ -62,7 +62,7 @@ export interface BoxHandlerProps<
 }
 
 // Summary statistics for a single box, in data units.
-export interface BoxStats {
+interface BoxStats {
   min: number // raw data minimum
   max: number // raw data maximum
   q1: number // lower quartile (25th percentile)
@@ -75,16 +75,13 @@ export interface BoxStats {
   n: number // number of finite input values
 }
 
-export interface BoxStatsOptions {
+interface BoxStatsOptions {
   whisker_mode?: WhiskerMode // default 'tukey'
   whisker_range?: number // tukey IQR multiple / std multiple (default 1.5)
   whisker_percentiles?: Vec2 // for 'percentile' mode (default [5, 95])
   // Skips materializing outlier arrays when the caller only needs quartiles/whiskers.
   collect_outliers?: boolean
 }
-
-const WHISKER_MODE_SET = new Set<string>(WHISKER_MODES)
-export const is_whisker_mode = (val: string): val is WhiskerMode => WHISKER_MODE_SET.has(val)
 
 const EMPTY_STATS: BoxStats = {
   min: NaN,

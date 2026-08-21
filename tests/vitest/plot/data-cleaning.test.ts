@@ -3,7 +3,6 @@ import {
   apply_bounds,
   clean_multi_series,
   clean_series,
-  clean_trajectory_props,
   clean_xyz,
   compute_local_variance,
   detect_instability,
@@ -570,43 +569,5 @@ describe(`clean_xyz`, () => {
     })
     expect(result).toMatchObject({ x: [1, 3, 5], y: [1, 4, 8], z: [0, 0, 0] })
     expect(result.quality).toMatchObject({ bounds_violations: 2, points_removed: 2 })
-  })
-})
-
-describe(`clean_trajectory_props`, () => {
-  it(`filters every property (independent axis included) to the shared valid indices`, () => {
-    const result = clean_trajectory_props({
-      Step: [0, NaN, 2, 3, 4],
-      energy: [10, 20, NaN, 40, 50],
-      volume: [100, 110, 120, NaN, 140],
-    })
-    expect(result.props).toEqual({ Step: [0, 4], energy: [10, 50], volume: [100, 140] })
-    expect(result.quality.energy).toMatchObject({ invalid_values_found: 1, points_removed: 3 })
-  })
-
-  it(`interpolates, smooths dependent properties and synthesizes a missing independent axis`, () => {
-    const interpolated = clean_trajectory_props(
-      { Step: [0, 1, 2, 3, 4], energy: [10, NaN, 30, 40, 50] },
-      { invalid_values: `interpolate` },
-    )
-    expect(interpolated.props.energy).toEqual([10, 20, 30, 40, 50])
-
-    const smoothed = clean_trajectory_props(
-      { Step: [0, 1, 2, 3, 4, 5, 6], energy: alternating(7) },
-      { smooth: { type: `moving_avg`, window: 3 } },
-    )
-    expect(smoothed.props.Step).toEqual([0, 1, 2, 3, 4, 5, 6]) // never smoothed
-    expect(Math.max(...smoothed.props.energy)).toBeLessThan(10)
-
-    const without_step = clean_trajectory_props({ energy: [10, 20, 30], volume: [1, 2, 3] })
-    expect(without_step.props.Step).toEqual([0, 1, 2])
-    expect(clean_trajectory_props({})).toEqual({ props: {}, quality: {} })
-  })
-
-  it(`counts invalid values only inside the aligned prefix`, () => {
-    const result = clean_trajectory_props({ Step: [0, 1, 2], energy: [10, NaN, 30, NaN, NaN] })
-    expect(result.quality.energy.invalid_values_found).toBe(1)
-    expect(result.quality.Step.invalid_values_found).toBe(0)
-    expect(result.props.energy).toEqual([10, 30])
   })
 })

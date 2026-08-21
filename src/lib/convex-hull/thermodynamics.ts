@@ -297,7 +297,7 @@ export function process_hull_for_stats(
 
 // Geometric tolerance for hull construction (coordinates are compositions in [0, 1] and
 // energies in eV/atom)
-export const HULL_EPS = 1e-9
+const HULL_EPS = 1e-9
 
 // Facet of an N-dimensional hull: an (N-1)-simplex of N vertices (indices into the input
 // points) on the hyperplane normal · x + offset = 0, normal pointing out of the hull.

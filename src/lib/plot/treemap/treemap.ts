@@ -7,15 +7,7 @@
 
 import { hierarchy, treemap, treemapSquarify } from 'd3-hierarchy'
 import type { Rect } from '$lib/plot/core/layout'
-import type {
-  PositionedArc,
-  SunburstLayoutOptions,
-  SunburstNode,
-  SunburstNodeHandlerProps,
-  SunburstSort,
-} from '$lib/plot/sunburst/sunburst'
-import { compute_sunburst_layout } from '$lib/plot/sunburst/sunburst'
-import { DEFAULTS } from '$lib/settings'
+import type { PositionedArc, SunburstNode } from '$lib/plot/sunburst/sunburst'
 
 // Treemaps consume the same node trees as Sunburst (shared data builders)
 export type TreemapNode<Metadata = Record<string, unknown>> = SunburstNode<Metadata>
@@ -24,13 +16,7 @@ export type TreemapNode<Metadata = Record<string, unknown>> = SunburstNode<Metad
 // from tile_rects instead, so tiling can re-run per zoom/resize without
 // recomputing tree semantics.
 export type TreemapArc<Metadata = Record<string, unknown>> = PositionedArc<Metadata>
-export type TreemapNodeHandlerProps<Metadata = Record<string, unknown>> =
-  SunburstNodeHandlerProps<Metadata>
-export interface TreemapLayoutOptions extends Omit<SunburstLayoutOptions, `sort`> {
-  sort?: SunburstSort // default 'descending' (largest top-left); 'none' keeps input order
-}
-
-export interface TilePadding {
+interface TilePadding {
   padding_inner: number // px gap between sibling cells
   // px strip reserved at the top of branch cells for their label (plotly-style
   // parent headers); 0 nests children edge-to-edge over the parent
@@ -129,34 +115,4 @@ export function lerp_rects(prev: readonly Rect[], next: readonly Rect[], t: numb
       height: from.height + (to.height - from.height) * t,
     }
   })
-}
-
-export interface TreemapLayoutResult<Metadata = Record<string, unknown>> {
-  arcs: TreemapArc<Metadata>[] // pre-order semantic nodes, hidden root at index 0
-  rects: Rect[] // pixel rects aligned with arcs by node_idx
-  root: TreemapArc<Metadata> | null // arcs[0] convenience alias
-  max_depth: number // deepest level (root = 0)
-}
-
-// One-shot semantic layout + root tiling (tests and non-zooming callers; the
-// component calls compute_sunburst_layout and tile_rects separately so zoom
-// re-tiles without recomputing tree semantics).
-export function compute_treemap_layout<Metadata = Record<string, unknown>>(
-  data: TreemapNode<Metadata> | TreemapNode<Metadata>[],
-  size: { width: number; height: number },
-  opts: TreemapLayoutOptions & Partial<TilePadding> = {},
-): TreemapLayoutResult<Metadata> {
-  // padding fallbacks derive from DEFAULTS.treemap to prevent drift with the component
-  const {
-    padding_inner = DEFAULTS.treemap.padding_inner,
-    padding_top = DEFAULTS.treemap.padding_top,
-    padding_outer = DEFAULTS.treemap.padding_outer,
-    // descending (matching the Treemap component): squarified tiling reads best
-    // with the largest cell top-left and smallest bottom-right
-    sort = `descending`,
-    ...tree_opts
-  } = opts
-  const { arcs, root, max_depth } = compute_sunburst_layout(data, { sort, ...tree_opts })
-  const rects = tile_rects(arcs, 0, size, { padding_inner, padding_top, padding_outer })
-  return { arcs, rects, root, max_depth }
 }

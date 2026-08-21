@@ -1,7 +1,6 @@
 import {
   analyze_gas_data,
   apply_gas_corrections,
-  compute_element_chemical_potential,
   compute_gas_chemical_potential,
   compute_gas_correction,
   DEFAULT_ELEMENT_TO_GAS,
@@ -101,33 +100,6 @@ describe(`gas-thermodynamics: chemical potential calculations`, () => {
     // For O2, num_atoms = 2
     const expected_delta = (R_EV_PER_K * T * Math.log(P / P_REF)) / 2
     expect(mu - mu_ref).toBeCloseTo(expected_delta, 10)
-  })
-
-  test(`compute_element_chemical_potential converts per-atom-gas to per-atom-element`, () => {
-    const T = 500
-    const P = 0.21
-    const mu_O2_per_atom = compute_gas_chemical_potential(provider, `O2`, T, P)
-    const mu_O = compute_element_chemical_potential(provider, `O2`, `O`, T, P)
-
-    // For O2: μ(O) = μ(O2)_per_atom * num_atoms(O2) / stoich(O in O2) = μ(O2)_per_atom * 2 / 2
-    // So μ(O) = μ(O2)_per_atom for homonuclear diatomics
-    expect(mu_O).toBeCloseTo(mu_O2_per_atom, 10)
-  })
-
-  test(`element chemical potential for multi-atom gases`, () => {
-    const T = 500
-    const P = 1.0
-    const mu_H2O_per_atom = compute_gas_chemical_potential(provider, `H2O`, T, P)
-
-    // H2O has 3 atoms total, 2 H atoms
-    // μ(H from H2O) = μ(H2O)_per_atom * 3 / 2
-    const mu_H = compute_element_chemical_potential(provider, `H2O`, `H`, T, P)
-    expect(mu_H).toBeCloseTo((mu_H2O_per_atom * 3) / 2, 10)
-
-    // H2O has 3 atoms total, 1 O atom
-    // μ(O from H2O) = μ(H2O)_per_atom * 3 / 1
-    const mu_O = compute_element_chemical_potential(provider, `H2O`, `O`, T, P)
-    expect(mu_O).toBeCloseTo(mu_H2O_per_atom * 3, 10)
   })
 })
 

@@ -193,19 +193,3 @@ const SVG_TEXT_ATTRS = [`dx`, `dy`, `x`, `y`, `fill`, `font-size`, `font-weight`
 
 export const sanitize_svg = (html: string): string =>
   sanitize_svg_content(html, SVG_TEXT_TAGS, SVG_TEXT_ATTRS)
-
-// oxfmt-ignore
-const SVG_ICON_TAGS = new Set([
-  `path`, `circle`, `rect`, `line`, `polyline`, `polygon`, `g`, `ellipse`,
-  `clipPath`, `defs`, `mask`, `use`, `title`,
-])
-// oxfmt-ignore
-const SVG_ICON_ATTRS = [
-  `d`, `fill`, `stroke`, `stroke-width`, `stroke-linecap`, `stroke-linejoin`,
-  `cx`, `cy`, `r`, `rx`, `ry`, `x`, `y`, `x1`, `y1`, `x2`, `y2`,
-  `width`, `height`, `viewBox`, `points`, `transform`, `opacity`,
-  `clip-path`, `clip-rule`, `fill-rule`, `id`, `class`,
-]
-
-export const sanitize_icon_svg = (html: string): string =>
-  sanitize_svg_content(html, SVG_ICON_TAGS, SVG_ICON_ATTRS)

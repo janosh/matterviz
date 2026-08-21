@@ -1,7 +1,6 @@
 // Type definitions and utilities for isosurface visualization (charge density, molecular orbitals, etc.)
 import type { D3InterpolateName } from '$lib/colors'
 import type { Matrix3x3, Vec2, Vec3 } from '$lib/math'
-import { scale_lattice_matrix } from '$lib/math'
 import type { Crystal } from '$lib/structure'
 import { flatten_grid, type ScalarGrid3D } from './grid'
 
@@ -41,10 +40,6 @@ export type VolumeGrid = Pick<
   VolumetricData,
   `values` | `dims` | `order` | `lattice` | `origin` | `periodic`
 >
-
-// Flat index of grid point (ix, iy, iz) in a VolumetricData values array
-export const volume_index = ([, ny, nz]: Vec3, ix: number, iy: number, iz: number): number =>
-  (ix * ny + iy) * nz + iz
 
 // Assemble a VolumetricData from flat values, computing data_range in the same pass
 export function make_volume(
@@ -416,7 +411,7 @@ export const lattices_match = (
     row.every((val, col_idx) => Math.abs(val - lattice_b[row_idx][col_idx]) < tolerance),
   )
 
-export interface VolumeMergeResult {
+interface VolumeMergeResult {
   volumes: VolumetricData[]
   layers: IsosurfaceLayer[]
   first_touched_idx: number // index of the first replaced/added volume (new active)
@@ -463,49 +458,4 @@ export function merge_imported_volumes(
     volumes.push(vol)
   }
   return { volumes, layers, first_touched_idx, n_added: incoming.length }
-}
-
-// Tile (repeat) periodic volumetric data to fill a supercell. Finite volumes
-// remain unchanged: structure supercells must not implicitly repeat molecular
-// or other bounded scalar fields.
-// Pre-downsamples the source grid when the tiled result would exceed MAX_GRID_POINTS
-// to avoid large temporary allocations. Returns the original volume unchanged for
-// [1,1,1] scaling.
-export function tile_volumetric_data(volume: VolumetricData, scaling: Vec3): VolumetricData {
-  const [sx, sy, sz] = scaling
-  if (!volume.periodic || (sx === 1 && sy === 1 && sz === 1)) return volume
-
-  const total_cells = sx * sy * sz
-  let source: ScalarGrid3D<Float64Array> = volume
-  let [nx, ny, nz] = volume.dims
-
-  // Pre-downsample source grid so the tiled result stays within budget.
-  // Clamp budget to 8 (minimum downsample output = 2^3) to prevent infinite
-  // loops in downsample_grid when total_cells is very large.
-  if (nx * ny * nz * total_cells > MAX_GRID_POINTS) {
-    const budget = Math.max(8, Math.floor(MAX_GRID_POINTS / total_cells))
-    source = downsample_grid(volume, budget).grid
-    ;[nx, ny, nz] = source.dims
-  }
-
-  const new_nx = nx * sx
-  const new_ny = ny * sy
-  const new_nz = nz * sz
-  const src = source.values
-  const values = new Float64Array(new_nx * new_ny * new_nz)
-  let out_idx = 0
-  for (let ix = 0; ix < new_nx; ix++) {
-    const src_x = ix % nx
-    for (let iy = 0; iy < new_ny; iy++) {
-      const row_offset = (src_x * ny + (iy % ny)) * nz
-      for (let iz = 0; iz < new_nz; iz++) values[out_idx++] = src[row_offset + (iz % nz)]
-    }
-  }
-
-  return {
-    ...volume,
-    values,
-    dims: [new_nx, new_ny, new_nz],
-    lattice: scale_lattice_matrix(volume.lattice, scaling),
-  }
 }

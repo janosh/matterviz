@@ -19,7 +19,7 @@ import type { VacfInput } from './index'
 // VacfInput.velocity_unit unset and calc_vacf labels stored VACF as file velocity units.
 export const VELOCITY_SITE_PROPERTY = `velocity`
 
-export interface VacfCollectOptions {
+interface VacfCollectOptions {
   // Collect every Nth frame; use `suggest_vacf_frame_stride` to stay inside the budget.
   // Note that striding coarsens the velocity sampling and so lowers the VDOS Nyquist
   // frequency by the same factor — a stride of 10 aliases everything above f_Nyquist/10.

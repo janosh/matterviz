@@ -189,7 +189,7 @@ function get_unique_families(hkls: Hkl[]): HklObj[] {
 // SAED restriction: only reflections whose Laue index n = h·u + k·v + l·w satisfies
 // |n| <= max_laue can sit close enough to the Ewald sphere to be excited. Tested inside the
 // triple loop, it rejects the bulk of the sphere before any reciprocal vector is formed.
-export type LaueBound = { zone_axis: math.Vec3; max_laue: number }
+type LaueBound = { zone_axis: math.Vec3; max_laue: number }
 
 export function enumerate_reciprocal_points(
   recip_rows: math.Matrix3x3,

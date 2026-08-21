@@ -30,7 +30,7 @@ export const SYM_ELEM_KINDS = [
   `glide`,
   `inversion`,
 ] as const
-export type SymmetryElementKind = (typeof SYM_ELEM_KINDS)[number]
+type SymmetryElementKind = (typeof SYM_ELEM_KINDS)[number]
 
 export type SymmetryElement = {
   kind: SymmetryElementKind
@@ -264,7 +264,7 @@ function glide_letter(glide_vec: Vec3): string {
   return `g`
 }
 
-export type ClassifiedOperation = Omit<SymmetryElement, `point`> & { point: Vec3 }
+type ClassifiedOperation = Omit<SymmetryElement, `point`> & { point: Vec3 }
 
 // All translation-independent data derived from a rotation matrix W (plus centerings).
 // Cached per distinct W in symmetry_elements_from_ops: supercell inputs can carry

@@ -36,7 +36,7 @@ export interface PhaseBoundary {
 }
 
 // Special point types (invariant reactions)
-export type SpecialPointType =
+type SpecialPointType =
   | `eutectic` // liquid → two solids (lowest melting point)
   | `peritectic` // liquid + solid → different solid
   | `eutectoid` // solid → two different solids
@@ -82,7 +82,7 @@ export interface PhaseDiagramData {
 }
 
 // Tie-line display configuration
-export interface TieLineConfig {
+interface TieLineConfig {
   stroke_width?: number
   endpoint_radius?: number
   cursor_radius?: number

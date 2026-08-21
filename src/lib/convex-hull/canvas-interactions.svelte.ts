@@ -28,7 +28,7 @@ import type {
   PhaseData,
 } from './types'
 
-export interface HullSelectionInputs {
+interface HullSelectionInputs {
   entries: () => PhaseData[] // raw entries, for the structure lookup
   plot_entries: () => ConvexHullEntry[]
   selected_entry: () => ConvexHullEntry | null
@@ -197,11 +197,9 @@ export type HullSelection = ReturnType<typeof create_hull_selection>
 
 // Zoom + pan live here; the rotation angles are the component's (elevation/azimuth in 3D,
 // rotation_x/rotation_y in 4D), so the camera is generic over them
-export type HullCamera = { zoom: number; center_x: number; center_y: number }
+type HullCamera = { zoom: number; center_x: number; center_y: number }
 
-export interface CanvasInteractionInputs<
-  Camera extends HullCamera,
-> extends HullSelectionInputs {
+interface CanvasInteractionInputs<Camera extends HullCamera> extends HullSelectionInputs {
   dim: 3 | 4
   camera_default: Camera // initial view, restored by reset_camera
   wheel_clamp: [min: number, max: number] // zoom clamp range

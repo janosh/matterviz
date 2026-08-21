@@ -112,7 +112,7 @@ export type StructureBond = {
   cell_shift?: Vec3
 }
 
-export type StructureProperties = Record<string, unknown> & { bonds?: StructureBond[] }
+type StructureProperties = Record<string, unknown> & { bonds?: StructureBond[] }
 
 // Chemistry/topology bond data shared by rendering, analysis, and editing consumers.
 export type BondPair = {

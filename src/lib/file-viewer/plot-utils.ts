@@ -4,7 +4,7 @@ import type { BarSeries, DataSeries, DataSeries3D } from '$lib/plot'
 
 export type PlotType = `scatter` | `scatter3d` | `bar` | `histogram` | `table`
 
-export interface ColumnInfo {
+interface ColumnInfo {
   values: unknown[]
   type: `numeric` | `string` | `mixed`
   n_valid: number

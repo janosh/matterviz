@@ -1,7 +1,6 @@
 import type { Matrix3x3, Point2D, Vec2, Vec3 } from '$lib/math'
 import type { DefaultSettings } from '$lib/settings'
-import type { Crystal } from '$lib/structure'
-import type { TooltipConfig, TooltipProp } from '$lib/tooltip'
+import type { TooltipProp } from '$lib/tooltip'
 
 // Viewer settings BrillouinZone forwards to BrillouinZoneControls (bound) and
 // BrillouinZoneScene (read-only); defaults live in DEFAULTS.brillouin
@@ -19,9 +18,6 @@ export type BZHoverData = {
   symmetry_multiplicity: number | null // BZ volume / IBZ volume (e.g., 48 for cubic)
 }
 
-// Tooltip configuration for prefix/suffix customization
-export type BZTooltipConfig = TooltipConfig<BZHoverData>
-
 // Tooltip prop can be a snippet for full customization or config for prefix/suffix
 export type BZTooltipProp = TooltipProp<BZHoverData, [{ hover_data: BZHoverData }]>
 
@@ -38,17 +34,6 @@ export type BrillouinZoneData = BZMeshData & {
   order: number // 1st, 2nd, 3rd BZ
   k_lattice: Matrix3x3 // reciprocal lattice vectors
   volume: number // BZ volume in Å⁻³
-}
-
-export type BrillouinZoneProps = {
-  structure: Crystal
-  bz_order?: number // default 1
-  // Styling
-  surface_color?: string
-  surface_opacity?: number
-  edge_color?: string
-  edge_width?: number
-  show_vectors?: boolean // show b₁, b₂, b₃
 }
 
 export type ConvexHullData = Pick<BZMeshData, `vertices` | `faces`> & {

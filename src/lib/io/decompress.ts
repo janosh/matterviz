@@ -1,4 +1,3 @@
-import type { COMPRESSION_EXTENSIONS } from '$lib/constants'
 import { COMPRESSION_EXTENSIONS_REGEX, COMPRESSION_FORMATS } from '$lib/constants'
 import { has_gzip_magic, has_hdf5_magic, is_binary_payload } from './is-binary'
 
@@ -11,20 +10,19 @@ export function strip_compression_extensions(filename: string): string {
   return base_name
 }
 
-export type CompressionFormat = keyof typeof COMPRESSION_FORMATS
-export type CompressionExtension = (typeof COMPRESSION_EXTENSIONS)[number]
+type CompressionFormat = keyof typeof COMPRESSION_FORMATS
 // Formats the platform DecompressionStream inflates natively
 export type StreamCompressionFormat = Exclude<CompressionFormat, `zip` | `xz` | `bz2`>
 // Formats this module can inflate in the browser: stream formats plus single-file ZIP
 // archives (via fflate). xz and bz2 have no decoder.
-export type BrowserCompressionFormat = StreamCompressionFormat | `zip`
+type BrowserCompressionFormat = StreamCompressionFormat | `zip`
 
 export const is_stream_compression_format = (
   format: CompressionFormat | null,
 ): format is StreamCompressionFormat =>
   format !== null && format !== `zip` && format !== `xz` && format !== `bz2`
 
-export const is_browser_decompressible_format = (
+const is_browser_decompressible_format = (
   format: CompressionFormat | null,
 ): format is BrowserCompressionFormat =>
   format === `zip` || is_stream_compression_format(format)
@@ -126,7 +124,7 @@ export const decompress_data_binary = (
 ): Promise<ArrayBuffer> =>
   consume_decompressed(data, format, (response) => response.arrayBuffer(), signal)
 
-export const decompress_data_blob = (
+const decompress_data_blob = (
   data: CompressedSource,
   format: CompressionFormat,
   signal?: AbortSignal,
@@ -147,7 +145,7 @@ export const content_byte_size = (content: string | ArrayBuffer | Blob): number 
       ? content.byteLength
       : new Blob([content]).size
 
-export const is_hdf5_filename = (filename: string): boolean => /\.(?:h5|hdf5)$/i.test(filename)
+const is_hdf5_filename = (filename: string): boolean => /\.(?:h5|hdf5)$/i.test(filename)
 
 export const hdf5_compression_format = (filename: string): CompressionFormat | null => {
   const clean_filename = filename.split(/[?#]/)[0]
@@ -157,7 +155,7 @@ export const hdf5_compression_format = (filename: string): CompressionFormat | n
     : null
 }
 
-export interface ClassifyPayloadOptions {
+interface ClassifyPayloadOptions {
   // Keep HDF5 payloads (by name or magic bytes) as a Blob so h5wasm can read them lazily
   // instead of materializing the whole file (trajectory viewers)
   hdf5_as_blob?: boolean

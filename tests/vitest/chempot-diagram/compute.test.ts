@@ -31,9 +31,6 @@ import {
   simple_pca,
 } from '$lib/chempot-diagram/compute'
 import { get_domain_color_data } from '$lib/chempot-diagram/color'
-import type { CompositionType } from '$lib/composition'
-import { get_hill_formula } from '$lib/composition/format'
-import { get_reduced_formula } from '$lib/composition/reduce'
 import { filter_entries_at_temperature } from '$lib/convex-hull/helpers'
 import type { PhaseData } from '$lib/convex-hull/types'
 import type { Vec2 } from '$lib/math'
@@ -1268,10 +1265,6 @@ describe(`formula_key_from_composition`, () => {
   ])(`$label → $expected`, ({ comp, expected }) => {
     const key = formula_key_from_composition(comp as Record<string, number>)
     expect(key).toBe(expected)
-    // keys are the shared get_reduced_formula in Hill order
-    expect(get_hill_formula(get_reduced_formula(comp as CompositionType), true)).toBe(
-      get_hill_formula(key, true),
-    )
   })
 })
 

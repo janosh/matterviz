@@ -8,7 +8,7 @@ import type { Vec2 } from '$lib/math'
 const SIGMA_PER_FWHM = 1 / (2 * Math.sqrt(2 * Math.log(2)))
 
 // Parallel x/y arrays: discrete peaks on the way in, a sampled curve on the way out.
-export type PeakCurve = { x: number[]; y: number[] }
+type PeakCurve = { x: number[]; y: number[] }
 
 // Accumulates pseudo-Voigt peaks onto a uniform grid, with the FWHM model supplied by the
 // caller. Unit-agnostic: the faint-peak cut is a fraction of the tallest peak and the reach

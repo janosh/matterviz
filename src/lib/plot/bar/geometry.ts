@@ -71,7 +71,7 @@ export function nearest_line_point<Metadata = Record<string, unknown>>(
   return best
 }
 
-export interface BarRect {
+interface BarRect {
   c0: number // category-axis screen coord of bar start
   c1: number // category-axis screen coord of bar end
   v0: number // value-axis screen coord of bar base

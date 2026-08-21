@@ -197,13 +197,13 @@ export function parse_xyz_reaction_path(content: string, filename = `path.xyz`):
   return path
 }
 
-export type DroppedFile = { content: string; filename: string }
+type DroppedFile = { content: string; filename: string }
 
 const is_xyz = (filename: string) => /\.(?:xyz|extxyz)$/i.test(filename)
 
 // A dropped .json file is either a whole reaction path or a single structure; only the
 // content can tell them apart, since both use the same extension.
-export function is_reaction_path_json(content: string): boolean {
+function is_reaction_path_json(content: string): boolean {
   try {
     const raw: unknown = JSON.parse(content)
     if (!is_record(raw)) return false

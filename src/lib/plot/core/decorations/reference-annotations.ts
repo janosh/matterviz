@@ -8,13 +8,13 @@ import type {
 const OBSTACLE_PENALTY = 10_000
 const PREFERENCE_PENALTY = 0.001
 
-export type ReferenceAnnotationPlacementConfig = {
+type ReferenceAnnotationPlacementConfig = {
   item: ReferenceAnnotationDecorationItem
   obstacles?: readonly DecorationPoint[]
   exclusion_rects?: readonly Rect[]
 }
 
-export type ReferenceAnnotationPlacementResult = {
+type ReferenceAnnotationPlacementResult = {
   candidate: ReferenceAnnotationCandidate
   score: number
 }

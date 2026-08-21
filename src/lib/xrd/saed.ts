@@ -181,15 +181,3 @@ export function compute_saed_pattern(
 // view has to cover. Returns 0 for an empty pattern.
 export const saed_pattern_radius = (pattern: SaedPatternData): number =>
   pattern.spots.reduce((radius, spot) => Math.max(radius, Math.hypot(...spot.position_2d)), 0)
-
-// Angle in degrees between two spots as seen from the direct beam, useful for indexing checks.
-export const saed_spot_angle = (spot_a: Vec2, spot_b: Vec2): number => {
-  const len_a = Math.hypot(...spot_a)
-  const len_b = Math.hypot(...spot_b)
-  if (len_a === 0 || len_b === 0) {
-    throw new Error(`Cannot take the angle to the direct beam (zero-length spot vector).`)
-  }
-  const cos_angle = (spot_a[0] * spot_b[0] + spot_a[1] * spot_b[1]) / (len_a * len_b)
-  const clamped = Math.min(1, Math.max(-1, cos_angle))
-  return math.to_degrees(Math.acos(clamped))
-}

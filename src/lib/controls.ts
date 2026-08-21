@@ -3,9 +3,9 @@ import { SvelteSet } from 'svelte/reactivity'
 // Controls visibility configuration for visualization components
 // Manages visibility of control buttons in Structure, Trajectory, BrillouinZone
 
-export type ControlsVisibility = `always` | `hover` | `never`
+type ControlsVisibility = `always` | `hover` | `never`
 
-export type ShowControlsConfig<ControlName extends string = string> = {
+type ShowControlsConfig<ControlName extends string = string> = {
   mode?: ControlsVisibility
   hidden?: ControlName[]
   style?: string

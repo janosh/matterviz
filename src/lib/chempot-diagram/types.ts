@@ -4,13 +4,13 @@ import type { Point2D, Vec2 } from '$lib/math'
 
 // Per-element chemical potential bounds [min, max] in eV
 // Default is [-50, 0] matching pymatgen
-export type ChemPotLimits = Partial<Record<string, Vec2>>
+type ChemPotLimits = Partial<Record<string, Vec2>>
 
 export type ChemPotColorMode = `none` | `energy` | `formation_energy` | `arity` | `entries`
 
 // For quaternary+ systems: "single" shows one 3D diagram with projection switcher,
 // "grid" shows all C(n,3) ternary projections simultaneously
-export type ChemPotProjectionMode = `single` | `grid`
+type ChemPotProjectionMode = `single` | `grid`
 
 // Visual and behavioral configuration for the diagram
 export interface ChemPotDiagramConfig {
@@ -66,7 +66,7 @@ export interface ChemPotDiagramData {
   lims: Vec2[]
 }
 
-export interface ChemPotHoverInfoBase {
+interface ChemPotHoverInfoBase {
   formula: string
   view: `2d` | `3d`
   pointer?: Point2D
@@ -74,13 +74,13 @@ export interface ChemPotHoverInfoBase {
   axis_ranges: AxisRangeData[]
 }
 
-export interface AxisRangeData {
+interface AxisRangeData {
   element: string
   min_val: number
   max_val: number
 }
 
-export interface ChemPotHoverInfo2D extends ChemPotHoverInfoBase {
+interface ChemPotHoverInfo2D extends ChemPotHoverInfoBase {
   view: `2d`
 }
 

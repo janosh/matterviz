@@ -15,7 +15,7 @@ import {
 import type { MeasureMode, Site } from '$lib/structure'
 import type { Pbc } from './pbc'
 
-export type AngleMode = `degrees` | `radians`
+type AngleMode = `degrees` | `radians`
 
 export const MAX_SELECTED_SITES = 8
 
@@ -79,7 +79,7 @@ export function pbc_chain_positions(
   return chain
 }
 
-export type DisplacementField = {
+type DisplacementField = {
   vectors: Vec3[] // per-site reference -> current displacement, in Cartesian Angstrom
   rmsd: number // root-mean-square displacement over all sites
   max_displacement: number

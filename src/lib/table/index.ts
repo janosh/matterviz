@@ -10,7 +10,7 @@ export { default as HeatmapTable } from './HeatmapTable.svelte'
 export { default as ToggleMenu } from './ToggleMenu.svelte'
 export * from './data'
 export * from './export'
-export { type CellPos, type CellRect, CellSelection } from './selection.svelte'
+export { type CellPos, CellSelection } from './selection.svelte'
 export { virtual_window } from './virtual'
 
 // Cell value types for table data
@@ -219,7 +219,7 @@ export function compute_column_stats(
 // - diverging: symmetric about zero, so the interpolator's midpoint lands on 0 and equal
 //   magnitudes of either sign read as equally intense (formation energies, residuals)
 // - quantile: clipped to the 5th–95th percentile, so a lone outlier can't flatten the rest
-export type ColorNormalizeMode = `minmax` | `diverging` | `quantile`
+type ColorNormalizeMode = `minmax` | `diverging` | `quantile`
 
 export function resolve_color_domain(
   stats: ColumnStats,

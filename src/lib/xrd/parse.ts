@@ -175,7 +175,7 @@ export function parse_block_scan(content: string, format = `block scan`): XrdPat
 
 // `.dat`/`.asc`/`.txt` are catch-all extensions: two-column scans, ILL/PSI count blocks and
 // Rigaku ASCII all ship under them. Dispatch on content, reporting both failures if neither fits.
-export function parse_ascii_scan(content: string, format = `ASCII`): XrdPattern {
+function parse_ascii_scan(content: string, format = `ASCII`): XrdPattern {
   if (/^\*START\s*=/m.test(content)) return parse_rigaku_asc_file(content)
   try {
     return parse_xy_file(content, format)
@@ -413,7 +413,7 @@ export async function parse_brml_file(data: ArrayBuffer): Promise<XrdPattern> {
   return parse_brml_xml(new TextDecoder().decode(files[raw_name]))
 }
 
-export function parse_brml_xml(xml_content: string): XrdPattern {
+function parse_brml_xml(xml_content: string): XrdPattern {
   const doc = parse_xml(xml_content, `BRML`)
   const datum_rows = Array.from(doc.querySelectorAll(`Datum`), (el) =>
     (el.textContent ?? ``).trim().split(`,`).map(Number),
@@ -502,7 +502,7 @@ const BINARY_PARSERS: Record<string, (data: ArrayBuffer) => XrdPattern | Promise
   }
 
 // All supported XRD data file extensions (base formats, without .gz)
-export const XRD_FILE_EXTENSIONS = [
+const XRD_FILE_EXTENSIONS = [
   ...Object.keys(TEXT_PARSERS),
   ...Object.keys(BINARY_PARSERS),
 ] as const

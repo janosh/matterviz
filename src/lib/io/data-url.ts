@@ -3,7 +3,7 @@ import type { FileLoadMeta, FileLoadCallback } from './types'
 import { basename_from_url, load_from_url } from './url-drop'
 
 // Everything an `on_load` callback needs to commit a fetched payload safely.
-export interface DataUrlLoadContext<Value, Content = string | ArrayBuffer> {
+interface DataUrlLoadContext<Value, Content = string | ArrayBuffer> {
   content: Content
   filename: string
   metadata: FileLoadMeta
@@ -34,7 +34,7 @@ export interface DataUrlRequest<Value, Content = string | ArrayBuffer> {
   on_error: (error: Error, filename: string) => void
 }
 
-export interface DataUrlLoader<Value, Content = string | ArrayBuffer> {
+interface DataUrlLoader<Value, Content = string | ArrayBuffer> {
   // Run inside an $effect and return its result as the teardown, so a URL change,
   // an incoming caller value or unmount invalidates whatever is in flight.
   request: (req: DataUrlRequest<Value, Content>) => () => void

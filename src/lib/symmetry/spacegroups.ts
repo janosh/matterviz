@@ -54,7 +54,7 @@ const RHOMBOHEDRAL_SPACEGROUPS = new Set([146, 148, 155, 160, 161, 166, 167])
 
 // The 7 lattice systems: like crystal systems except the trigonal crystal system splits
 // into rhombohedral (R-centered groups) and hexagonal (P groups) lattice systems.
-export type LatticeSystem = Exclude<CrystalSystem, `trigonal`> | `rhombohedral`
+type LatticeSystem = Exclude<CrystalSystem, `trigonal`> | `rhombohedral`
 
 // Lattice system (classification of the Bravais lattice). Differs from the crystal system
 // only for trigonal groups: R-centered ones (R3, R-3m, …) have rhombohedral lattices while
@@ -419,7 +419,7 @@ export const SPACEGROUP_NUM_TO_SYMBOL = Object.entries(SPACEGROUP_SYMBOL_TO_NUM)
   return acc
 }, {})
 
-export interface SpacegroupSunburstMetadata {
+interface SpacegroupSunburstMetadata {
   spacegroup: number
   crystal_system: CrystalSystem
   [key: string]: unknown // assignable to SunburstNode's default Record<string, unknown>

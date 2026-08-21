@@ -5,8 +5,8 @@
 import type { ElementSymbol } from '$lib/element'
 import { element_by_symbol, element_data } from '$lib/element'
 import { element_groups } from '$lib/element/data'
-import { CATEGORY_COUNTS as expected_counts } from '$lib/labels'
 import { describe, expect, test } from 'vitest'
+import { CATEGORY_COUNTS as expected_counts } from '../setup'
 
 const get_element = (symbol: ElementSymbol) => {
   const element = element_by_symbol.get(symbol)

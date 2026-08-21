@@ -20,7 +20,7 @@ export interface VolumeSliceSettings {
   symmetric: boolean | `auto`
 }
 
-export const DEFAULT_VOLUME_SLICE_SETTINGS: Readonly<VolumeSliceSettings> = {
+const DEFAULT_VOLUME_SLICE_SETTINGS: Readonly<VolumeSliceSettings> = {
   plane_mode: `hkl`,
   miller_indices: [0, 0, 1],
   position: 0.5,

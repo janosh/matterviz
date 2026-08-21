@@ -23,7 +23,7 @@ export interface TrajectoryProvenance {
   hdf5_group?: string
 }
 
-export type PropertiesListener = (batch: TrajectoryMetadata[], complete: boolean) => void
+type PropertiesListener = (batch: TrajectoryMetadata[], complete: boolean) => void
 
 // Frame-level scalar properties (energy, volume, pressure, …) that feed the plot pane, the
 // info pane and the data inspector. Static runs fill `rows` at construction; progressive
@@ -83,7 +83,7 @@ const sort_rows = (rows: readonly TrajectoryMetadata[]): TrajectoryMetadata[] =>
       (row, idx, sorted) => idx === 0 || row.frame_number !== sorted[idx - 1].frame_number,
     )
 
-export type FrameResult = TrajectoryFrame | Promise<TrajectoryFrame>
+type FrameResult = TrajectoryFrame | Promise<TrajectoryFrame>
 
 export interface TrajectoryRun {
   // Mandatory and >= 1: an electronic-only vaspout.h5 is a spectral result, never a run

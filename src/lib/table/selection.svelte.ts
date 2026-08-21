@@ -3,7 +3,7 @@
 // disjoint ones, Shift+arrow grows the newest from its anchor. Headless so the geometry is
 // testable without a DOM; the component maps pointer/keyboard events onto these calls.
 export type CellPos = { row: number; col: number }
-export type CellRect = {
+type CellRect = {
   start_row: number
   start_col: number
   end_row: number

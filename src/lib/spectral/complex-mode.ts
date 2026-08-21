@@ -6,19 +6,14 @@ export const multiply_complex = (left: Complex, right: Complex): Complex => [
   left[0] * right[1] + left[1] * right[0],
 ]
 
-export const complex_conjugate_product = (left: Complex, right: Complex): Complex => [
-  left[0] * right[0] + left[1] * right[1],
-  left[0] * right[1] - left[1] * right[0],
-]
-
 export const complex_phase = (angle: number): Complex => [Math.cos(angle), Math.sin(angle)]
 
-export interface ComplexModeDisplacementFrame {
+interface ComplexModeDisplacementFrame {
   phase: number
   displacements: Vec3[]
 }
 
-export interface ComplexModeDisplacementOptions {
+interface ComplexModeDisplacementOptions {
   amplitude: number
   n_frames: number
   label?: string

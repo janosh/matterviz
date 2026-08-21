@@ -39,7 +39,7 @@ export interface RefLineEvent {
 }
 
 // Base properties shared by all reference line types
-export interface RefLineBase {
+interface RefLineBase {
   id?: string | number
   x_span?: [number | null, number | null]
   y_span?: [number | null, number | null]
@@ -100,7 +100,7 @@ type Ref3DBase = Omit<
 
 // Base properties shared by all 3D reference line types
 // Aligned with RefLineBase for future feature parity (interactions, annotations, etc.)
-export interface RefLine3DBase extends Ref3DBase {
+interface RefLine3DBase extends Ref3DBase {
   style?: RefLineStyle
   hover_style?: RefLineStyle
   annotation?: RefLineAnnotation
@@ -119,7 +119,7 @@ export type RefLine3D = RefLine3DBase &
   )
 
 // 3D reference plane styling
-export interface RefPlaneStyle {
+interface RefPlaneStyle {
   color?: string
   opacity?: number
   wireframe?: boolean
@@ -128,7 +128,7 @@ export interface RefPlaneStyle {
 }
 
 // Base properties shared by all 3D reference plane types
-export interface RefPlaneBase extends Ref3DBase {
+interface RefPlaneBase extends Ref3DBase {
   style?: RefPlaneStyle
 }
 
