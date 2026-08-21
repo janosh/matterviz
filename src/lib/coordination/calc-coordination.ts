@@ -1,6 +1,10 @@
 import type { AnyStructure } from '$lib/structure'
 import type { BondingStrategy } from '$lib/structure/bonding'
-import { compute_bonds, get_majority_element } from '$lib/structure/bonding'
+import {
+  compute_bonds,
+  lattice_pbc_or_throw,
+  get_majority_element,
+} from '$lib/structure/bonding'
 import type { Pbc } from '$lib/structure/pbc'
 
 interface CoordinationSite {
@@ -27,8 +31,9 @@ export function calc_coordination_nums(
   pbc?: Pbc,
 ): CoordinationData {
   // via compute_bonds, not the raw strategy, so repeat passes reuse its memoized neighbor search
-  const lattice_pbc = `lattice` in structure ? structure.lattice.pbc : undefined
-  const bonds = compute_bonds(structure, strategy, { pbc: pbc ?? lattice_pbc })
+  const bonds = compute_bonds(structure, strategy, {
+    pbc: lattice_pbc_or_throw(structure, pbc),
+  })
 
   const { sites } = structure
   // Every bond is a distinct (partner, image) contact for each of its ends, and a bond from

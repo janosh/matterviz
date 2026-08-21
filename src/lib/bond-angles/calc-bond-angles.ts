@@ -5,7 +5,11 @@
 import type { Vec3 } from '$lib/math'
 import type { AnyStructure } from '$lib/structure'
 import type { BondingStrategy } from '$lib/structure/bonding'
-import { compute_bonds, get_majority_element } from '$lib/structure/bonding'
+import {
+  compute_bonds,
+  lattice_pbc_or_throw,
+  get_majority_element,
+} from '$lib/structure/bonding'
 import { angle_between_vectors } from '$lib/structure/measure'
 import type { Pbc } from '$lib/structure/pbc'
 import { SvelteMap, SvelteSet } from 'svelte/reactivity'
@@ -132,8 +136,9 @@ export function compute_bond_angles(
   // through a cell face is found and a partner's periodic images count as distinct
   // neighbours. explicit_only reads bonds (cell_shift included) straight off
   // structure.properties.bonds and ignores the periodicity option.
-  const lattice_pbc = `lattice` in structure ? structure.lattice.pbc : undefined
-  const bonds = compute_bonds(structure, strategy, { pbc: options.pbc ?? lattice_pbc })
+  const bonds = compute_bonds(structure, strategy, {
+    pbc: lattice_pbc_or_throw(structure, options.pbc),
+  })
   const element_of = sites.map((site) => get_majority_element(site) ?? UNKNOWN_ELEMENT)
 
   // Both bonding strategies emit each unordered pair once, so a naive pass leaves every

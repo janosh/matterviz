@@ -705,7 +705,7 @@ function neighbor_query_cutoff(
     throw new Error(`neighbor_query: cutoff must be a positive finite number, got ${cutoff}`)
   }
   const lattice = `lattice` in structure ? structure.lattice.matrix : null
-  const pbc: Pbc = `lattice` in structure ? (pbc_override ?? structure.lattice.pbc) : NO_PBC
+  const pbc = lattice_pbc_or_throw(structure, pbc_override)
 
   // Cloud = wrapped base sites (first n_sites slots, index-aligned) + periodic images.
   // cloud_src maps a cloud slot to its site; cloud_shift holds the integer lattice shift
@@ -1045,6 +1045,22 @@ const volume_per_atom = (structure: AnyStructure): number => {
   // a planar or linear cluster has a zero-thickness box; 1 A keeps the seed finite
   const extent = (axis: number) => Math.max(maxs[axis] - mins[axis], 1)
   return (extent(0) * extent(1) * extent(2)) / structure.sites.length
+}
+
+// The periodic axes an analysis should bond across when the caller gives none: the lattice's
+// own pbc. LatticeType.pbc is required, so a crystal without it is malformed input (hand-built
+// props); falling through to a finite pass would silently under-count every coordination
+// number and angle, so it throws instead.
+export function lattice_pbc_or_throw(structure: AnyStructure, override?: Pbc): Pbc {
+  if (override) return override
+  if (!(`lattice` in structure)) return NO_PBC
+  const { pbc } = structure.lattice
+  if (!Array.isArray(pbc) || pbc.length !== 3) {
+    throw new Error(
+      `lattice.pbc must be a [boolean, boolean, boolean], got ${JSON.stringify(pbc)}`,
+    )
+  }
+  return pbc
 }
 
 // Geometric neighbor query with periodic images.

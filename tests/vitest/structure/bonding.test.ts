@@ -3,6 +3,7 @@ import type { Crystal, StructureBond } from '$lib/structure'
 import type { BondEditState } from '$lib/structure/bonding'
 import { element_by_symbol } from '$lib/element/data'
 import * as bonding from '$lib/structure/bonding'
+import { calc_coordination_nums } from '$lib/coordination'
 import * as math from '$lib/math'
 import { get_pbc_image_sites } from '$lib/structure/pbc'
 import { make_supercell } from '$lib/structure/supercell'
@@ -1648,6 +1649,20 @@ describe(`neighbor_query`, () => {
       sites: crystal.sites.map((site) => ({ ...site, abc: [0, 0, 0] as Vec3 })),
     }
     expect(() => bonding.neighbor_query(molecule, { cutoff: 3 })).toThrow(/non-finite/)
+  })
+
+  test(`a crystal without lattice.pbc is malformed input, not a finite cluster`, () => {
+    // pbc is required on LatticeType; hand-built props can omit it, and the analyses used to
+    // fall through to a finite bonding pass that under-counted every coordination number
+    const crystal = make_crystal(4, [{ element: `Na`, abc: [0, 0, 0] }])
+    const { pbc: _pbc, ...lattice_without_pbc } = crystal.lattice
+    const malformed = { ...crystal, lattice: lattice_without_pbc } as unknown as typeof crystal
+    expect(() => bonding.neighbor_query(malformed, { cutoff: 3 })).toThrow(/lattice\.pbc/)
+    expect(() => calc_coordination_nums(malformed)).toThrow(/lattice\.pbc/)
+    // an explicit override still works on the same object
+    expect(
+      bonding.neighbor_query(malformed, { cutoff: 3, pbc: [true, true, true] }).n_centers,
+    ).toBe(1)
   })
 })
 
