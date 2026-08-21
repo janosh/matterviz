@@ -342,6 +342,23 @@ describe(`Structure`, () => {
     expect(state.active_pane, `hover path ignored in edit mode`).toBeNull()
   })
 
+  test(`edit-atoms A opens the element input and Escape closes it, even while that input has focus`, async () => {
+    const edit_props: { measure_mode: MeasureMode } = { measure_mode: `edit-atoms` }
+    mount_structure(bind_props(edit_props, { structure: structures[0] }))
+    await tick()
+    const press = (target: Element, key: string) =>
+      target.dispatchEvent(
+        new KeyboardEvent(`keydown`, { key, cancelable: true, bubbles: true }),
+      )
+    press(doc_query(`.structure`), `a`)
+    await tick()
+    const add_input = doc_query<HTMLInputElement>(`.add-atom-input input`)
+    // the autofocused element input is where the next keystroke lands
+    press(add_input, `Escape`)
+    await tick()
+    expect(document.querySelector(`.add-atom-input`)).toBeNull()
+  })
+
   test(`edit-atoms Delete removes selected atom + remaps bonds, undo restores both`, async () => {
     // Deleting site 0 drops its bond and shifts the 1-2 bond down to 0-1; undo
     // must restore both structure sites and the remapped bindable bonds prop
