@@ -5,8 +5,9 @@ import {
   read_ndarray_from_view,
   validate_3x3_matrix,
 } from '$lib/trajectory/helpers'
-import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory/index'
+import type { TrajectoryFrame } from '$lib/trajectory/index'
 import { to_error } from '$lib/utils'
+import type { ParsedTrajectory } from './shared'
 
 const MAX_SAFE_STRING_LENGTH = 0x1fffffe8 * 0.5 // 50% of JS max string length as safety
 
@@ -113,7 +114,7 @@ export function decode_ase_frame(
   return { frame, numbers }
 }
 
-export function parse_ase_trajectory(buffer: ArrayBuffer, filename?: string): TrajectoryType {
+export function parse_ase_trajectory(buffer: ArrayBuffer): ParsedTrajectory {
   const view = new DataView(buffer)
 
   const signature = new TextDecoder().decode(new Uint8Array(buffer, 0, 8))
@@ -155,12 +156,8 @@ export function parse_ase_trajectory(buffer: ArrayBuffer, filename?: string): Tr
 
   const first_struct = frames[0].structure
   const metadata = {
-    filename,
-    source_format: `ase_trajectory`,
-    frame_count: frames.length,
-    total_atoms: first_struct.sites.length,
     periodic_boundary_conditions:
       `lattice` in first_struct ? first_struct.lattice.pbc : [true, true, true],
   }
-  return { frames, metadata }
+  return { format: `ase`, frames, metadata }
 }

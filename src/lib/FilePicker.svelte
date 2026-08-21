@@ -85,36 +85,34 @@
   }
 </script>
 
+{#snippet filter_button(kind: `category` | `type`, value: string, label = value)}
+  {@const is_active = is_filter_active(kind, value)}
+  <button
+    type="button"
+    class={['legend-item', { active: is_active, 'format-item': kind === `type` }]}
+    onclick={() => toggle_filter(kind, value)}
+    aria-pressed={is_active}
+    {@attach tooltip({
+      content: `Filter to show only ${label}${kind === `type` ? ` files` : ``}`,
+    })}
+  >
+    {#if kind === `type`}
+      <span class="format-circle" style:background-color={paint_for(value).badge}></span>
+    {/if}
+    {label}
+  </button>
+{/snippet}
+
 <div bind:this={root} class="file-picker" {...rest}>
   <div class="legend" role="group" aria-label="Filter files">
     {#each show_category_filters ? uniq_categories : [] as category (category)}
-      {@const is_active = is_filter_active(`category`, category)}
-      <button
-        type="button"
-        class={['legend-item', { active: is_active }]}
-        onclick={() => toggle_filter(`category`, category)}
-        aria-pressed={is_active}
-        {@attach tooltip({ content: `Filter to show only ${category}` })}
-      >
-        {category}
-      </button>
+      {@render filter_button(`category`, category)}
     {/each}
     {#if show_category_filters && uniq_categories.length > 0 && uniq_formats.length > 0}
       <span class="divider"></span>
     {/if}
-
     {#each uniq_formats as format (format)}
-      {@const is_active = is_filter_active(`type`, format)}
-      <button
-        type="button"
-        class={['legend-item format-item', { active: is_active }]}
-        onclick={() => toggle_filter(`type`, format)}
-        aria-pressed={is_active}
-        {@attach tooltip({ content: `Filter to show only ${format.toUpperCase()} files` })}
-      >
-        <span class="format-circle" style:background-color={paint_for(format).badge}></span>
-        {format.toUpperCase()}
-      </button>
+      {@render filter_button(`type`, format, format.toUpperCase())}
     {/each}
 
     {#if active_filter}

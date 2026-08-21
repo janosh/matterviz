@@ -3,10 +3,10 @@ import type { ElementSymbol } from '$lib/element/types'
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { Pbc } from '$lib/structure/pbc'
-import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory/index'
+import type { TrajectoryFrame } from '$lib/trajectory/index'
 import { lines_cursor, parse_vasp_header } from '$lib/structure/parsers/vasp-header'
 import { create_trajectory_frame, parse_float_token } from '$lib/trajectory/helpers'
-import { traj_warn } from './diagnostics'
+import type { ParsedTrajectory, WarnFn } from './shared'
 
 // The XDATCAR header is the POSCAR one minus the coordinate-mode line, because its
 // `Direct configuration= N` line doubles as the frame marker and the frame loop needs to
@@ -24,7 +24,7 @@ const parse_xdatcar_header = (lines: string[], start: number) => {
   return { result, end: cursor.position() }
 }
 
-export function parse_vasp_xdatcar(content: string, filename?: string): TrajectoryType {
+export function parse_vasp_xdatcar(content: string, warn: WarnFn): ParsedTrajectory {
   const lines = content.trim().split(/\r?\n/)
   if (lines.length < 10) throw new Error(`XDATCAR file too short`)
 
@@ -73,7 +73,7 @@ export function parse_vasp_xdatcar(content: string, filename?: string): Trajecto
     // a writer still appending: drop it with a warning. A malformed line anywhere else is
     // corruption and names itself.
     if (line_idx + elements.length > lines.length) {
-      traj_warn(
+      warn(
         `Dropping truncated final XDATCAR frame ${step} (line ${config_idx + 1}): ${lines.length - line_idx} of ${elements.length} coordinate lines`,
       )
       break
@@ -104,7 +104,7 @@ export function parse_vasp_xdatcar(content: string, filename?: string): Trajecto
       positions.push(frac_to_cart(coords))
     }
     if (torn_last_line) {
-      traj_warn(
+      warn(
         `Dropping truncated final XDATCAR frame ${step}: partial coordinate line ${lines.length} "${lines[lines.length - 1]}"`,
       )
       break
@@ -113,17 +113,24 @@ export function parse_vasp_xdatcar(content: string, filename?: string): Trajecto
     const pbc: Pbc = [true, true, true]
     const { volume } = math.calc_lattice_params(lattice_matrix)
     frames.push(
-      create_trajectory_frame(positions, elements, lattice_matrix, pbc, step, { volume }),
+      create_trajectory_frame(
+        positions,
+        elements,
+        lattice_matrix,
+        pbc,
+        step,
+        { volume },
+        undefined,
+        warn,
+      ),
     )
   }
+  if (frames.length === 0) throw new Error(`XDATCAR contains no complete frame`)
 
   return {
+    format: `xdatcar`,
     frames,
     metadata: {
-      filename,
-      source_format: `vasp_xdatcar`,
-      frame_count: frames.length,
-      total_atoms: elements.length,
       periodic_boundary_conditions: [true, true, true],
       elements: element_names,
       element_counts,

@@ -189,79 +189,78 @@
     {#snippet controls_extra()}
       <SettingsSection
         title="Spectrum"
-        current_values={{ kind }}
-        on_reset={() => (kind = `ir`)}
+        class="ctrl-line"
+        current_values={{
+          kind,
+          units,
+          presentation,
+          show_sticks,
+          ...(!is_transmittance ? { normalize } : {}),
+        }}
+        on_reset={() => {
+          kind = `ir`
+          units = `cm-1`
+          presentation = `absorbance`
+          show_sticks = true
+          if (!is_transmittance) normalize = `max`
+        }}
+        layout="flow"
       >
-        <div class="pane-row">
-          <label for="ir-raman-kind">Type:</label>
+        <label>
+          <span>Type</span>
           <select id="ir-raman-kind" bind:value={kind}>
             <option value="ir">Infrared</option>
             <option value="raman" disabled={!spectrum.has_raman}>Raman</option>
           </select>
-        </div>
-      </SettingsSection>
-      <SettingsSection
-        title="Units"
-        current_values={{ units }}
-        on_reset={() => (units = `cm-1`)}
-      >
-        <div class="pane-row">
-          <label for="ir-raman-units">Frequency:</label>
+        </label>
+        <label>
+          <span>Frequency</span>
           <select id="ir-raman-units" bind:value={units}>
             {#each FREQUENCY_UNITS as unit (unit)}
               <option value={unit}>{unit}</option>
             {/each}
           </select>
-        </div>
-      </SettingsSection>
-      <SettingsSection
-        title="Broadening"
-        current_values={{ fwhm, shape_factor }}
-        on_reset={() => ([fwhm, shape_factor] = [(plot_range[1] - plot_range[0]) / 100, 0.5])}
-      >
-        <div class="pane-row">
-          <label for="ir-raman-fwhm" title="Full width at half maximum">FWHM:</label>
-          <input id="ir-raman-fwhm" type="range" {...fwhm_input} bind:value={fwhm} />
-          <span class="value">{format_num(fwhm, `.3~`)}</span>
-        </div>
-        <div class="pane-row">
-          <label for="ir-raman-shape" title="0 = Gaussian, 1 = Lorentzian">Shape:</label>
-          <input id="ir-raman-shape" type="range" {...shape_input} bind:value={shape_factor} />
-          <span class="value">{format_num(shape_factor, `.2~`)}</span>
-        </div>
-      </SettingsSection>
-      {#if !is_transmittance}
-        <SettingsSection
-          title="Normalization"
-          current_values={{ normalize }}
-          on_reset={() => (normalize = `max`)}
-        >
-          <div class="pane-row">
-            <label for="ir-raman-normalize">Mode:</label>
+        </label>
+        {#if !is_transmittance}
+          <label>
+            <span>Norm</span>
             <select id="ir-raman-normalize" bind:value={normalize}>
               {#each NORMALIZATION_MODES as mode (mode.value)}
                 <option value={mode.value}>{mode.label}</option>
               {/each}
             </select>
-          </div>
-        </SettingsSection>
-      {/if}
-      <SettingsSection
-        title="Display"
-        current_values={{ presentation, show_sticks }}
-        on_reset={() => ([presentation, show_sticks] = [`absorbance`, true])}
-      >
-        <div class="pane-row">
-          <label for="ir-raman-presentation">Axis:</label>
+          </label>
+        {/if}
+        <label>
+          <span>Axis</span>
           <select id="ir-raman-presentation" bind:value={presentation}>
             <option value="absorbance">Absorbance</option>
             <option value="transmittance">Transmittance</option>
           </select>
-        </div>
-        <div class="pane-row">
-          <label for="ir-raman-sticks">Sticks:</label>
+        </label>
+        <label>
           <input id="ir-raman-sticks" type="checkbox" bind:checked={show_sticks} />
+          Sticks
           <span class="value">{active_count}/{mode_count}</span>
+        </label>
+      </SettingsSection>
+      <SettingsSection
+        title="Broadening"
+        current_values={{ fwhm, shape_factor }}
+        on_reset={() => ([fwhm, shape_factor] = [(plot_range[1] - plot_range[0]) / 100, 0.5])}
+        layout="flow"
+      >
+        <div class="style-row">
+          <label title="Full width at half maximum">
+            <span>FWHM</span>
+            <span class="value">{format_num(fwhm, `.3~`)}</span>
+            <input id="ir-raman-fwhm" type="range" {...fwhm_input} bind:value={fwhm} />
+          </label>
+          <label title="0 = Gaussian, 1 = Lorentzian">
+            <span>Shape</span>
+            <span class="value">{format_num(shape_factor, `.2~`)}</span>
+            <input id="ir-raman-shape" type="range" {...shape_input} bind:value={shape_factor} />
+          </label>
         </div>
       </SettingsSection>
     {/snippet}
@@ -312,29 +311,9 @@
     stroke: var(--ir-raman-selected-stick-color, light-dark(#e66101, #fdb863));
     stroke-width: var(--ir-raman-selected-stick-width, 2.5);
   }
-  .pane-row {
-    display: flex;
-    align-items: center;
-    gap: 0.5em;
-    margin: 0.3em 0;
-    font-size: 0.9em;
-  }
-  .pane-row label {
-    min-width: 4.5em;
-    flex-shrink: 0;
-  }
-  .pane-row input[type='range'] {
-    flex: 1;
-    min-width: 4em;
-  }
-  .pane-row select {
-    flex: 1;
-    min-width: 0;
-  }
   .value {
     font-family: var(--font-mono, monospace);
     font-size: 0.9em;
-    min-width: 3.5em;
     text-align: right;
   }
 </style>

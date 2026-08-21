@@ -6,20 +6,17 @@
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import { Tabs } from 'svelte-widgets'
   import { HeatmapTable as HeatmapTableIcon } from 'svelte-widgets/icons'
-  import { full_data_extractor } from './extract'
   import type {
-    TrajectoryDataExtractor,
     TrajectoryFrame,
     TrajectoryInspectorTab,
     TrajectoryMetadata,
-    TrajectoryType,
+    TrajectoryRun,
   } from './index'
 
   let {
-    trajectory,
+    run,
     current_step_idx = 0,
     current_frame = null,
-    data_extractor = full_data_extractor,
     property_config = trajectory_property_config,
     on_step_change,
     on_site_select,
@@ -27,12 +24,10 @@
     pane_open = $bindable(false),
     ...pane_options
   }: ViewerPaneOptions & {
-    trajectory?: TrajectoryType
+    run?: TrajectoryRun
     current_step_idx?: number
-    // Resolved frame for the atom tab. Indexed trajectories load frames on demand, so
-    // the frame on screen is usually absent from `trajectory.frames`.
+    // Resolved frame for the atom tab. Lazy runs load frames on demand.
     current_frame?: TrajectoryFrame | null
-    data_extractor?: TrajectoryDataExtractor
     property_config?: Record<string, TrajPropertyConfig>
     on_step_change?: (frame_idx: number) => void
     on_site_select?: (site_idx: number) => void
@@ -87,30 +82,20 @@
     }
   }
 
-  let total_frames = $derived(trajectory?.total_frames ?? trajectory?.frames.length ?? 0)
+  let total_frames = $derived(run?.frame_count ?? 0)
 
-  // Per-frame entries. The trap: for an indexed trajectory `frames` holds only the first
-  // handful (the parser loads min(10, total)) while total_frames can be six digits, so
-  // mapping over `frames` would present 10 rows as the whole run. plot_metadata is the
-  // sampled stand-in the parser leaves behind for exactly this case.
+  // A progressive or sampled run may expose fewer property rows than frames. Never present
+  // that subset as the full trajectory.
   let frame_source = $derived.by(() => {
-    if (!trajectory) return { kind: `full` as const, entries: [] as TrajectoryMetadata[] }
-
-    const is_lazy =
-      trajectory.is_indexed === true ||
-      trajectory.frame_loader != null ||
-      trajectory.frames.length < total_frames
-
-    if (is_lazy && trajectory.plot_metadata?.length) {
-      return { kind: `sampled` as const, entries: trajectory.plot_metadata }
+    const entries = run?.properties.rows ?? ([] as TrajectoryMetadata[])
+    const covers_all =
+      entries.length === total_frames &&
+      entries.every(({ frame_number }, frame_idx) => frame_number === frame_idx)
+    return {
+      kind: covers_all ? (`full` as const) : (`sampled` as const),
+      entries,
+      complete: run?.properties.complete ?? true,
     }
-    // the extractor yields plot_metadata's shape, so both sources build rows the same way
-    const entries = trajectory.frames.map((frame, frame_idx) => ({
-      frame_number: frame_idx,
-      step: frame.step,
-      properties: data_extractor(frame, trajectory),
-    }))
-    return { kind: is_lazy ? (`partial` as const) : (`full` as const), entries }
   })
 
   // One pass yields both rows and columns: the columns are the union of the property
@@ -140,19 +125,15 @@
   let frame_notice = $derived.by(() => {
     if (frame_source.kind === `full`) return null
     const shown = format_num(frame_table.rows.length, `,d`)
-    // an indexed trajectory that reports no total_frames makes frames.length a lower
-    // bound, not a total, so it must not be printed as one
-    const total =
-      trajectory?.total_frames == null
-        ? `an unreported number of`
-        : format_num(trajectory.total_frames, `,d`)
-    if (frame_source.kind === `sampled`) {
-      return `Sampled frames: ${shown} of ${total} frames. The table lists the pre-extracted sample, not every frame.`
-    }
-    return `Partial view: ${shown} of ${total} frames are in memory and no sampled metadata is available. Re-load with indexing off to inspect every frame.`
+    const total = format_num(total_frames, `,d`)
+    return frame_source.complete
+      ? `Sampled frames: ${shown} of ${total}. The table lists the run's available property sample.`
+      : `Loading frame properties: ${shown} of ${total} available so far.`
   })
 
-  let active_frame = $derived(current_frame ?? trajectory?.frames[current_step_idx] ?? null)
+  let active_frame = $derived(
+    current_frame ?? (current_step_idx === 0 ? run?.preview : null) ?? null,
+  )
   let active_sites = $derived(active_frame?.structure.sites ?? [])
 
   // Enumerated from the sites rather than hardcoded: parsers keep growing the set of
@@ -245,7 +226,7 @@
   <h4 style="margin: 0 0 4pt">Data Inspector</h4>
   <!-- ViewerPane keeps its children mounted and merely hides them, so without the
   pane_open gate a closed pane would still rebuild a 100k-row atom table on every frame -->
-  {#if !trajectory}
+  {#if !run}
     <StatusMessage message="No trajectory loaded" style="border: none" />
   {:else if pane_open}
     <Tabs

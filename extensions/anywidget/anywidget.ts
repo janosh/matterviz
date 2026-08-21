@@ -22,7 +22,8 @@ import {
   ScatterPlot3D,
   SpacegroupBarPlot,
   Structure,
-  Trajectory,
+  trajectory_from_json,
+  TrajectoryFileViewer,
   Treemap,
   volume_from_json,
   XrdPlot,
@@ -404,18 +405,29 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     ],
   },
   trajectory: {
-    component: Trajectory,
+    component: TrajectoryFileViewer,
     static_props: no_file_drop,
     drive: [
       ...drive_props([
-        `trajectory`,
-        `data_url`,
         `layout`,
         `fullscreen_toggle`,
         `auto_play`,
         `step_labels`,
         `property_labels`,
       ]),
+      // The JSON trait (pymatgen Trajectory, { frames }, array of structures) becomes an
+      // in-memory run; data_url is fetched and parsed by the file viewer itself
+      derived_prop(`trajectory`, [`trajectory`], (model) => {
+        const value = get_prop(model, `trajectory`)
+        if (value === undefined || value === null) return undefined
+        try {
+          return trajectory_from_json(value, { format: `json` })
+        } catch (error) {
+          console.error(`TrajectoryWidget: invalid trajectory trait:`, error)
+          return undefined
+        }
+      }),
+      derived_prop(`src`, [`data_url`], (model) => get_prop(model, `data_url`)),
       // current_step_idx links widgets; display_mode changes from the view-mode menu.
       writeback_prop(`current_step_idx`, 0),
       writeback_prop(`display_mode`, `structure+scatter`),

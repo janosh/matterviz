@@ -1,5 +1,11 @@
 import TrajectoryInfoPane from '$lib/trajectory/TrajectoryInfoPane.svelte'
-import type { TrajectoryFrame, TrajectoryMetadata, TrajectoryType } from '$lib/trajectory'
+import {
+  trajectory_from_frames,
+  TrajectoryProperties,
+  type TrajectoryFrame,
+  type TrajectoryMetadata,
+  type TrajectoryRun,
+} from '$lib/trajectory'
 import { mount, tick } from 'svelte'
 import { afterEach, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
@@ -24,10 +30,26 @@ const frame: TrajectoryFrame = {
 }
 
 const pane_text = () => document.body.textContent ?? ``
+const make_run = (frames: TrajectoryFrame[], time_step?: TrajectoryRun[`time_step`]) =>
+  trajectory_from_frames(frames, { time_step })
+const make_metadata = (
+  length: number,
+  properties: (frame_number: number) => Record<string, number>,
+): TrajectoryMetadata[] =>
+  Array.from({ length }, (_unused, frame_number) => ({
+    frame_number,
+    step: frame_number,
+    properties: properties(frame_number),
+  }))
+const sampled_run = (frame_count: number, rows: TrajectoryMetadata[] = []): TrajectoryRun => ({
+  ...make_run([frame]),
+  frame_count,
+  properties: new TrajectoryProperties(rows, true),
+})
 
-const mount_pane = async (trajectory: TrajectoryType, current_step_idx: number) => {
+const mount_pane = async (run: TrajectoryRun, current_step_idx: number) => {
   const props = $state({
-    trajectory,
+    run,
     current_step_idx,
     current_frame: null as TrajectoryFrame | null,
     pane_open: true,
@@ -37,40 +59,10 @@ const mount_pane = async (trajectory: TrajectoryType, current_step_idx: number) 
   return props
 }
 
-const make_plot_metadata = (
-  length: number,
-  properties: (frame_number: number) => Record<string, number>,
-): TrajectoryMetadata[] =>
-  Array.from({ length }, (_unused, frame_number) => ({
-    frame_number,
-    step: frame_number,
-    properties: properties(frame_number),
-  }))
-
-// A sampled summary of a 1000-frame run: 3 of 1000 frames, spread across it
-const plot_metadata: TrajectoryMetadata[] = [
-  { frame_number: 0, step: 0, properties: { energy: -10, force_max: 0.5, volume: 100 } },
-  { frame_number: 500, step: 500, properties: { energy: -12, force_max: 0.1, volume: 130 } },
-  { frame_number: 999, step: 999, properties: { energy: -11, force_max: 0.05, volume: 120 } },
-]
-const indexed_trajectory = (extra: Partial<TrajectoryType> = {}) =>
-  ({
-    frames: [frame],
-    total_frames: 1000,
-    is_indexed: true,
-    ...extra,
-  }) as TrajectoryType
-
-test(`shows trajectory timing and replaces indexed loading details with the resolved frame`, async () => {
-  // oxfmt-ignore
-  const trajectory = {
-    frames: Array.from({ length: 10 }, () => frame), total_frames: 11, is_indexed: true,
-    plot_metadata: make_plot_metadata(11, () => ({})), time_step: 2, time_unit: `fs`,
-  } as TrajectoryType
-  const props = await mount_pane(trajectory, 10)
-  expect(pane_text()).toContain(`On-demand`)
-
-  props.current_frame = frame
+test(`shows trajectory step and timing from the resolved frame`, async () => {
+  const frames = Array.from({ length: 11 }, (_unused, step) => ({ ...frame, step }))
+  const props = await mount_pane(make_run(frames, { value: 2, unit: `fs` }), 10)
+  props.current_frame = frames[10]
   await tick()
   const text = pane_text()
   expect(text).toContain(`Current Step 10`)
@@ -78,10 +70,6 @@ test(`shows trajectory timing and replaces indexed loading details with the reso
   expect(text).toContain(`Time Step 2 fs`)
   expect(text).toContain(`Current Time 20 fs`)
   expect(text).toContain(`Duration 20 fs`)
-  expect(text).not.toContain(`On-demand`)
-  for (const duplicate of [`Structure`, `Atoms`, `Formula`]) {
-    expect(text).not.toContain(duplicate)
-  }
 })
 
 test(`uses a compact filter trigger and omits copy buttons`, async () => {
@@ -90,110 +78,85 @@ test(`uses a compact filter trigger and omits copy buttons`, async () => {
     step: frame_idx,
     metadata: { energy, force_max: 0.2 + frame_idx * 0.1 },
   }))
-  const props = await mount_pane({ frames }, 0)
+  const props = await mount_pane(make_run(frames), 0)
 
   expect(document.querySelector(`.info-filter`)).toBeNull()
   expect(document.querySelectorAll(`.copy-button`)).toHaveLength(0)
-
-  const filter_toggle = document.querySelector<HTMLButtonElement>(
+  const filter_toggle = doc_query<HTMLButtonElement>(
     `button[aria-label="Filter trajectory info"]`,
   )
-  expect(filter_toggle?.querySelector(`svg`)).toBeInstanceOf(SVGSVGElement)
-  filter_toggle?.click()
+  filter_toggle.click()
   await tick()
-
   const filter_input = doc_query<HTMLInputElement>(`.info-filter`)
-  expect(document.activeElement).toBe(filter_input)
   filter_input.value = `energy`
   filter_input.dispatchEvent(new Event(`input`, { bubbles: true }))
   await tick()
   expect(document.querySelectorAll(`.info-card`)).toHaveLength(1)
   expect(pane_text()).toContain(`Energy Range`)
-  expect(pane_text()).not.toContain(`Structure`)
 
-  props.trajectory = { frames: [{ ...frame, metadata: {} }] }
+  props.run = make_run([{ ...frame, metadata: {} }])
   await tick()
   expect(document.querySelector<HTMLInputElement>(`.info-filter`)?.value).toBe(`energy`)
   expect(document.querySelectorAll(`.info-card`)).toHaveLength(0)
 })
 
-// The large-file case is exactly where a summary is most useful, and `frames` there holds
-// only the first handful of frames, so the ranges must come off the sampled plot_metadata.
-test(`derives ranges from plot_metadata for an indexed trajectory, marked as sampled`, async () => {
-  // step 500 is outside the in-memory window, i.e. the real large-file case
-  await mount_pane(indexed_trajectory({ plot_metadata }), 500)
+test(`labels ranges from sampled property rows honestly`, async () => {
+  const rows: TrajectoryMetadata[] = [
+    { frame_number: 0, step: 0, properties: { energy: -10, force_max: 0.5, volume: 100 } },
+    { frame_number: 500, step: 500, properties: { energy: -12, force_max: 0.1, volume: 130 } },
+    {
+      frame_number: 999,
+      step: 999,
+      properties: { energy: -11, force_max: 0.05, volume: 120 },
+    },
+  ]
+  await mount_pane(sampled_run(1000, rows), 500)
   const text = pane_text()
-  // format_num renders a typographic minus, not a hyphen
   expect(text).toContain(`Energy Range −12 - −10 eV (3 sampled)`)
   expect(text).toContain(`Force Range 50m - 500m eV/Å (3 sampled)`)
   expect(text).toContain(`Volume Range 100 - 130 Å³ (3 sampled)`)
-  expect(text).toContain(`30%`) // volume change over the sampled frames
-  // the note names both counts, so 3-of-1000 is never read as the true extremum
-  const range_title = document.body
-    .querySelector(`[data-testid="energy-range"] [title]`)
-    ?.getAttribute(`title`)
-  expect(range_title).toBe(
+  expect(text).toContain(`30%`)
+  expect(
+    document.body.querySelector(`[data-testid="energy-range"] [title]`)?.getAttribute(`title`),
+  ).toBe(
     `Min/max over 3 sampled frames of 1k total, so the true extremum may lie outside this range`,
   )
-  // composes with the on-demand frame-loading row rather than replacing it
-  expect(text).toContain(`On-demand`)
 })
 
-// parse_with_unified_loader extracts plot_metadata at sample_rate 1, so a complete summary must
-// not say "sampled". A fixed cell must not print a zero-width Volume Range under Structure.
-test(`omits sampled and fixed-volume notes from complete plot_metadata`, async () => {
-  const total_frames = 40
-  await mount_pane(
-    indexed_trajectory({
-      plot_metadata: make_plot_metadata(total_frames, (frame_number) => ({
-        energy: -10 - frame_number * 0.1,
-        force_max: 0.5,
-        volume: 100,
-      })),
-      total_frames,
-    }),
-    5,
-  )
+test(`omits sampled and fixed-volume notes from complete property rows`, async () => {
+  const rows = make_metadata(40, (frame_number) => ({
+    energy: -10 - frame_number * 0.1,
+    force_max: 0.5,
+    volume: 100,
+  }))
+  const run = { ...sampled_run(40, rows), properties: new TrajectoryProperties(rows, true) }
+  await mount_pane(run, 5)
   const text = pane_text()
   expect(text).toContain(`Energy Range`)
   expect(text).not.toContain(`sampled`)
   expect(text).not.toContain(`Volume Range`)
 })
 
-test(`summarises a run without spreading every value into Math.min`, async () => {
+test(`summarises many property rows without spreading them into Math.min`, async () => {
   const total_frames = 20
   const native_min = Math.min
   vi.spyOn(Math, `min`).mockImplementation((...values) => {
     if (values.length === total_frames) throw new RangeError(`simulated argument limit`)
     return native_min(...values)
   })
-  const large_plot_metadata = make_plot_metadata(total_frames, (frame_number) => ({
-    energy: -10 - frame_number * 1e-4,
-  }))
-  await mount_pane(indexed_trajectory({ plot_metadata: large_plot_metadata, total_frames }), 5)
+  await mount_pane(
+    sampled_run(
+      total_frames,
+      make_metadata(total_frames, (frame_number) => ({ energy: -10 - frame_number * 1e-4 })),
+    ),
+    5,
+  )
   expect(pane_text()).toContain(`Energy Range`)
 })
 
-// Without plot_metadata there is no honest source: a min/max over the in-memory window would
-// describe the start of the run as the whole run.
-test(`shows no ranges for an indexed trajectory lacking plot_metadata`, async () => {
-  await mount_pane(indexed_trajectory(), 500)
-  const text = pane_text()
-  expect(text).toContain(`On-demand`)
+test(`shows no ranges when a run has no property rows`, async () => {
+  await mount_pane(sampled_run(1000), 500)
   for (const label of [`Energy Range`, `Force Range`, `Volume Range`]) {
-    expect(text).not.toContain(label)
+    expect(pane_text()).not.toContain(label)
   }
-})
-
-// Eager trajectories hold every frame, so their ranges are exact and carry no sampled note
-test(`labels ranges over fully in-memory frames without a sampled note`, async () => {
-  const frames = [-10, -12, -11].map((energy, idx) => ({
-    ...frame,
-    step: idx,
-    metadata: { energy, force_max: 0.5 - idx * 0.2 },
-  }))
-  await mount_pane({ frames }, 0)
-  const text = pane_text()
-  expect(text).toContain(`Energy Range −12 - −10 eV`)
-  expect(text).not.toContain(`sampled`)
 })

@@ -4,7 +4,7 @@ import type { MoyoDataset } from '@spglib/moyo-wasm'
 import type { ComponentProps } from 'svelte'
 import { mount, tick } from 'svelte'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import { bind_props, get_dummy_structure, make_wyckoff_dataset } from '../setup'
+import { bind_props, doc_query, get_dummy_structure, make_wyckoff_dataset } from '../setup'
 
 describe(`StructureInfoPane`, () => {
   beforeEach(() => {
@@ -56,21 +56,26 @@ describe(`StructureInfoPane`, () => {
 
       const content = document.body.textContent || ``
       expect(content).toContain(`(${atom_count} sites)`)
-      if (!expanded_by_default) expect(content).toContain(`Show ${atom_count} sites`)
+      const sites = doc_query<HTMLDetailsElement>(`.sites`)
+      expect(sites.open).toBe(expanded_by_default)
       const default_row_count = expanded_by_default ? atom_count : 0
       expect(document.querySelectorAll(`.site-card`)).toHaveLength(default_row_count)
 
-      const [symmetry_toggle] = document.querySelectorAll<HTMLButtonElement>(
-        `section > .section-toggle`,
-      )
-      expect(symmetry_toggle).toBeInstanceOf(HTMLButtonElement)
-      expect(symmetry_toggle.getAttribute(`aria-expanded`)).toBe(String(expanded_by_default))
+      const wyckoff = doc_query<HTMLDetailsElement>(`.wyckoff`)
+      expect(wyckoff.open).toBe(expanded_by_default)
       const wyckoff_rows = () => document.querySelectorAll(`.wyckoff-row`)
       expect(wyckoff_rows()).toHaveLength(default_row_count)
 
-      symmetry_toggle.click()
+      wyckoff.querySelector(`summary`)?.click()
       await tick()
       expect(wyckoff_rows()).toHaveLength(atom_count - default_row_count)
+
+      sites.querySelector(`summary`)?.click()
+      await tick()
+      expect(sites.open).toBe(!expanded_by_default)
+      expect(document.querySelectorAll(`.site-card`)).toHaveLength(
+        expanded_by_default ? 0 : atom_count,
+      )
     },
   )
 
@@ -99,9 +104,9 @@ describe(`StructureInfoPane`, () => {
     mount_info_pane({ structure, pane_open: true, atom_count_thresholds: [50, 500] })
 
     const content = document.body.textContent || ``
-    expect(content).not.toContain(`Show 600 sites`)
     expect(content).not.toContain(`Frac.`)
     expect(content).not.toContain(`Cart.`)
+    expect(document.querySelector(`.sites`)).toBeNull()
   })
 
   test(`site cards hover, filter, select, copy, and keyboard navigate`, async () => {
@@ -171,10 +176,8 @@ describe(`StructureInfoPane`, () => {
     mount_info_pane({ structure, pane_open: true, atom_count_thresholds: [50, 500] })
 
     expect(document.querySelectorAll(`.site-card`)).toHaveLength(0)
-    const [toggle] = document.querySelectorAll<HTMLButtonElement>(
-      `.sites-header .section-toggle`,
-    )
-    toggle.click()
+    const sites = doc_query<HTMLDetailsElement>(`.sites`)
+    sites.querySelector(`summary`)?.click()
     await tick()
 
     expect(document.querySelectorAll(`.site-card`)).toHaveLength(100)
@@ -241,9 +244,9 @@ describe(`StructureInfoPane`, () => {
       atom_count_thresholds: [10, 500],
     })
 
-    const section_titles = Array.from(document.querySelectorAll(`h4`)).map(
-      (heading) => heading.textContent?.trim() ?? ``,
-    )
+    const section_titles = Array.from(
+      document.querySelectorAll(`.structure-info h4, .sites summary`),
+    ).map((heading) => heading.textContent?.trim() ?? ``)
     const cell_idx = section_titles.indexOf(`Cell`)
     const symmetry_idx = section_titles.indexOf(`Symmetry`)
     const sites_idx = section_titles.indexOf(`Sites`)

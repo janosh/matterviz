@@ -5,7 +5,7 @@ import type { Crystal } from '$lib/structure'
 import { find_image_atoms, get_pbc_image_sites, wrap_to_unit_cell } from '$lib/structure'
 import { get_majority_element } from '$lib/structure/bonding'
 import { parse_structure_file } from '$lib/structure/parse'
-import { parse_trajectory_data } from '$lib/trajectory/parse'
+import { open_trajectory } from '$lib/trajectory/open'
 import { structure_map } from '$site/structures'
 import lifemn_cif from '$site/structures/Li4Fe3Mn1(PO4)4.cif?raw'
 import nacl_poscar from '$site/structures/NaCl-cubic.poscar?raw'
@@ -236,8 +236,9 @@ test.each([
     max_outside: 0,
   },
 ])(`find_image_atoms on a parsed $name`, async ({ content, expect_images, max_outside }) => {
-  const trajectory = await parse_trajectory_data(content, `test.xyz`)
-  const structure = trajectory.frames[0].structure as Crystal
+  const run = await open_trajectory(content, { filename: `test.xyz` })
+  const structure = run.preview.structure as Crystal
+  run.dispose()
   if (!structure.lattice) throw new Error(`Structure should have lattice`)
 
   const images = find_image_atoms(structure)

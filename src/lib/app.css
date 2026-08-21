@@ -99,10 +99,6 @@ body.fullscreen .draggable-pane {
   margin: var(--pane-hr-margin, 4pt 0);
   height: 1px;
 }
-/* Right-align long trajectory filenames without affecting div-wrapped grid rows. */
-.draggable-pane section:not(.grid) > div {
-  text-align: right;
-}
 .draggable-pane :where(label) {
   display: inline-flex;
   align-items: center;
@@ -168,12 +164,12 @@ body.fullscreen .draggable-pane {
 }
 .draggable-pane .pane-row {
   display: flex;
-  gap: 8pt;
+  gap: 4pt;
   align-items: center;
 }
 .draggable-pane .pane-grid {
   display: grid;
-  gap: 8pt;
+  gap: 4pt;
   align-items: center;
 }
 .draggable-pane .control-group {
@@ -181,9 +177,154 @@ body.fullscreen .draggable-pane {
   gap: 0.5em;
   align-items: center;
 }
+.draggable-pane details.settings-group > summary {
+  padding: 2pt;
+}
+/* DraggablePane reserves an 8px inline padding-right for the resize grip, which
+   stacks on --pane-padding and makes the right side look looser than the left.
+   Drop that extra gutter; the grip still sits on the border. */
+.draggable-pane[data-resize='both'],
+.draggable-pane[data-resize='width'] {
+  padding-right: 0 !important;
+}
 /* Labels containing range inputs should fill available width */
 .draggable-pane label:has(input[type='range']) {
   flex: 1;
+}
+
+/* Plot control panes: section title in a left rail, related fields on one
+   wrapping row to the right. Selects/checkboxes size to content instead of
+   stretching across an empty label column. */
+.draggable-pane.compact-settings {
+  --pane-h4-margin: 0;
+  --pane-h4-font-size: 0.82em;
+  --ctrl-value-w: 3.2em;
+  --ctrl-gap: 4pt;
+  --settings-row-gap: 2pt;
+}
+div.draggable-pane.compact-settings .pane-content,
+div.draggable-pane.compact-settings .group-body {
+  font-size: 0.85em;
+  display: grid;
+  grid-template-columns: 6.6em minmax(0, 1fr);
+  gap: 5pt 8pt;
+  align-items: start;
+  align-content: start;
+}
+.draggable-pane.compact-settings .settings-section-heading {
+  margin: 0;
+  min-height: 1.4em;
+  padding-top: 2pt;
+  align-items: flex-start;
+}
+.draggable-pane.compact-settings .settings-section-heading h4 {
+  white-space: normal;
+  line-height: 1.2;
+}
+.draggable-pane.compact-settings details.settings-group {
+  grid-column: 1 / -1;
+}
+.draggable-pane.compact-settings .group-body {
+  padding: 1pt 0 2pt;
+}
+.draggable-pane.compact-settings details.settings-group > summary {
+  padding: 2pt 0;
+}
+.draggable-pane.compact-settings section.flow:not(.ctrl-line):not(.axis-fields) {
+  display: flex;
+  flex-direction: column;
+  gap: 4pt;
+  min-width: 0;
+}
+.draggable-pane.compact-settings .ctrl-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3pt 10pt;
+  min-width: 0;
+}
+.draggable-pane.compact-settings .ctrl-line > :is(label, .setting) {
+  display: inline-flex;
+  align-items: center;
+  gap: 4pt;
+  margin: 0;
+  min-height: 1.35em;
+}
+.draggable-pane.compact-settings .ctrl-line :is(select, input[type='text'], input[type='number']) {
+  width: auto;
+  max-width: 12em;
+  margin: 0;
+  flex: none;
+}
+.draggable-pane.compact-settings .ctrl-line input[type='color'] {
+  margin: 0;
+}
+.draggable-pane.compact-settings .axis-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11.5em, 1fr));
+  gap: 3pt 10pt;
+  align-items: center;
+}
+.draggable-pane.compact-settings .axis-fields > :is(label, .setting) {
+  display: inline-flex;
+  align-items: center;
+  gap: 4pt;
+  margin: 0;
+  min-width: 0;
+}
+.draggable-pane.compact-settings .axis-fields select {
+  min-width: 0;
+  flex: 1;
+  max-width: none;
+}
+.draggable-pane.compact-settings .formats > label {
+  flex: 1;
+  min-width: 7em;
+}
+.draggable-pane.compact-settings .formats input[type='text'] {
+  flex: 1;
+  width: 100%;
+  max-width: none;
+  min-width: 4.5em;
+}
+.draggable-pane.compact-settings .style-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4pt 8pt;
+  min-width: 0;
+}
+.draggable-pane.compact-settings
+  :is(.style-row, section.flow)
+  > :is(label, .setting):has(input[type='range']) {
+  display: grid;
+  grid-template-columns: 4.2em var(--ctrl-value-w, 3.2em) minmax(3em, 1fr);
+  align-items: center;
+  column-gap: 4pt;
+  flex: 1 1 12em;
+  min-width: 0;
+  margin: 0;
+}
+.draggable-pane.compact-settings .style-row > :is(label, .setting):not(:has(input[type='range'])) {
+  display: inline-flex;
+  align-items: center;
+  gap: 4pt;
+  flex: none;
+}
+.draggable-pane.compact-settings .range-pair {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 3pt;
+  min-width: 0;
+  flex: 1;
+}
+.draggable-pane.compact-settings .range-pair input[type='number'] {
+  width: auto;
+  min-width: 3.2em;
+  flex: 1;
+  margin: 0;
+  max-width: 7em;
 }
 
 /* App-shell styles: page layout, typography, headings, navigation.

@@ -127,7 +127,7 @@ export function calc_vacf(input: VacfInput, options: VacfOptions = {}): VacfResu
     )
   }
   if (!(dt > 0)) fail(`dt must be positive, got ${dt}`)
-  // Same rule as calc_msd: nothing in TrajectoryType records a timestep, so a dt without
+  // Same rule as calc_msd: a run without a timestep needs an explicit dt, so a dt without
   // a unit would mean inventing a time axis (and, here, a frequency axis on top of it).
   if (options.dt !== undefined && !requested_time_unit) {
     fail(

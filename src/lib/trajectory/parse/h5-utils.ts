@@ -10,13 +10,15 @@ export const is_hdf5_dataset = (entity: Entity | null): entity is Dataset =>
 export const is_hdf5_group = (entity: Entity | null): entity is Group =>
   entity !== null && `keys` in entity
 
-export class Hdf5TrajectoryGroupSelectionError extends Error {
+// The file holds several trajectories and the caller gave no `hdf5_group_path`; the file
+// viewer maps this to its group picker.
+export class Hdf5GroupSelectionRequiredError extends Error {
   constructor(
-    readonly group_paths: string[],
-    message = `Ambiguous HDF5 trajectory: positions and atomic numbers occur together in ${group_paths.join(`, `)}`,
+    readonly groups: string[],
+    message = `Ambiguous HDF5 trajectory: positions and atomic numbers occur together in ${groups.join(`, `)}`,
   ) {
     super(message)
-    this.name = 'Hdf5TrajectoryGroupSelectionError'
+    this.name = 'Hdf5GroupSelectionRequiredError'
   }
 }
 

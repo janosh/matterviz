@@ -4,15 +4,15 @@
   // size estimate, the collect button with progress, and the stale-state bookkeeping each pane
   // used to copy. The module supplies the collector, its own option controls and the plot.
   //
-  // Contract: `collect` gathers `Input` from the trajectory (progress via `on_progress`); the
+  // Contract: `collect` gathers `Input` from the run (progress via `on_progress`); the
   // pane stores it in the bindable `input` and the module's `children` snippet turns it into a
   // plot. Whenever the pane drops its input (trajectory swapped, collect failed) it also calls
   // `on_clear` so the module drops its result — otherwise stale curves hide the new message.
   import { StatusMessage } from '$lib/feedback'
   import { format_bytes, format_num } from '$lib/labels'
   import { ViewerPane, type ViewerPaneOptions } from '$lib/overlays'
-  import type { ParseProgress, TrajectoryType } from '$lib/trajectory'
-  import { analysis_pane_setup, has_frame_loader_data } from '$lib/trajectory/analysis'
+  import type { ParseProgress, TrajectoryRun } from '$lib/trajectory'
+  import { analysis_pane_setup } from '$lib/trajectory/analysis'
   import type {
     AnalysisCollectOptions,
     AnalysisPaneContext,
@@ -22,8 +22,7 @@
   import { Graph, type IconData } from 'svelte-widgets/icons'
 
   let {
-    trajectory,
-    raw_data = null,
+    run,
     pane_open = $bindable(false),
     input = $bindable(),
     error_msg = $bindable(),
@@ -38,7 +37,6 @@
     compute_label,
     recollect_label,
     collecting_label = `Reading frames…`,
-    indexed_note,
     bytes_per_atom_frame = 24,
     default_dt = null,
     default_time_unit,
@@ -49,9 +47,7 @@
     children,
     ...pane_options
   }: ViewerPaneOptions & {
-    trajectory?: TrajectoryType
-    // Raw file bytes from Trajectory.svelte's orig_data for source-dependent loaders
-    raw_data?: string | ArrayBuffer | null
+    run?: TrajectoryRun
     pane_open?: boolean
     // What `collect` last produced; cleared on trajectory swap and on a failed collect
     input?: Input
@@ -65,17 +61,14 @@
     icon?: IconData
     // Short name for the indexed-trajectory warning, e.g. `MSD`
     analysis_name: string
-    collect: (trajectory: TrajectoryType, options: AnalysisCollectOptions) => Promise<Input>
+    collect: (run: TrajectoryRun, options: AnalysisCollectOptions) => Promise<Input>
     // Stride that keeps the collected buffer inside the memory budget. Supplying it also
     // renders the frame-stride control; panes that read frames one at a time omit it.
-    suggest_stride?: (trajectory: TrajectoryType) => number | null
+    suggest_stride?: (run: TrajectoryRun) => number | null
     compute_label: string
     recollect_label: string
     // Button text while `collect` runs
     collecting_label?: string
-    // How the analysis copes with an indexed trajectory, for the warning; defaults to
-    // `${analysis_name} streams the full payload`
-    indexed_note?: string
     // Size of one atom-frame in the collected buffer for the estimate line (3 × f64 = 24)
     bytes_per_atom_frame?: number
     // Time between two SOURCE frames as recorded in the file, seeded into the timestep
@@ -104,17 +97,8 @@
   let collecting = $state(false)
   let progress = $state<ParseProgress | null>(null)
 
-  let {
-    total_frames,
-    loaded_frames,
-    n_atoms,
-    safe_stride,
-    collected_frames,
-    is_lazy,
-    suggested_stride,
-    setup_error,
-  } = $derived(analysis_pane_setup(trajectory, suggest_stride, frame_stride))
-  let loader_data_available = $derived(has_frame_loader_data(trajectory, raw_data))
+  let { total_frames, n_atoms, safe_stride, collected_frames, suggested_stride, can_collect } =
+    $derived(analysis_pane_setup(run, suggest_stride, frame_stride))
   let estimated_bytes = $derived(collected_frames * n_atoms * bytes_per_atom_frame)
 
   const clear = () => {
@@ -123,18 +107,18 @@
     on_clear?.()
   }
 
-  // Drop stale input whenever the underlying trajectory is swapped out, and re-seed the
+  // Drop stale input whenever the underlying run is swapped out, and re-seed the
   // timestep from the file rather than carrying the previous one over. Seeding also keys on
   // the defaults so metadata that only becomes known later still lands. Mount is not a swap:
   // an `input` the caller supplied alongside the trajectory must survive it (seeding still
   // runs on mount because `seeded_dt` starts out undefined).
-  let analysed_trajectory = untrack(() => trajectory)
+  let analysed_run = untrack(() => run)
   let seeded_dt: number | null | undefined
   let seeded_time_unit: string | undefined
   $effect(() => {
-    const trajectory_changed = trajectory !== analysed_trajectory
-    if (trajectory_changed) {
-      analysed_trajectory = trajectory
+    const run_changed = run !== analysed_run
+    if (run_changed) {
+      analysed_run = run
       clear()
       // a collect still running for the old trajectory may no longer report here
       progress = null
@@ -142,9 +126,7 @@
     }
     if (
       time_unit_fallback &&
-      (trajectory_changed ||
-        default_dt !== seeded_dt ||
-        default_time_unit !== seeded_time_unit)
+      (run_changed || default_dt !== seeded_dt || default_time_unit !== seeded_time_unit)
     ) {
       seeded_dt = default_dt
       seeded_time_unit = default_time_unit
@@ -217,10 +199,10 @@
     abort_collect()
   })
   async function run_collect() {
-    if (!trajectory) return
-    const requested = trajectory
+    if (!run) return
+    const requested = run
     const this_request = ++request_id
-    const is_current = () => trajectory === requested && this_request === request_id
+    const is_current = () => run === requested && this_request === request_id
     abort_collect()
     const controller = new AbortController()
     collect_controller = controller
@@ -229,7 +211,6 @@
     progress = null
     try {
       const collected = await collect(requested, {
-        raw_data,
         frame_stride: safe_stride,
         signal: controller.signal,
         on_progress: (parse_progress) => {
@@ -262,18 +243,13 @@
 >
   <h4 style="margin-top: 0">{title}</h4>
 
-  {#if !trajectory}
+  {#if !run}
     <StatusMessage message="No trajectory loaded" style="border: none" />
   {:else}
-    {#if setup_error}
-      <StatusMessage type="error" message={setup_error} style="font-size: 0.8em" />
-    {:else if is_lazy}
+    {#if suggest_stride && !can_collect}
       <StatusMessage
         type="warning"
-        message="Indexed trajectory: {loaded_frames} of {total_frames} frames are in memory. {indexed_note ??
-          `${analysis_name} streams the full payload`}{loader_data_available
-          ? ``
-          : `, but the raw file bytes are unavailable here`}."
+        message="{analysis_name} needs a full pass over all {total_frames} frames, but this trajectory only serves individual frames."
         style="font-size: 0.8em"
       />
     {/if}
@@ -324,7 +300,10 @@
           {@render hint?.(context)}
         </p>
       {/if}
-      <button onclick={run_collect} disabled={collecting || busy}>
+      <button
+        onclick={run_collect}
+        disabled={collecting || busy || (suggest_stride && !can_collect)}
+      >
         {collecting ? collecting_label : input ? recollect_label : compute_label}
       </button>
       {#if progress}<span class="hint">{progress.stage}</span>{/if}

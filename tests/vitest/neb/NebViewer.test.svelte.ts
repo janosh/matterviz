@@ -128,7 +128,11 @@ describe(`NebViewer`, () => {
     expect(
       viewer.querySelector<HTMLElement>(`.panes`)?.style.getPropertyValue(`--split-pane-size`),
     ).toBe(`60%`)
-    expect(viewer.querySelector(`.neb-controls.sequence-control-bar`)).not.toBeNull()
+    expect(viewer.querySelector(`.neb-controls.sequence-control-bar.always-visible`)).not
+      .toBeNull()
+    expect(
+      viewer.querySelector<HTMLElement>(`.panes`)?.style.getPropertyValue(`--viewer-buttons-top`),
+    ).toBe(``)
     const summary = viewer.querySelector(`.barrier-summary`)?.textContent ?? ``
     expect(summary).toContain(`Forward barrier`)
     expect(summary).toContain(`0.8339 eV`)

@@ -263,6 +263,14 @@ describe(`Bands component`, () => {
         controls_state,
       ),
     )
+    const path_section = document.querySelector(`#bands-path-mode`)?.closest(`section`)
+    const units_section = document.querySelector(`#bands-units`)?.closest(`section`)
+    expect(path_section).not.toBeNull()
+    expect(units_section).toBe(path_section)
+    expect(path_section?.classList.contains(`ctrl-line`)).toBe(true)
+    expect(
+      document.querySelector(`.plot-controls-pane`)?.classList.contains(`compact-settings`),
+    ).toBe(true)
     await expect_plot_controls(document, controls_state, `bands`)
   })
 

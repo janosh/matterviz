@@ -14,8 +14,7 @@
   import { format_num } from '$lib/labels'
   import type { Vec2 } from '$lib/math'
   import { colors } from '$lib/state.svelte'
-  import type { AnyStructure } from '$lib/structure'
-  import { get_density } from '$lib/structure'
+  import { get_density, type AnyStructure } from '$lib/structure'
   import {
     count_symmetry_op_kinds,
     wyckoff_positions_from_moyo,
@@ -65,8 +64,8 @@
   }: Omit<HTMLAttributes<HTMLDivElement>, `onclose`> & {
     structure: AnyStructure
     pane_open?: boolean
-    // Below the first threshold the site list shows by default, above the second it is
-    // omitted entirely; in between it sits behind a toggle button
+    // Below the first threshold the site list starts expanded; above the second it is
+    // omitted. In between it starts collapsed. The chevron always toggles.
     atom_count_thresholds?: Vec2
     toggle_props?: PaneToggleProps
     pane_props?: PaneProps
@@ -77,7 +76,6 @@
   } = $props()
 
   const { copy } = create_clipboard_feedback()
-  let sites_expanded = $state(false)
 
   function set_site_hover(site_idx: number | null) {
     highlighted_sites = site_idx === null ? [] : [site_idx]
@@ -161,7 +159,6 @@
     return { label: prop_key, key: prop_key, value }
   }
 
-  // Structure + Cell cards; Symmetry is rendered separately so the Wyckoff table can follow it.
   // Skipped while closed — ViewerPane keeps children mounted (display:none).
   let structure_cards = $derived.by((): InfoPaneCard[] => {
     if (!pane_open) return []
@@ -183,38 +180,33 @@
       })
     }
     const cards: InfoPaneCard[] = [{ title: `Structure`, rows: structure_rows }]
-    if (`lattice` in structure) {
-      const { a, b, c, alpha, beta, gamma, volume } = structure.lattice
-      cards.push({
-        title: `Cell`,
-        rows: [
-          {
-            label: `Volume, Density`,
-            value: `${format_num(volume, `.3~s`)} Å³, ${format_num(get_density(structure), `.3~f`)} g/cm³`,
-            key: `cell-volume-density`,
-          },
-          {
-            label: `a, b, c`,
-            value: `${format_num(a, `.3~f`)}, ${format_num(b, `.3~f`)}, ${format_num(c, `.3~f`)} Å`,
-            key: `cell-abc`,
-          },
-          {
-            label: `α, β, γ`,
-            value: `${format_num(alpha, `.2~f`)}°, ${format_num(beta, `.2~f`)}°, ${format_num(gamma, `.2~f`)}°`,
-            key: `cell-angles`,
-          },
-        ],
-      })
-    }
-    return cards
-  })
-
-  let symmetry_card = $derived.by((): InfoPaneCard | null => {
-    if (!pane_open || !(`lattice` in structure) || !sym_data) return null
+    if (!(`lattice` in structure)) return cards
+    const { a, b, c, alpha, beta, gamma, volume } = structure.lattice
+    cards.push({
+      title: `Cell`,
+      rows: [
+        {
+          label: `Volume, Density`,
+          value: `${format_num(volume, `.3~s`)} Å³, ${format_num(get_density(structure), `.3~f`)} g/cm³`,
+          key: `cell-volume-density`,
+        },
+        {
+          label: `a, b, c`,
+          value: `${format_num(a, `.3~f`)}, ${format_num(b, `.3~f`)}, ${format_num(c, `.3~f`)} Å`,
+          key: `cell-abc`,
+        },
+        {
+          label: `α, β, γ`,
+          value: `${format_num(alpha, `.2~f`)}°, ${format_num(beta, `.2~f`)}°, ${format_num(gamma, `.2~f`)}°`,
+          key: `cell-angles`,
+        },
+      ],
+    })
+    if (!sym_data) return cards
     const { operations } = sym_data
     const { translations, rotations, roto_translations } = count_symmetry_op_kinds(operations)
     const space_group_symbol = sym_data.hm_symbol.replaceAll(/\s+/g, ``)
-    return {
+    cards.push({
       title: `Symmetry`,
       rows: [
         {
@@ -240,18 +232,16 @@
           key: `symmetry-operations-total`,
         },
       ],
-    }
+    })
+    return cards
   })
 
   let atom_count = $derived(structure.sites.length)
   let sites_allowed_by_threshold = $derived(atom_count <= atom_count_thresholds[1])
-  let sites_need_toggle = $derived(
-    sites_allowed_by_threshold && atom_count >= atom_count_thresholds[0],
-  )
-  let sites_hidden_by_threshold = $derived(sites_need_toggle && !sites_expanded)
+  let sites_open = $derived(atom_count < atom_count_thresholds[0])
 
   let site_cards = $derived.by((): SiteCard[] => {
-    if (!pane_open || !sites_allowed_by_threshold || sites_hidden_by_threshold) return []
+    if (!pane_open || !sites_allowed_by_threshold || !sites_open) return []
     return structure.sites.map((site, idx) => {
       const element = site.species?.[0]?.element || `Unknown`
       const element_name = element_by_symbol.get(element as ElementSymbol)?.name ?? element
@@ -321,55 +311,24 @@
   <div class="structure-info">
     <InfoPaneCards cards={structure_cards} empty_label="structure info" show_filter={false} />
 
-    {#if symmetry_card}
-      <section>
-        <InfoPaneCards
-          cards={[symmetry_card]}
-          empty_label="symmetry info"
-          show_filter={false}
-        />
-        {#if wyckoff_positions.length > 0}
-          <button
-            type="button"
-            class="section-toggle"
-            aria-expanded={wyckoff_table_expanded}
-            onclick={() => (wyckoff_table_expanded = !wyckoff_table_expanded)}
-            style="display: block; margin: 2pt 0 0 auto"
-          >
-            {wyckoff_table_expanded ? `Hide` : `Show`} Wyckoff table ({wyckoff_positions.length})
-          </button>
-          {#if wyckoff_table_expanded}
-            <WyckoffTable
-              {wyckoff_positions}
-              on_hover={(site_indices) => (highlighted_sites = site_indices ?? [])}
-              on_click={(site_indices) => (selected_sites = site_indices ?? [])}
-              style="width: 100%; margin-top: 2pt; font-size: 0.8em"
-            />
-          {/if}
+    {#if wyckoff_positions.length > 0}
+      <details class="wyckoff" bind:open={wyckoff_table_expanded}>
+        <summary>Wyckoff table ({wyckoff_positions.length})</summary>
+        {#if wyckoff_table_expanded}
+          <WyckoffTable
+            {wyckoff_positions}
+            on_hover={(site_indices) => (highlighted_sites = site_indices ?? [])}
+            on_click={(site_indices) => (selected_sites = site_indices ?? [])}
+            style="width: 100%; margin-top: 2pt; font-size: 0.8em"
+          />
         {/if}
-      </section>
+      </details>
     {/if}
 
-    {#if pane_open && (site_cards.length > 0 || sites_need_toggle)}
-      <section>
-        <div class="sites-header">
-          <h4>Sites</h4>
-          {#if sites_need_toggle}
-            <button
-              type="button"
-              class="section-toggle"
-              onclick={() => (sites_expanded = !sites_expanded)}
-              title="{sites_expanded ? `Hide` : `Show`} all site information"
-            >
-              {sites_expanded ? `Hide` : `Show ${structure.sites.length} sites`}
-            </button>
-          {/if}
-        </div>
-        {#if sites_hidden_by_threshold}
-          <p class="sites-note">
-            Site list hidden for this {structure.sites.length}-site structure.
-          </p>
-        {:else}
+    {#if pane_open && sites_allowed_by_threshold}
+      <details class="sites" bind:open={sites_open}>
+        <summary>Sites</summary>
+        {#if sites_open}
           <InfoPaneCards
             cards={site_cards}
             filter_placeholder="Filter sites by element, index, coordinate, or property"
@@ -377,11 +336,10 @@
             page_size={SITE_PAGE_SIZE}
             reveal_key={selected_site_key}
             card_attrs={site_card_attrs}
-            show_copy={false}
             class="site-cards"
           />
         {/if}
-      </section>
+      </details>
     {/if}
 
     <section>
@@ -404,38 +362,19 @@
     --info-card-padding: 2pt 4pt;
     --info-row-padding: 0;
     --info-card-heading-gap: 1pt;
-    h4 {
-      margin: 2pt 0;
-      font-size: 0.95em;
-    }
-    section {
+    :is(section, details) {
       padding-top: 3pt;
       border-top: 1px solid color-mix(in srgb, currentColor 15%, transparent);
     }
-  }
-  .sites-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 4pt;
-  }
-  .section-toggle {
-    padding: 2pt 5pt;
-    border: 0;
-    border-radius: var(--border-radius, 3pt);
-    background: color-mix(in srgb, currentColor 8%, transparent);
-    color: inherit;
-    font-size: 0.8em;
-    cursor: pointer;
-  }
-  .sites-note {
-    margin: 0.25em 0 0.5em;
-    opacity: 0.75;
-    font-size: 0.85em;
+    summary {
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 0.95em;
+    }
   }
   .structure-info :global(.site-cards) {
     --info-card-padding: 4pt 8pt;
-    --info-row-padding: 0;
+    --info-row-value-align: left;
     font-size: 0.8em;
   }
   .structure-info :global(.site-card) {
@@ -452,14 +391,12 @@
   }
   .tips-item {
     display: grid;
-    grid-template-columns: max-content minmax(0, 1fr);
-    gap: 4pt;
-    padding: 1pt 0;
+    gap: 1pt;
+    padding: 4pt 0;
     font-size: 0.8em;
     line-height: 1.25;
     span:first-child {
       font-weight: 600;
-      text-align: right;
     }
     span:last-child {
       opacity: 0.8;

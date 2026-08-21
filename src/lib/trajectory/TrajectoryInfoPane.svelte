@@ -4,13 +4,11 @@
   import InfoPaneCards from '$lib/overlays/InfoPaneCards.svelte'
   import { format_bytes, format_num } from '$lib/labels'
   import { array_extent } from '$lib/math'
-  import { SETTINGS_CONFIG } from '$lib/settings'
-  import { SvelteSet } from 'svelte/reactivity'
-  import type { TrajectoryFrame, TrajectoryType } from './index'
+  import type { TrajectoryFrame, TrajectoryRun } from './index'
   import { get_frame_step_samples, get_frame_time_step } from './plotting'
 
   let {
-    trajectory,
+    run,
     current_step_idx,
     current_frame = null,
     current_filename,
@@ -21,7 +19,7 @@
     toggle_props,
     ...pane_options
   }: ViewerPaneOptions & {
-    trajectory: TrajectoryType
+    run: TrajectoryRun
     current_step_idx: number
     current_frame?: TrajectoryFrame | null
     current_filename?: string | null
@@ -64,13 +62,10 @@
     { title: `Forces`, prop: `force_max`, unit: `eV/Å`, key: `force`, label: `Force` },
   ] as const
 
-  let total_frames = $derived(trajectory.total_frames ?? trajectory.frames.length)
-  let step_samples = $derived(get_frame_step_samples(trajectory))
-  let simulation_time_step = $derived(
-    trajectory.time_unit && is_valid_number(trajectory.time_step) && trajectory.time_step > 0
-      ? trajectory.time_step
-      : null,
-  )
+  let total_frames = $derived(run.frame_count)
+  let step_samples = $derived(get_frame_step_samples(run.properties.rows))
+  let simulation_time_step = $derived(run.time_step?.value ?? null)
+  let simulation_time_unit = $derived(run.time_step?.unit ?? ``)
 
   // Whole-run facts: computed once per trajectory, not per frame. Stepping through a
   // 100k-frame run must not re-scan every frame for min/max energy on each slider tick.
@@ -89,23 +84,13 @@
       simulation_time_step && get_frame_time_step(step_samples, simulation_time_step)
     const duration =
       is_valid_number(frame_time_step) && total_frames > 1
-        ? `${format_num(frame_time_step * (total_frames - 1), `.3~s`)} ${trajectory.time_unit}`
+        ? `${format_num(frame_time_step * (total_frames - 1), `.3~s`)} ${simulation_time_unit}`
         : null
 
-    // Aggregates over the run. An indexed trajectory keeps only a handful of frames in memory,
-    // so a min/max over `frames` there would describe the start of the run as the whole run.
-    // Its pre-extracted plot_metadata is the only honest source, and is labelled with a
-    // sample count when it really does skip frames (the indexed parser extracts it at
-    // sample_rate 1, so it normally holds one entry per frame and the min/max is exact).
-    const frames_in_memory = trajectory.frames.length
-    const has_all_frames = frames_in_memory > 1 && frames_in_memory >= total_frames
-    const metadata = has_all_frames ? null : trajectory.plot_metadata
-    // Counted over distinct frame numbers because a re-delivered streaming batch can repeat.
-    const covered_frames = metadata
-      ? new SvelteSet(metadata.map(({ frame_number }) => frame_number)).size
-      : 0
-    const is_sample = metadata != null && covered_frames < total_frames
-    const can_aggregate = total_frames > 1 && (has_all_frames || (metadata?.length ?? 0) > 1)
+    const metadata = run.properties.rows
+    const covered_frames = metadata.length
+    const is_sample = covered_frames < total_frames
+    const can_aggregate = total_frames > 1 && metadata.length > 1
     const sampled_note = is_sample
       ? `Min/max over ${format_num(covered_frames, `.3~s`)} sampled frames of ${format_num(
           total_frames,
@@ -113,9 +98,7 @@
         )} total, so the true extremum may lie outside this range`
       : undefined
     const aggregate_values = (prop: string): number[] =>
-      metadata
-        ? metadata.map(({ properties }) => properties[prop]).filter(is_valid_number)
-        : trajectory.frames.map((frame) => frame.metadata?.[prop]).filter(is_valid_number)
+      metadata.map(({ properties }) => properties[prop]).filter(is_valid_number)
     const range_item = (label: string, values: number[], unit: string, key: string) => {
       const range = format_range(values, unit)
       if (!range) return null
@@ -132,15 +115,7 @@
 
     let volume_section: Section | null = null
     if (can_aggregate) {
-      // In-memory frames carry volume on the lattice (metadata usually omits it); sampled
-      // metadata carries it as a plain property.
-      const volumes = (
-        metadata
-          ? aggregate_values(`volume`)
-          : trajectory.frames
-              .map(({ structure }) => `lattice` in structure && structure.lattice.volume)
-              .filter(is_valid_number)
-      ).filter((volume) => volume > 0)
+      const volumes = aggregate_values(`volume`).filter((volume) => volume > 0)
       if (volumes.length > 1) {
         const [min_volume, max_volume] = array_extent(volumes)
         // A fixed cell would otherwise render a zero-width `125 - 125 Å³` range. volumes is
@@ -160,8 +135,7 @@
     if (total_frames === 0 || current_step_idx < 0 || current_step_idx >= total_frames) {
       return []
     }
-    // For indexed trajectories, the resolved frame may live outside sparse frame arrays.
-    const displayed_frame = current_frame ?? trajectory.frames[current_step_idx]
+    const displayed_frame = current_frame ?? (current_step_idx === 0 ? run.preview : null)
     const current_time =
       displayed_frame && simulation_time_step
         ? displayed_frame.step * simulation_time_step
@@ -181,8 +155,7 @@
             new Date(file_object.lastModified).toLocaleString(),
             `file-modified`,
           ),
-        trajectory.metadata?.source_format &&
-          safe_item(`Format`, String(trajectory.metadata.source_format), `file-format`),
+        run.provenance.format && safe_item(`Format`, run.provenance.format, `file-format`),
       ]),
       section(`Trajectory`, [
         safe_item(
@@ -204,45 +177,23 @@
         simulation_time_step &&
           safe_item(
             `Time Step`,
-            `${format_num(simulation_time_step, `.3~s`)} ${trajectory.time_unit}`,
+            `${format_num(simulation_time_step, `.3~s`)} ${simulation_time_unit}`,
             `time-step`,
             `Simulation time per recorded MD step`,
           ),
         is_valid_number(current_time) &&
           safe_item(
             `Current Time`,
-            `${format_num(current_time, `.3~s`)} ${trajectory.time_unit}`,
+            `${format_num(current_time, `.3~s`)} ${simulation_time_unit}`,
             `current-time`,
           ),
         safe_item(`Duration`, duration, `duration`),
-        trajectory.is_indexed &&
+        run.properties.rows.length > 0 &&
           safe_item(
-            `Indexed`,
-            `Yes`,
-            `indexed-mode`,
-            SETTINGS_CONFIG.trajectory.use_indexing.description,
-          ),
-        trajectory.indexed_frames &&
-          safe_item(
-            `Index Points`,
-            `${trajectory.indexed_frames.length}`,
-            `index-points`,
-            `Number of frames indexed for fast seeking`,
-          ),
-        trajectory.plot_metadata &&
-          safe_item(
-            `Plot Metadata`,
-            `${trajectory.plot_metadata.length} frames`,
-            `plot-metadata`,
-            `Pre-extracted metadata for plotting`,
-          ),
-        trajectory.is_indexed &&
-          !displayed_frame &&
-          safe_item(
-            `Frame Loading`,
-            `On-demand`,
-            `frame-loading`,
-            `Frame data loads when accessed`,
+            `Property Rows`,
+            `${run.properties.rows.length}${run.properties.complete ? `` : ` loaded`}`,
+            `property-rows`,
+            `Frame properties available for plotting and export`,
           ),
       ]),
       ...RANGE_SECTIONS.map(({ title, prop, unit, key, label }, range_idx) => {
@@ -291,7 +242,6 @@
       empty_label="trajectory info"
       collapsible_filter
       show_filter={n_info_items > 5}
-      show_copy={false}
       style="--info-card-accent: 0"
     />
   {/if}

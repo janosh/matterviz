@@ -1,36 +1,17 @@
-// Unified frame loader for XYZ and ASE trajectories (large file indexing)
+// Frame-major position accumulation shared by every run that reads frames one at a time
+// (memory, indexed text, worker-served). Budgets the buffer up front, validates atom identity
+// across frames and folds optional per-site channels and frame-level signals into the sweep.
 import * as math from '$lib/math'
 import type { ElementSymbol } from '$lib/element'
 import type { Matrix3x3 } from '$lib/math'
 import type { Pbc } from '$lib/structure/index'
 import type {
-  FrameIndex,
-  FrameLoader,
   ParseProgress,
   PositionStreamOptions,
   TrajectoryFrame,
-  TrajectoryMetadata,
   TrajectoryPositionStream,
   TrajectorySignal,
-} from './index'
-import { to_error } from '$lib/utils'
-import {
-  copy_numeric_fields,
-  iter_xyz_frames,
-  validate_3x3_matrix,
-  type XyzFrameSpec,
-} from './helpers'
-import { indexed_trajectory_format } from '$lib/trajectory/format-detect'
-import { ase_calculator_data, decode_ase_frame, read_ase_header } from './parse/ase'
-import { traj_warn } from './parse/diagnostics'
-import {
-  build_xyz_frame,
-  may_be_torn_xyz_tail,
-  parse_extxyz_lattice,
-  parse_xyz_comment_metadata,
-} from './parse/xyz'
-
-const MAX_METADATA_SIZE = 50 * 1024 * 1024 // 50MB limit for metadata
+} from '../index'
 
 export const DEFAULT_POSITION_STREAM_MAX_BYTES = 512 * 1024 * 1024
 
@@ -110,13 +91,6 @@ const make_reporter =
   (on_progress: ((progress: ParseProgress) => void) | undefined, total: number) =>
   (done: number, stage: string): void =>
     on_progress?.({ current: (done / total) * 100, total: 100, stage })
-
-const utf8_byte_length = (value: string, encoder: TextEncoder): number => {
-  for (let char_idx = 0; char_idx < value.length; char_idx++) {
-    if (value.charCodeAt(char_idx) > 0x7f) return encoder.encode(value).length
-  }
-  return value.length
-}
 
 class PositionAccumulator {
   private readonly positions: Float64Array
@@ -445,7 +419,9 @@ export async function accumulate_positions(
   ) => TrajectoryFrame | null | Promise<TrajectoryFrame | null>,
   options: PositionStreamOptions = {},
   on_progress?: (progress: ParseProgress) => void,
+  signal?: AbortSignal,
 ): Promise<TrajectoryPositionStream> {
+  signal?.throwIfAborted()
   const {
     frame_stride = 1,
     max_bytes = DEFAULT_POSITION_STREAM_MAX_BYTES,
@@ -497,6 +473,7 @@ export async function accumulate_positions(
     frame_number < total_frames;
     frame_number += frame_stride
   ) {
+    signal?.throwIfAborted()
     const frame = await load_frame(frame_number)
     if (!frame) {
       throw new Error(
@@ -511,305 +488,4 @@ export async function accumulate_positions(
   }
 
   return accumulator.finish()
-}
-
-const filter_properties = (metadata: TrajectoryMetadata, properties?: string[]): void => {
-  if (!properties) return
-  metadata.properties = Object.fromEntries(
-    Object.entries(metadata.properties).filter(([key]) => properties.includes(key)),
-  )
-}
-
-export class TrajFrameReader implements FrameLoader {
-  private readonly format: `xyz` | `ase`
-  // ASE writes atomic numbers into the first frame only; cache them per source buffer so a
-  // reader reused on a different file cannot label its atoms with the previous file's species
-  private ase_numbers?: { data: ArrayBuffer; numbers: number[] }
-  private xyz_cache?: { data: string; lines: string[]; frames: XyzFrameSpec[] }
-
-  constructor(filename: string) {
-    this.format = indexed_trajectory_format(filename)
-  }
-
-  dispose(): void {
-    this.ase_numbers = undefined
-    this.xyz_cache = undefined
-  }
-
-  async get_total_frames(data: string | ArrayBuffer): Promise<number> {
-    if (this.format === `xyz`) {
-      if (data instanceof ArrayBuffer) throw new Error(`XYZ loader requires text data`)
-      return this.get_xyz_cache(data).frames.length
-    }
-    if (!(data instanceof ArrayBuffer)) throw new Error(`ASE loader requires binary data`)
-    return read_ase_header(new DataView(data)).n_items
-  }
-
-  async build_frame_index(
-    data: string | ArrayBuffer,
-    sample_rate: number,
-    on_progress?: (progress: ParseProgress) => void,
-  ): Promise<FrameIndex[]> {
-    const total_frames = await this.get_total_frames(data)
-    const report = make_reporter(on_progress, total_frames)
-    const frame_index: FrameIndex[] = []
-
-    if (this.format === `xyz`) {
-      const data_str = data as string
-      const { lines, frames } = this.get_xyz_cache(data_str)
-      const encoder = new TextEncoder()
-      const newline_sequence = data_str.includes(`\r\n`) ? `\r\n` : `\n`
-      const newline_byte_len = newline_sequence.length
-      const line_bytes = (idx: number): number =>
-        utf8_byte_length(lines[idx], encoder) + newline_byte_len
-
-      // `lines` come from the trimmed payload; offsets are reported against the original
-      let leading_whitespace = 0
-      while (leading_whitespace < data_str.length && /\s/.test(data_str[leading_whitespace])) {
-        leading_whitespace++
-      }
-      let cursor = 0
-      let byte_offset = utf8_byte_length(data_str.slice(0, leading_whitespace), encoder)
-
-      for (const [frame_number, { start, num_atoms }] of frames.entries()) {
-        for (; cursor < start; cursor++) byte_offset += line_bytes(cursor)
-        let frame_size = 0
-        for (; cursor < start + num_atoms + 2; cursor++) frame_size += line_bytes(cursor)
-
-        if (frame_number % sample_rate === 0) {
-          frame_index.push({
-            frame_number,
-            byte_offset,
-            estimated_size: frame_size,
-          })
-        }
-
-        byte_offset += frame_size
-        if ((frame_number + 1) % 1000 === 0) {
-          report(frame_number + 1, `Indexing: ${frame_number + 1}`)
-        }
-      }
-    } else {
-      const view = new DataView(data as ArrayBuffer)
-      const { offsets_pos } = read_ase_header(view)
-
-      for (let idx = 0; idx < total_frames; idx += sample_rate) {
-        const frame_offset = Number(view.getBigInt64(offsets_pos + idx * 8, true))
-        frame_index.push({
-          frame_number: idx,
-          byte_offset: frame_offset,
-          estimated_size: 0,
-        })
-
-        if (idx % 10000 === 0) report(idx, `Indexing ASE: ${idx}`)
-      }
-    }
-
-    return frame_index
-  }
-
-  async load_frame(
-    data: string | ArrayBuffer,
-    frame_number: number,
-  ): Promise<TrajectoryFrame | null> {
-    const actual_data_type = data instanceof ArrayBuffer ? `ArrayBuffer` : typeof data
-
-    if (this.format === `xyz`) {
-      if (typeof data !== `string`) {
-        throw new TypeError(
-          `load_frame expected string data for xyz format, received ${actual_data_type}`,
-        )
-      }
-      return this.load_xyz_frame(data, frame_number)
-    }
-    if (!(data instanceof ArrayBuffer)) {
-      throw new TypeError(
-        `load_frame expected ArrayBuffer data for ase format, received ${actual_data_type}`,
-      )
-    }
-    return this.load_ase_frame(data, frame_number)
-  }
-
-  async extract_plot_metadata(
-    data: string | ArrayBuffer,
-    options?: { sample_rate?: number; properties?: string[] },
-    on_progress?: (progress: ParseProgress) => void,
-  ): Promise<TrajectoryMetadata[]> {
-    const { sample_rate = 1, properties } = options ?? {}
-    const metadata_list: TrajectoryMetadata[] = []
-    const total_frames = await this.get_total_frames(data)
-    const report = make_reporter(on_progress, total_frames)
-
-    if (this.format === `xyz`) {
-      const { frames } = this.get_xyz_cache(data as string)
-
-      for (const [frame_number, { comment }] of frames.entries()) {
-        if (frame_number % sample_rate === 0) {
-          const { step, properties: props } = parse_xyz_comment_metadata(comment)
-          if (props.volume === undefined) {
-            try {
-              const lattice = parse_extxyz_lattice(comment)
-              if (lattice) props.volume = Math.abs(math.det_3x3(lattice))
-            } catch (error) {
-              console.warn(
-                `Skipping malformed EXTXYZ lattice volume for frame ${frame_number}:`,
-                error,
-              )
-            }
-          }
-          const frame_metadata: TrajectoryMetadata = {
-            frame_number,
-            step: step ?? frame_number,
-            properties: props,
-          }
-          filter_properties(frame_metadata, properties)
-          metadata_list.push(frame_metadata)
-        }
-
-        if ((frame_number + 1) % 5000 === 0) {
-          report(frame_number + 1, `Extracting: ${frame_number + 1}`)
-        }
-      }
-    } else {
-      const view = new DataView(data as ArrayBuffer)
-      const { n_items, offsets_pos } = read_ase_header(view)
-      const decoder = new TextDecoder()
-
-      for (let idx = 0; idx < n_items; idx += sample_rate) {
-        const frame_offset = Number(view.getBigInt64(offsets_pos + idx * 8, true))
-        const json_length = Number(view.getBigInt64(frame_offset, true))
-        // A header this large can only be a corrupt offsets table pointing into payload bytes
-        if (!(json_length >= 0 && json_length <= MAX_METADATA_SIZE)) {
-          throw new Error(
-            `ASE trajectory frame ${idx} of ${n_items} (byte offset ${frame_offset}) declares a ${json_length} byte header`,
-          )
-        }
-        let frame_data: Record<string, unknown>
-        try {
-          frame_data = JSON.parse(
-            decoder.decode(new Uint8Array(data as ArrayBuffer, frame_offset + 8, json_length)),
-          )
-        } catch (error) {
-          throw new Error(
-            `ASE trajectory frame ${idx} of ${n_items} (byte offset ${frame_offset}): ${to_error(error).message}`,
-            { cause: error },
-          )
-        }
-        const frame_metadata = parse_ase_metadata(frame_data, idx)
-        filter_properties(frame_metadata, properties)
-        metadata_list.push(frame_metadata)
-
-        // total_frames is read_ase_header(...).n_items, so the bound total matches
-        if (idx % 5000 === 0) report(idx, `Extracting ASE: ${idx}/${n_items}`)
-      }
-    }
-
-    return metadata_list
-  }
-
-  async stream_positions(
-    data: string | ArrayBuffer,
-    options?: PositionStreamOptions,
-    on_progress?: (progress: ParseProgress) => void,
-  ): Promise<TrajectoryPositionStream> {
-    const total_frames = await this.get_total_frames(data)
-    const load = (frame_number: number) => this.load_frame(data, frame_number)
-    return accumulate_positions(total_frames, load, options, on_progress)
-  }
-
-  private get_xyz_cache(data: string): NonNullable<TrajFrameReader[`xyz_cache`]> {
-    if (this.xyz_cache?.data === data) return this.xyz_cache
-    const lines = data.trim().split(/\r?\n/)
-    const frames = Array.from(iter_xyz_frames(lines))
-    // Decode a frame that ends on the file's last line once now, so a half-written tail is
-    // excluded from total_frames instead of failing on the seek that reaches it
-    const last_idx = frames.length - 1
-    if (may_be_torn_xyz_tail(lines, frames, last_idx)) {
-      try {
-        this.build_xyz_frame(lines, frames[last_idx], last_idx)
-      } catch (error) {
-        traj_warn(
-          `Dropping truncated final XYZ frame ${last_idx} (line ${frames[last_idx].start + 1})`,
-          error,
-        )
-        frames.pop()
-      }
-    }
-    this.xyz_cache = { data, lines, frames }
-    return this.xyz_cache
-  }
-
-  private build_xyz_frame(
-    lines: string[],
-    frame: XyzFrameSpec,
-    frame_number: number,
-  ): TrajectoryFrame {
-    return build_xyz_frame(lines, frame, {
-      frame_label: `indexed frame ${frame_number}`,
-      default_step: frame_number,
-    })
-  }
-
-  private load_xyz_frame(data: string, frame_number: number): TrajectoryFrame | null {
-    const { lines, frames } = this.get_xyz_cache(data)
-    const frame = frames[frame_number]
-    return frame ? this.build_xyz_frame(lines, frame, frame_number) : null
-  }
-
-  // Null only past the end; a frame the offsets table points at but that fails to decode is
-  // corruption and throws with its index so the viewer can report it.
-  private load_ase_frame(data: ArrayBuffer, frame_number: number): TrajectoryFrame | null {
-    const view = new DataView(data)
-    const { n_items, offsets_pos } = read_ase_header(view)
-    if (frame_number >= n_items) return null
-    if (this.ase_numbers?.data !== data) this.ase_numbers = undefined
-    // A random seek on a fresh reader has to decode frame 0 once before any later frame can
-    // name its atoms.
-    if (frame_number > 0 && !this.ase_numbers) this.load_ase_frame(data, 0)
-
-    const frame_offset = Number(view.getBigInt64(offsets_pos + frame_number * 8, true))
-    try {
-      const { frame, numbers } = decode_ase_frame(view, data, frame_offset, frame_number, {
-        fallback_numbers: this.ase_numbers?.numbers,
-      })
-      this.ase_numbers = { data, numbers }
-      return frame
-    } catch (error) {
-      throw new Error(
-        `ASE trajectory frame ${frame_number} of ${n_items} (byte offset ${frame_offset}): ${to_error(error).message}`,
-        { cause: error },
-      )
-    }
-  }
-}
-
-const ASE_PLOT_SCALARS = [
-  `energy`,
-  `potential_energy`,
-  `kinetic_energy`,
-  `total_energy`,
-  `force_max`,
-  `force_norm`,
-  `stress_max`,
-  `stress_frobenius`,
-  `pressure`,
-  `temperature`,
-  `bandgap`,
-]
-
-// ASE puts computed results in the calculator and user-set values in `info`, but which
-// scalar lands where is up to whoever wrote the file, so both sections get every alias.
-const parse_ase_metadata = (
-  frame_data: Record<string, unknown>,
-  frame_number: number,
-): TrajectoryMetadata => {
-  const properties: Record<string, number> = {}
-  for (const section of [ase_calculator_data(frame_data), frame_data.info]) {
-    if (!section || typeof section !== `object`) continue
-    copy_numeric_fields(properties, section as Record<string, unknown>, ASE_PLOT_SCALARS)
-  }
-  if (frame_data.cell) {
-    properties.volume = Math.abs(math.det_3x3(validate_3x3_matrix(frame_data.cell)))
-  }
-  return { frame_number, step: frame_number, properties }
 }

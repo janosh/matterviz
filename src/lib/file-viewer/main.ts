@@ -25,22 +25,19 @@ import { ensure_moyo_wasm_ready } from '$lib/symmetry'
 import { apply_theme_to_dom, is_valid_theme_name } from '$lib/theme/index'
 // oxlint-disable-next-line eslint-plugin-import/no-unassigned-import -- side-effect only
 import '$lib/theme/themes.mjs'
-import type { TrajectoryController, TrajectoryType, TrajHandlerData } from '$lib/trajectory'
+import type { TrajectoryController, TrajectoryRun, TrajHandlerData } from '$lib/trajectory'
 import type { VaspoutElectronicData } from '$lib/trajectory/parse/vaspout-electronic'
 import Trajectory from '$lib/trajectory/Trajectory.svelte'
 import { mount, unmount } from 'svelte'
 import TrajectoryWithDos from './TrajectoryWithDos.svelte'
 import type { VSCodeAPI } from './host-bridge'
-import { get_vscode_api, VSCodeFrameLoader } from './host-bridge'
+import { get_vscode_api } from './host-bridge'
 import type { FileChangeMessage, FileData, WebviewBootstrapData } from './host-protocol'
 import JsonBrowser from './JsonBrowser.svelte'
 import type { ParseResult } from './parse'
 import { parse_in_worker } from './parse-in-worker'
 import { escape_html, to_error } from '$lib/utils'
 
-// host-bridge has no export map subpath of its own, so this module (published as
-// `matterviz/file-viewer/webview`) stays the way hosts reach the frame loader.
-export { VSCodeFrameLoader } from './host-bridge'
 export type { VSCodeAPI } from './host-bridge'
 
 export type MatterVizData = WebviewBootstrapData
@@ -163,11 +160,21 @@ export const setup_vscode_download = (): void => {
   }
 }
 
+// Runs behind mounted trajectory displays: a worker-served run holds a worker and a port, a
+// host-served one a message listener, so unmounting the display must dispose it too
+const display_runs = new WeakMap<MatterVizApp, TrajectoryRun>()
+
+export const unmount_display = async (app: MatterVizApp): Promise<void> => {
+  display_runs.get(app)?.dispose()
+  display_runs.delete(app)
+  await unmount(app)
+}
+
 // Unmount the existing component before replacement to prevent memory leaks.
 async function unmount_current_app(): Promise<void> {
   const app = current_app
   current_app = null
-  if (app) await unmount(app)
+  if (app) await unmount_display(app)
 }
 
 // Handle file change events from extension
@@ -304,28 +311,14 @@ export const create_display = (
   let log_message: string
 
   if (result.type === `trajectory`) {
-    // Prepare trajectory data for VS Code streaming if supported
-    let final_trajectory = result.data as TrajectoryType
-
-    if (vscode_api && result.streaming_info?.file_path) {
-      final_trajectory = {
-        ...final_trajectory,
-        is_indexed: true,
-        frames: final_trajectory.frames || [],
-        frame_loader: new VSCodeFrameLoader(
-          result.streaming_info.file_path,
-          filename,
-          vscode_api,
-        ),
-      }
-    }
+    const final_trajectory = result.data as TrajectoryRun
 
     const { initial_step_idx, on_step_change, on_trajectory_controller } =
       display_options ?? {}
     const trajectory_mount_props = {
       trajectory: final_trajectory,
       ...trajectory_props(defaults),
-      ...no_file_drop,
+      ...common_props,
       ...(initial_step_idx !== undefined && { current_step_idx: initial_step_idx }),
       ...(on_step_change && {
         on_step_change: (data: TrajHandlerData) =>
@@ -345,9 +338,8 @@ export const create_display = (
     } else {
       app = mount(Trajectory, { target: container, props: trajectory_mount_props })
     }
-    log_message = `Trajectory rendered: ${filename} (${
-      final_trajectory.frames?.length ?? 0
-    } initial frames, ${final_trajectory.total_frames ?? `unknown`} total)`
+    display_runs.set(app, final_trajectory)
+    log_message = `Trajectory rendered: ${filename} (${final_trajectory.frame_count} frames)`
   } else if (result.type === `vaspout_electronic`) {
     const { dos, bands } = result.data as VaspoutElectronicData
     const spectral_props = { style: `height: 100%`, class: `vaspout-electronic` }
@@ -431,18 +423,17 @@ const trajectory_props = (defaults: DefaultSettings) => {
     show_grid: plot.grid_lines,
     show_axis_labels: plot.axis_labels,
   }
-  // Loading/UX settings are not Trajectory props; spreading them would land on the wrapper div
+  // Loading/UX settings belong to TrajectoryFileViewer, not the viewer mounted here; spreading
+  // them would land on the wrapper div
   const {
-    bin_file_threshold,
-    text_file_threshold,
-    use_indexing,
-    show_parsing_progress,
+    index_above_bytes: _index_above_bytes,
+    show_parsing_progress: _show_parsing_progress,
+    allow_file_drop: _allow_file_drop,
     ...trajectory_component_props
   } = trajectory
   return {
     ...trajectory_component_props,
     structure_props: { ...structure_props(defaults), persist_settings: false },
-    loading_options: { bin_file_threshold, text_file_threshold, use_indexing },
     scatter_props: {
       markers: scatter.symbol_type,
       line_width: scatter.line.width,
@@ -456,7 +447,6 @@ const trajectory_props = (defaults: DefaultSettings) => {
       bin_count: histogram.bin_count,
       ...shared_plot_props,
     },
-    spinner_props: { show_progress: show_parsing_progress },
     property_labels: {},
   }
 }

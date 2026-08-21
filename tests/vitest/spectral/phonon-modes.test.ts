@@ -4,7 +4,7 @@ import {
   is_commensurate_phonon_supercell,
   PHONON_VECTOR_KEY,
   phonon_band_structure_from_modes,
-  phonon_mode_trajectory,
+  phonon_mode_trajectory as create_phonon_mode_run,
   parse_phonon_modes,
   type Complex,
   type PhononModeData,
@@ -15,6 +15,16 @@ import { SvelteSet } from 'svelte/reactivity'
 import { describe, expect, it } from 'vitest'
 import nacl_band_yaml from '$site/phonons/ir-raman/NaCl-Gamma-X-band.yaml?raw'
 import { IDENTITY_MATRIX3 } from '../setup'
+
+const phonon_mode_trajectory = (...args: Parameters<typeof create_phonon_mode_run>) => {
+  const run = create_phonon_mode_run(...args)
+  const frames = Array.from({ length: run.frame_count }, (_unused, frame_idx) => {
+    const frame = run.read_frame(frame_idx)
+    if (frame instanceof Promise) throw new Error(`Phonon mode runs must be synchronous`)
+    return frame
+  })
+  return Object.assign(run, { frames })
+}
 
 const real_x: Complex[][] = [
   [

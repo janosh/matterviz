@@ -803,21 +803,11 @@ export const SETTINGS_CONFIG = define_settings({
       value: true,
       description: `Allow drag-and-drop of trajectory files`,
     },
-    bin_file_threshold: {
-      value: 50000000,
-      description: `File size threshold for binary loading (bytes)`,
-      minimum: 1000000,
-      maximum: 500000000,
-    },
-    text_file_threshold: {
+    index_above_bytes: {
       value: 25000000,
-      description: `File size threshold for text loading (bytes)`,
-      minimum: 500000,
-      maximum: 250000000,
-    },
-    use_indexing: {
-      value: false,
-      description: `Use frame indexing for large trajectories`,
+      description: `Trajectory files (XYZ, EXTXYZ, ASE .traj) larger than this many bytes are parsed in a Web Worker and decoded frame by frame on demand instead of all at once`,
+      minimum: 1000000,
+      maximum: 2000000000,
     },
 
     // UI/UX

@@ -221,7 +221,6 @@
             (scaling) => (supercell = parse_supercell_scaling(scaling))
           }
           {auto_play}
-          allow_file_drop={false}
           display_mode="structure"
           show_controls={{
             mode: `hover`,

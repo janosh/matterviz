@@ -15,7 +15,7 @@
     toggle_title = controls_name,
     // Empty style opts out when ViewerChrome owns toggle layout.
     toggle_style = `position: absolute; top: var(--viewer-buttons-top, var(--ctrl-btn-top, 1ex)); right: var(--ctrl-btn-right, var(--fullscreen-btn-offset, var(--ctrl-btn-default-right, 1ex)));`,
-    pane_style = `--pane-padding: 12px; --pane-gap: 4px;`,
+    pane_style = ``,
     toggle_props = {},
     pane_props = {},
     children,
@@ -45,7 +45,11 @@
   pane_props={{
     ...pane_props,
     class: [pane_class, pane_props.class],
-    style: [pane_style, pane_props.style].filter(Boolean).join(`; `),
+    // Prepend compact defaults so a caller's pane_style can override individual vars
+    // without dropping padding/gap the way a full-style replace used to.
+    style: [`--pane-padding: 6px 8px; --pane-gap: 0`, pane_style, pane_props.style]
+      .filter(Boolean)
+      .join(`; `),
   }}
   closed_icon={Settings}
   {...options}

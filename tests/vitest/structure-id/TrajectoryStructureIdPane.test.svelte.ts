@@ -5,18 +5,19 @@
 import TrajectoryStructureIdPane from '$lib/structure-id/TrajectoryStructureIdPane.svelte'
 import * as collect from '$lib/structure-id/collect'
 import type { StructureIdSweep } from '$lib/structure-id/collect'
-import type { TrajectoryType } from '$lib/trajectory'
+import { trajectory_from_frames, type TrajectoryRun } from '$lib/trajectory'
 import { mount, tick, unmount } from 'svelte'
 import { afterEach, expect, test, vi } from 'vitest'
 import { bind_props, doc_query } from '../setup'
 import { make_fcc } from './lattices'
 
-const make_trajectory = (n_frames: number): TrajectoryType => ({
-  frames: Array.from({ length: n_frames }, (_unused, step) => ({
-    step,
-    structure: make_fcc([1, 1, 1]),
-  })),
-})
+const make_run = (n_frames: number): TrajectoryRun =>
+  trajectory_from_frames(
+    Array.from({ length: n_frames }, (_unused, step) => ({
+      step,
+      structure: make_fcc([1, 1, 1]),
+    })),
+  )
 
 const sweep_result: StructureIdSweep = {
   frame_numbers: [0, 7, 14],
@@ -44,7 +45,7 @@ test(`passes the typed max-frames cap and skip_csp to the sweep, relays progress
     .spyOn(collect, `collect_structure_id_sweep`)
     .mockReturnValue(pending_sweep.promise)
   const state = $state({
-    trajectory: make_trajectory(20),
+    run: make_run(20),
     result: undefined as StructureIdSweep | undefined,
   })
   mounted_component = mount(TrajectoryStructureIdPane, {
@@ -53,10 +54,9 @@ test(`passes the typed max-frames cap and skip_csp to the sweep, relays progress
   })
   await settle()
   const controls = doc_query(`.trajectory-structure-id-controls`)
-  // no position buffer: neither the stride control nor the byte estimate is offered
-  expect(
-    controls.querySelector(`input[min='1'][step='1']:not([type=checkbox])`),
-  ).not.toBeNull()
+  // no position buffer: the only numeric input is the max-frames cap (no stride control)
+  // and no byte estimate is offered
+  expect(controls.querySelectorAll(`input[type=number]`)).toHaveLength(1)
   expect(controls.textContent).toContain(`20 of 20 frames`)
   expect(controls.textContent).not.toContain(`≈ `.concat(`0 B`))
 
@@ -74,8 +74,8 @@ test(`passes the typed max-frames cap and skip_csp to the sweep, relays progress
   button.click()
   await settle()
   expect(sweep).toHaveBeenCalledWith(
-    state.trajectory,
-    expect.objectContaining({ max_frames: 3, options: { skip_csp: true }, raw_data: null }),
+    state.run,
+    expect.objectContaining({ max_frames: 3, options: { skip_csp: true } }),
   )
   // the sweep is the identification itself, so both the button and the plot slot say so
   expect(button.textContent).toContain(`Identifying…`)
@@ -91,9 +91,10 @@ test(`passes the typed max-frames cap and skip_csp to the sweep, relays progress
   expect(document.body.textContent).not.toContain(`Identifying structure types…`)
 })
 
-test(`preserves a caller-supplied result on mount and says sampled frames load on demand`, async () => {
-  const state = $state<{ trajectory: TrajectoryType; result?: StructureIdSweep }>({
-    trajectory: { ...make_trajectory(2), total_frames: 50, is_indexed: true },
+test(`keeps a caller-supplied result across mount; a failed sweep surfaces in the plot slot and drops it`, async () => {
+  vi.spyOn(collect, `collect_structure_id_sweep`).mockRejectedValue(new Error(`sweep failure`))
+  const state = $state<{ run: TrajectoryRun; result?: StructureIdSweep }>({
+    run: make_run(2),
     result: sweep_result,
   })
   mounted_component = mount(TrajectoryStructureIdPane, {
@@ -102,23 +103,8 @@ test(`preserves a caller-supplied result on mount and says sampled frames load o
   })
   await settle()
   expect(state.result).toEqual(sweep_result)
-  expect(document.body.textContent).toContain(
-    `2 of 50 frames are in memory. Sampled frames are loaded on demand, but the raw file bytes are unavailable here.`,
-  )
-})
-
-test(`a failed sweep surfaces in the plot slot and drops the result`, async () => {
-  vi.spyOn(collect, `collect_structure_id_sweep`).mockRejectedValue(new Error(`sweep failure`))
-  const state = $state({
-    trajectory: make_trajectory(2),
-    result: undefined as StructureIdSweep | undefined,
-  })
-  mounted_component = mount(TrajectoryStructureIdPane, {
-    target: document.body,
-    props: bind_props({ pane_open: true }, state),
-  })
-  await settle()
   const button = doc_query(`.trajectory-structure-id-controls button`, HTMLButtonElement)
+  expect(button.textContent).toContain(`Recompute`)
   button.click()
   await vi.waitFor(() => expect(document.body.textContent).toContain(`sweep failure`))
   expect(state.result).toBeUndefined()

@@ -4,15 +4,25 @@ import {
   drag_over_handlers,
   file_drop_zone,
 } from '$lib/io/file-drop'
+import type * as DecompressModule from '$lib/io/decompress'
 import { decompress_file } from '$lib/io/decompress'
-import { dropped_file_url, load_from_url } from '$lib/io/url-drop'
+import type { FileLoadCallback, TrajectoryFileLoadCallback } from '$lib/io/types'
+import { dropped_file_url, load_from_url, load_trajectory_from_url } from '$lib/io/url-drop'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
-vi.mock(`$lib/io/decompress`, () => ({ decompress_file: vi.fn() }))
+// decompress_trajectory_file stays real so the hdf5_as_blob mode is exercised end to end
+vi.mock(`$lib/io/decompress`, async (import_original) => ({
+  ...(await import_original<typeof DecompressModule>()),
+  decompress_file: vi.fn(),
+}))
 vi.mock(`$lib/io/url-drop`, () => ({
   dropped_file_url: vi.fn(),
   load_from_url: vi.fn(),
+  load_trajectory_from_url: vi.fn(),
 }))
+
+// The default (text/ArrayBuffer) branch of the FileDropOptions union
+type TextDropOptions = Extract<FileDropOptions, { on_drop: FileLoadCallback }>
 
 // empty items means no directories, so files_from_data_transfer uses the flat list
 const make_event = (files: File[] = [], items: unknown[] = []) =>
@@ -28,31 +38,31 @@ const source_meta = (source_filename: string, source_url?: string) =>
     : { source_filename, file: expect.any(File) as File }
 
 describe(`create_file_drop_handler`, () => {
-  let on_drop: FileDropOptions[`on_drop`]
+  let on_drop: FileLoadCallback
   let on_error: FileDropOptions[`on_error`]
   let set_loading: FileDropOptions[`set_loading`]
 
   beforeEach(() => {
     vi.clearAllMocks()
-    on_drop = vi.fn<FileDropOptions[`on_drop`]>()
+    on_drop = vi.fn<FileLoadCallback>()
     on_error = vi.fn<NonNullable<FileDropOptions[`on_error`]>>()
     set_loading = vi.fn<NonNullable<FileDropOptions[`set_loading`]>>()
     vi.mocked(dropped_file_url).mockReturnValue(undefined)
   })
 
   const run = async (
-    opts: Partial<FileDropOptions> = {},
+    opts: Partial<TextDropOptions> = {},
     files: File[] = [],
     items: unknown[] = [],
   ) => {
     const event = make_event(files, items)
-    const defaults: FileDropOptions = {
+    const defaults: TextDropOptions = {
       allow: () => true,
       on_drop,
       on_error,
       set_loading,
     }
-    await create_file_drop_handler({ ...defaults, ...opts })(event)
+    await create_file_drop_handler({ ...defaults, ...opts } as TextDropOptions)(event)
     return event
   }
 
@@ -265,7 +275,7 @@ describe(`create_file_drop_handler`, () => {
       if (failure_source === `on_error`) {
         vi.mocked(decompress_file).mockRejectedValueOnce(new Error(`corrupt`))
       }
-      const queue_drop = vi.fn<FileDropOptions[`on_drop`]>()
+      const queue_drop = vi.fn<FileLoadCallback>()
       const handler = create_file_drop_handler({
         allow: () => true,
         on_drop: queue_drop,
@@ -292,6 +302,41 @@ describe(`create_file_drop_handler`, () => {
     vi.mocked(decompress_file).mockResolvedValue({ content: `ok`, filename: `f.cif` })
     await run({ on_error: undefined, set_loading: undefined }, [new File([`ok`], `f.cif`)])
     expect(on_drop).toHaveBeenCalledWith(`ok`, `f.cif`, source_meta(`f.cif`))
+  })
+
+  // Trajectory viewers keep HDF5 payloads Blob-backed so h5wasm reads them lazily instead of
+  // materialising the whole file; everything else still arrives the way parsers expect
+  test(`hdf5_as_blob hands .h5 drops over as Blobs, text files as text, URLs to the trajectory loader`, async () => {
+    vi.mocked(dropped_file_url).mockReturnValue(`https://example.com/run.h5`)
+    const trajectory_drop = vi.fn<TrajectoryFileLoadCallback>()
+    const hdf5_signature = [0x89, 0x48, 0x44, 0x46, 0x0d, 0x0a, 0x1a, 0x0a]
+    const h5_file = new File(
+      [new Uint8Array([...hdf5_signature, ...Array(64).fill(0)])],
+      `run.h5`,
+    )
+    const xyz_text = `2\nstep=0\nH 0 0 0\nH 0 0 0.74\n`
+    const handler = create_file_drop_handler({
+      allow: () => true,
+      hdf5_as_blob: true,
+      on_drop: trajectory_drop,
+      on_error,
+    })
+    await handler(make_event([h5_file, new File([xyz_text], `h2.xyz`)]))
+
+    expect(load_trajectory_from_url).toHaveBeenCalledWith(
+      `https://example.com/run.h5`,
+      trajectory_drop,
+    )
+    expect(load_from_url).not.toHaveBeenCalled()
+    expect(decompress_file).not.toHaveBeenCalled()
+    expect(on_error).not.toHaveBeenCalled()
+    const [[h5_content, h5_name, h5_meta], [xyz_content, xyz_name]] =
+      trajectory_drop.mock.calls
+    expect(h5_content).toBeInstanceOf(Blob)
+    expect((h5_content as Blob).size).toBe(h5_file.size)
+    expect(h5_name).toBe(`run.h5`)
+    expect(h5_meta).toEqual({ source_filename: `run.h5`, file: h5_file })
+    expect([xyz_content, xyz_name]).toEqual([xyz_text, `h2.xyz`])
   })
 })
 

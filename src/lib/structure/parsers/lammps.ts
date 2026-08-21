@@ -342,7 +342,8 @@ export const parse_lammps_dump = (content: string): AnyStructure | null =>
     }
 
     const frame_lines = lines.slice(frame_starts[0], frame_starts[1] ?? lines.length)
-    const structure = parse_lammps_trajectory(frame_lines.join(`\n`)).frames[0]?.structure
+    const structure = parse_lammps_trajectory(frame_lines.join(`\n`), () => {}).frames[0]
+      ?.structure
     if (!structure || structure.sites.length === 0) {
       diag_error(`LAMMPS dump frame contains no atoms`)
       return null

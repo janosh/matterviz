@@ -79,6 +79,14 @@
   bind:display
   bind:show_controls
   bind:controls_open
+  display_extra_values={{
+    show_points: styles.show_points,
+    show_lines: styles.show_lines,
+  }}
+  on_display_extra_reset={() => {
+    styles.show_points = DEFAULTS.scatter.show_points
+    styles.show_lines = DEFAULTS.scatter.show_lines
+  }}
   {...rest}
 >
   {@render children?.({
@@ -90,83 +98,57 @@
     styles,
     selected_series_idx,
   })}
-  {#if has_any_points || has_any_lines}
-    <SettingsSection
-      title="Markers"
-      current_values={{ show_points: styles.show_points, show_lines: styles.show_lines }}
-      on_reset={() => {
-        styles.show_points = DEFAULTS.scatter.show_points
-        styles.show_lines = DEFAULTS.scatter.show_lines
-      }}
-      layout="grid"
-    >
-      {#if has_any_points}
-        <label
-          {@attach tooltip({
-            content: `Toggle visibility of data points in the scatter plot`,
-          })}
-        >
-          <span>Show points</span>
-          <input type="checkbox" bind:checked={styles.show_points} />
-        </label>
-      {/if}
-      {#if has_any_lines}
-        <label
-          {@attach tooltip({
-            content: `Toggle visibility of connecting lines between data points`,
-          })}
-        >
-          <span>Show lines</span>
-          <input type="checkbox" bind:checked={styles.show_lines} />
-        </label>
-      {/if}
-    </SettingsSection>
-  {/if}
+
+  {#snippet display_children()}
+    {#if has_any_points}
+      <label
+        {@attach tooltip({
+          content: `Toggle visibility of data points in the scatter plot`,
+        })}
+      >
+        <input type="checkbox" bind:checked={styles.show_points} />
+        Show points
+      </label>
+    {/if}
+    {#if has_any_lines}
+      <label
+        {@attach tooltip({
+          content: `Toggle visibility of connecting lines between data points`,
+        })}
+      >
+        <input type="checkbox" bind:checked={styles.show_lines} />
+        Show lines
+      </label>
+    {/if}
+  {/snippet}
 
   {#snippet post_children()}
-    <!-- Series Selection (for multi-series style controls) -->
-    {#if has_multiple_series}
-      <SettingsSection title="Series" layout="grid">
-        <label>
-          <span>Series</span>
-          <select bind:value={selected_series_idx}>
-            {#each series as srs, idx (idx)}
-              {#if srs}
-                <option value={idx}>
-                  {srs.label ?? `Series ${idx + 1}`}
-                </option>
-              {/if}
-            {/each}
-          </select>
-        </label>
-      </SettingsSection>
-    {/if}
-
-    <!-- Point Style Controls: only when points exist and are visible -->
     {#if has_any_points && styles.show_points}
       <SettingsSection
         title="Point style"
         current_values={styles.point ?? {}}
         on_reset={reset_style(`point`)}
         oninput={touch}
-        layout="grid"
+        layout="flow"
       >
         {#if styles.point}
-          {#if !has_size_data}
-            <NumberRangeInput
-              data-key="point.size"
-              min={1}
-              max={20}
-              step={0.5}
-              bind:value={styles.point.size}>Size</NumberRangeInput
-            >
-          {/if}
-          {#if !has_color_data}
-            <label data-key="point.color">
-              <span>Color</span>
-              <input type="color" bind:value={styles.point.color} />
-            </label>
-          {/if}
+          <div class="style-row">
+            {#if !has_size_data}
+              <NumberRangeInput
+                data-key="point.size"
+                min={1}
+                max={20}
+                step={0.5}
+                bind:value={styles.point.size}>Size</NumberRangeInput
+              >
+            {/if}
+            {#if !has_color_data}
+              <label data-key="point.color">
+                <span>Color</span>
+                <input type="color" bind:value={styles.point.color} />
+              </label>
+            {/if}
+          </div>
           <NumberRangeInput
             data-key="point.opacity"
             min={0}
@@ -174,17 +156,19 @@
             step={0.05}
             bind:value={styles.point.opacity}>Opacity</NumberRangeInput
           >
-          <NumberRangeInput
-            data-key="point.stroke_width"
-            min={0}
-            max={5}
-            step={0.1}
-            bind:value={styles.point.stroke_width}>Stroke width</NumberRangeInput
-          >
-          <label data-key="point.stroke_color">
-            <span>Stroke color</span>
-            <input type="color" bind:value={styles.point.stroke_color} />
-          </label>
+          <div class="style-row">
+            <NumberRangeInput
+              data-key="point.stroke_width"
+              min={0}
+              max={5}
+              step={0.1}
+              bind:value={styles.point.stroke_width}>Stroke</NumberRangeInput
+            >
+            <label data-key="point.stroke_color">
+              <span>Color</span>
+              <input type="color" bind:value={styles.point.stroke_color} />
+            </label>
+          </div>
           <NumberRangeInput
             data-key="point.stroke_opacity"
             min={0}
@@ -196,29 +180,55 @@
       </SettingsSection>
     {/if}
 
-    <!-- Line Style Controls: only when lines exist and are visible -->
     {#if has_any_lines && styles.show_lines}
       <SettingsSection
         title="Line style"
         current_values={styles.line ?? {}}
         on_reset={reset_style(`line`)}
         oninput={touch}
-        layout="grid"
+        layout="flow"
       >
         {#if styles.line}
-          <NumberRangeInput
-            data-key="line.width"
-            min={0.5}
-            max={10}
-            step={0.5}
-            bind:value={styles.line.width}>Width</NumberRangeInput
-          >
-          {#if !has_color_data}
-            <label data-key="line.color">
-              <span>Color</span>
-              <input type="color" bind:value={styles.line.color} />
-            </label>
+          {#if has_multiple_series}
+            <div class="ctrl-line">
+              <label>
+                <span>Series</span>
+                <select bind:value={selected_series_idx}>
+                  {#each series as srs, idx (idx)}
+                    {#if srs}
+                      <option value={idx}>
+                        {srs.label ?? `Series ${idx + 1}`}
+                      </option>
+                    {/if}
+                  {/each}
+                </select>
+              </label>
+            </div>
           {/if}
+          <div class="style-row">
+            <NumberRangeInput
+              data-key="line.width"
+              min={0.5}
+              max={10}
+              step={0.5}
+              bind:value={styles.line.width}>Width</NumberRangeInput
+            >
+            {#if !has_color_data}
+              <label data-key="line.color">
+                <span>Color</span>
+                <input type="color" bind:value={styles.line.color} />
+              </label>
+            {/if}
+            <label data-key="line.dash">
+              <span>Style</span>
+              <select bind:value={styles.line.dash}>
+                <option value="solid">Solid</option>
+                <option value="4,4">Dashed</option>
+                <option value="2,2">Dotted</option>
+                <option value="8,4,2,4">Dash-dot</option>
+              </select>
+            </label>
+          </div>
           <NumberRangeInput
             data-key="line.opacity"
             min={0}
@@ -226,15 +236,6 @@
             step={0.05}
             bind:value={styles.line.opacity}>Opacity</NumberRangeInput
           >
-          <label data-key="line.dash">
-            <span>Style</span>
-            <select bind:value={styles.line.dash}>
-              <option value="solid">Solid</option>
-              <option value="4,4">Dashed</option>
-              <option value="2,2">Dotted</option>
-              <option value="8,4,2,4">Dash-dot</option>
-            </select>
-          </label>
         {/if}
       </SettingsSection>
     {/if}

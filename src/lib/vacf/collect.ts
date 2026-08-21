@@ -1,63 +1,45 @@
 // Gather whole-trajectory velocities (or the positions to differentiate) for VACF/VDOS.
-//
-// Same trap $lib/trajectory/analysis guards: for indexed trajectories `trajectory.frames` holds only
-// the first handful of frames (the parser loads min(10, total_frames)) while `total_frames`
-// can be six digits. Looping over `frames` would compute the VACF over 10 frames and put
-// the whole VDOS in the wrong place, and neither validate_trajectory nor
-// generate_plot_series notices. So every entry point here either drives a full streaming
-// pass or throws with instructions.
 import type { Vec3 } from '$lib/math'
-import {
-  collect_trajectory_positions,
-  has_all_frames_in_memory,
-  trajectory_total_frames,
-} from '$lib/trajectory/analysis'
+import { collect_trajectory_positions } from '$lib/trajectory/analysis'
 import type {
   ParseProgress,
   TrajectoryFrame,
   TrajectoryPositionStream,
-  TrajectoryType,
+  TrajectoryRun,
 } from '$lib/trajectory'
 import {
   DEFAULT_POSITION_STREAM_MAX_BYTES,
   suggest_frame_stride,
-} from '$lib/trajectory/frame-reader'
+} from '$lib/trajectory/runs/accumulate'
 import type { VacfInput } from './index'
 
 // Site property the parsers write per-atom velocities to (extXYZ vx/vy/vz, LAMMPS dump
 // vx vy vz). A vec3 in the site's own units; nothing here converts it. Parsers and
-// TrajectoryType do not currently expose a velocity unit, so collect_vacf_input leaves
+// TrajectoryRun does not currently expose a velocity unit, so collect_vacf_input leaves
 // VacfInput.velocity_unit unset and calc_vacf labels stored VACF as file velocity units.
 export const VELOCITY_SITE_PROPERTY = `velocity`
 
 export interface VacfCollectOptions {
-  // Raw file bytes for source-dependent indexed loaders. Packed and worker-owned loaders carry
-  // their own backing data and do not require this.
-  raw_data?: string | ArrayBuffer | null
   // Collect every Nth frame; use `suggest_vacf_frame_stride` to stay inside the budget.
   // Note that striding coarsens the velocity sampling and so lowers the VDOS Nyquist
   // frequency by the same factor — a stride of 10 aliases everything above f_Nyquist/10.
   frame_stride?: number
   max_bytes?: number
   on_progress?: (progress: ParseProgress) => void
+  signal?: AbortSignal
 }
 
 // Frame stride that keeps positions AND velocities inside `max_bytes`, or null when the
 // atom count is not yet known (no frame has been read). Budgets two buffers whenever the
 // first frame carries velocities, since both are collected.
 export function suggest_vacf_frame_stride(
-  trajectory: TrajectoryType,
+  run: TrajectoryRun,
   max_bytes: number = DEFAULT_POSITION_STREAM_MAX_BYTES,
 ): number | null {
-  const first_frame = trajectory.frames[0]
-  const n_atoms = first_frame?.structure.sites.length
-  if (!first_frame || !n_atoms) return null
-  const buffers = has_velocities(first_frame) ? 2 : 1
-  return suggest_frame_stride(
-    trajectory_total_frames(trajectory),
-    n_atoms * buffers,
-    max_bytes,
-  )
+  const n_atoms = run.preview.structure.sites.length
+  if (!n_atoms) return null
+  const buffers = has_velocities(run.preview) ? 2 : 1
+  return suggest_frame_stride(run.frame_count, n_atoms * buffers, max_bytes)
 }
 
 const is_vec3 = (value: unknown): value is Vec3 =>
@@ -71,61 +53,10 @@ const site_velocity = (frame: TrajectoryFrame, atom_idx: number): unknown =>
 const has_velocities = (frame?: TrajectoryFrame): boolean =>
   frame !== undefined && is_vec3(site_velocity(frame, 0))
 
-// Copy one frame's per-atom velocities straight into `out` at `base`, in the positions'
-// frame-major layout. Throws when only SOME sites have them: a half-filled velocity buffer
-// would silently zero out those atoms' contribution to the VACF, which reads as extra
-// damping rather than as missing data.
-function write_frame_velocities(
-  frame: TrajectoryFrame,
-  n_atoms: number,
-  frame_number: number,
-  out: Float64Array,
-  base: number,
-): void {
-  for (let atom_idx = 0; atom_idx < n_atoms; atom_idx++) {
-    const velocity = site_velocity(frame, atom_idx)
-    if (!is_vec3(velocity)) {
-      throw new Error(
-        `Frame ${frame_number} site 0 has a '${VELOCITY_SITE_PROPERTY}' property but site ` +
-          `${atom_idx} does not (got ${JSON.stringify(velocity)}). Every atom needs one, ` +
-          `or none do.`,
-      )
-    }
-    out.set(velocity, base + atom_idx * 3)
-  }
-}
-
-// Velocity buffer laid out exactly like the positions of the same sweep, gathered from the
-// same frames it collected. Null when the first collected frame stores no velocities;
-// throws when a later frame disagrees with the first, since the two halves of such a series
-// would be averaged together as if they were one signal.
-function collect_frame_velocities(
-  frames: TrajectoryFrame[],
-  { n_frames, n_atoms, frame_stride }: TrajectoryPositionStream,
-): Float64Array | null {
-  if (!has_velocities(frames[0])) return null
-  const velocities = new Float64Array(n_frames * n_atoms * 3)
-  // accumulate_positions keeps collected frame `k` as source frame `k * frame_stride`, so
-  // indexing that way is what puts the two buffers in lockstep
-  for (let collected = 0; collected < n_frames; collected++) {
-    const frame_number = collected * frame_stride
-    const frame = frames[frame_number]
-    if (!has_velocities(frame)) {
-      throw new Error(
-        `Frame 0 stores per-atom velocities but frame ${frame_number} does not. A VACF over ` +
-          `a partially-velocity trajectory would mix two different signals; re-export the ` +
-          `run with velocities on every frame, or let VACF differentiate the positions.`,
-      )
-    }
-    write_frame_velocities(frame, n_atoms, frame_number, velocities, collected * n_atoms * 3)
-  }
-  return velocities
-}
-
 // Velocity channel of a streamed position sweep, if one was requested and produced.
 //
 // `vector_keys: ['velocity']` is what asks a loader for it, and accumulate_positions hands
-// it back under `vectors.velocity` in the positions' own frame-major layout. FrameLoader is
+// it back under `vectors.velocity` in the positions' own frame-major layout. TrajectoryRun is
 // a public interface that consumers implement themselves, so the buffer is validated before
 // it is trusted — a mislaid one is worse than none.
 function stream_velocities(stream: TrajectoryPositionStream): Float64Array | null {
@@ -147,42 +78,33 @@ function stream_velocities(stream: TrajectoryPositionStream): Float64Array | nul
 }
 
 export async function collect_vacf_input(
-  trajectory: TrajectoryType,
+  run: TrajectoryRun,
   options: VacfCollectOptions = {},
 ): Promise<VacfInput> {
   const {
-    raw_data = null,
     frame_stride = 1,
     max_bytes = DEFAULT_POSITION_STREAM_MAX_BYTES,
     on_progress,
+    signal,
   } = options
-  const total = trajectory_total_frames(trajectory)
   // 3 rather than MSD's 2: central differences drop the first and last frame, so a
   // 2-frame run leaves no velocity at all
-  if (total < 3) {
+  if (run.frame_count < 3) {
     throw new Error(
-      `collect_vacf_input: need at least 3 frames to differentiate velocities, got ${total}`,
+      `collect_vacf_input: need at least 3 frames to differentiate velocities, got ${run.frame_count}`,
     )
   }
 
-  const all_frames_in_memory = has_all_frames_in_memory(trajectory)
   const stream = await collect_trajectory_positions(
-    trajectory,
-    raw_data,
+    run,
     {
       frame_stride,
       max_bytes,
-      ...(!all_frames_in_memory && has_velocities(trajectory.frames[0])
-        ? { vector_keys: [VELOCITY_SITE_PROPERTY] }
-        : {}),
+      ...(has_velocities(run.preview) ? { vector_keys: [VELOCITY_SITE_PROPERTY] } : {}),
     },
     on_progress,
     `VACF`,
+    signal,
   )
-  return {
-    ...stream,
-    velocities: all_frames_in_memory
-      ? collect_frame_velocities(trajectory.frames, stream)
-      : stream_velocities(stream),
-  }
+  return { ...stream, velocities: stream_velocities(stream) }
 }

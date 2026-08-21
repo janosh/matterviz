@@ -216,7 +216,21 @@ describe(`PlotControls`, () => {
     document.body.innerHTML = ``
     mount_controls()
     expect(document.querySelector(`.plot-controls-toggle`)).not.toBeNull()
-    expect(document.querySelector(`.plot-controls-pane`)).not.toBeNull()
+    const pane = document.querySelector(`.plot-controls-pane`)
+    expect(pane).not.toBeNull()
+    expect(pane?.classList.contains(`compact-settings`)).toBe(true)
+  })
+
+  test(`packs related display and axis fields onto shared rows`, () => {
+    mount_controls({ auto_x_range: [0, 1], auto_y_range: [0, 1] })
+    const display_row = document.querySelector(`section.ctrl-line`)
+    expect(display_row?.querySelector(`[data-label="zero line"]`)).not.toBeNull()
+    expect(display_row?.querySelector(`[data-label="grid"]`)).not.toBeNull()
+    const range_row = document.querySelector(`section.axis-fields`)
+    expect(range_row?.querySelectorAll(`label`).length).toBeGreaterThanOrEqual(2)
+    expect(
+      document.querySelector(`[data-testid="scale-type-section"]`)?.classList.contains(`axis-fields`),
+    ).toBe(true)
   })
 
   test(`Enter key blurs range input`, () => {

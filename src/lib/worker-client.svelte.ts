@@ -73,6 +73,8 @@ export function create_worker_client<
 
   interface Request {
     key: string
+    // postMessage id; null for sync fallbacks, which never enter `pending`
+    id: number | null
     promise: Promise<Result>
     resolve: (data: Result) => void
     reject: (err: Error) => void
@@ -83,21 +85,19 @@ export function create_worker_client<
 
   let worker: Worker | null = null
   let next_id = 0
-  // Worker-backed requests by message id (sync fallbacks never enter this map)
   const pending = new Map<number, Request>()
   const pending_by_key = new Map<string, Request>()
 
-  const reject_all = (error: Error): void => {
-    for (const request of pending_by_key.values()) request.reject(error)
-    pending.clear()
-    pending_by_key.clear()
-  }
   const terminate_worker = (): void => {
     worker?.terminate()
     worker = null
   }
+  // Also the teardown path for worker `error`/`messageerror` events
   const cancel = (reason = `${label} worker request cancelled`): void => {
-    reject_all(new Error(reason))
+    const error = new Error(reason)
+    for (const request of pending_by_key.values()) request.reject(error)
+    pending.clear()
+    pending_by_key.clear()
     terminate_worker()
   }
 
@@ -185,32 +185,31 @@ export function create_worker_client<
   // Forget a request once it settles. .then(onOk, onErr) rather than .finally: the latter
   // forwards the rejection into a derived promise nobody awaits, which surfaces as an
   // unhandled rejection
-  const track = (key: string, id: number | null, run: (request: Request) => void): Request => {
-    const { promise, resolve, reject } = Promise.withResolvers<Result>()
+  const forget = (request: Request): void => {
+    if (pending_by_key.get(request.key) === request) pending_by_key.delete(request.key)
+    if (request.id !== null && pending.get(request.id) === request) pending.delete(request.id)
+  }
+  const track = (key: string, id: number | null): Request => {
     const request: Request = {
       key,
-      promise,
-      resolve,
-      reject,
+      id,
+      ...Promise.withResolvers<Result>(),
       waiters: 0,
       progress_listeners: new Set(),
     }
-    const forget = () => {
-      if (pending_by_key.get(key) === request) pending_by_key.delete(key)
-      if (id !== null && pending.get(id) === request) pending.delete(id)
-    }
-    promise.then(forget, forget)
+    request.promise.then(
+      () => forget(request),
+      () => forget(request),
+    )
     pending_by_key.set(key, request)
     if (id !== null) pending.set(id, request)
-    run(request)
     return request
   }
 
   // Stop caring about a request nobody awaits anymore. The worker is torn down only when it
   // has nothing else in flight, so an abort actually frees the CPU it was burning.
   const drop = (request: Request): void => {
-    pending_by_key.delete(request.key)
-    for (const [id, entry] of pending) if (entry === request) pending.delete(id)
+    forget(request)
     if (pending.size === 0) terminate_worker()
   }
 
@@ -227,20 +226,17 @@ export function create_worker_client<
       if (on_progress) request.progress_listeners.delete(on_progress)
       if (--request.waiters === 0) drop(request)
     }
-    return new Promise<Result>((resolve, reject) => {
-      const on_abort = () => {
-        leave()
-        reject(abort_error(signal, label))
-      }
-      signal.addEventListener(`abort`, on_abort, { once: true })
-      const settle =
-        <Value>(handler: (value: Value) => void) =>
-        (value: Value) => {
-          signal.removeEventListener(`abort`, on_abort)
-          handler(value)
-        }
-      request.promise.then(settle(resolve), settle(reject))
-    })
+    const { promise, resolve, reject } = Promise.withResolvers<Result>()
+    const on_abort = () => {
+      leave()
+      reject(abort_error(signal, label))
+    }
+    signal.addEventListener(`abort`, on_abort, { once: true })
+    // Once settled, a late abort must not run `leave` (it would drop a finished request)
+    void request.promise
+      .then(resolve, reject)
+      .then(() => signal.removeEventListener(`abort`, on_abort))
+    return promise
   }
 
   // Set when the constructor itself throws (CSP, a cross-origin script URL, or a host that
@@ -277,17 +273,13 @@ export function create_worker_client<
       // Both handlers must tear the worker down: an unsettled `pending` entry leaves every
       // caller awaiting forever, and its key stays in `pending_by_key` so each identical
       // retry is handed the same promise that will never settle.
-      const fail_all = (message: string) => {
-        reject_all(new Error(message))
-        terminate_worker()
-      }
       worker.addEventListener(`error`, (event) => {
         event.preventDefault()
-        fail_all(event.message || `${label} worker initialization error`)
+        cancel(event.message || `${label} worker initialization error`)
       })
       // A response that fails to deserialize never reaches the `message` handler
       worker.addEventListener(`messageerror`, () => {
-        fail_all(`${label} worker sent a message that could not be deserialized`)
+        cancel(`${label} worker sent a message that could not be deserialized`)
       })
     }
     return worker
@@ -309,29 +301,27 @@ export function create_worker_client<
 
     const wkr = get_worker()
     if (!wkr) {
-      const request = track(request_key, null, ({ resolve, reject }) => {
-        Promise.resolve()
-          .then(() => compute_sync(input, options))
-          .then(resolve, (err: unknown) => reject(to_error(err)))
-      })
+      const request = track(request_key, null)
+      Promise.resolve()
+        .then(() => compute_sync(input, options))
+        .then(request.resolve, (err: unknown) => request.reject(to_error(err)))
       return join(request, request_options)
     }
 
     const payload = dedupe_by_payload ? keyed_payload : build_payload(input)
     const id = ++next_id
-    const request = track(request_key, id, ({ reject }) => {
-      try {
-        // Empty transfer list by default: callers keep ownership of typed-array buffers
-        // (dedupe reuses the same input). Transferring would detach them.
-        // oxlint-disable-next-line unicorn/require-post-message-target-origin
-        wkr.postMessage(
-          { id, input: payload, options: $state.snapshot(options) },
-          request_options.transfer ?? [],
-        )
-      } catch (err) {
-        reject(to_error(err))
-      }
-    })
+    const request = track(request_key, id)
+    try {
+      // Empty transfer list by default: callers keep ownership of typed-array buffers
+      // (dedupe reuses the same input). Transferring would detach them.
+      // oxlint-disable-next-line unicorn/require-post-message-target-origin
+      wkr.postMessage(
+        { id, input: payload, options: $state.snapshot(options) },
+        request_options.transfer ?? [],
+      )
+    } catch (err) {
+      request.reject(to_error(err))
+    }
     return join(request, request_options)
   }
 

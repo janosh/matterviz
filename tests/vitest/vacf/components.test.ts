@@ -2,7 +2,11 @@
 // happy-dom has no Worker, so a stub is installed before the module is imported and the
 // real postMessage path runs; the components then exercise the synchronous fallback.
 import type { Vec3 } from '$lib/math'
-import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory'
+import {
+  trajectory_from_frames,
+  type TrajectoryFrame,
+  type TrajectoryRun,
+} from '$lib/trajectory'
 import type * as VacfAsyncModule from '$lib/vacf/async-compute.svelte'
 import { calc_vacf } from '$lib/vacf/calc-vacf'
 import type { VacfInput, VacfOptions, VacfResult } from '$lib/vacf/index'
@@ -233,7 +237,7 @@ describe(`VacfPlot`, () => {
 })
 
 describe(`TrajectoryVacfPane`, () => {
-  const make_trajectory = (n_frames: number): TrajectoryType => {
+  const make_run = (n_frames: number): TrajectoryRun => {
     const { positions, velocities } = circular_motion(n_frames, 0.04, 1)
     const frames: TrajectoryFrame[] = positions.map((frame, frame_idx) => {
       const crystal = make_crystal(
@@ -247,7 +251,7 @@ describe(`TrajectoryVacfPane`, () => {
       )
       return { step: frame_idx, structure: { charge: 0, sites: crystal.sites } }
     })
-    return { frames }
+    return trajectory_from_frames(frames)
   }
 
   const run_collect = async () => {
@@ -265,7 +269,7 @@ describe(`TrajectoryVacfPane`, () => {
 
   it(`starts empty, then collects and plots on click`, async () => {
     const initial_text = await mount_and_read(TrajectoryVacfPane, {
-      trajectory: make_trajectory(60),
+      run: make_run(60),
       pane_open: true,
     })
     expect(initial_text).toContain(`No VACF data to display`)
@@ -283,7 +287,7 @@ describe(`TrajectoryVacfPane`, () => {
       TrajectoryVacfPane,
       bind_props(
         {
-          trajectory: make_trajectory(40),
+          run: make_run(40),
           pane_open: true,
           default_dt: 2,
           default_time_unit: `steps`,
@@ -307,7 +311,7 @@ describe(`TrajectoryVacfPane`, () => {
   it(`does not recompute the VACF when the stride changes without a timestep`, async () => {
     const compute = vi.spyOn(vacf_async_module, `compute_vacf_async`)
     await mount_and_read(TrajectoryVacfPane, {
-      trajectory: make_trajectory(40),
+      run: make_run(40),
       pane_open: true,
     })
     await run_collect()
@@ -322,12 +326,13 @@ describe(`TrajectoryVacfPane`, () => {
     expect(compute).toHaveBeenCalledTimes(1)
   })
 
-  it(`surfaces a collect failure in the same message slot`, async () => {
-    // total_frames without the frames in memory and without a loader is the indexed trap
-    const trajectory = { ...make_trajectory(40), total_frames: 900, is_indexed: true }
-    await mount_and_read(TrajectoryVacfPane, { trajectory, pane_open: true })
-    await run_collect()
-    expect(document.body.textContent).toContain(`only 40 are in memory`)
+  it(`disables collection for a frame-only run`, async () => {
+    const { collect_positions: _collect_positions, ...run } = make_run(40)
+    await mount_and_read(TrajectoryVacfPane, { run, pane_open: true })
+    expect(document.body.textContent).toContain(`only serves individual frames`)
+    expect(
+      document.querySelector<HTMLButtonElement>(`.trajectory-vacf-controls button`)?.disabled,
+    ).toBe(true)
     expect(document.body.textContent).not.toContain(`velocities read from the file`)
   })
 })

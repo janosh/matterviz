@@ -8,7 +8,7 @@ import {
   type Crystal,
 } from '$lib/structure'
 import { compute_bonds, normalize_structure_bond } from '$lib/structure/bonding'
-import type { TrajectoryType } from '$lib/trajectory'
+import { trajectory_from_frames, type TrajectoryRun } from '$lib/trajectory'
 import {
   complex_mode_displacement_frames,
   complex_phase,
@@ -207,7 +207,7 @@ export function phonon_mode_trajectory(
   data: PhononModeData,
   selection: PhononModeSelection,
   options: PhononModeTrajectoryOptions = {},
-): TrajectoryType {
+): TrajectoryRun {
   const {
     amplitude = DEFAULT_PHONON_AMPLITUDE,
     supercell = DEFAULT_PHONON_SUPERCELL,
@@ -335,8 +335,7 @@ export function phonon_mode_trajectory(
     }
   })
 
-  return {
-    frames,
+  return trajectory_from_frames(frames, {
     metadata: {
       amplitude,
       frequency,
@@ -346,5 +345,5 @@ export function phonon_mode_trajectory(
       supercell: scaling,
       is_commensurate: is_commensurate_phonon_supercell(q_position, scaling),
     },
-  }
+  })
 }

@@ -12,7 +12,7 @@ const titles = () =>
   [...document.querySelectorAll(`.info-card h4`)].map((el) => el.textContent?.trim())
 
 describe(`InfoPaneCards`, () => {
-  test(`renders duplicate unkeyed rows with copy buttons`, () => {
+  test(`renders duplicate unkeyed rows`, () => {
     mount(InfoPaneCards, {
       target: document.body,
       props: {
@@ -30,7 +30,6 @@ describe(`InfoPaneCards`, () => {
       },
     })
     expect(document.querySelectorAll(`.info-row`)).toHaveLength(2)
-    expect(document.querySelectorAll(`.copy-button`)).toHaveLength(2)
   })
 
   test(`pages long lists, clamps after filtering and resets the page on a new filter`, () => {
@@ -70,13 +69,12 @@ describe(`InfoPaneCards`, () => {
     expect(titles()).toEqual([`Card 0`, `Card 1`, `Card 2`]) // new filter restarts at page 1
   })
 
-  test(`card_attrs decorate cards, subtitles render and show_copy=false drops the buttons`, () => {
+  test(`card_attrs decorate cards and subtitles render`, () => {
     mount(InfoPaneCards, {
       target: document.body,
       props: {
         cards: [{ ...card(0), subtitle: `sub`, key: `k0` }],
         empty_label: `cards`,
-        show_copy: false,
         card_attrs: (item: InfoPaneCard) => ({ class: `custom`, 'data-key': item.key }),
       },
     })
@@ -85,6 +83,5 @@ describe(`InfoPaneCards`, () => {
     expect(section.getAttribute(`data-key`)).toBe(`k0`)
     expect(doc_query(`.info-card h4 .subtitle`).textContent).toBe(`sub`)
     expect(doc_query(`.info-row span:nth-child(2)`).textContent).toBe(`Value 0`)
-    expect(document.querySelector(`.copy-button`)).toBeNull()
   })
 })

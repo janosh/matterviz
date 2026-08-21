@@ -1,15 +1,10 @@
 import {
   convert_atomic_numbers,
-  create_packed_frame_loader,
   create_structure,
-  derive_time_step,
   parse_float_token,
   read_ndarray_from_view,
 } from '$lib/trajectory/helpers'
-import {
-  get_traj_parse_warnings,
-  reset_traj_parse_warnings,
-} from '$lib/trajectory/parse/diagnostics'
+import { trajectory_from_frames } from '$lib/trajectory'
 import type { ElementSymbol } from '$lib/element'
 import type { Matrix3x3 } from '$lib/math'
 import { describe, expect, it } from 'vitest'
@@ -65,19 +60,8 @@ describe(`trajectory helpers`, () => {
     expect(parse_float_token(token)).toBe(expected)
   })
 
-  it.each([
-    [`uniform steps and times`, [0, 1, 2], [0, 100, 200], 0.01],
-    [`non-uniform step spacing with matching times`, [0, 1, 3], [0, 100, 300], 0.01],
-    [`a stretched time interval`, [0, 1, 5], [0, 100, 200], undefined],
-    [`a missing time`, [0, null, 2], [0, 100, 200], undefined],
-    [`zero step span`, [0, 1], [5, 5], undefined],
-    [`a single frame`, [0], [0], undefined],
-  ])(`derive_time_step with %s`, (_label, times, steps, expected) => {
-    expect(derive_time_step(times, steps)).toBe(expected)
-  })
-
   it(`falls back to axis lengths for a singular lattice and warns once per structure`, () => {
-    reset_traj_parse_warnings()
+    const warnings: string[] = []
     const slab: Matrix3x3 = [
       [4, 0, 0],
       [0, 4, 0],
@@ -90,12 +74,15 @@ describe(`trajectory helpers`, () => {
       ],
       [`H`, `H`],
       slab,
+      undefined,
+      undefined,
+      (message) => warnings.push(message),
     )
     expect(structure.sites.map((site) => site.abc)).toEqual([
       [0.25, 0.5, 0],
       [0.75, 0.25, 0],
     ])
-    expect(get_traj_parse_warnings()).toEqual([
+    expect(warnings).toEqual([
       `Singular lattice [[4,0,0],[0,4,0],[0,0,0]]; fractional coordinates use the axis-length approximation`,
     ])
   })
@@ -169,27 +156,22 @@ describe(`trajectory helpers`, () => {
   it.each([
     {
       signal: { sample_shape: [0], values: new Float64Array(), steps: [0] },
-      error: `invalid sample shape`,
+      error: `sample_shape must be scalar`,
     },
     {
       signal: { sample_shape: [3], values: new Float64Array(5), steps: [0, 1] },
-      error: `5 values for 2 steps of shape [3]`,
+      error: `needs a Float64Array of 6 values`,
     },
   ])(`rejects a packed signal with $error`, ({ signal, error }) => {
+    const structure = create_structure([[0, 0, 0]], [`H`])
     expect(() =>
-      create_packed_frame_loader({
-        positions: new Float64Array(6),
-        elements: [`H`],
-        steps: [0, 1],
-        metadata: [{}, {}],
-        plot_metadata: [0, 1].map((frame_number) => ({
-          frame_number,
-          step: frame_number,
-          properties: {},
-        })),
-        signals: { dipole: signal },
-        coords_unwrapped: false,
-      }),
+      trajectory_from_frames(
+        [
+          { structure, step: 0, metadata: {} },
+          { structure, step: 1, metadata: {} },
+        ],
+        { signals: { dipole: signal } },
+      ),
     ).toThrow(error)
   })
 })

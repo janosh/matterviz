@@ -392,7 +392,7 @@
     displacement_arrow_color?: string
     displacement_summary?: measure.DisplacementSummary | null // (output) readout vs reference
     // Per-atom trajectory trails. Inert unless a caller supplies a whole-trajectory position
-    // stream (accumulate_positions / FrameLoader.stream_positions) — a single structure has
+    // stream (TrajectoryRun.collect_positions) — a single structure has
     // no path to draw, so nothing changes for plain Structure users.
     trajectory_position_stream?: TrajectoryPositionStream | null
     show_trajectory_lines?: boolean

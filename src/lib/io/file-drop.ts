@@ -1,18 +1,21 @@
 // Shared file-drop handler composable for drag-and-drop file loading.
-import { decompress_file } from './decompress'
-import { dropped_file_url, load_from_url } from './url-drop'
+import { decompress_file, decompress_trajectory_file } from './decompress'
+import { dropped_file_url, load_from_url, load_trajectory_from_url } from './url-drop'
 import { to_error } from '$lib/utils'
 import type { Attachment } from 'svelte/attachments'
 import { files_from_data_transfer } from 'svelte-widgets/file-drop'
-import type { FileLoadCallback } from './types'
+import type { FileLoadCallback, TrajectoryFileLoadCallback } from './types'
 
-export interface FileDropOptions {
+export type FileDropOptions = {
   allow: () => boolean
-  on_drop: FileLoadCallback
   max_files?: number
   on_error?: (msg: string) => void
   set_loading?: (loading: boolean) => void
-}
+} & (
+  | { hdf5_as_blob?: false; on_drop: FileLoadCallback }
+  // Trajectory viewers keep HDF5 payloads as a Blob so h5wasm can read them lazily
+  | { hdf5_as_blob: true; on_drop: TrajectoryFileLoadCallback }
+)
 
 // Drag-over visual-state handlers for file-drop zones; spread onto the drop target
 // alongside `ondrop` from create_file_drop_handler
@@ -41,6 +44,9 @@ export const create_file_drop_handler = (
   if (max_files !== undefined && (!Number.isSafeInteger(max_files) || max_files < 0)) {
     throw new TypeError(`max_files must be a non-negative integer, got ${max_files}`)
   }
+  const on_drop = opts.on_drop as TrajectoryFileLoadCallback
+  const load_url = opts.hdf5_as_blob ? load_trajectory_from_url : load_from_url
+  const read_file = opts.hdf5_as_blob ? decompress_trajectory_file : decompress_file
 
   async function process_batch(url: string | undefined, read: Promise<File[]>) {
     opts.set_loading?.(true)
@@ -58,7 +64,7 @@ export const create_file_drop_handler = (
       }
       if (url) {
         try {
-          await load_from_url(url, opts.on_drop)
+          await load_url(url, on_drop)
         } catch (exc) {
           // URL failed; if plain files were also dropped, still process them
           // and fold the URL failure into the aggregate report
@@ -73,9 +79,9 @@ export const create_file_drop_handler = (
 
       for (const file of files) {
         try {
-          const { content, filename } = await decompress_file(file)
+          const { content, filename } = await read_file(file)
           if (content) {
-            await opts.on_drop(content, filename, { source_filename: file.name, file })
+            await on_drop(content, filename, { source_filename: file.name, file })
           } else failures.push(`${file.name}: file is empty`)
         } catch (exc) {
           failures.push(`${file.name}: ${to_error(exc).message}`)
@@ -112,7 +118,7 @@ export const create_file_drop_handler = (
   }
 }
 
-export interface FileDropZoneOptions extends FileDropOptions {
+export type FileDropZoneOptions = FileDropOptions & {
   // Mirrors the hover state to the caller, e.g. for a bindable `dragover` prop
   on_dragover?: (over: boolean) => void
 }

@@ -12,12 +12,7 @@ import {
 } from '$lib/plot/core/axis-assignment'
 import { smooth_moving_average } from '$lib/plot/core/data-cleaning'
 import { assert_series_lengths, type DataSeries } from '$lib/plot/core/types'
-import type {
-  TrajectoryDataExtractor,
-  TrajectoryFrame,
-  TrajectoryMetadata,
-  TrajectoryType,
-} from './index'
+import type { TrajectoryMetadata } from './index'
 
 // Configuration constants
 const ENERGY_UNITS = [`eV`, `eV/atom`, `hartree`, `kcal/mol`, `kJ/mol`]
@@ -220,22 +215,20 @@ export function get_frame_time_step(
   return uniform ? (step_delta / frame_delta) * time_step : null
 }
 
-// Frame/step pairs from whichever source the trajectory has: an eagerly parsed frame list,
-// or the sampled plot metadata an indexed trajectory carries instead.
-export function get_frame_step_samples(trajectory: TrajectoryType): FrameStepSamples {
-  if (trajectory.plot_metadata?.length) {
-    const ordered = [...trajectory.plot_metadata].toSorted(
-      (meta_a, meta_b) => meta_a.frame_number - meta_b.frame_number,
-    )
-    return {
-      frame_numbers: ordered.map((meta) => meta.frame_number),
-      steps: ordered.map((meta) => meta.step),
+// Frame/step pairs of a run's property rows (sorted by frame_number; every frame for an
+// eager run, a sample for HDF5). Cached per rows array so the viewer's derived values share
+// one pair of arrays per property batch.
+const samples_cache = new WeakMap<readonly TrajectoryMetadata[], FrameStepSamples>()
+export function get_frame_step_samples(rows: readonly TrajectoryMetadata[]): FrameStepSamples {
+  let samples = samples_cache.get(rows)
+  if (!samples) {
+    samples = {
+      frame_numbers: rows.map((row) => row.frame_number),
+      steps: rows.map((row) => row.step),
     }
+    samples_cache.set(rows, samples)
   }
-  return {
-    frame_numbers: trajectory.frames.map((_frame, frame_idx) => frame_idx),
-    steps: trajectory.frames.map((frame) => frame.step),
-  }
+  return samples
 }
 
 // frame_indices runs parallel to values: a property absent from some frames yields fewer
@@ -286,42 +279,13 @@ const filter_plottable = (stats: PropertyStats): PropertyStats => {
   return result
 }
 
-// One pass over every frame through the extractor
-function extract_property_statistics(
-  trajectory: TrajectoryType,
-  data_extractor: TrajectoryDataExtractor,
-): PropertyStats {
+// Per-property value lists from the rows, keyed by property. Rows arrive sorted and
+// deduplicated (TrajectoryProperties), so this is one linear pass.
+function row_property_statistics(rows: readonly TrajectoryMetadata[]): PropertyStats {
   const stats: PropertyStats = new Map()
-  trajectory.frames.forEach((frame, frame_idx) => {
-    for (const [key, value] of Object.entries(data_extractor(frame, trajectory))) {
-      if (
-        typeof value !== `number` ||
-        is_axis_coordinate_property(key) ||
-        key.startsWith(`constant_`)
-      ) {
-        continue
-      }
-      let stat = stats.get(key)
-      if (!stat) stats.set(key, (stat = { values: [], frame_indices: [] }))
-      stat.values.push(value)
-      stat.frame_indices.push(frame_idx)
-    }
-  })
-  return filter_plottable(stats)
-}
-
-// Same shape from the sampled plot metadata an indexed trajectory carries instead of frames.
-// Batches can arrive out of order and a re-delivered batch can repeat a frame.
-function metadata_property_statistics(metadata_list: TrajectoryMetadata[]): PropertyStats {
-  const ordered = metadata_list
-    .toSorted((meta_a, meta_b) => meta_a.frame_number - meta_b.frame_number)
-    .filter(
-      (meta, idx, sorted) => idx === 0 || meta.frame_number !== sorted[idx - 1].frame_number,
-    )
-  const stats: PropertyStats = new Map()
-  for (const { frame_number, properties } of ordered) {
+  for (const { frame_number, properties } of rows) {
     for (const [key, value] of Object.entries(properties)) {
-      if (is_axis_coordinate_property(key)) continue
+      if (typeof value !== `number` || is_axis_coordinate_property(key)) continue
       let stat = stats.get(key)
       if (!stat) stats.set(key, (stat = { values: [], frame_indices: [] }))
       stat.values.push(value)
@@ -331,36 +295,12 @@ function metadata_property_statistics(metadata_list: TrajectoryMetadata[]): Prop
   return filter_plottable(stats)
 }
 
-// Cache the per-frame walk per trajectory so re-renders that only change visible_properties or
-// labels/config reuse it (legend toggles mutate plot_series directly and skip regeneration, so they
-// don't hit this). Keyed by trajectory identity (WeakMap auto-evicts) and invalidated on extractor
-// or frame identity changes.
-const same_frames = (
-  cached_frames: readonly TrajectoryFrame[],
-  current_frames: readonly TrajectoryFrame[],
-): boolean =>
-  cached_frames.length === current_frames.length &&
-  cached_frames.every((frame, frame_idx) => frame === current_frames[frame_idx])
-
-const stats_cache = new WeakMap<
-  TrajectoryType,
-  { extractor: TrajectoryDataExtractor; frames: TrajectoryFrame[]; stats: PropertyStats }
->()
-
-const cached_property_statistics = (
-  trajectory: TrajectoryType,
-  data_extractor: TrajectoryDataExtractor,
-): PropertyStats => {
-  const cached = stats_cache.get(trajectory)
-  if (cached?.extractor === data_extractor && same_frames(cached.frames, trajectory.frames)) {
-    return cached.stats
-  }
-  const stats = extract_property_statistics(trajectory, data_extractor)
-  stats_cache.set(trajectory, {
-    extractor: data_extractor,
-    frames: [...trajectory.frames],
-    stats,
-  })
+// Cache the per-row walk per rows array so re-renders that only change visible_properties or
+// labels reuse it (legend toggles mutate plot_series directly and skip regeneration).
+const stats_cache = new WeakMap<readonly TrajectoryMetadata[], PropertyStats>()
+const cached_property_statistics = (rows: readonly TrajectoryMetadata[]): PropertyStats => {
+  let stats = stats_cache.get(rows)
+  if (!stats) stats_cache.set(rows, (stats = row_property_statistics(rows)))
   return stats
 }
 
@@ -456,34 +396,20 @@ const property_key = (series: DataSeries): string | undefined => {
   return typeof key === `string` ? key : undefined
 }
 
-// Plot series for an eagerly parsed trajectory, walking every frame through the extractor
+// Plot series from a run's property rows
 export const generate_plot_series = (
-  trajectory: TrajectoryType,
-  data_extractor: TrajectoryDataExtractor,
+  rows: readonly TrajectoryMetadata[],
   options: PlotSeriesOptions = {},
 ): DataSeries[] =>
-  trajectory.frames.length > 0
-    ? build_series(cached_property_statistics(trajectory, data_extractor), options)
-    : []
+  rows.length > 0 ? build_series(cached_property_statistics(rows), options) : []
 
-// Plot series for an indexed trajectory from its sampled plot metadata
-export const generate_streaming_plot_series = (
-  metadata_list: TrajectoryMetadata[],
-  options: PlotSeriesOptions = {},
-): DataSeries[] =>
-  metadata_list.length > 0
-    ? build_series(metadata_property_statistics(metadata_list), options)
-    : []
-
-// Utility functions
+// A plot of one frame, or of nothing but flat lines, says nothing: hide it
 export function should_hide_plot(
-  trajectory: TrajectoryType | undefined,
+  frame_count: number,
   plot_series: DataSeries[],
   tolerance = 1e-10,
 ): boolean {
-  if (!trajectory || trajectory.frames.length <= 1 || plot_series.length === 0) {
-    return true
-  }
+  if (frame_count <= 1 || plot_series.length === 0) return true
 
   const visible_series = plot_series.filter((srs) => srs.visible)
   if (visible_series.length === 0) return false // Show empty plot with legend

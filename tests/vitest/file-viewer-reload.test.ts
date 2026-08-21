@@ -2,8 +2,11 @@ import { create_display } from '$lib/file-viewer/main'
 import type * as ParseModule from '$lib/file-viewer/parse'
 import type { ParseResult } from '$lib/file-viewer/parse'
 import type * as ParseWorkerModule from '$lib/file-viewer/parse-in-worker'
+import { trajectory_from_frames } from '$lib/trajectory/open'
+import { summarize_run } from '$lib/trajectory/run'
 import type * as SvelteModule from 'svelte'
 import { afterEach, expect, test, vi } from 'vitest'
+import { make_crystal } from './setup'
 
 const test_mocks = vi.hoisted(() => {
   const post_message = vi.fn()
@@ -171,19 +174,22 @@ test(`serializes reloads and guards cleanup, markers, and initialization`, async
       expect.objectContaining({ command: `request_large_file` }),
     ),
   )
-  const request = post_message.mock.lastCall?.[0] as Record<string, unknown>
+  const request = post_message.mock.calls.findLast(
+    ([message]) => message.command === `request_large_file`,
+  )?.[0] as Record<string, unknown>
   // The host picks its indexer from the name, so the request has to carry it.
   expect(request).toMatchObject({ file_path: `/tmp/movie.traj`, filename: `movie.traj` })
+  // The host keeps the indexed run and answers with its summary; the webview mounts a host run
+  const run_summary = summarize_run(
+    trajectory_from_frames([{ step: 0, structure: make_crystal(5, [[`H`, [0, 0, 0]]]) }]),
+  )
   globalThis.dispatchEvent(
     new MessageEvent(`message`, {
-      data: {
-        command: `large_file_response`,
-        request_id: request?.request_id,
-        parsed_trajectory: { frames: [], total_frames: 0 },
-      },
+      data: { command: `large_file_response`, request_id: request?.request_id, run_summary },
     }),
   )
   expect(await valid_marker_initialization).not.toBeNull()
+  expect(mount.mock.lastCall?.[1].props.trajectory).toMatchObject({ frame_count: 1 })
 
   const initialization_parse = Promise.withResolvers<ParseResult>()
   parse_file_content.mockReturnValueOnce(initialization_parse.promise)

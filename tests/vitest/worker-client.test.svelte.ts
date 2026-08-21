@@ -255,6 +255,17 @@ describe(`per-request options`, () => {
     await expect(kept).resolves.toBe(`done`)
   })
 
+  test(`aborting after the result arrived is a no-op`, async () => {
+    const run = make_client()
+    const controller = new AbortController()
+    const pending = run({ tag: `a` }, {}, { signal: controller.signal })
+    const [worker] = FakeWorker.instances
+    worker.emit(`message`, { data: { id: worker.posted[0].id, result: `done`, error: null } })
+    await expect(pending).resolves.toBe(`done`)
+    controller.abort()
+    expect(worker.terminated).toBe(0)
+  })
+
   test(`an already-aborted signal rejects without posting`, async () => {
     const run = make_client()
     const signal = AbortSignal.abort()

@@ -12,7 +12,6 @@ import { latest_stub, reset_stub } from './reactive-renderer-registry'
 // reason (mount_spec never calls into them directly).
 vi.mock(`matterviz`, async () => {
   const stub_module = await import(`./reactive-renderer-stub.svelte`)
-  const { volume_from_json } = await import(`../../src/lib/isosurface/types`)
   const component_names = [
     `Bands`,
     `BandsAndDos`,
@@ -32,13 +31,15 @@ vi.mock(`matterviz`, async () => {
     `ScatterPlot3D`,
     `SpacegroupBarPlot`,
     `Structure`,
-    `Trajectory`,
+    `TrajectoryFileViewer`,
     `Treemap`,
     `XrdPlot`,
   ]
   return {
     ...Object.fromEntries(component_names.map((name) => [name, stub_module.default])),
-    volume_from_json,
+    volume_from_json: (raw: unknown) => raw,
+    // the real one builds a run and throws on malformed payloads (covered in open.test.ts)
+    trajectory_from_json: (value: unknown) => ({ run_of: value }),
   }
 })
 vi.mock(`matterviz/app.css?raw`, () => ({ default: `` }))
@@ -56,20 +57,6 @@ type ModelArg = Parameters<typeof mount_spec>[0]
 // Cast the mock to the bridge's model type rather than importing anywidget/types.
 const as_model = (mock: MockModel) => mock as unknown as ModelArg
 
-const volume_payload = (label: string) => ({
-  grid: [[[1]]],
-  lattice: [
-    [1, 0, 0],
-    [0, 1, 0],
-    [0, 0, 1],
-  ],
-  origin: [0, 0, 0],
-  periodic: true,
-  label,
-})
-const trait_value = (key: string, prefix: string): unknown =>
-  key === `volumetric_data` ? volume_payload(`${prefix}:${key}`) : `${prefix}:${key}`
-
 // Mount one widget's spec against a mock model + fresh DOM target, returning the
 // stub it mounted so the test can read driven props / drive $bindable writeback.
 const run_widget = (widget_type: string, model: MockModel) => {
@@ -85,9 +72,7 @@ const run_widget = (widget_type: string, model: MockModel) => {
 // so each prop computes to a distinct, defined value.
 const seeded_model = (widget_type: string, spec: (typeof WIDGETS)[string]): MockModel => {
   const state: Record<string, unknown> = { widget_type }
-  for (const dep of new Set(spec.drive.flatMap((dp) => dp.deps))) {
-    state[dep] = trait_value(dep, `seed`)
-  }
+  for (const dep of new Set(spec.drive.flatMap((dp) => dp.deps))) state[dep] = `seed:${dep}`
   return new MockModel(state)
 }
 
@@ -119,7 +104,7 @@ describe(`drive wiring (all widgets)`, () => {
         // bump every dep (not just the first) so a missing listener on a multi-dep
         // derived prop is caught, not only deps[0]
         for (const dep of dp.deps) {
-          model.push_from_python(dep, trait_value(dep, `bumped`))
+          model.push_from_python(dep, `bumped:${dep}`)
           flushSync()
           expect(stub.read()[dp.prop]).toEqual(dp.compute(as_model(model)))
         }
@@ -201,25 +186,12 @@ describe(`scatter_plot wiring`, () => {
 
 describe(`structure wiring`, () => {
   test.each([
-    {
-      shape: `single object`,
-      raw: volume_payload(`density`),
-      expected_labels: [`density`],
-    },
-    {
-      shape: `array`,
-      raw: [volume_payload(`density`), volume_payload(`spin`)],
-      expected_labels: [`density`, `spin`],
-    },
-    { shape: `unset`, raw: null, expected_labels: undefined },
-  ])(`normalizes $shape volumetric_data`, ({ raw, expected_labels }) => {
+    [`single object`, `density`, [`density`]],
+    [`array`, [`density`, `spin`], [`density`, `spin`]],
+    [`unset`, null, undefined],
+  ] as const)(`normalizes %s volumetric_data`, (_shape, raw, expected) => {
     const model = new MockModel({ widget_type: `structure`, volumetric_data: raw })
-    const volumes = run_widget(`structure`, model).read().volumetric_data as
-      | { label?: string; values: Float64Array }[]
-      | undefined
-    expect(volumes?.map(({ label }) => label)).toEqual(expected_labels)
-    if (volumes)
-      expect(volumes.every(({ values }) => values instanceof Float64Array)).toBe(true)
+    expect(run_widget(`structure`, model).read().volumetric_data).toEqual(expected)
   })
 
   test(`highlighted_sites is drive-only`, () => {
@@ -351,6 +323,22 @@ describe(`WIDGET_MODEL_KEYS contract`, () => {
 })
 
 describe(`widget config wiring`, () => {
+  test(`trajectory builds a run from the JSON trait and feeds data_url to the file viewer as src`, () => {
+    const payload = { frames: [{ step: 0, structure: { sites: [] } }] }
+    const model = new MockModel({
+      widget_type: `trajectory`,
+      trajectory: payload,
+      data_url: `/a.xyz`,
+    })
+    const stub = run_widget(`trajectory`, model)
+    expect(stub.read().trajectory).toEqual({ run_of: payload })
+    expect(stub.read().src).toBe(`/a.xyz`)
+    expect(`data_url` in stub.read()).toBe(false)
+    model.push_from_python(`trajectory`, null)
+    flushSync()
+    expect(stub.read().trajectory).toBeUndefined()
+  })
+
   test.each([
     [`trajectory`, `property_labels`, { energy: `Energy (eV)` }],
     [`band_structure`, `band_structs`, { branches: [] }],

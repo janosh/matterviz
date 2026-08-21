@@ -579,67 +579,62 @@
 
     {#snippet controls_extra()}
       <SettingsSection
-        title="Path Mode"
-        current_values={{ path_mode }}
-        on_reset={() => (path_mode = `strict`)}
+        title="Path"
+        class="ctrl-line"
+        current_values={{
+          path_mode,
+          ...(detected_band_type === `phonon` ? { units } : {}),
+          ...(detected_band_type === `electronic`
+            ? { band_spin_mode, show_gap_annotation }
+            : {}),
+        }}
+        on_reset={() => {
+          path_mode = `strict`
+          if (detected_band_type === `phonon`) units = `THz`
+          if (detected_band_type === `electronic`) {
+            band_spin_mode = `overlay`
+            show_gap_annotation = true
+          }
+        }}
+        layout="flow"
       >
-        <div class="pane-row">
-          <label for="bands-path-mode">Mode:</label>
+        <label>
+          <span>Mode</span>
           <select id="bands-path-mode" bind:value={path_mode}>
             <option value="strict">strict</option>
             <option value="intersection">intersection</option>
             <option value="union">union</option>
           </select>
-        </div>
-      </SettingsSection>
-
-      {#if detected_band_type === `phonon`}
-        <SettingsSection
-          title="Units"
-          current_values={{ units }}
-          on_reset={() => (units = `THz`)}
-        >
-          <div class="pane-row">
-            <label for="bands-units">Frequency:</label>
+        </label>
+        {#if detected_band_type === `phonon`}
+          <label>
+            <span>Frequency</span>
             <select id="bands-units" bind:value={units}>
               {#each helpers.FREQUENCY_UNITS as unit (unit)}
                 <option value={unit}>{unit}</option>
               {/each}
             </select>
-          </div>
-        </SettingsSection>
-      {/if}
-
-      {#if detected_band_type === `electronic`}
-        <SettingsSection
-          title="Spin Display"
-          current_values={{ band_spin_mode }}
-          on_reset={() => (band_spin_mode = `overlay`)}
-        >
-          <div class="pane-row">
-            <label for="bands-spin-mode">Mode:</label>
+          </label>
+        {/if}
+        {#if detected_band_type === `electronic`}
+          <label>
+            <span>Spin</span>
             <select id="bands-spin-mode" bind:value={band_spin_mode}>
               <option value="overlay">overlay</option>
               <option value="up_only">up only</option>
               <option value="down_only">down only</option>
             </select>
-          </div>
-        </SettingsSection>
-        <SettingsSection
-          title="Annotations"
-          current_values={{ show_gap_annotation }}
-          on_reset={() => (show_gap_annotation = true)}
-        >
-          <div class="pane-row pane-checkbox">
+          </label>
+          <label>
             <input
               id="bands-gap-annotation"
               type="checkbox"
               bind:checked={show_gap_annotation}
             />
-            <label for="bands-gap-annotation">Show band gap annotation</label>
-          </div>
-        </SettingsSection>
-      {/if}
+            Band gap
+          </label>
+        {/if}
+      </SettingsSection>
     {/snippet}
 
     {#snippet user_content({ height, x_scale_fn, y_scale_fn, pad })}
@@ -800,27 +795,3 @@
     message={empty_state_msg}
   />
 {/if}
-
-<style>
-  .pane-row {
-    display: flex;
-    align-items: center;
-    gap: 0.5em;
-    margin: 0.3em 0;
-    font-size: 0.9em;
-    label {
-      min-width: 4.5em;
-      flex-shrink: 0;
-    }
-    select {
-      flex: 1;
-      min-width: 0;
-    }
-  }
-  .pane-checkbox {
-    gap: 0.4em;
-    label {
-      min-width: 0;
-    }
-  }
-</style>

@@ -1,6 +1,6 @@
 import type { TrajectorySpectroscopyInput, TrajectorySpectroscopyResult } from '$lib/spectral'
 import TrajectorySpectroscopyPane from '$lib/spectral/TrajectorySpectroscopyPane.svelte'
-import type { TrajectoryType } from '$lib/trajectory'
+import { trajectory_from_frames, type TrajectoryRun } from '$lib/trajectory'
 import { mount, tick, unmount } from 'svelte'
 import { beforeEach, expect, onTestFinished, test, vi } from 'vitest'
 import { bind_props } from '../setup'
@@ -22,24 +22,24 @@ vi.mock(`$lib/spectral/trajectory-spectroscopy-async.svelte`, () => ({
   }),
 }))
 
-const make_trajectory = (): TrajectoryType => ({
-  time_step: 1,
-  time_unit: `fs`,
-  frames: Array.from({ length: 2 }, (_unused, frame_idx) => ({
-    step: frame_idx,
-    structure: {
-      sites: [
-        {
-          species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
-          abc: [frame_idx, 0, 0],
-          xyz: [frame_idx, 0, 0],
-          label: `H1`,
-          properties: { velocity: [1, 0, 0] },
-        },
-      ],
-    },
-  })),
-})
+const make_run = (): TrajectoryRun =>
+  trajectory_from_frames(
+    Array.from({ length: 2 }, (_unused, frame_idx) => ({
+      step: frame_idx,
+      structure: {
+        sites: [
+          {
+            species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+            abc: [frame_idx, 0, 0],
+            xyz: [frame_idx, 0, 0],
+            label: `H1`,
+            properties: { velocity: [1, 0, 0] },
+          },
+        ],
+      },
+    })),
+    { time_step: { value: 1, unit: `fs` } },
+  )
 
 const make_input = (): TrajectorySpectroscopyInput => ({
   positions: {
@@ -95,9 +95,8 @@ const make_result = (name: string): TrajectorySpectroscopyResult => {
 }
 
 const render_pane = (props: {
-  trajectory: TrajectoryType
+  run: TrajectoryRun
   result?: TrajectorySpectroscopyResult
-  raw_data?: string | ArrayBuffer | null
 }): HTMLElement => {
   const target = document.createElement(`div`)
   document.body.append(target)
@@ -121,11 +120,16 @@ test(`recomputes from changed settings and marks the prior result as stale`, asy
   mocks.compute
     .mockResolvedValueOnce(make_result(`first`))
     .mockReturnValueOnce(recomputation.promise)
-  const trajectory = { ...make_trajectory(), total_frames: 24_001 }
-  const target = render_pane({ trajectory })
+  const run = { ...make_run(), frame_count: 24_001 }
+  const target = render_pane({ run })
 
   await vi.waitFor(() => expect(mocks.compute).toHaveBeenCalledOnce())
-  expect(target.textContent).toContain(`24001 total frames`)
+  // no response signals on the run, so the pane asks for positions and velocities only
+  expect(mocks.collect).toHaveBeenCalledWith(
+    run,
+    expect.objectContaining({ infrared_key: null, raman_key: null }),
+  )
+  expect(target.textContent).toContain(`24001 total frames · timestep 1 fs`)
   const fieldset = target.querySelector<HTMLFieldSetElement>(`.spectroscopy-controls`)
   expect(fieldset?.disabled).toBe(false)
   const timestep = target.querySelector<HTMLInputElement>(
@@ -157,22 +161,6 @@ test(`recomputes from changed settings and marks the prior result as stale`, asy
   await vi.waitFor(() => expect(fieldset?.disabled).toBe(false))
 })
 
-test(`marks spectra stale when the indexed source changes`, async () => {
-  mocks.collect.mockResolvedValue(make_input())
-  mocks.compute.mockResolvedValue(make_result(`first`))
-  const props = $state({ trajectory: make_trajectory(), raw_data: `first source` })
-  const target = render_pane(props)
-
-  await vi.waitFor(() => expect(mocks.compute).toHaveBeenCalledOnce())
-  props.raw_data = `replacement source`
-
-  await vi.waitFor(() =>
-    expect(target.textContent).toContain(
-      `Spectroscopy settings changed. Recompute to update the displayed result.`,
-    ),
-  )
-})
-
 test(`a trajectory switch cancels blocked work and starts the replacement`, async () => {
   const first_result = Promise.withResolvers<TrajectorySpectroscopyResult>()
   const second_result = Promise.withResolvers<TrajectorySpectroscopyResult>()
@@ -181,7 +169,7 @@ test(`a trajectory switch cancels blocked work and starts the replacement`, asyn
     .mockReturnValueOnce(first_result.promise)
     .mockReturnValueOnce(second_result.promise)
   const props = $state({
-    trajectory: make_trajectory(),
+    run: make_run(),
     result: undefined as TrajectorySpectroscopyResult | undefined,
   })
   const target = render_pane(props)
@@ -190,7 +178,7 @@ test(`a trajectory switch cancels blocked work and starts the replacement`, asyn
   const status = target.querySelector(`.analysis-status`)
   expect(status?.textContent).toContain(`Computing spectra…`)
   expect(status?.querySelector(`[role="status"]`)).not.toBeNull()
-  props.trajectory = make_trajectory()
+  props.run = make_run()
   await vi.waitFor(() => expect(mocks.compute).toHaveBeenCalledTimes(2))
   expect(mocks.cancel.mock.invocationCallOrder.at(-1)).toBeLessThan(
     mocks.compute.mock.invocationCallOrder[1],

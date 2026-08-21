@@ -1,8 +1,9 @@
-import { parse_structure_file } from '$lib/structure/parse'
-import type * as TrajectoryParseModule from '$lib/trajectory/parse'
-import { create_display, VSCodeFrameLoader } from '$lib/file-viewer/main'
+import { create_display } from '$lib/file-viewer/main'
 import { base64_to_array_buffer, parse_file_content } from '$lib/file-viewer/parse'
 import type { ParseResult } from '$lib/file-viewer/parse'
+import { parse_structure_file } from '$lib/structure/parse'
+import type { TrajectoryRun } from '$lib/trajectory'
+import { trajectory_from_frames } from '$lib/trajectory/open'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import {
@@ -14,18 +15,12 @@ import { zipSync } from 'fflate'
 import { mount } from 'svelte'
 import type * as svelte_module from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
+import { make_crystal, read_binary_test_file } from '../setup'
 
 // parse_structure_file throws on parse failure but can still return a structure with
 // zero atoms (e.g. a CIF with cell params but no _atom_site records). Mock it to that
 // shape to exercise parse_file_content's no-atoms guard.
 vi.mock('$lib/structure/parse', () => ({ parse_structure_file: vi.fn() }))
-
-// Wrap (not replace) parse_trajectory_data so most tests hit the real parser
-// while individual tests can inject degenerate outputs via mockResolvedValueOnce.
-vi.mock('$lib/trajectory/parse', async (import_original) => {
-  const original = await import_original<typeof TrajectoryParseModule>()
-  return { ...original, parse_trajectory_data: vi.fn(original.parse_trajectory_data) }
-})
 
 // Spy on the mocked mount to assert which props create_display passes to components.
 vi.mock('svelte', async (import_original) => ({
@@ -122,24 +117,13 @@ describe(`vaspout.h5 electronic routing`, () => {
     expect(mount_props.band_structs).toBe(data.bands)
   })
 
-  test(`0-frame trajectory with all-null electronic falls through to trajectory`, async () => {
-    // The vaspout parser never emits { dos: null, bands: null } today, but the
-    // metadata cast in parse.ts is unchecked — an empty electronic object must
-    // not route to vaspout_electronic (create_display would mount Dos with
-    // doses: null, violating DosInput).
-    const { parse_trajectory_data } = await import(`$lib/trajectory/parse`)
-    vi.mocked(parse_trajectory_data).mockResolvedValueOnce({
-      frames: [],
-      metadata: { electronic: { dos: null, bands: null } },
-    })
-    const result = await parse_file_content(`ignored`, `vaspout.h5`, true)
-    expect(result.type).toBe(`trajectory`)
-  })
-
   test(`trajectories carrying a DOS mount the trajectory-with-DOS wrapper`, async () => {
     const scf_base64 = fixture_base64(`vaspout-si-static-scf.h5`)
     const result = await parse_file_content(scf_base64, `vaspout.h5`, true)
     expect(result.type).toBe(`trajectory`)
+    const run = result.data as TrajectoryRun
+    expect(run.frame_count).toBeGreaterThanOrEqual(1)
+    expect(run.provenance.format).toBe(`vaspout-h5`)
 
     create_display(make_container(), result)
     const mount_props = last_mount_props() as {
@@ -147,8 +131,9 @@ describe(`vaspout.h5 electronic routing`, () => {
       trajectory_props?: { trajectory: unknown; property_labels: Record<string, string> }
     }
     expect(mount_props.dos).toBeDefined()
-    expect(mount_props.trajectory_props?.trajectory).toBe(result.data)
+    expect(mount_props.trajectory_props?.trajectory).toBe(run)
     expect(mount_props.trajectory_props?.property_labels).toEqual({})
+    run.dispose()
   })
 
   // Ferrox archives VASP HDF5 outputs gzipped on S3; the inner filename must
@@ -163,6 +148,8 @@ describe(`vaspout.h5 electronic routing`, () => {
     expect(result.filename).toBe(gz_filename.replace(/\.gz$/, ``))
   })
 
+  // ULM-encoded .traj bytes are not valid UTF-8: text decompression would corrupt them and
+  // the ASE parser would reject the header, so a successful open proves the bytes survived
   test.each([
     [`.gz`, gzip_sync],
     [`.deflate`, deflate_sync],
@@ -171,23 +158,19 @@ describe(`vaspout.h5 electronic routing`, () => {
   ] as const)(
     `%s-compressed .traj routes byte-identical data to the trajectory parser`,
     async (extension, compress) => {
-      const { parse_trajectory_data } = await import(`$lib/trajectory/parse`)
-      vi.mocked(parse_trajectory_data).mockResolvedValueOnce({ frames: [], metadata: {} })
-      // ULM magic + bytes that are invalid UTF-8: text decompression would corrupt them
-      const raw_bytes = new Uint8Array([
-        0x2d, 0x20, 0x6f, 0x66, 0x20, 0x55, 0x6c, 0x6d, 0x00, 0xff, 0xfe, 0x80,
-      ])
+      const raw_bytes = new Uint8Array(read_binary_test_file(`ase-LiMnO2-chgnet-relax.traj`))
       const result = await parse_file_content(
         uint8_as_base64(compress(raw_bytes)),
         `relax.traj${extension}`,
         true,
       )
-
       expect(result.type).toBe(`trajectory`)
       expect(result.filename).toBe(`relax.traj`)
-      const [buffer, inner_name] = vi.mocked(parse_trajectory_data).mock.calls.at(-1) ?? []
-      expect(inner_name).toBe(`relax.traj`)
-      expect(Array.from(new Uint8Array(buffer as ArrayBuffer))).toEqual([...raw_bytes])
+      const run = result.data as TrajectoryRun
+      expect(run.provenance).toMatchObject({ filename: `relax.traj`, format: `ase` })
+      expect(run.frame_count).toBe(2)
+      expect(run.preview.structure.sites).toHaveLength(8)
+      run.dispose()
     },
   )
 })
@@ -210,7 +193,10 @@ test.each([
 describe(`create_display trajectory display options`, () => {
   const trajectory_result = (): ParseResult => ({
     type: `trajectory`,
-    data: { frames: [], metadata: {} },
+    data: trajectory_from_frames(
+      [0, 1].map((step) => ({ step, structure: make_crystal(5, [[`H`, [0, 0, step / 10]]]) })),
+      { provenance: { filename: `relax.h5` } },
+    ),
     filename: `relax.h5`,
   })
 
@@ -228,29 +214,30 @@ describe(`create_display trajectory display options`, () => {
   test(`trajectory display options reach the mounted Trajectory component`, () => {
     const on_step_change = vi.fn()
     const on_trajectory_controller = vi.fn()
-    create_display(make_container(), trajectory_result(), {
+    const result = trajectory_result()
+    create_display(make_container(), result, {
       initial_step_idx: 42,
       on_step_change,
       on_trajectory_controller,
     })
     const mount_props = last_mount_props()
+    expect(mount_props.trajectory).toBe(result.data)
     expect(mount_props.current_step_idx).toBe(42)
     expect(mount_props.on_controller).toBe(on_trajectory_controller)
-    // Loading settings travel in loading_options; as top-level props they would land on the
-    // wrapper div as unknown HTML attributes
-    expect(mount_props.loading_options).toEqual({
-      bin_file_threshold: 50_000_000,
-      text_file_threshold: 25_000_000,
-      use_indexing: false,
-    })
-    for (const key of [`bin_file_threshold`, `text_file_threshold`, `use_indexing`]) {
+    // The webview mounts the pure viewer after parsing elsewhere, so loading/file-drop
+    // settings (and the never-declared enable_tips) must not reach it: Trajectory would
+    // spread them onto its wrapper div as unknown HTML attributes
+    for (const key of [
+      `loading_options`,
+      `spinner_props`,
+      `index_above_bytes`,
+      `show_parsing_progress`,
+      `allow_file_drop`,
+      `enable_tips`,
+    ]) {
       expect(mount_props).not.toHaveProperty(key)
     }
-    expect(mount_props).not.toHaveProperty(`show_parsing_progress`)
-    expect(mount_props.spinner_props).toEqual({ show_progress: true })
-    // No component declares enable_tips; it used to be spread onto every viewer's wrapper div
-    expect(mount_props).not.toHaveProperty(`enable_tips`)
-    expect(mount_props).toMatchObject({ allow_file_drop: false, fullscreen_toggle: false })
+    expect(mount_props.fullscreen_toggle).toBe(false)
     // create_display adapts Trajectory's TrajHandlerData callback to (step_idx, total)
     ;(mount_props.on_step_change as (data: unknown) => void)({
       step_idx: 7,
@@ -309,42 +296,6 @@ describe(`create_display trajectory display options`, () => {
       expect(mount_props.on_step_change).toBeUndefined()
     },
   )
-})
-
-describe(`VS Code frame loader`, () => {
-  test(`requests frames by host file path`, async () => {
-    // post_request listens on globalThis, which is a real EventTarget in the
-    // webview but not in vitest's node environment — bridge it for the test
-    const message_bus = new EventTarget()
-    vi.stubGlobal(`addEventListener`, message_bus.addEventListener.bind(message_bus))
-    vi.stubGlobal(`removeEventListener`, message_bus.removeEventListener.bind(message_bus))
-    try {
-      const post_message = vi.fn()
-      const loader = new VSCodeFrameLoader(`/tmp/movie.extxyz`, `movie.extxyz`, {
-        postMessage: post_message,
-      })
-      const frame_promise = loader.load_frame(``, 7)
-
-      expect(post_message).toHaveBeenCalledWith({
-        command: `request_frame`,
-        request_id: expect.any(String),
-        file_path: `/tmp/movie.extxyz`,
-        // The host picks its per-format frame decoder from the name.
-        filename: `movie.extxyz`,
-        frame_index: 7,
-      })
-
-      const [{ request_id }] = post_message.mock.calls[0]
-      message_bus.dispatchEvent(
-        new MessageEvent(`message`, {
-          data: { command: `frame_response`, request_id, frame: null },
-        }),
-      )
-      await expect(frame_promise).resolves.toBeNull()
-    } finally {
-      vi.unstubAllGlobals()
-    }
-  })
 })
 
 describe(`VSCode Download Integration`, () => {

@@ -1,15 +1,26 @@
-// Utility functions for working with trajectory data
-import type { ComponentProps } from 'svelte'
+// Public surface of the trajectory subsystem: the run contract, the two components, the
+// analysis panes and the shared types every consumer needs.
 import type { ElementSymbol } from '$lib/element'
-import type { FileLoadData } from '$lib/io/types'
+import type { FileLoadData } from '$lib/io'
 import type { Matrix3x3 } from '$lib/math'
 import type { AnyStructure, Pbc } from '$lib/structure/index'
-import type Trajectory from './Trajectory.svelte'
-import { is_supported_trajectory_signal_shape } from './helpers'
+import type { TrajectoryRun } from './run'
 
 export * from './analysis'
-export { default as Trajectory } from './Trajectory.svelte'
 export type * from './analysis-pane'
+export {
+  Hdf5GroupSelectionRequiredError,
+  open_trajectory,
+  type OpenTrajectoryOptions,
+  source_byte_size,
+  trajectory_from_frames,
+  trajectory_from_json,
+  VaspoutElectronicOnlyError,
+} from './open'
+export * from './run'
+export type { MemoryRunExtras } from './runs/memory'
+export { default as Trajectory } from './Trajectory.svelte'
+export { default as TrajectoryFileViewer } from './TrajectoryFileViewer.svelte'
 export { default as TrajectoryAnalysisPane } from './TrajectoryAnalysisPane.svelte'
 export { default as TrajectoryDataInspectorPane } from './TrajectoryDataInspectorPane.svelte'
 export { default as TrajectoryError } from './TrajectoryError.svelte'
@@ -85,12 +96,6 @@ export interface TrajectoryFrame {
   metadata?: Record<string, unknown>
 }
 
-export interface FrameIndex {
-  frame_number: number
-  byte_offset: number
-  estimated_size: number
-}
-
 export interface TrajectoryMetadata {
   frame_number: number
   step: number
@@ -113,71 +118,30 @@ export interface TrajectorySignalDescriptor {
 
 export type TrajectorySource = string | ArrayBuffer | Blob
 
-// Transferable backing store for source-free, on-demand frames.
-export interface TrajectoryFrameStore {
-  positions: Float64Array
-  elements: ElementSymbol[]
-  // One static cell or flattened per-frame cells.
-  lattice_matrix?: Matrix3x3
-  lattice_matrices?: Float64Array
-  pbc?: Pbc
-  pbc_frames?: Pbc[]
-  coords_unwrapped: boolean
-  steps: number[]
-  metadata: Record<string, unknown>[]
-  plot_metadata: TrajectoryMetadata[]
-  scalars?: Record<string, Float64Array>
-  vectors?: Record<string, Float64Array>
-  signals?: Record<string, TrajectorySignal>
-}
-
-// Trajectory type with streaming support
-export interface TrajectoryType {
-  frames: TrajectoryFrame[]
-  metadata?: Record<string, unknown>
-  // Simulation time per MD step.
-  time_step?: number
-  // Required unit for time_step.
-  time_unit?: string
-  // Static per-atom masses in atomic mass units, when recorded by the source.
-  atom_masses?: number[]
-  // Time-dependent properties with independent step axes.
-  signals?: Record<string, TrajectorySignal>
-  // Source-owned signals available through frame_loader.stream_positions().
-  signal_descriptors?: Record<string, TrajectorySignalDescriptor>
-  // Large file streaming properties
-  total_frames?: number
-  indexed_frames?: FrameIndex[]
-  plot_metadata?: TrajectoryMetadata[]
-  is_indexed?: boolean
-  frame_loader?: FrameLoader
-  frame_store?: TrajectoryFrameStore
-}
-
-// Unified handler data interface
+// What every viewer event handler receives
 export interface TrajHandlerData extends FileLoadData {
-  trajectory?: TrajectoryType
+  trajectory?: TrajectoryRun
   step_idx?: number
   frame_count?: number
   frame?: TrajectoryFrame
+  error_msg?: string
   file_size?: number
   total_atoms?: number
-  error_msg?: string
   fps?: number
-  mode?: ComponentProps<typeof Trajectory>[`display_mode`]
+  mode?: `structure+scatter` | `structure` | `scatter` | `histogram` | `structure+histogram`
   fullscreen?: boolean
 }
 
+// Imperative navigation handle for hosts (VS Code, JupyterLab); see on_controller
 export interface TrajectoryController {
   set_step: (step_idx: number) => number
   state: () => { current_step_idx: number; total_frames: number }
+  play: () => void
+  pause: () => void
 }
 
-// Function interfaces for extensibility
-export type TrajectoryDataExtractor = (
-  frame: TrajectoryFrame,
-  trajectory: TrajectoryType,
-) => Record<string, number>
+// Per-frame scalar extraction feeding the plot rows of an in-memory run
+export type TrajectoryDataExtractor = (frame: TrajectoryFrame) => Record<string, number>
 
 // Flat frame-major Cartesian positions.
 export interface TrajectoryPositionStream {
@@ -209,261 +173,4 @@ export interface PositionStreamOptions {
   vector_keys?: string[]
   // Frame metadata keys to collect as scalar, vec3, or 3x3 signals.
   signal_keys?: string[]
-}
-
-export interface FrameLoader {
-  // False when the loader owns its data.
-  requires_source?: boolean
-  get_total_frames: (data: string | ArrayBuffer) => Promise<number>
-  // Release worker ports, file handles, or other external resources owned by the loader.
-  dispose?: () => void
-  // Optional sequential position pass.
-  stream_positions?: (
-    data: string | ArrayBuffer,
-    options?: PositionStreamOptions,
-    on_progress?: (progress: ParseProgress) => void,
-  ) => Promise<TrajectoryPositionStream>
-  build_frame_index: (
-    data: string | ArrayBuffer,
-    sample_rate: number,
-    on_progress?: (progress: ParseProgress) => void,
-  ) => Promise<FrameIndex[]>
-  load_frame: (
-    data: string | ArrayBuffer,
-    frame_number: number,
-  ) => Promise<TrajectoryFrame | null>
-  // Source-free packed stores support synchronous access.
-  load_frame_sync?: (frame_number: number) => TrajectoryFrame | null
-  extract_plot_metadata: (
-    data: string | ArrayBuffer,
-    options?: { sample_rate?: number; properties?: string[] },
-    on_progress?: (progress: ParseProgress) => void,
-  ) => Promise<TrajectoryMetadata[]>
-}
-
-const trajectory_signal_shape = (value: unknown, n_atoms: number): number[] | null =>
-  Array.isArray(value) &&
-  value.every(
-    (size): size is number => typeof size === `number` && Number.isInteger(size) && size >= 1,
-  ) &&
-  is_supported_trajectory_signal_shape(value, n_atoms)
-    ? value
-    : null
-
-const is_record = (value: unknown): value is Record<string, unknown> =>
-  value !== null &&
-  typeof value === `object` &&
-  !Array.isArray(value) &&
-  !ArrayBuffer.isView(value)
-
-const invalid_optional_unit = (unit: unknown): boolean =>
-  unit !== undefined && (typeof unit !== `string` || !unit.trim())
-
-export function validate_trajectory(trajectory: TrajectoryType): string[] {
-  const errors: string[] = []
-  const { frames, total_frames, indexed_frames, plot_metadata, is_indexed, frame_store } =
-    trajectory
-
-  if (!frames?.length) return [`Trajectory must have at least one frame`]
-
-  let first_symbols: string[] | null = null
-  for (const [frame_idx, frame] of frames.entries()) {
-    const sites = frame.structure?.sites
-    if (!sites?.length) {
-      errors.push(`Frame ${frame_idx} missing structure or sites`)
-    }
-    if (!Number.isFinite(frame.step)) {
-      errors.push(`Frame ${frame_idx} missing or invalid step number`)
-    } else if (frame_idx > 0 && !(frame.step > frames[frame_idx - 1].step)) {
-      errors.push(`Frame ${frame_idx} step (${frame.step}) must be strictly increasing`)
-    }
-    if (!sites?.length) continue
-    const symbols = sites.map(({ species }) => species[0]?.element ?? `unknown`)
-    const reference_symbols = (first_symbols ??= symbols)
-    if (
-      symbols.length !== reference_symbols.length ||
-      symbols.some((symbol, atom_idx) => symbol !== reference_symbols[atom_idx])
-    ) {
-      errors.push(`Frame ${frame_idx} changes atom count or ordering`)
-    }
-  }
-
-  const atom_masses: unknown = trajectory.atom_masses
-  if (atom_masses !== undefined) {
-    if (!Array.isArray(atom_masses)) {
-      errors.push(`atom_masses must be an array`)
-    } else {
-      if (first_symbols && atom_masses.length !== first_symbols.length) {
-        errors.push(
-          `atom_masses has ${atom_masses.length} entries for ${first_symbols.length} atoms`,
-        )
-      }
-      atom_masses.forEach((mass: unknown, atom_idx) => {
-        if (typeof mass !== `number` || !Number.isFinite(mass) || mass <= 0) {
-          errors.push(`atom_masses[${atom_idx}] must be finite and > 0, got ${mass}`)
-        }
-      })
-    }
-  }
-
-  const signals: unknown = trajectory.signals
-  if (signals !== undefined && !is_record(signals)) {
-    errors.push(`signals must be an object`)
-  } else if (signals !== undefined) {
-    for (const [key, signal] of Object.entries(signals)) {
-      if (!is_record(signal)) {
-        errors.push(`signals.${key} must be an object`)
-        continue
-      }
-      const { sample_shape, values, steps, unit } = signal
-      const numeric_sample_shape = trajectory_signal_shape(
-        sample_shape,
-        first_symbols?.length ?? 0,
-      )
-      if (!numeric_sample_shape) {
-        errors.push(
-          `signals.${key}.sample_shape must be scalar, [3], [3, 3], [n_atoms], or ` +
-            `[n_atoms, 3], got ${JSON.stringify(sample_shape)}`,
-        )
-      }
-      if (!(values instanceof Float64Array)) {
-        errors.push(`signals.${key}.values must be a Float64Array`)
-      }
-      if (!Array.isArray(steps)) {
-        errors.push(`signals.${key}.steps must be an array`)
-      }
-      if (invalid_optional_unit(unit)) {
-        errors.push(`signals.${key}.unit must be a non-empty string when supplied`)
-      }
-      if (
-        !numeric_sample_shape ||
-        !(values instanceof Float64Array) ||
-        !Array.isArray(steps)
-      ) {
-        continue
-      }
-      const sample_size = numeric_sample_shape.reduce(
-        (total: number, value: number) => total * value,
-        1,
-      )
-      if (values.length !== steps.length * sample_size) {
-        errors.push(
-          `signals.${key} has ${values.length} values for ${steps.length} samples ` +
-            `of shape [${numeric_sample_shape.join(`, `)}]`,
-        )
-      }
-      const bad_value_idx = values.findIndex((value) => !Number.isFinite(value))
-      if (bad_value_idx !== -1) {
-        errors.push(`signals.${key}.values[${bad_value_idx}] is not finite`)
-      }
-      steps.forEach((step: unknown, step_idx) => {
-        if (typeof step !== `number` || !Number.isFinite(step)) {
-          errors.push(`signals.${key}.steps[${step_idx}] is not finite`)
-        } else if (step_idx > 0 && !(step > steps[step_idx - 1])) {
-          errors.push(`signals.${key}.steps must be strictly increasing`)
-        }
-      })
-    }
-  }
-
-  const signal_descriptors: unknown = trajectory.signal_descriptors
-  if (signal_descriptors !== undefined && !is_record(signal_descriptors)) {
-    errors.push(`signal_descriptors must be an object`)
-  } else if (signal_descriptors !== undefined) {
-    for (const [key, descriptor] of Object.entries(signal_descriptors)) {
-      if (!is_record(descriptor)) {
-        errors.push(`signal_descriptors.${key} must be an object`)
-        continue
-      }
-      const { sample_shape, sample_count, unit } = descriptor
-      if (!trajectory_signal_shape(sample_shape, first_symbols?.length ?? 0)) {
-        errors.push(`signal_descriptors.${key}.sample_shape is invalid`)
-      }
-      if (
-        typeof sample_count !== `number` ||
-        !Number.isInteger(sample_count) ||
-        sample_count < 1
-      ) {
-        errors.push(`signal_descriptors.${key}.sample_count must be a positive integer`)
-      }
-      if (invalid_optional_unit(unit)) {
-        errors.push(`signal_descriptors.${key}.unit must be a non-empty string when supplied`)
-      }
-    }
-    if (
-      Object.keys(signal_descriptors).length > 0 &&
-      !trajectory.frame_loader?.stream_positions
-    ) {
-      errors.push(`signal_descriptors require frame_loader.stream_positions`)
-    }
-  }
-
-  // Validate streaming-related properties
-  if (total_frames !== undefined) {
-    if (typeof total_frames !== `number` || total_frames < 1) {
-      errors.push(`total_frames must be a positive number, got ${total_frames}`)
-    } else if (indexed_frames?.length) {
-      const last_indexed_frame = indexed_frames.at(-1)
-      if (last_indexed_frame && last_indexed_frame.frame_number >= total_frames) {
-        errors.push(`indexed_frames contains frame_number >= total_frames (${total_frames})`)
-      }
-    }
-  }
-
-  if (
-    is_indexed === true &&
-    !indexed_frames?.length &&
-    !frame_store &&
-    !trajectory.frame_loader
-  ) {
-    errors.push(
-      `is_indexed is true but indexed_frames is missing or empty and frame_store is absent`,
-    )
-  }
-
-  if (indexed_frames) {
-    if (!Array.isArray(indexed_frames)) {
-      errors.push(`indexed_frames must be an array`)
-    } else {
-      indexed_frames.forEach((frame_idx, idx) => {
-        if (typeof frame_idx.frame_number !== `number`) {
-          errors.push(`indexed_frames[${idx}] missing or invalid frame_number`)
-        } else if (frame_idx.frame_number < 0) {
-          errors.push(
-            `indexed_frames[${idx}] frame_number (${frame_idx.frame_number}) must be non-negative`,
-          )
-        } else if (idx > 0 && frame_idx.frame_number <= indexed_frames[idx - 1].frame_number) {
-          errors.push(
-            `indexed_frames[${idx}] frame_number (${frame_idx.frame_number}) must be strictly increasing`,
-          )
-        }
-        if (typeof frame_idx.byte_offset !== `number`) {
-          errors.push(`indexed_frames[${idx}] missing or invalid byte_offset`)
-        }
-        if (typeof frame_idx.estimated_size !== `number`) {
-          errors.push(`indexed_frames[${idx}] missing or invalid estimated_size`)
-        }
-      })
-    }
-  }
-
-  if (plot_metadata) {
-    if (!Array.isArray(plot_metadata)) {
-      errors.push(`plot_metadata must be an array`)
-    } else {
-      plot_metadata.forEach((meta, idx) => {
-        if (typeof meta.frame_number !== `number`) {
-          errors.push(`plot_metadata[${idx}] missing or invalid frame_number`)
-        }
-        if (typeof meta.step !== `number`) {
-          errors.push(`plot_metadata[${idx}] missing or invalid step`)
-        }
-        if (!meta.properties || typeof meta.properties !== `object`) {
-          errors.push(`plot_metadata[${idx}] missing or invalid properties object`)
-        }
-      })
-    }
-  }
-
-  return errors
 }

@@ -3,9 +3,12 @@ import { calc_lattice_params } from '$lib/math'
 import type { AnyStructure } from '$lib/structure'
 import { parse_poscar, parse_xyz } from '$lib/structure/parse'
 import { download } from '$lib/io/fetch'
-import type { TrajectoryFrame, TrajectoryMetadata, TrajectoryType } from '$lib/trajectory'
-import { TrajectoryExportPane } from '$lib/trajectory'
-import { full_data_extractor } from '$lib/trajectory/extract'
+import type { TrajectoryFrame, TrajectoryMetadata, TrajectoryRun } from '$lib/trajectory'
+import {
+  trajectory_from_frames,
+  TrajectoryExportPane,
+  TrajectoryProperties,
+} from '$lib/trajectory'
 import type { TrajectoryPropertyTable } from '$lib/trajectory/file-export'
 import {
   collect_frame_property_rows,
@@ -18,6 +21,7 @@ import {
   trajectory_frame_to_extxyz_str,
 } from '$lib/trajectory/file-export'
 import { parse_xyz_trajectory } from '$lib/trajectory/parse/xyz'
+import { create_warning_collector } from '$lib/trajectory/parse/shared'
 import { unzipSync } from 'fflate'
 import { mount, tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
@@ -60,6 +64,8 @@ const frames = [
 ]
 const resolver = (idx: number) => frames[idx] ?? null
 const make_async_resolver = () => vi.fn((idx: number) => Promise.resolve(frames[idx] ?? null))
+const parse_exported_frames = (text: string): TrajectoryFrame[] =>
+  parse_xyz_trajectory(text, create_warning_collector()).frames
 
 describe(`trajectory_export_basename`, () => {
   test.each([
@@ -149,18 +155,16 @@ describe(`serialize_extxyz_frame_range`, () => {
       [2, 3],
       [3, 3],
     ])
-    const reparsed = parse_xyz_trajectory(text)
-    expect(reparsed.frames).toHaveLength(3)
-    expect(reparsed.frames.map((frame) => frame.step)).toEqual([0, 5, 9])
-    expect(reparsed.frames.map((frame) => frame.metadata?.energy)).toEqual([
-      -10.5, -11.25, -11.5,
-    ])
-    expect(reparsed.frames[2].structure.sites[0].xyz[0]).toBeCloseTo(0.2, 6)
+    const reparsed = parse_exported_frames(text)
+    expect(reparsed).toHaveLength(3)
+    expect(reparsed.map((frame) => frame.step)).toEqual([0, 5, 9])
+    expect(reparsed.map((frame) => frame.metadata?.energy)).toEqual([-10.5, -11.25, -11.5])
+    expect(reparsed[2].structure.sites[0].xyz[0]).toBeCloseTo(0.2, 6)
   })
 
   test(`exports only the requested sub-range`, async () => {
     const text = await serialize_extxyz_frame_range(1, 2, resolver)
-    expect(parse_xyz_trajectory(text).frames.map((frame) => frame.step)).toEqual([5, 9])
+    expect(parse_exported_frames(text).map((frame) => frame.step)).toEqual([5, 9])
   })
 
   test.each([
@@ -225,46 +229,30 @@ describe(`create_poscar_frame_range_zip`, () => {
   })
 })
 
-const trajectory = { frames } as TrajectoryType
+const trajectory = trajectory_from_frames(frames)
 const plot_metadata: TrajectoryMetadata[] = [
   { frame_number: 0, step: 0, properties: { energy: -10.5, force_max: 0.25 } },
   { frame_number: 1, step: 5, properties: { energy: -11.25, force_max: 0.1 } },
   { frame_number: 2, step: 9, properties: { energy: -11.5, force_max: 0.01 } },
 ]
 
-const indexed_window = {
-  frames: frames.slice(0, 1),
-  total_frames: 3,
-  is_indexed: true,
-} as TrajectoryType
-
-const plot_metadata_trajectory = {
-  frames: [],
-  is_indexed: true,
-  plot_metadata,
-} as unknown as TrajectoryType
+const run_with_properties = trajectory_from_frames(frames, { properties: plot_metadata })
+const run_without_properties: TrajectoryRun = {
+  ...trajectory,
+  properties: new TrajectoryProperties([], true),
+}
 
 describe(`collect_frame_property_rows`, () => {
   test(`one row per frame carrying the extractor's numbers`, async () => {
     const on_progress = vi.fn()
     const table = await collect_frame_property_rows(0, 2, resolver, trajectory, on_progress)
-    expect(table.source).toBe(`frames`)
+    expect(table.source).toBe(`properties`)
     expect(table.rows.map(({ frame, step }) => [frame, step])).toEqual([
       [0, 0],
       [1, 5],
       [2, 9],
     ])
-    expect(on_progress.mock.calls).toEqual([
-      [1, 3],
-      [2, 3],
-      [3, 3],
-    ])
-    // The cube(5) cell never changes, so the plot drops a/b/c/α/β/γ as flat series and
-    // full_data_extractor flags them `constant_*`. A data export wants the values anyway.
-    expect(full_data_extractor(frames[0], trajectory).constant_a).toBe(1)
-    expect(
-      Object.keys(table.rows[0].properties).filter((key) => key.startsWith(`constant_`)),
-    ).toEqual([])
+    expect(on_progress.mock.calls).toEqual([[3, 3]])
     expect(table.rows[0].properties).toMatchObject({
       energy: -10.5,
       force_max: 0.25,
@@ -284,24 +272,24 @@ describe(`collect_frame_property_rows`, () => {
       0,
       2,
       async_resolver,
-      indexed_window,
+      run_without_properties,
     )
     expect(source).toBe(`frames`)
     expect(async_resolver.mock.calls).toEqual([[0], [1], [2]])
     expect(rows.map(({ properties }) => properties.energy)).toEqual([-10.5, -11.25, -11.5])
   })
 
-  test(`reads plot_metadata instead of frames when it covers the range`, async () => {
+  test(`reads run properties instead of frames when they cover the range`, async () => {
     const spy_resolver = vi.fn(resolver)
     const on_progress = vi.fn()
     const { rows, source } = await collect_frame_property_rows(
       0,
       2,
       spy_resolver,
-      plot_metadata_trajectory,
+      run_with_properties,
       on_progress,
     )
-    expect(source).toBe(`plot_metadata`)
+    expect(source).toBe(`properties`)
     expect(spy_resolver).not.toHaveBeenCalled()
     expect(on_progress.mock.calls).toEqual([[3, 3]])
     expect(rows.map(({ frame, step }) => [frame, step])).toEqual([
@@ -312,12 +300,12 @@ describe(`collect_frame_property_rows`, () => {
     expect(rows[2].properties).toEqual({ energy: -11.5, force_max: 0.01 })
   })
 
-  // Sampled metadata usually skips frames; using it then would export fewer rows than frames
-  test(`falls back to the resolver when plot_metadata misses a frame in the range`, async () => {
-    const sparse = {
-      frames: [],
-      plot_metadata: [plot_metadata[0], plot_metadata[2]],
-    } as unknown as TrajectoryType
+  // Sampled property rows usually skip frames; using them would export fewer rows than frames
+  test(`falls back to the resolver when properties miss a frame in the range`, async () => {
+    const sparse: TrajectoryRun = {
+      ...trajectory,
+      properties: new TrajectoryProperties([plot_metadata[0], plot_metadata[2]], true),
+    }
     const spy_resolver = vi.fn(resolver)
     const { rows, source } = await collect_frame_property_rows(0, 2, spy_resolver, sparse)
     expect(source).toBe(`frames`)
@@ -325,11 +313,11 @@ describe(`collect_frame_property_rows`, () => {
     expect(rows).toHaveLength(3)
   })
 
-  // the plot_metadata shortcut must not skip the range check the resolver path applies
+  // the property-row shortcut must not skip the range check the resolver path applies
   // (serialize_extxyz_frame_range above covers the full set of rejected ranges)
-  test(`rejects a reversed range even when plot_metadata covers it`, async () => {
+  test(`rejects a reversed range even when properties cover it`, async () => {
     await expect(
-      collect_frame_property_rows(2, 1, resolver, plot_metadata_trajectory),
+      collect_frame_property_rows(2, 1, resolver, run_with_properties),
     ).rejects.toThrow(`Invalid trajectory frame range`)
   })
 })
@@ -381,7 +369,7 @@ describe(`frame_rows_to_json`, () => {
     const parsed = JSON.parse(frame_rows_to_json(table))
     expect(parsed.frame_range).toEqual([1, 2])
     expect(parsed.n_frames).toBe(2)
-    expect(parsed.source).toBe(`frames`)
+    expect(parsed.source).toBe(`properties`)
     expect(parsed.units).toMatchObject({
       energy: `eV`,
       force_max: `eV/Å`,
@@ -393,18 +381,21 @@ describe(`frame_rows_to_json`, () => {
   })
 
   // frame/step keys inside properties must not leak into the JSON rows (row identity wins)
-  test(`records plot_metadata as the source when the table came from it`, async () => {
-    const colliding = {
-      ...plot_metadata_trajectory,
-      plot_metadata: plot_metadata.map((row) => ({
-        ...row,
-        properties: { ...row.properties, frame: 999, step: 999 },
-      })),
-    } as unknown as TrajectoryType
+  test(`records properties as the source when the table came from them`, async () => {
+    const colliding: TrajectoryRun = {
+      ...trajectory,
+      properties: new TrajectoryProperties(
+        plot_metadata.map((row) => ({
+          ...row,
+          properties: { ...row.properties, frame: 999, step: 999 },
+        })),
+        true,
+      ),
+    }
     const parsed = JSON.parse(
       frame_rows_to_json(await collect_frame_property_rows(0, 2, resolver, colliding)),
     )
-    expect(parsed.source).toBe(`plot_metadata`)
+    expect(parsed.source).toBe(`properties`)
     expect(parsed.rows).toEqual([
       { frame: 0, step: 0, energy: -10.5, force_max: 0.25 },
       { frame: 1, step: 5, energy: -11.25, force_max: 0.1 },
@@ -448,14 +439,14 @@ describe(`TrajectoryExportPane property export`, () => {
 
   test(`names every download action`, () => {
     vi.stubGlobal(`MediaRecorder`, { isTypeSupported: () => true })
-    open_pane({ trajectory })
+    open_pane({ run: trajectory })
     for (const label of [`extXYZ`, `POSCAR ZIP`, `CSV`, `JSON`, `WebM`, `MP4`]) {
       expect(document.querySelector(`button[aria-label="Download ${label}"]`)).not.toBeNull()
     }
   })
 
   test(`downloads the whole frame range as CSV`, async () => {
-    open_pane({ trajectory })
+    open_pane({ run: trajectory })
     await tick()
     const reset_selector = `button[aria-label="Reset frame range to defaults"]`
     expect(document.querySelector(reset_selector)).toBeNull()
@@ -481,7 +472,7 @@ describe(`TrajectoryExportPane property export`, () => {
   // The phonon explorer E2E drives this exact path (End Frame → Download extXYZ) to compare
   // frames, so the button name and the range it honours are a contract, not a detail
   test(`downloads only the selected frame range as extXYZ`, async () => {
-    open_pane({ trajectory })
+    open_pane({ run: trajectory })
     await tick()
     const [, end_input] = document.querySelectorAll<HTMLInputElement>(
       `.settings-section input[type="number"]`,
@@ -495,16 +486,16 @@ describe(`TrajectoryExportPane property export`, () => {
     const [, name, mime] = vi.mocked(download).mock.calls[0]
     expect(name).toBe(`run.extxyz`)
     expect(mime).toBe(`chemical/x-xyz`)
-    const { frames: exported } = parse_xyz_trajectory(downloaded_text().join(`\n`))
+    const exported = parse_exported_frames(downloaded_text().join(`\n`))
     expect(exported.map(({ step }) => step)).toEqual([0, 5])
   })
 
   test(`copies JSON to the clipboard`, async () => {
-    open_pane({ trajectory })
+    open_pane({ run: trajectory })
     await click(`Copy JSON to clipboard`)
     await vi.waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledTimes(1))
     const parsed = JSON.parse(vi.mocked(navigator.clipboard.writeText).mock.calls[0][0])
-    expect(parsed).toMatchObject({ frame_range: [0, 2], n_frames: 3, source: `frames` })
+    expect(parsed).toMatchObject({ frame_range: [0, 2], n_frames: 3, source: `properties` })
     expect(parsed.rows.map(({ energy }: { energy: number }) => energy)).toEqual([
       -10.5, -11.25, -11.5,
     ])
@@ -515,7 +506,7 @@ describe(`TrajectoryExportPane property export`, () => {
   // trajectory would export a 1-row CSV for a 3-frame run
   test(`exports every frame of an indexed trajectory, not its in-memory window`, async () => {
     const resolve_frame = make_async_resolver()
-    open_pane({ trajectory: indexed_window, resolve_frame })
+    open_pane({ run: run_without_properties, resolve_frame })
     await click(`Download CSV`)
     await vi.waitFor(() => expect(download).toHaveBeenCalledTimes(1))
     expect(resolve_frame.mock.calls).toEqual([[0], [1], [2]])

@@ -19,9 +19,8 @@ export type AnalysisPaneContext<Input> = {
   collecting: boolean
 }
 
-// What the pane passes to a module's `collect(trajectory, options)`
+// What the pane passes to a module's collector
 export type AnalysisCollectOptions = {
-  raw_data: string | ArrayBuffer | null
   frame_stride: number
   on_progress: (progress: ParseProgress) => void
   // Aborted once the answer can no longer be used (a newer collect, a trajectory swap, or the

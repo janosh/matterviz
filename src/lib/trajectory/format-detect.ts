@@ -69,11 +69,6 @@ export const FORMAT_PATTERNS = {
     )
   },
 
-  xyz_multi: (data: string, filename?: string) => {
-    if (xyz_ext_hint(filename) === false) return false
-    return count_xyz_frames(data, 2) >= 2
-  },
-
   lammpstrj: (data: string, filename?: string) => {
     if (ext_hint(filename, /\.lammpstrj$/i) === false) return false
     return data.includes(`ITEM: TIMESTEP`) && data.includes(`ITEM: ATOMS`)

@@ -1,7 +1,11 @@
 // The shared chrome every whole-trajectory analysis pane (MSD, VACF, ...) is built on: the
 // timestep seeding, stride normalisation, indexed-trajectory warnings and stale-state rules
 // are tested once here against a stub collector rather than once per analysis.
-import type { ParseProgress, TrajectoryType } from '$lib/trajectory'
+import {
+  trajectory_from_frames,
+  type ParseProgress,
+  type TrajectoryRun,
+} from '$lib/trajectory'
 import type {
   AnalysisCollectOptions,
   AnalysisPaneContext,
@@ -16,10 +20,14 @@ const structure = make_crystal(20, [
   [`H`, [0, 0, 0]],
   [`He`, [0.5, 0, 0]],
 ])
-const make_trajectory = (n_frames: number): TrajectoryType => ({
-  frames: Array.from({ length: n_frames }, (_unused, step) => ({ step, structure })),
-})
-const lazy = { ...make_trajectory(20), total_frames: 500, is_indexed: true }
+const make_run = (n_frames: number): TrajectoryRun =>
+  trajectory_from_frames(
+    Array.from({ length: n_frames }, (_unused, step) => ({ step, structure })),
+  )
+const frame_only_run = (n_frames: number): TrajectoryRun => {
+  const { collect_positions: _collect_positions, ...run } = make_run(n_frames)
+  return run
+}
 
 type Collected = { frame_stride: number; n: number }
 let mounted: ReturnType<typeof mount> | undefined
@@ -39,17 +47,14 @@ const settle = async (): Promise<void> => {
 
 // Mount with a collector that records its options and resolves after one microtask; the
 // `children` snippet is a no-op since only the chrome is under test
-type Collect = (
-  trajectory: TrajectoryType,
-  options: AnalysisCollectOptions,
-) => Promise<Collected>
-const default_collect: Collect = async (_trajectory, { frame_stride }) => {
+type Collect = (run: TrajectoryRun, options: AnalysisCollectOptions) => Promise<Collected>
+const default_collect: Collect = async (_run, { frame_stride }) => {
   await Promise.resolve()
   return { frame_stride, n: 1 }
 }
 const mount_pane = (props: Record<string, unknown>, collect = vi.fn(default_collect)) => {
   const base = {
-    trajectory: make_trajectory(20),
+    run: make_run(20),
     pane_open: true,
     title: `Stub analysis`,
     pane_name: `stub analysis`,
@@ -179,7 +184,7 @@ describe(`frame stride`, () => {
       await click_collect()
       expect(collect).toHaveBeenLastCalledWith(
         expect.anything(),
-        expect.objectContaining({ frame_stride: stride, raw_data: null }),
+        expect.objectContaining({ frame_stride: stride }),
       )
     },
   )
@@ -206,37 +211,22 @@ describe(`frame stride`, () => {
 
 describe(`trajectory state`, () => {
   test.each([
-    [`in-memory trajectory`, make_trajectory(20), false],
-    [`indexed trajectory`, lazy, true],
-  ])(`warns only for an %s`, async (_label, trajectory, expects_warning) => {
-    mount_pane({ trajectory })
+    [`full-pass run`, make_run(20), false],
+    [`frame-only run`, frame_only_run(20), true],
+  ])(`warns only for a %s`, async (_label, run, expects_warning) => {
+    mount_pane({ run })
     await settle()
     const text = document.body.textContent ?? ``
     expect(text).toContain(`Stub analysis`)
     expect(
-      text.includes(`20 of 500 frames are in memory. Stub streams the full payload`),
+      text.includes(
+        `Stub needs a full pass over all 20 frames, but this trajectory only serves individual frames`,
+      ),
     ).toBe(expects_warning)
   })
 
-  test(`lets an analysis that does not stream everything say so in the indexed warning`, async () => {
-    mount_pane({ trajectory: lazy, indexed_note: `Sampled frames are loaded on demand` })
-    await settle()
-    const text = document.body.textContent ?? ``
-    expect(text).toContain(`in memory. Sampled frames are loaded on demand, but the raw file`)
-    expect(text).not.toContain(`streams the full payload`)
-  })
-
-  // trajectory_total_frames throws here, and is_lazy/the stride suggestion both route
-  // through it, so an unguarded derived would take the whole pane down
-  test(`renders with a setup error when the frame count cannot be determined`, async () => {
-    mount_pane({ trajectory: { ...make_trajectory(20), is_indexed: true } })
-    await settle()
-    expect(document.body.textContent).toContain(`reports no total_frames`)
-    expect(document.querySelector(`.stub-controls button`)).not.toBeNull()
-  })
-
   test(`reports no trajectory rather than empty controls`, async () => {
-    mount_pane({ trajectory: undefined })
+    mount_pane({ run: undefined })
     await settle()
     expect(document.body.textContent).toContain(`No trajectory loaded`)
     expect(document.querySelector(`.stub-controls`)).toBeNull()
@@ -244,8 +234,8 @@ describe(`trajectory state`, () => {
 
   test(`keeps a caller-supplied input across mount, stores the collected one, relabels the button, and clears on trajectory swap`, async () => {
     const on_clear = vi.fn()
-    const state = $state<{ trajectory: TrajectoryType; input?: Collected }>({
-      trajectory: make_trajectory(20),
+    const state = $state<{ run: TrajectoryRun; input?: Collected }>({
+      run: make_run(20),
       input: { frame_stride: 1, n: 0 },
     })
     mount_pane(bind_props({ on_clear }, state))
@@ -258,7 +248,7 @@ describe(`trajectory state`, () => {
     expect(state.input).toEqual({ frame_stride: 1, n: 1 })
     expect(button.textContent).toContain(`Recollect stub`)
 
-    state.trajectory = make_trajectory(30)
+    state.run = make_run(30)
     await settle()
     expect(state.input).toBeUndefined()
     expect(on_clear).toHaveBeenCalledTimes(1)
@@ -269,13 +259,13 @@ describe(`trajectory state`, () => {
     const pending = Promise.withResolvers<Collected>()
     let report: ((progress: ParseProgress) => void) | undefined
     let signal: AbortSignal | undefined
-    const state = $state<{ trajectory: TrajectoryType; input?: Collected }>({
-      trajectory: make_trajectory(20),
+    const state = $state<{ run: TrajectoryRun; input?: Collected }>({
+      run: make_run(20),
       input: undefined,
     })
     mount_pane(
       bind_props({}, state),
-      vi.fn<Collect>((_trajectory, options) => {
+      vi.fn<Collect>((_run, options) => {
         report = options.on_progress
         signal = options.signal
         return pending.promise
@@ -290,7 +280,7 @@ describe(`trajectory state`, () => {
     report?.({ current: 3, total: 20, stage: `frame 3 of 20` })
     await settle()
     expect(pane_text()).toContain(`frame 3 of 20`)
-    state.trajectory = make_trajectory(30)
+    state.run = make_run(30)
     await settle()
     // the old run's progress is dropped with its trajectory, its collector is told to stop,
     // and later reports are ignored
@@ -314,7 +304,7 @@ describe(`trajectory state`, () => {
     mount_pane(
       bind_props({}, state),
       vi.fn<Collect>(
-        (_trajectory, { signal }) =>
+        (_run, { signal }) =>
           new Promise((_resolve, reject) => {
             signals.push(signal)
             signal.addEventListener(`abort`, () => reject(to_error(signal.reason)))
@@ -376,7 +366,7 @@ describe(`trajectory state`, () => {
         },
         state,
       ),
-      vi.fn<Collect>((_trajectory, { on_progress }) => {
+      vi.fn<Collect>((_run, { on_progress }) => {
         report = on_progress
         return pending.promise
       }),

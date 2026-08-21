@@ -1,7 +1,7 @@
 <script lang="ts">
   import { format_num } from '$lib/labels'
   import type { ViewerPaneOptions } from '$lib/overlays'
-  import type { TrajectoryType } from '$lib/trajectory'
+  import type { TrajectoryRun } from '$lib/trajectory'
   import type { AnalysisCollectOptions } from '$lib/trajectory/analysis-pane'
   import TrajectoryAnalysisPane from '$lib/trajectory/TrajectoryAnalysisPane.svelte'
   import { Lattice } from 'svelte-widgets/icons'
@@ -14,15 +14,12 @@
   import StructureTypePlot from './StructureTypePlot.svelte'
 
   let {
-    trajectory,
-    raw_data = null,
+    run,
     pane_open = $bindable(false),
     result = $bindable(),
     ...pane_options
   }: ViewerPaneOptions & {
-    trajectory?: TrajectoryType
-    // Raw file bytes from Trajectory.svelte's orig_data for source-dependent loaders.
-    raw_data?: string | ArrayBuffer | null
+    run?: TrajectoryRun
     pane_open?: boolean
     result?: StructureIdSweep
   } = $props()
@@ -43,11 +40,10 @@
   // The sweep loads one frame at a time, so there is no position buffer to stride: the
   // shared pane's frame-stride control stays hidden and `max_frames` caps the sample instead.
   const collect = (
-    target: TrajectoryType,
-    { raw_data: bytes, on_progress, signal }: AnalysisCollectOptions,
+    target: TrajectoryRun,
+    { on_progress, signal }: AnalysisCollectOptions,
   ): Promise<StructureIdSweep> =>
     collect_structure_id_sweep(target, {
-      raw_data: bytes,
       signal,
       max_frames: safe_max_frames,
       // CSP is not plotted here, and skipping it drops the second neighbor pass per frame
@@ -58,8 +54,7 @@
 </script>
 
 <TrajectoryAnalysisPane
-  {trajectory}
-  {raw_data}
+  {run}
   bind:pane_open
   bind:input={result}
   bind:error_msg
@@ -72,7 +67,6 @@
   compute_label="Identify structure types"
   recollect_label="Recompute"
   collecting_label="Identifying…"
-  indexed_note="Sampled frames are loaded on demand"
   {...pane_options}
 >
   <!-- with no stride control, collected_frames is the trajectory's total frame count -->

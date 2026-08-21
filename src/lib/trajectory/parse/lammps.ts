@@ -3,16 +3,12 @@ import { ELEM_SYMBOLS } from '$lib/labels'
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { Pbc } from '$lib/structure/pbc'
-import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory/index'
+import type { TrajectoryFrame } from '$lib/trajectory/index'
 import { coerce_elem_symbol } from '$lib/element/helpers'
 import { capitalize_symbol } from '$lib/structure/parsers/shared'
-import {
-  count_elements,
-  create_trajectory_frame,
-  derive_time_step,
-} from '$lib/trajectory/helpers'
+import { count_elements, create_trajectory_frame } from '$lib/trajectory/helpers'
 import type { AtomTypeMapping } from '$lib/trajectory/types'
-import { traj_warn } from './diagnostics'
+import type { ParsedTrajectory, WarnFn } from './shared'
 
 const is_periodic = (token: string): boolean => token.toLowerCase().startsWith(`p`)
 
@@ -92,12 +88,11 @@ class TornLammpsFrameError extends Error {
 
 export function parse_lammps_trajectory(
   content: string,
-  filename?: string,
+  warn: WarnFn,
   atom_type_mapping?: AtomTypeMapping,
-): TrajectoryType {
+): ParsedTrajectory {
   const lines = content.trim().split(/\r?\n/)
   const frames: TrajectoryFrame[] = []
-  const frame_times: (number | null)[] = []
   const atom_types_found = new Set<number>()
   let reference_atom_ids: number[] | undefined
   let identity_uses_ids: boolean | undefined
@@ -326,7 +321,7 @@ export function parse_lammps_trajectory(
       ) {
         // Variable atom counts (GCMC, deposition) are real dumps the viewer cannot show as one
         // trajectory; keep the frames that share the first frame's atoms and say what was lost.
-        traj_warn(
+        warn(
           `Skipping LAMMPS frame at timestep ${timestep}: atom ID set changed (${sorted_atom_ids.length} atoms vs ${expected_atom_ids.length} in the first frame)`,
         )
         return
@@ -352,9 +347,9 @@ export function parse_lammps_trajectory(
           ...(time === null ? {} : { time }),
         },
         site_properties,
+        warn,
       ),
     )
-    frame_times.push(time)
     identity_uses_ids ??= frame_uses_ids
   }
 
@@ -363,7 +358,7 @@ export function parse_lammps_trajectory(
       parse_frame()
     } catch (error) {
       if (!(error instanceof TornLammpsFrameError)) throw error
-      traj_warn(`Dropping truncated final LAMMPS frame`, error)
+      warn(`Dropping truncated final LAMMPS frame`, error)
       break
     }
   }
@@ -386,19 +381,10 @@ export function parse_lammps_trajectory(
   }
 
   const first_structure = frames[0].structure
-  const time_step = derive_time_step(
-    frame_times,
-    frames.map((frame) => frame.step),
-  )
-
   return {
+    format: `lammps`,
     frames,
-    ...(time_step === undefined ? {} : { time_step }),
     metadata: {
-      filename,
-      source_format: `lammps_trajectory`,
-      frame_count: frames.length,
-      total_atoms: first_structure.sites.length,
       periodic_boundary_conditions:
         `lattice` in first_structure ? first_structure.lattice.pbc : [true, true, true],
       atom_types: Array.from(atom_types_found).toSorted((left, right) => left - right),

@@ -10,7 +10,7 @@ import {
 import { VOLUMETRIC_VASP_RE } from '$lib/file-viewer/types'
 import { DEFAULTS, SETTINGS_CONFIG, type SettingType } from '$lib/settings'
 import type { ThemeName } from '$lib/theme/index'
-import { is_trajectory_file, LARGE_FILE_THRESHOLD } from '$lib/trajectory/parse'
+import { is_trajectory_file } from '$lib/trajectory/parse'
 import { Buffer } from 'node:buffer'
 import type * as node_path from 'node:path'
 import { gzipSync } from 'node:zlib'
@@ -22,7 +22,7 @@ import { MAX_TEXT_TRAJECTORY_SIZE } from '../src/node-io'
 import {
   activate,
   active_auto_render_panels,
-  active_frame_loaders,
+  active_runs,
   active_watcher_subscribers,
   active_watchers,
   auto_render_timers,
@@ -31,6 +31,7 @@ import {
   get_file,
   get_theme,
   handle_msg,
+  LARGE_FILE_THRESHOLD,
   read_file,
   render,
 } from '../src/extension'
@@ -165,10 +166,11 @@ describe(`MatterViz Extension`, () => {
   beforeEach(() => {
     vi.clearAllMocks()
 
+    for (const run of active_runs.values()) run.dispose()
     for (const state of [
       active_watchers,
       active_watcher_subscribers,
-      active_frame_loaders,
+      active_runs,
       auto_render_timers,
       active_auto_render_panels,
     ])
@@ -515,37 +517,71 @@ describe(`MatterViz Extension`, () => {
     expect(mock_vscode.workspace.fs.readFile).not.toHaveBeenCalled()
   })
 
-  test(`large compressed EXTXYZ request is parsed and registered for frame loading`, async () => {
+  test(`large compressed EXTXYZ request opens an indexed run, streams plot rows and serves frames`, async () => {
     const file_path = `/test/movie.extxyz.gz`
-    const trajectory = [`1`, `frame=0`, `H 0 0 0`, `1`, `frame=1`, `H 1 0 0`, ``].join(`\n`)
-    const compressed = new Uint8Array(gzipSync(trajectory))
+    // 2100 frames: the first 2000 plot rows are extracted during open (and travel in the
+    // summary), the tail arrives as a plot_metadata_stream batch followed by completion
+    const n_frames = 2100
+    const trajectory = Array.from(
+      { length: n_frames },
+      (_unused, idx) => `1\nframe=${idx} energy=${-idx}\nH ${idx} 0 0`,
+    ).join(`\n`)
+    const compressed = new Uint8Array(gzipSync(`${trajectory}\n`))
     mock_vscode.workspace.fs.stat.mockResolvedValue({ size: compressed.byteLength, type: 1 })
     mock_vscode.workspace.fs.readFile.mockResolvedValue(compressed)
 
     await handle_msg(large_file_msg(file_path, `large-request`), mock_webview)
 
-    expect(active_frame_loaders.get(file_path)).toMatchObject({
-      file_data: trajectory,
-    })
-    expect(mock_webview.postMessage).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        command: `large_file_response`,
-        request_id: `large-request`,
-      }),
-    )
-    const large_file_response = mock_webview.postMessage.mock.calls.at(-1)?.[0] as {
-      parsed_trajectory: object
+    const run = active_runs.get(file_path)
+    expect(run?.frame_count).toBe(n_frames)
+    expect(run?.provenance.format).toBe(`xyz`)
+    type Row = { frame_number: number; properties: Record<string, number> }
+    const response = mock_webview.postMessage.mock.calls.find(
+      ([message]) => (message as { command: string }).command === `large_file_response`,
+    )?.[0] as {
+      request_id: string
+      run_summary: {
+        frame_count: number
+        preview: object
+        properties: { rows: Row[]; complete: boolean }
+      }
     }
-    expect(large_file_response.parsed_trajectory).not.toHaveProperty(`frame_loader`)
+    expect(response.request_id).toBe(`large-request`)
+    expect(response.run_summary.frame_count).toBe(n_frames)
+    expect(response.run_summary.preview).toHaveProperty(`structure`)
+    expect(response.run_summary.properties).toMatchObject({ complete: false })
+    expect(response.run_summary.properties.rows).toHaveLength(2000)
+    // every summary field must survive structured cloning into the webview
+    expect(() => structuredClone(response.run_summary)).not.toThrow()
+    await run?.properties.done
+    type StreamMessage = { command: string; file_path: string; rows: Row[]; complete: boolean }
+    const stream_calls = mock_webview.postMessage.mock.calls
+      .map(([message]) => message as StreamMessage)
+      .filter((message) => message.command === `plot_metadata_stream`)
+    expect(stream_calls.map(({ rows, complete }) => [rows.length, complete])).toEqual([
+      [100, true],
+    ])
+    expect(stream_calls[0].file_path).toBe(file_path)
+    const all_rows = [...response.run_summary.properties.rows, ...stream_calls[0].rows]
+    expect(all_rows.map((row) => row.properties.energy)).toEqual(
+      Array.from({ length: n_frames }, (_unused, idx) => (idx === 0 ? 0 : -idx)),
+    )
 
     mock_webview.postMessage.mockClear()
     await handle_msg(frame_msg(file_path, 1), mock_webview)
     expect(mock_webview.postMessage).toHaveBeenLastCalledWith({
       command: `frame_response`,
       request_id: `frame-request`,
-      frame: expect.any(Object),
+      frame: expect.objectContaining({ step: 1 }),
       frame_index: 1,
     })
+    await handle_msg(frame_msg(file_path, n_frames), mock_webview)
+    expect(mock_webview.postMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        command: `frame_response`,
+        error: expect.stringContaining(`outside 0..${n_frames - 1}`),
+      }),
+    )
   })
 
   test(`large-file requests reject invalid request IDs before reading`, async () => {
@@ -561,7 +597,7 @@ describe(`MatterViz Extension`, () => {
 
   test.each([
     [`negative frame index`, `/test/movie.extxyz`, -1, `Invalid request_id or frame_index`],
-    [`missing frame loader`, `/test/missing.extxyz`, 0, `No frame loader found`],
+    [`missing run`, `/test/missing.extxyz`, 0, `No indexed trajectory is open`],
   ])(`request_frame reports %s`, async (_label, file_path, frame_index, error) => {
     await handle_msg(frame_msg(file_path, frame_index), mock_webview)
 
@@ -945,7 +981,7 @@ describe(`MatterViz Extension`, () => {
       // Check for combined section and extension state counters
       expect(content).toContain(`### Active Files & Extension State`)
       expect(content).toContain(`- **Active Watchers**: 2`)
-      expect(content).toMatch(/- \*\*Active Frame Loaders\*\*: \d+/)
+      expect(content).toMatch(/- \*\*Active Trajectory Runs\*\*: \d+/)
       expect(content).toMatch(/- \*\*Auto-Render Timers\*\*: \d+/)
       expect(content).toMatch(/- \*\*Active Auto-Render Panels\*\*: \d+/)
     })

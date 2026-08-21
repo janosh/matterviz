@@ -1,14 +1,13 @@
 <script lang="ts">
   import type { AnyStructure } from '$lib/structure'
-  import type { TrajectoryType } from '$lib/trajectory'
-  import { Trajectory } from '$lib/trajectory'
+  import { Trajectory, TrajectoryFileViewer, trajectory_from_frames } from '$lib/trajectory'
   import { onMount } from 'svelte'
 
   const lattice_params = { a: 2, b: 2, c: 2, alpha: 90, beta: 90, gamma: 90, volume: 8 }
 
   // Test data - simple trajectory for testing
-  const test_trajectory: TrajectoryType = {
-    frames: [
+  const test_trajectory = trajectory_from_frames(
+    [
       {
         step: 0,
         structure: {
@@ -106,12 +105,15 @@
         metadata: { energy: -11.2, force_max: 0.02 },
       },
     ],
-    metadata: { source_format: `test_data`, frame_count: 3, total_atoms: 2 },
-  }
+    {
+      metadata: { source_format: `test_data`, frame_count: 3, total_atoms: 2 },
+      provenance: { filename: `test.xyz` },
+    },
+  )
 
   // Constant values trajectory for testing plot hiding
-  const constant_trajectory: TrajectoryType = {
-    frames: [
+  const constant_trajectory = trajectory_from_frames(
+    [
       {
         step: 0,
         structure: {
@@ -145,12 +147,12 @@
         metadata: { energy: -10.0, force_max: 0.1 },
       },
     ],
-    metadata: { source_format: `test_data`, frame_count: 2, total_atoms: 1 },
-  }
+    { metadata: { source_format: `test_data`, frame_count: 2, total_atoms: 1 } },
+  )
 
   // Single-frame trajectory for testing plot hiding
-  const single_frame_trajectory: TrajectoryType = {
-    frames: [
+  const single_frame_trajectory = trajectory_from_frames(
+    [
       {
         step: 0,
         structure: {
@@ -168,8 +170,8 @@
         metadata: { energy: -10.0, force_max: 0.1 },
       },
     ],
-    metadata: { source_format: `test_data`, frame_count: 1, total_atoms: 1 },
-  }
+    { metadata: { source_format: `test_data`, frame_count: 1, total_atoms: 1 } },
+  )
 
   let current_step = $state(0)
   let hydrated = $state(false)
@@ -180,14 +182,13 @@
 
 <h1 data-hydrated={hydrated}>Trajectory Component Test Page</h1>
 
-<Trajectory id="empty-state" allow_file_drop show_controls="always" />
+<TrajectoryFileViewer id="empty-state" show_controls="always" />
 
 <Trajectory
   id="loaded-trajectory"
   trajectory={test_trajectory}
   bind:current_step_idx={current_step}
   fps={1}
-  allow_file_drop
   step_labels={3}
   show_controls="always"
 />

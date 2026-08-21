@@ -11,7 +11,7 @@
   import type { ExportSection } from '$lib/io/types'
   import { format_num } from '$lib/labels'
   import { NumberRangeInput, SettingsSection } from '$lib/layout'
-  import type { TrajectoryType } from '$lib/trajectory'
+  import type { TrajectoryRun } from '$lib/trajectory'
   import type { TrajectoryFrameResolver } from '$lib/trajectory/file-export'
   import {
     collect_frame_property_rows,
@@ -26,7 +26,7 @@
 
   let {
     export_pane_open = $bindable(false),
-    trajectory = undefined,
+    run = undefined,
     wrapper = undefined,
     filename = `trajectory`,
     video_fps = $bindable(30),
@@ -39,7 +39,7 @@
   }: {
     export_pane_open?: boolean
     // Trajectory data for generating filename
-    trajectory?: TrajectoryType
+    run?: TrajectoryRun
     // Canvas wrapper for video export
     wrapper?: HTMLDivElement
     filename?: string
@@ -61,9 +61,7 @@
   let running = $state<{ label: string; progress: number } | null>(null)
   let export_error = $state<string | null>(null)
 
-  let total_frames_available = $derived(
-    trajectory?.total_frames || trajectory?.frames?.length || 0,
-  )
+  let total_frames_available = $derived(run?.frame_count ?? 0)
   let last_frame_idx = $derived(Math.max(0, total_frames_available - 1))
   let start_frame = $state(0)
   let end_frame = $derived(last_frame_idx)
@@ -74,9 +72,7 @@
   })
   let export_frame_count = $derived(end_frame >= start_frame ? end_frame - start_frame + 1 : 0)
   let range = $derived(`${start_frame}-${end_frame}`)
-  let data_export_disabled = $derived(
-    running !== null || !trajectory || export_frame_count === 0,
-  )
+  let data_export_disabled = $derived(running !== null || !run || export_frame_count === 0)
 
   let canvas = $derived(wrapper?.querySelector(`canvas`) as HTMLCanvasElement)
   let has_canvas = $state(false)
@@ -93,9 +89,8 @@
     return (bitrate * export_frame_count) / video_fps / 8 / 1024 / 1024
   })
 
-  // Falls back to the in-memory frame when the host supplied no loader (eager trajectories)
   const frame_at: TrajectoryFrameResolver = (idx) =>
-    resolve_frame ? resolve_frame(idx) : (trajectory?.frames?.[idx] ?? null)
+    resolve_frame ? resolve_frame(idx) : (run?.read_frame(idx) ?? null)
 
   const on_progress = (done: number, total: number) => {
     if (running) running.progress = (done / total) * 100
@@ -120,16 +115,16 @@
     }
   }
 
-  // Every frame in the range, resolved one at a time (or read off plot_metadata when it covers
+  // Every frame in the range, resolved one at a time (or read off run properties when they cover
   // the range), so an indexed trajectory exports its full range and not the ~10 frames it
   // holds in memory.
   const serialize_table = async (format: TableFormat) => {
-    if (!trajectory) throw new Error(`No trajectory to export`)
+    if (!run) throw new Error(`No trajectory to export`)
     const table = await collect_frame_property_rows(
       start_frame,
       end_frame,
       frame_at,
-      trajectory,
+      run,
       on_progress,
     )
     return format === `csv` ? frame_rows_to_csv(table) : frame_rows_to_json(table)
@@ -145,8 +140,8 @@
     )
 
   async function export_video(format: VideoFormat) {
-    if (!trajectory || !on_step_change || !canvas || export_frame_count === 0) {
-      export_error = !trajectory
+    if (!run || !on_step_change || !canvas || export_frame_count === 0) {
+      export_error = !run
         ? `No trajectory`
         : !canvas
           ? `Canvas not ready`
@@ -320,7 +315,7 @@
           <button
             type="button"
             onclick={() => export_video(format)}
-            disabled={running !== null || !trajectory || !has_canvas}
+            disabled={running !== null || !run || !has_canvas}
             aria-label="Download {label}"
             {@attach tooltip({ content: hint })}
           >
@@ -339,7 +334,7 @@
       {/if}
     </div>
 
-    {#if trajectory && !has_canvas}
+    {#if run && !has_canvas}
       <div class="warning">Waiting for canvas...</div>
     {/if}
   {/if}

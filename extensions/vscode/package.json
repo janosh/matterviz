@@ -921,24 +921,12 @@
           "default": true,
           "description": "Allow drag-and-drop of trajectory files"
         },
-        "matterviz.trajectory.bin_file_threshold": {
-          "type": "number",
-          "default": 50000000,
-          "description": "File size threshold for binary loading (bytes)",
-          "minimum": 1000000,
-          "maximum": 500000000
-        },
-        "matterviz.trajectory.text_file_threshold": {
+        "matterviz.trajectory.index_above_bytes": {
           "type": "number",
           "default": 25000000,
-          "description": "File size threshold for text loading (bytes)",
-          "minimum": 500000,
-          "maximum": 250000000
-        },
-        "matterviz.trajectory.use_indexing": {
-          "type": "boolean",
-          "default": false,
-          "description": "Use frame indexing for large trajectories"
+          "description": "Trajectory files (XYZ, EXTXYZ, ASE .traj) larger than this many bytes are parsed in a Web Worker and decoded frame by frame on demand instead of all at once",
+          "minimum": 1000000,
+          "maximum": 2000000000
         },
         "matterviz.trajectory.show_parsing_progress": {
           "type": "boolean",

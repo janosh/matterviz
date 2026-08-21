@@ -1,261 +1,127 @@
-import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory'
+import type { TrajectoryFrame } from '$lib/trajectory'
 import {
   energy_data_extractor,
   force_stress_data_extractor,
   full_data_extractor,
   structural_data_extractor,
 } from '$lib/trajectory/extract'
-import { parse_trajectory_data } from '$lib/trajectory/parse'
-import { beforeAll, describe, expect, it } from 'vitest'
+import { open_trajectory } from '$lib/trajectory/open'
+import { describe, expect, it } from 'vitest'
 import { make_trajectory_frame, read_binary_test_file } from '../setup'
 
-const constant_lattice_keys = [
-  `constant_a`,
-  `constant_b`,
-  `constant_c`,
-  `constant_alpha`,
-  `constant_beta`,
-  `constant_gamma`,
-] as const
-
-// Helper to create frame with lattice
-const create_frame_with_lattice = (
+const frame_with_lattice = (
   step: number,
-  lattice_params: Record<string, number>,
+  lattice: Record<string, number>,
   metadata: Record<string, unknown> = {},
-): TrajectoryFrame => make_trajectory_frame(step, 1, metadata, lattice_params)
+): TrajectoryFrame => make_trajectory_frame(step, 1, metadata, lattice)
 
-// Wrap frames in a trajectory; the source_format/frame_count metadata is boilerplate the
-// extractors ignore (they read frames), so it's derived here instead of repeated per test
-const make_traj = (frames: TrajectoryFrame[]): TrajectoryType => ({
-  frames,
-  metadata: { source_format: `test`, frame_count: frames.length },
-})
-
-describe(`Energy Data Extractor`, () => {
-  // oxfmt-ignore
-  const all_energies = {
-    energy: -10.5, energy_per_atom: -5.25, potential_energy: -12.0,
-    kinetic_energy: 1.5, total_energy: -10.5,
-  }
-  // oxfmt-ignore
-  it.each([
-    { name: `extracts energy properties from metadata`, step: 5, metadata: all_energies,
-      expected: { Step: 5, ...all_energies } },
-    { name: `handles missing metadata`, step: 0, metadata: {}, expected: { Step: 0 } },
-  ])(`should $name`, ({ step, metadata, expected }) => {
-    const frame = make_trajectory_frame(step, 1, metadata)
-    expect(energy_data_extractor(frame, { frames: [], metadata: {} })).toEqual(expected)
-  })
-})
-
-describe(`Force and Stress Data Extractor`, () => {
-  // oxfmt-ignore
-  const fallback_forces = { force_max: 5.0, force_norm: 3.5, stress_max: 2.1, pressure: 1.5 }
-  // oxfmt-ignore
-  it.each([
-    { name: `calculate force properties from forces array`, step: 1,
-      metadata: { forces: [[1.0, 0.0, 0.0], [0.0, 2.0, 0.0], [0.0, 0.0, 3.0]] },
-      // force_max is the max magnitude, force_norm the RMS of the magnitudes
-      expected: { Step: 1, force_max: 3.0, force_norm: expect.closeTo(2.16, 2) } },
-    { name: `use metadata force values as fallback`, step: 2, metadata: fallback_forces,
-      expected: { Step: 2, ...fallback_forces } },
-    // a relaxed structure reports force_max 0; a truthiness check used to drop it
-    { name: `keep a force_max of exactly 0`, step: 3, metadata: { force_max: 0, force_norm: 0 },
-      expected: { Step: 3, force_max: 0, force_norm: 0 } },
-  ])(`should $name`, ({ step, metadata, expected }) => {
-    const frame = make_trajectory_frame(step, 1, metadata)
-    expect(force_stress_data_extractor(frame, { frames: [], metadata: {} })).toEqual(expected)
-  })
-})
-
-describe(`Structural Data Extractor`, () => {
-  // oxfmt-ignore
-  const unit_cell = { a: 1.0, b: 1.0, c: 1.0, alpha: 90, beta: 90, gamma: 90, volume: 1.0 }
-  // oxfmt-ignore
-  it.each([
-    { name: `extract lattice properties`, step: 4, lattice_params: unit_cell,
-      metadata: { density: 2.5, temperature: 300 },
-      expected: { Step: 4, ...unit_cell, density: 2.5, temperature: 300 } },
-    { name: `use metadata volume as fallback`, step: 5, lattice_params: null,
-      metadata: { volume: 2.5 }, expected: { Step: 5, volume: 2.5 } },
-    { name: `preserve metadata density of exactly 0`, step: 6, lattice_params: null,
-      metadata: { density: 0 }, expected: { Step: 6, density: 0 } },
-  ])(`should $name`, ({ step, lattice_params, metadata, expected }) => {
-    const frame = lattice_params
-      ? create_frame_with_lattice(step, lattice_params, metadata)
-      : make_trajectory_frame(step, 1, metadata)
-
-    expect(structural_data_extractor(frame, { frames: [], metadata: {} })).toEqual(expected)
+describe(`trajectory data extractors`, () => {
+  it(`extracts all supported energy fields and keeps zeroes`, () => {
+    const frame = make_trajectory_frame(5, 1, {
+      energy: -10.5,
+      energy_per_atom: -5.25,
+      potential_energy: -12,
+      kinetic_energy: 1.5,
+      total_energy: 0,
+    })
+    expect(energy_data_extractor(frame)).toEqual({
+      Step: 5,
+      energy: -10.5,
+      energy_per_atom: -5.25,
+      potential_energy: -12,
+      kinetic_energy: 1.5,
+      total_energy: 0,
+    })
   })
 
-  const cube_2a = { a: 2.0, b: 2.0, c: 2.0, volume: 8.0 }
-
-  it(`should calculate density when not provided in metadata`, () => {
-    // No density in metadata, so it must be calculated from the structure
-    const frame = create_frame_with_lattice(0, cube_2a, {})
-    const data = structural_data_extractor(frame, { frames: [], metadata: {} })
-
-    expect(data.density).toBeDefined()
-    expect(typeof data.density).toBe(`number`)
-    expect(data.density).toBeGreaterThan(0)
+  it(`calculates force statistics and copies stress metadata`, () => {
+    const frame = make_trajectory_frame(1, 1, {
+      forces: [
+        [1, 0, 0],
+        [0, 2, 0],
+        [0, 0, 3],
+      ],
+      stress_max: 2.1,
+      pressure: 0,
+    })
+    expect(force_stress_data_extractor(frame)).toEqual({
+      Step: 1,
+      force_max: 3,
+      force_norm: expect.closeTo(Math.sqrt(14 / 3), 12),
+      stress_max: 2.1,
+      pressure: 0,
+    })
   })
 
-  it(`should prefer metadata density over calculated density`, () => {
-    const frame = create_frame_with_lattice(0, cube_2a, { density: 5.0 })
-    expect(structural_data_extractor(frame, { frames: [], metadata: {} }).density).toBe(5.0)
-  })
-})
-
-describe(`Full Data Extractor`, () => {
-  it(`should combine all extractors`, () => {
-    const trajectory = make_traj([
-      create_frame_with_lattice(
-        0,
-        { a: 1.0, b: 1.0, c: 1.0, alpha: 90, beta: 90, gamma: 90, volume: 1.0 },
-        { energy: -10.0, force_max: 2.0, density: 2.5 },
+  it(`uses scalar force summaries when no force array is present`, () => {
+    expect(
+      force_stress_data_extractor(
+        make_trajectory_frame(2, 1, { force_max: 0, force_norm: 3.5 }),
       ),
-      create_frame_with_lattice(
-        1,
-        { a: 1.1, b: 1.1, c: 1.1, alpha: 91, beta: 92, gamma: 93, volume: 1.331 },
-        { energy: -10.5, force_max: 1.5, density: 2.3 },
-      ),
-    ])
-
-    const frame1_data = full_data_extractor(trajectory.frames[0], trajectory)
-    const frame2_data = full_data_extractor(trajectory.frames[1], trajectory)
-
-    // Should have energy data
-    expect(frame1_data.energy).toBe(-10.0)
-    expect(frame2_data.energy).toBe(-10.5)
-
-    // Should have force data
-    expect(frame1_data.force_max).toBe(2.0)
-    expect(frame2_data.force_max).toBe(1.5)
-
-    // Should have structural data
-    expect(frame1_data.volume).toBe(1.0)
-    expect(frame2_data.volume).toBe(1.331)
-    expect(frame1_data.density).toBe(2.5)
-    expect(frame2_data.density).toBe(2.3)
-
-    // Should have lattice parameters
-    expect(frame1_data.a).toBe(1.0)
-    expect(frame2_data.a).toBe(1.1)
-
-    // Should NOT have constant lattice markers (lattice varies)
-    for (const key of constant_lattice_keys) {
-      expect(frame1_data[key]).toBeUndefined()
-      expect(frame2_data[key]).toBeUndefined()
-    }
+    ).toEqual({ Step: 2, force_max: 0, force_norm: 3.5 })
   })
 
-  // No structure lattice → constancy is read from frame.metadata: a param is constant only
-  // if observed (finite) in ≥1 frame and never varies (single pass, cached per trajectory).
-  // oxfmt-ignore
-  it.each([
-    { name: `varying a, constant b/c, absent angles aren't constant`,
-      frames_meta: [{ a: 5.0, b: 5.0, c: 5.0 }, { a: 5.1, b: 5.0, c: 5.0 }],
-      expected: { constant_a: undefined, constant_b: 1, constant_c: 1,
-        constant_alpha: undefined, constant_beta: undefined, constant_gamma: undefined } },
-    // NaN is typeof `number`; without a finiteness guard it poisons `first` so the real
-    // 5 → 10 variation goes undetected and `a` is wrongly marked constant.
-    { name: `non-finite value is unobserved (NaN doesn't mask 5 → 10 variation)`,
-      frames_meta: [{ a: NaN, b: 5.0 }, { a: 5.0, b: 5.0 }, { a: 10.0, b: 5.0 }],
-      expected: { constant_a: undefined, constant_b: 1 } },
-  ])(`metadata-fallback constancy: $name`, ({ frames_meta, expected }) => {
-    const traj = make_traj(frames_meta.map((meta, idx) => make_trajectory_frame(idx, 1, meta)))
-    const all = traj.frames.map((frame) => full_data_extractor(frame, traj))
-    const frame0: Record<string, number | undefined> = all[0]
-    for (const [key, val] of Object.entries(expected)) expect(frame0[key], key).toBe(val)
-    // cached constant set is identical for every frame of the same trajectory
-    const last = all[all.length - 1]
-    for (const key of constant_lattice_keys) expect(last[key]).toBe(all[0][key])
-  })
-
-  it(`should detect constant lattice parameters`, () => {
-    const constant_trajectory = make_traj([
-      create_frame_with_lattice(0, { a: 1.0, b: 1.0, c: 1.0, volume: 1.0 }, { energy: -10.0 }),
-      create_frame_with_lattice(1, { a: 1.0, b: 1.0, c: 1.0, volume: 1.0 }, { energy: -10.0 }),
-    ])
-
-    const frame1_data = full_data_extractor(constant_trajectory.frames[0], constant_trajectory)
-    const frame2_data = full_data_extractor(constant_trajectory.frames[1], constant_trajectory)
-
-    // Should have constant lattice markers for all parameters
-    for (const key of constant_lattice_keys) {
-      expect(frame1_data[key]).toBe(1)
-      expect(frame2_data[key]).toBe(1)
-    }
-
-    // All lattice properties should be the same
-    expect(frame1_data.a).toBe(frame2_data.a)
-    expect(frame1_data.volume).toBe(frame2_data.volume)
-  })
-})
-
-describe(`HDF5 Trajectory Data Extraction`, () => {
-  // Parse the real HDF5 fixture once and share it across both tests
-  let trajectory: TrajectoryType
-  beforeAll(async () => {
-    const hdf5_content = read_binary_test_file(`flame-gold-cluster-55-atoms.h5`)
-    trajectory = await parse_trajectory_data(hdf5_content, `flame-gold-cluster-55-atoms.h5`)
-  })
-
-  it(`should extract data from HDF5 trajectory`, () => {
-    const first_frame = trajectory.frames[0]
-
-    const energy_data = energy_data_extractor(first_frame, trajectory)
-    const structural_data = structural_data_extractor(first_frame, trajectory)
-    const full_data = full_data_extractor(first_frame, trajectory)
-
-    expect(energy_data.Step).toBe(first_frame.step)
-    expect(structural_data.Step).toBe(first_frame.step)
-    expect(full_data.Step).toBe(first_frame.step)
-    expect(typeof structural_data.volume).toBe(`number`)
-    expect(structural_data.volume).toBeGreaterThan(0)
-
-    if (`lattice` in first_frame.structure) {
-      expect(structural_data.a).toBeGreaterThan(0)
-      expect(structural_data.b).toBeGreaterThan(0)
-      expect(structural_data.c).toBeGreaterThan(0)
-    }
-  })
-
-  it(`should handle all frames and lattice consistency`, async () => {
-    const frame_count = trajectory.total_frames ?? trajectory.frames.length
-    const frames = await Promise.all(
-      Array.from({ length: frame_count }, async (_unused, frame_idx) => {
-        const frame =
-          trajectory.frames[frame_idx] ??
-          (await trajectory.frame_loader?.load_frame(``, frame_idx))
-        if (!frame) throw new Error(`Missing HDF5 frame ${frame_idx}`)
-        return frame
-      }),
+  it(`extracts lattice geometry and prefers an explicit density`, () => {
+    const frame = frame_with_lattice(
+      4,
+      { a: 2, b: 2, c: 2, alpha: 90, beta: 90, gamma: 90, volume: 8 },
+      { density: 0, temperature: 300 },
     )
-    const all_frame_data = frames.map((frame) => full_data_extractor(frame, trajectory))
-
-    expect(all_frame_data).toHaveLength(20)
-
-    all_frame_data.forEach((data: Record<string, unknown>, frame_idx: number) => {
-      expect(data.Step).toBe(frames[frame_idx].step)
-      expect(typeof data.volume).toBe(`number`)
-      expect(data.volume).toBeGreaterThan(0)
+    expect(structural_data_extractor(frame)).toMatchObject({
+      Step: 4,
+      a: 2,
+      b: 2,
+      c: 2,
+      alpha: 90,
+      beta: 90,
+      gamma: 90,
+      volume: 8,
+      density: 0,
+      temperature: 300,
     })
+  })
 
-    // Check lattice consistency
-    const volumes = all_frame_data.map((data: Record<string, unknown>) => data.volume)
-    const unique_volumes = new Set(volumes)
-    const is_constant = unique_volumes.size === 1
+  it(`combines energy, force, SCF, and structural fields`, () => {
+    const frame = frame_with_lattice(
+      0,
+      { a: 1, b: 1, c: 1, volume: 1 },
+      {
+        energy: -10,
+        force_max: 2,
+        n_scf_steps: 8,
+        scf_energy_delta: 1e-6,
+        density: 2.5,
+      },
+    )
+    expect(full_data_extractor(frame)).toMatchObject({
+      Step: 0,
+      energy: -10,
+      force_max: 2,
+      n_scf_steps: 8,
+      scf_energy_delta: 1e-6,
+      volume: 1,
+      density: 2.5,
+    })
+  })
 
-    all_frame_data.forEach((data: Record<string, unknown>) => {
-      if (is_constant) {
-        // Check that all lattice parameters are marked as constant
-        for (const key of constant_lattice_keys) expect(data[key]).toBe(1)
-      } else {
-        // Check that lattice parameters are not marked as constant
-        for (const key of constant_lattice_keys) expect(data[key]).toBeUndefined()
+  it(`extracts every frame of a lazy HDF5 run`, async () => {
+    const run = await open_trajectory(
+      read_binary_test_file(`flame-gold-cluster-55-atoms.h5`),
+      { filename: `flame-gold-cluster-55-atoms.h5` },
+    )
+    try {
+      const rows = await Promise.all(
+        Array.from({ length: run.frame_count }, async (_unused, frame_idx) =>
+          full_data_extractor(await run.read_frame(frame_idx)),
+        ),
+      )
+      expect(rows).toHaveLength(20)
+      for (const row of rows) {
+        expect(row.volume).toBeGreaterThan(0)
+        expect(Number.isFinite(row.Step)).toBe(true)
       }
-    })
+    } finally {
+      run.dispose()
+    }
   })
 })

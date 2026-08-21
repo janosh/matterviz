@@ -73,7 +73,7 @@
     fps?: number
     fps_range?: readonly [number, number]
     auto_play?: boolean
-    // Names: path, nav, step, fps, coord, energy-reference, spline, energy, fullscreen
+    // 'always' | 'hover' | 'never' | { mode, hidden: NebControlName[], style }
     show_controls?: ShowControlsProp<NebControlName>
     pane_ratio?: number
     fullscreen_toggle?: boolean
@@ -87,7 +87,7 @@
 
   let dropped_paths = $state(new SvelteMap<string, ReactionPath>())
   let controls_height = $state(0)
-  let controls_config = $derived(normalize_show_controls(show_controls))
+  let controls_config = $derived(normalize_show_controls(show_controls, `always`))
 
   const merged: ReactionPathInput = $derived({
     ...(paths

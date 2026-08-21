@@ -15,21 +15,31 @@ export function make_rng(seed: number): () => number {
 
 // Largest |a - b| over two equal-length series
 export const max_abs_error = (
-  actual: readonly number[],
-  expected: readonly number[],
-): number =>
-  actual.reduce((worst, value, idx) => Math.max(worst, Math.abs(value - expected[idx])), 0)
+  actual: ArrayLike<number>,
+  expected: ArrayLike<number>,
+): number => {
+  let worst = 0
+  for (let idx = 0; idx < actual.length; idx++) {
+    worst = Math.max(worst, Math.abs(actual[idx] - expected[idx]))
+  }
+  return worst
+}
 
 // Largest |a - b| / |b| over two equal-length series, skipping zero references
 export const max_rel_error = (
-  actual: readonly number[],
-  expected: readonly number[],
-): number =>
-  actual.reduce((worst, value, idx) => {
+  actual: ArrayLike<number>,
+  expected: ArrayLike<number>,
+): number => {
+  let worst = 0
+  for (let idx = 0; idx < actual.length; idx++) {
+    const value = actual[idx]
     const reference = expected[idx]
-    if (reference === 0) return worst
-    return Math.max(worst, Math.abs(value - reference) / Math.abs(reference))
-  }, 0)
+    if (reference !== 0) {
+      worst = Math.max(worst, Math.abs(value - reference) / Math.abs(reference))
+    }
+  }
+  return worst
+}
 
 // Pack frames[frame_idx][atom_idx] = [x, y, z] into the flat Float64Array layout that the
 // MSD and VACF kernels consume. Frame-major, atom-minor is exactly depth-2 flattening.

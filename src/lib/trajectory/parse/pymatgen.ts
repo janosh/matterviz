@@ -7,9 +7,9 @@ import {
   create_trajectory_frame,
   validate_3x3_matrix,
 } from '$lib/trajectory/helpers'
-import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory/index'
+import type { TrajectoryFrame } from '$lib/trajectory/index'
 import { is_plain_object } from '$lib/utils'
-import { traj_warn } from './diagnostics'
+import type { ParsedTrajectory, WarnFn } from './shared'
 
 // Non-empty array of pymatgen Species-like objects with non-empty string element
 // symbols (predicate so callers get narrowing; rejects e.g. { element: null })
@@ -44,8 +44,8 @@ const frac_coords_of = (value: unknown, frame_idx: number, n_sites: number): Vec
 // Parse an already-JSON-parsed pymatgen Trajectory object (detected via @class === 'Trajectory' with species/coords/lattice present)
 export function parse_pymatgen_trajectory(
   obj: Record<string, unknown>,
-  filename?: string,
-): TrajectoryType {
+  warn: WarnFn,
+): ParsedTrajectory {
   // Validate shape upfront so malformed input fails with a clear message
   // (callers gate only on truthiness, not structure) rather than a cryptic `.map` error
   if (!is_species_array(obj.species)) {
@@ -129,7 +129,7 @@ export function parse_pymatgen_trajectory(
       if (key === `stress` && Array.isArray(value.data)) {
         const stress_tensor = value.data
         if (!math.is_square_matrix(stress_tensor, 3)) {
-          traj_warn(`Invalid stress tensor structure in frame ${idx}`)
+          warn(`Invalid stress tensor structure in frame ${idx}`)
         } else {
           // Normal stresses are the diagonal; pressure is minus their mean
           const normal_stresses = [
@@ -152,6 +152,7 @@ export function parse_pymatgen_trajectory(
       idx,
       processed_properties,
       site_properties_for(idx),
+      warn,
     )
   })
 
@@ -159,12 +160,10 @@ export function parse_pymatgen_trajectory(
   const time_step =
     typeof obj.time_step === `number` && obj.time_step > 0 ? obj.time_step : null
   return {
+    format: `pymatgen-json`,
     frames,
     ...(time_step === null ? {} : { time_step, time_unit: `fs` }),
     metadata: {
-      filename,
-      source_format: `pymatgen_trajectory`,
-      frame_count: frames.length,
       species_list: [...new Set(frame_elements)],
       periodic_boundary_conditions: [true, true, true],
     },

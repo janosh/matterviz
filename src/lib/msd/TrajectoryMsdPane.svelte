@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { ViewerPaneOptions } from '$lib/overlays'
-  import type { TrajectoryType } from '$lib/trajectory'
+  import type { TrajectoryRun } from '$lib/trajectory'
   import type { AnalysisPaneContext } from '$lib/trajectory/analysis-pane'
   import TrajectoryAnalysisPane from '$lib/trajectory/TrajectoryAnalysisPane.svelte'
   import { collect_msd_positions, suggest_msd_frame_stride } from './collect'
@@ -8,17 +8,14 @@
   import MsdPlot from './MsdPlot.svelte'
 
   let {
-    trajectory,
-    raw_data = null,
+    run,
     pane_open = $bindable(false),
     result = $bindable(),
     default_dt = null,
     default_time_unit,
     ...pane_options
   }: ViewerPaneOptions & {
-    trajectory?: TrajectoryType
-    // Raw file bytes from Trajectory.svelte's orig_data for source-dependent loaders.
-    raw_data?: string | ArrayBuffer | null
+    run?: TrajectoryRun
     pane_open?: boolean
     result?: MsdResult
     // Time between source frames as recorded in the file. When present the pane starts
@@ -44,8 +41,7 @@
 </script>
 
 <TrajectoryAnalysisPane
-  {trajectory}
-  {raw_data}
+  {run}
   bind:pane_open
   bind:input={positions}
   bind:error_msg

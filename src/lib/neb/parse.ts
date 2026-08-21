@@ -31,6 +31,7 @@ import { is_finite_vec3_like } from '$lib/math'
 import type { AnyStructure } from '$lib/structure'
 import { parse_structure_file } from '$lib/structure/parse'
 import { count_xyz_frames, iter_xyz_frames } from '$lib/trajectory/helpers'
+import { create_warning_collector } from '$lib/trajectory/parse/shared'
 import { build_xyz_frame, parse_xyz_comment_metadata } from '$lib/trajectory/parse/xyz'
 import type { NebImage, ReactionPath } from './index'
 import { assert_path } from './reaction-path'
@@ -161,13 +162,16 @@ const xyz_comment_energy = (comment: string, context: string): number =>
 export function parse_xyz_reaction_path(content: string, filename = `path.xyz`): ReactionPath {
   const lines = content.trim().split(/\r?\n/)
   const images: NebImage[] = []
+  const collector = create_warning_collector()
   for (const frame of iter_xyz_frames(lines)) {
     const image_idx = images.length
     const context = `${filename} frame ${image_idx}`
-    const { structure, metadata } = build_xyz_frame(lines, frame, {
-      frame_label: context,
-      default_step: image_idx,
-    })
+    const { structure, metadata } = build_xyz_frame(
+      lines,
+      frame,
+      { frame_label: context, default_step: image_idx },
+      collector,
+    )
     // Forces as read by the trajectory parser, kept only when every site got one
     const raw_forces = metadata?.forces
     const has_forces =

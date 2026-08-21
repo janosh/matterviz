@@ -2,16 +2,11 @@
   // Filterable label/value cards for info panes (trajectory, convex hull, Brillouin zone,
   // structure sites). Long lists page through `page_size` cards at a time; hosts can decorate
   // cards via `card_attrs`.
-  import {
-    create_clipboard_feedback,
-    type InfoPaneCard,
-    type InfoPaneRow,
-  } from '$lib/overlays'
+  import type { InfoPaneCard, InfoPaneRow } from '$lib/overlays'
   import { sanitize_html } from '$lib/sanitize'
   import { Icon } from 'svelte-widgets'
   import { Search } from 'svelte-widgets/icons'
   import type { HTMLAttributes } from 'svelte/elements'
-  import CopyButton from './CopyButton.svelte'
 
   let {
     cards,
@@ -20,7 +15,6 @@
     title,
     collapsible_filter,
     show_filter = true,
-    show_copy = true,
     heading_level = 4,
     variant = `cards`,
     page_size = Infinity,
@@ -34,7 +28,6 @@
     title?: string
     collapsible_filter?: boolean
     show_filter?: boolean
-    show_copy?: boolean
     heading_level?: 4 | 5
     variant?: `cards` | `flat`
     page_size?: number // cards per page; pager controls appear once the filtered list exceeds it
@@ -46,7 +39,6 @@
   let filter = $state(``)
   let filter_open = $state(false)
   let cards_el = $state<HTMLDivElement>()
-  const { copied, copy } = create_clipboard_feedback()
   const row_key = (card: Card, row: InfoPaneRow, row_idx: number): string =>
     row.key ?? `${card.title}:${row.label}:${row.value}:${row_idx}`
 
@@ -68,6 +60,7 @@
   const first_idx = $derived(Math.min(page_start, last_page_start))
   const page_end = $derived(Math.min(first_idx + page_size, filtered_cards.length))
   const paged_cards = $derived(filtered_cards.slice(first_idx, page_end))
+  const show_filter_ui = $derived(Boolean(filter_placeholder && (show_filter || filter)))
   const turn_page = (direction: -1 | 1): void => {
     page_start = Math.min(last_page_start, Math.max(0, first_idx + direction * page_size))
   }
@@ -84,10 +77,10 @@
   })
 </script>
 
-{#if title || (filter_placeholder && (show_filter || filter))}
-  <header class:collapsible={Boolean(collapsible_filter)}>
+{#if title || show_filter_ui}
+  <header class:collapsible={collapsible_filter}>
     {#if title}<h4>{title}</h4>{/if}
-    {#if filter_placeholder && (show_filter || filter)}
+    {#if show_filter_ui}
       {#if !collapsible_filter || filter_open || filter}
         <!-- svelte-ignore a11y_autofocus (focus follows an explicit search-button click) -->
         <input
@@ -142,14 +135,6 @@
           <div class="info-row" data-testid={row.key}>
             <span>{@html sanitize_html(row.label)}</span>
             <span title={row.tooltip}>{@html sanitize_html(row.value)}</span>
-            {#if show_copy}
-              <CopyButton
-                label="Copy {row.label}: {row.value}"
-                title="Copy {row.label}"
-                copied={copied.has(row_key(card, row, row_idx))}
-                onclick={() => copy(`${row.label}: ${row.value}`, row_key(card, row, row_idx))}
-              />
-            {/if}
           </div>
         {/each}
       </section>
@@ -214,7 +199,6 @@
     .info-card {
       padding: 0 3pt;
       border-left: 0;
-      border-radius: 0;
       background: transparent;
     }
     .info-row {
@@ -224,15 +208,17 @@
   .info-card {
     padding: var(--info-card-padding, 5pt);
     border-left: var(--info-card-accent, 3px solid var(--accent-color, currentColor));
-    border-radius: var(--border-radius, 3pt);
+    border-radius: 0;
     background: var(--info-card-bg, color-mix(in srgb, currentColor 4%, transparent));
+    text-align: left;
     :is(h4, h5) {
       margin: 0 0 var(--info-card-heading-gap, 3pt);
+      font-size: 1.15em;
     }
   }
   .info-row {
     display: grid;
-    grid-template-columns: fit-content(40%) minmax(0, 1fr) auto;
+    grid-template-columns: fit-content(40%) minmax(0, 1fr);
     align-items: center;
     gap: 5pt;
     padding: var(--info-row-padding, 1pt 0);
@@ -245,6 +231,7 @@
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+      text-align: var(--info-row-value-align, right);
     }
   }
 </style>

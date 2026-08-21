@@ -2,7 +2,7 @@
   import { Spinner, StatusMessage } from '$lib/feedback'
   import { format_num } from '$lib/labels'
   import { info_pane_icon, ViewerPane, type ViewerPaneOptions } from '$lib/overlays'
-  import type { ParseProgress, TrajectoryType } from '$lib/trajectory'
+  import type { ParseProgress, TrajectoryRun } from '$lib/trajectory'
   import { to_error } from '$lib/utils'
   import { Graph } from 'svelte-widgets/icons'
   import {
@@ -20,15 +20,13 @@
   import TrajectorySpectrumPlot from './TrajectorySpectrumPlot.svelte'
 
   let {
-    trajectory,
-    raw_data = null,
+    run,
     pane_open = $bindable(false),
     result = $bindable(),
     inline = false,
     ...pane_options
   }: ViewerPaneOptions & {
-    trajectory?: TrajectoryType
-    raw_data?: string | ArrayBuffer | null
+    run?: TrajectoryRun
     pane_open?: boolean
     result?: TrajectorySpectroscopyResult
     inline?: boolean
@@ -58,8 +56,8 @@
 
   const spectroscopy_runner = create_trajectory_spectroscopy_async_runner()
 
-  let infrared_keys = $derived(trajectory_signal_keys(trajectory, [3]))
-  let raman_keys = $derived(trajectory_signal_keys(trajectory, [3, 3]))
+  let infrared_keys = $derived(trajectory_signal_keys(run, [3]))
+  let raman_keys = $derived(trajectory_signal_keys(run, [3, 3]))
   let has_physical_time = $derived(
     Boolean(analysis_time_step && analysis_time_step > 0 && analysis_time_unit.trim()),
   )
@@ -71,7 +69,6 @@
     raman_geometry: { kind: `powder` },
   })
   const settings_snapshot = () => ({
-    raw_data,
     infrared_key,
     infrared_kind,
     polarization_branch_continuous,
@@ -83,27 +80,26 @@
   let completed_settings = $state.raw<ReturnType<typeof settings_snapshot> | undefined>(
     undefined,
   )
-  const settings_key = ({
-    raw_data: _raw_data,
-    ...settings
-  }: ReturnType<typeof settings_snapshot>): string => JSON.stringify(settings)
+  const settings_key = (settings: ReturnType<typeof settings_snapshot>): string =>
+    JSON.stringify(settings)
   let current_settings_key = $derived(settings_key(settings_snapshot()))
   let settings_dirty = $derived(
     Boolean(
       result &&
       completed_settings &&
-      (settings_key(completed_settings) !== current_settings_key ||
-        completed_settings.raw_data !== raw_data),
+      settings_key(completed_settings) !== current_settings_key,
     ),
   )
 
-  let previous_trajectory: TrajectoryType | undefined
-  let auto_calculation_owner: TrajectoryType | undefined
+  let previous_run: TrajectoryRun | undefined
+  let auto_calculation_owner: TrajectoryRun | undefined
+  let collect_controller: AbortController | undefined
   let request_generation = 0
   $effect(() => {
-    if (trajectory === previous_trajectory) return
-    previous_trajectory = trajectory
+    if (run === previous_run) return
+    previous_run = run
     request_generation++
+    collect_controller?.abort()
     spectroscopy_runner.cancel(`Trajectory spectroscopy superseded by a new trajectory`)
     result = undefined
     auto_calculation_owner = undefined
@@ -118,9 +114,9 @@
     infrared_kind = default_ir ? infrared_kind_from_key(default_ir) : `dipole`
     polarization_branch_continuous = false
     raman_key = raman_keys.includes(`polarizability`) ? `polarizability` : ``
-    analysis_time_step = trajectory?.time_step
-    analysis_time_unit = trajectory?.time_unit ?? `fs`
-    const first_structure = trajectory?.frames[0]?.structure
+    analysis_time_step = run?.time_step?.value
+    analysis_time_unit = run?.time_step?.unit ?? `fs`
+    const first_structure = run?.preview.structure
     preprocessing =
       first_structure &&
       `lattice` in first_structure &&
@@ -135,22 +131,25 @@
   })
 
   async function calculate(): Promise<void> {
-    if (!trajectory) return
+    if (!run) return
     const generation = ++request_generation
-    const request_trajectory = trajectory
+    const request_run = run
     const request_settings = settings_snapshot()
     const request_is_current = () => generation === request_generation
+    collect_controller?.abort()
+    const controller = new AbortController()
+    collect_controller = controller
     spectroscopy_runner.cancel(`Trajectory spectroscopy superseded by a newer request`)
     calculation_phase = `collecting`
     error_msg = undefined
     progress = null
     try {
-      const collected_input = await collect_trajectory_spectroscopy_input(request_trajectory, {
-        raw_data: request_settings.raw_data,
+      const collected_input = await collect_trajectory_spectroscopy_input(request_run, {
         infrared_key: request_settings.infrared_key || null,
         infrared_kind: request_settings.infrared_kind,
         polarization_branch_continuous: request_settings.polarization_branch_continuous,
         raman_key: request_settings.raman_key || null,
+        signal: controller.signal,
         on_progress: (next_progress) => {
           if (request_is_current()) progress = next_progress
         },
@@ -176,6 +175,7 @@
         error_msg = to_error(error).message
       }
     } finally {
+      if (collect_controller === controller) collect_controller = undefined
       if (request_is_current()) {
         calculation_phase = `idle`
         progress = null
@@ -183,7 +183,11 @@
     }
   }
 
-  $effect(() => () => spectroscopy_runner.cancel(`Trajectory spectroscopy pane closed`))
+  $effect(() => () => {
+    request_generation++
+    collect_controller?.abort()
+    spectroscopy_runner.cancel(`Trajectory spectroscopy pane closed`)
+  })
 
   // The inline trajectory analysis is ready on first entry. Remember attempted owners so
   // invalid data reports once instead of retrying after the handled error clears busy state.
@@ -191,21 +195,21 @@
     if (
       !inline ||
       !pane_open ||
-      !trajectory ||
+      !run ||
       result ||
       calculation_busy ||
-      auto_calculation_owner === trajectory
+      auto_calculation_owner === run
     ) {
       return
     }
-    auto_calculation_owner = trajectory
+    auto_calculation_owner = run
     void calculate()
   })
 </script>
 
 {#snippet settings_content()}
   <h4 style="margin-top: 0">Spectroscopy analysis settings</h4>
-  {#if !trajectory}
+  {#if !run}
     <StatusMessage message="No trajectory loaded" style="border: none" />
   {:else}
     <fieldset class="spectroscopy-controls" disabled={calculation_busy}>
@@ -260,7 +264,7 @@
       >
     </fieldset>
     <p class="provenance">
-      {trajectory.total_frames ?? trajectory.frames.length} total frames · timestep {has_physical_time
+      {run.frame_count} total frames · timestep {has_physical_time
         ? `${format_num(analysis_time_step ?? 0, `.5~g`)} ${analysis_time_unit}`
         : `not recorded`} · raw spectra remain unsmoothed and independently normalized only for display
     </p>
@@ -311,7 +315,7 @@
     />
   {:else if error_msg}
     <StatusMessage type="error" message={error_msg} />
-  {:else if trajectory && calculation_busy}
+  {:else if run && calculation_busy}
     <div class="analysis-status">
       <Spinner text={calculation_label} style="--spinner-margin: 0" />
     </div>

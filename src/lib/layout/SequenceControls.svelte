@@ -169,6 +169,7 @@
   }
   .nav-section {
     display: flex;
+    flex-shrink: 0;
     align-items: center;
     gap: 3pt;
   }
@@ -203,8 +204,8 @@
   }
   .slider-container {
     position: relative;
-    flex: 1;
-    min-width: var(--sequence-slider-min-width, 100px);
+    flex: 1 1 var(--sequence-slider-min-width, 100px);
+    min-width: 0;
     &:has(.step-labels) {
       inset-block-start: -4px;
     }
@@ -218,6 +219,7 @@
     position: absolute;
     top: 50%;
     inset-inline: 0;
+    overflow: hidden;
   }
   .step-tick {
     position: absolute;
@@ -241,6 +243,7 @@
   }
   .fps-section {
     display: flex;
+    flex-shrink: 0;
     align-items: center;
     gap: 5pt;
     margin-inline: 6pt;

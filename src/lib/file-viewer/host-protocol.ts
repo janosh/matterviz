@@ -2,7 +2,11 @@
 // host embeds it (the VS Code extension, or Hive's Tauri backend impersonating it).
 import type { PartialSettings } from '$lib/settings'
 import type { ThemeName } from '$lib/theme'
-import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory'
+import type {
+  TrajectoryFrame,
+  TrajectoryMetadata,
+  TrajectoryRunSummary,
+} from '$lib/trajectory'
 
 export interface FileData {
   filename: string
@@ -60,8 +64,8 @@ export type HostToWebviewMessage =
   | {
       command: `large_file_response`
       request_id: string
-      // The host keeps the frame loader; the webview streams frames with request_frame
-      parsed_trajectory?: Omit<TrajectoryType, `frame_loader`>
+      // The host keeps the run; the webview streams frames with request_frame.
+      run_summary?: TrajectoryRunSummary
       error?: string
     }
   | {
@@ -70,4 +74,11 @@ export type HostToWebviewMessage =
       frame_index?: number
       frame?: TrajectoryFrame | null
       error?: string
+    }
+  // Progressive per-frame plot rows of a host-served run, batched after large_file_response
+  | {
+      command: `plot_metadata_stream`
+      file_path: string
+      rows: TrajectoryMetadata[]
+      complete: boolean
     }

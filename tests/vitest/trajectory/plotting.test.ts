@@ -1,13 +1,12 @@
 import type { DataSeries } from '$lib/plot'
 import { create_legend_visibility } from '$lib/plot/core/utils/series-visibility'
-import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory'
+import type { TrajectoryMetadata } from '$lib/trajectory'
 import {
   available_x_quantities,
   build_x_map,
   generate_axis_labels,
   generate_axis_scale_types,
   generate_plot_series,
-  generate_streaming_plot_series,
   get_frame_step_samples,
   get_frame_time_step,
   prepare_trajectory_scatter_series,
@@ -15,7 +14,6 @@ import {
 } from '$lib/trajectory/plotting'
 import type { PlotSeriesOptions } from '$lib/trajectory/plotting'
 import { describe, expect, it } from 'vitest'
-import { make_trajectory_frame } from '../setup'
 
 const DEFAULT_PROPERTY_CONFIG = {
   energy: { label: `Energy`, unit: `eV` },
@@ -31,19 +29,12 @@ const COMMON_TRAJECTORIES = {
   ],
 }
 
-const create_trajectory = (property_frames: Record<string, number>[]): TrajectoryType => ({
-  frames: property_frames.map((props, step) => make_trajectory_frame(step, 1, props)),
-})
-
-function test_extractor(frame: TrajectoryFrame): Record<string, number> {
-  const data: Record<string, number> = { Step: frame.step }
-  if (frame.metadata) {
-    for (const [key, value] of Object.entries(frame.metadata)) {
-      if (typeof value === `number`) data[key] = value
-    }
-  }
-  return data
-}
+const create_rows = (property_frames: Record<string, number>[]): TrajectoryMetadata[] =>
+  property_frames.map((properties, frame_number) => ({
+    frame_number,
+    step: frame_number,
+    properties,
+  }))
 
 type SeriesOptions = Partial<
   Pick<DataSeries, `visible` | `label` | `unit` | `y_axis` | `axis_group`>
@@ -73,25 +64,20 @@ const plot_options = (options: PlotSeriesOptions): PlotSeriesOptions => options
 describe(`generate_plot_series`, () => {
   it(`omits frame, step, and time coordinates from eager trajectory series`, () => {
     const series = generate_plot_series(
-      create_trajectory([
+      create_rows([
         { energy: -10, frame_id: 0, production_step: 0, [`Time (ps)`]: 0 },
         { energy: -11, frame_id: 1, production_step: 10, [`Time (ps)`]: 0.25 },
       ]),
-      test_extractor,
       { property_config: DEFAULT_PROPERTY_CONFIG },
     )
     expect(series.map(({ label }) => label)).toEqual([`Energy`])
   })
 
   it(`groups energy and force series by unit`, () => {
-    const series = generate_plot_series(
-      create_trajectory(COMMON_TRAJECTORIES.multi_property),
-      test_extractor,
-      {
-        property_config: DEFAULT_PROPERTY_CONFIG,
-        default_visible_properties: new Set([`energy`, `force_max`]),
-      },
-    )
+    const series = generate_plot_series(create_rows(COMMON_TRAJECTORIES.multi_property), {
+      property_config: DEFAULT_PROPERTY_CONFIG,
+      default_visible_properties: new Set([`energy`, `force_max`]),
+    })
     expect(series).toHaveLength(3)
     // Units belong on the axis label, not duplicated in the legend series text
     for (const srs of series) expect(srs.label).not.toMatch(/\([^)]+\)/)
@@ -179,7 +165,7 @@ describe(`generate_plot_series`, () => {
       },
     },
   ])(`$name`, ({ frames, options, expected }) => {
-    const series = generate_plot_series(create_trajectory(frames), test_extractor, options)
+    const series = generate_plot_series(create_rows(frames), options)
     expect(
       Object.fromEntries(
         series.map(({ label, visible, y_axis }) => [label, { visible, y_axis }]),
@@ -189,56 +175,16 @@ describe(`generate_plot_series`, () => {
 
   it(`keeps sparse property values aligned to their source frames`, () => {
     const series = generate_plot_series(
-      create_trajectory([
+      create_rows([
         { energy: -10, temperature: 300 },
         { energy: -11 },
         { energy: -12, temperature: 320 },
       ]),
-      test_extractor,
     )
     expect(find_series_by_label(series, `temperature`)).toMatchObject({
       x: [0, 2],
       y: [300, 320],
     })
-  })
-
-  it(`reuses extraction until extractor, trajectory, or frame identities change`, () => {
-    const trajectory = create_trajectory([{ energy: -10 }, { energy: -11 }])
-    let call_count = 0
-    const counting_extractor = (frame: TrajectoryFrame) => {
-      call_count++
-      return test_extractor(frame)
-    }
-
-    let series = generate_plot_series(trajectory, counting_extractor)
-    expect(find_series_by_label(series, `energy`)?.y).toEqual([-10, -11])
-    expect(call_count).toBe(trajectory.frames.length)
-
-    generate_plot_series(trajectory, counting_extractor)
-    expect(call_count).toBe(trajectory.frames.length)
-
-    trajectory.frames.push(make_trajectory_frame(2, 1, { energy: -12 }))
-    series = generate_plot_series(trajectory, counting_extractor)
-    expect(find_series_by_label(series, `energy`)?.y).toEqual([-10, -11, -12])
-    expect(call_count).toBe(5)
-
-    trajectory.frames[1] = make_trajectory_frame(1, 1, { energy: -20 })
-    series = generate_plot_series(trajectory, counting_extractor)
-    expect(find_series_by_label(series, `energy`)?.y).toEqual([-10, -20, -12])
-    expect(call_count).toBe(8)
-
-    const other_extractor = (frame: TrajectoryFrame) => {
-      call_count++
-      return test_extractor(frame)
-    }
-    generate_plot_series(trajectory, other_extractor)
-    expect(call_count).toBe(11)
-
-    generate_plot_series(
-      create_trajectory(COMMON_TRAJECTORIES.multi_property),
-      counting_extractor,
-    )
-    expect(call_count).toBe(11 + COMMON_TRAJECTORIES.multi_property.length)
   })
 
   it(`renders long eager data as a smoothed trend over a faint peak-preserving trace`, () => {
@@ -250,7 +196,7 @@ describe(`generate_plot_series`, () => {
             ? Infinity
             : Math.sin(frame_number),
     }))
-    const raw_series = generate_plot_series(create_trajectory(frames), test_extractor)
+    const raw_series = generate_plot_series(create_rows(frames))
     expect(raw_series[0].y).toHaveLength(24_001)
     expect(raw_series[0].line_underlays).toBeUndefined()
 
@@ -312,9 +258,7 @@ describe(`generate_plot_series`, () => {
     { name: `empty trajectory`, frames: [], expected_length: 0 },
     { name: `single frame`, frames: [{ energy: -10.0 }], expected_length: 0 },
   ])(`handles edge case: $name`, ({ frames, expected_length }) => {
-    expect(generate_plot_series(create_trajectory(frames), test_extractor)).toHaveLength(
-      expected_length,
-    )
+    expect(generate_plot_series(create_rows(frames))).toHaveLength(expected_length)
   })
 
   // oxfmt-ignore
@@ -337,8 +281,7 @@ describe(`generate_plot_series`, () => {
     },
   ])(`filters $name properties`, ({ key, values, should_include, match }) => {
     const series = generate_plot_series(
-      create_trajectory(values.map((value) => ({ [key]: value }))),
-      test_extractor,
+      create_rows(values.map((value) => ({ [key]: value }))),
     )
     expect(series).toHaveLength(should_include ? 1 : 0)
     if (match) expect(find_series_by_label(series, key)).toMatchObject(match)
@@ -359,7 +302,7 @@ describe(`should_hide_plot`, () => {
     { name: `Infinity values`, frames: multi, series: [create_series([1.0, Infinity, 1.0])], expected: false },
     { name: `all NaN values`, frames: multi, series: [create_series([NaN, NaN, NaN])], expected: true },
   ])(`$name → hide=$expected`, ({ frames, series, expected }) => {
-    expect(should_hide_plot(create_trajectory(frames), series)).toBe(expected)
+    expect(should_hide_plot(frames.length, series)).toBe(expected)
   })
 
   it.each([
@@ -367,7 +310,7 @@ describe(`should_hide_plot`, () => {
     { name: `zero tolerance`, tolerance: 0, expected: false },
   ])(`tolerance: $name → hide=$expected`, ({ tolerance, expected }) => {
     const series = [create_series([1.0, 1.0000001, 1.0])]
-    expect(should_hide_plot(create_trajectory(multi), series, tolerance)).toBe(expected)
+    expect(should_hide_plot(multi.length, series, tolerance)).toBe(expected)
   })
 })
 
@@ -460,23 +403,23 @@ describe(`streaming visibility characterization`, () => {
       }))
       .toSorted((left, right) => left.label?.localeCompare(right.label ?? ``) ?? -1)
 
-  it(`keeps eager and streaming axis assignment in parity for matching visibility inputs`, () => {
+  it(`keeps axis assignment stable for matching visibility inputs`, () => {
     const default_visible_properties = new Set(Object.keys(property_config))
-    const eager = generate_plot_series(create_trajectory(property_frames), test_extractor, {
+    const from_frames = generate_plot_series(create_rows(property_frames), {
       property_config,
       default_visible_properties,
     })
-    const streaming = generate_streaming_plot_series(plot_metadata, {
+    const from_metadata = generate_plot_series(plot_metadata, {
       property_config,
       default_visible_properties,
     })
-    expect(assignments(streaming)).toEqual(assignments(eager))
+    expect(assignments(from_metadata)).toEqual(assignments(from_frames))
   })
 
   // Streamed series follow the same rule as eager ones: only requested unit groups show, no
   // "first two series are always visible" special case that put volume next to energy
   it(`shows only the requested unit groups`, () => {
-    const series = generate_streaming_plot_series(plot_metadata, {
+    const series = generate_plot_series(plot_metadata, {
       property_config,
       default_visible_properties: new Set([`energy`]),
     })
@@ -505,7 +448,7 @@ describe(`streaming visibility characterization`, () => {
       },
     }))
 
-    const series = generate_streaming_plot_series(coordinate_metadata, {
+    const series = generate_plot_series(coordinate_metadata, {
       property_config,
     })
     expect(
@@ -527,7 +470,7 @@ describe(`streaming visibility characterization`, () => {
         },
       }))
 
-      const raw_series = generate_streaming_plot_series(energy_metadata, {
+      const raw_series = generate_plot_series(energy_metadata, {
         property_config,
       })
       const [smoothed] = prepare_trajectory_scatter_series(raw_series, 64)
@@ -560,7 +503,7 @@ describe(`SCF convergence series axis grouping and log scale`, () => {
   ]
 
   it(`puts scf_energy_delta on its own log-scaled axis next to linear energy`, () => {
-    const series = generate_plot_series(create_trajectory(scf_frames), test_extractor)
+    const series = generate_plot_series(create_rows(scf_frames))
 
     const energy_series = series.find((srs) => srs.label === `Energy`)
     const delta_series = series.find((srs) => srs.label?.includes(`ΔE`))
@@ -581,7 +524,7 @@ describe(`SCF convergence series axis grouping and log scale`, () => {
       { energy: -20.5, force_max: 0.6, scf_energy_delta: 1e-3 },
       { energy: -20.7, force_max: 0.1, scf_energy_delta: 1e-6 },
     ]
-    const series = generate_plot_series(create_trajectory(relax_frames), test_extractor)
+    const series = generate_plot_series(create_rows(relax_frames))
 
     expect(series.find((srs) => srs.label === `Energy`)?.visible).toBe(true)
     expect(series.find((srs) => srs.label?.includes(`F`))?.visible).toBe(true)
@@ -593,11 +536,12 @@ describe(`SCF convergence series axis grouping and log scale`, () => {
 // A LAMMPS dump written every 500 steps records steps 0, 500, 1000 …, so plotting against
 // the frame index while labelling the axis "Step" misstates the x axis by a factor of 500.
 describe(`x axis quantity`, () => {
-  const strided_trajectory = (): TrajectoryType => ({
-    frames: [0, 500, 1000, 1500].map((step, frame_idx) =>
-      make_trajectory_frame(step, 1, { energy: -10 - frame_idx }),
-    ),
-  })
+  const strided_rows = (): TrajectoryMetadata[] =>
+    [0, 500, 1000, 1500].map((step, frame_number) => ({
+      frame_number,
+      step,
+      properties: { energy: -10 - frame_number },
+    }))
 
   // oxfmt-ignore
   it.each([
@@ -617,7 +561,7 @@ describe(`x axis quantity`, () => {
   )
 
   it(`plots against frame index by default`, () => {
-    const series = generate_plot_series(strided_trajectory(), test_extractor)
+    const series = generate_plot_series(strided_rows())
     expect(find_series_by_label(series, `energy`)?.x).toEqual([0, 1, 2, 3])
   })
 
@@ -631,13 +575,13 @@ describe(`x axis quantity`, () => {
       unit: `fs`,
     },
   ])(`plots $quantity on the x axis`, ({ quantity, expected_x, label, unit }) => {
-    const trajectory = strided_trajectory()
-    const samples = get_frame_step_samples(trajectory)
+    const rows = strided_rows()
+    const samples = get_frame_step_samples(rows)
     const x_map = build_x_map(samples, quantity, { time_step: 2, time_unit: `fs` })
 
     expect(x_map.label).toBe(label)
     expect(x_map.unit).toBe(unit)
-    const series = generate_plot_series(trajectory, test_extractor, { x_map })
+    const series = generate_plot_series(rows, { x_map })
     expect(find_series_by_label(series, `energy`)?.x).toEqual(expected_x)
   })
 
@@ -654,7 +598,7 @@ describe(`x axis quantity`, () => {
   it.each([`frame`, `step`, `time`] as const)(
     `round-trips %s x values to frames`,
     (quantity) => {
-      const samples = get_frame_step_samples(strided_trajectory())
+      const samples = get_frame_step_samples(strided_rows())
       const x_map = build_x_map(samples, quantity, { time_step: 2, time_unit: `fs` })
 
       for (const frame_idx of [0, 1, 2, 3]) {
@@ -687,10 +631,9 @@ describe(`x axis quantity`, () => {
       step: frame_number * 100,
       properties: { energy: -10 - frame_number },
     }))
-    const trajectory: TrajectoryType = { frames: [], plot_metadata }
-    const x_map = build_x_map(get_frame_step_samples(trajectory), `step`, {})
+    const x_map = build_x_map(get_frame_step_samples(plot_metadata), `step`, {})
 
-    const series = generate_streaming_plot_series(plot_metadata, { x_map })
+    const series = generate_plot_series(plot_metadata, { x_map })
     expect(find_series_by_label(series, `energy`)?.x).toEqual([0, 1000, 2000])
   })
 

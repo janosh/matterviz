@@ -3,7 +3,7 @@ import {
   TrajectorySpectrumPlot,
   type TrajectorySpectroscopyResult,
 } from '$lib/spectral'
-import type { TrajectoryType } from '$lib/trajectory'
+import { trajectory_from_frames } from '$lib/trajectory'
 import { flushSync, mount, tick, unmount, type Component } from 'svelte'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 
@@ -234,8 +234,8 @@ describe(`TrajectorySpectrumPlot`, () => {
 })
 
 it(`pane discovers frame-metadata response signals and treats a non-periodic cell as gas`, async () => {
-  const trajectory: TrajectoryType = {
-    frames: Array.from({ length: 4 }, (_unused, frame_idx) => ({
+  const run = trajectory_from_frames(
+    Array.from({ length: 4 }, (_unused, frame_idx) => ({
       step: frame_idx,
       structure: {
         sites: [
@@ -273,9 +273,9 @@ it(`pane discovers frame-metadata response signals and treats a non-periodic cel
         ],
       },
     })),
-  }
+  )
   const pane_props = $state({
-    trajectory,
+    run,
     pane_open: true,
     result: undefined as TrajectorySpectroscopyResult | undefined,
   })
@@ -308,7 +308,7 @@ it(`pane discovers frame-metadata response signals and treats a non-periodic cel
   await tick()
 
   const inline_props = $state({
-    trajectory,
+    run,
     pane_open: true,
     inline: true,
     result: undefined as TrajectorySpectroscopyResult | undefined,
@@ -332,7 +332,7 @@ it(`pane discovers frame-metadata response signals and treats a non-periodic cel
   expect(settings_pane?.classList).toContain(`pane-open`)
   const settings_text = settings_pane?.textContent ?? ``
   expect(settings_text.indexOf(`Spectroscopy analysis settings`)).toBeLessThan(
-    settings_text.indexOf(`Markers`),
+    settings_text.indexOf(`Display`),
   )
   expect(labeled_select(inline_target, `Preprocessing`).value).toBe(`body_fixed`)
   const details_toggle = inline_target.querySelector<HTMLButtonElement>(

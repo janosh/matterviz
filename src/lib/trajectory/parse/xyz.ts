@@ -6,13 +6,12 @@ import type { Pbc } from '$lib/structure/pbc'
 import {
   calc_force_stats,
   create_trajectory_frame,
-  derive_time_step,
   iter_xyz_frames,
   parse_float_token,
   type XyzFrameSpec,
 } from '$lib/trajectory/helpers'
-import { get_traj_parse_warnings, traj_warn } from './diagnostics'
-import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory/index'
+import type { TrajectoryFrame } from '$lib/trajectory/index'
+import type { ParsedTrajectory, WarningCollector } from './shared'
 
 export type ExtxyzColumn = { offset: number; ncols: number; type: string }
 
@@ -202,6 +201,7 @@ function parse_xyz_atom_lines(
   num_atoms: number,
   comment: string,
   frame_label: string,
+  warn: WarningCollector[`warn`],
 ): {
   elements: ElementSymbol[]
   positions: number[][]
@@ -241,7 +241,7 @@ function parse_xyz_atom_lines(
     const element_symbol =
       coerce_elem_symbol(symbol) ?? coerce_elem_symbol(capitalize_symbol(symbol))
     if (!element_symbol) {
-      traj_warn(
+      warn(
         `Skipping XYZ atom with unknown element symbol "${symbol}" in ${frame_label} at line ${line_number}`,
       )
       continue
@@ -297,17 +297,15 @@ export function build_xyz_frame(
   lines: string[],
   frame: XyzFrameSpec,
   opts: { frame_label: string; default_step: number },
+  collector: WarningCollector,
 ): TrajectoryFrame {
   const { start, num_atoms, comment } = frame
   const { step, properties } = parse_xyz_comment_metadata(comment)
   const lattice_matrix = parse_extxyz_lattice(comment)
   const parsed_pbc = parse_extxyz_pbc(comment)
-  if (
-    parsed_pbc === undefined &&
-    /\bpbc\s*=/iu.test(comment) &&
-    !get_traj_parse_warnings().some((msg) => msg.includes(`Invalid EXTXYZ pbc`))
-  ) {
-    traj_warn(
+  if (parsed_pbc === undefined && /\bpbc\s*=/iu.test(comment)) {
+    collector.warn_once(
+      `invalid-pbc`,
       `Invalid EXTXYZ pbc (first seen in ${opts.frame_label}); defaulting to fully periodic [T, T, T]`,
     )
   }
@@ -318,6 +316,7 @@ export function build_xyz_frame(
     num_atoms,
     comment,
     opts.frame_label,
+    collector.warn,
   )
   const metadata: Record<string, unknown> = {
     ...properties,
@@ -334,6 +333,7 @@ export function build_xyz_frame(
     step ?? opts.default_step,
     metadata,
     site_properties,
+    collector.warn,
   )
 }
 
@@ -349,7 +349,10 @@ export const may_be_torn_xyz_tail = (
   frame_idx === frames.length - 1 &&
   frames[frame_idx].start + frames[frame_idx].num_atoms + 2 === lines.length
 
-export function parse_xyz_trajectory(content: string): TrajectoryType {
+export function parse_xyz_trajectory(
+  content: string,
+  collector: WarningCollector,
+): ParsedTrajectory {
   const lines = content.trim().split(/\r?\n/)
   const specs = Array.from(iter_xyz_frames(lines))
   const frames: TrajectoryFrame[] = []
@@ -357,33 +360,24 @@ export function parse_xyz_trajectory(content: string): TrajectoryType {
   for (const [frame_idx, spec] of specs.entries()) {
     try {
       frames.push(
-        build_xyz_frame(lines, spec, {
-          frame_label: `frame ${frame_idx} (line ${spec.start + 1})`,
-          default_step: frame_idx,
-        }),
+        build_xyz_frame(
+          lines,
+          spec,
+          {
+            frame_label: `frame ${frame_idx} (line ${spec.start + 1})`,
+            default_step: frame_idx,
+          },
+          collector,
+        ),
       )
     } catch (error) {
       if (!may_be_torn_xyz_tail(lines, specs, frame_idx)) throw error
-      traj_warn(
+      collector.warn(
         `Dropping truncated final XYZ frame ${frame_idx} (line ${spec.start + 1})`,
         error,
       )
     }
   }
   if (frames.length === 0) throw new Error(`No XYZ frames found`)
-
-  const time_step = derive_time_step(
-    frames.map(({ metadata }) => (typeof metadata?.time === `number` ? metadata.time : null)),
-    frames.map(({ step }) => step),
-  )
-
-  return {
-    frames,
-    ...(time_step === undefined ? {} : { time_step }),
-    metadata: {
-      source_format: `xyz_trajectory`,
-      frame_count: frames.length,
-      total_atoms: frames[0].structure.sites.length,
-    },
-  }
+  return { format: `xyz`, frames, metadata: {} }
 }

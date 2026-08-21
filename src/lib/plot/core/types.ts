@@ -699,6 +699,10 @@ export interface PlotControlsProps extends PlotConfig {
   controls_open?: boolean
   // Custom snippets for additional controls
   children?: Snippet<[ControlsState]>
+  // Rendered inside the Display row (points/lines toggles and similar)
+  display_children?: Snippet
+  display_extra_values?: Record<string, unknown>
+  on_display_extra_reset?: () => void
   post_children?: Snippet<[ControlsState]>
   // Auto ranges for reset functionality
   auto_x_range?: Vec2

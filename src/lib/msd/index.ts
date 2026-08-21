@@ -51,7 +51,7 @@ export interface MsdCurve {
 
 export interface MsdOptions {
   // Time per collected frame. Left at 1 the x axis is labelled in frames, because
-  // nothing in TrajectoryType records a timestep and frame spacing is not guaranteed uniform.
+  // a run may not record a timestep and frame spacing is not guaranteed uniform.
   dt?: number
   // Only used when dt is explicitly supplied (e.g. `ps`, `fs`)
   time_unit?: string
