@@ -195,7 +195,6 @@ const scatter_plot_drive: readonly DrivenProp[] = [
     `label_placement_config`,
     `point_tween`,
     `line_tween`,
-    `point_events`,
   ]),
 ]
 
@@ -237,9 +236,9 @@ const scene_pick_keys = [
   `show_site_labels`,
   `show_site_indices`,
 ] as const
-// All scene traits (deps for the reactive scene_props derived prop); auto_rotate and
-// show_gizmo are renamed/defaulted in get_scene_props rather than picked verbatim.
-const scene_prop_keys = [...scene_pick_keys, `auto_rotate`, `show_gizmo`] as const
+// All scene traits (deps for the reactive scene_props derived prop); auto_rotate and gizmo
+// are defaulted in get_scene_props rather than picked verbatim.
+const scene_prop_keys = [...scene_pick_keys, `auto_rotate`, `gizmo`] as const
 
 const lattice_prop_keys = [
   `cell_edge_opacity`,
@@ -265,7 +264,7 @@ const traj_structure_prop_keys = [
 const get_scene_props = (model: AnyModel) => ({
   ...pick_props(model, scene_pick_keys),
   auto_rotate: get_prop(model, `auto_rotate`) ?? DEFAULTS.structure.auto_rotate,
-  gizmo: get_prop(model, `show_gizmo`) ?? DEFAULTS.structure.gizmo,
+  gizmo: get_prop(model, `gizmo`) ?? DEFAULTS.structure.gizmo,
 })
 
 // Trajectory forwards a fixed config object to its embedded Structure view.
