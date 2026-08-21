@@ -111,6 +111,7 @@
     transition: background-color 0.15s ease;
   }
   .view-mode-dropdown > :global(.view-mode-option:is(:hover, :focus-visible)) {
+    color: var(--accent-color, #4a9eff);
     background: var(
       --view-mode-option-hover-bg,
       var(--menu-option-hover-bg, light-dark(#ececef, #3a3d45))

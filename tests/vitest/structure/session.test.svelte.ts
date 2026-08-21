@@ -317,6 +317,24 @@ describe(`edit-atoms`, () => {
 })
 
 describe(`edit-bonds`, () => {
+  it(`hands a structure's own bonds out through an unbound bonds prop on first load, so a delete edits them`, () => {
+    // the viewer page binds `bonds` but seeds nothing: the source bonds must still arrive,
+    // otherwise the first bond edit merges into an undefined base and nothing appears to happen
+    const source: StructureBond[] = [{ site_idx_1: 0, site_idx_2: 1, order: 1 }]
+    const structure = { ...crystal(), properties: { bonds: structuredClone(source) } }
+    const { host, session, destroy } = make_session({ measure_mode: `edit-bonds`, structure })
+    flushSync()
+    expect(host.bonds, `source bonds published on load`).toEqual(source)
+    session.push_bond_undo()
+    session.removed_bonds = [{ site_idx_1: 0, site_idx_2: 1, order: 1 }]
+    flushSync()
+    expect(host.bonds).toEqual([])
+    expect(session.undo_bond_edit()).toBe(true)
+    flushSync()
+    expect(host.bonds).toEqual(source)
+    destroy()
+  })
+
   it(`publishes merged bonds, undoes through snapshots and restores the source when edits end`, () => {
     const source: StructureBond[] = [{ site_idx_1: 0, site_idx_2: 1, order: 1 }]
     const { host, session, destroy } = make_session({
