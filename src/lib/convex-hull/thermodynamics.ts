@@ -1,8 +1,6 @@
-import {
-  count_atoms_in_composition,
-  element_symbols_in,
-  sort_by_electronegativity,
-} from '$lib/composition'
+import { sort_by_electronegativity } from '$lib/composition/format'
+import { element_symbols_in } from '$lib/composition/parse'
+import { count_atoms_in_composition } from '$lib/composition/reduce'
 import type { ElementSymbol } from '$lib/element'
 import * as math from '$lib/math'
 import { composition_to_barycentric_nd } from './barycentric-coords'

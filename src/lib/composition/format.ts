@@ -1,7 +1,9 @@
 import type { ElementSymbol } from '$lib/element'
-import { get_element_counts, type AnyStructure } from '$lib/structure'
 import type { CompositionType } from '$lib/composition'
-import { element_by_symbol, is_elem_symbol } from '$lib/element'
+import { element_by_symbol } from '$lib/element/data'
+import { is_elem_symbol } from '$lib/element/helpers'
+import type { AnyStructure } from '$lib/structure'
+import { get_element_counts } from '$lib/structure/density'
 import { format_num } from '$lib/labels'
 import { parse_composition } from './parse'
 

@@ -1,7 +1,7 @@
 // Gas phase thermodynamics for convex hull calculations
 // Enables atmosphere-controlled phase diagram analysis
 
-import { count_atoms_in_composition } from '$lib/composition'
+import { count_atoms_in_composition } from '$lib/composition/reduce'
 import type { Vec2 } from '$lib/math'
 import type {
   GasAnalysis,

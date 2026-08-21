@@ -36,6 +36,9 @@ export interface PhaseData {
   // Temperature-dependent free energies (replaces `energy` at selected T)
   temperatures?: number[] // in Kelvin, use integers for exact matching
   free_energies?: number[] // G(T) in eV, same length as temperatures
+  // A^3/atom; lets the ternary T-x diagram estimate G(T) with the Bartel 2018 SISSO
+  // descriptor when no free_energies are given (also read from structure.lattice.volume)
+  volume_per_atom?: number
 
   // Pymatgen-specific fields (optional)
   '@module'?: string

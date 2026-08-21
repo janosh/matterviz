@@ -9,6 +9,7 @@ export { default as PhaseDiagramExportPane } from './PhaseDiagramExportPane.svel
 export { default as PhaseDiagramTooltip } from './PhaseDiagramTooltip.svelte'
 export { parse_phase_diagram_svg } from './svg-to-diagram'
 export { default as TdbInfoPanel } from './TdbInfoPanel.svelte'
+export * from './ternary'
 export type * from './types'
 // Rendering internals (SVG path/label/gradient helpers, config merging, formula markup)
 // stay module-private; these are the pieces a custom tooltip or hover handler needs.

@@ -1,5 +1,6 @@
 import { type D3InterpolateName, get_d3_interpolator } from '$lib/colors'
-import { element_by_symbol, type ElementSymbol } from '$lib/element'
+import type { ElementSymbol } from '$lib/element'
+import { element_by_symbol } from '$lib/element/data'
 import { format_fractional, format_num } from '$lib/labels'
 import { array_extent } from '$lib/math'
 import { scaleSequential } from 'd3-scale'
