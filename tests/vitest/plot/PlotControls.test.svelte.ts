@@ -221,15 +221,21 @@ describe(`PlotControls`, () => {
     expect(pane?.classList.contains(`compact-settings`)).toBe(true)
   })
 
-  test(`packs related display and axis fields onto shared rows`, () => {
+  test(`packs related display and axis fields onto shared rows`, async () => {
     mount_controls({ auto_x_range: [0, 1], auto_y_range: [0, 1] })
-    const display_row = document.querySelector(`section.ctrl-line`)
-    expect(display_row?.querySelector(`[data-label="zero line"]`)).not.toBeNull()
-    expect(display_row?.querySelector(`[data-label="grid"]`)).not.toBeNull()
-    const range_row = document.querySelector(`section.axis-fields`)
-    expect(range_row?.querySelectorAll(`label`).length).toBeGreaterThanOrEqual(2)
+    // Poll for the rows instead of reading the DOM straight after mount: the pane's sections
+    // fill in once the mount's queued effects have flushed.
+    await vi.waitFor(() => {
+      const display_row = doc_query(`section.ctrl-line`)
+      expect(display_row.querySelector(`[data-label="zero line"]`)).not.toBeNull()
+      expect(display_row.querySelector(`[data-label="grid"]`)).not.toBeNull()
+      const range_row = doc_query(`section.axis-fields`)
+      expect(range_row.querySelectorAll(`label`).length).toBeGreaterThanOrEqual(2)
+    })
     expect(
-      document.querySelector(`[data-testid="scale-type-section"]`)?.classList.contains(`axis-fields`),
+      document
+        .querySelector(`[data-testid="scale-type-section"]`)
+        ?.classList.contains(`axis-fields`),
     ).toBe(true)
   })
 

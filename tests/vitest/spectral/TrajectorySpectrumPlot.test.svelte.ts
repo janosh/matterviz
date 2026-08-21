@@ -330,10 +330,17 @@ it(`pane discovers frame-metadata response signals and treats a non-periodic cel
   settings_toggle.click()
   await tick()
   expect(settings_pane?.classList).toContain(`pane-open`)
-  const settings_text = settings_pane?.textContent ?? ``
-  expect(settings_text.indexOf(`Spectroscopy analysis settings`)).toBeLessThan(
-    settings_text.indexOf(`Display`),
-  )
+  // Spectroscopy settings must sit above PlotControls' own Display section. Poll rather than
+  // read the pane text once: under load the section headings were observed to fill in after
+  // the tick that opened the pane.
+  await vi.waitFor(() => {
+    const settings_text = settings_pane?.textContent ?? ``
+    const settings_idx = settings_text.indexOf(`Spectroscopy analysis settings`)
+    const display_idx = settings_text.indexOf(`Display`)
+    expect(settings_idx).toBeGreaterThanOrEqual(0)
+    expect(display_idx).toBeGreaterThanOrEqual(0)
+    expect(settings_idx).toBeLessThan(display_idx)
+  })
   expect(labeled_select(inline_target, `Preprocessing`).value).toBe(`body_fixed`)
   const details_toggle = inline_target.querySelector<HTMLButtonElement>(
     `.spectroscopy-details-toggle`,

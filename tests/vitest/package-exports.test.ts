@@ -95,9 +95,12 @@ describe(`package.json exports`, () => {
     expect(existsSync(join(repo_root, `dist/file-viewer/parse-worker.js`))).toBe(true)
   })
 
+  // I/O-bound, not logic: dynamically importing the svelte-package output in dist/ (the
+  // structure export pulls in three.js) shares disk and CPU with every other worker under a
+  // full-suite run, where 15 s was not always enough.
   test(
     `built structure and element entry points retain strict public exports`,
-    { timeout: 15_000 },
+    { timeout: 60_000 },
     async () => {
       const structure_export = await import(`../../dist/structure/export.js`)
       expect(pkg.exports[`./structure/export`]).toEqual({

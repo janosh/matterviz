@@ -263,7 +263,14 @@ describe(`Bands component`, () => {
         controls_state,
       ),
     )
-    const path_section = document.querySelector(`#bands-path-mode`)?.closest(`section`)
+    // The controls pane lives in CartesianFrame's measured-only branch, which renders once the
+    // bind:clientWidth effect has flushed; poll for it rather than trusting a single tick.
+    const path_select = await vi.waitFor(() => {
+      const select = document.querySelector(`#bands-path-mode`)
+      expect(select).not.toBeNull()
+      return select
+    })
+    const path_section = path_select?.closest(`section`)
     const units_section = document.querySelector(`#bands-units`)?.closest(`section`)
     expect(path_section).not.toBeNull()
     expect(units_section).toBe(path_section)
