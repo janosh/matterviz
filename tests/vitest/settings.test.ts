@@ -26,6 +26,9 @@ import { SvelteSet } from 'svelte/reactivity'
 import { describe, expect, test } from 'vitest'
 
 const settings_module = join(`src`, `lib`, `settings.ts`)
+// Schema/DEFAULTS leaf: anything that is not a nested group object
+const is_leaf = (value: unknown) =>
+  value === null || typeof value !== `object` || Array.isArray(value)
 
 describe(`Settings`, () => {
   test.each([
@@ -113,7 +116,7 @@ describe(`Settings`, () => {
     test(`every setting is read somewhere outside settings.ts`, () => {
       const leaf_paths: string[] = []
       const walk = (node: unknown, path: string[]): void => {
-        if (!node || typeof node !== `object` || Array.isArray(node)) return
+        if (is_leaf(node)) return
         const record = node as Record<string, unknown>
         if (`value` in record) {
           if (`enum` in record) {
@@ -156,8 +159,6 @@ describe(`Settings`, () => {
   // mount: Threlte scenes and components with required props can't mount propless in
   // happy-dom, and it covers every prop either way.
   describe(`component prop defaults match the schema`, () => {
-    const is_leaf = (value: unknown) =>
-      value === null || typeof value !== `object` || Array.isArray(value)
     const at_path = (root: unknown, path: string[]): unknown =>
       path.reduce<unknown>(
         (node, key) => (node as Record<string, unknown> | undefined)?.[key],

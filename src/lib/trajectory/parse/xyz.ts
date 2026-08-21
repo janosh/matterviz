@@ -6,9 +6,8 @@ import type { Pbc } from '$lib/structure/pbc'
 import {
   calc_force_stats,
   create_trajectory_frame,
-  index_xyz_frames,
+  iter_xyz_frames,
   parse_float_token,
-  type XyzFrameIndex,
   type XyzFrameSpec,
 } from '$lib/trajectory/helpers'
 import type { TrajectoryFrame } from '$lib/trajectory/index'
@@ -338,31 +337,37 @@ export function build_xyz_frame(
   )
 }
 
-// A writer still appending leaves one of two tails: a frame whose atom block runs past the end
-// of the file (index_xyz_frames reports it as `torn`) or a final frame whose last atom line,
-// the file's last line, is half-written. Either is removed from the index with a warning. Any
-// other defect in a complete final frame is corruption and throws like in every other frame.
-export function drop_torn_xyz_tail(
-  lines: string[],
-  { specs, torn }: XyzFrameIndex,
-  warn: WarnFn,
-): void {
-  const drop = (frame_idx: number, spec: XyzFrameSpec, reason: string) =>
-    warn(`Dropping truncated final XYZ frame ${frame_idx} (line ${spec.start + 1}): ${reason}`)
+// Every complete frame of a split XYZ file. A writer still appending leaves one of two tails:
+// a frame whose atom block runs past the end of the file (iter_xyz_frames returns its header
+// instead of yielding it) or a final frame whose last atom line, the file's last line, is
+// half-written. Either is dropped with a warning. Any other defect in a complete final frame
+// is corruption and throws like in every other frame.
+export function index_xyz_frames(lines: string[], warn: WarnFn): XyzFrameSpec[] {
+  const specs: XyzFrameSpec[] = []
+  const frames = iter_xyz_frames(lines)
+  let next = frames.next()
+  for (; !next.done; next = frames.next()) specs.push(next.value)
+  const torn = next.value
+  const drop = (spec: XyzFrameSpec, reason: string) =>
+    warn(
+      `Dropping truncated final XYZ frame ${specs.length} (line ${spec.start + 1}): ${reason}`,
+    )
   if (torn) {
     const atom_lines = Math.max(0, lines.length - torn.start - 2)
-    return drop(specs.length, torn, `${atom_lines} of ${torn.num_atoms} atom lines`)
+    drop(torn, `${atom_lines} of ${torn.num_atoms} atom lines`)
+    return specs
   }
   const last = specs.at(-1)
-  if (!last || last.start + last.num_atoms + 2 !== lines.length) return
+  if (!last || last.start + last.num_atoms + 2 !== lines.length) return specs
   const { pos_col, min_cols } = parse_extxyz_columns(last.comment)
   const parts = lines[lines.length - 1].trim().split(/\s+/)
   const complete =
     parts.length >= min_cols &&
     [0, 1, 2].every((axis) => Number.isFinite(parse_float_token(parts[pos_col + axis])))
-  if (complete) return
+  if (complete) return specs
   specs.pop()
-  drop(specs.length, last, `partial atom line ${lines.length} "${lines[lines.length - 1]}"`)
+  drop(last, `partial atom line ${lines.length} "${lines[lines.length - 1]}"`)
+  return specs
 }
 
 export function parse_xyz_trajectory(
@@ -370,9 +375,7 @@ export function parse_xyz_trajectory(
   collector: WarningCollector,
 ): ParsedTrajectory {
   const lines = content.trim().split(/\r?\n/)
-  const index = index_xyz_frames(lines)
-  drop_torn_xyz_tail(lines, index, collector.warn)
-  const frames = index.specs.map((spec, frame_idx) =>
+  const frames = index_xyz_frames(lines, collector.warn).map((spec, frame_idx) =>
     build_xyz_frame(
       lines,
       spec,

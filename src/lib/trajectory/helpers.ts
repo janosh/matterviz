@@ -276,17 +276,6 @@ export function* iter_xyz_frames(
   return torn
 }
 
-export type XyzFrameIndex = { specs: XyzFrameSpec[]; torn: XyzFrameSpec | null }
-
-// Every complete frame plus the header of a final frame cut short by the end of the input
-export function index_xyz_frames(lines: string[]): XyzFrameIndex {
-  const specs: XyzFrameSpec[] = []
-  const frames = iter_xyz_frames(lines)
-  let next = frames.next()
-  for (; !next.done; next = frames.next()) specs.push(next.value)
-  return { specs, torn: next.value }
-}
-
 // Count XYZ frames, stopping early once `limit` frames are found (format sniffing only
 // needs to know whether there are at least two).
 export function count_xyz_frames(data: string, limit = Number.POSITIVE_INFINITY): number {

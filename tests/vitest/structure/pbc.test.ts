@@ -3,6 +3,7 @@ import * as math from '$lib/math'
 import { create_frac_to_cart, euclidean_dist } from '$lib/math'
 import type { Crystal } from '$lib/structure'
 import { find_image_atoms, get_pbc_image_sites, wrap_to_unit_cell } from '$lib/structure'
+import { pack_cell_key } from '$lib/structure/pbc'
 import { get_majority_element } from '$lib/structure/bonding'
 import { parse_structure_file } from '$lib/structure/parse'
 import { open_trajectory } from '$lib/trajectory/open'
@@ -715,4 +716,21 @@ test(`find_image_atoms skips image generation along non-periodic axes (slab)`, (
   // Fully non-periodic: no images at all
   const molecule_like = make_crystal(5, [[`Na`, [0, 0, 0]]], { pbc: [false, false, false] })
   expect(find_image_atoms(molecule_like)).toHaveLength(0)
+})
+
+test(`pack_cell_key is injective in a dense block and safe-integer at ±512 range corners`, () => {
+  const keys = new Set<number>()
+  for (let x = -5; x <= 5; x++) {
+    for (let y = -5; y <= 5; y++) {
+      for (let z = -5; z <= 5; z++) keys.add(pack_cell_key(x, y, z))
+    }
+  }
+  expect(keys.size).toBe(11 ** 3)
+  for (const [x, y, z] of [
+    [-512, -512, -512],
+    [511, 511, 511],
+    [-512, 511, -512],
+  ]) {
+    expect(Number.isSafeInteger(pack_cell_key(x, y, z))).toBe(true)
+  }
 })

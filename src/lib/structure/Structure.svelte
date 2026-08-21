@@ -88,6 +88,9 @@
   // Each multi-view pane needs room for orbit controls, labels and atom picking
   const MULTI_VIEW_COLUMNS = 2
   const MULTI_VIEW_MIN_PANE = { width: 300, height: 200, gap: 2 }
+  const MULTI_VIEW_MIN_WIDTH =
+    MULTI_VIEW_COLUMNS * MULTI_VIEW_MIN_PANE.width +
+    (MULTI_VIEW_COLUMNS - 1) * MULTI_VIEW_MIN_PANE.gap
   const RESET_TEXT = `Reset view (r, or double-click)`
   const STRUCTURE_LAYOUTS = {
     single: { mode: `single`, icon: BrillouinZone, label: `3D single view` },
@@ -264,12 +267,14 @@
   }
 
   // === session: display pipeline, selection, editing, cameras ===
+  // Coordinate-only updates (trajectory frames) share one key; otherwise every structure is new
+  let series_key = $derived(structure_series_key ?? structure)
   const session = new StructureSession({
     structure: () => structure,
     set_structure: (value) => (structure = value),
     bonds: () => bonds,
     set_bonds: (value) => (bonds = value),
-    series_key: () => structure_series_key ?? structure,
+    series_key: () => series_key,
     selected_sites: () => selected_sites,
     set_selected_sites: (value) => (selected_sites = value),
     measured_sites: () => measured_sites,
@@ -297,15 +302,7 @@
   const loader = create_structure_loader({
     document: () => ({ structure, volumetric_data, isosurface_settings, active_volume_idx }),
     set_document: (document) => {
-      structure = document.structure
-      if (document.volumetric_data !== volumetric_data)
-        volumetric_data = document.volumetric_data
-      if (document.isosurface_settings !== isosurface_settings) {
-        isosurface_settings = document.isosurface_settings
-      }
-      if (document.active_volume_idx !== active_volume_idx) {
-        active_volume_idx = document.active_volume_idx
-      }
+      ;({ structure, volumetric_data, isosurface_settings, active_volume_idx } = document)
     },
     set_loading: (value) => (loading = value),
     set_error: (message) => (error_msg = message),
@@ -419,18 +416,12 @@
 
   // === layout ===
   let controls_config = $derived(normalize_show_controls(show_controls))
-  let multi_view_required_width = $derived(
-    MULTI_VIEW_COLUMNS * MULTI_VIEW_MIN_PANE.width +
-      (MULTI_VIEW_COLUMNS - 1) * MULTI_VIEW_MIN_PANE.gap,
-  )
-  let multi_view_required_height = $derived.by(() => {
+  let multi_view_min_height = $derived.by(() => {
     const rows = Math.ceil(views.length / MULTI_VIEW_COLUMNS)
     return rows * MULTI_VIEW_MIN_PANE.height + Math.max(0, rows - 1) * MULTI_VIEW_MIN_PANE.gap
   })
   let multi_view_available = $derived(
-    views.length > 1 &&
-      width >= multi_view_required_width &&
-      height >= multi_view_required_height,
+    views.length > 1 && width >= MULTI_VIEW_MIN_WIDTH && height >= multi_view_min_height,
   )
   // The caller's preference survives while a small viewer temporarily collapses the grid
   let is_multi_view_active = $derived(
@@ -457,9 +448,7 @@
     views.length < 2
       ? `Configure at least two views to enable multi-view`
       : !multi_view_available
-        ? `Requires at least ${Math.ceil(multi_view_required_width)}×${Math.ceil(
-            multi_view_required_height,
-          )} px. Enlarge the viewer or use fullscreen.`
+        ? `Requires at least ${MULTI_VIEW_MIN_WIDTH}×${multi_view_min_height} px. Enlarge the viewer or use fullscreen.`
         : undefined,
   )
   let hovered = $state(false)
@@ -515,9 +504,17 @@
       controls_config.visible(`reset-camera`),
   )
   // Inputs shared by every StructureViewport; camera bindings and chrome differ per pane
+  const pane_props = (pane_idx: number) => ({
+    in_grid: is_multi_view_active,
+    active: is_multi_view_active && session.active_pane_idx === pane_idx,
+    interactive: !is_multi_view_active || session.active_pane_idx === pane_idx,
+    onactivate: () => (session.active_pane_idx = pane_idx),
+    reset_token: session.reset_token,
+    report_moved: (moved: boolean) => session.report_pane_moved(pane_idx, moved),
+  })
   let shared_viewport_props = $derived({
     session,
-    view_reset_key: structure_series_key ?? structure,
+    view_reset_key: series_key,
     reference_structure,
     scene_props: {
       ...scene_props,
@@ -550,12 +547,11 @@
   // === camera context ===
   // A new series (not coordinate-only frames) re-frames the camera unless the caller supplied
   // an explicit pose; supercell/image/cell changes re-center the orbit target on the new cell.
-  let previous_series_key: unknown = untrack(() => structure_series_key ?? structure)
+  let previous_series_key: unknown = untrack(() => series_key)
   let previous_transform = untrack(
     () => `${supercell_scaling}\0${show_image_atoms}\0${cell_type}`,
   )
   $effect.pre(() => {
-    const series_key = structure_series_key ?? structure
     const transform = `${supercell_scaling}\0${show_image_atoms}\0${cell_type}`
     const series_changed = series_key !== previous_series_key
     const transform_changed = transform !== previous_transform
@@ -703,14 +699,13 @@
           .padStart(2, `0`)}`
       : undefined,
   )
-  let multi_view_gap_px = MULTI_VIEW_MIN_PANE.gap
 </script>
 
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <div
   class:active={active_pane !== null}
   class:multi-view={is_multi_view_active}
-  style:--struct-viewport-gap="{multi_view_gap_px}px"
+  style:--struct-viewport-gap="{MULTI_VIEW_MIN_PANE.gap}px"
   style:--struct-bg-override={background_override}
   role="application"
   tabindex="0"
@@ -792,14 +787,7 @@
       {/if}
 
       {#if display_mode === `structure` && enable_measure_mode && controls_config.visible(`measure-mode`)}
-        <StructureEditToolbar
-          {session}
-          bind:measure_mode
-          bind:bond_edit_mode
-          bind:bond_edit_order
-          selected_count={selected_sites.length}
-          measured_count={measured_sites.length}
-        />
+        <StructureEditToolbar {session} />
       {/if}
 
       {#if display_mode === `structure` && enable_info_pane && session.normalized_structure && controls_config.visible(`info-pane`)}
@@ -907,12 +895,7 @@
       camera_position/target persist into scene_props, and it emits on_camera_move/reset. -->
     {#snippet primary_viewport(view: StructureView)}
       <StructureViewport
-        in_grid={is_multi_view_active}
-        active={is_multi_view_active && session.active_pane_idx === 0}
-        interactive={!is_multi_view_active || session.active_pane_idx === 0}
-        onactivate={() => (session.active_pane_idx = 0)}
-        reset_token={session.reset_token}
-        report_moved={(moved) => session.report_pane_moved(0, moved)}
+        {...pane_props(0)}
         {on_camera_move}
         {on_camera_reset}
         {...shared_viewport_props}
@@ -932,13 +915,8 @@
 
     {#snippet extra_viewport(view: StructureView, pane_idx: number)}
       <StructureViewport
-        in_grid
+        {...pane_props(pane_idx)}
         label={view.label}
-        active={session.active_pane_idx === pane_idx}
-        interactive={session.active_pane_idx === pane_idx}
-        onactivate={() => (session.active_pane_idx = pane_idx)}
-        reset_token={session.reset_token}
-        report_moved={(moved) => session.report_pane_moved(pane_idx, moved)}
         {...shared_viewport_props}
         camera_direction={view.direction}
         camera_projection={view.projection ?? scene_props.camera_projection}

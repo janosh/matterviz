@@ -2,12 +2,7 @@
 import { element_by_symbol } from '$lib/element/data'
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
-import {
-  get_majority_element,
-  has_framework_potential,
-  is_spectator_center,
-  pack_cell_key,
-} from './bonding'
+import { get_majority_element, has_framework_potential, is_spectator_center } from './bonding'
 import type { AnyStructure, Site } from './index'
 
 export type Pbc = readonly [boolean, boolean, boolean]
@@ -22,6 +17,13 @@ const BOND_SLACK = 0.7 // Å
 // Below this separation two sites are overlapping copies, not a bond (matches
 // the min_bond_dist default in bonding.ts)
 const MIN_BOND_DIST = 0.4 // Å
+
+// Pack quantized cell coordinates into one integer key (exact for cell coords in
+// [-512, 511], i.e. structures up to ~1000 cells per axis - far beyond any real case).
+// Integer Map keys avoid per-lookup string building in the phase-2 completion grid below.
+const CELL_OFFSET = 512
+export const pack_cell_key = (x: number, y: number, z: number): number =>
+  (x + CELL_OFFSET) * 1048576 + (y + CELL_OFFSET) * 1024 + (z + CELL_OFFSET)
 
 // Wrap a single fractional coordinate to [0, 1), clamping near-1 values to 0 and rounding
 // to 15 digits to suppress floating-point noise.

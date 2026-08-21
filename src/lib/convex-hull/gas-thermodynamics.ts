@@ -86,10 +86,8 @@ function interpolate_ts(values: number[], T: number): number {
   return values[idx] + fraction * (values[idx + 1] - values[idx])
 }
 
-// Default Provider Implementation
-
-// Create the default gas thermodynamics provider using built-in data
-const create_default_gas_provider = (): GasThermodynamicsProvider => ({
+// Default provider backed by the built-in tables above. Stateless, so one shared instance.
+const DEFAULT_GAS_PROVIDER: GasThermodynamicsProvider = {
   get_standard_chemical_potential(gas: GasSpecies, T: number): number {
     // μ°(T) = H_f - T*S
     // For elemental gases (O2, N2, H2, F2), H_f = 0
@@ -105,16 +103,9 @@ const create_default_gas_provider = (): GasThermodynamicsProvider => ({
   get_temperature_range(): Vec2 {
     return [0, 2000]
   },
-})
-
-// Singleton default provider
-let default_provider: GasThermodynamicsProvider | null = null
-
-// Get the default gas thermodynamics provider (lazy initialization)
-export function get_default_gas_provider(): GasThermodynamicsProvider {
-  default_provider ??= create_default_gas_provider()
-  return default_provider
 }
+
+export const get_default_gas_provider = (): GasThermodynamicsProvider => DEFAULT_GAS_PROVIDER
 
 // Gas Chemical Potential Calculations
 

@@ -333,6 +333,36 @@ describe(`edit-bonds`, () => {
     flushSync()
     expect(host.bonds).toEqual(source)
     expect(session.bond_history.redo_stack).toHaveLength(1)
+    // Redo after the edit layer forgot its base must recapture the (now published) source
+    expect(session.redo_bond_edit()).toBe(true)
+    flushSync()
+    expect(host.bonds).toEqual([])
+    expect(session.undo_bond_edit()).toBe(true)
+    flushSync()
+    expect(host.bonds).toEqual(source)
+    destroy()
+  })
+
+  it(`a caller swapping the source bonds after an undo clears the redo history too`, () => {
+    // undo leaves has_bond_edits false and the undo stack empty, with the undone edit on the
+    // redo stack; redoing it onto a different source set would corrupt the new bonds
+    const source: StructureBond[] = [{ site_idx_1: 0, site_idx_2: 1, order: 1 }]
+    const { host, session, destroy } = make_session({
+      measure_mode: `edit-bonds`,
+      bonds: structuredClone(source),
+    })
+    session.push_bond_undo()
+    session.removed_bonds = [{ site_idx_1: 0, site_idx_2: 1, order: 1 }]
+    flushSync()
+    expect(host.bonds).toEqual([])
+    expect(session.undo_bond_edit()).toBe(true)
+    flushSync()
+    expect(session.bond_history.redo_stack).toHaveLength(1)
+    host.bonds = [{ site_idx_1: 0, site_idx_2: 1, order: 2 }]
+    flushSync()
+    expect(session.bond_history.redo_stack).toHaveLength(0)
+    expect(session.redo_bond_edit()).toBe(false)
+    expect(host.bonds).toEqual([{ site_idx_1: 0, site_idx_2: 1, order: 2 }])
     destroy()
   })
 

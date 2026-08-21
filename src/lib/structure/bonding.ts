@@ -607,15 +607,6 @@ function get_orig_idx(site: Site, fallback: number): number {
   return Number.isFinite(num) ? num : fallback
 }
 
-// Pack quantized cell coordinates into one integer key (exact for cell coords in
-// [-512, 511], i.e. structures up to ~1000 cells per axis - far beyond any real
-// case). Integer Map keys avoid per-lookup string building in a hot pair loop. Used by
-// pbc.ts for its phase-2 boundary-completion grid; neighbor_query below bins into a dense
-// array instead, so it has no coordinate window.
-const CELL_OFFSET = 512
-export const pack_cell_key = (x: number, y: number, z: number): number =>
-  (x + CELL_OFFSET) * 1048576 + (y + CELL_OFFSET) * 1024 + (z + CELL_OFFSET)
-
 // === Geometric PBC neighbor query ===
 // Purely geometric fixed-radius / k-nearest neighbor lists with periodic images. The single
 // neighbor-search primitive: RDF, coordination, bond angles, structure identification and
@@ -650,7 +641,7 @@ export type NeighborQueryOptions = (
     }
   | { k: number }
 ) & {
-  // Defaults to the lattice's pbc (all true when unset); molecules are never periodic.
+  // Defaults to the lattice's own pbc (see lattice_pbc_or_throw); molecules are never periodic.
   pbc?: Pbc
 }
 
@@ -746,23 +737,29 @@ function neighbor_query_cutoff(
     }
     const in_reach = (frac: number, shift: number, axis: number): boolean =>
       !pbc[axis] || (frac + shift >= -pad[axis] && frac + shift <= 1 + pad[axis])
-    // Wrapped fractional coords of every site plus the integer wrap shift applied
+    // Wrapped fractional coords of every site plus the integer wrap shift applied, and per
+    // axis the contiguous range [shift_lo, shift_hi] of image shifts in reach (0 always is:
+    // the wrapped coordinate sits inside the cell)
     const frac = new Float64Array(n_sites * 3)
     const wrap = new Int32Array(n_sites * 3)
-    // exact image count per site = product over axes of the shifts in reach, minus itself
+    const shift_lo = new Int32Array(n_sites * 3)
+    const shift_hi = new Int32Array(n_sites * 3)
+    // exact image count = product over axes of the shifts in reach, minus the site itself
     let n_images = 0
     for (let idx = 0; idx < n_sites; idx++) {
       const site_frac = cart_to_frac(sites[idx].xyz)
       let n_site_images = 1
       for (let axis = 0; axis < 3; axis++) {
-        const shift = pbc[axis] ? -Math.floor(site_frac[axis]) : 0
-        wrap[idx * 3 + axis] = shift
-        frac[idx * 3 + axis] = site_frac[axis] + shift
-        let n_shifts = 0
-        for (let img = -max_shift[axis]; img <= max_shift[axis]; img++) {
-          if (in_reach(frac[idx * 3 + axis], img, axis)) n_shifts++
-        }
-        n_site_images *= n_shifts
+        const at = idx * 3 + axis
+        wrap[at] = pbc[axis] ? -Math.floor(site_frac[axis]) : 0
+        frac[at] = site_frac[axis] + wrap[at]
+        let lo = -max_shift[axis]
+        let hi = max_shift[axis]
+        while (lo < 0 && !in_reach(frac[at], lo, axis)) lo++
+        while (hi > 0 && !in_reach(frac[at], hi, axis)) hi--
+        shift_lo[at] = lo
+        shift_hi[at] = hi
+        n_site_images *= hi - lo + 1
       }
       n_images += n_site_images - 1
     }
@@ -796,13 +793,11 @@ function neighbor_query_cutoff(
     // Base slots first so cloud index === site index for the centers
     for (let idx = 0; idx < n_sites; idx++) push_cloud(idx, 0, 0, 0)
     for (let idx = 0; idx < n_sites; idx++) {
-      for (let shift_a = -max_shift[0]; shift_a <= max_shift[0]; shift_a++) {
-        if (!in_reach(frac[idx * 3], shift_a, 0)) continue
-        for (let shift_b = -max_shift[1]; shift_b <= max_shift[1]; shift_b++) {
-          if (!in_reach(frac[idx * 3 + 1], shift_b, 1)) continue
-          for (let shift_c = -max_shift[2]; shift_c <= max_shift[2]; shift_c++) {
+      const at = idx * 3
+      for (let shift_a = shift_lo[at]; shift_a <= shift_hi[at]; shift_a++) {
+        for (let shift_b = shift_lo[at + 1]; shift_b <= shift_hi[at + 1]; shift_b++) {
+          for (let shift_c = shift_lo[at + 2]; shift_c <= shift_hi[at + 2]; shift_c++) {
             if (shift_a === 0 && shift_b === 0 && shift_c === 0) continue
-            if (!in_reach(frac[idx * 3 + 2], shift_c, 2)) continue
             push_cloud(idx, shift_a, shift_b, shift_c)
           }
         }
@@ -975,10 +970,9 @@ function neighbor_query_cutoff(
       block_dist_sq[rank] = pair_dist_sq[entry >> 1]
       block_perm[rank] = rank
     }
-    // insertion sort for the usual handful of neighbors, comparator sort for wide cutoffs
-    if (!sorted) {
-      // entry order: pairs in sweep order, which is deterministic but not by distance
-    } else if (count <= 64) {
+    // Unsorted blocks keep sweep order (deterministic, not by distance). Insertion sort for
+    // the usual handful of neighbors, comparator sort for wide cutoffs.
+    if (sorted && count <= 64) {
       for (let idx = 1; idx < count; idx++) {
         const rank = block_perm[idx]
         const dist_sq = block_dist_sq[rank]
@@ -997,7 +991,7 @@ function neighbor_query_cutoff(
         }
         block_perm[pos + 1] = rank
       }
-    } else {
+    } else if (sorted) {
       block_perm
         .subarray(0, count)
         .sort(
@@ -1325,12 +1319,11 @@ export function electroneg_ratio(
   // One geometric search covers both sweeps. A zero/non-finite reach (no known radius, or
   // a degenerate ratio) still needs a positive cutoff for the query to be well-formed.
   const max_reach = Math.max(penalized.max_reach, unpenalized.max_reach)
-  const list = neighbor_query(structure, {
+  const { offsets, neighbors, images, deltas, distances } = neighbor_query(structure, {
     cutoff: max_reach > 0 && Number.isFinite(max_reach) ? max_reach : 1,
     pbc,
     sorted: false, // every contact is filtered through the reach band below regardless
   })
-  const { offsets, neighbors, images, deltas, distances } = list
 
   // Candidate bonds as struct-of-arrays typed buffers (neighbor slot, center, expected
   // distance, distance-independent strength): no per-candidate object in the hot loop
@@ -1483,33 +1476,26 @@ export function electroneg_ratio(
 
     if (strength <= strength_threshold) continue
     const pos_1 = sites[site_idx_1].xyz
+    const bond: BondPair = {
+      pos_1,
+      pos_2: sites[site_idx_2].xyz,
+      site_idx_1,
+      site_idx_2,
+      bond_length: dist,
+    }
     const shift_a = images[slot * 3]
     const shift_b = images[slot * 3 + 1]
     const shift_c = images[slot * 3 + 2]
-    if (shift_a === 0 && shift_b === 0 && shift_c === 0) {
-      bonds.push({
-        pos_1,
-        pos_2: sites[site_idx_2].xyz,
-        site_idx_1,
-        site_idx_2,
-        bond_length: dist,
-      })
-    } else {
+    if (shift_a !== 0 || shift_b !== 0 || shift_c !== 0) {
       // periodic partner: its image position is the center plus the query's displacement
-      const pos_2: Vec3 = [
+      bond.cell_shift = [shift_a, shift_b, shift_c]
+      bond.pos_2 = [
         pos_1[0] + deltas[slot * 3],
         pos_1[1] + deltas[slot * 3 + 1],
         pos_1[2] + deltas[slot * 3 + 2],
       ]
-      bonds.push({
-        pos_1,
-        pos_2,
-        site_idx_1,
-        site_idx_2,
-        bond_length: dist,
-        cell_shift: [shift_a, shift_b, shift_c],
-      })
     }
+    bonds.push(bond)
   }
 
   return apply_explicit_bond_metadata(structure, bonds)

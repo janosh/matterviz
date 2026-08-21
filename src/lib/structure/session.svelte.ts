@@ -81,11 +81,6 @@ const ASYNC_SUPERCELL_TILES = 8
 
 const plural = (count: number, noun: string): string =>
   `${count} ${noun}${count === 1 ? `` : `s`}`
-const clone_bonds = (bonds: StructureBond[]): StructureBond[] =>
-  bonds.map((bond) => ({
-    ...bond,
-    cell_shift: bond.cell_shift && ([...bond.cell_shift] as Vec3),
-  }))
 // Lenient tile count for the size estimate: invalid factors count as 1
 const tile_count = (scaling: string): number =>
   scaling.split(/[x×]/).reduce((product, factor) => product * (Number(factor) || 1), 1)
@@ -130,20 +125,15 @@ class History<Entry> {
   }
 }
 
-// Per-key change detection for the invalidation effect: true when `value` differs
-// (element-wise for arrays) from the value last seen under `key`. A plain Map on purpose: it
-// is read and written inside the effect it serves.
+// Per-key change detection for the invalidation effect: true when `value` differs from the
+// value last seen under `key` (never on the first sight). A plain Map on purpose: it is read
+// and written inside the effect it serves.
 function create_change_tracker() {
   const previous = new Map<string, unknown>()
-  const same = (left: unknown, right: unknown): boolean =>
-    Array.isArray(left) && Array.isArray(right)
-      ? left.length === right.length && left.every((item, idx) => item === right[idx])
-      : left === right
   return (key: string, value: unknown): boolean => {
-    const seen = previous.has(key)
-    const unchanged = seen && same(previous.get(key), value)
+    const changed = previous.has(key) && previous.get(key) !== value
     previous.set(key, value)
-    return seen && !unchanged
+    return changed
   }
 }
 
@@ -372,22 +362,21 @@ export class StructureSession {
       // Read every dependency up front; the guards below must not make tracking conditional
       const structure_changed = changed(`structure`, inputs.structure())
       const topology_changed = changed(`topology`, this.topology_signature)
-      const transform_changed = changed(`transform`, [
-        inputs.supercell_scaling(),
-        inputs.show_image_atoms(),
-        inputs.series_key(),
-        inputs.cell_type(),
-      ])
-      const mode_changed = changed(`measure_mode`, inputs.measure_mode())
+      const transform_changed = [
+        changed(`supercell_scaling`, inputs.supercell_scaling()),
+        changed(`show_image_atoms`, inputs.show_image_atoms()),
+        changed(`series_key`, inputs.series_key()),
+        changed(`cell_type`, inputs.cell_type()),
+      ].includes(true)
+      const measure_mode = inputs.measure_mode()
+      const mode_changed = changed(`measure_mode`, measure_mode)
       const bond_mode_changed = changed(`bond_edit_mode`, inputs.bond_edit_mode())
       const bonds_replaced = inputs.bonds() !== this.emitted_bonds
-      const bonds_unavailable =
-        inputs.measure_mode() === `edit-bonds` && !this.bond_edits_enabled
+      const bonds_unavailable = measure_mode === `edit-bonds` && !this.bond_edits_enabled
       const { error: supercell_error } = this.supercell
       const supercell_failed = changed(`supercell_error`, supercell_error) && supercell_error
       untrack(() => {
         if (supercell_failed) this.notice(`Failed to create supercell: ${supercell_failed}`)
-        const measure_mode = inputs.measure_mode()
         const internal = this.is_internal_edit
         this.is_internal_edit = false
         if (structure_changed) {
@@ -409,9 +398,12 @@ export class StructureSession {
           }
         } else if (
           bonds_replaced &&
-          (this.has_bond_edits || this.bond_history.undo_stack.length)
+          (this.has_bond_edits ||
+            this.bond_history.undo_stack.length > 0 ||
+            this.bond_history.redo_stack.length > 0)
         ) {
-          // Caller swapped the source bonds under the edit layer: the edits no longer apply
+          // Caller swapped the source bonds under the edit layer: the edits — and the history
+          // that could redo them onto the wrong source — no longer apply
           this.bond_edit_base = undefined
           this.clear_bond_edits()
         }
@@ -470,8 +462,6 @@ export class StructureSession {
       ? indices
       : indices.filter((idx) => idx >= 0 && idx < count)
   }
-  has_selection = (): boolean =>
-    this.inputs.selected_sites().length > 0 || this.inputs.measured_sites().length > 0
   clear_selection = (): void => {
     const { inputs } = this
     if (inputs.selected_sites().length > 0) inputs.set_selected_sites([])
@@ -484,14 +474,16 @@ export class StructureSession {
     this.inputs.set_bonds(bonds)
     this.emitted_bonds = this.inputs.bonds()
   }
+  // $state.snapshot: the edit arrays are deep proxies; history keeps plain copies
   private snapshot_bond_edits(): BondEditSnapshot {
-    return {
-      added_bonds: clone_bonds(this.added_bonds),
-      removed_bonds: clone_bonds(this.removed_bonds),
-      bond_order_overrides: clone_bonds(this.bond_order_overrides),
+    const { added_bonds, removed_bonds, bond_order_overrides } = this
+    return $state.snapshot({
+      added_bonds,
+      removed_bonds,
+      bond_order_overrides,
       bond_edit_mode: this.inputs.bond_edit_mode(),
       bond_edit_order: this.inputs.bond_edit_order(),
-    }
+    })
   }
   clear_bond_edits = (): void => {
     if (this.has_bond_edits) {
@@ -499,19 +491,26 @@ export class StructureSession {
     }
     this.bond_history.clear()
   }
-  // Called by the scene before each bond edit
-  push_bond_undo = (): void => {
+  // Undoing the last edit hands the source back out and forgets it; the next edit (or a redo
+  // of the undone one) captures whatever is bound — the source again — as its new base
+  private capture_bond_edit_base(): void {
     this.bond_edit_base ??= {
       bonds: this.inputs.bonds() ?? this.inputs.structure()?.properties?.bonds,
     }
+  }
+  // Called by the scene before each bond edit
+  push_bond_undo = (): void => {
+    this.capture_bond_edit_base()
     this.bond_history.push(this.snapshot_bond_edits())
   }
   private step_bond_history(direction: `undo` | `redo`): boolean {
     const restored = this.bond_history.step(direction, () => this.snapshot_bond_edits())
     if (!restored) return false
-    this.added_bonds = clone_bonds(restored.added_bonds)
-    this.removed_bonds = clone_bonds(restored.removed_bonds)
-    this.bond_order_overrides = clone_bonds(restored.bond_order_overrides)
+    this.capture_bond_edit_base()
+    // Popped entries are no longer shared with a stack, so they need no further copy
+    this.added_bonds = restored.added_bonds
+    this.removed_bonds = restored.removed_bonds
+    this.bond_order_overrides = restored.bond_order_overrides
     this.inputs.set_bond_edit_mode(restored.bond_edit_mode)
     this.inputs.set_bond_edit_order(restored.bond_edit_order)
     this.clear_selection()

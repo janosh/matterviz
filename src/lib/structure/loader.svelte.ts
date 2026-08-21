@@ -71,52 +71,44 @@ function open_structure_text(
   const volumetric = parse_volumetric_file(text, filename)
   if (volumetric) {
     const incoming = label_file_volumes(volumetric.volumes, filename, source_filename)
+    // lattices_match is false for an undefined lattice, so same_cell implies a current structure
     const same_cell = lattices_match(current_lattice, volumetric.structure.lattice?.matrix)
-    if (same_cell && current.structure) {
-      if (current.volumetric_data?.length) {
-        // Materialize the implicit single surface into explicit layers so existing surfaces
-        // survive the switch to multi-volume mode
-        const merged = merge_imported_volumes(
-          current.volumetric_data,
-          materialize_layers(current.isosurface_settings, current.active_volume_idx),
-          incoming,
-          current.active_volume_idx,
-        )
-        return {
-          document: {
-            structure: current.structure,
-            volumetric_data: merged.volumes,
-            isosurface_settings: { ...current.isosurface_settings, layers: merged.layers },
-            active_volume_idx: merged.first_touched_idx,
-          },
-          notice:
-            merged.n_added > 0
-              ? `Added ${plural(merged.n_added, `volume`)} from ${filename}`
-              : `Reloaded volumes from ${filename}`,
-        }
-      }
+    if (same_cell && current.volumetric_data?.length) {
+      // Materialize the implicit single surface into explicit layers so existing surfaces
+      // survive the switch to multi-volume mode
+      const merged = merge_imported_volumes(
+        current.volumetric_data,
+        materialize_layers(current.isosurface_settings, current.active_volume_idx),
+        incoming,
+        current.active_volume_idx,
+      )
       return {
         document: {
           structure: current.structure,
-          volumetric_data: incoming,
-          isosurface_settings: auto_isosurface_settings(incoming[0].data_range),
-          active_volume_idx: 0,
+          volumetric_data: merged.volumes,
+          isosurface_settings: { ...current.isosurface_settings, layers: merged.layers },
+          active_volume_idx: merged.first_touched_idx,
         },
-        notice: `Added ${plural(incoming.length, `volume`)} from ${filename}`,
+        notice:
+          merged.n_added > 0
+            ? `Added ${plural(merged.n_added, `volume`)} from ${filename}`
+            : `Reloaded volumes from ${filename}`,
       }
     }
     // Parsers set pbc so the header lattice conforms to Crystal's lattice type
     return {
       document: {
-        structure: volumetric.structure,
+        structure: same_cell ? current.structure : volumetric.structure,
         volumetric_data: incoming,
         isosurface_settings: auto_isosurface_settings(incoming[0].data_range),
         active_volume_idx: 0,
       },
+      notice: same_cell
+        ? `Added ${plural(incoming.length, `volume`)} from ${filename}`
+        : undefined,
     }
   }
   const parsed = parse_structure_file(text, filename)
-  if (!parsed) throw new Error(`Failed to parse structure from ${filename}`)
   const same_cell = lattices_match(
     current_lattice,
     `lattice` in parsed ? parsed.lattice?.matrix : undefined,
@@ -167,9 +159,8 @@ export function create_structure_loader(inputs: StructureLoaderInputs) {
   // to the URL instead of reading as a caller-supplied structure
   $effect.pre(() => {
     const { structure } = inputs.document()
-    if (structure && structure === inputs.last_edited_structure()) {
-      if (url_loader.loaded_url === inputs.data_url()) url_loader.claim(structure)
-    }
+    const edited = structure !== undefined && structure === inputs.last_edited_structure()
+    if (edited && url_loader.loaded_url === inputs.data_url()) url_loader.claim(structure)
   })
   $effect(() =>
     url_loader.request({

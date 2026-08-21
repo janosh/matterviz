@@ -12,7 +12,6 @@
   let {
     open = $bindable(false),
     label,
-    title,
     active,
     button_class = `view-mode-button`,
     menu_class,
@@ -22,8 +21,7 @@
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     open?: boolean
-    label: string // aria-label of the toggle; doubles as its tooltip unless title is given
-    title?: string
+    label: string // aria-label and tooltip of the toggle
     active?: boolean // highlights the toggle; defaults to open (Trajectory also lights it while a pane is open)
     button_class?: string // tests target `.view-mode-button`; the analysis menu uses `analysis-button`
     menu_class?: string // extra class on the floating menu (e.g. `analysis-dropdown`)
@@ -42,7 +40,7 @@
     type="button"
     class={[button_class, { active: active ?? open }]}
     aria-label={label}
-    title={title ?? label}
+    title={label}
     aria-expanded={open}
     onclick={() => (open = !open)}
     {@attach tooltip()}

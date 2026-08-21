@@ -343,7 +343,7 @@ export function parse_bruker_raw_file(data: ArrayBuffer): XrdPattern {
   }
   const range_count = view.getUint32(12, true)
   if (range_count < 1) throw new Error(`Bruker RAW1.01: file header announces 0 ranges`)
-  const ranges: { start: number; x: number[]; y: number[] }[] = []
+  const ranges: { x: number[]; y: number[] }[] = []
   let range_offset = 712 // the first range header follows the file header
   for (let range_idx = 1; range_idx <= range_count; range_idx++) {
     const label = `Bruker RAW1.01: range ${range_idx} of ${range_count}`
@@ -370,13 +370,15 @@ export function parse_bruker_raw_file(data: ArrayBuffer): XrdPattern {
         `${label} announces ${steps} float32 counts at byte ${data_offset} but the file ends at ${bytes.length}`,
       )
     }
-    const y_values = Array.from({ length: steps }, (_, idx) =>
-      view.getFloat32(data_offset + 4 * idx, true),
-    )
-    ranges.push({ start, x: uniform_grid(start, step, steps), y: y_values })
+    ranges.push({
+      x: uniform_grid(start, step, steps),
+      y: Array.from({ length: steps }, (_, idx) =>
+        view.getFloat32(data_offset + 4 * idx, true),
+      ),
+    })
     range_offset = data_offset + 4 * steps
   }
-  ranges.sort((range_a, range_b) => range_a.start - range_b.start)
+  ranges.sort((range_a, range_b) => range_a.x[0] - range_b.x[0])
   return finalize(
     ranges.flatMap((range) => range.x),
     ranges.flatMap((range) => range.y),

@@ -3,7 +3,6 @@
   // inputs, bond order and add/delete toggle). Every action goes through the session;
   // Structure.svelte keeps the keyboard shortcuts that drive the same operations.
   import { ToolbarMenu } from '$lib/overlays'
-  import type { BondEditMode, BondOrder, MeasureMode } from '$lib/structure'
   import { Icon, type IconData } from 'svelte-widgets'
   import { Angle, Edit, Link, Orbit, Redo, Reset, Ruler, Undo } from 'svelte-widgets/icons'
   import { BOND_ORDER_OPTIONS } from './bonding'
@@ -23,22 +22,13 @@
     { mode: `delete`, label: `Delete`, title: `Delete: click a bond` },
   ] as const
 
-  let {
-    session,
-    measure_mode = $bindable(`distance`),
-    bond_edit_mode = $bindable(`add`),
-    bond_edit_order = $bindable(1),
-    selected_count = 0,
-    measured_count = 0,
-  }: {
-    session: StructureSession
-    measure_mode?: MeasureMode
-    bond_edit_mode?: BondEditMode
-    bond_edit_order?: BondOrder
-    selected_count?: number
-    measured_count?: number
-  } = $props()
+  let { session }: { session: StructureSession } = $props()
 
+  // Modes are the viewer's bindable props, read and written through the session's accessors
+  let measure_mode = $derived(session.inputs.measure_mode())
+  let bond_edit_mode = $derived(session.inputs.bond_edit_mode())
+  let selected_count = $derived(session.selected_sites.length)
+  let measured_count = $derived(session.measured_sites.length)
   let measure_menu_open = $state(false)
   let change_element_value = $state(``)
   let show_selection_reset = $derived(
@@ -84,7 +74,8 @@
       title={disabled ? `Bond editing is only available for the original 1x1x1 cell` : label}
       onclick={() => {
         if (disabled) return
-        ;[measure_mode, measure_menu_open] = [mode, false]
+        session.inputs.set_measure_mode(mode)
+        measure_menu_open = false
       }}
     >
       <Icon {icon} style="transform: scale({scale})" />
@@ -180,7 +171,11 @@
     {#if bond_edit_mode === `add`}
       <label>
         <span>Bond order</span>
-        <select bind:value={bond_edit_order}>
+        <select
+          bind:value={
+            () => session.inputs.bond_edit_order(), session.inputs.set_bond_edit_order
+          }
+        >
           {#each BOND_ORDER_OPTIONS as { order, label } (label)}
             <option value={order}>{label}</option>
           {/each}
@@ -194,7 +189,7 @@
           class:selected={bond_edit_mode === mode}
           aria-pressed={bond_edit_mode === mode}
           title="{title} ({label[0]})"
-          onclick={() => (bond_edit_mode = mode)}
+          onclick={() => session.inputs.set_bond_edit_mode(mode)}
         >
           {label}
         </button>

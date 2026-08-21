@@ -884,8 +884,7 @@
   }
   // Spacer and empty rows carry no index, so row actions skip them
   const row_handler =
-    <Event_ extends MouseEvent>(action: (event: Event_, row: RowData) => void) =>
-    (event: Event_) => {
+    (action: (event: MouseEvent, row: RowData) => void) => (event: MouseEvent) => {
       const row = row_under(event.target)
       if (row !== null) action(event, sorted_data[row])
     }

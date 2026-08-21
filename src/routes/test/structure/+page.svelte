@@ -204,8 +204,9 @@
   <label>
     Controls Open: <input
       type="checkbox"
-      checked={active_pane === `controls`}
-      onchange={(event) => (active_pane = event.currentTarget.checked ? `controls` : null)}
+      bind:checked={
+        () => active_pane === `controls`, (open) => (active_pane = open ? `controls` : null)
+      }
     />
   </label><br />
   <label

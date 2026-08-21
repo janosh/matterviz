@@ -227,7 +227,7 @@
     if (source === loaded_src) return
     loaded_src = source
     // Hosts that clear a URL trait often send `` or null rather than undefined
-    if (source === undefined || source === null || source === ``) return
+    if (!source) return
     const controller = begin_load()
     const load = async (): Promise<void> => {
       if (typeof source === `string`) {

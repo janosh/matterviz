@@ -18,7 +18,9 @@ import { compute_xrd_pattern } from '$lib/xrd/calc-xrd'
 import process from 'node:process'
 import { flushSync, mount, tick, unmount } from 'svelte'
 import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from 'vitest'
-import { cubic_matrix, IDENTITY_MATRIX3, make_crystal, mount_sized } from './setup'
+import { make_rng } from './numeric-helpers'
+import { IDENTITY_MATRIX3, make_crystal, mount_sized } from './setup'
+import { make_fcc, with_random_displacements } from './structure-id/lattices'
 
 // Medians over 5 suite runs on the baseline machine: Apple M3 Max, macOS 26.5, Node 24.19,
 // vitest 4.1.11, happy-dom 20.11 (2026-08-21), with other vitest workers sharing the CPU
@@ -39,14 +41,6 @@ const BASELINES = {
 } as const
 type Case = keyof typeof BASELINES
 const BAND = 2
-
-// mulberry32: tiny, seedable, identical on every engine
-const make_rng = (seed: number) => () => {
-  seed = (seed + 0x6d2b79f5) >>> 0
-  let mixed = Math.imul(seed ^ (seed >>> 15), 1 | seed)
-  mixed ^= mixed + Math.imul(mixed ^ (mixed >>> 7), 61 | mixed)
-  return ((mixed ^ (mixed >>> 14)) >>> 0) / 4_294_967_296
-}
 
 const median = (values: number[]): number =>
   values.toSorted((left, right) => left - right)[Math.floor(values.length / 2)]
@@ -188,39 +182,6 @@ const make_grid = (size: number) => {
     }
   }
   return { values, dims: [size, size, size] as Vec3, order: `z_fastest` as const }
-}
-
-// Jittered fcc supercell (4 atoms per conventional cell) with two elements
-const make_supercell = (reps: Vec3, seed: number) => {
-  const rng = make_rng(seed)
-  const a_cubic = 4.05
-  const basis: Vec3[] = [
-    [0, 0, 0],
-    [0.5, 0.5, 0],
-    [0.5, 0, 0.5],
-    [0, 0.5, 0.5],
-  ]
-  const sites: { element: string; abc: Vec3 }[] = []
-  for (let x_rep = 0; x_rep < reps[0]; x_rep++) {
-    for (let y_rep = 0; y_rep < reps[1]; y_rep++) {
-      for (let z_rep = 0; z_rep < reps[2]; z_rep++) {
-        for (const [b_x, b_y, b_z] of basis) {
-          sites.push({
-            element: sites.length % 2 ? `Al` : `Ni`,
-            abc: [
-              (x_rep + b_x + 0.02 * (rng() - 0.5)) / reps[0],
-              (y_rep + b_y + 0.02 * (rng() - 0.5)) / reps[1],
-              (z_rep + b_z + 0.02 * (rng() - 0.5)) / reps[2],
-            ],
-          })
-        }
-      }
-    }
-  }
-  const matrix = reps.map((rep, axis) =>
-    cubic_matrix(a_cubic)[axis].map((val) => val * rep),
-  ) as [Vec3, Vec3, Vec3]
-  return make_crystal(matrix, sites)
 }
 
 // Disordered three-element cell at a metallic density, so XRD sees many weak reflections
@@ -441,7 +402,8 @@ describe.skipIf(!enabled)(`perf baselines`, { timeout: 120_000 }, () => {
   })
 
   test(`neighbor_query 1792 sites`, async () => {
-    const structure = make_supercell([8, 8, 7], 8)
+    // jittered 8x8x7 fcc supercell (4 atoms per conventional cell, a = 4.05 A)
+    const structure = with_random_displacements(make_fcc([8, 8, 7], 4.05), 0.04, 8)
     expect(structure.sites).toHaveLength(1792)
     await measure(`neighbor_query 1792 sites`, () => {
       const list = neighbor_query(structure, { cutoff: 3.2 })

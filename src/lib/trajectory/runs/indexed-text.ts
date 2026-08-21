@@ -4,14 +4,13 @@
 // for the plot are extracted progressively in chunks so a 100k-frame open stays responsive.
 import * as math from '$lib/math'
 import { to_error } from '$lib/utils'
-import { copy_numeric_fields, index_xyz_frames, validate_3x3_matrix } from '../helpers'
-import type { XyzFrameSpec } from '../helpers'
+import { copy_numeric_fields, validate_3x3_matrix } from '../helpers'
 import type { TrajectoryFrame, TrajectoryMetadata } from '../index'
 import { ase_calculator_data, decode_ase_frame, read_ase_header } from '../parse/ase'
 import type { WarningCollector } from '../parse/shared'
 import {
   build_xyz_frame,
-  drop_torn_xyz_tail,
+  index_xyz_frames,
   parse_extxyz_lattice,
   parse_xyz_comment_metadata,
 } from '../parse/xyz'
@@ -114,10 +113,8 @@ const run_from_source = (
 
 const xyz_source = (data: string, collector: WarningCollector): FrameSource => {
   let lines: string[] | null = data.trim().split(/\r?\n/)
-  const index = index_xyz_frames(lines)
-  // Excluded from frame_count now rather than failing on the seek that reaches it
-  drop_torn_xyz_tail(lines, index, collector.warn)
-  const frames: XyzFrameSpec[] = index.specs
+  // a torn tail is dropped now so frame_count excludes it, rather than failing on the seek
+  const frames = index_xyz_frames(lines, collector.warn)
   const live_lines = (): string[] => {
     if (!lines) throw disposed_error(`Indexed XYZ trajectory`)
     return lines
