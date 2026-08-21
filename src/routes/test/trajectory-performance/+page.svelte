@@ -6,11 +6,14 @@
   import * as math from '$lib/math'
   import type { Pbc } from '$lib/structure/pbc'
   import { Trajectory, type TrajectoryFrame, trajectory_from_frames } from '$lib/trajectory'
+  import { browser } from '$app/environment'
   import { page } from '$app/state'
   import { onMount } from 'svelte'
 
-  const n_frames = Number(page.url.searchParams.get(`frames`) ?? 300)
-  const n_atoms = Number(page.url.searchParams.get(`atoms`) ?? 64)
+  // url.searchParams is off-limits during prerender (it would 500 the static build) and the
+  // run is only meaningful in a browser anyway, so the defaults stand until the client runs
+  const n_frames = browser ? Number(page.url.searchParams.get(`frames`) ?? 300) : 300
+  const n_atoms = browser ? Number(page.url.searchParams.get(`atoms`) ?? 64) : 64
 
   // mulberry32 so every run sees identical coordinates
   const make_rng = (seed: number) => () => {
@@ -58,21 +61,32 @@
     }))
   }
 
-  const build_start = performance.now()
-  const run = trajectory_from_frames(build_frames(), {
-    provenance: { filename: `synthetic-${n_frames}x${n_atoms}.extxyz`, format: `xyz` },
-    time_step: { value: 1, unit: `fs` },
-  })
-  const build_ms = performance.now() - build_start
+  // Built on the client only: the prerendered HTML is just the empty harness shell
+  const build_start = browser ? performance.now() : 0
+  const run = browser
+    ? trajectory_from_frames(build_frames(), {
+        provenance: { filename: `synthetic-${n_frames}x${n_atoms}.extxyz`, format: `xyz` },
+        time_step: { value: 1, unit: `fs` },
+      })
+    : null
+  const build_ms = browser ? performance.now() - build_start : null
 
   let mount_ms = $state<number | null>(null)
   let current_step_idx = $state(0)
   onMount(() => {
-    mount_ms = performance.now() - build_start - build_ms
+    mount_ms = performance.now() - build_start - (build_ms ?? 0)
   })
 </script>
 
-<Trajectory trajectory={run} bind:current_step_idx auto_play fps={30} show_controls="always" />
+{#if run}
+  <Trajectory
+    trajectory={run}
+    bind:current_step_idx
+    auto_play
+    fps={30}
+    show_controls="always"
+  />
+{/if}
 
 <pre data-testid="perf-metrics">{JSON.stringify({
     frames: n_frames,
