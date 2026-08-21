@@ -49,12 +49,10 @@
     return () => clearTimeout(change_timeout)
   })
 
-  // Trimmed string for URL/color detection (avoids using raw whitespace in href/style)
+  // Trimmed string for URL/color detection (avoids using raw whitespace in href/style);
+  // non-strings trim to `` which matches neither
   const trimmed_str = $derived(value_type === `string` ? (value as string).trim() : ``)
-  const url_detected = $derived(value_type === `string` && is_url(trimmed_str))
-  const color_detected = $derived(
-    value_type === `string` && is_css_color(trimmed_str) ? trimmed_str : null,
-  )
+  const color_detected = $derived(is_css_color(trimmed_str) ? trimmed_str : null)
 
   function handle_click(event: MouseEvent) {
     event.stopPropagation()
@@ -147,7 +145,7 @@
     {#if color_detected}
       <span class="color-swatch" style:background={color_detected}></span>
     {/if}
-    {#if url_detected}
+    {#if is_url(trimmed_str)}
       <a
         href={encodeURI(trimmed_str)}
         class="url-link"

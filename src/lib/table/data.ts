@@ -6,6 +6,25 @@ import type { CellVal, ColumnFilter, DateTimeFormatMode, Label, RowData } from '
 
 export const strip_html = (str: string): string => str.replaceAll(/<[^>]*>/g, ``)
 
+// Columns discovered from the first rows when the caller passes none
+export const discover_columns = (rows: RowData[]): Label[] => {
+  const seen = new Set<string>()
+  for (const row of rows.slice(0, 50)) {
+    for (const key of Object.keys(row)) if (key !== `style` && key !== `class`) seen.add(key)
+  }
+  return [...seen].map((key) => ({ label: key }))
+}
+
+// Head and tail of a long cell string for a middle ellipsis, split on graphemes so combining
+// marks and emoji aren't torn apart. Strings at or below MIDDLE_ELLIPSIS_MIN_LENGTH render whole.
+export const MIDDLE_ELLIPSIS_MIN_LENGTH = 16
+const grapheme_segmenter = new Intl.Segmenter(undefined, { granularity: `grapheme` })
+export const middle_ellipsis_parts = (text: string): [string, string] => {
+  const graphemes = [...grapheme_segmenter.segment(text)].map(({ segment }) => segment)
+  const split_at = graphemes.length - Math.min(8, Math.floor(graphemes.length / 2))
+  return [graphemes.slice(0, split_at).join(``), graphemes.slice(split_at).join(``)]
+}
+
 // null, undefined or NaN: rendered as n/a and sorted to the bottom
 export const is_invalid = (val: unknown): boolean =>
   val == null || (typeof val === `number` && Number.isNaN(val))

@@ -1,19 +1,5 @@
-import { COMPRESSION_EXTENSIONS_REGEX } from '$lib/constants'
-import {
-  decompress_data_blob,
-  detect_compression_format,
-  hdf5_compression_format,
-  is_browser_decompressible_format,
-  is_hdf5_filename,
-} from './decompress'
-import {
-  ext_of,
-  has_binary_magic,
-  has_gzip_magic,
-  has_hdf5_magic,
-  is_binary_data_extension,
-  is_known_text_file,
-} from './is-binary'
+import { classify_payload, compression_wrapper_of } from './decompress'
+import { is_known_text_file } from './is-binary'
 import type {
   FileInfo,
   FileLoadCallback,
@@ -27,9 +13,6 @@ export const basename_from_url = (url: string): string => {
   const basename = url.split(/[?#]/)[0].split(`/`).pop()
   return basename?.length ? basename : url
 }
-
-const hdf5_filename = (filename: string, url_basename: string): string =>
-  [filename, url_basename].find(is_hdf5_filename) ?? `${filename || url_basename}.h5`
 
 // Extract filename from Content-Disposition header, falling back to url_basename.
 function extract_filename(headers: Headers, fallback: string): string {
@@ -70,29 +53,6 @@ export function dropped_file_url(drag_event: DragEvent): string | undefined {
   }
 }
 
-// Handle URL-based file drop data by fetching content lazily
-export async function handle_url_drop(
-  drag_event: DragEvent,
-  callback: FileLoadCallback,
-  signal?: AbortSignal,
-): Promise<boolean> {
-  const url = dropped_file_url(drag_event)
-  if (!url) return false
-  await load_from_url(url, callback, signal)
-  return true
-}
-
-export async function handle_trajectory_url_drop(
-  event: DragEvent,
-  callback: TrajectoryFileLoadCallback,
-  signal?: AbortSignal,
-): Promise<boolean> {
-  const url = dropped_file_url(event)
-  if (!url) return false
-  await load_trajectory_from_url(url, callback, signal)
-  return true
-}
-
 export const load_from_url = (
   url: string,
   callback: FileLoadCallback,
@@ -106,12 +66,20 @@ export const load_trajectory_from_url = (
   signal?: AbortSignal,
 ): Promise<void> => load_url_content(url, callback, true, signal)
 
-// Fetch `url` and hand its payload to `callback`, classified the way a dropped File would be:
-// known text formats arrive as string, binary formats as ArrayBuffer and, for trajectory
-// loads, HDF5 as a Blob so h5wasm can read it lazily. Compressed payloads are inflated by
-// their bytes, not their name: a host serving a stored .gz with `Content-Encoding: gzip` has
-// already been un-gzipped by fetch, while one that also transport-compresses the same file
-// leaves a second layer behind under the identical header. The magic bytes tell them apart.
+// Handle URL-based file drop data by fetching content lazily; false when the drop carried no URL
+const url_drop_handler =
+  <Callback>(load: (url: string, callback: Callback, signal?: AbortSignal) => Promise<void>) =>
+  async (event: DragEvent, callback: Callback, signal?: AbortSignal): Promise<boolean> => {
+    const url = dropped_file_url(event)
+    if (!url) return false
+    await load(url, callback, signal)
+    return true
+  }
+export const handle_url_drop = url_drop_handler(load_from_url)
+export const handle_trajectory_url_drop = url_drop_handler(load_trajectory_from_url)
+
+// Fetch `url` and hand its payload to `callback`, classified the way a dropped File would be
+// (see classify_payload); compressed payloads are inflated by their bytes, not their name.
 async function load_url_content(
   url: string,
   callback: TrajectoryFileLoadCallback,
@@ -121,14 +89,8 @@ async function load_url_content(
   // Strip query string/hash before basename/extension detection so pre-signed
   // URLs like traj.h5?X-Amz-Expires=300 still hit the right format path
   const url_basename = basename_from_url(url)
-  const assert_supported_hdf5_wrapper = (name: string): void => {
-    const wrapper = hdf5_compression_format(name)
-    if (!hdf5_as_blob || !wrapper || is_browser_decompressible_format(wrapper)) return
-    throw new Error(
-      `Compressed HDF5 ${wrapper.toUpperCase()} URLs are not supported in the browser; use .h5 or .h5.gz`,
-    )
-  }
-  assert_supported_hdf5_wrapper(url_basename)
+  // Reject wrappers the browser cannot inflate before spending a network round trip
+  compression_wrapper_of([url_basename], url)
 
   const resp = await fetch(url, { signal })
   if (!resp.ok) {
@@ -136,40 +98,14 @@ async function load_url_content(
     throw new Error(`Failed to fetch ${url}: HTTP ${status}`)
   }
   const source_filename = extract_filename(resp.headers, url_basename)
-  assert_supported_hdf5_wrapper(source_filename)
   const emit = (content: string | ArrayBuffer | Blob, filename: string) =>
     callback(content, filename, { source_filename, source_url: url } satisfies FileLoadMeta)
   if (is_known_text_file(url_basename)) return emit(await resp.text(), source_filename)
-
   // Everything else is classified from one Blob so binary payloads never need a second fetch
-  let blob = await resp.blob()
-  const head = async (count: number) =>
-    new Uint8Array(await blob.slice(0, count).arrayBuffer())
-  const wrapper =
-    detect_compression_format(source_filename) ?? detect_compression_format(url_basename)
-  if (has_gzip_magic(await head(2))) {
-    blob = await decompress_data_blob(blob, `gzip`, signal)
-  } else if (wrapper === `zip`) {
-    blob = await decompress_data_blob(blob, `zip`, signal)
-  } else if (wrapper && !is_browser_decompressible_format(wrapper)) {
-    throw new Error(
-      `${wrapper.toUpperCase()} decompression is not supported in the browser; extract ${url} first`,
-    )
-  }
-  // A named wrapper whose bytes were not compressed was inflated in transit; either way the
-  // payload is now the inner file, so name it accordingly
-  const strip_wrapper = (name: string) =>
-    wrapper ? name.replace(COMPRESSION_EXTENSIONS_REGEX, ``) : name
-  const filename = strip_wrapper(source_filename)
-  const url_name = strip_wrapper(url_basename)
-
-  const payload_head = await head(16)
-  const is_hdf5 =
-    is_hdf5_filename(filename) || is_hdf5_filename(url_name) || has_hdf5_magic(payload_head)
-  if (hdf5_as_blob && is_hdf5) return emit(blob, hdf5_filename(filename, url_name))
-  const is_binary =
-    is_binary_data_extension(ext_of(filename)) ||
-    is_binary_data_extension(ext_of(url_name)) ||
-    has_binary_magic(payload_head)
-  return emit(is_binary ? await blob.arrayBuffer() : await blob.text(), filename)
+  const { content, filename } = await classify_payload(
+    await resp.blob(),
+    [source_filename, url_basename],
+    { hdf5_as_blob, gzip_by_magic: true, source: url, signal },
+  )
+  return emit(content, filename)
 }

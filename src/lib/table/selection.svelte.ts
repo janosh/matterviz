@@ -90,13 +90,13 @@ export class CellSelection {
   ): string {
     return this.rects
       .map((rect) => {
-        const { row_lo, col_lo } = rect_bounds(rect)
-        const row_hi = Math.min(rect_bounds(rect).row_hi, n_rows - 1)
-        const col_hi = Math.min(rect_bounds(rect).col_hi, n_cols - 1)
+        const bounds = rect_bounds(rect)
+        const row_hi = Math.min(bounds.row_hi, n_rows - 1)
+        const col_hi = Math.min(bounds.col_hi, n_cols - 1)
         const lines: string[] = []
-        for (let row = row_lo; row <= row_hi; row++) {
+        for (let row = bounds.row_lo; row <= row_hi; row++) {
           const cells: string[] = []
-          for (let col = col_lo; col <= col_hi; col++) cells.push(cell_text(row, col))
+          for (let col = bounds.col_lo; col <= col_hi; col++) cells.push(cell_text(row, col))
           lines.push(cells.join(`\t`))
         }
         return lines.join(`\n`)

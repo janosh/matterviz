@@ -37,9 +37,8 @@
     onclear?: () => void // Callback when clear button is clicked (fires before onchange)
   } & Omit<HTMLAttributes<HTMLDivElement>, `onchange`> = $props()
 
-  const show_histogram = $derived(
-    histogram_position !== `none` && Boolean(histogram_data?.length),
-  )
+  // Where the histogram renders (none without data)
+  const histogram_at = $derived(histogram_data?.length ? histogram_position : `none`)
   // Active when either bound is set (undefined = unbounded)
   const active = $derived(min_value !== undefined || max_value !== undefined)
   const plain_label = $derived(label.replaceAll(/<[^>]*>/g, ``))
@@ -110,7 +109,7 @@
 {/snippet}
 
 <div class="filter-container" class:active class:disabled {...rest}>
-  {#if show_histogram && histogram_position === `top`}
+  {#if histogram_at === `top`}
     {@render histogram_snippet()}
   {/if}
   <div class="filter-row">
@@ -150,7 +149,7 @@
       {/if}
     </div>
   </div>
-  {#if show_histogram && histogram_position === `bottom`}
+  {#if histogram_at === `bottom`}
     {@render histogram_snippet()}
   {/if}
 </div>

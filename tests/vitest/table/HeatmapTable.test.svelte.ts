@@ -44,7 +44,7 @@ describe(`HeatmapTable`, () => {
     color_scale: `interpolateViridis`,
   }
 
-  // 50-row dataset shared by Pagination, Page Size Selector, and async-sort tests.
+  // 50-row dataset shared by the Pagination and Page Size Selector tests.
   // Scores are deterministic but shuffled (37 is coprime to 50).
   const large_data = Array.from({ length: 50 }, (_, idx) => ({
     Model: `Model ${idx + 1}`,
@@ -290,71 +290,57 @@ describe(`HeatmapTable`, () => {
       }
     })
 
-    it(`sorts using data-sort-value attributes for numeric values`, async () => {
-      const formatted_data = [
-        { Number: `<span data-sort-value="1000">1,000</span>` },
-        { Number: `<span data-sort-value="50">50</span>` },
-        { Number: `<span data-sort-value="10000">10,000</span>` },
-      ]
-
-      const columns = plain_columns(`Number`)
-
-      mount_table({ data: formatted_data, columns })
-
-      // Click to sort ascending by data-sort-value
-      document.querySelector(`th`)?.click()
-      await tick()
-
-      // Default sort is descending (no `better` set), so largest first
-      expect(col_values(`Number`)).toEqual([`10,000`, `1,000`, `50`])
-    })
-
-    // Marked-up numbers read as numbers everywhere: sorted as 9 < 10 rather than as the
-    // text `<b>10</b>` < `<b>9</b>`, and right-aligned like any other numeric column.
-    it(`sorts markup-wrapped numbers numerically`, async () => {
+    // Cell parsing itself is covered by the compare_rows/parse_numeric_val unit tests; these
+    // check a column is wired through them (string initial_sort shorthand sorts ascending)
+    // and that a header click then flips the order.
+    it.each<[string, string[], string[], boolean]>([
+      [
+        `data-sort-value over the visible text`,
+        [`1,000`, `50`, `10,000`].map(
+          (txt) => `<span data-sort-value="${txt.replace(`,`, ``)}">${txt}</span>`,
+        ),
+        [`50`, `1,000`, `10,000`],
+        true,
+      ],
+      [
+        `markup-wrapped numbers numerically`,
+        [`<b>10</b>`, `<b>9</b>`, `<b>100</b>`],
+        [`9`, `10`, `100`],
+        true,
+      ],
+      [
+        // the title attribute orders the raw markup opposite to the sort keys, so neither the
+        // visible text nor the unparsed string could produce this order
+        `by a non-numeric data-sort-value`,
+        [
+          [`c`, `1`, `Alpha`],
+          [`b`, `2`, `Mike`],
+          [`a`, `3`, `Zulu`],
+        ].map(
+          ([key, title, name]) =>
+            `<span title="${title}" data-sort-value="${key}">${name}</span>`,
+        ),
+        [`Zulu`, `Mike`, `Alpha`],
+        false,
+      ],
+      [
+        `mixed columns with numbers first`,
+        [`10`, `abc`, `9`, `def`, `2`, `a1`],
+        [`2`, `9`, `10`, `a1`, `abc`, `def`],
+        false,
+      ],
+    ])(`sorts %s`, async (_desc, values, expected, numeric) => {
       mount_table({
-        data: [`10`, `9`, `100`].map((num) => ({ Marked: `<b>${num}</b>` })),
-        columns: plain_columns(`Marked`),
-        initial_sort: `Marked`,
+        data: values.map((Col) => ({ Col })),
+        columns: plain_columns(`Col`),
+        initial_sort: `Col`,
       })
       await tick()
-      expect(col_values(`Marked`)).toEqual([`9`, `10`, `100`])
-      expect(
-        document.querySelector(`td[data-col="Marked"]`)?.classList.contains(`numeric-col`),
-      ).toBe(true)
-    })
-
-    // A data-sort-value that isn't a number still orders the column, taking precedence over
-    // the visible text it labels.
-    it(`sorts by a non-numeric data-sort-value`, async () => {
-      // the leading title attribute orders the raw markup opposite to the sort keys, so
-      // neither the visible text nor the unparsed string can produce the expected order
-      const tiers = [
-        [`a`, `3`, `Zulu`],
-        [`b`, `2`, `Mike`],
-        [`c`, `1`, `Alpha`],
-      ]
-      mount_table({
-        data: tiers.toReversed().map(([key, title, name]) => ({
-          Tier: `<span title="${title}" data-sort-value="${key}">${name}</span>`,
-        })),
-        columns: plain_columns(`Tier`),
-        initial_sort: `Tier`,
-      })
-      await tick()
-      expect(col_values(`Tier`)).toEqual([`Zulu`, `Mike`, `Alpha`])
-    })
-
-    it(`sorts mixed number/string columns: numbers first, desc reverses`, async () => {
-      const data = [`10`, `abc`, `9`, `def`, `2`, `a1`].map((Mixed) => ({ Mixed }))
-      const columns = plain_columns(`Mixed`)
-      // string shorthand defaults to asc
-      mount_table({ data, columns, initial_sort: `Mixed` })
-      await tick()
-      expect(col_values(`Mixed`)).toEqual([`2`, `9`, `10`, `a1`, `abc`, `def`])
+      expect(col_values(`Col`)).toEqual(expected)
+      expect(doc_query(`td[data-col="Col"]`).classList.contains(`numeric-col`)).toBe(numeric)
       document.querySelector(`th`)?.click() // toggle to descending
       await tick()
-      expect(col_values(`Mixed`)).toEqual([`def`, `abc`, `a1`, `10`, `9`, `2`])
+      expect(col_values(`Col`)).toEqual(expected.toReversed())
     })
 
     it(`respects unsortable columns`, async () => {
@@ -1162,13 +1148,30 @@ describe(`HeatmapTable`, () => {
     })
   })
 
-  it(`renders resize handles on headers with correct ARIA role`, () => {
-    mount_table({ data: sample_data, columns: sample_columns })
+  it(`renders resize handles with ARIA roles and drags them into clamped column widths`, async () => {
+    const column_prefs: Record<string, ColumnPrefs> = {}
+    const state = $state({ column_prefs })
+    mount_table(bind_props({ data: sample_data, columns: sample_columns }, state))
 
-    const resize_handles = document.querySelectorAll(`.resize-handle`)
+    const resize_handles = document.querySelectorAll<HTMLElement>(`.resize-handle`)
     expect(resize_handles).toHaveLength(3) // One per column
     expect(resize_handles[0].getAttribute(`role`)).toBe(`separator`)
     expect(resize_handles[0].getAttribute(`aria-orientation`)).toBe(`vertical`)
+
+    // headers have no layout width in happy-dom, so widths start from 0 and clamp to [50, 500]
+    const mouse = (type: string, clientX: number, target: EventTarget = document) =>
+      target.dispatchEvent(new MouseEvent(type, { clientX, bubbles: true }))
+    mouse(`mousedown`, 100, resize_handles[1])
+    mouse(`mousemove`, 220)
+    await tick()
+    expect(state.column_prefs.Score?.width).toBe(120)
+    expect(doc_query(`th[data-col-id="Score"]`).style.width).toBe(`120px`)
+    mouse(`mousemove`, 900)
+    expect(state.column_prefs.Score?.width).toBe(500)
+    mouse(`mouseup`, 900)
+    mouse(`mousemove`, 300) // released: further movement must not resize
+    expect(state.column_prefs.Score?.width).toBe(500)
+    expect(state.column_prefs.Model).toBeUndefined()
   })
 
   describe(`Regression tests for bug fixes`, () => {
@@ -1715,6 +1718,64 @@ describe(`HeatmapTable`, () => {
       expect(event.stopPropagation).toHaveBeenCalledOnce()
     })
 
+    // The funnel lives inside the sortable header, so every interaction with it must stop
+    // before the header sorts or starts a drag
+    it(`drives numeric, category and text filters from the header panel without sorting`, async () => {
+      const column_prefs: Record<string, ColumnPrefs> = {}
+      const state = $state({ column_prefs })
+      const columns: Label[] = [{ label: `Model`, filter: `text` }, ...metrics.slice(1)]
+      mount_table(bind_props({ data: metric_rows, columns, show_filters: true }, state))
+      const headers = document.querySelectorAll<HTMLElement>(`th`)
+      const open_panel = async (th: HTMLElement) => {
+        th.querySelector<HTMLButtonElement>(`.column-filter-trigger`)?.click()
+        await tick()
+        expect(document.querySelectorAll(`.column-filter-panel`)).toHaveLength(1) // one at a time
+        return doc_query(`.column-filter-panel`)
+      }
+      const set_input = async (input: HTMLInputElement | undefined, value: string) => {
+        assert(input)
+        input.value = value
+        input.dispatchEvent(new Event(`input`, { bubbles: true }))
+        await tick()
+      }
+
+      const [min_input, max_input] = (
+        await open_panel(headers[1])
+      ).querySelectorAll<HTMLInputElement>(`input[type="number"]`)
+      expect(min_input.getAttribute(`placeholder`)).toBe(`10`)
+      await set_input(min_input, `15`)
+      expect(rendered_models()).toEqual([`B`, `C`])
+      await set_input(max_input, `25`)
+      expect(state.column_prefs.Score?.filter).toEqual({ kind: `numeric`, min: 15, max: 25 })
+      await set_input(min_input, ``)
+      await set_input(max_input, `abc`) // neither bound left: the filter is dropped entirely
+      expect(state.column_prefs.Score?.filter).toBeUndefined()
+      expect(rendered_models()).toEqual([`A`, `B`, `C`])
+
+      const [alpha_box] = (await open_panel(headers[2])).querySelectorAll<HTMLInputElement>(
+        `input`,
+      )
+      alpha_box.click()
+      await tick()
+      expect(state.column_prefs.Tier?.filter).toEqual({ kind: `category`, values: [`beta`] })
+      expect(rendered_models()).toEqual([`B`])
+      doc_query<HTMLButtonElement>(`.column-filter-clear`).click()
+      await tick()
+      expect(state.column_prefs.Tier?.filter).toBeUndefined()
+
+      const text_input = (await open_panel(headers[0])).querySelector<HTMLInputElement>(
+        `input[type="search"]`,
+      )
+      await set_input(text_input ?? undefined, `c`)
+      expect(state.column_prefs.Model?.filter).toEqual({ kind: `text`, text: `c` })
+      expect(rendered_models()).toEqual([`C`])
+
+      // none of this reached the header: nothing got sorted
+      expect([...headers].map((th) => th.getAttribute(`aria-sort`))).toEqual(
+        Array(3).fill(`none`),
+      )
+    })
+
     it(`omits summary statistics for columns that aren't fully numeric`, () => {
       mount_table({
         data: [
@@ -1767,6 +1828,34 @@ describe(`HeatmapTable`, () => {
       await tick()
       expect(props.column_order).toEqual([`Score`, `Model`, `Tier`])
     })
+
+    // A persisted column_order may be stale (renamed/removed columns), partial (new columns)
+    // or even contain repeats; the table renders the resolved order and writes it back.
+    it(`reconciles a bound column_order with the current columns`, async () => {
+      const state = $state({
+        data: metric_rows,
+        columns: metrics,
+        column_order: [`Tier`, `Tier`, `Ghost`],
+      })
+      mount_table(bind_props({}, state))
+      await tick()
+      const header_ids = () =>
+        [...document.querySelectorAll<HTMLElement>(`th[data-col-id]`)].map(
+          (th) => th.dataset.colId,
+        )
+      expect(state.column_order).toEqual([`Tier`, `Model`, `Score`])
+      expect(header_ids()).toEqual(state.column_order)
+
+      state.columns = metrics.filter((col) => col.label !== `Model`)
+      await tick()
+      expect(state.column_order).toEqual([`Tier`, `Score`])
+      expect(header_ids()).toEqual([`Tier`, `Score`])
+
+      state.data = [] // while data reloads there are no columns: the persisted order survives
+      state.columns = []
+      await tick()
+      expect(state.column_order).toEqual([`Tier`, `Score`])
+    })
   })
 
   describe(`Export Enhancements`, () => {
@@ -1802,38 +1891,43 @@ describe(`HeatmapTable`, () => {
       }
     }
 
-    it(`escapes GitHub markdown without breaking rows or alignment`, async () => {
-      const text = await export_table_text(
-        {
-          data: [{ Model: `a\nb`, Escaped: `c\\|d`, Score: 1 }],
-          columns: plain_columns(`Model`, `Escaped`, `Score`),
-        },
-        undefined,
+    // Escaping itself is covered by the exporter unit tests; this checks the download wiring,
+    // header markup stripping and numeric-column alignment for every format
+    it.each<[string, RowData, string[]]>([
+      [
+        `CSV`,
+        { Model: `say "hi", ok`, 'E<sub>f</sub>': 1 },
+        [`Model,Ef`, `"say ""hi"", ok",1`],
+      ],
+      [
         `MD`,
-      )
-      expect(text.split(`\n`)).toEqual([
-        `| Model | Escaped | Score |`,
-        `| :--- | :--- | ---: |`,
-        `| a<br>b | c\\\\\\|d | 1 |`,
-      ])
-    })
-
-    it(`emits LaTeX booktabs with escaped control characters`, async () => {
-      const text = await export_table_text(
-        {
-          data: [{ Model: `C:\\tmp Fe_2 & Co x^2 100%`, Score: 1 }],
-          columns: plain_columns(`Model`, `Score`),
-        },
-        undefined,
+        { Model: `a\nb|c`, 'E<sub>f</sub>': 1 },
+        [`| Model | Ef |`, `| :--- | ---: |`, `| a<br>b\\|c | 1 |`],
+      ],
+      [
         `TEX`,
-      )
-      expect(text).toContain(`\\begin{tabular}{lr}`)
-      expect(text).toContain(`\\toprule`)
-      expect(text).toContain(
-        `C:\\textbackslash{}tmp Fe\\_2 \\& Co x\\textasciicircum{}2 100\\% & 1 \\\\`,
-      )
-      expect(text).toContain(`\\bottomrule`)
-    })
+        { Model: `Fe_2 & x^2 100%`, 'E<sub>f</sub>': 1 },
+        [
+          `\\begin{tabular}{lr}`,
+          `  \\toprule`,
+          `  Model & Ef \\\\`,
+          `  \\midrule`,
+          `  Fe\\_2 \\& x\\textasciicircum{}2 100\\% & 1 \\\\`,
+          `  \\bottomrule`,
+          `\\end{tabular}`,
+        ],
+      ],
+    ])(
+      `downloads %s with stripped headers and aligned numeric columns`,
+      async (format, row, expected) => {
+        const text = await export_table_text(
+          { data: [row], columns: plain_columns(...Object.keys(row)) },
+          undefined,
+          format,
+        )
+        expect(text.split(`\n`)).toEqual(expected)
+      },
+    )
 
     it(`copy to clipboard writes TSV`, async () => {
       mount_table({
@@ -1854,20 +1948,6 @@ describe(`HeatmapTable`, () => {
       )
     })
 
-    it(`strips HTML from column headers`, async () => {
-      const text = await export_table_text({
-        data: [{ 'E<sub>form</sub>': -1.5, Name: `Fe` }],
-        columns: [
-          { label: `E<sub>form</sub>` },
-          {
-            label: `Name`,
-          },
-        ],
-      })
-      expect(text).toContain(`Eform`)
-      expect(text).not.toContain(`<sub>`)
-    })
-
     it(`exports only selected rows`, async () => {
       const text = await export_table_text(
         { data: sample_data, columns: sample_columns, show_row_select: true },
@@ -1883,20 +1963,6 @@ describe(`HeatmapTable`, () => {
       expect(lines).toHaveLength(2) // header + 1 selected row
       expect(text).toContain(`Model A`)
       expect(text).not.toContain(`Model B`)
-    })
-
-    it.each([
-      { desc: `commas`, val: `hello, world`, expected: `"hello, world"` },
-      { desc: `double quotes`, val: `say "hi"`, expected: `"say ""hi"""` },
-      { desc: `newlines`, val: `line1\nline2`, expected: `"line1\nline2"` },
-      // a bare CR is a record separator to most readers, so it must be quoted too
-      { desc: `carriage returns`, val: `line1\rline2`, expected: `"line1\rline2"` },
-    ])(`CSV quoting for $desc`, async ({ val, expected }) => {
-      const text = await export_table_text({
-        data: [{ Name: val }],
-        columns: plain_columns(`Name`),
-      })
-      expect(text).toContain(expected)
     })
   })
 
@@ -2168,7 +2234,6 @@ describe(`HeatmapTable`, () => {
         data: many_rows,
         columns: two_cols,
         show_row_numbers: true,
-
         virtual: true,
         keyboard_cells: true,
       })
@@ -2265,7 +2330,6 @@ describe(`HeatmapTable`, () => {
       mount_table({
         data: many_rows,
         columns: two_cols,
-
         virtual: true,
         onrowclick: () => {},
       })

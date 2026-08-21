@@ -32,7 +32,6 @@
 
   const value_type = $derived(get_value_type(value))
   const expandable = $derived(is_expandable_type(value_type))
-  const child_count = $derived(expandable ? get_child_count(value) : 0)
 
   // Explicit collapse/expand wins, then the depth fold level, then the size thresholds
   const is_collapsed = $derived.by(() => {
@@ -41,8 +40,8 @@
     if (ctx.force_expanded.has(path)) return false
     const { default_fold_level, auto_fold_arrays, auto_fold_objects } = ctx.settings
     if (depth >= default_fold_level) return true
-    if (value_type === `array`) return child_count > auto_fold_arrays
-    if (value_type === `object`) return child_count > auto_fold_objects
+    if (value_type === `array`) return get_child_count(value) > auto_fold_arrays
+    if (value_type === `object`) return get_child_count(value) > auto_fold_objects
     return false
   })
 
@@ -51,9 +50,6 @@
   const is_current_match = $derived(ctx.current_match_path === path)
   const is_selected = $derived(ctx.selected_paths.has(path))
   const diff_status = $derived(ctx.diff_map?.get(path)?.status ?? null)
-  const byte_size = $derived(
-    expandable && is_collapsed ? format_bytes(estimate_byte_size(value)) : ``,
-  )
 
   function toggle_collapse(event?: MouseEvent) {
     event?.stopPropagation()
@@ -79,8 +75,17 @@
 
   // Expanded shallow nodes keep their header visible while scrolling through children
   const is_sticky = $derived(expandable && !is_collapsed && depth <= 2)
-  const open_bracket = $derived(value_type === `array` ? `[` : `{`)
-  const close_bracket = $derived(value_type === `array` ? `]` : `}`)
+  const [open_bracket, close_bracket] = $derived(
+    value_type === `array` ? [`[`, `]`] : [`{`, `}`],
+  )
+
+  // Middle-click copies the path (stopped so ancestor rows don't overwrite the clipboard)
+  function copy_path_on_middle_click(event: MouseEvent) {
+    if (event.button !== 1) return
+    event.preventDefault()
+    event.stopPropagation()
+    ctx.copy_path(path, event)
+  }
 
   function handle_keydown(event: KeyboardEvent) {
     if (!is_focused) return
@@ -126,13 +131,7 @@
     if (event.ctrlKey || event.metaKey) ctx.toggle_select(path, event.shiftKey)
     else ctx.set_focused(path)
   }}
-  onauxclick={(event) => {
-    if (event.button === 1) {
-      event.preventDefault()
-      event.stopPropagation()
-      ctx.copy_path(path, event)
-    }
-  }}
+  onauxclick={copy_path_on_middle_click}
   oncontextmenu={(event) => {
     ctx.show_context_menu(event, path, value, expandable, is_collapsed)
   }}
@@ -176,13 +175,7 @@
             ctx.copy_value(path, value, event)
           }
         }}
-        onauxclick={(event) => {
-          if (event.button === 1) {
-            event.preventDefault()
-            event.stopPropagation()
-            ctx.copy_path(path, event)
-          }
-        }}
+        onauxclick={copy_path_on_middle_click}
       >
         {#if typeof node_key === `number` && ctx.settings.show_array_indices}
           <span class="index">{node_key}</span>
@@ -199,7 +192,7 @@
         <button type="button" class="preview" tabindex="-1" onclick={toggle_collapse}>
           {format_preview(value)}
         </button>
-        <span class="size-hint">{byte_size}</span>
+        <span class="size-hint">{format_bytes(estimate_byte_size(value))}</span>
         <span class="bracket close">{close_bracket}</span>
       {/if}
     {:else}

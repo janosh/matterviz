@@ -60,7 +60,7 @@ describe(`decompress utility functions`, () => {
 
     test.each([`bz2`, `xz`] as const)(`rejects %s (no browser decoder)`, async (format) => {
       await expect(decompress_data(new ArrayBuffer(0), format)).rejects.toThrow(
-        `${format.toUpperCase()} decompression is not supported in the browser. Please extract the ${format.toUpperCase()} file first.`,
+        `${format.toUpperCase()} decompression is not supported in the browser; extract the ${format.toUpperCase()} file first`,
       )
     })
 
@@ -144,7 +144,22 @@ describe(`decompress utility functions`, () => {
     ])(`rejects HDF5 %s wrappers`, async (extension, format) => {
       await expect(
         decompress_trajectory_file(new File([`bytes`], `trajectory.h5.${extension}`)),
-      ).rejects.toThrow(`Compressed HDF5 ${format} files are not supported`)
+      ).rejects.toThrow(
+        `${format} decompression is not supported in the browser; extract trajectory.h5.${extension} first`,
+      )
+    })
+
+    test.each([
+      [`plain`, `structure.xyz`, false],
+      [`gzipped`, `structure.xyz.gz`, true],
+    ])(`decodes a %s non-HDF5 trajectory File to text`, async (_label, filename, gzipped) => {
+      const text = `2\ncomment\nH 0 0 0\nH 1 0 0`
+      const bytes = new TextEncoder().encode(text)
+      const file = new File([gzipped ? await compress(bytes) : bytes], filename)
+      expect(await decompress_trajectory_file(file)).toEqual({
+        content: text,
+        filename: `structure.xyz`,
+      })
     })
 
     test.each([`structure.xyz`, `config.json`, `POSCAR`, `notes.md`, `greeting.txt`])(

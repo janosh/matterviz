@@ -1,25 +1,3 @@
-<script module lang="ts">
-  const middle_ellipsis_segmenter = new Intl.Segmenter(undefined, { granularity: `grapheme` })
-  const MIDDLE_ELLIPSIS_MIN_LENGTH = 16
-
-  const middle_ellipsis_parts = (text: string): [string, string] => {
-    const graphemes = [...middle_ellipsis_segmenter.segment(text)].map(
-      ({ segment }) => segment,
-    )
-    const split_at = graphemes.length - Math.min(8, Math.floor(graphemes.length / 2))
-    return [graphemes.slice(0, split_at).join(``), graphemes.slice(split_at).join(``)]
-  }
-
-  // Columns discovered from the first rows when the caller passes none
-  const discover_columns = (rows: RowData[]): Label[] => {
-    const seen = new Set<string>()
-    for (const row of rows.slice(0, 50)) {
-      for (const key of Object.keys(row)) if (key !== `style` && key !== `class`) seen.add(key)
-    }
-    return [...seen].map((key) => ({ label: key }))
-  }
-</script>
-
 <script lang="ts">
   import {
     add_alpha,
@@ -66,11 +44,13 @@
     compare_rows,
     DATETIME_MODE_LABELS,
     DATETIME_MODES_BY_KIND,
+    discover_columns,
     format_datetime,
-    get_data_sort_value,
     infer_datetime_kind,
     is_html_str,
     is_invalid,
+    MIDDLE_ELLIPSIS_MIN_LENGTH,
+    middle_ellipsis_parts,
     parse_datetime_val,
     parse_numeric_val,
     row_matches_query,
@@ -89,7 +69,7 @@
   import ToggleMenu from './ToggleMenu.svelte'
   import { virtual_window } from './virtual'
   import { ActionMenu, Icon, type IconData, SettingsSection } from 'svelte-widgets'
-  import { portal, tooltip } from 'svelte-widgets/attachments'
+  import { tooltip } from 'svelte-widgets/attachments'
   import {
     Calendar,
     Columns,
@@ -242,33 +222,30 @@
         : { direction: `asc` as const, ...initial_sort }
       : null,
   )
-  let pagination_config = $derived(
-    pagination
-      ? { page_size: 25, ...(typeof pagination === `object` ? pagination : {}) }
-      : null,
-  )
+  // Feature props come as `true` (enable with defaults), an object (override them) or off
+  function with_defaults<Defaults extends object, Config extends object>(
+    option: boolean | Config | undefined,
+    defaults: Defaults,
+  ): (Defaults & Config) | null {
+    if (!option) return null
+    return { ...defaults, ...(typeof option === `object` ? option : {}) } as Defaults & Config
+  }
+  let pagination_config = $derived(with_defaults(pagination, { page_size: 25 }))
   // Writable: the page-size selector overrides it until the parent changes pagination
   let page_size = $derived(pagination_config?.page_size ?? 25)
+  // keys/fuzzy default inside row_matches_query
   let search_config = $derived(
-    search
-      ? {
-          placeholder: `Filter...`,
-          expanded: false,
-          keys: undefined as string[] | undefined,
-          fuzzy: false,
-          ...(typeof search === `object` ? search : {}),
-        }
-      : null,
+    with_defaults(search, { placeholder: `Filter...`, expanded: false }),
   )
   let search_expanded = $derived(search_config?.expanded ?? false)
   let export_config = $derived(
-    export_data
-      ? {
-          formats: [`csv`, `json`, `md`, `tex`] as ExportFormat[],
-          filename: `table-export`,
-          ...(typeof export_data === `object` ? export_data : {}),
-        }
-      : null,
+    with_defaults(export_data, {
+      formats: [`csv`, `json`, `md`, `tex`] as ExportFormat[],
+      filename: `table-export`,
+    }),
+  )
+  let virtual_config = $derived(
+    pagination_config ? null : with_defaults(virtual, { overscan: 10, min_window: 60 }),
   )
   let hint_config = $derived(
     sort_hint
@@ -281,11 +258,6 @@
   )
   let summary_stats = $derived<SummaryStat[]>(
     summary === true ? [`mean`] : summary === false ? [] : summary,
-  )
-  let virtual_config = $derived(
-    pagination_config || !virtual
-      ? null
-      : { overscan: 10, min_window: 60, ...(typeof virtual === `object` ? virtual : {}) },
   )
 
   // Which toolbar dropdown is open, if any — they overlap, so only one ever is
@@ -358,27 +330,25 @@
   const key_of_id = (col_id: string): string => data_keys.get(col_id) ?? col_id
   const cell_key = (col: Label): string => key_of_id(get_col_id(col))
 
-  // Sync column_order with columns: drop stale IDs, append new ones, keep the user's order.
+  // column_order first (stale IDs skipped), then any column it doesn't mention
+  let ordered_columns = $derived.by(() => {
+    const by_id = new SvelteMap(columns.map((col) => [get_col_id(col), col]))
+    const ordered = [...new Set(column_order)]
+      .map((id) => by_id.get(id))
+      .filter((col) => col != null)
+    const ordered_ids = new Set(ordered.map(get_col_id))
+    return [...ordered, ...columns.filter((col) => !ordered_ids.has(get_col_id(col)))]
+  })
+  // Write the resolved order back to the bindable prop so hosts persist a complete, valid list.
+  // Only on a real change: a fresh array reference would re-trigger this effect forever. Left
+  // alone while columns are empty, so a persisted order survives until the data arrives.
   $effect(() => {
     if (columns.length === 0) return
-    const col_ids = columns.map(get_col_id)
-    const valid_ids = new Set(col_ids)
-    const kept = new SvelteSet(column_order.filter((id) => valid_ids.has(id)))
-    const new_order = [...kept, ...col_ids.filter((id) => !kept.has(id))]
-    // Assign only on a real change, or the new array reference re-triggers this effect forever
+    const new_order = ordered_columns.map(get_col_id)
     const unchanged =
       new_order.length === column_order.length &&
       new_order.every((id, idx) => id === column_order[idx])
     if (!unchanged) column_order = new_order
-  })
-
-  // column_order first, then any column it doesn't mention (e.g. one just added)
-  let ordered_columns = $derived.by(() => {
-    if (column_order.length === 0) return columns
-    const by_id = new SvelteMap(columns.map((col) => [get_col_id(col), col]))
-    const ordered = column_order.map((id) => by_id.get(id)).filter((col) => col != null)
-    const ordered_ids = new Set(ordered.map(get_col_id))
-    return [...ordered, ...columns.filter((col) => !ordered_ids.has(get_col_id(col)))]
   })
   let visible_columns = $derived(
     ordered_columns.filter(
@@ -409,15 +379,14 @@
   })
   const is_datetime_column = (col: Label): boolean =>
     datetime_column_kinds.has(get_col_id(col))
+  const datetime_kind = (col: Label) =>
+    datetime_column_kinds.get(get_col_id(col)) ?? `datetime`
   const datetime_format_options = (col: Label): DateTimeFormatMode[] =>
-    DATETIME_MODES_BY_KIND[datetime_column_kinds.get(get_col_id(col)) ?? `datetime`]
+    DATETIME_MODES_BY_KIND[datetime_kind(col)]
   const datetime_mode = (col: Label): DateTimeFormatMode => {
     const options = datetime_format_options(col)
     const selected =
-      prefs_of(get_col_id(col)).datetime_format ??
-      col.datetime_format ??
-      datetime_column_kinds.get(get_col_id(col)) ??
-      `datetime`
+      prefs_of(get_col_id(col)).datetime_format ?? col.datetime_format ?? datetime_kind(col)
     return options.includes(selected) ? selected : options[0]
   }
   // Ticks once a minute while any column shows relative times, so "Xm ago" cells don't go
@@ -547,10 +516,8 @@
   })
   let sort_criteria = $derived.by((): SortCriterion[] => {
     const active = multi_sort.length > 0 ? multi_sort : sort_state.column ? [sort_state] : []
-    const valid_ids = new Set(ordered_columns.map(get_col_id))
-    // skip stale entries referencing removed columns
     return active
-      .filter(({ column }) => valid_ids.has(column))
+      .filter(({ column }) => data_keys.has(column)) // skip entries for removed columns
       .map(({ column, ascending }) => ({ key: key_of_id(column), ascending }))
   })
   let sorted_data = $derived(
@@ -580,6 +547,17 @@
     sort = cleared
       ? { column: ``, dir: `asc` }
       : { column: col_id, dir: on_this_col ? flipped : first_dir }
+  }
+
+  // Header click, or Enter/Space while it has focus, sorts — unless a drag or resize is
+  // in progress, whose release would otherwise register as a click
+  function activate_header(event: MouseEvent | KeyboardEvent, col: Label) {
+    if (drag_col_id || resize_col_id) return
+    if (event instanceof KeyboardEvent) {
+      if (event.key !== `Enter` && event.key !== ` `) return
+      event.preventDefault()
+    }
+    sort_rows(col, event)
   }
 
   // Sort arrow for an actively sorted column, plus its 1-based place under multi-sort
@@ -701,10 +679,9 @@
     return { start, end: Math.min(sorted_data.length, start + page_size) }
   })
   let display_rows = $derived(sorted_data.slice(display_range.start, display_range.end))
-  let spacer_top = $derived(virtual_config ? virtual_range.start * avg_row_height : 0)
-  let spacer_bottom = $derived(
-    virtual_config ? (sorted_data.length - virtual_range.end) * avg_row_height : 0,
-  )
+  // Both zero without virtualization, where virtual_range spans every row
+  let spacer_top = $derived(virtual_range.start * avg_row_height)
+  let spacer_bottom = $derived((sorted_data.length - virtual_range.end) * avg_row_height)
   // === Column statistics and colors ===
   // One numeric pass per visible column, shared by the color scales, the summary row,
   // best-cell highlighting and data bars. Quantiles are skipped unless requested.
@@ -722,9 +699,8 @@
       if (!col_stats) continue
       const domain = resolve_color_domain(col_stats, col.normalize)
       stats.set(get_col_id(col), { ...col_stats, domain })
-      if (col.domain_group) {
-        groups.set(col.domain_group, [...(groups.get(col.domain_group) ?? []), domain])
-      }
+      const group = col.domain_group
+      if (group) groups.set(group, [...(groups.get(group) ?? []), domain])
     }
     // Columns sharing a tag end up on one merged domain, so their cells compare directly
     for (const col of visible_columns) {
@@ -948,12 +924,9 @@
   }
   function handle_window_pointerdown(event: PointerEvent) {
     const target = event.target instanceof Element ? event.target : null
-    if (datetime_select_open_col_id !== null && !target?.closest(`.datetime-format-control`)) {
-      datetime_select_open_col_id = null
-    }
-    if (filter_panel_col_id !== null && !target?.closest(`.column-filter`)) {
-      filter_panel_col_id = null
-    }
+    // header popovers close on any pointerdown outside them
+    if (!target?.closest(`.datetime-format-control`)) datetime_select_open_col_id = null
+    if (!target?.closest(`.column-filter`)) filter_panel_col_id = null
     // A drag's suppress flag is consumed by the click right after pointerup; if that click
     // never fired (released outside the table), any NEW interaction must not inherit it
     suppress_row_click = false
@@ -1002,17 +975,22 @@
     focus_cell(to.row, to.col)
   }
 
+  // Scroll a row outside the virtual window into it so it exists to receive focus. Returns
+  // whether it scrolled. `align_bottom` puts the row at the bottom edge, keeping it visible
+  // when travelling downwards.
+  function scroll_row_into_window(row: number, align_bottom = false): boolean {
+    if (!virtual_config || !scroll_el) return false
+    if (row >= virtual_range.start && row < virtual_range.end) return false
+    const leading_edge = align_bottom ? Math.max(0, viewport_height - avg_row_height) : 0
+    scroll_el.scrollTop = Math.max(0, row * avg_row_height - leading_edge)
+    sync_viewport()
+    return true
+  }
+
   // Move focus to a cell by absolute coordinates, paging/scrolling it into view first
   function focus_cell(row: number, col: number) {
     if (pagination_config) current_page = Math.floor(row / page_size) + 1
-    if (
-      virtual_config &&
-      scroll_el &&
-      (row < virtual_range.start || row >= virtual_range.end)
-    ) {
-      scroll_el.scrollTop = row * avg_row_height
-      sync_viewport()
-    }
+    scroll_row_into_window(row)
     active_cell = { row, col }
     // The row may not be rendered yet (page flip or virtual window), so wait a tick
     void tick().then(() => {
@@ -1050,18 +1028,7 @@
     const step = event.key === `ArrowDown` ? 1 : -1
     const target_idx = abs_idx + step
     if (target_idx < 0 || target_idx >= sorted_data.length) return
-    if (
-      virtual_config &&
-      scroll_el &&
-      (target_idx < display_range.start || target_idx >= display_range.end)
-    ) {
-      // Scroll the row into the window so it exists to receive focus, aligned to the leading
-      // edge to keep it visible in the direction of travel
-      const leading_edge = Math.max(0, step > 0 ? viewport_height - avg_row_height : 0)
-      scroll_el.scrollTop = Math.max(0, target_idx * avg_row_height - leading_edge)
-      sync_viewport()
-      await tick()
-    }
+    if (scroll_row_into_window(target_idx, step > 0)) await tick()
     // rows carry no index of their own; every data cell does
     scroll_el?.querySelector(`td[data-row-idx="${target_idx}"]`)?.closest(`tr`)?.focus()
   }
@@ -1236,8 +1203,6 @@
 
   // === Column resize ===
   let resize_col_id = $state<string | null>(null)
-  let resize_start_x = 0
-  let resize_start_width = 0
   let resize_controller: AbortController | undefined
   onDestroy(() => resize_controller?.abort())
   const clamp_width = (width: number) => Math.min(500, Math.max(50, width))
@@ -1245,23 +1210,15 @@
     event.preventDefault()
     event.stopPropagation()
     resize_col_id = col_id
-    resize_start_x = event.clientX
+    const start_x = event.clientX
     const th = event.target instanceof Element ? event.target.parentElement : null
-    resize_start_width = th?.offsetWidth ?? 100
+    const start_width = th?.offsetWidth ?? 100
     resize_controller?.abort()
     resize_controller = new AbortController()
     const { signal } = resize_controller
     document.addEventListener(
       `mousemove`,
-      (move) => {
-        if (resize_col_id) {
-          set_pref(
-            resize_col_id,
-            `width`,
-            clamp_width(resize_start_width + move.clientX - resize_start_x),
-          )
-        }
-      },
+      (move) => set_pref(col_id, `width`, clamp_width(start_width + move.clientX - start_x)),
       { signal },
     )
     document.addEventListener(
@@ -1300,12 +1257,7 @@
     sanitize_html,
     delegate: `[title], [aria-label], [data-title]`,
   })
-  // Merge root_style with rest.style for the root div
-  let rest_props = $derived.by(() => {
-    const { style: rest_style, ...other_props } = rest
-    const merged = [rest_style, root_style].filter(Boolean).join(`; `)
-    return { ...other_props, ...(merged ? { style: merged } : {}) }
-  })
+  let root_styles = $derived([rest.style, root_style].filter(Boolean).join(`; `) || undefined)
 </script>
 
 <svelte:window
@@ -1339,37 +1291,33 @@
 
 <!-- Per-column filter: funnel button in the header opening a panel whose controls depend
      on the column's data — a range for numbers, a checklist for few distinct values,
-     a substring box otherwise. Every event stops at the panel so the sortable, draggable
-     header underneath doesn't react. -->
+     a substring box otherwise. -->
 {#snippet column_filter(col: Label, col_id: string)}
   {@const active = prefs_of(col_id).filter}
-  <span class="column-filter">
+  <!-- svelte-ignore a11y_no_static_element_interactions (every event stops here so the sortable, draggable header underneath doesn't react) -->
+  <span
+    class="column-filter"
+    onclick={stop_event}
+    onkeydown={stop_event}
+    onmousedown={stop_event}
+    onpointerdown={stop_event}
+  >
     <button
       type="button"
       class={['column-filter-trigger', { active: Boolean(active) }]}
       aria-label="Filter {strip_html(col.label)}"
       aria-expanded={filter_panel_col_id === col_id}
-      onkeydown={stop_event}
-      onmousedown={stop_event}
-      onpointerdown={stop_event}
-      onclick={(event) => {
-        stop_event(event)
-        filter_panel_col_id = filter_panel_col_id === col_id ? null : col_id
-      }}
+      onclick={() => (filter_panel_col_id = filter_panel_col_id === col_id ? null : col_id)}
     >
       <Icon icon={Filter} />
     </button>
     {#if filter_panel_col_id === col_id && filter_panel}
-      <!-- svelte-ignore a11y_no_static_element_interactions (guard so panel input never reaches the header) -->
+      <!-- svelte-ignore a11y_no_static_element_interactions (Escape closes the panel) -->
       <div
         class="column-filter-panel"
-        onclick={stop_event}
         onkeydown={(event) => {
-          stop_event(event)
           if (event.key === `Escape`) filter_panel_col_id = null
         }}
-        onmousedown={stop_event}
-        onpointerdown={stop_event}
       >
         {#if filter_panel.kind === `numeric`}
           {@const range = active?.kind === `numeric` ? active : null}
@@ -1449,9 +1397,10 @@
 <!-- svelte-ignore a11y_no_static_element_interactions (capture-phase guard swallowing the click that follows a cell-range drag) -->
 <div
   {@attach table_tooltips}
-  {...rest_props}
+  {...rest}
+  style={root_styles}
   bind:this={container_el}
-  class={[`table-container`, rest_props.class, { 'cell-dragging': selection.dragging }]}
+  class={[`table-container`, rest.class, { 'cell-dragging': selection.dragging }]}
   data-density={density}
   style:--heatmap-opacity="{heatmap_opacity * 100}%"
   onclickcapture={suppress_click_after_cell_drag}
@@ -1686,7 +1635,6 @@
           {#if show_row_numbers}<th class="row-num-col">#</th>{/if}
           {#each visible_columns as col (get_col_id(col))}
             {@const col_id = get_col_id(col)}
-            {@const is_datetime = is_datetime_column(col)}
             {@const dt_mode = datetime_mode(col)}
             {@const datetime_label_id = `datetime-format-label-${encodeURIComponent(col_id)}`}
             {@const col_width = width_of(col_id)}
@@ -1699,19 +1647,8 @@
               tabindex={sortable ? 0 : undefined}
               role={sortable ? `button` : undefined}
               oncontextmenu={(event) => open_column_context_menu(event, col_id)}
-              onclick={(event) => {
-                if (!drag_col_id && !resize_col_id) sort_rows(col, event)
-              }}
-              onkeydown={(event) => {
-                if (
-                  (event.key === `Enter` || event.key === ` `) &&
-                  !drag_col_id &&
-                  !resize_col_id
-                ) {
-                  event.preventDefault()
-                  sort_rows(col, event)
-                }
-              }}
+              onclick={(event) => activate_header(event, col)}
+              onkeydown={(event) => activate_header(event, col)}
               style={`${col.style ?? ``}${
                 col_width ? `; width: ${col_width}px; min-width: ${col_width}px` : ``
               }`}
@@ -1751,8 +1688,17 @@
               {#if show_filters && col.filter !== false}
                 {@render column_filter(col, col_id)}
               {/if}
-              {#if is_datetime}
-                <span class="datetime-format-control">
+              {#if is_datetime_column(col)}
+                {@const dt_options = datetime_format_options(col)}
+                <!-- svelte-ignore a11y_no_static_element_interactions (events stop here so the header doesn't sort or drag) -->
+                <span
+                  class="datetime-format-control"
+                  onclick={stop_event}
+                  oninput={stop_event}
+                  onkeydown={stop_event}
+                  onmousedown={stop_event}
+                  onpointerdown={stop_event}
+                >
                   <button
                     type="button"
                     class="datetime-format-trigger"
@@ -1760,14 +1706,9 @@
                     aria-haspopup="listbox"
                     aria-expanded={datetime_select_open_col_id === col_id}
                     data-mode={dt_mode}
-                    onkeydown={stop_event}
-                    onmousedown={stop_event}
-                    onpointerdown={stop_event}
-                    onclick={(event) => {
-                      stop_event(event)
-                      datetime_select_open_col_id =
-                        datetime_select_open_col_id === col_id ? null : col_id
-                    }}
+                    onclick={() =>
+                      (datetime_select_open_col_id =
+                        datetime_select_open_col_id === col_id ? null : col_id)}
                     {@attach tooltip({
                       content: `Date/time format: ${DATETIME_MODE_LABELS[dt_mode]}`,
                       placement: `top`,
@@ -1783,28 +1724,22 @@
                       class="datetime-format-select"
                       aria-labelledby={datetime_label_id}
                       value={dt_mode}
-                      size={datetime_format_options(col).length}
+                      size={dt_options.length}
                       onclick={(event) => {
-                        stop_event(event)
                         if (event.currentTarget.value === dt_mode)
                           datetime_select_open_col_id = null
                       }}
                       onkeydown={(event) => {
-                        stop_event(event)
                         if (event.key === `Escape`) datetime_select_open_col_id = null
                       }}
-                      onmousedown={stop_event}
-                      onpointerdown={stop_event}
                       oninput={(event) => {
-                        stop_event(event)
                         const mode = event.currentTarget.value as DateTimeFormatMode
-                        if (datetime_format_options(col).includes(mode)) {
+                        if (dt_options.includes(mode))
                           set_pref(col_id, `datetime_format`, mode)
-                        }
                         datetime_select_open_col_id = null
                       }}
                     >
-                      {#each datetime_format_options(col) as mode (mode)}
+                      {#each dt_options as mode (mode)}
                         <option value={mode}>{DATETIME_MODE_LABELS[mode]}</option>
                       {/each}
                     </select>
@@ -2438,17 +2373,15 @@
     gap: 2px;
     font-size: 0.8em;
     transition: color 0.02s linear;
-  }
-  .icon-btn :global(svg),
-  .control-buttons > :global(button.pane-toggle svg) {
-    width: 14px;
-    height: 14px;
-  }
-  /* toolbar buttons give color-only hover feedback — no background shading */
-  .icon-btn:hover,
-  .control-buttons > :global(button.pane-toggle:hover) {
-    background: transparent;
-    color: light-dark(#000, #fff);
+    :global(svg) {
+      width: 14px;
+      height: 14px;
+    }
+    /* toolbar buttons give color-only hover feedback — no background shading */
+    &:hover {
+      background: transparent;
+      color: light-dark(#000, #fff);
+    }
   }
   .icon-btn.active {
     color: var(--table-accent);

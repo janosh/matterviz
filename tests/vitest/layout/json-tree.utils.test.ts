@@ -337,54 +337,26 @@ describe(`matches_search`, () => {
 })
 
 describe(`collect_all_paths`, () => {
-  it(`returns empty array for primitives`, () => {
-    expect(collect_all_paths(`string`)).toEqual([])
-    expect(collect_all_paths(42)).toEqual([])
-    expect(collect_all_paths(null)).toEqual([])
-  })
-
-  it(`collects paths from nested object`, () => {
-    const obj = {
-      a: { b: { c: 1 } },
-      d: 2,
-    }
-    const paths = collect_all_paths(obj, `root`)
-    expect(paths).toContain(`root`)
-    expect(paths).toContain(`root.a`)
-    expect(paths).toContain(`root.a.b`)
-  })
-
-  it(`collects paths from array`, () => {
-    const arr = [{ a: 1 }, { b: 2 }]
-    const paths = collect_all_paths(arr, `items`)
-    expect(paths).toContain(`items`)
-    expect(paths).toContain(`items[0]`)
-    expect(paths).toContain(`items[1]`)
-  })
-
-  it(`respects max_depth`, () => {
-    const obj = { a: { b: { c: { d: 1 } } } }
-    const paths = collect_all_paths(obj, `root`, 2)
-    expect(paths).toContain(`root`)
-    expect(paths).toContain(`root.a`)
-    expect(paths).not.toContain(`root.a.b`)
-  })
-
-  it(`handles circular references without infinite loop`, () => {
-    const obj: Record<string, unknown> = { a: 1 }
-    obj.self = obj
-    // Should not throw or infinite loop - circular refs are detected and skipped
-    const paths = collect_all_paths(obj, `root`)
-    // The root path should be collected, but the circular self reference
-    // won't add its children (since they're already seen)
-    expect(paths).toContain(`root`)
-  })
-
-  it(`collects paths in Map and Set`, () => {
-    const map = new Map([[`key`, { nested: true }]])
-    const set = new Set([{ inner: 1 }])
-    expect(collect_all_paths({ map }, `root`)).toContain(`root.map[0]`)
-    expect(collect_all_paths({ set }, `root`)).toContain(`root.set[0]`)
+  const circular: Record<string, unknown> = { a: 1 }
+  circular.self = circular
+  it.each([
+    [`string`, `root`, Infinity, []],
+    [42, ``, Infinity, []],
+    [null, `root`, Infinity, []],
+    [{ a: { b: { c: 1 } }, d: 2 }, `root`, Infinity, [`root`, `root.a`, `root.a.b`]],
+    [[{ a: 1 }, { b: 2 }], `items`, Infinity, [`items`, `items[0]`, `items[1]`]],
+    [{ a: { b: { c: { d: 1 } } } }, `root`, 2, [`root`, `root.a`]],
+    // the self reference is listed once; its (already seen) children are not walked again
+    [circular, `root`, Infinity, [`root`, `root.self`]],
+    [
+      { map: new Map([[`key`, { nested: true }]]) },
+      `root`,
+      Infinity,
+      [`root`, `root.map`, `root.map[0]`, `root.map[0].value`],
+    ],
+    [{ set: new Set([{ inner: 1 }]) }, `root`, Infinity, [`root`, `root.set`, `root.set[0]`]],
+  ])(`collect_all_paths(%j, %p, max_depth=%s) = %j`, (value, path, max_depth, expected) => {
+    expect(collect_all_paths(value, path, max_depth)).toEqual(expected)
   })
 })
 
@@ -609,40 +581,46 @@ describe(`is_css_color`, () => {
 })
 
 describe(`estimate_byte_size`, () => {
+  const deep = { a: { b: { c: { d: { e: 1 } } } } }
   it.each([
-    [null, 4],
-    [undefined, 9],
-    [true, 4],
-    [false, 5],
-    [42, 2],
-    [3.14, 4],
-    [`hello`, 7], // 5 chars + 2 for quotes
-    [``, 2], // empty string + quotes
-    [[], 2], // empty array brackets
-    [{}, 2], // empty object braces
-    [[1, 2, 3], 8], // 2 + 3*(1+1)
-    [{ ab: 1 }, 9], // 2 + 2(key) + 4(quotes+colon+comma) + 1(value)
-  ])(`estimates %p as %d bytes`, (value, expected) => {
-    expect(estimate_byte_size(value)).toBe(expected)
-  })
-
-  it(`respects max_depth`, () => {
-    const deep = { a: { b: { c: { d: { e: 1 } } } } }
-    expect(estimate_byte_size(deep, 2)).toBeLessThan(estimate_byte_size(deep, 5))
-  })
-
-  it(`handles Map and Set`, () => {
-    expect(estimate_byte_size(new Map([[`key`, `val`]]))).toBeGreaterThan(2)
-    expect(estimate_byte_size(new Set([1, 2, 3]))).toBeGreaterThan(2)
+    [null, undefined, 4],
+    [undefined, undefined, 9],
+    [true, undefined, 4],
+    [false, undefined, 5],
+    [42, undefined, 2],
+    [3.14, undefined, 4],
+    [`hello`, undefined, 7], // 5 chars + 2 for quotes
+    [``, undefined, 2], // empty string + quotes
+    [[], undefined, 2], // empty array brackets
+    [{}, undefined, 2], // empty object braces
+    [[1, 2, 3], undefined, 8], // 2 + 3*(1+1)
+    [{ ab: 1 }, undefined, 9], // 2 + 2(key) + 4(quotes+colon+comma) + 1(value)
+    [new Map([[`key`, `val`]]), undefined, 17], // 2 + 5(value) + 10(key allowance)
+    [new Set([1, 2, 3]), undefined, 8], // same as the array
+    [deep, 2, 24], // subtrees at max_depth count a flat 10: 2+5+(2+5+10)
+    [deep, 5, 45],
+  ])(`estimates %p (max_depth=%s) as %d bytes`, (value, max_depth, expected) => {
+    expect(estimate_byte_size(value, max_depth)).toBe(expected)
   })
 })
 
 describe(`compute_diff`, () => {
-  it(`returns empty map for identical primitives`, () => {
-    expect(compute_diff(42, 42).size).toBe(0)
-    expect(compute_diff(`hello`, `hello`).size).toBe(0)
-    expect(compute_diff(true, true).size).toBe(0)
-    expect(compute_diff(null, null).size).toBe(0)
+  it.each([
+    [42, 42],
+    [`hello`, `hello`],
+    [true, true],
+    [null, null],
+    [NaN, NaN],
+    [{ x: NaN }, { x: NaN }],
+    [new Date(`2024-01-15`), new Date(`2024-01-15`)],
+    [
+      { a: 1, b: [2, 3], c: { d: 4 } },
+      { a: 1, b: [2, 3], c: { d: 4 } },
+    ],
+    [new Map([[`a`, 1]]), new Map([[`a`, 1]])],
+    [new Set([1, 2]), new Set([1, 2])],
+  ])(`returns an empty map for equal values %j vs %j`, (old_val, new_val) => {
+    expect(compute_diff(old_val, new_val).size).toBe(0)
   })
 
   it.each([
@@ -654,11 +632,30 @@ describe(`compute_diff`, () => {
       entry: { status: `changed`, path: `root`, old_value: 1, new_value: 2 },
     },
     {
+      desc: `changed primitive at the default (empty) root path`,
+      old_val: NaN,
+      new_val: 42,
+      root: undefined,
+      entry: { status: `changed`, path: ``, old_value: NaN, new_value: 42 },
+    },
+    {
       desc: `type change`,
       old_val: `string`,
       new_val: 42,
       root: `val`,
       entry: { status: `changed`, path: `val`, old_value: `string`, new_value: 42 },
+    },
+    {
+      desc: `date change (compared via string form)`,
+      old_val: new Date(`2024-01-15`),
+      new_val: new Date(`2024-01-16`),
+      root: `d`,
+      entry: {
+        status: `changed`,
+        path: `d`,
+        old_value: new Date(`2024-01-15`),
+        new_value: new Date(`2024-01-16`),
+      },
     },
     {
       desc: `added object key`,
@@ -682,6 +679,13 @@ describe(`compute_diff`, () => {
       entry: { status: `changed`, path: `root.a`, old_value: 1, new_value: 99 },
     },
     {
+      desc: `nested object change (unchanged siblings omitted)`,
+      old_val: { user: { name: `Alice`, age: 30 } },
+      new_val: { user: { name: `Bob`, age: 30 } },
+      root: undefined,
+      entry: { status: `changed`, path: `user.name`, old_value: `Alice`, new_value: `Bob` },
+    },
+    {
       desc: `added array element`,
       old_val: [1, 2],
       new_val: [1, 2, 3],
@@ -695,107 +699,66 @@ describe(`compute_diff`, () => {
       root: `arr`,
       entry: { status: `removed`, path: `arr[2]`, old_value: 3 },
     },
+    // Map entries are wrapped as { key, value } to match rendering
+    {
+      desc: `changed Map value`,
+      old_val: new Map([
+        [`a`, 1],
+        [`b`, 2],
+      ]),
+      new_val: new Map([
+        [`a`, 1],
+        [`b`, 99],
+      ]),
+      root: `m`,
+      entry: { status: `changed`, path: `m[1].value`, old_value: 2, new_value: 99 },
+    },
+    {
+      desc: `changed Map key`,
+      old_val: new Map([[`a`, 1]]),
+      new_val: new Map([[`b`, 1]]),
+      root: `m`,
+      entry: { status: `changed`, path: `m[0].key`, old_value: `a`, new_value: `b` },
+    },
+    {
+      desc: `added Map entry`,
+      old_val: new Map([[`a`, 1]]),
+      new_val: new Map([
+        [`a`, 1],
+        [`b`, 2],
+      ]),
+      root: `m`,
+      entry: { status: `added`, path: `m[1]`, new_value: { key: `b`, value: 2 } },
+    },
+    {
+      desc: `removed Set member`,
+      old_val: new Set([1, 2, 3]),
+      new_val: new Set([1, 2]),
+      root: `s`,
+      entry: { status: `removed`, path: `s[2]`, old_value: 3 },
+    },
   ])(`detects $desc`, ({ old_val, new_val, root, entry }) => {
     const diff = compute_diff(old_val, new_val, root)
-    expect(diff.size).toBe(1)
-    expect(diff.get(entry.path)).toEqual(entry)
-  })
-
-  it(`handles nested object diffs`, () => {
-    const old_val = { user: { name: `Alice`, age: 30 } }
-    const new_val = { user: { name: `Bob`, age: 30 } }
-    const diff = compute_diff(old_val, new_val)
-    expect(diff.size).toBe(1)
-    expect(diff.get(`user.name`)?.status).toBe(`changed`)
-    expect(diff.has(`user.age`)).toBe(false) // unchanged
+    expect([...diff.values()]).toEqual([entry])
   })
 
   it(`handles multiple changes at different depths`, () => {
-    const old_val = { a: 1, b: { c: 2, d: 3 } }
-    const new_val = { a: 99, b: { c: 2, d: 100, e: 5 } }
-    const diff = compute_diff(old_val, new_val)
-    expect(diff.get(`a`)?.status).toBe(`changed`)
-    expect(diff.get(`b.d`)?.status).toBe(`changed`)
-    expect(diff.get(`b.e`)?.status).toBe(`added`)
-    expect(diff.has(`b.c`)).toBe(false) // unchanged
-  })
-
-  it(`returns empty map for identical objects`, () => {
-    const obj = { a: 1, b: [2, 3], c: { d: 4 } }
-    expect(compute_diff(obj, { ...obj, b: [2, 3], c: { d: 4 } }).size).toBe(0)
+    const diff = compute_diff(
+      { a: 1, b: { c: 2, d: 3 } },
+      { a: 99, b: { c: 2, d: 100, e: 5 } },
+    )
+    expect([...diff.values()].map(({ path, status }) => [path, status])).toEqual([
+      [`a`, `changed`],
+      [`b.d`, `changed`],
+      [`b.e`, `added`],
+    ])
   })
 
   it(`handles circular references without infinite loop`, () => {
     const obj: Record<string, unknown> = { a: 1 }
     obj.self = obj
-    // Should not throw — circular refs are detected and skipped
     const diff = compute_diff(obj, { a: 2 })
     expect(diff.get(`a`)?.status).toBe(`changed`)
-  })
-
-  it(`compares dates via string form`, () => {
-    expect(compute_diff(new Date(`2024-01-15`), new Date(`2024-01-15`)).size).toBe(0)
-    expect(
-      compute_diff(new Date(`2024-01-15`), new Date(`2024-01-16`), `d`).get(`d`)?.status,
-    ).toBe(`changed`)
-  })
-
-  it(`uses empty string as default root path`, () => {
-    expect(compute_diff(1, 2).get(``)?.status).toBe(`changed`)
-  })
-
-  it(`treats NaN as equal to NaN (including nested)`, () => {
-    expect(compute_diff(NaN, NaN).size).toBe(0)
-    expect(compute_diff({ x: NaN }, { x: NaN }).size).toBe(0)
-    expect(compute_diff(NaN, 42).get(``)?.status).toBe(`changed`)
-  })
-
-  it(`detects changes in Map values`, () => {
-    const old_map = new Map([
-      [`a`, 1],
-      [`b`, 2],
-    ])
-    const new_map = new Map([
-      [`a`, 1],
-      [`b`, 99],
-    ])
-    const diff = compute_diff(old_map, new_map, `m`)
-    // Map entries are wrapped as { key, value } to match rendering
-    expect(diff.size).toBe(1)
-    expect(diff.get(`m[1].value`)?.status).toBe(`changed`)
-  })
-
-  it(`detects Map key changes`, () => {
-    const old_map = new Map([[`a`, 1]])
-    const new_map = new Map([[`b`, 1]])
-    const diff = compute_diff(old_map, new_map, `m`)
-    expect(diff.size).toBe(1)
-    expect(diff.get(`m[0].key`)?.status).toBe(`changed`)
-    expect(diff.get(`m[0].key`)?.old_value).toBe(`a`)
-    expect(diff.get(`m[0].key`)?.new_value).toBe(`b`)
-  })
-
-  it(`detects added/removed Map entries`, () => {
-    const old_map = new Map([[`a`, 1]])
-    const new_map = new Map([
-      [`a`, 1],
-      [`b`, 2],
-    ])
-    const diff = compute_diff(old_map, new_map, `m`)
-    expect(diff.size).toBe(1)
-    expect(diff.get(`m[1]`)?.status).toBe(`added`)
-  })
-
-  it(`detects changes in Set values`, () => {
-    const old_set = new Set([1, 2, 3])
-    const new_set = new Set([1, 2])
-    const diff = compute_diff(old_set, new_set, `s`)
-    expect(diff.size).toBe(1)
-    expect(diff.get(`s[2]`)?.status).toBe(`removed`)
-  })
-
-  it(`returns empty map for identical Maps and Sets`, () => {
-    expect(compute_diff(new Map([[`a`, 1]]), new Map([[`a`, 1]])).size).toBe(0)
-    expect(compute_diff(new Set([1, 2]), new Set([1, 2])).size).toBe(0)
+    expect(diff.get(`self`)?.status).toBe(`removed`)
   })
 })

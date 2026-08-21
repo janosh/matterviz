@@ -9,8 +9,7 @@
 const BINARY_SNIFF_CHARS = 8192
 export const is_binary = (content: string): boolean => {
   if (!content) return false
-  const sample =
-    content.length > BINARY_SNIFF_CHARS ? content.slice(0, BINARY_SNIFF_CHARS) : content
+  const sample = content.slice(0, BINARY_SNIFF_CHARS)
   if (sample.includes(`\0`)) return true
 
   let binary_char_count = 0

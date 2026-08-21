@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Icon } from 'svelte-widgets'
+  import { Icon, type IconData } from 'svelte-widgets'
   import {
     ArrowDown,
     ArrowUp,
@@ -36,6 +36,10 @@
   } from './utils'
 
   const ARROW_KEYS = new Set([`ArrowDown`, `ArrowUp`, `ArrowLeft`, `ArrowRight`])
+  const MATCH_NAV = [
+    [-1, `Previous match (Shift+F3)`, ArrowUp],
+    [1, `Next match (F3)`, ArrowDown],
+  ] as const
 
   let {
     value,
@@ -74,7 +78,6 @@
   // Index into sorted_matches (-1 means no selection)
   let current_match_index = $state(-1)
   let content_element = $state<HTMLDivElement>()
-  let search_input_element = $state<HTMLInputElement>()
   let context_menu_state = $state<{
     x: number
     y: number
@@ -99,7 +102,7 @@
     copy_feedback = null
     context_menu_state = null
     force_expanded = new SvelteSet()
-    const valid_paths = new Set(collect_all_paths(value, root_label ?? ``))
+    const valid_paths = new Set(collect_all_paths(value, root_path))
     collapsed_paths = new SvelteSet(
       [...collapsed_paths].filter((path) => valid_paths.has(path)),
     )
@@ -158,18 +161,13 @@
     void reveal_current_match()
   }
 
-  // A plain Set bound by the parent only notifies on reassignment, so upgrade it to a
-  // SvelteSet on first write; afterwards in-place mutation re-renders only touched nodes.
-  function collapsed_set(): SvelteSet<string> {
-    if (collapsed_paths instanceof SvelteSet) return collapsed_paths
-    const upgraded = new SvelteSet(collapsed_paths)
-    collapsed_paths = upgraded
-    return upgraded
-  }
-
   // Move each path into collapsed or force_expanded (which overrides auto-fold thresholds)
   function set_collapsed(paths: Iterable<string>, collapse: (path: string) => boolean): void {
-    const collapsed = collapsed_set()
+    // A plain Set bound by the parent only notifies on reassignment, so upgrade it to a
+    // SvelteSet on first write; afterwards in-place mutation re-renders only touched nodes.
+    if (!(collapsed_paths instanceof SvelteSet))
+      collapsed_paths = new SvelteSet(collapsed_paths)
+    const collapsed = collapsed_paths
     for (const path of paths) {
       if (collapse(path)) {
         force_expanded.delete(path)
@@ -192,16 +190,7 @@
   const collapse_children_only = (path: string) =>
     set_collapsed(get_descendants(path), (descendant) => descendant !== path)
 
-  function expand_all(): void {
-    force_expanded = new SvelteSet(collect_all_paths(value, root_path))
-    collapsed_paths = new SvelteSet()
-  }
-
-  function collapse_all(): void {
-    force_expanded = new SvelteSet()
-    collapsed_paths = new SvelteSet(collect_all_paths(value, root_path))
-  }
-
+  // Collapse every expandable path at depth >= level and force-expand the rest
   function collapse_to_level(level: number): void {
     const new_collapsed = new SvelteSet<string>()
     const new_expanded = new SvelteSet<string>()
@@ -214,6 +203,8 @@
     collapsed_paths = new_collapsed
     force_expanded = new_expanded
   }
+  const expand_all = () => collapse_to_level(Infinity)
+  const collapse_all = () => collapse_to_level(0)
 
   function set_focused(path: string | null): void {
     focused_path = path
@@ -277,15 +268,41 @@
     }
   }
 
-  // Run action with the current context menu state, then close
-  function ctx_menu_action(action: (state: NonNullable<typeof context_menu_state>) => void) {
-    if (context_menu_state) action(context_menu_state)
-    context_menu_state = null
-  }
-
   function toggle_pin(path: string): void {
     if (!pinned_paths.delete(path)) pinned_paths.add(path)
   }
+
+  // Context menu entries for the right-clicked node (null renders a separator)
+  type MenuItem = { label: string; icon?: IconData; action: () => void }
+  const context_menu_items = $derived.by((): (MenuItem | null)[] => {
+    if (!context_menu_state) return []
+    const { path, value: node_value, expandable, is_collapsed } = context_menu_state
+    return [
+      {
+        label: `Copy value`,
+        icon: Copy,
+        action: () => copy_to_clipboard(path, serialize_for_copy(node_value)),
+      },
+      { label: `Copy path`, action: () => copy_to_clipboard(path, path) },
+      null,
+      ...(expandable
+        ? [
+            {
+              label: `${is_collapsed ? `Expand` : `Collapse`} all children`,
+              action: () =>
+                is_collapsed
+                  ? toggle_collapse_recursive(path, false)
+                  : collapse_children_only(path),
+            },
+            null,
+          ]
+        : []),
+      {
+        label: `${pinned_paths.has(path) ? `Unpin` : `Pin`} this path`,
+        action: () => toggle_pin(path),
+      },
+    ]
+  })
 
   // Toggle selection of a path (shift extends from the last selected node in DOM order)
   function toggle_select(path: string, shift: boolean): void {
@@ -297,14 +314,6 @@
       for (let idx = from; idx <= to; idx++) selected_paths.add(paths[idx])
     } else if (!selected_paths.delete(path)) selected_paths.add(path)
     last_selected_path = path
-  }
-
-  function copy_selected(): void {
-    if (selected_paths.size === 0) return
-    const text = [...selected_paths]
-      .map((path) => serialize_for_copy(value_at(path)))
-      .join(`\n`)
-    void copy_to_clipboard(`[selection]`, text)
   }
 
   const settings = $derived({
@@ -375,24 +384,19 @@
     if (event.key.toLowerCase() === `c` && (event.ctrlKey || event.metaKey)) {
       if (selected_paths.size === 0) return
       event.preventDefault()
-      copy_selected()
+      const values = [...selected_paths].map((path) => serialize_for_copy(value_at(path)))
+      void copy_to_clipboard(`[selection]`, values.join(`\n`))
       return
     }
+    // Any arrow key focuses the first node (index -1 clamps to 0); afterwards Up/Down step
+    // (clamped) and Left/Right are left to the focused node's own fold/unfold handler
     if (!ARROW_KEYS.has(event.key)) return
     const paths = rendered_paths()
-    if (paths.length === 0) return
     const current_index = focused_path === null ? -1 : paths.indexOf(focused_path)
-    if (current_index === -1) {
-      // Focus first node on any arrow key
-      event.preventDefault()
-      set_focused(paths[0])
-    } else if (event.key === `ArrowDown`) {
-      event.preventDefault()
-      set_focused(paths[Math.min(current_index + 1, paths.length - 1)])
-    } else if (event.key === `ArrowUp`) {
-      event.preventDefault()
-      set_focused(paths[Math.max(current_index - 1, 0)])
-    }
+    const step = event.key === `ArrowDown` ? 1 : event.key === `ArrowUp` ? -1 : 0
+    if (paths.length === 0 || (current_index !== -1 && step === 0)) return
+    event.preventDefault()
+    set_focused(paths[Math.min(Math.max(current_index + step, 0), paths.length - 1)])
   }
 
   function clear_search() {
@@ -402,17 +406,18 @@
     current_match_index = -1
   }
 
-  function download_json(): void {
-    const date_str = new Date().toISOString().slice(0, 10)
-    const filename = download_filename ?? `data-${date_str}.json`
-    download(serialize_for_copy(value), filename, `application/json`)
-  }
+  const download_json = () =>
+    download(
+      serialize_for_copy(value),
+      download_filename ?? `data-${new Date().toISOString().slice(0, 10)}.json`,
+      `application/json`,
+    )
 
-  function handle_search_keydown(event: KeyboardEvent) {
+  function handle_search_keydown(event: KeyboardEvent & { currentTarget: HTMLInputElement }) {
     if (event.key === `Escape`) {
       event.preventDefault()
       clear_search()
-      search_input_element?.blur()
+      event.currentTarget.blur()
     } else if (event.key === `Enter` || event.key === `F3`) {
       event.stopPropagation() // Prevent bubbling to tree-level F3 handler
       event.preventDefault()
@@ -420,6 +425,21 @@
     }
   }
 </script>
+
+{#snippet header_btn(
+  title: string,
+  onclick: () => void,
+  content: IconData | string,
+  active = false,
+)}
+  <button type="button" {title} {onclick} class:active {@attach tooltip()}>
+    {#if typeof content === `string`}
+      {content}
+    {:else}
+      <Icon icon={content} style="width: 14px; height: 14px" />
+    {/if}
+  </button>
+{/snippet}
 
 <div
   class="json-tree"
@@ -433,7 +453,6 @@
       <div class="search-wrapper">
         <Icon icon={Search} style="width: 14px; height: 14px; opacity: 0.6" />
         <input
-          bind:this={search_input_element}
           type="search"
           placeholder="Search keys and values..."
           value={search_input_value}
@@ -455,84 +474,54 @@
       </div>
       {#if search_query && sorted_matches.length > 0}
         <div class="match-nav">
-          <button
-            type="button"
-            class="nav-btn"
-            onclick={() => step_match(-1)}
-            title="Previous match (Shift+F3)"
-            {@attach tooltip()}
-          >
-            <Icon icon={ArrowUp} style="width: 12px; height: 12px" />
-          </button>
-          <button
-            type="button"
-            class="nav-btn"
-            onclick={() => step_match(1)}
-            title="Next match (F3)"
-            {@attach tooltip()}
-          >
-            <Icon icon={ArrowDown} style="width: 12px; height: 12px" />
-          </button>
+          {#each MATCH_NAV as [delta, title, icon] (delta)}
+            <button
+              type="button"
+              class="nav-btn"
+              onclick={() => step_match(delta)}
+              {title}
+              {@attach tooltip()}
+            >
+              <Icon {icon} style="width: 12px; height: 12px" />
+            </button>
+          {/each}
           <span class="match-count">{current_match_index + 1} of {sorted_matches.length}</span>
         </div>
       {/if}
       <div class="controls">
-        <button
-          type="button"
-          onclick={() => (show_data_types = !show_data_types)}
-          title={show_data_types ? `Hide data types` : `Show data types`}
-          class:active={show_data_types}
-          {@attach tooltip()}
-        >
-          T
-        </button>
-        <button
-          type="button"
-          onclick={() => (show_array_indices = !show_array_indices)}
-          title={show_array_indices ? `Hide array indices` : `Show array indices`}
-          class:active={show_array_indices}
-          {@attach tooltip()}
-        >
-          #
-        </button>
+        {@render header_btn(
+          `${show_data_types ? `Hide` : `Show`} data types`,
+          () => (show_data_types = !show_data_types),
+          `T`,
+          show_data_types,
+        )}
+        {@render header_btn(
+          `${show_array_indices ? `Hide` : `Show`} array indices`,
+          () => (show_array_indices = !show_array_indices),
+          `#`,
+          show_array_indices,
+        )}
       </div>
       <div class="divider"></div>
       <div class="controls">
-        <button type="button" onclick={expand_all} title="Expand all" {@attach tooltip()}>
-          <Icon icon={ChevronExpand} style="width: 14px; height: 14px" />
-        </button>
-        <button type="button" onclick={collapse_all} title="Collapse all" {@attach tooltip()}>
-          <Icon icon={ChevronCollapse} style="width: 14px; height: 14px" />
-        </button>
+        {@render header_btn(`Expand all`, expand_all, ChevronExpand)}
+        {@render header_btn(`Collapse all`, collapse_all, ChevronCollapse)}
         {#each [1, 2, 3] as level (level)}
-          <button
-            type="button"
-            onclick={() => collapse_to_level(level)}
-            title="Collapse to level {level}"
-            {@attach tooltip()}
-          >
-            {level}
-          </button>
+          {@render header_btn(
+            `Collapse to level ${level}`,
+            () => collapse_to_level(level),
+            String(level),
+          )}
         {/each}
       </div>
       <div class="divider"></div>
       <div class="controls">
-        <button
-          type="button"
-          onclick={() => copy_to_clipboard(`[root]`, serialize_for_copy(value))}
-          title="Copy JSON to clipboard"
-          {@attach tooltip()}
-        >
-          <Icon icon={Copy} style="width: 14px; height: 14px" />
-        </button>
-        <button
-          type="button"
-          onclick={download_json}
-          title="Download as JSON file"
-          {@attach tooltip()}
-        >
-          <Icon icon={Download} style="width: 14px; height: 14px" />
-        </button>
+        {@render header_btn(
+          `Copy JSON to clipboard`,
+          () => copy_to_clipboard(`[root]`, serialize_for_copy(value)),
+          Copy,
+        )}
+        {@render header_btn(`Download as JSON file`, download_json, Download)}
       </div>
     </header>
   {/if}
@@ -628,45 +617,22 @@
         Math.min(context_menu_state.x, window.innerWidth - 180),
       )}px; top: {Math.max(0, Math.min(context_menu_state.y, window.innerHeight - 200))}px"
     >
-      <li>
-        <button
-          type="button"
-          onclick={() =>
-            ctx_menu_action((st) => copy_to_clipboard(st.path, serialize_for_copy(st.value)))}
-        >
-          <Icon icon={Copy} style="width: 12px; height: 12px" /> Copy value
-        </button>
-      </li>
-      <li>
-        <button
-          type="button"
-          onclick={() => ctx_menu_action((st) => copy_to_clipboard(st.path, st.path))}
-        >
-          Copy path
-        </button>
-      </li>
-      <li class="separator"></li>
-      {#if context_menu_state.expandable}
-        <li>
-          <button
-            type="button"
-            onclick={() =>
-              ctx_menu_action((st) =>
-                st.is_collapsed
-                  ? toggle_collapse_recursive(st.path, false)
-                  : collapse_children_only(st.path),
-              )}
-          >
-            {context_menu_state.is_collapsed ? `Expand` : `Collapse`} all children
-          </button>
+      {#each context_menu_items as item, idx (idx)}
+        <li class={{ separator: !item }}>
+          {#if item}
+            <button
+              type="button"
+              onclick={() => {
+                item.action()
+                context_menu_state = null
+              }}
+            >
+              {#if item.icon}<Icon icon={item.icon} style="width: 12px; height: 12px" />{/if}
+              {item.label}
+            </button>
+          {/if}
         </li>
-        <li class="separator"></li>
-      {/if}
-      <li>
-        <button type="button" onclick={() => ctx_menu_action((st) => toggle_pin(st.path))}>
-          {pinned_paths.has(context_menu_state.path) ? `Unpin` : `Pin`} this path
-        </button>
-      </li>
+      {/each}
     </menu>
   {/if}
 </div>

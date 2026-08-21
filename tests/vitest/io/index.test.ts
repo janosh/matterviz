@@ -121,7 +121,9 @@ describe(`load_trajectory_from_url`, () => {
     )
     await expect(
       load_trajectory_from_url(`https://example.com/download.bin`, vi.fn()),
-    ).rejects.toThrow(`Compressed HDF5 BZ2 URLs are not supported`)
+    ).rejects.toThrow(
+      `BZ2 decompression is not supported in the browser; extract https://example.com/download.bin first`,
+    )
   })
 
   test(`unzips a single-file HDF5 ZIP URL into a Blob`, async () => {
@@ -219,7 +221,7 @@ describe(`load_trajectory_from_url`, () => {
       vi.mocked(fetch).mockClear()
       await expect(
         load_trajectory_from_url(`https://example.com/run.h5.${extension}`, vi.fn()),
-      ).rejects.toThrow(`Compressed HDF5`)
+      ).rejects.toThrow(`${extension.toUpperCase()} decompression is not supported`)
       expect(fetch).not.toHaveBeenCalled()
     },
   )
@@ -353,12 +355,16 @@ describe(`load_from_url`, () => {
   test.each([
     [`backup.bz2`, `BZ2`],
     [`archive.xz`, `XZ`],
-  ])(`rejects %s instead of handing a parser opaque archive bytes`, async (name, label) => {
-    globalThis.fetch = vi.fn().mockResolvedValue(new Response(new ArrayBuffer(8)))
-    await expect(load_from_url(`https://example.com/${name}`, () => {})).rejects.toThrow(
-      `${label} decompression is not supported in the browser; extract https://example.com/${name} first`,
-    )
-  })
+  ])(
+    `rejects %s before fetching instead of handing a parser archive bytes`,
+    async (name, label) => {
+      globalThis.fetch = vi.fn().mockResolvedValue(new Response(new ArrayBuffer(8)))
+      await expect(load_from_url(`https://example.com/${name}`, () => {})).rejects.toThrow(
+        `${label} decompression is not supported in the browser; extract https://example.com/${name} first`,
+      )
+      expect(globalThis.fetch).not.toHaveBeenCalled()
+    },
+  )
 
   test(`unzips a single-file ZIP URL and strips the extension`, async () => {
     const zip = zipSync({ 'structure.cif': new TextEncoder().encode(`data_zip`) })

@@ -4,12 +4,14 @@ import {
   cell_matches_filter,
   compare_rows,
   compute_column_stats,
+  discover_columns,
   format_datetime,
   fuzzy_match,
   get_column_id,
   infer_datetime_kind,
   make_cell_color_scale,
   merge_domains,
+  middle_ellipsis_parts,
   parse_datetime_val,
   parse_numeric_val,
   resolve_color_domain,
@@ -305,6 +307,25 @@ describe(`make_cell_color_scale`, () => {
   })
 })
 
+it(`discovers columns from the first 50 rows' keys, skipping style/class`, () => {
+  const rows = [
+    { b: 1, style: `x` },
+    { a: 2, class: `y` },
+    ...Array.from({ length: 60 }, () => ({ b: 3 })),
+    { late: 1 },
+  ]
+  expect(discover_columns(rows)).toEqual([{ label: `b` }, { label: `a` }])
+  expect(discover_columns([])).toEqual([])
+})
+
+it.each([
+  [`abcdefghijklmnopqrstuvwxyz`, [`abcdefghijklmnopqr`, `stuvwxyz`]], // tail capped at 8
+  [`abcdefghij`, [`abcde`, `fghij`]], // short strings split in half
+  [`a👨‍👩‍👧b👨‍👩‍👧`, [`a👨‍👩‍👧`, `b👨‍👩‍👧`]], // graphemes, not code units
+])(`middle_ellipsis_parts(%j) = %j`, (text, expected) => {
+  expect(middle_ellipsis_parts(text)).toEqual(expected)
+})
+
 describe(`strip_html`, () => {
   it.each([
     [`<span>hello</span>`, `hello`],
@@ -493,22 +514,28 @@ describe(`table exporters`, () => {
     rows: [
       [`x, "q"`, `multi\nline`, `1`],
       [`50% & $3_{}`, `^~\\`, `2`],
+      [`cr\rline`, ``, `3`], // a bare CR is a record separator to most readers: quoted too
     ],
     numeric: [false, false, true],
   }
 
   it(`emits CSV with RFC 4180 quoting and TSV with flattened newlines`, () => {
     expect(table_to_delimited(matrix, `,`)).toBe(
-      `Name,a|b,Val\n"x, ""q""","multi\nline",1\n50% & $3_{},^~\\,2`,
+      `Name,a|b,Val\n"x, ""q""","multi\nline",1\n50% & $3_{},^~\\,2\n"cr\rline",,3`,
     )
-    expect(table_to_delimited(matrix, `\t`).split(`\n`)[1]).toBe(`x, "q"\tmulti line\t1`)
+    expect(table_to_delimited(matrix, `\t`).split(`\n`).slice(1)).toEqual([
+      `x, "q"\tmulti line\t1`,
+      `50% & $3_{}\t^~\\\t2`,
+      `cr line\t\t3`,
+    ])
   })
 
-  it(`escapes markdown pipes and newlines and right-aligns numeric columns`, () => {
-    const [header, align, row] = table_to_markdown(matrix).split(`\n`)
+  it(`escapes markdown backslashes, pipes and newlines and right-aligns numeric columns`, () => {
+    const [header, align, row_1, row_2] = table_to_markdown(matrix).split(`\n`)
     expect(header).toBe(`| Name | a\\|b | Val |`)
     expect(align).toBe(`| :--- | :--- | ---: |`)
-    expect(row).toBe(`| x, "q" | multi<br>line | 1 |`)
+    expect(row_1).toBe(`| x, "q" | multi<br>line | 1 |`)
+    expect(row_2).toBe(`| 50% & $3_{} | ^~\\\\ | 2 |`)
   })
 
   it(`escapes LaTeX specials once and builds a booktabs tabular`, () => {
