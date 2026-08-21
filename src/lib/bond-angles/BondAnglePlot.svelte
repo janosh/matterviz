@@ -40,7 +40,7 @@
   let dropped_entries = $state<StructureEntry[]>([])
 
   // Geometry and binning are separate deriveds so dragging the bin-width slider re-bins an
-  // unchanged triplet list instead of re-running image expansion and the whole bond search.
+  // unchanged triplet list instead of re-running the whole periodic bond search.
   const opts = $derived({ strategy, center_elements, neighbor_elements })
   const entries_with_triplets = $derived(
     [...to_structure_entries(structures), ...dropped_entries].map((entry) => ({

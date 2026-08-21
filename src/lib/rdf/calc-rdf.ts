@@ -26,7 +26,8 @@ function prepare_rdf(structure: Crystal, options: RdfOptions) {
     throw new Error(`Crystal must have a lattice for RDF calculation`)
   }
   const { volume } = calc_lattice_params(structure.lattice.matrix)
-  const list = neighbor_query(structure, { cutoff, pbc: options.pbc })
+  // every slot is binned regardless of order, so the per-center distance sort is skipped
+  const list = neighbor_query(structure, { cutoff, pbc: options.pbc, sorted: false })
   const bin_size = cutoff / n_bins
   // Bin per neighbour slot, or -1 for the slots g(r) never counts: the true self term and
   // coincident duplicate sites (distance 0), and distances at exactly the cutoff, which the

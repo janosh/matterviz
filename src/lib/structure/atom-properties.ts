@@ -3,13 +3,9 @@
 import type { ColorScaleType, D3InterpolateName } from '$lib/colors'
 import { COLOR_SCALE_TYPES, get_d3_interpolator, is_d3_interpolate_name } from '$lib/colors'
 import { calc_coordination_nums } from '$lib/coordination/calc-coordination'
-import type { CoordinationData } from '$lib/coordination/calc-coordination'
-import { element_by_symbol } from '$lib/element/data'
-import * as math from '$lib/math'
 import { ATOM_COLOR_MODE_OPTIONS, DEFAULTS, type AtomColorMode } from '$lib/settings'
 import type { AnyStructure, Site } from '$lib/structure'
-import { get_majority_element, type BondingStrategy } from '$lib/structure/bonding'
-import { wrap_frac_coord, type Pbc } from '$lib/structure/pbc'
+import type { BondingStrategy } from '$lib/structure/bonding'
 import { CNA_TYPE_COLORS, CNA_TYPE_NAMES } from '$lib/structure-id/calc-cna'
 import { CNA_TYPE_PROPERTY } from '$lib/structure-id/calc-structure-id'
 import type { MoyoDataset } from '@spglib/moyo-wasm'
@@ -43,36 +39,10 @@ export interface AtomPropertyColors {
 
 const GRAY = `#808080`
 const DEFAULT_COLOR_SCALE = DEFAULTS.structure.atom_color_scale
-// Cap on periodic image shells per axis when expanding for coordination. Guards
-// against image explosion in very thin / highly oblique cells (coordination is ~O(n²)).
-const MAX_IMAGE_SHELLS = 3
-// Max bond distance electroneg_ratio can form, mirroring its max_distance_ratio default
-// in bonding.ts. Used to size PBC image expansion just tightly enough that coordination
-// never misses a bonded neighbor.
-const ELECTRONEG_MAX_RATIO = 2
 type SymmetryDataWithOrigMap = MoyoDataset & { orig_site_indices_by_input_idx?: number[][] }
 
 const to_hex = (interp_fn: (t: number) => string, frac: number) =>
   rgb(interp_fn(frac)).formatHex()
-const build_image_site = (
-  site: Site,
-  frac_to_cart: (v: math.Vec3) => math.Vec3,
-  offset: readonly [number, number, number],
-  orig_idx: number,
-): Site => {
-  const img_abc: math.Vec3 = [
-    site.abc[0] + offset[0],
-    site.abc[1] + offset[1],
-    site.abc[2] + offset[2],
-  ]
-  return {
-    ...site,
-    abc: img_abc,
-    xyz: frac_to_cart(img_abc),
-    properties: { ...site.properties, orig_site_idx: orig_idx },
-  }
-}
-
 const make_categorical = <T>(
   vals: T[],
   scale: D3InterpolateName,
@@ -143,122 +113,13 @@ export const get_orig_site_idx = (site: Site | undefined, site_idx: number): num
       ? site.properties.orig_site_idx
       : site_idx
 
-// Expand a periodic structure with the neighbor images needed for correct
-// coordination. Each atom's `reach` (the largest bond that can form for it,
-// (r + r_max)·ratio) sizes how many whole cells to image per periodic axis, measured
-// over the perpendicular cell height (not
-// the lattice vector length, so oblique cells work), keeping only images within `reach`
-// of the [0,1] cell and capping at MAX_IMAGE_SHELLS/axis (warns + may undercount beyond
-// that — near-degenerate cells only). Smaller atoms image less; atoms with no covalent
-// radius form no bonds and get no images.
-// `pbc_override` lets callers (bond angles) analyse a structure under different
-// periodicity than the lattice declares, without copying this whole routine.
-export function expand_structure_for_pbc(
-  structure: AnyStructure,
-  pbc_override?: Pbc,
-): AnyStructure {
-  if (!(`lattice` in structure) || !structure.lattice || structure.sites.length === 0) {
-    return structure
-  }
-  const { sites, lattice } = structure
-  const pbc = pbc_override ?? lattice.pbc ?? [true, true, true]
-  if (!pbc.some(Boolean)) return structure
-
-  const frac_to_cart = math.create_frac_to_cart(lattice.matrix)
-  // Wrap into [0,1) along PERIODIC axes only so the near-cell filter and image
-  // building share one position (else boundary atoms image on the wrong side and lose
-  // neighbors). Vacuum axes keep their real coord — wrapping would fold apart atoms
-  // together and invent bonds.
-  const cell_sites = sites.map((site) => {
-    const abc = site.abc.map((coord, axis) =>
-      pbc[axis] ? wrap_frac_coord(coord) : coord,
-    ) as math.Vec3
-    return { ...site, abc, xyz: frac_to_cart(abc) }
-  })
-
-  // Covalent radius per atom (0 = unknown → forms no bonds → needs no images)
-  const radii = cell_sites.map((site) => {
-    const elem = get_majority_element(site)
-    return (elem ? element_by_symbol.get(elem)?.covalent_radius : undefined) ?? 0
-  })
-  let max_radius = 0
-  for (const radius of radii) if (radius > max_radius) max_radius = radius
-  const reach_of = (radius: number): number => (radius + max_radius) * ELECTRONEG_MAX_RATIO
-
-  const heights = math.cell_heights(lattice.matrix)
-  // Axes we image along: periodic and non-degenerate (finite height). Non-live axes
-  // (vacuum or degenerate) contribute no images — 0 shells + ∞ cutoff so their only
-  // copy (shift 0) always passes the near-cell filter. Loop-invariant, so hoisted out.
-  const live_axis = heights.map((height, axis) => pbc[axis] && Number.isFinite(height))
-  const image_near_cell = (frac: number, shift: number, axis_cutoff: number): boolean => {
-    const shifted = frac + shift
-    return shifted >= -axis_cutoff && shifted <= 1 + axis_cutoff
-  }
-
-  let capped = false
-  const image_sites: Site[] = []
-  for (const [orig_idx, site] of cell_sites.entries()) {
-    const radius = radii[orig_idx]
-    if (radius === 0) continue // no covalent radius → no bonds → no images
-    const reach = reach_of(radius)
-    // `cutoff` = fractional reach for the near-cell filter (keep an image shifted by `s`
-    // iff abc+s lands within `cutoff` of [0,1]); `n_shells` bounds the loop so no
-    // in-reach copy is missed.
-    const cutoff = heights.map((height, axis) => (live_axis[axis] ? reach / height : Infinity))
-    const n_shells = heights.map((height, axis) => {
-      if (!live_axis[axis]) return 0
-      const shells = Math.floor(1 + reach / height)
-      if (shells > MAX_IMAGE_SHELLS) capped = true
-      return Math.min(MAX_IMAGE_SHELLS, shells)
-    })
-
-    const [frac_a, frac_b, frac_c] = site.abc // periodic axes wrapped into [0, 1)
-    for (let dx = -n_shells[0]; dx <= n_shells[0]; dx++) {
-      if (!image_near_cell(frac_a, dx, cutoff[0])) continue
-      for (let dy = -n_shells[1]; dy <= n_shells[1]; dy++) {
-        if (!image_near_cell(frac_b, dy, cutoff[1])) continue
-        for (let dz = -n_shells[2]; dz <= n_shells[2]; dz++) {
-          if (dx === 0 && dy === 0 && dz === 0) continue
-          if (!image_near_cell(frac_c, dz, cutoff[2])) continue
-          image_sites.push(build_image_site(site, frac_to_cart, [dx, dy, dz], orig_idx))
-        }
-      }
-    }
-  }
-  if (capped) {
-    console.warn(
-      `[coordination] cell is very thin or oblique relative to bond reach; capping ` +
-        `PBC images at ${MAX_IMAGE_SHELLS} shells/axis, coordination near cell ` +
-        `boundaries may be undercounted`,
-    )
-  }
-
-  return { ...structure, sites: [...cell_sites, ...image_sites] }
-}
-
-// PBC-aware coordination: expand periodic cells with image atoms (so boundary atoms get
-// full coordination), counting only original atoms as centers. Shared by the 3D viewer and
-// CoordinationBarPlot so both report identical numbers.
-export function calc_structure_coordination(
-  structure: AnyStructure,
-  strategy: BondingStrategy = `electroneg_ratio`,
-): CoordinationData {
-  const has_lattice = `lattice` in structure && structure.lattice !== undefined
-  const pbc = has_lattice ? structure.lattice.pbc : undefined
-  const has_pbc = has_lattice && (pbc === undefined || pbc.some(Boolean))
-  // Image atoms still count as neighbors but aren't iterated as centers (big speedup)
-  const coord_structure = has_pbc ? expand_structure_for_pbc(structure) : structure
-  return calc_coordination_nums(coord_structure, strategy, structure.sites.length)
-}
-
 export function get_coordination_colors(
   structure: AnyStructure,
   strategy: BondingStrategy = `electroneg_ratio`,
   scale: D3InterpolateName = DEFAULT_COLOR_SCALE,
   type: ColorScaleType = `continuous`,
 ): AtomPropertyColors {
-  // sites is already limited to the original atoms (calc_coordination_nums center_count)
-  const coord_nums = calc_structure_coordination(structure, strategy).sites.map(
+  const coord_nums = calc_coordination_nums(structure, strategy).sites.map(
     (site) => site.coordination_num,
   )
 
@@ -324,7 +185,7 @@ export function get_wyckoff_colors(
 // that, hence the separate `partially fixed` category. `unknown` = site never declared the
 // property, which the POSCAR parser emits for coordinate lines too short to carry flags.
 const SELECTIVE_DYNAMICS_CATEGORIES = [`free`, `partially fixed`, `fixed`, `unknown`] as const
-export type SelectiveDynamicsCategory = (typeof SELECTIVE_DYNAMICS_CATEGORIES)[number]
+type SelectiveDynamicsCategory = (typeof SELECTIVE_DYNAMICS_CATEGORIES)[number]
 
 // `true` means the atom may relax along that axis (POSCAR `T`), `false` means frozen (`F`).
 // Every parser MatterViz ships writes three booleans, but hand-authored and third-party

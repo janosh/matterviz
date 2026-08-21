@@ -2,10 +2,10 @@
 // are the headline prop type of CoordinationBarPlot and BondAnglePlot, and the rest of
 // $lib/plot/core is deliberately not published.
 import { to_structure_entries } from '$lib'
+import { element_by_symbol } from '$lib/element/data'
 import type { StructureEntry, StructureInput } from '$lib'
 import { calc_coordination_nums, CoordinationBarPlot } from '$lib/coordination'
 import type { Molecule } from '$lib/structure'
-import { calc_structure_coordination } from '$lib/structure/atom-properties'
 import { tick } from 'svelte'
 import { describe, expect, test } from 'vitest'
 import { make_crystal, mount_sized } from '../setup'
@@ -46,10 +46,10 @@ test.each([
 })
 
 describe(`calc_coordination_nums`, () => {
-  // Rocksalt: every ion is octahedrally coordinated by 6 counter-ions. Without image atoms a
-  // conventional-cell ion only sees the 3 partners inside the box, so the PBC-aware entry
-  // point (what the bar plot and the 3D viewer use) must restore the full 6.
-  test(`rocksalt gives CN 6 with counter-ion neighbours once images are included`, () => {
+  // Rocksalt: every ion is octahedrally coordinated by 6 counter-ions. Bonded as a finite
+  // box a conventional-cell ion only sees the 3 partners inside it; the default (the
+  // lattice's pbc, what the bar plot and the 3D viewer use) bonds across the faces too.
+  test(`rocksalt gives CN 6 with counter-ion neighbours across periodic boundaries`, () => {
     const rocksalt = make_crystal(5.64, [
       [`Na`, [0, 0, 0]],
       [`Na`, [0.5, 0.5, 0]],
@@ -60,11 +60,11 @@ describe(`calc_coordination_nums`, () => {
       [`Cl`, [0, 0, 0.5]],
       [`Cl`, [0.5, 0.5, 0.5]],
     ])
-    const bare = calc_coordination_nums(rocksalt, `electroneg_ratio`)
+    const bare = calc_coordination_nums(rocksalt, `electroneg_ratio`, [false, false, false])
     expect(bare.sites.map((site) => site.coordination_num)).toEqual(Array(8).fill(3))
 
     const { sites, cn_by_element, cn_histogram, cn_histogram_by_element } =
-      calc_structure_coordination(rocksalt)
+      calc_coordination_nums(rocksalt)
     expect(sites.map((site) => site.coordination_num)).toEqual(Array(8).fill(6))
     for (const { element, neighbor_elements } of sites) {
       expect(neighbor_elements).toEqual(Array(6).fill(element === `Na` ? `Cl` : `Na`))
@@ -100,21 +100,27 @@ describe(`calc_coordination_nums`, () => {
     expect(result.cn_histogram.get(0)).toBe(2)
   })
 
-  // PBC-expanded structures append image atoms after the originals and pass the
-  // original-atom count as center_count; only the originals must appear as centers.
-  test.each([
-    [undefined, 4],
-    [2, 2],
-    [1, 1],
-  ])(
-    `center_count=%s restricts per-site data/histograms to %s centers`,
-    (center_count, expected) => {
-      const result = calc_coordination_nums(simple_cubic, `electroneg_ratio`, center_count)
-      expect(result.sites).toHaveLength(expected)
-      const histogram_total = [...result.cn_histogram.values()].reduce((sum, n) => sum + n, 0)
-      expect(histogram_total).toBe(expected)
-    },
-  )
+  // A site bonded to its own periodic image counts that image as a neighbour from both
+  // directions: in a one-atom simple cubic cell the six images are the whole shell.
+  test(`one-atom cell counts each of its own images as a neighbour`, () => {
+    const radius = element_by_symbol.get(`Po`)?.covalent_radius ?? 0
+    const po = make_crystal(2 * radius, [[`Po`, [0, 0, 0]]])
+    const { sites, cn_histogram } = calc_coordination_nums(po)
+    expect(sites).toEqual([
+      {
+        site_idx: 0,
+        element: `Po`,
+        coordination_num: 6,
+        neighbor_elements: Array(6).fill(`Po`),
+      },
+    ])
+    expect([...cn_histogram]).toEqual([[6, 1]])
+    // a slab under an explicit pbc override loses the two vacuum-axis images
+    expect(
+      calc_coordination_nums(po, `electroneg_ratio`, [true, true, false]).sites[0]
+        .coordination_num,
+    ).toBe(4)
+  })
 
   test(`buckets disordered sites by majority element, not species[0]`, () => {
     const struct = make_crystal(3, [
