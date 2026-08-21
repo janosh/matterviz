@@ -45,7 +45,8 @@ repos:
           # conect: PDB bond-connectivity record name; trough: a dip in a curve
           # skelton: Jonathan Michael Skelton, author of the cited Phonopy-Spectroscopy
           # cna: common neighbor analysis; mater: journal abbreviation (Acta Mater.); afterall: Vitest lifecycle hook
-          - 'te,ba,nd,ore,claus,manuel,ges,mey,curvelinear,tennant,struc,slac,statics,conect,trough,skelton,cna,mater,afterall'
+          # coo: the formula CoO (cobalt(II) oxide)
+          - 'te,ba,nd,ore,claus,manuel,ges,mey,curvelinear,tennant,struc,slac,statics,conect,trough,skelton,cna,mater,afterall,coo'
           - --check-filenames
 
   - repo: https://github.com/igorshubovych/markdownlint-cli
