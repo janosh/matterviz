@@ -259,7 +259,12 @@
           <label title="0 = Gaussian, 1 = Lorentzian">
             <span>Shape</span>
             <span class="value">{format_num(shape_factor, `.2~`)}</span>
-            <input id="ir-raman-shape" type="range" {...shape_input} bind:value={shape_factor} />
+            <input
+              id="ir-raman-shape"
+              type="range"
+              {...shape_input}
+              bind:value={shape_factor}
+            />
           </label>
         </div>
       </SettingsSection>

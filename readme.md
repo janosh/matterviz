@@ -101,7 +101,7 @@ npm add -D matterviz
 
 ```svelte
 <script>
-  import { TrajectoryFileViewer } from `matterviz`
+  import { TrajectoryFileViewer } from 'matterviz'
   // supports .xyz/.extxyz, .traj, .hdf5, .npz, .pkl, .dat plus .gz/.zip wrappers;
   // decompress .bz2/.xz first because browsers cannot decode them
 </script>
