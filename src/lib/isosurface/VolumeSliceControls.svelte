@@ -250,7 +250,7 @@
 
   {#if active_volume}
     <div class="grid-info">
-      {active_volume.grid_dims.join(` × `)} grid &nbsp;|&nbsp; [{format_num(
+      {active_volume.dims.join(` × `)} grid &nbsp;|&nbsp; [{format_num(
         active_volume.data_range.min,
         `.3~g`,
       )}, {format_num(active_volume.data_range.max, `.3~g`)}]

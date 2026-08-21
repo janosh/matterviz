@@ -52,7 +52,11 @@ test(`brighten_hex lifts luminance while keeping the source hue family`, () => {
   expect(out.r).toBeGreaterThan(out.g)
   expect(brighten_hex(source, 0)).toBe(`#57178f`)
   expect(brighten_hex(source, 1)).toBe(`#ffffff`)
-  expect(brighten_hex(undefined)).toMatch(/^#[0-9a-f]{6}$/u)
+  expect(brighten_hex(undefined)).toBe(`#eaeaea`) // #cccccc lifted by the default 0.55
+  // an unparsable color glows grey (linear 0.5 mixed 55% toward white), not in the hue the
+  // previous call left behind — three's Color.set would have kept the red
+  brighten_hex(`#ff0000`)
+  expect(brighten_hex(`not-a-color`)).toBe(`#${new Color(0.775, 0.775, 0.775).getHexString()}`)
 })
 
 test(`css_to_linear_rgb memoizes without changing results, and stays bounded`, () => {

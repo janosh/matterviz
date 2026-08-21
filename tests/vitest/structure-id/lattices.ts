@@ -161,5 +161,3 @@ export function make_icosahedron(edge_length = 2.556): {
 // Distance to the nearest neighbor of an ideal lattice, for sizing tolerances
 export const fcc_nn_distance = (lattice_const = FCC_LATTICE_CONST): number =>
   lattice_const / Math.SQRT2
-export const bcc_nn_distance = (lattice_const = BCC_LATTICE_CONST): number =>
-  (lattice_const * Math.sqrt(3)) / 2

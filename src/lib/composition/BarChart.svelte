@@ -1,34 +1,32 @@
 <script lang="ts">
   import type { ColorSchemeName } from '$lib/colors'
-  import { ELEMENT_COLOR_SCHEMES, pick_contrast_color } from '$lib/colors'
   import type { CompositionType } from '$lib/composition'
-  import type { ElementSymbol } from '$lib/element'
-  import { format_num } from '$lib/labels'
   import type { SVGAttributes } from 'svelte/elements'
-  import { chart_segment_label, chart_segment_suffix, get_chart_font_scale } from './index'
-  import type { ChartSegmentData } from './index'
-  import { fractional_composition } from './parse'
+  import {
+    type ChartSegment,
+    composition_segments,
+    fit_font_scale,
+    segment_suffix,
+    segment_title,
+  } from './chart'
 
-  type BarSegmentData = ChartSegmentData & {
+  const LABEL_HEIGHT = 20 // px rows above and below the bar for external labels
+  const GAP = 2 // px between bar and label rows
+  const MIN_LABEL_WIDTH = 15 // px: narrower segments get no label at all
+  const THIN_FRACTION = 0.2 // segments below this fraction get an external label
+  const MIN_EXTERNAL_WIDTH = 5 // px: even external labels need a segment this wide to point at
+
+  type BarSegment = ChartSegment & {
     x: number
     width: number
-    can_show_label: boolean
-    needs_external_label: boolean
-    external_label_position: `above` | `below` | null
-    label_x: number
-    label_y: number
+    font_scale: number
+    label_pos: `inside` | `above` | `below` | null
   }
 
   let {
     composition,
     size = 200,
     bar_height = 30,
-    label_height = 20,
-    gap = 2,
-    min_segment_size_for_label = 15,
-    thin_segment_threshold = 0.2,
-    external_label_size_threshold = 5,
-    outer_corners_only = true,
     show_labels = true,
     show_percentages = false,
     show_amounts = true,
@@ -39,12 +37,6 @@
     composition: CompositionType
     size?: number
     bar_height?: number
-    label_height?: number
-    gap?: number
-    min_segment_size_for_label?: number
-    thin_segment_threshold?: number
-    external_label_size_threshold?: number
-    outer_corners_only?: boolean
     show_labels?: boolean
     show_percentages?: boolean
     show_amounts?: boolean
@@ -52,90 +44,40 @@
     svg_node?: SVGSVGElement | null
   } = $props()
 
-  let element_colors = $derived(
-    ELEMENT_COLOR_SCHEMES[color_scheme] || ELEMENT_COLOR_SCHEMES.Vesta,
-  )
-  let fractions = $derived(fractional_composition(composition))
+  let label_opts = $derived({ show_amounts, show_percentages })
+  const bar_y = LABEL_HEIGHT + GAP
+  let svg_height = $derived(bar_y + bar_height + GAP + LABEL_HEIGHT)
+  let label_y = $derived({
+    inside: bar_y + bar_height / 2,
+    above: LABEL_HEIGHT / 2,
+    below: bar_y + bar_height + GAP + LABEL_HEIGHT / 2,
+  })
 
-  let svg_height = $derived(label_height + gap + bar_height + gap + label_height)
-  let bar_y = $derived(label_height + gap)
-  let above_labels_y = $derived(label_height / 2)
-  let below_labels_y = $derived(label_height + gap + bar_height + gap + label_height / 2)
-
-  let segments = $derived.by(() => {
-    const element_entries = Object.entries(composition).filter(
-      ([_, amount]) => amount && amount > 0,
-    ) as [ElementSymbol, number][]
-    if (element_entries.length === 0) return []
-
-    let [current_x, above_labels, below_labels] = [0, 0, 0]
-
-    return element_entries.map(([element, amount]) => {
-      const fraction = fractions[element] || 0
-      const color = element_colors[element] || `#cccccc`
-      const width = fraction * size
-      const x = current_x
-      current_x += width
-
-      const segment_size = Math.min(width, size)
-      const base_scale = Math.min(2, Math.max(1, segment_size / 40))
-      const label_text = chart_segment_label(
-        element,
-        amount,
-        fraction,
-        show_amounts,
-        show_percentages,
-      )
-      const font_scale = get_chart_font_scale(
-        base_scale,
-        label_text,
-        segment_size * 0.9,
-        0.6,
-        12,
-      )
-
-      // Label positioning
-      const can_show_label = segment_size >= min_segment_size_for_label
-      const is_thin = fraction < thin_segment_threshold
-      const can_show_external_label = segment_size >= external_label_size_threshold
-      const needs_external_label = is_thin && can_show_external_label
-
-      let external_label_position: `above` | `below` | null = null
-      if (needs_external_label) {
-        external_label_position = above_labels <= below_labels ? `above` : `below`
-        if (external_label_position === `above`) above_labels++
-        else below_labels++
-      }
-
-      const text_color = pick_contrast_color({ background: color })
-      const label_props = {
-        font_scale,
-        text_color,
-        can_show_label,
-        needs_external_label,
-        external_label_position,
-        label_x: x + width / 2,
-        label_y: bar_y + bar_height / 2,
-      }
-      return { element, amount, fraction, color, x, width, ...label_props }
+  let segments = $derived.by((): BarSegment[] => {
+    let [cursor, n_above, n_below] = [0, 0, 0]
+    return composition_segments(composition, color_scheme).map((segment) => {
+      const width = segment.fraction * size
+      const x = cursor
+      cursor += width
+      const label = segment.element + segment_suffix(segment, label_opts)
+      const base_scale = Math.min(2, Math.max(1, width / 40))
+      const font_scale = fit_font_scale(base_scale, label.length, width * 0.9, 0.6, 12)
+      // thin segments get external labels, alternating above/below to avoid overlap
+      let label_pos: BarSegment[`label_pos`] = null
+      if (segment.fraction < THIN_FRACTION) {
+        if (width >= MIN_EXTERNAL_WIDTH) {
+          label_pos = n_above <= n_below ? `above` : `below`
+          if (label_pos === `above`) n_above++
+          else n_below++
+        }
+      } else if (width >= MIN_LABEL_WIDTH) label_pos = `inside`
+      return { ...segment, x, width, font_scale, label_pos }
     })
   })
 
-  // Generate unique ID for clipPath to avoid collisions across BarCharts
-  const component_id = $props.id()
-  const clip_path_id = `bar-clip-${component_id}`
+  const uid = $props.id()
+  const clip_path_id = `bar-clip-${uid}`
 </script>
-
-{#snippet label_content(segment: BarSegmentData)}
-  <tspan class="element-symbol" style:font-size="{10 * segment.font_scale}px">
-    {segment.element}
-  </tspan>
-  {#if show_amounts || show_percentages}
-    <tspan class="amount" style:font-size="{6.5 * segment.font_scale}px" dx="1" dy="5">
-      {chart_segment_suffix(segment.amount, segment.fraction, show_amounts, show_percentages)}
-    </tspan>
-  {/if}
-{/snippet}
 
 <svg
   viewBox="0 0 {size} {svg_height}"
@@ -144,7 +86,11 @@
   style:max-width="{size}px"
   bind:this={svg_node}
 >
-  <!-- Background and border -->
+  <defs>
+    <clipPath id={clip_path_id}>
+      <rect x="0" y={bar_y} width={size} height={bar_height} rx="2" ry="2" />
+    </clipPath>
+  </defs>
   <rect
     x="0"
     y={bar_y}
@@ -153,36 +99,6 @@
     fill="var(--bar-bg)"
     stroke="var(--bar-border, none)"
   />
-
-  <!-- External labels above -->
-  {#each segments as segment (segment.element)}
-    {#if show_labels && segment.needs_external_label && segment.external_label_position === `above`}
-      <text
-        x={segment.label_x}
-        y={above_labels_y}
-        text-anchor="middle"
-        class="external-label"
-        style:fill={segment.color}
-      >
-        {@render label_content(segment)}
-      </text>
-    {/if}
-  {/each}
-
-  <!-- Bar segments -->
-  <defs>
-    <clipPath id={clip_path_id}>
-      <rect
-        x="0"
-        y={bar_y}
-        width={size}
-        height={bar_height}
-        rx={outer_corners_only ? 2 : 0}
-        ry={outer_corners_only ? 2 : 0}
-      />
-    </clipPath>
-  </defs>
-
   <g clip-path="url(#{clip_path_id})">
     {#each segments as segment (segment.element)}
       <rect
@@ -193,50 +109,43 @@
         fill={segment.color}
         stroke="white"
         role="img"
-        aria-label="{segment.element}: {segment.amount} {segment.amount === 1
-          ? `atom`
-          : `atoms`} ({format_num(segment.fraction, `.1~%`)})"
+        aria-label={segment_title(segment)}
         stroke-width="1"
         class="bar-segment"
       >
-        <title>
-          {segment.element}: {segment.amount}
-          {segment.amount === 1 ? `atom` : `atoms`} ({format_num(segment.fraction, `.1~%`)})
-        </title>
+        <title>{segment_title(segment)}</title>
       </rect>
     {/each}
   </g>
 
-  <!-- Internal labels -->
-  {#each segments as segment (segment.element)}
-    {#if show_labels && segment.can_show_label && !segment.needs_external_label}
-      <text
-        x={segment.label_x}
-        y={segment.label_y}
-        text-anchor="middle"
-        dominant-baseline={show_amounts || show_percentages ? `middle` : `central`}
-        class="bar-label"
-        style:fill={segment.text_color}
-      >
-        {@render label_content(segment)}
-      </text>
-    {/if}
-  {/each}
-
-  <!-- External labels below -->
-  {#each segments as segment (segment.element)}
-    {#if show_labels && segment.needs_external_label && segment.external_label_position === `below`}
-      <text
-        x={segment.label_x}
-        y={below_labels_y}
-        text-anchor="middle"
-        class="external-label"
-        style:fill={segment.color}
-      >
-        {@render label_content(segment)}
-      </text>
-    {/if}
-  {/each}
+  {#if show_labels}
+    {#each segments as segment (segment.element)}
+      {#if segment.label_pos}
+        {@const inside = segment.label_pos === `inside`}
+        <text
+          x={segment.x + segment.width / 2}
+          y={label_y[segment.label_pos]}
+          text-anchor="middle"
+          dominant-baseline={!inside
+            ? undefined
+            : show_amounts || show_percentages
+              ? `middle`
+              : `central`}
+          class={inside ? `bar-label` : `external-label`}
+          style:fill={inside ? segment.text_color : segment.color}
+        >
+          <tspan class="element-symbol" style:font-size="{10 * segment.font_scale}px">
+            {segment.element}
+          </tspan>
+          {#if show_amounts || show_percentages}
+            <tspan class="amount" style:font-size="{6.5 * segment.font_scale}px" dx="1" dy="5">
+              {segment_suffix(segment, label_opts)}
+            </tspan>
+          {/if}
+        </text>
+      {/if}
+    {/each}
+  {/if}
 </svg>
 
 <style>
@@ -250,9 +159,7 @@
   .bar-segment:hover {
     filter: brightness(1.1);
   }
-  .external-label,
-  .bar-label {
-    transition: all 0.2s ease;
+  text {
     pointer-events: none;
   }
   .element-symbol {

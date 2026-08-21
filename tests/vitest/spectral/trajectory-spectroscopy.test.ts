@@ -8,6 +8,7 @@ import {
 } from '$lib/spectral/trajectory-spectroscopy'
 import { THZ_TO_INVERSE_CM } from '$lib/constants'
 import type { ElementSymbol } from '$lib/element'
+import { one_sided_periodogram } from '$lib/fft'
 import type { TrajectorySignal } from '$lib/trajectory'
 import { describe, expect, it } from 'vitest'
 
@@ -199,6 +200,50 @@ describe(`calc_trajectory_spectroscopy`, () => {
     expect(() => calc_trajectory_spectroscopy(input, RAW_SPECTRUM)).toThrow(
       /central_difference velocities need at least 4 position frames, got 3/,
     )
+  })
+
+  // Ground truth for the VDOS pipeline: a pure velocity sinusoid at a known physical
+  // frequency must peak there, and the curve must be exactly the mass-weighted
+  // one_sided_periodogram of those velocities with the fs → THz Jacobian applied.
+  it(`VDOS of a 10 THz velocity sinusoid peaks at 10 THz and equals the fft periodogram`, () => {
+    const [n_frames, time_step_fs, frequency_thz] = [256, 2, 10]
+    const cycles_per_frame = frequency_thz * time_step_fs * 1e-3 // THz · fs
+    const input = make_input(cycles_per_frame, 1, n_frames)
+    input.time_step = time_step_fs
+    input.time_unit = `fs`
+    const options = { window: `hann`, zero_pad_factor: 4 } as const
+    const { vdos } = calc_trajectory_spectroscopy(input, {
+      ...options,
+      preprocessing: `raw`,
+      frequency_unit: `THz`,
+      velocity_source: `stored`,
+    })
+    const peak_idx = vdos.power.indexOf(Math.max(...vdos.power))
+    // Within one frequency bin (zero-padded grid spacing), not just the Rayleigh width
+    expect(Math.abs(vdos.frequencies[peak_idx] - frequency_thz)).toBeLessThanOrEqual(
+      vdos.frequency_spacing,
+    )
+    expect(vdos.nyquist).toBeCloseTo(250, 12) // 1 / (2 · 2 fs)
+
+    if (!input.velocities) throw new Error(`fixture has no velocities`)
+    const reference = one_sided_periodogram(input.velocities.values, 6, time_step_fs, {
+      ...options,
+      component_weights: Float64Array.from({ length: 6 }, () => 0.5), // two equal masses
+    })
+    const thz_per_inverse_fs = 1000
+    let max_abs_error = 0
+    for (const [idx, power] of vdos.power.entries()) {
+      expect(vdos.frequencies[idx]).toBeCloseTo(
+        reference.frequencies[idx] * thz_per_inverse_fs,
+        12,
+      )
+      max_abs_error = Math.max(
+        max_abs_error,
+        Math.abs(power - reference.power[idx] / thz_per_inverse_fs),
+      )
+    }
+    // Same arithmetic in the same order: only the division by 1000 differs
+    expect(max_abs_error).toBeLessThan(4 * Number.EPSILON * Math.max(...vdos.power))
   })
 
   it(`never labels a velocity-only vibrational mode as IR or Raman`, () => {

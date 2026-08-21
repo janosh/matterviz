@@ -51,26 +51,42 @@ describe(`PlotControls`, () => {
       },
     )
 
-    test(`resets after a secondary axis disappears`, async () => {
+    test(`flags inverted ranges, applies valid ones and resets after an axis disappears`, async () => {
       let has_x2_points = $state(true)
-      mount_controls({
+      const state = $state<{ x_axis: { range?: [number, number] } }>({ x_axis: {} })
+      const props: ComponentProps<typeof PlotControls> = {
         get has_x2_points() {
           return has_x2_points
         },
         auto_x_range: [0, 100],
         auto_x2_range: [0, 100],
-      })
-      const range_input = doc_query<HTMLInputElement>(`input.range-input`)
-      range_input.value = `10`
-      range_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      }
+      mount_controls(bind_props(props, state))
+      const set_input = (input: HTMLInputElement, value: string) => {
+        input.value = value
+        input.dispatchEvent(new Event(`input`, { bubbles: true }))
+        flushSync()
+      }
+      const [x_min, x_max] = [
+        ...document.querySelectorAll<HTMLInputElement>(`input.range-input`),
+      ]
+      set_input(x_min, `50`)
+      expect(state.x_axis.range).toEqual([50, 100]) // max falls back to the auto range
+      set_input(x_max, `20`) // min >= max: both inputs flagged, range left untouched
+      expect(x_min.classList.contains(`invalid`)).toBe(true)
+      expect(x_max.classList.contains(`invalid`)).toBe(true)
+      expect(state.x_axis.range).toEqual([50, 100])
+      set_input(x_max, `80`)
+      expect(x_min.classList.contains(`invalid`)).toBe(false)
+      expect(state.x_axis.range).toEqual([50, 80])
+
       await tick()
       flushSync(() => (has_x2_points = false))
-
-      expect(() =>
-        doc_query<HTMLButtonElement>(
-          `button[aria-label="Reset axis range to defaults"]`,
-        ).click(),
-      ).not.toThrow()
+      doc_query<HTMLButtonElement>(`button[aria-label="Reset axis range to defaults"]`).click()
+      flushSync()
+      expect(state.x_axis.range).toBeUndefined()
+      expect(x_min.value).toBe(``)
+      expect(x_max.value).toBe(``)
     })
   })
 
@@ -129,10 +145,10 @@ describe(`PlotControls`, () => {
       await tick()
       expect(state.display).not.toBe(initial_display)
       expect(state.display).toMatchObject({
-        x_grid: DEFAULTS.scatter.display.x_grid,
-        x_zero_line: DEFAULTS.plot.show_x_zero_line,
+        x_grid: DEFAULTS.plot.display.x_grid,
+        x_zero_line: DEFAULTS.plot.display.x_zero_line,
         x2_zero_line: false,
-        y_zero_line: DEFAULTS.plot.show_y_zero_line,
+        y_zero_line: DEFAULTS.plot.display.y_zero_line,
         y2_zero_line: false,
         y2_grid: true,
       })
@@ -200,7 +216,27 @@ describe(`PlotControls`, () => {
     document.body.innerHTML = ``
     mount_controls()
     expect(document.querySelector(`.plot-controls-toggle`)).not.toBeNull()
-    expect(document.querySelector(`.plot-controls-pane`)).not.toBeNull()
+    const pane = document.querySelector(`.plot-controls-pane`)
+    expect(pane).not.toBeNull()
+    expect(pane?.classList.contains(`compact-settings`)).toBe(true)
+  })
+
+  test(`packs related display and axis fields onto shared rows`, async () => {
+    mount_controls({ auto_x_range: [0, 1], auto_y_range: [0, 1] })
+    // Poll for the rows instead of reading the DOM straight after mount: the pane's sections
+    // fill in once the mount's queued effects have flushed.
+    await vi.waitFor(() => {
+      const display_row = doc_query(`section.ctrl-line`)
+      expect(display_row.querySelector(`[data-label="zero line"]`)).not.toBeNull()
+      expect(display_row.querySelector(`[data-label="grid"]`)).not.toBeNull()
+      const range_row = doc_query(`section.axis-fields`)
+      expect(range_row.querySelectorAll(`label`).length).toBeGreaterThanOrEqual(2)
+    })
+    expect(
+      document
+        .querySelector(`[data-testid="scale-type-section"]`)
+        ?.classList.contains(`axis-fields`),
+    ).toBe(true)
   })
 
   test(`Enter key blurs range input`, () => {

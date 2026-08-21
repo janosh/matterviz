@@ -1,9 +1,9 @@
 import type { ElementSymbol } from '$lib/element'
 import { get_element_counts, type AnyStructure } from '$lib/structure'
 import type { CompositionType } from '$lib/composition'
+import { element_by_symbol, is_elem_symbol } from '$lib/element'
 import { format_num } from '$lib/labels'
-import { is_elem_symbol } from '$lib/element'
-import { ELEMENT_ELECTRONEGATIVITY_MAP, parse_composition } from './parse'
+import { parse_composition } from './parse'
 
 const is_structure_like = (input: CompositionType | AnyStructure): input is AnyStructure =>
   `sites` in input || `lattice` in input
@@ -62,12 +62,15 @@ export const get_alphabetical_formula = (
     amount_format,
   )
 
+const electronegativity = (symbol: ElementSymbol): number =>
+  element_by_symbol.get(symbol)?.electronegativity ?? 0
+
+// Ascending electronegativity (cations first), alphabetical tie-break
 export const sort_by_electronegativity = (symbols: ElementSymbol[]): ElementSymbol[] =>
-  symbols.toSorted((el_1, el_2) => {
-    const elec_neg_1 = ELEMENT_ELECTRONEGATIVITY_MAP.get(el_1) ?? 0
-    const elec_neg_2 = ELEMENT_ELECTRONEGATIVITY_MAP.get(el_2) ?? 0
-    return elec_neg_1 !== elec_neg_2 ? elec_neg_1 - elec_neg_2 : el_1.localeCompare(el_2)
-  })
+  symbols.toSorted(
+    (el_1, el_2) =>
+      electronegativity(el_1) - electronegativity(el_2) || el_1.localeCompare(el_2),
+  )
 
 // Sort element symbols according to Hill notation (C first, H second, then alphabetical).
 // This is the standard notation for organic compounds in chemistry.

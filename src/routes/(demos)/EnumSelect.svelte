@@ -1,6 +1,6 @@
 <script lang="ts" generics="Value extends string">
   // Labelled dropdown over a value -> label map, e.g. SETTINGS_CONFIG enums or the
-  // SPLIT_MODES/NORMALIZE_MODES constants the plot modules export
+  // BOND_ANGLE_SPLIT_MODES/COORDINATION_SPLIT_MODES constants the plot modules export
   interface Props {
     label: string
     options: Readonly<Partial<Record<Value, string>>>

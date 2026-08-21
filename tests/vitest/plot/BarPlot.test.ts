@@ -404,6 +404,51 @@ describe(`BarPlot`, () => {
     expect(b_rects[2].bottom).toBeCloseTo(a_rects[0].bottom, 4)
   })
 
+  test.each([`vertical`, `horizontal`] as const)(
+    `%s bars on a log value axis grow from the plot edge and skip zero bars`,
+    async (orientation) => {
+      // Regression: base 0 mapped to an infinite pixel on the log scale, so every bar had NaN
+      // geometry and none rendered; the zero bar also dragged the auto range down to 1e-9.
+      const vertical = orientation === `vertical`
+      const plot = await mount_sized_bar_plot({
+        series: [{ x: [1, 2, 3, 4], y: [0, 10, 100, 1000], label: `A` }],
+        orientation,
+        [vertical ? `y_axis` : `x_axis`]: { scale_type: `log` },
+        bar: { border_radius: 0 },
+        padding: { l: 50, r: 20, t: 20, b: 40 },
+      })
+      const paths = [...plot.querySelectorAll(`.bar-series path[role="button"]`)]
+      expect(paths).toHaveLength(3)
+      const rects = paths.map((path) => {
+        const match = /^M(?<x>[\d.-]+),(?<y>[\d.-]+)h(?<w>[\d.-]+)v(?<h>[\d.-]+)/.exec(
+          path.getAttribute(`d`) ?? ``,
+        )
+        if (!match?.groups) throw new Error(`unexpected bar path ${path.getAttribute(`d`)}`)
+        return Object.fromEntries(
+          Object.entries(match.groups).map(([key, val]) => [key, Number(val)]),
+        )
+      })
+      expect(rects.every((rect) => Object.values(rect).every(Number.isFinite))).toBe(true)
+      // bars start at the value-axis edge (bottom or left plot border) and are strictly ordered
+      const edge = vertical ? 300 - 40 : 50
+      for (const rect of rects) {
+        expect(vertical ? rect.y + rect.h : rect.x).toBeCloseTo(edge, 6)
+      }
+      const extents = rects.map((rect) => (vertical ? rect.h : rect.w))
+      // the auto range is [10, 1000]: the 10 bar sits on the edge (1px floor), 100 is exactly
+      // halfway up the two decades and 1000 spans the whole chart
+      expect(extents[0]).toBe(1)
+      expect(extents[2]).toBeCloseTo(vertical ? 300 - 40 - 20 : 400 - 50 - 20, 6)
+      expect(extents[2]).toBeCloseTo(2 * extents[1], 6)
+      const value_ticks = [
+        ...plot.querySelectorAll(`g.${vertical ? `y` : `x`}-axis .tick text`),
+      ]
+        .map((node) => Number(node.textContent?.replace(`k`, `000`)))
+        .filter(Number.isFinite)
+      expect(Math.min(...value_ticks)).toBeGreaterThanOrEqual(10)
+    },
+  )
+
   test(`default tooltip shows series label for multi-series on hover`, async () => {
     const series_a: BarSeries = { x: [1, 2], y: [10, 20], label: `Group A`, color: `red` }
     const series_b: BarSeries = { x: [1, 2], y: [5, 15], label: `Group B`, color: `blue` }

@@ -1,8 +1,10 @@
 <script lang="ts">
-  import { has_explicit_position } from '$lib/plot/core/auto-place'
   import type { CartesianFrame } from '$lib/plot/core/cartesian-frame.svelte'
   import PlotLegend from '$lib/plot/core/components/PlotLegend.svelte'
-  import { resolve_legend_layout_tracks } from '$lib/plot/core/decorations'
+  import {
+    has_explicit_position,
+    resolve_legend_layout_tracks,
+  } from '$lib/plot/core/decorations'
   import type { LegendConfig, LegendItem } from '$lib/plot/core/types'
   import type { ComponentProps } from 'svelte'
 

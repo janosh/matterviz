@@ -2,7 +2,7 @@ import { PLOT_COLORS } from '$lib/colors'
 import type { BarSeries } from '$lib/plot/core/types'
 import { SvelteMap } from 'svelte/reactivity'
 import type { BondAngleData } from './calc-bond-angles'
-import type { NormalizeMode, SplitMode } from './index'
+import type { BondAngleNormalizeMode, BondAngleSplitMode } from './index'
 
 // All fields optional so the type stays mutually assignable with Record<string, unknown>,
 // which BarPlot's snippet and handler props require. Readers fall back to the prop.
@@ -18,8 +18,8 @@ export type BondAngleMetadata = {
 // of the plotted series still integrates to 1 over degrees rather than to the structure count.
 export function to_angle_bar_series(
   entries: readonly { label: string; color?: string; data: BondAngleData }[],
-  split_mode: SplitMode,
-  normalize: NormalizeMode,
+  split_mode: BondAngleSplitMode,
+  normalize: BondAngleNormalizeMode,
 ): BarSeries<BondAngleMetadata>[] {
   if (entries.length === 0) return []
   // Every structure is binned with the same options, so one shared x axis

@@ -558,50 +558,39 @@ export async function export_trajectory_video(
     }
   }
 
-  // Finalize recording
-  return new Promise<void>((resolve, reject) => {
-    let is_resolved = false
-
+  // Finalize recording. A promise settles once, so late `error`/timeout callbacks are no-ops.
+  let timeout: ReturnType<typeof setTimeout> | undefined
+  const stopped = new Promise<void>((resolve, reject) => {
     recorder.addEventListener(`stop`, () => {
-      if (is_resolved) return
-      is_resolved = true
-
       try {
         const blob = new Blob(chunks, { type: `video/webm` })
-        const webm_filename = filename.replace(/\.(?:mp4|webm)$/i, `.webm`)
-        download(blob, webm_filename, `video/webm`)
+        download(blob, filename.replace(/\.(?:mp4|webm)$/i, `.webm`), `video/webm`)
         on_progress?.(100)
         resolve()
       } catch (error) {
         reject(to_error(error))
       }
     })
-
     recorder.addEventListener(`error`, (event) => {
-      if (is_resolved) return
-      is_resolved = true
       const error_msg =
         event instanceof ErrorEvent && event.error instanceof Error
           ? event.error.message
           : event.type
       reject(new Error(`MediaRecorder error: ${error_msg}`))
     })
-
-    // Stop recording with safety timeout
+    // A recorder that never fires `stop` would otherwise leave the export pending forever
+    timeout = setTimeout(
+      () => reject(new Error(`Recording timeout - recorder did not stop`)),
+      5000,
+    )
     try {
       recorder.stop()
-      // Fallback: force resolution if recorder doesn't stop within 5 seconds
-      setTimeout(() => {
-        if (!is_resolved) {
-          is_resolved = true
-          reject(new Error(`Recording timeout - recorder did not stop`))
-        }
-      }, 5000)
     } catch (error) {
-      if (!is_resolved) {
-        is_resolved = true
-        reject(to_error(error))
-      }
+      reject(to_error(error))
     }
-  }).finally(cleanup_stream)
+  })
+  return stopped.finally(() => {
+    clearTimeout(timeout)
+    cleanup_stream()
+  })
 }

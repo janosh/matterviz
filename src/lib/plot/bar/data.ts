@@ -5,8 +5,18 @@
 
 import type { Vec2 } from '$lib/math'
 import { get_nice_data_range } from '$lib/plot/core/scales'
-import type { BarMode, BarSeries, Orientation, ScaleType } from '$lib/plot/core/types'
-import { assert_series_lengths, get_scale_type_name } from '$lib/plot/core/types'
+import type {
+  AxisConfig,
+  BarMode,
+  BarSeries,
+  Orientation,
+  ScaleType,
+} from '$lib/plot/core/types'
+import {
+  assert_series_lengths,
+  get_scale_type_name,
+  is_time_scale,
+} from '$lib/plot/core/types'
 
 // Internal series shape with guaranteed numeric x (string categories mapped to integer indices)
 export type NumericBarSeries<Metadata = Record<string, unknown>> = Omit<
@@ -74,29 +84,27 @@ export function normalize_categorical<Metadata = Record<string, unknown>>(
   return { category_list, internal_series }
 }
 
+// Which series draw against the secondary value axis: y2 for vertical bars, x2 for horizontal
+export const on_secondary_value_axis = (
+  srs: Pick<BarSeries, `x_axis` | `y_axis`>,
+  orientation: Orientation,
+): boolean => (orientation === `vertical` ? srs.y_axis === `y2` : srs.x_axis === `x2`)
+
+type AxisLimit = [number | null, number | null]
+type RangeAxis = Pick<AxisConfig, `range` | `scale_type`>
+
 export interface BarAutoRangeOpts<Metadata = Record<string, unknown>> {
   visible_series: readonly NumericBarSeries<Metadata>[]
-  y1_series: readonly NumericBarSeries<Metadata>[]
-  y2_series: readonly NumericBarSeries<Metadata>[]
-  x2_series: readonly NumericBarSeries<Metadata>[]
   mode: BarMode
   orientation: Orientation
   range_padding: number
   category_count: number // > 0 gives the category axis a base range of [-0.5, count - 0.5]
-  x_range: [number | null, number | null]
-  x_scale_type: ScaleType
-  x_is_time: boolean
-  x2_range: [number | null, number | null]
-  x2_scale_type: ScaleType
-  x2_is_time: boolean
-  y_range: [number | null, number | null]
-  y_scale_type: ScaleType
-  y2_range: [number | null, number | null]
-  y2_scale_type: ScaleType
+  // Explicit ranges pin an axis; scale types pick log-safe fallbacks and time padding
+  axes: Record<`x` | `x2` | `y` | `y2`, RangeAxis>
 }
 
 const empty_axis_range = (
-  [lower, upper]: [number | null, number | null],
+  [lower, upper]: AxisLimit,
   scale_type: ScaleType,
   is_time = false,
 ): Vec2 => {
@@ -113,14 +121,16 @@ const empty_axis_range = (
   return [0, 1]
 }
 
-// Compute data-driven axis ranges for all four axes. In stacked mode the value
-// range covers per-x stacked totals (positive and negative stacks separately);
-// for linear/arcsinh scales the value axis is clamped to include 0 when all
-// values share one sign and no explicit range is set.
+// Compute data-driven ranges for all four axes. Vertical bars put categories on x/x2 and
+// values on y/y2, horizontal bars put categories on y and values on x/x2 (y2 is unused). In
+// stacked mode the value range covers per-category stacked totals (positive and negative
+// stacks separately); linear/arcsinh value axes are clamped to include 0 when all values
+// share one sign and no explicit range is set.
 export function compute_bar_auto_ranges<Metadata = Record<string, unknown>>(
   opts: BarAutoRangeOpts<Metadata>,
 ): { x: Vec2; x2: Vec2; y: Vec2; y2: Vec2 } {
-  const { visible_series, mode, orientation, range_padding, category_count } = opts
+  const { visible_series, mode, orientation, range_padding, category_count, axes } = opts
+  const vertical = orientation === `vertical`
   const finite_points = (series: NumericBarSeries<Metadata>) =>
     series.x.flatMap((x_value, point_idx) => {
       const y_value = series.y[point_idx]
@@ -159,11 +169,11 @@ export function compute_bar_auto_ranges<Metadata = Record<string, unknown>>(
       : null
   }
 
-  const calc_y_range = (
+  const calc_value_range = (
     series_list: readonly NumericBarSeries<Metadata>[],
-    y_limit: [number | null, number | null],
-    scale_type: ScaleType,
+    { range: limit = [null, null], scale_type = `linear` }: RangeAxis,
   ): Vec2 => {
+    const type_name = get_scale_type_name(scale_type)
     let points = series_list.flatMap(finite_points)
 
     // In stacked mode, calculate stacked totals for accurate range (only for bars on the same axis)
@@ -194,12 +204,14 @@ export function compute_bar_auto_ranges<Metadata = Record<string, unknown>>(
       ]
     }
 
-    if (points.length === 0) return empty_axis_range(y_limit, scale_type)
+    // Zero and negative bars have no log image; they'd otherwise drag the range to LOG_EPS
+    if (type_name === `log`) points = points.filter((pt) => pt.y > 0)
+    if (points.length === 0) return empty_axis_range(limit, scale_type)
 
-    let computed_y_range = get_nice_data_range(
+    let computed_range = get_nice_data_range(
       points,
       (pt) => pt.y,
-      y_limit,
+      limit,
       scale_type,
       range_padding,
       false,
@@ -207,27 +219,25 @@ export function compute_bar_auto_ranges<Metadata = Record<string, unknown>>(
 
     // Bar value axes include 0 when all values share one sign - unless an explicit
     // range is set or the scale is log (where 0 is invalid)
-    const type_name = get_scale_type_name(scale_type)
     if (
       (type_name === `linear` || type_name === `arcsinh`) &&
-      y_limit[0] == null &&
-      y_limit[1] == null
+      limit[0] == null &&
+      limit[1] == null
     ) {
       const has_negative = points.some((pt) => pt.y < 0)
       const has_positive = points.some((pt) => pt.y > 0)
-      if (has_positive && !has_negative) computed_y_range = [0, computed_y_range[1]]
-      else if (has_negative && !has_positive) computed_y_range = [computed_y_range[0], 0]
+      if (has_positive && !has_negative) computed_range = [0, computed_range[1]]
+      else if (has_negative && !has_positive) computed_range = [computed_range[0], 0]
     }
 
-    return computed_y_range
+    return computed_range
   }
 
-  const calc_x_range = (
+  const calc_category_range = (
     series_list: readonly NumericBarSeries<Metadata>[],
-    limit: [number | null, number | null],
-    scale_type: ScaleType,
-    is_time: boolean,
+    { range: limit = [null, null], scale_type = `linear` }: RangeAxis,
   ): Vec2 => {
+    const is_time = is_time_scale(scale_type)
     const points = series_list.flatMap(finite_points)
     if (points.length === 0) return empty_axis_range(limit, scale_type, is_time)
     const range = get_nice_data_range(
@@ -248,26 +258,34 @@ export function compute_bar_auto_ranges<Metadata = Record<string, unknown>>(
     ]
   }
 
-  const x1_series = visible_series.filter((series) => (series.x_axis ?? `x1`) === `x1`)
-  // Categorical x axes reserve one unit per slot, expanding for explicitly wider bars.
-  const categorical_edges = get_bar_edge_range(x1_series, `linear`)
-  const x_auto_range: Vec2 =
+  // Horizontal bars carry every category on y; vertical bars may split them across x and x2.
+  const cat_series = vertical
+    ? visible_series.filter((srs) => srs.x_axis !== `x2`)
+    : visible_series
+  const cat_axis = vertical ? axes.x : axes.y
+  // Categorical axes reserve one unit per slot, expanding for explicitly wider bars.
+  const categorical_edges = get_bar_edge_range(cat_series, `linear`)
+  const cat_range: Vec2 =
     category_count > 0
       ? [
           Math.min(-0.5, categorical_edges?.[0] ?? -0.5),
           Math.max(category_count - 0.5, categorical_edges?.[1] ?? category_count - 0.5),
         ]
-      : calc_x_range(x1_series, opts.x_range, opts.x_scale_type, opts.x_is_time)
-  const { x2_series, x2_range, x2_scale_type, x2_is_time } = opts
-  const x2_auto_range = calc_x_range(x2_series, x2_range, x2_scale_type, x2_is_time)
-
-  const y1_range = calc_y_range(opts.y1_series, opts.y_range, opts.y_scale_type)
-  const y2_auto_range = calc_y_range(opts.y2_series, opts.y2_range, opts.y2_scale_type)
-
-  // Map data ranges to axis ranges depending on orientation
-  return orientation === `horizontal`
-    ? { x: y1_range, x2: x2_auto_range, y: x_auto_range, y2: y2_auto_range }
-    : { x: x_auto_range, x2: x2_auto_range, y: y1_range, y2: y2_auto_range }
+      : calc_category_range(cat_series, cat_axis)
+  const val_range = calc_value_range(
+    visible_series.filter((srs) => !on_secondary_value_axis(srs, orientation)),
+    vertical ? axes.y : axes.x,
+  )
+  const val2_range = calc_value_range(
+    visible_series.filter((srs) => on_secondary_value_axis(srs, orientation)),
+    vertical ? axes.y2 : axes.x2,
+  )
+  if (!vertical) return { x: val_range, x2: val2_range, y: cat_range, y2: [0, 1] }
+  const cat2_range = calc_category_range(
+    visible_series.filter((srs) => srs.x_axis === `x2`),
+    axes.x2,
+  )
+  return { x: cat_range, x2: cat2_range, y: val_range, y2: val2_range }
 }
 
 // Stack offsets indexed by [original series idx][bar idx] (only bar series in
@@ -275,18 +293,20 @@ export function compute_bar_auto_ranges<Metadata = Record<string, unknown>>(
 export function compute_stacked_offsets<Metadata = Record<string, unknown>>(
   internal_series: readonly NumericBarSeries<Metadata>[],
   mode: BarMode,
+  orientation: Orientation = `vertical`,
 ): number[][] {
   if (mode !== `stacked`) return []
   const offsets = internal_series.map((srs) => Array.from(srs.x, () => 0))
-  // Cumulative totals keyed by axis/sign/x value so series with misaligned x grids
+  // Cumulative totals keyed by value axis/sign/category so series with misaligned x grids
   // stack on the correct baseline (matching stacked totals in compute_bar_auto_ranges)
   const acc = new Map<string, number>()
   internal_series.forEach((srs, series_idx) => {
     if (!(srs?.visible ?? true) || srs.render_mode === `line`) return
+    const axis = on_secondary_value_axis(srs, orientation) ? `2` : `1`
     srs.x.forEach((x_val, bar_idx) => {
       const y_val = srs.y[bar_idx]
       if (!Number.isFinite(x_val) || !Number.isFinite(y_val)) return
-      const key = `${srs.y_axis === `y2` ? `y2` : `y1`}:${y_val >= 0 ? `+` : `-`}:${x_val}`
+      const key = `${axis}:${y_val >= 0 ? `+` : `-`}:${x_val}`
       offsets[series_idx][bar_idx] = acc.get(key) ?? 0
       acc.set(key, (acc.get(key) ?? 0) + y_val)
     })

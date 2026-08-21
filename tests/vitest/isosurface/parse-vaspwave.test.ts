@@ -1,6 +1,6 @@
 import { is_vaspwave_filename, parse_vaspwave_charge } from '$lib/isosurface/parse-vaspwave'
 import { describe, expect, it } from 'vitest'
-import { read_binary_test_file } from '../setup'
+import { grid_value, read_binary_test_file } from '../setup'
 
 const VASP_HDF5_FIXTURE_DIR = `tests/vitest/fixtures/vasp-hdf5`
 const read_fixture = (filename: string): ArrayBuffer =>
@@ -11,9 +11,11 @@ const parse_fixture = (fixture: string) =>
 // Synthetic fixture: [nx, ny, nz] = [4, 6, 8] grid stored C-order
 // [2, nz, ny, nx] with component 0 value(x, y, z) = x + 10y + 100z and a
 // partly negative component 1, plus an embedded Si2 structure in a
-// diag(4, 5, 6) lattice.
+// diag(4, 5, 6) lattice. Like CHGCAR, the stored values are rho * V_cell, so the
+// parser divides by V = 120 A^3.
+const CELL_VOLUME = 4 * 5 * 6
 describe(`vaspwave.h5 charge density parsing`, () => {
-  it(`parses structure + components, reordering C-order values into grid[x][y][z]`, async () => {
+  it(`parses structure + components, reordering C-order values into (x, y, z) and normalizing by volume`, async () => {
     const { structure, volumes } = await parse_fixture(`vaspwave-si-charge.h5`)
 
     expect(structure.sites).toHaveLength(2)
@@ -22,6 +24,7 @@ describe(`vaspwave.h5 charge density parsing`, () => {
     expect(structure.lattice?.a).toBeCloseTo(4, 6)
     expect(structure.lattice?.b).toBeCloseTo(5, 6)
     expect(structure.lattice?.c).toBeCloseTo(6, 6)
+    expect(structure.lattice?.volume).toBeCloseTo(CELL_VOLUME, 9)
 
     expect(volumes).toHaveLength(2)
     expect(volumes.map((volume) => volume.label)).toEqual([
@@ -29,7 +32,9 @@ describe(`vaspwave.h5 charge density parsing`, () => {
       `magnetization density`,
     ])
     for (const volume of volumes) {
-      expect(volume.grid_dims).toEqual([4, 6, 8])
+      expect(volume.dims).toEqual([4, 6, 8])
+      expect(volume.order).toBe(`z_fastest`)
+      expect(volume.values).toHaveLength(4 * 6 * 8)
       expect(volume.periodic).toBe(true)
       expect(volume.lattice).toEqual(structure.lattice?.matrix)
     }
@@ -42,18 +47,19 @@ describe(`vaspwave.h5 charge density parsing`, () => {
       [0, 0, 7],
       [2, 3, 5],
     ]) {
-      expect(charge.grid[x_idx][y_idx][z_idx], `at (${x_idx},${y_idx},${z_idx})`).toBe(
-        x_idx + 10 * y_idx + 100 * z_idx,
-      )
+      expect(
+        grid_value(charge, x_idx, y_idx, z_idx),
+        `at (${x_idx},${y_idx},${z_idx})`,
+      ).toBeCloseTo((x_idx + 10 * y_idx + 100 * z_idx) / CELL_VOLUME, 12)
     }
     expect(charge.data_range.min).toBe(0)
-    expect(charge.data_range.max).toBe(3 + 10 * 5 + 100 * 7)
+    expect(charge.data_range.max).toBeCloseTo((3 + 10 * 5 + 100 * 7) / CELL_VOLUME, 12)
 
     // magnetization component carries negatives (0.5 - z)
     const magnetization = volumes[1]
-    expect(magnetization.grid[0][0][0]).toBe(0.5)
-    expect(magnetization.grid[0][0][7]).toBe(0.5 - 7)
-    expect(magnetization.data_range.min).toBe(0.5 - 7)
+    expect(grid_value(magnetization, 0, 0, 0)).toBeCloseTo(0.5 / CELL_VOLUME, 12)
+    expect(grid_value(magnetization, 0, 0, 7)).toBeCloseTo((0.5 - 7) / CELL_VOLUME, 12)
+    expect(magnetization.data_range.min).toBeCloseTo((0.5 - 7) / CELL_VOLUME, 12)
   })
 
   it.each([

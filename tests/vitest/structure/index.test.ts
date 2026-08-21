@@ -74,12 +74,12 @@ describe.each(structures)(`structure-utils`, (structure) => {
     const counts = struct_utils.get_element_counts(structure)
 
     for (const [element, count] of Object.entries(counts)) {
-      expect(element, `${id}`).toMatch(/^[A-Z][a-z]{0,2}$/)
+      expect(element, id).toMatch(/^[A-Z][a-z]{0,2}$/)
       expect(count, `${id}: ${element}`).toBeGreaterThan(0)
       expect(Number.isInteger(count), `${id}: ${element}`).toBe(true)
     }
     const total = Object.values(counts).reduce((sum, count) => sum + count, 0)
-    expect(total, `${id}`).toBe(structure.sites.length)
+    expect(total, id).toBe(structure.sites.length)
 
     const density = struct_utils.get_density(structure)
     if (structure.lattice) {

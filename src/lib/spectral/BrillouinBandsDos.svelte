@@ -1,8 +1,13 @@
 <script lang="ts">
-  import { BrillouinZone, reciprocal_lattice } from '$lib/brillouin'
+  import { BrillouinZone } from '$lib/brillouin'
+  import { reciprocal_lattice } from '$lib/math'
   import type { Vec2, Vec3 } from '$lib/math'
   import type { InternalPoint, ScatterHandlerEvent } from '$lib/plot'
-  import { max_side_padding, reconcile_shared_axis_ranges } from '$lib/plot/core/shared-axes'
+  import {
+    axis_with_range,
+    max_side_padding,
+    reconcile_shared_axis_ranges,
+  } from '$lib/plot/core/shared-axes'
   import type { AxisConfig } from '$lib/plot/core/types'
   import type { Crystal } from '$lib/structure'
   import type { ComponentProps, Snippet } from 'svelte'
@@ -56,7 +61,7 @@
   let k_path_points = $derived.by(() => {
     if (!first_band_struct?.qpoints || !structure?.lattice?.matrix) return []
 
-    const k_lattice = reciprocal_lattice(structure.lattice.matrix)
+    const k_lattice = reciprocal_lattice(structure.lattice.matrix, { two_pi: true })
     return helpers.extract_k_path_points(first_band_struct, k_lattice)
   })
 
@@ -85,9 +90,9 @@
   let screen_class = $derived(is_desktop ? `desktop` : is_mobile ? `phone` : `tablet`)
 
   const default_y_axes = (): AxisConfig[] => [
-    helpers.axis_with_range(bands_props.y_axis, shared_frequency_range),
+    axis_with_range(bands_props.y_axis, shared_frequency_range),
     is_desktop
-      ? helpers.axis_with_range(dos_props.y_axis, shared_frequency_range, ``)
+      ? axis_with_range(dos_props.y_axis, shared_frequency_range, ``)
       : { ...dos_props.y_axis },
   ]
 
@@ -180,7 +185,7 @@
     {...dos_props}
     orientation={is_desktop ? `horizontal` : `vertical`}
     x_axis={{
-      ...helpers.axis_with_range(undefined, is_desktop ? undefined : shared_frequency_range),
+      ...axis_with_range(undefined, is_desktop ? undefined : shared_frequency_range),
       ...dos_props.x_axis,
     }}
     bind:y_axis={y_axes[1]}

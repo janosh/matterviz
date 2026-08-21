@@ -4,8 +4,7 @@
 import type { ElementSymbol } from '$lib/element'
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
-import type { Site } from '$lib/structure'
-import type { ParsedStructure } from '$lib/structure/parse'
+import type { AnyStructure, Site } from '$lib/structure'
 import { wrap_to_unit_cell } from '$lib/structure/pbc'
 import { make_site } from '$lib/structure/site'
 import {
@@ -107,8 +106,7 @@ const mmcif_element = (
   )
 }
 
-// @internal parser exported for tests; public entry points: parse_structure_file/parse_any_structure. Parse mmCIF/PDBx.
-export const parse_mmcif = (content: string): ParsedStructure | null =>
+export const parse_mmcif = (content: string): AnyStructure | null =>
   guard_parse(`mmCIF`, () => {
     const lines = content.split(/\r?\n/)
 

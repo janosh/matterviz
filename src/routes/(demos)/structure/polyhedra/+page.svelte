@@ -4,7 +4,7 @@
   import { DEFAULTS } from '$lib/settings'
   import type { AnyStructure, Molecule } from '$lib/structure'
   import { Structure } from '$lib/structure'
-  import { parse_any_structure } from '$lib/structure/parse'
+  import { parse_structure_file } from '$lib/structure/parse'
   import type { Vec3 } from '$lib/math'
   import { structure_file_text } from '$site/structures'
   import batio3_poscar from '$site/structures/BaTiO3-tetragonal.poscar?raw'
@@ -24,7 +24,7 @@
     const text = structure_file_text(file_param)
     if (!text) return null
     try {
-      return parse_any_structure(text, file_param)
+      return parse_structure_file(text, file_param)
     } catch {
       return null
     }
@@ -39,7 +39,7 @@
   }
 
   const parse = (content: string, filename: string): AnyStructure => {
-    const structure = parse_any_structure(content, filename)
+    const structure = parse_structure_file(content, filename)
     if (!structure) throw new Error(`Failed to parse ${filename}`)
     return structure
   }

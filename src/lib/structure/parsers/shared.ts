@@ -6,9 +6,15 @@ import type { ElementSymbol } from '$lib/element'
 import { coerce_elem_symbol, FALLBACK_ELEMENTS, is_elem_symbol } from '$lib/element/helpers'
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
-import type { BondOrder, Site, StructureBond } from '$lib/structure'
+import type {
+  AnyStructure,
+  BondOrder,
+  LatticeType,
+  Pbc,
+  Site,
+  StructureBond,
+} from '$lib/structure'
 import { get_bond_key, normalize_structure_bond } from '$lib/structure/bonding'
-import type { Pbc } from '$lib/structure/pbc'
 import { normalize_scientific_notation, parse_num_token, to_error } from '$lib/utils'
 
 // === Parse diagnostics ===
@@ -102,26 +108,23 @@ export const is_placeholder_cell = (params: readonly number[]): boolean =>
   params.slice(0, 3).every((length) => Math.abs(length - 1) < 1e-6) &&
   params.slice(3).every((angle) => Math.abs(angle - 90) < 1e-6)
 
-// A lattice as ParsedStructure carries it: the matrix plus its derived scalar params.
-// `pbc` is omitted for formats that don't declare periodicity (parse_any_structure then
-// defaults them to fully periodic).
-export const make_lattice = (matrix: math.Matrix3x3, pbc?: Pbc) => ({
-  matrix,
-  ...math.calc_lattice_params(matrix),
-  ...(pbc ? { pbc } : {}),
-})
+// The one lattice shape every parser emits: matrix + derived scalar params + pbc. Formats
+// that don't declare periodicity (the vast majority) are fully periodic.
+export const make_lattice = (
+  matrix: math.Matrix3x3,
+  pbc: Pbc = [true, true, true],
+): LatticeType => ({ matrix, ...math.calc_lattice_params(matrix), pbc })
 
 // The shape every format parser returns: an empty bond list and an absent lattice are
-// omitted rather than written as empty/undefined fields. All formats that carry a cell
-// declare it fully periodic; the aperiodic ones pass no matrix at all.
+// omitted rather than written as empty/undefined fields.
 export const parsed_result = (
   sites: Site[],
   bonds: readonly StructureBond[] = [],
   lattice_matrix?: math.Matrix3x3 | null,
-) => ({
+): AnyStructure => ({
   sites,
   ...(bonds.length > 0 && { properties: { bonds: [...bonds] } }),
-  ...(lattice_matrix && { lattice: make_lattice(lattice_matrix, [true, true, true]) }),
+  ...(lattice_matrix && { lattice: make_lattice(lattice_matrix) }),
 })
 
 // === Element symbols ===

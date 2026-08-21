@@ -1,18 +1,13 @@
 <script lang="ts">
   import type { ColorSchemeName } from '$lib/colors'
-  import { ELEMENT_COLOR_SCHEMES, pick_contrast_color } from '$lib/colors'
   import type { CompositionType } from '$lib/composition'
-  import type { ElementSymbol } from '$lib/element'
-  import { format_num } from '$lib/labels'
   import type { SVGAttributes } from 'svelte/elements'
-  import { chart_segment_label, chart_segment_suffix, get_chart_font_scale } from './index'
-  import type { ChartSegmentData } from './index'
-  import { count_atoms_in_composition, fractional_composition } from './parse'
+  import { composition_segments, fit_font_scale, segment_suffix, segment_title } from './chart'
 
-  // Constants for pie chart calculations
-  const VERY_THIN_SLICE_THRESHOLD = 20 // degrees
-  const MEDIUM_SLICE_THRESHOLD = 90 // degrees - increased to move more slices toward outer edge
-  const MAX_ANGLE_FOR_FULL_SCALE = 120 // degrees
+  // label placement tiers by slice angle (degrees)
+  const THIN_SLICE = 20 // label outside the pie
+  const MEDIUM_SLICE = 90 // label near the outer edge
+  const FULL_SCALE_ANGLE = 120 // slices at least this wide get the max font scale
 
   let {
     composition,
@@ -37,151 +32,69 @@
     svg_node?: SVGSVGElement | null
   } = $props()
 
-  let element_colors = $derived(
-    ELEMENT_COLOR_SCHEMES[color_scheme] || ELEMENT_COLOR_SCHEMES.Vesta,
-  )
-  let fractions = $derived(fractional_composition(composition))
-  let total_atoms = $derived(count_atoms_in_composition(composition))
-  let outer_radius = $derived(size / 2 - stroke_width)
-  let inner_radius_adjusted = $derived(Math.min(inner_radius, outer_radius - 10))
+  let label_opts = $derived({ show_amounts, show_percentages })
   let center = $derived(size / 2)
+  let outer_radius = $derived(size / 2 - stroke_width)
+  let ring_inner = $derived(Math.min(inner_radius, outer_radius - 10))
 
-  // Calculate pie segments
+  const polar = (radius: number, angle_deg: number): [number, number] => {
+    const rad = (angle_deg * Math.PI) / 180
+    return [center + radius * Math.cos(rad), center + radius * Math.sin(rad)]
+  }
+
   let segments = $derived.by(() => {
-    let current_angle = -90 // Start from top
-
-    return Object.entries(composition)
-      .filter(([_, amount]) => amount && amount > 0)
-      .map(([element_key, amount]) => {
-        const element = element_key as ElementSymbol
-        const fraction = fractions[element] || 0
-        const color = element_colors[element] || `#cccccc`
-
-        // Single element: full circle with no radial stroke line, label at center
-        if (fraction === 1) {
-          const radius = outer_radius
-          const ir = inner_radius_adjusted
-          // Two semicircular arcs to form a full circle (avoids SVG 360° arc bug)
-          const outer_arc = `M ${center} ${center - radius} A ${radius} ${radius} 0 1 1 ${center} ${
-            center + radius
-          } A ${radius} ${radius} 0 1 1 ${center} ${center - radius} Z`
-          const path =
-            ir > 0
-              ? `${outer_arc} M ${center} ${center - ir} A ${ir} ${ir} 0 1 0 ${center} ${
-                  center + ir
-                } A ${ir} ${ir} 0 1 0 ${center} ${center - ir} Z`
-              : outer_arc
-          const label_text = chart_segment_label(
-            element,
-            amount,
-            fraction,
-            show_amounts,
-            show_percentages,
-          )
-          return {
-            element,
-            amount,
-            fraction,
-            color,
-            start_angle: -90,
-            end_angle: 270,
-            path,
-            label_x: center,
-            label_y: center,
-            is_outside_slice: false,
-            font_scale: get_chart_font_scale(2.6, label_text, radius * 2),
-            text_color: pick_contrast_color({ background: color }),
-          }
-        }
-
-        const angle_span = fraction * 360
-        const start_angle = current_angle
-        const end_angle = current_angle + angle_span
-
-        current_angle = end_angle
-
-        // Convert to radians for calculations
-        const start_rad = (start_angle * Math.PI) / 180
-        const end_rad = (end_angle * Math.PI) / 180
-        const mid_rad = (((start_angle + end_angle) / 2) * Math.PI) / 180
-
-        // Arc coordinates for outer radius
-        const x1_outer = center + outer_radius * Math.cos(start_rad)
-        const y1_outer = center + outer_radius * Math.sin(start_rad)
-        const x2_outer = center + outer_radius * Math.cos(end_rad)
-        const y2_outer = center + outer_radius * Math.sin(end_rad)
-
-        // Arc coordinates for inner radius
-        const x1_inner = center + inner_radius_adjusted * Math.cos(start_rad)
-        const y1_inner = center + inner_radius_adjusted * Math.sin(start_rad)
-        const x2_inner = center + inner_radius_adjusted * Math.cos(end_rad)
-        const y2_inner = center + inner_radius_adjusted * Math.sin(end_rad)
-
-        const large_arc = angle_span > 180 ? 1 : 0
-
-        // Create donut path if inner radius > 0, otherwise regular pie slice
-        const path =
-          inner_radius_adjusted > 0
-            ? `M ${x1_outer} ${y1_outer} A ${outer_radius} ${outer_radius} 0 ${large_arc} 1 ${x2_outer} ${y2_outer} L ${x2_inner} ${y2_inner} A ${inner_radius_adjusted} ${inner_radius_adjusted} 0 ${large_arc} 0 ${x1_inner} ${y1_inner} Z`
-            : `M ${center} ${center} L ${x1_outer} ${y1_outer} A ${outer_radius} ${outer_radius} 0 ${large_arc} 1 ${x2_outer} ${y2_outer} Z`
-
-        // Position labels with three-tier strategy
-        const is_very_thin_slice = angle_span < VERY_THIN_SLICE_THRESHOLD // Place outside
-        const is_medium_slice =
-          angle_span >= VERY_THIN_SLICE_THRESHOLD && angle_span < MEDIUM_SLICE_THRESHOLD // Near outer edge
-
-        let label_radius: number
-        let is_outside_slice = false
-
-        if (is_very_thin_slice) {
-          // Very thin slices: place outside with distance proportional to chart size
-          label_radius = outer_radius + outer_radius * 0.2
-          is_outside_slice = true
-        } else if (is_medium_slice) {
-          // Medium slices: place closer to outer edge, proportional to chart size
-          label_radius = outer_radius - outer_radius * 0.3
-        } else {
-          // Large slices: place in middle of ring
-          label_radius = (outer_radius + inner_radius_adjusted) / 2
-        }
-
-        // Calculate font scale based on slice size and smart text fitting
-        const [min_font_scale, max_font_scale] = [1.4, 2] as const
-        const scale_factor = angle_span / MAX_ANGLE_FOR_FULL_SCALE
-        const base_scale = min_font_scale + scale_factor * (max_font_scale - min_font_scale)
-        const label_text = chart_segment_label(
-          element,
-          amount,
-          fraction,
-          show_amounts,
-          show_percentages,
-        )
-        const available_space = is_very_thin_slice
-          ? outer_radius * 0.8 // More space outside the slice
-          : Math.min(
-              outer_radius - inner_radius_adjusted, // Radial space
-              ((angle_span * Math.PI) / 180) * label_radius * 0.8, // Arc space at label radius
-            )
-
-        const font_scale = get_chart_font_scale(base_scale, label_text, available_space)
-
+    let angle = -90 // start at 12 o'clock, sweep clockwise
+    return composition_segments(composition, color_scheme).map((segment) => {
+      const label = segment.element + segment_suffix(segment, label_opts)
+      if (segment.fraction === 1) {
+        // single element: two semicircles per ring (an SVG arc can't sweep a full 360°)
+        const circle = (radius: number, sweep: 0 | 1) =>
+          `M ${center} ${center - radius} A ${radius} ${radius} 0 1 ${sweep} ${center} ${center + radius} A ${radius} ${radius} 0 1 ${sweep} ${center} ${center - radius} Z`
         return {
-          element,
-          amount,
-          fraction,
-          color,
-          start_angle,
-          end_angle,
-          path,
-          label_x: center + label_radius * Math.cos(mid_rad),
-          label_y: center + label_radius * Math.sin(mid_rad),
-          is_outside_slice,
-          font_scale,
-          text_color: is_outside_slice
-            ? `var(--text-color, #333)`
-            : pick_contrast_color({ background: color }),
+          ...segment,
+          path: circle(outer_radius, 1) + (ring_inner > 0 ? circle(ring_inner, 0) : ``),
+          label_x: center,
+          label_y: center,
+          outside: false,
+          font_scale: fit_font_scale(2.6, label.length, outer_radius * 2),
         }
-      })
+      }
+      const span = segment.fraction * 360
+      const [start, end] = [angle, angle + span]
+      angle = end
+      const large_arc = span > 180 ? 1 : 0
+      const [x1, y1] = polar(outer_radius, start)
+      const [x2, y2] = polar(outer_radius, end)
+      const outer_arc = `A ${outer_radius} ${outer_radius} 0 ${large_arc} 1 ${x2} ${y2}`
+      let path: string
+      if (ring_inner > 0) {
+        const [x3, y3] = polar(ring_inner, end)
+        const [x4, y4] = polar(ring_inner, start)
+        path = `M ${x1} ${y1} ${outer_arc} L ${x3} ${y3} A ${ring_inner} ${ring_inner} 0 ${large_arc} 0 ${x4} ${y4} Z`
+      } else path = `M ${center} ${center} L ${x1} ${y1} ${outer_arc} Z`
+
+      const outside = span < THIN_SLICE
+      const label_radius = outside
+        ? outer_radius * 1.2
+        : span < MEDIUM_SLICE
+          ? outer_radius * 0.7
+          : (outer_radius + ring_inner) / 2
+      const [label_x, label_y] = polar(label_radius, (start + end) / 2)
+      // font grows with slice angle, then shrinks to fit radial/arc space at the label radius
+      const base_scale = 1.4 + Math.min(span / FULL_SCALE_ANGLE, 1) * 0.6
+      const available = outside
+        ? outer_radius * 0.8
+        : Math.min(outer_radius - ring_inner, ((span * Math.PI) / 180) * label_radius * 0.8)
+      return {
+        ...segment,
+        path,
+        label_x,
+        label_y,
+        outside,
+        font_scale: fit_font_scale(base_scale, label.length, available),
+        text_color: outside ? `var(--text-color, #333)` : segment.text_color,
+      }
+    })
   })
 </script>
 
@@ -198,44 +111,30 @@
       fill={segment.color}
       stroke="white"
       role="img"
-      aria-label="{segment.element}: {segment.amount} {segment.amount === 1
-        ? `atom`
-        : `atoms`} ({format_num(segment.fraction, `.1~%`)})"
+      aria-label={segment_title(segment)}
       stroke-width={segments.length === 1 ? 0 : stroke_width}
       class="pie-segment"
     >
-      <title>
-        {segment.element}: {segment.amount}
-        {segment.amount === 1 ? `atom` : `atoms`} ({format_num(segment.fraction, `.1~%`)})
-      </title>
+      <title>{segment_title(segment)}</title>
     </path>
   {/each}
 
   {#if show_labels}
     {#each segments as segment (segment.element)}
+      {@const [width, height] = [size * 0.15, size * 0.075].map(
+        (len) => len * segment.font_scale,
+      )}
       <foreignObject
-        x={segment.label_x - (size * 0.15 * segment.font_scale) / 2}
-        y={segment.label_y - (size * 0.075 * segment.font_scale) / 2}
-        width={size * 0.15 * segment.font_scale}
-        height={size * 0.075 * segment.font_scale}
+        x={segment.label_x - width / 2}
+        y={segment.label_y - height / 2}
+        {width}
+        {height}
       >
-        <div
-          class="pie-label"
-          class:inside-slice={!segment.is_outside_slice}
-          class:outside-slice={segment.is_outside_slice}
-          style:color={segment.text_color}
-        >
-          <span class="element-symbol" style:font-size="{14 * segment.font_scale}px"
-            >{segment.element}</span
-          >
+        <div class="pie-label" style:color={segment.text_color}>
+          <span style:font-size="{14 * segment.font_scale}px">{segment.element}</span>
           {#if show_amounts || show_percentages}
-            <sub class="amount" style:font-size="{8 * segment.font_scale}px"
-              >{chart_segment_suffix(
-                segment.amount,
-                segment.fraction,
-                show_amounts,
-                show_percentages,
-              )}</sub
+            <sub style:font-size="{8 * segment.font_scale}px"
+              >{segment_suffix(segment, label_opts)}</sub
             >
           {/if}
         </div>
@@ -245,36 +144,30 @@
 </svg>
 
 <style>
+  svg {
+    /* thin slices place their labels outside the pie at 1.2x the outer radius, past the
+    square viewBox - the default svg overflow: hidden would clip them */
+    overflow: visible;
+  }
   .pie-segment {
     transition: all 0.2s ease;
   }
   .pie-segment:hover {
     filter: brightness(1.1);
   }
-  svg {
-    /* very thin slices place their labels outside the pie at 1.2x the outer radius,
-    past the square viewBox - the default svg overflow: hidden would clip them */
-    overflow: visible;
-  }
   foreignobject {
     pointer-events: none;
-    transition: all 0.2s ease;
     overflow: visible;
   }
   .pie-label {
     display: flex;
     align-items: center;
     justify-content: center;
-    text-align: center;
     width: 100%;
     height: 100%;
-    transition: all 0.2s ease;
     white-space: nowrap;
   }
-  .pie-label.hovered {
-    font-weight: 700;
-  }
-  .amount {
+  sub {
     margin-left: 1px;
     transform: translateY(5pt);
   }

@@ -5,10 +5,10 @@
   import { ELEMENT_ORDERINGS, ORDERING_LABELS } from './index'
   import type {
     ElementAxisOrderingKey,
-    DomainMode,
+    HeatmapDomainMode,
     HeatmapExportFormat,
+    HeatmapNormalizeMode,
     LegendPosition,
-    NormalizeMode,
     SymmetricMode,
   } from './index'
 
@@ -26,7 +26,6 @@
     show_values = $bindable<boolean | string>(false),
     show_row_summaries = $bindable(false),
     show_col_summaries = $bindable(false),
-    theme = $bindable<`default` | `light` | `dark` | `publication`>(`default`),
     export_formats = [`csv`, `json`],
     onexport,
     show_pane = true,
@@ -38,8 +37,8 @@
     orderings?: ElementAxisOrderingKey[]
     controls_open?: boolean
     toggle_visible?: boolean
-    normalize?: NormalizeMode
-    domain_mode?: DomainMode
+    normalize?: HeatmapNormalizeMode
+    domain_mode?: HeatmapDomainMode
     show_legend?: boolean
     legend_position?: LegendPosition
     search_query?: string
@@ -47,7 +46,6 @@
     show_values?: boolean | string
     show_row_summaries?: boolean
     show_col_summaries?: boolean
-    theme?: `default` | `light` | `dark` | `publication`
     export_formats?: HeatmapExportFormat[]
     onexport?: (format: HeatmapExportFormat) => void
     show_pane?: boolean
@@ -141,15 +139,6 @@
           <option value={false}>Off</option>
           <option value="lower">Lower</option>
           <option value="upper">Upper</option>
-        </select>
-      </label>
-      <label>
-        <span>Theme</span>
-        <select bind:value={theme}>
-          <option value="default">Default</option>
-          <option value="light">Light</option>
-          <option value="dark">Dark</option>
-          <option value="publication">Publication</option>
         </select>
       </label>
       <label>

@@ -28,7 +28,10 @@ async function measure_plot_interaction(page: Page, click_target: `center` | `kn
   const known_point_bounds = click_target === `known-point` ? await get_plot_area(page) : null
   return page.evaluate(
     async ({ target, area, pseudo_random_multiplier }) => {
-      const plot = document.querySelector<HTMLElement>(`.binned-scatter`)
+      // Pointer events are handled on the frame's SVG, which sits over the canvases
+      const plot = document.querySelector<SVGSVGElement>(
+        `.binned-scatter svg[role="application"]`,
+      )
       if (!plot) throw new Error(`Binned scatter plot not found`)
       const rect = plot.getBoundingClientRect()
       const samples: number[] = []
@@ -37,9 +40,7 @@ async function measure_plot_interaction(page: Page, click_target: `center` | `kn
         const clientX = rect.left + rect.width * (0.15 + 0.7 * ((idx % 16) / 15))
         const clientY = rect.top + rect.height * (0.2 + 0.6 * (Math.floor(idx / 16) / 4))
         const start = performance.now()
-        plot.dispatchEvent(
-          new PointerEvent(`pointermove`, { bubbles: true, clientX, clientY }),
-        )
+        plot.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true, clientX, clientY }))
         samples.push(performance.now() - start)
       }
 
@@ -124,7 +125,9 @@ test(`opens singleton density bins without a slow data scan`, async ({ page }) =
   const singleton_bounds = await get_plot_area(page)
 
   const result = await page.evaluate(async (area) => {
-    const plot = document.querySelector<HTMLElement>(`.binned-scatter`)
+    const plot = document.querySelector<SVGSVGElement>(
+      `.binned-scatter svg[role="application"]`,
+    )
     if (!plot) throw new Error(`Binned scatter plot not found`)
     const rect = plot.getBoundingClientRect()
     const clientX = rect.left + area.left + 0.9 * area.width

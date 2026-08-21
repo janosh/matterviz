@@ -5,7 +5,7 @@ import { is_elem_symbol } from '$lib/element/helpers'
 import { strip_compression_extensions } from '$lib/io/decompress'
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
-import type { AnyStructure, Crystal, Site, StructureProperties } from '$lib/structure'
+import type { AnyStructure, Crystal, Pbc, Site } from '$lib/structure'
 import { is_lammps_data_content, is_lammps_dump_content } from '$lib/structure/format-detect'
 import { parse_lammps_data, parse_lammps_dump } from '$lib/structure/parsers/lammps'
 import { is_mmcif_content, parse_mmcif } from '$lib/structure/parsers/mmcif'
@@ -32,7 +32,6 @@ import {
   lines_cursor,
   parse_vasp_header,
 } from '$lib/structure/parsers/vasp-header'
-import type { Pbc } from '$lib/structure/pbc'
 import { wrap_frac_coord, wrap_to_unit_cell } from '$lib/structure/pbc'
 import { make_site } from '$lib/structure/site'
 import { is_xyz_atom_line, iter_xyz_frames } from '$lib/trajectory/helpers'
@@ -50,40 +49,15 @@ import { load as yaml_load } from 'js-yaml'
 export { is_structure_file } from '$lib/structure/format-detect'
 
 // === Parse error contract ===
-// Individual format parsers (parse_poscar, parse_cif, parse_xyz, parse_phonopy_yaml,
-// parse_optimade_json, ...) return `T | null` on failure and record failure reasons in a
-// module-level collector (mirrored to the console). The top-level entry points
-// parse_structure_file and parse_any_structure reset the collector on entry and THROW a
-// descriptive Error aggregating the recorded reasons when nothing parses, so failure
-// causes can reach the UI (callers surface error.message). Warnings (element-symbol
-// fallbacks, skipped atoms, ...) never fail a parse and only go to the console.
-// The collector itself and the shared coercion helpers live in ./parsers/shared so the
-// per-format parsers in ./parsers can record reasons without importing this dispatcher.
-
-// Aggregate recorded failure reasons into the Error thrown by top-level entry points
-const aggregate_parse_error = (filename?: string): Error => {
-  const reasons = get_parse_errors()
-  const detail = reasons.length ? `: ${reasons.join(`; `)}` : ``
-  return new Error(
-    `Failed to parse structure${filename ? ` from '${filename}'` : ``}${detail}`,
-  )
-}
-
-export interface ParsedStructure {
-  sites: Site[]
-  properties?: StructureProperties
-  lattice?: {
-    matrix: math.Matrix3x3
-    a: number
-    b: number
-    c: number
-    alpha: number
-    beta: number
-    gamma: number
-    volume: number
-    pbc?: Pbc
-  }
-}
+// Individual format parsers (parse_poscar, parse_cif, parse_xyz, parse_phonopy_yaml, ...)
+// return `AnyStructure | null` on failure and record failure reasons in a module-level
+// collector (mirrored to the console). The top-level entry point parse_structure_file
+// resets the collector on entry and THROWS a descriptive Error aggregating the recorded
+// reasons when nothing parses, so failure causes can reach the UI (callers surface
+// error.message). Warnings (element-symbol fallbacks, skipped atoms, ...) never fail a
+// parse and only go to the console. The collector itself and the shared coercion helpers
+// live in ./parsers/shared so the per-format parsers in ./parsers can record reasons
+// without importing this dispatcher.
 
 // Parse coordinates from a line, repairing malformed runs like "1.0-2.0-3.0"
 function parse_coordinate_line(line: string): number[] {
@@ -146,7 +120,7 @@ const extract_cif_centering = (text: string): string | null => {
   return null
 }
 
-export interface PhonopyCell {
+interface PhonopyCell {
   lattice: number[][]
   points: {
     symbol: string
@@ -182,8 +156,7 @@ function resolve_optimade_element(
   return { symbol: validate_element_symbol(species_name, index), sym_idx: -1 }
 }
 
-// @internal parser exported for tests; public entry points: parse_structure_file/parse_any_structure. Parse VASP POSCAR.
-export const parse_poscar = (content: string): ParsedStructure | null =>
+export const parse_poscar = (content: string): Crystal | null =>
   guard_parse(`POSCAR`, () => {
     // Strip only horizontal whitespace: a blank first (comment) line is valid POSCAR
     const lines = content.replace(/^[ \t]+/, ``).split(/\r?\n/)
@@ -257,8 +230,8 @@ export const parse_poscar = (content: string): ParsedStructure | null =>
     return { sites, lattice: make_lattice(scaled_lattice) }
   })
 
-// @internal parser exported for tests + trajectory parser; public entry points: parse_structure_file/parse_any_structure. Parse standard/extended XYZ (multi-frame).
-export const parse_xyz = (content: string): ParsedStructure | null =>
+// Standard or extended XYZ; a multi-frame file yields its LAST frame.
+export const parse_xyz = (content: string): AnyStructure | null =>
   guard_parse(`XYZ`, () => {
     const normalized_content = content.trim()
     if (!normalized_content) {
@@ -569,12 +542,11 @@ const parse_cif_atom_data = (
   }
 }
 
-// @internal parser exported for tests; public entry points: parse_structure_file/parse_any_structure. Parse CIF (Crystallographic Information File).
 export const parse_cif = (
   content: string,
   wrap_fractional_coords: boolean = true,
   strict: boolean = true,
-): ParsedStructure | null =>
+): Crystal | null =>
   guard_parse(`CIF`, () => {
     const text = content.trim()
     if (!text) {
@@ -749,13 +721,18 @@ export const parse_cif = (
         ? CENTERING_VECTORS[centering_letter]
         : []
 
-    // Build all sites by expanding each atom via the symmetry ops (+ optional
-    // centering). Deduplicate globally on element + coordinates + label (6 dp to
-    // absorb floating point error from compound ops).
+    // Build all sites by expanding each atom row via the symmetry ops (+ optional
+    // centering). Positions coincide at 6 dp (absorbs float error from compound ops) are
+    // ONE site: a symmetry image landing on an existing image of the same row is a
+    // duplicate and dropped, while another row at that position contributes its species
+    // (disordered sites, e.g. Bi 0.5 / Zr 0.5), summing occupancies when the element
+    // repeats (Fe2+ / Fe3+ rows). This is what pymatgen's CifParser does and is what lets
+    // a CIF written from a disordered structure read back with the same site count.
     const build_sites = (extra_centering: Vec3[]): Site[] => {
       const sites: Site[] = []
-      const seen_site_keys = new Set<string>()
-      for (const atom of atoms) {
+      const site_idx_by_coords = new Map<string, number>()
+      const rows_at_site: Set<number>[] = [] // atom-row indices merged into each site
+      for (const [row_idx, atom] of atoms.entries()) {
         const element = validate_element_symbol(atom.element, sites.length)
         const coords =
           atom.coords_type === `fract`
@@ -771,19 +748,29 @@ export const parse_cif = (
         )
         for (const equiv_atom of equiv_atoms) {
           const abc = wrap_vec3(equiv_atom.coords)
-          const key = `${element}|${equiv_atom.id}|${cif_coords_key(abc)}`
-          if (seen_site_keys.has(key)) continue
-          seen_site_keys.add(key)
-          sites.push(
-            make_site(
-              element,
-              abc,
-              frac_to_cart(abc),
-              equiv_atom.id,
-              {},
-              equiv_atom.occupancy,
-            ),
-          )
+          const key = cif_coords_key(abc)
+          const site_idx = site_idx_by_coords.get(key)
+          if (site_idx === undefined) {
+            site_idx_by_coords.set(key, sites.length)
+            rows_at_site.push(new Set([row_idx]))
+            sites.push(
+              make_site(
+                element,
+                abc,
+                frac_to_cart(abc),
+                equiv_atom.id,
+                {},
+                equiv_atom.occupancy,
+              ),
+            )
+            continue
+          }
+          if (rows_at_site[site_idx].has(row_idx)) continue // symmetry duplicate
+          rows_at_site[site_idx].add(row_idx)
+          const { species } = sites[site_idx]
+          const same_element = species.find((spec) => spec.element === element)
+          if (same_element) same_element.occu += equiv_atom.occupancy
+          else species.push({ element, occu: equiv_atom.occupancy, oxidation_state: 0 })
         }
       }
       return sites
@@ -802,9 +789,11 @@ export const parse_cif = (
       // Adopt centering only when per-element counts reconcile exactly. Checking
       // the total alone is insufficient: it can coincide while individual element
       // counts are wrong (e.g. expected Fe 1 / O 3 but centering yields Fe 2 / O 2).
-      const counts = count_by_element(centered_sites, (site) => site.species[0].element)
+      // species entries, not sites: a disordered site holds one entry per merged row
+      const species = centered_sites.flatMap((site) => site.species)
+      const counts = count_by_element(species, (spec) => spec.element)
       const reconciles =
-        centered_sites.length === expected_total &&
+        species.length === expected_total &&
         Object.entries(atom_type_counts).every(([element, exp]) => counts[element] === exp)
       if (reconciles) sites = centered_sites
     }
@@ -812,8 +801,7 @@ export const parse_cif = (
     return { sites, lattice: make_lattice(lattice_matrix) }
   })
 
-// Convert phonopy cell to ParsedStructure
-function convert_phonopy_cell(cell: PhonopyCell): ParsedStructure {
+function convert_phonopy_cell(cell: PhonopyCell): Crystal {
   // Phonopy stores lattice vectors as rows, use them directly
   const lattice_matrix = matrix3x3_from_rows(cell.lattice, `phonopy lattice vector`)
   const frac_to_cart = math.create_frac_to_cart(lattice_matrix)
@@ -831,17 +819,19 @@ function convert_phonopy_cell(cell: PhonopyCell): ParsedStructure {
   return { sites, lattice: make_lattice(lattice_matrix) }
 }
 
-export type CellType =
-  | `primitive_cell`
-  | `unit_cell`
-  | `supercell`
-  | `phonon_primitive_cell`
-  | `phonon_supercell`
-  | `auto`
+// Auto mode picks the first available cell, most detailed first
+const PHONOPY_CELL_TYPES = [
+  `supercell`,
+  `phonon_supercell`,
+  `unit_cell`,
+  `phonon_primitive_cell`,
+  `primitive_cell`,
+] as const
+export type PhonopyCellType = (typeof PHONOPY_CELL_TYPES)[number] | `auto`
 
 const get_phonopy_cell = (
   data: unknown,
-  cell_type: Exclude<CellType, `auto`>,
+  cell_type: Exclude<PhonopyCellType, `auto`>,
 ): PhonopyCell | undefined => {
   if (!data || typeof data !== `object`) return undefined
   const cell: unknown = Reflect.get(data, cell_type)
@@ -850,12 +840,12 @@ const get_phonopy_cell = (
   return Array.isArray(lattice) && Array.isArray(points) ? (cell as PhonopyCell) : undefined
 }
 
-// @internal parser exported for tests; public entry points: parse_structure_file/parse_any_structure. Parse phonopy YAML, returns requested cell type (or preferred single structure).
-export function parse_phonopy_yaml(
+// Phonopy YAML: the requested cell type, or in auto mode the most detailed cell present.
+export const parse_phonopy_yaml = (
   content: string,
-  cell_type?: CellType,
-): ParsedStructure | null {
-  try {
+  cell_type: PhonopyCellType = `auto`,
+): Crystal | null =>
+  guard_parse(`phonopy YAML`, () => {
     // Drop the phonon_displacements block (huge, and never read) before handing the
     // YAML to js-yaml: it runs from its key to the next top-level key
     const filtered_lines: string[] = []
@@ -867,51 +857,28 @@ export function parse_phonopy_yaml(
         filtered_lines.push(line)
       }
     }
-
     const data = yaml_load(filtered_lines.join(`\n`))
-
     if (!data) {
       diag_error(`Failed to parse phonopy YAML`)
       return null
     }
-
-    // If specific cell type requested, parse only that one
-    if (cell_type && cell_type !== `auto`) {
-      const cell = get_phonopy_cell(data, cell_type)
-      if (cell) return convert_phonopy_cell(cell)
-
-      diag_error(`Requested cell type '${cell_type}' not found in phonopy YAML`)
-      return null
-    }
-
-    // Auto mode: return first available cell, most detailed first
-    const auto_kinds = [
-      `supercell`,
-      `phonon_supercell`,
-      `unit_cell`,
-      `phonon_primitive_cell`,
-      `primitive_cell`,
-    ] as const
-    const auto_cell = auto_kinds.map((kind) => get_phonopy_cell(data, kind)).find(Boolean)
-    if (auto_cell) return convert_phonopy_cell(auto_cell)
-
-    diag_error(`No valid cells found in phonopy YAML`)
+    const kinds = cell_type === `auto` ? PHONOPY_CELL_TYPES : [cell_type]
+    const cell = kinds.map((kind) => get_phonopy_cell(data, kind)).find(Boolean)
+    if (cell) return convert_phonopy_cell(cell)
+    diag_error(
+      cell_type === `auto`
+        ? `No valid cells found in phonopy YAML`
+        : `Requested cell type '${cell_type}' not found in phonopy YAML`,
+    )
     return null
-  } catch (error) {
-    diag_error(`Error parsing phonopy YAML`, error)
-    return null
-  }
-}
+  })
 
 // Recursively search for a valid structure object in nested JSON. `visited` guards
 // against the cycles a hand-built object graph can contain.
-function find_structure_in_json(
-  obj: unknown,
-  visited = new WeakSet(),
-): ParsedStructure | null {
+function find_structure_in_json(obj: unknown, visited = new WeakSet()): StructureLike | null {
   if (!obj || typeof obj !== `object` || visited.has(obj)) return null
   visited.add(obj)
-  if (is_parsed_structure(obj)) return obj
+  if (is_structure_like(obj)) return obj
 
   // Object.values yields an array's elements, so both branches recurse the same way
   for (const value of Object.values(obj)) {
@@ -921,8 +888,16 @@ function find_structure_in_json(
   return null
 }
 
-// Type guard to validate structure-like objects (sites array with species + coordinates)
-export function is_parsed_structure(obj: unknown): obj is ParsedStructure {
+// A serialized structure as pymatgen (or a hand-built object graph) writes it: sites carry
+// species plus abc and/or xyz; the lattice, when present, is authoritative only in its
+// matrix (default pymatgen verbosity writes matrix + pbc and no scalar params)
+type StructureLike = Omit<AnyStructure, `sites` | `lattice`> & {
+  sites: (Omit<Site, `abc` | `xyz`> & { abc?: Vec3; xyz?: Vec3 })[]
+  lattice?: { matrix: math.Matrix3x3; pbc?: unknown }
+}
+
+// Type guard for structure-like objects (non-empty sites array with species + coordinates)
+export function is_structure_like(obj: unknown): obj is StructureLike {
   const sites = obj && typeof obj === `object` && `sites` in obj ? obj.sites : undefined
   if (!Array.isArray(sites) || sites.length === 0) return false
 
@@ -934,80 +909,81 @@ export function is_parsed_structure(obj: unknown): obj is ParsedStructure {
   )
 }
 
-// Structure JSON serialized by pymatgen (default verbosity) stores only the lattice
-// matrix + pbc; derive the missing scalar params (a/b/c/angles/volume) from the matrix
-// so downstream consumers (camera auto-fit, density, export) never see NaN.
-export function ensure_lattice_params(structure: ParsedStructure): ParsedStructure {
-  const lattice = structure.lattice
-  if (!lattice?.matrix) return structure
-  const params = [
-    lattice.a,
-    lattice.b,
-    lattice.c,
-    lattice.alpha,
-    lattice.beta,
-    lattice.gamma,
-    lattice.volume,
-  ]
-  if (params.every(Number.isFinite)) return structure
-  // The matrix is authoritative: recompute all params from it rather than
-  // trusting a partially-populated (or non-numeric) set of values.
-  return {
-    ...structure,
-    lattice: { ...lattice, ...math.calc_lattice_params(lattice.matrix) },
+const is_pbc = (value: unknown): value is Pbc =>
+  Array.isArray(value) &&
+  value.length === 3 &&
+  value.every((flag) => typeof flag === `boolean`)
+
+// Promote a structure-like JSON object to an AnyStructure: the lattice is rebuilt from its
+// matrix (scalar params recomputed, pbc kept when declared, else fully periodic), every
+// site gets both abc and xyz, and periodic fractional coordinates are wrapped into [0, 1).
+// `wrap: false` keeps the coordinates as written, like every other trajectory reader does
+// for its frames (MSD/VACF unwrap by minimum image and the viewer wraps for display).
+export function structure_from_json(
+  raw: StructureLike,
+  { wrap = true }: { wrap?: boolean } = {},
+): AnyStructure {
+  const { lattice: raw_lattice, sites: raw_sites, ...rest } = raw
+  if (!raw_lattice) {
+    const sites = raw_sites.map((site, idx) => {
+      if (!site.xyz) {
+        throw new Error(`JSON site ${idx} has no xyz and the structure has no lattice`)
+      }
+      return { ...site, xyz: site.xyz, abc: site.abc ?? ([0, 0, 0] as Vec3) }
+    })
+    return { ...rest, sites }
   }
+  const matrix = matrix3x3_from_rows(raw_lattice.matrix, `JSON lattice matrix row`)
+  const lattice = make_lattice(matrix, is_pbc(raw_lattice.pbc) ? raw_lattice.pbc : undefined)
+  const frac_to_cart = math.create_frac_to_cart(matrix)
+  const cart_to_frac = cart_to_frac_with_fallback(matrix, { context: `JSON lattice` }).convert
+  const sites = raw_sites.map((site, idx) => {
+    if (site.abc && site.xyz) return { ...site, abc: site.abc, xyz: site.xyz }
+    if (site.abc) return { ...site, abc: site.abc, xyz: frac_to_cart(site.abc) }
+    if (site.xyz) return { ...site, xyz: site.xyz, abc: cart_to_frac(site.xyz) }
+    throw new Error(`JSON site ${idx} has neither abc nor xyz coordinates`)
+  })
+  const structure = { ...rest, lattice, sites }
+  return wrap ? normalize_fractional_coords(structure) : structure
 }
 
-// Normalize selected periodic fractional coordinates to [0,1) and recompute Cartesian
-// positions. Callers that omit periodic_axes retain the historical fully-periodic behavior.
-export function normalize_fractional_coords(
-  structure: ParsedStructure,
-  periodic_axes: Pbc = [true, true, true],
-): ParsedStructure {
-  // A lattice is required to keep abc and xyz consistent after wrapping
-  const matrix = structure.lattice?.matrix
-  const needs_wrapping =
-    matrix &&
-    structure.sites?.some((site) =>
-      site.abc?.some((coord, axis) => periodic_axes[axis] && (coord < 0 || coord >= 1)),
-    )
+// Wrap the fractional coordinates of periodic axes into [0, 1) and recompute xyz from them.
+// Molecules and already-wrapped structures are returned as-is (same reference), so callers
+// can pass every structure through without paying for a copy. Non-periodic axes keep
+// out-of-cell coordinates (a slab translated along its vacuum direction, an unwrapped
+// trajectory), since folding them would tear the geometry apart.
+export function normalize_fractional_coords<T extends AnyStructure>(
+  structure: T,
+  pbc: Pbc | undefined = `lattice` in structure ? structure.lattice.pbc : undefined,
+): T {
+  if (!(`lattice` in structure) || !pbc) return structure
+  const needs_wrapping = structure.sites.some((site) =>
+    site.abc.some((coord, axis) => pbc[axis] && (coord < 0 || coord >= 1)),
+  )
   if (!needs_wrapping) return structure
 
-  const frac_to_cart = math.create_frac_to_cart(matrix)
+  const frac_to_cart = math.create_frac_to_cart(structure.lattice.matrix)
   const sites = structure.sites.map((site) => {
-    if (!site.abc) return site
     const abc = site.abc.map((coord, axis) =>
-      periodic_axes[axis] ? wrap_frac_coord(coord) : coord,
+      pbc[axis] ? wrap_frac_coord(coord) : coord,
     ) as Vec3
     return { ...site, abc, xyz: frac_to_cart(abc) }
   })
   return { ...structure, sites }
 }
 
-// A lattice.pbc that came out of a format parser states what that format declared, so
-// every entry point keeps it. JSON structures are different for parse_any_structure,
-// whose long-standing contract is that a JSON lattice is fully periodic; parse_structure_file
-// keeps the JSON pbc so the file viewer can tell a slab from a bulk cell.
-const drop_json_pbc = (structure: ParsedStructure): ParsedStructure => {
-  if (!structure.lattice?.pbc) return structure
-  const { pbc: _pbc, ...lattice } = structure.lattice
-  return { ...structure, lattice }
-}
+// JSON holding an OPTIMADE response or a pymatgen-style structure (possibly nested)
+const parse_json_structure: FormatParser = (content) =>
+  guard_parse(`JSON`, () => {
+    const parsed: unknown = JSON.parse(content)
+    if (is_optimade_raw(parsed)) return parse_optimade_from_raw(parsed)
+    const structure = find_structure_in_json(parsed)
+    if (structure) return structure_from_json(structure)
+    diag_error(`JSON content does not contain a valid structure format`)
+    return null
+  })
 
-// Detect a structure inside already-stringified JSON (OPTIMADE or pymatgen/nested).
-// Throws if `content` isn't valid JSON; returns null if it holds no known structure.
-const detect_json_structure = (content: string): ParsedStructure | null => {
-  const parsed = JSON.parse(content)
-  if (is_optimade_raw(parsed)) {
-    const result = parse_optimade_from_raw(parsed)
-    if (result) return result
-  }
-  // Otherwise try parsing as pymatgen/nested structure JSON
-  const structure = find_structure_in_json(parsed)
-  return structure ? ensure_lattice_params(normalize_fractional_coords(structure)) : null
-}
-
-type FormatParser = (content: string) => ParsedStructure | null
+type FormatParser = (content: string) => AnyStructure | null
 
 // mmCIF's dot-notation tags (_atom_site.Cartn_x) are invisible to parse_cif's
 // underscore-tag matching, so the whole CIF family is routed by content: that also
@@ -1016,9 +992,10 @@ type FormatParser = (content: string) => ParsedStructure | null
 const parse_cif_family: FormatParser = (content) =>
   is_mmcif_content(content) ? parse_mmcif(content) : parse_cif(content)
 
-// Extension -> parser, checked before any content sniffing. The extensions needing an
-// extra condition (`.json`, `.data`, POSCAR's many names) stay in the caller below.
+// Extension -> parser. The extensions needing an extra condition (`.data`, POSCAR's many
+// names) stay in the caller below.
 const PARSER_BY_EXTENSION = new Map<string, FormatParser>([
+  [`json`, parse_json_structure],
   [`xyz`, parse_xyz],
   [`extxyz`, parse_xyz],
   [`cif`, parse_cif_family],
@@ -1035,162 +1012,83 @@ const PARSER_BY_EXTENSION = new Map<string, FormatParser>([
   [`poscar`, parse_poscar],
 ])
 
-// Internal: auto-detect file format, returns null on failure after recording reasons (see parse error contract at top)
-function parse_structure_file_impl(
-  content: string,
-  filename?: string,
-  json_pbc: `keep` | `drop` = `keep`,
-): ParsedStructure | null {
-  const detect_json = (json: string): ParsedStructure | null => {
-    const structure = detect_json_structure(json)
-    return structure && json_pbc === `drop` ? drop_json_pbc(structure) : structure
-  }
+// The parser a file's name selects, or null when the name leaves the format open
+function parser_for_filename(filename: string, content: string): FormatParser | null {
+  const base_filename = strip_compression_extensions(filename)
+  const ext = base_filename.split(`.`).pop() ?? ``
+  const by_extension = PARSER_BY_EXTENSION.get(ext)
+  if (by_extension) return by_extension
+  // `.data` is claimed by LAMMPS but also used by unrelated formats, so it only takes the
+  // LAMMPS path when the content agrees; otherwise it falls through to sniffing
+  if (ext === `data` && is_lammps_data_content(content)) return parse_lammps_data
+  // POSCAR files may not have extensions or have various names
+  if (base_filename.includes(`poscar`)) return parse_poscar
+  return null
+}
 
-  // A filename's extension is authoritative: it never falls through to content sniffing
-  if (filename) {
-    // Handle compressed files by removing compression extensions
-    const base_filename = strip_compression_extensions(filename)
-    const ext = base_filename.split(`.`).pop() ?? ``
-
-    const by_extension = PARSER_BY_EXTENSION.get(ext)
-    if (by_extension) return by_extension(content)
-
-    // JSON files - extension is authoritative, so failures return null
-    if (ext === `json`) {
-      try {
-        const result = detect_json(content)
-        if (result) return result
-        diag_error(`JSON file does not contain a valid structure format`)
-      } catch (error) {
-        diag_error(`Error parsing JSON file`, error)
-      }
-      return null
-    }
-
-    // `.data` is claimed by LAMMPS but also used by unrelated formats, so it only takes
-    // the LAMMPS path when the content agrees; otherwise it falls through to sniffing
-    if (ext === `data` && is_lammps_data_content(content)) return parse_lammps_data(content)
-
-    // POSCAR files may not have extensions or have various names
-    if (base_filename.includes(`poscar`)) return parse_poscar(content)
-  }
-
-  // Try to auto-detect based on content.
-  // JSON detection must come before the line-count guard: minified JSON
-  // (e.g. fetched via extensionless blob: object URLs) is a single line.
+// The parser the content's own markers select, or null when nothing is recognized
+function parser_for_content(content: string): FormatParser | null {
+  // JSON before the line-count guard: minified JSON (e.g. fetched via extensionless blob:
+  // object URLs) is a single line
   const content_start = content.trimStart()
-  const looks_like_json = content_start.startsWith(`{`) || content_start.startsWith(`[`)
-  try {
-    const result = detect_json(content)
-    if (result) return result
-    if (looks_like_json) diag_error(`JSON content does not contain a valid structure format`)
-  } catch (error) {
-    // Only swallow silently when content doesn't even look like JSON; otherwise the
-    // syntax error is the most useful failure reason and must be surfaced
-    if (looks_like_json) diag_error(`Invalid JSON`, error)
-  }
+  if (content_start.startsWith(`{`) || content_start.startsWith(`[`))
+    return parse_json_structure
 
   const lines = content.trim().split(/\r?\n/)
-
-  if (lines.length < 2) {
-    diag_error(`File too short to determine format`)
-    return null
-  }
+  if (lines.length < 2) return null
 
   // Formats with unmistakable markers are sniffed before XYZ/POSCAR/CIF: a LAMMPS data
   // file starts with an atom count that the POSCAR heuristic would otherwise claim, and
   // mmCIF would be swallowed by the CIF keyword check below.
-  if (is_lammps_dump_content(content)) return parse_lammps_dump(content)
-  if (is_lammps_data_content(content)) return parse_lammps_data(content)
+  if (is_lammps_dump_content(content)) return parse_lammps_dump
+  if (is_lammps_data_content(content)) return parse_lammps_data
   // mmCIF must be tested before PDB: PDBx writers column-align _atom_site.group_PDB, so
   // their atom rows read `ATOM   1  N N   GLY ...` and match the PDB record test below.
   // `_atom_site.` never appears in a PDB, so this order is unambiguous.
-  if (is_mmcif_content(content)) return parse_mmcif(content)
-  if (/^(?:ATOM {2}|HETATM|CRYST1)/m.test(content)) return parse_pdb(content)
-  if (/^@<TRIPOS>MOLECULE/im.test(content)) return parse_mol2(content)
+  if (is_mmcif_content(content)) return parse_mmcif
+  if (/^(?:ATOM {2}|HETATM|CRYST1)/m.test(content)) return parse_pdb
+  if (/^@<TRIPOS>MOLECULE/im.test(content)) return parse_mol2
   // MDL counts line: `<atoms> <bonds> ... V2000`
   if (lines.slice(0, 6).some((line) => /^\s*\d+\s+\d+\b.*\sV[23]000\s*$/i.test(line))) {
-    return parse_mol(content)
+    return parse_mol
   }
 
-  // XYZ format detection: first line is a positive atom count (NaN fails the comparison),
-  // second line is a comment, and the first coordinate line reads "<element> <x> <y> <z>"
+  // XYZ: first line is a positive atom count (NaN fails the comparison), second line a
+  // comment, and the first coordinate line reads "<element> <x> <y> <z>"
   const first_line_number = Math.trunc(parse_leading_num(lines[0]))
   if (
     first_line_number > 0 &&
     lines.length >= first_line_number + 2 &&
     is_xyz_atom_line(lines[2]?.trim().split(/\s+/))
   )
-    return parse_xyz(content)
+    return parse_xyz
 
   // POSCAR: line 2 starts with a number (the scale factor). First token only, since
   // POSCAR allows three per-axis scale factors (or trailing comments) there — and a
   // blank line must not pass
-  if (lines.length >= 8 && !isNaN(parse_leading_num(lines[1]))) return parse_poscar(content)
+  if (lines.length >= 8 && !isNaN(parse_leading_num(lines[1]))) return parse_poscar
 
   const has_keyword = (pattern: RegExp) => lines.some((line) => pattern.test(line))
-  if (has_keyword(/^data_|_cell_length_|_atom_site_|^\s*loop_\s*$/)) return parse_cif(content)
+  if (has_keyword(/^data_|_cell_length_|_atom_site_|^\s*loop_\s*$/)) return parse_cif
   // `phonon_supercell:` and `phonon_primitive_cell:` are covered by the shorter keywords
-  if (has_keyword(/phono3py:|phonopy:|primitive_cell:|supercell:/)) {
-    return parse_phonopy_yaml(content)
-  }
-
-  diag_error(`Unable to determine file format`)
+  if (has_keyword(/phono3py:|phonopy:|primitive_cell:|supercell:/)) return parse_phonopy_yaml
   return null
 }
 
-// Auto-detect file format and parse; throws an Error aggregating per-format failure reasons when nothing parses
-export function parse_structure_file(content: string, filename?: string): ParsedStructure {
+// Parse a structure from file content in any supported format. A filename's extension is
+// authoritative (it never falls through to content sniffing); without one, or with an
+// unknown one, the format is sniffed from the content. Throws an Error aggregating every
+// recorded failure reason when nothing parses.
+export function parse_structure_file(content: string, filename?: string): AnyStructure {
   reset_parse_diagnostics()
-  const structure = parse_structure_file_impl(content, filename)
+  const parser =
+    (filename ? parser_for_filename(filename, content) : null) ?? parser_for_content(content)
+  if (!parser) diag_error(`Unable to determine file format`)
+  const structure = parser?.(content)
   if (structure) return structure
-  throw aggregate_parse_error(filename)
-}
-
-// Universal parser for JSON and structure files; throws an Error aggregating per-format failure reasons when nothing parses
-export function parse_any_structure(content: string, filename: string): AnyStructure {
-  reset_parse_diagnostics()
-  const finalize_structure = (parsed_structure: ParsedStructure): AnyStructure => {
-    const structure = ensure_lattice_params(parsed_structure)
-    return {
-      sites: structure.sites,
-      charge: 0,
-      ...(structure.properties && {
-        properties: structuredClone(structure.properties),
-      }),
-      // Formats that know their own periodicity (LAMMPS `ff` box bounds, ...) keep the
-      // pbc flags their parser reported; everything else defaults to fully periodic
-      ...(structure.lattice && {
-        lattice: { ...structure.lattice, pbc: structure.lattice.pbc ?? [true, true, true] },
-      }),
-    }
-  }
-
-  // Fast path: content is already a serialized structure object
-  try {
-    const parsed = JSON.parse(content)
-    if (is_parsed_structure(parsed)) {
-      // Normalize coordinates (wrap fractional to [0,1) and recompute Cartesian)
-      return finalize_structure(drop_json_pbc(normalize_fractional_coords(parsed)))
-    }
-  } catch {
-    // Not plain JSON — fall through to format detection, which records failure reasons
-  }
-
-  const structure = parse_structure_file_impl(content, filename, `drop`)
-  if (structure) return finalize_structure(structure)
-  throw aggregate_parse_error(filename)
-}
-
-// Parse OPTIMADE JSON format
-export function parse_optimade_json(content: string): ParsedStructure | null {
-  try {
-    const raw = JSON.parse(content) as unknown
-    return parse_optimade_from_raw(raw)
-  } catch (error) {
-    diag_error(`Error parsing OPTIMADE JSON`, error)
-    return null
-  }
+  const reasons = get_parse_errors()
+  const detail = reasons.length ? `: ${reasons.join(`; `)}` : ``
+  throw new Error(`Failed to parse structure${filename ? ` from '${filename}'` : ``}${detail}`)
 }
 
 // Build sites + lattice shared by parse_optimade_from_raw and optimade_to_crystal.
@@ -1263,7 +1161,7 @@ function build_optimade_sites(
 }
 
 // Parse OPTIMADE from already-parsed JSON
-export function parse_optimade_from_raw(raw: unknown): ParsedStructure | null {
+export function parse_optimade_from_raw(raw: unknown): AnyStructure | null {
   try {
     const structure = extract_optimade_structure_from_raw(raw)
     if (!structure) {
@@ -1295,16 +1193,6 @@ export function parse_optimade_from_raw(raw: unknown): ParsedStructure | null {
   } catch (error) {
     diag_error(`Error parsing OPTIMADE JSON`, error)
     return null
-  }
-}
-
-// Check if JSON content is OPTIMADE format by looking for structure attributes
-export function is_optimade_json(content: string): boolean {
-  try {
-    const raw = JSON.parse(content) as unknown
-    return is_optimade_raw(raw)
-  } catch {
-    return false
   }
 }
 
@@ -1354,8 +1242,7 @@ export function optimade_to_crystal(optimade_structure: OptimadeStructure): Crys
 
     return {
       sites,
-      // Crystal requires pbc, unlike the optional pbc of a ParsedStructure lattice
-      lattice: { ...make_lattice(lattice_matrix), pbc: [true, true, true] },
+      lattice: make_lattice(lattice_matrix),
       id: optimade_structure.id,
       properties,
     }

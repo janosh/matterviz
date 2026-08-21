@@ -1,6 +1,10 @@
 <script lang="ts">
   import JsonTree from '$lib/layout/json-tree/JsonTree.svelte'
+  import type { ComponentProps } from 'svelte'
   import { SvelteSet } from 'svelte/reactivity'
+
+  // Extra JsonTree props (editable, oncopy, ...) forwarded as-is
+  let rest: Partial<ComponentProps<typeof JsonTree>> = $props()
 
   let value = $state<Record<string, Record<string, string>>>({
     nested: {
@@ -26,4 +30,4 @@
   Replace Flat JSON
 </button>
 <span data-testid="collapsed-count">{collapsed_paths.size}</span>
-<JsonTree {value} bind:collapsed_paths default_fold_level={5} />
+<JsonTree {...rest} {value} bind:collapsed_paths default_fold_level={5} />

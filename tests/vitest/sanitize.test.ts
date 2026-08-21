@@ -3,6 +3,7 @@ import {
   sanitize_compact_formula,
   sanitize_formula,
   sanitize_html,
+  sanitize_html_ssr,
   sanitize_icon_svg,
   sanitize_svg,
 } from '$lib'
@@ -325,6 +326,15 @@ const without_browser_dom = async <T>(
 }
 
 describe(`sanitizers without a browser DOM`, () => {
+  test(`provides byte-identical HTML for SSR and the first client render`, async () => {
+    const input = `A & B<br><strong>safe</strong><script>alert(1)</script>`
+    const initial_client_html = sanitize_html_ssr(input)
+    assertNoXss(initial_client_html)
+    await without_browser_dom(({ sanitize_html: server_sanitize }) => {
+      expect(server_sanitize(input)).toBe(initial_client_html)
+    })
+  })
+
   test(`allowlists formula HTML on SSR (no raw passthrough)`, async () => {
     await without_browser_dom(async ({ sanitize_html: sanitize }) => {
       expect(globalThis.window).toBeUndefined()

@@ -21,6 +21,12 @@ jobs:
         uses: ./.github/actions/setup
         with:
           extensions: vscode anywidget jupyterlab
+      # Locally the vp-staged hook checks only staged files; with nothing staged (CI) it is a
+      # no-op, so the repo-wide format/lint/type-aware pass runs explicitly here.
+      - name: Format, lint and type-check the whole repo
+        run: |
+          pnpm exec vp check
+          npx svelte-check --tsconfig ./tsconfig.json --threshold warning
       - name: Run prek checks
         uses: j178/prek-action@v2
 
@@ -46,6 +52,13 @@ jobs:
         run: |
           pnpm -C extensions/jupyterlab run typecheck
           pnpm -C extensions/jupyterlab test
+
+      # The widget passes component props by name from a table; a renamed or removed prop
+      # (e.g. BarPlot.point_tween) went stale silently until this ran somewhere.
+      - name: Type-check anywidget
+        env:
+          PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN: 'false'
+        run: pnpm -C extensions/anywidget run typecheck
 
   knip:
     name: Check unused code

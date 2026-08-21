@@ -33,6 +33,19 @@ let notify_timer: ReturnType<typeof setTimeout> | null = null
 
 const observe_opts = { attributes: true, attributeFilter: [`class`, `data-theme`] }
 
+// Theme declared by an element's own class list / data-theme attribute (JupyterLab,
+// VS Code and marimo all mark their roots this way), or null when it carries none
+const DARK_MARKERS = [`dark-theme`, `vscode-dark`, `dark`]
+const LIGHT_MARKERS = [`light-theme`, `vscode-light`, `light`]
+const declared_theme = (element: Element): ThemeType | null => {
+  const data_theme = element.getAttribute(`data-theme`)
+  if (DARK_MARKERS.some((cls) => element.classList.contains(cls)) || data_theme === `dark`)
+    return `dark`
+  if (LIGHT_MARKERS.some((cls) => element.classList.contains(cls)) || data_theme === `light`)
+    return `light`
+  return null
+}
+
 export function detect_parent_theme(target_element?: HTMLElement): ThemeType {
   try {
     // Check Shadow DOM context
@@ -44,20 +57,8 @@ export function detect_parent_theme(target_element?: HTMLElement): ThemeType {
       }
     }
 
-    // Check document theme indicators
-    const theme_classes = [
-      `dark-theme`,
-      `light-theme`,
-      `vscode-dark`,
-      `vscode-light`,
-      `dark`,
-      `light`,
-    ]
-    for (const cls of theme_classes) {
-      if (document.body.classList.contains(cls)) {
-        return cls.includes(`dark`) ? `dark` : `light`
-      }
-    }
+    const body_theme = declared_theme(document.body)
+    if (body_theme) return body_theme
 
     // System preference
     if (globalThis.matchMedia) {
@@ -102,25 +103,8 @@ function check_element_hierarchy(element: Element): ThemeType | null {
   let current_element: Element | null = element
 
   while (current_element) {
-    // Check classes
-    const class_list = current_element.classList
-    if (
-      class_list.contains(`dark-theme`) ||
-      class_list.contains(`vscode-dark`) ||
-      class_list.contains(`dark`)
-    )
-      return `dark`
-    if (
-      class_list.contains(`light-theme`) ||
-      class_list.contains(`vscode-light`) ||
-      class_list.contains(`light`)
-    )
-      return `light`
-
-    // Check data attributes
-    const data_theme = current_element.getAttribute(`data-theme`)
-    if (data_theme === `dark`) return `dark`
-    if (data_theme === `light`) return `light`
+    const declared = declared_theme(current_element)
+    if (declared) return declared
 
     // Check computed styles
     const computed_style = getComputedStyle(current_element)

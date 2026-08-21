@@ -138,6 +138,19 @@ export default defineConfig({
     ],
   },
 
+  // Pre-commit work, driven by `vp staged` from .pre-commit-config.yaml: format and lint only
+  // the staged files, and run the (whole-project) Svelte type check only when a TS/Svelte
+  // file is staged. Commands get the staged paths appended; svelte-check takes no file list,
+  // so those two run as thunks that ignore the names. No shell: one command per entry.
+  staged: {
+    '*.{ts,js,mjs,svelte,css,json,md,yml,yaml}': `vp fmt`,
+    '*.{ts,js,mjs,svelte}': [
+      `vp lint`,
+      () => `npx svelte-kit sync`,
+      () => `npx svelte-check --tsconfig ./tsconfig.json --threshold warning`,
+    ],
+  },
+
   server: {
     fs: { allow: [`..`] }, // needed to import from $root
     port: 3000,

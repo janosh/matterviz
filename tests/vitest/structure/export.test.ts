@@ -4,13 +4,10 @@ import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { AnyStructure, LatticeType, Site } from '$lib/structure'
 import {
-  clean_geometry_for_export,
   convert_instanced_meshes_to_regular,
   create_structure_filename,
   export_structure_as,
-  extract_bond_color_for_instance,
   generate_mtl_content,
-  has_color_property,
   structure_to_cif_str,
   structure_to_json_str,
   structure_to_poscar_str,
@@ -29,7 +26,6 @@ import {
   InstancedBufferAttribute,
   InstancedMesh,
   Mesh,
-  MeshBasicMaterial,
   MeshStandardMaterial,
   Scene,
   ShaderMaterial,
@@ -153,7 +149,7 @@ describe(`Export functionality`, () => {
       const parsed = parse_structure_file(content, `test.json`)
       expect(parsed?.sites).toHaveLength(structure.sites.length)
       if (preserves_id && structure.id) {
-        expect((parsed as AnyStructure).id).toBe(structure.id)
+        expect(parsed.id).toBe(structure.id)
       }
     })
 
@@ -180,10 +176,10 @@ describe(`Export functionality`, () => {
       { name: `CIF TiO2`, parse: () => parse_cif(tio2_cif), out: structure_to_cif_str },
     ])(`round-trips %s`, ({ parse, out }) => {
       const parsed = parse()
-      assert(parsed?.lattice, `failed to parse fixture`)
+      assert(parsed && `lattice` in parsed, `failed to parse fixture`)
       const exported = out(to_any(parsed))
       const reparsed = parse_structure_file(exported)
-      assert(reparsed?.lattice, `failed to reparse`)
+      assert(reparsed && `lattice` in reparsed, `failed to reparse`)
       expect(reparsed.sites).toHaveLength(parsed.sites.length)
       const frac_to_cart = math.create_frac_to_cart(reparsed.lattice.matrix)
       reparsed.sites.forEach((site, idx) => {
@@ -238,7 +234,9 @@ describe(`Export functionality`, () => {
       } as AnyStructure
       const exported = structure_to_xyz_str(structure)
       expect(exported).toContain(`pbc="T F F"`)
-      expect(parse_xyz(exported)?.lattice?.pbc).toEqual([true, false, false])
+      const reparsed = parse_xyz(exported)
+      assert(reparsed && `lattice` in reparsed)
+      expect(reparsed.lattice.pbc).toEqual([true, false, false])
     })
 
     it(`strips characters that would turn a label into a bogus key=value pair`, () => {
@@ -809,63 +807,6 @@ describe(`Round-trip CIF and POSCAR exports`, () => {
 
 // Tests for 3D export color preservation (Issue #203)
 describe(`3D Export Color Preservation`, () => {
-  describe(`extract_bond_color_for_instance`, () => {
-    // Midpoint arithmetic for distinct pairs is covered by the multi-instance case below;
-    // keep same-color (no-op average) and asymmetric (non-0.5 channels) as the edges.
-    test.each([
-      { start: [0.3, 0.6, 0.9], end: [0.3, 0.6, 0.9], expected: [0.3, 0.6, 0.9] },
-      { start: [0.2, 0.4, 0.6], end: [0.8, 0.2, 0.4], expected: [0.5, 0.3, 0.5] },
-    ])(`midpoint: $start → $end = $expected`, ({ start, end, expected }) => {
-      const geometry = new BufferGeometry()
-      geometry.setAttribute(
-        `instanceColorStart`,
-        new InstancedBufferAttribute(new Float32Array(start), 3),
-      )
-      geometry.setAttribute(
-        `instanceColorEnd`,
-        new InstancedBufferAttribute(new Float32Array(end), 3),
-      )
-      const result = extract_bond_color_for_instance(geometry, 0)
-      assert(result, `Expected result`)
-      expect(result.r).toBeCloseTo(expected[0], 5)
-      expect(result.g).toBeCloseTo(expected[1], 5)
-      expect(result.b).toBeCloseTo(expected[2], 5)
-    })
-
-    test(`returns null when color attributes missing or only partial`, () => {
-      const geom = new BufferGeometry()
-      expect(extract_bond_color_for_instance(geom, 0)).toBeNull()
-      geom.setAttribute(
-        `instanceColorStart`,
-        new InstancedBufferAttribute(new Float32Array([1, 0, 0]), 3),
-      )
-      expect(extract_bond_color_for_instance(geom, 0)).toBeNull() // missing end
-    })
-
-    test(`extracts correct color per instance and null for out-of-bounds`, () => {
-      const geom = new BufferGeometry()
-      geom.setAttribute(
-        `instanceColorStart`,
-        new InstancedBufferAttribute(new Float32Array([1, 0, 0, 0, 1, 0, 0, 0, 1]), 3),
-      )
-      geom.setAttribute(
-        `instanceColorEnd`,
-        new InstancedBufferAttribute(new Float32Array([0, 0, 1, 1, 0, 0, 0, 1, 0]), 3),
-      )
-      const results = [0, 1, 2].map((idx) => {
-        const result = extract_bond_color_for_instance(geom, idx)
-        return result ? [result.r, result.g, result.b] : null
-      })
-      expect(results).toEqual([
-        [0.5, 0, 0.5],
-        [0.5, 0.5, 0],
-        [0, 0.5, 0.5],
-      ])
-      expect(extract_bond_color_for_instance(geom, -1)).toBeNull()
-      expect(extract_bond_color_for_instance(geom, 3)).toBeNull()
-    })
-  })
-
   describe(`convert_instanced_meshes_to_regular color precedence`, () => {
     // Colors below use component form (already in working color space) so values
     // round-trip exactly through instanceColor buffers and material colors
@@ -918,71 +859,70 @@ describe(`3D Export Color Preservation`, () => {
       expect(converted_group_colors(scene, `material-colored`)).toEqual([[0, 1, 0]])
     })
 
-    test(`shader-material bond gradients win over instance colors`, () => {
+    // Gradient bonds carry two colors per instance in geometry attributes; the export takes
+    // their per-channel midpoint and ignores both the shader material and instanceColor
+    test(`shader-material bond gradients win over instance colors, per instance`, () => {
       const scene = new Scene()
       const bond_geometry = new SphereGeometry(0.5, 4, 4)
       bond_geometry.setAttribute(
         `instanceColorStart`,
-        new InstancedBufferAttribute(new Float32Array([1, 0, 0]), 3),
+        new InstancedBufferAttribute(new Float32Array([1, 0, 0, 0.2, 0.4, 0.6, 0, 0, 1]), 3),
       )
       bond_geometry.setAttribute(
         `instanceColorEnd`,
-        new InstancedBufferAttribute(new Float32Array([0, 0, 1]), 3),
+        new InstancedBufferAttribute(new Float32Array([0, 0, 1, 0.8, 0.2, 0.4, 0, 1, 0]), 3),
       )
       const bonds = new InstancedMesh(
         bond_geometry,
         new ShaderMaterial({ vertexShader: ``, fragmentShader: `` }),
-        1,
+        3,
       )
       bonds.name = `bonds`
-      bonds.setColorAt(0, new Color(0, 1, 0))
+      for (let idx = 0; idx < 3; idx++) bonds.setColorAt(idx, new Color(0, 1, 0))
       scene.add(bonds)
 
-      expect(converted_group_colors(scene, `bonds`)).toEqual([[0.5, 0, 0.5]])
+      const colors = converted_group_colors(scene, `bonds`)
+      expect(colors).toHaveLength(3)
+      for (const [idx, expected] of [
+        [0.5, 0, 0.5],
+        [0.5, 0.3, 0.5],
+        [0, 0.5, 0.5],
+      ].entries()) {
+        for (const channel of [0, 1, 2])
+          expect(colors[idx][channel]).toBeCloseTo(expected[channel], 5)
+      }
     })
 
+    // Per-instance and non-standard color attributes break GLTF accessor-count validation,
+    // so the clone is stripped of them while the standard `position`/`color` stay and the
+    // live scene's geometry is untouched
     test(`cleans cloned geometry without mutating the live scene`, () => {
       const scene = new Scene()
       const geometry = new BufferGeometry()
-      for (const attr of [`instanceColorStart`, `instanceColorEnd`]) {
+      for (const attr of [
+        `instanceColorStart`,
+        `instanceColorEnd`,
+        `customColor`,
+        `position`,
+        `color`,
+      ]) {
         geometry.setAttribute(attr, new Float32BufferAttribute([1, 0, 0], 3))
       }
       scene.add(new Mesh(geometry, new MeshStandardMaterial()))
 
       const converted = convert_instanced_meshes_to_regular(scene)
       const converted_mesh = converted.children[0]
-      expect(converted_mesh).toBeInstanceOf(Mesh)
       if (!(converted_mesh instanceof Mesh)) throw new Error(`Expected a converted mesh`)
       expect(converted_mesh.geometry).not.toBe(geometry)
-      expect(converted_mesh.geometry.hasAttribute(`instanceColorStart`)).toBe(false)
+      const kept = [
+        `instanceColorStart`,
+        `instanceColorEnd`,
+        `customColor`,
+        `position`,
+        `color`,
+      ].filter((attr) => converted_mesh.geometry.hasAttribute(attr))
+      expect(kept).toEqual([`position`, `color`])
       expect(geometry.hasAttribute(`instanceColorStart`)).toBe(true)
-    })
-  })
-
-  describe(`clean_geometry_for_export`, () => {
-    test.each([
-      [`instanceColor`, true],
-      [`customColor`, true],
-      [`position`, false],
-      [`color`, false],
-    ] as const)(`%s removed=%s`, (attr, removed) => {
-      const geometry = new BufferGeometry()
-      geometry.setAttribute(attr, new Float32BufferAttribute([0, 0, 0], 3))
-      clean_geometry_for_export(geometry)
-      expect(geometry.hasAttribute(attr)).toBe(!removed)
-    })
-  })
-
-  describe(`has_color_property`, () => {
-    test.each([
-      { mat: () => new MeshStandardMaterial({ color: 0xff0000 }), expected: true },
-      { mat: () => new MeshBasicMaterial({ color: 0x00ff00 }), expected: true },
-      {
-        mat: () => new ShaderMaterial({ vertexShader: ``, fragmentShader: `` }),
-        expected: false,
-      },
-    ])(`returns $expected for material`, ({ mat, expected }) => {
-      expect(has_color_property(mat())).toBe(expected)
     })
   })
 
@@ -1065,9 +1005,13 @@ describe(`3D Export Color Preservation`, () => {
       expect(mtl).toContain(`illum`) // illumination
     })
 
-    test(`default name and white color for unnamed materials`, () => {
+    // unnamed materials and materials without a color (ShaderMaterial) both fall back
+    test.each([
+      [`unnamed MeshStandardMaterial`, () => new MeshStandardMaterial()],
+      [`ShaderMaterial`, () => new ShaderMaterial({ vertexShader: ``, fragmentShader: `` })],
+    ])(`default name and white color for %s`, (_label, make_material) => {
       const scene = new Scene()
-      scene.add(new Mesh(new SphereGeometry(1), new MeshStandardMaterial()))
+      scene.add(new Mesh(new SphereGeometry(1), make_material()))
       const mtl = generate_mtl_content(scene)
       expect(mtl).toContain(`newmtl default_material`)
       // white default takes the same linear-then-encode path as a real color

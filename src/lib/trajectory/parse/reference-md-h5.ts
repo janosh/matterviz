@@ -7,17 +7,15 @@ import {
   validate_3x3_matrix,
 } from '$lib/trajectory/helpers'
 import type {
-  FrameLoader,
   PositionStreamOptions,
   TrajectoryMetadata,
   TrajectoryPositionStream,
   TrajectorySignalDescriptor,
-  TrajectoryType,
 } from '$lib/trajectory/index'
 import type { Dataset, Group } from 'h5wasm'
 import type * as h5wasm from 'h5wasm'
 import {
-  Hdf5TrajectoryGroupSelectionError,
+  Hdf5GroupSelectionRequiredError,
   assert_hdf5_stream_budget,
   attribute_value,
   hdf5_frames_per_slice,
@@ -33,6 +31,7 @@ import {
   to_scalar_number,
   unique_strings,
 } from './h5-utils'
+import type { LazyTrajectorySource, ParsedTrajectory } from './shared'
 
 type ReplicaSelection = {
   path: string
@@ -40,8 +39,6 @@ type ReplicaSelection = {
   replica_idx: number
   replica_count: number
 }
-
-const PREVIEW_FRAME_COUNT = 10
 
 const required_group = (h5_file: h5wasm.File, path: string): Group => {
   const entity = h5_file.get(path)
@@ -147,7 +144,7 @@ const selection_from_path = (
 ): ReplicaSelection => {
   const paths = selections.map(({ path }) => path)
   if (!hdf5_group_path && selections.length !== 1) {
-    throw new Hdf5TrajectoryGroupSelectionError(
+    throw new Hdf5GroupSelectionRequiredError(
       paths,
       `Reference MD HDF5 contains multiple molecule replicas; choose one to reconstruct`,
     )
@@ -242,7 +239,7 @@ export const reference_checkpoint_interval = (
 export const parse_reference_md_h5_file = (
   h5_file: h5wasm.File,
   hdf5_group_path?: string,
-): TrajectoryType => {
+): ParsedTrajectory | LazyTrajectorySource => {
   required_group(h5_file, `/frames`)
   const simulation_group = required_group(h5_file, `/simulation`)
   const molecules_group = required_group(h5_file, `/molecules`)
@@ -529,11 +526,9 @@ export const parse_reference_md_h5_file = (
     }
     return frame
   }
-  const plot_metadata_for = (requested_stride = 1): TrajectoryMetadata[] => {
-    const stride = Math.max(
-      positive_integer_stride(requested_stride, `Reference MD sample_rate`),
-      Math.ceil(n_frames / 1000),
-    )
+  // Plot rows for at most ~1000 evenly spaced frames
+  const sampled_properties = (): TrajectoryMetadata[] => {
+    const stride = Math.max(1, Math.ceil(n_frames / 1000))
     const frame_indices = sampled_indices(n_frames, stride)
     const energy_values = energy ? read_replica_frames(energy, 0, n_frames, stride) : null
     const temperature_values = temperature
@@ -550,11 +545,7 @@ export const parse_reference_md_h5_file = (
       },
     }))
   }
-  const plot_metadata = plot_metadata_for()
   const trajectory_metadata = {
-    source_format: `reference_md_hdf5`,
-    frame_count: n_frames,
-    num_atoms: n_atoms,
     molecule: molecule_name,
     replica_idx,
     global_id,
@@ -582,6 +573,7 @@ export const parse_reference_md_h5_file = (
       ]),
     )
     return {
+      format: `reference-md-hdf5`,
       frames: [load_frame(0)],
       time_step: integration_timestep_ps,
       time_unit: `ps`,
@@ -590,167 +582,134 @@ export const parse_reference_md_h5_file = (
       metadata: trajectory_metadata,
     }
   }
-  let disposed = false
-  const require_open = (): void => {
-    if (disposed) throw new Error(`Reference MD HDF5 loader was disposed`)
+  const collect_positions = (
+    options: PositionStreamOptions = {},
+  ): TrajectoryPositionStream => {
+    const frame_stride = positive_integer_stride(
+      options.frame_stride,
+      `Reference MD frame_stride`,
+    )
+    const scalar_keys = unique_strings(options.scalar_keys)
+    const vector_keys = unique_strings(options.vector_keys)
+    const signal_keys = unique_strings(options.signal_keys)
+    const unknown_keys = [
+      ...scalar_keys.filter(
+        (key) =>
+          (key !== `energy` && key !== `temperature`) ||
+          (key === `energy` && !energy) ||
+          (key === `temperature` && !temperature),
+      ),
+      ...vector_keys.filter((key) => key !== `velocity`),
+      ...signal_keys.filter((key) => !signal_manifest[key]),
+    ]
+    if (unknown_keys.length > 0) {
+      throw new Error(`Reference MD HDF5 has no channels named ${unknown_keys.join(`, `)}`)
+    }
+    const selected_frame_count = Math.ceil(n_frames / frame_stride)
+    const selected_values = selected_frame_count * velocity_sample_size
+    const signal_values = signal_keys.reduce(
+      (total, key) =>
+        total +
+        n_frames *
+          (signal_manifest[key].sample_shape.reduce((product, size) => product * size, 1) + 1),
+      0,
+    )
+    assert_hdf5_stream_budget(
+      `Reference MD`,
+      n_frames,
+      selected_frame_count,
+      velocity_sample_size * (1 + vector_keys.length) + scalar_keys.length + 10,
+      signal_values,
+      options.max_bytes ?? Number.POSITIVE_INFINITY,
+    )
+    const frame_indices = sampled_indices(n_frames, frame_stride)
+    const positions = new Float64Array(selected_values)
+    const selected_velocities = vector_keys.includes(`velocity`)
+      ? new Float64Array(selected_values)
+      : null
+    const native_velocity = signal_keys.includes(`velocity`)
+      ? new Float64Array(n_frames * velocity_sample_size)
+      : null
+    const stream_positions = Float64Array.from(initial_positions)
+    const stream_previous_velocity = new Float64Array(velocity_sample_size)
+    let stream_has_previous = false
+    let selected_idx = 0
+    for (
+      let chunk_start = 0;
+      chunk_start < n_frames;
+      chunk_start += velocity_frames_per_slice
+    ) {
+      const chunk_end = Math.min(chunk_start + velocity_frames_per_slice, n_frames)
+      const chunk = read_replica_frames(velocity_manifest, chunk_start, chunk_end)
+      native_velocity?.set(chunk, chunk_start * velocity_sample_size)
+      for (let frame_idx = chunk_start; frame_idx < chunk_end; frame_idx++) {
+        const velocity_offset = (frame_idx - chunk_start) * velocity_sample_size
+        integrate_velocity_sample(
+          stream_positions,
+          stream_previous_velocity,
+          chunk,
+          velocity_offset,
+          stream_has_previous ? times_ps[frame_idx] - times_ps[frame_idx - 1] : undefined,
+        )
+        stream_has_previous = true
+        if (frame_idx % frame_stride !== 0) continue
+        positions.set(stream_positions, selected_idx * velocity_sample_size)
+        selected_velocities?.set(
+          chunk.slice(velocity_offset, velocity_offset + velocity_sample_size),
+          selected_idx * velocity_sample_size,
+        )
+        selected_idx++
+      }
+    }
+    const scalars = Object.fromEntries(
+      scalar_keys.map((key) => {
+        const manifest = key === `energy` ? energy : temperature
+        if (!manifest) throw new Error(`Reference MD HDF5 has no scalar ${key}`)
+        return [key, read_replica_samples(manifest, frame_stride)]
+      }),
+    )
+    const signals = Object.fromEntries(
+      signal_keys.map((key) => {
+        const manifest = signal_manifest[key]
+        const values =
+          key === `velocity` && native_velocity
+            ? native_velocity
+            : read_replica_samples(manifest)
+        return [
+          key,
+          {
+            values,
+            sample_shape: manifest.sample_shape,
+            steps: [...production_steps],
+            ...(manifest.unit ? { unit: manifest.unit } : {}),
+          },
+        ]
+      }),
+    )
+    return {
+      positions,
+      n_frames: frame_indices.length,
+      n_atoms,
+      elements: [...elements],
+      lattice_matrices: frame_indices.map(() => lattice_matrix),
+      pbc,
+      coords_unwrapped: true,
+      frame_stride,
+      steps: frame_indices.map((frame_idx) => production_steps[frame_idx]),
+      ...(Object.keys(scalars).length > 0 ? { scalars } : {}),
+      ...(selected_velocities ? { vectors: { velocity: selected_velocities } } : {}),
+      ...(Object.keys(signals).length > 0 ? { signals } : {}),
+    }
   }
-  const frame_loader: FrameLoader = {
-    requires_source: false,
+  return {
+    format: `reference-md-hdf5`,
+    frame_count: n_frames,
+    read_frame: load_frame,
+    properties: sampled_properties(),
+    collect_positions,
     dispose: () => {
-      disposed = true
       checkpoint_positions.length = 0
     },
-    get_total_frames: async () => n_frames,
-    build_frame_index: async (_data, sample_rate) =>
-      sampled_indices(
-        n_frames,
-        positive_integer_stride(sample_rate, `Reference MD sample_rate`),
-      ).map((frame_number) => ({
-        frame_number,
-        byte_offset: frame_number * velocity_sample_size * Float64Array.BYTES_PER_ELEMENT,
-        estimated_size: velocity_sample_size * Float64Array.BYTES_PER_ELEMENT,
-      })),
-    load_frame: async (_data, frame_number) => {
-      require_open()
-      return load_frame(frame_number)
-    },
-    extract_plot_metadata: async (_data, options) => {
-      require_open()
-      return plot_metadata_for(options?.sample_rate)
-    },
-    stream_positions: async (
-      _data: string | ArrayBuffer,
-      options: PositionStreamOptions = {},
-    ): Promise<TrajectoryPositionStream> => {
-      require_open()
-      const frame_stride = positive_integer_stride(
-        options.frame_stride,
-        `Reference MD frame_stride`,
-      )
-      const scalar_keys = unique_strings(options.scalar_keys)
-      const vector_keys = unique_strings(options.vector_keys)
-      const signal_keys = unique_strings(options.signal_keys)
-      const unknown_keys = [
-        ...scalar_keys.filter(
-          (key) =>
-            (key !== `energy` && key !== `temperature`) ||
-            (key === `energy` && !energy) ||
-            (key === `temperature` && !temperature),
-        ),
-        ...vector_keys.filter((key) => key !== `velocity`),
-        ...signal_keys.filter((key) => !signal_manifest[key]),
-      ]
-      if (unknown_keys.length > 0) {
-        throw new Error(`Reference MD HDF5 has no channels named ${unknown_keys.join(`, `)}`)
-      }
-      const selected_frame_count = Math.ceil(n_frames / frame_stride)
-      const selected_values = selected_frame_count * velocity_sample_size
-      const signal_values = signal_keys.reduce(
-        (total, key) =>
-          total +
-          n_frames *
-            (signal_manifest[key].sample_shape.reduce((product, size) => product * size, 1) +
-              1),
-        0,
-      )
-      assert_hdf5_stream_budget(
-        `Reference MD`,
-        n_frames,
-        selected_frame_count,
-        velocity_sample_size * (1 + vector_keys.length) + scalar_keys.length + 10,
-        signal_values,
-        options.max_bytes ?? Number.POSITIVE_INFINITY,
-      )
-      const frame_indices = sampled_indices(n_frames, frame_stride)
-      const positions = new Float64Array(selected_values)
-      const selected_velocities = vector_keys.includes(`velocity`)
-        ? new Float64Array(selected_values)
-        : null
-      const native_velocity = signal_keys.includes(`velocity`)
-        ? new Float64Array(n_frames * velocity_sample_size)
-        : null
-      const stream_positions = Float64Array.from(initial_positions)
-      const stream_previous_velocity = new Float64Array(velocity_sample_size)
-      let stream_has_previous = false
-      let selected_idx = 0
-      for (
-        let chunk_start = 0;
-        chunk_start < n_frames;
-        chunk_start += velocity_frames_per_slice
-      ) {
-        const chunk_end = Math.min(chunk_start + velocity_frames_per_slice, n_frames)
-        const chunk = read_replica_frames(velocity_manifest, chunk_start, chunk_end)
-        native_velocity?.set(chunk, chunk_start * velocity_sample_size)
-        for (let frame_idx = chunk_start; frame_idx < chunk_end; frame_idx++) {
-          const velocity_offset = (frame_idx - chunk_start) * velocity_sample_size
-          integrate_velocity_sample(
-            stream_positions,
-            stream_previous_velocity,
-            chunk,
-            velocity_offset,
-            stream_has_previous ? times_ps[frame_idx] - times_ps[frame_idx - 1] : undefined,
-          )
-          stream_has_previous = true
-          if (frame_idx % frame_stride !== 0) continue
-          positions.set(stream_positions, selected_idx * velocity_sample_size)
-          selected_velocities?.set(
-            chunk.slice(velocity_offset, velocity_offset + velocity_sample_size),
-            selected_idx * velocity_sample_size,
-          )
-          selected_idx++
-        }
-      }
-      const scalars = Object.fromEntries(
-        scalar_keys.map((key) => {
-          const manifest = key === `energy` ? energy : temperature
-          if (!manifest) throw new Error(`Reference MD HDF5 has no scalar ${key}`)
-          return [key, read_replica_samples(manifest, frame_stride)]
-        }),
-      )
-      const signals = Object.fromEntries(
-        signal_keys.map((key) => {
-          const manifest = signal_manifest[key]
-          const values =
-            key === `velocity` && native_velocity
-              ? native_velocity
-              : read_replica_samples(manifest)
-          return [
-            key,
-            {
-              values,
-              sample_shape: manifest.sample_shape,
-              steps: [...production_steps],
-              ...(manifest.unit ? { unit: manifest.unit } : {}),
-            },
-          ]
-        }),
-      )
-      return {
-        positions,
-        n_frames: frame_indices.length,
-        n_atoms,
-        elements: [...elements],
-        lattice_matrices: frame_indices.map(() => lattice_matrix),
-        pbc,
-        coords_unwrapped: true,
-        frame_stride,
-        steps: frame_indices.map((frame_idx) => production_steps[frame_idx]),
-        ...(Object.keys(scalars).length > 0 ? { scalars } : {}),
-        ...(selected_velocities ? { vectors: { velocity: selected_velocities } } : {}),
-        ...(Object.keys(signals).length > 0 ? { signals } : {}),
-      }
-    },
-  }
-  const frames = Array.from(
-    { length: Math.min(n_frames, PREVIEW_FRAME_COUNT) },
-    (_unused, idx) => load_frame(idx),
-  )
-  return {
-    frames,
-    total_frames: n_frames,
-    plot_metadata,
-    is_indexed: true,
-    frame_loader,
     time_step: integration_timestep_ps,
     time_unit: `ps`,
     atom_masses,

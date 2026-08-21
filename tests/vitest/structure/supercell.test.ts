@@ -131,7 +131,6 @@ describe(`make_supercell`, () => {
       expect(supercell.lattice.a).toBe(expected_lattice[0])
       expect(supercell.lattice.b).toBe(expected_lattice[1])
       expect(supercell.lattice.c).toBe(expected_lattice[2])
-      expect(`supercell_scaling` in supercell).toBe(true)
     },
   )
 
@@ -200,22 +199,13 @@ describe(`make_supercell`, () => {
     const large = make_supercell(sample_structure, [5, 1, 1])
     expect(large.sites).toHaveLength(10)
     expect(large.lattice.matrix[0]).toEqual([20.0, 0.0, 0.0])
-
-    // Structure without lattice
-    const molecule = { sites: sample_structure.sites, charge: 0 }
-    expect(() => make_supercell(molecule as Crystal, [2, 2, 2])).toThrow(
-      `structure has no lattice`,
-    )
   })
 
   test(`does not modify original structure`, () => {
     const original = structuredClone(sample_structure)
     const supercell = make_supercell(original, [2, 2, 2])
-
-    expect(original.sites).toHaveLength(2)
-    expect(`supercell_scaling` in original).toBe(false)
+    expect(original).toEqual(sample_structure)
     expect(supercell.sites).toHaveLength(16)
-    expect(`supercell_scaling` in supercell).toBe(true)
   })
 })
 
@@ -330,7 +320,7 @@ describe(`image atom behavior`, () => {
 
   test(`handles edge cases correctly`, () => {
     // Structure without lattice
-    const no_lattice = { ...sample_structure, lattice: undefined }
+    const { lattice: _lattice, ...no_lattice } = sample_structure
     expect(find_image_atoms(no_lattice)).toEqual([])
 
     // Trajectory-like data
@@ -456,7 +446,6 @@ describe(`performance tests`, () => {
       const duration = performance.now() - start_time
 
       expect(supercell.sites).toHaveLength(expected_atoms)
-      expect(`supercell_scaling` in supercell).toBe(true)
       expect(duration).toBeLessThan(timeout_ms * 3) // CI multiplier
       expect(supercell.sites.every((site) => site.xyz && site.abc)).toBe(true)
     },

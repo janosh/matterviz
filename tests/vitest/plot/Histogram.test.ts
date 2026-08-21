@@ -2,11 +2,12 @@ import { Histogram, type Vec2 } from '$lib'
 import { DEFAULT_PLOT_PADDING } from '$lib/plot/core/layout'
 import type { DataSeries } from '$lib/plot/core/types'
 import {
+  bin_values,
   compute_count_range,
   compute_histogram_bins,
   log_safe_range,
+  normalize_counts,
 } from '$lib/plot/histogram/histogram'
-import { bin, max as d3max } from 'd3-array'
 import { mount, tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
@@ -72,17 +73,23 @@ const touch_event = (type: string, touches: readonly Readonly<Vec2>[]) => {
 // oxfmt-ignore
 const series_of = (values: number[], extra: Partial<DataSeries> = {}): DataSeries => ({ x: [], y: values, ...extra })
 // oxfmt-ignore
-const histogram_cfg = { x_domain: [0, 10] as Vec2, x2_domain: [100, 200] as Vec2, bin_count: 5, series_color: () => `steelblue` }
+const histogram_cfg = { x_domain: [0, 10] as Vec2, x2_domain: [100, 200] as Vec2, bins: 5, series_color: () => `steelblue` }
 const histogram_bins = (
   entries: Parameters<typeof compute_histogram_bins>[0],
-  has_x2 = false,
-) => compute_histogram_bins(entries, { ...histogram_cfg, has_x2 })
-const count_cfg = { ...histogram_cfg, y_limit: [null, null] as [null, null], range_padding: 0 }
+  overrides: Partial<Parameters<typeof compute_histogram_bins>[1]> = {},
+) => compute_histogram_bins(entries, { ...histogram_cfg, ...overrides })
+// count range of a set of series binned over histogram_cfg's domains
 const count_range = (
   series: DataSeries[],
   scale_type: `linear` | `log`,
   y_limit: [number | null, number | null] = [null, null],
-) => compute_count_range(series, { ...count_cfg, scale_type, y_limit })
+) =>
+  compute_count_range(
+    histogram_bins(series.map((series_data, series_idx) => ({ series_data, series_idx }))),
+    { scale_type, y_limit, range_padding: 0 },
+  )
+const counts_of = (...args: Parameters<typeof bin_values>) =>
+  Array.from(bin_values(...args).counts)
 
 describe(`Histogram`, () => {
   afterEach(() => vi.restoreAllMocks())
@@ -111,18 +118,13 @@ describe(`Histogram`, () => {
       Math.max(...(await y_ticks_after({ series: spread, bins: 3 }))),
     ).toBeGreaterThanOrEqual(max_many)
 
+    // 5 uniform bins over [0, 10]: [0,2) holds five samples; over [0, 3] (width 0.6) the
+    // three 1s share a bin and the 10s fall outside the domain
     const series = [{ x: [], y: [0, 0, 1, 1, 1, 2, 2, 10, 10, 10], label: `A` }]
-    const max_bin_count = (domain?: [number, number]) =>
-      d3max(
-        (domain ? bin().domain(domain) : bin()).thresholds(5)(series[0].y),
-        (bucket) => bucket.length,
-      ) ?? 0
-    expect(Math.max(...(await y_ticks_after({ series, bins: 5 })))).toBeGreaterThanOrEqual(
-      max_bin_count(),
-    )
-    expect(
-      Math.max(...(await y_ticks_after({ series, bins: 5, x_axis: { range: [0, 3] } }))),
-    ).toBeGreaterThanOrEqual(max_bin_count([0, 3]))
+    expect(Math.max(...(await y_ticks_after({ series, bins: 5 })))).toBeGreaterThanOrEqual(5)
+    const clipped_ticks = await y_ticks_after({ series, bins: 5, x_axis: { range: [0, 3] } })
+    expect(Math.max(...clipped_ticks)).toBeGreaterThanOrEqual(3)
+    expect(Math.max(...clipped_ticks)).toBeLessThan(5)
 
     const log_series = [{ x: [], y: [1, 1, 1, 1, 1] }]
     const log_ticks = (range?: [number | null, number | null]) =>
@@ -326,11 +328,15 @@ describe(`Histogram`, () => {
     const option_labels = [...(property_select?.options ?? [])].map(
       (option) => option.textContent,
     )
-    expect(option_labels).toEqual([`All`, `Repeated`, `Repeated`, `Series`, `Series`])
+    expect(option_labels).toEqual([`Repeated`, `Repeated`, `Series`, `Series`])
+    // the select shows the active series (first visible label) even though the bound
+    // selected_property was never set: single mode never shows "all"
+    expect(property_select?.value).toBe(`Repeated`)
+    expect(document.querySelectorAll(`g.histogram-series`)).toHaveLength(2)
   })
 
-  test(`binds style controls to the public bar config`, async () => {
-    const state = { bar: { color: `#112233` } }
+  test(`binds style and normalize controls to the public props`, async () => {
+    const state = { bar: { color: `#112233` }, normalize: `count` as const }
     mount_histogram(
       bind_props(
         {
@@ -347,6 +353,60 @@ describe(`Histogram`, () => {
     fill_input.value = `#abcdef`
     fill_input.dispatchEvent(new Event(`input`, { bubbles: true }))
     expect(state.bar).toEqual({ color: `#abcdef` })
+    // the controls pane's normalize select writes back into a bound normalize prop
+    const normalize_select = [...document.querySelectorAll<HTMLSelectElement>(`select`)].find(
+      (select) => select.parentElement?.textContent?.includes(`Normalize`),
+    )
+    if (!normalize_select) throw new Error(`Histogram normalize select not found`)
+    expect(normalize_select.value).toBe(`count`)
+    normalize_select.value = `density`
+    // Svelte's select binding reads the chosen option via querySelector(':checked'), which
+    // happy-dom doesn't match on <option> (it would fall back to the first option)
+    vi.spyOn(normalize_select, `querySelector`).mockImplementation(
+      () => normalize_select.selectedOptions[0],
+    )
+    normalize_select.dispatchEvent(new Event(`change`, { bubbles: true }))
+    await tick()
+    expect(state.normalize).toBe(`density`)
+  })
+
+  test(`bar hover/click handlers receive the bin center, count and label`, async () => {
+    const on_bar_hover = vi.fn()
+    const on_bar_click = vi.fn()
+    mount_histogram({
+      // 5 bins over [0, 10]: [0,2) holds two samples
+      series: [series_of([0, 1, 5, 9], { label: `A` })],
+      bins: 5,
+      normalize: `probability`,
+      x_axis: { range: [0, 10] },
+      mode: `overlay`,
+      on_bar_hover,
+      on_bar_click,
+    })
+    await resize_element(get_plot(), 400, 300)
+    const [first_bar] = document.querySelectorAll(`g.histogram-series path[role="button"]`)
+    first_bar.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
+    await tick()
+    expect(on_bar_hover).toHaveBeenLastCalledWith(
+      expect.objectContaining({ value: 1, count: 2, property: `A` }),
+    )
+    const tooltip_text = document.querySelector(`.plot-tooltip`)?.textContent ?? ``
+    expect(tooltip_text).toContain(`Count: 2`)
+    expect(tooltip_text).toContain(`Probability: 0.5`)
+    expect(tooltip_text).toContain(`A`)
+    // Enter/Space activate the bar like a click, other keys are ignored
+    for (const key of [`Enter`, ` `, `a`]) {
+      first_bar.dispatchEvent(new KeyboardEvent(`keydown`, { key, bubbles: true }))
+    }
+    first_bar.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+    expect(on_bar_click).toHaveBeenCalledTimes(3)
+    expect(on_bar_click).toHaveBeenLastCalledWith(
+      expect.objectContaining({ value: 1, count: 2, property: `A` }),
+    )
+    first_bar.dispatchEvent(new MouseEvent(`mouseleave`, { bubbles: true }))
+    await tick()
+    expect(on_bar_hover).toHaveBeenLastCalledWith(null)
+    expect(document.querySelector(`.plot-tooltip`)).toBeNull()
   })
 
   test(`touch gestures keep finite axis ranges`, async () => {
@@ -504,43 +564,125 @@ describe(`Histogram`, () => {
     expect(pinned_clip).toEqual(clip_rect_attrs())
   })
 
-  test(`compute_histogram_bins and compute_count_range`, () => {
-    // oxfmt-ignore
-    for (const [_name, axis, expected] of [
-      [`linear`, { range: [0, 10], scale_type: `linear` }, [0, 10]],
-      [`positive log`, { range: [1, 100], scale_type: `log` }, [1, 100]],
-      [`zero log lower`, { range: [0, 100], scale_type: `log` }, [null, 100]],
-      [`negative log lower`, { range: [-5, 100], scale_type: `log` }, [null, 100]],
-      [`non-positive log`, { range: [-5, 0], scale_type: `log` }, [null, null]],
-      [`null log`, { range: [null, null], scale_type: `log` }, [null, null]],
-      [`negative linear`, { range: [-5, 10], scale_type: `linear` }, [-5, 10]],
-      [`missing log range`, { scale_type: `log` }, [null, null]],
-    ] as const) {
-      expect(log_safe_range(axis as Parameters<typeof log_safe_range>[0])).toEqual(expected)
+  test.each<[Parameters<typeof log_safe_range>[0], [number | null, number | null]]>([
+    [{ range: [0, 10], scale_type: `linear` }, [0, 10]],
+    [{ range: [1, 100], scale_type: `log` }, [1, 100]],
+    [{ range: [0, 100], scale_type: `log` }, [null, 100]],
+    [{ range: [-5, 100], scale_type: `log` }, [null, 100]],
+    [{ range: [-5, 0], scale_type: `log` }, [null, null]],
+    [{ range: [null, null], scale_type: `log` }, [null, null]],
+    [{ range: [-5, 10], scale_type: `linear` }, [-5, 10]],
+    [{ scale_type: `log` }, [null, null]],
+  ])(`log_safe_range(%j) drops non-positive log bounds -> %j`, (axis, expected) => {
+    expect(log_safe_range(axis)).toEqual(expected)
+  })
+
+  test(`bin_values: uniform edges in bin space, inclusive upper bound, out-of-domain dropped`, () => {
+    const { edges, counts } = bin_values(
+      [0, 0.5, 1, 2.5, 4, 5, 7.99, 8, 10, 10.0001, -1, NaN],
+      [0, 10],
+      5,
+    )
+    expect(Array.from(edges)).toEqual([0, 2, 4, 6, 8, 10])
+    // 10 lands in the last bin (numpy convention); 10.0001, -1 and NaN are dropped
+    expect(Array.from(counts)).toEqual([3, 1, 2, 1, 2])
+    expect(counts).toBeInstanceOf(Uint32Array)
+    // either domain order, non-integer bin count floors, and exact 1/3 edges stay within 1 ulp
+    expect(Array.from(bin_values([], [10, 0], 5.9).edges)).toEqual([0, 2, 4, 6, 8, 10])
+    const third_edges = Array.from(bin_values([], [0, 1], 3).edges)
+    expect(third_edges[0]).toBe(0)
+    expect(third_edges[3]).toBe(1)
+    expect(third_edges[1]).toBeCloseTo(1 / 3, 15)
+    expect(third_edges[2]).toBeCloseTo(2 / 3, 15)
+    // a value exactly on an interior edge goes to the upper bin
+    expect(counts_of([2, 4, 6, 8], [0, 10], 5)).toEqual([0, 1, 1, 1, 1])
+    // collapsed domain: one bin with the samples sitting on it
+    expect(bin_values([5, 5, 6], [5, 5], 10)).toEqual({
+      edges: Float64Array.of(5, 5),
+      counts: Uint32Array.of(2),
+    })
+  })
+
+  test(`bin_values: log and arcsinh bins are uniform in transformed space`, () => {
+    const { edges, counts } = bin_values(
+      [1, 9.99, 10, 99, 100, 999, 1000, 5000],
+      [1, 1000],
+      3,
+      `log`,
+    )
+    for (const [idx, expected] of [1, 10, 100, 1000].entries()) {
+      expect(Math.abs(edges[idx] - expected)).toBeLessThan(1e-12 * expected)
     }
+    // [1,10) [10,100) [100,1000]; 5000 is outside the domain
+    expect(Array.from(counts)).toEqual([2, 2, 3])
+    // values exactly on a log edge snap to the upper bin even though log10(1000) rounds below 3
+    expect(counts_of([1000, 10], [1, 10_000], 4, `log`)).toEqual([0, 1, 0, 1])
+    // a domain a few ulps wide collapses in log10 space (scale would be Infinity and every
+    // sample would be dropped): treat it as one bin holding the in-domain samples
+    const lo = 1e10
+    const hi = lo * (1 + 4 * Number.EPSILON)
+    expect(bin_values([lo, (lo + hi) / 2, hi, 2e10], [lo, hi], 3, `log`)).toEqual({
+      edges: Float64Array.of(lo, hi),
+      counts: Uint32Array.of(3),
+    })
+    // a zero/negative log lower bound is clamped to LOG_EPS instead of producing NaN edges
+    const clamped = bin_values([0.5, 1], [0, 1], 2, `log`)
+    expect(clamped.edges[0]).toBe(1e-9)
+    expect(Array.from(clamped.counts)).toEqual([0, 2])
+    const arcsinh = bin_values([-10, -1, 1, 10], [-10, 10], 2, `arcsinh`)
+    expect(Math.abs(arcsinh.edges[1])).toBeLessThan(1e-12)
+    expect(Array.from(arcsinh.counts)).toEqual([2, 2])
+    // asinh(x / threshold): a quarter of the way in transformed space is below the linear quarter
+    const quarter = bin_values([], [0, 100], 4, { type: `arcsinh`, threshold: 1 }).edges[1]
+    expect(quarter).toBeCloseTo(Math.sinh(Math.asinh(100) / 4), 12)
+    expect(quarter).toBeLessThan(25)
+  })
+
+  test(`normalize_counts: probability sums to 1, density integrates to 1 on uneven bins`, () => {
+    const values = [1, 2, 3, 10, 30, 50, 70, 90, 100, 400, 900, 1000]
+    const { edges, counts } = bin_values(values, [1, 1000], 3, `log`)
+    const raw = normalize_counts(edges, counts, `count`)
+    expect(raw.map(({ count, value }) => [count, value])).toEqual([
+      [3, 3],
+      [5, 5],
+      [4, 4],
+    ])
+    const probability = normalize_counts(edges, counts, `probability`)
+    expect(probability.map(({ value }) => value)).toEqual([3 / 12, 5 / 12, 4 / 12])
+    const density = normalize_counts(edges, counts, `density`)
+    const integral = density.reduce((sum, { x0, x1, value }) => sum + value * (x1 - x0), 0)
+    expect(Math.abs(integral - 1)).toBeLessThan(1e-12)
+    // density = count / (total * width): the widest bin is the flattest
+    expect(density[2].value).toBeCloseTo(4 / (12 * 900), 15)
+    // empty input keeps zero bars instead of dividing by zero
+    const empty = normalize_counts(Float64Array.of(0, 1, 2), Uint32Array.of(0, 0), `density`)
+    expect(empty.map(({ value }) => value)).toEqual([0, 0])
+  })
+
+  test(`compute_histogram_bins and compute_count_range`, () => {
     const result = histogram_bins([
       { series_data: series_of([1, 1, 1, 9], { label: `alpha` }), series_idx: 0 },
       { series_data: series_of([5, 6]), series_idx: 1 },
       { series_data: series_of([1], { id: `explicit` }), series_idx: 3 },
     ])
     expect(result.map(({ label }) => label)).toEqual([`alpha`, `Series 2`, `Series 4`])
-    expect(result.map(({ max_count }) => max_count)).toEqual([3, 1, 1])
+    expect(result.map(({ max_value, min_value }) => [max_value, min_value])).toEqual([
+      [3, 1],
+      [1, 1],
+      [1, 1],
+    ])
     expect(result[0].color).toBe(`steelblue`)
-    expect(result[0].bins.reduce((sum, one_bin) => sum + one_bin.length, 0)).toBe(4)
+    expect(result[0].bins.map(({ count }) => count)).toEqual([3, 0, 0, 0, 1])
     expect(result[2]).toMatchObject({ id: `explicit`, series_idx: 3 })
-    for (const [has_x2, expected_count, max_count] of [
-      [true, 2, 1],
-      [false, 0, 0],
-    ] as const) {
-      const [histogram] = histogram_bins(
-        [{ series_data: series_of([150, 160], { x_axis: `x2` }), series_idx: 0 }],
-        has_x2,
-      )
-      expect(histogram.bins.reduce((sum, one_bin) => sum + one_bin.length, 0)).toBe(
-        expected_count,
-      )
-      expect(histogram.max_count).toBe(max_count)
-    }
+    // x2 series bin over the x2 domain with the x2 scale
+    const [x2_hist] = histogram_bins(
+      [{ series_data: series_of([150, 160, 50], { x_axis: `x2` }), series_idx: 0 }],
+      { x2_scale_type: `log`, normalize: `probability` },
+    )
+    expect(x2_hist.bins.map(({ count }) => count)).toEqual([0, 0, 1, 1, 0])
+    expect(x2_hist.bins[0].x1).toBeCloseTo(100 * 2 ** (1 / 5), 12)
+    expect(x2_hist.max_value).toBe(0.5)
+
     for (const [_name, series, scale_type, expected] of [
       [`linear empty`, [], `linear`, [0, 1]],
       [`log empty`, [], `log`, [1, 1]],
@@ -561,18 +703,25 @@ describe(`Histogram`, () => {
         `linear`,
       )[1],
     ).toBeGreaterThanOrEqual(4)
+    // one bin per sample stays finite and fast
     const n_samples = 130_000
-    const [lo, hi] = compute_count_range(
-      [series_of(Array.from({ length: n_samples }, (_, idx) => idx))],
-      {
-        ...count_cfg,
-        x_domain: [0, n_samples],
-        x2_domain: [0, 1],
-        bin_count: n_samples,
-        scale_type: `linear`,
-      },
+    const [hist] = histogram_bins(
+      [
+        {
+          series_data: series_of(Array.from({ length: n_samples }, (_, idx) => idx)),
+          series_idx: 0,
+        },
+      ],
+      { x_domain: [0, n_samples], bins: n_samples },
     )
-    expect(Number.isFinite(lo)).toBe(true)
-    expect(hi).toBeGreaterThanOrEqual(1)
+    expect(hist.bins).toHaveLength(n_samples)
+    expect(hist.bins.every(({ count }) => count === 1)).toBe(true)
+    expect(
+      compute_count_range([hist], {
+        scale_type: `linear`,
+        y_limit: [null, null],
+        range_padding: 0,
+      }),
+    ).toEqual([0, 1])
   })
 })

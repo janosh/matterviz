@@ -228,16 +228,26 @@ describe(`one_sided_periodogram`, () => {
   })
 })
 
-describe(`correlation_window`, () => {
+describe(`correlation_window and time_series_window`, () => {
   it.each([
-    [`hann`, 1, 0],
-    [`gaussian`, 1, Math.exp(-4.5)],
-    [`none`, 1, 1],
-  ] as const)(`%s starts at %f and ends at the documented value`, (type, first, last) => {
-    const weights = correlation_window(9, type)
-    expect(weights[0]).toBeCloseTo(first, 14)
-    expect(weights[8]).toBeCloseTo(last, 14)
-  })
+    [`hann`, 0],
+    [`gaussian`, Math.exp(-4.5)],
+    [`none`, 1],
+  ] as const)(
+    `%s: one-sided starts at 1, full window is symmetric, both end at %f`,
+    (type, edge) => {
+      const one_sided = correlation_window(9, type)
+      expect(one_sided[0]).toBe(1)
+      expect(one_sided[8]).toBeCloseTo(edge, 14)
+      for (const n_samples of [8, 9]) {
+        const full = [...time_series_window(n_samples, type)]
+        expect(full).toEqual(full.toReversed())
+        expect(full[0]).toBeCloseTo(edge, 14)
+      }
+      // The right half of a full window (midpoint 4 of 9) is the one-sided window of 5 lags
+      expect(time_series_window(9, type).slice(4)).toEqual(correlation_window(5, type))
+    },
+  )
 
   it(`makes hann monotonically decreasing, so it can only damp the tail`, () => {
     const weights = [...correlation_window(50, `hann`)]

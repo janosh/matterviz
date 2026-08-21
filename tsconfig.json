@@ -14,7 +14,10 @@
     "allowArbitraryExtensions": true,
     "skipLibCheck": true
   },
-  // anywidget-renderers.test.ts excluded: it imports the built matterviz package,
-  // duplicating Svelte's Snippet type and cascading false errors (mocked at runtime).
+  // anywidget-renderers.test.ts excluded: it imports extensions/anywidget/anywidget.ts, whose
+  // `svelte` import resolves to extensions/anywidget/node_modules/svelte — a second copy whose
+  // Snippet type is unrelated to the root one, producing ~20 false "two different types with
+  // this name" errors across unrelated components. The widget is type-checked by its own
+  // package (pnpm -C extensions/anywidget run typecheck); the test itself runs under vitest.
   "exclude": ["src/scripts", "extensions", "tests/vitest/anywidget-renderers.test.ts"]
 }

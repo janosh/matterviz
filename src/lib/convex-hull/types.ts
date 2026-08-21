@@ -1,7 +1,7 @@
 import type { CompositionType } from '$lib/composition'
 import type { ElementSymbol } from '$lib/element'
-import type { Point2D, Point3D, Vec2, Vec3 } from '$lib/math'
-import type { Rect, Sides } from '$lib/plot/core/layout'
+import type { Point2D, Point3D, Vec2 } from '$lib/math'
+import type { Sides } from '$lib/plot/core/layout'
 import type { AnyStructure } from '$lib/structure'
 
 export interface StructurePopupStats {
@@ -89,13 +89,10 @@ export const MAGNETIC_ORDERING_CATEGORY: EntryCategoryConfig = {
   aliases: { ferromagnetic: `FM`, ferrimagnetic: `FiM`, antiferromagnetic: `AFM`, 'non-magnetic': `NM`, nonmagnetic: `NM`, diamagnetic: `NM` },
 }
 
-// Processed phase data for convex hull calculations
+// Entries with normalized composition keys plus the sorted elements they span
 export interface ProcessedPhaseData {
   entries: PhaseData[]
-  stable_entries: PhaseData[]
-  unstable_entries: PhaseData[]
   elements: ElementSymbol[]
-  el_refs: Record<string, PhaseData>
 }
 
 export type MarkerSymbol = // Marker symbol types for convex hull entries
@@ -149,33 +146,6 @@ export interface ConvexHullControlsType {
   show_counts?: boolean
   show_color_toggle?: boolean
   show_label_controls?: boolean
-}
-
-// Plane equation: normal·p + offset = 0
-export interface Plane {
-  normal: Point3D
-  offset: number
-}
-
-// Internal face structure for Quickhull algorithm
-export interface ConvexHullFace {
-  vertices: Vec3
-  plane: Plane
-  centroid: Point3D
-  outside_points: Set<number>
-}
-
-// Convex hull triangle with actual coordinate vertices (return type from compute_quickhull_triangles)
-export interface ConvexHullTriangle {
-  vertices: [Point3D, Point3D, Point3D]
-  normal: Point3D
-  centroid: Point3D
-}
-
-export interface LabelPlacement {
-  x: number
-  y: number
-  rect: Rect
 }
 
 // Hover data for tooltips

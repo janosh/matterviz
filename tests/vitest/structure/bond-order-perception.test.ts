@@ -29,7 +29,6 @@ function make_input(
       coords[idx_1][1] - coords[idx_2][1],
       coords[idx_1][2] - coords[idx_2][2],
     ),
-    strength: 1,
   }))
   return { sites, bonds }
 }
@@ -458,7 +457,6 @@ describe(`compose_perceived_bonds (explicit precedence + kekulé display)`, () =
     site_idx_1: idx_1,
     site_idx_2: idx_2,
     bond_length: 1,
-    strength: 1,
     bond_order: order,
     perceived: true,
     ...(kekule === undefined ? {} : { kekule_order: kekule }),

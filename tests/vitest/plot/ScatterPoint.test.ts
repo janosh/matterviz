@@ -1,5 +1,6 @@
-import { ScatterPoint, symbol_names } from '$lib'
-import type { PointStyle } from '$lib/plot'
+import { symbol_names } from '$lib/labels'
+import type { PointStyle } from '$lib/plot/core/types'
+import ScatterPoint from '$lib/plot/scatter/ScatterPoint.svelte'
 import { mount } from 'svelte'
 import { beforeEach, describe, expect, test } from 'vitest'
 import { doc_query, expect_transition_properties } from '../setup'

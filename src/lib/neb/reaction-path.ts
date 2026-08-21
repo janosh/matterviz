@@ -10,10 +10,9 @@
 // images; it is reported separately from the highest computed image, since quoting the
 // interpolated value as if it were a computed image is a common reporting error.
 
-import type { LatticeConverters, Matrix3x3, Vec3 } from '$lib/math'
-import { create_lattice_converters } from '$lib/math'
+import type { LatticeConverters, Vec3 } from '$lib/math'
+import { create_lattice_converters, min_image_displacement } from '$lib/math'
 import type { AnyStructure } from '$lib/structure'
-import { displacement_pbc } from '$lib/structure/measure'
 import type { Pbc } from '$lib/structure/pbc'
 import type {
   EnergyReference,
@@ -76,26 +75,18 @@ export function assert_path(
   return images
 }
 
-// Cached lattice geometry so a whole path is walked with one matrix inversion.
-type PathGeometry = {
-  lattice_matrix: Matrix3x3 | null
-  converters?: LatticeConverters
-  pbc?: Pbc
-}
+// Cached lattice geometry so a whole path is walked with one matrix inversion; null means
+// raw Cartesian differences (no lattice, or `metric: cartesian`, which is only meaningful
+// when no atom crosses a cell boundary).
+type PathGeometry = { converters: LatticeConverters; pbc: Pbc } | null
 
 function path_geometry(
   reference: AnyStructure,
   options: PathMetricOptions = {},
 ): PathGeometry {
-  // `cartesian` deliberately drops the lattice so displacement_pbc falls through to
-  // raw subtraction — only meaningful when no atom crosses a cell boundary.
-  if (options.metric === `cartesian` || !(`lattice` in reference)) {
-    return { lattice_matrix: null }
-  }
-  const lattice_matrix = reference.lattice.matrix
+  if (options.metric === `cartesian` || !(`lattice` in reference)) return null
   return {
-    lattice_matrix,
-    converters: create_lattice_converters(lattice_matrix),
+    converters: create_lattice_converters(reference.lattice.matrix),
     pbc: options.pbc ?? reference.lattice.pbc,
   }
 }
@@ -112,10 +103,12 @@ function image_displacements(
         `reaction-path images must contain the same atoms in the same order`,
     )
   }
-  const { lattice_matrix, converters, pbc } = geometry
-  return from.sites.map((site, site_idx) =>
-    displacement_pbc(site.xyz, to.sites[site_idx].xyz, lattice_matrix, converters, pbc),
-  )
+  return from.sites.map(({ xyz }, site_idx) => {
+    const target = to.sites[site_idx].xyz
+    if (!geometry) return [target[0] - xyz[0], target[1] - xyz[1], target[2] - xyz[2]]
+    const { converters, pbc } = geometry
+    return min_image_displacement(xyz, target, converters.lattice, converters, pbc)
+  })
 }
 
 // Euclidean norm of a 3N vector held as one Vec3 per atom.
@@ -429,6 +422,17 @@ export function fit_path_spline(
     while (seg < widths.length - 1 && coord > coords[seg + 1]) seg++
     sample_coords.push(coord)
     sample_energies.push(hermite_at(coords, energies, knot_slopes, seg, widths[seg], coord))
+  }
+
+  // Include the analytic saddle so the plotted polyline peaks where the annotation sits. An
+  // interior saddle lies strictly inside [start, end], so a later sample always exists.
+  if (
+    best.between_images[0] !== best.between_images[1] &&
+    !sample_coords.includes(best.coord)
+  ) {
+    const at = sample_coords.findIndex((coord) => coord > best.coord)
+    sample_coords.splice(at, 0, best.coord)
+    sample_energies.splice(at, 0, best.energy)
   }
 
   return {

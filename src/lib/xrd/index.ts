@@ -52,7 +52,8 @@ export type XrdOptions = {
   symprec?: number
   debye_waller_factors?: CompositionType
   scaled?: boolean
-  // When null, treat as unbounded up to 2/λ (Bragg maximum); when omitted, default [0, 180]
+  // 2θ window in degrees. Omitted → [0, 90] (see compute_xrd_pattern for why it stops short
+  // of the Lorentz singularity); null → unbounded up to the Bragg maximum 2/λ
   two_theta_range?: Vec2 | null
   // Merge tolerance for peaks in degrees (default = TWO_THETA_TOL)
   peak_merge_tol?: number

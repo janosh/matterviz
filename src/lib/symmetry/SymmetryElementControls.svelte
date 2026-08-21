@@ -3,6 +3,7 @@ checkbox per element kind present in `elements`, with a color swatch matching th
 overlay render colors and the element count. Bind `show_kinds` and pass it through to
 SymmetryElements (via symmetry_elements_props on the structure viewer). -->
 <script lang="ts">
+  import type { HTMLAttributes } from 'svelte/elements'
   import type { ShowSymmetryKinds, SymmetryElement } from './symmetry-elements'
   import {
     count_symmetry_elements,
@@ -15,29 +16,25 @@ SymmetryElements (via symmetry_elements_props on the structure viewer). -->
     elements = [],
     show_kinds = $bindable({ ...DEFAULT_SHOW_SYM_KINDS }),
     ...rest
-  }: {
+  }: HTMLAttributes<HTMLDivElement> & {
     elements?: SymmetryElement[]
     show_kinds?: ShowSymmetryKinds
-    [key: string]: unknown
   } = $props()
 
   const counts = $derived(count_symmetry_elements(elements))
   const present_kinds = $derived(SYM_ELEM_KINDS.filter((kind) => counts[kind]))
-
-  function toggle_kind(kind: (typeof SYM_ELEM_KINDS)[number], checked: boolean) {
-    // Reassign (not mutate) so bound parents always see the change
-    show_kinds = { ...show_kinds, [kind]: checked }
-  }
 </script>
 
 {#if present_kinds.length > 0}
-  <div class="sym-elem-controls" {...rest}>
+  <div {...rest} class={[`sym-elem-controls`, rest.class]}>
     {#each present_kinds as kind (kind)}
       <label>
         <input
           type="checkbox"
           checked={show_kinds[kind] ?? false}
-          onchange={(evt) => toggle_kind(kind, evt.currentTarget.checked)}
+          onchange={(evt) =>
+            // Reassign (not mutate) so bound parents always see the change
+            (show_kinds = { ...show_kinds, [kind]: evt.currentTarget.checked })}
         />
         <span class="swatch" style:background={SYM_ELEM_KIND_INFO[kind].color}></span>
         {SYM_ELEM_KIND_INFO[kind].label} ({counts[kind]})

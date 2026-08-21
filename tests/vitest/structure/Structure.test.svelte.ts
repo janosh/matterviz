@@ -8,7 +8,7 @@ import { get_element_counts } from '$lib/structure'
 import type { Pbc } from '$lib/structure/pbc'
 import { make_supercell } from '$lib/structure/supercell'
 import { structures } from '$site/structures'
-import { type ComponentProps, flushSync, mount, tick } from 'svelte'
+import { type ComponentProps, createRawSnippet, flushSync, mount, tick } from 'svelte'
 import { SvelteMap } from 'svelte/reactivity'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
@@ -367,6 +367,14 @@ describe(`Structure`, () => {
     viewer.dispatchEvent(new PointerEvent(`pointerleave`))
     await tick()
     expect(getComputedStyle(mode_toggle).opacity).toBe(`0`)
+
+    // second hover cycle: the unbound $bindable hovered prop must keep driving the toggle
+    viewer.dispatchEvent(new PointerEvent(`pointerenter`))
+    await tick()
+    expect(getComputedStyle(mode_toggle).opacity).toBe(`1`)
+    viewer.dispatchEvent(new PointerEvent(`pointerleave`))
+    await tick()
+    expect(getComputedStyle(mode_toggle).opacity).toBe(`0`)
   })
 
   test(`window keydown shortcuts are scoped to the hovered viewer`, async () => {
@@ -688,6 +696,63 @@ describe(`Structure`, () => {
     expect(props.site_radius_overrides.size).toBe(0)
   })
 
+  test(`clears stale picks before the displayed structure shrinks under them`, async () => {
+    // Render-phase probe inside Structure's template: records the displayed site count next
+    // to the picks visible at that instant, the pair StructureScene's overlays index sites
+    // with. A pick >= count there is what used to throw mid-render and abort the flush.
+    const seen: [number, number[]][] = []
+    const props = $state<{
+      structure: AnyStructure
+      measured_sites: number[]
+      measure_mode: MeasureMode
+      show_image_atoms: boolean
+      supercell_scaling: string
+      bottom_left: ComponentProps<typeof Structure>[`bottom_left`]
+    }>({
+      structure,
+      measured_sites: [],
+      measure_mode: `distance`,
+      show_image_atoms: true,
+      supercell_scaling: `1x1x1`,
+      bottom_left: createRawSnippet<[{ structure?: AnyStructure }]>((get_args) => ({
+        render: () => `<span></span>`,
+        setup: () => {
+          $effect.pre(() => {
+            seen.push([get_args().structure?.sites.length ?? 0, [...props.measured_sites]])
+          })
+        },
+      })),
+    })
+    mount_structure(props)
+    await tick()
+    const displayed_count = () => seen[seen.length - 1][0]
+    const pick_last_displayed = () => {
+      props.measured_sites = [0, 1, displayed_count() - 1]
+      flushSync()
+      expect(seen[seen.length - 1]).toEqual([displayed_count(), props.measured_sites])
+    }
+
+    // image atoms: the last displayed site is an image that vanishes when they're hidden
+    expect(displayed_count()).toBeGreaterThan(structure.sites.length)
+    pick_last_displayed()
+    props.show_image_atoms = false
+    flushSync()
+    expect(props.measured_sites).toEqual([])
+    expect(displayed_count()).toBe(structure.sites.length)
+
+    // supercell: grow, pick a site that only exists in the 2x2x2 cell, shrink back
+    props.supercell_scaling = `2x2x2`
+    flushSync()
+    expect(displayed_count()).toBe(8 * structure.sites.length)
+    pick_last_displayed()
+    props.supercell_scaling = `1x1x1`
+    flushSync()
+    expect(props.measured_sites).toEqual([])
+
+    const stale_renders = seen.filter(([count, picks]) => picks.some((idx) => idx >= count))
+    expect(stale_renders).toEqual([])
+  })
+
   test(`discovers new vector keys within one structure series`, async () => {
     const with_vectors = (include_magmom: boolean): AnyStructure => ({
       ...structure,
@@ -752,9 +817,6 @@ describe(`Structure`, () => {
     const fullscreen_button = doc_query<HTMLButtonElement>(
       `.structure > section.control-buttons > .fullscreen-btn`,
     )
-    expect(fullscreen_button.style.getPropertyValue(`--icon-size`)).toBe(
-      `var(--struct-fullscreen-icon-size, 1em)`,
-    )
 
     fullscreen_button.click()
     await tick()
@@ -785,6 +847,7 @@ describe(`Structure`, () => {
       show_controls: true,
       on_file_drop,
     })
+    await tick() // the drop-zone attachment is wired one flush after mount
 
     doc_query(`.structure`).dispatchEvent(
       create_drop_event(new File([SAMPLE_POSCAR_CONTENT], filename)),
@@ -808,6 +871,7 @@ describe(`Structure`, () => {
       on_file_load,
     })
 
+    await tick()
     const file = new File([SAMPLE_POSCAR_CONTENT], `test.poscar`, { type: `text/plain` })
     doc_query(`.structure`).dispatchEvent(create_drop_event(file))
 
@@ -832,8 +896,8 @@ describe(`Structure`, () => {
 
     const first_site_row = document.querySelector(
       `.site-card[title^="Click to select ${structure.sites[0].species[0].element}1"]`,
-    ) as HTMLDivElement
-    expect(first_site_row).toBeInstanceOf(HTMLDivElement)
+    ) as HTMLElement
+    expect(first_site_row).toBeInstanceOf(HTMLElement)
 
     first_site_row.dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
     expect(state.highlighted_sites).toEqual([0])

@@ -15,16 +15,14 @@ import {
   validate_3x3_matrix,
 } from '$lib/trajectory/helpers'
 import type {
-  FrameLoader,
   PositionStreamOptions,
   TrajectoryMetadata,
   TrajectoryPositionStream,
   TrajectorySignal,
   TrajectorySignalDescriptor,
-  TrajectoryType,
 } from '$lib/trajectory/index'
 import {
-  Hdf5TrajectoryGroupSelectionError,
+  Hdf5GroupSelectionRequiredError,
   assert_hdf5_stream_budget,
   attribute_value,
   hdf5_frames_per_slice,
@@ -41,38 +39,50 @@ import {
   unique_strings,
 } from './h5-utils'
 import { is_reference_md_h5_file, parse_reference_md_h5_file } from './reference-md-h5'
+import type { LazyTrajectorySource, ParsedTrajectory, WarningCollector } from './shared'
 import { is_vaspout_h5_file, parse_vaspout_h5_file } from './vaspout-h5'
 
-export { Hdf5TrajectoryGroupSelectionError } from './h5-utils'
+export type Hdf5TrajectoryResult =
+  | { kind: `parsed`; parsed: ParsedTrajectory }
+  // `lazy.dispose` closes the h5wasm handle and releases the backing FS entry
+  | { kind: `lazy`; lazy: LazyTrajectorySource }
 
-export const parse_hdf5_trajectory = async (
+const is_lazy_source = (
+  result: ParsedTrajectory | LazyTrajectorySource,
+): result is LazyTrajectorySource => `read_frame` in result
+
+// Opens an HDF5 trajectory. vaspout.h5 and single-frame files come back fully parsed (the
+// handle is closed before returning); multi-frame TorchSim / Reference MD files stay open
+// and decode frames on demand until the returned source is disposed.
+export const open_hdf5_trajectory = async (
   source: ArrayBuffer | Blob,
+  collector: WarningCollector,
   filename?: string,
   hdf5_group_path?: string,
-): Promise<TrajectoryType> => {
+): Promise<Hdf5TrajectoryResult> => {
   const opened = await open_h5_source(source, filename)
-  let loader_owns_h5_file = false
+  let lazy: LazyTrajectorySource | undefined
   try {
     const result = is_vaspout_h5_file(opened.h5_file)
-      ? parse_vaspout_h5_file(opened.h5_file)
+      ? parse_vaspout_h5_file(opened.h5_file, collector.warn)
       : is_reference_md_h5_file(opened.h5_file)
         ? parse_reference_md_h5_file(opened.h5_file, hdf5_group_path)
         : parse_torch_sim_h5_file(opened.h5_file, hdf5_group_path)
-    const { frame_loader } = result
-    if (frame_loader?.requires_source === false) {
-      const dispose_loader = frame_loader.dispose
-      frame_loader.dispose = () => {
+    if (!is_lazy_source(result)) return { kind: `parsed`, parsed: result }
+    const dispose_source = result.dispose
+    lazy = {
+      ...result,
+      dispose: () => {
         try {
-          dispose_loader?.()
+          dispose_source?.()
         } finally {
           opened.close()
         }
-      }
-      loader_owns_h5_file = true
+      },
     }
-    return result
+    return { kind: `lazy`, lazy }
   } finally {
-    if (!loader_owns_h5_file) opened.close()
+    if (!lazy) opened.close()
   }
 }
 
@@ -102,7 +112,6 @@ const SIGNAL_ALIASES: Record<string, string> = {
   polarizabilities: `polarizability`,
   polarizability: `polarizability`,
 }
-const PACKED_PREVIEW_FRAME_COUNT = 10
 
 const torch_sim_context = (inherited_attribute: (names: string[]) => unknown) => {
   const dt_fs = to_scalar_number(inherited_attribute([`dt_fs`]))
@@ -337,7 +346,7 @@ const read_numeric_1d = (dataset: Dataset, path: string, count: number): number[
 const parse_torch_sim_datasets = (
   h5_file: h5wasm.File,
   config: TorchSimConfig,
-): TrajectoryType => {
+): ParsedTrajectory | LazyTrajectorySource => {
   const {
     structural_parent,
     position_path,
@@ -687,11 +696,9 @@ const parse_torch_sim_datasets = (
     }
     return frame
   }
-  const plot_metadata_for = (requested_stride = 1): TrajectoryMetadata[] => {
-    const stride = Math.max(
-      positive_integer_stride(requested_stride, `TorchSim HDF5 sample_rate`),
-      Math.ceil(valid_frame_count / 1000),
-    )
+  // Plot rows for at most ~1000 evenly spaced frames: the plot is sampled, never the run
+  const sampled_properties = (): TrajectoryMetadata[] => {
+    const stride = Math.max(1, Math.ceil(valid_frame_count / 1000))
     const frame_indices = sampled_indices(valid_frame_count, stride)
     const sampled_energy =
       energy_dataset && energy_path
@@ -715,19 +722,12 @@ const parse_torch_sim_datasets = (
       }
     })
   }
-  const frames = Array.from(
-    { length: Math.min(valid_frame_count, PACKED_PREVIEW_FRAME_COUNT) },
-    (_unused, frame_idx) => load_frame(frame_idx),
-  )
   const { timing, source_metadata } = torch_sim_context(inherited_attribute)
-  const result: TrajectoryType = {
-    frames,
+  const shared = {
+    format: `hdf5`,
     ...timing,
     ...(atom_masses ? { atom_masses } : {}),
     metadata: {
-      source_format: `hdf5_trajectory`,
-      frame_count: valid_frame_count,
-      num_atoms: n_atoms,
       periodic_boundary_conditions: pbc_for_frame(0),
       element_counts: count_elements(elements),
       discovered_datasets: {
@@ -753,11 +753,11 @@ const parse_torch_sim_datasets = (
       ]),
     )
     return {
-      ...result,
+      ...shared,
+      frames: [load_frame(0)],
       ...(Object.keys(signals).length > 0 ? { signals } : {}),
     }
   }
-  const plot_metadata = plot_metadata_for()
   const signal_descriptors: Record<string, TrajectorySignalDescriptor> = Object.fromEntries(
     Object.entries(signal_manifest).map(([key, signal]) => [
       key,
@@ -768,157 +768,130 @@ const parse_torch_sim_datasets = (
       },
     ]),
   )
-  let disposed = false
-  const frame_loader: FrameLoader = {
-    requires_source: false,
-    dispose: () => {
-      disposed = true
-    },
-    get_total_frames: async () => valid_frame_count,
-    build_frame_index: async (_data, sample_rate) =>
-      sampled_indices(
-        valid_frame_count,
-        positive_integer_stride(sample_rate, `TorchSim HDF5 sample_rate`),
-      ).map((frame_number) => ({
-        frame_number,
-        byte_offset: frame_number * position_values_per_frame * Float64Array.BYTES_PER_ELEMENT,
-        estimated_size: position_values_per_frame * Float64Array.BYTES_PER_ELEMENT,
-      })),
-    load_frame: async (_data, frame_number) => {
-      if (disposed) throw new Error(`TorchSim HDF5 loader was disposed`)
-      return load_frame(frame_number)
-    },
-    extract_plot_metadata: async (_data, options) => {
-      if (disposed) throw new Error(`TorchSim HDF5 loader was disposed`)
-      return plot_metadata_for(options?.sample_rate)
-    },
-    stream_positions: async (
-      _data: string | ArrayBuffer,
-      options: PositionStreamOptions = {},
-    ): Promise<TrajectoryPositionStream> => {
-      if (disposed) throw new Error(`TorchSim HDF5 loader was disposed`)
-      const frame_stride = positive_integer_stride(
-        options.frame_stride,
-        `TorchSim HDF5 frame_stride`,
+  const collect_positions = (
+    options: PositionStreamOptions = {},
+  ): TrajectoryPositionStream => {
+    const frame_stride = positive_integer_stride(
+      options.frame_stride,
+      `TorchSim HDF5 frame_stride`,
+    )
+    if (!streamed_pbc) {
+      throw new Error(
+        `TorchSim HDF5 analysis does not support PBC flags that vary between frames`,
       )
-      if (!streamed_pbc) {
+    }
+    const vector_keys = unique_strings(options.vector_keys)
+    const signal_keys = unique_strings(options.signal_keys)
+    const scalar_keys = unique_strings(options.scalar_keys)
+    const unknown_keys = [
+      ...vector_keys.filter((key) => !signal_manifest[key]),
+      ...signal_keys.filter((key) => !signal_manifest[key]),
+      ...scalar_keys.filter((key) => key !== `energy` || !energy_dataset),
+    ]
+    if (unknown_keys.length > 0) {
+      throw new Error(`TorchSim HDF5 has no channels named ${unknown_keys.join(`, `)}`)
+    }
+    for (const key of vector_keys) {
+      const signal = signal_manifest[key]
+      if (!is_per_atom_vector(signal)) {
         throw new Error(
-          `TorchSim HDF5 analysis does not support PBC flags that vary between frames`,
+          `TorchSim HDF5 vector ${key} has sample shape [${signal.sample_shape.join(`, `)}], expected [${n_atoms}, 3]`,
         )
       }
-      const vector_keys = unique_strings(options.vector_keys)
-      const signal_keys = unique_strings(options.signal_keys)
-      const scalar_keys = unique_strings(options.scalar_keys)
-      const unknown_keys = [
-        ...vector_keys.filter((key) => !signal_manifest[key]),
-        ...signal_keys.filter((key) => !signal_manifest[key]),
-        ...scalar_keys.filter((key) => key !== `energy` || !energy_dataset),
-      ]
-      if (unknown_keys.length > 0) {
-        throw new Error(`TorchSim HDF5 has no channels named ${unknown_keys.join(`, `)}`)
-      }
-      for (const key of vector_keys) {
+    }
+    const selected_frame_count = Math.ceil(valid_frame_count / frame_stride)
+    const signal_value_count = signal_keys.reduce(
+      (total, key) =>
+        total +
+        signal_manifest[key].steps.length * (product(signal_manifest[key].sample_shape) + 1),
+      0,
+    )
+    assert_hdf5_stream_budget(
+      `TorchSim HDF5`,
+      valid_frame_count,
+      selected_frame_count,
+      position_values_per_frame * (1 + vector_keys.length) +
+        scalar_keys.length +
+        1 +
+        (static_lattice || dynamic_cells ? 9 : 0),
+      signal_value_count,
+      options.max_bytes ?? Number.POSITIVE_INFINITY,
+    )
+    const frame_indices = sampled_indices(valid_frame_count, frame_stride)
+    const positions = read_numeric_samples(
+      positions_dataset,
+      position_path,
+      valid_frame_count,
+      position_values_per_frame,
+      frame_stride,
+    )
+    const vectors = Object.fromEntries(
+      vector_keys.map((key) => {
         const signal = signal_manifest[key]
-        if (!is_per_atom_vector(signal)) {
-          throw new Error(
-            `TorchSim HDF5 vector ${key} has sample shape [${signal.sample_shape.join(`, `)}], expected [${n_atoms}, 3]`,
-          )
+        if (
+          signal.steps.length !== valid_frame_count ||
+          signal.steps.some((step, frame_idx) => step !== steps[frame_idx])
+        ) {
+          throw new Error(`TorchSim HDF5 vector ${key} does not share geometry steps`)
         }
-      }
-      const selected_frame_count = Math.ceil(valid_frame_count / frame_stride)
-      const signal_value_count = signal_keys.reduce(
-        (total, key) =>
-          total +
-          signal_manifest[key].steps.length * (product(signal_manifest[key].sample_shape) + 1),
-        0,
-      )
-      assert_hdf5_stream_budget(
-        `TorchSim HDF5`,
-        valid_frame_count,
-        selected_frame_count,
-        position_values_per_frame * (1 + vector_keys.length) +
-          scalar_keys.length +
-          1 +
-          (static_lattice || dynamic_cells ? 9 : 0),
-        signal_value_count,
-        options.max_bytes ?? Number.POSITIVE_INFINITY,
-      )
-      const frame_indices = sampled_indices(valid_frame_count, frame_stride)
-      const positions = read_numeric_samples(
-        positions_dataset,
-        position_path,
-        valid_frame_count,
-        position_values_per_frame,
-        frame_stride,
-      )
-      const vectors = Object.fromEntries(
-        vector_keys.map((key) => {
-          const signal = signal_manifest[key]
-          if (
-            signal.steps.length !== valid_frame_count ||
-            signal.steps.some((step, frame_idx) => step !== steps[frame_idx])
-          ) {
-            throw new Error(`TorchSim HDF5 vector ${key} does not share geometry steps`)
-          }
-          return [
-            key,
-            read_numeric_samples(
-              signal.dataset,
-              signal.path,
+        return [
+          key,
+          read_numeric_samples(
+            signal.dataset,
+            signal.path,
+            valid_frame_count,
+            position_values_per_frame,
+            frame_stride,
+          ),
+        ]
+      }),
+    )
+    const signals = Object.fromEntries(
+      signal_keys.map((key) => [key, read_torch_sim_signal(signal_manifest[key])]),
+    )
+    const scalars: Record<string, Float64Array> =
+      scalar_keys.length > 0 && energy_dataset && energy_path
+        ? {
+            energy: read_numeric_samples(
+              energy_dataset,
+              energy_path,
               valid_frame_count,
-              position_values_per_frame,
+              1,
               frame_stride,
             ),
-          ]
-        }),
-      )
-      const signals = Object.fromEntries(
-        signal_keys.map((key) => [key, read_torch_sim_signal(signal_manifest[key])]),
-      )
-      const scalars: Record<string, Float64Array> =
-        scalar_keys.length > 0 && energy_dataset && energy_path
-          ? {
-              energy: read_numeric_samples(
-                energy_dataset,
-                energy_path,
-                valid_frame_count,
-                1,
-                frame_stride,
-              ),
-            }
-          : {}
-      const sampled_cells =
-        cells_dataset && cell_path && dynamic_cells
-          ? read_numeric_samples(cells_dataset, cell_path, valid_frame_count, 9, frame_stride)
-          : null
-      return {
-        positions,
-        n_frames: frame_indices.length,
-        n_atoms,
-        elements: [...elements],
-        lattice_matrices: static_lattice
-          ? frame_indices.map(() => static_lattice)
-          : sampled_cells
-            ? frame_indices.map((_frame_idx, sample_idx) =>
-                lattice_from_values(sampled_cells, sample_idx * 9),
-              )
-            : null,
-        pbc: streamed_pbc,
-        coords_unwrapped: false,
-        frame_stride,
-        steps: frame_indices.map((frame_idx) => steps[frame_idx]),
-        ...(scalar_keys.length > 0 ? { scalars } : {}),
-        ...(vector_keys.length > 0 ? { vectors } : {}),
-        ...(signal_keys.length > 0 ? { signals } : {}),
-      }
-    },
+          }
+        : {}
+    const sampled_cells =
+      cells_dataset && cell_path && dynamic_cells
+        ? read_numeric_samples(cells_dataset, cell_path, valid_frame_count, 9, frame_stride)
+        : null
+    return {
+      positions,
+      n_frames: frame_indices.length,
+      n_atoms,
+      elements: [...elements],
+      lattice_matrices: static_lattice
+        ? frame_indices.map(() => static_lattice)
+        : sampled_cells
+          ? frame_indices.map((_frame_idx, sample_idx) =>
+              lattice_from_values(sampled_cells, sample_idx * 9),
+            )
+          : null,
+      pbc: streamed_pbc,
+      coords_unwrapped: false,
+      frame_stride,
+      steps: frame_indices.map((frame_idx) => steps[frame_idx]),
+      ...(scalar_keys.length > 0 ? { scalars } : {}),
+      ...(vector_keys.length > 0 ? { vectors } : {}),
+      ...(signal_keys.length > 0 ? { signals } : {}),
+    }
   }
   return {
-    ...result,
-    total_frames: valid_frame_count,
-    plot_metadata,
-    is_indexed: true,
-    frame_loader,
+    ...shared,
+    frame_count: valid_frame_count,
+    read_frame: load_frame,
+    properties: sampled_properties(),
+    collect_positions,
     ...(Object.keys(signal_descriptors).length > 0 ? { signal_descriptors } : {}),
   }
 }
@@ -926,7 +899,7 @@ const parse_torch_sim_datasets = (
 function parse_torch_sim_h5_file(
   h5_file: h5wasm.File,
   hdf5_group_path?: string,
-): TrajectoryType {
+): ParsedTrajectory | LazyTrajectorySource {
   const found_paths: Record<string, string[]> = {}
   let total_groups_found = 0
 
@@ -979,7 +952,7 @@ function parse_torch_sim_h5_file(
     common_parents.size > 1 &&
     !common_parents.has(`/data`)
   ) {
-    throw new Hdf5TrajectoryGroupSelectionError(group_paths)
+    throw new Hdf5GroupSelectionRequiredError(group_paths)
   }
   const structural_parent =
     selected_parent ?? (common_parents.has(`/data`) ? `/data` : [...common_parents][0])

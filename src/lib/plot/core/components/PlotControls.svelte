@@ -2,7 +2,7 @@
   // NOTE: Axis config objects (x_axis, x2_axis, y_axis, y2_axis) must be reassigned (not mutated)
   // to trigger $bindable reactivity propagation to parent components.
   // Pattern: `x_axis = { ...x_axis, prop: value }` instead of `x_axis.prop = value`
-  import { SettingsGroup, SettingsSection } from '$lib/layout'
+  import { SettingsSection } from '$lib/layout'
   import { ControlPane } from '$lib/overlays'
   import { DEFAULTS } from '$lib/settings'
   import { format } from 'd3-format'
@@ -22,6 +22,9 @@
     show_controls = $bindable(true),
     controls_open = $bindable(false),
     children,
+    display_children,
+    display_extra_values = {},
+    on_display_extra_reset,
     post_children,
     x_axis = $bindable({}),
     x2_axis = $bindable({}),
@@ -41,15 +44,6 @@
     pane_props = {},
   }: PlotControlsProps = $props()
 
-  // Range input state
-  let range_inputs: Record<AxisKey, [number | null, number | null]> = $state({
-    x: [null, null],
-    x2: [null, null],
-    y: [null, null],
-    y2: [null, null],
-  })
-  let range_els = $state<Record<string, HTMLInputElement>>({})
-
   // Check if an axis range spans zero (handles inverted ranges like [3.5, 1.4])
   const range_spans_zero = (lo: number, hi: number): boolean =>
     Math.min(lo, hi) <= 0 && Math.max(lo, hi) >= 0
@@ -62,11 +56,11 @@
     >
   const axis_values = <Value>(suffix: string, get_value: (axis: AxisKey) => Value) =>
     Object.fromEntries(all_axes.map((axis) => [`${axis}_${suffix}`, get_value(axis)]))
+  // secondary axes have no zero line / x2 grid defaults in the schema
   const zero_line_default = (axis: AxisKey): boolean =>
-    (axis === `x` && DEFAULTS.plot.show_x_zero_line) ||
-    (axis === `y` && DEFAULTS.plot.show_y_zero_line)
+    (axis === `x` || axis === `y`) && DEFAULTS.plot.display[`${axis}_zero_line`]
   const grid_default = (axis: AxisKey): boolean =>
-    axis !== `x2` && DEFAULTS.scatter.display[`${axis}_grid`]
+    axis !== `x2` && DEFAULTS.plot.display[`${axis}_grid`]
   const display_values = (): Record<string, boolean> =>
     Object.fromEntries(
       all_axes.flatMap((axis) => [
@@ -152,32 +146,33 @@
     update_axis(format_type, { format: input.value })
   }
 
-  // Handle range input changes
+  // Range inputs mirror the axis configs; a partial or inverted entry stays local (and
+  // flagged invalid) until it resolves or the config changes from outside.
+  type RangeInput = [number | null, number | null]
+  let range_inputs = $derived(
+    axis_record((axis): RangeInput => {
+      const { range } = axis_config(axis)
+      return [range?.[0] ?? null, range?.[1] ?? null]
+    }),
+  )
+  const range_invalid = ([min, max]: RangeInput): boolean =>
+    min !== null && max !== null && min >= max
   const update_range = (axis: AxisKey, bound: 0 | 1, value: string) => {
     const parsed = value === `` ? null : Number(value)
-    range_inputs[axis][bound] = Number.isFinite(parsed) ? parsed : null
-    const [min, max] = range_inputs[axis]
+    const next: RangeInput = [...range_inputs[axis]]
+    next[bound] = Number.isFinite(parsed) ? parsed : null
+    range_inputs = { ...range_inputs, [axis]: next }
+    if (range_invalid(next)) return
+    const [min, max] = next
     const auto = auto_ranges[axis]
-    const invalid = min !== null && max !== null && min >= max
-    range_els[`${axis}-min`]?.classList.toggle(`invalid`, invalid)
-    range_els[`${axis}-max`]?.classList.toggle(`invalid`, invalid)
-    if (invalid) return
+    // Without an auto range, only a complete min/max pair can be applied
+    if (!auto && (min === null || max === null)) return
     const next_range =
       min === null && max === null
         ? undefined
         : ([min ?? auto?.[0] ?? 0, max ?? auto?.[1] ?? 1] as Vec2)
-    // If auto range is undefined, only set if both min and max are provided
-    if (!auto && (min === null || max === null)) return
     update_axis(axis, { range: next_range })
   }
-
-  // Sync range inputs from props
-  $effect(() => {
-    for (const axis of all_axes) {
-      const { range } = axis_config(axis)
-      range_inputs[axis] = [range?.[0] ?? null, range?.[1] ?? null]
-    }
-  })
 
   let ctrl_state = $derived({
     show_controls,
@@ -222,18 +217,23 @@
     bind:controls_open
     {controls_name}
     toggle_title={controls_title}
+    pane_class="compact-settings"
     {toggle_props}
     {pane_props}
   >
     {@render children?.(ctrl_state)}
 
-    <!-- Base Display controls -->
     <SettingsSection
       title="Display"
-      current_values={display_values()}
-      on_reset={() => (display = { ...display, ...display_reset_values })}
-      layout="grid"
+      class="ctrl-line"
+      current_values={{ ...display_values(), ...display_extra_values }}
+      on_reset={() => {
+        display = { ...display, ...display_reset_values }
+        on_display_extra_reset?.()
+      }}
+      layout="flow"
     >
+      {@render display_children?.()}
       {@render axis_checks(
         `Zero line`,
         `zero_line`,
@@ -243,211 +243,198 @@
       {@render axis_checks(`Grid`, `grid`, grid_default)}
     </SettingsSection>
 
-    <SettingsGroup title="Axes" open>
-      <!-- Base Axis Range controls -->
-      <SettingsSection
-        title="Axis range"
-        current_values={axis_values(`range`, (axis) => axis_config(axis).range)}
-        on_reset={() => {
-          for (const axis of all_axes) update_axis(axis, { range: initial_ranges[axis] })
-          Object.values(range_els).forEach((element) => element?.classList.remove(`invalid`))
-        }}
-        layout="grid"
-      >
-        {#each visible_axes as [axis, label] (axis)}
-          <label>
-            <span>{label}</span>
-            <span class="range-pair">
+    <SettingsSection
+      title="Axis range"
+      class="ctrl-line axis-fields"
+      current_values={axis_values(`range`, (axis) => axis_config(axis).range)}
+      on_reset={() => {
+        for (const axis of all_axes) update_axis(axis, { range: initial_ranges[axis] })
+      }}
+      layout="flow"
+    >
+      {#each visible_axes as [axis, label] (axis)}
+        {@const invalid = range_invalid(range_inputs[axis])}
+        <label>
+          <span>{label}</span>
+          <span class="range-pair">
+            {#each [0, 1] as const as bound (bound)}
+              {#if bound === 1}<span>to</span>{/if}
               <input
                 type="number"
-                value={range_inputs[axis][0] ?? ``}
-                bind:this={range_els[`${axis}-min`]}
+                value={range_inputs[axis][bound] ?? ``}
                 placeholder="auto"
-                class="range-input"
-                oninput={(evt) => update_range(axis, 0, evt.currentTarget.value)}
-                onkeydown={(evt) => evt.key === `Enter` && evt.currentTarget?.blur()}
+                class={[`range-input`, { invalid }]}
+                oninput={(evt) => update_range(axis, bound, evt.currentTarget.value)}
+                onkeydown={(evt) => evt.key === `Enter` && evt.currentTarget.blur()}
               />
-              <span>to</span>
-              <input
-                type="number"
-                value={range_inputs[axis][1] ?? ``}
-                bind:this={range_els[`${axis}-max`]}
-                placeholder="auto"
-                class="range-input"
-                oninput={(evt) => update_range(axis, 1, evt.currentTarget.value)}
-                onkeydown={(evt) => evt.key === `Enter` && evt.currentTarget?.blur()}
-              />
-            </span>
-          </label>
-        {/each}
-      </SettingsSection>
+            {/each}
+          </span>
+        </label>
+      {/each}
+    </SettingsSection>
 
-      <!-- Optional Ticks controls -->
-      {#if show_ticks}
-        {@const [min_ticks, max_ticks] = [2, 20]}
-        <SettingsSection
-          title="Ticks"
-          current_values={{
-            x_ticks: x_axis.ticks ?? DEFAULTS.plot.x_ticks,
-            y_ticks: y_axis.ticks ?? DEFAULTS.plot.y_ticks,
-          }}
-          on_reset={() => {
-            for (const { axis } of tick_axes) {
-              update_axis(axis, { ticks: initial_ticks[axis] })
-            }
-          }}
-          layout="grid"
-        >
-          {#each tick_axes as { axis, label, fallback } (axis)}
-            {@const ticks = axis_config(axis).ticks}
-            <label>
-              <span>{label}</span>
-              <input
-                type="number"
-                min={min_ticks}
-                max={max_ticks}
-                step="1"
-                value={typeof ticks === `number` ? ticks : fallback}
-                oninput={(evt) => {
-                  const parsed = parseInt(evt.currentTarget.value, 10)
-                  if (isNaN(parsed)) return
-                  update_axis(axis, {
-                    ticks: Math.max(min_ticks, Math.min(max_ticks, parsed)),
-                  })
-                }}
-              />
-            </label>
-          {/each}
-        </SettingsSection>
-      {/if}
-
-      <!-- Scale Type controls -->
+    {#if show_ticks}
+      {@const [min_ticks, max_ticks] = [2, 20]}
       <SettingsSection
-        title="Scale type"
-        current_values={axis_values(`scale`, (axis) =>
-          get_scale_type_name(axis_config(axis).scale_type),
-        )}
-        on_reset={() => {
-          for (const axis of all_axes) update_axis(axis, { scale_type: `linear` })
+        title="Ticks"
+        class="ctrl-line axis-fields"
+        current_values={{
+          x_ticks: x_axis.ticks ?? DEFAULTS.plot.x_ticks,
+          y_ticks: y_axis.ticks ?? DEFAULTS.plot.y_ticks,
         }}
-        data-testid="scale-type-section"
-        layout="grid"
-      >
-        {#each visible_axes as [axis, label] (axis)}
-          <label>
-            <span>{label}</span>
-            <select
-              value={get_scale_type_name(axis_config(axis).scale_type)}
-              onchange={(evt) => {
-                const scale_type = evt.currentTarget.value
-                update_axis(axis, {
-                  scale_type: is_scale_type_name(scale_type) ? scale_type : `linear`,
-                })
-              }}
-            >
-              <option value="linear">Linear</option>
-              <option value="log">Log</option>
-              <option value="arcsinh">Arcsinh</option>
-            </select>
-          </label>
-        {/each}
-      </SettingsSection>
-
-      <!-- Y2 Sync controls (only when y2 axis has points) -->
-      {#if has_y2_points}
-        {@const current_sync = normalize_y2_sync(y2_axis.sync)}
-        {@const y2_sync_tip = `Controls Y2 axis range:
-• Independent: Y2 has its own range based on its data
-• Synced: Y2 has exact same range as Y1
-• Align: Y2 expands to show all data, with a shared anchor point (default 0)`}
-        <SettingsSection
-          title="Y2 sync"
-          current_values={{
-            y2_sync: current_sync.mode,
-            align_value: current_sync.align_value,
-          }}
-          on_reset={() => {
-            y2_axis = { ...y2_axis, sync: undefined }
-          }}
-          layout="grid"
-        >
-          <label {@attach tooltip({ content: y2_sync_tip })}>
-            <span>Mode</span>
-            <select
-              value={current_sync.mode}
-              aria-label="Y2 axis synchronization mode"
-              onchange={(evt) => {
-                const val = evt.currentTarget.value
-                const mode = is_y2_sync_mode(val) ? val : `none`
-                if (mode === `none`) {
-                  y2_axis = { ...y2_axis, sync: undefined }
-                } else if (mode === `align`) {
-                  y2_axis = {
-                    ...y2_axis,
-                    sync: { mode, align_value: current_sync.align_value ?? 0 },
-                  }
-                } else {
-                  y2_axis = { ...y2_axis, sync: mode }
-                }
-              }}
-            >
-              <option value="none">Independent</option>
-              <option value="synced">Synced</option>
-              <option value="align">Align</option>
-            </select>
-          </label>
-          {#if current_sync.mode === `align`}
-            <label>
-              <span>Align at</span>
-              <input
-                type="number"
-                value={current_sync.align_value ?? 0}
-                aria-label="Value to align on both axes"
-                style="width: 5em"
-                onchange={(evt) => {
-                  const val = parseFloat(evt.currentTarget.value)
-                  y2_axis = {
-                    ...y2_axis,
-                    sync: {
-                      mode: `align`,
-                      align_value: Number.isFinite(val) ? val : 0,
-                    },
-                  }
-                }}
-              />
-            </label>
-          {/if}
-        </SettingsSection>
-      {/if}
-
-      <!-- Base Tick Format controls -->
-      <SettingsSection
-        title="Tick format"
-        data-testid="tick-format-section"
-        class="tick-format-section"
-        current_values={axis_values(`format`, (axis) => axis_config(axis).format)}
         on_reset={() => {
-          for (const axis of all_axes) {
-            update_axis(axis, { format: axis_format[axis].fallback })
+          for (const { axis } of tick_axes) {
+            update_axis(axis, { ticks: initial_ticks[axis] })
           }
         }}
-        layout="grid"
+        layout="flow"
       >
-        {#each visible_axes as [axis, label] (axis)}
+        {#each tick_axes as { axis, label, fallback } (axis)}
+          {@const ticks = axis_config(axis).ticks}
           <label>
-            <span>{label}-axis</span>
+            <span>{label}</span>
             <input
-              type="text"
-              value={axis_config(axis).format ?? axis_format[axis].fallback}
-              placeholder={axis_format[axis].placeholder}
-              oninput={format_input_handler(axis)}
+              type="number"
+              min={min_ticks}
+              max={max_ticks}
+              step="1"
+              value={typeof ticks === `number` ? ticks : fallback}
+              oninput={(evt) => {
+                const parsed = parseInt(evt.currentTarget.value, 10)
+                if (isNaN(parsed)) return
+                update_axis(axis, {
+                  ticks: Math.max(min_ticks, Math.min(max_ticks, parsed)),
+                })
+              }}
             />
           </label>
         {/each}
       </SettingsSection>
-    </SettingsGroup>
+    {/if}
 
-    <!-- Custom controls after base controls -->
+    <SettingsSection
+      title="Scale type"
+      class="ctrl-line axis-fields"
+      current_values={axis_values(`scale`, (axis) =>
+        get_scale_type_name(axis_config(axis).scale_type),
+      )}
+      on_reset={() => {
+        for (const axis of all_axes) update_axis(axis, { scale_type: `linear` })
+      }}
+      data-testid="scale-type-section"
+      layout="flow"
+    >
+      {#each visible_axes as [axis, label] (axis)}
+        <label>
+          <span>{label}</span>
+          <select
+            value={get_scale_type_name(axis_config(axis).scale_type)}
+            onchange={(evt) => {
+              const scale_type = evt.currentTarget.value
+              update_axis(axis, {
+                scale_type: is_scale_type_name(scale_type) ? scale_type : `linear`,
+              })
+            }}
+          >
+            <option value="linear">Linear</option>
+            <option value="log">Log</option>
+            <option value="arcsinh">Arcsinh</option>
+          </select>
+        </label>
+      {/each}
+    </SettingsSection>
+
+    {#if has_y2_points}
+      {@const current_sync = normalize_y2_sync(y2_axis.sync)}
+      {@const y2_sync_tip = `Controls Y2 axis range:
+• Independent: Y2 has its own range based on its data
+• Synced: Y2 has exact same range as Y1
+• Align: Y2 expands to show all data, with a shared anchor point (default 0)`}
+      <SettingsSection
+        title="Y2 sync"
+        class="ctrl-line"
+        current_values={{
+          y2_sync: current_sync.mode,
+          align_value: current_sync.align_value,
+        }}
+        on_reset={() => {
+          y2_axis = { ...y2_axis, sync: undefined }
+        }}
+        layout="flow"
+      >
+        <label {@attach tooltip({ content: y2_sync_tip })}>
+          <span>Mode</span>
+          <select
+            value={current_sync.mode}
+            aria-label="Y2 axis synchronization mode"
+            onchange={(evt) => {
+              const val = evt.currentTarget.value
+              const mode = is_y2_sync_mode(val) ? val : `none`
+              if (mode === `none`) {
+                y2_axis = { ...y2_axis, sync: undefined }
+              } else if (mode === `align`) {
+                y2_axis = {
+                  ...y2_axis,
+                  sync: { mode, align_value: current_sync.align_value ?? 0 },
+                }
+              } else {
+                y2_axis = { ...y2_axis, sync: mode }
+              }
+            }}
+          >
+            <option value="none">Independent</option>
+            <option value="synced">Synced</option>
+            <option value="align">Align</option>
+          </select>
+        </label>
+        {#if current_sync.mode === `align`}
+          <label>
+            <span>Align at</span>
+            <input
+              type="number"
+              value={current_sync.align_value ?? 0}
+              aria-label="Value to align on both axes"
+              onchange={(evt) => {
+                const val = parseFloat(evt.currentTarget.value)
+                y2_axis = {
+                  ...y2_axis,
+                  sync: {
+                    mode: `align`,
+                    align_value: Number.isFinite(val) ? val : 0,
+                  },
+                }
+              }}
+            />
+          </label>
+        {/if}
+      </SettingsSection>
+    {/if}
+
+    <SettingsSection
+      title="Tick format"
+      data-testid="tick-format-section"
+      class="ctrl-line formats tick-format-section"
+      current_values={axis_values(`format`, (axis) => axis_config(axis).format)}
+      on_reset={() => {
+        for (const axis of all_axes) {
+          update_axis(axis, { format: axis_format[axis].fallback })
+        }
+      }}
+      layout="flow"
+    >
+      {#each visible_axes as [axis, label] (axis)}
+        <label>
+          <span>{label}-axis</span>
+          <input
+            type="text"
+            value={axis_config(axis).format ?? axis_format[axis].fallback}
+            placeholder={axis_format[axis].placeholder}
+            oninput={format_input_handler(axis)}
+          />
+        </label>
+      {/each}
+    </SettingsSection>
+
     {@render post_children?.(ctrl_state)}
   </ControlPane>
 {/if}
@@ -456,9 +443,14 @@
   :is(.control-options, .range-pair) {
     display: flex;
     align-items: center;
-    flex-wrap: wrap;
-    gap: 3pt 7pt;
+    gap: 3pt;
     min-width: 0;
+  }
+  .control-options {
+    flex-wrap: wrap;
+  }
+  .range-pair {
+    flex-wrap: nowrap;
   }
   .control-options label {
     display: flex;
@@ -466,8 +458,9 @@
     gap: 3pt;
   }
   .range-pair input {
-    width: 6.5em;
-    min-width: 0;
+    width: auto;
+    min-width: 3.2em;
+    flex: 1;
   }
   :global(.tick-format-section input) {
     width: 100%;

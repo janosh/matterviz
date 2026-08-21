@@ -1,8 +1,8 @@
 // Marching Cubes algorithm for isosurface extraction
 // Based on the classic algorithm by Lorensen & Cline (1987)
-import { grid_dimensions, scalar_grid_strides } from '$lib/isosurface/grid'
-import type { ScalarGridArray, ScalarGridLike } from '$lib/isosurface/grid'
-import { mat3x3_vec3_multiply, matrix_inverse_3x3, type Matrix3x3, type Vec3 } from '$lib/math'
+import { flatten_grid, grid_dimensions, scalar_grid_strides } from '$lib/isosurface/grid'
+import type { ScalarGridLike } from '$lib/isosurface/grid'
+import { matrix_inverse_3x3, type Matrix3x3, type Vec3 } from '$lib/math'
 
 export type {
   ScalarGrid3D,
@@ -11,14 +11,10 @@ export type {
   ScalarGridOrder,
 } from '$lib/isosurface/grid'
 
-const wrap_grid_idx = (val: number, dim: number) => ((val % dim) + dim) % dim
-const clamp_grid_idx = (val: number, max: number) => Math.max(0, Math.min(val, max))
-const EMPTY_GRID: never[] = []
-
 // Edge table: for each cube configuration (256 cases), which edges are intersected
 // Each bit indicates whether that edge has an intersection
 // oxfmt-ignore
-const EDGE_TABLE: number[] = [
+const EDGE_TABLE = new Uint16Array([
   0x0, 0x109, 0x203, 0x30a, 0x406, 0x50f, 0x605, 0x70c, 0x80c, 0x905, 0xa0f, 0xb06, 0xc0a,
   0xd03, 0xe09, 0xf00, 0x190, 0x99, 0x393, 0x29a, 0x596, 0x49f, 0x795, 0x69c, 0x99c,
   0x895, 0xb9f, 0xa96, 0xd9a, 0xc93, 0xf99, 0xe90, 0x230, 0x339, 0x33, 0x13a, 0x636,
@@ -41,7 +37,7 @@ const EDGE_TABLE: number[] = [
   0xb9f, 0x895, 0x99c, 0x69c, 0x795, 0x49f, 0x596, 0x29a, 0x393, 0x99, 0x190, 0xf00,
   0xe09, 0xd03, 0xc0a, 0xb06, 0xa0f, 0x905, 0x80c, 0x70c, 0x605, 0x50f, 0x406, 0x30a,
   0x203, 0x109, 0x0,
-]
+])
 // Triangle table: for each cube configuration, list of edge triplets forming triangles
 // -1 marks the end of the triangle list for that configuration
 const TRI_TABLE: number[][] = [
@@ -303,14 +299,12 @@ const TRI_TABLE: number[][] = [
   [],
 ]
 
-// Vertex positions for the 8 corners of a unit cube - flat arrays for speed
-// Format: [x0,y0,z0, x1,y1,z1, ...] - access as CUBE_VERTS_X[i], etc.
+// Offsets of the 8 cube corners along each axis (corner i is at CUBE_VERTS_X[i], ...)
 const CUBE_VERTS_X = new Int8Array([0, 1, 1, 0, 0, 1, 1, 0])
 const CUBE_VERTS_Y = new Int8Array([0, 0, 1, 1, 0, 0, 1, 1])
 const CUBE_VERTS_Z = new Int8Array([0, 0, 0, 0, 1, 1, 1, 1])
 
-// Edge definitions: pairs of vertex indices for each of 12 edges
-// Flattened for direct access: edge i has vertices EDGE_V1[i] and EDGE_V2[i]
+// Edge i joins corners EDGE_V1[i] and EDGE_V2[i]
 const EDGE_V1 = new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7, 0, 1, 2, 3])
 const EDGE_V2 = new Uint8Array([1, 2, 3, 0, 5, 6, 7, 4, 4, 5, 6, 7])
 
@@ -324,12 +318,6 @@ export interface MarchingCubesBuffers {
   positions: Float32Array
   indices: Uint32Array
   normals: Float32Array
-}
-
-interface MarchingCubesRaw {
-  positions: number[]
-  indices: number[]
-  normals: number[]
 }
 
 export interface MarchingCubesOptions {
@@ -347,63 +335,27 @@ export interface MarchingCubesOptions {
   position_offset?: Vec3
 }
 
-// Compute gradient (normal) at a grid point using central differences
-function compute_gradient(
-  grid: ScalarGridLike,
-  scalar_values: ScalarGridArray | undefined,
-  stride_x: number,
-  stride_y: number,
-  stride_z: number,
-  ix: number,
-  iy: number,
-  iz: number,
-  nx: number,
-  ny: number,
-  nz: number,
-  periodic: boolean,
-): Vec3 {
-  // Wrap for periodic, clamp for non-periodic boundaries
-  const [ix_w, iy_w, iz_w] = periodic
-    ? [wrap_grid_idx(ix, nx), wrap_grid_idx(iy, ny), wrap_grid_idx(iz, nz)]
-    : [clamp_grid_idx(ix, nx - 1), clamp_grid_idx(iy, ny - 1), clamp_grid_idx(iz, nz - 1)]
-  const [ix_m, ix_p] = periodic
-    ? [wrap_grid_idx(ix - 1, nx), wrap_grid_idx(ix + 1, nx)]
-    : [Math.max(0, ix - 1), Math.min(nx - 1, ix + 1)]
-  const [iy_m, iy_p] = periodic
-    ? [wrap_grid_idx(iy - 1, ny), wrap_grid_idx(iy + 1, ny)]
-    : [Math.max(0, iy - 1), Math.min(ny - 1, iy + 1)]
-  const [iz_m, iz_p] = periodic
-    ? [wrap_grid_idx(iz - 1, nz), wrap_grid_idx(iz + 1, nz)]
-    : [Math.max(0, iz - 1), Math.min(nz - 1, iz + 1)]
+type GrowableArray = Float32Array | Float64Array | Uint32Array
 
-  const scale = (lo: number, hi: number) => 1 / Math.max(1, periodic ? 2 : hi - lo)
-  if (scalar_values === undefined) {
-    const nested_grid = grid as number[][][]
-    const x_lo = nested_grid[ix_m][iy_w][iz_w]
-    const x_hi = nested_grid[ix_p][iy_w][iz_w]
-    const y_lo = nested_grid[ix_w][iy_m][iz_w]
-    const y_hi = nested_grid[ix_w][iy_p][iz_w]
-    const z_row = nested_grid[ix_w][iy_w]
-    const gz = -(z_row[iz_p] - z_row[iz_m]) * scale(iz_m, iz_p)
-    return [-(x_hi - x_lo) * scale(ix_m, ix_p), -(y_hi - y_lo) * scale(iy_m, iy_p), gz]
-  }
-  const x_lo = scalar_values[ix_m * stride_x + iy_w * stride_y + iz_w * stride_z]
-  const x_hi = scalar_values[ix_p * stride_x + iy_w * stride_y + iz_w * stride_z]
-  const y_lo = scalar_values[ix_w * stride_x + iy_m * stride_y + iz_w * stride_z]
-  const y_hi = scalar_values[ix_w * stride_x + iy_p * stride_y + iz_w * stride_z]
-  const z_lo = scalar_values[ix_w * stride_x + iy_w * stride_y + iz_m * stride_z]
-  const z_hi = scalar_values[ix_w * stride_x + iy_w * stride_y + iz_p * stride_z]
-  const gz = -(z_hi - z_lo) * scale(iz_m, iz_p)
-  return [-(x_hi - x_lo) * scale(ix_m, ix_p), -(y_hi - y_lo) * scale(iy_m, iy_p), gz]
+// Double the capacity of a typed array until `needed` entries fit
+const grow = <Arr extends GrowableArray>(array: Arr, needed: number): Arr => {
+  if (needed <= array.length) return array
+  let capacity = Math.max(2 * array.length, 1024)
+  while (capacity < needed) capacity *= 2
+  const bigger = new (array.constructor as new (length: number) => Arr)(capacity)
+  bigger.set(array)
+  return bigger
 }
 
-// Main marching cubes algorithm (optimized version)
-function marching_cubes_raw(
+// Core extraction into growable typed arrays. Hot per-vertex work (edge interpolation,
+// gradient, lattice transform) is all scalar so nothing is allocated per cube or vertex.
+function marching_cubes_core<Arr extends Float32Array | Float64Array>(
   grid: ScalarGridLike,
   iso_value: number,
   k_lattice: Matrix3x3,
-  options: MarchingCubesOptions = {},
-): MarchingCubesRaw {
+  options: MarchingCubesOptions,
+  make_array: new (length: number) => Arr,
+): { positions: Arr; indices: Uint32Array; normals: Arr } {
   const {
     periodic = true,
     interpolate = true,
@@ -414,25 +366,47 @@ function marching_cubes_raw(
   // When centered=true, shift fractional coordinates by -0.5 so the grid is
   // centered at the origin (Γ point). This is needed for proper BZ visualization.
   const center_offset = centered ? 0.5 : 0
+  const [offset_x, offset_y, offset_z] = position_offset ?? [0, 0, 0]
 
   const [nx, ny, nz] = grid_dimensions(grid)
-  if (nx < 2 || ny < 2 || nz < 2) return { positions: [], indices: [], normals: [] }
+  if (nx < 2 || ny < 2 || nz < 2) {
+    return {
+      positions: new make_array(0),
+      indices: new Uint32Array(0),
+      normals: new make_array(0),
+    }
+  }
 
-  const scalar_grid = Array.isArray(grid) ? null : grid
-  const nested_grid = Array.isArray(grid) ? grid : null
-  const scalar_values = scalar_grid?.values
-  const [stride_x, stride_y, stride_z] = scalar_grid
-    ? scalar_grid_strides(scalar_grid)
-    : [0, 0, 0]
+  const scalar_grid = Array.isArray(grid) ? flatten_grid(grid) : grid
+  const values = scalar_grid.values
+  const [stride_x, stride_y, stride_z] = scalar_grid_strides(scalar_grid)
 
-  const positions: number[] = []
-  const indices: number[] = []
-  const normals: number[] = []
-
-  // Iterate over all cubes in the grid
+  // Non-periodic grids: n points span [0,1] with spacing 1/(n-1) — endpoints at 0 and 1.
+  // Periodic grids: n points span [0,1) with spacing 1/n — point n wraps back to 0.
   const max_x = periodic ? nx : nx - 1
   const max_y = periodic ? ny : ny - 1
   const max_z = periodic ? nz : nz - 1
+  const inv_nx = 1 / max_x
+  const inv_ny = 1 / max_y
+  const inv_nz = 1 / max_z
+
+  const [[kx0, kx1, kx2], [ky0, ky1, ky2], [kz0, kz1, kz2]] = k_lattice
+  // Gradients are covectors: cart_grad = K⁻¹ · frac_grad. A singular lattice cannot map
+  // them, so fall back to the index-space gradient.
+  let normal_transform: Matrix3x3 | null = null
+  if (compute_norms) {
+    try {
+      normal_transform = matrix_inverse_3x3(k_lattice)
+    } catch {
+      // keep null
+    }
+  }
+
+  let positions = new make_array(0)
+  let normals = new make_array(0)
+  let indices = new Uint32Array(0)
+  let n_vertices = 0
+  let n_indices = 0
 
   // Rolling typed edge caches retain only the current x slab. Coordinates stay
   // UNWRAPPED (reach n in periodic mode), so opposite cell faces remain distinct
@@ -445,36 +419,57 @@ function marching_cubes_raw(
   let z_edge_current = new Int32Array(edge_plane_size).fill(-1)
   let z_edge_next = new Int32Array(edge_plane_size).fill(-1)
 
-  // Precompute k_lattice values for faster coordinate transform
-  const [kx0, kx1, kx2] = k_lattice[0]
-  const [ky0, ky1, ky2] = k_lattice[1]
-  const [kz0, kz1, kz2] = k_lattice[2]
-
-  // Precompute inverse grid sizes for fractional coordinate conversion.
-  // Non-periodic grids: n points span [0,1] with spacing 1/(n-1) — endpoints at 0 and 1.
-  // Periodic grids: n points span [0,1) with spacing 1/n — point n wraps back to 0.
-  const inv_nx = 1 / (periodic ? nx : nx - 1)
-  const inv_ny = 1 / (periodic ? ny : ny - 1)
-  const inv_nz = 1 / (periodic ? nz : nz - 1)
-  // Singular lattices cannot map covectors; fall back to index-space unit gradients.
-  let normal_transform: Matrix3x3 | null = null
-  if (compute_norms) {
-    try {
-      normal_transform = matrix_inverse_3x3(k_lattice)
-    } catch {
-      // keep null
+  // Central-difference gradient component along one axis at a grid point: wraps for
+  // periodic grids, falls back to a one-sided difference at open boundaries. The sign is
+  // flipped so normals point toward decreasing values (outward for a density blob,
+  // inward for E < E_F pockets).
+  const axis_gradient = (
+    base_offset: number,
+    idx: number,
+    dim: number,
+    stride: number,
+  ): number => {
+    let lo_idx = idx - 1
+    let hi_idx = idx + 1
+    if (periodic) {
+      lo_idx = (lo_idx + dim) % dim
+      hi_idx %= dim
+    } else {
+      lo_idx = Math.max(lo_idx, 0)
+      hi_idx = Math.min(hi_idx, dim - 1)
     }
+    const span = periodic ? 2 : hi_idx - lo_idx
+    const lo_val = values[base_offset + lo_idx * stride]
+    const hi_val = values[base_offset + hi_idx * stride]
+    return -(hi_val - lo_val) / span
+  }
+  // Scratch for the gradient at grid point (ix, iy, iz), in index space scaled to
+  // fractional units. Periodic cubes reach index n on their far face (= grid point 0);
+  // non-periodic cubes never exceed n - 1, so the modulo is a no-op there.
+  let grad_x = 0
+  let grad_y = 0
+  let grad_z = 0
+  const gradient_at = (ix: number, iy: number, iz: number): void => {
+    const wx = ix % nx
+    const wy = iy % ny
+    const wz = iz % nz
+    const x_off = wx * stride_x
+    const y_off = wy * stride_y
+    const z_off = wz * stride_z
+    grad_x = axis_gradient(y_off + z_off, wx, nx, stride_x) * max_x
+    grad_y = axis_gradient(x_off + z_off, wy, ny, stride_y) * max_y
+    grad_z = axis_gradient(x_off + y_off, wz, nz, stride_z) * max_z
   }
 
-  // Get or create vertex on an edge (fully optimized with flat array lookups)
+  const cube_values = new Float64Array(8)
+
+  // Get or create the vertex on edge `edge_idx` of the cube at (ix, iy, iz)
   const get_vertex_on_edge = (
     ix: number,
     iy: number,
     iz: number,
     edge_idx: number,
-    cube_values: number[],
   ): number => {
-    // Use flat arrays instead of destructuring
     const v1_idx = EDGE_V1[edge_idx]
     const v2_idx = EDGE_V2[edge_idx]
     const ox1 = CUBE_VERTS_X[v1_idx]
@@ -501,115 +496,89 @@ function marching_cubes_raw(
     const cached = cache[cache_idx]
     if (cached >= 0) return cached
 
-    // Compute vertex position
-    const v1 = cube_values[v1_idx]
-    const v2 = cube_values[v2_idx]
-
-    const value_delta = v2 - v1
-    const interpolation_fraction = interpolate
+    const val_1 = cube_values[v1_idx]
+    const val_2 = cube_values[v2_idx]
+    const value_delta = val_2 - val_1
+    const frac = interpolate
       ? Math.abs(value_delta) < 1e-10
         ? 0
-        : (iso_value - v1) / value_delta
+        : (iso_value - val_1) / value_delta
       : 0.5
-    const fx = (ix + ox1 + interpolation_fraction * (ox2 - ox1)) * inv_nx - center_offset
-    const fy = (iy + oy1 + interpolation_fraction * (oy2 - oy1)) * inv_ny - center_offset
-    const fz = (iz + oz1 + interpolation_fraction * (oz2 - oz1)) * inv_nz - center_offset
+    const fx = (ix + ox1 + frac * (ox2 - ox1)) * inv_nx - center_offset
+    const fy = (iy + oy1 + frac * (oy2 - oy1)) * inv_ny - center_offset
+    const fz = (iz + oz1 + frac * (oz2 - oz1)) * inv_nz - center_offset
 
-    // Transform to Cartesian (inlined)
-    const vert_idx = positions.length / 3
-    const cart_x = fx * kx0 + fy * ky0 + fz * kz0
-    const cart_y = fx * kx1 + fy * ky1 + fz * kz1
-    const cart_z = fx * kx2 + fy * ky2 + fz * kz2
-    if (position_offset) {
-      positions.push(
-        cart_x + position_offset[0],
-        cart_y + position_offset[1],
-        cart_z + position_offset[2],
-      )
-    } else positions.push(cart_x, cart_y, cart_z)
+    const vert_idx = n_vertices++
+    positions = grow(positions, 3 * n_vertices)
+    positions[3 * vert_idx] = fx * kx0 + fy * ky0 + fz * kz0 + offset_x
+    positions[3 * vert_idx + 1] = fx * kx1 + fy * ky1 + fz * kz1 + offset_y
+    positions[3 * vert_idx + 2] = fx * kx2 + fy * ky2 + fz * kz2 + offset_z
 
     if (compute_norms) {
-      const [gx, gy, gz] = compute_gradient(
-        grid,
-        scalar_values,
-        stride_x,
-        stride_y,
-        stride_z,
-        ix + ox1,
-        iy + oy1,
-        iz + oz1,
-        nx,
-        ny,
-        nz,
-        periodic,
-      )
-      // Scale by grid spacing without a lattice inverse (singular / anisotropic grids)
-      const index_grad: Vec3 = [gx / inv_nx, gy / inv_ny, gz / inv_nz]
-      const [cx, cy, cz] = normal_transform
-        ? mat3x3_vec3_multiply(normal_transform, index_grad)
-        : index_grad
-      const length = Math.hypot(cx, cy, cz)
-      if (length > 1e-10) normals.push(cx / length, cy / length, cz / length)
-      else normals.push(0, 0, 1)
+      // Gradient interpolated along the edge with the same fraction as the position, so
+      // shading is smooth rather than constant per lower endpoint
+      gradient_at(ix + ox1, iy + oy1, iz + oz1)
+      let gx = grad_x
+      let gy = grad_y
+      let gz = grad_z
+      if (frac > 0) {
+        gradient_at(ix + ox2, iy + oy2, iz + oz2)
+        gx += frac * (grad_x - gx)
+        gy += frac * (grad_y - gy)
+        gz += frac * (grad_z - gz)
+      }
+      if (normal_transform) {
+        const [[t00, t01, t02], [t10, t11, t12], [t20, t21, t22]] = normal_transform
+        const cart_x = t00 * gx + t01 * gy + t02 * gz
+        const cart_y = t10 * gx + t11 * gy + t12 * gz
+        gz = t20 * gx + t21 * gy + t22 * gz
+        gx = cart_x
+        gy = cart_y
+      }
+      const length = Math.hypot(gx, gy, gz)
+      normals = grow(normals, 3 * n_vertices)
+      if (length > 1e-10) {
+        normals[3 * vert_idx] = gx / length
+        normals[3 * vert_idx + 1] = gy / length
+        normals[3 * vert_idx + 2] = gz / length
+      } else {
+        normals[3 * vert_idx] = 0
+        normals[3 * vert_idx + 1] = 0
+        normals[3 * vert_idx + 2] = 1
+      }
     }
 
     cache[cache_idx] = vert_idx
     return vert_idx
   }
 
-  // Preallocate cube_values array (reuse across iterations)
-  const cube_values: number[] = Array(8)
-
   for (let ix = 0; ix < max_x; ix++) {
     x_edge_cache.fill(-1)
     y_edge_next.fill(-1)
     z_edge_next.fill(-1)
-    const ix1 = (ix + 1) % nx
-    const ix_row = nested_grid?.[ix] ?? EMPTY_GRID
-    const ix1_row = nested_grid?.[ix1] ?? EMPTY_GRID
     const x_offset = ix * stride_x
-    const x1_offset = ix1 * stride_x
+    const x1_offset = ((ix + 1) % nx) * stride_x
 
     for (let iy = 0; iy < max_y; iy++) {
-      const iy1 = (iy + 1) % ny
-      const iy_col = ix_row[iy] ?? EMPTY_GRID
-      const iy1_col = ix_row[iy1] ?? EMPTY_GRID
-      const ix1_iy_col = ix1_row[iy] ?? EMPTY_GRID
-      const ix1_iy1_col = ix1_row[iy1] ?? EMPTY_GRID
       const y_offset = iy * stride_y
-      const y1_offset = iy1 * stride_y
+      const y1_offset = ((iy + 1) % ny) * stride_y
       const offset_00 = x_offset + y_offset
       const offset_10 = x1_offset + y_offset
       const offset_11 = x1_offset + y1_offset
       const offset_01 = x_offset + y1_offset
 
       for (let iz = 0; iz < max_z; iz++) {
-        const iz1 = (iz + 1) % nz
+        const z_offset = iz * stride_z
+        const z1_offset = ((iz + 1) % nz) * stride_z
+        cube_values[0] = values[offset_00 + z_offset]
+        cube_values[1] = values[offset_10 + z_offset]
+        cube_values[2] = values[offset_11 + z_offset]
+        cube_values[3] = values[offset_01 + z_offset]
+        cube_values[4] = values[offset_00 + z1_offset]
+        cube_values[5] = values[offset_10 + z1_offset]
+        cube_values[6] = values[offset_11 + z1_offset]
+        cube_values[7] = values[offset_01 + z1_offset]
 
-        if (scalar_values) {
-          const z_offset = iz * stride_z
-          const z1_offset = iz1 * stride_z
-          cube_values[0] = scalar_values[offset_00 + z_offset]
-          cube_values[1] = scalar_values[offset_10 + z_offset]
-          cube_values[2] = scalar_values[offset_11 + z_offset]
-          cube_values[3] = scalar_values[offset_01 + z_offset]
-          cube_values[4] = scalar_values[offset_00 + z1_offset]
-          cube_values[5] = scalar_values[offset_10 + z1_offset]
-          cube_values[6] = scalar_values[offset_11 + z1_offset]
-          cube_values[7] = scalar_values[offset_01 + z1_offset]
-        } else {
-          // Preserve direct nested-array reads for the existing hot path.
-          cube_values[0] = iy_col[iz]
-          cube_values[1] = ix1_iy_col[iz]
-          cube_values[2] = ix1_iy1_col[iz]
-          cube_values[3] = iy1_col[iz]
-          cube_values[4] = iy_col[iz1]
-          cube_values[5] = ix1_iy_col[iz1]
-          cube_values[6] = ix1_iy1_col[iz1]
-          cube_values[7] = iy1_col[iz1]
-        }
-
-        // Compute cube index (unrolled for speed)
         let cube_index = 0
         if (cube_values[0] < iso_value) cube_index |= 1
         if (cube_values[1] < iso_value) cube_index |= 2
@@ -620,23 +589,20 @@ function marching_cubes_raw(
         if (cube_values[6] < iso_value) cube_index |= 64
         if (cube_values[7] < iso_value) cube_index |= 128
 
-        // Skip if cube is entirely inside or outside
+        // Cube entirely inside or outside
         if (EDGE_TABLE[cube_index] === 0) continue
 
-        // Get triangles for this cube configuration
         const tri_list = TRI_TABLE[cube_index]
-        const tri_len = tri_list.length
-
-        // Create triangles
-        for (let tri_idx = 0; tri_idx < tri_len; tri_idx += 3) {
-          const v0 = get_vertex_on_edge(ix, iy, iz, tri_list[tri_idx], cube_values)
-          const v1 = get_vertex_on_edge(ix, iy, iz, tri_list[tri_idx + 1], cube_values)
-          const v2 = get_vertex_on_edge(ix, iy, iz, tri_list[tri_idx + 2], cube_values)
-
-          // Skip degenerate triangles
-          if (v0 !== v1 && v1 !== v2 && v0 !== v2) {
-            indices.push(v0, v1, v2)
-          }
+        for (let tri_idx = 0; tri_idx < tri_list.length; tri_idx += 3) {
+          const v0 = get_vertex_on_edge(ix, iy, iz, tri_list[tri_idx])
+          const v1 = get_vertex_on_edge(ix, iy, iz, tri_list[tri_idx + 1])
+          const v2 = get_vertex_on_edge(ix, iy, iz, tri_list[tri_idx + 2])
+          // Skip degenerate triangles (two edges collapsed onto one cached vertex)
+          if (v0 === v1 || v1 === v2 || v0 === v2) continue
+          indices = grow(indices, n_indices + 3)
+          indices[n_indices++] = v0
+          indices[n_indices++] = v1
+          indices[n_indices++] = v2
         }
       }
     }
@@ -644,43 +610,43 @@ function marching_cubes_raw(
     ;[z_edge_current, z_edge_next] = [z_edge_next, z_edge_current]
   }
 
-  return { positions, indices, normals }
+  return {
+    positions: positions.slice(0, 3 * n_vertices) as Arr,
+    indices: indices.slice(0, n_indices),
+    normals: normals.slice(0, compute_norms ? 3 * n_vertices : 0) as Arr,
+  }
 }
 
-// Buffer-oriented result for renderers that otherwise immediately flatten the
-// compatibility arrays. This avoids one Vec3 and one triangle-array allocation
-// per emitted vertex/face while preserving the public marching_cubes() API.
-export function marching_cubes_buffers(
+// Renderer-facing form: Float32 positions/normals and Uint32 indices ready for
+// BufferGeometry, with no intermediate per-vertex objects.
+export const marching_cubes_buffers = (
   grid: ScalarGridLike,
   iso_value: number,
   k_lattice: Matrix3x3,
   options: MarchingCubesOptions = {},
-): MarchingCubesBuffers {
-  const raw = marching_cubes_raw(grid, iso_value, k_lattice, options)
-  return {
-    positions: Float32Array.from(raw.positions),
-    indices: Uint32Array.from(raw.indices),
-    normals: Float32Array.from(raw.normals),
-  }
-}
+): MarchingCubesBuffers =>
+  marching_cubes_core(grid, iso_value, k_lattice, options, Float32Array)
 
-const packed_to_vec3 = (values: number[]): Vec3[] =>
-  Array.from({ length: values.length / 3 }, (_, idx) => {
-    const offset = idx * 3
-    return [values[offset], values[offset + 1], values[offset + 2]]
-  })
+const unpack_vec3 = (values: ArrayLike<number>): Vec3[] =>
+  Array.from({ length: values.length / 3 }, (_, idx) => [
+    values[3 * idx],
+    values[3 * idx + 1],
+    values[3 * idx + 2],
+  ])
 
+// Object form for analysis code (Fermi-surface topology, velocities) that wants Vec3
+// vertices in full float64 precision.
 export function marching_cubes(
   grid: ScalarGridLike,
   iso_value: number,
   k_lattice: Matrix3x3,
   options: MarchingCubesOptions = {},
 ): MarchingCubesResult {
-  const raw = marching_cubes_raw(grid, iso_value, k_lattice, options)
+  const raw = marching_cubes_core(grid, iso_value, k_lattice, options, Float64Array)
   return {
-    vertices: packed_to_vec3(raw.positions),
-    faces: packed_to_vec3(raw.indices),
-    normals: packed_to_vec3(raw.normals),
+    vertices: unpack_vec3(raw.positions),
+    faces: unpack_vec3(raw.indices),
+    normals: unpack_vec3(raw.normals),
   }
 }
 
@@ -689,43 +655,32 @@ export function marching_cubes(
 export function compute_vertex_normals(vertices: Vec3[], faces: number[][]): Vec3[] {
   const normals: Vec3[] = vertices.map(() => [0, 0, 0])
   for (const face of faces) {
-    // Validate face has at least 3 indices and all are within bounds
     if (face.length < 3) continue
     if (face.some((idx) => idx < 0 || idx >= vertices.length)) continue
 
     // Fan triangulation: for N vertices, process N-2 triangles (0,1,2), (0,2,3), ...
-    const v0 = vertices[face[0]]
+    const [v0_x, v0_y, v0_z] = vertices[face[0]]
     for (let fan_idx = 1; fan_idx < face.length - 1; fan_idx++) {
       const idx1 = face[fan_idx]
       const idx2 = face[fan_idx + 1]
-      const v1 = vertices[idx1]
-      const v2 = vertices[idx2]
-
-      // Edge vectors
-      const e1: Vec3 = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]]
-      const e2: Vec3 = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]]
-
-      // Cross product (face normal * 2 * area)
-      const normal: Vec3 = [
-        e1[1] * e2[2] - e1[2] * e2[1],
-        e1[2] * e2[0] - e1[0] * e2[2],
-        e1[0] * e2[1] - e1[1] * e2[0],
-      ]
-
-      // Add to the 3 vertices of this triangle
-      normals[face[0]][0] += normal[0]
-      normals[face[0]][1] += normal[1]
-      normals[face[0]][2] += normal[2]
-      normals[idx1][0] += normal[0]
-      normals[idx1][1] += normal[1]
-      normals[idx1][2] += normal[2]
-      normals[idx2][0] += normal[0]
-      normals[idx2][1] += normal[1]
-      normals[idx2][2] += normal[2]
+      const e1_x = vertices[idx1][0] - v0_x
+      const e1_y = vertices[idx1][1] - v0_y
+      const e1_z = vertices[idx1][2] - v0_z
+      const e2_x = vertices[idx2][0] - v0_x
+      const e2_y = vertices[idx2][1] - v0_y
+      const e2_z = vertices[idx2][2] - v0_z
+      // Cross product (face normal * 2 * area) accumulated onto the triangle's vertices
+      const nx = e1_y * e2_z - e1_z * e2_y
+      const ny = e1_z * e2_x - e1_x * e2_z
+      const nz = e1_x * e2_y - e1_y * e2_x
+      for (const idx of [face[0], idx1, idx2]) {
+        normals[idx][0] += nx
+        normals[idx][1] += ny
+        normals[idx][2] += nz
+      }
     }
   }
 
-  // Normalize all normals
   for (const normal of normals) {
     const len = Math.hypot(normal[0], normal[1], normal[2])
     if (len > 0) {
@@ -734,6 +689,5 @@ export function compute_vertex_normals(vertices: Vec3[], faces: number[][]): Vec
       normal[2] /= len
     }
   }
-
   return normals
 }

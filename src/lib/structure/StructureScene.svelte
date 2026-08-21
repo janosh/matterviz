@@ -77,9 +77,12 @@
     BufferAttribute,
     BufferGeometry,
     Color,
+    CylinderGeometry,
     DoubleSide,
     Euler,
+    MeshBasicMaterial,
     OrthographicCamera,
+    SphereGeometry,
     Vector3,
   } from 'three/webgpu'
   import type { Mesh, Object3D } from 'three/webgpu'
@@ -174,9 +177,8 @@
     vector_shaft_radius = DEFAULTS.structure.vector_shaft_radius,
     vector_arrow_head_radius = DEFAULTS.structure.vector_arrow_head_radius,
     vector_arrow_head_length = DEFAULTS.structure.vector_arrow_head_length,
-    gizmo = DEFAULTS.structure.show_gizmo,
+    gizmo = DEFAULTS.structure.gizmo,
     hovered_idx = $bindable(null),
-    hovered_site = $bindable(null),
     float_fmt = `.3~f`,
     auto_rotate = DEFAULTS.structure.auto_rotate,
     bond_thickness = DEFAULTS.structure.bond_thickness,
@@ -293,7 +295,6 @@
     vector_arrow_head_radius?: number
     vector_arrow_head_length?: number
     hovered_idx?: number | null
-    hovered_site?: Site | null
     float_fmt?: string
     bond_thickness?: number
     bond_color?: string
@@ -391,7 +392,7 @@
     displacement_arrow_color?: string
     displacement_summary?: measure.DisplacementSummary | null // (output) readout vs reference
     // Per-atom trajectory trails. Inert unless a caller supplies a whole-trajectory position
-    // stream (accumulate_positions / FrameLoader.stream_positions) — a single structure has
+    // stream (TrajectoryRun.collect_positions) — a single structure has
     // no path to draw, so nothing changes for plain Structure users.
     trajectory_position_stream?: TrajectoryPositionStream | null
     show_trajectory_lines?: boolean
@@ -476,6 +477,7 @@
     clearTimeout(clear_atom_hover_timeout)
     clear_atom_hover_timeout = null
   }
+  $effect(() => cancel_atom_hover_clear)
 
   function set_atom_hover(site_idx: number): void {
     cancel_atom_hover_clear()
@@ -639,8 +641,27 @@
   const HIGHLIGHT_SHELL_SCALE = 1.08
   const editable_bond_matrix = new Float32Array(16)
 
-  function apply_bond_transform(mesh: Mesh, bond: BondPair): void {
-    write_bond_transform(editable_bond_matrix, 0, bond.pos_1, bond.pos_2)
+  // Shared by every invisible hit target and highlight shell: per-mesh <T.SphereGeometry>
+  // would allocate and upload one sphere per hovered/selected/partial-occupancy site
+  // (hundreds when the Wyckoff table highlights an orbit) and rebuild them all on every
+  // selection change. Hit targets are never drawn, so a coarse sphere raycasts identically.
+  const hit_sphere_geometry = new SphereGeometry(0.5, 12, 12)
+  const highlight_sphere_geometry = new SphereGeometry(0.5, 22, 22)
+  const bond_hit_geometry = new CylinderGeometry(1, 1, 1, 6)
+  const invisible_material = new MeshBasicMaterial({
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+  })
+  $effect(() => () => {
+    hit_sphere_geometry.dispose()
+    highlight_sphere_geometry.dispose()
+    bond_hit_geometry.dispose()
+    invisible_material.dispose()
+  })
+
+  function apply_bond_transform(mesh: Mesh, bond: BondPair, radius: number): void {
+    write_bond_transform(editable_bond_matrix, 0, bond.pos_1, bond.pos_2, radius)
     mesh.matrix.fromArray(editable_bond_matrix)
     mesh.matrixWorldNeedsUpdate = true
   }
@@ -840,16 +861,14 @@
   // Instanced-atom raycasts do not always emit pointerdown, so edit-bonds also
   // falls back to click. When pointerdown did fire, skip the matching click once.
   let last_edit_bonds_pointerdown_site_idx: number | null = null
-  let clear_edit_bonds_pointerdown_site_timeout: ReturnType<typeof setTimeout> | null = null
+  let clear_edit_bonds_pointerdown_site_timeout: ReturnType<typeof setTimeout> | undefined
+  $effect(() => () => clearTimeout(clear_edit_bonds_pointerdown_site_timeout))
 
   function remember_edit_bonds_pointerdown_site(site_idx: number) {
     last_edit_bonds_pointerdown_site_idx = site_idx
-    if (clear_edit_bonds_pointerdown_site_timeout != null) {
-      clearTimeout(clear_edit_bonds_pointerdown_site_timeout)
-    }
+    clearTimeout(clear_edit_bonds_pointerdown_site_timeout)
     clear_edit_bonds_pointerdown_site_timeout = setTimeout(() => {
       last_edit_bonds_pointerdown_site_idx = null
-      clear_edit_bonds_pointerdown_site_timeout = null
     }, 250)
   }
 
@@ -860,12 +879,8 @@
 
   function skip_duplicate_edit_bonds_click(site_idx: number) {
     if (last_edit_bonds_pointerdown_site_idx !== site_idx) return false
-
     last_edit_bonds_pointerdown_site_idx = null
-    if (clear_edit_bonds_pointerdown_site_timeout != null) {
-      clearTimeout(clear_edit_bonds_pointerdown_site_timeout)
-      clear_edit_bonds_pointerdown_site_timeout = null
-    }
+    clearTimeout(clear_edit_bonds_pointerdown_site_timeout)
     return true
   }
 
@@ -1019,7 +1034,9 @@
     })
   })
 
-  $effect(() => {
+  // Pre-effect: drop out-of-range indices before the measurement overlays below index
+  // structure.sites with them, not after that render has already run against stale picks.
+  $effect.pre(() => {
     const count = structure?.sites?.length ?? 0
     if (count <= 0) {
       if (untrack(() => measured_sites.length) > 0) measured_sites = []
@@ -1039,9 +1056,7 @@
   })
 
   extras.interactivity()
-  $effect.pre(() => {
-    hovered_site = structure?.sites?.[hovered_idx ?? -1] ?? null
-  })
+  let hovered_site = $derived(structure?.sites?.[hovered_idx ?? -1] ?? null)
   let lattice = $derived(structure && `lattice` in structure ? structure.lattice : null)
 
   let visual_lattice = $derived(
@@ -1062,11 +1077,16 @@
   let structure_size = $derived.by(() => {
     if (lattice) return (lattice.a + lattice.b + lattice.c) / 2
     if (!structure?.sites?.length) return 10
-    const ranges = [0, 1, 2].map((axis_idx) => {
-      const coords = structure.sites.map((site) => site.xyz[axis_idx])
-      return Math.max(...coords) - Math.min(...coords)
-    })
-    return Math.max(1, ...ranges)
+    // One pass, no spread: Math.max(...coords) overflows the argument limit past ~1e5 sites
+    const min = [Infinity, Infinity, Infinity]
+    const max = [-Infinity, -Infinity, -Infinity]
+    for (const { xyz } of structure.sites) {
+      for (let axis = 0; axis < 3; axis++) {
+        if (xyz[axis] < min[axis]) min[axis] = xyz[axis]
+        if (xyz[axis] > max[axis]) max[axis] = xyz[axis]
+      }
+    }
+    return Math.max(1, max[0] - min[0], max[1] - min[1], max[2] - min[2])
   })
 
   // Content AABB fit for ortho zoom / look-at. Frozen while dragging atoms.
@@ -2093,13 +2113,12 @@
         {#each partial_hit_targets as hit (hit.site_idx)}
           {@const hit_edit_image = measure_mode === `edit-atoms` && hit.is_image_atom}
           <T.Mesh
+            geometry={hit_sphere_geometry}
+            material={invisible_material}
             position={hit.position}
             scale={hit.radius}
             {...atom_pointer_props(hit.site_idx, hit_edit_image)}
-          >
-            <T.SphereGeometry args={[0.5, sphere_segments, sphere_segments]} />
-            <T.MeshBasicMaterial transparent opacity={0} depthWrite={false} />
-          </T.Mesh>
+          />
         {/each}
 
         <!-- Site labels/indices: single overlay for all labels (one DOM container
@@ -2202,8 +2221,10 @@
           {@const bond_hit_radius = bond_thickness * (is_delete_mode ? 5 : 1.25)}
           {@const bond_hover_radius = bond_thickness * 1.1}
           <T.Mesh
+            geometry={bond_hit_geometry}
+            material={invisible_material}
             matrixAutoUpdate={false}
-            oncreate={(ref) => apply_bond_transform(ref, bond)}
+            oncreate={(ref) => apply_bond_transform(ref, bond, bond_hit_radius)}
             onpointerdown={(event: BondPointerEvent) => {
               if (event.nativeEvent?.button === 2) return
               event.stopPropagation()
@@ -2227,19 +2248,16 @@
             onpointerenter={() => (hovered_bond_key = bond_key)}
             onpointermove={() => (hovered_bond_key = bond_key)}
             onpointerleave={() => (hovered_bond_key = null)}
-          >
-            <T.CylinderGeometry args={[bond_hit_radius, bond_hit_radius, 1, 6]} />
-            <T.MeshBasicMaterial transparent opacity={0} depthWrite={false} />
-          </T.Mesh>
+          />
           {#if is_hovered}
             <T.Mesh
+              geometry={bond_hit_geometry}
               matrixAutoUpdate={false}
               oncreate={(ref) => {
-                apply_bond_transform(ref, bond)
+                apply_bond_transform(ref, bond, bond_hover_radius)
                 disable_raycast(ref)
               }}
             >
-              <T.CylinderGeometry args={[bond_hover_radius, bond_hover_radius, 1, 6]} />
               <T.MeshBasicMaterial
                 transparent
                 opacity={0.25}
@@ -2254,16 +2272,15 @@
       {#if interactive && editable_atom_hit_targets.length > 0}
         {#each editable_atom_hit_targets as atom_hit (atom_hit.site_idx)}
           <T.Mesh
+            geometry={hit_sphere_geometry}
+            material={invisible_material}
             position={atom_hit.position}
             scale={atom_hit.radius * EDITABLE_ATOM_HIT_RADIUS_SCALE}
             {...atom_hover_props(atom_hit.site_idx)}
             onpointerdown={(event: PointerEvent) => {
               select_edit_bonds_site(atom_hit.site_idx, event)
             }}
-          >
-            <T.SphereGeometry args={[0.5, 12, 12]} />
-            <T.MeshBasicMaterial transparent opacity={0} depthWrite={false} />
-          </T.Mesh>
+          />
         {/each}
       {/if}
 
@@ -2300,11 +2317,11 @@
       {#each highlight_targets as entry (`${entry.kind}-${entry.site_idx}`)}
         {@const is_pulsing = entry.kind !== `hover`}
         <T.Mesh
+          geometry={highlight_sphere_geometry}
           position={entry.site.xyz}
           scale={HIGHLIGHT_SHELL_SCALE * entry.radius}
           oncreate={disable_raycast}
         >
-          <T.SphereGeometry args={[0.5, 22, 22]} />
           <T.MeshStandardMaterial
             color={entry.color}
             transparent
@@ -2489,26 +2506,35 @@
             {#each measured_sites.slice(loop_idx + 1) as idx_j (idx_i + `-` + idx_j)}
               {@const site_i = structure.sites[idx_i]}
               {@const site_j = structure.sites[idx_j]}
-              {@const pos_i = site_i.xyz}
-              {@const pos_j = site_j.xyz}
-              <Cylinder from={pos_i} to={pos_j} thickness={0.12} color={measure_line_color} />
-              {@const mid_pos = midpoint(pos_i, pos_j)}
-              {@const direct = math.euclidean_dist(pos_i, pos_j)}
-              {@const pbc = lattice
-                ? math.pbc_dist(pos_i, pos_j, lattice.matrix, undefined, lattice.pbc)
-                : direct}
-              {@const differ = lattice ? Math.abs(pbc - direct) > 1e-6 : false}
-              <extras.HTML center position={mid_pos}>
-                <span class="measure-label">
-                  {#if differ}
-                    PBC: {format_num(pbc, float_fmt)} Å<br /><small>
-                      Direct: {format_num(direct, float_fmt)} Å</small
-                    >
-                  {:else}
-                    {format_num(pbc, float_fmt)} Å
-                  {/if}
-                </span>
-              </extras.HTML>
+              <!-- indices can outlive their sites (image atoms toggled off, supercell
+                shrunk); skip rather than throw mid-render like the angle/dihedral branches -->
+              {#if site_i && site_j}
+                {@const pos_i = site_i.xyz}
+                {@const pos_j = site_j.xyz}
+                <Cylinder
+                  from={pos_i}
+                  to={pos_j}
+                  thickness={0.12}
+                  color={measure_line_color}
+                />
+                {@const mid_pos = midpoint(pos_i, pos_j)}
+                {@const direct = math.euclidean_dist(pos_i, pos_j)}
+                {@const pbc = lattice
+                  ? math.pbc_dist(pos_i, pos_j, lattice.matrix, undefined, lattice.pbc)
+                  : direct}
+                {@const differ = lattice ? Math.abs(pbc - direct) > 1e-6 : false}
+                <extras.HTML center position={mid_pos}>
+                  <span class="measure-label">
+                    {#if differ}
+                      PBC: {format_num(pbc, float_fmt)} Å<br /><small>
+                        Direct: {format_num(direct, float_fmt)} Å</small
+                      >
+                    {:else}
+                      {format_num(pbc, float_fmt)} Å
+                    {/if}
+                  </span>
+                </extras.HTML>
+              {/if}
             {/each}
           {/each}
         {:else if measure_mode === `angle` && measured_sites.length === 3}
@@ -2676,8 +2702,8 @@
     height: 1.2em;
     padding: 0 0.25em;
     border-radius: 999px;
-    background: var(--pane-btn-bg-hover);
-    color: var(--struct-text-color);
+    background: var(--btn-bg-hover);
+    color: var(--text-color);
     font-size: 0.85em;
     line-height: 1;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);

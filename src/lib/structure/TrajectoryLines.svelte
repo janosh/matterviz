@@ -39,7 +39,7 @@ subtle opacity instead of exposing width and opacity controls. -->
     anchor_positions = null,
     build_result = $bindable(null),
   }: {
-    // Whole-trajectory positions from accumulate_positions / FrameLoader.stream_positions.
+    // Whole-trajectory positions from TrajectoryRun.collect_positions.
     // Collect it ONCE per file and cache it — this component never loads frames itself.
     position_stream?: TrajectoryPositionStream | null
     // Newest collected frame the trail reaches; defaults to the last frame in the stream.

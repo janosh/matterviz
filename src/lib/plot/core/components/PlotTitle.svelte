@@ -12,14 +12,11 @@
     width,
     x = 0,
     y = 0,
-    metrics_revision = 0,
   }: {
     config?: PlotTitleConfig | null
     width: number
     x?: number
     y?: number
-    // Pass get_text_metrics_revision() after cache invalidation to trigger remeasurement.
-    metrics_revision?: number
   } = $props()
 
   let font_metrics_revision = $state(0)
@@ -37,19 +34,10 @@
     }
   })
 
-  // Measurement populates text-metrics' cache, so it cannot run inside $derived. Resolve once
-  // during SSR/initialization, then refresh before DOM updates when geometry or metrics change.
-  const resolve_layout = () =>
-    resolve_plot_title(config, {
-      width,
-      x,
-      y,
-      metrics_revision: Math.max(metrics_revision, font_metrics_revision),
-    })
-  let layout = $state.raw(resolve_layout())
-  $effect.pre(() => {
-    layout = resolve_layout()
-  })
+  // Re-measured when geometry changes or a metrics revision (fonts ready) invalidates the cache
+  const layout = $derived(
+    resolve_plot_title(config, { width, x, y, metrics_revision: font_metrics_revision }),
+  )
 </script>
 
 {#snippet title_block(block: PlotTitleBlockLayout)}

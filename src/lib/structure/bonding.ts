@@ -4,7 +4,14 @@ import element_data, { element_by_symbol } from '../element/data'
 import type { ElementSymbol } from '$lib/element'
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
-import type { AnyStructure, BondOrder, BondPair, Site, StructureBond } from '$lib/structure'
+import type {
+  AnyStructure,
+  BondOrder,
+  BondPair,
+  Pbc,
+  Site,
+  StructureBond,
+} from '$lib/structure'
 
 type SpatialGrid = Map<number, number[]>
 
@@ -399,7 +406,7 @@ export const merge_bond_edits = (
   return [...merged.values()]
 }
 
-export function normalize_bond_order(order: unknown): BondOrder | null {
+function normalize_bond_order(order: unknown): BondOrder | null {
   if (order === `aromatic`) return order
   if (order === 1 || order === 1.5 || order === 2 || order === 3) return order
   return null
@@ -447,7 +454,6 @@ export function structure_bond_to_bond_pair(
     site_idx_1,
     site_idx_2,
     bond_length: math.euclidean_dist(pos_1, pos_2),
-    strength: 1,
     bond_order: order,
     cell_shift,
   }
@@ -596,14 +602,12 @@ const make_bond = (
   idx_1: number,
   idx_2: number,
   bond_length: number,
-  strength: number,
 ): BondPair => ({
   pos_1: sites[idx_1].xyz,
   pos_2: sites[idx_2].xyz,
   site_idx_1: idx_1,
   site_idx_2: idx_2,
   bond_length,
-  strength,
 })
 
 // Pack quantized cell coordinates into one integer key (exact for cell coords in
@@ -697,6 +701,342 @@ function collect_candidates(
   return scratch_neighbors
 }
 
+// === Geometric PBC neighbor query ===
+// Purely geometric fixed-radius / k-nearest neighbor lists with periodic images. Shared by
+// RDF, coordination, bond-angle and structure-identification analyses, which must not go
+// through the chemically filtered bond perception above (it drops second shells and
+// metal-metal contacts on purpose).
+//
+// Layout: neighbors of center `idx` occupy slots [offsets[idx], offsets[idx + 1]), sorted by
+// ascending distance. For slot `slot`: `neighbors[slot]` is the partner's site index,
+// `images[3*slot..]` the integer lattice shift applied to the partner (so the partner's
+// position is `sites[neighbors[slot]].xyz + images · lattice`), `deltas[3*slot..]` that
+// shifted position minus the center's and `distances[slot]` its norm. Both ends of a pair
+// are listed (from each center once), a site's own periodic images count as neighbors,
+// and only the unshifted self is excluded. Coincident sites (distance 0) are reported, not
+// dropped: they are in range, and hiding them would mask duplicate-site input.
+export type NeighborList = {
+  n_centers: number
+  cutoff: number // radius actually searched (for `k` queries: the final grown radius)
+  offsets: Int32Array
+  neighbors: Int32Array
+  images: Int32Array
+  deltas: Float64Array
+  distances: Float64Array
+}
+
+export type NeighborQueryOptions = ({ cutoff: number } | { k: number }) & {
+  // Defaults to the lattice's pbc (all true when unset); molecules are never periodic.
+  pbc?: Pbc
+}
+
+// Refuse to materialize an image cloud bigger than this (positions, 24 B each): a cutoff of
+// many cell lengths on a large cell is almost always a unit mix-up.
+const MAX_IMAGE_CLOUD = 4_000_000
+// pack_cell_key is exact only for cell coordinates in [-512, 511]
+const MAX_GRID_COORD = 511
+
+const grow_f64 = (buffer: Float64Array, needed: number): Float64Array => {
+  if (needed <= buffer.length) return buffer
+  const next = new Float64Array(Math.max(needed, buffer.length * 2))
+  next.set(buffer)
+  return next
+}
+const grow_i32 = (buffer: Int32Array, needed: number): Int32Array => {
+  if (needed <= buffer.length) return buffer
+  const next = new Int32Array(Math.max(needed, buffer.length * 2))
+  next.set(buffer)
+  return next
+}
+
+// Fixed-radius query. Base positions are wrapped into the cell on periodic axes (a
+// trajectory frame may sit far outside it) and only images that can reach within `cutoff`
+// of the cell are generated, so the cloud grows with the boundary shell, not 27x. Image
+// shifts are reported relative to the ORIGINAL (unwrapped) coordinates.
+function neighbor_query_cutoff(
+  structure: AnyStructure,
+  cutoff: number,
+  pbc_override: Pbc | undefined,
+): NeighborList {
+  const { sites } = structure
+  const n_sites = sites.length
+  if (!(cutoff > 0) || !Number.isFinite(cutoff)) {
+    throw new Error(`neighbor_query: cutoff must be a positive finite number, got ${cutoff}`)
+  }
+  const lattice = `lattice` in structure ? structure.lattice.matrix : null
+  const pbc: Pbc =
+    `lattice` in structure ? (pbc_override ?? structure.lattice.pbc) : [false, false, false]
+  const periodic = pbc.some(Boolean)
+
+  // Cloud = wrapped base sites (first n_sites slots, index-aligned) + periodic images.
+  // cloud_src maps a cloud slot to its site; cloud_shift holds the integer lattice shift
+  // from that site's ORIGINAL position (wrap + replica shift).
+  let cloud_pos: Float64Array = new Float64Array(n_sites * 3)
+  let cloud_src: Int32Array = new Int32Array(n_sites)
+  let cloud_shift: Int32Array = new Int32Array(n_sites * 3)
+  let n_cloud = 0
+  if (!periodic) {
+    for (let idx = 0; idx < n_sites; idx++) {
+      cloud_pos.set(sites[idx].xyz, idx * 3)
+      cloud_src[idx] = idx
+    }
+    n_cloud = n_sites
+  } else if (lattice) {
+    const heights = math.cell_heights(lattice)
+    if (pbc.some((flag, axis) => flag && !(heights[axis] > 0 && heights[axis] < Infinity))) {
+      throw new Error(
+        `neighbor_query: periodic lattice is degenerate (cell heights ${heights.join(`, `)} A)`,
+      )
+    }
+    const [[ax, ay, az], [bx, by, bz], [cx, cy, cz]] = lattice
+    const { cart_to_frac } = math.create_lattice_converters(lattice)
+    const pad: Vec3 = [0, 0, 0]
+    const max_shift: Vec3 = [0, 0, 0]
+    for (let axis = 0; axis < 3; axis++) {
+      if (!pbc[axis]) continue
+      pad[axis] = cutoff / heights[axis]
+      max_shift[axis] = Math.ceil(pad[axis])
+    }
+    const n_replicas = (2 * max_shift[0] + 1) * (2 * max_shift[1] + 1) * (2 * max_shift[2] + 1)
+    if (n_sites * n_replicas > MAX_IMAGE_CLOUD) {
+      throw new Error(
+        `neighbor_query: cutoff ${cutoff} A spans ${max_shift.join(`, `)} cells along a, b, c ` +
+          `(cell heights ${heights.map((val) => val.toFixed(2)).join(`, `)} A); refusing to ` +
+          `build ${n_replicas} replicas of ${n_sites} sites`,
+      )
+    }
+    // Wrapped fractional coords of every site plus the integer wrap shift applied
+    const frac = new Float64Array(n_sites * 3)
+    const wrap = new Int32Array(n_sites * 3)
+    for (let idx = 0; idx < n_sites; idx++) {
+      const site_frac = cart_to_frac(sites[idx].xyz)
+      for (let axis = 0; axis < 3; axis++) {
+        const shift = pbc[axis] ? -Math.floor(site_frac[axis]) : 0
+        wrap[idx * 3 + axis] = shift
+        frac[idx * 3 + axis] = site_frac[axis] + shift
+      }
+    }
+    const push_cloud = (idx: number, shift_a: number, shift_b: number, shift_c: number) => {
+      const fa = frac[idx * 3] + shift_a
+      const fb = frac[idx * 3 + 1] + shift_b
+      const fc = frac[idx * 3 + 2] + shift_c
+      cloud_pos = grow_f64(cloud_pos, (n_cloud + 1) * 3)
+      cloud_src = grow_i32(cloud_src, n_cloud + 1)
+      cloud_shift = grow_i32(cloud_shift, (n_cloud + 1) * 3)
+      cloud_pos[n_cloud * 3] = fa * ax + fb * bx + fc * cx
+      cloud_pos[n_cloud * 3 + 1] = fa * ay + fb * by + fc * cy
+      cloud_pos[n_cloud * 3 + 2] = fa * az + fb * bz + fc * cz
+      cloud_src[n_cloud] = idx
+      cloud_shift[n_cloud * 3] = wrap[idx * 3] + shift_a
+      cloud_shift[n_cloud * 3 + 1] = wrap[idx * 3 + 1] + shift_b
+      cloud_shift[n_cloud * 3 + 2] = wrap[idx * 3 + 2] + shift_c
+      n_cloud++
+    }
+    // Base slots first so cloud index === site index for the centers
+    for (let idx = 0; idx < n_sites; idx++) push_cloud(idx, 0, 0, 0)
+    for (let idx = 0; idx < n_sites; idx++) {
+      for (let shift_a = -max_shift[0]; shift_a <= max_shift[0]; shift_a++) {
+        const fa = frac[idx * 3] + shift_a
+        if (pbc[0] && (fa < -pad[0] || fa > 1 + pad[0])) continue
+        for (let shift_b = -max_shift[1]; shift_b <= max_shift[1]; shift_b++) {
+          const fb = frac[idx * 3 + 1] + shift_b
+          if (pbc[1] && (fb < -pad[1] || fb > 1 + pad[1])) continue
+          for (let shift_c = -max_shift[2]; shift_c <= max_shift[2]; shift_c++) {
+            if (shift_a === 0 && shift_b === 0 && shift_c === 0) continue
+            const fc = frac[idx * 3 + 2] + shift_c
+            if (pbc[2] && (fc < -pad[2] || fc > 1 + pad[2])) continue
+            push_cloud(idx, shift_a, shift_b, shift_c)
+          }
+        }
+      }
+    }
+  }
+
+  // Cubic bins one cutoff wide over the whole cloud: a neighbor can only sit in the 27 cells
+  // around the center's
+  const grid: SpatialGrid = new Map()
+  for (let idx = 0; idx < n_cloud; idx++) {
+    const cell_x = Math.floor(cloud_pos[idx * 3] / cutoff)
+    const cell_y = Math.floor(cloud_pos[idx * 3 + 1] / cutoff)
+    const cell_z = Math.floor(cloud_pos[idx * 3 + 2] / cutoff)
+    // Negated comparison so a NaN/Infinity coordinate fails too: Map keys treat NaN as equal,
+    // so a NaN position would otherwise bin every NaN image into one cell and the center
+    // would collect each of them 27 times with NaN distances
+    if (!(Math.max(Math.abs(cell_x), Math.abs(cell_y), Math.abs(cell_z)) < MAX_GRID_COORD)) {
+      throw new Error(
+        `neighbor_query: position (${cloud_pos[idx * 3]}, ${cloud_pos[idx * 3 + 1]}, ` +
+          `${cloud_pos[idx * 3 + 2]}) at cutoff ${cutoff} A is non-finite or exceeds the ` +
+          `±${MAX_GRID_COORD} cell window of the spatial grid`,
+      )
+    }
+    const key = pack_cell_key(cell_x, cell_y, cell_z)
+    const cell = grid.get(key)
+    if (cell) cell.push(idx)
+    else grid.set(key, [idx])
+  }
+
+  const cutoff_sq = cutoff * cutoff
+  const offsets = new Int32Array(n_sites + 1)
+  let neighbors: Int32Array = new Int32Array(Math.max(64, n_sites * 12))
+  let images: Int32Array = new Int32Array(neighbors.length * 3)
+  let deltas: Float64Array = new Float64Array(neighbors.length * 3)
+  let distances: Float64Array = new Float64Array(neighbors.length)
+  // Per-center scratch: candidate cloud slots + their squared distances, sorted through an
+  // index permutation so no per-neighbor objects are allocated
+  let cand_slot: Int32Array = new Int32Array(256)
+  let cand_dist_sq: Float64Array = new Float64Array(256)
+  let cand_delta: Float64Array = new Float64Array(256 * 3)
+  let perm: Int32Array = new Int32Array(256)
+  const by_dist = (slot_a: number, slot_b: number) =>
+    cand_dist_sq[slot_a] - cand_dist_sq[slot_b] || cand_slot[slot_a] - cand_slot[slot_b]
+  let total = 0
+  for (let center = 0; center < n_sites; center++) {
+    const center_x = cloud_pos[center * 3]
+    const center_y = cloud_pos[center * 3 + 1]
+    const center_z = cloud_pos[center * 3 + 2]
+    const base_key = pack_cell_key(
+      Math.floor(center_x / cutoff),
+      Math.floor(center_y / cutoff),
+      Math.floor(center_z / cutoff),
+    )
+    let n_cand = 0
+    for (const delta of SHELL_DELTAS.full) {
+      const cell = grid.get(base_key + delta)
+      if (!cell) continue
+      for (const slot of cell) {
+        if (slot === center) continue
+        const delta_x = cloud_pos[slot * 3] - center_x
+        const delta_y = cloud_pos[slot * 3 + 1] - center_y
+        const delta_z = cloud_pos[slot * 3 + 2] - center_z
+        const dist_sq = delta_x * delta_x + delta_y * delta_y + delta_z * delta_z
+        if (dist_sq > cutoff_sq) continue
+        if (n_cand === cand_slot.length) {
+          cand_slot = grow_i32(cand_slot, n_cand + 1)
+          cand_dist_sq = grow_f64(cand_dist_sq, n_cand + 1)
+          cand_delta = grow_f64(cand_delta, (n_cand + 1) * 3)
+          perm = grow_i32(perm, n_cand + 1)
+        }
+        cand_slot[n_cand] = slot
+        cand_dist_sq[n_cand] = dist_sq
+        cand_delta[n_cand * 3] = delta_x
+        cand_delta[n_cand * 3 + 1] = delta_y
+        cand_delta[n_cand * 3 + 2] = delta_z
+        n_cand++
+      }
+    }
+    for (let idx = 0; idx < n_cand; idx++) perm[idx] = idx
+    perm.subarray(0, n_cand).sort(by_dist)
+
+    neighbors = grow_i32(neighbors, total + n_cand)
+    images = grow_i32(images, (total + n_cand) * 3)
+    deltas = grow_f64(deltas, (total + n_cand) * 3)
+    distances = grow_f64(distances, total + n_cand)
+    const center_wrap_a = cloud_shift[center * 3]
+    const center_wrap_b = cloud_shift[center * 3 + 1]
+    const center_wrap_c = cloud_shift[center * 3 + 2]
+    for (let rank = 0; rank < n_cand; rank++) {
+      const cand = perm[rank]
+      const slot = cand_slot[cand]
+      neighbors[total] = cloud_src[slot]
+      // image = partner's total shift - center's wrap shift, so that
+      // sites[partner].xyz + image·L - sites[center].xyz === delta
+      images[total * 3] = cloud_shift[slot * 3] - center_wrap_a
+      images[total * 3 + 1] = cloud_shift[slot * 3 + 1] - center_wrap_b
+      images[total * 3 + 2] = cloud_shift[slot * 3 + 2] - center_wrap_c
+      deltas[total * 3] = cand_delta[cand * 3]
+      deltas[total * 3 + 1] = cand_delta[cand * 3 + 1]
+      deltas[total * 3 + 2] = cand_delta[cand * 3 + 2]
+      distances[total] = Math.sqrt(cand_dist_sq[cand])
+      total++
+    }
+    offsets[center + 1] = total
+  }
+  return {
+    n_centers: n_sites,
+    cutoff,
+    offsets,
+    neighbors: neighbors.subarray(0, total),
+    images: images.subarray(0, total * 3),
+    deltas: deltas.subarray(0, total * 3),
+    distances: distances.subarray(0, total),
+  }
+}
+
+// Mean volume per atom, seeding the k-nearest radius search
+const volume_per_atom = (structure: AnyStructure): number => {
+  if (`lattice` in structure) return structure.lattice.volume / structure.sites.length
+  const mins: Vec3 = [Infinity, Infinity, Infinity]
+  const maxs: Vec3 = [-Infinity, -Infinity, -Infinity]
+  for (const { xyz } of structure.sites) {
+    for (let axis = 0; axis < 3; axis++) {
+      if (xyz[axis] < mins[axis]) mins[axis] = xyz[axis]
+      if (xyz[axis] > maxs[axis]) maxs[axis] = xyz[axis]
+    }
+  }
+  // a planar or linear cluster has a zero-thickness box; 1 A keeps the seed finite
+  const extent = (axis: number) => Math.max(maxs[axis] - mins[axis], 1)
+  return (extent(0) * extent(1) * extent(2)) / structure.sites.length
+}
+
+// Geometric neighbor query with periodic images.
+//   neighbor_query(structure, { cutoff })  every neighbor within `cutoff` A
+//   neighbor_query(structure, { k })       the k nearest of each site (fewer only when the
+//                                          whole system holds fewer, e.g. a small molecule)
+// The k search seeds a radius from the number density and grows it 1.4x per pass until no
+// center is short of k or the radius exceeds a few cell heights / the cluster diameter.
+export function neighbor_query(
+  structure: AnyStructure,
+  options: NeighborQueryOptions,
+): NeighborList {
+  if (`cutoff` in options) return neighbor_query_cutoff(structure, options.cutoff, options.pbc)
+  const { k, pbc } = options
+  if (!Number.isInteger(k) || k < 1) {
+    throw new Error(`neighbor_query: k must be a positive integer, got ${k}`)
+  }
+  const n_sites = structure.sites.length
+  if (n_sites === 0) return neighbor_query_cutoff(structure, 1, pbc)
+  const atom_volume = volume_per_atom(structure)
+  // radius of the sphere holding k+1 atoms at the mean density, widened 30% so the first
+  // pass usually suffices even for an anisotropic first shell
+  let cutoff = 1.3 * ((3 * (k + 1) * atom_volume) / (4 * Math.PI)) ** (1 / 3)
+  const max_cutoff =
+    `lattice` in structure
+      ? 4 * Math.max(...math.cell_heights(structure.lattice.matrix))
+      : 2 * (atom_volume * n_sites) ** (1 / 3)
+  for (;;) {
+    const list = neighbor_query_cutoff(structure, cutoff, pbc)
+    let short = false
+    for (let center = 0; center < n_sites && !short; center++) {
+      short = list.offsets[center + 1] - list.offsets[center] < k
+    }
+    if (short && cutoff < max_cutoff) {
+      cutoff = Math.min(cutoff * 1.4, max_cutoff)
+      continue
+    }
+    // keep the k nearest per center (prefix of each sorted block)
+    const offsets = new Int32Array(n_sites + 1)
+    for (let center = 0; center < n_sites; center++) {
+      const count = list.offsets[center + 1] - list.offsets[center]
+      offsets[center + 1] = offsets[center] + Math.min(k, count)
+    }
+    const total = offsets[n_sites]
+    const neighbors = new Int32Array(total)
+    const images = new Int32Array(total * 3)
+    const deltas = new Float64Array(total * 3)
+    const distances = new Float64Array(total)
+    for (let center = 0; center < n_sites; center++) {
+      const src = list.offsets[center]
+      const dst = offsets[center]
+      const count = offsets[center + 1] - dst
+      neighbors.set(list.neighbors.subarray(src, src + count), dst)
+      images.set(list.images.subarray(src * 3, (src + count) * 3), dst * 3)
+      deltas.set(list.deltas.subarray(src * 3, (src + count) * 3), dst * 3)
+      distances.set(list.distances.subarray(src, src + count), dst)
+    }
+    return { n_centers: n_sites, cutoff, offsets, neighbors, images, deltas, distances }
+  }
+}
+
 // Relative slack for "is this contact in the atom's first shell?". Distances within
 // 0.1% of the shortest normalized contact count as the same shell, so float noise
 // between symmetry-equivalent bonds can't flip one of them into the penalized branch.
@@ -710,7 +1050,6 @@ const MIN_ANION_SHELL = 4
 
 export const BONDING_STRATEGIES = { electroneg_ratio, explicit_only } as const
 export type BondingStrategy = keyof typeof BONDING_STRATEGIES
-export type BondingAlgo = (typeof BONDING_STRATEGIES)[BondingStrategy]
 
 // Memo for the costly neighbor search: WeakMap keyed by structure (GC'd with it), each holding a
 // per-signature (strategy + JSON options) map of results. The multi-side view's 4 panes share one
@@ -906,25 +1245,23 @@ export function electroneg_ratio(
   // 1. Collect all potential bonds and determine closest neighbor distance for each unique atom (orig_idx)
   // 2. Filter bonds based on penalties using the fully populated closest distances
 
-  interface PotentialBond {
-    site_idx_1: number
-    site_idx_2: number
-    dist: number
-    expected_dist: number
-    base_strength: number
-    orig_idx_a: number
-    orig_idx_b: number
-  }
+  // Candidate bonds as struct-of-arrays typed buffers (site pair, distance, expected
+  // distance, distance-independent strength): no per-candidate object in the hot loop
+  let cand_a: Int32Array = new Int32Array(Math.max(256, n_sites * 4))
+  let cand_b: Int32Array = new Int32Array(cand_a.length)
+  let cand_dist: Float64Array = new Float64Array(cand_a.length)
+  let cand_expected: Float64Array = new Float64Array(cand_a.length)
+  let cand_strength: Float64Array = new Float64Array(cand_a.length)
 
   // The cation-cation penalty normally rides in pass 1 so the early strength cutoff can
-  // reject a damped contact before it costs a candidate object. Deferring it wholesale
+  // reject a damped contact before it costs a candidate slot. Deferring it wholesale
   // nearly doubled the candidates on a rocksalt supercell (22.8k -> 44.5k), all of them
   // destined for rejection. It only NEEDS deferring when some cation lacks a full anion
   // shell, which is rare (metal-rich compounds) and cannot be known until the shells are
   // counted. So sweep once with the penalty applied, and replay only if that census turns
   // up an unsaturated cation. The census counts cation-anion contacts, which the penalty
-  // never touches, so it is identical either way.
-  const sweep_candidates = (defer_cation_penalty: boolean) => {
+  // never touches, so it is identical either way. Returns the candidate count.
+  const sweep_candidates = (defer_cation_penalty: boolean): number => {
     // Grid cells span the longest reach of THIS sweep. Rebuilding on the rare replay beats
     // sizing both off the penalty-free table: with the cation penalty on, rocksalt's Na-Na
     // is unreachable and the cell shrinks from 4.6 A to Na-Cl's 4.2, and candidate volume
@@ -932,7 +1269,7 @@ export function electroneg_ratio(
     const { reach_hi_sq, reach_lo_sq, max_reach } = build_pair_reach(!defer_cation_penalty)
     const spatial = setup_spatial_grid(positions, n_sites, grid_cutoff(max_reach))
     const half_shell = full_scan && spatial !== null
-    const potential_bonds: PotentialBond[] = []
+    let n_cand = 0
     site_anion_neighbors.fill(0)
     closest.fill(Infinity)
 
@@ -987,22 +1324,26 @@ export function electroneg_ratio(
         if (cation_flags[idx_a] === 0) site_anion_neighbors[idx_b]++
         if (cation_flags[idx_b] === 0) site_anion_neighbors[idx_a]++
 
+        if (n_cand === cand_a.length) {
+          cand_a = grow_i32(cand_a, n_cand + 1)
+          cand_b = grow_i32(cand_b, n_cand + 1)
+          cand_dist = grow_f64(cand_dist, n_cand + 1)
+          cand_expected = grow_f64(cand_expected, n_cand + 1)
+          cand_strength = grow_f64(cand_strength, n_cand + 1)
+        }
         // min/max: half-shell scanning can reach a lower-indexed partner, but the output
         // keeps the ascending site_idx_1 < site_idx_2 convention
-        potential_bonds.push({
-          site_idx_1: Math.min(idx_a, idx_b),
-          site_idx_2: Math.max(idx_a, idx_b),
-          dist,
-          expected_dist: expected,
-          base_strength: strength,
-          orig_idx_a,
-          orig_idx_b,
-        })
+        cand_a[n_cand] = Math.min(idx_a, idx_b)
+        cand_b[n_cand] = Math.max(idx_a, idx_b)
+        cand_dist[n_cand] = dist
+        cand_expected[n_cand] = expected
+        cand_strength[n_cand] = strength
+        n_cand++
       }
     }
-    return potential_bonds
+    return n_cand
   }
-  let potential_bonds = sweep_candidates(false)
+  let n_cand = sweep_candidates(false)
 
   // Reduce the per-site census to the best-observed shell per original atom. A boundary
   // atom's own copy may see only part of its shell while an interior copy sees all of it,
@@ -1021,28 +1362,20 @@ export function electroneg_ratio(
   const has_unsaturated_cation = cation_flags.some(
     (flag, idx) => flag === 1 && anion_neighbors[orig_idxs[idx]] < MIN_ANION_SHELL,
   )
-  if (has_unsaturated_cation) potential_bonds = sweep_candidates(true)
+  if (has_unsaturated_cation) n_cand = sweep_candidates(true)
 
   // Second pass: Apply penalties and filter
-  for (const bond of potential_bonds) {
-    const {
-      site_idx_1,
-      site_idx_2,
-      dist,
-      expected_dist,
-      base_strength,
-      orig_idx_a,
-      orig_idx_b,
-    } = bond
-
+  for (let cand = 0; cand < n_cand; cand++) {
+    const site_idx_1 = cand_a[cand]
+    const site_idx_2 = cand_b[cand]
+    const dist = cand_dist[cand]
+    const orig_idx_a = orig_idxs[site_idx_1]
+    const orig_idx_b = orig_idxs[site_idx_2]
     const closest_dist_a = closest[orig_idx_a]
     const closest_dist_b = closest[orig_idx_b]
-    const norm_dist = dist / expected_dist
+    const norm_dist = dist / cand_expected[cand]
 
-    let strength = base_strength
-    // Recomputed rather than carried on the candidate record: two extra fields widened
-    // every one of the ~23k objects a 8000-site supercell allocates, which cost more than
-    // the two array reads it saved.
+    let strength = cand_strength[cand]
     const same_species = elem_ids[site_idx_1] === elem_ids[site_idx_2]
     const cation_cation = cation_flags[site_idx_1] === 1 && cation_flags[site_idx_2] === 1
 
@@ -1084,7 +1417,7 @@ export function electroneg_ratio(
     }
 
     if (strength > strength_threshold) {
-      bonds.push(make_bond(sites, site_idx_1, site_idx_2, dist, strength))
+      bonds.push(make_bond(sites, site_idx_1, site_idx_2, dist))
     }
   }
 

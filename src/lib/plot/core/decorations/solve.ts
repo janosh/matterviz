@@ -1,5 +1,4 @@
-import type { Rect } from '$lib/plot/core/layout'
-import { place_interior_decoration } from './interior'
+import { compute_element_placement, type Rect } from '$lib/plot/core/layout'
 import { project_obstacles } from './obstacles'
 import { get_outside_placement, place_outside_decorations } from './outside'
 import { place_reference_annotation } from './reference-annotations'
@@ -47,6 +46,19 @@ export const get_decoration_placement = (
   { placements }: Pick<DecorationSolution, `placements`>,
   id: string,
 ): DecorationPlacement | undefined => placements.find((placement) => placement.id === id)
+
+// data-decoration-* attributes hosts stamp on a placed element so tests and tooling can read
+// where the solver put it (all omitted while unplaced)
+export const decoration_data_attrs = (
+  placement: DecorationPlacement | null | undefined,
+): Record<`data-decoration-${string}`, string | number | null | undefined> => ({
+  'data-decoration-location': placement?.location,
+  'data-decoration-side': placement?.side,
+  'data-decoration-x': placement?.x,
+  'data-decoration-y': placement?.y,
+  'data-decoration-width': placement?.footprint.width,
+  'data-decoration-height': placement?.footprint.height,
+})
 
 export const decoration_placement_revision = (
   placement: DecorationPlacement | null | undefined,
@@ -125,11 +137,14 @@ export const solve_decorations = (scene: DecorationScene): DecorationSolution =>
       continue
     }
 
-    const result = place_interior_decoration({
-      item,
+    // Earlier decoration footprints act as exclusion rectangles, so interior decorations are
+    // mutually exclusive while the scorer keeps its data-overlap behavior.
+    const result = compute_element_placement({
       plot_bounds,
-      obstacles,
-      exclude_rects: decoration_rects,
+      element_size: item.footprint,
+      axis_clearance: item.clearance,
+      exclude_rects: [...decoration_rects],
+      points: obstacles,
       grid_resolution: scene.grid_resolution,
     })
     const placement: DecorationPlacement = {

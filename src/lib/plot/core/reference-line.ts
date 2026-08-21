@@ -3,7 +3,6 @@ import type { Vec2, Vec4 } from '$lib/math'
 import {
   decoration_placement_rects,
   get_decoration_placement,
-  place_reference_annotation,
   solve_decorations,
   type DecorationPoint,
   type DecorationScene,
@@ -89,32 +88,19 @@ export function group_ref_lines_by_z(lines: IndexedRefLine[]): RefLinesByZIndex 
   return groups
 }
 
-// Convert RefLineValue (number | Date | string) to numeric value
+// Convert RefLineValue (number | Date | string) to a finite number. Strings may be numeric
+// ("42", "-5") or ISO dates ("2024-06-15"). Anything else is a caller bug: drawing such a
+// line at 0 would silently mislabel the data, so it throws instead.
 export function normalize_value(value: RefLineValue): number {
-  if (typeof value === `number`) {
-    if (Number.isFinite(value)) return value
-    console.warn(`Invalid RefLineValue: ${value}, defaulting to 0`)
-    return 0
+  let numeric = NaN
+  if (typeof value === `number`) numeric = value
+  else if (value instanceof Date) numeric = value.getTime()
+  // Number("") is 0, so blank strings stay NaN instead of reaching numeric conversion
+  else if (value.trim() !== ``) {
+    numeric = Number.isFinite(Number(value)) ? Number(value) : Date.parse(value)
   }
-  if (value instanceof Date) {
-    const timestamp = value.getTime()
-    if (Number.isFinite(timestamp)) return timestamp
-    console.warn(`Invalid RefLineValue: invalid Date, defaulting to 0`)
-    return 0
-  }
-  // Empty/whitespace strings are invalid (Number("") returns 0 silently)
-  if (value.trim() === ``) {
-    console.warn(`Invalid RefLineValue: empty string, defaulting to 0`)
-    return 0
-  }
-  // Try numeric conversion first (handles "42", "3.14", "-5")
-  const numeric_value = Number(value)
-  if (Number.isFinite(numeric_value)) return numeric_value
-  // Then try as ISO date string (handles "2024-06-15")
-  const parsed_date = Date.parse(value)
-  if (!Number.isNaN(parsed_date)) return parsed_date
-  console.warn(`Invalid RefLineValue: "${value}", defaulting to 0`)
-  return 0
+  if (Number.isFinite(numeric)) return numeric
+  throw new TypeError(`Invalid reference line value: ${String(value)}`)
 }
 
 // Normalize a point tuple
@@ -255,9 +241,9 @@ export function resolve_line_endpoints(
   } else if (line_type === `segment`) {
     const [p1x, p1y] = normalize_point(ref_line.p1)
     const [p2x, p2y] = normalize_point(ref_line.p2)
-    const [clip_x_min, clip_x_max] = span_or(ref_line.x_span, [x_min, x_max])
-    const [clip_y_min, clip_y_max] = span_or(ref_line.y_span, [y_min, y_max])
-
+    // Spans narrow the visible rect like every other line type; they never widen it
+    const [clip_x_min, clip_x_max] = apply_x_span(x_min, x_max)
+    const [clip_y_min, clip_y_max] = apply_y_span(y_min, y_max)
     const clipped = clip_segment_to_rect(
       p1x,
       p1y,
@@ -393,21 +379,6 @@ export interface ReferenceAnnotationMetrics {
   text_ascent: number
   text_descent: number
   padding: number
-}
-
-type ReferenceAnnotationItemInput = {
-  id: string
-  endpoints: Vec4
-  annotation: RefLineAnnotation
-  metrics?: ReferenceAnnotationMetrics
-  clearance?: number
-}
-
-export type ReferenceAnnotationResolveConfig = {
-  metrics?: ReferenceAnnotationMetrics
-  clearance?: number
-  obstacles?: readonly DecorationPoint[]
-  exclusion_rects?: readonly Rect[]
 }
 
 const AUTO_ANNOTATION_POSITIONS: readonly ReferenceAnnotationPosition[] = [
@@ -548,27 +519,6 @@ export function create_reference_annotation_candidates(
   )
 }
 
-function create_reference_annotation_item({
-  id,
-  endpoints,
-  annotation,
-  metrics = estimate_reference_annotation_metrics(annotation),
-  clearance,
-}: ReferenceAnnotationItemInput): ReferenceAnnotationDecorationItem {
-  const candidates = create_reference_annotation_candidates(endpoints, annotation, metrics)
-  return {
-    id,
-    kind: `reference-annotation`,
-    footprint: {
-      width: candidates[0].rect.width,
-      height: candidates[0].rect.height,
-    },
-    clearance,
-    candidates,
-    pinned: annotation.position !== undefined || annotation.side !== undefined,
-  }
-}
-
 function create_reference_annotation_items({
   lines,
   ranges,
@@ -602,14 +552,15 @@ function create_reference_annotation_items({
       },
     )
     if (!endpoints) continue
-    items.push(
-      create_reference_annotation_item({
-        id: reference_annotation_id(line.idx),
-        endpoints,
-        annotation,
-        clearance,
-      }),
-    )
+    const candidates = create_reference_annotation_candidates(endpoints, annotation)
+    items.push({
+      id: reference_annotation_id(line.idx),
+      kind: `reference-annotation`,
+      footprint: { width: candidates[0].rect.width, height: candidates[0].rect.height },
+      clearance,
+      candidates,
+      pinned: annotation.position !== undefined || annotation.side !== undefined,
+    })
   }
   return items
 }
@@ -646,26 +597,6 @@ export const get_reference_annotation_placement = (
   line_idx: number,
 ): ReferenceAnnotationCandidate | undefined =>
   get_decoration_placement(solution, reference_annotation_id(line_idx))?.reference_annotation
-
-export function resolve_reference_annotation(
-  endpoints: Vec4,
-  annotation: RefLineAnnotation,
-  {
-    metrics = estimate_reference_annotation_metrics(annotation),
-    clearance,
-    obstacles = [],
-    exclusion_rects = [],
-  }: ReferenceAnnotationResolveConfig = {},
-): ReferenceAnnotationCandidate {
-  const item = create_reference_annotation_item({
-    id: `reference-annotation`,
-    endpoints,
-    annotation,
-    metrics,
-    clearance,
-  })
-  return place_reference_annotation({ item, obstacles, exclusion_rects }).candidate
-}
 
 export interface Scene3DParams {
   scene_x: number

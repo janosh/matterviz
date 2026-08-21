@@ -6,11 +6,12 @@ import { DEFAULT_FPS_RANGE, ELEMENT_COLOR_SCHEME_NAMES, FPS_STEP } from '$lib/co
 import type { HullFaceColorMode } from '$lib/convex-hull/types'
 import { symbol_names } from '$lib/labels'
 import type { Vec2, Vec3 } from '$lib/math'
+import type { GizmoOptions } from '$lib/scene/gizmo'
 import type { LegendVisibilityMode } from '$lib/plot/core/utils/series-visibility'
 import { is_plain_object, merge_nested } from './utils'
 
-// SettingType interface with optional context to control where settings apply
-// context: 'web' = web browser only, 'editor' = VSCode extension only, 'notebook' = Jupyter/marimo only, 'all' or undefined = all contexts
+// One leaf of the settings schema. `web_only` settings (fullscreen toggles) are skipped
+// when the schema is synced into the VS Code extension's contributed configuration.
 export interface SettingType<T = unknown> {
   value: T
   description: string
@@ -21,7 +22,7 @@ export interface SettingType<T = unknown> {
   minItems?: number
   maxItems?: number
   items?: { minimum?: number; maximum?: number; multipleOf?: number }
-  context?: `web` | `editor` | `notebook` | `all`
+  web_only?: true
 }
 
 export const SHOW_BONDS_OPTIONS = [`never`, `always`, `crystals`, `molecules`] as const
@@ -66,7 +67,7 @@ const opacity_setting = (value: number, description: string): SettingType<number
 const fullscreen_toggle_setting = (): SettingType<boolean> => ({
   value: true,
   description: `Show fullscreen toggle button (web-only, always false in other contexts)`,
-  context: `web`,
+  web_only: true,
 })
 
 export const VECTOR_COLOR_MODES = [
@@ -120,14 +121,6 @@ type NormalizeSettings<Definition> = {
 const define_settings = <Definition extends SettingsDefinition>(definition: Definition) =>
   definition as unknown as NormalizeSettings<Definition>
 const typed_setting = <Value>(definition: SettingType<Value>): SettingType<Value> => definition
-
-const DISPLAY_CONFIG = {
-  x_grid: { value: true, description: `Show X-axis grid lines` },
-  y_grid: { value: true, description: `Show Y-axis grid lines` },
-  y2_grid: { value: false, description: `Show Y2-axis grid lines` },
-  x_zero_line: { value: true, description: `Show X-axis zero reference line` },
-  y_zero_line: { value: true, description: `Show Y-axis zero reference line` },
-} as const
 
 // Settings shared by the sunburst + treemap sections below so the two charts'
 // options can't drift; `node` names the chart's visual unit (arc/cell) and
@@ -422,10 +415,10 @@ export const SETTINGS_CONFIG = define_settings({
     },
 
     // Camera & Controls
-    show_gizmo: {
+    gizmo: typed_setting<boolean | GizmoOptions>({
       value: true,
       description: `Show orientation gizmo in the corner of structure viewer`,
-    },
+    }),
     camera_position: {
       value: [0, 0, 0] satisfies Vec3,
       description: `Initial camera position [x, y, z]`,
@@ -562,6 +555,13 @@ export const SETTINGS_CONFIG = define_settings({
     vector_color_mode: typed_setting<VectorColorMode>({
       value: `auto`,
       description: `How to color arrows. auto = element for force, spin-direction for magmom/spin. element = majority species color. spin_direction = red/blue by z-component. magnitude = continuous color scale by vector length. uniform = single color (vector_color).`,
+      enum: {
+        auto: `auto`,
+        element: `element`,
+        spin_direction: `spin direction`,
+        magnitude: `magnitude`,
+        uniform: `uniform`,
+      },
     }),
     vector_color_scale: typed_setting<D3InterpolateName>({
       value: `interpolateViridis`,
@@ -803,21 +803,11 @@ export const SETTINGS_CONFIG = define_settings({
       value: true,
       description: `Allow drag-and-drop of trajectory files`,
     },
-    bin_file_threshold: {
-      value: 50000000,
-      description: `File size threshold for binary loading (bytes)`,
-      minimum: 1000000,
-      maximum: 500000000,
-    },
-    text_file_threshold: {
+    index_above_bytes: {
       value: 25000000,
-      description: `File size threshold for text loading (bytes)`,
-      minimum: 500000,
-      maximum: 250000000,
-    },
-    use_indexing: {
-      value: false,
-      description: `Use frame indexing for large trajectories`,
+      description: `Trajectory files (XYZ, EXTXYZ, ASE .traj) larger than this many bytes are parsed in a Web Worker and decoded frame by frame on demand instead of all at once`,
+      minimum: 1000000,
+      maximum: 2000000000,
     },
 
     // UI/UX
@@ -835,6 +825,11 @@ export const SETTINGS_CONFIG = define_settings({
       enum: { overlay: `Overlay`, single: `Single` },
     },
     show_legend: legend_visibility_setting(`histogram`),
+    normalize: {
+      value: `count` as const,
+      description: `Bar heights: raw counts, fraction of samples in the plotted range, or probability density (integrates to 1)`,
+      enum: { count: `Count`, probability: `Probability`, density: `Density` },
+    },
     bin_count: {
       // Wider than the HistogramControls slider (5..100 in steps of 5) on purpose: the
       // component accepts any positive bin count and tests drive it with 2 and 3.
@@ -855,7 +850,6 @@ export const SETTINGS_CONFIG = define_settings({
       stroke_color: { value: `#000000`, description: `Histogram bar stroke color` },
       stroke_opacity: opacity_setting(0.5, `Histogram bar stroke opacity`),
     },
-    display: DISPLAY_CONFIG,
   },
 
   // Bar plot specific
@@ -874,7 +868,6 @@ export const SETTINGS_CONFIG = define_settings({
       width: { value: 2, description: `Bar plot line width`, minimum: 0.5, maximum: 10 },
       color: { value: `#4A9EFF`, description: `Bar plot line color` },
     },
-    display: DISPLAY_CONFIG,
   },
 
   // Box plot specific
@@ -991,7 +984,6 @@ export const SETTINGS_CONFIG = define_settings({
         maximum: 5,
       },
     },
-    display: DISPLAY_CONFIG,
   },
 
   // Sankey diagram specific
@@ -1096,20 +1088,6 @@ export const SETTINGS_CONFIG = define_settings({
     },
   },
 
-  // Composition specific
-  composition: {
-    display_mode: {
-      value: `pie` as const,
-      description: `Display mode for composition data`,
-      enum: { pie: `Pie`, bubble: `Bubble`, bar: `Bar` },
-    },
-    color_scheme: typed_setting<string>({
-      value: `Vesta`,
-      description: `Color scheme for composition visualization`,
-      enum: self_labeled_enum(ELEMENT_COLOR_SCHEME_NAMES),
-    }),
-  },
-
   // Scatter plot specific
   scatter: {
     symbol_type: {
@@ -1120,7 +1098,6 @@ export const SETTINGS_CONFIG = define_settings({
     show_legend: legend_visibility_setting(`scatter`),
     show_points: { value: true, description: `Show points in scatter plots` },
     show_lines: { value: true, description: `Show connecting lines in scatter plots` },
-    display: DISPLAY_CONFIG,
     point: {
       size: {
         value: 3,
@@ -1158,12 +1135,17 @@ export const SETTINGS_CONFIG = define_settings({
     },
   },
 
-  // Plot general
+  // Plot general (shared by scatter, bar, box and histogram plots)
   plot: {
     grid_lines: { value: true, description: `Show grid lines in plots` },
     axis_labels: { value: true, description: `Show axis labels in plots` },
-    show_x_zero_line: { value: true, description: `Show X-axis zero reference line` },
-    show_y_zero_line: { value: true, description: `Show Y-axis zero reference line` },
+    display: {
+      x_grid: { value: true, description: `Show X-axis grid lines` },
+      y_grid: { value: true, description: `Show Y-axis grid lines` },
+      y2_grid: { value: false, description: `Show Y2-axis grid lines` },
+      x_zero_line: { value: true, description: `Show X-axis zero reference line` },
+      y_zero_line: { value: true, description: `Show Y-axis zero reference line` },
+    },
     x_format: {
       value: `.2~s`,
       description: `Number format for X-axis ticks (D3 format specifier)`,
@@ -1180,16 +1162,6 @@ export const SETTINGS_CONFIG = define_settings({
       value: ``,
       description: `Number format for secondary Y-axis ticks (D3 format specifier)`,
     },
-    x_scale_type: typed_setting<string>({
-      value: `linear`,
-      description: `Scale type for X-axis`,
-      enum: { linear: `Linear`, log: `Log` },
-    }),
-    y_scale_type: typed_setting<string>({
-      value: `linear`,
-      description: `Scale type for Y-axis`,
-      enum: { linear: `Linear`, log: `Log` },
-    }),
     x_ticks: {
       value: 8,
       description: `Number of ticks on X-axis`,
@@ -1311,7 +1283,7 @@ export const merge = (user: PartialSettings = {}): DefaultSettings => {
 export const build_structure_props_from_settings = (defaults: DefaultSettings) => {
   const { structure } = defaults
   return {
-    scene_props: { ...structure, gizmo: structure.show_gizmo },
+    scene_props: { ...structure },
     lattice_props: {
       cell_edge_opacity: structure.cell_edge_opacity,
       cell_surface_opacity: structure.cell_surface_opacity,

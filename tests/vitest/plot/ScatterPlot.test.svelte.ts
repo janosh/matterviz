@@ -1,6 +1,6 @@
-import { ScatterPlot } from '$lib'
+import ScatterPlot from '$lib/plot/scatter/ScatterPlot.svelte'
 import type { Vec2 } from '$lib/math'
-import { COLOR_BAR_DEFAULTS, type DataSeries, type FillRegion } from '$lib/plot'
+import { COLOR_BAR_DEFAULTS, type DataSeries, type FillRegion } from '$lib/plot/core/types'
 import type { FacetLayoutContext } from '$lib/plot/core/facets'
 import { rects_overlap, type Rect } from '$lib/plot/core/layout'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
@@ -145,6 +145,11 @@ describe(`ScatterPlot`, () => {
     expect(Boolean(plot.querySelector(`.pane-open`))).toBe(open)
     for (const prop_name of Object.keys(controls_props)) {
       expect(plot.hasAttribute(prop_name)).toBe(false)
+    }
+    if (open) {
+      expect(
+        plot.querySelector(`[data-key="line.opacity"]`)?.closest(`.style-row`),
+      ).not.toBeNull()
     }
   })
 
@@ -424,6 +429,41 @@ describe(`ScatterPlot`, () => {
       expect(plot.querySelectorAll(`.legend .legend-item`)).toHaveLength(expected_entries)
     },
   )
+
+  test(`legend-hidden series stays hidden across one-way series replacement until the parent flips visible`, async () => {
+    const make_series = (first_extra: Partial<DataSeries> = {}): DataSeries[] => [
+      { ...basic, id: `a`, label: `A`, ...first_extra },
+      { ...basic, id: `b`, label: `B` },
+    ]
+    const state = $state({ series: make_series() })
+    // getter-only prop: one-way, the component cannot write back into the parent
+    const plot = await mount_sized_scatter_plot({
+      get series() {
+        return state.series
+      },
+    })
+    const first_hidden = () =>
+      plot.querySelector<HTMLElement>(`.legend-item`)?.classList.contains(`hidden`)
+    expect(plot.querySelectorAll(`.marker`)).toHaveLength(10)
+
+    plot.querySelector<HTMLElement>(`.legend-item`)?.click()
+    flushSync()
+    expect(first_hidden()).toBe(true)
+    expect(plot.querySelectorAll(`.marker`)).toHaveLength(5)
+    expect(state.series[0].visible).toBeUndefined()
+
+    // parent rebuilds the array (anywidget trait sync, notebook re-render, ...)
+    state.series = make_series()
+    flushSync()
+    expect(first_hidden()).toBe(true)
+    expect(plot.querySelectorAll(`.marker`)).toHaveLength(5)
+
+    // parent explicitly shows it again: the user's override yields
+    state.series = make_series({ visible: true })
+    flushSync()
+    expect(first_hidden()).toBe(false)
+    expect(plot.querySelectorAll(`.marker`)).toHaveLength(10)
+  })
 
   test(`x hover resolves duplicate x-values by vertical distance`, async () => {
     const on_point_hover = vi.fn()
@@ -1203,38 +1243,53 @@ describe(`ScatterPlot`, () => {
     expect(fills[1].classList.contains(`hovered`)).toBe(false)
   })
 
-  test(`hidden fill keeps its legend item so it can be toggled back on`, async () => {
+  test(`legend clicks toggle and isolate fills, and a hidden fill keeps its legend item`, async () => {
     const state = $state({
       fill_regions: [
         { id: `band`, label: `Band`, lower: 0, upper: 0.5, fill: `steelblue` },
+        { id: `cap`, label: `Cap`, lower: 0.6, upper: 0.8, fill: `tomato` },
       ] as FillRegion[],
     })
     await mount_sized_scatter_plot(bind_props({ ...fill_plot_props(), legend: {} }, state))
     await tick()
 
-    const fill_item = () =>
+    const fill_item = (label: string) =>
       [...document.querySelectorAll<HTMLElement>(`.legend-item.fill-item`)].find((el) =>
-        el.textContent?.includes(`Band`),
+        el.textContent?.includes(label),
       )
+    const fire = async (label: string, type: `click` | `dblclick`) => {
+      fill_item(label)?.dispatchEvent(new MouseEvent(type, { bubbles: true }))
+      flushSync()
+      await tick()
+    }
+    const visibility = () => state.fill_regions.map((region) => region.visible)
 
-    // fill renders and has a legend item
+    expect(document.querySelectorAll(`.fill-region`)).toHaveLength(2)
+
+    // click hides only that fill (writes `visible` into the bound fill_regions); the fill is
+    // no longer drawn, but its legend item persists (greyed) so it can be toggled back
+    await fire(`Band`, `click`)
+    expect(visibility()).toEqual([false, undefined])
     expect(document.querySelectorAll(`.fill-region`)).toHaveLength(1)
-    expect(fill_item()).toBeDefined()
-
-    // hide it (what clicking the legend fill item does via the fill_regions binding)
-    state.fill_regions = [{ ...state.fill_regions[0], visible: false }]
-    flushSync()
-    await tick()
-
-    // fill no longer drawn, but the legend item persists (greyed) so it can be toggled back
-    expect(document.querySelectorAll(`.fill-region`)).toHaveLength(0)
-    expect(fill_item()?.classList.contains(`hidden`)).toBe(true)
+    expect(fill_item(`Band`)?.classList.contains(`hidden`)).toBe(true)
 
     // hovering the hidden fill's legend item must not mark it active (nothing renders to highlight)
-    fill_item()?.dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
+    fill_item(`Band`)?.dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
     flushSync()
     await tick()
-    expect(fill_item()?.classList.contains(`active`)).toBe(false)
+    expect(fill_item(`Band`)?.classList.contains(`active`)).toBe(false)
+
+    await fire(`Band`, `click`)
+    expect(visibility()).toEqual([true, undefined])
+
+    // double-click isolates the fill; a second double-click on the sole visible fill shows all
+    await fire(`Cap`, `dblclick`)
+    expect(visibility()).toEqual([false, true])
+    await fire(`Cap`, `dblclick`)
+    expect(visibility()).toEqual([true, true])
+    // double-clicking a hidden fill while another is visible isolates the clicked one
+    await fire(`Band`, `dblclick`)
+    expect(visibility()).toEqual([true, false])
   })
 
   test(`log axis clamps non-positive fill coords to the domain floor, not a tiny epsilon`, async () => {
@@ -1495,6 +1550,133 @@ describe(`ScatterPlot`, () => {
     // a quarter of the plot height can't span more than a quarter of the 10..30 data range
     // (plus nicing slack), so this stays well under the full span
     expect(y2_range[1] - y2_range[0]).toBeLessThan(12)
+  })
+
+  // NaN/null colour and size values must neither widen the scales nor paint a NaN colour:
+  // those points fall back to the series colour and default radius.
+  test(`color_values and size_values with NaN fall back per point without widening the scales`, async () => {
+    const plot = await mount_sized_scatter_plot({
+      series: [
+        {
+          x: [1, 2, 3, 4],
+          y: [1, 2, 3, 4],
+          color_values: [0, NaN, 100, null] as number[],
+          size_values: [1, NaN, 9, null] as number[],
+        },
+      ],
+      size_scale: { radius_range: [2, 10] },
+      color_scale: `interpolateViridis`,
+      color_bar: {},
+      point_tween: { duration: 0 },
+      legend: null,
+      show_controls: false,
+    })
+    const tick_labels = [...plot.querySelectorAll(`.colorbar .tick-label`)].map(
+      (label) => label.textContent,
+    )
+    expect(tick_labels[0]).toBe(`0`)
+    expect(tick_labels.at(-1)).toBe(`100`)
+    const markers = [...plot.querySelectorAll<SVGPathElement>(`path.marker`)]
+    expect(markers.map(marker_radius)).toEqual([2, 2.5, 10, 2.5])
+    // --point-fill-color is set on the wrapper Svelte adds for component CSS custom props
+    const fills = markers.map((marker) =>
+      marker.parentElement?.parentElement?.style.getPropertyValue(`--point-fill-color`),
+    )
+    expect(fills[0]).toBe(`#440154`) // viridis(0)
+    expect(fills[2]).toBe(`#fde725`) // viridis(1)
+    expect(fills[1]).toBe(fills[3])
+    expect(fills[1]).not.toMatch(/NaN/)
+  })
+
+  test(`log y axis holds non-positive line points at the domain floor and drops their markers`, async () => {
+    const plot = await mount_sized_scatter_plot({
+      series: [
+        {
+          x: [1, 2, 3, 4],
+          y: [0, 10, -5, 1000],
+          markers: `line+points`,
+          line_style: { curve: `linear` },
+        },
+      ],
+      y_axis: { scale_type: `log` },
+      point_tween: { duration: 0 },
+      line_tween: { duration: 0 },
+      legend: null,
+      show_controls: false,
+    })
+    const clip = scatter_clip_rect(plot)
+    expect(plot.querySelectorAll(`path.marker`)).toHaveLength(2)
+    const line_d = plot.querySelector(`g[data-series-id] path[fill="none"]`)?.getAttribute(`d`)
+    const ys = [...(line_d ?? ``).matchAll(/[ML][-\d.]+,(?<y>[-\d.]+)/g)].map((match) =>
+      Number(match.groups?.y),
+    )
+    expect(ys).toHaveLength(4)
+    const bottom = clip.y + clip.height
+    // Non-positive values sit on the bottom edge, not at -Infinity/NaN
+    expect(ys[0]).toBeCloseTo(bottom, 6)
+    expect(ys[2]).toBeCloseTo(bottom, 6)
+    expect(ys[3]).toBeLessThan(ys[1])
+    expect(ys.every(Number.isFinite)).toBe(true)
+  })
+
+  // Shift-drag pans by a constant data offset: moving the cursor by a quarter of the plot
+  // width shifts the view by a quarter of the x span. Unlike rect zoom, a pan only moves the
+  // live view; the bound axis props keep the pre-pan range (so a later reset has a target).
+  test(`shift-drag pan shifts the view by the dragged data span`, async () => {
+    const state = { x_axis: { range: [0, 100] as Vec2 }, y_axis: { range: [0, 10] as Vec2 } }
+    const plot = await mount_sized_scatter_plot(
+      bind_props(
+        {
+          series: [{ x: [10, 50, 90], y: [1, 5, 9] }],
+          point_tween: { duration: 0 },
+          legend: null,
+          show_controls: false,
+        },
+        state,
+      ),
+    )
+    const svg = plot.querySelector<SVGSVGElement>(`svg[role="application"]`)
+    if (!svg) throw new Error(`scatter SVG not found`)
+    const clip = scatter_clip_rect(plot)
+    const start = { x: clip.x + clip.width / 2, y: clip.y + clip.height / 2 }
+    svg.dispatchEvent(
+      new MouseEvent(`mousedown`, {
+        bubbles: true,
+        button: 0,
+        shiftKey: true,
+        clientX: start.x,
+        clientY: start.y,
+      }),
+    )
+    // Drag left by a quarter of the plot: the view follows the data, so the range moves right
+    window.dispatchEvent(
+      new MouseEvent(`mousemove`, {
+        buttons: 1,
+        clientX: start.x - clip.width / 4,
+        clientY: start.y,
+      }),
+    )
+    await tick()
+    window.dispatchEvent(new MouseEvent(`mouseup`, { clientX: start.x - clip.width / 4 }))
+    await tick()
+    expect(state.x_axis.range).toEqual([0, 100])
+    expect(state.y_axis.range).toEqual([0, 10])
+    // The view is now [25, 125]: x=10 scrolled out, x=50 sits a quarter of the way along the
+    // plot, x=90 at 65%, and the x ticks moved with them
+    const marker_xs = [...plot.querySelectorAll(`path.marker`)].map((marker) =>
+      Number(
+        /translate\((?<x>[-\d.]+)/.exec(marker.parentElement?.getAttribute(`transform`) ?? ``)
+          ?.groups?.x,
+      ),
+    )
+    expect(marker_xs).toHaveLength(2)
+    expect(marker_xs[0]).toBeCloseTo(clip.x + clip.width * 0.25, 6)
+    expect(marker_xs[1]).toBeCloseTo(clip.x + clip.width * 0.65, 6)
+    const tick_labels = [...plot.querySelectorAll(`.x-axis .tick text`)].map(
+      (label) => label.textContent,
+    )
+    expect(tick_labels).toContain(`120`)
+    expect(tick_labels).not.toContain(`0`)
   })
 
   // Regression guard for effect_update_depth_exceeded: with an explicit y range the

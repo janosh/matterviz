@@ -1,6 +1,6 @@
 // Constants and thresholds for Fermi surface computation
 
-// Maximum triangles for BZ symmetry tiling (48x for Oh symmetry)
+// Maximum triangles for BZ symmetry tiling (up to 48 copies for a cubic lattice)
 // Above this, tiling is auto-disabled for performance
 export const MAX_TRIANGLES_FOR_TILING = 50_000
 

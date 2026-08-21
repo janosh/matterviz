@@ -80,7 +80,7 @@ describe(`ASE frame slicing`, () => {
   })
 
   test(`a frame decoded from its slice equals the whole-file parse exactly`, () => {
-    const whole_file = parse_ase_trajectory(buffer, FIXTURE)
+    const whole_file = parse_ase_trajectory(buffer)
     expect(whole_file.frames).toHaveLength(spans.length)
 
     let cached_numbers: number[] | undefined
@@ -120,7 +120,7 @@ describe(`ASE frame slicing`, () => {
     const { numbers } = decode_span(first_span, 0, { base_offset: first_span.byte_offset })
     const { frame } = decode_span(second_span, 1, { base_offset, fallback_numbers: numbers })
     expect(frame.structure.sites.map((site) => site.species[0].element)).toEqual(
-      parse_ase_trajectory(buffer, FIXTURE).frames[1].structure.sites.map(
+      parse_ase_trajectory(buffer).frames[1].structure.sites.map(
         (site) => site.species[0].element,
       ),
     )

@@ -146,6 +146,13 @@ const cache_sanitize = (key: string, result: string): string => {
   return result
 }
 
+// Use this for both SSR and the first client render when byte-identical HTML is required
+// for hydration. Browser code should switch to sanitize_html() after mounting.
+export function sanitize_html_ssr(html: unknown): string {
+  const str = stringify_html_input(html)
+  return str.includes(`<`) ? sanitize_allowlist_ssr(str, SAFE_TAG_SET, SAFE_ATTR_SET) : str
+}
+
 // Sanitize HTML string, allowing only safe formatting tags and links.
 // Two-pass: happy-dom promotes dangerous children when a non-allowed parent is
 // stripped (e.g. <div><script>…</script></div> → <script>…</script>). The first
@@ -160,7 +167,7 @@ export function sanitize_html(html: unknown): string {
   // vs 319 us for the two sanitize() calls on the same five axis labels.
   if (!str.includes(`<`)) return cache_sanitize(str, str)
   const dp = get_purify()
-  if (!dp) return cache_sanitize(str, sanitize_allowlist_ssr(str, SAFE_TAG_SET, SAFE_ATTR_SET))
+  if (!dp) return cache_sanitize(str, sanitize_html_ssr(str))
   // oxfmt-ignore
   const safe = dp.sanitize(str, { ADD_ATTR: [`target`], FORBID_TAGS: [
     `script`, `style`, `iframe`, `object`, `embed`, `form`, `input`, `textarea`,

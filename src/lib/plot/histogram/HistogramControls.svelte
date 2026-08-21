@@ -5,6 +5,7 @@
   import type { BarStyle, DataSeries, PlotConfig } from '$lib/plot'
   import { PlotControls } from '$lib/plot'
   import type { PlotControlsProps } from '$lib/plot/core/types'
+  import { HISTOGRAM_NORMALIZE, type HistogramNormalize } from '$lib/plot/histogram/histogram'
   import { legend_mode_to_prop } from '$lib/plot/core/utils/series-visibility'
   import { DEFAULTS } from '$lib/settings'
   import type { Snippet } from 'svelte'
@@ -12,6 +13,7 @@
   let {
     series = [],
     bins = $bindable(DEFAULTS.histogram.bin_count),
+    normalize = $bindable(DEFAULTS.histogram.normalize),
     mode = $bindable(DEFAULTS.histogram.mode),
     bar = $bindable({}),
     // explicit type arg keeps `undefined` (auto) in the prop type
@@ -36,6 +38,7 @@
     series?: readonly DataSeries[]
     // Histogram-specific controls
     bins?: number
+    normalize?: HistogramNormalize
     mode?: `single` | `overlay`
     bar?: BarStyle
     // undefined = auto (same contract as Histogram / resolve_legend_visibility)
@@ -76,44 +79,53 @@
   {@render children?.({ x_axis, x2_axis, y_axis, y2_axis, display })}
   <SettingsSection
     title="Histogram"
-    current_values={{ bins, mode, show_legend }}
+    current_values={{ bins, normalize, mode, show_legend }}
     on_reset={() => {
-      ;({ bin_count: bins, mode } = DEFAULTS.histogram)
+      ;({ bin_count: bins, normalize, mode } = DEFAULTS.histogram)
       // Resets to the configured mode, `auto` (undefined) by default, so a one-series
       // plot does not suddenly grow a legend
       show_legend = legend_mode_to_prop(DEFAULTS.histogram.show_legend)
     }}
-    layout="grid"
+    layout="flow"
   >
     <NumberRangeInput min={5} max={100} step={5} bind:value={bins}>Bins</NumberRangeInput>
-    {#if has_multiple_series}
+    <div class="ctrl-line">
       <label>
-        <span>Mode</span>
-        <select bind:value={mode}>
-          <option value="single">Single</option>
-          <option value="overlay">Overlay</option>
+        <span>Normalize</span>
+        <select bind:value={normalize}>
+          {#each HISTOGRAM_NORMALIZE as option (option)}
+            <option value={option}>{option}</option>
+          {/each}
         </select>
       </label>
-      {#if mode === `single`}
+      {#if has_multiple_series}
         <label>
-          <span>Property</span>
-          <select bind:value={selected_property}>
-            <option value="">All</option>
-            {#each series_options as option, option_idx (option_idx)}
-              <option value={option}>{option}</option>
-            {/each}
+          <span>Mode</span>
+          <select bind:value={mode}>
+            <option value="single">Single</option>
+            <option value="overlay">Overlay</option>
           </select>
         </label>
+        {#if mode === `single`}
+          <label>
+            <span>Property</span>
+            <select bind:value={selected_property}>
+              {#each series_options as option, option_idx (option_idx)}
+                <option value={option}>{option}</option>
+              {/each}
+            </select>
+          </label>
+        {/if}
       {/if}
-    {/if}
-    <label>
-      <span>Show legend</span>
-      <input
-        type="checkbox"
-        checked={show_legend ?? resolved_show_legend}
-        onchange={(event) => (show_legend = event.currentTarget.checked)}
-      />
-    </label>
+      <label>
+        <input
+          type="checkbox"
+          checked={show_legend ?? resolved_show_legend}
+          onchange={(event) => (show_legend = event.currentTarget.checked)}
+        />
+        Show legend
+      </label>
+    </div>
   </SettingsSection>
 
   <SettingsSection
@@ -122,20 +134,22 @@
     on_reset={() => {
       bar = { ...DEFAULTS.histogram.bar }
     }}
-    layout="grid"
+    layout="flow"
   >
-    {#if visible_series.length === 1}
-      <label>
-        <span>Fill</span>
-        <input type="color" bind:value={() => resolved_bar.color, set_bar(`color`)} />
-      </label>
-    {/if}
-    <NumberRangeInput
-      min={0}
-      max={1}
-      step={0.05}
-      bind:value={() => resolved_bar.opacity, set_bar(`opacity`)}>Opacity</NumberRangeInput
-    >
+    <div class="style-row">
+      {#if visible_series.length === 1}
+        <label>
+          <span>Fill</span>
+          <input type="color" bind:value={() => resolved_bar.color, set_bar(`color`)} />
+        </label>
+      {/if}
+      <NumberRangeInput
+        min={0}
+        max={1}
+        step={0.05}
+        bind:value={() => resolved_bar.opacity, set_bar(`opacity`)}>Opacity</NumberRangeInput
+      >
+    </div>
     <NumberRangeInput
       min={0}
       max={5}
@@ -144,7 +158,7 @@
       >Stroke width</NumberRangeInput
     >
     <label>
-      <span>Stroke color</span>
+      <span>Stroke</span>
       <span class="stroke-value">
         <input
           type="color"

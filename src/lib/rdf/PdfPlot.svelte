@@ -3,17 +3,17 @@
   import { get_electro_neg_formula } from '$lib/composition'
   import { StatusMessage } from '$lib/feedback'
   import { format_num } from '$lib/labels'
-  import type { DataSeries } from '$lib/plot'
+  import type { DataSeries, RefLine } from '$lib/plot'
   import { ScatterPlot } from '$lib/plot'
   import type { RadiationType } from '$lib/scattering'
   import type { Crystal, Pbc } from '$lib/structure'
   import type { ComponentProps } from 'svelte'
-  import BaselineLine from './BaselineLine.svelte'
   import {
     calculate_total_pdf,
     label_structures,
     PDF_DEFAULT_CUTOFF,
     PDF_DEFAULT_N_BINS,
+    rdf_baseline,
   } from './index'
   import type { PdfPattern, TotalPdfPattern } from './index'
 
@@ -82,7 +82,7 @@
     error_msg = computed.failure
   })
 
-  const is_reduced = $derived(quantity === `reduced_g_r`)
+  const ref_lines = $derived<RefLine[]>([rdf_baseline(quantity), ...(rest.ref_lines ?? [])])
 
   const series = $derived<DataSeries[]>(
     computed.totals.flatMap(({ label, total }, struct_idx) => {
@@ -164,20 +164,12 @@ the whole story and claiming there was nothing to plot would contradict it -->
     bind:show_controls
     bind:controls_open
     {series}
+    {ref_lines}
     x_axis={{ label: `r (Å)`, range: [0, cutoff], ...x_axis }}
-    y_axis={{ label: is_reduced ? `G(r) (Å⁻²)` : `g(r)`, ...y_axis }}
+    y_axis={{ label: quantity === `reduced_g_r` ? `G(r) (Å⁻²)` : `g(r)`, ...y_axis }}
     styles={{ show_lines: true, show_points: false }}
     style={rest.style ?? `height: 450px;`}
-  >
-    {#snippet user_content({ width, y_scale_fn, pad })}
-      <BaselineLine
-        {width}
-        {pad}
-        y_value={y_scale_fn(is_reduced ? 0 : 1)}
-        label={is_reduced ? `G(r) = 0` : `g(r) = 1`}
-      />
-    {/snippet}
-  </ScatterPlot>
+  />
   {#if weight_summary}
     <p class="weights">{weight_summary}</p>
   {/if}
@@ -198,13 +190,13 @@ the whole story and claiming there was nothing to plot would contradict it -->
     background: transparent;
     border-radius: 4px;
     cursor: pointer;
-  }
-  button:hover {
-    border-color: #4e79a7;
-  }
-  button.active {
-    border-color: #4e79a7;
-    border-width: 2px;
+    &:hover,
+    &.active {
+      border-color: #4e79a7;
+    }
+    &.active {
+      border-width: 2px;
+    }
   }
   .separator {
     color: #ccc;

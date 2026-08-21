@@ -1,6 +1,5 @@
 <script lang="ts">
-  import { ATOMIC_WEIGHTS } from '$lib/composition/parse'
-  import type { ElementSymbol } from '$lib/element'
+  import { element_by_symbol, type ElementSymbol } from '$lib/element'
   import { format_num } from '$lib/labels'
   import { sanitize_formula, sanitize_html } from '$lib/sanitize'
   import { TooltipContent } from '$lib/tooltip'
@@ -55,8 +54,8 @@
 
   // Convert atomic fraction to weight fraction: wt_B = (x_B * M_B) / (x_A * M_A + x_B * M_B)
   const wt_fraction_b = $derived.by(() => {
-    const mass_a = ATOMIC_WEIGHTS.get(component_a as ElementSymbol)
-    const mass_b = ATOMIC_WEIGHTS.get(component_b as ElementSymbol)
+    const mass_a = element_by_symbol.get(component_a as ElementSymbol)?.atomic_mass
+    const mass_b = element_by_symbol.get(component_b as ElementSymbol)?.atomic_mass
     if (!mass_a || !mass_b) return null
     const { composition: x_b } = hover_info
     const denom = (1 - x_b) * mass_a + x_b * mass_b
@@ -68,26 +67,17 @@
   // Format special point type for display (e.g., "peritectic" → "Peritectic")
   // For melting points and congruent points at composition edges, show element-specific info
   const special_point_info = $derived.by(() => {
-    const point = hover_info.special_point
-    if (!point) return null
+    if (!hover_info.special_point) return null
+    const { type, position } = hover_info.special_point
+    const [x_pos, temp_raw] = position
+    const temp = format_temperature(to_display(temp_raw), temperature_unit)
 
-    const type = point.type
-    const position = point.position
-    const temp = format_temperature(to_display(position[1]), temperature_unit)
-
-    // Check if this is a melting point (at composition edge)
-    const is_at_edge = position[0] <= 0.01 || position[0] >= 0.99
-    const is_melting = type === `melting_point` || type === `congruent`
-
-    if (is_melting && is_at_edge) {
-      const element = position[0] <= 0.01 ? component_a : component_b
-      return {
-        badge: `Melting Point`,
-        description: `${element} melts at ${temp}`,
-      }
+    // Melting/congruent points at a composition edge belong to one pure component
+    const is_at_edge = x_pos <= 0.01 || x_pos >= 0.99
+    if ((type === `melting_point` || type === `congruent`) && is_at_edge) {
+      const element = x_pos <= 0.01 ? component_a : component_b
+      return { badge: `Melting Point`, description: `${element} melts at ${temp}` }
     }
-
-    // Handle other special point types with descriptive info
     const type_descriptions: Record<string, string> = {
       eutectic: `Liquid → two solid phases at ${temp}`,
       peritectic: `Liquid + solid → different solid at ${temp}`,
@@ -95,12 +85,8 @@
       peritectoid: `Two solids → different solid at ${temp}`,
       congruent: `Congruent phase change at ${temp}`,
     }
-
     const badge = type.charAt(0).toUpperCase() + type.slice(1).replaceAll(`_`, ` `)
-    return {
-      badge,
-      description: type_descriptions[type] ?? null,
-    }
+    return { badge, description: type_descriptions[type] ?? null }
   })
 
   // Calculate distance to nearest phase boundary (liquidus/solidus)
@@ -125,31 +111,25 @@
     return min_dist
   })
 
-  // Normalized lever rule display data (unifies horizontal and vertical modes)
+  // Normalized lever rule display data (unifies horizontal and vertical modes):
+  // one [phase, fraction, location] row per end of the tie-line
   const lever_display = $derived.by(() => {
-    if (lever_rule_mode === `vertical` && hover_info.vertical_lever_rule) {
-      const vlr = hover_info.vertical_lever_rule
-      return {
-        label: `Lever Rule (vertical)`,
-        phase_a: vlr.bottom_phase,
-        phase_b: vlr.top_phase,
-        fraction_a: vlr.fraction_bottom,
-        fraction_b: vlr.fraction_top,
-        detail_a: format_temperature(to_display(vlr.bottom_temperature), temperature_unit),
-        detail_b: format_temperature(to_display(vlr.top_temperature), temperature_unit),
-      }
+    const { lever_rule: lr, vertical_lever_rule: vlr } = hover_info
+    if (lever_rule_mode === `vertical` && vlr) {
+      const temp = (val: number) => format_temperature(to_display(val), temperature_unit)
+      const rows: [string, number, string][] = [
+        [vlr.bottom_phase, vlr.fraction_bottom, temp(vlr.bottom_temperature)],
+        [vlr.top_phase, vlr.fraction_top, temp(vlr.top_temperature)],
+      ]
+      return { label: `Lever Rule (vertical)`, rows }
     }
-    if (lever_rule_mode === `horizontal` && hover_info.lever_rule) {
-      const lr = hover_info.lever_rule
-      return {
-        label: `Lever Rule`,
-        phase_a: lr.left_phase,
-        phase_b: lr.right_phase,
-        fraction_a: lr.fraction_left,
-        fraction_b: lr.fraction_right,
-        detail_a: format_composition(lr.left_composition, composition_unit),
-        detail_b: format_composition(lr.right_composition, composition_unit),
-      }
+    if (lever_rule_mode === `horizontal` && lr) {
+      const comp = (val: number) => format_composition(val, composition_unit)
+      const rows: [string, number, string][] = [
+        [lr.left_phase, lr.fraction_left, comp(lr.left_composition)],
+        [lr.right_phase, lr.fraction_right, comp(lr.right_composition)],
+      ]
+      return { label: `Lever Rule`, rows }
     }
     return null
   })
@@ -226,29 +206,25 @@
     </dl>
 
     {#if lever_display}
-      {@const ld = lever_display}
+      {@const { label, rows } = lever_display}
       <div class="lever">
-        <span>{ld.label}</span>
+        <span>{label}</span>
         <div class="bar">
-          <div
-            style:width="{ld.fraction_a * 100}%"
-            title="{ld.phase_a}: {format_num(ld.fraction_a * 100, `.1f`)}%"
-          ></div>
-          <div
-            style:width="{ld.fraction_b * 100}%"
-            title="{ld.phase_b}: {format_num(ld.fraction_b * 100, `.1f`)}%"
-          ></div>
-          <i style:left="{ld.fraction_a * 100}%"></i>
+          {#each rows as [phase, fraction], idx (idx)}
+            <div
+              style:width="{fraction * 100}%"
+              title="{phase}: {format_num(fraction * 100, `.1f`)}%"
+            ></div>
+          {/each}
+          <i style:left="{rows[0][1] * 100}%"></i>
         </div>
         <div class="phase-info">
-          <span
-            >{@html safe_formula(ld.phase_a)}: {format_num(ld.fraction_a * 100, `.0f`)}%
-            <small>at {ld.detail_a}</small></span
-          >
-          <span
-            >{@html safe_formula(ld.phase_b)}: {format_num(ld.fraction_b * 100, `.0f`)}%
-            <small>at {ld.detail_b}</small></span
-          >
+          {#each rows as [phase, fraction, location], idx (idx)}
+            <span
+              >{@html safe_formula(phase)}: {format_num(fraction * 100, `.0f`)}%
+              <small>at {location}</small></span
+            >
+          {/each}
         </div>
       </div>
     {/if}

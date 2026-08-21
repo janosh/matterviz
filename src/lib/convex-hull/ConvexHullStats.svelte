@@ -1,21 +1,17 @@
 <script lang="ts">
-  import {
-    get_alphabetical_formula,
-    get_electro_neg_formula,
-    get_reduced_formula,
-  } from '$lib/composition'
-  import { Icon } from 'svelte-widgets'
-  import { Check } from 'svelte-widgets/icons'
+  // Phase statistics + entry table for a convex hull (standalone or inside the info pane)
+  import { get_electro_neg_formula, get_reduced_formula } from '$lib/composition'
   import { format_num } from '$lib/labels'
-  import { sanitize_html } from '$lib/sanitize'
-  import { escape_html } from '$lib/utils'
+  import type { InfoPaneCard } from '$lib/overlays'
+  import InfoPaneCards from '$lib/overlays/InfoPaneCards.svelte'
   import Histogram from '$lib/plot/histogram/Histogram.svelte'
   import type { Label, RowData } from '$lib/table'
   import HeatmapTable from '$lib/table/HeatmapTable.svelte'
+  import { escape_html } from '$lib/utils'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap } from 'svelte/reactivity'
-  import { create_clipboard_feedback } from '$lib/overlays'
+  import { get_arity, is_on_hull, visible_entries as filter_visible } from './helpers'
   import type {
     ConvexHullEntry,
     EntryCategoryConfig,
@@ -23,7 +19,6 @@
     PhaseStats,
   } from './types'
   import { MAGNETIC_ORDERING_CATEGORY } from './types'
-  import { get_arity, is_on_hull, visible_entries as filter_visible } from './helpers'
 
   let {
     phase_stats,
@@ -48,53 +43,22 @@
     // Categorical classification + hidden values (excluded from shown counts/table)
     entry_category?: EntryCategoryConfig | null
     hidden_categories?: string[]
-    // 'toggle' shows stats/table with toggle buttons (default)
-    // 'side-by-side' shows both stats and table next to each other without toggle
+    // 'toggle' switches between stats and table; 'side-by-side' shows both
     layout?: `toggle` | `side-by-side`
-    // Called when a table row is clicked, with the corresponding entry
-    on_entry_click?: (entry: ConvexHullEntry) => void
-    // Entry ID to highlight in the table (e.g. current material on detail page)
-    highlighted_entry_id?: string
-    // Minimum number of elements filter for table (bindable for URL sync)
-    min_n_elements?: number
-    // Generate URL for an entry (makes ID column a clickable link)
-    entry_href?: (entry: ConvexHullEntry) => string | null
+    on_entry_click?: (entry: ConvexHullEntry) => void // table row click
+    highlighted_entry_id?: string // row to highlight (e.g. current material on a detail page)
+    min_n_elements?: number // table filter: minimum number of elements (bindable for URL sync)
+    entry_href?: (entry: ConvexHullEntry) => string | null // makes the ID column a link
   } = $props()
 
-  const { copied, copy } = create_clipboard_feedback()
   let view_mode = $state<`stats` | `table`>(`stats`)
-  // Formula filter: when set, table shows only entries with this reduced formula
-  let formula_filter = $state(``)
-  const table_scroll_height = `var(--hull-stats-table-height, calc(var(--hull-stats-table-row-height, 2.35rem) * 10 + var(--hull-stats-table-header-height, 3.5rem)))`
-  const table_scroll_style = $derived(
-    layout === `side-by-side`
-      ? `flex: 1 1 0; height: ${table_scroll_height}; min-height: ${table_scroll_height}; max-width: 100%; overflow: auto`
-      : `height: ${table_scroll_height}; min-height: ${table_scroll_height}; max-height: var(--hull-stats-max-height, 70vh); max-width: 100%; overflow: auto`,
-  )
-  const table_root_style = $derived(
-    layout === `side-by-side`
-      ? `flex: 1 1 0; min-height: ${table_scroll_height}; margin-inline: 0`
-      : `min-width: 0; margin-inline: 0`,
-  )
+  let formula_filter = $state(``) // table shows only this reduced formula when set
+  const table_height = `var(--hull-stats-table-height, calc(var(--hull-stats-table-row-height, 2.35rem) * 10 + var(--hull-stats-table-header-height, 3.5rem)))`
 
-  const copy_to_clipboard = (label: string, value: string, key: string): Promise<boolean> =>
-    copy(`${label}: ${value}`, key)
-  function handle_copy_keydown(
-    event: KeyboardEvent,
-    label: string,
-    value: string,
-    key: string,
-  ): void {
-    if (event.key !== `Enter` && event.key !== ` `) return
-    event.preventDefault()
-    copy_to_clipboard(label, value, key)
-  }
-
-  // Shared concatenation of stable + unstable for histograms
-  let all_entries = $derived([...stable_entries, ...unstable_entries])
-  // show_stable/show_unstable respect the caller's partition; pass show flags as true
-  // so filter_visible only applies the category filter on top
-  let shown_entries = $derived(
+  const all_entries = $derived([...stable_entries, ...unstable_entries])
+  // show flags passed as true: the caller's stable/unstable partition is respected here and
+  // filter_visible only applies the category filter on top
+  const shown_entries = $derived(
     filter_visible(
       [...(show_stable ? stable_entries : []), ...(show_unstable ? unstable_entries : [])],
       true,
@@ -104,7 +68,6 @@
     ),
   )
 
-  // Static arity labels for phase breakdown display
   const arity_types: [string, PhaseArityField, number][] = [
     [`Unary`, `unary`, 1],
     [`Binary`, `binary`, 2],
@@ -113,6 +76,12 @@
     [`Quinary+`, `quinary_plus`, 5],
   ]
 
+  const finite = (values: (number | undefined)[]): number[] =>
+    values.filter((val): val is number => val !== undefined && Number.isFinite(val))
+  const e_form_values = $derived(
+    finite(all_entries.map((entry) => entry.e_form_per_atom ?? entry.energy_per_atom)),
+  )
+  const e_hull_values = $derived(finite(all_entries.map((entry) => entry.e_above_hull)))
   const histogram_props = {
     bins: 50,
     y_axis: { label: ``, ticks: 3 },
@@ -122,186 +91,88 @@
     style: `height: 100px; --histogram-min-height: 100px`,
   } as const
 
-  // Prepare histogram data for formation energies and hull distances
-  let e_form_data = $derived([
-    {
-      x: [] as number[],
-      y: all_entries
-        .map((entry) => entry.e_form_per_atom ?? entry.energy_per_atom)
-        .filter((val): val is number => val !== undefined && isFinite(val)),
-      label: `Formation Energy`,
-    },
-  ])
-
-  let hull_distance_data = $derived([
-    {
-      x: [] as number[],
-      y: all_entries
-        .map((entry) => entry.e_above_hull)
-        .filter((val): val is number => val !== undefined && isFinite(val)),
-      label: `E above hull`,
-    },
-  ])
-
-  let pane_data = $derived.by(() => {
-    if (!phase_stats) return []
-
-    const pct = (count: number) =>
-      phase_stats.total > 0 ? format_num(count / phase_stats.total, `.1~%`) : `0%`
-
-    return [
-      {
+  // Stat cards: phase counts, stability, then one per energy distribution (each followed
+  // by its histogram in the markup)
+  type StatCard = `counts` | `stability` | `e_form` | `e_hull`
+  const stat_cards = $derived.by((): Record<StatCard, InfoPaneCard> | null => {
+    if (!phase_stats) return null
+    const { total, chemical_system, max_arity, energy_range, hull_distance } = phase_stats
+    const count_row = (label: string, count: number, key: string) => ({
+      label,
+      value: `${format_num(count)} (${total > 0 ? format_num(count / total, `.1~%`) : `0%`})`,
+      key: `pd-${key}`,
+    })
+    const energy_card = (title: string, label: string, values: number[], key: string) => ({
+      title,
+      rows: [{ label, value: values.map((val) => format_num(val, `.3f`)).join(` / `), key }],
+    })
+    return {
+      counts: {
         title: ``,
-        items: [
+        rows: [
           {
-            label: `Total entries in ${phase_stats.chemical_system}`,
-            value: format_num(phase_stats.total),
-            key: `total-entries`,
+            label: `Total entries in ${chemical_system}`,
+            value: format_num(total),
+            key: `pd-total-entries`,
           },
-          // Only show phase types that exist or are within the max_arity
-          // used when computing stats (respects zeroed-out counts)
+          // Only arities that exist or fit the system dimensionality (respects zeroed counts)
           ...arity_types
-            .filter(
-              ([, field, arity]) => phase_stats[field] > 0 || phase_stats.max_arity >= arity,
-            )
-            .map(([display, field]) => ({
-              label: `${display} phases`,
-              value: `${format_num(phase_stats[field])} (${pct(phase_stats[field])})`,
-              key: `${field}-phases`,
-            })),
+            .filter(([, field, arity]) => phase_stats[field] > 0 || max_arity >= arity)
+            .map(([display, field]) =>
+              count_row(`${display} phases`, phase_stats[field], `${field}-phases`),
+            ),
         ],
       },
-      {
+      stability: {
         title: `Stability`,
-        items: [
-          {
-            label: `Stable phases`,
-            value: `${format_num(phase_stats.stable)} (${pct(phase_stats.stable)})`,
-            key: `stable-phases`,
-          },
-          {
-            label: `Unstable phases`,
-            value: `${format_num(phase_stats.unstable)} (${pct(phase_stats.unstable)})`,
-            key: `unstable-phases`,
-          },
+        rows: [
+          count_row(`Stable phases`, phase_stats.stable, `stable-phases`),
+          count_row(`Unstable phases`, phase_stats.unstable, `unstable-phases`),
         ],
       },
-      {
-        title: `E<sub>form</sub> distribution`,
-        items: [
-          {
-            label: `Min / avg / max (eV/atom)`,
-            value: [
-              phase_stats.energy_range.min,
-              phase_stats.energy_range.avg,
-              phase_stats.energy_range.max,
-            ]
-              .map((val) => format_num(val, `.3f`))
-              .join(` / `),
-            key: `formation-energy`,
-          },
-        ],
-      },
-      {
-        title: `E<sub>above hull</sub> distribution`,
-        items: [
-          {
-            label: `Max / avg (eV/atom)`,
-            value: [phase_stats.hull_distance.max, phase_stats.hull_distance.avg]
-              .map((val) => format_num(val, `.3f`))
-              .join(` / `),
-            key: `hull-distance`,
-          },
-        ],
-      },
-    ]
+      e_form: energy_card(
+        `E<sub>form</sub> distribution`,
+        `Min / avg / max (eV/atom)`,
+        [energy_range.min, energy_range.avg, energy_range.max],
+        `pd-formation-energy`,
+      ),
+      e_hull: energy_card(
+        `E<sub>above hull</sub> distribution`,
+        `Max / avg (eV/atom)`,
+        [hull_distance.max, hull_distance.avg],
+        `pd-hull-distance`,
+      ),
+    }
   })
 
-  // Subsystem coverage: count entries per element pair for the stats pane
-  let subsystem_coverage = $derived.by(() => {
+  // Binary subsystem coverage: entries per element pair (ternary to 10-component systems)
+  const subsystem_coverage = $derived.by(() => {
     if (!phase_stats) return null
     const elements = phase_stats.chemical_system.split(`-`)
     if (elements.length < 3 || elements.length > 10) return null
-    // Count entries containing each pair
     const pair_counts = new SvelteMap<string, number>()
     for (const entry of all_entries) {
-      const active = (
-        Object.keys(entry.composition) as (keyof typeof entry.composition)[]
-      ).filter((el) => (entry.composition[el] ?? 0) > 0)
-      // Count all pairs present in this entry
-      for (let idx_a = 0; idx_a < active.length; idx_a++) {
-        for (let idx_b = idx_a + 1; idx_b < active.length; idx_b++) {
-          const key = [active[idx_a], active[idx_b]].toSorted().join(`-`)
+      const active = Object.keys(entry.composition).filter(
+        (el) => (entry.composition[el as keyof typeof entry.composition] ?? 0) > 0,
+      )
+      for (const [idx_a, el_a] of active.entries()) {
+        for (const el_b of active.slice(idx_a + 1)) {
+          const key = [el_a, el_b].toSorted().join(`-`)
           pair_counts.set(key, (pair_counts.get(key) ?? 0) + 1)
         }
       }
     }
-    // Build pairs list sorted by element order in chemical_system
     return elements.flatMap((el_a, idx_a) =>
       elements.slice(idx_a + 1).map((el_b) => {
-        const key = [el_a, el_b].toSorted().join(`-`)
-        return { pair: key, count: pair_counts.get(key) ?? 0 }
+        const pair = [el_a, el_b].toSorted().join(`-`)
+        return { pair, count: pair_counts.get(pair) ?? 0 }
       }),
     )
   })
-  let subsystem_coverage_summary = $derived(
-    subsystem_coverage?.map(({ pair, count }) => `${pair}: ${count}`).join(` | `) ?? null,
-  )
-
-  // Table view: visible entries filtered by min element count and formula
-  let visible_entries = $derived(
-    shown_entries.filter((entry) => {
-      if (min_n_elements > 1 && get_arity(entry) < min_n_elements) return false
-      if (
-        active_formula_filter &&
-        composition_key(entry.composition) !== active_formula_filter
-      )
-        return false
-      return true
-    }),
-  )
-  let has_raw = $derived(visible_entries.some((entry) => entry.energy_per_atom !== undefined))
-  let has_ids = $derived(visible_entries.some((entry) => entry.entry_id))
-  let max_n_el = $derived(
-    all_entries.reduce((max, entry) => Math.max(max, get_arity(entry)), 1),
-  )
-
-  // Sortable HTML cell with a hidden data-sort-value for HeatmapTable sorting
-  const sort_span = (sort_val: number | string, display: string, attrs = ``) =>
-    `<span data-sort-value="${sort_val}"${attrs ? ` ${attrs}` : ``}>${display}</span>`
-
-  const normalize_formula_markup = (formula: string): string => {
-    let decoded = formula
-    for (let round_idx = 0; round_idx < 5; round_idx++) {
-      const next = decoded
-        .replaceAll('&amp;', `&`)
-        .replaceAll('&lt;', `<`)
-        .replaceAll('&gt;', `>`)
-        .replaceAll('&quot;', `"`)
-        .replaceAll('&#39;', `'`)
-      if (next === decoded) break
-      decoded = next
-    }
-    return decoded
-      .replaceAll(/<sub>\s*(?<content>[^<]+?)\s*<\/sub>/gi, `$1`)
-      .replaceAll(/<[^>]+>/g, ``)
-      .replaceAll(/\s+/g, ``)
-  }
-
-  const sanitize_href = (href: string | null | undefined): string | null => {
-    const trimmed_href = href?.trim()
-    if (!trimmed_href) return null
-    const lower_href = trimmed_href.toLowerCase()
-    const blocked_schemes = [`javascript:`, `data:`, `vbscript:`]
-    if (blocked_schemes.some((scheme) => lower_href.startsWith(scheme))) return null
-    return trimmed_href
-  }
-  // Serialize reduced composition to a stable string key for polymorph counting
+  // === Table ===
   const composition_key = (comp: Record<string, number>): string =>
-    get_alphabetical_formula(get_reduced_formula(comp), true, ``)
-
-  // Count polymorphs per reduced formula across all entries
-  let polymorph_counts = $derived.by(() => {
+    get_electro_neg_formula(get_reduced_formula(comp), true, ``)
+  const polymorph_counts = $derived.by(() => {
     const counts = new SvelteMap<string, number>()
     for (const entry of all_entries) {
       const key = composition_key(entry.composition)
@@ -309,85 +180,77 @@
     }
     return counts
   })
-  let poly_formulas = $derived(
+  const poly_formulas = $derived(
     [...polymorph_counts.entries()]
       .filter(([, count]) => count > 1)
       .toSorted(([, count_a], [, count_b]) => count_b - count_a),
   )
-  let has_polymorphs = $derived(poly_formulas.length > 0)
-  let active_formula_filter = $derived.by(() => {
-    if (!formula_filter || !has_polymorphs) return ``
-    return poly_formulas.some(([formula]) => formula === formula_filter) ? formula_filter : ``
-  })
-  $effect(() => {
-    if (formula_filter && formula_filter !== active_formula_filter) {
-      formula_filter = ``
-    }
-  })
+  const has_polymorphs = $derived(poly_formulas.length > 0)
+  // A filter value that no longer names a polymorph group (data changed) falls back to all
+  const active_formula_filter = $derived(
+    poly_formulas.some(([formula]) => formula === formula_filter) ? formula_filter : ``,
+  )
 
-  // Build table rows and a WeakMap from row→entry for the click handler
-  let { table_data, entry_by_row } = $derived.by(() => {
-    const map = new WeakMap<RowData, ConvexHullEntry>()
-    const rows = visible_entries.map((entry, idx) => {
-      const n_atoms = Object.values(entry.composition).reduce((sum, count) => sum + count, 0)
-      const on_hull = is_on_hull(entry)
-      const formula_source =
-        entry.reduced_formula ??
-        entry.name ??
-        get_alphabetical_formula(entry.composition, true, ``)
-      const normalized_formula = normalize_formula_markup(formula_source)
-      const formatted_formula = get_electro_neg_formula(normalized_formula)
-      const formula_html = formatted_formula || escape_html(normalized_formula)
-      // Match by entry_id or common data fields (mat_id, structure_id)
-      // since entry_id may be wrapped in HTML (e.g. <a> tags)
-      const entry_data = entry.data as Record<string, unknown> | undefined
-      const is_highlighted = Boolean(
-        highlighted_entry_id &&
-        (entry.entry_id === highlighted_entry_id ||
-          entry_data?.mat_id === highlighted_entry_id ||
-          entry_data?.structure_id === highlighted_entry_id),
-      )
+  const table_entries = $derived(
+    shown_entries.filter(
+      (entry) =>
+        (min_n_elements <= 1 || get_arity(entry) >= min_n_elements) &&
+        (!active_formula_filter ||
+          composition_key(entry.composition) === active_formula_filter),
+    ),
+  )
+  const has_raw = $derived(table_entries.some((entry) => entry.energy_per_atom !== undefined))
+  const has_ids = $derived(table_entries.some((entry) => entry.entry_id))
+  const max_n_el = $derived(Math.max(1, ...all_entries.map(get_arity)))
+
+  const is_highlighted = (entry: ConvexHullEntry): boolean => {
+    if (!highlighted_entry_id) return false
+    const data = entry.data as Record<string, unknown> | undefined
+    return [entry.entry_id, data?.mat_id, data?.structure_id].includes(highlighted_entry_id)
+  }
+
+  // Table rows, index-aligned with table_entries (the `#` column is idx + 1, which is how
+  // a clicked row maps back to its entry). Cell HTML is sanitized by HeatmapTable (unsafe
+  // hrefs are dropped there).
+  const table_data = $derived(
+    table_entries.map((entry, idx): RowData => {
+      const formula = get_electro_neg_formula(get_reduced_formula(entry.composition))
       const row: RowData = {
-        '#': sort_span(idx + 1, `${idx + 1}`),
-        Formula: on_hull ? `<strong>${formula_html}</strong>` : formula_html,
+        '#': idx + 1,
+        Formula: is_on_hull(entry) ? `<strong>${formula}</strong>` : formula,
         'E<sub>hull</sub>': entry.e_above_hull ?? null,
         'E<sub>form</sub>': entry.e_form_per_atom ?? entry.energy_per_atom ?? null,
       }
       if (has_raw) row[`E<sub>raw</sub>`] = entry.energy_per_atom
       if (has_ids) {
-        const safe_href = sanitize_href(entry_href?.(entry))
+        const href = entry_href?.(entry)
         const safe_id = entry.entry_id ? escape_html(entry.entry_id) : undefined
         row.ID =
-          safe_href && safe_id
-            ? `<a href="${escape_html(
-                safe_href,
-              )}" target="_blank" rel="noopener">${safe_id}</a>`
+          href && safe_id
+            ? `<a href="${escape_html(href)}" target="_blank" rel="noopener">${safe_id}</a>`
             : safe_id
       }
-      if (has_polymorphs) {
-        const comp_key = composition_key(entry.composition)
-        const poly_count = polymorph_counts.get(comp_key) ?? 1
-        row.Poly = poly_count
-      }
+      if (has_polymorphs)
+        row.Poly = polymorph_counts.get(composition_key(entry.composition)) ?? 1
       row[`N<sub>el</sub>`] = get_arity(entry)
-      row[`N<sub>at</sub>`] = n_atoms
-      // Highlight row for current material
-      if (is_highlighted) {
+      row[`N<sub>at</sub>`] = Object.values(entry.composition).reduce(
+        (sum, amt) => sum + amt,
+        0,
+      )
+      if (is_highlighted(entry)) {
         row.style = `background: color-mix(in srgb, var(--hull-stable-color, #22c55e) 15%, transparent)`
       }
-      map.set(row, entry)
       return row
-    })
-    return { table_data: rows, entry_by_row: map }
-  })
+    }),
+  )
 
   function handle_row_click(_event: KeyboardEvent | MouseEvent, row: RowData): void {
-    const entry = entry_by_row.get(row)
+    const entry = table_entries[Number(row[`#`]) - 1]
     if (entry) on_entry_click?.(entry)
   }
 
-  let table_columns: Label[] = $derived([
-    { label: `#`, color_scale: null, description: `Row number` },
+  const table_columns = $derived<Label[]>([
+    { label: `#`, color_scale: null, format: `d`, description: `Row number` },
     { label: `Formula`, color_scale: null },
     {
       label: `E<sub>hull</sub>`,
@@ -423,117 +286,66 @@
           },
         ]
       : []),
-    {
-      label: `N<sub>el</sub>`,
-      color_scale: null,
-      description: `Number of elements`,
-    },
+    { label: `N<sub>el</sub>`, color_scale: null, description: `Number of elements` },
     {
       label: `N<sub>at</sub>`,
       color_scale: null,
       format: `d`,
       description: `Number of atoms in unit cell`,
     },
-  ] satisfies Label[])
+  ])
 
   // Filename for HeatmapTable's built-in CSV/JSON export
   const export_filename = $derived(
     phase_stats?.chemical_system?.toLowerCase().replaceAll(/\s+/g, `-`) ?? `convex-hull-stats`,
   )
+  const cards_props = {
+    show_filter: false,
+    empty_label: `stats`,
+    heading_level: 5,
+    variant: `flat`,
+  } as const
 </script>
 
 {#snippet stats_panel()}
-  {#each pane_data as section, sec_idx (sec_idx)}
-    {#if sec_idx > 0}<hr />{/if}
-    <section>
-      {#if section.title}
-        <h5>{@html sanitize_html(section.title)}</h5>
-      {/if}
-      {#each section.items as item (item.key ?? item.label)}
-        {@const { key, label, value } = item}
-        <div
-          class="clickable stat-item"
-          data-testid={key ? `pd-${key}` : undefined}
-          title="Click to copy: {label}: {value}"
-          onclick={() => copy_to_clipboard(item.label, String(item.value), key ?? item.label)}
-          role="button"
-          tabindex="0"
-          onkeydown={(event) =>
-            handle_copy_keydown(event, item.label, String(item.value), key ?? item.label)}
-        >
-          <span>{@html sanitize_html(label)}:</span>
-          <span>{@html sanitize_html(value)}</span>
-          {#if key && copied.has(key)}
-            <Icon
-              icon={Check}
-              style="color: var(--success-color, #10b981); width: 12px; height: 12px"
-              class="copy-checkmark"
-            />
-          {/if}
-        </div>
-      {/each}
-
-      {#if sec_idx === 0 && subsystem_coverage}
-        <div
-          class="clickable stat-item subsystem-coverage-row"
-          data-testid="pd-binary-subsystem-coverage"
-          title="Click to copy: Binary subsystem coverage: {subsystem_coverage_summary ?? ``}"
-          onclick={() =>
-            copy_to_clipboard(
-              `Binary subsystem coverage`,
-              subsystem_coverage_summary ?? ``,
-              `binary-subsystem-coverage`,
-            )}
-          role="button"
-          tabindex="0"
-          onkeydown={(event) =>
-            handle_copy_keydown(
-              event,
-              `Binary subsystem coverage`,
-              subsystem_coverage_summary ?? ``,
-              `binary-subsystem-coverage`,
-            )}
-        >
-          <span class="subsystem-label"
-            >Binary subsystem coverage ({subsystem_coverage.length} pairs)</span
-          >
-          <span class="subsystem-chips">
-            {#each subsystem_coverage as { pair, count } (pair)}
-              <span class="subsystem-chip" class:has-entries={count > 0}>
-                <span class="pair">{pair}</span>
-                <span class="count">{count}</span>
-              </span>
-            {/each}
+  {#if stat_cards}
+    <InfoPaneCards cards={[stat_cards.counts]} {...cards_props} />
+    {#if subsystem_coverage}
+      <div class="subsystem-coverage" data-testid="pd-binary-subsystem-coverage">
+        <span class="subsystem-label">
+          Binary subsystem coverage ({subsystem_coverage.length} pairs)
+        </span>
+        {#each subsystem_coverage as { pair, count } (pair)}
+          <span class="subsystem-chip" class:has-entries={count > 0}>
+            <span class="pair">{pair}</span>
+            <span class="count">{count}</span>
           </span>
-          {#if copied.has(`binary-subsystem-coverage`)}
-            <Icon
-              icon={Check}
-              style="color: var(--success-color, #10b981); width: 12px; height: 12px"
-              class="copy-checkmark"
-            />
-          {/if}
-        </div>
-      {/if}
-
-      {#if section.title === `E<sub>form</sub> distribution` && e_form_data[0].y.length > 0}
-        <Histogram
-          {...histogram_props}
-          series={e_form_data}
-          x_axis={{ label: ``, format: `.2f` }}
-          bar={{ color: `steelblue`, opacity: 0.7 }}
-        />
-      {/if}
-
-      {#if section.title === `E<sub>above hull</sub> distribution` && hull_distance_data[0].y.length > 0}
-        <Histogram
-          {...histogram_props}
-          series={hull_distance_data}
-          x_axis={{ label: ``, format: `.2f`, range: [0, null] }}
-          bar={{ color: `coral`, opacity: 0.7 }}
-        />
-      {/if}
-    </section>
-  {/each}
+        {/each}
+      </div>
+    {/if}
+    <hr />
+    <InfoPaneCards cards={[stat_cards.stability]} {...cards_props} />
+    <hr />
+    <InfoPaneCards cards={[stat_cards.e_form]} {...cards_props} />
+    {#if e_form_values.length > 0}
+      <Histogram
+        {...histogram_props}
+        series={[{ x: [], y: e_form_values, label: `Formation Energy` }]}
+        x_axis={{ label: ``, format: `.2f` }}
+        bar={{ color: `steelblue`, opacity: 0.7 }}
+      />
+    {/if}
+    <hr />
+    <InfoPaneCards cards={[stat_cards.e_hull]} {...cards_props} />
+    {#if e_hull_values.length > 0}
+      <Histogram
+        {...histogram_props}
+        series={[{ x: [], y: e_hull_values, label: `E above hull` }]}
+        x_axis={{ label: ``, format: `.2f`, range: [0, null] }}
+        bar={{ color: `coral`, opacity: 0.7 }}
+      />
+    {/if}
+  {/if}
 {/snippet}
 
 {#snippet table_panel()}
@@ -559,16 +371,16 @@
         </select>
       </label>
     {/if}
-    <span class="filter-count">{visible_entries.length} entries</span>
+    <span class="filter-count">{table_entries.length} entries</span>
   </div>
   <HeatmapTable
     data={table_data}
     columns={table_columns}
     initial_sort={{ column: `E<sub>hull</sub>`, direction: `asc` }}
     virtual
-    scroll_style={table_scroll_style}
+    scroll_style="height: {table_height}; min-height: {table_height}; max-height: var(--hull-stats-max-height, 70vh); max-width: 100%; overflow: auto"
     style="width: 100%"
-    root_style={table_root_style}
+    root_style="min-width: 0; margin-inline: 0; flex: 1 1 0"
     onrowclick={on_entry_click ? handle_row_click : undefined}
     export_data={{ filename: export_filename }}
   />
@@ -580,17 +392,11 @@
   </div>
 {/snippet}
 
-{#if layout === `side-by-side`}
-  <div {...rest} class={[`convex-hull-stats side-by-side`, rest.class]}>
-    <div class="stats-pane">
-      {@render stats_panel()}
-    </div>
-    <div class="table-pane">
-      {@render table_panel()}
-    </div>
-  </div>
-{:else}
-  <div {...rest} class={[`convex-hull-stats`, rest.class]}>
+<div {...rest} class={[`convex-hull-stats`, layout, rest.class]}>
+  {#if layout === `side-by-side`}
+    <div class="stats-pane">{@render stats_panel()}</div>
+    <div class="table-pane">{@render table_panel()}</div>
+  {:else}
     <div class="view-toggle">
       <button class:active={view_mode === `stats`} onclick={() => (view_mode = `stats`)}>
         Stats
@@ -603,17 +409,21 @@
       {@render view_panel(`stats`, stats_panel)}
       {@render view_panel(`table`, table_panel)}
     </div>
-  </div>
-{/if}
+  {/if}
+</div>
 
 <style>
   .convex-hull-stats {
-    background: var(--hull-stats-bg, var(--hull-bg));
+    background: var(--hull-stats-bg, var(--hull-bg, var(--plot-bg)));
     border-radius: var(--hull-border-radius, var(--border-radius, 3pt));
     box-sizing: border-box;
     max-width: 100%;
     overflow: hidden;
     padding: var(--hull-stats-padding, 1em);
+    --info-card-padding: 3pt;
+    --info-card-heading-gap: 6px;
+    --info-row-padding: 1pt;
+    --info-row-label-color: var(--text-color-muted, light-dark(#666, #bbb));
   }
   .convex-hull-stats.side-by-side {
     display: flex;
@@ -632,13 +442,6 @@
   .table-pane {
     flex: 1 1 0;
     max-width: 100%;
-    min-height: var(
-      --hull-stats-table-height,
-      calc(
-        var(--hull-stats-table-row-height, 2.35rem) * 10 +
-          var(--hull-stats-table-header-height, 3.5rem)
-      )
-    );
     min-width: 0;
     overflow: auto;
     display: flex;
@@ -647,42 +450,6 @@
   .convex-hull-stats :global(tbody tr[onclick]) {
     cursor: pointer;
   }
-  section div {
-    display: flex;
-    justify-content: space-between;
-    gap: 6pt;
-    padding: 1pt;
-    line-height: 1.5;
-  }
-  section div.clickable {
-    cursor: pointer;
-    position: relative;
-    padding: 0 3pt;
-  }
-  section div:hover {
-    background: var(--pane-bg-hover);
-    border-radius: 3pt;
-  }
-  section :global(.copy-checkmark) {
-    position: absolute;
-    top: 50%;
-    right: 3pt;
-    transform: translateY(-50%);
-    background: var(--pane-bg);
-    border-radius: 50%;
-    animation: fade-in 0.1s ease-out;
-  }
-  @keyframes fade-in {
-    0% {
-      opacity: 0;
-    }
-  }
-  .stat-item span:first-child {
-    color: var(--text-color-muted, light-dark(#666, #bbb));
-  }
-  section h5 {
-    margin: 0 0 6px 0;
-  }
   .view-toggle {
     display: flex;
     margin-bottom: 8pt;
@@ -690,9 +457,6 @@
     min-width: 0;
   }
   .view-toggle button {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
     flex: 1;
     min-width: 0;
     padding: 2pt 8pt;
@@ -702,7 +466,6 @@
     color: inherit;
     cursor: pointer;
     font-size: 0.85em;
-    text-align: center;
   }
   .view-toggle button:first-child {
     border-radius: 4pt 0 0 4pt;
@@ -725,8 +488,6 @@
   .view-panel {
     grid-area: 1 / 1;
     min-width: 0;
-    pointer-events: auto;
-    visibility: visible;
   }
   .view-panel[aria-hidden='true'] {
     pointer-events: none;
@@ -743,14 +504,6 @@
       display: flex;
       align-items: center;
       gap: 0.4em;
-      sub {
-        margin-left: -0.2em;
-        font-size: 0.72em;
-        line-height: 0;
-        vertical-align: baseline;
-        position: relative;
-        top: 0.33em;
-      }
     }
     select {
       padding: 2pt 4pt;
@@ -762,28 +515,21 @@
       font-size: inherit;
     }
   }
-  .filter-count {
+  .filter-count,
+  .subsystem-label {
     color: var(--text-color-muted, light-dark(#666, #bbb));
     font-size: 0.9em;
   }
-  .subsystem-coverage-row {
+  .subsystem-coverage {
+    display: flex;
+    align-items: center;
     flex-wrap: wrap;
     gap: 4pt 1em;
-    justify-content: flex-start;
-    .subsystem-label {
-      color: var(--text-color-muted, light-dark(#666, #bbb));
-      font-size: 0.9em;
-    }
-    .subsystem-chips {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 4pt;
-    }
+    padding: 1pt 3pt;
   }
   .subsystem-chip {
     display: inline-flex;
     align-items: center;
-    gap: 0;
     padding: 1pt 5pt;
     border-radius: 3pt;
     font-size: 0.78em;
@@ -797,7 +543,6 @@
       margin-left: 3pt;
       font-size: 0.9em;
       font-weight: 600;
-      color: color-mix(in srgb, currentColor 70%, transparent);
     }
   }
   .subsystem-chip.has-entries {

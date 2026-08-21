@@ -2,8 +2,8 @@
   import { element_data } from '$lib/element'
   import { format_num } from '$lib/labels'
   import { sanitize_html } from '$lib/sanitize'
-  import type { AxisConfig, InternalPoint } from '$lib/plot'
-  import { ScatterPlot } from '$lib/plot'
+  import type { AxisConfig, InternalPoint } from '$lib/plot/core/types'
+  import ScatterPlot from './ScatterPlot.svelte'
   import { selected } from '$lib/state.svelte'
   import type { ComponentProps } from 'svelte'
 

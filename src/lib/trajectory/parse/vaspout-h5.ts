@@ -22,7 +22,7 @@ import {
   create_trajectory_frame,
   validate_3x3_matrix,
 } from '$lib/trajectory/helpers'
-import type { TrajectoryType } from '$lib/trajectory/index'
+import type { TrajectoryFrame } from '$lib/trajectory/index'
 import {
   expand_ion_types,
   is_hdf5_group,
@@ -32,7 +32,22 @@ import {
   to_scalar_number,
   to_string_array,
 } from './h5-utils'
+import type { ParsedTrajectory, WarnFn } from './shared'
+import type { VaspoutElectronicData } from './vaspout-electronic'
 import { read_vaspout_dos, read_vaspout_electronic } from './vaspout-electronic'
+
+// A vaspout.h5 with renderable electronic results but no (complete) structure: not a
+// trajectory at all, so open_trajectory throws this and the file viewer routes the
+// results to the DOS/bands components.
+export class VaspoutElectronicOnlyError extends Error {
+  constructor(
+    readonly electronic: VaspoutElectronicData,
+    readonly missing: string,
+  ) {
+    super(`vaspout.h5 has no structure data (missing ${missing}); electronic results only`)
+    this.name = 'VaspoutElectronicOnlyError'
+  }
+}
 
 const FINAL_ION_TYPES = `results/positions/ion_types`
 const FINAL_ION_COUNTS = `results/positions/number_ion_types`
@@ -49,6 +64,7 @@ const OSZICAR_ROWS = `intermediate/ion_dynamics/oszicar`
 const OSZICAR_LABELS = `intermediate/ion_dynamics/oszicar_label`
 const ELECTRONIC_STEP_ENERGIES = `intermediate/electronic_steps/energies`
 const INCAR_POTIM = `input/incar/POTIM`
+const INCAR_IBRION = `input/incar/IBRION`
 
 // vaspout.h5 root groups per the VASP 6.x schema. torch-sim files use flat
 // dataset names (positions/atomic_numbers/...) and never these groups.
@@ -184,33 +200,24 @@ const scf_frame_metadata = (scf: ScfIonicStep | undefined): Record<string, numbe
 }
 
 // Bands/DOS-only outputs (e.g. phelel band-path files) carry no (complete)
-// structure datasets but still have renderable electronic results: surface
-// them as a zero-frame trajectory the webview routes to the spectral
-// components. Files with neither structure nor electronic data throw.
-const electronic_only_trajectory = (h5_file: h5wasm.File, missing: string): TrajectoryType => {
+// structure datasets but still have renderable electronic results. Files with
+// neither structure nor electronic data throw a plain error.
+const electronic_only_error = (h5_file: h5wasm.File, missing: string): Error => {
   const electronic = read_vaspout_electronic(h5_file)
   if (!electronic) {
-    throw new Error(
+    return new Error(
       `vaspout.h5 file has no structure data (missing ${missing}) — ` +
         `and no electron_dos/electron_eigenvalues results either`,
     )
   }
-  return {
-    frames: [],
-    metadata: {
-      source_format: `vaspout_h5`,
-      frame_count: 0,
-      electronic,
-      vaspout_electronic_only: true,
-    },
-  }
+  return new VaspoutElectronicOnlyError(electronic, missing)
 }
 
-export function parse_vaspout_h5_file(h5_file: h5wasm.File): TrajectoryType {
+export function parse_vaspout_h5_file(h5_file: h5wasm.File, warn: WarnFn): ParsedTrajectory {
   const ion_types = to_string_array(read_dataset(h5_file, FINAL_ION_TYPES))
   const ion_counts = to_number_array(read_dataset(h5_file, FINAL_ION_COUNTS))
   if (!ion_types || !ion_counts) {
-    return electronic_only_trajectory(h5_file, `${FINAL_ION_TYPES} / ${FINAL_ION_COUNTS}`)
+    throw electronic_only_error(h5_file, `${FINAL_ION_TYPES} / ${FINAL_ION_COUNTS}`)
   }
   // expand_ion_types throws on length mismatch and unknown symbols (fail loudly)
   const elements = expand_ion_types(ion_types, ion_counts)
@@ -230,7 +237,7 @@ export function parse_vaspout_h5_file(h5_file: h5wasm.File): TrajectoryType {
   const { idx: energy_col, tag: energy_tag } = pick_energy_column(energy_tags)
   const scf_history = read_scf_history(h5_file)
 
-  const frames: TrajectoryType[`frames`] = []
+  const frames: TrajectoryFrame[] = []
   let dropped_steps = 0
 
   // Shared frame assembly for the per-step trajectory path and the
@@ -262,6 +269,8 @@ export function parse_vaspout_h5_file(h5_file: h5wasm.File): TrajectoryType {
       [true, true, true],
       step,
       metadata,
+      undefined,
+      warn,
     )
   }
 
@@ -282,9 +291,13 @@ export function parse_vaspout_h5_file(h5_file: h5wasm.File): TrajectoryType {
             traj_scale,
           ),
         )
-      } catch {
-        // Torn final step: keep the frames parsed so far.
+      } catch (error) {
+        // Torn final step: keep the frames parsed so far and say what was lost.
         dropped_steps = n_steps - step
+        warn(
+          `Dropping ${dropped_steps} torn vaspout.h5 ionic step(s) from ${TRAJ_POSITIONS} starting at step ${step}`,
+          error,
+        )
         break
       }
     }
@@ -300,7 +313,7 @@ export function parse_vaspout_h5_file(h5_file: h5wasm.File): TrajectoryType {
     if (!final_lattice_data || !final_positions_data) {
       // Ion species exist but geometry is missing/torn — a bands/DOS-only
       // file can still render its electronic results.
-      return electronic_only_trajectory(h5_file, `${TRAJ_POSITIONS} / ${FINAL_POSITIONS}`)
+      throw electronic_only_error(h5_file, `${TRAJ_POSITIONS} / ${FINAL_POSITIONS}`)
     }
     try {
       frames.push(
@@ -317,7 +330,7 @@ export function parse_vaspout_h5_file(h5_file: h5wasm.File): TrajectoryType {
     } catch {
       // Geometry datasets present but malformed (file torn mid-write): same
       // electronic-only fallback as when they're missing entirely.
-      return electronic_only_trajectory(h5_file, `${FINAL_LATTICE} / ${FINAL_POSITIONS}`)
+      throw electronic_only_error(h5_file, `${FINAL_LATTICE} / ${FINAL_POSITIONS}`)
     }
   }
 
@@ -348,18 +361,19 @@ export function parse_vaspout_h5_file(h5_file: h5wasm.File): TrajectoryType {
   // electronic-only paths above, which are the sole consumers.
   const dos = read_vaspout_dos(h5_file)
 
-  // POTIM is simulation time per ionic step in fs.
+  // POTIM is the MD time step in fs only for IBRION=0 (VASP's default whenever NSW>0); for
+  // relaxations (IBRION=1/2/3) it scales the ionic step and carries no time.
   const potim = to_scalar_number(read_dataset(h5_file, INCAR_POTIM))
+  const ibrion = to_scalar_number(read_dataset(h5_file, INCAR_IBRION))
+  const is_md_run = ibrion === null || ibrion === 0
 
   return {
+    format: `vaspout-h5`,
     frames,
-    ...(potim !== null && potim > 0 && !frames_are_scf_steps
+    ...(potim !== null && potim > 0 && is_md_run && !frames_are_scf_steps
       ? { time_step: potim, time_unit: `fs` }
       : {}),
     metadata: {
-      source_format: `vaspout_h5`,
-      frame_count: frames.length,
-      num_atoms: elements.length,
       element_counts: count_elements(elements),
       periodic_boundary_conditions: [true, true, true],
       has_cell_info: true,

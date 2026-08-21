@@ -227,7 +227,7 @@ export function calc_msd(input: MsdPositions, options: MsdOptions = {}): MsdResu
     )
   }
   if (!(dt > 0)) fail(`dt must be positive, got ${dt}`)
-  // Nothing in TrajectoryType records a timestep, so a dt without a unit would mean
+  // A run may not record a timestep, so a dt without a unit would mean
   // inventing a time axis. Demand the unit instead of guessing one.
   if (options.dt !== undefined && !requested_time_unit) {
     fail(

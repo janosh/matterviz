@@ -28,7 +28,7 @@
   bind:color_scale_range={nice_range}
 >
   {#snippet inset({ active_element })}
-    <TableInset>
+    <TableInset style="align-content: center; --ptable-inset-padding: 0.25em 0.5em 1.4em">
       <section>
         <span>
           Data set &ensp;
@@ -38,6 +38,14 @@
         </span>
         <span>Log color scale <input type="checkbox" bind:checked={log_scale} /></span>
         <ColorScaleSelect bind:value={color_scale} selected={[color_scale]} />
+        <ColorBar
+          range={[1, Math.max(...heatmap_values)]}
+          scale={color_scale}
+          bind:nice_range
+          scale_type={log_scale ? `log` : `linear`}
+          wrapper_style="width: 80%; --cbar-padding: 0.4em 0.8em 0;"
+          bar_style="width: 100%;"
+        />
       </section>
       <strong style="height: 25pt">
         {#if active_element?.name}
@@ -53,21 +61,16 @@
   {/snippet}
 </PeriodicTable>
 
-<ColorBar
-  range={[1, Math.max(...heatmap_values)]}
-  scale={color_scale}
-  bind:nice_range
-  scale_type={log_scale ? `log` : `linear`}
-  bar_style="width: 100%; margin: 4em 1em"
-/>
-
 <style>
   section {
     display: flex;
     flex-direction: column;
+    width: 100%;
     gap: 1ex;
     place-content: center;
     place-items: center;
+    --cbar-font-size: clamp(7pt, 1.8cqw, 9pt);
+    --cbar-thickness: clamp(8px, 2.5cqw, 14px);
   }
   strong {
     text-align: center;

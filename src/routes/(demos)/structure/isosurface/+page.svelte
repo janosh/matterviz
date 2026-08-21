@@ -6,7 +6,7 @@
   import { load_from_url, type FileLoadMeta } from '$lib/io'
   import { parse_volumetric_file } from '$lib/isosurface/parse'
   import { format_num } from '$lib/labels'
-  import { parse_any_structure } from '$lib/structure/parse'
+  import { parse_structure_file } from '$lib/structure/parse'
   import { volumetric_files } from '$site/isosurfaces'
   import { replace_url } from '$site/state.svelte'
   import type {
@@ -59,7 +59,7 @@
         return
       }
 
-      structure = parse_any_structure(text, filename)
+      structure = parse_structure_file(text, filename)
       volumetric_data = undefined
     } catch (exc) {
       error_msg = `Failed to parse ${filename}: ${to_error(exc).message}`
@@ -204,12 +204,12 @@
   {@const vol = active_volume}
   <div class="stats-bar">
     {#if vol}
-      <span title="Grid dimensions">Grid: {vol.grid_dims.join(` × `)}</span>
+      <span title="Grid dimensions">Grid: {vol.dims.join(` × `)}</span>
       <span title="Data minimum">Min: {format_num(data_range.min, `.3~g`)}</span>
       <span title="Data maximum">Max: {format_num(data_range.max, `.3~g`)}</span>
       <span title="Data mean">Mean: {format_num(data_range.mean, `.3~g`)}</span>
       <span title="Total grid points">
-        Points: {format_num(vol.grid_dims[0] * vol.grid_dims[1] * vol.grid_dims[2])}
+        Points: {format_num(vol.values.length)}
       </span>
     {/if}
     {#if parse_time_ms !== undefined}

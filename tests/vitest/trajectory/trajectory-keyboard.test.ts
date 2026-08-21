@@ -1,5 +1,5 @@
 import Trajectory from '$lib/trajectory/Trajectory.svelte'
-import type { TrajectoryType } from '$lib/trajectory'
+import { trajectory_from_frames } from '$lib/trajectory'
 import { type ComponentProps, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test } from 'vitest'
 import {
@@ -12,9 +12,9 @@ import {
 
 // 5 frames gives headroom so a leaked ArrowRight visibly advances the step
 // instead of no-opping at the last frame (which would mask a missing guard).
-const trajectory: TrajectoryType = {
-  frames: [0, 1, 2, 3, 4].map((step) => make_trajectory_frame(step, 1)),
-}
+const trajectory = trajectory_from_frames(
+  [0, 1, 2, 3, 4].map((step) => make_trajectory_frame(step, 1)),
+)
 
 // Unmount between tests so each viewer's <svelte:window> keydown listener is
 // removed — otherwise a lingering hovered viewer responds to later tests' keys.

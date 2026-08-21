@@ -9,7 +9,7 @@
   import { compute_structure_id_async } from './async-compute.svelte'
   import type { CnaTypeName } from './calc-cna'
   import { CNA_TYPE_COLORS, CNA_TYPE_LABELS, CNA_TYPE_NAMES } from './calc-cna'
-  import type { StructureIdOptions, StructureIdResult } from './index'
+  import type { StructureIdOptions, StructureIdResult } from './calc-structure-id'
 
   type PlotMetadata = Record<string, unknown>
 
@@ -49,7 +49,9 @@
 
   const id_options_snapshot = $derived(JSON.stringify(id_options))
 
-  // Async compute can't be a $derived; a request id drops results of superseded inputs
+  // Async compute can't be a $derived; a request id drops results of superseded inputs. The
+  // cleanup also aborts them so the worker stops on a superseded input or unmount, and bumps
+  // the id so the abort rejection of an unmounted plot never lands in error_msg.
   let request_id = 0
   $effect(() => {
     const inputs = structures
@@ -58,7 +60,11 @@
     loading = Boolean(inputs?.length)
     if (!inputs?.length) return
     error_msg = undefined
-    Promise.all(inputs.map((structure) => compute_structure_id_async(structure, options)))
+    const controller = new AbortController()
+    const { signal } = controller
+    Promise.all(
+      inputs.map((structure) => compute_structure_id_async(structure, options, { signal })),
+    )
       .then((computed) => {
         if (this_request !== request_id) return
         id_results = computed
@@ -73,6 +79,10 @@
       .finally(() => {
         if (this_request === request_id) loading = false
       })
+    return () => {
+      request_id++
+      controller.abort()
+    }
   })
 
   const value_of = (result: StructureIdResult, name: CnaTypeName) =>

@@ -1,7 +1,17 @@
 import type { Point2D } from '$lib/math'
-import type { AxisConfig, DataSeries } from '$lib/plot'
 import type { PlotScaleFn } from '$lib/plot/core/scales'
-import type { LabelPlacementConfig, LabelPlacementWeights } from '$lib/plot/core/types'
+import type { FontSpec } from '$lib/plot/core/text-metrics'
+import {
+  DEFAULT_FONT_SPEC,
+  measure_text_line,
+  resolve_font_size_css,
+} from '$lib/plot/core/text-metrics'
+import type {
+  AxisConfig,
+  DataSeries,
+  LabelPlacementConfig,
+  LabelPlacementWeights,
+} from '$lib/plot/core/types'
 import { is_time_scale } from '$lib/plot/core/types'
 
 // Anneal budget and start temperature for a re-solve that inherits the previous layout. Far
@@ -82,22 +92,17 @@ const copy_state = (target: LabelState, source: LabelState) => {
   target.anchor_idx = source.anchor_idx
 }
 
-export function parse_font_size(size_str?: string): number {
-  if (!size_str) return 12
-  const match = /^(?<size>\d+(?:\.\d+)?)(?<unit>px|em|rem)?$/.exec(size_str)
-  if (!match) return 12
-  const value = Number(match[1])
-  return match[2] === `em` || match[2] === `rem` ? value * 16 : value
-}
-
+// Measures each line with the shared canvas-backed text metrics (deterministic 0.6 em per
+// code point when no canvas is available). The +10 px breathing room and 1.2 line height are
+// layout constants the candidate geometry was tuned against.
 export function estimate_label_size(text: string, font_size_str?: string): LabelSize {
-  const font_size = parse_font_size(font_size_str)
+  const font_size = resolve_font_size_css(font_size_str)
+  const font: FontSpec = { ...DEFAULT_FONT_SPEC, font_size, line_height: font_size * 1.2 }
   const label_lines = text.split(/\r?\n/)
-  const max_line_length = Math.max(...label_lines.map((line) => line.length))
-  return {
-    width: max_line_length * font_size * 0.6 + 10,
-    height: label_lines.length * font_size * 1.2,
-  }
+  const max_line_width = Math.max(
+    ...label_lines.map((line) => measure_text_line(line, font).width),
+  )
+  return { width: max_line_width + 10, height: label_lines.length * font.line_height }
 }
 
 // === Geometry helpers ===

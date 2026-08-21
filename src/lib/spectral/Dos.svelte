@@ -4,6 +4,7 @@
   import { SettingsSection } from '$lib/layout'
   import type { Vec2 } from '$lib/math'
   import ScatterPlot from '$lib/plot/scatter/ScatterPlot.svelte'
+  import { sync_axis_range } from '$lib/plot/core/shared-axes'
   import type { AxisConfig, DataSeries } from '$lib/plot/core/types'
   import { extent } from 'd3-array'
   import type { ComponentProps } from 'svelte'
@@ -23,7 +24,6 @@
     normalize_densities,
     normalize_dos,
     SPIN_MODES,
-    sync_axis_range,
     validate_sigma_range,
   } from './helpers'
   import type {
@@ -460,7 +460,6 @@
     {/snippet}
 
     {#snippet controls_extra()}
-      <!-- Spin Mode (for spin-polarized electronic DOS) -->
       {#if has_spin_polarized}
         <SettingsSection
           title="Spin Display"
@@ -484,15 +483,16 @@
         </SettingsSection>
       {/if}
 
-      <!-- Smearing (Sigma) -->
       {#if show_sigma_control}
         <SettingsSection
           title="Smearing"
           current_values={{ sigma }}
           on_reset={() => (sigma = 0)}
+          layout="flow"
         >
-          <div class="pane-row">
-            <label for="dos-sigma" title="Gaussian smearing width (σ)">σ:</label>
+          <label title="Gaussian smearing width (σ)">
+            <span>σ</span>
+            <span class="sigma-value">{format_sigma(sigma)}</span>
             <input
               id="dos-sigma"
               type="range"
@@ -501,44 +501,44 @@
               step={sigma_step}
               bind:value={sigma}
             />
-            <span class="sigma-value">{format_sigma(sigma)}</span>
-          </div>
+          </label>
         </SettingsSection>
       {/if}
 
-      <!-- Normalization -->
-      {#if show_normalize_control}
+      {#if show_normalize_control || (show_units_control && is_phonon)}
         <SettingsSection
-          title="Normalization"
-          current_values={{ normalize }}
-          on_reset={() => (normalize = null)}
+          title="DOS"
+          class="ctrl-line"
+          current_values={{
+            ...(show_normalize_control ? { normalize } : {}),
+            ...(show_units_control && is_phonon ? { units } : {}),
+          }}
+          on_reset={() => {
+            if (show_normalize_control) normalize = null
+            if (show_units_control && is_phonon) units = `THz`
+          }}
+          layout="flow"
         >
-          <div class="pane-row">
-            <label for="dos-normalize">Mode:</label>
-            <select id="dos-normalize" bind:value={normalize}>
-              {#each NORMALIZATION_MODES as mode (mode.value)}
-                <option value={mode.value}>{mode.label}</option>
-              {/each}
-            </select>
-          </div>
-        </SettingsSection>
-      {/if}
-
-      <!-- Frequency Units (phonon DOS only) -->
-      {#if show_units_control && is_phonon}
-        <SettingsSection
-          title="Units"
-          current_values={{ units }}
-          on_reset={() => (units = `THz`)}
-        >
-          <div class="pane-row">
-            <label for="dos-units">Frequency:</label>
-            <select id="dos-units" bind:value={units}>
-              {#each FREQUENCY_UNITS as unit (unit)}
-                <option value={unit}>{unit}</option>
-              {/each}
-            </select>
-          </div>
+          {#if show_normalize_control}
+            <label>
+              <span>Normalize</span>
+              <select id="dos-normalize" bind:value={normalize}>
+                {#each NORMALIZATION_MODES as mode (mode.value)}
+                  <option value={mode.value}>{mode.label}</option>
+                {/each}
+              </select>
+            </label>
+          {/if}
+          {#if show_units_control && is_phonon}
+            <label>
+              <span>Frequency</span>
+              <select id="dos-units" bind:value={units}>
+                {#each FREQUENCY_UNITS as unit (unit)}
+                  <option value={unit}>{unit}</option>
+                {/each}
+              </select>
+            </label>
+          {/if}
         </SettingsSection>
       {/if}
     {/snippet}
@@ -635,27 +635,6 @@
 {/if}
 
 <style>
-  /* Control row layout */
-  .pane-row {
-    display: flex;
-    align-items: center;
-    gap: 0.5em;
-    margin: 0.3em 0;
-    font-size: 0.9em;
-  }
-  .pane-row label {
-    min-width: 4em;
-    flex-shrink: 0;
-  }
-  .pane-row input[type='range'] {
-    flex: 1;
-    min-width: 4em;
-  }
-  .pane-row select {
-    flex: 1;
-    min-width: 0;
-  }
-  /* Spin mode button group */
   .dos-spin-modes {
     display: flex;
     gap: 2px;
@@ -679,11 +658,9 @@
     border-color: var(--btn-border-active, light-dark(#3b82f6, #60a5fa));
     color: var(--btn-color-active, light-dark(#1d4ed8, #93c5fd));
   }
-  /* Sigma value display */
   .sigma-value {
     font-family: var(--font-mono, monospace);
     font-size: 0.9em;
-    min-width: 3.5em;
     text-align: right;
   }
 </style>

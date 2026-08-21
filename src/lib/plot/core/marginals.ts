@@ -438,6 +438,13 @@ export const marginal_axis_presence = (
 const is_flush = (placement: MarginalPlacement, has_axis: boolean): boolean =>
   placement === `flush` || (placement === `auto` && !has_axis)
 
+// Thickness an outer strip occupies at the container edge (0 when flush or absent). Content
+// anchored to that edge, like the plot title above a top strip, shifts inward by this much.
+export const outer_strip_reservation = (
+  config: ResolvedMarginalConfig | null,
+  has_axis: boolean,
+): number => (config && !is_flush(config.placement, has_axis) ? config.size + config.gap : 0)
+
 // Pixel rect of a marginal strip. The cross dimension spans the plot area (so it aligns with
 // the shared positional scale); the thickness is `config.size`, positioned per placement.
 export function marginal_strip_rect(

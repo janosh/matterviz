@@ -21,6 +21,16 @@ export function get_relative_coords(
   return { x: evt.clientX - box.left, y: evt.clientY - box.top }
 }
 
+// Anchor tooltips at the cursor (mouse hover) so they follow the pointer across wide
+// shapes; callers fall back to the shape's center on keyboard focus (no cursor).
+export const pointer_pos = (
+  event: Event | undefined,
+  element: Element | null,
+): Point2D | null => (event instanceof MouseEvent ? get_relative_coords(event, element) : null)
+
+export const is_activation_key = (evt: KeyboardEvent): boolean =>
+  evt.key === `Enter` || evt.key === ` `
+
 // Resolve a delegated event to the integer value of the nearest ancestor's data
 // attribute (e.g. data-sunburst-node-idx), scoped to `root` so targets outside the
 // component don't leak in. Returns null when the event didn't hit an indexed element.

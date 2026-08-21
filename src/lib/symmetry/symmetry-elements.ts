@@ -195,7 +195,7 @@ function fixed_point(mat: Matrix3x3, w_loc: Vec3, order: number): Vec3 {
 
 // NOTE on epsilon: 1e-8 is the loosest of three intentionally different wrap
 // helpers (vs wrap_frac_coord @1e-10 [[src/lib/structure/pbc.ts:26]] for parsed
-// coords and wrap_frac @1e-9 [[src/lib/symmetry/index.ts:80]] for standardized
+// coords and wrap_frac @1e-9 [[src/lib/symmetry/wyckoff.ts]] for standardized
 // Wyckoff positions). Inputs here are fixed points / intercepts obtained by
 // solving linear systems and averaging over operation order, so float error is
 // largest; the result feeds toFixed()-based dedup keys for symmetry elements,

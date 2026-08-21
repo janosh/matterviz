@@ -5,6 +5,7 @@
   import {
     marginal_axis,
     marginal_axis_presence,
+    outer_strip_reservation,
     type MarginalAxis,
     type MarginalAxisBinding,
     type MarginalSeriesInput,
@@ -181,14 +182,15 @@
       ontouchcancel={pan_zoom.on_touch_end}
       style:cursor={pan_zoom.cursor}
     >
+      <!-- An outer top marginal strip sits at the container edge, so the title moves below it -->
       <PlotTitle
         config={frame.title_config}
         x={title_pad.l}
-        y={frame.decoration_solution.pad.t - title_pad.t}
+        y={frame.decoration_solution.pad.t -
+          title_pad.t +
+          outer_strip_reservation(marginals.top, frame.has_x2)}
         width={Math.max(0, frame.width - title_pad.l - title_pad.r)}
       />
-      <ZoomRect start={pan_zoom.drag_start} current={pan_zoom.drag_current} />
-
       <!-- Clip path for the chart area, shared by marks and reference lines -->
       <defs>
         <clipPath id={frame.clip_path_id}>
@@ -202,6 +204,9 @@
       </defs>
 
       {@render layers?.()}
+
+      <!-- After the marks so the drag rect stays visible over dense points and canvases -->
+      <ZoomRect start={pan_zoom.drag_start} current={pan_zoom.drag_current} />
 
       <!-- Marginal distribution strips -->
       <PlotMarginals

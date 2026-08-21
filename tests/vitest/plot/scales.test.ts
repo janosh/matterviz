@@ -2,10 +2,8 @@ import type { Vec2 } from '$lib/math'
 import * as math from '$lib/math'
 import {
   accumulate_extent,
-  calculate_domain,
   create_color_scale,
   create_scale,
-  create_time_scale,
   empty_extent,
   generate_arcsinh_ticks,
   generate_log_ticks,
@@ -36,7 +34,6 @@ describe(`scales`, () => {
       [`arcsinh`, [0, 1000], [0, 300]],
     ])(`%s scale`, (scale_type, domain, range) => {
       const scale = create_scale(scale_type as ScaleType, domain as Vec2, range as Vec2)
-      expect(scale).toBeDefined()
       expect(scale.domain()).toEqual(
         scale_type === `log` ? [Math.max(domain[0], math.LOG_EPS), domain[1]] : domain,
       )
@@ -65,42 +62,8 @@ describe(`scales`, () => {
     test(`arcsinh scale with config object`, () => {
       const config: ArcsinhScaleConfig = { type: `arcsinh`, threshold: 10 }
       const scale = create_scale(config, [0, 100], [0, 500])
-      expect(scale).toBeDefined()
       expect(scale.domain()).toEqual([0, 100])
       expect(scale.range()).toEqual([0, 500])
-    })
-  })
-
-  describe(`create_time_scale`, () => {
-    test(`creates time scale`, () => {
-      const [t1, t2] = [new Date(2023, 0, 1).getTime(), new Date(2023, 11, 31).getTime()]
-      const scale = create_time_scale([t1, t2], [0, 500])
-      expect(scale.domain()).toEqual([new Date(t1), new Date(t2)])
-      expect(scale.range()).toEqual([0, 500])
-    })
-  })
-
-  describe(`calculate_domain`, () => {
-    test.each([
-      [[1, 2, 3, 4, 5], `linear`, [1, 5]],
-      [[10, 100, 1000], `log`, [10, 1000]],
-      [[0.001, 0.1, 1], `log`, [0.001, 1]],
-      [[-5, 0, 5], `log`, [math.LOG_EPS, 5]],
-      // all-negative log data: max must be clamped up to the positive floor too, else the
-      // domain comes back inverted ([LOG_EPS, -1]) and collapses the (color) scale
-      [[-10, -1], `log`, [math.LOG_EPS, math.LOG_EPS]],
-      [[-100, -50, -10], `log`, [math.LOG_EPS, math.LOG_EPS]],
-      [[], `linear`, [0, 1]],
-      [[42], `linear`, [42, 42]],
-    ])(`%s %s scale`, (values, scale_type, expected) => {
-      const domain = calculate_domain(values, scale_type as ScaleType)
-      if (scale_type === `log` && expected[0] === math.LOG_EPS) {
-        expect(domain).toEqual([math.LOG_EPS, expected[1]])
-      } else {
-        expect(domain).toEqual(expected)
-      }
-      // never inverted regardless of input sign
-      expect(domain[0]).toBeLessThanOrEqual(domain[1])
     })
   })
 
@@ -318,43 +281,76 @@ describe(`scales`, () => {
 
   describe(`generate_log_ticks`, () => {
     test.each([
-      { min: 0.1, max: 1000, ticks: 5, contains: [0.1, 1, 10, 100, 1000] },
-      { min: 1, max: 10, ticks: 8, contains: [1, 2, 5, 10] },
-      { min: 1e-12, max: 1, ticks: 5, contains: [math.LOG_EPS, 1e-6, 1e-3, 1] },
-      { min: 0.5, max: 5, ticks: 10, contains: [0.5, 1, 2, 5] },
-      { min: 50, max: 500, ticks: 6, contains: [50, 100, 200, 500] },
-    ])(`log ticks: $min to $max`, ({ min, max, ticks, contains }) => {
+      { min: 0.1, max: 1000, ticks: 5, expected: [0.1, 1, 10, 100, 1000] },
+      // under three decades with a generous count: 1-2-5 mantissas
+      { min: 1, max: 10, ticks: 8, expected: [1, 2, 5, 10] },
+      { min: 0.5, max: 5, ticks: 10, expected: [0.5, 1, 2, 5] },
+      { min: 50, max: 500, ticks: 6, expected: [50, 100, 200, 500] },
+      { min: 1, max: 50, ticks: 8, expected: [1, 2, 5, 10, 20, 50] },
+      // same span, small count: powers of ten only
+      { min: 1, max: 50, ticks: 5, expected: [1, 10] },
+      // sub-decade domains fall back to d3 mantissa ticks inside the domain
+      { min: 2, max: 8, ticks: 5, expected: [2, 3, 4, 5, 6, 7, 8] },
+      { min: 0.2, max: 0.8, ticks: 5, expected: [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8] },
+      { min: 1.5, max: 1.6, ticks: 5, expected: [1.5, 1.52, 1.54, 1.56, 1.58, 1.6] },
+      // narrow domains straddling a power of ten must not emit ticks past max
+      {
+        min: 0.92,
+        max: 0.99,
+        ticks: 5,
+        expected: [0.92, 0.93, 0.94, 0.95, 0.96, 0.97, 0.98, 0.99],
+      },
+      // a generous count on a domain holding fewer than two 1-2-5 mantissas must still
+      // produce ticks (the mantissa list alone was [] for [0.92, 0.99] and [7, 8], [2] for [2, 3])
+      {
+        min: 0.92,
+        max: 0.99,
+        ticks: 8,
+        expected: [0.92, 0.93, 0.94, 0.95, 0.96, 0.97, 0.98, 0.99],
+      },
+      {
+        min: 7,
+        max: 8,
+        ticks: 8,
+        expected: [7, 7.1, 7.2, 7.3, 7.4, 7.5, 7.6, 7.7, 7.8, 7.9, 8],
+      },
+      {
+        min: 2,
+        max: 3,
+        ticks: 8,
+        expected: [2, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 2.9, 3],
+      },
+      // non-positive bounds clamp to LOG_EPS before the power scan
+      {
+        min: -10,
+        max: 100,
+        ticks: 5,
+        expected: [1e-9, 1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 0.01, 0.1, 1, 10, 100],
+      },
+      {
+        min: 1e-12,
+        max: 1,
+        ticks: 5,
+        expected: [1e-9, 1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 0.01, 0.1, 1],
+      },
+    ])(`log ticks: $min to $max (ticks=$ticks)`, ({ min, max, ticks, expected }) => {
       const result = generate_log_ticks(min, max, ticks)
-      expect(result.length).toBeGreaterThan(0)
-      contains.forEach((val) => expect(result).toContain(val))
-      // Log ticks may extend beyond the range for better tick placement
-      expect(result.some((tick) => tick >= min && tick <= max)).toBe(true)
+      expect(result).toHaveLength(expected.length)
+      result.forEach((tick, idx) => expect(tick).toBeCloseTo(expected[idx], 12))
     })
 
-    test.each([[100], [1], [0.001]])(`single value domain %s includes that value`, (value) => {
-      const result = generate_log_ticks(value, value, 5)
-      expect(result).toContain(value)
+    test(`explicit tick arrays pass through untouched`, () => {
+      expect(generate_log_ticks(1, 1000, [1, 2, 3])).toEqual([1, 2, 3])
     })
 
-    test(`negative min clamped to LOG_EPS`, () => {
-      const result = generate_log_ticks(-10, 100, 5)
-      expect(result.every((tick) => tick >= math.LOG_EPS)).toBe(true)
-    })
-
-    // Sub-decade domains (e.g. after zoom-drag) must not return zero ticks at default count
-    test(`sub-decade domains get in-range mantissa ticks; decades keep powers of 10`, () => {
-      for (const [min, max] of [
-        [2, 8],
-        [3, 7],
-        [0.2, 0.8],
-        [5, 50],
-      ]) {
-        const ticks = generate_log_ticks(min, max, 5)
-        expect(ticks.length, `[${min}, ${max}]`).toBeGreaterThanOrEqual(2)
-        expect(ticks.every((tick) => tick >= min && tick <= max)).toBe(true)
-      }
-      expect(generate_log_ticks(0.1, 1000, 5)).toEqual([0.1, 1, 10, 100, 1000])
-    })
+    test.each([100, 1, 0.001])(
+      `degenerate domain [%s, %s] widens to include the value`,
+      (value) => {
+        const result = generate_log_ticks(value, value, 5)
+        expect(result[0]).toBe(value)
+        expect(result.every((tick) => tick >= value && tick <= value * 1.1)).toBe(true)
+      },
+    )
   })
 
   describe(`generate_ticks`, () => {
@@ -391,18 +387,79 @@ describe(`scales`, () => {
       )
     })
 
-    test(`time-based ticks`, () => {
-      const start_time = new Date(2023, 0, 1).getTime()
-      const end_time = new Date(2023, 2, 15).getTime()
-      const domain: Vec2 = [start_time, end_time]
+    test.each([
+      // count request: d3 picks a nice interval, here monthly over 2.5 months
+      {
+        ticks: 5,
+        start: [2023, 0, 1],
+        end: [2023, 2, 15],
+        expected: [
+          [2023, 0, 1],
+          [2023, 1, 1],
+          [2023, 2, 1],
+        ],
+      },
+      {
+        ticks: `month`,
+        start: [2023, 0, 15],
+        end: [2023, 5, 10],
+        expected: [
+          [2023, 1, 1],
+          [2023, 2, 1],
+          [2023, 3, 1],
+          [2023, 4, 1],
+          [2023, 5, 1],
+        ],
+      },
+      {
+        ticks: `year`,
+        start: [2020, 5, 15],
+        end: [2025, 2, 10],
+        expected: [
+          [2021, 0, 1],
+          [2022, 0, 1],
+          [2023, 0, 1],
+          [2024, 0, 1],
+          [2025, 0, 1],
+        ],
+      },
+      {
+        ticks: `day`,
+        start: [2023, 0, 30],
+        end: [2023, 1, 3],
+        expected: [
+          [2023, 0, 30],
+          [2023, 0, 31],
+          [2023, 1, 1],
+          [2023, 1, 2],
+          [2023, 1, 3],
+        ],
+      },
+      // negative number: interval in days
+      {
+        ticks: -7,
+        start: [2023, 0, 1],
+        end: [2023, 0, 29],
+        expected: [
+          [2023, 0, 1],
+          [2023, 0, 8],
+          [2023, 0, 15],
+          [2023, 0, 22],
+          [2023, 0, 29],
+        ],
+      },
+    ])(`time ticks for ticks=$ticks`, ({ ticks, start, end, expected }) => {
+      const domain: Vec2 = [
+        new Date(...(start as [number, number, number])).getTime(),
+        new Date(...(end as [number, number, number])).getTime(),
+      ]
       const scale = scaleTime()
-        .domain([new Date(start_time), new Date(end_time)])
+        .domain([new Date(domain[0]), new Date(domain[1])])
         .range([0, 500])
-
-      const result = generate_ticks(domain, `time`, 5, scale)
-      expect(result.length).toBeGreaterThan(0)
-      expect(result.every((tick) => typeof tick === `number`)).toBe(true)
-      expect(result.some((tick) => tick >= start_time && tick <= end_time)).toBe(true)
+      const result = generate_ticks(domain, `time`, ticks, scale)
+      expect(result.map((tick) => new Date(tick))).toEqual(
+        expected.map((parts) => new Date(...(parts as [number, number, number]))),
+      )
     })
 
     test(`logarithmic ticks`, () => {
@@ -457,32 +514,6 @@ describe(`scales`, () => {
       expect(result.some((tick) => Math.abs(tick - 0.6) < 1e-10)).toBe(true)
       expect(result).toContain(0.8)
       expect(result).toContain(1)
-    })
-
-    test.each([
-      {
-        interval: `month` as const,
-        start: [2022, 0, 1],
-        end: [2024, 11, 31],
-        check: (date: Date) => date.getDate() === 1,
-      },
-      {
-        interval: `year` as const,
-        start: [2020, 5, 15],
-        end: [2025, 2, 10],
-        check: (date: Date) => date.getMonth() === 0 && date.getDate() === 1,
-      },
-    ])(`time intervals - $interval filtering`, ({ interval, start, end, check }) => {
-      const start_time = new Date(start[0], start[1], start[2]).getTime()
-      const end_time = new Date(end[0], end[1], end[2]).getTime()
-      const domain: Vec2 = [start_time, end_time]
-      const scale = scaleTime()
-        .domain([new Date(start_time), new Date(end_time)])
-        .range([0, 500])
-
-      const result = generate_ticks(domain, `time`, interval, scale)
-      expect(result.length).toBeGreaterThan(0)
-      result.forEach((tick) => expect(check(new Date(tick))).toBe(true))
     })
 
     test(`arcsinh ticks`, () => {
@@ -557,18 +588,6 @@ describe(`scales`, () => {
 
       // Smaller threshold puts x=10 deeper into log territory → higher screen position
       expect(pos_1).toBeGreaterThan(pos_100)
-    })
-
-    test(`copy creates independent scale`, () => {
-      const original = scale_arcsinh(1).domain([0, 100]).range([0, 500])
-      const copy = original.copy()
-
-      // Modify copy
-      copy.domain([0, 200])
-
-      // Original should be unchanged
-      expect(original.domain()).toEqual([0, 100])
-      expect(copy.domain()).toEqual([0, 200])
     })
 
     test(`ticks method`, () => {

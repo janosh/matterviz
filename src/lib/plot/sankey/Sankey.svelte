@@ -2,34 +2,31 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
+  import { StatusMessage } from '$lib/feedback'
   import { format_value } from '$lib/labels'
   import { FullscreenButton } from '$lib/layout'
+  import type { BasePlotProps, LegendConfig, Orientation } from '$lib/plot'
+  import { DEFAULT_SERIES_COLORS, PlotLegend, PlotTooltip, SankeyControls } from '$lib/plot'
+  import {
+    closest_data_idx,
+    is_activation_key,
+    pointer_pos,
+  } from '$lib/plot/core/interactions'
+  import { compute_element_placement, filter_padding } from '$lib/plot/core/layout'
+  import type { Sides } from '$lib/plot/core/layout'
+  import { resolve_legend_visibility } from '$lib/plot/core/utils/series-visibility'
+  import { compute_sankey_layout } from '$lib/plot/sankey/sankey'
+  import type { PositionedLink, PositionedNode } from '$lib/plot/sankey/sankey'
   import type {
-    BasePlotProps,
-    LegendConfig,
-    LegendItem,
     SankeyData,
     SankeyHandlerProps,
     SankeyLinkColorMode,
     SankeyLinkHandlerProps,
     SankeyNodeAlign,
     SankeyNodeHandlerProps,
-    Orientation,
-  } from '$lib/plot'
-  import { DEFAULT_SERIES_COLORS, PlotLegend, PlotTooltip, SankeyControls } from '$lib/plot'
-  import { closest_data_idx } from '$lib/plot/core/interactions'
-  import {
-    compute_element_placement,
-    constrain_tooltip_position,
-    filter_padding,
-  } from '$lib/plot/core/layout'
-  import type { Sides } from '$lib/plot/core/layout'
-  import { resolve_legend_visibility } from '$lib/plot/core/utils/series-visibility'
-  import { compute_sankey_layout } from '$lib/plot/sankey/sankey'
-  import type { PositionedLink, PositionedNode } from '$lib/plot/sankey/sankey'
-  import { unique_id } from '$lib/plot/core/utils'
+  } from '$lib/plot/sankey/sankey-types'
   import { DEFAULTS } from '$lib/settings'
-  import { type Snippet, untrack } from 'svelte'
+  import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'
 
@@ -111,16 +108,17 @@
   let [width, height] = $state([0, 0])
   let wrapper: HTMLDivElement | undefined = $state()
   let svg_element: SVGSVGElement | null = $state(null)
-  let tooltip_el = $state<HTMLDivElement | undefined>()
-  // Unique per-instance prefix for gradient ids (collision-resistant, see unique_id)
-  const uid = unique_id(`sankey`)
+  // Unique per-instance prefix for gradient ids so several diagrams can share a page
+  const uid = $props.id()
 
-  let hovered_node = $state<number | null>(null)
-  let hovered_link = $state<number | null>(null)
+  // The hovered node or link (its public handler payload) + the tooltip anchor
   let hover_info = $state<SankeyHandlerProps<Metadata> | null>(null)
-  let hover_pos = $state<{ x: number; y: number }>({ x: 0, y: 0 })
-  // Nodes muted via legend toggle (dimmed, not removed - keeps layout stable)
-  let muted_nodes = new SvelteSet<string | number>()
+  let hover_pos = $state({ x: 0, y: 0 })
+  // Legend hover dims like a node hover but shows no tooltip
+  let legend_hover_idx = $state<number | null>(null)
+  // Nodes muted via legend toggle (dimmed, not removed - keeps layout stable).
+  // Ids of nodes absent from the current data are inert.
+  const muted_nodes = new SvelteSet<string | number>()
 
   let pad = $derived(filter_padding(padding, DEFAULT_PADDING))
   let inner_width = $derived(Math.max(0, width - pad.l - pad.r))
@@ -133,39 +131,30 @@
     ),
   )
 
-  // Drop muted ids that no longer exist when data changes (untrack avoids a
-  // self-trigger loop from reading/writing muted_nodes in the same effect).
-  $effect(() => {
-    const valid = new Set(data.nodes.map((node, idx) => node.id ?? idx))
-    untrack(() => {
-      for (const id of muted_nodes) if (!valid.has(id)) muted_nodes.delete(id)
-    })
-  })
-
-  // Degrade to an empty layout (instead of crashing the host page) when the graph
-  // is invalid, e.g. contains a cycle. The thrown error is surfaced via console.error.
+  // Invalid graphs (cycles, unknown node refs) render an error message in place
+  // of the diagram instead of crashing the host page
   let layout = $derived.by(() => {
     try {
-      return compute_sankey_layout(data, {
-        width: inner_width,
-        height: inner_height,
-        node_width,
-        node_padding,
-        node_align,
-        orientation,
-        iterations,
-      })
+      return {
+        error: null,
+        ...compute_sankey_layout(data, {
+          width: inner_width,
+          height: inner_height,
+          node_width,
+          node_padding,
+          node_align,
+          orientation,
+          iterations,
+        }),
+      }
     } catch (err) {
-      console.error(err)
-      return { nodes: [], links: [] }
+      return { nodes: [], links: [], error: err instanceof Error ? err.message : String(err) }
     }
   })
 
-  // node_idx -> positioned node (array order is preserved by d3-sankey, but map is safer)
+  // node_idx -> positioned node: orphans are dropped by the layout, so positions
+  // are sparse in node_idx
   let node_by_idx = $derived(new Map(layout.nodes.map((node) => [node.node_idx, node])))
-
-  const node_id_at = (node_idx: number): string | number =>
-    node_by_idx.get(node_idx)?.id ?? node_idx
 
   // Node box center in container (pad-offset) pixel space, for tooltip + legend placement
   const node_center = (node: PositionedNode): { x: number; y: number } => ({
@@ -176,34 +165,32 @@
   // Resolve a link's ribbon color from explicit color or the active color mode
   const link_color = (link: PositionedLink): string => {
     if (link.color) return link.color
-    const src = node_colors[link.source.node_idx]
-    const tgt = node_colors[link.target.node_idx]
-    if (link_color_mode === `target`) return tgt
+    if (link_color_mode === `target`) return node_colors[link.target.node_idx]
     if (link_color_mode === `gradient`) return `url(#${uid}-grad-${link.link_idx})`
     if (link_color_mode === `static`) return `var(--sankey-link-color, #888)`
-    return src
+    return node_colors[link.source.node_idx]
   }
 
-  // Set of node/link indices to keep fully opaque given the current hover target
+  // Node/link indices kept fully opaque for the current hover target (null = no hover)
   let active = $derived.by(() => {
+    const hovered_node =
+      legend_hover_idx ?? (hover_info?.type === `node` ? hover_info.node_idx : null)
     if (hovered_node != null) {
       const node = node_by_idx.get(hovered_node)
       if (!node) return null
-      const link_set = new SvelteSet<number>()
-      const node_set = new SvelteSet<number>([hovered_node])
+      const links = new SvelteSet<number>()
+      const nodes = new SvelteSet<number>([hovered_node])
       for (const link of [...(node.sourceLinks ?? []), ...(node.targetLinks ?? [])]) {
-        link_set.add((link as PositionedLink).link_idx)
-        node_set.add((link.source as PositionedNode).node_idx)
-        node_set.add((link.target as PositionedNode).node_idx)
+        links.add((link as PositionedLink).link_idx)
+        nodes.add((link.source as PositionedNode).node_idx)
+        nodes.add((link.target as PositionedNode).node_idx)
       }
-      return { links: link_set, nodes: node_set }
+      return { links, nodes }
     }
-    if (hovered_link != null) {
-      const link = layout.links[hovered_link]
-      if (!link) return null
+    if (hover_info?.type === `link`) {
       return {
-        links: new SvelteSet([hovered_link]),
-        nodes: new SvelteSet([link.source.node_idx, link.target.node_idx]),
+        links: new SvelteSet([hover_info.link_idx]),
+        nodes: new SvelteSet([hover_info.source_idx, hover_info.target_idx]),
       }
     }
     return null
@@ -215,127 +202,93 @@
     return 1
   }
 
-  const link_dim = (link: PositionedLink): boolean =>
-    muted_nodes.has(link.source.id) || muted_nodes.has(link.target.id)
-
   const link_stroke_opacity = (link: PositionedLink): number => {
-    if (link_dim(link)) return link_opacity * 0.15
-    if (active)
+    if (muted_nodes.has(link.source.id) || muted_nodes.has(link.target.id)) {
+      return link_opacity * 0.15
+    }
+    if (active) {
       return active.links.has(link.link_idx)
         ? Math.min(1, link_opacity + 0.35)
         : link_opacity * 0.25
+    }
     return link_opacity
   }
 
   const node_text = (node: PositionedNode): string =>
     node_label?.(node) ?? node.label ?? `${node.id}`
 
-  function make_node_props(node: PositionedNode): SankeyNodeHandlerProps<Metadata> {
-    return {
-      type: `node`,
-      node_idx: node.node_idx,
-      id: node.id,
-      label: node.label,
-      value: node.value ?? 0,
-      color: node_colors[node.node_idx],
-      metadata: data.nodes[node.node_idx]?.metadata,
-    }
-  }
+  const node_props = (node: PositionedNode): SankeyNodeHandlerProps<Metadata> => ({
+    type: `node`,
+    node_idx: node.node_idx,
+    id: node.id,
+    label: node.label,
+    value: node.value,
+    color: node_colors[node.node_idx],
+    metadata: data.nodes[node.node_idx]?.metadata,
+  })
 
-  function make_link_props(link: PositionedLink): SankeyLinkHandlerProps<Metadata> {
-    return {
-      type: `link`,
-      link_idx: link.link_idx,
-      source_idx: link.source.node_idx,
-      target_idx: link.target.node_idx,
-      source_label: link.source.label,
-      target_label: link.target.label,
-      value: link.value,
-      color: link_color(link),
-      metadata: data.links[link.link_idx]?.metadata,
-    }
-  }
+  const link_props = (link: PositionedLink): SankeyLinkHandlerProps<Metadata> => ({
+    type: `link`,
+    link_idx: link.link_idx,
+    source_idx: link.source.node_idx,
+    target_idx: link.target.node_idx,
+    source_label: link.source.label,
+    target_label: link.target.label,
+    value: link.value,
+    color: link_color(link),
+    metadata: data.links[link.link_idx]?.metadata,
+  })
 
-  // Anchor the tooltip at the cursor (mouse hover) so it follows the pointer over wide nodes
-  // and long link ribbons; fall back to the element center on keyboard focus (no cursor).
-  function event_pos(event?: MouseEvent | FocusEvent): { x: number; y: number } | null {
-    if (event instanceof MouseEvent && svg_element) {
-      const rect = svg_element.getBoundingClientRect()
-      return { x: event.clientX - rect.left, y: event.clientY - rect.top }
-    }
-    return null
-  }
+  const link_from_event = (event: Event): PositionedLink | null =>
+    layout.links[closest_data_idx(event, `data-sankey-link-idx`, svg_element) ?? -1] ?? null
+  const node_from_event = (event: Event): PositionedNode | null =>
+    node_by_idx.get(closest_data_idx(event, `data-sankey-node-idx`, svg_element) ?? -1) ?? null
 
-  function set_node_hover(node: PositionedNode | null, event?: MouseEvent | FocusEvent) {
-    if (node) {
-      hovered = true
-      hovered_node = node.node_idx
-      hovered_link = null
-      hover_info = make_node_props(node)
-      hover_pos = event_pos(event) ?? node_center(node)
-      if (event)
-        on_node_hover?.({ ...(hover_info as SankeyNodeHandlerProps<Metadata>), event })
-    } else {
-      hovered_node = null
-      hover_info = null
-      on_node_hover?.(null)
-    }
-  }
-
-  function set_link_hover(link: PositionedLink | null, event?: MouseEvent | FocusEvent) {
-    if (link) {
-      hovered = true
-      hovered_link = link.link_idx
-      hovered_node = null
-      hover_info = make_link_props(link)
-      hover_pos = event_pos(event) ?? { x: pad.l + link.mid.x, y: pad.t + link.mid.y }
-      if (event)
-        on_link_hover?.({ ...(hover_info as SankeyLinkHandlerProps<Metadata>), event })
-    } else {
-      hovered_link = null
-      hover_info = null
-      on_link_hover?.(null)
-    }
-  }
-
-  const link_from_event = (event: Event): PositionedLink | null => {
-    const idx = closest_data_idx(event, `data-sankey-link-idx`, svg_element)
-    return idx == null ? null : (layout.links[idx] ?? null)
-  }
-
-  const node_from_event = (event: Event): PositionedNode | null => {
-    const idx = closest_data_idx(event, `data-sankey-node-idx`, svg_element)
-    return idx == null ? null : (node_by_idx.get(idx) ?? null)
-  }
-
-  function handle_link_hover_event(event: MouseEvent | FocusEvent) {
-    set_link_hover(link_from_event(event), event)
-  }
-
-  function handle_node_hover_event(event: MouseEvent | FocusEvent) {
-    set_node_hover(node_from_event(event), event)
-  }
-
-  function handle_link_click(event: MouseEvent | KeyboardEvent) {
-    const link = link_from_event(event)
-    if (link) on_link_click?.({ ...make_link_props(link), event })
-  }
-
-  function handle_node_click(event: MouseEvent | KeyboardEvent) {
+  // Resolve the event's node or link; hover follows the cursor across wide nodes and
+  // long ribbons and falls back to the shape center on keyboard focus (no cursor).
+  // Same target as before: only the anchor moves, the callbacks don't re-fire.
+  function handle_hover(event: MouseEvent | FocusEvent) {
     const node = node_from_event(event)
-    if (node) on_node_click?.({ ...make_node_props(node), event })
+    const link = node ? null : link_from_event(event)
+    if (!node && !link) return clear_hover()
+    hovered = true
+    const cursor = pointer_pos(event, svg_element)
+    const prev = hover_info
+    if (node) {
+      hover_pos = cursor ?? node_center(node)
+      if (prev?.type === `node` && prev.node_idx === node.node_idx) return
+      if (prev?.type === `link`) on_link_hover?.(null)
+      hover_info = node_props(node)
+      on_node_hover?.({ ...hover_info, event })
+    } else if (link) {
+      hover_pos = cursor ?? { x: pad.l + link.mid.x, y: pad.t + link.mid.y }
+      if (prev?.type === `link` && prev.link_idx === link.link_idx) return
+      if (prev?.type === `node`) on_node_hover?.(null)
+      hover_info = link_props(link)
+      on_link_hover?.({ ...hover_info, event })
+    }
   }
 
-  function handle_link_keydown(event: KeyboardEvent) {
-    if (event.key !== `Enter` && event.key !== ` `) return
-    event.preventDefault()
-    handle_link_click(event)
+  function clear_hover() {
+    if (!hover_info) return
+    const was_node = hover_info.type === `node`
+    hover_info = null
+    hovered = false
+    if (was_node) on_node_hover?.(null)
+    else on_link_hover?.(null)
   }
 
-  function handle_node_keydown(event: KeyboardEvent) {
-    if (event.key !== `Enter` && event.key !== ` `) return
+  function handle_click(event: MouseEvent | KeyboardEvent) {
+    const node = node_from_event(event)
+    if (node) return on_node_click?.({ ...node_props(node), event })
+    const link = link_from_event(event)
+    if (link) on_link_click?.({ ...link_props(link), event })
+  }
+
+  function handle_keydown(event: KeyboardEvent) {
+    if (!is_activation_key(event)) return
     event.preventDefault()
-    handle_node_click(event)
+    handle_click(event)
   }
 
   // Legend: one item per node, toggling mutes (dims) rather than removing.
@@ -369,9 +322,8 @@
   })
 
   function toggle_node(series_idx: number) {
-    const id = node_id_at(series_idx)
-    if (muted_nodes.has(id)) muted_nodes.delete(id)
-    else muted_nodes.add(id)
+    const id = node_by_idx.get(series_idx)?.id ?? series_idx
+    if (!muted_nodes.delete(id)) muted_nodes.add(id)
   }
 
   // Node label placement: horizontal -> beside node; vertical -> above node
@@ -408,22 +360,18 @@
         <FullscreenButton bind:fullscreen {wrapper} bg_css_var="--sankey-fullscreen-bg" />
       {/if}
     </div>
-    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+    {#if layout.error}
+      <StatusMessage message={layout.error} type="error" style="margin: auto 1em" />
+    {/if}
     <svg
       bind:this={svg_element}
       role="application"
       aria-label={rest[`aria-label`] ?? `Sankey diagram`}
-      onmouseleave={() => {
-        hovered = false
-        set_node_hover(null)
-        set_link_hover(null)
-      }}
+      onmouseleave={clear_hover}
     >
       {#if link_color_mode === `gradient`}
         <defs>
           {#each layout.links as link (link.link_idx)}
-            {@const src_color = node_colors[link.source.node_idx]}
-            {@const tgt_color = node_colors[link.target.node_idx]}
             {@const vertical = orientation === `vertical`}
             <linearGradient
               id="{uid}-grad-{link.link_idx}"
@@ -433,32 +381,32 @@
               x2={vertical ? link.mid.x : link.target.x0}
               y2={vertical ? link.target.y0 : link.mid.y}
             >
-              <stop offset="0%" stop-color={src_color} />
-              <stop offset="100%" stop-color={tgt_color} />
+              <stop offset="0%" stop-color={node_colors[link.source.node_idx]} />
+              <stop offset="100%" stop-color={node_colors[link.target.node_idx]} />
             </linearGradient>
           {/each}
         </defs>
       {/if}
 
-      <g transform="translate({pad.l}, {pad.t})">
-        <!-- Links -->
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <g
-          class="links"
-          fill="none"
-          onmousemove={handle_link_hover_event}
-          onmouseleave={() => set_link_hover(null)}
-          onfocusin={handle_link_hover_event}
-          onfocusout={() => set_link_hover(null)}
-          onclick={handle_link_click}
-          onkeydown={handle_link_keydown}
-        >
+      <!-- One delegated handler set for nodes and links: targets resolve via their
+      data-sankey-{node,link}-idx attributes -->
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <g
+        transform="translate({pad.l}, {pad.t})"
+        onmousemove={handle_hover}
+        onmouseleave={clear_hover}
+        onfocusin={handle_hover}
+        onfocusout={clear_hover}
+        onclick={handle_click}
+        onkeydown={handle_keydown}
+      >
+        <g class="links" fill="none">
           {#each layout.links as link (link.link_idx)}
             {@const color = link_color(link)}
             {#if link_content}
               {@render link_content({ link, color })}
             {:else}
-              <!-- svelte-ignore a11y_no_static_element_interactions -->
+              <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
               <path
                 d={link.path}
                 data-sankey-link-idx={link.link_idx}
@@ -476,24 +424,14 @@
           {/each}
         </g>
 
-        <!-- Nodes -->
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <g
-          class="nodes"
-          onmousemove={handle_node_hover_event}
-          onmouseleave={() => set_node_hover(null)}
-          onfocusin={handle_node_hover_event}
-          onfocusout={() => set_node_hover(null)}
-          onclick={handle_node_click}
-          onkeydown={handle_node_keydown}
-        >
+        <g class="nodes">
           {#each layout.nodes as node (node.node_idx)}
             {@const color = node_colors[node.node_idx]}
             <g class="node" style:opacity={node_opacity(node)}>
               {#if node_content}
                 {@render node_content({ node, color })}
               {:else}
-                <!-- svelte-ignore a11y_no_static_element_interactions -->
+                <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
                 <rect
                   data-sankey-node-idx={node.node_idx}
                   x={node.x0}
@@ -530,27 +468,17 @@
   {/if}
 
   {#if hover_info}
-    {@const tip = constrain_tooltip_position(
-      hover_pos.x,
-      hover_pos.y,
-      tooltip_el?.offsetWidth ?? 140,
-      tooltip_el?.offsetHeight ?? 44,
-      width,
-      height,
-      { offset_x: 10, offset_y: 5 },
-    )}
     <!-- Solid chip bg (PlotTooltip auto-contrasts text). Links use the source node
     color so gradient/static ribbons (url(...)/var(...)) still get a readable color. -->
-    {@const tip_bg =
-      hover_info.type === `node`
-        ? hover_info.color
-        : (node_colors[hover_info.source_idx] ?? `rgba(0, 0, 0, 0.7)`)}
     <PlotTooltip
-      x={tip.x}
-      y={tip.y}
-      offset={{ x: 0, y: 0 }}
-      bg_color={tip_bg}
-      bind:wrapper={tooltip_el}
+      x={hover_pos.x}
+      y={hover_pos.y}
+      offset={{ x: 10, y: 5 }}
+      constrain_to={{ width, height }}
+      fallback_size={{ width: 140, height: 44 }}
+      bg_color={hover_info.type === `node`
+        ? hover_info.color
+        : node_colors[hover_info.source_idx]}
     >
       {#if tooltip}
         {@render tooltip(hover_info)}
@@ -575,7 +503,7 @@
       series_data={legend_data}
       on_toggle={legend?.on_toggle ?? toggle_node}
       on_item_hover={(item) =>
-        (hovered_node = item != null && item.series_idx >= 0 ? item.series_idx : null)}
+        (legend_hover_idx = item != null && item.series_idx >= 0 ? item.series_idx : null)}
       style={`position: absolute; left: ${legend_left}px; top: ${legend_top}px; pointer-events: auto; ${
         legend?.style ?? ``
       }`}

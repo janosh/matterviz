@@ -62,6 +62,14 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+// Computation runs through the (async) worker client: flush the effect that starts it (the
+// first tick swaps the initial empty state for the spinner), then wait for the spinner to
+// settle into either the plot or the error state instead of counting microtask hops
+const settled = async () => {
+  await tick()
+  await vi.waitFor(() => expect(document.querySelector(`.spinner`)).toBeNull())
+}
+
 async function mount_2d_with_config(config: {
   interpolate_temperature: boolean
   max_interpolation_gap: number
@@ -78,7 +86,7 @@ async function mount_2d_with_config(config: {
     },
   })
   mounted_components.push(mounted_component)
-  await tick()
+  await settled()
 }
 
 describe(`ChemPot temperature config wiring`, () => {
@@ -95,6 +103,8 @@ describe(`ChemPot temperature config wiring`, () => {
     expect(document.querySelector(`.temperature-slider`)).toBeNull()
   })
 
+  // Li only has free energies at 300 K and 900 K; at 700 K it survives only by interpolation
+  // across a 600 K gap. Dropping it leaves O + LiO without an elemental Li reference.
   test.each([
     {
       label: `2D honors interpolate_temperature override`,
@@ -105,10 +115,14 @@ describe(`ChemPot temperature config wiring`, () => {
       config: { interpolate_temperature: true, max_interpolation_gap: 500 },
     },
   ])(`$label`, async ({ config }) => {
-    vi.spyOn(console, `error`).mockImplementation(() => undefined)
+    const error_spy = vi.spyOn(console, `error`).mockImplementation(() => undefined)
     await mount_2d_with_config(config)
     expect(document.querySelector(`.error-state`)).toBeInstanceOf(HTMLElement)
     expect(document.querySelector(`.temperature-slider`)).toBeNull()
+    expect(error_spy).toHaveBeenCalledWith(
+      `ChemPotDiagram2D:`,
+      expect.objectContaining({ message: `Missing elemental reference entries for: Li` }),
+    )
   })
 
   test(`2D computes successfully with permissive interpolation config`, async () => {
@@ -122,20 +136,20 @@ describe(`ChemPot temperature config wiring`, () => {
 
   test(`3D honors interpolate_temperature override`, async () => {
     vi.spyOn(console, `error`).mockImplementation(() => undefined)
-    const interpolate_temperature = false
-    const max_interpolation_gap = 700
     const mounted_component = mount(ChemPotDiagram3D, {
       target: document.body,
       props: {
         entries: ternary_temp_entries,
         temperature: 700,
         config: base_config,
-        interpolate_temperature,
-        max_interpolation_gap,
+        interpolate_temperature: false,
+        max_interpolation_gap: 700,
       },
     })
     mounted_components.push(mounted_component)
-    await tick()
+    await settled()
+    // Fe + O alone are below the 3-entry minimum for a 3D diagram; the slider stays since
+    // the dataset still has temperature data to pick from
     expect(document.querySelector(`.error-state`)).toBeInstanceOf(HTMLElement)
     expect(document.querySelector(`.temperature-slider`)).toBeInstanceOf(HTMLElement)
   })

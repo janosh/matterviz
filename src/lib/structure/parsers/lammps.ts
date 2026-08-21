@@ -1,14 +1,15 @@
 // LAMMPS data files (.lmp/.data) and single-frame text dumps (.dump).
 // Text dumps reuse the trajectory reader in $lib/trajectory/parse/lammps rather than
 // duplicating its ITEM: section, triclinic-box and column-preference handling.
-import { ATOMIC_WEIGHTS } from '$lib/composition/parse'
 import type { ElementSymbol } from '$lib/element'
+// `$lib/element/data`, not the index: the index re-exports Svelte components, which the
+// parse worker bundle (no svelte plugin) cannot compile
+import { default as element_data } from '$lib/element/data'
 import { coerce_elem_symbol } from '$lib/element/helpers'
 import { ELEM_SYMBOLS } from '$lib/labels'
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
-import type { Site } from '$lib/structure'
-import type { ParsedStructure } from '$lib/structure/parse'
+import type { AnyStructure, Crystal, Site } from '$lib/structure'
 import { make_site } from '$lib/structure/site'
 import { parse_lammps_trajectory } from '$lib/trajectory/parse/lammps'
 import {
@@ -18,6 +19,7 @@ import {
   diag_warn,
   guard_parse,
   is_num_token,
+  make_lattice,
   parsed_result,
   parse_coordinate,
   record_atom_id,
@@ -97,15 +99,14 @@ const infer_atom_style = (rows: string[][], num_atom_types: number): string | nu
 // closest standard atomic weight
 const element_for_mass = (mass: number): ElementSymbol | null => {
   let best: { symbol: ElementSymbol; diff: number } | null = null
-  for (const [symbol, weight] of ATOMIC_WEIGHTS) {
-    const diff = Math.abs(weight - mass)
+  for (const { symbol, atomic_mass } of element_data) {
+    const diff = Math.abs(atomic_mass - mass)
     if (!best || diff < best.diff) best = { symbol, diff }
   }
   return best && best.diff <= 0.5 ? best.symbol : null
 }
 
-// @internal parser exported for tests; public entry points: parse_structure_file/parse_any_structure. Parse a LAMMPS data file.
-export const parse_lammps_data = (content: string): ParsedStructure | null =>
+export const parse_lammps_data = (content: string): Crystal | null =>
   guard_parse(`LAMMPS data`, () => {
     // Line 1 of a data file is always a comment, even if it doesn't start with '#'
     const lines = content.split(/\r?\n/).slice(1)
@@ -317,11 +318,11 @@ export const parse_lammps_data = (content: string): ParsedStructure | null =>
     }
     const bonds = resolve_bonds(raw_bonds, site_idx_by_atom_id, `LAMMPS Bonds`)
 
-    return parsed_result(sites, bonds, lattice_matrix)
+    return { ...parsed_result(sites, bonds), lattice: make_lattice(lattice_matrix) }
   })
 
-// @internal parser exported for tests; public entry points: parse_structure_file/parse_any_structure. Parse the first frame of a LAMMPS text dump.
-export const parse_lammps_dump = (content: string): ParsedStructure | null =>
+// First frame of a LAMMPS text dump as a structure.
+export const parse_lammps_dump = (content: string): AnyStructure | null =>
   guard_parse(`LAMMPS dump`, () => {
     const lines = content.split(/\r?\n/)
     const frame_starts: number[] = []
@@ -341,7 +342,8 @@ export const parse_lammps_dump = (content: string): ParsedStructure | null =>
     }
 
     const frame_lines = lines.slice(frame_starts[0], frame_starts[1] ?? lines.length)
-    const structure = parse_lammps_trajectory(frame_lines.join(`\n`)).frames[0]?.structure
+    const structure = parse_lammps_trajectory(frame_lines.join(`\n`), () => {}).frames[0]
+      ?.structure
     if (!structure || structure.sites.length === 0) {
       diag_error(`LAMMPS dump frame contains no atoms`)
       return null

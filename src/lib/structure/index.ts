@@ -1,7 +1,6 @@
 import type { CompositionType } from '$lib/composition'
-import { ATOMIC_WEIGHTS } from '$lib/composition/parse'
 import type { ElementSymbol } from '$lib/element'
-import { element_data } from '$lib/element'
+import { element_by_symbol, element_data } from '$lib/element'
 import type { FileLoadData } from '$lib/io/types'
 import type { VolumeSliceSettings } from '$lib/isosurface/slice-settings'
 import type { Vec3 } from '$lib/math'
@@ -20,10 +19,11 @@ export { default as CanvasTooltip } from './CanvasTooltip.svelte'
 export { default as Cylinder } from './Cylinder.svelte'
 export { default as Lattice } from './Lattice.svelte'
 export * from './camera-fit'
+export * from './density'
 export * from './measure'
 export * from './pbc'
 export * from './polyhedra'
-export * from './serialize'
+export * from './export'
 export * from './site'
 export { default as Structure } from './Structure.svelte'
 export { default as StructureCarousel } from './StructureCarousel.svelte'
@@ -81,8 +81,7 @@ export type Site = {
   properties: Record<string, unknown>
 }
 
-export const LATTICE_PARAM_KEYS = [`a`, `b`, `c`, `alpha`, `beta`, `gamma`] as const
-export type LatticeParams = Record<(typeof LATTICE_PARAM_KEYS)[number], number>
+export type LatticeParams = Record<`a` | `b` | `c` | `alpha` | `beta` | `gamma`, number>
 
 export type LatticeType = {
   matrix: math.Matrix3x3
@@ -118,7 +117,6 @@ export type BondPair = {
   site_idx_1: number
   site_idx_2: number
   bond_length: number
-  strength: number
   bond_order?: BondOrder
   cell_shift?: Vec3
 }
@@ -129,38 +127,10 @@ export {
   perceive_bond_orders,
 } from '$lib/structure/bond-order-perception'
 
-export function get_element_counts(structure: AnyStructure) {
-  const elements: CompositionType = {}
-  for (const site of structure.sites) {
-    // Periodic image sites are display-only copies, not additional composition.
-    if (typeof site.properties?.orig_site_idx === `number`) continue
-    for (const species of site.species) {
-      const { element: elem, occu } = species
-      elements[elem] = (elements[elem] ?? 0) + occu
-    }
-  }
-  return elements
-}
-
 // Atomic radii in Angstroms (used for relative sizing, not absolute rendering scale)
 export const atomic_radii: CompositionType = Object.fromEntries(
   element_data.map((el) => [el.symbol, el.atomic_radius ?? 1]),
 )
-
-// unified atomic mass units (u) per cubic angstrom (Å^3)
-// to grams per cubic centimeter (g/cm^3)
-const AMU_PER_A3_TO_G_PER_CM3 = 1.66053907
-
-export function get_density(structure: Crystal): number {
-  // calculate the density of a Crystal in g/cm³
-  const elements = get_element_counts(structure)
-  let mass = 0
-  for (const [element, amount] of Object.entries(elements)) {
-    const weight = ATOMIC_WEIGHTS.get(element as ElementSymbol)
-    if (weight !== undefined) mass += amount * weight
-  }
-  return (AMU_PER_A3_TO_G_PER_CM3 * mass) / structure.lattice.volume
-}
 
 export function get_center_of_mass(structure: AnyStructure): Vec3 {
   let center: Vec3 = [0, 0, 0]
@@ -169,7 +139,7 @@ export function get_center_of_mass(structure: AnyStructure): Vec3 {
   for (const site of structure.sites) {
     // Handle disordered sites by summing contributions from all species
     for (const species of site.species) {
-      const atomic_weight = ATOMIC_WEIGHTS.get(species.element) ?? 1
+      const atomic_weight = element_by_symbol.get(species.element)?.atomic_mass ?? 1
       const weight = atomic_weight * species.occu
 
       const scaled_pos = math.scale(site.xyz, weight)
@@ -185,7 +155,7 @@ export function get_center_of_mass(structure: AnyStructure): Vec3 {
 // Recognized prefixes for per-site vector data (force, magnetic moment, spin, velocity).
 // Both singular and plural forms are accepted. Keys matching exactly or starting
 // with one of these followed by `_` (e.g. `force_DFT`) are treated as vectors.
-export const VECTOR_KEY_PREFIXES = [
+const VECTOR_KEY_PREFIXES = [
   `force`,
   `forces`,
   `magmom`,

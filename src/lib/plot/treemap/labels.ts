@@ -1,4 +1,9 @@
+// Treemap label fitting: structured multiline label blocks measured once per node
+// (text metrics are zoom-independent) and placed per frame with pure arithmetic.
+
 import type { Rect } from '$lib/plot/core/layout'
+import type { FontSpec } from '$lib/plot/core/text-metrics'
+import { measure_text_line } from '$lib/plot/core/text-metrics'
 import type { TreemapArc } from '$lib/plot/treemap/treemap'
 import type { ClassValue } from 'svelte/elements'
 
@@ -23,6 +28,15 @@ export type TreemapLabelFormatter<
   Metadata extends Record<string, unknown> = Record<string, unknown>,
 > = (arc: TreemapArc<Metadata>) => TreemapLabelContent | readonly TreemapLabelContent[]
 
+// A label's lines measured at `font_size` (the largest size it may render at);
+// block metrics scale linearly with font size, so fitting needs no re-measuring
+export interface TreemapLabelBlock {
+  lines: readonly TreemapLabelLine[]
+  font_size: number
+  width: number
+  height: number
+}
+
 export interface TreemapLabelPlacement {
   x: number
   lines: (TreemapLabelLine & { y: number })[]
@@ -30,18 +44,6 @@ export interface TreemapLabelPlacement {
   header: boolean
   dominant_baseline: `central`
   transform?: string
-}
-
-interface TreemapLabelPlacementOptions {
-  rect: Rect
-  lines: readonly TreemapLabelLine[]
-  header: boolean
-  fit: TreemapLabelFit
-  min_font_size: number
-  max_font_size: number
-  padding_top: number
-  margin: number
-  measure_line: (line: TreemapLabelLine, font_size: number) => number
 }
 
 const LINE_HEIGHT = 1.1
@@ -66,36 +68,49 @@ export function normalize_treemap_label_lines(
 const line_scale = (line: TreemapLabelLine): number =>
   Number.isFinite(line.font_scale) ? Math.max(MIN_FONT_SCALE, line.font_scale ?? 1) : 1
 
-function block_metrics(
+// Measure a label block at `font_size` in `font` (per-line font_weight overrides
+// the font's; font_scale multiplies the size). Shares the text-metrics cache.
+export function measure_treemap_label_block(
   lines: readonly TreemapLabelLine[],
   font_size: number,
-  measure_line: (line: TreemapLabelLine, font_size: number) => number,
-) {
+  font: Readonly<FontSpec>,
+): TreemapLabelBlock {
   let width = 0
   let height = 0
   for (const line of lines) {
     const line_font_size = font_size * line_scale(line)
-    width = Math.max(width, measure_line(line, line_font_size))
+    const line_font: FontSpec = {
+      ...font,
+      font_size: line_font_size,
+      font_weight: line.font_weight == null ? font.font_weight : `${line.font_weight}`,
+    }
+    width = Math.max(width, measure_text_line(line.text, line_font).width)
     height += line_font_size * LINE_HEIGHT
   }
-  return { width, height }
+  return { lines, font_size, width, height }
 }
 
 export function place_treemap_label({
   rect,
-  lines,
+  block,
   header,
   fit,
   min_font_size,
-  max_font_size,
   padding_top,
   margin,
-  measure_line,
-}: TreemapLabelPlacementOptions): TreemapLabelPlacement | null {
-  if (lines.length === 0) return null
-  const safe_max_font_size = safe_font_size(max_font_size, 11)
+}: {
+  rect: Rect
+  block: TreemapLabelBlock
+  header: boolean // label the branch's header strip instead of the cell center
+  fit: TreemapLabelFit
+  min_font_size: number // px floor for shrink mode
+  padding_top: number // header strip height
+  margin: number // px clearance between label text and cell edges
+}): TreemapLabelPlacement | null {
+  if (block.lines.length === 0) return null
+  const max_font_size = block.font_size
   const safe_min_font_size = Math.min(
-    safe_max_font_size,
+    max_font_size,
     safe_font_size(min_font_size, MIN_FONT_SIZE),
   )
   const header_height = Math.min(rect.height, padding_top)
@@ -106,32 +121,25 @@ export function place_treemap_label({
   // header strips, margin-swallowed slivers): negated > 0 so NaN also bails
   // instead of emitting NaN SVG coordinates, same idiom as tile_rects.
   if (!(available_width > 0) || !(available_height > 0)) return null
-  const max_metrics = block_metrics(lines, safe_max_font_size, measure_line)
   const fit_ratio = (block_width: number, block_height: number): number =>
     block_width > 0 && block_height > 0
       ? Math.min(1, available_width / block_width, available_height / block_height)
       : 0
-  const horizontal_ratio = fit_ratio(max_metrics.width, max_metrics.height)
+  const horizontal_ratio = fit_ratio(block.width, block.height)
   // rotated 90°: the block's width runs along the cell's height (swapped args)
-  const vertical_ratio = header ? 0 : fit_ratio(max_metrics.height, max_metrics.width)
+  const vertical_ratio = header ? 0 : fit_ratio(block.height, block.width)
   const rotated = vertical_ratio > horizontal_ratio
   const best_ratio = Math.max(horizontal_ratio, vertical_ratio)
 
   if (fit === `hide` && best_ratio < 1) return null
   const font_size =
-    fit === `shrink`
-      ? Math.max(safe_min_font_size, safe_max_font_size * best_ratio)
-      : safe_max_font_size
-  // text metrics scale linearly with font size, so the block height at the
-  // final size derives from the max-size measurement — no re-measuring (which
-  // would miss the width cache on every frame of a zoom tween in shrink mode,
-  // since the fitted size varies continuously with the animated rect)
-  const block_height = max_metrics.height * (font_size / safe_max_font_size)
+    fit === `shrink` ? Math.max(safe_min_font_size, max_font_size * best_ratio) : max_font_size
+  const block_height = block.height * (font_size / max_font_size)
   const center_x = rect.x + rect.width / 2
   const center_y = rect.y + label_height / 2
   const x = header ? rect.x + margin : center_x
   let line_top = center_y - block_height / 2
-  const placed_lines = lines.map((line) => {
+  const placed_lines = block.lines.map((line) => {
     const font_scale = line_scale(line)
     const line_height = font_size * font_scale * LINE_HEIGHT
     line_top += line_height / 2

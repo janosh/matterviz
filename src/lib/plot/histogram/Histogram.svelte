@@ -47,8 +47,11 @@
     PlotConfig,
   } from '$lib/plot/core/types'
   import {
+    type BinnedSeries,
     compute_count_range,
     compute_histogram_bins,
+    type HistogramBin,
+    type HistogramNormalize,
     log_safe_range,
   } from '$lib/plot/histogram/histogram'
   import ZeroLines from '$lib/plot/core/components/ZeroLines.svelte'
@@ -56,20 +59,22 @@
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { Vec2 } from '$lib/math'
+  import { vec2_equal } from '$lib/plot/core/interactions'
   import PlotTooltip from '$lib/plot/core/components/PlotTooltip.svelte'
   import { bar_path } from '$lib/plot/core/svg'
 
   let {
-    series = $bindable([]),
+    series: series_in = $bindable([]),
     x_axis = $bindable({}),
     x2_axis = $bindable({}),
     y_axis = $bindable({}),
     y2_axis = $bindable({}),
-    display = $bindable({ ...DEFAULTS.histogram.display }),
+    display = $bindable({ ...DEFAULTS.plot.display }),
     range_padding = 0,
     padding = {},
     title,
     bins = $bindable(DEFAULTS.histogram.bin_count),
+    normalize = $bindable(DEFAULTS.histogram.normalize),
     // explicit type arg keeps `undefined` (auto) in the prop type - a bare fallback
     // would collapse it to plain boolean
     show_legend = $bindable<boolean | undefined>(
@@ -78,8 +83,6 @@
     legend = {},
     bar = $bindable({}),
     selected_property = $bindable(``),
-    // Defaults come from settings so the component and its controls pane agree; the pane
-    // read DEFAULTS.histogram.mode ('overlay') while the component hard-coded 'single'
     mode = $bindable(DEFAULTS.histogram.mode),
     tooltip,
     hovered = $bindable(false),
@@ -111,6 +114,7 @@
       series: DataSeries[]
       // Component-specific props
       bins?: number
+      normalize?: HistogramNormalize
       show_legend?: boolean
       legend?: LegendConfig | null
       bar?: BarStyle
@@ -145,6 +149,15 @@
       facet_layout?: FacetLayoutContext
     } = $props()
 
+  // Legend toggles write `visible` into the bindable series prop so bound parents see
+  // them, and `series` layers the user's overrides back on whenever the parent
+  // replaces the array so hidden series stay hidden
+  const legend_vis = create_legend_visibility(
+    () => series,
+    (next) => (series_in = next),
+  )
+  let series: DataSeries[] = $derived(legend_vis.resolve(series_in))
+
   const { format: _default_format, ...axis_defaults } = AXIS_DEFAULTS
   const resolve_axis = (axis: AxisConfig, defaults: AxisConfig): AxisConfig => ({
     ...axis_defaults,
@@ -158,11 +171,17 @@
   const final_x2_axis = $derived(
     resolve_axis(x2_axis, { label: `Value`, label_shift: { x: 0, y: AXIS_TITLE_OFFSET } }),
   )
-  const final_y_axis = $derived(resolve_axis(y_axis, { label: `Count`, format: `d` }))
-  const final_y2_axis = $derived(
-    resolve_axis(y2_axis, { label: `Count`, format: `d`, label_shift: { x: 0, y: 0 } }),
+  // Normalized bars are fractions, so only raw counts default to integer tick labels
+  const value_axis_defaults = $derived(
+    normalize === `count`
+      ? { label: `Count`, format: `d` }
+      : { label: normalize === `density` ? `Density` : `Probability` },
   )
-  const resolved_display = $derived({ ...DEFAULTS.histogram.display, ...display })
+  const final_y_axis = $derived(resolve_axis(y_axis, value_axis_defaults))
+  const final_y2_axis = $derived(
+    resolve_axis(y2_axis, { ...value_axis_defaults, label_shift: { x: 0, y: 0 } }),
+  )
+  const resolved_display = $derived({ ...DEFAULTS.plot.display, ...display })
   const resolved_bar = $derived({ ...DEFAULTS.histogram.bar, ...bar })
 
   let hover_info = $state<HistogramHandlerProps | null>(null)
@@ -177,75 +196,82 @@
   let indexed_ref_lines = $derived(index_ref_lines(ref_lines))
   let ref_lines_by_z = $derived(group_ref_lines_by_z(indexed_ref_lines))
 
-  // Derived data
-  type IndexedSeries = { series_data: DataSeries; series_idx: number }
+  // === Series selection ===
   let visible_series_labels = $derived(
     series
       .filter((series_data) => series_data.visible ?? true)
       .map((series_data) => series_data.label)
       .filter((label): label is string => typeof label === `string` && label.length > 0),
   )
-  $effect(() => {
-    if (mode !== `single`) return
-    if (selected_property && visible_series_labels.includes(selected_property)) return
-    selected_property = visible_series_labels[0] ?? ``
-  })
-  let selected_series_entries = $derived<IndexedSeries[]>(
+  // In single mode an unset or stale `selected_property` falls back to the first visible label
+  // (an invalid binding is corrected on the next write, not by an effect).
+  const active_property = $derived(
+    visible_series_labels.includes(selected_property)
+      ? selected_property
+      : (visible_series_labels[0] ?? ``),
+  )
+  let selected_series_entries = $derived(
     series
-      .map((series_data: DataSeries, series_idx: number) => ({ series_data, series_idx }))
+      .map((series_data, series_idx) => ({ series_data, series_idx }))
       .filter(
         ({ series_data }) =>
           (series_data.visible ?? true) &&
-          (mode !== `single` || !selected_property || series_data.label === selected_property),
+          (mode !== `single` || !active_property || series_data.label === active_property),
       ),
   )
   let selected_series = $derived(selected_series_entries.map(({ series_data }) => series_data))
 
-  // Partition count axes and accumulate value extents in one pass.
+  // Value extents per x axis and whether any sample lands on a secondary axis, in one pass.
   let axis_data = $derived.by(() => {
-    const y1_series: DataSeries[] = []
-    const y2_series: DataSeries[] = []
     const x1_extent = empty_extent()
     const x2_extent = empty_extent()
     const y2_extent = empty_extent()
     for (const srs of selected_series) {
       accumulate_extent(srs.x_axis === `x2` ? x2_extent : x1_extent, srs.y)
-      if (srs.y_axis === `y2`) {
-        y2_series.push(srs)
-        accumulate_extent(y2_extent, srs.y)
-      } else y1_series.push(srs)
+      if (srs.y_axis === `y2`) accumulate_extent(y2_extent, srs.y)
     }
-    return { y1_series, y2_series, x1_extent, x2_extent, y2_extent }
+    return { x1_extent, x2_extent, y2_extent }
   })
+  let has_x2_points = $derived(axis_data.x2_extent.n_finite > 0)
+  let has_y2_points = $derived(axis_data.y2_extent.n_finite > 0)
 
-  const count_ranges = (x_domain: Vec2, x2_domain: Vec2) => {
-    const count_cfg = { x_domain, x2_domain, bin_count: bins, range_padding }
+  // === Binning ===
+  // Pad-independent (no pixel scales) so the legend obstacle field and the count ranges reuse it
+  const bin_over = (x_domain: Vec2, x2_domain: Vec2): BinnedSeries[] =>
+    compute_histogram_bins(selected_series_entries, {
+      x_domain,
+      x2_domain,
+      x_scale_type: final_x_axis.scale_type,
+      x2_scale_type: final_x2_axis.scale_type,
+      bins,
+      normalize,
+      series_color,
+    })
+  const count_ranges = (binned: readonly BinnedSeries[]) => {
+    const on_axis = (axis: `y1` | `y2`) =>
+      binned.filter((hist) => (hist.y_axis ?? `y1`) === axis)
     return {
-      y: compute_count_range(axis_data.y1_series, {
-        ...count_cfg,
+      y: compute_count_range(on_axis(`y1`), {
         scale_type: final_y_axis.scale_type ?? `linear`,
         y_limit: log_safe_range(final_y_axis),
+        range_padding,
       }),
-      y2: compute_count_range(axis_data.y2_series, {
-        ...count_cfg,
+      y2: compute_count_range(on_axis(`y2`), {
         scale_type: final_y2_axis.scale_type ?? `linear`,
         y_limit: log_safe_range(final_y2_axis),
+        range_padding,
       }),
     }
   }
 
-  let has_x2_points = $derived(axis_data.x2_extent.n_finite > 0)
-  let has_y2_points = $derived(axis_data.y2_extent.n_finite > 0)
-
-  let auto_ranges = $derived.by(() => {
-    const auto_x = nice_range_from_extent(
+  const auto_x_ranges = $derived.by(() => {
+    const x = nice_range_from_extent(
       axis_data.x1_extent,
       final_x_axis.range ?? [null, null],
       final_x_axis.scale_type ?? `linear`,
       range_padding,
     )
-
-    const auto_x2 = has_x2_points
+    const x2 = has_x2_points
       ? nice_range_from_extent(
           axis_data.x2_extent,
           final_x2_axis.range ?? [null, null],
@@ -253,16 +279,19 @@
           range_padding,
         )
       : ([0, 1] as Vec2)
-
-    return { x: auto_x, x2: auto_x2, ...count_ranges(auto_x, auto_x2) }
+    return { x, x2 }
   })
+  // Bins over the data-driven x domains; they also fix the count ranges so a pan/zoom along x
+  // doesn't rescale y.
+  const auto_bins = $derived(bin_over(auto_x_ranges.x, auto_x_ranges.x2))
+  let auto_ranges = $derived({ ...auto_x_ranges, ...count_ranges(auto_bins) })
   // Histogram count ranges depend on the bin domain. Once FacetGrid resolves shared x domains,
   // re-bin against those domains before reporting y so the reconciled count range cannot clip bars.
   const intrinsic_ranges = $derived.by(() => {
     if (!facet_layout) return auto_ranges
     const x_domain = facet_layout.ranges.x ?? auto_ranges.x
     const x2_domain = facet_layout.ranges.x2 ?? auto_ranges.x2
-    return { ...auto_ranges, ...count_ranges(x_domain, x2_domain) }
+    return { ...auto_ranges, ...count_ranges(bin_over(x_domain, x2_domain)) }
   })
 
   // Controls read the resolved auto value and write back an explicit override.
@@ -330,11 +359,11 @@
       const x_span = rx1 - rx0
       const y_span = ry1 - ry0
       if (!(x_span > 0) || !(y_span > 0)) continue
-      for (const series_bin of hist.bins) {
-        if (series_bin.length <= 0) continue
-        const x_norm = (((series_bin.x0 ?? 0) + (series_bin.x1 ?? 0)) / 2 - rx0) / x_span
-        const top = 1 - (series_bin.length - ry0) / y_span
-        const baseline = 1 + ry0 / y_span // normalized y of count=0 (bar foot)
+      for (const { x0, x1, value } of hist.bins) {
+        if (value <= 0) continue
+        const x_norm = ((x0 + x1) / 2 - rx0) / x_span
+        const top = 1 - (value - ry0) / y_span
+        const baseline = 1 + ry0 / y_span // normalized y of value=0 (bar foot)
         const seg = clip_bar(true, x_norm, top, baseline)
         if (seg) bars.push(seg)
       }
@@ -356,61 +385,58 @@
     })),
   )
 
-  // Pad-independent binning (no pixel scales) so the auto-place obstacle field can reuse it
+  // Bins over the current (possibly panned/zoomed) x domains. Until the view moves these are
+  // the auto-domain bins, so the common case bins each series exactly once.
   let histogram_bins = $derived.by(() => {
     if (selected_series.length === 0 || !frame.width || !frame.height) return []
-    return compute_histogram_bins(selected_series_entries, {
-      x_domain: frame.ranges.current.x,
-      x2_domain: frame.ranges.current.x2,
-      has_x2: has_x2_points,
-      bin_count: bins,
-      series_color,
-    })
+    const { x, x2 } = frame.ranges.current
+    if (vec2_equal(x, auto_x_ranges.x) && vec2_equal(x2, auto_x_ranges.x2)) return auto_bins
+    return bin_over(x, x2)
   })
-  // Render-time data adds the pixel scales (pad-dependent)
-  let histogram_data = $derived(
-    histogram_bins.map((hist) => ({
-      ...hist,
-      x_scale: hist.x_axis === `x2` ? frame.scales.x2 : frame.scales.x,
-      y_scale: hist.y_axis === `y2` ? frame.scales.y2 : frame.scales.y,
-    })),
-  )
 
   let legend_data = $derived(build_legend_items(series, series_symbol_swatch))
 
-  function handle_mouse_move(
-    evt: MouseEvent,
-    value: number,
-    count: number,
-    property: string,
-    active_y_axis: `y1` | `y2` = `y1`,
-    series_idx: number = 0,
-    active_x_axis: `x1` | `x2` = `x1`,
-  ) {
-    hovered = true
-    hover_info = {
-      value,
+  // Handler payload for a bar: `value`/`x` are the bin center, `y` the normalized bar height
+  const bar_data = (hist: BinnedSeries, { x0, x1, count, value }: HistogramBin) => {
+    const active_x_axis = hist.x_axis ?? `x1`
+    const active_y_axis = hist.y_axis ?? `y1`
+    const center = (x0 + x1) / 2
+    return {
+      value: center,
       count,
-      property,
-      active_y_axis,
+      property: hist.label,
       active_x_axis,
-      x: value,
-      y: count,
-      series_idx,
+      active_y_axis,
+      x: center,
+      y: value,
+      series_idx: hist.series_idx,
       metadata: null,
-      label: property,
+      label: hist.label,
       x_axis: active_x_axis === `x2` ? final_x2_axis : final_x_axis,
       x2_axis: final_x2_axis,
       y_axis: active_y_axis === `y2` ? final_y2_axis : final_y_axis,
       y2_axis: final_y2_axis,
-    }
+    } satisfies HistogramHandlerProps
+  }
+  const handle_bar_hover = (hist: BinnedSeries, bin: HistogramBin) => (evt: MouseEvent) => {
+    hovered = true
+    hover_info = bar_data(hist, bin)
+    const { value, count, property } = hover_info
     on_bar_hover?.({ value, count, property, event: evt })
   }
-
-  const legend_vis = create_legend_visibility(
-    () => series,
-    (next) => (series = next),
-  )
+  const clear_hover = () => {
+    hover_info = null
+    on_bar_hover?.(null)
+  }
+  const handle_bar_click =
+    (hist: BinnedSeries, bin: HistogramBin) => (event: MouseEvent | KeyboardEvent) => {
+      if (event instanceof KeyboardEvent) {
+        if (event.key !== `Enter` && event.key !== ` `) return
+        event.preventDefault()
+      }
+      const { value, count, property } = bar_data(hist, bin)
+      on_bar_click?.({ value, count, property, event })
+    }
 
   // State accessors for shared axis change handler
   const axis_state: AxisChangeState<DataSeries> = {
@@ -420,7 +446,7 @@
       y: { get: () => final_y_axis, set: (config) => (y_axis = config) },
       y2: { get: () => final_y2_axis, set: (config) => (y2_axis = config) },
     },
-    series: { get: () => series, set: (next) => (series = next) },
+    series: { get: () => series, set: (next) => (series_in = next) },
     loading: { get: () => axis_loading, set: (axis) => (axis_loading = axis) },
   }
 
@@ -462,8 +488,7 @@
   on_mouse_enter={() => (hovered = true)}
   on_mouse_leave={() => {
     hovered = false
-    hover_info = null
-    on_bar_hover?.(null)
+    clear_hover()
   }}
   {header_controls}
   {children}
@@ -489,21 +514,24 @@
     />
 
     <!-- Histogram bars (rendered after axes so bars appear above grid lines) -->
-    {#each histogram_data as { id, bins, color, label, x_scale, y_scale, x_axis: srs_x_axis, y_axis, series_idx }, idx (id ?? idx)}
+    {#each histogram_bins as hist (hist.id)}
+      {@const x_scale = hist.x_axis === `x2` ? frame.scales.x2 : frame.scales.x}
+      {@const y_scale = hist.y_axis === `y2` ? frame.scales.y2 : frame.scales.y}
+      {@const baseline = frame.height - frame.pad.b}
       <g
         class="histogram-series"
-        data-series-idx={series_idx}
+        data-series-idx={hist.series_idx}
         clip-path="url(#{frame.clip_path_id})"
-        opacity={frame.hovered_series_idx !== null && frame.hovered_series_idx !== series_idx
+        opacity={frame.hovered_series_idx !== null &&
+        frame.hovered_series_idx !== hist.series_idx
           ? 0.25
           : 1}
       >
-        {#each bins as bin, bin_idx (bin_idx)}
-          {@const bar_x = x_scale(bin.x0!)}
-          {@const bar_width = Math.max(1, Math.abs(x_scale(bin.x1!) - bar_x))}
-          {@const bar_height = Math.max(0, frame.height - frame.pad.b - y_scale(bin.length))}
-          {@const bar_y = y_scale(bin.length)}
-          {@const value = (bin.x0! + bin.x1!) / 2}
+        {#each hist.bins as bin, bin_idx (bin_idx)}
+          {@const bar_x = x_scale(bin.x0)}
+          {@const bar_width = Math.max(1, Math.abs(x_scale(bin.x1) - bar_x))}
+          {@const bar_y = y_scale(bin.value)}
+          {@const bar_height = Math.max(0, baseline - bar_y)}
           {#if bar_height > 0}
             <path
               d={bar_path(
@@ -511,37 +539,19 @@
                 bar_y,
                 bar_width,
                 bar_height,
-                Math.min(resolved_bar.border_radius ?? 0, bar_width / 2, bar_height / 2),
+                resolved_bar.border_radius ?? 0,
               )}
-              fill={color}
+              fill={hist.color}
               opacity={resolved_bar.opacity}
               stroke={resolved_bar.stroke_color}
               stroke-opacity={resolved_bar.stroke_opacity}
               stroke-width={resolved_bar.stroke_width}
               role="button"
               tabindex="0"
-              onmousemove={(evt) =>
-                handle_mouse_move(
-                  evt,
-                  value,
-                  bin.length,
-                  label,
-                  (y_axis ?? `y1`) as `y1` | `y2`,
-                  series_idx,
-                  (srs_x_axis ?? `x1`) as `x1` | `x2`,
-                )}
-              onmouseleave={() => {
-                hover_info = null
-                on_bar_hover?.(null)
-              }}
-              onclick={(event) =>
-                on_bar_click?.({ value, count: bin.length, property: label, event })}
-              onkeydown={(event: KeyboardEvent) => {
-                if ([`Enter`, ` `].includes(event.key)) {
-                  event.preventDefault()
-                  on_bar_click?.({ value, count: bin.length, property: label, event })
-                }
-              }}
+              onmousemove={handle_bar_hover(hist, bin)}
+              onmouseleave={clear_hover}
+              onclick={handle_bar_click(hist, bin)}
+              onkeydown={handle_bar_click(hist, bin)}
               style:cursor={on_bar_click ? `pointer` : undefined}
             />
           {/if}
@@ -556,9 +566,9 @@
   {#snippet overlays()}
     <!-- Tooltip (outside SVG for proper HTML rendering) -->
     {#if hover_info}
-      {@const { value, count, property, active_y_axis, active_x_axis } = hover_info}
+      {@const { value, count, y, property, active_y_axis, active_x_axis } = hover_info}
       {@const tooltip_x = (active_x_axis === `x2` ? frame.scales.x2 : frame.scales.x)(value)}
-      {@const tooltip_y = (active_y_axis === `y2` ? frame.scales.y2 : frame.scales.y)(count)}
+      {@const tooltip_y = (active_y_axis === `y2` ? frame.scales.y2 : frame.scales.y)(y)}
       <PlotTooltip
         x={tooltip_x}
         y={tooltip_y}
@@ -571,7 +581,10 @@
           {@render tooltip({ ...hover_info, fullscreen })}
         {:else}
           <div>Value: {format_value_or_num(value, hover_info.x_axis.format)}</div>
-          <div>Count: {format_value_or_num(count, hover_info.y_axis.format)}</div>
+          <div>Count: {format_value_or_num(count, `d`)}</div>
+          {#if normalize !== `count`}
+            <div>{value_axis_defaults.label}: {format_value_or_num(y, `.3~g`)}</div>
+          {/if}
           {#if mode === `overlay`}<div>{property}</div>{/if}
         {/if}
       </PlotTooltip>
@@ -584,10 +597,11 @@
         bind:show_controls
         bind:controls_open
         bind:bins
+        bind:normalize
         bind:mode
         bind:show_legend
         resolved_show_legend={should_show_legend}
-        bind:selected_property
+        bind:selected_property={() => active_property, (value) => (selected_property = value)}
         bind:display={() => resolved_display, (value) => (display = value)}
         bind:bar
         bind:x_axis={() => final_x_axis, (value) => (x_axis = value)}
@@ -611,10 +625,10 @@
       series_data={legend_data}
       active_series_idx={hover_info?.series_idx ?? frame.hovered_series_idx}
       on_toggle={(series_idx: number) => {
-        if (series_idx < 0 || series_idx >= series.length) return
         legend_vis.on_toggle(series_idx)
         on_series_toggle(series_idx)
       }}
+      on_group_toggle={legend_vis.on_group_toggle}
       on_double_click={legend_vis.on_double_click}
     />
   {/snippet}

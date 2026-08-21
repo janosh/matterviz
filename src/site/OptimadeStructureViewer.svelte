@@ -87,24 +87,30 @@
     })
   }
 
+  // Every keystroke starts a fetch; only the latest may write back, else a slow older
+  // response lands on top of a newer structure
+  let structure_request_id = 0
   async function load_structure_data() {
+    const request_id = ++structure_request_id
+    const requested_id = structure_id
     loading_struct = true
     struct_error = null
+    let error: string | null = null
     const data = await fetch_optimade_structure(
-      structure_id,
+      requested_id,
       selected_db,
       available_providers,
     ).catch((err) => {
-      struct_error = `Failed to load structure: ${err}`
+      error = `Failed to load structure: ${err}`
       return null
     })
+    if (request_id !== structure_request_id) return
 
     if (data) {
       structure = optimade_to_crystal(data)
-      if (!structure) struct_error = `Failed to convert structure data`
-    } else if (!struct_error) {
-      struct_error = `Structure ${structure_id} not found`
-    }
+      if (!structure) error = `Failed to convert structure data`
+    } else error ??= `Structure ${requested_id} not found`
+    struct_error = error
     loading_struct = false
   }
 

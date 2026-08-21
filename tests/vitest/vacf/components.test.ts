@@ -2,7 +2,11 @@
 // happy-dom has no Worker, so a stub is installed before the module is imported and the
 // real postMessage path runs; the components then exercise the synchronous fallback.
 import type { Vec3 } from '$lib/math'
-import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory'
+import {
+  trajectory_from_frames,
+  type TrajectoryFrame,
+  type TrajectoryRun,
+} from '$lib/trajectory'
 import type * as VacfAsyncModule from '$lib/vacf/async-compute.svelte'
 import { calc_vacf } from '$lib/vacf/calc-vacf'
 import type { VacfInput, VacfOptions, VacfResult } from '$lib/vacf/index'
@@ -233,7 +237,7 @@ describe(`VacfPlot`, () => {
 })
 
 describe(`TrajectoryVacfPane`, () => {
-  const make_trajectory = (n_frames: number): TrajectoryType => {
+  const make_run = (n_frames: number): TrajectoryRun => {
     const { positions, velocities } = circular_motion(n_frames, 0.04, 1)
     const frames: TrajectoryFrame[] = positions.map((frame, frame_idx) => {
       const crystal = make_crystal(
@@ -247,11 +251,13 @@ describe(`TrajectoryVacfPane`, () => {
       )
       return { step: frame_idx, structure: { charge: 0, sites: crystal.sites } }
     })
-    return { frames }
+    return trajectory_from_frames(frames)
   }
 
   const run_collect = async () => {
-    const button = document.querySelector<HTMLButtonElement>(`.vacf-controls button`)
+    const button = document.querySelector<HTMLButtonElement>(
+      `.trajectory-vacf-controls button`,
+    )
     if (!button) throw new Error(`no compute button in the VACF pane`)
     button.click()
     for (let round = 0; round < 40; round++) {
@@ -263,7 +269,7 @@ describe(`TrajectoryVacfPane`, () => {
 
   it(`starts empty, then collects and plots on click`, async () => {
     const initial_text = await mount_and_read(TrajectoryVacfPane, {
-      trajectory: make_trajectory(60),
+      run: make_run(60),
       pane_open: true,
     })
     expect(initial_text).toContain(`No VACF data to display`)
@@ -281,7 +287,7 @@ describe(`TrajectoryVacfPane`, () => {
       TrajectoryVacfPane,
       bind_props(
         {
-          trajectory: make_trajectory(40),
+          run: make_run(40),
           pane_open: true,
           default_dt: 2,
           default_time_unit: `steps`,
@@ -300,16 +306,33 @@ describe(`TrajectoryVacfPane`, () => {
     expect(state.result?.times[1]).toBe(2)
   })
 
-  it(`surfaces a collect failure in the same message slot`, async () => {
-    // total_frames without the frames in memory and without a loader is the indexed trap
-    const trajectory = { ...make_trajectory(40), total_frames: 900, is_indexed: true }
-    await mount_and_read(TrajectoryVacfPane, { trajectory, pane_open: true })
+  // Without a timestep the options do not depend on the stride, so editing it must not
+  // hand VacfPlot a fresh options object and send the buffer back through the worker
+  it(`does not recompute the VACF when the stride changes without a timestep`, async () => {
+    const compute = vi.spyOn(vacf_async_module, `compute_vacf_async`)
+    await mount_and_read(TrajectoryVacfPane, {
+      run: make_run(40),
+      pane_open: true,
+    })
     await run_collect()
-    expect(document.body.textContent).toContain(`only 40 are in memory`)
+    expect(compute).toHaveBeenCalledTimes(1)
+    const stride_input = document.querySelector<HTMLInputElement>(
+      `.trajectory-vacf-controls input[min='1'][step='1']`,
+    )
+    if (!stride_input) throw new Error(`no frame-stride input in the VACF pane`)
+    stride_input.value = `3`
+    stride_input.dispatchEvent(new Event(`input`))
+    await settle()
+    expect(compute).toHaveBeenCalledTimes(1)
   })
 
-  it(`reports no trajectory rather than an empty plot`, async () => {
-    const text = await mount_and_read(TrajectoryVacfPane, { pane_open: true })
-    expect(text).toContain(`No trajectory loaded`)
+  it(`disables collection for a frame-only run`, async () => {
+    const { collect_positions: _collect_positions, ...run } = make_run(40)
+    await mount_and_read(TrajectoryVacfPane, { run, pane_open: true })
+    expect(document.body.textContent).toContain(`only serves individual frames`)
+    expect(
+      document.querySelector<HTMLButtonElement>(`.trajectory-vacf-controls button`)?.disabled,
+    ).toBe(true)
+    expect(document.body.textContent).not.toContain(`velocities read from the file`)
   })
 })

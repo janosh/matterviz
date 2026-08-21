@@ -1,25 +1,16 @@
-import { add_alpha, type D3InterpolateName, get_d3_interpolator } from '$lib/colors'
-import { ELEM_SYMBOL_TO_NAME } from '$lib/composition'
-import type { EnergyModeInfo } from '$lib/convex-hull'
-import type { ElementSymbol } from '$lib/element'
-import type { AnyStructure } from '$lib/structure'
-import { format_fractional, format_num, symbol_map } from '$lib/labels'
+import { type D3InterpolateName, get_d3_interpolator } from '$lib/colors'
+import { element_by_symbol, type ElementSymbol } from '$lib/element'
+import { format_fractional, format_num } from '$lib/labels'
 import { array_extent } from '$lib/math'
 import { scaleSequential } from 'd3-scale'
-import { symbol } from 'd3-shape'
-import { analyze_gas_data, apply_gas_corrections } from './gas-thermodynamics'
 import type {
   ConvexHullConfig,
   EntryCategoryConfig,
-  GasAnalysis,
-  GasThermodynamicsConfig,
   HighlightStyle,
   MarkerSymbol,
   PhaseData,
 } from './types'
 import { MAGNETIC_ORDERING_CATEGORY } from './types'
-
-export { DEFAULT_GAS_TEMP } from './types'
 
 // Tolerance for classifying a phase as on the convex hull (eV/atom)
 export const HULL_STABILITY_TOL = 1e-6
@@ -42,17 +33,6 @@ export function compute_hull_stability(
 }
 
 type StabilityEntry = { is_stable?: boolean; e_above_hull?: number }
-
-// Look up the original (un-projected) entry by id and return its structure if any.
-// Shared by ConvexHull2D/3D/4D for the click-to-preview structure popup.
-export const extract_structure_from_entry = (
-  entries: PhaseData[],
-  entry: { entry_id?: string },
-): AnyStructure | null => {
-  if (!entry.entry_id) return null
-  const orig_entry = entries.find((ent) => ent.entry_id === entry.entry_id)
-  return (orig_entry?.structure as AnyStructure) || null
-}
 
 // [min, max] energy above hull across entries, for ColorBar ranges (max floored at 0.1).
 // Filter to finite values: NaN/undefined distances would otherwise produce a broken range.
@@ -86,8 +66,6 @@ export const get_arity = (entry: PhaseData): number =>
   Object.values(entry.composition).filter((count) => count > 0).length
 
 export const is_unary_entry = (entry: PhaseData) => get_arity(entry) === 1
-
-export const entry_is_unstable = (entry: StabilityEntry): boolean => !entry_is_stable(entry)
 
 // === Entry category helpers (generic categorical classification) ===
 
@@ -145,19 +123,7 @@ export function apply_category_markers(
   return any_assigned ? result : entries
 }
 
-export const entry_is_visible = (
-  entry: StabilityEntry & CategorySource,
-  show_stable: boolean,
-  show_unstable: boolean,
-  category: EntryCategoryConfig | null = null,
-  hidden_categories: readonly string[] = [],
-): boolean => {
-  if (!(entry_is_stable(entry) ? show_stable : show_unstable)) return false
-  if (!category || hidden_categories.length === 0) return true
-  const value = get_entry_category(entry, category)
-  return value === null || !hidden_categories.includes(value)
-}
-
+// Entries shown given the stable/unstable toggles and hidden category values
 export const visible_entries = <Entry extends StabilityEntry & CategorySource>(
   entries: readonly Entry[],
   show_stable: boolean,
@@ -165,9 +131,12 @@ export const visible_entries = <Entry extends StabilityEntry & CategorySource>(
   category: EntryCategoryConfig | null = null,
   hidden_categories: readonly string[] = [],
 ): Entry[] =>
-  entries.filter((entry) =>
-    entry_is_visible(entry, show_stable, show_unstable, category, hidden_categories),
-  )
+  entries.filter((entry) => {
+    if (!(entry_is_stable(entry) ? show_stable : show_unstable)) return false
+    if (!category || hidden_categories.length === 0) return true
+    const value = get_entry_category(entry, category)
+    return value === null || !hidden_categories.includes(value)
+  })
 
 // Energy color scale factory (shared)
 export function get_energy_color_scale(
@@ -206,23 +175,6 @@ export function get_point_color_for_entry(
     : `#666`
 }
 
-// Robust drag-and-drop JSON parsing for convex hull entries
-export async function parse_hull_entries_from_drop(
-  event: DragEvent,
-): Promise<PhaseData[] | null> {
-  const file = event.dataTransfer?.files?.[0]
-  if (!file?.name.endsWith(`.json`)) return null
-  try {
-    const data = JSON.parse(await file.text()) as PhaseData[]
-    if (!Array.isArray(data) || data.length === 0) return null
-    if (!data[0].composition || typeof data[0].energy !== `number`) return null
-    return data
-  } catch (error) {
-    console.error(`Error parsing dropped file:`, error)
-    return null
-  }
-}
-
 // Compute a consistent max energy threshold for controls (shared)
 export function calc_max_hull_dist_in_data(processed_entries: PhaseData[]): number {
   if (processed_entries.length === 0) return 0.5
@@ -233,8 +185,7 @@ export function calc_max_hull_dist_in_data(processed_entries: PhaseData[]): numb
       max_hull_dist = Math.max(max_hull_dist, val)
     }
   }
-  const max_val = max_hull_dist + 0.001
-  return Math.max(0.1, max_val)
+  return Math.max(0.1, max_hull_dist + 0.001)
 }
 
 // Smart threshold for showing unstable entries based on entry count.
@@ -251,6 +202,8 @@ export function compute_auto_hull_dist_threshold(
   return max_hull_dist_in_data * (1 - frac) + static_default * frac
 }
 
+// Returns the threshold to apply when the data source changes (undefined = leave as is).
+// A user adjustment away from the previous auto value is preserved across source changes.
 export function auto_threshold_reset(default_threshold: number) {
   let source: unknown
   let auto_threshold = default_threshold
@@ -265,6 +218,7 @@ export function auto_threshold_reset(default_threshold: number) {
   }
 }
 
+// The entry in `entries` that is the same logical entry as `entry` (by id, else identity)
 export function current_entry<Entry extends { entry_id?: string }>(
   entry: Entry | null | undefined,
   entries: readonly Entry[],
@@ -280,23 +234,35 @@ export function current_entry<Entry extends { entry_id?: string }>(
 // plot entry equals its $state-proxied copy, so the selection effect doesn't reassign
 // forever (effect_update_depth_exceeded) on identity mismatch.
 export function same_entry<Entry extends { entry_id?: string }>(
-  a: Entry | null | undefined,
-  b: Entry | null | undefined,
+  entry_a: Entry | null | undefined,
+  entry_b: Entry | null | undefined,
 ): boolean {
-  if (a === b) return true
-  if (!a || !b) return false
-  return a.entry_id != null && a.entry_id === b.entry_id
+  if (entry_a === entry_b) return true
+  if (!entry_a || !entry_b) return false
+  return entry_a.entry_id != null && entry_a.entry_id === entry_b.entry_id
 }
 
-// Build a tooltip text for any phase entry (shared)
+// Normalized composition (fractions summing to 1), dropping non-positive amounts
+function get_fractional_composition(
+  composition: Record<string, number>,
+): Record<string, number> {
+  const total = Object.values(composition).reduce((sum, amt) => sum + amt, 0)
+  if (total <= 0) return {}
+  const fractional: Record<string, number> = {}
+  for (const [elem, amt] of Object.entries(composition)) {
+    if (amt > 0) fractional[elem] = amt / total
+  }
+  return fractional
+}
+
+// Plain-text summary of an entry (copied to the clipboard on double click)
 export function build_entry_tooltip_text(
   entry: PhaseData,
   category: EntryCategoryConfig | null = MAGNETIC_ORDERING_CATEGORY,
 ): string {
   const is_element = is_unary_entry(entry)
   const elem_symbol = is_element ? Object.keys(entry.composition)[0] : ``
-
-  const elem_name = is_element ? (ELEM_SYMBOL_TO_NAME[elem_symbol as ElementSymbol] ?? ``) : ``
+  const elem_name = element_by_symbol.get(elem_symbol as ElementSymbol)?.name ?? ``
 
   let text = is_element
     ? `${elem_symbol}${elem_name ? ` (${elem_name})` : ``}\n`
@@ -310,49 +276,17 @@ export function build_entry_tooltip_text(
   }
 
   if (entry.e_above_hull !== undefined) {
-    const e_hull_str = format_num(entry.e_above_hull, `.3~`)
-    text += `E<sub>above hull</sub>: ${e_hull_str} eV/atom\n`
+    text += `E<sub>above hull</sub>: ${format_num(entry.e_above_hull, `.3~`)} eV/atom\n`
   }
   // Fallback to energy_per_atom if e_form_per_atom is absent
   const e_form_display = entry.e_form_per_atom ?? entry.energy_per_atom
   if (e_form_display !== undefined) {
-    const e_form_str = format_num(e_form_display, `.3~`)
-    text += `E<sub>form</sub>: ${e_form_str} eV/atom`
+    text += `E<sub>form</sub>: ${format_num(e_form_display, `.3~`)} eV/atom`
   }
   const category_value = get_entry_category(entry, category)
   if (category && category_value) text += `\n${category.label}: ${category_value}`
   if (entry.entry_id) text += `\nID: ${entry.entry_id}`
   return text
-}
-
-// Generic mouse hit-testing for projected 3D points (shared)
-export function find_hull_entry_at_mouse<
-  T extends {
-    x: number
-    y: number
-    z: number
-    size?: number
-    is_stable?: boolean
-    e_above_hull?: number
-  },
->(
-  canvas: HTMLCanvasElement | undefined,
-  event: MouseEvent,
-  plot_entries: T[],
-  project_point: (x: number, y: number, z: number) => { x: number; y: number },
-): T | null {
-  if (!canvas) return null
-  const rect = canvas.getBoundingClientRect()
-  const mouse_x = event.clientX - rect.left
-  const mouse_y = event.clientY - rect.top
-  const container_scale = Math.min(canvas.clientWidth || 600, canvas.clientHeight || 600) / 600
-  for (const entry of plot_entries) {
-    const projected = project_point(entry.x, entry.y, entry.z)
-    const distance = Math.hypot(mouse_x - projected.x, mouse_y - projected.y)
-    const base = entry.size ?? (entry_is_stable(entry) ? 6 : 4)
-    if (distance < base * container_scale + 5) return entry
-  }
-  return null
 }
 
 // Shared CSS custom-property block for hull wrapper styling (2D/3D/4D)
@@ -362,104 +296,17 @@ export const hull_style_css = (colors: ConvexHullConfig[`colors`] | undefined): 
     --hull-edge-color: ${colors?.edge ?? `var(--text-color, #212121)`};
     --hull-text-color: ${colors?.annotation ?? `var(--text-color, #212121)`}`
 
-// Calculate which side of the viewport has more space for modal placement
-export function calculate_modal_side(wrapper: HTMLDivElement | undefined): boolean {
-  if (!wrapper) return true
-  const rect = wrapper.getBoundingClientRect()
-  const viewport_width = globalThis.innerWidth
-  const space_on_right = viewport_width - rect.right
-  const space_on_left = rect.left
-  return space_on_right >= space_on_left
-}
-
-// Compute energy source mode information for convex hull entries. Returns energy mode information including capability flags and resolved mode.
-// This determines whether we can use precomputed energies or need to compute on-the-fly.
-export function compute_energy_mode_info(
-  entries: PhaseData[], // Array of phase entries to analyze
-  find_lowest_energy_unary_refs_fn: (entries: PhaseData[]) => Record<string, PhaseData>, // Function to find unary references
-  energy_source_mode: `precomputed` | `on-the-fly`, // User-specified energy source mode preference
-): EnergyModeInfo {
-  const has_precomputed_e_form =
-    entries.length > 0 && entries.every((entry) => typeof entry.e_form_per_atom === `number`)
-  const has_precomputed_hull =
-    entries.length > 0 && entries.every((entry) => typeof entry.e_above_hull === `number`)
-
-  const unary_refs = find_lowest_energy_unary_refs_fn(entries)
-
-  const elements_in_entries = new Set<string>()
-  for (const entry of entries) {
-    for (const el of Object.keys(entry.composition)) elements_in_entries.add(el)
-  }
-  const can_compute_e_form = [...elements_in_entries].every((el) => el in unary_refs)
-  // Resolve mode to avoid inconsistent states:
-  // - If full precomputed available, honor user toggle
-  // - Else if we can compute, use on-the-fly automatically
-  // - Else fall back to precomputed (best-effort)
-  const energy_mode =
-    has_precomputed_e_form && has_precomputed_hull
-      ? energy_source_mode
-      : can_compute_e_form
-        ? `on-the-fly`
-        : `precomputed`
-
-  return {
-    has_precomputed_e_form,
-    has_precomputed_hull,
-    can_compute_e_form,
-    // hull needs the same unary references as e_form, so the two always agree
-    can_compute_hull: can_compute_e_form,
-    energy_mode,
-    unary_refs,
-  }
-}
-
-// Compute effective entries with formation energies based on the energy mode.
-// Returns entries with formation energies populated (either precomputed or on-the-fly)
-export function get_effective_entries(
-  entries: PhaseData[], // Original phase entries
-  energy_mode: `precomputed` | `on-the-fly`, // Energy source mode (precomputed or on-the-fly)
-  unary_refs: Record<string, PhaseData>, // Unary reference entries for energy computation
-  compute_e_form_fn: (
-    entry: PhaseData,
-    unary_refs: Record<string, PhaseData>,
-  ) => number | null, // Function to compute formation energy per atom
-): PhaseData[] {
-  if (energy_mode === `precomputed`) return entries
-
-  return entries.map((entry) => {
-    const e_form = compute_e_form_fn(entry, unary_refs)
-    if (e_form === null) return entry
-    return { ...entry, e_form_per_atom: e_form }
-  })
-}
-
-// Copy text to clipboard with visual feedback
-export async function copy_entry_to_clipboard(
-  entry: PhaseData,
-  position: { x: number; y: number },
-  on_feedback: (visible: boolean, pos: { x: number; y: number }) => void,
-  category: EntryCategoryConfig | null = MAGNETIC_ORDERING_CATEGORY,
-): Promise<void> {
-  const text = build_entry_tooltip_text(entry, category)
-  await navigator.clipboard.writeText(text)
-  on_feedback(true, position)
-  setTimeout(() => on_feedback(false, position), 1500)
-}
-
-export const DEFAULT_HIGHLIGHT_STYLE: Required<HighlightStyle> = {
+const DEFAULT_HIGHLIGHT_STYLE: Required<HighlightStyle> = {
   effect: `pulse`,
-  color: `#ff4444`, // Bright red for visibility
-  size_multiplier: 1.8, // Moderate base size
-  opacity: 0.85, // High visibility
-  pulse_speed: 3, // Smooth pulsing
+  color: `#ff4444`,
+  size_multiplier: 1.8,
+  opacity: 0.85,
+  pulse_speed: 3,
 }
 
 export const merge_highlight_style = (
   custom_style: HighlightStyle | undefined,
-): Required<HighlightStyle> => ({
-  ...DEFAULT_HIGHLIGHT_STYLE,
-  ...custom_style,
-})
+): Required<HighlightStyle> => ({ ...DEFAULT_HIGHLIGHT_STYLE, ...custom_style })
 
 // Check if entry matches any item in highlighted_list (by structure_id or entry_id)
 export function is_entry_highlighted<T extends { entry_id?: string; structure_id?: string }>(
@@ -481,19 +328,7 @@ export function is_entry_highlighted<T extends { entry_id?: string; structure_id
   })
 }
 
-// Calculate fractional composition (normalized composition) for an entry
-export function get_fractional_composition(
-  composition: Record<string, number>,
-): Record<string, number> {
-  const total = Object.values(composition).reduce((sum, amt) => sum + amt, 0)
-  if (total <= 0) return {} // Return empty object if total is zero or negative (invalid composition)
-  const fractional: Record<string, number> = {}
-  for (const [elem, amt] of Object.entries(composition)) {
-    // Only include positive amounts in fractional composition
-    if (amt > 0) fractional[elem] = amt / total
-  }
-  return fractional
-}
+// === Polymorph statistics ===
 
 export interface PolymorphStats {
   total: number
@@ -505,7 +340,6 @@ export interface PolymorphStats {
 // Energy metric types for consistent polymorph comparison
 type EnergyMetric = `e_form_per_atom` | `energy_per_atom` | `e_above_hull` | null
 
-// Check if value is a finite number
 const is_finite = (val: unknown): val is number =>
   typeof val === `number` && Number.isFinite(val)
 
@@ -653,226 +487,7 @@ export function compute_all_polymorph_stats(
   return stats_map
 }
 
-export function draw_highlight_effect(
-  ctx: CanvasRenderingContext2D,
-  projected: { x: number; y: number },
-  size: number,
-  container_scale: number,
-  pulse_time: number,
-  style: Required<HighlightStyle>,
-): void {
-  const { effect, color: hl_color, size_multiplier, opacity, pulse_speed } = style
-
-  if (effect === `pulse`) {
-    // Smooth pulsating effect with moderate size and opacity changes
-    const pulse_val = 0.5 + 0.5 * Math.sin(pulse_time * pulse_speed)
-    const hl_size = size * (size_multiplier + 0.5 * pulse_val)
-    const hl_opacity = opacity * (0.5 + 0.5 * pulse_val)
-
-    // Draw pulsating ring
-    ctx.lineWidth = (1.5 + pulse_val) * container_scale
-    ctx.beginPath()
-    ctx.arc(projected.x, projected.y, hl_size, 0, 2 * Math.PI)
-    ctx.fillStyle = add_alpha(hl_color, hl_opacity * 0.3)
-    ctx.strokeStyle = add_alpha(hl_color, hl_opacity)
-    ctx.fill()
-    ctx.stroke()
-  } else if (effect === `glow`) {
-    // Soft glow effect with layered circles for depth
-    const hl_size = size * size_multiplier
-
-    // Outer soft glow
-    ctx.beginPath()
-    ctx.arc(projected.x, projected.y, hl_size * 1.3, 0, 2 * Math.PI)
-    ctx.fillStyle = add_alpha(hl_color, opacity * 0.15)
-    ctx.fill()
-
-    // Inner glow with stroke
-    ctx.lineWidth = 1.5 * container_scale
-    ctx.beginPath()
-    ctx.arc(projected.x, projected.y, hl_size, 0, 2 * Math.PI)
-    ctx.fillStyle = add_alpha(hl_color, opacity * 0.4)
-    ctx.strokeStyle = add_alpha(hl_color, opacity * 0.8)
-    ctx.fill()
-    ctx.stroke()
-  } else if (effect === `size`) {
-    // Simple size highlight with stroke
-    const hl_size = size * size_multiplier
-    ctx.lineWidth = 2 * container_scale
-    ctx.beginPath()
-    ctx.arc(projected.x, projected.y, hl_size, 0, 2 * Math.PI)
-    ctx.strokeStyle = hl_color
-    ctx.stroke()
-  }
-  // effect === `color` is handled in the main drawing code
-}
-
-// Draw selection highlight for currently selected entry (with pulsing animation)
-export function draw_selection_highlight(
-  ctx: CanvasRenderingContext2D,
-  projected: { x: number; y: number },
-  base_size: number,
-  container_scale: number,
-  pulse_time: number,
-  pulse_opacity: number,
-): void {
-  const highlight_size = base_size * (1.8 + 0.3 * Math.sin(pulse_time * 4))
-  ctx.fillStyle = add_alpha(`rgba(102, 240, 255, 1)`, pulse_opacity * 0.6)
-  ctx.strokeStyle = add_alpha(`rgba(102, 240, 255, 1)`, pulse_opacity)
-  ctx.lineWidth = 2 * container_scale
-  ctx.beginPath()
-  ctx.arc(projected.x, projected.y, highlight_size, 0, 2 * Math.PI)
-  ctx.fill()
-  ctx.stroke()
-}
-
-// Get text color for canvas rendering. Canvas 2D context doesn't understand CSS functions
-// like light-dark() or var(), so we fall back to appropriate colors based on dark mode.
-export function get_canvas_text_color(
-  dark_mode: boolean,
-  element?: HTMLElement | null,
-): string {
-  const fallback = dark_mode ? `#ffffff` : `#212121`
-  if (typeof document === `undefined`) return fallback
-  const css_value = getComputedStyle(element ?? document.documentElement)
-    .getPropertyValue(`--text-color`)
-    ?.trim()
-  // Check for unsupported CSS functions that canvas can't render
-  return css_value && !/light-dark|var\(/i.test(css_value) ? css_value : fallback
-}
-
-type HullEntry = PhaseData & { z: number; size?: number; marker?: MarkerSymbol }
-type HullPulse = { time: number; opacity: number }
-type HullPoint<Entry> = { entry: Entry; projected: { x: number; y: number } }
-export type HullPointOpts<Entry> = {
-  scale: number // canvas container scale factor
-  shadow_factor: number // scales the depth-based shadow offset (0.1 for 3D, 2 for 4D)
-  selected_entry: Entry | null
-  is_highlighted: (entry: Entry) => boolean
-  get_point_color: (entry: Entry) => string
-  highlight_style: Required<HighlightStyle>
-}
-
-// Points whose rings animate. same_entry, not raw entry_id comparison: undefined ===
-// undefined would mark EVERY id-less point as selected.
-const is_pulsing = <Entry extends HullEntry>(
-  entry: Entry,
-  opts: HullPointOpts<Entry>,
-): boolean => same_entry(opts.selected_entry, entry) || opts.is_highlighted(entry)
-
-// One depth-sorted point: shadow, animated highlight rings (only when `pulse` is given)
-// and the marker symbol.
-function draw_hull_point<Entry extends HullEntry>(
-  ctx: CanvasRenderingContext2D,
-  { entry, projected }: HullPoint<Entry>,
-  opts: HullPointOpts<Entry>,
-  pulse?: HullPulse,
-): void {
-  const { scale, shadow_factor, highlight_style, is_highlighted, get_point_color } = opts
-  const is_stable = entry_is_stable(entry)
-  const entry_highlighted = is_highlighted(entry)
-  const color = get_point_color(entry)
-  // `||` (not ??) on purpose: size=0 / empty marker fall back to defaults
-  // oxlint-disable-next-line typescript/prefer-nullish-coalescing
-  const size = (entry.size || (is_stable ? 6 : 4)) * scale
-  // oxlint-disable-next-line typescript/prefer-nullish-coalescing
-  const marker = entry.marker || `circle`
-
-  // Shadow
-  const shadow_offset = Math.abs(entry.z) * shadow_factor * scale
-  ctx.fillStyle = `rgba(0, 0, 0, 0.2)`
-  const shadow_path = create_marker_path(size * 0.8, marker)
-  ctx.save()
-  ctx.translate(projected.x + shadow_offset, projected.y + shadow_offset)
-  ctx.fill(shadow_path)
-  ctx.restore()
-
-  if (pulse) {
-    if (same_entry(opts.selected_entry, entry)) {
-      draw_selection_highlight(ctx, projected, size, scale, pulse.time, pulse.opacity)
-    }
-    if (entry_highlighted) {
-      draw_highlight_effect(ctx, projected, size, scale, pulse.time, highlight_style)
-    }
-  }
-
-  // Main point with marker symbol
-  ctx.fillStyle =
-    entry_highlighted && highlight_style.effect === `color` ? highlight_style.color : color
-  ctx.strokeStyle = is_stable ? `#ffffff` : `#000000`
-  ctx.lineWidth = 0.5 * scale
-  const marker_path = create_marker_path(size, marker)
-  ctx.save()
-  ctx.translate(projected.x, projected.y)
-  ctx.fill(marker_path)
-  ctx.stroke(marker_path)
-  ctx.restore()
-}
-
-// The depth-sorted points that hold still between animation frames. Shared by ConvexHull3D/4D,
-// which differ only in shadow_factor and in how labels are drawn afterwards.
-export function draw_hull_points<Entry extends HullEntry>(
-  ctx: CanvasRenderingContext2D,
-  sorted_points: HullPoint<Entry>[],
-  opts: HullPointOpts<Entry>,
-): void {
-  for (const point of sorted_points) {
-    if (is_pulsing(point.entry, opts)) continue // drawn on the pulse overlay instead
-    draw_hull_point(ctx, point, opts)
-  }
-}
-
-// Just the selected/highlighted points, onto the canvas stacked over the hull. Rebuilding
-// faces, points and labels at pulse rate costs milliseconds a frame; this costs a handful of
-// markers. Each marker is redrawn over its own ring so it still reads as sitting inside it.
-export function draw_pulse_overlay<Entry extends HullEntry>(
-  ctx: CanvasRenderingContext2D,
-  sorted_points: HullPoint<Entry>[],
-  opts: HullPointOpts<Entry>,
-  pulse: HullPulse,
-): void {
-  // Device pixels under a DPR-scaled context, so this over-covers — right for a full clear
-  ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height)
-  for (const point of sorted_points) {
-    if (is_pulsing(point.entry, opts)) draw_hull_point(ctx, point, opts, pulse)
-  }
-}
-
-// SVG path data for a marker symbol of given radius, or null for unknown marker names.
-// Uses d3-shape for consistent rendering with ScatterPlot.
-export function marker_path_data(radius: number, marker: MarkerSymbol): string | null {
-  // Capitalize first letter to get D3 symbol name (e.g. 'circle' -> 'Circle')
-  const d3_name = marker.charAt(0).toUpperCase() + marker.slice(1)
-  const symbol_type = symbol_map[d3_name as keyof typeof symbol_map]
-  return symbol_type
-    ? symbol()
-        .type(symbol_type)
-        .size(Math.PI * radius * radius)()
-    : null
-}
-
-// Outlines are position-independent (callers translate the context), so shape and size key
-// them. Rotating a hull wants two per point per frame, a shadow and a marker, off a handful
-// of distinct sizes — building those fresh was pure allocation.
-const marker_path_cache = new Map<string, Path2D>()
-const MAX_MARKER_PATH_CACHE = 512
-
-// Create a Path2D for a marker symbol (canvas rendering in ConvexHull3D/4D)
-export function create_marker_path(size: number, marker: MarkerSymbol = `circle`): Path2D {
-  const safe_size = Number.isFinite(size) ? size : 0
-  const rounded_size = Math.max(0, Number(safe_size.toFixed(3)))
-  const key = `${marker}|${rounded_size}`
-  const cached = marker_path_cache.get(key)
-  if (cached) return cached
-  const path_data = marker_path_data(rounded_size, marker)
-  const path = new Path2D(path_data ?? undefined)
-  if (!path_data) path.arc(0, 0, rounded_size, 0, 2 * Math.PI)
-  if (marker_path_cache.size > MAX_MARKER_PATH_CACHE) marker_path_cache.clear()
-  marker_path_cache.set(key, path)
-  return path
-}
-
-// Temperature-dependent free energy helpers (use integer K values for exact matching)
+// === Temperature-dependent free energies (use integer K values for exact matching) ===
 
 // Result of analyzing entries for temperature-dependent data
 export interface TemperatureAnalysis {
@@ -903,21 +518,6 @@ function entry_has_temp_data(entry: PhaseData): boolean {
     free_energies?.length &&
     temperatures.length === free_energies.length,
   )
-}
-
-// Check if entry has data at exact temperature T
-export const entry_has_temperature = (entry: PhaseData, T: number): boolean =>
-  entry_has_temp_data(entry) && (entry.temperatures?.includes(T) ?? false)
-
-// Get energy at temperature T (throws if T not found - validate with entry_has_temperature first)
-export function get_energy_at_temperature(entry: PhaseData, T: number): number {
-  const temps = entry.temperatures ?? []
-  const energies = entry.free_energies ?? []
-  const idx = temps.indexOf(T)
-  if (idx === -1) {
-    throw new Error(`Temperature ${T}K not found in entry temperatures`)
-  }
-  return energies[idx]
 }
 
 // Find bracketing temperatures for interpolation (T_low < T < T_high)
@@ -952,18 +552,6 @@ function find_bracket_temperatures(
   return { T_low, T_high, E_low, E_high }
 }
 
-// Check if we can interpolate energy at temperature T
-// Requires temperatures both above and below T within max_gap
-export function can_interpolate_at_temperature(
-  entry: PhaseData,
-  T: number,
-  max_gap: number,
-): boolean {
-  const bracket = find_bracket_temperatures(entry, T)
-  if (!bracket) return false
-  return bracket.T_high - bracket.T_low <= max_gap
-}
-
 // Linearly interpolate energy at temperature T
 // Returns null if interpolation is not possible
 export function interpolate_energy_at_temperature(
@@ -988,11 +576,6 @@ export interface TemperatureFilterOptions {
   max_interpolation_gap?: number
 }
 
-const DEFAULT_TEMP_FILTER_OPTIONS: Required<TemperatureFilterOptions> = {
-  interpolate: true,
-  max_interpolation_gap: 500,
-}
-
 // Filter entries for temperature T, replacing energy with G(T) where available.
 // - Entries WITH temp data at T: use G(T) as energy
 // - Entries WITHOUT any temp data: keep with static energy (e.g., pure element refs)
@@ -1000,75 +583,22 @@ const DEFAULT_TEMP_FILTER_OPTIONS: Required<TemperatureFilterOptions> = {
 export function filter_entries_at_temperature(
   entries: PhaseData[],
   T: number,
-  options: TemperatureFilterOptions = {},
+  { interpolate = true, max_interpolation_gap = 500 }: TemperatureFilterOptions = {},
 ): PhaseData[] {
-  const { interpolate, max_interpolation_gap } = {
-    ...DEFAULT_TEMP_FILTER_OPTIONS,
-    ...options,
-  }
-
   return entries.flatMap((entry) => {
-    // No temp data - keep with static energy
-    if (!entry_has_temp_data(entry)) return [entry]
-
-    // Exact temperature match - use G(T)
-    // Set both energy and energy_per_atom so downstream formation energy
-    // calculations use the temperature-dependent value (not stale 0K energy_per_atom)
-    if (entry_has_temperature(entry, T)) {
-      // free_energies stores per-atom values (E_0K/atom + F_vib/atom),
-      // so energy is already per-atom — set both fields to the same value
-      const energy = get_energy_at_temperature(entry, T)
-      return [{ ...entry, energy, energy_per_atom: energy }]
-    }
-
-    // Try interpolation if enabled
-    if (interpolate) {
-      const energy = interpolate_energy_at_temperature(entry, T, max_interpolation_gap)
-      if (energy !== null) {
-        // interpolated energy is also per-atom (interpolated from per-atom free_energies)
-        return [{ ...entry, energy, energy_per_atom: energy }]
-      }
-    }
-
-    return [] // Exclude entry (has temp data but can't get energy at T)
+    if (!entry_has_temp_data(entry)) return [entry] // no temp data: keep static energy
+    // free_energies stores per-atom values (E_0K/atom + F_vib/atom), so both energy
+    // fields get the same value and downstream formation energies use G(T), not stale
+    // 0 K energies
+    const exact_idx = entry.temperatures?.indexOf(T) ?? -1
+    const energy =
+      exact_idx !== -1
+        ? entry.free_energies?.[exact_idx]
+        : interpolate
+          ? interpolate_energy_at_temperature(entry, T, max_interpolation_gap)
+          : null
+    return energy == null ? [] : [{ ...entry, energy, energy_per_atom: energy }]
   })
-}
-
-// Get gas-corrected entries in one call (consolidates analysis + correction)
-// Merges gas_pressures with config.pressures and applies corrections if the
-// chemical system contains gas-dependent elements. Returns original entries
-// if no gas config or no relevant gases.
-export function get_gas_corrected_entries(
-  entries: PhaseData[],
-  gas_config: GasThermodynamicsConfig | undefined,
-  gas_pressures: Partial<Record<string, number>>,
-  temperature: number,
-): {
-  entries: PhaseData[]
-  analysis: GasAnalysis
-  merged_config: GasThermodynamicsConfig | undefined
-} {
-  if (!gas_config?.enabled_gases?.length) {
-    const analysis = {
-      has_gas_dependent_elements: false,
-      gas_elements: [],
-      relevant_gases: [],
-    }
-    return { entries, analysis, merged_config: undefined }
-  }
-
-  const merged_config: GasThermodynamicsConfig = {
-    ...gas_config,
-    pressures: { ...gas_config.pressures, ...gas_pressures },
-  }
-  const analysis = analyze_gas_data(entries, merged_config)
-
-  if (!analysis.has_gas_dependent_elements) {
-    return { entries, analysis, merged_config }
-  }
-
-  const corr_entries = apply_gas_corrections(entries, merged_config, temperature)
-  return { entries: corr_entries, analysis, merged_config }
 }
 
 // Derive a display label for a convex hull entry, falling back to composition

@@ -113,8 +113,10 @@ export function compute_bar_rect(opts: {
   const v1 = val_scale(base + val)
   const cat_extent = Math.max(1, Math.abs(c1 - c0))
   const val_extent = val === 0 ? 0 : Math.max(1, Math.abs(v1 - v0))
-  // Keep a floored value extent anchored at the baseline instead of crossing it.
-  const val_start = v1 < v0 ? v0 - val_extent : v0
+  // Keep a floored value extent anchored at the baseline instead of crossing it. When the tip
+  // collapses onto the base (e.g. a value at the log-axis floor) the sign decides the side.
+  const tip_before_base = v1 !== v0 ? v1 < v0 : is_vertical ? val > 0 : val < 0
+  const val_start = tip_before_base ? v0 - val_extent : v0
   const [rect_x, rect_y] = is_vertical
     ? [Math.min(c0, c1), val_start]
     : [val_start, Math.min(c0, c1)]

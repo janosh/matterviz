@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { extract_formula_elements } from '$lib/composition/parse'
+  import { element_symbols_in } from '$lib/composition/parse'
   import type { AxisConfig } from '$lib/plot'
   import { get_convex_hull_defaults } from '$lib/settings'
   import type { Component } from 'svelte'
@@ -60,9 +60,7 @@
     for (const entry of hull_entries) {
       for (const key of Object.keys(entry.composition)) {
         // Extract valid element symbols, stripping oxidation states
-        for (const elem of extract_formula_elements(key, { unique: false })) {
-          elements.add(elem)
-        }
+        for (const elem of element_symbols_in(key)) elements.add(elem)
       }
     }
     return Array.from(elements).toSorted()

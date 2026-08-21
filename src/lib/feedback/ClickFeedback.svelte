@@ -1,23 +1,21 @@
 <script lang="ts">
   import { Icon, type IconData } from 'svelte-widgets'
   import { Check } from 'svelte-widgets/icons'
-  // Generic feedback component that shows a transient icon at a specific position.
-  // Commonly used for copy-to-clipboard feedback, but can display icons for
-  // various user interactions.
+  // Transient icon popping up at a screen position, e.g. copy-to-clipboard confirmation.
+  // The caller owns `visible`; the CSS animation fades the icon out and holds it hidden.
   let {
-    visible = $bindable(false),
-    position = { x: 0, y: 0 },
+    visible = false,
+    position,
     icon = Check,
-  }: {
-    visible?: boolean
-    position: { x: number; y: number }
-    icon?: IconData
-  } = $props()
+  }: { visible?: boolean; position: { x: number; y: number }; icon?: IconData } = $props()
 </script>
 
 {#if visible}
-  {@const { x, y } = position}
-  <div class="click-feedback" style="left: {x}px; top: {y}px">
+  <div
+    class="click-feedback"
+    style="left: {position.x}px; top: {position.y}px"
+    aria-hidden="true"
+  >
     <Icon {icon} />
   </div>
 {/if}

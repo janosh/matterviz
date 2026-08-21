@@ -99,10 +99,6 @@ body.fullscreen .draggable-pane {
   margin: var(--pane-hr-margin, 4pt 0);
   height: 1px;
 }
-/* Right-align long trajectory filenames without affecting div-wrapped grid rows. */
-.draggable-pane section:not(.grid) > div {
-  text-align: right;
-}
 .draggable-pane :where(label) {
   display: inline-flex;
   align-items: center;
@@ -168,12 +164,12 @@ body.fullscreen .draggable-pane {
 }
 .draggable-pane .pane-row {
   display: flex;
-  gap: 8pt;
+  gap: 4pt;
   align-items: center;
 }
 .draggable-pane .pane-grid {
   display: grid;
-  gap: 8pt;
+  gap: 4pt;
   align-items: center;
 }
 .draggable-pane .control-group {
@@ -181,9 +177,140 @@ body.fullscreen .draggable-pane {
   gap: 0.5em;
   align-items: center;
 }
+.draggable-pane details.settings-group > summary {
+  padding: 2pt;
+}
+/* DraggablePane reserves an 8px inline padding-right for the resize grip, which
+   stacks on --pane-padding and makes the right side look looser than the left.
+   Drop that extra gutter; the grip still sits on the border. */
+.draggable-pane[data-resize='both'],
+.draggable-pane[data-resize='width'] {
+  padding-right: 0 !important;
+}
 /* Labels containing range inputs should fill available width */
 .draggable-pane label:has(input[type='range']) {
   flex: 1;
+}
+
+/* Plot control panes: full-width section titles, related fields sharing a row
+   so X/Y (or Mode/Frequency) sit side by side instead of stacked. */
+.draggable-pane.compact-settings {
+  --pane-h4-margin: 0;
+  --pane-h4-font-size: 0.9em;
+  --ctrl-value-w: 3.2em;
+  --ctrl-gap: 6pt;
+  --settings-row-gap: 4pt;
+}
+.draggable-pane.compact-settings .pane-content {
+  font-size: 0.9em;
+}
+.draggable-pane.compact-settings .settings-section-heading {
+  margin: 8pt 0 2pt;
+}
+.draggable-pane.compact-settings .pane-content > .settings-section-heading:first-child {
+  margin-top: 0;
+}
+.draggable-pane.compact-settings section.flow:not(.ctrl-line):not(.axis-fields) {
+  display: flex;
+  flex-direction: column;
+  gap: 6pt;
+  min-width: 0;
+}
+.draggable-pane.compact-settings .ctrl-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6pt 12pt;
+  min-width: 0;
+}
+.draggable-pane.compact-settings .ctrl-line > :is(label, .setting) {
+  display: inline-flex;
+  align-items: center;
+  gap: 6pt;
+  margin: 0;
+  min-height: 1.6em;
+  flex: 1 1 8.5em;
+  min-width: 0;
+}
+.draggable-pane.compact-settings
+  .ctrl-line
+  :is(select, input[type='text'], input[type='number']) {
+  width: auto;
+  min-width: 5em;
+  margin: 0;
+  flex: 1;
+}
+.draggable-pane.compact-settings .ctrl-line input[type='color'] {
+  margin: 0;
+}
+.draggable-pane.compact-settings .axis-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12em, 1fr));
+  gap: 6pt 12pt;
+  align-items: center;
+}
+.draggable-pane.compact-settings .axis-fields > :is(label, .setting) {
+  display: inline-flex;
+  align-items: center;
+  gap: 6pt;
+  margin: 0;
+  min-width: 0;
+}
+.draggable-pane.compact-settings .axis-fields select {
+  min-width: 0;
+  flex: 1;
+}
+.draggable-pane.compact-settings .formats > label {
+  flex: 1;
+  min-width: 8em;
+}
+.draggable-pane.compact-settings .formats input[type='text'] {
+  flex: 1;
+  width: 100%;
+  min-width: 5em;
+}
+.draggable-pane.compact-settings .style-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6pt 10pt;
+  min-width: 0;
+}
+.draggable-pane.compact-settings
+  :is(.style-row, section.flow)
+  > :is(label, .setting):has(input[type='range']) {
+  display: grid;
+  grid-template-columns: 4.5em var(--ctrl-value-w, 3.2em) minmax(4em, 1fr);
+  align-items: center;
+  column-gap: 6pt;
+  flex: none;
+  min-width: 0;
+  margin: 0;
+}
+.draggable-pane.compact-settings .style-row > :is(label, .setting):has(input[type='range']) {
+  flex: 1 1 14em;
+}
+.draggable-pane.compact-settings
+  .style-row
+  > :is(label, .setting):not(:has(input[type='range'])) {
+  display: inline-flex;
+  align-items: center;
+  gap: 6pt;
+  flex: none;
+}
+.draggable-pane.compact-settings .range-pair {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 4pt;
+  min-width: 0;
+  flex: 1;
+}
+.draggable-pane.compact-settings .range-pair input[type='number'] {
+  width: auto;
+  min-width: 3.5em;
+  flex: 1;
+  margin: 0;
 }
 
 /* App-shell styles: page layout, typography, headings, navigation.

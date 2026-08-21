@@ -9,6 +9,7 @@ import { plan_host_file_transfer } from '$lib/file-viewer/host-transfer'
 import type { HostTransferRejectReason } from '$lib/file-viewer/host-transfer'
 import type {
   FileData,
+  HostToWebviewMessage,
   WebviewBootstrapData,
   WebviewToHostMessage,
 } from '$lib/file-viewer/host-protocol'
@@ -16,8 +17,8 @@ import { is_plain_object, to_error } from '$lib/utils'
 import { format_bytes } from '$lib/labels'
 import { DEFAULTS, type DefaultSettings, merge, SETTINGS_CONFIG } from '$lib/settings'
 import { AUTO_THEME, COLOR_THEMES, is_valid_theme_mode, type ThemeName } from '$lib/theme'
-import type { FrameLoader } from '$lib/trajectory'
-import { LARGE_FILE_THRESHOLD, parse_trajectory_async } from '$lib/trajectory/parse'
+import type { TrajectoryRun } from '$lib/trajectory'
+import { open_trajectory, summarize_run } from '$lib/trajectory'
 import { Buffer } from 'node:buffer'
 import * as fs from 'node:fs'
 import * as os from 'node:os'
@@ -30,10 +31,11 @@ import {
   read_indexed_trajectory_file,
 } from './node-io'
 
-interface FrameLoaderData {
-  loader: FrameLoader
-  file_data: string | ArrayBuffer
-}
+// Files above this many bytes are not copied into the webview; the host indexes them and
+// serves frames over postMessage (see request_large_file below)
+export const LARGE_FILE_THRESHOLD = 400 * 1024 * 1024
+// Plot rows per plot_metadata_stream message
+const PLOT_ROWS_PER_MESSAGE = 5000
 
 // WebviewLike and ExtensionContextLike are unions to allow both real vscode types and mock types for testing
 type WebviewLike =
@@ -44,7 +46,7 @@ type WebviewLike =
       onDidReceiveMessage: (
         listener: (message: unknown) => void,
       ) => { dispose(): void } | undefined
-      postMessage: (message: unknown) => Promise<boolean> | undefined
+      postMessage: (message: HostToWebviewMessage) => Promise<boolean> | undefined
       html: string
     }
 
@@ -55,8 +57,6 @@ type ExtensionContextLike =
       subscriptions: { dispose(): void }[]
     }
 
-export type MessageData = WebviewToHostMessage
-
 type WatcherMeta = { request_id?: string; filename?: string; frame_index?: number }
 
 // Track active file watchers by file path
@@ -66,8 +66,8 @@ export const active_watcher_subscribers = new Map<
   string,
   Map<WebviewLike, WatcherMeta | undefined>
 >()
-// Track active frame loaders by file path
-export const active_frame_loaders = new Map<string, FrameLoaderData>()
+// Host-indexed trajectory runs by file path, serving request_frame until disposed
+export const active_runs = new Map<string, TrajectoryRun>()
 // Track auto-render timers to clear them on deactivate
 export const auto_render_timers = new Map<string, ReturnType<typeof setTimeout>>()
 // Track active panels by URI to prevent duplicate opens
@@ -339,13 +339,17 @@ export const create_html = (
 }
 
 // Handle messages from webview
-export const handle_msg = async (msg: MessageData, webview?: WebviewLike): Promise<void> => {
+export const handle_msg = async (
+  msg: WebviewToHostMessage,
+  webview?: WebviewLike,
+): Promise<void> => {
   if (msg.command === `info` && msg.text) {
     vscode.window.showInformationMessage(msg.text)
   } else if (msg.command === `error` && msg.text) {
     vscode.window.showErrorMessage(msg.text)
   } else if (msg.command === `request_large_file` && msg.file_path && webview) {
-    // Handle large file by parsing with indexing and setting up frame loader
+    // Index the file here (the payload never crosses into the webview), answer with the run
+    // summary, then stream its per-frame plot rows as they are extracted
     const command = `large_file_response`
     try {
       const { request_id, file_path } = msg
@@ -363,36 +367,19 @@ export const handle_msg = async (msg: MessageData, webview?: WebviewLike): Promi
           })
         },
       )
-
-      // Parse with indexing and create frame loader
-      const parsed_trajectory = await parse_trajectory_async(
-        indexed_file.data,
-        indexed_file.filename,
-        undefined,
-        {
-          use_indexing: true,
-          extract_plot_metadata: true,
-        },
-      )
-
-      // TrajFrameReader caches the full source payload; keep it host-side instead
-      // of cloning it across webview IPC, where VSCodeFrameLoader replaces it.
-      const { frame_loader, ...webview_trajectory } = parsed_trajectory
-      if (!frame_loader) throw new Error(`Indexed trajectory parser returned no frame loader`)
-      active_frame_loaders.set(file_path, {
-        loader: frame_loader,
-        file_data: indexed_file.data,
+      // index_above_bytes: 0 forces the lazily decoded run regardless of the user setting
+      const run = await open_trajectory(indexed_file.data, {
+        filename: indexed_file.filename,
+        index_above_bytes: 0,
       })
-      webview.postMessage({
-        command,
-        request_id,
-        parsed_trajectory: webview_trajectory,
-      })
+      active_runs.get(file_path)?.dispose()
+      active_runs.set(file_path, run)
+      stream_plot_rows(run, file_path, webview)
+      webview.postMessage({ command, request_id, run_summary: summarize_run(run) })
     } catch (error) {
       const error_message = to_error(error).message
       console.error(`Failed to setup indexed parsing:`, error_message)
-      const { request_id } = msg
-      webview.postMessage({ command, request_id, error: error_message })
+      webview.postMessage({ command, request_id: msg.request_id, error: error_message })
     }
   } else if (msg.command === `request_frame` && msg.file_path && webview) {
     try {
@@ -405,18 +392,16 @@ export const handle_msg = async (msg: MessageData, webview?: WebviewLike): Promi
       ) {
         throw new Error(`Invalid request_id or frame_index`)
       }
-      const loader_data = active_frame_loaders.get(file_path)
-      if (!loader_data) throw new Error(`No frame loader found for file: ${file_path}`)
-
-      const frame = await loader_data.loader.load_frame(loader_data.file_data, frame_index)
-      const command = `frame_response`
-      webview.postMessage({ command, request_id, frame, frame_index })
+      const run = active_runs.get(file_path)
+      if (!run) throw new Error(`No indexed trajectory is open for file: ${file_path}`)
+      const frame = await run.read_frame(frame_index)
+      webview.postMessage({ command: `frame_response`, request_id, frame, frame_index })
     } catch (error) {
       const error_message = to_error(error).message
       console.error(`Failed to load frame ${msg.frame_index}:`, error_message)
       webview.postMessage({
         command: `frame_response`,
-        request_id: msg.request_id ?? ``,
+        request_id: msg.request_id,
         error: error_message,
         frame_index: msg.frame_index,
       })
@@ -464,6 +449,26 @@ export const handle_msg = async (msg: MessageData, webview?: WebviewLike): Promi
     // Handle request to stop watching a file
     stop_watching_file(msg.file_path, webview)
   }
+}
+
+// Forward the run's plot rows to the webview in batches: rows extracted before the summary
+// went out are in the summary itself, later ones arrive as plot_metadata_stream messages
+function stream_plot_rows(run: TrajectoryRun, file_path: string, webview: WebviewLike): void {
+  const post = (rows: TrajectoryRun[`properties`][`rows`], complete: boolean): void =>
+    post_to_webview(
+      webview,
+      { command: `plot_metadata_stream`, file_path, rows: [...rows], complete },
+      `plot_metadata_stream`,
+    )
+  if (run.properties.complete) return
+  let pending: TrajectoryRun[`properties`][`rows`] = []
+  const unsubscribe = run.properties.subscribe((batch, complete) => {
+    pending = [...pending, ...batch]
+    if (!complete && pending.length < PLOT_ROWS_PER_MESSAGE) return
+    post(pending, complete)
+    pending = []
+    if (complete) unsubscribe()
+  })
 }
 
 // Start watching a file using VS Code's built-in file system watcher
@@ -517,7 +522,11 @@ function start_watching_file(
   }
 }
 
-function post_to_webview(webview: WebviewLike, message: unknown, label: string): void {
+function post_to_webview(
+  webview: WebviewLike,
+  message: HostToWebviewMessage,
+  label: string,
+): void {
   try {
     webview.postMessage(message)
   } catch (error) {
@@ -530,7 +539,7 @@ async function broadcast_file_updated(
   subscribers: [WebviewLike, WatcherMeta | undefined][],
 ): Promise<void> {
   try {
-    active_frame_loaders.delete(file_path)
+    dispose_run(file_path)
     const data = await read_file(file_path)
     const theme = get_theme()
     for (const [webview, meta] of subscribers) {
@@ -568,8 +577,12 @@ function stop_watching_file(file_path: string, webview?: WebviewLike): void {
     active_watchers.delete(file_path)
   }
 
-  // Also clean up frame loader for this file (no-op when absent)
-  active_frame_loaders.delete(file_path)
+  dispose_run(file_path)
+}
+
+const dispose_run = (file_path: string): void => {
+  active_runs.get(file_path)?.dispose()
+  active_runs.delete(file_path)
 }
 
 // Resolve which ViewColumn to use based on user settings and explicit override
@@ -603,7 +616,7 @@ function setup_webview_panel(
   set_html(file_data)
 
   const message_listener = panel.webview.onDidReceiveMessage(
-    (msg: MessageData) => handle_msg(msg, panel.webview),
+    (msg: WebviewToHostMessage) => handle_msg(msg, panel.webview),
     undefined,
   )
 
@@ -806,8 +819,8 @@ async function collect_debug_info(): Promise<string> {
       } catch {
         // File might not exist anymore
       }
-      const has_frame_loader = active_frame_loaders.has(file_path)
-      return { filename, file_path, file_size, has_watcher: true, has_frame_loader }
+      const has_trajectory_run = active_runs.has(file_path)
+      return { filename, file_path, file_size, has_watcher: true, has_trajectory_run }
     }),
   )
 
@@ -839,7 +852,7 @@ async function collect_debug_info(): Promise<string> {
 
   report += `### Active Files & Extension State\n\n`
   report += `- **Active Watchers**: ${active_watchers.size}\n`
-  report += `- **Active Frame Loaders**: ${active_frame_loaders.size}\n`
+  report += `- **Active Trajectory Runs**: ${active_runs.size}\n`
   report += `- **Auto-Render Timers**: ${auto_render_timers.size}\n`
   report += `- **Active Auto-Render Panels**: ${active_auto_render_panels.size}\n\n`
 
@@ -852,7 +865,7 @@ async function collect_debug_info(): Promise<string> {
       report += `- **Path**: \`${file_info.file_path}\`\n`
       report += `- **Size**: ${format_bytes(file_info.file_size)}\n`
       report += `- **Has Watcher**: ${file_info.has_watcher}\n`
-      report += `- **Has Frame Loader**: ${file_info.has_frame_loader}\n\n`
+      report += `- **Has Trajectory Run**: ${file_info.has_trajectory_run}\n\n`
     }
   }
 
@@ -915,6 +928,7 @@ export const deactivate = (): void => {
   active_watchers.forEach((watcher) => watcher.dispose())
   active_watchers.clear()
   active_watcher_subscribers.clear()
-  active_frame_loaders.clear()
+  for (const run of active_runs.values()) run.dispose()
+  active_runs.clear()
   active_auto_render_panels.clear()
 }

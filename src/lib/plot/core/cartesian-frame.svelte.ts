@@ -6,13 +6,14 @@
 // component init. Render the returned state with CartesianFrame.svelte.
 
 import type { Vec2 } from '$lib/math'
-import { has_explicit_position, measured_footprint } from '$lib/plot/core/auto-place'
 import {
   create_legend_decoration_item,
   decoration_placement_revision,
   decoration_placement_rects,
   type DecorationItem,
   get_decoration_placement,
+  has_explicit_position,
+  measured_footprint,
   solve_decorations,
 } from '$lib/plot/core/decorations'
 import { create_facet_plot_adapter } from '$lib/plot/core/facet-layout.svelte'

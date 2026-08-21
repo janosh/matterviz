@@ -5,7 +5,7 @@
   import type { D3InterpolateName } from '$lib/colors'
   import { format_value_or_num } from '$lib/labels'
   import { sanitize_html } from '$lib/sanitize'
-  import type { Point2D, Vec2 } from '$lib/math'
+  import type { Vec2 } from '$lib/math'
   import type {
     AxisLoadError,
     BarHandlerProps,
@@ -51,12 +51,12 @@
     create_color_scale,
     create_size_scale,
   } from '$lib/plot/core/scales'
-  import { DEFAULT_MARKERS, is_time_scale, SCALE_DEFAULTS } from '$lib/plot/core/types'
+  import { DEFAULT_MARKERS, get_scale_type_name, SCALE_DEFAULTS } from '$lib/plot/core/types'
+  import { build_legend_items } from '$lib/plot/core/data-transform'
   import { DEFAULTS } from '$lib/settings'
   import { extent } from 'd3-array'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import type { TweenOptions } from 'svelte/motion'
   import { resolve_plot_display, sync_category_zero_display } from '$lib/plot/core/display'
   import { AXIS_TITLE_OFFSET } from '$lib/plot/core/layout'
   import PlotTooltip from '$lib/plot/core/components/PlotTooltip.svelte'
@@ -80,7 +80,7 @@
   type LineSeriesPoint = BarLineSeriesPoint<Metadata>
 
   let {
-    series = $bindable([]),
+    series: series_in = $bindable([]),
     orientation = $bindable(`vertical`),
     mode = $bindable(`overlay`),
     x_axis = $bindable({}),
@@ -88,7 +88,7 @@
     y_axis = $bindable({}),
     y2_axis: y2_axis_prop = $bindable({}),
     // Clone so controls / categorical sync never mutate shared DEFAULTS.
-    display = $bindable({ ...DEFAULTS.bar.display }),
+    display = $bindable({ ...DEFAULTS.plot.display }),
     range_padding = 0,
     padding = {},
     title,
@@ -104,7 +104,6 @@
     // Line marker props (matching ScatterPlot)
     color_scale = SCALE_DEFAULTS.color,
     size_scale = SCALE_DEFAULTS.size,
-    point_tween,
     on_point_click,
     on_point_hover,
     ref_lines = $bindable([]),
@@ -154,7 +153,6 @@
       // Line marker props (matching ScatterPlot)
       color_scale?: ColorScaleConfig | D3InterpolateName
       size_scale?: SizeScaleConfig
-      point_tween?: TweenOptions<Point2D>
       on_point_click?: (
         data: LineMarkerHandlerProps & { event: MouseEvent | KeyboardEvent },
       ) => void
@@ -180,6 +178,16 @@
       marginals?: MarginalsProp
       facet_layout?: FacetLayoutContext
     } = $props()
+
+  // Legend toggles write `visible` into the bindable series prop so bound parents see
+  // them, and `series` layers the user's overrides back on whenever the parent
+  // replaces the array so hidden series stay hidden
+  const legend_vis = create_legend_visibility(
+    () => series,
+    (next) => (series_in = next),
+    (srs) => (orientation === `vertical` ? srs.y_axis : srs.x_axis),
+  )
+  let series: BarSeries<Metadata>[] = $derived(legend_vis.resolve(series_in))
 
   // Initialize bar, line, y2_axis with defaults - using $derived for reactivity
   let bar_state = $derived({ ...DEFAULTS.bar.bar, ...bar })
@@ -300,7 +308,7 @@
   $effect.pre(() => {
     category_zero_sync = sync_category_zero_display(
       display,
-      DEFAULTS.bar.display,
+      DEFAULTS.plot.display,
       category_list.length > 0 ? cat_axis : null,
       category_zero_sync,
     )
@@ -309,7 +317,7 @@
   const resolved_display = $derived(
     resolve_plot_display(
       display,
-      DEFAULTS.bar.display,
+      DEFAULTS.plot.display,
       category_list.length > 0 ? cat_axis : null,
     ),
   )
@@ -318,82 +326,46 @@
   // thinning candidate replaces the former fixed 28px/category heuristic.
   let cat_tick_indices = $derived(category_list.map((_, idx) => idx))
 
-  // Compute auto ranges from visible series
   let visible_series = $derived(internal_series.filter((srs) => srs?.visible ?? true))
-
-  // Separate series by the orientation-dependent value axis.
-  let y1_series = $derived(
-    visible_series.filter((srs) =>
-      orientation === `vertical`
-        ? (srs.y_axis ?? `y1`) === `y1`
-        : (srs.x_axis ?? `x1`) === `x1`,
-    ),
-  )
-  let y2_series = $derived(
-    visible_series.filter((srs) =>
-      orientation === `vertical` ? srs.y_axis === `y2` : srs.x_axis === `x2`,
-    ),
-  )
-  let x2_series = $derived(visible_series.filter((srs) => srs.x_axis === `x2`))
   const has_finite_point = ({ x, y }: BarSeries<Metadata>) =>
     x.some((x_value, idx) => Number.isFinite(x_value) && Number.isFinite(y[idx]))
-  // Only show secondary axes for series with at least one drawable bar.
-  let show_x2 = $derived(x2_series.some(has_finite_point))
-  let show_y2 = $derived(orientation === `vertical` && y2_series.some(has_finite_point))
+  // Only show secondary axes for series with at least one drawable bar. Horizontal bars put
+  // their secondary values on x2, so y2 is never shown in that orientation.
+  let show_x2 = $derived(
+    visible_series.some((srs) => srs.x_axis === `x2` && has_finite_point(srs)),
+  )
+  let show_y2 = $derived(
+    orientation === `vertical` &&
+      visible_series.some((srs) => srs.y_axis === `y2` && has_finite_point(srs)),
+  )
 
-  let auto_ranges = $derived.by(() => {
-    // The shared range helper models x as the category axis. In horizontal orientation,
-    // classify all series as x1 for category coverage, then reuse its y2 value range for x2.
-    const range_series =
-      orientation === `horizontal`
-        ? visible_series.map((srs) => ({ ...srs, x_axis: `x1` as const }))
-        : visible_series
-    const computed = compute_bar_auto_ranges({
-      visible_series: range_series,
-      y1_series,
-      y2_series,
-      x2_series,
+  let auto_ranges = $derived(
+    compute_bar_auto_ranges({
+      visible_series,
       mode,
       orientation,
       range_padding,
       category_count: category_list.length,
-      x_range:
-        orientation === `horizontal`
-          ? (y_axis.range ?? [null, null])
-          : (x_axis.range ?? [null, null]),
-      x_scale_type:
-        orientation === `horizontal`
-          ? (y_axis.scale_type ?? `linear`)
-          : (x_axis.scale_type ?? `linear`),
-      x_is_time: is_time_scale(
-        orientation === `horizontal` ? y_axis.scale_type : x_axis.scale_type,
-      ),
-      x2_range: x2_axis.range ?? [null, null],
-      x2_scale_type: x2_axis.scale_type ?? `linear`,
-      x2_is_time: is_time_scale(x2_axis.scale_type),
-      y_range:
-        orientation === `horizontal`
-          ? (x_axis.range ?? [null, null])
-          : (y_axis.range ?? [null, null]),
-      y_scale_type:
-        orientation === `horizontal`
-          ? (x_axis.scale_type ?? `linear`)
-          : (y_axis.scale_type ?? `linear`),
-      y2_range:
-        orientation === `horizontal`
-          ? (x2_axis.range ?? [null, null])
-          : (y2_axis.range ?? [null, null]),
-      y2_scale_type:
-        orientation === `horizontal`
-          ? (x2_axis.scale_type ?? `linear`)
-          : (y2_axis.scale_type ?? `linear`),
-    })
-    return orientation === `horizontal` ? { ...computed, x2: computed.y2 } : computed
-  })
+      axes: plot_axes,
+    }),
+  )
 
   const should_show_legend = $derived(
     resolve_legend_visibility(show_legend, legend, series.length),
   )
+
+  // Pixel scale for a value axis. On a log axis 0 (the bar baseline) has no finite pixel, so
+  // values are clamped to the axis minimum: bars grow from the plot edge instead of vanishing
+  // with NaN geometry, and sub-range bars collapse to the 1px floor at the edge.
+  const value_scale_for = (
+    axis: `x` | `x2` | `y` | `y2`,
+    scales: typeof frame.scales = frame.scales,
+  ): ((val: number) => number) => {
+    const scale = scales[axis]
+    if (get_scale_type_name(plot_axes[axis].scale_type) !== `log`) return scale
+    const floor = Math.min(...frame.ranges.current[axis])
+    return (val) => scale(Math.max(val, floor))
+  }
 
   // Obstacle field in normalized [0,1] plot coords (y=0 at top). Geometry is computed
   // against the decoration-independent base plot so outside padding cannot feed back into
@@ -421,14 +393,15 @@
       if (!(srs?.visible ?? true)) return
       const is_line = srs.render_mode === `line`
       const series_offsets = stacked_offsets[series_idx] ?? []
-      const x_scale = srs.x_axis === `x2` ? obstacle_scales.x2 : obstacle_scales.x
-      const y_scale = srs.y_axis === `y2` ? obstacle_scales.y2 : obstacle_scales.y
+      const x_axis_key = srs.x_axis === `x2` ? `x2` : `x`
+      const y_axis_key = srs.y_axis === `y2` ? `y2` : `y`
       const category_scale = vertical
-        ? (value: number) => x_scale(value) - effective_base_pad.l
+        ? (value: number) => obstacle_scales[x_axis_key](value) - effective_base_pad.l
         : (value: number) => obstacle_scales.y(value) - effective_base_pad.t
+      const value_px = value_scale_for(vertical ? y_axis_key : x_axis_key, obstacle_scales)
       const value_scale = vertical
-        ? (value: number) => y_scale(value) - effective_base_pad.t
-        : (value: number) => x_scale(value) - effective_base_pad.l
+        ? (value: number) => value_px(value) - effective_base_pad.t
+        : (value: number) => value_px(value) - effective_base_pad.l
 
       if (is_line) {
         const line_points = srs.x.map((x_val, point_idx) => {
@@ -551,66 +524,33 @@
     return Object.fromEntries(category_list.map((cat, idx): [number, string] => [idx, cat]))
   })
 
-  // Legend data and handlers
-  let legend_data = $derived(
-    series.map((srs: BarSeries<Metadata>, idx: number) => {
-      const is_line = srs.render_mode === `line`
-      const series_markers = srs.markers ?? DEFAULT_MARKERS
-      const has_line = series_markers === `line` || series_markers === `line+points`
-      const has_points = series_markers === `points` || series_markers === `line+points`
-      const series_color = srs.color ?? (is_line ? line_state.color : bar_state.color)
-      const legend_item = {
-        series_idx: idx,
-        label: srs.label ?? `Series ${idx + 1}`,
-        visible: srs.visible ?? true,
-        legend_group: srs.legend_group,
-      }
-
-      if (is_line) {
-        // Get point style for symbol color (handle array or single object)
-        const first_point_style = Array.isArray(srs.point_style)
-          ? srs.point_style[0]
-          : srs.point_style
-        const first_color_value = srs.color_values?.[0]
-        const point_color =
-          first_color_value != null
-            ? color_scale_fn(first_color_value)
-            : (first_point_style?.fill ?? series_color)
-        // Line series: show line and/or symbol based on markers
-        return {
-          ...legend_item,
-          display_style: {
-            ...(has_line
-              ? {
-                  line_color: series_color,
-                  line_dash: srs.line_style?.line_dash,
-                }
-              : {}),
-            ...(has_points
-              ? {
-                  symbol_type: first_point_style?.symbol_type ?? DEFAULTS.scatter.symbol_type,
-                  symbol_color: point_color,
-                }
-              : {}),
-          },
-        }
-      }
-      // Bar series: show square symbol
-      return {
-        ...legend_item,
-        display_style: {
-          symbol_type: `Square` as const,
-          symbol_color: series_color,
-        },
-      }
-    }),
-  )
-
-  const legend_vis = create_legend_visibility(
-    () => series,
-    (next) => (series = next),
-    (srs) => (orientation === `vertical` ? srs.y_axis : srs.x_axis),
-  )
+  // Legend swatch: bars show a square, line series a line and/or their first point's symbol
+  const legend_swatch = (srs: BarSeries<Metadata>): LegendItem[`display_style`] => {
+    const series_color =
+      srs.color ?? (srs.render_mode === `line` ? line_state.color : bar_state.color)
+    if (srs.render_mode !== `line`)
+      return { symbol_type: `Square`, symbol_color: series_color }
+    const series_markers = srs.markers ?? DEFAULT_MARKERS
+    const first_point_style = Array.isArray(srs.point_style)
+      ? srs.point_style[0]
+      : srs.point_style
+    const first_color_value = srs.color_values?.[0]
+    return {
+      ...(series_markers === `line` || series_markers === `line+points`
+        ? { line_color: series_color, line_dash: srs.line_style?.line_dash }
+        : {}),
+      ...(series_markers === `points` || series_markers === `line+points`
+        ? {
+            symbol_type: first_point_style?.symbol_type ?? DEFAULTS.scatter.symbol_type,
+            symbol_color:
+              first_color_value != null
+                ? color_scale_fn(first_color_value)
+                : (first_point_style?.fill ?? series_color),
+          }
+        : {}),
+    }
+  }
+  let legend_data = $derived(build_legend_items(series, legend_swatch))
 
   // Tooltip state
   let hover_info = $state<BarHandlerProps<Metadata> | null>(null)
@@ -680,17 +620,7 @@
   }
 
   // Stack offsets (only for bar series in stacked mode, grouped by the value axis)
-  let stacked_offsets = $derived(
-    compute_stacked_offsets(
-      orientation === `vertical`
-        ? internal_series
-        : internal_series.map((srs) => ({
-            ...srs,
-            y_axis: srs.x_axis === `x2` ? (`y2` as const) : (`y1` as const),
-          })),
-      mode,
-    ),
-  )
+  let stacked_offsets = $derived(compute_stacked_offsets(internal_series, mode, orientation))
 
   // Calculate group positions for grouped mode (side-by-side bars)
   let group_info = $derived(compute_group_info(internal_series, mode))
@@ -705,7 +635,7 @@
       y: { get: () => y_axis, set: (config) => (y_axis = config) },
       y2: { get: () => y2_axis, set: (config) => (y2_axis_prop = config) },
     },
-    series: { get: () => series, set: (next) => (series = next) },
+    series: { get: () => series, set: (next) => (series_in = next) },
     loading: { get: () => axis_loading, set: (axis) => (axis_loading = axis) },
   }
 
@@ -946,7 +876,6 @@
                       x={pt.x}
                       y={pt.y}
                       is_hovered={hov}
-                      {point_tween}
                       style={{
                         ...sty,
                         radius: rad,
@@ -978,10 +907,13 @@
                   ? (srs.bar_width[bar_idx] ?? 0.5)
                   : (srs.bar_width ?? 0.5)}
                 {@const is_vertical = orientation === `vertical`}
-                {@const x_scale_bar = srs.x_axis === `x2` ? frame.scales.x2 : frame.scales.x}
+                {@const x_axis_key = srs.x_axis === `x2` ? `x2` : `x`}
                 {@const [cat_scale, val_scale] = is_vertical
-                  ? [x_scale_bar, srs.y_axis === `y2` ? frame.scales.y2 : frame.scales.y]
-                  : [frame.scales.y, x_scale_bar]}
+                  ? [
+                      frame.scales[x_axis_key],
+                      value_scale_for(srs.y_axis === `y2` ? `y2` : `y`),
+                    ]
+                  : [frame.scales.y, value_scale_for(x_axis_key)]}
                 {@const { c0, c1, v0, v1, rect_x, rect_y, rect_w, rect_h } = compute_bar_rect({
                   cat_val: x_val,
                   val: y_val,
@@ -1001,7 +933,7 @@
                       rect_y,
                       rect_w,
                       rect_h,
-                      Math.min(bar_state.border_radius ?? 0, rect_w / 2, rect_h / 2),
+                      bar_state.border_radius ?? 0,
                       is_vertical,
                       is_vertical ? v1 > v0 : v1 < v0,
                     )}

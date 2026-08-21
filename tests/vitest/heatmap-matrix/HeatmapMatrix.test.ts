@@ -39,6 +39,9 @@ const get_data_cells = () => query_all(`.cell:not(.empty)`)
 const get_empty_cells = () => query_all(`.cell.empty`)
 const get_x_labels = () => query_all(`.x-label`)
 const get_y_labels = () => query_all(`.y-label`)
+// color_scale whose red channel reads back the normalized position on the ramp
+const red_scale = (val: number) => `rgb(${Math.round(val * 255)}, 0, 0)`
+const red_of = (cell: HTMLElement) => Number(/\d+/.exec(cell.style.backgroundColor)?.[0])
 
 describe(`HeatmapMatrix rendering`, () => {
   test(`renders cells, labels, corner, data attributes, and CSS vars`, () => {
@@ -181,25 +184,6 @@ describe(`values and colors`, () => {
     expect(cells[1].style.opacity).toBe(``)
   })
 
-  test(`missing decorations follow the transformed value, matching cell background`, () => {
-    // value_transform maps 1 -> null, so cell B must get BOTH the missing
-    // background and the missing label/style (they previously disagreed:
-    // background used the transformed value, decorations the raw value)
-    mount_matrix({
-      x: [`A`, `B`],
-      y: [`X`],
-      values: [[2, 1]],
-      value_transform: (val: number) => (val === 1 ? null : val),
-      missing: { color: `red`, label: `N/A`, style: `opacity: 0.4` },
-    })
-    const cells = get_data_cells()
-    expect(cells[1].style.backgroundColor).toBe(`red`)
-    expect(cells[1].textContent?.trim()).toBe(`N/A`)
-    expect(cells[1].style.opacity).toBe(`0.4`)
-    expect(cells[0].style.backgroundColor).not.toBe(`red`)
-    expect(cells[0].textContent).not.toContain(`N/A`)
-  })
-
   test(`record-based values resolve by key with null handling`, () => {
     mount_matrix({
       x: [`A`, `B`],
@@ -258,6 +242,74 @@ describe(`values and colors`, () => {
     expect(red(3)).toBe(255)
   })
 
+  // the legend reads the same lifted floor as the cells: a zero in the data must not floor
+  // the bar at LOG_EPS while cells start at the smallest positive value
+  test(`log legend spans the lifted cell floor, not LOG_EPS`, () => {
+    mount_matrix({
+      x: [`A`, `B`, `C`],
+      y: [`X`],
+      values: [[0, 0.01, 100]],
+      log: true,
+      show_legend: true,
+      legend_format: `~g`,
+    })
+    const ticks = [...document.querySelectorAll(`.colorbar .tick-label`)].map((span) =>
+      Number(span.textContent),
+    )
+    expect([Math.min(...ticks), Math.max(...ticks)]).toEqual([0.01, 100])
+  })
+
+  // the shared ramp must not floor positive log bounds at LOG_EPS (1e-9): 1e-12 is the
+  // bottom, 1e-9 the log midpoint, not the bottom color twice
+  test(`log mode keeps positive values below 1e-9 spread over the ramp`, () => {
+    mount_matrix({
+      x: [`A`, `B`, `C`],
+      y: [`X`],
+      values: [[1e-12, 1e-9, 1e-6]],
+      log: true,
+      color_scale: red_scale,
+    })
+    expect(get_data_cells().map(red_of)).toEqual([0, 128, 255])
+  })
+
+  // 51 values 0..50: the 2nd/98th percentiles (interpolated, quantile_unordered) are 1 and 49,
+  // so under `robust` 1 maps to the bottom of the ramp, 49 to the top, 0 and 50 saturate.
+  test(`robust domain clips to the 2nd-98th percentile`, () => {
+    const values = [Array.from({ length: 51 }, (_val, idx) => idx)]
+    mount_matrix({
+      x: values[0].map((val) => `c${val}`),
+      y: [`X`],
+      values,
+      domain_mode: `robust`,
+      color_scale: red_scale,
+    })
+    const reds = get_data_cells().map(red_of)
+    expect(reds.slice(0, 3)).toEqual([0, 0, Math.round(255 / 48)])
+    expect(reds.slice(-2)).toEqual([255, 255])
+    expect(reds[25]).toBe(Math.round((24 / 48) * 255))
+  })
+
+  // A descending color_scale_range flips the legend's direction but must not flip which
+  // value gets which color: cells and the ColorBar read the same ramp.
+  test(`descending color_scale_range keeps value-to-color mapping consistent with the legend`, () => {
+    mount_matrix({
+      x: [`A`, `B`],
+      y: [`X`],
+      values: [[0, 10]],
+      color_scale_range: [10, 0],
+      domain_mode: `fixed`,
+      show_legend: true,
+      color_scale: red_scale,
+    })
+    const cells = get_data_cells()
+    expect(cells[0].style.backgroundColor).toBe(`rgb(0, 0, 0)`)
+    expect(cells[1].style.backgroundColor).toBe(`rgb(255, 0, 0)`)
+    const gradient = doc_query(`.colorbar .bar`).getAttribute(`style`) ?? ``
+    const stops = gradient.match(/rgb\(\d+, 0, 0\)/g) ?? []
+    expect(stops[0]).toBe(`rgb(255, 0, 0)`) // value 10 sits at the left end
+    expect(stops.at(-1)).toBe(`rgb(0, 0, 0)`)
+  })
+
   test(`log mode safely handles non-positive color range minimum`, () => {
     mount_matrix({
       x: [`A`],
@@ -269,6 +321,29 @@ describe(`values and colors`, () => {
     const cell = doc_query(`.cell:not(.empty)`)
     expect(cell.style.backgroundColor).not.toBe(``)
     expect(cell.style.backgroundColor).not.toBe(`transparent`)
+  })
+
+  // a degenerate domain paints every mappable cell the midpoint color (also when the lifted
+  // log floor lands on the max); a log domain entirely <= 0 maps nothing
+  test.each<[string, Partial<ComponentProps<typeof HeatmapMatrix>>, number[], number[]]>([
+    [`zero-width range`, { color_scale_range: [2, 2] }, [1, 2, 3], [128, 128, 128]],
+    [
+      `log floor lifted onto the max`,
+      { log: true, color_scale_range: [-1, 5] },
+      [5, 0],
+      [128, 0],
+    ],
+    [`log range entirely <= 0`, { log: true, color_scale_range: [-5, 0] }, [1], [0]],
+  ])(`%s`, (_name, props, row, expected_reds) => {
+    mount_matrix({
+      x: row.map((val) => `c${val}`),
+      y: [`X`],
+      values: [row],
+      missing: { color: `rgb(0, 0, 0)` },
+      color_scale: red_scale,
+      ...props,
+    })
+    expect(get_data_cells().map(red_of)).toEqual(expected_reds)
   })
 
   test(`empty values array gives transparent cells`, () => {
@@ -511,6 +586,14 @@ describe(`axis label placement`, () => {
     expect(x_labels[1].style.gridRow).toBe(`6`) // n_rows(4) + top row + bottom row
     expect(y_labels[0].style.gridColumn).toBe(`1`)
     expect(y_labels[1].style.gridColumn).toBe(`6`) // n_cols(4) + left col + right col
+    // even items keep the near edge class, odd ones get the far edge class
+    const has_class = (labels: HTMLElement[], cls: string) =>
+      labels.map((label) => label.classList.contains(cls))
+    expect(has_class(x_labels, `x-edge-top`)).toEqual([true, false, true, false])
+    expect(has_class(x_labels, `x-edge-bottom`)).toEqual([false, true, false, true])
+    expect(has_class(y_labels, `y-edge-left`)).toEqual([true, false, true, false])
+    expect(has_class(y_labels, `y-edge-right`)).toEqual([false, true, false, true])
+    expect(doc_query(`.grid`).style.getPropertyValue(`--extra-bottom-x`)).toBe(`1`)
   })
 
   test(`symmetric diagonal mode moves only x labels toward diagonal`, () => {
@@ -630,7 +713,6 @@ describe(`milestone feature props`, () => {
       y: [`X`],
       values: [[1.234]],
       show_legend: true,
-      legend_ticks: 2,
       legend_format: `.1f`,
       color_scale_range: [1.234, 1.234],
     })
@@ -663,6 +745,60 @@ describe(`milestone feature props`, () => {
       { x_idx: 0, y_idx: 0 },
       { x_idx: 1, y_idx: 0 },
     ])
+  })
+
+  // Shift+click spans the rectangle from the last selected cell; the hidden triangle of a
+  // symmetric matrix is left out of it
+  test(`selection_mode range spans a rectangle minus the hidden triangle`, () => {
+    const select_handler = vi.fn()
+    mount_matrix({
+      selection_mode: `range`,
+      symmetric: `lower`,
+      values: [
+        [1, 2, 3],
+        [4, 5, 6],
+        [7, 8, 9],
+      ],
+      onselect: select_handler,
+    })
+    const cell_at = (x_idx: number, y_idx: number) =>
+      doc_query(`.cell[data-x="${x_idx}"][data-y="${y_idx}"]`)
+    cell_at(0, 0).dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+    cell_at(1, 2).dispatchEvent(new MouseEvent(`click`, { bubbles: true, shiftKey: true }))
+    expect(select_handler.mock.calls.at(-1)?.[0]).toEqual([
+      { x_idx: 0, y_idx: 0 },
+      { x_idx: 0, y_idx: 1 },
+      { x_idx: 1, y_idx: 1 },
+      { x_idx: 0, y_idx: 2 },
+      { x_idx: 1, y_idx: 2 },
+    ])
+  })
+
+  test(`brush drag reports the spanned ranges and cells`, () => {
+    const brush_handler = vi.fn()
+    mount_matrix({
+      enable_brush: true,
+      onbrush: brush_handler,
+      values: [
+        [1, 2, 3],
+        [4, 5, 6],
+        [7, 8, 9],
+      ],
+    })
+    const cell_at = (x_idx: number, y_idx: number) =>
+      doc_query(`.cell[data-x="${x_idx}"][data-y="${y_idx}"]`)
+    // drag from bottom-right to top-left so the ranges have to be sorted
+    cell_at(2, 1).dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true }))
+    cell_at(1, 0).dispatchEvent(new MouseEvent(`mouseover`, { bubbles: true }))
+    window.dispatchEvent(new MouseEvent(`mouseup`))
+    expect(brush_handler).toHaveBeenCalledOnce()
+    const payload = brush_handler.mock.calls[0][0]
+    expect(payload.x_range).toEqual([1, 2])
+    expect(payload.y_range).toEqual([0, 1])
+    expect(payload.cells.map((ctx: { value: number }) => ctx.value)).toEqual([2, 3, 5, 6])
+    // a second mouseup without a new drag reports nothing
+    window.dispatchEvent(new MouseEvent(`mouseup`))
+    expect(brush_handler).toHaveBeenCalledOnce()
   })
 
   test(`selected outline color token contrasts with dark cell backgrounds`, () => {

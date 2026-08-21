@@ -95,19 +95,26 @@ describe(`package.json exports`, () => {
     expect(existsSync(join(repo_root, `dist/file-viewer/parse-worker.js`))).toBe(true)
   })
 
+  // I/O-bound, not logic: dynamically importing the svelte-package output in dist/ (the
+  // structure export pulls in three.js) shares disk and CPU with every other worker under a
+  // full-suite run, where 15 s was not always enough.
   test(
     `built structure and element entry points retain strict public exports`,
-    { timeout: 15_000 },
+    { timeout: 60_000 },
     async () => {
-      const structure_export = await import(`../../dist/structure/serialize.js`)
+      const structure_export = await import(`../../dist/structure/export.js`)
       expect(pkg.exports[`./structure/export`]).toEqual({
-        types: `./dist/structure/serialize.d.ts`,
-        default: `./dist/structure/serialize.js`,
+        types: `./dist/structure/export.d.ts`,
+        default: `./dist/structure/export.js`,
       })
       expect(Object.keys(structure_export).toSorted()).toEqual(
         [
+          `convert_instanced_meshes_to_regular`,
           `create_structure_filename`,
           `export_structure_as`,
+          `export_structure_as_glb`,
+          `export_structure_as_obj`,
+          `generate_mtl_content`,
           `STRUCT_TEXT_FORMATS`,
           `structure_to_cif_str`,
           `structure_to_json_str`,
@@ -138,8 +145,12 @@ describe(`package.json exports`, () => {
   )
 
   test(`symmetry builds retain default and overridable WASM resolution`, () => {
-    const source = readFileSync(join(repo_root, `dist/symmetry/index.js`), `utf8`)
-    expect(source).toContain(`init(wasm_url ? { module_or_path: wasm_url } : undefined)`)
+    const source = readFileSync(join(repo_root, `dist/symmetry/analyze.js`), `utf8`)
+    // undefined must reach init() untouched so wasm-bindgen resolves the .wasm next to its
+    // glue module; the anywidget build below rewrites that resolution to a CDN/host URL
+    expect(source).toMatch(
+      /init\(source === undefined \? undefined : \{ module_or_path: source \}\)/,
+    )
     expect(source).not.toContain(`moyo_wasm_bg.wasm`)
     const widget_config = readFileSync(
       `${repo_root}/extensions/anywidget/vite.config.ts`,

@@ -38,6 +38,7 @@
     merge_imported_volumes,
     normalize_active_volume_idx,
   } from '$lib/isosurface/types'
+  import { format_num } from '$lib/labels'
   import { ViewerChrome } from '$lib/layout'
   import type { Vec3 } from '$lib/math'
   import { create_cart_to_frac, create_frac_to_cart } from '$lib/math'
@@ -89,11 +90,7 @@
   import type { DisplacementSummary } from './measure'
   import type { TrajectoryLinesStats } from './trajectory-lines'
   import { MAX_SELECTED_SITES } from './measure'
-  import {
-    ensure_lattice_params,
-    normalize_fractional_coords,
-    parse_any_structure,
-  } from './parse'
+  import { normalize_fractional_coords, parse_structure_file } from './parse'
   import StructureControls from './StructureControls.svelte'
   import StructureExportPane from './StructureExportPane.svelte'
   import StructureInfoPane from './StructureInfoPane.svelte'
@@ -144,13 +141,24 @@
   const finite_nonnegative = (value: number, fallback: number) =>
     Math.max(0, Number.isFinite(value) ? value : fallback)
 
+  // Run `on_change` (untracked) whenever `get_value` yields a new value or tuple, skipping the
+  // mount-time value so parent-provided state survives the first render. Runs as a pre-effect
+  // so site-indexed state (selection, radius overrides) is already reset when the scene
+  // template renders the new structure: a post-render $effect would let the scene draw the
+  // stale selection against a shrunken site list first (e.g. image-atom indices after
+  // disabling image atoms), and a throw in that render aborts the whole Svelte flush,
+  // dropping the pending clear along with it.
   function track_change(get_value: () => unknown, on_change: () => void): void {
-    let previous = get_value()
-    $effect(() => {
+    const same = (left: unknown, right: unknown): boolean =>
+      Array.isArray(left) && Array.isArray(right)
+        ? left.length === right.length && left.every((item, idx) => item === right[idx])
+        : left === right
+    let previous = untrack(get_value)
+    $effect.pre(() => {
       const value = get_value()
-      if (value === previous) return
+      if (same(value, previous)) return
       previous = value
-      on_change()
+      untrack(on_change)
     })
   }
 
@@ -519,22 +527,20 @@
     }),
   )
 
+  // Parse structure from string when structure_string is provided (synchronous, so no
+  // loading state: the spinner would never get a frame to show in)
   $effect(() => {
-    // Parse structure from string when structure_string is provided
     if (!structure_string || data_url) return
-    loading = true
     error_msg = undefined
-    clear_camera_state()
     try {
-      const parsed = parse_any_structure(structure_string, `string`)
+      const parsed = parse_structure_file(structure_string, `string`)
       if (!parsed) throw new Error(`Failed to parse structure from string`)
+      clear_camera_state()
       structure = parsed
       untrack(() => emit_file_load_event(parsed, `string`, structure_string))
     } catch (err) {
       error_msg = `Failed to parse structure from string: ${to_error(err).message}`
       untrack(() => on_error?.({ error_msg, filename: `string` }))
-    } finally {
-      loading = false
     }
   })
 
@@ -568,13 +574,13 @@
     scene_props.vector_color ??= DEFAULTS.structure.vector_color
   })
 
-  // Optimize scene props for performance based on structure size and mode
-  $effect(() => {
-    if (!structure?.sites || performance_mode !== `speed` || structure.sites.length <= 200)
-      return
-    // Reduce sphere segments for large structures in speed mode
-    scene_props.sphere_segments = Math.min(scene_props.sphere_segments || 20, 12)
-  })
+  // Speed mode caps sphere tessellation for large structures at render time rather than
+  // rewriting the user's setting, so leaving speed mode restores their value.
+  let effective_sphere_segments = $derived(
+    performance_mode === `speed` && (structure?.sites?.length ?? 0) > 200
+      ? Math.min(scene_props.sphere_segments, 12)
+      : scene_props.sphere_segments,
+  )
 
   $effect(() => {
     colors.element = ELEMENT_COLOR_SCHEMES[color_scheme as ColorSchemeName]
@@ -588,6 +594,8 @@
   let symmetry_run_id = 0
   let symmetry_error = $state<string>()
   let last_symmetry_structure_ref: AnyStructure | null = null
+  // A run that lands after unmount must not write into a destroyed component's bindings
+  $effect(() => () => void (symmetry_run_id += 1))
 
   // Trigger symmetry analysis when structure is loaded or settings change.
   // Skip during atom drags — symmetry doesn't change from moving atoms,
@@ -784,23 +792,20 @@
     })
   })
 
+  // A new structure, cell, supercell or source-bond set invalidates both the undo history and
+  // the edits themselves: the original bonds come back and the edit layer starts over
   $effect(() => {
-    const history_context = bond_history_context
-    if (history_context === undefined) return
-    if (bond_edit_context_changed(history_context, current_bond_edit_context())) {
-      untrack(clear_bond_history)
-    }
-  })
-
-  $effect(() => {
-    const snapshot = bond_edit_snapshot
-    if (snapshot === undefined) return
     const context = current_bond_edit_context()
-    if (!bond_edit_context_changed(snapshot.context, context)) return
+    const [history_context, snapshot] = [bond_history_context, bond_edit_snapshot]
     untrack(() => {
-      emit_bonds(resolve_bond_edit_reset_bonds(snapshot))
-      clear_bond_edits()
-      bond_edit_snapshot = undefined
+      if (history_context && bond_edit_context_changed(history_context, context)) {
+        clear_bond_history()
+      }
+      if (snapshot && bond_edit_context_changed(snapshot.context, context)) {
+        emit_bonds(resolve_bond_edit_reset_bonds(snapshot))
+        clear_bond_edits()
+        bond_edit_snapshot = undefined
+      }
     })
   })
 
@@ -884,6 +889,7 @@
     toast_msg = msg
     toast_timer = setTimeout(() => (toast_msg = null), duration_ms)
   }
+  $effect(() => () => clearTimeout(toast_timer))
 
   // Normalize and validate element symbol (e.g. "fe" → "Fe", "Xx" → null)
   function normalize_element(input: string): ElementSymbol | null {
@@ -957,18 +963,13 @@
   })
 
   // Clear selection when switching measure/edit mode so stale state doesn't carry over
-  let mode_first_run = true
-  $effect(() => {
-    void measure_mode // track reactively
-    if (mode_first_run) {
-      mode_first_run = false
-      return
-    }
-    untrack(() => {
+  track_change(
+    () => measure_mode,
+    () => {
       if (has_selection()) clear_selection()
       if (measure_mode === `edit-bonds`) bond_edit_mode = `add`
-    })
-  })
+    },
+  )
 
   $effect(() => {
     void bond_edit_mode
@@ -1015,12 +1016,12 @@
       height >= multi_view_required_height,
   )
   // Preserve the caller's multi_view preference while temporarily collapsing small viewers.
-  let is_multi_view_active = $state(false)
-  // This is output-only state: parent writes are overwritten with the actual render state.
+  let is_multi_view_active = $derived(
+    display_mode === `structure` && multi_view && multi_view_available,
+  )
+  // multi_view_active is output-only: parent writes are overwritten with the render state
   $effect(() => {
-    const active = display_mode === `structure` && multi_view && multi_view_available
-    is_multi_view_active = active
-    if (multi_view_active !== active) multi_view_active = active
+    if (multi_view_active !== is_multi_view_active) multi_view_active = is_multi_view_active
   })
   let slice_layout_available = $derived(
     Boolean(volumetric_data?.length || display_mode === `slice`) &&
@@ -1048,18 +1049,12 @@
           )} px. Enlarge the viewer or use fullscreen.`
         : undefined,
   )
-  // $effect instead of `$derived(hovered || focused)`: the $derived reading the $bindable
-  // `hovered` prop went stale after the first hover/leave cycle, so the gizmo only appeared
-  // on the first mouseenter until reload.
-  let viewer_active = $state(false)
-  $effect(() => {
-    viewer_active = hovered || focused
-  })
+  let viewer_active = $derived(hovered || focused)
   // Keep the gizmo mounted whenever enabled — toggling via `{#if gizmo}` on hover remounts
   // OrbitControls/Gizmo and resets camera rotation. Reveal it with the gizmo's own `visible`
   // flag instead, since it draws inside the canvas where CSS can't reach it.
   let scene_gizmo_props = $derived.by(() => {
-    const gizmo = scene_props.gizmo ?? scene_props.show_gizmo
+    const { gizmo } = scene_props
     if (!gizmo) return gizmo
     const overrides = typeof gizmo === `object` ? gizmo : {}
     // `??` not `||`, so an explicit `visible: false` is honored rather than treated as unset
@@ -1071,15 +1066,7 @@
 
   // Normalize periodic fractional coordinates and recompute Cartesian positions.
   // Non-periodic axes retain out-of-cell coordinates (e.g. unwrapped trajectories).
-  // ensure_lattice_params covers structures that bypass parse_any_structure (direct
-  // props, trajectory JSON frames) with matrix-only pymatgen lattices, which would
-  // otherwise NaN the camera auto-fit and render blank.
-  let normalized_structure = $derived.by(() => {
-    if (!structure || !(`lattice` in structure)) return structure
-    return ensure_lattice_params(
-      normalize_fractional_coords(structure, structure.lattice.pbc),
-    ) as AnyStructure
-  })
+  let normalized_structure = $derived(structure && normalize_fractional_coords(structure))
 
   let structure_with_bonds = $derived.by(() => {
     if (!normalized_structure || bonds === undefined) return normalized_structure
@@ -1152,6 +1139,7 @@
   })
 
   let supercell_timeout: ReturnType<typeof setTimeout> | undefined
+  $effect(() => () => clearTimeout(supercell_timeout))
   // Compute the supercell, falling back to the unscaled structure on error
   const make_supercell_safe = (base: Crystal): Crystal => {
     try {
@@ -1195,15 +1183,10 @@
   })
 
   // Clear selections, site overrides, and stale camera target when transformations
-  // change site indices (skip first run to preserve parent-provided selections)
-  let first_run = true
-  $effect(() => {
-    void [supercell_scaling, show_image_atoms, effective_structure_series_key, cell_type]
-    if (first_run) {
-      first_run = false
-      return
-    }
-    untrack(() => {
+  // change site indices
+  track_change(
+    () => [supercell_scaling, show_image_atoms, effective_structure_series_key, cell_type],
+    () => {
       // In edit-atoms mode, structure changes are intentional user edits
       // (move/add/delete) — preserve the selection so TransformControls stays active
       if (measure_mode === `edit-atoms`) return
@@ -1212,36 +1195,30 @@
       if (site_radius_overrides?.size > 0) site_radius_overrides.clear()
       // Clear stale camera target so orbit controls re-center on the new cell
       scene_props.camera_target = undefined
-    })
-  })
+    },
+  )
 
   // A stable series key preserves the camera across trajectory frames, but site-indexed UI
   // state is only valid while atom count, order, and species identity remain unchanged.
-  let topology_first_run = true
-  $effect(() => {
-    void topology_signature
-    if (topology_first_run) {
-      topology_first_run = false
-      return
-    }
-    untrack(() => {
+  track_change(
+    () => topology_signature,
+    () => {
       if (has_selection()) clear_selection()
       if (highlighted_sites.length > 0) highlighted_sites = []
       hovered_site_idx = null
       if (site_radius_overrides?.size > 0) site_radius_overrides.clear()
-    })
-  })
+    },
+  )
 
   // Element-map + PBC image atoms. Skipped during drags (doubled site count drops frames);
   // images return on release.
-  // The render path reads the internal $state.raw copy, NOT the bindable prop:
+  // The render path reads this derived, NOT the bindable displayed_structure prop:
   // if a consumer binds displayed_structure to a deep $state, reading the prop
   // back would re-proxy every site and slow all scene computations ~10x.
-  let internal_displayed_structure = $state.raw<AnyStructure | undefined>(undefined)
-  $effect(() => {
+  let internal_displayed_structure = $derived.by((): AnyStructure | undefined => {
     let struct = supercell_structure
-    if (struct && element_mapping && Object.keys(element_mapping).length > 0) {
-      const mapping = element_mapping // capture for TypeScript narrowing
+    const mapping = element_mapping
+    if (struct && mapping && Object.keys(mapping).length > 0) {
       struct = {
         ...struct,
         sites: struct.sites.map((site) => ({
@@ -1254,14 +1231,16 @@
         })),
       }
     }
-    // Local var, NOT a read-back of the states written below: reading our own
-    // fresh-object write inside this effect would self-retrigger it forever.
-    const next =
-      !dragging_atoms && show_image_atoms && struct && `lattice` in struct && struct.lattice
-        ? get_pbc_image_sites(struct)
-        : struct
-    internal_displayed_structure = next
-    displayed_structure = next
+    return !dragging_atoms &&
+      show_image_atoms &&
+      struct &&
+      `lattice` in struct &&
+      struct.lattice
+      ? get_pbc_image_sites(struct)
+      : struct
+  })
+  $effect(() => {
+    displayed_structure = internal_displayed_structure
   })
 
   // scene + camera of the primary pane, bound out for the export pane. All other camera
@@ -1313,7 +1292,11 @@
     view_reset_key: effective_structure_series_key,
     base_structure: cell_transformed_structure,
     reference_structure,
-    scene_props: { ...scene_props, show_trajectory_lines },
+    scene_props: {
+      ...scene_props,
+      show_trajectory_lines,
+      sphere_segments: effective_sphere_segments,
+    },
     gizmo: scene_gizmo_props,
     lattice_props,
     volumetric_data,
@@ -1332,21 +1315,15 @@
     on_add_atom: handle_add_atom,
   })
 
-  // Mutual exclusion: opening one pane closes others
+  // Mutual exclusion: opening one pane closes the others
   $effect(() => {
-    if (info_pane_open) {
-      untrack(() => ([controls_open, export_pane_open] = [false, false]))
-    }
+    if (info_pane_open) untrack(() => ([controls_open, export_pane_open] = [false, false]))
   })
   $effect(() => {
-    if (controls_open) {
-      untrack(() => ([info_pane_open, export_pane_open] = [false, false]))
-    }
+    if (controls_open) untrack(() => ([info_pane_open, export_pane_open] = [false, false]))
   })
   $effect(() => {
-    if (export_pane_open) {
-      untrack(() => ([info_pane_open, controls_open] = [false, false]))
-    }
+    if (export_pane_open) untrack(() => ([info_pane_open, controls_open] = [false, false]))
   })
 
   // Reset viewing state when the structure series changes. Coordinate-only updates keep a
@@ -1477,7 +1454,7 @@
   ): AnyStructure {
     const vol_struct = try_parse_volumetric(text_content, filename, source_filename)
     if (vol_struct) return vol_struct
-    const parsed = parse_any_structure(text_content, filename)
+    const parsed = parse_structure_file(text_content, filename)
     if (!parsed) throw new Error(`Failed to parse structure from ${filename}`)
     // Keep loaded volumes and camera when the new structure describes the same
     // cell (e.g. a mixed batch drop of CHGCAR + POSCAR, in either order);
@@ -1502,7 +1479,7 @@
     emit_file_load_event(parsed, filename, content, metadata)
   }
 
-  const handle_file_drop = io.create_file_drop_handler({
+  const file_drop_zone = io.file_drop_zone({
     allow: () => allow_file_drop,
     // Parse errors propagate so multi-file batches aggregate all failures into
     // one message instead of the last error overwriting earlier ones
@@ -1516,8 +1493,9 @@
     },
     set_loading: (val) => {
       loading = val
-      if (val) [error_msg, dragover] = [undefined, false]
+      if (val) error_msg = undefined
     },
+    on_dragover: (over) => (dragover = over),
   })
 
   // Handle keyboard shortcuts. Returns true if the key was handled, so the caller
@@ -1830,31 +1808,26 @@
         },
       ],
     }
-    show_toast(`Added ${elem} at (${xyz.map((coord) => coord.toFixed(2)).join(`, `)})`)
+    show_toast(`Added ${elem} at (${xyz.map((coord) => format_num(coord, `.2f`)).join(`, `)})`)
   }
 
-  // Only set background override when background_color is explicitly provided
-  $effect(() => {
-    if (!wrapper) return
-    if (!background_color) {
-      // Remove override to use theme system
-      wrapper.style.removeProperty(`--struct-bg-override`)
-      return
-    }
-    // Convert opacity (0-1) to hex alpha value (00-FF)
-    const alpha_hex = Math.round(background_opacity * 255)
-      .toString(16)
-      .padStart(2, `0`)
-    wrapper.style.setProperty(`--struct-bg-override`, `${background_color}${alpha_hex}`)
-  })
+  // Only override the themed --struct-bg when background_color is explicitly provided;
+  // opacity (0-1) becomes the hex alpha byte (00-ff)
+  let background_override = $derived(
+    background_color
+      ? `${background_color}${Math.round(background_opacity * 255)
+          .toString(16)
+          .padStart(2, `0`)}`
+      : undefined,
+  )
 </script>
 
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <div
-  class:dragover
   class:active={info_pane_open || controls_open || export_pane_open}
   class:multi-view={is_multi_view_active}
   style:--struct-viewport-gap="{multi_view_gap_px}px"
+  style:--struct-bg-override={background_override}
   role="application"
   tabindex="0"
   aria-label="Structure viewer"
@@ -1869,14 +1842,10 @@
       focused = false
     }
   }}
-  ondrop={handle_file_drop}
-  {...io.drag_over_handlers({
-    allow: () => allow_file_drop,
-    set_dragover: (over) => (dragover = over),
-  })}
   onkeydown={handle_and_prevent(handle_keydown)}
   {...rest}
   class={[`structure`, rest.class]}
+  {@attach file_drop_zone}
   {@attach forward_window_keydown({ handle: handle_hover_keydown })}
 >
   {@render children?.({ structure, fullscreen })}
@@ -1897,7 +1866,6 @@
       fullscreen_bg_css_var="--struct-bg-fullscreen"
       on_fullscreen_change={(value) =>
         on_fullscreen_change?.({ structure, fullscreen: value })}
-      fullscreen_btn_style="--icon-size: var(--struct-fullscreen-icon-size, 1em)"
       style="--viewer-buttons-gap: 4pt; --viewer-buttons-btn-padding: 1px 2px; --viewer-buttons-align: stretch; --viewer-buttons-hover-bg: transparent; --viewer-buttons-hover-color: light-dark(#000, #fff)"
     >
       {#if layout_control_visible}
@@ -2207,11 +2175,11 @@
       {@render top_right_controls?.()}
     </ViewerChrome>
 
-    {#if display_mode === `structure` && (structure?.sites?.length ?? 0) > 0}
+    {#if display_mode === `structure` && structure?.sites?.length}
       <AtomLegend
         bind:atom_color_config
         {property_colors}
-        elements={get_element_counts(supercell_structure ?? structure!)}
+        elements={get_element_counts(supercell_structure ?? structure)}
         bind:hidden_elements
         bind:hidden_prop_vals
         bind:element_mapping
@@ -2367,7 +2335,7 @@
     /* Square by default; opt into rounding with --struct-border-radius. */
     border-radius: var(--struct-border-radius, 0);
     background: var(--struct-bg-override, var(--struct-bg));
-    color: var(--struct-text-color);
+    color: var(--text-color);
     display: flex;
   }
   .structure.active {

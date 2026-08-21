@@ -41,9 +41,10 @@
   {@render children?.({ orientation, mode, x_axis, x2_axis, y_axis, y2_axis, display })}
   <SettingsSection
     title="Layout"
+    class="ctrl-line"
     current_values={{ orientation, mode }}
     on_reset={() => ({ orientation, mode } = initial_layout)}
-    layout="grid"
+    layout="flow"
   >
     <label>
       <span>Orientation</span>

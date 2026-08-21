@@ -1,6 +1,7 @@
 import BrillouinZone from '$lib/brillouin/BrillouinZone.svelte'
 import { mount, unmount } from 'svelte'
 import { afterEach, expect, test, vi } from 'vitest'
+import { make_crystal } from '../setup'
 
 let mounted_component: ReturnType<typeof mount> | undefined
 
@@ -28,6 +29,30 @@ test(`loads a second data_url after the first has produced a structure`, async (
     `a.poscar`,
     `b.poscar`,
   ])
+})
+
+// A coplanar lattice has no reciprocal lattice: the viewer must report that (error_msg +
+// on_error) rather than render NaN geometry or quietly show nothing
+test(`reports a singular lattice instead of computing a zone`, async () => {
+  const on_error = vi.fn()
+  const coplanar = make_crystal(
+    [
+      [1, 0, 0],
+      [0, 1, 0],
+      [1, 1, 0],
+    ],
+    [[`Si`, [0, 0, 0]]],
+  )
+  const props = $state({
+    structure: coplanar,
+    on_error,
+    error_msg: undefined as string | undefined,
+  })
+  mounted_component = mount(BrillouinZone, { target: document.body, props })
+  await vi.waitFor(() => expect(on_error).toHaveBeenCalledTimes(1))
+  expect(on_error.mock.calls[0][0].error_msg).toMatch(/BZ computation failed: .*singular/)
+  expect(props.error_msg).toMatch(/singular/)
+  expect(document.body.querySelector(`.brillouin-zone`)?.textContent).toMatch(/singular/)
 })
 
 test(`ignores a stale async on_file_drop failure`, async () => {

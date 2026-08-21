@@ -2,18 +2,18 @@
 // Uses real WASM binary to verify symmetry detection behavior
 // Note: Most symmetry tests use mocks (see index.test.ts)
 
-import type { Vec3 } from '$lib/math'
+import type { Matrix3x3, Vec3 } from '$lib/math'
 import type { Crystal } from '$lib'
 import {
   analyze_structure_symmetry,
   apply_symmetry_operations,
-  get_conventional_cell,
-  get_primitive_cell,
+  enrich_wyckoff_rows,
   map_wyckoff_to_all_atoms,
   SPACEGROUP_SYMBOL_TO_NUM,
-  spacegroup_num_to_crystal_sys,
-  spacegroup_num_to_lattice_system,
-  wyckoff_multiplicity,
+  spacegroup_to_crystal_sys,
+  spacegroup_to_lattice_system,
+  spacegroup_wyckoff_positions,
+  transform_cell,
   wyckoff_positions_from_moyo,
 } from '$lib/symmetry'
 import { structure_map } from '$site/structures'
@@ -76,6 +76,194 @@ const supercell_po = () =>
     ],
   )
 
+// Reference structures with textbook answers (ITA): space group, point group, Wyckoff rows.
+const NACL_A = 5.64
+const nacl = () =>
+  make_crystal(NACL_A, [
+    [`Na`, [0, 0, 0]],
+    [`Na`, [0.5, 0.5, 0]],
+    [`Na`, [0.5, 0, 0.5]],
+    [`Na`, [0, 0.5, 0.5]],
+    [`Cl`, [0.5, 0.5, 0.5]],
+    [`Cl`, [0, 0, 0.5]],
+    [`Cl`, [0, 0.5, 0]],
+    [`Cl`, [0.5, 0, 0]],
+  ])
+const WZ_A = 3.25
+const WZ_C = 5.2
+const WZ_U = 0.375
+const wurtzite_zno = () =>
+  make_crystal(
+    [
+      [WZ_A, 0, 0],
+      [-WZ_A / 2, (WZ_A * Math.sqrt(3)) / 2, 0],
+      [0, 0, WZ_C],
+    ],
+    [
+      [`Zn`, [1 / 3, 2 / 3, 0]],
+      [`Zn`, [2 / 3, 1 / 3, 0.5]],
+      [`O`, [1 / 3, 2 / 3, WZ_U]],
+      [`O`, [2 / 3, 1 / 3, 0.5 + WZ_U]],
+    ],
+  )
+const TRICLINIC_LATTICE: Matrix3x3 = [
+  [5, 0, 0],
+  [1, 6, 0],
+  [0.5, 1.5, 7],
+]
+const triclinic_p1 = () =>
+  make_crystal(TRICLINIC_LATTICE, [
+    [`C`, [0.1, 0.2, 0.3]],
+    [`N`, [0.4, 0.7, 0.15]],
+    [`O`, [0.8, 0.35, 0.6]],
+  ])
+// C pair related by inversion through the origin, N on the 1a and O on the 1h center
+const triclinic_p_1 = () =>
+  make_crystal(TRICLINIC_LATTICE, [
+    [`C`, [0.1, 0.2, 0.3]],
+    [`C`, [0.9, 0.8, 0.7]],
+    [`N`, [0, 0, 0]],
+    [`O`, [0.5, 0.5, 0.5]],
+  ])
+
+describe(`reference structures`, () => {
+  beforeAll(init_moyo_for_tests)
+
+  test.each([
+    {
+      label: `NaCl rocksalt`,
+      build: nacl,
+      number: 225,
+      hm_symbol: `F m -3 m`,
+      point_group: `m-3m`,
+      pearson: `cF8`,
+      n_ops: 192,
+      rows: [
+        [`4a`, `Na`, `m-3m`, `0,0,0`, [0, 1, 2, 3]],
+        [`4b`, `Cl`, `m-3m`, `1/2,1/2,1/2`, [4, 5, 6, 7]],
+      ],
+    },
+    {
+      label: `primitive diamond Si`,
+      build: prim_diamond_si,
+      number: 227,
+      hm_symbol: `F d -3 m`,
+      point_group: `m-3m`,
+      pearson: `cF8`,
+      n_ops: 48,
+      rows: [[`8a`, `Si`, `-43m`, `1/8,1/8,1/8`, [0, 1]]],
+    },
+    {
+      label: `wurtzite ZnO`,
+      build: wurtzite_zno,
+      number: 186,
+      hm_symbol: `P 6_3 m c`,
+      point_group: `6mm`,
+      pearson: `hP4`,
+      n_ops: 12,
+      rows: [
+        [`2b`, `Zn`, `3m.`, `1/3,2/3,z`, [0, 1]],
+        [`2b`, `O`, `3m.`, `1/3,2/3,z`, [2, 3]],
+      ],
+    },
+    {
+      label: `triclinic P1`,
+      build: triclinic_p1,
+      number: 1,
+      hm_symbol: `P 1`,
+      point_group: `1`,
+      pearson: `aP3`,
+      n_ops: 1,
+      rows: [
+        [`1a`, `C`, `1`, `x,y,z`, [0]],
+        [`1a`, `N`, `1`, `x,y,z`, [1]],
+        [`1a`, `O`, `1`, `x,y,z`, [2]],
+      ],
+    },
+    {
+      label: `triclinic P-1`,
+      build: triclinic_p_1,
+      number: 2,
+      hm_symbol: `P -1`,
+      point_group: `-1`,
+      pearson: `aP4`,
+      n_ops: 2,
+      rows: [
+        [`1a`, `N`, `-1`, `0,0,0`, [2]],
+        [`1h`, `O`, `-1`, `1/2,1/2,1/2`, [3]],
+        [`2i`, `C`, `1`, `x,y,z`, [0, 1]],
+      ],
+    },
+  ])(
+    `$label: space group $number, point group $point_group, Wyckoff rows`,
+    async ({ build, number, hm_symbol, point_group, pearson, n_ops, rows }) => {
+      for (const symprec of [1e-5, 1e-4, 1e-2]) {
+        const sym_data = await analyze_crystal(build(), symprec)
+        expect(sym_data.symprec).toBe(symprec) // the tolerance really reaches moyo
+        expect(sym_data.number).toBe(number)
+        expect(sym_data.hm_symbol).toBe(hm_symbol)
+        expect(space_group_type(sym_data.number).geometric_crystal_class).toBe(point_group)
+        expect(sym_data.pearson_symbol).toBe(pearson)
+        expect(sym_data.operations).toHaveLength(n_ops)
+        const enriched = enrich_wyckoff_rows(
+          wyckoff_positions_from_moyo(sym_data),
+          spacegroup_wyckoff_positions(sym_data.hall_number),
+        )
+        expect(
+          enriched.map((row) => [
+            row.wyckoff,
+            row.elem,
+            row.site_symmetry,
+            row.coordinates,
+            row.site_indices,
+          ]),
+        ).toEqual(rows)
+      }
+    },
+  )
+
+  test(`symprec decides whether a 0.011 A displacement breaks the symmetry`, async () => {
+    const crystal = nacl()
+    crystal.sites[0].abc = [0.002, 0, 0] // one Na nudged along x: polar tetragonal P4mm
+    expect((await analyze_crystal(crystal, 1e-4)).number).toBe(99)
+    expect((await analyze_crystal(crystal, 1e-1)).number).toBe(225)
+  })
+
+  test(`merges split disordered sites and rejects unknown elements`, async () => {
+    const disordered = make_crystal(5, [
+      { element: `O`, abc: [0, 0, 0], occu: 0.5 },
+      { element: `F`, abc: [0, 0, 0], occu: 0.5 },
+      { element: `Li`, abc: [0.5, 0.5, 0.5], occu: 1 },
+    ])
+    const sym_data = await analyze_crystal(disordered)
+    const { input_cell, orig_site_indices_by_input_idx } = sym_data
+    // merge_split_partial_sites lists ungrouped sites first, then the merged O/F site, whose
+    // 50/50 tie resolves by alphabetical element symbol: F (9) over O
+    expect(input_cell.positions).toEqual([
+      [0.5, 0.5, 0.5],
+      [0, 0, 0],
+    ])
+    expect(input_cell.numbers).toEqual([3, 9])
+    expect(orig_site_indices_by_input_idx).toEqual([[2], [0, 1]])
+    expect(
+      wyckoff_positions_from_moyo(sym_data).map((row) => [
+        row.wyckoff,
+        row.elem,
+        row.site_indices,
+      ]),
+    ).toEqual([
+      [`1a`, `F`, [0, 1]],
+      [`1b`, `Li`, [2]],
+    ])
+    await expect(
+      analyze_crystal(make_crystal(5, [{ element: `Xx`, abc: [0, 0, 0] }])),
+    ).rejects.toThrow(`Unknown element at site 0: Xx`)
+    await expect(analyze_structure_symmetry({ sites: [] }, {})).rejects.toThrow(
+      /requires a periodic structure/,
+    )
+  })
+})
+
 describe(`moyo-wasm integration`, () => {
   beforeAll(init_moyo_for_tests)
 
@@ -92,17 +280,20 @@ describe(`moyo-wasm integration`, () => {
     for (const row of rows) expect(row.wyckoff).toMatch(/^\d+[a-z]+$/)
   })
 
-  // Note: moyo-wasm returns HM symbols with spaces (e.g. "F m -3 m" not "Fm-3m")
+  // moyo-wasm returns HM symbols with spaces (e.g. "F m -3 m", not "Fm-3m")
   test.each([
-    [`Cu-FCC`, 225],
-    [`Fe-BCC`, 229],
-    [`Po-simple-cubic`, 221],
-    [`mp-862690-Ac4-hexagonal`, 194],
-    [`mp-1207297-Ac2Br2O1-tetragonal`, 123],
-  ])(`%s has space group %i`, async (id, expected_sg) => {
+    [`Cu-FCC`, 225, `F m -3 m`, [`4aCu`]],
+    [`Fe-BCC`, 229, `I m -3 m`, [`2aFe`]],
+    [`Po-simple-cubic`, 221, `P m -3 m`, [`1aPo`]],
+    [`mp-862690-Ac4-hexagonal`, 194, `P 6_3/m m c`, [`2aAc`, `2cAc`]],
+    [`mp-1207297-Ac2Br2O1-tetragonal`, 123, `P 4/m m m`, [`1cO`, `2hAc`, `2hBr`]],
+  ])(`%s has space group %i`, async (id, expected_sg, hm_symbol, rows) => {
     const sym_data = await analyze(id)
     expect(sym_data.number).toBe(expected_sg)
-    expect(sym_data.hm_symbol).toBeDefined()
+    expect(sym_data.hm_symbol).toBe(hm_symbol)
+    expect(wyckoff_positions_from_moyo(sym_data).map((row) => row.wyckoff + row.elem)).toEqual(
+      rows,
+    )
   })
 
   test.each([
@@ -140,14 +331,15 @@ describe(`moyo-wasm integration`, () => {
     },
   )
 
-  test(`highly oblique TlBiSe2 cell is handled correctly`, async () => {
+  test(`highly oblique TlBiSe2 cell: 28-atom P1 cell, one 1a row per atom`, async () => {
     const sym_data = await analyze(`TlBiSe2-highly-oblique-cell`, 1e-3)
-
-    expect(sym_data.number).toBeGreaterThan(0)
-    expect(sym_data.std_cell.numbers.length).toBeGreaterThan(0)
-
-    const elements = wyckoff_positions_from_moyo(sym_data).map((pos) => pos.elem)
-    expect(elements).toEqual(expect.arrayContaining([`Tl`, `Bi`, `Se`]))
+    expect([sym_data.number, sym_data.std_cell.numbers.length]).toEqual([1, 28])
+    const rows = wyckoff_positions_from_moyo(sym_data)
+    expect(rows).toHaveLength(28)
+    expect(rows.every((row) => row.wyckoff === `1a` && row.site_indices.length === 1)).toBe(
+      true,
+    )
+    expect(new Set(rows.map((row) => row.elem))).toEqual(new Set([`Tl`, `Bi`, `Se`]))
   })
 })
 
@@ -256,34 +448,6 @@ describe(`Wyckoff rows for non-conventional input cells`, () => {
     expect(all_indices.toSorted((idx_a, idx_b) => idx_a - idx_b)).toEqual([0, 1, 2])
   })
 
-  test(`std→orig site mapping uses the std_linear transform (primitive NaCl input)`, async () => {
-    // Primitive rocksalt cell: std (conventional) frame differs from the input frame, so
-    // raw fractional-coordinate matching across cells would be meaningless
-    const a_nacl = 5.64
-    const crystal = make_crystal(
-      [
-        [0, a_nacl / 2, a_nacl / 2],
-        [a_nacl / 2, 0, a_nacl / 2],
-        [a_nacl / 2, a_nacl / 2, 0],
-      ],
-      [
-        { element: `Na`, abc: [0, 0, 0] },
-        { element: `Cl`, abc: [0.5, 0.5, 0.5] },
-      ],
-    )
-    const sym_data = await analyze_crystal(crystal)
-    expect(sym_data.number).toBe(225)
-    expect(sym_data.std_cell.positions).toHaveLength(8)
-
-    const na_number = 11
-    sym_data.std_cell.numbers.forEach((num, std_idx) => {
-      const expected_orig_idx = num === na_number ? 0 : 1
-      expect(sym_data.orig_site_indices_by_std_idx?.[std_idx], `std site ${std_idx}`).toEqual([
-        expected_orig_idx,
-      ])
-    })
-  })
-
   test.each([
     [`Cu-FCC`],
     [`Fe-BCC`],
@@ -293,7 +457,7 @@ describe(`Wyckoff rows for non-conventional input cells`, () => {
     const sym_data = await analyze(id)
     const rows = wyckoff_positions_from_moyo(sym_data)
     const total_multiplicity = rows.reduce(
-      (sum, row) => sum + wyckoff_multiplicity(row.wyckoff),
+      (sum, row) => sum + Number(/^\d+/.exec(row.wyckoff)?.[0]),
       0,
     )
     expect(total_multiplicity).toBe(sym_data.std_cell.positions.length)
@@ -311,7 +475,7 @@ describe(`map_wyckoff_to_all_atoms across display frames`, () => {
   test(`conventional-cell display: all 4 FCC copies map to the 4a row`, async () => {
     const orig = prim_fcc_cu()
     const sym_data = await analyze_crystal(orig)
-    const displayed = get_conventional_cell(orig, sym_data)
+    const displayed = transform_cell(orig, `conventional`, sym_data)
     expect(displayed.sites).toHaveLength(4)
 
     const rows = map_rows(orig, displayed, sym_data)
@@ -322,7 +486,7 @@ describe(`map_wyckoff_to_all_atoms across display frames`, () => {
   test(`primitive-cell display maps correctly`, async () => {
     const orig = prim_fcc_cu()
     const sym_data = await analyze_crystal(orig)
-    const displayed = get_primitive_cell(orig, sym_data)
+    const displayed = transform_cell(orig, `primitive`, sym_data)
     expect(displayed.sites).toHaveLength(1)
 
     expect(map_rows(orig, displayed, sym_data)[0].site_indices).toEqual([0])
@@ -335,7 +499,7 @@ describe(`map_wyckoff_to_all_atoms across display frames`, () => {
     // check (P·d ∈ ℤ³) — all 8 conventional-cell atoms must map to the single 8a row
     const orig = prim_diamond_si()
     const sym_data = await analyze_crystal(orig)
-    const displayed = get_conventional_cell(orig, sym_data)
+    const displayed = transform_cell(orig, `conventional`, sym_data)
     expect(displayed.sites).toHaveLength(8)
 
     const rows = map_rows(orig, displayed, sym_data)
@@ -359,10 +523,10 @@ describe(`space group tables vs moyo`, () => {
   test(`crystal system, lattice system + HM symbols for all 230 space groups`, () => {
     for (let num = 1; num <= 230; num++) {
       const sg_type = space_group_type(num)
-      expect(spacegroup_num_to_crystal_sys(num), `crystal system of ${num}`).toBe(
+      expect(spacegroup_to_crystal_sys(num), `crystal system of ${num}`).toBe(
         sg_type.crystal_system.toLowerCase(),
       )
-      expect(spacegroup_num_to_lattice_system(num), `lattice system of ${num}`).toBe(
+      expect(spacegroup_to_lattice_system(num), `lattice system of ${num}`).toBe(
         sg_type.lattice_system.toLowerCase(),
       )
       // condensed short Hermann-Mauguin symbol must round-trip through the symbol table

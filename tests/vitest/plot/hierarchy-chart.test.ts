@@ -1,3 +1,4 @@
+import { DEFAULT_FONT_SPEC } from '$lib/plot/core/text-metrics'
 import {
   ancestor_chain,
   arrow_nav_target,
@@ -7,17 +8,15 @@ import {
   compute_node_dim,
   compute_node_infos,
   hierarchy_legend_items,
-  is_activation_key,
   node_handler_props,
-  prune_muted_ids,
-  safe_hierarchy_layout,
+  node_label_str,
+  node_label_variants,
   toggle_muted,
 } from '$lib/plot/core/utils/hierarchy-chart'
-import { make_cached_contrast } from '$lib/plot/core/utils/hierarchy-labels'
 import type { PositionedArc, SunburstNode } from '$lib/plot/sunburst/sunburst'
 import { compute_sunburst_layout } from '$lib/plot/sunburst/sunburst'
 import { SvelteSet } from 'svelte/reactivity'
-import { describe, expect, test, vi } from 'vitest'
+import { describe, expect, test } from 'vitest'
 
 // oxfmt-ignore
 const tree: SunburstNode = {
@@ -38,35 +37,47 @@ const root = arcs[0]
 const alpha = by_label(`alpha`)
 const beta = by_label(`beta`)
 const alpha_child = by_label(`a1`)
+// 10px font: happy-dom has no canvas, so text-metrics' fallback measures 0.6px per
+// character per px of font size (6px per character here)
 const node_info_opts = {
   label_text: `label` as const,
   value_format: `.2~f`,
-  label_font: `11px sans-serif`,
+  font: { ...DEFAULT_FONT_SPEC, font_size: 10 },
   color_for: () => `#336699`,
-  text_width: (text: string) => text.length * 7,
-  contrast: () => `white`,
 }
 
 describe(`hierarchy chart helpers`, () => {
-  test(`returns valid layouts and recovers from layout errors`, () => {
-    expect(safe_hierarchy_layout(tree, {})).toEqual(compute_sunburst_layout(tree, {}))
-    const error_spy = vi.spyOn(console, `error`).mockImplementation(() => {})
-    try {
-      expect(
-        safe_hierarchy_layout(
-          {
-            label: `boom`,
-            get children(): SunburstNode[] {
-              throw new Error(`bad`)
-            },
-          },
-          {},
-        ),
-      ).toEqual({ arcs: [], root: null, max_depth: 0 })
-      expect(error_spy).toHaveBeenCalled()
-    } finally {
-      error_spy.mockRestore()
-    }
+  test(`label strings per label_text mode; compound modes degrade to the bare label`, () => {
+    const node = { id: `A/A1`, label: `A1`, value: 4, fraction: 0.2, parent_fraction: 0.4 }
+    const expected = {
+      label: `A1`,
+      value: `4`,
+      percent: `20%`,
+      'label+value': `A1 4`,
+      'label+percent': `A1 20%`,
+      'label+parent-percent': `A1 (40%)`,
+    } as const
+    const modes = Object.keys(expected) as (keyof typeof expected)[]
+    expect(
+      Object.fromEntries(modes.map((mode) => [mode, node_label_str(node, mode, `,`)])),
+    ).toEqual(expected)
+    // parent_fraction falls back to fraction when absent (e.g. depth-1 nodes)
+    expect(
+      node_label_str({ ...node, parent_fraction: undefined }, `label+parent-percent`, `,`),
+    ).toBe(`A1 (20%)`)
+    expect(node_label_variants(node, `label+parent-percent`, `,`)).toEqual({
+      text: `A1`,
+      extended: `A1 (40%)`,
+    })
+    expect(node_label_variants(node, `percent`, `,`)).toEqual({ text: `20%` })
+    // label_short is the compact last-resort variant in every mode
+    const with_short = { ...node, label_short: `41%` }
+    expect(node_label_variants(with_short, `label+value`, `,`)).toEqual({
+      text: `A1`,
+      extended: `A1 4`,
+      short: `41%`,
+    })
+    expect(node_label_variants(with_short, `label`, `,`)).toEqual({ text: `A1`, short: `41%` })
   })
 
   test(`computes metric colors with inferred, explicit, and missing ranges`, () => {
@@ -98,9 +109,6 @@ describe(`hierarchy chart helpers`, () => {
     expect(compute_node_dim(arcs, muted, null)[alpha.node_idx].opacity).toBe(0.12)
     expect(compute_node_dim(arcs, muted, alpha.node_idx)[alpha.node_idx].opacity).toBe(0.12)
 
-    const stale = new SvelteSet<string | number>([alpha.id, `stale`, alpha_child.id])
-    prune_muted_ids(arcs, stale)
-    expect([...stale]).toEqual([alpha.id])
     const toggled = new SvelteSet<string | number>([`x`])
     toggle_muted(toggled, `x`)
     toggle_muted(toggled, `y`)
@@ -137,12 +145,21 @@ describe(`hierarchy chart helpers`, () => {
 
   test(`computes label variants, colors, accessibility text, and clickability`, () => {
     const child_info = compute_node_infos(arcs, node_info_opts)[alpha_child.node_idx]
-    expect([child_info.fill, child_info.label_fill, child_info.aria]).toEqual([
-      `#336699`,
-      `white`,
-      `a1: 3`,
-    ])
-    expect(child_info.variants.map(({ text }) => text)).toEqual([`a1`])
+    // dark fill -> white label; measured at 10px -> 6px per character
+    expect(child_info).toMatchObject({
+      fill: `#336699`,
+      label_fill: `white`,
+      aria: `a1: 3`,
+      variants: [{ text: `a1`, width: 12 }],
+    })
+    expect(child_info.clickable).toBeUndefined()
+    // light fills get black labels; fills JS can't resolve (translucent, CSS vars)
+    // inherit the surrounding text color instead of guessing
+    const label_fills = [`#ffe0b3`, `rgba(0, 0, 0, 0.5)`, `var(--x)`].map(
+      (fill) =>
+        compute_node_infos(arcs, { ...node_info_opts, color_for: () => fill })[1].label_fill,
+    )
+    expect(label_fills).toEqual([`black`, `currentColor`, `currentColor`])
     const clickable = compute_node_infos(arcs, {
       ...node_info_opts,
       clickable: (arc) => !arc.is_leaf,
@@ -158,28 +175,12 @@ describe(`hierarchy chart helpers`, () => {
       ...node_info_opts,
       label_text: `label+percent`,
     })
-    expect(short_info[1].variants.map(({ text }) => text)).toEqual([
-      `alpha 100%`,
-      `alpha`,
-      `A`,
+    // richest first, widths shrinking with the text
+    expect(short_info[1].variants).toEqual([
+      { text: `alpha 100%`, width: 60 },
+      { text: `alpha`, width: 30 },
+      { text: `A`, width: 6 },
     ])
-  })
-
-  // backs the `contrast` option above: a fill it cannot read must inherit, not guess
-  test(`contrast labels inherit over non-opaque fills`, () => {
-    const contrast = make_cached_contrast()
-    expect([contrast(`transparent`), contrast(`rgba(0, 0, 0, 0.5)`)]).toEqual([
-      `currentColor`,
-      `currentColor`,
-    ])
-  })
-
-  test.each([
-    [`Enter`, true],
-    [` `, true],
-    [`Escape`, false],
-  ])(`is_activation_key(%s) -> %s`, (key, expected) => {
-    expect(is_activation_key(new KeyboardEvent(`keydown`, { key }))).toBe(expected)
   })
 
   test(`color_bar_layout reserves the right axis per orientation and side`, () => {

@@ -105,6 +105,19 @@ describe(`get_temp_filter_payload`, () => {
     expect(has_formula(payload.temp_filtered_entries, `LiO2`)).toBe(false)
   })
 
+  // Li's bracket around 700 K spans 300 -> 900 K, i.e. a 600 K gap
+  test.each([
+    [599, false],
+    [600, true], // the gap limit is inclusive
+    [601, true],
+  ])(`max_interpolation_gap=%i keeps Li: %s`, (max_interpolation_gap, li_included) => {
+    const payload = get_payload_at_700({
+      interpolate_temperature: true,
+      max_interpolation_gap,
+    })
+    expect(has_formula(payload.temp_filtered_entries, `Li`)).toBe(li_included)
+  })
+
   test(`max_interpolation_gap uses config first, then props, then defaults`, () => {
     const config_overrides_props = get_payload_at_700(
       { interpolate_temperature: true, max_interpolation_gap: 500 },

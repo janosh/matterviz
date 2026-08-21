@@ -323,12 +323,7 @@ export function get_wyckoff_colors(
 // atom can be frozen along some axes only. Collapsing to a binary free/fixed split would hide
 // that, hence the separate `partially fixed` category. `unknown` = site never declared the
 // property, which the POSCAR parser emits for coordinate lines too short to carry flags.
-export const SELECTIVE_DYNAMICS_CATEGORIES = [
-  `free`,
-  `partially fixed`,
-  `fixed`,
-  `unknown`,
-] as const
+const SELECTIVE_DYNAMICS_CATEGORIES = [`free`, `partially fixed`, `fixed`, `unknown`] as const
 export type SelectiveDynamicsCategory = (typeof SELECTIVE_DYNAMICS_CATEGORIES)[number]
 
 // `true` means the atom may relax along that axis (POSCAR `T`), `false` means frozen (`F`).
@@ -387,7 +382,7 @@ const INTERNAL_SITE_PROPS = new Set([`orig_site_idx`, `orig_unit_cell_idx`])
 // Read one site property as a color-coding scalar: numbers pass through, vec3s (force,
 // velocity, ...) contribute their magnitude. null = this site has nothing colorable under
 // that key (absent, non-numeric, or non-finite).
-export function site_property_scalar(site: Site, property_key: string): number | null {
+function site_property_scalar(site: Site, property_key: string): number | null {
   const value = site.properties?.[property_key]
   if (typeof value === `number`) return Number.isFinite(value) ? value : null
   const is_vec3 =

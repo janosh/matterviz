@@ -3,6 +3,7 @@ import type { ShowControlsProp } from '$lib/controls'
 import type { TooltipConfig } from '$lib/tooltip'
 import type { Snippet } from 'svelte'
 import type { HTMLAttributes } from 'svelte/elements'
+import type { EnergySourceMode } from './hull-state.svelte'
 import type {
   ConvexHullConfig,
   ConvexHullControlsType,
@@ -16,7 +17,12 @@ import type {
   PhaseStats,
 } from './types'
 
-export * from './barycentric-coords'
+export {
+  composition_to_barycentric_nd,
+  composition_to_simplex_coords,
+  TETRAHEDRON_VERTICES,
+  TRIANGLE_VERTICES,
+} from './barycentric-coords'
 export { default as ConvexHull } from './ConvexHull.svelte'
 export { default as ConvexHull2D } from './ConvexHull2D.svelte'
 export { default as ConvexHull3D } from './ConvexHull3D.svelte'
@@ -25,13 +31,48 @@ export { default as ConvexHullControls } from './ConvexHullControls.svelte'
 export { default as ConvexHullInfoPane } from './ConvexHullInfoPane.svelte'
 export { default as ConvexHullStats } from './ConvexHullStats.svelte'
 export { default as ConvexHullTooltip } from './ConvexHullTooltip.svelte'
-export { default as StructurePopup } from './StructurePopup.svelte'
 export * from './gas-thermodynamics'
 export { default as GasPressureControls } from './GasPressureControls.svelte'
-export * from './helpers'
-export * from './hull-state.svelte'
+export {
+  analyze_temperature_data,
+  apply_category_markers,
+  build_entry_tooltip_text,
+  compute_all_polymorph_stats,
+  compute_hull_stability,
+  entry_is_stable,
+  filter_entries_at_temperature,
+  get_arity,
+  get_composition_label_entries,
+  get_energy_color_scale,
+  get_entry_category,
+  get_entry_label,
+  get_point_color_for_entry,
+  HULL_STABILITY_TOL,
+  interpolate_energy_at_temperature,
+  is_entry_highlighted,
+  is_on_hull,
+  is_unary_entry,
+  merge_highlight_style,
+  visible_entries,
+} from './helpers'
+export type { PolymorphStats, TemperatureAnalysis, TemperatureFilterOptions } from './helpers'
+export type { EnergyModeInfo, EnergySourceMode } from './hull-state.svelte'
+export { default as StructurePopup } from './StructurePopup.svelte'
 export { default as TemperatureSlider } from './TemperatureSlider.svelte'
-export * from './thermodynamics'
+export {
+  calculate_e_above_hull,
+  compute_e_above_hull_nd,
+  compute_e_form_per_atom,
+  compute_lower_hull_nd,
+  compute_quickhull_nd,
+  find_lowest_energy_unary_refs,
+  get_convex_hull_stats,
+  HULL_EPS,
+  normalize_hull_composition_keys,
+  process_hull_entries,
+  process_hull_for_stats,
+} from './thermodynamics'
+export type { HighDimHullResult, HullFacet } from './thermodynamics'
 export * from './types'
 
 export interface BaseConvexHullChildrenProps<AnyDimEntry = PhaseData> {
@@ -74,11 +115,10 @@ export interface BaseConvexHullProps<AnyDimEntry = PhaseData> extends Omit<
   on_point_click?: (entry: AnyDimEntry) => void
   on_point_hover?: (data: HoverData3D<AnyDimEntry> | null) => void
   fullscreen?: boolean // bindable fullscreen state
-  // show/hide the fullscreen button (or custom snippet to render it)
-  fullscreen_toggle?: boolean
+  fullscreen_toggle?: boolean // show/hide the fullscreen button
   enable_info_pane?: boolean
   wrapper?: HTMLDivElement
-  // Smart label defaults - hide labels if more than this many entries
+  // Datasets with more entries than this start with labels hidden
   label_threshold?: number
   // Visibility
   show_stable?: boolean
@@ -100,7 +140,7 @@ export interface BaseConvexHullProps<AnyDimEntry = PhaseData> extends Omit<
   max_hull_dist_show_labels?: number
   show_stable_labels?: boolean
   show_unstable_labels?: boolean
-  // Callback for when JSON files are dropped
+  // Dropped JSON files (also .json.gz and FilePicker URL drops) are parsed as entries
   allow_file_drop?: boolean
   on_file_drop?: (entries: PhaseData[]) => void
   // Enable click selection/highlighting of entries (default: true)
@@ -108,7 +148,7 @@ export interface BaseConvexHullProps<AnyDimEntry = PhaseData> extends Omit<
   enable_click_selection?: boolean
   // Enable structure preview popup when clicking entries with structure data
   enable_structure_preview?: boolean
-  energy_source_mode?: `precomputed` | `on-the-fly`
+  energy_source_mode?: EnergySourceMode
   // Bindable convex hull statistics - computed internally but exposed for external use
   phase_stats?: PhaseStats | null
   // Display configuration for grid lines and other visual elements
@@ -159,16 +199,6 @@ export type GizmoPlacement = `top-right` | `bottom-right` | `top-left` | `bottom
 export type ConvexHullGizmoOptions = Record<string, unknown> & {
   placement?: GizmoPlacement
   size?: number
-}
-
-// Energy source mode determination result
-export interface EnergyModeInfo {
-  has_precomputed_e_form: boolean
-  has_precomputed_hull: boolean
-  can_compute_e_form: boolean
-  can_compute_hull: boolean
-  energy_mode: `precomputed` | `on-the-fly`
-  unary_refs: Record<string, PhaseData>
 }
 
 // Default legend configuration shared by 3D and 4D diagrams

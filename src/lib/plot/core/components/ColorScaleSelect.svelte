@@ -52,7 +52,7 @@
   inputStyle="min-width: 0; width: 0; padding: 0; border: none; caret-color: transparent;"
   bind:open
   {...rest}
-  style={`min-width: 0; ${rest.style ?? ``}`}
+  style={`min-width: 14em; ${rest.style ?? ``}`}
 >
   {#snippet children(ctx: { option: unknown; idx: number; type: `selected` | `option` })}
     {@const scheme = ctx.option as D3InterpolateName}
@@ -64,8 +64,8 @@
         scale={scheme}
         tick_labels={0}
         title_side="left"
-        wrapper_style="width: 100%;"
-        title_style="width: 6em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; font-size: 0.9rem;"
+        wrapper_style="width: 100%; --cbar-gap: 6px; --cbar-label-text-align: left;"
+        title_style="width: 6em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.9rem;"
         {...color_bar}
       />
     {:else}

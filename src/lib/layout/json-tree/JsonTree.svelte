@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Icon } from 'svelte-widgets'
+  import { Icon, type IconData } from 'svelte-widgets'
   import {
     ArrowDown,
     ArrowUp,
@@ -21,7 +21,6 @@
   import {
     set_json_tree_context,
     type CopyEventPosition,
-    type DiffEntry,
     type JsonTreeContext,
     type JsonTreeProps,
   } from './types'
@@ -32,13 +31,15 @@
     find_matching_paths,
     format_preview,
     get_ancestor_paths,
+    get_value_at_path,
     serialize_for_copy,
   } from './utils'
 
-  // Constant set for arrow key detection (avoid allocating on every keydown)
   const ARROW_KEYS = new Set([`ArrowDown`, `ArrowUp`, `ArrowLeft`, `ArrowRight`])
-  // Shared empty set for when there's no search query (avoid allocation on every derivation)
-  const EMPTY_MATCHES = new SvelteSet<string>()
+  const MATCH_NAV = [
+    [-1, `Previous match (Shift+F3)`, ArrowUp],
+    [1, `Next match (F3)`, ArrowDown],
+  ] as const
 
   let {
     value,
@@ -62,25 +63,21 @@
     ...rest
   }: JsonTreeProps & Omit<HTMLAttributes<HTMLDivElement>, `onselect` | `onchange`> = $props()
 
-  // Internal state
   let search_query = $state(``)
   let search_input_value = $state(``)
+  let search_debounce_timeout: ReturnType<typeof setTimeout> | undefined
   let focused_path = $state<string | null>(null)
-  // Use Set for O(1) lookup/add/delete instead of O(n) array operations
-  const registered_paths_set = new SvelteSet<string>()
-  let registered_paths_list = $state<string[]>([]) // ordered list for keyboard nav
-  let copy_feedback_path = $state<string | null>(null)
-  let copy_feedback_error = $state(false)
+  let copy_feedback = $state<{ error: boolean; pos: CopyEventPosition | null } | null>(null)
   let copy_feedback_timeout: ReturnType<typeof setTimeout> | undefined
-  // Track paths explicitly expanded (overrides auto-fold thresholds)
+  $effect(() => () => {
+    clearTimeout(search_debounce_timeout)
+    clearTimeout(copy_feedback_timeout)
+  })
+  // Paths expanded explicitly (overrides auto-fold thresholds)
   let force_expanded = $state(new SvelteSet<string>())
-  // Current match index for navigation (0-based, -1 means no selection)
+  // Index into sorted_matches (-1 means no selection)
   let current_match_index = $state(-1)
-  // Reference to the content container for scrolling
-  let content_element: HTMLDivElement | undefined = $state()
-  // Reference to the search input for focus management
-  let search_input_element: HTMLInputElement | undefined = $state()
-  // Context menu state (null when closed)
+  let content_element = $state<HTMLDivElement>()
   let context_menu_state = $state<{
     x: number
     y: number
@@ -89,357 +86,251 @@
     expandable: boolean
     is_collapsed: boolean
   } | null>(null)
-  // Pinned paths for quick reference
-  let pinned_paths = $state(new SvelteSet<string>())
-  // Selection state for bulk operations
-  let selected_paths = $state(new SvelteSet<string>())
-  let last_selected_path = $state<string | null>(null)
-  // Copy feedback positioning (null = use default corner position)
-  let copy_feedback_pos = $state<{ x: number; y: number } | null>(null)
+  const pinned_paths = new SvelteSet<string>()
+  const selected_paths = new SvelteSet<string>()
+  let last_selected_path: string | null = null
+  // Previous leaf values for change-flash detection (written by JsonValue)
+  const prev_values = new Map<string, unknown>()
+
+  const root_path = $derived(root_label ?? ``)
+  const value_at = (path: string): unknown => get_value_at_path(value, path, root_label)
 
   const value_changed = make_change_detector()
   $effect.pre(() => {
     if (!value_changed(value)) return
     focused_path = null
-    registered_paths_set.clear()
-    registered_paths_list = []
-    copy_feedback_path = null
-    copy_feedback_error = false
+    copy_feedback = null
     context_menu_state = null
     force_expanded = new SvelteSet()
-    const valid_paths = new SvelteSet(collect_all_paths(value, root_label ?? ``))
+    const valid_paths = new Set(collect_all_paths(value, root_path))
     collapsed_paths = new SvelteSet(
       [...collapsed_paths].filter((path) => valid_paths.has(path)),
     )
-    pinned_paths = new SvelteSet()
-    selected_paths = new SvelteSet()
+    pinned_paths.clear()
+    selected_paths.clear()
     last_selected_path = null
     current_match_index = -1
     prev_values.clear()
     if (search_query) queueMicrotask(() => expand_to_matches())
   })
 
-  // Debounce search input
-  let search_debounce_timeout: ReturnType<typeof setTimeout> | undefined
-
   function handle_search_input(event: Event & { currentTarget: HTMLInputElement }) {
     search_input_value = event.currentTarget.value
-
-    if (search_debounce_timeout) clearTimeout(search_debounce_timeout)
+    clearTimeout(search_debounce_timeout)
     search_debounce_timeout = setTimeout(() => {
       search_query = search_input_value
-      // queueMicrotask lets derived search_matches update before expand_to_matches runs
+      // queueMicrotask lets derived sorted_matches update before expand_to_matches runs
       queueMicrotask(() => expand_to_matches())
     }, 150)
   }
 
-  // Root path used everywhere - avoids repeating `root_label ?? ''`
-  let root_path = $derived(root_label ?? ``)
+  // Matching paths in render order (find_matching_paths walks children in display order)
+  const sorted_matches = $derived(
+    search_query ? find_matching_paths(value, search_query, root_path, sort_keys) : [],
+  )
+  const current_match_path = $derived(sorted_matches[current_match_index] ?? null)
 
-  // Compute search matches
-  let search_matches = $derived.by(() => {
-    if (!search_query) return EMPTY_MATCHES
-    return new SvelteSet(find_matching_paths(value, search_query, root_path))
-  })
+  // Expand ancestors so the current match is rendered, then scroll it into view
+  async function reveal_current_match(): Promise<void> {
+    const match_path = current_match_path
+    if (!match_path || !content_element) return
+    set_collapsed(get_ancestor_paths(match_path), () => false)
+    await tick()
+    content_element
+      .querySelector(`[data-path="${CSS.escape(match_path)}"]`)
+      ?.scrollIntoView({ behavior: `smooth`, block: `center` })
+  }
 
-  // Sorted matches list for navigation (maintains DOM order via registered_paths_list)
-  let sorted_matches = $derived.by(() => {
-    if (search_matches.size === 0) return []
-    // Filter registered paths to only include matches, preserving DOM order
-    return registered_paths_list.filter((path) => search_matches.has(path))
-  })
-
-  // Current match path (the one being navigated to)
-  let current_match_path = $derived.by(() => {
-    if (sorted_matches.length === 0 || current_match_index < 0) return null
-    return sorted_matches[current_match_index] ?? null
-  })
-
-  // Auto-expand ancestors of search matches when search query changes
-  // This is called manually from the search input handler to avoid reactivity issues
+  // Expand ancestors of every match when the query changes and select the first one
   async function expand_to_matches(): Promise<void> {
-    if (search_matches.size === 0) {
+    if (sorted_matches.length === 0) {
       current_match_index = -1
       return
     }
-    const paths_to_expand = new Set([...search_matches].flatMap(get_ancestor_paths))
-    // Also add to force_expanded to override auto-fold thresholds (depth/size)
-    // Only reassign (which rerenders every node) the sets that actually changed
-    set_collapsed(paths_to_expand, () => false)
-    // Wait for DOM to update before scrolling to match
-    await tick()
-    if (sorted_matches.length > 0) {
-      // Reset to first match if no selection or index is out of bounds
-      if (current_match_index < 0 || current_match_index >= sorted_matches.length) {
-        current_match_index = 0
-      }
-      scroll_to_current_match()
+    set_collapsed(new Set(sorted_matches.flatMap(get_ancestor_paths)), () => false)
+    if (current_match_index < 0 || current_match_index >= sorted_matches.length) {
+      current_match_index = 0
     }
+    await reveal_current_match()
   }
 
-  // Scroll the current match into view
-  function scroll_to_current_match(): void {
-    if (!current_match_path || !content_element) return
-    // Find the element with the matching path using data attribute
-    const match_element = content_element.querySelector(
-      `[data-path="${CSS.escape(current_match_path)}"]`,
-    )
-    if (match_element) {
-      match_element.scrollIntoView({ behavior: `smooth`, block: `center` })
-    }
+  function step_match(delta: number): void {
+    const count = sorted_matches.length
+    if (count === 0) return
+    current_match_index = (current_match_index + delta + count) % count
+    void reveal_current_match()
   }
 
-  // Navigate to next match
-  function go_to_next_match(): void {
-    if (sorted_matches.length === 0) return
-    current_match_index = (current_match_index + 1) % sorted_matches.length
-    scroll_to_current_match()
-  }
-
-  // Navigate to previous match
-  function go_to_prev_match(): void {
-    if (sorted_matches.length === 0) return
-    current_match_index =
-      (current_match_index - 1 + sorted_matches.length) % sorted_matches.length
-    scroll_to_current_match()
-  }
-
-  // Previous values map for change detection
-  const prev_values = new Map<string, unknown>()
-
-  // Move each path into collapsed or force_expanded (which overrides auto-fold
-  // thresholds), then reassign only the sets that changed (reassignment rerenders
-  // every node subscribed to the set's identity)
-  function set_collapsed(paths: Iterable<string>, collapse: (path: string) => boolean) {
-    let collapsed_changed = false
-    let force_expanded_changed = false
+  // Move each path into collapsed or force_expanded (which overrides auto-fold thresholds)
+  function set_collapsed(paths: Iterable<string>, collapse: (path: string) => boolean): void {
+    // A plain Set bound by the parent only notifies on reassignment, so upgrade it to a
+    // SvelteSet on first write; afterwards in-place mutation re-renders only touched nodes.
+    if (!(collapsed_paths instanceof SvelteSet))
+      collapsed_paths = new SvelteSet(collapsed_paths)
+    const collapsed = collapsed_paths
     for (const path of paths) {
       if (collapse(path)) {
-        force_expanded_changed = force_expanded.delete(path) || force_expanded_changed
-        collapsed_changed = !collapsed_paths.has(path) || collapsed_changed
-        collapsed_paths.add(path)
+        force_expanded.delete(path)
+        collapsed.add(path)
       } else {
-        collapsed_changed = collapsed_paths.delete(path) || collapsed_changed
-        force_expanded_changed = !force_expanded.has(path) || force_expanded_changed
+        collapsed.delete(path)
         force_expanded.add(path)
       }
     }
-    if (collapsed_changed) collapsed_paths = new SvelteSet(collapsed_paths)
-    if (force_expanded_changed) force_expanded = new SvelteSet(force_expanded)
   }
 
-  function toggle_collapse(path: string, is_currently_collapsed: boolean): void {
-    set_collapsed([path], () => !is_currently_collapsed)
-  }
-
-  // Toggle collapse recursively for all descendants
-  function toggle_collapse_recursive(path: string, collapse: boolean): void {
-    set_collapsed(get_descendants(path), () => collapse)
-  }
-
-  // Get all descendant paths of a given path (including the path itself)
+  // Expandable paths in the subtree rooted at target_path, target_path first
   function get_descendants(target_path: string): string[] {
-    const all_paths = collect_all_paths(value, root_path)
-    const descendants =
-      target_path === ``
-        ? all_paths
-        : all_paths.filter(
-            (entry) =>
-              entry === target_path ||
-              entry.startsWith(`${target_path}.`) ||
-              entry.startsWith(`${target_path}[`),
-          )
-    return descendants.includes(target_path) ? descendants : [target_path, ...descendants]
+    const descendants = collect_all_paths(value_at(target_path), target_path)
+    return descendants[0] === target_path ? descendants : [target_path, ...descendants]
   }
 
-  function expand_all(): void {
-    force_expanded = new SvelteSet(collect_all_paths(value, root_path))
-    collapsed_paths = new SvelteSet()
-  }
+  const toggle_collapse_recursive = (path: string, collapse: boolean) =>
+    set_collapsed(get_descendants(path), () => collapse)
+  const collapse_children_only = (path: string) =>
+    set_collapsed(get_descendants(path), (descendant) => descendant !== path)
 
-  function collapse_all(): void {
-    force_expanded = new SvelteSet()
-    collapsed_paths = new SvelteSet(collect_all_paths(value, root_path))
-  }
-
+  // Collapse every expandable path at depth >= level and force-expand the rest
   function collapse_to_level(level: number): void {
-    const all_paths = collect_all_paths(value, root_path)
     const new_collapsed = new SvelteSet<string>()
     const new_expanded = new SvelteSet<string>()
-
-    for (const path of all_paths) {
+    for (const path of collect_all_paths(value, root_path)) {
       const segments = parse_path(path)
       const depth =
         root_label && segments[0] === root_label ? segments.length - 1 : segments.length
       ;(depth >= level ? new_collapsed : new_expanded).add(path)
     }
-
     collapsed_paths = new_collapsed
     force_expanded = new_expanded
   }
+  const expand_all = () => collapse_to_level(Infinity)
+  const collapse_all = () => collapse_to_level(0)
 
   function set_focused(path: string | null): void {
     focused_path = path
-    if (path) onselect?.(path, get_value_at_path(path))
+    if (path !== null) onselect?.(path, value_at(path))
   }
 
-  // Shared clipboard copy with feedback (event used for inline positioning)
+  // Move DOM focus to the focused node (one effect for the tree instead of one per node)
+  $effect(() => {
+    if (focused_path === null || !content_element) return
+    content_element
+      .querySelector<HTMLElement>(`.json-node[data-path="${CSS.escape(focused_path)}"]`)
+      ?.focus()
+  })
+
+  // Rendered node paths in document order, for keyboard navigation and range selection
+  const rendered_paths = (): string[] =>
+    Array.from(
+      content_element?.querySelectorAll<HTMLElement>(`.json-node:not(.ghost)`) ?? [],
+      (node) => node.dataset.path ?? ``,
+    )
+
   async function copy_to_clipboard(
     path: string,
     text: string,
     event?: CopyEventPosition,
   ): Promise<void> {
-    copy_feedback_pos = event ? { x: event.clientX, y: event.clientY } : null
+    const pos = event ? { clientX: event.clientX, clientY: event.clientY } : null
+    let error = false
     try {
       await navigator.clipboard.writeText(text)
-      copy_feedback_error = false
       oncopy?.(path, text)
     } catch {
-      // Clipboard API failed - still show feedback but as error
-      copy_feedback_error = true
+      error = true // show feedback regardless, but flag the failure
     }
-    copy_feedback_path = path // Show feedback regardless of success/failure
-    if (copy_feedback_timeout) clearTimeout(copy_feedback_timeout)
-    copy_feedback_timeout = setTimeout(() => {
-      copy_feedback_path = null
-    }, 1000)
+    copy_feedback = { error, pos }
+    clearTimeout(copy_feedback_timeout)
+    copy_feedback_timeout = setTimeout(() => (copy_feedback = null), 1000)
   }
 
-  function register_path(path: string): void {
-    if (!registered_paths_set.has(path)) {
-      registered_paths_set.add(path)
-      registered_paths_list = [...registered_paths_list, path]
-    }
-  }
+  const diff_map = $derived(
+    compare_value === undefined ? null : compute_diff(compare_value, value, root_path),
+  )
+  const ghost_map = $derived(diff_map ? build_ghost_map(diff_map) : new Map())
 
-  function unregister_path(path: string): void {
-    if (registered_paths_set.has(path)) {
-      registered_paths_set.delete(path)
-      registered_paths_list = registered_paths_list.filter((entry) => entry !== path)
-    }
-  }
-
-  // Helper to get value at a path (for onselect callback)
-  function get_value_at_path(path: string): unknown {
-    if (!path || path === root_label) return value
-
-    const segments = parse_path(path)
-    let current: unknown = value
-    const start_idx = segments[0] === root_label ? 1 : 0
-
-    for (let idx = start_idx; idx < segments.length; idx++) {
-      const segment = segments[idx]
-      if (current == null) return undefined
-
-      // Map/Set use numeric indexing
-      if (current instanceof Map || current instanceof Set) {
-        const index = typeof segment === `number` ? segment : Number(segment)
-        if (Number.isNaN(index)) return undefined
-        current = Array.from(current.values())[index]
-      } else if (typeof current === `object`) {
-        current = (current as Record<string | number, unknown>)[segment]
-      } else {
-        return undefined
-      }
-    }
-    return current
-  }
-
-  // Compute diff map when compare_value is provided
-  let diff_map = $derived.by((): Map<string, DiffEntry> | null => {
-    if (compare_value === undefined) return null
-    return compute_diff(compare_value, value, root_path)
-  })
-
-  // Pre-compute ghost children map for O(1) lookup per node
-  let ghost_map = $derived(diff_map ? build_ghost_map(diff_map) : new Map())
-
-  // Collapse all descendants but keep the given node expanded
-  function collapse_children_only(target_path: string): void {
-    set_collapsed(get_descendants(target_path), (desc) => desc !== target_path)
-  }
-
-  // Context menu handlers
   function show_context_menu(
     event: MouseEvent,
-    ctx_path: string,
+    path: string,
     ctx_value: unknown,
     expandable: boolean,
     is_collapsed: boolean,
   ): void {
     event.preventDefault()
+    event.stopPropagation() // ancestors would otherwise re-target the menu to themselves
     context_menu_state = {
       x: event.clientX,
       y: event.clientY,
-      path: ctx_path,
+      path,
       value: ctx_value,
       expandable,
       is_collapsed,
     }
   }
 
-  function close_context_menu(): void {
-    context_menu_state = null
+  function toggle_pin(path: string): void {
+    if (!pinned_paths.delete(path)) pinned_paths.add(path)
   }
 
-  // Run action with current context menu state, then close
-  function ctx_menu_action(
-    action: (state: NonNullable<typeof context_menu_state>) => void,
-  ): void {
-    if (context_menu_state) action(context_menu_state)
-    close_context_menu()
+  // Context menu entries for the right-clicked node (null renders a separator)
+  type MenuItem = { label: string; icon?: IconData; action: () => void }
+  const context_menu_items = $derived.by((): (MenuItem | null)[] => {
+    if (!context_menu_state) return []
+    const { path, value: node_value, expandable, is_collapsed } = context_menu_state
+    return [
+      {
+        label: `Copy value`,
+        icon: Copy,
+        action: () => copy_to_clipboard(path, serialize_for_copy(node_value)),
+      },
+      { label: `Copy path`, action: () => copy_to_clipboard(path, path) },
+      null,
+      ...(expandable
+        ? [
+            {
+              label: `${is_collapsed ? `Expand` : `Collapse`} all children`,
+              action: () =>
+                is_collapsed
+                  ? toggle_collapse_recursive(path, false)
+                  : collapse_children_only(path),
+            },
+            null,
+          ]
+        : []),
+      {
+        label: `${pinned_paths.has(path) ? `Unpin` : `Pin`} this path`,
+        action: () => toggle_pin(path),
+      },
+    ]
+  })
+
+  // Toggle selection of a path (shift extends from the last selected node in DOM order)
+  function toggle_select(path: string, shift: boolean): void {
+    const paths = rendered_paths()
+    const start_idx = last_selected_path === null ? -1 : paths.indexOf(last_selected_path)
+    const end_idx = paths.indexOf(path)
+    if (shift && start_idx !== -1 && end_idx !== -1) {
+      const [from, to] = start_idx < end_idx ? [start_idx, end_idx] : [end_idx, start_idx]
+      for (let idx = from; idx <= to; idx++) selected_paths.add(paths[idx])
+    } else if (!selected_paths.delete(path)) selected_paths.add(path)
+    last_selected_path = path
   }
 
-  // Pin/unpin a path for quick reference
-  function toggle_pin(pin_path: string): void {
-    if (pinned_paths.has(pin_path)) pinned_paths.delete(pin_path)
-    else pinned_paths.add(pin_path)
-    pinned_paths = new SvelteSet(pinned_paths)
-  }
+  const settings = $derived({
+    default_fold_level,
+    auto_fold_arrays,
+    auto_fold_objects,
+    show_data_types,
+    show_array_indices,
+    sort_keys,
+    max_string_length,
+    highlight_changes,
+    editable,
+  })
 
-  // Toggle selection of a path (with shift for range select)
-  function toggle_select(select_path: string, shift: boolean): void {
-    if (shift && last_selected_path) {
-      const start_idx = registered_paths_list.indexOf(last_selected_path)
-      const end_idx = registered_paths_list.indexOf(select_path)
-      if (start_idx !== -1 && end_idx !== -1) {
-        const [from, to] = start_idx < end_idx ? [start_idx, end_idx] : [end_idx, start_idx]
-        for (let idx = from; idx <= to; idx++) {
-          selected_paths.add(registered_paths_list[idx])
-        }
-        selected_paths = new SvelteSet(selected_paths)
-      }
-    } else {
-      if (selected_paths.has(select_path)) selected_paths.delete(select_path)
-      else selected_paths.add(select_path)
-      selected_paths = new SvelteSet(selected_paths)
-    }
-    last_selected_path = select_path
-  }
-
-  // Copy all selected node values to clipboard
-  function copy_selected(): void {
-    if (selected_paths.size === 0) return
-    const text = [...selected_paths]
-      .map((sel_path) => serialize_for_copy(get_value_at_path(sel_path)))
-      .join(`\n`)
-    copy_to_clipboard(`[selection]`, text)
-  }
-
-  // Create context
   const context: JsonTreeContext = {
     get settings() {
-      return {
-        default_fold_level,
-        auto_fold_arrays,
-        auto_fold_objects,
-        show_data_types,
-        show_array_indices,
-        sort_keys,
-        max_string_length,
-        highlight_changes,
-        editable,
-      }
+      return settings
     },
     get collapsed() {
       return collapsed_paths
@@ -447,146 +338,108 @@
     get force_expanded() {
       return force_expanded
     },
-    get search_query() {
-      return search_query
-    },
-    get search_matches() {
-      return search_matches
-    },
     get current_match_path() {
       return current_match_path
     },
     get focused_path() {
       return focused_path
     },
-    prev_values,
-    toggle_collapse,
-    toggle_collapse_recursive,
-    expand_all,
-    collapse_all,
-    collapse_to_level,
-    set_focused,
-    copy_value: (val_path: string, val: unknown, event?: CopyEventPosition) =>
-      copy_to_clipboard(val_path, serialize_for_copy(val), event),
-    copy_path: (cp_path: string, event?: CopyEventPosition) =>
-      copy_to_clipboard(cp_path, cp_path, event),
-    register_path,
-    unregister_path,
-    show_context_menu,
-    get pinned_paths() {
-      return pinned_paths
-    },
-    toggle_pin,
-    get selected_paths() {
-      return selected_paths
-    },
-    toggle_select,
-    copy_selected,
+    selected_paths,
     get diff_map() {
       return diff_map
     },
     get ghost_map() {
       return ghost_map
     },
+    prev_values,
+    toggle_collapse: (path, is_currently_collapsed) =>
+      set_collapsed([path], () => !is_currently_collapsed),
+    toggle_collapse_recursive,
     collapse_children_only,
+    set_focused,
+    toggle_select,
+    copy_value: (path, val, event) => copy_to_clipboard(path, serialize_for_copy(val), event),
+    copy_path: (path, event) => copy_to_clipboard(path, path, event),
+    show_context_menu,
     get onchange() {
       return onchange
     },
   }
-
   set_json_tree_context(context)
 
-  // Keyboard navigation at tree level
   function handle_tree_keydown(event: KeyboardEvent) {
     // F3 navigates search matches (search input handles its own F3/Enter)
     if (event.key === `F3`) {
       event.preventDefault()
-      if (event.shiftKey) go_to_prev_match()
-      else go_to_next_match()
+      step_match(event.shiftKey ? -1 : 1)
       return
     }
     // Escape closes context menu first, then clears selection
     if (event.key === `Escape`) {
-      if (context_menu_state) {
-        close_context_menu()
-        return
-      }
-      if (selected_paths.size > 0) {
-        selected_paths = new SvelteSet()
-        return
-      }
+      if (context_menu_state) context_menu_state = null
+      else selected_paths.clear()
+      return
     }
     // Ctrl/Cmd+C with selection copies all selected
-    if (
-      (event.key === `c` || event.key === `C`) &&
-      (event.ctrlKey || event.metaKey) &&
-      selected_paths.size > 0
-    ) {
+    if (event.key.toLowerCase() === `c` && (event.ctrlKey || event.metaKey)) {
+      if (selected_paths.size === 0) return
       event.preventDefault()
-      copy_selected()
+      const values = [...selected_paths].map((path) => serialize_for_copy(value_at(path)))
+      void copy_to_clipboard(`[selection]`, values.join(`\n`))
       return
     }
-
-    if (!focused_path) {
-      // Focus first node on any arrow key
-      if (ARROW_KEYS.has(event.key)) {
-        event.preventDefault()
-        if (registered_paths_list.length > 0) {
-          set_focused(registered_paths_list[0])
-        }
-      }
-      return
-    }
-
-    const current_index = registered_paths_list.indexOf(focused_path)
-    if (current_index === -1) return
-
-    if (event.key === `ArrowDown`) {
-      event.preventDefault()
-      const next_index = Math.min(current_index + 1, registered_paths_list.length - 1)
-      set_focused(registered_paths_list[next_index])
-    } else if (event.key === `ArrowUp`) {
-      event.preventDefault()
-      const prev_index = Math.max(current_index - 1, 0)
-      set_focused(registered_paths_list[prev_index])
-    }
+    // Any arrow key focuses the first node (index -1 clamps to 0); afterwards Up/Down step
+    // (clamped) and Left/Right are left to the focused node's own fold/unfold handler
+    if (!ARROW_KEYS.has(event.key)) return
+    const paths = rendered_paths()
+    const current_index = focused_path === null ? -1 : paths.indexOf(focused_path)
+    const step = event.key === `ArrowDown` ? 1 : event.key === `ArrowUp` ? -1 : 0
+    if (paths.length === 0 || (current_index !== -1 && step === 0)) return
+    event.preventDefault()
+    set_focused(paths[Math.min(Math.max(current_index + step, 0), paths.length - 1)])
   }
 
-  // Clear search
   function clear_search() {
-    if (search_debounce_timeout) clearTimeout(search_debounce_timeout)
+    clearTimeout(search_debounce_timeout)
     search_input_value = ``
     search_query = ``
     current_match_index = -1
   }
 
-  // Copy entire JSON to clipboard
-  function copy_all(): void {
-    copy_to_clipboard(`[root]`, serialize_for_copy(value))
-  }
+  const download_json = () =>
+    download(
+      serialize_for_copy(value),
+      download_filename ?? `data-${new Date().toISOString().slice(0, 10)}.json`,
+      `application/json`,
+    )
 
-  // Download JSON as file
-  function download_json(): void {
-    const json_str = serialize_for_copy(value)
-    const date_str = new Date().toISOString().slice(0, 10)
-    const filename = download_filename ?? `data-${date_str}.json`
-    download(json_str, filename, `application/json`)
-  }
-
-  // Handle keyboard events on search input
-  function handle_search_keydown(event: KeyboardEvent) {
+  function handle_search_keydown(event: KeyboardEvent & { currentTarget: HTMLInputElement }) {
     if (event.key === `Escape`) {
       event.preventDefault()
       clear_search()
-      search_input_element?.blur()
+      event.currentTarget.blur()
     } else if (event.key === `Enter` || event.key === `F3`) {
       event.stopPropagation() // Prevent bubbling to tree-level F3 handler
       event.preventDefault()
-      if (event.shiftKey) go_to_prev_match()
-      else go_to_next_match()
+      step_match(event.shiftKey ? -1 : 1)
     }
   }
 </script>
+
+{#snippet header_btn(
+  title: string,
+  onclick: () => void,
+  content: IconData | string,
+  active = false,
+)}
+  <button type="button" {title} {onclick} class:active {@attach tooltip()}>
+    {#if typeof content === `string`}
+      {content}
+    {:else}
+      <Icon icon={content} style="width: 14px; height: 14px" />
+    {/if}
+  </button>
+{/snippet}
 
 <div
   class="json-tree"
@@ -600,7 +453,6 @@
       <div class="search-wrapper">
         <Icon icon={Search} style="width: 14px; height: 14px; opacity: 0.6" />
         <input
-          bind:this={search_input_element}
           type="search"
           placeholder="Search keys and values..."
           value={search_input_value}
@@ -622,84 +474,54 @@
       </div>
       {#if search_query && sorted_matches.length > 0}
         <div class="match-nav">
-          <button
-            type="button"
-            class="nav-btn"
-            onclick={go_to_prev_match}
-            title="Previous match (Shift+F3)"
-            {@attach tooltip()}
-          >
-            <Icon icon={ArrowUp} style="width: 12px; height: 12px" />
-          </button>
-          <button
-            type="button"
-            class="nav-btn"
-            onclick={go_to_next_match}
-            title="Next match (F3)"
-            {@attach tooltip()}
-          >
-            <Icon icon={ArrowDown} style="width: 12px; height: 12px" />
-          </button>
+          {#each MATCH_NAV as [delta, title, icon] (delta)}
+            <button
+              type="button"
+              class="nav-btn"
+              onclick={() => step_match(delta)}
+              {title}
+              {@attach tooltip()}
+            >
+              <Icon {icon} style="width: 12px; height: 12px" />
+            </button>
+          {/each}
           <span class="match-count">{current_match_index + 1} of {sorted_matches.length}</span>
         </div>
       {/if}
       <div class="controls">
-        <button
-          type="button"
-          onclick={() => (show_data_types = !show_data_types)}
-          title={show_data_types ? `Hide data types` : `Show data types`}
-          class:active={show_data_types}
-          {@attach tooltip()}
-        >
-          T
-        </button>
-        <button
-          type="button"
-          onclick={() => (show_array_indices = !show_array_indices)}
-          title={show_array_indices ? `Hide array indices` : `Show array indices`}
-          class:active={show_array_indices}
-          {@attach tooltip()}
-        >
-          #
-        </button>
+        {@render header_btn(
+          `${show_data_types ? `Hide` : `Show`} data types`,
+          () => (show_data_types = !show_data_types),
+          `T`,
+          show_data_types,
+        )}
+        {@render header_btn(
+          `${show_array_indices ? `Hide` : `Show`} array indices`,
+          () => (show_array_indices = !show_array_indices),
+          `#`,
+          show_array_indices,
+        )}
       </div>
       <div class="divider"></div>
       <div class="controls">
-        <button type="button" onclick={expand_all} title="Expand all" {@attach tooltip()}>
-          <Icon icon={ChevronExpand} style="width: 14px; height: 14px" />
-        </button>
-        <button type="button" onclick={collapse_all} title="Collapse all" {@attach tooltip()}>
-          <Icon icon={ChevronCollapse} style="width: 14px; height: 14px" />
-        </button>
+        {@render header_btn(`Expand all`, expand_all, ChevronExpand)}
+        {@render header_btn(`Collapse all`, collapse_all, ChevronCollapse)}
         {#each [1, 2, 3] as level (level)}
-          <button
-            type="button"
-            onclick={() => collapse_to_level(level)}
-            title="Collapse to level {level}"
-            {@attach tooltip()}
-          >
-            {level}
-          </button>
+          {@render header_btn(
+            `Collapse to level ${level}`,
+            () => collapse_to_level(level),
+            String(level),
+          )}
         {/each}
       </div>
       <div class="divider"></div>
       <div class="controls">
-        <button
-          type="button"
-          onclick={copy_all}
-          title="Copy JSON to clipboard"
-          {@attach tooltip()}
-        >
-          <Icon icon={Copy} style="width: 14px; height: 14px" />
-        </button>
-        <button
-          type="button"
-          onclick={download_json}
-          title="Download as JSON file"
-          {@attach tooltip()}
-        >
-          <Icon icon={Download} style="width: 14px; height: 14px" />
-        </button>
+        {@render header_btn(
+          `Copy JSON to clipboard`,
+          () => copy_to_clipboard(`[root]`, serialize_for_copy(value)),
+          Copy,
+        )}
+        {@render header_btn(`Download as JSON file`, download_json, Download)}
       </div>
     </header>
   {/if}
@@ -709,7 +531,7 @@
       <button
         type="button"
         class="copy-path-btn"
-        onclick={() => copy_to_clipboard(focused_path!, focused_path!)}
+        onclick={() => focused_path && copy_to_clipboard(focused_path, focused_path)}
         title="Click to copy path"
         {@attach tooltip()}
       >
@@ -722,13 +544,7 @@
     <div class="pinned-panel">
       <div class="pinned-header">
         <span>Pinned ({pinned_paths.size})</span>
-        <button
-          type="button"
-          class="pinned-clear-btn"
-          onclick={() => {
-            pinned_paths = new SvelteSet()
-          }}
-        >
+        <button type="button" class="pinned-clear-btn" onclick={() => pinned_paths.clear()}>
           Clear
         </button>
       </div>
@@ -738,16 +554,13 @@
             type="button"
             class="pinned-path"
             onclick={() =>
-              copy_to_clipboard(
-                pinned_path,
-                serialize_for_copy(get_value_at_path(pinned_path)),
-              )}
+              copy_to_clipboard(pinned_path, serialize_for_copy(value_at(pinned_path)))}
             title="Click to copy value"
             {@attach tooltip()}
           >
             {pinned_path}
           </button>
-          <span class="pinned-value">{format_preview(get_value_at_path(pinned_path))}</span>
+          <span class="pinned-value">{format_preview(value_at(pinned_path))}</span>
           <button
             type="button"
             class="unpin-btn"
@@ -767,19 +580,20 @@
     {@attach highlight_matches({
       query: search_query,
       css_class: `json-tree-search-match`,
+      scroll_to_match: false, // reveal_current_match scrolls to the selected match instead
     })}
   >
     <JsonNode node_key={root_label ?? null} {value} path={root_path} depth={0} />
   </div>
 
-  {#if copy_feedback_path !== null}
+  {#if copy_feedback}
     <div
-      class={['copy-feedback', { error: copy_feedback_error }]}
-      style={copy_feedback_pos
-        ? `left: ${copy_feedback_pos.x}px; top: ${copy_feedback_pos.y - 24}px`
+      class={[`copy-feedback`, { error: copy_feedback.error }]}
+      style={copy_feedback.pos
+        ? `left: ${copy_feedback.pos.clientX}px; top: ${copy_feedback.pos.clientY - 24}px`
         : `right: 8px; top: 8px`}
     >
-      {copy_feedback_error ? `Copy failed` : `Copied!`}
+      {copy_feedback.error ? `Copy failed` : `Copied!`}
     </div>
   {/if}
 
@@ -787,10 +601,10 @@
     <button
       type="button"
       class="context-menu-backdrop"
-      onclick={close_context_menu}
-      oncontextmenu={(ev) => {
-        ev.preventDefault()
-        close_context_menu()
+      onclick={() => (context_menu_state = null)}
+      oncontextmenu={(event) => {
+        event.preventDefault()
+        context_menu_state = null
       }}
       aria-label="Close context menu"
       tabindex="-1"
@@ -803,45 +617,22 @@
         Math.min(context_menu_state.x, window.innerWidth - 180),
       )}px; top: {Math.max(0, Math.min(context_menu_state.y, window.innerHeight - 200))}px"
     >
-      <li>
-        <button
-          type="button"
-          onclick={() =>
-            ctx_menu_action((st) => copy_to_clipboard(st.path, serialize_for_copy(st.value)))}
-        >
-          <Icon icon={Copy} style="width: 12px; height: 12px" /> Copy value
-        </button>
-      </li>
-      <li>
-        <button
-          type="button"
-          onclick={() => ctx_menu_action((st) => copy_to_clipboard(st.path, st.path))}
-        >
-          Copy path
-        </button>
-      </li>
-      <li class="separator"></li>
-      {#if context_menu_state.expandable}
-        <li>
-          <button
-            type="button"
-            onclick={() =>
-              ctx_menu_action((st) =>
-                st.is_collapsed
-                  ? toggle_collapse_recursive(st.path, false)
-                  : collapse_children_only(st.path),
-              )}
-          >
-            {context_menu_state.is_collapsed ? `Expand` : `Collapse`} all children
-          </button>
+      {#each context_menu_items as item, idx (idx)}
+        <li class={{ separator: !item }}>
+          {#if item}
+            <button
+              type="button"
+              onclick={() => {
+                item.action()
+                context_menu_state = null
+              }}
+            >
+              {#if item.icon}<Icon icon={item.icon} style="width: 12px; height: 12px" />{/if}
+              {item.label}
+            </button>
+          {/if}
         </li>
-        <li class="separator"></li>
-      {/if}
-      <li>
-        <button type="button" onclick={() => ctx_menu_action((st) => toggle_pin(st.path))}>
-          {pinned_paths.has(context_menu_state.path) ? `Unpin` : `Pin`} this path
-        </button>
-      </li>
+      {/each}
     </menu>
   {/if}
 </div>
@@ -882,6 +673,17 @@
     border-radius: var(--jt-border-radius, 4px);
     overflow: hidden;
   }
+  /* Shared reset for every button in the tree, incl. those rendered by JsonNode/JsonValue.
+     Specificity (0,1,1): outranks DraggablePane's :where(button) when nested in a pane, yet
+     loses to the (0,2,0) per-class rules below and in JsonNode/JsonValue. */
+  :global(.json-tree button) {
+    padding: 0;
+    border: none;
+    background: none;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+  }
   .json-tree-header {
     display: flex;
     align-items: center;
@@ -910,28 +712,46 @@
     padding: 2px;
     outline: none;
     color: inherit;
+    &::placeholder {
+      color: var(--jt-placeholder, light-dark(#999, #666));
+    }
   }
-  .search-input::placeholder {
-    color: var(--jt-placeholder, light-dark(#999, #666));
-  }
-  .clear-search {
+  .clear-search,
+  .nav-btn,
+  .controls button {
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 2px;
-    border: none;
-    background: none;
-    cursor: pointer;
+    border-radius: 3px;
     opacity: 0.6;
-    border-radius: 2px;
+    transition:
+      opacity 0.15s,
+      background 0.15s;
+    &:hover,
+    &.active {
+      opacity: 1;
+    }
+    &:hover {
+      background: var(--jt-hover-bg);
+    }
   }
-  .clear-search:hover {
-    opacity: 1;
-    background: var(--jt-hover-bg);
+  .clear-search {
+    padding: 2px;
+  }
+  .nav-btn {
+    width: 20px;
+    height: 20px;
   }
   .controls {
     display: flex;
     gap: 2px;
+    button {
+      min-width: 24px;
+      height: 24px;
+      padding: 2px 6px;
+      font-size: 11px;
+      font-weight: 500;
+    }
   }
   .divider {
     width: 1px;
@@ -940,54 +760,10 @@
     margin: 0 4px;
     align-self: center;
   }
-  .controls button {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 24px;
-    height: 24px;
-    padding: 2px 6px;
-    border: none;
-    background: transparent;
-    border-radius: 3px;
-    cursor: pointer;
-    font-size: 11px;
-    font-weight: 500;
-    color: inherit;
-    opacity: 0.6;
-    transition:
-      opacity 0.15s,
-      background 0.15s;
-  }
-  .controls button:hover {
-    opacity: 1;
-    background: var(--jt-hover-bg);
-  }
-  .controls button.active {
-    opacity: 1;
-  }
   .match-nav {
     display: flex;
     align-items: center;
     gap: 2px;
-  }
-  .nav-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 20px;
-    height: 20px;
-    padding: 0;
-    border: none;
-    background: transparent;
-    border-radius: 3px;
-    cursor: pointer;
-    color: inherit;
-    opacity: 0.6;
-  }
-  .nav-btn:hover {
-    opacity: 1;
-    background: var(--jt-hover-bg);
   }
   .match-count {
     font-size: 11px;
@@ -995,31 +771,32 @@
     white-space: nowrap;
     margin-left: 4px;
   }
-  .path-breadcrumb {
+  .path-breadcrumb,
+  .pinned-panel {
     padding: 4px 8px;
     background: var(--jt-header-bg);
     border-bottom: 1px solid var(--jt-header-border);
     font-size: 11px;
     overflow: hidden;
   }
-  .copy-path-btn {
-    background: none;
-    border: none;
-    padding: 2px 4px;
-    font: inherit;
-    font-family: var(--jt-font-family);
-    color: var(--jt-key, light-dark(#001080, #9cdcfe));
-    cursor: pointer;
-    border-radius: 2px;
+  .copy-path-btn,
+  .pinned-path {
+    color: var(--jt-key);
     max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    display: block;
+    &:hover {
+      text-decoration: underline;
+    }
   }
-  .copy-path-btn:hover {
-    background: var(--jt-hover-bg);
-    text-decoration: underline;
+  .copy-path-btn {
+    display: block;
+    padding: 2px 4px;
+    border-radius: 2px;
+    &:hover {
+      background: var(--jt-hover-bg);
+    }
   }
   .json-tree-content {
     padding: var(--jt-content-padding, 8px);
@@ -1037,9 +814,9 @@
     pointer-events: none;
     z-index: 1002;
     white-space: nowrap;
-  }
-  .copy-feedback.error {
-    background: var(--error-color, #ef4444);
+    &.error {
+      background: var(--error-color, #ef4444);
+    }
   }
   @keyframes fade-in-out {
     0% {
@@ -1061,10 +838,6 @@
     position: fixed;
     inset: 0;
     z-index: 1000;
-    background: none;
-    border: none;
-    padding: 0;
-    margin: 0;
     cursor: default;
   }
   .context-menu {
@@ -1080,41 +853,30 @@
     font-size: 12px;
     list-style: none;
     margin: 0;
-  }
-  .context-menu button {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    width: 100%;
-    padding: 6px 12px;
-    border: none;
-    background: none;
-    color: inherit;
-    cursor: pointer;
-    text-align: left;
-    font: inherit;
-  }
-  .context-menu button:hover {
-    background: var(--jt-ctx-hover, light-dark(rgba(0, 0, 0, 0.06), rgba(255, 255, 255, 0.1)));
-  }
-  .context-menu .separator {
-    height: 1px;
-    margin: 4px 8px;
-    background: var(--jt-ctx-border, light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.1)));
-  }
-  .pinned-panel :where(button) {
-    background: none;
-    border: none;
-    cursor: pointer;
-    padding: 0;
-    font: inherit;
-    color: inherit;
+    button {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      padding: 6px 12px;
+      text-align: left;
+      &:hover {
+        background: var(
+          --jt-ctx-hover,
+          light-dark(rgba(0, 0, 0, 0.06), rgba(255, 255, 255, 0.1))
+        );
+      }
+    }
+    .separator {
+      height: 1px;
+      margin: 4px 8px;
+      background: var(
+        --jt-ctx-border,
+        light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.1))
+      );
+    }
   }
   .pinned-panel {
-    border-bottom: 1px solid var(--jt-header-border);
-    padding: 4px 8px;
-    background: var(--jt-header-bg);
-    font-size: 11px;
     max-height: 120px;
     overflow-y: auto;
   }
@@ -1130,10 +892,10 @@
     font-size: 10px;
     opacity: 0.6;
     padding: 1px 4px;
-  }
-  .pinned-clear-btn:hover {
-    opacity: 1;
-    text-decoration: underline;
+    &:hover {
+      opacity: 1;
+      text-decoration: underline;
+    }
   }
   .pinned-item {
     display: flex;
@@ -1141,23 +903,15 @@
     gap: 4px;
     padding: 2px 4px;
     border-radius: 2px;
-  }
-  .pinned-item:hover {
-    background: var(--jt-hover-bg);
+    &:hover {
+      background: var(--jt-hover-bg);
+    }
   }
   .pinned-path {
-    color: var(--jt-key, light-dark(#001080, #9cdcfe));
-    font-family: var(--jt-font-family);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
     max-width: 200px;
   }
-  .pinned-path:hover {
-    text-decoration: underline;
-  }
   .pinned-value {
-    color: var(--jt-preview, light-dark(#808080, #808080));
+    color: var(--jt-preview);
     font-style: italic;
     white-space: nowrap;
     overflow: hidden;
@@ -1168,8 +922,8 @@
     padding: 0 2px;
     opacity: 0.5;
     font-size: 10px;
-  }
-  .unpin-btn:hover {
-    opacity: 1;
+    &:hover {
+      opacity: 1;
+    }
   }
 </style>

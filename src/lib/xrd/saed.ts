@@ -102,7 +102,7 @@ export function compute_saed_pattern(
   // can ever light up, and the fraction shrinks as max_g grows.
   const max_g_parallel =
     ewald_radius - Math.sqrt(ewald_radius * ewald_radius - max_g * max_g) + excitation_cutoff
-  const recip_rows = math.transpose_3x3_matrix(math.matrix_inverse_3x3(direct_rows))
+  const recip_rows = math.reciprocal_lattice(direct_rows)
   const [recip_b1, recip_b2, recip_b3] = recip_rows
   const recip_points = enumerate_reciprocal_points(recip_rows, direct_rows, max_g, 0, {
     zone_axis,

@@ -40,9 +40,9 @@ Pass one `BoxPlotSeries` per distribution. Use the controls (gear icon) to switc
 />
 ```
 
-## Whisker Modes
+## Quartiles and Whisker Modes
 
-Whiskers are configurable via `whisker_mode`:
+Quartiles use the type-7 rule `q(p) = x[(n - 1) p]` with linear interpolation between order statistics — the default of `numpy.percentile`, R's `quantile()` and d3 — not Tukey's hinges, so the box matches what those libraries report. Whiskers are configurable via `whisker_mode`:
 
 - `tukey` (default): whiskers extend to the most extreme point within `1.5 * IQR` of the quartiles; points beyond are drawn as outliers.
 - `minmax`: whiskers reach the data extremes (no outliers).

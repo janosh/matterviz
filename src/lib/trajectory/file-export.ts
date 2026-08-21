@@ -8,8 +8,9 @@ import type { Site } from '$lib/structure'
 import { to_error } from '$lib/utils'
 import { zipSync } from 'fflate'
 import { full_data_extractor } from './extract'
-import type { TrajectoryFrame, TrajectoryMetadata, TrajectoryType } from './index'
+import type { TrajectoryFrame, TrajectoryMetadata } from './index'
 import { extract_label_and_unit } from './plotting'
+import type { TrajectoryRun } from './run'
 
 // Resolve one frame by index; null when the index is out of range or the load failed.
 export type TrajectoryFrameResolver = (
@@ -198,36 +199,33 @@ export interface TrajectoryPropertyRow {
 export interface TrajectoryPropertyTable {
   start_frame: number
   end_frame: number
-  // Where the numbers came from: whole frames pulled through the resolver, or the sampled
-  // plot metadata when it happened to hold an entry for every frame in the range.
-  source: `frames` | `plot_metadata`
+  // Where the numbers came from: whole frames pulled through the resolver, or the run's
+  // property rows when they hold an entry for every frame in the range.
+  source: `frames` | `properties`
   rows: TrajectoryPropertyRow[]
 }
 
-// `Step` duplicates the row's own step column, and `constant_*` are plot hints flagging
-// lattice params that never vary (always the literal 1), not measurements. The values those
-// hints refer to (`a`, `alpha`, ...) are kept: the plot drops constant series because a flat
-// line carries no information, but a data export exists precisely to hand over every number.
-// Non-finite values are dropped rather than written as `NaN`/`Infinity` text, leaving the
-// cell empty - same rule the extXYZ comment writer applies.
+// `Step` duplicates the row's own step column. Non-finite values are dropped rather than
+// written as `NaN`/`Infinity` text, leaving the cell empty - same rule the extXYZ comment
+// writer applies.
 const numeric_properties = (data: Record<string, unknown>): Record<string, number> => {
   const properties: Record<string, number> = {}
   for (const [key, value] of Object.entries(data)) {
-    if (key === `Step` || key.startsWith(`constant_`)) continue
+    if (key === `Step`) continue
     if (typeof value === `number` && Number.isFinite(value)) properties[key] = value
   }
   return properties
 }
 
-// Rows straight off the sampled plot metadata, or null when it misses even one frame of the
+// Rows straight off the run's property rows, or null when they miss even one frame of the
 // range. Partial coverage must not silently export fewer rows than the range has frames.
-function plot_metadata_rows(
-  plot_metadata: TrajectoryMetadata[] | undefined,
+function property_rows(
+  metadata_rows: readonly TrajectoryMetadata[],
   start_frame: number,
   end_frame: number,
 ): TrajectoryPropertyRow[] | null {
-  if (!plot_metadata?.length) return null
-  const by_frame = new Map(plot_metadata.map((meta) => [meta.frame_number, meta]))
+  if (metadata_rows.length === 0) return null
+  const by_frame = new Map(metadata_rows.map((meta) => [meta.frame_number, meta]))
   const rows: TrajectoryPropertyRow[] = []
   for (let frame_idx = start_frame; frame_idx <= end_frame; frame_idx++) {
     const meta = by_frame.get(frame_idx)
@@ -241,22 +239,22 @@ function plot_metadata_rows(
   return rows
 }
 
-// Build a per-frame property table over an inclusive range. Prefers the already-extracted
-// plot metadata (no file reads at all), else walks the range through the resolver so an
-// indexed trajectory exports every frame rather than the handful held in memory.
+// Build a per-frame property table over an inclusive range. Prefers the run's already
+// extracted property rows (no frame reads at all), else walks the range through the resolver
+// so a sampled (HDF5) run exports every frame rather than its plot sample.
 export async function collect_frame_property_rows(
   start_frame: number,
   end_frame: number,
   resolve_frame: TrajectoryFrameResolver,
-  trajectory: TrajectoryType,
+  run: TrajectoryRun,
   on_progress?: (completed: number, total: number) => void,
 ): Promise<TrajectoryPropertyTable> {
   const total = frame_range_length(start_frame, end_frame)
 
-  const metadata_rows = plot_metadata_rows(trajectory.plot_metadata, start_frame, end_frame)
-  if (metadata_rows) {
+  const ready_rows = property_rows(run.properties.rows, start_frame, end_frame)
+  if (ready_rows) {
     on_progress?.(total, total)
-    return { start_frame, end_frame, source: `plot_metadata`, rows: metadata_rows }
+    return { start_frame, end_frame, source: `properties`, rows: ready_rows }
   }
 
   const rows: TrajectoryPropertyRow[] = []
@@ -270,7 +268,7 @@ export async function collect_frame_property_rows(
       frame: frame_idx,
       step: frame.step,
       properties: numeric_properties(
-        serialize_frame(frame_idx, () => full_data_extractor(frame, trajectory)),
+        serialize_frame(frame_idx, () => full_data_extractor(frame)),
       ),
     })
   }

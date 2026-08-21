@@ -1,6 +1,6 @@
 import type { COMPRESSION_EXTENSIONS } from '$lib/constants'
 import { COMPRESSION_EXTENSIONS_REGEX, COMPRESSION_FORMATS } from '$lib/constants'
-import { has_hdf5_magic, is_binary_payload } from './is-binary'
+import { has_gzip_magic, has_hdf5_magic, is_binary_payload } from './is-binary'
 
 // Lowercase a filename and strip all trailing compression extensions (.gz, .zip, ...)
 export function strip_compression_extensions(filename: string): string {
@@ -13,12 +13,21 @@ export function strip_compression_extensions(filename: string): string {
 
 export type CompressionFormat = keyof typeof COMPRESSION_FORMATS
 export type CompressionExtension = (typeof COMPRESSION_EXTENSIONS)[number]
-export type BrowserCompressionFormat = Exclude<CompressionFormat, `zip` | `xz` | `bz2`>
+// Formats the platform DecompressionStream inflates natively
+export type StreamCompressionFormat = Exclude<CompressionFormat, `zip` | `xz` | `bz2`>
+// Formats this module can inflate in the browser: stream formats plus single-file ZIP
+// archives (via fflate). xz and bz2 have no decoder.
+export type BrowserCompressionFormat = StreamCompressionFormat | `zip`
+
+export const is_stream_compression_format = (
+  format: CompressionFormat | null,
+): format is StreamCompressionFormat =>
+  format !== null && format !== `zip` && format !== `xz` && format !== `bz2`
 
 export const is_browser_decompressible_format = (
   format: CompressionFormat | null,
 ): format is BrowserCompressionFormat =>
-  format !== null && format !== `zip` && format !== `xz` && format !== `bz2`
+  format === `zip` || is_stream_compression_format(format)
 
 export function detect_compression_format(filename: string): CompressionFormat | null {
   const lower = filename.toLowerCase()
@@ -28,40 +37,80 @@ export function detect_compression_format(filename: string): CompressionFormat |
   return null
 }
 
+type CompressedSource = ArrayBuffer | Blob | ReadableStream<Uint8Array<ArrayBuffer>>
+
+const unsupported_format_error = (
+  format: CompressionFormat,
+  source = `the ${format.toUpperCase()} file`,
+): Error =>
+  new Error(
+    `${format.toUpperCase()} decompression is not supported in the browser; extract ${source} first`,
+  )
+
+// The compression wrapper named by the first of `names` that has one, rejecting wrappers the
+// browser cannot inflate (xz, bz2) up front instead of handing a parser opaque archive bytes.
+// `source` names the payload in that error, e.g. its URL.
+export function compression_wrapper_of(
+  names: string[],
+  source = names[0],
+): BrowserCompressionFormat | null {
+  const format = names.map(detect_compression_format).find((fmt) => fmt !== null) ?? null
+  if (format && !is_browser_decompressible_format(format)) {
+    throw unsupported_format_error(format, source)
+  }
+  return format
+}
+
 // Decompress data and return as text string
 export async function decompress_data(
-  data: ArrayBuffer | ReadableStream<Uint8Array> | null,
+  data: CompressedSource,
   format: CompressionFormat,
 ): Promise<string> {
   const buffer = await decompress_data_binary(data, format)
   return new TextDecoder().decode(buffer)
 }
 
+// The one payload file of a ZIP archive. Directory entries, macOS resource forks and
+// dotfiles are ignored; anything else ambiguous is an error rather than a silent pick.
+const unzip_single_entry = async (bytes: Uint8Array): Promise<Uint8Array> => {
+  const { unzipSync } = await import(`fflate`)
+  const entries = Object.entries(unzipSync(bytes)).filter(
+    ([name]) =>
+      !name.endsWith(`/`) && !name.startsWith(`__MACOSX/`) && !/(?:^|\/)\./.test(name),
+  )
+  if (entries.length !== 1) {
+    const names = entries.map(([name]) => name).join(`, `)
+    throw new Error(
+      entries.length === 0
+        ? `ZIP archive contains no files`
+        : `ZIP archive must contain exactly one file, found ${entries.length}: ${names}`,
+    )
+  }
+  return entries[0][1]
+}
+
 const consume_decompressed = async <Result>(
-  data: ArrayBuffer | Blob | ReadableStream<Uint8Array> | null,
+  data: CompressedSource,
   format: CompressionFormat,
   consume: (response: Response) => Promise<Result>,
   signal?: AbortSignal,
 ): Promise<Result> => {
+  if (!is_browser_decompressible_format(format)) throw unsupported_format_error(format)
   try {
-    if (!is_browser_decompressible_format(format)) {
-      throw new Error(
-        `${format.toUpperCase()} decompression is not supported in the browser. ` +
-          `Please extract the ${format.toUpperCase()} file first.`,
-      )
-    }
+    // Blobs and streams are piped through without buffering the compressed bytes first
     const stream =
       data instanceof ArrayBuffer
-        ? new ReadableStream({
-            start(controller) {
-              controller.enqueue(new Uint8Array(data))
-              controller.close()
-            },
-          })
+        ? new Blob([data]).stream()
         : data instanceof Blob
           ? data.stream()
           : data
-    if (!stream) throw new Error(`Invalid data stream`)
+    if (format === `zip`) {
+      const bytes = new Uint8Array(await new Response(stream).arrayBuffer())
+      signal?.throwIfAborted()
+      // copy: fflate may hand back a view into its own scratch buffer
+      const entry = new Uint8Array(await unzip_single_entry(bytes))
+      return await consume(new Response(entry))
+    }
     const decompressed = stream.pipeThrough(new DecompressionStream(format), { signal })
     return await consume(new Response(decompressed))
   } catch (error) {
@@ -71,20 +120,17 @@ const consume_decompressed = async <Result>(
 
 // Decompress data and return as ArrayBuffer (for binary files like .brml.gz)
 export const decompress_data_binary = (
-  data: ArrayBuffer | ReadableStream<Uint8Array> | null,
+  data: CompressedSource,
   format: CompressionFormat,
   signal?: AbortSignal,
 ): Promise<ArrayBuffer> =>
   consume_decompressed(data, format, (response) => response.arrayBuffer(), signal)
 
 export const decompress_data_blob = (
-  data: Blob | ReadableStream<Uint8Array>,
+  data: CompressedSource,
   format: CompressionFormat,
   signal?: AbortSignal,
 ): Promise<Blob> => consume_decompressed(data, format, (response) => response.blob(), signal)
-
-const to_content = (filename: string, buffer: ArrayBuffer): string | ArrayBuffer =>
-  is_binary_payload(filename, buffer) ? buffer : new TextDecoder().decode(buffer)
 
 // === consumers of the string | ArrayBuffer content union produced above ===
 
@@ -101,24 +147,6 @@ export const content_byte_size = (content: string | ArrayBuffer | Blob): number 
       ? content.byteLength
       : new Blob([content]).size
 
-// Read a dropped file, decompressing supported formats. Binary payloads (by extension or
-// magic bytes) return as ArrayBuffer so parsers get raw bytes; text decodes to string.
-export async function decompress_file(
-  file: File,
-): Promise<{ content: string | ArrayBuffer; filename: string }> {
-  const format = detect_compression_format(file.name)
-  // zip/xz/bz2 are handled by their own code paths; null = not compressed
-  const decompressible = is_browser_decompressible_format(format) ? format : null
-  const buffer = await file.arrayBuffer()
-
-  if (decompressible) {
-    const filename = file.name.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
-    const decompressed = await decompress_data_binary(buffer, decompressible)
-    return { content: to_content(filename, decompressed), filename }
-  }
-  return { content: to_content(file.name, buffer), filename: file.name }
-}
-
 export const is_hdf5_filename = (filename: string): boolean => /\.(?:h5|hdf5)$/i.test(filename)
 
 export const hdf5_compression_format = (filename: string): CompressionFormat | null => {
@@ -129,41 +157,66 @@ export const hdf5_compression_format = (filename: string): CompressionFormat | n
     : null
 }
 
-export async function decompress_trajectory_file(
+export interface ClassifyPayloadOptions {
+  // Keep HDF5 payloads (by name or magic bytes) as a Blob so h5wasm can read them lazily
+  // instead of materializing the whole file (trajectory viewers)
+  hdf5_as_blob?: boolean
+  // Decide gzip by the bytes rather than the name: a host serving a stored .gz with
+  // `Content-Encoding: gzip` has already been un-gzipped by fetch, while one that also
+  // transport-compresses the same file leaves a second layer behind under the identical
+  // header. A dropped File is always exactly what its name says, so there the name rules.
+  gzip_by_magic?: boolean
+  // Names the payload in error messages (defaults to the first of `names`)
+  source?: string
+  signal?: AbortSignal
+}
+
+type LoadedPayload<Content> = { content: Content; filename: string }
+
+// Every loader funnels here: inflate a browser-decompressible wrapper (the compressed bytes
+// stream straight out of the Blob, never buffered), then classify the payload the way parsers
+// expect: HDF5 as a Blob when asked, known binary formats as ArrayBuffer so a lossy UTF-8
+// decode cannot corrupt them, everything else as text. `names` are candidate filenames
+// (dropped/header name first, URL basename after); the first, stripped of its wrapper
+// extension, names the result.
+export async function classify_payload(
+  blob: Blob,
+  names: string[],
+  options: ClassifyPayloadOptions = {},
+): Promise<LoadedPayload<string | ArrayBuffer | Blob>> {
+  const { hdf5_as_blob = false, gzip_by_magic = false, source, signal } = options
+  const head = (count: number) => blob.slice(0, count).arrayBuffer()
+  const gzip_magic = gzip_by_magic && has_gzip_magic(new Uint8Array(await head(2)))
+  const format = gzip_magic ? `gzip` : compression_wrapper_of(names, source)
+  // In by-magic mode a named gzip/deflate wrapper without gzip bytes was inflated in transit,
+  // so only ZIP is still decompressed by name there
+  if (format && (!gzip_by_magic || gzip_magic || format === `zip`)) {
+    blob = await decompress_data_blob(blob, format, signal)
+  }
+  // Either way the payload is now the inner file, so name it accordingly
+  const stripped = names.map((name) => name.replace(COMPRESSION_EXTENSIONS_REGEX, ``))
+  const magic = await head(8)
+  if (
+    hdf5_as_blob &&
+    (stripped.some(is_hdf5_filename) || has_hdf5_magic(new Uint8Array(magic)))
+  ) {
+    const filename = stripped.find(is_hdf5_filename) ?? `${stripped.find(Boolean) ?? ``}.h5`
+    return { content: blob, filename }
+  }
+  const is_binary = stripped.some((name) => is_binary_payload(name, magic))
+  return {
+    content: is_binary ? await blob.arrayBuffer() : await blob.text(),
+    filename: stripped[0],
+  }
+}
+
+// Read a dropped File; text decodes to string, binary payloads stay ArrayBuffer
+export const decompress_file = (file: File): Promise<LoadedPayload<string | ArrayBuffer>> =>
+  classify_payload(file, [file.name]) as Promise<LoadedPayload<string | ArrayBuffer>>
+
+// Like decompress_file, but HDF5 payloads stay Blob-backed for h5wasm
+export const decompress_trajectory_file = (
   file: File,
   signal?: AbortSignal,
-): Promise<{ content: string | ArrayBuffer | Blob; filename: string }> {
-  const format = detect_compression_format(file.name)
-  const source_filename = format
-    ? file.name.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
-    : file.name
-  const hdf5_by_name = is_hdf5_filename(source_filename)
-  const hdf5_by_magic =
-    format === null && has_hdf5_magic(new Uint8Array(await file.slice(0, 8).arrayBuffer()))
-  if (format !== null && format !== `gzip` && hdf5_by_name) {
-    throw new Error(
-      `Compressed HDF5 ${format.toUpperCase()} files are not supported in the browser; use .h5 or .h5.gz`,
-    )
-  }
-  if (format === null) {
-    if (!hdf5_by_name && !hdf5_by_magic) return decompress_file(file)
-    return {
-      content: file,
-      filename: hdf5_by_name ? source_filename : `${source_filename}.h5`,
-    }
-  }
-  if (format !== `gzip`) return decompress_file(file)
-
-  const decompressed = await decompress_data_blob(file, format, signal)
-  const hdf5_by_decompressed_magic = has_hdf5_magic(
-    new Uint8Array(await decompressed.slice(0, 8).arrayBuffer()),
-  )
-  if (hdf5_by_name || hdf5_by_decompressed_magic) {
-    return {
-      content: decompressed,
-      filename: hdf5_by_name ? source_filename : `${source_filename}.h5`,
-    }
-  }
-  const buffer = await decompressed.arrayBuffer()
-  return { content: to_content(source_filename, buffer), filename: source_filename }
-}
+): Promise<LoadedPayload<string | ArrayBuffer | Blob>> =>
+  classify_payload(file, [file.name], { hdf5_as_blob: true, signal })

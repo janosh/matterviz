@@ -18,12 +18,9 @@ import {
   generate_region_path,
   get_multi_phase_gradient,
   get_phase_color,
-  get_phase_color_key,
   get_phase_stability_range,
   is_compound,
   merge_phase_diagram_config,
-  PHASE_COLOR_HEX,
-  PHASE_COLORS,
   PHASE_DIAGRAM_DEFAULTS,
   summarize_models,
   tokenize_formula,
@@ -195,141 +192,95 @@ describe(`polygon_centroid`, () => {
   })
 })
 
+// Palette by key (hex); get_phase_color returns these opaque (`hex`) or with alpha (`rgba`)
+const HEX = {
+  liquid: `#87cefc`,
+  alpha: `#90ee90`,
+  beta: `#ffb6c1`,
+  gamma: `#ffdab9`,
+  delta: `#dda0dd`,
+  epsilon: `#f0e68c`,
+  zeta: `#fa8072`,
+  eta: `#e6e6fa`,
+  theta: `#f5deb3`,
+  iota: `#20b2aa`,
+  kappa: `#deb887`,
+  lambda: `#bc8f8f`,
+  two_phase: `#c8c8c8`,
+  default: `#b4b4b4`,
+}
+
 describe(`get_phase_color`, () => {
   test.each([
-    [`Liquid`, PHASE_COLORS.liquid],
-    [`L`, PHASE_COLORS.liquid],
-    [`α`, PHASE_COLORS.alpha],
-    [`alpha`, PHASE_COLORS.alpha],
-    [`β`, PHASE_COLORS.beta],
-    [`beta`, PHASE_COLORS.beta],
-    [`γ`, PHASE_COLORS.gamma],
-    [`gamma`, PHASE_COLORS.gamma],
-    [`α + β`, PHASE_COLORS.two_phase],
-    [`Unknown`, PHASE_COLORS.default],
-  ])(`%s → correct color`, (phase_name, expected_color) => {
-    expect(get_phase_color(phase_name)).toBe(expected_color)
+    // Greek letters and Latin names map to the same key, case-insensitively
+    [`α`, HEX.alpha],
+    [`alpha`, HEX.alpha],
+    [`ALPHA`, HEX.alpha],
+    [`β`, HEX.beta],
+    [`beta`, HEX.beta],
+    [`γ`, HEX.gamma],
+    [`gamma`, HEX.gamma],
+    [`δ`, HEX.delta],
+    [`ε`, HEX.epsilon],
+    [`ζ`, HEX.zeta],
+    [`η`, HEX.eta],
+    [`ETA`, HEX.eta],
+    // "theta" contains "eta": must win over the eta rule
+    [`θ`, HEX.theta],
+    [`THETA`, HEX.theta],
+    [`ι`, HEX.iota],
+    [`κ`, HEX.kappa],
+    [`λ`, HEX.lambda],
+    // Liquid + shorthand, and structure prefixes map to alpha/beta/gamma
+    [`Liquid`, HEX.liquid],
+    [`L`, HEX.liquid],
+    [`FCC_A1`, HEX.alpha],
+    [`bcc`, HEX.beta],
+    [`HCP_A3`, HEX.gamma],
+    // multi-phase and unknown
+    [`α + β`, HEX.two_phase],
+    [`Liquid + FCC`, HEX.two_phase],
+    [`Unknown`, HEX.default],
+    [``, HEX.default],
+  ] as [string, string][])(`%s → %s`, (phase_name, hex) => {
+    expect(get_phase_color(phase_name, `hex`)).toBe(hex)
   })
-})
 
-describe(`get_phase_color_key`, () => {
   test.each([
-    // Greek letters
-    [`α`, `alpha`],
-    [`β`, `beta`],
-    [`γ`, `gamma`],
-    [`δ`, `delta`],
-    [`ε`, `epsilon`],
-    [`ζ`, `zeta`],
-    [`η`, `eta`],
-    [`θ`, `theta`],
-    [`ι`, `iota`],
-    [`κ`, `kappa`],
-    [`λ`, `lambda`],
-    // Latin names
-    [`alpha`, `alpha`],
-    [`beta`, `beta`],
-    [`gamma`, `gamma`],
-    [`delta`, `delta`],
-    [`epsilon`, `epsilon`],
-    [`zeta`, `zeta`],
-    [`eta`, `eta`],
-    [`theta`, `theta`],
-    [`iota`, `iota`],
-    [`kappa`, `kappa`],
-    [`lambda`, `lambda`],
-    // Special phases and prefixes
-    [`Liquid`, `liquid`],
-    [`L`, `liquid`],
-    [`FCC`, `alpha`],
-    [`BCC`, `beta`],
-    [`HCP`, `gamma`],
-    [`fcc`, `alpha`],
-    [`bcc`, `beta`],
-    [`hcp`, `gamma`],
-    [`FCC_A1`, `alpha`],
-    [`BCC_A2`, `beta`],
-    [`HCP_A3`, `gamma`],
-    // Case insensitivity
-    [`THETA`, `theta`],
-    [`ETA`, `eta`],
-    // Unknown
-    [`Unknown`, `default`],
-    [``, `default`],
-  ])(`%s → %s`, (name, expected_key) => {
-    expect(get_phase_color_key(name)).toBe(expected_key)
+    // single phases: alpha 0.6; two-phase and unknown: 0.5
+    [`Liquid`, `rgba(135, 206, 252, 0.6)`],
+    [`α`, `rgba(144, 238, 144, 0.6)`],
+    [`α + β`, `rgba(200, 200, 200, 0.5)`],
+    [`Unknown`, `rgba(180, 180, 180, 0.5)`],
+  ])(`rgba fill for %s is %s`, (phase_name, rgba) => {
+    expect(get_phase_color(phase_name)).toBe(rgba)
   })
 })
 
 describe(`get_multi_phase_gradient`, () => {
-  test.each([`Liquid`, `α`, `Unknown`, ``, `FCC`])(
-    `returns null for single-phase: %s`,
+  test.each([`Liquid`, `α`, `Unknown`, ``, `FCC`, `+`, ` + `])(
+    `returns null without two phases: %j`,
     (name) => {
       expect(get_multi_phase_gradient(name)).toBeNull()
     },
   )
 
-  test(`returns 2 stops for two-phase regions`, () => {
-    expect(get_multi_phase_gradient(`α + β`)).toEqual([
-      { offset: 0, color: PHASE_COLOR_HEX.alpha },
-      { offset: 1, color: PHASE_COLOR_HEX.beta },
-    ])
-  })
-
-  test(`returns 3 evenly-spaced stops for three-phase regions`, () => {
-    expect(get_multi_phase_gradient(`α + β + γ`)).toEqual([
-      { offset: 0, color: PHASE_COLOR_HEX.alpha },
-      { offset: 0.5, color: PHASE_COLOR_HEX.beta },
-      { offset: 1, color: PHASE_COLOR_HEX.gamma },
-    ])
-  })
-
-  test(`returns 4 evenly-spaced stops for four-phase regions`, () => {
-    const result = get_multi_phase_gradient(`α + β + γ + δ`)
-    expect(result).toHaveLength(4)
-    expect(result?.map((stop) => stop.offset)).toEqual([0, 1 / 3, 2 / 3, 1])
-  })
-
-  test(`handles all extended phase colors (δ through λ)`, () => {
-    expect(get_multi_phase_gradient(`δ + ε + ζ + η + θ`)).toEqual([
-      { offset: 0, color: PHASE_COLOR_HEX.delta },
-      { offset: 0.25, color: PHASE_COLOR_HEX.epsilon },
-      { offset: 0.5, color: PHASE_COLOR_HEX.zeta },
-      { offset: 0.75, color: PHASE_COLOR_HEX.eta },
-      { offset: 1, color: PHASE_COLOR_HEX.theta },
-    ])
-    expect(get_multi_phase_gradient(`ι + κ + λ`)).toEqual([
-      { offset: 0, color: PHASE_COLOR_HEX.iota },
-      { offset: 0.5, color: PHASE_COLOR_HEX.kappa },
-      { offset: 1, color: PHASE_COLOR_HEX.lambda },
-    ])
-  })
-
-  test(`handles whitespace and empty phase names`, () => {
-    expect(
-      get_multi_phase_gradient(`  α   +   β   +   γ  `)?.map((stop) => stop.color),
-    ).toEqual([PHASE_COLOR_HEX.alpha, PHASE_COLOR_HEX.beta, PHASE_COLOR_HEX.gamma])
-    // "α + + β" filters the empty middle, leaving 2 phases
-    expect(get_multi_phase_gradient(`α + + β`)).toEqual([
-      { offset: 0, color: PHASE_COLOR_HEX.alpha },
-      { offset: 1, color: PHASE_COLOR_HEX.beta },
-    ])
-  })
-
-  test(`uses default color for unknown phases`, () => {
-    expect(get_multi_phase_gradient(`Unknown1 + Unknown2 + α`)).toEqual([
-      { offset: 0, color: PHASE_COLOR_HEX.default },
-      { offset: 0.5, color: PHASE_COLOR_HEX.default },
-      { offset: 1, color: PHASE_COLOR_HEX.alpha },
-    ])
-  })
-
-  test(`Liquid + FCC + BCC → liquid + alpha + beta colors`, () => {
-    expect(get_multi_phase_gradient(`Liquid + FCC + BCC`)?.map((stop) => stop.color)).toEqual([
-      PHASE_COLOR_HEX.liquid,
-      PHASE_COLOR_HEX.alpha,
-      PHASE_COLOR_HEX.beta,
-    ])
+  test.each([
+    [`α + β`, [HEX.alpha, HEX.beta]],
+    [`α + β + γ`, [HEX.alpha, HEX.beta, HEX.gamma]],
+    [`α + β + γ + δ`, [HEX.alpha, HEX.beta, HEX.gamma, HEX.delta]],
+    [`δ + ε + ζ + η + θ`, [HEX.delta, HEX.epsilon, HEX.zeta, HEX.eta, HEX.theta]],
+    [`ι + κ + λ`, [HEX.iota, HEX.kappa, HEX.lambda]],
+    [`  α   +   β   +   γ  `, [HEX.alpha, HEX.beta, HEX.gamma]],
+    // empty middle phase is dropped
+    [`α + + β`, [HEX.alpha, HEX.beta]],
+    [`Unknown1 + Unknown2 + α`, [HEX.default, HEX.default, HEX.alpha]],
+    [`Liquid + FCC + BCC`, [HEX.liquid, HEX.alpha, HEX.beta]],
+  ])(`%s → evenly spaced stops`, (name, colors) => {
+    const n_stops = colors.length
+    expect(get_multi_phase_gradient(name)).toEqual(
+      colors.map((color, idx) => ({ offset: idx / (n_stops - 1), color })),
+    )
   })
 })
 
@@ -474,47 +425,39 @@ function expect_non_null<T>(value: T | null): T {
   return value as T
 }
 
+// two_phase_region is the trapezoid (0.2,400)-(0.8,400)-(0.7,600)-(0.3,600): at T the
+// boundaries sit at x = 0.2 + (T-400)/2000 and 0.8 - (T-400)/2000
+const x_left_at = (temp: number) => 0.2 + (temp - 400) / 2000
+const x_right_at = (temp: number) => 0.8 - (temp - 400) / 2000
+
 describe(`calculate_lever_rule`, () => {
   test.each(lever_null_cases)(`returns null for $desc`, ({ region, comp, temp }) => {
     expect(calculate_lever_rule(region, comp, temp)).toBeNull()
   })
 
-  test(`parses phase names and calculates fractions at midpoint`, () => {
-    const result = expect_non_null(calculate_lever_rule(two_phase_region, 0.5, 500))
-    expect(result.left_phase).toBe(`α`)
-    expect(result.right_phase).toBe(`β`)
-    expect(result.fraction_left).toBeCloseTo(0.5, 1)
-    expect(result.fraction_right).toBeCloseTo(0.5, 1)
-    expect(result.left_composition).toBeLessThan(result.right_composition)
-  })
-
   test.each([
-    { comp: 0.26, left_dominant: true, desc: `near left boundary` },
-    { comp: 0.74, left_dominant: false, desc: `near right boundary` },
-  ])(`$desc: dominant phase has >90% fraction`, ({ comp, left_dominant }) => {
-    const result = expect_non_null(calculate_lever_rule(two_phase_region, comp, 500))
-    const dominant = left_dominant ? result.fraction_left : result.fraction_right
-    const minor = left_dominant ? result.fraction_right : result.fraction_left
-    expect(dominant).toBeGreaterThan(0.9)
-    expect(minor).toBeLessThan(0.1)
-  })
-
-  test.each([0.3, 0.4, 0.5, 0.6, 0.7])(`fractions sum to 1 at comp=%f`, (comp) => {
-    const result = expect_non_null(calculate_lever_rule(two_phase_region, comp, 500))
-    expect(result.fraction_left + result.fraction_right).toBeCloseTo(1, 5)
+    // [comp, temp]: fractions follow the lever rule f_right = (x - x_l) / (x_r - x_l)
+    [0.5, 500],
+    [0.26, 500],
+    [0.74, 500],
+    [0.3, 420],
+    [0.65, 580],
+  ])(`tie line and fractions at x=%f, T=%d`, (comp, temp) => {
+    const result = expect_non_null(calculate_lever_rule(two_phase_region, comp, temp))
+    const [x_left, x_right] = [x_left_at(temp), x_right_at(temp)]
+    const fraction_right = (comp - x_left) / (x_right - x_left)
+    expect(result).toEqual({
+      left_phase: `α`,
+      right_phase: `β`,
+      left_composition: expect.closeTo(x_left, 9),
+      right_composition: expect.closeTo(x_right, 9),
+      fraction_left: expect.closeTo(1 - fraction_right, 9),
+      fraction_right: expect.closeTo(fraction_right, 9),
+    })
   })
 
   test(`parses complex phase names like "Liquid + FCC_A1"`, () => {
-    const region: PhaseRegion = {
-      id: `test`,
-      name: `Liquid + FCC_A1`,
-      vertices: [
-        [0.2, 400],
-        [0.8, 400],
-        [0.7, 600],
-        [0.3, 600],
-      ],
-    }
+    const region: PhaseRegion = { ...two_phase_region, name: `Liquid + FCC_A1` }
     const result = calculate_lever_rule(region, 0.5, 500)
     expect(result?.left_phase).toBe(`Liquid`)
     expect(result?.right_phase).toBe(`FCC_A1`)
@@ -526,8 +469,8 @@ describe(`calculate_lever_rule`, () => {
       const result = expect_non_null(
         calculate_lever_rule(split_region_horizontal, position, 500),
       )
-      expect(result.left_composition).toBeCloseTo(expected_bounds[0], 6)
-      expect(result.right_composition).toBeCloseTo(expected_bounds[1], 6)
+      expect(result.left_composition).toBeCloseTo(expected_bounds[0], 9)
+      expect(result.right_composition).toBeCloseTo(expected_bounds[1], 9)
     },
   )
 })
@@ -537,29 +480,32 @@ describe(`calculate_vertical_lever_rule`, () => {
     expect(calculate_vertical_lever_rule(region, comp, temp)).toBeNull()
   })
 
-  test(`parses phase names and calculates fractions at midpoint`, () => {
-    const result = expect_non_null(calculate_vertical_lever_rule(two_phase_region, 0.5, 500))
-    expect(result.bottom_phase).toBe(`α`)
-    expect(result.top_phase).toBe(`β`)
-    expect(result.fraction_bottom).toBeCloseTo(0.5, 1)
-    expect(result.fraction_top).toBeCloseTo(0.5, 1)
-    expect(result.bottom_temperature).toBeLessThan(result.top_temperature)
-  })
-
-  test.each([420, 450, 500, 550, 580])(`fractions sum to 1 at temp=%d`, (temp) => {
-    const result = expect_non_null(calculate_vertical_lever_rule(two_phase_region, 0.5, temp))
-    expect(result.fraction_bottom + result.fraction_top).toBeCloseTo(1, 5)
-  })
-
+  // A vertical scan at x in [0.3, 0.7] crosses only the horizontal edges at 400 K and 600 K
   test.each([
-    { temp: 410, bottom_dominant: true, desc: `near bottom boundary` },
-    { temp: 590, bottom_dominant: false, desc: `near top boundary` },
-  ])(`$desc: dominant phase has >90% fraction`, ({ temp, bottom_dominant }) => {
-    const result = expect_non_null(calculate_vertical_lever_rule(two_phase_region, 0.5, temp))
-    const dominant = bottom_dominant ? result.fraction_bottom : result.fraction_top
-    const minor = bottom_dominant ? result.fraction_top : result.fraction_bottom
-    expect(dominant).toBeGreaterThan(0.9)
-    expect(minor).toBeLessThan(0.1)
+    [0.5, 500],
+    [0.5, 410],
+    [0.5, 590],
+    [0.35, 450],
+    [0.7, 560],
+  ])(`tie line and fractions at x=%f, T=%d`, (comp, temp) => {
+    const result = expect_non_null(calculate_vertical_lever_rule(two_phase_region, comp, temp))
+    const fraction_top = (temp - 400) / 200
+    expect(result).toEqual({
+      bottom_phase: `α`,
+      top_phase: `β`,
+      bottom_temperature: expect.closeTo(400, 9),
+      top_temperature: expect.closeTo(600, 9),
+      fraction_bottom: expect.closeTo(1 - fraction_top, 9),
+      fraction_top: expect.closeTo(fraction_top, 9),
+    })
+  })
+
+  test(`scan through a slanted edge interpolates the crossing temperature`, () => {
+    // at x = 0.25 the left edge (0.2,400)-(0.3,600) is crossed at T = 500
+    const result = expect_non_null(calculate_vertical_lever_rule(two_phase_region, 0.25, 450))
+    expect(result.bottom_temperature).toBeCloseTo(400, 9)
+    expect(result.top_temperature).toBeCloseTo(500, 9)
+    expect(result.fraction_top).toBeCloseTo(0.5, 9)
   })
 
   test.each(split_region_boundary_cases)(
@@ -568,8 +514,8 @@ describe(`calculate_vertical_lever_rule`, () => {
       const result = expect_non_null(
         calculate_vertical_lever_rule(split_region_vertical, 0.5, position),
       )
-      expect(result.bottom_temperature).toBeCloseTo(expected_bounds[0], 6)
-      expect(result.top_temperature).toBeCloseTo(expected_bounds[1], 6)
+      expect(result.bottom_temperature).toBeCloseTo(expected_bounds[0], 9)
+      expect(result.top_temperature).toBeCloseTo(expected_bounds[1], 9)
     },
   )
 })
@@ -823,8 +769,16 @@ describe(`convert_temp`, () => {
     { value: 100, from: `°C`, to: `°F`, expected: 212 },
     { value: 32, from: `°F`, to: `°C`, expected: 0 },
     { value: 212, from: `°F`, to: `°C`, expected: 100 },
+    // absolute zero and a round trip through all three units
+    { value: 0, from: `K`, to: `°C`, expected: -273.15 },
+    { value: 0, from: `K`, to: `°F`, expected: -459.67 },
+    { value: 1234.5, from: `°C`, to: `°F`, expected: 2254.1 },
   ] as const)(`$value $from → $expected $to`, ({ value, from, to, expected }) => {
-    expect(convert_temp(value, from, to)).toBeCloseTo(expected, 5)
+    expect(convert_temp(value, from, to)).toBeCloseTo(expected, 9)
+  })
+
+  test.each([`K`, `°C`, `°F`] as const)(`°F → %s → °F round-trips to 1e-9`, (unit) => {
+    expect(convert_temp(convert_temp(451, `°F`, unit), unit, `°F`)).toBeCloseTo(451, 9)
   })
 
   test.each([`K`, `°C`, `°F`] as const)(

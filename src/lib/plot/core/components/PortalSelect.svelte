@@ -30,11 +30,11 @@
   let dropdown_el: HTMLDivElement | undefined = $state()
 
   const selected_option = $derived(
-    options?.find((opt) => opt.key === selected_key) ?? options?.[0],
+    options.find((opt) => opt.key === selected_key) ?? options[0],
   )
 
   function open_dropdown() {
-    if (!trigger_el || !options?.length) return
+    if (!trigger_el || !options.length) return
     if (active_close_fn && active_close_fn !== close_dropdown) active_close_fn()
     dropdown_open = true
     active_close_fn = close_dropdown
@@ -81,7 +81,7 @@
 
   // Close dropdown when disabled, options empty, or component unmounts
   $effect(() => {
-    if ((disabled || !options?.length) && dropdown_open) close_dropdown(false)
+    if ((disabled || !options.length) && dropdown_open) close_dropdown(false)
     return () => close_dropdown(false)
   })
 </script>

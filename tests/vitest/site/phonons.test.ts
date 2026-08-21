@@ -17,13 +17,6 @@ describe(`Phonon Module Tests`, () => {
   it.each(band_entries)(
     `%s has valid band structure with correct dimensions and physical frequencies`,
     (id, band_struct) => {
-      // Reciprocal lattice must be a finite 3x3 matrix
-      expect(band_struct.recip_lattice.matrix, id).toHaveLength(3)
-      for (const row of band_struct.recip_lattice.matrix) {
-        expect(row, id).toHaveLength(3)
-        expect(row.every(Number.isFinite), id).toBe(true)
-      }
-
       expect(band_struct.qpoints.length, id).toBeGreaterThan(MIN_QPOINTS)
       expect(band_struct.distance, id).toHaveLength(band_struct.qpoints.length)
       expect(band_struct.nb_bands, id).toBeGreaterThan(0)

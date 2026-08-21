@@ -1,31 +1,4 @@
-// Named rather than star exports: bond-angles' SPLIT_MODES/SplitMode clash with
-// coordination's, its NormalizeMode with heatmap-matrix's, and its barrel re-exports
-// plot/core/structure-input, which already reaches here through './plot'
-export {
-  angle_bin_centers,
-  angle_bin_index,
-  bin_bond_angles,
-  BondAnglePlot,
-  calc_bond_angle_distribution,
-  compute_bond_angles,
-  DEFAULT_BIN_WIDTH as BOND_ANGLE_DEFAULT_BIN_WIDTH,
-  MAX_BOND_ANGLE,
-  NORMALIZE_MODES as BOND_ANGLE_NORMALIZE_MODES,
-  resolve_angle_bins,
-  SPLIT_MODES as BOND_ANGLE_SPLIT_MODES,
-  to_angle_bar_series,
-  to_angle_density,
-  TOTAL_TRIPLET_LABEL,
-} from './bond-angles'
-export type {
-  BondAngleData,
-  BondAngleMetadata,
-  BondAngleOptions,
-  BondAngleSeries,
-  BondAngleTriplet,
-  NormalizeMode as BondAngleNormalizeMode,
-  SplitMode as BondAngleSplitMode,
-} from './bond-angles'
+export * from './bond-angles'
 export * from './brillouin'
 export * from './chempot-diagram'
 export * from './colors'
@@ -43,72 +16,7 @@ export { default as FilePicker } from './FilePicker.svelte'
 export * from './heatmap-matrix'
 export * from './io'
 export { default as MillerIndexInput } from './MillerIndexInput.svelte'
-// Explicit exports to avoid name clash with fermi-surface's Isosurface type
-export {
-  auto_color_config,
-  auto_isosurface_settings,
-  auto_volume_layer,
-  compare_volume_grids,
-  compute_scalar_range,
-  create_volume_slice_settings,
-  create_volume_sampler,
-  DEFAULT_ISO_COLORMAP,
-  DEFAULT_ISOSURFACE_SETTINGS,
-  DEFAULT_VOLUME_SLICE_SETTINGS,
-  extract_volume_range,
-  generate_layers,
-  grid_data_range,
-  is_signed_range,
-  ISO_COLORMAPS,
-  Isosurface as VolumetricIsosurface,
-  IsosurfaceControls,
-  label_file_volumes,
-  lattices_match,
-  LAYER_COLORS,
-  materialize_layers,
-  merge_imported_volumes,
-  normalize_active_volume_idx,
-  parse_chgcar,
-  parse_cube,
-  parse_volumetric_file,
-  remove_volume,
-  resolve_contour_thresholds,
-  resolve_slice_cartesian_point,
-  resolve_slice_color_range,
-  resolve_volume_display_range,
-  sample_hkl_slice,
-  sample_plane_slice,
-  sample_volume_at_positions,
-  sanitize_display_range,
-  scalars_to_vertex_colors,
-  slice_to_rgba,
-  tile_volumetric_data,
-  trilinear_interpolate,
-  volume_center,
-  VolumeSlice,
-  VolumeSliceControls,
-  VolumeSliceView,
-} from './isosurface'
-export type {
-  CartesianPlane,
-  DataRange,
-  DisplayRange,
-  GridCompatibility,
-  IsoColormap,
-  IsosurfaceLayer,
-  IsosurfaceSettings,
-  OutOfBoundsPolicy,
-  PlaneSliceOptions,
-  SliceResult,
-  VolumeSlicePlaneMode,
-  VolumeSliceSettings,
-  VolumeSliceMode,
-  VolumeMergeResult,
-  VolumeDisplayRangeOptions,
-  VolumeSamplerOptions,
-  VolumetricData,
-  VolumetricFileData,
-} from './isosurface'
+export * from './isosurface'
 export * from './labels'
 export * from './layout'
 export * from './lineshape'
@@ -131,7 +39,6 @@ export * from './structure-id'
 export * from './symmetry'
 export * from './table'
 export * from './theme'
-export * from './time'
 export * from './trajectory'
 export * from './url-params'
 export * from './utils'

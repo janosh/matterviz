@@ -101,13 +101,15 @@ npm add -D matterviz
 
 ```svelte
 <script>
-  import { Trajectory } from 'matterviz'
-  // supports .xyz/.extxyz, .traj, .hdf5, .npz, .pkl, .dat and .gz;
-  // decompress .zip/.bz2/.xz first because browsers cannot decode them
+  import { TrajectoryFileViewer } from 'matterviz'
+  // supports .xyz/.extxyz, .traj, .hdf5, .npz, .pkl, .dat plus .gz/.zip wrappers;
+  // decompress .bz2/.xz first because browsers cannot decode them
 </script>
 
-<Trajectory data_url="/traj/ase-md.xyz" auto_play fps={10} style="max-height: 700px" />
+<TrajectoryFileViewer src="/traj/ase-md.xyz" auto_play fps={10} style="max-height: 700px" />
 ```
+
+`TrajectoryFileViewer` owns loading: it fetches `src` (a URL, `File`, `ArrayBuffer` or `Blob`), accepts drops, decompresses, resolves ambiguous HDF5 groups, opens files above `DEFAULTS.trajectory.index_above_bytes` in a Web Worker and disposes each run when it is replaced or the component unmounts. The `Trajectory` component underneath is a pure viewer that only borrows a `TrajectoryRun` you already hold, so pass `trajectory={await open_trajectory(bytes, { filename })}` (or `trajectory_from_frames(frames)`) when you manage the data yourself and call `run.dispose()` when done.
 
 ## 🧪 &thinsp; Coverage
 

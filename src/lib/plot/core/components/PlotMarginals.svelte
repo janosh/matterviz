@@ -35,6 +35,7 @@
   import { format_value } from '$lib/labels'
   import { ticks as d3_ticks } from 'd3-array'
   import { area, curveMonotoneX, curveMonotoneY, line } from 'd3-shape'
+  import { portal } from 'svelte-widgets/attachments'
 
   let {
     marginals,
@@ -78,13 +79,11 @@
   const is_hoverable = (config: ResolvedMarginalConfig) =>
     config.hover !== false && !config.snippet
 
-  // PlotMarginals renders inside the <svg>, which can't host an HTML tooltip. Relocate the tooltip
+  // PlotMarginals renders inside the <svg>, which can't host an HTML tooltip. Portal the tooltip
   // div to be a sibling of the <svg> (in the positioned plot wrapper) so it positions in wrapper px
   // and stacks above HTML overlays (legend, colorbar) — like each host plot's own PlotTooltip.
-  const portal_to_wrapper = (node: HTMLElement) => {
-    node.closest(`svg`)?.parentElement?.append(node)
-    return () => node.remove()
-  }
+  const portal_to_wrapper = (node: HTMLElement) =>
+    portal(node.closest(`svg`)?.parentElement)(node)
 
   // Precompute tooltip content off the hot pointer path (recomputes only when `hovered` changes).
   // `head_label`/`head_value` form the position row (bin range for bars, else a single position);

@@ -7,14 +7,14 @@ import type {
   ScaleType,
   SizeScaleConfig,
   TimeInterval,
-} from '$lib/plot'
-import { clamp01 } from '$lib/utils'
+} from '$lib/plot/core/types'
 import {
   get_arcsinh_threshold,
   get_scale_type_name,
   is_time_scale,
   SCALE_DEFAULTS,
 } from '$lib/plot/core/types'
+import { clamp01 } from '$lib/utils'
 import { extent, range } from 'd3-array'
 import type { ScaleContinuousNumeric, ScaleTime } from 'd3-scale'
 import {
@@ -27,6 +27,8 @@ import {
 
 // Type for ticks parameter - can be count, array of values, time interval, or object mapping values to labels
 export type TicksOption = number | number[] | TimeInterval | Record<number, string>
+
+const MS_PER_DAY = 86_400_000
 
 // Dedupe and sort numeric array (used in tick generation)
 const dedupe_sort = (arr: number[]): number[] => [...new Set(arr)].toSorted((a, b) => a - b)
@@ -45,9 +47,7 @@ export interface ArcsinhScale {
   range(): Vec2
   range(range: Vec2): ArcsinhScale
   invert(value: number): number
-  copy(): ArcsinhScale
   ticks(count?: number): number[]
-  threshold: number
 }
 
 // Union type for all scale functions used in plots
@@ -129,20 +129,8 @@ export function scale_arcsinh(threshold = 1): ArcsinhScale {
     return sinh_transform(t_val)
   }
 
-  // Copy the scale
-  scale.copy = (): ArcsinhScale => {
-    const copy = scale_arcsinh(threshold)
-    copy.domain(current_domain)
-    copy.range(current_range)
-    return copy
-  }
-
-  // Generate nice ticks for arcsinh scale
-  scale.ticks = (count = 10): number[] => {
-    return generate_arcsinh_ticks(current_domain[0], current_domain[1], threshold, count)
-  }
-
-  scale.threshold = threshold
+  scale.ticks = (count = 10): number[] =>
+    generate_arcsinh_ticks(current_domain[0], current_domain[1], threshold, count)
 
   return scale
 }
@@ -300,12 +288,6 @@ export function create_axis_scales<A extends { scale_type?: ScaleType }>(
   }
 }
 
-// Create a time scale for time-based data
-export const create_time_scale = (domain: Vec2, output_range: Vec2) =>
-  scaleTime()
-    .domain([new Date(domain[0]), new Date(domain[1])])
-    .range(output_range)
-
 // Unified tick generation function
 export function generate_ticks(
   domain: Vec2,
@@ -333,33 +315,35 @@ export function generate_ticks(
   if (Array.isArray(ticks_option)) return ticks_option
 
   if (is_time_scale(scale_type)) {
-    const time_scale = scaleTime().domain([new Date(min_val), new Date(max_val)])
-
-    let count = 10 // default
-    if (typeof ticks_option === `number`) {
-      count =
-        ticks_option < 0
-          ? Math.ceil((max_val - min_val) / Math.abs(ticks_option) / 86_400_000) // milliseconds per day
-          : ticks_option
-    } else if (typeof ticks_option === `string`) {
-      count = ticks_option === `day` ? 30 : ticks_option === `month` ? 12 : 10
-    }
-
-    const ticks = time_scale.ticks(count)
-
-    if (typeof ticks_option === `string`) {
-      if (ticks_option === `month`) {
-        return ticks
-          .filter((date: Date) => date.getDate() === 1)
-          .map((date: Date) => date.getTime())
-      }
-      if (ticks_option === `year`) {
-        return ticks
-          .filter((date: Date) => date.getMonth() === 0 && date.getDate() === 1)
-          .map((date: Date) => date.getTime())
-      }
-    }
-    return ticks.map((date: Date) => date.getTime())
+    // Interval requests (`day`/`month`/`year` or a negative day count) ask d3 for one tick per
+    // interval in the domain, so it picks that interval; a positive number is a plain count.
+    const interval_days =
+      typeof ticks_option === `number` && ticks_option < 0
+        ? -ticks_option
+        : ticks_option === `day`
+          ? 1
+          : ticks_option === `month`
+            ? 30
+            : ticks_option === `year`
+              ? 365
+              : null
+    const count =
+      interval_days !== null
+        ? Math.max(1, Math.ceil((max_val - min_val) / (interval_days * MS_PER_DAY)))
+        : typeof ticks_option === `number` && ticks_option > 0
+          ? ticks_option
+          : 10
+    const dates = scaleTime()
+      .domain([new Date(min_val), new Date(max_val)])
+      .ticks(count)
+      .filter((date) =>
+        ticks_option === `month`
+          ? date.getDate() === 1
+          : ticks_option === `year`
+            ? date.getMonth() === 0 && date.getDate() === 1
+            : true,
+      )
+    return dates.map((date) => date.getTime())
   }
 
   const type_name = get_scale_type_name(scale_type)
@@ -388,20 +372,6 @@ export function generate_ticks(
 
   const ticks = scale_fn.ticks(tick_count)
   return ticks.map(Number)
-}
-
-// Calculate domain from array of values (simple version)
-export function calculate_domain(values: number[], scale_type: ScaleType = `linear`): Vec2 {
-  const [min_val, max_val] = extent(values)
-  if (min_val === undefined || max_val === undefined) return [0, 1]
-
-  // log clamps to positive (arcsinh/linear take any value); clamp BOTH ends so all-negative
-  // data can't leave max <= the clamped min and invert/collapse the scale
-  if (get_scale_type_name(scale_type) === `log`) {
-    const lo = Math.max(min_val, math.LOG_EPS)
-    return [lo, Math.max(max_val, lo)]
-  }
-  return [min_val, max_val]
 }
 
 // Finite raw-array extent with a count for padding and renderability checks.
@@ -513,9 +483,8 @@ function nice_range(
       }
       // Handle single data point case with fixed relative padding
     } else if (is_time) {
-      const one_day = 86_400_000 // milliseconds in a day
-      data_min -= one_day
-      data_max += one_day
+      data_min -= MS_PER_DAY
+      data_max += MS_PER_DAY
     } else if (type_name === `log`) {
       data_min = Math.max(math.LOG_EPS, data_min / 1.1) // 10% multiplicative padding
       data_max *= 1.1
@@ -557,49 +526,35 @@ function nice_range(
   return [snap_zero_min ? 0 : nice_min, snap_zero_max ? 0 : nice_max]
 }
 
-// Generate logarithmic ticks (from ScatterPlot)
+// Logarithmic ticks: powers of 10 inside the domain; 1-2-5 mantissas when the domain spans
+// under three decades and the caller asked for more than 5 ticks; d3's mantissa ticks for
+// sub-decade domains (e.g. after zooming) where fewer than two powers of 10 fit.
 export function generate_log_ticks(
   min: number,
   max: number,
   ticks_option?: TicksOption,
 ): number[] {
-  // If ticks_option is already an array, use it directly
   if (Array.isArray(ticks_option)) return ticks_option
   min = Math.max(min, math.LOG_EPS)
-  // Ensure a strictly increasing domain for tick generation
-  max = Math.max(max, min * 1.1)
-
+  // Widen only a collapsed domain; a merely narrow one must not grow ticks past its max
+  if (max <= min) max = min * 1.1
   const min_power = Math.floor(Math.log10(min))
   const max_power = Math.ceil(Math.log10(max))
-
-  // For very wide ranges, extend the range to include more ticks
-  const range_size = max_power - min_power
-  const extended_min_power =
-    range_size <= 2 ? min_power - 1 : min_power - Math.max(1, Math.floor(range_size / 4))
-  const extended_max_power = range_size <= 2 ? max_power + 1 : max_power
-
-  const powers = range(extended_min_power, extended_max_power + 1).map(
-    (power: number) => 10 ** power,
-  )
-
-  // For narrow ranges, include intermediate values
+  const in_range = (tick: number): boolean => tick >= min && tick <= max
+  const powers = range(min_power, max_power + 1).map((power: number) => 10 ** power)
   if (max_power - min_power < 3 && typeof ticks_option === `number` && ticks_option > 5) {
-    const detailed_ticks: number[] = []
-    powers.forEach((power: number) => {
-      detailed_ticks.push(power)
-      if (power * 2 <= 10 ** extended_max_power) detailed_ticks.push(power * 2)
-      if (power * 5 <= 10 ** extended_max_power) detailed_ticks.push(power * 5)
-    })
-    return detailed_ticks.filter((tick) => tick >= min && tick <= max)
+    const mantissa_ticks = powers
+      .flatMap((power) => [power, power * 2, power * 5])
+      .filter(in_range)
+    // A sub-decade domain between mantissas (e.g. [0.92, 0.99] or [7, 8]) fits fewer than two
+    // of them; fall through to d3's fine ticks instead of leaving the axis bare
+    if (mantissa_ticks.length >= 2) return mantissa_ticks
   }
-
-  const filtered_powers = powers.filter((power) => power >= min && power <= max)
-  if (filtered_powers.length >= 2) return filtered_powers
-
-  // Sub-decade domains (e.g. after zoom) have <2 powers of 10 — use d3's mantissa log ticks
+  const in_range_powers = powers.filter(in_range)
+  if (in_range_powers.length >= 2) return in_range_powers
   const tick_count = typeof ticks_option === `number` && ticks_option > 0 ? ticks_option : 5
   const fallback = scaleLog().domain([min, max]).ticks(tick_count)
-  return fallback.length > 0 ? fallback : filtered_powers
+  return fallback.length > 0 ? fallback : in_range_powers
 }
 
 // Get custom label for a tick value if provided, otherwise return null

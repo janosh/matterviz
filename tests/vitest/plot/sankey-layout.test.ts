@@ -1,5 +1,6 @@
 import type { SankeyData } from '$lib/plot'
 import { compute_sankey_layout, sankey_from_links } from '$lib/plot'
+import { sankey as d3_sankey, sankeyJustify } from 'd3-sankey'
 import { describe, expect, test, vi } from 'vitest'
 
 // Simple two-column graph: A->C (1), B->C (2). C value = 1 + 2 = 3.
@@ -29,16 +30,48 @@ describe(`compute_sankey_layout`, () => {
     expect(c.value).toBe(3)
   })
 
-  test(`positions are contained within the extent`, () => {
-    const { nodes } = compute_sankey_layout(tri, dims)
-    for (const node of nodes) {
-      expect(node.x0).toBeGreaterThanOrEqual(0)
-      expect(node.x1).toBeLessThanOrEqual(dims.width + 1e-6)
-      expect(node.y0).toBeGreaterThanOrEqual(-1e-6)
-      expect(node.y1).toBeLessThanOrEqual(dims.height + 1e-6)
-      expect(node.x1).toBeGreaterThan(node.x0)
-      expect(node.y1).toBeGreaterThanOrEqual(node.y0)
-    }
+  test(`node boxes and link ribbons match a raw d3-sankey layout to 1e-9`, () => {
+    // A and B stack in column 0 (400px wide, 20px nodes), C fills column 1. With
+    // padding 10 the busiest column (A + B) spans the full 300px height.
+    const { nodes, links } = compute_sankey_layout(tri, dims)
+    const reference = d3_sankey<{ idx: number }, object>()
+      .nodeId((node) => node.idx)
+      .nodeWidth(dims.node_width)
+      .nodePadding(dims.node_padding)
+      .nodeAlign(sankeyJustify)
+      .iterations(6)
+      .extent([
+        [0, 0],
+        [dims.width, dims.height],
+      ])({
+      nodes: tri.nodes.map((_, idx) => ({ idx })),
+      links: tri.links.map((link) => ({ ...link })),
+    })
+    nodes.forEach((node, idx) => {
+      const ref = reference.nodes[idx]
+      for (const key of [`x0`, `x1`, `y0`, `y1`] as const) {
+        expect(node[key], `${node.label}.${key}`).toBeCloseTo(ref[key] ?? Number.NaN, 9)
+      }
+    })
+    links.forEach((link, idx) => {
+      const ref = reference.links[idx]
+      expect(link.width).toBeCloseTo(ref.width ?? Number.NaN, 9)
+      expect(link.y0).toBeCloseTo(ref.y0 ?? Number.NaN, 9)
+      expect(link.y1).toBeCloseTo(ref.y1 ?? Number.NaN, 9)
+    })
+    // hand-checked geometry: columns at x = 0 and 380; A (1/3 of the 290px left after
+    // one padding gap) sits on top of B, which ends at the bottom edge
+    const [a, b, c] = nodes
+    expect([a.x0, a.x1, c.x0, c.x1]).toEqual([0, 20, 380, 400])
+    expect([a.y0, a.y1, b.y0, b.y1]).toEqual(
+      [0, 290 / 3, 290 / 3 + 10, 300].map((val) => expect.closeTo(val, 9)),
+    )
+    // ribbons run from the source's right edge to the target's left edge with the
+    // bezier control points halfway between the columns
+    expect(links[0].mid.x).toBe(200)
+    expect(links[0].path).toMatch(
+      /^M20,(?<y0>[\d.]+)C200,\k<y0> 200,(?<y1>[\d.]+) 380,\k<y1>$/,
+    )
   })
 
   test(`column heights respect d3 value scaling`, () => {
@@ -208,15 +241,35 @@ describe(`compute_sankey_layout`, () => {
     expect(() => compute_sankey_layout(data, dims)).toThrow(/unknown node/)
   })
 
-  test(`throws a clear error on cyclic graphs`, () => {
-    const data: SankeyData = {
-      nodes: [{ label: `A` }, { label: `B` }],
-      links: [
-        { source: 0, target: 1, value: 1 },
-        { source: 1, target: 0, value: 1 },
+  test.each([
+    [
+      `2-cycle`,
+      [
+        [0, 1],
+        [1, 0],
       ],
+      `A -> B -> A`,
+    ],
+    [`self loop`, [[0, 0]], `A -> A`],
+    // the cycle is buried behind an acyclic prefix and named from its entry node
+    [
+      `3-cycle behind a chain`,
+      [
+        [3, 0],
+        [0, 1],
+        [1, 2],
+        [2, 0],
+      ],
+      `A -> B -> C -> A`,
+    ],
+  ] as const)(`names the offending nodes of a %s`, (_desc, edges, cycle) => {
+    const data: SankeyData = {
+      nodes: [`A`, `B`, `C`, `D`].map((label) => ({ label })),
+      links: edges.map(([source, target]) => ({ source, target, value: 1 })),
     }
-    expect(() => compute_sankey_layout(data, dims)).toThrow(/DAG without cycles/)
+    expect(() => compute_sankey_layout(data, dims)).toThrow(
+      `Sankey: links must form a DAG but contain the cycle ${cycle}`,
+    )
   })
 
   test(`does not mutate the input data`, () => {

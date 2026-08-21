@@ -75,77 +75,44 @@
     if (on_click !== region.on_click) on_click?.(evt)
   }
 
-  // Event handlers
-  const handle_mouse_enter = (event: MouseEvent) => emit_hover(construct_event(event))
-  const handle_mouse_leave = () => emit_hover(null)
-  const handle_mouse_move = (event: MouseEvent) =>
-    is_hovered && emit_hover(construct_event(event))
-  const handle_click = (event: MouseEvent) => {
-    event.stopPropagation()
-    emit_click(construct_event(event))
-  }
-
-  // Keyboard handler - creates event with default coordinates since no mouse position
-  function handle_keydown(event: KeyboardEvent) {
-    if (event.key === `Enter` || event.key === ` `) {
-      event.preventDefault()
-      if (!is_clickable) return
-
-      // For keyboard activation, use center of element or default coordinates
-      const target = event.currentTarget
-      if (!(target instanceof SVGElement)) return
-      const rect = target.ownerSVGElement?.getBoundingClientRect()
-      const element_rect = target.getBoundingClientRect()
-
-      // Use center of the fill region element
-      const px = element_rect
-        ? (element_rect.left + element_rect.right) / 2 - (rect?.left ?? 0)
-        : 0
-      const py = element_rect
-        ? (element_rect.top + element_rect.bottom) / 2 - (rect?.top ?? 0)
-        : 0
-
-      const raw_x = x_scale_fn.invert?.(px) ?? 0
-      const data_x = raw_x instanceof Date ? raw_x.getTime() : raw_x
-      const data_y = y_scale_fn.invert?.(py) ?? 0
-
-      emit_click({
-        event,
-        region_idx,
-        region_id: region.id,
-        x: data_x,
-        y: data_y,
-        px,
-        py,
-        label: region.label,
-        metadata: region.metadata,
-      })
-    }
-  }
-
-  // Construct FillHandlerEvent from MouseEvent
-  function construct_event(event: MouseEvent): FillHandlerEvent {
-    const current = event.currentTarget
-    const rect = (
-      current instanceof SVGElement ? current.ownerSVGElement : null
+  // Client position -> svg-relative pixels -> data coords (time x axes invert to Date)
+  const make_event = (
+    event: MouseEvent | KeyboardEvent,
+    client_x: number,
+    client_y: number,
+  ): FillHandlerEvent => {
+    const target = event.currentTarget
+    const svg_rect = (
+      target instanceof SVGElement ? target.ownerSVGElement : null
     )?.getBoundingClientRect()
-    const px = event.clientX - (rect?.left ?? 0)
-    const py = event.clientY - (rect?.top ?? 0)
+    const px = client_x - (svg_rect?.left ?? 0)
+    const py = client_y - (svg_rect?.top ?? 0)
     const raw_x = x_scale_fn.invert?.(px) ?? 0
-    const data_x = raw_x instanceof Date ? raw_x.getTime() : raw_x
-    const data_y = y_scale_fn.invert?.(py) ?? 0
-
     return {
       event,
       region_idx,
       region_id: region.id,
-      x: data_x,
-      y: data_y,
+      x: raw_x instanceof Date ? raw_x.getTime() : raw_x,
+      y: y_scale_fn.invert?.(py) ?? 0,
       px,
       py,
       label: region.label,
       metadata: region.metadata,
     }
+  }
+  const mouse_event = (event: MouseEvent) => make_event(event, event.clientX, event.clientY)
+  const handle_click = (event: MouseEvent) => {
+    event.stopPropagation()
+    emit_click(mouse_event(event))
+  }
+  // Keyboard activation has no pointer position: report the region's center
+  const handle_keydown = (event: KeyboardEvent) => {
+    if (event.key !== `Enter` && event.key !== ` `) return
+    event.preventDefault()
+    const target = event.currentTarget
+    if (!is_clickable || !(target instanceof SVGElement)) return
+    const { left, right, top, bottom } = target.getBoundingClientRect()
+    emit_click(make_event(event, (left + right) / 2, (top + bottom) / 2))
   }
 
   // Type guard for gradient fill
@@ -159,9 +126,9 @@
   class={['fill-region', { hovered: is_hovered }]}
   clip-path={`url(#${clip_path_id})`}
   style="cursor: {cursor_style}; pointer-events: all"
-  onmouseenter={handle_mouse_enter}
-  onmouseleave={handle_mouse_leave}
-  onmousemove={handle_mouse_move}
+  onmouseenter={(event) => emit_hover(mouse_event(event))}
+  onmouseleave={() => emit_hover(null)}
+  onmousemove={(event) => is_hovered && emit_hover(mouse_event(event))}
   onclick={handle_click}
   onkeydown={handle_keydown}
   role="img"

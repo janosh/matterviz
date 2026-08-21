@@ -1,7 +1,6 @@
 import { Dos, type Vec2 } from '$lib'
 import type { PymatgenCompleteDos } from '$lib/spectral/helpers'
 import {
-  clear_smearing_cache,
   extract_pdos,
   extract_spin_channels,
   format_dos_tooltip,
@@ -10,7 +9,7 @@ import {
   validate_sigma_range,
 } from '$lib/spectral/helpers'
 import type { ElectronicDos, PhononDos, SpinMode } from '$lib/spectral/types'
-import { mount, tick, unmount } from 'svelte'
+import { mount, tick } from 'svelte'
 import { describe, expect, it } from 'vitest'
 import { bind_props, expect_plot_controls, mount_sized } from '../setup'
 
@@ -148,18 +147,6 @@ describe(`Dos component`, () => {
     })
     await tick()
     await expect_plot_controls(target, controls_state, `dos`)
-  })
-
-  it(`clears smearing cache without error and re-renders`, async () => {
-    const props = { doses: phonon_dos, sigma: 0.5 }
-    const first = mount(Dos, { target: document.body, props })
-    await tick()
-    clear_smearing_cache()
-    await unmount(first)
-    document.body.innerHTML = ``
-    mount(Dos, { target: document.body, props })
-    await tick()
-    expect(document.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
   })
 
   // Unit conversion tests

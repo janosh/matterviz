@@ -7,11 +7,16 @@ import {
   detect_compression_format,
 } from '$lib/io/decompress'
 import { parse_volumetric_file } from '$lib/isosurface/parse'
+import { volume_from_json } from '$lib/isosurface/types'
 import { is_vaspwave_filename, parse_vaspwave_charge } from '$lib/isosurface/parse-vaspwave'
 import { parse_structure_file } from '$lib/structure/parse'
 import { is_indexable_trajectory_filename } from '$lib/trajectory/format-detect'
-import { is_trajectory_file, parse_trajectory_data } from '$lib/trajectory/parse'
-import type { VaspoutElectronicData } from '$lib/trajectory/parse/vaspout-electronic'
+import {
+  is_trajectory_file,
+  open_trajectory,
+  type OpenTrajectoryOptions,
+  VaspoutElectronicOnlyError,
+} from '$lib/trajectory/parse'
 import type { LargeFileMarker } from './host-transfer'
 import { parse_large_file_marker } from './host-transfer'
 import type { ViewType } from './types'
@@ -36,9 +41,6 @@ export interface ParseResult {
   type: ViewType
   data: unknown
   filename: string
-  // Set only for host-streamed trajectories: the on-disk path the host serves
-  // frames from. `create_display` turns it into a frame loader.
-  streaming_info?: { file_path: string }
 }
 
 // A file past the host's inline-transfer limit arrives as a `LARGE_FILE:` marker
@@ -63,7 +65,26 @@ const resolve_large_file = async (
     type: `trajectory`,
     data: await request_large_file_content(marker.file_path, filename),
     filename,
-    streaming_info: { file_path: marker.file_path },
+  }
+}
+
+// Host-configurable loading knobs forwarded to open_trajectory (VS Code settings reach the
+// webview this way; the defaults otherwise come from DEFAULTS.trajectory)
+export type TrajectoryLoadOptions = Pick<OpenTrajectoryOptions, `index_above_bytes`>
+
+const trajectory_result = async (
+  source: string | ArrayBuffer,
+  filename: string,
+  load_options: TrajectoryLoadOptions,
+): Promise<ParseResult> => {
+  try {
+    const data = await open_trajectory(source, { ...load_options, filename })
+    return { type: `trajectory`, filename, data }
+  } catch (error) {
+    if (error instanceof VaspoutElectronicOnlyError) {
+      return { type: `vaspout_electronic`, filename, data: error.electronic }
+    }
+    throw error
   }
 }
 
@@ -82,6 +103,7 @@ export const parse_file_content = async (
   content: string,
   filename: string,
   is_base64: boolean = false,
+  load_options: TrajectoryLoadOptions = {},
 ): Promise<ParseResult> => {
   // Oversized files never carry their own bytes — the host sends a marker and
   // serves frames on demand. Check before anything tries to parse the marker text.
@@ -104,17 +126,8 @@ export const parse_file_content = async (
     // or compressed ASE .traj files): decompress to binary first — generic text
     // decompression would corrupt their bytes — so routing sees the inner name.
     const is_binary_format = /\.(?:h5|hdf5|traj)$/i.test(filename)
-    if (compression_format === `zip`) {
-      const { unzipSync } = await import(`fflate`)
-      const payload = Object.entries(unzipSync(new Uint8Array(buffer))).find(
-        ([entry_name]) => !entry_name.endsWith(`/`),
-      )?.[1]
-      if (!payload) throw new Error(`ZIP archive contains no files: ${filename}`)
-      if (is_binary_format) buffer = payload.slice().buffer
-      else content = new TextDecoder().decode(payload)
-    } else if (compression_format) {
-      // Unified handling for all supported compression formats
-      // Unsupported formats fail here with a clear extraction error
+    if (compression_format) {
+      // gzip/deflate/zip inflate here; unsupported formats fail with a clear extraction error
       if (is_binary_format) buffer = await decompress_data_binary(buffer, compression_format)
       else content = await decompress_data(buffer, compression_format)
     }
@@ -128,17 +141,7 @@ export const parse_file_content = async (
 
     // Binary trajectory formats: pass buffer directly to trajectory parser
     if (is_binary_format) {
-      const data = await parse_trajectory_data(buffer, filename)
-      // DOS/bands-only vaspout.h5 (e.g. phelel band paths): no frames to animate,
-      // route the electronic results to the spectral components instead.
-      // Require at least one renderable result rather than trusting the
-      // parser's invariant (the metadata cast is unchecked): an empty
-      // electronic object would otherwise mount <Dos doses={null}>.
-      const electronic = data.metadata?.electronic as VaspoutElectronicData | undefined
-      if (data.frames.length === 0 && (electronic?.dos || electronic?.bands)) {
-        return { type: `vaspout_electronic`, filename, data: electronic }
-      }
-      return { type: `trajectory`, filename, data }
+      return trajectory_result(buffer, filename, load_options)
     }
   }
 
@@ -183,12 +186,13 @@ export const parse_file_content = async (
             // generic JSON handling below
           }
         }
-        // Volumetric JSON needs wrapping in { structure, volumes } for the isosurface renderer
+        // Volumetric JSON (nested grid or flat values) becomes a typed-array volume and
+        // is wrapped in { structure, volumes } for the isosurface renderer
         if (detected === `volumetric`) {
-          const vol = parsed_json as { lattice?: unknown }
+          const volume = volume_from_json(parsed_json)
           return {
             type: `isosurface`,
-            data: { structure: { sites: [], lattice: vol.lattice }, volumes: [parsed_json] },
+            data: { structure: { sites: [], lattice: volume.lattice }, volumes: [volume] },
             filename,
           }
         }
@@ -206,8 +210,7 @@ export const parse_file_content = async (
   // Try trajectory parsing if it looks like a trajectory
   if (is_trajectory_file(filename, content)) {
     try {
-      const data = await parse_trajectory_data(content, filename)
-      return { type: `trajectory`, data, filename }
+      return await trajectory_result(content, filename, load_options)
     } catch (error) {
       // Trajectory-looking filename but not trajectory-shaped JSON (e.g. nve-config.json):
       // fall through to the JSON browser instead of failing the render

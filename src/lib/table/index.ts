@@ -4,9 +4,14 @@ import { max, min } from 'd3-array'
 import { scaleLog, scaleSequential } from 'd3-scale'
 import type { Snippet } from 'svelte'
 import type { ClassValue } from 'svelte/elements'
+import type { ExportFormat } from './export'
 
 export { default as HeatmapTable } from './HeatmapTable.svelte'
 export { default as ToggleMenu } from './ToggleMenu.svelte'
+export * from './data'
+export * from './export'
+export { type CellPos, type CellRect, CellSelection } from './selection.svelte'
+export { virtual_window } from './virtual'
 
 // Cell value types for table data
 export type CellVal =
@@ -58,9 +63,6 @@ export type Label = {
   sticky?: boolean
   visible?: boolean
   sortable?: boolean
-  // Show sort direction/better-hint arrow in header. Set false to keep sorting
-  // enabled but hide the visual arrow indicator.
-  show_sort_indicator?: boolean
   // When true, the toggle checkbox in ToggleMenu is greyed out and non-interactive
   disabled?: boolean
   style?: string
@@ -104,15 +106,9 @@ export type ColumnFilter =
   | { kind: `text`; text: string }
   | { kind: `category`; values: string[] }
 
-// Externally bindable table sort used by HeatmapTable's `sort` prop.
+// Externally bindable table sort used by HeatmapTable's `sort` prop. Column IDs, see get_column_id.
 export type SortDir = `asc` | `desc`
 export type TableSort = { column: string; dir: SortDir }
-
-// Internal ascending criterion, not HeatmapTable's external sort prop (use TableSort).
-export type SortState = { column: string; ascending: boolean }
-
-// Multi-column sort state (for Shift+click sorting)
-export type MultiSortState = SortState[]
 
 // Sort hint configuration (string for simple text, object for full control)
 export type SortHint =
@@ -153,14 +149,7 @@ export type Search =
 
 // Export configuration (boolean to enable, object for full control). `md` emits
 // GitHub-flavoured markdown, `tex` a LaTeX booktabs tabular.
-export type ExportFormat = `csv` | `json` | `md` | `tex`
 export type ExportData = boolean | { formats?: ExportFormat[]; filename?: string }
-
-// Callback type for async server-side sorting
-export type OnSortCallback = (column: string, dir: SortDir) => Promise<RowData[]>
-
-// Strip HTML tags from a string (for search, export, etc.)
-export const strip_html = (str: string): string => str.replaceAll(/<[^>]*>/g, ``)
 
 export type CellColor = { bg: string | null; text: string | null }
 const NULL_CELL_COLOR: CellColor = { bg: null, text: null }
@@ -311,17 +300,4 @@ export function make_cell_color_scale(
     const bg = log_scale ? interpolator(log_scale(color_val)) : seq_scale(color_val)
     return { bg, text: pick_contrast_color({ background: bg }) }
   }
-}
-
-// Calculate table cell background color based on its value and column config.
-// One-shot convenience wrapper around make_cell_color_scale — prefer the
-// factory when coloring many cells of the same column.
-export function calc_cell_color(
-  val: number | null | undefined, // cell value
-  all_values: CellVal[], // all values in the column
-  better: `higher` | `lower` | undefined, // sort direction
-  color_scale: D3InterpolateName | null = `interpolateViridis`, // color scale name
-  scale_type: `linear` | `log` = `linear`, // scale type
-): CellColor {
-  return make_cell_color_scale(all_values, better, color_scale, scale_type)(val)
 }

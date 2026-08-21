@@ -29,105 +29,54 @@ describe(`CRYSTAL_SYSTEM_RANGES`, () => {
   })
 })
 
-describe(`spacegroup_num_to_crystal_sys`, () => {
+// Crystal system from number/symbol/numeric string; lattice system equals it except for the
+// 7 R-centered trigonal groups (rhombohedral) — P-trigonal groups have hexagonal lattices
+describe(`spacegroup_to_crystal_sys / spacegroup_to_lattice_system`, () => {
   test.each([
-    [1, `triclinic`],
-    [2, `triclinic`],
-    [3, `monoclinic`],
-    [15, `monoclinic`],
-    [16, `orthorhombic`],
-    [74, `orthorhombic`],
-    [75, `tetragonal`],
-    [142, `tetragonal`],
-    [143, `trigonal`],
-    [167, `trigonal`],
-    [168, `hexagonal`],
-    [194, `hexagonal`],
-    [195, `cubic`],
-    [230, `cubic`],
-  ] as const)(`should return %s for space group %i`, (spacegroup, expected_system) => {
-    expect(spg.spacegroup_num_to_crystal_sys(spacegroup)).toBe(expected_system)
+    [1, `triclinic`, `triclinic`],
+    [2, `triclinic`, `triclinic`],
+    [3, `monoclinic`, `monoclinic`],
+    [15, `monoclinic`, `monoclinic`],
+    [16, `orthorhombic`, `orthorhombic`],
+    [74, `orthorhombic`, `orthorhombic`],
+    [75, `tetragonal`, `tetragonal`],
+    [142, `tetragonal`, `tetragonal`],
+    [143, `trigonal`, `hexagonal`], // P3
+    [147, `trigonal`, `hexagonal`], // P-3
+    [150, `trigonal`, `hexagonal`], // P321
+    [146, `trigonal`, `rhombohedral`], // R3
+    [148, `trigonal`, `rhombohedral`], // R-3
+    [155, `trigonal`, `rhombohedral`], // R32
+    [160, `trigonal`, `rhombohedral`], // R3m
+    [161, `trigonal`, `rhombohedral`], // R3c
+    [166, `trigonal`, `rhombohedral`], // R-3m
+    [167, `trigonal`, `rhombohedral`], // R-3c
+    [168, `hexagonal`, `hexagonal`],
+    [194, `hexagonal`, `hexagonal`],
+    [195, `cubic`, `cubic`],
+    [230, `cubic`, `cubic`],
+    [`P1`, `triclinic`, `triclinic`],
+    [`C2/c`, `monoclinic`, `monoclinic`],
+    [`Pnma`, `orthorhombic`, `orthorhombic`],
+    [`I4/mmm`, `tetragonal`, `tetragonal`],
+    [`P3`, `trigonal`, `hexagonal`],
+    [`R-3m`, `trigonal`, `rhombohedral`],
+    [`P6_3/mmc`, `hexagonal`, `hexagonal`],
+    [`Fm-3m`, `cubic`, `cubic`],
+    [`62`, `orthorhombic`, `orthorhombic`],
+    [`146:R`, `trigonal`, `rhombohedral`],
+    [`P2/m2/m2/m`, `orthorhombic`, `orthorhombic`],
+    [`I4_1/a-32/d`, `cubic`, `cubic`],
+  ] as const)(`%s → %s crystal system, %s lattice`, (input, crystal_sys, lattice_sys) => {
+    expect(spg.spacegroup_to_crystal_sys(input)).toBe(crystal_sys)
+    expect(spg.spacegroup_to_lattice_system(input)).toBe(lattice_sys)
   })
 
-  test.each([0, -1, 231, 1000, -100])(
-    `should return null for invalid number %i`,
-    (invalid_number) => {
-      expect(spg.spacegroup_num_to_crystal_sys(invalid_number)).toBeNull()
-    },
-  )
-})
-
-describe(`spacegroup_num_to_lattice_system`, () => {
-  // The lattice system equals the crystal system except for the 7 R-centered trigonal
-  // groups, which have rhombohedral lattices; all other trigonal (P) groups are hexagonal.
-  test.each([
-    [1, `triclinic`],
-    [15, `monoclinic`],
-    [74, `orthorhombic`],
-    [142, `tetragonal`],
-    [194, `hexagonal`],
-    [230, `cubic`],
-    // R-centered trigonal → rhombohedral
-    [146, `rhombohedral`], // R3
-    [148, `rhombohedral`], // R-3
-    [155, `rhombohedral`], // R32
-    [160, `rhombohedral`], // R3m
-    [161, `rhombohedral`], // R3c
-    [166, `rhombohedral`], // R-3m
-    [167, `rhombohedral`], // R-3c
-    // P trigonal → hexagonal lattice
-    [143, `hexagonal`], // P3
-    [147, `hexagonal`], // P-3
-    [150, `hexagonal`], // P321
-  ] as const)(`space group %i has lattice system %s`, (num, expected) => {
-    expect(spg.spacegroup_num_to_lattice_system(num)).toBe(expected)
-  })
-
-  test(`RHOMBOHEDRAL_SPACEGROUPS lists exactly the R-centered trigonal groups`, () => {
-    expect([...spg.RHOMBOHEDRAL_SPACEGROUPS]).toEqual([146, 148, 155, 160, 161, 166, 167])
-    // every entry is trigonal in the crystal-system classification
-    for (const num of spg.RHOMBOHEDRAL_SPACEGROUPS) {
-      expect(spg.spacegroup_num_to_crystal_sys(num)).toBe(`trigonal`)
-    }
-  })
-
-  test.each([0, -1, 231, 1000])(`returns null for invalid number %i`, (invalid) => {
-    expect(spg.spacegroup_num_to_lattice_system(invalid)).toBeNull()
-  })
-})
-
-describe(`spacegroup_to_crystal_sys`, () => {
-  test.each([
-    [1, `triclinic`],
-    [74, `orthorhombic`],
-    [142, `tetragonal`],
-    [230, `cubic`],
-    [`P1`, `triclinic`],
-    [`P-1`, `triclinic`],
-    [`P2`, `monoclinic`],
-    [`C2/c`, `monoclinic`],
-    [`Pnma`, `orthorhombic`],
-    [`P4`, `tetragonal`],
-    [`I4/mmm`, `tetragonal`],
-    [`P3`, `trigonal`],
-    [`R-3m`, `trigonal`],
-    [`P6`, `hexagonal`],
-    [`P6_3/mmc`, `hexagonal`],
-    [`Fm-3m`, `cubic`],
-    [`1`, `triclinic`],
-    [`62`, `orthorhombic`],
-    [`230`, `cubic`],
-    [`P121`, `monoclinic`],
-    [`P2/m2/m2/m`, `orthorhombic`],
-    [`I4_1/a-32/d`, `cubic`],
-  ] as const)(`should return %s for %s`, (input, expected) => {
-    expect(spg.spacegroup_to_crystal_sys(input)).toBe(expected)
-  })
-
-  test.each([`invalid`, `P999`, ``, `unknown`, `0`, `231`, `-1`])(
-    `should return null for invalid input '%s'`,
-    (invalid_input) => {
-      expect(spg.spacegroup_to_crystal_sys(invalid_input)).toBeNull()
+  test.each([0, -1, 231, 1000, 62.5, `invalid`, `P999`, ``, `0`, `231`, `-1`])(
+    `returns null for invalid input %j`,
+    (invalid) => {
+      expect(spg.spacegroup_to_crystal_sys(invalid)).toBeNull()
+      expect(spg.spacegroup_to_lattice_system(invalid)).toBeNull()
     },
   )
 })
@@ -147,6 +96,7 @@ describe(`normalize_spacegroup`, () => {
     [-1, null],
     [231, null],
     [1000, null],
+    [62.5, null],
     [`invalid`, null],
     [`P999`, null],
     [``, null],
@@ -199,7 +149,7 @@ describe(`SPACEGROUP_NUM_TO_SYMBOL`, () => {
 describe(`Integration tests`, () => {
   test(`should process all 230 space groups through full pipeline`, () => {
     for (let num = 1; num <= 230; num++) {
-      const crystal_system = spg.spacegroup_num_to_crystal_sys(num)
+      const crystal_system = spg.spacegroup_to_crystal_sys(num)
       const symbol = spg.SPACEGROUP_NUM_TO_SYMBOL[num]
 
       expect(spg.CRYSTAL_SYSTEMS).toContain(crystal_system as CrystalSystem)

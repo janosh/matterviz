@@ -1,7 +1,7 @@
 <script lang="ts" generics="EntryT extends PhaseData = PhaseData">
   // Unified tooltip component for convex hull diagrams
-  import { ELEM_SYMBOL_TO_NAME, get_electro_neg_formula } from '$lib/composition'
-  import type { ElementSymbol } from '$lib/element'
+  import { get_electro_neg_formula } from '$lib/composition'
+  import { element_by_symbol, type ElementSymbol } from '$lib/element'
   import { format_num } from '$lib/labels'
   import { sanitize_html } from '$lib/sanitize'
   import { TooltipContent } from '$lib/tooltip'
@@ -31,7 +31,7 @@
   const elem_symbol = $derived(
     is_element ? (Object.entries(entry.composition).find(([, n]) => n > 0)?.[0] ?? ``) : ``,
   ) as ElementSymbol | ``
-  const elem_name = $derived(elem_symbol && ELEM_SYMBOL_TO_NAME[elem_symbol])
+  const elem_name = $derived(elem_symbol && element_by_symbol.get(elem_symbol)?.name)
   const polymorph_stats = $derived(
     entry.entry_id && polymorph_stats_map ? polymorph_stats_map.get(entry.entry_id) : null,
   )

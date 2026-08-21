@@ -8,9 +8,10 @@
 import type { D3InterpolateName } from '$lib/colors'
 import type { Vec2 } from '$lib/math'
 import type ColorBar from '$lib/plot/core/components/ColorBar.svelte'
-import { closest_data_idx } from '$lib/plot/core/interactions'
+import { closest_data_idx, is_activation_key, pointer_pos } from '$lib/plot/core/interactions'
 import type { Sides } from '$lib/plot/core/layout'
 import { filter_padding } from '$lib/plot/core/layout'
+import { invalidate_text_metrics_after_fonts_ready } from '$lib/plot/core/text-metrics'
 import type { LegendConfig, LegendItem } from '$lib/plot/core/types'
 import type { ColorBarSide } from '$lib/plot/core/utils/hierarchy-chart'
 import {
@@ -20,21 +21,13 @@ import {
   compute_metric_colors,
   compute_node_dim,
   compute_node_infos,
+  export_hierarchy_chart,
   hierarchy_legend_items,
-  is_activation_key,
   node_handler_props,
-  pointer_pos,
-  prune_muted_ids,
-  safe_hierarchy_layout,
+  resolve_label_font,
   selection_within,
-  svg_label_font,
   toggle_muted,
 } from '$lib/plot/core/utils/hierarchy-chart'
-import {
-  export_hierarchy_chart,
-  make_cached_contrast,
-  make_cached_text_width,
-} from '$lib/plot/core/utils/hierarchy-labels'
 import { resolve_legend_visibility } from '$lib/plot/core/utils/series-visibility'
 import type {
   PositionedArc,
@@ -45,8 +38,9 @@ import type {
   SunburstSort,
   SunburstValueMode,
 } from '$lib/plot/sunburst/sunburst'
+import { compute_sunburst_layout } from '$lib/plot/sunburst/sunburst'
 import type { ComponentProps, Snippet } from 'svelte'
-import { tick } from 'svelte'
+import { tick, untrack } from 'svelte'
 import { SvelteSet } from 'svelte/reactivity'
 
 type Point = { x: number; y: number }
@@ -144,16 +138,13 @@ export class HierarchyChartState<
   Metadata extends Record<string, unknown> = Record<string, unknown>,
 > {
   readonly #opts: HierarchyChartOptions<Metadata>
-  readonly #contrast = make_cached_contrast()
-  // Memoized canvas text measurement, shared with the chart's own label fitting
-  readonly text_width = make_cached_text_width()
   readonly chart: `sunburst` | `treemap`
   readonly node_attr: string
   // Unique per instance so multiple charts on one page don't collide on the
   // hatch pattern's SVG id
   readonly hatch_pattern_id: string
   // Depth-1 category ids muted via legend toggle (dimmed, not removed - keeps
-  // the layout stable)
+  // the layout stable). Ids of nodes absent from the current data are inert.
   readonly muted_ids = new SvelteSet<string | number>()
 
   svg_element: SVGSVGElement | null = $state(null)
@@ -163,18 +154,45 @@ export class HierarchyChartState<
   hover_pos: Point = $state({ x: 0, y: 0 })
   focused_idx: number | null = $state(null)
   colorbar_size: { width: number; height: number } = $state({ width: 0, height: 0 })
+  // Bumped once webfonts resolve so labels measured against fallback fonts re-fit
+  #font_metrics_revision = $state(0)
 
+  // Must be constructed during component init: the layout-change effect below
+  // needs an owner.
   constructor(opts: HierarchyChartOptions<Metadata>) {
     this.#opts = opts
     this.chart = opts.chart
     this.node_attr = `data-${opts.chart}-node-idx`
     this.hatch_pattern_id = `${opts.chart}-hatch-${opts.uid}`
+    // Data changed: clear the index-based hover/focus state, which would otherwise
+    // leave a stale tooltip and highlight whatever unrelated node now occupies the
+    // old index. untrack: writing hover state must not re-trigger this effect.
+    $effect(() => {
+      void this.arcs
+      untrack(() => {
+        this.set_hover(null)
+        this.focused_idx = null
+      })
+    })
+    $effect(() => {
+      let mounted = true
+      // fonts that never resolve keep the fallback measurements, which is fine
+      void invalidate_text_metrics_after_fonts_ready().then(
+        (revision) => {
+          if (mounted) this.#font_metrics_revision = revision
+        },
+        () => {},
+      )
+      return () => {
+        mounted = false
+      }
+    })
   }
 
   // `$derived.by` throughout: `#opts` is only assigned in the constructor, so a
   // bare `$derived(...)` expression referencing it reads as a use-before-init
   layout = $derived.by(() =>
-    safe_hierarchy_layout(this.#opts.data(), this.#opts.layout_options()),
+    compute_sunburst_layout(this.#opts.data(), this.#opts.layout_options()),
   )
   arcs = $derived(this.layout.arcs)
   // Resolve the zoom root; stale ids (e.g. after a data swap) fall back to the root
@@ -217,21 +235,20 @@ export class HierarchyChartState<
   // Hovered node + its ancestors/descendants stay fully opaque, others dim
   node_dim = $derived(compute_node_dim(this.arcs, this.muted_ids, this.hovered_idx))
 
-  label_font = $derived(svg_label_font(this.svg_element))
+  label_font = $derived(resolve_label_font(this.svg_element))
   // Per-node label text, measured width, fill/label colors, aria string (and
   // clickability where the chart cares) - all zoom-independent, so computed once
   // per layout/option change instead of per animation frame
-  node_infos = $derived.by(() =>
-    compute_node_infos(this.arcs, {
+  node_infos = $derived.by(() => {
+    void this.#font_metrics_revision
+    return compute_node_infos(this.arcs, {
       label_text: this.#opts.label_text(),
       value_format: this.value_format,
-      label_font: this.label_font,
+      font: this.label_font,
       color_for: this.color_for,
-      text_width: this.text_width,
-      contrast: this.#contrast,
       clickable: this.#opts.clickable,
-    }),
-  )
+    })
+  })
 
   // Legend: one item per depth-1 category, toggling mutes (dims) rather than
   // removes. Nodes are labelled in place, so a legend stays opt-in here.
@@ -394,15 +411,6 @@ export class HierarchyChartState<
     else if (this.fullscreen) this.fullscreen = false
     else return
     event.preventDefault()
-  }
-
-  // Data changed: drop muted ids that no longer exist and clear the index-based
-  // hover/focus state, which would otherwise leave a stale tooltip and highlight
-  // whatever unrelated node now occupies the old index.
-  reset_for_layout = (arcs: readonly PositionedArc<Metadata>[]): void => {
-    prune_muted_ids(arcs, this.muted_ids)
-    this.set_hover(null)
-    this.focused_idx = null
   }
 
   toggle_category = (series_idx: number): void =>

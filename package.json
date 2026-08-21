@@ -211,8 +211,8 @@
       "default": "./dist/structure/parse.js"
     },
     "./structure/export": {
-      "types": "./dist/structure/serialize.d.ts",
-      "default": "./dist/structure/serialize.js"
+      "types": "./dist/structure/export.d.ts",
+      "default": "./dist/structure/export.js"
     },
     "./structure/measure": {
       "types": "./dist/structure/measure.d.ts",
@@ -240,10 +240,6 @@
     "./tooltip": {
       "types": "./dist/tooltip/index.d.ts",
       "default": "./dist/tooltip/index.js"
-    },
-    "./time": {
-      "types": "./dist/time.d.ts",
-      "default": "./dist/time.js"
     },
     "./trajectory": {
       "types": "./dist/trajectory/index.d.ts",

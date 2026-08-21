@@ -34,6 +34,7 @@
     flex-wrap: var(--sequence-controls-wrap, nowrap);
     gap: var(--sequence-controls-gap, clamp(4pt, 1.6cqw, 1.5ex));
     width: 100%;
+    min-width: 0;
     padding: var(--sequence-controls-padding, clamp(2pt, 0.5cqw, 1ex) clamp(4pt, 1cqw, 1.2ex));
     box-sizing: border-box;
     z-index: var(--sequence-controls-z-index, var(--z-index-viewer-pane, 10));
@@ -68,6 +69,9 @@
       --icon-size: var(--sequence-fullscreen-icon-size, 1.25rem);
       --fullscreen-btn-padding: 0;
       --fullscreen-btn-bg: transparent;
+    }
+    @container (max-width: 520px) {
+      flex-wrap: wrap;
     }
   }
   :global(.sequence-viewer:hover) > .sequence-control-bar.hover-visible,

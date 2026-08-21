@@ -6,7 +6,7 @@
     IsosurfaceSettings,
     VolumetricData,
   } from '$lib/isosurface/types'
-  import { DEFAULT_ISOSURFACE_SETTINGS, grid_data_range } from '$lib/isosurface/types'
+  import { DEFAULT_ISOSURFACE_SETTINGS, make_volume } from '$lib/isosurface/types'
   import type { Matrix3x3, Vec3 } from '$lib/math'
   import { create_renderer } from '$lib/scene'
   import { Canvas, T } from '@threlte/core'
@@ -47,39 +47,33 @@
   let heap_bytes = $state<number | undefined>()
   let animation_angle = $state(0)
 
-  function make_volume(size: number, kind: `density` | `color`): VolumetricData {
-    const grid: number[][][] = Array(size)
+  function make_test_volume(size: number, kind: `density` | `color`): VolumetricData {
+    const values = new Float64Array(size ** 3)
+    let idx = 0
     for (let x_idx = 0; x_idx < size; x_idx++) {
       const x_frac = x_idx / size
       const x_delta = Math.min(Math.abs(x_frac - 0.5), 1 - Math.abs(x_frac - 0.5))
-      const plane: number[][] = Array(size)
       for (let y_idx = 0; y_idx < size; y_idx++) {
         const y_frac = y_idx / size
         const y_delta = Math.min(Math.abs(y_frac - 0.5), 1 - Math.abs(y_frac - 0.5))
-        const row: number[] = Array(size)
         for (let z_idx = 0; z_idx < size; z_idx++) {
           const z_frac = z_idx / size
           const z_delta = Math.min(Math.abs(z_frac - 0.5), 1 - Math.abs(z_frac - 0.5))
-          row[z_idx] =
+          values[idx++] =
             kind === `density`
               ? Math.exp(-(x_delta ** 2 + y_delta ** 2 + z_delta ** 2) / 0.045)
               : Math.sin(2 * Math.PI * x_frac) -
                 0.7 * Math.cos(2 * Math.PI * y_frac) +
                 0.35 * Math.sin(4 * Math.PI * z_frac)
         }
-        plane[y_idx] = row
       }
-      grid[x_idx] = plane
     }
-    return {
-      grid,
-      grid_dims: [size, size, size],
+    return make_volume(values, [size, size, size], {
       lattice,
       origin: [0, 0, 0],
-      data_range: grid_data_range(grid),
       periodic: true,
       label: kind,
-    }
+    })
   }
 
   function make_layers(count: number): IsosurfaceLayer[] {
@@ -101,7 +95,10 @@
     event_count = 0
     const color_grid_size =
       color_mode === `cross_grid` ? Math.max(8, grid_size - 11) : grid_size
-    volumes = [make_volume(grid_size, `density`), make_volume(color_grid_size, `color`)]
+    volumes = [
+      make_test_volume(grid_size, `density`),
+      make_test_volume(color_grid_size, `color`),
+    ]
     settings = {
       ...DEFAULT_ISOSURFACE_SETTINGS,
       layers: make_layers(layer_count),

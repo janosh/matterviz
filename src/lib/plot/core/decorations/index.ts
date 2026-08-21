@@ -1,4 +1,3 @@
-export * from './interior'
 export * from './obstacles'
 export * from './outside'
 export * from './reference-annotations'

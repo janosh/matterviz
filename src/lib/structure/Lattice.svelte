@@ -1,15 +1,21 @@
-<!-- Export default values for use in other components -->
 <script lang="ts">
   import { format_num } from '$lib/labels'
   import type { Vec3 } from '$lib/math'
   import * as math from '$lib/math'
   import { DEFAULTS } from '$lib/settings'
   import { CanvasTooltip } from '$lib/structure'
+  import { write_bond_transform } from '$lib/structure/bond-rendering'
   import Arrow from './Arrow.svelte'
-  import Cylinder from './Cylinder.svelte'
-  import { T } from '@threlte/core'
+  import { T, useThrelte } from '@threlte/core'
   import { untrack } from 'svelte'
-  import { BoxGeometry, EdgesGeometry, Matrix4, Vector3 } from 'three/webgpu'
+  import {
+    BoxGeometry,
+    CylinderGeometry,
+    InstancedMesh,
+    Matrix4,
+    MeshStandardMaterial,
+    Vector3,
+  } from 'three/webgpu'
 
   let {
     matrix = undefined,
@@ -35,12 +41,14 @@
     float_fmt?: string
   } = $props()
 
+  const { invalidate } = useThrelte()
   let hovered_idx = $state<number | null>(null) // track hovered vector
   let lattice_center: Vec3 = $derived(
     matrix ? math.scale(math.add(...matrix), 0.5) : [0, 0, 0],
   )
 
-  // Gate box-geometry rebuilds on cell numbers, not matrix identity.
+  // Gate geometry rebuilds on cell numbers, not matrix identity (trajectory frames hand over
+  // a fresh matrix object every step)
   let matrix_key = $derived(matrix?.flat().join(`,`) ?? ``)
   let box_geometry = $state<BoxGeometry | null>(null)
   $effect(() => {
@@ -61,40 +69,57 @@
     return () => geo.dispose()
   })
 
-  // Edge segments (Cartesian endpoint pairs) from the box geometry; the transient
-  // EdgesGeometry is disposed inline since only its extracted positions are kept.
-  let edge_segments = $derived.by<[Vec3, Vec3][]>(() => {
-    if (!box_geometry || !(cell_edge_opacity > 0)) return []
-    const edges_geometry = new EdgesGeometry(box_geometry)
-    const positions = edges_geometry.getAttribute(`position`).array as Float32Array
-    edges_geometry.dispose()
-    const segments: [Vec3, Vec3][] = []
-    // each edge is two consecutive xyz triplets (6 floats)
-    for (let idx = 0; idx < positions.length; idx += 6) {
-      segments.push([
-        [positions[idx], positions[idx + 1], positions[idx + 2]],
-        [positions[idx + 3], positions[idx + 4], positions[idx + 5]],
-      ])
+  // All 12 edges in ONE InstancedMesh (one unit cylinder, one material) instead of a
+  // geometry + material per edge. Edges never take pointer events, so skip raycasting.
+  const EDGE_COUNT = 12
+  const edge_geometry = new CylinderGeometry(1, 1, 1, 8)
+  const edge_material = new MeshStandardMaterial()
+  const edge_mesh = new InstancedMesh(edge_geometry, edge_material, EDGE_COUNT)
+  edge_mesh.frustumCulled = false
+  edge_mesh.raycast = () => undefined
+  $effect(() => () => {
+    edge_mesh.dispose()
+    edge_geometry.dispose()
+    edge_material.dispose()
+  })
+  $effect(() => {
+    void matrix_key
+    const cell = untrack(() => matrix)
+    if (!cell) return
+    const radius = cell_edge_width * 0.01
+    const buffer = edge_mesh.instanceMatrix.array
+    let edge_idx = 0
+    // For each cell vector, the four edges parallel to it start at the corners spanned by
+    // the other two vectors
+    for (const [axis_idx, axis] of cell.entries()) {
+      const [side_1, side_2] = cell.filter((_, idx) => idx !== axis_idx)
+      for (const [along_1, along_2] of [
+        [0, 0],
+        [1, 0],
+        [0, 1],
+        [1, 1],
+      ]) {
+        const start = math.add(math.scale(side_1, along_1), math.scale(side_2, along_2))
+        write_bond_transform(buffer, edge_idx++, start, math.add(start, axis), radius)
+      }
     }
-    return segments
+    edge_mesh.instanceMatrix.needsUpdate = true
+    invalidate()
+  })
+  $effect(() => {
+    edge_material.color.set(cell_edge_color)
+    edge_material.opacity = cell_edge_opacity
+    edge_material.transparent = cell_edge_opacity < 1
+    edge_material.depthWrite = cell_edge_opacity >= 1
+    edge_material.needsUpdate = true
+    edge_mesh.visible = cell_edge_opacity > 0
+    invalidate()
   })
 </script>
 
 {#if matrix && box_geometry}
-  <!-- Wireframe edges (thick lines via cylinders) when edge opacity > 0 -->
-  {#if cell_edge_opacity > 0}
-    <T.Group position={lattice_center}>
-      {#each edge_segments as [start, end], idx (idx)}
-        <Cylinder
-          from={start}
-          to={end}
-          thickness={cell_edge_width * 0.01}
-          color={cell_edge_color}
-          opacity={cell_edge_opacity}
-        />
-      {/each}
-    </T.Group>
-  {/if}
+  <!-- dispose={false}: the mesh outlives re-renders and is disposed with this component -->
+  <T is={edge_mesh} dispose={false} />
 
   <!-- Render transparent surfaces if surface opacity > 0 -->
   {#if cell_surface_opacity > 0}

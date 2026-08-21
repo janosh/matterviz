@@ -1,4 +1,5 @@
 import { element_data } from '$lib/element'
+import type { Vec3 } from '$lib/math'
 import {
   DEFAULT_FMT,
   ELEM_HEATMAP_KEYS,
@@ -10,10 +11,14 @@ import {
   format_power_ten,
   format_tick_values,
   format_value,
+  format_vec3,
   parse_si_float,
   superscript_digits,
+  symbol_map,
+  symbol_names,
 } from '$lib/labels'
 import { format as d3_format } from 'd3-format'
+import * as d3_symbols from 'd3-shape'
 import { describe, expect, test } from 'vitest'
 
 describe(`labels utils`, () => {
@@ -106,12 +111,47 @@ test(`ELEM_PROPERTY_LABELS are valid element data keys`, () => {
   expect(element_data_keys).toEqual(expect.arrayContaining(prop_keys))
 })
 
+test(`symbol_names lists d3's fill-then-stroke symbols once each, symbol_map resolves them`, () => {
+  // `symbolX` aliases `symbolTimes`; the first export naming the object wins
+  expect(symbol_names).toEqual([
+    `Circle`,
+    `Cross`,
+    `Diamond`,
+    `Square`,
+    `Star`,
+    `Triangle`,
+    `Wye`,
+    `Plus`,
+    `Times`,
+    `Triangle2`,
+    `Asterisk`,
+    `Square2`,
+    `Diamond2`,
+  ])
+  expect(Object.keys(symbol_map)).toEqual(symbol_names)
+  expect(symbol_map.Times).toBe(d3_symbols.symbolTimes)
+  expect(symbol_map.Times).toBe(d3_symbols.symbolX) // the alias resolves to the same object
+  expect(symbol_map.Circle).toBe(d3_symbols.symbolCircle)
+  expect(symbol_map.Diamond2).toBe(d3_symbols.symbolDiamond2)
+})
+
 test(`superscript_digits`, () => {
   expect(superscript_digits(`Cr3+ O2- Ac3+`)).toBe(`Cr³⁺ O²⁻ Ac³⁺`)
   expect(superscript_digits(`1234567890`)).toBe(`¹²³⁴⁵⁶⁷⁸⁹⁰`)
   expect(superscript_digits(`+123-456+789-0`)).toBe(`⁺¹²³⁻⁴⁵⁶⁺⁷⁸⁹⁻⁰`)
   expect(superscript_digits(`No digits here`)).toBe(`No digits here`)
 })
+
+test.each([
+  [[1, 2, 3], undefined, `(1, 2, 3)`],
+  [[1.23456, -2.34567, 1e-5], undefined, `(1.23, −2.35, 0.00001)`],
+  [[0.5, 1e6, -1], `.2f`, `(0.50, 1000000.00, −1.00)`],
+] as [Vec3, string | undefined, string][])(
+  `format_vec3(%j, %j) is %j`,
+  (vec, fmt, expected) => {
+    expect(format_vec3(vec, fmt)).toBe(expected)
+  },
+)
 
 describe(`parse_si_float function`, () => {
   test.each([
@@ -278,6 +318,10 @@ describe(`format_value`, () => {
     { value: 1.0, formatter: `.0%`, expected: `100%` },
     { value: 0.0, formatter: `.1%`, expected: `0%` },
     { value: 2.5, formatter: `.0%`, expected: `250%` },
+    // only `%`-type formats strip zeros before the sign; `p` and padded outputs stay verbatim
+    { value: 1e-7, formatter: `.2p`, expected: `0.000010%` },
+    { value: 0.5, formatter: `<8.2%`, expected: `50.00%  ` },
+    { value: 1.5, formatter: `<8.2f`, expected: `1.50    ` },
 
     // Currency formatting
     { value: 1234.5, formatter: `$,.2f`, expected: `$1,234.50` },

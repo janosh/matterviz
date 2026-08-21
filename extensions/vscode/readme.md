@@ -87,6 +87,7 @@ MatterViz supports [VSCode](https://marketplace.visualstudio.com/items?itemName=
 - ✅ **No manual file transfer**: Files are read directly from the remote filesystem
 - ✅ **File watching**: Changes to remote files are automatically detected and reloaded
 - ⚠️ **File size limit**: Files are read into extension memory in one operation on both local and Remote SSH workspaces. Non-text files larger than 1 GiB are rejected to prevent memory issues. XYZ/EXTXYZ text trajectories are limited by Node.js text decoding and are currently rejected above about 512 MiB. Other text formats (e.g. JSON, POSCAR, CIF) above about 400 MiB are rejected because large-file loading currently supports trajectories only.
+- ℹ️ **Parsing runs off the UI thread**: files below the 400 MiB streaming threshold are parsed in a Web Worker inside the editor tab, so the webview stays responsive while a large file loads. If the worker cannot start, files up to 25 MiB (text) / 50 MiB (binary) are parsed on the main thread instead; larger ones report an error rather than freezing the tab. Trajectories above 400 MiB stay in the extension host, which opens them as a lazily decoded run, sends the webview a summary plus per-frame plot rows as they are extracted, and serves frames on request.
 
 ## ⚙️ Configuration & Customization
 
@@ -136,10 +137,12 @@ MatterViz provides extensive customization options through VSCode settings. Acce
 
 ```json
 {
-  "matterviz.trajectory.bin_file_threshold": 10485760,
+  "matterviz.trajectory.index_above_bytes": 10000000,
   "matterviz.structure.sphere_segments": 16
 }
 ```
+
+`matterviz.trajectory.index_above_bytes` (default 25 MB) is the single large-file threshold: XYZ/EXTXYZ and ASE `.traj` files above it are indexed and decoded frame by frame on demand instead of being materialised up front. It replaces the former `bin_file_threshold`, `text_file_threshold` and `use_indexing` settings.
 
 ### Setting Categories
 
@@ -147,7 +150,7 @@ MatterViz provides extensive customization options through VSCode settings. Acce
 - **Structure** — 3D structure visualization: `atom_radius`, `bond_thickness`, `show_cell_vectors`, `ambient_light`, `show_image_atoms`
 - **Trajectory** — Animation and playback controls: `fps`, `auto_play`, `display_mode`, `show_controls`
 - **Plots** — Scatter plots and histograms: `scatter.point.size`, `plot.grid_lines`, `plot.axis_labels`
-- **Performance** — Memory and processing options: `trajectory.use_indexing`, `trajectory.bin_file_threshold`, `structure.sphere_segments`
+- **Performance** — Memory and processing options: `trajectory.index_above_bytes`, `structure.sphere_segments`
 
 ### Pro Tips
 

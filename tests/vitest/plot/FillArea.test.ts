@@ -108,10 +108,15 @@ describe(`FillArea`, () => {
 
     expect(on_click).toHaveBeenCalledTimes(1)
     const event = on_click.mock.calls[0][0]
+    // the host <svg> sits at the origin in happy-dom, so client coords are svg pixels
     expect(event).toMatchObject({
       region_idx: 2,
       region_id: `test-fill`,
       label: `Test Fill Region`,
+      px: 50,
+      py: 50,
+      x: 5,
+      y: 5,
     })
   })
 

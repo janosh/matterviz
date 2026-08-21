@@ -1,23 +1,20 @@
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import { create_lattice_converters, min_image_displacement } from '$lib/math'
-import type { AnyStructure, Crystal } from '$lib/structure'
+import type { Crystal } from '$lib/structure'
+import { neighbor_query } from '$lib/structure/bonding'
 import {
   apply_structure_id,
-  build_neighbor_list,
   calc_cna,
   calc_structure_id,
   CENTROSYMMETRY_PROPERTY,
   cna_type_name,
   CNA_TYPE_PROPERTY,
   CNA_TYPES,
-  find_k_nearest,
-  neighbor_count,
   structure_type_fractions,
 } from '$lib/structure-id'
 import { describe, expect, test } from 'vitest'
 import {
   BCC_LATTICE_CONST,
-  bcc_nn_distance,
   FCC_LATTICE_CONST,
   fcc_nn_distance,
   make_bcc,
@@ -64,104 +61,9 @@ const distances_to = (crystal: Crystal, target_idx: number): number[] => {
   )
 }
 
-const neighbor_oracle_errors = (
-  structure: AnyStructure,
-  cutoff: number,
-  displacement: (center: Vec3, other: Vec3) => Vec3,
-): { max_abs_distance: number; max_abs_delta: number } => {
-  const list = build_neighbor_list(structure, { cutoff })
-  const cutoff_sq = cutoff * cutoff
-  expect(list.distances).toHaveLength(list.offsets[list.n_centers])
-  expect(list.deltas).toHaveLength(list.distances.length * 3)
-  let max_abs_distance = 0
-  let max_abs_delta = 0
-  for (let center_idx = 0; center_idx < list.n_centers; center_idx++) {
-    const center = structure.sites[center_idx].xyz
-    const expected = structure.sites
-      .filter((_site, other_idx) => other_idx !== center_idx)
-      .map(({ xyz }) => {
-        const delta = displacement(center, xyz)
-        const dist_sq = delta[0] * delta[0] + delta[1] * delta[1] + delta[2] * delta[2]
-        return { dist_sq, delta }
-      })
-      .filter(({ dist_sq }) => dist_sq > 0 && dist_sq <= cutoff_sq)
-      .map(({ dist_sq, delta }) => ({ distance: Math.sqrt(dist_sq), delta }))
-      .toSorted((left, right) => left.distance - right.distance)
-    const [start, end] = [list.offsets[center_idx], list.offsets[center_idx + 1]]
-    expect(end - start).toBe(expected.length)
-    for (let slot = 0; slot < expected.length; slot++) {
-      max_abs_distance = Math.max(
-        max_abs_distance,
-        Math.abs(list.distances[start + slot] - expected[slot].distance),
-      )
-    }
-    // Equal-distance shells are not uniquely ordered, so match each observed delta to the
-    // nearest unused oracle vector rather than zipping them by slot.
-    const unmatched = expected.map(({ delta }) => delta)
-    for (let slot = 0; slot < expected.length; slot++) {
-      const base = (start + slot) * 3
-      const observed = list.deltas.subarray(base, base + 3)
-      let best_idx = 0
-      let best_error = Infinity
-      for (let expected_idx = 0; expected_idx < unmatched.length; expected_idx++) {
-        const error = Math.hypot(
-          observed[0] - unmatched[expected_idx][0],
-          observed[1] - unmatched[expected_idx][1],
-          observed[2] - unmatched[expected_idx][2],
-        )
-        if (error < best_error) [best_idx, best_error] = [expected_idx, error]
-      }
-      max_abs_delta = Math.max(max_abs_delta, best_error)
-      unmatched.splice(best_idx, 1)
-    }
-  }
-  return { max_abs_distance, max_abs_delta }
-}
-
+// Geometric neighbor-list correctness (brute-force oracle, sorting, partial pbc, validation)
+// lives in tests/vitest/structure/bonding.test.ts; these cover what structure-id layers on top.
 describe(`neighbor list`, () => {
-  test.each([
-    [`fcc`, make_fcc([3, 3, 3]), 12, fcc_nn_distance()],
-    [`bcc`, make_bcc([3, 3, 3]), 8, bcc_nn_distance()],
-  ])(
-    `%s: every atom sees the same first shell across periodic boundaries`,
-    (_label, crystal, shell_size, nn_dist) => {
-      const { list, n_undercoordinated } = find_k_nearest(crystal, 14)
-      expect(n_undercoordinated).toBe(0)
-      let max_shell_error = 0
-      for (let center_idx = 0; center_idx < list.n_centers; center_idx++) {
-        expect(neighbor_count(list, center_idx)).toBeGreaterThanOrEqual(14)
-        const base = list.offsets[center_idx]
-        for (let neighbor = 0; neighbor < shell_size; neighbor++) {
-          max_shell_error = Math.max(
-            max_shell_error,
-            Math.abs(list.distances[base + neighbor] - nn_dist),
-          )
-        }
-      }
-      // Ideal lattice coordinates: the first shell distance is exact to round-off
-      expect(max_shell_error).toBeLessThan(1e-12)
-    },
-  )
-
-  test(`neighbor deltas are sorted by ascending distance`, () => {
-    const { list } = find_k_nearest(make_fcc([2, 2, 2]), 14)
-    for (let center_idx = 0; center_idx < list.n_centers; center_idx++) {
-      const [start, end] = [list.offsets[center_idx], list.offsets[center_idx + 1]]
-      for (let idx = start + 1; idx < end; idx++) {
-        expect(list.distances[idx]).toBeGreaterThanOrEqual(list.distances[idx - 1])
-      }
-      // deltas must stay in lockstep with distances
-      for (let idx = start; idx < end; idx++) {
-        const delta_norm = Math.hypot(
-          list.deltas[idx * 3],
-          list.deltas[idx * 3 + 1],
-          list.deltas[idx * 3 + 2],
-        )
-        expect(Math.abs(delta_norm - list.distances[idx])).toBeLessThan(1e-12)
-      }
-    }
-  })
-
   test(`unwrapped trajectory coordinates classify the same as wrapped ones`, () => {
     // A trajectory frame can carry coordinates far outside the cell. The neighbor list wraps
     // before generating images, so the classification must not depend on which image of an
@@ -211,70 +113,34 @@ describe(`neighbor list`, () => {
     expect(origin_result.populations.fcc).toBeGreaterThan(0)
   })
 
-  test.each([
-    [`zero cutoff`, 0],
-    [`non-finite cutoff`, Number.POSITIVE_INFINITY],
-  ])(`build_neighbor_list rejects %s`, (_label, cutoff) => {
-    expect(() => build_neighbor_list(make_fcc([2, 2, 2]), { cutoff })).toThrow(
-      /cutoff must be a positive finite number/,
-    )
-  })
-
-  test.each([
-    [`fcc first shell`, () => make_fcc([3, 3, 3]), 0.854 * FCC_LATTICE_CONST],
-    [`bcc first shell`, () => make_bcc([3, 3, 3]), 0.95 * BCC_LATTICE_CONST],
-    [
-      `noisy fcc`,
-      () => with_random_displacements(make_fcc([2, 2, 2]), 0.05, 2),
-      0.9 * FCC_LATTICE_CONST,
-    ],
-  ])(`neighbor list matches min-image oracle on %s`, (label, build, cutoff) => {
-    const crystal = build()
-    const { pbc, matrix } = crystal.lattice
-    const converters = create_lattice_converters(matrix)
-    const { max_abs_distance, max_abs_delta } = neighbor_oracle_errors(
-      crystal,
-      cutoff,
-      (center, other) => min_image_displacement(center, other, matrix, converters, pbc),
-    )
-    // Grid path subtracts imaged Cartesian coords; min_image goes through a frac round-trip.
-    // Measured maxima on these fixtures are a few ulps (~1e-15 Å); 1e-12 Å is still far
-    // below any geometric length that could change neighbor membership at these cutoffs.
-    console.info(
-      `${label}: max|Δdistance|=${max_abs_distance.toExponential(3)} Å, ` +
-        `max|Δdelta|=${max_abs_delta.toExponential(3)} Å`,
-    )
-    expect(max_abs_distance).toBeLessThan(1e-12)
-    expect(max_abs_delta).toBeLessThan(1e-12)
-  })
-
-  test(`duplicate coincident site is dropped from the neighbor list`, () => {
-    const crystal = make_fcc([1, 1, 1])
+  test(`a duplicate coincident site poisons only the atoms that see it`, () => {
+    // neighbor_query reports coincident sites (distance 0) rather than hiding duplicate input.
+    // The zero-length bond makes both duplicates Other, and can push one of them into a
+    // neighbor's 12-closest set (13 atoms now tie at the nn distance), so only the 12 atoms
+    // bordering the duplicate may be affected; everything further away must stay fcc.
+    const crystal = make_fcc([3, 3, 3])
+    const dup_idx = crystal.sites.length
     crystal.sites = [
       ...crystal.sites,
       { ...crystal.sites[0], label: `dup`, abc: [...crystal.sites[0].abc] as Vec3 },
     ]
-    const list = build_neighbor_list(crystal, { cutoff: 0.854 * FCC_LATTICE_CONST })
-    // The duplicate shares the original's coordinates, so neither lists the other (dist_sq === 0)
-    expect(neighbor_count(list, 0)).toBe(neighbor_count(list, list.n_centers - 1))
-    for (let center_idx = 0; center_idx < list.n_centers; center_idx++) {
-      const [start, end] = [list.offsets[center_idx], list.offsets[center_idx + 1]]
-      for (let idx = start; idx < end; idx++) {
-        expect(list.distances[idx]).toBeGreaterThan(0)
-      }
-    }
-  })
-
-  test(`cluster without lattice matches a Euclidean all-pairs reference`, () => {
-    const { sites } = make_fcc([2, 2, 2])
-    const cutoff = 0.854 * FCC_LATTICE_CONST
-    const { max_abs_distance, max_abs_delta } = neighbor_oracle_errors(
-      { sites },
-      cutoff,
-      (center, other) => other.map((coord, axis) => coord - center[axis]) as Vec3,
+    const bordering = new Set(
+      distances_to(crystal, 0)
+        .map((dist, idx) => ({ dist, idx }))
+        .filter(({ dist }) => dist > 1e-9 && dist < fcc_nn_distance() * 1.01)
+        .map(({ idx }) => idx),
     )
-    expect(max_abs_distance).toBe(0)
-    expect(max_abs_delta).toBe(0)
+    expect(bordering.size).toBe(12)
+    const result = calc_structure_id(crystal, { skip_csp: true })
+    if (!result.cna_types) throw new Error(`cna_types was not computed`)
+    expect(result.cna_types[0]).toBe(CNA_TYPES.other)
+    expect(result.cna_types[dup_idx]).toBe(CNA_TYPES.other)
+    const far_misclassified = [...result.cna_types].filter(
+      (code, idx) =>
+        code !== CNA_TYPES.fcc && idx !== 0 && idx !== dup_idx && !bordering.has(idx),
+    )
+    expect(far_misclassified).toHaveLength(0)
+    expect(result.populations.fcc).toBeGreaterThanOrEqual(108 - 12)
   })
 })
 
@@ -290,6 +156,7 @@ describe(`common neighbor analysis`, () => {
     const result = calc_structure_id(build(), { skip_csp: true })
     expect(result.n_atoms).toBe(n_atoms)
     expect(result.populations[expected]).toBe(n_atoms)
+    expect(result.cutoff).toBeNull() // adaptive: no global cutoff
   })
 
   test.each([
@@ -317,19 +184,17 @@ describe(`common neighbor analysis`, () => {
 
   // 0.05 Å (~2% of the 2.556 Å nn distance) is thermal noise CNA should ignore; 0.6 Å
   // (~23%) is past where any signature survives.
-  test(`small random displacements leave fcc intact`, () => {
-    const result = calc_structure_id(with_random_displacements(make_fcc([4, 4, 4]), 0.05, 1), {
-      skip_csp: true,
-    })
-    expect(result.populations.fcc).toBe(256)
-  })
-
-  test(`large random displacements degrade to Other`, () => {
-    const result = calc_structure_id(with_random_displacements(make_fcc([4, 4, 4]), 0.6, 0), {
-      skip_csp: true,
-    })
-    expect(result.populations.other / result.n_atoms).toBeGreaterThan(0.95)
-  })
+  test.each([
+    [0.05, 1, `fcc` as const, 1],
+    [0.6, 0, `other` as const, 0.95],
+  ])(
+    `%f A random displacements (seed %d): %s fraction >= %f`,
+    (amplitude, seed, type, min_frac) => {
+      const displaced = with_random_displacements(make_fcc([4, 4, 4]), amplitude, seed)
+      const result = calc_structure_id(displaced, { skip_csp: true })
+      expect(result.populations[type] / result.n_atoms).toBeGreaterThanOrEqual(min_frac)
+    },
+  )
 
   test(`a vacancy leaves its 12 neighbors unclassified and raises their CSP`, () => {
     const perfect = make_fcc([4, 4, 4])
@@ -378,13 +243,13 @@ describe(`common neighbor analysis`, () => {
     expect(result.populations.other).toBe(12)
   })
 
-  test(`calc_cna validates and accepts its fixed cutoff`, () => {
-    const cutoff = 0.854 * FCC_LATTICE_CONST
-    const list = build_neighbor_list(make_fcc([2, 2, 2]), { cutoff })
-    expect(() => calc_cna(list, `fixed`, cutoff * 1.2)).toThrow(
-      /needs a cutoff equal to the .* the neighbor list was built with/,
-    )
-    expect(calc_cna(list, `fixed`, cutoff)[0]).toBe(CNA_TYPES.fcc)
+  test(`calc_cna bonds neighbors at the radius the list was built with`, () => {
+    const crystal = make_fcc([2, 2, 2])
+    const fcc_list = neighbor_query(crystal, { cutoff: 0.854 * FCC_LATTICE_CONST })
+    expect(Array.from(calc_cna(fcc_list, `fixed`))).toEqual(Array(32).fill(CNA_TYPES.fcc))
+    // the bcc radius admits the fcc second shell: 18 neighbors, never 12 or 14
+    const wide_list = neighbor_query(crystal, { cutoff: 1.207 * FCC_LATTICE_CONST })
+    expect(Array.from(calc_cna(wide_list, `fixed`))).toEqual(Array(32).fill(CNA_TYPES.other))
   })
 
   test(`cna_type_name maps every code and rejects the rest`, () => {
@@ -467,7 +332,13 @@ describe(`calc_structure_id plumbing`, () => {
       `fixed mode without a cutoff`,
       undefined,
       { cna_mode: `fixed` as const },
-      /needs a positive cutoff/,
+      /needs a positive cutoff.*got undefined/,
+    ],
+    [
+      `fixed mode with a zero cutoff`,
+      undefined,
+      { cna_mode: `fixed` as const, cutoff: 0 },
+      /needs a positive cutoff.*got 0/,
     ],
   ])(`rejects %s`, (_label, structure, options, pattern) => {
     const input = structure ?? make_fcc([2, 2, 2])

@@ -27,7 +27,8 @@
   } = $props()
 
   let menu_open = $state(false)
-  let input_value = $state(supercell_scaling)
+  // Writable derived: follows the applied scaling until the user starts typing
+  let input_value = $derived(supercell_scaling)
   let input_valid = $derived(is_valid_supercell_input(input_value))
 
   // Hover-intent gate: opening instantly on mouseenter made the menu pop open
@@ -71,7 +72,6 @@
 
   function apply_preset(preset: string) {
     supercell_scaling = preset
-    input_value = preset
     close_menu()
   }
 
@@ -97,13 +97,6 @@
     if (event.key === `Escape`) close_menu()
     if (submit_on_enter && event.key === `Enter`) handle_input_submit()
   }
-
-  // Sync input value when external prop changes
-  $effect(() => {
-    if (!menu_open && supercell_scaling && supercell_scaling !== input_value) {
-      input_value = supercell_scaling
-    }
-  })
 
   // Close + keep closed while suppressed so the menu can't obscure a sibling popover
   // (e.g. the atom color-mode dropdown) the user is actively interacting with

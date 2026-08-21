@@ -1,7 +1,7 @@
 <script lang="ts">
   import FilePicker from '$lib/FilePicker.svelte'
   import { get_trajectory_type, trajectory_files } from '$site/trajectories'
-  import { Trajectory, type TrajHandlerData } from 'matterviz/trajectory'
+  import { TrajectoryFileViewer, type TrajHandlerData } from 'matterviz/trajectory'
 
   let active_file = $state(``) // last drag-and-dropped trajectory file
   let visible_props_cantor_qha = $state<string[] | undefined>(undefined)
@@ -9,16 +9,20 @@
     if (source_filename) active_file = source_filename
   }
 
-  const trajectory_files_paths = [
-    `/trajectories/flame-gold-cluster-55-atoms.h5`,
-    `/trajectories/vasp-XDATCAR-traj.gz`,
-    `/trajectories/Cr0.25Fe0.25Co0.25Ni0.25-mace-omat-qha.xyz.gz`,
-    `/trajectories/ase-images-Ag-0-to-97.xyz.gz`,
-    undefined, //create one empty viewer
-  ]
+  const viewer_style = `max-height: 700px; --traj-border-radius: 6pt; --traj-overflow: clip; --sequence-controls-border-radius: 0`
 </script>
 
 <h1>Trajectory</h1>
+
+<p>
+  Every viewer on this page is a <code>TrajectoryFileViewer</code>: it fetches <code>src</code>
+  (a URL, <code>File</code>, <code>ArrayBuffer</code> or <code>Blob</code>), accepts drops,
+  decompresses, resolves ambiguous HDF5 groups, opens large files in a Web Worker and disposes
+  each run when it is replaced or unmounted. The <code>Trajectory</code> component underneath
+  is a pure viewer that borrows a <code>TrajectoryRun</code> you already hold (from
+  <code>open_trajectory</code> or <code>trajectory_from_frames</code>) and never loads or
+  disposes anything itself.
+</p>
 
 <h2>Mean Squared Displacement</h2>
 <p>
@@ -26,36 +30,49 @@
   averages |r(t₀+Δt) − r(t₀)|² over all atoms and all time origins, unwraps trajectories across
   periodic boundaries first (honouring LAMMPS <code>xu/yu/zu</code> coordinates, which are
   already unwrapped), decomposes by element, and fits <code>D = slope / 2d</code> over an adjustable
-  lag window. The lag axis is labelled in frames unless you supply a timestep, since no trajectory
-  format we read records one. Indexed (streamed) trajectories are swept in full rather than analysed
-  over the handful of frames kept in memory.
+  lag window. The lag axis is labelled in frames unless the file records a timestep (seeded into
+  the pane) or you enter one. Indexed (streamed) trajectories are swept in full rather than analysed
+  over the handful of frames kept in memory. The VACF / vibrational-DOS pane shares the same controls.
 </p>
 
-{#each trajectory_files_paths as file (file)}
-  {#if file === `/trajectories/Cr0.25Fe0.25Co0.25Ni0.25-mace-omat-qha.xyz.gz`}
-    <h2>Bindable <code>visible_properties</code></h2>
-    <p>Legend toggles update the bound list of displayed trajectory properties.</p>
-    <strong
-      style="display: block; margin: 1em auto; padding: 1em; background: var(--surface-bg-hover); border-radius: var(--border-radius); font-family: monospace; font-size: 0.9em"
-    >
-      bind:visible_properties = {JSON.stringify(visible_props_cantor_qha)}
-    </strong>
-    <Trajectory
-      data_url={file}
-      bind:visible_properties={visible_props_cantor_qha}
-      class="full-bleed"
-      style="margin-top: 1em; max-height: 700px; --traj-border-radius: 6pt; --traj-overflow: clip; --sequence-controls-border-radius: 0"
-      on_file_load={handle_file_load}
-    />
-  {:else}
-    <Trajectory
-      data_url={file}
-      class="full-bleed"
-      style="margin-top: 5em; max-height: 700px; --traj-border-radius: 6pt; --traj-overflow: clip; --sequence-controls-border-radius: 0"
-      on_file_load={handle_file_load}
-    />
-  {/if}
-{/each}
+<div class="full-bleed traj-pair">
+  <TrajectoryFileViewer
+    src="/trajectories/flame-gold-cluster-55-atoms.h5"
+    style={viewer_style}
+    on_file_load={handle_file_load}
+  />
+  <TrajectoryFileViewer
+    src="/trajectories/vasp-XDATCAR-traj.gz"
+    style={viewer_style}
+    on_file_load={handle_file_load}
+  />
+</div>
+
+<h2>Bindable <code>visible_properties</code></h2>
+<p>Legend toggles update the bound list of displayed trajectory properties.</p>
+<strong
+  style="display: block; margin: 1em auto; padding: 1em; background: var(--surface-bg-hover); border-radius: var(--border-radius); font-family: monospace; font-size: 0.9em"
+>
+  bind:visible_properties = {JSON.stringify(visible_props_cantor_qha)}
+</strong>
+<TrajectoryFileViewer
+  src="/trajectories/Cr0.25Fe0.25Co0.25Ni0.25-mace-omat-qha.xyz.gz"
+  bind:visible_properties={visible_props_cantor_qha}
+  class="full-bleed"
+  style="margin-top: 1em; {viewer_style}"
+  on_file_load={handle_file_load}
+/>
+<TrajectoryFileViewer
+  src="/trajectories/ase-images-Ag-0-to-97.xyz.gz"
+  class="full-bleed"
+  style="margin-top: 5em; {viewer_style}"
+  on_file_load={handle_file_load}
+/>
+<TrajectoryFileViewer
+  class="full-bleed"
+  style="margin-top: 5em; {viewer_style}"
+  on_file_load={handle_file_load}
+/>
 
 <p style="margin: 2em auto; text-align: center">
   Drag any of these trajectory files onto a viewer above to load them:
@@ -70,3 +87,15 @@
   show_category_filters={false}
   type_mapper={get_trajectory_type}
 />
+
+<style>
+  .traj-pair {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 560px), 1fr));
+    gap: 1em;
+    margin-top: 5em;
+    > :global(.trajectory-file-viewer) {
+      min-width: 0;
+    }
+  }
+</style>

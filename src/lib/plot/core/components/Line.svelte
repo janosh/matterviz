@@ -4,7 +4,7 @@
   import type { LineCurve } from '$lib/plot/core/types'
   import { create_settling_tween } from '$lib/plot/core/settling-tween.svelte'
   import { DEFAULTS } from '$lib/settings'
-  import { extent, min } from 'd3-array'
+  import { extent } from 'd3-array'
   import { interpolatePath } from 'd3-interpolate-path'
   import { line } from 'd3-shape'
   import { linear } from 'svelte/easing'
@@ -24,7 +24,7 @@
     ...rest
   }: Omit<SVGAttributes<SVGPathElement>, `origin` | `points`> & {
     points: readonly Vec2[]
-    origin: Vec2
+    origin?: Vec2 // the area fill closes along y = origin[1]
     line_color?: string
     line_width?: number
     area_color?: string
@@ -35,12 +35,11 @@
   } = $props()
 
   // falls back to monotone for unknown strings from untyped (Python/JSON) callers
-  let curve_fn = $derived(line_curve_factory(curve))
-  let lineGenerator = $derived(
-    line()
+  const line_generator = $derived(
+    line<Vec2>()
       .x((point) => point[0])
       .y((point) => point[1])
-      .curve(curve_fn),
+      .curve(line_curve_factory(curve)),
   )
 
   // Only compute/render/tween the area fill when it is actually visible. Most line
@@ -51,19 +50,16 @@
       Boolean(area_stroke),
   )
 
-  let [x_min, x_max] = $derived(extent(points.map((point) => point[0])))
-  let line_path = $derived(lineGenerator(points) ?? ``)
-  let ymin = $derived(origin[1] ?? min(points.map((point) => point[1])))
-  // Guard against NaN/Infinity in area_path coords (can happen during scale transitions)
-  let area_path = $derived(
-    show_area &&
-      line_path &&
-      isFinite(x_min ?? NaN) &&
-      isFinite(x_max ?? NaN) &&
-      isFinite(ymin ?? NaN)
-      ? `${line_path}L${x_max},${ymin}L${x_min},${ymin}Z`
-      : ``,
-  )
+  const line_path = $derived(line_generator(points) ?? ``)
+  // Close the area along the baseline between the x extent of the points. Non-finite coords
+  // (possible mid scale transition) drop the fill rather than emit an invalid path.
+  const area_path = $derived.by(() => {
+    if (!show_area || !line_path) return ``
+    const [x_min, x_max] = extent(points, (point) => point[0])
+    const baseline = origin[1]
+    if (![x_min, x_max, baseline].every(Number.isFinite)) return ``
+    return `${line_path}L${x_max},${baseline}L${x_min},${baseline}Z`
+  })
 
   const default_tween = {
     duration: 300,
@@ -85,8 +81,8 @@
   const tweened_line = create_settling_tween(() => line_path, default_tween, { live })
   const tweened_area = create_settling_tween(() => area_path, default_tween, { live })
 
-  let line_d = $derived(tween_disabled ? line_path : tweened_line.current)
-  let area_d = $derived(show_area ? (tween_disabled ? area_path : tweened_area.current) : ``)
+  const line_d = $derived(tween_disabled ? line_path : tweened_line.current)
+  const area_d = $derived(show_area ? (tween_disabled ? area_path : tweened_area.current) : ``)
 </script>
 
 <path

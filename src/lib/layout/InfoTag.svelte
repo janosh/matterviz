@@ -38,16 +38,11 @@
   // one key, since a tag copies a single value; `copied` handles the timed reset
   const { copied, copy } = create_clipboard_feedback()
 
-  async function copy_to_clipboard(): Promise<void> {
-    const to_copy = copy_value ?? value
-    if (to_copy === undefined) return
-    await copy(String(to_copy), `value`)
-  }
-
   function handle_click(event: MouseEvent): void {
     if (disabled) return
+    const to_copy = copy_value ?? value
     if (onclick) onclick(event)
-    else void copy_to_clipboard()
+    else if (to_copy !== undefined) void copy(String(to_copy), `value`)
   }
 
   function handle_keydown(event: KeyboardEvent & { currentTarget: HTMLElement }): void {

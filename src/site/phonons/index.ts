@@ -115,7 +115,6 @@ function transform_band_structure(raw: RawPhononBandStructure): PhononBandStruct
   }))
 
   return {
-    recip_lattice: raw.recip_lattice,
     qpoints: q_points,
     branches,
     labels_dict,

@@ -2,7 +2,7 @@
   import { contrast_text_color, resolve_backdrop } from '$lib/colors'
   import type { ChemicalElement, SplitLayout, TileSegment } from '$lib/element'
   import { format_num } from '$lib/labels'
-  import { colors, selected } from '$lib/state.svelte'
+  import { colors } from '$lib/state.svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
   let {
@@ -148,7 +148,6 @@
   class="element-tile"
   data-category={element.category}
   class:active
-  class:last-active={selected.last_element === element}
   class:clickable={Boolean(onclick)}
   style:background-color={fallback_bg_color}
   style:color={computed_text_color}
@@ -209,26 +208,26 @@
     place-content: center;
     border-radius: var(--elem-tile-border-radius, var(--border-radius, 3pt));
     box-sizing: border-box;
-    color: var(--elem-tile-text-color);
-    /* add persistent invisible border so content doesn't move on hover */
-    border: 1px solid transparent;
+    /* persistent invisible border so content doesn't move on hover */
+    border: var(--elem-tile-hover-border-width, 1px) solid transparent;
     container-type: inline-size;
     overflow: hidden;
-    width: var(--elem-tile-width);
-    height: var(--elem-tile-height);
   }
   .element-tile span {
     line-height: 1em;
   }
   .element-tile.active,
   .element-tile:hover {
-    border: var(--elem-tile-active-border, 1px solid currentColor);
+    /* Outline follows page ink (--text-color), not the tile's heatmap contrast color. A bare
+       `border: var(--elem-tile-active-border)` with the var unset would be invalid at
+       computed-value time and reset the border to none, so the default lives in the fallback. */
+    border: var(
+      --elem-tile-active-border,
+      var(--elem-tile-hover-border-width, 1px) solid var(--text-color, currentColor)
+    );
   }
   .element-tile.clickable {
     cursor: pointer;
-  }
-  .last-active {
-    border: 1px dotted;
   }
   .number {
     font-size: var(--elem-number-font-size, 22cqw);

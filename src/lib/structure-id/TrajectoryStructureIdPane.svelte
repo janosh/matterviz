@@ -1,12 +1,10 @@
 <script lang="ts">
-  import { Lattice } from 'svelte-widgets/icons'
-  import { ViewerPane, type ViewerPaneOptions } from '$lib/overlays'
-  import { StatusMessage } from '$lib/feedback'
   import { format_num } from '$lib/labels'
-  import { analysis_pane_setup, has_frame_loader_data } from '$lib/trajectory/analysis'
-  import type { TrajectoryType } from '$lib/trajectory'
-  import { to_error } from '$lib/utils'
-  import { untrack } from 'svelte'
+  import type { ViewerPaneOptions } from '$lib/overlays'
+  import type { TrajectoryRun } from '$lib/trajectory'
+  import type { AnalysisCollectOptions } from '$lib/trajectory/analysis-pane'
+  import TrajectoryAnalysisPane from '$lib/trajectory/TrajectoryAnalysisPane.svelte'
+  import { Lattice } from 'svelte-widgets/icons'
   import type { StructureIdSweep } from './collect'
   import {
     collect_structure_id_sweep,
@@ -16,15 +14,12 @@
   import StructureTypePlot from './StructureTypePlot.svelte'
 
   let {
-    trajectory,
-    raw_data = null,
+    run,
     pane_open = $bindable(false),
     result = $bindable(),
     ...pane_options
   }: ViewerPaneOptions & {
-    trajectory?: TrajectoryType
-    // Raw file bytes from Trajectory.svelte's orig_data for source-dependent loaders.
-    raw_data?: string | ArrayBuffer | null
+    run?: TrajectoryRun
     pane_open?: boolean
     result?: StructureIdSweep
   } = $props()
@@ -32,15 +27,8 @@
   // null, not 0, is what <input type="number"> writes back when cleared
   let max_frames = $state<number | null>(DEFAULT_MAX_SWEEP_FRAMES)
   let normalize = $state(false)
-  let computing = $state(false)
   let error_msg = $state<string | undefined>(undefined)
-  let progress = $state<{ done: number; total: number } | null>(null)
 
-  // No stride to suggest: the sweep loads one frame at a time, so there is no buffer budget
-  let { total_frames, loaded_frames, n_atoms, is_lazy, setup_error } = $derived(
-    analysis_pane_setup(trajectory),
-  )
-  let loader_data_available = $derived(has_frame_loader_data(trajectory, raw_data))
   // sweep_frame_plan rejects a non-integer or sub-1 cap outright, so normalise once here.
   // Number.isFinite also catches the Infinity a `1e999` entry produces.
   let safe_max_frames = $derived(
@@ -48,109 +36,68 @@
       ? Math.floor(max_frames)
       : DEFAULT_MAX_SWEEP_FRAMES,
   )
-  let plan = $derived(
-    total_frames > 0
-      ? sweep_frame_plan(total_frames, safe_max_frames)
-      : { frame_numbers: [], frame_stride: 1 },
-  )
-  // a-CNA measured at ~9-14 µs/atom; the upper end is what a user should plan for
-  let estimated_seconds = $derived(plan.frame_numbers.length * n_atoms * 14e-6)
 
-  // Drop a stale sweep whenever the underlying trajectory is swapped out — its frame
-  // numbers and atom count belong to a run that is no longer on screen
-  let analysed_trajectory = untrack(() => trajectory)
-  $effect(() => {
-    if (trajectory === analysed_trajectory) return
-    analysed_trajectory = trajectory
-    result = undefined
-    error_msg = undefined
-    progress = null
-  })
-
-  async function compute() {
-    if (!trajectory) return
-    const requested_trajectory = trajectory
-    computing = true
-    error_msg = undefined
-    try {
-      const next_result = await collect_structure_id_sweep(requested_trajectory, {
-        raw_data,
-        max_frames: safe_max_frames,
-        // CSP is not plotted here, and skipping it drops the second neighbor pass per frame
-        options: { skip_csp: true },
-        on_progress: (done, total) => {
-          if (trajectory === requested_trajectory) progress = { done, total }
-        },
-      })
-      if (trajectory === requested_trajectory) result = next_result
-    } catch (exc) {
-      if (trajectory !== requested_trajectory) return
-      // clearing the result too, else the previous curves stay up and hide this error
-      result = undefined
-      error_msg = to_error(exc).message
-    } finally {
-      computing = false
-      progress = null
-    }
-  }
+  // The sweep loads one frame at a time, so there is no position buffer to stride: the
+  // shared pane's frame-stride control stays hidden and `max_frames` caps the sample instead.
+  const collect = (
+    target: TrajectoryRun,
+    { on_progress, signal }: AnalysisCollectOptions,
+  ): Promise<StructureIdSweep> =>
+    collect_structure_id_sweep(target, {
+      signal,
+      max_frames: safe_max_frames,
+      // CSP is not plotted here, and skipping it drops the second neighbor pass per frame
+      options: { skip_csp: true },
+      on_progress: (done, total) =>
+        on_progress({ current: done, total, stage: `frame ${done} of ${total}` }),
+    })
 </script>
 
-<ViewerPane
-  bind:open={pane_open}
+<TrajectoryAnalysisPane
+  {run}
+  bind:pane_open
+  bind:input={result}
+  bind:error_msg
+  title="Structure Type Identification"
   pane_name="structure type identification"
   class_prefix="trajectory-structure-id"
-  max_width="34em"
-  closed_icon={Lattice}
+  icon={Lattice}
+  analysis_name="Structure identification"
+  {collect}
+  compute_label="Identify structure types"
+  recollect_label="Recompute"
+  collecting_label="Identifying…"
   {...pane_options}
 >
-  <h4 style="margin-top: 0">Structure Type Identification</h4>
-
-  {#if !trajectory}
-    <StatusMessage message="No trajectory loaded" style="border: none" />
-  {:else}
-    {#if setup_error}
-      <StatusMessage type="error" message={setup_error} style="font-size: 0.8em" />
-    {:else if is_lazy}
-      <StatusMessage
-        type="warning"
-        message="Indexed trajectory: {loaded_frames} of {total_frames} frames are in memory. Sampled frames are loaded on demand{loader_data_available
-          ? ``
-          : `, but the raw file bytes are unavailable here`}."
-        style="font-size: 0.8em"
-      />
-    {/if}
-
-    <div class="analysis-controls structure-id-controls">
-      <label>
-        Max frames
-        <input type="number" min="1" step="1" bind:value={max_frames} />
-      </label>
-      <label>
-        <input type="checkbox" bind:checked={normalize} />
-        Plot fraction of atoms
-      </label>
-      <p class="hint">
-        {plan.frame_numbers.length} of {total_frames} frames
-        {#if plan.frame_stride > 1}(every {plan.frame_stride}){/if}
-        × {n_atoms} atoms ≈ {format_num(estimated_seconds, `.2~g`)} s
-      </p>
-      <button onclick={compute} disabled={computing}>
-        {computing ? `Identifying…` : result ? `Recompute` : `Identify structure types`}
-      </button>
-      {#if progress}
-        <span class="hint">frame {progress.done} of {progress.total}</span>
-      {/if}
-    </div>
-
-    <!-- Rendered unconditionally so StructureTypePlot stays the single owner of the message
-    area: collect errors land in the same slot as its empty state -->
+  <!-- with no stride control, collected_frames is the trajectory's total frame count -->
+  {#snippet controls({ collected_frames: total_frames, n_atoms })}
+    {@const plan =
+      total_frames > 0
+        ? sweep_frame_plan(total_frames, safe_max_frames)
+        : { frame_numbers: [], frame_stride: 1 }}
+    <label>
+      Max frames
+      <input type="number" min="1" step="1" bind:value={max_frames} />
+    </label>
+    <label>
+      <input type="checkbox" bind:checked={normalize} />
+      Plot fraction of atoms
+    </label>
+    <p class="hint">
+      {plan.frame_numbers.length} of {total_frames} frames
+      {#if plan.frame_stride > 1}(every {plan.frame_stride}){/if}
+      <!-- a-CNA measured at ~9-14 µs/atom; the upper end is what a user should plan for -->
+      × {n_atoms} atoms ≈ {format_num(plan.frame_numbers.length * n_atoms * 14e-6, `.2~g`)} s
+    </p>
+  {/snippet}
+  {#snippet children({ input, collecting })}
     <StructureTypePlot
-      id_results={result?.results ?? []}
-      frame_labels={result?.frame_numbers}
+      id_results={input?.results ?? []}
+      frame_labels={input?.frame_numbers}
       layout="over_frames"
       {normalize}
-      loading={computing}
+      loading={collecting}
       {error_msg}
     />
-  {/if}
-</ViewerPane>
+  {/snippet}
+</TrajectoryAnalysisPane>

@@ -2,16 +2,22 @@
 // stateless: component $state/$derived values are passed in as parameters.
 import type { D3SymbolName } from '$lib/labels'
 import { symbol_names } from '$lib/labels'
-import type { DataSeries, FillRegion, InternalPoint, LegendItem, PointStyle } from '$lib/plot'
 import {
   build_legend_items,
   get_series_color,
   get_series_symbol,
 } from '$lib/plot/core/data-transform'
 import { is_fill_gradient } from '$lib/plot/core/fill-utils'
-import { assert_series_lengths, type AxisRanges, DEFAULT_MARKERS } from '$lib/plot/core/types'
-
-export { type AxisRanges } from '$lib/plot/core/types'
+import {
+  assert_series_lengths,
+  type AxisRanges,
+  type DataSeries,
+  DEFAULT_MARKERS,
+  type FillRegion,
+  type InternalPoint,
+  type LegendItem,
+  type PointStyle,
+} from '$lib/plot/core/types'
 
 // Sort a possibly-inverted range (axes may be reversed, e.g. [3.5, 1.4]) into [lo, hi]
 // once per series so the per-point test is two bare comparisons.
@@ -115,6 +121,19 @@ export type LegendFill = FillRegion & {
   source_idx: number
 }
 
+// Legend label of a series. Scatter is the only chart that also accepts a label from
+// series-level metadata (`metadata: { label }`).
+export const scatter_series_label = <Metadata>(
+  data_series: DataSeries<Metadata>,
+): string | null =>
+  data_series?.label ??
+  (typeof data_series?.metadata === `object` &&
+  data_series.metadata !== null &&
+  `label` in data_series.metadata &&
+  typeof data_series.metadata.label === `string`
+    ? data_series.metadata.label
+    : null)
+
 // Prepare legend items from series + computed fill regions, deduplicated by
 // legend_group::label (first occurrence wins across both series and fills)
 export function build_legend_data<Metadata = Record<string, unknown>>(
@@ -122,16 +141,6 @@ export function build_legend_data<Metadata = Record<string, unknown>>(
   computed_fills: readonly LegendFill[],
   color_scale_fn: (value: number) => string,
 ): LegendItem[] {
-  // Scatter is the only chart that also accepts a label from series metadata.
-  const series_label = (data_series: DataSeries<Metadata>) =>
-    data_series?.label ??
-    (typeof data_series?.metadata === `object` &&
-    data_series.metadata !== null &&
-    `label` in data_series.metadata &&
-    typeof data_series.metadata.label === `string`
-      ? data_series.metadata.label
-      : null)
-
   const items = build_legend_items(
     series,
     (data_series, series_idx) => {
@@ -196,7 +205,7 @@ export function build_legend_data<Metadata = Record<string, unknown>>(
 
       return display_style
     },
-    { label: series_label },
+    { label: scatter_series_label },
   )
 
   // Deduplicate by legend_group::label (first occurrence wins, across series + fills)

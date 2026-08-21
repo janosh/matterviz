@@ -1,6 +1,6 @@
-import { ElementScatter } from '$lib'
+import ElementScatter from '$lib/plot/scatter/ElementScatter.svelte'
 import { element_data } from '$lib/element'
-import type { InternalPoint } from '$lib/plot'
+import type { InternalPoint } from '$lib/plot/core/types'
 import { selected } from '$lib/state.svelte'
 import { mount, tick } from 'svelte'
 import { afterEach, describe, expect, test } from 'vitest'

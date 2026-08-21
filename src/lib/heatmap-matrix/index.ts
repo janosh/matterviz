@@ -1,10 +1,11 @@
 import type { ChemicalElement, ElementSymbol } from '$lib/element'
 import { element_data } from '$lib/element'
-import type { Vec2 } from '$lib/math'
 import { escape_csv_field } from '$lib/utils'
 import type { Snippet } from 'svelte'
 
-export { COLOR_OVERRIDE_KEY_SEPARATOR, make_color_override_key } from './shared'
+// Key format for color_overrides lookups: `${x_key}\0${y_key}`
+export const make_color_override_key = (x_key: string, y_key: string): string =>
+  `${x_key}\0${y_key}`
 
 // === Types ===
 
@@ -62,24 +63,17 @@ export type ElementAxisOrdering =
   | ElementAxisOrderingKey
   | ((a: ChemicalElement, b: ChemicalElement) => number)
 
-// Shared types used by both HeatmapMatrix and HeatmapMatrixControls
-export type NormalizeMode =
-  | `linear`
-  | `log`
-  | ((value: number, min: number, max: number) => number)
-export type DomainMode = `auto` | `robust` | `fixed`
+// Shared types used by both HeatmapMatrix and HeatmapMatrixControls. Prefixed because
+// bond-angles has its own NormalizeMode and both modules are star-exported from $lib.
+export type HeatmapNormalizeMode = `linear` | `log`
+// auto: data min/max; robust: 2nd-98th percentile; fixed: color_scale_range as given
+export type HeatmapDomainMode = `auto` | `robust` | `fixed`
 export type LegendPosition = `right` | `bottom`
 export type SymmetricMode = false | `lower` | `upper`
 
 // Tooltip snippet type for HeatmapMatrix
 export type HeatmapTooltipProp = Snippet<[CellContext]> | boolean
-export type HeatmapSelection = { x_idx: number; y_idx: number }
 export type HeatmapExportFormat = `csv` | `json`
-export type HeatmapBrushPayload = {
-  x_range: Vec2
-  y_range: Vec2
-  cells: CellContext[]
-}
 
 // All built-in string ordering keys
 export const ELEMENT_ORDERINGS = Object.keys(ORDERING_LABELS) as ElementAxisOrderingKey[]

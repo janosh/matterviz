@@ -10,14 +10,9 @@ import {
   axis_scale_types as get_axis_scale_types,
   group_axis_series,
 } from '$lib/plot/core/axis-assignment'
-import { smooth_moving_average } from '$lib/plot/core/data-cleaning-signal'
+import { smooth_moving_average } from '$lib/plot/core/data-cleaning'
 import { assert_series_lengths, type DataSeries } from '$lib/plot/core/types'
-import type {
-  TrajectoryDataExtractor,
-  TrajectoryFrame,
-  TrajectoryMetadata,
-  TrajectoryType,
-} from './index'
+import type { TrajectoryMetadata } from './index'
 
 // Configuration constants
 const ENERGY_UNITS = [`eV`, `eV/atom`, `hartree`, `kcal/mol`, `kJ/mol`]
@@ -57,12 +52,6 @@ const AXIS_COORDINATE_PROPERTIES = new Set([
   `elapsed time`,
   `timestamp`,
 ])
-
-// Shared per-series line/point styling derived from a single color
-const series_color_styles = (color: string) => ({
-  line_style: { stroke: color, stroke_width: 2 },
-  point_style: { fill: color, stroke: color, stroke_width: 1 },
-})
 
 export interface PlotSeriesOptions {
   property_config?: Record<string, TrajPropertyConfig>
@@ -156,7 +145,7 @@ function interpolate(xs: readonly number[], ys: readonly number[], value: number
 }
 
 // Frame numbering for a trajectory with no samples to grid on
-export const FRAME_X_MAP: TrajectoryXMap = {
+const FRAME_X_MAP: TrajectoryXMap = {
   quantity: `frame`,
   label: X_QUANTITY_LABELS.frame,
   unit: ``,
@@ -226,230 +215,26 @@ export function get_frame_time_step(
   return uniform ? (step_delta / frame_delta) * time_step : null
 }
 
-// Frame/step pairs from whichever source the trajectory has: an eagerly parsed frame list,
-// or the sampled plot metadata an indexed trajectory carries instead.
-export function get_frame_step_samples(trajectory: TrajectoryType): FrameStepSamples {
-  if (trajectory.plot_metadata?.length) {
-    const ordered = [...trajectory.plot_metadata].toSorted(
-      (meta_a, meta_b) => meta_a.frame_number - meta_b.frame_number,
-    )
-    return {
-      frame_numbers: ordered.map((meta) => meta.frame_number),
-      steps: ordered.map((meta) => meta.step),
+// Frame/step pairs of a run's property rows (sorted by frame_number; every frame for an
+// eager run, a sample for HDF5). Cached per rows array so the viewer's derived values share
+// one pair of arrays per property batch.
+const samples_cache = new WeakMap<readonly TrajectoryMetadata[], FrameStepSamples>()
+export function get_frame_step_samples(rows: readonly TrajectoryMetadata[]): FrameStepSamples {
+  let samples = samples_cache.get(rows)
+  if (!samples) {
+    samples = {
+      frame_numbers: rows.map((row) => row.frame_number),
+      steps: rows.map((row) => row.step),
     }
+    samples_cache.set(rows, samples)
   }
-  return {
-    frame_numbers: trajectory.frames.map((_frame, frame_idx) => frame_idx),
-    steps: trajectory.frames.map((frame) => frame.step),
-  }
+  return samples
 }
-
-// Cache the per-frame walk per trajectory so re-renders that only change visible_properties or
-// labels/config reuse it (legend toggles mutate plot_series directly and skip regeneration, so they
-// don't hit this). Keyed by trajectory identity (WeakMap auto-evicts) and invalidated on extractor
-// or frame identity changes.
-const same_frames = (
-  cached_frames: readonly TrajectoryFrame[],
-  current_frames: readonly TrajectoryFrame[],
-): boolean =>
-  cached_frames.length === current_frames.length &&
-  cached_frames.every((frame, frame_idx) => frame === current_frames[frame_idx])
 
 // frame_indices runs parallel to values: a property absent from some frames yields fewer
 // values than there are frames, and pairing them by array position would slide every
 // later point one frame to the left.
-type PropertyStats = Map<
-  string,
-  {
-    values: number[]
-    frame_indices: number[]
-  }
->
-
-const stats_cache = new WeakMap<
-  TrajectoryType,
-  {
-    extractor: TrajectoryDataExtractor
-    frames: TrajectoryFrame[]
-    stats: PropertyStats
-  }
->()
-
-// Unified property extraction and series generation
-export function generate_plot_series(
-  trajectory: TrajectoryType,
-  data_extractor: TrajectoryDataExtractor,
-  options: PlotSeriesOptions = {},
-): DataSeries[] {
-  if (!trajectory?.frames?.length) return []
-
-  const {
-    property_config = trajectory_property_config,
-    colors = PLOT_COLORS,
-    default_visible_properties = DEFAULT_VISIBLE,
-    x_map = FRAME_X_MAP,
-  } = options
-
-  // Single-pass extraction with variance detection, cached per trajectory (see stats_cache above)
-  const cached = stats_cache.get(trajectory)
-  let property_stats: PropertyStats
-  if (cached?.extractor === data_extractor && same_frames(cached.frames, trajectory.frames)) {
-    property_stats = cached.stats
-  } else {
-    property_stats = extract_property_statistics(trajectory, data_extractor)
-    stats_cache.set(trajectory, {
-      extractor: data_extractor,
-      frames: [...trajectory.frames],
-      stats: property_stats,
-    })
-  }
-
-  // Create all series
-  const all_series = create_series_from_stats(property_stats, property_config, colors, x_map)
-
-  const assigned_series = assign_trajectory_axes(all_series, (srs) => {
-    const metadata = Array.isArray(srs.metadata) ? srs.metadata[0] : srs.metadata
-    const property_key = ((metadata?.property_key as string) || srs.label) ?? ``
-    return is_default_visible(property_key, default_visible_properties)
-  })
-  return assigned_series.toSorted((a, b) => Number(b.visible) - Number(a.visible))
-}
-
-// Extract statistics for all properties in a single pass
-function extract_property_statistics(
-  trajectory: TrajectoryType,
-  data_extractor: TrajectoryDataExtractor,
-): PropertyStats {
-  const property_stats = new Map<string, { values: number[]; frame_indices: number[] }>()
-
-  // Extract all data in single pass
-  trajectory.frames.forEach((frame, frame_idx) => {
-    const data = data_extractor(frame, trajectory)
-
-    Object.entries(data).forEach(([key, value]) => {
-      if (
-        typeof value !== `number` ||
-        is_axis_coordinate_property(key) ||
-        key.startsWith(`constant_`)
-      ) {
-        return
-      }
-
-      const stat = property_stats.get(key) ?? { values: [], frame_indices: [] }
-      property_stats.set(key, stat)
-      stat.values.push(value)
-      stat.frame_indices.push(frame_idx)
-    })
-  })
-
-  // Convert to final format with variation detection
-  const result: PropertyStats = new Map()
-
-  for (const [key, stat] of property_stats) {
-    if (stat.values.length <= 1) continue
-
-    const is_energy = is_energy_property(key)
-    const has_variation = get_coefficient_of_variation(stat.values) >= 1e-6
-
-    // Skip constant properties except energy
-    if (!has_variation && !is_energy) continue
-
-    result.set(key, stat)
-  }
-
-  return result
-}
-
-// Create series from statistics
-function create_series_from_stats(
-  property_stats: PropertyStats,
-  property_config: Record<string, TrajPropertyConfig>,
-  colors: readonly string[],
-  x_map: TrajectoryXMap,
-): DataSeries[] {
-  const all_series: DataSeries[] = []
-  let color_idx = 0
-
-  for (const [key, stat] of property_stats) {
-    const n_values = stat.values.length
-    const { clean_label, unit, axis_group } = extract_label_and_unit(key, property_config)
-    const color = colors[color_idx % colors.length]
-
-    // shared per-series metadata (consumers only read metadata[0]); one object, not n copies
-    const series_metadata = {
-      series_label: unit ? `${clean_label} (${unit})` : clean_label,
-      property_key: key, // Store original property key for robust lookups
-    }
-    all_series.push({
-      x: stat.frame_indices.map(x_map.to_x),
-      y: stat.values,
-      label: clean_label,
-      unit,
-      ...(axis_group ? { axis_group } : {}),
-      markers: n_values < 30 ? `line+points` : `line`,
-      metadata: Array.from({ length: n_values }, () => series_metadata),
-      ...series_color_styles(color),
-    })
-    color_idx++
-  }
-
-  return all_series
-}
-
-// Helper functions
-export function extract_label_and_unit(
-  key: string,
-  property_config: Record<string, TrajPropertyConfig>,
-): { clean_label: string; unit: string; axis_group?: string } {
-  const config = property_config[key] || property_config[key.toLowerCase()]
-  if (config) {
-    return { clean_label: config.label, unit: config.unit, axis_group: config.axis_group }
-  }
-  return {
-    clean_label: key.charAt(0).toUpperCase() + key.slice(1).replaceAll('_', ` `),
-    unit: ``,
-  }
-}
-
-function calculate_priority(unit: string, group_series: readonly DataSeries[]): number {
-  // Energy units get highest priority
-  const unit_priority = ENERGY_UNITS.indexOf(unit)
-  if (unit_priority !== -1) return unit_priority
-
-  const has_property = (properties: readonly string[]): boolean =>
-    group_series.some((srs) => {
-      const label = srs.label?.toLowerCase() ?? ``
-      return properties.some((property) => label.includes(property))
-    })
-  if (has_property(ENERGY_PROPERTIES)) return 10
-  if (has_property(FORCE_PROPERTIES)) return 100
-
-  return 1000 // Default low priority
-}
-
-// Keep Trajectory's group-level visibility, priority, and two-axis cap.
-function assign_trajectory_axes(
-  series: readonly DataSeries[],
-  is_visible: (series: DataSeries, series_idx: number) => boolean,
-): DataSeries[] {
-  const groups = group_axis_series(series, {
-    is_visible: () => true,
-    priority: calculate_priority,
-  })
-  const requested_groups = groups.filter((group) =>
-    group.series.some((srs, group_idx) => is_visible(srs, group.series_indices[group_idx])),
-  )
-  const selected_groups = requested_groups.length > 0 ? requested_groups : groups.slice(0, 1)
-  const { assignments } = assign_axes(series, {
-    is_visible: (srs) => selected_groups.some((group) => group.key === axis_group_key(srs)),
-    priority: calculate_priority,
-  })
-  return series.map((srs, series_idx) => ({
-    ...srs,
-    visible: assignments[series_idx] !== undefined,
-    y_axis: assignments[series_idx] ?? `y1`,
-  }))
-}
+type PropertyStats = Map<string, { values: number[]; frame_indices: number[] }>
 
 // Normalize property keys for robust matching (handles case, underscores, and common aliases)
 const normalize_property_key = (key: string): string => {
@@ -482,15 +267,149 @@ const is_default_visible = (
   return false
 }
 
-// Utility functions
+// Keep every property that varies (plus energy, kept even when flat so a converged run
+// still shows its energy) and was observed in at least two frames.
+const filter_plottable = (stats: PropertyStats): PropertyStats => {
+  const result: PropertyStats = new Map()
+  for (const [key, stat] of stats) {
+    if (stat.values.length <= 1) continue
+    if (!is_energy_property(key) && get_coefficient_of_variation(stat.values) < 1e-6) continue
+    result.set(key, stat)
+  }
+  return result
+}
+
+// Per-property value lists from the rows, keyed by property. Rows arrive sorted and
+// deduplicated (TrajectoryProperties), so this is one linear pass.
+function row_property_statistics(rows: readonly TrajectoryMetadata[]): PropertyStats {
+  const stats: PropertyStats = new Map()
+  for (const { frame_number, properties } of rows) {
+    for (const [key, value] of Object.entries(properties)) {
+      if (typeof value !== `number` || is_axis_coordinate_property(key)) continue
+      let stat = stats.get(key)
+      if (!stat) stats.set(key, (stat = { values: [], frame_indices: [] }))
+      stat.values.push(value)
+      stat.frame_indices.push(frame_number)
+    }
+  }
+  return filter_plottable(stats)
+}
+
+// Cache the per-row walk per rows array so re-renders that only change visible_properties or
+// labels reuse it (legend toggles mutate plot_series directly and skip regeneration).
+const stats_cache = new WeakMap<readonly TrajectoryMetadata[], PropertyStats>()
+const cached_property_statistics = (rows: readonly TrajectoryMetadata[]): PropertyStats => {
+  let stats = stats_cache.get(rows)
+  if (!stats) stats_cache.set(rows, (stats = row_property_statistics(rows)))
+  return stats
+}
+
+export function extract_label_and_unit(
+  key: string,
+  property_config: Record<string, TrajPropertyConfig>,
+): { clean_label: string; unit: string; axis_group?: string } {
+  const config = property_config[key] || property_config[key.toLowerCase()]
+  if (config) {
+    return { clean_label: config.label, unit: config.unit, axis_group: config.axis_group }
+  }
+  return {
+    clean_label: key.charAt(0).toUpperCase() + key.slice(1).replaceAll(`_`, ` `),
+    unit: ``,
+  }
+}
+
+function calculate_priority(unit: string, group_series: readonly DataSeries[]): number {
+  // Energy units get highest priority
+  const unit_priority = ENERGY_UNITS.indexOf(unit)
+  if (unit_priority !== -1) return unit_priority
+
+  const has_property = (properties: readonly string[]): boolean =>
+    group_series.some((srs) => {
+      const label = srs.label?.toLowerCase() ?? ``
+      return properties.some((property) => label.includes(property))
+    })
+  if (has_property(ENERGY_PROPERTIES)) return 10
+  if (has_property(FORCE_PROPERTIES)) return 100
+
+  return 1000 // Default low priority
+}
+
+// Series from property statistics: one per property, coloured in order, visible when the
+// property (or another in its unit group) is requested, capped at two axes by priority. With
+// nothing requested the highest-priority group shows so the plot is never empty.
+function build_series(stats: PropertyStats, options: PlotSeriesOptions): DataSeries[] {
+  const {
+    property_config = trajectory_property_config,
+    colors = PLOT_COLORS,
+    default_visible_properties = DEFAULT_VISIBLE,
+    x_map = FRAME_X_MAP,
+  } = options
+  const series: DataSeries[] = []
+  for (const [key, stat] of stats) {
+    const n_values = stat.values.length
+    const { clean_label, unit, axis_group } = extract_label_and_unit(key, property_config)
+    const color = colors[series.length % colors.length]
+    // shared per-series metadata (consumers only read metadata[0]); one object, not n copies
+    const series_metadata = {
+      series_label: unit ? `${clean_label} (${unit})` : clean_label,
+      property_key: key, // Store original property key for robust lookups
+    }
+    series.push({
+      x: stat.frame_indices.map(x_map.to_x),
+      y: stat.values,
+      label: clean_label,
+      unit,
+      ...(axis_group ? { axis_group } : {}),
+      markers: n_values < 30 ? `line+points` : `line`,
+      metadata: Array.from({ length: n_values }, () => series_metadata),
+      line_style: { stroke: color, stroke_width: 2 },
+      point_style: { fill: color, stroke: color, stroke_width: 1 },
+    })
+  }
+
+  const groups = group_axis_series(series, {
+    is_visible: () => true,
+    priority: calculate_priority,
+  })
+  const requested_groups = groups.filter((group) =>
+    group.series.some((srs) =>
+      is_default_visible(property_key(srs) ?? srs.label ?? ``, default_visible_properties),
+    ),
+  )
+  const selected_groups = requested_groups.length > 0 ? requested_groups : groups.slice(0, 1)
+  const { assignments } = assign_axes(series, {
+    is_visible: (srs) => selected_groups.some((group) => group.key === axis_group_key(srs)),
+    priority: calculate_priority,
+  })
+  return series
+    .map((srs, series_idx) => ({
+      ...srs,
+      visible: assignments[series_idx] !== undefined,
+      y_axis: assignments[series_idx] ?? `y1`,
+    }))
+    .toSorted((srs_a, srs_b) => Number(srs_b.visible) - Number(srs_a.visible))
+}
+
+const property_key = (series: DataSeries): string | undefined => {
+  const metadata = Array.isArray(series.metadata) ? series.metadata[0] : series.metadata
+  const key = metadata?.property_key
+  return typeof key === `string` ? key : undefined
+}
+
+// Plot series from a run's property rows
+export const generate_plot_series = (
+  rows: readonly TrajectoryMetadata[],
+  options: PlotSeriesOptions = {},
+): DataSeries[] =>
+  rows.length > 0 ? build_series(cached_property_statistics(rows), options) : []
+
+// A plot of one frame, or of nothing but flat lines, says nothing: hide it
 export function should_hide_plot(
-  trajectory: TrajectoryType | undefined,
+  frame_count: number,
   plot_series: DataSeries[],
   tolerance = 1e-10,
 ): boolean {
-  if (!trajectory || trajectory.frames.length <= 1 || plot_series.length === 0) {
-    return true
-  }
+  if (frame_count <= 1 || plot_series.length === 0) return true
 
   const visible_series = plot_series.filter((srs) => srs.visible)
   if (visible_series.length === 0) return false // Show empty plot with legend
@@ -529,77 +448,6 @@ export const generate_axis_scale_types = (plot_series: DataSeries[]) =>
     is_visible: series_is_visible,
     min_log_decades: 3,
   })
-
-export function generate_streaming_plot_series(
-  metadata_list: TrajectoryMetadata[],
-  options: PlotSeriesOptions = {},
-): DataSeries[] {
-  if (metadata_list.length === 0) return []
-
-  const {
-    property_config = trajectory_property_config,
-    colors = PLOT_COLORS,
-    default_visible_properties = DEFAULT_VISIBLE,
-    x_map = FRAME_X_MAP,
-  } = options
-
-  const ordered_metadata = [...metadata_list]
-    .toSorted((metadata_a, metadata_b) => metadata_a.frame_number - metadata_b.frame_number)
-    .filter(
-      (metadata, idx, sorted_metadata) =>
-        idx === 0 || metadata.frame_number !== sorted_metadata[idx - 1].frame_number,
-    )
-  const all_properties = new Set<string>()
-  ordered_metadata.forEach((metadata) => {
-    Object.keys(metadata.properties).forEach((property_key) => {
-      if (!is_axis_coordinate_property(property_key)) all_properties.add(property_key)
-    })
-  })
-
-  const all_series: DataSeries[] = []
-  let color_idx = 0
-
-  for (const property_key of all_properties) {
-    const full_data_points = ordered_metadata
-      .filter((metadata) => property_key in metadata.properties)
-      .map((metadata) => ({
-        x: x_map.to_x(metadata.frame_number),
-        y: metadata.properties[property_key],
-      }))
-
-    if (full_data_points.length < 2) continue
-
-    const is_energy = is_energy_property(property_key)
-    const values = full_data_points.map((point) => point.y)
-    if (!is_energy && get_coefficient_of_variation(values) < 1e-6) continue
-
-    const { clean_label, unit, axis_group } = extract_label_and_unit(
-      property_key,
-      property_config,
-    )
-    const is_visible =
-      is_default_visible(property_key, default_visible_properties) || color_idx < 2
-    const color = colors[color_idx % colors.length]
-    all_series.push({
-      x: full_data_points.map((point) => point.x),
-      y: full_data_points.map((point) => point.y),
-      label: clean_label,
-      unit,
-      ...(axis_group ? { axis_group } : {}),
-      visible: is_visible,
-      markers: full_data_points.length < 1000 ? `line+points` : `line`,
-      metadata: {
-        series_label: unit ? `${clean_label} (${unit})` : clean_label,
-        property_key, // Store original property key for robust lookups
-      },
-      ...series_color_styles(color),
-    })
-
-    color_idx++
-  }
-
-  return assign_trajectory_axes(all_series, series_is_visible)
-}
 
 type PlotDataPoint = { x: number; y: number; source_idx: number }
 

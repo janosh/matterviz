@@ -1,17 +1,19 @@
 // Fermi surface computation and analysis functions
 import * as math from '$lib/math'
 import { EPS } from '$lib/math'
-import type { Matrix3x3, Vec2, Vec3, Vec4 } from '$lib/math'
+import type { Matrix3x3, Vec2, Vec3 } from '$lib/math'
 import {
   CLOSED_CONTOUR_TOLERANCE,
   IRREDUCIBLE_BZ_MIN_VERTICES,
   IRREDUCIBLE_BZ_TOLERANCE,
   SPANNING_THRESHOLD,
 } from './constants'
+import { grid_dimensions, scalar_grid_strides } from '$lib/isosurface/grid'
 import { marching_cubes } from '$lib/marching-cubes'
 // clamp01 guards float jitter at the cell boundary
 import { clamp01 } from '$lib/utils'
 import type {
+  BandEnergyGrid,
   BandGridData,
   FermiSliceData,
   FermiSliceOptions,
@@ -19,84 +21,59 @@ import type {
   FermiSurfaceMetadata,
   FermiSurfaceOptions,
   Isoline,
-  Isosurface,
+  FermiIsosurface,
   SpinChannel,
   SurfaceDimensionality,
 } from './types'
 
 const safe_mod = (val: number, dim: number) => ((val % dim) + dim) % dim
 
-// Precompute Catmull-Rom coefficients for a given t value
-// Returns [c0, c1, c2, c3] where result = c0*p0 + c1*p1 + c2*p2 + c3*p3
-function catmull_rom_coeffs(t: number): Vec4 {
+// Catmull-Rom weights for the 4-point stencil at fractional offset t, written into `out`
+// (result = out[0]*p0 + out[1]*p1 + out[2]*p2 + out[3]*p3)
+function catmull_rom_coeffs(t: number, out: Float64Array): void {
   const t2 = t * t
   const t3 = t2 * t
-  const c1 = 0.5 * (-t + 2 * t2 - t3)
-  const c2 = 0.5 * (2 - 5 * t2 + 3 * t3)
-  const c3 = 0.5 * (t + 4 * t2 - 3 * t3)
-  const c4 = 0.5 * (-t2 + t3)
-  return [c1, c2, c3, c4]
+  out[0] = 0.5 * (-t + 2 * t2 - t3)
+  out[1] = 0.5 * (2 - 5 * t2 + 3 * t3)
+  out[2] = 0.5 * (t + 4 * t2 - 3 * t3)
+  out[3] = 0.5 * (-t2 + t3)
 }
 
-// Tricubic interpolation with cached wrap indices and precomputed coefficients.
-// px/py/pz are the wrap periods (unique points per axis): n for periodic grids,
-// n−1 for endpoint-inclusive grids whose last point duplicates the first.
-function tricubic_interpolate(
-  grid: number[][][],
-  fx: number,
-  fy: number,
-  fz: number,
-  px: number,
-  py: number,
-  pz: number,
-): number {
-  // Get integer and fractional parts
-  const ix = Math.floor(fx)
-  const iy = Math.floor(fy)
-  const iz = Math.floor(fz)
-
-  // Precompute Catmull-Rom coefficients
-  const cx = catmull_rom_coeffs(fx - ix)
-  const cy = catmull_rom_coeffs(fy - iy)
-  const cz = catmull_rom_coeffs(fz - iz)
-
-  // Wrapped stencil indices (modulo hoisted out of the inner loop); a zero period
-  // (single-point axis) has no neighbours, so collapse the stencil onto index 0
-  const stencil = (idx: number, period: number) =>
-    [idx - 1, idx, idx + 1, idx + 2].map((stencil_idx) =>
-      period > 0 ? ((stencil_idx % period) + period) % period : 0,
-    )
-  const [wx, wy, wz] = [stencil(ix, px), stencil(iy, py), stencil(iz, pz)]
-
-  // Interpolate along z, then y, then x (fully inlined)
-  let result = 0
-  for (let xi = 0; xi < 4; xi++) {
-    const row = grid[wx[xi]]
-    let y_sum = 0
-    for (let yi = 0; yi < 4; yi++) {
-      const col = row[wy[yi]]
-      // Inline z interpolation
-      y_sum +=
-        cy[yi] *
-        (cz[0] * col[wz[0]] + cz[1] * col[wz[1]] + cz[2] * col[wz[2]] + cz[3] * col[wz[3]])
-    }
-    result += cx[xi] * y_sum
+// Wrapped 4-point stencil offsets (already multiplied by the axis stride) around floor(coord).
+// `period` is the number of unique points along the axis: n for periodic grids, n−1 for
+// endpoint-inclusive grids whose last point duplicates the first. A zero period
+// (single-point axis) has no neighbours, so the stencil collapses onto index 0.
+function wrapped_stencil(
+  coord: number,
+  period: number,
+  stride: number,
+  out: Int32Array,
+): void {
+  const base = Math.floor(coord)
+  for (let tap = 0; tap < 4; tap++) {
+    const idx = base - 1 + tap
+    out[tap] = (period > 0 ? ((idx % period) + period) % period : 0) * stride
   }
-
-  return result
 }
 
-// Upsample a 3D grid with tricubic interpolation, preserving the grid convention:
-// endpoint-inclusive (BXSF, point i ↔ frac i/(n−1)) vs periodic (FRMSF, i ↔ i/n).
-// Mixing conventions rescales the surface and distorts the zone boundary.
-function upsample_grid(grid: number[][][], factor: number, periodic = false): number[][][] {
+// Upsample a band grid with tricubic (Catmull-Rom) interpolation, preserving the grid
+// convention: endpoint-inclusive (BXSF, point i ↔ frac i/(n−1)) vs periodic (FRMSF,
+// i ↔ i/n). Mixing conventions rescales the surface and distorts the zone boundary.
+export function upsample_grid(
+  grid: BandEnergyGrid,
+  factor: number,
+  periodic = false,
+): BandEnergyGrid {
   if (factor <= 1) return grid
+
+  const [nx, ny, nz] = grid_dimensions(grid)
+  const [stride_x, stride_y, stride_z] = scalar_grid_strides(grid)
+  const { values } = grid
 
   // Endpoint-inclusive grids carry one duplicated boundary sample per axis; the wrap
   // period (count of unique points) doubles as the resampling span numerator
   const endpoint = periodic ? 0 : 1
-  const dims = [grid.length, grid[0]?.length || 0, grid[0]?.[0]?.length || 0]
-  const [px, py, pz] = dims.map((dim) => dim - endpoint)
+  const [px, py, pz] = [nx - endpoint, ny - endpoint, nz - endpoint]
   const [new_nx, new_ny, new_nz] = [px, py, pz].map(
     (period) => Math.round(period * factor) + endpoint,
   )
@@ -109,31 +86,66 @@ function upsample_grid(grid: number[][][], factor: number, periodic = false): nu
       span > 0 ? (idx / span) * period : 0,
     )
   }
-  const [fx_arr, fy_arr, fz_arr] = [
-    [new_nx, px],
-    [new_ny, py],
-    [new_nz, pz],
-  ].map(([new_n, period]) => src_coords(new_n, period))
+  const fx_arr = src_coords(new_nx, px)
+  const fy_arr = src_coords(new_ny, py)
+  const fz_arr = src_coords(new_nz, pz)
 
-  // Preallocate output grid
-  const new_grid: number[][][] = Array(new_nx)
-
-  for (let ix = 0; ix < new_nx; ix++) {
-    const fx = fx_arr[ix]
-    const iy_arr: number[][] = Array(new_ny)
-    for (let iy = 0; iy < new_ny; iy++) {
-      const fy = fy_arr[iy]
-      const iz_arr = new Float64Array(new_nz)
-      for (let iz = 0; iz < new_nz; iz++) {
-        iz_arr[iz] = tricubic_interpolate(grid, fx, fy, fz_arr[iz], px, py, pz)
-      }
-      // Convert Float64Array back to regular array for compatibility
-      iy_arr[iy] = Array.from(iz_arr)
-    }
-    new_grid[ix] = iy_arr
+  // Per-axis stencil offsets and weights are precomputed once per output row/plane so the
+  // innermost loop is 64 multiply-adds with no allocation or modulo
+  const x_offsets = new Int32Array(4)
+  const y_offsets = new Int32Array(4)
+  const z_offsets = new Int32Array(4 * new_nz)
+  const cx = new Float64Array(4)
+  const cy = new Float64Array(4)
+  const cz = new Float64Array(4 * new_nz)
+  for (let iz = 0; iz < new_nz; iz++) {
+    const fz = fz_arr[iz]
+    wrapped_stencil(fz, pz, stride_z, z_offsets.subarray(4 * iz, 4 * iz + 4))
+    catmull_rom_coeffs(fz - Math.floor(fz), cz.subarray(4 * iz, 4 * iz + 4))
   }
 
-  return new_grid
+  const out = new Float64Array(new_nx * new_ny * new_nz)
+  let out_idx = 0
+  for (let ix = 0; ix < new_nx; ix++) {
+    const fx = fx_arr[ix]
+    wrapped_stencil(fx, px, stride_x, x_offsets)
+    catmull_rom_coeffs(fx - Math.floor(fx), cx)
+    for (let iy = 0; iy < new_ny; iy++) {
+      const fy = fy_arr[iy]
+      wrapped_stencil(fy, py, stride_y, y_offsets)
+      catmull_rom_coeffs(fy - Math.floor(fy), cy)
+      for (let iz = 0; iz < new_nz; iz++) {
+        const z_base = 4 * iz
+        const oz0 = z_offsets[z_base]
+        const oz1 = z_offsets[z_base + 1]
+        const oz2 = z_offsets[z_base + 2]
+        const oz3 = z_offsets[z_base + 3]
+        const cz0 = cz[z_base]
+        const cz1 = cz[z_base + 1]
+        const cz2 = cz[z_base + 2]
+        const cz3 = cz[z_base + 3]
+        // Interpolate along z, then y, then x
+        let result = 0
+        for (let xi = 0; xi < 4; xi++) {
+          const x_off = x_offsets[xi]
+          let y_sum = 0
+          for (let yi = 0; yi < 4; yi++) {
+            const row = x_off + y_offsets[yi]
+            y_sum +=
+              cy[yi] *
+              (cz0 * values[row + oz0] +
+                cz1 * values[row + oz1] +
+                cz2 * values[row + oz2] +
+                cz3 * values[row + oz3])
+          }
+          result += cx[xi] * y_sum
+        }
+        out[out_idx++] = result
+      }
+    }
+  }
+
+  return { values: out, dims: [new_nx, new_ny, new_nz], order: `z_fastest` }
 }
 
 // Extract Fermi surface from band grid data
@@ -152,7 +164,7 @@ export function extract_fermi_surface(
   } = options
 
   const iso_value = band_data.fermi_energy + mu
-  const isosurfaces: Isosurface[] = []
+  const isosurfaces: FermiIsosurface[] = []
   let total_area = 0
 
   // Process each spin channel and band
@@ -169,7 +181,7 @@ export function extract_fermi_surface(
       const raw_energies = band_data.energies[spin_idx][band_idx]
 
       // Check if Fermi level intersects this band
-      if (!band_intersects_fermi(raw_energies, iso_value)) continue
+      if (!band_intersects_fermi(raw_energies.values, iso_value)) continue
 
       // BXSF grids are endpoint-inclusive (store both equivalent k=0 and k=1 → false);
       // FRMSF grids store k=i/n without the duplicated endpoint (→ true)
@@ -192,7 +204,7 @@ export function extract_fermi_surface(
       // Build isosurface
       // Note: We don't clip to Wigner-Seitz BZ here because marching cubes output is in
       // a centered parallelepiped cell. BZ symmetry tiling in renderer handles full BZ.
-      const isosurface: Isosurface = {
+      const isosurface: FermiIsosurface = {
         vertices: mc_result.vertices,
         faces: mc_result.faces,
         normals: mc_result.normals,
@@ -250,24 +262,19 @@ export function extract_fermi_surface(
 }
 
 // Check if Fermi level intersects a band (has values both above and below)
-function band_intersects_fermi(energies: number[][][], iso_value: number): boolean {
+function band_intersects_fermi(energies: Float64Array, iso_value: number): boolean {
   let has_below = false
   let has_above = false
-
-  for (const plane of energies) {
-    for (const row of plane) {
-      for (const energy of row) {
-        if (energy < iso_value) has_below = true
-        else if (energy > iso_value) has_above = true
-        if (has_below && has_above) return true
-      }
-    }
+  for (const energy of energies) {
+    if (energy < iso_value) has_below = true
+    else if (energy > iso_value) has_above = true
+    if (has_below && has_above) return true
   }
   return false
 }
 
 // Compute surface area of an isosurface (assumes triangular faces from marching cubes)
-export function compute_surface_area(surface: Isosurface): number {
+export function compute_surface_area(surface: FermiIsosurface): number {
   let total_area = 0
   const verts = surface.vertices
 
@@ -293,7 +300,7 @@ export function compute_surface_area(surface: Isosurface): number {
 
 // Compute Fermi velocities at surface vertices
 function compute_fermi_velocities(
-  surface: Isosurface,
+  surface: FermiIsosurface,
   velocity_grid: Vec3[][][],
   k_lattice: Matrix3x3,
   k_grid: Vec3,
@@ -366,7 +373,7 @@ function trilinear_interpolate_vec3(grid: Vec3[][][], x: number, y: number, z: n
 
 // Analyze surface topology to determine dimensionality
 function analyze_surface_topology(
-  surface: Isosurface,
+  surface: FermiIsosurface,
   k_lattice: Matrix3x3,
 ): { dimensionality: SurfaceDimensionality; orientation: Vec3 | null } {
   if (surface.vertices.length === 0) {
@@ -458,7 +465,7 @@ export function compute_fermi_slice(
 
 // Compute intersection point on an edge
 function compute_edge_intersection(
-  surface: Isosurface,
+  surface: FermiIsosurface,
   vertex_distances: number[],
   v0_idx: number,
   v1_idx: number,
@@ -492,7 +499,7 @@ function compute_edge_intersection(
 // Slice a surface with a plane to get isolines
 // Uses contour tracing to produce properly ordered line segments
 function slice_surface_with_plane(
-  surface: Isosurface,
+  surface: FermiIsosurface,
   plane_normal: Vec3,
   plane_distance: number,
   in_plane_u: Vec3,

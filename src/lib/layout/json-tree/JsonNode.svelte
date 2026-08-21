@@ -1,19 +1,17 @@
 <script lang="ts">
-  import { Icon } from 'svelte-widgets'
-  import { Copy } from 'svelte-widgets/icons'
   import { build_path } from '$lib/json-path'
-  import { onMount } from 'svelte'
+  import { format_bytes } from '$lib/labels'
   // oxlint-disable-next-line import/no-self-import -- recursive Svelte component
   import JsonNode from './JsonNode.svelte'
   import JsonValue from './JsonValue.svelte'
   import { get_json_tree_context } from './types'
   import {
     estimate_byte_size,
-    format_byte_size,
     format_preview,
     get_child_count,
+    get_children,
     get_value_type,
-    is_expandable,
+    is_expandable_type,
   } from './utils'
 
   let {
@@ -32,132 +30,76 @@
 
   const ctx = get_json_tree_context()
 
-  onMount(() => {
-    // Register this path with context for keyboard navigation
-    if (ctx && path) {
-      ctx.register_path(path)
-      return () => ctx.unregister_path(path)
-    }
-  })
+  const value_type = $derived(get_value_type(value))
+  const expandable = $derived(is_expandable_type(value_type))
 
-  let value_type = $derived(get_value_type(value))
-  let expandable = $derived(is_expandable(value))
-  let child_count = $derived(expandable ? get_child_count(value) : 0)
-
-  // Determine if this node should be collapsed
-  let is_collapsed = $derived.by(() => {
+  // Explicit collapse/expand wins, then the depth fold level, then the size thresholds
+  const is_collapsed = $derived.by(() => {
     if (!expandable) return false
-
-    // Check if explicitly collapsed
     if (ctx.collapsed.has(path)) return true
-
-    // Check if explicitly force-expanded (overrides auto-fold)
     if (ctx.force_expanded.has(path)) return false
-
-    // If depth >= default_fold_level, default to collapsed
-    const fold_level = ctx.settings.default_fold_level ?? 2
-    if (depth >= fold_level) return true
-
-    // Check auto-fold thresholds
-    if (value_type === `array`) {
-      const threshold = ctx.settings.auto_fold_arrays ?? 10
-      if (child_count > threshold) return true
-    }
-    if (value_type === `object`) {
-      const threshold = ctx.settings.auto_fold_objects ?? 20
-      if (child_count > threshold) return true
-    }
-
+    const { default_fold_level, auto_fold_arrays, auto_fold_objects } = ctx.settings
+    if (depth >= default_fold_level) return true
+    if (value_type === `array`) return get_child_count(value) > auto_fold_arrays
+    if (value_type === `object`) return get_child_count(value) > auto_fold_objects
     return false
   })
 
-  // Note: Search highlighting is handled by CSS Highlight API in JsonTree.svelte
-  let is_focused = $derived(ctx.focused_path === path)
-  // Current search match being navigated
-  let is_current_match = $derived(ctx.current_match_path === path)
-  let is_selected = $derived(ctx.selected_paths.has(path))
+  // Search highlighting is handled by the CSS Highlight API in JsonTree.svelte
+  const is_focused = $derived(ctx.focused_path === path)
+  const is_current_match = $derived(ctx.current_match_path === path)
+  const is_selected = $derived(ctx.selected_paths.has(path))
+  const diff_status = $derived(ctx.diff_map?.get(path)?.status ?? null)
 
-  // Diff status for this node (null if no diff or unchanged)
-  let diff_status = $derived(ctx.diff_map?.get(path)?.status ?? null)
-
-  // Estimated byte size for collapsed preview (only compute when collapsed)
-  let byte_size = $derived(
-    expandable && is_collapsed ? format_byte_size(estimate_byte_size(value)) : ``,
-  )
-
-  // Toggle collapse state
   function toggle_collapse(event?: MouseEvent) {
     event?.stopPropagation()
-    if (ctx && expandable) {
-      ctx.toggle_collapse(path, is_collapsed)
-    }
+    if (expandable) ctx.toggle_collapse(path, is_collapsed)
   }
 
-  // Toggle collapse recursively on double-click (collapsed expands all, and vice versa)
+  // Double-click toggles the whole subtree (collapsed expands all, and vice versa)
   function toggle_collapse_recursive(event: MouseEvent) {
     event.stopPropagation()
-    if (ctx && expandable) ctx.toggle_collapse_recursive(path, !is_collapsed)
+    if (expandable) ctx.toggle_collapse_recursive(path, !is_collapsed)
   }
 
-  // Children as { key, value } pairs based on value type (Map entries are wrapped so
-  // key and value render as an expandable pair; Set values get numeric keys)
-  let children = $derived.by((): { key: string | number; value: unknown }[] => {
-    if (value_type === `array`) {
-      return (value as unknown[]).map((val, idx) => ({ key: idx, value: val }))
-    }
-    if (value_type === `object`) {
-      const keys = Object.keys(value as Record<string, unknown>)
-      if (ctx.settings.sort_keys) keys.sort()
-      return keys.map((key) => ({ key, value: (value as Record<string, unknown>)[key] }))
-    }
-    if (value_type === `map`) {
-      return Array.from(value as Map<unknown, unknown>, ([key, val], idx) => ({
-        key: idx,
-        value: { key, value: val },
-      }))
-    }
-    if (value_type === `set`) {
-      return Array.from(value as Set<unknown>, (val, idx) => ({ key: idx, value: val }))
-    }
-    return []
-  })
+  const children = $derived(expandable ? get_children(value, ctx.settings.sort_keys) : [])
 
-  // Ghost children: removed entries from diff (pre-computed in JsonTree for O(1) lookup)
-  let ghost_children = $derived.by(() => {
+  // Removed entries from the diff (pre-computed in JsonTree) not shadowed by a live child
+  const ghost_children = $derived.by(() => {
     if (!expandable || is_collapsed) return []
     const all_ghosts = ctx.ghost_map.get(path) ?? []
     if (all_ghosts.length === 0) return []
-    // Filter out ghosts whose keys already exist in current children
     const existing_keys = new Set(children.map((child) => String(child.key)))
     return all_ghosts.filter((ghost) => !existing_keys.has(String(ghost.key)))
   })
 
-  // Get bracket characters based on type
-  let open_bracket = $derived(value_type === `array` ? `[` : `{`)
-  let close_bracket = $derived(value_type === `array` ? `]` : `}`)
+  // Expanded shallow nodes keep their header visible while scrolling through children
+  const is_sticky = $derived(expandable && !is_collapsed && depth <= 2)
+  const [open_bracket, close_bracket] = $derived(
+    value_type === `array` ? [`[`, `]`] : [`{`, `}`],
+  )
 
-  // Handle keyboard navigation
+  // Middle-click copies the path (stopped so ancestor rows don't overwrite the clipboard)
+  function copy_path_on_middle_click(event: MouseEvent) {
+    if (event.button !== 1) return
+    event.preventDefault()
+    event.stopPropagation()
+    ctx.copy_path(path, event)
+  }
+
   function handle_keydown(event: KeyboardEvent) {
     if (!is_focused) return
-
     if (event.key === `Enter` || event.key === ` `) {
       event.preventDefault()
-      if (expandable) {
-        toggle_collapse()
-      } else {
-        ctx.copy_value(path, value)
-      }
+      if (expandable) toggle_collapse()
+      else ctx.copy_value(path, value)
     } else if (event.key === `ArrowRight`) {
       event.preventDefault()
-      if (expandable && is_collapsed) {
-        toggle_collapse()
-      }
+      if (expandable && is_collapsed) toggle_collapse()
     } else if (event.key === `ArrowLeft`) {
       event.preventDefault()
-      if (expandable && !is_collapsed) {
-        toggle_collapse()
-      }
-    } else if ((event.key === `c` || event.key === `C`) && (event.ctrlKey || event.metaKey)) {
+      if (expandable && !is_collapsed) toggle_collapse()
+    } else if (event.key.toLowerCase() === `c` && (event.ctrlKey || event.metaKey)) {
       // When nodes are selected, let the tree-level handler do bulk copy
       if (ctx.selected_paths.size) return
       event.preventDefault()
@@ -165,20 +107,10 @@
       ctx.copy_value(path, value)
     }
   }
-
-  // Element reference for focus management
-  let node_element: HTMLDivElement | undefined = $state()
-
-  $effect(() => {
-    if (is_focused && node_element) {
-      node_element.focus()
-    }
-  })
 </script>
 
 <div
-  bind:this={node_element}
-  class="json-node depth-{depth}"
+  class="json-node"
   class:collapsed={is_collapsed}
   class:expandable
   class:focused={is_focused}
@@ -187,27 +119,19 @@
   class:diff-added={diff_status === `added`}
   class:diff-removed={diff_status === `removed`}
   class:diff-changed={diff_status === `changed`}
-  class:sticky-header={expandable && !is_collapsed && depth <= 2}
-  style:--jt-sticky-depth={depth}
+  class:sticky-header={is_sticky}
+  style:--jt-sticky-depth={is_sticky ? depth : undefined}
   data-path={path}
   role="treeitem"
   aria-expanded={expandable ? !is_collapsed : undefined}
   aria-selected={is_selected}
   tabindex={is_focused ? 0 : -1}
   onclick={(event) => {
-    if (event.ctrlKey || event.metaKey) {
-      event.stopPropagation()
-      ctx.toggle_select(path, event.shiftKey)
-    } else {
-      ctx.set_focused(path)
-    }
+    event.stopPropagation() // ancestors would otherwise re-focus/select themselves
+    if (event.ctrlKey || event.metaKey) ctx.toggle_select(path, event.shiftKey)
+    else ctx.set_focused(path)
   }}
-  onauxclick={(event) => {
-    if (event.button === 1) {
-      event.preventDefault()
-      ctx.copy_path(path, event)
-    }
-  }}
+  onauxclick={copy_path_on_middle_click}
   oncontextmenu={(event) => {
     ctx.show_context_menu(event, path, value, expandable, is_collapsed)
   }}
@@ -231,7 +155,13 @@
     {#if node_key !== null}
       <button
         type="button"
-        class={['node-key', { 'array-index': typeof node_key === `number` }]}
+        class={[
+          `node-key`,
+          {
+            'array-index': typeof node_key === `number`,
+            collapsed: expandable && is_collapsed,
+          },
+        ]}
         tabindex="-1"
         onclick={(event) => {
           event.stopPropagation()
@@ -245,26 +175,13 @@
             ctx.copy_value(path, value, event)
           }
         }}
-        onauxclick={(event) => {
-          if (event.button === 1) {
-            event.preventDefault()
-            event.stopPropagation()
-            ctx.copy_path(path, event)
-          }
-        }}
+        onauxclick={copy_path_on_middle_click}
       >
         {#if typeof node_key === `number` && ctx.settings.show_array_indices}
           <span class="index">{node_key}</span>
         {:else if typeof node_key === `string`}
           "{node_key}"
         {/if}
-        <span class="action-hint">
-          {#if expandable && is_collapsed}
-            ▸
-          {:else}
-            <Icon icon={Copy} style="width: 10px; height: 10px; vertical-align: baseline" />
-          {/if}
-        </span>
       </button>
       <span class="colon">:</span>
     {/if}
@@ -275,7 +192,7 @@
         <button type="button" class="preview" tabindex="-1" onclick={toggle_collapse}>
           {format_preview(value)}
         </button>
-        <span class="size-hint">{byte_size}</span>
+        <span class="size-hint">{format_bytes(estimate_byte_size(value))}</span>
         <span class="bracket close">{close_bracket}</span>
       {/if}
     {:else}
@@ -402,15 +319,6 @@
     gap: 2px;
     padding: 1px 2px;
     border-radius: 2px;
-    /* Higher specificity than DraggablePane's :where(button) so our reset wins when nested */
-    button {
-      background: none;
-      border: none;
-      padding: 0;
-      cursor: pointer;
-      font: inherit;
-      color: inherit;
-    }
   }
   .ghost .node-content {
     background: var(
@@ -447,9 +355,21 @@
   }
   .node-key {
     color: var(--jt-key, light-dark(#001080, #9cdcfe));
+    /* hover hint: ▸ expands a collapsed node, ⧉ copies an expanded/leaf value */
+    &::after {
+      content: '⧉';
+      opacity: 0;
+      font-size: 0.8em;
+      margin-left: 2px;
+      transition: opacity 0.15s;
+      color: var(--jt-arrow, light-dark(#6e6e6e, #858585));
+    }
+    &.collapsed::after {
+      content: '▸';
+    }
     &:hover {
       text-decoration: underline;
-      .action-hint {
+      &::after {
         opacity: 0.6;
       }
     }
@@ -478,13 +398,6 @@
     border-left: 1px solid
       var(--jt-indent-guide, light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.1)));
     margin-left: 0.5em;
-  }
-  .action-hint {
-    opacity: 0;
-    font-size: 0.8em;
-    margin-left: 2px;
-    transition: opacity 0.15s;
-    color: var(--jt-arrow, light-dark(#6e6e6e, #858585));
   }
   .size-hint {
     font-size: 0.8em;

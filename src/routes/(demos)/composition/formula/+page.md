@@ -2,6 +2,8 @@
 
 Render chemical formulas with colored element symbols, subscripted amounts, superscripted oxidation states, and configurable element ordering.
 
+All formula inputs go through one parser (`parse_formula`, `parse_formula_with_oxidation`, `parse_composition` in `matterviz/composition`). It accepts nested parentheses and brackets with multipliers (`K4[Fe(CN)6]`, `((CH3)3C)2O`), hydrates and adducts joined by `·`, `⋅` or `*` with a leading coefficient (`CuSO4·5H2O`), fractional amounts (`Li0.5Na0.5Cl`, `Fe.5`), charges as `^2+`, `^+2`, `[2-]` or a bare `^+`/`^-` placed before or after the count (`Fe^3+2O^2-3`), Unicode subscripts and superscripts (`Fe₂O₃`, `Fe³⁺`) and arbitrary whitespace. Anything else (lowercase symbols, unknown elements, unbalanced or empty parentheses, a bare `+` without `^` or `[]`) throws an error naming the offending token and its position. Mixed-valence formulas such as `Fe^2+Fe^3+2O4` keep one entry per (element, oxidation state) pair.
+
 ## Basic Usage
 
 ```svelte example

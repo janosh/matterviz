@@ -5,10 +5,6 @@ import type { Crystal, Site, StructureBond } from './index'
 import { wrap_frac_coord } from './pbc'
 import { normalize_structure_bond } from './bonding'
 
-type SupercellType = Crystal & {
-  supercell_scaling?: Vec3
-}
-
 const mod = (value: number, divisor: number): number => ((value % divisor) + divisor) % divisor
 
 const replicate_bonds_for_supercell = (
@@ -116,18 +112,10 @@ export function make_supercell(
   scaling: string | number | Vec3,
   to_unit_cell: boolean = true,
 ): Crystal {
-  if (!structure.lattice) {
-    throw new Error(`Cannot create supercell: structure has no lattice`)
-  }
-
   const supercell_scaling = parse_supercell_scaling(scaling)
   const [scale_x, scale_y, scale_z] = supercell_scaling
   const total_cells = scale_x * scale_y * scale_z
-
-  // Short circuit for 1x1x1 (no actual supercell needed)
-  if (scale_x === 1 && scale_y === 1 && scale_z === 1) {
-    return { ...structure, supercell_scaling } as SupercellType
-  }
+  if (total_cells === 1) return structure
 
   const orig_matrix = structure.lattice.matrix
   // Create new scaled lattice
@@ -255,8 +243,7 @@ export function make_supercell(
     sites: new_sites,
     properties,
     charge: structure.charge ? structure.charge * total_cells : structure.charge,
-    supercell_scaling,
-  } as SupercellType
+  }
 }
 
 // Validate supercell input string

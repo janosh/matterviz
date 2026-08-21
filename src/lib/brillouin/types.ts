@@ -1,6 +1,11 @@
 import type { Matrix3x3, Point2D, Vec2, Vec3 } from '$lib/math'
+import type { DefaultSettings } from '$lib/settings'
 import type { Crystal } from '$lib/structure'
 import type { TooltipConfig, TooltipProp } from '$lib/tooltip'
+
+// Viewer settings BrillouinZone forwards to BrillouinZoneControls (bound) and
+// BrillouinZoneScene (read-only); defaults live in DEFAULTS.brillouin
+export type BrillouinZoneSettings = Omit<DefaultSettings[`brillouin`], `fullscreen_toggle`>
 
 // Hover data for BZ tooltip
 export type BZHoverData = {

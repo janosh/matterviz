@@ -7,7 +7,9 @@
   import { ColorScaleSelect } from '$lib/plot'
   import { tooltip } from 'svelte-widgets/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { get_entry_category, marker_path_data } from './helpers'
+  import { marker_path_data } from './canvas-draw'
+  import { get_entry_category } from './helpers'
+  import type { EnergyModeInfo, EnergySourceMode } from './hull-state.svelte'
   import type {
     ConvexHullControlsType,
     ConvexHullEntry,
@@ -26,18 +28,15 @@
     center_y: number
   }
 
-  // Face color mode display labels and tooltips
-  const FACE_COLOR_MODES: Record<HullFaceColorMode, { label: string; tip: string }> = {
-    uniform: { label: `Uniform`, tip: `Single uniform color for all faces` },
-    formation_energy: {
-      label: `Energy`,
-      tip: `Color by average formation energy of face vertices`,
-    },
-    dominant_element: {
-      label: `Element`,
-      tip: `Color by element with highest concentration at face centroid`,
-    },
-    facet_index: { label: `Index`, tip: `Distinct categorical color per facet` },
+  // Face color mode button labels and tooltips
+  const FACE_COLOR_MODES: Record<HullFaceColorMode, [label: string, tip: string]> = {
+    uniform: [`Uniform`, `Single uniform color for all faces`],
+    formation_energy: [`Energy`, `Color by average formation energy of face vertices`],
+    dominant_element: [
+      `Element`,
+      `Color by element with highest concentration at face centroid`,
+    ],
+    facet_index: [`Index`, `Distinct categorical color per facet`],
   }
 
   let {
@@ -49,18 +48,16 @@
     hidden_categories = $bindable([]),
     show_stable_labels = $bindable(true),
     show_unstable_labels = $bindable(false),
+    // Hull face settings only exist for 3D/4D; the row renders when show_hull_faces is set
     show_hull_faces = $bindable(),
-    hull_face_color = $bindable(`#0072B2`),
-    hull_face_opacity = $bindable(0.03),
-    hull_face_color_mode = $bindable(`uniform` as HullFaceColorMode),
+    hull_face_color = $bindable(),
+    hull_face_opacity = $bindable(),
+    hull_face_color_mode = $bindable(),
     max_hull_dist_show_phases = $bindable(0),
     max_hull_dist_show_labels = $bindable(0.1),
     max_hull_dist_in_data = 0.5,
     energy_source_mode = $bindable(`precomputed`),
-    has_precomputed_hull = false,
-    can_compute_hull = false,
-    has_precomputed_e_form = false,
-    can_compute_e_form = false,
+    energy_info,
     stable_entries,
     unstable_entries,
     camera,
@@ -85,11 +82,10 @@
     hull_face_color?: string
     hull_face_opacity?: number
     hull_face_color_mode?: HullFaceColorMode
-    energy_source_mode?: `precomputed` | `on-the-fly` // whether to read formation and above hull distance from entries or compute them on the fly
-    has_precomputed_hull?: boolean
-    can_compute_hull?: boolean
-    has_precomputed_e_form?: boolean
-    can_compute_e_form?: boolean
+    // Read formation energies + hull distances from the entries or compute them on the fly;
+    // the toggle only renders when energy_info says both options are viable
+    energy_source_mode?: EnergySourceMode
+    energy_info?: EnergyModeInfo
     // Thresholds
     max_hull_dist_show_phases?: number
     max_hull_dist_show_labels?: number
@@ -112,32 +108,70 @@
     evt.currentTarget.nextElementSibling?.querySelector<HTMLInputElement>(`input`)?.focus()
   }
 
-  // Category filters: only show category values present in the (threshold-filtered) data
-  const category_counts = $derived.by(() => {
-    const counts: Record<string, number> = {}
-    for (const entry of [...stable_entries, ...unstable_entries]) {
-      const value = get_entry_category(entry, entry_category)
-      if (value) counts[value] = (counts[value] ?? 0) + 1
-    }
-    return counts
-  })
-  const category_values_in_data = $derived(
-    Object.keys(entry_category?.markers ?? {}).filter(
-      (value) => (category_counts[value] ?? 0) > 0,
-    ),
-  )
-  const toggle_category = (value: string) => {
-    hidden_categories = hidden_categories.includes(value)
-      ? hidden_categories.filter((hidden) => hidden !== value)
-      : [...hidden_categories, value]
+  // Clickable legend entries (stable/unstable points, category filters): a `.marker` swatch
+  // class for the point rows, an SVG path for the per-category marker shapes
+  type LegendItem = {
+    key: string
+    active: boolean
+    text: string
+    tip: string
+    toggle: () => void
+    marker?: `stable` | `unstable`
+    path?: string
   }
   const SWATCH_RADIUS = 4.4 // marker swatch radius, sized to fit the 12x12 viewBox
-  // Keyboard activation for legend toggles (preventDefault stops Space scrolling the page)
-  const legend_keydown = (action: () => void) => (evt: KeyboardEvent) => {
-    if (![`Enter`, ` `].includes(evt.key)) return
-    evt.preventDefault()
-    action()
-  }
+  const count_suffix = (count: string | number) =>
+    merged_controls.show_counts ? ` (${count})` : ``
+  let point_items = $derived<LegendItem[]>([
+    {
+      key: `stable`,
+      marker: `stable`,
+      active: show_stable,
+      text: `Stable${count_suffix(stable_entries.length)}`,
+      tip: `Toggle visibility of stable points`,
+      toggle: () => (show_stable = !show_stable),
+    },
+    {
+      key: `unstable`,
+      marker: `unstable`,
+      active: show_unstable,
+      text: `Above hull${count_suffix(
+        `${show_unstable ? unstable_entries.length : 0}/${unstable_entries.length}`,
+      )}`,
+      tip: `Toggle visibility of above-hull points`,
+      toggle: () => (show_unstable = !show_unstable),
+    },
+  ])
+  // Category filters: only category values present in the (threshold-filtered) data
+  let category_items = $derived.by((): LegendItem[] => {
+    const category = entry_category
+    if (!category) return []
+    const counts: Record<string, number> = {}
+    for (const entry of [...stable_entries, ...unstable_entries]) {
+      const value = get_entry_category(entry, category)
+      if (value) counts[value] = (counts[value] ?? 0) + 1
+    }
+    return Object.keys(category.markers)
+      .filter((value) => counts[value])
+      .map((value) => {
+        const hidden = hidden_categories.includes(value)
+        const long_name = category.labels?.[value]
+        return {
+          key: value,
+          active: !hidden,
+          text: `${value}${count_suffix(hidden ? `0/${counts[value]}` : counts[value])}`,
+          tip: `Toggle visibility of ${
+            long_name ? `${long_name.toLowerCase()} (${value})` : value
+          } entries`,
+          toggle: () => {
+            hidden_categories = hidden
+              ? hidden_categories.filter((other) => other !== value)
+              : [...hidden_categories, value]
+          },
+          path: marker_path_data(SWATCH_RADIUS, category.markers[value]) ?? ``,
+        }
+      })
+  })
 
   // Camera rows by diagram dimensionality: ternary tilts by elevation/azimuth in degrees,
   // quaternary by two rotation angles in radians
@@ -166,43 +200,72 @@
           [`rotation_y`, `θ`, `Horizontal rotation (left/right)`, 0.1, 2],
         ],
   )
-  let point_toggles = $derived([
-    {
-      active: show_stable,
-      marker: `stable`,
-      label: `Stable${merged_controls.show_counts ? ` (${stable_entries.length})` : ``}`,
-      tip: `Toggle visibility of stable points`,
-      toggle: () => (show_stable = !show_stable),
-    },
-    {
-      active: show_unstable,
-      marker: `unstable`,
-      label: `Above hull${
-        merged_controls.show_counts
-          ? ` (${show_unstable ? unstable_entries.length : 0}/${unstable_entries.length})`
-          : ``
-      }`,
-      tip: `Toggle visibility of above-hull points`,
-      toggle: () => (show_unstable = !show_unstable),
-    },
-  ])
 
   // One mutually exclusive toggle button per option
   type ToggleOption = readonly [text: string, tip: string, active: boolean, select: () => void]
+  let face_color_options = $derived(
+    HULL_FACE_COLOR_MODES.map((mode): ToggleOption => [
+      ...FACE_COLOR_MODES[mode],
+      hull_face_color_mode === mode,
+      () => (hull_face_color_mode = mode),
+    ]),
+  )
 </script>
 
-{#snippet toggle_row(label: string, options: readonly ToggleOption[])}
+<!-- Buttons sit directly in the row's grid tracks unless `wrap_class` groups them in one cell -->
+{#snippet toggle_buttons(options: readonly ToggleOption[])}
+  {#each options as [text, tip, active, select] (text)}
+    <button
+      class={[`toggle-btn`, active && `active`]}
+      onclick={select}
+      {@attach tooltip({ allow_html: true, content: tip })}
+    >
+      {text}
+    </button>
+  {/each}
+{/snippet}
+
+{#snippet toggle_row(label: string, options: readonly ToggleOption[], wrap_class?: string)}
   <div class="setting">
     <span class="control-label">{label}</span>
-    {#each options as [text, tip, active, select] (text)}
-      <button
-        class={[`toggle-btn`, active && `active`]}
-        onclick={select}
-        {@attach tooltip({ allow_html: true, content: tip })}
-      >
-        {text}
-      </button>
-    {/each}
+    {#if wrap_class}
+      <div class={wrap_class}>{@render toggle_buttons(options)}</div>
+    {:else}
+      {@render toggle_buttons(options)}
+    {/if}
+  </div>
+{/snippet}
+
+{#snippet legend_row(label: string, items: readonly LegendItem[], container_class?: string)}
+  <div class="setting">
+    <span class="control-label">{label}</span>
+    <div class={[`legend-items-container`, container_class]}>
+      {#each items as { key, active, text, tip, toggle, marker, path } (key)}
+        <div
+          class={[`legend-item`, active ? `active` : `inactive`]}
+          onclick={toggle}
+          onkeydown={(evt) => {
+            // preventDefault stops Space scrolling the page
+            if (![`Enter`, ` `].includes(evt.key)) return
+            evt.preventDefault()
+            toggle()
+          }}
+          role="button"
+          tabindex="0"
+          aria-pressed={active}
+          {@attach tooltip({ content: tip })}
+        >
+          {#if marker}
+            <div class={[`marker`, marker]}></div>
+          {:else}
+            <svg viewBox="-6 -6 12 12" width="12" height="12" aria-hidden="true">
+              <path d={path} />
+            </svg>
+          {/if}
+          <span>{text}</span>
+        </div>
+      {/each}
+    </div>
   </div>
 {/snippet}
 
@@ -221,7 +284,7 @@
 
   <SettingsSection title="Display" layout="grid">
     <!-- Energy source selection (only if both options are available) -->
-    {#if has_precomputed_e_form && has_precomputed_hull && can_compute_e_form && can_compute_hull}
+    {#if energy_info?.has_precomputed_e_form && energy_info.has_precomputed_hull && energy_info.can_compute}
       {@render toggle_row(`Energy source`, [
         [
           `Precomputed`,
@@ -281,25 +344,7 @@
     </div>
 
     {#if color_mode === `stability`}
-      <div class="setting">
-        <span class="control-label">Points</span>
-        <div class="legend-items-container">
-          {#each point_toggles as { active, marker, label, tip, toggle } (marker)}
-            <div
-              class={[`legend-item`, active ? `active` : `inactive`]}
-              onclick={toggle}
-              onkeydown={legend_keydown(toggle)}
-              role="button"
-              tabindex="0"
-              aria-pressed={active}
-              {@attach tooltip({ content: tip })}
-            >
-              <div class={[`marker`, marker]}></div>
-              <span>{label}</span>
-            </div>
-          {/each}
-        </div>
-      </div>
+      {@render legend_row(`Points`, point_items)}
     {:else}
       <!-- Color scale selector -->
       <div class="setting color-scale-row">
@@ -324,41 +369,8 @@
 
     <!-- Category filters (only when entries carry recognized category data,
     e.g. magnetic orderings with the default MAGNETIC_ORDERING_CATEGORY) -->
-    {#if entry_category && category_values_in_data.length > 0}
-      <div class="setting">
-        <span class="control-label">{entry_category.label}</span>
-        <div class="legend-items-container category-filters">
-          {#each category_values_in_data as value (value)}
-            {@const hidden = hidden_categories.includes(value)}
-            {@const count = category_counts[value] ?? 0}
-            {@const long_name = entry_category.labels?.[value]}
-            <div
-              class={[`legend-item`, hidden ? `inactive` : `active`]}
-              onclick={() => toggle_category(value)}
-              onkeydown={legend_keydown(() => toggle_category(value))}
-              role="button"
-              tabindex="0"
-              aria-pressed={!hidden}
-              {@attach tooltip({
-                content: `Toggle visibility of ${
-                  long_name ? `${long_name.toLowerCase()} (${value})` : value
-                } entries`,
-              })}
-            >
-              <svg viewBox="-6 -6 12 12" width="12" height="12" aria-hidden="true">
-                <path
-                  d={marker_path_data(SWATCH_RADIUS, entry_category.markers[value]) ?? ``}
-                />
-              </svg>
-              <span
-                >{value}{merged_controls.show_counts
-                  ? ` (${hidden ? `0/${count}` : count})`
-                  : ``}</span
-              >
-            </div>
-          {/each}
-        </div>
-      </div>
+    {#if entry_category && category_items.length > 0}
+      {@render legend_row(entry_category.label, category_items, `category-filters`)}
     {/if}
 
     {#if merged_controls.show_label_controls}
@@ -426,27 +438,12 @@
             style="flex: 1; min-width: 80px"
           />
           <span style="font-size: 0.9em; min-width: 2em; text-align: right"
-            >{format_num(hull_face_opacity, `.1%`)}</span
+            >{format_num(hull_face_opacity ?? 0, `.1%`)}</span
           >
         </div>
       </div>
 
-      <!-- Face color mode selector -->
-      <div class="setting">
-        <span class="control-label">Face color</span>
-        <div class="face-color-mode-buttons">
-          {#each HULL_FACE_COLOR_MODES as mode (mode)}
-            <button
-              class={[`toggle-btn`, hull_face_color_mode === mode && `active`]}
-              style="min-width: auto; flex: 0 1 auto"
-              onclick={() => (hull_face_color_mode = mode)}
-              {@attach tooltip({ content: FACE_COLOR_MODES[mode].tip })}
-            >
-              {FACE_COLOR_MODES[mode].label}
-            </button>
-          {/each}
-        </div>
-      </div>
+      {@render toggle_row(`Face color`, face_color_options, `face-color-mode-buttons`)}
     {/if}
 
     {#if camera}
@@ -541,6 +538,10 @@
     gap: 4px;
     flex: 1;
     flex-wrap: wrap;
+    button {
+      min-width: auto;
+      flex: 0 1 auto;
+    }
   }
   .color-scale-row {
     :global(.multiselect) {

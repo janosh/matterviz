@@ -1,8 +1,9 @@
 import type { Locator } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import type * as ElementModule from '$lib/element/types'
-import type * as Hdf5Module from '$lib/trajectory/parse/hdf5'
 import type * as H5UtilsModule from '$lib/trajectory/parse/h5-utils'
+import type * as OpenTrajectoryModule from '$lib/trajectory/open'
+import type { TrajectoryFrame } from '$lib/trajectory'
 import type * as ParseWorkerModule from '$lib/file-viewer/parse-in-worker'
 import { readFile } from 'node:fs/promises'
 import { IS_CI } from './helpers'
@@ -75,6 +76,21 @@ test.describe(`Trajectory Component`, () => {
     )
   })
 
+  test(`narrow viewer hides the filename and keeps the step slider off the FPS input`, async () => {
+    await trajectory_viewer.evaluate((el) => {
+      el.style.width = `1200px`
+    })
+    await expect(trajectory_viewer.locator(`button.filename`)).toBeVisible()
+    await trajectory_viewer.evaluate((el) => {
+      el.style.width = `800px`
+    })
+    await expect(trajectory_viewer.locator(`button.filename`)).toBeHidden()
+    const slider_box = await trajectory_viewer.locator(`.slider-container`).boundingBox()
+    const fps_box = await trajectory_viewer.locator(`.fps-section`).boundingBox()
+    if (!slider_box || !fps_box) throw new Error(`slider or fps section not laid out`)
+    expect(slider_box.x + slider_box.width).toBeLessThanOrEqual(fps_box.x + 1)
+  })
+
   test(`loads and scrubs a local HDF5 File through the lazy worker loader`, async ({
     page,
   }) => {
@@ -118,21 +134,21 @@ test.describe(`Trajectory Component`, () => {
     await expect(empty_trajectory.locator(`.step-input`)).toHaveAttribute(`max`, `19`)
   })
 
-  test(`MEMFS and WORKERFS HDF5 loaders stream exactly matching data`, async ({ page }) => {
+  test(`main-thread and worker HDF5 runs return exactly matching data`, async ({ page }) => {
     const source_url = `/trajectories/gold-nanoparticle-md.h5`
     const comparison = await page.evaluate(async (url) => {
       const worker_module_path = `/src/lib/file-viewer/parse-in-worker.ts`
-      const hdf5_module_path = `/src/lib/trajectory/parse/hdf5.ts`
+      const open_module_path = `/src/lib/trajectory/open.ts`
       const h5_utils_module_path = `/src/lib/trajectory/parse/h5-utils.ts`
       const element_module_path = `/src/lib/element/types.ts`
       const [
         { parse_trajectory_in_worker },
-        { parse_hdf5_trajectory },
+        { open_trajectory },
         { with_h5_file },
         { ELEM_SYMBOLS },
       ] = await Promise.all([
         import(worker_module_path) as Promise<typeof ParseWorkerModule>,
-        import(hdf5_module_path) as Promise<typeof Hdf5Module>,
+        import(open_module_path) as Promise<typeof OpenTrajectoryModule>,
         import(h5_utils_module_path) as Promise<typeof H5UtilsModule>,
         import(element_module_path) as Promise<typeof ElementModule>,
       ])
@@ -164,16 +180,13 @@ test.describe(`Trajectory Component`, () => {
           position_steps: numeric(`/steps/positions`),
         }
       })
-      const memfs = await parse_hdf5_trajectory(source_buffer, `gold.h5`)
+      const memfs = await open_trajectory(source_buffer, { filename: `gold.h5` })
       const workerfs = await parse_trajectory_in_worker(source, `gold.h5`, undefined, {})
       const request = { signal_keys: [`velocity`, `forces`] }
-      const memfs_stream = await memfs.frame_loader?.stream_positions?.(``, request)
-      const workerfs_stream = await workerfs.frame_loader?.stream_positions?.(``, request)
+      const memfs_stream = await memfs.collect_positions?.(request)
+      const workerfs_stream = await workerfs.collect_positions?.(request)
       if (!memfs_stream || !workerfs_stream) throw new Error(`missing HDF5 position stream`)
-      const memfs_loader = memfs.frame_loader
-      const workerfs_loader = workerfs.frame_loader
-      if (!memfs_loader || !workerfs_loader) throw new Error(`missing HDF5 frame loader`)
-      const serialize_frame = (frame: (typeof memfs.frames)[number] | null | undefined) =>
+      const serialize_frame = (frame: TrajectoryFrame | null | undefined) =>
         frame
           ? {
               step: frame.step,
@@ -190,16 +203,12 @@ test.describe(`Trajectory Component`, () => {
                   : null,
             }
           : null
-      const frame_indices = [
-        0,
-        Math.floor((memfs.total_frames ?? 1) / 2),
-        (memfs.total_frames ?? 1) - 1,
-      ]
+      const frame_indices = [0, Math.floor(memfs.frame_count / 2), memfs.frame_count - 1]
       const [memfs_frames, workerfs_frames] = await Promise.all(
-        [memfs_loader, workerfs_loader].map((loader) =>
+        [memfs, workerfs].map((run) =>
           Promise.all(
-            frame_indices.map((frame_idx) =>
-              loader.load_frame(``, frame_idx).then(serialize_frame),
+            frame_indices.map(async (frame_idx) =>
+              serialize_frame(await run.read_frame(frame_idx)),
             ),
           ),
         ),
@@ -296,10 +305,10 @@ test.describe(`Trajectory Component`, () => {
         properties: { volume },
       }))
       const preview_equal = exact(
-        memfs.frames.map(serialize_frame),
-        workerfs.frames.map(serialize_frame),
+        serialize_frame(memfs.preview),
+        serialize_frame(workerfs.preview),
       )
-      const plot_metadata_equal = exact(memfs.plot_metadata, workerfs.plot_metadata)
+      const plot_metadata_equal = exact(memfs.properties.rows, workerfs.properties.rows)
       const stream_metadata_equal = exact(
         stream_metadata(memfs_stream),
         stream_metadata(workerfs_stream),
@@ -308,12 +317,13 @@ test.describe(`Trajectory Component`, () => {
       const descriptors_equal = exact(memfs.signal_descriptors, workerfs.signal_descriptors)
       const oracle_frames_equal = exact(memfs_frames, oracle_frames)
       const oracle_metadata_equal = exact(stream_metadata(memfs_stream), oracle_metadata)
-      const oracle_plot_metadata_equal = exact(memfs.plot_metadata, oracle_plot_metadata)
-      workerfs_loader.dispose?.()
-      memfs_loader.dispose?.()
-      const disposed_error = await workerfs_loader
-        .load_frame(``, 0)
-        .then(() => `missing error`, String)
+      const oracle_plot_metadata_equal = exact(memfs.properties.rows, oracle_plot_metadata)
+      workerfs.dispose()
+      memfs.dispose()
+      const disposed_error = await Promise.resolve(workerfs.read_frame(0)).then(
+        () => `missing error`,
+        String,
+      )
       return {
         max_absolute_error: errors.reduce((maximum, error) => Math.max(maximum, error), 0),
         max_relative_error: relative_errors.reduce(
@@ -323,8 +333,6 @@ test.describe(`Trajectory Component`, () => {
         stream_value_counts_equal: stream_value_counts.every(
           (value_count) => value_count === expected.length,
         ),
-        memfs_frame_store: Boolean(memfs.frame_store),
-        workerfs_frame_store: Boolean(workerfs.frame_store),
         loaded_signals: Boolean(memfs.signals ?? workerfs.signals),
         descriptors: Object.keys(workerfs.signal_descriptors ?? {}).toSorted(),
         descriptors_equal,
@@ -343,8 +351,6 @@ test.describe(`Trajectory Component`, () => {
       max_absolute_error: 0,
       max_relative_error: 0,
       stream_value_counts_equal: true,
-      memfs_frame_store: false,
-      workerfs_frame_store: false,
       loaded_signals: false,
       descriptors: [`forces`, `velocity`],
       descriptors_equal: true,
@@ -541,7 +547,7 @@ test.describe(`Trajectory Component`, () => {
       const trajectory_controls = trajectory.locator(`.trajectory-controls`)
 
       // Basic accessibility
-      await expect(trajectory).toHaveAttribute(`role`, `button`)
+      await expect(trajectory).toHaveAttribute(`role`, `application`)
       await expect(trajectory).toHaveAttribute(`tabindex`, `0`)
 
       // Button titles

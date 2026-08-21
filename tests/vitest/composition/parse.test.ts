@@ -1,771 +1,165 @@
-import type { CompositionType, ElementSymbol } from '$lib'
-import { is_elem_symbol } from '$lib/element'
+import type { CompositionType } from '$lib'
 import {
-  atomic_num_to_symbols,
-  ATOMIC_NUMBER_TO_SYMBOL,
-  atomic_symbol_to_num,
   count_atoms_in_composition,
+  element_symbols_in,
   extract_formula_elements,
   fractional_composition,
-  generate_chem_sys_subspaces,
   get_molecular_weight,
   get_reduced_formula,
-  has_wildcards,
-  matches_chemsys_wildcard,
-  matches_formula_wildcard,
-  normalize_composition,
   normalize_element_symbols,
-  parse_chemsys_with_wildcards,
+  normalize_formula_unicode,
   parse_composition,
   parse_formula,
+  parse_formula_with_oxidation,
   parse_formula_with_wildcards,
-  sanitize_composition_keys,
 } from '$lib/composition'
 import { describe, expect, test } from 'vitest'
 
-describe(`atomic number utilities`, () => {
-  test.each([
-    [{ 26: 2, 8: 3 }, { Fe: 2, O: 3 }, `Fe2O3`],
-    [{ 1: 2, 8: 1 }, { H: 2, O: 1 }, `H2O`],
-    [{ 20: 1, 6: 1, 8: 3 }, { Ca: 1, C: 1, O: 3 }, `CaCO3`],
-    [{ 1: 1, 8: 1 }, { H: 1, O: 1 }, `handles object key dedup`],
-  ])(`atomic_num_to_symbols: %j -> %j (%s)`, (input, expected, _description) => {
-    expect(atomic_num_to_symbols(input)).toEqual(expected)
-  })
-
-  test.each([
-    [{ 999: 1 }, `Invalid atomic number: 999`],
-    [{ 0: 1 }, `Invalid atomic number: 0`],
-  ])(`atomic_num_to_symbols throws for %j`, (input, expected_error) => {
-    expect(() => atomic_num_to_symbols(input)).toThrow(expected_error)
-  })
-
-  test.each([
-    [{ Fe: 2, O: 3 }, { 26: 2, 8: 3 }, `Fe2O3`],
-    [{ H: 2, O: 1 }, { 1: 2, 8: 1 }, `H2O`],
-    [{ Ca: 1, C: 1, O: 3 }, { 20: 1, 6: 1, 8: 3 }, `CaCO3`],
-  ])(`atomic_symbol_to_num: %j -> %j (%s)`, (input, expected, _description) => {
-    expect(atomic_symbol_to_num(input)).toEqual(expected)
-  })
-
-  test(`atomic_symbol_to_num throws for invalid symbol`, () => {
-    expect(() => atomic_symbol_to_num({ Xx: 1 } as CompositionType)).toThrow(
-      `Invalid element symbol: Xx`,
-    )
-  })
-})
-
 describe(`parse_formula`, () => {
   test.each([
-    [`H2O`, { H: 2, O: 1 }, `water`],
-    [`CO2`, { C: 1, O: 2 }, `carbon dioxide`],
-    [`NaCl`, { Na: 1, Cl: 1 }, `salt`],
-    [`Fe2O3`, { Fe: 2, O: 3 }, `iron oxide`],
-    [`H`, { H: 1 }, `hydrogen atom`],
-    [`He`, { He: 1 }, `helium atom`],
-    [`Au`, { Au: 1 }, `gold atom`],
-    [`C60`, { C: 60 }, `fullerene`],
-    [`C8H10N4O2`, { C: 8, H: 10, N: 4, O: 2 }, `caffeine`],
-    [`Ca(OH)2`, { Ca: 1, O: 2, H: 2 }, `calcium hydroxide`],
-    [`Mg(NO3)2`, { Mg: 1, N: 2, O: 6 }, `magnesium nitrate`],
-    [`Al2(SO4)3`, { Al: 2, S: 3, O: 12 }, `aluminum sulfate`],
-    [`Ca3(PO4)2`, { Ca: 3, P: 2, O: 8 }, `nested parentheses`],
-    [`Ca(OH)`, { Ca: 1, O: 1, H: 1 }, `parentheses without multipliers`],
-    [` H2 O `, { H: 2, O: 1 }, `ignores whitespace`],
-    [`Ca (OH) 2`, { Ca: 1, O: 2, H: 2 }, `ignores whitespace with parens`],
-    [`H2SO4`, { H: 2, S: 1, O: 4 }, `accumulates elements`],
-    [`CH3CH2OH`, { C: 2, H: 6, O: 1 }, `multiple element repetitions`],
-    [`C1000H2000`, { C: 1000, H: 2000 }, `very large numbers`],
-    [`Fe0.5Li0.5`, { Fe: 0.5, Li: 0.5 }, `decimal amounts`],
-    [`Fe2.5O3.75`, { Fe: 2.5, O: 3.75 }, `decimal amounts above 1`],
-    [`Ca(OH)0.5`, { Ca: 1, O: 0.5, H: 0.5 }, `decimal parentheses multiplier`],
-    [`(H.0000001)2`, { H: 0.0000002 }, `small decimal parentheses multiplier`],
-    [`(H0.1)3`, { H: 0.3 }, `rounds expanded decimal products`],
-    [`CuSO4·5H2O`, { Cu: 1, S: 1, O: 9, H: 10 }, `hydrate dot notation`],
-    [`CuSO4⋅5H2O`, { Cu: 1, S: 1, O: 9, H: 10 }, `hydrate unicode dot operator`],
-    [`MgSO4*7H2O`, { Mg: 1, S: 1, O: 11, H: 14 }, `hydrate asterisk notation`],
-    [`Ca(OH)2·2H2O`, { Ca: 1, O: 4, H: 6 }, `hydrate with parentheses`],
-    [`CaCl2·H2O`, { Ca: 1, Cl: 2, H: 2, O: 1 }, `hydrate without coefficient`],
-    [`CaSO4·0.5H2O`, { Ca: 1, S: 1, O: 4.5, H: 1 }, `hydrate decimal coefficient`],
-    [`CuSO4·.5H2O`, { Cu: 1, S: 1, O: 4.5, H: 1 }, `hydrate leading-dot coefficient`],
-    [``, {}, `empty formula`],
-  ])(`%s -> %j (%s)`, (formula, expected, _description) => {
+    [`H2O`, { H: 2, O: 1 }],
+    [`NaCl`, { Na: 1, Cl: 1 }],
+    [`C60`, { C: 60 }],
+    [`C8H10N4O2`, { C: 8, H: 10, N: 4, O: 2 }],
+    [`CH3CH2OH`, { C: 2, H: 6, O: 1 }], // repeated elements accumulate
+    [`C1000H2000`, { C: 1000, H: 2000 }],
+    // parentheses, brackets and nesting
+    [`Ca(OH)2`, { Ca: 1, O: 2, H: 2 }],
+    [`Ca(OH)`, { Ca: 1, O: 1, H: 1 }],
+    [`Al2(SO4)3`, { Al: 2, S: 3, O: 12 }],
+    [`((CH3)3C)2O`, { C: 8, H: 18, O: 1 }],
+    [`K4[Fe(CN)6]`, { K: 4, Fe: 1, C: 6, N: 6 }],
+    [`(H2O)2.5`, { H: 5, O: 2.5 }],
+    [`Ca(OH)0.5`, { Ca: 1, O: 0.5, H: 0.5 }],
+    [`(H.0000001)2`, { H: 0.0000002 }],
+    [`(H0.1)3`, { H: 0.3 }], // float noise rounded away
+    // hydrates and adducts: coefficient scales the whole segment
+    [`CuSO4·5H2O`, { Cu: 1, S: 1, O: 9, H: 10 }],
+    [`CuSO4⋅5H2O`, { Cu: 1, S: 1, O: 9, H: 10 }],
+    [`MgSO4*7H2O`, { Mg: 1, S: 1, O: 11, H: 14 }],
+    [`Fe(NO3)3·9H2O`, { Fe: 1, N: 3, O: 18, H: 18 }],
+    [`CaCl2·H2O`, { Ca: 1, Cl: 2, H: 2, O: 1 }],
+    [`CaSO4·0.5H2O`, { Ca: 1, S: 1, O: 4.5, H: 1 }],
+    [`CuSO4·.5H2O`, { Cu: 1, S: 1, O: 4.5, H: 1 }],
+    [`2H2O`, { H: 4, O: 2 }], // leading coefficient on the first segment too
+    [`Fe2O3··H2O`, { Fe: 2, O: 4, H: 2 }], // stray separators are harmless
+    // fractional / partial occupancies
+    [`Li0.5Na0.5Cl`, { Li: 0.5, Na: 0.5, Cl: 1 }],
+    [`Li.5Na.5Cl`, { Li: 0.5, Na: 0.5, Cl: 1 }],
+    [`Fe2.5O3.75`, { Fe: 2.5, O: 3.75 }],
+    // charges are accepted and ignored for plain compositions
+    [`Fe^2+O3`, { Fe: 1, O: 3 }],
+    [`Fe[3+]2O[2-]3`, { Fe: 2, O: 3 }],
+    [`Fe2^3+O3^2-`, { Fe: 2, O: 3 }],
+    // unicode typography and whitespace
+    [`H₂O`, { H: 2, O: 1 }],
+    [`Fe₂O₃`, { Fe: 2, O: 3 }],
+    [`Ca(OH)₂`, { Ca: 1, O: 2, H: 2 }],
+    [`Fe³⁺₂O²⁻₃`, { Fe: 2, O: 3 }],
+    [` H2 O `, { H: 2, O: 1 }],
+    [`Ca (OH) 2`, { Ca: 1, O: 2, H: 2 }],
+    [`H2O\n`, { H: 2, O: 1 }],
+    [``, {}],
+  ])(`%s -> %j`, (formula, expected) => {
     expect(parse_formula(formula)).toEqual(expected)
   })
 
   test.each([
     [`Xx2`, `Invalid element symbol: Xx`],
+    [`FeXxO`, `Invalid element symbol: Xx`],
     [`ABC`, `Invalid element symbol: A`],
-    [`Ca(OH2`, `parentheses`],
-    [`)(`, `parentheses`],
-    [`Mg()O2`, `parentheses`],
-  ])(`throws for invalid formula %s`, (formula, error) => {
-    expect(() => parse_formula(formula)).toThrow(error)
+    [`h2o`, `Unexpected character "h" at position 0`],
+    [`Fe2+`, `Unexpected character "+" at position 3`], // charge needs ^ or []
+    [`Fe3+2O2-3`, `Unexpected character "+"`],
+    [`Ca(OH2`, `Unbalanced parentheses: missing ")"`],
+    [`Fe2O3)`, `Unbalanced parentheses: unexpected ")"`],
+    [`)(`, `Unbalanced parentheses`],
+    [`(Fe2O3]`, `Unbalanced parentheses: unexpected "]"`],
+    [`Mg()O2`, `Empty parentheses`],
+  ])(`%s -> %s`, (formula, expected) => {
+    expect(() => parse_formula(formula)).toThrow(expected)
   })
 })
 
-describe(`normalize_composition`, () => {
+describe(`normalize_formula_unicode`, () => {
   test.each([
-    [{ H: 2, O: 1, N: 0 }, { H: 2, O: 1 }, `removes zero values`],
-    [{ Fe: -1, O: 3 }, { O: 3 }, `removes negative values`],
-    [{ C: 1.5, H: 4 }, { C: 1.5, H: 4 }, `keeps positive values`],
-    [{ 1: 2, 8: 1, 7: 0 }, { H: 2, O: 1 }, `converts atomic numbers to symbols`],
-    [{ 26: -1, 8: 3 }, { O: 3 }, `converts atomic numbers and removes negatives`],
-    [{ 1: 2, 8: 1 }, { H: 2, O: 1 }, `handles atomic number keys`],
-    [{ H: 0, O: 1, C: -5 }, { O: 1 }, `removes zero and negative mixed`],
-    [{}, {}, `handles empty composition`],
-    [{ H: `invalid` as unknown as number, O: 1 }, { O: 1 }, `handles non-numeric values`],
-    [{ Xx: 1, O: 1 }, { O: 1 }, `filters invalid symbols`],
-  ])(`should normalize %s to %s (%s)`, (input, expected, _description) => {
-    expect(normalize_composition(input)).toEqual(expected)
-  })
-})
-
-describe(`sanitize_composition_keys`, () => {
-  test.each([
-    [{ Fe: 2, O: 3 }, { Fe: 2, O: 3 }, `valid keys unchanged`],
-    [{ 'Fe2+': 2, 'O2-': 3 }, { Fe: 2, O: 3 }, `strips oxidation states`],
-    [{ 'B0.': 1 }, { B: 1 }, `handles trailing junk`],
-    [{ 'Ca^2+': 1, CO3: 1 }, { Ca: 1, C: 1 }, `extracts first valid element`],
-    [{ 'Fe[2+]': 1 }, { Fe: 1 }, `handles bracket notation`],
-    [{ 'V4+': 2, 'V5+': 3 }, { V: 5 }, `merges same element`],
-    [{ invalid: 1, '!!!': 2 }, null, `returns null for no valid elements`],
-    [{ Fe: 0, O: -1 }, null, `ignores non-positive amounts`],
-    [{ Fe: 1, invalid: 2 }, { Fe: 1 }, `filters invalid keys`],
-    [{}, null, `returns null for empty input`],
-  ])(`%s -> %s (%s)`, (input, expected, _description) => {
-    expect(sanitize_composition_keys(input)).toEqual(expected)
-  })
-})
-
-describe(`fractional_composition`, () => {
-  test.each([
-    [{ H: 2, O: 1 }, { H: 0.6667, O: 0.3333 }, `water composition`],
-    [{ H: 5 }, { H: 1.0 }, `single element`],
-    [{ H: 1, O: 1, N: 1 }, { H: 0.3333, O: 0.3333, N: 0.3333 }, `equal amounts`],
-    [{}, {}, `empty composition`],
-    [{ H: 0, O: 0 }, {}, `zero total`],
-  ])(`should convert %s to fractions (%s)`, (input, expected_fractions, _description) => {
-    const result = fractional_composition(input)
-    if (Object.keys(expected_fractions).length === 0) {
-      expect(result).toEqual(expected_fractions)
-    } else {
-      Object.entries(expected_fractions).forEach(([element, expected_frac]) => {
-        expect(result[element as keyof typeof result]).toBeCloseTo(expected_frac, 3)
-      })
-    }
-  })
-
-  describe(`weight-based fractions`, () => {
-    test.each([
-      // Basic compounds
-      [
-        { H: 2, O: 1 },
-        { H: 0.1119, O: 0.8881 },
-      ],
-      [
-        { Fe: 2, O: 3 },
-        { Fe: 0.6994, O: 0.3006 },
-      ],
-      // Edge cases
-      [{ C: 1 }, { C: 1.0 }],
-      [
-        { H: 10, Li: 1 },
-        { H: 0.592, Li: 0.408 },
-      ],
-      [
-        { C: 0.5, H: 2 },
-        { C: 0.7487, H: 0.2513 },
-      ],
-      // Complex compositions
-      [
-        { C: 8, H: 10, N: 4, O: 2 },
-        { C: 0.4948, H: 0.0519, N: 0.2887, O: 0.1647 },
-      ],
-      [
-        { Fe: 70, Cr: 18, Ni: 8, Mn: 2, Si: 1, C: 1 },
-        {
-          Fe: 0.7154,
-          Cr: 0.1713,
-          Ni: 0.0864,
-          Mn: 0.0202,
-          Si: 0.0052,
-          C: 0.0022,
-        },
-      ],
-    ])(
-      `should calculate weight fractions correctly for %s`,
-      (composition, expected_fractions) => {
-        const result = fractional_composition(composition, true)
-        Object.entries(expected_fractions).forEach(([element, expected]) => {
-          const tolerance = Object.keys(expected_fractions).length === 1 ? 0 : 3
-          expect(result[element as keyof typeof result]).toBeCloseTo(expected, tolerance)
-        })
-      },
-    )
-
-    test(`handles empty composition`, () => {
-      expect(fractional_composition({}, true)).toEqual({})
-    })
-
-    test(`throws for unknown elements`, () => {
-      expect(() => fractional_composition({ Xx: 1 } as CompositionType, true)).toThrow(
-        `Unknown element: Xx`,
-      )
-    })
-
-    test.each([
-      [{ H: 2, O: 1 }, `water`],
-      [{ Fe: 2, O: 3 }, `iron oxide`],
-      [{ C: 6, H: 12, O: 6 }, `glucose`],
-      [{ Ca: 1, C: 1, O: 3 }, `calcium carbonate`],
-      [{ Na: 2, S: 1, O: 4 }, `sodium sulfate`],
-    ])(`weight fractions sum to 1.0 for %j (%s)`, (comp, _desc) => {
-      const result = fractional_composition(comp, true)
-      const total = Object.values(result).reduce((sum, frac) => sum + frac, 0)
-      expect(total).toBeCloseTo(1.0, 3)
-    })
-  })
-})
-
-describe(`count_atoms_in_composition`, () => {
-  test.each([
-    [{ H: 2, O: 1 }, 3, `water`],
-    [{ C: 6, H: 12, O: 6 }, 24, `glucose`],
-    [{ Fe: 2, O: 3 }, 5, `iron oxide`],
-    [{ H: 1 }, 1, `single hydrogen`],
-    [{ C: 60 }, 60, `fullerene`],
-    [{}, 0, `empty composition`],
-    [{ H: 2, O: undefined as unknown as number }, 2, `with undefined values`],
-    [{ H: 2.5, O: 1.5 }, 4, `decimal amounts`],
-  ])(`should calculate total atoms for %s as %i (%s)`, (input, expected, _description) => {
-    expect(count_atoms_in_composition(input)).toBe(expected)
-  })
-})
-
-describe(`parse_composition`, () => {
-  test.each([
-    [`H2O`, { H: 2, O: 1 }, `string formula`],
-    [`Fe2O3`, { Fe: 2, O: 3 }, `string formula with counts`],
-    [
-      `{"Fe":70,"Cr":18,"Ni":8,"Mn":2,"Si":1,"C":1}`,
-      {
-        Fe: 70,
-        Cr: 18,
-        Ni: 8,
-        Mn: 2,
-        Si: 1,
-        C: 1,
-      },
-      `JSON string`,
-    ],
-    [`{"Cu":88,"Sn":12}`, { Cu: 88, Sn: 12 }, `JSON bronze`],
-    [`{"Li":1,"P":1,"O":4}`, { Li: 1, P: 1, O: 4 }, `JSON lithium phosphate`],
-    [``, {}, `empty string`],
-  ])(`parses %s (%s)`, (input, expected, _desc) => {
-    expect(parse_composition(input)).toEqual(expected)
-  })
-
-  test.each([
-    [{ H: 2, O: 1 }, { H: 2, O: 1 }, `symbol composition`],
-    [{ Fe: 2, O: 3, N: 0 }, { Fe: 2, O: 3 }, `removes zero values`],
-    [{ 1: 2, 8: 1 }, { H: 2, O: 1 }, `atomic number composition`],
-    [{ 1: 2, O: 1 }, { O: 1 }, `mixed composition filters invalid keys`],
-    [{}, {}, `empty object`],
-    [{ 999: 1 }, {}, `invalid atomic number filtered`],
-  ])(`normalizes object %j (%s)`, (input, expected, _desc) => {
-    expect(parse_composition(input)).toEqual(expected)
-  })
-
-  test.each([
-    [`Xx2`, `Invalid element symbol: Xx`],
-    [`{Xx: 70, Yy: 18}`, `Invalid element symbol: Xx`],
-    [`invalid`, `No valid elements`],
-    [`{"Xx":1}`, `No valid elements`],
-    [`{"H":-1}`, `No valid elements`],
-  ])(`throws for invalid input %s`, (input, error) => {
-    expect(() => parse_composition(input)).toThrow(error)
-  })
-})
-
-describe(`edge cases`, () => {
-  test(`large composition - fractions sum to 1.0`, () => {
-    const large_composition: CompositionType = {}
-    for (let idx = 1; idx <= 50; idx++) {
-      const symbol = ATOMIC_NUMBER_TO_SYMBOL[idx] || null
-      if (symbol) large_composition[symbol] = idx
-    }
-    const fractions = fractional_composition(large_composition)
-    const fraction_sum = Object.values(fractions).reduce((sum, frac) => sum + frac, 0)
-    expect(fraction_sum).toBeCloseTo(1.0, 3)
-  })
-
-  test(`roundtrip: symbols -> atomic numbers -> symbols`, () => {
-    const orig: CompositionType = { Fe: 2, O: 3, H: 1 }
-    expect(atomic_num_to_symbols(atomic_symbol_to_num(orig))).toEqual(orig)
-  })
-})
-
-describe(`extract_formula_elements`, () => {
-  test.each([
-    [`H2O`, {}, [`H`, `O`], `water`],
-    [`Fe2O3`, {}, [`Fe`, `O`], `iron oxide`],
-    [`NaCl`, {}, [`Cl`, `Na`], `salt - sorted`],
-    [`NbZr2Nb`, {}, [`Nb`, `Zr`], `duplicates removed`],
-    [`Ca(OH)2`, {}, [`Ca`, `H`, `O`], `parentheses`],
-    [``, {}, [], `empty`],
-    [` H2 O `, {}, [`H`, `O`], `whitespace`],
-    [`ZrNbHO`, {}, [`H`, `Nb`, `O`, `Zr`], `sorted alphabetically`],
-    // unique=false preserves duplicates and order
-    [`NbZr2Nb`, { unique: false }, [`Nb`, `Zr`, `Nb`], `unique=false`],
-    [`CH3CH2OH`, { unique: false }, [`C`, `H`, `C`, `H`, `O`, `H`], `all duplicates`],
-    [`ZrNbTi`, { unique: false }, [`Zr`, `Nb`, `Ti`], `preserves order`],
-    [``, { unique: false }, [], `empty unique=false`],
-    // sorted=false preserves first appearance order
-    [`ZrNb`, { sorted: false }, [`Zr`, `Nb`], `sorted=false`],
-    [`NbZr`, { sorted: false }, [`Nb`, `Zr`], `sorted=false order`],
-    // oxidation state stripping
-    [`V4+`, { unique: false }, [`V`], `strips V4+`],
-    [`Fe3+`, { unique: false }, [`Fe`], `strips Fe3+`],
-    [`O2-`, { unique: false }, [`O`], `strips O2-`],
-    // unique=false filters invalid elements silently
-    [`Xx2`, { unique: false }, [], `filters invalid Xx when unique=false`],
-    [`FeXxO`, { unique: false }, [`Fe`, `O`], `filters invalid Xx between valid elements`],
-    [`AbCdEf`, { unique: false }, [`Cd`], `only keeps valid Cd from AbCdEf`],
-  ])(`%s with %j -> %j (%s)`, (formula, opts, expected, _desc) => {
-    expect(extract_formula_elements(formula, opts)).toEqual(expected)
-  })
-
-  test.each([
-    [`Xx2`, `Invalid element symbol: Xx`],
-    [`ABC`, `Invalid element symbol: A`],
-  ])(`throws for %s`, (formula, error) => {
-    expect(() => extract_formula_elements(formula)).toThrow(error)
-  })
-
-  test(`unique=false ignores sorted parameter`, () => {
-    const result1 = extract_formula_elements(`NbZrNb`, { unique: false, sorted: true })
-    const result2 = extract_formula_elements(`NbZrNb`, { unique: false, sorted: false })
-    expect(result1).toEqual(result2)
-  })
-})
-
-describe(`generate_chem_sys_subspaces`, () => {
-  // Test all input types: formula string, array, composition object
-  test.each([
-    [`H2O`, [`H`, `H-O`, `O`], `formula: water`],
-    [`Fe2O3`, [`Fe`, `Fe-O`, `O`], `formula: iron oxide`],
-    [`NbZr2Nb`, [`Nb`, `Nb-Zr`, `Zr`], `formula: duplicates`],
-    [`C60`, [`C`], `formula: single element`],
-    [``, [], `formula: empty`],
-    [[`H`, `O`] as ElementSymbol[], [`H`, `H-O`, `O`], `array: binary`],
-    [
-      [`Fe`, `Cr`, `Ni`] as ElementSymbol[],
-      [`Cr`, `Cr-Fe`, `Cr-Fe-Ni`, `Cr-Ni`, `Fe`, `Fe-Ni`, `Ni`],
-      `array: ternary`,
-    ],
-    [[`Li`] as ElementSymbol[], [`Li`], `array: single`],
-    [[] as ElementSymbol[], [], `array: empty`],
-    [{ H: 2, O: 1 }, [`H`, `H-O`, `O`], `object: water`],
-    [{ Fe: 2, O: 3 }, [`Fe`, `Fe-O`, `O`], `object: iron oxide`],
-    [{}, [], `object: empty`],
-  ])(`%s -> %j (%s)`, (input, expected, _desc) => {
-    const result = generate_chem_sys_subspaces(input)
-    expect(result.toSorted((str_a, str_b) => str_a.localeCompare(str_b))).toEqual(
-      expected.toSorted((str_a, str_b) => str_a.localeCompare(str_b)),
-    )
-  })
-
-  test.each([
-    [[1, [`H`]], `single element`],
-    [[2, [`H`, `O`]], `binary`],
-    [[3, [`H`, `O`, `N`]], `ternary`],
-    [[5, [`H`, `O`, `N`, `C`, `S`]], `quinary`],
-  ] as [[number, ElementSymbol[]], string][])(
-    `generates 2^n-1 subspaces for %j (%s)`,
-    ([expected_num, elements], _desc) => {
-      expect(generate_chem_sys_subspaces(elements)).toHaveLength(2 ** expected_num - 1)
-    },
-  )
-
-  test(`consistent across input types`, () => {
-    const formula = generate_chem_sys_subspaces(`Fe2O3`).toSorted()
-    const array = generate_chem_sys_subspaces([`Fe`, `O`]).toSorted()
-    const obj = generate_chem_sys_subspaces({ Fe: 2, O: 3 }).toSorted()
-    expect(formula).toEqual(array)
-    expect(array).toEqual(obj)
-  })
-
-  test(`elements sorted alphabetically within subspaces`, () => {
-    const result = generate_chem_sys_subspaces([`Zr`, `Mo`, `Nb`])
-    result.forEach((subspace) => {
-      const parts = subspace.split(`-`)
-      expect(parts).toEqual([...parts].toSorted())
-    })
-  })
-
-  test.each([[`Xx2`, `Invalid element symbol: Xx`]])(
-    `throws for invalid formula %s`,
-    (formula, error) => {
-      expect(() => generate_chem_sys_subspaces(formula)).toThrow(error)
-    },
-  )
-
-  test.each([
-    [[`Fe`, `Xx`, `O`], `Invalid element symbol: Xx`],
-    [[`Invalid`], `Invalid element symbol: Invalid`],
-  ])(`throws for invalid array %j`, (arr, error) => {
-    // @ts-expect-error - testing invalid inputs
-    expect(() => generate_chem_sys_subspaces(arr)).toThrow(error)
-  })
-})
-
-describe(`normalize_element_symbols`, () => {
-  test.each([
-    {
-      input: ``,
-      expected: [],
-      description: `returns empty array for empty string`,
-    },
-    {
-      input: `  ,  ,  `,
-      expected: [],
-      description: `returns empty array for whitespace-only string`,
-    },
-    {
-      input: `H, O, N`,
-      expected: [`H`, `N`, `O`],
-      description: `returns elements in periodic table order`,
-    },
-    {
-      input: `Zr, Nb, H, O`,
-      expected: [`H`, `O`, `Zr`, `Nb`],
-      description: `sorts complex input by periodic order`,
-    },
-    {
-      input: `O, H, N`,
-      expected: [`H`, `N`, `O`],
-      description: `reorders elements regardless of input order`,
-    },
-    {
-      input: `H, InvalidElement, O, BadSymbol`,
-      expected: [`H`, `O`],
-      description: `filters out invalid element symbols`,
-    },
-    {
-      input: `H, Xx, O`,
-      expected: [`H`, `O`],
-      description: `discards non-existent symbols`,
-    },
-    {
-      input: `  H  ,  O  ,  N  `,
-      expected: [`H`, `N`, `O`],
-      description: `trims whitespace around symbols`,
-    },
-    {
-      input: `H,O,N`,
-      expected: [`H`, `N`, `O`],
-      description: `handles CSV without spaces`,
-    },
-    {
-      input: `H, O, H, N, O`,
-      expected: [`H`, `N`, `O`],
-      description: `removes duplicate symbols`,
-    },
-    {
-      input: `H, H, O`,
-      expected: [`H`, `O`],
-      description: `deduplicates adjacent symbols`,
-    },
-  ])(`$description`, ({ input, expected }) => {
-    const result = normalize_element_symbols(input)
-    expect(result).toEqual(expected)
-  })
-
-  test.each([
-    {
-      input: `Ni, Fe, Cu`,
-      symbols: [`Fe`, `Co`, `Ni`] as ElementSymbol[],
-      expected: [`Fe`, `Ni`],
-      desc: `filters by custom list`,
-    },
-    {
-      input: `B, C`,
-      symbols: [`A`, `B`, `C`] as ElementSymbol[],
-      expected: [`B`, `C`],
-      desc: `works with non-element strings`,
-    },
-  ])(`custom symbol list: $desc`, ({ input, symbols, expected }) => {
-    expect(normalize_element_symbols(input, symbols)).toEqual(expected)
-  })
-})
-
-describe(`is_elem_symbol`, () => {
-  test.each([
-    [`Fe`, true],
-    [`O`, true],
-    [`H`, true],
-    [`Og`, true],
-    [`X`, false],
-    [`Fe2`, false],
-    [``, false],
-    [`fe`, false],
+    [`H₂O`, `H2O`],
+    [`Fe³⁺`, `Fe^3+`],
+    [`SO₄²⁻`, `SO4^2-`],
+    [`CuSO₄ ⋅ 5 H₂O`, `CuSO4·5H2O`],
+    [`Li−Fe`, `Li-Fe`],
   ])(`%s -> %s`, (input, expected) => {
-    expect(is_elem_symbol(input)).toBe(expected)
+    expect(normalize_formula_unicode(input)).toBe(expected)
   })
 })
 
-describe(`get_reduced_formula`, () => {
-  test.each([
-    [{ Fe: 2, O: 4 }, { Fe: 1, O: 2 }, `reduces by GCD of 2`],
-    [{ H: 4, O: 2 }, { H: 2, O: 1 }, `water from H4O2`],
-    [{ Fe: 2, O: 3 }, { Fe: 2, O: 3 }, `already reduced`],
-    [{ C: 1 }, { C: 1 }, `single element`],
-    [{}, {}, `empty composition`],
-    [{ Fe: 1.5, O: 3 }, { Fe: 1.5, O: 3 }, `non-integer unchanged`],
-    [{ Fe: 1e300, O: 2 }, { Fe: 1e300, O: 2 }, `beyond safe integer range unchanged`],
-  ])(`%j -> %j (%s)`, (input, expected, _desc) => {
-    expect(get_reduced_formula(input)).toEqual(expected)
+describe(`parse_formula_with_oxidation`, () => {
+  const token = (element: string, amount: number, oxidation_state?: number) => ({
+    element,
+    amount,
+    oxidation_state,
   })
-})
-
-describe(`get_molecular_weight`, () => {
   test.each([
-    [{ H: 2, O: 1 }, 18.015, `water`],
-    [{ Na: 1, Cl: 1 }, 58.44, `NaCl`],
-    [{ C: 1 }, 12.011, `carbon`],
-    [{}, 0, `empty`],
-  ])(`%j ≈ %s (%s)`, (input, expected, _desc) => {
-    expect(get_molecular_weight(input)).toBeCloseTo(expected, 1)
-  })
-})
-
-// --- Wildcard parsing utilities ---
-
-describe(`has_wildcards`, () => {
-  test.each([
-    [`Li-Fe-*-*`, true, `chemsys with wildcards`],
-    [`*-*-O`, true, `chemsys with leading wildcards`],
-    [`Li,Fe,*`, true, `elements with wildcard`],
-    [`LiFe*2*`, true, `formula with wildcards`],
-    [`*2O3`, true, `formula with leading wildcard`],
-    [`**O4`, true, `formula with multiple wildcards`],
-    [`Li-Fe-O`, false, `chemsys without wildcards`],
-    [`Li,Fe,O`, false, `elements without wildcards`],
-    [`LiFePO4`, false, `formula without wildcards`],
-    [``, false, `empty string`],
-  ])(`"%s" -> %s (%s)`, (input, expected, _description) => {
-    expect(has_wildcards(input)).toBe(expected)
-  })
-})
-
-describe(`parse_chemsys_with_wildcards`, () => {
-  test.each([
-    [`Li-Fe-*-*`, { elements: [`Fe`, `Li`], wildcard_count: 2 }, `hyphens`],
-    [`*-*-O`, { elements: [`O`], wildcard_count: 2 }, `leading wildcards`],
-    [`Li-*-O`, { elements: [`Li`, `O`], wildcard_count: 1 }, `single wildcard`],
-    [`*-*-*`, { elements: [], wildcard_count: 3 }, `all wildcards`],
-    [`Li-Fe-O`, { elements: [`Fe`, `Li`, `O`], wildcard_count: 0 }, `no wildcards`],
-    [`Li`, { elements: [`Li`], wildcard_count: 0 }, `single element`],
-    [`*`, { elements: [], wildcard_count: 1 }, `single wildcard`],
-    [`Li,Fe,*,*`, { elements: [`Fe`, `Li`], wildcard_count: 2 }, `commas`],
-    [`*,*,O`, { elements: [`O`], wildcard_count: 2 }, `comma leading`],
-    [`Li - Fe - * - *`, { elements: [`Fe`, `Li`], wildcard_count: 2 }, `whitespace`],
-    [`Zr-Nb-*`, { elements: [`Nb`, `Zr`], wildcard_count: 1 }, `sorted elements`],
-  ])(`"%s" -> %j (%s)`, (input, expected, _desc) => {
-    expect(parse_chemsys_with_wildcards(input)).toEqual(expected)
+    [`H2O`, [token(`H`, 2), token(`O`, 1)]],
+    [`ZnO2Fe`, [token(`Zn`, 1), token(`O`, 2), token(`Fe`, 1)]], // source order kept
+    [`Fe^2+O3`, [token(`Fe`, 1, 2), token(`O`, 3)]],
+    [`Fe[2+]O3`, [token(`Fe`, 1, 2), token(`O`, 3)]],
+    [`Ca^2+Cl2^-`, [token(`Ca`, 1, 2), token(`Cl`, 2, -1)]],
+    [`Fe^3+2O^2-3`, [token(`Fe`, 2, 3), token(`O`, 3, -2)]], // charge before count
+    [`Ca(OH)2`, [token(`Ca`, 1), token(`O`, 2), token(`H`, 2)]],
+    [`Fe(OH)0.5`, [token(`Fe`, 1), token(`O`, 0.5), token(`H`, 0.5)]],
+    [`CuSO4·5H2O`, [token(`Cu`, 1), token(`S`, 1), token(`O`, 9), token(`H`, 10)]],
+    // same element + same state merges, mixed valence stays separate
+    [`Fe^2+Fe^2+`, [token(`Fe`, 2, 2)]],
+    [`Fe^2+Fe^3+2O4`, [token(`Fe`, 1, 2), token(`Fe`, 2, 3), token(`O`, 4)]],
+    [`FeFe^3+`, [token(`Fe`, 1), token(`Fe`, 1, 3)]],
+  ])(`%s`, (formula, expected) => {
+    expect(parse_formula_with_oxidation(formula)).toEqual(expected)
   })
 
+  // bare signs are ±1; sign may precede or follow the digits in either syntax
   test.each([
-    [`Li-Xx-*`, `Invalid element symbol or wildcard: Xx`],
-    [`Invalid-Fe-*`, `Invalid element symbol or wildcard: Invalid`],
-    [`Li-123-*`, `Invalid element symbol or wildcard: 123`],
-  ])(`throws for "%s"`, (input, error) => {
-    expect(() => parse_chemsys_with_wildcards(input)).toThrow(error)
+    [`Na^+`, 1],
+    [`Cl^-`, -1],
+    [`Na[+]`, 1],
+    [`Cl[-]`, -1],
+    [`S[-2]`, -2],
+    [`Fe^+2O`, 2],
+    [`Fe^2+O`, 2],
+    [`Fe^-2O`, -2],
+    [`Fe^2-O`, -2],
+    [`Fe[+2]O`, 2],
+    [`Fe[2-]O`, -2],
+    [`Fe³⁺`, 3],
+  ])(`%s -> oxidation %d`, (formula, expected) => {
+    expect(parse_formula_with_oxidation(formula)[0].oxidation_state).toBe(expected)
+  })
+
+  test(`throws on invalid element`, () => {
+    expect(() => parse_formula_with_oxidation(`Xx2O3`)).toThrow(`Invalid element symbol: Xx`)
   })
 })
 
 describe(`parse_formula_with_wildcards`, () => {
+  const wild = (amount: number) => ({ element: null, amount })
+  const elem = (element: string, amount: number) => ({ element, amount })
   test.each([
-    [
-      `LiFe*2*`,
-      [
-        { element: `Li`, count: 1 },
-        { element: `Fe`, count: 1 },
-        {
-          element: null,
-          count: 2,
-        },
-        { element: null, count: 1 },
-      ],
-      `two wildcards`,
-    ],
-    [
-      `*2O3`,
-      [
-        { element: null, count: 2 },
-        { element: `O`, count: 3 },
-      ],
-      `binary oxide`,
-    ],
-    [
-      `**O4`,
-      [
-        { element: null, count: 1 },
-        { element: null, count: 1 },
-        {
-          element: `O`,
-          count: 4,
-        },
-      ],
-      `ternary oxide`,
-    ],
-    [
-      `H2O`,
-      [
-        { element: `H`, count: 2 },
-        { element: `O`, count: 1 },
-      ],
-      `water`,
-    ],
-    [
-      `Fe2O3`,
-      [
-        { element: `Fe`, count: 2 },
-        { element: `O`, count: 3 },
-      ],
-      `iron oxide`,
-    ],
-    [
-      `*4O8`,
-      [
-        { element: null, count: 4 },
-        { element: `O`, count: 8 },
-      ],
-      `count 4`,
-    ],
-    [
-      `Li*10O20`,
-      [
-        { element: `Li`, count: 1 },
-        { element: null, count: 10 },
-        {
-          element: `O`,
-          count: 20,
-        },
-      ],
-      `double-digit`,
-    ],
-    [
-      ` Li Fe * 2 * `,
-      [
-        { element: `Li`, count: 1 },
-        { element: `Fe`, count: 1 },
-        {
-          element: null,
-          count: 2,
-        },
-        { element: null, count: 1 },
-      ],
-      `whitespace`,
-    ],
-    [``, [], `empty`],
-    [`*`, [{ element: null, count: 1 }], `single wildcard`],
-    [
-      `**`,
-      [
-        { element: null, count: 1 },
-        { element: null, count: 1 },
-      ],
-      `only wildcards`,
-    ],
-    // Edge cases for explicit count values
-    [`*1`, [{ element: null, count: 1 }], `explicit count 1 same as bare *`],
-    [`*0`, [{ element: null, count: 0 }], `explicit count 0 (zero atoms)`],
-    [
-      `*0.5O.25`,
-      [
-        { element: null, count: 0.5 },
-        { element: `O`, count: 0.25 },
-      ],
-      `decimal counts`,
-    ],
-    [
-      `Fe1O2`,
-      [
-        { element: `Fe`, count: 1 },
-        { element: `O`, count: 2 },
-      ],
-      `explicit count 1`,
-    ],
-    // Parentheses expansion with wildcards
-    [
-      `(*O2)2`,
-      [
-        { element: null, count: 2 },
-        { element: `O`, count: 4 },
-      ],
-      `parens expand wildcard count`,
-    ],
-    [
-      `Li(*O)2`,
-      [
-        { element: `Li`, count: 1 },
-        { element: null, count: 2 },
-        {
-          element: `O`,
-          count: 2,
-        },
-      ],
-      `parens with wildcard inside`,
-    ],
-    [
-      `(Li*2)3O9`,
-      [
-        { element: `Li`, count: 3 },
-        { element: null, count: 6 },
-        {
-          element: `O`,
-          count: 9,
-        },
-      ],
-      `nested wildcard count multiplication`,
-    ],
-    [
-      `(*2O3)2`,
-      [
-        { element: null, count: 4 },
-        { element: `O`, count: 6 },
-      ],
-      `wildcard with count in parens`,
-    ],
-    [
-      `Ca(*)2`,
-      [
-        { element: `Ca`, count: 1 },
-        { element: null, count: 2 },
-      ],
-      `bare wildcard in parens`,
-    ],
-    [`(*)3`, [{ element: null, count: 3 }], `only wildcard in parens`],
-    [
-      `(OH)0.5*`,
-      [
-        { element: `O`, count: 0.5 },
-        { element: `H`, count: 0.5 },
-        { element: null, count: 1 },
-      ],
-      `decimal parens before wildcard`,
-    ],
-    [
-      `((*O)2)3`,
-      [
-        { element: null, count: 6 },
-        { element: `O`, count: 6 },
-      ],
-      `nested parens with wildcard`,
-    ],
-  ])(`"%s" -> %j (%s)`, (input, expected, _desc) => {
+    [`LiFe*2*`, [elem(`Li`, 1), elem(`Fe`, 1), wild(2), wild(1)]],
+    [`*2O3`, [wild(2), elem(`O`, 3)]],
+    [`**O4`, [wild(1), wild(1), elem(`O`, 4)]],
+    [`Li*10O20`, [elem(`Li`, 1), wild(10), elem(`O`, 20)]],
+    [` Li Fe * 2 * `, [elem(`Li`, 1), elem(`Fe`, 1), wild(2), wild(1)]],
+    [``, []],
+    [`*`, [wild(1)]],
+    [`*0`, [wild(0)]],
+    [`*0.5O.25`, [wild(0.5), elem(`O`, 0.25)]],
+    [`(*O2)2`, [wild(2), elem(`O`, 4)]],
+    [`(Li*2)3O9`, [elem(`Li`, 3), wild(6), elem(`O`, 9)]],
+    [`Ca(*)2`, [elem(`Ca`, 1), wild(2)]],
+    [`((*O)2)3`, [wild(6), elem(`O`, 6)]],
+    [`(OH)0.5*`, [elem(`O`, 0.5), elem(`H`, 0.5), wild(1)]],
+    [`Fe2O3`, [elem(`Fe`, 2), elem(`O`, 3)]],
+  ])(`"%s" -> %j`, (input, expected) => {
     expect(parse_formula_with_wildcards(input)).toEqual(expected)
   })
 
@@ -777,81 +171,244 @@ describe(`parse_formula_with_wildcards`, () => {
   })
 })
 
-describe(`matches_chemsys_wildcard`, () => {
+describe(`extract_formula_elements / element_symbols_in`, () => {
   test.each([
-    [`LiFeCoO`, [`Li`, `Fe`], 2, true, `matches`],
-    [`Fe2O3`, [`Fe`], 1, true, `single wildcard`],
-    [`H2O`, [`H`, `O`], 0, true, `no wildcards`],
-    [`CaCO3`, [], 3, true, `all wildcards`],
-    [`LiFe`, [], 2, true, `all wildcards binary`],
-    [`LiFeO`, [`Li`, `Fe`], 2, false, `too few elements`],
-    [`LiFeCoNiO`, [`Li`, `Fe`], 2, false, `too many elements`],
-    [`NaClBr`, [`Li`], 2, false, `missing element`],
-    [`Fe2O3`, [`Co`], 1, false, `missing Co`],
-    [`ABC`, [], 3, false, `invalid formula`],
-    [`InvalidFormula`, [`Li`], 1, false, `invalid`],
-    [``, [`Li`], 1, false, `empty`],
-  ])(
-    `"%s" explicit=%j wildcards=%d -> %s (%s)`,
-    (formula, explicit, wildcard_count, expected, _desc) => {
-      expect(matches_chemsys_wildcard(formula, explicit, wildcard_count)).toBe(expected)
-    },
-  )
+    [`NbZr2Nb`, {}, [`Nb`, `Zr`]],
+    [`Ca(OH)2`, {}, [`Ca`, `H`, `O`]],
+    [`ZrNb`, { sorted: false }, [`Zr`, `Nb`]],
+    [``, {}, []],
+  ])(`extract_formula_elements(%s, %j) -> %j`, (formula, opts, expected) => {
+    expect(extract_formula_elements(formula, opts)).toEqual(expected)
+  })
+
+  test(`extract_formula_elements throws on invalid symbols`, () => {
+    expect(() => extract_formula_elements(`ABC`)).toThrow(`Invalid element symbol: A`)
+  })
+
+  // lenient scan for dirty keys: order kept, duplicates kept, junk skipped
+  test.each([
+    [`V4+`, [`V`]],
+    [`Fe[2+]`, [`Fe`]],
+    [`CH3CH2OH`, [`C`, `H`, `C`, `H`, `O`, `H`]],
+    [`AbCdEf`, [`Cd`]],
+    [`Xx2`, []],
+  ])(`element_symbols_in(%s) -> %j`, (text, expected) => {
+    expect(element_symbols_in(text)).toEqual(expected)
+  })
 })
 
-describe(`matches_formula_wildcard`, () => {
-  // Pattern helper for readability
-  const pat = (elem: string | null, count: number) => ({
-    element: elem as ElementSymbol | null,
-    count,
+describe(`normalize_element_symbols`, () => {
+  test.each([
+    [``, []],
+    [`  ,  ,  `, []],
+    [`Zr, Nb, H, O`, [`H`, `O`, `Zr`, `Nb`]], // periodic order
+    [`H, Xx, O, BadSymbol`, [`H`, `O`]],
+    [`H,O,H,N,O`, [`H`, `N`, `O`]],
+  ])(`%s -> %j`, (input, expected) => {
+    expect(normalize_element_symbols(input)).toEqual(expected)
+  })
+})
+
+describe(`parse_composition`, () => {
+  test.each([
+    [`Fe2O3`, { Fe: 2, O: 3 }],
+    [
+      `{"Fe":70,"Cr":18,"Ni":8,"Mn":2,"Si":1,"C":1}`,
+      { Fe: 70, Cr: 18, Ni: 8, Mn: 2, Si: 1, C: 1 },
+    ],
+    [`{Cu: 88, Sn: 12}`, { Cu: 88, Sn: 12 }], // relaxed JSON with bare keys
+    [` { "Li": 1, "P": 1, "O": 4 } `, { Li: 1, P: 1, O: 4 }],
+    [``, {}],
+    [
+      { H: 2, O: 1 },
+      { H: 2, O: 1 },
+    ],
+    [
+      { Fe: 2, O: 3, N: 0 },
+      { Fe: 2, O: 3 },
+    ], // zero dropped
+    [{ Fe: -1, O: 3 }, { O: 3 }], // negative dropped
+    [
+      { 26: 2, 8: 3 },
+      { Fe: 2, O: 3 },
+    ], // atomic numbers
+    [
+      { 1: 2, O: 1 },
+      { H: 2, O: 1 },
+    ], // mixed keys
+    [{}, {}],
+  ] as [string | Record<string, number>, CompositionType][])(`%j -> %j`, (input, expected) => {
+    expect(parse_composition(input)).toEqual(expected)
   })
 
   test.each([
-    [`Fe2O3`, [pat(null, 2), pat(`O`, 3)], true, `*2O3 matches Fe2O3`],
-    [`Al2O3`, [pat(null, 2), pat(`O`, 3)], true, `*2O3 matches Al2O3`],
-    [`H2O`, [pat(`H`, 2), pat(`O`, 1)], true, `exact match`],
-    [`Fe3O4`, [pat(null, 2), pat(`O`, 3)], false, `wrong stoichiometry`],
-    [`InvalidXx`, [pat(null, 2), pat(`O`, 3)], false, `invalid formula`],
-    [``, [pat(null, 2), pat(`O`, 3)], false, `empty formula`],
-    [``, [], true, `empty pattern matches empty`],
-    [`Fe2O`, [pat(null, 2), pat(null, 1)], true, `all wildcards`],
-    [`LiO2`, [pat(null, 2), pat(null, 1)], true, `all wildcards swapped`],
-    [`Fe2O3`, [pat(null, 2), pat(null, 1)], false, `counts mismatch`],
-    // Wildcard count matching with distinct counts
+    [`Xx2`, `Invalid element symbol: Xx`],
+    [`{"Xx":1}`, `Invalid element symbol or atomic number: Xx`],
+    [`{Xx: 70, Yy: 18}`, `Invalid element symbol or atomic number: Xx`],
+    [`{"H": "two"}`, `Invalid amount for H: two`],
+    [`{"H": 1`, `Invalid composition object`],
+    [`[1, 2]`, `Unexpected character "1" at position 1`],
+    [{ 999: 1 }, `Invalid element symbol or atomic number: 999`],
+    [{ 0: 1 }, `Invalid element symbol or atomic number: 0`],
+    [{ H: NaN }, `Invalid amount for H: NaN`],
+  ] as [string | Record<string, number>, string][])(`throws for %j`, (input, error) => {
+    expect(() => parse_composition(input)).toThrow(error)
+  })
+})
+
+describe(`fractional_composition`, () => {
+  test.each([
     [
-      `LiMnCo2O4`,
-      [pat(`Li`, 1), pat(null, 1), pat(null, 2), pat(`O`, 4)],
-      true,
-      `distinct wildcard counts match`,
+      { H: 2, O: 1 },
+      { H: 2 / 3, O: 1 / 3 },
+    ],
+    [{ H: 5 }, { H: 1 }],
+    [
+      { Li: 0.5, Na: 0.5, Cl: 1 },
+      { Li: 0.25, Na: 0.25, Cl: 0.5 },
+    ],
+    [{ H: 2, O: 0, N: -1 }, { H: 1 }], // non-positive amounts skipped
+    [{}, {}],
+    [{ H: 0, O: 0 }, {}],
+  ])(`atomic fractions of %j`, (input, expected) => {
+    const result = fractional_composition(input)
+    expect(Object.keys(result)).toEqual(Object.keys(expected))
+    for (const [elem, frac] of Object.entries(expected)) {
+      expect(result[elem as keyof typeof result]).toBeCloseTo(frac, 12)
+    }
+  })
+
+  // hand-computed from the standard atomic weights in element data
+  // (H 1.008, O 15.999, Fe 55.8452, C 12.011)
+  test.each([
+    [
+      { H: 2, O: 1 },
+      { H: 2.016 / 18.015, O: 15.999 / 18.015 },
     ],
     [
-      `LiMn2Co2O4`,
-      [pat(`Li`, 1), pat(null, 1), pat(null, 2), pat(`O`, 4)],
-      false,
-      `distinct wildcard counts mismatch`,
+      { Fe: 2, O: 3 },
+      { Fe: 111.6904 / 159.6874, O: 47.997 / 159.6874 },
     ],
-    // Duplicate elements merged in pattern
-    [`Li2O2`, [pat(`Li`, 1), pat(`Li`, 1), pat(`O`, 2)], true, `duplicate elements merged`],
+    [{ C: 1 }, { C: 1 }],
     [
-      `LiO2`,
-      [pat(`Li`, 1), pat(`Li`, 1), pat(`O`, 2)],
-      false,
-      `duplicate elements not matching`,
+      { C: 0.5, H: 2 },
+      { C: 6.0055 / 8.0215, H: 2.016 / 8.0215 },
     ],
-    // Chemistry patterns: spinel AB2O4
-    [`MgAl2O4`, [pat(null, 1), pat(null, 2), pat(`O`, 4)], true, `spinel pattern match`],
-    [`Fe3O4`, [pat(null, 1), pat(null, 2), pat(`O`, 4)], false, `spinel pattern mismatch`],
-    // Chemistry patterns: perovskite ABO3
-    [`BaTiO3`, [pat(null, 1), pat(null, 1), pat(`O`, 3)], true, `perovskite BaTiO3`],
-    [`SrTiO3`, [pat(null, 1), pat(null, 1), pat(`O`, 3)], true, `perovskite SrTiO3`],
-    // Chemistry patterns: layered LiMO2
-    [`LiCoO2`, [pat(`Li`, 1), pat(null, 1), pat(`O`, 2)], true, `layered LiCoO2`],
-    [`NaCoO2`, [pat(`Li`, 1), pat(null, 1), pat(`O`, 2)], false, `layered requires Li`],
-    // Wildcard with count 0 never matches
-    [`Fe2O3`, [pat(null, 0), pat(`O`, 3)], false, `count 0 never matches`],
-    [`Al2O3`, [pat(null, 0), pat(`O`, 3)], false, `count 0 never matches Al2O3`],
-    [`O3`, [pat(null, 0), pat(`O`, 3)], false, `count 0 never matches O3`],
-  ])(`"%s" pattern=%j -> %s (%s)`, (formula, pattern, expected, _desc) => {
-    expect(matches_formula_wildcard(formula, pattern)).toBe(expected)
+  ])(`mass fractions of %j`, (input, expected) => {
+    const result = fractional_composition(input, true)
+    for (const [elem, frac] of Object.entries(expected)) {
+      expect(Math.abs((result[elem as keyof typeof result] ?? NaN) - frac)).toBeLessThan(1e-9)
+    }
+    expect(Object.values(result).reduce((sum, frac) => sum + frac, 0)).toBeCloseTo(1, 12)
+  })
+
+  test.each([false, true])(`throws for unknown elements (by_weight=%s)`, (by_weight) => {
+    expect(() => fractional_composition({ Xx: 1 } as CompositionType, by_weight)).toThrow(
+      `Unknown element: Xx`,
+    )
+  })
+})
+
+describe(`count_atoms_in_composition`, () => {
+  test.each([
+    [{ H: 2, O: 1 }, 3],
+    [{ C: 6, H: 12, O: 6 }, 24],
+    [{ H: 2.5, O: 1.5 }, 4],
+    [{}, 0],
+  ])(`%j -> %d`, (input, expected) => {
+    expect(count_atoms_in_composition(input)).toBe(expected)
+  })
+})
+
+describe(`get_reduced_formula`, () => {
+  test.each([
+    [
+      { Fe: 2, O: 4 },
+      { Fe: 1, O: 2 },
+    ],
+    [
+      { H: 4, O: 2 },
+      { H: 2, O: 1 },
+    ],
+    [
+      { Fe: 2, O: 3 },
+      { Fe: 2, O: 3 },
+    ],
+    [
+      { Fe: 6, O: 9 },
+      { Fe: 2, O: 3 },
+    ],
+    [{ C: 1 }, { C: 1 }],
+    [{}, {}],
+    [
+      { Fe: 2, O: 0, N: 4 },
+      { Fe: 1, N: 2 },
+    ], // zero amounts dropped
+    // fractional amounts scale to the smallest integer formula
+    [
+      { Li: 0.5, Na: 0.5, Cl: 1 },
+      { Li: 1, Na: 1, Cl: 2 },
+    ],
+    [
+      { Fe: 1.5, O: 3 },
+      { Fe: 1, O: 2 },
+    ],
+    [
+      { Fe: 0.25, O: 0.5 },
+      { Fe: 1, O: 2 },
+    ],
+    [
+      { Li: 1 / 3, Ni: 1 / 3, Mn: 1 / 3, O: 2 },
+      { Li: 1, Ni: 1, Mn: 1, O: 6 },
+    ],
+    [
+      { Fe: 0.3333, O: 0.6667 },
+      { Fe: 1, O: 2 },
+    ], // rounded input: fractions match 1:2 within 1e-4
+    [
+      { Fe: 0.123456, O: 1 },
+      { Fe: 10, O: 81 },
+    ], // 10/81 = 0.123457: the 3% snap used to give FeO8
+    [
+      { Fe: 0.01, O: 0.99 },
+      { Fe: 1, O: 99 },
+    ], // dilute ratios resolve exactly (the 3% snap gave FeO97)
+    [
+      { Fe: 0.005, O: 1 },
+      { Fe: 1, O: 200 },
+    ],
+    [
+      { Fe: 1.01, O: 2 },
+      { Fe: 101, O: 200 },
+    ], // 1% off an integer is a real ratio, not rounding noise
+    [
+      { Fe: 0.00001, O: 1 },
+      { Fe: 0.00001, O: 1 },
+    ], // finer than 1/MAX_FORMULA_DENOMINATOR: left fractional rather than dropping Fe
+    [
+      { Fe: 1e300, O: 2 },
+      { Fe: 1e300, O: 2 },
+    ], // beyond safe integer range
+  ])(`%j -> %j`, (input, expected) => {
+    expect(get_reduced_formula(input)).toEqual(expected)
+  })
+})
+
+describe(`get_molecular_weight`, () => {
+  test.each([
+    [{ H: 2, O: 1 }, 18.015],
+    [{ Na: 1, Cl: 1 }, 58.439769282],
+    [{ C: 1 }, 12.011],
+    [parse_formula(`CuSO4·5H2O`), 249.6773],
+    [parse_formula(`LiFePO4`), 157.7549619985],
+    [{}, 0],
+  ])(`%j -> %s`, (input, expected) => {
+    expect(Math.abs(get_molecular_weight(input) - expected)).toBeLessThan(1e-9)
+  })
+
+  test(`throws for unknown elements`, () => {
+    expect(() => get_molecular_weight({ Xx: 1 } as CompositionType)).toThrow(
+      `Unknown element: Xx`,
+    )
   })
 })

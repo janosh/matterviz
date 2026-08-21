@@ -30,15 +30,18 @@
     SizeScaleConfig,
     StyleOverrides,
     UserContentProps,
-  } from '$lib/plot'
+  } from '$lib/plot/core/types'
   import {
     ColorBar,
+    FillArea,
+    Line,
+    PlotAxis,
     PlotLegend,
     PlotTooltip,
-    ScatterPlotControls,
-    ScatterPoint,
-  } from '$lib/plot'
-  import { FillArea, Line, PlotAxis, ZeroLines } from '$lib/plot/core/components'
+    ZeroLines,
+  } from '$lib/plot/core/components'
+  import ScatterPlotControls from './ScatterPlotControls.svelte'
+  import ScatterPoint from './ScatterPoint.svelte'
   import {
     get_tick_label,
     accumulate_extent,
@@ -53,18 +56,19 @@
   import CartesianFrame from '$lib/plot/core/components/CartesianFrame.svelte'
   import type { MarginalSeriesInput, MarginalsProp } from '$lib/plot/core/marginals'
   import { normalize_marginals } from '$lib/plot/core/marginals'
-  import { build_obstacles_norm, has_explicit_position } from '$lib/plot/core/auto-place'
   import { assign_axes, axis_labels, axis_scale_types } from '$lib/plot/core/axis-assignment'
   import { create_axis_loader, AXIS_DEFAULTS } from '$lib/plot/core/axis-utils'
   import type { AxisChangeState } from '$lib/plot/core/axis-utils'
   import { get_series_color, get_series_symbol } from '$lib/plot/core/data-transform'
   import type { FacetLayoutContext } from '$lib/plot/core/facets'
   import {
+    build_obstacles_norm,
+    decoration_data_attrs,
     decoration_placement_revision,
     get_decoration_placement,
+    has_explicit_position,
     resolve_legend_layout_tracks,
     type DecorationItem,
-    type DecorationPlacement,
   } from '$lib/plot/core/decorations'
   import { create_placed_tween } from '$lib/plot/core/placed-tween.svelte'
   import {
@@ -81,7 +85,6 @@
     resolve_legend_visibility,
   } from '$lib/plot/core/utils/series-visibility'
   import { DEFAULTS } from '$lib/settings'
-  import { extent } from 'd3-array'
   import type { ComponentProps, Snippet } from 'svelte'
   import { onDestroy, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -93,7 +96,7 @@
     convert_error_band_to_fill_region,
     generate_fill_path,
   } from '$lib/plot/core/fill-utils'
-  import { get_relative_coords } from '$lib/plot/core/interactions'
+  import { get_relative_coords, is_activation_key } from '$lib/plot/core/interactions'
   import { create_cartesian_frame } from '$lib/plot/core/cartesian-frame.svelte'
   import type { Rect, Sides } from '$lib/plot/core/layout'
   import {
@@ -110,20 +113,26 @@
   import { build_spatial_index, query_nearest } from '$lib/plot/core/spatial-index'
   import { resolve_line_tween } from '$lib/plot/core/utils'
   import { color as d3_color } from 'd3-color'
-  import { build_legend_data, filter_series_to_ranges, pick_tooltip_bg } from './scatter-data'
+  import {
+    build_legend_data,
+    filter_series_to_ranges,
+    pick_tooltip_bg,
+    scatter_series_label,
+  } from './scatter-data'
 
   // Marker-density thresholds and decoration sampling cap
   const DENSE_MARKER_COUNT = 100
   const OBSTACLE_SAMPLE_LIMIT = 500
   const CANVAS_MARKER_THRESHOLD = 10_000
+  const ZERO_OFFSET = { x: 0, y: 0 }
 
   let {
-    series = $bindable([]),
+    series: series_in = $bindable([]),
     x_axis = $bindable({}),
     x2_axis = $bindable({}),
     y_axis = $bindable({}),
     y2_axis = $bindable({}),
-    display = $bindable(DEFAULTS.scatter.display),
+    display = $bindable(DEFAULTS.plot.display),
     styles: styles_init = {},
     show_controls = $bindable(true),
     controls_open = $bindable(false),
@@ -240,12 +249,23 @@
       point_hit_padding?: number
     } = $props()
 
+  // Legend toggles write `visible` into the bindable series prop so bound parents see
+  // them, and `series` layers the user's overrides back on whenever the parent
+  // replaces the array so hidden series stay hidden
+  const legend_vis = create_legend_visibility(
+    () => series,
+    (next) => (series_in = next),
+  )
+  let series: DataSeries<Metadata>[] = $derived(legend_vis.resolve(series_in))
+
   const plot_color = resolve_computed_color(() => wrapper, `color`, { fallback: `#000` })
 
   // Assign visible series by unit/axis_group while preserving every explicit y_axis.
   // Dimensionless series retain the historical y1 default. Re-running this derived after a
-  // legend toggle lets the remaining visible group move back to y1.
-  const assigned_series = $derived.by(() => {
+  // legend toggle lets the remaining visible group move back to y1. `_id` (series.id, else
+  // index) keys the rendered series so reordering with stable ids doesn't remount marks.
+  // Null/undefined entries pass through untouched; every consumer skips them.
+  const series_with_ids = $derived.by(() => {
     const assignment = assign_axes(series, {
       is_visible: (srs) => Boolean(srs && typeof srs === `object` && srs.visible !== false),
       priority: (group_key) => (group_key === `dimensionless` ? -1 : 0),
@@ -256,15 +276,15 @@
         { cause: assignment.error },
       )
     }
-
     return series.map((srs, series_idx) => {
-      const assigned_axis = assignment.assignments[series_idx]
-      return assigned_axis && !srs.y_axis ? { ...srs, y_axis: assigned_axis } : srs
+      if (!srs || typeof srs !== `object`) return srs
+      const assigned_y = srs.y_axis ?? assignment.assignments[series_idx]
+      return { ...srs, ...(assigned_y && { y_axis: assigned_y }), _id: srs.id ?? series_idx }
     })
   })
 
   const inferred_y_axes = $derived.by(() => {
-    const valid_series = assigned_series.filter((srs): srs is DataSeries<Metadata> =>
+    const valid_series = series_with_ids.filter((srs) =>
       Boolean(srs && typeof srs === `object`),
     )
     const labels = axis_labels(valid_series)
@@ -301,7 +321,7 @@
   // Cache time-axis check — used in ~10 places for scale/tick/tooltip logic
   let is_time_x = $derived(is_time_scale(final_x_axis.scale_type))
   let is_time_x2 = $derived(is_time_scale(final_x2_axis.scale_type))
-  const final_display = $derived({ ...DEFAULTS.scatter.display, ...display })
+  const final_display = $derived({ ...DEFAULTS.plot.display, ...display })
   // Local state for styles (initialized from prop, owned by this component for controls)
   // Using $state because styles has bindings in ScatterPlotControls
   // untrack() explicitly captures initial prop value (intentional - props provide initial config)
@@ -316,21 +336,6 @@
   )
   // Track which specific control properties user has modified
   let touched = new SvelteSet<string>()
-
-  // Assign stable IDs to series for keying
-  let series_with_ids = $derived(
-    assigned_series.map((srs: DataSeries<Metadata>, idx: number) => {
-      if (!srs || typeof srs !== `object`) return srs
-      // Use series.id if provided, otherwise fall back to index
-      // prevents re-mounts when series are reordered if stable IDs are provided
-      return { ...srs, _id: srs.id ?? idx }
-    }),
-  )
-
-  const legend_vis = create_legend_visibility(
-    () => series,
-    (next) => (series = next),
-  )
 
   // Fill region hover state
   let hovered_fill_key = $state<string | null>(null)
@@ -349,6 +354,9 @@
   let legend_drag_offset = $state<{ x: number; y: number }>({ x: 0, y: 0 })
   let legend_manual_position = $state<{ x: number; y: number } | null>(null)
   let hovered_legend_series_idx = $state<number | null>(null)
+  // Hovering a legend entry fades every other series
+  const is_legend_dimmed = (series_idx: number | undefined): boolean =>
+    hovered_legend_series_idx !== null && hovered_legend_series_idx !== series_idx
 
   // State for legend/colorbar placement stability
   let colorbar_element = $state<HTMLDivElement | undefined>()
@@ -407,15 +415,12 @@
       range_padding,
       time_scale,
     )
-  let auto_x_range = $derived(auto_range(extents_by_axis.all_x, final_x_axis, is_time_x))
-  let auto_y_range = $derived(auto_range(extents_by_axis.y1, final_y_axis))
-  let auto_x2_range = $derived(auto_range(extents_by_axis.x2, final_x2_axis, is_time_x2))
-  let auto_y2_range = $derived(auto_range(extents_by_axis.y2, final_y2_axis))
+  // Data-driven ranges before user overrides and pan/zoom; also the controls' reset targets
   const intrinsic_ranges = $derived({
-    x: auto_x_range,
-    x2: auto_x2_range,
-    y: auto_y_range,
-    y2: auto_y2_range,
+    x: auto_range(extents_by_axis.all_x, final_x_axis, is_time_x),
+    x2: auto_range(extents_by_axis.x2, final_x2_axis, is_time_x2),
+    y: auto_range(extents_by_axis.y1, final_y_axis),
+    y2: auto_range(extents_by_axis.y2, final_y2_axis),
   })
   const frame = create_cartesian_frame({
     axes: () => ({ x: final_x_axis, x2: final_x2_axis, y: final_y_axis, y2: final_y2_axis }),
@@ -458,47 +463,38 @@
     clip_id_prefix: `plot-area-clip`,
   })
 
-  // Aliases onto the frame so the marks, axes and overlays below read the same names
-  // they did when ScatterPlot owned this machinery itself.
+  // Short aliases for the frame values the marks, axes and overlays read most
   const width = $derived(frame.width)
   const height = $derived(frame.height)
   const pad = $derived(frame.pad)
-  const effective_base_pad = $derived(frame.effective_base_pad)
-  const ranges = $derived(frame.ranges)
-  const clip_path_id = $derived(frame.clip_path_id)
-  const title_config = $derived(frame.title_config)
-  const facet = frame.facet
-  const pan_zoom = frame.pan_zoom
-  const legend_tween = frame.legend_tween
-  const decoration_solution = $derived(frame.decoration_solution)
+  const clip_path_id = frame.clip_path_id
+  const { facet, pan_zoom, legend_tween } = frame
   const legend_placement = $derived(frame.legend_placement)
   const x_scale_fn = $derived(frame.scales.x)
   const x2_scale_fn = $derived(frame.scales.x2)
   const y_scale_fn = $derived(frame.scales.y)
   const y2_scale_fn = $derived(frame.scales.y2)
-  const x_tick_values = $derived(frame.ticks.x)
-  const x2_tick_values = $derived(frame.ticks.x2)
-  const y_tick_values = $derived(frame.ticks.y)
-  const y2_tick_values = $derived(frame.ticks.y2)
-  const tick_label_widths = $derived(frame.tick_label_widths)
+  let [x_min, x_max] = $derived(frame.ranges.current.x)
+  let [x2_min, x2_max] = $derived(frame.ranges.current.x2)
+  let [y_min, y_max] = $derived(frame.ranges.current.y)
+  let [y2_min, y2_max] = $derived(frame.ranges.current.y2)
 
   // === Unified automatic legend/colorbar layout ===
-  // ColorBar's orientation prop defaults to horizontal, so treat unset as horizontal too
+  let colorbar_size_revision = $state(0)
+  // Measured colorbar size, else an estimate (with room for tick labels) until it renders.
+  // ColorBar's orientation prop defaults to horizontal, so treat unset as horizontal too.
   const colorbar_is_horizontal = $derived(
     (color_bar?.orientation ?? `horizontal`) === `horizontal`,
   )
-  // Fallback estimate (with room for tick labels) used before the colorbar first renders
-  const colorbar_fallback_size = $derived(
-    colorbar_is_horizontal
-      ? COLOR_BAR_DEFAULTS.horizontal_footprint
-      : COLOR_BAR_DEFAULTS.vertical_footprint,
-  )
-  let colorbar_size_revision = $state(0)
   const colorbar_footprint = $derived.by(() => {
     void colorbar_size_revision
-    return full_footprint_or(colorbar_element, colorbar_fallback_size)
+    return full_footprint_or(
+      colorbar_element,
+      colorbar_is_horizontal
+        ? COLOR_BAR_DEFAULTS.horizontal_footprint
+        : COLOR_BAR_DEFAULTS.vertical_footprint,
+    )
   })
-  const legend_footprint = $derived(frame.legend_footprint)
   const constrain_legend_position = (
     position: Point2D,
     footprint: { width: number; height: number },
@@ -509,15 +505,18 @@
   $effect(() => {
     if (!legend_manual_position || legend_is_dragging) return
     const { x, y } = legend_manual_position
-    const constrained = constrain_legend_position(legend_manual_position, legend_footprint)
+    const constrained = constrain_legend_position(
+      legend_manual_position,
+      frame.legend_footprint,
+    )
     if (constrained.x === x && constrained.y === y) return
     legend_manual_position = constrained
   })
-  const legend_has_explicit_pos = $derived(has_explicit_position(legend?.style))
 
   // Plot-specific immutable obstacle field: visible series points and sampled line segments in
   // normalized [0,1] coordinates (y=0 at top). Each series uses its assigned x/y scale.
   const obstacles_norm = $derived.by(() => {
+    const { effective_base_pad } = frame
     if (!width || !height) return []
     const base_w = width - effective_base_pad.l - effective_base_pad.r
     const base_h = height - effective_base_pad.t - effective_base_pad.b
@@ -553,13 +552,13 @@
     const legend_element = frame.legend_element
     if (
       legend_element &&
-      (legend_has_explicit_pos || legend_is_dragging || legend_manual_position)
+      (has_explicit_position(legend?.style) || legend_is_dragging || legend_manual_position)
     ) {
       const position = legend_manual_position ?? {
         x: legend_element.offsetLeft,
         y: legend_element.offsetTop,
       }
-      rects.push({ ...position, ...legend_footprint })
+      rects.push({ ...position, ...frame.legend_footprint })
     }
     if (colorbar_element && color_bar?.wrapper_style) {
       rects.push({
@@ -573,19 +572,10 @@
 
   const legend_track_items = $derived.by(() => {
     const candidates: { label: string; legend_group?: string }[] = [
-      ...series_with_ids.filter(Boolean).map((series_data, series_idx) => {
-        const metadata_label =
-          typeof series_data.metadata === `object` &&
-          series_data.metadata !== null &&
-          `label` in series_data.metadata &&
-          typeof series_data.metadata.label === `string`
-            ? series_data.metadata.label
-            : undefined
-        return {
-          label: series_data.label ?? metadata_label ?? `Series ${series_idx + 1}`,
-          legend_group: series_data.legend_group,
-        }
-      }),
+      ...series_with_ids.filter(Boolean).map((series_data, series_idx) => ({
+        label: scatter_series_label(series_data) ?? `Series ${series_idx + 1}`,
+        legend_group: series_data.legend_group,
+      })),
       ...fill_regions.flatMap((fill) =>
         fill.show_in_legend !== false && fill.label
           ? [{ label: fill.label, legend_group: fill.legend_group }]
@@ -627,31 +617,35 @@
       }
     }),
   )
-  // Extract color and size values in single pass (used for scale computations)
-  let series_value_arrays = $derived.by(() => {
-    const color_values: number[] = []
+  // Finite color extent and finite size values across all series, one pass. NaN/null entries
+  // fall back to the series color/radius per point, so they must not widen either scale.
+  const color_size_values = $derived.by(() => {
+    const color_extent = empty_extent()
     const size_values: number[] = []
     for (const srs of series_with_ids) {
       if (!srs) continue
-      const { color_values: cvs, size_values: svs } = srs as DataSeries
-      if (cvs) {
-        for (const val of cvs) if (val != null) color_values.push(val)
-      }
-      if (svs) {
-        for (const val of svs) if (val != null) size_values.push(val)
+      if (srs.color_values) accumulate_extent(color_extent, srs.color_values)
+      for (const val of srs.size_values ?? []) {
+        if (typeof val === `number` && Number.isFinite(val)) size_values.push(val)
       }
     }
-    return { color_values, size_values }
+    return { color_extent, size_values }
   })
-  let all_color_values = $derived(series_value_arrays.color_values)
+  const has_color_values = $derived(color_size_values.color_extent.n_finite > 0)
+  // min/max are only unset when no finite value was seen, so the defaults give [0, 1]
+  const auto_color_range = $derived.by((): Vec2 => {
+    const { min = 0, max = 1 } = color_size_values.color_extent
+    return [min, max]
+  })
+  let size_scale_fn = $derived(create_size_scale(size_scale, color_size_values.size_values))
+  const color_scale_config = $derived<ColorScaleConfig>(
+    typeof color_scale === `string` ? { scheme: color_scale } : color_scale,
+  )
+  let color_scale_fn = $derived(create_color_scale(color_scale_config, auto_color_range))
 
   // The frame owns the legend item; the colorbar is ScatterPlot's own decoration
   const colorbar_decoration = $derived<DecorationItem[]>(
-    color_bar &&
-      all_color_values.length > 0 &&
-      !color_bar.wrapper_style &&
-      width > 0 &&
-      height > 0
+    color_bar && has_color_values && !color_bar.wrapper_style && width > 0 && height > 0
       ? [
           {
             id: `colorbar`,
@@ -664,26 +658,7 @@
       : [],
   )
 
-  let [x_min, x_max] = $derived(ranges.current.x)
-  let [x2_min, x2_max] = $derived(ranges.current.x2)
-  let [y_min, y_max] = $derived(ranges.current.y)
-  let [y2_min, y2_max] = $derived(ranges.current.y2)
-
-  // Create auto color range
-  let auto_color_range = $derived(
-    all_color_values.length > 0 ? extent(all_color_values) : [0, 1],
-  ) as Vec2
-
-  // All size values from series (for size scale) - extracted in series_value_arrays
-  let all_size_values = $derived(series_value_arrays.size_values)
-
-  // Size scale function (using shared utility)
-  let size_scale_fn = $derived(create_size_scale(size_scale, all_size_values))
-
-  // Color scale function (using shared utility)
-  let color_scale_fn = $derived(create_color_scale(color_scale, auto_color_range))
-
-  // Filter series data to only include points within bounds and augment with internal data
+  // Visible series with their in-range points materialized as InternalPoints
   let filtered_series = $derived(
     filter_series_to_ranges(series_with_ids, {
       x: [x_min, x_max],
@@ -692,6 +667,7 @@
       y2: [y2_min, y2_max],
     }),
   )
+  type FilteredSeries = (typeof filtered_series)[number]
 
   // Tally line series/points to budget path-morph tweens (see resolve_line_tween).
   // Disabling the morph for high-cardinality plots (e.g. phonon bands) keeps them
@@ -719,149 +695,194 @@
     return count
   })
 
-  const default_point_radius = (markers: string): number => {
-    const [sparse_radius, dense_radius] = markers.includes(`line`) ? [2.5, 2] : [3, 2.5]
-    return visible_marker_count >= DENSE_MARKER_COUNT ? dense_radius : sparse_radius
-  }
-
   // Apply controls to the selected series, comparing original indices so duplicate IDs work.
   const applies_style_controls = (series_data: { orig_series_idx?: number }): boolean =>
     show_controls &&
     (!has_multiple_series || series_data.orig_series_idx === selected_series_idx)
 
-  // Keep canvas and SVG marker appearance in sync.
-  const point_appearance = (
-    point: InternalPoint<Metadata>,
-    series_data: DataSeries<Metadata> & { filtered_data: InternalPoint<Metadata>[] },
-  ) => {
-    const series_markers = series_data.markers ?? DEFAULT_MARKERS
-    const control_touched = applies_style_controls(series_data) ? touched : undefined
-    const pt = point.point_style
+  const is_finite_num = (val: number | null | undefined): val is number =>
+    typeof val === `number` && Number.isFinite(val)
+
+  // Marker appearance shared by the canvas and SVG paths so they can't drift. Everything that
+  // is constant across a series (control overrides, defaults, scales, the plot colour) is read
+  // once here; the returned closure only touches the point's own style/colour/size. Reading
+  // those reactive values per point cost more than all the geometry at 100k points.
+  const series_appearance = (series_data: FilteredSeries) => {
+    const series_idx = series_data.orig_series_idx ?? 0
+    const control_touched = applies_style_controls(series_data) ? touched : null
+    const point_ctrl = styles.point
     const ctrl = <T>(key: string, value: T | null | undefined): T | null =>
       control_touched?.has(key) ? (value ?? null) : null
-    const series_idx = series_data.orig_series_idx ?? 0
-    const stroke = ctrl(`point.stroke_color`, styles.point?.stroke_color) ?? pt?.stroke
+    const ctrl_radius = ctrl(`point.size`, point_ctrl?.size)
+    const ctrl_fill = ctrl(`point.color`, point_ctrl?.color)
+    const ctrl_fill_opacity = ctrl(`point.opacity`, point_ctrl?.opacity)
+    const ctrl_stroke = ctrl(`point.stroke_color`, point_ctrl?.stroke_color)
+    const ctrl_stroke_width = ctrl(`point.stroke_width`, point_ctrl?.stroke_width)
+    const ctrl_stroke_opacity = ctrl(`point.stroke_opacity`, point_ctrl?.stroke_opacity)
+    const [sparse_radius, dense_radius] = (series_data.markers ?? DEFAULT_MARKERS).includes(
+      `line`,
+    )
+      ? [2.5, 2]
+      : [3, 2.5]
+    const default_radius =
+      visible_marker_count >= DENSE_MARKER_COUNT ? dense_radius : sparse_radius
+    const default_fill = get_series_color(series_idx)
+    const default_symbol = get_series_symbol(series_idx)
+    const fallback_stroke = plot_color.current
+    const { stroke_width: default_stroke_width, stroke_opacity: default_stroke_opacity } =
+      DEFAULTS.scatter.point
+    const [size_fn, color_fn] = [size_scale_fn, color_scale_fn]
     return {
-      radius:
-        point.size_value != null
-          ? size_scale_fn(point.size_value)
-          : (ctrl(`point.size`, styles.point?.size) ??
-            pt?.radius ??
-            default_point_radius(series_markers)),
-      symbol_size: pt?.symbol_size ?? undefined,
-      symbol_type: pt?.symbol_type ?? get_series_symbol(series_idx),
-      fill:
-        point.color_value != null
-          ? color_scale_fn(point.color_value)
-          : (ctrl(`point.color`, styles.point?.color) ??
-            pt?.fill ??
-            get_series_color(series_idx)),
-      fill_opacity: ctrl(`point.opacity`, styles.point?.opacity) ?? pt?.fill_opacity ?? 1,
-      stroke: stroke ?? plot_color.current,
-      stroke_width:
-        ctrl(`point.stroke_width`, styles.point?.stroke_width) ??
-        pt?.stroke_width ??
-        DEFAULTS.scatter.point.stroke_width,
-      stroke_opacity:
-        ctrl(`point.stroke_opacity`, styles.point?.stroke_opacity) ??
-        pt?.stroke_opacity ??
-        (stroke == null ? DEFAULTS.scatter.point.stroke_opacity : 1),
+      appearance_of: (point: InternalPoint<Metadata>) => {
+        const pt = point.point_style
+        const stroke = ctrl_stroke ?? pt?.stroke
+        return {
+          radius: is_finite_num(point.size_value)
+            ? size_fn(point.size_value)
+            : (ctrl_radius ?? pt?.radius ?? default_radius),
+          symbol_size: pt?.symbol_size ?? undefined,
+          symbol_type: pt?.symbol_type ?? default_symbol,
+          fill: is_finite_num(point.color_value)
+            ? color_fn(point.color_value)
+            : (ctrl_fill ?? pt?.fill ?? default_fill),
+          fill_opacity: ctrl_fill_opacity ?? pt?.fill_opacity ?? 1,
+          stroke: stroke ?? fallback_stroke,
+          stroke_width: ctrl_stroke_width ?? pt?.stroke_width ?? default_stroke_width,
+          stroke_opacity:
+            ctrl_stroke_opacity ??
+            pt?.stroke_opacity ??
+            (stroke == null ? default_stroke_opacity : 1),
+        }
+      },
+      // Colour-scale output is always a d3 colour, so only authored paints are checked.
+      // They come from a handful of strings, so the memo below makes this O(1) per point.
+      canvas_safe: (point: InternalPoint<Metadata>): boolean => {
+        const pt = point.point_style
+        const fill = is_finite_num(point.color_value)
+          ? null
+          : (ctrl_fill ?? pt?.fill ?? default_fill)
+        return (
+          (fill == null || canvas_safe_color(fill)) &&
+          canvas_safe_color(ctrl_stroke ?? pt?.stroke ?? fallback_stroke)
+        )
+      },
     }
   }
 
-  // Canvas ignores invalid paint values, so restrict it to d3 colors and SVG's no-paint keyword.
-  const canvas_safe_color = (color: string): boolean =>
-    color === `none` || d3_color(color) !== null
-  const needs_svg_point_events = $derived(
-    Boolean(on_point_click || (point_events && Object.values(point_events).some(Boolean))),
-  )
-  const use_canvas_markers = $derived.by(() => {
-    const canvas_requested =
-      marker_renderer === `canvas` ||
-      (marker_renderer === `auto` && visible_marker_count > CANVAS_MARKER_THRESHOLD)
-    if (!canvas_requested || needs_svg_point_events) return false
-    for (const series_data of filtered_series) {
-      if (!(series_data.markers ?? DEFAULT_MARKERS).includes(`points`)) continue
-      for (const point of series_data.filtered_data) {
-        const { fill, stroke } = point_appearance(point, series_data)
-        if (!canvas_safe_color(fill) || !canvas_safe_color(stroke)) return false
-      }
+  // Per-series data->pixel projection, resolved once per series: `point` places a marker
+  // (with its point_offset), `line` maps raw x/y for connecting lines, where a non-positive
+  // value on a log y axis is held at the domain floor instead of vanishing.
+  const series_projector = (series_data: Pick<DataSeries, `x_axis` | `y_axis`>) => {
+    const use_x2 = series_data.x_axis === `x2`
+    const use_y2 = series_data.y_axis === `y2`
+    const x_scale = use_x2 ? x2_scale_fn : x_scale_fn
+    const y_scale = use_y2 ? y2_scale_fn : y_scale_fn
+    const project_x = (use_x2 ? is_time_x2 : is_time_x)
+      ? (x: number) => x_scale(new Date(x))
+      : (x: number) => x_scale(x)
+    const y_axis_config = use_y2 ? final_y2_axis : final_y_axis
+    const y_floor =
+      get_scale_type_name(y_axis_config.scale_type) === `log` ? y_scale.domain()[0] : -Infinity
+    return {
+      x_scale,
+      point: (point: InternalPoint<Metadata>): Vec2 => [
+        project_x(point.x) + (point.point_offset?.x ?? 0),
+        y_scale(point.y) + (point.point_offset?.y ?? 0),
+      ],
+      line: (line: Pick<DataSeries, `x` | `y`>): Vec2[] => {
+        const screen: Vec2[] = []
+        for (let idx = 0; idx < line.x.length; idx++) {
+          const screen_x = project_x(line.x[idx])
+          const screen_y = y_scale(Math.max(line.y[idx], y_floor))
+          if (Number.isFinite(screen_x) && Number.isFinite(screen_y)) {
+            screen.push([screen_x, screen_y])
+          }
+        }
+        return screen
+      },
     }
-    return true
-  })
+  }
 
-  // Points needing labels or effects remain in an SVG overlay.
+  // Points needing labels or effects remain in an SVG overlay. `selected` is passed in so
+  // per-point loops read the prop once, not per point.
   const same_logical_point = (
     point: InternalPoint<Metadata>,
     other: { series_idx: number; point_idx: number } | null,
   ): boolean => other?.series_idx === point.series_idx && other.point_idx === point.point_idx
-  const needs_static_svg_overlay = (point: InternalPoint<Metadata>): boolean =>
+  const needs_static_svg_overlay = (
+    point: InternalPoint<Metadata>,
+    selected: typeof selected_point,
+  ): boolean =>
     point.point_label?.text != null ||
-    same_logical_point(point, selected_point) ||
+    same_logical_point(point, selected) ||
     Boolean(
       point.point_style?.is_highlighted &&
       /pulse|glow/.test(point.point_style.highlight_effect ?? ``),
     )
-  const static_svg_overlay_points_by_series = $derived.by(() => {
-    if (!use_canvas_markers) return []
-    return filtered_series.map((series_data) =>
-      series_data.filtered_data.filter((point) => needs_static_svg_overlay(point)),
-    )
-  })
-  const svg_overlay_points_by_series = $derived.by(() => {
-    if (!use_canvas_markers) return []
-    return static_svg_overlay_points_by_series.map((points, series_pos) => {
-      const series_data = filtered_series[series_pos]
-      // tooltip_point may come from a previous filtered derivation, so dedupe by logical key.
-      if (
-        tooltip_point == null ||
-        tooltip_point.point_label?.text != null ||
-        tooltip_point.series_idx !== series_data.orig_series_idx ||
-        points.some((point) => same_logical_point(point, tooltip_point))
-      ) {
-        return points
-      }
-      return [...points, tooltip_point]
-    })
-  })
-  // Shared by canvas markers and the hover index so offsets can't drift between them.
-  const series_screen_scales = (series_data: { x_axis?: string; y_axis?: string }) => {
-    const use_x2 = series_data.x_axis === `x2`
-    return {
-      x_scale: use_x2 ? x2_scale_fn : x_scale_fn,
-      y_scale: series_data.y_axis === `y2` ? y2_scale_fn : y_scale_fn,
-      is_time_x: use_x2 ? is_time_x2 : is_time_x,
-    }
-  }
-  const point_screen_xy = (
-    point: InternalPoint<Metadata>,
-    scales: ReturnType<typeof series_screen_scales>,
-  ) => ({
-    cx:
-      (scales.is_time_x ? scales.x_scale(new Date(point.x)) : scales.x_scale(point.x)) +
-      (point.point_offset?.x ?? 0),
-    cy: scales.y_scale(point.y) + (point.point_offset?.y ?? 0),
-  })
 
-  const canvas_markers = $derived.by((): CanvasMarker[] => {
-    if (!use_canvas_markers || !styles.show_points) return []
+  // Canvas ignores invalid paint values, so restrict it to d3 colors and SVG's no-paint
+  // keyword. Memoized: a plot authors only a handful of distinct paint strings.
+  const canvas_color_safety = new Map<string, boolean>()
+  const canvas_safe_color = (color: string): boolean => {
+    let safe = canvas_color_safety.get(color)
+    if (safe === undefined) {
+      if (canvas_color_safety.size >= 1024) canvas_color_safety.clear()
+      safe = color === `none` || d3_color(color) !== null
+      canvas_color_safety.set(color, safe)
+    }
+    return safe
+  }
+  // Canvas markers for every plain point, or null when markers must be SVG: canvas not
+  // requested, no points shown, DOM point handlers needed, or a paint value canvas can't
+  // parse. One pass decides the mode and builds the markers.
+  const canvas_markers = $derived.by((): CanvasMarker[] | null => {
+    const canvas_requested =
+      marker_renderer === `canvas` ||
+      (marker_renderer === `auto` && visible_marker_count > CANVAS_MARKER_THRESHOLD)
+    const needs_svg_events =
+      on_point_click || (point_events && Object.values(point_events).some(Boolean))
+    if (!canvas_requested || !styles.show_points || needs_svg_events) return null
+    const selected = selected_point
     const markers: CanvasMarker[] = []
     for (const series_data of filtered_series) {
       if (!(series_data.markers ?? DEFAULT_MARKERS).includes(`points`)) continue
-      const scales = series_screen_scales(series_data)
-      const dimmed =
-        hovered_legend_series_idx !== null &&
-        hovered_legend_series_idx !== series_data.orig_series_idx
+      const { appearance_of, canvas_safe } = series_appearance(series_data)
+      const project = series_projector(series_data)
+      const opacity = is_legend_dimmed(series_data.orig_series_idx) ? 0.25 : 1
       for (const point of series_data.filtered_data) {
-        if (needs_static_svg_overlay(point)) continue
-        markers.push({
-          ...point_screen_xy(point, scales),
-          opacity: dimmed ? 0.25 : 1,
-          ...point_appearance(point, series_data),
-        })
+        if (!canvas_safe(point)) return null
+        if (needs_static_svg_overlay(point, selected)) continue
+        const [cx, cy] = project.point(point)
+        markers.push({ cx, cy, opacity, ...appearance_of(point) })
       }
     }
     return markers
+  })
+  const use_canvas_markers = $derived(canvas_markers !== null)
+  // In canvas mode only labelled/selected/highlighted points get SVG nodes. Derived apart
+  // from the hover below so a pointer move doesn't rescan every point.
+  const static_overlay_points_by_series = $derived.by(() => {
+    if (!use_canvas_markers) return []
+    const selected = selected_point
+    return filtered_series.map((series_data) =>
+      series_data.filtered_data.filter((point) => needs_static_svg_overlay(point, selected)),
+    )
+  })
+  // Plus the hovered point, for its hover effects. tooltip_point may come from a previous
+  // filtered derivation, so it is matched by logical key rather than identity.
+  const svg_overlay_points_by_series = $derived.by(() => {
+    const hovered_pt = tooltip_point
+    return static_overlay_points_by_series.map((points, series_pos) => {
+      if (
+        hovered_pt == null ||
+        hovered_pt.point_label?.text != null ||
+        hovered_pt.series_idx !== filtered_series[series_pos].orig_series_idx ||
+        points.some((point) => same_logical_point(point, hovered_pt))
+      ) {
+        return points
+      }
+      return [...points, hovered_pt]
+    })
   })
 
   let canvas_element = $state<HTMLCanvasElement | null>(null)
@@ -886,11 +907,11 @@
     canvas.style.width = `${width}px`
     canvas.style.height = `${height}px`
     const ctx = canvas.getContext(`2d`)
-    if (ctx) draw_markers(ctx, canvas_markers, { width, height, pixel_ratio })
+    if (ctx) draw_markers(ctx, canvas_markers ?? [], { width, height, pixel_ratio })
   })
 
   const fill_hover_key = (
-    source_type: `fill_region` | `error_band`,
+    source_type: FillSource,
     source_idx: number,
     id?: string | number,
     is_duplicate_id = false,
@@ -907,48 +928,40 @@
     id != null && (items?.some((item, idx) => idx !== source_idx && item.id === id) ?? false)
 
   // Computed fill regions: merge fill_regions and converted error_bands, resolve boundaries
+  type FillSource = `fill_region` | `error_band`
   type ComputedFill = FillRegion & {
     idx: number
-    source_type: `fill_region` | `error_band`
+    source_type: FillSource
     source_idx: number
     hover_key: string
     path_segments: string[]
   }
+  type TaggedRegion = Pick<ComputedFill, `source_type` | `source_idx` | `hover_key`> & {
+    region: FillRegion | null
+  }
+  const tag_regions = <Item extends { id?: string | number }>(
+    items: readonly Item[],
+    source_type: FillSource,
+    to_region: (item: Item) => FillRegion | null,
+  ): TaggedRegion[] =>
+    items.map((item, source_idx) => ({
+      region: to_region(item),
+      source_type,
+      source_idx,
+      hover_key: fill_hover_key(
+        source_type,
+        source_idx,
+        item.id,
+        has_duplicate_id(items, source_idx, item.id),
+      ),
+    }))
   let computed_fills = $derived.by((): ComputedFill[] => {
-    // Early exit: skip expensive computation if no fills to render
-    const has_fill_regions = fill_regions && fill_regions.length > 0
-    const has_error_bands = error_bands && error_bands.length > 0
-    if (!has_fill_regions && !has_error_bands) return []
-
-    // Merge fill_regions and converted error_bands, tracking source
-    const all_regions: {
-      region: FillRegion | null
-      source_type: `fill_region` | `error_band`
-      source_idx: number
-      hover_key: string
-    }[] = [
-      ...(fill_regions ?? []).map((region, source_idx) => ({
-        region,
-        source_type: `fill_region` as const,
-        source_idx,
-        hover_key: fill_hover_key(
-          `fill_region`,
-          source_idx,
-          region.id,
-          has_duplicate_id(fill_regions, source_idx, region.id),
-        ),
-      })),
-      ...(error_bands ?? []).map((band, source_idx) => ({
-        region: convert_error_band_to_fill_region(band, series_with_ids),
-        source_type: `error_band` as const,
-        source_idx,
-        hover_key: fill_hover_key(
-          `error_band`,
-          source_idx,
-          band.id,
-          has_duplicate_id(error_bands, source_idx, band.id),
-        ),
-      })),
+    if (fill_regions.length === 0 && error_bands.length === 0) return []
+    const all_regions = [
+      ...tag_regions(fill_regions, `fill_region`, (region) => region),
+      ...tag_regions(error_bands, `error_band`, (band) =>
+        convert_error_band_to_fill_region(band, series_with_ids),
+      ),
     ]
 
     // On log axes, clamp non-positive coords to the scale's domain floor (x_min/y_min) before
@@ -969,16 +982,7 @@
     }
 
     return all_regions
-      .filter(
-        (
-          entry,
-        ): entry is {
-          region: FillRegion
-          source_type: `fill_region` | `error_band`
-          source_idx: number
-          hover_key: string
-        } => entry.region !== null,
-      )
+      .filter((entry): entry is TaggedRegion & { region: FillRegion } => entry.region !== null)
       .map(({ region, source_type, source_idx, hover_key }, idx) => {
         // Hidden fills keep their entry (with empty path_segments -> nothing renders) so the
         // legend item persists greyed-out and can be toggled back on.
@@ -1047,11 +1051,6 @@
     on_element_resize: () => (colorbar_size_revision += 1),
     placement_revision: () => decoration_placement_revision(colorbar_placement),
   })
-  const decoration_exclusion_rects = $derived([
-    ...pinned_decoration_rects,
-    ...frame.exclusion_rects,
-  ])
-
   // Panning retargets every marker and line on each pointer frame. Animating that leaves
   // them trailing the axes while hover hit-testing already uses the live scales, so snap
   // for the duration of the drag. Declared here because both read pan_zoom.
@@ -1064,15 +1063,16 @@
 
   const hover_radius = $derived(hover_config.threshold_px ?? 20)
 
-  // Lazily index screen-space markers so pointer moves probe nearby cells only.
+  // Screen-space grid over every visible marker so a pointer move probes nearby cells only.
+  // Lazy: built on the first hover after a data/scale change, not per frame.
   const hover_index = $derived.by(() => {
     if (hover_config.mode === `x`) return null
-
     function* entries() {
       for (const series_data of filtered_series) {
-        const scales = series_screen_scales(series_data)
+        const project = series_projector(series_data)
         for (const point of series_data.filtered_data) {
-          yield { ...point_screen_xy(point, scales), point, series: series_data }
+          const [cx, cy] = project.point(point)
+          yield { cx, cy, point }
         }
       }
     }
@@ -1105,8 +1105,8 @@
     for (const { series_data, direction } of x_hover_series) {
       const { filtered_data: points } = series_data
       if (points.length === 0) continue
-      const scales = series_screen_scales(series_data)
-      const target_x = Number(scales.x_scale.invert(x_rel))
+      const project = series_projector(series_data)
+      const target_x = Number(project.x_scale.invert(x_rel))
       let [candidate_start, candidate_end] = [0, points.length]
       if (direction !== 0) {
         const lower_idx = partition_point(points, (point) =>
@@ -1129,7 +1129,7 @@
       }
       for (let point_idx = candidate_start; point_idx < candidate_end; point_idx++) {
         const point = points[point_idx]
-        const { cx, cy } = point_screen_xy(point, scales)
+        const [cx, cy] = project.point(point)
         const x_distance = Math.abs(cx - x_rel)
         const y_distance = Math.abs(cy - y_rel)
         if (
@@ -1151,8 +1151,6 @@
       : hover_index
         ? query_nearest(hover_index, { x: x_rel, y: y_rel })?.point
         : null
-  let tracks_pointer = $derived(hover_config.show_tooltip !== false || Boolean(on_point_hover))
-
   // tooltip logic: find closest point and update tooltip state
   function update_tooltip_point(x_rel: number, y_rel: number, evt?: MouseEvent) {
     if (!width || !height) return
@@ -1233,7 +1231,7 @@
   // than `filtered_series` on purpose: the latter is refiltered from the ranges, which would
   // put this scan back on every frame. Counting labels outside the visible range only means
   // the solver runs and filters them out itself.
-  // series and label entries can both be null: assigned_series passes non-objects through
+  // series and label entries can both be null: series_with_ids passes non-objects through
   const is_auto_placed = (label: LabelStyle | null | undefined) =>
     Boolean(label?.auto_placement && label.text)
   let has_auto_placed_labels = $derived(
@@ -1242,6 +1240,16 @@
       return Array.isArray(label) ? label.some(is_auto_placed) : is_auto_placed(label)
     }),
   )
+
+  // Solver-placed labels carry their offset from the marker; an auto-placed label the solver
+  // dropped (max_neighbors budget) renders nothing
+  const resolve_point_label = (point: InternalPoint<Metadata>, cx: number, cy: number) => {
+    const placed = label_positions[`${point.series_idx}-${point.point_idx}`]
+    const label = point.point_label ?? {}
+    const style =
+      label.auto_placement && actual_label_config.max_neighbors && !placed ? {} : label
+    return placed ? { ...style, offset: { x: placed.x - cx, y: placed.y - cy } } : style
+  }
 
   // Last solve's label offsets, handed back so each pan/zoom frame polishes the previous
   // layout instead of re-solving from scratch. A plain Map, not SvelteMap: the effect below
@@ -1305,37 +1313,6 @@
     )
   }
 
-  function get_screen_coords(point: Point, data_series?: DataSeries): Vec2 {
-    // convert data coordinates to potentially non-finite screen coordinates
-    const use_x2 = data_series?.x_axis === `x2`
-    const active_x_scale = use_x2 ? x2_scale_fn : x_scale_fn
-    const active_is_time_x = use_x2 ? is_time_x2 : is_time_x
-    const screen_x = active_is_time_x
-      ? active_x_scale(new Date(point.x))
-      : active_x_scale(point.x)
-
-    const y_val = point.y
-    // Determine which y-scale to use based on series y_axis property
-    const use_y2 = data_series?.y_axis === `y2`
-    const y_scale = use_y2 ? y2_scale_fn : y_scale_fn
-    const y_scale_type = use_y2
-      ? get_scale_type_name(final_y2_axis.scale_type)
-      : get_scale_type_name(final_y_axis.scale_type)
-    // Only log scale needs domain clamping; linear and arcsinh can handle any value
-    const min_domain_y = y_scale_type === `log` ? y_scale.domain()[0] : -Infinity
-    const safe_y_val = y_scale_type === `log` ? Math.max(y_val, min_domain_y) : y_val
-    const screen_y = y_scale(safe_y_val) // This might be non-finite
-
-    return [screen_x, screen_y]
-  }
-  const screen_line_points = (
-    line: Pick<DataSeries, `x` | `y`>,
-    series_data: DataSeries,
-  ): Vec2[] =>
-    line.x
-      .map((x, point_idx) => get_screen_coords({ x, y: line.y[point_idx] }, series_data))
-      .filter(([screen_x, screen_y]) => isFinite(screen_x) && isFinite(screen_y))
-
   // Helper function to construct ScatterHandlerProps synchronously from InternalPoint
   function construct_handler_props(
     point: InternalPoint<Metadata>,
@@ -1343,11 +1320,10 @@
     const hovered_series = series_with_ids[point.series_idx]
     if (!hovered_series) return null
     const { x, y, color_value, metadata, series_idx } = point
-    const handler_use_x2 = hovered_series.x_axis === `x2`
-    const { cx, cy } = point_screen_xy(point, series_screen_scales(hovered_series))
-    const active_x_config = handler_use_x2 ? final_x2_axis : final_x_axis
+    const [cx, cy] = series_projector(hovered_series).point(point)
+    const active_x_config = hovered_series.x_axis === `x2` ? final_x2_axis : final_x_axis
     const active_y_config = hovered_series.y_axis === `y2` ? final_y2_axis : final_y_axis
-    const coords = {
+    return {
       x,
       y,
       cx,
@@ -1356,9 +1332,6 @@
       x2_axis: final_x2_axis,
       y_axis: active_y_config,
       y2_axis: final_y2_axis,
-    }
-    return {
-      ...coords,
       fullscreen,
       metadata,
       label: hovered_series.label ?? null,
@@ -1392,10 +1365,7 @@
   }
 
   // Derive handler props from hovered point for both tooltip and event handlers
-  let handler_props = $derived.by((): ScatterHandlerProps<Metadata> | null => {
-    if (!tooltip_point) return null
-    return construct_handler_props(tooltip_point)
-  })
+  let handler_props = $derived(tooltip_point ? construct_handler_props(tooltip_point) : null)
 
   let has_multiple_series = $derived(series_with_ids.filter(Boolean).length > 1)
 
@@ -1416,7 +1386,7 @@
       y: { get: () => y_axis, set: (config) => (y_axis = config) },
       y2: { get: () => y2_axis, set: (config) => (y2_axis = config) },
     },
-    series: { get: () => series, set: (next) => (series = next) },
+    series: { get: () => series, set: (next) => (series_in = next) },
     loading: { get: () => axis_loading, set: (axis) => (axis_loading = axis) },
   }
 
@@ -1454,10 +1424,10 @@
 {#snippet ref_lines_layer(lines: IndexedRefLine[])}
   <ReferenceLinesLayer
     {lines}
-    ranges={ranges.current}
+    ranges={frame.ranges.current}
     scales={{ x: x_scale_fn, x2: x2_scale_fn, y: y_scale_fn, y2: y2_scale_fn }}
     {clip_path_id}
-    {decoration_solution}
+    decoration_solution={frame.decoration_solution}
     bind:hovered_line_idx={hovered_ref_line_idx}
     on_click={on_ref_line_click}
     on_hover={on_ref_line_hover}
@@ -1478,7 +1448,7 @@
   marginals={resolved_marginals}
   {marginal_series}
   on_mouse_enter={() => (hovered = true)}
-  on_mouse_move={tracks_pointer
+  on_mouse_move={hover_config.show_tooltip !== false || on_point_hover
     ? (evt) => {
         // Only find the closest point when not actively dragging
         if (!pan_zoom.drag_start && !pan_zoom.is_panning) queue_mouse_move(evt)
@@ -1520,7 +1490,7 @@
     {#if facet.axis_visible(`x`)}
       <PlotAxis
         side="x"
-        ticks={x_tick_values}
+        ticks={frame.ticks.x}
         place={(tick) => (is_time_x ? x_scale_fn(new Date(tick)) : x_scale_fn(tick))}
         axis={final_x_axis}
         on_tick_font={(font) => (frame.tick_font = font)}
@@ -1572,7 +1542,7 @@
     {#if facet.axis_visible(`y`)}
       <PlotAxis
         side="y"
-        ticks={y_tick_values}
+        ticks={frame.ticks.y}
         place={y_scale_fn}
         axis={final_y_axis}
         {pad}
@@ -1583,7 +1553,7 @@
         domain={[y_min, y_max]}
         unit_on_first_tick
         tick_label={(tick) => get_tick_label(tick, final_y_axis.ticks)}
-        label_x={y_axis_label_x(final_y_axis, pad.l, tick_label_widths.y_max)}
+        label_x={y_axis_label_x(final_y_axis, pad.l, frame.tick_label_widths.y_max)}
         label_y={pad.t + (height - pad.t - pad.b) / 2 + (final_y_axis.label_shift?.y ?? 0)}
         axis_loading={axis_loading === `y`}
         on_axis_change={(key) => handle_axis_change(`y`, key)}
@@ -1594,7 +1564,7 @@
     {#if has_y2_points && facet.axis_visible(`y2`)}
       <PlotAxis
         side="y2"
-        ticks={y2_tick_values}
+        ticks={frame.ticks.y2}
         place={y2_scale_fn}
         axis={final_y2_axis}
         {pad}
@@ -1605,7 +1575,7 @@
         domain={[y2_min, y2_max]}
         unit_on_first_tick
         tick_label={(tick) => get_tick_label(tick, final_y2_axis.ticks)}
-        label_x={y2_axis_label_x(final_y2_axis, width, pad.r, tick_label_widths.y2_max)}
+        label_x={y2_axis_label_x(final_y2_axis, width, pad.r, frame.tick_label_widths.y2_max)}
         label_y={pad.t + (height - pad.t - pad.b) / 2 + (final_y2_axis.label_shift?.y ?? 0)}
         axis_loading={axis_loading === `y2`}
         on_axis_change={(key) => handle_axis_change(`y2`, key)}
@@ -1616,7 +1586,7 @@
     {#if has_x2_points && facet.axis_visible(`x2`)}
       <PlotAxis
         side="x2"
-        ticks={x2_tick_values}
+        ticks={frame.ticks.x2}
         place={(tick) => (is_time_x2 ? x2_scale_fn(new Date(tick)) : x2_scale_fn(tick))}
         axis={final_x2_axis}
         {pad}
@@ -1645,26 +1615,28 @@
     <!-- Lines -->
     {#if styles.show_lines}
       {#each filtered_series as series_data (series_data._id)}
-        {@const series_markers = series_data.markers ?? DEFAULT_MARKERS}
-        {@const series_default_color = get_series_color(series_data.orig_series_idx ?? 0)}
-        <g
-          data-series-id={series_data._id}
-          clip-path="url(#{clip_path_id})"
-          opacity={hovered_legend_series_idx !== null &&
-          hovered_legend_series_idx !== series_data.orig_series_idx
-            ? 0.25
-            : 1}
-        >
-          {#if series_markers.includes(`line`)}
-            {@const line_origin = [
-              is_time_x ? x_scale_fn(new Date(x_min)) : x_scale_fn(x_min),
-              series_data.y_axis === `y2` ? y2_scale_fn(y2_min) : y_scale_fn(y_min),
-            ] as Vec2}
+        {#if (series_data.markers ?? DEFAULT_MARKERS).includes(`line`)}
+          {@const project = series_projector(series_data)}
+          {@const series_default_color = get_series_color(series_data.orig_series_idx ?? 0)}
+          {@const apply_line_controls = applies_style_controls(series_data)}
+          {@const ls = series_data.line_style}
+          {@const tc = (key: string) => apply_line_controls && touched.has(key)}
+          {@const color_fallback =
+            ls?.stroke ??
+            (Array.isArray(series_data.point_style)
+              ? series_data.point_style[0]?.fill
+              : series_data.point_style?.fill) ??
+            (series_data.color_values?.[0] != null
+              ? color_scale_fn(series_data.color_values[0])
+              : series_default_color)}
+          <g
+            data-series-id={series_data._id}
+            clip-path="url(#{clip_path_id})"
+            opacity={is_legend_dimmed(series_data.orig_series_idx) ? 0.25 : 1}
+          >
             {#each series_data.line_underlays ?? [] as underlay}
-              {@const underlay_points = screen_line_points(underlay, series_data)}
               <Line
-                points={underlay_points}
-                origin={line_origin}
+                points={project.line(underlay)}
                 line_color={underlay.line_style?.stroke ?? series_default_color}
                 line_width={underlay.line_style?.stroke_width ?? 1}
                 line_dash={underlay.line_style?.line_dash}
@@ -1673,21 +1645,8 @@
                 line_tween={effective_line_tween}
               />
             {/each}
-            {@const finite_screen_points = screen_line_points(series_data, series_data)}
-            {@const apply_line_controls = applies_style_controls(series_data)}
-            {@const ls = series_data.line_style}
-            {@const tc = (key: string) => apply_line_controls && touched.has(key)}
-            {@const color_fallback =
-              ls?.stroke ??
-              (Array.isArray(series_data.point_style)
-                ? series_data.point_style[0]?.fill
-                : series_data.point_style?.fill) ??
-              (series_data.color_values?.[0] != null
-                ? color_scale_fn(series_data.color_values[0])
-                : series_default_color)}
             <Line
-              points={finite_screen_points}
-              origin={line_origin}
+              points={project.line(series_data)}
               line_color={(tc(`line.color`) ? styles.line?.color : null) ?? color_fallback}
               line_width={(tc(`line.width`) ? styles.line?.width : null) ??
                 ls?.stroke_width ??
@@ -1697,8 +1656,8 @@
               area_color="transparent"
               line_tween={effective_line_tween}
             />
-          {/if}
-        </g>
+          </g>
+        {/if}
       {/each}
     {/if}
 
@@ -1720,57 +1679,31 @@
       ></foreignObject>
     {/if}
 
-    <!-- Canvas mode retains only labelled/hovered/selected points here. -->
+    <!-- Canvas mode retains only labelled/hovered/selected points here. Point centers are
+         range-filtered, but marker geometry may extend beyond the plot edge: keep complete
+         icons visible, only lines and area geometry are clipped. -->
     {#if styles.show_points}
       {#each filtered_series as series_data, series_pos (series_data._id)}
-        {@const series_markers = series_data.markers ?? DEFAULT_MARKERS}
-        {@const rendered_points = use_canvas_markers
-          ? (svg_overlay_points_by_series[series_pos] ?? [])
-          : series_data.filtered_data}
-        <!-- Point centers are range-filtered, but marker geometry may extend beyond the plot
-             edge. Keep complete icons visible; only lines and area geometry are clipped. -->
-        <g data-series-id={series_data._id}>
-          {#if series_markers.includes(`points`)}
+        {#if (series_data.markers ?? DEFAULT_MARKERS).includes(`points`)}
+          {@const rendered_points = use_canvas_markers
+            ? (svg_overlay_points_by_series[series_pos] ?? [])
+            : series_data.filtered_data}
+          {@const { appearance_of } = series_appearance(series_data)}
+          {@const project = series_projector(series_data)}
+          <g data-series-id={series_data._id}>
             {#each rendered_points as point (`${point.series_idx}-${point.point_idx}`)}
-              {@const label_id = `${point.series_idx}-${point.point_idx}`}
-              {@const calculated_label_pos = label_positions[label_id]}
-              {@const point_label = point.point_label ?? {}}
-              {@const marker_screen = point_screen_xy(
-                point,
-                series_screen_scales(series_data),
-              )}
-              {@const label_style =
-                point_label.auto_placement &&
-                actual_label_config.max_neighbors &&
-                !calculated_label_pos
-                  ? {}
-                  : point_label}
-              {@const final_label = calculated_label_pos
-                ? {
-                    ...label_style,
-                    offset: {
-                      x: calculated_label_pos.x - marker_screen.cx,
-                      y: calculated_label_pos.y - marker_screen.cy,
-                    },
-                  }
-                : label_style}
-              {@const [raw_screen_x, raw_screen_y] = get_screen_coords(point, series_data)}
-              {@const screen_x = isFinite(raw_screen_x) ? raw_screen_x : x_scale_fn.range()[0]}
-              {@const screen_y = isFinite(raw_screen_y)
-                ? raw_screen_y
-                : (series_data.y_axis === `y2` ? y2_scale_fn : y_scale_fn).range()[0]}
-              {@const appearance = point_appearance(point, series_data)}
+              {@const [cx, cy] = project.point(point)}
+              {@const offset = point.point_offset ?? ZERO_OFFSET}
+              {@const appearance = appearance_of(point)}
               <ScatterPoint
-                x={screen_x}
-                y={screen_y}
-                is_dimmed={hovered_legend_series_idx !== null &&
-                  hovered_legend_series_idx !== point.series_idx}
-                is_hovered={tooltip_point?.series_idx === point.series_idx &&
-                  tooltip_point?.point_idx === point.point_idx}
-                is_selected={selected_point?.series_idx === point.series_idx &&
-                  selected_point?.point_idx === point.point_idx}
+                x={cx - offset.x}
+                y={cy - offset.y}
+                is_dimmed={is_legend_dimmed(point.series_idx)}
+                is_hovered={same_logical_point(point, tooltip_point)}
+                is_selected={same_logical_point(point, selected_point)}
                 leader_line_threshold={actual_label_config.leader_line_threshold}
-                overlay_only={use_canvas_markers && !needs_static_svg_overlay(point)}
+                overlay_only={use_canvas_markers &&
+                  !needs_static_svg_overlay(point, selected_point)}
                 style={{
                   symbol_type: appearance.symbol_type,
                   ...point.point_style,
@@ -1782,8 +1715,8 @@
                   cursor: points_interactive ? `pointer` : undefined,
                 }}
                 hover={point.point_hover ?? {}}
-                label={final_label}
-                offset={point.point_offset ?? { x: 0, y: 0 }}
+                label={resolve_point_label(point, cx, cy)}
+                {offset}
                 point_tween={effective_point_tween}
                 hit_padding={points_interactive ? point_hit_padding : 0}
                 role={points_interactive ? `button` : undefined}
@@ -1799,8 +1732,7 @@
                   )}
                 onkeydown={(event: KeyboardEvent) => {
                   point_events?.onkeydown?.({ point, event })
-                  if (!points_interactive || (event.key !== `Enter` && event.key !== ` `))
-                    return
+                  if (!points_interactive || !is_activation_key(event)) return
                   event.preventDefault()
                   event.currentTarget?.dispatchEvent(
                     new MouseEvent(`click`, { bubbles: true }),
@@ -1809,8 +1741,8 @@
                 onclick={(event: MouseEvent) => activate_point(point, event)}
               />
             {/each}
-          {/if}
-        </g>
+          </g>
+        {/if}
       {/each}
     {/if}
 
@@ -1835,7 +1767,7 @@
         offset={{ x: 10, y: 5 }}
         constrain_to={{ width, height }}
         fallback_size={{ width: 120, height: 50 }}
-        exclusion_rects={decoration_exclusion_rects}
+        exclusion_rects={[...pinned_decoration_rects, ...frame.exclusion_rects]}
         bg_color={tooltip_bg_color}
       >
         {#if tooltip}
@@ -1869,10 +1801,10 @@
         bind:y2_axis
         bind:display
         bind:styles
-        {auto_x_range}
-        {auto_x2_range}
-        {auto_y_range}
-        {auto_y2_range}
+        auto_x_range={intrinsic_ranges.x}
+        auto_x2_range={intrinsic_ranges.x2}
+        auto_y_range={intrinsic_ranges.y}
+        auto_y2_range={intrinsic_ranges.y2}
         bind:selected_series_idx
         series={series_with_ids}
         {has_x2_points}
@@ -1883,12 +1815,10 @@
     {/if}
 
     <!-- Color Bar -->
-    {#if width > 0 && height > 0 && color_bar && all_color_values.length > 0}
+    {#if width > 0 && height > 0 && color_bar && has_color_values}
       {@const color_domain = [
-        (typeof color_scale === `string` ? undefined : color_scale.value_range)?.[0] ??
-          auto_color_range[0],
-        (typeof color_scale === `string` ? undefined : color_scale.value_range)?.[1] ??
-          auto_color_range[1],
+        color_scale_config.value_range?.[0] ?? auto_color_range[0],
+        color_scale_config.value_range?.[1] ?? auto_color_range[1],
       ] as Vec2}
       <div
         bind:this={colorbar_element}
@@ -1897,12 +1827,7 @@
         class="colorbar-wrapper"
         role="img"
         aria-label="Color scale legend"
-        data-decoration-location={colorbar_placement?.location}
-        data-decoration-side={colorbar_placement?.side}
-        data-decoration-x={colorbar_placement?.x}
-        data-decoration-y={colorbar_placement?.y}
-        data-decoration-width={colorbar_placement?.footprint.width}
-        data-decoration-height={colorbar_placement?.footprint.height}
+        {...decoration_data_attrs(colorbar_placement)}
         style={`position: absolute; left: ${colorbar_tween.coords.current.x}px; top: ${
           colorbar_tween.coords.current.y
         }px; ${color_bar.wrapper_style ?? ``}; pointer-events: auto;`}
@@ -1911,8 +1836,8 @@
           tick_labels={4}
           tick_side="primary"
           scale={{ fn: color_scale_fn, domain: color_domain }}
-          scale_type={typeof color_scale === `string` ? undefined : color_scale.type}
-          range={color_domain?.every((val) => val != null) ? color_domain : undefined}
+          scale_type={color_scale_config.type}
+          range={color_domain}
           bar_style="width: {COLOR_BAR_DEFAULTS.width}px; height: {COLOR_BAR_DEFAULTS.horizontal_bar_height}px; {color_bar?.style ??
             ``}"
           {...color_bar}
@@ -1934,12 +1859,7 @@
         legend_is_dragging && legend_manual_position ? legend_manual_position : auto_position}
       <PlotLegend
         bind:root_element={frame.legend_element}
-        data-decoration-location={legend_placement?.location}
-        data-decoration-side={legend_placement?.side}
-        data-decoration-x={legend_placement?.x}
-        data-decoration-y={legend_placement?.y}
-        data-decoration-width={legend_placement?.footprint.width}
-        data-decoration-height={legend_placement?.footprint.height}
+        {...decoration_data_attrs(legend_placement)}
         series_data={legend_data}
         on_drag_start={handle_legend_drag_start}
         on_drag={handle_legend_drag}
@@ -1968,37 +1888,22 @@
         on_toggle={legend?.on_toggle ?? legend_vis.on_toggle}
         on_double_click={legend?.on_double_click ?? legend_vis.on_double_click}
         on_group_toggle={legend?.on_group_toggle ?? legend_vis.on_group_toggle}
-        on_fill_toggle={(source_type: `fill_region` | `error_band`, source_idx: number) => {
-          // Only fill_regions can be toggled (error_bands are not bindable)
-          if (source_type === `fill_region`) {
-            fill_regions = fill_regions.map((region, idx) =>
-              idx === source_idx
-                ? { ...region, visible: !(region.visible !== false) }
-                : region,
-            )
-          }
-        }}
-        on_fill_double_click={(
-          source_type: `fill_region` | `error_band`,
-          source_idx: number,
-        ) => {
+        on_fill_toggle={(source_type: FillSource, source_idx: number) => {
           // Only fill_regions can be toggled (error_bands are not bindable)
           if (source_type !== `fill_region`) return
-          // Toggle: if only this fill is visible, show all; otherwise show only this one
-          const visible_count = fill_regions.filter(
-            (region) => region.visible !== false,
-          ).length
-          const this_visible = fill_regions[source_idx]?.visible !== false
-          if (visible_count === 1 && this_visible) {
-            // Show all fills
-            fill_regions = fill_regions.map((region) => ({ ...region, visible: true }))
-          } else {
-            // Show only this fill
-            fill_regions = fill_regions.map((region, idx) => ({
-              ...region,
-              visible: idx === source_idx,
-            }))
-          }
+          fill_regions = fill_regions.map((region, idx) =>
+            idx === source_idx ? { ...region, visible: region.visible === false } : region,
+          )
+        }}
+        on_fill_double_click={(source_type: FillSource, source_idx: number) => {
+          if (source_type !== `fill_region`) return
+          // Isolate this fill, or show all when it is already the only visible one
+          const visible = fill_regions.filter((region) => region.visible !== false)
+          const show_all = visible.length === 1 && fill_regions[source_idx]?.visible !== false
+          fill_regions = fill_regions.map((region, idx) => ({
+            ...region,
+            visible: show_all || idx === source_idx,
+          }))
         }}
         style={`
           position: absolute;

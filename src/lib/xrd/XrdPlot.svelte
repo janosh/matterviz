@@ -22,7 +22,6 @@
   import { compute_broadened_pattern, DEFAULT_BROADENING } from './broadening'
   import { format_hkl } from './index'
   import type { Hkl, HklFormat, PatternEntry, XrdPattern } from './index'
-  import { to_error } from '$lib/utils'
 
   function is_xrd_pattern(obj: unknown): obj is XrdPattern {
     const { x: x_vals, y: y_vals } = (obj ?? {}) as { x?: unknown; y?: unknown }
@@ -77,7 +76,6 @@
       broadening_params?: BroadeningParams
     } = $props()
 
-  let dragover = $state(false)
   let dropped_entries = $state<PatternEntry[]>([])
 
   // Miller indices of one peak, joined for a bar label or a tooltip line
@@ -109,9 +107,6 @@
     // Merge user-provided patterns with any dropped-on-the-fly entries
     return [...base_entries, ...dropped_entries]
   })
-
-  // Decide default show_angles
-  const actual_show_angles = $derived(show_angles ?? pattern_entries.length <= 2)
 
   // Compute global max intensity for normalization (as in pymatviz xrd_pattern)
   const global_max_intensity = $derived.by(() => {
@@ -181,12 +176,10 @@
         metadata.push({ hkls, d: d_hkl, label: entry.label })
 
         if (selected_indices.includes(idx)) {
-          const angle_text = actual_show_angles ? `${format_value(xs[idx], `.2f`)}°` : ``
-          const hkl_text = join_hkls(hkls)
-          // Use @ separator between hkl and angle for better clarity
-          const separator = hkl_text && angle_text ? ` @ ` : ``
-          const text = [hkl_text, angle_text].filter(Boolean).join(separator)
-          labels.push(text)
+          // Angles are shown by default only while the plot holds at most two patterns
+          const with_angle = show_angles ?? pattern_entries.length <= 2
+          const angle_text = with_angle ? `${format_value(xs[idx], `.2f`)}°` : ``
+          labels.push([join_hkls(hkls), angle_text].filter(Boolean).join(` @ `))
         } else labels.push(null)
       }
 
@@ -230,69 +223,25 @@
     )
   })
 
-  async function handle_file_drop(event: DragEvent) {
-    event.preventDefault()
-    dragover = false
-    if (!allow_file_drop) return
-    loading = true
-    error_msg = undefined
-
-    const compute_and_add: io.FileLoadCallback = async (content, filename, _metadata) => {
+  // Dropped files: measured patterns are parsed, structure files get a computed pattern
+  const drop_zone = io.file_drop_zone({
+    allow: () => allow_file_drop,
+    on_drop: async (content, filename, metadata) => {
+      if (on_file_drop) return on_file_drop(content, filename, metadata)
       const result = await add_xrd_pattern(content, filename, wavelength, radiation)
-      if (result.error) {
-        error_msg = result.error
-      } else if (result.pattern) {
-        dropped_entries = [result.pattern, ...dropped_entries]
-      }
-    }
-    const process_file: io.FileLoadCallback = on_file_drop ?? compute_and_add
-
-    try {
-      // Handle URL-based drops
-      const handled = await io.handle_url_drop(event, process_file).catch(() => false)
-      if (handled) return
-
-      const file = event.dataTransfer?.files?.[0]
-      if (!file) return
-      const metadata = { source_filename: file.name }
-      try {
-        const compression_format = io.detect_compression_format(file.name)
-        // Get base filename without compression extension
-        const base_name = compression_format
-          ? file.name.replace(/\.(?:gz|gzip)$/i, ``)
-          : file.name
-        const base_ext = base_name.toLowerCase().split(`.`).pop()
-
-        // Handle .brml files (ZIP archives) - both plain and gzipped
-        if (base_ext === `brml`) {
-          let buffer = await file.arrayBuffer()
-          // Decompress if gzipped
-          if (compression_format === `gzip`) {
-            buffer = await io.decompress_data_binary(buffer, `gzip`)
-          }
-          await process_file(buffer, base_name, metadata)
-        } else {
-          // Text-based formats (.xy, .xye, .xrdml) - decompress_file handles .gz
-          const { content, filename } = await io.decompress_file(file)
-          await process_file(content, filename, metadata)
-        }
-      } catch (exc) {
-        error_msg = `Failed to load file ${file.name}: ${to_error(exc).message}`
-      }
-    } finally {
-      loading = false
-    }
-  }
+      if (result.error) error_msg = result.error
+      else if (result.pattern) dropped_entries = [result.pattern, ...dropped_entries]
+    },
+    on_error: (msg) => (error_msg = msg),
+    set_loading: (val) => {
+      loading = val
+      if (val) error_msg = undefined
+    },
+  })
 
   const [angle_label, intensity_label] = [`2θ (degrees)`, `Intensity (a.u.)`]
   // In the horizontal layout the 2θ and intensity axes trade places
   const is_horizontal = $derived(orientation === `horizontal`)
-
-  const set_dragover = (over: boolean) => (dragover = over)
-  const drop_zone = {
-    ondrop: handle_file_drop,
-    ...io.drag_over_handlers({ allow: () => allow_file_drop, set_dragover }),
-  }
 
   // [key, label, tooltip, step, min?, max?]
   type BroadeningInput = [keyof BroadeningParams, string, string, number, number?, number?]
@@ -370,9 +319,9 @@
 
 {#if pattern_entries.length === 0}
   <EmptyState
-    class={[`xrd-empty-state`, dragover && `dragover`]}
+    class="xrd-empty-state"
     style={rest.style}
-    {...drop_zone}
+    {@attach drop_zone}
     role="region"
     aria-label="XRD drop zone"
   >
@@ -416,8 +365,8 @@
           range: intensity_range,
         }}
         {tooltip}
-        {...drop_zone}
-        class={[rest.class, dragover && `dragover`]}
+        {@attach drop_zone}
+        class={rest.class}
         style={`overflow: visible; ${rest.style ?? ``}`}
         controls_extra={broadening_controls_snippet}
         bind:show_controls
@@ -449,8 +398,8 @@
           range: is_horizontal ? angle_range : intensity_range,
         }}
         {tooltip}
-        {...drop_zone}
-        class={[rest.class, dragover && `dragover`]}
+        {@attach drop_zone}
+        class={rest.class}
         style={`overflow: visible; ${rest.style ?? ``}`}
         controls_extra={broadening_controls_snippet}
         bind:show_controls
@@ -494,7 +443,8 @@
     background: transparent;
     color: inherit;
   }
-  :global(.xrd-plot-container .dragover) {
+  :global(.xrd-plot-container .dragover),
+  :global(.xrd-empty-state.dragover) {
     outline: 2px dashed var(--primary-color, cornflowerblue);
     outline-offset: -2px;
     background: rgba(100, 149, 237, 0.1);

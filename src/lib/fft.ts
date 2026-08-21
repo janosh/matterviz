@@ -16,11 +16,11 @@ export function next_power_of_two(value: number): number {
 // In-place iterative radix-2 decimation-in-time FFT of a complex signal held as two
 // parallel real arrays. Sign convention X_k = sum_n x_n exp(-2i pi k n / N).
 //
-// Twiddle factors come from Math.cos/Math.sin per butterfly rather than a forward
-// recurrence. The recurrence is ~4x faster but its twiddle error grows linearly in stage
-// length (measured ~0.15 * (span / 2) * eps): at n = 65536 that puts the transform
-// 5.2e-13 from a Kahan-summed reference DFT against 3.4e-16 here. One transform per curve
-// costs ~7 ms against a VACF accumulation budgeted at 2e8 operations, so accuracy is free.
+// Twiddles come from one table of n/2 directly evaluated cos/sin values, indexed as
+// offset * (n / span) per stage: 3x faster than a cos/sin per butterfly with bit-identical
+// output, and unlike a forward recurrence the error does not grow with the stage length
+// (measured 8.5e-14 absolute against a Kahan-summed DFT at n = 65536 on outputs of
+// magnitude ~1e2, i.e. ~1e-15 relative).
 export function fft_in_place(re: Float64Array, im: Float64Array): void {
   const n_points = re.length
   if (im.length !== n_points) {
@@ -49,18 +49,26 @@ export function fft_in_place(re: Float64Array, im: Float64Array): void {
     }
   }
 
+  const half_n = n_points / 2
+  const twiddle_re = new Float64Array(half_n)
+  const twiddle_im = new Float64Array(half_n)
+  for (let idx = 0; idx < half_n; idx++) {
+    const angle = (-2 * Math.PI * idx) / n_points
+    twiddle_re[idx] = Math.cos(angle)
+    twiddle_im[idx] = Math.sin(angle)
+  }
+
   for (let span = 2; span <= n_points; span *= 2) {
     const half = span / 2
-    const step_angle = (-2 * Math.PI) / span
+    const table_step = n_points / span
     for (let start = 0; start < n_points; start += span) {
       for (let offset = 0; offset < half; offset++) {
-        const angle = step_angle * offset
-        const twiddle_re = Math.cos(angle)
-        const twiddle_im = Math.sin(angle)
+        const tw_re = twiddle_re[offset * table_step]
+        const tw_im = twiddle_im[offset * table_step]
         const even_idx = start + offset
         const odd_idx = even_idx + half
-        const odd_re = re[odd_idx] * twiddle_re - im[odd_idx] * twiddle_im
-        const odd_im = re[odd_idx] * twiddle_im + im[odd_idx] * twiddle_re
+        const odd_re = re[odd_idx] * tw_re - im[odd_idx] * tw_im
+        const odd_im = re[odd_idx] * tw_im + im[odd_idx] * tw_re
         re[odd_idx] = re[even_idx] - odd_re
         im[odd_idx] = im[even_idx] - odd_im
         re[even_idx] += odd_re
@@ -70,9 +78,6 @@ export function fft_in_place(re: Float64Array, im: Float64Array): void {
   }
 }
 
-// Windows for a ONE-SIDED series (a correlation function sampled at lags 0..n_lags-1):
-// each is the right half of the corresponding symmetric window, so w(0) = 1 and the
-// mirrored signal `even_cosine_spectrum` builds carries the full symmetric window.
 export const WINDOW_TYPES = [`hann`, `gaussian`, `none`] as const
 export type WindowType = (typeof WINDOW_TYPES)[number]
 
@@ -99,47 +104,64 @@ export interface PeriodogramResult {
   nyquist: number
 }
 
-const gaussian_width = (gaussian_alpha: number, label: string): number => {
-  if (!Number.isFinite(gaussian_alpha) || !(gaussian_alpha > 0)) {
+// Window weights as a function of the normalized distance from the window center
+// (0 = center, 1 = outermost sample): Hann 0.5 (1 + cos(pi d)) reaches 0 there, Gaussian
+// exp(-(alpha d)^2 / 2) reaches exp(-alpha^2 / 2).
+const build_window = (
+  label: string,
+  n_samples: number,
+  type: WindowType,
+  { gaussian_alpha = 3 }: WindowOptions,
+  distance_of: (idx: number) => number,
+): Float64Array => {
+  if (!Number.isInteger(n_samples) || n_samples < 1) {
+    throw new Error(`${label}: n_samples must be a positive integer, got ${n_samples}`)
+  }
+  if (!WINDOW_TYPES.includes(type)) {
+    throw new Error(
+      `${label}: unknown window ${type}, expected one of ${WINDOW_TYPES.join(`, `)}`,
+    )
+  }
+  if (type === `gaussian` && !(Number.isFinite(gaussian_alpha) && gaussian_alpha > 0)) {
     throw new Error(`${label}: gaussian_alpha must be finite and > 0, got ${gaussian_alpha}`)
   }
-  return gaussian_alpha
+  const weights = new Float64Array(n_samples)
+  // A single sample is the whole window; both distance formulas would divide by zero
+  if (type === `none` || n_samples === 1) return weights.fill(1)
+  for (let idx = 0; idx < n_samples; idx++) {
+    const distance = distance_of(idx)
+    weights[idx] =
+      type === `hann`
+        ? 0.5 * (1 + Math.cos(Math.PI * distance))
+        : Math.exp(-0.5 * (gaussian_alpha * distance) ** 2)
+  }
+  return weights
 }
 
-// Full window for a sampled time series. This is intentionally separate from
-// correlation_window, whose Hann definition is only the right half of a symmetric window.
-export function time_series_window(
+// Full symmetric window for a sampled time series: w(0) = w(n-1) = edge value, peak at the
+// midpoint (n-1)/2, so distance = |idx - midpoint| / midpoint.
+export const time_series_window = (
   n_samples: number,
   type: WindowType,
   options: WindowOptions = {},
-): Float64Array {
-  if (!Number.isInteger(n_samples) || n_samples < 1) {
-    throw new Error(
-      `time_series_window: n_samples must be a positive integer, got ${n_samples}`,
-    )
-  }
-  const weights = new Float64Array(n_samples)
-  if (type === `none` || n_samples === 1) return weights.fill(1)
-  if (type === `hann`) {
-    for (let sample_idx = 0; sample_idx < n_samples; sample_idx++) {
-      weights[sample_idx] = 0.5 * (1 - Math.cos((2 * Math.PI * sample_idx) / (n_samples - 1)))
-    }
-    return weights
-  }
-  if (type === `gaussian`) {
-    const gaussian_alpha = gaussian_width(options.gaussian_alpha ?? 3, `time_series_window`)
-    const midpoint = (n_samples - 1) / 2
-    const scale = gaussian_alpha / midpoint
-    for (let sample_idx = 0; sample_idx < n_samples; sample_idx++) {
-      const centered = scale * (sample_idx - midpoint)
-      weights[sample_idx] = Math.exp(-0.5 * centered * centered)
-    }
-    return weights
-  }
-  throw new Error(
-    `time_series_window: unknown window ${type}, expected one of ${WINDOW_TYPES.join(`, `)}`,
+): Float64Array =>
+  build_window(
+    `time_series_window`,
+    n_samples,
+    type,
+    options,
+    (idx) => Math.abs(2 * idx - (n_samples - 1)) / (n_samples - 1),
   )
-}
+
+// Right half of the symmetric window for a ONE-SIDED series (a correlation function at
+// lags 0..n_lags-1): w(0) = 1, so the mirrored signal even_cosine_spectrum builds carries the
+// full symmetric window.
+export const correlation_window = (
+  n_lags: number,
+  type: WindowType,
+  options: WindowOptions = {},
+): Float64Array =>
+  build_window(`correlation_window`, n_lags, type, options, (lag) => lag / (n_lags - 1))
 
 // Sum of one-sided component periodograms for a sample-major real signal:
 // values[sample * n_components + component]. Means are removed component-wise before
@@ -247,37 +269,6 @@ export function one_sided_periodogram(
     rayleigh_resolution: 1 / (n_samples * sample_interval),
     nyquist: 1 / (2 * sample_interval),
   }
-}
-
-export function correlation_window(
-  n_lags: number,
-  type: WindowType,
-  options: WindowOptions = {},
-): Float64Array {
-  const { gaussian_alpha = 3 } = options
-  if (!Number.isInteger(n_lags) || n_lags < 1) {
-    throw new Error(`correlation_window: n_lags must be a positive integer, got ${n_lags}`)
-  }
-  const weights = new Float64Array(n_lags)
-  // A single lag is the whole window; both formulas would divide by zero on n_lags - 1
-  if (type === `none` || n_lags === 1) return weights.fill(1)
-  if (type === `hann`) {
-    for (let lag = 0; lag < n_lags; lag++) {
-      weights[lag] = 0.5 * (1 + Math.cos((Math.PI * lag) / (n_lags - 1)))
-    }
-    return weights
-  }
-  if (type === `gaussian`) {
-    const width = gaussian_width(gaussian_alpha, `correlation_window`)
-    for (let lag = 0; lag < n_lags; lag++) {
-      const scaled = (width * lag) / (n_lags - 1)
-      weights[lag] = Math.exp(-0.5 * scaled * scaled)
-    }
-    return weights
-  }
-  throw new Error(
-    `correlation_window: unknown window ${type}, expected one of ${WINDOW_TYPES.join(`, `)}`,
-  )
 }
 
 // Transform length `even_cosine_spectrum` will use. Callers need it up front to build the

@@ -4,10 +4,13 @@ import type { Matrix3x3, Vec2, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { MoyoDataset } from '@spglib/moyo-wasm'
 import { Vector3 } from 'three/webgpu'
-import { ConvexGeometry } from 'three/examples/jsm/geometries/ConvexGeometry.js'
+import { ConvexHull, type VertexNode } from 'three/examples/jsm/math/ConvexHull.js'
 import type { BrillouinZoneData, ConvexHullData, IrreducibleBZData } from './types'
 
 const TOL = 1e-8
+// Three unit normals whose parallelepiped volume is below this are treated as linearly
+// dependent (same scale-invariant cutoff math.matrix_inverse_3x3 applies to unit rows)
+const PARALLEL_TOL = 1e-10
 
 // Extract unique point group rotation matrices from space group operations.
 // Returns fractional-coordinate rotations (W matrices from spglib convention).
@@ -34,50 +37,48 @@ export function extract_point_group_from_operations(
 // Convert fractional rotation W to Cartesian k-space rotation. k_lattice stores reciprocal
 // vectors as ROWS (k_cart = Bᵀ·q) and reciprocal fractional rotation is q' = W^{-T}·q, so
 // R_cart = Bᵀ·W^{-T}·B^{-T}. For non-orthogonal lattices W^{-1} ≠ Wᵀ, so the transpose matters.
+// Throws (via matrix_inverse_3x3) for a singular W or k_lattice: rotation matrices are
+// never singular, so that always means corrupt input rather than something to paper over.
 export function fractional_to_cartesian_rotation(
   W: Matrix3x3,
   k_lattice: Matrix3x3,
 ): Matrix3x3 {
-  try {
-    const B_T = math.transpose_3x3_matrix(k_lattice)
-    const W_inv_T = math.transpose_3x3_matrix(math.matrix_inverse_3x3(W))
-    // R_cart = Bᵀ · W^{-T} · B^{-T}
-    return math.dot(math.dot(B_T, W_inv_T), math.matrix_inverse_3x3(B_T))
-  } catch {
-    // Fallback to identity if inversion fails (shouldn't happen for valid rotations)
-    return [
-      [1, 0, 0],
-      [0, 1, 0],
-      [0, 0, 1],
-    ]
-  }
+  const B_T = math.transpose_3x3_matrix(k_lattice)
+  const W_inv_T = math.transpose_3x3_matrix(math.matrix_inverse_3x3(W))
+  // R_cart = Bᵀ · W^{-T} · B^{-T}
+  return math.dot(math.dot(B_T, W_inv_T), math.matrix_inverse_3x3(B_T))
 }
 
-// Compute reciprocal lattice: k = inv(real).T * 2π
-export function reciprocal_lattice(real_lattice: Matrix3x3): Matrix3x3 {
-  const inv = math.matrix_inverse_3x3(real_lattice)
-  const transposed = math.transpose_3x3_matrix(inv)
-  return transposed.map((row) => math.scale(row, 2 * Math.PI)) as Matrix3x3
-}
+// Bragg plane of reciprocal lattice vector G: its perpendicular bisector n·x = |G|/2
+type BraggPlane = { normal: Vec3; dist: number }
 
-// Generate k-space grid with size based on BZ order
-function generate_k_space_grid(k_lattice: Matrix3x3, order: number): Vec3[] {
-  const points: Vec3[] = []
-  // For order n, we need to include points up to ±n to capture all nearest neighbors
-  const range = Math.max(1, order)
-  for (let idx_i = -range; idx_i <= range; idx_i++) {
-    for (let idx_j = -range; idx_j <= range; idx_j++) {
-      for (let idx_k = -range; idx_k <= range; idx_k++) {
-        const point = math.add(
-          math.scale(k_lattice[0], idx_i),
-          math.scale(k_lattice[1], idx_j),
-          math.scale(k_lattice[2], idx_k),
-        )
-        points.push(point)
+// Bragg planes of the non-zero reciprocal lattice vectors G = Σᵢ nᵢ·bᵢ with |nᵢ| ≤ rangeᵢ and
+// |G| ≤ max_len, nearest first; `key` is the integer index triple. To enumerate a radius
+// exactly, callers pass ranges = ⌊max_len·|cᵢ|⌋ with cᵢ the dual rows (bᵢ·cⱼ = δᵢⱼ):
+// nᵢ = G·cᵢ, so |nᵢ| ≤ |G|·|cᵢ| bounds the index search.
+function bragg_planes(
+  k_lattice: Matrix3x3,
+  ranges: Vec3,
+  max_len = Infinity,
+): (BraggPlane & { key: string })[] {
+  const [b1, b2, b3] = k_lattice
+  const planes: (BraggPlane & { key: string; len_sq: number })[] = []
+  for (let n1 = -ranges[0]; n1 <= ranges[0]; n1++) {
+    for (let n2 = -ranges[1]; n2 <= ranges[1]; n2++) {
+      for (let n3 = -ranges[2]; n3 <= ranges[2]; n3++) {
+        if (n1 === 0 && n2 === 0 && n3 === 0) continue
+        const g_vec: Vec3 = [0, 1, 2].map(
+          (axis) => n1 * b1[axis] + n2 * b2[axis] + n3 * b3[axis],
+        ) as Vec3
+        const len_sq = g_vec[0] ** 2 + g_vec[1] ** 2 + g_vec[2] ** 2
+        if (len_sq > max_len ** 2) continue
+        const len = Math.hypot(...g_vec)
+        const normal: Vec3 = [g_vec[0] / len, g_vec[1] / len, g_vec[2] / len]
+        planes.push({ normal, dist: len / 2, key: `${n1},${n2},${n3}`, len_sq })
       }
     }
   }
-  return points
+  return planes.toSorted((plane_a, plane_b) => plane_a.len_sq - plane_b.len_sq)
 }
 
 // O(1) duplicate vertex detection using spatial hashing
@@ -118,82 +119,64 @@ class VertexDeduplicator {
   }
 }
 
-// Find intersection of three Bragg planes by solving N·v = d
-function intersect_planes(
-  p1: { normal: Vec3; dist: number },
-  p2: { normal: Vec3; dist: number },
-  p3: { normal: Vec3; dist: number },
-): Vec3 | null {
-  try {
-    const matrix: Matrix3x3 = [p1.normal, p2.normal, p3.normal]
-    const distances: Vec3 = [p1.dist, p2.dist, p3.dist]
-    return math.mat3x3_vec3_multiply(math.matrix_inverse_3x3(matrix), distances)
-  } catch {
-    return null
-  }
-}
-
-// Generate BZ vertices for nth-order zone via three-plane intersections
-export function generate_bz_vertices(
-  k_lattice: Matrix3x3,
-  order: 1 | 2 | 3 = 1,
-  // Maximum number of Bragg planes to consider for each BZ order.
-  // Limits the number of three-plane intersections tested (O(n³) operation).
-  // Higher values give more accurate zones but increase computation time significantly.
-  // Default values: 26 (1st order), 80 (2nd order), 150 (3rd+ order)
-  max_planes_by_order: Record<1 | 2 | 3, number> = { 1: 26, 2: 80, 3: 150 },
-): Vec3[] {
-  const clamped_order = Math.min(order, 3) as typeof order
-  const k_points = generate_k_space_grid(k_lattice, clamped_order)
-  const center_idx = Math.floor(k_points.length / 2)
-
-  // Fallback for partial records passed through compute_brillouin_zone
-  const max_planes = max_planes_by_order[clamped_order] ?? 150
-
-  // Create Bragg planes (perpendicular bisectors of k-points)
-  const planes = k_points
-    .map((pt, idx) => {
-      if (idx === center_idx) return null
-      const dist_sq = pt[0] ** 2 + pt[1] ** 2 + pt[2] ** 2
-      return {
-        normal: math.normalize_vec(pt, [0, 0, 0]),
-        dist: Math.sqrt(dist_sq) / 2,
-        dist_sq,
-      }
-    })
-    .filter((plane): plane is NonNullable<typeof plane> => plane !== null)
-    .toSorted((a, b) => a.dist_sq - b.dist_sq)
-    .slice(0, max_planes)
-
-  // Pre-compute plane data for fast access
+// Vertices of the nth-order zone: every three-plane intersection that lies beyond fewer
+// than `order` Bragg planes. Cramer's rule with cached pairwise cross products,
+// v = (dᵢ·nⱼ×nₖ + dⱼ·nₖ×nᵢ + dₖ·nᵢ×nⱼ) / nᵢ·(nⱼ×nₖ), keeps the O(n³) loop allocation-free.
+function intersect_bragg_planes(planes: BraggPlane[], order: number): Vec3[] {
+  const n_planes = planes.length
   const normals = planes.map((plane) => plane.normal)
   const distances = planes.map((plane) => plane.dist)
+
+  // cross[(j·n + k)·3 + axis] = (nⱼ × nₖ)[axis] for j < k
+  const cross = new Float64Array(n_planes * n_planes * 3)
+  for (let idx_j = 0; idx_j < n_planes; idx_j++) {
+    for (let idx_k = idx_j + 1; idx_k < n_planes; idx_k++) {
+      const [cx, cy, cz] = math.cross_3d(normals[idx_j], normals[idx_k])
+      const offset = (idx_j * n_planes + idx_k) * 3
+      cross[offset] = cx
+      cross[offset + 1] = cy
+      cross[offset + 2] = cz
+    }
+  }
 
   const dedup = new VertexDeduplicator(TOL * 10)
   const vertices: Vec3[] = []
 
-  // Test all three-plane intersections
-  for (let idx_i = 0; idx_i < planes.length; idx_i++) {
-    for (let idx_j = idx_i + 1; idx_j < planes.length; idx_j++) {
-      for (let idx_k = idx_j + 1; idx_k < planes.length; idx_k++) {
-        const vertex = intersect_planes(planes[idx_i], planes[idx_j], planes[idx_k])
-        if (!vertex) continue
+  for (let idx_i = 0; idx_i < n_planes; idx_i++) {
+    const [nx, ny, nz] = normals[idx_i]
+    const dist_i = distances[idx_i]
+    for (let idx_j = idx_i + 1; idx_j < n_planes; idx_j++) {
+      const dist_j = distances[idx_j]
+      const off_ij = (idx_i * n_planes + idx_j) * 3
+      for (let idx_k = idx_j + 1; idx_k < n_planes; idx_k++) {
+        const off_jk = (idx_j * n_planes + idx_k) * 3
+        const det = nx * cross[off_jk] + ny * cross[off_jk + 1] + nz * cross[off_jk + 2]
+        if (Math.abs(det) <= PARALLEL_TOL) continue // (near-)parallel normals: no unique point
+
+        const dist_k = distances[idx_k]
+        const off_ik = (idx_i * n_planes + idx_k) * 3 // nₖ × nᵢ = −(nᵢ × nₖ)
+        const vertex: Vec3 = [0, 1, 2].map(
+          (axis) =>
+            (dist_i * cross[off_jk + axis] -
+              dist_j * cross[off_ik + axis] +
+              dist_k * cross[off_ij + axis]) /
+            det,
+        ) as Vec3
 
         // Count how many planes this vertex is beyond (with early termination)
         let beyond_count = 0
-        for (let p_idx = 0; p_idx < normals.length; p_idx++) {
+        for (let p_idx = 0; p_idx < n_planes; p_idx++) {
           const dot =
             vertex[0] * normals[p_idx][0] +
             vertex[1] * normals[p_idx][1] +
             vertex[2] * normals[p_idx][2]
           if (dot > distances[p_idx] + TOL) {
             beyond_count++
-            if (beyond_count >= clamped_order) break
+            if (beyond_count >= order) break
           }
         }
 
-        // Vertex belongs to nth BZ if it's beyond fewer than n planes
-        if (beyond_count < clamped_order && !dedup.has_duplicate(vertex)) {
+        if (beyond_count < order && !dedup.has_duplicate(vertex)) {
           vertices.push(vertex)
           dedup.add(vertex)
         }
@@ -202,6 +185,96 @@ export function generate_bz_vertices(
   }
 
   return vertices
+}
+
+// Pairwise (Lagrange–Gauss) size reduction of a lattice basis: subtract the nearest integer
+// multiple of one vector from another while that shortens it. Every step is unimodular, so
+// the lattice (and its Wigner-Seitz cell) is unchanged, but the ±1 index shell of the result
+// bounds a cell close to the true one. Without it a sheared basis (e.g. the reciprocal of a
+// [[1,0,0],[s,1,0],[0,0,1]] supercell) starts from a sliver of radius ~s², and the radius-bounded
+// G enumeration below grows as s⁴ (47 s at s = 3, out of memory by s = 30). Also used by
+// lattice_point_group_matrices, whose {-1,0,1} integer-matrix search assumes a reduced basis.
+export function reduce_basis(basis: Matrix3x3): Matrix3x3 {
+  const reduced = basis.map((row) => [...row]) as Matrix3x3
+  for (let iter = 0; iter < 64; iter++) {
+    let changed = false
+    for (let idx_i = 0; idx_i < 3; idx_i++) {
+      for (let idx_j = 0; idx_j < 3; idx_j++) {
+        if (idx_i === idx_j) continue
+        const len_sq_j = math.dot(reduced[idx_j], reduced[idx_j])
+        const coeff = Math.round(math.dot(reduced[idx_i], reduced[idx_j]) / len_sq_j)
+        if (coeff === 0) continue
+        const candidate = math.subtract(reduced[idx_i], math.scale(reduced[idx_j], coeff))
+        const len_sq_i = math.dot(reduced[idx_i], reduced[idx_i])
+        if (math.dot(candidate, candidate) < len_sq_i * (1 - 1e-12)) {
+          reduced[idx_i] = candidate
+          changed = true
+        }
+      }
+    }
+    if (!changed) break
+  }
+  return reduced
+}
+
+// Exact first zone (Wigner-Seitz cell of the reciprocal lattice). Pass 1 uses the ±1 index
+// shell: ±b₁, ±b₂, ±b₃ alone bound a parallelepiped, so it always yields a bounded cell that
+// contains the true one. Its faces need not come from that shell though — a non-reduced basis
+// (long, nearly parallel bᵢ) has Wigner-Seitz faces from G with |nᵢ| ≥ 2. A Bragg plane can
+// only cut a cell whose farthest vertex is at radius R if |G|/2 ≤ R, so every G inside 2R is
+// checked against the current vertices; the cell is exact once none of them cuts it. Planes
+// that do cut are added nearest-first in small batches: a Wigner-Seitz cell has at most 14
+// faces, all from short G, so a batch collapses the cell (and with it the radius-bounded
+// candidate set), whereas intersecting every candidate at once is O(n³) in thousands of
+// planes for a non-reduced basis.
+const MAX_NEW_PLANES_PER_PASS = 32
+function first_bz_vertices(k_lattice: Matrix3x3, dual: Matrix3x3): Vec3[] {
+  const dual_norms = dual.map((row) => Math.hypot(...row))
+  const planes = bragg_planes(k_lattice, [1, 1, 1])
+  for (let pass = 0; pass < 256; pass++) {
+    const vertices = intersect_bragg_planes(planes, 1)
+    if (vertices.length < 4) {
+      throw new Error(
+        `Brillouin zone has ${vertices.length} vertices (need ≥4) for k_lattice ${JSON.stringify(k_lattice)}`,
+      )
+    }
+    const radius = Math.max(...vertices.map((vertex) => Math.hypot(...vertex)))
+    const max_len = 2 * radius * (1 + 1e-9)
+    const ranges = dual_norms.map((norm) => Math.floor(max_len * norm)) as Vec3
+    const have = new Set(planes.map((plane) => plane.key))
+    const cutting = bragg_planes(k_lattice, ranges, max_len).filter(
+      ({ key, normal, dist }) =>
+        !have.has(key) && vertices.some((vertex) => math.dot(vertex, normal) > dist + TOL),
+    )
+    if (cutting.length === 0) return vertices
+    planes.push(...cutting.slice(0, MAX_NEW_PLANES_PER_PASS))
+  }
+  throw new Error(
+    `Brillouin zone plane set did not converge for k_lattice ${JSON.stringify(k_lattice)}`,
+  )
+}
+
+// Generate BZ vertices for nth-order zone via three-plane intersections. Order 1 is exact for
+// any lattice; orders 2 and 3 use the ±order index shell truncated to the nearest
+// `max_planes_by_order[order]` Bragg planes (the O(n³) intersection loop bounds the count).
+export function generate_bz_vertices(
+  k_lattice: Matrix3x3,
+  order: 1 | 2 | 3 = 1,
+  max_planes_by_order: Record<number, number> = { 2: 80, 3: 150 },
+): Vec3[] {
+  const clamped_order = Math.min(order, 3) as typeof order
+  // Vertices are Cartesian, so any basis of the same lattice gives the same zones; a
+  // reduced one keeps the index shells small and meaningful
+  const basis = reduce_basis(k_lattice)
+  const dual = math.reciprocal_lattice(basis) // throws for a singular k_lattice
+  if (clamped_order === 1) return first_bz_vertices(basis, dual)
+
+  const max_planes = max_planes_by_order[clamped_order] ?? 150
+  const ranges: Vec3 = [clamped_order, clamped_order, clamped_order]
+  return intersect_bragg_planes(
+    bragg_planes(basis, ranges).slice(0, max_planes),
+    clamped_order,
+  )
 }
 
 // Compute polyhedron volume via divergence theorem (sum of signed tetrahedral volumes).
@@ -219,7 +292,9 @@ function compute_hull_volume(vertices: Vec3[], faces: number[][]): number {
   )
 }
 
-// Build convex hull from vertices and extract topology
+// Build convex hull from vertices and extract topology. Runs three's quickhull on the f64
+// points directly (ConvexGeometry would round them through a Float32Array, costing ~1e-7
+// relative in every vertex and volume) and keeps only the points that end up on the hull.
 export function compute_convex_hull(
   vertices: Vec3[],
   edge_sharp_angle_deg = 5, // Angle threshold for edge detection: edges between faces with angle > this are rendered
@@ -228,45 +303,36 @@ export function compute_convex_hull(
     throw new Error(`Need ≥4 vertices for convex hull, got ${vertices.length}`)
   }
 
-  const geometry = new ConvexGeometry(vertices.map((vertex) => new Vector3(...vertex)))
-  const pos = geometry.getAttribute(`position`)
-  const geometry_index = geometry.index
+  // Merge near-coincident inputs (IBZ clipping can produce them) before quickhull sees them
+  const dedup = new VertexDeduplicator(TOL * 10)
+  const distinct: Vec3[] = []
+  for (const vertex of vertices) {
+    if (dedup.has_duplicate(vertex)) continue
+    dedup.add(vertex)
+    distinct.push(vertex)
+  }
 
-  // Deduplicate vertices from Three.js geometry
+  const hull = new ConvexHull().setFromPoints(distinct.map((vertex) => new Vector3(...vertex)))
+
+  // Compact to the vertices referenced by some face, in first-seen order
   const unique_verts: Vec3[] = []
-  const vert_map = new Map<number, number>()
-
-  for (let idx_vertex = 0; idx_vertex < pos.count; idx_vertex++) {
-    const vert: Vec3 = [pos.getX(idx_vertex), pos.getY(idx_vertex), pos.getZ(idx_vertex)]
-    const existing_idx = unique_verts.findIndex(
-      (unique_vert) =>
-        Math.abs(unique_vert[0] - vert[0]) < TOL &&
-        Math.abs(unique_vert[1] - vert[1]) < TOL &&
-        Math.abs(unique_vert[2] - vert[2]) < TOL,
-    )
-    vert_map.set(idx_vertex, existing_idx === -1 ? unique_verts.push(vert) - 1 : existing_idx)
-  }
-
-  // Build faces with deduplicated vertex indices
-  const faces: number[][] = []
-  const n_faces = geometry_index ? geometry_index.count / 3 : pos.count / 3
-
-  for (let idx_face = 0; idx_face < n_faces; idx_face++) {
-    const tri = geometry_index
-      ? [
-          geometry_index.getX(idx_face * 3),
-          geometry_index.getX(idx_face * 3 + 1),
-          geometry_index.getX(idx_face * 3 + 2),
-        ]
-      : [idx_face * 3, idx_face * 3 + 1, idx_face * 3 + 2]
-    faces.push(
-      tri.map((vertex_idx) => {
-        const mapped = vert_map.get(vertex_idx)
-        if (mapped === undefined) throw new Error(`Vertex ${vertex_idx} not mapped`)
-        return mapped
-      }),
-    )
-  }
+  const node_to_unique = new Map<VertexNode, number>()
+  const faces: number[][] = hull.faces.map((face) => {
+    const tri: number[] = []
+    let half_edge = face.edge
+    do {
+      const node = half_edge.head()
+      let unique_idx = node_to_unique.get(node)
+      if (unique_idx === undefined) {
+        const { x, y, z } = node.point
+        unique_idx = unique_verts.push([x, y, z]) - 1
+        node_to_unique.set(node, unique_idx)
+      }
+      tri.push(unique_idx)
+      half_edge = half_edge.next
+    } while (half_edge !== face.edge)
+    return tri
+  })
 
   // Compute face normals and build edge-to-face adjacency
   const face_normals = faces.map((face) => {
@@ -303,17 +369,21 @@ export function compute_convex_hull(
     if (is_sharp) edges.push(key.split(`,`).map(Number) as Vec2)
   }
 
-  geometry.dispose()
   return { vertices: unique_verts, faces, edges }
 }
 
-// Compute complete Brillouin zone with topology and volume
+// Compute complete Brillouin zone with topology and volume. Order 1 is the exact Wigner-Seitz
+// cell; orders 2 and 3 return the convex hull of zones 1..n (the union itself is not convex),
+// so their `volume` is that hull's volume rather than n·V₁.
 export function compute_brillouin_zone(
   k_lattice: Matrix3x3,
   order: 1 | 2 | 3 = 1,
   edge_sharp_angle_deg = 5, // Angle threshold for edge extraction (default 5°, increase for fewer edges, decrease for more)
-  max_planes_by_order: Record<number, number> = { 1: 26, 2: 80, 3: 150 }, // Customize plane count limits per BZ order
+  max_planes_by_order: Record<number, number> = { 2: 80, 3: 150 }, // Bragg plane caps for orders 2 and 3 (order 1 is exact)
 ): BrillouinZoneData {
+  if (k_lattice.some((row) => row.some((val) => !Number.isFinite(val)))) {
+    throw new Error(`Reciprocal lattice has non-finite entries: ${JSON.stringify(k_lattice)}`)
+  }
   const vertices = generate_bz_vertices(k_lattice, order, max_planes_by_order)
   if (vertices.length < 4) {
     throw new Error(`Insufficient vertices for BZ (got ${vertices.length}, need ≥4)`)

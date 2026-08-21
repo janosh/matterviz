@@ -3,33 +3,12 @@
 // $lib/xrd/broadening) and IR/Raman with constant or frequency-dependent widths in cm^-1
 // (see $lib/spectral/ir-raman), so nothing here may assume either scale.
 import type { Vec2 } from '$lib/math'
-import { clamp01 } from '$lib/utils'
 
-const LOG_2 = Math.log(2)
+// Gaussian sigma per unit FWHM: fwhm = 2 sqrt(2 ln 2) sigma
+const SIGMA_PER_FWHM = 1 / (2 * Math.sqrt(2 * Math.log(2)))
 
 // Parallel x/y arrays: discrete peaks on the way in, a sampled curve on the way out.
 export type PeakCurve = { x: number[]; y: number[] }
-
-// Area-normalized Gaussian of width `fwhm` centered on `x0`, evaluated at `x`
-const gaussian = (x: number, x0: number, fwhm: number): number => {
-  const sigma = Math.max(fwhm, 1e-9) / (2 * Math.sqrt(2 * LOG_2))
-  const prefactor = 1 / (sigma * Math.sqrt(2 * Math.PI))
-  return prefactor * Math.exp(-((x - x0) ** 2) / (2 * sigma ** 2))
-}
-
-// Area-normalized Lorentzian of width `fwhm` centered on `x0`, evaluated at `x`
-const lorentzian = (x: number, x0: number, fwhm: number): number => {
-  const gamma = Math.max(fwhm, 1e-9) / 2
-  return 1 / (Math.PI * gamma) / (1 + ((x - x0) / gamma) ** 2)
-}
-
-// Pseudo-Voigt profile: `eta` mixes Lorentzian (1) into Gaussian (0), clamped to [0, 1].
-// The 1e-9 width floors above are the one absolute x-unit constant left in this module; they
-// are unreachable from broaden_peaks, which rejects a non-positive fwhm outright.
-export function pseudo_voigt(x: number, x0: number, fwhm: number, eta: number): number {
-  const safe_eta = clamp01(eta)
-  return safe_eta * lorentzian(x, x0, fwhm) + (1 - safe_eta) * gaussian(x, x0, fwhm)
-}
 
 // Accumulates pseudo-Voigt peaks onto a uniform grid, with the FWHM model supplied by the
 // caller. Unit-agnostic: the faint-peak cut is a fraction of the tallest peak and the reach
@@ -44,7 +23,12 @@ export function broaden_peaks(
   step_size: number, // Grid step in the peaks' x units
 ): PeakCurve {
   if (!Number.isFinite(step_size) || step_size <= 0) {
-    throw new Error(`step_size must be > 0 and finite`)
+    throw new Error(`step_size must be > 0 and finite, got ${step_size}`)
+  }
+  // Out-of-range eta is a caller bug, not something to clamp: a NaN would silently turn the
+  // whole curve NaN and an eta of 1.2 would dip the Gaussian share negative
+  if (!(shape_factor >= 0 && shape_factor <= 1)) {
+    throw new Error(`shape_factor must be in [0, 1], got ${shape_factor}`)
   }
 
   const [min_x, max_x] = range
@@ -112,8 +96,20 @@ export function broaden_peaks(
     const start_idx = Math.max(0, Math.floor((x0 - window - min_x) / step_size))
     const end_idx = Math.min(n_steps - 1, Math.ceil((x0 + window - min_x) / step_size))
 
+    // Area-normalized pseudo-Voigt: shape_factor mixes Lorentzian (1) into Gaussian (0).
+    // Per-peak constants hoisted out of the grid loop.
+    const sigma = fwhm * SIGMA_PER_FWHM
+    const gauss_prefactor = (1 - shape_factor) / (sigma * Math.sqrt(2 * Math.PI))
+    const gauss_exponent = -1 / (2 * sigma * sigma)
+    const gamma = fwhm / 2
+    const lorentz_prefactor = shape_factor / (Math.PI * gamma)
+    const inv_gamma_sq = 1 / (gamma * gamma)
     for (let idx = start_idx; idx <= end_idx; idx++) {
-      ys[idx] += intensity * pseudo_voigt(xs[idx], x0, fwhm, shape_factor)
+      const offset_sq = (xs[idx] - x0) ** 2
+      ys[idx] +=
+        intensity *
+        (gauss_prefactor * Math.exp(gauss_exponent * offset_sq) +
+          lorentz_prefactor / (1 + offset_sq * inv_gamma_sq))
     }
   }
 

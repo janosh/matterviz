@@ -31,11 +31,12 @@ import {
   simple_pca,
 } from '$lib/chempot-diagram/compute'
 import { get_domain_color_data } from '$lib/chempot-diagram/color'
+import type { CompositionType } from '$lib/composition'
 import { get_hill_formula } from '$lib/composition/format'
+import { get_reduced_formula } from '$lib/composition/reduce'
 import { filter_entries_at_temperature } from '$lib/convex-hull/helpers'
 import type { PhaseData } from '$lib/convex-hull/types'
 import type { Vec2 } from '$lib/math'
-import { convex_hull_2d, solve_linear_system } from '$lib/math'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { load_json } from '../setup'
 
@@ -336,59 +337,204 @@ describe(`physical invariants`, () => {
   })
 })
 
-describe(`binary system (2 elements)`, () => {
+// Exact vertex sets. Sorting + dedup make the comparison independent of enumeration order
+// and of the same vertex being reported once per active hyperplane.
+const expect_vertices = (actual: number[][], expected: number[][]) => {
+  const unique = sort_rows(dedup_vertices(actual, 1e-9))
+  expect(unique).toHaveLength(expected.length)
+  expect(unique).toEqual(
+    sort_rows(expected).map((row) => row.map((val) => expect.closeTo(val, 9))),
+  )
+}
+
+describe(`analytic binary A-B-AB`, () => {
+  // Hyperplanes: mu_A <= E_A, mu_B <= E_B, (mu_A + mu_B)/2 <= E_AB; box [-20, 0]^2
   const ab_binary_entries = [
     make_entry({ A: 1 }, -2.0),
     make_entry({ B: 1 }, -3.0),
-    make_entry({ A: 1, B: 1 }, -6.0),
+    make_entry({ A: 1, B: 1 }, -6.0), // E_form = -6 - (-2 - 3)/2 = -3.5 eV/atom
   ]
 
-  test(`A-B-AB structure, absolute refs, formal zero-refs, and tight limits`, () => {
-    const binary_simple = compute_chempot_diagram(ab_binary_entries, {
+  test(`absolute chempots: AB segment spans mu_A + mu_B = -12 between the element lines`, () => {
+    const { domains, el_refs } = compute_chempot_diagram(ab_binary_entries, {
       default_min_limit: -20,
       formal_chempots: false,
     })
-    expect(Object.keys(binary_simple.domains).toSorted()).toEqual([`A`, `AB`, `B`])
-    expect(binary_simple.el_refs.A.energy_per_atom).toBe(-2.0)
-    expect(binary_simple.el_refs.B.energy_per_atom).toBe(-3.0)
-    for (const pt of dedup_vertices(binary_simple.domains.AB)) {
-      expect(pt[0]).toBeLessThanOrEqual(-2.0 + 1e-4)
-      expect(pt[1]).toBeLessThanOrEqual(-3.0 + 1e-4)
-    }
+    expect(el_refs.A.energy_per_atom).toBe(-2.0)
+    expect(el_refs.B.energy_per_atom).toBe(-3.0)
+    expect_vertices(domains.A, [
+      [-2, -10],
+      [-2, -20],
+    ])
+    expect_vertices(domains.B, [
+      [-9, -3],
+      [-20, -3],
+    ])
+    expect_vertices(domains.AB, [
+      [-2, -10],
+      [-9, -3],
+    ])
+  })
 
-    const formal = compute_chempot_diagram(ab_binary_entries, {
+  test(`formal chempots shift the element lines to 0 and AB to mu_A + mu_B = -7`, () => {
+    const { domains, el_refs } = compute_chempot_diagram(ab_binary_entries, {
       default_min_limit: -20,
       formal_chempots: true,
     })
-    expect(formal.el_refs.A.energy_per_atom).toBeCloseTo(0, 8)
-    expect(formal.el_refs.B.energy_per_atom).toBeCloseTo(0, 8)
-
-    const tight = compute_chempot_diagram(ab_binary_entries, {
-      default_min_limit: -10,
-      formal_chempots: false,
-    })
-    for (const pts of Object.values(tight.domains)) {
-      for (const pt of pts) {
-        expect(pt[0]).toBeGreaterThanOrEqual(-10 - 1e-4)
-        expect(pt[1]).toBeGreaterThanOrEqual(-10 - 1e-4)
-      }
-    }
+    expect(el_refs.A.energy_per_atom).toBeCloseTo(0, 12)
+    expect(el_refs.B.energy_per_atom).toBeCloseTo(0, 12)
+    expect_vertices(domains.A, [
+      [0, -7],
+      [0, -20],
+    ])
+    expect_vertices(domains.B, [
+      [-7, 0],
+      [-20, 0],
+    ])
+    expect_vertices(domains.AB, [
+      [0, -7],
+      [-7, 0],
+    ])
   })
-})
 
-describe(`pure binary (no compounds)`, () => {
-  test(`two elemental domains each touch their ref energy`, () => {
-    const pure_binary = compute_chempot_diagram(
+  test(`per-element limits clip the element domains (AB untouched)`, () => {
+    const { domains, lims } = compute_chempot_diagram(ab_binary_entries, {
+      default_min_limit: -20,
+      formal_chempots: true,
+      limits: { B: [-10, 0] },
+    })
+    expect(lims).toEqual([
+      [-20, 0],
+      [-10, 0],
+    ])
+    expect_vertices(domains.A, [
+      [0, -7],
+      [0, -10],
+    ])
+    expect_vertices(domains.B, [
+      [-7, 0],
+      [-20, 0],
+    ])
+    expect_vertices(domains.AB, [
+      [0, -7],
+      [-7, 0],
+    ])
+  })
+
+  test(`two elements without compounds: the domains meet only at the box corner`, () => {
+    const { domains } = compute_chempot_diagram(
       [make_entry({ X: 1 }, -1.0), make_entry({ Y: 1 }, -2.0)],
       { default_min_limit: -10, formal_chempots: false },
     )
-    expect(Object.keys(pure_binary.domains).toSorted()).toEqual([`X`, `Y`])
-    for (const [el, axis, ref_epa] of [
-      [`X`, 0, -1.0],
-      [`Y`, 1, -2.0],
-    ] as const) {
-      const vals = dedup_vertices(pure_binary.domains[el]).map((pt) => pt[axis])
-      expect(Math.max(...vals)).toBeCloseTo(ref_epa, 4)
+    expect(Object.keys(domains).toSorted()).toEqual([`X`, `Y`])
+    expect_vertices(domains.X, [
+      [-1, -2],
+      [-1, -10],
+    ])
+    expect_vertices(domains.Y, [
+      [-1, -2],
+      [-10, -2],
+    ])
+  })
+})
+
+describe(`analytic ternary A-B-C with AB and ABC`, () => {
+  // Formal hyperplanes: mu_i <= 0, (mu_A + mu_B)/2 <= -1, (mu_A + mu_B + mu_C)/3 <= -3.
+  // Vertices come from intersecting three active constraints; AB's line cuts the ABC
+  // triangle's (0, 0, -9) corner off, and the [-50, 0] box closes the element domains.
+  const ternary_entries = [
+    make_entry({ A: 1 }, -1.0),
+    make_entry({ B: 1 }, -2.0),
+    make_entry({ C: 1 }, -3.0),
+    make_entry({ A: 1, B: 1 }, -2.5), // E_form = -1 eV/atom
+    make_entry({ A: 1, B: 1, C: 1 }, -5.0), // E_form = -3 eV/atom
+  ]
+  const formal_vertices = {
+    A: [
+      [0, -2, -7],
+      [0, -9, 0],
+      [0, -50, 0],
+      [0, -2, -50],
+      [0, -50, -50],
+    ],
+    B: [
+      [-2, 0, -7],
+      [-9, 0, 0],
+      [-50, 0, 0],
+      [-2, 0, -50],
+      [-50, 0, -50],
+    ],
+    C: [
+      [0, -9, 0],
+      [-9, 0, 0],
+      [0, -50, 0],
+      [-50, 0, 0],
+      [-50, -50, 0],
+    ],
+    AB: [
+      [0, -2, -7],
+      [-2, 0, -7],
+      [0, -2, -50],
+      [-2, 0, -50],
+    ],
+    ABC: [
+      [0, -2, -7],
+      [-2, 0, -7],
+      [0, -9, 0],
+      [-9, 0, 0],
+    ],
+  }
+  // Absolute chempots: every plane moves by the element reference energies (-1, -2, -3),
+  // so each vertex coordinate shifts by its element's reference, except coordinates pinned
+  // to the -50 box wall, which is an absolute bound
+  const ref_energies = [-1, -2, -3]
+  const absolute_vertices = Object.fromEntries(
+    Object.entries(formal_vertices).map(([formula, vertices]) => [
+      formula,
+      vertices.map((vertex) =>
+        vertex.map((val, axis) => (val === -50 ? -50 : val + ref_energies[axis])),
+      ),
+    ]),
+  )
+
+  test.each([
+    [`formal`, true, formal_vertices],
+    [`absolute`, false, absolute_vertices],
+  ])(`%s chempots reproduce the hand-computed vertex sets`, (_label, formal, expected) => {
+    const { domains, elements, hyperplanes } = compute_chempot_diagram(ternary_entries, {
+      formal_chempots: formal,
+    })
+    expect(elements).toEqual([`A`, `B`, `C`])
+    expect(Object.keys(domains).toSorted()).toEqual([`A`, `AB`, `ABC`, `B`, `C`])
+    // rows are [x_A, x_B, x_C, -E/atom] in sorted-formula order (A, AB, ABC, B, C)
+    const offset = formal ? 0 : 1
+    expect(hyperplanes).toEqual(
+      [
+        [1, 0, 0, 0 + offset],
+        [0.5, 0.5, 0, 1 + 1.5 * offset],
+        [1 / 3, 1 / 3, 1 / 3, 3 + 2 * offset],
+        [0, 1, 0, 0 + 2 * offset],
+        [0, 0, 1, 0 + 3 * offset],
+      ].map((row) => row.map((val) => expect.closeTo(val, 12))),
+    )
+    for (const [formula, vertices] of Object.entries(expected)) {
+      expect_vertices(domains[formula], vertices)
+    }
+  })
+
+  test(`a metastable compound passes the E_form filter but carves out no domain`, () => {
+    // A2B at -0.4 eV/atom lies 0.27 eV above the A-AB tie line (-2/3 at x_B = 1/3), so its
+    // plane 2 mu_A + mu_B <= -1.2 is slack everywhere inside the region the others bound
+    const with_metastable = [...ternary_entries, make_entry({ A: 2, B: 1 }, -0.4 - 4 / 3)]
+    const { domains, hyperplane_entries } = compute_chempot_diagram(with_metastable, {
+      formal_chempots: true,
+    })
+    expect(
+      hyperplane_entries.map((entry) => formula_key_from_composition(entry.composition)),
+    ).toContain(`A2B`)
+    expect(Object.keys(domains).toSorted()).toEqual([`A`, `AB`, `ABC`, `B`, `C`])
+    for (const [formula, vertices] of Object.entries(formal_vertices)) {
+      expect_vertices(domains[formula], vertices)
     }
   })
 })
@@ -614,155 +760,6 @@ describe(`element padding`, () => {
   })
 })
 
-describe(`solve_linear_system`, () => {
-  test.each([
-    {
-      label: `2x2 general`,
-      mat: [
-        [2, 1],
-        [1, 3],
-      ],
-      rhs: [5, 10],
-      expected: [1, 3],
-    },
-    {
-      label: `3x3 general`,
-      mat: [
-        [1, 2, 3],
-        [4, 5, 6],
-        [7, 8, 10],
-      ],
-      rhs: [14, 32, 53],
-      expected: [1, 2, 3],
-    },
-  ])(`$label → solves correctly`, ({ mat, rhs, expected }) => {
-    const result = solve_linear_system(mat, rhs)
-    if (!result) throw new Error(`expected non-null solution`)
-    for (let idx = 0; idx < expected.length; idx++) {
-      expect(result[idx]).toBeCloseTo(expected[idx], 6)
-    }
-  })
-
-  test(`4x4 general: Ax=b round-trip`, () => {
-    const mat = [
-      [2, 1, -1, 0],
-      [1, 3, 0, -1],
-      [-1, 0, 2, 1],
-      [0, -1, 1, 3],
-    ]
-    const rhs = [1, 2, 3, 4]
-    const result = solve_linear_system(mat, rhs)
-    if (!result) throw new Error(`expected non-null solution`)
-    for (let row = 0; row < 4; row++) {
-      const val = mat[row].reduce((sum, cell, col) => sum + cell * result[col], 0)
-      expect(val).toBeCloseTo(rhs[row], 6)
-    }
-  })
-
-  test.each([
-    {
-      mat: [
-        [1, 2],
-        [2, 4],
-      ],
-      rhs: [1, 2],
-      label: `2x2 singular`,
-    },
-    {
-      mat: [
-        [1, 2, 3],
-        [4, 5, 6],
-        [7, 8, 9],
-      ],
-      rhs: [1, 2, 3],
-      label: `3x3 singular`,
-    },
-    { mat: [] as number[][], rhs: [] as number[], label: `empty` },
-    {
-      mat: [
-        [1, 2],
-        [3, 4],
-      ],
-      rhs: [1],
-      label: `mismatched dims`,
-    },
-  ])(`$label → returns null`, ({ mat, rhs }) => {
-    expect(solve_linear_system(mat, rhs)).toBeNull()
-  })
-})
-
-describe(`convex_hull_2d`, () => {
-  test.each([
-    {
-      pts: [
-        [0, 0],
-        [1, 0],
-        [0, 1],
-      ],
-      n: 3,
-      area: 0.5,
-      label: `triangle`,
-    },
-    {
-      pts: [
-        [0, 0],
-        [1, 0],
-        [1, 1],
-        [0, 1],
-      ],
-      n: 4,
-      area: 1,
-      label: `square`,
-    },
-    {
-      pts: [
-        [0, 0],
-        [2, 0],
-        [2, 2],
-        [0, 2],
-        [1, 1],
-      ],
-      n: 4,
-      area: 4,
-      label: `square + interior`,
-    },
-    {
-      pts: [
-        [0, 0],
-        [1, 1],
-        [2, 2],
-        [3, 3],
-      ],
-      n: 2,
-      area: 0,
-      label: `collinear`,
-    },
-    { pts: [[1, 2]], n: 1, area: 0, label: `single point` },
-    {
-      pts: [
-        [1, 2],
-        [3, 4],
-      ],
-      n: 2,
-      area: 0,
-      label: `two points`,
-    },
-  ] as { pts: Vec2[]; n: number; area: number; label: string }[])(
-    `$label → $n hull vertices`,
-    ({ pts, n, area }) => {
-      const hull = convex_hull_2d(pts)
-      expect(hull).toHaveLength(n)
-      let shoelace = 0
-      for (let idx = 0; idx < hull.length; idx++) {
-        const [x0, y0] = hull[idx]
-        const [x1, y1] = hull[(idx + 1) % hull.length]
-        shoelace += x0 * y1 - x1 * y0
-      }
-      expect(Math.abs(shoelace / 2)).toBeCloseTo(area, 8)
-    },
-  )
-})
-
 describe(`simple_pca`, () => {
   test(`matches pymatgen output`, () => {
     const points_3d = [
@@ -820,6 +817,71 @@ describe(`simple_pca`, () => {
     const dot = eigenvectors[0].reduce((sum, val, idx) => sum + val * eigenvectors[1][idx], 0)
     expect(Math.abs(dot)).toBeLessThan(1e-6)
   })
+
+  // Regression: an elemental domain has zero variance along its own axis. Seeding power
+  // iteration with e_x made the first "eigenvector" that null direction, collapsing the
+  // projected polygon onto a line (1 edge instead of n, label anchor on the boundary).
+  test.each([0, 1, 2])(
+    `spans the plane of a polygon with zero variance along axis %i`,
+    (flat_axis) => {
+      const polygon = [
+        [0, 0],
+        [4, 0],
+        [6, 3],
+        [4, 7],
+        [0, 7],
+        [-2, 3],
+      ].map(([u_val, v_val]) => {
+        const point = [-6.6, -6.6, -6.6]
+        point[(flat_axis + 1) % 3] = u_val
+        point[(flat_axis + 2) % 3] = v_val
+        return point
+      })
+      const { scores, eigenvectors } = simple_pca(polygon, 2)
+      for (const ev of eigenvectors) expect(Math.abs(ev[flat_axis])).toBeLessThan(1e-9)
+      // the two components reconstruct every vertex: projection is lossless
+      const mean = [0, 1, 2].map((dim) => polygon.reduce((sum, pt) => sum + pt[dim], 0) / 6)
+      for (const [idx, point] of polygon.entries()) {
+        const rebuilt = mean.map(
+          (mean_val, dim) =>
+            mean_val +
+            scores[idx][0] * eigenvectors[0][dim] +
+            scores[idx][1] * eigenvectors[1][dim],
+        )
+        expect(rebuilt).toEqual(point.map((val) => expect.closeTo(val, 9)))
+      }
+      const { simplex_indices, ann_loc, is_planar } =
+        get_3d_domain_simplexes_and_ann_loc(polygon)
+      expect(simplex_indices).toHaveLength(6)
+      expect(is_planar).toBe(true)
+      expect(ann_loc[flat_axis]).toBeCloseTo(-6.6, 9)
+    },
+  )
+
+  // Regression: near-square planar domains have two almost-equal eigenvalues, so power
+  // iteration does not converge in 100 steps; without re-orthogonalization the second
+  // component drifted (v1·v2 up to 1.5e-3) and a planar rectangle was reported non-planar
+  test.each([0.999, 0.99, 0.97, 0.95])(
+    `tilted rectangle with side ratio %d has orthonormal components and is planar`,
+    (ratio) => {
+      const u_axis = [1, 1, 0].map((val) => val / Math.SQRT2)
+      const w_axis = [-1, 1, 2].map((val) => val / Math.sqrt(6))
+      const rect = [-1, 1].flatMap((s_val) =>
+        [-ratio, ratio].map((t_val) =>
+          [0, 1, 2].map((dim) => -3 + s_val * u_axis[dim] + t_val * w_axis[dim]),
+        ),
+      )
+      const { eigenvectors } = simple_pca(rect, 2)
+      const dot = eigenvectors[0].reduce(
+        (sum, val, idx) => sum + val * eigenvectors[1][idx],
+        0,
+      )
+      expect(Math.abs(dot)).toBeLessThan(1e-12)
+      const { simplex_indices, is_planar } = get_3d_domain_simplexes_and_ann_loc(rect)
+      expect(is_planar).toBe(true)
+      expect(simplex_indices).toHaveLength(4)
+    },
+  )
 })
 
 describe(`orthonormal_2d`, () => {
@@ -1190,27 +1252,26 @@ describe(`formula_key_from_composition`, () => {
     { comp: { Fe: 2, O: 4 }, expected: `FeO2`, label: `reduces to lowest terms` },
     { comp: { Fe: 1, O: 0 }, expected: `Fe`, label: `ignores zero amounts` },
     { comp: { Fe: 0.5, Li: 0.5 }, expected: `FeLi`, label: `fractional halves` },
-    { comp: { Fe: 0.67, Li: 0.33 }, expected: `Fe2Li`, label: `fractional 2:1 ratio` },
+    { comp: { Fe: 2 / 3, Li: 1 / 3 }, expected: `Fe2Li`, label: `fractional 2:1 ratio` },
+    // 0.67:0.33 is not 2:1 to within 1/10000, so it stays a distinct composition from Fe2Li
+    { comp: { Fe: 0.67, Li: 0.33 }, expected: `Fe67Li33`, label: `rounded 2:1 stays 67:33` },
     {
-      comp: { Li: 0.33, Fe: 0.33, O: 0.34 },
+      comp: { Li: 1 / 3, Fe: 1 / 3, O: 1 / 3 },
       expected: `FeLiO`,
-      label: `fractional ternary ~1:1:1`,
+      label: `fractional ternary 1:1:1`,
     },
     { comp: { Fe: 0.25, Li: 0.5, O: 0.25 }, expected: `FeLi2O`, label: `fractional quarters` },
-    {
-      comp: { Fe: 0.005, O: 0.995 },
-      expected: `Fe0.005O0.995`,
-      label: `tiny fraction falls through`,
-    },
+    { comp: { Fe: 0.005, O: 0.995 }, expected: `FeO199`, label: `dilute ratio resolves` },
+    { comp: { Fe: 1.01, O: 2 }, expected: `Fe101O200`, label: `1% off is a real ratio` },
+    { comp: { Fe: 2.02, O: 4 }, expected: `Fe101O200`, label: `same ratio at gcd 2` },
+    { comp: { Fe: 1.04, O: 2 }, expected: `Fe13O25`, label: `4% off scales to 13:25` },
   ])(`$label → $expected`, ({ comp, expected }) => {
     const key = formula_key_from_composition(comp as Record<string, number>)
     expect(key).toBe(expected)
-    // Regression: integer formula keys must round-trip through get_hill_formula
-    if (!expected.includes(`.`)) {
-      expect(get_hill_formula(key, true).length, `key "${key}" → empty label`).toBeGreaterThan(
-        0,
-      )
-    }
+    // keys are the shared get_reduced_formula in Hill order
+    expect(get_hill_formula(get_reduced_formula(comp as CompositionType), true)).toBe(
+      get_hill_formula(key, true),
+    )
   })
 })
 
@@ -1285,9 +1346,40 @@ describe(`get_3d_domain_simplexes_and_ann_loc`, () => {
   ])(`$label → $n_edges edges`, ({ pts, n_edges, ann_loc, edges }) => {
     const result = get_3d_domain_simplexes_and_ann_loc(pts)
     expect(result.simplex_indices).toHaveLength(n_edges)
+    expect(result.is_planar).toBe(true)
     if (edges) expect(result.simplex_indices).toEqual(edges)
     if (ann_loc) expect(result.ann_loc).toEqual(ann_loc)
     if (n_edges > 0) assert_valid_edges(result, pts.length)
+  })
+
+  test.each([
+    [
+      `tetrahedron`,
+      [
+        [0, 0, 0],
+        [10, 0, 0],
+        [0, 10, 0],
+        [0, 0, 10],
+      ],
+    ],
+    [
+      `unit cube`,
+      [0, 1].flatMap((x_val) =>
+        [0, 1].flatMap((y_val) => [0, 1].map((z_val) => [x_val, y_val, z_val])),
+      ),
+    ],
+    // planar square plus one vertex lifted by 1e-3 of its size: no longer a polygon
+    [
+      `square with a lifted corner`,
+      [
+        [0, 0, 0],
+        [10, 0, 0],
+        [10, 10, 0.01],
+        [0, 10, 0],
+      ],
+    ],
+  ])(`%s is reported non-planar`, (_label, pts) => {
+    expect(get_3d_domain_simplexes_and_ann_loc(pts).is_planar).toBe(false)
   })
 
   test(`trailing duplicates map edges to first occurrences`, () => {
@@ -1946,13 +2038,20 @@ describe(`compute_chempot_async`, () => {
     return import(`$lib/chempot-diagram/async-compute.svelte`)
   }
 
-  test(`rejects instead of throwing synchronously when Worker construction fails`, async () => {
+  test(`computes on the main thread (with a warning) when Worker construction fails`, async () => {
     // Must be constructable (`new Worker()`); arrow functions are not.
     function FailingWorker() {
       throw new Error(`worker blocked by CSP`)
     }
+    const warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => undefined)
     const { compute_chempot_async } = await load_async(FailingWorker)
-    await expect(compute_chempot_async(async_entries)).rejects.toThrow(`worker blocked by CSP`)
+    const data = await compute_chempot_async(async_entries)
+    expect(Object.keys(data.domains).toSorted()).toEqual([`Li`, `O`])
+    expect(warn_spy).toHaveBeenCalledWith(
+      `Chempot worker could not be constructed; computing on the main thread:`,
+      expect.objectContaining({ message: `worker blocked by CSP` }),
+    )
+    warn_spy.mockRestore()
   })
 
   test(`falls back to main-thread compute without a Worker global`, async () => {

@@ -1,22 +1,15 @@
 <script lang="ts">
-  import {
-    get_d3_interpolator,
-    pick_contrast_color,
-    resolve_backdrop,
-    type D3InterpolateName,
-  } from '$lib/colors'
+  import { pick_contrast_color, resolve_backdrop } from '$lib/colors'
   import Spinner from '$lib/feedback/Spinner.svelte'
   import { format_num } from '$lib/labels'
-  import { sanitize_html } from '$lib/sanitize'
-  import { clamp01 } from '$lib/utils'
   import type { Vec2 } from '$lib/math'
-  import * as math from '$lib/math'
-  import { format } from 'd3-format'
-  import * as d3 from 'd3-scale'
-  import { timeFormat } from 'd3-time-format'
-  import type { HTMLAttributes } from 'svelte/elements'
+  import {
+    color_ramp_scale,
+    resolve_color_ramp,
+    sample_color_ramp,
+  } from '$lib/plot/core/color-ramp'
   import PortalSelect from '$lib/plot/core/components/PortalSelect.svelte'
-  import { generate_arcsinh_ticks, scale_arcsinh } from '$lib/plot/core/scales'
+  import { generate_arcsinh_ticks } from '$lib/plot/core/scales'
   import type {
     AxisOption,
     ColorBarDataLoaderFn,
@@ -30,67 +23,65 @@
     get_scale_type_name,
     SCALE_DEFAULTS,
   } from '$lib/plot/core/types'
+  import { sanitize_html } from '$lib/sanitize'
+  import { range as d3_range } from 'd3-array'
+  import { format } from 'd3-format'
+  import { timeFormat } from 'd3-time-format'
+  import type { HTMLAttributes } from 'svelte/elements'
+  import { SvelteSet } from 'svelte/reactivity'
 
   let {
     title = $bindable(),
     scale = $bindable(SCALE_DEFAULTS.scheme),
-    bar_style = undefined,
-    title_style = undefined,
-    wrapper_style = undefined,
-    tick_labels = $bindable(4),
-    tick_format = undefined,
+    bar_style,
+    title_style,
+    wrapper_style,
+    tick_labels = 4,
+    tick_format,
     range = $bindable([0, 1]),
     orientation = `horizontal`,
     snap_ticks = true,
     steps = 50,
     nice_range = $bindable(range),
-    title_side = undefined, // no default here, depends on orientation and tick_side
+    title_side,
     tick_side = `primary`,
     scale_type = `linear`,
-    // Property selection (interactive title)
-    property_options = undefined,
+    property_options,
     selected_property_key = $bindable(),
-    data_loader = undefined,
-    on_property_change = undefined,
-    // Color scale selection
-    color_scale_options = undefined,
+    data_loader,
+    on_property_change,
+    color_scale_options,
     selected_color_scale_key = $bindable(),
-    on_color_scale_change = undefined,
-    backdrop: backdrop_color = undefined,
+    on_color_scale_change,
+    backdrop: backdrop_color,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     title?: string
     // Either a d3 interpolator name, sampled across `range`, or a prebuilt function
     // with the data domain it expects. One or the other, never both.
     scale?: ColorBarScale
+    // Defaults to the side opposite the ticks (left of a vertical bar with inside ticks)
     title_side?: `left` | `right` | `top` | `bottom`
     bar_style?: string
     title_style?: string
     wrapper_style?: string
-    tick_labels?: (string | number)[] | number
-    tick_format?: string
+    tick_labels?: (string | number)[] | number // explicit tick values, or how many to generate
+    tick_format?: string // d3-format spec, or d3-time-format spec when it starts with `%`
     range?: Vec2
-    // tick_side determines tick placement relative to orientation:
-    // 'primary'   = bottom (horizontal) / right (vertical), outside bar
-    // 'secondary' = top (horizontal) / left (vertical), outside bar
-    // 'inside'    = centered within bar, hiding first/last
+    // 'primary' = bottom (horizontal) / right (vertical), 'secondary' = the opposite edge,
+    // 'inside' = centered within the bar, hiding the first/last tick
     tick_side?: `primary` | `secondary` | `inside`
     orientation?: Orientation
-    // snap ticks to pretty, more readable values
-    snap_ticks?: boolean
-    // number of equidistant points to sample color scale
-    steps?: number
-    // computed "nice" range resulting from snapping ticks
-    // https://github.com/d3/d3-scale/issues/86
-    nice_range?: Vec2
-    // type of scale for ticks, and for color when `scale` names an interpolator
-    scale_type?: ScaleType
-    // Property selection options (makes title interactive)
+    snap_ticks?: boolean // snap generated ticks to pretty values (nices `range`)
+    steps?: number // number of gradient color stops sampled from the scale
+    nice_range?: Vec2 // read-only binding: the niced range when snapping ticks, else `range`
+    scale_type?: ScaleType // spacing of ticks, and of colors when `scale` names an interpolator
+    // Property selection (makes the title an interactive dropdown)
     property_options?: AxisOption[]
     selected_property_key?: string
     data_loader?: ColorBarDataLoaderFn
     on_property_change?: (key: string, range: Vec2) => void
-    // Color scale selection options
+    // Color scale selection dropdown
     color_scale_options?: ColorScaleOption[]
     selected_color_scale_key?: string
     on_color_scale_change?: (key: string) => void
@@ -102,438 +93,160 @@
   const backdrop = resolve_backdrop(() => colorbar_node, {
     override: () => backdrop_color,
   })
+  let loading = $state(false) // property data fetch in flight
 
-  // Loading state for property data fetching
-  let loading = $state(false)
-
-  let actual_title_side = $derived.by(() => {
-    if (title_side !== undefined) return title_side // Use user-provided value if available
-
-    // Calculate default based on orientation and tick_side
-    if (tick_side === `inside`) return `left` // Default to left if ticks are inside
-
-    // If ticks are primary (bottom), default label to top
-    // If ticks are secondary (top), default label to bottom
-    if (orientation === `horizontal`) {
-      return tick_side === `primary` ? `top` : `bottom`
-    } // orientation === `vertical`
-    // If ticks are primary (right), default label to left
-    // If ticks are secondary (left), default label to right
-    return tick_side === `primary` ? `left` : `right`
+  const is_vertical = $derived(orientation === `vertical`)
+  const actual_title_side = $derived.by(() => {
+    if (title_side) return title_side
+    if (tick_side === `inside`) return `left`
+    if (is_vertical) return tick_side === `primary` ? `left` : `right`
+    return tick_side === `primary` ? `top` : `bottom`
   })
+  const n_ticks = $derived(Array.isArray(tick_labels) ? tick_labels.length : tick_labels)
+  const type_name = $derived(get_scale_type_name(scale_type))
 
-  // Number of ticks to generate
-  let n_ticks = $derived(
-    Array.isArray(tick_labels)
-      ? tick_labels.length
-      : typeof tick_labels === `number`
-        ? tick_labels
-        : 5,
-  )
-
-  // Log scales need positive bounds: a non-positive max falls back to linear
-  // (with a warning), a non-positive min is clamped to LOG_EPS.
-  const prepare_log_domain = (
-    min: number,
-    max: number,
-    context: string,
-  ): { min: number; use_log: boolean } => {
-    if (max <= 0) {
-      console.warn(
-        `Log scale requires a positive max value ${context}. Received max=${max}. Falling back to linear.`,
-      )
-      return { min, use_log: false }
-    }
-    if (min <= 0) {
-      console.warn(
-        `Log scale received non-positive min value (${min}) ${context}. Using epsilon=${math.LOG_EPS} instead.`,
-      )
-      return { min: math.LOG_EPS, use_log: true }
-    }
-    return { min, use_log: true }
-  }
-
-  // Scale for ticks - based *only* on 'range' prop and 'scale_type' for ticks
-  let scale_for_ticks = $derived.by(() => {
-    const type_name = get_scale_type_name(scale_type)
-    let [scale_min, scale_max] = range
-    let use_log_for_ticks = type_name === `log`
-    if (use_log_for_ticks) {
-      ;({ min: scale_min, use_log: use_log_for_ticks } = prepare_log_domain(
-        scale_min,
-        scale_max,
-        `for ticks`,
-      ))
-    }
-
-    // For arcsinh, use our custom scale
-    if (type_name === `arcsinh`) {
-      // Guard against very small thresholds that could cause precision issues
-      const threshold = Math.max(get_arcsinh_threshold(scale_type), Number.EPSILON)
-      const tick_scale = scale_arcsinh(threshold)
-        .domain([scale_min, scale_max])
-        .range(orientation === `vertical` ? [100, 0] : [0, 100])
-      return tick_scale
-    }
-
-    const tick_scale = use_log_for_ticks ? d3.scaleLog() : d3.scaleLinear()
-    // Use potentially adjusted min/max for domain
-    tick_scale.domain([scale_min, scale_max])
-
-    // Set range based on orientation for positioning (0-100 for percent)
-    tick_scale.range(orientation === `vertical` ? [100, 0] : [0, 100])
-
-    // Apply scale.nice() only if snapping is enabled and not an explicit array.
-    if (snap_ticks && !Array.isArray(tick_labels)) {
-      tick_scale.nice(n_ticks)
-    }
-
-    return tick_scale
+  // Maps tick values to their position along the bar in percent. Generated ticks snap by
+  // nicing this scale's domain (arcsinh scales have no nice(); explicit ticks never snap).
+  const tick_scale = $derived.by(() => {
+    const percent = color_ramp_scale(scale_type, range, is_vertical ? [100, 0] : [0, 100])
+    if (snap_ticks && !Array.isArray(tick_labels) && `nice` in percent) percent.nice(n_ticks)
+    return percent
   })
-
-  let ticks_array: number[] = $derived.by(() => {
+  const ticks = $derived.by((): number[] => {
     if (Array.isArray(tick_labels)) {
-      // Use user-provided ticks directly
-      return tick_labels.map(Number).filter((num) => !isNaN(num))
+      return [...new SvelteSet(tick_labels.map(Number))].filter(Number.isFinite)
     }
-
-    // Handle edge cases for number of ticks
+    const [lo, hi] = tick_scale.domain()
     if (n_ticks <= 0) return []
-    if (n_ticks === 1) return [scale_for_ticks.domain()[0]]
-
-    const tick_scale = scale_for_ticks
-    const [scale_min, scale_max] = tick_scale.domain()
-    const type_name = get_scale_type_name(scale_type)
-
-    // Arcsinh tick generation
+    if (n_ticks === 1) return [lo]
     if (type_name === `arcsinh`) {
-      // Guard against very small thresholds that could cause precision issues
-      const threshold = Math.max(get_arcsinh_threshold(scale_type), Number.EPSILON)
-      return generate_arcsinh_ticks(scale_min, scale_max, threshold, n_ticks)
+      return generate_arcsinh_ticks(lo, hi, get_arcsinh_threshold(scale_type), n_ticks)
     }
-
-    // check scale_type prop for log tick generation
-    const use_log_ticks = type_name === `log` && scale_min > 0 && scale_max > 0
-
-    if (use_log_ticks) {
-      // Use D3's ticks for log scale if snapping is enabled
-      if (snap_ticks) {
-        // For snapped log ticks, manually generate integer powers of 10 within niced domain.
-        const [nice_min, nice_max] = tick_scale.domain()
-
-        const start_exp = Math.ceil(Math.log10(nice_min))
-        const end_exp = Math.floor(Math.log10(nice_max))
-
-        const power_of_10_ticks: number[] = []
-        for (let exp = start_exp; exp <= end_exp; exp++) {
-          power_of_10_ticks.push(10 ** exp)
-        }
-
-        // Ensure domain endpoints are included if they are powers of 10 and missed by loop
-        const FRACTIONAL_TOL = 1e-10
-        if (
-          Math.abs(Math.log10(nice_min) % 1) < FRACTIONAL_TOL &&
-          !power_of_10_ticks.includes(nice_min)
-        )
-          power_of_10_ticks.unshift(nice_min)
-        if (
-          Math.abs(Math.log10(nice_max) % 1) < FRACTIONAL_TOL &&
-          !power_of_10_ticks.includes(nice_max)
-        )
-          power_of_10_ticks.push(nice_max)
-
-        // If no powers of 10 are within range (e.g. [0.1, 0.9]), fall back to D3 ticks?
-        // Or just return filtered list which might be empty?
-        // For now, let's stick with only powers of 10.
-        // If list is empty maybe return domain ends?
-        if (power_of_10_ticks.length === 0) {
-          // If domain is very small, e.g. [1e-9, 1e-8], no powers of 10.
-          // Return exact domain ends as ticks in this edge case.
-          return [nice_min, nice_max]
-        }
-
-        return power_of_10_ticks
-      }
-      // Generate exactly n_ticks manually for log scale if not snapping
-      const log_min = Math.log10(scale_min)
-      const log_max = Math.log10(scale_max)
-      return [...Array(n_ticks).keys()].map((idx) => {
-        const fraction = idx / (n_ticks - 1)
-        const log_val = log_min + fraction * (log_max - log_min)
-        return 10 ** log_val
-      })
+    if (!snap_ticks) {
+      // exactly n_ticks, evenly spaced in scale space
+      const position = color_ramp_scale(scale_type, [lo, hi], [0, 1])
+      return d3_range(n_ticks).map((idx) => position.invert(idx / (n_ticks - 1)))
     }
-    // Use D3's default nice ticks for linear scale
-    if (snap_ticks) return tick_scale.ticks(n_ticks)
-    // Generate exactly n_ticks evenly spaced linear ticks
-    return [...Array(n_ticks).keys()].map((idx) => {
-      const fraction = idx / (n_ticks - 1)
-      return scale_min + fraction * (scale_max - scale_min)
-    })
+    if (type_name === `log`) {
+      // integer powers of ten inside the niced domain (tolerance absorbs log10 round-off);
+      // sub-decade domains with none fall back to the domain ends
+      const powers = d3_range(
+        Math.ceil(Math.log10(lo) - 1e-10),
+        Math.floor(Math.log10(hi) + 1e-10) + 1,
+      ).map((exponent) => 10 ** exponent)
+      return powers.length ? powers : [lo, hi]
+    }
+    return tick_scale.ticks(n_ticks)
   })
-
-  // Update nice_range binding when snapping ticks
+  // Tick values are unique (deduped above, or generated), so they key the rendered labels
+  const visible_ticks = $derived(tick_side === `inside` ? ticks.slice(1, -1) : ticks)
   $effect.pre(() => {
-    if (snap_ticks && !Array.isArray(tick_labels)) {
-      // Use derived scale to get niced domain
-      const domain = scale_for_ticks.domain()
-      // Ensure domain has two elements before assigning
-      if (domain.length === 2) nice_range = domain as Vec2
-      else nice_range = range // Fallback
-    } else nice_range = range // Use original range if not snapping or labels provided
+    const [lo, hi] = tick_scale.domain()
+    nice_range = snap_ticks && !Array.isArray(tick_labels) ? [lo, hi] : range
   })
 
-  // Determine effective color scale function to use
-  let actual_color_scale_fn = $derived.by(() => {
-    // A prebuilt function already maps data values to colors; nothing left to build.
-    if (typeof scale === `object` && `fn` in scale) return scale.fn
-    const interpolator =
-      typeof scale === `object` ? scale.interpolator : get_d3_interpolator(scale)
-
-    // Need a domain for this fallback scale! Use 'range' prop.
-    let [min_val, max_val] = range
-    const type_name = get_scale_type_name(scale_type)
-
-    // Use scale_type for fallback scale creation too. Validate domain for log.
-    let use_log_fallback = type_name === `log`
-    if (use_log_fallback) {
-      ;({ min: min_val, use_log: use_log_fallback } = prepare_log_domain(
-        min_val,
-        max_val,
-        `for fallback scale`,
-      ))
-    }
-
-    // Use potentially adjusted min/max for domain (ascending)
-    const lo = Math.min(min_val, max_val)
-    const hi = Math.max(min_val, max_val)
-    const domain_for_scale: Vec2 = [lo, hi]
-
-    // For arcsinh, create a custom color scale
-    if (type_name === `arcsinh`) {
-      // Guard against very small thresholds that could cause precision issues
-      const threshold = Math.max(get_arcsinh_threshold(scale_type), Number.EPSILON)
-      const t_min = Math.asinh(lo / threshold)
-      const t_max = Math.asinh(hi / threshold)
-      return (value: number): string => {
-        const t_val = Math.asinh(value / threshold)
-        const normalized = t_max === t_min ? 0.5 : (t_val - t_min) / (t_max - t_min)
-        return interpolator(clamp01(normalized))
-      }
-    }
-
-    return use_log_fallback
-      ? d3.scaleSequentialLog(interpolator).domain(domain_for_scale)
-      : d3.scaleSequential(interpolator).domain(domain_for_scale)
-  })
-
+  const ramp = $derived(resolve_color_ramp(scale, range, scale_type))
+  const gradient_stops = $derived(sample_color_ramp(ramp, scale_type, steps).join(`, `))
+  // Colors the scale can't resolve (CSS variables, unparsable strings) inherit the text color
   const inside_tick_color = (value: number): string => {
     try {
-      const background = actual_color_scale_fn(value)
-      return pick_contrast_color({ background, backdrop: backdrop.current })
+      return pick_contrast_color({
+        background: ramp.color_fn(value),
+        backdrop: backdrop.current,
+      })
     } catch {
       return `inherit`
     }
   }
+  const format_tick = (value: number): string => {
+    if (!tick_format) return format_num(value)
+    if (tick_format.startsWith(`%`)) return timeFormat(tick_format)(new Date(value))
+    return format(tick_format)(value)
+  }
 
-  // Domain the gradient is sampled over. A prebuilt scale may cover a different span
-  // than the ticks, so it can name its own; interpolator names always follow `range`.
-  let color_interp_domain = $derived(
-    (typeof scale === `object` && `fn` in scale ? scale.domain : undefined) ?? range,
-  )
-
-  let grad_dir = $derived(orientation === `horizontal` ? `to right` : `to top`)
-
-  // Generate color stops for gradient background using effective scale and domain
-  let ramped = $derived.by(() => {
-    const [min_ramp_domain, max_ramp_domain] = color_interp_domain
-    const type_name = get_scale_type_name(scale_type)
-
-    // Validate domain for log interpolation and apply epsilon if needed
-    let use_log_interp = type_name === `log`
-    let adjusted_min_ramp = min_ramp_domain
-    const adjusted_max_ramp = max_ramp_domain
-    if (use_log_interp) {
-      ;({ min: adjusted_min_ramp, use_log: use_log_interp } = prepare_log_domain(
-        min_ramp_domain,
-        max_ramp_domain,
-        `for gradient`,
-      ))
-    }
-
-    const n_steps = Math.max(2, Math.floor(steps)) // guard against steps <= 1 to avoid NaN/degenerate gradients
-
-    // Pre-compute loop-invariant values for each scale type
-    let log_min = 0,
-      log_max = 0,
-      log_span = 0
-    let asinh_threshold = 1,
-      asinh_min = 0,
-      asinh_max = 0,
-      asinh_span = 0
-    const linear_span = max_ramp_domain - min_ramp_domain
-
-    if (use_log_interp) {
-      log_min = Math.log10(adjusted_min_ramp)
-      log_max = Math.log10(adjusted_max_ramp)
-      log_span = log_max - log_min
-    } else if (type_name === `arcsinh`) {
-      // Guard against very small thresholds that could cause precision issues
-      asinh_threshold = Math.max(get_arcsinh_threshold(scale_type), Number.EPSILON)
-      asinh_min = Math.asinh(min_ramp_domain / asinh_threshold)
-      asinh_max = Math.asinh(max_ramp_domain / asinh_threshold)
-      asinh_span = asinh_max - asinh_min
-    }
-
-    return [...Array(n_steps).keys()].map((_, idx) => {
-      const fraction = idx / (n_steps - 1) // Normalized position 0 to 1
-      let data_value: number
-
-      if (use_log_interp) {
-        data_value = log_span === 0 ? adjusted_min_ramp : 10 ** (log_min + fraction * log_span)
-      } else if (type_name === `arcsinh`) {
-        data_value =
-          asinh_span === 0
-            ? min_ramp_domain
-            : Math.sinh(asinh_min + fraction * asinh_span) * asinh_threshold
-      } else {
-        data_value = min_ramp_domain + fraction * linear_span
-      }
-      return actual_color_scale_fn(data_value) ?? `transparent`
-    })
-  })
-
-  // Determine wrapper flex-direction based on actual title_side
-  let wrapper_flex_dir = $derived(
+  const wrapper_flex_dir = $derived(
     { left: `row`, right: `row-reverse`, top: `column`, bottom: `column-reverse` }[
       actual_title_side
     ],
   )
-
-  // CSS variables for bar width/height based on orientation
-  let final_bar_style = $derived(
-    `--cbar-width: ${orientation === `horizontal` ? `100%` : `var(--cbar-thickness, 10px)`};
-    --cbar-height: ${orientation === `vertical` ? `100%` : `var(--cbar-thickness, 10px)`};
-    background: linear-gradient(${grad_dir}, ${ramped.join(`, `)}); ${bar_style ?? ``}`,
+  const is_vertical_side = $derived(
+    is_vertical && (actual_title_side === `left` || actual_title_side === `right`),
   )
-
-  // Calculate additional margin for main label if it overlaps with ticks
-  let label_overlap_margin_style = $derived.by(() => {
-    // Overlap only possible if ticks are outside and on same side as label
-    if (tick_side === `inside`) return ``
-
-    // Determine concrete side outside ticks are on
-    const concrete_outside_tick_side =
-      orientation === `horizontal`
-        ? tick_side === `primary`
-          ? `bottom`
-          : `top`
-        : tick_side === `primary`
-          ? `right`
-          : `left`
-
-    if (actual_title_side !== concrete_outside_tick_side) return ``
-
-    const offset = `var(--cbar-label-overlap-offset, 1em)`
-
-    const side_map = { top: `bottom`, bottom: `top`, left: `right`, right: `left` }
-    const margin_side = side_map[actual_title_side]
-    return `margin-${margin_side}: ${offset};`
-  })
-
-  // Derive whether we're in vertical side-label mode (label on left/right of vertical bar)
-  let is_vertical_side = $derived(
-    orientation === `vertical` &&
-      (actual_title_side === `left` || actual_title_side === `right`),
+  const final_bar_style = $derived(
+    `--cbar-width: ${is_vertical ? `var(--cbar-thickness, 10px)` : `100%`};
+    --cbar-height: ${is_vertical ? `100%` : `var(--cbar-thickness, 10px)`};
+    background: linear-gradient(${is_vertical ? `to top` : `to right`}, ${gradient_stops});
+    ${bar_style ?? ``}`,
   )
-
-  let actual_title_style = $derived.by(() => {
-    // No container-level transform - rotation is applied only to .label element via CSS
-    // This avoids breaking selects/dropdowns which need to remain horizontal
-    let size_constraint = is_vertical_side
+  // Push the title away from outside ticks that sit on the same edge
+  const actual_title_style = $derived.by(() => {
+    const outside_tick_side =
+      tick_side === `inside`
+        ? null
+        : is_vertical
+          ? tick_side === `primary`
+            ? `right`
+            : `left`
+          : tick_side === `primary`
+            ? `bottom`
+            : `top`
+    const opposite = { top: `bottom`, bottom: `top`, left: `right`, right: `left` } as const
+    const overlap_margin =
+      actual_title_side === outside_tick_side
+        ? `margin-${opposite[actual_title_side]}: var(--cbar-label-overlap-offset, 1em);`
+        : ``
+    const size_constraint = is_vertical_side
       ? `max-width: var(--cbar-label-max-width, 2em);`
       : ``
-
-    return `${size_constraint} ${label_overlap_margin_style} ${title_style ?? ``}`.trim()
+    return `${size_constraint} ${overlap_margin} ${title_style ?? ``}`.trim()
   })
-
-  let has_property_select = $derived(property_options && property_options.length > 0)
-  let has_color_scale_select = $derived(color_scale_options && color_scale_options.length > 0)
-  let has_any_select = $derived(has_property_select || has_color_scale_select)
+  const div_style = $derived(`
+    --cbar-wrapper-align-items: ${is_vertical_side ? `stretch` : `center`};
+    --cbar-label-display: ${is_vertical_side ? `flex` : `inline-block`};
+    height: ${is_vertical ? `var(--cbar-height, 100%)` : `var(--cbar-height, auto)`};
+    min-height: ${is_vertical ? `var(--cbar-min-height, 150px)` : `auto`};
+    max-height: ${is_vertical ? `var(--cbar-max-height, 1000px)` : `none`}; ${wrapper_style ?? ``}`)
 
   // Keep bindable selected keys valid so state matches the select's first-option fallback.
   $effect(() => {
     if (!property_options?.length) return
     if (property_options.some((option) => option.key === selected_property_key)) return
-    selected_property_key = property_options[0]?.key
+    selected_property_key = property_options[0].key
   })
   $effect(() => {
     if (!color_scale_options?.length) return
     if (color_scale_options.some((option) => option.key === selected_color_scale_key)) return
-    const first_option = color_scale_options[0]
-    selected_color_scale_key = first_option.key
-    scale = first_option.scale
+    selected_color_scale_key = color_scale_options[0].key
+    scale = color_scale_options[0].scale
   })
 
   async function handle_property_change(new_key: string, prev_key?: string) {
     if (!data_loader) return
-    // Capture all state for full rollback on any error
-    // Note: prev_key comes from PortalSelect since binding updates before callback
-    // prev_key can be undefined if no prior selection - that's a valid rollback state
-    const prev = { title, range, selected_property_key: prev_key } as const
-
+    // prev_key comes from PortalSelect since its binding updates before this callback
+    const prev = { title, range, selected_property_key: prev_key }
     loading = true
-
     try {
       const result = await data_loader(new_key)
       range = result.range
       if (result.title !== undefined) title = result.title
-      // Isolate callback errors - still rollback if callback throws
       on_property_change?.(new_key, result.range)
     } catch (err) {
       console.error(`ColorBar property change failed for ${new_key}:`, err)
-      // Full rollback of all state
-      selected_property_key = prev.selected_property_key
-      range = prev.range
-      title = prev.title
+      ;({ selected_property_key, range, title } = prev)
     } finally {
       loading = false
     }
   }
 
   function handle_color_scale_change(new_key: string, prev_key?: string) {
-    // Find option - rollback binding if not found to keep key and scale in sync
     const opt = color_scale_options?.find((item) => item.key === new_key)
     if (!opt) {
-      selected_color_scale_key = prev_key
+      selected_color_scale_key = prev_key // keep key and scale in sync
       return
     }
-
     scale = opt.scale
     on_color_scale_change?.(new_key)
   }
-
-  // Align items based on orientation and title position
-  let div_style = $derived(`
-    --cbar-wrapper-align-items: ${
-        orientation === `vertical` &&
-        (actual_title_side === `left` || actual_title_side === `right`)
-          ? `stretch`
-          : `center`
-      };
-    --cbar-label-display: ${
-        orientation === `vertical` &&
-        (actual_title_side === `left` || actual_title_side === `right`)
-          ? `flex`
-          : `inline-block`
-      };
-    height: ${
-        orientation === `vertical` ? `var(--cbar-height, 100%)` : `var(--cbar-height, auto)`
-      };
-    min-height: ${orientation === `vertical` ? `var(--cbar-min-height, 150px)` : `auto`};
-    max-height: ${
-        orientation === `vertical` ? `var(--cbar-max-height, 1000px)` : `none`
-      }; ${wrapper_style ?? ``}`)
 </script>
 
 <div
@@ -543,9 +256,9 @@
   style={div_style + (rest.style ?? ``)}
   class={[`colorbar`, rest.class]}
 >
-  {#if title || has_any_select}
+  {#if title || property_options?.length || color_scale_options?.length}
     <div class={[`title-row`, actual_title_side, orientation]} style={actual_title_style}>
-      {#if has_property_select && property_options}
+      {#if property_options?.length}
         <PortalSelect
           options={property_options}
           bind:selected_key={selected_property_key}
@@ -562,7 +275,7 @@
         <!-- Only show static title if no property select -->
         <span class="label">{@html sanitize_html(title)}</span>
       {/if}
-      {#if has_color_scale_select && color_scale_options}
+      {#if color_scale_options?.length}
         <PortalSelect
           options={color_scale_options}
           bind:selected_key={selected_color_scale_key}
@@ -573,26 +286,23 @@
       {/if}
     </div>
   {/if}
-  <div style={final_bar_style} class="bar">
-    {#each tick_side === `inside` ? ticks_array.slice(1, -1) : ticks_array as tick_label (tick_label)}
-      {@const position_percent =
-        // Use derived scale's mapping function to get position percent
-        scale_for_ticks(tick_label)}
+  <div
+    style={final_bar_style}
+    class={[
+      `bar`,
+      orientation,
+      visible_ticks.length > 0 && tick_side !== `inside` && `tick-${tick_side}`,
+    ]}
+  >
+    {#each visible_ticks as tick (tick)}
+      {@const position_percent = tick_scale(tick)}
       <span
         class={[`tick-label`, orientation, `tick-${tick_side}`]}
-        style:left={orientation === `horizontal` ? `${position_percent}%` : undefined}
-        style:top={orientation === `vertical` ? `${position_percent}%` : undefined}
-        style:color={tick_side === `inside` ? inside_tick_color(tick_label) : `inherit`}
+        style:left={is_vertical ? undefined : `${position_percent}%`}
+        style:top={is_vertical ? `${position_percent}%` : undefined}
+        style:color={tick_side === `inside` ? inside_tick_color(tick) : `inherit`}
       >
-        {#if tick_format}
-          {#if tick_format.startsWith(`%`)}
-            {timeFormat(tick_format)(new Date(tick_label))}
-          {:else}
-            {format(tick_format)(tick_label)}
-          {/if}
-        {:else}
-          {format_num(tick_label)}
-        {/if}
+        {format_tick(tick)}
       </span>
     {/each}
   </div>
@@ -620,9 +330,22 @@
     width: var(--cbar-width);
     height: var(--cbar-height);
   }
+  /* Tick labels are `position: absolute` and otherwise overflow the bar. */
+  div.bar.horizontal.tick-primary {
+    margin-bottom: var(--cbar-tick-gutter, 1em);
+  }
+  div.bar.horizontal.tick-secondary {
+    margin-top: var(--cbar-tick-gutter, 1em);
+  }
+  div.bar.vertical.tick-primary {
+    margin-right: var(--cbar-tick-gutter, 1em);
+  }
+  div.bar.vertical.tick-secondary {
+    margin-left: var(--cbar-tick-gutter, 1em);
+  }
   /* label text */
   span.label {
-    text-align: center;
+    text-align: var(--cbar-label-text-align, center);
     padding: var(--cbar-label-padding, 0 5px);
     transform: var(--cbar-label-transform);
     /* Ensure vertical labels are centered within their allocated space */
@@ -703,10 +426,6 @@
     /* Style PortalSelect triggers in colorbar context */
     :global(:is(.property-select, .color-scale-select)) {
       padding: 0 4px;
-    }
-    &.loading :global(.property-select) {
-      opacity: 0.6;
-      pointer-events: none;
     }
   }
 </style>

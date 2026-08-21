@@ -115,10 +115,18 @@ describe(`ElementTile`, () => {
     })
 
     test.each([true, false])(`applies active class when active=%s`, (active) => {
-      mount_tile({ active })
+      mount_tile({ active, text_color: `white` })
 
       const node = doc_query(`.element-tile`)
       expect(node.classList.contains(`active`)).toBe(active)
+      expect(getComputedStyle(node).color).toBe(`white`)
+      if (active) {
+        // Keep the reserved 1px border (unset --elem-tile-active-border must not wipe it,
+        // or cqw text inflates and the tile looks scaled). Color is --text-color in CSS;
+        // happy-dom does not always resolve nested var() in the border shorthand.
+        expect(getComputedStyle(node).borderWidth).toBe(`1px`)
+        expect(getComputedStyle(node).borderStyle).toBe(`solid`)
+      }
     })
 
     test(`applies category as data attribute`, () => {

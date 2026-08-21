@@ -10,6 +10,8 @@
   import { ColorScaleSelect, ElementScatter } from '$lib/plot'
   import { selected } from '$lib/state.svelte'
   import { replace_url } from '$site/state.svelte'
+  import { Icon } from 'svelte-widgets'
+  import { ChevronDown, ChevronRight } from 'svelte-widgets/icons'
   import { onMount } from 'svelte'
   import { slide } from 'svelte/transition'
 
@@ -161,7 +163,12 @@
     aria-expanded={controls_open}
     onclick={() => (controls_open = !controls_open)}
   >
-    {controls_open ? `▾` : `▸`} Periodic Table Controls
+    <Icon
+      icon={controls_open ? ChevronDown : ChevronRight}
+      aria-hidden="true"
+      style="--icon-size: 1.15em"
+    />
+    Periodic Table Controls
   </button>
   {#if controls_open}
     <div transition:slide>
@@ -184,7 +191,9 @@
 
 <style>
   .controls-toggle {
-    display: block;
+    display: flex;
+    align-items: center;
+    gap: 6pt;
     max-width: max-content;
     margin: 0 auto;
     padding: 2pt 8pt;

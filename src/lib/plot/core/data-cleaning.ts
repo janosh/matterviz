@@ -1,24 +1,13 @@
-// Data cleaning utilities for plot data
-// Enforces physical bounds, handles invalid values, and cleans multi-dimensional datasets.
-// Signal-processing primitives (variance, instability detection, smoothing, outlier removal)
-// live in ./data-cleaning-signal and are re-exported here so the public API is unchanged.
+// Data cleaning for plot series: invalid-value handling, physical bounds, local (MAD) outlier
+// removal, smoothing (moving average / Savitzky-Golay / Gaussian) and oscillation/instability
+// detection, plus the multi-series, xyz and trajectory-property orchestrators built on them.
 
 import type { Vec2 } from '$lib/math'
 import { assert_series_lengths, type DataSeries } from '$lib/plot/core/types'
 import { apply_gaussian_smearing } from '$lib/spectral/helpers'
-import {
-  detect_instability,
-  remove_local_outliers,
-  smooth_moving_average,
-  smooth_savitzky_golay,
-} from '$lib/plot/core/data-cleaning-signal'
-import type {
-  LocalOutlierConfig,
-  OscillationWeights,
-  SmoothingConfig,
-} from '$lib/plot/core/data-cleaning-signal'
+import { Adder, median as d3_median } from 'd3-array'
 
-export * from '$lib/plot/core/data-cleaning-signal'
+// === Types ===
 
 // How to handle invalid values (NaN, Infinity)
 export type InvalidValueMode = `remove` | `propagate` | `interpolate`
@@ -26,39 +15,68 @@ export type InvalidValueMode = `remove` | `propagate` | `interpolate`
 // Truncation strategy when instability detected
 export type TruncationMode = `hard_cut` | `mark_unstable`
 
-// Physical bounds configuration
 export interface PhysicalBounds {
   min?: number | ((x: number) => number) // Static or x-dependent minimum
   max?: number | ((x: number) => number) // Static or x-dependent maximum
-  mode?: `clamp` | `filter` | `null` // How to handle violations
+  mode?: `clamp` | `filter` | `null` // How to handle violations (default: clamp)
+}
+
+// Oscillation detection weights (all default to 1.0)
+export interface OscillationWeights {
+  derivative_variance?: number
+  amplitude_growth?: number
+  sign_changes?: number
+}
+
+export type SmoothingConfig =
+  | { type: `moving_avg`; window: number }
+  | { type: `savgol`; window: number; polynomial_order?: number } // window must be odd
+  | { type: `gaussian`; sigma: number } // sigma controls Gaussian kernel width
+
+// Local outlier detection config (sliding window approach)
+export interface LocalOutlierConfig {
+  window_half?: number // Points on each side for local context (default: 7)
+  mad_threshold?: number // MADs from local median to flag outlier (default: 2.0)
+  max_iterations?: number // Iterative passes to catch clustered outliers (default: 5)
+}
+
+export interface LocalOutlierResult {
+  kept_indices: number[]
+  removed_indices: number[]
+  iterations_used: number
+}
+
+export interface InstabilityResult {
+  detected: boolean
+  onset_index: number
+  onset_x: number
+  combined_score: number
+  method_scores: {
+    derivative_variance: number
+    amplitude_growth: number
+    sign_changes: number
+  }
 }
 
 export interface CleaningConfig {
-  // Oscillation detection
   oscillation_threshold?: number // Combined score threshold (default: 3.0)
-  oscillation_weights?: OscillationWeights // Method weights
+  oscillation_weights?: OscillationWeights
   window_size?: number // Rolling window for detection (default: 5)
-
-  // Data handling
   invalid_values?: InvalidValueMode // NaN/Infinity handling (default: 'remove')
-  bounds?: PhysicalBounds // Physical constraints
-  smooth?: SmoothingConfig // Optional smoothing
-  local_outliers?: LocalOutlierConfig // Local sliding window outlier removal
-
-  // Truncation
-  truncation_mode?: TruncationMode // 'hard_cut' or 'mark_unstable' (default: 'mark_unstable')
-
-  // Performance
-  in_place?: boolean // Mutate input arrays (default: true)
+  bounds?: PhysicalBounds
+  smooth?: SmoothingConfig
+  local_outliers?: LocalOutlierConfig
+  truncation_mode?: TruncationMode // default: 'mark_unstable'
+  in_place?: boolean // Mutate the input series object (default: true)
 }
 
 export interface CleaningQuality {
   points_removed: number
   invalid_values_found: number // NaN/Infinity count
   oscillation_detected: boolean
-  oscillation_score?: number // Combined weighted score
+  oscillation_score?: number
   bounds_violations: number
-  outliers_removed?: number // Count of local outliers removed
+  outliers_removed?: number
   stable_range?: Vec2 // [start_x, end_x] if mark_unstable mode
   truncated_at_x?: number // x value if hard_cut mode
 }
@@ -67,6 +85,18 @@ export interface CleaningResult<T = DataSeries> {
   series: T // Cleaned data (same ref if in_place)
   quality: CleaningQuality
 }
+
+const DEFAULT_WINDOW_SIZE = 5
+const DEFAULT_OSCILLATION_THRESHOLD = 3.0
+const DEFAULT_POLYNOMIAL_ORDER = 2
+const DEFAULT_LOCAL_WINDOW_HALF = 7
+const DEFAULT_LOCAL_MAD_THRESHOLD = 2.0
+const DEFAULT_LOCAL_MAX_ITERATIONS = 5
+
+const median = (values: number[]): number => d3_median(values) ?? 0
+const index_range = (length: number): number[] => Array.from({ length }, (_, idx) => idx)
+const pick = <T>(arr: readonly T[], indices: readonly number[]): T[] =>
+  indices.map((idx) => arr[idx])
 
 const create_cleaning_quality = (
   points_removed = 0,
@@ -78,6 +108,268 @@ const create_cleaning_quality = (
   bounds_violations: 0,
 })
 
+// === Instability detection ===
+
+// Sample variance of each point's surrounding window (non-finite values are skipped)
+export function compute_local_variance(values: number[], window_size: number): number[] {
+  const len = values.length
+  if (len === 1) return [0]
+  const half_window = Math.floor(window_size / 2)
+  const result: number[] = Array(len)
+  for (let idx = 0; idx < len; idx++) {
+    const end = Math.min(len, idx + half_window + 1)
+    let [mean, m2, count] = [0, 0, 0]
+    for (let jdx = Math.max(0, idx - half_window); jdx < end; jdx++) {
+      const val = values[jdx]
+      if (!Number.isFinite(val)) continue
+      count++
+      const delta = val - mean
+      mean += delta / count
+      m2 += delta * (val - mean)
+    }
+    result[idx] = count > 1 ? m2 / (count - 1) : 0
+  }
+  return result
+}
+
+const compute_derivatives = (values: number[]): number[] =>
+  Array.from(
+    { length: Math.max(0, values.length - 1) },
+    (_, idx) => values[idx + 1] - values[idx],
+  )
+
+type MethodResult = { onset_index: number; score: number }
+const NO_ONSET: MethodResult = { onset_index: -1, score: 0 }
+
+// Method 1: first point where the rolling derivative variance exceeds threshold x baseline median
+function detect_derivative_variance(
+  values: number[],
+  window_size: number,
+  threshold_multiplier: number,
+): MethodResult {
+  const derivs = compute_derivatives(values)
+  if (derivs.length < window_size) return NO_ONSET
+  const local_var = compute_local_variance(derivs, window_size)
+  const baseline_end = Math.min(Math.floor(derivs.length / 4), 50)
+  const baseline_vars = local_var.slice(0, Math.max(baseline_end, window_size))
+  const baseline_median = median(baseline_vars.filter((val) => val > 0))
+  if (baseline_median === 0) return NO_ONSET
+  let max_score = 0
+  for (let idx = baseline_end; idx < local_var.length; idx++) {
+    const ratio = local_var[idx] / baseline_median
+    if (ratio > max_score) max_score = ratio
+    // +1 converts from derivative index to value index
+    if (ratio > threshold_multiplier) return { onset_index: idx + 1, score: ratio }
+  }
+  return { onset_index: -1, score: max_score }
+}
+
+// Method 2: local amplitude (max deviation from local mean) growing past 10x its baseline
+function detect_amplitude_growth(values: number[], window_size: number): MethodResult {
+  if (values.length < window_size * 3) return NO_ONSET
+  const half_window = Math.floor(window_size / 2)
+  const amplitudes: number[] = []
+  for (let idx = half_window; idx < values.length - half_window; idx++) {
+    const start = idx - half_window
+    const end = idx + half_window + 1
+    let sum = 0
+    for (let jdx = start; jdx < end; jdx++) sum += values[jdx]
+    const local_mean = sum / (end - start)
+    let max_deviation = 0
+    for (let jdx = start; jdx < end; jdx++) {
+      max_deviation = Math.max(max_deviation, Math.abs(values[jdx] - local_mean))
+    }
+    amplitudes.push(max_deviation)
+  }
+  if (amplitudes.length < 10) return NO_ONSET
+  const baseline_end = Math.floor(amplitudes.length / 4)
+  const baseline_amp = median(amplitudes.slice(0, baseline_end))
+  if (baseline_amp === 0) return NO_ONSET
+  let max_score = 0
+  for (let idx = baseline_end; idx < amplitudes.length; idx++) {
+    const ratio = amplitudes[idx] / baseline_amp
+    if (ratio > max_score) max_score = ratio
+    if (ratio > 10) return { onset_index: idx + half_window, score: ratio / 10 }
+  }
+  return { onset_index: -1, score: max_score / 10 }
+}
+
+// Method 3: more than max_changes derivative sign changes inside one window
+function detect_sign_change_frequency(
+  values: number[],
+  window_size: number,
+  max_changes = 3,
+): MethodResult {
+  const derivs = compute_derivatives(values)
+  if (derivs.length < window_size * 2) return NO_ONSET
+  const half_window = Math.floor(window_size / 2)
+  let max_score = 0
+  for (let idx = half_window; idx < derivs.length - half_window; idx++) {
+    let sign_changes = 0
+    for (let jdx = idx - half_window + 1; jdx < idx + half_window + 1; jdx++) {
+      if (derivs[jdx] * derivs[jdx - 1] < 0) sign_changes++
+    }
+    const score = sign_changes / max_changes
+    if (score > max_score) max_score = score
+    if (sign_changes > max_changes) return { onset_index: idx + 1, score }
+  }
+  return { onset_index: -1, score: max_score }
+}
+
+// Combined weighted detection; onset is the earliest onset any method reported
+export function detect_instability(
+  x_values: readonly number[],
+  y_values: readonly number[],
+  config: Pick<
+    CleaningConfig,
+    `oscillation_weights` | `oscillation_threshold` | `window_size`
+  > = {},
+): InstabilityResult {
+  const window_size = config.window_size ?? DEFAULT_WINDOW_SIZE
+  const threshold = config.oscillation_threshold ?? DEFAULT_OSCILLATION_THRESHOLD
+  const weights = {
+    derivative_variance: config.oscillation_weights?.derivative_variance ?? 1,
+    amplitude_growth: config.oscillation_weights?.amplitude_growth ?? 1,
+    sign_changes: config.oscillation_weights?.sign_changes ?? 1,
+  }
+  const valid_indices: number[] = []
+  const valid_y: number[] = []
+  for (let idx = 0; idx < y_values.length; idx++) {
+    if (!Number.isFinite(y_values[idx])) continue
+    valid_indices.push(idx)
+    valid_y.push(y_values[idx])
+  }
+  if (valid_y.length < window_size * 2) {
+    const method_scores = { derivative_variance: 0, amplitude_growth: 0, sign_changes: 0 }
+    return { detected: false, onset_index: -1, onset_x: NaN, combined_score: 0, method_scores }
+  }
+  const results = {
+    derivative_variance: detect_derivative_variance(valid_y, window_size, threshold),
+    amplitude_growth: detect_amplitude_growth(valid_y, window_size),
+    sign_changes: detect_sign_change_frequency(valid_y, window_size),
+  }
+  const methods = [`derivative_variance`, `amplitude_growth`, `sign_changes`] as const
+  const total_weight = methods.reduce((sum, method) => sum + weights[method], 0)
+  const combined_score =
+    total_weight > 0
+      ? methods.reduce((sum, method) => sum + weights[method] * results[method].score, 0) /
+        total_weight
+      : 0
+  const onsets = methods.map((method) => results[method].onset_index).filter((idx) => idx >= 0)
+  const valid_onset = onsets.length > 0 ? Math.min(...onsets) : -1
+  const onset_index = valid_onset >= 0 ? (valid_indices[valid_onset] ?? valid_onset) : -1
+  return {
+    detected: combined_score >= threshold || onset_index >= 0,
+    onset_index,
+    onset_x: onset_index >= 0 && onset_index < x_values.length ? x_values[onset_index] : NaN,
+    combined_score,
+    method_scores: {
+      derivative_variance: results.derivative_variance.score,
+      amplitude_growth: results.amplitude_growth.score,
+      sign_changes: results.sign_changes.score,
+    },
+  }
+}
+
+// === Smoothing ===
+
+// Centered finite-aware moving average
+export function smooth_moving_average(values: readonly number[], window: number): number[] {
+  if (values.length === 0 || !(window > 1)) return [...values]
+  const half_window = Math.floor(window / 2)
+  // Scaling by a power of two prevents same-sign windows from overflowing without
+  // introducing division roundoff into individual values.
+  const normalizer = 2 ** Math.ceil(Math.log2(2 * half_window + 1))
+  const result = Array<number>(values.length)
+  for (let idx = 0; idx < values.length; idx++) {
+    const end = Math.min(values.length, idx + half_window + 1)
+    const sum = new Adder()
+    let count = 0
+    for (let value_idx = Math.max(0, idx - half_window); value_idx < end; value_idx++) {
+      if (!Number.isFinite(values[value_idx])) continue
+      sum.add(values[value_idx] / normalizer)
+      count++
+    }
+    result[idx] = count > 0 ? (Number(sum) / count) * normalizer : values[idx]
+  }
+  return result
+}
+
+// Solve the square system A x = b in place by Gaussian elimination with partial pivoting.
+// Returns null when A is singular.
+function solve_linear(matrix: number[][], rhs: number[]): number[] | null {
+  const size = rhs.length
+  const aug = matrix.map((row, idx) => [...row, rhs[idx]])
+  for (let col = 0; col < size; col++) {
+    let pivot_row = col
+    for (let row = col + 1; row < size; row++) {
+      if (Math.abs(aug[row][col]) > Math.abs(aug[pivot_row][col])) pivot_row = row
+    }
+    if (Math.abs(aug[pivot_row][col]) < 1e-10) return null
+    ;[aug[col], aug[pivot_row]] = [aug[pivot_row], aug[col]]
+    const pivot = aug[col][col]
+    for (let jdx = col; jdx <= size; jdx++) aug[col][jdx] /= pivot
+    for (let row = 0; row < size; row++) {
+      if (row === col) continue
+      const factor = aug[row][col]
+      if (factor === 0) continue
+      for (let jdx = col; jdx <= size; jdx++) aug[row][jdx] -= factor * aug[col][jdx]
+    }
+  }
+  return aug.map((row) => row[size])
+}
+
+// Savitzky-Golay smoothing kernel: first row of (V^T V)^-1 V^T for the Vandermonde matrix V of
+// window offsets. With A = V^T V symmetric, that row is (A^-1 e0)^T V^T, so one linear solve
+// for w = A^-1 e0 gives coefficient_j = sum_k w_k * offset_j^k.
+function compute_savgol_coefficients(window: number, order: number): number[] {
+  const half = Math.floor(window / 2)
+  const offsets = Array.from({ length: 2 * half + 1 }, (_, idx) => idx - half)
+  const gram = Array.from({ length: order + 1 }, (_row, row) =>
+    Array.from({ length: order + 1 }, (_col, col) =>
+      offsets.reduce((sum, offset) => sum + offset ** (row + col), 0),
+    ),
+  )
+  const weights = solve_linear(gram, [1, ...Array(order).fill(0)])
+  if (!weights) return offsets.map(() => 1 / offsets.length)
+  return offsets.map((offset) =>
+    weights.reduce((sum, weight, power) => sum + weight * offset ** power, 0),
+  )
+}
+
+// Savitzky-Golay filter (derivative-preserving) - O(n * window)
+export function smooth_savitzky_golay(
+  values: number[],
+  window: number,
+  polynomial_order: number = DEFAULT_POLYNOMIAL_ORDER,
+): number[] {
+  if (values.length === 0) return []
+  // Window must be odd, at least polynomial_order + 2 wide and no wider than the data
+  let actual_window = window % 2 === 0 ? window + 1 : window
+  actual_window = Math.min(Math.max(actual_window, polynomial_order + 2), values.length)
+  if (actual_window % 2 === 0) actual_window -= 1
+  if (actual_window < 3) return [...values]
+
+  const coeffs = compute_savgol_coefficients(actual_window, polynomial_order)
+  const half = Math.floor(actual_window / 2)
+  const coeffs_sum = coeffs.reduce((sum, coeff) => sum + coeff, 0)
+  const result: number[] = Array(values.length)
+  for (let idx = 0; idx < values.length; idx++) {
+    let [sum, weight_sum] = [0, 0]
+    for (let jdx = 0; jdx < actual_window; jdx++) {
+      const data_idx = idx - half + jdx
+      if (data_idx < 0 || data_idx >= values.length || !Number.isFinite(values[data_idx]))
+        continue
+      sum += coeffs[jdx] * values[data_idx]
+      weight_sum += coeffs[jdx]
+    }
+    // Renormalize over the finite neighbours. A window whose finite coefficients cancel
+    // (e.g. a fully-determined fit with a non-finite center) has nothing to smooth with.
+    result[idx] = Math.abs(weight_sum) > 1e-9 ? (sum / weight_sum) * coeffs_sum : values[idx]
+  }
+  return result
+}
+
 function apply_smoothing(
   x_values: number[],
   y_values: number[],
@@ -85,14 +377,73 @@ function apply_smoothing(
 ): number[] {
   if (config.type === `moving_avg`) return smooth_moving_average(y_values, config.window)
   if (config.type === `savgol`) {
-    // pass polynomial_order through: when it's undefined, smooth_savitzky_golay's
-    // default parameter applies (JS defaults also kick in for an explicit undefined)
     return smooth_savitzky_golay(y_values, config.window, config.polynomial_order)
   }
-  return config.type === `gaussian`
-    ? apply_gaussian_smearing(x_values, y_values, config.sigma)
-    : y_values
+  return apply_gaussian_smearing(x_values, y_values, config.sigma)
 }
+
+// === Local outlier removal ===
+
+// Median and MAD of the finite neighbours of center_idx (the center itself excluded)
+function local_median_and_mad(
+  values: readonly number[],
+  center_idx: number,
+  window_half: number,
+): { local_median: number; local_mad: number } {
+  const neighbours: number[] = []
+  const end = Math.min(values.length - 1, center_idx + window_half)
+  for (let idx = Math.max(0, center_idx - window_half); idx <= end; idx++) {
+    if (idx !== center_idx && Number.isFinite(values[idx])) neighbours.push(values[idx])
+  }
+  if (neighbours.length === 0) return { local_median: values[center_idx], local_mad: 0 }
+  const local_median = median(neighbours)
+  const local_mad = median(neighbours.map((val) => Math.abs(val - local_median)))
+  return { local_median, local_mad }
+}
+
+// Iterative sliding-window MAD outlier detection. Statistics are always computed from the
+// original values (not the progressively filtered ones) so one removal cannot shift its
+// neighbours' statistics and cascade into false positives. Points within window_half of either
+// end are never flagged: their one-sided window makes the local median trail any trend, which
+// used to delete the genuine endpoints of every monotonic series.
+export function remove_local_outliers(
+  y_values: readonly number[],
+  config: LocalOutlierConfig = {},
+): LocalOutlierResult {
+  const window_half = config.window_half ?? DEFAULT_LOCAL_WINDOW_HALF
+  const mad_threshold = config.mad_threshold ?? DEFAULT_LOCAL_MAD_THRESHOLD
+  const max_iterations = config.max_iterations ?? DEFAULT_LOCAL_MAX_ITERATIONS
+  const len = y_values.length
+  // Need enough neighbours for meaningful local statistics
+  if (len < window_half * 2 + 1) {
+    return { kept_indices: index_range(len), removed_indices: [], iterations_used: 0 }
+  }
+  const kept = Array<boolean>(len).fill(true)
+  let iterations_used = 0
+  for (let iter = 0; iter < max_iterations; iter++) {
+    iterations_used = iter + 1
+    let removed_any = false
+    for (let idx = window_half; idx < len - window_half; idx++) {
+      if (!kept[idx] || !Number.isFinite(y_values[idx])) continue
+      const { local_median, local_mad } = local_median_and_mad(y_values, idx, window_half)
+      // Cannot compute robust threshold if MAD is zero (all neighbours identical)
+      if (local_mad === 0) continue
+      if (Math.abs(y_values[idx] - local_median) > local_mad * mad_threshold) {
+        kept[idx] = false
+        removed_any = true
+      }
+    }
+    if (!removed_any) break
+  }
+  const indices = index_range(len)
+  return {
+    kept_indices: indices.filter((idx) => kept[idx]),
+    removed_indices: indices.filter((idx) => !kept[idx]),
+    iterations_used,
+  }
+}
+
+// === Invalid values and bounds ===
 
 export function handle_invalid_values(
   values: number[],
@@ -100,8 +451,7 @@ export function handle_invalid_values(
 ): { cleaned: number[]; removed_indices: number[]; invalid_count: number } {
   const removed_indices: number[] = []
   let invalid_count = 0
-
-  if (mode === `propagate` || mode === `remove`) {
+  if (mode !== `interpolate`) {
     const cleaned: number[] = []
     for (let idx = 0; idx < values.length; idx++) {
       const value = values[idx]
@@ -112,35 +462,43 @@ export function handle_invalid_values(
     }
     return { cleaned, removed_indices, invalid_count }
   }
-
+  // Linear interpolation between the nearest finite neighbours; edges hold the nearest value
   const cleaned = [...values]
   for (let idx = 0; idx < cleaned.length; idx++) {
-    if (!Number.isFinite(cleaned[idx])) {
-      invalid_count++
-      // Find nearest valid neighbors
-      let left_idx = idx - 1
-      while (left_idx >= 0 && !Number.isFinite(cleaned[left_idx])) left_idx--
-
-      let right_idx = idx + 1
-      while (right_idx < cleaned.length && !Number.isFinite(cleaned[right_idx])) {
-        right_idx++
-      }
-
-      if (left_idx >= 0 && right_idx < cleaned.length) {
-        // Linear interpolation
-        const frac = (idx - left_idx) / (right_idx - left_idx)
-        cleaned[idx] = cleaned[left_idx] + frac * (cleaned[right_idx] - cleaned[left_idx])
-      } else if (left_idx >= 0) {
-        cleaned[idx] = cleaned[left_idx]
-      } else if (right_idx < cleaned.length) {
-        cleaned[idx] = cleaned[right_idx]
-      } else {
-        cleaned[idx] = 0
-      }
-    }
+    if (Number.isFinite(cleaned[idx])) continue
+    invalid_count++
+    let left_idx = idx - 1
+    while (left_idx >= 0 && !Number.isFinite(cleaned[left_idx])) left_idx--
+    let right_idx = idx + 1
+    while (right_idx < cleaned.length && !Number.isFinite(cleaned[right_idx])) right_idx++
+    const has_left = left_idx >= 0
+    const has_right = right_idx < cleaned.length
+    if (has_left && has_right) {
+      const frac = (idx - left_idx) / (right_idx - left_idx)
+      cleaned[idx] = cleaned[left_idx] + frac * (cleaned[right_idx] - cleaned[left_idx])
+    } else cleaned[idx] = has_left ? cleaned[left_idx] : has_right ? cleaned[right_idx] : 0
   }
-
   return { cleaned, removed_indices: [], invalid_count }
+}
+
+// Resolve static or x-dependent bounds at one x. NaN values compare false on both checks and
+// therefore count as in-bounds.
+const bounds_violation = (
+  y_val: number,
+  x_val: number,
+  bounds: PhysicalBounds,
+): { below: number | null; above: number | null } => {
+  const min = typeof bounds.min === `function` ? bounds.min(x_val) : bounds.min
+  const max = typeof bounds.max === `function` ? bounds.max(x_val) : bounds.max
+  return {
+    below: min !== undefined && y_val < min ? min : null,
+    above: max !== undefined && y_val > max ? max : null,
+  }
+}
+
+const is_in_bounds = (y_val: number, x_val: number, bounds: PhysicalBounds): boolean => {
+  const { below, above } = bounds_violation(y_val, x_val, bounds)
+  return below === null && above === null
 }
 
 export function apply_bounds(
@@ -148,166 +506,93 @@ export function apply_bounds(
   y_values: number[],
   bounds: PhysicalBounds,
 ): { y: number[]; violations: number; filtered_indices: number[] } {
+  const mode = bounds.mode ?? `clamp`
   const result = [...y_values]
   const filtered_indices: number[] = []
   let violations = 0
-
   for (let idx = 0; idx < result.length; idx++) {
-    const x_val = x_values[idx]
-    const y_val = result[idx]
-    // Resolve bounds once per point; is_in_bounds would redundantly re-resolve them
-    // (costly when min/max are functions of x). NaN compares false on both checks
-    // and thus counts as in-bounds, matching is_in_bounds semantics.
-    const { min: min_bound, max: max_bound } = resolve_physical_bounds(x_val, bounds)
-    const below_min = min_bound !== undefined && y_val < min_bound
-    const above_max = max_bound !== undefined && y_val > max_bound
-
-    if (below_min || above_max) {
-      violations++
-      const mode = bounds.mode ?? `clamp`
-
-      if (mode === `clamp`) {
-        if (below_min) result[idx] = min_bound
-        if (above_max) result[idx] = max_bound
-      } else if (mode === `filter`) {
-        filtered_indices.push(idx)
-      } else if (mode === `null`) {
-        result[idx] = NaN
-      }
-    }
+    const { below, above } = bounds_violation(result[idx], x_values[idx], bounds)
+    if (below === null && above === null) continue
+    violations++
+    if (mode === `clamp`) result[idx] = above ?? below ?? result[idx]
+    else if (mode === `filter`) filtered_indices.push(idx)
+    else result[idx] = NaN
   }
-
   return { y: result, violations, filtered_indices }
 }
 
-const filter_by_indices = <T>(arr: readonly T[], kept_indices: number[]): T[] =>
-  kept_indices.map((idx) => arr[idx])
+// === Series orchestration ===
 
 export const sync_metadata = <M>(
   metadata: M[] | M | undefined,
   kept_indices: number[],
-): M[] | M | undefined =>
-  Array.isArray(metadata) ? filter_by_indices(metadata, kept_indices) : metadata
-
-const index_range = (length: number): number[] => Array.from({ length }, (_, idx) => idx)
-
-const finite_aligned_indices = (
-  arrays: readonly (readonly number[])[],
-  length: number,
-): number[] =>
-  index_range(length).filter((idx) => arrays.every((arr) => Number.isFinite(arr[idx])))
-
-const count_invalid = (values: readonly number[], length: number): number => {
-  let count = 0
-  for (let idx = 0; idx < length; idx++) if (!Number.isFinite(values[idx])) count++
-  return count
-}
-
-const resolve_physical_bounds = (
-  x_val: number,
-  bounds: PhysicalBounds,
-): { min: number | undefined; max: number | undefined } => ({
-  min: typeof bounds.min === `function` ? bounds.min(x_val) : bounds.min,
-  max: typeof bounds.max === `function` ? bounds.max(x_val) : bounds.max,
-})
-
-// Check if value is within bounds (static or x-dependent).
-// NB: NaN values compare false on both checks and therefore count as in-bounds.
-function is_in_bounds(val: number, x_val: number, bounds: PhysicalBounds): boolean {
-  const { min, max } = resolve_physical_bounds(x_val, bounds)
-  if (min !== undefined && val < min) return false
-  if (max !== undefined && val > max) return false
-  return true
-}
-
-function kept_indices_excluding(length: number, removed: number[]): number[] {
-  const removed_set = new Set(removed)
-  return index_range(length).filter((idx) => !removed_set.has(idx))
-}
+): M[] | M | undefined => (Array.isArray(metadata) ? pick(metadata, kept_indices) : metadata)
 
 export function clean_series<T extends DataSeries>(
   series: T,
   config: CleaningConfig = {},
 ): CleaningResult<T> {
   assert_series_lengths(series)
-  const in_place = config.in_place ?? true
   const invalid_mode = config.invalid_values ?? `remove`
-  const truncation_mode = config.truncation_mode ?? `mark_unstable`
-
-  // Always work with copies initially
-  let x_arr = [...series.x]
-  let y_arr = [...series.y]
-  let raw_y = series.raw_y ? [...series.raw_y] : undefined
-  let metadata = series.metadata
-  let color_values = series.color_values ? [...series.color_values] : undefined
-  let size_values = series.size_values ? [...series.size_values] : undefined
-
   const quality = create_cleaning_quality()
 
-  const apply_filter = (kept: number[], removed_count: number) => {
-    x_arr = filter_by_indices(x_arr, kept)
-    y_arr = filter_by_indices(y_arr, kept)
-    if (raw_y) raw_y = filter_by_indices(raw_y, kept)
-    metadata = sync_metadata(metadata, kept)
-    if (color_values) color_values = filter_by_indices(color_values, kept)
-    if (size_values) size_values = filter_by_indices(size_values, kept)
-    quality.points_removed += removed_count
+  // `kept` indexes the original arrays; y_arr stays aligned with it so every filter pass
+  // touches only those two and the auxiliary arrays are materialized once at the end.
+  let kept = index_range(series.y.length)
+  let y_arr = [...series.y]
+  const drop = (removed: readonly number[]) => {
+    if (removed.length === 0) return
+    const removed_set = new Set(removed)
+    const survivors = kept.map((_, idx) => idx).filter((idx) => !removed_set.has(idx))
+    kept = pick(kept, survivors)
+    y_arr = pick(y_arr, survivors)
+    quality.points_removed += removed.length
   }
 
   const invalid_result = handle_invalid_values(y_arr, invalid_mode)
   quality.invalid_values_found = invalid_result.invalid_count
-
-  if (invalid_mode === `remove` && invalid_result.removed_indices.length > 0) {
-    const kept = kept_indices_excluding(x_arr.length, invalid_result.removed_indices)
-    apply_filter(kept, invalid_result.removed_indices.length)
-  } else {
-    y_arr = invalid_result.cleaned
-  }
+  if (invalid_mode === `remove`) drop(invalid_result.removed_indices)
+  else y_arr = invalid_result.cleaned
 
   if (config.bounds) {
-    const bounds_result = apply_bounds(x_arr, y_arr, config.bounds)
-    y_arr = bounds_result.y
-    quality.bounds_violations = bounds_result.violations
-
-    if (config.bounds.mode === `filter` && bounds_result.filtered_indices.length > 0) {
-      const kept = kept_indices_excluding(x_arr.length, bounds_result.filtered_indices)
-      apply_filter(kept, bounds_result.filtered_indices.length)
-    }
+    const { y, violations, filtered_indices } = apply_bounds(
+      pick(series.x, kept),
+      y_arr,
+      config.bounds,
+    )
+    y_arr = y
+    quality.bounds_violations = violations
+    drop(filtered_indices)
   }
 
   if (config.local_outliers) {
-    const outlier_result = remove_local_outliers(y_arr, config.local_outliers)
-    quality.outliers_removed = outlier_result.removed_indices.length
-
-    if (outlier_result.removed_indices.length > 0) {
-      apply_filter(outlier_result.kept_indices, outlier_result.removed_indices.length)
-    }
+    const { removed_indices } = remove_local_outliers(y_arr, config.local_outliers)
+    quality.outliers_removed = removed_indices.length
+    drop(removed_indices)
   }
 
+  let x_arr = pick(series.x, kept)
   if (config.smooth) y_arr = apply_smoothing(x_arr, y_arr, config.smooth)
 
   const instability = detect_instability(x_arr, y_arr, config)
   quality.oscillation_detected = instability.detected
   quality.oscillation_score = instability.combined_score
-
   if (instability.detected && instability.onset_index >= 0) {
-    if (truncation_mode === `hard_cut`) {
-      const kept = index_range(instability.onset_index)
+    if ((config.truncation_mode ?? `mark_unstable`) === `hard_cut`) {
       quality.truncated_at_x = instability.onset_x
-      apply_filter(kept, x_arr.length - instability.onset_index)
-    } else {
-      quality.stable_range = [x_arr[0], instability.onset_x]
-    }
+      drop(index_range(x_arr.length).slice(instability.onset_index))
+      x_arr = pick(series.x, kept)
+    } else quality.stable_range = [x_arr[0], instability.onset_x]
   }
 
-  const result_series = in_place ? series : { ...series }
+  const result_series = (config.in_place ?? true) ? series : { ...series }
   result_series.x = x_arr
   result_series.y = y_arr
-  if (raw_y) result_series.raw_y = raw_y
-  if (metadata !== undefined) result_series.metadata = metadata
-  if (color_values) result_series.color_values = color_values
-  if (size_values) result_series.size_values = size_values
-
+  if (series.raw_y) result_series.raw_y = pick(series.raw_y, kept)
+  if (series.metadata !== undefined)
+    result_series.metadata = sync_metadata(series.metadata, kept)
+  if (series.color_values) result_series.color_values = pick(series.color_values, kept)
+  if (series.size_values) result_series.size_values = pick(series.size_values, kept)
   return { series: result_series, quality }
 }
 
@@ -320,22 +605,23 @@ export function clean_multi_series(
   const invalid_mode = config.invalid_values ?? `remove`
   const { bounds, smooth } = config
   const length = Math.min(x_values.length, ...y_arrays.map((array) => array.length))
-  let kept_indices =
-    invalid_mode === `remove` ? finite_aligned_indices(y_arrays, length) : index_range(length)
-  if (bounds?.mode === `filter`) {
-    kept_indices = kept_indices.filter((idx) =>
-      y_arrays.every((array) => is_in_bounds(array[idx], x_values[idx], bounds)),
-    )
-  }
-
-  const x = filter_by_indices(x_values, kept_indices)
-  const quality = y_arrays.map((array) =>
-    create_cleaning_quality(length - kept_indices.length, count_invalid(array, length)),
+  const kept_indices = index_range(length).filter(
+    (idx) =>
+      (invalid_mode !== `remove` || y_arrays.every((array) => Number.isFinite(array[idx]))) &&
+      (bounds?.mode !== `filter` ||
+        y_arrays.every((array) => is_in_bounds(array[idx], x_values[idx], bounds))),
   )
+  const x = pick(x_values, kept_indices)
+  const quality = y_arrays.map((array) => {
+    let invalid_count = 0
+    for (let idx = 0; idx < length; idx++) if (!Number.isFinite(array[idx])) invalid_count++
+    return create_cleaning_quality(length - kept_indices.length, invalid_count)
+  })
   const cleaned_y = y_arrays.map((array, array_idx) => {
-    let cleaned = filter_by_indices(array, kept_indices)
-    if (invalid_mode === `interpolate`)
+    let cleaned = pick(array, kept_indices)
+    if (invalid_mode === `interpolate`) {
       cleaned = handle_invalid_values(cleaned, `interpolate`).cleaned
+    }
     if (bounds && bounds.mode !== `filter`) {
       const result = apply_bounds(x, cleaned, bounds)
       cleaned = result.y
@@ -346,8 +632,8 @@ export function clean_multi_series(
   return { x, cleaned_y, quality }
 }
 
-// Clean correlated x/y/z for 3D data
-// All three arrays are filtered to the intersection of valid indices
+// Clean correlated x/y/z for 3D data. All three arrays are filtered to the intersection of
+// valid indices; bounds filter on `primary_axis` (resolved against x for x-dependent bounds).
 export function clean_xyz(
   x_values: readonly number[],
   y_values: readonly number[],
@@ -355,63 +641,43 @@ export function clean_xyz(
   config: CleaningConfig & { primary_axis?: `x` | `y` | `z` } = {},
 ): { x: number[]; y: number[]; z: number[]; quality: CleaningQuality } {
   const invalid_mode = config.invalid_values ?? `remove`
+  const { bounds, smooth, primary_axis = `x` } = config
   const length = Math.min(x_values.length, y_values.length, z_values.length)
+  const columns = { x: x_values, y: y_values, z: z_values }
+  const axes = [`x`, `y`, `z`] as const
+  const pick_rows = (cols: typeof columns, indices: number[]) => ({
+    x: pick(cols.x, indices),
+    y: pick(cols.y, indices),
+    z: pick(cols.z, indices),
+  })
 
-  const { bounds, smooth } = config
-
-  const kept_indices: number[] = []
   let invalid_count = 0
+  const kept_indices: number[] = []
   for (let idx = 0; idx < length; idx++) {
-    const x_is_valid = Number.isFinite(x_values[idx])
-    const y_is_valid = Number.isFinite(y_values[idx])
-    const z_is_valid = Number.isFinite(z_values[idx])
-    invalid_count += Number(!x_is_valid) + Number(!y_is_valid) + Number(!z_is_valid)
-    const is_valid = x_is_valid && y_is_valid && z_is_valid
-    if (is_valid || invalid_mode !== `remove`) kept_indices.push(idx)
+    const invalid_here = axes.filter((axis) => !Number.isFinite(columns[axis][idx])).length
+    invalid_count += invalid_here
+    if (invalid_here === 0 || invalid_mode !== `remove`) kept_indices.push(idx)
   }
-
-  let filtered = {
-    x: kept_indices.map((idx) => x_values[idx]),
-    y: kept_indices.map((idx) => y_values[idx]),
-    z: kept_indices.map((idx) => z_values[idx]),
-  }
-
   const quality = create_cleaning_quality(length - kept_indices.length, invalid_count)
-
+  let filtered = pick_rows(columns, kept_indices)
   if (invalid_mode === `interpolate`) {
-    filtered.x = handle_invalid_values(filtered.x, `interpolate`).cleaned
-    filtered.y = handle_invalid_values(filtered.y, `interpolate`).cleaned
-    filtered.z = handle_invalid_values(filtered.z, `interpolate`).cleaned
+    for (const axis of axes) {
+      filtered[axis] = handle_invalid_values(filtered[axis], `interpolate`).cleaned
+    }
   }
-
-  // Apply bounds filter on primary axis
   if (bounds?.mode === `filter`) {
-    const primary = config.primary_axis ?? `x`
-    const bounds_kept: number[] = []
-    for (let idx = 0; idx < filtered.x.length; idx++) {
-      const primary_val = filtered[primary][idx]
-      // Use x-axis value for dynamic bounds computation (e.g., max: (x_val) => x_val * 2)
-      if (is_in_bounds(primary_val, filtered.x[idx], bounds)) {
-        bounds_kept.push(idx)
-      } else {
-        quality.bounds_violations++
-      }
-    }
-    filtered = {
-      x: bounds_kept.map((idx) => filtered.x[idx]),
-      y: bounds_kept.map((idx) => filtered.y[idx]),
-      z: bounds_kept.map((idx) => filtered.z[idx]),
-    }
-    quality.points_removed += kept_indices.length - bounds_kept.length
+    const bounds_kept = index_range(filtered.x.length).filter((idx) =>
+      is_in_bounds(filtered[primary_axis][idx], filtered.x[idx], bounds),
+    )
+    quality.bounds_violations = filtered.x.length - bounds_kept.length
+    quality.points_removed += quality.bounds_violations
+    filtered = pick_rows(filtered, bounds_kept)
   }
-
-  // Smooth dependent axes (y, z) using x as independent reference
-  // x-axis is never smoothed as it's typically the independent variable (time, index, etc.)
+  // x is the independent variable (time, index, ...) and is never smoothed
   if (smooth) {
     filtered.y = apply_smoothing(filtered.x, filtered.y, smooth)
     filtered.z = apply_smoothing(filtered.x, filtered.z, smooth)
   }
-
   return { ...filtered, quality }
 }
 
@@ -422,7 +688,6 @@ export function clean_trajectory_props(
 ): { props: Record<string, number[]>; quality: Record<string, CleaningQuality> } {
   const entries = Object.entries(props)
   if (entries.length === 0) return { props: {}, quality: {} }
-
   const { independent_axis = `Step`, invalid_values, smooth } = config
   const property_arrays = entries.map(([, values]) => values)
   const length = Math.min(...property_arrays.map((values) => values.length))
@@ -433,14 +698,12 @@ export function clean_trajectory_props(
   )
   const result_props: Record<string, number[]> = {}
   const quality_reports: Record<string, CleaningQuality> = {}
-
   for (const [array_idx, [key]] of entries.entries()) {
     const cleaned = result.cleaned_y[array_idx]
     result_props[key] =
       smooth && key !== independent_axis ? apply_smoothing(result.x, cleaned, smooth) : cleaned
     quality_reports[key] = result.quality[array_idx]
   }
-
   // Add independent axis if not in original props
   if (!props[independent_axis]) {
     result_props[independent_axis] = result.x
@@ -448,6 +711,5 @@ export function clean_trajectory_props(
       result.quality[0].points_removed,
     )
   }
-
   return { props: result_props, quality: quality_reports }
 }

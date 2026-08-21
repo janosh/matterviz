@@ -129,35 +129,31 @@ export async function fetch_optimade_providers(): Promise<OptimadeProvider[]> {
     return cached_providers
   }
 
-  try {
-    const response = await fetch_with_cors_proxy(`https://providers.optimade.org/v1/links`)
-    const data: { data: OptimadeProvider[] } = await response.json()
-    const providers = data.data
-      .filter((provider) => provider.attributes.base_url)
-      .map((provider) => ({
-        id: provider.id,
-        type: `links` as const,
-        attributes: {
-          name: provider.attributes.name,
-          description: provider.attributes.description,
-          base_url: provider.attributes.base_url,
-          homepage: provider.attributes.homepage,
-          version: provider.attributes.version,
-        },
-      }))
+  const response = await fetch_with_cors_proxy(`https://providers.optimade.org/v1/links`)
+  const data: { data: OptimadeProvider[] } = await response.json()
+  const providers = data.data
+    .filter((provider) => provider.attributes.base_url)
+    .map((provider) => ({
+      id: provider.id,
+      type: `links` as const,
+      attributes: {
+        name: provider.attributes.name,
+        description: provider.attributes.description,
+        base_url: provider.attributes.base_url,
+        homepage: provider.attributes.homepage,
+        version: provider.attributes.version,
+      },
+    }))
 
-    cached_providers = providers
-    providers_cache_time = now
-    return providers
-  } catch (error) {
-    console.warn(`Failed to fetch OPTIMADE providers:`, error)
-    throw error
-  }
+  cached_providers = providers
+  providers_cache_time = now
+  return providers
 }
 
-// URL encode/decode utilities for structure IDs with special characters
+// URL encode/decode utilities for structure IDs with special characters (encodeURIComponent
+// leaves dots alone, but a trailing `.` in a path segment is routinely stripped by servers)
 export const encode_structure_id = (id: string) =>
-  encodeURIComponent(id).replaceAll('.', `%2E`).replaceAll('/', `%2F`)
+  encodeURIComponent(id).replaceAll(`.`, `%2E`)
 
 export const decode_structure_id = (encoded_id: string) => decodeURIComponent(encoded_id)
 

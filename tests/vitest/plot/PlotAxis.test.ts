@@ -1,11 +1,6 @@
 import { AXIS_LABEL_CONTAINER } from '$lib/plot/core/axis-utils'
 import PlotAxis from '$lib/plot/core/components/PlotAxis.svelte'
-import {
-  AXIS_LABEL_HEIGHT,
-  AXIS_TITLE_OFFSET,
-  AXIS_TITLE_WRAP_WIDTH,
-  TICK_LABEL_HEIGHT,
-} from '$lib/plot/core/layout'
+import { AXIS_LABEL_HEIGHT, AXIS_TITLE_OFFSET, TICK_LABEL_HEIGHT } from '$lib/plot/core/layout'
 import { get_text_metrics_revision } from '$lib/plot/core/text-metrics'
 import { type ComponentProps, mount, tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
@@ -222,10 +217,11 @@ describe(`PlotAxis`, () => {
       label_x: 100,
       label_y: 50,
     })
-    expect(with_label.querySelector(`.axis-label.x-label`)).not.toBeNull()
-    expect(Number(query(with_label, `foreignObject`).getAttribute(`height`))).toBe(
-      AXIS_LABEL_HEIGHT,
-    )
+    const label = query(with_label, `.axis-label.x-label`)
+    expect(label.tagName.toLowerCase()).toBe(`text`)
+    expect(label.getAttribute(`x`)).toBe(`100`)
+    expect(label.getAttribute(`y`)).toBe(`50`)
+    expect(with_label.querySelector(`foreignObject`)).toBeNull()
 
     const no_coords = await mount_axis({ side: `x`, ticks: [50], axis: { label: `Energy` } })
     expect(no_coords.querySelector(`.axis-label`)).toBeNull()
@@ -241,65 +237,50 @@ describe(`PlotAxis`, () => {
     })
     const label = query(svg, `.axis-label.y-label`)
     expect(label.tagName.toLowerCase()).toBe(`text`)
-    expect(label.closest(`foreignObject`)).toBeNull()
     expect(label.parentElement?.getAttribute(`transform`)).toBe(`rotate(-90, 20, 50)`)
     expect([...label.children].map(({ textContent }) => textContent?.trim())).toEqual([
       `Energy`,
       `per atom`,
     ])
+    // Lines are centered on label_y: first line sits half a line-height above it
+    expect([...label.children].map((line) => line.getAttribute(`y`))).toEqual([
+      `${50 - AXIS_LABEL_HEIGHT / 2}`,
+      `${50 + AXIS_LABEL_HEIGHT / 2}`,
+    ])
   })
 
-  // Spans the wrap budget and stays centered on label_x. Hugging the measured text instead
-  // made the box narrower than the rendered glyphs, so the browser re-wrapped a title that
-  // fits — "Model" rendered as "Mod"/"el".
+  // Long titles wrap at the plot width (x) or the fixed vertical budget (y) into tspans
+  // centered on label_x; sub/sup markup survives as shifted segments.
   test.each([
-    [`narrow plot`, 200],
-    [`wide plot`, 600],
-  ])(`x-axis label container stays centered on label_x (%s)`, async (_desc, plot_width) => {
-    mock_text_measurement()
-    const label_x = 123
-    const svg = await mount_axis({
-      side: `x`,
-      ticks: [50],
-      axis: { label: `Energy` },
-      label_x,
-      label_y: 50,
-      width: plot_width,
-    })
-    const foreign_obj = query(svg, `.x-axis foreignObject`)
-    const foreign_obj_x = Number(foreign_obj.getAttribute(`x`))
-    const foreign_obj_w = Number(foreign_obj.getAttribute(`width`))
-    expect(foreign_obj_w).toBe(Math.max(plot_width - pad.l - pad.r, AXIS_TITLE_WRAP_WIDTH))
-    expect(foreign_obj_x + foreign_obj_w / 2).toBe(label_x)
-  })
-
-  test.each([
-    [`x`, `foreignObject`],
-    [`y`, `text`],
-  ] as const)(`long %s axis title wraps in a measured block`, async (side, tag) => {
+    [`x`, 400, 2],
+    [`x`, 200, 3],
+    [`y`, 200, 3],
+  ] as const)(`long %s axis title wraps (width=%s)`, async (side, plot_width, min_lines) => {
     mock_text_measurement()
     const svg = await mount_axis({
       side,
       ticks: [50],
+      width: plot_width,
       axis: {
-        label: `Formation energy per atom with a deliberately descriptive scientific title`,
+        label: `Formation E<sub>hull</sub> per atom with a deliberately descriptive scientific title`,
       },
-      label_x: 100,
+      label_x: 123,
       label_y: 50,
     })
     const label = query(svg, `.axis-label.${side}-label`)
-    expect(label.closest(tag)).not.toBeNull()
-    if (side === `x`) {
-      const lines = label.querySelectorAll(`.static-label > span`).length
-      expect(lines).toBeGreaterThan(1)
-      expect(Number(query(svg, `foreignObject`).getAttribute(`height`))).toBe(lines * 20)
-    } else {
-      expect(label.querySelectorAll(`tspan`).length).toBeGreaterThan(1)
-    }
+    expect(label.getAttribute(`x`)).toBe(`123`)
+    expect(svg.querySelector(`foreignObject`)).toBeNull()
+    const lines = [...label.children]
+    expect(lines.length).toBeGreaterThanOrEqual(min_lines)
+    expect(lines.every((line) => line.getAttribute(`x`) === `123`)).toBe(true)
+    expect(label.querySelector(`tspan[baseline-shift="sub"]`)?.textContent?.trim()).toBe(
+      `hull`,
+    )
   })
 
-  test(`interactive title foreignObject fits the closed selected trigger`, async () => {
+  test(`interactive title renders a listbox trigger in a foreignObject sized to it`, async () => {
     mock_text_measurement()
+    const on_axis_change = vi.fn()
     const svg = await mount_axis({
       side: `x`,
       ticks: [50],
@@ -312,15 +293,57 @@ describe(`PlotAxis`, () => {
       },
       label_x: 100,
       label_y: 50,
+      on_axis_change,
     })
-    const trigger = query(svg, `.axis-trigger`)
+    const trigger = query(svg, `button.axis-trigger`)
     const foreign_obj = query(svg, `foreignObject`)
+    const wrapper = query(svg, `.interactive-axis-label`)
 
     expect(trigger.textContent).toContain(`Long volume property (Å³)`)
+    expect(trigger.getAttribute(`aria-haspopup`)).toBe(`listbox`)
+    expect(wrapper.classList.contains(`loading`)).toBe(false)
+    expect(svg.querySelector(`.spinner`)).toBeNull()
     expect(Number(foreign_obj.getAttribute(`width`))).toBeGreaterThan(
       `Long volume property (Å³)`.length * 7,
     )
     expect(Number(foreign_obj.getAttribute(`height`))).toBe(AXIS_LABEL_CONTAINER.height)
+    // Clicks on the title must not start a pan/zoom drag on the host plot (Svelte delegates
+    // mousedown, so the stop is observable on the event rather than via a native ancestor)
+    const stop_spy = vi.spyOn(MouseEvent.prototype, `stopPropagation`)
+    wrapper.dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true }))
+    expect(stop_spy).toHaveBeenCalledTimes(1)
+  })
+
+  test.each([
+    [undefined, `Energy (eV)`],
+    [`volume`, `Volume (Å³)`],
+  ])(`interactive title with selected_key=%s shows %s`, async (selected_key, expected) => {
+    const options = [
+      { key: `energy`, label: `Energy`, unit: `eV` },
+      { key: `volume`, label: `Volume`, unit: `Å³` },
+    ]
+    const svg = await mount_axis({
+      side: `x`,
+      ticks: [50],
+      axis: { options, selected_key },
+      label_x: 100,
+      label_y: 50,
+    })
+    expect(query(svg, `button.axis-trigger`).textContent).toContain(expected)
+  })
+
+  test(`loading interactive title shows a spinner and disables the trigger`, async () => {
+    const svg = await mount_axis({
+      side: `x`,
+      ticks: [50],
+      axis: { options: [{ key: `energy`, label: `Energy`, unit: `eV` }] },
+      label_x: 100,
+      label_y: 50,
+      axis_loading: true,
+    })
+    expect(svg.querySelector(`.spinner`)).not.toBeNull()
+    expect((query(svg, `button.axis-trigger`) as HTMLButtonElement).disabled).toBe(true)
+    expect(query(svg, `.interactive-axis-label`).classList.contains(`loading`)).toBe(true)
   })
 
   // Regression guard: x and x2 rotate their tick labels to opposite anchors.
@@ -508,10 +531,7 @@ describe(`PlotAxis`, () => {
         label_x: 100,
         label_y,
       })
-      return (
-        Number(query(svg, `foreignObject`).getAttribute(`y`)) +
-        Number(query(svg, `foreignObject`).getAttribute(`height`)) / 2
-      )
+      return Number(query(svg, `.axis-label.x-label`).getAttribute(`y`))
     }
     const [outside_title, inside_title] = [await title_y(false), await title_y(true)]
     expect(inside_title).toBe(label_y)

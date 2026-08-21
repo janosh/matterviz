@@ -1,7 +1,7 @@
 // Data extraction functions for trajectory analysis and plotting
-import { get_density } from '$lib/structure/index'
+import { get_density } from '$lib/structure/density'
 import { calc_force_stats, copy_numeric_fields } from './helpers'
-import type { TrajectoryDataExtractor, TrajectoryFrame, TrajectoryType } from './index'
+import type { TrajectoryDataExtractor, TrajectoryFrame } from './index'
 
 // Build an extractor that copies the listed numeric metadata fields (plus Step)
 const make_metadata_extractor =
@@ -12,7 +12,6 @@ const make_metadata_extractor =
     return data
   }
 
-// Common data extractor that extracts energy-related properties
 export const energy_data_extractor: TrajectoryDataExtractor = make_metadata_extractor([
   `energy`,
   `energy_per_atom`,
@@ -21,44 +20,29 @@ export const energy_data_extractor: TrajectoryDataExtractor = make_metadata_extr
   `total_energy`,
 ])
 
-// Data extractor for forces and stresses
+// Force statistics from the per-atom forces array when present (preferred), else whatever
+// scalar summaries the parser recorded. A relaxed structure legitimately has force_max 0.
 export const force_stress_data_extractor: TrajectoryDataExtractor = (
   frame: TrajectoryFrame,
 ): Record<string, number> => {
-  const data: Record<string, number> = {
-    Step: frame.step,
-  }
-
-  if (frame.metadata) {
-    // Calculate force properties from forces array if available (preferred)
-    if (frame.metadata.forces && Array.isArray(frame.metadata.forces)) {
-      // Object.assign ignores the null calc_force_stats returns for empty forces
-      Object.assign(data, calc_force_stats(frame.metadata.forces as number[][]))
-    } else {
-      // Fallback to metadata values if forces array not available
-      if (frame.metadata.force_max && typeof frame.metadata.force_max === `number`) {
-        data.force_max = frame.metadata.force_max
-      }
-      if (frame.metadata.force_norm && typeof frame.metadata.force_norm === `number`) {
-        data.force_norm = frame.metadata.force_norm
-      }
-    }
-
-    // Extract other stress and pressure properties (no duplicates expected)
-    copy_numeric_fields(data, frame.metadata, [
-      `stress_max`,
-      `stress_frobenius`,
-      `stress_trace`,
-      `pressure`,
-    ])
-  }
-
+  const data: Record<string, number> = { Step: frame.step }
+  const { metadata } = frame
+  if (!metadata) return data
+  if (Array.isArray(metadata.forces)) {
+    // Object.assign ignores the null calc_force_stats returns for empty forces
+    Object.assign(data, calc_force_stats(metadata.forces as number[][]))
+  } else copy_numeric_fields(data, metadata, [`force_max`, `force_norm`])
+  // pressure lives here, not in structural_data_extractor, so full_data_extractor gets it once
+  copy_numeric_fields(data, metadata, [
+    `stress_max`,
+    `stress_frobenius`,
+    `stress_trace`,
+    `pressure`,
+  ])
   return data
 }
 
-// Data extractor for SCF/electronic-convergence properties. Parsers emit these
-// per frame (per ionic step, or per SCF step for static single-point runs) —
-// e.g. the vaspout.h5 parser fills them from VASP's OSZICAR data.
+// SCF/electronic-convergence properties, emitted per frame by e.g. the vaspout.h5 parser
 const scf_data_extractor: TrajectoryDataExtractor = make_metadata_extractor([
   `n_scf_steps`,
   `scf_energy_delta`,
@@ -66,116 +50,43 @@ const scf_data_extractor: TrajectoryDataExtractor = make_metadata_extractor([
   `scf_charge_rms`,
 ])
 
-// Data extractor for structural properties
+const LATTICE_PARAMS = [`a`, `b`, `c`, `alpha`, `beta`, `gamma`] as const
+
 export const structural_data_extractor: TrajectoryDataExtractor = (
   frame: TrajectoryFrame,
 ): Record<string, number> => {
-  const data: Record<string, number> = {
-    Step: frame.step,
+  const data: Record<string, number> = { Step: frame.step }
+  const { metadata, structure } = frame
+  const lattice = `lattice` in structure ? structure.lattice : null
+  if (lattice) {
+    data.volume = lattice.volume
+    for (const param of LATTICE_PARAMS) data[param] = lattice[param]
   }
-
-  // Extract lattice properties (preferred source for volume)
-  if (`lattice` in frame.structure) {
-    const lattice = frame.structure.lattice
-    data.volume = lattice.volume // Use consistent lowercase naming
-    data.a = lattice.a
-    data.b = lattice.b
-    data.c = lattice.c
-    data.alpha = lattice.alpha
-    data.beta = lattice.beta
-    data.gamma = lattice.gamma
-  }
-
-  if (frame.metadata) {
-    // Extract other structural properties, avoiding volume duplicate
-    copy_numeric_fields(data, frame.metadata, [`temperature`])
-
-    // Prefer metadata density (fall back to calculating from structure below).
-    // Finite-number check (not truthiness) so a legitimate density of 0 is kept.
-    if (
-      typeof frame.metadata.density === `number` &&
-      Number.isFinite(frame.metadata.density)
-    ) {
-      data.density = frame.metadata.density
+  if (metadata) {
+    copy_numeric_fields(data, metadata, [`temperature`])
+    // Finite-number check (not truthiness) so a legitimate density of 0 is kept
+    if (typeof metadata.density === `number` && Number.isFinite(metadata.density)) {
+      data.density = metadata.density
     }
-
-    // Only use metadata volume if lattice volume is not available
-    if (!data.volume && frame.metadata.volume && typeof frame.metadata.volume === `number`) {
-      data.volume = frame.metadata.volume
-    }
-
-    // Note: pressure is handled by force_stress_data_extractor to avoid duplication
+    if (!lattice) copy_numeric_fields(data, metadata, [`volume`])
   }
-
-  if (data.density === undefined && `lattice` in frame.structure) {
+  if (data.density === undefined && `lattice` in structure) {
     try {
-      data.density = get_density(frame.structure)
+      data.density = get_density(structure)
     } catch (error) {
       console.warn(`Failed to calculate density for frame ${frame.step}:`, error)
     }
   }
-
   return data
 }
 
-const LATTICE_PARAMS = [`a`, `b`, `c`, `alpha`, `beta`, `gamma`] as const
-
-// Cache per trajectory: full_data_extractor runs once per frame, so without this it
-// rescans all frames on every call (O(n²)). WeakMap → GC'd with the trajectory.
-const constant_params_cache = new WeakMap<TrajectoryType, Set<string>>()
-
-// Lattice params constant across the trajectory, in a single pass (prefer lattice value,
-// else metadata; tol 1e-10). A param must be observed in ≥1 frame to count as constant;
-// params absent from every frame are excluded (not silently treated as "constant").
-function get_constant_lattice_params(trajectory: TrajectoryType): Set<string> {
-  const cached = constant_params_cache.get(trajectory)
-  if (cached) return cached
-
-  const tolerance = 1e-10
-  const first_values = new Map<string, number>()
-  const varies = new Set<string>()
-
-  for (const frame of trajectory.frames) {
-    const lattice =
-      `lattice` in frame.structure
-        ? (frame.structure.lattice as Record<string, unknown>)
-        : null
-    for (const param of LATTICE_PARAMS) {
-      if (varies.has(param)) continue // already known to vary, skip
-
-      const lattice_value = lattice?.[param]
-      const value = typeof lattice_value === `number` ? lattice_value : frame.metadata?.[param]
-      // Number.isFinite: NaN is typeof `number` but Math.abs(next-NaN)=NaN → false constant
-      if (typeof value !== `number` || !Number.isFinite(value)) continue
-
-      const first = first_values.get(param)
-      if (first === undefined) first_values.set(param, value)
-      else if (Math.abs(value - first) > tolerance) varies.add(param)
-    }
-  }
-
-  // only params observed in ≥1 frame; a never-present param is not "constant"
-  const constant = new Set([...first_values.keys()].filter((param) => !varies.has(param)))
-  constant_params_cache.set(trajectory, constant)
-  return constant
-}
-
-// Combined data extractor that extracts all common properties
+// Combined data extractor that extracts all common properties. Lattice parameters that never
+// vary are dropped by the plot's constant-series filter, so nothing marks them here.
 export const full_data_extractor: TrajectoryDataExtractor = (
   frame: TrajectoryFrame,
-  trajectory: TrajectoryType,
-): Record<string, number> => {
-  const result: Record<string, number> = {
-    ...energy_data_extractor(frame, trajectory),
-    ...force_stress_data_extractor(frame, trajectory),
-    ...scf_data_extractor(frame, trajectory),
-    ...structural_data_extractor(frame, trajectory),
-  }
-
-  // Mark individual lattice parameters that don't vary across the trajectory
-  for (const param of get_constant_lattice_params(trajectory)) {
-    result[`constant_${param}`] = 1
-  }
-
-  return result
-}
+): Record<string, number> => ({
+  ...energy_data_extractor(frame),
+  ...force_stress_data_extractor(frame),
+  ...scf_data_extractor(frame),
+  ...structural_data_extractor(frame),
+})

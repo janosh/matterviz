@@ -650,4 +650,41 @@ describe(`BoxPlot`, () => {
     if (!label) throw new Error(`annotation text should render`)
     expect(inside_clip_path(label), `annotation must escape the clip-path`).toBe(false)
   })
+
+  test(`controls pane: Box / violin reset reverts changed settings to defaults`, async () => {
+    const plot = await mount_sized_box_plot({
+      series: [basic],
+      show_controls: true,
+      controls_open: true,
+    })
+    const checkbox_by_label = (label: string): HTMLInputElement => {
+      const box = [...plot.querySelectorAll<HTMLInputElement>(`input[type="checkbox"]`)].find(
+        (input) => input.parentElement?.textContent?.includes(label),
+      )
+      if (!box) throw new Error(`checkbox "${label}" not found`)
+      return box
+    }
+    const [mean, outliers] = [
+      checkbox_by_label(`Show mean`),
+      checkbox_by_label(`Show outliers`),
+    ]
+    expect([mean.checked, outliers.checked]).toEqual([false, true])
+    // no outliers drawn once they're toggled off; the mean line appears
+    mean.click()
+    outliers.click()
+    await tick()
+    expect([mean.checked, outliers.checked]).toEqual([true, false])
+    expect(plot.querySelectorAll(`.box-series circle`)).toHaveLength(0)
+    expect(plot.querySelectorAll(`.box-series line[stroke-dasharray="3 2"]`)).toHaveLength(1)
+
+    const reset_btn = plot.querySelector<HTMLButtonElement>(
+      `button[aria-label="Reset box / violin to defaults"]`,
+    )
+    // a missing/no-op reset (the original bug) would leave the flipped values in place
+    if (!reset_btn) throw new Error(`reset button not rendered`)
+    reset_btn.click()
+    await tick()
+    expect([mean.checked, outliers.checked]).toEqual([false, true])
+    expect(plot.querySelectorAll(`.box-series line[stroke-dasharray="3 2"]`)).toHaveLength(0)
+  })
 })

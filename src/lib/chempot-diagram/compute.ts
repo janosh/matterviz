@@ -6,52 +6,15 @@ import type { PhaseData } from '$lib/convex-hull/types'
 import {
   combinations,
   convex_hull_2d,
+  cross_3d,
   EPS,
-  gcd_all,
   polygon_centroid,
   solve_linear_system,
+  subtract,
 } from '$lib/math'
 import type { Vec2, Vec3 } from '$lib/math'
+import { count_atoms_in_composition, get_reduced_formula } from '$lib/composition/reduce'
 import { CHEMPOT_DEFAULTS, type ChemPotDiagramConfig, type ChemPotDiagramData } from './types'
-
-// Inlined from $lib/composition/parse to keep chempot-worker's bundle small: the
-// $lib/composition barrel transitively pulls in the gzipped element data table, which
-// the worker build can load (vite.config.ts registers the .json.gz plugin for workers)
-// but has no use for.
-const count_atoms_in_composition = (composition: Record<string, number>): number =>
-  Object.values(composition).reduce((sum, count) => sum + (count ?? 0), 0)
-
-// Deliberately NOT $lib/composition/parse's get_reduced_formula: that one leaves
-// non-integer compositions untouched (pinned by its own test: {Fe: 1.5, O: 3} stays put),
-// while this one first scales fractional amounts to integers (multiplier <= 100, 0.03
-// tolerance) to match pymatgen. Merging the two would silently relabel every fractional
-// composition, so don't.
-const get_reduced_formula = (composition: Record<string, number>): Record<string, number> => {
-  const amounts = Object.values(composition).filter((amt) => amt > 0)
-  if (amounts.length === 0) return {}
-  let scale = 1
-  if (!amounts.every((amt) => Number.isInteger(amt))) {
-    scale = 0
-    for (let mult = 1; mult <= 100; mult++) {
-      if (amounts.every((amt) => Math.abs(amt * mult - Math.round(amt * mult)) < 0.03)) {
-        scale = mult
-        break
-      }
-    }
-    if (scale === 0) return composition
-  }
-  const int_amounts = amounts.map((amt) => Math.round(amt * scale))
-  // gcd is unreliable past 2^53, where consecutive integers stop being distinguishable
-  if (!int_amounts.every((amt) => Number.isSafeInteger(amt))) return composition
-  const divisor = gcd_all(int_amounts)
-  if (scale === 1 && divisor <= 1) return composition
-  const factor = scale / divisor
-  return Object.fromEntries(
-    Object.entries(composition)
-      .filter(([, amt]) => amt > 0)
-      .map(([elem, amt]) => [elem, Math.round(amt * factor)]),
-  )
-}
 
 // === Entry Helpers ===
 
@@ -384,26 +347,19 @@ export function compute_domains(
   const n_total = all_hs.length
   const tol = 1e-6
 
-  // Pre-compute formula keys for entry hyperplanes (avoid repeated work in hot loop)
   const entry_formulas = hyperplane_entries.map((entry) =>
     formula_key_from_composition(entry.composition),
   )
-
   const domains: Record<string, number[][]> = {}
-  for (const formula of entry_formulas) {
-    if (!domains[formula]) domains[formula] = []
-  }
+  for (const formula of entry_formulas) domains[formula] ??= []
 
-  // Pre-allocate reusable buffers to avoid GC pressure in the combo loop
+  // Reusable buffers: the combination loop is the hot path. dim <= 3 uses the inline
+  // Cramer solvers, larger dims fill A_rows for the LU solver.
   const mu = Array(dim).fill(0)
   const offsets = Array(dim).fill(0)
-  // For dim <= 3, use inline solvers; for larger dims, build A on the fly
   const A_rows: number[][] =
     dim > 3 ? Array.from({ length: dim }, () => Array(dim).fill(0)) : []
-
-  // Generate all combinations of dim indices from n_total halfspaces
-  const combo = Array(dim).fill(0)
-  for (let idx = 0; idx < dim; idx++) combo[idx] = idx
+  const combo = Array.from({ length: dim }, (_, idx) => idx)
 
   function advance_combo(): boolean {
     let pos = dim - 1
@@ -414,32 +370,13 @@ export function compute_domains(
     return true
   }
 
-  while (true) {
-    // Combinations containing only border halfspaces cannot be assigned to any
-    // entry domain, so skip solving them entirely.
-    let has_entry_hyperplane = false
-    if (dim === 2) {
-      has_entry_hyperplane = combo[0] < n_entries || combo[1] < n_entries
-    } else if (dim === 3) {
-      has_entry_hyperplane =
-        combo[0] < n_entries || combo[1] < n_entries || combo[2] < n_entries
-    } else {
-      for (let row = 0; row < dim; row++) {
-        if (combo[row] < n_entries) {
-          has_entry_hyperplane = true
-          break
-        }
-      }
-    }
-    if (!has_entry_hyperplane) {
-      if (!advance_combo()) break
-      continue
-    }
-
-    // Compute offsets (negated last column of selected halfspaces)
+  // Entry hyperplanes come first and combinations are lexicographic, so once the smallest
+  // selected index is a border halfspace every remaining combination is border-only and
+  // cannot belong to any domain
+  while (combo[0] < n_entries) {
+    // Offsets are the negated last column of the selected halfspaces
     for (let row = 0; row < dim; row++) offsets[row] = -all_hs[combo[row]][dim]
 
-    // Solve for vertex using dimension-specialized solvers
     let solved = false
     if (dim === 2) {
       const h0 = all_hs[combo[0]]
@@ -448,7 +385,6 @@ export function compute_domains(
     } else if (dim === 3) {
       solved = solve_3x3(all_hs[combo[0]], all_hs[combo[1]], all_hs[combo[2]], offsets, mu)
     } else {
-      // General case: build A matrix and use LU solver
       for (let row = 0; row < dim; row++) {
         const hs = all_hs[combo[row]]
         for (let col = 0; col < dim; col++) A_rows[row][col] = hs[col]
@@ -460,57 +396,23 @@ export function compute_domains(
       }
     }
 
-    if (solved) {
-      // Feasibility check: all halfspaces must be satisfied (a·mu + b <= tol)
-      const selected_hs_idx_0 = dim > 0 ? combo[0] : -1
-      const selected_hs_idx_1 = dim > 1 ? combo[1] : -1
-      const selected_hs_idx_2 = dim > 2 ? combo[2] : -1
-      for (let idx = 0; idx < n_total; idx++) {
-        if (dim <= 3) {
-          if (
-            idx === selected_hs_idx_0 ||
-            idx === selected_hs_idx_1 ||
-            idx === selected_hs_idx_2
-          )
-            continue
-        } else {
-          let is_active_halfspace = false
-          for (let combo_idx = 0; combo_idx < dim; combo_idx++) {
-            if (combo[combo_idx] === idx) {
-              is_active_halfspace = true
-              break
-            }
-          }
-          if (is_active_halfspace) continue
-        }
-        const hs = all_hs[idx]
-        let val = hs[dim]
-        if (dim === 2) {
-          val += hs[0] * mu[0] + hs[1] * mu[1]
-        } else if (dim === 3) {
-          val += hs[0] * mu[0] + hs[1] * mu[1] + hs[2] * mu[2]
-        } else {
-          for (let jdx = 0; jdx < dim; jdx++) val += hs[jdx] * mu[jdx]
-        }
-        if (val > tol) {
-          solved = false
-          break
-        }
-      }
-
-      if (solved) {
-        // Assign vertex to entries whose hyperplanes are active
-        const vertex = dim === 2 ? [mu[0], mu[1]] : dim === 3 ? [mu[0], mu[1], mu[2]] : [...mu]
-        for (let idx = 0; idx < dim; idx++) {
-          const hs_idx = combo[idx]
-          if (hs_idx < n_entries) {
-            domains[entry_formulas[hs_idx]].push([...vertex])
-          }
-        }
-      }
+    // Feasibility: every inactive halfspace must satisfy a·mu + b <= tol
+    for (let idx = 0; solved && idx < n_total; idx++) {
+      if (combo.includes(idx)) continue
+      const hs = all_hs[idx]
+      let val = hs[dim]
+      if (dim === 2) val += hs[0] * mu[0] + hs[1] * mu[1]
+      else if (dim === 3) val += hs[0] * mu[0] + hs[1] * mu[1] + hs[2] * mu[2]
+      else for (let jdx = 0; jdx < dim; jdx++) val += hs[jdx] * mu[jdx]
+      if (val > tol) solved = false
     }
 
-    // Advance to next combination (lexicographic order)
+    // A feasible vertex belongs to every entry whose hyperplane is active at it
+    if (solved) {
+      for (const hs_idx of combo) {
+        if (hs_idx < n_entries) domains[entry_formulas[hs_idx]].push([...mu])
+      }
+    }
     if (!advance_combo()) break
   }
 
@@ -576,7 +478,7 @@ export function build_axis_ranges(
       if (val < min_val) min_val = val
       if (val > max_val) max_val = val
     }
-    return { element: element ?? `\u03BC${axis_idx}`, min_val, max_val }
+    return { element, min_val, max_val }
   })
 }
 
@@ -587,12 +489,10 @@ export function build_axis_ranges(
 export function simple_pca(
   data: number[][],
   k: number = 2,
-): { scores: number[][]; eigenvectors: number[][] } {
+): { scores: number[][]; eigenvectors: number[][]; means: number[] } {
   const n_rows = data.length
   const n_cols = data[0]?.length ?? 0
-  if (n_rows === 0 || n_cols === 0) {
-    return { scores: [], eigenvectors: [] }
-  }
+  if (n_rows === 0 || n_cols === 0) return { scores: [], eigenvectors: [], means: [] }
 
   // Center the data
   const means = Array(n_cols).fill(0)
@@ -625,8 +525,16 @@ export function simple_pca(
   const work_cov = cov.map((row) => [...row])
 
   for (let comp = 0; comp < k; comp++) {
-    let vec = Array(n_cols).fill(0)
-    vec[comp % n_cols] = 1 // initial guess
+    // Initial guess: the (deflated) covariance row with the largest norm. A fixed basis
+    // vector can sit in the null space (elemental domains have zero variance along their
+    // own axis), where power iteration stalls on the first step and returns a spurious
+    // zero-eigenvalue direction ahead of the real principal axes.
+    const row_norms = work_cov.map((row) => Math.hypot(...row))
+    const seed_idx = row_norms.indexOf(Math.max(...row_norms))
+    let vec: number[] =
+      row_norms[seed_idx] > EPS
+        ? work_cov[seed_idx].map((val) => val / row_norms[seed_idx])
+        : Array(n_cols).fill(0).with(seed_idx, 1)
 
     for (let iter = 0; iter < 100; iter++) {
       // Matrix-vector multiply
@@ -635,6 +543,16 @@ export function simple_pca(
         for (let jdx = 0; jdx < n_cols; jdx++) {
           new_vec[idx] += work_cov[idx][jdx] * vec[jdx]
         }
+      }
+      // Re-orthogonalize against the components already found: when two eigenvalues are
+      // close (near-square domains) 100 iterations don't converge, deflation with the
+      // unconverged vector is inexact and the next component would drift out of
+      // orthogonality (v1·v2 up to 1e-3 on planar rectangles with side ratio > 0.96),
+      // which breaks the lossless-reconstruction check behind is_planar.
+      for (const prev_ev of eigenvectors) {
+        let proj = 0
+        for (let idx = 0; idx < n_cols; idx++) proj += new_vec[idx] * prev_ev[idx]
+        for (let idx = 0; idx < n_cols; idx++) new_vec[idx] -= proj * prev_ev[idx]
       }
 
       // Normalize
@@ -668,7 +586,7 @@ export function simple_pca(
     eigenvectors.map((ev) => row.reduce((sum, val, idx) => sum + val * ev[idx], 0)),
   )
 
-  return { scores, eigenvectors }
+  return { scores, eigenvectors, means }
 }
 
 // Compute orthonormal vector to a 2D line segment (for label offset in 2D diagrams)
@@ -704,44 +622,55 @@ export function dedup_points(
   return { unique, orig_indices }
 }
 
-// For a 3D domain, compute convex hull boundary edges and annotation location.
-// Deduplicates vertices first, then uses PCA to project to 2D for the convex
-// hull computation. Returns only the outer boundary edges, not interior lines.
+// Outline of a 3D domain: boundary edges (as index pairs into points_3d) and the label
+// anchor. Vertices are deduplicated, projected onto their two principal axes and hulled in
+// 2D, so only the outer polygon comes back, never interior diagonals. `is_planar` reports
+// whether that projection was lossless (max out-of-plane residual below 1e-6 of the bounding
+// box diagonal): every domain of a true ternary lies on its entry's hyperplane, but
+// projections of quaternary+ systems produce polyhedra whose edges need a 3D hull instead.
 export function get_3d_domain_simplexes_and_ann_loc(points_3d: number[][]): {
   simplex_indices: number[][]
   ann_loc: number[]
+  is_planar: boolean
 } {
   // Deduplicate vertices to avoid cluttered interior edges
   const { unique, orig_indices } = dedup_points(points_3d)
 
   if (unique.length < 3) {
-    if (unique.length === 2) {
-      const midpoint = unique[0].map((val, dim) => (val + unique[1][dim]) / 2)
-      return { simplex_indices: [[orig_indices[0], orig_indices[1]]], ann_loc: midpoint }
+    // a single vertex (or none) has no edges; a segment is its own outline
+    const is_segment = unique.length === 2
+    return {
+      simplex_indices: is_segment ? [[orig_indices[0], orig_indices[1]]] : [],
+      ann_loc: is_segment
+        ? unique[0].map((val, dim) => (val + unique[1][dim]) / 2)
+        : (unique[0] ?? [0, 0, 0]),
+      is_planar: true,
     }
-    return { simplex_indices: [], ann_loc: unique[0] ?? points_3d[0] ?? [0, 0, 0] }
   }
 
-  const { scores, eigenvectors } = simple_pca(unique, 2)
+  // simple_pca always returns k=2 components for >= 3 points
+  const { scores, eigenvectors, means } = simple_pca(unique, 2)
+  const [first_eigenvector, second_eigenvector] = eigenvectors
+  const unproject = (score_x: number, score_y: number): number[] =>
+    means.map(
+      (mean, dim) =>
+        mean + score_x * first_eigenvector[dim] + score_y * second_eigenvector[dim],
+    )
+
+  // Out-of-plane residual of the 2-component reconstruction, relative to the domain size
+  const max_residual = Math.max(
+    ...unique.map((point, idx) => {
+      const reconstructed = unproject(scores[idx][0], scores[idx][1])
+      return Math.hypot(...point.map((val, dim) => val - reconstructed[dim]))
+    }),
+  )
+  const is_planar = max_residual <= 1e-6 * bbox_diagonal(unique)
 
   // 2D convex hull of PCA-projected unique points → only boundary edges
   const pts_2d: Vec2[] = scores.map((row) => [row[0], row[1]])
   const hull = convex_hull_2d(pts_2d)
-  const centroid = polygon_centroid(hull)
-
-  // Map centroid back to 3D
-  const n_dims = unique[0].length
-  const mean_3d = Array.from(
-    { length: n_dims },
-    (_, dim) => unique.reduce((sum, pt) => sum + pt[dim], 0) / unique.length,
-  )
-  const centroid_x = centroid[0] ?? 0
-  const centroid_y = centroid[1] ?? 0
-  const first_eigenvector = eigenvectors[0] ?? Array(n_dims).fill(0)
-  const second_eigenvector = eigenvectors[1] ?? Array(n_dims).fill(0)
-  const ann_loc = mean_3d.map(
-    (m, dim) => m + centroid_x * first_eigenvector[dim] + centroid_y * second_eigenvector[dim],
-  )
+  const [centroid_x, centroid_y] = polygon_centroid(hull)
+  const ann_loc = unproject(centroid_x, centroid_y)
 
   // Map hull vertices back to original point indices using nearest projected
   // vertex instead of stringified coordinates to avoid precision aliasing.
@@ -769,7 +698,7 @@ export function get_3d_domain_simplexes_and_ann_loc(points_3d: number[][]): {
     simplex_indices.push([orig_indices[ui_a], orig_indices[ui_b]])
   }
 
-  return { simplex_indices, ann_loc }
+  return { simplex_indices, ann_loc, is_planar }
 }
 
 // === Label Sizing ===
@@ -833,36 +762,21 @@ export function get_visible_domain_labels(
     if (!formula || !label_font_size_by_formula.has(formula)) continue
 
     const base = face_idx * 9
-    const ax = face_positions[base]
-    const ay = face_positions[base + 1]
-    const az = face_positions[base + 2]
-    const bx = face_positions[base + 3]
-    const by = face_positions[base + 4]
-    const bz = face_positions[base + 5]
-    const cx = face_positions[base + 6]
-    const cy = face_positions[base + 7]
-    const cz = face_positions[base + 8]
-
-    const abx = bx - ax
-    const aby = by - ay
-    const abz = bz - az
-    const acx = cx - ax
-    const acy = cy - ay
-    const acz = cz - az
-    const cross_x = aby * acz - abz * acy
-    const cross_y = abz * acx - abx * acz
-    const cross_z = abx * acy - aby * acx
-    const area = Math.hypot(cross_x, cross_y, cross_z) / 2
+    const vertex = (offset: number): Vec3 => [
+      face_positions[base + offset],
+      face_positions[base + offset + 1],
+      face_positions[base + offset + 2],
+    ]
+    const [vert_a, vert_b, vert_c] = [vertex(0), vertex(3), vertex(6)]
+    const area =
+      Math.hypot(...cross_3d(subtract(vert_b, vert_a), subtract(vert_c, vert_a))) / 2
     if (area <= EPS) continue
 
-    const centroid_x = (ax + bx + cx) / 3
-    const centroid_y = (ay + by + cy) / 3
-    const centroid_z = (az + bz + cz) / 3
     const entry = accum.get(formula) ?? { area: 0, x: 0, y: 0, z: 0 }
     entry.area += area
-    entry.x += centroid_x * area
-    entry.y += centroid_y * area
-    entry.z += centroid_z * area
+    entry.x += ((vert_a[0] + vert_b[0] + vert_c[0]) / 3) * area
+    entry.y += ((vert_a[1] + vert_b[1] + vert_c[1]) / 3) * area
+    entry.z += ((vert_a[2] + vert_b[2] + vert_c[2]) / 3) * area
     accum.set(formula, entry)
   }
 
@@ -901,19 +815,12 @@ export const get_ternary_combinations = (elements: string[]): string[][] =>
 // on the entries, formal_chempots, default_min_limit, and limits -- NOT on which 3
 // elements are projected onto. When showing all C(n,3) ternary projections of the same
 // quaternary system, this cache avoids repeating the ~42s computation per projection.
-
-interface FullNDResult {
-  domains: Record<string, number[][]>
-  el_refs: Record<string, PhaseData>
-  min_entries: PhaseData[]
-  hyperplanes: number[][]
-  hyperplane_entries: PhaseData[]
-  compute_lims: Vec2[]
-}
+// Only the geometry is cached; entries, refs and hyperplanes are cheap and always come
+// from the current call so stale entry metadata never leaks into the result.
 
 let nd_cache: {
   key: string
-  result: FullNDResult
+  result: { domains: Record<string, number[][]>; compute_lims: Vec2[] }
 } | null = null
 
 // Lightweight entry fingerprint for N-D cache keys and deterministic equal-energy
@@ -986,133 +893,77 @@ export function compute_chempot_diagram(
 
   // Computation elements: full element set for projection, display set for subsystem
   const compute_elements = is_projection ? all_data_elements : display_elements
+  const dim = compute_elements.length
+  if (dim < 2) throw new Error(`ChemicalPotentialDiagram requires 2+ elements, got ${dim}`)
 
-  // Try cache for projection mode (same entries + config = same N-D domains)
+  // Subsystem mode keeps only entries inside the element set (a no-op when it is the full
+  // set); sort by formula key so same-energy ties resolve deterministically
+  const element_set = new Set(compute_elements)
+  const working_entries = is_projection
+    ? entries
+    : entries.filter((entry) =>
+        Object.entries(entry.composition).every(
+          ([element, amount]) => amount <= 0 || element_set.has(element),
+        ),
+      )
+  const sorted_entries = working_entries
+    .map((entry) => ({ entry, key: formula_key_from_composition(entry.composition) }))
+    .toSorted((left, right) => left.key.localeCompare(right.key))
+    .map(({ entry }) => entry)
+
+  let { min_entries, el_refs } = get_min_entries_and_el_refs(sorted_entries)
+  const missing_refs = compute_elements.filter((el) => !el_refs[el])
+  if (missing_refs.length > 0) {
+    throw new Error(`Missing elemental reference entries for: ${missing_refs.join(`, `)}`)
+  }
+  if (formal_chempots) {
+    min_entries = renormalize_entries(min_entries, el_refs, compute_elements)
+    el_refs = get_min_entries_and_el_refs(min_entries).el_refs
+  }
+  const { hyperplanes, hyperplane_entries } = build_hyperplanes(
+    min_entries,
+    el_refs,
+    compute_elements,
+  )
+
   const cache_key = is_projection
     ? make_nd_cache_key(entries, formal_chempots, default_min_limit, limits)
     : ``
-  let nd_result: FullNDResult | null =
-    is_projection && nd_cache?.key === cache_key ? nd_cache.result : null
-
-  // Cached geometry is independent of heavy entry metadata, but returned entries must
-  // still come from the current input rather than an earlier projection call.
-  if (nd_result) {
-    const sorted_entries = entries
-      .map((entry) => ({ entry, key: formula_key_from_composition(entry.composition) }))
-      .toSorted((left, right) => left.key.localeCompare(right.key))
-      .map(({ entry }) => entry)
-    let { min_entries, el_refs } = get_min_entries_and_el_refs(sorted_entries)
-    if (formal_chempots) {
-      min_entries = renormalize_entries(min_entries, el_refs, compute_elements)
-      el_refs = get_min_entries_and_el_refs(min_entries).el_refs
-    }
-    const { hyperplanes, hyperplane_entries } = build_hyperplanes(
-      min_entries,
-      el_refs,
-      compute_elements,
-    )
-    nd_result = { ...nd_result, min_entries, el_refs, hyperplanes, hyperplane_entries }
-  }
-
+  let nd_result = is_projection && nd_cache?.key === cache_key ? nd_cache.result : null
   if (!nd_result) {
-    // In subsystem mode, filter entries to only those within the element set
-    let working_entries = entries
-    if (!is_projection && config.elements?.length) {
-      const target_set = new Set(config.elements)
-      working_entries = entries.filter((entry) => {
-        for (const [element, amount] of Object.entries(entry.composition)) {
-          if (amount > 0 && !target_set.has(element)) return false
-        }
-        return true
-      })
-    }
-
-    // Sort entries by composition (Schwartzian transform to avoid recomputing keys)
-    const sorted_entries = working_entries
-      .map((entry) => ({ entry, key: formula_key_from_composition(entry.composition) }))
-      .toSorted((a, b) => a.key.localeCompare(b.key))
-      .map(({ entry }) => entry)
-
-    // Get min entries and elemental references
-    let { min_entries, el_refs } = get_min_entries_and_el_refs(sorted_entries)
-
-    const dim = compute_elements.length
-    if (dim < 2) {
-      throw new Error(`ChemicalPotentialDiagram requires 2+ elements, got ${dim}`)
-    }
-
-    // Check all elemental refs exist for the computation elements
-    const missing_refs = compute_elements.filter((el) => !el_refs[el])
-    if (missing_refs.length > 0) {
-      throw new Error(`Missing elemental reference entries for: ${missing_refs.join(`, `)}`)
-    }
-
-    // Renormalize if using formal chemical potentials
-    if (formal_chempots) {
-      min_entries = renormalize_entries(min_entries, el_refs, compute_elements)
-      const renorm_result = get_min_entries_and_el_refs(min_entries)
-      el_refs = renorm_result.el_refs
-    }
-
-    // Build limits array for computation elements
-    const compute_lims: Vec2[] = compute_elements.map((el) => {
-      if (limits?.[el]) return limits[el]
-      return [default_min_limit, 0]
-    })
-
-    // Build hyperplanes and compute domains in full dimensionality
-    const { hyperplanes, hyperplane_entries } = build_hyperplanes(
-      min_entries,
-      el_refs,
-      compute_elements,
+    const compute_lims: Vec2[] = compute_elements.map(
+      (el) => limits?.[el] ?? [default_min_limit, 0],
     )
-
-    const border_hyperplanes = build_border_hyperplanes(compute_lims)
-
-    const domains = compute_domains(hyperplanes, border_hyperplanes, hyperplane_entries, dim)
-
-    nd_result = {
-      domains,
-      el_refs,
-      min_entries,
+    const domains = compute_domains(
       hyperplanes,
+      build_border_hyperplanes(compute_lims),
       hyperplane_entries,
-      compute_lims,
-    }
-
-    // Cache for projection mode reuse
-    if (is_projection) {
-      nd_cache = { key: cache_key, result: nd_result }
-    }
+      dim,
+    )
+    nd_result = { domains, compute_lims }
+    if (is_projection) nd_cache = { key: cache_key, result: nd_result }
   }
 
-  let domains = nd_result.domains
-  let output_lims = nd_result.compute_lims
-
+  let { domains, compute_lims: lims } = nd_result
   // Project domain vertices from N-D to display axes (column extraction)
   if (is_projection) {
-    const col_indices = display_elements.map((element) => {
-      const idx = compute_elements.indexOf(element)
-      if (idx === -1) {
-        throw new Error(`Display element ${element} not present in compute element set`)
-      }
-      return idx
-    })
-    const projected: Record<string, number[][]> = {}
-    for (const [formula, pts] of Object.entries(domains)) {
-      projected[formula] = pts.map((pt) => col_indices.map((idx) => pt[idx]))
-    }
-    domains = projected
-    output_lims = col_indices.map((col_idx) => nd_result.compute_lims[col_idx])
+    const col_indices = display_elements.map((element) => compute_elements.indexOf(element))
+    domains = Object.fromEntries(
+      Object.entries(domains).map(([formula, pts]) => [
+        formula,
+        pts.map((pt) => col_indices.map((idx) => pt[idx])),
+      ]),
+    )
+    lims = col_indices.map((col_idx) => nd_result.compute_lims[col_idx])
   }
 
   return {
     domains,
     elements: display_elements,
-    el_refs: nd_result.el_refs,
-    min_entries: nd_result.min_entries,
-    hyperplanes: nd_result.hyperplanes,
-    hyperplane_entries: nd_result.hyperplane_entries,
-    lims: output_lims,
+    el_refs,
+    min_entries,
+    hyperplanes,
+    hyperplane_entries,
+    lims,
   }
 }

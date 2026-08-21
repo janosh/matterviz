@@ -8,12 +8,12 @@ You can compile Svelte components to custom elements and consume them anywhere (
 - React docs: [Using Web Components](https://react.dev/reference/react-dom/components#using-web-components)
 - Vue docs: [Web Components](https://vuejs.org/guide/extras/web-components.html)
 
-Minimal custom element `StructureCE.svelte` for [`Structure.svelte`](https://github.com/janosh/matterviz/blob/main/src/lib/structure/Structure.svelte):
+MatterViz does not ship custom elements, so write a one-file wrapper in your own project. A minimal `StructureCE.svelte` for [`Structure.svelte`](https://github.com/janosh/matterviz/blob/main/src/lib/structure/Structure.svelte):
 
 ```svelte
 <svelte:options customElement="mv-structure" />
 
-<!-- matterviz/structure/StructureCE.svelte -->
+<!-- src/StructureCE.svelte in your app, compiled with the Svelte compiler (customElement: true) -->
 <script lang="ts">
   import { Structure } from 'matterviz'
   let props = $props()
@@ -25,15 +25,16 @@ Minimal custom element `StructureCE.svelte` for [`Structure.svelte`](https://git
 Use in React (set properties via ref):
 
 ```tsx
+import type { StructureHandlerData } from 'matterviz'
 import { useEffect, useRef } from 'react'
-import 'matterviz/structure/StructureCE.svelte'
+import './StructureCE.svelte'
 
 export default function StructureEmbed() {
   const ref = useRef<
     HTMLElement & {
       data_url?: string
       show_controls?: boolean
-      on_file_load?: (data: { detail: unknown }) => void
+      on_file_load?: (data: StructureHandlerData) => void
     }
   >(null)
 
@@ -41,7 +42,9 @@ export default function StructureEmbed() {
     if (!ref.current) return
     ref.current.data_url = '/TiO2.cif'
     ref.current.show_controls = true
-    ref.current.on_file_load = (ev) => console.log('loaded:', ev.detail)
+    // Callback props receive a flat payload ({ structure, filename, file_size, ... }), not a CustomEvent
+    ref.current.on_file_load = ({ filename, structure }) =>
+      console.log('loaded:', filename, structure)
   }, [])
 
   return <mv-structure ref={ref} />
@@ -61,12 +64,13 @@ onMounted(() => {
   if (!mv.value) return
   mv.value.data_url = '/TiO2.cif'
   mv.value.show_controls = true
-  mv.value.on_file_load = (ev) => console.log('loaded:', ev.detail)
+  mv.value.on_file_load = ({ filename, structure }) =>
+    console.log('loaded:', filename, structure)
 })
 </script>
 ```
 
-Assign callback functions directly to element properties (like `on_file_load` above) rather than listening for DOM CustomEvents. For richer typing in React, use [`@lit-labs/react`](https://www.npmjs.com/package/@lit-labs/react) to generate typed wrappers.
+Assign callback functions directly to element properties (like `on_file_load` above) rather than listening for DOM CustomEvents: MatterViz components call their `on_*` props with plain data objects, so there is no `event.detail` to unwrap. For richer typing in React, use [`@lit-labs/react`](https://www.npmjs.com/package/@lit-labs/react) to generate typed wrappers.
 
 ## VS Code Extension
 

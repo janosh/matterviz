@@ -297,10 +297,7 @@
     })
 
   let total_points = $derived(
-    (volumetric_data ?? []).reduce(
-      (sum, vol) => sum + vol.grid_dims[0] * vol.grid_dims[1] * vol.grid_dims[2],
-      0,
-    ),
+    (volumetric_data ?? []).reduce((sum, vol) => sum + vol.values.length, 0),
   )
   let n_surfaces = $derived(
     (isosurface_settings.layers ?? []).reduce(
@@ -403,7 +400,7 @@
     <span title="Number of loaded volumes">Volumes: {volumetric_data.length}</span>
     {#each volumetric_data as vol, idx (idx)}
       <span title="Grid dimensions and value range">
-        {vol.label ?? `Volume ${idx + 1}`}: {vol.grid_dims.join(`×`)}
+        {vol.label ?? `Volume ${idx + 1}`}: {vol.dims.join(`×`)}
         [{format_num(vol.data_range.min, `.3~g`)}, {format_num(vol.data_range.max, `.3~g`)}]
       </span>
     {/each}

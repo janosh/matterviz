@@ -3,17 +3,17 @@
   // fitted saddle drawn distinctly from the highest computed image.
   import { PLOT_COLORS } from '$lib/colors'
   import { format_num } from '$lib/labels'
-  import type { DataSeries } from '$lib/plot'
-  import { ScatterPlot } from '$lib/plot'
+  import { SettingsSection } from '$lib/layout'
+  import { ScatterPlot, type DataSeries } from '$lib/plot'
   import type { ComponentProps } from 'svelte'
-  import type { EnergyReference, ReactionPathInput } from './index'
+  import type { EnergyReference, ReactionCoordMode, ReactionPathInput } from './index'
   import {
     nearest_image_idx,
     normalize_paths,
     path_energy_unit,
     path_profile,
+    type PathSplineOptions,
   } from './reaction-path'
-  import type { PathSplineOptions } from './reaction-path'
 
   // Metadata carried by every image point so hover/click can map back to an image
   type PointMeta = { path_key: string; image_idx: number }
@@ -26,11 +26,11 @@
 
   let {
     paths,
-    // One object for the coordinate mode, metric and spline settings, so a parent that
-    // also analyses the same paths cannot end up measuring them a different way.
+    // Metric/pbc live here; `coord_mode` is the bindable x-axis so the pane can change it.
     coord_options = {},
-    energy_reference = `initial`,
-    show_spline = true,
+    coord_mode = $bindable(`arc_length`),
+    energy_reference = $bindable(`initial`),
+    show_spline = $bindable(true),
     annotate_barrier = true,
     active_path_key = $bindable(``),
     active_image_idx = $bindable(0),
@@ -43,6 +43,7 @@
   }: {
     paths: ReactionPathInput
     coord_options?: PathSplineOptions
+    coord_mode?: ReactionCoordMode
     energy_reference?: EnergyReference
     show_spline?: boolean
     annotate_barrier?: boolean
@@ -51,14 +52,18 @@
     on_image_change?: (payload: PointMeta) => void
     x_axis?: ComponentProps<typeof ScatterPlot>[`x_axis`]
     y_axis?: ComponentProps<typeof ScatterPlot>[`y_axis`]
-  } & Omit<ComponentProps<typeof ScatterPlot>, `series` | `x_axis` | `y_axis`> = $props()
+  } & Omit<
+    ComponentProps<typeof ScatterPlot>,
+    `series` | `x_axis` | `y_axis` | `controls_extra`
+  > = $props()
 
   const named_paths = $derived(normalize_paths(paths))
+  const profile_options = $derived({ ...coord_options, mode: coord_mode })
 
   // Everything the plot needs per path, recomputed only when inputs or modes change
   const profiles = $derived(
     named_paths.map(({ key, path }, path_idx) => {
-      const profile = path_profile(path, coord_options)
+      const profile = path_profile(path, profile_options)
       const offset = energy_reference === `initial` ? path.images[0].energy : 0
       return {
         ...profile,
@@ -111,7 +116,7 @@
   )
 
   const x_label = $derived(
-    coord_options.mode === `image_index` ? `Image index` : `Reaction coordinate (Å)`,
+    coord_mode === `image_index` ? `Image index` : `Reaction coordinate (Å)`,
   )
   const y_label = $derived(
     energy_reference === `initial`
@@ -148,6 +153,38 @@
   on_point_hover={select_point}
   on_point_click={select_point}
 >
+  {#snippet controls_extra()}
+    <SettingsSection
+      title="Profile"
+      class="ctrl-line"
+      current_values={{ coord_mode, energy_reference, show_spline }}
+      on_reset={() => {
+        coord_mode = `arc_length`
+        energy_reference = `initial`
+        show_spline = true
+      }}
+      layout="flow"
+    >
+      <label>
+        <span>x-axis</span>
+        <select id="neb-coord-mode" bind:value={coord_mode}>
+          <option value="arc_length">Arc length</option>
+          <option value="image_index">Image index</option>
+        </select>
+      </label>
+      <label>
+        <span>Energies</span>
+        <select id="neb-energy-reference" bind:value={energy_reference}>
+          <option value="initial">Relative to initial</option>
+          <option value="absolute">Absolute</option>
+        </select>
+      </label>
+      <label>
+        <input id="neb-show-spline" type="checkbox" bind:checked={show_spline} />
+        Spline
+      </label>
+    </SettingsSection>
+  {/snippet}
   {#snippet user_content({ width, height, x_scale_fn, y_scale_fn, pad })}
     {@const left = pad.l}
     {@const right = width - pad.r}
@@ -169,13 +206,17 @@
       })}
     {/if}
     {#if annotate_barrier}
-      <!-- barrier geometry in data coordinates; `offset` puts it on the plotted y axis -->
+      <!-- Annotate the spline peak (interpolated saddle). The highest computed image
+        is already a marker; E_act used to sit there and miss the curve's apex. -->
       {@const { analysis, spline, offset } = active}
+      {@const saddle = show_spline
+        ? spline.fitted_max
+        : { coord: analysis.ts_coordinate, energy: analysis.ts_energy }}
       {@const y_initial = y_scale_fn(analysis.initial_energy - offset)}
-      {@const y_ts = y_scale_fn(analysis.ts_energy - offset)}
+      {@const y_ts = y_scale_fn(saddle.energy - offset)}
       {@const y_final = y_scale_fn(analysis.final_energy - offset)}
-      {@const arrow_x = Math.min(x_scale_fn(analysis.ts_coordinate) + 14, right - 4)}
-      {@const barrier_label = format_num(analysis.forward_barrier, `.3~`)}
+      {@const arrow_x = x_scale_fn(saddle.coord)}
+      {@const barrier_label = format_num(saddle.energy - analysis.initial_energy, `.3~`)}
       <!-- reference rules at the initial, transition and final state energies -->
       {#each [y_initial, y_ts, y_final] as y_pos, rule_idx (rule_idx)}
         {#if in_y(y_pos)}{@render seg([left, y_pos, right, y_pos], IS_TS_FS_RULE)}{/if}

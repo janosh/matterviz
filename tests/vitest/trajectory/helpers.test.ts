@@ -1,9 +1,10 @@
 import {
   convert_atomic_numbers,
-  create_packed_frame_loader,
   create_structure,
+  parse_float_token,
   read_ndarray_from_view,
 } from '$lib/trajectory/helpers'
+import { trajectory_from_frames } from '$lib/trajectory'
 import type { ElementSymbol } from '$lib/element'
 import type { Matrix3x3 } from '$lib/math'
 import { describe, expect, it } from 'vitest'
@@ -43,6 +44,47 @@ describe(`trajectory helpers`, () => {
     expect(structure.sites[1]?.xyz).toEqual([1, 1, 1])
     expect(structure.sites[0]?.species[0]?.element).toBe(`H`)
     expect(structure.sites[1]?.species[0]?.element).toBe(`He`)
+  })
+
+  // Number(``) is 0 and parseFloat(`1.0abc`) is 1: both would turn corruption into a coordinate
+  it.each([
+    [`1.5`, 1.5],
+    [`-2e-3`, -0.002],
+    [`1.0D-3`, 0.001],
+    [`2.5d2`, 250],
+    [`1.0abc`, NaN],
+    [`1,5`, NaN],
+    [``, NaN],
+    [undefined, NaN],
+  ])(`parse_float_token(%j) is %d`, (token, expected) => {
+    expect(parse_float_token(token)).toBe(expected)
+  })
+
+  it(`falls back to axis lengths for a singular lattice and warns once per structure`, () => {
+    const warnings: string[] = []
+    const slab: Matrix3x3 = [
+      [4, 0, 0],
+      [0, 4, 0],
+      [0, 0, 0],
+    ]
+    const structure = create_structure(
+      [
+        [1, 2, 0],
+        [3, 1, 0],
+      ],
+      [`H`, `H`],
+      slab,
+      undefined,
+      undefined,
+      (message) => warnings.push(message),
+    )
+    expect(structure.sites.map((site) => site.abc)).toEqual([
+      [0.25, 0.5, 0],
+      [0.75, 0.25, 0],
+    ])
+    expect(warnings).toEqual([
+      `Singular lattice [[4,0,0],[0,4,0],[0,0,0]]; fractional coordinates use the axis-length approximation`,
+    ])
   })
 
   it(`computes fractional coordinates correctly for non-orthogonal lattices`, () => {
@@ -105,34 +147,31 @@ describe(`trajectory helpers`, () => {
     expect(convert_atomic_numbers(atomic_numbers)).toEqual(expected_symbols)
   })
 
-  it(`throws for unknown atomic numbers`, () => {
-    expect(() => convert_atomic_numbers([999])).toThrow(/Unknown atomic number/)
+  it.each([999, 0, -1, 1.5, NaN])(`throws for atomic number %s`, (atomic_number) => {
+    expect(() => convert_atomic_numbers([atomic_number])).toThrow(
+      `Unknown atomic number in trajectory data: ${atomic_number}`,
+    )
   })
 
   it.each([
     {
       signal: { sample_shape: [0], values: new Float64Array(), steps: [0] },
-      error: `invalid sample shape`,
+      error: `sample_shape must be scalar`,
     },
     {
       signal: { sample_shape: [3], values: new Float64Array(5), steps: [0, 1] },
-      error: `5 values for 2 steps of shape [3]`,
+      error: `needs a Float64Array of 6 values`,
     },
   ])(`rejects a packed signal with $error`, ({ signal, error }) => {
+    const structure = create_structure([[0, 0, 0]], [`H`])
     expect(() =>
-      create_packed_frame_loader({
-        positions: new Float64Array(6),
-        elements: [`H`],
-        steps: [0, 1],
-        metadata: [{}, {}],
-        plot_metadata: [0, 1].map((frame_number) => ({
-          frame_number,
-          step: frame_number,
-          properties: {},
-        })),
-        signals: { dipole: signal },
-        coords_unwrapped: false,
-      }),
+      trajectory_from_frames(
+        [
+          { structure, step: 0, metadata: {} },
+          { structure, step: 1, metadata: {} },
+        ],
+        { signals: { dipole: signal } },
+      ),
     ).toThrow(error)
   })
 })

@@ -1,5 +1,5 @@
 import { full_data_extractor } from '$lib/trajectory/extract'
-import { parse_trajectory_data } from '$lib/trajectory/parse'
+import { open_trajectory, VaspoutElectronicOnlyError } from '$lib/trajectory/open'
 import { expand_ion_types, with_h5_file } from '$lib/trajectory/parse/h5-utils'
 import { line_mode_labels, read_vaspout_bands } from '$lib/trajectory/parse/vaspout-electronic'
 import type { VaspoutElectronicData } from '$lib/trajectory/parse/vaspout-electronic'
@@ -14,21 +14,21 @@ const read_vaspout = (filename: string): ArrayBuffer =>
   read_binary_test_file(filename, VASPOUT_FIXTURE_DIR)
 const parse_fixture = (fixture: string, potim_override?: number) =>
   with_h5_file(read_vaspout(fixture), `vaspout.h5`, (h5_file) => {
-    if (potim_override === undefined) return parse_vaspout_h5_file(h5_file)
+    if (potim_override === undefined) return parse_vaspout_h5_file(h5_file, () => {})
     const file_with_potim = {
       get: (path: string) =>
         path === `input/incar/POTIM` ? { to_array: () => potim_override } : h5_file.get(path),
     } as unknown as h5wasm.File
-    return parse_vaspout_h5_file(file_with_potim)
+    return parse_vaspout_h5_file(file_with_potim, () => {})
   })
 
 describe(`vaspout.h5 parsing`, () => {
   it(`parses a relaxation trajectory with energy, forces, and SCF summaries`, async () => {
     const trajectory = await parse_fixture(`vaspout-si-relax.h5`)
 
-    expect(trajectory.metadata?.source_format).toBe(`vaspout_h5`)
+    expect(trajectory.format).toBe(`vaspout-h5`)
     expect(trajectory.frames).toHaveLength(5)
-    expect(trajectory.metadata?.num_atoms).toBe(2)
+    expect(trajectory.frames[0].structure.sites).toHaveLength(2)
     expect(trajectory.metadata?.element_counts).toEqual({ Si: 2 })
     expect(trajectory.metadata?.energy_tag).toBe(`free energy    TOTEN`)
     expect(trajectory.metadata?.electronic).toBeUndefined()
@@ -48,7 +48,7 @@ describe(`vaspout.h5 parsing`, () => {
       expect(frame.metadata?.scf_charge_rms).toBeGreaterThan(0)
     }
     // SCF summaries flow through the shared extractor into plot series
-    const extracted = full_data_extractor(trajectory.frames[0], trajectory)
+    const extracted = full_data_extractor(trajectory.frames[0])
     for (const key of [`n_scf_steps`, `scf_energy_delta`, `scf_rms`, `scf_charge_rms`]) {
       expect(extracted[key], key).toBeGreaterThan(0)
     }
@@ -99,30 +99,39 @@ describe(`vaspout.h5 parsing`, () => {
     expect(trajectory.frames[3].metadata?.forces).toBeUndefined()
   })
 
-  it(`returns an electronic-only zero-frame trajectory for bands-only vaspout files`, async () => {
-    // Direct parser and generic parse_trajectory_data dispatch must agree
-    const direct = await parse_fixture(`vaspout-tinisn-bands-only.h5`)
-    const dispatched = await parse_trajectory_data(
-      read_vaspout(`vaspout-tinisn-bands-only.h5`),
-      `vaspout.h5`,
+  it(`throws electronic-only data for bands-only vaspout files`, async () => {
+    const direct = await Promise.resolve()
+      .then(() => parse_fixture(`vaspout-tinisn-bands-only.h5`))
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      )
+    const dispatched = await open_trajectory(read_vaspout(`vaspout-tinisn-bands-only.h5`), {
+      filename: `vaspout.h5`,
+    }).then(
+      () => undefined,
+      (error: unknown) => error,
     )
-    for (const trajectory of [direct, dispatched]) {
-      expect(trajectory.frames).toHaveLength(0)
-      expect(trajectory.metadata?.vaspout_electronic_only).toBe(true)
-      const electronic = trajectory.metadata?.electronic as VaspoutElectronicData
-      expect(electronic.dos).toBeNull()
-      expect(electronic.bands).not.toBeNull()
+    for (const error of [direct, dispatched]) {
+      expect(error).toBeInstanceOf(VaspoutElectronicOnlyError)
+      if (!(error instanceof VaspoutElectronicOnlyError)) throw error
+      expect(error.electronic.dos).toBeNull()
+      expect(error.electronic.bands).not.toBeNull()
     }
   })
 
   // Second no-structure exit: ion species datasets exist but the geometry is
   // missing/torn — files with electronic results render those, others throw.
   it(`falls back to electronic-only when geometry is torn but a DOS exists`, async () => {
-    const trajectory = await parse_fixture(`vaspout-si-dos-torn-structure.h5`)
-
-    expect(trajectory.frames).toHaveLength(0)
-    expect(trajectory.metadata?.vaspout_electronic_only).toBe(true)
-    const electronic = trajectory.metadata?.electronic as VaspoutElectronicData
+    const error = await Promise.resolve()
+      .then(() => parse_fixture(`vaspout-si-dos-torn-structure.h5`))
+      .then(
+        () => undefined,
+        (reason: unknown) => reason,
+      )
+    expect(error).toBeInstanceOf(VaspoutElectronicOnlyError)
+    if (!(error instanceof VaspoutElectronicOnlyError)) throw error
+    const electronic = error.electronic
     expect(electronic.dos).not.toBeNull()
     expect(electronic.dos?.efermi).toBeCloseTo(0.5, 6)
   })
@@ -266,11 +275,14 @@ describe(`vaspout.h5 electronic results (DOS + bands)`, () => {
 
 describe(`vaspout.h5 routing`, () => {
   it(`routes a renamed VASP HDF5 file by root-group layout`, async () => {
-    const trajectory = await parse_trajectory_data(
-      read_vaspout(`vaspout-si-relax.h5`),
-      `renamed.h5`,
-    )
-    expect(trajectory.metadata?.source_format).toBe(`vaspout_h5`)
+    const run = await open_trajectory(read_vaspout(`vaspout-si-relax.h5`), {
+      filename: `renamed.h5`,
+    })
+    try {
+      expect(run.provenance.format).toBe(`vaspout-h5`)
+    } finally {
+      run.dispose()
+    }
   })
 
   it.each([

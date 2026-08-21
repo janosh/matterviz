@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { Trajectory, type TrajHandlerData } from '$lib/trajectory'
+  import { TrajectoryFileViewer, type TrajHandlerData } from '$lib/trajectory'
 
-  const data_url = `/tmp/large-trajectories/2025-07-07-extracted_mof5_trajectory.xyz`
+  const src = `/tmp/large-trajectories/2025-07-07-extracted_mof5_trajectory.xyz`
 
   // Event handler for performance testing
   function handle_trajectory_complete(data: TrajHandlerData) {
@@ -11,4 +11,4 @@
   }
 </script>
 
-<Trajectory {data_url} auto_play on_end={handle_trajectory_complete} />
+<TrajectoryFileViewer {src} auto_play on_end={handle_trajectory_complete} />

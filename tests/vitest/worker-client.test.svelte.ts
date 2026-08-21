@@ -10,6 +10,7 @@ type Listener = (event: unknown) => void
 class FakeWorker {
   static instances: FakeWorker[] = []
   posted: { id: number; input: unknown; options: unknown }[] = []
+  transfers: Transferable[][] = []
   terminated = 0
   listeners = new Map<string, Listener[]>()
 
@@ -19,8 +20,12 @@ class FakeWorker {
   addEventListener(type: string, listener: Listener): void {
     this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener])
   }
-  postMessage(message: { id: number; input: unknown; options: unknown }): void {
+  postMessage(
+    message: { id: number; input: unknown; options: unknown },
+    transfer: Transferable[],
+  ): void {
     this.posted.push(message)
+    this.transfers.push(transfer)
   }
   terminate(): void {
     this.terminated++
@@ -156,6 +161,24 @@ test(`falls back to compute_sync when Worker is missing`, async () => {
   expect(FakeWorker.instances).toHaveLength(0)
 })
 
+test(`falls back to compute_sync when the worker constructor throws, and stops retrying it`, async () => {
+  const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
+  const create_worker = vi.fn(() => {
+    throw new DOMException(`cannot be accessed from origin`, `SecurityError`)
+  })
+  const run = create_worker_client<{ tag: string }, Record<string, unknown>, string>({
+    label: `Test`,
+    create_worker,
+    compute_sync: ({ tag }) => `sync:${tag}`,
+    build_payload: (input) => input,
+  })
+  await expect(run({ tag: `a` }, {})).resolves.toBe(`sync:a`)
+  await expect(run({ tag: `b` }, {})).resolves.toBe(`sync:b`)
+  expect(create_worker).toHaveBeenCalledOnce()
+  expect(warn).toHaveBeenCalledOnce()
+  warn.mockRestore()
+})
+
 test(`an explicit null result is delivered rather than reported as missing`, async () => {
   const run = make_client<number | null>(() => 0)
   const pending = run({ tag: `a` }, {})
@@ -181,4 +204,82 @@ test.each([
   const [worker] = FakeWorker.instances
   worker.emit(`message`, { data: { id: worker.posted[0].id, ...response } })
   await expect(pending).rejects.toThrow(expected)
+})
+
+describe(`per-request options`, () => {
+  test(`progress messages reach every caller sharing the request, results settle it`, async () => {
+    const run = make_client()
+    const input = { tag: `a` }
+    const seen: unknown[][] = [[], []]
+    const first = run(input, {}, { on_progress: (progress) => seen[0].push(progress) })
+    const second = run(input, {}, { on_progress: (progress) => seen[1].push(progress) })
+    const [worker] = FakeWorker.instances
+    expect(worker.posted).toHaveLength(1)
+    const { id } = worker.posted[0]
+    worker.emit(`message`, { data: { id, progress: 0.5 } })
+    worker.emit(`message`, { data: { id, progress: 1 } })
+    worker.emit(`message`, { data: { id, result: `done`, error: null } })
+    await expect(Promise.all([first, second])).resolves.toEqual([`done`, `done`])
+    expect(seen).toEqual([
+      [0.5, 1],
+      [0.5, 1],
+    ])
+  })
+
+  test(`aborting the only waiter terminates the worker and frees the key`, async () => {
+    const run = make_client()
+    const input = { tag: `a` }
+    const controller = new AbortController()
+    const pending = run(input, {}, { signal: controller.signal })
+    const [worker] = FakeWorker.instances
+    controller.abort()
+    await expect(pending).rejects.toMatchObject({ name: `AbortError` })
+    expect(worker.terminated).toBe(1)
+    // the dropped request must not be handed out again
+    void run(input, {}).catch(() => {})
+    expect(FakeWorker.instances).toHaveLength(2)
+    expect(FakeWorker.instances[1].posted).toHaveLength(1)
+  })
+
+  test(`aborting one of two waiters keeps the shared request and worker alive`, async () => {
+    const run = make_client()
+    const input = { tag: `a` }
+    const controller = new AbortController()
+    const aborted = run(input, {}, { signal: controller.signal })
+    const kept = run(input, {})
+    const [worker] = FakeWorker.instances
+    controller.abort(new Error(`no longer needed`))
+    await expect(aborted).rejects.toThrow(`no longer needed`)
+    expect(worker.terminated).toBe(0)
+    worker.emit(`message`, { data: { id: worker.posted[0].id, result: `done`, error: null } })
+    await expect(kept).resolves.toBe(`done`)
+  })
+
+  test(`aborting after the result arrived is a no-op`, async () => {
+    const run = make_client()
+    const controller = new AbortController()
+    const pending = run({ tag: `a` }, {}, { signal: controller.signal })
+    const [worker] = FakeWorker.instances
+    worker.emit(`message`, { data: { id: worker.posted[0].id, result: `done`, error: null } })
+    await expect(pending).resolves.toBe(`done`)
+    controller.abort()
+    expect(worker.terminated).toBe(0)
+  })
+
+  test(`an already-aborted signal rejects without posting`, async () => {
+    const run = make_client()
+    const signal = AbortSignal.abort()
+    await expect(run({ tag: `a` }, {}, { signal })).rejects.toMatchObject({
+      name: `AbortError`,
+    })
+    expect(FakeWorker.instances[0]?.posted ?? []).toHaveLength(0)
+  })
+
+  test(`transfer lists are forwarded to postMessage`, () => {
+    const run = make_client()
+    const buffer = new ArrayBuffer(8)
+    void run({ tag: `a` }, {}, { transfer: [buffer] }).catch(() => {})
+    void run({ tag: `b` }, {}).catch(() => {})
+    expect(FakeWorker.instances[0].transfers).toEqual([[buffer], []])
+  })
 })

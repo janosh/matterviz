@@ -416,6 +416,15 @@ describe(`fitted saddle versus highest image`, () => {
     expect(spline.fitted_max.energy).toBeGreaterThan(0.9)
     expect(spline.fitted_max.between_images).toEqual([1, 2])
     expect(spline.saddle_at_image).toBe(false)
+    const peak_idx = spline.coords.findIndex(
+      (coord) => Math.abs(coord - spline.fitted_max.coord) < 1e-12,
+    )
+    expect(peak_idx).toBeGreaterThanOrEqual(0)
+    expect(spline.energies[peak_idx]).toBeCloseTo(spline.fitted_max.energy, 12)
+    // inserting the saddle must keep the sample arrays parallel and the coords sorted
+    expect(spline.energies).toHaveLength(spline.coords.length)
+    expect(spline.energies.every(Number.isFinite)).toBe(true)
+    expect(spline.coords).toEqual(spline.coords.toSorted((a, b) => a - b))
   })
 
   test(`sampled curve passes through every image energy`, () => {
@@ -508,6 +517,30 @@ describe(`path_spline on structures`, () => {
     // slopes in eV/Å overshoots by 0.2824 — 10x the bound.
     expect(Math.abs(index - arc)).toBeLessThan(0.05)
     expect(ungraded - arc).toBeGreaterThan(0.2)
+  })
+
+  // A cubic Hermite segment with exact end slopes reproduces any cubic exactly, so a cubic
+  // energy profile E(x) = 1.5x² − x³ (maximum 0.5 at x = 1) sampled at uneven positions
+  // with its analytic forces F = −dE/dx is an exact analytic case for the whole chain:
+  // forces → projected slopes → Hermite → saddle search.
+  test(`force-hermite reproduces a cubic profile and its saddle exactly`, () => {
+    const profile = (x_val: number) => 1.5 * x_val ** 2 - x_val ** 3
+    const force = (x_val: number) => -(3 * x_val - 3 * x_val ** 2)
+    const x_vals = [0, 0.35, 0.8, 1.3, 1.9]
+    const path = walk_path(x_vals, x_vals.map(profile), x_vals.map(force))
+    const spline = path_spline(path, { n_samples: 101 })
+    expect(spline.method).toBe(`force-hermite`)
+    expect(spline.fitted_max.coord).toBeCloseTo(1, 12)
+    expect(spline.fitted_max.energy).toBeCloseTo(0.5, 12)
+    expect(spline.fitted_max.between_images).toEqual([2, 3])
+    expect(spline.highest_image).toEqual({ idx: 2, coord: 0.8, energy: profile(0.8) })
+    const max_err = Math.max(
+      ...spline.coords.map((coord, idx) => Math.abs(spline.energies[idx] - profile(coord))),
+    )
+    expect(max_err).toBeLessThan(1e-12)
+    // The natural cubic has no slope information and misplaces the saddle by several %
+    const natural = path_spline(path, { ignore_forces: true })
+    expect(Math.abs(natural.fitted_max.coord - 1)).toBeGreaterThan(0.01)
   })
 
   test(`force-projected slopes raise the fitted saddle above the plain cubic`, () => {

@@ -1,10 +1,6 @@
 import { ELEMENT_COLOR_SCHEMES } from '$lib/colors'
 import type { OxiComposition } from '$lib/composition'
-import {
-  Formula,
-  oxi_composition_to_elements,
-  parse_formula_with_oxidation,
-} from '$lib/composition'
+import { Formula } from '$lib/composition'
 import { type ComponentProps, mount } from 'svelte'
 import { expect, test, vi } from 'vitest'
 
@@ -13,140 +9,6 @@ const mount_formula = (props: ComponentProps<typeof Formula>): HTMLElement | nul
   mount(Formula, { target: document.body, props })
   return document.querySelector<HTMLElement>(`.formula`)
 }
-
-test(`parse_formula_with_oxidation parses simple formulas`, () => {
-  const result = parse_formula_with_oxidation(`H2O`)
-  expect(result).toHaveLength(2)
-  expect(result[0]).toMatchObject({ element: `H`, amount: 2, orig_idx: 0 })
-  expect(result[1]).toMatchObject({ element: `O`, amount: 1, orig_idx: 1 })
-})
-
-test.each([`Fe^2+O3`, `Fe[2+]O3`])(
-  `parse_formula_with_oxidation handles caret/bracket syntax: %s`,
-  (formula) => {
-    const result = parse_formula_with_oxidation(formula)
-    expect(result).toHaveLength(2)
-    expect(result[0]).toMatchObject({
-      element: `Fe`,
-      amount: 1,
-      oxidation_state: 2,
-      orig_idx: 0,
-    })
-    expect(result[1]).toMatchObject({
-      element: `O`,
-      amount: 3,
-      oxidation_state: undefined,
-      orig_idx: 1,
-    })
-  },
-)
-
-test.each([
-  // bare signs "+", "-", "[+]", "[-]" are treated as ±1
-  [`Na^+`, 1],
-  [`Cl^-`, -1],
-  [`Na[+]`, 1],
-  [`Cl[-]`, -1],
-  [`K^+Cl^-`, 1], // K should have +1
-  [`S[-2]`, -2],
-  // sign before or after the digit, caret or bracket syntax
-  [`Fe^+2O`, 2],
-  [`Fe^2+O`, 2],
-  [`Fe^-2O`, -2],
-  [`Fe^2-O`, -2],
-  [`Fe[+2]O`, 2],
-  [`Fe[2+]O`, 2],
-  [`Fe[-2]O`, -2],
-  [`Fe[2-]O`, -2],
-])(`parse_formula_with_oxidation %s -> oxidation %d`, (formula, expected_oxidation) => {
-  expect(parse_formula_with_oxidation(formula)[0].oxidation_state).toBe(expected_oxidation)
-})
-
-test(`parse_formula_with_oxidation handles complex formulas`, () => {
-  const result = parse_formula_with_oxidation(`Ca^2+Cl2^-`)
-  expect(result).toHaveLength(2)
-  expect(result[0]).toMatchObject({
-    element: `Ca`,
-    amount: 1,
-    oxidation_state: 2,
-    orig_idx: 0,
-  })
-  expect(result[1]).toMatchObject({
-    element: `Cl`,
-    amount: 2,
-    oxidation_state: -1,
-    orig_idx: 1,
-  })
-})
-
-test(`parse_formula_with_oxidation handles parentheses`, () => {
-  const result = parse_formula_with_oxidation(`Ca(OH)2`)
-  expect(result).toHaveLength(3)
-  expect(result.find((el) => el.element === `Ca`)?.amount).toBe(1)
-  expect(result.find((el) => el.element === `O`)?.amount).toBe(2)
-  expect(result.find((el) => el.element === `H`)?.amount).toBe(2)
-})
-
-test(`parse_formula_with_oxidation handles decimal counts`, () => {
-  const result = parse_formula_with_oxidation(`Fe(OH)0.5`)
-  expect(result.find((el) => el.element === `Fe`)?.amount).toBe(1)
-  expect(result.find((el) => el.element === `O`)?.amount).toBe(0.5)
-  expect(result.find((el) => el.element === `H`)?.amount).toBe(0.5)
-})
-
-test(`parse_formula_with_oxidation preserves original order`, () => {
-  const result = parse_formula_with_oxidation(`ZnO2Fe`)
-  expect(result[0].element).toBe(`Zn`)
-  expect(result[0].orig_idx).toBe(0)
-  expect(result[1].element).toBe(`O`)
-  expect(result[1].orig_idx).toBe(1)
-  expect(result[2].element).toBe(`Fe`)
-  expect(result[2].orig_idx).toBe(2)
-})
-
-test(`parse_formula_with_oxidation throws on invalid element`, () => {
-  expect(() => parse_formula_with_oxidation(`Xx2O3`)).toThrow(`Invalid element symbol`)
-})
-
-test.each([
-  [`Fe^2+Fe^3+`, false, 1, 2], // Non-strict: uses first oxidation state
-  [`Fe^2+Fe^2+`, true, 1, 2], // Strict: matching states OK
-])(`parse_formula_with_oxidation %s strict=%s`, (formula, strict, length, ox_state) => {
-  const result = parse_formula_with_oxidation(formula, strict)
-  expect(result).toHaveLength(length)
-  expect(result[0]).toMatchObject({ element: `Fe`, amount: 2, oxidation_state: ox_state })
-})
-
-test.each([
-  [`Fe^2+Fe^3+`, `Conflicting oxidation states for Fe: +2 and +3`],
-  [`S^2-S^-`, `Conflicting oxidation states for S: -2 and -1`],
-])(`parse_formula_with_oxidation strict throws on %s`, (formula, error_msg) => {
-  expect(() => parse_formula_with_oxidation(formula, true)).toThrow(error_msg)
-})
-
-test(`oxi_composition_to_elements converts correctly`, () => {
-  const composition: Partial<OxiComposition> = {
-    Fe: { amount: 2, oxidation_state: 3 },
-    O: { amount: 3, oxidation_state: -2 },
-  }
-
-  const result = oxi_composition_to_elements(composition as OxiComposition)
-  expect(result).toHaveLength(2)
-
-  const iron = result.find((elem) => elem.element === `Fe`)
-  expect(iron).toMatchObject({
-    element: `Fe`,
-    amount: 2,
-    oxidation_state: 3,
-  })
-
-  const oxygen = result.find((elem) => elem.element === `O`)
-  expect(oxygen).toMatchObject({
-    element: `O`,
-    amount: 3,
-    oxidation_state: -2,
-  })
-})
 
 test(`Formula component renders with string formula`, () => {
   const element = mount_formula({ formula: `H2O` })
@@ -198,6 +60,14 @@ test(`Formula component renders superscripts for oxidation states`, () => {
   )
   expect(oxidation_values).toContain(`+2`)
   expect(oxidation_values).toContain(`-2`)
+})
+
+test(`Formula renders mixed-valence species separately`, () => {
+  mount_formula({ formula: `Fe^2+Fe^3+2O^2-4` })
+  const symbols = [...document.querySelectorAll(`.element-symbol`)].map((el) => el.textContent)
+  const sups = [...document.querySelectorAll(`sup`)].map((el) => el.textContent)
+  expect(symbols).toEqual([`Fe`, `Fe`, `O`])
+  expect(sups).toEqual([`+2`, `+3`, `-2`])
 })
 
 test(`Formula component does not render superscripts for zero oxidation`, () => {

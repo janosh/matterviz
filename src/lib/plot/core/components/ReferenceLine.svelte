@@ -1,17 +1,12 @@
 <script lang="ts">
-  // ReferenceLine: 2D reference lines with annotations (horizontal, vertical, diagonal, segment, line)
+  // 2D reference line (horizontal, vertical, diagonal, segment, line) with an optional
+  // annotation whose placement the host plot solves together with its other decorations.
+  import type { ReferenceAnnotationCandidate } from '$lib/plot/core/decorations'
   import {
     estimate_reference_annotation_metrics,
     reference_annotation_text_rect,
     resolve_line_endpoints,
-    resolve_reference_annotation,
   } from '$lib/plot/core/reference-line'
-  import {
-    project_obstacles,
-    type DecorationPoint,
-    type ReferenceAnnotationCandidate,
-  } from '$lib/plot/core/decorations'
-  import type { Rect } from '$lib/plot/core/layout'
   import type { RefLine, RefLineEvent, RefLineStyle } from '$lib/plot/core/types'
   import { REF_LINE_STYLE_DEFAULTS } from '$lib/plot/core/types'
 
@@ -28,10 +23,6 @@
     y2_scale,
     clip_path_id,
     hovered_line_idx = null,
-    exclusion_rects = [],
-    obstacles = [],
-    obstacles_norm = [],
-    annotation_clearance,
     annotation_placement,
     on_click,
     on_hover,
@@ -48,66 +39,27 @@
     y2_scale?: (val: number) => number
     clip_path_id: string
     hovered_line_idx?: number | null
-    exclusion_rects?: readonly Rect[]
-    obstacles?: readonly DecorationPoint[]
-    obstacles_norm?: readonly DecorationPoint[]
-    annotation_clearance?: number
-    annotation_placement?: ReferenceAnnotationCandidate
+    annotation_placement?: ReferenceAnnotationCandidate | null
     on_click?: (event: RefLineEvent) => void
     on_hover?: (event: RefLineEvent | null) => void
   } = $props()
 
-  let endpoints = $derived(
+  const endpoints = $derived(
     resolve_line_endpoints(
       ref_line,
       { x_min, x_max, y_min, y_max },
-      {
-        x_scale,
-        x2_scale,
-        y_scale,
-        y2_scale,
-      },
+      { x_scale, x2_scale, y_scale, y2_scale },
     ),
   )
 
   let is_focused = $state(false)
-  let is_hovered = $derived(hovered_line_idx === line_idx || is_focused)
-  let is_clickable = $derived(Boolean(on_click || ref_line.on_click))
-
-  let style = $derived<Required<RefLineStyle>>({
+  const is_hovered = $derived(hovered_line_idx === line_idx || is_focused)
+  const is_clickable = $derived(Boolean(on_click || ref_line.on_click))
+  const style = $derived<Required<RefLineStyle>>({
     ...REF_LINE_STYLE_DEFAULTS,
     ...ref_line.style,
     ...(is_hovered && ref_line.hover_style),
   })
-
-  let annotation_plot_bounds = $derived.by((): Rect => {
-    const active_x_scale = ref_line.x_axis === `x2` && x2_scale ? x2_scale : x_scale
-    const active_y_scale = ref_line.y_axis === `y2` && y2_scale ? y2_scale : y_scale
-    const x_pixels = [active_x_scale(x_min), active_x_scale(x_max)]
-    const y_pixels = [active_y_scale(y_min), active_y_scale(y_max)]
-    const x_left = Math.min(...x_pixels)
-    const y_top = Math.min(...y_pixels)
-    return {
-      x: x_left,
-      y: y_top,
-      width: Math.max(...x_pixels) - x_left,
-      height: Math.max(...y_pixels) - y_top,
-    }
-  })
-  let annotation_obstacles = $derived([
-    ...obstacles,
-    ...project_obstacles(obstacles_norm, annotation_plot_bounds),
-  ])
-  let annotation_pos = $derived(
-    annotation_placement ??
-      (endpoints && ref_line.annotation
-        ? resolve_reference_annotation(endpoints, ref_line.annotation, {
-            clearance: annotation_clearance,
-            exclusion_rects,
-            obstacles: annotation_obstacles,
-          })
-        : null),
-  )
 
   const make_event = (event: MouseEvent | KeyboardEvent | FocusEvent): RefLineEvent => ({
     event,
@@ -117,14 +69,10 @@
     label: ref_line.label ?? ref_line.annotation?.text,
     metadata: ref_line.metadata,
   })
-
-  function handle_keydown(event: KeyboardEvent) {
-    if (event.key === `Enter` || event.key === ` `) {
-      event.preventDefault()
-      const evt = make_event(event)
-      ref_line.on_click?.(evt)
-      on_click?.(evt)
-    }
+  const emit_click = (event: MouseEvent | KeyboardEvent) => {
+    const ref_event = make_event(event)
+    ref_line.on_click?.(ref_event)
+    on_click?.(ref_event)
   }
 </script>
 
@@ -150,11 +98,13 @@
     }}
     onclick={(evt) => {
       evt.stopPropagation()
-      const ref_evt = make_event(evt)
-      ref_line.on_click?.(ref_evt)
-      on_click?.(ref_evt)
+      emit_click(evt)
     }}
-    onkeydown={handle_keydown}
+    onkeydown={(evt) => {
+      if (evt.key !== `Enter` && evt.key !== ` `) return
+      evt.preventDefault()
+      emit_click(evt)
+    }}
   >
     <!-- Lines clipped to plot area -->
     <g clip-path="url(#{clip_path_id})">
@@ -184,14 +134,13 @@
     </g>
 
     <!-- Annotation (outside clip-path to remain visible) -->
-    {#if annotation_pos && ref_line.annotation}
+    {#if annotation_placement && ref_line.annotation}
       {@const anno = ref_line.annotation}
-      {@const annotation_transform = annotation_pos.rotation
-        ? `rotate(${annotation_pos.rotation}, ${annotation_pos.x}, ${annotation_pos.y})`
-        : undefined}
+      {@const { x, y, text_anchor, dominant_baseline, rotation } = annotation_placement}
+      {@const annotation_transform = rotation ? `rotate(${rotation}, ${x}, ${y})` : undefined}
       {#if anno.background}
         {@const background_rect = reference_annotation_text_rect(
-          annotation_pos,
+          annotation_placement,
           estimate_reference_annotation_metrics(anno),
         )}
         <rect
@@ -207,10 +156,10 @@
         />
       {/if}
       <text
-        x={annotation_pos.x}
-        y={annotation_pos.y}
-        text-anchor={annotation_pos.text_anchor}
-        dominant-baseline={annotation_pos.dominant_baseline}
+        {x}
+        {y}
+        text-anchor={text_anchor}
+        dominant-baseline={dominant_baseline}
         transform={annotation_transform}
         fill={anno.color ?? style.color}
         font-size={anno.font_size ?? `12px`}

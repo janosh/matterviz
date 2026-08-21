@@ -1,5 +1,5 @@
-import { ATOMIC_WEIGHTS } from '$lib/composition/parse'
 import { THZ_TO_INVERSE_CM } from '$lib/constants'
+import { element_by_symbol } from '$lib/element/data'
 import { is_elem_symbol } from '$lib/element/helpers'
 import {
   one_sided_periodogram,
@@ -1388,7 +1388,9 @@ const detect_peaks = (
 
 export function standard_masses_for_elements(elements: string[]): Float64Array {
   return Float64Array.from(elements, (element, atom_idx) => {
-    const mass = is_elem_symbol(element) ? ATOMIC_WEIGHTS.get(element) : undefined
+    const mass = is_elem_symbol(element)
+      ? element_by_symbol.get(element)?.atomic_mass
+      : undefined
     if (mass && mass > 0) return mass
     return fail(`no standard atomic mass for atom ${atom_idx} (${element})`)
   })

@@ -1,6 +1,8 @@
 <script lang="ts">
   import type { Vec2 } from '$lib/math'
+  import { normalize_to_scene } from '$lib/plot/core/reference-line'
   import type { Surface3DConfig } from '$lib/plot/core/types'
+  import { dispose_on_change } from '$lib/scene'
   import { T } from '@threlte/core'
   import * as THREE from 'three/webgpu'
 
@@ -22,23 +24,11 @@
     scene_z?: number
   } = $props()
 
-  // Normalize value to scene coordinates (centered around 0)
-  const normalize = (value: number, [min_val, max_val]: Vec2, scene_size: number): number =>
-    ((value - min_val) / (max_val - min_val || 1) - 0.5) * scene_size
-
-  // Parse color to THREE.Color with fallback
-  function parse_color(color: string): THREE.Color {
-    try {
-      return new THREE.Color(color)
-    } catch {
-      return new THREE.Color(0x4488ff)
-    }
-  }
-
-  // Calculate vertex color based on config
+  // Calculate vertex color based on config. THREE.Color never throws on an unknown color
+  // string: it warns and keeps the default white, so no fallback is needed here.
   function get_vertex_color(x_val: number, y_val: number, z_val: number): THREE.Color {
-    if (config.color_fn) return parse_color(config.color_fn(x_val, y_val, z_val))
-    if (config.color) return parse_color(config.color)
+    if (config.color_fn) return new THREE.Color(config.color_fn(x_val, y_val, z_val))
+    if (config.color) return new THREE.Color(config.color)
     // Default: color by z value (blue to red gradient)
     const z_norm = (z_val - z_range[0]) / (z_range[1] - z_range[0] || 1)
     return new THREE.Color().setHSL(0.66 - z_norm * 0.66, 0.8, 0.5)
@@ -53,9 +43,9 @@
     z_val: number,
   ): void {
     positions.push(
-      normalize(x_val, x_range, scene_x),
-      normalize(z_val, z_range, scene_z), // user Z → Three.js Y (vertical)
-      normalize(y_val, y_range, scene_y), // user Y → Three.js Z (depth)
+      normalize_to_scene(x_val, x_range, scene_x),
+      normalize_to_scene(z_val, z_range, scene_z), // user Z → Three.js Y (vertical)
+      normalize_to_scene(y_val, y_range, scene_y), // user Y → Three.js Z (depth)
     )
     const color = get_vertex_color(x_val, y_val, z_val)
     colors.push(color.r, color.g, color.b)
@@ -141,20 +131,15 @@
     return null
   }
 
-  // Geometry with proper disposal on change/unmount
-  let geometry: THREE.BufferGeometry | null = $state(null)
-  let wireframe_geometry: THREE.WireframeGeometry | null = $state(null)
-
-  $effect(() => {
-    const new_geom = create_geometry()
-    const new_wireframe = new_geom ? new THREE.WireframeGeometry(new_geom) : null
-    geometry = new_geom
-    wireframe_geometry = new_wireframe
-    return () => {
-      new_geom?.dispose()
-      new_wireframe?.dispose()
-    }
-  })
+  // Geometries are derived so they rebuild with the config/ranges; dispose_on_change releases
+  // the previous ones on every rebuild and on unmount. The wireframe only exists when shown and
+  // gets its own disposer so toggling it doesn't release the still-rendered surface geometry.
+  let geometry = $derived(create_geometry())
+  let wireframe_geometry = $derived(
+    config.wireframe && geometry ? new THREE.WireframeGeometry(geometry) : null,
+  )
+  dispose_on_change(() => [geometry])
+  dispose_on_change(() => [wireframe_geometry])
 
   // Material properties
   let is_transparent = $derived((config.opacity ?? 1) < 1)
@@ -180,7 +165,7 @@
     <T.MeshStandardMaterial {...material_props} />
   </T.Mesh>
 
-  {#if config.wireframe && wireframe_geometry}
+  {#if wireframe_geometry}
     <T.LineSegments>
       <T is={wireframe_geometry} />
       <T.LineBasicMaterial {...wireframe_props} />

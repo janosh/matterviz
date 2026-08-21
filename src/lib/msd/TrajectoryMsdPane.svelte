@@ -1,27 +1,21 @@
 <script lang="ts">
-  import { Graph } from 'svelte-widgets/icons'
-  import { ViewerPane, type ViewerPaneOptions } from '$lib/overlays'
-  import { StatusMessage } from '$lib/feedback'
-  import { format_bytes, format_num } from '$lib/labels'
-  import type { ParseProgress, TrajectoryType } from '$lib/trajectory'
-  import { analysis_pane_setup, has_frame_loader_data } from '$lib/trajectory/analysis'
-  import { to_error } from '$lib/utils'
+  import type { ViewerPaneOptions } from '$lib/overlays'
+  import type { TrajectoryRun } from '$lib/trajectory'
+  import type { AnalysisPaneContext } from '$lib/trajectory/analysis-pane'
+  import TrajectoryAnalysisPane from '$lib/trajectory/TrajectoryAnalysisPane.svelte'
   import { collect_msd_positions, suggest_msd_frame_stride } from './collect'
   import type { MsdOptions, MsdPositions, MsdResult } from './index'
   import MsdPlot from './MsdPlot.svelte'
 
   let {
-    trajectory,
-    raw_data = null,
+    run,
     pane_open = $bindable(false),
     result = $bindable(),
     default_dt = null,
     default_time_unit,
     ...pane_options
   }: ViewerPaneOptions & {
-    trajectory?: TrajectoryType
-    // Raw file bytes from Trajectory.svelte's orig_data for source-dependent loaders.
-    raw_data?: string | ArrayBuffer | null
+    run?: TrajectoryRun
     pane_open?: boolean
     result?: MsdResult
     // Time between source frames as recorded in the file. When present the pane starts
@@ -30,178 +24,61 @@
     default_time_unit?: string
   } = $props()
 
-  // Control-panel state. dt_source is the time between two SOURCE frames; collecting
-  // every Nth frame multiplies it (see dt_collected below).
-  // Seeded from complete timestep metadata below, and re-seeded on trajectory swap
-  let dt_source = $state<number | null>(1)
-  let time_unit = $state(`ps`)
-  let use_dt = $state(false)
   let max_lag_fraction = $state(0.5)
   let fit_start_fraction = $state(0.2)
   let fit_end_fraction = $state(0.8)
-  // null, not 0, is what <input type="number"> writes back when cleared
-  let frame_stride = $state<number | null>(1)
-
   let positions = $state<MsdPositions | undefined>(undefined)
-  let collecting = $state(false)
   let plotting = $state(false)
   let error_msg = $state<string | undefined>(undefined)
-  let progress = $state<ParseProgress | null>(null)
 
-  let {
-    total_frames,
-    loaded_frames,
-    n_atoms,
-    safe_stride,
-    collected_frames,
-    is_lazy,
-    suggested_stride,
-    setup_error,
-  } = $derived(analysis_pane_setup(trajectory, suggest_msd_frame_stride, frame_stride))
-  let loader_data_available = $derived(has_frame_loader_data(trajectory, raw_data))
-  let estimated_bytes = $derived(collected_frames * n_atoms * 3 * 8)
-
-  // Drop stale positions/curves whenever the underlying trajectory is swapped out, and
-  // re-seed the timestep from the file rather than carrying the previous one over. Seeding
-  // also keys on the defaults so metadata that only becomes known later still lands.
-  let analysed_trajectory: TrajectoryType | undefined
-  let seeded_dt: number | null | undefined
-  let seeded_time_unit: string | undefined
-  $effect(() => {
-    const trajectory_changed = trajectory !== analysed_trajectory
-    if (trajectory_changed) {
-      analysed_trajectory = trajectory
-      positions = undefined
-      result = undefined
-      error_msg = undefined
-    }
-    if (
-      trajectory_changed ||
-      default_dt !== seeded_dt ||
-      default_time_unit !== seeded_time_unit
-    ) {
-      seeded_dt = default_dt
-      seeded_time_unit = default_time_unit
-      const has_default_timestep =
-        default_dt !== null &&
-        Number.isFinite(default_dt) &&
-        default_dt > 0 &&
-        Boolean(default_time_unit)
-      dt_source = has_default_timestep ? default_dt : 1
-      time_unit = has_default_timestep && default_time_unit ? default_time_unit : `ps`
-      use_dt = has_default_timestep
-    }
-  })
-
-  // MsdOptions.dt is time per COLLECTED frame, so striding has to be folded in here —
-  // otherwise entering the real MD timestep with stride 5 reports D five times too large
-  // with correct-looking units.
-  let dt_collected = $derived((dt_source ?? 1) * safe_stride)
-  let has_valid_dt = $derived(
-    use_dt &&
-      dt_source !== null &&
-      Number.isFinite(dt_source) &&
-      dt_source > 0 &&
-      time_unit.length > 0,
-  )
-  let msd_options = $derived<MsdOptions>({
-    ...(has_valid_dt ? { dt: dt_collected, time_unit } : {}),
+  // Not destructured: the context fields are getters and MsdPlot recomputes on every new
+  // options object, so dt/time_unit are only read once a timestep is actually in use
+  const msd_options = (ctx: AnalysisPaneContext<MsdPositions>): MsdOptions => ({
+    ...(ctx.has_valid_dt ? { dt: ctx.dt_collected, time_unit: ctx.time_unit } : {}),
     max_lag_fraction,
     fit: { start_fraction: fit_start_fraction, end_fraction: fit_end_fraction },
   })
-
-  async function collect() {
-    if (!trajectory) return
-    collecting = true
-    error_msg = undefined
-    progress = null
-    try {
-      positions = await collect_msd_positions(trajectory, {
-        raw_data,
-        frame_stride: safe_stride,
-        on_progress: (parse_progress) => (progress = parse_progress),
-      })
-    } catch (exc) {
-      // clearing only `positions` would leave MsdPlot's effect early-returning on the
-      // missing input, so the previous curves stay up and hide this error
-      positions = undefined
-      result = undefined
-      error_msg = to_error(exc).message
-    } finally {
-      collecting = false
-      progress = null
-    }
-  }
 </script>
 
-<ViewerPane
-  bind:open={pane_open}
+<TrajectoryAnalysisPane
+  {run}
+  bind:pane_open
+  bind:input={positions}
+  bind:error_msg
+  busy={plotting}
+  title="Mean Squared Displacement"
   pane_name="mean squared displacement"
   class_prefix="trajectory-msd"
-  max_width="34em"
-  closed_icon={Graph}
+  analysis_name="MSD"
+  collect={collect_msd_positions}
+  suggest_stride={suggest_msd_frame_stride}
+  compute_label="Compute MSD"
+  recollect_label="Recollect positions"
+  {default_dt}
+  {default_time_unit}
+  time_unit_fallback="ps"
+  on_clear={() => (result = undefined)}
   {...pane_options}
 >
-  <h4 style="margin-top: 0">Mean Squared Displacement</h4>
-
-  {#if !trajectory}
-    <StatusMessage message="No trajectory loaded" style="border: none" />
-  {:else}
-    {#if setup_error}
-      <StatusMessage type="error" message={setup_error} style="font-size: 0.8em" />
-    {:else if is_lazy}
-      <StatusMessage
-        type="warning"
-        message="Indexed trajectory: {loaded_frames} of {total_frames} frames are in memory. MSD streams the full payload{loader_data_available
-          ? ``
-          : `, but the raw file bytes are unavailable here`}."
-        style="font-size: 0.8em"
-      />
-    {/if}
-
-    <div class="analysis-controls msd-controls">
-      <label>
-        Max lag
-        <input type="number" min="0.05" max="1" step="0.05" bind:value={max_lag_fraction} />
-        <span>× length</span>
-      </label>
-      <label>
-        Fit window
-        <input type="number" min="0" max="1" step="0.05" bind:value={fit_start_fraction} />
-        <input type="number" min="0" max="1" step="0.05" bind:value={fit_end_fraction} />
-      </label>
-      <label>
-        Frame stride
-        <input type="number" min="1" step="1" bind:value={frame_stride} />
-        {#if suggested_stride && suggested_stride > safe_stride}
-          <span class="hint">needs ≥ {suggested_stride}</span>
-        {/if}
-      </label>
-      <label>
-        <input type="checkbox" bind:checked={use_dt} />
-        Time per source frame
-        <input type="number" min="0" step="0.001" bind:value={dt_source} disabled={!use_dt} />
-        <input
-          type="text"
-          bind:value={time_unit}
-          disabled={!use_dt}
-          style="width: 4em"
-          aria-label="Time unit"
-        />
-      </label>
-      <p class="hint">
-        {collected_frames} frames × {n_atoms} atoms ≈ {format_bytes(estimated_bytes)}
-        {#if has_valid_dt}· {format_num(dt_collected, `.4~g`)} {time_unit} per collected frame
-        {:else}· lag axis in frames (no valid timestep is available){/if}
-      </p>
-      <button onclick={collect} disabled={collecting || plotting}>
-        {collecting ? `Reading frames…` : positions ? `Recollect positions` : `Compute MSD`}
-      </button>
-      {#if progress}<span class="hint">{progress.stage}</span>{/if}
-    </div>
-
-    <!-- Rendered unconditionally so MsdPlot stays the single owner of the message area:
-    collect errors land in the same slot as compute errors and the empty state -->
-    <MsdPlot {positions} {msd_options} bind:result bind:loading={plotting} bind:error_msg />
-  {/if}
-</ViewerPane>
+  {#snippet controls()}
+    <label>
+      Max lag
+      <input type="number" min="0.05" max="1" step="0.05" bind:value={max_lag_fraction} />
+      <span>× length</span>
+    </label>
+    <label>
+      Fit window
+      <input type="number" min="0" max="1" step="0.05" bind:value={fit_start_fraction} />
+      <input type="number" min="0" max="1" step="0.05" bind:value={fit_end_fraction} />
+    </label>
+  {/snippet}
+  {#snippet children(ctx)}
+    <MsdPlot
+      positions={ctx.input}
+      msd_options={msd_options(ctx)}
+      bind:result
+      bind:loading={plotting}
+      bind:error_msg
+    />
+  {/snippet}
+</TrajectoryAnalysisPane>

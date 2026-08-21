@@ -72,36 +72,29 @@
     }
   })
 
-  // Derived values for wyckoff positions
-  const base_wyckoff_positions = $derived(wyckoff_positions_from_moyo(top_ex_sym_data ?? null))
-  // Full Wyckoff-position database of the detected space-group setting (moyo 0.11):
-  // adds ITA representative coordinates and lets the table list unoccupied positions
+  const base_wyckoff_positions = $derived(wyckoff_positions_from_moyo(top_ex_sym_data))
+  // Full Wyckoff-position database of the detected space-group setting: adds ITA
+  // representative coordinates and lets the table list unoccupied positions
   const wyckoff_db = $derived(
     wasm_ready && top_ex_sym_data
       ? spacegroup_wyckoff_positions(top_ex_sym_data.hall_number)
       : [],
   )
-  const wyckoff_positions = $derived.by(() => {
-    if (
-      !base_wyckoff_positions ||
-      !displayed_structure ||
-      !current_structure ||
-      !top_ex_sym_data
-    )
-      return base_wyckoff_positions
-
-    // Only apply mapping for periodic structures with lattice
-    if (!(`lattice` in current_structure) || !(`lattice` in displayed_structure)) {
-      return base_wyckoff_positions
-    }
-
-    return map_wyckoff_to_all_atoms(
-      base_wyckoff_positions,
-      displayed_structure,
-      current_structure,
-      top_ex_sym_data,
-    )
-  })
+  // Rows re-expressed onto whatever cell the viewer renders (conventional/primitive/supercell)
+  const wyckoff_positions = $derived(
+    top_ex_sym_data &&
+      displayed_structure &&
+      current_structure &&
+      `lattice` in current_structure &&
+      `lattice` in displayed_structure
+      ? map_wyckoff_to_all_atoms(
+          base_wyckoff_positions,
+          displayed_structure,
+          current_structure,
+          top_ex_sym_data,
+        )
+      : base_wyckoff_positions,
+  )
 </script>
 
 <h1>Symmetry</h1>
@@ -188,14 +181,7 @@
 
 <p style="margin: 2em 0; text-align: center">Drag any structure onto the viewer:</p>
 
-<FilePicker
-  files={structure_files}
-  show_category_filters
-  on_drag_end={() => {
-    // noop to avoid TS complaining
-  }}
-  style="margin-bottom: 3em"
-/>
+<FilePicker files={structure_files} show_category_filters style="margin-bottom: 3em" />
 
 <!-- Layout Examples Section -->
 <section style="margin: 4em 0">

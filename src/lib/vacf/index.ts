@@ -56,7 +56,7 @@ export interface VdosOptions {
 
 export interface VacfOptions {
   // Time per collected frame. Left unset the lag axis is labelled in frames and the VDOS
-  // axis in inverse frames, because nothing in TrajectoryType records a timestep.
+  // axis in inverse frames when the run records no timestep.
   dt?: number
   // Mandatory whenever dt is given (e.g. `fs`, `ps`), same rule as calc_msd
   time_unit?: string

@@ -53,49 +53,53 @@
       orientation = `vertical`
       ;({ kind, side, whisker_mode, show_outliers, show_mean } = DEFAULTS.box)
     }}
-    layout="grid"
+    layout="flow"
   >
-    <label>
-      <span>Orientation</span>
-      <select bind:value={orientation}>
-        <option value="vertical">Vertical</option>
-        <option value="horizontal">Horizontal</option>
-      </select>
-    </label>
-    <label>
-      <span>Glyph</span>
-      <select bind:value={kind}>
-        <option value="box">Box</option>
-        <option value="violin">Violin</option>
-        <option value="violin+box">Violin + box</option>
-      </select>
-    </label>
-    {#if kind !== `box`}
+    <div class="ctrl-line">
       <label>
-        <span>Violin side</span>
-        <select bind:value={side}>
-          <option value="both">Both</option>
-          <option value="positive">Positive</option>
-          <option value="negative">Negative</option>
+        <span>Orientation</span>
+        <select bind:value={orientation}>
+          <option value="vertical">Vertical</option>
+          <option value="horizontal">Horizontal</option>
         </select>
       </label>
-    {/if}
-    <label>
-      <span>Whiskers</span>
-      <select bind:value={whisker_mode}>
-        <option value="tukey">Tukey (1.5·IQR)</option>
-        <option value="minmax">Min/max</option>
-        <option value="percentile">Percentile</option>
-        <option value="std">Std dev</option>
-      </select>
-    </label>
-    <label>
-      <span>Show outliers</span>
-      <input type="checkbox" bind:checked={show_outliers} />
-    </label>
-    <label>
-      <span>Show mean</span>
-      <input type="checkbox" bind:checked={show_mean} />
-    </label>
+      <label>
+        <span>Glyph</span>
+        <select bind:value={kind}>
+          <option value="box">Box</option>
+          <option value="violin">Violin</option>
+          <option value="violin+box">Violin + box</option>
+        </select>
+      </label>
+      {#if kind !== `box`}
+        <label>
+          <span>Side</span>
+          <select bind:value={side}>
+            <option value="both">Both</option>
+            <option value="positive">Positive</option>
+            <option value="negative">Negative</option>
+          </select>
+        </label>
+      {/if}
+      <label>
+        <span>Whiskers</span>
+        <select bind:value={whisker_mode}>
+          <option value="tukey">Tukey (1.5·IQR)</option>
+          <option value="minmax">Min/max</option>
+          <option value="percentile">Percentile</option>
+          <option value="std">Std dev</option>
+        </select>
+      </label>
+    </div>
+    <div class="ctrl-line">
+      <label>
+        <input type="checkbox" bind:checked={show_outliers} />
+        Show outliers
+      </label>
+      <label>
+        <input type="checkbox" bind:checked={show_mean} />
+        Show mean
+      </label>
+    </div>
   </SettingsSection>
 </PlotControls>

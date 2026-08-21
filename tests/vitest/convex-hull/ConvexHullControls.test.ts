@@ -139,15 +139,65 @@ describe(`ConvexHullControls category filters (magnetic default)`, () => {
   })
 
   test(`Space key also activates the stable/unstable legend toggles`, () => {
-    mount_controls({ stable_entries: [mag()] })
+    mount_controls({ stable_entries: [mag()], unstable_entries: [mag(), mag()] })
     // Points row (stability mode) renders stable + unstable toggles outside .category-filters
-    const stable_toggle = [...document.querySelectorAll<HTMLElement>(`.legend-item`)].find(
-      (item) => item.textContent?.includes(`Stable`),
-    )
-    if (!stable_toggle) throw new Error(`Stable legend toggle not found`)
+    const point_toggles = [...document.querySelectorAll<HTMLElement>(`.legend-item`)]
+    const labels = () => point_toggles.map((item) => item.textContent?.trim())
+    expect(labels()).toEqual([`Stable (1)`, `Above hull (2/2)`])
+    expect(
+      [`stable`, `unstable`].map((marker, idx) =>
+        point_toggles[idx].querySelector(`.marker`)?.classList.contains(marker),
+      ),
+    ).toEqual([true, true])
+    const [stable_toggle, unstable_toggle] = point_toggles
     expect(stable_toggle.getAttribute(`aria-pressed`)).toBe(`true`)
     const event = press(stable_toggle, ` `)
     expect(event.defaultPrevented).toBe(true)
     expect(stable_toggle.getAttribute(`aria-pressed`)).toBe(`false`)
+    unstable_toggle.click()
+    flushSync()
+    // hidden stable keeps its total, hidden unstable shows 0/total
+    expect(labels()).toEqual([`Stable (1)`, `Above hull (0/2)`])
+  })
+
+  test(`face color buttons follow hull_face_color_mode and show the swatch only for uniform`, () => {
+    const buttons = () => [
+      ...document.querySelectorAll<HTMLButtonElement>(`.face-color-mode-buttons button`),
+    ]
+    const swatch = () => document.querySelector(`input[type="color"]`)
+    mount_controls({ show_hull_faces: true, hull_face_color_mode: `dominant_element` })
+    expect(
+      buttons().map((btn) => [btn.textContent?.trim(), btn.classList.contains(`active`)]),
+    ).toEqual([
+      [`Uniform`, false],
+      [`Energy`, false],
+      [`Element`, true],
+      [`Index`, false],
+    ])
+    expect(swatch()).toBeNull()
+    buttons()[0].click()
+    flushSync()
+    expect(buttons().map((btn) => btn.classList.contains(`active`))).toEqual([
+      true,
+      false,
+      false,
+      false,
+    ])
+    expect(swatch()).not.toBeNull()
+  })
+
+  test(`color mode buttons swap the Points legend for the color scale picker`, () => {
+    mount_controls({ stable_entries: [mag()] })
+    const mode_button = (text: string) =>
+      [...document.querySelectorAll<HTMLButtonElement>(`.toggle-btn`)].find(
+        (btn) => btn.textContent?.trim() === text,
+      )
+    expect(mode_button(`Stability`)?.classList.contains(`active`)).toBe(true)
+    expect(document.querySelector(`.color-scale-row`)).toBeNull()
+    mode_button(`Energy`)?.click()
+    flushSync()
+    expect(mode_button(`Energy`)?.classList.contains(`active`)).toBe(true)
+    expect(document.querySelector(`.color-scale-row`)).not.toBeNull()
+    expect(document.querySelector(`.legend-item`)).toBeNull()
   })
 })

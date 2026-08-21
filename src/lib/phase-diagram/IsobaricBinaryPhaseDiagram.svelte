@@ -1,13 +1,13 @@
 <script lang="ts">
   import { DEFAULT_PNG_DPI } from '$lib/constants'
   import EmptyState from '$lib/EmptyState.svelte'
+  import { ClickFeedback } from '$lib/feedback'
   import { create_file_drop_handler } from '$lib/io/file-drop'
   import { format_num } from '$lib/labels'
   import { FullscreenButton } from '$lib/layout'
   import { sanitize_svg } from '$lib/sanitize'
-  import { compute_bounding_box_2d, polygon_centroid, type Vec2 } from '$lib/math'
-  import type { AxisConfig } from '$lib/plot'
-  import { constrain_tooltip_position } from '$lib/plot/core/layout'
+  import { compute_bounding_box_2d, polygon_centroid } from '$lib/math'
+  import { type AxisConfig, PlotTooltip } from '$lib/plot'
   import { unique_id } from '$lib/plot/core/utils'
   import { scaleLinear } from 'd3-scale'
   import { type ComponentProps, type Snippet, untrack } from 'svelte'
@@ -44,7 +44,8 @@
     get_multi_phase_gradient,
     get_phase_color,
     merge_phase_diagram_config,
-    PHASE_COLOR_RGB,
+    PHASE_DIAGRAM_DEFAULTS,
+    TIE_LINE_COLOR,
     transform_vertices,
   } from './utils'
 
@@ -126,9 +127,11 @@
     boundaries: [],
   }
 
-  // Shared icon/toggle styling for controls and export panes
-  const pane_icon_style = `width: 14px; height: 14px`
-  const pane_toggle_props = { style: `padding: 0` }
+  // Shared icon/toggle styling for the controls, export and editor panes
+  const pane_props = {
+    icon_style: `width: 14px; height: 14px`,
+    toggle_props: { style: `padding: 0` },
+  }
 
   // Instance-unique prefix for gradient ids: region ids come from user data (e.g.
   // 'liquid'), so two diagrams on one page would otherwise cross-reference each
@@ -194,12 +197,6 @@
   const temp_unit = $derived<TempUnit>(display_temp_unit ?? data_temp_unit)
   const temp_range = $derived(effective_data.temperature_range)
 
-  // Convert temperature range for display
-  const display_temp_range = $derived<Vec2>([
-    convert_temp(temp_range[0], data_temp_unit, temp_unit),
-    convert_temp(temp_range[1], data_temp_unit, temp_unit),
-  ])
-
   // y_scale maps data temperatures to SVG coordinates
   // We keep this in data units so region vertices render correctly
   const y_scale = $derived(scaleLinear().domain(temp_range).range([bottom, top]))
@@ -207,13 +204,17 @@
   // y_scale_display maps display temperatures (after unit conversion) to SVG
   // Used for axis labels and ticks
   const y_scale_display = $derived(
-    scaleLinear().domain(display_temp_range).range([bottom, top]),
+    scaleLinear()
+      .domain(temp_range.map((temp) => convert_temp(temp, data_temp_unit, temp_unit)))
+      .range([bottom, top]),
   )
 
-  const tick_count = (axis: AxisConfig): number =>
-    typeof axis.ticks === `number` ? axis.ticks : 5
-  const x_ticks = $derived(x_scale.ticks(tick_count(x_axis)))
-  const y_ticks = $derived(y_scale_display.ticks(tick_count(y_axis)))
+  const tick_count = (axis: AxisConfig, fallback: number): number =>
+    typeof axis.ticks === `number` ? axis.ticks : fallback
+  const x_ticks = $derived(x_scale.ticks(tick_count(x_axis, PHASE_DIAGRAM_DEFAULTS.x_ticks)))
+  const y_ticks = $derived(
+    y_scale_display.ticks(tick_count(y_axis, PHASE_DIAGRAM_DEFAULTS.y_ticks)),
+  )
 
   // Transform regions to SVG coordinates
   const transformed_regions = $derived(
@@ -297,18 +298,45 @@
   // Effective hover info - locked takes precedence
   const effective_hover_info = $derived(locked_hover_info ?? hover_info)
 
-  // Copy feedback state
-  let copy_feedback_visible = $state(false)
-  let copy_feedback_pos = $state({ x: 0, y: 0 })
+  // Tie-line geometry (SVG px) for the active lever-rule mode; null outside two-phase regions.
+  // The line runs between the two endpoint markers, the cursor marker sits at the hover point.
+  const tie_line = $derived.by(() => {
+    const info = effective_hover_info
+    if (!info) return null
+    const cursor = { cx: x_scale(info.composition), cy: y_scale(info.temperature) }
+    const endpoint = (phase: string, cx: number, cy: number) =>
+      ({ cx, cy, color: get_phase_color(phase, `hex`) }) as const
+    const { lever_rule: lr, vertical_lever_rule: vlr } = info
+    if (lever_rule_mode === `vertical` && vlr) {
+      const endpoints = [
+        endpoint(vlr.bottom_phase, cursor.cx, y_scale(vlr.bottom_temperature)),
+        endpoint(vlr.top_phase, cursor.cx, y_scale(vlr.top_temperature)),
+      ] as const
+      return { cursor, endpoints }
+    }
+    if (lever_rule_mode === `horizontal` && lr) {
+      const endpoints = [
+        endpoint(lr.left_phase, x_scale(lr.left_composition), cursor.cy),
+        endpoint(lr.right_phase, x_scale(lr.right_composition), cursor.cy),
+      ] as const
+      return { cursor, endpoints }
+    }
+    return null
+  })
+
+  // Copy feedback position; ClickFeedback's CSS animation fades it out and the template keys
+  // on the position object so back-to-back copies each remount and restart the animation
+  let copy_feedback_pos = $state<{ x: number; y: number } | null>(null)
   let copy_feedback_timeout: ReturnType<typeof setTimeout> | undefined
 
   // Handle double-click to copy tooltip data
   async function handle_double_click(event: MouseEvent) {
-    if (!hover_info) return
+    const info = effective_hover_info
+    if (!info) return
     try {
       await navigator.clipboard.writeText(
         format_hover_info_text(
-          hover_info,
+          info,
           temp_unit,
           comp_unit,
           component_a,
@@ -317,35 +345,13 @@
           lever_rule_mode,
         ),
       )
-      if (copy_feedback_timeout) clearTimeout(copy_feedback_timeout)
+      clearTimeout(copy_feedback_timeout)
       copy_feedback_pos = { x: event.clientX, y: event.clientY }
-      copy_feedback_visible = true
-      copy_feedback_timeout = setTimeout(() => {
-        copy_feedback_visible = false
-        copy_feedback_timeout = undefined
-      }, 1500)
+      copy_feedback_timeout = setTimeout(() => (copy_feedback_pos = null), 1500)
     } catch (error) {
       console.error(`Failed to copy phase data:`, error)
     }
   }
-
-  // Tooltip element reference for measuring actual size
-  let tooltip_el = $state<HTMLDivElement | null>(null)
-
-  // Tooltip positioning using shared utility (uses effective_hover_info for locked state)
-  const tooltip_pos = $derived.by(() => {
-    const info = effective_hover_info
-    if (!info) return { x: 0, y: 0 }
-    return constrain_tooltip_position(
-      info.position.x,
-      info.position.y,
-      tooltip_el?.offsetWidth ?? 200,
-      tooltip_el?.offsetHeight ?? 150,
-      globalThis.innerWidth ?? 1000,
-      globalThis.innerHeight ?? 800,
-      { offset: 15 },
-    )
-  })
 
   // Find nearest special point within threshold (in SVG pixels)
   function find_nearby_special_point(svg_x: number, svg_y: number, threshold: number = 20) {
@@ -363,41 +369,32 @@
 
   // Pointer move handler (unified mouse/touch via Pointer Events API)
   function handle_pointer_move(event: PointerEvent & { currentTarget: SVGElement }) {
-    const svg = event.currentTarget
-    const rect = svg.getBoundingClientRect()
+    const rect = event.currentTarget.getBoundingClientRect()
     const svg_x = event.clientX - rect.left
     const svg_y = event.clientY - rect.top
-
-    // Check if within plot area
-    if (svg_x < left || svg_x > right || svg_y < top || svg_y > bottom) {
-      clear_hover()
-      return
-    }
+    const in_plot = svg_x >= left && svg_x <= right && svg_y >= top && svg_y <= bottom
 
     // Convert to data coordinates and find phase
     const composition = x_scale.invert(svg_x)
     const temperature = y_scale.invert(svg_y)
-    const region = find_phase_at_point(composition, temperature, effective_data)
+    const region = in_plot
+      ? find_phase_at_point(composition, temperature, effective_data)
+      : null
+    if (!region) return clear_hover()
 
-    // Check for nearby special point
     const nearby_special = show_special_points ? find_nearby_special_point(svg_x, svg_y) : null
-
-    if (region) {
-      hovered_region = region
-      hover_info = {
-        region,
-        composition,
-        temperature,
-        position: { x: event.clientX, y: event.clientY },
-        lever_rule: calculate_lever_rule(region, composition, temperature) || undefined,
-        vertical_lever_rule:
-          calculate_vertical_lever_rule(region, composition, temperature) || undefined,
-        special_point: nearby_special || undefined,
-      }
-      on_phase_hover?.(hover_info)
-    } else {
-      clear_hover()
+    hovered_region = region
+    hover_info = {
+      region,
+      composition,
+      temperature,
+      position: { x: event.clientX, y: event.clientY },
+      lever_rule: calculate_lever_rule(region, composition, temperature) || undefined,
+      vertical_lever_rule:
+        calculate_vertical_lever_rule(region, composition, temperature) || undefined,
+      special_point: nearby_special || undefined,
     }
+    on_phase_hover?.(hover_info)
   }
 
   function handle_pointer_leave(event: PointerEvent) {
@@ -425,11 +422,7 @@
   }
 
   // Cleanup timeout on unmount to prevent memory leaks
-  $effect(() => {
-    return () => {
-      if (copy_feedback_timeout) clearTimeout(copy_feedback_timeout)
-    }
-  })
+  $effect(() => () => clearTimeout(copy_feedback_timeout))
 
   const component_a = $derived(effective_data.components[0])
   const component_b = $derived(effective_data.components[1])
@@ -443,11 +436,11 @@
   const component_b_svg = $derived(format_formula_svg(component_b, use_subscripts))
 
   // Default x-axis label as a single string (avoids mixing plain text with {@html})
-  const default_x_axis_label = $derived.by(() => {
-    const prefix = comp_unit === `fraction` ? `x ` : ``
-    const unit = comp_unit === `fraction` ? `mole fraction` : comp_unit
-    return `${prefix}${component_b_svg} (${unit})`
-  })
+  const default_x_axis_label = $derived(
+    comp_unit === `fraction`
+      ? `x ${component_b_svg} (mole fraction)`
+      : `${component_b_svg} (${comp_unit})`,
+  )
 </script>
 
 <!-- Grid lines snippet for DRY rendering -->
@@ -462,50 +455,6 @@
       stroke-dasharray="4"
     />
   {/each}
-{/snippet}
-
-<!-- Tie-line snippet: renders line with white outline, phase endpoints, and cursor marker -->
-{#snippet tie_line_viz(
-  x1: number,
-  y1: number,
-  x2: number,
-  y2: number,
-  endpoints: Array<{ cx: number; cy: number; color: string }>,
-  cursor_cx: number,
-  cursor_cy: number,
-)}
-  {@const tl = merged_config.tie_line}
-  <g class="tie-line" class:locked={locked_hover_info}>
-    {#each [`white`, `rgb(${PHASE_COLOR_RGB.tie_line})`] as stroke (stroke)}
-      <line
-        {x1}
-        {y1}
-        {x2}
-        {y2}
-        {stroke}
-        stroke-width={tl.stroke_width + (stroke === `white` ? 1 : 0)}
-        stroke-linecap="round"
-      />
-    {/each}
-    {#each endpoints as ep, idx (idx)}
-      <circle
-        cx={ep.cx}
-        cy={ep.cy}
-        r={tl.endpoint_radius}
-        fill="rgb({ep.color})"
-        stroke="white"
-        stroke-width={1.5}
-      />
-    {/each}
-    <circle
-      cx={cursor_cx}
-      cy={cursor_cy}
-      r={tl.cursor_radius}
-      fill="rgb({PHASE_COLOR_RGB.tie_line})"
-      stroke="white"
-      stroke-width={2}
-    />
-  </g>
 {/snippet}
 
 <svelte:document onkeydown={handle_doc_keydown} />
@@ -547,8 +496,7 @@
           data={effective_data}
           {enable_export}
           {...controls_props}
-          icon_style={pane_icon_style}
-          toggle_props={pane_toggle_props}
+          {...pane_props}
         />
       {/if}
       {#if enable_export}
@@ -558,8 +506,7 @@
           data={effective_data}
           {wrapper}
           filename={export_filename}
-          icon_style={pane_icon_style}
-          toggle_props={pane_toggle_props}
+          {...pane_props}
         />
       {/if}
       <PhaseDiagramEditorPane
@@ -567,8 +514,7 @@
         bind:diagram_input
         data={effective_data}
         ondata={(edited) => (source_data = edited)}
-        icon_style={pane_icon_style}
-        toggle_props={pane_toggle_props}
+        {...pane_props}
       />
       {#if fullscreen_toggle}
         <FullscreenButton
@@ -697,41 +643,44 @@
         </g>
       {/if}
 
-      <!-- Tie-line visualization for two-phase regions -->
-      {#if lever_rule_mode === `vertical` && effective_hover_info?.vertical_lever_rule}
-        {@const vlr = effective_hover_info.vertical_lever_rule}
-        {@const cx = x_scale(effective_hover_info.composition)}
-        {@const y_bot = y_scale(vlr.bottom_temperature)}
-        {@const y_top = y_scale(vlr.top_temperature)}
-        {@render tie_line_viz(
-          cx,
-          y_bot,
-          cx,
-          y_top,
-          [
-            { cx, cy: y_bot, color: get_phase_color(vlr.bottom_phase, `rgb`) },
-            { cx, cy: y_top, color: get_phase_color(vlr.top_phase, `rgb`) },
-          ],
-          cx,
-          y_scale(effective_hover_info.temperature),
-        )}
-      {:else if lever_rule_mode === `horizontal` && effective_hover_info?.lever_rule}
-        {@const lr = effective_hover_info.lever_rule}
-        {@const cy = y_scale(effective_hover_info.temperature)}
-        {@const x_l = x_scale(lr.left_composition)}
-        {@const x_r = x_scale(lr.right_composition)}
-        {@render tie_line_viz(
-          x_l,
-          cy,
-          x_r,
-          cy,
-          [
-            { cx: x_l, cy, color: get_phase_color(lr.left_phase, `rgb`) },
-            { cx: x_r, cy, color: get_phase_color(lr.right_phase, `rgb`) },
-          ],
-          x_scale(effective_hover_info.composition),
-          cy,
-        )}
+      <!-- Tie-line for two-phase regions: white-outlined line, phase endpoints, cursor marker -->
+      {#if tie_line}
+        {@const {
+          cursor,
+          endpoints: [start, end],
+        } = tie_line}
+        {@const tl = merged_config.tie_line}
+        <g class="tie-line" class:locked={locked_hover_info}>
+          {#each [`white`, TIE_LINE_COLOR] as stroke (stroke)}
+            <line
+              x1={start.cx}
+              y1={start.cy}
+              x2={end.cx}
+              y2={end.cy}
+              {stroke}
+              stroke-width={tl.stroke_width + (stroke === `white` ? 1 : 0)}
+              stroke-linecap="round"
+            />
+          {/each}
+          {#each tie_line.endpoints as ep, idx (idx)}
+            <circle
+              cx={ep.cx}
+              cy={ep.cy}
+              r={tl.endpoint_radius}
+              fill={ep.color}
+              stroke="white"
+              stroke-width={1.5}
+            />
+          {/each}
+          <circle
+            cx={cursor.cx}
+            cy={cursor.cy}
+            r={tl.cursor_radius}
+            fill={TIE_LINE_COLOR}
+            stroke="white"
+            stroke-width={2}
+          />
+        </g>
       {/if}
 
       <!-- Special points (rendered last for highest z-index) -->
@@ -871,10 +820,16 @@
     <!-- Tooltip (uses effective_hover_info which respects locked state) -->
     <!-- tooltip={false} disables tooltip entirely -->
     {#if effective_hover_info && tooltip !== false}
-      <div
-        bind:this={tooltip_el}
-        class={['tooltip-container', { locked: locked_hover_info }]}
-        style="left: {tooltip_pos.x}px; top: {tooltip_pos.y}px"
+      <PlotTooltip
+        x={effective_hover_info.position.x}
+        y={effective_hover_info.position.y}
+        fixed
+        offset={{ x: 15, y: 15 }}
+        fallback_size={{ width: 200, height: 150 }}
+        class={[`tooltip-container`, { locked: locked_hover_info }]}
+        style="--plot-tooltip-padding: 0; white-space: normal{locked_hover_info
+          ? `; pointer-events: auto`
+          : ``}"
       >
         {#if locked_hover_info}
           <div class="tooltip-lock-indicator" title="Click diagram to unlock">🔒</div>
@@ -895,18 +850,12 @@
             {tooltip}
           />
         {/if}
-      </div>
+      </PlotTooltip>
     {/if}
 
-    <!-- Copy feedback indicator -->
-    {#if copy_feedback_visible}
-      <div
-        class="copy-feedback"
-        style="left: {copy_feedback_pos.x}px; top: {copy_feedback_pos.y}px"
-      >
-        ✓ Copied
-      </div>
-    {/if}
+    {#key copy_feedback_pos}
+      {#if copy_feedback_pos}<ClickFeedback visible position={copy_feedback_pos} />{/if}
+    {/key}
 
     <!-- Custom children -->
     {@render children?.({ width, height, fullscreen })}
@@ -975,37 +924,23 @@
   .special-point-marker {
     pointer-events: none; /* Let hit-area handle events */
   }
-  /* Grouped pointer-events: none */
-  .tie-line,
-  .tooltip-container,
-  .copy-feedback {
-    pointer-events: none;
-  }
   .region-label {
     user-select: none;
   }
   .tie-line {
+    pointer-events: none;
     animation: tie-line-fade-in 150ms ease-out;
-
-    &.locked {
-      filter: drop-shadow(0 0 3px rgba(255, 107, 107, 0.5));
-    }
+  }
+  .tie-line.locked {
+    filter: drop-shadow(0 0 3px rgba(255, 107, 107, 0.5));
   }
   @keyframes tie-line-fade-in {
     from {
       opacity: 0;
     }
   }
-  :is(.tooltip-container, .copy-feedback) {
-    position: fixed;
-  }
-  .tooltip-container {
-    z-index: 1000;
-
-    &.locked {
-      pointer-events: auto; /* Allow interaction when locked */
-      filter: drop-shadow(0 0 4px rgba(99, 102, 241, 0.4));
-    }
+  .binary-phase-diagram :global(.tooltip-container.locked) {
+    filter: drop-shadow(0 0 4px rgba(99, 102, 241, 0.4));
   }
   .tooltip-lock-indicator {
     position: absolute;
@@ -1021,27 +956,5 @@
     justify-content: center;
     cursor: pointer;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-  }
-  .copy-feedback {
-    z-index: 1001;
-    background: rgba(76, 175, 80, 0.95);
-    color: white;
-    padding: 6px 12px;
-    border-radius: 4px;
-    font-size: 13px;
-    font-weight: 500;
-    transform: translate(-50%, calc(-100% - 10px));
-    animation: copy-fade-up 1.5s ease-out forwards;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-  }
-  @keyframes copy-fade-up {
-    0%,
-    70% {
-      opacity: 1;
-    }
-    100% {
-      opacity: 0;
-      transform: translate(-50%, calc(-100% - 30px));
-    }
   }
 </style>

@@ -22,6 +22,12 @@
     box-sizing: border-box;
     grid-row: var(--ptable-inset-row, 1 / span 3);
     grid-column: var(--ptable-inset-col, 3 / span 10);
+    /* Fill the grid area without contributing to track sizing. `height: 0; min-height: 100%`
+       still sized auto rows from content on the first pass, then collapsed — a visible jump. */
+    position: absolute;
+    inset: 0;
+    min-height: 0;
+    z-index: 1;
     container-type: inline-size;
     container-name: table-inset;
     overflow: visible;

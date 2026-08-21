@@ -75,9 +75,7 @@ export const STRUCT_KEYWORDS = Object.freeze([
 ])
 
 // More restrictive keywords for JSON/YAML files (excludes generic terms like "data")
-export const STRUCT_KEYWORDS_STRICT = Object.freeze(
-  STRUCT_KEYWORDS.filter((keyword) => keyword !== `data`),
-)
+const STRUCT_KEYWORDS_STRICT = STRUCT_KEYWORDS.filter((keyword) => keyword !== `data`)
 
 // Regex patterns for keyword matching. Keywords must be delimited on both sides
 // (`md_300K`, `si_md.log`) so bare prefixes like `md/notes.log` or `mdp_run` do not
@@ -110,14 +108,13 @@ export const STRUCTURE_EXTENSIONS = Object.freeze([
   `.mol2`, `.sdf`, `.mmcif`,
 ])
 export const STRUCTURE_EXTENSIONS_REGEX = ext_regex(STRUCTURE_EXTENSIONS)
-export const TRAJ_FALLBACK_EXTENSIONS = Object.freeze([
+export const TRAJ_FALLBACK_EXTENSIONS_REGEX = ext_regex([
   `.dat`,
   `.data`,
   `.log`,
   `.out`,
   `.json`,
 ])
-export const TRAJ_FALLBACK_EXTENSIONS_REGEX = ext_regex(TRAJ_FALLBACK_EXTENSIONS)
 
 // Special regex patterns
 // Bare VASP filenames that the structure parser supports. OUTCAR, INCAR, KPOINTS and

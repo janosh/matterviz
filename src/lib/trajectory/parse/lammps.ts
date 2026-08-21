@@ -3,15 +3,12 @@ import { ELEM_SYMBOLS } from '$lib/labels'
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { Pbc } from '$lib/structure/pbc'
-import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory/index'
+import type { TrajectoryFrame } from '$lib/trajectory/index'
 import { coerce_elem_symbol } from '$lib/element/helpers'
-import {
-  count_elements,
-  create_trajectory_frame,
-  derive_time_step,
-} from '$lib/trajectory/helpers'
+import { capitalize_symbol } from '$lib/structure/parsers/shared'
+import { count_elements, create_trajectory_frame } from '$lib/trajectory/helpers'
 import type { AtomTypeMapping } from '$lib/trajectory/types'
-import { traj_warn } from './diagnostics'
+import type { ParsedTrajectory, WarnFn } from './shared'
 
 const is_periodic = (token: string): boolean => token.toLowerCase().startsWith(`p`)
 
@@ -80,14 +77,22 @@ function parse_lammps_box(
   }
 }
 
+// Only the final frame of a dump may be incomplete (the writer is still appending); the
+// same damage anywhere else is corruption and must not silently drop a frame.
+class TornLammpsFrameError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'TornLammpsFrameError'
+  }
+}
+
 export function parse_lammps_trajectory(
   content: string,
-  filename?: string,
+  warn: WarnFn,
   atom_type_mapping?: AtomTypeMapping,
-): TrajectoryType {
+): ParsedTrajectory {
   const lines = content.trim().split(/\r?\n/)
   const frames: TrajectoryFrame[] = []
-  const frame_times: (number | null)[] = []
   const atom_types_found = new Set<number>()
   let reference_atom_ids: number[] | undefined
   let identity_uses_ids: boolean | undefined
@@ -99,35 +104,54 @@ export function parse_lammps_trajectory(
     while (idx < lines.length && !peek_line().startsWith(prefix)) idx++
     return idx < lines.length
   }
+  // Header sections cut off by the end of the file are a torn tail; anything else missing
+  // mid-file is corruption.
+  const require_section = (prefix: string, timestep: number | null): void => {
+    if (skip_to(prefix)) return
+    throw new TornLammpsFrameError(
+      `LAMMPS frame${timestep === null ? `` : ` at timestep ${timestep}`} ends before "${prefix}"`,
+    )
+  }
 
   const get_element = (atom_type: number): ElementSymbol => {
     if (atom_type_mapping?.[atom_type]) return atom_type_mapping[atom_type]
     return ELEM_SYMBOLS[Math.max(0, atom_type - 1) % ELEM_SYMBOLS.length]
   }
 
-  while (idx < lines.length) {
-    if (!skip_to(`ITEM: TIME`)) break
+  const parse_frame = (): void => {
     let time: number | null = null
     if (peek_line() === `ITEM: TIME`) {
       idx++
       const parsed = Number(read_line())
       time = Number.isFinite(parsed) ? parsed : null
-      if (!skip_to(`ITEM: TIMESTEP`)) break
+      require_section(`ITEM: TIMESTEP`, null)
     }
+    const timestep_line = idx + 2
     idx++
     const timestep_text = read_line()
     const timestep = Number(timestep_text)
     if (!Number.isInteger(timestep)) {
-      traj_warn(`Skipping LAMMPS frame with invalid timestep "${timestep_text}"`)
-      continue
+      throw new TypeError(
+        `Invalid LAMMPS timestep "${timestep_text}" at line ${timestep_line}`,
+      )
     }
 
-    if (!skip_to(`ITEM: NUMBER OF ATOMS`)) break
+    require_section(`ITEM: NUMBER OF ATOMS`, timestep)
     idx++
-    const num_atoms = Math.trunc(Number(read_line()))
-    if (!num_atoms || num_atoms <= 0) continue
+    const num_atoms_text = read_line()
+    const num_atoms = Math.trunc(Number(num_atoms_text))
+    if (!(num_atoms > 0)) {
+      if (idx > lines.length) {
+        throw new TornLammpsFrameError(
+          `LAMMPS frame at timestep ${timestep} ends after "ITEM: NUMBER OF ATOMS"`,
+        )
+      }
+      throw new Error(
+        `Invalid LAMMPS atom count "${num_atoms_text}" at timestep ${timestep} (line ${idx})`,
+      )
+    }
 
-    if (!skip_to(`ITEM: BOX BOUNDS`)) break
+    require_section(`ITEM: BOX BOUNDS`, timestep)
     const box_header = read_line()
     const box_kind: LammpsBoxKind = /BOX BOUNDS\s+abc\s+origin/i.test(box_header)
       ? `general_triclinic`
@@ -140,25 +164,39 @@ export function parse_lammps_trajectory(
         ? [is_periodic(tokens[0]), is_periodic(tokens[1]), is_periodic(tokens[2])]
         : [true, true, true]
 
-    const parsed_box = parse_lammps_box([read_line(), read_line(), read_line()], box_kind)
-    if (!parsed_box) continue
+    const box_line = idx + 1
+    const box_lines = [read_line(), read_line(), read_line()]
+    const parsed_box = parse_lammps_box(box_lines, box_kind)
+    if (!parsed_box) {
+      if (idx >= lines.length) {
+        throw new TornLammpsFrameError(
+          `LAMMPS frame at timestep ${timestep} ends inside BOX BOUNDS`,
+        )
+      }
+      throw new Error(
+        `Invalid LAMMPS ${box_kind.replace(`_`, ` `)} BOX BOUNDS at timestep ${timestep} (lines ${box_line}-${box_line + 2}): ${box_lines.join(` | `)}`,
+      )
+    }
     const { lattice_matrix, origin: box_origin } = parsed_box
 
-    if (!skip_to(`ITEM: ATOMS`)) break
+    require_section(`ITEM: ATOMS`, timestep)
     const cols = read_line().replace(`ITEM: ATOMS`, ``).trim().toLowerCase().split(/\s+/)
     const col = Object.fromEntries(cols.map((name, col_idx) => [name, col_idx]))
 
     const pos_variant = POS_COL_VARIANTS.find(({ keys }) => keys.every((key) => key in col))
-    if (!pos_variant) continue
-    const pos_cols = pos_variant.keys.map((key) => col[key])
+    if (!pos_variant) {
+      throw new Error(
+        `LAMMPS frame at timestep ${timestep} has no position columns (x y z, xs ys zs, xu yu zu or xsu ysu zsu) in "ITEM: ATOMS ${cols.join(` `)}"`,
+      )
+    }
+    const [x_col, y_col, z_col] = pos_variant.keys.map((key) => col[key])
     const type_col = col.type
     const element_col = col.element
     const id_col = col.id
-    const max_col_idx = Math.max(...pos_cols, type_col ?? -1, element_col ?? -1, id_col ?? -1)
-
     if (type_col === undefined && element_col === undefined) {
-      traj_warn(`Skipping LAMMPS frame at timestep ${timestep}: missing type/element column`)
-      continue
+      throw new Error(
+        `LAMMPS frame at timestep ${timestep} has neither a type nor an element column in "ITEM: ATOMS ${cols.join(` `)}"`,
+      )
     }
 
     const vector_props = LAMMPS_VECTOR_GROUPS.filter(({ col_names }) =>
@@ -176,105 +214,126 @@ export function parse_lammps_trajectory(
     let site_properties: Record<string, unknown>[] = []
     const frac_to_cart = pos_variant.scaled ? math.create_frac_to_cart(lattice_matrix) : null
 
-    for (let atom = 0; atom < num_atoms && idx < lines.length; atom++) {
+    for (let atom = 0; atom < num_atoms; atom++) {
+      if (idx >= lines.length) {
+        throw new TornLammpsFrameError(
+          `LAMMPS frame at timestep ${timestep} ends after ${atom} of ${num_atoms} atoms`,
+        )
+      }
+      const line_number = idx + 1
       const parts = read_line().split(/\s+/)
-      const coords = pos_cols.map((col_idx) => Number(parts[col_idx]))
-      if (coords.some(isNaN) || parts.length <= max_col_idx) continue
-
+      // A malformed last line after at least one complete frame is a half-written tail, not
+      // corruption; a lone frame still reports the line so the problem is visible
+      const torn_tail = idx >= lines.length && frames.length > 0
+      if (parts.length < cols.length) {
+        const message = `LAMMPS atom line ${line_number} (timestep ${timestep}) has ${parts.length} columns, expected ${cols.length}`
+        throw torn_tail ? new TornLammpsFrameError(message) : new Error(message)
+      }
+      const coords: Vec3 = [Number(parts[x_col]), Number(parts[y_col]), Number(parts[z_col])]
+      if (
+        !Number.isFinite(coords[0]) ||
+        !Number.isFinite(coords[1]) ||
+        !Number.isFinite(coords[2])
+      ) {
+        const message = `LAMMPS atom line ${line_number} (timestep ${timestep}) has non-numeric coordinates: "${lines[idx - 1]}"`
+        throw torn_tail ? new TornLammpsFrameError(message) : new TypeError(message)
+      }
       const xyz: Vec3 = frac_to_cart
-        ? frac_to_cart(coords as Vec3)
-        : math.subtract(coords as Vec3, box_origin)
-      let element_symbol: ElementSymbol | undefined
-
+        ? frac_to_cart(coords)
+        : [coords[0] - box_origin[0], coords[1] - box_origin[1], coords[2] - box_origin[2]]
+      let element_symbol: ElementSymbol
       if (type_col !== undefined) {
         const raw_atom_type = parts[type_col]
         const atom_type = Number(raw_atom_type)
         if (!Number.isInteger(atom_type) || atom_type <= 0) {
-          traj_warn(
-            `Skipping LAMMPS atom with invalid type "${raw_atom_type}" at timestep ${timestep}`,
+          throw new TypeError(
+            `LAMMPS atom line ${line_number} (timestep ${timestep}) has invalid type "${raw_atom_type}"`,
           )
-          continue
         }
         atom_types_found.add(atom_type)
         element_symbol = get_element(atom_type)
-      } else if (element_col !== undefined) {
+      } else {
         const raw_symbol = parts[element_col]
-        if (!raw_symbol) continue
-        element_symbol = coerce_elem_symbol(raw_symbol)
-        if (!element_symbol) {
-          traj_warn(
-            `Skipping LAMMPS atom with unknown element symbol "${raw_symbol}" at timestep ${timestep}`,
+        const coerced =
+          coerce_elem_symbol(raw_symbol) ?? coerce_elem_symbol(capitalize_symbol(raw_symbol))
+        if (!coerced) {
+          throw new Error(
+            `LAMMPS atom line ${line_number} (timestep ${timestep}) has unknown element symbol "${raw_symbol}"`,
           )
-          continue
         }
+        element_symbol = coerced
       }
-
-      if (!element_symbol) continue
       positions.push(xyz)
       elements.push(element_symbol)
 
       const props: Record<string, unknown> = {}
       for (const { key, indices } of vector_props) {
-        const vec = indices.map((col_idx) => Number(parts[col_idx]))
-        if (vec.every(Number.isFinite)) props[key] = vec
+        const vec = [
+          Number(parts[indices[0]]),
+          Number(parts[indices[1]]),
+          Number(parts[indices[2]]),
+        ]
+        if (Number.isFinite(vec[0]) && Number.isFinite(vec[1]) && Number.isFinite(vec[2])) {
+          props[key] = vec
+        }
       }
       for (const { key, col_idx } of scalar_props) {
         const raw = parts[col_idx]
-        if (raw === undefined || raw === ``) continue
+        if (raw === ``) continue
         const value = Number(raw)
         if (Number.isFinite(value)) props[key] = value
       }
       site_properties.push(props)
     }
 
-    if (positions.length === num_atoms) {
-      const frame_uses_ids = id_col !== undefined
-      if (identity_uses_ids !== undefined && frame_uses_ids !== identity_uses_ids) {
-        traj_warn(
-          `Skipping LAMMPS frame at timestep ${timestep}: atom ID column presence changed`,
+    const frame_uses_ids = id_col !== undefined
+    if (identity_uses_ids !== undefined && frame_uses_ids !== identity_uses_ids) {
+      throw new Error(
+        `LAMMPS frame at timestep ${timestep} ${frame_uses_ids ? `gained` : `lost`} the atom ID column; atom identity must be tracked the same way in every frame`,
+      )
+    }
+    if (frame_uses_ids) {
+      const atom_ids = site_properties.map(({ id }) => id)
+      const bad_id = atom_ids.find(
+        (atom_id) => typeof atom_id !== `number` || !Number.isInteger(atom_id) || atom_id <= 0,
+      )
+      if (bad_id !== undefined) {
+        throw new Error(
+          `LAMMPS frame at timestep ${timestep} has a non-positive-integer atom ID ${JSON.stringify(bad_id)}`,
         )
-        continue
       }
-      if (frame_uses_ids) {
-        const atom_ids = site_properties.map(({ id }) => id)
-        if (
-          atom_ids.some(
-            (atom_id) =>
-              typeof atom_id !== `number` || !Number.isInteger(atom_id) || atom_id <= 0,
-          )
-        ) {
-          traj_warn(
-            `Skipping LAMMPS frame at timestep ${timestep}: atom IDs must be positive integers`,
-          )
-          continue
-        }
-        const numeric_atom_ids = atom_ids as number[]
-        if (new Set(numeric_atom_ids).size !== numeric_atom_ids.length) {
-          traj_warn(`Skipping LAMMPS frame at timestep ${timestep}: duplicate atom IDs`)
-          continue
-        }
-        const order = Array.from(
-          { length: num_atoms },
-          (_unused, atom_idx) => atom_idx,
-        ).toSorted(
-          (left_idx, right_idx) => numeric_atom_ids[left_idx] - numeric_atom_ids[right_idx],
+      const numeric_atom_ids = atom_ids as number[]
+      if (new Set(numeric_atom_ids).size !== numeric_atom_ids.length) {
+        throw new Error(`LAMMPS frame at timestep ${timestep} has duplicate atom IDs`)
+      }
+      const order = Array.from(
+        { length: num_atoms },
+        (_unused, atom_idx) => atom_idx,
+      ).toSorted(
+        (left_idx, right_idx) => numeric_atom_ids[left_idx] - numeric_atom_ids[right_idx],
+      )
+      const sorted_atom_ids = order.map((atom_idx) => numeric_atom_ids[atom_idx])
+      const expected_atom_ids = reference_atom_ids
+      if (
+        expected_atom_ids &&
+        (sorted_atom_ids.length !== expected_atom_ids.length ||
+          sorted_atom_ids.some((atom_id, atom_idx) => atom_id !== expected_atom_ids[atom_idx]))
+      ) {
+        // Variable atom counts (GCMC, deposition) are real dumps the viewer cannot show as one
+        // trajectory; keep the frames that share the first frame's atoms and say what was lost.
+        warn(
+          `Skipping LAMMPS frame at timestep ${timestep}: atom ID set changed (${sorted_atom_ids.length} atoms vs ${expected_atom_ids.length} in the first frame)`,
         )
-        const sorted_atom_ids = order.map((atom_idx) => numeric_atom_ids[atom_idx])
-        const expected_atom_ids = reference_atom_ids
-        if (
-          expected_atom_ids &&
-          sorted_atom_ids.some((atom_id, atom_idx) => atom_id !== expected_atom_ids[atom_idx])
-        ) {
-          traj_warn(`Skipping LAMMPS frame at timestep ${timestep}: atom ID set changed`)
-          continue
-        }
-        reference_atom_ids ??= sorted_atom_ids
-        positions = order.map((atom_idx) => positions[atom_idx])
-        elements = order.map((atom_idx) => elements[atom_idx])
-        site_properties = order.map((atom_idx) => site_properties[atom_idx])
+        return
       }
-      const { volume } = math.calc_lattice_params(lattice_matrix)
-      const frame = create_trajectory_frame(
+      reference_atom_ids ??= sorted_atom_ids
+      positions = order.map((atom_idx) => positions[atom_idx])
+      elements = order.map((atom_idx) => elements[atom_idx])
+      site_properties = order.map((atom_idx) => site_properties[atom_idx])
+    }
+    const { volume } = math.calc_lattice_params(lattice_matrix)
+    frames.push(
+      create_trajectory_frame(
         positions,
         elements,
         lattice_matrix,
@@ -287,13 +346,20 @@ export function parse_lammps_trajectory(
           box_origin,
           ...(time === null ? {} : { time }),
         },
-      )
-      for (const [site_idx, site] of frame.structure.sites.entries()) {
-        site.properties = { ...site.properties, ...site_properties[site_idx] }
-      }
-      frames.push(frame)
-      frame_times.push(time)
-      identity_uses_ids ??= frame_uses_ids
+        site_properties,
+        warn,
+      ),
+    )
+    identity_uses_ids ??= frame_uses_ids
+  }
+
+  while (skip_to(`ITEM: TIME`)) {
+    try {
+      parse_frame()
+    } catch (error) {
+      if (!(error instanceof TornLammpsFrameError)) throw error
+      warn(`Dropping truncated final LAMMPS frame`, error)
+      break
     }
   }
 
@@ -314,30 +380,17 @@ export function parse_lammps_trajectory(
     }
   }
 
-  const first_frame = frames[0]
-  const element_counts = count_elements(
-    first_frame.structure.sites.map((site) => site.species[0].element),
-  )
-
-  const time_step = derive_time_step(
-    frame_times,
-    frames.map((frame) => frame.step),
-  )
-
+  const first_structure = frames[0].structure
   return {
+    format: `lammps`,
     frames,
-    ...(time_step === undefined ? {} : { time_step }),
     metadata: {
-      filename,
-      source_format: `lammps_trajectory`,
-      frame_count: frames.length,
-      total_atoms: first_frame.structure.sites.length,
       periodic_boundary_conditions:
-        `lattice` in first_frame.structure
-          ? first_frame.structure.lattice.pbc
-          : [true, true, true],
-      atom_types: Array.from(atom_types_found).toSorted((a, b) => a - b),
-      element_counts,
+        `lattice` in first_structure ? first_structure.lattice.pbc : [true, true, true],
+      atom_types: Array.from(atom_types_found).toSorted((left, right) => left - right),
+      element_counts: count_elements(
+        first_structure.sites.map((site) => site.species[0].element),
+      ),
     },
   }
 }

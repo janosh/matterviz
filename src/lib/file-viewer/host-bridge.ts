@@ -10,17 +10,16 @@
 // so unicorn's require-post-message-target-origin is a false positive here.
 // oxlint-disable eslint-plugin-unicorn/require-post-message-target-origin
 
-import type {
-  FrameIndex,
-  FrameLoader,
-  TrajectoryFrame,
-  TrajectoryMetadata,
-  TrajectoryType,
-} from '$lib/trajectory'
+import type { TrajectoryFrame, TrajectoryRun } from '$lib/trajectory'
+import { host_run } from '$lib/trajectory/runs/host'
+import { to_error } from '$lib/utils'
+import type { HostRequest, HostToWebviewMessage, WebviewToHostMessage } from './host-protocol'
 
 export interface VSCodeAPI {
-  postMessage(message: unknown): void
+  postMessage(message: WebviewToHostMessage): void
 }
+
+type HostReply = Extract<HostToWebviewMessage, { request_id: string }>
 
 declare global {
   // VSCode webview API
@@ -38,34 +37,45 @@ try {
 export const get_vscode_api = (): VSCodeAPI | null => host_api
 
 // Shared postMessage request/response plumbing for talking to the extension
-// host: tags the request with a UUID, forwards responses carrying that id to
+// host: tags the request with a UUID, forwards replies carrying that id to
 // on_response (which returns true once it settled the promise), and rejects
 // on timeout. Always removes the listener + timer once settled.
 function post_request<T>(
   api: VSCodeAPI,
-  message: Record<string, unknown>,
+  message: HostRequest,
   timeout_ms: number,
   timeout_error: string,
   on_response: (
-    data: Record<string, unknown>,
+    data: HostReply,
     resolve: (value: T) => void,
     reject: (error: Error) => void,
   ) => boolean,
+  signal?: AbortSignal,
 ): Promise<T> {
   return new Promise((resolve, reject) => {
     const request_id = crypto.randomUUID()
-    const timer = setTimeout(() => {
+    const cleanup = (): void => {
       globalThis.removeEventListener(`message`, handler)
+      signal?.removeEventListener(`abort`, abort)
+      clearTimeout(timer)
+    }
+    const timer = setTimeout(() => {
+      cleanup()
       reject(new Error(timeout_error))
     }, timeout_ms)
-    const handler = (event: MessageEvent) => {
+    const abort = (): void => {
+      cleanup()
+      reject(to_error(signal?.reason ?? new DOMException(`Request aborted`, `AbortError`)))
+    }
+    const handler = (event: MessageEvent<HostReply | undefined>) => {
       if (event.data?.request_id !== request_id) return
       if (on_response(event.data, resolve, reject)) {
-        globalThis.removeEventListener(`message`, handler)
-        clearTimeout(timer)
+        cleanup()
       }
     }
+    if (signal?.aborted) return abort()
     globalThis.addEventListener(`message`, handler)
+    signal?.addEventListener(`abort`, abort, { once: true })
     api.postMessage({ ...message, request_id })
   })
 }
@@ -77,11 +87,30 @@ export async function request_large_file_content(
   file_path: string,
   filename: string,
   timeout: number = 120_000, // large host-side indexing can take longer than eager reads
-): Promise<TrajectoryType> {
+): Promise<TrajectoryRun> {
   if (!host_api) {
     throw new Error(
       `Cannot stream ${filename}: no host bridge is available (acquireVsCodeApi returned nothing).`,
     )
+  }
+  // Plot rows arrive in batches after the summary; they are routed to THIS run instance
+  // (matched by the file path the host stamps on them) until it completes or is disposed
+  let stop_property_stream = (): void => {}
+  const bind_host_properties = (path: string, run: TrajectoryRun): TrajectoryRun => {
+    if (run.properties.complete) return run
+    const handler = (event: MessageEvent<HostToWebviewMessage | undefined>): void => {
+      const message = event.data
+      if (message?.command !== `plot_metadata_stream` || message.file_path !== path) return
+      if (run.properties.complete) return stop_property_stream()
+      run.properties.push(message.rows)
+      if (message.complete) {
+        run.properties.finish()
+        stop_property_stream()
+      }
+    }
+    globalThis.addEventListener(`message`, handler)
+    stop_property_stream = () => globalThis.removeEventListener(`message`, handler)
+    return run
   }
 
   return post_request(
@@ -96,58 +125,44 @@ export async function request_large_file_content(
         return false
       }
       if (data.command !== `large_file_response`) return false
-      if (data.error) reject(new Error(data.error as string))
-      else if (data.parsed_trajectory && typeof data.parsed_trajectory === `object`) {
-        resolve(data.parsed_trajectory as TrajectoryType)
+      if (data.error) reject(new Error(data.error))
+      else if (data.run_summary && typeof data.run_summary === `object`) {
+        resolve(
+          bind_host_properties(
+            file_path,
+            host_run(
+              data.run_summary,
+              (frame_idx, signal) =>
+                request_host_frame(file_path, filename, frame_idx, signal),
+              () => stop_property_stream(),
+            ),
+          ),
+        )
       } else reject(new TypeError(`Malformed large-file response`))
       return true
     },
   )
 }
 
-// Streams frames of a host-indexed trajectory over the same channel.
-export class VSCodeFrameLoader implements FrameLoader {
-  constructor(
-    private readonly file_path: string,
-    private readonly filename: string,
-    private readonly vscode_api: VSCodeAPI,
-  ) {}
-
-  // Only implement the method we actually use
-  async load_frame(
-    _data: string | ArrayBuffer,
-    frame_index: number,
-    timeout: number = 10, // 10 seconds
-  ): Promise<TrajectoryFrame | null> {
-    const message = {
-      command: `request_frame`,
-      file_path: this.file_path,
-      // The host picks its per-format frame decoder from the name.
-      filename: this.filename,
-      frame_index,
-    }
-    return post_request(
-      this.vscode_api,
-      message,
-      timeout * 1000,
-      `Frame ${frame_index} timeout after ${timeout}s`,
-      (data, resolve, reject) => {
-        if (data.command !== `frame_response`) return false
-        if (data.error) reject(new Error(data.error as string))
-        else resolve(data.frame as TrajectoryFrame | null)
-        return true
-      },
-    )
-  }
-
-  // Required by the FrameLoader interface but never called for host-streamed trajectories
-  async get_total_frames(): Promise<number> {
-    throw new Error(`Not implemented`)
-  }
-  async build_frame_index(): Promise<FrameIndex[]> {
-    throw new Error(`Not implemented`)
-  }
-  async extract_plot_metadata(): Promise<TrajectoryMetadata[]> {
-    throw new Error(`Not implemented`)
-  }
+const request_host_frame = (
+  file_path: string,
+  filename: string,
+  frame_idx: number,
+  signal?: AbortSignal,
+): Promise<TrajectoryFrame> => {
+  if (!host_api) return Promise.reject(new Error(`No host bridge is available`))
+  return post_request(
+    host_api,
+    { command: `request_frame`, file_path, filename, frame_index: frame_idx },
+    10_000,
+    `Frame ${frame_idx} timeout after 10s`,
+    (data, resolve, reject) => {
+      if (data.command !== `frame_response`) return false
+      if (data.error) reject(new Error(data.error))
+      else if (data.frame) resolve(data.frame)
+      else reject(new Error(`Host returned no trajectory frame ${frame_idx}`))
+      return true
+    },
+    signal,
+  )
 }

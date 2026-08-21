@@ -5,8 +5,8 @@
   import type { MoyoWyckoffPosition } from '@spglib/moyo-wasm'
   import { SvelteSet } from 'svelte/reactivity'
   import type { HTMLAttributes } from 'svelte/elements'
-  import type { WyckoffPos } from '.'
-  import { enrich_wyckoff_rows, wyckoff_letter } from '.'
+  import type { WyckoffPos } from './wyckoff'
+  import { enrich_wyckoff_rows, wyckoff_letter } from './wyckoff'
 
   let {
     wyckoff_positions,
@@ -28,10 +28,8 @@
     active_color?: string
   } = $props()
 
-  let selected_key = $state<string | null>(null)
-
   // Occupied orbits enriched with ITA representative coordinates + site symmetry
-  const rows = $derived(enrich_wyckoff_rows(wyckoff_positions ?? [], db_positions))
+  const rows = $derived(enrich_wyckoff_rows(wyckoff_positions, db_positions))
   // Wyckoff positions of the space group not occupied by any atom, smallest
   // multiplicity first (matches the ascending sort of occupied rows)
   const unoccupied_rows = $derived.by(() => {
@@ -52,16 +50,21 @@
   )
 
   const get_row_key = (wyckoff_pos: WyckoffPos, row_idx: number) =>
-    `${wyckoff_pos.wyckoff}-${wyckoff_pos.elem}-${
-      wyckoff_pos.site_indices?.join(`,`) ?? `none`
-    }-${row_idx}`
+    `${wyckoff_pos.wyckoff}-${wyckoff_pos.elem}-${wyckoff_pos.site_indices.join(`,`)}-${row_idx}`
+  let selected_key = $state<string | null>(null)
+  // A rows change that drops the selected row clears the selection and tells the parent,
+  // whose highlight would otherwise outlive the structure it belonged to
   $effect(() => {
-    if (!selected_key || rows.some((pos, idx) => get_row_key(pos, idx) === selected_key)) {
-      return
+    if (selected_key && !rows.some((pos, idx) => get_row_key(pos, idx) === selected_key)) {
+      selected_key = null
+      on_click?.(null)
     }
-    selected_key = null
-    on_click?.(null)
   })
+  const select_row = (row_key: string, wyckoff_pos: WyckoffPos) => {
+    const is_selected = selected_key === row_key
+    selected_key = is_selected ? null : row_key
+    on_click?.(is_selected ? null : wyckoff_pos.site_indices)
+  }
 </script>
 
 {#if rows.length > 0 || unoccupied_rows.length > 0}
@@ -82,17 +85,13 @@
           class={['wyckoff-row', { selected: is_selected }]}
           tabindex="0"
           style="--active-color: {active_color}; --hover-color: #6cf0ff"
-          onmouseenter={() => on_hover?.(site_indices ?? null)}
+          onmouseenter={() => on_hover?.(site_indices)}
           onmouseleave={() => on_hover?.(null)}
-          onclick={() => {
-            selected_key = is_selected ? null : row_key
-            on_click?.(is_selected ? null : (wyckoff_pos.site_indices ?? null))
-          }}
+          onclick={() => select_row(row_key, wyckoff_pos)}
           onkeydown={(event) => {
             if ([`Enter`, ` `].includes(event.key)) {
               event.preventDefault()
-              selected_key = is_selected ? null : row_key
-              on_click?.(is_selected ? null : (wyckoff_pos.site_indices ?? null))
+              select_row(row_key, wyckoff_pos)
             }
           }}
         >
@@ -106,7 +105,7 @@
               {elem}
             </span>
           </td>
-          <td>({abc?.map(format_fractional).join(`, `) ?? `N/A`})</td>
+          <td>({abc.map(format_fractional).join(`, `)})</td>
           {#if has_ita_coords}
             <td>{wyckoff_pos.coordinates ? `(${wyckoff_pos.coordinates})` : ``}</td>
           {/if}

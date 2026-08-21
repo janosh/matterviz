@@ -4,7 +4,7 @@ import {
   is_commensurate_phonon_supercell,
   PHONON_VECTOR_KEY,
   phonon_band_structure_from_modes,
-  phonon_mode_trajectory,
+  phonon_mode_trajectory as create_phonon_mode_run,
   parse_phonon_modes,
   type Complex,
   type PhononModeData,
@@ -15,6 +15,16 @@ import { SvelteSet } from 'svelte/reactivity'
 import { describe, expect, it } from 'vitest'
 import nacl_band_yaml from '$site/phonons/ir-raman/NaCl-Gamma-X-band.yaml?raw'
 import { IDENTITY_MATRIX3 } from '../setup'
+
+const phonon_mode_trajectory = (...args: Parameters<typeof create_phonon_mode_run>) => {
+  const run = create_phonon_mode_run(...args)
+  const frames = Array.from({ length: run.frame_count }, (_unused, frame_idx) => {
+    const frame = run.read_frame(frame_idx)
+    if (frame instanceof Promise) throw new Error(`Phonon mode runs must be synchronous`)
+    return frame
+  })
+  return Object.assign(run, { frames })
+}
 
 const real_x: Complex[][] = [
   [
@@ -37,7 +47,6 @@ function make_mode_data(
       coordinates: [atom_idx / 2, 0, 0],
     })),
     lattice: IDENTITY_MATRIX3,
-    reciprocal_lattice: IDENTITY_MATRIX3,
     qpoints: [
       {
         q_position,
@@ -399,18 +408,6 @@ describe(`phonon band helpers`, () => {
     ])
     expect(bands.qpoints.map(({ label }) => label)).toEqual([`GAMMA`, `X`])
     expect(bands.labels_dict).toEqual({ GAMMA: [0, 0, 0], X: [0.5, 0, 0] })
-  })
-
-  it(`derives a crystallographic reciprocal lattice without a 2 pi factor`, () => {
-    const data = make_mode_data()
-    data.reciprocal_lattice = null
-    data.path_segments = [
-      { start_index: 0, end_index: 0, start_label: `GAMMA`, end_label: `GAMMA` },
-    ]
-    data.qpoints[0].distance = 0
-    expect(phonon_band_structure_from_modes(data).recip_lattice.matrix).toEqual(
-      IDENTITY_MATRIX3,
-    )
   })
 
   it(`rejects band conversion without path metadata`, () => {

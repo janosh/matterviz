@@ -6,8 +6,10 @@
   import type { DiagramInput, PhaseDiagramData, TdbParseResult } from '$lib/phase-diagram'
   import {
     build_diagram,
+    get_system_name,
     IsobaricBinaryPhaseDiagram,
     parse_phase_diagram_svg,
+    parse_tdb,
     TdbInfoPanel,
   } from '$lib/phase-diagram'
   import { to_error } from '$lib/utils'
@@ -96,9 +98,7 @@
         const content = await res.text()
         if (is_stale(token)) return false
 
-        const success = await parse_tdb_content(content, filename)
-        if (is_stale(token) || !success) return false
-
+        parse_tdb_content(content, filename)
         load_precomputed()
         return true
       } else if (is_svg(filename)) {
@@ -129,20 +129,15 @@
     }
   }
 
-  // Parse TDB content and set up state (used by both load_file and parse_file_content)
-  async function parse_tdb_content(content: string, filename: string): Promise<boolean> {
-    const { parse_tdb, get_system_name } = await import(`$lib/phase-diagram/parse.js`)
+  // Parse TDB content and set up state (used by both load_file and parse_file_content).
+  // parse_tdb throws on non-TDB content; the callers' try/catch reports that.
+  function parse_tdb_content(content: string, filename: string): void {
     const result = parse_tdb(content)
-    if (!result.success || !result.data) {
-      error_message = result.error || `Failed to parse TDB file`
-      return false
-    }
     const system_name = get_system_name(result.data.elements.map((el) => el.symbol))
     const precomputed_data = find_precomputed_diagram(system_name) ?? null
     tdb = { result, system_name, precomputed_data }
     current_file = filename
     update_url(filename)
-    return true
   }
 
   // Parse file content as phase diagram data (for local file drops)
@@ -155,8 +150,8 @@
     try {
       if (is_tdb(filename)) {
         if (typeof content === `string`) {
-          const success = await parse_tdb_content(content, filename)
-          if (success) load_precomputed()
+          parse_tdb_content(content, filename)
+          load_precomputed()
         }
         return
       }

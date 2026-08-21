@@ -2,8 +2,11 @@ import { create_display } from '$lib/file-viewer/main'
 import type * as ParseModule from '$lib/file-viewer/parse'
 import type { ParseResult } from '$lib/file-viewer/parse'
 import type * as ParseWorkerModule from '$lib/file-viewer/parse-in-worker'
+import { trajectory_from_frames } from '$lib/trajectory/open'
+import { summarize_run } from '$lib/trajectory/run'
 import type * as SvelteModule from 'svelte'
 import { afterEach, expect, test, vi } from 'vitest'
+import { make_crystal } from './setup'
 
 const test_mocks = vi.hoisted(() => {
   const post_message = vi.fn()
@@ -11,7 +14,27 @@ const test_mocks = vi.hoisted(() => {
   for (const key of [`cleanupMatterViz`, `initializeMatterViz`, `matterviz_data`]) {
     vi.stubGlobal(key, undefined)
   }
+  // jsdom has neither Worker nor object URLs; record what main.ts's shim hands the native
+  // constructor and what it turns into a blob
+  const native_worker_calls: { url: string; options?: WorkerOptions }[] = []
+  const object_url_blobs: Blob[] = []
+  vi.stubGlobal(
+    `Worker`,
+    class FakeWorker {
+      constructor(url: string | URL, options?: WorkerOptions) {
+        native_worker_calls.push({ url: String(url), options })
+      }
+      terminate(): void {}
+    },
+  )
+  URL.createObjectURL = (blob: Blob) => {
+    object_url_blobs.push(blob)
+    return `blob:${location.origin}/mock-${object_url_blobs.length}`
+  }
+  URL.revokeObjectURL = vi.fn()
   return {
+    native_worker_calls,
+    object_url_blobs,
     mount: vi.fn((_component: unknown, _options: { props: Record<string, unknown> }) => ({})),
     parse_file_content: vi.fn(),
     parse_in_worker: vi.fn(),
@@ -34,6 +57,8 @@ vi.mock(`svelte`, async (import_original) => ({
   unmount: test_mocks.unmount,
 }))
 const { mount, parse_file_content, parse_in_worker, post_message, unmount } = test_mocks
+// Captured now: afterEach's unstubAllGlobals would later drop the shimmed constructor
+const ShimmedWorker = globalThis.Worker
 
 parse_in_worker.mockImplementation((content, filename, is_base64) =>
   parse_file_content(content, filename, is_base64),
@@ -53,6 +78,8 @@ const set_file_data = (content: string, filename: string = `${content}.json`): v
   globalThis.matterviz_data = {
     data: { content, filename, is_base64: false },
     theme: `light`,
+    // host setting that must reach the parser, not just the mounted component props
+    defaults: { trajectory: { index_above_bytes: 4096 } },
   }
 }
 
@@ -81,7 +108,10 @@ test(`serializes reloads and guards cleanup, markers, and initialization`, async
     `initial`,
     `initial.json`,
     false,
-    expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    expect.objectContaining({
+      signal: expect.any(AbortSignal),
+      load_options: { index_above_bytes: 4096 },
+    }),
   )
 
   update_file(`stale`)
@@ -149,19 +179,22 @@ test(`serializes reloads and guards cleanup, markers, and initialization`, async
       expect.objectContaining({ command: `request_large_file` }),
     ),
   )
-  const request = post_message.mock.lastCall?.[0] as Record<string, unknown>
+  const request = post_message.mock.calls.findLast(
+    ([message]) => message.command === `request_large_file`,
+  )?.[0] as Record<string, unknown>
   // The host picks its indexer from the name, so the request has to carry it.
   expect(request).toMatchObject({ file_path: `/tmp/movie.traj`, filename: `movie.traj` })
+  // The host keeps the indexed run and answers with its summary; the webview mounts a host run
+  const run_summary = summarize_run(
+    trajectory_from_frames([{ step: 0, structure: make_crystal(5, [[`H`, [0, 0, 0]]]) }]),
+  )
   globalThis.dispatchEvent(
     new MessageEvent(`message`, {
-      data: {
-        command: `large_file_response`,
-        request_id: request?.request_id,
-        parsed_trajectory: { frames: [], total_frames: 0 },
-      },
+      data: { command: `large_file_response`, request_id: request?.request_id, run_summary },
     }),
   )
   expect(await valid_marker_initialization).not.toBeNull()
+  expect(mount.mock.lastCall?.[1].props.trajectory).toMatchObject({ frame_count: 1 })
 
   const initialization_parse = Promise.withResolvers<ParseResult>()
   parse_file_content.mockReturnValueOnce(initialization_parse.promise)
@@ -173,4 +206,28 @@ test(`serializes reloads and guards cleanup, markers, and initialization`, async
   initialization_parse.resolve(result(`pending-initialization`))
   expect(await pending_initialization).toBeNull()
   expect(mount).toHaveBeenCalledTimes(mount_count)
+})
+
+test(`routes cross-origin worker scripts through a same-origin blob module`, async () => {
+  const { native_worker_calls, object_url_blobs } = test_mocks
+  const resource_url = `https://file+.vscode-resource.vscode-cdn.net/ext/dist/assets/parse-worker.js`
+  const workers = [
+    new ShimmedWorker(resource_url, { type: `module` }),
+    new ShimmedWorker(new URL(resource_url), { type: `classic`, name: `msd` }),
+    new ShimmedWorker(`${location.origin}/assets/same-origin.js`, { type: `module` }),
+    new ShimmedWorker(`blob:${location.origin}/already-a-blob`),
+  ]
+  expect(workers).toHaveLength(4)
+  expect(native_worker_calls).toEqual([
+    { url: `blob:${location.origin}/mock-1`, options: { type: `module` } },
+    // blob wrappers are module workers regardless of what the caller asked for
+    { url: `blob:${location.origin}/mock-2`, options: { type: `module`, name: `msd` } },
+    { url: `${location.origin}/assets/same-origin.js`, options: { type: `module` } },
+    { url: `blob:${location.origin}/already-a-blob`, options: undefined },
+  ])
+  // A static import would be blocked by the webview CSP; only the dynamic form loads
+  expect(await Promise.all(object_url_blobs.map((blob) => blob.text()))).toEqual(
+    Array(2).fill(`await import(${JSON.stringify(resource_url)})`),
+  )
+  expect(URL.revokeObjectURL).toHaveBeenCalledTimes(2)
 })

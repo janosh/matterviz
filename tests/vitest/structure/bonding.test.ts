@@ -74,8 +74,6 @@ describe(`Bonding Algorithms`, () => {
       expect(bond.site_idx_1).toBeTypeOf(`number`)
       expect(bond.site_idx_2).toBeTypeOf(`number`)
       expect(bond.bond_length).toBeGreaterThan(0)
-      expect(bond.strength).toBeGreaterThanOrEqual(0)
-      expect(bond.strength).toBeLessThanOrEqual(2.0)
       // positions correspond to their site indices
       expect(bond.pos_1).toEqual(structure.sites[bond.site_idx_1].xyz)
       expect(bond.pos_2).toEqual(structure.sites[bond.site_idx_2].xyz)
@@ -1244,6 +1242,203 @@ describe(`spatial grid scratch array reuse`, () => {
     expect(partners.toSorted((a, b) => a - b)).toEqual(
       Array.from({ length: 27 }, (_, idx) => idx + 1),
     )
+  })
+})
+
+describe(`neighbor_query`, () => {
+  // Reference: every (center, partner, integer image) over a generous ±3 image range on the
+  // periodic axes, keyed so both lists can be compared as sets
+  const brute_force = (structure: Crystal, cutoff: number, pbc: readonly boolean[]) => {
+    const [vec_a, vec_b, vec_c] = structure.lattice.matrix
+    const range = (axis: number) => (pbc[axis] ? [-3, -2, -1, 0, 1, 2, 3] : [0])
+    const found = new Map<string, { dist: number; delta: Vec3 }>()
+    for (const [center, site_a] of structure.sites.entries()) {
+      for (const [partner, site_b] of structure.sites.entries()) {
+        for (const sa of range(0)) {
+          for (const sb of range(1)) {
+            for (const sc of range(2)) {
+              if (center === partner && sa === 0 && sb === 0 && sc === 0) continue
+              const delta = [0, 1, 2].map(
+                (ax) =>
+                  site_b.xyz[ax] +
+                  sa * vec_a[ax] +
+                  sb * vec_b[ax] +
+                  sc * vec_c[ax] -
+                  site_a.xyz[ax],
+              ) as Vec3
+              const dist = Math.hypot(...delta)
+              if (dist <= cutoff)
+                found.set(`${center}|${partner}|${sa},${sb},${sc}`, { dist, delta })
+            }
+          }
+        }
+      }
+    }
+    return found
+  }
+  const as_map = (list: bonding.NeighborList) => {
+    const found = new Map<string, { dist: number; delta: Vec3 }>()
+    for (let center = 0; center < list.n_centers; center++) {
+      for (let slot = list.offsets[center]; slot < list.offsets[center + 1]; slot++) {
+        const image = Array.from(list.images.subarray(slot * 3, slot * 3 + 3))
+        const key = `${center}|${list.neighbors[slot]}|${image.join(`,`)}`
+        expect(found.has(key)).toBe(false) // each (partner, image) listed once per center
+        found.set(key, {
+          dist: list.distances[slot],
+          delta: Array.from(list.deltas.subarray(slot * 3, slot * 3 + 3)) as Vec3,
+        })
+      }
+    }
+    return found
+  }
+  // Skewed triclinic cell (angles far from 90°) with sites deliberately outside [0, 1)
+  const triclinic: Crystal = make_crystal(
+    [
+      [4.1, 0, 0],
+      [1.9, 3.6, 0],
+      [-1.2, 1.4, 3.9],
+    ],
+    [
+      { element: `Na`, abc: [0.02, 0.1, 0.95] },
+      { element: `Cl`, abc: [0.5, 0.5, 0.5] },
+      { element: `Na`, abc: [1.3, -0.4, 0.25] }, // unwrapped
+      { element: `O`, abc: [0.8, 0.9, 0.1] },
+      { element: `Cl`, abc: [0.25, 0.75, 0.6] },
+    ],
+  )
+
+  test.each([
+    [`triclinic, full pbc`, [true, true, true], 5.5],
+    [`triclinic, slab (pbc z off)`, [true, true, false], 5.5],
+    [`triclinic, wire (only pbc y)`, [false, true, false], 6.0],
+    [`triclinic, no pbc`, [false, false, false], 6.0],
+  ] as const)(`matches brute force over ±3 images: %s`, (_label, pbc, cutoff) => {
+    const list = bonding.neighbor_query(triclinic, { cutoff, pbc })
+    const actual = as_map(list)
+    const expected = brute_force(triclinic, cutoff, pbc)
+    expect([...actual.keys()].toSorted()).toEqual([...expected.keys()].toSorted())
+    let max_dist_err = 0
+    let max_delta_err = 0
+    for (const [key, { dist, delta }] of expected) {
+      const got = actual.get(key)
+      if (!got) throw new Error(`missing ${key}`)
+      max_dist_err = Math.max(max_dist_err, Math.abs(got.dist - dist))
+      for (let ax = 0; ax < 3; ax++) {
+        max_delta_err = Math.max(max_delta_err, Math.abs(got.delta[ax] - delta[ax]))
+      }
+    }
+    // wrapped-then-shifted vs direct arithmetic: a few ulps of ~10 A coordinates
+    expect(max_dist_err).toBeLessThan(1e-11)
+    expect(max_delta_err).toBeLessThan(1e-11)
+    // per-center blocks are sorted ascending
+    for (let center = 0; center < list.n_centers; center++) {
+      for (let slot = list.offsets[center] + 1; slot < list.offsets[center + 1]; slot++) {
+        expect(list.distances[slot]).toBeGreaterThanOrEqual(list.distances[slot - 1])
+      }
+    }
+    expect(list.offsets[list.n_centers]).toBe(list.neighbors.length)
+    expect(list.offsets[list.n_centers]).toBe(expected.size)
+  })
+
+  test(`1-atom cell: own images are neighbors; fcc k=12 shell exact`, () => {
+    const bcc = make_crystal(3, [{ element: `Fe`, abc: [0, 0, 0] }])
+    const list = bonding.neighbor_query(bcc, { cutoff: 3.01 })
+    expect(list.neighbors).toHaveLength(6)
+    expect(Array.from(list.neighbors)).toEqual([0, 0, 0, 0, 0, 0])
+    expect(Array.from(list.distances).every((dist) => Math.abs(dist - 3) < 1e-12)).toBe(true)
+    const fcc_cu = make_crystal(3.6, [
+      { element: `Cu`, abc: [0, 0, 0] },
+      { element: `Cu`, abc: [0.5, 0.5, 0] },
+      { element: `Cu`, abc: [0.5, 0, 0.5] },
+      { element: `Cu`, abc: [0, 0.5, 0.5] },
+    ])
+    const knn = bonding.neighbor_query(fcc_cu, { k: 12 })
+    expect(Array.from(knn.offsets)).toEqual([0, 12, 24, 36, 48])
+    const nn_dist = 3.6 / Math.SQRT2
+    for (const dist of knn.distances) expect(Math.abs(dist - nn_dist)).toBeLessThan(1e-12)
+    // distances = |deltas| and deltas = partner + image·L - center
+    for (let slot = 0; slot < knn.distances.length; slot++) {
+      const center = knn.offsets.findLastIndex((offset) => offset <= slot)
+      const partner = fcc_cu.sites[knn.neighbors[slot]].xyz
+      const img = knn.images.subarray(slot * 3, slot * 3 + 3)
+      for (let ax = 0; ax < 3; ax++) {
+        const expected = partner[ax] + img[ax] * 3.6 - fcc_cu.sites[center].xyz[ax]
+        expect(knn.deltas[slot * 3 + ax]).toBeCloseTo(expected, 12)
+      }
+      expect(Math.hypot(...knn.deltas.subarray(slot * 3, slot * 3 + 3))).toBeCloseTo(
+        knn.distances[slot],
+        12,
+      )
+    }
+  })
+
+  test(`molecule: no images, k capped by system size, cutoff list sorted`, () => {
+    const water = {
+      sites: (
+        [
+          [`O`, [0, 0, 0]],
+          [`H`, [0.96, 0, 0]],
+          [`H`, [-0.24, 0.93, 0]],
+        ] as const
+      ).map(([element, xyz]) => ({
+        species: [{ element, occu: 1, oxidation_state: 0 }],
+        xyz: [...xyz] as Vec3,
+        abc: [0, 0, 0] as Vec3,
+        label: element,
+        properties: {},
+      })),
+    }
+    const knn = bonding.neighbor_query(water, { k: 5 })
+    expect(Array.from(knn.offsets)).toEqual([0, 2, 4, 6])
+    expect(Array.from(knn.images).every((shift) => shift === 0)).toBe(true)
+    const list = bonding.neighbor_query(water, { cutoff: 1.2 })
+    expect(list.offsets[3]).toBeGreaterThanOrEqual(4) // two O-H contacts, both ends
+    for (let center = 0; center < 3; center++) {
+      for (let slot = list.offsets[center] + 1; slot < list.offsets[center + 1]; slot++) {
+        expect(list.distances[slot]).toBeGreaterThanOrEqual(list.distances[slot - 1])
+      }
+    }
+  })
+
+  test.each([
+    [{ cutoff: 0 }, /cutoff must be a positive finite number/],
+    [{ cutoff: -1 }, /cutoff must be a positive finite number/],
+    [{ cutoff: Number.NaN }, /cutoff must be a positive finite number/],
+    [{ k: 0 }, /k must be a positive integer/],
+    [{ k: 1.5 }, /k must be a positive integer/],
+  ])(`rejects %j`, (options, message) => {
+    expect(() => bonding.neighbor_query(triclinic, options)).toThrow(message)
+  })
+
+  test(`rejects a degenerate periodic lattice and an absurd cutoff`, () => {
+    const flat = make_crystal(
+      [
+        [3, 0, 0],
+        [0, 3, 0],
+        [3, 3, 0],
+      ],
+      [{ element: `C`, abc: [0, 0, 0] }],
+    )
+    expect(() => bonding.neighbor_query(flat, { cutoff: 2 })).toThrow(/degenerate/)
+    // no periodic axis: the lattice is never used, so a singular one is fine
+    const free = bonding.neighbor_query(flat, { cutoff: 2, pbc: [false, false, false] })
+    expect(free.neighbors).toHaveLength(0)
+    const big = make_random_structure(200)
+    expect(() => bonding.neighbor_query(big, { cutoff: 400 })).toThrow(/refusing to build/)
+  })
+
+  test.each([Number.NaN, Infinity])(`rejects a %s coordinate instead of binning it`, (bad) => {
+    // Map keys compare NaN equal, so without the guard the NaN site collected each of its
+    // own 26 images 27 times with NaN distances
+    const crystal = make_crystal(4, [
+      { element: `Na`, abc: [0, 0, 0] },
+      { element: `Na`, xyz: [bad, 2, 2] },
+    ])
+    expect(() => bonding.neighbor_query(crystal, { cutoff: 3 })).toThrow(/non-finite/)
+    const molecule = {
+      sites: crystal.sites.map((site) => ({ ...site, abc: [0, 0, 0] as Vec3 })),
+    }
+    expect(() => bonding.neighbor_query(molecule, { cutoff: 3 })).toThrow(/non-finite/)
   })
 })
 

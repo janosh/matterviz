@@ -80,7 +80,6 @@ describe(`data-transform utility functions`, () => {
       symbol_color: string,
       options: {
         visible?: boolean
-        has_explicit_label?: boolean
         legend_group?: string
         symbol_type?: string
       } = {},
@@ -88,7 +87,6 @@ describe(`data-transform utility functions`, () => {
       series_idx,
       label,
       visible: options.visible ?? true,
-      has_explicit_label: options.has_explicit_label ?? false,
       legend_group: options.legend_group,
       display_style: {
         symbol_type: options.symbol_type ?? DEFAULTS.scatter.symbol_type,
@@ -96,7 +94,7 @@ describe(`data-transform utility functions`, () => {
       },
     })
     // Every chart gets the same envelope: generated label fallback, visible default,
-    // legend_group passthrough and an explicit-label flag.
+    // legend_group passthrough.
     test.each([
       {
         name: `falls back to generated labels and visible=true`,
@@ -127,12 +125,9 @@ describe(`data-transform utility functions`, () => {
         expected: [
           legend_item(0, `Custom`, `green`, {
             visible: false,
-            has_explicit_label: true,
             legend_group: `A`,
           }),
-          legend_item(1, `Another`, `purple`, {
-            has_explicit_label: true,
-          }),
+          legend_item(1, `Another`, `purple`, {}),
         ],
       },
       { name: `handles empty series array`, series: [], expected: [] },
@@ -153,7 +148,6 @@ describe(`data-transform utility functions`, () => {
       ).toEqual([
         legend_item(0, `Box 1`, `c0`, { symbol_type: `Square` }),
         legend_item(1, `Named`, `c1`, {
-          has_explicit_label: true,
           symbol_type: `Square`,
         }),
       ])

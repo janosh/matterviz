@@ -26,8 +26,8 @@
   import type { ZoneAxisMode } from '$lib/scene'
   import { is_valid_zone_axis, ZONE_AXIS_MODE_LABELS, zone_axis_direction } from '$lib/scene'
   import { ColorScaleSelect } from '$lib/plot'
-  import type { AtomColorMode, SettingType, VectorLayerConfig } from '$lib/settings'
-  import { DEFAULTS, SETTINGS_CONFIG, VECTOR_COLOR_MODES } from '$lib/settings'
+  import type { AtomColorMode, VectorLayerConfig } from '$lib/settings'
+  import { DEFAULTS, SETTINGS_CONFIG } from '$lib/settings'
   import {
     clear_structure_view_state,
     create_structure_view_state,
@@ -309,17 +309,154 @@
     set_status(`Restored all viewer defaults`)
   }
 
+  // === Schema-driven rows ===
+  // Every uniform control is a Row: the schema entry's value type picks the widget (enum →
+  // select, boolean → checkbox, number → slider + number input, string → color swatch).
+  // Rows default to reading/writing scene_props[key]; `get`/`set` point one elsewhere
+  // (lattice_props, a local bindable). `pair` adds a dependent color swatch beside the
+  // primary control, and `data_key` names the pseudo-setting the pair resets as one.
   type StructureSettingKey = keyof typeof SETTINGS_CONFIG.structure
-  const pointer_settings = [
-    [`rotate_speed`, `Rotate`, 0.05],
-    [`zoom_speed`, `Zoom`, 0.02],
-    [`pan_speed`, `Pan`, 0.01],
-    [`rotation_damping`, `Damping`, 0.01],
-  ] as const
-  const cell_style_settings = [
-    [`Edge`, `cell_edge_color`, `cell_edge_opacity`, 0.05],
-    [`Surface`, `cell_surface_color`, `cell_surface_opacity`, 0.01],
-  ] as const
+  type Row = {
+    key: StructureSettingKey
+    label: string
+    step?: number
+    aria_label?: string
+    when?: () => boolean // conditional rows (e.g. a color swatch only in uniform mode)
+    get?: () => unknown
+    set?: (value: unknown) => void
+    pair?: { key: StructureSettingKey; when: () => boolean }
+    data_key?: SettingKey // pseudo-key a paired row resets and describes as one
+  }
+  const row = (key: StructureSettingKey, label: string, step?: number): Row => ({
+    key,
+    label,
+    step,
+  })
+  // A getter, not a const: the parent may rebind scene_props to a fresh object
+  const scene_record = () => scene_props as Record<string, unknown>
+  const row_value = (current: Row): unknown =>
+    current.get ? current.get() : scene_record()[current.key]
+  const set_row_value = (current: Row, value: unknown): void => {
+    if (current.set) current.set(value)
+    else scene_record()[current.key] = value
+  }
+  const lattice_row = (
+    key: StructureSettingKey & keyof typeof lattice_props,
+    label: string,
+    step?: number,
+  ): Row => ({
+    ...row(key, label, step),
+    get: () => lattice_props[key],
+    set: (value) => Object.assign(lattice_props, { [key]: value }),
+  })
+
+  const visibility_rows: Row[] = [
+    row(`show_atoms`, `Atoms`),
+    {
+      ...row(`show_image_atoms`, `Image atoms`),
+      get: () => show_image_atoms,
+      set: (value) => (show_image_atoms = Boolean(value)),
+    },
+    row(`show_site_labels`, `Site labels`),
+    row(`show_site_indices`, `Site indices`),
+    lattice_row(`show_cell_vectors`, `Lattice vectors`),
+  ]
+  // Enum pickers rendered below the toggle grid, same section
+  const visibility_mode_rows = [row(`show_bonds`, `Bonds`), row(`show_polyhedra`, `Polyhedra`)]
+  const atom_rows = [
+    row(`atom_radius`, `Radius (Å)`, 0.05),
+    row(`same_size_atoms`, `Same size`),
+  ]
+  const bond_rows: Row[] = [
+    row(`bonding_strategy`, `Strategy`),
+    row(`auto_bond_order`, `Auto bond order`),
+    {
+      ...row(`aromatic_display`, `Aromatic`),
+      when: () => Boolean(scene_props.auto_bond_order),
+    },
+    row(`bond_color`, `Color`),
+    row(`bond_thickness`, `Thickness`, 0.01),
+  ]
+  const polyhedra_rows: Row[] = [
+    row(`polyhedra_opacity`, `Opacity`, 0.05),
+    {
+      ...row(`polyhedra_color_mode`, `Color`),
+      data_key: `polyhedra_color`,
+      pair: {
+        key: `polyhedra_color`,
+        when: () => scene_props.polyhedra_color_mode === `uniform`,
+      },
+    },
+    {
+      ...row(`polyhedra_show_edges`, `Edges`),
+      data_key: `polyhedra_edges`,
+      pair: {
+        key: `polyhedra_edge_color`,
+        when: () => Boolean(scene_props.polyhedra_show_edges),
+      },
+    },
+    row(`polyhedra_hide_center_atoms`, `Hide centers`),
+    row(`polyhedra_min_neighbors`, `Min neighbors`, 1),
+    row(`polyhedra_max_neighbors`, `Max neighbors`, 1),
+  ]
+  const label_rows: Row[] = [
+    { ...row(`site_label_color`, `Color`), aria_label: `Site label color` },
+    row(`site_label_size`, `Size`, 0.1),
+    row(`site_label_padding`, `Padding`, 1),
+  ]
+  const vector_rows: Row[] = [
+    row(`vector_scale`, `Global scale`, 0.001),
+    row(`vector_normalize`, `Normalize`),
+    row(`vector_uniform_thickness`, `Uniform width`),
+    row(`vector_color_mode`, `Color by`),
+    {
+      ...row(`vector_color`, `Color`),
+      when: () => scene_props.vector_color_mode === `uniform`,
+    },
+    {
+      ...row(`vector_origin_gap`, `Origin gap`, 0.02),
+      when: () => available_vector_keys.length > 1,
+    },
+  ]
+  const cell_rows = [
+    lattice_row(`cell_edge_color`, `Edge color`),
+    lattice_row(`cell_edge_opacity`, `Edge opacity`, 0.05),
+    lattice_row(`cell_surface_color`, `Surface color`),
+    lattice_row(`cell_surface_opacity`, `Surface opacity`, 0.01),
+  ]
+  const view_rows = [
+    row(`camera_projection`, `Projection`),
+    row(`auto_rotate`, `Auto-rotate speed`, 0.01),
+    row(`zoom_to_cursor`, `Zoom to cursor`),
+  ]
+  const pointer_rows = [
+    row(`rotate_speed`, `Rotate`, 0.05),
+    row(`zoom_speed`, `Zoom`, 0.02),
+    row(`pan_speed`, `Pan`, 0.01),
+    row(`rotation_damping`, `Damping`, 0.01),
+  ]
+  const lighting_rows = [
+    row(`directional_light`, `Directional light`, 0.01),
+    row(`ambient_light`, `Ambient light`, 0.05),
+  ]
+  const displacement_rows: Row[] = [
+    row(`show_displacement_arrows`, `Show arrows`),
+    row(`displacement_arrow_scale`, `Arrow scale`, 0.1),
+    {
+      ...row(`displacement_arrow_color`, `Arrow color`),
+      aria_label: `Displacement arrow color`,
+    },
+  ]
+  const trail_toggle_row: Row = {
+    ...row(`show_trajectory_lines`, `Show trajectory trails`),
+    get: () => show_trajectory_lines,
+    set: (value) => (show_trajectory_lines = Boolean(value)),
+  }
+  const trail_rows = [
+    row(`trajectory_line_frame_stride`, `Frame stride`),
+    row(`trajectory_line_color_mode`, `Color by`),
+    row(`trajectory_line_wrap_mode`, `Boundaries`),
+  ]
   // Descriptions for every row this pane renders: the schema for real settings, plus entries
   // for the pseudo-keys used by rows that drive more than one setting at once.
   const structure_setting_metadata = {
@@ -346,8 +483,7 @@
   }
   const setting_attachment_key = createAttachmentKey()
   // Spread onto a row to tag it for per-row reset/search AND give it its description as a
-  // tooltip. Both are keyed off the same setting, so writing them separately meant naming it
-  // twice per row. Spread (not an attachment) so `data-key` is a real attribute from the first
+  // tooltip. Spread (not an attachment) so `data-key` is a real attribute from the first
   // render, which is when SettingsSection's row enhancer takes its inventory. `tip` is only for
   // the handful of rows whose advice depends on the structure (no lattice, no symmetry yet).
   const setting_row = (key: SettingKey, tip?: string) => {
@@ -358,25 +494,14 @@
       [setting_attachment_key]: tooltip({ content: description }),
     }
   }
-  type SettingKeysOfType<Value> = {
-    [Key in StructureSettingKey]: (typeof SETTINGS_CONFIG.structure)[Key] extends SettingType<Value>
-      ? Key
-      : never
-  }[StructureSettingKey]
-  type NumericSettingKey = SettingKeysOfType<number>
-  // Rows rendered by the shared snippets must both name a setting and bind to the matching
-  // scene prop, so intersect the schema's keys with the ones scene_props actually holds.
-  type NumericSceneSettingKey = NumericSettingKey & keyof typeof scene_props
-  type BooleanSettingKey = SettingKeysOfType<boolean> & keyof typeof scene_props
-  type EnumSettingKey = SettingKeysOfType<string> & keyof typeof scene_props
 
-  // One key list drives both a section's "changed" indicator and its reset, so a new setting
-  // can't be registered in one and forgotten in the other. Keys not held directly on `target`
-  // (local bindables, or one row standing for several settings) pass an accessor instead.
-  // No section-level reset: SettingsSection replays `on_reset_key` over every changed key, so
-  // the section heading and the per-row buttons both restore what this pane mounted with.
-  // "Reset all" under Preferences is the affordance for going back to shipped defaults.
-  type DefaultedKey<T> = Extract<keyof T, keyof typeof DEFAULTS.structure>
+  // A section's rows drive both its "changed" indicator and its reset, so a new setting can't
+  // be registered in one and forgotten in the other: plain rows reset scene_props[key] directly,
+  // rows with accessors or pairs reset through them. `extra_keys` covers bespoke controls
+  // (rotation sliders, label offset) that still live on scene_props; `accessors` the pseudo-keys
+  // whose rows drive several settings at once. No section-level reset: SettingsSection replays
+  // `on_reset_key` over every changed key, so the section heading and the per-row buttons both
+  // restore what this pane mounted with. "Reset all" under Preferences returns to shipped defaults.
   type Accessor = { get: () => unknown; set: (value: unknown, present: boolean) => void }
   const local = <T>(get: () => T, set: (value: T, present: boolean) => void): Accessor => ({
     get,
@@ -384,38 +509,38 @@
   })
   // One row driving two scene props (a mode plus its color, say). Sharing a key means the row's
   // reset restores both halves at once instead of leaving a half-reverted pair behind.
-  const scene_pair = (left: keyof typeof scene_props, right: keyof typeof scene_props) =>
+  const scene_pair = (left: StructureSettingKey, right: StructureSettingKey) =>
     local(
-      () => ({ [left]: scene_props[left], [right]: scene_props[right] }),
+      () => ({ [left]: scene_record()[left], [right]: scene_record()[right] }),
       (reference) => Object.assign(scene_props, reference),
     )
-  const settings_section = <T extends object>(
-    target: T,
-    keys: DefaultedKey<T>[],
-    accessors: Record<string, Accessor> = {},
-  ) => ({
-    current_values: Object.fromEntries([
-      ...keys.map((key) => [
-        key,
-        target[key] === undefined ? DEFAULTS.structure[key] : target[key],
-      ]),
-      ...Object.entries(accessors).map(([key, accessor]) => [key, accessor.get()]),
-    ]),
-    on_reset_key: (key: string, reference_value: unknown, reference_present: boolean) => {
-      const accessor = accessors[key]
-      if (accessor) return accessor.set(reference_value, reference_present)
-      if (reference_present) Object.assign(target, { [key]: reference_value })
-      else Reflect.deleteProperty(target, key)
-    },
-    setting_metadata: structure_setting_metadata,
-  })
   const scene_section = (
-    keys: DefaultedKey<typeof scene_props>[],
-    accessors?: Record<string, Accessor>,
-  ) => settings_section(scene_props, keys, accessors)
-  // A section whose every value lives outside scene_props and lattice_props
-  const local_section = (accessors: Record<string, Accessor>) =>
-    settings_section({}, [], accessors)
+    rows: readonly Row[],
+    accessors: Record<string, Accessor> = {},
+    extra_keys: StructureSettingKey[] = [],
+  ) => {
+    const keys = [...extra_keys]
+    for (const current of rows) {
+      if (current.pair) {
+        accessors[current.data_key ?? current.key] = scene_pair(current.key, current.pair.key)
+      } else if (current.get && current.set) {
+        accessors[current.key] = local(current.get, current.set)
+      } else keys.push(current.key)
+    }
+    return {
+      current_values: Object.fromEntries([
+        ...keys.map((key) => [key, scene_record()[key] ?? DEFAULTS.structure[key]]),
+        ...Object.entries(accessors).map(([key, accessor]) => [key, accessor.get()]),
+      ]),
+      on_reset_key: (key: string, reference_value: unknown, reference_present: boolean) => {
+        const accessor = accessors[key]
+        if (accessor) return accessor.set(reference_value, reference_present)
+        if (reference_present) scene_record()[key] = reference_value
+        else Reflect.deleteProperty(scene_props, key)
+      },
+      setting_metadata: structure_setting_metadata,
+    }
+  }
 
   $effect(() => {
     scene_props.show_trajectory_lines = show_trajectory_lines
@@ -451,8 +576,8 @@
   let zone_axis = $derived.by(() => {
     // Molecules have no crystallographic directions; the button's own title already says so
     if (!lattice_matrix) return { direction: null, error: `` }
-    // MillerIndexInput accepts `000` and `Infinity 0 0`, which would otherwise grey the
-    // button out with no reason given. The indices themselves are in the adjacent input.
+    // MillerIndexInput accepts `000` (and the prop can be set programmatically to anything),
+    // which would otherwise grey the button out with no reason given.
     if (!is_valid_zone_axis(zone_axis_indices)) {
       const error = `${zone_axis_mode} indices must be finite and not all zero`
       return { direction: null, error }
@@ -554,7 +679,6 @@
       : { hex_color, opacity: 1 }
   }
 
-  const default_site_label_color = as_hex_color(DEFAULTS.structure.site_label_color, `#111111`)
   // Derived from scene_props rather than mirrored into local state: the two label colors are
   // CSS strings the scene owns, and only the hex behind a fully transparent background has
   // nowhere in that string to live.
@@ -597,6 +721,44 @@
     }
     scene_props.vector_configs = configs
   }
+  // A vector row in Visibility owns visibility and color only. Tracking the whole config there
+  // would make a per-key scale edit (owned by Site vectors) light up that section's reset,
+  // which would then wipe the scale on its way past.
+  const vector_visibility_accessors = (): Record<string, Accessor> =>
+    Object.fromEntries(
+      available_vector_keys.map((key, key_idx) => [
+        `vector_config:${key}`,
+        local(
+          () => ({
+            visible: is_key_visible(key),
+            color:
+              scene_props.vector_configs?.[key]?.color ??
+              (available_vector_keys.length > 1
+                ? VECTOR_PALETTE[key_idx % VECTOR_PALETTE.length]
+                : null),
+          }),
+          (reference, present) =>
+            update_vector_config(key, present ? reference : { visible: true, color: null }),
+        ),
+      ]),
+    )
+  // Per-key scales live in vector_configs rather than on a scene_props key of their own, so
+  // without an accessor a scale-only edit would never reveal a reset
+  const vector_scale_accessors = (): Record<string, Accessor> =>
+    Object.fromEntries(
+      available_vector_keys.map((key) => [
+        `vector_scale:${key}`,
+        local(
+          () => scene_props.vector_configs?.[key]?.scale ?? null,
+          (scale) => update_vector_config(key, { scale }),
+        ),
+      ]),
+    )
+
+  function update_label_offset(axis_idx: number, value: number) {
+    const offset = scene_props.site_label_offset ?? DEFAULTS.structure.site_label_offset
+    scene_props.site_label_offset = offset.with(axis_idx, value) as Vec3
+  }
 
   // Detect if structure has lattice (can create supercells)
   let has_lattice = $derived(
@@ -606,22 +768,14 @@
   // Validate supercell input
   let supercell_input_valid = $derived(is_valid_supercell_input(supercell_scaling))
 
+  // Rotation is stored in radians; the sliders show degrees in [0, 360)
   let rotation_degrees = $derived(
-    scene_props.rotation?.map((rad) => {
-      const deg = to_degrees(rad)
-      // Convert to [0, 360] range for UI display
-      return ((deg % 360) + 360) % 360
-    }) ?? [0, 0, 0],
+    scene_props.rotation?.map((rad) => ((to_degrees(rad) % 360) + 360) % 360) ?? [0, 0, 0],
   )
 
-  function update_rotation(axis: `x` | `y` | `z`, degrees: number) {
-    scene_props.rotation ??= [0, 0, 0]
-    const axis_index = { x: 0, y: 1, z: 2 }[axis]
-    const clamped = Math.max(0, Math.min(360, degrees))
-    const norm = ((clamped % 360) + 360) % 360
-    scene_props.rotation[axis_index] = to_radians(norm)
-    // Trigger reactivity by creating new array
-    scene_props.rotation = [...scene_props.rotation]
+  function update_rotation(axis_idx: number, degrees: number) {
+    const radians = to_radians(((Math.max(0, Math.min(360, degrees)) % 360) + 360) % 360)
+    scene_props.rotation = (scene_props.rotation ?? [0, 0, 0]).with(axis_idx, radians) as Vec3
   }
 
   // Sample colors for common elements, used to preview an element color scheme
@@ -646,45 +800,67 @@
   )
 </script>
 
-<!-- Declared outside <ControlPane> so it is a template snippet, not a prop of the pane -->
+<!-- Declared outside <ControlPane> so they are template snippets, not props of the pane -->
 {#snippet enum_options(key: StructureSettingKey)}
   {#each Object.entries(SETTINGS_CONFIG.structure[key].enum ?? {}) as [value, label] (value)}
     <option {value}>{label}</option>
   {/each}
 {/snippet}
 
-<!-- The two rows that carry no per-setting detail: a bare toggle and a bare enum picker, both
-reading the row's key straight off scene_props. Rows needing anything else (a conditional swatch,
-a disabled state, a non-scene_props target) stay written out in full. -->
-{#snippet toggle(key: BooleanSettingKey, label: string)}
-  <label {...setting_row(key)}>
-    <span>{label}</span>
-    <input type="checkbox" bind:checked={scene_props[key]} />
-  </label>
-{/snippet}
-
-{#snippet enum_row(key: EnumSettingKey, label: string)}
-  <label {...setting_row(key)}>
-    <span>{label}</span>
-    <select bind:value={scene_props[key]}>{@render enum_options(key)}</select>
-  </label>
-{/snippet}
-
-{#snippet numeric_row(key: NumericSceneSettingKey, label: string, step?: number)}
-  <NumberRangeInput
-    setting={key}
-    schema={SETTINGS_CONFIG.structure}
-    {step}
-    bind:value={() => scene_props[key], (value) => (scene_props[key] = value)}
-    >{label}</NumberRangeInput
-  >
-{/snippet}
-
-{#snippet color_row(key: EnumSettingKey, label: string, aria_label?: string)}
-  <label {...setting_row(key)}>
-    <span>{label}</span>
-    <input class="swatch" type="color" aria-label={aria_label} bind:value={scene_props[key]} />
-  </label>
+{#snippet setting_rows(rows: readonly Row[])}
+  {#each rows as current (current.key)}
+    {@const { key, label, step, aria_label, pair } = current}
+    {#if current.when?.() ?? true}
+      {@const schema = SETTINGS_CONFIG.structure[key]}
+      {@const set = (value: unknown) => set_row_value(current, value)}
+      {#if typeof schema.value === `number`}
+        <NumberRangeInput
+          setting={key}
+          schema={SETTINGS_CONFIG.structure}
+          {step}
+          bind:value={() => row_value(current) as number | undefined, set}
+          >{label}</NumberRangeInput
+        >
+      {:else}
+        <label {...setting_row(current.data_key ?? key)}>
+          <span>{label}</span>
+          <span class="ctrl-pair">
+            {#if schema.enum}
+              <select bind:value={() => row_value(current), set}>
+                {@render enum_options(key)}
+              </select>
+            {:else if typeof schema.value === `boolean`}
+              <input type="checkbox" bind:checked={() => Boolean(row_value(current)), set} />
+            {:else}
+              <input
+                class="swatch"
+                type="color"
+                aria-label={aria_label}
+                bind:value={
+                  () =>
+                    as_hex_color(
+                      row_value(current) as string | undefined,
+                      String(schema.value),
+                    ),
+                  set
+                }
+              />
+            {/if}
+            {#if pair?.when()}
+              <input
+                class="swatch"
+                type="color"
+                bind:value={
+                  () => scene_record()[pair.key] as string | undefined,
+                  (value) => (scene_record()[pair.key] = value)
+                }
+              />
+            {/if}
+          </span>
+        </label>
+      {/if}
+    {/if}
+  {/each}
 {/snippet}
 
 <ControlPane
@@ -743,69 +919,12 @@ a disabled state, a non-scene_props target) stay written out in full. -->
           title="Visibility"
           layout="grid"
           {...scene_section(
-            [
-              `show_atoms`,
-              `show_bonds`,
-              `show_polyhedra`,
-              `show_site_labels`,
-              `show_site_indices`,
-            ],
-            {
-              show_image_atoms: local(
-                () => show_image_atoms,
-                (value) => (show_image_atoms = value),
-              ),
-              show_cell_vectors: local(
-                () => lattice_props.show_cell_vectors,
-                (value) => (lattice_props.show_cell_vectors = value),
-              ),
-              // A vector row owns visibility and color only. Tracking the whole config here would
-              // make a per-key scale edit (owned by Site vectors) light up this section's reset,
-              // which would then wipe that scale on its way past.
-              ...Object.fromEntries(
-                available_vector_keys.map((key, key_idx) => [
-                  `vector_config:${key}`,
-                  local(
-                    () => ({
-                      visible: is_key_visible(key),
-                      color:
-                        scene_props.vector_configs?.[key]?.color ??
-                        (available_vector_keys.length > 1
-                          ? VECTOR_PALETTE[key_idx % VECTOR_PALETTE.length]
-                          : null),
-                    }),
-                    (reference, present) =>
-                      update_vector_config(
-                        key,
-                        present ? reference : { visible: true, color: null },
-                      ),
-                  ),
-                ]),
-              ),
-            },
+            [...visibility_rows, ...visibility_mode_rows],
+            vector_visibility_accessors(),
           )}
         >
           <div class="toggle-grid">
-            <label {...setting_row(`show_atoms`)}>
-              <input type="checkbox" bind:checked={scene_props.show_atoms} />
-              Atoms
-            </label>
-            <label {...setting_row(`show_image_atoms`)}>
-              <input type="checkbox" bind:checked={show_image_atoms} />
-              Image atoms
-            </label>
-            <label {...setting_row(`show_site_labels`)}>
-              <input type="checkbox" bind:checked={scene_props.show_site_labels} />
-              Site labels
-            </label>
-            <label {...setting_row(`show_site_indices`)}>
-              <input type="checkbox" bind:checked={scene_props.show_site_indices} />
-              Site indices
-            </label>
-            <label {...setting_row(`show_cell_vectors`)}>
-              <input type="checkbox" bind:checked={lattice_props.show_cell_vectors} />
-              Lattice vectors
-            </label>
+            {@render setting_rows(visibility_rows)}
             {#each available_vector_keys as key, idx (key)}
               {@const key_visible = is_key_visible(key)}
               {@const description = `Visibility and color of ${key} vectors`}
@@ -842,25 +961,21 @@ a disabled state, a non-scene_props target) stay written out in full. -->
               </label>
             {/each}
           </div>
-          {@render enum_row(`show_bonds`, `Bonds`)}
-          {@render enum_row(`show_polyhedra`, `Polyhedra`)}
+          {@render setting_rows(visibility_mode_rows)}
         </SettingsSection>
       {/key}
 
       <SettingsSection
         title="Atoms"
         layout="grid"
-        {...scene_section([`atom_radius`, `same_size_atoms`], {
+        {...scene_section(atom_rows, {
           color_scheme: local(
             () => color_scheme,
             (value) => (color_scheme = value),
           ),
           // scale_type is derived from the mode, so the two travel as one row
           atom_color_mode: local(
-            () => ({
-              mode: atom_color_config.mode,
-              scale_type: atom_color_config.scale_type,
-            }),
+            () => ({ mode: atom_color_config.mode, scale_type: atom_color_config.scale_type }),
             (reference) => set_atom_color_mode(reference.mode),
           ),
           atom_color_scale: local(
@@ -875,13 +990,7 @@ a disabled state, a non-scene_props target) stay written out in full. -->
           ),
         })}
       >
-        <NumberRangeInput
-          setting="atom_radius"
-          schema={SETTINGS_CONFIG.structure}
-          step={0.05}
-          bind:value={scene_props.atom_radius}>Radius <small>(Å)</small></NumberRangeInput
-        >
-        {@render toggle(`same_size_atoms`, `Same size`)}
+        {@render setting_rows(atom_rows)}
         <label {...setting_row(`color_scheme`)}>
           <span>Color scheme</span>
           <Select
@@ -959,24 +1068,8 @@ a disabled state, a non-scene_props target) stay written out in full. -->
       </SettingsSection>
 
       {#if scene_props.show_bonds && scene_props.show_bonds !== `never`}
-        <SettingsSection
-          title="Bonds"
-          layout="grid"
-          {...scene_section([
-            `bonding_strategy`,
-            `auto_bond_order`,
-            `aromatic_display`,
-            `bond_color`,
-            `bond_thickness`,
-          ])}
-        >
-          {@render enum_row(`bonding_strategy`, `Strategy`)}
-          {@render toggle(`auto_bond_order`, `Auto bond order`)}
-          {#if scene_props.auto_bond_order}
-            {@render enum_row(`aromatic_display`, `Aromatic`)}
-          {/if}
-          {@render color_row(`bond_color`, `Color`)}
-          {@render numeric_row(`bond_thickness`, `Thickness`, 0.01)}
+        <SettingsSection title="Bonds" layout="grid" {...scene_section(bond_rows)}>
+          {@render setting_rows(bond_rows)}
         </SettingsSection>
       {/if}
 
@@ -984,51 +1077,14 @@ a disabled state, a non-scene_props target) stay written out in full. -->
         <SettingsSection
           title="Polyhedra"
           layout="grid"
-          {...scene_section(
-            [
-              `polyhedra_opacity`,
-              `polyhedra_hide_center_atoms`,
-              `polyhedra_min_neighbors`,
-              `polyhedra_max_neighbors`,
-            ],
-            {
-              polyhedra_color: scene_pair(`polyhedra_color_mode`, `polyhedra_color`),
-              polyhedra_edges: scene_pair(`polyhedra_show_edges`, `polyhedra_edge_color`),
-              polyhedra_centers: scene_pair(
-                `polyhedra_excluded_elements`,
-                `polyhedra_included_elements`,
-              ),
-            },
-          )}
+          {...scene_section(polyhedra_rows, {
+            polyhedra_centers: scene_pair(
+              `polyhedra_excluded_elements`,
+              `polyhedra_included_elements`,
+            ),
+          })}
         >
-          {@render numeric_row(`polyhedra_opacity`, `Opacity`, 0.05)}
-          <label {...setting_row(`polyhedra_color`)}>
-            <span>Color</span>
-            <span class="ctrl-pair">
-              <select bind:value={scene_props.polyhedra_color_mode}>
-                {@render enum_options(`polyhedra_color_mode`)}
-              </select>
-              {#if scene_props.polyhedra_color_mode === `uniform`}
-                <input class="swatch" type="color" bind:value={scene_props.polyhedra_color} />
-              {/if}
-            </span>
-          </label>
-          <label {...setting_row(`polyhedra_edges`)}>
-            <span>Edges</span>
-            <span class="ctrl-pair">
-              <input type="checkbox" bind:checked={scene_props.polyhedra_show_edges} />
-              {#if scene_props.polyhedra_show_edges}
-                <input
-                  class="swatch"
-                  type="color"
-                  bind:value={scene_props.polyhedra_edge_color}
-                />
-              {/if}
-            </span>
-          </label>
-          {@render toggle(`polyhedra_hide_center_atoms`, `Hide centers`)}
-          {@render numeric_row(`polyhedra_min_neighbors`, `Min neighbors`, 1)}
-          {@render numeric_row(`polyhedra_max_neighbors`, `Max neighbors`, 1)}
+          {@render setting_rows(polyhedra_rows)}
           {#if structure_elements.length > 0}
             <div
               class="setting"
@@ -1062,7 +1118,7 @@ a disabled state, a non-scene_props target) stay written out in full. -->
           title="Labels"
           layout="grid"
           {...scene_section(
-            [`site_label_size`, `site_label_padding`, `site_label_offset`, `site_label_color`],
+            label_rows,
             {
               // One CSS string drives two controls, so each half gets its own key: keying both
               // rows off site_label_bg_color would offer a reset on the swatch for an edit the
@@ -1070,21 +1126,10 @@ a disabled state, a non-scene_props target) stay written out in full. -->
               site_label_bg_hex: local(get_label_bg_hex, set_label_bg_hex),
               site_label_bg_opacity: local(get_label_bg_opacity, set_label_bg_opacity),
             },
+            [`site_label_offset`],
           )}
         >
-          <label {...setting_row(`site_label_color`)}>
-            <span>Color</span>
-            <input
-              class="swatch"
-              type="color"
-              aria-label="Site label color"
-              bind:value={
-                () => as_hex_color(scene_props.site_label_color, default_site_label_color),
-                (hex_color) => (scene_props.site_label_color = hex_color)
-              }
-            />
-          </label>
-          {@render numeric_row(`site_label_size`, `Size`, 0.1)}
+          {@render setting_rows(label_rows)}
           <label {...setting_row(`site_label_bg_hex`)}>
             <span>Background</span>
             <input
@@ -1102,7 +1147,6 @@ a disabled state, a non-scene_props target) stay written out in full. -->
             title={description_for(`site_label_bg_opacity`)}
             bind:value={get_label_bg_opacity, set_label_bg_opacity}>Opacity</NumberRangeInput
           >
-          {@render numeric_row(`site_label_padding`, `Padding`, 1)}
           <div class="setting" {...setting_row(`site_label_offset`)}>
             <span>Offset</span>
             <div class="axis-inputs">
@@ -1116,14 +1160,8 @@ a disabled state, a non-scene_props target) stay written out in full. -->
                     step="0.1"
                     value={scene_props.site_label_offset?.[idx] ??
                       DEFAULTS.structure.site_label_offset[idx]}
-                    oninput={(event) => {
-                      const site_label_offset = [
-                        ...(scene_props.site_label_offset ??
-                          DEFAULTS.structure.site_label_offset),
-                      ] as Vec3
-                      site_label_offset[idx] = Number(event.currentTarget.value)
-                      scene_props.site_label_offset = site_label_offset
-                    }}
+                    oninput={(event) =>
+                      update_label_offset(idx, Number(event.currentTarget.value))}
                   />
                 </label>
               {/each}
@@ -1137,68 +1175,35 @@ a disabled state, a non-scene_props target) stay written out in full. -->
           <SettingsSection
             title="Site vectors"
             layout="grid"
-            {...scene_section(
-              [
-                `vector_scale`,
-                `vector_color`,
-                `vector_normalize`,
-                `vector_uniform_thickness`,
-                `vector_color_mode`,
-                `vector_color_scale`,
-                `vector_origin_gap`,
-              ],
-              // per-key scales live in vector_configs rather than on a scene_props key of their
-              // own, so without an accessor here a scale-only edit would never reveal a reset
-              Object.fromEntries(
-                available_vector_keys.map((key) => [
-                  `vector_scale:${key}`,
-                  local(
-                    () => scene_props.vector_configs?.[key]?.scale ?? null,
-                    (scale) => update_vector_config(key, { scale }),
-                  ),
-                ]),
-              ),
-            )}
+            {...scene_section(vector_rows, vector_scale_accessors(), [`vector_color_scale`])}
           >
-            {@render numeric_row(`vector_scale`, `Global scale`, 0.001)}
-            {@render toggle(`vector_normalize`, `Normalize`)}
-            {@render toggle(`vector_uniform_thickness`, `Uniform width`)}
-            <label {...setting_row(`vector_color_mode`)}>
-              <span>Color by</span>
-              <select bind:value={scene_props.vector_color_mode}>
-                {#each VECTOR_COLOR_MODES as mode (mode)}
-                  <option value={mode}>{mode.replaceAll(`_`, ` `)}</option>
-                {/each}
-              </select>
-            </label>
+            {@render setting_rows(vector_rows)}
             {#if scene_props.vector_color_mode === `magnitude`}
               <label {...setting_row(`vector_color_scale`)}>
                 <span>Color scale</span>
-                <ColorScaleSelect bind:value={scene_props.vector_color_scale} />
+                <ColorScaleSelect
+                  bind:value={scene_props.vector_color_scale}
+                  style="min-width: 0; border: none"
+                />
               </label>
-            {:else if scene_props.vector_color_mode === `uniform`}
-              {@render color_row(`vector_color`, `Color`)}
             {/if}
             {#if available_vector_keys.length > 1}
-              {@render numeric_row(`vector_origin_gap`, `Origin gap`, 0.02)}
-              {#each available_vector_keys as key (key)}
-                {#if is_key_visible(key)}
-                  {@const description = `Scale multiplier for ${key} arrows (applied on top of global scale)`}
-                  <NumberRangeInput
-                    data-key={`vector_scale:${key}`}
-                    data-description={description}
-                    min={0.1}
-                    max={5}
-                    step={0.1}
-                    title={description}
-                    bind:value={
-                      () => scene_props.vector_configs?.[key]?.scale ?? 1.0,
-                      (scale) => update_vector_config(key, { scale: scale ?? 1.0 })
-                    }
-                  >
-                    <span>{key} scale</span>
-                  </NumberRangeInput>
-                {/if}
+              {#each available_vector_keys.filter(is_key_visible) as key (key)}
+                {@const description = `Scale multiplier for ${key} arrows (applied on top of global scale)`}
+                <NumberRangeInput
+                  data-key={`vector_scale:${key}`}
+                  data-description={description}
+                  min={0.1}
+                  max={5}
+                  step={0.1}
+                  title={description}
+                  bind:value={
+                    () => scene_props.vector_configs?.[key]?.scale ?? 1.0,
+                    (scale) => update_vector_config(key, { scale: scale ?? 1.0 })
+                  }
+                >
+                  <span>{key} scale</span>
+                </NumberRangeInput>
               {/each}
             {/if}
           </SettingsSection>
@@ -1209,25 +1214,16 @@ a disabled state, a non-scene_props target) stay written out in full. -->
         <SettingsSection
           title="Cell"
           layout="grid"
-          {...settings_section(
-            lattice_props,
-            [
-              `cell_edge_color`,
-              `cell_edge_opacity`,
-              `cell_surface_color`,
-              `cell_surface_opacity`,
-            ],
-            {
-              supercell_scaling: local(
-                () => supercell_scaling,
-                (value) => (supercell_scaling = value),
-              ),
-              cell_type: local(
-                () => cell_type,
-                (value) => (cell_type = value),
-              ),
-            },
-          )}
+          {...scene_section(cell_rows, {
+            supercell_scaling: local(
+              () => supercell_scaling,
+              (value) => (supercell_scaling = value),
+            ),
+            cell_type: local(
+              () => cell_type,
+              (value) => (cell_type = value),
+            ),
+          })}
         >
           <label
             {...setting_row(
@@ -1275,18 +1271,7 @@ a disabled state, a non-scene_props target) stay written out in full. -->
               Invalid format. Use patterns like "2x2x2", "3x1x2", or "2".
             </small>
           {/if}
-          {#each cell_style_settings as [label, color_setting, opacity_setting, step] (label)}
-            <label {...setting_row(color_setting)}>
-              <span>{label} color</span>
-              <input class="swatch" type="color" bind:value={lattice_props[color_setting]} />
-            </label>
-            <NumberRangeInput
-              setting={opacity_setting}
-              schema={SETTINGS_CONFIG.structure}
-              {step}
-              bind:value={lattice_props[opacity_setting]}>{label} opacity</NumberRangeInput
-            >
-          {/each}
+          {@render setting_rows(cell_rows)}
         </SettingsSection>
       {/if}
     </SettingsGroup>
@@ -1295,16 +1280,18 @@ a disabled state, a non-scene_props target) stay written out in full. -->
       <SettingsSection
         title="View"
         layout="grid"
-        {...scene_section([`camera_projection`, `auto_rotate`, `zoom_to_cursor`, `rotation`], {
-          multi_view: local(
-            () => multi_view,
-            (value) => (multi_view = value),
-          ),
-        })}
+        {...scene_section(
+          view_rows,
+          {
+            multi_view: local(
+              () => multi_view,
+              (value) => (multi_view = value),
+            ),
+          },
+          [`rotation`],
+        )}
       >
-        {@render enum_row(`camera_projection`, `Projection`)}
-        {@render numeric_row(`auto_rotate`, `Auto-rotate speed`, 0.01)}
-        {@render toggle(`zoom_to_cursor`, `Zoom to cursor`)}
+        {@render setting_rows(view_rows)}
         {#if multi_view_control_visible && display_mode === `structure`}
           <label {...setting_row(`multi_view`)} class:disabled={multi_view_blocked}>
             <span>Multi-view grid</span>
@@ -1331,7 +1318,7 @@ a disabled state, a non-scene_props target) stay written out in full. -->
               style={`--thumb-color: ${color}`}
               bind:value={
                 () => Math.round(rotation_degrees[idx]),
-                (degrees) => update_rotation(axis, degrees ?? 0)
+                (degrees) => update_rotation(idx, degrees ?? 0)
               }
             >
               <span style:color>{axis.toUpperCase()} rotation</span>
@@ -1383,11 +1370,9 @@ a disabled state, a non-scene_props target) stay written out in full. -->
       <SettingsSection
         title="Pointer sensitivity"
         layout="grid"
-        {...scene_section([`rotate_speed`, `zoom_speed`, `pan_speed`, `rotation_damping`])}
+        {...scene_section(pointer_rows)}
       >
-        {#each pointer_settings as [setting, label, step] (setting)}
-          {@render numeric_row(setting, label, step)}
-        {/each}
+        {@render setting_rows(pointer_rows)}
       </SettingsSection>
     </SettingsGroup>
 
@@ -1395,7 +1380,7 @@ a disabled state, a non-scene_props target) stay written out in full. -->
       <SettingsSection
         title="Background"
         layout="grid"
-        {...local_section({
+        {...scene_section([], {
           background_color: local(
             () => background_color,
             (value) => (background_color = value),
@@ -1427,13 +1412,8 @@ a disabled state, a non-scene_props target) stay written out in full. -->
         >
       </SettingsSection>
 
-      <SettingsSection
-        title="Lighting"
-        layout="grid"
-        {...scene_section([`directional_light`, `ambient_light`])}
-      >
-        {@render numeric_row(`directional_light`, `Directional light`, 0.01)}
-        {@render numeric_row(`ambient_light`, `Ambient light`, 0.05)}
+      <SettingsSection title="Lighting" layout="grid" {...scene_section(lighting_rows)}>
+        {@render setting_rows(lighting_rows)}
       </SettingsSection>
     </SettingsGroup>
 
@@ -1443,11 +1423,7 @@ a disabled state, a non-scene_props target) stay written out in full. -->
           <SettingsSection
             title="Displacement Overlay"
             layout="grid"
-            {...scene_section([
-              `show_displacement_arrows`,
-              `displacement_arrow_scale`,
-              `displacement_arrow_color`,
-            ])}
+            {...scene_section(displacement_rows)}
           >
             <!-- `!== null` (not truthiness) so the union discriminates: an empty error string
             would leave the else branch un-narrowed and rmsd possibly undefined -->
@@ -1459,19 +1435,13 @@ a disabled state, a non-scene_props target) stay written out in full. -->
                   >RMSD <strong>{format_num(displacement_summary.rmsd, `.4~f`)} Å</strong
                   ></span
                 >
-                <span
-                  >Max <strong
+                <span>
+                  Max <strong
                     >{format_num(displacement_summary.max_displacement, `.4~f`)} Å</strong
-                  ></span
-                >
+                  >
+                </span>
               </div>
-              {@render toggle(`show_displacement_arrows`, `Show arrows`)}
-              {@render numeric_row(`displacement_arrow_scale`, `Arrow scale`, 0.1)}
-              {@render color_row(
-                `displacement_arrow_color`,
-                `Arrow color`,
-                `Displacement arrow color`,
-              )}
+              {@render setting_rows(displacement_rows)}
             {/if}
           </SettingsSection>
         {/if}
@@ -1483,28 +1453,17 @@ a disabled state, a non-scene_props target) stay written out in full. -->
             title="Trajectory Trails"
             layout="grid"
             {...scene_section(
-              [
-                `trajectory_line_trail_frames`,
-                `trajectory_line_frame_stride`,
-                `trajectory_line_color_mode`,
-                `trajectory_line_wrap_mode`,
-              ],
+              [trail_toggle_row, ...trail_rows],
               {
-                show_trajectory_lines: local(
-                  () => show_trajectory_lines,
-                  (value) => (show_trajectory_lines = value),
-                ),
                 trajectory_line_elements: local(
                   () => scene_props.trajectory_line_elements,
                   (value) => (scene_props.trajectory_line_elements = value),
                 ),
               },
+              [`trajectory_line_trail_frames`],
             )}
           >
-            <label {...setting_row(`show_trajectory_lines`)}>
-              <span>Show trajectory trails</span>
-              <input type="checkbox" bind:checked={show_trajectory_lines} />
-            </label>
+            {@render setting_rows([trail_toggle_row])}
             {#if show_trajectory_lines && scene_props.trajectory_position_stream}
               {#if trail_elements.length > 1}
                 <div class="setting" {...setting_row(`trajectory_line_elements`)}>
@@ -1530,9 +1489,7 @@ a disabled state, a non-scene_props target) stay written out in full. -->
                 bind:value={scene_props.trajectory_line_trail_frames}
                 >Trail length <small>(0 = all)</small></NumberRangeInput
               >
-              {@render numeric_row(`trajectory_line_frame_stride`, `Frame stride`)}
-              {@render enum_row(`trajectory_line_color_mode`, `Color by`)}
-              {@render enum_row(`trajectory_line_wrap_mode`, `Boundaries`)}
+              {@render setting_rows(trail_rows)}
               {#if trajectory_lines_result}
                 {@const { point_count, segment_count, atom_count, max_segment_length } =
                   trajectory_lines_result}
@@ -1559,46 +1516,50 @@ a disabled state, a non-scene_props target) stay written out in full. -->
         {/if}
       </SettingsGroup>
     {/if}
-  </SettingsSearch>
 
-  <SettingsGroup
-    title="Preferences"
-    subtitle={persist_settings ? `saved in this browser` : `session only`}
-  >
-    <div class="settings-actions">
-      <button type="button" onclick={copy_view_state} aria-label="Copy viewer settings JSON">
-        {copied_view_state.has(`viewer-settings`) ? `Copied ✓` : `Copy JSON`}
-      </button>
-      <button
-        type="button"
-        onclick={download_view_state}
-        aria-label="Download viewer settings JSON">Download JSON</button
-      >
-      <label class="import-settings">
-        Import JSON
-        <input
-          type="file"
-          accept=".json,application/json"
-          aria-label="Import viewer settings JSON"
-          onchange={import_view_state}
-        />
-      </label>
-      <button
-        type="button"
-        class="reset-all-settings"
-        onclick={reset_all_view_settings}
-        aria-label="Reset all viewer settings to defaults">Reset all</button
-      >
-    </div>
-    {#if settings_import_status}
-      <small
-        class={['settings-import-status', { error: settings_import_status.error }]}
-        role={settings_import_status.error ? `alert` : `status`}
-      >
-        {settings_import_status.message}
-      </small>
-    {/if}
-  </SettingsGroup>
+    <SettingsGroup
+      title="Preferences"
+      subtitle={persist_settings ? `saved in this browser` : `session only`}
+    >
+      <div class="settings-actions">
+        <button type="button" onclick={copy_view_state} aria-label="Copy viewer settings JSON">
+          {copied_view_state.has(`viewer-settings`) ? `Copied ✓` : `Copy JSON`}
+        </button>
+        <button
+          type="button"
+          onclick={download_view_state}
+          aria-label="Download viewer settings JSON"
+        >
+          Download JSON
+        </button>
+        <label class="import-settings">
+          Import JSON
+          <input
+            type="file"
+            accept=".json,application/json"
+            aria-label="Import viewer settings JSON"
+            onchange={import_view_state}
+          />
+        </label>
+        <button
+          type="button"
+          class="reset-all-settings"
+          onclick={reset_all_view_settings}
+          aria-label="Reset all viewer settings to defaults"
+        >
+          Reset all
+        </button>
+      </div>
+      {#if settings_import_status}
+        <small
+          class={['settings-import-status', { error: settings_import_status.error }]}
+          role={settings_import_status.error ? `alert` : `status`}
+        >
+          {settings_import_status.message}
+        </small>
+      {/if}
+    </SettingsGroup>
+  </SettingsSearch>
 </ControlPane>
 
 <style>
@@ -1689,6 +1650,11 @@ a disabled state, a non-scene_props target) stay written out in full. -->
     label {
       gap: 5pt;
       min-height: 1.7em;
+    }
+    /* schema rows put the label first; in this block the checkbox leads */
+    > label:has(> span:first-child) {
+      flex-direction: row-reverse;
+      justify-content: flex-end;
     }
   }
   .chip-row {

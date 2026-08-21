@@ -10,8 +10,13 @@ import {
   resolve_boundary_points,
   resolve_series_ref,
 } from '$lib/plot/core/fill-utils'
-import type { DataSeries, FillBoundary, FillGradient, FillRegion } from '$lib/plot/core/types'
-import { FILL_CURVE_TYPES } from '$lib/plot/core/types'
+import type {
+  DataSeries,
+  FillBoundary,
+  FillCurveType,
+  FillGradient,
+  FillRegion,
+} from '$lib/plot/core/types'
 import { curveMonotoneX, line } from 'd3-shape'
 import { describe, expect, it } from 'vitest'
 
@@ -390,7 +395,18 @@ describe(`generate_fill_path`, () => {
     expect(path).toContain(`C`)
   })
 
-  it.each(FILL_CURVE_TYPES)(`supports %s curve type`, (curve_type) => {
+  it.each([
+    `linear`,
+    `monotoneX`,
+    `monotoneY`,
+    `step`,
+    `stepBefore`,
+    `stepAfter`,
+    `basis`,
+    `cardinal`,
+    `catmullRom`,
+    `natural`,
+  ] as FillCurveType[])(`supports %s curve type`, (curve_type) => {
     const path = generate_fill_path(upper, lower, curve_type, curve_type)
     expect(path.length).toBeGreaterThan(0)
     expect(path).toMatch(/^M/)
@@ -496,22 +512,5 @@ describe(`is_fill_gradient`, () => {
     [`object without stops`, { type: `linear` }, false],
   ])(`%s -> %s`, (_, value, expected) => {
     expect(is_fill_gradient(value as string | FillGradient | undefined)).toBe(expected)
-  })
-})
-
-describe(`FILL_CURVE_TYPES`, () => {
-  it(`contains exactly 10 expected curve types`, () => {
-    expect(FILL_CURVE_TYPES).toEqual([
-      `linear`,
-      `monotoneX`,
-      `monotoneY`,
-      `step`,
-      `stepBefore`,
-      `stepAfter`,
-      `basis`,
-      `cardinal`,
-      `catmullRom`,
-      `natural`,
-    ])
   })
 })

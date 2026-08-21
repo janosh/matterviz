@@ -25,11 +25,10 @@ export interface Branch {
   is_discontinuity?: boolean
 }
 
-// Base band structure interface
+// Base band structure interface. Carries no reciprocal lattice: q-points are fractional and
+// path distances are precomputed, so consumers that need Cartesian k (BrillouinBandsDos)
+// derive it from the structure's lattice instead.
 export interface BaseBandStructure {
-  recip_lattice: {
-    matrix: Matrix3x3
-  }
   qpoints: QPoint[]
   branches: Branch[]
   labels_dict: Record<string, Vec3>
@@ -151,7 +150,6 @@ export interface PhononModeData {
   n_atoms: number
   atoms: PhononModeAtom[]
   lattice: Matrix3x3 | null
-  reciprocal_lattice: Matrix3x3 | null
   qpoints: PhononQPointModes[]
   path_segments: PhononPathSegment[]
 }

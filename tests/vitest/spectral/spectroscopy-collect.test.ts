@@ -1,11 +1,16 @@
-import type { PositionStreamOptions, TrajectoryFrame, TrajectoryType } from '$lib/trajectory'
-import { create_packed_frame_loader } from '$lib/trajectory/helpers'
 import {
   calc_trajectory_spectroscopy,
   collect_trajectory_spectroscopy_input,
+  trajectory_signal_keys,
   type RamanSignal,
 } from '$lib/spectral'
+import type { MemoryRunExtras, TrajectoryFrame, TrajectoryRun } from '$lib/trajectory'
+import { open_trajectory, trajectory_from_frames } from '$lib/trajectory/open'
 import { describe, expect, it } from 'vitest'
+import { make_torch_sim_signal_buffer } from '../trajectory/hdf5-fixtures'
+
+const N_FRAMES = 8
+const every_step = Array.from({ length: N_FRAMES }, (_unused, frame_idx) => frame_idx)
 
 const make_frame = (step: number): TrajectoryFrame => ({
   step,
@@ -30,18 +35,26 @@ const make_frame = (step: number): TrajectoryFrame => ({
   },
 })
 
-const make_trajectory = (): TrajectoryType => ({
-  frames: Array.from({ length: 8 }, (_unused, frame_idx) => make_frame(frame_idx)),
-  time_step: 0.5,
-  time_unit: `fs`,
-})
+// In-memory run of 8 single-atom frames carrying site velocities and masses plus dipole and
+// polarizability frame metadata; `mutate` edits the frames before the run validates them.
+const make_run = (
+  extras: MemoryRunExtras = {},
+  mutate: (frames: TrajectoryFrame[]) => void = () => {},
+): TrajectoryRun => {
+  const frames = every_step.map(make_frame)
+  mutate(frames)
+  return trajectory_from_frames(frames, {
+    time_step: { value: 0.5, unit: `fs` },
+    ...extras,
+  })
+}
 
 describe(`collect_trajectory_spectroscopy_input`, () => {
   it(`collects frame response signals, site velocities, masses, and time provenance together`, async () => {
-    const input = await collect_trajectory_spectroscopy_input(make_trajectory())
-    expect(input.positions.n_frames).toBe(8)
+    const input = await collect_trajectory_spectroscopy_input(make_run())
+    expect(input.positions.n_frames).toBe(N_FRAMES)
     expect(input.velocities?.sample_shape).toEqual([1, 3])
-    expect(input.velocities?.values).toHaveLength(24)
+    expect(input.velocities?.values).toHaveLength(3 * N_FRAMES)
     expect(input.masses).toEqual(Float64Array.from([1.5]))
     expect(input.infrared_signal?.kind).toBe(`dipole`)
     expect(input.infrared_signal?.series.sample_shape).toEqual([3])
@@ -51,17 +64,52 @@ describe(`collect_trajectory_spectroscopy_input`, () => {
     }
     expect(input.time_step).toBe(0.5)
     expect(input.time_unit).toBe(`fs`)
-    expect(input.metadata?.mass_source).toBe(`recorded`)
+    expect(input.metadata).toMatchObject({
+      mass_source: `recorded`,
+      signal_sources: {
+        velocity: `site:velocity`,
+        infrared: { key: `dipole`, kind: `dipole` },
+        raman: { key: `polarizability`, kind: `polarizability` },
+      },
+    })
+  })
+
+  it(`opting out of every channel collects positions only`, async () => {
+    const input = await collect_trajectory_spectroscopy_input(make_run(), {
+      velocity_key: null,
+      infrared_key: null,
+      raman_key: null,
+    })
+    expect(input.positions).toMatchObject({ n_frames: N_FRAMES, steps: every_step })
+    expect(input.velocities).toBeNull()
+    expect(input.infrared_signal).toBeNull()
+    expect(input.raman_signal).toBeNull()
+    expect(input.metadata?.signal_sources).toEqual({
+      velocity: null,
+      infrared: null,
+      raman: null,
+    })
+  })
+
+  it.each([
+    [undefined, [`dipole`, `polarizability`]],
+    [[3], [`dipole`]],
+    [[3, 3], [`polarizability`]],
+    [[1, 3], []],
+  ])(`trajectory_signal_keys filters frame-metadata keys by shape %j`, (shape, keys) => {
+    expect(trajectory_signal_keys(make_run(), shape)).toEqual(keys)
+    expect(trajectory_signal_keys(undefined, shape)).toEqual([])
   })
 
   it(`infers custom IR response keys case-insensitively`, async () => {
-    const trajectory = make_trajectory()
-    for (const frame of trajectory.frames) {
-      const dipole = frame.metadata?.dipole
-      delete frame.metadata?.dipole
-      if (frame.metadata) frame.metadata.Polarization = dipole
-    }
-    const input = await collect_trajectory_spectroscopy_input(trajectory, {
+    const run = make_run({}, (frames) => {
+      for (const frame of frames) {
+        const dipole = frame.metadata?.dipole
+        delete frame.metadata?.dipole
+        if (frame.metadata) frame.metadata.Polarization = dipole
+      }
+    })
+    const input = await collect_trajectory_spectroscopy_input(run, {
       infrared_key: `Polarization`,
       polarization_branch_continuous: true,
     })
@@ -69,104 +117,127 @@ describe(`collect_trajectory_spectroscopy_input`, () => {
   })
 
   it.each([
-    [
-      { time_step: 0.5, time_unit: undefined },
-      /time_step and time_unit must be supplied together/,
-    ],
-    [
-      { time_step: undefined, time_unit: `fs` },
-      /time_step and time_unit must be supplied together/,
-    ],
-    [{ time_step: 0.5, time_unit: ` ` }, /time_unit must be a non-empty string/],
+    [`no recorded timestep`, undefined, null],
+    [`a blank time unit`, { value: 0.5, unit: ` ` }, /time_unit must be a non-empty string/],
   ])(
-    `forwards incomplete time metadata so calculation rejects it`,
-    async (metadata, error) => {
-      const trajectory = Object.assign(make_trajectory(), metadata)
-      const input = await collect_trajectory_spectroscopy_input(trajectory)
-      expect(input.time_step).toBe(metadata.time_step)
-      expect(input.time_unit).toBe(metadata.time_unit)
-      expect(() =>
+    `forwards %s verbatim so the calculation decides`,
+    async (_label, time_step, calc_error) => {
+      const input = await collect_trajectory_spectroscopy_input(make_run({ time_step }))
+      expect(input.time_step).toBe(time_step?.value)
+      expect(input.time_unit).toBe(time_step?.unit)
+      const calculate = () =>
         calc_trajectory_spectroscopy(input, {
           preprocessing: `raw`,
           frequency_unit: `1/frame`,
-        }),
-      ).toThrow(error)
+        })
+      if (calc_error) expect(calculate).toThrow(calc_error)
+      else expect(calculate().frequency_unit).toBe(`1/frame`)
     },
   )
 
-  it(`rejects invalid recorded masses unless standard masses are explicitly selected`, async () => {
-    const trajectory = make_trajectory()
-    trajectory.frames[0].structure.sites[0].properties.mass = Number.POSITIVE_INFINITY
-    await expect(collect_trajectory_spectroscopy_input(trajectory)).rejects.toThrow(
-      /Recorded mass 0 must be finite and > 0/,
+  const drop_site_masses = (frames: TrajectoryFrame[]) => {
+    for (const frame of frames) delete frame.structure.sites[0].properties.mass
+  }
+  const keep_frames = () => {}
+  it.each([
+    [`run-level masses win over site masses`, { atom_masses: [2.5] }, keep_frames, {}, 2.5],
+    [`site masses serve when the run carries none`, {}, keep_frames, {}, 1.5],
+    [`standard masses fill in when nothing is recorded`, {}, drop_site_masses, {}, 1.008],
+    [
+      `standard masses override recorded ones on request`,
+      {},
+      keep_frames,
+      { mass_source: `standard` },
+      1.008,
+    ],
+  ] as const)(`%s`, async (_label, extras, mutate, options, expected_mass) => {
+    const input = await collect_trajectory_spectroscopy_input(
+      make_run(extras, mutate),
+      options,
     )
-    const input = await collect_trajectory_spectroscopy_input(trajectory, {
-      mass_source: `standard`,
-    })
-    expect(input.masses[0]).toBeCloseTo(1.008, 12)
-    expect(input.metadata?.mass_source).toBe(`standard`)
+    expect(input.masses).toEqual(Float64Array.from([expected_mass]))
+    expect(input.metadata?.mass_source).toBe(expected_mass === 1.008 ? `standard` : `recorded`)
+  })
+
+  it.each([
+    [
+      `invalid recorded masses`,
+      (frames: TrajectoryFrame[]) => {
+        frames[0].structure.sites[0].properties.mass = Number.POSITIVE_INFINITY
+      },
+      { mass_source: `auto` },
+      /Recorded mass 0 must be finite and > 0/,
+    ],
+    [
+      `requested recorded masses the run lacks`,
+      drop_site_masses,
+      { mass_source: `recorded` },
+      /Recorded masses were requested, but the trajectory carries none/,
+    ],
+  ] as const)(`rejects %s`, async (_label, mutate, options, error) => {
+    await expect(
+      collect_trajectory_spectroscopy_input(make_run({}, mutate), options),
+    ).rejects.toThrow(error)
   })
 
   it(`preserves independent-cadence trajectory signals instead of intersecting them`, async () => {
-    const trajectory = make_trajectory()
-    trajectory.signals = {
-      dipole: {
-        values: Float64Array.from([1, 0, 0, 0, 1, 0]),
-        sample_shape: [3],
-        steps: [0, 4],
+    const run = make_run({
+      signals: {
+        dipole: {
+          values: Float64Array.from([1, 0, 0, 0, 1, 0]),
+          sample_shape: [3],
+          steps: [0, 4],
+        },
+        polarizability: {
+          values: Float64Array.from(
+            Array.from({ length: 3 }, (_unused, idx) => [
+              1 + idx,
+              0,
+              0,
+              0,
+              2,
+              0,
+              0,
+              0,
+              3,
+            ]).flat(),
+          ),
+          sample_shape: [3, 3],
+          steps: [0, 2, 4],
+        },
       },
-      polarizability: {
-        values: Float64Array.from(
-          Array.from({ length: 3 }, (_unused, idx) => [
-            1 + idx,
-            0,
-            0,
-            0,
-            2,
-            0,
-            0,
-            0,
-            3,
-          ]).flat(),
-        ),
-        sample_shape: [3, 3],
-        steps: [0, 2, 4],
-      },
-    }
-    const input = await collect_trajectory_spectroscopy_input(trajectory)
+    })
+    const input = await collect_trajectory_spectroscopy_input(run)
     expect(input.infrared_signal?.series.steps).toEqual([0, 4])
     if (input.raman_signal?.kind === `polarizability`) {
       expect(input.raman_signal.series.steps).toEqual([0, 2, 4])
     }
-    expect(input.positions.steps).toHaveLength(8)
+    expect(input.positions.steps).toHaveLength(N_FRAMES)
   })
 
   it(`does not collect lower-priority frame or site channels when explicit signals win`, async () => {
-    const trajectory = make_trajectory()
-    trajectory.signals = {
-      velocity: {
-        values: new Float64Array(8 * 3),
-        sample_shape: [1, 3],
-        steps: Array.from({ length: 8 }, (_unused, frame_idx) => frame_idx),
-      },
+    const velocity = {
+      values: new Float64Array(N_FRAMES * 3),
+      sample_shape: [1, 3],
+      steps: every_step,
     }
     const explicit_raman: RamanSignal = {
       kind: `polarizability`,
       series: {
-        values: new Float64Array(8 * 9),
+        values: new Float64Array(N_FRAMES * 9),
         sample_shape: [3, 3],
-        steps: Array.from({ length: 8 }, (_unused, frame_idx) => frame_idx),
+        steps: every_step,
       },
     }
-    trajectory.frames[1].structure.sites[0].properties.velocity = `invalid`
-    trajectory.frames[1].metadata = {
-      ...trajectory.frames[1].metadata,
-      polarizability: `invalid`,
-    }
-    const input = await collect_trajectory_spectroscopy_input(trajectory, {
+    // frame 1 carries unusable site velocity and polarizability; collecting them would throw
+    const run = make_run({ signals: { velocity } }, (frames) => {
+      frames[1].structure.sites[0].properties.velocity = `invalid`
+      frames[1].metadata = { ...frames[1].metadata, polarizability: `invalid` }
+    })
+    const input = await collect_trajectory_spectroscopy_input(run, {
       raman_signal: explicit_raman,
     })
-    expect(input.velocities).toBe(trajectory.signals.velocity)
+    expect(input.velocities).toBe(velocity)
     expect(input.raman_signal).toBe(explicit_raman)
     expect(input.metadata?.signal_sources).toMatchObject({
       velocity: `velocity`,
@@ -175,21 +246,22 @@ describe(`collect_trajectory_spectroscopy_input`, () => {
   })
 
   it(`requires explicit continuity before accepting polarization as IR input`, async () => {
-    const trajectory = make_trajectory()
-    trajectory.signals = {
-      polarization: {
-        values: new Float64Array(24),
-        sample_shape: [3],
-        steps: Array.from({ length: 8 }, (_unused, frame_idx) => frame_idx),
+    const run = make_run({
+      signals: {
+        polarization: {
+          values: new Float64Array(N_FRAMES * 3),
+          sample_shape: [3],
+          steps: every_step,
+        },
       },
-    }
+    })
     await expect(
-      collect_trajectory_spectroscopy_input(trajectory, {
+      collect_trajectory_spectroscopy_input(run, {
         infrared_key: `polarization`,
         infrared_kind: `polarization`,
       }),
     ).rejects.toThrow(/must be explicitly marked branch_continuous/)
-    const input = await collect_trajectory_spectroscopy_input(trajectory, {
+    const input = await collect_trajectory_spectroscopy_input(run, {
       infrared_key: `polarization`,
       infrared_kind: `polarization`,
       polarization_branch_continuous: true,
@@ -200,142 +272,52 @@ describe(`collect_trajectory_spectroscopy_input`, () => {
     })
   })
 
-  it(`forwards response signal keys to an indexed streaming loader`, async () => {
-    const trajectory = make_trajectory()
-    let requested_options: PositionStreamOptions | undefined
-    trajectory.is_indexed = true
-    trajectory.total_frames = 50
-    trajectory.frame_loader = {
-      get_total_frames: async () => 50,
-      build_frame_index: async () => [],
-      load_frame: async () => null,
-      extract_plot_metadata: async () => [],
-      stream_positions: async (_raw_data, options) => {
-        requested_options = options
-        return {
-          positions: new Float64Array(50 * 3),
-          n_frames: 50,
-          n_atoms: 1,
-          elements: [`H`],
-          lattice_matrices: null,
-          pbc: null,
-          coords_unwrapped: false,
-          frame_stride: 1,
-          steps: Array.from({ length: 50 }, (_unused, frame_idx) => frame_idx),
-          signals: {
-            dipole: {
-              values: new Float64Array(50 * 3),
-              sample_shape: [3],
-              steps: Array.from({ length: 50 }, (_unused, frame_idx) => frame_idx),
-            },
-            polarizability: {
-              values: new Float64Array(50 * 9),
-              sample_shape: [3, 3],
-              steps: Array.from({ length: 50 }, (_unused, frame_idx) => frame_idx),
-            },
-          },
-        }
-      },
-    }
-    const input = await collect_trajectory_spectroscopy_input(trajectory, {
-      raw_data: `fixture`,
-    })
-    expect(requested_options?.signal_keys).toEqual([`dipole`, `polarizability`])
-    expect(input.infrared_signal?.series.steps).toHaveLength(50)
+  it(`rejects an unknown response key by name`, async () => {
+    await expect(
+      collect_trajectory_spectroscopy_input(make_run(), { infrared_key: `current` }),
+    ).rejects.toThrow(/metadata signal "current"/)
   })
 
-  it(`discovers descriptor-backed velocity and response signals at native cadence`, async () => {
-    const trajectory = make_trajectory()
-    for (const frame of trajectory.frames) {
-      frame.metadata = {}
-      frame.structure.sites[0].properties = { mass: 1.5 }
-    }
-    trajectory.total_frames = 8
-    trajectory.is_indexed = true
-    trajectory.signal_descriptors = {
-      velocity: { sample_shape: [1, 3], sample_count: 8, unit: `A/fs` },
-      dipole: { sample_shape: [3], sample_count: 4, unit: `e*A` },
-      polarizability: { sample_shape: [3, 3], sample_count: 3, unit: `A^3` },
-    }
-    let requested_options: PositionStreamOptions | undefined
-    trajectory.frame_loader = {
-      requires_source: false,
-      get_total_frames: async () => 8,
-      build_frame_index: async () => [],
-      load_frame: async () => null,
-      extract_plot_metadata: async () => [],
-      stream_positions: async (_raw_data, options) => {
-        requested_options = options
-        return {
-          positions: new Float64Array(24),
-          n_frames: 8,
-          n_atoms: 1,
-          elements: [`H`],
-          lattice_matrices: null,
-          pbc: null,
-          coords_unwrapped: false,
-          frame_stride: 1,
-          steps: Array.from({ length: 8 }, (_unused, frame_idx) => frame_idx),
-          signals: {
-            velocity: {
-              values: new Float64Array(24),
-              sample_shape: [1, 3],
-              steps: Array.from({ length: 8 }, (_unused, frame_idx) => frame_idx),
-              unit: `A/fs`,
-            },
-            dipole: {
-              values: new Float64Array(12),
-              sample_shape: [3],
-              steps: [0, 2, 4, 6],
-              unit: `e*A`,
-            },
-            polarizability: {
-              values: new Float64Array(27),
-              sample_shape: [3, 3],
-              steps: [0, 3, 6],
-              unit: `A^3`,
-            },
-          },
-        }
-      },
-    }
-
-    const input = await collect_trajectory_spectroscopy_input(trajectory)
-
-    expect(requested_options?.signal_keys).toEqual([`velocity`, `dipole`, `polarizability`])
-    expect(requested_options?.vector_keys).toBeUndefined()
-    expect(input.velocities?.steps).toHaveLength(8)
-    expect(input.infrared_signal?.series.steps).toEqual([0, 2, 4, 6])
-    if (input.raman_signal?.kind === `polarizability`) {
-      expect(input.raman_signal.series.steps).toEqual([0, 3, 6])
+  it(`streams descriptor-backed HDF5 velocity and response signals at native cadence`, async () => {
+    const run = await open_trajectory(await make_torch_sim_signal_buffer(), {
+      filename: `torch-sim.h5`,
+    })
+    try {
+      expect(run.signals).toBeUndefined()
+      expect(trajectory_signal_keys(run)).toEqual([`dipole`, `polarizability`, `velocity`])
+      expect(trajectory_signal_keys(run, [2, 3])).toEqual([`velocity`])
+      const input = await collect_trajectory_spectroscopy_input(run)
+      expect(input.positions).toMatchObject({ n_frames: 4, n_atoms: 2, steps: [0, 1, 2, 3] })
+      expect(input.velocities).toMatchObject({
+        sample_shape: [2, 3],
+        steps: [0, 1, 2, 3],
+        unit: `A/fs`,
+      })
+      expect(input.infrared_signal?.series.steps).toEqual([0, 2])
+      if (input.raman_signal?.kind === `polarizability`) {
+        expect(input.raman_signal.series.steps).toEqual([0, 2, 4])
+      }
+      expect(input.masses).toEqual(Float64Array.from([1.008, 15.999]))
+      expect(input.time_step).toBe(0.5)
+      expect(input.time_unit).toBe(`fs`)
+      expect(input.metadata).toMatchObject({
+        mass_source: `recorded`,
+        model: `mace-mpa-0`,
+        signal_sources: {
+          velocity: `stream:velocity`,
+          infrared: { key: `dipole`, kind: `dipole` },
+          raman: { key: `polarizability`, kind: `polarizability` },
+        },
+      })
+    } finally {
+      run.dispose()
     }
   })
 
-  it(`collects indexed packed trajectories without retaining the raw payload`, async () => {
-    const trajectory = make_trajectory()
-    trajectory.frames = trajectory.frames.slice(0, 1)
-    trajectory.is_indexed = true
-    trajectory.total_frames = 4
-    trajectory.frame_store = {
-      positions: new Float64Array(12),
-      elements: [`H`],
-      coords_unwrapped: false,
-      steps: [0, 1, 2, 3],
-      metadata: [{}, {}, {}, {}],
-      plot_metadata: [0, 1, 2, 3].map((frame_number) => ({
-        frame_number,
-        step: frame_number,
-        properties: {},
-      })),
-    }
-    trajectory.frame_loader = create_packed_frame_loader(trajectory.frame_store)
-
-    const input = await collect_trajectory_spectroscopy_input(trajectory, {
-      velocity_key: null,
-      infrared_key: null,
-      raman_key: null,
-    })
-
-    expect(input.positions).toMatchObject({ n_frames: 4, steps: [0, 1, 2, 3] })
+  it(`names the analysis when a run cannot serve a full pass`, async () => {
+    const run: TrajectoryRun = { ...make_run(), collect_positions: undefined }
+    await expect(collect_trajectory_spectroscopy_input(run)).rejects.toThrow(
+      /Spectroscopy needs a pass over all 8 frames/,
+    )
   })
 })

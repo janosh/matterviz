@@ -22,11 +22,14 @@ import {
   ScatterPlot3D,
   SpacegroupBarPlot,
   Structure,
-  Trajectory,
+  trajectory_from_json,
+  TrajectoryFileViewer,
   Treemap,
+  volume_from_json,
   XrdPlot,
 } from 'matterviz'
 import app_css from 'matterviz/app.css?raw'
+import { DEFAULTS } from 'matterviz/settings'
 import type { ThemeType } from 'matterviz/theme'
 import { detect_parent_theme, get_theme_css, watch_theme } from 'matterviz/theme/embedded'
 import { mount, unmount } from 'svelte'
@@ -206,7 +209,6 @@ const bar_plot_drive: readonly DrivenProp[] = [
     `line`,
     `color_scale`,
     `size_scale`,
-    `point_tween`,
   ]),
 ]
 
@@ -235,8 +237,8 @@ const scene_pick_keys = [
   `show_site_labels`,
   `show_site_indices`,
 ] as const
-// All scene traits (deps for the reactive scene_props derived prop); auto_rotate
-// and show_gizmo get explicit defaults in get_scene_props rather than pick_props.
+// All scene traits (deps for the reactive scene_props derived prop); auto_rotate and
+// show_gizmo are renamed/defaulted in get_scene_props rather than picked verbatim.
 const scene_prop_keys = [...scene_pick_keys, `auto_rotate`, `show_gizmo`] as const
 
 const lattice_prop_keys = [
@@ -257,12 +259,13 @@ const traj_structure_prop_keys = [
   `background_opacity`,
 ] as const
 
-// Build scene/lattice props shared by structure and trajectory renderers
+// Build scene/lattice props shared by structure and trajectory renderers. Unset traits fall
+// back to the same settings defaults the components use, so a notebook widget and a page
+// embed look alike.
 const get_scene_props = (model: AnyModel) => ({
   ...pick_props(model, scene_pick_keys),
-  // defaults mirror the Structure component's own auto_rotate/gizmo defaults
-  auto_rotate: get_prop(model, `auto_rotate`) ?? 0.2,
-  gizmo: get_prop(model, `show_gizmo`) ?? true,
+  auto_rotate: get_prop(model, `auto_rotate`) ?? DEFAULTS.structure.auto_rotate,
+  gizmo: get_prop(model, `show_gizmo`) ?? DEFAULTS.structure.gizmo,
 })
 
 // Trajectory forwards a fixed config object to its embedded Structure view.
@@ -319,6 +322,9 @@ type WidgetSpec = {
   component: unknown
   drive: readonly DrivenProp[]
   base_drive?: readonly DrivenProp[]
+  // Fixed props the component declares; anything else would fall through ...rest onto its
+  // wrapper element as an unknown HTML attribute
+  static_props?: Record<string, unknown>
   interactions?: (model: AnyModel) => {
     props: Record<string, unknown>
     cleanup?: () => void
@@ -335,6 +341,8 @@ const top_level_base_drive: readonly DrivenProp[] = [
   drive_prop(`style`),
 ]
 const style_base_drive: readonly DrivenProp[] = [drive_prop(`style`)]
+// Viewers with a drop zone: file drops are off in notebooks
+const no_file_drop = { allow_file_drop: false }
 
 // Mount a widget from its spec: build a two-way reactive $state props object (Python
 // trait changes -> live view, component interaction -> model) and wire teardown.
@@ -347,10 +355,7 @@ export const mount_spec = (model: AnyModel, el: HTMLElement, spec: WidgetSpec): 
   const { props, dispose } = reactive_widget(
     model,
     [...(spec.base_drive ?? top_level_base_drive), ...spec.drive],
-    {
-      allow_file_drop: false, // off in notebooks
-      ...interaction?.props,
-    },
+    { ...spec.static_props, ...interaction?.props },
   )
   reactive_disposers.set(el, () => {
     interaction?.cleanup?.()
@@ -367,6 +372,7 @@ export const mount_spec = (model: AnyModel, el: HTMLElement, spec: WidgetSpec): 
 export const WIDGETS: Record<string, WidgetSpec> = {
   structure: {
     component: Structure,
+    static_props: no_file_drop,
     drive: [
       ...drive_props([
         `structure`,
@@ -379,11 +385,16 @@ export const WIDGETS: Record<string, WidgetSpec> = {
         `fullscreen_toggle`,
         `png_dpi`,
         `isosurface_settings`,
-        `volumetric_data`,
         // highlighted_sites stays drive-only: the component sets it from info-pane
         // hover (high frequency), so writeback would flood the comm channel.
         `highlighted_sites`,
       ]),
+      // Traits carry nested JSON grids; the renderer stores flat typed arrays
+      derived_prop(`volumetric_data`, [`volumetric_data`], (model) => {
+        const raw = get_prop(model, `volumetric_data`)
+        if (raw == null) return undefined
+        return (Array.isArray(raw) ? raw : [raw]).map(volume_from_json)
+      }),
       writeback_prop(`active_volume_idx`, 0),
       writeback_prop(`display_mode`, `structure`),
       writeback_prop(`slice_settings`, {}),
@@ -394,17 +405,29 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     ],
   },
   trajectory: {
-    component: Trajectory,
+    component: TrajectoryFileViewer,
+    static_props: no_file_drop,
     drive: [
       ...drive_props([
-        `trajectory`,
-        `data_url`,
         `layout`,
         `fullscreen_toggle`,
         `auto_play`,
         `step_labels`,
         `property_labels`,
       ]),
+      // The JSON trait (pymatgen Trajectory, { frames }, array of structures) becomes an
+      // in-memory run; data_url is fetched and parsed by the file viewer itself
+      derived_prop(`trajectory`, [`trajectory`], (model) => {
+        const value = get_prop(model, `trajectory`)
+        if (value === undefined || value === null) return undefined
+        try {
+          return trajectory_from_json(value, { format: `json` })
+        } catch (error) {
+          console.error(`TrajectoryWidget: invalid trajectory trait:`, error)
+          return undefined
+        }
+      }),
+      derived_prop(`src`, [`data_url`], (model) => get_prop(model, `data_url`)),
       // current_step_idx links widgets; display_mode changes from the view-mode menu.
       writeback_prop(`current_step_idx`, 0),
       writeback_prop(`display_mode`, `structure+scatter`),
@@ -453,6 +476,7 @@ export const WIDGETS: Record<string, WidgetSpec> = {
   },
   convex_hull: {
     component: ConvexHull,
+    static_props: no_file_drop,
     drive: drive_props([
       `entries`,
       `show_stable`,
@@ -511,6 +535,7 @@ export const WIDGETS: Record<string, WidgetSpec> = {
   },
   fermi_surface: {
     component: FermiSurface,
+    static_props: no_file_drop,
     drive: drive_props([
       `fermi_data`,
       `band_data`,
@@ -525,6 +550,7 @@ export const WIDGETS: Record<string, WidgetSpec> = {
   },
   brillouin_zone: {
     component: BrillouinZone,
+    static_props: no_file_drop,
     drive: drive_props([
       `structure`,
       `bz_data`,
@@ -543,6 +569,7 @@ export const WIDGETS: Record<string, WidgetSpec> = {
   xrd: {
     component: XrdPlot,
     base_drive: style_base_drive,
+    static_props: no_file_drop,
     drive: with_plot_controls([`patterns`]),
   },
   periodic_table: {
@@ -563,6 +590,7 @@ export const WIDGETS: Record<string, WidgetSpec> = {
   rdf_plot: {
     component: RdfPlot,
     base_drive: style_base_drive,
+    static_props: no_file_drop,
     drive: with_plot_controls([
       `patterns`,
       `structures`,
@@ -604,8 +632,10 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     ]),
   },
   chem_pot_diagram: {
+    // ChemPotDiagram sizes itself through width/height and spreads no rest props, so the
+    // notebook wrapper `style` has nowhere to go
     component: ChemPotDiagram,
-    base_drive: style_base_drive,
+    base_drive: [],
     drive: drive_props([`entries`, `config`, `temperature`]),
   },
   treemap: {

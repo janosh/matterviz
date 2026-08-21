@@ -1,3 +1,4 @@
+import type { Vec2 } from '$lib/math'
 import Bands from '$lib/spectral/Bands.svelte'
 import type { BaseBandStructure } from '$lib/spectral/types'
 import type { ComponentProps } from 'svelte'
@@ -6,13 +7,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { bind_props, expect_plot_controls, mount_sized } from '../setup'
 
 const base_band_structure: BaseBandStructure = {
-  recip_lattice: {
-    matrix: [
-      [1, 0, 0],
-      [0, 1, 0],
-      [0, 0, 1],
-    ],
-  },
   qpoints: [
     { label: `GAMMA`, frac_coords: [0, 0, 0] },
     { label: null, frac_coords: [0.25, 0, 0] },
@@ -127,60 +121,59 @@ describe(`Bands component`, () => {
       },
       expected_line_count: 4,
     },
-  ])(`renders expected line count for $name`, async ({ props, expected_line_count }) => {
-    await mount_bands(props)
-    expect(line_count()).toBe(expected_line_count)
-  })
-
-  it.each([
     {
       name: `explicit physical two-point branch`,
-      band_struct: {
-        ...base_band_structure,
-        qpoints: [base_band_structure.qpoints[0], base_band_structure.qpoints[3]],
-        branches: [{ start_index: 0, end_index: 1, name: `GAMMA-X`, is_discontinuity: false }],
-        distance: [0, 3],
-        bands: base_band_structure.bands.map((band) => [band[0], band[3]]),
+      props: {
+        band_structs: {
+          ...base_band_structure,
+          qpoints: [base_band_structure.qpoints[0], base_band_structure.qpoints[3]],
+          branches: [
+            { start_index: 0, end_index: 1, name: `GAMMA-X`, is_discontinuity: false },
+          ],
+          distance: [0, 3],
+          bands: base_band_structure.bands.map((band) => [band[0], band[3]]),
+        },
       },
       expected_line_count: 4,
     },
     {
       name: `multiple unlabeled branches`,
-      band_struct: make_unlabeled_band_structure(),
+      props: { band_structs: make_unlabeled_band_structure() },
       expected_line_count: 8,
     },
-  ] satisfies {
-    name: string
-    band_struct: BaseBandStructure
-    expected_line_count: number
-  }[])(`renders $name`, async ({ band_struct, expected_line_count }) => {
-    await mount_bands({ band_structs: band_struct })
+    {
+      // unlabeled segments match by occurrence, not producer-specific branch names
+      name: `two structures with differently named unlabeled branches (strict)`,
+      props: {
+        band_structs: {
+          unlabeled: make_unlabeled_band_structure([`first-a`, `first-b`]),
+          renamed: make_unlabeled_band_structure([`renamed-a`, `renamed-b`]),
+        },
+        path_mode: `strict` as const,
+      },
+      expected_line_count: 16,
+    },
+    {
+      // repeated labeled segments are distinct path occurrences
+      name: `repeated GAMMA-X segments`,
+      props: {
+        band_structs: {
+          ...base_band_structure,
+          qpoints: base_band_structure.qpoints.map((qpoint, idx) => ({
+            ...qpoint,
+            label: idx % 2 ? `X` : `GAMMA`,
+          })),
+          branches: [
+            { start_index: 0, end_index: 1, name: `GAMMA-X`, is_discontinuity: false },
+            { start_index: 2, end_index: 3, name: `GAMMA-X`, is_discontinuity: false },
+          ],
+        },
+      },
+      expected_line_count: 8,
+    },
+  ])(`renders expected line count for $name`, async ({ props, expected_line_count }) => {
+    await mount_bands(props)
     expect(line_count()).toBe(expected_line_count)
-  })
-
-  it(`matches unlabeled segments by occurrence rather than producer-specific names`, async () => {
-    const unlabeled = make_unlabeled_band_structure([`first-a`, `first-b`])
-    const renamed = make_unlabeled_band_structure([`renamed-a`, `renamed-b`])
-    await mount_bands({ band_structs: { unlabeled, renamed }, path_mode: `strict` })
-    expect(line_count()).toBe(16)
-  })
-
-  it(`renders repeated labeled segments as distinct path occurrences`, async () => {
-    const repeated: BaseBandStructure = {
-      ...base_band_structure,
-      qpoints: [
-        { ...base_band_structure.qpoints[0], label: `GAMMA` },
-        { ...base_band_structure.qpoints[1], label: `X` },
-        { ...base_band_structure.qpoints[2], label: `GAMMA` },
-        { ...base_band_structure.qpoints[3], label: `X` },
-      ],
-      branches: [
-        { start_index: 0, end_index: 1, name: `GAMMA-X`, is_discontinuity: false },
-        { start_index: 2, end_index: 3, name: `GAMMA-X`, is_discontinuity: false },
-      ],
-    }
-    await mount_bands({ band_structs: repeated })
-    expect(line_count()).toBe(8)
   })
 
   it(`renders strict-mode mismatch as EmptyState with message`, async () => {
@@ -201,6 +194,30 @@ describe(`Bands component`, () => {
     expect(document.body.textContent).toContain(`different q-point paths`)
     expect(line_count()).toBe(0)
   })
+
+  // Mismatched paths: union appends the second structure's segment after the canonical path,
+  // intersection has nothing in common and falls through to the EmptyState
+  it.each([
+    [`union`, 8, { GAMMA_X: [0, 3], GAMMA_K: [3, 5] }, `Wave Vector`],
+    [`intersection`, 0, {}, `No plottable band segments`],
+  ] as const)(
+    `path_mode=%s lays out mismatched paths`,
+    async (path_mode, expected_lines, expected_positions, expected_text) => {
+      const state: { x_positions?: Record<string, Vec2> } = { x_positions: undefined }
+      await mount_bands(
+        bind_props(
+          {
+            band_structs: { canonical: base_band_structure, alt: path_mismatch_structure },
+            path_mode,
+          },
+          state,
+        ),
+      )
+      expect(line_count()).toBe(expected_lines)
+      expect(state.x_positions).toEqual(expected_positions)
+      expect(document.body.textContent).toContain(expected_text)
+    },
+  )
 
   // A single structure has legend=null; multiple structures use ScatterPlot's auto rule.
   // oxfmt-ignore
@@ -246,6 +263,21 @@ describe(`Bands component`, () => {
         controls_state,
       ),
     )
+    // The controls pane lives in CartesianFrame's measured-only branch, which renders once the
+    // bind:clientWidth effect has flushed; poll for it rather than trusting a single tick.
+    const path_select = await vi.waitFor(() => {
+      const select = document.querySelector(`#bands-path-mode`)
+      expect(select).not.toBeNull()
+      return select
+    })
+    const path_section = path_select?.closest(`section`)
+    const units_section = document.querySelector(`#bands-units`)?.closest(`section`)
+    expect(path_section).not.toBeNull()
+    expect(units_section).toBe(path_section)
+    expect(path_section?.classList.contains(`ctrl-line`)).toBe(true)
+    expect(
+      document.querySelector(`.plot-controls-pane`)?.classList.contains(`compact-settings`),
+    ).toBe(true)
     await expect_plot_controls(document, controls_state, `bands`)
   })
 

@@ -9,9 +9,9 @@
   import type { Vec3 } from '$lib/math'
   import { PlotTooltip } from '$lib/plot'
   import { create_renderer, webgpu_available } from '$lib/scene'
-  import { type CameraProjection, DEFAULTS } from '$lib/settings'
+  import { DEFAULTS } from '$lib/settings'
   import type { Crystal } from '$lib/structure'
-  import { parse_any_structure } from '$lib/structure/parse'
+  import { parse_structure_file } from '$lib/structure/parse'
   import { analyze_structure_symmetry } from '$lib/symmetry'
   import { Canvas } from '@threlte/core'
   import type { ComponentProps, Snippet } from 'svelte'
@@ -28,11 +28,12 @@
     compute_brillouin_zone,
     compute_irreducible_bz,
     extract_point_group_from_operations,
-    reciprocal_lattice,
   } from './compute'
+  import { reciprocal_lattice } from '$lib/math'
   import { to_error } from '$lib/utils'
   import type {
     BrillouinZoneData,
+    BrillouinZoneSettings,
     BZHoverData,
     BZTooltipProp,
     IrreducibleBZData,
@@ -66,7 +67,6 @@
     show_vectors = $bindable(DEFAULTS.brillouin.show_vectors),
     vector_scale = $bindable(DEFAULTS.brillouin.vector_scale),
     camera_projection = $bindable(DEFAULTS.brillouin.camera_projection),
-    // Irreducible BZ options
     show_ibz = $bindable(DEFAULTS.brillouin.show_ibz),
     ibz_color = $bindable(DEFAULTS.brillouin.ibz_color),
     ibz_opacity = $bindable(DEFAULTS.brillouin.ibz_opacity),
@@ -101,23 +101,11 @@
     on_fullscreen_change,
     on_point_hover,
     ...rest
-  }: {
+  }: Partial<BrillouinZoneSettings> & {
     structure?: Crystal
-    bz_order?: number
     bz_data?: BrillouinZoneData
     controls_open?: boolean
     info_pane_open?: boolean
-    surface_color?: string
-    surface_opacity?: number
-    edge_color?: string
-    edge_width?: number
-    show_vectors?: boolean
-    vector_scale?: number
-    camera_projection?: CameraProjection
-    // Irreducible BZ options
-    show_ibz?: boolean
-    ibz_color?: string
-    ibz_opacity?: number
     ibz_data?: IrreducibleBZData | null
     show_controls?: ShowControlsProp<BrillouinControlName>
     fullscreen?: boolean
@@ -132,11 +120,7 @@
     allow_file_drop?: boolean
     fullscreen_toggle?: boolean
     data_url?: string
-    on_file_drop?: (
-      content: string | ArrayBuffer,
-      filename: string,
-      metadata: io.FileLoadMeta,
-    ) => Promise<void> | void
+    on_file_drop?: io.FileLoadCallback
     spinner_props?: ComponentProps<typeof Spinner>
     loading?: boolean
     error_msg?: string
@@ -177,7 +161,7 @@
     metadata?: io.FileLoadMeta,
   ): boolean {
     try {
-      const parsed = parse_any_structure(io.as_text(content), filename)
+      const parsed = parse_structure_file(io.as_text(content), filename)
       if (!parsed) throw new Error(`Failed to parse structure from ${filename}`)
 
       structure = parsed as Crystal
@@ -203,7 +187,7 @@
     }
 
     try {
-      const k_lattice = reciprocal_lattice(structure.lattice.matrix)
+      const k_lattice = reciprocal_lattice(structure.lattice.matrix, { two_pi: true })
       // Ensure bz_order is 1, 2, or 3
       const valid_order = Math.min(Math.max(1, bz_order), 3) as 1 | 2 | 3
       bz_data = compute_brillouin_zone(k_lattice, valid_order)
@@ -287,7 +271,7 @@
     }),
   )
 
-  const handle_file_drop = io.create_file_drop_handler({
+  const file_drop_zone = io.file_drop_zone({
     allow: () => allow_file_drop,
     on_drop: async (content, filename, metadata) => {
       await (on_file_drop || safe_parse)(content, filename, metadata)
@@ -298,17 +282,14 @@
     },
     set_loading: (val) => {
       loading = val
-      if (val) [error_msg, dragover] = [undefined, false]
+      if (val) error_msg = undefined
     },
+    on_dragover: (over) => (dragover = over),
   })
 
   function onkeydown(event: KeyboardEvent) {
     const target = event.target
-    if (
-      target instanceof HTMLElement &&
-      (target.tagName === `INPUT` || target.tagName === `TEXTAREA`)
-    )
-      return
+    if (target instanceof HTMLElement && [`INPUT`, `TEXTAREA`].includes(target.tagName)) return
 
     if (event.key === `f` && fullscreen_toggle) fullscreen = !fullscreen
     else if (event.key === `i`) info_pane_open = !info_pane_open
@@ -320,7 +301,6 @@
 </script>
 
 <div
-  class:dragover
   class:active={info_pane_open || controls_open || export_pane_open}
   role="region"
   aria-label="Brillouin zone viewer"
@@ -329,14 +309,10 @@
   bind:clientHeight={height}
   onmouseenter={() => (hovered = true)}
   onmouseleave={() => (hovered = false)}
-  ondrop={handle_file_drop}
-  {...io.drag_over_handlers({
-    allow: () => allow_file_drop,
-    set_dragover: (over) => (dragover = over),
-  })}
   {onkeydown}
   {...rest}
   class={[`brillouin-zone`, rest.class]}
+  {@attach file_drop_zone}
 >
   {@render children?.({ structure, bz_data })}
   {#if loading}

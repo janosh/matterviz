@@ -1,42 +1,43 @@
 import type { Vec3 } from '$lib/math'
 import type { AnyStructure } from '$lib/structure'
 import { calc_structure_id } from '$lib/structure-id'
+import * as async_compute from '$lib/structure-id/async-compute.svelte'
 import {
   collect_structure_id_sweep,
   DEFAULT_MAX_SWEEP_FRAMES,
   sweep_frame_plan,
 } from '$lib/structure-id/collect'
-import type { FrameLoader, TrajectoryType } from '$lib/trajectory'
-import { describe, expect, it } from 'vitest'
+import { trajectory_from_frames, type TrajectoryRun } from '$lib/trajectory'
+import { describe, expect, it, vi } from 'vitest'
 import { make_fcc, with_vacancy } from './lattices'
 
-const in_memory = (structures: AnyStructure[]): TrajectoryType => ({
-  frames: structures.map((structure, step) => ({ step, structure })),
-})
+const in_memory = (structures: AnyStructure[]): TrajectoryRun =>
+  trajectory_from_frames(structures.map((structure, step) => ({ step, structure })))
 
-const repeat_fcc = (n_frames: number): TrajectoryType =>
+const repeat_fcc = (n_frames: number): TrajectoryRun =>
   in_memory(Array.from({ length: n_frames }, () => make_fcc([2, 2, 2])))
 
-// Indexed trajectory: 10 frames in memory out of `total_frames`, like the parser leaves it
-const indexed = (total_frames: number, loader?: FrameLoader): TrajectoryType => ({
-  ...repeat_fcc(10),
-  total_frames,
-  is_indexed: true,
-  ...(loader ? { frame_loader: loader } : {}),
-})
-
-const counting_loader = (): FrameLoader & { requested: number[] } => {
-  const loader: FrameLoader & { requested: number[] } = {
-    requested: [],
-    get_total_frames: async () => 50,
-    build_frame_index: async () => [],
-    extract_plot_metadata: async () => [],
-    load_frame: async (_data, frame_number) => {
-      loader.requested.push(frame_number)
-      return { step: frame_number, structure: make_fcc([2, 2, 2]) }
-    },
+const frame_run = (structures: AnyStructure[]): TrajectoryRun => {
+  const run = in_memory([structures[0]])
+  return {
+    ...run,
+    frame_count: structures.length,
+    read_frame: (frame_idx) => ({ step: frame_idx, structure: structures[frame_idx] }),
   }
-  return loader
+}
+
+const counting_run = (total_frames: number): TrajectoryRun & { requested: number[] } => {
+  const requested: number[] = []
+  return Object.assign(
+    frame_run(Array.from({ length: total_frames }, () => make_fcc([2, 2, 2]))),
+    {
+      requested,
+      read_frame: (frame_idx: number) => {
+        requested.push(frame_idx)
+        return { step: frame_idx, structure: make_fcc([2, 2, 2]) }
+      },
+    },
+  )
 }
 
 describe(`sweep_frame_plan`, () => {
@@ -92,8 +93,28 @@ describe(`collect_structure_id_sweep`, () => {
     ])
   })
 
+  it(`stops between frames once its signal aborts and hands the signal to every compute`, async () => {
+    const controller = new AbortController()
+    const compute_spy = vi.spyOn(async_compute, `compute_structure_id_async`)
+    const sweep = collect_structure_id_sweep(repeat_fcc(20), {
+      max_frames: 4,
+      options: { skip_csp: true },
+      signal: controller.signal,
+      on_progress: (done) => {
+        if (done === 2) controller.abort(new Error(`pane closed`))
+      },
+    })
+    await expect(sweep).rejects.toThrow(`pane closed`)
+    // frames 0 and 5 were analysed; the abort landed before frame 10 was requested
+    expect(compute_spy).toHaveBeenCalledTimes(2)
+    for (const call of compute_spy.mock.calls) {
+      expect(call[2]).toEqual({ signal: controller.signal })
+    }
+    compute_spy.mockRestore()
+  })
+
   it(`refuses a sweep whose frames disagree on the atom count`, async () => {
-    const trajectory = in_memory([make_fcc([2, 2, 2]), with_vacancy(make_fcc([2, 2, 2]), 0)])
+    const trajectory = frame_run([make_fcc([2, 2, 2]), with_vacancy(make_fcc([2, 2, 2]), 0)])
     await expect(
       collect_structure_id_sweep(trajectory, { max_frames: 2, options: { skip_csp: true } }),
     ).rejects.toThrow(/frame 1 has 31 atoms but frame 0 has 32/)
@@ -122,66 +143,16 @@ describe(`collect_structure_id_sweep`, () => {
     })
     expect(sweep.results[0].cna_types).not.toEqual(wrapped.cna_types)
   })
-
-  it(`defaults missing lattice pbc before normalizing sites`, async () => {
-    const crystal = make_fcc([2, 2, 2])
-    const { pbc: _pbc, ...lattice } = crystal.lattice
-    const structure = {
-      ...crystal,
-      lattice,
-      sites: crystal.sites.map((site, site_idx) =>
-        site_idx === 0
-          ? { ...site, abc: [1, 0, 0] as Vec3, xyz: [999, 999, 999] as Vec3 }
-          : site,
-      ),
-    } as AnyStructure
-    const sweep = await collect_structure_id_sweep(in_memory([structure]), {
-      options: { skip_csp: true },
-    })
-    expect(sweep.results[0].populations).toEqual({ other: 0, fcc: 32, hcp: 0, bcc: 0, ico: 0 })
-  })
 })
 
-describe(`indexed trajectories`, () => {
-  it.each([
-    [`no loader`, () => indexed(50), /only 10 are in memory and it has no frame_loader/],
-    [
-      `loader without raw_data`,
-      () => indexed(50, counting_loader()),
-      /needs the raw file bytes to load the sampled frames/,
-    ],
-  ])(`refuses when %s`, async (_label, make_trajectory, pattern) => {
-    await expect(collect_structure_id_sweep(make_trajectory())).rejects.toThrow(pattern)
-  })
-
-  it(`refuses empty buffer raw data`, async () => {
-    const trajectory = indexed(50, counting_loader())
-    await expect(
-      collect_structure_id_sweep(trajectory, { raw_data: new ArrayBuffer(0) }),
-    ).rejects.toThrow(/needs the raw file bytes to load the sampled frames/)
-  })
-
-  it(`loads exactly the sampled source frames through the loader`, async () => {
-    const loader = counting_loader()
-    const sweep = await collect_structure_id_sweep(indexed(50, loader), {
-      raw_data: `payload`,
+describe(`on-demand runs`, () => {
+  it(`loads exactly the sampled source frames through read_frame`, async () => {
+    const run = counting_run(50)
+    const sweep = await collect_structure_id_sweep(run, {
       max_frames: 5,
       options: { skip_csp: true },
     })
     expect([sweep.frame_numbers, sweep.frame_stride]).toEqual([[0, 10, 20, 30, 40], 10])
-    expect(sweep.frame_numbers).toEqual(loader.requested)
-  })
-
-  it(`loads through a source-independent loader without raw file bytes`, async () => {
-    const loader = counting_loader()
-    loader.requires_source = false
-
-    const sweep = await collect_structure_id_sweep(indexed(50, loader), {
-      max_frames: 5,
-      options: { skip_csp: true },
-    })
-
-    expect(sweep.frame_numbers).toEqual([0, 10, 20, 30, 40])
-    expect(loader.requested).toEqual(sweep.frame_numbers)
+    expect(run.requested).toEqual(sweep.frame_numbers)
   })
 })

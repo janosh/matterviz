@@ -1,5 +1,5 @@
 import { BarPlot, BoxPlot, Histogram, ScatterPlot } from '$lib'
-import { place_decorations } from '$lib/plot/core/auto-place'
+import { place_outside_decorations } from '$lib/plot/core/decorations'
 import { calc_auto_padding, DEFAULT_PLOT_PADDING } from '$lib/plot/core/layout'
 import { resolve_plot_title } from '$lib/plot/core/plot-title'
 import BinnedScatterPlot from '$lib/plot/scatter/BinnedScatterPlot.svelte'
@@ -96,12 +96,19 @@ describe(`Cartesian plot titles`, () => {
       y: 0,
     })
     const base_pad = { ...axis_pad, t: axis_pad.t + title_layout.block_height }
-    const decorated = place_decorations({
+    const decorated = place_outside_decorations({
       base_pad,
       width,
       height,
       obstacles_norm: [{ x: 0.5, y: 0.5 }],
-      colorbar: { footprint: { width, height: 32 }, horizontal: true },
+      items: [
+        {
+          id: `colorbar`,
+          kind: `colorbar`,
+          footprint: { width, height: 32 },
+          horizontal: true,
+        },
+      ],
     })
 
     expect(axis_pad.t).toBeGreaterThan(0)
@@ -128,12 +135,16 @@ describe(`Cartesian plot titles`, () => {
     const x_label = root.querySelector(`.axis-label.x-label`)
     const y_label = root.querySelector(`.axis-label.y-label`)
 
-    expect(x_label?.querySelectorAll(`.static-label > span`).length).toBeGreaterThan(1)
-    expect(x_label?.querySelector(`sub`)?.textContent).toBe(`hull`)
-    expect(
-      [...(y_label?.children ?? [])].filter((child) => child.tagName.toLowerCase() === `tspan`)
-        .length,
-    ).toBeGreaterThan(1)
-    expect(y_label?.querySelector(`tspan[baseline-shift="super"]`)?.textContent).toBe(`2`)
+    const line_count = (label: Element | null) =>
+      [...(label?.children ?? [])].filter((child) => child.tagName.toLowerCase() === `tspan`)
+        .length
+    expect(line_count(x_label)).toBeGreaterThan(1)
+    expect(x_label?.querySelector(`tspan[baseline-shift="sub"]`)?.textContent?.trim()).toBe(
+      `hull`,
+    )
+    expect(line_count(y_label)).toBeGreaterThan(1)
+    expect(y_label?.querySelector(`tspan[baseline-shift="super"]`)?.textContent?.trim()).toBe(
+      `2`,
+    )
   })
 })

@@ -3,13 +3,11 @@ import type { LatticeParams, Pbc } from '$lib/structure/index'
 export type Vec2 = [number, number]
 export type Vec3 = [number, number, number]
 export type Vec4 = [number, number, number, number]
-export type Vec5 = [number, number, number, number, number]
 export type Vec9 = [number, number, number, number, number, number, number, number, number]
 export type Point2D = { x: number; y: number }
 export type Point3D = Point2D & { z: number }
 export type Matrix3x3 = [Vec3, Vec3, Vec3]
 export type Matrix4x4 = [Vec4, Vec4, Vec4, Vec4]
-export type NdVector = number[]
 
 export const is_finite_vec3_like = (
   values: ArrayLike<unknown> | undefined,
@@ -74,23 +72,8 @@ export const partition_point = <Value>(
 // Calculate all lattice parameters in a single efficient pass
 export function calc_lattice_params(matrix: Matrix3x3): LatticeParams & { volume: number } {
   const [a_vec, b_vec, c_vec] = matrix
-
-  // Calculate vector lengths (lattice parameters a, b, c)
-  const a = Math.hypot(a_vec[0], a_vec[1], a_vec[2])
-  const b = Math.hypot(b_vec[0], b_vec[1], b_vec[2])
-  const c = Math.hypot(c_vec[0], c_vec[1], c_vec[2])
-
-  // Calculate volume using scalar triple product
-  const volume = Math.abs(
-    a_vec[0] * (b_vec[1] * c_vec[2] - b_vec[2] * c_vec[1]) +
-      a_vec[1] * (b_vec[2] * c_vec[0] - b_vec[0] * c_vec[2]) +
-      a_vec[2] * (b_vec[0] * c_vec[1] - b_vec[1] * c_vec[0]),
-  )
-
-  // Calculate dot products for angles (only once each)
-  const dot_ab = a_vec[0] * b_vec[0] + a_vec[1] * b_vec[1] + a_vec[2] * b_vec[2]
-  const dot_ac = a_vec[0] * c_vec[0] + a_vec[1] * c_vec[1] + a_vec[2] * c_vec[2]
-  const dot_bc = b_vec[0] * c_vec[0] + b_vec[1] * c_vec[1] + b_vec[2] * c_vec[2]
+  const [a, b, c] = matrix.map((vec) => Math.hypot(...vec))
+  const volume = Math.abs(det_3x3(matrix))
 
   // Convert to angles in degrees. Two ways this yields NaN without the guard: parallel
   // vectors, where the dot product and the two hypot calls round differently and the
@@ -108,29 +91,33 @@ export function calc_lattice_params(matrix: Matrix3x3): LatticeParams & { volume
     if (denom === 0) return 90 // degenerate axis: orthogonal keeps the cell round-trippable
     return Math.acos(Math.max(-1, Math.min(1, dot / denom))) * RAD_TO_DEG
   }
-  const alpha = safe_angle(dot_bc, b, c)
-  const beta = safe_angle(dot_ac, a, c)
-  const gamma = safe_angle(dot_ab, a, b)
+  const alpha = safe_angle(dot(b_vec, c_vec), b, c)
+  const beta = safe_angle(dot(a_vec, c_vec), a, c)
+  const gamma = safe_angle(dot(a_vec, b_vec), a, b)
 
   return { a, b, c, alpha, beta, gamma, volume }
 }
 
-export const scale = <T extends NdVector>(vec: T, factor: number): T =>
+export const scale = <T extends number[]>(vec: T, factor: number): T =>
   vec.map((component) => component * factor) as T
 
-export const euclidean_dist = (vec1: NdVector, vec2: NdVector): number => {
+export function euclidean_dist(vec1: readonly number[], vec2: readonly number[]): number {
   if (vec1.length !== vec2.length) {
     throw new Error(`Vectors must be of same length`)
   }
-  return Math.hypot(...vec1.map((x, idx) => x - vec2[idx]))
+  let sum_sq = 0
+  for (let idx = 0; idx < vec1.length; idx++) {
+    const delta = vec1[idx] - vec2[idx]
+    sum_sq += delta * delta
+  }
+  return Math.sqrt(sum_sq)
 }
 
-const vec3_norm_sq = (vec: Vec3): number => vec[0] ** 2 + vec[1] ** 2 + vec[2] ** 2
-
-// Exact minimum-image displacement for row-vector lattices.
-// Rounded fractional wrapping is only approximate for highly skewed cells, so
-// we use it as a starting guess and then search the small set of shifts that
-// can still beat that Cartesian radius.
+// Exact minimum-image displacement `to - from` for row-vector lattices. Rounded
+// fractional wrapping is only approximate for skewed cells, so it is the starting guess
+// and the integer shifts that reciprocal-space bounds say could still beat that Cartesian
+// radius are then searched. Runs per atom pair in RDF/MSD/bonding loops, so it works in
+// scalars and allocates only the returned Vec3.
 export function min_image_displacement(
   from: Vec3,
   to: Vec3,
@@ -138,95 +125,106 @@ export function min_image_displacement(
   converters?: LatticeConverters,
   pbc: Pbc = [true, true, true],
 ): Vec3 {
-  const { cart_to_frac, frac_to_cart, reciprocal_axis_norms } =
+  const delta_x = to[0] - from[0]
+  const delta_y = to[1] - from[1]
+  const delta_z = to[2] - from[2]
+  if (!pbc[0] && !pbc[1] && !pbc[2]) return [delta_x, delta_y, delta_z]
+
+  const { lattice, reciprocal, reciprocal_axis_norms } =
     converters ?? create_lattice_converters(lattice_matrix)
-  const frac_from = cart_to_frac(from)
-  const frac_to = cart_to_frac(to)
-  const frac_diff: Vec3 = [
-    frac_to[0] - frac_from[0],
-    frac_to[1] - frac_from[1],
-    frac_to[2] - frac_from[2],
-  ]
-  const wrapped_frac_diff: Vec3 = [
-    pbc[0] ? frac_diff[0] - Math.round(frac_diff[0]) : frac_diff[0],
-    pbc[1] ? frac_diff[1] - Math.round(frac_diff[1]) : frac_diff[1],
-    pbc[2] ? frac_diff[2] - Math.round(frac_diff[2]) : frac_diff[2],
-  ]
+  const [[ax, ay, az], [bx, by, bz], [cx, cy, cz]] = lattice
+  const [[ra0, ra1, ra2], [rb0, rb1, rb2], [rc0, rc1, rc2]] = reciprocal
+  // fractional displacement: frac_i = b_i · delta
+  const frac_a = ra0 * delta_x + ra1 * delta_y + ra2 * delta_z
+  const frac_b = rb0 * delta_x + rb1 * delta_y + rb2 * delta_z
+  const frac_c = rc0 * delta_x + rc1 * delta_y + rc2 * delta_z
 
-  let best_displacement = frac_to_cart(wrapped_frac_diff)
-  let best_dist_sq = vec3_norm_sq(best_displacement)
+  const wrapped_a = pbc[0] ? frac_a - Math.round(frac_a) : frac_a
+  const wrapped_b = pbc[1] ? frac_b - Math.round(frac_b) : frac_b
+  const wrapped_c = pbc[2] ? frac_c - Math.round(frac_c) : frac_c
+  let best_x = wrapped_a * ax + wrapped_b * bx + wrapped_c * cx
+  let best_y = wrapped_a * ay + wrapped_b * by + wrapped_c * cy
+  let best_z = wrapped_a * az + wrapped_b * bz + wrapped_c * cz
+  let best_dist_sq = best_x * best_x + best_y * best_y + best_z * best_z
   const search_radius = Math.sqrt(best_dist_sq) + EPS
-  const candidate_shift_ranges = ([0, 1, 2] as const).map((axis_idx) => {
-    if (!pbc[axis_idx]) return [0, 0] as const
-    const axis_bound = reciprocal_axis_norms[axis_idx] * search_radius
-    return [
-      Math.ceil(-frac_diff[axis_idx] - axis_bound),
-      Math.floor(-frac_diff[axis_idx] + axis_bound),
-    ] as const
-  })
-  let candidate_count = 1
-  for (const [shift_min, shift_max] of candidate_shift_ranges) {
-    candidate_count *= shift_max - shift_min + 1
-    if (candidate_count > MAX_MIN_IMAGE_CANDIDATES) {
-      throw new Error(
-        `Minimum-image search would test >${MAX_MIN_IMAGE_CANDIDATES} candidates ` +
-          `for lattice ${JSON.stringify(lattice_matrix)}; reciprocal norms=` +
-          `${JSON.stringify(reciprocal_axis_norms)} ranges=${JSON.stringify(candidate_shift_ranges)}`,
-      )
-    }
-  }
-  const [[i_min, i_max], [j_min, j_max], [k_min, k_max]] = candidate_shift_ranges
 
-  // Only test integer shifts that reciprocal-space bounds say could still win.
-  for (let ii = i_min; ii <= i_max; ii++) {
-    for (let jj = j_min; jj <= j_max; jj++) {
-      for (let kk = k_min; kk <= k_max; kk++) {
-        const candidate_frac_diff: Vec3 = [
-          frac_diff[0] + ii,
-          frac_diff[1] + jj,
-          frac_diff[2] + kk,
-        ]
-        const candidate_displacement = frac_to_cart(candidate_frac_diff)
-        const candidate_dist_sq = vec3_norm_sq(candidate_displacement)
-        if (candidate_dist_sq < best_dist_sq) {
-          best_dist_sq = candidate_dist_sq
-          best_displacement = candidate_displacement
+  // |frac_i + shift_i| <= |b_i| * radius for any candidate within the radius
+  const bound_a = pbc[0] ? reciprocal_axis_norms[0] * search_radius : 0
+  const bound_b = pbc[1] ? reciprocal_axis_norms[1] * search_radius : 0
+  const bound_c = pbc[2] ? reciprocal_axis_norms[2] * search_radius : 0
+  const a_min = pbc[0] ? Math.ceil(-frac_a - bound_a) : 0
+  const a_max = pbc[0] ? Math.floor(-frac_a + bound_a) : 0
+  const b_min = pbc[1] ? Math.ceil(-frac_b - bound_b) : 0
+  const b_max = pbc[1] ? Math.floor(-frac_b + bound_b) : 0
+  const c_min = pbc[2] ? Math.ceil(-frac_c - bound_c) : 0
+  const c_max = pbc[2] ? Math.floor(-frac_c + bound_c) : 0
+  const candidate_count = (a_max - a_min + 1) * (b_max - b_min + 1) * (c_max - c_min + 1)
+  if (!(candidate_count <= MAX_MIN_IMAGE_CANDIDATES)) {
+    const norms = JSON.stringify(reciprocal_axis_norms)
+    throw new Error(
+      `Minimum-image search would test ${candidate_count} > ${MAX_MIN_IMAGE_CANDIDATES} ` +
+        `candidates for lattice ${JSON.stringify(lattice_matrix)}; reciprocal norms=${norms}`,
+    )
+  }
+
+  for (let shift_a = a_min; shift_a <= a_max; shift_a++) {
+    const cand_a = frac_a + shift_a
+    for (let shift_b = b_min; shift_b <= b_max; shift_b++) {
+      const cand_b = frac_b + shift_b
+      for (let shift_c = c_min; shift_c <= c_max; shift_c++) {
+        const cand_c = frac_c + shift_c
+        const cand_x = cand_a * ax + cand_b * bx + cand_c * cx
+        const cand_y = cand_a * ay + cand_b * by + cand_c * cy
+        const cand_z = cand_a * az + cand_b * bz + cand_c * cz
+        const cand_dist_sq = cand_x * cand_x + cand_y * cand_y + cand_z * cand_z
+        if (cand_dist_sq < best_dist_sq) {
+          best_dist_sq = cand_dist_sq
+          best_x = cand_x
+          best_y = cand_y
+          best_z = cand_z
         }
       }
     }
   }
-
-  return best_displacement
+  return [best_x, best_y, best_z]
 }
 
-// Calculate the minimum distance between two points considering periodic boundary conditions.
+// Minimum distance between two points under periodic boundary conditions.
 export const pbc_dist = (
   pos1: Vec3,
   pos2: Vec3,
   lattice_matrix: Matrix3x3,
   converters?: LatticeConverters,
   pbc: Pbc = [true, true, true],
-): number => Math.hypot(...min_image_displacement(pos1, pos2, lattice_matrix, converters, pbc))
-
-// Shared shape guard for the matrix-taking entry points below. Names the offender and
-// dumps its value so a malformed cell is identifiable from the message alone.
-const assert_finite_3x3 = (matrix: Matrix3x3, name: string): void => {
-  if (!is_square_matrix(matrix, 3)) {
-    throw new Error(`${name} must be a finite 3x3 matrix, got ${JSON.stringify(matrix)}`)
-  }
+): number => {
+  const [dx, dy, dz] = min_image_displacement(pos1, pos2, lattice_matrix, converters, pbc)
+  return Math.hypot(dx, dy, dz)
 }
 
-export function matrix_inverse_3x3(matrix: Matrix3x3): Matrix3x3 {
+export function det_3x3(matrix: Matrix3x3): number {
+  // |A| = a(ei − fh) − b(di − fg) + c(dh − eg)
+  // where matrix = [[a, b, c], [d, e, f], [g, h, i]]
+  const [[m00, m01, m02], [m10, m11, m12], [m20, m21, m22]] = matrix
+  return (
+    m00 * (m11 * m22 - m12 * m21) -
+    m01 * (m10 * m22 - m12 * m20) +
+    m02 * (m10 * m21 - m11 * m20)
+  )
+}
+
+// Inverse, or null when the rows are (numerically) linearly dependent. The test is
+// |det| relative to the product of row norms, i.e. the volume of the parallelepiped the
+// unit rows span, so it is scale-invariant: a lattice in nm or a reciprocal lattice of a
+// large supercell (entries ~1e-3) is just as invertible as one in Å. An absolute |det|
+// threshold would reject those while accepting a genuinely ill-conditioned cell with
+// large entries.
+const invert_3x3 = (matrix: Matrix3x3): Matrix3x3 | null => {
   const [[m11, m12, m13], [m21, m22, m23], [m31, m32, m33]] = matrix
-
   const det = det_3x3(matrix)
-
-  if (!Number.isFinite(det) || Math.abs(det) < EPS) {
-    throw new Error(`Matrix is singular or ill-conditioned; cannot invert`)
-  }
-
+  const row_norm_product =
+    Math.hypot(m11, m12, m13) * Math.hypot(m21, m22, m23) * Math.hypot(m31, m32, m33)
+  if (!Number.isFinite(det) || Math.abs(det) <= EPS * row_norm_product) return null
   const inv_det = 1 / det
-
   return [
     [
       (m22 * m33 - m23 * m32) * inv_det,
@@ -246,6 +244,16 @@ export function matrix_inverse_3x3(matrix: Matrix3x3): Matrix3x3 {
   ]
 }
 
+export function matrix_inverse_3x3(matrix: Matrix3x3): Matrix3x3 {
+  const inverse = invert_3x3(matrix)
+  if (!inverse) {
+    throw new Error(
+      `Matrix is singular or ill-conditioned; cannot invert: ${JSON.stringify(matrix)}`,
+    )
+  }
+  return inverse
+}
+
 // Multiply a 3x3 matrix by a 3D vector
 export function mat3x3_vec3_multiply(matrix: Matrix3x3, vector: Vec3): Vec3 {
   const [a, b, c] = matrix
@@ -258,7 +266,7 @@ export function mat3x3_vec3_multiply(matrix: Matrix3x3, vector: Vec3): Vec3 {
 }
 
 // Add up any number of same-length vectors
-export function add<T extends NdVector>(...vecs: T[]): T {
+export function add<T extends number[]>(...vecs: T[]): T {
   if (vecs.length === 0) throw new Error(`Cannot add zero vectors`)
 
   const length = vecs[0].length
@@ -275,7 +283,7 @@ export function add<T extends NdVector>(...vecs: T[]): T {
   return result as T
 }
 
-export function subtract<T extends NdVector>(vec1: T, vec2: T): T {
+export function subtract<T extends number[]>(vec1: T, vec2: T): T {
   if (vec1.length !== vec2.length) {
     throw new Error(`Vectors must be of same length`)
   }
@@ -299,35 +307,37 @@ function validate_matrix(mat: number[][], name: string): number {
 // Tuple-preserving overloads first: 3x3 inputs keep their Matrix3x3/Vec3 shape
 export function dot(vec1: Matrix3x3, vec2: Matrix3x3): Matrix3x3
 export function dot(vec1: Matrix3x3, vec2: Vec3): Vec3
-export function dot(vec1: NdVector, vec2: NdVector): number
-export function dot(vec1: NdVector[], vec2: NdVector): number[]
-export function dot(vec1: NdVector[], vec2: NdVector[]): number[][]
+export function dot(vec1: readonly number[], vec2: readonly number[]): number
+export function dot(vec1: number[][], vec2: readonly number[]): number[]
+export function dot(vec1: number[][], vec2: number[][]): number[][]
 export function dot(
-  vec1: NdVector | NdVector[],
-  vec2: NdVector | NdVector[],
+  vec1: readonly number[] | number[][],
+  vec2: readonly number[] | number[][],
 ): number | number[] | number[][] {
-  const vec1_is_matrix = vec1.some((entry) => Array.isArray(entry))
-  const vec2_is_matrix = vec2.some((entry) => Array.isArray(entry))
+  const vec1_is_matrix = Array.isArray(vec1[0])
+  const vec2_is_matrix = Array.isArray(vec2[0])
 
-  // Vector dot product
+  // Vector dot product: the per-site hot path, so a plain loop rather than reduce
   if (!vec1_is_matrix && !vec2_is_matrix) {
-    const left_vec = vec1 as number[]
-    const right_vec = vec2 as number[]
+    const left_vec = vec1 as readonly number[]
+    const right_vec = vec2 as readonly number[]
     if (left_vec.length !== right_vec.length) {
       throw new Error(`Vectors must be of same length`)
     }
-    return left_vec.reduce((sum, val, idx) => sum + val * right_vec[idx], 0)
+    let sum = 0
+    for (let idx = 0; idx < left_vec.length; idx++) sum += left_vec[idx] * right_vec[idx]
+    return sum
   }
 
   // Matrix-vector multiplication
   if (vec1_is_matrix && !vec2_is_matrix) {
     const mat = vec1 as number[][]
-    const vec = vec2 as number[]
+    const vec = vec2 as readonly number[]
     const cols = validate_matrix(mat, `Matrix`)
     if (cols !== vec.length) {
       throw new Error(`Matrix columns must equal vector length`)
     }
-    return mat.map((row) => row.reduce((sum, val, idx) => sum + val * vec[idx], 0))
+    return mat.map((row) => dot(row, vec))
   }
 
   // Matrix-matrix multiplication
@@ -339,40 +349,16 @@ export function dot(
     if (mat1_cols !== mat2.length) {
       throw new Error(`First matrix columns must equal second matrix rows`)
     }
-    return mat1.map((_row, ii) =>
-      Array.from({ length: mat2_cols }, (_col, jj) =>
-        mat1[ii].reduce((sum, _val, kk) => sum + mat1[ii][kk] * mat2[kk][jj], 0),
-      ),
+    return mat1.map((row) =>
+      Array.from({ length: mat2_cols }, (_col, col_idx) => {
+        let sum = 0
+        for (let idx = 0; idx < mat1_cols; idx++) sum += row[idx] * mat2[idx][col_idx]
+        return sum
+      }),
     )
   }
 
   throw new Error(`Unsupported input types for dot product`)
-}
-
-// Conversion utilities for vectors and tensors below
-
-// Convert 3x3 symmetric tensor to 6-element Voigt notation vector
-// Voigt notation maps: (1,1)->1, (2,2)->2, (3,3)->3, (2,3)->4, (1,3)->5, (1,2)->6
-export function to_voigt(tensor: number[][]): number[] {
-  if (tensor.length !== 3 || !tensor.every((row) => row.length === 3)) {
-    throw new Error(`Expected 3x3 tensor, got ${tensor.length}x${tensor[0]?.length ?? `n/a`}`)
-  }
-  const [t11, t12, t13, _t21, t22, t23, _t31, _t32, t33] = tensor.flat()
-  return [t11, t22, t33, t23, t13, t12]
-}
-
-// Convert 6-element Voigt notation vector to 3x3 symmetric tensor
-export function from_voigt(voigt: number[]): Matrix3x3 {
-  if (voigt.length !== 6) {
-    throw new Error(`Expected 6-element Voigt vector, got ${voigt.length} elements`)
-  }
-  const [v1, v2, v3, v4, v5, v6] = voigt
-
-  return [
-    [v1, v6, v5],
-    [v6, v2, v4],
-    [v5, v4, v3],
-  ]
 }
 
 // Convert flat 9-element array to 3x3 tensor (row-major order)
@@ -388,16 +374,6 @@ export function vec9_to_mat3x3(flat_array: number[]): Matrix3x3 {
   ]
 }
 
-// Convert 3x3 tensor to flat 9-element array (row-major order)
-export function tensor_to_flat_array(tensor: number[][]): number[] {
-  if (tensor.length !== 3 || !tensor.every((row) => row.length === 3)) {
-    throw new Error(`Expected 3x3 tensor, got ${tensor.length}x${tensor[0]?.length ?? `n/a`}`)
-  }
-
-  const [t11, t12, t13, t21, t22, t23, t31, t32, t33] = tensor.flat()
-  return [t11, t12, t13, t21, t22, t23, t31, t32, t33]
-}
-
 // Transpose a 3x3 matrix
 export const transpose_3x3_matrix = (matrix: Matrix3x3): Matrix3x3 => [
   [matrix[0][0], matrix[1][0], matrix[2][0]],
@@ -407,51 +383,54 @@ export const transpose_3x3_matrix = (matrix: Matrix3x3): Matrix3x3 => [
 
 // Scale each row of a 3x3 matrix by the corresponding element of a Vec3.
 // Used to scale lattice vectors by supercell factors.
-export function scale_lattice_matrix(
-  orig_matrix: Matrix3x3,
-  scaling_factors: Vec3,
+export const scale_lattice_matrix = (orig_matrix: Matrix3x3, scaling_factors: Vec3) =>
+  orig_matrix.map((row, idx) => scale(row, scaling_factors[idx])) as Matrix3x3
+
+// Reciprocal lattice of a row-vector lattice A (rows a_i), returned as rows b_i with
+// a_i · b_j = δ_ij (crystallographic convention, the default) or 2π δ_ij (`two_pi`, the
+// solid-state convention Brillouin zones and band paths use). B = (A⁻¹)ᵀ = (Aᵀ)⁻¹, so the
+// 2π-free form is also the Cartesian→fractional matrix: frac_i = b_i · cart.
+export function reciprocal_lattice(
+  lattice: Matrix3x3,
+  options: { two_pi?: boolean } = {},
 ): Matrix3x3 {
-  const [nx, ny, nz] = scaling_factors
-  const [a, b, c] = orig_matrix
-  return [
-    [a[0] * nx, a[1] * nx, a[2] * nx],
-    [b[0] * ny, b[1] * ny, b[2] * ny],
-    [c[0] * nz, c[1] * nz, c[2] * nz],
-  ]
+  const factor = options.two_pi ? 2 * Math.PI : 1
+  const inverse_transposed = transpose_3x3_matrix(matrix_inverse_3x3(lattice))
+  return inverse_transposed.map((row) => scale(row, factor)) as Matrix3x3
 }
 
-// Matrix mapping Cartesian coords to fractional (inverse of transposed
-// row-vector lattice). Prefer create_cart_to_frac unless the raw matrix is
-// needed, e.g. for allocation-free scalar arithmetic in hot loops.
-export const create_cart_to_frac_matrix = (lattice: Matrix3x3): Matrix3x3 =>
-  matrix_inverse_3x3(transpose_3x3_matrix(lattice))
-
-// Curried fractional→Cartesian converter (caches transposed matrix)
+// Curried fractional→Cartesian converter: cart = frac · lattice (row-vector convention)
 export const create_frac_to_cart = (lattice: Matrix3x3) => {
   const transposed = transpose_3x3_matrix(lattice)
   return (frac: Vec3): Vec3 => mat3x3_vec3_multiply(transposed, frac)
 }
 
-// Curried Cartesian→fractional converter (caches inverse transpose)
+// Curried Cartesian→fractional converter: frac_i = b_i · cart with b_i the reciprocal rows
 export const create_cart_to_frac = (lattice: Matrix3x3) => {
-  const cart_to_frac_mat = create_cart_to_frac_matrix(lattice)
-  return (cart: Vec3): Vec3 => mat3x3_vec3_multiply(cart_to_frac_mat, cart)
+  const reciprocal = reciprocal_lattice(lattice)
+  return (cart: Vec3): Vec3 => mat3x3_vec3_multiply(reciprocal, cart)
 }
 
-// Paired converters for a lattice — the safe way to do cart↔frac conversion.
-// Encapsulates the transpose convention so callers never touch raw matrices.
+// Paired converters for a lattice, built once and reused across every site or frame.
+// The raw matrices are exposed for allocation-free scalar arithmetic in hot loops
+// (min_image_displacement); reciprocal_axis_norms[i] = |b_i| bounds how far a Cartesian
+// radius can reach along fractional axis i.
 export type LatticeConverters = {
-  cart_to_frac: (v: Vec3) => Vec3
-  frac_to_cart: (v: Vec3) => Vec3
+  lattice: Matrix3x3
+  reciprocal: Matrix3x3
   reciprocal_axis_norms: Vec3
+  cart_to_frac: (cart: Vec3) => Vec3
+  frac_to_cart: (frac: Vec3) => Vec3
 }
 
 export const create_lattice_converters = (lattice: Matrix3x3): LatticeConverters => {
-  const cart_to_frac_mat = create_cart_to_frac_matrix(lattice)
+  const reciprocal = reciprocal_lattice(lattice)
   return {
-    cart_to_frac: (cart: Vec3): Vec3 => mat3x3_vec3_multiply(cart_to_frac_mat, cart),
+    lattice,
+    reciprocal,
+    reciprocal_axis_norms: reciprocal.map((row) => Math.hypot(row[0], row[1], row[2])) as Vec3,
+    cart_to_frac: (cart: Vec3): Vec3 => mat3x3_vec3_multiply(reciprocal, cart),
     frac_to_cart: create_frac_to_cart(lattice),
-    reciprocal_axis_norms: cart_to_frac_mat.map((row) => Math.hypot(...row)) as Vec3,
   }
 }
 
@@ -464,15 +443,10 @@ export function cell_to_lattice_matrix(
   beta: number,
   gamma: number,
 ): Matrix3x3 {
-  // Convert angles to radians
-  const alpha_rad = alpha * DEG_TO_RAD
-  const beta_rad = beta * DEG_TO_RAD
-  const gamma_rad = gamma * DEG_TO_RAD
-
-  const cos_alpha = Math.cos(alpha_rad)
-  const cos_beta = Math.cos(beta_rad)
-  const cos_gamma = Math.cos(gamma_rad)
-  const sin_gamma = Math.sin(gamma_rad)
+  const cos_alpha = Math.cos(alpha * DEG_TO_RAD)
+  const cos_beta = Math.cos(beta * DEG_TO_RAD)
+  const cos_gamma = Math.cos(gamma * DEG_TO_RAD)
+  const sin_gamma = Math.sin(gamma * DEG_TO_RAD)
 
   // Calculate volume factor for triclinic system. The radicand goes negative whenever the
   // angle triple violates the triclinic inequality, and sin_gamma is zero at gamma 0/180.
@@ -513,80 +487,6 @@ export function cell_to_lattice_matrix(
   ]
 }
 
-export function det_3x3(matrix: Matrix3x3): number {
-  // |A| = a(ei − fh) − b(di − fg) + c(dh − eg)
-  // where matrix = [[a, b, c], [d, e, f], [g, h, i]]
-  const [[m00, m01, m02], [m10, m11, m12], [m20, m21, m22]] = matrix
-  return (
-    m00 * (m11 * m22 - m12 * m21) -
-    m01 * (m10 * m22 - m12 * m20) +
-    m02 * (m10 * m21 - m11 * m20)
-  )
-}
-
-// === Integer lattice transformations ===
-
-// Validate an integer 3x3 matrix and return its determinant. Entries must be integers
-// (fractional entries do not map a lattice onto a commensurate lattice) and the
-// determinant must be non-zero (a singular matrix collapses the cell to zero volume and
-// leaves a Hermite pivot undefined). BigInt because each cofactor term multiplies three
-// entries, so a float determinant stops being exact past entries of cbrt(2^53) ~ 2e5 and
-// rounds some singular matrices to non-zero, handing hermite_normal_form a zero pivot.
-// Stays a bigint on the way out: only transformation_cell_multiplicity needs a number, and
-// narrowing here would also reject the large-determinant matrices hermite_normal_form handles.
-function validate_int_matrix_3x3(matrix: Matrix3x3, name: string): bigint {
-  assert_finite_3x3(matrix, name)
-  const non_integer = matrix.flat().filter((val) => !Number.isSafeInteger(val))
-  if (non_integer.length > 0) {
-    throw new Error(
-      `${name} must have integer entries, got ${JSON.stringify(non_integer)} ` +
-        `in ${JSON.stringify(matrix)}`,
-    )
-  }
-  const [[m00, m01, m02], [m10, m11, m12], [m20, m21, m22]] = matrix.map((row) =>
-    row.map(BigInt),
-  )
-  const det =
-    m00 * (m11 * m22 - m12 * m21) -
-    m01 * (m10 * m22 - m12 * m20) +
-    m02 * (m10 * m21 - m11 * m20)
-  if (det === 0n) {
-    throw new Error(`${name} is singular (determinant 0): ${JSON.stringify(matrix)}`)
-  }
-  return det
-}
-
-// Transform a lattice by an integer matrix P: M_new = P · M_old. Under the
-// row-vector convention that means a' = P[0][0]·a + P[0][1]·b + P[0][2]·c, so an
-// integer P maps the lattice onto a commensurate super- or sub-lattice.
-// Replicating the sites into the new cell is the caller's job — see
-// transformation_cell_multiplicity for how many copies that takes.
-export function apply_transformation_matrix(
-  transform: Matrix3x3,
-  lattice_matrix: Matrix3x3,
-): Matrix3x3 {
-  validate_int_matrix_3x3(transform, `Transformation matrix`)
-  assert_finite_3x3(lattice_matrix, `Lattice matrix`)
-  return dot(transform, lattice_matrix)
-}
-
-// Number of primitive cells inside a cell transformed by P, i.e. |det(P)|. This is
-// the factor the site count grows by under apply_transformation_matrix.
-export function transformation_cell_multiplicity(transform: Matrix3x3): number {
-  const det = validate_int_matrix_3x3(transform, `Transformation matrix`)
-  const abs_det = det < 0n ? -det : det
-  const multiplicity = Number(abs_det)
-  // The determinant is exact, so this conversion is the only place that precision can be
-  // lost. A rounded count would misreport how many site copies the transform takes.
-  if (!Number.isSafeInteger(multiplicity)) {
-    throw new RangeError(
-      `Transformation matrix has |determinant| ${abs_det}, beyond the safe integer ` +
-        `range: ${JSON.stringify(transform)}`,
-    )
-  }
-  return multiplicity
-}
-
 // Greatest common divisor of two integers, taken on absolute values. gcd(0, 0) = 0.
 export function gcd(val_a: number, val_b: number): number {
   if (!Number.isSafeInteger(val_a) || !Number.isSafeInteger(val_b)) {
@@ -610,94 +510,6 @@ export function reduce_miller_indices(hkl: Vec3): Vec3 {
   return [hkl[0] / divisor, hkl[1] / divisor, hkl[2] / divisor]
 }
 
-// hnf is upper triangular with a positive diagonal and every entry above a pivot
-// reduced into [0, pivot); transform is unimodular (integer, |det| = 1) and
-// satisfies transform · matrix = hnf.
-export type HermiteNormalForm = { hnf: Matrix3x3; transform: Matrix3x3 }
-
-// Row-style Hermite Normal Form of an integer 3x3 matrix. With row-vector lattices
-// the HNF rows are integer combinations of the input lattice vectors, so hnf is a
-// canonical cell for the very same lattice — the usual starting point for building
-// a Miller-index slab. Feed transform to apply_transformation_matrix to get there.
-// All arithmetic runs in BigInt because the intermediates outgrow float64's exact
-// integer range: `factor * work[source][col]` in the above-pivot reduction exceeds
-// 2^53 once entries reach ~1e3, and past that Number rounds and the result is wrong.
-// Requires a non-singular matrix: a zero pivot has no well-defined reduction.
-export function hermite_normal_form(matrix: Matrix3x3): HermiteNormalForm {
-  validate_int_matrix_3x3(matrix, `hermite_normal_form matrix`)
-
-  const work = matrix.map((row) => row.map(BigInt))
-  const uni = [
-    [1n, 0n, 0n],
-    [0n, 1n, 0n],
-    [0n, 0n, 1n],
-  ]
-  const swap_rows = (row_a: number, row_b: number): void => {
-    ;[work[row_a], work[row_b]] = [work[row_b], work[row_a]]
-    ;[uni[row_a], uni[row_b]] = [uni[row_b], uni[row_a]]
-  }
-  const negate_row = (row_idx: number): void => {
-    for (let col = 0; col < 3; col++) {
-      work[row_idx][col] = -work[row_idx][col]
-      uni[row_idx][col] = -uni[row_idx][col]
-    }
-  }
-  // row_target -= factor * row_source, applied to both matrices in lockstep so the
-  // invariant uni · matrix === work holds after every operation
-  const reduce_row = (row_target: number, row_source: number, factor: bigint): void => {
-    if (factor === 0n) return
-    for (let col = 0; col < 3; col++) {
-      work[row_target][col] -= factor * work[row_source][col]
-      uni[row_target][col] -= factor * uni[row_source][col]
-    }
-  }
-  const abs_big = (val: bigint): bigint => (val < 0n ? -val : val)
-
-  // Clear each column below the diagonal by the Euclidean algorithm on rows
-  for (let col = 0; col < 3; col++) {
-    for (let row = col + 1; row < 3; row++) {
-      while (work[row][col] !== 0n) {
-        // Keep the larger magnitude in the lower row so the quotient is non-zero and
-        // the remainder strictly shrinks each pass, which is what makes this terminate
-        if (work[col][col] === 0n || abs_big(work[col][col]) > abs_big(work[row][col])) {
-          swap_rows(col, row)
-        }
-        if (work[row][col] === 0n) break
-        reduce_row(row, col, work[row][col] / work[col][col]) // BigInt / truncates toward zero
-      }
-    }
-    // Non-singular input guarantees a non-zero pivot in every column
-    if (work[col][col] < 0n) negate_row(col)
-  }
-
-  // Reduce entries above each pivot into [0, pivot) using floor division
-  for (let col = 1; col < 3; col++) {
-    const pivot = work[col][col]
-    for (let row = 0; row < col; row++) {
-      const numerator = work[row][col]
-      let quotient = numerator / pivot
-      // pivot is positive here, so only a negative numerator needs the floor correction
-      if (numerator < 0n && numerator % pivot !== 0n) quotient -= 1n
-      reduce_row(row, col, quotient)
-    }
-  }
-
-  const to_matrix = (rows: bigint[][], name: string): Matrix3x3 =>
-    rows.map((row) =>
-      row.map((val) => {
-        const as_number = Number(val)
-        if (!Number.isSafeInteger(as_number)) {
-          throw new TypeError(
-            `hermite_normal_form ${name} entry ${val} exceeds safe integer range`,
-          )
-        }
-        return as_number
-      }),
-    ) as Matrix3x3
-
-  return { hnf: to_matrix(work, `hnf`), transform: to_matrix(uni, `transform`) }
-}
-
 export function get_coefficient_of_variation(values: number[]): number {
   if (values.length <= 1) return 0
   const mean = values.reduce((sum, val) => sum + val, 0) / values.length
@@ -707,11 +519,7 @@ export function get_coefficient_of_variation(values: number[]): number {
 
 // Compute 4x4 determinant (used for 4D barycentric coordinates)
 export function det_4x4(matrix: Matrix4x4): number {
-  const [a_row, b_row, c_row, d_row] = matrix
-  const [a0, a1, a2, a3] = a_row
-  const [b0, b1, b2, b3] = b_row
-  const [c0, c1, c2, c3] = c_row
-  const [d0, d1, d2, d3] = d_row
+  const [[a0, a1, a2, a3], [b0, b1, b2, b3], [c0, c1, c2, c3], [d0, d1, d2, d3]] = matrix
   return (
     a0 * (b1 * (c2 * d3 - c3 * d2) - b2 * (c1 * d3 - c3 * d1) + b3 * (c1 * d2 - c2 * d1)) -
     a1 * (b0 * (c2 * d3 - c3 * d2) - b2 * (c0 * d3 - c3 * d0) + b3 * (c0 * d2 - c2 * d0)) +
@@ -720,9 +528,49 @@ export function det_4x4(matrix: Matrix4x4): number {
   )
 }
 
+// LU decomposition with partial pivoting on a working copy: L's factors land below the
+// diagonal, U on and above it, `perm` is the row order applied and `n_swaps` its parity.
+// Returns null when a pivot is <= EPS * largest |entry|, so a matrix and its scalar
+// multiples get the same singular/non-singular verdict.
+const lu_decompose = (
+  matrix: number[][],
+): { lu: number[][]; perm: number[]; n_swaps: number } | null => {
+  const size = matrix.length
+  const lu = matrix.map((row) => [...row])
+  const perm = Array.from({ length: size }, (_, idx) => idx)
+  const pivot_floor = EPS * array_max(matrix.flat().map(Math.abs))
+  let n_swaps = 0
+
+  for (let col = 0; col < size; col++) {
+    let [max_row, max_val] = [col, Math.abs(lu[col][col])]
+    for (let row = col + 1; row < size; row++) {
+      const val = Math.abs(lu[row][col])
+      if (val > max_val) [max_val, max_row] = [val, row]
+    }
+    if (max_val <= pivot_floor) return null // singular
+
+    if (max_row !== col) {
+      ;[lu[col], lu[max_row]] = [lu[max_row], lu[col]]
+      ;[perm[col], perm[max_row]] = [perm[max_row], perm[col]]
+      n_swaps++
+    }
+
+    // Eliminate below pivot
+    const pivot = lu[col][col]
+    for (let row = col + 1; row < size; row++) {
+      const factor = lu[row][col] / pivot
+      lu[row][col] = factor
+      for (let inner = col + 1; inner < size; inner++) {
+        lu[row][inner] -= factor * lu[col][inner]
+      }
+    }
+  }
+  return { lu, perm, n_swaps }
+}
+
 // Compute NxN determinant using LU decomposition with partial pivoting
 // More numerically stable than cofactor expansion for N > 4
-// Returns 0 for singular/near-singular matrices (pivot < EPS ≈ 1e-10)
+// Returns 0 for singular/near-singular matrices (pivot <= EPS * largest entry)
 export function det_nxn(matrix: number[][]): number {
   const mat_size = matrix.length
   if (mat_size === 0) return 1
@@ -736,47 +584,11 @@ export function det_nxn(matrix: number[][]): number {
   if (mat_size === 3) return det_3x3(matrix as Matrix3x3)
   if (mat_size === 4) return det_4x4(matrix as Matrix4x4)
 
-  // LU decomposition with partial pivoting
-  // Create a working copy to avoid mutating input
-  const lu = matrix.map((row) => [...row])
-  let swaps = 0
-
-  for (let col = 0; col < mat_size; col++) {
-    // Find pivot (largest absolute value in column)
-    let [max_row, max_val] = [col, Math.abs(lu[col][col])]
-    for (let row = col + 1; row < mat_size; row++) {
-      const val = Math.abs(lu[row][col])
-      if (val > max_val) {
-        max_val = val
-        max_row = row
-      }
-    }
-
-    // Singular matrix (or nearly so)
-    if (max_val < EPS) return 0
-
-    // Swap rows if needed
-    if (max_row !== col) {
-      ;[lu[col], lu[max_row]] = [lu[max_row], lu[col]]
-      swaps++
-    }
-
-    // Eliminate below pivot
-    const pivot = lu[col][col]
-    for (let row = col + 1; row < mat_size; row++) {
-      const factor = lu[row][col] / pivot
-      lu[row][col] = 0
-      for (let k = col + 1; k < mat_size; k++) {
-        lu[row][k] -= factor * lu[col][k]
-      }
-    }
-  }
-
+  const decomposed = lu_decompose(matrix)
+  if (!decomposed) return 0
   // Determinant is product of diagonal elements × (-1)^swaps
-  let det = swaps % 2 === 0 ? 1 : -1
-  for (let idx = 0; idx < mat_size; idx++) {
-    det *= lu[idx][idx]
-  }
+  let det = decomposed.n_swaps % 2 === 0 ? 1 : -1
+  for (let idx = 0; idx < mat_size; idx++) det *= decomposed.lu[idx][idx]
   return det
 }
 
@@ -819,26 +631,6 @@ export const lerp_vec3 = (start: Vec3, end: Vec3, t: number): Vec3 => [
   start[2] + t * (end[2] - start[2]),
 ]
 
-// Centered fractional part: offset from nearest integer, returns value in [-0.5, 0.5)
-// Useful for wrapping coordinates to first Brillouin zone or similar periodic domains
-export const centered_frac = (val: number): number => {
-  let wrapped = val - Math.round(val)
-  // Handle floating point edge cases at boundaries (range is [-0.5, 0.5), exclusive at +0.5)
-  if (wrapped < -0.5) wrapped += 1
-  if (wrapped >= 0.5) wrapped -= 1
-  return wrapped || 0 // normalize -0 to 0
-}
-
-// Element-wise equality check for two optional Vec3s.
-// Returns true if both are the same reference, or both are defined with equal components.
-export const vecs_equal = (vec_a?: Vec3, vec_b?: Vec3): boolean =>
-  vec_a === vec_b ||
-  (vec_a != null &&
-    vec_b != null &&
-    vec_a[0] === vec_b[0] &&
-    vec_a[1] === vec_b[1] &&
-    vec_a[2] === vec_b[2])
-
 // Vec3 -> Vec3, number[] -> number[] (same length, mutable)
 type Normalized<T extends readonly number[]> = { -readonly [K in keyof T]: number }
 
@@ -860,55 +652,10 @@ export function compute_in_plane_basis(normal: Vec3): [Vec3, Vec3] {
   let ref_vec: Vec3 = [1, 0, 0]
   if (Math.abs(normal[0]) > 0.9) ref_vec = [0, 1, 0]
 
-  const dot_nr = dot(normal, ref_vec)
-  const u_raw: Vec3 = [
-    ref_vec[0] - dot_nr * normal[0],
-    ref_vec[1] - dot_nr * normal[1],
-    ref_vec[2] - dot_nr * normal[2],
-  ]
+  const u_raw = subtract(ref_vec, scale(normal, dot(normal, ref_vec)))
   const u_vec = normalize_vec(u_raw, [0, 1, 0])
   const v_vec = cross_3d(normal, u_vec)
   return [u_vec, v_vec] // u, v basis vectors
-}
-
-// Check whether N 3D points all lie on the same plane within tolerance.
-// Fewer than 3 points are trivially coplanar.
-// Uses cross product to find a plane normal from non-collinear edges,
-// then checks all remaining points have zero distance to that plane.
-export function are_coplanar(points: number[][], tolerance = 1e-6): boolean {
-  if (points.length < 3) return true
-  const origin = points[0]
-  // Find first pair of edges from origin that are not collinear
-  let normal: Vec3 | null = null
-  for (let idx = 1; idx < points.length - 1; idx++) {
-    const edge_a: Vec3 = [
-      points[idx][0] - origin[0],
-      points[idx][1] - origin[1],
-      points[idx][2] - origin[2],
-    ]
-    for (let jdx = idx + 1; jdx < points.length; jdx++) {
-      const edge_b: Vec3 = [
-        points[jdx][0] - origin[0],
-        points[jdx][1] - origin[1],
-        points[jdx][2] - origin[2],
-      ]
-      const cross = cross_3d(edge_a, edge_b)
-      const len = Math.hypot(cross[0], cross[1], cross[2])
-      if (len > tolerance) {
-        normal = [cross[0] / len, cross[1] / len, cross[2] / len]
-        break
-      }
-    }
-    if (normal) break
-  }
-  // All edges are collinear -> all points lie on a line -> coplanar
-  if (!normal) return true
-  const plane_d = dot(normal, origin)
-  for (let idx = 1; idx < points.length; idx++) {
-    const dist = Math.abs(dot(normal, points[idx]) - plane_d)
-    if (dist > tolerance) return false
-  }
-  return true
 }
 
 // Merge coplanar adjacent triangles in a flat non-indexed position array.
@@ -932,16 +679,14 @@ export function merge_coplanar_triangles(
   const tri_planes: TriPlane[] = []
   for (let tri_idx = 0; tri_idx < n_triangles; tri_idx++) {
     const base = tri_idx * 9
-    const va: Vec3 = [positions[base], positions[base + 1], positions[base + 2]]
-    const vb: Vec3 = [positions[base + 3], positions[base + 4], positions[base + 5]]
-    const vc: Vec3 = [positions[base + 6], positions[base + 7], positions[base + 8]]
-    const edge_ab: Vec3 = [vb[0] - va[0], vb[1] - va[1], vb[2] - va[2]]
-    const edge_ac: Vec3 = [vc[0] - va[0], vc[1] - va[1], vc[2] - va[2]]
-    const raw_normal = cross_3d(edge_ab, edge_ac)
+    const vert_a: Vec3 = [positions[base], positions[base + 1], positions[base + 2]]
+    const vert_b: Vec3 = [positions[base + 3], positions[base + 4], positions[base + 5]]
+    const vert_c: Vec3 = [positions[base + 6], positions[base + 7], positions[base + 8]]
+    const raw_normal = cross_3d(subtract(vert_b, vert_a), subtract(vert_c, vert_a))
     const len = Math.hypot(raw_normal[0], raw_normal[1], raw_normal[2])
     if (len < tolerance) {
       tri_planes.push({
-        verts: [va, vb, vc],
+        verts: [vert_a, vert_b, vert_c],
         normal: [0, 0, 0],
         plane_d: 0,
         degenerate: true,
@@ -958,20 +703,20 @@ export function merge_coplanar_triangles(
           ? normal[1]
           : normal[2]
     if (first_nonzero < 0) normal = [-normal[0], -normal[1], -normal[2]]
-    const plane_d = dot(normal, va)
-    tri_planes.push({ verts: [va, vb, vc], normal, plane_d, degenerate: false })
+    const plane_d = dot(normal, vert_a)
+    tri_planes.push({ verts: [vert_a, vert_b, vert_c], normal, plane_d, degenerate: false })
   }
 
   // === Step 2: Build adjacency via edge hash map ===
   // Quantize vertex to integer grid for hashing (only used for equality, not coords)
-  const vert_key = (v: Vec3): string =>
-    `${Math.round(v[0] / tolerance)},${Math.round(v[1] / tolerance)},${Math.round(
-      v[2] / tolerance,
+  const vert_key = (vert: Vec3): string =>
+    `${Math.round(vert[0] / tolerance)},${Math.round(vert[1] / tolerance)},${Math.round(
+      vert[2] / tolerance,
     )}`
-  const edge_key = (va: Vec3, vb: Vec3): string => {
-    const ka = vert_key(va)
-    const kb = vert_key(vb)
-    return ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`
+  const edge_key = (vert_a: Vec3, vert_b: Vec3): string => {
+    const key_a = vert_key(vert_a)
+    const key_b = vert_key(vert_b)
+    return key_a < key_b ? `${key_a}|${key_b}` : `${key_b}|${key_a}`
   }
   // Map edge -> list of triangle indices sharing that edge
   const edge_to_tris = new Map<string, number[]>()
@@ -983,10 +728,10 @@ export function merge_coplanar_triangles(
       edge_key(verts[1], verts[2]),
       edge_key(verts[0], verts[2]),
     ]
-    for (const ek of edges) {
-      const existing = edge_to_tris.get(ek)
+    for (const edge of edges) {
+      const existing = edge_to_tris.get(edge)
       if (existing) existing.push(tri_idx)
-      else edge_to_tris.set(ek, [tri_idx])
+      else edge_to_tris.set(edge, [tri_idx])
     }
   }
 
@@ -994,35 +739,33 @@ export function merge_coplanar_triangles(
   const parent = new Int32Array(n_triangles)
   const rank = new Int32Array(n_triangles)
   for (let idx = 0; idx < n_triangles; idx++) parent[idx] = idx
-  const find = (x: number): number => {
-    while (parent[x] !== x) {
-      parent[x] = parent[parent[x]] // path compression
-      x = parent[x]
+  const find = (start: number): number => {
+    let node = start
+    while (parent[node] !== node) {
+      parent[node] = parent[parent[node]] // path compression
+      node = parent[node]
     }
-    return x
+    return node
   }
-  const union = (a: number, b: number): void => {
-    const ra = find(a),
-      rb = find(b)
-    if (ra === rb) return
-    if (rank[ra] < rank[rb]) parent[ra] = rb
-    else if (rank[ra] > rank[rb]) parent[rb] = ra
+  const union = (idx_a: number, idx_b: number): void => {
+    const root_a = find(idx_a)
+    const root_b = find(idx_b)
+    if (root_a === root_b) return
+    if (rank[root_a] < rank[root_b]) parent[root_a] = root_b
+    else if (rank[root_a] > rank[root_b]) parent[root_b] = root_a
     else {
-      parent[rb] = ra
-      rank[ra]++
+      parent[root_b] = root_a
+      rank[root_a]++
     }
   }
   for (const tri_list of edge_to_tris.values()) {
     if (tri_list.length !== 2) continue
     const [idx_a, idx_b] = tri_list
-    const pa = tri_planes[idx_a]
-    const pb = tri_planes[idx_b]
-    if (pa.degenerate || pb.degenerate) continue
+    const plane_a = tri_planes[idx_a]
+    const plane_b = tri_planes[idx_b]
     // Check coplanarity: same canonical normal direction AND same plane distance
-    const normal_dot =
-      pa.normal[0] * pb.normal[0] + pa.normal[1] * pb.normal[1] + pa.normal[2] * pb.normal[2]
-    if (Math.abs(normal_dot) < 1 - tolerance) continue
-    if (Math.abs(pa.plane_d - pb.plane_d) > tolerance) continue
+    if (Math.abs(dot(plane_a.normal, plane_b.normal)) < 1 - tolerance) continue
+    if (Math.abs(plane_a.plane_d - plane_b.plane_d) > tolerance) continue
     union(idx_a, idx_b)
   }
 
@@ -1037,18 +780,14 @@ export function merge_coplanar_triangles(
 
   // === Step 5: Merge each group and re-triangulate ===
   const output: number[] = []
-  // Push a triangle's 3 vertices (9 floats) to the output
-  const emit_tri = (va: Vec3, vb: Vec3, vc: Vec3): void => {
-    output.push(va[0], va[1], va[2], vb[0], vb[1], vb[2], vc[0], vc[1], vc[2])
+  const emit_tri = (vert_a: Vec3, vert_b: Vec3, vert_c: Vec3): void => {
+    output.push(...vert_a, ...vert_b, ...vert_c)
   }
   const emit_original = (members: number[]): void => {
-    for (const tri_idx of members) {
-      const { verts } = tri_planes[tri_idx]
-      emit_tri(verts[0], verts[1], verts[2])
-    }
+    for (const tri_idx of members) emit_tri(...tri_planes[tri_idx].verts)
   }
-  const tri_area = (va: Vec3, vb: Vec3, vc: Vec3): number =>
-    0.5 * Math.hypot(...cross_3d(subtract(vb, va), subtract(vc, va)))
+  const tri_area = (vert_a: Vec3, vert_b: Vec3, vert_c: Vec3): number =>
+    0.5 * Math.hypot(...cross_3d(subtract(vert_b, vert_a), subtract(vert_c, vert_a)))
   for (const members of groups.values()) {
     if (members.length === 1) {
       emit_original(members)
@@ -1085,9 +824,7 @@ export function merge_coplanar_triangles(
       let best_dist = Infinity
       let best_idx = 0
       for (let idx = 0; idx < pts_2d.length; idx++) {
-        const du = pts_2d[idx][0] - pt[0]
-        const dv = pts_2d[idx][1] - pt[1]
-        const dist = du * du + dv * dv
+        const dist = (pts_2d[idx][0] - pt[0]) ** 2 + (pts_2d[idx][1] - pt[1]) ** 2
         if (dist < best_dist) {
           best_dist = dist
           best_idx = idx
@@ -1149,7 +886,7 @@ export function is_square_matrix(matrix: unknown, dim: number): matrix is number
   )
 }
 
-// --- 2D Geometry Utilities ---
+// === 2D geometry ===
 
 // Point-in-polygon test using ray casting algorithm
 // Returns true if point (x, y) is inside the polygon defined by vertices
@@ -1226,83 +963,55 @@ export function polygon_centroid(vertices: Vec2[]): Vec2 {
   return [cx * factor, cy * factor]
 }
 
-// Solve linear system Ax = b via LU decomposition with partial pivoting.
-// Returns null if the system is singular (no unique solution).
-// Fast-paths for 2x2 (Cramer's rule) and 3x3 (matrix inverse).
+// Solve the linear system `coefficients · x = rhs` via LU decomposition with partial
+// pivoting. Returns null if the system is singular (no unique solution). Singularity is
+// judged relative to the largest coefficient so scaling the system does not change the
+// verdict. Fast-paths for 2x2 (Cramer's rule) and 3x3 (matrix inverse).
 export function solve_linear_system(
-  A: number[][], // NxN coefficient matrix
-  b: number[], // N-element right-hand side
+  coefficients: number[][], // NxN coefficient matrix
+  rhs: number[], // N-element right-hand side
 ): number[] | null {
-  const n = A.length
-  if (n === 0 || b.length !== n || !A.every((row) => row.length === n)) return null
+  const size = coefficients.length
+  if (size === 0 || rhs.length !== size || !coefficients.every((row) => row.length === size)) {
+    return null
+  }
 
   // 2x2 fast path via Cramer's rule
-  if (n === 2) {
-    const det = A[0][0] * A[1][1] - A[0][1] * A[1][0]
-    if (Math.abs(det) < EPS) return null
-    return [(b[0] * A[1][1] - b[1] * A[0][1]) / det, (A[0][0] * b[1] - A[1][0] * b[0]) / det]
+  if (size === 2) {
+    const [[m00, m01], [m10, m11]] = coefficients
+    const det = m00 * m11 - m01 * m10
+    if (Math.abs(det) <= EPS * Math.hypot(m00, m01) * Math.hypot(m10, m11)) return null
+    return [(rhs[0] * m11 - rhs[1] * m01) / det, (m00 * rhs[1] - m10 * rhs[0]) / det]
   }
 
   // 3x3 fast path via matrix inverse
-  if (n === 3) {
-    const det = det_3x3(A as Matrix3x3)
-    if (Math.abs(det) < EPS) return null
-    const inv = matrix_inverse_3x3(A as Matrix3x3)
-    return mat3x3_vec3_multiply(inv, b as Vec3)
+  if (size === 3) {
+    const inverse = invert_3x3(coefficients as Matrix3x3)
+    return inverse && mat3x3_vec3_multiply(inverse, rhs as Vec3)
   }
 
   // General NxN: LU decomposition with partial pivoting + forward/back substitution
-  const lu = A.map((row) => [...row])
-  const perm = Array.from({ length: n }, (_, idx) => idx)
+  const decomposed = lu_decompose(coefficients)
+  if (!decomposed) return null
+  const { lu, perm } = decomposed
 
-  for (let col = 0; col < n; col++) {
-    // Find pivot
-    let [max_row, max_val] = [col, Math.abs(lu[col][col])]
-
-    for (let row = col + 1; row < n; row++) {
-      const val = Math.abs(lu[row][col])
-      if (val > max_val) [max_val, max_row] = [val, row]
-    }
-    if (max_val < EPS) return null // singular
-
-    // Swap rows
-    if (max_row !== col) {
-      ;[lu[col], lu[max_row]] = [lu[max_row], lu[col]]
-      ;[perm[col], perm[max_row]] = [perm[max_row], perm[col]]
-    }
-
-    // Eliminate below pivot
-    const pivot = lu[col][col]
-    for (let row = col + 1; row < n; row++) {
-      const factor = lu[row][col] / pivot
-      lu[row][col] = factor // store L factor in lower triangle
-      for (let k = col + 1; k < n; k++) {
-        lu[row][k] -= factor * lu[col][k]
-      }
-    }
-  }
-
-  // Apply permutation to b
-  const pb = perm.map((idx) => b[idx])
-
-  // Forward substitution (Ly = Pb)
-  for (let row = 1; row < n; row++) {
+  // Apply permutation to rhs, then forward substitution (L y = P rhs)
+  const solution = perm.map((idx) => rhs[idx])
+  for (let row = 1; row < size; row++) {
     for (let col = 0; col < row; col++) {
-      pb[row] -= lu[row][col] * pb[col]
+      solution[row] -= lu[row][col] * solution[col]
     }
   }
 
-  // Back substitution (Ux = y)
-  const x = Array.from<number>({ length: n }).fill(0)
-  for (let row = n - 1; row >= 0; row--) {
-    let sum = pb[row]
-    for (let col = row + 1; col < n; col++) {
-      sum -= lu[row][col] * x[col]
+  // Back substitution (U x = y), in place
+  for (let row = size - 1; row >= 0; row--) {
+    for (let col = row + 1; col < size; col++) {
+      solution[row] -= lu[row][col] * solution[col]
     }
-    x[row] = sum / lu[row][row]
+    solution[row] /= lu[row][row]
   }
 
-  return x
+  return solution
 }
 
 export const cross_2d = (origin: Vec2, point_a: Vec2, point_b: Vec2): number =>
@@ -1330,7 +1039,7 @@ export const monotone_chain = (sorted: Vec2[], tolerance = 0): Vec2[] => {
 export function convex_hull_2d(points: Vec2[], tolerance = 0): Vec2[] {
   if (points.length < 3) return [...points]
 
-  const sorted = points.toSorted((a, b) => a[0] - b[0] || a[1] - b[1])
+  const sorted = points.toSorted((pt_a, pt_b) => pt_a[0] - pt_b[0] || pt_a[1] - pt_b[1])
   const lower = monotone_chain(sorted, tolerance)
   const upper = monotone_chain(sorted.toReversed(), tolerance)
 
@@ -1344,11 +1053,9 @@ export function convex_hull_2d(points: Vec2[], tolerance = 0): Vec2[] {
 // Loop-based min/max — Math.min/max(...arr) throws RangeError past ~125k arguments, which
 // is reachable for per-frame trajectory metadata and phase-diagram entry lists. Empty input
 // yields the identity element (±Infinity), so callers needing a real value must length-check.
-export const array_min = (values: readonly number[]): number =>
-  values.reduce((min, val) => (val < min ? val : min), Infinity)
+export const array_min = (values: readonly number[]): number => array_extent(values)[0]
 
-export const array_max = (values: readonly number[]): number =>
-  values.reduce((max, val) => (val > max ? val : max), -Infinity)
+export const array_max = (values: readonly number[]): number => array_extent(values)[1]
 
 // Single pass for callers that need both ends. NaN never wins either comparison, so it is
 // skipped rather than poisoning the result the way a values[0] seed would.

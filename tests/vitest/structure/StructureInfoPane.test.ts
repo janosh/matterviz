@@ -4,7 +4,7 @@ import type { MoyoDataset } from '@spglib/moyo-wasm'
 import type { ComponentProps } from 'svelte'
 import { mount, tick } from 'svelte'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import { bind_props, get_dummy_structure, make_wyckoff_dataset } from '../setup'
+import { bind_props, doc_query, get_dummy_structure, make_wyckoff_dataset } from '../setup'
 
 describe(`StructureInfoPane`, () => {
   beforeEach(() => {
@@ -56,21 +56,26 @@ describe(`StructureInfoPane`, () => {
 
       const content = document.body.textContent || ``
       expect(content).toContain(`(${atom_count} sites)`)
-      if (!expanded_by_default) expect(content).toContain(`Show ${atom_count} sites`)
+      const sites = doc_query<HTMLDetailsElement>(`.sites`)
+      expect(sites.open).toBe(expanded_by_default)
       const default_row_count = expanded_by_default ? atom_count : 0
       expect(document.querySelectorAll(`.site-card`)).toHaveLength(default_row_count)
 
-      const [symmetry_toggle] = document.querySelectorAll<HTMLButtonElement>(
-        `section > .section-toggle`,
-      )
-      expect(symmetry_toggle).toBeInstanceOf(HTMLButtonElement)
-      expect(symmetry_toggle.getAttribute(`aria-expanded`)).toBe(String(expanded_by_default))
+      const wyckoff = doc_query<HTMLDetailsElement>(`.wyckoff`)
+      expect(wyckoff.open).toBe(expanded_by_default)
       const wyckoff_rows = () => document.querySelectorAll(`.wyckoff-row`)
       expect(wyckoff_rows()).toHaveLength(default_row_count)
 
-      symmetry_toggle.click()
+      wyckoff.querySelector(`summary`)?.click()
       await tick()
       expect(wyckoff_rows()).toHaveLength(atom_count - default_row_count)
+
+      sites.querySelector(`summary`)?.click()
+      await tick()
+      expect(sites.open).toBe(!expanded_by_default)
+      expect(document.querySelectorAll(`.site-card`)).toHaveLength(
+        expanded_by_default ? 0 : atom_count,
+      )
     },
   )
 
@@ -99,9 +104,9 @@ describe(`StructureInfoPane`, () => {
     mount_info_pane({ structure, pane_open: true, atom_count_thresholds: [50, 500] })
 
     const content = document.body.textContent || ``
-    expect(content).not.toContain(`Show 600 sites`)
     expect(content).not.toContain(`Frac.`)
     expect(content).not.toContain(`Cart.`)
+    expect(document.querySelector(`.sites`)).toBeNull()
   })
 
   test(`site cards hover, filter, select, copy, and keyboard navigate`, async () => {
@@ -123,15 +128,14 @@ describe(`StructureInfoPane`, () => {
           state,
         ),
       )
-      const site_cards = () =>
-        Array.from(document.querySelectorAll<HTMLDivElement>(`.site-card`))
+      const site_cards = () => Array.from(document.querySelectorAll<HTMLElement>(`.site-card`))
       expect(site_cards()).toHaveLength(3)
       expect(site_cards()[0].textContent).toContain(`Frac.`)
       expect(site_cards()[0].textContent).toContain(`Cart.`)
       expect(document.querySelector(`.site-color`)).toBeNull()
 
       const site_row = site_cards()[1]
-      expect(site_row).toBeInstanceOf(HTMLDivElement)
+      expect(site_row).toBeInstanceOf(HTMLElement)
       site_row.dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
       expect(state.highlighted_sites).toEqual([1])
       expect(state.hovered_site_idx).toBe(1)
@@ -139,7 +143,7 @@ describe(`StructureInfoPane`, () => {
       expect(state.highlighted_sites).toEqual([])
       expect(state.hovered_site_idx).toBeNull()
 
-      const filter_input = document.querySelector(`input.site-filter`) as HTMLInputElement
+      const filter_input = document.querySelector(`input.info-filter`) as HTMLInputElement
       filter_input.value = `H2`
       filter_input.dispatchEvent(new Event(`input`, { bubbles: true }))
       await tick()
@@ -172,27 +176,41 @@ describe(`StructureInfoPane`, () => {
     mount_info_pane({ structure, pane_open: true, atom_count_thresholds: [50, 500] })
 
     expect(document.querySelectorAll(`.site-card`)).toHaveLength(0)
-    const [toggle] = document.querySelectorAll<HTMLButtonElement>(
-      `.sites-header .section-toggle`,
-    )
-    toggle.click()
+    const sites = doc_query<HTMLDetailsElement>(`.sites`)
+    sites.querySelector(`summary`)?.click()
     await tick()
 
     expect(document.querySelectorAll(`.site-card`)).toHaveLength(100)
-    expect(document.querySelector(`.site-window-controls`)?.textContent).toContain(
-      `1-100 of 120`,
-    )
+    expect(document.querySelector(`.pager`)?.textContent).toContain(`1-100 of 120`)
 
-    const next_button = Array.from(
-      document.querySelectorAll(`.site-window-controls button`),
-    ).find((button) => button.textContent?.trim() === `Next`) as HTMLButtonElement
+    const next_button = Array.from(document.querySelectorAll(`.pager button`)).find(
+      (button) => button.textContent?.trim() === `Next`,
+    ) as HTMLButtonElement
     next_button.click()
     await tick()
 
     expect(document.querySelectorAll(`.site-card`)).toHaveLength(100)
-    expect(document.querySelector(`.site-window-controls`)?.textContent).toContain(
-      `21-120 of 120`,
-    )
+    expect(document.querySelector(`.pager`)?.textContent).toContain(`21-120 of 120`)
+  })
+
+  // A site selected elsewhere (Wyckoff table, 3D scene) on another page must page to it
+  test(`pages to the selected site when it sits beyond the first page`, async () => {
+    const structure = get_dummy_structure(`H`, 120, true)
+    const scroll_spy = vi.spyOn(HTMLElement.prototype, `scrollIntoView`)
+    mount_info_pane({
+      structure,
+      pane_open: true,
+      atom_count_thresholds: [200, 500],
+      selected_sites: [110],
+    })
+    await tick()
+
+    expect(document.querySelector(`.pager`)?.textContent).toContain(`21-120 of 120`)
+    const selected_card = document.querySelector(`.site-card[data-site-idx="110"]`)
+    expect(selected_card?.classList.contains(`selected`)).toBe(true)
+    expect(scroll_spy).toHaveBeenCalledWith({ block: `nearest` })
+    expect(scroll_spy.mock.instances[0]).toBe(selected_card)
+    scroll_spy.mockRestore()
   })
 
   test(`renders symmetry section only when sym_data exists`, () => {
@@ -226,9 +244,9 @@ describe(`StructureInfoPane`, () => {
       atom_count_thresholds: [10, 500],
     })
 
-    const section_titles = Array.from(document.querySelectorAll(`h4`)).map(
-      (heading) => heading.textContent ?? ``,
-    )
+    const section_titles = Array.from(
+      document.querySelectorAll(`.structure-info h4, .sites summary`),
+    ).map((heading) => heading.textContent?.trim() ?? ``)
     const cell_idx = section_titles.indexOf(`Cell`)
     const symmetry_idx = section_titles.indexOf(`Symmetry`)
     const sites_idx = section_titles.indexOf(`Sites`)

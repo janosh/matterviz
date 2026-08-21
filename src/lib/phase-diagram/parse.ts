@@ -3,10 +3,9 @@
 
 import { ELEM_SYMBOLS } from '$lib/labels'
 import type { Vec2 } from '$lib/math'
-import { to_error } from '$lib/utils'
 
 // Default temperature bounds for TDB parsing (in Kelvin)
-export const TDB_TEMP_DEFAULTS = {
+const TDB_TEMP_DEFAULTS = {
   min: 298.15, // Room temperature
   max_fallback: 3000, // Fallback when no functions define ranges
   max_range: 5000, // Default max for temperature ranges in FUNCTION bodies
@@ -48,92 +47,65 @@ export interface TdbData {
   functions: TdbFunction[]
   parameters: TdbParameter[]
   comments: string[]
-  raw_content: string
 }
 
 export interface TdbParseResult {
-  success: boolean
-  data: TdbData | null
-  error?: string
-  // Derived properties for convenience
+  data: TdbData
+  // Set when exactly two real (non-VA, non-electron) elements are declared
   binary_system?: [string, string]
-  available_phases?: string[]
-  temperature_range?: Vec2
+  // [min, max] in K over all FUNCTION temperature ranges, with defaults when none are given
+  temperature_range: Vec2
 }
 
-// Parse a TDB file content string
+// Parse a TDB file content string. Throws when the content holds no TDB statements at all
+// (ELEMENT/PHASE/FUNCTION/PARAMETER), since an "empty database" is always a wrong file.
 export function parse_tdb(content: string): TdbParseResult {
-  try {
-    const data: TdbData = {
-      elements: [],
-      phases: [],
-      functions: [],
-      parameters: [],
-      comments: [],
-      raw_content: content,
-    }
-
-    // Normalize line endings and join continuation lines
-    const normalized = content
-      .replaceAll('\r\n', `\n`)
-      .replaceAll('\r', `\n`)
-      // Join lines that don't end with ! (continuation)
-      .split(`\n`)
-      .reduce((acc: string[], line) => {
-        const trimmed = line.trim()
-        if (trimmed.startsWith(`$`)) {
-          data.comments.push(trimmed.slice(1).trim())
-          return acc
-        }
-        if (acc.length === 0 || acc[acc.length - 1].endsWith(`!`)) {
-          acc.push(trimmed)
-        } else {
-          acc[acc.length - 1] += ` ${trimmed}`
-        }
-        return acc
-      }, [])
-      .filter((line) => line.length > 0)
-
-    for (const line of normalized) {
-      parse_tdb_line(line, data)
-    }
-
-    // Derive binary system from elements (excluding VA)
-    const real_elements = data.elements.map((el) => el.symbol).filter(is_real_element)
-
-    const binary_system: [string, string] | undefined =
-      real_elements.length === 2 ? [real_elements[0], real_elements[1]] : undefined
-
-    // Extract temperature range from functions/parameters
-    // Find the actual min and max temperatures across all ranges
-    let [min_temp, max_temp] = [Infinity, -Infinity]
-    for (const func of data.functions) {
-      for (const range of func.temperature_ranges) {
-        if (range.min < min_temp) min_temp = range.min
-        if (range.max > max_temp) max_temp = range.max
-      }
-    }
-
-    // Use sensible defaults if no ranges found or if extracted range is invalid
-    if (min_temp === Infinity) min_temp = TDB_TEMP_DEFAULTS.min
-    if (max_temp === -Infinity) max_temp = TDB_TEMP_DEFAULTS.max_fallback
-    // Ensure min < max (swap if malformed data caused inversion)
-    if (min_temp > max_temp) [min_temp, max_temp] = [max_temp, min_temp]
-
-    return {
-      success: true,
-      data,
-      binary_system,
-      available_phases: data.phases.map((phase) => phase.name),
-      temperature_range: [min_temp, max_temp],
-    }
-  } catch (exc) {
-    return {
-      success: false,
-      data: null,
-      error: to_error(exc).message,
-    }
+  const data: TdbData = {
+    elements: [],
+    phases: [],
+    functions: [],
+    parameters: [],
+    comments: [],
   }
+
+  // Statements end with `!` and may span lines; `$` lines are comments. Blank lines are
+  // dropped before joining (a blank entry would otherwise swallow the next statement into
+  // `" ELEMENT ..."`, which no keyword dispatch matches).
+  const statements = content.split(/\r\n|\r|\n/).reduce((acc: string[], line) => {
+    const trimmed = line.trim()
+    if (!trimmed) return acc
+    if (trimmed.startsWith(`$`)) {
+      data.comments.push(trimmed.slice(1).trim())
+      return acc
+    }
+    if (acc.length === 0 || acc[acc.length - 1].endsWith(`!`)) acc.push(trimmed)
+    else acc[acc.length - 1] += ` ${trimmed}`
+    return acc
+  }, [])
+
+  for (const line of statements) parse_tdb_line(line, data)
+
+  const { elements, phases, functions, parameters } = data
+  if ([elements, phases, functions, parameters].every((items) => items.length === 0)) {
+    throw new Error(
+      `Not a TDB file: no ELEMENT, PHASE, FUNCTION or PARAMETER statements in ${content.length} chars`,
+    )
+  }
+
+  // Derive binary system from elements (excluding VA)
+  const real_elements = elements.map((el) => el.symbol).filter(is_real_element)
+  const binary_system: [string, string] | undefined =
+    real_elements.length === 2 ? [real_elements[0], real_elements[1]] : undefined
+
+  // Temperature range: min and max across all FUNCTION ranges (each range has max > min,
+  // so the pair can't invert); defaults when no function declares one
+  const ranges = functions.flatMap((func) => func.temperature_ranges)
+  const temperature_range: Vec2 =
+    ranges.length > 0
+      ? [Math.min(...ranges.map((rng) => rng.min)), Math.max(...ranges.map((rng) => rng.max))]
+      : [TDB_TEMP_DEFAULTS.min, TDB_TEMP_DEFAULTS.max_fallback]
+
+  return { data, binary_system, temperature_range }
 }
 
 // Parser configuration for TDB line handlers
@@ -185,12 +157,17 @@ const LINE_PARSERS: LineParser[] = [
     pattern: /CONSTITUENT\s+(?<phase_name>\S+)\s*:\s*(?<constituents>.+?)!/i,
     handler: (match, data) => {
       const phase_name = match[1]
-      const constituents = match[2].split(`:`).map((sub) =>
-        sub
-          .split(`,`)
-          .map((name) => name.trim())
-          .filter((name) => name.length > 0),
-      )
+      // `:AL,ZN : VA : !` -> [[AL, ZN], [VA]]; the trailing `:` terminates the last
+      // sublattice rather than opening an empty one
+      const constituents = match[2]
+        .split(`:`)
+        .map((sub) =>
+          sub
+            .split(`,`)
+            .map((name) => name.trim())
+            .filter((name) => name.length > 0),
+        )
+        .filter((sublattice) => sublattice.length > 0)
       const matched_phase = data.phases.find(
         (candidate_phase) => candidate_phase.name.toUpperCase() === phase_name.toUpperCase(),
       )
@@ -231,19 +208,23 @@ const LINE_PARSERS: LineParser[] = [
   },
 ]
 
-// Parse temperature ranges from FUNCTION body string
-function parse_temperature_ranges(body: string): { min: number; max: number; expr: string }[] {
-  const ranges: { min: number; max: number; expr: string }[] = []
-  for (const segment of body.split(/;\s*/)) {
-    const trimmed = segment.trim()
-    if (!trimmed) continue
-    const temp_match = /^(?<temp>[\d.E+-]+)\s+(?<expr>.+)/i.exec(trimmed)
-    if (temp_match) {
-      const next_temp = Number(temp_match[1])
-      const expr = temp_match[2].replace(/\s+[YN]\s*$/, ``).trim()
-      if (ranges.length > 0) ranges[ranges.length - 1].max = next_temp
-      ranges.push({ min: next_temp, max: TDB_TEMP_DEFAULTS.max_range, expr })
-    }
+// Parse temperature ranges from a FUNCTION body: `T_lo expr_1; T_1 Y expr_2; ...; T_hi N`.
+// Each `; T Y` closes the previous range at T and opens the next one; `; T N` closes the
+// last range at T and ends the function. A body without a final `N` leaves the last range
+// open to TDB_TEMP_DEFAULTS.max_range.
+function parse_temperature_ranges(body: string): TdbFunction[`temperature_ranges`] {
+  const ranges: TdbFunction[`temperature_ranges`] = []
+  for (const segment of body.split(`;`)) {
+    const temp_match = /^\s*(?<temp>[\d.E+-]+)\s*(?<flag>\b[YN]\b)?\s*(?<expr>.*)$/is.exec(
+      segment,
+    )
+    if (!temp_match?.groups) continue
+    const { temp, flag, expr } = temp_match.groups
+    const breakpoint = Number(temp)
+    if (!Number.isFinite(breakpoint)) continue
+    if (ranges.length > 0) ranges[ranges.length - 1].max = breakpoint
+    if (flag?.toUpperCase() === `N`) break
+    ranges.push({ min: breakpoint, max: TDB_TEMP_DEFAULTS.max_range, expr: expr.trim() })
   }
   // Filter out invalid ranges where max <= min (malformed data)
   return ranges.filter((range) => range.max > range.min)

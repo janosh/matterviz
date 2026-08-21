@@ -8,7 +8,7 @@ import {
   to_angle_bar_series,
   to_angle_density,
 } from '$lib/bond-angles'
-import type { BondAngleOptions, SplitMode } from '$lib/bond-angles'
+import type { BondAngleOptions, BondAngleSplitMode } from '$lib/bond-angles'
 import { element_by_symbol } from '$lib/element/data'
 import type { Vec3 } from '$lib/math'
 import type { ElementSymbol } from '$lib/element'
@@ -457,7 +457,7 @@ describe(`BondAnglePlot`, { timeout: 30_000 }, () => {
   })
 
   // by_triplet is the default and is covered above
-  test.each([`by_structure`, `none`] as SplitMode[])(
+  test.each([`by_structure`, `none`] as BondAngleSplitMode[])(
     `split_mode=%s renders without error`,
     async (split_mode) => {
       const root = await mount_plot({
@@ -531,7 +531,7 @@ describe(`to_angle_bar_series density weighting`, () => {
   const integral_of = (y_values: readonly number[]): number =>
     y_values.reduce((sum, value) => sum + value, 0) * BIN_WIDTH
 
-  test.each([`by_triplet`, `none`] as SplitMode[])(
+  test.each([`by_triplet`, `none`] as BondAngleSplitMode[])(
     `split_mode=%s makes the union of the plotted series integrate to 1`,
     (split_mode) => {
       const series = to_angle_bar_series(entries, split_mode, `density`)

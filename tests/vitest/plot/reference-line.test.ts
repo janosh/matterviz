@@ -10,7 +10,6 @@ import {
   normalize_point,
   normalize_value,
   reference_annotation_text_rect,
-  resolve_reference_annotation,
   resolve_line_endpoints,
   solve_reference_annotations,
   span_or,
@@ -33,15 +32,16 @@ describe(`normalize_value`, () => {
   })
 
   test.each([
-    ...[`invalid`, `Infinity`, Infinity, -Infinity, Number.NaN, new Date(`invalid`)].map(
-      (input) => [input, `Invalid RefLineValue`] as const,
-    ),
-    ...[``, ` `, `  \t  `].map((input) => [input, `empty string`] as const),
-  ])(`returns 0 for invalid value %j`, (input, warning) => {
-    const warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
-    expect(normalize_value(input)).toBe(0)
-    expect(warn_spy).toHaveBeenCalledWith(expect.stringContaining(warning))
-    warn_spy.mockRestore()
+    `invalid`,
+    `Infinity`,
+    Infinity,
+    -Infinity,
+    Number.NaN,
+    new Date(`invalid`),
+    ``,
+    ` `,
+  ])(`throws for invalid value %j`, (input) => {
+    expect(() => normalize_value(input)).toThrow(`Invalid reference line value`)
   })
 })
 
@@ -159,19 +159,26 @@ describe(`resolve_line_endpoints`, () => {
     )
   })
 
-  test(`segment with x_span and y_span clips to span bounds`, () => {
+  test.each([
     // 45° line clipped to [20,80] x [30,70]; y_span is tighter so dominates
-    const line: RefLine = {
-      type: `segment`,
-      p1: [-10, -10],
-      p2: [110, 110],
-      x_span: [20, 80],
-      y_span: [30, 70],
-    }
-    expect(resolve_line_endpoints(line, bounds, scales)).toEqual(
-      scaled_endpoints([30, 30, 70, 70]),
-    )
-  })
+    { x_span: [20, 80], y_span: [30, 70], expected: [30, 30, 70, 70] },
+    // spans wider than the plot never extend the clip rect past the visible bounds
+    { x_span: [-500, 500], y_span: [null, 1000], expected: [0, 0, 100, 100] },
+  ] as const)(
+    `segment with x_span $x_span and y_span $y_span`,
+    ({ x_span, y_span, expected }) => {
+      const line: RefLine = {
+        type: `segment`,
+        p1: [-10, -10],
+        p2: [110, 110],
+        x_span: [...x_span],
+        y_span: [...y_span],
+      }
+      expect(resolve_line_endpoints(line, bounds, scales)).toEqual(
+        scaled_endpoints([...expected]),
+      )
+    },
+  )
 
   // Lines outside bounds should return null
   test.each([
@@ -355,13 +362,20 @@ describe(`reference annotation candidates`, () => {
   )
 
   test(`moves an automatic annotation away from a colliding obstacle`, () => {
-    const annotation = { text: `Threshold` }
-    const preferred = create_reference_annotation_candidates(endpoints, annotation)[0]
-    const resolved = resolve_reference_annotation(endpoints, annotation, {
+    const candidates = create_reference_annotation_candidates(endpoints, { text: `Threshold` })
+    const [preferred] = candidates
+    const { candidate } = place_reference_annotation({
+      item: {
+        id: `auto`,
+        kind: `reference-annotation`,
+        footprint: { width: preferred.rect.width, height: preferred.rect.height },
+        candidates,
+      },
       obstacles: [{ x: preferred.x, y: preferred.y }],
+      exclusion_rects: [],
     })
-    expect(resolved.side).toBe(`below`)
-    expect(resolved.rect).not.toEqual(preferred.rect)
+    expect(candidate.side).toBe(`below`)
+    expect(candidate.rect).not.toEqual(preferred.rect)
   })
 
   test.each([
@@ -393,19 +407,20 @@ describe(`reference annotation candidates`, () => {
     expect(candidate).toBe(second_candidate)
   })
 
-  test(`keeps explicit position and side pinned through collisions`, () => {
-    const annotation = {
-      text: `Pinned`,
-      position: `end`,
-      side: `above`,
-    } as const
-    const preferred = create_reference_annotation_candidates(endpoints, annotation)[0]
-    const resolved = resolve_reference_annotation(endpoints, annotation, {
-      exclusion_rects: [preferred.rect],
-      obstacles: [{ x: preferred.x, y: preferred.y }],
-    })
-    expect(resolved).toEqual(preferred)
-  })
+  test.each([
+    [`position`, { position: `start` }],
+    [`side`, { side: `left` }],
+  ] as const)(
+    `an explicit %s pins the annotation to a single candidate`,
+    (_key, placement) => {
+      const candidates = create_reference_annotation_candidates(endpoints, {
+        text: `Pinned`,
+        ...placement,
+      })
+      expect(candidates).toHaveLength(1)
+      expect(candidates[0]).toMatchObject({ position: `end`, side: `above`, ...placement })
+    },
+  )
 
   test(`builds deterministic rotated candidates across positions and sides`, () => {
     const diagonal_endpoints: [number, number, number, number] = [0, 0, 100, 100]

@@ -64,6 +64,12 @@ test.each([
   expect(symbol_el()?.getAttribute(`stroke-width`)).toBe(expected_width)
 })
 
+test(`nucleus radius follows size`, () => {
+  mount_nucleus({ size: 80 })
+  const circle = document.querySelector(`circle`)
+  expect([circle?.getAttribute(`r`), circle?.getAttribute(`cx`)]).toEqual([`40`, `40`])
+})
+
 test(`omits labels for empty nucleus sectors`, () => {
   expect(texts_of(mount_nucleus({ neutrons: 0 }))).toEqual([`1 P`, `H`])
 })

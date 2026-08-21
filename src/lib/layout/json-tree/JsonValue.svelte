@@ -21,71 +21,55 @@
 
   const ctx = get_json_tree_context()
 
-  // Track if value just changed for animation
   let just_changed = $state(false)
   let change_timeout: ReturnType<typeof setTimeout> | undefined
+  // Click-to-copy is delayed while editable so a double-click can cancel it. Cleared on unmount
+  // only: the change-flash effect below re-runs on every value update and must not eat a
+  // pending copy.
+  let click_timer: ReturnType<typeof setTimeout> | undefined
+  $effect(() => () => clearTimeout(click_timer))
 
   // Expanded state for long strings
   let is_expanded = $state(false)
-  let max_len = $derived(ctx.settings.max_string_length ?? 200)
-  let is_long_string = $derived(value_type === `string` && (value as string).length > max_len)
-
-  // Check for changes on mount and when value changes
-  $effect(() => {
-    if (!ctx.settings.highlight_changes) return
-
-    const prev = ctx.prev_values.get(path)
-    if (prev !== undefined && !values_equal(prev, value)) {
-      just_changed = true
-      if (change_timeout) clearTimeout(change_timeout)
-      change_timeout = setTimeout(() => {
-        just_changed = false
-      }, 1000)
-    }
-    ctx.prev_values.set(path, value)
-
-    return () => {
-      if (change_timeout) clearTimeout(change_timeout)
-    }
-  })
-
-  // Trimmed string for URL/color detection (avoids using raw whitespace in href/style)
-  let trimmed_str = $derived(value_type === `string` ? (value as string).trim() : ``)
-
-  // Auto-detect URLs in string values
-  let url_detected = $derived(value_type === `string` && is_url(trimmed_str))
-
-  // Auto-detect CSS colors in string values
-  let color_detected = $derived(
-    value_type === `string` && is_css_color(trimmed_str) ? trimmed_str : null,
+  const is_long_string = $derived(
+    value_type === `string` && (value as string).length > ctx.settings.max_string_length,
   )
 
-  // Handle click to copy (delayed to avoid firing on double-click-to-edit)
-  let click_timer: ReturnType<typeof setTimeout> | undefined
-  $effect(() => () => {
-    if (click_timer) clearTimeout(click_timer)
+  // Flash when the value at this path differs from the last render
+  $effect(() => {
+    if (ctx.settings.highlight_changes) {
+      const prev = ctx.prev_values.get(path)
+      if (prev !== undefined && !values_equal(prev, value)) {
+        just_changed = true
+        clearTimeout(change_timeout)
+        change_timeout = setTimeout(() => (just_changed = false), 1000)
+      }
+      ctx.prev_values.set(path, value)
+    }
+    return () => clearTimeout(change_timeout)
   })
 
-  async function handle_click(event: MouseEvent) {
+  // Trimmed string for URL/color detection (avoids using raw whitespace in href/style);
+  // non-strings trim to `` which matches neither
+  const trimmed_str = $derived(value_type === `string` ? (value as string).trim() : ``)
+  const color_detected = $derived(is_css_color(trimmed_str) ? trimmed_str : null)
+
+  function handle_click(event: MouseEvent) {
     event.stopPropagation()
-    if (!ctx) return
-    // When editable, delay copy so double-click can cancel it
     if (ctx.settings.editable && ctx.onchange) {
-      if (click_timer) clearTimeout(click_timer)
+      clearTimeout(click_timer)
       const copy_pos = { clientX: event.clientX, clientY: event.clientY }
       click_timer = setTimeout(() => ctx.copy_value(path, value, copy_pos), 250)
-    } else {
-      await ctx.copy_value(path, value, event)
-    }
+    } else void ctx.copy_value(path, value, event)
   }
 
-  // Format display value - strings use custom truncation, others use format_preview
-  let display_value = $derived.by(() => {
-    if (value_type === `string`) {
-      const str = value as string
-      return is_long_string && !is_expanded ? `"${str.slice(0, max_len)}..."` : `"${str}"`
-    }
-    return format_preview(value)
+  // Strings use custom truncation, others use format_preview
+  const display_value = $derived.by(() => {
+    if (value_type !== `string`) return format_preview(value)
+    const str = value as string
+    return is_long_string && !is_expanded
+      ? `"${str.slice(0, ctx.settings.max_string_length)}..."`
+      : `"${str}"`
   })
 
   function toggle_expand(event: MouseEvent) {
@@ -101,8 +85,7 @@
   function start_edit(event: MouseEvent) {
     if (!ctx.settings.editable || !ctx.onchange) return
     event.stopPropagation()
-    // Cancel pending click-to-copy
-    if (click_timer) clearTimeout(click_timer)
+    clearTimeout(click_timer) // cancel pending click-to-copy
     // Pre-fill with raw value (strings without quotes)
     edit_text = value_type === `string` ? (value as string) : String(value)
     editing = true
@@ -113,9 +96,7 @@
     if (!editing) return
     editing = false
     const new_value = parse_edited_value(edit_text)
-    if (!values_equal(new_value, value)) {
-      ctx.onchange?.(path, new_value, value)
-    }
+    if (!values_equal(new_value, value)) ctx.onchange?.(path, new_value, value)
   }
 
   function handle_edit_keydown(event: KeyboardEvent) {
@@ -164,7 +145,7 @@
     {#if color_detected}
       <span class="color-swatch" style:background={color_detected}></span>
     {/if}
-    {#if url_detected}
+    {#if is_url(trimmed_str)}
       <a
         href={encodeURI(trimmed_str)}
         class="url-link"
@@ -263,11 +244,7 @@
     }
   }
   .expand-btn {
-    display: inline;
-    background: none;
-    border: none;
     color: var(--jt-expand-btn, light-dark(#0066cc, #4fc3f7));
-    cursor: pointer;
     font-size: 0.85em;
     padding: 0 2px;
     margin-left: 2px;

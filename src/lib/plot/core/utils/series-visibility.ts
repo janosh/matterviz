@@ -21,6 +21,7 @@ export const legend_mode_to_prop = (mode: LegendVisibilityMode): boolean | undef
 // Minimal series shape the visibility helpers need - generic over the concrete series
 // type (DataSeries, BarSeries, BoxPlotSeries, ...) so toggled arrays keep their type
 type VisSeries = {
+  id?: string | number
   label?: string | null
   unit?: string
   y_axis?: string
@@ -173,30 +174,83 @@ export function handle_legend_double_click<Series extends VisSeries>(
   }
 }
 
+// Stable identity a legend override is keyed by: id, else label, else position.
+const series_key = (srs: VisSeries, idx: number): string =>
+  srs.id != null ? `id:${srs.id}` : srs.label ? `label:${srs.label}` : `idx:${idx}`
+
+// A legend-made visibility choice plus the host's value at the time it was made, so
+// the override survives the host re-sending the same data but yields when the host
+// itself flips `visible`.
+type VisibilityOverride = { visible: boolean; parent_visible: boolean | undefined }
+
 // Bundle the three legend visibility handlers (click toggle, group toggle,
 // double-click isolate/restore) around a series accessor pair. Owns the
-// isolate/restore snapshot internally so components don't each carry it.
+// isolate/restore snapshot and the user's visibility overrides internally so
+// components don't each carry them.
+//
+// `get_series` returns the resolved series the chart renders, `set_series` writes the
+// raw (bindable) prop so bound parents see legend toggles. Components derive the
+// resolved series via `resolve(incoming)`: a series the user hid stays hidden when the
+// parent replaces the array (one-way props, anywidget re-sending traits, rebuilt
+// arrays) until the parent itself changes that series' `visible`.
 export function create_legend_visibility<Series extends VisSeries>(
   get_series: () => Series[],
   set_series: (series: Series[]) => void,
   get_axis: SeriesAxisAccessor<Series> = (srs) => srs.y_axis,
 ): {
+  resolve: (incoming: Series[]) => Series[]
   on_toggle: (series_idx: number) => void
   on_group_toggle: (group_name: string, series_indices: number[]) => void
   on_double_click: (series_idx: number) => void
 } {
   let prev_visibility: SeriesVisibilitySnapshot | null = null
+  // Plain Map on purpose: only read inside the component's `$derived` (which already
+  // re-runs on every series change) and pruned there too, which a SvelteMap would
+  // reject as an unsafe mutation.
+  const overrides = new Map<string, VisibilityOverride>()
+
+  const commit = (next: Series[]) => {
+    const prev = get_series()
+    next.forEach((srs, idx) => {
+      // Charts tolerate nullish entries (skipped when rendering)
+      if (!srs) return
+      const next_visible = srs.visible ?? true
+      if (next_visible === (prev[idx]?.visible ?? true)) return
+      const key = series_key(srs, idx)
+      // Without an override the rendered value is the host's value
+      const existing = overrides.get(key)
+      const parent_visible = existing ? existing.parent_visible : prev[idx]?.visible
+      if (next_visible === (parent_visible ?? true)) overrides.delete(key)
+      else overrides.set(key, { visible: next_visible, parent_visible })
+    })
+    set_series(next)
+  }
+
   return {
+    resolve: (incoming) =>
+      incoming.map((srs, idx) => {
+        if (!srs) return srs
+        const key = series_key(srs, idx)
+        const override = overrides.get(key)
+        if (!override) return srs
+        const { visible, parent_visible } = override
+        // Neither our own write-back nor the value the user overrode: the host changed it
+        if (srs.visible !== visible && srs.visible !== parent_visible) {
+          overrides.delete(key)
+          return srs
+        }
+        return srs.visible === visible ? srs : { ...srs, visible }
+      }),
     // Raw host series only carry user-explicit axes. Automatic axes are resolved
     // after a legend toggle, so treating missing axes as y1 would hide a series
     // that can move to y2.
     on_toggle: (series_idx) =>
-      set_series(toggle_series_visibility(get_series(), series_idx, get_axis)),
+      commit(toggle_series_visibility(get_series(), series_idx, get_axis)),
     on_group_toggle: (_group_name, series_indices) =>
-      set_series(toggle_group_visibility(get_series(), series_indices)),
+      commit(toggle_group_visibility(get_series(), series_indices)),
     on_double_click: (series_idx) => {
       const result = handle_legend_double_click(get_series(), series_idx, prev_visibility)
-      set_series(result.series)
+      commit(result.series)
       prev_visibility = result.prev_visibility
     },
   }

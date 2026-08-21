@@ -349,7 +349,7 @@
             "categorical"
           ]
         },
-        "matterviz.structure.show_gizmo": {
+        "matterviz.structure.gizmo": {
           "type": "boolean",
           "default": true,
           "description": "Show orientation gizmo in the corner of structure viewer"
@@ -537,7 +537,14 @@
         "matterviz.structure.vector_color_mode": {
           "type": "string",
           "default": "auto",
-          "description": "How to color arrows. auto = element for force, spin-direction for magmom/spin. element = majority species color. spin_direction = red/blue by z-component. magnitude = continuous color scale by vector length. uniform = single color (vector_color)."
+          "description": "How to color arrows. auto = element for force, spin-direction for magmom/spin. element = majority species color. spin_direction = red/blue by z-component. magnitude = continuous color scale by vector length. uniform = single color (vector_color).",
+          "enum": [
+            "auto",
+            "element",
+            "spin_direction",
+            "magnitude",
+            "uniform"
+          ]
         },
         "matterviz.structure.vector_color_scale": {
           "type": "string",
@@ -914,24 +921,12 @@
           "default": true,
           "description": "Allow drag-and-drop of trajectory files"
         },
-        "matterviz.trajectory.bin_file_threshold": {
-          "type": "number",
-          "default": 50000000,
-          "description": "File size threshold for binary loading (bytes)",
-          "minimum": 1000000,
-          "maximum": 500000000
-        },
-        "matterviz.trajectory.text_file_threshold": {
+        "matterviz.trajectory.index_above_bytes": {
           "type": "number",
           "default": 25000000,
-          "description": "File size threshold for text loading (bytes)",
-          "minimum": 500000,
-          "maximum": 250000000
-        },
-        "matterviz.trajectory.use_indexing": {
-          "type": "boolean",
-          "default": false,
-          "description": "Use frame indexing for large trajectories"
+          "description": "Trajectory files (XYZ, EXTXYZ, ASE .traj) larger than this many bytes are parsed in a Web Worker and decoded frame by frame on demand instead of all at once",
+          "minimum": 1000000,
+          "maximum": 2000000000
         },
         "matterviz.trajectory.show_parsing_progress": {
           "type": "boolean",
@@ -955,6 +950,16 @@
             "auto",
             "always",
             "never"
+          ]
+        },
+        "matterviz.histogram.normalize": {
+          "type": "string",
+          "default": "count",
+          "description": "Bar heights: raw counts, fraction of samples in the plotted range, or probability density (integrates to 1)",
+          "enum": [
+            "count",
+            "probability",
+            "density"
           ]
         },
         "matterviz.histogram.bin_count": {
@@ -995,31 +1000,6 @@
           "minimum": 0,
           "maximum": 1
         },
-        "matterviz.histogram.display.x_grid": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show X-axis grid lines"
-        },
-        "matterviz.histogram.display.y_grid": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show Y-axis grid lines"
-        },
-        "matterviz.histogram.display.y2_grid": {
-          "type": "boolean",
-          "default": false,
-          "description": "Show Y2-axis grid lines"
-        },
-        "matterviz.histogram.display.x_zero_line": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show X-axis zero reference line"
-        },
-        "matterviz.histogram.display.y_zero_line": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show Y-axis zero reference line"
-        },
         "matterviz.bar.bar.color": {
           "type": "string",
           "default": "#4A9EFF",
@@ -1050,31 +1030,6 @@
           "type": "string",
           "default": "#4A9EFF",
           "description": "Bar plot line color"
-        },
-        "matterviz.bar.display.x_grid": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show X-axis grid lines"
-        },
-        "matterviz.bar.display.y_grid": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show Y-axis grid lines"
-        },
-        "matterviz.bar.display.y2_grid": {
-          "type": "boolean",
-          "default": false,
-          "description": "Show Y2-axis grid lines"
-        },
-        "matterviz.bar.display.x_zero_line": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show X-axis zero reference line"
-        },
-        "matterviz.bar.display.y_zero_line": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show Y-axis zero reference line"
         },
         "matterviz.box.whisker_mode": {
           "type": "string",
@@ -1243,31 +1198,6 @@
           "description": "Violin outline width",
           "minimum": 0,
           "maximum": 5
-        },
-        "matterviz.box.display.x_grid": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show X-axis grid lines"
-        },
-        "matterviz.box.display.y_grid": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show Y-axis grid lines"
-        },
-        "matterviz.box.display.y2_grid": {
-          "type": "boolean",
-          "default": false,
-          "description": "Show Y2-axis grid lines"
-        },
-        "matterviz.box.display.x_zero_line": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show X-axis zero reference line"
-        },
-        "matterviz.box.display.y_zero_line": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show Y-axis zero reference line"
         },
         "matterviz.sankey.orientation": {
           "type": "string",
@@ -1481,29 +1411,6 @@
           "minimum": 0,
           "maximum": 10
         },
-        "matterviz.composition.display_mode": {
-          "type": "string",
-          "default": "pie",
-          "description": "Display mode for composition data",
-          "enum": [
-            "pie",
-            "bubble",
-            "bar"
-          ]
-        },
-        "matterviz.composition.color_scheme": {
-          "type": "string",
-          "default": "Vesta",
-          "description": "Color scheme for composition visualization",
-          "enum": [
-            "Vesta",
-            "Jmol",
-            "Alloy",
-            "Pastel",
-            "Muted",
-            "Dark Mode"
-          ]
-        },
         "matterviz.scatter.symbol_type": {
           "type": "string",
           "default": "Circle",
@@ -1543,31 +1450,6 @@
           "type": "boolean",
           "default": true,
           "description": "Show connecting lines in scatter plots"
-        },
-        "matterviz.scatter.display.x_grid": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show X-axis grid lines"
-        },
-        "matterviz.scatter.display.y_grid": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show Y-axis grid lines"
-        },
-        "matterviz.scatter.display.y2_grid": {
-          "type": "boolean",
-          "default": false,
-          "description": "Show Y2-axis grid lines"
-        },
-        "matterviz.scatter.display.x_zero_line": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show X-axis zero reference line"
-        },
-        "matterviz.scatter.display.y_zero_line": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show Y-axis zero reference line"
         },
         "matterviz.scatter.point.size": {
           "type": "number",
@@ -1641,12 +1523,27 @@
           "default": true,
           "description": "Show axis labels in plots"
         },
-        "matterviz.plot.show_x_zero_line": {
+        "matterviz.plot.display.x_grid": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show X-axis grid lines"
+        },
+        "matterviz.plot.display.y_grid": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show Y-axis grid lines"
+        },
+        "matterviz.plot.display.y2_grid": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show Y2-axis grid lines"
+        },
+        "matterviz.plot.display.x_zero_line": {
           "type": "boolean",
           "default": true,
           "description": "Show X-axis zero reference line"
         },
-        "matterviz.plot.show_y_zero_line": {
+        "matterviz.plot.display.y_zero_line": {
           "type": "boolean",
           "default": true,
           "description": "Show Y-axis zero reference line"
@@ -1670,24 +1567,6 @@
           "type": "string",
           "default": "",
           "description": "Number format for secondary Y-axis ticks (D3 format specifier)"
-        },
-        "matterviz.plot.x_scale_type": {
-          "type": "string",
-          "default": "linear",
-          "description": "Scale type for X-axis",
-          "enum": [
-            "linear",
-            "log"
-          ]
-        },
-        "matterviz.plot.y_scale_type": {
-          "type": "string",
-          "default": "linear",
-          "description": "Scale type for Y-axis",
-          "enum": [
-            "linear",
-            "log"
-          ]
         },
         "matterviz.plot.x_ticks": {
           "type": "number",

@@ -7,18 +7,10 @@ import {
 } from '$lib/constants'
 import { SUBSCRIPT_MAP } from '$lib/labels'
 import { is_plain_object } from '$lib/utils'
-import { euclidean_dist, is_square_matrix } from '$lib/math'
+import { euclidean_dist } from '$lib/math'
 import type { Matrix3x3, Vec2, Vec3 } from '$lib/math'
-import { detect_shared_range_change } from '$lib/plot/core/shared-axes'
 import type * as types from './types'
 import type { RibbonConfig } from './types'
-
-export {
-  axis_with_range,
-  is_valid_range,
-  ranges_equal,
-  sync_axis_range,
-} from '$lib/plot/core/shared-axes'
 
 const is_subscript_key = (key: string): key is keyof typeof SUBSCRIPT_MAP =>
   key in SUBSCRIPT_MAP
@@ -40,39 +32,23 @@ export const phonon_explorer_views = (
   `modes`,
 ]
 
-// Detect which plot triggered a zoom change and return the new synced range.
-// Returns null to reset to shared range, undefined for no change, or Vec2 for new zoom.
-export const detect_zoom_change = (
-  bands_range: unknown,
-  dos_range: unknown,
-  shared_range: Vec2,
-  current_synced: Vec2 | null,
-  dos_enabled = true,
-): Vec2 | null | undefined =>
-  detect_shared_range_change(
-    dos_enabled ? [bands_range, dos_range] : [bands_range],
-    shared_range,
-    current_synced,
-  )
-
 // Phonon frequency unit conversions, derived from the shared CODATA constants
 const THz_TO_EV = (PLANCK_J_S * 1e12) / ELEMENTARY_CHARGE_C
-const THz_TO_MEV = THz_TO_EV * 1000
-const THz_TO_HA = THz_TO_EV / HARTREE_TO_EV
+const FREQUENCY_UNIT_PER_THZ: Record<types.FrequencyUnit, number> = {
+  THz: 1,
+  eV: THz_TO_EV,
+  meV: THz_TO_EV * 1000,
+  Ha: THz_TO_EV / HARTREE_TO_EV,
+  'cm-1': THZ_TO_INVERSE_CM,
+}
 
 // Band structure constants
 export const IMAGINARY_MODE_NOISE_THRESHOLD = 0.005 // Clamp negatives < 0.5% as noise
 
-// Convert symmetry point symbols to pretty-printed versions.
-// Handles Greek letters (both plain and LaTeX backslash-prefixed) and subscripts.
+// Pretty-print a symmetry point symbol: Greek names (plain GAMMA or LaTeX \Gamma) become
+// Greek letters and trailing digits become subscripts (S_0 and S0 both give S₀)
 export function pretty_sym_point(symbol: string): string {
   if (!symbol) return ``
-
-  // Remove underscores so S_0 and S0 are treated alike
-  // Replace common symmetry point names with Greek letters
-  // Handle both plain names (GAMMA) and LaTeX notation (\Gamma) from pymatgen
-  // Handle subscripts: convert S0 to S₀, K1 to K₁, Γ1 to Γ₁, etc.
-  // Use \p{L} to match any Unicode letter (not just ASCII A-Z)
   return symbol
     .replaceAll('_', ``)
     .replaceAll(/\\?GAMMA/gi, `Γ`)
@@ -90,53 +66,24 @@ export function pretty_sym_point(symbol: string): string {
     )
 }
 
-// Create segment key from start and end labels
-export const get_segment_key = (start_label?: string, end_label?: string) =>
-  `${start_label ?? `null`}_${end_label ?? `null`}`
-
-// Labels identify the same path across structures. Occurrence indices distinguish repeated
-// labeled paths and identify unlabeled paths independently of producer-specific branch names.
-export const get_branch_segment_key = (
-  band_struct: types.BaseBandStructure,
-  branch: types.Branch,
-): string => {
-  const start_label = band_struct.qpoints[branch.start_index]?.label
-  const end_label = band_struct.qpoints[branch.end_index]?.label
-  const branch_idx = band_struct.branches.indexOf(branch)
-  if (!start_label && !end_label) {
-    return `branch:${branch_idx === -1 ? branch.name : branch_idx}`
-  }
-
-  const segment_key = get_segment_key(start_label ?? undefined, end_label ?? undefined)
-  if (branch_idx <= 0) return segment_key
-  const occurrence_idx = band_struct.branches
-    .slice(0, branch_idx)
-    .filter((previous_branch) => {
-      const previous_start = band_struct.qpoints[previous_branch.start_index]?.label
-      const previous_end = band_struct.qpoints[previous_branch.end_index]?.label
-      return (
-        get_segment_key(previous_start ?? undefined, previous_end ?? undefined) === segment_key
-      )
-    }).length
-  return occurrence_idx === 0 ? segment_key : `${segment_key}#${occurrence_idx + 1}`
+// One key per branch, aligned with `bs.branches`. Labels identify the same path across
+// structures; a repeated labeled pair gets `#n` and unlabeled branches are keyed by
+// position, so producer-specific branch names never matter.
+export function branch_segment_keys(band_struct: types.BaseBandStructure): string[] {
+  const seen = new Map<string, number>()
+  return band_struct.branches.map((branch, branch_idx) => {
+    const start_label = band_struct.qpoints[branch.start_index]?.label
+    const end_label = band_struct.qpoints[branch.end_index]?.label
+    if (!start_label && !end_label) return `branch:${branch_idx}`
+    const key = `${start_label ?? `null`}_${end_label ?? `null`}`
+    const occurrence = (seen.get(key) ?? 0) + 1
+    seen.set(key, occurrence)
+    return occurrence === 1 ? key : `${key}#${occurrence}`
+  })
 }
 
 export const is_discontinuity_branch = (branch: types.Branch): boolean =>
   branch.is_discontinuity ?? branch.end_index - branch.start_index === 1
-
-// Get ordered segment keys from a band structure, preserving physical path order.
-export const get_ordered_segments = (
-  band_struct: types.BaseBandStructure | null,
-  segments: Set<string>,
-) => {
-  if (!band_struct) return Array.from(segments)
-
-  const ordered = band_struct.branches.map((branch) =>
-    get_branch_segment_key(band_struct, branch),
-  )
-  const remaining = Array.from(segments).filter((seg) => !ordered.includes(seg))
-  return [...ordered, ...remaining]
-}
 
 // Scale segment distances to a target x-axis range [x_start, x_end].
 // Used by both band line series and fat band ribbons for consistent x-axis positioning.
@@ -168,67 +115,20 @@ export function scale_segment_distances(
 export function get_ribbon_config(
   ribbon_config: RibbonConfig | Record<string, RibbonConfig>,
   label: string,
-): RibbonConfig {
-  const defaults: RibbonConfig = { opacity: 0.3, max_width: 6, scale: 1 }
+): { color?: string; opacity: number; max_width: number; scale: number } {
   const config_record = ribbon_config as Record<string, unknown>
-
-  // Check for primitive config values (not objects) to distinguish single vs per-structure config
+  // Primitive-valued keys mean a single global config; otherwise look the label up
   const has_primitive = [`opacity`, `max_width`, `scale`, `color`].some((key) => {
     const value = config_record[key]
     return value !== undefined && typeof value !== `object`
   })
-
-  if (has_primitive) {
-    // Single global config with primitive values - apply to all structures
-    return { ...defaults, ...ribbon_config }
-  }
-
-  // Otherwise, treat as Record<string, RibbonConfig> and look up by label
-  // Empty label skips lookup and uses defaults only
   const label_config = label ? config_record[label] : undefined
-  return {
-    ...defaults,
-    ...(label_config && typeof label_config === `object` ? label_config : {}),
-  }
-}
-
-// Extract tick positions and labels for a band structure plot.
-export function get_band_xaxis_ticks(
-  band_struct: types.BaseBandStructure,
-  branches: string[] | Set<string> = [],
-): [number[], string[]] {
-  const ticks_x_pos: number[] = []
-  const tick_labels: string[] = []
-  let prev_label = band_struct.qpoints[0]?.label ?? null
-  let prev_branch = band_struct.branches[0]?.name || null
-
-  // Convert branches to Set for consistent handling
-  const branches_set = Array.isArray(branches) ? new Set(branches) : branches
-
-  for (let idx = 0; idx < band_struct.qpoints.length; idx++) {
-    const point = band_struct.qpoints[idx]
-    if (point.label === null) continue
-
-    // Find which branch this point belongs to
-    const branch_names = band_struct.branches
-      .filter((branch) => branch.start_index <= idx && idx <= branch.end_index)
-      .map((branch) => branch.name)
-    const this_branch = branch_names[0] || null
-
-    if (point.label !== prev_label && prev_branch !== this_branch) {
-      // Branch transition - combine labels
-      tick_labels[tick_labels.length - 1] = `${prev_label ?? ``}|${point.label}`
-      ticks_x_pos[ticks_x_pos.length - 1] = band_struct.distance[idx]
-    } else if (branches_set.size === 0 || (this_branch && branches_set.has(this_branch))) {
-      tick_labels.push(point.label)
-      ticks_x_pos.push(band_struct.distance[idx])
-    }
-
-    prev_label = point.label
-    prev_branch = this_branch
-  }
-
-  return [ticks_x_pos, tick_labels.map(pretty_sym_point)]
+  const source: RibbonConfig = has_primitive
+    ? ribbon_config
+    : is_plain_object(label_config)
+      ? label_config
+      : {}
+  return { opacity: 0.3, max_width: 6, scale: 1, ...source }
 }
 
 // Convert frequencies from THz to specified units.
@@ -236,21 +136,12 @@ export function convert_frequencies(
   frequencies: number[],
   unit: types.FrequencyUnit = `THz`,
 ): number[] {
-  const conversion_factors: Record<types.FrequencyUnit, number> = {
-    THz: 1,
-    eV: THz_TO_EV,
-    meV: THz_TO_MEV,
-    Ha: THz_TO_HA,
-    'cm-1': THZ_TO_INVERSE_CM,
-  }
-
-  const factor = conversion_factors[unit]
+  const factor = FREQUENCY_UNIT_PER_THZ[unit]
   if (!factor) {
-    const valid_units = Object.keys(conversion_factors).join(`, `)
+    const valid_units = Object.keys(FREQUENCY_UNIT_PER_THZ).join(`, `)
     throw new Error(`Invalid unit: ${unit}. Must be one of ${valid_units}`)
   }
-
-  return frequencies.map((freq) => freq * factor)
+  return factor === 1 ? frequencies : frequencies.map((freq) => freq * factor)
 }
 
 // Normalize DOS densities according to specified mode.
@@ -277,42 +168,11 @@ export function normalize_densities(
   return densities
 }
 
-// Simple LRU cache for Gaussian smearing results
-// Key: hash of (frequencies, densities, sigma), Value: smeared densities
-const SMEARING_CACHE_MAX_SIZE = 10
-const smearing_cache = new Map<string, number[]>()
-
-// FNV-1a hash for number arrays (fast, good distribution, O(n))
-function fnv1a_hash(arr: number[]): number {
-  let hash = 2166136261 // FNV offset basis
-  for (const val of arr) {
-    // Convert float to int32 bits for consistent hashing
-    const bits = new Float64Array([val])
-    const int_view = new Uint32Array(bits.buffer)
-    hash ^= int_view[0]
-    hash = Math.imul(hash, 16777619) // FNV prime
-    hash ^= int_view[1]
-    hash = Math.imul(hash, 16777619)
-  }
-  // oxlint-disable-next-line eslint-plugin-unicorn/prefer-math-trunc -- `>>> 0` is unsigned 32-bit coercion, not truncation
-  return hash >>> 0 // Ensure unsigned
-}
-
-// Generate cache key using FNV-1a hash over full arrays (O(n), low collision risk)
-function generate_smearing_cache_key(
-  freqs_or_energies: number[],
-  densities: number[],
-  sigma: number,
-): string {
-  const len = freqs_or_energies.length
-  if (len === 0) return `0:${sigma.toFixed(6)}:0:0`
-  return `${len}:${sigma.toFixed(6)}:${fnv1a_hash(freqs_or_energies).toString(16)}:${fnv1a_hash(
-    densities,
-  ).toString(16)}`
-}
-
-// Core Gaussian smearing computation (unmemoized)
-function apply_gaussian_smearing_core(
+// Gaussian smearing of DOS densities, truncated at ±4σ (contribution < 0.01%) and
+// renormalized to preserve the sum. On an ascending grid — every DOS/band grid — the ±cutoff
+// window is a contiguous index range that only moves forward, so two pointers bound the
+// inner loop and the cost is O(n·w) rather than O(n²). Anything else scans all points.
+export function apply_gaussian_smearing(
   freqs_or_energies: number[],
   densities: number[],
   sigma: number,
@@ -322,12 +182,9 @@ function apply_gaussian_smearing_core(
 
   const n_pts = freqs_or_energies.length
   const smeared = Array(densities.length).fill(0)
-  const cutoff = 4 * sigma // Truncate Gaussian at ±4σ (contribution < 0.01%)
+  const cutoff = 4 * sigma
   const inv_two_sigma_sq = 1 / (2 * sigma ** 2)
 
-  // On an ascending grid — every DOS/band grid — the ±cutoff window is a contiguous index
-  // range that only moves forward, so two pointers bound the inner loop, making this the
-  // O(n·w) the doc claims rather than O(n²). Anything else falls back to scanning all points.
   let ascending = true
   for (let idx = 1; idx < n_pts; idx++) {
     if (freqs_or_energies[idx] < freqs_or_energies[idx - 1]) {
@@ -352,60 +209,17 @@ function apply_gaussian_smearing_core(
     let sum = 0
     for (let jdx = window_start; jdx < window_end; jdx++) {
       const delta = energy - freqs_or_energies[jdx]
-      // Still guard per point: the bounds are exact for ascending grids but the fallback
-      // range is the whole array. Same terms, same order, so the sum is unchanged.
+      // Exact bounds on ascending grids; the fallback range is the whole array
       if (Math.abs(delta) > cutoff) continue
-
       sum += densities[jdx] * Math.exp(-(delta ** 2) * inv_two_sigma_sq)
     }
     smeared[idx] = sum
   }
 
-  // Normalize to preserve integral
   const smeared_sum = smeared.reduce((acc, dens) => acc + dens, 0)
   if (smeared_sum === 0) return densities
   const normalization = orig_sum / smeared_sum
   return smeared.map((dens) => dens * normalization)
-}
-
-// Apply Gaussian smearing to DOS densities with memoization.
-// Uses truncated Gaussian (±4σ) for O(n·w) complexity instead of O(n²).
-// Results are cached using an LRU cache to avoid recomputation on reactive updates.
-export function apply_gaussian_smearing(
-  freqs_or_energies: number[],
-  densities: number[],
-  sigma: number,
-): number[] {
-  // Fast path: no smearing needed
-  if (sigma <= 0) return densities
-
-  const cache_key = generate_smearing_cache_key(freqs_or_energies, densities, sigma)
-
-  // Check cache
-  const cached = smearing_cache.get(cache_key)
-  if (cached) {
-    // Move to end (LRU behavior: most recently used last)
-    smearing_cache.delete(cache_key)
-    smearing_cache.set(cache_key, cached)
-    return cached
-  }
-
-  // Compute and cache
-  const result = apply_gaussian_smearing_core(freqs_or_energies, densities, sigma)
-
-  // Evict oldest entry if cache is full (LRU: first entry is oldest)
-  if (smearing_cache.size >= SMEARING_CACHE_MAX_SIZE) {
-    const oldest_key = smearing_cache.keys().next().value
-    if (oldest_key !== undefined) smearing_cache.delete(oldest_key)
-  }
-
-  smearing_cache.set(cache_key, result)
-  return result
-}
-
-// Clear the smearing cache (useful for testing or memory management)
-export function clear_smearing_cache(): void {
-  smearing_cache.clear()
 }
 
 // Type guards for pymatgen qpoint formats
@@ -450,10 +264,6 @@ const parse_qpoint = (qpt: unknown, label_entries: [string, Vec3][]): types.QPoi
   return { label, frac_coords }
 }
 
-// Inverse conversion factors (derived from THz_TO_* for consistency)
-const EV_TO_THZ = 1 / THz_TO_EV
-const CM_TO_THZ = 1 / THZ_TO_INVERSE_CM
-
 // Spin key constants for pymatgen spin-polarized data
 const SPIN_UP_KEYS = [`1`, `Spin.up`]
 const SPIN_DOWN_KEYS = [`-1`, `Spin.down`]
@@ -470,6 +280,17 @@ export function extract_spin_channels<T>(data: unknown): { up: T; down: T | null
   // No spin-up key: do not fall back to Object.keys()[0] (could be spin-down)
   if (up_key === undefined) return null
   return { up: record[up_key], down: down_key !== undefined ? record[down_key] : null }
+}
+
+const parse_frequency_unit = (unit: unknown): types.FrequencyUnit | null => {
+  if (typeof unit !== `string`) return null
+  const normalized = unit.trim().toLowerCase()
+  if (normalized === `thz`) return `THz`
+  if (normalized === `ev`) return `eV`
+  if (normalized === `mev`) return `meV`
+  if (normalized === `ha` || normalized === `hartree`) return `Ha`
+  if ([`cm-1`, `cm^-1`, `cm⁻¹`].includes(normalized)) return `cm-1`
+  return null
 }
 
 // Convert pymatgen PhononBandStructureSymmLine or BandStructure to matterviz format
@@ -500,10 +321,12 @@ function convert_pymatgen_band_structure(
   }
 
   const labels_dict = pmg.labels_dict as Record<string, Vec3> | undefined
-  const lattice_rec = pmg.lattice_rec as { matrix?: Matrix3x3 } | undefined
-  // Determine unit: cm-1 if frequencies_cm present, else check explicit unit or default to THz
-  const unit =
-    (pmg.unit as string | undefined)?.toLowerCase() ?? (has_frequencies_cm ? `cm-1` : `thz`)
+  // Bands are stored in THz. Electronic pymatgen objects carry no `unit`, so their eV values
+  // pass through untouched; an unrecognised declared unit is a malformed input, not THz.
+  // `unit: null` counts as undeclared, as it does for normalize_dos.
+  const source_unit =
+    pmg.unit == null ? (has_frequencies_cm ? `cm-1` : `THz`) : parse_frequency_unit(pmg.unit)
+  if (!source_unit) return null
 
   if (
     !Array.isArray(raw_qpts) ||
@@ -523,13 +346,11 @@ function convert_pymatgen_band_structure(
   const steps = qpoints
     .slice(1)
     .map((qpoint, idx) => euclidean_dist(qpoints[idx].frac_coords, qpoint.frac_coords))
-  const sorted = steps.slice().toSorted((a, b) => a - b)
+  const sorted = steps.toSorted((a, b) => a - b)
   const threshold = (sorted[Math.floor(sorted.length / 2)] ?? 0) * 5
-  const disc_set = new Set(
-    steps
-      .map((step, idx) => (step > threshold ? idx + 1 : -1))
-      .filter((disc_idx) => disc_idx >= 0),
-  )
+  // Ascending indices of the q-points that start a new segment after a path jump
+  const disc_indices = steps.flatMap((step, idx) => (step > threshold ? [idx + 1] : []))
+  const disc_set = new Set(disc_indices)
 
   // Cumulative distance (skip discontinuities). Spreading the accumulator per step would
   // copy the whole array n times, i.e. O(n²) for what is one pass.
@@ -538,61 +359,33 @@ function convert_pymatgen_band_structure(
     distance.push(disc_set.has(idx + 1) ? distance[idx] : distance[idx] + step)
   }
 
-  // Use pymatgen's branches if available - they correctly handle discontinuities
-  // Otherwise, infer branches from discontinuities (robust fallback covering all qpoints)
+  // Use pymatgen's branches if valid; otherwise infer one segment per discontinuity-free run
   const pmg_branches = pmg.branches as types.Branch[] | undefined
-  let branches: types.Branch[] = []
-
-  if (Array.isArray(pmg_branches) && pmg_branches.length > 0) {
-    // Validate and use pymatgen branches directly
-    branches = pmg_branches.filter(
-      (branch) =>
-        typeof branch.start_index === `number` &&
-        typeof branch.end_index === `number` &&
-        branch.start_index >= 0 &&
-        branch.end_index < qpoints.length &&
-        branch.start_index <= branch.end_index,
-    )
-  }
-
-  // Fallback: infer branches from discontinuities when none provided or all invalid
+  let branches = (Array.isArray(pmg_branches) ? pmg_branches : []).filter(
+    (branch) =>
+      typeof branch.start_index === `number` &&
+      typeof branch.end_index === `number` &&
+      branch.start_index >= 0 &&
+      branch.end_index < qpoints.length &&
+      branch.start_index <= branch.end_index,
+  )
   if (branches.length === 0) {
     console.warn(
       `Band structure missing 'branches' field - inferring from path discontinuities`,
     )
-    // Discontinuity indices mark points where the path jumps (disc before that index)
-    // Create continuous segments between discontinuities
-    const disc_indices = [...disc_set].toSorted((a, b) => a - b)
-    // Segment boundaries: [0, first_disc), [first_disc, second_disc), ..., [last_disc, end]
     const segment_starts = [0, ...disc_indices]
-    const segment_ends = [...disc_indices.map((idx) => idx - 1), qpoints.length - 1]
-
-    branches = segment_starts
-      .map((start, idx) => {
-        const end = segment_ends[idx]
-        const start_label = qpoints[start]?.label ?? `?`
-        const end_label = qpoints[end]?.label ?? `?`
-        return {
-          start_index: start,
-          end_index: end,
-          name: `${start_label}-${end_label}`,
-        }
-      })
-      .filter((branch) => branch.start_index <= branch.end_index)
+    branches = segment_starts.map((start_index, idx) => {
+      const end_index = (segment_starts[idx + 1] ?? qpoints.length) - 1
+      const start_label = qpoints[start_index].label ?? `?`
+      const end_label = qpoints[end_index].label ?? `?`
+      return { start_index, end_index, name: `${start_label}-${end_label}` }
+    })
   }
 
-  if (branches.length === 0) {
-    branches.push({ start_index: 0, end_index: qpoints.length - 1, name: `path` })
-  }
+  const thz_per_source_unit = 1 / FREQUENCY_UNIT_PER_THZ[source_unit]
+  const to_thz = (band: number[]): number[] =>
+    thz_per_source_unit === 1 ? band : band.map((val) => val * thz_per_source_unit)
 
-  // Convert bands to THz based on input unit
-  const convert_to_thz = (val: number): number => {
-    if (unit === `ev`) return val * EV_TO_THZ
-    if (unit === `cm-1`) return val * CM_TO_THZ
-    return val // THz (default) - no conversion
-  }
-
-  const converted_bands = raw_bands.map((band) => band.map(convert_to_thz))
   const valid_spin_down_bands =
     Array.isArray(raw_spin_down_bands) &&
     raw_spin_down_bands.length === raw_bands.length &&
@@ -601,25 +394,15 @@ function convert_pymatgen_band_structure(
     )
       ? raw_spin_down_bands
       : null
-  const converted_spin_down_bands = valid_spin_down_bands?.map((band) =>
-    band.map(convert_to_thz),
-  )
 
   return {
     qpoints,
     branches,
     distance,
-    bands: converted_bands,
-    spin_down_bands: converted_spin_down_bands,
+    bands: raw_bands.map(to_thz),
+    spin_down_bands: valid_spin_down_bands?.map(to_thz),
     nb_bands: raw_bands.length,
     labels_dict: labels_dict ?? {},
-    recip_lattice: {
-      matrix: lattice_rec?.matrix ?? [
-        [1, 0, 0],
-        [0, 1, 0],
-        [0, 0, 1],
-      ],
-    },
   }
 }
 
@@ -647,6 +430,8 @@ export function normalize_band_structure(
   // Validate array lengths and branch indices
   const n_qpts = qpoints.length
   if (
+    n_qpts === 0 ||
+    bands.length === 0 ||
     distance.length !== n_qpts ||
     bands.some((band) => !Array.isArray(band) || band.length !== n_qpts) ||
     branches.some(
@@ -660,34 +445,32 @@ export function normalize_band_structure(
   )
     return null
 
-  // Fill required defaults (recip_lattice/labels_dict/nb_bands) not covered above so the cast below is sound
-  const recip_lattice = band_struct.recip_lattice as { matrix?: unknown } | undefined
-  const normalized = {
+  // Fill the defaults (labels_dict/nb_bands) not covered above so the cast below is sound
+  return {
     ...band_struct,
     nb_bands: typeof band_struct.nb_bands === `number` ? band_struct.nb_bands : bands.length,
     labels_dict: band_struct.labels_dict ?? {},
-    recip_lattice: is_square_matrix(recip_lattice?.matrix, 3)
-      ? recip_lattice
-      : {
-          matrix: [
-            [1, 0, 0],
-            [0, 1, 0],
-            [0, 0, 1],
-          ],
-        },
-  }
-  return normalized as unknown as types.BaseBandStructure
+  } as unknown as types.BaseBandStructure
 }
 
-const parse_frequency_unit = (unit: unknown): types.FrequencyUnit | null => {
-  if (typeof unit !== `string`) return null
-  const normalized = unit.trim().toLowerCase()
-  if (normalized === `thz`) return `THz`
-  if (normalized === `ev`) return `eV`
-  if (normalized === `mev`) return `meV`
-  if (normalized === `ha` || normalized === `hartree`) return `Ha`
-  if ([`cm-1`, `cm^-1`, `cm⁻¹`].includes(normalized)) return `cm-1`
-  return null
+// Electronic DOS record. Spin-polarized when the input says so, else when a same-length
+// spin-down channel exists; the spin-down channel is only kept for spin-polarized data.
+const electronic_dos = (
+  energies: number[],
+  densities: number[],
+  spin_down: number[] | null,
+  { spin_polarized, efermi }: { spin_polarized?: boolean; efermi?: number } = {},
+): types.ElectronicDos => {
+  const is_spin_polarized =
+    spin_polarized ?? (spin_down !== null && spin_down.length === densities.length)
+  return {
+    type: `electronic`,
+    energies,
+    densities,
+    spin_down_densities: is_spin_polarized ? (spin_down ?? undefined) : undefined,
+    spin_polarized: is_spin_polarized,
+    ...(efermi !== undefined && { efermi }),
+  }
 }
 
 // Validate and normalize a DOS object. Phonon frequencies are normalized to THz so
@@ -719,7 +502,7 @@ export function normalize_dos(dos: unknown): types.DosData | null {
     const source_unit = declared_unit == null ? `THz` : parse_frequency_unit(declared_unit)
     if (!source_unit) return null
     const numeric_frequencies = frequencies as number[]
-    const source_unit_per_thz = convert_frequencies([1], source_unit)[0]
+    const source_unit_per_thz = FREQUENCY_UNIT_PER_THZ[source_unit]
     const normalized_frequencies =
       source_unit === `THz`
         ? numeric_frequencies
@@ -730,17 +513,9 @@ export function normalize_dos(dos: unknown): types.DosData | null {
   // Electronic DOS: has energies
   if (Array.isArray(energies)) {
     if (energies.length !== densities.length) return null
-    // Detect spin-polarized from data if not explicitly set
-    const is_spin_polarized =
-      (spin_polarized as boolean | undefined) ??
-      (spin_down_densities !== null && spin_down_densities.length === densities.length)
-    return {
-      type: `electronic`,
-      energies,
-      densities,
-      spin_down_densities: is_spin_polarized ? (spin_down_densities ?? undefined) : undefined,
-      spin_polarized: is_spin_polarized,
-    }
+    return electronic_dos(energies, densities, spin_down_densities, {
+      spin_polarized: spin_polarized as boolean | undefined,
+    })
   }
 
   // For pymatgen format, log a helpful message if format wasn't recognized
@@ -813,27 +588,17 @@ function fold_to_first_bz(cart: Vec3, recip: Matrix3x3): Vec3 {
   return best
 }
 
-// Find the q-point index closest to a given distance along the band structure path
-export function find_qpoint_at_distance(
+// Branches that have a plot x-range, paired with it (Bands.svelte's x_positions output)
+const plotted_branches = (
   band_struct: types.BaseBandStructure,
-  target: number,
-): number | null {
-  const { distance } = band_struct
-  if (!distance?.length) return null
-
-  return distance.reduce(
-    (closest: number, dist: number, idx: number) =>
-      Math.abs(dist - target) < Math.abs(distance[closest] - target) ? idx : closest,
-    0,
-  )
-}
-
-// Look up a branch's x-range in the plot via its start/end q-point labels
-const branch_x_range = (
-  bs: types.BaseBandStructure,
-  branch: types.Branch,
   x_positions: Record<string, Vec2>,
-): Vec2 | undefined => x_positions[get_branch_segment_key(bs, branch)]
+): [types.Branch, Vec2][] => {
+  const segment_keys = branch_segment_keys(band_struct)
+  return band_struct.branches.flatMap((branch, branch_idx) => {
+    const range = x_positions[segment_keys[branch_idx]]
+    return range ? [[branch, range] as [types.Branch, Vec2]] : []
+  })
+}
 
 // Rescaled x-position of a q-point index along the band plot path. Inverse of
 // find_qpoint_at_rescaled_x, used to highlight a q-point hovered in the Brillouin zone.
@@ -844,13 +609,8 @@ export function qpoint_x_position(
   x_positions: Record<string, Vec2>,
 ): number | null {
   if (!band_struct?.branches?.length || !x_positions) return null
-
-  for (const branch of band_struct.branches) {
+  for (const [branch, [x_start, x_end]] of plotted_branches(band_struct, x_positions)) {
     if (qpoint_index < branch.start_index || qpoint_index > branch.end_index) continue
-    const range = branch_x_range(band_struct, branch, x_positions)
-    if (!range) continue
-
-    const [x_start, x_end] = range
     const d_start = band_struct.distance[branch.start_index]
     const d_end = band_struct.distance[branch.end_index]
     if (d_end === d_start) return x_start // discontinuity / zero-length segment
@@ -868,33 +628,24 @@ export function find_qpoint_at_rescaled_x(
   x_positions: Record<string, Vec2>,
 ): number | null {
   if (!band_struct?.branches?.length || !x_positions) return null
+  const branches = plotted_branches(band_struct, x_positions)
 
   // Find which segment contains this x coordinate
-  for (const branch of band_struct.branches) {
-    const { start_index: start_idx, end_index: end_idx } = branch
-    const segment_range = branch_x_range(band_struct, branch, x_positions)
-    if (!segment_range) continue
-
-    const [x_start, x_end] = segment_range
-
+  for (const [{ start_index: start_idx, end_index: end_idx }, [x_start, x_end]] of branches) {
     // Discontinuity (zero-length segment): match only if x is exactly at this point
     if (Math.abs(x_end - x_start) < 1e-6) {
       if (Math.abs(rescaled_x - x_start) < 1e-6) return start_idx
       continue
     }
-
     // Check if x is within this segment (with small tolerance for edges)
     if (rescaled_x >= x_start - 1e-6 && rescaled_x <= x_end + 1e-6) {
       // Map from rescaled x back to original distance
       const dist_min = band_struct.distance[start_idx]
       const dist_range = band_struct.distance[end_idx] - dist_min
       if (dist_range === 0) return start_idx
-
       // Inverse of the scaling: x = x_start + ((dist - dist_min) / dist_range) * (x_end - x_start)
-      const normalized_x = (rescaled_x - x_start) / (x_end - x_start)
-      const target_dist = dist_min + normalized_x * dist_range
-
-      // Find closest qpoint in this branch to the target distance
+      const target_dist = dist_min + ((rescaled_x - x_start) / (x_end - x_start)) * dist_range
+      // Closest q-point in this branch to the target distance
       let [closest_idx, min_diff] = [start_idx, Infinity]
       for (let idx = start_idx; idx <= end_idx; idx++) {
         const diff = Math.abs(band_struct.distance[idx] - target_dist)
@@ -904,15 +655,12 @@ export function find_qpoint_at_rescaled_x(
     }
   }
 
-  // Fallback: find closest labeled point
+  // Fallback: closest plotted segment endpoint
   let [closest_idx, min_dist] = [0, Infinity]
-  for (const branch of band_struct.branches) {
-    const segment_range = branch_x_range(band_struct, branch, x_positions)
-    if (!segment_range) continue
-
+  for (const [branch, [x_start, x_end]] of branches) {
     for (const [x_pos, idx] of [
-      [segment_range[0], branch.start_index],
-      [segment_range[1], branch.end_index],
+      [x_start, branch.start_index],
+      [x_end, branch.end_index],
     ] as const) {
       const dist = Math.abs(rescaled_x - x_pos)
       if (dist < min_dist) [closest_idx, min_dist] = [idx, dist]
@@ -964,34 +712,16 @@ export function extract_pdos(
   if (!pdos_dict || typeof pdos_dict !== `object`) return null
 
   const result: Record<string, types.ElectronicDos> = {}
-
   for (const [key, nested_dos] of Object.entries(pdos_dict)) {
-    // Apply filter if provided
-    if (filter_keys && filter_keys.length > 0 && !filter_keys.includes(key)) continue
-
+    if (filter_keys?.length && !filter_keys.includes(key)) continue
     if (!nested_dos || typeof nested_dos !== `object`) continue
-
-    const energies = nested_dos.energies
+    const { energies, efermi } = nested_dos
     const spin_channels = extract_spin_channels<number[]>(nested_dos.densities)
-
-    if (!Array.isArray(energies) || !spin_channels) continue
-
+    if (!spin_channels || !Array.isArray(energies)) continue
     const densities = spin_channels.up
     if (!Array.isArray(densities) || energies.length !== densities.length) continue
-
-    const is_spin_polarized =
-      spin_channels.down !== null && spin_channels.down.length === densities.length
-
-    result[key] = {
-      type: `electronic`,
-      energies,
-      densities,
-      spin_down_densities: is_spin_polarized ? (spin_channels.down ?? undefined) : undefined,
-      spin_polarized: is_spin_polarized,
-      efermi: nested_dos.efermi,
-    }
+    result[key] = electronic_dos(energies, densities, spin_channels.down, { efermi })
   }
-
   return Object.keys(result).length > 0 ? result : null
 }
 
@@ -1125,6 +855,13 @@ function is_electronic_band_struct(bs: unknown): boolean {
   return false
 }
 
+// A single object (recognised by any of `marker_keys`) as a one-element list, a dict of
+// objects as its values, anything else as empty
+const single_or_dict_values = (input: unknown, marker_keys: string[]): unknown[] => {
+  if (typeof input !== `object` || input === null) return []
+  return marker_keys.some((key) => key in input) ? [input] : Object.values(input)
+}
+
 // Compute frequency/energy range from bands and DOS. Clamps phonon min to 0 if noise < 0.5%.
 export function compute_frequency_range(
   band_structs: unknown,
@@ -1143,45 +880,18 @@ export function compute_frequency_range(
     }
   }
 
-  // Check raw band_structs for electronic markers before normalization
-  // (normalized structures always have qpoints, so we can't detect from them)
-  // Support both qpoints (phonon) and kpoints (electronic) to detect single vs dict
-  const is_single_bs =
-    band_structs &&
-    typeof band_structs === `object` &&
-    (`qpoints` in band_structs || `kpoints` in band_structs)
-  const has_electronic_bs =
-    band_structs &&
-    typeof band_structs === `object` &&
-    (is_electronic_band_struct(band_structs) ||
-      (!is_single_bs && Object.values(band_structs).some(is_electronic_band_struct)))
+  // Electronic markers are read from the raw input: normalization strips them (every
+  // normalized structure has qpoints). Bands that aren't electronic are phonon bands.
+  const raw_band_structs = single_or_dict_values(band_structs, [`qpoints`, `kpoints`])
+  const bs_list = raw_band_structs.flatMap((raw) => normalize_band_structure(raw) ?? [])
+  if (bs_list.length > 0 && !raw_band_structs.some(is_electronic_band_struct)) is_phonon = true
+  for (const bs of bs_list) for (const band of bs.bands) collect_frequencies(band)
 
-  const bs_list = band_structs
-    ? is_single_bs
-      ? [normalize_band_structure(band_structs)]
-      : Object.values(band_structs).map(normalize_band_structure)
-    : []
-
-  // If band structures exist and aren't electronic, mark as phonon
-  const has_band_structs = bs_list.some(Boolean)
-  if (has_band_structs && !has_electronic_bs) is_phonon = true
-
-  for (const bs of bs_list) {
-    if (!bs) continue
-    for (const band of bs.bands) collect_frequencies(band)
-  }
-
-  const dos_list =
-    doses && typeof doses === `object`
-      ? `densities` in doses
-        ? [normalize_dos(doses)]
-        : Object.values(doses).map((dos) => normalize_dos(dos))
-      : []
-  for (const dos of dos_list) {
+  for (const raw of single_or_dict_values(doses, [`densities`])) {
+    const dos = normalize_dos(raw)
     if (!dos) continue
     // DOS type detection: explicit type field is authoritative
-    if (dos.type === `phonon`) is_phonon = true
-    if (dos.type === `electronic`) is_phonon = false
+    is_phonon = dos.type === `phonon`
     collect_frequencies(dos.type === `phonon` ? dos.frequencies : dos.energies)
   }
 
@@ -1220,31 +930,20 @@ export function format_dos_tooltip(
   y_axis_label: string,
   num_series: number,
 ): { title?: string; lines: string[] } {
-  const x_parsed = parse_axis_label(x_axis_label)
-  const y_parsed = parse_axis_label(y_axis_label)
-  const freq_defaults = {
-    name: is_phonon ? `Frequency` : `Energy`,
-    unit: is_phonon ? units : `eV`,
-  }
-
+  // Horizontal DOS puts frequency/energy on y and density on x; the tooltip always lists
+  // the y axis first
+  const [x_parsed, y_parsed] = [x_axis_label, y_axis_label].map(parse_axis_label)
+  const freq_line = (parsed: { name: string; unit?: string }, value: string) =>
+    format_tooltip_line(
+      parsed.name || (is_phonon ? `Frequency` : `Energy`),
+      value,
+      parsed.unit ?? (is_phonon ? units : `eV`),
+    )
+  const density_line = (parsed: { name: string }, value: string) =>
+    format_tooltip_line(parsed.name || `Density`, value)
   const lines = is_horizontal
-    ? [
-        format_tooltip_line(
-          y_parsed.name || freq_defaults.name,
-          y_formatted,
-          y_parsed.unit ?? freq_defaults.unit,
-        ),
-        format_tooltip_line(x_parsed.name || `Density`, x_formatted),
-      ]
-    : [
-        format_tooltip_line(y_parsed.name || `Density`, y_formatted),
-        format_tooltip_line(
-          x_parsed.name || freq_defaults.name,
-          x_formatted,
-          x_parsed.unit ?? freq_defaults.unit,
-        ),
-      ]
-
+    ? [freq_line(y_parsed, y_formatted), density_line(x_parsed, x_formatted)]
+    : [density_line(y_parsed, y_formatted), freq_line(x_parsed, x_formatted)]
   return { title: num_series > 1 && label ? label : undefined, lines }
 }
 
@@ -1300,29 +999,20 @@ export interface BandPointMeta extends Record<string, unknown> {
   slope: number | null
 }
 
-// Central difference for local slope (dω/dk or dE/dk).
-// Uses forward/backward difference at endpoints, central difference for interior points.
-export function compute_slope(x_vals: number[], y_vals: number[], idx: number): number | null {
-  const len = Math.min(x_vals.length, y_vals.length)
-  if (len < 2 || idx < 0 || idx >= len) return null
-  const lo = idx === 0 ? 0 : idx - 1
-  const hi = idx >= len - 1 ? len - 1 : idx + 1
+// Local slope (dω/dk or dE/dk): central difference for interior points, one-sided at the ends
+const compute_slope = (x_vals: number[], y_vals: number[], idx: number): number | null => {
+  const lo = Math.max(0, idx - 1)
+  const hi = Math.min(x_vals.length - 1, idx + 1)
   const dx = x_vals[hi] - x_vals[lo]
   return dx ? (y_vals[hi] - y_vals[lo]) / dx : null
 }
 
 // Find Gamma-point indices (q ≈ integer lattice point) in a band structure.
 // Returns indices of q-points whose fractional coordinates are all within 0.01 of integers.
-export function find_gamma_indices(bs: types.BaseBandStructure): number[] {
-  const indices: number[] = []
-  for (let q_idx = 0; q_idx < bs.qpoints.length; q_idx++) {
-    const coords = bs.qpoints[q_idx]?.frac_coords
-    if (coords?.every((coord) => Math.abs(coord - Math.round(coord)) < 0.01)) {
-      indices.push(q_idx)
-    }
-  }
-  return indices
-}
+export const find_gamma_indices = (bs: types.BaseBandStructure): number[] =>
+  bs.qpoints.flatMap(({ frac_coords }, q_idx) =>
+    frac_coords.every((coord) => Math.abs(coord - Math.round(coord)) < 0.01) ? [q_idx] : [],
+  )
 
 // Threshold below which a band's frequency at Gamma is considered acoustic (THz).
 // Assumes bands are stored in THz (normalize_band_structure converts to THz).

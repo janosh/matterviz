@@ -1,6 +1,6 @@
-import type { DataSeries } from '$lib/plot'
+import type { AxisRanges, DataSeries } from '$lib/plot'
 import { get_series_color, get_series_symbol } from '$lib/plot/core/data-transform'
-import type { AxisRanges, LegendFill } from '$lib/plot/scatter/scatter-data'
+import type { LegendFill } from '$lib/plot/scatter/scatter-data'
 import {
   build_legend_data,
   filter_series_to_ranges,
@@ -166,7 +166,6 @@ describe(`build_legend_data`, () => {
         series_idx: 0,
         label: `alpha`,
         visible: true,
-        has_explicit_label: true,
         display_style: {
           symbol_type: `Square`,
           symbol_color: get_series_color(0),
@@ -176,7 +175,6 @@ describe(`build_legend_data`, () => {
       {
         series_idx: 1,
         label: `Series 2`,
-        has_explicit_label: false,
         display_style: { symbol_type: get_series_symbol(1) },
       },
       {
