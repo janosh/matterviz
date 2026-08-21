@@ -242,10 +242,18 @@ const process_file_change = (message: FileChangeMessage): void => {
     })
 }
 
+// Host settings (VS Code matterviz.trajectory.*) reach the parser here; everything else about
+// loading is decided by open_trajectory from DEFAULTS
 const parse_file_data = (
   { content, filename, is_base64 }: FileData,
   signal: AbortSignal,
-): Promise<ParseResult> => parse_in_worker(content, filename, is_base64, { signal })
+): Promise<ParseResult> => {
+  const { index_above_bytes } = merge(globalThis.matterviz_data?.defaults).trajectory
+  return parse_in_worker(content, filename, is_base64, {
+    signal,
+    load_options: { index_above_bytes },
+  })
+}
 
 // Create error display in container
 const create_error_display = (

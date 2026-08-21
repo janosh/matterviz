@@ -14,6 +14,7 @@ import { is_indexable_trajectory_filename } from '$lib/trajectory/format-detect'
 import {
   is_trajectory_file,
   open_trajectory,
+  type OpenTrajectoryOptions,
   VaspoutElectronicOnlyError,
 } from '$lib/trajectory/parse'
 import type { LargeFileMarker } from './host-transfer'
@@ -67,12 +68,18 @@ const resolve_large_file = async (
   }
 }
 
+// Host-configurable loading knobs forwarded to open_trajectory (VS Code settings reach the
+// webview this way; the defaults otherwise come from DEFAULTS.trajectory)
+export type TrajectoryLoadOptions = Pick<OpenTrajectoryOptions, `index_above_bytes`>
+
 const trajectory_result = async (
   source: string | ArrayBuffer,
   filename: string,
+  load_options: TrajectoryLoadOptions,
 ): Promise<ParseResult> => {
   try {
-    return { type: `trajectory`, filename, data: await open_trajectory(source, { filename }) }
+    const data = await open_trajectory(source, { ...load_options, filename })
+    return { type: `trajectory`, filename, data }
   } catch (error) {
     if (error instanceof VaspoutElectronicOnlyError) {
       return { type: `vaspout_electronic`, filename, data: error.electronic }
@@ -96,6 +103,7 @@ export const parse_file_content = async (
   content: string,
   filename: string,
   is_base64: boolean = false,
+  load_options: TrajectoryLoadOptions = {},
 ): Promise<ParseResult> => {
   // Oversized files never carry their own bytes — the host sends a marker and
   // serves frames on demand. Check before anything tries to parse the marker text.
@@ -133,7 +141,7 @@ export const parse_file_content = async (
 
     // Binary trajectory formats: pass buffer directly to trajectory parser
     if (is_binary_format) {
-      return trajectory_result(buffer, filename)
+      return trajectory_result(buffer, filename, load_options)
     }
   }
 
@@ -202,7 +210,7 @@ export const parse_file_content = async (
   // Try trajectory parsing if it looks like a trajectory
   if (is_trajectory_file(filename, content)) {
     try {
-      return await trajectory_result(content, filename)
+      return await trajectory_result(content, filename, load_options)
     } catch (error) {
       // Trajectory-looking filename but not trajectory-shaped JSON (e.g. nve-config.json):
       // fall through to the JSON browser instead of failing the render

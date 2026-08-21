@@ -33,7 +33,7 @@ A `.dump` file opens as a structure showing its first frame only, not as an anim
 
 ## Limits
 
-Files above 100 MB refuse to parse (transfer already happened; parse in the kernel instead, e.g. with [pymatviz](https://github.com/janosh/pymatviz)'s `TrajectoryWidget`). Below that, parsing runs in a Web Worker so the Lab UI stays responsive; should the worker fail to start, files up to 25 MiB (text) / 50 MiB (binary) parse on the main thread and larger ones show an error. No host-side streaming like the VS Code extension, so very large trajectories can't be paged frame by frame. Open viewers also don't auto-refresh on external writes — JupyterLab has no filesystem watcher; use **File → Reload from Disk**.
+Files above 100 MB refuse to parse (transfer already happened; parse in the kernel instead, e.g. with [pymatviz](https://github.com/janosh/pymatviz)'s `TrajectoryWidget`). Below that, parsing runs in a Web Worker so the Lab UI stays responsive; XYZ/EXTXYZ and ASE `.traj` trajectories above `DEFAULTS.trajectory.index_above_bytes` (25 MB) are indexed there and decoded frame by frame on demand, and the worker is terminated when the viewer closes. Should the worker fail to start, files up to 25 MiB (text) / 50 MiB (binary) parse on the main thread and larger ones show an error. No host-side streaming like the VS Code extension, so the 100 MB ceiling is hard. Open viewers also don't auto-refresh on external writes — JupyterLab has no filesystem watcher; use **File → Reload from Disk**.
 
 ## Development
 

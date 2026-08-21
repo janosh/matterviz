@@ -547,7 +547,7 @@ test.describe(`Trajectory Component`, () => {
       const trajectory_controls = trajectory.locator(`.trajectory-controls`)
 
       // Basic accessibility
-      await expect(trajectory).toHaveAttribute(`role`, `region`)
+      await expect(trajectory).toHaveAttribute(`role`, `application`)
       await expect(trajectory).toHaveAttribute(`tabindex`, `0`)
 
       // Button titles

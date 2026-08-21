@@ -11,7 +11,7 @@ import type {
   TrajectoryRunSummary,
   TrajectorySource,
 } from '$lib/trajectory'
-import type { ParseResult } from './parse'
+import type { ParseResult, TrajectoryLoadOptions } from './parse'
 
 export interface FileParseWorkerRequest {
   kind: `file`
@@ -19,6 +19,7 @@ export interface FileParseWorkerRequest {
   content: string
   filename: string
   is_base64: boolean
+  load_options?: TrajectoryLoadOptions
 }
 
 export interface TrajectoryParseWorkerRequest {

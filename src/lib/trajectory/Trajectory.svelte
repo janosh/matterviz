@@ -625,6 +625,7 @@
   let any_analysis_open = $derived(ANALYSES.some((entry) => entry.pane === active_pane))
 </script>
 
+<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <div
   class:active={player.is_playing ||
     structure_info_open ||
@@ -632,7 +633,7 @@
     active_pane !== null}
   bind:this={wrapper}
   data-scrubbing={scrub_active}
-  role="region"
+  role="application"
   aria-label="Trajectory viewer"
   tabindex="0"
   onpointerenter={() => (hovered = true)}

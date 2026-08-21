@@ -109,13 +109,16 @@ describe(`parse_in_worker`, () => {
       parse_in_worker(`data_si`, `si.cif`, false, {
         worker_factory: () => worker,
         fallback_parse,
+        load_options: { index_above_bytes: 4096 },
       }),
     ).resolves.toEqual(structure_result)
+    // host loading settings ride along so the worker's open_trajectory honours them
     expect(worker.posted[0].request).toMatchObject({
       kind: `file`,
       content: `data_si`,
       filename: `si.cif`,
       is_base64: false,
+      load_options: { index_above_bytes: 4096 },
     })
     expect(worker.terminate).toHaveBeenCalledOnce()
     expect(fallback_parse).not.toHaveBeenCalled()
@@ -151,9 +154,12 @@ describe(`parse_in_worker`, () => {
       parse_in_worker(`data`, `si.cif`, false, {
         worker_factory: make_worker,
         fallback_parse,
+        load_options: { index_above_bytes: 4096 },
       }),
     ).resolves.toEqual(structure_result)
-    expect(fallback_parse).toHaveBeenCalledExactlyOnceWith(`data`, `si.cif`, false)
+    expect(fallback_parse).toHaveBeenCalledExactlyOnceWith(`data`, `si.cif`, false, {
+      index_above_bytes: 4096,
+    })
   })
 
   it.each([

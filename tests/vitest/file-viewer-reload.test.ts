@@ -78,6 +78,8 @@ const set_file_data = (content: string, filename: string = `${content}.json`): v
   globalThis.matterviz_data = {
     data: { content, filename, is_base64: false },
     theme: `light`,
+    // host setting that must reach the parser, not just the mounted component props
+    defaults: { trajectory: { index_above_bytes: 4096 } },
   }
 }
 
@@ -106,7 +108,10 @@ test(`serializes reloads and guards cleanup, markers, and initialization`, async
     `initial`,
     `initial.json`,
     false,
-    expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    expect.objectContaining({
+      signal: expect.any(AbortSignal),
+      load_options: { index_above_bytes: 4096 },
+    }),
   )
 
   update_file(`stale`)

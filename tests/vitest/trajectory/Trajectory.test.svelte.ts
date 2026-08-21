@@ -476,11 +476,11 @@ describe(`panes`, () => {
 })
 
 describe(`events`, () => {
-  test(`the viewer is a focusable region whose arrow keys step frames`, () => {
+  test(`the viewer is a focusable application whose arrow keys step frames`, () => {
     const state = $state({ current_step_idx: 0 })
     mount_trajectory(bind_props(default_props(), state))
     const viewer = doc_query(`.trajectory`)
-    expect(viewer.getAttribute(`role`)).toBe(`region`)
+    expect(viewer.getAttribute(`role`)).toBe(`application`)
     expect(viewer.getAttribute(`tabindex`)).toBe(`0`)
     viewer.dispatchEvent(new KeyboardEvent(`keydown`, { key: `ArrowRight`, bubbles: true }))
     flushSync()
@@ -614,12 +614,12 @@ describe(`bindings`, () => {
     expect(doc_query(`.step-section span`).textContent).toBe(`/ 5`)
   })
 
-  test(`hovered follows pointerenter/pointerleave and wrapper is the region element`, async () => {
+  test(`hovered follows pointerenter/pointerleave and wrapper is the viewer element`, async () => {
     const state = { hovered: false, wrapper: undefined as HTMLDivElement | undefined }
     mount_trajectory(bind_props(default_props(), state))
     const wrapper = state.wrapper
     if (!wrapper) throw new Error(`wrapper not bound`)
-    expect(wrapper.getAttribute(`role`)).toBe(`region`)
+    expect(wrapper.getAttribute(`role`)).toBe(`application`)
     expect(wrapper.getAttribute(`aria-label`)).toBe(`Trajectory viewer`)
     wrapper.dispatchEvent(new PointerEvent(`pointerenter`))
     await tick()

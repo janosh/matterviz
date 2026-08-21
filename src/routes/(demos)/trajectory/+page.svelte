@@ -14,6 +14,16 @@
 
 <h1>Trajectory</h1>
 
+<p>
+  Every viewer on this page is a <code>TrajectoryFileViewer</code>: it fetches <code>src</code>
+  (a URL, <code>File</code>, <code>ArrayBuffer</code> or <code>Blob</code>), accepts drops,
+  decompresses, resolves ambiguous HDF5 groups, opens large files in a Web Worker and disposes
+  each run when it is replaced or unmounted. The <code>Trajectory</code> component underneath
+  is a pure viewer that borrows a <code>TrajectoryRun</code> you already hold (from
+  <code>open_trajectory</code> or <code>trajectory_from_frames</code>) and never loads or
+  disposes anything itself.
+</p>
+
 <h2>Mean Squared Displacement</h2>
 <p>
   Every viewer below carries an MSD / diffusion pane (the orbit icon in the controls bar). It

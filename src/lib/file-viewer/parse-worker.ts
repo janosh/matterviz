@@ -42,7 +42,12 @@ export const handle_parse_worker_request = async (
               on_progress,
             }),
           }
-        : await parse_file_content(request.content, filename, request.is_base64)
+        : await parse_file_content(
+            request.content,
+            filename,
+            request.is_base64,
+            request.load_options,
+          )
     return prepare_parse_result(id, result)
   } catch (error) {
     return {

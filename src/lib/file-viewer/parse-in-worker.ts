@@ -13,7 +13,7 @@ import {
 } from '$lib/trajectory'
 import { dispose_run_port, worker_run } from '$lib/trajectory/runs/worker'
 import { to_error } from '$lib/utils'
-import { parse_file_content, type ParseResult } from './parse'
+import { parse_file_content, type ParseResult, type TrajectoryLoadOptions } from './parse'
 import type { ParseWorkerRequest, ParseWorkerResponse } from './parse-worker-protocol'
 
 export type * from './parse-worker-protocol'
@@ -25,6 +25,7 @@ export interface ParseInWorkerOptions {
   worker_factory?: WorkerFactory
   fallback_parse?: typeof parse_file_content
   signal?: AbortSignal
+  load_options?: TrajectoryLoadOptions
 }
 
 type TrajectoryWorkerOptions = Omit<
@@ -164,13 +165,16 @@ export const parse_in_worker = async (
     signal,
     worker_factory = default_worker_factory,
     fallback_parse = parse_file_content,
+    load_options,
   } = options
   signal?.throwIfAborted()
-  if (content.startsWith(`LARGE_FILE:`)) return fallback_parse(content, filename, is_base64)
+  if (content.startsWith(`LARGE_FILE:`)) {
+    return fallback_parse(content, filename, is_base64, load_options)
+  }
   try {
     return bind_worker_run(
       await run_in_worker(
-        { kind: `file`, id: next_request_id++, content, filename, is_base64 },
+        { kind: `file`, id: next_request_id++, content, filename, is_base64, load_options },
         { worker_factory, signal },
       ),
     )
@@ -184,7 +188,7 @@ export const parse_in_worker = async (
       `parse_in_worker: no worker for ${filename}, parsing on the main thread:`,
       error,
     )
-    return fallback_parse(content, filename, is_base64)
+    return fallback_parse(content, filename, is_base64, load_options)
   }
 }
 
