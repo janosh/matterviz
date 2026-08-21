@@ -32,7 +32,7 @@
 
 ### 🚀 New Features
 
-- Add the headless `StructureSession` (exported from `matterviz/structure`): display pipeline, selection validated against the displayed structure, edit-atoms/edit-bonds with undo/redo and pane camera bookkeeping, unit-tested without a DOM; `StructureEditToolbar` renders the measure/edit toolbar over a session; the toolbar dropdown chrome shared by `Structure` and `Trajectory` moves to `app.css` (`--view-mode-*` vars) https://github.com/janosh/matterviz/pull/439
+- Add the headless `StructureSession` (exported from `matterviz/structure`): display pipeline, selection validated against the displayed structure, edit-atoms/edit-bonds with undo/redo and pane camera bookkeeping, unit-tested without a DOM; `StructureEditToolbar` renders the measure/edit toolbar over a session; the toolbar dropdown chrome shared by `Structure` and `Trajectory` is the new `ToolbarMenu` component (exported from `matterviz/overlays`, themed via `--view-mode-*` vars, no `app.css` import needed) https://github.com/janosh/matterviz/pull/439
 - Add `Histogram` `normalize: 'count' | 'probability' | 'density'` (plus `DEFAULTS.histogram.normalize`, a control and axis label) and bin uniformly in the scale's transformed space on log/asinh axes https://github.com/janosh/matterviz/pull/438
 - Add `neighbor_query(structure, { cutoff } | { k }, pbc?)` returning a typed-array `NeighborList`; RDF, CNA and CSP run on it https://github.com/janosh/matterviz/pull/438
 - Add `math.reciprocal_lattice(lattice, { two_pi })` and raw lattice/reciprocal matrices on `LatticeConverters` https://github.com/janosh/matterviz/pull/438

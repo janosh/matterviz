@@ -2,9 +2,9 @@
   // Measure/edit mode picker plus the edit-atoms and edit-bonds toolbars (undo/redo, element
   // inputs, bond order and add/delete toggle). Every action goes through the session;
   // Structure.svelte keeps the keyboard shortcuts that drive the same operations.
+  import { ToolbarMenu } from '$lib/overlays'
   import type { BondEditMode, BondOrder, MeasureMode } from '$lib/structure'
   import { Icon, type IconData } from 'svelte-widgets'
-  import { click_outside, tooltip } from 'svelte-widgets/attachments'
   import { Angle, Edit, Link, Orbit, Redo, Reset, Ruler, Undo } from 'svelte-widgets/icons'
   import { BOND_ORDER_OPTIONS } from './bonding'
   import { MAX_SELECTED_SITES } from './measure'
@@ -48,18 +48,12 @@
   )
 </script>
 
-<div
-  class="measure-mode-dropdown view-mode-control"
-  {@attach click_outside({ callback: () => (measure_menu_open = false) })}
+<ToolbarMenu
+  bind:open={measure_menu_open}
+  label="Measure / Edit"
+  class="measure-mode-dropdown"
 >
-  <button
-    onclick={() => (measure_menu_open = !measure_menu_open)}
-    title="Measure / Edit"
-    aria-label="Measure / Edit"
-    class={['view-mode-button', { active: measure_menu_open }]}
-    aria-expanded={measure_menu_open}
-    {@attach tooltip()}
-  >
+  {#snippet button()}
     {#if measure_mode === `distance` && measured_count >= MAX_SELECTED_SITES}
       <span class="selection-limit-text">
         {measured_count}/{MAX_SELECTED_SITES}
@@ -67,41 +61,37 @@
     {:else}
       <Icon icon={MEASURE_MODES.find(({ mode }) => mode === measure_mode)?.icon ?? Ruler} />
     {/if}
-  </button>
-  {#if show_selection_reset}
+  {/snippet}
+  {#snippet trailing()}
+    {#if show_selection_reset}
+      <button
+        type="button"
+        aria-label="Reset selection and bond edits"
+        onclick={() => {
+          session.clear_selection()
+          session.clear_bond_edits()
+        }}
+      >
+        <Icon icon={Reset} style="margin-left: -4px" />
+      </button>
+    {/if}
+  {/snippet}
+  {#each MEASURE_MODES as { mode, icon, label, scale } (mode)}
+    {@const disabled = mode === `edit-bonds` && !session.bond_edits_enabled}
     <button
-      type="button"
-      aria-label="Reset selection and bond edits"
+      class={['view-mode-option', { selected: measure_mode === mode }]}
+      {disabled}
+      title={disabled ? `Bond editing is only available for the original 1x1x1 cell` : label}
       onclick={() => {
-        session.clear_selection()
-        session.clear_bond_edits()
+        if (disabled) return
+        ;[measure_mode, measure_menu_open] = [mode, false]
       }}
     >
-      <Icon icon={Reset} style="margin-left: -4px" />
+      <Icon {icon} style="transform: scale({scale})" />
+      <span>{label}</span>
     </button>
-  {/if}
-  {#if measure_menu_open}
-    <div class="view-mode-dropdown">
-      {#each MEASURE_MODES as { mode, icon, label, scale } (mode)}
-        {@const disabled = mode === `edit-bonds` && !session.bond_edits_enabled}
-        <button
-          class={['view-mode-option', { selected: measure_mode === mode }]}
-          {disabled}
-          title={disabled
-            ? `Bond editing is only available for the original 1x1x1 cell`
-            : label}
-          onclick={() => {
-            if (disabled) return
-            ;[measure_mode, measure_menu_open] = [mode, false]
-          }}
-        >
-          <Icon {icon} style="transform: scale({scale})" />
-          <span>{label}</span>
-        </button>
-      {/each}
-    </div>
-  {/if}
-</div>
+  {/each}
+</ToolbarMenu>
 
 {#snippet undo_redo_snippet(
   buttons: { icon: IconData; title: string; count: number; action: () => void }[],
@@ -228,16 +218,6 @@
 {/if}
 
 <style>
-  .view-mode-control {
-    height: fit-content;
-    place-self: center;
-    > button {
-      justify-content: center;
-      background: transparent;
-      padding: 1px 2px;
-      font-size: var(--ctrl-btn-icon-size);
-    }
-  }
   .selection-limit-text {
     font-weight: bold;
     font-size: 0.9em;

@@ -22,6 +22,7 @@
     normalize_active_volume_idx,
   } from '$lib/isosurface/types'
   import { ViewerChrome } from '$lib/layout'
+  import { ToolbarMenu } from '$lib/overlays'
   import type { Vec3 } from '$lib/math'
   import { DEFAULTS } from '$lib/settings'
   import { colors } from '$lib/state.svelte'
@@ -47,7 +48,7 @@
   import type { MoyoDataset } from '@spglib/moyo-wasm'
   import type { ComponentProps, Snippet } from 'svelte'
   import { untrack } from 'svelte'
-  import { click_outside, forward_window_keydown, tooltip } from 'svelte-widgets/attachments'
+  import { forward_window_keydown, tooltip } from 'svelte-widgets/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'
   import type { Camera, Scene } from 'three/webgpu'
@@ -751,56 +752,43 @@
       style="--viewer-buttons-gap: 4pt; --viewer-buttons-btn-padding: 1px 2px; --viewer-buttons-align: stretch; --viewer-buttons-hover-bg: transparent; --viewer-buttons-hover-color: light-dark(#000, #fff)"
     >
       {#if layout_control_visible}
-        <div
-          class="view-layout-dropdown view-mode-control"
-          {@attach click_outside({ callback: () => (view_layout_menu_open = false) })}
+        <ToolbarMenu
+          bind:open={view_layout_menu_open}
+          label="View layout: {current_layout.label}"
+          class="view-layout-dropdown"
         >
-          <button
-            type="button"
-            class={['view-mode-button', { active: view_layout_menu_open }]}
-            onclick={() => (view_layout_menu_open = !view_layout_menu_open)}
-            title="View layout: {current_layout.label}"
-            aria-label="View layout: {current_layout.label}"
-            aria-expanded={view_layout_menu_open}
-            {@attach tooltip()}
-          >
-            <Icon icon={current_layout.icon} />
-          </button>
-          {#if view_layout_menu_open}
-            <div class="view-mode-dropdown">
-              {#each Object.values(STRUCTURE_LAYOUTS) as { mode, icon, label } (mode)}
-                {#if mode === `single` || (mode === `multi` && multi_layout_available) || (mode === `slice` && slice_layout_available)}
-                  <button
-                    type="button"
-                    class={['view-mode-option', { selected: current_layout.mode === mode }]}
-                    title={mode === `multi` ? `${label} (Cmd/Ctrl+G)` : label}
-                    aria-keyshortcuts={mode === `multi` ? `Control+G Meta+G` : undefined}
-                    aria-pressed={current_layout.mode === mode}
-                    onclick={() => select_structure_layout(mode)}
-                  >
-                    <Icon {icon} />
-                    <span>{label}</span>
-                  </button>
-                {/if}
-              {/each}
-              {#if reset_camera_available}
-                <button
-                  type="button"
-                  class="view-mode-option reset-camera"
-                  title={RESET_TEXT}
-                  aria-keyshortcuts="r"
-                  onclick={() => {
-                    session.reset_all_cameras()
-                    view_layout_menu_open = false
-                  }}
-                >
-                  <Icon icon={Reset} />
-                  <span>Reset view <kbd>r</kbd></span>
-                </button>
-              {/if}
-            </div>
+          {#snippet button()}<Icon icon={current_layout.icon} />{/snippet}
+          {#each Object.values(STRUCTURE_LAYOUTS) as { mode, icon, label } (mode)}
+            {#if mode === `single` || (mode === `multi` && multi_layout_available) || (mode === `slice` && slice_layout_available)}
+              <button
+                type="button"
+                class={['view-mode-option', { selected: current_layout.mode === mode }]}
+                title={mode === `multi` ? `${label} (Cmd/Ctrl+G)` : label}
+                aria-keyshortcuts={mode === `multi` ? `Control+G Meta+G` : undefined}
+                aria-pressed={current_layout.mode === mode}
+                onclick={() => select_structure_layout(mode)}
+              >
+                <Icon {icon} />
+                <span>{label}</span>
+              </button>
+            {/if}
+          {/each}
+          {#if reset_camera_available}
+            <button
+              type="button"
+              class="view-mode-option reset-camera"
+              title={RESET_TEXT}
+              aria-keyshortcuts="r"
+              onclick={() => {
+                session.reset_all_cameras()
+                view_layout_menu_open = false
+              }}
+            >
+              <Icon icon={Reset} />
+              <span>Reset view <kbd>r</kbd></span>
+            </button>
           {/if}
-        </div>
+        </ToolbarMenu>
       {/if}
 
       {#if display_mode === `structure` && enable_measure_mode && controls_config.visible(`measure-mode`)}
@@ -1049,16 +1037,6 @@
   .structure :global(canvas),
   .structure :global(section.control-buttons) {
     user-select: none;
-  }
-  .view-mode-control {
-    height: fit-content;
-    place-self: center;
-    > button {
-      justify-content: center;
-      background: transparent;
-      padding: 1px 2px;
-      font-size: var(--ctrl-btn-icon-size);
-    }
   }
   p.warn {
     position: absolute;

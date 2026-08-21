@@ -1,6 +1,4 @@
 import { type AnyStructure, type MeasureMode, Structure } from '$lib'
-// oxlint-disable-next-line import/no-unassigned-import -- toolbar dropdown chrome is app-level CSS
-import '$lib/app.css'
 import type { VolumetricData } from '$lib/isosurface'
 import { create_frac_to_cart, type Vec3 } from '$lib/math'
 import { DEFAULTS } from '$lib/settings'
