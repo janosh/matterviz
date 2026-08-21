@@ -152,20 +152,15 @@ export function get_multi_phase_gradient(
 }
 
 // Find which phase region contains the given composition and temperature
-export function find_phase_at_point(
+// (later-defined regions take precedence)
+export const find_phase_at_point = (
   composition: number,
   temperature: number,
   data: PhaseDiagramData,
-): PhaseRegion | null {
-  // Search regions in reverse order so later-defined regions take precedence
-  for (let idx = data.regions.length - 1; idx >= 0; idx--) {
-    const region = data.regions[idx]
-    if (point_in_polygon(composition, temperature, region.vertices)) {
-      return region
-    }
-  }
-  return null
-}
+): PhaseRegion | null =>
+  data.regions.findLast((region) =>
+    point_in_polygon(composition, temperature, region.vertices),
+  ) ?? null
 
 // SVG path generator using d3-shape
 const path_line = line()
@@ -276,17 +271,6 @@ export function format_composition(
 export const format_temperature = (value: number, unit: TempUnit = `K`): string =>
   `${format_num(value, `.0f`)} ${unit}`
 
-// Parse a two-phase region name into its two phase names
-// Returns null if the region is not exactly a two-phase region
-function parse_two_phases(name: string): [string, string] | null {
-  if (!name.includes(`+`)) return null
-  const parts = name
-    .trim()
-    .split(/\s*\+\s*/)
-    .filter(Boolean)
-  return parts.length === 2 ? [parts[0], parts[1]] : null
-}
-
 // Find polygon edge intersections along a scan line (horizontal or vertical)
 // For horizontal: fixed_val = temperature, returns x-intersections
 // For vertical: fixed_val = composition, returns y-intersections
@@ -309,8 +293,7 @@ function find_polygon_intersections(
       )
     }
   }
-  // intersections is local to this scan.
-  return intersections.toSorted((a, b) => a - b)
+  return intersections.toSorted((val_a, val_b) => val_a - val_b)
 }
 
 function pick_bracketing_intersection_pair(
@@ -340,28 +323,30 @@ function pick_bracketing_intersection_pair(
 
   // Fallback for numerical edge cases where even-odd pairing fails:
   // pick nearest enclosing neighbors around the hovered point.
-  let left_idx = -1
-  for (let idx = 0; idx < unique_intersections.length; idx++) {
-    if (unique_intersections[idx] <= position + bound_tol) left_idx = idx
-  }
-  if (left_idx < 0 || left_idx + 1 >= unique_intersections.length) return null
+  const left_idx = unique_intersections.findLastIndex((val) => val <= position + bound_tol)
+  if (left_idx === -1 || left_idx + 1 >= unique_intersections.length) return null
 
   const left_bound = unique_intersections[left_idx]
   const right_bound = unique_intersections[left_idx + 1]
   return right_bound - left_bound > bound_tol ? [left_bound, right_bound] : null
 }
 
-// Shared core for lever rule calculations (horizontal and vertical)
-// Parses phases, finds intersections along the scan axis, validates bounds,
-// and computes the fractional position within the two-phase region.
+// Shared core for lever rule calculations (horizontal and vertical): splits the region name
+// into exactly two phases, finds intersections along the scan axis, validates bounds, and
+// computes the fractional position within the two-phase region.
 function lever_rule_core(
   region: PhaseRegion,
   position: number,
   scan_val: number,
   axis: 0 | 1,
 ): { phases: [string, string]; lo: number; hi: number; fraction_hi: number } | null {
-  const phases = parse_two_phases(region.name)
-  if (!phases) return null
+  const phases = region.name.includes(`+`)
+    ? region.name
+        .trim()
+        .split(/\s*\+\s*/)
+        .filter(Boolean)
+    : []
+  if (phases.length !== 2) return null
 
   const intersections = find_polygon_intersections(region.vertices, scan_val, axis)
   const bounds = pick_bracketing_intersection_pair(intersections, position)
@@ -371,7 +356,7 @@ function lever_rule_core(
   const span = hi - lo
   if (span < 1e-10) return null
 
-  return { phases, lo, hi, fraction_hi: (position - lo) / span }
+  return { phases: [phases[0], phases[1]], lo, hi, fraction_hi: (position - lo) / span }
 }
 
 // Calculate lever rule for a point in a two-phase region
@@ -440,35 +425,24 @@ export function format_hover_info_text(
     )} ${component_a})`,
   ]
 
-  if (lever_rule_mode === `horizontal` && info.lever_rule) {
-    const lr = info.lever_rule
+  const { lever_rule: lr, vertical_lever_rule: vlr } = info
+  const lever_line = (phase: string, fraction: number, location: string) =>
+    `  ${phase}: ${format_num(fraction * 100, `.1f`)}% (at ${location})`
+  if (lever_rule_mode === `horizontal` && lr) {
+    const comp = (val: number) => format_composition(val, comp_unit)
     lines.push(
       ``,
       `Lever Rule:`,
-      `  ${lr.left_phase}: ${format_num(lr.fraction_left * 100, `.1f`)}% (at ${format_composition(
-        lr.left_composition,
-        comp_unit,
-      )})`,
-      `  ${lr.right_phase}: ${format_num(lr.fraction_right * 100, `.1f`)}% (at ${format_composition(
-        lr.right_composition,
-        comp_unit,
-      )})`,
+      lever_line(lr.left_phase, lr.fraction_left, comp(lr.left_composition)),
+      lever_line(lr.right_phase, lr.fraction_right, comp(lr.right_composition)),
     )
-  }
-
-  if (lever_rule_mode === `vertical` && info.vertical_lever_rule) {
-    const vlr = info.vertical_lever_rule
+  } else if (lever_rule_mode === `vertical` && vlr) {
+    const temp = (val: number) => format_temperature(to_display(val), temp_unit)
     lines.push(
       ``,
       `Vertical Lever Rule:`,
-      `  ${vlr.bottom_phase}: ${format_num(vlr.fraction_bottom * 100, `.1f`)}% (at ${format_temperature(
-        to_display(vlr.bottom_temperature),
-        temp_unit,
-      )})`,
-      `  ${vlr.top_phase}: ${format_num(vlr.fraction_top * 100, `.1f`)}% (at ${format_temperature(
-        to_display(vlr.top_temperature),
-        temp_unit,
-      )})`,
+      lever_line(vlr.bottom_phase, vlr.fraction_bottom, temp(vlr.bottom_temperature)),
+      lever_line(vlr.top_phase, vlr.fraction_top, temp(vlr.top_temperature)),
     )
   }
 
@@ -480,13 +454,8 @@ export function get_phase_stability_range(
   region: PhaseRegion,
 ): { t_min: number; t_max: number } | null {
   if (!region.vertices?.length) return null
-  let t_min = Infinity
-  let t_max = -Infinity
-  for (const [, temp] of region.vertices) {
-    if (temp < t_min) t_min = temp
-    if (temp > t_max) t_max = temp
-  }
-  return { t_min, t_max }
+  const temps = region.vertices.map(([, temp]) => temp)
+  return { t_min: Math.min(...temps), t_max: Math.max(...temps) }
 }
 
 // Extract reference/citation from TDB comments
@@ -547,78 +516,28 @@ export function is_compound(name: string): boolean {
 //   "Al2O3" -> [{text: "Al"}, {sub: "2"}, {text: "O"}, {sub: "3"}]
 //   "Fe" -> [{text: "Fe"}]
 //   "α-Fe" -> [{text: "α-Fe"}] (Greek phases pass through unchanged)
+// Token classes: digit runs become subscripts; a '-' at the end of the string or followed by
+// digits is a charge superscript ("O2-", "Cl-2"), any other '-' stays a text hyphen ("Fe-Fe3C");
+// element symbols (uppercase + lowercase run) are separate text tokens; any other run of
+// characters merges into the preceding text token. '+' never gets here (early return above).
+const FORMULA_TOKEN_RE =
+  /(?<sub>\d+)|(?<sup>-(?:\d+|$))|(?<element>[A-Z][a-z]*)|(?<other>-|[^A-Z\d-]+)/g
+
 export function tokenize_formula(formula: string): FormulaMarkupToken[] {
   if (!formula) return []
-
-  // If it contains Greek letters or special phase notation, return as-is
-  if (/[α-ωΑ-Ω]/.test(formula) || formula.includes(`+`)) {
-    return [{ text: formula }]
-  }
+  // Greek letters or multi-phase notation pass through unchanged
+  if (/[α-ωΑ-Ω]/.test(formula) || formula.includes(`+`)) return [{ text: formula }]
 
   const tokens: FormulaMarkupToken[] = []
-  let idx = 0
-
-  while (idx < formula.length) {
-    const char = formula[idx]
-
-    // Check for subscript digits (numbers following letters)
-    if (/\d/.test(char)) {
-      // Collect consecutive digits
-      let num = ``
-      while (idx < formula.length && /\d/.test(formula[idx])) {
-        num += formula[idx]
-        idx++
-      }
-      tokens.push({ sub: num })
-      continue
-    }
-
-    // Check for superscript (- charge notation, e.g., "O2-" or "Cl-2")
-    // Note: + is handled by the early return for phase notation like "α + β"
-    // Treat '-' as charge when: at end of string, OR followed by digit
-    // Otherwise preserve as text for hyphenated names like "Fe-Fe3C"
-    if (char === `-`) {
-      idx++
-      if (idx >= formula.length || /\d/.test(formula[idx])) {
-        // End of string or followed by digit - parse as charge superscript
-        let charge = `-`
-        while (idx < formula.length && /\d/.test(formula[idx])) {
-          charge += formula[idx]
-          idx++
-        }
-        tokens.push({ sup: charge })
-      } else tokens.push({ text: `-` }) // Not at end and not followed by digit - preserve hyphen
-      continue
-    }
-
-    // Check for element symbol (uppercase followed by optional lowercase)
-    if (/[A-Z]/.test(char)) {
-      let element = char
-      idx++
-      // Collect following lowercase letters
-      while (idx < formula.length && /[a-z]/.test(formula[idx])) {
-        element += formula[idx]
-        idx++
-      }
-      tokens.push({ text: element })
-      continue
-    }
-
-    // Any other character (lowercase, hyphen, etc.) - collect as text
-    let text = char
-    idx++
-    while (idx < formula.length && !/[A-Z\d-]/.test(formula[idx])) {
-      text += formula[idx]
-      idx++
-    }
-    // Merge with previous text token if possible
-    if (tokens.length > 0 && tokens[tokens.length - 1].text !== undefined) {
-      tokens[tokens.length - 1].text += text
-    } else {
-      tokens.push({ text })
-    }
+  for (const { groups } of formula.matchAll(FORMULA_TOKEN_RE)) {
+    const { sub, sup, element, other } = groups ?? {}
+    const prev = tokens.at(-1)
+    if (sub) tokens.push({ sub })
+    else if (sup) tokens.push({ sup })
+    else if (element) tokens.push({ text: element })
+    else if (other !== `-` && prev?.text !== undefined) prev.text += other
+    else tokens.push({ text: other })
   }
-
   return tokens
 }
 
@@ -659,10 +578,7 @@ function format_label_parts(
   if (!use_subscripts) return label
   return label
     .split(/(?<separator>\s*\+\s*)/)
-    .map((part) => {
-      if (part.trim() === `+`) return part
-      return formatter(part.trim(), use_subscripts)
-    })
+    .map((part) => (part.trim() === `+` ? part : formatter(part.trim(), use_subscripts)))
     .join(``)
 }
 
@@ -693,60 +609,35 @@ export function compute_x_domain(
   x_range: [number | null, number | null] | undefined,
   data: PhaseDiagramData | null,
 ): Vec2 {
-  const lo = x_range?.[0]
-  const hi = x_range?.[1]
+  const [lo, hi] = x_range ?? [null, null]
   if (lo != null && hi != null) return [lo, hi]
+  if (!data) return [lo ?? 0, hi ?? 1]
 
-  if (data) {
-    let data_min = Infinity
-    let data_max = -Infinity
-    const update = (val: number) => {
-      if (val < data_min) data_min = val
-      if (val > data_max) data_max = val
-    }
-    for (const region of data.regions) {
-      for (const vertex of region.vertices) update(vertex[0])
-    }
-    for (const boundary of data.boundaries) {
-      for (const point of boundary.points) update(point[0])
-    }
-    for (const special_point of data.special_points ?? []) {
-      update(special_point.position[0])
-    }
-
-    if (data_min <= data_max) {
-      let x_min = lo ?? data_min
-      let x_max = hi ?? data_max
-
-      // Auto-extend to 0/1 when edge regions contain a pure component AND the
-      // data already nearly reaches the boundary
-      const comp_at_edge = (comp: string, x_val: number) => {
-        const re = new RegExp(`\\b${comp.replaceAll(/[.*+?^${}()|[\]\\]/g, `\\$&`)}\\b`)
-        return data.regions.some(
-          (region) =>
-            re.test(region.name) &&
-            region.vertices.some((vertex) => Math.abs(vertex[0] - x_val) < 1e-6),
-        )
-      }
-      if (
-        lo == null &&
-        x_min < 0.05 &&
-        data.components[0] &&
-        comp_at_edge(data.components[0], x_min)
-      ) {
-        x_min = 0
-      }
-      if (
-        hi == null &&
-        x_max > 0.95 &&
-        data.components[1] &&
-        comp_at_edge(data.components[1], x_max)
-      ) {
-        x_max = 1
-      }
-
-      return [x_min, x_max]
-    }
+  let data_min = Infinity
+  let data_max = -Infinity
+  const x_values = [
+    ...data.regions.flatMap((region) => region.vertices),
+    ...data.boundaries.flatMap((boundary) => boundary.points),
+    ...(data.special_points ?? []).map((point) => point.position),
+  ]
+  for (const [x_val] of x_values) {
+    if (x_val < data_min) data_min = x_val
+    if (x_val > data_max) data_max = x_val
   }
-  return [lo ?? 0, hi ?? 1]
+  if (data_min > data_max) return [lo ?? 0, hi ?? 1] // no finite data
+
+  // Auto-extend to 0/1 when an edge region is named after the pure component AND the
+  // data already nearly reaches that boundary
+  const comp_at_edge = (comp: string, x_val: number) => {
+    if (!comp) return false
+    const re = new RegExp(`\\b${comp.replaceAll(/[.*+?^${}()|[\]\\]/g, `\\$&`)}\\b`)
+    return data.regions.some(
+      (region) =>
+        re.test(region.name) &&
+        region.vertices.some((vertex) => Math.abs(vertex[0] - x_val) < 1e-6),
+    )
+  }
+  const x_min = data_min < 0.05 && comp_at_edge(data.components[0], data_min) ? 0 : data_min
+  const x_max = data_max > 0.95 && comp_at_edge(data.components[1], data_max) ? 1 : data_max
+  return [lo ?? x_min, hi ?? x_max]
 }

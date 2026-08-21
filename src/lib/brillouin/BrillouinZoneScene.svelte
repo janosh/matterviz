@@ -5,7 +5,6 @@
     bind_renderer,
     build_orbit_props,
     create_orthographic_zoom,
-    dispose_on_change,
     SceneCamera,
   } from '$lib/scene'
   import type { SceneControlProps, ThreltePointerEvent } from '$lib/scene'
@@ -22,10 +21,15 @@
     k_lattice_inverse,
     k_space_size,
     polyhedron_centroid,
-    polyhedron_geometry,
   } from './geometry'
+  import PolyhedronMesh from './PolyhedronMesh.svelte'
   import ReciprocalVectors from './ReciprocalVectors.svelte'
-  import type { BrillouinZoneData, BZHoverData, IrreducibleBZData } from './types'
+  import type {
+    BrillouinZoneData,
+    BrillouinZoneSettings,
+    BZHoverData,
+    IrreducibleBZData,
+  } from './types'
 
   let {
     bz_data = $bindable(),
@@ -37,7 +41,6 @@
     edge_width = $bindable(DEFAULTS.brillouin.edge_width),
     show_vectors = $bindable(DEFAULTS.brillouin.show_vectors),
     vector_scale = $bindable(DEFAULTS.brillouin.vector_scale),
-    // Irreducible BZ options
     show_ibz = DEFAULTS.brillouin.show_ibz,
     ibz_data = null as IrreducibleBZData | null,
     ibz_color = DEFAULTS.brillouin.ibz_color,
@@ -57,7 +60,7 @@
     auto_rotate = DEFAULTS.structure.auto_rotate,
     scene = $bindable(),
     camera = $bindable(),
-    k_path_points: input_k_path_points = [],
+    k_path_points = [],
     k_path_labels = [],
     hovered_k_point = null,
     hovered_qpoint_index = null,
@@ -65,30 +68,20 @@
     on_kpath_hover,
     width = 0,
     height = 0,
-  }: SceneControlProps & {
-    bz_data?: BrillouinZoneData
-    camera_position?: Vec3 | undefined
-    width?: number // viewport size, needed to turn the relative initial_zoom into a fit
-    height?: number
-    surface_color?: string
-    surface_opacity?: number
-    edge_color?: string
-    edge_width?: number
-    show_vectors?: boolean
-    vector_scale?: number
-    // Irreducible BZ options
-    show_ibz?: boolean
-    ibz_data?: IrreducibleBZData | null
-    ibz_color?: string
-    ibz_opacity?: number
-    k_path_points?: Vec3[]
-    k_path_labels?: { position: Vec3; label: string | null }[]
-    hovered_k_point?: Vec3 | null
-    hovered_qpoint_index?: number | null
-    hover_data?: BZHoverData | null
-    on_kpath_hover?: (qpoint_index: number | null) => void
-  } = $props()
-  const k_path_points = $derived(input_k_path_points ?? [])
+  }: SceneControlProps &
+    Partial<Omit<BrillouinZoneSettings, `bz_order`>> & {
+      bz_data?: BrillouinZoneData
+      camera_position?: Vec3 | undefined
+      width?: number // viewport size, needed to turn the relative initial_zoom into a fit
+      height?: number
+      ibz_data?: IrreducibleBZData | null
+      k_path_points?: Vec3[]
+      k_path_labels?: { position: Vec3; label: string | null }[]
+      hovered_k_point?: Vec3 | null
+      hovered_qpoint_index?: number | null
+      hover_data?: BZHoverData | null
+      on_kpath_hover?: (qpoint_index: number | null) => void
+    } = $props()
 
   bind_renderer((threlte_scene, threlte_camera) => {
     scene = threlte_scene
@@ -155,21 +148,10 @@
     if (k_path_points.length < 3) return Infinity
     const lens = k_path_points
       .slice(1)
-      .map((pt, idx) => Math.hypot(...math.subtract(pt as Vec3, k_path_points[idx] as Vec3)))
+      .map((pt, idx) => Math.hypot(...math.subtract(pt, k_path_points[idx])))
       .toSorted((len_a, len_b) => len_a - len_b)
     return lens[Math.floor(lens.length / 2)] * 10
   })
-
-  const bz_geometry = $derived(
-    bz_data ? polyhedron_geometry(bz_data.vertices, bz_data.faces) : null,
-  )
-  const ibz_geometry = $derived(
-    show_ibz && ibz_data ? polyhedron_geometry(ibz_data.vertices, ibz_data.faces) : null,
-  )
-
-  // Separate calls to avoid disposing one geometry when only the other changes
-  dispose_on_change(() => [bz_geometry])
-  dispose_on_change(() => [ibz_geometry])
 
   // Inverse of k_lattice for Cartesian->fractional conversion
   const k_lattice_inv = $derived(k_lattice_inverse(bz_data?.k_lattice))
@@ -268,52 +250,26 @@
 
 <T.Group position={rotation_target}>
   {#if bz_data}
-    <!-- Brillouin zone surface mesh -->
-    {#if bz_geometry}
-      <T.Mesh
-        geometry={bz_geometry}
-        onpointermove={(event: ThreltePointerEvent) => handle_hover(event, false)}
-        onpointerleave={() => handle_leave(false)}
-      >
-        <T.MeshStandardMaterial
-          color={surface_color}
-          transparent
-          opacity={surface_opacity}
-          side={2}
-          depthWrite={false}
-        />
-      </T.Mesh>
-    {/if}
+    <PolyhedronMesh
+      polyhedron={bz_data}
+      color={surface_color}
+      opacity={surface_opacity}
+      {edge_color}
+      {edge_width}
+      onpointermove={(event) => handle_hover(event, false)}
+      onpointerleave={() => handle_leave(false)}
+    />
 
-    <!-- BZ edges -->
-    {#each bz_data.edges as edge_segment, edge_idx (`bz-edge-${edge_idx}`)}
-      {@const [from, to] = edge_segment}
-      <Cylinder {from} {to} thickness={edge_width} color={edge_color} />
-    {/each}
-
-    <!-- Irreducible BZ surface mesh -->
-    {#if show_ibz && ibz_geometry}
-      <T.Mesh
-        geometry={ibz_geometry}
-        onpointermove={(event: ThreltePointerEvent) => handle_hover(event, true)}
-        onpointerleave={() => handle_leave(true)}
-      >
-        <T.MeshStandardMaterial
-          color={ibz_color}
-          transparent
-          opacity={ibz_opacity}
-          side={2}
-          depthWrite={false}
-        />
-      </T.Mesh>
-    {/if}
-
-    <!-- IBZ edges -->
+    <!-- Irreducible BZ wedge, outlined in its own colour -->
     {#if show_ibz && ibz_data}
-      {#each ibz_data.edges as edge_segment, edge_idx (`ibz-edge-${edge_idx}`)}
-        {@const [from, to] = edge_segment}
-        <Cylinder {from} {to} thickness={edge_width * 1.5} color={ibz_color} />
-      {/each}
+      <PolyhedronMesh
+        polyhedron={ibz_data}
+        color={ibz_color}
+        opacity={ibz_opacity}
+        edge_width={edge_width * 1.5}
+        onpointermove={(event) => handle_hover(event, true)}
+        onpointerleave={() => handle_leave(true)}
+      />
     {/if}
 
     <!-- Reciprocal lattice vectors -->
@@ -325,21 +281,21 @@
     {#if k_path_points.length > 1}
       {#each k_path_points.slice(0, -1) as from_point, idx (`${from_point}-${k_path_points[idx + 1]}#${idx}`)}
         {@const to_point = k_path_points[idx + 1]}
-        {@const seg_len = Math.hypot(...math.subtract(to_point as Vec3, from_point as Vec3))}
+        {@const seg_len = Math.hypot(...math.subtract(to_point, from_point))}
         {@const is_hovered =
           hovered_qpoint_index !== null &&
           (idx === hovered_qpoint_index || idx === hovered_qpoint_index - 1)}
         {#if seg_len <= k_path_seg_cutoff}
           <Cylinder
-            from={from_point as Vec3}
-            to={to_point as Vec3}
+            from={from_point}
+            to={to_point}
             thickness={KPATH_THICKNESS}
             color={is_hovered ? `#ff6b35` : `#ffcc00`}
           />
           <!-- Invisible wider proxy: lets the cursor snap to the path within ~2× its radius -->
           <Cylinder
-            from={from_point as Vec3}
-            to={to_point as Vec3}
+            from={from_point}
+            to={to_point}
             thickness={KPATH_HOVER_THICKNESS}
             opacity={0}
             onpointermove={(event: ThreltePointerEvent) => handle_kpath_hover(event, idx)}

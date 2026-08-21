@@ -8,7 +8,7 @@
     k_lattice_inverse,
     k_space_size,
     polyhedron_centroid,
-    polyhedron_geometry,
+    PolyhedronMesh,
     ReciprocalVectors,
   } from '$lib/brillouin'
   import type { D3InterpolateName } from '$lib/colors'
@@ -21,7 +21,6 @@
   } from '$lib/scene'
   import type { SceneControlProps, ThreltePointerEvent } from '$lib/scene'
   import { DEFAULTS } from '$lib/settings'
-  import { Cylinder } from '$lib/structure'
   import { ortho_zoom_for_extent } from '$lib/structure/camera-fit'
   import { T } from '@threlte/core'
   import * as extras from '@threlte/extras'
@@ -302,16 +301,6 @@
     }),
   )
 
-  // Create BZ geometry
-  const bz_geometry = $derived(
-    bz_data ? polyhedron_geometry(bz_data.vertices, bz_data.faces) : null,
-  )
-
-  $effect(() => {
-    const prev_geometry = bz_geometry
-    return () => prev_geometry?.dispose()
-  })
-
   // Get material props for two-pass transparent rendering
   // Pass 1 (back faces): renders interior/back of surfaces first
   // Pass 2 (front faces): renders exterior/front of surfaces on top
@@ -423,22 +412,14 @@
 
 <T is={clipping_group} position={rotation_target}>
   <!-- Brillouin zone overlay -->
-  {#if show_bz && bz_data && bz_geometry}
-    <T.Mesh geometry={bz_geometry}>
-      <T.MeshStandardMaterial
-        color={bz_color}
-        transparent
-        opacity={bz_opacity}
-        side={2}
-        depthWrite={false}
-      />
-    </T.Mesh>
-
-    <!-- BZ edges -->
-    {#each bz_data.edges as edge_segment, edge_idx (`bz-edge-${edge_idx}`)}
-      {@const [from, to] = edge_segment}
-      <Cylinder {from} {to} thickness={bz_edge_width} color={bz_edge_color} />
-    {/each}
+  {#if show_bz && bz_data}
+    <PolyhedronMesh
+      polyhedron={bz_data}
+      color={bz_color}
+      opacity={bz_opacity}
+      edge_color={bz_edge_color}
+      edge_width={bz_edge_width}
+    />
   {/if}
 
   <!-- Reciprocal lattice vectors -->

@@ -9,7 +9,7 @@
   import type { Vec3 } from '$lib/math'
   import { PlotTooltip } from '$lib/plot'
   import { create_renderer, webgpu_available } from '$lib/scene'
-  import { type CameraProjection, DEFAULTS } from '$lib/settings'
+  import { DEFAULTS } from '$lib/settings'
   import type { Crystal } from '$lib/structure'
   import { parse_structure_file } from '$lib/structure/parse'
   import { analyze_structure_symmetry } from '$lib/symmetry'
@@ -33,6 +33,7 @@
   import { to_error } from '$lib/utils'
   import type {
     BrillouinZoneData,
+    BrillouinZoneSettings,
     BZHoverData,
     BZTooltipProp,
     IrreducibleBZData,
@@ -66,7 +67,6 @@
     show_vectors = $bindable(DEFAULTS.brillouin.show_vectors),
     vector_scale = $bindable(DEFAULTS.brillouin.vector_scale),
     camera_projection = $bindable(DEFAULTS.brillouin.camera_projection),
-    // Irreducible BZ options
     show_ibz = $bindable(DEFAULTS.brillouin.show_ibz),
     ibz_color = $bindable(DEFAULTS.brillouin.ibz_color),
     ibz_opacity = $bindable(DEFAULTS.brillouin.ibz_opacity),
@@ -101,23 +101,11 @@
     on_fullscreen_change,
     on_point_hover,
     ...rest
-  }: {
+  }: Partial<BrillouinZoneSettings> & {
     structure?: Crystal
-    bz_order?: number
     bz_data?: BrillouinZoneData
     controls_open?: boolean
     info_pane_open?: boolean
-    surface_color?: string
-    surface_opacity?: number
-    edge_color?: string
-    edge_width?: number
-    show_vectors?: boolean
-    vector_scale?: number
-    camera_projection?: CameraProjection
-    // Irreducible BZ options
-    show_ibz?: boolean
-    ibz_color?: string
-    ibz_opacity?: number
     ibz_data?: IrreducibleBZData | null
     show_controls?: ShowControlsProp<BrillouinControlName>
     fullscreen?: boolean
@@ -132,11 +120,7 @@
     allow_file_drop?: boolean
     fullscreen_toggle?: boolean
     data_url?: string
-    on_file_drop?: (
-      content: string | ArrayBuffer,
-      filename: string,
-      metadata: io.FileLoadMeta,
-    ) => Promise<void> | void
+    on_file_drop?: io.FileLoadCallback
     spinner_props?: ComponentProps<typeof Spinner>
     loading?: boolean
     error_msg?: string
@@ -305,11 +289,7 @@
 
   function onkeydown(event: KeyboardEvent) {
     const target = event.target
-    if (
-      target instanceof HTMLElement &&
-      (target.tagName === `INPUT` || target.tagName === `TEXTAREA`)
-    )
-      return
+    if (target instanceof HTMLElement && [`INPUT`, `TEXTAREA`].includes(target.tagName)) return
 
     if (event.key === `f` && fullscreen_toggle) fullscreen = !fullscreen
     else if (event.key === `i`) info_pane_open = !info_pane_open

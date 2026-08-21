@@ -115,6 +115,37 @@ describe(`canvas-draw: markers and hit testing`, () => {
       draw.find_hull_entry_at_mouse(undefined, {} as MouseEvent, [entry], project),
     ).toBeNull()
   })
+
+  test(`draw_corner_labels offsets 2D and 3D corners away from their centroid`, () => {
+    const fillText = vi.fn()
+    const ctx = {
+      save: vi.fn(),
+      restore: vi.fn(),
+      fillText,
+    } as unknown as CanvasRenderingContext2D
+    const project = vi.fn((x: number, y: number, z: number) => ({ x, y, depth: z }))
+    draw.draw_corner_labels(
+      ctx,
+      [
+        [1, 0],
+        [0, 1, 1],
+      ],
+      [0, 0, 0],
+      {
+        project,
+        elements: [`H`, `He`],
+        text_color: `black`,
+        font_size: 16,
+        offset: 0.1,
+      },
+    )
+
+    expect(project).toHaveBeenNthCalledWith(1, 1.1, 0, 0)
+    const direction_scale = 0.1 / Math.sqrt(2)
+    expect(project).toHaveBeenNthCalledWith(2, 0, 1 + direction_scale, 1 + direction_scale)
+    expect(fillText).toHaveBeenNthCalledWith(1, `H`, 1.1, 0)
+    expect(fillText).toHaveBeenNthCalledWith(2, `He`, 0, 1 + direction_scale)
+  })
 })
 
 describe(`helpers: thresholds and tooltips`, () => {

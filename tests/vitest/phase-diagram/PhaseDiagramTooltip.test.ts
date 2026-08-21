@@ -121,6 +121,33 @@ describe(`PhaseDiagramTooltip`, () => {
     expect(tooltip?.textContent).toMatch(/500.*800/)
   })
 
+  test.each([
+    // edge melting/congruent points name the pure component; other types get a generic badge
+    { type: `melting_point`, x: 0, badge: `Melting Point`, desc: `Al melts at 933 K` },
+    { type: `congruent`, x: 1, badge: `Melting Point`, desc: `Cu melts at 933 K` },
+    { type: `congruent`, x: 0.5, badge: `Congruent`, desc: `Congruent phase change at 933 K` },
+    {
+      type: `eutectic`,
+      x: 0.3,
+      badge: `Eutectic`,
+      desc: `Liquid → two solid phases at 933 K`,
+    },
+    { type: `melting_point`, x: 0.5, badge: `Melting point`, desc: null },
+    { type: `custom`, x: 0.5, badge: `Custom`, desc: null },
+  ] as const)(`special point $type at x=$x → "$badge"`, ({ type, x, badge, desc }) => {
+    const hover_info = create_hover_info({
+      special_point: { id: `sp`, type, position: [x, 933] },
+    })
+    mount(PhaseDiagramTooltip, {
+      target: document.body,
+      props: { hover_info, component_a: `Al`, component_b: `Cu` },
+    })
+    expect(document.querySelector(`.special-point-badge`)?.textContent).toBe(badge)
+    expect(document.querySelector(`.special-point-description`)?.textContent ?? null).toBe(
+      desc,
+    )
+  })
+
   describe(`lever rule`, () => {
     const lever_rule: LeverRuleResult = {
       left_phase: `α`,

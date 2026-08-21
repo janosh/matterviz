@@ -2,7 +2,6 @@
   import type { D3InterpolateName } from '$lib/colors'
   import { add_alpha, default_element_colors } from '$lib/colors'
   import { normalize_show_controls } from '$lib/controls'
-  import { create_pulse_animation } from '$lib/effects.svelte'
   import { format_num } from '$lib/labels'
   import { to_radians, type Vec2, type Vec3 } from '$lib/math'
   import { ColorBar } from '$lib/plot'
@@ -16,25 +15,17 @@
   import { PerspectiveCamera } from 'three/webgpu'
   import { TRIANGLE_VERTICES } from './barycentric-coords'
   import {
+    build_hull_faces,
+    draw_corner_labels,
+    draw_dashed_edges,
     draw_face,
-    draw_hull_labels,
-    draw_hull_points,
-    draw_notice,
     face_color_resolver,
-    type HullFace,
-    type HullPointOpts,
     type Projected,
+    simplex_centroid,
   } from './canvas-draw'
   import { create_canvas_interactions } from './canvas-interactions.svelte'
   import ConvexHullChrome from './ConvexHullChrome.svelte'
-  import {
-    get_energy_color_scale,
-    get_point_color_for_entry,
-    hull_distance_range,
-    hull_style_css,
-    is_entry_highlighted,
-    merge_highlight_style,
-  } from './helpers'
+  import { hull_distance_range, hull_style_css } from './helpers'
   import { create_hull_data_pipeline } from './hull-state.svelte'
   import type { BaseConvexHullProps, ConvexHullGizmoOptions, Hull3DProps } from './index'
   import { CONVEX_HULL_STYLE, default_controls, default_hull_config } from './index'
@@ -147,35 +138,13 @@
 
   let canvas = $state<HTMLCanvasElement>()
   let overlay_canvas = $state<HTMLCanvasElement>()
-
-  const camera_default = {
-    elevation: defaults.camera_elevation,
-    azimuth: defaults.camera_azimuth,
-    zoom: defaults.camera_zoom,
-    center_x: 0,
-    center_y: -50, // Shift up to better show the formation energy funnel
-  }
-  let camera = $state({ ...camera_default })
-  const reset_camera = () => Object.assign(camera, camera_default)
-
   let hull_face_color = $state(defaults.hull_face_color)
-  const merged_highlight_style = $derived(merge_highlight_style(highlight_style))
-  const is_highlighted = (entry: ConvexHullEntry): boolean =>
-    is_entry_highlighted(entry, highlighted_entries)
-  const energy_color_scale = $derived(
-    get_energy_color_scale(color_mode, color_scale, plot_entries),
-  )
-  const get_point_color = (entry: ConvexHullEntry): string =>
-    get_point_color_for_entry(entry, color_mode, merged_config.colors, energy_color_scale)
 
   // Triangle centroid: rotation centre of the view
-  const [centroid_x, centroid_y] = [0, 1].map(
-    (axis) => TRIANGLE_VERTICES.reduce((sum, vertex) => sum + vertex[axis], 0) / 3,
-  )
+  const centroid = simplex_centroid(TRIANGLE_VERTICES)
 
   // Rz(azimuth) then Rx(-elevation) about the centroid, energy scaled into the view
   function project_3d_point(x: number, y: number, z: number): Projected {
-    const { width, height } = interactions.canvas_dims
     const [elev, azim] = [to_radians(camera.elevation), to_radians(camera.azimuth)]
     const [cos_az, sin_az, cos_el, sin_el] = [
       Math.cos(azim),
@@ -184,34 +153,34 @@
       Math.sin(-elev),
     ]
     const { center: e_ctr, z_scale } = energy_range
-    const [dx, dy, dz] = [x - centroid_x, y - centroid_y, (z - e_ctr) * z_scale]
+    const [dx, dy, dz] = [x - centroid[0], y - centroid[1], (z - e_ctr) * z_scale]
     const [x1, y1] = [dx * cos_az - dy * sin_az, dx * sin_az + dy * cos_az]
     const [y2, z2] = [y1 * cos_el - dz * sin_el, y1 * sin_el + dz * cos_el]
-    const scale = Math.min(width, height) * 0.6 * camera.zoom
-    return {
-      x: width / 2 + camera.center_x + x1 * scale,
-      y: height / 2 + camera.center_y - y2 * scale,
-      depth: z2,
-    }
+    return interactions.to_screen(x1, y2, z2)
   }
 
-  const hull_point_opts = (): HullPointOpts => ({
-    scale: interactions.canvas_dims.scale,
-    shadow_factor: 0.1,
-    selected_entry,
-    is_highlighted,
-    get_point_color,
-    highlight_style: merged_highlight_style,
-  })
-
-  // Shared canvas-interaction scaffold (mouse/keyboard handlers, hover/drag/popup state,
-  // canvas sizing, render scheduler). Rotation math + keydown actions stay local.
+  // Shared canvas scaffold (camera zoom/pan, mouse/keyboard handlers, hover/drag/popup
+  // state, point styling, canvas sizing, render scheduler). Rotation + keydown actions stay local.
   const interactions = create_canvas_interactions({
+    dim: 3,
+    camera_default: {
+      elevation: defaults.camera_elevation,
+      azimuth: defaults.camera_azimuth,
+      zoom: defaults.camera_zoom,
+      center_x: 0,
+      center_y: -50, // Shift up to better show the formation energy funnel
+    },
     wheel_clamp: [0.5, 10],
+    on_rotate: (cam, dx, dy) => {
+      cam.azimuth += dx * 0.3 // drag right rotates clockwise around z
+      cam.elevation -= dy * 0.3 // drag down tilts the view down
+    },
+    shadow_factor: 0.1,
     canvas: () => canvas,
     overlay_canvas: () => overlay_canvas,
     wrapper: () => wrapper,
     entries: () => entries,
+    elements: () => elements,
     visible_entries: () => visible_entries,
     plot_entries: () => plot_entries,
     selected_entry: () => selected_entry,
@@ -223,27 +192,23 @@
     on_point_hover: () => on_point_hover,
     on_file_drop: () => on_file_drop,
     entry_category: () => entry_category,
-    zoom: () => camera.zoom,
-    set_zoom: (zoom) => (camera.zoom = zoom),
+    highlighted_entries: () => highlighted_entries,
+    highlight_style: () => highlight_style,
+    color_mode: () => color_mode,
+    color_scale: () => color_scale,
+    colors: () => merged_config.colors,
+    labels: () => ({
+      show_labels: merged_config.show_labels,
+      show_stable_labels,
+      show_unstable_labels,
+      max_hull_dist_show_labels,
+    }),
     project_point: project_3d_point,
     render_frame,
     // oxfmt-ignore
-    // selected_entry included: pulsing points move to the overlay canvas, so the hull has
-    // to repaint (once) whenever which points those are changes
-    repaint_deps: () => [show_hull_faces, color_mode, color_scale, show_stable_labels, show_unstable_labels, max_hull_dist_show_labels, camera.elevation, camera.azimuth, camera.zoom, camera.center_x, camera.center_y, plot_entries, visible_entries, hull_face_color, hull_face_opacity, hull_face_color_mode, element_colors, highlighted_entries, selected_entry, interactions.text_color, elements, merged_config, merged_highlight_style],
-    hull_point_opts,
-    pulse: () => ({ time: pulse.time, opacity: 0.3 + 0.4 * pulse.unit }),
-    on_drag: (dx, dy, panning) => {
-      if (panning) {
-        camera.center_x += dx
-        camera.center_y += dy
-      } else {
-        camera.azimuth += dx * 0.3 // drag right rotates clockwise around z
-        camera.elevation -= dy * 0.3 // drag down tilts the view down
-      }
-    },
-    actions: () => ({
-      r: reset_camera,
+    repaint_deps: () => [show_hull_faces, hull_face_color, hull_face_opacity, hull_face_color_mode, element_colors, energy_range, merged_config],
+    actions: (): Record<string, () => void> => ({
+      r: interactions.reset_camera,
       t: () => {
         camera.elevation = 0
         camera.azimuth = 0
@@ -256,13 +221,7 @@
       l: () => (show_stable_labels = !show_stable_labels),
     }),
   })
-
-  // Pulsating highlight for selected point. Ticks repaint only the overlay canvas, and the
-  // loop pauses entirely while `wrapper` is off screen.
-  const pulse = create_pulse_animation(
-    () => selected_entry !== null || highlighted_entries.length > 0,
-    { on_tick: interactions.render_overlay_once, element: () => wrapper },
-  )
+  const { camera } = interactions
 
   // === Gizmo: Three.js camera ↔ elevation/azimuth ===
   const GIZMO_CAM_DIST = 5
@@ -287,11 +246,9 @@
   // difference of sqrt(3)/12 in data units, scaled by cos(elevation) so the offset only
   // applies in near-top-down views.
   function center_camera(elev_deg: number): void {
-    const { width, height } = interactions.canvas_dims
     camera.center_x = 0
-    // 0.6 matches the project_3d_point scale factor mapping data coords to canvas pixels
-    const scale = Math.min(width, height) * 0.6 * camera.zoom
-    camera.center_y = (Math.sqrt(3) / 12) * scale * Math.cos(to_radians(elev_deg))
+    camera.center_y =
+      (Math.sqrt(3) / 12) * interactions.view_scale * Math.cos(to_radians(elev_deg))
   }
 
   // Sync: main canvas drag → Three.js gizmo camera
@@ -333,42 +290,16 @@
   // Dashed triangle prism: base triangle at E_form = 0, bottom triangle at the most
   // negative formation energy, and vertical edges connecting corresponding corners
   function draw_structure_outline(ctx: CanvasRenderingContext2D): void {
-    ctx.strokeStyle = CONVEX_HULL_STYLE.structure_line.color
-    ctx.lineWidth = CONVEX_HULL_STYLE.structure_line.line_width
-    ctx.setLineDash(CONVEX_HULL_STYLE.structure_line.dash)
-    ctx.beginPath()
     const { min: e_form_min } = energy_range
+    const edges: [Projected, Projected][] = []
     for (const [idx, [vx, vy]] of TRIANGLE_VERTICES.entries()) {
       const [nx, ny] = TRIANGLE_VERTICES[(idx + 1) % 3]
       for (const z_plane of [0, e_form_min]) {
-        const proj1 = project_3d_point(vx, vy, z_plane)
-        const proj2 = project_3d_point(nx, ny, z_plane)
-        ctx.moveTo(proj1.x, proj1.y)
-        ctx.lineTo(proj2.x, proj2.y)
+        edges.push([project_3d_point(vx, vy, z_plane), project_3d_point(nx, ny, z_plane)])
       }
-      const top = project_3d_point(vx, vy, 0)
-      const bottom = project_3d_point(vx, vy, e_form_min)
-      ctx.moveTo(top.x, top.y)
-      ctx.lineTo(bottom.x, bottom.y)
+      edges.push([project_3d_point(vx, vy, 0), project_3d_point(vx, vy, e_form_min)])
     }
-    ctx.stroke()
-    ctx.setLineDash([]) // every later stroke sets its own strokeStyle
-  }
-
-  // Element symbols just outside the triangle corners
-  function draw_element_labels(ctx: CanvasRenderingContext2D): void {
-    ctx.save()
-    ctx.fillStyle = interactions.text_color
-    ctx.font = `bold 16px Arial`
-    ctx.textAlign = `center`
-    ctx.textBaseline = `middle`
-    for (const [idx, [x, y]] of TRIANGLE_VERTICES.entries()) {
-      const [dx, dy] = [x - centroid_x, y - centroid_y]
-      const length = Math.hypot(dx, dy)
-      const proj = project_3d_point(x + (dx / length) * 0.05, y + (dy / length) * 0.05, 0)
-      ctx.fillText(elements[idx], proj.x, proj.y)
-    }
-    ctx.restore()
+    draw_dashed_edges(ctx, edges)
   }
 
   function draw_z_axis_ticks(ctx: CanvasRenderingContext2D): void {
@@ -431,19 +362,7 @@
 
   function draw_convex_hull_faces(ctx: CanvasRenderingContext2D): void {
     if (!show_hull_faces || hull_faces.length === 0) return
-    const faces: HullFace[] = hull_faces.map((vertices, facet_idx) => {
-      const projected = vertices.map((vertex) =>
-        project_3d_point(vertex.x, vertex.y, vertex.z),
-      )
-      return {
-        vertices,
-        projected,
-        facet_idx,
-        e_form: vertices.reduce((sum, vertex) => sum + vertex.z, 0) / 3,
-        depth: projected.reduce((sum, point) => sum + point.depth, 0) / 3,
-      }
-    })
-    faces.sort((left, right) => left.depth - right.depth) // back to front
+    const faces = build_hull_faces(hull_faces, project_3d_point)
     const face_color = face_color_resolver(faces, {
       mode: hull_face_color_mode,
       uniform_color: hull_face_color,
@@ -494,33 +413,19 @@
     }
   }
 
-  function render_frame(ctx: CanvasRenderingContext2D, width: number, height: number): void {
-    ctx.clearRect(0, 0, width, height)
-    if (elements.length !== 3) {
-      if (elements.length > 0) {
-        const notice = `Ternary convex hull requires exactly 3 elements (got ${elements.length})`
-        draw_notice(ctx, notice, interactions.text_color, width, height)
-      }
-      return
-    }
+  function render_frame(ctx: CanvasRenderingContext2D): void {
     draw_structure_outline(ctx)
     draw_convex_hull_faces(ctx) // behind points
     draw_z_axis_ticks(ctx) // after faces for visibility at high opacity
-    draw_hull_points(ctx, interactions.sorted_points_cache, hull_point_opts())
-    if (merged_config.show_labels) {
-      draw_hull_labels(ctx, visible_entries, {
-        project: project_3d_point,
-        elements,
-        scale: interactions.canvas_dims.scale,
-        text_color: interactions.text_color,
-        width,
-        height,
-        show_stable_labels,
-        show_unstable_labels,
-        max_hull_dist_show_labels,
-      })
-    }
-    draw_element_labels(ctx)
+    interactions.draw_points(ctx)
+    interactions.draw_labels(ctx)
+    draw_corner_labels(ctx, TRIANGLE_VERTICES, centroid, {
+      project: project_3d_point,
+      elements,
+      text_color: interactions.text_color,
+      font_size: 16,
+      offset: 0.05,
+    })
   }
 
   // Formation energy colour bar for the face shading (uniform / formation_energy modes)
@@ -600,20 +505,20 @@
       {hull_data}
       {controls_config}
       loading={entries.length === 0}
-      on_reset={reset_camera}
+      on_reset={interactions.reset_camera}
       {enable_info_pane}
       {phase_stats}
       {label_threshold}
       bind:fullscreen
       {fullscreen_toggle}
-      on_fullscreen_change={() => Object.assign(camera, { center_x: 0, center_y: -50 })}
+      on_fullscreen_change={interactions.recenter_camera}
       {camera}
       {merged_controls}
       {stable_entries}
       {unstable_entries}
-      {get_point_color}
-      {merged_highlight_style}
-      {is_highlighted}
+      get_point_color={interactions.get_point_color}
+      merged_highlight_style={interactions.highlight_style}
+      is_highlighted={interactions.is_highlighted}
       {tooltip}
       {selected_entry}
       bind:temperature

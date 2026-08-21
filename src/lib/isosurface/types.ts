@@ -222,26 +222,24 @@ export function downsample_grid(
   // A single cbrt step can overshoot for anisotropic grids where max(2,...)
   // clamping prevents a small axis from shrinking below 2.
   // clamp_dim: returns 1 for single-cell axes, otherwise clamps to [2, src]
+  const clamp_dims = (fac: number): Vec3 => grid.dims.map((dim) => clamp_dim(dim, fac)) as Vec3
+  const n_points = ([x_dim, y_dim, z_dim]: Vec3) => x_dim * y_dim * z_dim
   let factor = Math.ceil(Math.cbrt(total / max_points))
-  let new_nx = clamp_dim(nx, factor)
-  let new_ny = clamp_dim(ny, factor)
-  let new_nz = clamp_dim(nz, factor)
-  while (new_nx * new_ny * new_nz > max_points) {
-    factor++
-    const prev_total = new_nx * new_ny * new_nz
-    new_nx = clamp_dim(nx, factor)
-    new_ny = clamp_dim(ny, factor)
-    new_nz = clamp_dim(nz, factor)
+  let new_dims = clamp_dims(factor)
+  while (n_points(new_dims) > max_points) {
+    const next_dims = clamp_dims(++factor)
     // dims hit their floor (2 per axis or 1 for single-cell) — stop to avoid infinite loop
-    if (new_nx * new_ny * new_nz === prev_total) break
+    if (n_points(next_dims) === n_points(new_dims)) break
+    new_dims = next_dims
   }
+  const [new_nx, new_ny, new_nz] = new_dims
 
   // Proportional partitioning: evenly divides [0, n) into new_n non-empty blocks.
   // Unlike fixed-stride (ix * factor), this is safe when max(2,...) clamping
   // produces more output cells than ceil(n/factor) would — no empty blocks.
-  const x_ranges = partition_ranges(new_nx, nx)
-  const y_ranges = partition_ranges(new_ny, ny)
-  const z_ranges = partition_ranges(new_nz, nz)
+  const [x_ranges, y_ranges, z_ranges] = new_dims.map((n_out, axis) =>
+    partition_ranges(n_out, grid.dims[axis]),
+  )
 
   const src = grid.values
   const out = new Float64Array(new_nx * new_ny * new_nz)
@@ -296,72 +294,71 @@ export function auto_isosurface_settings(data_range: DataRange): IsosurfaceSetti
   }
 }
 
+// Visible layer colored from the categorical palette (negative lobe takes the next
+// swatch) with the negative lobe enabled when the field is signed
+const palette_layer = (
+  data_range: DataRange,
+  isovalue: number,
+  opacity: number,
+  color_offset: number,
+): IsosurfaceLayer => ({
+  isovalue,
+  color: LAYER_COLORS[color_offset % LAYER_COLORS.length],
+  opacity,
+  visible: true,
+  show_negative: field_has_significant_negatives(data_range),
+  negative_color: LAYER_COLORS[(color_offset + 1) % LAYER_COLORS.length],
+})
+
 // Generate N evenly-spaced isosurface layers across a data range.
 // Layers are spaced from 10% to 80% of abs_max with decreasing opacity
 // for outer (lower-isovalue) shells so inner shells remain visible.
 export function generate_layers(data_range: DataRange, n_layers: number): IsosurfaceLayer[] {
   if (n_layers <= 0 || data_range.abs_max <= 0) return []
-  const show_negative = field_has_significant_negatives(data_range)
-  // Space isovalues from high (inner) to low (outer)
+  // Space isovalues from high (inner, fraction 0.8) to low (outer, fraction 0.1)
   return Array.from({ length: n_layers }, (_, idx) => {
-    // Fraction from 0.8 (inner) to 0.1 (outer)
     const fraction = n_layers === 1 ? 0.2 : 0.8 - (idx / (n_layers - 1)) * 0.7
-    return {
-      isovalue: data_range.abs_max * fraction,
-      color: LAYER_COLORS[idx % LAYER_COLORS.length],
-      opacity: n_layers === 1 ? 0.6 : 0.8 - idx * (0.5 / Math.max(n_layers - 1, 1)),
-      visible: true,
-      show_negative,
-      negative_color: LAYER_COLORS[(idx + 1) % LAYER_COLORS.length],
-    }
+    const opacity = n_layers === 1 ? 0.6 : 0.8 - idx * (0.5 / Math.max(n_layers - 1, 1))
+    return palette_layer(data_range, data_range.abs_max * fraction, opacity, idx)
   })
 }
 
 // Build a default isosurface layer for a newly added volume: isovalue at 20% of
 // abs_max, next unused palette color, and negative lobe when the data is signed.
-export function auto_volume_layer(
+export const auto_volume_layer = (
   volume: VolumetricData,
   volume_idx: number,
   color_offset = 0,
-): IsosurfaceLayer {
-  return {
-    isovalue: default_isovalue(volume.data_range),
-    color: LAYER_COLORS[color_offset % LAYER_COLORS.length],
-    opacity: 0.6,
-    visible: true,
-    show_negative: field_has_significant_negatives(volume.data_range),
-    negative_color: LAYER_COLORS[(color_offset + 1) % LAYER_COLORS.length],
-    volume_idx,
-  }
-}
+): IsosurfaceLayer => ({
+  ...palette_layer(volume.data_range, default_isovalue(volume.data_range), 0.6, color_offset),
+  volume_idx,
+})
+
+// Pin layers still relying on the implicit active volume to an explicit volume_idx
+const pin_layers = (layers: IsosurfaceLayer[], active_volume_idx: number) =>
+  layers.map((layer) => ({ ...layer, volume_idx: layer.volume_idx ?? active_volume_idx }))
 
 // Convert single-isovalue settings into an explicit layers array (no-op when
 // layers already exist — an explicit empty array means zero surfaces and is
 // preserved). Used when entering multi-volume mode so the implicit
 // active-volume surface survives as an editable layer.
-export function materialize_layers(
+export const materialize_layers = (
   settings: IsosurfaceSettings,
   active_volume_idx: number,
-): IsosurfaceLayer[] {
-  if (settings.layers) {
-    // Pin any layers still relying on the implicit active volume
-    return settings.layers.map((layer) => ({
-      ...layer,
-      volume_idx: layer.volume_idx ?? active_volume_idx,
-    }))
-  }
-  return [
-    {
-      isovalue: settings.isovalue,
-      color: settings.positive_color,
-      opacity: settings.opacity,
-      visible: true,
-      show_negative: settings.show_negative,
-      negative_color: settings.negative_color,
-      volume_idx: active_volume_idx,
-    },
-  ]
-}
+): (IsosurfaceLayer & { volume_idx: number })[] =>
+  pin_layers(
+    settings.layers ?? [
+      {
+        isovalue: settings.isovalue,
+        color: settings.positive_color,
+        opacity: settings.opacity,
+        visible: true,
+        show_negative: settings.show_negative,
+        negative_color: settings.negative_color,
+      },
+    ],
+    active_volume_idx,
+  )
 
 // Remove a volume from the registry: drops layers whose geometry references it,
 // unsets color sources pointing at it, and shifts higher indices down by one.
@@ -413,12 +410,10 @@ export const lattices_match = (
   lattice_b: readonly (readonly number[])[] | undefined,
   tolerance = 0.05,
 ): boolean =>
-  Boolean(lattice_a && lattice_b) &&
-  (lattice_a as number[][]).every((row, row_idx) =>
-    row.every(
-      (val, col_idx) =>
-        Math.abs(val - (lattice_b as number[][])[row_idx][col_idx]) < tolerance,
-    ),
+  lattice_a !== undefined &&
+  lattice_b !== undefined &&
+  lattice_a.every((row, row_idx) =>
+    row.every((val, col_idx) => Math.abs(val - lattice_b[row_idx][col_idx]) < tolerance),
   )
 
 export interface VolumeMergeResult {
@@ -443,10 +438,7 @@ export function merge_imported_volumes(
 ): VolumeMergeResult {
   const source = incoming[0]?.source
   let volumes = [...existing]
-  let layers: IsosurfaceLayer[] = existing_layers.map((layer) => ({
-    ...layer,
-    volume_idx: layer.volume_idx ?? active_volume_idx,
-  }))
+  let layers: IsosurfaceLayer[] = pin_layers(existing_layers, active_volume_idx)
 
   const group_indices = volumes
     .map((vol, idx) => (source !== undefined && vol.source === source ? idx : -1))

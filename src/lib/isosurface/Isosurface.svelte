@@ -28,7 +28,12 @@
   import { compute_geometries_async } from './async-geometry.svelte'
   import { finite_grid_options, type GeometryVolumeJob } from './geometry'
   import type { ScalarGrid3D } from './grid'
-  import { profile_stage, record_profile, type IsosurfaceProfiler } from './profile'
+  import {
+    type IsosurfaceProfileMeta,
+    type IsosurfaceProfiler,
+    profile_stage,
+    record_profile,
+  } from './profile'
   import type { DisplayRange } from './sampling'
   import {
     prepare_geometry_grid,
@@ -36,7 +41,7 @@
     sample_volume_at_positions,
   } from './sampling'
   import type { IsosurfaceLayer, IsosurfaceSettings, VolumetricData } from './types'
-  import { DEFAULT_ISOSURFACE_SETTINGS, MAX_GRID_POINTS } from './types'
+  import { DEFAULT_ISOSURFACE_SETTINGS, MAX_GRID_POINTS, materialize_layers } from './types'
 
   let {
     volumes = [],
@@ -60,40 +65,20 @@
   let reference_origin = $derived<Vec3>(volumes[0]?.origin ?? [0, 0, 0])
   let reference_origin_key = $derived(reference_origin.join(`,`))
 
-  type ResolvedLayer = IsosurfaceLayer & { volume_idx: number }
+  type ResolvedLayer = ReturnType<typeof materialize_layers>[number]
 
   // Resolve layers: explicit layers array if provided (an empty array means zero
   // surfaces), else one implicit layer from single-isovalue settings bound to
-  // the active volume. Layers with an explicitly out-of-range volume_idx are
-  // skipped rather than clamped — silently rendering a different volume's data
+  // the (clamped) active volume. Layers with an explicitly out-of-range volume_idx
+  // are skipped rather than clamped — silently rendering a different volume's data
   // would be scientifically wrong.
   let resolved_layers = $derived.by((): ResolvedLayer[] => {
     const n_vols = volumes.length
     if (n_vols === 0) return []
-    const clamp_idx = (idx: number) => Math.min(Math.max(idx, 0), n_vols - 1)
-    if (settings.layers) {
-      return settings.layers
-        .filter(
-          (layer) =>
-            layer.volume_idx === undefined ||
-            (layer.volume_idx >= 0 && layer.volume_idx < n_vols),
-        )
-        .map((layer) => ({
-          ...layer,
-          volume_idx: layer.volume_idx ?? clamp_idx(active_volume_idx),
-        }))
-    }
-    return [
-      {
-        isovalue: settings.isovalue,
-        color: settings.positive_color,
-        opacity: settings.opacity,
-        visible: true,
-        show_negative: settings.show_negative,
-        negative_color: settings.negative_color,
-        volume_idx: clamp_idx(active_volume_idx),
-      },
-    ]
+    const active_idx = Math.min(Math.max(active_volume_idx, 0), n_vols - 1)
+    return materialize_layers(settings, active_idx).filter(
+      (layer) => layer.volume_idx >= 0 && layer.volume_idx < n_vols,
+    )
   })
 
   // Stable identity tokens for volume objects so cache keys detect replacement
@@ -173,28 +158,38 @@
     return prepared
   }
 
-  // Build indexed BufferGeometry from marching cubes output
-  function build_geometry(
-    positions: Float32Array,
-    indices: Uint32Array,
-  ): BufferGeometry | null {
-    if (positions.length === 0 || indices.length === 0) return null
-    const geometry = new BufferGeometry()
-    geometry.setAttribute(`position`, new BufferAttribute(positions, 3))
-    geometry.setIndex(new Uint32BufferAttribute(indices, 1))
-    geometry.computeVertexNormals()
-    geometry.computeBoundingSphere()
-    return geometry
-  }
   const geometry_buffer_bytes = (geometry: BufferGeometry): number =>
     [`position`, `normal`, `color`].reduce(
       (total, name) => total + (geometry.getAttribute(name)?.array.byteLength ?? 0),
       geometry.getIndex()?.array.byteLength ?? 0,
     )
 
+  // Build an indexed BufferGeometry from marching-cubes output (null for empty surfaces)
+  const build_geometry = (
+    positions: Float32Array,
+    indices: Uint32Array,
+    meta: IsosurfaceProfileMeta = {},
+  ): BufferGeometry | null =>
+    profile_stage(
+      profiler,
+      `build_geometry`,
+      () => {
+        if (positions.length === 0 || indices.length === 0) return null
+        const geometry = new BufferGeometry()
+        geometry.setAttribute(`position`, new BufferAttribute(positions, 3))
+        geometry.setIndex(new Uint32BufferAttribute(indices, 1))
+        geometry.computeVertexNormals()
+        geometry.computeBoundingSphere()
+        return geometry
+      },
+      (geometry) => ({
+        ...meta,
+        buffer_bytes: geometry ? geometry_buffer_bytes(geometry) : 0,
+      }),
+    )
+
   function extract_surface(isovalue: number, prepared: PreparedGrid): BufferGeometry | null {
-    if (isovalue === 0) return null
-    const result = profile_stage(profiler, `marching_cubes`, () =>
+    const { positions, indices } = profile_stage(profiler, `marching_cubes`, () =>
       marching_cubes_buffers(
         prepared.grid,
         isovalue,
@@ -202,12 +197,7 @@
         finite_grid_options(prepared.vertex_shift),
       ),
     )
-    return profile_stage(
-      profiler,
-      `build_geometry`,
-      () => build_geometry(result.positions, result.indices),
-      (geometry) => ({ buffer_bytes: geometry ? geometry_buffer_bytes(geometry) : 0 }),
-    )
+    return build_geometry(positions, indices)
   }
 
   // === Mesh entry management ===
@@ -270,16 +260,10 @@
     ])
   }
 
-  type PendingSurface = {
-    key: string
-    geo_key: string
-    layer_idx: number
-    sign: 1 | -1
+  type PendingSurface = Pick<MeshEntry, `key` | `geo_key` | `layer_idx` | `sign`> & {
     isovalue: number
     volume: VolumetricData
   }
-
-  type EntryPlan = MeshEntry | PendingSurface
 
   const estimated_prepared_points = (vol: VolumetricData): number => {
     const range = effective_range(vol)
@@ -301,24 +285,14 @@
     )
 
   // Group pending surfaces by volume so each volume is posted and prepared once
-  function worker_jobs(pending: PendingSurface[]): GeometryVolumeJob[] {
-    const grouped = new Map<VolumetricData, PendingSurface[]>()
-    for (const surface of pending) {
-      const surfaces = grouped.get(surface.volume) ?? []
-      surfaces.push(surface)
-      grouped.set(surface.volume, surfaces)
-    }
-    return [...grouped].map(([vol, surfaces]) => ({
+  const worker_jobs = (pending: PendingSurface[]): GeometryVolumeJob[] =>
+    [...Map.groupBy(pending, (surface) => surface.volume)].map(([vol, surfaces]) => ({
       token: vol_id(vol),
       volume: vol,
       range: effective_range(vol),
       reference_origin,
-      surfaces: surfaces.map((surface) => ({
-        token: surface.key,
-        isovalue: surface.isovalue,
-      })),
+      surfaces: surfaces.map(({ key, isovalue }) => ({ token: key, isovalue })),
     }))
-  }
 
   async function rebuild_geometries(
     layers: ResolvedLayer[],
@@ -329,16 +303,14 @@
     // Reuse geometries whose signature is unchanged (take-once so duplicate
     // layers at the same isovalue never share a geometry instance)
     const reusable = new Map(active_entries.map((entry) => [entry.geo_key, entry]))
-    const plans: EntryPlan[] = []
+    const plans: (MeshEntry | PendingSurface)[] = []
     const pending: PendingSurface[] = []
 
-    for (let layer_idx = 0; layer_idx < layers.length; layer_idx++) {
-      const layer = layers[layer_idx]
+    for (const [layer_idx, layer] of layers.entries()) {
       const vol = volumes[layer.volume_idx]
       if (!vol || !layer.visible || layer.isovalue <= 0) continue
 
-      const signs: (1 | -1)[] = layer.show_negative ? [1, -1] : [1]
-      for (const sign of signs) {
+      for (const sign of layer.show_negative ? ([1, -1] as const) : ([1] as const)) {
         const key = `${layer_idx}:${sign}`
         const geo_key = geometry_key(layer, sign)
         const reused = reusable.get(geo_key)
@@ -348,18 +320,18 @@
           // Keep only the cached geometry + scalars; key/layer_idx/sign are
           // rebound to the CURRENT loop values (they override the spread)
           plans.push({ ...reused, key, layer_idx, sign })
-          continue
+        } else {
+          const surface = {
+            key,
+            geo_key,
+            layer_idx,
+            sign,
+            isovalue: sign * layer.isovalue,
+            volume: vol,
+          }
+          pending.push(surface)
+          plans.push(surface)
         }
-        const surface: PendingSurface = {
-          key,
-          geo_key,
-          layer_idx,
-          sign,
-          isovalue: sign * layer.isovalue,
-          volume: vol,
-        }
-        pending.push(surface)
-        plans.push(surface)
       }
     }
 
@@ -375,11 +347,10 @@
           { signal: abort.signal },
         )
         if (generation !== rebuild_generation) return
-        const volume_by_token = new Map(
-          pending.map(({ volume: source }) => [vol_id(source), source]),
-        )
         for (const volume_result of response.volumes) {
-          const source_volume = volume_by_token.get(volume_result.token)
+          const source_volume = pending.find(
+            (surface) => vol_id(surface.volume) === volume_result.token,
+          )?.volume
           if (source_volume) {
             prepared_cache.set(source_volume, {
               key: prepared_key(source_volume),
@@ -396,15 +367,9 @@
               worker: true,
               vertices: surface_result.positions.length / 3,
             })
-            const geometry = profile_stage(
-              profiler,
-              `build_geometry`,
-              () => build_geometry(surface_result.positions, surface_result.indices),
-              (built_geometry) => ({
-                worker: true,
-                buffer_bytes: built_geometry ? geometry_buffer_bytes(built_geometry) : 0,
-              }),
-            )
+            const geometry = build_geometry(surface_result.positions, surface_result.indices, {
+              worker: true,
+            })
             if (geometry) geometries.set(surface_result.token, geometry)
           }
         }
@@ -435,27 +400,6 @@
       for (const geometry of geometries.values()) geometry.dispose()
       return
     }
-    let entries: MeshEntry[] = []
-    for (const plan of plans) {
-      if (`geometry` in plan) entries.push(plan)
-      else {
-        const geometry = geometries.get(plan.key)
-        if (geometry) {
-          const { key, geo_key, layer_idx, sign } = plan
-          entries.push({
-            key,
-            geo_key,
-            layer_idx,
-            sign,
-            geometry,
-            render_order: 0,
-            scalars: null,
-            scalars_volume_id: null,
-          })
-        }
-      }
-    }
-
     // Render outer shells first so per-entry back/front passes interleave
     // roughly back-to-front. Isovalues from different volumes aren't directly
     // comparable, so rank by isovalue as a fraction of each volume's abs_max.
@@ -464,9 +408,26 @@
       const abs_max = volumes[layer.volume_idx]?.data_range.abs_max ?? 1
       return layer.isovalue / Math.max(abs_max, 1e-30)
     }
-    entries = entries.toSorted(
-      (entry_a, entry_b) => shell_fraction(entry_a) - shell_fraction(entry_b),
-    )
+    const entries = plans
+      .flatMap((plan): MeshEntry[] => {
+        if (`geometry` in plan) return [plan]
+        const geometry = geometries.get(plan.key)
+        if (!geometry) return []
+        const { key, geo_key, layer_idx, sign } = plan
+        return [
+          {
+            key,
+            geo_key,
+            layer_idx,
+            sign,
+            geometry,
+            render_order: 0,
+            scalars: null,
+            scalars_volume_id: null,
+          },
+        ]
+      })
+      .toSorted((entry_a, entry_b) => shell_fraction(entry_a) - shell_fraction(entry_b))
     entries.forEach((entry, rank) => (entry.render_order = rank * 2))
 
     // Dispose old geometries that were not reused, then swap in the new list

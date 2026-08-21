@@ -13,6 +13,7 @@
   import type { ComponentProps } from 'svelte'
   import { Icon } from 'svelte-widgets'
   import { Reset } from 'svelte-widgets/icons'
+  import type { HTMLAttributes } from 'svelte/elements'
   import type { HullSelection } from './canvas-interactions.svelte'
   import ConvexHullControls from './ConvexHullControls.svelte'
   import ConvexHullInfoPane from './ConvexHullInfoPane.svelte'
@@ -72,28 +73,14 @@
     max_hull_dist_show_phases = $bindable(0),
     max_hull_dist_show_labels = $bindable(0.1),
     energy_source_mode = $bindable(`precomputed`),
-  }: Pick<
+  }: Omit<
+    // Every ConvexHullControls prop is forwarded except the ones this component supplies itself
     ControlsProps,
-    | `camera`
-    | `merged_controls`
-    | `stable_entries`
-    | `unstable_entries`
-    | `color_mode`
-    | `color_scale`
-    | `show_stable`
-    | `show_unstable`
-    | `entry_category`
-    | `hidden_categories`
-    | `show_stable_labels`
-    | `show_unstable_labels`
-    | `max_hull_dist_show_phases`
-    | `max_hull_dist_show_labels`
-    | `energy_source_mode`
-    | `controls_open`
-    | `show_hull_faces`
-    | `hull_face_color`
-    | `hull_face_opacity`
-    | `hull_face_color_mode`
+    | keyof HTMLAttributes<HTMLDivElement>
+    | `toggle_props`
+    | `pane_props`
+    | `max_hull_dist_in_data`
+    | `energy_info`
   > &
     Pick<ComponentProps<typeof ConvexHullInfoPane>, `phase_stats` | `label_threshold`> & {
       kind: `binary` | `ternary` | `quaternary` // DEFAULTS.convex_hull section for reset

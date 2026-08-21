@@ -301,7 +301,6 @@
   )
   const cards_props = {
     show_filter: false,
-    show_copy: false,
     empty_label: `stats`,
     heading_level: 5,
     variant: `flat`,

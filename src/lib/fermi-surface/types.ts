@@ -2,7 +2,12 @@
 import type { FileLoadData } from '$lib/io/types'
 import type { ScalarGrid3D } from '$lib/isosurface/grid'
 import type { Matrix3x3, Point2D, Vec2, Vec3 } from '$lib/math'
+import type { DefaultSettings } from '$lib/settings'
 import type { TooltipConfig, TooltipProp } from '$lib/tooltip'
+
+// Viewer settings FermiSurface forwards to FermiSurfaceControls (bound) and FermiSurfaceScene
+// (read-only); defaults live in DEFAULTS.fermi
+export type FermiSurfaceSettings = Omit<DefaultSettings[`fermi`], `fullscreen_toggle`>
 
 // Spin channel type
 export type SpinChannel = `up` | `down` | null

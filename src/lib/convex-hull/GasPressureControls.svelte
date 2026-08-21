@@ -38,54 +38,46 @@
   let preview_pressures = $state<Partial<Record<GasSpecies, number>>>({})
   let last_update_time = 0
 
-  // Get provider for chemical potential calculations
   const provider = $derived(config.provider ?? get_default_gas_provider())
-
-  // Get enabled gases from config
   const enabled_gases = $derived(config.enabled_gases ?? [])
-
   // Effective pressures including defaults
   const effective_pressures = $derived(get_effective_pressures(config))
 
-  // Get current pressure for a gas (preview during drag, committed, or default)
+  // Current pressure for a gas (preview during drag, committed, or default)
   function get_pressure(gas: GasSpecies): number {
-    const P = preview_pressures[gas] ?? pressures[gas] ?? effective_pressures[gas]
-    return Number.isFinite(P) && P > 0 ? P : MIN_PRESSURE
+    const pressure = preview_pressures[gas] ?? pressures[gas] ?? effective_pressures[gas]
+    return Number.isFinite(pressure) && pressure > 0 ? pressure : MIN_PRESSURE
   }
 
-  // Compute chemical potential μ(T,P) for a gas at current temperature and pressure
+  // Chemical potential μ(T,P) for a gas at current temperature and pressure
   const get_mu = (gas: GasSpecies): number =>
     compute_gas_chemical_potential(provider, gas, temperature, get_pressure(gas))
 
-  // Convert pressure to log scale slider position (0-100)
-  const pressure_to_slider = (P: number): number =>
-    ((Math.max(LOG_P_MIN, Math.min(LOG_P_MAX, Math.log10(P))) - LOG_P_MIN) / LOG_P_RANGE) * 100
-
-  // Convert slider position (0-100) to pressure
+  // Pressure <-> log scale slider position (0-100)
+  const pressure_to_slider = (pressure: number): number =>
+    ((Math.max(LOG_P_MIN, Math.min(LOG_P_MAX, Math.log10(pressure))) - LOG_P_MIN) /
+      LOG_P_RANGE) *
+    100
   const slider_to_pressure = (value: number): number =>
     10 ** (LOG_P_MIN + (value / 100) * LOG_P_RANGE)
 
-  // Format gas name for display (subscript numbers)
-  const format_gas_name = (gas: GasSpecies): string =>
-    gas.replaceAll(/(?<digits>\d+)/g, `<sub>$1</sub>`)
-
   // Format pressure as plain text (no HTML) for the number input
-  function format_pressure(P: number): string {
-    const log_P = Math.log10(P)
-    const exp = Math.round(log_P)
-    if (Math.abs(log_P - exp) < 0.1) return `1e${exp}`
-    if (P >= 0.01 && P < 100) return P.toPrecision(2)
-    return P.toExponential(1)
+  function format_pressure(pressure: number): string {
+    const log_pressure = Math.log10(pressure)
+    const exponent = Math.round(log_pressure)
+    if (Math.abs(log_pressure - exponent) < 0.1) return `1e${exponent}`
+    if (pressure >= 0.01 && pressure < 100) return pressure.toPrecision(2)
+    return pressure.toExponential(1)
   }
 
   function set_pressure(gas: GasSpecies, value: number): void {
-    const P = slider_to_pressure(value)
-    preview_pressures = { ...preview_pressures, [gas]: P }
+    const pressure = slider_to_pressure(value)
+    preview_pressures = { ...preview_pressures, [gas]: pressure }
     // Throttle parent updates during drag to prevent hull recomputation on every pixel
     const now = Date.now()
     if (now - last_update_time >= THROTTLE_MS) {
       last_update_time = now
-      pressures = { ...pressures, [gas]: P }
+      pressures = { ...pressures, [gas]: pressure }
     }
   }
 
@@ -93,8 +85,7 @@
     gas: GasSpecies,
     event: Event & { currentTarget: HTMLInputElement },
   ): void {
-    const P = slider_to_pressure(Number(event.currentTarget.value))
-    pressures = { ...pressures, [gas]: P }
+    pressures = { ...pressures, [gas]: slider_to_pressure(Number(event.currentTarget.value)) }
     // Clear only this gas's preview (don't reset other sliders being dragged simultaneously)
     const { [gas]: _removed_preview, ...remaining_previews } = preview_pressures
     preview_pressures = remaining_previews
@@ -109,7 +100,7 @@
 {#if enabled_gases.length > 0}
   <div {...rest} class={[`pressure-controls`, position, rest.class]}>
     {#each enabled_gases as gas (gas)}
-      {@const P = get_pressure(gas)}
+      {@const pressure = get_pressure(gas)}
       {@const mu = get_mu(gas)}
       {@const tooltip_content = `${gas} partial pressure for μ(T,P)\nμ = ${format_chemical_potential(mu, 3)}`}
       <div class="pressure-slider" {@attach tooltip({ content: tooltip_content })}>
@@ -117,15 +108,18 @@
           <input
             type="text"
             class="pressure-input"
-            value={format_pressure(P)}
+            value={format_pressure(pressure)}
             onchange={(evt) => {
               const val = Number(evt.currentTarget.value)
               if (Number.isFinite(val) && val > 0) set_pressure_direct(gas, val)
-              else evt.currentTarget.value = format_pressure(P)
+              else evt.currentTarget.value = format_pressure(pressure)
             }}
             aria-label="{gas} pressure (bar)"
           />
-          <span class="gas-name">{@html sanitize_html(format_gas_name(gas))}</span>
+          <!-- subscript the stoichiometric digits in the gas formula -->
+          <span class="gas-name"
+            >{@html sanitize_html(gas.replaceAll(/(?<digits>\d+)/g, `<sub>$1</sub>`))}</span
+          >
         </label>
         <div class="slider-wrapper">
           <span class="pressure-range">
@@ -136,7 +130,7 @@
             min="0"
             max="100"
             step="0.5"
-            value={pressure_to_slider(P)}
+            value={pressure_to_slider(pressure)}
             oninput={(evt) => set_pressure(gas, +evt.currentTarget.value)}
             onchange={(evt) => handle_slider_end(gas, evt)}
             onmouseup={(evt) => handle_slider_end(gas, evt)}
@@ -158,6 +152,22 @@
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
+    &.top-left,
+    &.top-right {
+      top: calc(1ex + 50px);
+    }
+    &.bottom-left,
+    &.bottom-right {
+      bottom: calc(1ex + 50px);
+    }
+    &.top-left,
+    &.bottom-left {
+      left: calc(1ex + 10px);
+    }
+    &.top-right,
+    &.bottom-right {
+      right: calc(1ex + 75px);
+    }
   }
   .sr-only {
     position: absolute;
@@ -169,22 +179,6 @@
     clip: rect(0, 0, 0, 0);
     white-space: nowrap;
     border: 0;
-  }
-  .pressure-controls.top-left {
-    top: calc(1ex + 50px);
-    left: calc(1ex + 10px);
-  }
-  .pressure-controls.top-right {
-    top: calc(1ex + 50px);
-    right: calc(1ex + 75px);
-  }
-  .pressure-controls.bottom-left {
-    bottom: calc(1ex + 50px);
-    left: calc(1ex + 10px);
-  }
-  .pressure-controls.bottom-right {
-    bottom: calc(1ex + 50px);
-    right: calc(1ex + 75px);
   }
   .pressure-slider {
     display: flex;

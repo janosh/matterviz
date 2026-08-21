@@ -2,34 +2,25 @@
   import type { D3InterpolateName } from '$lib/colors'
   import { add_alpha, default_element_colors } from '$lib/colors'
   import { normalize_show_controls } from '$lib/controls'
-  import { create_pulse_animation } from '$lib/effects.svelte'
   import { ColorBar } from '$lib/plot'
   import { DEFAULTS } from '$lib/settings'
   import { clamp01 } from '$lib/utils'
   import { TETRAHEDRON_VERTICES } from './barycentric-coords'
   import {
+    build_hull_faces,
+    draw_corner_labels,
+    draw_dashed_edges,
     draw_face,
-    draw_hull_labels,
-    draw_hull_points,
-    draw_notice,
     face_color_resolver,
-    type HullFace,
-    type HullPointOpts,
     type Projected,
+    simplex_centroid,
   } from './canvas-draw'
   import { create_canvas_interactions } from './canvas-interactions.svelte'
   import ConvexHullChrome from './ConvexHullChrome.svelte'
-  import {
-    get_energy_color_scale,
-    get_point_color_for_entry,
-    hull_distance_range,
-    hull_style_css,
-    is_entry_highlighted,
-    merge_highlight_style,
-  } from './helpers'
+  import { hull_distance_range, hull_style_css } from './helpers'
   import { create_hull_data_pipeline } from './hull-state.svelte'
   import type { BaseConvexHullProps, Hull3DProps } from './index'
-  import { CONVEX_HULL_STYLE, default_controls, default_hull_config } from './index'
+  import { default_controls, default_hull_config } from './index'
   import MissingConvexHullData from './MissingConvexHullData.svelte'
   import type { ConvexHullEntry, HullFaceColorMode } from './types'
   import { MAGNETIC_ORDERING_CATEGORY } from './types'
@@ -132,65 +123,46 @@
 
   let canvas = $state<HTMLCanvasElement>()
   let overlay_canvas = $state<HTMLCanvasElement>()
-
-  const camera_default = {
-    rotation_x: defaults.camera_rotation_x,
-    rotation_y: defaults.camera_rotation_y,
-    zoom: defaults.camera_zoom,
-    center_x: 0,
-    center_y: 20, // Slight offset to avoid legend overlap
-  }
-  let camera = $state({ ...camera_default })
-  const reset_camera = () => Object.assign(camera, camera_default)
-
   let hull_face_color = $state(defaults.hull_face_color)
-  const merged_highlight_style = $derived(merge_highlight_style(highlight_style))
-  const is_highlighted = (entry: ConvexHullEntry): boolean =>
-    is_entry_highlighted(entry, highlighted_entries)
-  const energy_color_scale = $derived(
-    get_energy_color_scale(color_mode, color_scale, plot_entries),
-  )
-  const get_point_color = (entry: ConvexHullEntry): string =>
-    get_point_color_for_entry(entry, color_mode, merged_config.colors, energy_color_scale)
 
   // Tetrahedron centroid: rotation centre of the view
-  const centroid = [0, 1, 2].map(
-    (axis) => TETRAHEDRON_VERTICES.reduce((sum, vertex) => sum + vertex[axis], 0) / 4,
-  )
+  const centroid = simplex_centroid(TETRAHEDRON_VERTICES)
 
   // Ry(rotation_y) then Rx(rotation_x) about the centroid (Materials Project camera)
   function project_3d_point(x: number, y: number, z: number): Projected {
-    const { width, height } = interactions.canvas_dims
     const [cx, cy, cz] = [x - centroid[0], y - centroid[1], z - centroid[2]]
     const [cos_x, sin_x] = [Math.cos(camera.rotation_x), Math.sin(camera.rotation_x)]
     const [cos_y, sin_y] = [Math.cos(camera.rotation_y), Math.sin(camera.rotation_y)]
     const [x1, z1] = [cx * cos_y - cz * sin_y, cx * sin_y + cz * cos_y]
     const [y2, z2] = [cy * cos_x - z1 * sin_x, cy * sin_x + z1 * cos_x]
-    const scale = Math.min(width, height) * 0.6 * camera.zoom
-    return {
-      x: width / 2 + camera.center_x + x1 * scale,
-      y: height / 2 + camera.center_y - y2 * scale, // flip y for canvas coordinates
-      depth: z2,
-    }
+    return interactions.to_screen(x1, y2, z2)
   }
 
-  const hull_point_opts = (): HullPointOpts => ({
-    scale: interactions.canvas_dims.scale,
-    shadow_factor: 2,
-    selected_entry,
-    is_highlighted,
-    get_point_color,
-    highlight_style: merged_highlight_style,
-  })
-
-  // Shared canvas-interaction scaffold (mouse/keyboard handlers, hover/drag/popup state,
-  // canvas sizing, render scheduler). Rotation math + keydown actions stay local.
+  // Shared canvas scaffold (camera zoom/pan, mouse/keyboard handlers, hover/drag/popup
+  // state, point styling, canvas sizing, render scheduler). Rotation + keydown actions stay local.
   const interactions = create_canvas_interactions({
+    dim: 4,
+    camera_default: {
+      rotation_x: defaults.camera_rotation_x,
+      rotation_y: defaults.camera_rotation_y,
+      zoom: defaults.camera_zoom,
+      center_x: 0,
+      center_y: 20, // Slight offset to avoid legend overlap
+    },
     wheel_clamp: [1.0, 15],
+    on_rotate: (cam, dx, dy) => {
+      cam.rotation_y += dx * 0.005
+      cam.rotation_x = Math.max(
+        -Math.PI / 3,
+        Math.min(Math.PI / 3, cam.rotation_x - dy * 0.005),
+      )
+    },
+    shadow_factor: 2,
     canvas: () => canvas,
     overlay_canvas: () => overlay_canvas,
     wrapper: () => wrapper,
     entries: () => entries,
+    elements: () => elements,
     visible_entries: () => visible_entries,
     plot_entries: () => plot_entries,
     selected_entry: () => selected_entry,
@@ -202,30 +174,23 @@
     on_point_hover: () => on_point_hover,
     on_file_drop: () => on_file_drop,
     entry_category: () => entry_category,
-    zoom: () => camera.zoom,
-    set_zoom: (zoom) => (camera.zoom = zoom),
+    highlighted_entries: () => highlighted_entries,
+    highlight_style: () => highlight_style,
+    color_mode: () => color_mode,
+    color_scale: () => color_scale,
+    colors: () => merged_config.colors,
+    labels: () => ({
+      show_labels: merged_config.show_labels,
+      show_stable_labels,
+      show_unstable_labels,
+      max_hull_dist_show_labels,
+    }),
     project_point: project_3d_point,
     render_frame,
     // oxfmt-ignore
-    // selected_entry/highlighted_entries included: pulsing points move to the overlay
-    // canvas, so the hull has to repaint (once) whenever which points those are changes
-    repaint_deps: () => [show_hull_faces, color_mode, color_scale, show_stable_labels, show_unstable_labels, max_hull_dist_show_labels, camera.rotation_x, camera.rotation_y, camera.zoom, camera.center_x, camera.center_y, plot_entries, visible_entries, hull_face_color, hull_face_opacity, hull_face_color_mode, element_colors, highlighted_entries, selected_entry, interactions.text_color, elements, merged_config, merged_highlight_style],
-    hull_point_opts,
-    pulse: () => ({ time: pulse.time, opacity: 0.3 + 0.4 * pulse.unit }),
-    on_drag: (dx, dy, panning) => {
-      if (panning) {
-        camera.center_x += dx
-        camera.center_y += dy
-      } else {
-        camera.rotation_y += dx * 0.005
-        camera.rotation_x = Math.max(
-          -Math.PI / 3,
-          Math.min(Math.PI / 3, camera.rotation_x - dy * 0.005),
-        )
-      }
-    },
-    actions: () => ({
-      r: reset_camera,
+    repaint_deps: () => [show_hull_faces, hull_face_color, hull_face_opacity, hull_face_color_mode, element_colors, e_form_min],
+    actions: (): Record<string, () => void> => ({
+      r: interactions.reset_camera,
       b: () => (color_mode = color_mode === `stability` ? `energy` : `stability`),
       s: () => (show_stable = !show_stable),
       u: () => (show_unstable = !show_unstable),
@@ -233,68 +198,30 @@
       l: () => (show_stable_labels = !show_stable_labels),
     }),
   })
-
-  // Pulsating highlight for selection/highlights. Ticks repaint only the overlay canvas,
-  // and the loop pauses entirely while `wrapper` is off screen.
-  const pulse = create_pulse_animation(
-    () => selected_entry !== null || highlighted_entries.length > 0,
-    { on_tick: interactions.render_overlay_once, element: () => wrapper },
-  )
+  const { camera } = interactions
 
   // === Drawing ===
 
   // Dashed tetrahedron outline plus corner element labels
   function draw_structure_outline(ctx: CanvasRenderingContext2D): void {
-    ctx.strokeStyle = CONVEX_HULL_STYLE.structure_line.color
-    ctx.lineWidth = CONVEX_HULL_STYLE.structure_line.line_width
-    ctx.setLineDash(CONVEX_HULL_STYLE.structure_line.dash)
-    ctx.beginPath()
-    for (const [start_idx, start] of TETRAHEDRON_VERTICES.entries()) {
-      for (const end of TETRAHEDRON_VERTICES.slice(start_idx + 1)) {
-        const proj1 = project_3d_point(start[0], start[1], start[2])
-        const proj2 = project_3d_point(end[0], end[1], end[2])
-        ctx.moveTo(proj1.x, proj1.y)
-        ctx.lineTo(proj2.x, proj2.y)
-      }
-    }
-    ctx.stroke()
-    ctx.setLineDash([]) // every later stroke sets its own strokeStyle
-
-    // Element labels just outside each vertex, along the centroid → vertex direction
-    ctx.fillStyle = interactions.text_color
-    ctx.font = `bold 18px Arial`
-    ctx.textAlign = `center`
-    ctx.textBaseline = `middle`
-    for (const [idx, vertex] of TETRAHEDRON_VERTICES.entries()) {
-      const dir = vertex.map((coord, axis) => coord - centroid[axis])
-      const len = Math.hypot(...dir) || 1
-      const [x, y, z] = vertex.map((coord, axis) => coord + (dir[axis] / len) * 0.06)
-      const proj = project_3d_point(x, y, z)
-      ctx.fillText(elements[idx], proj.x, proj.y)
-    }
+    const corners = TETRAHEDRON_VERTICES.map(([x, y, z]) => project_3d_point(x, y, z))
+    const edges = corners.flatMap((start, start_idx) =>
+      corners.slice(start_idx + 1).map((end): [Projected, Projected] => [start, end]),
+    )
+    draw_dashed_edges(ctx, edges)
+    draw_corner_labels(ctx, TETRAHEDRON_VERTICES, centroid, {
+      project: project_3d_point,
+      elements,
+      text_color: interactions.text_color,
+      font_size: 18,
+      offset: 0.06,
+    })
   }
 
   // Each lower-hull tetrahedron contributes its 4 triangular faces, depth sorted
   function draw_convex_hull_faces(ctx: CanvasRenderingContext2D): void {
     if (!show_hull_faces || hull_tetrahedra.length === 0) return
-    const faces: HullFace[] = []
-    for (const [facet_idx, tetrahedron] of hull_tetrahedra.entries()) {
-      const projected = tetrahedron.map((vertex) =>
-        project_3d_point(vertex.x, vertex.y, vertex.z),
-      )
-      for (let skip = 0; skip < 4; skip++) {
-        const vertices = tetrahedron.toSpliced(skip, 1)
-        const face_projected = projected.toSpliced(skip, 1)
-        faces.push({
-          vertices,
-          projected: face_projected,
-          facet_idx,
-          e_form: vertices.reduce((sum, vertex) => sum + (vertex.e_form_per_atom ?? 0), 0) / 3,
-          depth: face_projected.reduce((sum, point) => sum + point.depth, 0) / 3,
-        })
-      }
-    }
-    faces.sort((left, right) => left.depth - right.depth) // back to front
+    const faces = build_hull_faces(hull_tetrahedra, project_3d_point)
     const face_color = face_color_resolver(faces, {
       mode: hull_face_color_mode,
       uniform_color: hull_face_color,
@@ -318,31 +245,11 @@
     }
   }
 
-  function render_frame(ctx: CanvasRenderingContext2D, width: number, height: number): void {
-    ctx.clearRect(0, 0, width, height)
-    if (elements.length !== 4) {
-      if (elements.length > 0) {
-        const notice = `Quaternary convex hull requires exactly 4 elements (got ${elements.length})`
-        draw_notice(ctx, notice, interactions.text_color, width, height)
-      }
-      return
-    }
+  function render_frame(ctx: CanvasRenderingContext2D): void {
     draw_structure_outline(ctx)
     draw_convex_hull_faces(ctx) // behind points
-    draw_hull_points(ctx, interactions.sorted_points_cache, hull_point_opts())
-    if (merged_config.show_labels) {
-      draw_hull_labels(ctx, visible_entries, {
-        project: project_3d_point,
-        elements,
-        scale: interactions.canvas_dims.scale,
-        text_color: interactions.text_color,
-        width,
-        height,
-        show_stable_labels,
-        show_unstable_labels,
-        max_hull_dist_show_labels,
-      })
-    }
+    interactions.draw_points(ctx)
+    interactions.draw_labels(ctx)
   }
 
   const style = $derived(`${hull_style_css(merged_config.colors)}; ${rest.style ?? ``}`)
@@ -403,20 +310,20 @@
       {hull_data}
       {controls_config}
       loading={entries.length === 0}
-      on_reset={reset_camera}
+      on_reset={interactions.reset_camera}
       {enable_info_pane}
       {phase_stats}
       {label_threshold}
       bind:fullscreen
       {fullscreen_toggle}
-      on_fullscreen_change={() => Object.assign(camera, { center_x: 0, center_y: 20 })}
+      on_fullscreen_change={interactions.recenter_camera}
       {camera}
       {merged_controls}
       {stable_entries}
       {unstable_entries}
-      {get_point_color}
-      {merged_highlight_style}
-      {is_highlighted}
+      get_point_color={interactions.get_point_color}
+      merged_highlight_style={interactions.highlight_style}
+      is_highlighted={interactions.is_highlighted}
       {tooltip}
       {selected_entry}
       bind:temperature

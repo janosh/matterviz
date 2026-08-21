@@ -1,18 +1,12 @@
 <script lang="ts">
-  import type { D3InterpolateName } from '$lib/colors'
   import { format_num } from '$lib/labels'
   import { SettingsGroup, SettingsSection } from '$lib/layout'
   import { ControlPane } from '$lib/overlays'
-  import { type CameraProjection, DEFAULTS } from '$lib/settings'
+  import { DEFAULTS } from '$lib/settings'
   import { make_change_detector, parse_num_token } from '$lib/utils'
   import { untrack, type Snippet } from 'svelte'
   import { SvelteSet } from 'svelte/reactivity'
-  import type {
-    BandGridData,
-    ColorProperty,
-    FermiSurfaceData,
-    RepresentationMode,
-  } from './types'
+  import type { BandGridData, FermiSurfaceData, FermiSurfaceSettings } from './types'
 
   const defaults = DEFAULTS.fermi
 
@@ -44,28 +38,13 @@
     on_interpolation_change,
     on_export,
     children,
-  }: {
+  }: Partial<FermiSurfaceSettings> & {
     controls_open?: boolean
     fermi_data?: FermiSurfaceData
     band_data?: BandGridData
-    mu?: number | undefined
-    color_property?: ColorProperty
-    color_scale?: D3InterpolateName
     // Label for custom property coloring (e.g. "λ(k)", "DOS", etc.)
     custom_property_label?: string
-    representation?: RepresentationMode
-    surface_opacity?: number
     selected_bands?: number[]
-    show_bz?: boolean
-    bz_opacity?: number
-    show_vectors?: boolean
-    tile_bz?: boolean
-    clip_enabled?: boolean
-    clip_axis?: `x` | `y` | `z`
-    clip_position?: number
-    clip_flip?: boolean
-    interpolation_factor?: number
-    camera_projection?: CameraProjection
     on_mu_change?: (mu: number) => void
     on_interpolation_change?: (factor: number) => void
     on_export?: (format: `stl` | `obj` | `gltf`) => void

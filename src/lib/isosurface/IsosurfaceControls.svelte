@@ -82,7 +82,7 @@
   function add_surface(vol_idx: number) {
     const vol = volumes[vol_idx]
     if (!vol) return
-    const layers = materialize_layers(settings, active_volume_idx)
+    const layers: IsosurfaceLayer[] = materialize_layers(settings, active_volume_idx)
     layers.push(auto_volume_layer(vol, vol_idx, layers.length))
     settings.layers = layers
     active_volume_idx = vol_idx
@@ -156,8 +156,7 @@
       entries: [] as { layer: IsosurfaceLayer; layer_idx: number }[],
     }))
     for (const [layer_idx, layer] of (settings.layers ?? []).entries()) {
-      const vol_idx = resolve_geo_idx(layer)
-      if (vol_idx >= 0) groups[vol_idx].entries.push({ layer, layer_idx })
+      groups[resolve_geo_idx(layer)]?.entries.push({ layer, layer_idx })
     }
     return groups
   })

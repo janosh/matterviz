@@ -2,7 +2,6 @@
   import type { BrillouinZoneData } from '$lib/brillouin'
   import { compute_brillouin_zone } from '$lib/brillouin'
   import { reciprocal_lattice } from '$lib/math'
-  import type { D3InterpolateName } from '$lib/colors'
   import { normalize_show_controls, type ShowControlsProp } from '$lib/controls'
   import EmptyState from '$lib/EmptyState.svelte'
   import { StatusMessage } from '$lib/feedback'
@@ -11,7 +10,6 @@
   import { ViewerChrome } from '$lib/layout'
   import { PlotTooltip } from '$lib/plot'
   import { create_renderer, webgpu_available } from '$lib/scene'
-  import type { CameraProjection } from '$lib/settings'
   import { DEFAULTS } from '$lib/settings'
   import type { Crystal } from '$lib/structure'
   import { Canvas } from '@threlte/core'
@@ -28,13 +26,12 @@
   import { to_error } from '$lib/utils'
   import type {
     BandGridData,
-    ColorProperty,
     FermiErrorData,
     FermiFileLoadData,
     FermiHoverData,
     FermiSurfaceData,
+    FermiSurfaceSettings,
     FermiTooltipConfig,
-    RepresentationMode,
   } from './types'
 
   type FermiSurfaceControlName = `filename` | `fullscreen` | `controls`
@@ -62,12 +59,10 @@
     bz_opacity = $bindable(DEFAULTS.fermi.bz_opacity),
     show_vectors = $bindable(DEFAULTS.fermi.show_vectors),
     tile_bz = $bindable(DEFAULTS.fermi.tile_bz),
-    // Clipping plane
     clip_enabled = $bindable(DEFAULTS.fermi.clip_enabled),
     clip_axis = $bindable(DEFAULTS.fermi.clip_axis),
     clip_position = $bindable(DEFAULTS.fermi.clip_position),
     clip_flip = $bindable(DEFAULTS.fermi.clip_flip),
-    // Interpolation
     interpolation_factor = $bindable(DEFAULTS.fermi.interpolation_factor),
     camera_projection = $bindable(DEFAULTS.fermi.camera_projection),
     show_controls,
@@ -92,30 +87,15 @@
     on_mu_change,
     on_point_hover,
     ...rest
-  }: {
+  }: Partial<FermiSurfaceSettings> & {
     fermi_data?: FermiSurfaceData
     band_data?: BandGridData
     structure?: Crystal
     bz_data?: BrillouinZoneData
-    mu?: number
     controls_open?: boolean
-    color_property?: ColorProperty
-    color_scale?: D3InterpolateName
     // Label for custom property coloring (e.g. "λ(k)", "DOS", etc.)
     custom_property_label?: string
-    representation?: RepresentationMode
-    surface_opacity?: number
     selected_bands?: number[]
-    show_bz?: boolean
-    bz_opacity?: number
-    show_vectors?: boolean
-    tile_bz?: boolean
-    clip_enabled?: boolean
-    clip_axis?: `x` | `y` | `z`
-    clip_position?: number
-    clip_flip?: boolean
-    interpolation_factor?: number
-    camera_projection?: CameraProjection
     show_controls?: ShowControlsProp<FermiSurfaceControlName>
     fullscreen?: boolean
     width?: number
@@ -223,18 +203,10 @@
     }
   }
 
-  // Debounce recompute to avoid excessive re-computation during rapid slider drags
+  // Debounce recompute to avoid excessive re-computation during rapid slider drags. The
+  // controls already wrote the new mu/interpolation_factor through their bindings.
   let recompute_timeout: ReturnType<typeof setTimeout>
-
-  function handle_mu_change(new_mu: number) {
-    mu = new_mu
-    clearTimeout(recompute_timeout)
-    recompute_timeout = setTimeout(() => void recompute_fermi_surface(), 150)
-    on_mu_change?.(new_mu)
-  }
-
-  function handle_interpolation_change(new_factor: number) {
-    interpolation_factor = new_factor
+  const schedule_recompute = (): void => {
     clearTimeout(recompute_timeout)
     recompute_timeout = setTimeout(() => void recompute_fermi_surface(), 150)
   }
@@ -400,8 +372,11 @@
           bind:clip_flip
           bind:interpolation_factor
           bind:camera_projection
-          on_mu_change={handle_mu_change}
-          on_interpolation_change={handle_interpolation_change}
+          on_mu_change={(new_mu) => {
+            schedule_recompute()
+            on_mu_change?.(new_mu)
+          }}
+          on_interpolation_change={schedule_recompute}
           on_export={handle_export}
         />
       {/if}

@@ -2,13 +2,31 @@
 // create_hull_selection covers what 2D/3D/4D all do (selection, hover, structure popup,
 // clipboard copy, keyboard, file drop); create_canvas_interactions adds the canvas-specific
 // mouse handling, sizing and render scheduling that ConvexHull3D/4D share.
+import type { D3InterpolateName } from '$lib/colors'
 import { is_dark_mode, watch_dark_mode } from '$lib/colors'
+import { create_pulse_animation } from '$lib/effects.svelte'
+import type { ElementSymbol } from '$lib/element'
 import { as_text, file_drop_zone } from '$lib/io'
 import type { AnyStructure } from '$lib/structure'
 import { createAttachmentKey } from 'svelte/attachments'
 import * as draw from './canvas-draw'
-import { build_entry_tooltip_text, current_entry, same_entry } from './helpers'
-import type { ConvexHullEntry, EntryCategoryConfig, HoverData3D, PhaseData } from './types'
+import {
+  build_entry_tooltip_text,
+  current_entry,
+  get_energy_color_scale,
+  get_point_color_for_entry,
+  is_entry_highlighted,
+  merge_highlight_style,
+  same_entry,
+} from './helpers'
+import type {
+  ConvexHullConfig,
+  ConvexHullEntry,
+  EntryCategoryConfig,
+  HighlightStyle,
+  HoverData3D,
+  PhaseData,
+} from './types'
 
 export interface HullSelectionInputs {
   entries: () => PhaseData[] // raw entries, for the structure lookup
@@ -177,25 +195,45 @@ export function create_hull_selection(inputs: HullSelectionInputs) {
 
 export type HullSelection = ReturnType<typeof create_hull_selection>
 
-export interface CanvasInteractionInputs extends HullSelectionInputs {
+// Zoom + pan live here; the rotation angles are the component's (elevation/azimuth in 3D,
+// rotation_x/rotation_y in 4D), so the camera is generic over them
+export type HullCamera = { zoom: number; center_x: number; center_y: number }
+
+export interface CanvasInteractionInputs<
+  Camera extends HullCamera,
+> extends HullSelectionInputs {
+  dim: 3 | 4
+  camera_default: Camera // initial view, restored by reset_camera
   wheel_clamp: [min: number, max: number] // zoom clamp range
+  // Plain drag rotates the view (Cmd/Ctrl-drag pans, handled here)
+  on_rotate: (camera: Camera, dx: number, dy: number) => void
   canvas: () => HTMLCanvasElement | undefined
   // Transparent layer over `canvas` holding only the pulsing rings, so ticks skip the hull
   overlay_canvas: () => HTMLCanvasElement | undefined
+  elements: () => ElementSymbol[]
   visible_entries: () => ConvexHullEntry[]
-  zoom: () => number
-  set_zoom: (zoom: number) => void
   project_point: draw.ProjectPoint
-  // Draws the hull onto `ctx` (CSS-pixel coordinates, `width` × `height`)
-  render_frame: (ctx: CanvasRenderingContext2D, width: number, height: number) => void
-  // Everything `render_frame` reads. It draws inside a rAF, where reads don't register as
-  // dependencies, so anything missing leaves the canvas silently stale. List the derived
+  // Point styling
+  shadow_factor: number // scales the depth-based shadow offset (0.1 for 3D, 2 for 4D)
+  highlighted_entries: () => (string | ConvexHullEntry)[]
+  highlight_style: () => HighlightStyle | undefined
+  color_mode: () => `stability` | `energy`
+  color_scale: () => D3InterpolateName
+  colors: () => ConvexHullConfig[`colors`] | undefined
+  labels: () => { show_labels?: boolean } & Pick<
+    draw.LabelOpts,
+    `show_stable_labels` | `show_unstable_labels` | `max_hull_dist_show_labels`
+  >
+  // Draws the hull onto the cleared `ctx` (CSS-pixel coordinates) once the element count
+  // matches `dim`; calls draw_points/draw_labels where they belong in its paint order
+  render_frame: (ctx: CanvasRenderingContext2D) => void
+  // Everything else `render_frame` reads. It draws inside a rAF, where reads don't register
+  // as dependencies, so anything missing leaves the canvas silently stale. List the derived
   // values the draw code reads, not their inputs — the derivation keeps the list honest.
   repaint_deps: () => unknown
-  hull_point_opts: () => draw.HullPointOpts
-  pulse: () => { time: number; opacity: number }
-  on_drag: (dx: number, dy: number, panning: boolean) => void
 }
+
+const DIM_TO_LABEL = { 3: `Ternary`, 4: `Quaternary` } as const
 
 // Canvas text colour. Canvas takes a colour value, not a CSS variable, so the theme is read
 // in JS (dark-mode fallbacks for unsupported light-dark()/var() values) and the canvas
@@ -209,7 +247,9 @@ function canvas_text_color(dark_mode: boolean): string {
   return css_value && !/light-dark|var\(/i.test(css_value) ? css_value : fallback
 }
 
-export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
+export function create_canvas_interactions<Camera extends HullCamera>(
+  inputs: CanvasInteractionInputs<Camera>,
+) {
   const selection = create_hull_selection(inputs)
   const [zoom_min, zoom_max] = inputs.wheel_clamp
 
@@ -221,6 +261,42 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
   let ctx: CanvasRenderingContext2D | null = null
   let overlay_ctx: CanvasRenderingContext2D | null = null
   let canvas_dims = $state({ width: 600, height: 600, scale: 1 })
+
+  // === Camera ===
+  const camera = $state<Camera>({ ...inputs.camera_default })
+  const reset_camera = () => Object.assign(camera, inputs.camera_default)
+  const recenter_camera = () => {
+    camera.center_x = inputs.camera_default.center_x
+    camera.center_y = inputs.camera_default.center_y
+  }
+  // Data units → canvas pixels at the current zoom
+  const view_scale = $derived(
+    Math.min(canvas_dims.width, canvas_dims.height) * 0.6 * camera.zoom,
+  )
+  // Rotated view coordinates → canvas position (y flipped for canvas coordinates)
+  const to_screen = (x: number, y: number, depth: number): draw.Projected => ({
+    x: canvas_dims.width / 2 + camera.center_x + x * view_scale,
+    y: canvas_dims.height / 2 + camera.center_y - y * view_scale,
+    depth,
+  })
+
+  // === Point styling ===
+  const highlight_style = $derived(merge_highlight_style(inputs.highlight_style()))
+  const is_highlighted = (entry: ConvexHullEntry): boolean =>
+    is_entry_highlighted(entry, inputs.highlighted_entries())
+  const energy_color_scale = $derived(
+    get_energy_color_scale(inputs.color_mode(), inputs.color_scale(), inputs.plot_entries()),
+  )
+  const get_point_color = (entry: ConvexHullEntry): string =>
+    get_point_color_for_entry(entry, inputs.color_mode(), inputs.colors(), energy_color_scale)
+  const hull_point_opts = (): draw.HullPointOpts => ({
+    scale: canvas_dims.scale,
+    shadow_factor: inputs.shadow_factor,
+    selected_entry: inputs.selected_entry(),
+    is_highlighted,
+    get_point_color,
+    highlight_style,
+  })
 
   // Coalesce renders into one rAF per frame
   let frame_id = 0
@@ -241,7 +317,11 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
     if (!is_dragging) return
     const [dx, dy] = [event.clientX - last_mouse.x, event.clientY - last_mouse.y]
     if (dx !== 0 || dy !== 0) drag_started = true
-    inputs.on_drag(dx, dy, event.metaKey || event.ctrlKey) // Cmd/Ctrl: pan instead of rotate
+    if (event.metaKey || event.ctrlKey) {
+      // Cmd/Ctrl: pan instead of rotate
+      camera.center_x += dx
+      camera.center_y += dy
+    } else inputs.on_rotate(camera, dx, dy)
     last_mouse = { x: event.clientX, y: event.clientY }
   }
 
@@ -251,8 +331,8 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
 
   const handle_wheel = (event: WheelEvent) => {
     event.preventDefault()
-    const zoomed = inputs.zoom() * (event.deltaY > 0 ? 0.98 : 1.02)
-    inputs.set_zoom(Math.max(zoom_min, Math.min(zoom_max, zoomed)))
+    const zoomed = camera.zoom * (event.deltaY > 0 ? 0.98 : 1.02)
+    camera.zoom = Math.max(zoom_min, Math.min(zoom_max, zoomed))
   }
 
   const find_entry_at_mouse = (event: MouseEvent): ConvexHullEntry | null =>
@@ -286,21 +366,59 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
     if (entry) void selection.copy_entry_data(entry, { x: event.clientX, y: event.clientY })
   }
 
+  // === Rendering ===
+
+  // Cache all point projections + depth sorting per camera/data change
+  const sorted_points_cache = $derived.by((): draw.HullPoint[] => {
+    if (!inputs.canvas()) return []
+    return inputs
+      .visible_entries()
+      .map((entry) => ({ entry, projected: inputs.project_point(entry.x, entry.y, entry.z) }))
+      .toSorted((left, right) => left.projected.depth - right.projected.depth)
+  })
+
+  const draw_points = (target: CanvasRenderingContext2D) =>
+    draw.draw_hull_points(target, sorted_points_cache, hull_point_opts())
+
+  function draw_labels(target: CanvasRenderingContext2D): void {
+    const { show_labels, ...toggles } = inputs.labels()
+    if (!show_labels) return
+    draw.draw_hull_labels(target, inputs.visible_entries(), {
+      ...toggles,
+      project: inputs.project_point,
+      elements: inputs.elements(),
+      scale: canvas_dims.scale,
+      text_color,
+      width: canvas_dims.width || 600,
+      height: canvas_dims.height || 600,
+    })
+  }
+
+  // Clear, then either the arity notice or the component's scene
+  function render_frame(target: CanvasRenderingContext2D): void {
+    const [width, height] = [canvas_dims.width || 600, canvas_dims.height || 600]
+    target.clearRect(0, 0, width, height)
+    const n_elements = inputs.elements().length
+    if (n_elements === inputs.dim) return inputs.render_frame(target)
+    if (n_elements === 0) return
+    const notice = `${DIM_TO_LABEL[inputs.dim]} convex hull requires exactly ${inputs.dim} elements (got ${n_elements})`
+    draw.draw_notice(target, notice, text_color, width, height)
+  }
+
   // One frame for both layers: the overlay always (a few markers, same projections), the hull
   // only when asked, so a pulse tick landing on a pending full redraw is absorbed not requeued
   function schedule_frame(redraw_hull: boolean) {
     hull_is_stale ||= redraw_hull
     if (frame_id) return
     frame_id = requestAnimationFrame(() => {
-      if (hull_is_stale && ctx) {
-        inputs.render_frame(ctx, canvas_dims.width || 600, canvas_dims.height || 600)
-      }
+      if (hull_is_stale && ctx) render_frame(ctx)
       if (overlay_ctx) {
+        const pulse_state = { time: pulse.time, opacity: 0.3 + 0.4 * pulse.unit }
         draw.draw_pulse_overlay(
           overlay_ctx,
           sorted_points_cache,
-          inputs.hull_point_opts(),
-          inputs.pulse(),
+          hull_point_opts(),
+          pulse_state,
         )
       }
       frame_id = 0
@@ -308,10 +426,23 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
     })
   }
   const render_once = () => schedule_frame(true)
-  const render_overlay_once = () => schedule_frame(false) // pulse ticks: rings only
 
+  // Pulsating highlight for selected/highlighted points. Ticks repaint only the overlay
+  // canvas, and the loop pauses entirely while `wrapper` is off screen.
+  const pulse = create_pulse_animation(
+    () => inputs.selected_entry() !== null || inputs.highlighted_entries().length > 0,
+    { on_tick: () => schedule_frame(false), element: inputs.wrapper },
+  )
+
+  // render_frame draws inside a rAF, so everything it reads is touched here instead
   $effect(() => {
     inputs.repaint_deps()
+    inputs.labels()
+    inputs.elements()
+    Object.values(camera) // every camera field, not just those projecting a visible point
+    hull_point_opts()
+    inputs.highlighted_entries()
+    void [sorted_points_cache, energy_color_scale, inputs.colors(), text_color]
     render_once()
   })
 
@@ -361,28 +492,30 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
     }
   })
 
-  // Cache all point projections + depth sorting per camera/data change
-  const sorted_points_cache = $derived.by((): draw.HullPoint[] => {
-    if (!inputs.canvas()) return []
-    return inputs
-      .visible_entries()
-      .map((entry) => ({ entry, projected: inputs.project_point(entry.x, entry.y, entry.z) }))
-      .toSorted((left, right) => left.projected.depth - right.projected.depth)
-  })
-
   return {
     selection,
+    camera, // the $state proxy itself, so writes through it repaint
+    reset_camera,
+    recenter_camera,
+    to_screen,
+    is_highlighted,
+    get_point_color,
+    draw_points,
+    draw_labels,
     get is_dragging() {
       return is_dragging
     },
     get canvas_dims() {
       return canvas_dims
     },
+    get view_scale() {
+      return view_scale
+    },
     get text_color() {
       return text_color
     },
-    get sorted_points_cache() {
-      return sorted_points_cache
+    get highlight_style() {
+      return highlight_style
     },
     // Event handler groups, spread onto their target elements by ConvexHull3D/4D
     canvas_handlers: {
@@ -397,6 +530,5 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
     // since <svelte:document> rejects spread attributes
     handle_mouse_move,
     handle_mouse_up,
-    render_overlay_once,
   }
 }

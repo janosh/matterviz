@@ -89,24 +89,35 @@
     return v_span > 0 ? u_span / v_span : 1
   })
 
-  function clip_to_slice_polygon(
+  // Trace a closed ring of sampled pixel coordinates, mirroring y when the image is flipped
+  function trace_ring(
     context: CanvasRenderingContext2D,
-    current_slice: SliceResult,
+    ring: number[][],
+    height: number,
   ): void {
-    const u_span = current_slice.u_range[1] - current_slice.u_range[0]
-    const v_span = current_slice.v_range[1] - current_slice.v_range[0]
-    context.beginPath()
-    for (let point_idx = 0; point_idx < current_slice.polygon.length; point_idx++) {
-      const point = current_slice.polygon[point_idx]
-      const pixel_x =
-        ((point[0] - current_slice.u_range[0]) / u_span) * (current_slice.width - 1) + 0.5
-      const sampled_y =
-        ((point[1] - current_slice.v_range[0]) / v_span) * (current_slice.height - 1) + 0.5
-      const pixel_y = flip_y ? current_slice.height - sampled_y : sampled_y
-      if (point_idx === 0) context.moveTo(pixel_x, pixel_y)
-      else context.lineTo(pixel_x, pixel_y)
+    for (const [point_idx, [point_x, sampled_y]] of ring.entries()) {
+      const point_y = flip_y ? height - sampled_y : sampled_y
+      if (point_idx === 0) context.moveTo(point_x, point_y)
+      else context.lineTo(point_x, point_y)
     }
     context.closePath()
+  }
+
+  function clip_to_slice_polygon(
+    context: CanvasRenderingContext2D,
+    { polygon, u_range, v_range, width, height }: SliceResult,
+  ): void {
+    const u_span = u_range[1] - u_range[0]
+    const v_span = v_range[1] - v_range[0]
+    context.beginPath()
+    trace_ring(
+      context,
+      polygon.map(([u_coord, v_coord]) => [
+        ((u_coord - u_range[0]) / u_span) * (width - 1) + 0.5,
+        ((v_coord - v_range[0]) / v_span) * (height - 1) + 0.5,
+      ]),
+      height,
+    )
     context.clip()
   }
 
@@ -139,16 +150,8 @@
     context.lineJoin = `round`
     for (const shape of shapes) {
       context.beginPath()
-      for (const polygon of shape.coordinates) {
-        for (const ring of polygon) {
-          for (let point_idx = 0; point_idx < ring.length; point_idx++) {
-            const [point_x, sampled_y] = ring[point_idx]
-            const point_y = flip_y ? current_slice.height - sampled_y : sampled_y
-            if (point_idx === 0) context.moveTo(point_x, point_y)
-            else context.lineTo(point_x, point_y)
-          }
-          context.closePath()
-        }
+      for (const ring of shape.coordinates.flat()) {
+        trace_ring(context, ring, current_slice.height)
       }
       context.stroke()
     }

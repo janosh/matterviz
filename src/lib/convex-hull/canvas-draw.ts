@@ -21,10 +21,17 @@ import {
   get_entry_label,
   same_entry,
 } from './helpers'
+import { CONVEX_HULL_STYLE } from './index'
 import type { ConvexHullEntry, HighlightStyle, HullFaceColorMode, MarkerSymbol } from './types'
 
 export type Projected = { x: number; y: number; depth: number }
 export type ProjectPoint = (x: number, y: number, z: number) => Projected
+
+// Mean of the simplex corners (triangle or tetrahedron): the rotation centre of the view
+export const simplex_centroid = (corners: readonly (readonly number[])[]): number[] =>
+  corners[0].map(
+    (_, axis) => corners.reduce((sum, corner) => sum + corner[axis], 0) / corners.length,
+  )
 
 // Marker radius in CSS px before the container scale (stable points are larger)
 const point_radius = (entry: ConvexHullEntry): number =>
@@ -233,6 +240,57 @@ export function find_hull_entry_at_mouse(
   return null
 }
 
+// === Simplex outline ===
+
+// Dashed outline of the composition simplex, one stroke for all edges
+export function draw_dashed_edges(
+  ctx: CanvasRenderingContext2D,
+  edges: [Projected, Projected][],
+): void {
+  ctx.strokeStyle = CONVEX_HULL_STYLE.structure_line.color
+  ctx.lineWidth = CONVEX_HULL_STYLE.structure_line.line_width
+  ctx.setLineDash(CONVEX_HULL_STYLE.structure_line.dash)
+  ctx.beginPath()
+  for (const [start, end] of edges) {
+    ctx.moveTo(start.x, start.y)
+    ctx.lineTo(end.x, end.y)
+  }
+  ctx.stroke()
+  ctx.setLineDash([]) // every later stroke sets its own strokeStyle
+}
+
+type CornerLabelOpts = {
+  project: ProjectPoint
+  elements: ElementSymbol[]
+  text_color: string
+  font_size: number
+  offset: number
+}
+
+// Element symbols just outside each simplex corner, along the centroid-to-corner direction
+export function draw_corner_labels(
+  ctx: CanvasRenderingContext2D,
+  corners: readonly (readonly number[])[],
+  centroid: number[],
+  { project, elements, text_color, font_size, offset }: CornerLabelOpts,
+): void {
+  ctx.save()
+  ctx.fillStyle = text_color
+  ctx.font = `bold ${font_size}px Arial`
+  ctx.textAlign = `center`
+  ctx.textBaseline = `middle`
+  for (const [corner_idx, corner] of corners.entries()) {
+    const direction = corner.map((coord, axis) => coord - centroid[axis])
+    const length = Math.hypot(...direction) || 1
+    const [x = 0, y = 0, z = 0] = corner.map(
+      (coord, axis) => coord + (direction[axis] / length) * offset,
+    )
+    const projected = project(x, y, z)
+    ctx.fillText(elements[corner_idx], projected.x, projected.y)
+  }
+  ctx.restore()
+}
+
 // === Labels ===
 
 // Centered notice in place of the plot, e.g. when the dataset's arity doesn't match the diagram
@@ -268,7 +326,7 @@ function label_priority_energy(entry: ConvexHullEntry): number {
   return Number.POSITIVE_INFINITY
 }
 
-type LabelOpts = {
+export type LabelOpts = {
   project: ProjectPoint
   elements: ElementSymbol[]
   scale: number
@@ -377,6 +435,36 @@ export type HullFace = {
   e_form: number
   depth: number
   facet_idx: number
+}
+
+const mean = (values: number[]): number =>
+  values.reduce((sum, value) => sum + value, 0) / values.length
+
+// Drawable faces of the lower hull, back to front: each triangle facet is one face, each
+// tetrahedron facet contributes the 4 triangles that drop one of its vertices
+export function build_hull_faces(
+  facet_entries: ConvexHullEntry[][],
+  project: ProjectPoint,
+): HullFace[] {
+  const faces: HullFace[] = []
+  const add_face = (vertices: ConvexHullEntry[], projected: Projected[], facet_idx: number) =>
+    faces.push({
+      vertices,
+      projected,
+      facet_idx,
+      e_form: mean(vertices.map((vertex) => vertex.e_form_per_atom ?? 0)),
+      depth: mean(projected.map((point) => point.depth)),
+    })
+  for (const [facet_idx, facet] of facet_entries.entries()) {
+    const projected = facet.map((vertex) => project(vertex.x, vertex.y, vertex.z))
+    if (facet.length === 3) add_face(facet, projected, facet_idx)
+    else {
+      for (const skip of facet.keys()) {
+        add_face(facet.toSpliced(skip, 1), projected.toSpliced(skip, 1), facet_idx)
+      }
+    }
+  }
+  return faces.toSorted((left, right) => left.depth - right.depth)
 }
 
 type FaceColorOpts = {
