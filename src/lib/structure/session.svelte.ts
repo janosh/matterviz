@@ -317,8 +317,6 @@ export class StructureSession {
   // What this session last wrote to the bonds binding, read back so a proxied binding
   // compares equal; anything else in the binding is a caller-supplied source
   private emitted_bonds: StructureBond[] | undefined
-  // The structure whose source bonds were last offered to the binding
-  private bonds_published_for: AnyStructure | undefined
   has_bond_edits = $derived(
     this.added_bonds.length > 0 ||
       this.removed_bonds.length > 0 ||
@@ -392,17 +390,13 @@ export class StructureSession {
         const measure_mode = inputs.measure_mode()
         const internal = this.is_internal_edit
         this.is_internal_edit = false
-        // A bound bond set equal to what we last emitted — including the initial undefined
-        // before anything was emitted — is stale for a structure we have not published bonds
-        // for yet (the first one included, unlike the resets below which spare mount-time
-        // state): hand its own bonds out so the binding and every edit layered on it start
-        // from the source bonds
-        const structure = inputs.structure()
-        if (structure !== this.bonds_published_for && !bonds_replaced) {
-          this.emit_bonds(structure?.properties?.bonds)
-        }
-        this.bonds_published_for = structure
         if (structure_changed) {
+          // The binding stays undefined until the first edit (source bonds live on the
+          // structure); a bound set equal to what we emitted for the previous structure is
+          // stale, so hand the new structure's own bonds back out in its place
+          if (!bonds_replaced && this.emitted_bonds !== undefined) {
+            this.emit_bonds(inputs.structure()?.properties?.bonds)
+          }
           this.bond_edit_base = undefined
           this.clear_bond_edits()
           if (!internal) {

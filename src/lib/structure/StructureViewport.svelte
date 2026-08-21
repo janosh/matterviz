@@ -446,12 +446,24 @@
         bind:rotation_target_ref
         bind:initial_computed_zoom
         bind:hidden_elements
-        bind:hidden_prop_vals={session.hidden_prop_vals}
-        bind:element_radius_overrides={session.element_radius_overrides}
-        bind:site_radius_overrides={session.site_radius_overrides}
-        bind:added_bonds={session.added_bonds}
-        bind:removed_bonds={session.removed_bonds}
-        bind:bond_order_overrides={session.bond_order_overrides}
+        bind:hidden_prop_vals={
+          () => session.hidden_prop_vals, (value) => (session.hidden_prop_vals = value)
+        }
+        bind:element_radius_overrides={
+          () => session.element_radius_overrides,
+          (value) => (session.element_radius_overrides = value)
+        }
+        bind:site_radius_overrides={
+          () => session.site_radius_overrides,
+          (value) => (session.site_radius_overrides = value)
+        }
+        bind:added_bonds={() => session.added_bonds, (value) => (session.added_bonds = value)}
+        bind:removed_bonds={
+          () => session.removed_bonds, (value) => (session.removed_bonds = value)
+        }
+        bind:bond_order_overrides={
+          () => session.bond_order_overrides, (value) => (session.bond_order_overrides = value)
+        }
         bond_edits_enabled={session.bond_edits_enabled}
         bind:bond_edit_mode={
           () => session.inputs.bond_edit_mode(),
@@ -467,10 +479,14 @@
         on_operation_start={session.push_undo}
         on_bond_edit_start={session.push_bond_undo}
         on_add_atom={session.add_atom}
-        bind:add_atom_mode={session.add_atom_mode}
-        bind:add_element={session.add_element}
+        bind:add_atom_mode={
+          () => session.add_atom_mode, (value) => (session.add_atom_mode = value)
+        }
+        bind:add_element={() => session.add_element, (value) => (session.add_element = value)}
         bind:cursor
-        bind:dragging_atoms={session.dragging_atoms}
+        bind:dragging_atoms={
+          () => session.dragging_atoms, (value) => (session.dragging_atoms = value)
+        }
         bind:polyhedra_rendered_elements
         bind:trajectory_lines_result
       />
