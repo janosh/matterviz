@@ -5,16 +5,21 @@ import { describe, expect, test, vi } from 'vitest'
 import { bind_props, doc_query } from '../setup'
 
 describe(`ColorScaleSelect`, () => {
-  test(`binds value and selected correctly (initial state)`, () => {
+  test.each([
+    [`14em`, undefined],
+    [`0`, `min-width: 0`],
+  ] as const)(`closed chip min-width is %s`, (min_width, style) => {
     mount(ColorScaleSelect, {
       target: document.body,
       props: {
         value: `interpolateViridis`,
         selected: [`interpolateViridis`],
+        style,
       },
     })
 
     expect(doc_query(`.selected`).textContent?.trim()).toBe(`Viridis`)
+    expect(doc_query(`.multiselect`).style.minWidth).toBe(min_width)
   })
 
   // Binding `selected` alongside `value` is optional, so mounting must not treat an unbound
@@ -77,5 +82,28 @@ describe(`ColorScaleSelect`, () => {
       custom_color_bar_props.wrapper_style,
     )
     expect(color_bar_wrapper.style.flexDirection).toBe(`row-reverse`)
+  })
+
+  test(`left-aligns scale names in the closed chip and dropdown`, async () => {
+    mount(ColorScaleSelect, {
+      target: document.body,
+      props: {
+        options: [`interpolateViridis`, `interpolateRdBu`],
+        value: `interpolateViridis`,
+        selected: [`interpolateViridis`],
+      },
+    })
+    flushSync()
+    expect(doc_query(`.colorbar`).style.getPropertyValue(`--cbar-label-text-align`)).toBe(
+      `left`,
+    )
+
+    doc_query(`.multiselect`).dispatchEvent(new MouseEvent(`mouseup`, { bubbles: true }))
+    await vi.waitFor(() => expect(document.body.querySelectorAll(`.colorbar`)).toHaveLength(2))
+    for (const bar of document.body.querySelectorAll(`.colorbar`)) {
+      expect((bar as HTMLElement).style.getPropertyValue(`--cbar-label-text-align`)).toBe(
+        `left`,
+      )
+    }
   })
 })

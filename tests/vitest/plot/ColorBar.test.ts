@@ -54,6 +54,23 @@ describe(`ColorBar Horizontal (Default)`, () => {
       `Unknown D3 color interpolator: Viridis`,
     )
   })
+
+  // Labels are absolutely positioned, so without a gutter they overflow into neighbors.
+  test.each([
+    [{}, `tick-primary`],
+    [{ tick_side: `secondary` as const }, `tick-secondary`],
+    [{ tick_labels: 0 }, undefined],
+    [{ tick_side: `inside` as const }, undefined],
+  ])(`outside ticks mark a bar gutter class %j`, (props, gutter_class) => {
+    mount(ColorBar, {
+      target: document.body,
+      props: { range: [0, 1], tick_labels: 2, ...props },
+    })
+    const bar = doc_query(`.colorbar > div.bar`)
+    expect(bar.classList.contains(`horizontal`)).toBe(true)
+    expect(bar.classList.contains(`tick-primary`)).toBe(gutter_class === `tick-primary`)
+    expect(bar.classList.contains(`tick-secondary`)).toBe(gutter_class === `tick-secondary`)
+  })
 })
 
 describe(`ColorBar Vertical`, () => {

@@ -1,4 +1,5 @@
-import { NebPlot, NebViewer } from '$lib/neb'
+import { NebPlot, NebViewer, path_spline } from '$lib/neb'
+import { format_num } from '$lib/labels'
 import { reaction_paths } from '$site/neb'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
@@ -14,6 +15,14 @@ const direct_path = reaction_paths[`direct hop`]
 
 // SVG annotations are split across text nodes and indented, so compare on squashed text
 const squash = (text: string | null): string => (text ?? ``).replaceAll(/\s+/g, ` `)
+
+// Svelte bind:value on <select> reads querySelector(':checked'); happy-dom does not match
+// that on <option>, so the binding would stick on the first option.
+const change_select = (select: HTMLSelectElement, value: string): void => {
+  select.value = value
+  vi.spyOn(select, `querySelector`).mockImplementation(() => select.selectedOptions[0])
+  select.dispatchEvent(new Event(`change`, { bubbles: true }))
+}
 
 // jsdom lays everything out at 0x0, so the scatter plot needs an explicit size before
 // any annotation it positions from the scales can be asserted on.
@@ -73,8 +82,9 @@ describe(`NebPlot`, () => {
   test.each(
     [[`arc_length`, `Reaction coordinate (Å)`], [`image_index`, `Image index`]] as const,
   )(`labels the x-axis for %s mode`, async (mode, expected) => {
-    const plot = await mount_plot({ paths: reaction_paths, coord_options: { mode } })
+    const plot = await mount_plot({ paths: reaction_paths, coord_mode: mode })
     expect(plot.querySelector(`.x-axis .axis-label`)?.textContent).toContain(expected)
+    expect(plot.querySelector<HTMLSelectElement>(`#neb-coord-mode`)?.value).toBe(mode)
   })
 
   // oxfmt-ignore
@@ -85,16 +95,29 @@ describe(`NebPlot`, () => {
     expect(plot.querySelector(`.y-axis .axis-label`)?.textContent).toContain(expected)
   })
 
-  test(`annotates the forward barrier and the fitted saddle of the active path`, async () => {
+  test(`annotates the fitted saddle of the active path`, async () => {
     const plot = await mount_plot({ paths: reaction_paths, active_path_key: `direct hop` })
-    // Forward barrier of the direct hop is 0.8339 eV, formatted with 3 significant digits
-    expect(squash(plot.textContent)).toContain(`Eact = 0.834 eV`)
+    const spline = path_spline(direct_path)
+    const e_act = spline.fitted_max.energy - direct_path.images[0].energy
+    expect(squash(plot.textContent)).toContain(`Eact = ${format_num(e_act, `.3~`)} eV`)
     expect(plot.querySelector(`tspan[baseline-shift="sub"]`)?.textContent).toBe(`act`)
-    // One dashed rule per IS/TS/FS energy, plus the active-image marker
     expect(plot.querySelectorAll(`line[stroke-dasharray="4 4"]`)).toHaveLength(3)
     expect(plot.querySelectorAll(`line[stroke-dasharray="2 3"]`)).toHaveLength(1)
-    // The fit sits ~7 meV above image #3; the label states the excess, not a total
     expect(plot.textContent).toMatch(/fit \+0\.00\d+/)
+    const fit_cross = [...plot.querySelectorAll(`line`)].filter(
+      (line) => line.getAttribute(`stroke-width`) === `1.5`,
+    )
+    const e_act_line = [...plot.querySelectorAll(`line`)].find(
+      (line) =>
+        line.getAttribute(`stroke-width`) === `1.25` &&
+        line.getAttribute(`x1`) === line.getAttribute(`x2`) &&
+        !line.getAttribute(`stroke-dasharray`),
+    )
+    expect(fit_cross.length).toBeGreaterThanOrEqual(2)
+    expect(e_act_line).toBeDefined()
+    const peak_x =
+      (Number(fit_cross[0].getAttribute(`x1`)) + Number(fit_cross[0].getAttribute(`x2`))) / 2
+    expect(Number(e_act_line?.getAttribute(`x1`))).toBeCloseTo(peak_x, 5)
   })
 
   test(`hides the barrier annotation when asked`, async () => {
@@ -128,10 +151,13 @@ describe(`NebViewer`, () => {
     expect(
       viewer.querySelector<HTMLElement>(`.panes`)?.style.getPropertyValue(`--split-pane-size`),
     ).toBe(`60%`)
-    expect(viewer.querySelector(`.neb-controls.sequence-control-bar.always-visible`)).not
-      .toBeNull()
     expect(
-      viewer.querySelector<HTMLElement>(`.panes`)?.style.getPropertyValue(`--viewer-buttons-top`),
+      viewer.querySelector(`.neb-controls.sequence-control-bar.always-visible`),
+    ).not.toBeNull()
+    expect(
+      viewer
+        .querySelector<HTMLElement>(`.panes`)
+        ?.style.getPropertyValue(`--viewer-buttons-top`),
     ).toBe(``)
     const summary = viewer.querySelector(`.barrier-summary`)?.textContent ?? ``
     expect(summary).toContain(`Forward barrier`)
@@ -146,12 +172,37 @@ describe(`NebViewer`, () => {
     expect(panes.style.getPropertyValue(`--viewer-buttons-top`)).toMatch(/^calc\(.+\)$/)
   })
 
-  test(`offers a path selector only when several paths are present`, async () => {
-    const multi = await mount_viewer({ paths: reaction_paths })
-    // path picker + x-axis mode + energy reference
-    expect(multi.querySelectorAll(`.neb-controls select`)).toHaveLength(3)
+  test(`path picker stays on the bar; profile settings bind from the plot pane`, async () => {
+    const state = $state({
+      coord_mode: `arc_length` as const,
+      energy_reference: `initial` as const,
+      show_spline: true,
+    })
+    const viewer = await mount_viewer(bind_props({ paths: reaction_paths }, state))
+    expect(viewer.querySelectorAll(`.neb-controls select`)).toHaveLength(1)
+    const coord_select = viewer.querySelector<HTMLSelectElement>(`#neb-coord-mode`)
+    const energy_select = viewer.querySelector<HTMLSelectElement>(`#neb-energy-reference`)
+    const spline = viewer.querySelector<HTMLInputElement>(`#neb-show-spline`)
+    if (!coord_select || !energy_select || !spline)
+      throw new Error(`profile pane controls missing`)
+    expect(coord_select.closest(`.plot-controls-pane`)).not.toBeNull()
+
+    change_select(coord_select, `image_index`)
+    await flush_render()
+    expect(state.coord_mode).toBe(`image_index`)
+    expect(viewer.querySelector(`.x-axis .axis-label`)?.textContent).toContain(`Image index`)
+
+    change_select(energy_select, `absolute`)
+    await flush_render()
+    expect(state.energy_reference).toBe(`absolute`)
+    expect(viewer.querySelector(`.y-axis .axis-label`)?.textContent).toContain(`Energy (eV)`)
+
+    spline.click()
+    await flush_render()
+    expect(state.show_spline).toBe(false)
+
     const single = await mount_viewer({ paths: direct_path })
-    expect(single.querySelectorAll(`.neb-controls select`)).toHaveLength(2)
+    expect(single.querySelectorAll(`.neb-controls select`)).toHaveLength(0)
   })
 
   test.each([
@@ -189,16 +240,11 @@ describe(`NebViewer`, () => {
       paths: direct_path,
       show_controls: {
         mode: `always`,
-        hidden: [`fps`, `energy`, `spline`, `fullscreen`],
+        hidden: [`fps`, `energy`, `fullscreen`],
       },
     })
 
-    for (const selector of [
-      `.fps-section`,
-      `.image-status`,
-      `.neb-options input[type="checkbox"]`,
-      `.fullscreen-button`,
-    ]) {
+    for (const selector of [`.fps-section`, `.image-status`, `.fullscreen-button`]) {
       expect(viewer.querySelector(selector)).toBeNull()
     }
     expect(viewer.querySelector(`.step-section`)).not.toBeNull()

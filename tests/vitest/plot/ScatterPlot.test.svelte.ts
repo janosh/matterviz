@@ -146,6 +146,11 @@ describe(`ScatterPlot`, () => {
     for (const prop_name of Object.keys(controls_props)) {
       expect(plot.hasAttribute(prop_name)).toBe(false)
     }
+    if (open) {
+      expect(
+        plot.querySelector(`[data-key="line.opacity"]`)?.closest(`.style-row`),
+      ).not.toBeNull()
+    }
   })
 
   test(`draws a current-frame guide through the plot area`, async () => {

@@ -148,14 +148,14 @@
                 <input type="color" bind:value={styles.point.color} />
               </label>
             {/if}
+            <NumberRangeInput
+              data-key="point.opacity"
+              min={0}
+              max={1}
+              step={0.05}
+              bind:value={styles.point.opacity}>Opacity</NumberRangeInput
+            >
           </div>
-          <NumberRangeInput
-            data-key="point.opacity"
-            min={0}
-            max={1}
-            step={0.05}
-            bind:value={styles.point.opacity}>Opacity</NumberRangeInput
-          >
           <div class="style-row">
             <NumberRangeInput
               data-key="point.stroke_width"
@@ -168,14 +168,14 @@
               <span>Color</span>
               <input type="color" bind:value={styles.point.stroke_color} />
             </label>
+            <NumberRangeInput
+              data-key="point.stroke_opacity"
+              min={0}
+              max={1}
+              step={0.05}
+              bind:value={styles.point.stroke_opacity}>Stroke opacity</NumberRangeInput
+            >
           </div>
-          <NumberRangeInput
-            data-key="point.stroke_opacity"
-            min={0}
-            max={1}
-            step={0.05}
-            bind:value={styles.point.stroke_opacity}>Stroke opacity</NumberRangeInput
-          >
         {/if}
       </SettingsSection>
     {/if}
@@ -228,14 +228,14 @@
                 <option value="8,4,2,4">Dash-dot</option>
               </select>
             </label>
+            <NumberRangeInput
+              data-key="line.opacity"
+              min={0}
+              max={1}
+              step={0.05}
+              bind:value={styles.line.opacity}>Opacity</NumberRangeInput
+            >
           </div>
-          <NumberRangeInput
-            data-key="line.opacity"
-            min={0}
-            max={1}
-            step={0.05}
-            bind:value={styles.line.opacity}>Opacity</NumberRangeInput
-          >
         {/if}
       </SettingsSection>
     {/if}

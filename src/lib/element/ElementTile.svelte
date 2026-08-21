@@ -218,9 +218,12 @@
   }
   .element-tile.active,
   .element-tile:hover {
+    /* Outline follows page ink (--text-color), not the tile's heatmap contrast color. A bare
+       `border: var(--elem-tile-active-border)` with the var unset would be invalid at
+       computed-value time and reset the border to none, so the default lives in the fallback. */
     border: var(
       --elem-tile-active-border,
-      var(--elem-tile-hover-border-width, 1px) solid currentColor
+      var(--elem-tile-hover-border-width, 1px) solid var(--text-color, currentColor)
     );
   }
   .element-tile.clickable {

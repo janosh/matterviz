@@ -13,7 +13,6 @@
     filename,
     fullscreen = $bindable(false),
     fullscreen_toggle = true,
-    fullscreen_btn_style,
     fullscreen_bg_css_var = `--fullscreen-bg`,
     on_fullscreen_change,
     wrapper,
@@ -24,7 +23,6 @@
     filename?: string
     fullscreen?: boolean
     fullscreen_toggle?: boolean
-    fullscreen_btn_style?: string
     fullscreen_bg_css_var?: string
     on_fullscreen_change?: (fullscreen: boolean) => void
     wrapper?: HTMLDivElement
@@ -52,7 +50,6 @@
         {wrapper}
         bg_css_var={fullscreen_bg_css_var}
         on_change={on_fullscreen_change}
-        style={fullscreen_btn_style}
         {...tooltip_attachment}
       />
     {/if}
@@ -90,6 +87,9 @@
       padding: var(--viewer-buttons-btn-padding, 4px);
       border-radius: var(--border-radius, 3pt);
       font-size: var(--ctrl-btn-icon-size, clamp(0.7rem, 2cqmin, 0.85rem));
+    }
+    > :global(.fullscreen-btn) {
+      --icon-size: 1.3em;
     }
     :global(button:hover) {
       background-color: var(

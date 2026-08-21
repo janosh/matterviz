@@ -25,19 +25,10 @@
     ReactionPathInput,
   } from './index'
   import NebPlot from './NebPlot.svelte'
-  import { type DroppedFile, parse_dropped_paths } from './parse'
+  import { parse_dropped_paths } from './parse'
   import { normalize_paths, path_energy_unit, path_profile } from './reaction-path'
 
-  type NebControlName =
-    | `path`
-    | `nav`
-    | `step`
-    | `fps`
-    | `coord`
-    | `energy-reference`
-    | `spline`
-    | `energy`
-    | `fullscreen`
+  type NebControlName = `path` | `nav` | `step` | `fps` | `energy` | `fullscreen`
 
   let {
     paths,
@@ -222,38 +213,16 @@
         </span>
       {/if}
 
-      <div class="neb-options">
-        {#if controls_config.visible(`coord`)}
-          <label>
-            x-axis
-            <select bind:value={coord_mode}>
-              <option value="arc_length">Arc length</option>
-              <option value="image_index">Image index</option>
-            </select>
-          </label>
-        {/if}
-        {#if controls_config.visible(`energy-reference`)}
-          <label>
-            Energies
-            <select bind:value={energy_reference}>
-              <option value="initial">Relative to initial</option>
-              <option value="absolute">Absolute</option>
-            </select>
-          </label>
-        {/if}
-        {#if controls_config.visible(`spline`)}
-          <label><input type="checkbox" bind:checked={show_spline} /> Spline</label>
-        {/if}
-        {#if fullscreen_toggle && controls_config.visible(`fullscreen`)}
-          <FullscreenButton
-            bind:fullscreen
-            {wrapper}
-            bg_css_var="--neb-bg-fullscreen"
-            on_change={on_fullscreen_change}
-            class="fullscreen-button"
-          />
-        {/if}
-      </div>
+      {#if fullscreen_toggle && controls_config.visible(`fullscreen`)}
+        <FullscreenButton
+          bind:fullscreen
+          {wrapper}
+          bg_css_var="--neb-bg-fullscreen"
+          on_change={on_fullscreen_change}
+          class="fullscreen-button"
+          style="margin-inline-start: auto"
+        />
+      {/if}
     </SequenceControlBar>
 
     <div
@@ -266,8 +235,9 @@
         {...plot_props}
         paths={merged}
         {coord_options}
-        {energy_reference}
-        {show_spline}
+        bind:coord_mode
+        bind:energy_reference
+        bind:show_spline
         bind:active_path_key
         bind:active_image_idx
         show_controls={controls_config.mode !== `never` && plot_props.show_controls !== false}
@@ -340,22 +310,8 @@
     text-align: center;
     padding: 2em 1em;
   }
-  .path-control,
-  .neb-options {
-    display: flex;
-    align-items: center;
-  }
   .path-control {
-    gap: 4pt;
-    white-space: nowrap;
-  }
-  .neb-options {
-    flex-wrap: wrap;
-    gap: 4pt 8pt;
-    margin-inline-start: auto;
-  }
-  .neb-options label {
-    display: inline-flex;
+    display: flex;
     align-items: center;
     gap: 4pt;
     white-space: nowrap;

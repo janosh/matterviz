@@ -490,6 +490,8 @@ describe(`StructureControls layout`, () => {
       [`Scene`, false],
       [`Preferences`, false],
     ])
+    expect(groups[0]?.matches(`:first-of-type`)).toBe(true)
+    expect(groups[3]?.matches(`:first-of-type`)).toBe(false)
 
     doc_query<HTMLButtonElement>(`.open-search`).click()
     await tick()
@@ -500,6 +502,7 @@ describe(`StructureControls layout`, () => {
     expect(groups[1]?.hasAttribute(`data-search-hidden`)).toBe(false)
     expect(groups[1]?.open).toBe(true)
     expect(groups[2]?.hasAttribute(`data-search-hidden`)).toBe(true)
+    expect(groups[3]?.hasAttribute(`data-search-hidden`)).toBe(true)
     expect(
       target
         .querySelector<HTMLElement>(`[data-key="rotation_damping"]`)

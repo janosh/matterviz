@@ -286,7 +286,14 @@
       {/if}
     </div>
   {/if}
-  <div style={final_bar_style} class="bar">
+  <div
+    style={final_bar_style}
+    class={[
+      `bar`,
+      orientation,
+      visible_ticks.length > 0 && tick_side !== `inside` && `tick-${tick_side}`,
+    ]}
+  >
     {#each visible_ticks as tick (tick)}
       {@const position_percent = tick_scale(tick)}
       <span
@@ -323,9 +330,22 @@
     width: var(--cbar-width);
     height: var(--cbar-height);
   }
+  /* Tick labels are `position: absolute` and otherwise overflow the bar. */
+  div.bar.horizontal.tick-primary {
+    margin-bottom: var(--cbar-tick-gutter, 1em);
+  }
+  div.bar.horizontal.tick-secondary {
+    margin-top: var(--cbar-tick-gutter, 1em);
+  }
+  div.bar.vertical.tick-primary {
+    margin-right: var(--cbar-tick-gutter, 1em);
+  }
+  div.bar.vertical.tick-secondary {
+    margin-left: var(--cbar-tick-gutter, 1em);
+  }
   /* label text */
   span.label {
-    text-align: center;
+    text-align: var(--cbar-label-text-align, center);
     padding: var(--cbar-label-padding, 0 5px);
     transform: var(--cbar-label-transform);
     /* Ensure vertical labels are centered within their allocated space */

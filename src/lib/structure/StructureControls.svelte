@@ -1181,7 +1181,10 @@
             {#if scene_props.vector_color_mode === `magnitude`}
               <label {...setting_row(`vector_color_scale`)}>
                 <span>Color scale</span>
-                <ColorScaleSelect bind:value={scene_props.vector_color_scale} />
+                <ColorScaleSelect
+                  bind:value={scene_props.vector_color_scale}
+                  style="min-width: 0; border: none"
+                />
               </label>
             {/if}
             {#if available_vector_keys.length > 1}
@@ -1513,50 +1516,50 @@
         {/if}
       </SettingsGroup>
     {/if}
-  </SettingsSearch>
 
-  <SettingsGroup
-    title="Preferences"
-    subtitle={persist_settings ? `saved in this browser` : `session only`}
-  >
-    <div class="settings-actions">
-      <button type="button" onclick={copy_view_state} aria-label="Copy viewer settings JSON">
-        {copied_view_state.has(`viewer-settings`) ? `Copied ✓` : `Copy JSON`}
-      </button>
-      <button
-        type="button"
-        onclick={download_view_state}
-        aria-label="Download viewer settings JSON"
-      >
-        Download JSON
-      </button>
-      <label class="import-settings">
-        Import JSON
-        <input
-          type="file"
-          accept=".json,application/json"
-          aria-label="Import viewer settings JSON"
-          onchange={import_view_state}
-        />
-      </label>
-      <button
-        type="button"
-        class="reset-all-settings"
-        onclick={reset_all_view_settings}
-        aria-label="Reset all viewer settings to defaults"
-      >
-        Reset all
-      </button>
-    </div>
-    {#if settings_import_status}
-      <small
-        class={['settings-import-status', { error: settings_import_status.error }]}
-        role={settings_import_status.error ? `alert` : `status`}
-      >
-        {settings_import_status.message}
-      </small>
-    {/if}
-  </SettingsGroup>
+    <SettingsGroup
+      title="Preferences"
+      subtitle={persist_settings ? `saved in this browser` : `session only`}
+    >
+      <div class="settings-actions">
+        <button type="button" onclick={copy_view_state} aria-label="Copy viewer settings JSON">
+          {copied_view_state.has(`viewer-settings`) ? `Copied ✓` : `Copy JSON`}
+        </button>
+        <button
+          type="button"
+          onclick={download_view_state}
+          aria-label="Download viewer settings JSON"
+        >
+          Download JSON
+        </button>
+        <label class="import-settings">
+          Import JSON
+          <input
+            type="file"
+            accept=".json,application/json"
+            aria-label="Import viewer settings JSON"
+            onchange={import_view_state}
+          />
+        </label>
+        <button
+          type="button"
+          class="reset-all-settings"
+          onclick={reset_all_view_settings}
+          aria-label="Reset all viewer settings to defaults"
+        >
+          Reset all
+        </button>
+      </div>
+      {#if settings_import_status}
+        <small
+          class={['settings-import-status', { error: settings_import_status.error }]}
+          role={settings_import_status.error ? `alert` : `status`}
+        >
+          {settings_import_status.message}
+        </small>
+      {/if}
+    </SettingsGroup>
+  </SettingsSearch>
 </ControlPane>
 
 <style>

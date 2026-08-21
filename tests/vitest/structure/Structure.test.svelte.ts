@@ -817,9 +817,6 @@ describe(`Structure`, () => {
     const fullscreen_button = doc_query<HTMLButtonElement>(
       `.structure > section.control-buttons > .fullscreen-btn`,
     )
-    expect(fullscreen_button.style.getPropertyValue(`--icon-size`)).toBe(
-      `var(--struct-fullscreen-icon-size, 1em)`,
-    )
 
     fullscreen_button.click()
     await tick()

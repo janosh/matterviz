@@ -424,6 +424,17 @@ export function fit_path_spline(
     sample_energies.push(hermite_at(coords, energies, knot_slopes, seg, widths[seg], coord))
   }
 
+  // Include the analytic saddle so the plotted polyline peaks where the annotation sits. An
+  // interior saddle lies strictly inside [start, end], so a later sample always exists.
+  if (
+    best.between_images[0] !== best.between_images[1] &&
+    !sample_coords.includes(best.coord)
+  ) {
+    const at = sample_coords.findIndex((coord) => coord > best.coord)
+    sample_coords.splice(at, 0, best.coord)
+    sample_energies.splice(at, 0, best.energy)
+  }
+
   return {
     method: given_slopes ? `force-hermite` : `natural-cubic`,
     coords: sample_coords,

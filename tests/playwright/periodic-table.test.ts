@@ -44,6 +44,52 @@ test.describe(`Periodic Table`, () => {
     }
   })
 
+  // A custom inset taller than periods 1–3 must overlay the slot, not stretch those rows
+  // (which would open gaps between H/Li/Na and leave period-4 tiles a different size).
+  test(`a tall inset does not stretch element-tile rows`, async ({ page }) => {
+    await page.goto(`/plot/color-scales`)
+    const table = page.locator(`.periodic-table`).first()
+    await expect(table).toBeVisible({ timeout: 20_000 })
+    const tile = (symbol: string) => table.locator(`[data-element-symbol="${symbol}"]`)
+    await expect(tile(`H`)).toBeVisible({ timeout: 20_000 })
+
+    const row_gap = async (above: string, below: string) => {
+      const [upper, lower] = await Promise.all([
+        tile(above).evaluate((el) => el.getBoundingClientRect().bottom),
+        tile(below).evaluate((el) => el.getBoundingClientRect().top),
+      ])
+      return lower - upper
+    }
+    expect(Math.abs((await row_gap(`H`, `Li`)) - (await row_gap(`K`, `Rb`)))).toBeLessThan(1)
+
+    const heights = await table
+      .locator(`.element-tile`)
+      .evaluateAll((elements) => elements.map((el) => el.getBoundingClientRect().height))
+    expect(Math.max(...heights) - Math.min(...heights)).toBeLessThan(0.5)
+
+    const inset = table.locator(`.table-inset`)
+    const [inset_box, h_box, sc_box] = await Promise.all([
+      inset.boundingBox(),
+      tile(`H`).boundingBox(),
+      tile(`Sc`).boundingBox(),
+    ])
+    if (!inset_box || !h_box || !sc_box) throw new Error(`missing inset/tile boxes`)
+    expect(Math.abs(inset_box.y - h_box.y)).toBeLessThan(2)
+    expect(inset_box.y + inset_box.height).toBeLessThanOrEqual(sc_box.y + 2)
+
+    const tick_bottom = await table
+      .locator(`.colorbar .tick-label`)
+      .evaluateAll((ticks) =>
+        Math.max(...ticks.map((tick) => tick.getBoundingClientRect().bottom)),
+      )
+    expect(sc_box.y - tick_bottom).toBeGreaterThan(8)
+
+    // Scale bar must span the inset hole, not shrink to the color-scale chip (~14em).
+    const scale_box = await table.locator(`section > .colorbar`).boundingBox()
+    if (!scale_box) throw new Error(`missing scale colorbar box`)
+    expect(scale_box.width).toBeGreaterThan(inset_box.width * 0.7)
+  })
+
   test.describe(`tooltips`, () => {
     // Configure retries for tooltip tests which can be timing-sensitive
     test.describe.configure({ retries: 2 })

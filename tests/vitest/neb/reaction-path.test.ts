@@ -416,6 +416,15 @@ describe(`fitted saddle versus highest image`, () => {
     expect(spline.fitted_max.energy).toBeGreaterThan(0.9)
     expect(spline.fitted_max.between_images).toEqual([1, 2])
     expect(spline.saddle_at_image).toBe(false)
+    const peak_idx = spline.coords.findIndex(
+      (coord) => Math.abs(coord - spline.fitted_max.coord) < 1e-12,
+    )
+    expect(peak_idx).toBeGreaterThanOrEqual(0)
+    expect(spline.energies[peak_idx]).toBeCloseTo(spline.fitted_max.energy, 12)
+    // inserting the saddle must keep the sample arrays parallel and the coords sorted
+    expect(spline.energies).toHaveLength(spline.coords.length)
+    expect(spline.energies.every(Number.isFinite)).toBe(true)
+    expect(spline.coords).toEqual(spline.coords.toSorted((a, b) => a - b))
   })
 
   test(`sampled curve passes through every image energy`, () => {
