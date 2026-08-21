@@ -52,7 +52,7 @@ const vasp_selectors = [
   `*[._-]${decorated_glob}[._-]*`,
 ]
 
-const build_custom_editor_selectors = (): { filenamePattern: string }[] => {
+export const build_custom_editor_selectors = (): { filenamePattern: string }[] => {
   const ext_glob = `*.${brace([
     ...TEXT_VIEWER_EXTENSIONS,
     ...BINARY_VIEWER_EXTENSIONS,
@@ -63,19 +63,16 @@ const build_custom_editor_selectors = (): { filenamePattern: string }[] => {
   )
 }
 
-function sync_package_config(): void {
-  const package_path = resolve(import.meta.dirname, `..`, `package.json`)
-  const package_text = readFileSync(package_path, `utf-8`)
-  const package_content = JSON.parse(package_text)
+// Every non-web_only leaf of SETTINGS_CONFIG as a `matterviz.<path>` VS Code setting.
+// Exported so tests can check the generated ids against what the code actually reads.
+export const build_vscode_settings = (): Record<string, Record<string, unknown>> => {
+  const vscode_config: Record<string, Record<string, unknown>> = {}
 
-  const vscode_config: Record<string, unknown> = {}
-
-  function process_setting_schema(schema: unknown, key_path: string): void {
+  const process_setting_schema = (schema: unknown, key_path: string): void => {
     if (!schema || typeof schema !== `object`) return
     if (!is_setting_type(schema)) {
       for (const [key, value] of Object.entries(schema)) {
-        const nested_key = key_path ? `${key_path}.${key}` : key
-        process_setting_schema(value, nested_key)
+        process_setting_schema(value, `${key_path}.${key}`)
       }
       return
     }
@@ -100,9 +97,15 @@ function sync_package_config(): void {
     vscode_config[key_path] = config
   }
 
-  for (const [key, value] of Object.entries(SETTINGS_CONFIG)) {
-    process_setting_schema(value, `matterviz.${key}`)
-  }
+  process_setting_schema(SETTINGS_CONFIG, `matterviz`)
+  return vscode_config
+}
+
+function sync_package_config(): void {
+  const package_path = resolve(import.meta.dirname, `..`, `package.json`)
+  const package_text = readFileSync(package_path, `utf-8`)
+  const package_content = JSON.parse(package_text)
+  const vscode_config = build_vscode_settings()
 
   // Host-only settings the extension reads itself survive regeneration; everything else is
   // owned by SETTINGS_CONFIG, so a group deleted from the schema disappears here too instead
@@ -148,4 +151,5 @@ function sync_package_config(): void {
   )
 }
 
-sync_package_config()
+// Guard so importing the generators from tests does not rewrite package.json
+if (process.argv[1] && resolve(process.argv[1]) === import.meta.filename) sync_package_config()

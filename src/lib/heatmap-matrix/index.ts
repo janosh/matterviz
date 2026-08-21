@@ -59,7 +59,7 @@ export const ORDERING_LABELS = {
 export type ElementAxisOrderingKey = keyof typeof ORDERING_LABELS
 
 // Full ordering type: built-in key or custom comparator function
-export type ElementAxisOrdering =
+type ElementAxisOrdering =
   | ElementAxisOrderingKey
   | ((a: ChemicalElement, b: ChemicalElement) => number)
 

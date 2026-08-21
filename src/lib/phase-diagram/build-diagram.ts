@@ -13,7 +13,7 @@ import type { BoundElement, DiagramInput, DiagramPoint } from './diagram-input'
 import type { BoundaryType, PhaseBoundary, PhaseDiagramData, PhaseRegion } from './types'
 
 // Parse curve reference syntax: 'curve_name', '~curve_name', 'curve_name[1:]', etc.
-export interface CurveRef {
+interface CurveRef {
   name: string
   reverse: boolean
   start: number | null // null means from beginning

@@ -928,11 +928,6 @@
           "minimum": 1000000,
           "maximum": 2000000000
         },
-        "matterviz.trajectory.show_parsing_progress": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show progress indicator while parsing files"
-        },
         "matterviz.histogram.mode": {
           "type": "string",
           "default": "overlay",

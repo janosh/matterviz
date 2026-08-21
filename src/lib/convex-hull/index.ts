@@ -67,7 +67,6 @@ export {
   compute_quickhull_nd,
   find_lowest_energy_unary_refs,
   get_convex_hull_stats,
-  HULL_EPS,
   normalize_hull_composition_keys,
   process_hull_entries,
   process_hull_for_stats,
@@ -75,7 +74,7 @@ export {
 export type { HighDimHullResult, HullFacet } from './thermodynamics'
 export * from './types'
 
-export interface BaseConvexHullChildrenProps<AnyDimEntry = PhaseData> {
+interface BaseConvexHullChildrenProps<AnyDimEntry = PhaseData> {
   stable_entries: AnyDimEntry[]
   unstable_entries: AnyDimEntry[]
   highlighted_entries: (string | AnyDimEntry)[]
@@ -89,12 +88,12 @@ export interface TooltipSnippetProps<AnyDimEntry = PhaseData> {
 }
 
 // ConvexHull-specific tooltip types
-export type ConvexHullTooltipConfig<AnyDimEntry = PhaseData> = TooltipConfig<AnyDimEntry>
+type ConvexHullTooltipConfig<AnyDimEntry = PhaseData> = TooltipConfig<AnyDimEntry>
 export type ConvexHullTooltipProp<AnyDimEntry = PhaseData> =
   | Snippet<[TooltipSnippetProps<AnyDimEntry>]>
   | ConvexHullTooltipConfig<AnyDimEntry>
 
-export type ConvexHullControlName = `reset` | `info-pane` | `fullscreen` | `controls`
+type ConvexHullControlName = `reset` | `info-pane` | `fullscreen` | `controls`
 
 // Base props shared across all convex hull components (2D, 3D, 4D)
 export interface BaseConvexHullProps<AnyDimEntry = PhaseData> extends Omit<

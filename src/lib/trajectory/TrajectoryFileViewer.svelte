@@ -59,7 +59,7 @@
     ...viewer_props
   }: ViewerProps & {
     // URL to fetch, or a File / ArrayBuffer / Blob to open directly
-    src?: string | ArrayBuffer | Blob | File
+    src?: string | ArrayBuffer | Blob | File | null
     // Name used for format detection when `src` is binary (URLs and Files carry their own)
     filename?: string
     // bindable: the run on display. A caller-supplied run is shown as-is and never disposed
@@ -226,7 +226,8 @@
     const source = src
     if (source === loaded_src) return
     loaded_src = source
-    if (source === undefined) return
+    // Hosts that clear a URL trait often send `` or null rather than undefined
+    if (!source) return
     const controller = begin_load()
     const load = async (): Promise<void> => {
       if (typeof source === `string`) {

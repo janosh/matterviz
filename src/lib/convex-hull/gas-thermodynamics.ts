@@ -86,10 +86,8 @@ function interpolate_ts(values: number[], T: number): number {
   return values[idx] + fraction * (values[idx + 1] - values[idx])
 }
 
-// Default Provider Implementation
-
-// Create the default gas thermodynamics provider using built-in data
-export const create_default_gas_provider = (): GasThermodynamicsProvider => ({
+// Default provider backed by the built-in tables above. Stateless, so one shared instance.
+const DEFAULT_GAS_PROVIDER: GasThermodynamicsProvider = {
   get_standard_chemical_potential(gas: GasSpecies, T: number): number {
     // μ°(T) = H_f - T*S
     // For elemental gases (O2, N2, H2, F2), H_f = 0
@@ -105,16 +103,9 @@ export const create_default_gas_provider = (): GasThermodynamicsProvider => ({
   get_temperature_range(): Vec2 {
     return [0, 2000]
   },
-})
-
-// Singleton default provider
-let default_provider: GasThermodynamicsProvider | null = null
-
-// Get the default gas thermodynamics provider (lazy initialization)
-export function get_default_gas_provider(): GasThermodynamicsProvider {
-  default_provider ??= create_default_gas_provider()
-  return default_provider
 }
+
+export const get_default_gas_provider = (): GasThermodynamicsProvider => DEFAULT_GAS_PROVIDER
 
 // Gas Chemical Potential Calculations
 
@@ -152,31 +143,6 @@ export function compute_gas_chemical_potential(
   // The RT·ln(P) term must be divided by num_atoms to match PIRO's per-atom convention
   const num_atoms = GAS_NUM_ATOMS[gas]
   return mu_standard + (R_EV_PER_K * T * Math.log(effective_P / P_REF)) / num_atoms
-}
-
-// Compute chemical potential per atom of a specific element from a gas
-// Since compute_gas_chemical_potential returns per-atom of gas molecule,
-// we need to convert to per-atom of the specific element.
-// For O from O2: μ(O) = μ(O2)_per_atom * num_atoms(O2) / stoich(O in O2) = μ(O2)_per_atom * 2 / 2 = μ(O2)_per_atom
-// For O from CO2: μ(O) = μ(CO2)_per_atom * num_atoms(CO2) / stoich(O in CO2) = μ(CO2)_per_atom * 3 / 2
-// provider - Thermodynamic data provider
-// gas - Gas species
-// element - Element symbol
-// T - Temperature in Kelvin
-// P - Pressure in bar
-// Returns chemical potential per atom of element in eV/atom
-export function compute_element_chemical_potential(
-  provider: GasThermodynamicsProvider,
-  gas: GasSpecies,
-  element: ElementSymbol,
-  T: number,
-  P: number,
-): number {
-  const mu_gas_per_atom = compute_gas_chemical_potential(provider, gas, T, P)
-  const num_atoms = GAS_NUM_ATOMS[gas]
-  const stoich = GAS_STOICHIOMETRY[gas][element] ?? 1
-  // Convert from per-atom-of-gas to per-atom-of-element
-  return (mu_gas_per_atom * num_atoms) / stoich
 }
 
 // Gas Analysis and Corrections

@@ -7,7 +7,7 @@
   import { to_structure_entries } from '$lib/plot/core/structure-input'
   import type { StructureEntry } from '$lib/plot/core/structure-input'
   import type { BarHandlerProps, BarSeries } from '$lib/plot/core/types'
-  import { calc_structure_coordination } from '$lib/structure/atom-properties'
+  import { calc_coordination_nums } from './calc-coordination'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import type { CoordinationSplitMode } from './index'
 
@@ -38,12 +38,12 @@
 
   let dropped_entries = $state<StructureEntry[]>([])
 
-  // Compute coordination data for each structure via the shared PBC-aware helper so
-  // boundary-atom coordination matches the 3D viewer (which uses the same path).
+  // Bonded across each structure's own pbc, the same call the 3D viewer makes, so
+  // boundary-atom coordination matches it.
   const entries_with_data = $derived(
     [...to_structure_entries(structures), ...dropped_entries].map((entry) => ({
       ...entry,
-      data: calc_structure_coordination(entry.structure, strategy),
+      data: calc_coordination_nums(entry.structure, strategy),
     })),
   )
 

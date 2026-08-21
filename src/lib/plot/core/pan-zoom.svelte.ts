@@ -22,7 +22,7 @@ const AXES = [`x`, `x2`, `y`, `y2`] as const
 // bridge the gap between notches of one gesture, short enough that animation resumes promptly.
 const WHEEL_PAN_IDLE_MS = 150
 
-export interface PanZoomOptions {
+interface PanZoomOptions {
   // ALL reactive inputs are getter thunks - read fresh per event, never captured values
   ranges: () => AxisRanges
   scale_type: (axis: Axis) => ScaleType | undefined

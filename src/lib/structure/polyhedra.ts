@@ -15,7 +15,7 @@ import { get_majority_element, has_framework_potential, is_spectator_center } fr
 
 export type PolyhedraColorMode = `vertex` | `center` | `uniform`
 
-export interface PolyhedraOptions {
+interface PolyhedraOptions {
   min_neighbors?: number // min coordination number to form a polyhedron
   max_neighbors?: number // max CN - skips e.g. CN-12 cuboctahedra around A-site cations
   excluded_center_elements?: readonly string[] // per-element off-toggles
@@ -27,7 +27,7 @@ export interface PolyhedraOptions {
   volume_eps?: number // hulls below this volume (Å³) are skipped as degenerate
 }
 
-export interface ConvexHullResult {
+interface ConvexHullResult {
   vertices: Vec3[] // deduped subset of input points on the hull
   input_idxs: number[] // index into the input `points` for each hull vertex
   faces: [number, number, number][] // outward-wound triangles indexing `vertices`
@@ -44,7 +44,7 @@ export interface Polyhedron {
   volume: number
 }
 
-export interface MergedPolyhedraBuffers {
+interface MergedPolyhedraBuffers {
   positions: Float32Array // 9 floats per triangle (non-indexed, flat-shaded)
   colors: Float32Array // per-vertex rgb matching positions
   edge_positions: Float32Array // 6 floats per crease edge for LineSegments
@@ -333,7 +333,7 @@ export function convex_hull_3d(points: readonly Vec3[], eps_scale = 1e-7): Conve
 
 // --- Bond graph adjacency ---
 
-export interface PolyhedronNeighbor {
+interface PolyhedronNeighbor {
   site_idx: number // index into the displayed structure's sites
   // Displacement from the center to this neighbor, non-null only for bonds carrying a
   // periodic cell_shift. Such a bond ends at a lattice image of sites[site_idx], not at

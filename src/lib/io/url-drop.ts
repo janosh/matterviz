@@ -66,18 +66,6 @@ export const load_trajectory_from_url = (
   signal?: AbortSignal,
 ): Promise<void> => load_url_content(url, callback, true, signal)
 
-// Handle URL-based file drop data by fetching content lazily; false when the drop carried no URL
-const url_drop_handler =
-  <Callback>(load: (url: string, callback: Callback, signal?: AbortSignal) => Promise<void>) =>
-  async (event: DragEvent, callback: Callback, signal?: AbortSignal): Promise<boolean> => {
-    const url = dropped_file_url(event)
-    if (!url) return false
-    await load(url, callback, signal)
-    return true
-  }
-export const handle_url_drop = url_drop_handler(load_from_url)
-export const handle_trajectory_url_drop = url_drop_handler(load_trajectory_from_url)
-
 // Fetch `url` and hand its payload to `callback`, classified the way a dropped File would be
 // (see classify_payload); compressed payloads are inflated by their bytes, not their name.
 async function load_url_content(

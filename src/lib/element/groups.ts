@@ -12,7 +12,7 @@ const category_groups = [
 ] as const satisfies readonly (readonly [string, string, ElementCategory])[]
 
 type CategoryGroupKey = (typeof category_groups)[number][0]
-export type ElementGroupKey = `all` | `nonmetal` | `halogen` | CategoryGroupKey
+type ElementGroupKey = `all` | `nonmetal` | `halogen` | CategoryGroupKey
 export type ElementGroup = {
   readonly value: ElementGroupKey
   readonly label: string

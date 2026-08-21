@@ -325,7 +325,7 @@ type ColorBarLayoutProps = {
 
 export type ColorBarSide = `left` | `right`
 
-export type ColorBarLayout = {
+type ColorBarLayout = {
   side: ColorBarSide
   is_vertical: boolean
   tick_side: `primary` | `secondary` | `inside`

@@ -23,7 +23,7 @@ export const ISO_COLORMAPS = [
   `interpolatePuOr`,
 ] as const satisfies readonly D3InterpolateName[]
 
-export type IsoColormap = (typeof ISO_COLORMAPS)[number]
+type IsoColormap = (typeof ISO_COLORMAPS)[number]
 
 export const DEFAULT_ISO_COLORMAP: IsoColormap = `interpolateViridis`
 
@@ -56,7 +56,7 @@ function get_colormap_lut(colormap: D3InterpolateName): Float32Array {
   return lut
 }
 
-export interface VertexColorOptions {
+interface VertexColorOptions {
   colormap: D3InterpolateName
   color_range: Vec2 // [min, max]; inverted ranges (min > max) flip the colormap
   fallback_color?: string // used for non-finite scalars (out-of-bounds under 'fallback' policy)

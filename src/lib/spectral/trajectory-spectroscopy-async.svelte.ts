@@ -7,7 +7,7 @@ import {
   type TrajectorySpectroscopyResult,
 } from './trajectory-spectroscopy'
 
-export interface TrajectorySpectroscopyAsyncRunner {
+interface TrajectorySpectroscopyAsyncRunner {
   compute: (
     input: TrajectorySpectroscopyInput,
     options?: TrajectorySpectroscopyOptions,
@@ -37,10 +37,3 @@ export const create_trajectory_spectroscopy_async_runner =
       cancel: client.cancel,
     }
   }
-
-const shared_runner = create_trajectory_spectroscopy_async_runner()
-
-export const compute_trajectory_spectroscopy_async = (
-  input: TrajectorySpectroscopyInput,
-  options: TrajectorySpectroscopyOptions = {},
-): Promise<TrajectorySpectroscopyResult> => shared_runner.compute(input, options)

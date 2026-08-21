@@ -827,7 +827,7 @@ const PHONOPY_CELL_TYPES = [
   `phonon_primitive_cell`,
   `primitive_cell`,
 ] as const
-export type PhonopyCellType = (typeof PHONOPY_CELL_TYPES)[number] | `auto`
+type PhonopyCellType = (typeof PHONOPY_CELL_TYPES)[number] | `auto`
 
 const get_phonopy_cell = (
   data: unknown,

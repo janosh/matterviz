@@ -50,7 +50,7 @@ function make_chempot_color_scale(
   ])
 }
 
-export interface ChemPotDomainColorData {
+interface ChemPotDomainColorData {
   colors: Map<string, string>
   // min/max of the active numeric mode's values, null for none/arity (categorical)
   color_range: { min: number; max: number; label: string } | null

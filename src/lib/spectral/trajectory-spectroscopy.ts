@@ -23,10 +23,10 @@ import { central_difference_velocities } from '$lib/vacf/calc-vacf'
 import { thz_per_inverse_time } from '$lib/vacf/units'
 import { unwrap_flat_positions } from '$lib/msd/calc-msd'
 
-export type TrajectoryFrequencyUnit = `THz` | `cm^-1` | `1/frame`
-export type SpectralActivity = `active` | `inactive` | `unknown`
+type TrajectoryFrequencyUnit = `THz` | `cm^-1` | `1/frame`
+type SpectralActivity = `active` | `inactive` | `unknown`
 export type SpectroscopyPreprocessing = `body_fixed` | `remove_com` | `raw`
-export type SpectroscopyVelocitySource = `stored` | `central_difference` | `auto`
+type SpectroscopyVelocitySource = `stored` | `central_difference` | `auto`
 export type RamanChannel =
   | `isotropic`
   | `anisotropic`
@@ -40,10 +40,10 @@ export type InfraredSignal =
   | { kind: `polarization`; series: TrajectorySignal; branch_continuous: true }
   | { kind: `current`; series: TrajectorySignal }
 
-export type FieldAxisSignals = Record<`x` | `y` | `z`, TrajectorySignal>
+type FieldAxisSignals = Record<`x` | `y` | `z`, TrajectorySignal>
 const CARTESIAN_AXES = [`x`, `y`, `z`] as const
 
-export interface FieldResponseGeometry {
+interface FieldResponseGeometry {
   plus: FieldAxisSignals
   minus: FieldAxisSignals
 }
@@ -103,7 +103,7 @@ export interface TrajectorySpectrumCurve {
   nyquist: number
 }
 
-export interface RamanSpectrumResult {
+interface RamanSpectrumResult {
   isotropic: TrajectorySpectrumCurve
   anisotropic: TrajectorySpectrumCurve
   vv: TrajectorySpectrumCurve
@@ -116,7 +116,7 @@ export interface RamanSpectrumResult {
   }
 }
 
-export interface TrajectorySpectralPeak {
+interface TrajectorySpectralPeak {
   frequency: number
   mode_label?: string
   ir_activity: SpectralActivity

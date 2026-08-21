@@ -1,230 +1,68 @@
-import type { Locator, Page } from '@playwright/test'
-import { expect, test } from '@playwright/test'
+import { expect, type Page, test } from '@playwright/test'
 import { IS_CI } from './helpers'
 
-const TEST_FRAME_RATE_FPS = 30
-
-// Navigate to the performance test page and wait for the trajectory to finish
-// loading (controls visible), throwing if the error state appears instead.
-// Returns the trajectory locator and the load duration measured after goto.
-async function load_performance_page(
-  page: Page,
-): Promise<{ trajectory: Locator; load_ms: number }> {
-  await page.goto(`/test/trajectory-performance`, { waitUntil: `networkidle` })
-  const trajectory = page.locator(`.trajectory`)
-  await expect(trajectory).toBeVisible({ timeout: 30000 })
-
-  const start_time = Date.now()
-  // Wait for content to be loaded (either controls or error state)
-  await Promise.race([
-    trajectory.locator(`.trajectory-controls`).waitFor({ state: `visible`, timeout: 30000 }),
-    trajectory.locator(`.trajectory-error`).waitFor({ state: `visible`, timeout: 30000 }),
-  ])
-  const load_ms = Date.now() - start_time
-
-  // If spinner appeared during loading, wait for it to disappear
-  const spinner = trajectory.locator(`.spinner`)
-  if (await spinner.isVisible()) {
-    await spinner.waitFor({ state: `hidden`, timeout: 30000 })
-  }
-
-  if (await trajectory.locator(`.trajectory-error`).isVisible()) {
-    const error_text = await trajectory
-      .locator(`.trajectory-error .error-message`)
-      .textContent()
-    throw new Error(`Trajectory failed to load: ${error_text}`)
-  }
-  return { trajectory, load_ms }
+// The page builds a seeded synthetic run from ?frames=&atoms= (see
+// src/routes/test/trajectory-performance), so there is no fixture to host. Thresholds are
+// tripwires for gross regressions on a software-rendered headless browser, not benchmarks.
+type Metrics = {
+  frames: number
+  atoms: number
+  build_ms: number
+  mount_ms: number | null
+  current_step_idx: number
 }
 
-test.describe(`Trajectory Performance Tests`, () => {
-  // TODO: Add CI fixtures for trajectory performance testing
-  // Tracking: Large trajectory test files (>100MB) need to be hosted separately for CI
-  test.skip(IS_CI, `Large trajectory test files not available in CI - run locally to test`)
-  test(`large MOF5 trajectory playback performance`, async ({ page }) => {
-    test.setTimeout(120000) // 2 minutes timeout for performance test
+const read_metrics = async (page: Page): Promise<Metrics> =>
+  JSON.parse((await page.getByTestId(`perf-metrics`).textContent()) ?? `{}`) as Metrics
 
-    const { trajectory } = await load_performance_page(page)
+const load_page = async (page: Page, frames: number, atoms: number) => {
+  await page.goto(`/test/trajectory-performance?frames=${frames}&atoms=${atoms}`)
+  // The viewer is client-only, so nothing renders before the bundle has loaded and mounted
+  // (mount_ms is set in onMount); a cold vite dev server can take several seconds to serve it
+  await expect
+    .poll(async () => (await read_metrics(page)).mount_ms ?? -1, { timeout: 30_000 })
+    .toBeGreaterThanOrEqual(0)
+  const trajectory = page.locator(`.trajectory`)
+  await expect(trajectory.locator(`.trajectory-controls`)).toBeVisible()
+  return trajectory
+}
 
-    // Wait for controls to be fully loaded
-    const controls = trajectory.locator(`.trajectory-controls`)
-    await expect(controls).toBeVisible({ timeout: 50000 })
+test.describe(`Trajectory performance`, () => {
+  test(`mounts a 300x64 synthetic run and reports every frame`, async ({ page }) => {
+    const trajectory = await load_page(page, 300, 64)
+    const { build_ms, mount_ms } = await read_metrics(page)
+    await expect(
+      trajectory.locator(`.trajectory-controls span`).filter({ hasText: `/ 300` }),
+    ).toBeVisible()
+    console.info(`build ${build_ms.toFixed(0)} ms, mount ${mount_ms?.toFixed(0)} ms`)
+    expect(build_ms).toBeLessThan(IS_CI ? 5000 : 1500)
+    expect(mount_ms ?? Infinity).toBeLessThan(IS_CI ? 15_000 : 5000)
+  })
 
-    // Verify we have the expected number of steps
-    const step_info = controls.locator(`span`).filter({ hasText: /\/ \d+/ })
-    await expect(step_info).toBeVisible()
-
-    const step_text = await step_info.textContent()
-    const max_step_match = step_text?.match(/\/ (?<max>\d+)/)
-    const max_step = max_step_match ? Number(max_step_match[1]) : 0
-
-    expect(max_step).toBeGreaterThanOrEqual(200)
-
-    // Pause auto-play first
-    const play_button = controls.locator(`.play-button`)
-    await expect(play_button).toHaveText(`⏸`, { timeout: 50000 })
-    await play_button.click()
-    await expect(play_button).toHaveText(`▶`)
-
-    // Wait for FPS controls to appear, then set FPS
-    const fps_section = controls.locator(`.fps-section`)
-    // Reset to step 0 for consistent measurement
-    const step_input = controls.locator(`.step-input`).first()
-    await step_input.fill(`0`)
-    await step_input.press(`Enter`)
-    await expect(step_input).toHaveValue(`0`)
-
-    // Start playback and wait for FPS controls
-    await play_button.click()
-    await expect(play_button).toHaveText(`⏸`)
-    await expect(fps_section).toBeVisible({ timeout: 5000 })
-
-    // Set FPS to target rate
-    const fps_input = fps_section.locator(`input[type="number"]`)
-    await fps_input.fill(`${TEST_FRAME_RATE_FPS}`)
-    await fps_input.press(`Enter`)
-    await expect(fps_input).toHaveValue(`${TEST_FRAME_RATE_FPS}`)
-
-    // Measure playback performance over a small subset of frames
-    // With 424 atoms per frame, headless browser rendering is very slow (~1-2 fps)
+  test(`auto-plays through frames without falling below 0.5 fps`, async ({ page }) => {
+    test.setTimeout(120_000)
+    await load_page(page, 300, 64)
+    const start_step = (await read_metrics(page)).current_step_idx
     const frames_to_measure = 10
-    const target_step = Math.min(frames_to_measure, max_step - 1)
-
-    console.warn(
-      `Starting performance measurement from step 0, measuring ${target_step} frames`,
-    )
     const start_time = Date.now()
-
-    // Wait for trajectory to reach the target step
-    // Use generous timeout since headless 3D rendering is slow
-    await page.waitForFunction(
-      (target) => {
-        const step_input_el = document.querySelector(`.step-input`) as HTMLInputElement
-        if (!step_input_el) return false
-        const current_step = Number(step_input_el.value)
-        return current_step >= target
-      },
-      target_step,
-      { timeout: 60000, polling: 100 },
+    await expect
+      .poll(async () => (await read_metrics(page)).current_step_idx, { timeout: 60_000 })
+      .toBeGreaterThanOrEqual(start_step + frames_to_measure)
+    const elapsed_ms = Date.now() - start_time
+    await page.locator(`.play-button`).click() // pause before reading memory
+    const actual_fps = (frames_to_measure / elapsed_ms) * 1000
+    console.info(
+      `${frames_to_measure} frames in ${elapsed_ms} ms (${actual_fps.toFixed(2)} fps)`,
     )
-
-    const end_time = Date.now()
-
-    // Stop playback
-    await play_button.click()
-    await expect(play_button).toHaveText(`▶`)
-
-    const playback_duration = end_time - start_time
-    const actual_fps = (target_step / playback_duration) * 1000
-
-    console.warn(`Playback performance results:`)
-    console.warn(`- Frames measured: ${target_step}`)
-    console.warn(`- Duration: ${(playback_duration / 1000).toFixed(1)}s`)
-    console.warn(`- Actual FPS: ${actual_fps.toFixed(2)}`)
-
-    // Performance thresholds for headless browser with 424 atoms/frame
-    // Based on observed ~1-2 FPS in headless mode, we set minimum at 0.5 FPS (2s/frame)
-    // to catch significant regressions while allowing headroom for slower machines
+    // Software WebGPU renders a 64-atom scene at a few fps; anything under 0.5 is a regression
     expect(actual_fps).toBeGreaterThan(0.5)
-    // 10 frames at 0.5 FPS = 20s max, using 30s to allow some variance
-    expect(playback_duration).toBeLessThan(30000)
-  })
 
-  test(`trajectory loading performance with large file`, async ({ page }) => {
-    test.setTimeout(120_000) // 2 minutes timeout for performance test
-    const { load_ms } = await load_performance_page(page)
-
-    console.warn(`- Loading time: ${(load_ms / 1000).toFixed(1)}s`)
-
-    // Loading should complete in under 10 seconds
-    expect(load_ms).toBeLessThan(10000)
-  })
-
-  test(`memory usage during playback`, async ({ page }) => {
-    test.setTimeout(120_000) // 2 minutes timeout for performance test
-    const { trajectory } = await load_performance_page(page)
-
-    const controls = trajectory.locator(`.trajectory-controls`)
-    await expect(controls).toBeVisible()
-
-    // Get initial memory usage
-    const initial_memory = await page.evaluate(() => {
-      if (`memory` in performance) {
-        return (performance as Performance & { memory: { usedJSHeapSize: number } }).memory
-          .usedJSHeapSize
-      }
-      return null
+    // Chromium-only heap probe: playback must not accumulate per-frame garbage
+    const heap_mb = await page.evaluate(() => {
+      const memory = (performance as Performance & { memory?: { usedJSHeapSize: number } })
+        .memory
+      return memory ? memory.usedJSHeapSize / 2 ** 20 : null
     })
-
-    // Wait for auto-play to start and get controls
-    const play_button = controls.locator(`.play-button`)
-    await expect(play_button).toHaveText(`⏸`, { timeout: 50000 })
-
-    const step_input = controls.locator(`.step-input`).first()
-
-    // Wait for FPS controls and set FPS to 30
-    const fps_section = controls.locator(`.fps-section`)
-    await expect(fps_section).toBeVisible({ timeout: 5000 })
-
-    const fps_input = fps_section.locator(`input[type="number"]`)
-    await fps_input.fill(`${TEST_FRAME_RATE_FPS}`)
-    await fps_input.press(`Enter`)
-
-    // Pause playback first, then reset to step 0
-    await play_button.click() // Pause
-    await expect(play_button).toHaveText(`▶`) // Verify paused
-
-    await step_input.fill(`0`)
-    await step_input.press(`Enter`)
-    await expect(step_input).toHaveValue(`0`)
-
-    // Start playing again
-    await play_button.click() // Start playing again
-    await expect(play_button).toHaveText(`⏸`) // Verify playing
-
-    // Wait for playback to start and progress a few steps
-    const initial_step = await step_input.inputValue()
-    const start_step = Number(initial_step)
-    expect(start_step).toBeGreaterThanOrEqual(0)
-
-    // Wait for progression observing step change
-    // Use generous timeout since headless 3D rendering is slow
-    await page.waitForFunction(
-      (start_step_value) => {
-        const step_input_el = document.querySelector(`.step-input`) as HTMLInputElement
-        return step_input_el && Number(step_input_el.value) > start_step_value
-      },
-      start_step,
-      { timeout: 30000 },
-    )
-
-    const current_step = await step_input.inputValue()
-    const progressed_step = Number(current_step)
-    expect(progressed_step).toBeGreaterThan(start_step)
-
-    await play_button.click() // Stop playback
-
-    // Get final memory usage
-    const final_memory = await page.evaluate(() => {
-      if (`memory` in performance) {
-        return (performance as Performance & { memory: { usedJSHeapSize: number } }).memory
-          .usedJSHeapSize
-      }
-      return null
-    })
-
-    if (initial_memory && final_memory) {
-      const memory_increase = final_memory - initial_memory
-      const memory_increase_mb = memory_increase / (1024 * 1024)
-
-      console.warn(`Memory usage results:`)
-      console.warn(`- Initial: ${(initial_memory / (1024 * 1024)).toFixed(1)}MB`)
-      console.warn(`- Final: ${(final_memory / (1024 * 1024)).toFixed(1)}MB`)
-      console.warn(`- Increase: ${memory_increase_mb.toFixed(1)}MB`)
-
-      // Memory increase should be reasonable (less than 200MB for large structure test)
-      // Note: This threshold may need adjustment as it can be affected by GC timing
-      expect(memory_increase_mb).toBeLessThan(200)
-    }
+    if (heap_mb !== null) expect(heap_mb).toBeLessThan(500)
   })
 })

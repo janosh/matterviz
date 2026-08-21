@@ -1,11 +1,11 @@
 import type { ScaleType } from './types'
 import { SvelteMap, SvelteSet } from 'svelte/reactivity'
 
-export type AxisSlot = `y1` | `y2`
+type AxisSlot = `y1` | `y2`
 
 // Minimal shape needed to group and assign a series without depending on a
 // particular plot family.
-export interface AxisAssignableSeries {
+interface AxisAssignableSeries {
   axis_group?: string
   label?: string
   unit?: string
@@ -17,7 +17,7 @@ export interface AxisValueSeries extends AxisAssignableSeries {
   y: readonly number[]
 }
 
-export interface AxisGroup<Series extends AxisAssignableSeries> {
+interface AxisGroup<Series extends AxisAssignableSeries> {
   key: string
   priority: number
   series: readonly Series[]
@@ -28,7 +28,7 @@ interface AssignedAxisGroup<Series extends AxisAssignableSeries> extends AxisGro
   axis: AxisSlot
 }
 
-export interface AxisGroupingOptions<Series extends AxisAssignableSeries> {
+interface AxisGroupingOptions<Series extends AxisAssignableSeries> {
   // Undefined visibility means visible, matching plot-series rendering.
   is_visible?: (series: Series, series_idx: number) => boolean
   // Lower numeric values are assigned before higher ones (normally to y1, then y2).
@@ -62,11 +62,11 @@ export interface OverflowAxisAssignment<
   overflow_groups: readonly AxisGroup<Series>[]
 }
 
-export type AxisAssignmentResult<Series extends AxisAssignableSeries> =
+type AxisAssignmentResult<Series extends AxisAssignableSeries> =
   | CompleteAxisAssignment<Series>
   | OverflowAxisAssignment<Series>
 
-export interface AxisLabelOptions<Series extends AxisAssignableSeries> {
+interface AxisLabelOptions<Series extends AxisAssignableSeries> {
   is_visible?: (series: Series, series_idx: number) => boolean
   // A resolved assignment array or accessor is authoritative: undefined entries
   // stay unassigned instead of falling back to y1.
@@ -74,7 +74,7 @@ export interface AxisLabelOptions<Series extends AxisAssignableSeries> {
   fallback_label?: string
 }
 
-export interface AxisScaleTypeOptions<Series extends AxisValueSeries> {
+interface AxisScaleTypeOptions<Series extends AxisValueSeries> {
   is_visible?: (series: Series, series_idx: number) => boolean
   axis?: readonly (AxisSlot | undefined)[] | AxisAccessor<Series>
   can_use_log_scale: (series: Series) => boolean

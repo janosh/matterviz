@@ -38,12 +38,12 @@ export type HostTransferRejectReason =
   | `unsupported-compression`
   | `unsupported-large-format`
 
-export type HostFileTransferPlan =
+type HostFileTransferPlan =
   | { kind: `inline`; is_base64: boolean }
   | { kind: `marker`; content: string }
   | { kind: `reject`; reason: HostTransferRejectReason; max_file_size?: number }
 
-export interface HostFileTransferInput extends LargeFileMarker {
+interface HostFileTransferInput extends LargeFileMarker {
   filename: string
   large_file_threshold: number
   max_file_size: number

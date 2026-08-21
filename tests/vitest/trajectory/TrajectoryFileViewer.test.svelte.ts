@@ -155,6 +155,18 @@ describe(`src`, () => {
     expect(doc_query(`h3`).textContent).toBe(`Error`)
   })
 
+  test.each([``, null])(`src %j is no source, not a URL to fetch`, async (src) => {
+    // notebook hosts clear a URL trait to "" / null; fetching that resolves to the page itself
+    const fetch_spy = vi.spyOn(globalThis, `fetch`)
+    const on_error = vi.fn<(data: TrajHandlerData) => void>()
+    mount_viewer({ src, on_error })
+    await tick()
+    expect(fetch_spy).not.toHaveBeenCalled()
+    expect(on_error).not.toHaveBeenCalled()
+    // the empty-state prompt shows, not the error banner
+    expect(doc_query(`h3`).textContent).not.toBe(`Error`)
+  })
+
   test(`a File src carries its own name and identity`, async () => {
     const file = new File([MULTI_FRAME_XYZ], `dropped.xyz`)
     const on_file_load = vi.fn<(data: TrajHandlerData) => void>()

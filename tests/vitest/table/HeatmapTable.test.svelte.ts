@@ -1,4 +1,5 @@
 import {
+  type CellSnippetArgs,
   type ColumnFilter,
   type ColumnPrefs,
   HeatmapTable,
@@ -6,7 +7,7 @@ import {
   type RowData,
   type SummaryStat,
 } from '$lib/table'
-import { type ComponentProps, mount, tick, unmount } from 'svelte'
+import { type ComponentProps, createRawSnippet, mount, tick, unmount } from 'svelte'
 import { assert, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { bind_props, doc_query, trigger_resize_observer } from '../setup'
 
@@ -1158,20 +1159,26 @@ describe(`HeatmapTable`, () => {
     expect(resize_handles[0].getAttribute(`role`)).toBe(`separator`)
     expect(resize_handles[0].getAttribute(`aria-orientation`)).toBe(`vertical`)
 
-    // headers have no layout width in happy-dom, so widths start from 0 and clamp to [50, 500]
-    const mouse = (type: string, clientX: number, target: EventTarget = document) =>
-      target.dispatchEvent(new MouseEvent(type, { clientX, bubbles: true }))
-    mouse(`mousedown`, 100, resize_handles[1])
-    mouse(`mousemove`, 220)
+    // headers have no layout width in happy-dom, so widths start from 0 and clamp to [50, 500].
+    // The handle captures the pointer, so every event of the drag targets it.
+    const handle = resize_handles[1]
+    const pointer = (type: string, clientX: number) =>
+      handle.dispatchEvent(new PointerEvent(type, { clientX, bubbles: true, pointerId: 1 }))
+    pointer(`pointerdown`, 100)
+    pointer(`pointermove`, 220)
     await tick()
     expect(state.column_prefs.Score?.width).toBe(120)
     expect(doc_query(`th[data-col-id="Score"]`).style.width).toBe(`120px`)
-    mouse(`mousemove`, 900)
+    pointer(`pointermove`, 900)
     expect(state.column_prefs.Score?.width).toBe(500)
-    mouse(`mouseup`, 900)
-    mouse(`mousemove`, 300) // released: further movement must not resize
+    pointer(`pointerup`, 900)
+    pointer(`pointermove`, 300) // released: further movement must not resize
     expect(state.column_prefs.Score?.width).toBe(500)
     expect(state.column_prefs.Model).toBeUndefined()
+    // the click that follows the release lands on the handle inside the sortable header
+    handle.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+    await tick()
+    expect(doc_query(`th[data-col-id="Score"]`).getAttribute(`aria-sort`)).toBe(`none`)
   })
 
   describe(`Regression tests for bug fixes`, () => {
@@ -1390,49 +1397,35 @@ describe(`HeatmapTable`, () => {
     // before it. Widths only exist after layout, hence the measured offsetWidth.
     it(`stacks multiple sticky columns instead of overlapping them`, async () => {
       let first_width = 80
-      let resize_callback: ResizeObserverCallback | undefined
-      vi.stubGlobal(
-        `ResizeObserver`,
-        class ResizeObserver {
-          constructor(callback: ResizeObserverCallback) {
-            resize_callback = callback
-          }
-          observe() {}
-          unobserve() {}
-          disconnect() {}
-        },
-      )
       const width_spy = vi
         .spyOn(HTMLElement.prototype, `offsetWidth`, `get`)
         .mockImplementation(function (this: HTMLElement) {
           return this.dataset.colId === `Name` ? first_width : 80
         })
-      try {
-        mount_table({
-          data: [{ Name: `A`, Tag: `x`, Value: 1 }],
-          columns: [
-            { label: `Name`, sticky: true },
-            { label: `Tag`, sticky: true },
-            { label: `Value` },
-          ],
-        })
-        await tick()
+      onTestFinished(() => width_spy.mockRestore())
+      mount_table({
+        data: [{ Name: `A`, Tag: `x`, Value: 1 }],
+        columns: [
+          { label: `Name`, sticky: true },
+          { label: `Tag`, sticky: true },
+          { label: `Value` },
+        ],
+      })
+      await tick()
 
-        const left_of = (selector: string) =>
-          document.querySelector<HTMLElement>(selector)?.style.left
-        expect(left_of(`thead th[data-col-id="Name"]`)).toBe(`0px`)
-        expect(left_of(`thead th[data-col-id="Tag"]`)).toBe(`80px`)
-        expect(left_of(`td[data-col="Tag"]`)).toBe(`80px`)
+      const left_of = (selector: string) =>
+        document.querySelector<HTMLElement>(selector)?.style.left
+      expect(left_of(`thead th[data-col-id="Name"]`)).toBe(`0px`)
+      expect(left_of(`thead th[data-col-id="Tag"]`)).toBe(`80px`)
+      expect(left_of(`td[data-col="Tag"]`)).toBe(`80px`)
+      expect(left_of(`td[data-col="Value"]`)).toBe(``)
 
-        first_width = 120
-        resize_callback?.([], {} as ResizeObserver)
-        await tick()
-        expect(left_of(`thead th[data-col-id="Tag"]`)).toBe(`120px`)
-        expect(left_of(`td[data-col="Tag"]`)).toBe(`120px`)
-      } finally {
-        width_spy.mockRestore()
-        vi.unstubAllGlobals()
-      }
+      // the first header grows (a manual resize, longer label): every sticky column after it shifts
+      first_width = 120
+      trigger_resize_observer(doc_query(`thead th[data-col-id="Name"]`))
+      await tick()
+      expect(left_of(`thead th[data-col-id="Tag"]`)).toBe(`120px`)
+      expect(left_of(`td[data-col="Tag"]`)).toBe(`120px`)
     })
 
     it(`clears the grouped-header offset when the final group is hidden`, async () => {
@@ -1539,6 +1532,87 @@ describe(`HeatmapTable`, () => {
         expect(clicked[0]).toHaveProperty(`Model`, `Model A`)
       },
     )
+
+    // Row actions are delegated to <tbody> and resolve their row from the DOM, so a table
+    // rendered inside a cell snippet (whose own <tr>s carry no index) and a row whose data
+    // columns are all hidden must still map back to the right row object
+    it(`resolves row actions through nested tables and rows without data cells`, async () => {
+      const onrowclick = vi.fn()
+      const onrowdblclick = vi.fn()
+      const data = [{ A: 1 }, { A: 2 }]
+      const cell = createRawSnippet((_args: () => CellSnippetArgs) => ({
+        render: () => `<table><tbody><tr><td class="inner">x</td></tr></tbody></table>`,
+      }))
+      const state = $state({ hidden_columns: [] as string[] })
+      mount_table(
+        bind_props(
+          {
+            data,
+            columns: plain_columns(`A`),
+            onrowclick,
+            onrowdblclick,
+            cell,
+            show_row_select: true,
+          },
+          state,
+        ),
+      )
+      await tick()
+      const inner = document.querySelectorAll<HTMLElement>(`td.inner`)[1]
+      inner.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+      inner.dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
+      inner.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }))
+      expect(onrowclick.mock.calls.map((call) => call[1])).toEqual([data[1], data[1]])
+      expect(onrowdblclick.mock.calls.map((call) => call[1])).toEqual([data[1]])
+
+      onrowclick.mockClear()
+      state.hidden_columns = [`A`]
+      await tick()
+      const last_row = doc_query(`tbody tr[data-row-idx="1"]`)
+      expect(last_row.querySelector(`td[data-row-idx]`)).toBeNull()
+      last_row.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+      expect(onrowclick.mock.calls.map((call) => call[1])).toEqual([data[1]])
+    })
+
+    // A HeatmapTable nested in a cell (a per-row mini table) carries its own data-row-idx /
+    // data-col-idx attributes, so the outer lookups must stop at their own <tbody> instead of
+    // resolving the inner table's coordinates against the outer rows
+    it(`ignores the indices of a nested HeatmapTable when resolving rows and cells`, async () => {
+      const onrowclick = vi.fn()
+      const data = [{ A: 1 }, { A: 2 }, { A: 3 }]
+      // the inner markup mirrors what a nested HeatmapTable renders for its own first row
+      const cell = createRawSnippet((_args: () => CellSnippetArgs) => ({
+        render: () =>
+          `<table><tbody><tr data-row-idx="0"><td data-row-idx="0" data-col-idx="0" class="inner">x</td></tr></tbody></table>`,
+      }))
+      mount_table({
+        data,
+        columns: plain_columns(`A`),
+        onrowclick,
+        cell,
+        keyboard_cells: true,
+      })
+      await tick()
+      const inner = document.querySelectorAll<HTMLElement>(`td.inner`)[2]
+      inner.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+      expect(onrowclick.mock.calls.map((call) => call[1])).toEqual([data[2]])
+
+      // a drag started in the inner cell selects the outer cell it sits in, not (0, 0)
+      inner.dispatchEvent(new PointerEvent(`pointerdown`, { bubbles: true, button: 0 }))
+      globalThis.dispatchEvent(new PointerEvent(`pointerup`))
+      await tick()
+      const selected = [...document.querySelectorAll<HTMLElement>(`td.cell-selected`)]
+      expect(selected.map((td) => td.dataset.rowIdx)).toEqual([`2`])
+      expect(selected[0].classList.contains(`inner`)).toBe(false)
+
+      // keyboard: ArrowUp from the outer row 2 cell lands on the outer row 1 cell
+      cell_at(2, 0).focus()
+      cell_at(2, 0).dispatchEvent(
+        new KeyboardEvent(`keydown`, { key: `ArrowUp`, bubbles: true }),
+      )
+      await tick()
+      expect(document.activeElement).toBe(cell_at(1, 0))
+    })
   })
 
   describe(`Filtering, summaries and per-column state`, () => {

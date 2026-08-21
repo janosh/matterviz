@@ -308,19 +308,19 @@ const CUBE_VERTS_Z = new Int8Array([0, 0, 0, 0, 1, 1, 1, 1])
 const EDGE_V1 = new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7, 0, 1, 2, 3])
 const EDGE_V2 = new Uint8Array([1, 2, 3, 0, 5, 6, 7, 4, 4, 5, 6, 7])
 
-export interface MarchingCubesResult {
+interface MarchingCubesResult {
   vertices: Vec3[]
   faces: number[][] // triangles as arrays of 3 vertex indices
   normals: Vec3[]
 }
 
-export interface MarchingCubesBuffers {
+interface MarchingCubesBuffers {
   positions: Float32Array
   indices: Uint32Array
   normals: Float32Array
 }
 
-export interface MarchingCubesOptions {
+interface MarchingCubesOptions {
   // Whether to apply periodic boundary conditions (wrap around grid edges)
   periodic?: boolean
   // Interpolation for smoother surfaces (linear interpolation on edges)

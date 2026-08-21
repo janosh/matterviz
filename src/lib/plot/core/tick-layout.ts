@@ -44,7 +44,7 @@ const STRATEGY_TIE_ORDER = [
 ] as const
 
 export type TickLayoutSide = `x` | `x2` | `y` | `y2`
-export type TickLabelAnchor = `start` | `middle` | `end`
+type TickLabelAnchor = `start` | `middle` | `end`
 const ANCHORS = [`start`, `middle`, `end`] as const
 const is_horizontal_side = (side: TickLayoutSide): boolean => side === `x` || side === `x2`
 
@@ -73,29 +73,15 @@ const tick_texts = (
   })
 }
 
-// Measure the widest formatted tick label. Used for auto-padding and label placement.
-export const measure_max_tick_width = (
-  ticks: (string | number)[],
-  format?: string,
-  tick_labels?: AxisConfig[`ticks`],
-  font: Readonly<FontSpec> = DEFAULT_FONT_SPEC,
-): number => {
-  let widest = 0
-  for (const text of tick_texts(ticks, format, tick_labels)) {
-    widest = Math.max(widest, measure_text_width(text, font))
-  }
-  return widest
-}
-
 // === Label geometry ===
 
 // `axis` is x for x/x2 and y for y/y2. `cross_axis` is the actual label origin after
 // tick offset, configured shifts, and staggering have been applied.
-export interface TickLabelPosition {
+interface TickLabelPosition {
   axis: number
   cross_axis: number
 }
-export interface TickAxisExtent {
+interface TickAxisExtent {
   start: number
   end: number
 }
@@ -103,7 +89,7 @@ export interface TickLabelDimensions {
   line_widths: readonly number[]
   line_height: number
 }
-export interface TickAabb {
+interface TickAabb {
   min_x: number
   min_y: number
   max_x: number
@@ -125,7 +111,7 @@ interface TickLabelGeometry extends Required<TickLabelItem> {
   side: TickLayoutSide
   aabb: TickAabb
 }
-export interface TickGeometrySummary {
+interface TickGeometrySummary {
   labels: readonly TickLabelGeometry[]
   collisions: { colliding_indices: readonly number[]; count: number }
   edge_overflow_px: number
@@ -804,7 +790,7 @@ interface ResolvedTickLabel {
   stagger_row: 0 | 1
 }
 
-export interface ResolvedTickLayout {
+interface ResolvedTickLayout {
   rotation: number
   band: number
   labels: ResolvedTickLabel[]

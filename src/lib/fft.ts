@@ -87,7 +87,7 @@ export interface WindowOptions {
   gaussian_alpha?: number
 }
 
-export interface PeriodogramOptions extends WindowOptions {
+interface PeriodogramOptions extends WindowOptions {
   window?: WindowType
   zero_pad_factor?: number
   component_weights?: ArrayLike<number>

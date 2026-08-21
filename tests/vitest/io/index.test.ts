@@ -1,6 +1,6 @@
 import {
   basename_from_url,
-  handle_url_drop,
+  dropped_file_url,
   load_from_url,
   load_trajectory_from_url,
   type FileLoadMeta,
@@ -240,53 +240,25 @@ describe(`basename_from_url`, () => {
   })
 })
 
-describe(`handle_url_drop`, () => {
-  let callback: (content: string | ArrayBuffer, filename: string) => void | Promise<void>
-  let get_data: ReturnType<typeof vi.fn>
-  let drag_event: DragEvent
-
-  beforeEach(() => {
-    vi.mocked(fetch).mockClear()
-    callback = vi.fn()
-    get_data = vi.fn()
-    drag_event = { dataTransfer: { getData: get_data } } as unknown as DragEvent
-  })
+describe(`dropped_file_url`, () => {
+  const drag_event = (data: string) =>
+    ({ dataTransfer: { getData: () => data } }) as unknown as DragEvent
 
   test.each([
-    [`no JSON data`, ``, false],
-    [`no URL in JSON`, JSON.stringify({ name: `test.json` }), false],
-    [`empty string URL`, JSON.stringify({ url: `` }), false],
+    [`no JSON data`, ``],
+    [`no URL in JSON`, JSON.stringify({ name: `test.json` })],
+    [`empty string URL`, JSON.stringify({ url: `` })],
     // Drop payloads are external input: truthy non-string urls must not reach fetch
-    [`numeric URL`, JSON.stringify({ url: 123 }), false],
-    [`object URL`, JSON.stringify({ url: { href: `https://x.com` } }), false],
-  ])(`%s`, async (_, data, expected) => {
-    get_data.mockReturnValue(data)
-    expect(await handle_url_drop(drag_event, callback)).toBe(expected)
-    expect(callback).not.toHaveBeenCalled()
-    expect(fetch).not.toHaveBeenCalled()
+    [`numeric URL`, JSON.stringify({ url: 123 })],
+    [`object URL`, JSON.stringify({ url: { href: `https://x.com` } })],
+    [`malformed JSON`, `invalid`],
+  ])(`%s → undefined`, (_, data) => {
+    expect(dropped_file_url(drag_event(data))).toBeUndefined()
   })
 
-  test(`valid JSON with URL`, async () => {
-    get_data.mockReturnValue(
-      JSON.stringify({ name: `test.json`, url: `https://example.com/test.json` }),
-    )
-    vi.mocked(fetch).mockResolvedValue({
-      ok: true,
-      headers: new Headers(),
-      text: () => Promise.resolve(`data`),
-    } as Response)
-
-    expect(await handle_url_drop(drag_event, callback)).toBe(true)
-    expect(callback).toHaveBeenCalledWith(`data`, `test.json`, {
-      source_filename: `test.json`,
-      source_url: `https://example.com/test.json`,
-    })
-  })
-
-  test(`returns false for malformed JSON`, async () => {
-    get_data.mockReturnValue(`invalid`)
-    expect(await handle_url_drop(drag_event, callback)).toBe(false)
-    expect(callback).not.toHaveBeenCalled()
+  test(`valid JSON with URL`, () => {
+    const data = JSON.stringify({ name: `test.json`, url: `https://example.com/test.json` })
+    expect(dropped_file_url(drag_event(data))).toBe(`https://example.com/test.json`)
   })
 })
 

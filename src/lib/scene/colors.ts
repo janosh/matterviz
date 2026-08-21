@@ -3,7 +3,7 @@
 import { rgb as parse_rgb } from 'd3-color'
 import { Color, SRGBColorSpace } from 'three/webgpu'
 
-export type LinearRgb = readonly [number, number, number]
+type LinearRgb = readonly [number, number, number]
 
 const parse_scratch = new Color()
 

@@ -11,7 +11,7 @@ export type TooltipPlacementConfig = {
   offset?: { x: number; y: number }
 }
 
-export type TooltipPlacementCandidate = {
+type TooltipPlacementCandidate = {
   direction: TooltipPlacementDirection
   x: number
   y: number

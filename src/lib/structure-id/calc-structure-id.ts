@@ -132,15 +132,6 @@ export function apply_structure_id(structure: AnyStructure, result: StructureIdR
   }
 }
 
-// Population of each CNA type as a fraction of all atoms, for plotting phase fractions over
-// trajectory frames without every caller re-dividing by n_atoms
-export const structure_type_fractions = (
-  result: StructureIdResult,
-): Record<CnaTypeName, number> =>
-  Object.fromEntries(
-    CNA_TYPE_NAMES.map((name) => [name, result.populations[name] / result.n_atoms]),
-  ) as Record<CnaTypeName, number>
-
 // Name for a numeric code, for tooltips and legends
 export const cna_type_name = (code: number): CnaTypeName => {
   const name = CNA_TYPE_NAMES[code]

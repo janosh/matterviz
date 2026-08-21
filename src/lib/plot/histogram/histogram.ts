@@ -139,7 +139,7 @@ export function normalize_counts(
   })
 }
 
-export interface HistogramBinConfig {
+interface HistogramBinConfig {
   x_domain: Vec2
   x2_domain: Vec2
   x_scale_type?: ScaleType

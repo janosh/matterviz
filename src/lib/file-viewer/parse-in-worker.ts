@@ -19,9 +19,9 @@ import type { ParseWorkerRequest, ParseWorkerResponse } from './parse-worker-pro
 export type * from './parse-worker-protocol'
 
 export type WorkerLike = Pick<Worker, `postMessage` | `addEventListener` | `terminate`>
-export type WorkerFactory = () => WorkerLike
+type WorkerFactory = () => WorkerLike
 
-export interface ParseInWorkerOptions {
+interface ParseInWorkerOptions {
   worker_factory?: WorkerFactory
   fallback_parse?: typeof parse_file_content
   signal?: AbortSignal
@@ -33,7 +33,7 @@ type TrajectoryWorkerOptions = Omit<
   `filename` | `signal` | `on_progress`
 >
 
-export interface ParseTrajectoryInWorkerOptions {
+interface ParseTrajectoryInWorkerOptions {
   worker_factory?: WorkerFactory
   fallback_parse?: typeof open_trajectory
   signal?: AbortSignal

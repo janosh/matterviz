@@ -1,4 +1,4 @@
-import type { ChemicalElement, ElementCategory } from '$lib/element/types'
+import type { ChemicalElement } from '$lib/element/types'
 import type { Vec3 } from '$lib/math'
 import { escape_html, normalize_unicode_minus } from '$lib/utils'
 import { format } from 'd3-format'
@@ -225,6 +225,10 @@ export const format_vec3 = (vec: Readonly<Vec3>, fmt_spec = `.3~`): string =>
 
 const BYTE_UNITS = [`B`, `KiB`, `MiB`, `GiB`, `TiB`, `PiB`] as const
 
+// "1 site" / "3 sites"
+export const plural = (count: number, noun: string): string =>
+  `${count} ${noun}${count === 1 ? `` : `s`}`
+
 export const format_bytes = (bytes?: number): string => {
   if (bytes === undefined || !Number.isFinite(bytes)) return `Unknown`
   let [value, unit_idx] = [bytes, 0]
@@ -245,47 +249,6 @@ export function format_fractional(value: number): string {
     target === 0 ? wrapped <= eps : Math.abs(wrapped - target) < eps,
   )
   return match?.[1] ?? format_num(value, `.4~`)
-}
-
-// Index 8 (the blank) is the unit; each step is a factor of 1000
-const SI_SUFFIXES = `yzafpnµm kMGTPEZY`
-
-export function parse_si_float<T extends string | number | null | undefined>(
-  value: T,
-): T | number | string {
-  // if not string, return as is
-  if (typeof value !== `string`) return value
-  // Remove whitespace and commas
-  const cleaned = value.trim().replaceAll(/(?<before>\d),(?<after>\d)/g, `$1$2`)
-
-  // SI-formatted number (e.g. "1.23k", "789µ"). Suffixes are case-sensitive (m=milli vs
-  // M=mega), so no `i` flag: mismatched-case suffixes return the string as-is.
-  const match = /^(?<num_part>[-+]?\d*\.?\d+)\s*(?<suffix>[yzafpnµmkMGTPEZY])?$/.exec(cleaned)
-  if (match) {
-    const [, num_part, suffix] = match
-    const multiplier = suffix ? 1000 ** (SI_SUFFIXES.indexOf(suffix) - 8) : 1
-    return Number(num_part) * multiplier
-  }
-
-  // If it's a number without SI suffix, try parsing it (dropping stray commas
-  // not already stripped above, e.g. trailing ones)
-  if (/^[-+]?[\d,]+\.?\d*$/.test(cleaned)) return Number(cleaned.replaceAll(`,`, ``))
-
-  // If the value is not a formatted number, return as is
-  return value
-}
-
-export const CATEGORY_COUNTS: Record<ElementCategory, number> = {
-  actinide: 15,
-  'alkali metal': 6,
-  'alkaline earth metal': 6,
-  'diatomic nonmetal': 7,
-  lanthanide: 15,
-  metalloid: 8,
-  'noble gas': 7,
-  'polyatomic nonmetal': 4,
-  'post-transition metal': 12,
-  'transition metal': 38,
 }
 
 export const ELEMENT_CATEGORIES = [

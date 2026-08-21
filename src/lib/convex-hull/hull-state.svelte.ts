@@ -23,14 +23,14 @@ const DIM_TO_KIND = { 2: `binary`, 3: `ternary`, 4: `quaternary` } as const
 // Lower hull of the plotted entries. Facet vertex indices point into `entries`; `points`
 // are the hull coordinates ([x, E_form], [x, y, E_form] or [x, y, z, E_form]) of the same,
 // and `facet_entries` the vertex entries of each facet (same order as `facets`).
-export interface HullGeometry {
+interface HullGeometry {
   entries: ConvexHullEntry[]
   points: number[][]
   facets: thermo.HullFacet[]
   facet_entries: ConvexHullEntry[][]
 }
 
-export interface HullDataPipelineInputs {
+interface HullDataPipelineInputs {
   dim: 2 | 3 | 4 // diagram arity (static)
   // Reactive getters
   entries: () => PhaseData[]

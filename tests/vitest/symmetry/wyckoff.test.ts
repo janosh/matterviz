@@ -1,5 +1,5 @@
 import type { ElementSymbol } from '$lib'
-import type { Vec3, Vec9 } from '$lib/math'
+import type { Vec3 } from '$lib/math'
 import type { Crystal } from '$lib/structure'
 import type { WyckoffPos } from '$lib/symmetry'
 import {
@@ -344,38 +344,38 @@ describe(`site coverage verification`, () => {
 })
 
 describe(`apply_symmetry_operations`, () => {
-  const operations = {
+  const operations: Record<string, MoyoDataset[`operations`][number]> = {
     identity: {
-      rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1] as Vec9,
-      translation: [0, 0, 0] as Vec3,
+      rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1],
+      translation: [0, 0, 0],
     },
     inversion: {
-      rotation: [-1, 0, 0, 0, -1, 0, 0, 0, -1] as Vec9,
-      translation: [0, 0, 0] as Vec3,
+      rotation: [-1, 0, 0, 0, -1, 0, 0, 0, -1],
+      translation: [0, 0, 0],
     },
     translation: {
-      rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1] as Vec9,
-      translation: [0.5, 0.5, 0.5] as Vec3,
+      rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1],
+      translation: [0.5, 0.5, 0.5],
     },
     rotation_90z: {
-      rotation: [0, 1, 0, -1, 0, 0, 0, 0, 1] as Vec9,
-      translation: [0, 0, 0] as Vec3,
+      rotation: [0, 1, 0, -1, 0, 0, 0, 0, 1],
+      translation: [0, 0, 0],
     },
     rotation_180z: {
-      rotation: [-1, 0, 0, 0, -1, 0, 0, 0, 1] as Vec9,
-      translation: [0, 0, 0] as Vec3,
+      rotation: [-1, 0, 0, 0, -1, 0, 0, 0, 1],
+      translation: [0, 0, 0],
     },
     rotation_270z: {
-      rotation: [0, -1, 0, 1, 0, 0, 0, 0, 1] as Vec9,
-      translation: [0, 0, 0] as Vec3,
+      rotation: [0, -1, 0, 1, 0, 0, 0, 0, 1],
+      translation: [0, 0, 0],
     },
     mirror_x: {
-      rotation: [-1, 0, 0, 0, 1, 0, 0, 0, 1] as Vec9,
-      translation: [0, 0, 0] as Vec3,
+      rotation: [-1, 0, 0, 0, 1, 0, 0, 0, 1],
+      translation: [0, 0, 0],
     },
     glide_x: {
-      rotation: [-1, 0, 0, 0, 1, 0, 0, 0, 1] as Vec9,
-      translation: [0.5, 0, 0] as Vec3,
+      rotation: [-1, 0, 0, 0, 1, 0, 0, 0, 1],
+      translation: [0.5, 0, 0],
     },
   }
 

@@ -29,7 +29,7 @@ export const THEME_TYPE: Record<ThemeName, ThemeType> = {
 export type ThemeName = keyof typeof COLOR_THEMES
 export type ThemeMode = ThemeName | typeof AUTO_THEME
 
-export interface ThemeOption {
+interface ThemeOption {
   value: ThemeMode
   label: string
   icon: string

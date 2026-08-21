@@ -94,7 +94,6 @@
     slice_settings = $bindable<Partial<VolumeSliceSettings>>(),
     active_volume_idx = $bindable(0),
     display_mode = $bindable<StructureDisplayMode>(`structure`),
-    on_slice_settings_change,
     multi_view = $bindable(false),
     multi_view_control_visible = true,
     multi_view_unavailable_reason = undefined,
@@ -128,7 +127,6 @@
     slice_settings?: Partial<VolumeSliceSettings> // 2D cross-section sampling and rendering settings
     active_volume_idx?: number // Active volume index
     display_mode?: StructureDisplayMode
-    on_slice_settings_change?: (settings: VolumeSliceSettings) => void
     multi_view?: boolean
     multi_view_control_visible?: boolean
     multi_view_unavailable_reason?: string
@@ -901,7 +899,6 @@
             bind:settings={slice_settings}
             volumes={volumetric_data}
             bind:active_volume_idx
-            on_settings_change={on_slice_settings_change}
           />
         {:else if isosurface_settings}
           <IsosurfaceControls

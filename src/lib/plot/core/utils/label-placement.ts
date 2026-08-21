@@ -26,7 +26,7 @@ export interface Rect {
   h: number
 }
 
-export interface PlotBounds {
+interface PlotBounds {
   min_x: number
   min_y: number
   max_x: number
@@ -58,14 +58,14 @@ export interface LabelSize {
   height: number
 }
 
-export interface LeaderLineSegment {
+interface LeaderLineSegment {
   x1: number
   y1: number
   x2: number
   y2: number
 }
 
-export interface LeaderLineOptions {
+interface LeaderLineOptions {
   point: Point2D
   point_radius: number
   label_center: Point2D
@@ -248,7 +248,7 @@ export function generate_candidates(
 // compute_delta_energy must stay float-identical to the unpruned scan. Requires
 // labels[idx].anchor_idx === idx, which the SA loop below guarantees.
 // Exported only so the equivalence test can score a move the same way the solver does.
-export type NeighborIndex = ReturnType<typeof create_neighbor_index>
+type NeighborIndex = ReturnType<typeof create_neighbor_index>
 
 export function create_neighbor_index(anchors: AnchorInfo[]) {
   // `far_*` rather than max_x/max_y so `collect`'s query box below doesn't shadow them

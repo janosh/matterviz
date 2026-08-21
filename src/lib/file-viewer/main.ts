@@ -40,13 +40,13 @@ import { escape_html, to_error } from '$lib/utils'
 
 export type { VSCodeAPI } from './host-bridge'
 
-export type MatterVizData = WebviewBootstrapData
+type MatterVizData = WebviewBootstrapData
 
 export type MatterVizApp = ReturnType<typeof mount>
 
 // Host-provided options for create_display. Only the trajectory branch consumes
 // them (viewer position restore across reloads); other result types ignore them.
-export interface DisplayOptions {
+interface DisplayOptions {
   // Initial frame to show. Out-of-range values (e.g. Number.MAX_SAFE_INTEGER)
   // are clamped by the Trajectory component to the last frame.
   initial_step_idx?: number
@@ -435,7 +435,6 @@ const trajectory_props = (defaults: DefaultSettings) => {
   // them would land on the wrapper div
   const {
     index_above_bytes: _index_above_bytes,
-    show_parsing_progress: _show_parsing_progress,
     allow_file_drop: _allow_file_drop,
     ...trajectory_component_props
   } = trajectory

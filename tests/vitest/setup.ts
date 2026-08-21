@@ -1,8 +1,7 @@
-import type { AnyStructure, ElementSymbol, Vec3 } from '$lib'
+import type { AnyStructure, ElementCategory, ElementSymbol, Vec3 } from '$lib'
 import { flatten_grid } from '$lib/isosurface/grid'
 import {
   make_volume as make_volume_from_values,
-  volume_index,
   type VolumetricData,
 } from '$lib/isosurface/types'
 import * as math from '$lib/math'
@@ -452,13 +451,27 @@ export const make_volume = (
   }
 }
 
+// Number of elements per category in element_data
+export const CATEGORY_COUNTS: Record<ElementCategory, number> = {
+  actinide: 15,
+  'alkali metal': 6,
+  'alkaline earth metal': 6,
+  'diatomic nonmetal': 7,
+  lanthanide: 15,
+  metalloid: 8,
+  'noble gas': 7,
+  'polyatomic nonmetal': 4,
+  'post-transition metal': 12,
+  'transition metal': 38,
+}
+
 // Value at grid point (ix, iy, iz) of a flat volume
 export const grid_value = (
   volume: Pick<VolumetricData, `values` | `dims`>,
   ix: number,
   iy: number,
   iz: number,
-): number => volume.values[volume_index(volume.dims, ix, iy, iz)]
+): number => volume.values[(ix * volume.dims[1] + iy) * volume.dims[2] + iz]
 
 // Linear fractional field; trilinear interpolation reproduces it exactly.
 export const make_linear_volume = (

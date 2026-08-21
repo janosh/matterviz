@@ -2,6 +2,7 @@
 // search/filter predicates and date-time parsing/formatting. No DOM, so it's unit-testable
 // and the component only wires these to events and markup.
 import { normalize_unicode_minus } from '$lib/utils'
+import { SvelteSet } from 'svelte/reactivity'
 import type { CellVal, ColumnFilter, DateTimeFormatMode, Label, RowData } from './index'
 
 export const strip_html = (str: string): string => str.replaceAll(/<[^>]*>/g, ``)
@@ -47,7 +48,7 @@ export const cell_text = (val: CellVal): string => {
   return strip_html(String(val)).trim()
 }
 
-export const get_data_sort_value = (val: string): string | null =>
+const get_data_sort_value = (val: string): string | null =>
   DATA_SORT_VALUE_RE.exec(val)?.groups?.value ?? null
 
 const parse_numeric_string = (val: string): number | null => {
@@ -145,6 +146,60 @@ export const cell_matches_filter = (val: CellVal, filter: ColumnFilter): boolean
   const text = cell_text(val)
   if (filter.kind === `category`) return filter.values.includes(text)
   return text.toLowerCase().includes(filter.text.toLowerCase())
+}
+
+// Above this many distinct values a column gets a substring box instead of a checklist
+export const CATEGORY_LIMIT = 40
+type FilterPanel = { kind: `numeric` | `category` | `text`; options: string[] }
+
+// Options and control type for one column's filter panel. Distinct values come from the
+// unfiltered rows, so a column's own filter never removes the options you'd use to widen it.
+// The cap applies only to auto-detection: an explicit `category` column must list them all
+// or its checklist renders empty.
+export function column_filter_panel(
+  col: Label,
+  rows: RowData[],
+  row_key: string,
+  is_numeric: boolean,
+): FilterPanel {
+  const capped = col.filter !== `category`
+  const seen = new SvelteSet<string>()
+  for (const row of rows) {
+    const val = row[row_key]
+    if (!is_invalid(val)) seen.add(cell_text(val))
+    if (capped && seen.size > CATEGORY_LIMIT) {
+      seen.clear() // too many to pick from: fall back to a substring box
+      break
+    }
+  }
+  const options = [...seen].toSorted()
+  const configured = col.filter && col.filter !== `auto` ? col.filter : null
+  const detected = is_numeric ? `numeric` : options.length > 0 ? `category` : `text`
+  return { options, kind: configured ?? detected }
+}
+
+// A numeric filter with neither bound, or a category filter allowing everything, is the same
+// as no filter: both collapse to undefined so the funnel icon and row count stay honest.
+export function with_numeric_bound(
+  current: ColumnFilter | undefined,
+  bound: `min` | `max`,
+  raw: string,
+): ColumnFilter | undefined {
+  const base = current?.kind === `numeric` ? current : { kind: `numeric` as const }
+  const value = raw.trim() === `` ? undefined : Number(raw)
+  const next = { ...base, [bound]: Number.isFinite(value) ? value : undefined }
+  return next.min == null && next.max == null ? undefined : next
+}
+export function with_category_toggled(
+  current: ColumnFilter | undefined,
+  value: string,
+  options: string[],
+): ColumnFilter | undefined {
+  const selected = current?.kind === `category` ? current.values : options
+  const next = selected.includes(value)
+    ? selected.filter((entry) => entry !== value)
+    : [...selected, value]
+  return next.length === options.length ? undefined : { kind: `category`, values: next }
 }
 
 // === Date/time columns ===

@@ -4,7 +4,6 @@ import {
   font_spec_to_css,
   get_text_metrics_revision,
   invalidate_text_metrics_after_fonts_ready,
-  measure_css_text_width,
   measure_text_line,
   resolve_font_size_css,
   resolve_font_spec,
@@ -140,12 +139,6 @@ describe(`text metrics`, () => {
     expect(other.width).toBe(40)
     expect(measure_text).toHaveBeenCalledTimes(2)
     expect(context.font).toBe(`italic small-caps 700 condensed 20px "Inter", sans-serif`)
-  })
-
-  it(`parses font size after shorthand qualifiers for deterministic fallback width`, () => {
-    vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue(null)
-
-    expect(measure_css_text_width(`abcd`, `bold 18px "Inter", sans-serif`)).toBeCloseTo(43.2)
   })
 
   it.each([

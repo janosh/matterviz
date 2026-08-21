@@ -1,5 +1,5 @@
 // Exercises the Web Worker branch of compute_structure_id_async. happy-dom has no Worker, so
-// async-compute.test.svelte.ts only ever reaches the synchronous fallback; here a stub Worker is
+// async-compute.test.ts only ever reaches the synchronous fallback; here a stub Worker is
 // installed before the module is imported so the real postMessage plumbing runs — including the
 // structured clone, which is where a Svelte $state proxy or a non-cloneable site property would
 // blow up in a browser.

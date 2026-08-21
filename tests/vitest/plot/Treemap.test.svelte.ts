@@ -1,5 +1,5 @@
 import { Treemap } from '$lib'
-import type { TreemapArc, TreemapNode, TreemapNodeHandlerProps } from '$lib/plot'
+import type { SunburstNodeHandlerProps, TreemapArc, TreemapNode } from '$lib/plot'
 import { DEFAULT_SERIES_COLORS } from '$lib/plot'
 import { type ComponentProps, flushSync, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
@@ -86,7 +86,7 @@ describe(`Treemap`, () => {
     await fire(cell_rect(plot, `A1`), mouse(`mousemove`))
     expect(plot.querySelector(`.plot-tooltip`)).not.toBeNull()
     expect(on_node_hover).toHaveBeenCalledOnce()
-    expect(on_node_hover.mock.calls[0][0] as TreemapNodeHandlerProps).toMatchObject({
+    expect(on_node_hover.mock.calls[0][0] as SunburstNodeHandlerProps).toMatchObject({
       type: `node`,
       label: `A1`,
       value: 4,

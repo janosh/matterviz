@@ -12,24 +12,18 @@
   import type { IsosurfaceSettings, VolumetricData } from '$lib/isosurface/types'
   import type { Vec3 } from '$lib/math'
   import type { CameraProjection } from '$lib/settings'
-  import type {
-    AnyStructure,
-    BondEditMode,
-    BondOrder,
-    MeasureMode,
-    StructureBond,
-    StructureHandlerData,
-  } from '$lib/structure'
+  import type { AnyStructure, StructureHandlerData } from '$lib/structure'
   import type { DisplacementSummary } from '$lib/structure/measure'
   import type { TrajectoryLinesStats } from '$lib/structure/trajectory-lines'
   import type { MoyoDataset } from '@spglib/moyo-wasm'
   import { Canvas } from '@threlte/core'
   import type { ComponentProps } from 'svelte'
   import { untrack } from 'svelte'
-  import { SvelteMap, SvelteSet } from 'svelte/reactivity'
+  import { SvelteSet } from 'svelte/reactivity'
   import { create_renderer, responsive_gizmo_size } from '$lib/scene'
   import { type Camera, OrthographicCamera, type Scene } from 'three/webgpu'
   import type { AtomColorConfig } from './atom-properties'
+  import type { StructureSession } from './session.svelte'
   import StructureScene from './StructureScene.svelte'
 
   // Self-heal a lost GPU device (driver reset, resource pressure): unlike WebGL there is no
@@ -87,10 +81,10 @@
     on_camera_move = undefined,
     on_camera_reset = undefined,
 
-    // Shared scene inputs (one-way)
-    structure = undefined,
+    // Shared scene inputs (one-way); the session carries the displayed structure, selection
+    // and edit state every pane binds to
+    session,
     view_reset_key = undefined,
-    base_structure = undefined,
     reference_structure = undefined,
     scene_props = {},
     gizmo = false,
@@ -98,10 +92,6 @@
     volumetric_data = undefined,
     isosurface_settings = undefined,
     active_volume_idx = 0,
-    volume_scaling = [1, 1, 1],
-    bond_edits_enabled = true,
-    bond_edit_order = 1,
-    measure_mode = `distance`,
     atom_color_config = undefined,
     sym_data = null,
     active_sites = [],
@@ -115,31 +105,10 @@
     fly_to_request = $bindable(undefined),
     displacement_summary = $bindable(null),
 
-    // Edit-mode callbacks
-    on_sites_moved = undefined,
-    on_operation_start = undefined,
-    on_bond_edit_start = undefined,
-    on_add_atom = undefined,
-
     // scene + camera are bound out for the primary pane (consumed by the export pane)
     scene = $bindable(undefined),
     camera = $bindable(undefined),
-
-    // Shared two-way scene state
-    selected_sites = $bindable([]),
-    measured_sites = $bindable([]),
-    hovered_site_idx = $bindable(null),
     hidden_elements = $bindable(new SvelteSet<ElementSymbol>()),
-    hidden_prop_vals = $bindable(new SvelteSet<number | string>()),
-    element_radius_overrides = $bindable({}),
-    site_radius_overrides = $bindable(new SvelteMap<number, number>()),
-    added_bonds = $bindable([]),
-    removed_bonds = $bindable([]),
-    bond_order_overrides = $bindable([]),
-    bond_edit_mode = $bindable(`add`),
-    add_atom_mode = $bindable(false),
-    add_element = $bindable(`C`),
-    dragging_atoms = $bindable(false),
     polyhedra_rendered_elements = $bindable([]),
     trajectory_lines_result = $bindable(null),
   }: {
@@ -152,9 +121,8 @@
     report_moved?: (moved: boolean) => void
     on_camera_move?: (data: StructureHandlerData) => void
     on_camera_reset?: (data: StructureHandlerData) => void
-    structure?: AnyStructure
+    session: StructureSession
     view_reset_key?: unknown
-    base_structure?: AnyStructure
     reference_structure?: AnyStructure // comparison geometry for displacement arrows
     scene_props?: ComponentProps<typeof StructureScene>
     gizmo?: boolean | ComponentProps<typeof StructureScene>[`gizmo`]
@@ -162,10 +130,6 @@
     volumetric_data?: VolumetricData[]
     isosurface_settings?: IsosurfaceSettings
     active_volume_idx?: number
-    volume_scaling?: Vec3
-    bond_edits_enabled?: boolean
-    bond_edit_order?: BondOrder
-    measure_mode?: MeasureMode
     atom_color_config?: AtomColorConfig
     sym_data?: MoyoDataset | null
     active_sites?: number[]
@@ -175,29 +139,14 @@
     camera_target?: Vec3
     fly_to_request?: Vec3
     displacement_summary?: DisplacementSummary | null
-    on_sites_moved?: (scene_indices: number[], delta: Vec3) => void
-    on_operation_start?: () => void
-    on_bond_edit_start?: () => void
-    on_add_atom?: (xyz: Vec3, element: ElementSymbol) => void
     scene?: Scene
     camera?: Camera
-    selected_sites?: number[]
-    measured_sites?: number[]
-    hovered_site_idx?: number | null
     hidden_elements?: Set<ElementSymbol>
-    hidden_prop_vals?: Set<number | string>
-    element_radius_overrides?: Partial<Record<ElementSymbol, number>>
-    site_radius_overrides?: Map<number, number> | SvelteMap<number, number>
-    added_bonds?: StructureBond[]
-    removed_bonds?: StructureBond[]
-    bond_order_overrides?: StructureBond[]
-    bond_edit_mode?: BondEditMode
-    add_atom_mode?: boolean
-    add_element?: ElementSymbol
-    dragging_atoms?: boolean
     polyhedra_rendered_elements?: string[]
     trajectory_lines_result?: TrajectoryLinesStats | null
   } = $props()
+
+  let structure = $derived(session.displayed_structure)
 
   // Cell-local dimensions (each pane is responsible for its own zoom sizing) and cursor
   let width = $state(0)
@@ -463,7 +412,7 @@
     <Canvas createRenderer={create_viewport_renderer}>
       <StructureScene
         {structure}
-        {base_structure}
+        base_structure={session.base_structure}
         {reference_structure}
         {...scene_props}
         {...in_grid ? { auto_rotate: 0 } : {}}
@@ -479,40 +428,65 @@
         {volumetric_data}
         {isosurface_settings}
         {active_volume_idx}
-        {volume_scaling}
+        volume_scaling={session.volume_scaling}
         bind:camera_is_moving
-        bind:selected_sites
+        bind:selected_sites={
+          () => session.selected_sites, (value) => session.inputs.set_selected_sites(value)
+        }
         {active_sites}
-        bind:hovered_idx={hovered_site_idx}
-        bind:measured_sites
+        bind:hovered_idx={
+          () => session.hovered_site_idx, (value) => session.inputs.set_hovered_site_idx(value)
+        }
+        bind:measured_sites={
+          () => session.measured_sites, (value) => session.inputs.set_measured_sites(value)
+        }
         bind:scene
         bind:camera
         bind:orbit_controls
         bind:rotation_target_ref
         bind:initial_computed_zoom
         bind:hidden_elements
-        bind:hidden_prop_vals
-        bind:element_radius_overrides
-        bind:site_radius_overrides
-        bind:added_bonds
-        bind:removed_bonds
-        bind:bond_order_overrides
-        {bond_edits_enabled}
-        bind:bond_edit_mode
-        {bond_edit_order}
-        {measure_mode}
+        bind:hidden_prop_vals={
+          () => session.hidden_prop_vals, (value) => (session.hidden_prop_vals = value)
+        }
+        bind:element_radius_overrides={
+          () => session.element_radius_overrides,
+          (value) => (session.element_radius_overrides = value)
+        }
+        bind:site_radius_overrides={
+          () => session.site_radius_overrides,
+          (value) => (session.site_radius_overrides = value)
+        }
+        bind:added_bonds={() => session.added_bonds, (value) => (session.added_bonds = value)}
+        bind:removed_bonds={
+          () => session.removed_bonds, (value) => (session.removed_bonds = value)
+        }
+        bind:bond_order_overrides={
+          () => session.bond_order_overrides, (value) => (session.bond_order_overrides = value)
+        }
+        bond_edits_enabled={session.bond_edits_enabled}
+        bind:bond_edit_mode={
+          () => session.inputs.bond_edit_mode(),
+          (value) => session.inputs.set_bond_edit_mode(value)
+        }
+        bond_edit_order={session.inputs.bond_edit_order()}
+        measure_mode={session.inputs.measure_mode()}
         {width}
         {height}
         {atom_color_config}
         {sym_data}
-        {on_sites_moved}
-        {on_operation_start}
-        {on_bond_edit_start}
-        {on_add_atom}
-        bind:add_atom_mode
-        bind:add_element
+        on_sites_moved={session.move_sites}
+        on_operation_start={session.push_undo}
+        on_bond_edit_start={session.push_bond_undo}
+        on_add_atom={session.add_atom}
+        bind:add_atom_mode={
+          () => session.add_atom_mode, (value) => (session.add_atom_mode = value)
+        }
+        bind:add_element={() => session.add_element, (value) => (session.add_element = value)}
         bind:cursor
-        bind:dragging_atoms
+        bind:dragging_atoms={
+          () => session.dragging_atoms, (value) => (session.dragging_atoms = value)
+        }
         bind:polyhedra_rendered_elements
         bind:trajectory_lines_result
       />

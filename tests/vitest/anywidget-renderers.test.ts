@@ -221,7 +221,7 @@ describe(`structure wiring`, () => {
     expect((stub.read().scene_props as { atom_radius?: number }).atom_radius).toBeUndefined()
   })
 
-  test(`unset auto_rotate/show_gizmo fall back to the settings defaults`, () => {
+  test(`unset auto_rotate/gizmo fall back to the settings defaults`, () => {
     // A notebook structure must not spin when the page embed does not: the widget used to
     // hardcode auto_rotate ?? 0.2 against a settings default of 0
     const stub = run_widget(`structure`, new MockModel({ widget_type: `structure` }))

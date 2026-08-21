@@ -1,6 +1,7 @@
 // Shared file-drop handler composable for drag-and-drop file loading.
 import { decompress_file, decompress_trajectory_file } from './decompress'
 import { dropped_file_url, load_from_url, load_trajectory_from_url } from './url-drop'
+import { plural } from '$lib/labels'
 import { to_error } from '$lib/utils'
 import type { Attachment } from 'svelte/attachments'
 import { files_from_data_transfer } from 'svelte-widgets/file-drop'
@@ -58,7 +59,7 @@ export const create_file_drop_handler = (
       const source_count = files.length + (url ? 1 : 0)
       if (max_files !== undefined && source_count > max_files) {
         opts.on_error?.(
-          `Drop at most ${max_files} file${max_files === 1 ? `` : `s`} at a time (received ${source_count})`,
+          `Drop at most ${plural(max_files, `file`)} at a time (received ${source_count})`,
         )
         return
       }
@@ -118,7 +119,7 @@ export const create_file_drop_handler = (
   }
 }
 
-export type FileDropZoneOptions = FileDropOptions & {
+type FileDropZoneOptions = FileDropOptions & {
   // Mirrors the hover state to the caller, e.g. for a bindable `dragover` prop
   on_dragover?: (over: boolean) => void
 }

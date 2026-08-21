@@ -70,7 +70,7 @@ const fullscreen_toggle_setting = (): SettingType<boolean> => ({
   web_only: true,
 })
 
-export const VECTOR_COLOR_MODES = [
+const VECTOR_COLOR_MODES = [
   `auto`,
   `element`,
   `spin_direction`,
@@ -809,12 +809,6 @@ export const SETTINGS_CONFIG = define_settings({
       minimum: 1000000,
       maximum: 2000000000,
     },
-
-    // UI/UX
-    show_parsing_progress: {
-      value: true,
-      description: `Show progress indicator while parsing files`,
-    },
   },
 
   // Histogram specific
@@ -1226,7 +1220,7 @@ export const SETTINGS_CONFIG = define_settings({
   },
 })
 
-export type SettingsConfig = typeof SETTINGS_CONFIG
+type SettingsConfig = typeof SETTINGS_CONFIG
 
 // Recursively extract each setting's runtime value type from the schema.
 type SettingsValues<Config> = {

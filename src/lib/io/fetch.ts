@@ -1,13 +1,4 @@
-// Convert params object to URL query string, omitting empty/undefined values.
-// Example: {foo: "bar", baz: 42, empty: ""} → "foo=bar&baz=42"
-export const to_query = (params: Record<string, string | number | undefined>): string =>
-  new URLSearchParams(
-    Object.entries(params)
-      .filter(([, val]) => val !== `` && val !== undefined)
-      .map(([key, val]) => [key, String(val)]),
-  ).toString()
-
-export type DownloadData = string | Blob | ArrayBuffer | ArrayBufferView<ArrayBuffer>
+type DownloadData = string | Blob | ArrayBuffer | ArrayBufferView<ArrayBuffer>
 
 // Original download implementation
 function default_download(data: DownloadData, filename: string, type: string) {

@@ -64,7 +64,7 @@ export function number_density(structure: Crystal): number {
 // −4π·r·ρ0, which is the standard sanity check on any measured PDF.
 // For a PARTIAL g_ab(r) the convention is to keep the TOTAL ρ0 here, so that the partials add
 // up to the total G(r) with the scattering weights and nothing else.
-export const reduced_pdf = (pattern: RdfPattern, rho_0: number): number[] =>
+const reduced_pdf = (pattern: RdfPattern, rho_0: number): number[] =>
   pattern.r.map((radius, idx) => 4 * Math.PI * radius * rho_0 * (pattern.g_r[idx] - 1))
 
 // n = ∫ 4π·r²·ρ·g(r) dr over [r_min, r_max), the coordination number in that shell.

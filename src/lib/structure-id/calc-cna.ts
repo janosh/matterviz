@@ -29,7 +29,7 @@ export type CnaMode = `adaptive` | `fixed`
 // step. Order matches OVITO's StructureType enum, so a code read from either tool means the same.
 export const CNA_TYPES = { other: 0, fcc: 1, hcp: 2, bcc: 3, ico: 4 } as const
 export type CnaTypeName = keyof typeof CNA_TYPES
-export type CnaTypeCode = (typeof CNA_TYPES)[CnaTypeName]
+type CnaTypeCode = (typeof CNA_TYPES)[CnaTypeName]
 
 export const CNA_TYPE_NAMES = Object.keys(CNA_TYPES) as CnaTypeName[]
 

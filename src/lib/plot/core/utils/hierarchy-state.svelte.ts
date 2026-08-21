@@ -88,7 +88,7 @@ export interface HierarchyChartProps<Metadata extends Record<string, unknown>> {
 // Every reactive input arrives as a thunk (rather than a value) so the chart can
 // forward one of its `$props()` per line and each derived below only tracks what
 // it actually reads.
-export interface HierarchyChartOptions<Metadata extends Record<string, unknown>> {
+interface HierarchyChartOptions<Metadata extends Record<string, unknown>> {
   // Picks the `data-<chart>-node-idx` attribute and CSS variable namespace.
   readonly chart: `sunburst` | `treemap`
   readonly uid: string

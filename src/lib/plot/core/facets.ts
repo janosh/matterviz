@@ -15,7 +15,7 @@ export type FacetAxisRanges = Partial<Record<FacetAxis, Vec2>>
 export type FacetAxisModes = Record<FacetAxis, FacetAxisMode>
 export type FacetAxisVisibilityModes = Partial<Record<FacetAxis, FacetAxisVisibilityMode>>
 export type FacetAxisVisibility = Record<FacetAxis, boolean>
-export type FacetRangeUpdate = Vec2 | null
+type FacetRangeUpdate = Vec2 | null
 type FacetRangeUpdateCallback = (axis: FacetAxis, range: FacetRangeUpdate) => void
 type FacetSharedBand = `title` | `legend` | `color_bar`
 
@@ -35,7 +35,7 @@ export interface FacetPanel<Datum = unknown> {
   column_span?: number
 }
 
-export interface PositionedFacetPanel<Datum = unknown> {
+interface PositionedFacetPanel<Datum = unknown> {
   key: FacetKey
   data: Datum
   index: number
@@ -45,7 +45,7 @@ export interface PositionedFacetPanel<Datum = unknown> {
   column_span: number
 }
 
-export interface FacetGridLayout<Datum = unknown> {
+interface FacetGridLayout<Datum = unknown> {
   rows: number
   columns: number
   panels: PositionedFacetPanel<Datum>[]
@@ -57,11 +57,11 @@ export interface FacetPanelLayoutReport {
   ranges?: FacetAxisRanges
 }
 
-export interface KeyedFacetPanelLayoutReport extends FacetPanelLayoutReport {
+interface KeyedFacetPanelLayoutReport extends FacetPanelLayoutReport {
   key: FacetKey
 }
 
-export interface KeyedFacetAxisRanges {
+interface KeyedFacetAxisRanges {
   key: FacetKey
   ranges: FacetAxisRanges
 }
@@ -75,7 +75,7 @@ export interface FacetSharedBandSizes {
   gap?: number
 }
 
-export interface FacetGridGeometry {
+interface FacetGridGeometry {
   width: number
   height: number
   row_gap?: number

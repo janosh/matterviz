@@ -3,10 +3,13 @@
 // Third member of the local-structure family alongside $lib/rdf and $lib/coordination.
 
 import type { Vec3 } from '$lib/math'
-import type { AnyStructure, Site } from '$lib/structure'
-import { expand_structure_for_pbc } from '$lib/structure/atom-properties'
+import type { AnyStructure } from '$lib/structure'
 import type { BondingStrategy } from '$lib/structure/bonding'
-import { compute_bonds, get_majority_element } from '$lib/structure/bonding'
+import {
+  compute_bonds,
+  lattice_pbc_or_throw,
+  get_majority_element,
+} from '$lib/structure/bonding'
 import { angle_between_vectors } from '$lib/structure/measure'
 import type { Pbc } from '$lib/structure/pbc'
 import { SvelteMap, SvelteSet } from 'svelte/reactivity'
@@ -31,16 +34,14 @@ export interface BondAngleOptions {
   center_elements?: readonly string[]
   // Only these elements may act as the two outer atoms of an angle
   neighbor_elements?: readonly string[]
-  // Periodic axes, defaults to the structure's own lattice.pbc
+  // Periodic axes to bond across, defaults to the structure's own lattice.pbc. Switching
+  // every axis off drops each angle that closes through a cell boundary.
   pbc?: Pbc
-  // Append periodic image atoms before the bond search (default true). Turning this off
-  // drops every angle that closes through a cell boundary.
-  auto_expand?: boolean
 }
 
-// A single angle: the two bond vectors from `center_idx` to a pair of its neighbours.
-// `neighbor_idxs` are ORIGINAL site indices — an image atom reports the atom it copies.
-export interface BondAngleTriplet {
+// A single angle: the two bond vectors from `center_idx` to a pair of its neighbours. A
+// neighbour reached through a cell boundary reports the site index of its periodic image.
+interface BondAngleTriplet {
   center_idx: number
   neighbor_idxs: [number, number]
   center_element: string
@@ -49,7 +50,7 @@ export interface BondAngleTriplet {
   angle: number
 }
 
-export interface BondAngleSeries {
+interface BondAngleSeries {
   triplet: string
   counts: number[]
   // Probability density over degrees, normalised by the STRUCTURE's grand total angle
@@ -121,78 +122,43 @@ export const to_angle_density = (
   return counts.map((count) => count * scale)
 }
 
-// Image sites carry properties.orig_site_idx pointing at the atom they copy. Angles are
-// reported against those original indices so consumers never see image indices. Original
-// sites carry no such property, hence the plain site index; anything else is a malformed
-// site rather than a case to paper over.
-const orig_site_index = (site: Site, site_idx: number): number => {
-  const raw = site.properties?.orig_site_idx
-  if (raw === undefined) return site_idx
-  if (typeof raw !== `number` || !Number.isInteger(raw)) {
-    throw new TypeError(
-      `site ${site_idx} has non-integer orig_site_idx ${JSON.stringify(raw)}`,
-    )
-  }
-  return raw
-}
-
 // Every bond angle in the structure, one entry per unordered neighbour pair per centre.
 export function compute_bond_angles(
   structure: AnyStructure,
   options: BondAngleOptions = {},
 ): BondAngleTriplet[] {
-  const { strategy = `electroneg_ratio`, auto_expand = true } = options
-  const n_original = structure.sites.length
-  if (n_original === 0) return []
+  const { strategy = `electroneg_ratio` } = options
+  const { sites } = structure
+  const n_sites = sites.length
+  if (n_sites === 0) return []
 
-  // Image atoms let boundary atoms see their whole bonded neighbourhood. They are appended
-  // AFTER the originals and tagged with orig_site_idx, so passing center_count = original
-  // site count to compute_bonds makes them count as neighbours without acting as centres.
-  // explicit_only reads bonds straight off structure.properties.bonds (cell_shift included),
-  // so images would only add work — they carry no bond records of their own.
-  const search_structure =
-    auto_expand && strategy !== `explicit_only`
-      ? expand_structure_for_pbc(structure, options.pbc)
-      : structure
-
-  const bonds = compute_bonds(search_structure, strategy, { center_count: n_original })
-  const sites = search_structure.sites
-  // Image sites inherit the species list of the atom they copy, so this already resolves to
-  // the ORIGINAL element identity — exactly what triplet labels must be built from.
+  // Periodic structures are bonded across their cell boundaries, so every angle that closes
+  // through a cell face is found and a partner's periodic images count as distinct
+  // neighbours. explicit_only reads bonds (cell_shift included) straight off
+  // structure.properties.bonds and ignores the periodicity option.
+  const bonds = compute_bonds(structure, strategy, {
+    pbc: lattice_pbc_or_throw(structure, options.pbc),
+  })
   const element_of = sites.map((site) => get_majority_element(site) ?? UNKNOWN_ELEMENT)
 
-  // Both bonding strategies emit each unordered pair once (they skip idx_b <= idx_a), so a
-  // naive pass leaves every centre's neighbour list half full. Register each bond from BOTH
-  // ends, storing the DISPLACEMENT rather than the neighbour index: BondPair.pos_2 already
-  // carries any cell_shift, and the reverse direction is just its negation.
+  // Both bonding strategies emit each unordered pair once, so a naive pass leaves every
+  // centre's neighbour list half full. Register each bond from BOTH ends, storing the
+  // DISPLACEMENT rather than the neighbour index: BondPair.pos_2 already sits at the
+  // (possibly periodic) partner position, and the reverse direction is just its negation.
   //
-  // Displacements are raw pos_2 - pos_1, deliberately NOT minimum-imaged. Image atoms
+  // Displacements are raw pos_2 - pos_1, deliberately NOT minimum-imaged. Periodic partners
   // already sit at their true Cartesian positions, so folding would collapse distinct
   // neighbours: in a 2-atom chain with a = 4 and bond length a/2, the centre's partners at
   // +2 and -2 both fold to -2, turning the correct {180: 2} into {0: 1, 180: 1}.
-  //
-  // Only ORIGINAL atoms are centres, so each angle is recorded once despite periodic copies.
-  // The seen-key additionally drops the duplicate apply_explicit_bond_metadata creates when
-  // an explicit cell_shift record names a bond proximity already found against an image —
-  // same displacement, different search index. Rounded to 1e-6 Å because the two paths build
-  // it differently and disagree at ~1e-15, still six orders below any real separation.
-  type Neighbor = { site_idx: number; orig_idx: number; vec: Vec3 }
-  const adjacency = new SvelteMap<number, Neighbor[]>()
-  const seen = new SvelteSet<string>()
-  const add_neighbor = (center_idx: number, site_idx: number, vec: Vec3) => {
-    if (center_idx >= n_original) return // images never act as centres
-    const orig_idx = orig_site_index(sites[site_idx], site_idx)
-    const key = `${center_idx}|${orig_idx}|${vec.map((coord) => coord.toFixed(6)).join(`,`)}`
-    if (seen.has(key)) return
-    seen.add(key)
-    const neighbors = adjacency.get(center_idx)
-    if (neighbors) neighbors.push({ site_idx, orig_idx, vec })
-    else adjacency.set(center_idx, [{ site_idx, orig_idx, vec }])
-  }
+  type Neighbor = { site_idx: number; vec: Vec3 }
+  const adjacency: Neighbor[][] = Array.from({ length: n_sites }, () => [])
   for (const { site_idx_1, site_idx_2, pos_1, pos_2 } of bonds) {
     const delta: Vec3 = [pos_2[0] - pos_1[0], pos_2[1] - pos_1[1], pos_2[2] - pos_1[2]]
-    add_neighbor(site_idx_1, site_idx_2, delta)
-    add_neighbor(site_idx_2, site_idx_1, [-delta[0], -delta[1], -delta[2]])
+    adjacency[site_idx_1].push({ site_idx: site_idx_2, vec: delta })
+    adjacency[site_idx_2].push({
+      site_idx: site_idx_1,
+      vec: [-delta[0], -delta[1], -delta[2]],
+    })
   }
 
   const center_filter = options.center_elements ? new SvelteSet(options.center_elements) : null
@@ -201,11 +167,10 @@ export function compute_bond_angles(
     : null
 
   const triplets: BondAngleTriplet[] = []
-  for (let center_idx = 0; center_idx < n_original; center_idx++) {
+  for (let center_idx = 0; center_idx < n_sites; center_idx++) {
     const center_element = element_of[center_idx]
     if (center_filter && !center_filter.has(center_element)) continue
-    const all_neighbors = adjacency.get(center_idx)
-    if (!all_neighbors) continue
+    const all_neighbors = adjacency[center_idx]
     const neighbors = neighbor_filter
       ? all_neighbors.filter((neighbor) => neighbor_filter.has(element_of[neighbor.site_idx]))
       : all_neighbors
@@ -220,7 +185,7 @@ export function compute_bond_angles(
         const [outer_1, outer_2] = elem_1 <= elem_2 ? [elem_1, elem_2] : [elem_2, elem_1]
         triplets.push({
           center_idx,
-          neighbor_idxs: [near_1.orig_idx, near_2.orig_idx],
+          neighbor_idxs: [near_1.site_idx, near_2.site_idx],
           center_element,
           triplet: `${outer_1}-${center_element}-${outer_2}`,
           angle: angle_between_vectors(near_1.vec, near_2.vec, `degrees`),

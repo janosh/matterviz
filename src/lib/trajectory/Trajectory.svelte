@@ -25,6 +25,7 @@
   import TrajectoryMsdPane from '$lib/msd/TrajectoryMsdPane.svelte'
   import { sanitize_html } from '$lib/sanitize'
   import { FullscreenButton } from '$lib/layout'
+  import { ToolbarMenu } from '$lib/overlays'
   import PaneDivider from '$lib/layout/PaneDivider.svelte'
   import SequenceControlBar from '$lib/layout/SequenceControlBar.svelte'
   import SequenceControls from '$lib/layout/SequenceControls.svelte'
@@ -33,6 +34,7 @@
   import { Histogram, ScatterPlot } from '$lib/plot'
   import { toggle_series_visibility } from '$lib/plot/core/utils/series-visibility'
   import { DEFAULTS } from '$lib/settings'
+  import type { StructurePane } from '$lib/structure'
   import Structure from '$lib/structure/Structure.svelte'
   import TrajectoryStructureIdPane from '$lib/structure-id/TrajectoryStructureIdPane.svelte'
   import TrajectorySpectroscopyPane from '$lib/spectral/TrajectorySpectroscopyPane.svelte'
@@ -276,7 +278,8 @@
   let filename_copied = $state(false)
   let view_mode_dropdown_open = $state(false)
   let analysis_menu_open = $state(false)
-  let structure_info_open = $state(false)
+  // Structure's own info/export panes; its controls pane is this viewer's `controls` pane
+  let structure_pane = $state<Exclude<StructurePane, `controls`> | null>(null)
   let scatter_controls_open = $derived(scatter_props.controls_open ?? false)
   let hidden_elements = $state(new SvelteSet<ElementSymbol>())
   // Writable so the banner can be dismissed
@@ -527,16 +530,6 @@
   })
 
   // === keyboard ===
-  function handle_click_outside(event: MouseEvent): void {
-    const target = event.target
-    if (!(target instanceof Element)) return
-    if (view_mode_dropdown_open && !target.closest(`.view-mode-dropdown-wrapper`)) {
-      view_mode_dropdown_open = false
-    }
-    if (analysis_menu_open && !target.closest(`.analysis-dropdown-wrapper`)) {
-      analysis_menu_open = false
-    }
-  }
   // Returns true if the key was handled, so the caller can suppress the browser default
   function onkeydown(event: KeyboardEvent): boolean {
     // Leave form fields alone; sequence controls handle their own navigation keys and let
@@ -628,7 +621,7 @@
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <div
   class:active={player.is_playing ||
-    structure_info_open ||
+    structure_pane !== null ||
     scatter_controls_open ||
     active_pane !== null}
   bind:this={wrapper}
@@ -638,7 +631,6 @@
   tabindex="0"
   onpointerenter={() => (hovered = true)}
   onpointerleave={() => (hovered = false)}
-  onclick={handle_click_outside}
   onkeydown={handle_and_prevent(onkeydown)}
   {...rest}
   class={[`trajectory sequence-viewer`, actual_layout, rest.class]}
@@ -741,70 +733,65 @@
         <!-- Analyses plot their own x axis (MSD plots lag time, not frame index) so they
           cannot share the step-linked scatter/histogram display modes -->
         {#if visible_analyses.length > 0}
-          <div class="analysis-dropdown-wrapper">
-            <button
-              type="button"
-              class="analysis-button"
-              class:active={analysis_menu_open || any_analysis_open}
-              title="Analysis"
-              aria-label="Analysis"
-              aria-expanded={analysis_menu_open}
-              onclick={() => {
-                analysis_menu_open = !analysis_menu_open
-                view_mode_dropdown_open = false
-              }}
-              style="background-color: transparent; padding: 0"
-            >
+          <ToolbarMenu
+            bind:open={analysis_menu_open}
+            label="Analysis"
+            active={analysis_menu_open || any_analysis_open}
+            button_class="analysis-button"
+            menu_class="analysis-dropdown"
+            class="analysis-dropdown-wrapper"
+          >
+            {#snippet button()}
               <Icon icon={Graph} />
               <Icon icon={analysis_menu_open ? ArrowUp : ArrowDown} />
-            </button>
-            {#if analysis_menu_open}
-              <div class="view-mode-dropdown analysis-dropdown">
-                {#each visible_analyses as entry (entry.pane)}
-                  <button
-                    type="button"
-                    class={['view-mode-option', { selected: active_pane === entry.pane }]}
-                    title={entry.label}
-                    aria-pressed={active_pane === entry.pane}
-                    onclick={() => {
-                      set_pane_open(entry.pane, active_pane !== entry.pane)
-                      analysis_menu_open = false
-                    }}
-                  >
-                    <Icon icon={entry.icon} />
-                    <span>{entry.label}</span>
-                  </button>
-                {/each}
-              </div>
-            {/if}
-            <TrajectoryMsdPane
-              {...correlation_pane_props}
-              bind:pane_open={() => is_pane_open(`msd`), (open) => set_pane_open(`msd`, open)}
-            />
-            <TrajectoryVacfPane
-              {...correlation_pane_props}
-              bind:pane_open={
-                () => is_pane_open(`vacf`), (open) => set_pane_open(`vacf`, open)
-              }
-            />
-            <TrajectoryStructureIdPane
-              {...analysis_pane_props}
-              bind:pane_open={
-                () => is_pane_open(`structure-id`),
-                (open) => set_pane_open(`structure-id`, open)
-              }
-            />
-            <TrajectoryDataInspectorPane
-              {...analysis_pane_props}
-              {current_step_idx}
-              {current_frame}
-              bind:pane_open={
-                () => is_pane_open(`data-inspector`),
-                (open) => set_pane_open(`data-inspector`, open)
-              }
-              on_step_change={session.commit}
-            />
-          </div>
+            {/snippet}
+            {#each visible_analyses as entry (entry.pane)}
+              <button
+                type="button"
+                class={['view-mode-option', { selected: active_pane === entry.pane }]}
+                title={entry.label}
+                aria-pressed={active_pane === entry.pane}
+                onclick={() => {
+                  set_pane_open(entry.pane, active_pane !== entry.pane)
+                  analysis_menu_open = false
+                }}
+              >
+                <Icon icon={entry.icon} />
+                <span>{entry.label}</span>
+              </button>
+            {/each}
+            {#snippet trailing()}
+              <TrajectoryMsdPane
+                {...correlation_pane_props}
+                bind:pane_open={
+                  () => is_pane_open(`msd`), (open) => set_pane_open(`msd`, open)
+                }
+              />
+              <TrajectoryVacfPane
+                {...correlation_pane_props}
+                bind:pane_open={
+                  () => is_pane_open(`vacf`), (open) => set_pane_open(`vacf`, open)
+                }
+              />
+              <TrajectoryStructureIdPane
+                {...analysis_pane_props}
+                bind:pane_open={
+                  () => is_pane_open(`structure-id`),
+                  (open) => set_pane_open(`structure-id`, open)
+                }
+              />
+              <TrajectoryDataInspectorPane
+                {...analysis_pane_props}
+                {current_step_idx}
+                {current_frame}
+                bind:pane_open={
+                  () => is_pane_open(`data-inspector`),
+                  (open) => set_pane_open(`data-inspector`, open)
+                }
+                on_step_change={session.commit}
+              />
+            {/snippet}
+          </ToolbarMenu>
         {/if}
         {#if !spectroscopy_open && plot_series.length > 0 && x_quantity_options.length > 1 && controls_config.visible(`x-axis`)}
           <select
@@ -819,37 +806,29 @@
           </select>
         {/if}
         {#if plot_series.length > 0 && controls_config.visible(`view-mode`)}
-          <div class="view-mode-dropdown-wrapper">
-            <button
-              onclick={() => {
-                view_mode_dropdown_open = !view_mode_dropdown_open
-                analysis_menu_open = false
-              }}
-              title={current_display_mode.label}
-              class={['view-mode-button', { active: view_mode_dropdown_open }]}
-              style="background-color: transparent; padding: 0"
-            >
+          <ToolbarMenu
+            bind:open={view_mode_dropdown_open}
+            label={current_display_mode.label}
+            class="view-mode-dropdown-wrapper"
+          >
+            {#snippet button()}
               <Icon icon={current_display_mode.icon} />
               <Icon icon={view_mode_dropdown_open ? ArrowUp : ArrowDown} />
-            </button>
-            {#if view_mode_dropdown_open}
-              <div class="view-mode-dropdown">
-                {#each DISPLAY_MODES as option (option.mode)}
-                  <button
-                    class={['view-mode-option', { selected: display_mode === option.mode }]}
-                    onclick={() => {
-                      display_mode = option.mode
-                      on_display_mode_change?.(event_data())
-                      view_mode_dropdown_open = false
-                    }}
-                  >
-                    <Icon icon={option.icon} />
-                    <span>{option.label}</span>
-                  </button>
-                {/each}
-              </div>
-            {/if}
-          </div>
+            {/snippet}
+            {#each DISPLAY_MODES as option (option.mode)}
+              <button
+                class={['view-mode-option', { selected: display_mode === option.mode }]}
+                onclick={() => {
+                  display_mode = option.mode
+                  on_display_mode_change?.(event_data())
+                  view_mode_dropdown_open = false
+                }}
+              >
+                <Icon icon={option.icon} />
+                <span>{option.label}</span>
+              </button>
+            {/each}
+          </ToolbarMenu>
         {/if}
         {#if fullscreen_toggle && controls_config.visible(`fullscreen`)}
           <FullscreenButton
@@ -893,10 +872,13 @@
         }}
         bind:show_trajectory_lines
         bind:supercell_scaling
-        bind:controls_open={
-          () => is_pane_open(`controls`), (open) => set_pane_open(`controls`, open)
+        bind:active_pane={
+          () => (active_pane === `controls` ? `controls` : structure_pane),
+          (pane) => {
+            set_pane_open(`controls`, pane === `controls`)
+            structure_pane = pane === `controls` ? null : pane
+          }
         }
-        bind:info_pane_open={structure_info_open}
         bind:hidden_elements
       />
     {/if}
@@ -1074,6 +1056,7 @@
     align-items: center;
     gap: clamp(3pt, 0.6cqw, 1ex);
     position: relative;
+    --view-mode-button-padding: 0;
   }
   .info-section :global(:is(.trajectory-info-toggle, .trajectory-export-toggle)) {
     font-size: inherit;
@@ -1102,28 +1085,12 @@
       }
     }
   }
-  .view-mode-dropdown-wrapper,
-  .analysis-dropdown-wrapper {
-    display: flex;
-    position: relative;
-    align-items: center;
-    z-index: var(--trajectory-view-mode-z-index, 20);
-  }
   .x-quantity-select {
     padding: 1pt 2pt;
     font-size: 0.85em;
     background: transparent;
     border: var(--tooltip-border);
     border-radius: 3pt;
-  }
-  .view-mode-button,
-  .analysis-button {
-    display: flex;
-    align-items: center;
-    gap: 1pt;
-  }
-  .analysis-button.active {
-    color: var(--accent-color, #4a9eff);
   }
   /* Keep ViewerPane's toggle for layout anchoring; the analysis menu owns clicks. */
   .analysis-dropdown-wrapper :global(.analysis-toggle-anchor) {
@@ -1136,51 +1103,5 @@
     opacity: 0;
     pointer-events: none;
     overflow: hidden;
-  }
-  .view-mode-dropdown {
-    position: absolute;
-    top: 115%;
-    right: 0;
-    z-index: var(--trajectory-view-mode-dropdown-z-index, 30);
-    min-width: max-content;
-    background: var(--trajectory-view-mode-bg, var(--menu-bg));
-    color: var(--trajectory-view-mode-color, var(--menu-color));
-    border: 1px solid var(--trajectory-view-mode-border, var(--menu-border));
-    border-radius: var(--trajectory-view-mode-border-radius, 4px);
-    box-shadow:
-      0 8px 16px -4px rgba(0, 0, 0, 0.3),
-      0 4px 8px -2px rgba(0, 0, 0, 0.1);
-    pointer-events: auto;
-  }
-  .view-mode-option {
-    display: flex;
-    align-items: center;
-    gap: 1ex;
-    width: 100%;
-    padding: var(--trajectory-view-mode-option-padding, 5pt);
-    box-sizing: border-box;
-    background: transparent;
-    color: inherit;
-    border-radius: 0;
-    text-align: left;
-    transition: background-color 0.15s ease;
-    &:hover,
-    &:focus-visible {
-      background: var(--trajectory-view-mode-option-hover-bg, var(--menu-option-hover-bg));
-    }
-    &:first-child {
-      border-top-left-radius: 3px;
-      border-top-right-radius: 3px;
-    }
-    &.selected {
-      color: var(--accent-color, var(--menu-option-selected-color));
-    }
-    span {
-      font-weight: 500;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      flex: 1;
-    }
   }
 </style>

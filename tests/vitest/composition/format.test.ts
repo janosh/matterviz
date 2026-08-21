@@ -4,7 +4,6 @@ import {
   get_alphabetical_formula,
   get_electro_neg_formula,
   get_formula_label_segments,
-  get_hill_formula,
 } from '$lib/composition'
 import { describe, expect, test } from 'vitest'
 
@@ -120,24 +119,6 @@ describe(`formula functions handle structure objects`, () => {
     [`electro_neg`, get_electro_neg_formula],
   ] as const)(`%s formula from Fe2O3 structure`, (_name, format) => {
     expect(format(structure)).toBe(`Fe<sub>2</sub> O<sub>3</sub>`)
-  })
-})
-
-describe(`get_hill_formula`, () => {
-  test.each([
-    [`CH4`, undefined, `C H<sub>4</sub>`, `methane - C first`],
-    [`H2O`, undefined, `H<sub>2</sub> O`, `water - no carbon, alphabetical`],
-    [`C2H6O`, undefined, `C<sub>2</sub> H<sub>6</sub> O`, `ethanol - C first, H second`],
-    [`NaCl`, undefined, `Cl Na`, `salt - alphabetical (no C)`],
-    [
-      { C: 6, H: 12, O: 6 },
-      undefined,
-      `C<sub>6</sub> H<sub>12</sub> O<sub>6</sub>`,
-      `glucose`,
-    ],
-    [`CH4`, true, `C H4`, `methane plain text`],
-  ])(`%s (plain_text=%p) -> %s (%s)`, (input, plain_text, expected, _desc) => {
-    expect(get_hill_formula(input, plain_text)).toBe(expected)
   })
 })
 

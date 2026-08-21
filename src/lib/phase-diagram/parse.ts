@@ -11,7 +11,7 @@ const TDB_TEMP_DEFAULTS = {
   max_range: 5000, // Default max for temperature ranges in FUNCTION bodies
 } as const
 
-export interface TdbElement {
+interface TdbElement {
   symbol: string
   reference_phase: string
   mass: number
@@ -19,7 +19,7 @@ export interface TdbElement {
   entropy: number
 }
 
-export interface TdbPhase {
+interface TdbPhase {
   name: string
   model_hints: string
   sublattice_count: number
@@ -27,13 +27,13 @@ export interface TdbPhase {
   constituents?: string[][]
 }
 
-export interface TdbFunction {
+interface TdbFunction {
   name: string
   expression: string
   temperature_ranges: { min: number; max: number; expr: string }[]
 }
 
-export interface TdbParameter {
+interface TdbParameter {
   type: string
   phase: string
   constituents: string[]
@@ -263,10 +263,6 @@ export const get_system_name = (elements: string[]): string =>
     .map((el) => el.toUpperCase())
     .toSorted()
     .join(`-`)
-
-// Check if a TDB file represents a binary system
-export const is_binary_system = (tdb_data: TdbData): boolean =>
-  tdb_data.elements.map((el) => el.symbol).filter(is_real_element).length === 2
 
 // Predicate to filter out non-real elements (VA = vacancy, /- = electron)
 const is_real_element = (sym: string) => sym !== `VA` && sym !== `/-`

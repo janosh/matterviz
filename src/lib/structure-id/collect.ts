@@ -8,7 +8,7 @@ import type { StructureIdOptions, StructureIdResult } from './calc-structure-id'
 // trajectory; 100 frames of 10k atoms is ~10 s, which is a wait a user will sit through.
 export const DEFAULT_MAX_SWEEP_FRAMES = 100
 
-export interface StructureIdSweepOptions {
+interface StructureIdSweepOptions {
   // Upper bound on how many frames are actually analysed; see DEFAULT_MAX_SWEEP_FRAMES
   max_frames?: number
   options?: StructureIdOptions

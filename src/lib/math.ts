@@ -3,11 +3,10 @@ import type { LatticeParams, Pbc } from '$lib/structure/index'
 export type Vec2 = [number, number]
 export type Vec3 = [number, number, number]
 export type Vec4 = [number, number, number, number]
-export type Vec9 = [number, number, number, number, number, number, number, number, number]
 export type Point2D = { x: number; y: number }
 export type Point3D = Point2D & { z: number }
 export type Matrix3x3 = [Vec3, Vec3, Vec3]
-export type Matrix4x4 = [Vec4, Vec4, Vec4, Vec4]
+type Matrix4x4 = [Vec4, Vec4, Vec4, Vec4]
 
 export const is_finite_vec3_like = (
   values: ArrayLike<unknown> | undefined,
@@ -47,7 +46,7 @@ export function combinations<T>(arr: T[], k: number): T[][] {
 
 export const LOG_EPS = 1e-9
 export const EPS = 1e-10
-export const RAD_TO_DEG = 180 / Math.PI
+const RAD_TO_DEG = 180 / Math.PI
 export const DEG_TO_RAD = Math.PI / 180
 const MAX_MIN_IMAGE_CANDIDATES = 100_000
 
@@ -518,7 +517,7 @@ export function get_coefficient_of_variation(values: number[]): number {
 }
 
 // Compute 4x4 determinant (used for 4D barycentric coordinates)
-export function det_4x4(matrix: Matrix4x4): number {
+function det_4x4(matrix: Matrix4x4): number {
   const [[a0, a1, a2, a3], [b0, b1, b2, b3], [c0, c1, c2, c3], [d0, d1, d2, d3]] = matrix
   return (
     a0 * (b1 * (c2 * d3 - c3 * d2) - b2 * (c1 * d3 - c3 * d1) + b3 * (c1 * d2 - c2 * d1)) -
@@ -1014,13 +1013,13 @@ export function solve_linear_system(
   return solution
 }
 
-export const cross_2d = (origin: Vec2, point_a: Vec2, point_b: Vec2): number =>
+const cross_2d = (origin: Vec2, point_a: Vec2, point_b: Vec2): number =>
   (point_a[0] - origin[0]) * (point_b[1] - origin[1]) -
   (point_a[1] - origin[1]) * (point_b[0] - origin[0])
 
 // One half of Andrew's monotone chain built from x-then-y *pre-sorted* points
 // (lower chain; pass reversed input for the upper chain).
-export const monotone_chain = (sorted: Vec2[], tolerance = 0): Vec2[] => {
+const monotone_chain = (sorted: Vec2[], tolerance = 0): Vec2[] => {
   const chain: Vec2[] = []
   for (const pt of sorted) {
     while (

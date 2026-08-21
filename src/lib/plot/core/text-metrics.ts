@@ -17,12 +17,9 @@ export interface TextLineMetrics {
   readonly source: `canvas` | `fallback`
 }
 
-export type TextWidthMeasure = (
-  text: string,
-  font: Readonly<FontSpec>,
-) => { readonly width: number }
+type TextWidthMeasure = (text: string, font: Readonly<FontSpec>) => { readonly width: number }
 
-export interface FontReadiness {
+interface FontReadiness {
   readonly ready: PromiseLike<unknown>
 }
 
@@ -85,11 +82,6 @@ const parse_font_size = (value: string, fallback: number): number => {
   const parsed = leading_number(value)
   return positive_number(parsed, fallback)
 }
-
-const FONT_SHORTHAND_SIZE =
-  /(?:^|\s)(?<font_size>[-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?)(?:px|pt|pc|in|cm|mm|q|em|rem|ex|ch|cap|ic|lh|rlh|vw|vh|vmin|vmax)(?=\/|\s|$)/iu
-const parse_font_shorthand_size = (value: string, fallback: number): number =>
-  positive_number(Number(FONT_SHORTHAND_SIZE.exec(value)?.groups?.font_size), fallback)
 
 const parse_line_height = (
   value: string,
@@ -317,14 +309,6 @@ export function wrap_text_paragraph(
   if (line) lines.push(line)
   return lines
 }
-
-// Width for callers that already hold a canvas font shorthand rather than a FontSpec. Shares
-// one canvas and one cache with measure_text_line, so a single invalidation covers both.
-export const measure_css_text_width = (text: string, font_css: string): number =>
-  cached_line_metrics(text, font_css, {
-    ...DEFAULT_FONT_SPEC,
-    font_size: parse_font_shorthand_size(font_css, DEFAULT_FONT_SPEC.font_size),
-  }).width
 
 // Clear cached browser and fallback measurements. The returned monotonic revision can be
 // copied into Svelte state so derived layout reruns without this pure module owning observers.

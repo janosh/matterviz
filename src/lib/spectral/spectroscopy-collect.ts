@@ -12,7 +12,7 @@ import {
   type TrajectorySpectroscopyInput,
 } from './trajectory-spectroscopy'
 
-export interface SpectroscopyCollectOptions {
+interface SpectroscopyCollectOptions {
   frame_stride?: number
   max_bytes?: number
   on_progress?: (progress: ParseProgress) => void

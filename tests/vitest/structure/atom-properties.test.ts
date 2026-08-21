@@ -154,19 +154,22 @@ describe(`Coordination`, () => {
       expect(check(values)).toBe(true)
     })
 
-    // CoordinationBarPlot and the 3D viewer both call calc_structure_coordination, so
-    // their boundary-atom CN must agree and must exceed the raw-cell count (regression:
-    // the bar plot previously ran on the raw cell and undercounted boundary atoms).
-    test(`calc_structure_coordination expands PBC and matches viewer CN`, () => {
+    // CoordinationBarPlot and the 3D viewer both call calc_coordination_nums under the
+    // lattice's pbc, so their boundary-atom CN must agree and must exceed the finite-box
+    // count (regression: the bar plot previously ran on the raw cell and undercounted
+    // boundary atoms).
+    test(`calc_coordination_nums bonds across PBC and matches viewer CN`, () => {
       const strategy = `electroneg_ratio`
       const structure = make_cubic_structure(nacl_corner_sites, 5)
-      const bar_plot_cn = ap
-        .calc_structure_coordination(structure, strategy)
-        .sites.map((site) => site.coordination_num)
-      const viewer_cn = ap.get_coordination_colors(structure, strategy).values
-      const raw_cn = calc_coordination_nums(structure, strategy).sites.map(
+      const bar_plot_cn = calc_coordination_nums(structure, strategy).sites.map(
         (site) => site.coordination_num,
       )
+      const viewer_cn = ap.get_coordination_colors(structure, strategy).values
+      const raw_cn = calc_coordination_nums(structure, strategy, [
+        false,
+        false,
+        false,
+      ]).sites.map((site) => site.coordination_num)
 
       expect(bar_plot_cn).toHaveLength(structure.sites.length)
       expect(bar_plot_cn).toEqual(viewer_cn)
@@ -174,11 +177,11 @@ describe(`Coordination`, () => {
       expect(bar_plot_cn[0]).toBeGreaterThan(raw_cn[0])
     })
 
-    describe(`Boundary detection optimization`, () => {
+    describe(`periodic bonding vs brute-force imaging`, () => {
       // Brute-force coordination ground truth: image every atom by a full `shells`-cell
-      // shell (no cutoff approximation), tagging orig_site_idx exactly as production's
-      // imaging does so the competitive electroneg_ratio strategy treats images as
-      // their original atom. `shells` must exceed the cell's real bond reach in cells.
+      // shell (no cutoff approximation), tagging orig_site_idx so the competitive
+      // electroneg_ratio strategy treats images as their original atom, then bond that
+      // finite cloud. `shells` must exceed the cell's real bond reach in cells.
       const brute_force_cn = (
         matrix: [Vec3, Vec3, Vec3],
         sites: { element: ElementSymbol; abc: Vec3 }[],
@@ -197,7 +200,11 @@ describe(`Coordination`, () => {
             return { ...site, abc, xyz: frac_to_cart(abc), properties }
           }),
         )
-        return calc_coordination_nums({ ...structure, sites: [...structure.sites, ...images] })
+        return calc_coordination_nums(
+          { ...structure, sites: [...structure.sites, ...images] },
+          `electroneg_ratio`,
+          [false, false, false],
+        )
           .sites.slice(0, sites.length)
           .map((site) => site.coordination_num)
       }
@@ -212,10 +219,10 @@ describe(`Coordination`, () => {
       })
 
       // Regression guards: get_coordination_colors must equal the brute-force ground
-      // truth across the regimes where the old imaging was wrong — oblique cells
-      // (heights ≠ vector lengths), thin cells (need >1 image shell), large-radius
-      // atoms (bonds exceed the old hard-coded 5 Å reach) and atoms on a cell boundary
-      // (abc component = 1, which must wrap so its cross-cell images are not dropped).
+      // truth across the regimes where image-based coordination used to go wrong —
+      // oblique cells (heights ≠ vector lengths), thin cells (need >1 image shell),
+      // large-radius atoms (bonds past a hard-coded 5 Å reach) and atoms on a cell
+      // boundary (abc component = 1, which must wrap so cross-cell images are kept).
       // oxfmt-ignore
       test.each<[string, [Vec3, Vec3, Vec3], ElementSymbol, Vec3[]]>([
         [`oblique (sheared) cell`, [[12, 0, 0], [-12, 9, 0], [12, -12, 6]], `C`, [
@@ -264,22 +271,22 @@ describe(`Coordination`, () => {
         expect(ap.get_coordination_colors(structure).values).toEqual([0, 0])
       })
 
-      test(`warns once and still returns finite CN for pathological thin cells`, () => {
+      test(`pathological thin cell is exact, with no image-shell cap to warn about`, () => {
         const warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
-        // c-axis height 1 Å ≪ ~5 Å reach → needs 6 image shells, far exceeding the cap
+        // c-axis height 1 Å ≪ ~3 Å C-C reach: the chain of an atom's own images along c
+        // is its whole shell. Image expansion used to cap at 3 shells per axis and warn;
+        // periodic bonding generates exactly the images in reach, so the count is exact.
         // oxfmt-ignore
         const matrix: [Vec3, Vec3, Vec3] = [[5, 0, 0], [0, 5, 0], [0, 0, 1]]
         const sites: { element: ElementSymbol; abc: Vec3 }[] = [
           { element: `C`, abc: [0.2, 0.2, 0.5] },
           { element: `C`, abc: [0.6, 0.6, 0.5] },
         ]
-        const { values } = ap.get_coordination_colors(
-          make_crystal(matrix, sites, { charge: 0 }),
-        )
-        // capped imaging must not throw or produce NaN/undefined CN
-        expect(values.every((cn) => typeof cn === `number` && Number.isFinite(cn))).toBe(true)
-        expect(warn_spy).toHaveBeenCalledTimes(1)
-        expect(warn_spy.mock.calls[0][0]).toContain(`capping PBC images`)
+        const structure = make_crystal(matrix, sites, { charge: 0 })
+        const { values } = ap.get_coordination_colors(structure)
+        expect(values).toEqual(brute_force_cn(matrix, sites, 6))
+        expect(values.every((cn) => typeof cn === `number` && cn > 0)).toBe(true)
+        expect(warn_spy).not.toHaveBeenCalled()
         warn_spy.mockRestore()
       })
 

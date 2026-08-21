@@ -20,6 +20,23 @@ jobs:
       - name: Run unit tests
         run: pnpm exec vp test --run
 
+  # Regression tripwires for the hot paths measured in #438 (tests/vitest/perf-baselines.test.ts).
+  # Opt-in locally (MATTERVIZ_PERF=1) and its own job here so its medians-of-N neither slow the
+  # unit job nor share a CPU with it.
+  perf-baselines:
+    name: Perf baselines
+    runs-on: ubuntu-latest
+    timeout-minutes: 10 # a hung mount would otherwise hold the runner for GitHub's 6 h default
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+      - name: Install dependencies
+        uses: ./.github/actions/setup
+      - name: Run perf baselines
+        run: pnpm exec vp test --run tests/vitest/perf-baselines.test.ts
+        env:
+          MATTERVIZ_PERF: 1
+
   e2e-tests:
     name: E2E tests (shard ${{ matrix.shard }}/4)
     runs-on: ubuntu-latest

@@ -57,20 +57,7 @@
   ])
   let disabled_open = $state(false)
 
-  // === Example 4: Fixed column count ===
-  let fixed_columns: Label[] = $state([
-    { key: `col1`, label: `Col 1` },
-    { key: `col2`, label: `Col 2` },
-    { key: `col3`, label: `Col 3` },
-    { key: `col4`, label: `Col 4` },
-    { key: `col5`, label: `Col 5` },
-    { key: `col6`, label: `Col 6` },
-    { key: `col7`, label: `Col 7` },
-    { key: `col8`, label: `Col 8` },
-  ])
-  let fixed_open = $state(false)
-
-  // === Example 5: HTML labels with subscripts/superscripts ===
+  // === Example 4: HTML labels with subscripts/superscripts ===
   let html_columns: Label[] = $state([
     {
       key: `h2o`,
@@ -100,7 +87,7 @@
   let html_open = $state(false)
   let html_collapsed: string[] = $state([])
 
-  // === Example 6: Many groups with pre-collapsed ===
+  // === Example 5: Many groups with pre-collapsed ===
   let many_groups_columns: Label[] = $state([
     { key: `a1`, label: `A1`, group: `Group A` },
     { key: `a2`, label: `A2`, group: `Group A` },
@@ -114,7 +101,7 @@
   let many_groups_open = $state(false)
   let many_groups_collapsed: string[] = $state([`Group B`, `Group D`])
 
-  // === Example 7: Multi-column sections (grouped with n_columns) ===
+  // === Example 6: Multi-column sections ===
   let multicolumn_columns: Label[] = $state([
     { key: `li`, label: `Lithium`, group: `Alkali Metals` },
     { key: `na`, label: `Sodium`, group: `Alkali Metals` },
@@ -205,19 +192,7 @@
   </div>
 
   <div class="demo-card">
-    <h2>4. Column Cap (n_columns=4)</h2>
-    <p>Allow up to 4 columns when the item count requires them.</p>
-    <div class="demo-container">
-      <ToggleMenu
-        bind:columns={fixed_columns}
-        bind:column_panel_open={fixed_open}
-        n_columns={4}
-      />
-    </div>
-  </div>
-
-  <div class="demo-card">
-    <h2>5. HTML Labels</h2>
+    <h2>4. HTML Labels</h2>
     <p>Labels support HTML for subscripts, superscripts, etc.</p>
     <div class="demo-container">
       <ToggleMenu
@@ -229,7 +204,7 @@
   </div>
 
   <div class="demo-card">
-    <h2>6. Pre-collapsed Sections</h2>
+    <h2>5. Pre-collapsed Sections</h2>
     <p>Some sections start collapsed (Group B and D).</p>
     <div class="demo-container">
       <ToggleMenu
@@ -245,17 +220,13 @@
   </div>
 
   <div class="demo-card wide">
-    <h2>7. Multi-column Sections</h2>
-    <p>
-      With n_columns=3, each section header spans the full width and items use up to 3 columns
-      below it.
-    </p>
+    <h2>6. Multi-column Sections</h2>
+    <p>Each section header spans the full width and its items wrap into up to 3 columns.</p>
     <div class="demo-container">
       <ToggleMenu
         bind:columns={multicolumn_columns}
         bind:column_panel_open={multicolumn_open}
         bind:collapsed_sections={multicolumn_collapsed}
-        n_columns={3}
       />
     </div>
     <div class="state-display">

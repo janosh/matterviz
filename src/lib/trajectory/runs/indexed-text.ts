@@ -4,14 +4,13 @@
 // for the plot are extracted progressively in chunks so a 100k-frame open stays responsive.
 import * as math from '$lib/math'
 import { to_error } from '$lib/utils'
-import { copy_numeric_fields, iter_xyz_frames, validate_3x3_matrix } from '../helpers'
-import type { XyzFrameSpec } from '../helpers'
+import { copy_numeric_fields, validate_3x3_matrix } from '../helpers'
 import type { TrajectoryFrame, TrajectoryMetadata } from '../index'
 import { ase_calculator_data, decode_ase_frame, read_ase_header } from '../parse/ase'
 import type { WarningCollector } from '../parse/shared'
 import {
   build_xyz_frame,
-  may_be_torn_xyz_tail,
+  index_xyz_frames,
   parse_extxyz_lattice,
   parse_xyz_comment_metadata,
 } from '../parse/xyz'
@@ -114,28 +113,8 @@ const run_from_source = (
 
 const xyz_source = (data: string, collector: WarningCollector): FrameSource => {
   let lines: string[] | null = data.trim().split(/\r?\n/)
-  const frames: XyzFrameSpec[] = Array.from(iter_xyz_frames(lines))
-  const build = (frame_idx: number, all_lines: string[]): TrajectoryFrame =>
-    build_xyz_frame(
-      all_lines,
-      frames[frame_idx],
-      { frame_label: `indexed frame ${frame_idx}`, default_step: frame_idx },
-      collector,
-    )
-  // Decode a frame that ends on the file's last line once now, so a half-written tail is
-  // excluded from frame_count instead of failing on the seek that reaches it
-  const last_idx = frames.length - 1
-  if (may_be_torn_xyz_tail(lines, frames, last_idx)) {
-    try {
-      build(last_idx, lines)
-    } catch (error) {
-      collector.warn(
-        `Dropping truncated final XYZ frame ${last_idx} (line ${frames[last_idx].start + 1})`,
-        error,
-      )
-      frames.pop()
-    }
-  }
+  // a torn tail is dropped now so frame_count excludes it, rather than failing on the seek
+  const frames = index_xyz_frames(lines, collector.warn)
   const live_lines = (): string[] => {
     if (!lines) throw disposed_error(`Indexed XYZ trajectory`)
     return lines
@@ -143,7 +122,13 @@ const xyz_source = (data: string, collector: WarningCollector): FrameSource => {
   return {
     format: `xyz`,
     frame_count: frames.length,
-    decode: (frame_idx) => build(frame_idx, live_lines()),
+    decode: (frame_idx) =>
+      build_xyz_frame(
+        live_lines(),
+        frames[frame_idx],
+        { frame_label: `indexed frame ${frame_idx}`, default_step: frame_idx },
+        collector,
+      ),
     property_row: (frame_idx) => {
       const { comment } = frames[frame_idx]
       const { step, properties } = parse_xyz_comment_metadata(comment)

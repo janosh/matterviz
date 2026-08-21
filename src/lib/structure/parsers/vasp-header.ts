@@ -21,7 +21,7 @@ import {
 // === Line cursors ===
 
 // `position` is the array index or character offset of the next unconsumed line.
-export interface VaspLineCursor {
+interface VaspLineCursor {
   peek: (lookahead?: number) => string | undefined
   advance: (count?: number) => void
   position: () => number
@@ -78,7 +78,7 @@ export const text_cursor = (text: string, start = 0): VaspLineCursor => {
 
 // === Header parsing ===
 
-export interface VaspHeaderOptions {
+interface VaspHeaderOptions {
   format: string
   // lenient treats every non-Direct mode as Cartesian; skip leaves the mode line unconsumed.
   coord_mode?: `strict` | `lenient` | `skip`
@@ -98,7 +98,7 @@ interface VaspHeader {
   is_direct: boolean
 }
 
-export type VaspHeaderResult = { ok: true; header: VaspHeader } | { ok: false; error: string }
+type VaspHeaderResult = { ok: true; header: VaspHeader } | { ok: false; error: string }
 
 const fail = (error: string): VaspHeaderResult => ({ ok: false, error })
 

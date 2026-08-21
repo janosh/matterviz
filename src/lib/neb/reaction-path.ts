@@ -115,14 +115,6 @@ function image_displacements(
 const rss_norm = (vectors: readonly Vec3[]): number =>
   Math.sqrt(vectors.reduce((sum, vec) => sum + vec[0] ** 2 + vec[1] ** 2 + vec[2] ** 2, 0))
 
-// Distance between two images in configuration space: the root-sum-square of the
-// per-atom displacements, i.e. the Euclidean norm of the 3N displacement vector.
-export const image_distance = (
-  from: AnyStructure,
-  to: AnyStructure,
-  options: PathMetricOptions = {},
-): number => rss_norm(image_displacements(from, to, path_geometry(from, options)))
-
 // Reaction coordinate of every image. `arc_length` (default) accumulates the
 // configuration-space distance between consecutive images, so unevenly spaced images
 // land where they physically belong; `image_index` returns the bare bead numbers.

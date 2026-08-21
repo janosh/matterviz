@@ -10,7 +10,7 @@ import { SvelteMap } from 'svelte/reactivity'
 import type { TrajectoryController, TrajectoryFrame, TrajectoryMetadata } from './index'
 import type { TrajectoryRun } from './run'
 
-export interface TrajectorySessionInputs {
+interface TrajectorySessionInputs {
   run: () => TrajectoryRun | undefined
   // The bound step index (current_step_idx) and its writer
   index: () => number
@@ -28,7 +28,7 @@ export interface TrajectorySessionInputs {
   on_frame_error?: (frame_idx: number, error: Error) => void
 }
 
-export interface TrajectorySessionOptions {
+interface TrajectorySessionOptions {
   // LRU bounds: frame count AND total atoms (cache many tiny frames or few huge ones)
   cache_max_frames?: number
   cache_max_atoms?: number

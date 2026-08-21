@@ -55,7 +55,7 @@ export interface SunburstGroupGap<Metadata = Record<string, unknown>> {
   max_fraction?: number // maximum fraction removed from a selected group's span (default 0.5)
 }
 
-export interface ProjectArcsOptions<Metadata = Record<string, unknown>> {
+interface ProjectArcsOptions<Metadata = Record<string, unknown>> {
   group_gap?: SunburstGroupGap<Metadata> | null
 }
 

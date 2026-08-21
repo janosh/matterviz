@@ -178,7 +178,7 @@ export function export_canvas_as_png(
     .catch((error: unknown) => console.error(`Error exporting PNG:`, error))
 }
 
-export interface SvgExportOptions {
+interface SvgExportOptions {
   // Extra user-space units around the viewBox in the exported clone. Useful
   // when strokes are centered on a chart edge and would otherwise be clipped.
   // `stroke` derives the padding from half the largest rendered stroke width.

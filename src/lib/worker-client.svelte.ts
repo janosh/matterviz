@@ -8,7 +8,7 @@
 // messages before that for callers that passed `on_progress`.
 import { to_error } from '$lib/utils'
 
-export interface WorkerClientConfig<Input, Options, Result> {
+interface WorkerClientConfig<Input, Options, Result> {
   // Names the module in error messages, e.g. `MSD`
   label: string
   // Must inline `new URL('./x-worker.js', import.meta.url)` at the call site: Vite detects
@@ -38,7 +38,7 @@ export interface WorkerRequestOptions<Progress = unknown> {
   transfer?: Transferable[]
 }
 
-export type WorkerClient<Input, Options, Result, Progress = unknown> = {
+type WorkerClient<Input, Options, Result, Progress = unknown> = {
   (
     input: Input,
     options: Options,

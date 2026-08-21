@@ -733,7 +733,7 @@ describe(`det_nxn`, () => {
     expect(math.det_nxn(matrix)).toBeCloseTo(expected, 10)
   })
 
-  test(`matches det_3x3 and det_4x4 fast paths`, () => {
+  test(`matches the det_3x3 fast path`, () => {
     // oxfmt-ignore
     const matrices_3x3: math.Matrix3x3[] = [
       [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
@@ -742,15 +742,6 @@ describe(`det_nxn`, () => {
     ]
     for (const matrix of matrices_3x3) {
       expect(math.det_nxn(matrix)).toBeCloseTo(math.det_3x3(matrix), 10)
-    }
-    // oxfmt-ignore
-    const matrices_4x4: math.Matrix4x4[] = [
-      [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]],
-      [[2, 0, 0, 0], [0, 3, 0, 0], [0, 0, 4, 0], [0, 0, 0, 5]],
-      [[1, 2, 3, 4], [0, 5, 6, 7], [0, 0, 8, 9], [0, 0, 0, 10]],
-    ]
-    for (const matrix of matrices_4x4) {
-      expect(math.det_nxn(matrix)).toBeCloseTo(math.det_4x4(matrix), 10)
     }
   })
 
@@ -796,7 +787,7 @@ describe(`det_nxn`, () => {
   })
 })
 
-describe(`det_4x4`, () => {
+describe(`det_nxn 4x4 fast path`, () => {
   test.each([
     [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1], 1, `identity`],
     [[2, 0, 0, 0], [0, 3, 0, 0], [0, 0, 4, 0], [0, 0, 0, 5], 120, `diagonal`],
@@ -809,19 +800,17 @@ describe(`det_4x4`, () => {
     [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], 0, `zero`],
     [[1e10, 0, 0, 0], [0, 1e10, 0, 0], [0, 0, 1e10, 0], [0, 0, 0, 1e10], 1e40, `large`],
   ])(`%s`, (r0, r1, r2, r3, expected) => {
-    expect(math.det_4x4([r0, r1, r2, r3] as math.Matrix4x4)).toBeCloseTo(expected, 10)
+    expect(math.det_nxn([r0, r1, r2, r3])).toBeCloseTo(expected, 10)
   })
 
   test(`barycentric coordinates (tetrahedron unit test)`, () => {
     // oxfmt-ignore
-    const tet_matrix: math.Matrix4x4 = [[0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1], [1, 1, 1, 1]]
-    expect(math.det_4x4(tet_matrix)).toBeCloseTo(-1, 10)
+    const tet_matrix = [[0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1], [1, 1, 1, 1]]
+    expect(math.det_nxn(tet_matrix)).toBeCloseTo(-1, 10)
 
     // oxfmt-ignore
-    const bary_matrix: math.Matrix4x4 = [
-      [0.25, 1, 0, 0], [0.25, 0, 1, 0], [0.25, 0, 0, 1], [1, 1, 1, 1],
-    ]
-    expect(math.det_4x4(bary_matrix) / math.det_4x4(tet_matrix)).toBeCloseTo(0.25, 10)
+    const bary_matrix = [[0.25, 1, 0, 0], [0.25, 0, 1, 0], [0.25, 0, 0, 1], [1, 1, 1, 1]]
+    expect(math.det_nxn(bary_matrix) / math.det_nxn(tet_matrix)).toBeCloseTo(0.25, 10)
   })
 })
 
@@ -924,19 +913,6 @@ describe(`frac_cutoff_per_axis`, () => {
     expect(cutoff[1]).toBeGreaterThan(5 / Math.hypot(...matrix[1]))
   })
 })
-
-// oxfmt-ignore
-test.each([
-  [`counter-clockwise unit triangle`, [0, 0], [1, 0], [0, 1], 1],
-  [`clockwise unit triangle`, [0, 0], [0, 1], [1, 0], -1],
-  [`translated origin`, [2, 3], [5, 3], [2, 7], 12],
-  [`collinear points`, [-1, -1], [1, 1], [3, 3], 0],
-] satisfies [string, Vec2, Vec2, Vec2, number][])(
-  `cross_2d: %s`,
-  (_name, origin, pt_a, pt_b, expected) => {
-    expect(math.cross_2d(origin, pt_a, pt_b)).toBe(expected)
-  },
-)
 
 // oxfmt-ignore
 test.each([
@@ -1149,6 +1125,8 @@ describe(`convex_hull_2d`, () => {
     // last point is interior, so the hull keeps only the 5 outer vertices
     [`pentagon with interior point`, [[0, 0], [4, 0], [5, 3], [2.5, 5], [0, 3], [2.5, 2]], 5],
     [`duplicate points`, [[0, 0], [1, 0], [1, 0], [0, 1], [0, 1]], 3],
+    // collinear interior points have zero cross product and are dropped from the chain
+    [`collinear points`, [[0, 0], [1, 1], [3, 3], [2, 2]], 2],
   ] as [string, Vec2[], number][])(`%s -> %i vertices`, (_name, pts, expected_len) => {
     expect(math.convex_hull_2d(pts)).toHaveLength(expected_len)
   })

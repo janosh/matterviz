@@ -12,7 +12,7 @@ import { parse_file_content, type ParseResult } from './parse'
 const error_message = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
 
-export const prepare_parse_result = (
+const prepare_parse_result = (
   id: number,
   result: ParseResult,
 ): { response: ParseWorkerResponse; transfer: Transferable[] } => {

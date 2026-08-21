@@ -10,7 +10,7 @@ export const MAX_FORMULA_DENOMINATOR = 10_000
 // Euclid's gcd on floats, stopping once the remainder drops below `tol` (pymatgen's
 // gcd_float). Tolerates rounded inputs (0.3333/0.6667 -> 0.3333) while resolving genuinely
 // dilute ratios (0.01/0.99 -> 0.01).
-export function gcd_float(values: number[], tol: number): number {
+function gcd_float(values: number[], tol: number): number {
   const pair_gcd = (val_a: number, val_b: number): number => {
     while (Math.abs(val_b) > tol) [val_a, val_b] = [val_b, val_a % val_b]
     return val_a

@@ -6,7 +6,7 @@ import type { Vec2, Vec3 } from '$lib/math'
 import { BufferAttribute, BufferGeometry } from 'three/webgpu'
 import type { FermiIsosurface } from './types'
 
-export interface VertexColorSpec {
+interface VertexColorSpec {
   colormap: D3InterpolateName
   color_range: Vec2
 }

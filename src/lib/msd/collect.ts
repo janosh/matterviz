@@ -7,7 +7,7 @@ import {
 } from '$lib/trajectory/runs/accumulate'
 import type { MsdPositions } from './index'
 
-export interface MsdCollectOptions {
+interface MsdCollectOptions {
   // Collect every Nth frame; use `suggest_msd_frame_stride` to stay inside the budget
   frame_stride?: number
   max_bytes?: number

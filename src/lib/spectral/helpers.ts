@@ -674,7 +674,7 @@ export function find_qpoint_at_rescaled_x(
 type SpinDensities = Record<string, number[]>
 
 // Pymatgen Dos base class format
-export interface PymatgenDos {
+interface PymatgenDos {
   // pymatgen MSONable markers - optional since hand-built/partial DOS may omit them,
   // but the format detectors (normalize_dos, is_pymatgen_format) key on them
   '@class'?: string

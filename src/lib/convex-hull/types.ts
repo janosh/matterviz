@@ -250,10 +250,5 @@ export interface GasAnalysis {
 }
 
 // Position options for UI control panels (e.g., GasPressureControls)
-export const GAS_CONTROL_POSITIONS = [
-  `top-left`,
-  `top-right`,
-  `bottom-left`,
-  `bottom-right`,
-] as const
+const GAS_CONTROL_POSITIONS = [`top-left`, `top-right`, `bottom-left`, `bottom-right`] as const
 export type GasControlPosition = (typeof GAS_CONTROL_POSITIONS)[number]

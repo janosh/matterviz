@@ -41,8 +41,6 @@ export const DIAGRAM_COLORS = {
   two_phase_beta_gamma: rgba(230, 200, 180, 0.5),
 } as const
 
-export type DiagramColorKey = keyof typeof DIAGRAM_COLORS
-
 // Resolve color from DIAGRAM_COLORS key or pass through raw CSS color string
 export function resolve_diagram_color(color: string): string {
   const resolved = (DIAGRAM_COLORS as Record<string, string>)[color]

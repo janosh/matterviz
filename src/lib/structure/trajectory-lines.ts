@@ -28,7 +28,7 @@ export type TrajectoryLineColorMode = `element` | `time`
 // across the box, so trails stay inside the cell at the cost of visible gaps.
 export type TrajectoryLineWrapMode = `unwrap` | `break`
 
-export interface TrajectoryLinesOptions {
+interface TrajectoryLinesOptions {
   // Newest collected-frame index the trail reaches. Defaults to the last collected frame.
   // This is an index into the STREAM's frames, which are already `stream.frame_stride`
   // apart in the source file.
@@ -54,7 +54,7 @@ export interface TrajectoryLinesOptions {
   anchor_positions?: Float64Array | null
 }
 
-export interface TrajectoryLinesGeometry {
+interface TrajectoryLinesGeometry {
   // 3 floats per sampled point, atom-major (every sampled frame of atom 0, then atom 1, …)
   positions: Float32Array
   // Linear-space rgb per point, matching `positions`

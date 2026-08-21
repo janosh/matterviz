@@ -42,7 +42,7 @@ import { is_reference_md_h5_file, parse_reference_md_h5_file } from './reference
 import type { LazyTrajectorySource, ParsedTrajectory, WarningCollector } from './shared'
 import { is_vaspout_h5_file, parse_vaspout_h5_file } from './vaspout-h5'
 
-export type Hdf5TrajectoryResult =
+type Hdf5TrajectoryResult =
   | { kind: `parsed`; parsed: ParsedTrajectory }
   // `lazy.dispose` closes the h5wasm handle and releases the backing FS entry
   | { kind: `lazy`; lazy: LazyTrajectorySource }

@@ -1,12 +1,12 @@
-import type { TreemapNode } from '$lib/plot'
+import type { SunburstLayoutOptions, SunburstSort, TreemapNode } from '$lib/plot'
 import {
   compute_sunburst_layout,
-  compute_treemap_layout,
   lerp_rects,
   sunburst_from_paths,
   tile_rects,
 } from '$lib/plot'
 import { DEFAULT_FONT_SPEC } from '$lib/plot/core/text-metrics'
+import { DEFAULTS } from '$lib/settings'
 import {
   measure_treemap_label_block,
   normalize_treemap_label_lines,
@@ -15,6 +15,30 @@ import {
 import { describe, expect, test } from 'vitest'
 
 const size = { width: 400, height: 300 }
+
+// One-shot semantic layout + root tiling, the way the Treemap component composes them
+// (it calls compute_sunburst_layout and tile_rects separately so zoom re-tiles cheaply)
+const compute_treemap_layout = (
+  data: TreemapNode | TreemapNode[],
+  tile_size: { width: number; height: number },
+  opts: Omit<SunburstLayoutOptions, `sort`> & {
+    sort?: SunburstSort
+    padding_inner?: number
+    padding_top?: number
+    padding_outer?: number
+  } = {},
+) => {
+  const {
+    padding_inner = DEFAULTS.treemap.padding_inner,
+    padding_top = DEFAULTS.treemap.padding_top,
+    padding_outer = DEFAULTS.treemap.padding_outer,
+    sort = `descending`,
+    ...tree_opts
+  } = opts
+  const { arcs, root, max_depth } = compute_sunburst_layout(data, { sort, ...tree_opts })
+  const rects = tile_rects(arcs, 0, tile_size, { padding_inner, padding_top, padding_outer })
+  return { arcs, rects, root, max_depth }
+}
 const no_pad = { padding_inner: 0, padding_top: 0, padding_outer: 0 }
 
 // Two-branch tree: A -> {A1: 4, A2: 6}, B: 10. Root total = 20.

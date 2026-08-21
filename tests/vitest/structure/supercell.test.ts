@@ -421,6 +421,19 @@ describe(`oblique cell bug tests`, () => {
   )
 })
 
+describe(`size limit`, () => {
+  test(`refuses a supercell above MAX_SUPERCELL_SITES before allocating it`, () => {
+    const two_sites = make_crystal(1, [
+      { element: `H`, abc: [0, 0, 0] as Vec3 },
+      { element: `H`, abc: [0.5, 0.5, 0.5] as Vec3 },
+    ])
+    expect(() => make_supercell(two_sites, `100x100x100`)).toThrow(
+      /2,000,000 sites \(limit 1,000,000\)/,
+    )
+    expect(() => make_supercell(two_sites, `50x100x100`)).not.toThrow()
+  })
+})
+
 describe(`performance tests`, () => {
   test.each([
     [100, `2x2x2`, 800, 50],

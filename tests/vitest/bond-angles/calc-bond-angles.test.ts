@@ -13,7 +13,7 @@ import { element_by_symbol } from '$lib/element/data'
 import type { Vec3 } from '$lib/math'
 import type { ElementSymbol } from '$lib/element'
 import type { Molecule } from '$lib/structure'
-import { calc_structure_coordination } from '$lib/structure/atom-properties'
+import { calc_coordination_nums } from '$lib/coordination/calc-coordination'
 import { structure_map } from '$site/structures'
 import { tick } from 'svelte'
 import { describe, expect, test } from 'vitest'
@@ -148,7 +148,7 @@ test.each([`mp-1`, `mp-2`, `mp-1234`, `mp-756175`])(
   `%s yields exactly sum_atoms C(coordination_number, 2) angles`,
   (id) => {
     const structure = fixture(id)
-    const { sites } = calc_structure_coordination(structure, `electroneg_ratio`)
+    const { sites } = calc_coordination_nums(structure, `electroneg_ratio`)
     const expected = sites.reduce(
       (sum, site) => sum + (site.coordination_num * (site.coordination_num - 1)) / 2,
       0,
@@ -160,7 +160,7 @@ test.each([`mp-1`, `mp-2`, `mp-1234`, `mp-756175`])(
   },
 )
 
-describe(`periodic image expansion`, () => {
+describe(`periodic bonding`, () => {
   // One atom per cell with a = 2 * covalent_radius: nearest neighbours sit at exactly the
   // sum of covalent radii (bonded), the face diagonal at sqrt(2) times that (not bonded).
   // Every neighbour of the single atom is therefore one of its own periodic images.
@@ -172,7 +172,7 @@ describe(`periodic image expansion`, () => {
     const triplets = compute_bond_angles(simple_cubic)
     expect(angle_tally(triplets)).toEqual({ '90.0000': 12, '180.0000': 3 })
     expect(triplets).toHaveLength(15) // C(6, 2)
-    // Every neighbour is an image of atom 0, reported against its original index
+    // Every neighbour is a periodic image of atom 0 itself
     expect(triplets.every((triplet) => triplet.neighbor_idxs.every((idx) => idx === 0))).toBe(
       true,
     )
@@ -180,29 +180,33 @@ describe(`periodic image expansion`, () => {
   })
 
   test.each<[BondAngleOptions, number]>([
-    [{ auto_expand: true }, 15],
-    [{ auto_expand: false }, 0],
-    // switching every axis to non-periodic is the same switch under another name
+    [{}, 15],
+    [{ pbc: [true, true, true] }, 15],
+    // a slab keeps the 4 in-plane images: C(4, 2) = 4 right + 2 straight angles
+    [{ pbc: [true, true, false] }, 6],
     [{ pbc: [false, false, false] }, 0],
   ])(`%j gives %s angles for a one-atom cell`, (options, expected) => {
     expect(compute_bond_angles(simple_cubic, options)).toHaveLength(expected)
   })
 
-  // On real crystals image expansion is not a small correction: without it every angle
-  // that closes through a cell face is silently lost.
+  // On real crystals periodic bonding is not a small correction: bonded as a finite box,
+  // every angle that closes through a cell face is silently lost.
   test.each([
     [`mp-1`, 56, 0],
     [`mp-2`, 264, 12],
     // LuAl2 is a MgCu2-type Laves phase: Al-Al (2.727 Å) is the shortest bond in the
     // structure and forms the tetrahedral B-site network. It used to be suppressed by a
     // flat same-species penalty, which is now applied only to contacts that sit behind a
-    // shorter one, so those angles are counted (303 -> 339 without expansion).
+    // shorter one, so those angles are counted (303 -> 339 in the finite box).
     [`mp-1234`, 1200, 339],
-  ])(`%s has %s angles with image expansion but only %s without`, (id, expanded, bare) => {
-    const structure = fixture(id)
-    expect(compute_bond_angles(structure)).toHaveLength(expanded)
-    expect(compute_bond_angles(structure, { auto_expand: false })).toHaveLength(bare)
-  })
+  ])(
+    `%s has %s angles across periodic boundaries but only %s in the finite box`,
+    (id, periodic, bare) => {
+      const structure = fixture(id)
+      expect(compute_bond_angles(structure)).toHaveLength(periodic)
+      expect(compute_bond_angles(structure, { pbc: [false, false, false] })).toHaveLength(bare)
+    },
+  )
 
   // Bond displacements must stay raw pos_2 - pos_1. With a bond length of exactly a/2 the
   // centre's two partners sit at +2 and -2 Å, which minimum-imaging would both fold to -2,
@@ -274,10 +278,10 @@ describe(`explicit bonds`, () => {
     ],
   }
 
-  // Under a proximity strategy the same two bonds are also found against image atoms, with
-  // matching displacements but different search-site indices. Keying the dedup on the
-  // ORIGINAL neighbour index is what stops apply_explicit_bond_metadata adding a second copy
-  // of each — which would put a bond vector against itself, i.e. a spurious 0 degree angle.
+  // Under a proximity strategy the same two bonds are also found as periodic contacts, with
+  // the same (site pair, cell_shift) keys, so apply_explicit_bond_metadata merges rather than
+  // appending a second copy of each — which would put a bond vector against itself, i.e. a
+  // spurious 0 degree angle.
   test.each([`explicit_only`, `electroneg_ratio`] as const)(
     `cell_shift on an explicit bond gives one straight angle per atom under %s`,
     (strategy) => {
@@ -289,7 +293,7 @@ describe(`explicit bonds`, () => {
   )
 
   // Rocksalt has a full proximity-found bond network, so a periodic explicit record on top of
-  // it is the case where a shift-keyed dedup silently double-counts. Measured before the fix:
+  // it is the case where a mismatched key silently double-counts. Measured before the fix:
   // 132 angles as { 0: 2, 90: 104, 180: 26 } instead of the correct 120.
   test(`a periodic explicit bond does not perturb the rocksalt histogram`, () => {
     const with_explicit = { ...rocksalt }

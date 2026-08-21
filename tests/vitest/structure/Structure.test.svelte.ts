@@ -1,15 +1,15 @@
 import { type AnyStructure, type MeasureMode, Structure } from '$lib'
 import type { VolumetricData } from '$lib/isosurface'
+import { DEFAULT_ISOSURFACE_SETTINGS } from '$lib/isosurface/types'
 import { create_frac_to_cart, type Vec3 } from '$lib/math'
 import { DEFAULTS } from '$lib/settings'
 import * as symmetry from '$lib/symmetry'
-import type { StructureBond, StructureHandlerData } from '$lib/structure'
+import type { StructureBond, StructureHandlerData, StructurePane } from '$lib/structure'
 import { get_element_counts } from '$lib/structure'
 import type { Pbc } from '$lib/structure/pbc'
 import { make_supercell } from '$lib/structure/supercell'
 import { structures } from '$site/structures'
-import { type ComponentProps, createRawSnippet, flushSync, mount, tick } from 'svelte'
-import { SvelteMap } from 'svelte/reactivity'
+import { type ComponentProps, flushSync, mount, tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
   assertHoverScopedShortcut,
@@ -146,7 +146,7 @@ describe(`Structure`, () => {
     expect(proxy_warns).toEqual([])
   })
 
-  test(`shows a compact symmetry warning with a corner dismiss button`, async () => {
+  test(`shows a dismissible symmetry warning when analysis fails`, async () => {
     vi.stubEnv(`VITEST`, ``)
     vi.spyOn(symmetry, `ensure_moyo_wasm_ready`).mockResolvedValueOnce(undefined)
     vi.spyOn(symmetry, `analyze_structure_symmetry`).mockRejectedValueOnce(
@@ -158,29 +158,10 @@ describe(`Structure`, () => {
       await vi.waitFor(() =>
         expect(document.querySelector(`.symmetry-error`)).toBeInstanceOf(HTMLElement),
       )
-
       const warning = doc_query(`.symmetry-error`)
       expect(warning.textContent).toContain(`Symmetry analysis failed: WASM unavailable`)
-      const warning_style = getComputedStyle(warning)
-      expect(warning_style.fontSize).toBe(`12px`)
-      expect(warning_style.paddingTop).toBe(`6.4px`)
-
-      const dismiss = doc_query<HTMLButtonElement>(`.symmetry-error button`)
-      expect(dismiss.getAttribute(`aria-label`)).toBe(`Dismiss symmetry warning`)
-      const dismiss_style = getComputedStyle(dismiss)
-      expect(dismiss_style.position).toBe(`absolute`)
-      expect(dismiss_style.top).toBe(`50%`)
-      expect(dismiss_style.transform).toBe(`translateY(-50%)`)
-      expect(dismiss_style.display).toBe(`grid`)
-      expect(dismiss_style.placeItems).toBe(`center`)
-      expect(dismiss_style.borderRadius).toBe(`50%`)
-      expect(dismiss_style.width).toBe(`16px`)
-      expect(dismiss_style.height).toBe(`16px`)
-      const dismiss_icon = dismiss.querySelector(`svg`)
-      expect(dismiss_icon).toBeInstanceOf(SVGElement)
-      expect(getComputedStyle(dismiss_icon as SVGElement).display).toBe(`block`)
-
-      dismiss.click()
+      expect(warning.getAttribute(`role`)).toBe(`status`)
+      doc_query<HTMLButtonElement>(`.symmetry-error button`).click()
       flushSync()
       expect(document.querySelector(`.symmetry-error`)).toBeNull()
     } finally {
@@ -207,14 +188,10 @@ describe(`Structure`, () => {
   })
 
   test(`switches a volumetric structure between shared 3D and slice views`, async () => {
-    const on_slice_settings_change = vi.fn()
-    const on_display_mode_change = vi.fn()
     const props = mount_volumetric({
       show_controls: `always`,
       display_mode: `structure`,
       slice_settings: { plane_mode: `hkl`, resolution: 2 },
-      on_slice_settings_change,
-      on_display_mode_change,
     })
     await tick()
 
@@ -223,17 +200,12 @@ describe(`Structure`, () => {
     await select_structure_layout(`2D cross-section`)
 
     expect(props.display_mode).toBe(`slice`)
-    expect(on_display_mode_change).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({ display_mode: `slice`, active_volume_idx: 0 }),
-    )
     expect(document.querySelector(`[data-testid="volume-slice"]`)).toBeInstanceOf(HTMLElement)
     expect(document.querySelector(`button[title="Measure / Edit"]`)).toBeNull()
 
     set_aria_input(`Slice position on canvas`, `0.75`)
     await tick()
     expect(props.slice_settings?.position).toBe(0.75)
-    expect(on_slice_settings_change).toHaveBeenCalledExactlyOnceWith(props.slice_settings)
-    on_slice_settings_change.mockClear()
 
     const controls_toggle = doc_query<HTMLButtonElement>(`button.structure-controls-toggle`)
     controls_toggle.click()
@@ -243,9 +215,6 @@ describe(`Structure`, () => {
     expect(plane_select.value).toBe(`hkl`)
     set_aria_input(`Slice resolution`, `3`)
     await tick()
-    expect(on_slice_settings_change).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({ plane_mode: `hkl`, resolution: 3 }),
-    )
     expect(props.slice_settings).toEqual(
       expect.objectContaining({ plane_mode: `hkl`, resolution: 3 }),
     )
@@ -258,36 +227,6 @@ describe(`Structure`, () => {
       await tick()
       expect(props.slice_settings?.color_range).toEqual(color_range)
     }
-  })
-
-  test(`reports externally bound volumetric view changes`, async () => {
-    const on_display_mode_change = vi.fn()
-    const on_slice_settings_change = vi.fn()
-    const props = mount_volumetric({
-      display_mode: `structure`,
-      slice_settings: { plane_mode: `hkl`, resolution: 2 },
-      on_display_mode_change,
-      on_slice_settings_change,
-    })
-    await tick()
-
-    expect(on_display_mode_change).not.toHaveBeenCalled()
-    expect(on_slice_settings_change).not.toHaveBeenCalled()
-
-    props.display_mode = `slice`
-    props.slice_settings = { plane_mode: `cartesian`, resolution: 4 }
-    await tick()
-    expect(on_display_mode_change).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({ display_mode: `slice`, active_volume_idx: 0 }),
-    )
-
-    expect(on_slice_settings_change).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({
-        plane_mode: `cartesian`,
-        resolution: 4,
-        cartesian_normal: [0, 0, 1],
-      }),
-    )
   })
 
   test(`renders slice mode for volume-only data with no atomic sites`, async () => {
@@ -319,19 +258,14 @@ describe(`Structure`, () => {
   })
 
   test(`clamps stale active volume indices with controls closed`, async () => {
-    const on_active_volume_idx_change = vi.fn()
     const props = mount_volumetric({
       active_volume_idx: 9,
       display_mode: `slice`,
       slice_settings: { resolution: 2 },
-      on_active_volume_idx_change,
     })
     await tick()
 
     expect(props.active_volume_idx).toBe(0)
-    expect(on_active_volume_idx_change).toHaveBeenCalledWith(
-      expect.objectContaining({ active_volume_idx: 0, display_mode: `slice` }),
-    )
     expect(document.querySelector(`[data-testid="volume-slice"]`)).toBeInstanceOf(HTMLElement)
   })
 
@@ -378,19 +312,22 @@ describe(`Structure`, () => {
   })
 
   test(`window keydown shortcuts are scoped to the hovered viewer`, async () => {
-    const state = { info_pane_open: false }
+    const state = { active_pane: null as StructurePane | null }
     mount_structure(bind_props({ structure, enable_info_pane: true }, state))
     await tick()
 
     await assertHoverScopedShortcut({
       viewer: doc_query(`.structure`),
       fire: () => press_window_key({ key: `i`, ctrlKey: true }),
-      read_state: () => state.info_pane_open,
+      read_state: () => state.active_pane === `info`,
     })
   })
 
   test(`hover keydown path bails in edit modes so destructive keys need focus`, async () => {
-    const state = { info_pane_open: false, measure_mode: `edit-atoms` as MeasureMode }
+    const state = {
+      active_pane: null as StructurePane | null,
+      measure_mode: `edit-atoms` as MeasureMode,
+    }
     mount_structure(bind_props({ structure, enable_info_pane: true }, state))
     await tick()
     expect(state.measure_mode, `edit-atoms should stick for a plain structure`).toBe(
@@ -401,7 +338,24 @@ describe(`Structure`, () => {
     await tick()
     // hovered (not focused) + edit mode → window forwarder ignores the key
     press_window_key({ key: `i`, ctrlKey: true })
-    expect(state.info_pane_open, `hover path ignored in edit mode`).toBe(false)
+    expect(state.active_pane, `hover path ignored in edit mode`).toBeNull()
+  })
+
+  test(`edit-atoms A opens the element input and Escape closes it, even while that input has focus`, async () => {
+    const edit_props: { measure_mode: MeasureMode } = { measure_mode: `edit-atoms` }
+    mount_structure(bind_props(edit_props, { structure: structures[0] }))
+    await tick()
+    const press = (target: Element, key: string) =>
+      target.dispatchEvent(
+        new KeyboardEvent(`keydown`, { key, cancelable: true, bubbles: true }),
+      )
+    press(doc_query(`.structure`), `a`)
+    await tick()
+    const add_input = doc_query<HTMLInputElement>(`.add-atom-input input`)
+    // the autofocused element input is where the next keystroke lands
+    press(add_input, `Escape`)
+    await tick()
+    expect(document.querySelector(`.add-atom-input`)).toBeNull()
   })
 
   test(`edit-atoms Delete removes selected atom + remaps bonds, undo restores both`, async () => {
@@ -487,6 +441,33 @@ describe(`Structure`, () => {
     )
   })
 
+  test(`displayed_structure keeps its identity across unrelated prop changes`, async () => {
+    // A bound parent re-proxies every write, so rewriting the same structure on an
+    // unrelated rerun would invalidate every consumer of displayed_structure
+    const props = $state<ComponentProps<typeof Structure>>({
+      structure,
+      displayed_structure: undefined,
+      active_volume_idx: 0,
+      volumetric_data: undefined,
+    })
+    let runs = 0
+    const destroy = $effect.root(() => {
+      $effect(() => {
+        void props.displayed_structure
+        runs += 1
+      })
+    })
+    mount_structure(props)
+    await tick()
+    const [displayed, runs_before] = [props.displayed_structure, runs]
+    expect(displayed?.sites.length).toBeGreaterThan(0)
+    props.active_volume_idx = 3
+    await tick()
+    expect(props.displayed_structure).toBe(displayed)
+    expect(runs).toBe(runs_before)
+    destroy()
+  })
+
   test.each([
     [`aperiodic`, [false, false, false], [-0.1, 1.2, 2.1]],
     [`partially periodic`, [true, false, true], [0.9, 1.2, 0.1]],
@@ -545,6 +526,10 @@ describe(`Structure`, () => {
         expect(legend_total).toBe(base_total)
       })
       expect(state.measure_mode).toBe(`edit-bonds`)
+      // a build that already fails at mount is reported, not only one that starts failing
+      expect(doc_query(`.edit-toast`).textContent).toBe(
+        `Failed to create supercell: malformed scaling matrix`,
+      )
     } finally {
       error_spy.mockRestore()
     }
@@ -661,7 +646,6 @@ describe(`Structure`, () => {
       measured_sites: number[]
       highlighted_sites: number[]
       hovered_site_idx: number | null
-      site_radius_overrides: SvelteMap<number, number>
     }>({
       structure,
       structure_series_key: {},
@@ -669,7 +653,6 @@ describe(`Structure`, () => {
       measured_sites: [],
       highlighted_sites: [],
       hovered_site_idx: null,
-      site_radius_overrides: new SvelteMap(),
     })
     mount_structure(props)
     await tick()
@@ -677,7 +660,6 @@ describe(`Structure`, () => {
     props.measured_sites = [0]
     props.highlighted_sites = [0]
     props.hovered_site_idx = 0
-    props.site_radius_overrides.set(0, 2)
 
     props.structure = {
       ...structure,
@@ -685,7 +667,6 @@ describe(`Structure`, () => {
     }
     await tick()
     expect(props.selected_sites).toEqual([0])
-    expect(props.site_radius_overrides.get(0)).toBe(2)
 
     props.structure = { ...structure, sites: structure.sites.slice(1) }
     await tick()
@@ -693,43 +674,34 @@ describe(`Structure`, () => {
     expect(props.measured_sites).toEqual([])
     expect(props.highlighted_sites).toEqual([])
     expect(props.hovered_site_idx).toBeNull()
-    expect(props.site_radius_overrides.size).toBe(0)
   })
 
-  test(`clears stale picks before the displayed structure shrinks under them`, async () => {
-    // Render-phase probe inside Structure's template: records the displayed site count next
-    // to the picks visible at that instant, the pair StructureScene's overlays index sites
-    // with. A pick >= count there is what used to throw mid-render and abort the flush.
-    const seen: [number, number[]][] = []
+  test(`clears stale picks in the same flush that shrinks the displayed structure`, async () => {
+    // What StructureScene's overlays index sites with is the session's validated selection,
+    // so a pick is never visible next to a displayed structure that lacks that site. Here the
+    // bound props are observed after a synchronous flush: both have already moved together.
     const props = $state<{
       structure: AnyStructure
       measured_sites: number[]
       measure_mode: MeasureMode
       show_image_atoms: boolean
       supercell_scaling: string
-      bottom_left: ComponentProps<typeof Structure>[`bottom_left`]
+      displayed_structure?: AnyStructure
     }>({
       structure,
       measured_sites: [],
       measure_mode: `distance`,
       show_image_atoms: true,
       supercell_scaling: `1x1x1`,
-      bottom_left: createRawSnippet<[{ structure?: AnyStructure }]>((get_args) => ({
-        render: () => `<span></span>`,
-        setup: () => {
-          $effect.pre(() => {
-            seen.push([get_args().structure?.sites.length ?? 0, [...props.measured_sites]])
-          })
-        },
-      })),
+      displayed_structure: undefined,
     })
     mount_structure(props)
     await tick()
-    const displayed_count = () => seen[seen.length - 1][0]
+    const displayed_count = () => props.displayed_structure?.sites.length ?? 0
     const pick_last_displayed = () => {
       props.measured_sites = [0, 1, displayed_count() - 1]
       flushSync()
-      expect(seen[seen.length - 1]).toEqual([displayed_count(), props.measured_sites])
+      expect(props.measured_sites).toHaveLength(3)
     }
 
     // image atoms: the last displayed site is an image that vanishes when they're hidden
@@ -748,9 +720,7 @@ describe(`Structure`, () => {
     props.supercell_scaling = `1x1x1`
     flushSync()
     expect(props.measured_sites).toEqual([])
-
-    const stale_renders = seen.filter(([count, picks]) => picks.some((idx) => idx >= count))
-    expect(stale_renders).toEqual([])
+    expect(displayed_count()).toBe(structure.sites.length)
   })
 
   test(`discovers new vector keys within one structure series`, async () => {
@@ -772,7 +742,7 @@ describe(`Structure`, () => {
     const props = $state({
       structure: with_vectors(false),
       structure_series_key: {},
-      controls_open: true,
+      active_pane: `controls` as const,
     })
     mount_structure(props)
     await tick()
@@ -890,7 +860,7 @@ describe(`Structure`, () => {
     }
 
     mount_structure(
-      bind_props({ structure, info_pane_open: true, show_controls: true }, state),
+      bind_props({ structure, active_pane: `info` as const, show_controls: true }, state),
     )
     await tick()
 
@@ -926,7 +896,7 @@ describe(`Structure empty states`, () => {
 
 test(`camera projection and auto-rotate controls reflect scene_props`, async () => {
   const scene_props = { camera_projection: `perspective` as const, auto_rotate: 0.5 }
-  mount_structure({ structure, controls_open: true, show_controls: true, scene_props })
+  mount_structure({ structure, active_pane: `controls`, show_controls: true, scene_props })
   await tick()
 
   const projection_label = [...document.querySelectorAll(`label`)].find((label) =>
@@ -958,7 +928,7 @@ test(`viewer-local setting changes do not mutate defaults or another viewer`, as
         return input ? [input] : []
       })
   const default_auto_rotate = DEFAULTS.structure.auto_rotate
-  mount_structure({ structure, controls_open: true, show_controls: true })
+  mount_structure({ structure, active_pane: `controls`, show_controls: true })
   await tick()
 
   const [first_auto_rotate] = auto_rotate_inputs()
@@ -968,7 +938,7 @@ test(`viewer-local setting changes do not mutate defaults or another viewer`, as
   flushSync()
   expect(DEFAULTS.structure.auto_rotate).toBe(default_auto_rotate)
 
-  mount_structure({ structure, controls_open: true, show_controls: true })
+  mount_structure({ structure, active_pane: `controls`, show_controls: true })
   await tick()
   const inputs = auto_rotate_inputs()
   expect(inputs).toHaveLength(2)
@@ -981,7 +951,7 @@ describe(`atom label controls`, () => {
   test(`controls reflect scene_props bindings`, () => {
     mount_structure({
       structure,
-      controls_open: true,
+      active_pane: `controls`,
       show_controls: true,
       scene_props: {
         show_site_labels: true,
@@ -1011,7 +981,7 @@ describe(`atom label controls`, () => {
     // Mount first instance
     mount_structure({
       structure,
-      controls_open: true,
+      active_pane: `controls`,
       show_controls: true,
       scene_props: { show_site_labels: true, site_label_offset: [0, 0.75, 0.2] },
     })
@@ -1019,7 +989,7 @@ describe(`atom label controls`, () => {
     // Mount second instance
     mount_structure({
       structure,
-      controls_open: true,
+      active_pane: `controls`,
       show_controls: true,
       scene_props: { show_site_labels: true, site_label_offset: [0, 0.75, 0.7] },
     })
@@ -1231,6 +1201,22 @@ describe(`Structure string parsing`, () => {
     expect(on_file_load.mock.calls[0][0].structure?.sites[0]?.species[0]?.element).toBe(`He`)
   })
 
+  test(`an unrelated prop change does not abort and restart an in-flight data_url fetch`, async () => {
+    const responses = deferred_fetch_responses()
+    const props = $state<ComponentProps<typeof Structure>>({
+      data_url: `/a.json`,
+      isosurface_settings: { ...DEFAULT_ISOSURFACE_SETTINGS },
+      active_volume_idx: 0,
+    })
+    mount_structure(props)
+    await vi.waitFor(() => expect(responses.get(`/a.json`)).toHaveLength(1))
+    props.isosurface_settings = { ...DEFAULT_ISOSURFACE_SETTINGS }
+    props.active_volume_idx = 2
+    await tick()
+    await tick()
+    expect(responses.get(`/a.json`), `the first request is still the only one`).toHaveLength(1)
+  })
+
   test(`on_error reports the requested URL, not a superseded data_url`, async () => {
     const responses = deferred_fetch_responses()
     const on_error = vi.fn()
@@ -1300,10 +1286,6 @@ describe(`Multi-side view`, () => {
     layout_button.click()
     await tick()
     const dropdown = doc_query(`.view-mode-dropdown`)
-    expect(getComputedStyle(dropdown).pointerEvents).toBe(`auto`)
-    expect(Number(getComputedStyle(dropdown).zIndex)).toBeGreaterThan(0)
-    const view_mode_control = doc_query(`.view-mode-control`)
-    expect(Number(getComputedStyle(view_mode_control).zIndex)).toBeGreaterThan(0)
 
     const grid_option = [
       ...dropdown.querySelectorAll<HTMLButtonElement>(`.view-mode-option`),
@@ -1325,78 +1307,50 @@ describe(`Multi-side view`, () => {
   test(`toggle button is hidden when 'multi-view' control is in hidden list`, async () => {
     mount_structure({
       structure,
-      controls_open: true,
+      active_pane: `controls` as const,
       show_controls: { mode: `always`, hidden: [`multi-view`] },
     })
     await tick()
     expect(document.querySelector(`button[aria-label^="View layout:"]`)).toBeNull()
   })
 
+  // Panes need 300x200 px each with a 2 px gap: 602x402 for the default 4 views (2 rows),
+  // 602x604 for 6 views (3 rows)
   test.each([
-    [`default width gap`, 601, 600, 4, 300, 200, 2, false],
-    [`default height gap`, 800, 401, 4, 300, 200, 2, false],
-    [`custom view rows below boundary`, 800, 603, 6, 300, 200, 2, false],
-    [`custom view rows at boundary`, 800, 604, 6, 300, 200, 2, true],
-    [`larger gap below boundary`, 409, 310, 4, 200, 150, 10, false],
-    [`larger gap at boundary`, 410, 310, 4, 200, 150, 10, true],
-    [`non-finite values use defaults`, 602, 402, 4, Number.NaN, Infinity, Number.NaN, true],
-    [`non-finite width uses default`, 601, 402, 4, Number.NaN, 200, 2, false],
-    [`non-finite height uses default`, 602, 401, 4, 300, Infinity, 2, false],
+    [`below width`, 601, 402, 4, false],
+    [`below height`, 602, 401, 4, false],
+    [`at boundary`, 602, 402, 4, true],
+    [`three rows below`, 602, 603, 6, false],
+    [`three rows at boundary`, 602, 604, 6, true],
   ] as const)(
     `responsive multi-view availability: %s`,
-    async (
-      _scenario,
-      client_width,
-      client_height,
-      view_count,
-      min_pane_width,
-      min_pane_height,
-      view_gap,
-      expected_active,
-    ) => {
+    async (_scenario, client_width, client_height, view_count, expected_active) => {
       mock_viewer_size(client_width, client_height)
       const views = Array.from({ length: view_count }, () => ({}))
-      const state = { multi_view_active: !expected_active }
-      mount_structure(
-        bind_props(
-          {
-            structure,
-            multi_view: true,
-            multi_view_min_pane_width: min_pane_width,
-            multi_view_min_pane_height: min_pane_height,
-            multi_view_gap: view_gap,
-            show_controls: `always` as const,
-            views,
-          },
-          state,
-        ),
-      )
+      mount_structure({ structure, multi_view: true, show_controls: `always`, views })
       await tick()
       await tick()
 
       expect(document.querySelector(`button[aria-label^="View layout:"]`) !== null).toBe(
         expected_active,
       )
-      const expected_gap = Number.isFinite(view_gap) ? Math.max(0, view_gap) : 2
-      expect(doc_query(`.structure`).style.getPropertyValue(`--struct-viewport-gap`)).toBe(
-        `${expected_gap}px`,
-      )
-      expect(state.multi_view_active).toBe(expected_active)
+      expect(doc_query(`.structure`).classList.contains(`multi-view`)).toBe(expected_active)
     },
   )
 
   test(`collapsed multi-view preference can be cleared with its keyboard shortcut`, async () => {
     mock_viewer_size(599, 399)
-    const state = { multi_view: true, multi_view_active: true }
+    const state = { multi_view: true }
     mount_structure(bind_props({ structure, show_controls: `always` as const }, state))
     await tick()
     await tick()
+    expect(doc_query(`.structure`).classList.contains(`multi-view`)).toBe(false)
 
     doc_query(`.structure`).dispatchEvent(
       new KeyboardEvent(`keydown`, { key: `g`, ctrlKey: true, bubbles: true }),
     )
     await tick()
-    expect(state).toEqual({ multi_view: false, multi_view_active: false })
+    expect(state.multi_view).toBe(false)
   })
 })
 

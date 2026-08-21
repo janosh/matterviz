@@ -16,11 +16,25 @@ import {
   STRUCTURE_VIEW_STATE_VERSION,
   type StructureViewState,
 } from '$lib/settings/viewer-state'
+import {
+  legend_mode_to_prop,
+  type LegendVisibilityMode,
+} from '$lib/plot/core/utils/series-visibility'
 import { globSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { SvelteSet } from 'svelte/reactivity'
 import { describe, expect, test } from 'vitest'
 
 const settings_module = join(`src`, `lib`, `settings.ts`)
+// Schema/DEFAULTS leaf: anything that is not a nested group object
+const is_leaf = (value: unknown) =>
+  value === null || typeof value !== `object` || Array.isArray(value)
+// Leaf-name matching over the sources; `key: _anything` in a destructure discards the setting
+// rather than reading it (trajectory.show_parsing_progress hid that way for a release)
+const unread_leaves = (paths: string[], sources: string): string[] => {
+  const haystack = sources.replaceAll(/\b\w+: _\w+\b/g, ``)
+  return paths.filter((path) => !new RegExp(`\\b${path.split(`.`).at(-1)}\\b`).test(haystack))
+}
 
 describe(`Settings`, () => {
   test.each([
@@ -108,7 +122,7 @@ describe(`Settings`, () => {
     test(`every setting is read somewhere outside settings.ts`, () => {
       const leaf_paths: string[] = []
       const walk = (node: unknown, path: string[]): void => {
-        if (!node || typeof node !== `object` || Array.isArray(node)) return
+        if (is_leaf(node)) return
         const record = node as Record<string, unknown>
         if (`value` in record) {
           if (`enum` in record) {
@@ -124,53 +138,361 @@ describe(`Settings`, () => {
       walk(SETTINGS_CONFIG, [])
       expect(leaf_paths.length).toBeGreaterThan(200)
 
-      const haystack = globSync(
+      const sources = globSync(
         [
           `src/lib/**/*.{ts,svelte}`,
           `src/routes/**/*.{ts,svelte}`,
           `extensions/anywidget/**/*.{ts,svelte}`,
+          `extensions/vscode/src/**/*.ts`,
         ],
         // node_modules contains built copies of settings.js that would mask every dead key
         { exclude: [`**/node_modules/**`, settings_module] },
       )
         .map((path) => readFileSync(path, `utf8`))
         .join(`\n`)
+      expect(unread_leaves(leaf_paths, sources)).toEqual([])
+    })
 
-      const unread = leaf_paths.filter(
-        (path) => !new RegExp(`\\b${path.split(`.`).at(-1)}\\b`).test(haystack),
-      )
-      expect(unread).toEqual([])
+    test.each([
+      [`nothing names it`, `const fps = settings.trajectory.fps`, [`trajectory.zzz_unread`]],
+      [
+        `same-name destructure discard`,
+        `const { zzz_unread: _zzz_unread, ...rest } = cfg`,
+        [`trajectory.zzz_unread`],
+      ],
+      [
+        `renamed destructure discard`,
+        `const { zzz_unread: _unused, ...rest } = cfg`,
+        [`trajectory.zzz_unread`],
+      ],
+      [`bracket access`, `const value = settings[\`zzz_unread\`]`, []],
+      [`full-path string read`, `config.get('matterviz.trajectory.zzz_unread')`, []],
+      [
+        `discard plus a real read elsewhere`,
+        `const { zzz_unread: _x } = a\nuse(b.zzz_unread)`,
+        [],
+      ],
+    ])(`unread detection: %s`, (_shape, sources, expected) => {
+      expect(unread_leaves([`trajectory.zzz_unread`], sources)).toEqual(expected)
     })
   })
 
-  // Both viewers used to declare their defaults twice: once as parent $bindable() props and
-  // once as a `defaults` object in their Controls, with nothing keeping the two in step.
-  describe.each([
-    [`brillouin`, [`brillouin/BrillouinZone`, `brillouin/BrillouinZoneControls`]],
-    [`fermi`, [`fermi-surface/FermiSurface`, `fermi-surface/FermiSurfaceControls`]],
-    [`trajectory`, [`trajectory/Trajectory`]], // fps shipped as 5 here and 10 in the schema
-  ] as const)(`%s defaults`, (section, components) => {
-    const keys = Object.keys(DEFAULTS[section])
+  // Components used to declare their defaults twice: once as $bindable() props and once as
+  // a `defaults` object in their Controls, with nothing keeping the two in step (Trajectory
+  // shipped fps = 5 against the schema's 10). For every component that reads DEFAULTS, each
+  // $props() default whose name is a leaf of a schema group that component reads must
+  // evaluate to that leaf's value. Static evaluation of the default expression rather than a
+  // mount: Threlte scenes and components with required props can't mount propless in
+  // happy-dom, and it covers every prop either way.
+  describe(`component prop defaults match the schema`, () => {
+    const at_path = (root: unknown, path: string[]): unknown =>
+      path.reduce<unknown>(
+        (node, key) => (node as Record<string, unknown> | undefined)?.[key],
+        root,
+      )
+    const UNRESOLVED = Symbol(`unresolved`)
+    // The slice of ESTree the prop defaults use (@types/estree is not resolvable from here)
+    type Node = {
+      type: string
+      start: number
+      end: number
+      name?: string
+      value?: unknown
+      computed?: boolean
+      operator?: string
+      object?: Node
+      property?: Node
+      callee?: Node
+      arguments?: Node[]
+      elements?: Node[]
+      expressions?: Node[]
+      quasis?: { value: { cooked: string } }[]
+      expression?: Node
+      argument?: Node
+      right?: Node
+      key?: Node
+      id?: Node
+      init?: Node
+      declarations?: Node[]
+      properties?: Node[]
+    }
 
-    test.each(components)(`%s.svelte takes them from the schema`, (component) => {
-      const source = readFileSync(join(`src`, `lib`, `${component}.svelte`), `utf8`)
-      const literals = keys
-        .map((key) => [key, new RegExp(`^ {4}${key} = (.+),$`, `m`).exec(source)?.[1]])
-        // undefined value = a prop this component doesn't declare, none of its business
-        .filter(
-          ([, value]) => value && !/^(?:\$bindable\()?(?:DEFAULTS|defaults)\./.test(value),
-        )
-        .map(([key, value]) => `${key} = ${value}`)
-      expect(literals, `${component} hardcodes defaults that belong to the schema`).toEqual([])
+    // Props whose name collides with a schema leaf but whose default is deliberately not
+    // that leaf. Each needs a reason; anything else that differs is drift, and an entry whose
+    // prop now matches the schema (or no longer exists) fails as stale.
+    const deliberate: Record<string, Record<string, string>> = {
+      'brillouin/BrillouinZoneScene': {
+        camera_position: `undefined auto-fits the zone; structure.camera_position is the structure viewer's`,
+      },
+      'convex-hull/ConvexHull': {
+        hull_face_opacity: `undefined resolves per dimension through get_convex_hull_defaults (ternary 0.3, quaternary 0.03)`,
+        max_hull_dist_show_phases: `undefined resolves per dimension through get_convex_hull_defaults (binary 0.1, ternary 0.5)`,
+      },
+      'fermi-surface/FermiSurfaceScene': {
+        camera_position: `undefined auto-fits the zone; structure.camera_position is the structure viewer's`,
+        vector_scale: `reciprocal-lattice vector length as in DEFAULTS.brillouin.vector_scale (1), not structure.vector_scale`,
+      },
+      'scene/SceneCamera': {
+        camera_projection: `shared camera primitive; every scene passes its own schema value`,
+        gizmo: `shared camera primitive; every scene passes its own schema value`,
+      },
+      'trajectory/Trajectory': {
+        show_controls: `ShowControlsProp: undefined normalises to the schema's shown state via normalize_show_controls(.., 'always')`,
+      },
+    }
+
+    // get_convex_hull_defaults is the one helper that hands a component a DEFAULTS group
+    // without the component naming DEFAULTS itself (ConvexHull hardcodes every hull prop)
+    const hull_helper = /\bget_convex_hull_defaults\b/
+    const hull_groups = [`binary`, `ternary`, `quaternary`].map((dim) => `convex_hull.${dim}`)
+    const reads_defaults = (source: string) =>
+      /\bDEFAULTS\./.test(source) || hull_helper.test(source)
+
+    const components = globSync(`src/lib/**/*.svelte`)
+      .filter((path) => reads_defaults(readFileSync(path, `utf8`)))
+      .map((path) => path.replace(/^src\/lib\//, ``).replace(/\.svelte$/, ``))
+      .toSorted()
+
+    test(`every component reading DEFAULTS is covered`, () => {
+      expect(components.length).toBeGreaterThan(30)
+      expect(components).toEqual(
+        expect.arrayContaining([
+          `convex-hull/ConvexHull`,
+          `structure/Structure`,
+          `trajectory/Trajectory`,
+        ]),
+      )
+      expect(Object.keys(deliberate).filter((name) => !components.includes(name))).toEqual([])
     })
 
-    test.each(components.filter((component) => component.endsWith(`Controls`)))(
-      `%s reads the schema section directly`,
-      (controls) => {
-        const source = readFileSync(join(`src`, `lib`, `${controls}.svelte`), `utf8`)
-        expect(source).toContain(`const defaults = DEFAULTS.${section}`)
-      },
-    )
+    // Every $props() default of `source` whose name is a leaf of a schema group the file reads,
+    // classified as drift (differs or cannot be evaluated), stale (a deliberate entry whose prop
+    // is gone or now matches) or fine. Fail-closed: any expression the evaluator cannot reduce
+    // to a value is drift, so arithmetic, ternaries or interpolation on a schema value fail.
+    // one compiler load for the whole table: the first `svelte/compiler` import is the slow
+    // step and under a loaded worker pool it alone could push a row past the default timeout
+    const compiler = import(`svelte/compiler`)
+    const analyze = async (component: string, source: string) => {
+      const { parse } = await compiler
+      // `const defaults = DEFAULTS.<group>` aliases used by Controls and hull components
+      const aliases: Record<string, unknown> = {}
+      const alias = /const defaults = DEFAULTS\.(?<path>[\w.]+)/.exec(source)?.groups?.path
+      if (alias) aliases.defaults = at_path(DEFAULTS, alias.split(`.`))
+      // Every schema group this component reads: DEFAULTS.a.b.leaf contributes group a.b
+      const groups = new SvelteSet<string>(hull_helper.test(source) ? hull_groups : [])
+      for (const { 1: path } of source.matchAll(/\bDEFAULTS\.(?<path>[\w.]+)/g)) {
+        const parts = path.split(`.`)
+        while (parts.length && is_leaf(at_path(DEFAULTS, parts))) parts.pop()
+        if (parts.length) groups.add(parts.join(`.`))
+      }
+      // DEFAULTS[chart]: the index ranges over whichever top-level groups the file names
+      if (/\bDEFAULTS\[\w+\]/.test(source)) {
+        for (const [group, value] of Object.entries(DEFAULTS)) {
+          if (!is_leaf(value) && new RegExp(`\\b${group}\\b`).test(source)) groups.add(group)
+        }
+      }
+      const group_values = [...groups].map(
+        (group) => at_path(DEFAULTS, group.split(`.`)) as Record<string, unknown>,
+      )
+
+      const evaluate = (node: Node | null | undefined): unknown => {
+        if (!node) return undefined
+        if (node.type === `CallExpression` && node.callee?.name === `$bindable`) {
+          return evaluate(node.arguments?.[0])
+        }
+        if (node.type === `CallExpression` && node.callee?.name === `legend_mode_to_prop`) {
+          const mode = evaluate(node.arguments?.[0])
+          return mode === UNRESOLVED
+            ? UNRESOLVED
+            : legend_mode_to_prop(mode as LegendVisibilityMode)
+        }
+        if (node.type === `Literal`) return node.value
+        if (node.type === `TemplateLiteral` && node.expressions?.length === 0) {
+          return (node.quasis ?? []).map((quasi) => quasi.value.cooked).join(``)
+        }
+        if (node.type === `TSAsExpression` || node.type === `TSSatisfiesExpression`) {
+          return evaluate(node.expression)
+        }
+        // `scene_props_in?.x ?? DEFAULTS.x`: the fallback is the default without props
+        if (node.type === `LogicalExpression` && node.operator === `??`)
+          return evaluate(node.right)
+        if (node.type === `UnaryExpression` && node.operator === `-`) {
+          const value = evaluate(node.argument)
+          return typeof value === `number` ? -value : UNRESOLVED
+        }
+        if (node.type === `ArrayExpression`) {
+          const values = (node.elements ?? []).map((element) => evaluate(element))
+          return values.includes(UNRESOLVED) ? UNRESOLVED : values
+        }
+        if (node.type === `MemberExpression` || node.type === `Identifier`) {
+          const path: string[] = []
+          let current: Node = node
+          while (current.type === `MemberExpression`) {
+            const { object, property } = current
+            if (!object || !property) return UNRESOLVED
+            if (current.computed) {
+              // DEFAULTS[chart].leaf: valid when every candidate group agrees on the leaf
+              if (object.type !== `Identifier` || object.name !== `DEFAULTS`) return UNRESOLVED
+              const values = group_values
+                .map((group) => at_path(group, path))
+                .filter((value) => value !== undefined)
+              const [first, ...rest] = values.map((value) => JSON.stringify(value))
+              return first !== undefined && rest.every((value) => value === first)
+                ? values[0]
+                : UNRESOLVED
+            }
+            if (property.type !== `Identifier` || !property.name) return UNRESOLVED
+            path.unshift(property.name)
+            current = object
+          }
+          if (current.type !== `Identifier` || !current.name) return UNRESOLVED
+          const root = current.name === `DEFAULTS` ? DEFAULTS : aliases[current.name]
+          const value = root === undefined ? undefined : at_path(root, path)
+          return value === undefined ? UNRESOLVED : value
+        }
+        return UNRESOLVED
+      }
+
+      const ast = parse(source, { modern: true, filename: component })
+      const props = ((ast.instance?.content.body ?? []) as Node[])
+        .flatMap((statement) =>
+          statement.type === `VariableDeclaration` ? (statement.declarations ?? []) : [],
+        )
+        .find(
+          (declaration) =>
+            declaration.init?.type === `CallExpression` &&
+            declaration.init.callee?.name === `$props`,
+        )?.id?.properties
+      // reads DEFAULTS in markup or helpers only, no props to check
+      if (!props) return { drift: [], stale: [] }
+
+      const drift: string[] = []
+      const exceptions = deliberate[component] ?? {}
+      // a deliberate exception for a prop that no longer exists is stale
+      const stale = Object.keys(exceptions).filter(
+        (key) => !props.some((prop) => prop.key?.name === key),
+      )
+      for (const prop of props) {
+        const key = prop.key?.name
+        if (prop.type === `RestElement` || !key) continue
+        const schema_values = group_values
+          .filter((group) => key in group && is_leaf(group[key]))
+          // tri-state legend settings reach the boolean|undefined prop through
+          // legend_mode_to_prop, so compare against what the prop would receive
+          .map((group) =>
+            key === `show_legend`
+              ? legend_mode_to_prop(group[key] as LegendVisibilityMode)
+              : group[key],
+          )
+        if (schema_values.length === 0) continue
+        // Property.value is the pattern node (Literal.value above is the primitive)
+        const pattern = prop.value as Node | undefined
+        const fallback = pattern?.type === `AssignmentPattern` ? pattern.right : undefined
+        const value = evaluate(fallback)
+        // JSON.stringify(UNRESOLVED) is undefined, so never let it match a schema leaf
+        const matches =
+          value !== UNRESOLVED &&
+          schema_values.some((expected) => JSON.stringify(expected) === JSON.stringify(value))
+        // an exception whose prop now matches the schema no longer excuses anything
+        if (matches && exceptions[key]) stale.push(key)
+        if (matches || exceptions[key]) continue
+        const shown =
+          value === UNRESOLVED && fallback
+            ? source.slice(fallback.start, fallback.end)
+            : JSON.stringify(value)
+        drift.push(
+          `${key} = ${shown} (schema: ${schema_values.map((expected) => JSON.stringify(expected)).join(` | `)})`,
+        )
+      }
+      return { drift, stale }
+    }
+
+    test.each(components)(`%s`, { timeout: 20_000 }, async (component) => {
+      const source = readFileSync(join(`src`, `lib`, `${component}.svelte`), `utf8`)
+      const { drift, stale } = await analyze(component, source)
+      expect(drift, `${component} hardcodes defaults that belong to the schema`).toEqual([])
+      expect(stale, `${component}: stale deliberate-exception entries`).toEqual([])
+    })
+
+    // Drift shapes the evaluator must refuse rather than skip, against a synthetic Trajectory
+    // (schema: fps 10, auto_play false, layout "auto", fullscreen_toggle true, fps_range [0,300])
+    const synthetic = (props: string, preamble = ``) =>
+      `<script lang="ts">
+        import { DEFAULTS } from '$lib/settings'
+        ${preamble}
+        let { ${props} } = $props()
+      </script>`
+    test.each([
+      [
+        `arithmetic`,
+        `fps = $bindable(DEFAULTS.trajectory.fps + 1)`,
+        `fps = $bindable(DEFAULTS.trajectory.fps + 1) (schema: 10)`,
+      ],
+      [
+        `literal behind as const`,
+        `auto_play = true as const`,
+        `auto_play = true (schema: false)`,
+      ],
+      [
+        `ternary`,
+        `layout = wide ? DEFAULTS.trajectory.layout : DEFAULTS.trajectory.display_mode`,
+        `layout = wide ? DEFAULTS.trajectory.layout : DEFAULTS.trajectory.display_mode (schema: "auto")`,
+      ],
+      [`const destructure with literal`, `fps = 3`, `fps = 3 (schema: 10)`],
+      [
+        `negated schema value`,
+        `fps_range = -DEFAULTS.trajectory.fps`,
+        `fps_range = -10 (schema: [0,300])`,
+      ],
+      [
+        `template literal`,
+        `fullscreen_toggle = \`\${DEFAULTS.trajectory.fullscreen_toggle}\``,
+        `fullscreen_toggle = \`\${DEFAULTS.trajectory.fullscreen_toggle}\` (schema: true)`,
+      ],
+      [
+        `empty $bindable()`,
+        `display_mode = $bindable()`,
+        `display_mode = undefined (schema: "structure+scatter")`,
+      ],
+      [`no default`, `fps`, `fps = undefined (schema: 10)`],
+      [
+        `or-fallback`,
+        `fps = fps_in || DEFAULTS.trajectory.fps`,
+        `fps = fps_in || DEFAULTS.trajectory.fps (schema: 10)`,
+      ],
+    ])(`fails on %s`, async (_shape, props, message) => {
+      // DEFAULTS.trajectory must appear somewhere for the file to count as a trajectory reader
+      const source = synthetic(`${props}, step_labels = DEFAULTS.trajectory.step_labels`)
+      expect((await analyze(`synthetic/Trajectory`, source)).drift).toEqual([message])
+    })
+
+    test.each([
+      [`type assertion`, `fps = DEFAULTS.trajectory.fps as number`, ``],
+      [`satisfies`, `auto_play = DEFAULTS.trajectory.auto_play satisfies boolean`, ``],
+      [`nullish fallback`, `fps = fps_in ?? DEFAULTS.trajectory.fps`, ``],
+      [`group alias`, `fps = defaults.fps`, `const defaults = DEFAULTS.trajectory`],
+    ])(`accepts %s`, async (_shape, props, preamble) => {
+      const source = synthetic(props, preamble)
+      expect((await analyze(`synthetic/Trajectory`, source)).drift).toEqual([])
+    })
+
+    test(`a get_convex_hull_defaults consumer is held to every hull group`, async () => {
+      const source = synthetic(
+        `show_stable = $bindable(false), max_hull_dist_show_labels = $bindable(0.1)`,
+        `import { get_convex_hull_defaults } from '$lib/settings'`,
+      )
+      expect((await analyze(`synthetic/ConvexHull`, source)).drift).toEqual([
+        `show_stable = false (schema: true | true | true)`,
+      ])
+    })
+
+    test(`a deliberate exception whose prop now matches the schema is stale`, async () => {
+      const source = synthetic(`show_controls = DEFAULTS.trajectory.show_controls`)
+      expect(await analyze(`trajectory/Trajectory`, source)).toEqual({
+        drift: [],
+        stale: [`show_controls`],
+      })
+    })
   })
 
   describe(`Convex hull settings`, () => {

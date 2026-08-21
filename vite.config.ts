@@ -1,10 +1,12 @@
 import { make_config } from 'svelte-widgets/vite-config'
 import { sveltekit } from '@sveltejs/kit/vite'
 import { readFileSync } from 'node:fs'
+import process from 'node:process'
 import { gunzipSync } from 'node:zlib'
 import { vite_plugin as live_examples } from 'svelte-widgets/live-examples'
 import type { Plugin } from 'vite'
 import { defineConfig, type PluginOption } from 'vite-plus'
+import { configDefaults } from 'vitest/config'
 // @ts-expect-error Node ESM config load needs the .ts extension here
 import { mock_vscode } from './extensions/vscode/tests/vscode-mock.ts'
 // @ts-expect-error Node ESM config load needs the .ts extension here
@@ -135,6 +137,12 @@ export default defineConfig({
       `tests/vitest/**/*.test.ts`,
       `tests/vitest/**/*.test.svelte.ts`,
       `extensions/vscode/tests/**/*.test.ts`,
+    ],
+    // The perf tripwires import every heavy subsystem (~6 s of transform/import for nothing
+    // when skipped), so they only exist for the opt-in run (MATTERVIZ_PERF=1; own CI job)
+    exclude: [
+      ...configDefaults.exclude,
+      ...(process.env.MATTERVIZ_PERF === `1` ? [] : [`tests/vitest/perf-baselines.test.ts`]),
     ],
   },
 

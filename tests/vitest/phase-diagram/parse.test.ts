@@ -1,11 +1,5 @@
 // Unit tests for TDB (Thermodynamic Database) parser
-import type { TdbData } from '$lib/phase-diagram/parse'
-import {
-  get_system_name,
-  is_binary_system,
-  normalize_system_name,
-  parse_tdb,
-} from '$lib/phase-diagram/parse'
+import { get_system_name, normalize_system_name, parse_tdb } from '$lib/phase-diagram/parse'
 import { describe, expect, test } from 'vitest'
 import { SAMPLE_TDB_CONTENT } from './fixtures/test-data'
 
@@ -109,31 +103,6 @@ describe(`get_system_name`, () => {
     { elements: [], expected: `` },
   ])(`$elements returns $expected`, ({ elements, expected }) => {
     expect(get_system_name(elements)).toBe(expected)
-  })
-})
-
-describe(`is_binary_system`, () => {
-  const make_data = (elements: string[]): TdbData => ({
-    elements: elements.map((sym) => ({
-      symbol: sym,
-      reference_phase: ``,
-      mass: 0,
-      enthalpy: 0,
-      entropy: 0,
-    })),
-    phases: [],
-    functions: [],
-    parameters: [],
-    comments: [],
-  })
-
-  test.each([
-    { elements: [`AL`, `ZN`], expected: true },
-    { elements: [`AL`, `ZN`, `VA`], expected: true },
-    { elements: [`AL`], expected: false },
-    { elements: [`AL`, `ZN`, `CU`], expected: false },
-  ])(`$elements returns $expected`, ({ elements, expected }) => {
-    expect(is_binary_system(make_data(elements))).toBe(expected)
   })
 })
 

@@ -28,7 +28,6 @@ export {
   apply_bounds,
   clean_multi_series,
   clean_series,
-  clean_trajectory_props,
   clean_xyz,
   handle_invalid_values,
   sync_metadata,

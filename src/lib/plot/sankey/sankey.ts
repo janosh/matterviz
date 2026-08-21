@@ -55,7 +55,7 @@ export type PositionedLink = D3Link<NodeExtra, LinkExtra> & {
   mid: { x: number; y: number } // ribbon midpoint (for tooltip anchoring)
 }
 
-export interface SankeyLayoutOptions {
+interface SankeyLayoutOptions {
   width: number
   height: number
   node_width?: number // px, default 24
@@ -65,7 +65,7 @@ export interface SankeyLayoutOptions {
   iterations?: number // d3-sankey relaxation passes, default 6
 }
 
-export interface SankeyLayoutResult {
+interface SankeyLayoutResult {
   nodes: PositionedNode[]
   links: PositionedLink[]
 }

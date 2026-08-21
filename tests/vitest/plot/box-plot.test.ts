@@ -1,4 +1,4 @@
-import { compute_box_stats, is_whisker_mode, WHISKER_MODES } from '$lib/plot'
+import { compute_box_stats, WHISKER_MODES } from '$lib/plot'
 import { quantile as d3_quantile } from 'd3-array'
 import { describe, expect, test } from 'vitest'
 
@@ -199,15 +199,5 @@ describe(`compute_box_stats`, () => {
       expect(stats.outliers).toEqual(sorted.filter((val) => val < lo || val > hi))
     }
     expect(worst_quartile).toBeLessThan(1e-9)
-  })
-})
-
-describe(`is_whisker_mode`, () => {
-  test.each([`tukey`, `minmax`, `percentile`, `std`])(`accepts %s`, (mode) => {
-    expect(is_whisker_mode(mode)).toBe(true)
-  })
-
-  test.each([`box`, ``, `Tukey`, `iqr`])(`rejects %s`, (mode) => {
-    expect(is_whisker_mode(mode)).toBe(false)
   })
 })

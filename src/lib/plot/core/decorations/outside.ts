@@ -17,7 +17,7 @@ const DEFAULT_DECORATION_GAP = 8
 // Keep a decoration inside if its emptiest placement is sparse relative to the plot-wide average.
 const CROWDING_RATIO = 0.5
 
-export type OutsideLayout = {
+type OutsideLayout = {
   pad: Required<Sides> // base_pad plus reservations for whatever moved outside
   legend_outside: boolean
   legend_pos: DecorationPoint // outside position (right or bottom margin; valid when legend_outside)

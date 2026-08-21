@@ -5,6 +5,7 @@ import type ViewerPaneComponent from './ViewerPane.svelte'
 export { default as ControlPane } from './ControlPane.svelte'
 export { default as DragControlTab } from './DragControlTab.svelte'
 export { default as GlassChip } from './GlassChip.svelte'
+export { default as ToolbarMenu } from './ToolbarMenu.svelte'
 export { default as ViewerPane } from './ViewerPane.svelte'
 
 // Attribute types of the toggle button and pane div for components forwarding these props.

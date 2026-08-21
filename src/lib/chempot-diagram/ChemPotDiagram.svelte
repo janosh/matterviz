@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { PhaseData } from '$lib/convex-hull/types'
   import Spinner from '$lib/feedback/Spinner.svelte'
+  import { plural } from '$lib/labels'
   import { to_error } from '$lib/utils'
   import { compute_chempot_async } from './async-compute.svelte'
   import ChemPotDiagram2D from './ChemPotDiagram2D.svelte'
@@ -91,8 +92,10 @@
     >
       <h3>Unsupported Chemical System</h3>
       <p>
-        Chemical potential diagrams require at least 2 elements. Found {n_display}
-        element{n_display === 1 ? `` : `s`}:
+        Chemical potential diagrams require at least 2 elements. Found {plural(
+          n_display,
+          `element`,
+        )}:
         {display_elements.join(`, `) || `none`}
       </p>
     </div>

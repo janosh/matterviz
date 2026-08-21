@@ -15,7 +15,7 @@ export type FlyToControls = {
   update: () => unknown
 }
 
-export type FlyToHooks = {
+type FlyToHooks = {
   // Read as getters, not values: the camera and controls are bound asynchronously and can be
   // swapped (camera projection toggle, canvas remount) between flights.
   camera: () => THREE.Camera | undefined

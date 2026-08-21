@@ -104,6 +104,10 @@ export function generate_lattice_points(scaling_factors: Vec3): Vec3[] {
   return points
 }
 
+// Site objects cost a few hundred bytes each; past this a typed "100x100x100" would hang the
+// tab on allocation alone, and nothing downstream (rendering, bonding) could use the result
+const MAX_SUPERCELL_SITES = 1_000_000
+
 // Create a supercell from a Crystal
 // Takes original structure, scaling factors, and whether to fold coordinates back to unit cell (default: true)
 // Returns new supercell structure
@@ -116,6 +120,12 @@ export function make_supercell(
   const [scale_x, scale_y, scale_z] = supercell_scaling
   const total_cells = scale_x * scale_y * scale_z
   if (total_cells === 1) return structure
+  const n_total = structure.sites.length * total_cells
+  if (n_total > MAX_SUPERCELL_SITES) {
+    throw new Error(
+      `Supercell ${scale_x}x${scale_y}x${scale_z} of ${structure.sites.length} sites would hold ${n_total.toLocaleString()} sites (limit ${MAX_SUPERCELL_SITES.toLocaleString()})`,
+    )
+  }
 
   const orig_matrix = structure.lattice.matrix
   // Create new scaled lattice

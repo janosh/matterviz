@@ -11,7 +11,7 @@ export type FormulaSpecies = {
   amount: number
   oxidation_state?: number
 }
-export type WildcardFormulaToken = { element: ElementSymbol | null; amount: number }
+type WildcardFormulaToken = { element: ElementSymbol | null; amount: number }
 
 // Composition with per-element oxidation states (input form of the Formula component)
 export type OxiComposition = Record<
@@ -254,10 +254,3 @@ export const fractional_composition = (
   const total = weighted.reduce((sum, [, weight]) => sum + weight, 0)
   return Object.fromEntries(weighted.map(([element, weight]) => [element, weight / total]))
 }
-
-// Sum of atomic masses times amounts (unknown elements throw)
-export const get_molecular_weight = (composition: CompositionType): number =>
-  Object.entries(composition).reduce(
-    (total, [element, amount]) => total + atomic_mass_of(element) * amount,
-    0,
-  )

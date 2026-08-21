@@ -11,7 +11,7 @@ interface TempFilterProps {
   max_interpolation_gap?: number
 }
 
-export interface TempFilterPayload {
+interface TempFilterPayload {
   has_temp_data: boolean
   available_temperatures: number[]
   temp_filtered_entries: PhaseData[]

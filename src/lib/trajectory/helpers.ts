@@ -239,27 +239,46 @@ export type XyzFrameSpec = { start: number; num_atoms: number; comment: string }
 
 // Walk XYZ frames by their atom-count lines, sampling the first three atom lines of each
 // candidate so stray numeric lines are not mistaken for a frame header. A frame whose atom
-// block runs past the end of the input (a writer still appending) is skipped, not yielded.
-export function* iter_xyz_frames(lines: string[]): Generator<XyzFrameSpec> {
+// block runs past the end of the input (a writer still appending) is not yielded; the first
+// such candidate after the final complete frame is the generator's return value (a later one
+// is a numeric comment line or stray number inside that frame's own block).
+export function* iter_xyz_frames(
+  lines: string[],
+): Generator<XyzFrameSpec, XyzFrameSpec | null> {
   let line_idx = 0
+  let torn: XyzFrameSpec | null = null
   while (line_idx < lines.length) {
     const num_atoms = Math.trunc(Number(lines[line_idx].trim()))
-    if (Number.isNaN(num_atoms) || num_atoms <= 0 || line_idx + num_atoms + 2 > lines.length) {
+    if (Number.isNaN(num_atoms) || num_atoms <= 0) {
       line_idx++
       continue
     }
+    const atom_lines = Math.max(0, Math.min(num_atoms, lines.length - line_idx - 2))
+    const sample = Math.min(atom_lines, 3)
     let valid_coords = 0
-    const sample = Math.min(num_atoms, 3)
     for (let idx = 0; idx < sample; idx++) {
-      if (is_xyz_atom_line(lines[line_idx + 2 + idx].trim().split(/\s+/))) valid_coords++
+      const line_at = line_idx + 2 + idx
+      // The input's last line may be half-written by a writer still appending. A frame of
+      // three atoms or fewer samples it, so it never disqualifies the frame here; the caller
+      // decodes or drops it (index_xyz_frames), which a frame never indexed cannot be.
+      if (line_at === lines.length - 1) valid_coords++
+      else if (is_xyz_atom_line(lines[line_at].trim().split(/\s+/))) valid_coords++
     }
     if (valid_coords < sample) {
       line_idx++
       continue
     }
-    yield { start: line_idx, num_atoms, comment: lines[line_idx + 1] }
+    const spec = { start: line_idx, num_atoms, comment: lines[line_idx + 1] ?? `` }
+    if (atom_lines < num_atoms) {
+      torn ??= spec
+      line_idx++
+      continue
+    }
+    torn = null
+    yield spec
     line_idx += num_atoms + 2
   }
+  return torn
 }
 
 // Count XYZ frames, stopping early once `limit` frames are found (format sniffing only

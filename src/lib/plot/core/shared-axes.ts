@@ -2,12 +2,12 @@ import type { Vec2 } from '$lib/math'
 import type { Sides } from '$lib/plot/core/layout'
 import type { AxisConfig } from '$lib/plot/core/types'
 
-export type PaddingSide = keyof Required<Sides>
+type PaddingSide = keyof Required<Sides>
 
 const PADDING_SIDES: readonly PaddingSide[] = [`t`, `b`, `l`, `r`]
 const DEFAULT_RANGE_TOLERANCE = { absolute: 1e-9, relative: 1e-4 }
 
-export interface RangeTolerance {
+interface RangeTolerance {
   absolute?: number
   relative?: number
 }
@@ -115,7 +115,7 @@ export function detect_shared_range_change(
   return changed_ranges.length === 1 ? changed_ranges[0] : undefined
 }
 
-export interface SharedAxisRangeUpdate {
+interface SharedAxisRangeUpdate {
   synced_range: Vec2 | null
   axes: AxisConfig[]
 }

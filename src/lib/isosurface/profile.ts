@@ -1,7 +1,7 @@
 // Internal, opt-in profiling primitives for the isosurface benchmark route.
 // This module is intentionally not re-exported from the public package barrels.
 
-export type IsosurfaceProfileStage =
+type IsosurfaceProfileStage =
   | `prepare_geometry`
   | `marching_cubes`
   | `build_geometry`

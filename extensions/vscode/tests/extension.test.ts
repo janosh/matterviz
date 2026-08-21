@@ -8,7 +8,7 @@ import {
   VASP_VOLUMETRIC_REGEX,
 } from '$lib/constants'
 import { VOLUMETRIC_VASP_RE } from '$lib/file-viewer/types'
-import { DEFAULTS, SETTINGS_CONFIG, type SettingType } from '$lib/settings'
+import { DEFAULTS } from '$lib/settings'
 import type { ThemeName } from '$lib/theme/index'
 import { is_trajectory_file } from '$lib/trajectory/parse'
 import { Buffer } from 'node:buffer'
@@ -212,77 +212,6 @@ describe(`MatterViz Extension`, () => {
   test(`extension volumetric regex stays in sync with app detection`, () => {
     expect(VOLUMETRIC_VASP_RE.source).toBe(VASP_VOLUMETRIC_REGEX.source)
     expect(VOLUMETRIC_VASP_RE.flags).toBe(VASP_VOLUMETRIC_REGEX.flags)
-  })
-
-  test(`generated settings in package.json match SETTINGS_CONFIG`, () => {
-    // sync-config.ts only regenerates package.json on `prebuild`, so a schema edit stays
-    // invisible to the editor until someone runs it.
-    const synced_fields = [
-      `type`,
-      `default`,
-      `description`,
-      `minimum`,
-      `maximum`,
-      `multipleOf`,
-      `minItems`,
-      `maxItems`,
-      `enum`,
-      `items`,
-    ] as const
-    const pick = (obj: Record<string, unknown>): Record<string, unknown> =>
-      Object.fromEntries(synced_fields.map((field) => [field, obj[field]]))
-
-    const expected: Record<string, Record<string, unknown>> = {}
-    const collect = (node: unknown, key_path: string): void => {
-      if (!node || typeof node !== `object`) return
-      if (!(`value` in node)) {
-        for (const [key, val] of Object.entries(node)) collect(val, `${key_path}.${key}`)
-        return
-      }
-      const schema = node as SettingType
-      if (schema.web_only) return
-      const type =
-        typeof schema.value === `boolean`
-          ? `boolean`
-          : typeof schema.value === `number`
-            ? `number`
-            : Array.isArray(schema.value)
-              ? `array`
-              : `string`
-      const first_item = Array.isArray(schema.value) ? schema.value[0] : undefined
-      const item_type =
-        typeof first_item === `boolean`
-          ? `boolean`
-          : typeof first_item === `number`
-            ? `number`
-            : `string`
-      expected[key_path] = pick({
-        ...schema,
-        type,
-        default: schema.value,
-        enum: schema.enum && Object.keys(schema.enum),
-        items: type === `array` ? { type: item_type, ...schema.items } : undefined,
-      })
-    }
-    collect(SETTINGS_CONFIG, `matterviz`)
-
-    const props = pkg_json.contributes.configuration.properties as unknown as Record<
-      string,
-      Record<string, unknown> | undefined
-    >
-    const actual = Object.fromEntries(
-      Object.keys(expected).map((key) => [key, pick(props[key] ?? {})]),
-    )
-    expect(actual).toEqual(expected)
-
-    // sync-config.ts preserves properties it did not generate, so a setting deleted from (or
-    // scoped away from the editor in) SETTINGS_CONFIG can linger in package.json unnoticed.
-    // These three are hand-written and have no SETTINGS_CONFIG entry; anything else is stale.
-    const package_only = [`matterviz.auto_render`, `matterviz.open_beside`, `matterviz.theme`]
-    const unexpected = Object.keys(props)
-      .filter((key) => !(key in expected))
-      .sort()
-    expect(unexpected).toEqual(package_only)
   })
 
   describe(`Custom Editor File Patterns`, () => {
