@@ -822,10 +822,10 @@ function neighbor_query_cutoff(
     }
   }
 
-  // Dense cubic bins over the cloud's bounding box, filled by counting sort so each bin is
-  // one contiguous slice of `bin_items` (ascending slot, so base sites precede images). Bins
-  // are `cutoff` wide unless that would make the grid much larger than the cloud, in which
-  // case they widen; either way a neighbor can only sit in the 27 bins around the center's.
+  // Dense bins over the cloud's bounding box, filled by counting sort so each bin is one
+  // contiguous slice of `bin_items` (ascending slot, so base sites precede images). Bins are
+  // `cutoff` wide unless that would make the grid much larger than the cloud, in which case
+  // they widen; either way a neighbor can only sit in the 27 bins around the center's.
   const mins: Vec3 = [Infinity, Infinity, Infinity]
   const maxs: Vec3 = [-Infinity, -Infinity, -Infinity]
   for (let slot = 0; slot < n_cloud; slot++) {
@@ -835,22 +835,29 @@ function neighbor_query_cutoff(
       if (coord > maxs[axis]) maxs[axis] = coord
     }
   }
-  const bins_along = (bin: number, axis: number) =>
-    Math.floor((maxs[axis] - mins[axis]) / bin) + 1
-  let bin = cutoff
+  const bins_along = (width: number, axis: number) =>
+    Math.floor((maxs[axis] - mins[axis]) / width) + 1
   const max_bins = MAX_BINS_PER_POSITION * n_cloud + 1
-  const n_bins_at_cutoff = bins_along(bin, 0) * bins_along(bin, 1) * bins_along(bin, 2)
-  if (n_bins_at_cutoff > max_bins) bin *= Math.cbrt(n_bins_at_cutoff / max_bins)
-  const n_x = bins_along(bin, 0)
-  const n_y = bins_along(bin, 1)
-  const n_z = bins_along(bin, 2)
+  // One width per axis, doubling the most-binned axis until the grid fits. A cloud with one
+  // far-flung atom (an MD blow-up) spans ~10 A in two axes and 1e9+ A in the third: widening
+  // that axis alone keeps the cluster spread over the other two instead of collapsing it
+  // into a single O(n^2) bin, as one shared width (cubic bins) would. An isotropic sparse
+  // cloud ends within 2x of the ideal width, which holds under 0.5 atoms per cutoff-bin.
+  const bin: Vec3 = [cutoff, cutoff, cutoff]
+  const n_axis: Vec3 = [bins_along(cutoff, 0), bins_along(cutoff, 1), bins_along(cutoff, 2)]
+  while (n_axis[0] * n_axis[1] * n_axis[2] > max_bins) {
+    const widest = n_axis.indexOf(Math.max(...n_axis))
+    bin[widest] *= 2
+    n_axis[widest] = bins_along(bin[widest], widest)
+  }
+  const [n_x, n_y, n_z] = n_axis
   const n_bins = n_x * n_y * n_z
   const bin_of = new Int32Array(n_cloud)
   const bin_start = new Int32Array(n_bins + 1)
   for (let slot = 0; slot < n_cloud; slot++) {
-    const ix = Math.floor((cloud_pos[slot * 3] - mins[0]) / bin)
-    const iy = Math.floor((cloud_pos[slot * 3 + 1] - mins[1]) / bin)
-    const iz = Math.floor((cloud_pos[slot * 3 + 2] - mins[2]) / bin)
+    const ix = Math.floor((cloud_pos[slot * 3] - mins[0]) / bin[0])
+    const iy = Math.floor((cloud_pos[slot * 3 + 1] - mins[1]) / bin[1])
+    const iz = Math.floor((cloud_pos[slot * 3 + 2] - mins[2]) / bin[2])
     const bin_idx = ix + n_x * (iy + n_y * iz)
     bin_of[slot] = bin_idx
     bin_start[bin_idx + 1]++

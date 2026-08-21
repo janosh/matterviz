@@ -191,10 +191,15 @@ describe(`Settings`, () => {
     }
 
     // Props whose name collides with a schema leaf but whose default is deliberately not
-    // that leaf. Each needs a reason; anything else that differs is drift.
+    // that leaf. Each needs a reason; anything else that differs is drift, and an entry whose
+    // prop now matches the schema (or no longer exists) fails as stale.
     const deliberate: Record<string, Record<string, string>> = {
       'brillouin/BrillouinZoneScene': {
         camera_position: `undefined auto-fits the zone; structure.camera_position is the structure viewer's`,
+      },
+      'convex-hull/ConvexHull': {
+        hull_face_opacity: `undefined resolves per dimension through get_convex_hull_defaults (ternary 0.3, quaternary 0.03)`,
+        max_hull_dist_show_phases: `undefined resolves per dimension through get_convex_hull_defaults (binary 0.1, ternary 0.5)`,
       },
       'fermi-surface/FermiSurfaceScene': {
         camera_position: `undefined auto-fits the zone; structure.camera_position is the structure viewer's`,
@@ -209,25 +214,42 @@ describe(`Settings`, () => {
       },
     }
 
+    // get_convex_hull_defaults is the one helper that hands a component a DEFAULTS group
+    // without the component naming DEFAULTS itself (ConvexHull hardcodes every hull prop)
+    const hull_helper = /\bget_convex_hull_defaults\b/
+    const hull_groups = [`binary`, `ternary`, `quaternary`].map((dim) => `convex_hull.${dim}`)
+    const reads_defaults = (source: string) =>
+      /\bDEFAULTS\./.test(source) || hull_helper.test(source)
+
     const components = globSync(`src/lib/**/*.svelte`)
-      .filter((path) => /\bDEFAULTS\./.test(readFileSync(path, `utf8`)))
+      .filter((path) => reads_defaults(readFileSync(path, `utf8`)))
       .map((path) => path.replace(/^src\/lib\//, ``).replace(/\.svelte$/, ``))
       .toSorted()
 
     test(`every component reading DEFAULTS is covered`, () => {
       expect(components.length).toBeGreaterThan(30)
+      expect(components).toEqual(
+        expect.arrayContaining([
+          `convex-hull/ConvexHull`,
+          `structure/Structure`,
+          `trajectory/Trajectory`,
+        ]),
+      )
       expect(Object.keys(deliberate).filter((name) => !components.includes(name))).toEqual([])
     })
 
-    test.each(components)(`%s`, async (component) => {
+    // Every $props() default of `source` whose name is a leaf of a schema group the file reads,
+    // classified as drift (differs or cannot be evaluated), stale (a deliberate entry whose prop
+    // is gone or now matches) or fine. Fail-closed: any expression the evaluator cannot reduce
+    // to a value is drift, so arithmetic, ternaries or interpolation on a schema value fail.
+    const analyze = async (component: string, source: string) => {
       const { parse } = await import(`svelte/compiler`)
-      const source = readFileSync(join(`src`, `lib`, `${component}.svelte`), `utf8`)
       // `const defaults = DEFAULTS.<group>` aliases used by Controls and hull components
       const aliases: Record<string, unknown> = {}
       const alias = /const defaults = DEFAULTS\.(?<path>[\w.]+)/.exec(source)?.groups?.path
       if (alias) aliases.defaults = at_path(DEFAULTS, alias.split(`.`))
       // Every schema group this component reads: DEFAULTS.a.b.leaf contributes group a.b
-      const groups = new SvelteSet<string>()
+      const groups = new SvelteSet<string>(hull_helper.test(source) ? hull_groups : [])
       for (const { 1: path } of source.matchAll(/\bDEFAULTS\.(?<path>[\w.]+)/g)) {
         const parts = path.split(`.`)
         while (parts.length && is_leaf(at_path(DEFAULTS, parts))) parts.pop()
@@ -311,9 +333,15 @@ describe(`Settings`, () => {
             declaration.init?.type === `CallExpression` &&
             declaration.init.callee?.name === `$props`,
         )?.id?.properties
-      if (!props) return // reads DEFAULTS in markup or helpers only, no props to check
+      // reads DEFAULTS in markup or helpers only, no props to check
+      if (!props) return { drift: [], stale: [] }
 
       const drift: string[] = []
+      const exceptions = deliberate[component] ?? {}
+      // a deliberate exception for a prop that no longer exists is stale
+      const stale = Object.keys(exceptions).filter(
+        (key) => !props.some((prop) => prop.key?.name === key),
+      )
       for (const prop of props) {
         const key = prop.key?.name
         if (prop.type === `RestElement` || !key) continue
@@ -331,10 +359,13 @@ describe(`Settings`, () => {
         const pattern = prop.value as Node | undefined
         const fallback = pattern?.type === `AssignmentPattern` ? pattern.right : undefined
         const value = evaluate(fallback)
-        const matches = schema_values.some(
-          (expected) => JSON.stringify(expected) === JSON.stringify(value),
-        )
-        if (matches || deliberate[component]?.[key]) continue
+        // JSON.stringify(UNRESOLVED) is undefined, so never let it match a schema leaf
+        const matches =
+          value !== UNRESOLVED &&
+          schema_values.some((expected) => JSON.stringify(expected) === JSON.stringify(value))
+        // an exception whose prop now matches the schema no longer excuses anything
+        if (matches && exceptions[key]) stale.push(key)
+        if (matches || exceptions[key]) continue
         const shown =
           value === UNRESOLVED && fallback
             ? source.slice(fallback.start, fallback.end)
@@ -343,12 +374,94 @@ describe(`Settings`, () => {
           `${key} = ${shown} (schema: ${schema_values.map((expected) => JSON.stringify(expected)).join(` | `)})`,
         )
       }
+      return { drift, stale }
+    }
+
+    test.each(components)(`%s`, async (component) => {
+      const source = readFileSync(join(`src`, `lib`, `${component}.svelte`), `utf8`)
+      const { drift, stale } = await analyze(component, source)
       expect(drift, `${component} hardcodes defaults that belong to the schema`).toEqual([])
-      // a deliberate exception for a prop that no longer exists is stale
-      const stale = Object.keys(deliberate[component] ?? {}).filter(
-        (key) => !props.some((prop) => prop.key?.name === key),
-      )
       expect(stale, `${component}: stale deliberate-exception entries`).toEqual([])
+    })
+
+    // Drift shapes the evaluator must refuse rather than skip, against a synthetic Trajectory
+    // (schema: fps 10, auto_play false, layout "auto", fullscreen_toggle true, fps_range [0,300])
+    const synthetic = (props: string, preamble = ``) =>
+      `<script lang="ts">
+        import { DEFAULTS } from '$lib/settings'
+        ${preamble}
+        let { ${props} } = $props()
+      </script>`
+    test.each([
+      [
+        `arithmetic`,
+        `fps = $bindable(DEFAULTS.trajectory.fps + 1)`,
+        `fps = $bindable(DEFAULTS.trajectory.fps + 1) (schema: 10)`,
+      ],
+      [
+        `literal behind as const`,
+        `auto_play = true as const`,
+        `auto_play = true (schema: false)`,
+      ],
+      [
+        `ternary`,
+        `layout = wide ? DEFAULTS.trajectory.layout : DEFAULTS.trajectory.display_mode`,
+        `layout = wide ? DEFAULTS.trajectory.layout : DEFAULTS.trajectory.display_mode (schema: "auto")`,
+      ],
+      [`const destructure with literal`, `fps = 3`, `fps = 3 (schema: 10)`],
+      [
+        `negated schema value`,
+        `fps_range = -DEFAULTS.trajectory.fps`,
+        `fps_range = -10 (schema: [0,300])`,
+      ],
+      [
+        `template literal`,
+        `fullscreen_toggle = \`\${DEFAULTS.trajectory.fullscreen_toggle}\``,
+        `fullscreen_toggle = \`\${DEFAULTS.trajectory.fullscreen_toggle}\` (schema: true)`,
+      ],
+      [
+        `empty $bindable()`,
+        `display_mode = $bindable()`,
+        `display_mode = undefined (schema: "structure+scatter")`,
+      ],
+      [`no default`, `fps`, `fps = undefined (schema: 10)`],
+      [
+        `or-fallback`,
+        `fps = fps_in || DEFAULTS.trajectory.fps`,
+        `fps = fps_in || DEFAULTS.trajectory.fps (schema: 10)`,
+      ],
+    ])(`fails on %s`, async (_shape, props, message) => {
+      // DEFAULTS.trajectory must appear somewhere for the file to count as a trajectory reader
+      const source = synthetic(`${props}, step_labels = DEFAULTS.trajectory.step_labels`)
+      expect((await analyze(`synthetic/Trajectory`, source)).drift).toEqual([message])
+    })
+
+    test.each([
+      [`type assertion`, `fps = DEFAULTS.trajectory.fps as number`, ``],
+      [`satisfies`, `auto_play = DEFAULTS.trajectory.auto_play satisfies boolean`, ``],
+      [`nullish fallback`, `fps = fps_in ?? DEFAULTS.trajectory.fps`, ``],
+      [`group alias`, `fps = defaults.fps`, `const defaults = DEFAULTS.trajectory`],
+    ])(`accepts %s`, async (_shape, props, preamble) => {
+      const source = synthetic(props, preamble)
+      expect((await analyze(`synthetic/Trajectory`, source)).drift).toEqual([])
+    })
+
+    test(`a get_convex_hull_defaults consumer is held to every hull group`, async () => {
+      const source = synthetic(
+        `show_stable = $bindable(false), max_hull_dist_show_labels = $bindable(0.1)`,
+        `import { get_convex_hull_defaults } from '$lib/settings'`,
+      )
+      expect((await analyze(`synthetic/ConvexHull`, source)).drift).toEqual([
+        `show_stable = false (schema: true | true | true)`,
+      ])
+    })
+
+    test(`a deliberate exception whose prop now matches the schema is stale`, async () => {
+      const source = synthetic(`show_controls = DEFAULTS.trajectory.show_controls`)
+      expect(await analyze(`trajectory/Trajectory`, source)).toEqual({
+        drift: [],
+        stale: [`show_controls`],
+      })
     })
   })
 

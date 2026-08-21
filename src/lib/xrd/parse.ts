@@ -135,9 +135,7 @@ export function parse_xy_file(content: string, format = `XY`): XrdPattern {
   const reversals = Math.min(ups, downs)
   if (reversals > Math.max(1, 0.1 * (ups + downs))) {
     const shape =
-      max_cols >= 4
-        ? `a block of bare counts, ${max_cols} per row`
-        : `(intensity, error) pairs`
+      max_cols > 2 ? `a block of bare counts, ${max_cols} per row` : `(intensity, error) pairs`
     throw new Error(
       `${format}: column 1 reverses direction in ${reversals} of ${ups + downs} steps, so it is not 2theta; the ${x_values.length} rows look like ${shape}`,
     )
@@ -360,8 +358,12 @@ export function parse_bruker_raw_file(data: ArrayBuffer): XrdPattern {
     const step = view.getFloat64(range_offset + 176, true)
     const supplementary = view.getUint32(range_offset + 256, true)
     const data_offset = range_offset + header_len + supplementary
-    if (!(steps > 0) || !(step > 0) || !Number.isFinite(start)) {
-      throw new Error(`${label} header has steps=${steps}, start=${start}, step=${step}`)
+    // A header shorter than its own fields (the supplementary size ends at byte 260) would
+    // put the counts inside the header and decode header bytes as intensities
+    if (header_len < 260 || !(steps > 0) || !(step > 0) || !Number.isFinite(start)) {
+      throw new Error(
+        `${label} header has steps=${steps}, start=${start}, step=${step}, length=${header_len}`,
+      )
     }
     if (data_offset + 4 * steps > bytes.length) {
       throw new Error(

@@ -36,19 +36,48 @@ describe(`sync-config`, () => {
   // it 13 keys like trajectory.loop_playback and structure.show_cell) is a documented toggle
   // wired to nothing. Leaf-name matching over the library and host sources; a generic leaf
   // such as `opacity` can still hide, every distinctively named dead key gets caught.
+  // `key: _anything` in a destructure discards the setting rather than reading it; that is
+  // how trajectory.show_parsing_progress (as `: _show_parsing_progress`) hid from the
+  // leaf-name match for a release
+  const unread_ids = (ids: string[], sources: string) => {
+    const haystack = sources.replaceAll(/\b\w+: _\w+\b/g, ``)
+    return ids.filter((id) => !new RegExp(`\\b${id.split(`.`).at(-1)}\\b`).test(haystack))
+  }
+
   test(`every generated setting id is read by the library or the extension host`, () => {
-    const haystack = globSync([`src/lib/**/*.{ts,svelte}`, `extensions/vscode/src/**/*.ts`], {
+    const sources = globSync([`src/lib/**/*.{ts,svelte}`, `extensions/vscode/src/**/*.ts`], {
       cwd: repo_root,
       exclude: [`**/node_modules/**`, `src/lib/settings.ts`],
     })
       .map((path) => readFileSync(resolve(repo_root, path), `utf8`))
       .join(`\n`)
-      // `key: _key` in a destructure discards the setting rather than reading it; that is how
-      // trajectory.show_parsing_progress hid from the leaf-name match for a release
-      .replaceAll(/\b(?<key>\w+): _\k<key>\b/g, ``)
-    const unread = Object.keys(generated).filter(
-      (id) => !new RegExp(`\\b${id.split(`.`).at(-1)}\\b`).test(haystack),
-    )
-    expect(unread).toEqual([])
+    expect(unread_ids(Object.keys(generated), sources)).toEqual([])
+  })
+
+  test.each([
+    [
+      `nothing names it`,
+      `const fps = settings.trajectory.fps`,
+      [`matterviz.trajectory.zzz_unread`],
+    ],
+    [
+      `same-name destructure discard`,
+      `const { zzz_unread: _zzz_unread, ...rest } = cfg`,
+      [`matterviz.trajectory.zzz_unread`],
+    ],
+    [
+      `renamed destructure discard`,
+      `const { zzz_unread: _unused, ...rest } = cfg`,
+      [`matterviz.trajectory.zzz_unread`],
+    ],
+    [`bracket access`, `const value = settings[\`zzz_unread\`]`, []],
+    [`full-id string read`, `config.get('matterviz.trajectory.zzz_unread')`, []],
+    [
+      `discard plus a real read elsewhere`,
+      `const { zzz_unread: _x } = a\nuse(b.zzz_unread)`,
+      [],
+    ],
+  ])(`unread detection: %s`, (_shape, sources, expected) => {
+    expect(unread_ids([`matterviz.trajectory.zzz_unread`], sources)).toEqual(expected)
   })
 })

@@ -732,6 +732,11 @@ describe(`XYZ`, () => {
     [`a missing comment line`, `4`, `Dropping truncated final XYZ frame 2 (line 13): 0 of 4 atom lines`],
     [`a half-written last atom line`, xyz_frame(four_atoms(`H 1 0`)), `Dropping truncated final XYZ frame 2 (line 13): partial atom line 18 "H 1 0"`],
     [`a non-numeric coordinate on the last atom line`, xyz_frame(four_atoms(`H 1 1 1.2e`)), `Dropping truncated final XYZ frame 2 (line 13): partial atom line 18 "H 1 1 1.2e"`],
+    // truncation wins over a corrupt header: the header of a frame cut short is never decoded
+    [`missing atom lines and a corrupt Lattice`, `4\nLattice="1 0 0"\nH 0 0 0\nH 1 0 0`, `Dropping truncated final XYZ frame 2 (line 13): 2 of 4 atom lines`],
+    // the warning names the frame's own count line, not a numeric comment line inside it
+    [`missing atom lines under a numeric comment`, `4\n3\nH 0 0 0\nH 1 0 0\nH 0 1 0`, `Dropping truncated final XYZ frame 2 (line 13): 3 of 4 atom lines`],
+    [`missing atom lines, with CRLF line endings`, `4\r\ncomment\r\nH 0 0 0\r\nH 1 0 0`, `Dropping truncated final XYZ frame 2 (line 13): 2 of 4 atom lines`],
   ])(`drops a final frame with %s in both the eager parser and the indexed run`, async (_label, tail, warning) => {
     const content = [xyz_frame(four_atoms()), xyz_frame(four_atoms()), tail].join(`\n`)
     const eager = await open(content, `appending.xyz`)
@@ -745,6 +750,21 @@ describe(`XYZ`, () => {
     expect(() => indexed.read_frame(2)).toThrow(RangeError)
     await indexed.properties.done
     expect(indexed.properties.rows.map(({ frame_number }) => frame_number)).toEqual([0, 1])
+  })
+
+  // Tails that are not truncation are kept (or skipped silently, like a 0-atom frame anywhere)
+  // oxfmt-ignore
+  it.each([
+    [`a complete frame without a trailing newline`, xyz_frame(four_atoms()), [0, 1, 2]],
+    [`a complete frame followed by blank lines`, `${xyz_frame(four_atoms())}\n\n\n`, [0, 1, 2]],
+    [`a zero-atom frame`, `0\ncomment`, [0, 1]],
+  ])(`keeps every complete frame before %s`, async (_label, tail, steps) => {
+    const content = [xyz_frame(four_atoms()), xyz_frame(four_atoms()), tail].join(`\n`)
+    for (const options of [{}, { index_above_bytes: 0 }]) {
+      const run = await open(content, `complete.xyz`, options)
+      expect(await steps_of(run)).toEqual(steps)
+      expect(run.warnings).toEqual([])
+    }
   })
 
   // A complete final frame with a defect is corruption, not truncation: both readers throw

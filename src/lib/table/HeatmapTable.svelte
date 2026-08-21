@@ -393,8 +393,11 @@
   // Ticks once a minute while any column shows relative times, so "Xm ago" cells don't go
   // stale (format granularity is minutes).
   let relative_now_ms = $state(Date.now())
+  // A boolean, so the effect restarts its timer only when relative mode turns on or off
+  // rather than on every column view rebuild (each resize step, data refresh)
+  let shows_relative = $derived.by(() => cols.some((view) => view.dt_mode === `relative`))
   $effect(() => {
-    if (!cols.some((view) => view.dt_mode === `relative`)) return
+    if (!shows_relative) return
     relative_now_ms = Date.now() // refresh immediately when relative mode turns on
     const interval = setInterval(() => (relative_now_ms = Date.now()), 60_000)
     return () => clearInterval(interval)
@@ -864,7 +867,8 @@
     target instanceof Element && Boolean(target.closest(`button, a, input, select, textarea`))
 
   // Body events are handled once on <tbody> rather than through four closures per rendered
-  // cell. Every data cell carries its absolute coordinates; rows carry none of their own.
+  // cell. Every data cell and row carries its absolute index. Matching on the attribute, not
+  // the tag, keeps a table rendered inside a cell snippet from hijacking the lookup.
   const cell_under = (target: EventTarget | null): CellPos | null => {
     const cell_el =
       target instanceof Element ? target.closest<HTMLElement>(`td[data-row-idx]`) : null
@@ -872,11 +876,13 @@
     return { row: Number(cell_el.dataset.rowIdx), col: Number(cell_el.dataset.colIdx) }
   }
   const row_under = (target: EventTarget | null): number | null => {
-    const row_el = target instanceof Element ? target.closest(`tr`) : null
-    const idx = row_el?.querySelector<HTMLElement>(`td[data-row-idx]`)?.dataset.rowIdx
+    const idx =
+      target instanceof Element
+        ? target.closest<HTMLElement>(`tr[data-row-idx]`)?.dataset.rowIdx
+        : undefined
     return idx === undefined ? null : Number(idx)
   }
-  // Spacer and empty rows have no indexed cells, so row actions skip them
+  // Spacer and empty rows carry no index, so row actions skip them
   const row_handler =
     <Event_ extends MouseEvent>(action: (event: Event_, row: RowData) => void) =>
     (event: Event_) => {
@@ -1030,7 +1036,7 @@
     const target_idx = abs_idx + step
     if (target_idx < 0 || target_idx >= sorted_data.length) return
     if (scroll_row_into_window(target_idx, step > 0)) await tick()
-    scroll_el?.querySelector(`td[data-row-idx="${target_idx}"]`)?.closest(`tr`)?.focus()
+    scroll_el?.querySelector<HTMLElement>(`tr[data-row-idx="${target_idx}"]`)?.focus()
   }
 
   // === Context menu (right-click on a header or cell) ===
@@ -1617,7 +1623,7 @@
         </tr>
       </thead>
       <!-- One listener set for every row and cell: pointer/keyboard/focus events identify their
-           cell from the data-row-idx/data-col-idx it carries instead of a closure per cell -->
+           row and cell from the data-row-idx/data-col-idx they carry instead of a closure per cell -->
       <!-- svelte-ignore a11y_no_noninteractive_element_interactions (drag cell-range selection; keyboard copy handled on window) -->
       <tbody
         onpointerdown={handle_body_pointerdown}
@@ -1637,6 +1643,7 @@
           <tr
             style={row.style}
             class={[row.class, { selected: row_selected }]}
+            data-row-idx={abs_idx}
             tabindex={onrowclick ? 0 : undefined}
           >
             {#if show_row_select}

@@ -48,6 +48,9 @@ describe(`parse_xy_file`, () => {
 
   // Deterministic pseudo-random counts, so x reverses on roughly every other row
   const noise = (row: number) => (row * 7919) % 100
+  // Ascending integer angles 0..n-1 with each listed point pulled back half a step
+  const glitched = (n_points: number, glitch_at: number[]) =>
+    Array.from({ length: n_points }, (_, idx) => (glitch_at.includes(idx) ? idx - 1.5 : idx))
 
   test.each([
     [`empty content`, ``, /no rows with two numeric columns/],
@@ -70,6 +73,20 @@ describe(`parse_xy_file`, () => {
         `\n`,
       ),
       /column 1 reverses direction in \d+ of 29 steps.*the 30 rows look like \(intensity, error\) pairs/,
+    ],
+    // three numbers per row are one more than a (2theta, intensity) pair or an error pair
+    [
+      `a three-column block of counts`,
+      Array.from({ length: 20 }, (_, row) => `${noise(row)} 2 3`).join(`\n`),
+      /look like a block of bare counts, 3 per row/,
+    ],
+    // just over one per ten steps: 3 of 25 (the 10% bound is not rounded up to 3)
+    [
+      `a 26-point scan with three glitches`,
+      glitched(26, [5, 12, 20])
+        .map((angle, idx) => `${angle} ${idx + 1}`)
+        .join(`\n`),
+      /reverses direction in 3 of 25 steps/,
     ],
   ])(`throws on %s`, (_name, content, pattern) => {
     expect(() => parse_xy_file(content)).toThrow(pattern)
@@ -101,6 +118,13 @@ describe(`parse_xy_file`, () => {
       `a scan whose restart lands on its first angle`,
       [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 10],
     ],
+    // exactly one per ten steps (2 of 20) is still accepted; the bound is strict
+    [`a 21-point scan with two glitches`, glitched(21, [5, 12])],
+    // a descending scan is returned as read, not flipped
+    [`a descending scan`, [30, 29, 28, 27, 26]],
+    // no step has a direction: nothing to reverse (and no NaN from an empty majority)
+    [`a scan with every angle equal`, [5, 5, 5, 5]],
+    [`a single point`, [5]],
   ])(`tolerates %s`, (_name, angles) => {
     const result = parse_xy_file(angles.map((angle, idx) => `${angle} ${idx + 1}`).join(`\n`))
     expect(result.x).toEqual(angles)
@@ -311,6 +335,18 @@ describe(`parse_bruker_raw_file (RAW1.01)`, () => {
     expect(result.y).toEqual([25, 50, 75, 12.5, 100])
   })
 
+  test(`reads counts and range headers at odd byte offsets`, () => {
+    // odd supplementary sizes leave the float32 counts and the next range header unaligned
+    const result = parse_bruker_raw_file(
+      make_raw101([
+        { counts: [1, 2, 3], start: 10, step: 1, supplementary: 1 },
+        { counts: [4, 5], start: 20, step: 1, supplementary: 3 },
+      ]),
+    )
+    expect(result.x).toEqual([10, 11, 12, 20, 21])
+    expect(result.y).toEqual([20, 40, 60, 80, 100])
+  })
+
   test.each([
     [
       `a RAW2 file`,
@@ -350,6 +386,39 @@ describe(`parse_bruker_raw_file (RAW1.01)`, () => {
           { counts: [1], start: 20, step: 0 },
         ]),
       /range 2 of 2 header has steps=1, start=20, step=0/,
+    ],
+    [
+      `a range with no steps`,
+      () =>
+        make_raw101([
+          { counts: [1], start: 10, step: 1 },
+          { counts: [], start: 20, step: 1 },
+        ]),
+      /range 2 of 2 header has steps=0, start=20, step=1/,
+    ],
+    [
+      `a negative step size`,
+      () => make_raw101([{ counts: [1, 2], start: 10, step: -1 }]),
+      /range 1 of 1 header has steps=2, start=10, step=-1/,
+    ],
+    // a zero header length would place the counts on top of the header fields
+    [
+      `a range header shorter than its own fields`,
+      () => {
+        const buffer = one_range([1, 2, 3])
+        new DataView(buffer).setUint32(712, 0, true)
+        return buffer
+      },
+      /range 1 of 1 header has steps=3, start=10, step=0.5, length=0/,
+    ],
+    [
+      `a zero range count`,
+      () => {
+        const buffer = one_range([1, 2, 3])
+        new DataView(buffer).setUint32(12, 0, true)
+        return buffer
+      },
+      /announces 0 ranges/,
     ],
   ])(`throws on %s`, (_name, make_buffer, pattern) => {
     expect(() => parse_bruker_raw_file(make_buffer())).toThrow(pattern)

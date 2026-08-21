@@ -1,4 +1,5 @@
 import {
+  type CellSnippetArgs,
   type ColumnFilter,
   type ColumnPrefs,
   HeatmapTable,
@@ -6,7 +7,7 @@ import {
   type RowData,
   type SummaryStat,
 } from '$lib/table'
-import { type ComponentProps, mount, tick, unmount } from 'svelte'
+import { type ComponentProps, createRawSnippet, mount, tick, unmount } from 'svelte'
 import { assert, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { bind_props, doc_query, trigger_resize_observer } from '../setup'
 
@@ -1531,6 +1532,47 @@ describe(`HeatmapTable`, () => {
         expect(clicked[0]).toHaveProperty(`Model`, `Model A`)
       },
     )
+
+    // Row actions are delegated to <tbody> and resolve their row from the DOM, so a table
+    // rendered inside a cell snippet (whose own <tr>s carry no index) and a row whose data
+    // columns are all hidden must still map back to the right row object
+    it(`resolves row actions through nested tables and rows without data cells`, async () => {
+      const onrowclick = vi.fn()
+      const onrowdblclick = vi.fn()
+      const data = [{ A: 1 }, { A: 2 }]
+      const cell = createRawSnippet((_args: () => CellSnippetArgs) => ({
+        render: () => `<table><tbody><tr><td class="inner">x</td></tr></tbody></table>`,
+      }))
+      const state = $state({ hidden_columns: [] as string[] })
+      mount_table(
+        bind_props(
+          {
+            data,
+            columns: plain_columns(`A`),
+            onrowclick,
+            onrowdblclick,
+            cell,
+            show_row_select: true,
+          },
+          state,
+        ),
+      )
+      await tick()
+      const inner = document.querySelectorAll<HTMLElement>(`td.inner`)[1]
+      inner.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+      inner.dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
+      inner.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }))
+      expect(onrowclick.mock.calls.map((call) => call[1])).toEqual([data[1], data[1]])
+      expect(onrowdblclick.mock.calls.map((call) => call[1])).toEqual([data[1]])
+
+      onrowclick.mockClear()
+      state.hidden_columns = [`A`]
+      await tick()
+      const last_row = doc_query(`tbody tr[data-row-idx="1"]`)
+      expect(last_row.querySelector(`td[data-row-idx]`)).toBeNull()
+      last_row.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+      expect(onrowclick.mock.calls.map((call) => call[1])).toEqual([data[1]])
+    })
   })
 
   describe(`Filtering, summaries and per-column state`, () => {

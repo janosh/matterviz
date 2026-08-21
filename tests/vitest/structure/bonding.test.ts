@@ -1583,6 +1583,44 @@ describe(`neighbor_query`, () => {
     for (const [key, dist] of expected) expect(found.get(key)).toBeCloseTo(dist, 12)
   })
 
+  // One ejected atom (an MD blow-up frame) stretches the bounding box along one axis. A
+  // cube-root widening of a cubic bin left that axis with ~span/bin bins (5e7 bins at 1e11 A,
+  // tens of GB at 1e14 A); a cubic bin widened until the grid fits put the whole cluster into
+  // one bin, so the sweep went O(n^2) (50k atoms: 0.1 -> 4 s). Only the stretched axis may
+  // widen; the cluster must stay spread over the other two.
+  test.each([
+    [1e6, 10],
+    [1e11, 10],
+    [1e14, 10],
+    [1e9, 34],
+  ])(`a flyaway atom at %s A keeps the grid bounded (%s^3 cluster)`, (far, edge) => {
+    const n_cluster = edge ** 3
+    const xyzs: Vec3[] = Array.from({ length: n_cluster }, (_, idx) => [
+      (idx % edge) * 1.1,
+      (Math.floor(idx / edge) % edge) * 1.1,
+      Math.floor(idx / edge ** 2) * 1.1,
+    ])
+    xyzs.push([far, 0, 0])
+    const cloud = {
+      sites: xyzs.map((xyz) => ({
+        species: [{ element: `C` as const, occu: 1, oxidation_state: 0 }],
+        xyz,
+        abc: [0, 0, 0] as Vec3,
+        label: `C`,
+        properties: {},
+      })),
+    }
+    const started = performance.now()
+    const list = bonding.neighbor_query(cloud, { cutoff: 1.2 })
+    expect(performance.now() - started).toBeLessThan(edge > 10 ? 1000 : 500)
+    // cubic grid at 1.1 A: 3 edge^2 (edge - 1) axis-adjacent pairs, each listed from both ends
+    expect(list.neighbors).toHaveLength(6 * edge ** 2 * (edge - 1))
+    expect(
+      list.offsets[n_cluster + 1] - list.offsets[n_cluster],
+      `the flyaway atom has no contacts`,
+    ).toBe(0)
+  })
+
   test(`sorted: false yields the same contacts per center, in some order`, () => {
     const sorted = bonding.neighbor_query(triclinic, { cutoff: 5.5 })
     const unsorted = bonding.neighbor_query(triclinic, { cutoff: 5.5, sorted: false })

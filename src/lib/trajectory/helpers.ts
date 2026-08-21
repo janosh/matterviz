@@ -239,8 +239,9 @@ export type XyzFrameSpec = { start: number; num_atoms: number; comment: string }
 
 // Walk XYZ frames by their atom-count lines, sampling the first three atom lines of each
 // candidate so stray numeric lines are not mistaken for a frame header. A frame whose atom
-// block runs past the end of the input (a writer still appending) is not yielded; the last
-// such candidate after the final complete frame is the generator's return value.
+// block runs past the end of the input (a writer still appending) is not yielded; the first
+// such candidate after the final complete frame is the generator's return value (a later one
+// is a numeric comment line or stray number inside that frame's own block).
 export function* iter_xyz_frames(
   lines: string[],
 ): Generator<XyzFrameSpec, XyzFrameSpec | null> {
@@ -264,7 +265,7 @@ export function* iter_xyz_frames(
     }
     const spec = { start: line_idx, num_atoms, comment: lines[line_idx + 1] ?? `` }
     if (atom_lines < num_atoms) {
-      torn = spec
+      torn ??= spec
       line_idx++
       continue
     }
