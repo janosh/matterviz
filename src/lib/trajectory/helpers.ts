@@ -257,7 +257,12 @@ export function* iter_xyz_frames(
     const sample = Math.min(atom_lines, 3)
     let valid_coords = 0
     for (let idx = 0; idx < sample; idx++) {
-      if (is_xyz_atom_line(lines[line_idx + 2 + idx].trim().split(/\s+/))) valid_coords++
+      const line_at = line_idx + 2 + idx
+      // The input's last line may be half-written by a writer still appending. A frame of
+      // three atoms or fewer samples it, so it never disqualifies the frame here; the caller
+      // decodes or drops it (index_xyz_frames), which a frame never indexed cannot be.
+      if (line_at === lines.length - 1) valid_coords++
+      else if (is_xyz_atom_line(lines[line_at].trim().split(/\s+/))) valid_coords++
     }
     if (valid_coords < sample) {
       line_idx++

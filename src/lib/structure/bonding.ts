@@ -1025,9 +1025,19 @@ function neighbor_query_cutoff(
   return { n_centers: n_sites, cutoff, offsets, neighbors, images, deltas, distances }
 }
 
-// Mean volume per atom, seeding the k-nearest radius search
-const volume_per_atom = (structure: AnyStructure): number => {
-  if (`lattice` in structure) return structure.lattice.volume / structure.sites.length
+// Search bounds of the k-nearest query. The seed radius comes from the mean volume per atom;
+// the radius stops growing at `max_cutoff`: a few cell heights for a crystal (whose images
+// are endless), the bounding-box diagonal for a finite cluster, within which every pair of
+// its sites lies, so each site can always reach its n - 1 partners. The cube root of the box
+// volume fell short of that on an elongated cluster (a 100 A chain of 3 atoms: 9 A). A planar
+// or linear cluster has a zero-thickness box; 1 A per axis keeps its volume finite.
+const k_search_bounds = (
+  structure: AnyStructure,
+): { total_volume: number; max_cutoff: number } => {
+  if (`lattice` in structure) {
+    const { volume, matrix } = structure.lattice
+    return { total_volume: volume, max_cutoff: 4 * Math.max(...math.cell_heights(matrix)) }
+  }
   const mins: Vec3 = [Infinity, Infinity, Infinity]
   const maxs: Vec3 = [-Infinity, -Infinity, -Infinity]
   for (const { xyz } of structure.sites) {
@@ -1036,9 +1046,11 @@ const volume_per_atom = (structure: AnyStructure): number => {
       if (xyz[axis] > maxs[axis]) maxs[axis] = xyz[axis]
     }
   }
-  // a planar or linear cluster has a zero-thickness box; 1 A keeps the seed finite
-  const extent = (axis: number) => Math.max(maxs[axis] - mins[axis], 1)
-  return (extent(0) * extent(1) * extent(2)) / structure.sites.length
+  const extents = [0, 1, 2].map((axis) => Math.max(maxs[axis] - mins[axis], 1))
+  return {
+    total_volume: extents[0] * extents[1] * extents[2],
+    max_cutoff: Math.hypot(...extents),
+  }
 }
 
 // The periodic axes an analysis should bond across when the caller gives none: the lattice's
@@ -1081,14 +1093,11 @@ export function neighbor_query(
   }
   const n_sites = structure.sites.length
   if (n_sites === 0) return neighbor_query_cutoff(structure, 1, pbc, true)
-  const atom_volume = volume_per_atom(structure)
+  const { total_volume, max_cutoff } = k_search_bounds(structure)
+  const atom_volume = total_volume / n_sites
   // radius of the sphere holding k+1 atoms at the mean density, widened 30% so the first
   // pass usually suffices even for an anisotropic first shell
   let cutoff = 1.3 * ((3 * (k + 1) * atom_volume) / (4 * Math.PI)) ** (1 / 3)
-  const max_cutoff =
-    `lattice` in structure
-      ? 4 * Math.max(...math.cell_heights(structure.lattice.matrix))
-      : 2 * (atom_volume * n_sites) ** (1 / 3)
   for (;;) {
     const list = neighbor_query_cutoff(structure, cutoff, pbc, true)
     let short = false

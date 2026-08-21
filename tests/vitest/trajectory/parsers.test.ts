@@ -731,6 +731,10 @@ describe(`XYZ`, () => {
     [`missing atom lines`, `4\ncomment\nH 0 0 0\nH 1 0 0`, `Dropping truncated final XYZ frame 2 (line 13): 2 of 4 atom lines`],
     [`a missing comment line`, `4`, `Dropping truncated final XYZ frame 2 (line 13): 0 of 4 atom lines`],
     [`a half-written last atom line`, xyz_frame(four_atoms(`H 1 0`)), `Dropping truncated final XYZ frame 2 (line 13): partial atom line 18 "H 1 0"`],
+    // the half-written line is one the frame scan samples (3rd atom line): it used to reject the
+    // header outright, so the torn frame vanished without a warning
+    [`a half-written third atom line in a 3-atom frame`, `3\ncomment\nH 0 0 0\nH 1 0 0\nH 0 1`, `Dropping truncated final XYZ frame 2 (line 13): partial atom line 17 "H 0 1"`],
+    [`a missing atom line after a half-written third`, `4\ncomment\nH 0 0 0\nH 1 0 0\nH 0 1`, `Dropping truncated final XYZ frame 2 (line 13): 3 of 4 atom lines`],
     [`a non-numeric coordinate on the last atom line`, xyz_frame(four_atoms(`H 1 1 1.2e`)), `Dropping truncated final XYZ frame 2 (line 13): partial atom line 18 "H 1 1 1.2e"`],
     // truncation wins over a corrupt header: the header of a frame cut short is never decoded
     [`missing atom lines and a corrupt Lattice`, `4\nLattice="1 0 0"\nH 0 0 0\nH 1 0 0`, `Dropping truncated final XYZ frame 2 (line 13): 2 of 4 atom lines`],

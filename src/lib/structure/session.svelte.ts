@@ -358,6 +358,7 @@ export class StructureSession {
     // would let the scene draw a stale selection against a shrunken site list first; a throw
     // there aborts the whole flush, dropping the pending clear with it.
     const changed = create_change_tracker()
+    let previous_supercell_error: string | undefined
     $effect.pre(() => {
       // Read every dependency up front; the guards below must not make tracking conditional
       const structure_changed = changed(`structure`, inputs.structure())
@@ -373,8 +374,10 @@ export class StructureSession {
       const bond_mode_changed = changed(`bond_edit_mode`, inputs.bond_edit_mode())
       const bonds_replaced = inputs.bonds() !== this.emitted_bonds
       const bonds_unavailable = measure_mode === `edit-bonds` && !this.bond_edits_enabled
+      // Not via `changed`: a build that already fails at mount must notify too
       const { error: supercell_error } = this.supercell
-      const supercell_failed = changed(`supercell_error`, supercell_error) && supercell_error
+      const supercell_failed = supercell_error !== previous_supercell_error && supercell_error
+      previous_supercell_error = supercell_error
       untrack(() => {
         if (supercell_failed) this.notice(`Failed to create supercell: ${supercell_failed}`)
         const internal = this.is_internal_edit

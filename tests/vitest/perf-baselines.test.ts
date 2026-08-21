@@ -371,7 +371,8 @@ describe.skipIf(!enabled)(`perf baselines`, { timeout: 120_000 }, () => {
       )
       flushSync()
       await tick()
-      expect(document.querySelectorAll(`tbody tr`).length).toBeGreaterThan(0)
+      // data rows, not the virtual spacers (which also render as <tr>)
+      expect(document.querySelectorAll(`tbody tr[data-row-idx]`).length).toBeGreaterThan(0)
     })
   })
 

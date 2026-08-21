@@ -1477,6 +1477,17 @@ describe(`neighbor_query`, () => {
     const knn = bonding.neighbor_query(water, { k: 5 })
     expect(Array.from(knn.offsets)).toEqual([0, 2, 4, 6])
     expect(Array.from(knn.images).every((shift) => shift === 0)).toBe(true)
+    // the radius may grow to the cluster's bounding-box diagonal: a 100 A chain of 3 atoms
+    // has a 9.3 A cube-root volume, which left every atom with 0 of its 2 partners
+    const chain = {
+      sites: [0, 50, 100].map((x_coord) => ({
+        ...water.sites[0],
+        xyz: [x_coord, 0, 0] as Vec3,
+      })),
+    }
+    const chain_knn = bonding.neighbor_query(chain, { k: 2 })
+    expect(Array.from(chain_knn.offsets)).toEqual([0, 2, 4, 6])
+    expect(Array.from(chain_knn.distances)).toEqual([50, 100, 50, 50, 50, 100])
     const list = bonding.neighbor_query(water, { cutoff: 1.2 })
     expect(list.offsets[3]).toBeGreaterThanOrEqual(4) // two O-H contacts, both ends
     for (let center = 0; center < 3; center++) {

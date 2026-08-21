@@ -1,5 +1,6 @@
 import { type AnyStructure, type MeasureMode, Structure } from '$lib'
 import type { VolumetricData } from '$lib/isosurface'
+import { DEFAULT_ISOSURFACE_SETTINGS } from '$lib/isosurface/types'
 import { create_frac_to_cart, type Vec3 } from '$lib/math'
 import { DEFAULTS } from '$lib/settings'
 import * as symmetry from '$lib/symmetry'
@@ -440,6 +441,33 @@ describe(`Structure`, () => {
     )
   })
 
+  test(`displayed_structure keeps its identity across unrelated prop changes`, async () => {
+    // A bound parent re-proxies every write, so rewriting the same structure on an
+    // unrelated rerun would invalidate every consumer of displayed_structure
+    const props = $state<ComponentProps<typeof Structure>>({
+      structure,
+      displayed_structure: undefined,
+      active_volume_idx: 0,
+      volumetric_data: undefined,
+    })
+    let runs = 0
+    const destroy = $effect.root(() => {
+      $effect(() => {
+        void props.displayed_structure
+        runs += 1
+      })
+    })
+    mount_structure(props)
+    await tick()
+    const [displayed, runs_before] = [props.displayed_structure, runs]
+    expect(displayed?.sites.length).toBeGreaterThan(0)
+    props.active_volume_idx = 3
+    await tick()
+    expect(props.displayed_structure).toBe(displayed)
+    expect(runs).toBe(runs_before)
+    destroy()
+  })
+
   test.each([
     [`aperiodic`, [false, false, false], [-0.1, 1.2, 2.1]],
     [`partially periodic`, [true, false, true], [0.9, 1.2, 0.1]],
@@ -498,6 +526,10 @@ describe(`Structure`, () => {
         expect(legend_total).toBe(base_total)
       })
       expect(state.measure_mode).toBe(`edit-bonds`)
+      // a build that already fails at mount is reported, not only one that starts failing
+      expect(doc_query(`.edit-toast`).textContent).toBe(
+        `Failed to create supercell: malformed scaling matrix`,
+      )
     } finally {
       error_spy.mockRestore()
     }
@@ -1167,6 +1199,22 @@ describe(`Structure string parsing`, () => {
     await tick()
     expect(on_file_load).toHaveBeenCalledTimes(1)
     expect(on_file_load.mock.calls[0][0].structure?.sites[0]?.species[0]?.element).toBe(`He`)
+  })
+
+  test(`an unrelated prop change does not abort and restart an in-flight data_url fetch`, async () => {
+    const responses = deferred_fetch_responses()
+    const props = $state<ComponentProps<typeof Structure>>({
+      data_url: `/a.json`,
+      isosurface_settings: { ...DEFAULT_ISOSURFACE_SETTINGS },
+      active_volume_idx: 0,
+    })
+    mount_structure(props)
+    await vi.waitFor(() => expect(responses.get(`/a.json`)).toHaveLength(1))
+    props.isosurface_settings = { ...DEFAULT_ISOSURFACE_SETTINGS }
+    props.active_volume_idx = 2
+    await tick()
+    await tick()
+    expect(responses.get(`/a.json`), `the first request is still the only one`).toHaveLength(1)
   })
 
   test(`on_error reports the requested URL, not a superseded data_url`, async () => {

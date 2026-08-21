@@ -867,36 +867,50 @@
     target instanceof Element && Boolean(target.closest(`button, a, input, select, textarea`))
 
   // Body events are handled once on <tbody> rather than through four closures per rendered
-  // cell. Every data cell and row carries its absolute index. Matching on the attribute, not
-  // the tag, keeps a table rendered inside a cell snippet from hijacking the lookup.
-  const cell_under = (target: EventTarget | null): CellPos | null => {
-    const cell_el =
+  // cell. Every data cell and row carries its absolute index. Only this table's own rows and
+  // cells count: a HeatmapTable nested in a cell snippet carries the same attributes, and its
+  // coordinates must not be resolved against the outer rows. The <tbody> comes from
+  // event.currentTarget because bind:this only resolves in a deferred effect, and a keydown
+  // dispatched right after mount must already find its row.
+  type BodyEvent = Event & { currentTarget: HTMLTableSectionElement }
+  const cell_under = ({ target, currentTarget: tbody }: BodyEvent): CellPos | null => {
+    let cell_el =
       target instanceof Element ? target.closest<HTMLElement>(`td[data-row-idx]`) : null
+    while (cell_el && cell_el.parentElement?.parentElement !== tbody) {
+      cell_el = cell_el.parentElement?.closest<HTMLElement>(`td[data-row-idx]`) ?? null
+    }
     if (!cell_el) return null
     return { row: Number(cell_el.dataset.rowIdx), col: Number(cell_el.dataset.colIdx) }
   }
-  const row_under = (target: EventTarget | null): number | null => {
-    const idx =
-      target instanceof Element
-        ? target.closest<HTMLElement>(`tr[data-row-idx]`)?.dataset.rowIdx
-        : undefined
-    return idx === undefined ? null : Number(idx)
+  const row_under = ({ target, currentTarget: tbody }: BodyEvent): number | null => {
+    let row_el =
+      target instanceof Element ? target.closest<HTMLElement>(`tr[data-row-idx]`) : null
+    while (row_el && row_el.parentElement !== tbody) {
+      row_el = row_el.parentElement?.closest<HTMLElement>(`tr[data-row-idx]`) ?? null
+    }
+    return row_el ? Number(row_el.dataset.rowIdx) : null
   }
+  // Direct children only, for the same reason. These run after a tick, once bind:this is set.
+  let tbody_el = $state<HTMLTableSectionElement>()
+  const own_row_el = (row: number) =>
+    tbody_el?.querySelector<HTMLElement>(`:scope > tr[data-row-idx="${row}"]`)
+  const own_cell_el = (row: number, col: number) =>
+    own_row_el(row)?.querySelector<HTMLElement>(`:scope > td[data-col-idx="${col}"]`)
   // Spacer and empty rows carry no index, so row actions skip them
   const row_handler =
-    (action: (event: MouseEvent, row: RowData) => void) => (event: MouseEvent) => {
-      const row = row_under(event.target)
+    (action: (event: MouseEvent, row: RowData) => void) => (event: MouseEvent & BodyEvent) => {
+      const row = row_under(event)
       if (row !== null) action(event, sorted_data[row])
     }
 
-  function handle_body_pointerdown(event: PointerEvent) {
-    const pos = cell_under(event.target)
+  function handle_body_pointerdown(event: PointerEvent & BodyEvent) {
+    const pos = cell_under(event)
     if (!pos || event.button !== 0 || is_interactive_cell_target(event.target)) return
     selection.start_drag(pos, event.shiftKey || event.metaKey || event.ctrlKey)
   }
-  function extend_cell_drag(event: PointerEvent) {
+  function extend_cell_drag(event: PointerEvent & BodyEvent) {
     if (!selection.dragging) return
-    const pos = cell_under(event.target)
+    const pos = cell_under(event)
     // A native text selection may have started before user-select: none kicked in; drop it
     // so the cell selection is the only visible one
     if (pos && selection.extend_drag(pos)) globalThis.getSelection()?.removeAllRanges()
@@ -911,16 +925,17 @@
     event.stopPropagation()
     event.preventDefault()
   }
-  function handle_body_focusin(event: FocusEvent) {
-    // The cell itself, not a link inside it: that focus leaves the tab stop where it was
+  function handle_body_focusin(event: FocusEvent & BodyEvent) {
+    // One of this table's own cells, not a link or nested table inside it: that focus leaves
+    // the tab stop where it was
     const target = event.target
-    if (!keyboard_cells || !(target instanceof Element) || !target.matches(`td[data-row-idx]`))
-      return
-    const pos = cell_under(target)
+    if (!keyboard_cells || !(target instanceof Element)) return
+    if (target.parentElement?.parentElement !== event.currentTarget) return
+    const pos = cell_under(event)
     if (pos) active_cell = pos
   }
-  function handle_body_contextmenu(event: MouseEvent) {
-    const pos = cell_under(event.target)
+  function handle_body_contextmenu(event: MouseEvent & BodyEvent) {
+    const pos = cell_under(event)
     // keep the native context menu for links/buttons/inputs inside cells
     if (pos && !is_interactive_cell_target(event.target)) {
       open_column_context_menu(event, cols[pos.col].id)
@@ -994,11 +1009,7 @@
     scroll_row_into_window(row)
     active_cell = { row, col }
     // The row may not be rendered yet (page flip or virtual window), so wait a tick
-    void tick().then(() => {
-      container_el
-        ?.querySelector<HTMLElement>(`td[data-row-idx="${row}"][data-col-idx="${col}"]`)
-        ?.focus()
-    })
+    void tick().then(() => own_cell_el(row, col)?.focus())
   }
 
   function handle_window_keydown(event: KeyboardEvent) {
@@ -1019,10 +1030,10 @@
   // Enter/Space activate a clickable row, Up/Down walk to the neighbouring one. Stepping by
   // absolute index rather than DOM sibling because under virtualization the row next to the
   // last rendered one is a spacer, which would strand the keyboard user at the window edge.
-  async function handle_body_keydown(event: KeyboardEvent) {
-    const pos = cell_under(event.target)
+  async function handle_body_keydown(event: KeyboardEvent & BodyEvent) {
+    const pos = cell_under(event)
     if (keyboard_cells && pos && handle_cell_keydown(event, pos)) return
-    const abs_idx = onrowclick ? row_under(event.target) : null
+    const abs_idx = onrowclick ? row_under(event) : null
     if (abs_idx === null) return
     if (event.key === `Enter` || event.key === ` `) {
       event.preventDefault()
@@ -1035,7 +1046,7 @@
     const target_idx = abs_idx + step
     if (target_idx < 0 || target_idx >= sorted_data.length) return
     if (scroll_row_into_window(target_idx, step > 0)) await tick()
-    scroll_el?.querySelector<HTMLElement>(`tr[data-row-idx="${target_idx}"]`)?.focus()
+    own_row_el(target_idx)?.focus()
   }
 
   // === Context menu (right-click on a header or cell) ===
@@ -1222,11 +1233,16 @@
     event.preventDefault()
     event.stopPropagation()
     const col_idx = cols.findIndex((view) => view.id === col_id)
-    const cells = container_el?.querySelectorAll<HTMLElement>(
-      `th[data-col-id="${CSS.escape(col_id)}"], td[data-col-idx="${col_idx}"]`,
-    )
+    const cells = [
+      ...(container_el?.querySelectorAll<HTMLElement>(
+        `:scope > .table-scroll > table > thead th[data-col-id="${CSS.escape(col_id)}"]`,
+      ) ?? []),
+      ...(tbody_el?.querySelectorAll<HTMLElement>(
+        `:scope > tr > td[data-col-idx="${col_idx}"]`,
+      ) ?? []),
+    ]
     let widest = 0
-    for (const element of cells ?? []) {
+    for (const element of cells) {
       widest = Math.max(
         widest,
         element.scrollWidth + element.offsetWidth - element.clientWidth,
@@ -1625,6 +1641,7 @@
            row and cell from the data-row-idx/data-col-idx they carry instead of a closure per cell -->
       <!-- svelte-ignore a11y_no_noninteractive_element_interactions (drag cell-range selection; keyboard copy handled on window) -->
       <tbody
+        bind:this={tbody_el}
         onpointerdown={handle_body_pointerdown}
         onpointermove={extend_cell_drag}
         onfocusin={handle_body_focusin}

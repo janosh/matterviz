@@ -300,7 +300,22 @@
 
   // === acquisition: data_url, structure_string, drops ===
   const loader = create_structure_loader({
-    document: () => ({ structure, volumetric_data, isosurface_settings, active_volume_idx }),
+    // Getters so the loader's effects track only the fields they read: the data_url request
+    // reads just `structure`, and must not restart an in-flight fetch on an isosurface tweak
+    document: () => ({
+      get structure() {
+        return structure
+      },
+      get volumetric_data() {
+        return volumetric_data
+      },
+      get isosurface_settings() {
+        return isosurface_settings
+      },
+      get active_volume_idx() {
+        return active_volume_idx
+      },
+    }),
     set_document: (document) => {
       ;({ structure, volumetric_data, isosurface_settings, active_volume_idx } = document)
     },
@@ -532,8 +547,12 @@
   })
 
   // === outputs and clamps ===
+  // Own effect: a bound parent re-proxies every write, so writing on unrelated reruns would
+  // hand consumers a new identity for the same structure
   $effect(() => {
     displayed_structure = session.displayed_structure
+  })
+  $effect(() => {
     displacement_rmsd = displacement_summary?.rmsd
     // Stale externally-controlled indices must not blank either volumetric view
     const clamped_idx = normalize_active_volume_idx(
@@ -541,7 +560,8 @@
       volumetric_data?.length ?? 0,
     )
     if (clamped_idx !== active_volume_idx) active_volume_idx = clamped_idx
-    if (!is_multi_view_active) session.collapse_to_primary_pane()
+    // untrack: collapsing reads the moved-pane set, which must not re-run this on camera moves
+    if (!is_multi_view_active) untrack(session.collapse_to_primary_pane)
   })
 
   // === camera context ===

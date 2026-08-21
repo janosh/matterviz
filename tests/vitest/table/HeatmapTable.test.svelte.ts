@@ -1573,6 +1573,46 @@ describe(`HeatmapTable`, () => {
       last_row.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
       expect(onrowclick.mock.calls.map((call) => call[1])).toEqual([data[1]])
     })
+
+    // A HeatmapTable nested in a cell (a per-row mini table) carries its own data-row-idx /
+    // data-col-idx attributes, so the outer lookups must stop at their own <tbody> instead of
+    // resolving the inner table's coordinates against the outer rows
+    it(`ignores the indices of a nested HeatmapTable when resolving rows and cells`, async () => {
+      const onrowclick = vi.fn()
+      const data = [{ A: 1 }, { A: 2 }, { A: 3 }]
+      // the inner markup mirrors what a nested HeatmapTable renders for its own first row
+      const cell = createRawSnippet((_args: () => CellSnippetArgs) => ({
+        render: () =>
+          `<table><tbody><tr data-row-idx="0"><td data-row-idx="0" data-col-idx="0" class="inner">x</td></tr></tbody></table>`,
+      }))
+      mount_table({
+        data,
+        columns: plain_columns(`A`),
+        onrowclick,
+        cell,
+        keyboard_cells: true,
+      })
+      await tick()
+      const inner = document.querySelectorAll<HTMLElement>(`td.inner`)[2]
+      inner.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+      expect(onrowclick.mock.calls.map((call) => call[1])).toEqual([data[2]])
+
+      // a drag started in the inner cell selects the outer cell it sits in, not (0, 0)
+      inner.dispatchEvent(new PointerEvent(`pointerdown`, { bubbles: true, button: 0 }))
+      globalThis.dispatchEvent(new PointerEvent(`pointerup`))
+      await tick()
+      const selected = [...document.querySelectorAll<HTMLElement>(`td.cell-selected`)]
+      expect(selected.map((td) => td.dataset.rowIdx)).toEqual([`2`])
+      expect(selected[0].classList.contains(`inner`)).toBe(false)
+
+      // keyboard: ArrowUp from the outer row 2 cell lands on the outer row 1 cell
+      cell_at(2, 0).focus()
+      cell_at(2, 0).dispatchEvent(
+        new KeyboardEvent(`keydown`, { key: `ArrowUp`, bubbles: true }),
+      )
+      await tick()
+      expect(document.activeElement).toBe(cell_at(1, 0))
+    })
   })
 
   describe(`Filtering, summaries and per-column state`, () => {
