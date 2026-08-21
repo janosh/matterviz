@@ -19,8 +19,6 @@ import {
   type PointStyle,
 } from '$lib/plot/core/types'
 
-export { type AxisRanges } from '$lib/plot/core/types'
-
 // Sort a possibly-inverted range (axes may be reversed, e.g. [3.5, 1.4]) into [lo, hi]
 // once per series so the per-point test is two bare comparisons.
 const sorted_bounds = ([a, b]: readonly [number, number]): [number, number] =>

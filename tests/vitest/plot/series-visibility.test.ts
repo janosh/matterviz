@@ -1,5 +1,6 @@
 import type { DataSeries } from '$lib/plot'
 import {
+  create_legend_visibility,
   handle_legend_double_click,
   have_compatible_units,
   LEGEND_VISIBILITY_MODES,
@@ -309,5 +310,104 @@ describe(`handle_legend_double_click`, () => {
     // All series should remain visible (no isolation occurs)
     expect(result.series.map((srs) => srs.visible)).toEqual([true, true])
     expect(result.prev_visibility).toBeNull()
+  })
+})
+
+describe(`create_legend_visibility`, () => {
+  // Mimics a component: `raw` is the (bindable) prop, `resolved` what the chart renders
+  const make_store = (initial: DataSeries[]) => {
+    const store = { raw: initial, resolved: initial }
+    const vis = create_legend_visibility<DataSeries>(
+      () => store.resolved,
+      (next) => receive(next),
+    )
+    const receive = (incoming: DataSeries[]) => {
+      store.raw = incoming
+      store.resolved = vis.resolve(incoming)
+    }
+    receive(initial)
+    return {
+      store,
+      vis,
+      receive,
+      visible: () => store.resolved.map((srs) => srs.visible ?? true),
+    }
+  }
+  const fresh = (overrides: Partial<DataSeries>[] = [{ id: `a` }, { id: `b` }]) =>
+    overrides.map((extra, idx) => ({ x: [idx], y: [idx], label: `S${idx}`, ...extra }))
+
+  test(`a legend-hidden series stays hidden when the parent re-sends equal series`, () => {
+    const { store, vis, receive, visible } = make_store(fresh())
+    vis.on_toggle(0)
+    expect(visible()).toEqual([false, true])
+    // write-back reaches the bindable prop (bound parents see the toggle)
+    expect(store.raw.map((srs) => srs.visible)).toEqual([false, undefined])
+    // one-way parent rebuilds the array without `visible`
+    receive(fresh())
+    expect(visible()).toEqual([false, true])
+    // untouched series objects pass through by identity
+    expect(store.resolved[1]).toBe(store.raw[1])
+  })
+
+  test(`parent explicitly changing visible clears the override`, () => {
+    const { vis, receive, visible } = make_store(fresh())
+    vis.on_toggle(0)
+    receive(fresh([{ id: `a`, visible: true }, { id: `b` }]))
+    expect(visible()).toEqual([true, true])
+    // override is gone for good: reverting to the unset value no longer re-hides
+    receive(fresh())
+    expect(visible()).toEqual([true, true])
+  })
+
+  test(`parent echoing the hidden value keeps it hidden, user re-show drops the override`, () => {
+    const { vis, receive, visible } = make_store(fresh())
+    vis.on_toggle(0)
+    receive(fresh([{ id: `a`, visible: false }, { id: `b` }]))
+    expect(visible()).toEqual([false, true])
+    vis.on_toggle(0)
+    expect(visible()).toEqual([true, true])
+    receive(fresh([{ id: `a`, visible: false }, { id: `b` }]))
+    // parent's explicit false now wins again since the user returned to the parent value
+    expect(visible()).toEqual([false, true])
+  })
+
+  test.each([
+    [`label when id is missing`, fresh([{}, {}]), fresh([{}, {}])],
+    [
+      `index when id and label are missing`,
+      fresh([{ label: undefined }, { label: undefined }]),
+      fresh([{ label: undefined }, { label: undefined }]),
+    ],
+    [
+      `id over label`,
+      fresh([{ id: `a`, label: `old` }, { id: `b` }]),
+      fresh([{ id: `a`, label: `renamed` }, { id: `b` }]),
+    ],
+  ])(`keys overrides by %s`, (_desc, initial, replacement) => {
+    const { vis, receive, visible } = make_store(initial)
+    vis.on_toggle(0)
+    receive(replacement)
+    expect(visible()).toEqual([false, true])
+  })
+
+  test(`isolate via double-click survives replacement and restore returns to parent state`, () => {
+    const { vis, receive, visible } = make_store(
+      fresh([{ id: `a` }, { id: `b` }, { id: `c` }]),
+    )
+    vis.on_double_click(1)
+    receive(fresh([{ id: `a` }, { id: `b` }, { id: `c` }]))
+    expect(visible()).toEqual([false, true, false])
+    vis.on_double_click(1)
+    expect(visible()).toEqual([true, true, true])
+    receive(fresh([{ id: `a` }, { id: `b` }, { id: `c` }]))
+    expect(visible()).toEqual([true, true, true])
+  })
+
+  test(`passes nullish entries through`, () => {
+    const series = [{ x: [1], y: [1] }, null, undefined] as DataSeries[]
+    const { store, vis, receive } = make_store(series)
+    vis.on_toggle(0)
+    receive([...series])
+    expect(store.resolved.map((srs) => srs?.visible ?? srs)).toEqual([false, null, undefined])
   })
 })

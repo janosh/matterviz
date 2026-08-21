@@ -136,13 +136,11 @@
     <!-- Annotation (outside clip-path to remain visible) -->
     {#if annotation_placement && ref_line.annotation}
       {@const anno = ref_line.annotation}
-      {@const annotation_pos = annotation_placement}
-      {@const annotation_transform = annotation_pos.rotation
-        ? `rotate(${annotation_pos.rotation}, ${annotation_pos.x}, ${annotation_pos.y})`
-        : undefined}
+      {@const { x, y, text_anchor, dominant_baseline, rotation } = annotation_placement}
+      {@const annotation_transform = rotation ? `rotate(${rotation}, ${x}, ${y})` : undefined}
       {#if anno.background}
         {@const background_rect = reference_annotation_text_rect(
-          annotation_pos,
+          annotation_placement,
           estimate_reference_annotation_metrics(anno),
         )}
         <rect
@@ -158,10 +156,10 @@
         />
       {/if}
       <text
-        x={annotation_pos.x}
-        y={annotation_pos.y}
-        text-anchor={annotation_pos.text_anchor}
-        dominant-baseline={annotation_pos.dominant_baseline}
+        {x}
+        {y}
+        text-anchor={text_anchor}
+        dominant-baseline={dominant_baseline}
         transform={annotation_transform}
         fill={anno.color ?? style.color}
         font-size={anno.font_size ?? `12px`}

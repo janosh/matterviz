@@ -4,7 +4,6 @@
   import { format_num } from '$lib/labels'
   import type { Vec2 } from '$lib/math'
   import {
-    color_ramp_gradient,
     color_ramp_scale,
     resolve_color_ramp,
     sample_color_ramp,
@@ -147,12 +146,7 @@
   })
 
   const ramp = $derived(resolve_color_ramp(scale, range, scale_type))
-  const gradient = $derived(
-    color_ramp_gradient(
-      sample_color_ramp(ramp, scale_type, steps),
-      is_vertical ? `to top` : `to right`,
-    ),
-  )
+  const gradient_stops = $derived(sample_color_ramp(ramp, scale_type, steps).join(`, `))
   // Colors the scale can't resolve (CSS variables, unparsable strings) inherit the text color
   const inside_tick_color = (value: number): string => {
     try {
@@ -181,7 +175,8 @@
   const final_bar_style = $derived(
     `--cbar-width: ${is_vertical ? `var(--cbar-thickness, 10px)` : `100%`};
     --cbar-height: ${is_vertical ? `100%` : `var(--cbar-thickness, 10px)`};
-    background: ${gradient}; ${bar_style ?? ``}`,
+    background: linear-gradient(${is_vertical ? `to top` : `to right`}, ${gradient_stops});
+    ${bar_style ?? ``}`,
   )
   // Push the title away from outside ticks that sit on the same edge
   const actual_title_style = $derived.by(() => {
@@ -211,9 +206,6 @@
     height: ${is_vertical ? `var(--cbar-height, 100%)` : `var(--cbar-height, auto)`};
     min-height: ${is_vertical ? `var(--cbar-min-height, 150px)` : `auto`};
     max-height: ${is_vertical ? `var(--cbar-max-height, 1000px)` : `none`}; ${wrapper_style ?? ``}`)
-
-  const has_property_select = $derived(Boolean(property_options?.length))
-  const has_color_scale_select = $derived(Boolean(color_scale_options?.length))
 
   // Keep bindable selected keys valid so state matches the select's first-option fallback.
   $effect(() => {
@@ -264,7 +256,7 @@
   style={div_style + (rest.style ?? ``)}
   class={[`colorbar`, rest.class]}
 >
-  {#if title || has_property_select || has_color_scale_select}
+  {#if title || property_options?.length || color_scale_options?.length}
     <div class={[`title-row`, actual_title_side, orientation]} style={actual_title_style}>
       {#if property_options?.length}
         <PortalSelect

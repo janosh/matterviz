@@ -45,7 +45,7 @@
 
   let {
     // Data props
-    series = $bindable([]),
+    series: series_in = $bindable([]),
     surfaces = [],
     ref_lines = [],
     ref_planes = [],
@@ -146,6 +146,15 @@
     controls_extra?: Snippet
   } & Omit<BasePlotProps, `range_padding` | `padding` | `title` | `children`> = $props()
 
+  // Legend toggles write `visible` into the bindable series prop so bound parents see
+  // them, and `series` layers the user's overrides back on whenever the parent
+  // replaces the array so hidden series stay hidden
+  const legend_vis = create_legend_visibility(
+    () => series,
+    (next) => (series_in = next),
+  )
+  let series: DataSeries3D<Metadata>[] = $derived(legend_vis.resolve(series_in))
+
   let [width, height] = $state([0, 0])
 
   // Track mounted state to avoid SSR/hydration mismatch with Canvas
@@ -154,12 +163,6 @@
 
   // Points are built inside the Canvas scene, so fail fast on misaligned arrays out here
   $effect.pre(() => series.forEach(assert_series_lengths))
-
-  // Legend toggles write `visible` back into the (bindable) series array, like ScatterPlot
-  const legend_vis = create_legend_visibility(
-    () => series,
-    (next) => (series = next),
-  )
 
   const axis_defaults = { format: `.3~g`, scale_type: `linear` as const }
   let resolved_x_axis = $derived({ label: `X`, ...axis_defaults, ...x_axis })

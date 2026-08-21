@@ -16,6 +16,7 @@
   import ReferenceLinesLayer from '$lib/plot/core/components/ReferenceLinesLayer.svelte'
   import { create_cartesian_frame } from '$lib/plot/core/cartesian-frame.svelte'
   import {
+    decoration_data_attrs,
     decoration_placement_revision,
     get_decoration_placement,
     type DecorationItem,
@@ -41,12 +42,12 @@
     bin_points,
     density_bin_at_point,
     first_point_in_bin,
-    get_metadata_at,
     pick_from_index,
     range_bounds,
     scale_bin_transform,
     series_extents,
     should_render_points,
+    visible_points,
   } from '$lib/plot/scatter/adaptive-density'
   import type {
     DensityBin,
@@ -189,10 +190,7 @@
   const density_settings = $derived({
     bin_px: density_config.bin_px ?? 2.8,
     color_scale: density_config.color_scale ?? SCALE_DEFAULTS.color,
-    auto_point_mode:
-      density_config.auto_point_mode === undefined
-        ? default_density_auto_point_mode
-        : density_config.auto_point_mode,
+    auto_point_mode: density_config.auto_point_mode ?? default_density_auto_point_mode,
     bin_click: density_config.bin_click ?? `zoom`,
   })
   const indexed_ref_lines = $derived(index_ref_lines(overlays_config.ref_lines))
@@ -677,23 +675,6 @@
   const point_label_key = (point: DenseInternalPoint<Metadata>): string =>
     `${point.series_idx}-${point.point_idx}`
 
-  function make_point(series_idx: number, point_idx: number): DenseInternalPoint<Metadata> {
-    const srs = series[series_idx]
-    const x = srs.x[point_idx]
-    const y = srs.y[point_idx]
-    return {
-      x,
-      y,
-      cx: x_scale_fn(x),
-      cy: y_scale_fn(y),
-      series_idx,
-      point_idx,
-      metadata: get_metadata_at(srs.metadata, point_idx),
-      point_id: srs.point_ids?.[point_idx],
-      size_value: srs.size_values?.[point_idx],
-    }
-  }
-
   function point_payload(
     point: DenseInternalPoint<Metadata>,
     color = point_color(point),
@@ -714,20 +695,10 @@
 
   const point_label_payloads = $derived.by(() => {
     if (!point_labels_settings.render || render_mode !== `points`) return []
-    const [x_min, x_max] = range_bounds(x_range)
-    const [y_min, y_max] = range_bounds(y_range)
     const payloads: BinnedPointPayload<Metadata, PointData>[] = []
-    for (let series_idx = 0; series_idx < series.length; series_idx++) {
-      const srs = series[series_idx]
-      const n_points = srs.x.length
-      for (let point_idx = 0; point_idx < n_points; point_idx++) {
-        const x = srs.x[point_idx]
-        const y = srs.y[point_idx]
-        if (!Number.isFinite(x) || !Number.isFinite(y)) continue
-        if (x < x_min || x > x_max || y < y_min || y > y_max) continue
-        payloads.push(point_payload(make_point(series_idx, point_idx)))
-        if (payloads.length > point_labels_settings.max_count) return []
-      }
+    for (const point of visible_points(series, x_range, y_range, x_scale_fn, y_scale_fn)) {
+      payloads.push(point_payload(point))
+      if (payloads.length > point_labels_settings.max_count) return []
     }
     return payloads
   })
@@ -845,7 +816,7 @@
   function emit_point_click(
     point: DenseInternalPoint<Metadata>,
     event: MouseEvent,
-    color = series[point.series_idx]?.color,
+    color?: string,
   ) {
     on_point_click?.({ ...point_payload(point, color), event })
   }
@@ -1008,12 +979,7 @@
       <div
         bind:this={colorbar_element}
         class="color-bar"
-        data-decoration-location={colorbar_placement?.location}
-        data-decoration-side={colorbar_placement?.side}
-        data-decoration-x={colorbar_placement?.x}
-        data-decoration-y={colorbar_placement?.y}
-        data-decoration-width={colorbar_placement?.footprint.width}
-        data-decoration-height={colorbar_placement?.footprint.height}
+        {...decoration_data_attrs(colorbar_placement)}
         style="left: {colorbar_tween.coords.current.x}px; top: {colorbar_tween.coords.current
           .y}px"
       >
@@ -1029,11 +995,7 @@
       <div
         bind:this={annotation_element}
         class="annotation"
-        data-decoration-location={annotation_placement?.location}
-        data-decoration-x={annotation_placement?.x}
-        data-decoration-y={annotation_placement?.y}
-        data-decoration-width={annotation_placement?.footprint.width}
-        data-decoration-height={annotation_placement?.footprint.height}
+        {...decoration_data_attrs(annotation_placement)}
         style="left: {annotation_tween.coords.current.x}px; top: {annotation_tween.coords
           .current.y}px"
       >

@@ -254,7 +254,6 @@ describe(`ScatterPlot3D smoke tests`, () => {
     await expect_plot_controls(container, controls_state, `scatter-3d`)
 
     await unmount(mounted_component)
-    mounted_component = null
     mounted_component = mount(ScatterPlot3DControls, {
       target: container,
       props: { series: [basic_series], show_controls: false },

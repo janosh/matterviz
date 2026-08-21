@@ -425,6 +425,41 @@ describe(`ScatterPlot`, () => {
     },
   )
 
+  test(`legend-hidden series stays hidden across one-way series replacement until the parent flips visible`, async () => {
+    const make_series = (first_extra: Partial<DataSeries> = {}): DataSeries[] => [
+      { ...basic, id: `a`, label: `A`, ...first_extra },
+      { ...basic, id: `b`, label: `B` },
+    ]
+    const state = $state({ series: make_series() })
+    // getter-only prop: one-way, the component cannot write back into the parent
+    const plot = await mount_sized_scatter_plot({
+      get series() {
+        return state.series
+      },
+    })
+    const first_hidden = () =>
+      plot.querySelector<HTMLElement>(`.legend-item`)?.classList.contains(`hidden`)
+    expect(plot.querySelectorAll(`.marker`)).toHaveLength(10)
+
+    plot.querySelector<HTMLElement>(`.legend-item`)?.click()
+    flushSync()
+    expect(first_hidden()).toBe(true)
+    expect(plot.querySelectorAll(`.marker`)).toHaveLength(5)
+    expect(state.series[0].visible).toBeUndefined()
+
+    // parent rebuilds the array (anywidget trait sync, notebook re-render, ...)
+    state.series = make_series()
+    flushSync()
+    expect(first_hidden()).toBe(true)
+    expect(plot.querySelectorAll(`.marker`)).toHaveLength(5)
+
+    // parent explicitly shows it again: the user's override yields
+    state.series = make_series({ visible: true })
+    flushSync()
+    expect(first_hidden()).toBe(false)
+    expect(plot.querySelectorAll(`.marker`)).toHaveLength(10)
+  })
+
   test(`x hover resolves duplicate x-values by vertical distance`, async () => {
     const on_point_hover = vi.fn()
     const plot = await mount_sized_scatter_plot({
@@ -1203,38 +1238,53 @@ describe(`ScatterPlot`, () => {
     expect(fills[1].classList.contains(`hovered`)).toBe(false)
   })
 
-  test(`hidden fill keeps its legend item so it can be toggled back on`, async () => {
+  test(`legend clicks toggle and isolate fills, and a hidden fill keeps its legend item`, async () => {
     const state = $state({
       fill_regions: [
         { id: `band`, label: `Band`, lower: 0, upper: 0.5, fill: `steelblue` },
+        { id: `cap`, label: `Cap`, lower: 0.6, upper: 0.8, fill: `tomato` },
       ] as FillRegion[],
     })
     await mount_sized_scatter_plot(bind_props({ ...fill_plot_props(), legend: {} }, state))
     await tick()
 
-    const fill_item = () =>
+    const fill_item = (label: string) =>
       [...document.querySelectorAll<HTMLElement>(`.legend-item.fill-item`)].find((el) =>
-        el.textContent?.includes(`Band`),
+        el.textContent?.includes(label),
       )
+    const fire = async (label: string, type: `click` | `dblclick`) => {
+      fill_item(label)?.dispatchEvent(new MouseEvent(type, { bubbles: true }))
+      flushSync()
+      await tick()
+    }
+    const visibility = () => state.fill_regions.map((region) => region.visible)
 
-    // fill renders and has a legend item
+    expect(document.querySelectorAll(`.fill-region`)).toHaveLength(2)
+
+    // click hides only that fill (writes `visible` into the bound fill_regions); the fill is
+    // no longer drawn, but its legend item persists (greyed) so it can be toggled back
+    await fire(`Band`, `click`)
+    expect(visibility()).toEqual([false, undefined])
     expect(document.querySelectorAll(`.fill-region`)).toHaveLength(1)
-    expect(fill_item()).toBeDefined()
-
-    // hide it (what clicking the legend fill item does via the fill_regions binding)
-    state.fill_regions = [{ ...state.fill_regions[0], visible: false }]
-    flushSync()
-    await tick()
-
-    // fill no longer drawn, but the legend item persists (greyed) so it can be toggled back
-    expect(document.querySelectorAll(`.fill-region`)).toHaveLength(0)
-    expect(fill_item()?.classList.contains(`hidden`)).toBe(true)
+    expect(fill_item(`Band`)?.classList.contains(`hidden`)).toBe(true)
 
     // hovering the hidden fill's legend item must not mark it active (nothing renders to highlight)
-    fill_item()?.dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
+    fill_item(`Band`)?.dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
     flushSync()
     await tick()
-    expect(fill_item()?.classList.contains(`active`)).toBe(false)
+    expect(fill_item(`Band`)?.classList.contains(`active`)).toBe(false)
+
+    await fire(`Band`, `click`)
+    expect(visibility()).toEqual([true, undefined])
+
+    // double-click isolates the fill; a second double-click on the sole visible fill shows all
+    await fire(`Cap`, `dblclick`)
+    expect(visibility()).toEqual([false, true])
+    await fire(`Cap`, `dblclick`)
+    expect(visibility()).toEqual([true, true])
+    // double-clicking a hidden fill while another is visible isolates the clicked one
+    await fire(`Band`, `dblclick`)
+    expect(visibility()).toEqual([true, false])
   })
 
   test(`log axis clamps non-positive fill coords to the domain floor, not a tiny epsilon`, async () => {

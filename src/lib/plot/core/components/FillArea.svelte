@@ -75,12 +75,18 @@
     if (on_click !== region.on_click) on_click?.(evt)
   }
 
-  // svg-relative pixel position -> data coords (time x axes invert to Date)
+  // Client position -> svg-relative pixels -> data coords (time x axes invert to Date)
   const make_event = (
     event: MouseEvent | KeyboardEvent,
-    px: number,
-    py: number,
+    client_x: number,
+    client_y: number,
   ): FillHandlerEvent => {
+    const target = event.currentTarget
+    const svg_rect = (
+      target instanceof SVGElement ? target.ownerSVGElement : null
+    )?.getBoundingClientRect()
+    const px = client_x - (svg_rect?.left ?? 0)
+    const py = client_y - (svg_rect?.top ?? 0)
     const raw_x = x_scale_fn.invert?.(px) ?? 0
     return {
       event,
@@ -94,16 +100,7 @@
       metadata: region.metadata,
     }
   }
-  const svg_rect = (target: EventTarget | null) =>
-    (target instanceof SVGElement ? target.ownerSVGElement : null)?.getBoundingClientRect()
-  const mouse_event = (event: MouseEvent): FillHandlerEvent => {
-    const rect = svg_rect(event.currentTarget)
-    return make_event(
-      event,
-      event.clientX - (rect?.left ?? 0),
-      event.clientY - (rect?.top ?? 0),
-    )
-  }
+  const mouse_event = (event: MouseEvent) => make_event(event, event.clientX, event.clientY)
   const handle_click = (event: MouseEvent) => {
     event.stopPropagation()
     emit_click(mouse_event(event))
@@ -114,15 +111,8 @@
     event.preventDefault()
     const target = event.currentTarget
     if (!is_clickable || !(target instanceof SVGElement)) return
-    const rect = svg_rect(target)
     const { left, right, top, bottom } = target.getBoundingClientRect()
-    emit_click(
-      make_event(
-        event,
-        (left + right) / 2 - (rect?.left ?? 0),
-        (top + bottom) / 2 - (rect?.top ?? 0),
-      ),
-    )
+    emit_click(make_event(event, (left + right) / 2, (top + bottom) / 2))
   }
 
   // Type guard for gradient fill

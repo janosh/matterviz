@@ -8,7 +8,6 @@ import { get_tick_label } from '$lib/plot/core/scales'
 import {
   clear_text_metrics_cache,
   DEFAULT_FONT_SPEC,
-  measure_css_text_width,
   measure_text_line,
 } from '$lib/plot/core/text-metrics'
 import type { FontSpec } from '$lib/plot/core/text-metrics'
@@ -51,15 +50,11 @@ const is_horizontal_side = (side: TickLayoutSide): boolean => side === `x` || si
 
 // === Text measurement ===
 
-// Widths come from the shared text-metrics cache either way; hierarchy labels hold a canvas
-// font shorthand, while tick layout holds the FontSpec resolved off a rendered tick.
+// Width via the shared text-metrics cache, in the FontSpec resolved off a rendered tick
 export const measure_text_width = (
   text: string,
-  font: string | Readonly<FontSpec> = DEFAULT_FONT_SPEC,
-): number =>
-  typeof font === `string`
-    ? measure_css_text_width(text, font)
-    : measure_text_line(text, font).width
+  font: Readonly<FontSpec> = DEFAULT_FONT_SPEC,
+): number => measure_text_line(text, font).width
 
 const tick_texts = (
   ticks: readonly (string | number)[],
@@ -651,9 +646,6 @@ const measure_candidate = (candidate: Candidate, config: MeasureConfig): Measure
   }
 }
 
-const is_feasible = (measured: MeasuredCandidate): boolean =>
-  measured.collisions === 0 && measured.edge_overflow_px <= TICK_GEOMETRY_EPSILON
-
 // Lower is better. Hidden labels cost most, then lost text, band use, rotation, extra lines and
 // staggering. A finite score keeps text readable when every candidate violates a constraint.
 const score_candidate = ({ candidate, band_fraction }: MeasuredCandidate): number => {
@@ -679,7 +671,7 @@ const select_candidate = (
 ): MeasuredCandidate => {
   const scored = measured_candidates.map((measured) => ({
     measured,
-    feasible: is_feasible(measured),
+    feasible: measured.collisions === 0 && measured.edge_overflow_px <= TICK_GEOMETRY_EPSILON,
     score: score_candidate(measured),
   }))
   return scored.toSorted((left, right) => {
@@ -900,9 +892,6 @@ const rotation_angles = (max_angle: number): number[] => {
   return angles
 }
 
-const default_anchor_for = (side: TickLayoutSide): TickLabelAnchor =>
-  side === `y` ? `end` : side === `y2` ? `start` : `middle`
-
 // Plain upright labels, every one visible. Used when there is no geometry worth scoring.
 const upright_layout = (
   axis: MeasuredAxis,
@@ -910,7 +899,10 @@ const upright_layout = (
   full_texts: readonly string[],
 ): ResolvedTickLayout => {
   const font = axis.tick_font ?? DEFAULT_FONT_SPEC
-  const anchor = default_anchor_for(effective_side(side, axis.tick?.label?.inside ?? false))
+  const anchor = default_tick_label_anchor(
+    effective_side(side, axis.tick?.label?.inside ?? false),
+    0,
+  )
   const lines = full_texts.map(explicit_tick_lines)
   // Band is the reach away from the axis: line stack for x/x2, text width for y/y2.
   let band = 0
@@ -947,7 +939,7 @@ const finalize_layout = (
     lines: label.display_lines,
     visible: label.visible,
     stagger_row: label.stagger_row,
-    anchor: anchor_by_idx.get(label.tick_index) ?? default_anchor_for(side),
+    anchor: anchor_by_idx.get(label.tick_index) ?? default_tick_label_anchor(side, 0),
     rotation: winner.candidate.rotation_deg,
   }))
   return {
@@ -1057,7 +1049,7 @@ const compute_tick_layout = (
   if (strategies.includes(`wrap`) && max_lines > 1) {
     const vertical_wrap_width = Math.min(
       max_band ?? DEFAULT_AUTO_LABEL_BAND,
-      measure_max_tick_width(ticks, axis.format, axis.ticks, font),
+      ...full_texts.map((text) => measure_text_width(text, font)),
     )
     wrapped = create_candidate(
       `wrap`,

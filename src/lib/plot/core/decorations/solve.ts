@@ -47,6 +47,19 @@ export const get_decoration_placement = (
   id: string,
 ): DecorationPlacement | undefined => placements.find((placement) => placement.id === id)
 
+// data-decoration-* attributes hosts stamp on a placed element so tests and tooling can read
+// where the solver put it (all omitted while unplaced)
+export const decoration_data_attrs = (
+  placement: DecorationPlacement | null | undefined,
+): Record<`data-decoration-${string}`, string | number | null | undefined> => ({
+  'data-decoration-location': placement?.location,
+  'data-decoration-side': placement?.side,
+  'data-decoration-x': placement?.x,
+  'data-decoration-y': placement?.y,
+  'data-decoration-width': placement?.footprint.width,
+  'data-decoration-height': placement?.footprint.height,
+})
+
 export const decoration_placement_revision = (
   placement: DecorationPlacement | null | undefined,
 ): string =>

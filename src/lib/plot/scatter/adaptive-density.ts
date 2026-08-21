@@ -115,7 +115,7 @@ const bin_range = (
   ] as Vec2
 }
 
-export const get_metadata_at = <Metadata>(
+const get_metadata_at = <Metadata>(
   metadata: DensePointSeries<Metadata>[`metadata`],
   point_idx: number,
 ): Metadata | undefined => (Array.isArray(metadata) ? metadata[point_idx] : metadata)
@@ -316,31 +316,39 @@ const internal_point = <Metadata>(
   }
 }
 
+// Finite in-range points of every series, streamed so consumers that stop early (label
+// budgets) or feed a grid never materialize the full visible set
+export function* visible_points<Metadata>(
+  series: readonly DensePointSeries<Metadata>[],
+  x_range: Vec2,
+  y_range: Vec2,
+  x_scale: (value: number) => number,
+  y_scale: (value: number) => number,
+): Generator<DenseInternalPoint<Metadata>> {
+  const [x_min, x_max] = range_bounds(x_range)
+  const [y_min, y_max] = range_bounds(y_range)
+  for (let series_idx = 0; series_idx < series.length; series_idx++) {
+    const srs = series[series_idx]
+    const n_points = srs.x.length
+    for (let point_idx = 0; point_idx < n_points; point_idx++) {
+      const x = srs.x[point_idx]
+      const y = srs.y[point_idx]
+      if (!in_bounds(x, x_min, x_max) || !in_bounds(y, y_min, y_max)) continue
+      yield internal_point(srs, series_idx, point_idx, x_scale, y_scale)
+    }
+  }
+}
+
 export function build_pick_index<Metadata>(
   series: readonly DensePointSeries<Metadata>[],
   options: PickNearestOptions,
 ): PickIndex<Metadata> {
   series.forEach(assert_series_lengths)
   const { x_range, y_range, x_scale, y_scale, radius_px = 12 } = options
-  const [x_min, x_max] = range_bounds(x_range)
-  const [y_min, y_max] = range_bounds(y_range)
-
-  // Generator keeps the in-range points streaming straight into the grid, so no
-  // intermediate array of every visible point is materialized
-  function* in_range_points(): Generator<DenseInternalPoint<Metadata>> {
-    for (let series_idx = 0; series_idx < series.length; series_idx++) {
-      const srs = series[series_idx]
-      const n_points = srs.x.length
-      for (let point_idx = 0; point_idx < n_points; point_idx++) {
-        const x = srs.x[point_idx]
-        const y = srs.y[point_idx]
-        if (!in_bounds(x, x_min, x_max) || !in_bounds(y, y_min, y_max)) continue
-        yield internal_point(srs, series_idx, point_idx, x_scale, y_scale)
-      }
-    }
-  }
-
-  return build_spatial_index(in_range_points(), radius_px)
+  return build_spatial_index(
+    visible_points(series, x_range, y_range, x_scale, y_scale),
+    radius_px,
+  )
 }
 
 export const pick_from_index = <Metadata>(

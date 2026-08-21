@@ -370,6 +370,45 @@ describe(`Histogram`, () => {
     expect(state.normalize).toBe(`density`)
   })
 
+  test(`bar hover/click handlers receive the bin center, count and label`, async () => {
+    const on_bar_hover = vi.fn()
+    const on_bar_click = vi.fn()
+    mount_histogram({
+      // 5 bins over [0, 10]: [0,2) holds two samples
+      series: [series_of([0, 1, 5, 9], { label: `A` })],
+      bins: 5,
+      normalize: `probability`,
+      x_axis: { range: [0, 10] },
+      mode: `overlay`,
+      on_bar_hover,
+      on_bar_click,
+    })
+    await resize_element(get_plot(), 400, 300)
+    const [first_bar] = document.querySelectorAll(`g.histogram-series path[role="button"]`)
+    first_bar.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
+    await tick()
+    expect(on_bar_hover).toHaveBeenLastCalledWith(
+      expect.objectContaining({ value: 1, count: 2, property: `A` }),
+    )
+    const tooltip_text = document.querySelector(`.plot-tooltip`)?.textContent ?? ``
+    expect(tooltip_text).toContain(`Count: 2`)
+    expect(tooltip_text).toContain(`Probability: 0.5`)
+    expect(tooltip_text).toContain(`A`)
+    // Enter/Space activate the bar like a click, other keys are ignored
+    for (const key of [`Enter`, ` `, `a`]) {
+      first_bar.dispatchEvent(new KeyboardEvent(`keydown`, { key, bubbles: true }))
+    }
+    first_bar.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+    expect(on_bar_click).toHaveBeenCalledTimes(3)
+    expect(on_bar_click).toHaveBeenLastCalledWith(
+      expect.objectContaining({ value: 1, count: 2, property: `A` }),
+    )
+    first_bar.dispatchEvent(new MouseEvent(`mouseleave`, { bubbles: true }))
+    await tick()
+    expect(on_bar_hover).toHaveBeenLastCalledWith(null)
+    expect(document.querySelector(`.plot-tooltip`)).toBeNull()
+  })
+
   test(`touch gestures keep finite axis ranges`, async () => {
     // oxfmt-ignore
     for (const events of [
@@ -525,20 +564,17 @@ describe(`Histogram`, () => {
     expect(pinned_clip).toEqual(clip_rect_attrs())
   })
 
-  test(`log_safe_range drops non-positive log bounds`, () => {
-    // oxfmt-ignore
-    for (const [_name, axis, expected] of [
-      [`linear`, { range: [0, 10], scale_type: `linear` }, [0, 10]],
-      [`positive log`, { range: [1, 100], scale_type: `log` }, [1, 100]],
-      [`zero log lower`, { range: [0, 100], scale_type: `log` }, [null, 100]],
-      [`negative log lower`, { range: [-5, 100], scale_type: `log` }, [null, 100]],
-      [`non-positive log`, { range: [-5, 0], scale_type: `log` }, [null, null]],
-      [`null log`, { range: [null, null], scale_type: `log` }, [null, null]],
-      [`negative linear`, { range: [-5, 10], scale_type: `linear` }, [-5, 10]],
-      [`missing log range`, { scale_type: `log` }, [null, null]],
-    ] as const) {
-      expect(log_safe_range(axis as Parameters<typeof log_safe_range>[0])).toEqual(expected)
-    }
+  test.each<[Parameters<typeof log_safe_range>[0], [number | null, number | null]]>([
+    [{ range: [0, 10], scale_type: `linear` }, [0, 10]],
+    [{ range: [1, 100], scale_type: `log` }, [1, 100]],
+    [{ range: [0, 100], scale_type: `log` }, [null, 100]],
+    [{ range: [-5, 100], scale_type: `log` }, [null, 100]],
+    [{ range: [-5, 0], scale_type: `log` }, [null, null]],
+    [{ range: [null, null], scale_type: `log` }, [null, null]],
+    [{ range: [-5, 10], scale_type: `linear` }, [-5, 10]],
+    [{ scale_type: `log` }, [null, null]],
+  ])(`log_safe_range(%j) drops non-positive log bounds -> %j`, (axis, expected) => {
+    expect(log_safe_range(axis)).toEqual(expected)
   })
 
   test(`bin_values: uniform edges in bin space, inclusive upper bound, out-of-domain dropped`, () => {

@@ -74,13 +74,14 @@ export function bin_values(
 ): { edges: Float64Array; counts: Uint32Array } {
   let lo = Math.min(domain[0], domain[1])
   let hi = Math.max(domain[0], domain[1])
-  const is_log = get_scale_type_name(scale_type) === `log`
-  if (is_log) {
+  const type_name = get_scale_type_name(scale_type)
+  if (type_name === `log`) {
     lo = Math.max(lo, LOG_EPS)
     hi = Math.max(hi, LOG_EPS)
   }
   const n_values = values.length
-  const is_linear = get_scale_type_name(scale_type) === `linear`
+  // Identity transform inlined on the linear path: the closure call costs ~70% on 1e6 samples
+  const is_linear = type_name === `linear`
   const { fwd, inv } = bin_transform(scale_type)
   const pos_lo = fwd(lo)
   const pos_hi = fwd(hi)
@@ -161,7 +162,7 @@ export function compute_histogram_bins(
       series_data.y,
       use_x2 ? config.x2_domain : config.x_domain,
       n_bins,
-      (use_x2 ? config.x2_scale_type : config.x_scale_type) ?? `linear`,
+      use_x2 ? config.x2_scale_type : config.x_scale_type,
     )
     const bins = normalize_counts(edges, counts, normalize)
     let max_value = 0

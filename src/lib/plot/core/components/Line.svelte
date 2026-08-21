@@ -4,6 +4,7 @@
   import type { LineCurve } from '$lib/plot/core/types'
   import { create_settling_tween } from '$lib/plot/core/settling-tween.svelte'
   import { DEFAULTS } from '$lib/settings'
+  import { extent } from 'd3-array'
   import { interpolatePath } from 'd3-interpolate-path'
   import { line } from 'd3-shape'
   import { linear } from 'svelte/easing'
@@ -23,7 +24,7 @@
     ...rest
   }: Omit<SVGAttributes<SVGPathElement>, `origin` | `points`> & {
     points: readonly Vec2[]
-    origin?: Vec2 // baseline of the area fill; its y defaults to the lowest point
+    origin?: Vec2 // the area fill closes along y = origin[1]
     line_color?: string
     line_width?: number
     area_color?: string
@@ -54,13 +55,8 @@
   // (possible mid scale transition) drop the fill rather than emit an invalid path.
   const area_path = $derived.by(() => {
     if (!show_area || !line_path) return ``
-    let [x_min, x_max, y_min] = [Infinity, -Infinity, Infinity]
-    for (const [x_val, y_val] of points) {
-      if (x_val < x_min) x_min = x_val
-      if (x_val > x_max) x_max = x_val
-      if (y_val < y_min) y_min = y_val
-    }
-    const baseline = origin[1] ?? y_min
+    const [x_min, x_max] = extent(points, (point) => point[0])
+    const baseline = origin[1]
     if (![x_min, x_max, baseline].every(Number.isFinite)) return ``
     return `${line_path}L${x_max},${baseline}L${x_min},${baseline}Z`
   })

@@ -250,23 +250,20 @@
   function handle_hover(event: MouseEvent | FocusEvent) {
     const node = node_from_event(event)
     const link = node ? null : link_from_event(event)
-    const [prev_node, prev_link] =
-      hover_info?.type === `node`
-        ? [hover_info.node_idx, null]
-        : [null, hover_info?.type === `link` ? hover_info.link_idx : null]
     if (!node && !link) return clear_hover()
     hovered = true
     const cursor = pointer_pos(event, svg_element)
+    const prev = hover_info
     if (node) {
       hover_pos = cursor ?? node_center(node)
-      if (node.node_idx === prev_node) return
-      if (prev_link != null) on_link_hover?.(null)
+      if (prev?.type === `node` && prev.node_idx === node.node_idx) return
+      if (prev?.type === `link`) on_link_hover?.(null)
       hover_info = node_props(node)
       on_node_hover?.({ ...hover_info, event })
     } else if (link) {
       hover_pos = cursor ?? { x: pad.l + link.mid.x, y: pad.t + link.mid.y }
-      if (link.link_idx === prev_link) return
-      if (prev_node != null) on_node_hover?.(null)
+      if (prev?.type === `link` && prev.link_idx === link.link_idx) return
+      if (prev?.type === `node`) on_node_hover?.(null)
       hover_info = link_props(link)
       on_link_hover?.({ ...hover_info, event })
     }

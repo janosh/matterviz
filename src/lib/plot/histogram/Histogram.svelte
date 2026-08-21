@@ -64,7 +64,7 @@
   import { bar_path } from '$lib/plot/core/svg'
 
   let {
-    series = $bindable([]),
+    series: series_in = $bindable([]),
     x_axis = $bindable({}),
     x2_axis = $bindable({}),
     y_axis = $bindable({}),
@@ -148,6 +148,15 @@
       marginals?: MarginalsProp
       facet_layout?: FacetLayoutContext
     } = $props()
+
+  // Legend toggles write `visible` into the bindable series prop so bound parents see
+  // them, and `series` layers the user's overrides back on whenever the parent
+  // replaces the array so hidden series stay hidden
+  const legend_vis = create_legend_visibility(
+    () => series,
+    (next) => (series_in = next),
+  )
+  let series: DataSeries[] = $derived(legend_vis.resolve(series_in))
 
   const { format: _default_format, ...axis_defaults } = AXIS_DEFAULTS
   const resolve_axis = (axis: AxisConfig, defaults: AxisConfig): AxisConfig => ({
@@ -387,16 +396,18 @@
 
   let legend_data = $derived(build_legend_items(series, series_symbol_swatch))
 
+  // Handler payload for a bar: `value`/`x` are the bin center, `y` the normalized bar height
   const bar_data = (hist: BinnedSeries, { x0, x1, count, value }: HistogramBin) => {
     const active_x_axis = hist.x_axis ?? `x1`
     const active_y_axis = hist.y_axis ?? `y1`
+    const center = (x0 + x1) / 2
     return {
-      value: (x0 + x1) / 2,
+      value: center,
       count,
       property: hist.label,
       active_x_axis,
       active_y_axis,
-      x: (x0 + x1) / 2,
+      x: center,
       y: value,
       series_idx: hist.series_idx,
       metadata: null,
@@ -427,11 +438,6 @@
       on_bar_click?.({ value, count, property, event })
     }
 
-  const legend_vis = create_legend_visibility(
-    () => series,
-    (next) => (series = next),
-  )
-
   // State accessors for shared axis change handler
   const axis_state: AxisChangeState<DataSeries> = {
     axes: {
@@ -440,7 +446,7 @@
       y: { get: () => final_y_axis, set: (config) => (y_axis = config) },
       y2: { get: () => final_y2_axis, set: (config) => (y2_axis = config) },
     },
-    series: { get: () => series, set: (next) => (series = next) },
+    series: { get: () => series, set: (next) => (series_in = next) },
     loading: { get: () => axis_loading, set: (axis) => (axis_loading = axis) },
   }
 

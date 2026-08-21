@@ -50,16 +50,15 @@ describe(`compute_treemap_layout`, () => {
     // d3's squarify (golden-ratio target) tiles the 400x300 area as two 400x150
     // rows for the equal-value A/B pair; inside A's row, A2 (6) and A1 (4) sit side
     // by side at 240px and 160px. Zero padding -> areas exactly proportional.
-    const rect_entries = rects.map(({ x, y, width, height }) => [x, y, width, height])
-    for (const [actual, expected] of [
-      [rect_entries[0], [0, 0, 400, 300]],
-      [rect_entries[1], [0, 0, 400, 150]], // A
-      [rect_entries[2], [0, 0, 240, 150]], // A2
-      [rect_entries[3], [240, 0, 160, 150]], // A1
-      [rect_entries[4], [0, 150, 400, 150]], // B
-    ]) {
-      actual.forEach((val, idx) => expect(val).toBeCloseTo(expected[idx], 9))
-    }
+    expect(rects.map(({ x, y, width, height }) => [x, y, width, height])).toEqual(
+      [
+        [0, 0, 400, 300],
+        [0, 0, 400, 150], // A
+        [0, 0, 240, 150], // A2
+        [240, 0, 160, 150], // A1
+        [0, 150, 400, 150], // B
+      ].map((row) => row.map((val) => expect.closeTo(val, 9))),
+    )
     // opt-out restores input order
     const unsorted = compute_treemap_layout(tree, size, { ...no_pad, sort: `none` })
     expect(unsorted.arcs.map((arc) => arc.id)).toEqual([``, `A`, `A/A1`, `A/A2`, `B`])

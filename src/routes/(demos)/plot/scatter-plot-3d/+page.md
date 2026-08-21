@@ -1,6 +1,6 @@
 # 3D Scatter Plot
 
-`ScatterPlot3D` uses instanced Three.js/Threlte points and supports multiple series, `color_values`, and optional surfaces. Legend clicks toggle a series' `visible` flag in place, so `bind:series` if you want to read or restore those toggles from the outside (as with the 2D `ScatterPlot`).
+`ScatterPlot3D` uses instanced Three.js/Threlte points and supports multiple series, `color_values`, and optional surfaces. Legend clicks toggle a series' `visible` flag in place, so `bind:series` if you want to read or restore those toggles from the outside (as with the 2D `ScatterPlot`). A series the user hid stays hidden when you pass a new `series` array (matched by `id`, else `label`, else position) until you set that series' `visible` yourself, so one-way props and hosts that re-send data on every update don't undo legend toggles.
 
 ## Basic 3D Scatter Plot
 

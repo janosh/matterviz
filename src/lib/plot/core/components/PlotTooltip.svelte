@@ -2,7 +2,7 @@
   import { contrast_text_color, resolve_backdrop, resolve_computed_color } from '$lib/colors'
   import { place_tooltip } from '$lib/plot/core/decorations/tooltip'
   import type { Rect } from '$lib/plot/core/layout'
-  import { type Snippet, untrack } from 'svelte'
+  import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
   let {
@@ -33,13 +33,12 @@
   } = $props()
 
   // Measured on mount and whenever content changes size, so flips never use a stale box
-  let measured = $state.raw({ width: 0, height: 0 })
+  let measured_width = $state(0)
+  let measured_height = $state(0)
   const measure = (node: HTMLElement) => {
     const update = () => {
-      const { offsetWidth: width, offsetHeight: height } = node
-      // plain comparison (no reactive read) so the attachment doesn't re-run on each measure
-      const last = untrack(() => measured)
-      if (width !== last.width || height !== last.height) measured = { width, height }
+      measured_width = node.offsetWidth
+      measured_height = node.offsetHeight
     }
     update()
     const observer = new ResizeObserver(update)
@@ -53,8 +52,8 @@
       (fixed ? { width: globalThis.innerWidth, height: globalThis.innerHeight } : undefined)
     if (!bounds) return { x: x + offset.x, y: y + offset.y }
     const tooltip_size = {
-      width: measured.width || fallback_size?.width || 0,
-      height: measured.height || fallback_size?.height || 0,
+      width: measured_width || fallback_size?.width || 0,
+      height: measured_height || fallback_size?.height || 0,
     }
     return place_tooltip({
       anchor: { x, y },
@@ -87,9 +86,10 @@
   style:background-color={bg_color}
   style:color={text_color}
   style:max-width={max_width != null ? `${max_width}px` : undefined}
-  style="position: {fixed
-    ? `fixed`
-    : `absolute`}; pointer-events: none; left: {pos.x}px; top: {pos.y}px; {rest.style ?? ``}"
+  style:position={fixed ? `fixed` : `absolute`}
+  style:left="{pos.x}px"
+  style:top="{pos.y}px"
+  style="pointer-events: none; {rest.style ?? ``}"
   bind:this={wrapper}
   {@attach measure}
 >

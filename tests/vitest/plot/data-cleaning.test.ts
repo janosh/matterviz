@@ -388,9 +388,7 @@ describe(`clean_series`, () => {
     )
     expect(quality.oscillation_detected).toBe(true)
     if (truncation_mode === `hard_cut`) {
-      expect(series.x).toHaveLength(
-        quality.points_removed === 0 ? 80 : 80 - quality.points_removed,
-      )
+      expect(series.x).toHaveLength(80 - quality.points_removed)
       expect(series.x.length).toBeLessThan(80)
       expect(quality.truncated_at_x).toBe(x[series.x.length])
     } else {

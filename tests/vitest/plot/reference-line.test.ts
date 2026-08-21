@@ -10,7 +10,6 @@ import {
   normalize_point,
   normalize_value,
   reference_annotation_text_rect,
-  resolve_reference_annotation,
   resolve_line_endpoints,
   solve_reference_annotations,
   span_or,
@@ -363,13 +362,20 @@ describe(`reference annotation candidates`, () => {
   )
 
   test(`moves an automatic annotation away from a colliding obstacle`, () => {
-    const annotation = { text: `Threshold` }
-    const preferred = create_reference_annotation_candidates(endpoints, annotation)[0]
-    const resolved = resolve_reference_annotation(endpoints, annotation, {
+    const candidates = create_reference_annotation_candidates(endpoints, { text: `Threshold` })
+    const [preferred] = candidates
+    const { candidate } = place_reference_annotation({
+      item: {
+        id: `auto`,
+        kind: `reference-annotation`,
+        footprint: { width: preferred.rect.width, height: preferred.rect.height },
+        candidates,
+      },
       obstacles: [{ x: preferred.x, y: preferred.y }],
+      exclusion_rects: [],
     })
-    expect(resolved.side).toBe(`below`)
-    expect(resolved.rect).not.toEqual(preferred.rect)
+    expect(candidate.side).toBe(`below`)
+    expect(candidate.rect).not.toEqual(preferred.rect)
   })
 
   test.each([
@@ -401,19 +407,20 @@ describe(`reference annotation candidates`, () => {
     expect(candidate).toBe(second_candidate)
   })
 
-  test(`keeps explicit position and side pinned through collisions`, () => {
-    const annotation = {
-      text: `Pinned`,
-      position: `end`,
-      side: `above`,
-    } as const
-    const preferred = create_reference_annotation_candidates(endpoints, annotation)[0]
-    const resolved = resolve_reference_annotation(endpoints, annotation, {
-      exclusion_rects: [preferred.rect],
-      obstacles: [{ x: preferred.x, y: preferred.y }],
-    })
-    expect(resolved).toEqual(preferred)
-  })
+  test.each([
+    [`position`, { position: `start` }],
+    [`side`, { side: `left` }],
+  ] as const)(
+    `an explicit %s pins the annotation to a single candidate`,
+    (_key, placement) => {
+      const candidates = create_reference_annotation_candidates(endpoints, {
+        text: `Pinned`,
+        ...placement,
+      })
+      expect(candidates).toHaveLength(1)
+      expect(candidates[0]).toMatchObject({ position: `end`, side: `above`, ...placement })
+    },
+  )
 
   test(`builds deterministic rotated candidates across positions and sides`, () => {
     const diagonal_endpoints: [number, number, number, number] = [0, 0, 100, 100]

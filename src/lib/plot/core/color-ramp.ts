@@ -1,6 +1,6 @@
-// Headless color-ramp helpers shared by ColorBar and legend swatches: turn a
-// ColorBarScale into a data→color function, sample it evenly in scale space (linear, log
-// or arcsinh spacing) and emit the CSS gradient for a swatch or bar.
+// Headless color-ramp helpers shared by ColorBar, HeatmapMatrix and PeriodicTable: turn a
+// ColorBarScale into a data→color function and sample it evenly in scale space (linear,
+// log or arcsinh spacing) for a CSS gradient.
 import { get_d3_interpolator } from '$lib/colors'
 import { LOG_EPS, type Vec2 } from '$lib/math'
 import { create_scale } from '$lib/plot/core/scales'
@@ -11,10 +11,8 @@ import { scaleLog } from 'd3-scale'
 
 export interface ColorRamp {
   color_fn: (value: number) => string // data value -> color
-  domain: Vec2 // ascending data span the ramp covers
+  domain: Vec2 // data span the ramp covers, in the caller's bound order
 }
-
-const ascending = ([start, end]: Vec2): Vec2 => (start <= end ? [start, end] : [end, start])
 
 // Scale for positioning colors and ticks along a ramp. Unlike create_scale, log keeps any
 // positive bound (diffusivities, rates etc. sit far below the LOG_EPS axis floor) and the
@@ -29,8 +27,8 @@ export const color_ramp_scale = (scale_type: ScaleType, domain: Vec2, output: Ve
 
 // A prebuilt `fn` scale maps data itself over the domain it declares (else `range`);
 // interpolator names/functions are stretched across `range` with `scale_type` spacing
-// (log floors non-positive bounds at LOG_EPS; equal bounds hit the midpoint).
-// A descending `range` keeps its order in `domain`, so the ramp samples high-to-low.
+// (log floors non-positive bounds at LOG_EPS; equal bounds hit the midpoint). The low
+// bound always maps to t=0, so a descending `range` samples high-to-low.
 export const resolve_color_ramp = (
   scale: ColorBarScale,
   range: Vec2,
@@ -41,7 +39,8 @@ export const resolve_color_ramp = (
   }
   const interpolator =
     typeof scale === `object` ? scale.interpolator : get_d3_interpolator(scale)
-  const position = color_ramp_scale(scale_type, ascending(range), [0, 1])
+  const [lo, hi] = range[0] <= range[1] ? range : [range[1], range[0]]
+  const position = color_ramp_scale(scale_type, [lo, hi], [0, 1])
   return { color_fn: (value) => interpolator(clamp01(position(value))), domain: range }
 }
 
@@ -52,14 +51,8 @@ export const sample_color_ramp = (
   steps = 50,
 ): string[] => {
   const n_steps = Math.max(2, Math.floor(steps))
-  const position = color_ramp_scale(scale_type, ascending(domain), [0, 1])
-  const colors = Array.from({ length: n_steps }, (_, idx) =>
+  const position = color_ramp_scale(scale_type, domain, [0, 1])
+  return Array.from({ length: n_steps }, (_, idx) =>
     color_fn(position.invert(idx / (n_steps - 1))),
   )
-  return domain[0] <= domain[1] ? colors : colors.toReversed()
 }
-
-export const color_ramp_gradient = (
-  colors: readonly string[],
-  direction: `to right` | `to left` | `to top` | `to bottom` = `to right`,
-): string => `linear-gradient(${direction}, ${colors.join(`, `)})`

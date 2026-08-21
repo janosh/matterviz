@@ -645,6 +645,11 @@ export function clean_xyz(
   const length = Math.min(x_values.length, y_values.length, z_values.length)
   const columns = { x: x_values, y: y_values, z: z_values }
   const axes = [`x`, `y`, `z`] as const
+  const pick_rows = (cols: typeof columns, indices: number[]) => ({
+    x: pick(cols.x, indices),
+    y: pick(cols.y, indices),
+    z: pick(cols.z, indices),
+  })
 
   let invalid_count = 0
   const kept_indices: number[] = []
@@ -654,11 +659,7 @@ export function clean_xyz(
     if (invalid_here === 0 || invalid_mode !== `remove`) kept_indices.push(idx)
   }
   const quality = create_cleaning_quality(length - kept_indices.length, invalid_count)
-  let filtered = {
-    x: pick(x_values, kept_indices),
-    y: pick(y_values, kept_indices),
-    z: pick(z_values, kept_indices),
-  }
+  let filtered = pick_rows(columns, kept_indices)
   if (invalid_mode === `interpolate`) {
     for (const axis of axes) {
       filtered[axis] = handle_invalid_values(filtered[axis], `interpolate`).cleaned
@@ -670,11 +671,7 @@ export function clean_xyz(
     )
     quality.bounds_violations = filtered.x.length - bounds_kept.length
     quality.points_removed += quality.bounds_violations
-    filtered = {
-      x: pick(filtered.x, bounds_kept),
-      y: pick(filtered.y, bounds_kept),
-      z: pick(filtered.z, bounds_kept),
-    }
+    filtered = pick_rows(filtered, bounds_kept)
   }
   // x is the independent variable (time, index, ...) and is never smoothed
   if (smooth) {

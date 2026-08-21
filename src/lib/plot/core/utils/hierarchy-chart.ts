@@ -107,7 +107,7 @@ export function compute_node_infos<Metadata>(
     clickable?: (arc: PositionedArc<Metadata>) => boolean
   },
 ): HierarchyNodeInfo[] {
-  const { label_text, value_format, font } = opts
+  const { label_text, value_format, font, color_for, clickable } = opts
   // Black/white label text for opaque fills; unresolved/translucent fills inherit.
   // Memoized per fill: categorical coloring repeats a handful of fills across thousands
   // of nodes, and parsing + luminance per node would dominate this pass.
@@ -124,7 +124,7 @@ export function compute_node_infos<Metadata>(
   }
   return arcs.map((arc) => {
     const { text, extended, short } = node_label_variants(arc, label_text, value_format)
-    const fill = opts.color_for(arc)
+    const fill = color_for(arc)
     const variants = (text ? [extended, text, short] : []).flatMap((variant) =>
       variant === undefined
         ? []
@@ -135,7 +135,7 @@ export function compute_node_infos<Metadata>(
       aria: `${node_display_name(arc)}: ${arc.value}`,
       fill,
       label_fill: contrast(fill),
-      ...(opts.clickable ? { clickable: opts.clickable(arc) } : {}),
+      ...(clickable ? { clickable: clickable(arc) } : {}),
     }
   })
 }

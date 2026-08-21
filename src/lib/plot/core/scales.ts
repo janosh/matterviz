@@ -483,9 +483,8 @@ function nice_range(
       }
       // Handle single data point case with fixed relative padding
     } else if (is_time) {
-      const one_day = 86_400_000 // milliseconds in a day
-      data_min -= one_day
-      data_max += one_day
+      data_min -= MS_PER_DAY
+      data_max += MS_PER_DAY
     } else if (type_name === `log`) {
       data_min = Math.max(math.LOG_EPS, data_min / 1.1) // 10% multiplicative padding
       data_max *= 1.1

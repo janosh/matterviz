@@ -85,7 +85,7 @@
   type BoxHover = BoxHandlerProps<Metadata> & { cx: number; cy: number }
 
   let {
-    series = $bindable([]),
+    series: series_in = $bindable([]),
     orientation = $bindable(`vertical`),
     x_axis = $bindable({}),
     x2_axis: x2_axis_prop = $bindable({}),
@@ -181,6 +181,15 @@
       marginals?: MarginalsProp
       facet_layout?: FacetLayoutContext
     } = $props()
+
+  // Legend toggles write `visible` into the bindable series prop so bound parents see
+  // them, and `series` layers the user's overrides back on whenever the parent
+  // replaces the array so hidden series stay hidden
+  const legend_vis = create_legend_visibility(
+    () => series,
+    (next) => (series_in = next),
+  )
+  let series: BoxPlotSeries<Metadata>[] = $derived(legend_vis.resolve(series_in))
 
   // Violin KDE grid: 100 points over the observed support (no tail extension), densities summed
   // over at most 5000 stride-sampled values (bandwidth still comes from the full sample)
@@ -554,11 +563,6 @@
       (_srs, idx) => ({ symbol_type: `Square` as const, symbol_color: box_color(idx) }),
       { default_label: (idx) => `Box ${idx + 1}` },
     ),
-  )
-
-  const legend_vis = create_legend_visibility(
-    () => series,
-    (next) => (series = next),
   )
 
   // === Tooltip / hover ===

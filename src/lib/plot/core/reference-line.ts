@@ -3,7 +3,6 @@ import type { Vec2, Vec4 } from '$lib/math'
 import {
   decoration_placement_rects,
   get_decoration_placement,
-  place_reference_annotation,
   solve_decorations,
   type DecorationPoint,
   type DecorationScene,
@@ -93,17 +92,13 @@ export function group_ref_lines_by_z(lines: IndexedRefLine[]): RefLinesByZIndex 
 // ("42", "-5") or ISO dates ("2024-06-15"). Anything else is a caller bug: drawing such a
 // line at 0 would silently mislabel the data, so it throws instead.
 export function normalize_value(value: RefLineValue): number {
-  const numeric =
-    typeof value === `number`
-      ? value
-      : value instanceof Date
-        ? value.getTime()
-        : // Number("") is 0, so blank strings must be rejected before numeric conversion
-          value.trim() === ``
-          ? NaN
-          : Number.isFinite(Number(value))
-            ? Number(value)
-            : Date.parse(value)
+  let numeric = NaN
+  if (typeof value === `number`) numeric = value
+  else if (value instanceof Date) numeric = value.getTime()
+  // Number("") is 0, so blank strings stay NaN instead of reaching numeric conversion
+  else if (value.trim() !== ``) {
+    numeric = Number.isFinite(Number(value)) ? Number(value) : Date.parse(value)
+  }
   if (Number.isFinite(numeric)) return numeric
   throw new TypeError(`Invalid reference line value: ${String(value)}`)
 }
@@ -386,21 +381,6 @@ export interface ReferenceAnnotationMetrics {
   padding: number
 }
 
-type ReferenceAnnotationItemInput = {
-  id: string
-  endpoints: Vec4
-  annotation: RefLineAnnotation
-  metrics?: ReferenceAnnotationMetrics
-  clearance?: number
-}
-
-export type ReferenceAnnotationResolveConfig = {
-  metrics?: ReferenceAnnotationMetrics
-  clearance?: number
-  obstacles?: readonly DecorationPoint[]
-  exclusion_rects?: readonly Rect[]
-}
-
 const AUTO_ANNOTATION_POSITIONS: readonly ReferenceAnnotationPosition[] = [
   `end`,
   `center`,
@@ -539,27 +519,6 @@ export function create_reference_annotation_candidates(
   )
 }
 
-function create_reference_annotation_item({
-  id,
-  endpoints,
-  annotation,
-  metrics = estimate_reference_annotation_metrics(annotation),
-  clearance,
-}: ReferenceAnnotationItemInput): ReferenceAnnotationDecorationItem {
-  const candidates = create_reference_annotation_candidates(endpoints, annotation, metrics)
-  return {
-    id,
-    kind: `reference-annotation`,
-    footprint: {
-      width: candidates[0].rect.width,
-      height: candidates[0].rect.height,
-    },
-    clearance,
-    candidates,
-    pinned: annotation.position !== undefined || annotation.side !== undefined,
-  }
-}
-
 function create_reference_annotation_items({
   lines,
   ranges,
@@ -593,14 +552,15 @@ function create_reference_annotation_items({
       },
     )
     if (!endpoints) continue
-    items.push(
-      create_reference_annotation_item({
-        id: reference_annotation_id(line.idx),
-        endpoints,
-        annotation,
-        clearance,
-      }),
-    )
+    const candidates = create_reference_annotation_candidates(endpoints, annotation)
+    items.push({
+      id: reference_annotation_id(line.idx),
+      kind: `reference-annotation`,
+      footprint: { width: candidates[0].rect.width, height: candidates[0].rect.height },
+      clearance,
+      candidates,
+      pinned: annotation.position !== undefined || annotation.side !== undefined,
+    })
   }
   return items
 }
@@ -637,26 +597,6 @@ export const get_reference_annotation_placement = (
   line_idx: number,
 ): ReferenceAnnotationCandidate | undefined =>
   get_decoration_placement(solution, reference_annotation_id(line_idx))?.reference_annotation
-
-export function resolve_reference_annotation(
-  endpoints: Vec4,
-  annotation: RefLineAnnotation,
-  {
-    metrics = estimate_reference_annotation_metrics(annotation),
-    clearance,
-    obstacles = [],
-    exclusion_rects = [],
-  }: ReferenceAnnotationResolveConfig = {},
-): ReferenceAnnotationCandidate {
-  const item = create_reference_annotation_item({
-    id: `reference-annotation`,
-    endpoints,
-    annotation,
-    metrics,
-    clearance,
-  })
-  return place_reference_annotation({ item, obstacles, exclusion_rects }).candidate
-}
 
 export interface Scene3DParams {
   scene_x: number

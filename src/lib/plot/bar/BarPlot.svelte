@@ -80,7 +80,7 @@
   type LineSeriesPoint = BarLineSeriesPoint<Metadata>
 
   let {
-    series = $bindable([]),
+    series: series_in = $bindable([]),
     orientation = $bindable(`vertical`),
     mode = $bindable(`overlay`),
     x_axis = $bindable({}),
@@ -178,6 +178,16 @@
       marginals?: MarginalsProp
       facet_layout?: FacetLayoutContext
     } = $props()
+
+  // Legend toggles write `visible` into the bindable series prop so bound parents see
+  // them, and `series` layers the user's overrides back on whenever the parent
+  // replaces the array so hidden series stay hidden
+  const legend_vis = create_legend_visibility(
+    () => series,
+    (next) => (series_in = next),
+    (srs) => (orientation === `vertical` ? srs.y_axis : srs.x_axis),
+  )
+  let series: BarSeries<Metadata>[] = $derived(legend_vis.resolve(series_in))
 
   // Initialize bar, line, y2_axis with defaults - using $derived for reactivity
   let bar_state = $derived({ ...DEFAULTS.bar.bar, ...bar })
@@ -542,12 +552,6 @@
   }
   let legend_data = $derived(build_legend_items(series, legend_swatch))
 
-  const legend_vis = create_legend_visibility(
-    () => series,
-    (next) => (series = next),
-    (srs) => (orientation === `vertical` ? srs.y_axis : srs.x_axis),
-  )
-
   // Tooltip state
   let hover_info = $state<BarHandlerProps<Metadata> | null>(null)
 
@@ -631,7 +635,7 @@
       y: { get: () => y_axis, set: (config) => (y_axis = config) },
       y2: { get: () => y2_axis, set: (config) => (y2_axis_prop = config) },
     },
-    series: { get: () => series, set: (next) => (series = next) },
+    series: { get: () => series, set: (next) => (series_in = next) },
     loading: { get: () => axis_loading, set: (axis) => (axis_loading = axis) },
   }
 

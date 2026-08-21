@@ -49,18 +49,18 @@ const node_info_opts = {
 describe(`hierarchy chart helpers`, () => {
   test(`label strings per label_text mode; compound modes degrade to the bare label`, () => {
     const node = { id: `A/A1`, label: `A1`, value: 4, fraction: 0.2, parent_fraction: 0.4 }
+    const expected = {
+      label: `A1`,
+      value: `4`,
+      percent: `20%`,
+      'label+value': `A1 4`,
+      'label+percent': `A1 20%`,
+      'label+parent-percent': `A1 (40%)`,
+    } as const
+    const modes = Object.keys(expected) as (keyof typeof expected)[]
     expect(
-      (
-        [
-          [`label`, `A1`],
-          [`value`, `4`],
-          [`percent`, `20%`],
-          [`label+value`, `A1 4`],
-          [`label+percent`, `A1 20%`],
-          [`label+parent-percent`, `A1 (40%)`],
-        ] as const
-      ).map(([mode, expected]) => node_label_str(node, mode, `,`) === expected),
-    ).toEqual(Array(6).fill(true))
+      Object.fromEntries(modes.map((mode) => [mode, node_label_str(node, mode, `,`)])),
+    ).toEqual(expected)
     // parent_fraction falls back to fraction when absent (e.g. depth-1 nodes)
     expect(
       node_label_str({ ...node, parent_fraction: undefined }, `label+parent-percent`, `,`),

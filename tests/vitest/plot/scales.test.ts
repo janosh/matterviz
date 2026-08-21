@@ -34,7 +34,6 @@ describe(`scales`, () => {
       [`arcsinh`, [0, 1000], [0, 300]],
     ])(`%s scale`, (scale_type, domain, range) => {
       const scale = create_scale(scale_type as ScaleType, domain as Vec2, range as Vec2)
-      expect(scale).toBeDefined()
       expect(scale.domain()).toEqual(
         scale_type === `log` ? [Math.max(domain[0], math.LOG_EPS), domain[1]] : domain,
       )
@@ -63,7 +62,6 @@ describe(`scales`, () => {
     test(`arcsinh scale with config object`, () => {
       const config: ArcsinhScaleConfig = { type: `arcsinh`, threshold: 10 }
       const scale = create_scale(config, [0, 100], [0, 500])
-      expect(scale).toBeDefined()
       expect(scale.domain()).toEqual([0, 100])
       expect(scale.range()).toEqual([0, 500])
     })
@@ -335,11 +333,14 @@ describe(`scales`, () => {
         ticks: 5,
         expected: [1e-9, 1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 0.01, 0.1, 1],
       },
-      { min: [1, 2, 3], max: 0, ticks: [1, 2, 3], expected: [1, 2, 3] },
     ])(`log ticks: $min to $max (ticks=$ticks)`, ({ min, max, ticks, expected }) => {
-      const result = generate_log_ticks(min as number, max, ticks)
+      const result = generate_log_ticks(min, max, ticks)
       expect(result).toHaveLength(expected.length)
       result.forEach((tick, idx) => expect(tick).toBeCloseTo(expected[idx], 12))
+    })
+
+    test(`explicit tick arrays pass through untouched`, () => {
+      expect(generate_log_ticks(1, 1000, [1, 2, 3])).toEqual([1, 2, 3])
     })
 
     test.each([100, 1, 0.001])(

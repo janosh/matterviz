@@ -63,13 +63,9 @@ describe(`compute_sankey_layout`, () => {
     // one padding gap) sits on top of B, which ends at the bottom edge
     const [a, b, c] = nodes
     expect([a.x0, a.x1, c.x0, c.x1]).toEqual([0, 20, 380, 400])
-    for (const [actual, expected] of [
-      [a.y0, 0],
-      [a.y1, 290 / 3],
-      [b.y0, 290 / 3 + 10],
-      [b.y1, 300],
-    ])
-      expect(actual).toBeCloseTo(expected, 9)
+    expect([a.y0, a.y1, b.y0, b.y1]).toEqual(
+      [0, 290 / 3, 290 / 3 + 10, 300].map((val) => expect.closeTo(val, 9)),
+    )
     // ribbons run from the source's right edge to the target's left edge with the
     // bezier control points halfway between the columns
     expect(links[0].mid.x).toBe(200)

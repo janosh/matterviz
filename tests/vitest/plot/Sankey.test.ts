@@ -112,12 +112,17 @@ describe(`Sankey`, () => {
       value: 8,
     })
     expect(tooltip()?.textContent).toMatch(/A\s*→\s*C.*8/)
+    // back onto the node: the link callback clears, the node callback re-fires
+    await hover(rect, 30, 40)
+    expect(on_link_hover).toHaveBeenLastCalledWith(null)
+    expect(on_node_hover).toHaveBeenCalledTimes(3)
+    expect(tooltip()?.textContent).toMatch(/A.*8/)
     // leaving the svg clears everything once
     plot.querySelector(`svg[role="application"]`)?.dispatchEvent(new MouseEvent(`mouseleave`))
     await tick()
     expect(tooltip()).toBeNull()
-    expect(on_link_hover).toHaveBeenLastCalledWith(null)
-    expect(on_link_hover).toHaveBeenCalledTimes(2)
+    expect(on_node_hover).toHaveBeenLastCalledWith(null)
+    expect([on_node_hover.mock.calls.length, on_link_hover.mock.calls.length]).toEqual([4, 2])
   })
 
   test(`fires node click callback`, async () => {

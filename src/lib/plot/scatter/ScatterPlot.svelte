@@ -63,6 +63,7 @@
   import type { FacetLayoutContext } from '$lib/plot/core/facets'
   import {
     build_obstacles_norm,
+    decoration_data_attrs,
     decoration_placement_revision,
     get_decoration_placement,
     has_explicit_position,
@@ -95,7 +96,7 @@
     convert_error_band_to_fill_region,
     generate_fill_path,
   } from '$lib/plot/core/fill-utils'
-  import { get_relative_coords } from '$lib/plot/core/interactions'
+  import { get_relative_coords, is_activation_key } from '$lib/plot/core/interactions'
   import { create_cartesian_frame } from '$lib/plot/core/cartesian-frame.svelte'
   import type { Rect, Sides } from '$lib/plot/core/layout'
   import {
@@ -126,7 +127,7 @@
   const ZERO_OFFSET = { x: 0, y: 0 }
 
   let {
-    series = $bindable([]),
+    series: series_in = $bindable([]),
     x_axis = $bindable({}),
     x2_axis = $bindable({}),
     y_axis = $bindable({}),
@@ -248,6 +249,15 @@
       point_hit_padding?: number
     } = $props()
 
+  // Legend toggles write `visible` into the bindable series prop so bound parents see
+  // them, and `series` layers the user's overrides back on whenever the parent
+  // replaces the array so hidden series stay hidden
+  const legend_vis = create_legend_visibility(
+    () => series,
+    (next) => (series_in = next),
+  )
+  let series: DataSeries<Metadata>[] = $derived(legend_vis.resolve(series_in))
+
   const plot_color = resolve_computed_color(() => wrapper, `color`, { fallback: `#000` })
 
   // Assign visible series by unit/axis_group while preserving every explicit y_axis.
@@ -327,11 +337,6 @@
   // Track which specific control properties user has modified
   let touched = new SvelteSet<string>()
 
-  const legend_vis = create_legend_visibility(
-    () => series,
-    (next) => (series = next),
-  )
-
   // Fill region hover state
   let hovered_fill_key = $state<string | null>(null)
 
@@ -349,6 +354,9 @@
   let legend_drag_offset = $state<{ x: number; y: number }>({ x: 0, y: 0 })
   let legend_manual_position = $state<{ x: number; y: number } | null>(null)
   let hovered_legend_series_idx = $state<number | null>(null)
+  // Hovering a legend entry fades every other series
+  const is_legend_dimmed = (series_idx: number | undefined): boolean =>
+    hovered_legend_series_idx !== null && hovered_legend_series_idx !== series_idx
 
   // State for legend/colorbar placement stability
   let colorbar_element = $state<HTMLDivElement | undefined>()
@@ -624,13 +632,16 @@
     return { color_extent, size_values }
   })
   const has_color_values = $derived(color_size_values.color_extent.n_finite > 0)
-  const auto_color_range = $derived<Vec2>(
-    has_color_values
-      ? [color_size_values.color_extent.min ?? 0, color_size_values.color_extent.max ?? 1]
-      : [0, 1],
-  )
+  // min/max are only unset when no finite value was seen, so the defaults give [0, 1]
+  const auto_color_range = $derived.by((): Vec2 => {
+    const { min = 0, max = 1 } = color_size_values.color_extent
+    return [min, max]
+  })
   let size_scale_fn = $derived(create_size_scale(size_scale, color_size_values.size_values))
-  let color_scale_fn = $derived(create_color_scale(color_scale, auto_color_range))
+  const color_scale_config = $derived<ColorScaleConfig>(
+    typeof color_scale === `string` ? { scheme: color_scale } : color_scale,
+  )
+  let color_scale_fn = $derived(create_color_scale(color_scale_config, auto_color_range))
 
   // The frame owns the legend item; the colorbar is ScatterPlot's own decoration
   const colorbar_decoration = $derived<DecorationItem[]>(
@@ -837,11 +848,7 @@
       if (!(series_data.markers ?? DEFAULT_MARKERS).includes(`points`)) continue
       const { appearance_of, canvas_safe } = series_appearance(series_data)
       const project = series_projector(series_data)
-      const opacity =
-        hovered_legend_series_idx !== null &&
-        hovered_legend_series_idx !== series_data.orig_series_idx
-          ? 0.25
-          : 1
+      const opacity = is_legend_dimmed(series_data.orig_series_idx) ? 0.25 : 1
       for (const point of series_data.filtered_data) {
         if (!canvas_safe(point)) return null
         if (needs_static_svg_overlay(point, selected)) continue
@@ -904,7 +911,7 @@
   })
 
   const fill_hover_key = (
-    source_type: `fill_region` | `error_band`,
+    source_type: FillSource,
     source_idx: number,
     id?: string | number,
     is_duplicate_id = false,
@@ -921,48 +928,40 @@
     id != null && (items?.some((item, idx) => idx !== source_idx && item.id === id) ?? false)
 
   // Computed fill regions: merge fill_regions and converted error_bands, resolve boundaries
+  type FillSource = `fill_region` | `error_band`
   type ComputedFill = FillRegion & {
     idx: number
-    source_type: `fill_region` | `error_band`
+    source_type: FillSource
     source_idx: number
     hover_key: string
     path_segments: string[]
   }
+  type TaggedRegion = Pick<ComputedFill, `source_type` | `source_idx` | `hover_key`> & {
+    region: FillRegion | null
+  }
+  const tag_regions = <Item extends { id?: string | number }>(
+    items: readonly Item[],
+    source_type: FillSource,
+    to_region: (item: Item) => FillRegion | null,
+  ): TaggedRegion[] =>
+    items.map((item, source_idx) => ({
+      region: to_region(item),
+      source_type,
+      source_idx,
+      hover_key: fill_hover_key(
+        source_type,
+        source_idx,
+        item.id,
+        has_duplicate_id(items, source_idx, item.id),
+      ),
+    }))
   let computed_fills = $derived.by((): ComputedFill[] => {
-    // Early exit: skip expensive computation if no fills to render
-    const has_fill_regions = fill_regions && fill_regions.length > 0
-    const has_error_bands = error_bands && error_bands.length > 0
-    if (!has_fill_regions && !has_error_bands) return []
-
-    // Merge fill_regions and converted error_bands, tracking source
-    const all_regions: {
-      region: FillRegion | null
-      source_type: `fill_region` | `error_band`
-      source_idx: number
-      hover_key: string
-    }[] = [
-      ...(fill_regions ?? []).map((region, source_idx) => ({
-        region,
-        source_type: `fill_region` as const,
-        source_idx,
-        hover_key: fill_hover_key(
-          `fill_region`,
-          source_idx,
-          region.id,
-          has_duplicate_id(fill_regions, source_idx, region.id),
-        ),
-      })),
-      ...(error_bands ?? []).map((band, source_idx) => ({
-        region: convert_error_band_to_fill_region(band, series_with_ids),
-        source_type: `error_band` as const,
-        source_idx,
-        hover_key: fill_hover_key(
-          `error_band`,
-          source_idx,
-          band.id,
-          has_duplicate_id(error_bands, source_idx, band.id),
-        ),
-      })),
+    if (fill_regions.length === 0 && error_bands.length === 0) return []
+    const all_regions = [
+      ...tag_regions(fill_regions, `fill_region`, (region) => region),
+      ...tag_regions(error_bands, `error_band`, (band) =>
+        convert_error_band_to_fill_region(band, series_with_ids),
+      ),
     ]
 
     // On log axes, clamp non-positive coords to the scale's domain floor (x_min/y_min) before
@@ -983,16 +982,7 @@
     }
 
     return all_regions
-      .filter(
-        (
-          entry,
-        ): entry is {
-          region: FillRegion
-          source_type: `fill_region` | `error_band`
-          source_idx: number
-          hover_key: string
-        } => entry.region !== null,
-      )
+      .filter((entry): entry is TaggedRegion & { region: FillRegion } => entry.region !== null)
       .map(({ region, source_type, source_idx, hover_key }, idx) => {
         // Hidden fills keep their entry (with empty path_segments -> nothing renders) so the
         // legend item persists greyed-out and can be toggled back on.
@@ -1251,6 +1241,16 @@
     }),
   )
 
+  // Solver-placed labels carry their offset from the marker; an auto-placed label the solver
+  // dropped (max_neighbors budget) renders nothing
+  const resolve_point_label = (point: InternalPoint<Metadata>, cx: number, cy: number) => {
+    const placed = label_positions[`${point.series_idx}-${point.point_idx}`]
+    const label = point.point_label ?? {}
+    const style =
+      label.auto_placement && actual_label_config.max_neighbors && !placed ? {} : label
+    return placed ? { ...style, offset: { x: placed.x - cx, y: placed.y - cy } } : style
+  }
+
   // Last solve's label offsets, handed back so each pan/zoom frame polishes the previous
   // layout instead of re-solving from scratch. A plain Map, not SvelteMap: the effect below
   // both reads and writes it, and tracking that would re-trigger the effect forever.
@@ -1323,7 +1323,7 @@
     const [cx, cy] = series_projector(hovered_series).point(point)
     const active_x_config = hovered_series.x_axis === `x2` ? final_x2_axis : final_x_axis
     const active_y_config = hovered_series.y_axis === `y2` ? final_y2_axis : final_y_axis
-    const coords = {
+    return {
       x,
       y,
       cx,
@@ -1332,9 +1332,6 @@
       x2_axis: final_x2_axis,
       y_axis: active_y_config,
       y2_axis: final_y2_axis,
-    }
-    return {
-      ...coords,
       fullscreen,
       metadata,
       label: hovered_series.label ?? null,
@@ -1368,10 +1365,7 @@
   }
 
   // Derive handler props from hovered point for both tooltip and event handlers
-  let handler_props = $derived.by((): ScatterHandlerProps<Metadata> | null => {
-    if (!tooltip_point) return null
-    return construct_handler_props(tooltip_point)
-  })
+  let handler_props = $derived(tooltip_point ? construct_handler_props(tooltip_point) : null)
 
   let has_multiple_series = $derived(series_with_ids.filter(Boolean).length > 1)
 
@@ -1392,7 +1386,7 @@
       y: { get: () => y_axis, set: (config) => (y_axis = config) },
       y2: { get: () => y2_axis, set: (config) => (y2_axis = config) },
     },
-    series: { get: () => series, set: (next) => (series = next) },
+    series: { get: () => series, set: (next) => (series_in = next) },
     loading: { get: () => axis_loading, set: (axis) => (axis_loading = axis) },
   }
 
@@ -1638,10 +1632,7 @@
           <g
             data-series-id={series_data._id}
             clip-path="url(#{clip_path_id})"
-            opacity={hovered_legend_series_idx !== null &&
-            hovered_legend_series_idx !== series_data.orig_series_idx
-              ? 0.25
-              : 1}
+            opacity={is_legend_dimmed(series_data.orig_series_idx) ? 0.25 : 1}
           >
             {#each series_data.line_underlays ?? [] as underlay}
               <Line
@@ -1703,27 +1694,11 @@
             {#each rendered_points as point (`${point.series_idx}-${point.point_idx}`)}
               {@const [cx, cy] = project.point(point)}
               {@const offset = point.point_offset ?? ZERO_OFFSET}
-              {@const calculated_label_pos =
-                label_positions[`${point.series_idx}-${point.point_idx}`]}
-              {@const point_label = point.point_label ?? {}}
-              {@const label_style =
-                point_label.auto_placement &&
-                actual_label_config.max_neighbors &&
-                !calculated_label_pos
-                  ? {}
-                  : point_label}
-              {@const final_label = calculated_label_pos
-                ? {
-                    ...label_style,
-                    offset: { x: calculated_label_pos.x - cx, y: calculated_label_pos.y - cy },
-                  }
-                : label_style}
               {@const appearance = appearance_of(point)}
               <ScatterPoint
                 x={cx - offset.x}
                 y={cy - offset.y}
-                is_dimmed={hovered_legend_series_idx !== null &&
-                  hovered_legend_series_idx !== point.series_idx}
+                is_dimmed={is_legend_dimmed(point.series_idx)}
                 is_hovered={same_logical_point(point, tooltip_point)}
                 is_selected={same_logical_point(point, selected_point)}
                 leader_line_threshold={actual_label_config.leader_line_threshold}
@@ -1740,7 +1715,7 @@
                   cursor: points_interactive ? `pointer` : undefined,
                 }}
                 hover={point.point_hover ?? {}}
-                label={final_label}
+                label={resolve_point_label(point, cx, cy)}
                 {offset}
                 point_tween={effective_point_tween}
                 hit_padding={points_interactive ? point_hit_padding : 0}
@@ -1757,8 +1732,7 @@
                   )}
                 onkeydown={(event: KeyboardEvent) => {
                   point_events?.onkeydown?.({ point, event })
-                  if (!points_interactive || (event.key !== `Enter` && event.key !== ` `))
-                    return
+                  if (!points_interactive || !is_activation_key(event)) return
                   event.preventDefault()
                   event.currentTarget?.dispatchEvent(
                     new MouseEvent(`click`, { bubbles: true }),
@@ -1843,10 +1817,8 @@
     <!-- Color Bar -->
     {#if width > 0 && height > 0 && color_bar && has_color_values}
       {@const color_domain = [
-        (typeof color_scale === `string` ? undefined : color_scale.value_range)?.[0] ??
-          auto_color_range[0],
-        (typeof color_scale === `string` ? undefined : color_scale.value_range)?.[1] ??
-          auto_color_range[1],
+        color_scale_config.value_range?.[0] ?? auto_color_range[0],
+        color_scale_config.value_range?.[1] ?? auto_color_range[1],
       ] as Vec2}
       <div
         bind:this={colorbar_element}
@@ -1855,12 +1827,7 @@
         class="colorbar-wrapper"
         role="img"
         aria-label="Color scale legend"
-        data-decoration-location={colorbar_placement?.location}
-        data-decoration-side={colorbar_placement?.side}
-        data-decoration-x={colorbar_placement?.x}
-        data-decoration-y={colorbar_placement?.y}
-        data-decoration-width={colorbar_placement?.footprint.width}
-        data-decoration-height={colorbar_placement?.footprint.height}
+        {...decoration_data_attrs(colorbar_placement)}
         style={`position: absolute; left: ${colorbar_tween.coords.current.x}px; top: ${
           colorbar_tween.coords.current.y
         }px; ${color_bar.wrapper_style ?? ``}; pointer-events: auto;`}
@@ -1869,8 +1836,8 @@
           tick_labels={4}
           tick_side="primary"
           scale={{ fn: color_scale_fn, domain: color_domain }}
-          scale_type={typeof color_scale === `string` ? undefined : color_scale.type}
-          range={color_domain?.every((val) => val != null) ? color_domain : undefined}
+          scale_type={color_scale_config.type}
+          range={color_domain}
           bar_style="width: {COLOR_BAR_DEFAULTS.width}px; height: {COLOR_BAR_DEFAULTS.horizontal_bar_height}px; {color_bar?.style ??
             ``}"
           {...color_bar}
@@ -1892,12 +1859,7 @@
         legend_is_dragging && legend_manual_position ? legend_manual_position : auto_position}
       <PlotLegend
         bind:root_element={frame.legend_element}
-        data-decoration-location={legend_placement?.location}
-        data-decoration-side={legend_placement?.side}
-        data-decoration-x={legend_placement?.x}
-        data-decoration-y={legend_placement?.y}
-        data-decoration-width={legend_placement?.footprint.width}
-        data-decoration-height={legend_placement?.footprint.height}
+        {...decoration_data_attrs(legend_placement)}
         series_data={legend_data}
         on_drag_start={handle_legend_drag_start}
         on_drag={handle_legend_drag}
@@ -1926,37 +1888,22 @@
         on_toggle={legend?.on_toggle ?? legend_vis.on_toggle}
         on_double_click={legend?.on_double_click ?? legend_vis.on_double_click}
         on_group_toggle={legend?.on_group_toggle ?? legend_vis.on_group_toggle}
-        on_fill_toggle={(source_type: `fill_region` | `error_band`, source_idx: number) => {
-          // Only fill_regions can be toggled (error_bands are not bindable)
-          if (source_type === `fill_region`) {
-            fill_regions = fill_regions.map((region, idx) =>
-              idx === source_idx
-                ? { ...region, visible: !(region.visible !== false) }
-                : region,
-            )
-          }
-        }}
-        on_fill_double_click={(
-          source_type: `fill_region` | `error_band`,
-          source_idx: number,
-        ) => {
+        on_fill_toggle={(source_type: FillSource, source_idx: number) => {
           // Only fill_regions can be toggled (error_bands are not bindable)
           if (source_type !== `fill_region`) return
-          // Toggle: if only this fill is visible, show all; otherwise show only this one
-          const visible_count = fill_regions.filter(
-            (region) => region.visible !== false,
-          ).length
-          const this_visible = fill_regions[source_idx]?.visible !== false
-          if (visible_count === 1 && this_visible) {
-            // Show all fills
-            fill_regions = fill_regions.map((region) => ({ ...region, visible: true }))
-          } else {
-            // Show only this fill
-            fill_regions = fill_regions.map((region, idx) => ({
-              ...region,
-              visible: idx === source_idx,
-            }))
-          }
+          fill_regions = fill_regions.map((region, idx) =>
+            idx === source_idx ? { ...region, visible: region.visible === false } : region,
+          )
+        }}
+        on_fill_double_click={(source_type: FillSource, source_idx: number) => {
+          if (source_type !== `fill_region`) return
+          // Isolate this fill, or show all when it is already the only visible one
+          const visible = fill_regions.filter((region) => region.visible !== false)
+          const show_all = visible.length === 1 && fill_regions[source_idx]?.visible !== false
+          fill_regions = fill_regions.map((region, idx) => ({
+            ...region,
+            visible: show_all || idx === source_idx,
+          }))
         }}
         style={`
           position: absolute;
