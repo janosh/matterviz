@@ -1,0 +1,151 @@
+<script lang="ts">
+  // Date/time display-mode picker for a HeatmapTable header: a calendar button opening a
+  // listbox of the modes the column's kind supports. The host owns `open` (only one header
+  // popover may be open at a time) and persists the chosen mode itself through `onchange`.
+  import type { DateTimeFormatMode } from '$lib/table'
+  import { DATETIME_MODE_LABELS, strip_html } from './data'
+  import { Icon } from 'svelte-widgets'
+  import { tooltip } from 'svelte-widgets/attachments'
+  import { Calendar } from 'svelte-widgets/icons'
+
+  let {
+    col_label,
+    mode,
+    options,
+    open,
+    ontoggle,
+    onchange,
+  }: {
+    col_label: string
+    mode: DateTimeFormatMode
+    options: DateTimeFormatMode[]
+    open: boolean
+    ontoggle: () => void
+    onchange: (mode: DateTimeFormatMode) => void
+  } = $props()
+
+  const label_id = $props.id()
+  // Every event stops here so the sortable, draggable header underneath doesn't react
+  const stop_event = (event: Event) => event.stopPropagation()
+</script>
+
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<span
+  class="header-popover datetime-format-control"
+  onclick={stop_event}
+  oninput={stop_event}
+  onkeydown={stop_event}
+  onmousedown={stop_event}
+  onpointerdown={stop_event}
+>
+  <button
+    type="button"
+    class="datetime-format-trigger"
+    aria-labelledby={label_id}
+    aria-haspopup="listbox"
+    aria-expanded={open}
+    data-mode={mode}
+    onclick={ontoggle}
+    {@attach tooltip({
+      content: `Date/time format: ${DATETIME_MODE_LABELS[mode]}`,
+      placement: `top`,
+    })}
+  >
+    <Icon icon={Calendar} />
+    <span id={label_id} class="sr-only">Date/time format for {strip_html(col_label)}</span>
+  </button>
+  {#if open}
+    <select
+      class="datetime-format-select"
+      aria-labelledby={label_id}
+      value={mode}
+      size={options.length}
+      onclick={(event) => {
+        if (event.currentTarget.value === mode) ontoggle() // re-picking the current mode closes
+      }}
+      onkeydown={(event) => {
+        if (event.key === `Escape`) ontoggle()
+      }}
+      oninput={(event) => {
+        const picked = event.currentTarget.value as DateTimeFormatMode
+        if (options.includes(picked)) onchange(picked)
+        ontoggle()
+      }}
+    >
+      {#each options as option (option)}
+        <option value={option}>{DATETIME_MODE_LABELS[option]}</option>
+      {/each}
+    </select>
+  {/if}
+</span>
+
+<style>
+  .datetime-format-control {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 3px;
+    position: relative;
+    vertical-align: middle;
+  }
+  .datetime-format-trigger {
+    display: inline-grid;
+    place-items: center;
+    width: 14px;
+    height: 14px;
+    padding: 0;
+    border: 0;
+    border-radius: 3px;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    line-height: 1;
+    :global(svg) {
+      width: 10px;
+      height: 10px;
+      opacity: 0.75;
+      transform: translateY(-1px);
+    }
+    &:hover,
+    &[aria-expanded='true'] {
+      background: light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.16));
+    }
+  }
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+  .datetime-format-select {
+    position: absolute;
+    top: calc(100% + 2px);
+    right: 0;
+    z-index: 40;
+    border: 1px solid light-dark(rgba(0, 0, 0, 0.12), rgba(255, 255, 255, 0.18));
+    border-radius: 4px;
+    background: var(--heatmap-header-bg, var(--page-bg, Canvas));
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+    color: inherit;
+    min-width: max-content;
+    max-width: 10em;
+    padding: 2px;
+    cursor: pointer;
+    font-size: 0.9em;
+    line-height: 1.35;
+    outline: none;
+    option {
+      padding: 3px 8px;
+    }
+    option:checked {
+      background: light-dark(rgba(74, 158, 255, 0.18), rgba(122, 179, 255, 0.28));
+      box-shadow: 0 0 0 100vmax light-dark(rgba(74, 158, 255, 0.18), rgba(122, 179, 255, 0.28))
+        inset;
+      color: inherit;
+    }
+  }
+</style>

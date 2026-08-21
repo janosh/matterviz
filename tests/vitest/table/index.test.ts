@@ -1,7 +1,9 @@
 import type { D3InterpolateName } from '$lib/colors'
 import type { CellVal, ColumnFilter, Label, RowData } from '$lib/table'
 import {
+  CATEGORY_LIMIT,
   cell_matches_filter,
+  column_filter_panel,
   compare_rows,
   compute_column_stats,
   discover_columns,
@@ -18,9 +20,12 @@ import {
   row_matches_query,
   strip_html,
   table_to_delimited,
+  table_to_json,
   table_to_latex,
   table_to_markdown,
   virtual_window,
+  with_category_toggled,
+  with_numeric_bound,
 } from '$lib/table'
 import { describe, expect, it } from 'vitest'
 
@@ -431,6 +436,49 @@ describe(`search and filters`, () => {
   ])(`cell_matches_filter(%j, %j) = %j`, (val, filter, expected) => {
     expect(cell_matches_filter(val, filter)).toBe(expected)
   })
+
+  it(`picks the filter panel kind from config, then the data, capping auto-detected checklists`, () => {
+    const tags = Array.from({ length: CATEGORY_LIMIT + 1 }, (_, idx) => ({ Tag: `t${idx}` }))
+    const few = [{ Tag: `b` }, { Tag: `<i>a</i>` }, { Tag: null }, { Tag: `b` }]
+    expect(column_filter_panel({ label: `Tag` }, few, `Tag`, false)).toEqual({
+      kind: `category`,
+      options: [`a`, `b`], // distinct, markup-stripped, sorted; invalid cells skipped
+    })
+    expect(column_filter_panel({ label: `Tag` }, tags, `Tag`, false)).toEqual({
+      kind: `text`,
+      options: [],
+    })
+    // an explicit category column lists every value however many there are
+    expect(
+      column_filter_panel({ label: `Tag`, filter: `category` }, tags, `Tag`, false).options,
+    ).toHaveLength(CATEGORY_LIMIT + 1)
+    expect(column_filter_panel({ label: `Tag` }, few, `Tag`, true).kind).toBe(`numeric`)
+    expect(column_filter_panel({ label: `Tag`, filter: `text` }, few, `Tag`, true).kind).toBe(
+      `text`,
+    )
+    expect(column_filter_panel({ label: `Tag` }, [], `Tag`, false).kind).toBe(`text`)
+  })
+
+  it(`collapses no-op filters to undefined when editing bounds and checklists`, () => {
+    const min_only = with_numeric_bound(undefined, `min`, ` 1.5 `)
+    expect(min_only).toEqual({ kind: `numeric`, min: 1.5 })
+    expect(with_numeric_bound(min_only, `max`, `abc`)).toEqual({ kind: `numeric`, min: 1.5 })
+    expect(with_numeric_bound(min_only, `min`, ``)).toBeUndefined()
+    // a text filter on the same column is replaced, not merged
+    expect(with_numeric_bound({ kind: `text`, text: `x` }, `max`, `2`)).toEqual({
+      kind: `numeric`,
+      max: 2,
+    })
+
+    const options = [`a`, `b`, `c`]
+    const without_b = with_category_toggled(undefined, `b`, options)
+    expect(without_b).toEqual({ kind: `category`, values: [`a`, `c`] })
+    expect(with_category_toggled(without_b, `a`, options)).toEqual({
+      kind: `category`,
+      values: [`c`],
+    })
+    expect(with_category_toggled(without_b, `b`, options)).toBeUndefined() // all allowed again
+  })
 })
 
 describe(`date/time columns`, () => {
@@ -527,6 +575,19 @@ describe(`table exporters`, () => {
       `x, "q"\tmulti line\t1`,
       `50% & $3_{}\t^~\\\t2`,
       `cr line\t\t3`,
+    ])
+  })
+
+  it(`exports JSON keyed by stripped headers, stripping only string cells`, () => {
+    const when = new Date(Date.UTC(2024, 0, 2))
+    const rows: RowData[] = [{ 'n<sub>val</sub>': 1, Name: `<b>Fe</b>`, When: when, Skip: 5 }]
+    const columns = [
+      { label: `n<sub>val</sub>`, key: `n<sub>val</sub>` },
+      { label: `Name`, key: `Name` },
+      { label: `When`, key: `When` },
+    ]
+    expect(JSON.parse(table_to_json(rows, columns))).toEqual([
+      { nval: 1, Name: `Fe`, When: when.toISOString() },
     ])
   })
 

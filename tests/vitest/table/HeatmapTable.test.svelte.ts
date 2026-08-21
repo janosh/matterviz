@@ -1158,20 +1158,26 @@ describe(`HeatmapTable`, () => {
     expect(resize_handles[0].getAttribute(`role`)).toBe(`separator`)
     expect(resize_handles[0].getAttribute(`aria-orientation`)).toBe(`vertical`)
 
-    // headers have no layout width in happy-dom, so widths start from 0 and clamp to [50, 500]
-    const mouse = (type: string, clientX: number, target: EventTarget = document) =>
-      target.dispatchEvent(new MouseEvent(type, { clientX, bubbles: true }))
-    mouse(`mousedown`, 100, resize_handles[1])
-    mouse(`mousemove`, 220)
+    // headers have no layout width in happy-dom, so widths start from 0 and clamp to [50, 500].
+    // The handle captures the pointer, so every event of the drag targets it.
+    const handle = resize_handles[1]
+    const pointer = (type: string, clientX: number) =>
+      handle.dispatchEvent(new PointerEvent(type, { clientX, bubbles: true, pointerId: 1 }))
+    pointer(`pointerdown`, 100)
+    pointer(`pointermove`, 220)
     await tick()
     expect(state.column_prefs.Score?.width).toBe(120)
     expect(doc_query(`th[data-col-id="Score"]`).style.width).toBe(`120px`)
-    mouse(`mousemove`, 900)
+    pointer(`pointermove`, 900)
     expect(state.column_prefs.Score?.width).toBe(500)
-    mouse(`mouseup`, 900)
-    mouse(`mousemove`, 300) // released: further movement must not resize
+    pointer(`pointerup`, 900)
+    pointer(`pointermove`, 300) // released: further movement must not resize
     expect(state.column_prefs.Score?.width).toBe(500)
     expect(state.column_prefs.Model).toBeUndefined()
+    // the click that follows the release lands on the handle inside the sortable header
+    handle.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+    await tick()
+    expect(doc_query(`th[data-col-id="Score"]`).getAttribute(`aria-sort`)).toBe(`none`)
   })
 
   describe(`Regression tests for bug fixes`, () => {
@@ -1390,49 +1396,35 @@ describe(`HeatmapTable`, () => {
     // before it. Widths only exist after layout, hence the measured offsetWidth.
     it(`stacks multiple sticky columns instead of overlapping them`, async () => {
       let first_width = 80
-      let resize_callback: ResizeObserverCallback | undefined
-      vi.stubGlobal(
-        `ResizeObserver`,
-        class ResizeObserver {
-          constructor(callback: ResizeObserverCallback) {
-            resize_callback = callback
-          }
-          observe() {}
-          unobserve() {}
-          disconnect() {}
-        },
-      )
       const width_spy = vi
         .spyOn(HTMLElement.prototype, `offsetWidth`, `get`)
         .mockImplementation(function (this: HTMLElement) {
           return this.dataset.colId === `Name` ? first_width : 80
         })
-      try {
-        mount_table({
-          data: [{ Name: `A`, Tag: `x`, Value: 1 }],
-          columns: [
-            { label: `Name`, sticky: true },
-            { label: `Tag`, sticky: true },
-            { label: `Value` },
-          ],
-        })
-        await tick()
+      onTestFinished(() => width_spy.mockRestore())
+      mount_table({
+        data: [{ Name: `A`, Tag: `x`, Value: 1 }],
+        columns: [
+          { label: `Name`, sticky: true },
+          { label: `Tag`, sticky: true },
+          { label: `Value` },
+        ],
+      })
+      await tick()
 
-        const left_of = (selector: string) =>
-          document.querySelector<HTMLElement>(selector)?.style.left
-        expect(left_of(`thead th[data-col-id="Name"]`)).toBe(`0px`)
-        expect(left_of(`thead th[data-col-id="Tag"]`)).toBe(`80px`)
-        expect(left_of(`td[data-col="Tag"]`)).toBe(`80px`)
+      const left_of = (selector: string) =>
+        document.querySelector<HTMLElement>(selector)?.style.left
+      expect(left_of(`thead th[data-col-id="Name"]`)).toBe(`0px`)
+      expect(left_of(`thead th[data-col-id="Tag"]`)).toBe(`80px`)
+      expect(left_of(`td[data-col="Tag"]`)).toBe(`80px`)
+      expect(left_of(`td[data-col="Value"]`)).toBe(``)
 
-        first_width = 120
-        resize_callback?.([], {} as ResizeObserver)
-        await tick()
-        expect(left_of(`thead th[data-col-id="Tag"]`)).toBe(`120px`)
-        expect(left_of(`td[data-col="Tag"]`)).toBe(`120px`)
-      } finally {
-        width_spy.mockRestore()
-        vi.unstubAllGlobals()
-      }
+      // the first header grows (a manual resize, longer label): every sticky column after it shifts
+      first_width = 120
+      trigger_resize_observer(doc_query(`thead th[data-col-id="Name"]`))
+      await tick()
+      expect(left_of(`thead th[data-col-id="Tag"]`)).toBe(`120px`)
+      expect(left_of(`td[data-col="Tag"]`)).toBe(`120px`)
     })
 
     it(`clears the grouped-header offset when the final group is hidden`, async () => {

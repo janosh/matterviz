@@ -266,6 +266,9 @@ describe(`ToggleMenu`, () => {
       const header = document.querySelector(`.section-header`) as HTMLElement
       header.click()
       await tick()
+      // the slide outro finishes in a microtask (setup.ts mocks Element.animate), so one more
+      // tick lets Svelte remove the section items before asserting on them
+      await tick()
 
       expect(header.textContent).toContain(`▶`)
       expect(header.getAttribute(`aria-expanded`)).toBe(`false`)
@@ -287,22 +290,17 @@ describe(`ToggleMenu`, () => {
 
   describe(`column layout`, () => {
     it.each([
-      { count: 1, n_columns: undefined, expected: 1 },
-      { count: 2, n_columns: undefined, expected: 2 },
-      { count: 8, n_columns: undefined, expected: 2 },
-      { count: 20, n_columns: undefined, expected: 2 },
-      { count: 21, n_columns: undefined, expected: 3 },
-      { count: 8, n_columns: 4, expected: 2 },
-      { count: 21, n_columns: 2, expected: 2 },
-      { count: 31, n_columns: 4, expected: 4 },
-    ])(
-      `uses $expected columns for $count items with n_columns=$n_columns`,
-      ({ count, n_columns, expected }) => {
-        mount_menu(make_many_columns(count), { column_panel_open: true, n_columns })
-        const menu = document.querySelector(`.column-menu`) as HTMLElement
-        expect(menu?.style.gridTemplateColumns).toBe(`repeat(${expected}, max-content)`)
-      },
-    )
+      { count: 1, expected: 1 },
+      { count: 2, expected: 2 },
+      { count: 8, expected: 2 },
+      { count: 20, expected: 2 },
+      { count: 21, expected: 3 },
+      { count: 31, expected: 3 }, // capped at three columns however many items
+    ])(`uses $expected columns for $count items`, ({ count, expected }) => {
+      mount_menu(make_many_columns(count), { column_panel_open: true })
+      const menu = document.querySelector(`.column-menu`) as HTMLElement
+      expect(menu?.style.gridTemplateColumns).toBe(`repeat(${expected}, max-content)`)
+    })
 
     it(`sizes grouped sections independently`, () => {
       const grouped: Label[] = [
@@ -317,7 +315,7 @@ describe(`ToggleMenu`, () => {
           group: `Large`,
         })),
       ]
-      mount_menu(grouped, { column_panel_open: true, n_columns: 4 })
+      mount_menu(grouped, { column_panel_open: true })
       const section_items = document.querySelectorAll<HTMLElement>(`.section-items`)
       expect([...section_items].map((items) => items.style.gridTemplateColumns)).toEqual([
         `repeat(2, max-content)`,
@@ -367,9 +365,8 @@ describe(`ToggleMenu`, () => {
         (checkbox) => checkbox.checked,
       )
 
-    it(`reset all restores defaults, hides its button and fires on_reset`, async () => {
-      const on_reset = vi.fn()
-      mount_menu(make_columns(), { column_panel_open: true, on_reset }) // true, false, true
+    it(`reset all restores defaults and hides its button`, async () => {
+      mount_menu(make_columns(), { column_panel_open: true }) // true, false, true
       const reset_btn = () => document.querySelector<HTMLElement>(`summary .reset-btn`)
       expect(reset_btn()).toBeNull() // nothing differs from defaults yet
 
@@ -382,7 +379,6 @@ describe(`ToggleMenu`, () => {
       await tick()
       expect(checkbox_states()).toEqual([true, false, true])
       expect(reset_btn()).toBeNull() // no more changes
-      expect(on_reset).toHaveBeenCalledWith()
     })
 
     // Hosts that mirror visibility elsewhere (HeatmapTable keeps a `hidden_columns` id

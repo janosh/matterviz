@@ -13,19 +13,13 @@
   let {
     columns = $bindable([]),
     column_panel_open = $bindable(false),
-    n_columns,
     collapsed_sections = $bindable<string[]>([]),
-    on_reset,
     on_toggle,
     trigger,
   }: {
     columns: ToggleColumn[]
     column_panel_open?: boolean
-    // Maximum number of grid columns for toggle layout
-    n_columns?: number
     collapsed_sections?: string[]
-    // Called after reset with the section name (or undefined for global reset)
-    on_reset?: (section?: string) => void
     // Every visibility change, resets included, for hosts that track it outside
     // `col.visible` (HeatmapTable keeps an id list)
     on_toggle?: (col: ToggleColumn, visible: boolean) => void
@@ -38,8 +32,8 @@
   const toggle_menu_id = $props.id()
   const dropdown_selector = `[data-toggle-menu-id="${toggle_menu_id}"]`
   const COLUMN_FILTER_THRESHOLD = 20
-  const DEFAULT_MAX_MENU_COLUMNS = 3
-  const PREFERRED_MAX_MENU_ROWS = 10
+  const MAX_MENU_COLUMNS = 3
+  const MAX_MENU_ROWS = 10
   let column_filter = $state(``)
   let show_column_filter = $derived(columns.length > COLUMN_FILTER_THRESHOLD)
   let normalized_column_filter = $derived(
@@ -54,33 +48,27 @@
       .includes(normalized_column_filter)
   let filtered_columns = $derived(columns.filter(column_matches_filter))
 
-  // Snapshot default visibility when the column set changes (new dataset).
-  // Compare by keys and visibility defaults. Signature state is non-reactive;
-  // default visibility is state so reset UI updates after snapshots.
-  let last_seen_signature = ``
-  let default_visibility = $state<Record<string, boolean>>({})
-  // Sorted so a pure reorder (a host rearranging its columns) is not mistaken for a new
-  // column set, which would resnapshot defaults and silently drop the reset baseline.
+  // Reset baseline: each column's default visibility, snapshotted when the column SET changes
+  // (a new dataset) and held steady across this menu's own toggles. Sorted so a pure reorder
+  // (a host rearranging its columns) is not mistaken for a new set, which would resnapshot
+  // and silently drop the baseline. Our own writes record their signature first, so the
+  // derived sees them as unchanged and keeps the snapshot.
   const default_signature = () =>
     columns
       .map((col) => `${col_id(col)}:${default_visible(col)}`)
       .toSorted()
       .join(`\0`)
-
-  function snapshot_defaults() {
-    default_visibility = {}
-    for (const col of columns) {
-      default_visibility[col_id(col)] = default_visible(col)
+  let snapshot = { signature: ``, defaults: {} as Record<string, boolean> }
+  let default_visibility = $derived.by(() => {
+    const signature = default_signature()
+    if (signature !== snapshot.signature) {
+      const defaults: Record<string, boolean> = {}
+      for (const col of columns) defaults[col_id(col)] = default_visible(col)
+      snapshot = { signature, defaults }
     }
-    last_seen_signature = default_signature()
-  }
-  snapshot_defaults()
-
-  $effect(() => {
-    const current_signature = default_signature()
-    if (current_signature === last_seen_signature) return
-    snapshot_defaults()
+    return snapshot.defaults
   })
+  const keep_snapshot = () => (snapshot.signature = default_signature())
 
   // Check if a column's visibility differs from its default
   const is_changed = (col: Label) =>
@@ -91,23 +79,14 @@
   // Reset columns to default visibility
   function reset_columns(items: Label[]): void {
     const changed = items.filter(is_changed)
-    for (const col of changed) col.visible = default_visibility[col_id(col)] ?? true
+    // Read the baseline once: each write below dirties the derived, and re-reading it
+    // mid-loop would resnapshot from the half-reset columns
+    const defaults = default_visibility
+    for (const col of changed) col.visible = defaults[col_id(col)] ?? true
     // Record our write before notifying a host that may feed new columns back in.
-    last_seen_signature = default_signature()
+    keep_snapshot()
     columns = [...columns]
     for (const col of changed) on_toggle?.(col, col.visible !== false)
-  }
-
-  function reset_all(): void {
-    reset_columns(columns)
-    on_reset?.()
-  }
-
-  function reset_section(section_name: string): void {
-    const section = sections.find((sec) => sec.name === section_name)
-    if (!section) return
-    reset_columns(section.items)
-    on_reset?.(section_name)
   }
 
   // Group columns by their group property
@@ -151,20 +130,16 @@
     event: Event & { currentTarget: HTMLInputElement },
   ) {
     col.visible = event.currentTarget.checked
-    last_seen_signature = default_signature()
+    keep_snapshot()
     columns = [...columns] // trigger reactivity on parent binding
     on_toggle?.(col, event.currentTarget.checked)
   }
 
-  // Prefer two tall columns, adding more only when the item count would make them unwieldy.
-  // n_columns caps large menus rather than forcing sparse menus to fill every column.
-  const grid_column_count = (item_count: number): number => {
-    const preferred_column_count =
-      item_count <= 1 ? 1 : Math.max(2, Math.ceil(item_count / PREFERRED_MAX_MENU_ROWS))
-    return Math.min(Math.max(1, n_columns ?? DEFAULT_MAX_MENU_COLUMNS), preferred_column_count)
+  // Prefer two tall columns, adding a third only when the item count would make them unwieldy
+  const grid_template = (item_count: number): string => {
+    const preferred = item_count <= 1 ? 1 : Math.max(2, Math.ceil(item_count / MAX_MENU_ROWS))
+    return `repeat(${Math.min(MAX_MENU_COLUMNS, preferred)}, max-content)`
   }
-  const grid_template = (item_count: number): string =>
-    `repeat(${grid_column_count(item_count)}, max-content)`
 
   // Portal the dropdown to <body> so ancestor overflow/stacking contexts cannot clip it.
   const dropdown_target = typeof document === `undefined` ? undefined : document.body
@@ -200,7 +175,6 @@
   $effect(() => {
     if (!column_panel_open || !details_el || !dropdown_el) return
     // Re-run when section state changes while open
-    void n_columns
     void collapsed_sections
     void filtered_columns
     void filtered_sections
@@ -262,7 +236,7 @@
         onclick={(event) => {
           event.stopPropagation()
           event.preventDefault()
-          reset_all()
+          reset_columns(columns)
         }}
         type="button"
         aria-label="Reset all columns to defaults"
@@ -314,7 +288,7 @@
               {#if section.items.some(is_changed)}
                 <button
                   class="reset-btn"
-                  onclick={() => reset_section(section.name)}
+                  onclick={() => reset_columns(section.items)}
                   type="button"
                   aria-label="Reset {section.name} to defaults"
                   {@attach tooltip()}
