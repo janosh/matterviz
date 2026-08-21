@@ -242,8 +242,11 @@ describe(`Settings`, () => {
     // classified as drift (differs or cannot be evaluated), stale (a deliberate entry whose prop
     // is gone or now matches) or fine. Fail-closed: any expression the evaluator cannot reduce
     // to a value is drift, so arithmetic, ternaries or interpolation on a schema value fail.
+    // one compiler load for the whole table: the first `svelte/compiler` import is the slow
+    // step and under a loaded worker pool it alone could push a row past the default timeout
+    const compiler = import(`svelte/compiler`)
     const analyze = async (component: string, source: string) => {
-      const { parse } = await import(`svelte/compiler`)
+      const { parse } = await compiler
       // `const defaults = DEFAULTS.<group>` aliases used by Controls and hull components
       const aliases: Record<string, unknown> = {}
       const alias = /const defaults = DEFAULTS\.(?<path>[\w.]+)/.exec(source)?.groups?.path
@@ -377,7 +380,7 @@ describe(`Settings`, () => {
       return { drift, stale }
     }
 
-    test.each(components)(`%s`, async (component) => {
+    test.each(components)(`%s`, { timeout: 20_000 }, async (component) => {
       const source = readFileSync(join(`src`, `lib`, `${component}.svelte`), `utf8`)
       const { drift, stale } = await analyze(component, source)
       expect(drift, `${component} hardcodes defaults that belong to the schema`).toEqual([])
