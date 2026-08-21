@@ -1,29 +1,6 @@
 default_install_hook_types: [pre-commit, commit-msg]
 
 repos:
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.16.4
-    hooks:
-      - id: ruff-check
-        args: [--fix]
-      - id: ruff-format
-
-  - repo: local
-    hooks:
-      - id: ty
-        name: ty check
-        entry: ty check
-        language: python
-        types: [python]
-        additional_dependencies: [ty]
-        args:
-          - --output-format
-          - concise
-          - --ignore
-          - unresolved-import
-          - --ignore
-          - unresolved-attribute
-
   - repo: builtin
     hooks:
       - id: check-case-conflict
@@ -35,19 +12,14 @@ repos:
 
   - repo: local
     hooks:
-      - id: vp-fmt
-        name: Format (oxfmt)
-        entry: env PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN=false pnpm exec vp check --fix
-        types_or: [file]
+      - id: vp-staged
+        name: Format, lint and type-check staged files (vp staged)
+        # Task list lives in vite.config.ts `staged`. vp receives the staged set from git
+        # itself, so pass_filenames stays off and the hook only needs to fire once per commit.
+        entry: env PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN=false pnpm exec vp staged
         language: system
         pass_filenames: false
         stages: [pre-commit]
-      - id: svelte-check
-        name: Svelte type check
-        entry: bash -c "npx svelte-kit sync && npx svelte-check --tsconfig ./tsconfig.json --threshold warning"
-        language: system
-        types_or: [ts, svelte]
-        pass_filenames: false
 
   - repo: local
     hooks:
