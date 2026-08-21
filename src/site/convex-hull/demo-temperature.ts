@@ -37,7 +37,7 @@ export const create_temp_ternary_entries_li_fe_o = (): PhaseData[] => [
     [`Li`, `O`],
     [`Fe`, `O`],
   ].flatMap(([element_a, element_b], idx) =>
-    [0.33, 0.5, 0.67].flatMap((fraction, jdx) => [
+    [1 / 3, 1 / 2, 2 / 3].flatMap((fraction, jdx) => [
       make_demo_phase(
         { [element_a]: fraction, [element_b]: 1 - fraction },
         100 + idx * 10 + jdx,
@@ -50,7 +50,7 @@ export const create_temp_ternary_entries_li_fe_o = (): PhaseData[] => [
     ]),
   ),
   ...[
-    { Li: 0.33, Fe: 0.33, O: 0.34 },
+    { Li: 1 / 3, Fe: 1 / 3, O: 1 / 3 },
     { Li: 0.5, Fe: 0.25, O: 0.25 },
     { Li: 0.25, Fe: 0.5, O: 0.25 },
     { Li: 0.25, Fe: 0.25, O: 0.5 },
