@@ -22,7 +22,6 @@
   } from '$lib/spectral/types'
   import type { ComponentProps } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { SvelteMap } from 'svelte/reactivity'
 
   let {
     band_structs,
@@ -45,10 +44,6 @@
     show_gap_annotation = true,
     show_controls = $bindable(true),
     controls_open = $bindable(false),
-    show_path_mode_control = true,
-    show_units_control = true,
-    show_spin_control = true,
-    show_annotation_controls = true,
     id = undefined,
     'data-testid': data_testid = undefined,
     point_hit_padding = 3,
@@ -82,10 +77,6 @@
     shade_imaginary_modes?: boolean // Shade y<0 region for phonon plots with imaginary modes
     show_gap_annotation?: boolean // Annotate electronic VBM/CBM and gap when available
     show_controls?: boolean
-    show_path_mode_control?: boolean
-    show_units_control?: boolean
-    show_spin_control?: boolean
-    show_annotation_controls?: boolean
     id?: string
     'data-testid'?: string
   } = $props()
@@ -131,10 +122,11 @@
     key: string
   }
 
-  // Normalize input to dict format. A single structure is recognised by its marker fields
-  // (matterviz: qpoints + branches; pymatgen: @class/@module with qpoints/kpoints + bands).
-  let band_structs_dict = $derived.by(() => {
-    if (!band_structs) return {}
+  // Normalized structures in plot order, each with its per-branch segment keys (aligned with
+  // bs.branches). A single structure is recognised by its marker fields (matterviz: qpoints +
+  // branches; pymatgen: @class/@module with qpoints/kpoints + bands).
+  let structures = $derived.by(() => {
+    if (!band_structs) return []
     const raw = band_structs as Record<string, unknown>
     const has_points = [raw.qpoints, raw.kpoints].some(
       (points) => Array.isArray(points) && points.length > 0,
@@ -143,22 +135,13 @@
     const is_single =
       (!is_pymatgen && has_points && `branches` in raw) ||
       (is_pymatgen && has_points && (`bands` in raw || Array.isArray(raw.frequencies_cm)))
-
-    const result: Record<string, BaseBandStructure> = {}
     const entries: [string, unknown][] = is_single ? [[`default`, raw]] : Object.entries(raw)
-    for (const [key, bs] of entries) {
-      const normalized = helpers.normalize_band_structure(bs)
-      if (normalized) result[key] = normalized
-    }
-    return result
+    return entries.flatMap(([label, input]) => {
+      const bs = helpers.normalize_band_structure(input)
+      return bs ? [{ label, bs, keys: helpers.branch_segment_keys(bs) }] : []
+    })
   })
-  let num_structures = $derived(Object.keys(band_structs_dict).length)
-  // Segment keys once per structure (aligned with bs.branches)
-  let segment_keys = $derived(
-    new SvelteMap(
-      Object.values(band_structs_dict).map((bs) => [bs, helpers.branch_segment_keys(bs)]),
-    ),
-  )
+  let num_structures = $derived(structures.length)
 
   // Auto-detect band type if not explicitly set
   let detected_band_type = $derived.by((): BandStructureType => {
@@ -187,14 +170,10 @@
   })
 
   // Auto-detect Fermi level from electronic band structure data if not explicitly provided
-  let effective_fermi_level = $derived.by((): number | undefined => {
-    if (fermi_level !== undefined) return fermi_level
-    if (detected_band_type !== `electronic`) return undefined
-    const source =
-      `efermi` in (band_structs as object) ? band_structs : Object.values(band_structs)[0]
-    const efermi = (source as Record<string, unknown>)?.efermi
-    return typeof efermi === `number` ? efermi : undefined
-  })
+  let effective_fermi_level = $derived(
+    fermi_level ??
+      (detected_band_type === `electronic` ? helpers.extract_efermi(band_structs) : undefined),
+  )
 
   let effective_spin_mode = $derived.by((): BandsSpinMode => {
     if (detected_band_type !== `electronic`) return null
@@ -209,8 +188,7 @@
   // Collect all path segments across structures once (shared by strict checks and plotting)
   let all_segments = $derived.by(() => {
     const collected: Record<string, [BaseBandStructure, Branch][]> = {}
-    for (const bs of Object.values(band_structs_dict)) {
-      const keys = segment_keys.get(bs) ?? []
+    for (const { bs, keys } of structures) {
       for (const [branch_idx, branch] of bs.branches.entries()) {
         ;(collected[keys[branch_idx]] ??= []).push([bs, branch])
       }
@@ -234,17 +212,14 @@
   // (segments only other structures have, in union mode, follow). Discontinuities sit at the
   // current x without advancing the path.
   let internal_x_positions = $derived.by((): Record<string, Vec2> => {
-    const canonical = Object.values(band_structs_dict)[0]
-    if (!canonical || segments_to_plot.size === 0) return {}
-    const canonical_keys = segment_keys.get(canonical) ?? []
+    const canonical_keys = structures[0]?.keys ?? []
     const ordered = [
-      ...canonical_keys,
+      ...canonical_keys.filter((key) => segments_to_plot.has(key)),
       ...[...segments_to_plot].filter((key) => !canonical_keys.includes(key)),
     ]
     const positions: Record<string, Vec2> = {}
     let current_x = 0
     for (const key of ordered) {
-      if (positions[key] || !segments_to_plot.has(key)) continue
       const [bs, branch] = all_segments[key][0]
       const segment_len = helpers.is_discontinuity_branch(branch)
         ? 0
@@ -267,7 +242,7 @@
     let max_slope = 0
     const markers = rest.on_point_click ? `line+points` : `line`
 
-    for (const [bs_idx, [label, bs]] of Object.entries(band_structs_dict).entries()) {
+    for (const [bs_idx, { label, bs, keys }] of structures.entries()) {
       const color = PLOT_COLORS[bs_idx % PLOT_COLORS.length]
       const structure_label = label || `Structure ${bs_idx + 1}`
       const gamma_indices =
@@ -275,7 +250,6 @@
       const ribbon = bs.band_widths?.length
         ? helpers.get_ribbon_config(ribbon_config, label)
         : null
-      const keys = segment_keys.get(bs) ?? []
 
       for (const [branch_idx, branch] of bs.branches.entries()) {
         const segment_key = keys[branch_idx]
@@ -291,69 +265,55 @@
           x_end,
         )
 
-        const push_series = (
-          y_vals: number[],
-          band_idx: number,
-          spin: `up` | `down`,
-          is_acoustic: boolean | null,
-          series_label: string,
-          line_style: DataSeries[`line_style`],
-        ) => {
-          const metadata = helpers.build_point_metadata({
-            x_vals,
-            y_vals,
-            band_idx,
-            spin,
-            is_acoustic,
-            bs,
-            start_idx,
-          })
-          for (const { slope } of metadata) {
-            if (slope !== null && Number.isFinite(slope)) {
-              max_slope = Math.max(max_slope, Math.abs(slope))
-            }
-          }
-          all_series.push({
-            x: x_vals,
-            y: y_vals,
-            markers,
-            label: series_label,
-            line_style,
-            metadata,
-          })
-        }
-
         for (let band_idx = 0; band_idx < bs.nb_bands; band_idx++) {
           const y_up = convert_band_values(bs.bands[band_idx].slice(start_idx, end_idx))
           const is_acoustic = helpers.classify_acoustic(bs, band_idx, gamma_indices)
           const style_up = get_line_style(color, is_acoustic === true, y_up, band_idx)
           const spin_down_band = bs.spin_down_bands?.[band_idx]
-          const has_spin_down =
-            detected_band_type === `electronic` && (spin_down_band?.length ?? 0) >= end_idx
+          const y_down =
+            detected_band_type === `electronic` &&
+            spin_down_band &&
+            spin_down_band.length >= end_idx
+              ? convert_band_values(spin_down_band.slice(start_idx, end_idx))
+              : null
 
+          // Spin channels to draw: [values, spin, label, line style]
+          const channels: [number[], `up` | `down`, string, DataSeries[`line_style`]][] = []
           if (effective_spin_mode !== `down_only`) {
-            push_series(
-              y_up,
-              band_idx,
-              `up`,
-              is_acoustic,
-              has_spin_down ? `${structure_label} (↑)` : structure_label,
-              style_up,
-            )
+            const label_up = y_down ? `${structure_label} (↑)` : structure_label
+            channels.push([y_up, `up`, label_up, style_up])
           }
-          if (has_spin_down && spin_down_band && effective_spin_mode !== `up_only`) {
-            push_series(
-              convert_band_values(spin_down_band.slice(start_idx, end_idx)),
+          if (y_down && effective_spin_mode !== `up_only`) {
+            const style_down = {
+              ...style_up,
+              line_dash: `4,2`,
+              stroke_width: Math.max(1, style_up.stroke_width - 0.1),
+            }
+            channels.push([y_down, `down`, `${structure_label} (↓)`, style_down])
+          }
+          for (const [y_vals, spin, series_label, line_style] of channels) {
+            const metadata = helpers.build_point_metadata({
+              x_vals,
+              y_vals,
               band_idx,
-              `down`,
+              spin,
               is_acoustic,
-              `${structure_label} (↓)`,
-              {
-                ...style_up,
-                line_dash: `4,2`,
-                stroke_width: Math.max(1, style_up.stroke_width - 0.1),
-              },
-            )
+              bs,
+              start_idx,
+            })
+            for (const { slope } of metadata) {
+              if (slope !== null && Number.isFinite(slope)) {
+                max_slope = Math.max(max_slope, Math.abs(slope))
+              }
+            }
+            all_series.push({
+              x: x_vals,
+              y: y_vals,
+              markers,
+              label: series_label,
+              line_style,
+              metadata,
+            })
           }
 
           const width_values = bs.band_widths?.[band_idx]?.slice(start_idx, end_idx)
@@ -400,7 +360,7 @@
 
   // Calculate y-range, enforcing 0 minimum for phonon bands without imaginary modes
   let y_range = $derived.by((): Vec2 | undefined => {
-    const all_values = Object.values(band_structs_dict).flatMap((bs) => [
+    const all_values = structures.flatMap(({ bs }) => [
       ...bs.bands.flat(),
       ...(bs.spin_down_bands?.flat() ?? []),
     ])
@@ -524,11 +484,9 @@
 
   // X-position of the externally hovered q-point (from BZ k-path), for the highlight line
   let highlight_x = $derived.by(() => {
-    if (highlighted_qpoint_index == null) return null
-    const bs = Object.values(band_structs_dict)[0]
-    return bs
-      ? helpers.qpoint_x_position(bs, highlighted_qpoint_index, internal_x_positions)
-      : null
+    const bs = structures[0]?.bs
+    if (highlighted_qpoint_index == null || !bs) return null
+    return helpers.qpoint_x_position(bs, highlighted_qpoint_index, internal_x_positions)
   })
 
   let display = $state({ x_grid: false, y_grid: true, y_zero_line: true })
@@ -620,24 +578,22 @@
     {/snippet}
 
     {#snippet controls_extra()}
-      {#if show_path_mode_control}
-        <SettingsSection
-          title="Path Mode"
-          current_values={{ path_mode }}
-          on_reset={() => (path_mode = `strict`)}
-        >
-          <div class="pane-row">
-            <label for="bands-path-mode">Mode:</label>
-            <select id="bands-path-mode" bind:value={path_mode}>
-              <option value="strict">strict</option>
-              <option value="intersection">intersection</option>
-              <option value="union">union</option>
-            </select>
-          </div>
-        </SettingsSection>
-      {/if}
+      <SettingsSection
+        title="Path Mode"
+        current_values={{ path_mode }}
+        on_reset={() => (path_mode = `strict`)}
+      >
+        <div class="pane-row">
+          <label for="bands-path-mode">Mode:</label>
+          <select id="bands-path-mode" bind:value={path_mode}>
+            <option value="strict">strict</option>
+            <option value="intersection">intersection</option>
+            <option value="union">union</option>
+          </select>
+        </div>
+      </SettingsSection>
 
-      {#if show_units_control && detected_band_type === `phonon`}
+      {#if detected_band_type === `phonon`}
         <SettingsSection
           title="Units"
           current_values={{ units }}
@@ -654,7 +610,7 @@
         </SettingsSection>
       {/if}
 
-      {#if show_spin_control && detected_band_type === `electronic`}
+      {#if detected_band_type === `electronic`}
         <SettingsSection
           title="Spin Display"
           current_values={{ band_spin_mode }}
@@ -669,9 +625,6 @@
             </select>
           </div>
         </SettingsSection>
-      {/if}
-
-      {#if show_annotation_controls && detected_band_type === `electronic`}
         <SettingsSection
           title="Annotations"
           current_values={{ show_gap_annotation }}

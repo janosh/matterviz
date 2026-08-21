@@ -82,7 +82,7 @@ function histogram_pairs(
       g_r[idx] /= (pair_weight * 4 * Math.PI * r[idx] ** 2 * bin_size) / volume
     }
   }
-  return { r, g_r, ...(element_pair ? { element_pair } : {}) }
+  return { r, g_r, element_pair }
 }
 
 // g(r) of one structure: the full RDF, or the partial g_ab(r) with center_species a and

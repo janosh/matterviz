@@ -64,25 +64,15 @@ export function format_value(value: number, formatter?: string): string {
   if (formatter.startsWith(`%`)) return timeFormat(formatter)(new Date(value))
 
   const formatted = normalize_unicode_minus(format(formatter)(value))
-
-  // Handle percentage formatting - remove trailing zeros
-  if (formatter.includes(`%`)) {
-    return formatted.includes(`.`)
-      ? formatted.replace(/(?<decimals>\.\d*?)0+%$/, `$1%`).replace(/\.%$/, `%`)
-      : formatted
-  }
-
-  // Handle currency formatting - preserve precision if specified
-  if (formatter.includes(`$`) && formatter.includes(`.`) && /\.\d+f/.test(formatter)) {
-    return formatted
-  }
-
-  // Remove trailing zeros after decimal point
-  const out = formatted.includes(`.`)
-    ? formatted.replace(/(?<decimals>\.\d*?)0+$/, `$1`).replace(/\.$/, ``)
-    : formatted
-  const cleaned = out === `-0` ? `0` : out
-  return strip_scientific_zero(cleaned, formatter, value)
+  // Fixed-precision currency keeps its zeros ($1.50); everything else drops trailing zeros
+  // after the decimal point, keeping a % suffix
+  if (formatter.includes(`$`) && /\.\d+f/.test(formatter)) return formatted
+  const [body, suffix] =
+    formatter.includes(`%`) && formatted.endsWith(`%`)
+      ? [formatted.slice(0, -1), `%`]
+      : [formatted, ``]
+  const stripped = body.replace(/(?<decimals>\.\d*?)0+$/, `$1`).replace(/\.$/, ``) + suffix
+  return strip_scientific_zero(stripped === `-0` ? `0` : stripped, formatter, value)
 }
 
 // Human-readable label + unit (null when dimensionless) for displayable element
@@ -231,10 +221,7 @@ export const format_tick_values = (
 
 // Format a 3D vector as "(x, y, z)" with configurable precision
 export const format_vec3 = (vec: Readonly<Vec3>, fmt_spec = `.3~`): string =>
-  `(${format_num(vec[0], fmt_spec)}, ${format_num(vec[1], fmt_spec)}, ${format_num(
-    vec[2],
-    fmt_spec,
-  )})`
+  `(${vec.map((coord) => format_num(coord, fmt_spec)).join(`, `)})`
 
 const BYTE_UNITS = [`B`, `KiB`, `MiB`, `GiB`, `TiB`, `PiB`] as const
 
@@ -260,6 +247,9 @@ export function format_fractional(value: number): string {
   return match?.[1] ?? format_num(value, `.4~`)
 }
 
+// Index 8 (the blank) is the unit; each step is a factor of 1000
+const SI_SUFFIXES = `yzafpnµm kMGTPEZY`
+
 export function parse_si_float<T extends string | number | null | undefined>(
   value: T,
 ): T | number | string {
@@ -273,14 +263,7 @@ export function parse_si_float<T extends string | number | null | undefined>(
   const match = /^(?<num_part>[-+]?\d*\.?\d+)\s*(?<suffix>[yzafpnµmkMGTPEZY])?$/.exec(cleaned)
   if (match) {
     const [, num_part, suffix] = match
-    let multiplier = 1
-    if (suffix) {
-      const suffixes = `yzafpnµm kMGTPEZY`
-      const index = suffixes.indexOf(suffix)
-      if (index !== -1) {
-        multiplier = 1000 ** (index - 8)
-      }
-    }
+    const multiplier = suffix ? 1000 ** (SI_SUFFIXES.indexOf(suffix) - 8) : 1
     return Number(num_part) * multiplier
   }
 
@@ -332,8 +315,6 @@ export const SUPERSCRIPT_MAP = {
   '+': `⁺`,
   '-': `⁻`,
 } as const
-const is_superscript_key = (key: string): key is keyof typeof SUPERSCRIPT_MAP =>
-  key in SUPERSCRIPT_MAP
 export const SUBSCRIPT_MAP = {
   '0': `₀`,
   '1': `₁`,
@@ -349,8 +330,9 @@ export const SUBSCRIPT_MAP = {
 
 // replaces all signs and digits with their unicode superscript equivalent
 export const superscript_digits = (input: string): string =>
-  input.replaceAll(/[\d+-]/g, (match) =>
-    is_superscript_key(match) ? SUPERSCRIPT_MAP[match] : match,
+  input.replaceAll(
+    /[\d+-]/g,
+    (match) => SUPERSCRIPT_MAP[match as keyof typeof SUPERSCRIPT_MAP],
   )
 
 // Axis-group key for SCF convergence series: shared between the property config

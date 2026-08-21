@@ -249,9 +249,9 @@ describe(`camera fly-to`, () => {
     fly.step(10) // far past the 400 ms duration, so the flight lands
     expect(camera.position.distanceTo(controls.target)).toBeCloseTo(distance_before, 10)
     // landed exactly on +x from the target: an off-pole direction gets no nudge
-    for (const [idx, expected] of [distance_before, 0, 0].entries()) {
-      expect(offset()[[`x`, `y`, `z`][idx] as `x` | `y` | `z`]).toBeCloseTo(expected, 10)
-    }
+    expect(to_array(offset())).toEqual(
+      [distance_before, 0, 0].map((expected) => expect.closeTo(expected, 10)),
+    )
   })
 
   // Offsets from the orbit target partway through a 400 ms swing from +z to +x: the camera has

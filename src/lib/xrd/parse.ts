@@ -21,18 +21,44 @@ const leading_numbers = (line: string): number[] => {
   return values
 }
 
-// Value of the first header line matching `pattern` (capture group `value`), else null
-const header_number = (lines: string[], pattern: RegExp): number | null => {
-  for (const line of lines) {
-    const value = pattern.exec(line)?.groups?.value
-    if (value !== undefined && NUMBER_RE.test(value)) return Number(value)
+// Number following the first header line whose start matches `key` (a regex source including
+// the separator, e.g. `\\*START\\s*=\\s*`), else null. The first of several `keys` that
+// resolves wins.
+const header_number = (lines: string[], keys: string[], flags = ``): number | null => {
+  for (const key of keys) {
+    const pattern = new RegExp(`^${key}(?<value>[-+.\\deE]+)`, flags)
+    for (const line of lines) {
+      const value = pattern.exec(line)?.groups?.value
+      if (value !== undefined && NUMBER_RE.test(value)) return Number(value)
+    }
   }
   return null
+}
+
+// [header line, body] of the section opened by the first line matching `start`: the trimmed
+// non-empty lines up to (not including) the first line matching `end`. Null without `start`.
+function find_section(lines: string[], start: RegExp, end: RegExp) {
+  const start_idx = lines.findIndex((line) => start.test(line.trim()))
+  if (start_idx === -1) return null
+  const body: string[] = []
+  for (const line of lines.slice(start_idx + 1)) {
+    const trimmed = line.trim()
+    if (end.test(trimmed)) break
+    if (trimmed) body.push(trimmed)
+  }
+  return [lines[start_idx].trim(), body] as const
 }
 
 // x from a uniform grid; the count is the intensity count so the two stay aligned
 const uniform_grid = (start: number, step: number, count: number): number[] =>
   Array.from({ length: count }, (_, idx) => start + idx * step)
+
+// Counts on the [start, step] grid a header announced; `missing` names the keys when it did not
+type Grid = [start: number | null, step: number | null]
+function grid_pattern(values: number[], [start, step]: Grid, format: string, missing: string) {
+  if (start === null || step === null || !(step > 0)) throw new Error(`${format}: ${missing}`)
+  return finalize(uniform_grid(start, step, values.length), values, format)
+}
 
 // Normalize y to 0-100 and subsample long scans, preserving the strongest local maxima.
 // Shared final step so every format renders on the same scale.
@@ -61,13 +87,8 @@ function subsample_preserve_peaks(
   const peaks: number[] = []
   const threshold = Math.max(...y_vals) * 0.05 // 5% of max as significance threshold
   for (let idx = 1; idx < num_points - 1; idx++) {
-    if (
-      y_vals[idx] > y_vals[idx - 1] &&
-      y_vals[idx] > y_vals[idx + 1] &&
-      y_vals[idx] > threshold
-    ) {
-      peaks.push(idx)
-    }
+    const [prev, val, next] = [y_vals[idx - 1], y_vals[idx], y_vals[idx + 1]]
+    if (val > prev && val > next && val > threshold) peaks.push(idx)
   }
   const peak_slots = Math.min(peaks.length, Math.floor(target_points * 0.3))
   const uniform_slots = target_points - peak_slots
@@ -126,8 +147,8 @@ export function parse_block_scan(content: string, format = `block scan`): XrdPat
     const values: number[] = []
     for (const line of lines.slice(line_idx + 1)) {
       if (!line.trim()) continue
-      const row = leading_numbers(line)
-      if (row.length === 0 || row.length !== line.trim().split(/[\s,]+/).length) break
+      const row = leading_numbers(line) // a row with any non-numeric token ends the block
+      if (row.length !== line.trim().split(/[\s,]+/).length) break
       values.push(...row)
       if (values.length >= count) break
     }
@@ -162,17 +183,14 @@ export function parse_ascii_scan(content: string, format = `ASCII`): XrdPattern 
 // then the counts between *BEGIN and *END, several per line, comma separated.
 export function parse_rigaku_asc_file(content: string): XrdPattern {
   const lines = content.split(/\r?\n/)
-  const key = (name: string) => new RegExp(`^\\*${name}\\s*=\\s*(?<value>[-+.\\deE]+)`)
-  const start = header_number(lines, key(`START`))
-  const step = header_number(lines, key(`STEP`))
-  const stop = header_number(lines, key(`STOP`))
-  const count = header_number(lines, key(`COUNT`))
+  const [start, step, stop, count] = [`START`, `STEP`, `STOP`, `COUNT`].map((name) =>
+    header_number(lines, [`\\*${name}\\s*=\\s*`]),
+  )
   if (start === null || step === null || !(step > 0)) {
     throw new Error(`Rigaku ASC: missing *START or positive *STEP header`)
   }
-  const values = lines
-    .filter((line) => line.trim() && !line.trim().startsWith(`*`))
-    .flatMap(leading_numbers)
+  // blank lines yield no numbers, so only the `*KEY` header lines need excluding
+  const values = lines.filter((line) => !line.trim().startsWith(`*`)).flatMap(leading_numbers)
   const expected =
     count ?? (stop === null ? values.length : Math.round((stop - start) / step) + 1)
   if (values.length !== expected) {
@@ -188,13 +206,9 @@ export function parse_rigaku_asc_file(content: string): XrdPattern {
 // *MEAS_SCAN_START / *MEAS_SCAN_STEP header values set the grid). Only the first scan is read.
 export function parse_ras_file(content: string): XrdPattern {
   const lines = content.split(/\r?\n/)
-  const start_idx = lines.findIndex((line) => /^\*RAS_INT_START/i.test(line.trim()))
-  if (start_idx === -1) throw new Error(`Rigaku RAS: no *RAS_INT_START section`)
-  const data_lines: string[] = []
-  for (const line of lines.slice(start_idx + 1)) {
-    if (/^\*RAS_INT_END/i.test(line.trim())) break
-    if (line.trim()) data_lines.push(line.trim())
-  }
+  const section = find_section(lines, /^\*RAS_INT_START/i, /^\*RAS_INT_END/i)
+  if (!section) throw new Error(`Rigaku RAS: no *RAS_INT_START section`)
+  const [, data_lines] = section
   if (data_lines.length === 0) throw new Error(`Rigaku RAS: empty *RAS_INT_START section`)
   // Column rows (2theta intensity [attenuation]) versus counts listed several per line: a
   // scan has many rows, and a column row never carries more than three numbers
@@ -202,42 +216,32 @@ export function parse_ras_file(content: string): XrdPattern {
     data_lines.length > 1 &&
     data_lines.every((line) => [2, 3].includes(leading_numbers(line).length))
   if (is_column_data) return parse_xy_file(data_lines.join(`\n`), `Rigaku RAS`)
-  const quoted = (name: string) => new RegExp(`^\\*${name}\\s+"?(?<value>[-+.\\deE]+)"?`)
-  const start = header_number(lines, quoted(`MEAS_SCAN_START`))
-  const step = header_number(lines, quoted(`MEAS_SCAN_STEP`))
-  if (start === null || step === null || !(step > 0)) {
-    throw new Error(
-      `Rigaku RAS: single-column intensities need *MEAS_SCAN_START and a positive *MEAS_SCAN_STEP`,
-    )
-  }
-  const values = data_lines.flatMap(leading_numbers)
-  return finalize(uniform_grid(start, step, values.length), values, `Rigaku RAS`)
+  const start = header_number(lines, [`\\*MEAS_SCAN_START\\s+"?`])
+  const step = header_number(lines, [`\\*MEAS_SCAN_STEP\\s+"?`])
+  const missing = `single-column intensities need *MEAS_SCAN_START and a positive *MEAS_SCAN_STEP`
+  return grid_pattern(
+    data_lines.flatMap(leading_numbers),
+    [start, step],
+    `Rigaku RAS`,
+    missing,
+  )
 }
 
 // Siemens/Bruker UXD: `_KEY=VALUE` header, then either a `_2THETACOUNTS` section of
 // `2theta counts` rows or a `_COUNTS` section of bare counts on the `_START`/`_STEPSIZE` grid.
 export function parse_uxd_file(content: string): XrdPattern {
   const lines = content.split(/\r?\n/).filter((line) => !line.trim().startsWith(`;`))
-  const section_idx = lines.findIndex((line) => /^_(?:2THETA)?COUNTS\b/i.test(line.trim()))
-  if (section_idx === -1) throw new Error(`UXD: no _COUNTS or _2THETACOUNTS section`)
-  const two_column = /^_2THETACOUNTS/i.test(lines[section_idx].trim())
-  const data_lines: string[] = []
-  for (const line of lines.slice(section_idx + 1)) {
-    if (line.trim().startsWith(`_`)) break // next header block ends the data
-    if (line.trim()) data_lines.push(line.trim())
-  }
-  if (two_column) return parse_xy_file(data_lines.join(`\n`), `UXD`)
+  // the next `_KEY` header block ends the data
+  const section = find_section(lines, /^_(?:2THETA)?COUNTS\b/i, /^_/)
+  if (!section) throw new Error(`UXD: no _COUNTS or _2THETACOUNTS section`)
+  const [header, data_lines] = section
+  if (/^_2THETACOUNTS/i.test(header)) return parse_xy_file(data_lines.join(`\n`), `UXD`)
   // _START is the scanned drive's first position; _2THETA is the detector position at the
   // start, which only coincides for coupled scans, so it serves as the fallback
-  const start =
-    header_number(lines, /^_START\s*=\s*(?<value>[-+.\deE]+)/i) ??
-    header_number(lines, /^_2THETA\s*=\s*(?<value>[-+.\deE]+)/i)
-  const step = header_number(lines, /^_STEP(?:SIZE|WIDTH)\s*=\s*(?<value>[-+.\deE]+)/i)
-  if (start === null || step === null || !(step > 0)) {
-    throw new Error(`UXD: _COUNTS section needs _START (or _2THETA) and a positive _STEPSIZE`)
-  }
-  const values = data_lines.flatMap(leading_numbers)
-  return finalize(uniform_grid(start, step, values.length), values, `UXD`)
+  const start = header_number(lines, [`_START\\s*=\\s*`, `_2THETA\\s*=\\s*`], `i`)
+  const step = header_number(lines, [`_STEP(?:SIZE|WIDTH)\\s*=\\s*`], `i`)
+  const missing = `_COUNTS section needs _START (or _2THETA) and a positive _STEPSIZE`
+  return grid_pattern(data_lines.flatMap(leading_numbers), [start, step], `UXD`, missing)
 }
 
 // GSAS powder data. The BANK header reads
@@ -274,7 +278,7 @@ export function parse_gsas_file(content: string): XrdPattern {
   // intensity as separate tokens, interleaving 1..10 into the counts. Free-format STD lines
   // (length not a multiple of 8) still split on whitespace.
   const std_fields = (line: string): number[] | null => {
-    if (stride !== 1 || line.length === 0 || line.length % 8 !== 0) return null
+    if (stride !== 1 || line.length % 8 !== 0) return null
     const fields: number[] = []
     for (let pos = 0; pos < line.length; pos += 8) {
       const nctr = line.slice(pos, pos + 2)
@@ -310,7 +314,6 @@ export function parse_gsas_file(content: string): XrdPattern {
 // header (range count at byte 12), then per range a 304-byte range header — step count at
 // byte 4, start 2θ (double) at 16, step size (double) at 176, supplementary header size at
 // 256 — followed by float32 counts. Only the first range is read.
-const RAW101_FILE_HEADER = 712
 export function parse_bruker_raw_file(data: ArrayBuffer): XrdPattern {
   const bytes = new Uint8Array(data)
   const magic = String.fromCharCode(...bytes.slice(0, 7))
@@ -323,12 +326,12 @@ export function parse_bruker_raw_file(data: ArrayBuffer): XrdPattern {
     )
   }
   const view = new DataView(data)
-  if (bytes.length < RAW101_FILE_HEADER + 304) {
+  const range_offset = 712 // the first range header follows the file header
+  if (bytes.length < range_offset + 304) {
     throw new Error(
       `Bruker RAW1.01: file is ${bytes.length} bytes, shorter than the 1016-byte headers`,
     )
   }
-  const range_offset = RAW101_FILE_HEADER
   const header_len = view.getUint32(range_offset, true)
   const steps = view.getUint32(range_offset + 4, true)
   const start = view.getFloat64(range_offset + 16, true)
@@ -424,10 +427,8 @@ export function parse_brml_xml(xml_content: string): XrdPattern {
     (stop !== null && start !== null && values.length > 1
       ? (stop - start) / (values.length - 1)
       : null)
-  if (start === null || step === null || !(step > 0)) {
-    throw new Error(`BRML: intensity list without a usable <Start> and <Step> (or <Stop>)`)
-  }
-  return finalize(uniform_grid(start, step, values.length), values, `BRML`)
+  const missing = `intensity list without a usable <Start> and <Step> (or <Stop>)`
+  return grid_pattern(values, [start, step], `BRML`, missing)
 }
 
 // PANalytical .xrdml: <dataPoints> with <positions axis="2Theta"> start/end and a

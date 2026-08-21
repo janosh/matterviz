@@ -1,14 +1,13 @@
 <script lang="ts" generics="Card extends InfoPaneCard">
   // Filterable label/value cards for info panes (trajectory, convex hull, Brillouin zone,
   // structure sites). Long lists page through `page_size` cards at a time; hosts can decorate
-  // cards via `card_attrs` and replace a row's value markup (e.g. with an input) via `row_value`.
+  // cards via `card_attrs`.
   import {
     create_clipboard_feedback,
     type InfoPaneCard,
     type InfoPaneRow,
   } from '$lib/overlays'
   import { sanitize_html } from '$lib/sanitize'
-  import type { Snippet } from 'svelte'
   import { Icon } from 'svelte-widgets'
   import { Search } from 'svelte-widgets/icons'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -27,7 +26,6 @@
     page_size = Infinity,
     reveal_key = null,
     card_attrs,
-    row_value,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     cards: Card[]
@@ -43,7 +41,6 @@
     // key (or title) of a card to page to and scroll into view, e.g. a site selected elsewhere
     reveal_key?: string | null
     card_attrs?: (card: Card) => HTMLAttributes<HTMLElement>
-    row_value?: Snippet<[InfoPaneRow, Card]>
   } = $props()
 
   let filter = $state(``)
@@ -70,11 +67,10 @@
   const last_page_start = $derived(Math.max(0, filtered_cards.length - page_size))
   const first_idx = $derived(Math.min(page_start, last_page_start))
   const page_end = $derived(Math.min(first_idx + page_size, filtered_cards.length))
-  const paged_cards = $derived(
-    filtered_cards.length > page_size
-      ? filtered_cards.slice(first_idx, page_end)
-      : filtered_cards,
-  )
+  const paged_cards = $derived(filtered_cards.slice(first_idx, page_end))
+  const turn_page = (direction: -1 | 1): void => {
+    page_start = Math.min(last_page_start, Math.max(0, first_idx + direction * page_size))
+  }
   // Jump to the page holding `reveal_key`, then scroll its card into view once rendered
   $effect(() => {
     if (reveal_key == null) return
@@ -123,22 +119,13 @@
   <p class="empty-filter">No {empty_label} matches "{filter}".</p>
 {:else}
   {#if filtered_cards.length > page_size}
+    {#snippet page_button(label: string, direction: -1 | 1, disabled: boolean)}
+      <button type="button" {disabled} onclick={() => turn_page(direction)}>{label}</button>
+    {/snippet}
     <nav class="pager" aria-label="{empty_label} pages">
-      <button
-        type="button"
-        disabled={first_idx === 0}
-        onclick={() => (page_start = Math.max(0, first_idx - page_size))}
-      >
-        Previous
-      </button>
+      {@render page_button(`Previous`, -1, first_idx === 0)}
       <span>{first_idx + 1}-{page_end} of {filtered_cards.length}</span>
-      <button
-        type="button"
-        disabled={page_end >= filtered_cards.length}
-        onclick={() => (page_start = Math.min(last_page_start, first_idx + page_size))}
-      >
-        Next
-      </button>
+      {@render page_button(`Next`, 1, page_end >= filtered_cards.length)}
     </nav>
   {/if}
   <div {...rest} bind:this={cards_el} class={[`info-cards`, variant, rest.class]}>
@@ -154,11 +141,7 @@
         {#each card.rows as row, row_idx (row_key(card, row, row_idx))}
           <div class="info-row" data-testid={row.key}>
             <span>{@html sanitize_html(row.label)}</span>
-            {#if row_value}
-              {@render row_value(row, card)}
-            {:else}
-              <span title={row.tooltip}>{@html sanitize_html(row.value)}</span>
-            {/if}
+            <span title={row.tooltip}>{@html sanitize_html(row.value)}</span>
             {#if show_copy}
               <CopyButton
                 label="Copy {row.label}: {row.value}"

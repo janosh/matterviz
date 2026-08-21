@@ -139,21 +139,19 @@ const build_window = (
 }
 
 // Full symmetric window for a sampled time series: w(0) = w(n-1) = edge value, peak at the
-// midpoint.
+// midpoint (n-1)/2, so distance = |idx - midpoint| / midpoint.
 export const time_series_window = (
   n_samples: number,
   type: WindowType,
   options: WindowOptions = {},
-): Float64Array => {
-  const midpoint = (n_samples - 1) / 2
-  return build_window(
+): Float64Array =>
+  build_window(
     `time_series_window`,
     n_samples,
     type,
     options,
-    (idx) => Math.abs(idx - midpoint) / midpoint,
+    (idx) => Math.abs(2 * idx - (n_samples - 1)) / (n_samples - 1),
   )
-}
 
 // Right half of the symmetric window for a ONE-SIDED series (a correlation function at
 // lags 0..n_lags-1): w(0) = 1, so the mirrored signal even_cosine_spectrum builds carries the

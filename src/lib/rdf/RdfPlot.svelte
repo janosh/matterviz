@@ -11,7 +11,12 @@
   import { is_crystal } from '$lib/structure/validation'
   import { to_error } from '$lib/utils'
   import type { ComponentProps, Snippet } from 'svelte'
-  import { calculate_all_pair_rdfs, calculate_rdf, label_structures } from './index'
+  import {
+    calculate_all_pair_rdfs,
+    calculate_rdf,
+    label_structures,
+    rdf_baseline,
+  } from './index'
   import type { RdfEntry } from './index'
 
   let {
@@ -109,15 +114,8 @@
       },
     })),
   )
-  // Ideal-gas baseline g(r) = 1, ahead of any reference lines the caller adds
-  const baseline: RefLine = {
-    type: `horizontal`,
-    y: 1,
-    style: { color: `gray`, dash: `4`, opacity: 0.5 },
-    annotation: { text: `g(r) = 1`, position: `end`, side: `above`, color: `gray` },
-  }
   const ref_lines = $derived<RefLine[]>([
-    ...(show_reference_line ? [baseline] : []),
+    ...(show_reference_line ? [rdf_baseline(`g_r`)] : []),
     ...(rest.ref_lines ?? []),
   ])
 </script>

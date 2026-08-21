@@ -1,6 +1,6 @@
-import type { InfoPaneCard, InfoPaneRow } from '$lib/overlays'
+import type { InfoPaneCard } from '$lib/overlays'
 import InfoPaneCards from '$lib/overlays/InfoPaneCards.svelte'
-import { createRawSnippet, flushSync, mount } from 'svelte'
+import { flushSync, mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 import { doc_query } from '../setup'
 
@@ -70,7 +70,7 @@ describe(`InfoPaneCards`, () => {
     expect(titles()).toEqual([`Card 0`, `Card 1`, `Card 2`]) // new filter restarts at page 1
   })
 
-  test(`card_attrs decorate cards and row_value replaces the value cell`, () => {
+  test(`card_attrs decorate cards, subtitles render and show_copy=false drops the buttons`, () => {
     mount(InfoPaneCards, {
       target: document.body,
       props: {
@@ -78,16 +78,13 @@ describe(`InfoPaneCards`, () => {
         empty_label: `cards`,
         show_copy: false,
         card_attrs: (item: InfoPaneCard) => ({ class: `custom`, 'data-key': item.key }),
-        row_value: createRawSnippet<[InfoPaneRow, InfoPaneCard]>((row) => ({
-          render: () => `<input value="${row().value}" />`,
-        })),
       },
     })
     const section = doc_query(`.info-card`)
     expect(section.classList.contains(`custom`)).toBe(true)
     expect(section.getAttribute(`data-key`)).toBe(`k0`)
     expect(doc_query(`.info-card h4 .subtitle`).textContent).toBe(`sub`)
-    expect(doc_query<HTMLInputElement>(`.info-row input`).value).toBe(`Value 0`)
+    expect(doc_query(`.info-row span:nth-child(2)`).textContent).toBe(`Value 0`)
     expect(document.querySelector(`.copy-button`)).toBeNull()
   })
 })

@@ -10,24 +10,6 @@ const SIGMA_PER_FWHM = 1 / (2 * Math.sqrt(2 * Math.log(2)))
 // Parallel x/y arrays: discrete peaks on the way in, a sampled curve on the way out.
 export type PeakCurve = { x: number[]; y: number[] }
 
-// Area-normalized pseudo-Voigt centered on x0: `eta` mixes Lorentzian (1) into Gaussian (0).
-// Returns an evaluator so the per-peak constants are computed once, not per grid point.
-const pseudo_voigt = (x0: number, fwhm: number, eta: number): ((x: number) => number) => {
-  const sigma = fwhm * SIGMA_PER_FWHM
-  const gauss_prefactor = (1 - eta) / (sigma * Math.sqrt(2 * Math.PI))
-  const gauss_exponent = -1 / (2 * sigma * sigma)
-  const gamma = fwhm / 2
-  const lorentz_prefactor = eta / (Math.PI * gamma)
-  const inv_gamma_sq = 1 / (gamma * gamma)
-  return (x: number): number => {
-    const offset_sq = (x - x0) ** 2
-    return (
-      gauss_prefactor * Math.exp(gauss_exponent * offset_sq) +
-      lorentz_prefactor / (1 + offset_sq * inv_gamma_sq)
-    )
-  }
-}
-
 // Accumulates pseudo-Voigt peaks onto a uniform grid, with the FWHM model supplied by the
 // caller. Unit-agnostic: the faint-peak cut is a fraction of the tallest peak and the reach
 // test uses each peak's own width, so callers need not adapt either to their x or intensity
@@ -114,8 +96,21 @@ export function broaden_peaks(
     const start_idx = Math.max(0, Math.floor((x0 - window - min_x) / step_size))
     const end_idx = Math.min(n_steps - 1, Math.ceil((x0 + window - min_x) / step_size))
 
-    const profile = pseudo_voigt(x0, fwhm, shape_factor)
-    for (let idx = start_idx; idx <= end_idx; idx++) ys[idx] += intensity * profile(xs[idx])
+    // Area-normalized pseudo-Voigt: shape_factor mixes Lorentzian (1) into Gaussian (0).
+    // Per-peak constants hoisted out of the grid loop.
+    const sigma = fwhm * SIGMA_PER_FWHM
+    const gauss_prefactor = (1 - shape_factor) / (sigma * Math.sqrt(2 * Math.PI))
+    const gauss_exponent = -1 / (2 * sigma * sigma)
+    const gamma = fwhm / 2
+    const lorentz_prefactor = shape_factor / (Math.PI * gamma)
+    const inv_gamma_sq = 1 / (gamma * gamma)
+    for (let idx = start_idx; idx <= end_idx; idx++) {
+      const offset_sq = (xs[idx] - x0) ** 2
+      ys[idx] +=
+        intensity *
+        (gauss_prefactor * Math.exp(gauss_exponent * offset_sq) +
+          lorentz_prefactor / (1 + offset_sq * inv_gamma_sq))
+    }
   }
 
   // Only x/y come back: a continuous profile has no single reflection (or mode) per grid

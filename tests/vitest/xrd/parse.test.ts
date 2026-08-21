@@ -102,6 +102,12 @@ describe(`parse_block_scan (ILL / PSI neutron layouts)`, () => {
   test.each([
     [`no header line`, `title\n10 -1 5\n7 8`, /no 'start step stop' header/],
     [`too few counts`, `10 0.5 12\n100 200`, /announces 5 points but only 2 follow/],
+    // a non-numeric row ends the block; the numbers after it are not counts
+    [
+      `a footer inside the block`,
+      `10 0.5 12\n100 200\nNumor=1\n300 400 500`,
+      /announces 5 points but only 2 follow/,
+    ],
   ])(`throws on %s`, (_name, content, pattern) => {
     expect(() => parse_block_scan(content)).toThrow(pattern)
   })
@@ -175,16 +181,13 @@ describe(`parse_uxd_file`, () => {
 })
 
 describe(`parse_gsas_file`, () => {
-  test(`CONST/STD bank: centidegree start and step, NCHAN values, padding dropped`, () => {
+  test.each([
+    `BANK 1 3 1 CONST 1000 1000 0 0\n100 200 300`,
     // NCHAN = 3 but the last record is zero-padded to a full line
-    const result = parse_gsas_file(
-      `title\nBANK 1 3 1 CONST 1000.0 1000.0 0 0 STD\n100 200 300 0 0`,
-    )
-    expect(rounded(parse_gsas_file(`BANK 1 3 1 CONST 1000 1000 0 0\n100 200 300`))).toEqual(
-      THREE_POINTS,
-    )
-    expect(result.x).toEqual([10, 20, 30])
-  })
+    `title\nBANK 1 3 1 CONST 1000.0 1000.0 0 0 STD\n100 200 300 0 0`,
+  ])(`CONST/STD bank %#: centidegree start and step, first NCHAN values`, (content) =>
+    expect(rounded(parse_gsas_file(content))).toEqual(THREE_POINTS),
+  )
 
   test(`fixed-width STD records keep the F6.0 intensity and drop the I2 detector count`, () => {
     // 10(I2,F6.0) with NCTR 1..10 glued to the counts, as multi-detector neutron banks write

@@ -87,14 +87,12 @@ export function create_orthographic_zoom(opts: {
 }) {
   let zoom = $state(untrack(opts.fit_zoom))
   let previous_fit_zoom = 0
-  const bounds = $derived(
+  // Destructured into scalars, not exposed as the bounds object: callers spread these into
+  // Threlte, which re-applies every prop when any one changes identity — including `target`,
+  // which would snap a panned view back to the scene center on each resize.
+  const { min_zoom, max_zoom } = $derived(
     get_orthographic_zoom_bounds(opts.fit_zoom(), opts.min_zoom(), opts.max_zoom()),
   )
-  // Scalars, not the bounds object: callers spread these into Threlte, which re-applies every
-  // prop when any one changes identity — including `target`, which would snap a panned view
-  // back to the scene center on each resize.
-  const min_zoom = $derived(bounds.min_zoom)
-  const max_zoom = $derived(bounds.max_zoom)
   $effect(() => {
     if (!opts.measured()) return
     // Track fit + limits so a raised ceiling re-clamps now, not at the next gesture.

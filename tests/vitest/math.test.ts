@@ -420,7 +420,7 @@ describe(`pbc_dist`, () => {
   })
 
   // Exhaustive cross-check: the reciprocal-bound search must find the same minimum as a
-  // brute-force scan over ±3 images on every axis, for any PBC mask. The sheared cells are
+  // brute-force scan over ±8 images on every axis, for any PBC mask. The sheared cells are
   // the ones where round-to-nearest fractional wrapping alone gives the wrong image.
   // oxfmt-ignore
   test.each([
@@ -466,17 +466,11 @@ describe(`pbc_dist`, () => {
   })
 
   test(`no periodic axis returns the plain difference without touching the lattice`, () => {
-    const singular: math.Matrix3x3 = [
-      [1, 0, 0],
-      [1, 0, 0],
-      [0, 0, 1],
-    ]
+    // oxfmt-ignore
+    const singular: math.Matrix3x3 = [[1, 0, 0], [1, 0, 0], [0, 0, 1]]
+    const no_pbc: Pbc3 = [false, false, false]
     expect(
-      math.min_image_displacement([1, 2, 3], [4, 6, 3], singular, undefined, [
-        false,
-        false,
-        false,
-      ]),
+      math.min_image_displacement([1, 2, 3], [4, 6, 3], singular, undefined, no_pbc),
     ).toEqual([3, 4, 0])
   })
 
@@ -659,25 +653,23 @@ describe(`3x3 matrix and lattice utilities`, () => {
       [`triclinic`, [[4.2, 0, 0], [1.1, 5.3, 0], [-0.7, 1.9, 6.4]]],
       [`nm-scale cell`, [[0.42, 0, 0], [0.11, 0.53, 0], [-0.07, 0.19, 0.64]]],
     ]
-    it.each(lattices)(`%s: a_i · b_j = δ_ij, and 2π δ_ij with two_pi`, (_name, lattice) => {
-      for (const two_pi of [false, true]) {
-        const recip = math.reciprocal_lattice(lattice, { two_pi })
-        const scale = two_pi ? 2 * Math.PI : 1
-        for (let idx_i = 0; idx_i < 3; idx_i++) {
-          for (let idx_j = 0; idx_j < 3; idx_j++) {
-            expect(math.dot(lattice[idx_i], recip[idx_j])).toBeCloseTo(
-              idx_i === idx_j ? scale : 0,
-              12,
-            )
-          }
+    it.each(lattices)(
+      `%s: a_i · b_j = δ_ij (2π δ_ij with two_pi) and B(B(A)) = A`,
+      (_name, lattice) => {
+        for (const two_pi of [false, true]) {
+          const recip = math.reciprocal_lattice(lattice, { two_pi })
+          const scale = two_pi ? 2 * Math.PI : 1
+          // A · Bᵀ = scale · I
+          const products = math.dot(lattice, math.transpose_3x3_matrix(recip))
+          const expected = lattice.map((_row, idx_i) =>
+            [0, 1, 2].map((idx_j) => expect.closeTo(idx_i === idx_j ? scale : 0, 12)),
+          )
+          expect(products).toEqual(expected)
         }
-      }
-    })
-
-    it.each(lattices)(`%s: reciprocal of the reciprocal is the lattice`, (_name, lattice) => {
-      const twice = math.reciprocal_lattice(math.reciprocal_lattice(lattice))
-      expect(twice).toEqual(lattice.map((row) => row.map((val) => expect.closeTo(val, 12))))
-    })
+        const twice = math.reciprocal_lattice(math.reciprocal_lattice(lattice))
+        expect(twice).toEqual(lattice.map((row) => row.map((val) => expect.closeTo(val, 12))))
+      },
+    )
 
     it(`is the Cartesian→fractional matrix used by create_cart_to_frac`, () => {
       const lattice = lattices[2][1]
@@ -1021,6 +1013,22 @@ describe(`normalize_vec`, () => {
     expect(result).toEqual(expected.map((val) => expect.closeTo(val, 10)))
   })
 })
+
+// u ⟂ v ⟂ normal, all unit length, right-handed (u × v = normal); the x-axis normal takes
+// the ŷ reference since x̂ would be parallel
+it.each<[Vec3]>([[[0, 0, 1]], [[1, 0, 0]], [[0.95, 0.2, 0.1]], [[-0.6, 0.48, 0.64]]])(
+  `compute_in_plane_basis(%j) is an orthonormal right-handed frame`,
+  (raw) => {
+    const normal = math.normalize_vec(raw)
+    const [u_vec, v_vec] = math.compute_in_plane_basis(normal)
+    expect(Math.hypot(...u_vec)).toBeCloseTo(1, 12)
+    expect(Math.hypot(...v_vec)).toBeCloseTo(1, 12)
+    expect(math.dot(u_vec, normal)).toBeCloseTo(0, 12)
+    expect(math.dot(v_vec, normal)).toBeCloseTo(0, 12)
+    expect(math.dot(u_vec, v_vec)).toBeCloseTo(0, 12)
+    expect(math.cross_3d(u_vec, v_vec)).toEqual(normal.map((val) => expect.closeTo(val, 12)))
+  },
+)
 
 // oxfmt-ignore
 it.each([

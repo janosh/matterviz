@@ -10,10 +10,7 @@ export const selected = $state<{
   heatmap_key: keyof ChemicalElement | null
 }>({ category: null, element: null, heatmap_key: null })
 
-export const colors = $state<{
-  category: typeof DEFAULT_CATEGORY_COLORS
-  element: typeof default_element_colors
-}>({
+export const colors = $state({
   category: { ...DEFAULT_CATEGORY_COLORS },
   element: { ...default_element_colors },
 })

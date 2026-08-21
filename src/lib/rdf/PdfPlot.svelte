@@ -13,6 +13,7 @@
     label_structures,
     PDF_DEFAULT_CUTOFF,
     PDF_DEFAULT_N_BINS,
+    rdf_baseline,
   } from './index'
   import type { PdfPattern, TotalPdfPattern } from './index'
 
@@ -81,22 +82,7 @@
     error_msg = computed.failure
   })
 
-  const is_reduced = $derived(quantity === `reduced_g_r`)
-  // Baseline every PDF is read against: g(r) = 1 (ideal gas) or G(r) = 0
-  const ref_lines = $derived<RefLine[]>([
-    {
-      type: `horizontal`,
-      y: is_reduced ? 0 : 1,
-      style: { color: `gray`, dash: `4`, opacity: 0.5 },
-      annotation: {
-        text: is_reduced ? `G(r) = 0` : `g(r) = 1`,
-        position: `end`,
-        side: `above`,
-        color: `gray`,
-      },
-    },
-    ...(rest.ref_lines ?? []),
-  ])
+  const ref_lines = $derived<RefLine[]>([rdf_baseline(quantity), ...(rest.ref_lines ?? [])])
 
   const series = $derived<DataSeries[]>(
     computed.totals.flatMap(({ label, total }, struct_idx) => {
@@ -180,7 +166,7 @@ the whole story and claiming there was nothing to plot would contradict it -->
     {series}
     {ref_lines}
     x_axis={{ label: `r (Å)`, range: [0, cutoff], ...x_axis }}
-    y_axis={{ label: is_reduced ? `G(r) (Å⁻²)` : `g(r)`, ...y_axis }}
+    y_axis={{ label: quantity === `reduced_g_r` ? `G(r) (Å⁻²)` : `g(r)`, ...y_axis }}
     styles={{ show_lines: true, show_points: false }}
     style={rest.style ?? `height: 450px;`}
   />
@@ -204,13 +190,13 @@ the whole story and claiming there was nothing to plot would contradict it -->
     background: transparent;
     border-radius: 4px;
     cursor: pointer;
-  }
-  button:hover {
-    border-color: #4e79a7;
-  }
-  button.active {
-    border-color: #4e79a7;
-    border-width: 2px;
+    &:hover,
+    &.active {
+      border-color: #4e79a7;
+    }
+    &.active {
+      border-width: 2px;
+    }
   }
   .separator {
     color: #ccc;

@@ -10,7 +10,7 @@
 // images; it is reported separately from the highest computed image, since quoting the
 // interpolated value as if it were a computed image is a common reporting error.
 
-import type { LatticeConverters, Matrix3x3, Vec3 } from '$lib/math'
+import type { LatticeConverters, Vec3 } from '$lib/math'
 import { create_lattice_converters, min_image_displacement } from '$lib/math'
 import type { AnyStructure } from '$lib/structure'
 import type { Pbc } from '$lib/structure/pbc'
@@ -78,17 +78,15 @@ export function assert_path(
 // Cached lattice geometry so a whole path is walked with one matrix inversion; null means
 // raw Cartesian differences (no lattice, or `metric: cartesian`, which is only meaningful
 // when no atom crosses a cell boundary).
-type PathGeometry = { lattice: Matrix3x3; converters: LatticeConverters; pbc: Pbc } | null
+type PathGeometry = { converters: LatticeConverters; pbc: Pbc } | null
 
 function path_geometry(
   reference: AnyStructure,
   options: PathMetricOptions = {},
 ): PathGeometry {
   if (options.metric === `cartesian` || !(`lattice` in reference)) return null
-  const lattice = reference.lattice.matrix
   return {
-    lattice,
-    converters: create_lattice_converters(lattice),
+    converters: create_lattice_converters(reference.lattice.matrix),
     pbc: options.pbc ?? reference.lattice.pbc,
   }
 }
@@ -108,13 +106,8 @@ function image_displacements(
   return from.sites.map(({ xyz }, site_idx) => {
     const target = to.sites[site_idx].xyz
     if (!geometry) return [target[0] - xyz[0], target[1] - xyz[1], target[2] - xyz[2]]
-    return min_image_displacement(
-      xyz,
-      target,
-      geometry.lattice,
-      geometry.converters,
-      geometry.pbc,
-    )
+    const { converters, pbc } = geometry
+    return min_image_displacement(xyz, target, converters.lattice, converters, pbc)
   })
 }
 

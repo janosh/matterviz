@@ -72,18 +72,8 @@ export const partition_point = <Value>(
 // Calculate all lattice parameters in a single efficient pass
 export function calc_lattice_params(matrix: Matrix3x3): LatticeParams & { volume: number } {
   const [a_vec, b_vec, c_vec] = matrix
-
-  // Calculate vector lengths (lattice parameters a, b, c)
-  const a = Math.hypot(a_vec[0], a_vec[1], a_vec[2])
-  const b = Math.hypot(b_vec[0], b_vec[1], b_vec[2])
-  const c = Math.hypot(c_vec[0], c_vec[1], c_vec[2])
-
+  const [a, b, c] = matrix.map((vec) => Math.hypot(...vec))
   const volume = Math.abs(det_3x3(matrix))
-
-  // Calculate dot products for angles (only once each)
-  const dot_ab = a_vec[0] * b_vec[0] + a_vec[1] * b_vec[1] + a_vec[2] * b_vec[2]
-  const dot_ac = a_vec[0] * c_vec[0] + a_vec[1] * c_vec[1] + a_vec[2] * c_vec[2]
-  const dot_bc = b_vec[0] * c_vec[0] + b_vec[1] * c_vec[1] + b_vec[2] * c_vec[2]
 
   // Convert to angles in degrees. Two ways this yields NaN without the guard: parallel
   // vectors, where the dot product and the two hypot calls round differently and the
@@ -101,9 +91,9 @@ export function calc_lattice_params(matrix: Matrix3x3): LatticeParams & { volume
     if (denom === 0) return 90 // degenerate axis: orthogonal keeps the cell round-trippable
     return Math.acos(Math.max(-1, Math.min(1, dot / denom))) * RAD_TO_DEG
   }
-  const alpha = safe_angle(dot_bc, b, c)
-  const beta = safe_angle(dot_ac, a, c)
-  const gamma = safe_angle(dot_ab, a, b)
+  const alpha = safe_angle(dot(b_vec, c_vec), b, c)
+  const beta = safe_angle(dot(a_vec, c_vec), a, c)
+  const gamma = safe_angle(dot(a_vec, b_vec), a, b)
 
   return { a, b, c, alpha, beta, gamma, volume }
 }
@@ -347,11 +337,7 @@ export function dot(
     if (cols !== vec.length) {
       throw new Error(`Matrix columns must equal vector length`)
     }
-    return mat.map((row) => {
-      let sum = 0
-      for (let idx = 0; idx < cols; idx++) sum += row[idx] * vec[idx]
-      return sum
-    })
+    return mat.map((row) => dot(row, vec))
   }
 
   // Matrix-matrix multiplication
@@ -397,18 +383,8 @@ export const transpose_3x3_matrix = (matrix: Matrix3x3): Matrix3x3 => [
 
 // Scale each row of a 3x3 matrix by the corresponding element of a Vec3.
 // Used to scale lattice vectors by supercell factors.
-export function scale_lattice_matrix(
-  orig_matrix: Matrix3x3,
-  scaling_factors: Vec3,
-): Matrix3x3 {
-  const [nx, ny, nz] = scaling_factors
-  const [a, b, c] = orig_matrix
-  return [
-    [a[0] * nx, a[1] * nx, a[2] * nx],
-    [b[0] * ny, b[1] * ny, b[2] * ny],
-    [c[0] * nz, c[1] * nz, c[2] * nz],
-  ]
-}
+export const scale_lattice_matrix = (orig_matrix: Matrix3x3, scaling_factors: Vec3) =>
+  orig_matrix.map((row, idx) => scale(row, scaling_factors[idx])) as Matrix3x3
 
 // Reciprocal lattice of a row-vector lattice A (rows a_i), returned as rows b_i with
 // a_i · b_j = δ_ij (crystallographic convention, the default) or 2π δ_ij (`two_pi`, the
@@ -419,32 +395,20 @@ export function reciprocal_lattice(
   options: { two_pi?: boolean } = {},
 ): Matrix3x3 {
   const factor = options.two_pi ? 2 * Math.PI : 1
-  const [[i00, i01, i02], [i10, i11, i12], [i20, i21, i22]] = matrix_inverse_3x3(lattice)
-  return [
-    [i00 * factor, i10 * factor, i20 * factor],
-    [i01 * factor, i11 * factor, i21 * factor],
-    [i02 * factor, i12 * factor, i22 * factor],
-  ]
+  const inverse_transposed = transpose_3x3_matrix(matrix_inverse_3x3(lattice))
+  return inverse_transposed.map((row) => scale(row, factor)) as Matrix3x3
 }
 
 // Curried fractional→Cartesian converter: cart = frac · lattice (row-vector convention)
 export const create_frac_to_cart = (lattice: Matrix3x3) => {
-  const [[ax, ay, az], [bx, by, bz], [cx, cy, cz]] = lattice
-  return (frac: Vec3): Vec3 => [
-    frac[0] * ax + frac[1] * bx + frac[2] * cx,
-    frac[0] * ay + frac[1] * by + frac[2] * cy,
-    frac[0] * az + frac[1] * bz + frac[2] * cz,
-  ]
+  const transposed = transpose_3x3_matrix(lattice)
+  return (frac: Vec3): Vec3 => mat3x3_vec3_multiply(transposed, frac)
 }
 
 // Curried Cartesian→fractional converter: frac_i = b_i · cart with b_i the reciprocal rows
 export const create_cart_to_frac = (lattice: Matrix3x3) => {
-  const [[ra0, ra1, ra2], [rb0, rb1, rb2], [rc0, rc1, rc2]] = reciprocal_lattice(lattice)
-  return (cart: Vec3): Vec3 => [
-    ra0 * cart[0] + ra1 * cart[1] + ra2 * cart[2],
-    rb0 * cart[0] + rb1 * cart[1] + rb2 * cart[2],
-    rc0 * cart[0] + rc1 * cart[1] + rc2 * cart[2],
-  ]
+  const reciprocal = reciprocal_lattice(lattice)
+  return (cart: Vec3): Vec3 => mat3x3_vec3_multiply(reciprocal, cart)
 }
 
 // Paired converters for a lattice, built once and reused across every site or frame.
@@ -564,14 +528,44 @@ export function det_4x4(matrix: Matrix4x4): number {
   )
 }
 
-// Largest |entry| of a matrix: the scale that pivot thresholds are measured against, so
-// LU-based routines treat a matrix and its scalar multiples alike.
-const max_abs_entry = (matrix: number[][]): number => {
-  let max_abs = 0
-  for (const row of matrix) {
-    for (const val of row) if (Math.abs(val) > max_abs) max_abs = Math.abs(val)
+// LU decomposition with partial pivoting on a working copy: L's factors land below the
+// diagonal, U on and above it, `perm` is the row order applied and `n_swaps` its parity.
+// Returns null when a pivot is <= EPS * largest |entry|, so a matrix and its scalar
+// multiples get the same singular/non-singular verdict.
+const lu_decompose = (
+  matrix: number[][],
+): { lu: number[][]; perm: number[]; n_swaps: number } | null => {
+  const size = matrix.length
+  const lu = matrix.map((row) => [...row])
+  const perm = Array.from({ length: size }, (_, idx) => idx)
+  const pivot_floor = EPS * array_max(matrix.flat().map(Math.abs))
+  let n_swaps = 0
+
+  for (let col = 0; col < size; col++) {
+    let [max_row, max_val] = [col, Math.abs(lu[col][col])]
+    for (let row = col + 1; row < size; row++) {
+      const val = Math.abs(lu[row][col])
+      if (val > max_val) [max_val, max_row] = [val, row]
+    }
+    if (max_val <= pivot_floor) return null // singular
+
+    if (max_row !== col) {
+      ;[lu[col], lu[max_row]] = [lu[max_row], lu[col]]
+      ;[perm[col], perm[max_row]] = [perm[max_row], perm[col]]
+      n_swaps++
+    }
+
+    // Eliminate below pivot
+    const pivot = lu[col][col]
+    for (let row = col + 1; row < size; row++) {
+      const factor = lu[row][col] / pivot
+      lu[row][col] = factor
+      for (let inner = col + 1; inner < size; inner++) {
+        lu[row][inner] -= factor * lu[col][inner]
+      }
+    }
   }
-  return max_abs
+  return { lu, perm, n_swaps }
 }
 
 // Compute NxN determinant using LU decomposition with partial pivoting
@@ -590,46 +584,11 @@ export function det_nxn(matrix: number[][]): number {
   if (mat_size === 3) return det_3x3(matrix as Matrix3x3)
   if (mat_size === 4) return det_4x4(matrix as Matrix4x4)
 
-  // LU decomposition with partial pivoting on a working copy
-  const lu = matrix.map((row) => [...row])
-  const pivot_floor = EPS * max_abs_entry(matrix)
-  let swaps = 0
-
-  for (let col = 0; col < mat_size; col++) {
-    // Find pivot (largest absolute value in column)
-    let [max_row, max_val] = [col, Math.abs(lu[col][col])]
-    for (let row = col + 1; row < mat_size; row++) {
-      const val = Math.abs(lu[row][col])
-      if (val > max_val) {
-        max_val = val
-        max_row = row
-      }
-    }
-
-    // Singular matrix (or nearly so)
-    if (max_val <= pivot_floor) return 0
-
-    if (max_row !== col) {
-      ;[lu[col], lu[max_row]] = [lu[max_row], lu[col]]
-      swaps++
-    }
-
-    // Eliminate below pivot
-    const pivot = lu[col][col]
-    for (let row = col + 1; row < mat_size; row++) {
-      const factor = lu[row][col] / pivot
-      lu[row][col] = 0
-      for (let inner = col + 1; inner < mat_size; inner++) {
-        lu[row][inner] -= factor * lu[col][inner]
-      }
-    }
-  }
-
+  const decomposed = lu_decompose(matrix)
+  if (!decomposed) return 0
   // Determinant is product of diagonal elements × (-1)^swaps
-  let det = swaps % 2 === 0 ? 1 : -1
-  for (let idx = 0; idx < mat_size; idx++) {
-    det *= lu[idx][idx]
-  }
+  let det = decomposed.n_swaps % 2 === 0 ? 1 : -1
+  for (let idx = 0; idx < mat_size; idx++) det *= decomposed.lu[idx][idx]
   return det
 }
 
@@ -693,12 +652,7 @@ export function compute_in_plane_basis(normal: Vec3): [Vec3, Vec3] {
   let ref_vec: Vec3 = [1, 0, 0]
   if (Math.abs(normal[0]) > 0.9) ref_vec = [0, 1, 0]
 
-  const dot_nr = dot(normal, ref_vec)
-  const u_raw: Vec3 = [
-    ref_vec[0] - dot_nr * normal[0],
-    ref_vec[1] - dot_nr * normal[1],
-    ref_vec[2] - dot_nr * normal[2],
-  ]
+  const u_raw = subtract(ref_vec, scale(normal, dot(normal, ref_vec)))
   const u_vec = normalize_vec(u_raw, [0, 1, 0])
   const v_vec = cross_3d(normal, u_vec)
   return [u_vec, v_vec] // u, v basis vectors
@@ -1037,33 +991,9 @@ export function solve_linear_system(
   }
 
   // General NxN: LU decomposition with partial pivoting + forward/back substitution
-  const lu = coefficients.map((row) => [...row])
-  const perm = Array.from({ length: size }, (_, idx) => idx)
-  const pivot_floor = EPS * max_abs_entry(coefficients)
-
-  for (let col = 0; col < size; col++) {
-    let [max_row, max_val] = [col, Math.abs(lu[col][col])]
-    for (let row = col + 1; row < size; row++) {
-      const val = Math.abs(lu[row][col])
-      if (val > max_val) [max_val, max_row] = [val, row]
-    }
-    if (max_val <= pivot_floor) return null // singular
-
-    if (max_row !== col) {
-      ;[lu[col], lu[max_row]] = [lu[max_row], lu[col]]
-      ;[perm[col], perm[max_row]] = [perm[max_row], perm[col]]
-    }
-
-    // Eliminate below pivot
-    const pivot = lu[col][col]
-    for (let row = col + 1; row < size; row++) {
-      const factor = lu[row][col] / pivot
-      lu[row][col] = factor // store L factor in lower triangle
-      for (let inner = col + 1; inner < size; inner++) {
-        lu[row][inner] -= factor * lu[col][inner]
-      }
-    }
-  }
+  const decomposed = lu_decompose(coefficients)
+  if (!decomposed) return null
+  const { lu, perm } = decomposed
 
   // Apply permutation to rhs, then forward substitution (L y = P rhs)
   const solution = perm.map((idx) => rhs[idx])

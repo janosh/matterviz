@@ -9,7 +9,7 @@
   import { format_num } from '$lib/labels'
   import { quantile_unordered, type Vec2 } from '$lib/math'
   import type { AxisConfig, ColorBarScale } from '$lib/plot/core/types'
-  import { resolve_color_ramp } from '$lib/plot/core/color-ramp'
+  import { type ColorRamp, resolve_color_ramp } from '$lib/plot/core/color-ramp'
   import ColorBar from '$lib/plot/core/components/ColorBar.svelte'
   import { virtual_window } from '$lib/table/virtual'
   import { type ComponentProps, onDestroy, onMount, type Snippet, tick } from 'svelte'
@@ -33,6 +33,7 @@
   type SelectionMode = `single` | `multi` | `range`
   type AxisOrder = `label` | `key` | `sort_value` | ((a: AxisItem, b: AxisItem) => number)
   type CellPos = { x_idx: number; y_idx: number }
+  type Axis = `x` | `y`
 
   let {
     x_items,
@@ -211,25 +212,13 @@
     item.label.toLowerCase().includes(search_query_norm)
 
   let { vis_x, vis_y } = $derived.by(() => {
-    const all_x = x_items
-      .map((_item, idx) => idx)
-      .filter((idx) => matches_search(x_items[idx]))
-    const all_y = y_items
-      .map((_item, idx) => idx)
-      .filter((idx) => matches_search(y_items[idx]))
-    if (!hide_empty) {
-      return {
-        vis_x: sort_indices(all_x, x_items, x_order),
-        vis_y: sort_indices(all_y, y_items, y_order),
-      }
-    }
-    // Which columns and rows have at least one non-null visible value. Early-exit: skip cells
-    // whose row+col are already known non-empty, stop once all are resolved (dense matrices
-    // touch ~n+m cells, not n*m)
-    const col_has_data = Array<boolean>(x_items.length).fill(false)
-    const row_has_data = Array<boolean>(y_items.length).fill(false)
-    let unknown_cols = x_items.length
-    let unknown_rows = y_items.length
+    // Which columns and rows have at least one non-null visible value (all of them unless
+    // hide_empty). Early-exit: skip cells whose row+col are already known non-empty, stop once
+    // all are resolved (dense matrices touch ~n+m cells, not n*m)
+    const col_has_data = Array<boolean>(x_items.length).fill(!hide_empty)
+    const row_has_data = Array<boolean>(y_items.length).fill(!hide_empty)
+    let unknown_cols = hide_empty ? x_items.length : 0
+    let unknown_rows = hide_empty ? y_items.length : 0
     for (let y_idx = 0; y_idx < y_items.length && (unknown_cols || unknown_rows); y_idx++) {
       for (let x_idx = 0; x_idx < x_items.length; x_idx++) {
         if (row_has_data[y_idx] && col_has_data[x_idx]) continue
@@ -244,17 +233,15 @@
         }
       }
     }
+    const visible = (items: AxisItem[], has_data: boolean[], order?: AxisOrder) =>
+      sort_indices(
+        items.flatMap((item, idx) => (has_data[idx] && matches_search(item) ? [idx] : [])),
+        items,
+        order,
+      )
     return {
-      vis_x: sort_indices(
-        all_x.filter((idx) => col_has_data[idx]),
-        x_items,
-        x_order,
-      ),
-      vis_y: sort_indices(
-        all_y.filter((idx) => row_has_data[idx]),
-        y_items,
-        y_order,
-      ),
+      vis_x: visible(x_items, col_has_data, x_order),
+      vis_y: visible(y_items, row_has_data, y_order),
     }
   })
 
@@ -306,30 +293,27 @@
   )
   // The shared ramp clamps a non-positive log floor at LOG_EPS; lift it to the smallest
   // positive value instead so the colors still spread over the data. A degenerate domain
-  // maps everything to the midpoint; a log domain entirely <= 0 maps nothing.
-  let ramp = $derived.by(() => {
-    if (cs_min === cs_max) return `mid` as const
-    let lo = Math.min(cs_min, cs_max)
-    const hi = Math.max(cs_min, cs_max)
-    if (use_log) {
+  // maps everything to the midpoint color; a log domain entirely <= 0 maps nothing (null).
+  let ramp = $derived.by((): ColorRamp | null => {
+    const [lo, hi] = [Math.min(cs_min, cs_max), Math.max(cs_min, cs_max)]
+    let floor = lo
+    if (use_log && lo !== hi) {
       if (hi <= 0) return null
-      if (lo <= 0) lo = value_stats.min_pos ?? hi
-      if (lo === hi) return `mid` as const
+      if (lo <= 0) floor = value_stats.min_pos ?? hi
     }
-    return resolve_color_ramp(color_bar_scale, [lo, hi], use_log ? `log` : `linear`)
+    if (floor === hi) {
+      const mid_color = resolve_color_ramp(color_bar_scale, [0, 1]).color_fn(0.5)
+      return { color_fn: () => mid_color, domain: [lo, hi] }
+    }
+    return resolve_color_ramp(color_bar_scale, [floor, hi], use_log ? `log` : `linear`)
   })
   // Legend span in the caller's bound order: the cell ramp's domain, so a lifted log floor
   // shows on the bar too instead of the raw cs_min <= 0 flooring it at LOG_EPS
   let legend_range = $derived.by((): Vec2 => {
-    if (typeof ramp !== `object` || ramp === null) return [cs_min, cs_max]
+    if (!ramp) return [cs_min, cs_max]
     const [lo, hi] = ramp.domain
     return cs_min <= cs_max ? [lo, hi] : [hi, lo]
   })
-  let color_scale_fn = $derived(
-    typeof color_scale === `function`
-      ? color_scale
-      : resolve_color_ramp(color_bar_scale, [0, 1]).color_fn,
-  )
   // fill for cells with no mappable value (default transparent)
   let missing_fill = $derived(missing.color ?? `transparent`)
   // whether a value lacks a mappable scale color (-> missing fill + label/style decorations)
@@ -337,10 +321,9 @@
     val === null ||
     (typeof val === `string` ? !is_color(val) : !Number.isFinite(val) || (use_log && val <= 0))
   function value_to_color(val: CellValue): string | null {
-    if (typeof val === `string`) return is_color(val) ? val : missing_fill || null
     if (val === null || cell_is_missing(val)) return missing_fill || null
-    if (ramp === `mid`) return color_scale_fn(0.5)
-    if (ramp === null) return missing_fill || null
+    if (typeof val === `string`) return val
+    if (!ramp) return missing_fill || null
     // values below a lifted log floor saturate at the bottom of the ramp
     return ramp.color_fn(Math.max(val, ramp.domain[0]))
   }
@@ -374,7 +357,6 @@
         : null,
     ),
   )
-  let has_cell_text = $derived(Boolean(cell || show_values))
 
   const build_cell_context = (x_idx: number, y_idx: number): CellContext => ({
     x_item: x_items[x_idx],
@@ -391,47 +373,46 @@
   let diagonal_labels = $derived(Boolean(symmetric) && symmetric_label_position === `diagonal`)
   const staggered = (count: number) =>
     stagger_axis_labels === true || (stagger_axis_labels === `auto` && count >= 24)
-  let split_x_labels = $derived(staggered(vis_x.length) && !diagonal_labels)
-  // Don't split y-labels to both sides when symmetric -- one side has no cells
-  let split_y_labels = $derived(staggered(vis_y.length) && !symmetric)
-  let right_y_labels = $derived(split_y_labels || symmetric === `upper`)
+  // Split labels between both edges (odd items move to the far edge); not for y when
+  // symmetric (one side has no cells) and not for x when the labels hug the diagonal
+  let split_labels = $derived({
+    x: staggered(vis_x.length) && !diagonal_labels,
+    y: staggered(vis_y.length) && !symmetric,
+  })
+  const EDGE_CLASSES = {
+    x: [`x-edge-top`, `x-edge-bottom`],
+    y: [`y-edge-left`, `y-edge-right`],
+  }
+  let right_y_labels = $derived(split_labels.y || symmetric === `upper`)
   // 'gaps' keeps a grid track per item so hidden rows/cols leave their positions empty
   let gaps_mode = $derived(hide_empty === `gaps`)
   let col_count = $derived(gaps_mode ? x_items.length : vis_x.length)
   let row_count = $derived(gaps_mode ? y_items.length : vis_y.length)
-  let grid_col_count = $derived(col_count + (show_row_summaries ? 1 : 0))
-  let grid_row_count = $derived(row_count + (show_col_summaries ? 1 : 0))
 
   // item index -> grid track (0-based), or null when the item is hidden
-  let vis_x_pos = $derived(new SvelteMap(vis_x.map((item_idx, pos) => [item_idx, pos])))
-  let vis_y_pos = $derived(new SvelteMap(vis_y.map((item_idx, pos) => [item_idx, pos])))
-  const track_x = (x_idx: number): number | null =>
-    gaps_mode ? x_idx : (vis_x_pos.get(x_idx) ?? null)
-  const track_y = (y_idx: number): number | null =>
-    gaps_mode ? y_idx : (vis_y_pos.get(y_idx) ?? null)
+  let track_pos = $derived({
+    x: new SvelteMap(vis_x.map((item_idx, pos) => [item_idx, pos])),
+    y: new SvelteMap(vis_y.map((item_idx, pos) => [item_idx, pos])),
+  })
+  const track = (axis: Axis, idx: number): number | null =>
+    gaps_mode ? idx : (track_pos[axis].get(idx) ?? null)
   // grid lines are 1-based and the first track holds the axis labels
-  const cell_grid_col = (x_idx: number): number | undefined => {
-    const track = track_x(x_idx)
-    return track === null ? undefined : track + 2
-  }
-  const cell_grid_row = (y_idx: number): number | undefined => {
-    const track = track_y(y_idx)
-    return track === null ? undefined : track + 2
+  const grid_line = (axis: Axis, idx: number): number | undefined => {
+    const pos = track(axis, idx)
+    return pos === null ? undefined : pos + 2
   }
   function x_label_grid_row(x_idx: number): number | undefined {
     if (diagonal_labels) {
-      const track = track_y(x_idx)
-      if (track === null) return undefined
+      const pos = track(`y`, x_idx)
+      if (pos === null) return undefined
       // upper triangle: label below the diagonal (empty lower-left); lower: above it
-      return symmetric === `upper`
-        ? Math.min(row_count + 1, track + 3)
-        : Math.max(1, track + 1)
+      return symmetric === `upper` ? Math.min(row_count + 1, pos + 3) : Math.max(1, pos + 1)
     }
-    if (split_x_labels && x_idx % 2 !== 0) return row_count + 2 + (show_col_summaries ? 1 : 0)
+    if (split_labels.x && x_idx % 2 !== 0) return row_count + 2 + (show_col_summaries ? 1 : 0)
     return 1
   }
   const y_label_grid_col = (y_idx: number): number =>
-    symmetric === `upper` || (split_y_labels && y_idx % 2 !== 0)
+    symmetric === `upper` || (split_labels.y && y_idx % 2 !== 0)
       ? col_count + 2 + (show_row_summaries ? 1 : 0)
       : 1
 
@@ -483,8 +464,8 @@
     if (!first_cell) return
     const x_idx = Number(first_cell.dataset.x)
     const y_idx = Number(first_cell.dataset.y)
-    grid_offset_left = first_cell.offsetLeft - (track_x(x_idx) ?? 0) * stride_px
-    grid_offset_top = first_cell.offsetTop - (track_y(y_idx) ?? 0) * stride_px
+    grid_offset_left = first_cell.offsetLeft - (track(`x`, x_idx) ?? 0) * stride_px
+    grid_offset_top = first_cell.offsetTop - (track(`y`, y_idx) ?? 0) * stride_px
   }
   onMount(update_viewport_state)
 
@@ -497,29 +478,26 @@
   let brush_start: CellPos | null = $state(null)
   let brush_end: CellPos | null = null
 
-  // Cells of the rectangle spanned by two corners, minus the hidden triangle
-  function cells_between(corner_a: CellPos, corner_b: CellPos): CellPos[] {
+  // Rectangle spanned by two corners and its cells, minus the hidden triangle
+  function cells_between(corner_a: CellPos, corner_b: CellPos) {
+    const span = (key: keyof CellPos): Vec2 => [
+      Math.min(corner_a[key], corner_b[key]),
+      Math.max(corner_a[key], corner_b[key]),
+    ]
+    const [x_range, y_range] = [span(`x_idx`), span(`y_idx`)]
     const cells: CellPos[] = []
-    const [x_min, x_max] = [
-      Math.min(corner_a.x_idx, corner_b.x_idx),
-      Math.max(corner_a.x_idx, corner_b.x_idx),
-    ]
-    const [y_min, y_max] = [
-      Math.min(corner_a.y_idx, corner_b.y_idx),
-      Math.max(corner_a.y_idx, corner_b.y_idx),
-    ]
-    for (let y_idx = y_min; y_idx <= y_max; y_idx++) {
-      for (let x_idx = x_min; x_idx <= x_max; x_idx++) {
+    for (let y_idx = y_range[0]; y_idx <= y_range[1]; y_idx++) {
+      for (let x_idx = x_range[0]; x_idx <= x_range[1]; x_idx++) {
         if (!is_hidden_cell(x_idx, y_idx)) cells.push({ x_idx, y_idx })
       }
     }
-    return cells
+    return { x_range, y_range, cells }
   }
 
   function update_selected_cells(event: MouseEvent, clicked: CellPos): void {
     const clicked_key = cell_pos_key(clicked.x_idx, clicked.y_idx)
     if (selection_mode === `range` && event.shiftKey && last_selected_cell) {
-      selected_cells = cells_between(last_selected_cell, clicked)
+      selected_cells = cells_between(last_selected_cell, clicked).cells
     } else if (selection_mode === `multi` && (event.metaKey || event.ctrlKey)) {
       // toggle the clicked cell
       selected_cells = selected_key_set.has(clicked_key)
@@ -546,19 +524,19 @@
     active_cell_raf = 0
   }
 
-  const cell_el_from_target = (target: EventTarget | null): HTMLElement | null => {
-    const cell_el = target instanceof Element ? target.closest(`[data-x][data-y]`) : null
-    return cell_el instanceof HTMLElement ? cell_el : null
-  }
-  function cell_context_from_target(target: EventTarget | null): CellContext | null {
-    const cell_el = cell_el_from_target(target)
-    if (!cell_el) return null
-    const x_idx = Number(cell_el.dataset.x)
-    const y_idx = Number(cell_el.dataset.y)
-    return Number.isInteger(x_idx) && Number.isInteger(y_idx)
-      ? build_cell_context(x_idx, y_idx)
-      : null
-  }
+  // Pointer handlers first resolve the cell under the event and do nothing when disabled
+  const on_cell =
+    (handler: (context: CellContext, event: MouseEvent) => void) => (event: MouseEvent) => {
+      const cell_el =
+        !disabled && event.target instanceof Element
+          ? event.target.closest(`[data-x][data-y]`)
+          : null
+      if (!(cell_el instanceof HTMLElement)) return
+      const [x_idx, y_idx] = [Number(cell_el.dataset.x), Number(cell_el.dataset.y)]
+      if (Number.isInteger(x_idx) && Number.isInteger(y_idx)) {
+        handler(build_cell_context(x_idx, y_idx), event)
+      }
+    }
 
   function show_tooltip(event: MouseEvent, context: CellContext): void {
     if (tooltip === false || !tooltip_div) return
@@ -588,10 +566,7 @@
   }
   const hide_tooltip = () => tooltip_div?.classList.remove(`visible`)
 
-  function handle_mouseover(event: MouseEvent) {
-    if (disabled) return
-    const context = cell_context_from_target(event.target)
-    if (!context) return
+  const handle_mouseover = on_cell((context, event) => {
     const { x_idx, y_idx } = context
     // Ignore redundant enters on the same cell (nested children)
     if (last_hover.x_idx === x_idx && last_hover.y_idx === y_idx) return
@@ -602,7 +577,7 @@
     })
     if (enable_brush && brush_start) brush_end = { x_idx, y_idx }
     if (tooltip_mode !== `pinned`) show_tooltip(event, context)
-  }
+  })
 
   function handle_mouseout(event: MouseEvent) {
     if (disabled) return
@@ -638,10 +613,7 @@
     }, DBLCLICK_DELAY_MS)
   }
 
-  function handle_click(event: MouseEvent) {
-    if (disabled) return
-    const context = cell_context_from_target(event.target)
-    if (!context) return
+  const handle_click = on_cell((context, event) => {
     const { x_idx, y_idx } = context
     update_selected_cells(event, { x_idx, y_idx })
     if (tooltip_mode !== `hover`) {
@@ -651,46 +623,34 @@
     if (!onclick) return
     if (ondblclick) schedule_single_click(context)
     else onclick(context)
-  }
+  })
 
-  function handle_dblclick(event: MouseEvent) {
-    if (disabled || !ondblclick) return
-    const context = cell_context_from_target(event.target)
-    if (!context) return
+  const handle_dblclick = on_cell((context) => {
+    if (!ondblclick) return
     const pending = pending_click_key
     clear_pending_click()
     // without onclick nothing is pending, so orphaned dblclicks still fire
     if (!onclick || pending === cell_pos_key(context.x_idx, context.y_idx)) ondblclick(context)
     else schedule_single_click(context)
-  }
+  })
 
-  function handle_contextmenu(event: MouseEvent): void {
-    if (disabled || !oncontextmenu) return
-    const context = cell_context_from_target(event.target)
-    if (!context) return
+  const handle_contextmenu = on_cell((context, event) => {
+    if (!oncontextmenu) return
     event.preventDefault()
     oncontextmenu(context, event)
-  }
+  })
 
-  function handle_mousedown(event: MouseEvent): void {
-    if (disabled || !enable_brush) return
-    const context = cell_context_from_target(event.target)
-    if (!context) return
-    brush_start = { x_idx: context.x_idx, y_idx: context.y_idx }
+  const handle_mousedown = on_cell(({ x_idx, y_idx }) => {
+    if (!enable_brush) return
+    brush_start = { x_idx, y_idx }
     brush_end = brush_start
-  }
+  })
   function handle_mouseup(): void {
     if (enable_brush && brush_start && brush_end && onbrush) {
-      const cells = cells_between(brush_start, brush_end)
+      const { x_range, y_range, cells } = cells_between(brush_start, brush_end)
       onbrush({
-        x_range: [
-          Math.min(brush_start.x_idx, brush_end.x_idx),
-          Math.max(brush_start.x_idx, brush_end.x_idx),
-        ],
-        y_range: [
-          Math.min(brush_start.y_idx, brush_end.y_idx),
-          Math.max(brush_start.y_idx, brush_end.y_idx),
-        ],
+        x_range,
+        y_range,
         cells: cells.map(({ x_idx, y_idx }) => build_cell_context(x_idx, y_idx)),
       })
     }
@@ -710,24 +670,15 @@
   ): Promise<void> {
     const cell_node = () => matrix_el?.querySelector(`[data-x="${x_idx}"][data-y="${y_idx}"]`)
     if (virtualize && matrix_el && !cell_node()) {
-      const edge = (track: number, step: number, offset: number, extent: number) =>
-        Math.max(0, offset + track * stride_px + (step > 0 ? stride_px - extent : 0))
-      if (x_step) {
-        matrix_el.scrollLeft = edge(
-          track_x(x_idx) ?? x_idx,
-          x_step,
-          grid_offset_left,
-          viewport_width,
+      const edge = (axis: Axis, idx: number, step: number, offset: number, extent: number) =>
+        Math.max(
+          0,
+          offset + (track(axis, idx) ?? idx) * stride_px + (step > 0 ? stride_px - extent : 0),
         )
-      }
-      if (y_step) {
-        matrix_el.scrollTop = edge(
-          track_y(y_idx) ?? y_idx,
-          y_step,
-          grid_offset_top,
-          viewport_height,
-        )
-      }
+      if (x_step)
+        matrix_el.scrollLeft = edge(`x`, x_idx, x_step, grid_offset_left, viewport_width)
+      if (y_step)
+        matrix_el.scrollTop = edge(`y`, y_idx, y_step, grid_offset_top, viewport_height)
       update_viewport_state()
       await tick()
     }
@@ -782,11 +733,11 @@
     return format === `json` ? rows : rows_to_csv(rows)
   }
 
-  // Mean over the visible numeric cells of each row/column, null when there are none
-  const mean_over = (cells: [x_idx: number, y_idx: number][]): number | null => {
-    let sum = 0
-    let count = 0
-    for (const [x_idx, y_idx] of cells) {
+  // Mean over the visible numeric cells of one column (axis x) or row (axis y), null when none
+  function axis_mean(axis: Axis, idx: number): number | null {
+    let [sum, count] = [0, 0]
+    for (const other of axis === `x` ? vis_y : vis_x) {
+      const [x_idx, y_idx] = axis === `x` ? [idx, other] : [other, idx]
       const value = get_value(x_idx, y_idx)
       if (is_hidden_cell(x_idx, y_idx) || typeof value !== `number` || !Number.isFinite(value))
         continue
@@ -795,20 +746,6 @@
     }
     return count === 0 ? null : sum / count
   }
-  let row_summaries = $derived(
-    new SvelteMap(
-      show_row_summaries
-        ? vis_y.map((y_idx) => [y_idx, mean_over(vis_x.map((x_idx) => [x_idx, y_idx]))])
-        : [],
-    ),
-  )
-  let col_summaries = $derived(
-    new SvelteMap(
-      show_col_summaries
-        ? vis_x.map((x_idx) => [x_idx, mean_over(vis_y.map((y_idx) => [x_idx, y_idx]))])
-        : [],
-    ),
-  )
 
   let has_interaction_handlers = $derived(
     !disabled &&
@@ -881,12 +818,12 @@
     {...rest}
     bind:this={matrix_el}
     class={[`grid`, rest.class]}
-    style:--n-cols={gaps_mode ? x_items.length : grid_col_count}
-    style:--n-rows={gaps_mode ? y_items.length : grid_row_count}
+    style:--n-cols={col_count + (show_row_summaries && !gaps_mode ? 1 : 0)}
+    style:--n-rows={row_count + (show_col_summaries && !gaps_mode ? 1 : 0)}
     style:--extra-right-y={right_y_labels ? 1 : 0}
-    style:--extra-bottom-x={split_x_labels ? 1 : 0}
+    style:--extra-bottom-x={split_labels.x ? 1 : 0}
     style:--right-y-track={right_y_labels ? `max-content` : `0`}
-    style:--bottom-x-track={split_x_labels ? `max-content` : `0`}
+    style:--bottom-x-track={split_labels.x ? `max-content` : `0`}
     style:--tile-size={tile_size}
     style:gap
     onmouseover={handle_mouseover}
@@ -904,44 +841,32 @@
       <div class="corner"></div>
     {/if}
 
+    {#snippet axis_label(axis: Axis, idx: number)}
+      {@const { label } = (axis === `x` ? x_items : y_items)[idx]}
+      <div
+        class={[`${axis}-label`, split_labels[axis] && EDGE_CLASSES[axis][idx % 2]]}
+        style={label_style || undefined}
+        style:grid-column={axis === `x` ? grid_line(`x`, idx) : y_label_grid_col(idx)}
+        style:grid-row={axis === `x` ? x_label_grid_row(idx) : grid_line(`y`, idx)}
+        title={label}
+      >
+        {label}
+      </div>
+    {/snippet}
     {#if show_x_labels}
-      {#each vis_x as x_idx (x_keys[x_idx])}
-        <div
-          class="x-label"
-          class:x-edge-top={split_x_labels && x_idx % 2 === 0}
-          class:x-edge-bottom={split_x_labels && x_idx % 2 !== 0}
-          style={label_style || undefined}
-          style:grid-column={cell_grid_col(x_idx)}
-          style:grid-row={x_label_grid_row(x_idx)}
-          title={x_items[x_idx].label}
-        >
-          {x_items[x_idx].label}
-        </div>
-      {/each}
+      {#each vis_x as x_idx (x_keys[x_idx])}{@render axis_label(`x`, x_idx)}{/each}
     {/if}
 
     {#each render_vis_y as y_idx (y_keys[y_idx])}
-      {#if show_y_labels}
-        <div
-          class="y-label"
-          class:y-edge-left={split_y_labels && y_idx % 2 === 0}
-          class:y-edge-right={split_y_labels && y_idx % 2 !== 0}
-          style={label_style || undefined}
-          style:grid-row={cell_grid_row(y_idx)}
-          style:grid-column={y_label_grid_col(y_idx)}
-          title={y_items[y_idx].label}
-        >
-          {y_items[y_idx].label}
-        </div>
-      {/if}
+      {#if show_y_labels}{@render axis_label(`y`, y_idx)}{/if}
 
       {#each render_vis_x as x_idx (x_keys[x_idx])}
         {@const idx = flat_idx(x_idx, y_idx)}
         {#if is_hidden_cell(x_idx, y_idx)}
           <div
             class="cell empty"
-            style:grid-column={cell_grid_col(x_idx)}
-            style:grid-row={cell_grid_row(y_idx)}
+            style:grid-column={grid_line(`x`, x_idx)}
+            style:grid-row={grid_line(`y`, y_idx)}
           ></div>
         {:else}
           {@const raw = get_value(x_idx, y_idx)}
@@ -954,10 +879,10 @@
             data-y={y_idx}
             style={cell_missing ? missing.style : undefined}
             style:background-color={bg_flat[idx]}
-            style:color={has_cell_text ? contrast_flat[idx] : undefined}
+            style:color={cell || show_values ? contrast_flat[idx] : undefined}
             style:--heatmap-selected-outline-color={contrast_flat[idx]}
-            style:grid-column={cell_grid_col(x_idx)}
-            style:grid-row={cell_grid_row(y_idx)}
+            style:grid-column={grid_line(`x`, x_idx)}
+            style:grid-row={grid_line(`y`, y_idx)}
           >
             {#if cell}
               {@render cell(build_cell_context(x_idx, y_idx))}
@@ -975,29 +900,22 @@
       {/each}
     {/each}
 
+    <!-- Row means in an extra column on the right, column means in an extra row below -->
+    {#snippet summary_cell(axis: Axis, idx: number)}
+      {@const summary = axis_mean(axis, idx)}
+      <div
+        class={[`summary`, axis === `x` ? `summary-col` : `summary-row`]}
+        style:grid-column={axis === `x` ? grid_line(`x`, idx) : col_count + 2}
+        style:grid-row={axis === `x` ? row_count + 2 : grid_line(`y`, idx)}
+      >
+        {#if summary != null}{format_num(summary)}{/if}
+      </div>
+    {/snippet}
     {#if show_row_summaries}
-      {#each vis_y as y_idx (y_keys[y_idx])}
-        {@const summary = row_summaries.get(y_idx)}
-        <div
-          class="summary summary-row"
-          style:grid-column={col_count + 2}
-          style:grid-row={cell_grid_row(y_idx)}
-        >
-          {#if summary != null}{format_num(summary)}{/if}
-        </div>
-      {/each}
+      {#each vis_y as y_idx (y_keys[y_idx])}{@render summary_cell(`y`, y_idx)}{/each}
     {/if}
     {#if show_col_summaries}
-      {#each vis_x as x_idx (x_keys[x_idx])}
-        {@const summary = col_summaries.get(x_idx)}
-        <div
-          class="summary summary-col"
-          style:grid-column={cell_grid_col(x_idx)}
-          style:grid-row={row_count + 2}
-        >
-          {#if summary != null}{format_num(summary)}{/if}
-        </div>
-      {/each}
+      {#each vis_x as x_idx (x_keys[x_idx])}{@render summary_cell(`x`, x_idx)}{/each}
     {/if}
 
     <!-- Tooltip: always in DOM, visibility toggled imperatively via classList -->

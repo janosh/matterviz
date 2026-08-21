@@ -1,3 +1,4 @@
+import type { RefLine } from '$lib/plot/core/types/reference-lines'
 import type { RadiationType } from '$lib/scattering'
 import type { Crystal, Pbc } from '$lib/structure'
 import { is_crystal } from '$lib/structure/validation'
@@ -6,6 +7,17 @@ export * from './calc-pdf'
 export * from './calc-rdf'
 export { default as PdfPlot } from './PdfPlot.svelte'
 export { default as RdfPlot } from './RdfPlot.svelte'
+
+// Dashed guide every RDF/PDF is read against: g(r) = 1 (ideal gas) or the reduced G(r) = 0
+export const rdf_baseline = (quantity: `g_r` | `reduced_g_r`): RefLine => {
+  const [y_val, text] = quantity === `g_r` ? [1, `g(r) = 1`] : [0, `G(r) = 0`]
+  return {
+    type: `horizontal`,
+    y: y_val,
+    style: { color: `gray`, dash: `4`, opacity: 0.5 },
+    annotation: { text, position: `end`, side: `above`, color: `gray` },
+  }
+}
 
 // Normalize the `structures` prop shared by RdfPlot and PdfPlot (single crystal, array, or
 // label->crystal record) into a labelled list. A lone crystal gets an empty label so callers

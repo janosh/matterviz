@@ -4,8 +4,8 @@ import type { RadiationType } from '$lib/scattering'
 import type { Pbc } from '$lib/structure'
 import { structure_map } from '$site/structures'
 import { type ComponentProps, createRawSnippet, mount, tick } from 'svelte'
-import { describe, expect, test } from 'vitest'
-import { make_crystal, mount_sized, resize_element } from '../setup'
+import { describe, expect, test, vi } from 'vitest'
+import { create_drop_event, make_crystal, mount_sized, resize_element } from '../setup'
 import RdfPlotHarness from './RdfPlotHarness.svelte'
 
 const nacl_structure = structure_map.get(`mp-1234`)
@@ -184,6 +184,27 @@ describe(`RdfPlot`, () => {
     })
     expect(plot.textContent).toContain(`Red`)
     expect(plot.textContent).toContain(`Blue`)
+  })
+
+  test(`dropped crystals are plotted, lattice-less molecules are reported`, async () => {
+    const empty = await mount_sized_rdf_plot({})
+    const poscar = `Si\n1.0\n5 0 0\n0 5 0\n0 0 5\nSi\n1\nDirect\n0 0 0\n`
+    empty.dispatchEvent(create_drop_event(new File([poscar], `POSCAR`)))
+    await vi.waitFor(() =>
+      expect(document.querySelector(`.dropped-info`)?.textContent).toContain(
+        `1 structure loaded`,
+      ),
+    )
+    // the populated plot is a drop zone too
+    const plot = document.querySelector(`.scatter`)
+    if (!plot) throw new Error(`RdfPlot did not render the dropped crystal`)
+    plot.dispatchEvent(create_drop_event(new File([`1\n\nSi 0 0 0\n`], `mol.xyz`)))
+    await vi.waitFor(() =>
+      expect(document.body.textContent).toMatch(/mol\.xyz has no lattice or sites/),
+    )
+    expect(document.querySelector(`.dropped-info`)?.textContent).toContain(
+      `1 structure loaded`,
+    )
   })
 })
 

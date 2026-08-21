@@ -108,9 +108,6 @@
     return [...base_entries, ...dropped_entries]
   })
 
-  // Decide default show_angles
-  const actual_show_angles = $derived(show_angles ?? pattern_entries.length <= 2)
-
   // Compute global max intensity for normalization (as in pymatviz xrd_pattern)
   const global_max_intensity = $derived.by(() => {
     let max_val = 0
@@ -179,12 +176,10 @@
         metadata.push({ hkls, d: d_hkl, label: entry.label })
 
         if (selected_indices.includes(idx)) {
-          const angle_text = actual_show_angles ? `${format_value(xs[idx], `.2f`)}°` : ``
-          const hkl_text = join_hkls(hkls)
-          // Use @ separator between hkl and angle for better clarity
-          const separator = hkl_text && angle_text ? ` @ ` : ``
-          const text = [hkl_text, angle_text].filter(Boolean).join(separator)
-          labels.push(text)
+          // Angles are shown by default only while the plot holds at most two patterns
+          const with_angle = show_angles ?? pattern_entries.length <= 2
+          const angle_text = with_angle ? `${format_value(xs[idx], `.2f`)}°` : ``
+          labels.push([join_hkls(hkls), angle_text].filter(Boolean).join(` @ `))
         } else labels.push(null)
       }
 
