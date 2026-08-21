@@ -809,12 +809,6 @@ export const SETTINGS_CONFIG = define_settings({
       minimum: 1000000,
       maximum: 2000000000,
     },
-
-    // UI/UX
-    show_parsing_progress: {
-      value: true,
-      description: `Show progress indicator while parsing files`,
-    },
   },
 
   // Histogram specific

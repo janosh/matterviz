@@ -231,7 +231,6 @@ describe(`create_display trajectory display options`, () => {
       `loading_options`,
       `spinner_props`,
       `index_above_bytes`,
-      `show_parsing_progress`,
       `allow_file_drop`,
       `enable_tips`,
     ]) {
