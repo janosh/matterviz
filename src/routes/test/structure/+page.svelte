@@ -3,14 +3,19 @@
   import { page } from '$app/state'
   import type { Crystal } from '$lib'
   import { DEFAULTS } from '$lib/settings'
-  import type { BondEditMode, BondOrder, MeasureMode, StructureBond } from '$lib/structure'
+  import type {
+    BondEditMode,
+    BondOrder,
+    MeasureMode,
+    StructureBond,
+    StructurePane,
+  } from '$lib/structure'
   import Structure from '$lib/structure/Structure.svelte'
   import StructureScene from '$lib/structure/StructureScene.svelte'
   import mp1_struct from '$site/structures/mp-1.json' with { type: 'json' }
   import type { ComponentProps } from 'svelte'
 
-  let controls_open = $state(false)
-  let info_pane_open = $state(false)
+  let active_pane = $state<StructurePane | null>(null)
   let canvas = $state({ width: 600, height: 400 })
   let background_color = $state(`#1e1e1e`)
   let show_controls = $state<`always` | `hover` | `never`>(`hover`)
@@ -196,7 +201,13 @@
 
 <section>
   <h2>Controls for Test Page</h2>
-  <label>Controls Open: <input type="checkbox" bind:checked={controls_open} /></label><br />
+  <label>
+    Controls Open: <input
+      type="checkbox"
+      checked={active_pane === `controls`}
+      onchange={(event) => (active_pane = event.currentTarget.checked ? `controls` : null)}
+    />
+  </label><br />
   <label
     >Canvas Width: <input
       type="number"
@@ -262,8 +273,7 @@
     data_url={typeof window !== `undefined`
       ? new URLSearchParams(window.location.search).get(`data_url`) || undefined
       : undefined}
-    bind:controls_open
-    bind:info_pane_open
+    bind:active_pane
     bind:width={canvas.width}
     bind:height={canvas.height}
     {background_color}
@@ -302,10 +312,10 @@
 </div>
 
 <div data-testid="pane-open-status" style="margin-top: 10px">
-  Info Pane Open Status: {info_pane_open}
+  Info Pane Open Status: {active_pane === `info`}
 </div>
 <div data-testid="controls-open-status">
-  Controls Open Status: {controls_open}
+  Controls Open Status: {active_pane === `controls`}
 </div>
 <div data-testid="canvas-width-status">Canvas Width Status: {canvas.width}</div>
 <div data-testid="canvas-height-status">Canvas Height Status: {canvas.height}</div>

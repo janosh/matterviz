@@ -72,6 +72,75 @@
    matterviz component's scoped <style>. Deliberately unlayered: they used to be
    Svelte component styles, which are unlayered too, and putting them in
    @layer matterviz-components would let any unlayered host rule beat them. */
+/* Toolbar dropdown menus shared by the Structure and Trajectory viewers (layout, measure/edit,
+   view mode, analysis): the wrapper anchors the menu, the menu floats below it. */
+.view-mode-control,
+.view-mode-dropdown-wrapper,
+.analysis-dropdown-wrapper {
+  display: flex;
+  position: relative;
+  align-items: center;
+  z-index: var(--view-mode-z-index, 20);
+}
+.view-mode-button,
+.analysis-button {
+  display: flex;
+  align-items: center;
+  gap: 1pt;
+}
+.view-mode-button.active,
+.analysis-button.active {
+  color: var(--accent-color, #4a9eff);
+}
+.view-mode-dropdown {
+  position: absolute;
+  top: 115%;
+  right: 0;
+  z-index: var(--view-mode-dropdown-z-index, 30);
+  min-width: max-content;
+  display: flex;
+  flex-direction: column;
+  background: var(--view-mode-bg, var(--menu-bg));
+  color: var(--view-mode-color, var(--menu-color));
+  border: 1px solid var(--view-mode-border, var(--menu-border));
+  border-radius: var(--view-mode-border-radius, 4px);
+  box-shadow:
+    0 8px 16px -4px rgba(0, 0, 0, 0.3),
+    0 4px 8px -2px rgba(0, 0, 0, 0.1);
+  pointer-events: auto;
+}
+.view-mode-option {
+  display: flex;
+  align-items: center;
+  gap: 1ex;
+  width: 100%;
+  padding: var(--view-mode-option-padding, 5pt);
+  box-sizing: border-box;
+  background: transparent;
+  color: inherit;
+  border-radius: 0;
+  text-align: left;
+  transition: background-color 0.15s ease;
+}
+.view-mode-option:hover,
+.view-mode-option:focus-visible {
+  background: var(--view-mode-option-hover-bg, var(--menu-option-hover-bg));
+}
+.view-mode-option:first-child {
+  border-top-left-radius: 3px;
+  border-top-right-radius: 3px;
+}
+.view-mode-option.selected {
+  color: var(--accent-color, var(--menu-option-selected-color));
+}
+.view-mode-option span {
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+
 .draggable-pane {
   /* own compositing layer, or WKWebView paints the canvas over this */
   will-change: transform;

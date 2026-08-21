@@ -1,0 +1,718 @@
+// Headless viewer state over a borrowed structure: the display pipeline (normalize → bonds →
+// cell transform → supercell → element map + image atoms), site selection validated against
+// what is on screen, edit-atoms and edit-bonds state with undo/redo, and the multi-pane camera
+// bookkeeping. No DOM, so it is unit-testable on its own; Structure.svelte renders what it
+// exposes and StructureViewport binds the scene to it.
+import type { ElementSymbol } from '$lib/element'
+import { coerce_elem_symbol } from '$lib/element'
+import { format_num } from '$lib/labels'
+import type { Vec3 } from '$lib/math'
+import { create_cart_to_frac, create_frac_to_cart } from '$lib/math'
+import type { CellType } from '$lib/symmetry'
+import { transform_cell } from '$lib/symmetry'
+import { to_error } from '$lib/utils'
+import type { MoyoDataset } from '@spglib/moyo-wasm'
+import { untrack } from 'svelte'
+import { SvelteMap, SvelteSet } from 'svelte/reactivity'
+import { merge_bond_edits, remap_bonds_after_deletion } from './bonding'
+import { push_edit, step_history } from './edit-history'
+import type {
+  AnyStructure,
+  BondEditMode,
+  BondOrder,
+  Crystal,
+  MeasureMode,
+  StructureBond,
+} from './index'
+import { get_pbc_image_sites } from './index'
+import { normalize_fractional_coords } from './parse'
+import { wrap_to_unit_cell } from './pbc'
+import { make_supercell, parse_supercell_scaling } from './supercell'
+
+// State the component owns as (bindable) props, read and written through these accessors so
+// a caller-bound prop and the session never hold two copies
+export interface StructureSessionInputs {
+  structure: () => AnyStructure | undefined
+  set_structure: (value: AnyStructure | undefined) => void
+  bonds: () => StructureBond[] | undefined
+  set_bonds: (value: StructureBond[] | undefined) => void
+  // Stable identity for coordinate-only updates (trajectory frames)
+  series_key: () => unknown
+  selected_sites: () => number[]
+  set_selected_sites: (value: number[]) => void
+  measured_sites: () => number[]
+  set_measured_sites: (value: number[]) => void
+  highlighted_sites: () => number[]
+  set_highlighted_sites: (value: number[]) => void
+  hovered_site_idx: () => number | null
+  set_hovered_site_idx: (value: number | null) => void
+  measure_mode: () => MeasureMode
+  set_measure_mode: (value: MeasureMode) => void
+  bond_edit_mode: () => BondEditMode
+  set_bond_edit_mode: (value: BondEditMode) => void
+  bond_edit_order: () => BondOrder
+  set_bond_edit_order: (value: BondOrder) => void
+  supercell_scaling: () => string
+  apply_supercell_scaling: () => boolean
+  show_image_atoms: () => boolean
+  cell_type: () => CellType
+  set_cell_type: (value: CellType) => void
+  sym_data: () => MoyoDataset | null
+  // Transient user-facing notices ("Deleted 2 sites", supercell failures)
+  on_notice?: (message: string) => void
+}
+
+export type EditSnapshot = { structure: AnyStructure; bonds: StructureBond[] | undefined }
+type BondEditSnapshot = {
+  added_bonds: StructureBond[]
+  removed_bonds: StructureBond[]
+  bond_order_overrides: StructureBond[]
+  bond_edit_mode: BondEditMode
+  bond_edit_order: BondOrder
+}
+type SupercellJob = { base: Crystal; scaling: string }
+type SupercellBuild = { structure: AnyStructure | undefined; applied: boolean; error?: string }
+
+export const MAX_HISTORY = 20
+// Supercells past this many sites (or tiles) build off the current task so the spinner gets a
+// frame to show in
+const ASYNC_SUPERCELL_SITES = 1000
+const ASYNC_SUPERCELL_TILES = 8
+
+const plural = (count: number, noun: string): string =>
+  `${count} ${noun}${count === 1 ? `` : `s`}`
+const clone_bonds = (bonds: StructureBond[]): StructureBond[] =>
+  bonds.map((bond) => ({
+    ...bond,
+    cell_shift: bond.cell_shift && ([...bond.cell_shift] as Vec3),
+  }))
+// Lenient tile count for the size estimate: invalid factors count as 1
+const tile_count = (scaling: string): number =>
+  scaling.split(/[x×]/).reduce((product, factor) => product * (Number(factor) || 1), 1)
+// Normalize "fe" → "Fe"; null for unknown symbols
+const normalize_element = (input: string): ElementSymbol | null =>
+  coerce_elem_symbol(input.charAt(0).toUpperCase() + input.slice(1).toLowerCase()) ?? null
+// Pure, so it can run inside a derived
+const build_supercell = (base: Crystal, scaling: string): SupercellBuild => {
+  try {
+    return { structure: make_supercell(base, scaling), applied: true }
+  } catch (error) {
+    console.error(`Failed to create supercell:`, error)
+    return { structure: base, applied: false, error: to_error(error).message }
+  }
+}
+
+// Undo/redo over push_edit/step_history. $state.raw: entries hold whole structures and
+// deep-proxying them would route every restored site read through proxy traps.
+class History<Entry> {
+  undo_stack = $state.raw<Entry[]>([])
+  redo_stack = $state.raw<Entry[]>([])
+  push(entry: Entry): void {
+    ;[this.undo_stack, this.redo_stack] = push_edit(
+      [this.undo_stack, this.redo_stack],
+      entry,
+      MAX_HISTORY,
+    )
+  }
+  // Restore the top of `direction`'s stack, moving `current` to the opposite one
+  step(direction: `undo` | `redo`, current: () => Entry): Entry | undefined {
+    if ((direction === `undo` ? this.undo_stack : this.redo_stack).length === 0)
+      return undefined
+    const result = step_history([this.undo_stack, this.redo_stack], direction, current())
+    if (!result) return undefined
+    ;[this.undo_stack, this.redo_stack] = result.stacks
+    return result.restored
+  }
+  clear(): void {
+    if (this.undo_stack.length > 0 || this.redo_stack.length > 0) {
+      ;[this.undo_stack, this.redo_stack] = [[], []]
+    }
+  }
+}
+
+// Per-key change detection for the invalidation effect: true when `value` differs
+// (element-wise for arrays) from the value last seen under `key`. A plain Map on purpose: it
+// is read and written inside the effect it serves.
+function create_change_tracker() {
+  const previous = new Map<string, unknown>()
+  const same = (left: unknown, right: unknown): boolean =>
+    Array.isArray(left) && Array.isArray(right)
+      ? left.length === right.length && left.every((item, idx) => item === right[idx])
+      : left === right
+  return (key: string, value: unknown): boolean => {
+    const seen = previous.has(key)
+    const unchanged = seen && same(previous.get(key), value)
+    previous.set(key, value)
+    return seen && !unchanged
+  }
+}
+
+export class StructureSession {
+  // === display pipeline ===
+  // Periodic fractional coordinates wrap into the cell; non-periodic axes keep out-of-cell
+  // values (unwrapped trajectories)
+  normalized_structure = $derived.by(() => {
+    const structure = this.inputs.structure()
+    return structure && normalize_fractional_coords(structure)
+  })
+  structure_with_bonds = $derived.by((): AnyStructure | undefined => {
+    const bonds = this.inputs.bonds()
+    const struct = this.normalized_structure
+    if (!struct || bonds === undefined) return struct
+    return { ...struct, properties: { ...struct.properties, bonds } }
+  })
+  // Conventional/primitive cell needs symmetry data; until it arrives the original cell shows
+  base_structure = $derived.by((): AnyStructure | undefined => {
+    const [cell_type, sym_data] = [this.inputs.cell_type(), this.inputs.sym_data()]
+    const struct = this.structure_with_bonds
+    if (!struct || !(`lattice` in struct) || cell_type === `original` || !sym_data) {
+      return struct
+    }
+    try {
+      return transform_cell(struct, cell_type, sym_data)
+    } catch (error) {
+      console.error(`Failed to transform cell to ${cell_type}:`, error)
+      return struct
+    }
+  })
+  supercell_factors = $derived.by((): Vec3 | undefined => {
+    try {
+      return parse_supercell_scaling(this.inputs.supercell_scaling())
+    } catch {
+      return undefined
+    }
+  })
+  has_scaled_cell = $derived(this.supercell_factors?.some((factor) => factor !== 1) ?? false)
+  has_supercell = $derived.by(
+    () => this.inputs.apply_supercell_scaling() && this.has_scaled_cell,
+  )
+  supercell_job = $derived.by((): SupercellJob | undefined => {
+    const base = this.base_structure
+    if (!base || !(`lattice` in base) || !this.has_supercell) return undefined
+    return { base, scaling: this.inputs.supercell_scaling() }
+  })
+  supercell_is_large = $derived.by(() => {
+    const job = this.supercell_job
+    if (!job) return false
+    const tiles = tile_count(job.scaling)
+    return (
+      job.base.sites.length * tiles > ASYNC_SUPERCELL_SITES || tiles > ASYNC_SUPERCELL_TILES
+    )
+  })
+  // $state.raw: supercells hold thousands of sites and every downstream read (bonding, PBC
+  // images, instancing) would otherwise traverse proxy traps
+  async_supercell = $state.raw<(SupercellJob & SupercellBuild) | undefined>(undefined)
+  supercell = $derived.by((): SupercellBuild & { loading: boolean } => {
+    const job = this.supercell_job
+    if (!job) return { structure: this.base_structure, applied: false, loading: false }
+    if (!this.supercell_is_large)
+      return { ...build_supercell(job.base, job.scaling), loading: false }
+    const ready = this.async_supercell
+    if (ready && ready.base === job.base && ready.scaling === job.scaling) {
+      return { structure: ready.structure, applied: ready.applied, loading: false }
+    }
+    // Keep the previous build on screen while the next one computes (trajectory frames)
+    return { structure: ready?.structure ?? job.base, applied: false, loading: true }
+  })
+  supercell_structure = $derived(this.supercell.structure)
+  supercell_loading = $derived(this.supercell.loading)
+  scaled_cell_displayed = $derived.by(
+    () =>
+      this.has_scaled_cell &&
+      (!this.inputs.apply_supercell_scaling() || this.supercell.applied),
+  )
+  // Tiling factors for isosurface geometry; held at 1 until the supercell structure lands so
+  // surfaces and atoms update in the same frame
+  volume_scaling = $derived.by((): Vec3 => {
+    if (!this.has_supercell || !this.supercell.applied || this.supercell.loading)
+      return [1, 1, 1]
+    return this.supercell_factors ?? [1, 1, 1]
+  })
+  bond_edits_enabled = $derived.by(
+    () =>
+      this.inputs.cell_type() === `original` &&
+      !this.scaled_cell_displayed &&
+      !this.supercell_loading,
+  )
+  // Remap element symbols for display (LAMMPS type placeholders → real elements)
+  element_mapping = $state<Partial<Record<ElementSymbol, ElementSymbol>> | undefined>()
+  dragging_atoms = $state(false)
+  // Element-mapped + PBC image atoms. Images are skipped during drags (doubled site count
+  // drops frames) and return on release.
+  displayed_structure = $derived.by((): AnyStructure | undefined => {
+    let struct = this.supercell_structure
+    const mapping = this.element_mapping
+    if (struct && mapping && Object.keys(mapping).length > 0) {
+      struct = {
+        ...struct,
+        sites: struct.sites.map((site) => ({
+          ...site,
+          species: site.species.map((species) => ({
+            ...species,
+            element: mapping[species.element] ?? species.element,
+          })),
+          label: mapping[site.label as ElementSymbol] ?? site.label,
+        })),
+      }
+    }
+    return !this.dragging_atoms &&
+      this.inputs.show_image_atoms() &&
+      struct &&
+      `lattice` in struct
+      ? get_pbc_image_sites(struct)
+      : struct
+  })
+  displayed_site_count = $derived(this.displayed_structure?.sites.length ?? 0)
+  // Site-indexed UI state is only valid while atom count, order and species are unchanged
+  topology_signature = $derived.by((): string => {
+    const sites = this.inputs.structure()?.sites
+    if (!Array.isArray(sites)) return ``
+    return sites
+      .map(
+        ({ label, species }) =>
+          `${label}\0${species
+            .map(({ element, occu, oxidation_state }) =>
+              [element, occu, oxidation_state ?? ``].join(`:`),
+            )
+            .join(`,`)}`,
+      )
+      .join(``)
+  })
+
+  // === selection, validated against the displayed structure ===
+  // The scene only ever receives indices below the displayed site count, computed in the same
+  // pass as the structure itself, so no overlay can index a site that is no longer there
+  selected_sites = $derived.by(() => this.in_range(this.inputs.selected_sites()))
+  measured_sites = $derived.by(() => this.in_range(this.inputs.measured_sites()))
+  highlighted_sites = $derived.by(() => this.in_range(this.inputs.highlighted_sites()))
+  hovered_site_idx = $derived.by((): number | null => {
+    const idx = this.inputs.hovered_site_idx()
+    return idx !== null && idx >= 0 && idx < this.displayed_site_count ? idx : null
+  })
+  // Legend overrides; per-site ones are invalidated with the selection
+  site_radius_overrides = $state.raw(new SvelteMap<number, number>())
+  element_radius_overrides = $state<Partial<Record<ElementSymbol, number>>>({})
+  hidden_prop_vals = $state.raw(new SvelteSet<number | string>())
+
+  // === edit-atoms ===
+  add_atom_mode = $state(false)
+  add_element = $state<ElementSymbol>(`C`)
+  change_element_mode = $state(false)
+  history = new History<EditSnapshot>()
+  // Set before every internal structure write so the invalidation effect keeps history and
+  // selection for the session's own edits (external loads/frames clear both)
+  private is_internal_edit = false
+  // The structure this session last wrote, read back through the binding so a proxied prop
+  // compares equal; lets the loader keep attributing an edited URL-loaded structure to its URL
+  last_edited_structure = $state.raw<AnyStructure | undefined>(undefined)
+
+  // === edit-bonds ===
+  added_bonds = $state<StructureBond[]>([])
+  removed_bonds = $state<StructureBond[]>([])
+  bond_order_overrides = $state<StructureBond[]>([])
+  bond_history = new History<BondEditSnapshot>()
+  // Source bonds captured when the first edit begins; edits merge onto these. Wrapped so an
+  // undefined source still counts as captured.
+  private bond_edit_base = $state.raw<{ bonds: StructureBond[] | undefined } | undefined>()
+  // What this session last wrote to the bonds binding, read back so a proxied binding
+  // compares equal; anything else in the binding is a caller-supplied source
+  private emitted_bonds: StructureBond[] | undefined
+  has_bond_edits = $derived(
+    this.added_bonds.length > 0 ||
+      this.removed_bonds.length > 0 ||
+      this.bond_order_overrides.length > 0,
+  )
+  edited_bonds = $derived.by(() => {
+    const base = this.bond_edit_base
+    if (!base || !this.has_bond_edits) return undefined
+    return merge_bond_edits(
+      base.bonds ?? [],
+      this.added_bonds,
+      this.removed_bonds,
+      this.bond_order_overrides,
+    )
+  })
+
+  // === camera bookkeeping across panes (pane 0 = primary) ===
+  reset_token = $state(0)
+  active_pane_idx = $state(0)
+  fly_to_request = $state<Vec3 | undefined>(undefined)
+  private readonly moved_panes = new SvelteSet<number>()
+  any_camera_moved = $derived(this.moved_panes.size > 0)
+
+  // A parameter property so TypeScript sees `inputs` assigned before the field initializers
+  // above; the $derived fields only read it lazily anyway
+  constructor(readonly inputs: StructureSessionInputs) {
+    $effect(() => {
+      const job = this.supercell_job
+      if (!job || !this.supercell_is_large) return undefined
+      const timer = setTimeout(() => {
+        this.async_supercell = { ...job, ...build_supercell(job.base, job.scaling) }
+      }, 10)
+      return () => clearTimeout(timer)
+    })
+
+    // Publish merged bonds through the binding; once the last edit is undone the captured
+    // source bonds go back out and the edit layer forgets its base
+    $effect(() => {
+      const edited = this.edited_bonds
+      untrack(() => {
+        if (edited) return this.emit_bonds(edited)
+        if (!this.bond_edit_base) return
+        this.emit_bonds(this.bond_edit_base.bonds)
+        this.bond_edit_base = undefined
+      })
+    })
+
+    // One pre-effect resets site-indexed state before the scene renders. A post-render effect
+    // would let the scene draw a stale selection against a shrunken site list first; a throw
+    // there aborts the whole flush, dropping the pending clear with it.
+    const changed = create_change_tracker()
+    $effect.pre(() => {
+      // Read every dependency up front; the guards below must not make tracking conditional
+      const structure_changed = changed(`structure`, inputs.structure())
+      const topology_changed = changed(`topology`, this.topology_signature)
+      const transform_changed = changed(`transform`, [
+        inputs.supercell_scaling(),
+        inputs.show_image_atoms(),
+        inputs.series_key(),
+        inputs.cell_type(),
+      ])
+      const mode_changed = changed(`measure_mode`, inputs.measure_mode())
+      const bond_mode_changed = changed(`bond_edit_mode`, inputs.bond_edit_mode())
+      const bonds_replaced = inputs.bonds() !== this.emitted_bonds
+      const bonds_unavailable =
+        inputs.measure_mode() === `edit-bonds` && !this.bond_edits_enabled
+      const { error: supercell_error } = this.supercell
+      const supercell_failed = changed(`supercell_error`, supercell_error) && supercell_error
+      untrack(() => {
+        if (supercell_failed) this.notice(`Failed to create supercell: ${supercell_failed}`)
+        const measure_mode = inputs.measure_mode()
+        const internal = this.is_internal_edit
+        this.is_internal_edit = false
+        if (structure_changed) {
+          // A bond set equal to what we emitted for the previous structure is stale: hand the
+          // new structure's own bonds back out
+          if (!bonds_replaced && this.emitted_bonds !== undefined) {
+            this.emit_bonds(inputs.structure()?.properties?.bonds)
+          }
+          this.bond_edit_base = undefined
+          this.clear_bond_edits()
+          if (!internal) {
+            this.history.clear()
+            if (inputs.highlighted_sites().length > 0) inputs.set_highlighted_sites([])
+            if (measure_mode === `edit-atoms`) {
+              this.clear_selection()
+              this.site_radius_overrides.clear()
+            }
+          }
+        } else if (
+          bonds_replaced &&
+          (this.has_bond_edits || this.bond_history.undo_stack.length)
+        ) {
+          // Caller swapped the source bonds under the edit layer: the edits no longer apply
+          this.bond_edit_base = undefined
+          this.clear_bond_edits()
+        }
+        // Coordinate-only frames keep the selection; a changed topology means the indices
+        // point at different atoms. The session's own edits manage their selection.
+        if (topology_changed && !internal) {
+          this.clear_selection()
+          if (inputs.highlighted_sites().length > 0) inputs.set_highlighted_sites([])
+          if (inputs.hovered_site_idx() !== null) inputs.set_hovered_site_idx(null)
+          this.site_radius_overrides.clear()
+        }
+        // Supercell/image/cell changes renumber scene sites. In edit-atoms mode they are the
+        // user's own transforms and the selection stays so TransformControls remains attached.
+        if (transform_changed) {
+          if (this.bond_edit_base) {
+            this.emit_bonds(this.bond_edit_base.bonds)
+            this.bond_edit_base = undefined
+          }
+          this.clear_bond_edits()
+          if (measure_mode !== `edit-atoms`) {
+            this.clear_selection()
+            this.site_radius_overrides.clear()
+          }
+        }
+        if (mode_changed) {
+          this.clear_selection()
+          if (measure_mode === `edit-bonds`) inputs.set_bond_edit_mode(`add`)
+          if (measure_mode === `edit-atoms`) {
+            this.clear_bond_edits()
+            // Bake a conventional/primitive view into the structure so edits apply to what is
+            // on screen; the original stays one undo away
+            const base = this.base_structure
+            if (inputs.cell_type() !== `original` && base && inputs.structure()) {
+              this.push_undo()
+              this.write_structure($state.snapshot(base))
+              inputs.set_cell_type(`original`)
+            }
+          }
+        } else if (bond_mode_changed && measure_mode === `edit-bonds`) this.clear_selection()
+        if (bonds_unavailable) {
+          this.clear_selection()
+          this.clear_bond_edits()
+          inputs.set_measure_mode(`distance`)
+          this.notice(`Bond editing is only available for the original 1x1x1 cell`)
+        }
+      })
+    })
+  }
+
+  private notice(message: string): void {
+    this.inputs.on_notice?.(message)
+  }
+  private in_range(indices: number[]): number[] {
+    const count = this.displayed_site_count
+    return indices.every((idx) => idx >= 0 && idx < count)
+      ? indices
+      : indices.filter((idx) => idx >= 0 && idx < count)
+  }
+  has_selection = (): boolean =>
+    this.inputs.selected_sites().length > 0 || this.inputs.measured_sites().length > 0
+  clear_selection = (): void => {
+    const { inputs } = this
+    if (inputs.selected_sites().length > 0) inputs.set_selected_sites([])
+    if (inputs.measured_sites().length > 0) inputs.set_measured_sites([])
+    this.dragging_atoms = false
+  }
+
+  // === edit-bonds ===
+  private emit_bonds(bonds: StructureBond[] | undefined): void {
+    this.inputs.set_bonds(bonds)
+    this.emitted_bonds = this.inputs.bonds()
+  }
+  private snapshot_bond_edits(): BondEditSnapshot {
+    return {
+      added_bonds: clone_bonds(this.added_bonds),
+      removed_bonds: clone_bonds(this.removed_bonds),
+      bond_order_overrides: clone_bonds(this.bond_order_overrides),
+      bond_edit_mode: this.inputs.bond_edit_mode(),
+      bond_edit_order: this.inputs.bond_edit_order(),
+    }
+  }
+  clear_bond_edits = (): void => {
+    if (this.has_bond_edits) {
+      ;[this.added_bonds, this.removed_bonds, this.bond_order_overrides] = [[], [], []]
+    }
+    this.bond_history.clear()
+  }
+  // Called by the scene before each bond edit
+  push_bond_undo = (): void => {
+    this.bond_edit_base ??= {
+      bonds: this.inputs.bonds() ?? this.inputs.structure()?.properties?.bonds,
+    }
+    this.bond_history.push(this.snapshot_bond_edits())
+  }
+  private step_bond_history(direction: `undo` | `redo`): boolean {
+    const restored = this.bond_history.step(direction, () => this.snapshot_bond_edits())
+    if (!restored) return false
+    this.added_bonds = clone_bonds(restored.added_bonds)
+    this.removed_bonds = clone_bonds(restored.removed_bonds)
+    this.bond_order_overrides = clone_bonds(restored.bond_order_overrides)
+    this.inputs.set_bond_edit_mode(restored.bond_edit_mode)
+    this.inputs.set_bond_edit_order(restored.bond_edit_order)
+    this.clear_selection()
+    return true
+  }
+  undo_bond_edit = (): boolean => this.step_bond_history(`undo`)
+  redo_bond_edit = (): boolean => this.step_bond_history(`redo`)
+
+  // === edit-atoms history ===
+  // $state.snapshot: a caller-bound structure may be a deep proxy; history keeps plain copies
+  private snapshot_edit_state(structure: AnyStructure): EditSnapshot {
+    const bonds = this.inputs.bonds()
+    return { structure: $state.snapshot(structure), bonds: bonds && $state.snapshot(bonds) }
+  }
+  push_undo = (): void => {
+    const structure = this.inputs.structure()
+    if (structure) this.history.push(this.snapshot_edit_state(structure))
+  }
+  private step_history(direction: `undo` | `redo`): boolean {
+    const structure = this.inputs.structure()
+    if (!structure) return false
+    const restored = this.history.step(direction, () => this.snapshot_edit_state(structure))
+    if (!restored) return false
+    this.write_structure(restored.structure)
+    this.inputs.set_bonds(restored.bonds)
+    this.clear_selection()
+    return true
+  }
+  undo = (): boolean => this.step_history(`undo`)
+  redo = (): boolean => this.step_history(`redo`)
+  private write_structure(next: AnyStructure): void {
+    this.is_internal_edit = true
+    this.inputs.set_structure(next)
+    this.last_edited_structure = this.inputs.structure()
+  }
+
+  // === edit-atoms operations ===
+  // Map scene indices (into displayed_structure) back to raw structure indices through the
+  // supercell and image-atom provenance properties
+  scene_to_structure_indices(
+    scene_indices: number[],
+    skip_image_atoms = false,
+  ): SvelteSet<number> {
+    const result = new SvelteSet<number>()
+    for (const scene_idx of scene_indices) {
+      const site = this.displayed_structure?.sites[scene_idx]
+      if (!site) continue
+      const { orig_site_idx, orig_unit_cell_idx } = site.properties ?? {}
+      if (skip_image_atoms && orig_site_idx != null) continue
+      if (this.has_supercell && orig_unit_cell_idx != null) {
+        result.add(orig_unit_cell_idx as number)
+      } else if (orig_site_idx != null) result.add(orig_site_idx as number)
+      else result.add(scene_idx)
+    }
+    return result
+  }
+  // Cartesian→fractional converter for the current lattice; undefined for molecules and
+  // singular cells (matrix_inverse_3x3 throws on those)
+  private cart_to_frac(): ((xyz: Vec3) => Vec3) | undefined {
+    const structure = this.inputs.structure()
+    if (!structure || !(`lattice` in structure)) return undefined
+    try {
+      return create_cart_to_frac(structure.lattice.matrix)
+    } catch {
+      console.warn(`Failed to compute lattice inverse for fractional coordinates`)
+      return undefined
+    }
+  }
+
+  delete_selected = (): boolean => {
+    const { inputs } = this
+    const structure = inputs.structure()
+    const selected = inputs.selected_sites()
+    if (selected.length === 0 || !structure?.sites) return false
+    this.push_undo()
+    const to_delete = this.scene_to_structure_indices(selected, true)
+    this.clear_selection()
+    // Explicit bonds (the binding and the structure's own) follow the shifted indices
+    const bound_bonds = inputs.bonds()
+    if (bound_bonds !== undefined) {
+      inputs.set_bonds(remap_bonds_after_deletion(bound_bonds, to_delete))
+    }
+    const old_bonds = structure.properties?.bonds
+    this.write_structure({
+      ...structure,
+      sites: structure.sites.filter((_, idx) => !to_delete.has(idx)),
+      ...(old_bonds && {
+        properties: {
+          ...structure.properties,
+          bonds: remap_bonds_after_deletion(old_bonds, to_delete),
+        },
+      }),
+    })
+    this.site_radius_overrides.clear()
+    this.clear_bond_edits()
+    this.notice(`Deleted ${plural(to_delete.size, `site`)}`)
+    return true
+  }
+
+  // Copies of the selected atoms at a half-Angstrom offset; the copies become the selection
+  duplicate_selected = (): boolean => {
+    const { inputs } = this
+    const structure = inputs.structure()
+    const selected = inputs.selected_sites()
+    if (selected.length === 0 || !structure?.sites) return false
+    this.push_undo()
+    const to_copy = this.scene_to_structure_indices(selected)
+    const to_frac = this.cart_to_frac()
+    const copies = structure.sites
+      .filter((_, idx) => to_copy.has(idx))
+      .map((site) => {
+        const xyz: Vec3 = [site.xyz[0] + 0.5, site.xyz[1] + 0.5, site.xyz[2] + 0.5]
+        return { ...site, xyz, abc: to_frac?.(xyz) ?? xyz, properties: { ...site.properties } }
+      })
+    const first_new_idx = structure.sites.length
+    this.write_structure({ ...structure, sites: [...structure.sites, ...copies] })
+    const new_indices = copies.map((_, idx) => first_new_idx + idx)
+    inputs.set_selected_sites(new_indices)
+    inputs.set_measured_sites([...new_indices])
+    this.notice(`Duplicated ${plural(copies.length, `site`)}`)
+    return true
+  }
+
+  change_element = (symbol: string): boolean => {
+    const { inputs } = this
+    const structure = inputs.structure()
+    const element = normalize_element(symbol)
+    if (!structure?.sites || inputs.selected_sites().length === 0 || !element) return false
+    this.push_undo()
+    const targets = this.scene_to_structure_indices(inputs.selected_sites())
+    this.write_structure({
+      ...structure,
+      sites: structure.sites.map((site, idx) =>
+        targets.has(idx)
+          ? { ...site, species: [{ element, occu: 1, oxidation_state: 0 }], label: element }
+          : site,
+      ),
+    })
+    this.change_element_mode = false
+    this.notice(`Changed ${plural(targets.size, `site`)} to ${element}`)
+    return true
+  }
+
+  // Click-to-place from the scene
+  add_atom = (xyz: Vec3, symbol: ElementSymbol): void => {
+    const structure = this.inputs.structure()
+    if (!structure) return
+    const element = normalize_element(symbol)
+    if (!element) return console.warn(`Invalid element symbol "${symbol}", ignoring add-atom`)
+    this.push_undo()
+    const site = {
+      species: [{ element, occu: 1, oxidation_state: 0 }],
+      xyz,
+      abc: this.cart_to_frac()?.(xyz) ?? xyz,
+      label: element,
+      properties: {},
+    }
+    this.write_structure({ ...structure, sites: [...structure.sites, site] })
+    this.notice(
+      `Added ${element} at (${xyz.map((coord) => format_num(coord, `.2f`)).join(`, `)})`,
+    )
+  }
+
+  // Drag moves from TransformControls: apply the Cartesian delta and wrap fractional
+  // coordinates inline so normalize_fractional_coords hits its fast path
+  move_sites = (scene_indices: number[], delta: Vec3): void => {
+    const structure = this.inputs.structure()
+    if (!structure?.sites) return
+    const targets = this.scene_to_structure_indices(scene_indices)
+    const to_frac = this.cart_to_frac()
+    const to_cart =
+      to_frac && `lattice` in structure ? create_frac_to_cart(structure.lattice.matrix) : null
+    this.write_structure({
+      ...structure,
+      sites: structure.sites.map((site, idx) => {
+        if (!targets.has(idx)) return site
+        const xyz: Vec3 = [
+          site.xyz[0] + delta[0],
+          site.xyz[1] + delta[1],
+          site.xyz[2] + delta[2],
+        ]
+        if (!to_frac || !to_cart) return { ...site, xyz, abc: xyz }
+        const abc = wrap_to_unit_cell(to_frac(xyz))
+        return { ...site, xyz: to_cart(abc), abc }
+      }),
+    })
+  }
+
+  // === cameras ===
+  report_pane_moved = (pane_idx: number, moved: boolean): void => {
+    if (moved) this.moved_panes.add(pane_idx)
+    else this.moved_panes.delete(pane_idx)
+  }
+  reset_all_cameras = (): void => {
+    this.reset_token += 1
+    this.moved_panes.clear()
+  }
+  clear_moved_panes = (): void => this.moved_panes.clear()
+  // Side-pane state is meaningless once the grid collapses to one pane
+  collapse_to_primary_pane = (): void => {
+    this.active_pane_idx = 0
+    for (const pane_idx of this.moved_panes)
+      if (pane_idx !== 0) this.moved_panes.delete(pane_idx)
+  }
+}

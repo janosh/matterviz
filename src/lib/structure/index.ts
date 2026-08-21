@@ -21,6 +21,7 @@ export { default as Lattice } from './Lattice.svelte'
 export * from './camera-fit'
 export * from './density'
 export * from './measure'
+export { StructureSession, type StructureSessionInputs } from './session.svelte'
 export * from './pbc'
 export * from './polyhedra'
 export * from './export'
@@ -38,6 +39,7 @@ export type StructureCarouselItem = {
   structure: AnyStructure
 }
 export { default as StructureControls } from './StructureControls.svelte'
+export { default as StructureEditToolbar } from './StructureEditToolbar.svelte'
 export { default as StructureExportPane } from './StructureExportPane.svelte'
 export { default as StructureInfoPane } from './StructureInfoPane.svelte'
 export { default as StructureScene } from './StructureScene.svelte'
@@ -50,6 +52,8 @@ export * from './validation'
 export type MeasureMode = `distance` | `angle` | `dihedral` | `edit-bonds` | `edit-atoms`
 export type BondEditMode = `add` | `delete`
 export type StructureDisplayMode = `structure` | `slice`
+// The one floating pane a Structure viewer has open
+export type StructurePane = `controls` | `info` | `export`
 
 // A single viewport definition for the multi-side (2x2) view. `direction` is the
 // camera offset direction from the structure center (target-relative); `projection`

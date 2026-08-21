@@ -33,6 +33,7 @@
   import { Histogram, ScatterPlot } from '$lib/plot'
   import { toggle_series_visibility } from '$lib/plot/core/utils/series-visibility'
   import { DEFAULTS } from '$lib/settings'
+  import type { StructurePane } from '$lib/structure'
   import Structure from '$lib/structure/Structure.svelte'
   import TrajectoryStructureIdPane from '$lib/structure-id/TrajectoryStructureIdPane.svelte'
   import TrajectorySpectroscopyPane from '$lib/spectral/TrajectorySpectroscopyPane.svelte'
@@ -276,7 +277,8 @@
   let filename_copied = $state(false)
   let view_mode_dropdown_open = $state(false)
   let analysis_menu_open = $state(false)
-  let structure_info_open = $state(false)
+  // Structure's own info/export panes; its controls pane is this viewer's `controls` pane
+  let structure_pane = $state<Exclude<StructurePane, `controls`> | null>(null)
   let scatter_controls_open = $derived(scatter_props.controls_open ?? false)
   let hidden_elements = $state(new SvelteSet<ElementSymbol>())
   // Writable so the banner can be dismissed
@@ -628,7 +630,7 @@
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <div
   class:active={player.is_playing ||
-    structure_info_open ||
+    structure_pane !== null ||
     scatter_controls_open ||
     active_pane !== null}
   bind:this={wrapper}
@@ -893,10 +895,13 @@
         }}
         bind:show_trajectory_lines
         bind:supercell_scaling
-        bind:controls_open={
-          () => is_pane_open(`controls`), (open) => set_pane_open(`controls`, open)
+        bind:active_pane={
+          () => (active_pane === `controls` ? `controls` : structure_pane),
+          (pane) => {
+            set_pane_open(`controls`, pane === `controls`)
+            structure_pane = pane === `controls` ? null : pane
+          }
         }
-        bind:info_pane_open={structure_info_open}
         bind:hidden_elements
       />
     {/if}
@@ -1102,28 +1107,12 @@
       }
     }
   }
-  .view-mode-dropdown-wrapper,
-  .analysis-dropdown-wrapper {
-    display: flex;
-    position: relative;
-    align-items: center;
-    z-index: var(--trajectory-view-mode-z-index, 20);
-  }
   .x-quantity-select {
     padding: 1pt 2pt;
     font-size: 0.85em;
     background: transparent;
     border: var(--tooltip-border);
     border-radius: 3pt;
-  }
-  .view-mode-button,
-  .analysis-button {
-    display: flex;
-    align-items: center;
-    gap: 1pt;
-  }
-  .analysis-button.active {
-    color: var(--accent-color, #4a9eff);
   }
   /* Keep ViewerPane's toggle for layout anchoring; the analysis menu owns clicks. */
   .analysis-dropdown-wrapper :global(.analysis-toggle-anchor) {
@@ -1136,51 +1125,5 @@
     opacity: 0;
     pointer-events: none;
     overflow: hidden;
-  }
-  .view-mode-dropdown {
-    position: absolute;
-    top: 115%;
-    right: 0;
-    z-index: var(--trajectory-view-mode-dropdown-z-index, 30);
-    min-width: max-content;
-    background: var(--trajectory-view-mode-bg, var(--menu-bg));
-    color: var(--trajectory-view-mode-color, var(--menu-color));
-    border: 1px solid var(--trajectory-view-mode-border, var(--menu-border));
-    border-radius: var(--trajectory-view-mode-border-radius, 4px);
-    box-shadow:
-      0 8px 16px -4px rgba(0, 0, 0, 0.3),
-      0 4px 8px -2px rgba(0, 0, 0, 0.1);
-    pointer-events: auto;
-  }
-  .view-mode-option {
-    display: flex;
-    align-items: center;
-    gap: 1ex;
-    width: 100%;
-    padding: var(--trajectory-view-mode-option-padding, 5pt);
-    box-sizing: border-box;
-    background: transparent;
-    color: inherit;
-    border-radius: 0;
-    text-align: left;
-    transition: background-color 0.15s ease;
-    &:hover,
-    &:focus-visible {
-      background: var(--trajectory-view-mode-option-hover-bg, var(--menu-option-hover-bg));
-    }
-    &:first-child {
-      border-top-left-radius: 3px;
-      border-top-right-radius: 3px;
-    }
-    &.selected {
-      color: var(--accent-color, var(--menu-option-selected-color));
-    }
-    span {
-      font-weight: 500;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      flex: 1;
-    }
   }
 </style>

@@ -27,12 +27,10 @@
     settings = $bindable(create_volume_slice_settings()),
     volumes = [],
     active_volume_idx = $bindable(0),
-    on_settings_change,
   }: {
     settings?: Partial<VolumeSliceSettings>
     volumes?: VolumetricData[]
     active_volume_idx?: number
-    on_settings_change?: (settings: VolumeSliceSettings) => void
   } = $props()
 
   $effect(() => {
@@ -49,7 +47,6 @@
   function update_settings(updates: Partial<VolumeSliceSettings>): void {
     const next_settings = create_volume_slice_settings({ ...resolved_settings, ...updates })
     settings = next_settings
-    on_settings_change?.(next_settings)
   }
 
   function update_vector(key: CartesianVectorKey, axis_idx: number, value: number): void {

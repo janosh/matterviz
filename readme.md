@@ -86,6 +86,8 @@ npm add -D matterviz
 <Structure {data_url} style="width: 500px; aspect-ratio: 1" />
 ```
 
+`Structure` renders whatever it is given: pass `structure` (a `Crystal`/`Molecule` you already hold), `data_url` (fetched and parsed, volumetric CHGCAR/cube files included) or `structure_string`. Selection, measurements, atom/bond editing with undo/redo and the supercell/image-atom pipeline live in a headless `StructureSession` (exported from `matterviz/structure`) that can be driven and tested without a DOM; `active_pane: 'controls' | 'info' | 'export' | null` is the one bindable that says which floating pane is open.
+
 ### Composition
 
 ```svelte

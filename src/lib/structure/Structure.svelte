@@ -1,80 +1,55 @@
 <script lang="ts">
+  // Structure viewer: panes, toolbar, keyboard shortcuts, symmetry and the single/2x2 viewport
+  // layout. Selection, editing, undo/redo and the display pipeline live in session.svelte.ts;
+  // data_url / structure_string / drop acquisition in loader.svelte.ts.
   import type { ColorSchemeName } from '$lib/colors'
   import { ELEMENT_COLOR_SCHEMES } from '$lib/colors'
   import { DEFAULT_PNG_DPI } from '$lib/constants'
   import { normalize_show_controls, type ShowControlsProp } from '$lib/controls'
-  import { coerce_elem_symbol, type ElementSymbol } from '$lib/element'
+  import type { ElementSymbol } from '$lib/element'
   import { StatusMessage } from '$lib/feedback'
   import Spinner from '$lib/feedback/Spinner.svelte'
-  import { Icon, type IconData } from 'svelte-widgets'
-  import {
-    Angle,
-    BrillouinZone,
-    Cross,
-    Edit,
-    Grid2x2,
-    HeatmapMatrix,
-    Link,
-    Orbit,
-    Redo,
-    Reset,
-    Ruler,
-    Undo,
-  } from 'svelte-widgets/icons'
-  import * as io from '$lib/io'
-  import { handle_and_prevent, to_error } from '$lib/utils'
+  import { Icon } from 'svelte-widgets'
+  import { BrillouinZone, Grid2x2, HeatmapMatrix, Reset } from 'svelte-widgets/icons'
+  import type * as io from '$lib/io'
+  import { handle_and_prevent } from '$lib/utils'
   import { webgpu_available } from '$lib/scene'
-  import { parse_volumetric_file } from '$lib/isosurface/parse'
-  import { create_volume_slice_settings } from '$lib/isosurface/slice-settings'
   import type { VolumeSliceSettings } from '$lib/isosurface/slice-settings'
   import type { IsosurfaceSettings, VolumetricData } from '$lib/isosurface/types'
   import VolumeSliceView from '$lib/isosurface/VolumeSliceView.svelte'
   import {
-    auto_isosurface_settings,
     DEFAULT_ISOSURFACE_SETTINGS,
-    label_file_volumes,
-    lattices_match,
-    materialize_layers,
-    merge_imported_volumes,
     normalize_active_volume_idx,
   } from '$lib/isosurface/types'
-  import { format_num } from '$lib/labels'
   import { ViewerChrome } from '$lib/layout'
   import type { Vec3 } from '$lib/math'
-  import { create_cart_to_frac, create_frac_to_cart } from '$lib/math'
   import { DEFAULTS } from '$lib/settings'
   import { colors } from '$lib/state.svelte'
-  import StructureViewport from './StructureViewport.svelte'
-
   import type {
     AnyStructure,
     BondEditMode,
     BondOrder,
-    Crystal,
     MeasureMode,
     StructureBond,
     StructureDisplayMode,
+    StructureHandlerData,
+    StructurePane,
     StructureView,
   } from '$lib/structure'
   import {
     DEFAULT_STRUCTURE_VIEWS,
     default_vector_configs,
     get_element_counts,
-    get_pbc_image_sites,
     get_structure_vector_keys,
   } from '$lib/structure'
-  import { push_edit, step_history } from '$lib/structure/edit-history'
-  import { wrap_to_unit_cell } from '$lib/structure/pbc'
-  import { make_supercell, parse_supercell_scaling } from '$lib/structure/supercell'
   import type { CellType, SymmetrySettings } from '$lib/symmetry'
   import * as symmetry from '$lib/symmetry'
-  import { transform_cell } from '$lib/symmetry'
   import type { MoyoDataset } from '@spglib/moyo-wasm'
   import type { ComponentProps, Snippet } from 'svelte'
   import { untrack } from 'svelte'
   import { click_outside, forward_window_keydown, tooltip } from 'svelte-widgets/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { SvelteMap, SvelteSet } from 'svelte/reactivity'
+  import { SvelteSet } from 'svelte/reactivity'
   import type { Camera, Scene } from 'three/webgpu'
   import {
     DEFAULT_ATOM_COLOR_CONFIG,
@@ -84,19 +59,19 @@
   } from './atom-properties'
   import AtomLegend from './AtomLegend.svelte'
   import CellSelect from './CellSelect.svelte'
-  import { BOND_ORDER_OPTIONS, merge_bond_edits, remap_bonds_after_deletion } from './bonding'
-  import { mirror_scene_props } from '$lib/scene/props.svelte'
-  import type { StructureHandlerData } from './index'
+  import { create_structure_loader } from './loader.svelte'
   import type { DisplacementSummary } from './measure'
-  import type { TrajectoryLinesStats } from './trajectory-lines'
-  import { MAX_SELECTED_SITES } from './measure'
-  import { normalize_fractional_coords, parse_structure_file } from './parse'
+  import { mirror_scene_props } from '$lib/scene/props.svelte'
+  import { StructureSession } from './session.svelte'
   import StructureControls from './StructureControls.svelte'
+  import StructureEditToolbar from './StructureEditToolbar.svelte'
   import StructureExportPane from './StructureExportPane.svelte'
   import StructureInfoPane from './StructureInfoPane.svelte'
-  import StructureScene from './StructureScene.svelte'
+  import type StructureScene from './StructureScene.svelte'
+  import StructureViewport from './StructureViewport.svelte'
+  import type { TrajectoryLinesStats } from './trajectory-lines'
 
-  type StructureControlName =
+  export type StructureControlName =
     | `reset-camera`
     | `fullscreen`
     | `view-mode`
@@ -105,65 +80,20 @@
     | `info-pane`
     | `export-pane`
     | `controls`
-
-  // Type alias for event handlers to reduce verbosity
   type EventHandler = (data: StructureHandlerData) => void
   type StructureLayoutMode = `single` | `multi` | `slice`
-  type BondEditContext = {
-    structure_identity: AnyStructure | undefined
-    source_bond_signature: string
-    cell_type: CellType
-    supercell_scaling: string
-    show_image_atoms: boolean
-  }
-  type BondEditSnapshot = {
-    bonds: StructureBond[] | undefined
-    context: BondEditContext
-  }
-  type BondEditHistorySnapshot = {
-    added_bonds: StructureBond[]
-    removed_bonds: StructureBond[]
-    bond_order_overrides: StructureBond[]
-    bond_edit_mode: BondEditMode
-    bond_edit_order: BondOrder
-  }
   type SceneProps = ComponentProps<typeof StructureScene> & typeof DEFAULTS.structure
-  // Keep each pane large enough for useful orbit controls, labels, and atom picking.
-  const MULTI_VIEW_COLUMN_COUNT = 2
-  const DEFAULT_MULTI_VIEW_MIN_PANE_WIDTH = 300
-  const DEFAULT_MULTI_VIEW_MIN_PANE_HEIGHT = 200
-  const DEFAULT_MULTI_VIEW_GAP = 2
+
+  // Each multi-view pane needs room for orbit controls, labels and atom picking
+  const MULTI_VIEW_COLUMNS = 2
+  const MULTI_VIEW_MIN_PANE = { width: 300, height: 200, gap: 2 }
+  const RESET_TEXT = `Reset view (r, or double-click)`
   const STRUCTURE_LAYOUTS = {
     single: { mode: `single`, icon: BrillouinZone, label: `3D single view` },
     multi: { mode: `multi`, icon: Grid2x2, label: `3D 2×2 grid` },
     slice: { mode: `slice`, icon: HeatmapMatrix, label: `2D cross-section` },
   } as const
-  const finite_nonnegative = (value: number, fallback: number) =>
-    Math.max(0, Number.isFinite(value) ? value : fallback)
-
-  // Run `on_change` (untracked) whenever `get_value` yields a new value or tuple, skipping the
-  // mount-time value so parent-provided state survives the first render. Runs as a pre-effect
-  // so site-indexed state (selection, radius overrides) is already reset when the scene
-  // template renders the new structure: a post-render $effect would let the scene draw the
-  // stale selection against a shrunken site list first (e.g. image-atom indices after
-  // disabling image atoms), and a throw in that render aborts the whole Svelte flush,
-  // dropping the pending clear along with it.
-  function track_change(get_value: () => unknown, on_change: () => void): void {
-    const same = (left: unknown, right: unknown): boolean =>
-      Array.isArray(left) && Array.isArray(right)
-        ? left.length === right.length && left.every((item, idx) => item === right[idx])
-        : left === right
-    let previous = untrack(get_value)
-    $effect.pre(() => {
-      const value = get_value()
-      if (same(value, previous)) return
-      previous = value
-      untrack(on_change)
-    })
-  }
-
-  // Local reactive state for scene and lattice props. Deeply reactive so nested mutations propagate.
-  // Deep-clone to prevent mutations from leaking to global defaults across component instances.
+  // Local scene/lattice models: deep-cloned so UI mutations never leak into the shared defaults
   let scene_props = $state(structuredClone(DEFAULTS.structure) as SceneProps)
   let lattice_props = $state({
     cell_edge_opacity: DEFAULTS.structure.cell_edge_opacity,
@@ -179,22 +109,16 @@
     structure_series_key = undefined,
     reference_structure = undefined,
     displacement_rmsd = $bindable(undefined),
-    trajectory_lines_result = $bindable(null),
     bonds = $bindable(),
     scene_props: scene_props_in = $bindable(),
     show_trajectory_lines = $bindable(
       scene_props_in?.show_trajectory_lines ?? DEFAULTS.structure.show_trajectory_lines,
     ),
     lattice_props: lattice_props_in = $bindable(),
-    controls_open = $bindable(false),
-    info_pane_open = $bindable(false),
+    active_pane = $bindable(null),
     multi_view = $bindable(false),
-    multi_view_active = $bindable(false),
-    multi_view_min_pane_width = DEFAULT_MULTI_VIEW_MIN_PANE_WIDTH,
-    multi_view_min_pane_height = DEFAULT_MULTI_VIEW_MIN_PANE_HEIGHT,
-    multi_view_gap = DEFAULT_MULTI_VIEW_GAP,
     views = DEFAULT_STRUCTURE_VIEWS,
-    enable_measure_mode = $bindable(true),
+    enable_measure_mode = true,
     measure_mode = $bindable<MeasureMode>(`distance`),
     bond_edit_mode = $bindable<BondEditMode>(`add`),
     bond_edit_order = $bindable<BondOrder>(1),
@@ -203,247 +127,205 @@
     show_controls,
     persist_settings = false,
     fullscreen = $bindable(false),
+    fullscreen_toggle = DEFAULTS.structure.fullscreen_toggle,
     wrapper = $bindable(),
     width = $bindable(0),
     height = $bindable(0),
-    reset_text = `Reset view (r, or double-click)`,
     color_scheme = $bindable(`Vesta`),
     atom_color_config = $bindable<AtomColorConfig>({ ...DEFAULT_ATOM_COLOR_CONFIG }),
-    hovered = $bindable(false),
-    dragover = $bindable(false),
     allow_file_drop = true,
-    enable_info_pane = true,
-    analyze_symmetry = true,
-    png_dpi = $bindable(DEFAULT_PNG_DPI),
-    show_image_atoms = $bindable(true),
-    supercell_scaling = $bindable(`1x1x1`),
-    apply_supercell_scaling = true,
-    fullscreen_toggle = DEFAULTS.structure.fullscreen_toggle,
-    bottom_left,
     data_url,
     structure_string,
     on_file_drop,
-    spinner_props = {},
+    on_file_load,
+    on_error,
     loading = $bindable(false),
     error_msg = $bindable(),
-    performance_mode = $bindable(`quality`),
-    // expose selected site indices for external control/highlighting
+    dragover = $bindable(false),
+    enable_info_pane = true,
+    analyze_symmetry = true,
+    png_dpi = $bindable(DEFAULT_PNG_DPI),
+    performance_mode = `quality`,
+    show_image_atoms = $bindable(true),
+    supercell_scaling = $bindable(`1x1x1`),
+    apply_supercell_scaling = true,
+    cell_type = $bindable(`original`),
     selected_sites = $bindable([]),
     highlighted_sites = $bindable([]),
     hovered_site_idx = $bindable(null),
-    // expose measured site indices for overlays/labels
     measured_sites = $bindable([]),
-    // expose the displayed structure (with image atoms and supercell) for external use
     displayed_structure = $bindable(),
-    // Track hidden elements across component lifecycle
     hidden_elements = $bindable(new SvelteSet<ElementSymbol>()),
-    // Track hidden property values (e.g. Wyckoff positions, coordination numbers)
-    hidden_prop_vals = $bindable(new SvelteSet<number | string>()),
-    // Per-element radius overrides (absolute values in Angstroms)
-    element_radius_overrides = $bindable<Partial<Record<ElementSymbol, number>>>({}),
-    // Per-site radius overrides (absolute values in Angstroms)
-    site_radius_overrides = $bindable<SvelteMap<number, number>>(new SvelteMap()),
-    // Symmetry analysis data (bindable for external access)
     sym_data = $bindable(null),
-    // Symmetry analysis settings (bindable for external control)
     symmetry_settings = $bindable(symmetry.default_sym_settings),
-    // Map element symbols to different elements (e.g. {'H': 'Na', 'He': 'Cl'})
-    // Useful for LAMMPS files where atom types are mapped to H, He, Li by default
-    element_mapping = $bindable(),
-    // Cell type: original, conventional, or primitive (requires symmetry analysis)
-    cell_type = $bindable(`original`),
-    // Volumetric data for isosurface rendering (parsed from CHGCAR or .cube files)
-    volumetric_data = $bindable<VolumetricData[]>(),
-    // Isosurface rendering settings
-    isosurface_settings = $bindable<IsosurfaceSettings>({
-      ...DEFAULT_ISOSURFACE_SETTINGS,
-    }),
-    // Cross-section sampling and rendering settings
+    volumetric_data = $bindable<VolumetricData[] | undefined>(),
+    isosurface_settings = $bindable<IsosurfaceSettings>({ ...DEFAULT_ISOSURFACE_SETTINGS }),
     slice_settings = $bindable<Partial<VolumeSliceSettings>>({}),
-    // Primary volumetric display: 3D structure/isosurface or 2D cross-section
     display_mode = $bindable<StructureDisplayMode>(`structure`),
-    // Active volume index when multiple volumes are present
     active_volume_idx = $bindable(0),
     children,
     top_right_controls,
-    on_file_load,
-    on_error,
     on_fullscreen_change,
     on_camera_move,
     on_camera_reset,
-    on_bonds_change,
-    on_display_mode_change,
-    on_active_volume_idx_change,
-    on_slice_settings_change,
     ...rest
-  }: {
+  }: Omit<HTMLAttributes<HTMLDivElement>, `children`> & {
+    // bindable: the structure on display. Edit-atoms writes edited copies back.
     structure?: AnyStructure
-    // Stable identity for coordinate-only updates such as trajectory playback. Camera context
-    // resets only when this key changes. Vector and topology state track their own signatures.
+    // Stable identity for coordinate-only updates (trajectory playback): camera and selection
+    // persist while it is unchanged and the topology is the same
     structure_series_key?: unknown
-    // Comparison overlay: draw per-atom displacement arrows from this geometry (e.g. the
-    // unrelaxed cell) to `structure`. Same atom count and ordering required.
+    // Comparison overlay: per-atom displacement arrows from this geometry to `structure`
+    // (same atom count and order)
     reference_structure?: AnyStructure
-    displacement_rmsd?: number // (output) RMSD in Angstrom vs reference_structure
-    // (output) vertex/segment counts of the trajectory-trail layer, for cost readouts
-    trajectory_lines_result?: TrajectoryLinesStats | null
+    displacement_rmsd?: number // output: RMSD in Angstrom vs reference_structure
+    // bindable: explicit bonds. Source for the edit-bonds layer, which writes merged bonds back.
     bonds?: StructureBond[]
     scene_props?: ComponentProps<typeof StructureScene>
     show_trajectory_lines?: boolean
-    show_controls?: ShowControlsProp<StructureControlName>
-    fullscreen?: boolean
-    // bindable width of the canvas
-    width?: number
-    // bindable height of the canvas
-    height?: number
-    // Canvas wrapper element (for export pane)
-    wrapper?: HTMLDivElement
-    // PNG export DPI setting
-    png_dpi?: number
-    reset_text?: string
-    hovered?: boolean
-    dragover?: boolean
-    allow_file_drop?: boolean
-    enable_info_pane?: boolean
-    // Disable for rapidly changing structures whose consumers do not use symmetry data.
-    analyze_symmetry?: boolean
+    lattice_props?: ComponentProps<typeof StructureScene>[`lattice_props`]
+    // bindable: the one floating pane that is open
+    active_pane?: StructurePane | null
+    // Ovito-style 2x2 grid; collapses to one pane while the viewer is too small for it
+    multi_view?: boolean
+    // Pane definitions for multi_view (one perspective + three orthographic axis views by default)
+    views?: StructureView[]
     enable_measure_mode?: boolean
     measure_mode?: MeasureMode
     bond_edit_mode?: BondEditMode
     bond_edit_order?: BondOrder
-    info_pane_open?: boolean
-    // Requests a grid showing the structure from different angles (Ovito-style).
-    // The preference is preserved while responsive sizing temporarily collapses
-    // viewers whose panes would be smaller than the configured minimum.
-    multi_view?: boolean
-    // Output-only: whether the responsive multi-view grid is currently rendered.
-    multi_view_active?: boolean
-    // Minimum CSS-pixel dimensions for each pane before multi-view becomes available.
-    multi_view_min_pane_width?: number
-    multi_view_min_pane_height?: number
-    multi_view_gap?: number
-    // The 4 (or more) view definitions used by multi_view. Defaults to an
-    // Ovito-like set: one perspective + three orthographic axis views.
-    views?: StructureView[]
+    background_color?: string
+    background_opacity?: number
+    // 'always' | 'hover' | 'never' | { mode, hidden: StructureControlName[], style }
+    show_controls?: ShowControlsProp<StructureControlName>
+    // Opt-in browser persistence of the controls pane settings
+    persist_settings?: boolean
+    fullscreen?: boolean
     fullscreen_toggle?: boolean
-    bottom_left?: Snippet<[{ structure?: AnyStructure }]>
-    top_right_controls?: Snippet // Additional controls to render at the end of the control buttons row
-    data_url?: string // URL to load structure from (alternative to providing structure directly)
-    // Generic callback for dropped content, its logical filename, and stable source identity.
+    wrapper?: HTMLDivElement
+    width?: number // output: wrapper width in CSS px
+    height?: number // output: wrapper height in CSS px
+    color_scheme?: string
+    atom_color_config?: AtomColorConfig
+    allow_file_drop?: boolean
+    data_url?: string // fetched and parsed when no structure is supplied
+    structure_string?: string // parsed when neither structure nor data_url is supplied
+    // Host takes over dropped/fetched content (and owns `structure`) instead of the parsers
     on_file_drop?: (
       content: string | ArrayBuffer,
       filename: string,
       metadata: io.FileLoadMeta,
     ) => Promise<void> | void
-    // spinner props (passed to Spinner component)
-    spinner_props?: ComponentProps<typeof Spinner>
+    on_file_load?: EventHandler
+    on_error?: EventHandler
     loading?: boolean
     error_msg?: string
-    // Performance mode: 'quality' (default) or 'speed' for large structures
+    dragover?: boolean
+    enable_info_pane?: boolean
+    // Off for rapidly changing structures whose consumers do not read symmetry data
+    analyze_symmetry?: boolean
+    png_dpi?: number
+    // 'speed' caps sphere tessellation for large structures
     performance_mode?: `quality` | `speed`
-    // allow parent components to control highlighted/selected site indices
+    show_image_atoms?: boolean
+    supercell_scaling?: string
+    // False when `structure` is already expanded to `supercell_scaling`
+    apply_supercell_scaling?: boolean
+    cell_type?: CellType // original, conventional or primitive (needs symmetry analysis)
     selected_sites?: number[]
     highlighted_sites?: number[]
     hovered_site_idx?: number | null
-    // explicit measured sites for distance/angle overlays
-    measured_sites?: number[]
-    // expose the displayed structure (with image atoms and/or supercell) for external
-    // use. Output-only: the scene renders from an internal raw copy for performance,
-    // so external writes to this prop are ignored (overwritten on the next pipeline run)
+    measured_sites?: number[] // ordered picks for distance/angle/dihedral overlays
+    // Output: the structure as rendered (supercell + image atoms). Writes are overwritten.
     displayed_structure?: AnyStructure
-    // Set false when `structure` is already expanded to `supercell_scaling`.
-    apply_supercell_scaling?: boolean
-    // Track which elements are hidden (bindable across frames in trajectories)
     hidden_elements?: Set<ElementSymbol>
-    // Track which property values are hidden (e.g. Wyckoff positions, coordination numbers)
-    hidden_prop_vals?: Set<number | string>
-    // Per-element radius overrides (absolute values in Angstroms)
-    element_radius_overrides?: Partial<Record<ElementSymbol, number>>
-    // Per-site radius overrides (absolute values in Angstroms)
-    // Accepts Map or SvelteMap for flexibility with external callers
-    site_radius_overrides?: Map<number, number> | SvelteMap<number, number>
-    // Symmetry analysis data (bindable for external access)
     sym_data?: MoyoDataset | null
-    // Symmetry analysis settings (bindable for external control)
     symmetry_settings?: Partial<SymmetrySettings>
-    // Map element symbols to different elements (e.g. {'H': 'Na', 'He': 'Cl'})
-    element_mapping?: Partial<Record<ElementSymbol, ElementSymbol>>
-    // Cell type: original, conventional, or primitive (requires symmetry analysis)
-    cell_type?: CellType
-    // Volumetric data for isosurface rendering (parsed from CHGCAR or .cube files)
     volumetric_data?: VolumetricData[]
-    // Isosurface rendering settings
     isosurface_settings?: IsosurfaceSettings
-    // Cross-section plane and rendering settings
     slice_settings?: Partial<VolumeSliceSettings>
-    // Switch between the 3D structure/isosurface and 2D cross-section
-    display_mode?: StructureDisplayMode
-    // Active volume index when multiple volumes are present
+    display_mode?: StructureDisplayMode // 3D structure/isosurface or 2D cross-section
     active_volume_idx?: number
-    // structure content as string (alternative to providing structure directly or via data_url)
-    structure_string?: string
-    // Atom coloring configuration
-    atom_color_config?: AtomColorConfig
     children?: Snippet<[{ structure?: AnyStructure; fullscreen: boolean }]>
-    on_file_load?: EventHandler
-    on_error?: EventHandler
+    top_right_controls?: Snippet // rendered at the end of the control buttons row
     on_fullscreen_change?: EventHandler
     on_camera_move?: EventHandler
     on_camera_reset?: EventHandler
-    on_bonds_change?: (bonds: StructureBond[] | undefined) => void
-    on_display_mode_change?: EventHandler
-    on_active_volume_idx_change?: EventHandler
-    on_slice_settings_change?: (settings: VolumeSliceSettings) => void
-  } & Omit<
-    ComponentProps<typeof StructureControls>,
-    `children` | `onclose` | `multi_view_control_visible` | `multi_view_unavailable_reason`
-  > &
-    Omit<HTMLAttributes<HTMLDivElement>, `children`> = $props()
+  } = $props()
 
-  let effective_structure_series_key = $derived(structure_series_key ?? structure)
-  let vector_keys = $derived(
-    Array.isArray(structure?.sites) ? get_structure_vector_keys(structure) : [],
-  )
-  let vector_keys_signature = $derived(vector_keys.join(`\0`))
-  let topology_signature = $derived(
-    Array.isArray(structure?.sites)
-      ? structure.sites
-          .map(
-            ({ label, species }) =>
-              `${label}\0${species
-                .map(({ element, occu, oxidation_state }) =>
-                  [element, occu, oxidation_state ?? ``].join(`:`),
-                )
-                .join(`,`)}`,
-          )
-          .join(`\u0001`)
-      : ``,
-  )
+  // === toast ===
+  let toast_msg = $state<string | null>(null)
+  let toast_timer: ReturnType<typeof setTimeout> | undefined
+  function show_toast(msg: string, duration_ms = 2000): void {
+    clearTimeout(toast_timer)
+    toast_msg = msg
+    toast_timer = setTimeout(() => (toast_msg = null), duration_ms)
+  }
 
-  // JavaScript callers can bypass the TypeScript union with partial JSON.
-  // Normalize once before the first render and again before later prop updates are applied.
+  // === session: display pipeline, selection, editing, cameras ===
+  const session = new StructureSession({
+    structure: () => structure,
+    set_structure: (value) => (structure = value),
+    bonds: () => bonds,
+    set_bonds: (value) => (bonds = value),
+    series_key: () => structure_series_key ?? structure,
+    selected_sites: () => selected_sites,
+    set_selected_sites: (value) => (selected_sites = value),
+    measured_sites: () => measured_sites,
+    set_measured_sites: (value) => (measured_sites = value),
+    highlighted_sites: () => highlighted_sites,
+    set_highlighted_sites: (value) => (highlighted_sites = value),
+    hovered_site_idx: () => hovered_site_idx,
+    set_hovered_site_idx: (value) => (hovered_site_idx = value),
+    measure_mode: () => measure_mode,
+    set_measure_mode: (value) => (measure_mode = value),
+    bond_edit_mode: () => bond_edit_mode,
+    set_bond_edit_mode: (value) => (bond_edit_mode = value),
+    bond_edit_order: () => bond_edit_order,
+    set_bond_edit_order: (value) => (bond_edit_order = value),
+    supercell_scaling: () => supercell_scaling,
+    apply_supercell_scaling: () => apply_supercell_scaling,
+    show_image_atoms: () => show_image_atoms,
+    cell_type: () => cell_type,
+    set_cell_type: (value) => (cell_type = value),
+    sym_data: () => sym_data,
+    on_notice: show_toast,
+  })
+
+  // === acquisition: data_url, structure_string, drops ===
+  const loader = create_structure_loader({
+    document: () => ({ structure, volumetric_data, isosurface_settings, active_volume_idx }),
+    set_document: (document) => {
+      structure = document.structure
+      if (document.volumetric_data !== volumetric_data)
+        volumetric_data = document.volumetric_data
+      if (document.isosurface_settings !== isosurface_settings) {
+        isosurface_settings = document.isosurface_settings
+      }
+      if (document.active_volume_idx !== active_volume_idx) {
+        active_volume_idx = document.active_volume_idx
+      }
+    },
+    set_loading: (value) => (loading = value),
+    set_error: (message) => (error_msg = message),
+    set_dragover: (over) => (dragover = over),
+    data_url: () => data_url,
+    structure_string: () => structure_string,
+    allow_file_drop: () => allow_file_drop,
+    last_edited_structure: () => session.last_edited_structure,
+    on_file_drop: () => on_file_drop,
+    on_file_load: (data) => on_file_load?.(data),
+    on_error: (data) => on_error?.(data),
+    on_notice: show_toast,
+  })
+
+  // === inputs: mirror caller props into the local models ===
+  // JavaScript callers can bypass the TypeScript union with partial JSON; normalize before the
+  // first render and again whenever the prop changes
   atom_color_config = normalize_atom_color_config(atom_color_config)
   $effect.pre(() => {
     const normalized = normalize_atom_color_config(atom_color_config)
     if (normalized !== atom_color_config) atom_color_config = normalized
-  })
-
-  // Static toolbar tables. `as const` keeps the modes literal, since the click handlers assign
-  // them straight to the MeasureMode/BondEditMode props.
-  const MEASURE_MODES = [
-    { mode: `distance`, icon: Ruler, label: `Distance`, scale: 1.1 },
-    { mode: `angle`, icon: Angle, label: `Angle`, scale: 1.3 },
-    { mode: `dihedral`, icon: Orbit, label: `Dihedral`, scale: 1.1 },
-    { mode: `edit-atoms`, icon: Edit, label: `Edit Atoms`, scale: 1.0 },
-    { mode: `edit-bonds`, icon: Link, label: `Edit Bonds`, scale: 1.0 },
-  ] as const
-  const BOND_EDIT_MODES = [
-    { mode: `add`, label: `Add`, title: `Add: click two atoms` },
-    { mode: `delete`, label: `Delete`, title: `Delete: click a bond` },
-  ] as const
-
-  // Initialize models from incoming props; mutations come from UI controls; we mirror into local dicts (NOTE only doing shallow merge)
-  $effect.pre(() => {
     if (scene_props_in && typeof scene_props_in === `object`) {
       mirror_scene_props(scene_props, scene_props_in)
       if (scene_props_in.show_trajectory_lines !== undefined) {
@@ -455,193 +337,76 @@
     }
   })
 
-  // Keep stale externally-controlled indices from blanking either volumetric view.
-  $effect(() => {
-    const normalized_idx = normalize_active_volume_idx(
-      active_volume_idx,
-      volumetric_data?.length ?? 0,
-    )
-    if (normalized_idx !== active_volume_idx) active_volume_idx = normalized_idx
-  })
-  track_change(
-    () => active_volume_idx,
-    () => on_active_volume_idx_change?.(volumetric_event_data()),
+  // === vectors: auto-populate vector_configs for force/magmom/... site properties ===
+  let vector_keys = $derived(
+    Array.isArray(structure?.sites) ? get_structure_vector_keys(structure) : [],
   )
-  track_change(
-    () => display_mode,
-    () => on_display_mode_change?.(volumetric_event_data()),
-  )
-  track_change(
-    () => JSON.stringify(create_volume_slice_settings(slice_settings)),
-    () => on_slice_settings_change?.(create_volume_slice_settings(slice_settings)),
-  )
-
-  function volumetric_event_data(): StructureHandlerData {
-    return { structure, display_mode, active_volume_idx, slice_settings }
-  }
-
-  function select_structure_layout(mode: StructureLayoutMode): void {
-    if (mode === `slice`) display_mode = `slice`
-    else {
-      display_mode = `structure`
-      multi_view = mode === `multi`
-    }
-    view_layout_menu_open = false
-  }
-
-  const handle_url_load_error = (error: unknown, filename: string): void => {
-    console.error(`Failed to load structure from URL:`, error)
-    error_msg = `Failed to load structure: ${to_error(error).message}`
-    on_error?.({ error_msg, filename })
-  }
-
-  // Load structure from URL when data_url is provided
-  const data_url_loader = io.create_data_url_loader<AnyStructure>()
-
-  $effect(() =>
-    data_url_loader.request({
-      url: data_url,
-      // Host on_file_drop owns the structure; don't treat it as caller-owned cancel.
-      current_value: on_file_drop ? undefined : structure,
-      set_loading: (value) => (loading = value),
-      clear_error: () => (error_msg = undefined),
-      on_load: async ({ content, filename, metadata, mark_owned }) => {
-        if (on_file_drop) {
-          try {
-            await on_file_drop(content, filename, metadata)
-            mark_owned()
-          } catch (error) {
-            handle_url_load_error(error, filename)
-          }
-          return
-        }
-        try {
-          parse_and_emit_file(content, filename, metadata)
-          mark_owned(structure)
-        } catch (error) {
-          error_msg = `Failed to parse structure: ${to_error(error).message}`
-          on_error?.({ error_msg, filename })
-        }
-      },
-      on_error: handle_url_load_error,
-    }),
-  )
-
-  // Parse structure from string when structure_string is provided (synchronous, so no
-  // loading state: the spinner would never get a frame to show in)
-  $effect(() => {
-    if (!structure_string || data_url) return
-    error_msg = undefined
-    try {
-      const parsed = parse_structure_file(structure_string, `string`)
-      if (!parsed) throw new Error(`Failed to parse structure from string`)
-      clear_camera_state()
-      structure = parsed
-      untrack(() => emit_file_load_event(parsed, `string`, structure_string))
-    } catch (err) {
-      error_msg = `Failed to parse structure from string: ${to_error(err).message}`
-      untrack(() => on_error?.({ error_msg, filename: `string` }))
-    }
-  })
-
-  // Auto-populate vector_configs when structure has vector data (force, magmom, spin, etc.)
-  // Skip if configs were externally provided. Clear auto-generated configs on structure change.
+  let vector_keys_signature = $derived(vector_keys.join(`\0`))
   let vectors_auto_populated_for = ``
-  let last_auto_configs: Record<string, unknown> | undefined = undefined
-
+  let last_auto_configs: Record<string, unknown> | undefined
   $effect(() => {
-    const current_signature = vector_keys_signature
-    if (!structure?.sites || current_signature === vectors_auto_populated_for) return
-    // Clear auto-generated configs from previous structure; preserve externally-modified ones
+    const signature = vector_keys_signature
+    if (!structure?.sites || signature === vectors_auto_populated_for) return
+    // Drop the previous structure's auto configs; keep externally supplied ones
     const existing = scene_props.vector_configs
     if (last_auto_configs && existing === last_auto_configs) {
       scene_props.vector_configs = {}
       last_auto_configs = undefined
     } else if (existing && Object.keys(existing).length > 0) {
-      vectors_auto_populated_for = current_signature
+      vectors_auto_populated_for = signature
       return
     }
-    vectors_auto_populated_for = current_signature
+    vectors_auto_populated_for = signature
     if (vector_keys.length === 0) return
-    const configs = default_vector_configs(vector_keys)
-    scene_props.vector_configs = configs
-    // Read back the proxied reference — Svelte 5 $state wraps objects in
-    // proxies, so `scene_props.vector_configs !== configs`. Storing the proxy
-    // lets the identity check above detect unmodified auto-configs.
-    // See https://svelte.dev/e/state_proxy_equality_mismatch
+    scene_props.vector_configs = default_vector_configs(vector_keys)
+    // Read the proxied reference back so the identity check above can recognize it
     last_auto_configs = scene_props.vector_configs
     scene_props.vector_scale ??= DEFAULTS.structure.vector_scale
     scene_props.vector_color ??= DEFAULTS.structure.vector_color
   })
 
-  // Speed mode caps sphere tessellation for large structures at render time rather than
-  // rewriting the user's setting, so leaving speed mode restores their value.
-  let effective_sphere_segments = $derived(
-    performance_mode === `speed` && (structure?.sites?.length ?? 0) > 200
-      ? Math.min(scene_props.sphere_segments, 12)
-      : scene_props.sphere_segments,
-  )
-
   $effect(() => {
     colors.element = ELEMENT_COLOR_SCHEMES[color_scheme as ColorSchemeName]
   })
 
-  // Compute property-based colors for legend display
-  let property_colors = $derived(
-    get_property_colors(structure, atom_color_config, scene_props.bonding_strategy, sym_data),
-  )
-
+  // === symmetry ===
   let symmetry_run_id = 0
   let symmetry_error = $state<string>()
-  let last_symmetry_structure_ref: AnyStructure | null = null
-  // A run that lands after unmount must not write into a destroyed component's bindings
-  $effect(() => () => void (symmetry_run_id += 1))
-
-  // Trigger symmetry analysis when structure is loaded or settings change.
-  // Skip during atom drags — symmetry doesn't change from moving atoms,
-  // and WASM analysis on every drag frame causes severe frame drops.
+  let last_symmetry_structure: AnyStructure | null = null
+  // Skipped during atom drags: moving atoms does not change symmetry and WASM analysis on
+  // every drag frame drops frames badly
   $effect(() => {
-    if (dragging_atoms) return
+    if (session.dragging_atoms) return
     if (!analyze_symmetry || !structure || !(`lattice` in structure)) {
       untrack(() => {
         sym_data = null
         symmetry_error = undefined
       })
-      last_symmetry_structure_ref = null
+      last_symmetry_structure = null
       return
     }
-
     const current_structure = structure
-    const structure_changed = current_structure !== last_symmetry_structure_ref
-    if (structure_changed) {
-      untrack(() => {
-        sym_data = null
-        symmetry_error = undefined
-      })
-      last_symmetry_structure_ref = current_structure
-    } else {
-      // Keep previous symmetry data while recomputing so bound consumers
-      // (e.g. SymmetryStats inputs) do not unmount and lose focus.
-      untrack(() => (symmetry_error = undefined))
-    }
+    untrack(() => {
+      // Keep previous data while recomputing the same structure so bound consumers
+      // (SymmetryStats inputs) do not unmount and lose focus
+      if (current_structure !== last_symmetry_structure) sym_data = null
+      symmetry_error = undefined
+    })
+    last_symmetry_structure = current_structure
     const run_id = ++symmetry_run_id
-    // Destructure symmetry_settings to ensure Svelte tracks changes to symprec and algo
-    // (reading just the object reference isn't sufficient for fine-grained reactivity)
+    // Destructure so symprec/algo changes are tracked, not just the object identity
     const { symprec, algo } = symmetry_settings ?? symmetry.default_sym_settings
-    const current_settings = { symprec, algo }
-    // Skip symmetry auto-analysis in unit tests; happy-dom can't fetch WASM assets
+    // happy-dom cannot fetch WASM assets
     if (typeof process !== `undefined` && process.env?.VITEST) return
-
     symmetry
       .ensure_moyo_wasm_ready()
       .then(() =>
         run_id === symmetry_run_id
-          ? symmetry.analyze_structure_symmetry(current_structure, current_settings)
+          ? symmetry.analyze_structure_symmetry(current_structure, { symprec, algo })
           : null,
       )
       .then((data) => {
-        if (!data || run_id !== symmetry_run_id) return
-        untrack(() => (sym_data = data))
+        if (data && run_id === symmetry_run_id) untrack(() => (sym_data = data))
       })
       .catch((err) => {
         if (run_id !== symmetry_run_id) return
@@ -651,378 +416,25 @@
       })
   })
 
-  let measure_menu_open = $state(false)
-  let view_layout_menu_open = $state(false)
-  let export_pane_open = $state(false)
-  let focused = $state(false)
-
-  // Bond customization state
-  let added_bonds = $state<StructureBond[]>([])
-  let removed_bonds = $state<StructureBond[]>([])
-  let bond_order_overrides = $state<StructureBond[]>([])
-  let bond_undo_stack = $state<BondEditHistorySnapshot[]>([])
-  let bond_redo_stack = $state<BondEditHistorySnapshot[]>([])
-  // These hold object-identity tokens (structure_identity) compared with ===/!==,
-  // so they must stay raw — proxying them via $state would break identity comparisons
-  // (state_proxy_equality_mismatch) against the raw `structure` prop.
-  let bond_history_context = $state.raw<BondEditContext>()
-  let last_bond_structure_identity = $state.raw(structure)
-  let last_emitted_bond_signature = $state<string>()
-  let bond_edit_snapshot = $state.raw<BondEditSnapshot>()
-  let has_bond_edits = $derived(
-    added_bonds.length > 0 || removed_bonds.length > 0 || bond_order_overrides.length > 0,
-  )
-  const clone_bonds = (edit_bonds: StructureBond[]): StructureBond[] =>
-    edit_bonds.map((bond) => ({
-      ...bond,
-      cell_shift: bond.cell_shift && ([...bond.cell_shift] as Vec3),
-    }))
-
-  const snapshot_bond_edits = (): BondEditHistorySnapshot => ({
-    added_bonds: clone_bonds(added_bonds),
-    removed_bonds: clone_bonds(removed_bonds),
-    bond_order_overrides: clone_bonds(bond_order_overrides),
-    bond_edit_mode,
-    bond_edit_order,
-  })
-
-  function restore_bond_edit_snapshot(snapshot: BondEditHistorySnapshot) {
-    added_bonds = clone_bonds(snapshot.added_bonds)
-    removed_bonds = clone_bonds(snapshot.removed_bonds)
-    bond_order_overrides = clone_bonds(snapshot.bond_order_overrides)
-    bond_edit_mode = snapshot.bond_edit_mode
-    bond_edit_order = snapshot.bond_edit_order
-    clear_selection()
-  }
-
-  function clear_bond_history() {
-    bond_undo_stack = []
-    bond_redo_stack = []
-    bond_history_context = undefined
-  }
-
-  function push_bond_undo() {
-    if (bond_undo_stack.length >= MAX_HISTORY) {
-      bond_undo_stack.splice(0, bond_undo_stack.length - MAX_HISTORY + 1)
-    }
-    bond_history_context ??= current_bond_edit_context()
-    bond_undo_stack.push(snapshot_bond_edits())
-    bond_redo_stack = []
-  }
-
-  function undo_bond_edit() {
-    const restored = bond_undo_stack.pop()
-    if (!restored) return
-    bond_redo_stack.push(snapshot_bond_edits())
-    restore_bond_edit_snapshot(restored)
-  }
-
-  function redo_bond_edit() {
-    const restored = bond_redo_stack.pop()
-    if (!restored) return
-    bond_undo_stack.push(snapshot_bond_edits())
-    restore_bond_edit_snapshot(restored)
-  }
-
-  function clear_bond_edits() {
-    added_bonds = []
-    removed_bonds = []
-    bond_order_overrides = []
-    clear_bond_history()
-  }
-
-  function emit_bonds(next_bonds: StructureBond[] | undefined) {
-    const signature = bond_signature(next_bonds)
-    if (signature === last_emitted_bond_signature) return
-    last_emitted_bond_signature = signature
-    bonds = next_bonds
-    on_bonds_change?.(next_bonds)
-  }
-
-  const bond_signature = (edit_bonds: StructureBond[] | undefined): string =>
-    edit_bonds === undefined ? `undefined` : JSON.stringify(edit_bonds)
-
-  const current_source_bonds = (): StructureBond[] | undefined =>
-    bonds ?? structure?.properties?.bonds
-
-  const current_source_bond_signature = (): string => {
-    const raw_signature = bond_signature(current_source_bonds())
-    if (raw_signature !== last_emitted_bond_signature) return raw_signature
-    return (
-      bond_history_context?.source_bond_signature ??
-      (bond_edit_snapshot ? bond_signature(bond_edit_snapshot.bonds) : raw_signature)
-    )
-  }
-
-  const current_bond_edit_context = (): BondEditContext => ({
-    structure_identity: structure,
-    source_bond_signature: current_source_bond_signature(),
-    cell_type,
-    supercell_scaling,
-    show_image_atoms,
-  })
-
-  const bond_edit_context_changed = (
-    previous: BondEditContext,
-    current: BondEditContext,
-  ): boolean =>
-    previous.structure_identity !== current.structure_identity ||
-    previous.source_bond_signature !== current.source_bond_signature ||
-    previous.cell_type !== current.cell_type ||
-    previous.supercell_scaling !== current.supercell_scaling ||
-    previous.show_image_atoms !== current.show_image_atoms
-
-  const resolve_bond_edit_reset_bonds = (
-    snapshot: BondEditSnapshot,
-  ): StructureBond[] | undefined =>
-    snapshot.context.structure_identity === structure
-      ? snapshot.bonds
-      : structure?.properties?.bonds
-
-  $effect(() => {
-    const next_structure_identity = structure
-    untrack(() => {
-      if (
-        last_bond_structure_identity !== next_structure_identity &&
-        bond_signature(bonds) === last_emitted_bond_signature
-      ) {
-        emit_bonds(structure?.properties?.bonds)
-      }
-      last_bond_structure_identity = next_structure_identity
-    })
-  })
-
-  // A new structure, cell, supercell or source-bond set invalidates both the undo history and
-  // the edits themselves: the original bonds come back and the edit layer starts over
-  $effect(() => {
-    const context = current_bond_edit_context()
-    const [history_context, snapshot] = [bond_history_context, bond_edit_snapshot]
-    untrack(() => {
-      if (history_context && bond_edit_context_changed(history_context, context)) {
-        clear_bond_history()
-      }
-      if (snapshot && bond_edit_context_changed(snapshot.context, context)) {
-        emit_bonds(resolve_bond_edit_reset_bonds(snapshot))
-        clear_bond_edits()
-        bond_edit_snapshot = undefined
-      }
-    })
-  })
-
-  $effect(() => {
-    if (!has_bond_edits) {
-      if (bond_edit_snapshot === undefined) return
-      emit_bonds(resolve_bond_edit_reset_bonds(bond_edit_snapshot))
-      bond_edit_snapshot = undefined
-      return
-    }
-    if (bond_edit_snapshot === undefined) {
-      bond_edit_snapshot = {
-        bonds: current_source_bonds(),
-        context: current_bond_edit_context(),
-      }
-    }
-    const edited_bonds = merge_bond_edits(
-      bond_edit_snapshot.bonds ?? [],
-      added_bonds,
-      removed_bonds,
-      bond_order_overrides,
-    )
-    emit_bonds(edited_bonds)
-  })
-
-  // Elements currently anchoring polyhedra (written by StructureScene, read by
-  // StructureControls so per-element toggles reflect actual render state)
-  let polyhedra_rendered_elements = $state<string[]>([])
-
-  // === Edit-atoms mode state ===
-  let dragging_atoms = $state(false)
-  // History entries snapshot the bindable `bonds` prop alongside the structure:
-  // atom deletion remaps `bonds` to the shifted site indices, so restoring the
-  // structure alone would leave explicit bonds pointing at wrong sites.
-  type EditSnapshot = { structure: AnyStructure; bonds: StructureBond[] | undefined }
-  // $state.raw: stacks hold full structure snapshots — deep-proxying them would make
-  // every restored structure (and all downstream site reads) go through proxy traps.
-  // Mutations happen via reassignment so .length stays reactive in the template.
-  let undo_stack = $state.raw<EditSnapshot[]>([])
-  let redo_stack = $state.raw<EditSnapshot[]>([])
-  const MAX_HISTORY = 20
-  // Flag set before internal edits (undo/redo/delete/add/move) to distinguish
-  // them from external structure changes (file load, trajectory step, etc.)
-  let is_internal_edit = false
-  // Claim URL ownership before regular effects so internal edits aren't treated as caller-owned.
-  $effect.pre(() => {
-    void structure
-    const { loaded_url } = data_url_loader
-    if (is_internal_edit && loaded_url && loaded_url === data_url && structure) {
-      data_url_loader.claim(structure)
-    }
-  })
-
-  // Add-atom sub-mode state (bound to StructureScene)
-  let add_atom_mode = $state(false)
-  let add_element = $state<ElementSymbol>(`C`)
-  const has_selection = () => selected_sites.length > 0 || measured_sites.length > 0
-  let is_measure_selection_mode = $derived(
-    measure_mode === `distance` || measure_mode === `angle` || measure_mode === `dihedral`,
-  )
-  // Only distance refuses further picks at its cap; angle/dihedral roll their fixed-arity
-  // window instead, so badging them as "full" the moment a measurement completes is noise.
-  let show_measure_selection_limit = $derived(
-    measure_mode === `distance` && measured_sites.length >= MAX_SELECTED_SITES,
-  )
-  let show_selection_reset = $derived(
-    has_bond_edits ||
-      (is_measure_selection_mode && measured_sites.length > 0) ||
-      (measure_mode === `edit-atoms` && selected_sites.length > 0),
-  )
-  let atom_legend_selected_sites = $derived(
-    measure_mode === `edit-atoms` ? selected_sites : [],
-  )
-  let change_element_mode = $state(false)
-  let change_element_value = $state(``)
-  // Ephemeral toast message for edit operations
-  let toast_msg = $state<string | null>(null)
-  let toast_timer: ReturnType<typeof setTimeout> | undefined
-  function show_toast(msg: string, duration_ms = 2000) {
-    clearTimeout(toast_timer)
-    toast_msg = msg
-    toast_timer = setTimeout(() => (toast_msg = null), duration_ms)
-  }
-  $effect(() => () => clearTimeout(toast_timer))
-
-  // Normalize and validate element symbol (e.g. "fe" → "Fe", "Xx" → null)
-  function normalize_element(input: string): ElementSymbol | null {
-    const normalized = input.charAt(0).toUpperCase() + input.slice(1).toLowerCase()
-    return coerce_elem_symbol(normalized) ?? null
-  }
-
-  function clear_selection() {
-    selected_sites = []
-    measured_sites = []
-    dragging_atoms = false
-  }
-
-  const snapshot_edit_state = (current: AnyStructure): EditSnapshot => ({
-    structure: $state.snapshot(current) as AnyStructure,
-    bonds: bonds && ($state.snapshot(bonds) as StructureBond[]),
-  })
-
-  function push_undo() {
-    if (!structure) return
-    ;[undo_stack, redo_stack] = push_edit(
-      [undo_stack, redo_stack],
-      snapshot_edit_state(structure),
-      MAX_HISTORY,
-    )
-  }
-
-  // Shared undo/redo: restore the top of that direction's stack, pushing the
-  // current state onto the opposite one ($state.raw stacks update by reassignment)
-  function apply_history(direction: `undo` | `redo`) {
-    // Check the stack before snapshotting: $state.snapshot deep-clones the structure
-    if (!structure || (direction === `undo` ? undo_stack : redo_stack).length === 0) return
-    const result = step_history(
-      [undo_stack, redo_stack],
-      direction,
-      snapshot_edit_state(structure),
-    )
-    if (!result) return
-    is_internal_edit = true
-    ;[undo_stack, redo_stack] = result.stacks
-    structure = result.restored.structure
-    bonds = result.restored.bonds
-    clear_selection()
-  }
-
-  const undo = () => apply_history(`undo`)
-  const redo = () => apply_history(`redo`)
-
-  // Clear undo/redo stacks when structure changes externally (file load, etc.)
-  // Internal edits set is_internal_edit=true before modifying structure.
-  // This $effect runs after microtask, so the flag is still set from the edit.
-  $effect(() => {
-    // Track structure to re-run when it changes
-    void structure
-    if (is_internal_edit) {
-      is_internal_edit = false
-      return
-    }
-    // External change — clear history and stale edit-atoms state
-    untrack(() => {
-      if (undo_stack.length > 0 || redo_stack.length > 0) {
-        undo_stack = []
-        redo_stack = []
-      }
-      if (highlighted_sites.length > 0) highlighted_sites = []
-      if (measure_mode === `edit-atoms`) {
-        if (has_selection()) clear_selection()
-        if (site_radius_overrides?.size > 0) site_radius_overrides.clear()
-      }
-    })
-  })
-
-  // Clear selection when switching measure/edit mode so stale state doesn't carry over
-  track_change(
-    () => measure_mode,
-    () => {
-      if (has_selection()) clear_selection()
-      if (measure_mode === `edit-bonds`) bond_edit_mode = `add`
-    },
-  )
-
-  $effect(() => {
-    void bond_edit_mode
-    untrack(() => {
-      if (measure_mode === `edit-bonds` && has_selection()) clear_selection()
-    })
-  })
-
-  // Auto-bake cell type transform and clear stale state when entering edit-atoms mode
-  $effect(() => {
-    if (measure_mode !== `edit-atoms`) return
-    untrack(() => {
-      // Clear bond edits from edit-bonds mode to avoid stale state
-      if (has_bond_edits) clear_bond_edits()
-      else clear_bond_history()
-      if (cell_type !== `original` && cell_transformed_structure && structure) {
-        // Bake the transformed cell: push original to undo, replace structure
-        is_internal_edit = true
-        push_undo()
-        structure = $state.snapshot(cell_transformed_structure) as AnyStructure
-        cell_type = `original`
-      }
-    })
-  })
-
+  // === layout ===
   let controls_config = $derived(normalize_show_controls(show_controls))
-  let multi_view_gap_px = $derived(finite_nonnegative(multi_view_gap, DEFAULT_MULTI_VIEW_GAP))
   let multi_view_required_width = $derived(
-    MULTI_VIEW_COLUMN_COUNT *
-      finite_nonnegative(multi_view_min_pane_width, DEFAULT_MULTI_VIEW_MIN_PANE_WIDTH) +
-      (MULTI_VIEW_COLUMN_COUNT - 1) * multi_view_gap_px,
+    MULTI_VIEW_COLUMNS * MULTI_VIEW_MIN_PANE.width +
+      (MULTI_VIEW_COLUMNS - 1) * MULTI_VIEW_MIN_PANE.gap,
   )
   let multi_view_required_height = $derived.by(() => {
-    const row_count = Math.ceil(views.length / MULTI_VIEW_COLUMN_COUNT)
-    return (
-      row_count *
-        finite_nonnegative(multi_view_min_pane_height, DEFAULT_MULTI_VIEW_MIN_PANE_HEIGHT) +
-      Math.max(0, row_count - 1) * multi_view_gap_px
-    )
+    const rows = Math.ceil(views.length / MULTI_VIEW_COLUMNS)
+    return rows * MULTI_VIEW_MIN_PANE.height + Math.max(0, rows - 1) * MULTI_VIEW_MIN_PANE.gap
   })
   let multi_view_available = $derived(
     views.length > 1 &&
       width >= multi_view_required_width &&
       height >= multi_view_required_height,
   )
-  // Preserve the caller's multi_view preference while temporarily collapsing small viewers.
+  // The caller's preference survives while a small viewer temporarily collapses the grid
   let is_multi_view_active = $derived(
     display_mode === `structure` && multi_view && multi_view_available,
   )
-  // multi_view_active is output-only: parent writes are overwritten with the render state
-  $effect(() => {
-    if (multi_view_active !== is_multi_view_active) multi_view_active = is_multi_view_active
-  })
   let slice_layout_available = $derived(
     Boolean(volumetric_data?.length || display_mode === `slice`) &&
       controls_config.visible(`view-mode`),
@@ -1049,248 +461,62 @@
           )} px. Enlarge the viewer or use fullscreen.`
         : undefined,
   )
+  let hovered = $state(false)
+  let focused = $state(false)
   let viewer_active = $derived(hovered || focused)
-  // Keep the gizmo mounted whenever enabled — toggling via `{#if gizmo}` on hover remounts
-  // OrbitControls/Gizmo and resets camera rotation. Reveal it with the gizmo's own `visible`
-  // flag instead, since it draws inside the canvas where CSS can't reach it.
+  let view_layout_menu_open = $state(false)
+  const is_pane_open = (pane: StructurePane): boolean => active_pane === pane
+  const set_pane_open = (pane: StructurePane, open: boolean): void => {
+    if (open) active_pane = pane
+    else if (active_pane === pane) active_pane = null
+  }
+  function select_structure_layout(mode: StructureLayoutMode): void {
+    if (mode === `slice`) display_mode = `slice`
+    else {
+      display_mode = `structure`
+      multi_view = mode === `multi`
+    }
+    view_layout_menu_open = false
+  }
+
+  // === scene inputs ===
+  // Speed mode caps tessellation at render time rather than rewriting the user's setting
+  let effective_sphere_segments = $derived(
+    performance_mode === `speed` && (structure?.sites?.length ?? 0) > 200
+      ? Math.min(scene_props.sphere_segments, 12)
+      : scene_props.sphere_segments,
+  )
+  // Keep the gizmo mounted whenever enabled (toggling remounts OrbitControls and resets the
+  // camera); reveal it on hover/focus through its own `visible` flag
   let scene_gizmo_props = $derived.by(() => {
     const { gizmo } = scene_props
     if (!gizmo) return gizmo
     const overrides = typeof gizmo === `object` ? gizmo : {}
-    // `??` not `||`, so an explicit `visible: false` is honored rather than treated as unset
+    // `??` so an explicit `visible: false` is honored
     return { ...overrides, visible: overrides.visible ?? viewer_active }
   })
   let active_scene_sites = $derived([
-    ...new SvelteSet([...(scene_props.active_sites ?? []), ...highlighted_sites]),
+    ...new SvelteSet([...(scene_props.active_sites ?? []), ...session.highlighted_sites]),
   ])
-
-  // Normalize periodic fractional coordinates and recompute Cartesian positions.
-  // Non-periodic axes retain out-of-cell coordinates (e.g. unwrapped trajectories).
-  let normalized_structure = $derived(structure && normalize_fractional_coords(structure))
-
-  let structure_with_bonds = $derived.by(() => {
-    if (!normalized_structure || bonds === undefined) return normalized_structure
-    return {
-      ...normalized_structure,
-      properties: { ...normalized_structure.properties, bonds },
-    } as AnyStructure
-  })
-
-  // Apply cell type transformation (original, conventional, or primitive)
-  // This must happen BEFORE supercell transformation
-  let cell_transformed_structure = $derived.by(() => {
-    // Cell type transformation requires symmetry data
-    if (
-      !structure_with_bonds ||
-      !(`lattice` in structure_with_bonds) ||
-      cell_type === `original` ||
-      !sym_data
-    ) {
-      return structure_with_bonds
-    }
-    try {
-      return transform_cell(structure_with_bonds as Crystal, cell_type, sym_data)
-    } catch (error) {
-      console.error(`Failed to transform cell to ${cell_type}:`, error)
-      return structure_with_bonds
-    }
-  })
-
-  // Create supercell if needed (uses cell_transformed_structure as base).
-  // $state.raw: supercells can hold thousands of sites — deep-proxying them makes
-  // every downstream read (bonding, PBC images, instancing) traverse proxy traps,
-  // measured ~15x slower for compute_bonds on a 704-site supercell.
-  let supercell_structure = $state.raw(structure)
-  let supercell_loading = $state(false)
-  let supercell_applied = $state(false)
-  let supercell_factors = $derived.by((): Vec3 | undefined => {
-    try {
-      return parse_supercell_scaling(supercell_scaling)
-    } catch {
-      return undefined
-    }
-  })
-  let has_scaled_cell = $derived(supercell_factors?.some((factor) => factor !== 1) ?? false)
-  let has_supercell = $derived(apply_supercell_scaling && has_scaled_cell)
-  let scaled_cell_displayed = $derived(
-    has_scaled_cell && (!apply_supercell_scaling || supercell_applied),
+  let property_colors = $derived(
+    get_property_colors(structure, atom_color_config, scene_props.bonding_strategy, sym_data),
   )
-  let bond_edits_enabled = $derived(
-    cell_type === `original` && !scaled_cell_displayed && !supercell_loading,
-  )
-
-  $effect(() => {
-    if (measure_mode !== `edit-bonds` || bond_edits_enabled) return
-    untrack(() => {
-      clear_selection()
-      clear_bond_edits()
-      measure_mode = `distance`
-      show_toast(`Bond editing is only available for the original 1x1x1 cell`)
-    })
-  })
-
-  // Supercell tiling factors for isosurface geometry (tiling itself happens in
-  // the Isosurface component so color sampling can use the untiled full-res
-  // volumes). Gate on !supercell_loading so tiled surfaces and the supercell
-  // structure update in the same frame (large supercells defer via setTimeout).
-  let volume_scaling = $derived.by((): Vec3 => {
-    if (!has_supercell || !supercell_applied || supercell_loading) return [1, 1, 1]
-    return supercell_factors ?? [1, 1, 1]
-  })
-
-  let supercell_timeout: ReturnType<typeof setTimeout> | undefined
-  $effect(() => () => clearTimeout(supercell_timeout))
-  // Compute the supercell, falling back to the unscaled structure on error
-  const make_supercell_safe = (base: Crystal): Crystal => {
-    try {
-      const next_structure = make_supercell(base, supercell_scaling)
-      supercell_applied = true
-      return next_structure
-    } catch (error) {
-      console.error(`Failed to create supercell:`, error)
-      show_toast(`Failed to create supercell: ${to_error(error).message}`)
-      return base
-    }
-  }
-  $effect(() => {
-    const base_structure = cell_transformed_structure
-    clearTimeout(supercell_timeout)
-    supercell_applied = false
-    if (!base_structure || !(`lattice` in base_structure) || !has_supercell) {
-      supercell_structure = base_structure
-      supercell_loading = false
-      return
-    }
-    // For large supercells, show loading state and use async generation
-    // lenient parse just for a size estimate (invalid factors count as 1)
-    const scaling_mult = supercell_scaling
-      .split(/[x×]/)
-      .reduce((product, factor) => product * (Number(factor) || 1), 1)
-    const estimated_sites = (base_structure.sites?.length ?? 0) * scaling_mult
-
-    // Show spinner for supercells with >1000 estimated sites or scaling >8
-    if (estimated_sites > 1000 || scaling_mult > 8) {
-      supercell_loading = true
-      // Use setTimeout to allow UI to update before heavy computation
-      supercell_timeout = setTimeout(() => {
-        supercell_structure = make_supercell_safe(base_structure as Crystal)
-        supercell_loading = false
-      }, 10)
-      return
-    }
-    supercell_structure = make_supercell_safe(base_structure as Crystal)
-    supercell_loading = false
-  })
-
-  // Clear selections, site overrides, and stale camera target when transformations
-  // change site indices
-  track_change(
-    () => [supercell_scaling, show_image_atoms, effective_structure_series_key, cell_type],
-    () => {
-      // In edit-atoms mode, structure changes are intentional user edits
-      // (move/add/delete) — preserve the selection so TransformControls stays active
-      if (measure_mode === `edit-atoms`) return
-      if (has_selection()) clear_selection()
-      // Clear site radius overrides since site indices are no longer valid
-      if (site_radius_overrides?.size > 0) site_radius_overrides.clear()
-      // Clear stale camera target so orbit controls re-center on the new cell
-      scene_props.camera_target = undefined
-    },
-  )
-
-  // A stable series key preserves the camera across trajectory frames, but site-indexed UI
-  // state is only valid while atom count, order, and species identity remain unchanged.
-  track_change(
-    () => topology_signature,
-    () => {
-      if (has_selection()) clear_selection()
-      if (highlighted_sites.length > 0) highlighted_sites = []
-      hovered_site_idx = null
-      if (site_radius_overrides?.size > 0) site_radius_overrides.clear()
-    },
-  )
-
-  // Element-map + PBC image atoms. Skipped during drags (doubled site count drops frames);
-  // images return on release.
-  // The render path reads this derived, NOT the bindable displayed_structure prop:
-  // if a consumer binds displayed_structure to a deep $state, reading the prop
-  // back would re-proxy every site and slow all scene computations ~10x.
-  let internal_displayed_structure = $derived.by((): AnyStructure | undefined => {
-    let struct = supercell_structure
-    const mapping = element_mapping
-    if (struct && mapping && Object.keys(mapping).length > 0) {
-      struct = {
-        ...struct,
-        sites: struct.sites.map((site) => ({
-          ...site,
-          species: site.species.map((sp) => ({
-            ...sp,
-            element: mapping[sp.element as ElementSymbol] ?? sp.element,
-          })),
-          label: mapping[site.label as ElementSymbol] ?? site.label,
-        })),
-      }
-    }
-    return !dragging_atoms &&
-      show_image_atoms &&
-      struct &&
-      `lattice` in struct &&
-      struct.lattice
-      ? get_pbc_image_sites(struct)
-      : struct
-  })
-  $effect(() => {
-    displayed_structure = internal_displayed_structure
-  })
-
-  // scene + camera of the primary pane, bound out for the export pane. All other camera
-  // handling (move tracking, reset, re-framing) lives in StructureViewport.
+  // Primary-pane outputs: scene/camera for export, readouts for the controls pane
   let scene = $state<Scene | undefined>(undefined)
   let camera = $state<Camera | undefined>(undefined)
   let slice_canvas = $state<HTMLCanvasElement | undefined>(undefined)
-
-  // Multi-side view state: index of the pane the pointer is over (gets edit interactions),
-  // a token bumped to reset every pane, and the set of panes whose camera has moved (so
-  // the reset button stays visible until every moved pane is reset). Pane 0 = primary.
-  let active_pane_idx = $state(0)
-  let reset_token = $state(0)
-  // SvelteSet is already reactive; do NOT wrap in $state (double-proxying breaks it)
-  const moved_panes = new SvelteSet<number>()
-  let any_camera_moved = $derived(moved_panes.size > 0)
-  // Camera pose only — Camera section / plain `r` / double-click (not canvas chrome).
+  let displacement_summary = $state<DisplacementSummary | null>(null)
+  let polyhedra_rendered_elements = $state<string[]>([])
+  let trajectory_lines_result = $state<TrajectoryLinesStats | null>(null)
   let reset_camera_available = $derived(
     display_mode === `structure` &&
-      any_camera_moved &&
+      session.any_camera_moved &&
       controls_config.visible(`reset-camera`),
   )
-
-  // Side-pane camera state is irrelevant whenever responsive sizing collapses to one pane.
-  $effect(() => {
-    if (is_multi_view_active) return
-    untrack(() => {
-      active_pane_idx = 0
-      for (const pane_idx of moved_panes) {
-        if (pane_idx !== 0) moved_panes.delete(pane_idx)
-      }
-    })
-  })
-
-  // Inputs shared by every StructureViewport (single + all multi-view panes). Camera,
-  // selection bindings, and per-pane chrome differ and stay on each snippet below.
-  // The primary pane's StructureScene owns the reference comparison and binds its readout
-  // back here; recomputing it alongside would risk the numbers and the arrows disagreeing.
-  let displacement_summary = $state<DisplacementSummary | null>(null)
-  // One-shot zone-axis flight, written by StructureControls and consumed by the primary
-  // pane's scene. Deliberately NOT part of scene_props, which every pane receives.
-  let fly_to_request = $state<Vec3 | undefined>(undefined)
-  $effect(() => {
-    displacement_rmsd = displacement_summary?.rmsd
-  })
-
+  // Inputs shared by every StructureViewport; camera bindings and chrome differ per pane
   let shared_viewport_props = $derived({
-    structure: internal_displayed_structure,
-    view_reset_key: effective_structure_series_key,
-    base_structure: cell_transformed_structure,
+    session,
+    view_reset_key: structure_series_key ?? structure,
     reference_structure,
     scene_props: {
       ...scene_props,
@@ -1300,369 +526,149 @@
     gizmo: scene_gizmo_props,
     lattice_props,
     volumetric_data,
-    volume_scaling,
     active_volume_idx,
     isosurface_settings,
-    bond_edits_enabled,
-    bond_edit_order,
-    measure_mode,
     atom_color_config,
     sym_data,
     active_sites: active_scene_sites,
-    on_sites_moved: handle_sites_moved,
-    on_operation_start: push_undo,
-    on_bond_edit_start: push_bond_undo,
-    on_add_atom: handle_add_atom,
   })
 
-  // Mutual exclusion: opening one pane closes the others
+  // === outputs and clamps ===
   $effect(() => {
-    if (info_pane_open) untrack(() => ([controls_open, export_pane_open] = [false, false]))
-  })
-  $effect(() => {
-    if (controls_open) untrack(() => ([info_pane_open, export_pane_open] = [false, false]))
-  })
-  $effect(() => {
-    if (export_pane_open) untrack(() => ([info_pane_open, controls_open] = [false, false]))
-  })
-
-  // Reset viewing state when the structure series changes. Coordinate-only updates keep a
-  // stable series key, while an explicitly supplied camera remains authoritative.
-  let previous_structure_series_key: unknown
-  let is_initial_structure_series = true
-  $effect(() => {
-    const next_series_key = effective_structure_series_key
-    const series_changed =
-      !is_initial_structure_series && next_series_key !== previous_structure_series_key
-    previous_structure_series_key = next_series_key
-    is_initial_structure_series = false
-    // untrack: clearing must not make pane moves a dependency.
-    if (next_series_key !== undefined) untrack(() => moved_panes.clear())
-    if (
-      series_changed &&
-      scene_props_in?.camera_target === undefined &&
-      !scene_props_in?.camera_position?.some((coordinate) => coordinate !== 0)
+    displayed_structure = session.displayed_structure
+    displacement_rmsd = displacement_summary?.rmsd
+    // Stale externally-controlled indices must not blank either volumetric view
+    const clamped_idx = normalize_active_volume_idx(
+      active_volume_idx,
+      volumetric_data?.length ?? 0,
     )
-      untrack(clear_camera_state)
+    if (clamped_idx !== active_volume_idx) active_volume_idx = clamped_idx
+    if (!is_multi_view_active) session.collapse_to_primary_pane()
   })
 
-  // Clear stale camera state so StructureScene auto-positions for the new structure.
-  function clear_camera_state() {
-    // Reset to a fresh [0,0,0] so the primary viewport re-frames the new structure.
-    // Side panes reset their local camera state in StructureViewport's structure effect.
-    scene_props.camera_target = undefined
-    scene_props.camera_position = [0, 0, 0]
-  }
-
-  // Reset every pane's camera (each StructureViewport resets on a reset_token bump and,
-  // for the primary, emits on_camera_reset).
-  function reset_all_cameras() {
-    reset_token += 1
-    moved_panes.clear()
-  }
-
-  const emit_file_load_event = (
-    loaded_structure: AnyStructure,
-    filename: string,
-    content: string | ArrayBuffer,
-    metadata?: io.FileLoadMeta,
-  ) =>
-    on_file_load?.({
-      structure: loaded_structure,
-      filename,
-      ...metadata,
-      file_size: io.content_byte_size(content),
-      total_atoms: loaded_structure.sites?.length || 0,
+  // === camera context ===
+  // A new series (not coordinate-only frames) re-frames the camera unless the caller supplied
+  // an explicit pose; supercell/image/cell changes re-center the orbit target on the new cell.
+  let previous_series_key: unknown = untrack(() => structure_series_key ?? structure)
+  let previous_transform = untrack(
+    () => `${supercell_scaling}\0${show_image_atoms}\0${cell_type}`,
+  )
+  $effect.pre(() => {
+    const series_key = structure_series_key ?? structure
+    const transform = `${supercell_scaling}\0${show_image_atoms}\0${cell_type}`
+    const series_changed = series_key !== previous_series_key
+    const transform_changed = transform !== previous_transform
+    previous_series_key = series_key
+    previous_transform = transform
+    if (!series_changed && !transform_changed) return
+    untrack(() => {
+      // In edit-atoms mode structure changes are the user's own edits: keep the orbit target
+      if (measure_mode !== `edit-atoms`) scene_props.camera_target = undefined
+      if (!series_changed) return
+      session.clear_moved_panes()
+      const explicit_camera =
+        scene_props_in?.camera_target !== undefined ||
+        scene_props_in?.camera_position?.some((coordinate) => coordinate !== 0)
+      if (explicit_camera) return
+      scene_props.camera_target = undefined
+      scene_props.camera_position = [0, 0, 0]
     })
-
-  // The currently loaded structure's lattice matrix (undefined for molecules/none)
-  const current_lattice_matrix = () =>
-    structure && `lattice` in structure ? structure.lattice.matrix : undefined
-  const shares_current_lattice = (matrix: Parameters<typeof lattices_match>[1]): boolean =>
-    lattices_match(current_lattice_matrix(), matrix)
-
-  // Try to parse content as a volumetric file, setting both structure and volumetric data.
-  // Delegates format detection entirely to parse_volumetric_file (filename + content sniffing).
-  // When the file describes the same cell as already-loaded volumes, its volumes are
-  // APPENDED (or replaced in place on re-import of the same source file) so multiple
-  // fields — e.g. density + ESP — coexist and can cross-color each other's isosurfaces.
-  // A file with a different lattice replaces the current structure and volumes.
-  // Returns the parsed structure on success, or null if the file isn't a volumetric format.
-  function try_parse_volumetric(
-    text_content: string,
-    filename: string,
-    source_filename = filename,
-  ): AnyStructure | null {
-    const vol_result = parse_volumetric_file(text_content, filename)
-    if (!vol_result) return null
-
-    const incoming = label_file_volumes(vol_result.volumes, filename, source_filename)
-    const same_cell = shares_current_lattice(vol_result.structure.lattice?.matrix)
-    const added_toast = (count: number) =>
-      `Added ${count} volume${count > 1 ? `s` : ``} from ${filename}`
-
-    if (same_cell && structure) {
-      // Same cell: keep the structure and camera, only update volumes
-      if (volumetric_data?.length) {
-        // Materialize the implicit single surface into explicit layers so existing
-        // surfaces survive the transition to multi-volume mode
-        const merged = merge_imported_volumes(
-          volumetric_data,
-          materialize_layers(isosurface_settings, active_volume_idx),
-          incoming,
-          active_volume_idx,
-        )
-        volumetric_data = merged.volumes
-        isosurface_settings = { ...isosurface_settings, layers: merged.layers }
-        active_volume_idx = merged.first_touched_idx
-        show_toast(
-          merged.n_added > 0
-            ? added_toast(merged.n_added)
-            : `Reloaded volumes from ${filename}`,
-        )
-      } else if (incoming[0]) {
-        // First volumetric file for this structure
-        volumetric_data = incoming
-        isosurface_settings = auto_isosurface_settings(incoming[0].data_range)
-        active_volume_idx = 0
-        show_toast(added_toast(incoming.length))
-      }
-      return structure
-    }
-
-    // Replace: new system (or nothing loaded yet)
-    clear_camera_state()
-    // parse_volumetric_file extracts structure from file header;
-    // parsers set pbc so the lattice conforms to Crystal's LatticeType
-    structure = vol_result.structure as AnyStructure
-    volumetric_data = incoming
-    // Auto-compute reasonable isosurface settings from data range
-    const vol = incoming[0]
-    if (vol) {
-      isosurface_settings = auto_isosurface_settings(vol.data_range)
-      active_volume_idx = 0
-    }
-    return structure
-  }
-
-  // Parse file content, trying volumetric format first then falling back to plain structure.
-  // Returns the parsed structure on success, throws on failure.
-  function parse_file_content(
-    text_content: string,
-    filename: string,
-    source_filename?: string,
-  ): AnyStructure {
-    const vol_struct = try_parse_volumetric(text_content, filename, source_filename)
-    if (vol_struct) return vol_struct
-    const parsed = parse_structure_file(text_content, filename)
-    if (!parsed) throw new Error(`Failed to parse structure from ${filename}`)
-    // Keep loaded volumes and camera when the new structure describes the same
-    // cell (e.g. a mixed batch drop of CHGCAR + POSCAR, in either order);
-    // clear both for a genuinely new system
-    const same_cell = shares_current_lattice(
-      `lattice` in parsed ? parsed.lattice?.matrix : undefined,
-    )
-    if (!same_cell) {
-      clear_camera_state()
-      volumetric_data = []
-    }
-    structure = parsed
-    return parsed
-  }
-
-  function parse_and_emit_file(
-    content: string | ArrayBuffer,
-    filename: string,
-    metadata?: io.FileLoadMeta,
-  ): void {
-    const parsed = parse_file_content(io.as_text(content), filename, metadata?.source_filename)
-    emit_file_load_event(parsed, filename, content, metadata)
-  }
-
-  const file_drop_zone = io.file_drop_zone({
-    allow: () => allow_file_drop,
-    // Parse errors propagate so multi-file batches aggregate all failures into
-    // one message instead of the last error overwriting earlier ones
-    on_drop: (content, filename, metadata) => {
-      if (on_file_drop) return on_file_drop(content, filename, metadata)
-      parse_and_emit_file(content, filename, metadata)
-    },
-    on_error: (msg) => {
-      error_msg = msg
-      on_error?.({ error_msg: msg })
-    },
-    set_loading: (val) => {
-      loading = val
-      if (val) error_msg = undefined
-    },
-    on_dragover: (over) => (dragover = over),
   })
 
-  // Handle keyboard shortcuts. Returns true if the key was handled, so the caller
-  // (handle_and_prevent / forward_window_keydown) can suppress the browser default.
+  $effect(() => () => {
+    clearTimeout(toast_timer)
+    symmetry_run_id += 1 // a run landing after unmount must not write into dead bindings
+  })
+
+  // === keyboard ===
+  // Returns true when the key was handled so the caller can suppress the browser default
   function handle_keydown(event: KeyboardEvent): boolean {
-    // Don't handle shortcuts if user is typing in an input field
     const target = event.target
     const is_input_focused =
       target instanceof HTMLElement &&
       ([`INPUT`, `TEXTAREA`, `SELECT`].includes(target.tagName) || target.isContentEditable)
-
-    // Allow Escape to cancel add-atom mode even when the element input is focused
-    if (event.key === `Escape` && measure_mode === `edit-atoms` && add_atom_mode) {
-      add_atom_mode = false
+    // Escape leaves add-atom mode even from its element input
+    if (event.key === `Escape` && measure_mode === `edit-atoms` && session.add_atom_mode) {
+      session.add_atom_mode = false
       return true
     }
-
     if (is_input_focused) return false
     const key = event.key.toLowerCase()
     const has_modifier = event.ctrlKey || event.metaKey
     const plain = !has_modifier && !event.altKey
+    const is_undo = has_modifier && key === `z` && !event.shiftKey
+    const is_redo = has_modifier && (key === `y` || (key === `z` && event.shiftKey))
 
     if (measure_mode === `edit-bonds`) {
-      if (has_modifier) {
-        if (key === `z` && !event.shiftKey) {
-          if (bond_undo_stack.length === 0) return false
-          undo_bond_edit()
-          show_toast(`Undo bond edit (${bond_undo_stack.length} left)`)
-          return true
-        } else if (key === `y` || (key === `z` && event.shiftKey)) {
-          if (bond_redo_stack.length === 0) return false
-          redo_bond_edit()
-          show_toast(`Redo bond edit (${bond_redo_stack.length} left)`)
-          return true
-        }
-      }
-      if (key === `a` && plain) {
-        bond_edit_mode = `add`
+      if (is_undo || is_redo) {
+        const stepped = is_undo ? session.undo_bond_edit() : session.redo_bond_edit()
+        if (!stepped) return false
+        const left = is_undo
+          ? session.bond_history.undo_stack.length
+          : session.bond_history.redo_stack.length
+        show_toast(`${is_undo ? `Undo` : `Redo`} bond edit (${left} left)`)
         return true
       }
-      if (key === `d` && plain) {
-        bond_edit_mode = `delete`
+      if (plain && (key === `a` || key === `d`)) {
+        bond_edit_mode = key === `a` ? `add` : `delete`
         return true
       }
       if (event.key === `Escape` && selected_sites.length > 0) {
-        clear_selection()
+        session.clear_selection()
         return true
       }
     }
-
-    // Edit-atoms mode shortcuts (including undo/redo)
     if (measure_mode === `edit-atoms`) {
-      // Undo/redo shortcuts (Ctrl/Cmd + Z/Y) — only active in edit-atoms mode
-      if (has_modifier) {
-        if (key === `z` && !event.shiftKey) {
-          if (undo_stack.length === 0) return false
-          undo()
-          show_toast(`Undo (${undo_stack.length} left)`)
-          return true
-        } else if (key === `y` || (key === `z` && event.shiftKey)) {
-          if (redo_stack.length === 0) return false
-          redo()
-          show_toast(`Redo (${redo_stack.length} left)`)
-          return true
-        }
-      }
-
-      if (event.key === `Delete` || event.key === `Backspace`) {
-        // Delete selected atoms
-        if (selected_sites.length === 0 || !structure?.sites) return false
-        is_internal_edit = true
-        push_undo()
-        const to_delete = scene_to_structure_indices(selected_sites, true)
-        const n_deleted = to_delete.size
-        clear_selection()
-        // Remap explicit bond metadata so surviving bonds track shifted site indices.
-        // structure_with_bonds prefers the bindable `bonds` prop, so remap that too.
-        if (bonds !== undefined) bonds = remap_bonds_after_deletion(bonds, to_delete)
-        const old_bonds = structure.properties?.bonds
-        structure = {
-          ...structure,
-          sites: structure.sites.filter((_, idx) => !to_delete.has(idx)),
-          ...(old_bonds && {
-            properties: {
-              ...structure.properties,
-              bonds: remap_bonds_after_deletion(old_bonds, to_delete),
-            },
-          }),
-        }
-        // Clear per-site overrides since indices shifted after deletion
-        if (site_radius_overrides?.size > 0) site_radius_overrides.clear()
-        clear_bond_edits()
-        show_toast(`Deleted ${n_deleted} site${n_deleted > 1 ? `s` : ``}`)
+      if (is_undo || is_redo) {
+        const stepped = is_undo ? session.undo() : session.redo()
+        if (!stepped) return false
+        const left = is_undo
+          ? session.history.undo_stack.length
+          : session.history.redo_stack.length
+        show_toast(`${is_undo ? `Undo` : `Redo`} (${left} left)`)
         return true
       }
-
+      if (event.key === `Delete` || event.key === `Backspace`) return session.delete_selected()
       if (key === `a` && plain) {
-        // Enter add-atom sub-mode (plain 'a' only, not Ctrl+A/Cmd+A/Alt+A)
-        add_atom_mode = !add_atom_mode
+        session.add_atom_mode = !session.add_atom_mode
         return true
       }
-      // Change element of selected atoms
       if (key === `e` && plain && selected_sites.length > 0) {
-        change_element_mode = !change_element_mode
+        session.change_element_mode = !session.change_element_mode
         return true
       }
-      // Duplicate selected atoms at a small offset
-      if (key === `d` && has_modifier && selected_sites.length > 0 && structure?.sites) {
-        is_internal_edit = true
-        push_undo()
-        const orig_indices = scene_to_structure_indices(selected_sites)
-        const cart_to_frac = get_cart_to_frac()
-        const new_sites = structure.sites
-          .filter((_, idx) => orig_indices.has(idx))
-          .map((site) => {
-            const new_xyz: Vec3 = [site.xyz[0] + 0.5, site.xyz[1] + 0.5, site.xyz[2] + 0.5]
-            return {
-              ...site,
-              xyz: new_xyz,
-              abc: cart_to_frac?.(new_xyz) ?? new_xyz,
-              properties: { ...site.properties },
-            }
-          })
-        const base_idx = structure.sites.length
-        structure = {
-          ...structure,
-          sites: [...structure.sites, ...new_sites],
-        }
-        // Select the newly duplicated atoms
-        selected_sites = new_sites.map((_, idx) => base_idx + idx)
-        measured_sites = [...selected_sites]
-        show_toast(`Duplicated ${new_sites.length} site${new_sites.length > 1 ? `s` : ``}`)
-        return true
-      }
-
-      // add_atom_mode Escape is already handled above (before is_input_focused guard)
+      if (key === `d` && has_modifier) return session.duplicate_selected()
       if (event.key === `Escape`) {
-        if (change_element_mode) {
-          change_element_mode = false
+        if (session.change_element_mode) {
+          session.change_element_mode = false
           return true
         }
         if (selected_sites.length > 0) {
-          clear_selection()
+          session.clear_selection()
           return true
         }
       }
     }
-
-    // Plain `r` (Cmd/Ctrl+R is browser reload; Shift+R left free).
+    // Plain `r` (Cmd/Ctrl+R is browser reload; Shift+R left free)
     if (key === `r` && plain && !event.shiftKey && reset_camera_available) {
-      reset_all_cameras()
+      session.reset_all_cameras()
       return true
     }
-
-    // Interface shortcuts (require Ctrl/Cmd modifier to avoid accidental triggers)
+    // Interface shortcuts need Ctrl/Cmd so typing cannot trigger them
     if (event.key === `f` && has_modifier && fullscreen_toggle) {
       fullscreen = !fullscreen
       return true
-    } else if (
+    }
+    if (
       event.key === `i` &&
       has_modifier &&
       display_mode === `structure` &&
       enable_info_pane
     ) {
-      info_pane_open = !info_pane_open
+      set_pane_open(`info`, !is_pane_open(`info`))
       return true
-    } else if (
+    }
+    if (
       event.key === `g` &&
       has_modifier &&
       display_mode === `structure` &&
@@ -1671,11 +677,10 @@
     ) {
       multi_view = !multi_view
       return true
-    } else if (event.key === `Escape`) {
-      // Prioritize closing panes, then exit edit modes, then exit fullscreen
-      if (info_pane_open) info_pane_open = false
-      else if (controls_open) controls_open = false
-      else if (export_pane_open) export_pane_open = false
+    }
+    if (event.key === `Escape`) {
+      // Close panes first, then leave edit modes
+      if (active_pane !== null) active_pane = null
       else if (measure_mode === `edit-bonds` || measure_mode === `edit-atoms`) {
         measure_mode = `distance`
       } else return false
@@ -1683,136 +688,13 @@
     }
     return false
   }
-
-  // Hover (window) path: skip edit-mode mutations so destructive keys (delete/undo)
-  // require focus, not just a hovering mouse.
+  // Hover (window) path: destructive edit keys require focus, not just a hovering pointer
   const handle_hover_keydown = (event: KeyboardEvent): boolean =>
     measure_mode === `edit-atoms` || measure_mode === `edit-bonds`
       ? false
       : handle_keydown(event)
 
-  // === Edit-atoms mode helpers ===
-
-  // Map scene indices (into displayed_structure) back to raw structure indices.
-  // Handles supercell atoms via orig_unit_cell_idx property.
-  // skip_image_atoms: when true, image atoms (PBC ghosts) are excluded from the result.
-  function scene_to_structure_indices(
-    scene_indices: number[],
-    skip_image_atoms = false,
-  ): SvelteSet<number> {
-    const result = new SvelteSet<number>()
-    for (const scene_idx of scene_indices) {
-      const displayed_site = internal_displayed_structure?.sites?.[scene_idx]
-      if (!displayed_site) continue
-      if (skip_image_atoms && displayed_site.properties?.orig_site_idx != null) {
-        continue
-      }
-
-      if (has_supercell && displayed_site.properties?.orig_unit_cell_idx != null) {
-        result.add(displayed_site.properties.orig_unit_cell_idx as number)
-      } else if (displayed_site.properties?.orig_site_idx != null) {
-        // Image atom (PBC ghost) — map back to its original site index
-        result.add(displayed_site.properties.orig_site_idx as number)
-      } else {
-        result.add(scene_idx)
-      }
-    }
-    return result
-  }
-
-  // Try to create a Cartesian→fractional converter for the current structure's lattice
-  function get_cart_to_frac(): ((xyz: Vec3) => Vec3) | undefined {
-    if (!structure || !(`lattice` in structure)) return undefined
-    try {
-      return create_cart_to_frac((structure as Crystal).lattice.matrix)
-    } catch {
-      console.warn(`Failed to compute lattice inverse for fractional coordinates`)
-      return undefined
-    }
-  }
-
-  // Handle atom moves from TransformControls. Applies Cartesian delta and wraps
-  // fractional coords inline so normalize_fractional_coords hits its fast path.
-  function handle_sites_moved(scene_indices: number[], delta: Vec3) {
-    if (!structure?.sites) return
-    is_internal_edit = true
-
-    const orig_indices = scene_to_structure_indices(scene_indices)
-    // For crystals, wrap to [0,1) inline so normalize_fractional_coords fast-paths.
-    // For molecules (no lattice), just apply the Cartesian delta directly.
-    const lattice = `lattice` in structure ? (structure as Crystal).lattice.matrix : null
-    // get_cart_to_frac guards matrix_inverse_3x3, which throws on singular lattices
-    const cart_to_frac = get_cart_to_frac()
-    const frac_to_cart = lattice ? create_frac_to_cart(lattice) : null
-    structure = {
-      ...structure,
-      sites: structure.sites.map((site, idx) => {
-        if (!orig_indices.has(idx)) return site
-        const new_xyz: Vec3 = [
-          site.xyz[0] + delta[0],
-          site.xyz[1] + delta[1],
-          site.xyz[2] + delta[2],
-        ]
-        if (!cart_to_frac || !frac_to_cart) {
-          return { ...site, xyz: new_xyz, abc: new_xyz }
-        }
-        const wrapped_abc = wrap_to_unit_cell(cart_to_frac(new_xyz))
-        return { ...site, xyz: frac_to_cart(wrapped_abc), abc: wrapped_abc }
-      }),
-    }
-  }
-
-  // Change element symbol of selected atoms
-  function handle_change_element(new_element: string) {
-    if (!structure?.sites || selected_sites.length === 0) return
-    const elem = normalize_element(new_element)
-    if (!elem) return
-    is_internal_edit = true
-    push_undo()
-    const orig_indices = scene_to_structure_indices(selected_sites)
-    structure = {
-      ...structure,
-      sites: structure.sites.map((site, idx) => {
-        if (!orig_indices.has(idx)) return site
-        return {
-          ...site,
-          species: [{ element: elem, occu: 1, oxidation_state: 0 }],
-          label: elem,
-        }
-      }),
-    }
-    change_element_mode = false
-    change_element_value = ``
-    show_toast(
-      `Changed ${orig_indices.size} site${orig_indices.size > 1 ? `s` : ``} to ${elem}`,
-    )
-  }
-
-  // Handle add-atom from StructureScene click-to-place
-  function handle_add_atom(xyz: Vec3, element: ElementSymbol) {
-    if (!structure) return
-    const elem = normalize_element(element)
-    if (!elem) return console.warn(`Invalid element symbol "${element}", ignoring add-atom`)
-    is_internal_edit = true
-    push_undo()
-    structure = {
-      ...structure,
-      sites: [
-        ...structure.sites,
-        {
-          species: [{ element: elem, occu: 1, oxidation_state: 0 }],
-          xyz,
-          abc: get_cart_to_frac()?.(xyz) ?? xyz,
-          label: elem,
-          properties: {},
-        },
-      ],
-    }
-    show_toast(`Added ${elem} at (${xyz.map((coord) => format_num(coord, `.2f`)).join(`, `)})`)
-  }
-
-  // Only override the themed --struct-bg when background_color is explicitly provided;
-  // opacity (0-1) becomes the hex alpha byte (00-ff)
+  // Only override the themed --struct-bg when a color is given; opacity becomes the alpha byte
   let background_override = $derived(
     background_color
       ? `${background_color}${Math.round(background_opacity * 255)
@@ -1820,11 +702,12 @@
           .padStart(2, `0`)}`
       : undefined,
   )
+  let multi_view_gap_px = MULTI_VIEW_MIN_PANE.gap
 </script>
 
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <div
-  class:active={info_pane_open || controls_open || export_pane_open}
+  class:active={active_pane !== null}
   class:multi-view={is_multi_view_active}
   style:--struct-viewport-gap="{multi_view_gap_px}px"
   style:--struct-bg-override={background_override}
@@ -1845,14 +728,13 @@
   onkeydown={handle_and_prevent(handle_keydown)}
   {...rest}
   class={[`structure`, rest.class]}
-  {@attach file_drop_zone}
+  {@attach loader.drop_zone}
   {@attach forward_window_keydown({ handle: handle_hover_keydown })}
 >
   {@render children?.({ structure, fullscreen })}
   {#if loading}
     <Spinner
       text="Loading structure..."
-      {...spinner_props}
       style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%)"
     />
   {:else if error_msg}
@@ -1905,10 +787,10 @@
                 <button
                   type="button"
                   class="view-mode-option reset-camera"
-                  title={reset_text}
+                  title={RESET_TEXT}
                   aria-keyshortcuts="r"
                   onclick={() => {
-                    reset_all_cameras()
+                    session.reset_all_cameras()
                     view_layout_menu_open = false
                   }}
                 >
@@ -1922,197 +804,20 @@
       {/if}
 
       {#if display_mode === `structure` && enable_measure_mode && controls_config.visible(`measure-mode`)}
-        <div
-          class="measure-mode-dropdown view-mode-control"
-          {@attach click_outside({ callback: () => (measure_menu_open = false) })}
-        >
-          <button
-            onclick={() => (measure_menu_open = !measure_menu_open)}
-            title="Measure / Edit"
-            aria-label="Measure / Edit"
-            class={['view-mode-button', { active: measure_menu_open }]}
-            aria-expanded={measure_menu_open}
-            {@attach tooltip()}
-          >
-            {#if show_measure_selection_limit}
-              <span class="selection-limit-text">
-                {measured_sites.length}/{MAX_SELECTED_SITES}
-              </span>
-            {:else}
-              <Icon
-                icon={MEASURE_MODES.find(({ mode }) => mode === measure_mode)?.icon ?? Ruler}
-              />
-            {/if}
-          </button>
-          {#if show_selection_reset}
-            <button
-              type="button"
-              aria-label="Reset selection and bond edits"
-              onclick={() => {
-                clear_selection()
-                clear_bond_edits()
-              }}
-            >
-              <Icon icon={Reset} style="margin-left: -4px" />
-            </button>
-          {/if}
-          {#if measure_menu_open}
-            <div class="view-mode-dropdown">
-              {#each MEASURE_MODES as { mode, icon, label, scale } (mode)}
-                <button
-                  class={['view-mode-option', { selected: measure_mode === mode }]}
-                  disabled={mode === `edit-bonds` && !bond_edits_enabled}
-                  title={mode === `edit-bonds` && !bond_edits_enabled
-                    ? `Bond editing is only available for the original 1x1x1 cell`
-                    : label}
-                  onclick={() => {
-                    if (mode === `edit-bonds` && !bond_edits_enabled) return
-                    ;[measure_mode, measure_menu_open] = [mode, false]
-                  }}
-                >
-                  <Icon {icon} style="transform: scale({scale})" />
-                  <span>{label}</span>
-                </button>
-              {/each}
-            </div>
-          {/if}
-        </div>
-
-        {#snippet undo_redo_snippet(
-          buttons: {
-            icon: IconData
-            title: string
-            stack: unknown[]
-            action: () => void
-          }[],
-        )}
-          <div class="undo-redo-container" style="display: flex">
-            {#each buttons as { icon, title, stack, action } (icon)}
-              <button
-                type="button"
-                aria-label={title}
-                disabled={stack.length === 0}
-                onclick={action}
-                {title}
-                class="undo-redo-btn"
-              >
-                <Icon {icon} />
-                {#if stack.length > 0}
-                  <span class="history-count">{stack.length}</span>
-                {/if}
-              </button>
-            {/each}
-          </div>
-        {/snippet}
-
-        {#if measure_mode === `edit-atoms` && !measure_menu_open}
-          <div class="edit-mode-toolbar" aria-label="Atom editing controls">
-            {@render undo_redo_snippet([
-              { icon: Undo, title: `Undo (Cmd/Ctrl+Z)`, stack: undo_stack, action: undo },
-              {
-                icon: Redo,
-                title: `Redo (Cmd/Ctrl+Y or Cmd+Shift+Z)`,
-                stack: redo_stack,
-                action: redo,
-              },
-            ])}
-
-            <!-- Add-atom element input (shown when add_atom_mode is active) -->
-            {#if add_atom_mode}
-              <div class="add-atom-input">
-                <label>
-                  <span>Element:</span>
-                  <!-- svelte-ignore a11y_autofocus (focus is intentional for keyboard-driven atom editing) -->
-                  <input
-                    type="text"
-                    autofocus
-                    bind:value={add_element}
-                    maxlength="2"
-                    placeholder="C"
-                    style="width: 3em; text-align: center"
-                  />
-                </label>
-                <span style="font-size: 0.75em; opacity: 0.7">Click to place</span>
-              </div>
-            {/if}
-
-            <!-- Change-element input (shown when 'e' pressed with selection) -->
-            {#if change_element_mode && selected_sites.length > 0}
-              <div class="add-atom-input">
-                <label>
-                  <span>New element:</span>
-                  <input
-                    type="text"
-                    bind:value={change_element_value}
-                    maxlength="2"
-                    placeholder="Fe"
-                    style="width: 3em; text-align: center"
-                    onkeydown={(event: KeyboardEvent) => {
-                      if (event.key === `Enter`) {
-                        handle_change_element(change_element_value)
-                      } else if (event.key === `Escape`) {
-                        change_element_mode = false
-                      }
-                      event.stopPropagation()
-                    }}
-                    {@attach (node: HTMLInputElement) => {
-                      node.focus()
-                    }}
-                  />
-                </label>
-                <span style="font-size: 0.75em; opacity: 0.7">Enter to apply</span>
-              </div>
-            {/if}
-          </div>
-        {/if}
-
-        {#if measure_mode === `edit-bonds` && !measure_menu_open}
-          <div class="edit-mode-toolbar bond-edit-toolbar" aria-label="Bond editing controls">
-            {#if bond_edit_mode === `add`}
-              <label>
-                <span>Bond order</span>
-                <select bind:value={bond_edit_order}>
-                  {#each BOND_ORDER_OPTIONS as { order, label } (label)}
-                    <option value={order}>{label}</option>
-                  {/each}
-                </select>
-              </label>
-            {/if}
-            <div class="bond-edit-mode-toggle">
-              {#each BOND_EDIT_MODES as { mode, label, title } (mode)}
-                <button
-                  type="button"
-                  class:selected={bond_edit_mode === mode}
-                  aria-pressed={bond_edit_mode === mode}
-                  title="{title} ({label[0]})"
-                  onclick={() => (bond_edit_mode = mode)}
-                >
-                  {label}
-                </button>
-              {/each}
-            </div>
-            {@render undo_redo_snippet([
-              {
-                icon: Undo,
-                title: `Undo bond edit (Cmd/Ctrl+Z)`,
-                stack: bond_undo_stack,
-                action: undo_bond_edit,
-              },
-              {
-                icon: Redo,
-                title: `Redo bond edit (Cmd/Ctrl+Y or Cmd+Shift+Z)`,
-                stack: bond_redo_stack,
-                action: redo_bond_edit,
-              },
-            ])}
-          </div>
-        {/if}
+        <StructureEditToolbar
+          {session}
+          bind:measure_mode
+          bind:bond_edit_mode
+          bind:bond_edit_order
+          selected_count={selected_sites.length}
+          measured_count={measured_sites.length}
+        />
       {/if}
 
-      {#if display_mode === `structure` && enable_info_pane && normalized_structure && controls_config.visible(`info-pane`)}
+      {#if display_mode === `structure` && enable_info_pane && session.normalized_structure && controls_config.visible(`info-pane`)}
         <StructureInfoPane
-          structure={normalized_structure}
-          bind:pane_open={info_pane_open}
+          structure={session.normalized_structure}
+          bind:pane_open={() => is_pane_open(`info`), (open) => set_pane_open(`info`, open)}
           bind:highlighted_sites
           bind:hovered_site_idx
           bind:selected_sites
@@ -2123,8 +828,10 @@
 
       {#if controls_config.visible(`export-pane`)}
         <StructureExportPane
-          bind:export_pane_open
-          structure={normalized_structure}
+          bind:export_pane_open={
+            () => is_pane_open(`export`), (open) => set_pane_open(`export`, open)
+          }
+          structure={session.normalized_structure}
           {wrapper}
           {scene}
           {camera}
@@ -2140,7 +847,9 @@
 
       {#if controls_config.visible(`controls`)}
         <StructureControls
-          bind:controls_open
+          bind:controls_open={
+            () => is_pane_open(`controls`), (open) => set_pane_open(`controls`, open)
+          }
           bind:scene_props
           bind:show_trajectory_lines
           bind:lattice_props
@@ -2160,14 +869,14 @@
           multi_view_control_visible={controls_config.visible(`multi-view`)}
           {multi_view_unavailable_reason}
           {structure}
-          {supercell_loading}
+          supercell_loading={session.supercell_loading}
           {sym_data}
           {polyhedra_rendered_elements}
           {displacement_summary}
           {trajectory_lines_result}
-          on_reset_camera={reset_camera_available ? reset_all_cameras : undefined}
-          {reset_text}
-          bind:fly_to_request
+          on_reset_camera={reset_camera_available ? session.reset_all_cameras : undefined}
+          reset_text={RESET_TEXT}
+          bind:fly_to_request={session.fly_to_request}
           {persist_settings}
         />
       {/if}
@@ -2179,14 +888,14 @@
       <AtomLegend
         bind:atom_color_config
         {property_colors}
-        elements={get_element_counts(supercell_structure ?? structure)}
+        elements={get_element_counts(session.supercell_structure ?? structure)}
         bind:hidden_elements
-        bind:hidden_prop_vals
-        bind:element_mapping
-        bind:element_radius_overrides
-        bind:site_radius_overrides
-        selected_sites={atom_legend_selected_sites}
-        structure={internal_displayed_structure}
+        bind:hidden_prop_vals={session.hidden_prop_vals}
+        bind:element_mapping={session.element_mapping}
+        bind:element_radius_overrides={session.element_radius_overrides}
+        bind:site_radius_overrides={session.site_radius_overrides}
+        selected_sites={measure_mode === `edit-atoms` ? session.selected_sites : []}
+        structure={session.displayed_structure}
         show_mode_toggle={viewer_active}
         {sym_data}
       >
@@ -2196,7 +905,7 @@
               bind:supercell_scaling
               bind:cell_type
               {sym_data}
-              loading={supercell_loading}
+              loading={session.supercell_loading}
               direction="up"
               suppress_hover={mode_menu_open}
             />
@@ -2205,18 +914,17 @@
       </AtomLegend>
     {/if}
 
-    <!-- One StructureViewport renders the single view; four render the 2x2 multi-view.
-      The primary pane (index 0) carries the external camera API: scene/camera are bound
-      out for export and camera_position/target persist into scene_props, and it emits
-      on_camera_move/on_camera_reset. All camera handling itself lives in StructureViewport. -->
+    <!-- One StructureViewport renders the single view; four render the 2x2 grid. The primary
+      pane (index 0) carries the external camera API: scene/camera are bound out for export,
+      camera_position/target persist into scene_props, and it emits on_camera_move/reset. -->
     {#snippet primary_viewport(view: StructureView)}
       <StructureViewport
         in_grid={is_multi_view_active}
-        active={is_multi_view_active && active_pane_idx === 0}
-        interactive={!is_multi_view_active || active_pane_idx === 0}
-        onactivate={() => (active_pane_idx = 0)}
-        {reset_token}
-        report_moved={(moved) => (moved ? moved_panes.add(0) : moved_panes.delete(0))}
+        active={is_multi_view_active && session.active_pane_idx === 0}
+        interactive={!is_multi_view_active || session.active_pane_idx === 0}
+        onactivate={() => (session.active_pane_idx = 0)}
+        reset_token={session.reset_token}
+        report_moved={(moved) => session.report_pane_moved(0, moved)}
         {on_camera_move}
         {on_camera_reset}
         {...shared_viewport_props}
@@ -2224,24 +932,11 @@
         camera_projection={view.projection ?? scene_props.camera_projection}
         bind:camera_position={scene_props.camera_position}
         bind:camera_target={scene_props.camera_target}
-        bind:fly_to_request
+        bind:fly_to_request={session.fly_to_request}
         bind:displacement_summary
         bind:scene
         bind:camera
-        bind:selected_sites
-        bind:measured_sites
-        bind:hovered_site_idx
         bind:hidden_elements
-        bind:hidden_prop_vals
-        bind:element_radius_overrides
-        bind:site_radius_overrides
-        bind:added_bonds
-        bind:removed_bonds
-        bind:bond_order_overrides
-        bind:bond_edit_mode
-        bind:add_atom_mode
-        bind:add_element
-        bind:dragging_atoms
         bind:polyhedra_rendered_elements
         bind:trajectory_lines_result
       />
@@ -2251,29 +946,15 @@
       <StructureViewport
         in_grid
         label={view.label}
-        active={active_pane_idx === pane_idx}
-        interactive={active_pane_idx === pane_idx}
-        onactivate={() => (active_pane_idx = pane_idx)}
-        {reset_token}
-        report_moved={(moved) =>
-          moved ? moved_panes.add(pane_idx) : moved_panes.delete(pane_idx)}
+        active={session.active_pane_idx === pane_idx}
+        interactive={session.active_pane_idx === pane_idx}
+        onactivate={() => (session.active_pane_idx = pane_idx)}
+        reset_token={session.reset_token}
+        report_moved={(moved) => session.report_pane_moved(pane_idx, moved)}
         {...shared_viewport_props}
         camera_direction={view.direction}
         camera_projection={view.projection ?? scene_props.camera_projection}
-        bind:selected_sites
-        bind:measured_sites
-        bind:hovered_site_idx
         bind:hidden_elements
-        bind:hidden_prop_vals
-        bind:element_radius_overrides
-        bind:site_radius_overrides
-        bind:added_bonds
-        bind:removed_bonds
-        bind:bond_order_overrides
-        bind:bond_edit_mode
-        bind:add_atom_mode
-        bind:add_element
-        bind:dragging_atoms
       />
     {/snippet}
 
@@ -2283,7 +964,7 @@
         bind:settings={slice_settings}
         bind:canvas={slice_canvas}
       />
-      <!-- prevent from rendering in SSR and the vitest runner, where there's no GPU adapter -->
+      <!-- no GPU adapter in SSR and the vitest runner -->
     {:else if webgpu_available()}
       <div class:multi={is_multi_view_active} class="viewport-stage">
         {@render primary_viewport(is_multi_view_active ? (views[0] ?? {}) : {})}
@@ -2295,26 +976,18 @@
       </div>
     {/if}
 
-    {#if bottom_left}
-      <div class="bottom-left">
-        {@render bottom_left({ structure: internal_displayed_structure })}
-      </div>
-    {/if}
-
     {#if toast_msg}
       <div class="edit-toast">{toast_msg}</div>
     {/if}
 
     {#if analyze_symmetry && symmetry_error}
-      <div class="symmetry-error">
-        {symmetry_error}
-        <button
-          onclick={() => (symmetry_error = undefined)}
-          aria-label="Dismiss symmetry warning"
-        >
-          <Icon icon={Cross} style="display: block; width: 0.65rem; height: 0.65rem" />
-        </button>
-      </div>
+      <StatusMessage
+        bind:message={symmetry_error}
+        type="warning"
+        dismissible
+        class="symmetry-error"
+        style="position: absolute; bottom: 0.5rem; right: 0.5rem; max-width: min(90%, 400px); font-size: 0.75rem; padding: 0.3rem 0.6rem; z-index: var(--z-index-viewer-tooltip, 1000)"
+      />
     {/if}
   {:else if structure}
     <p class="warn">No sites found in structure</p>
@@ -2367,11 +1040,6 @@
     grid-auto-rows: 1fr;
     gap: var(--struct-viewport-gap);
   }
-  .view-mode-button.active,
-  .view-layout-dropdown .view-mode-button.active:hover,
-  .view-mode-dropdown .view-mode-option:hover {
-    color: var(--accent-color, #4a9eff);
-  }
   /* Ensure canvas is transparent so the themed --struct-bg shows through */
   .structure :global(canvas) {
     background: transparent;
@@ -2379,128 +1047,24 @@
   }
   /* Avoid accidental text selection while interacting with the viewer */
   .structure :global(canvas),
-  .structure :global(section.control-buttons),
-  .structure .bottom-left {
+  .structure :global(section.control-buttons) {
     user-select: none;
   }
-  div.bottom-left {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    font-size: var(--struct-bottom-left-font-size, 1.2em);
-    padding: var(--struct-bottom-left-padding, 1pt 5pt);
-  }
-  /* Match Trajectory dropdown UI: paired light-dark ink/bg so a light menu hosted
-     in a dark app does not inherit near-white --text-color onto the options. */
-  .view-mode-dropdown {
-    position: absolute;
-    top: 115%;
-    right: 0;
-    z-index: var(--structure-view-mode-dropdown-z-index, 30);
-    background: var(--structure-view-mode-bg, var(--menu-bg));
-    color: var(--structure-view-mode-color, var(--menu-color));
-    border: 1px solid var(--structure-view-mode-border, var(--menu-border));
-    border-radius: var(--structure-view-mode-border-radius, 4px);
-    box-shadow:
-      0 8px 16px -4px rgba(0, 0, 0, 0.3),
-      0 4px 8px -2px rgba(0, 0, 0, 0.1);
-    display: flex;
-    flex-direction: column;
-    pointer-events: auto;
-  }
-  .view-mode-option {
-    display: flex;
-    align-items: center;
-    gap: 1ex;
-    width: 100%;
-    padding: var(--trajectory-view-mode-option-padding, 5pt);
-    box-sizing: border-box;
-    background: transparent;
-    color: inherit;
-    border-radius: 0;
-    text-align: left;
-    transition: background-color 0.15s ease;
-  }
-  .view-mode-option:hover,
-  .view-mode-option:focus-visible {
-    background: var(--structure-view-mode-option-hover-bg, var(--menu-option-hover-bg));
-  }
-  .view-mode-option:first-child {
-    border-top-left-radius: 3px;
-    border-top-right-radius: 3px;
-  }
-  .view-mode-option.selected {
-    color: var(--accent-color, var(--menu-option-selected-color));
-  }
-  .view-mode-option span {
-    font-weight: 500;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    flex: 1;
-  }
   .view-mode-control {
-    display: flex;
-    position: relative;
     height: fit-content;
     place-self: center;
-    z-index: var(--structure-view-mode-z-index, 20);
-  }
-  .view-mode-control > button {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: transparent;
-    padding: 1px 2px;
-    font-size: var(--ctrl-btn-icon-size);
-  }
-  .selection-limit-text {
-    font-weight: bold;
-    font-size: 0.9em;
-    color: var(--accent-color, #ff6b6b);
-    min-width: 2.5em;
-    text-align: center;
+    > button {
+      justify-content: center;
+      background: transparent;
+      padding: 1px 2px;
+      font-size: var(--ctrl-btn-icon-size);
+    }
   }
   p.warn {
     position: absolute;
     inset: 0;
     display: grid;
     place-content: center;
-  }
-  .symmetry-error {
-    position: absolute;
-    bottom: 0.5rem;
-    right: 0.5rem;
-    background: rgba(255, 165, 0, 0.95);
-    color: #000;
-    padding: 0.4rem 1.65rem 0.4rem 0.55rem;
-    border-radius: var(--border-radius, 3pt);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    max-width: min(90%, 400px);
-    font-size: 0.75rem;
-    line-height: 1.3;
-    z-index: var(--z-index-viewer-tooltip, 1000);
-  }
-  .symmetry-error button {
-    position: absolute;
-    top: 50%;
-    right: 0.2rem;
-    transform: translateY(-50%);
-    display: grid;
-    place-items: center;
-    width: 1rem;
-    height: 1rem;
-    padding: 0;
-    background: rgba(0, 0, 0, 0.1);
-    border: 1px solid rgba(0, 0, 0, 0.2);
-    border-radius: 50%;
-    font-size: 0.7rem;
-    line-height: 1;
-    cursor: pointer;
-    opacity: 0.7;
-  }
-  .symmetry-error button:hover {
-    opacity: 1;
   }
   .edit-toast {
     position: absolute;
@@ -2537,102 +1101,5 @@
   .structure:hover :global(.cell-select) {
     opacity: 1;
     pointer-events: auto;
-  }
-  .edit-mode-toolbar {
-    position: absolute;
-    top: calc(100% + 4pt);
-    right: 0;
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    align-items: center;
-    gap: 0.4em;
-    width: max-content;
-    max-width: calc(100cqw - 2ex);
-    box-sizing: border-box;
-    padding: 0.25em;
-    border-radius: var(--border-radius, 3pt);
-    background: color-mix(in srgb, var(--page-bg, Canvas) 85%, transparent);
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
-  }
-  .undo-redo-btn {
-    position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-  .edit-mode-toolbar.bond-edit-toolbar {
-    --bond-edit-control-height: 1.8em;
-    font-size: 0.8em;
-    label,
-    .bond-edit-mode-toggle {
-      display: flex;
-      align-items: center;
-    }
-    label {
-      gap: 0.25em;
-    }
-    select {
-      max-width: 8em;
-      font: inherit;
-    }
-    label,
-    select,
-    .bond-edit-mode-toggle button {
-      height: var(--bond-edit-control-height);
-      line-height: 1;
-    }
-    .bond-edit-mode-toggle {
-      gap: 0.35em;
-      button {
-        min-width: 3.5em;
-        font: inherit;
-      }
-      button.selected {
-        background: var(--accent-color, #007acc);
-        color: white;
-      }
-      button.selected:hover {
-        background-color: color-mix(in srgb, var(--accent-color, #007acc) 70%, black);
-      }
-    }
-  }
-  .history-count {
-    position: absolute;
-    bottom: -2px;
-    right: -2px;
-    background: var(--accent-color, #007acc);
-    color: white;
-    border-radius: 50%;
-    width: 12px;
-    height: 12px;
-    font-size: 8px;
-    font-weight: bold;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    line-height: 1;
-    pointer-events: none;
-    z-index: 1;
-  }
-  .add-atom-input {
-    display: flex;
-    align-items: center;
-    gap: 0.5em;
-    color: var(--text-color, currentColor);
-    font-size: 0.8rem;
-    label {
-      display: flex;
-      align-items: center;
-      gap: 0.3em;
-    }
-    input {
-      background: color-mix(in srgb, currentColor 10%, transparent);
-      border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
-      border-radius: 3px;
-      color: inherit;
-      font-size: 0.85rem;
-      padding: 0.1em 0.3em;
-    }
   }
 </style>
