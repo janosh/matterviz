@@ -476,6 +476,17 @@ describe(`panes`, () => {
 })
 
 describe(`events`, () => {
+  test(`the viewer is a focusable region whose arrow keys step frames`, () => {
+    const state = $state({ current_step_idx: 0 })
+    mount_trajectory(bind_props(default_props(), state))
+    const viewer = doc_query(`.trajectory`)
+    expect(viewer.getAttribute(`role`)).toBe(`region`)
+    expect(viewer.getAttribute(`tabindex`)).toBe(`0`)
+    viewer.dispatchEvent(new KeyboardEvent(`keydown`, { key: `ArrowRight`, bubbles: true }))
+    flushSync()
+    expect(state.current_step_idx).toBe(1)
+  })
+
   const payload = (step_idx: number, step: number) => ({
     step_idx,
     frame_count: 3,

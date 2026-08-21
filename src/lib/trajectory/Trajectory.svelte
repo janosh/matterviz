@@ -634,6 +634,7 @@
   data-scrubbing={scrub_active}
   role="region"
   aria-label="Trajectory viewer"
+  tabindex="0"
   onpointerenter={() => (hovered = true)}
   onpointerleave={() => (hovered = false)}
   onclick={handle_click_outside}
