@@ -48,8 +48,10 @@ function component_only_class_selectors(file: string): string[] {
   const on_elements = new Set<string>()
   const on_components = new Set<string>()
   walk(ast.fragment, (node) => {
-    if (![`RegularElement`, `SvelteElement`, `Component`].includes(String(node.type))) return
-    const target = node.type === `Component` ? on_components : on_elements
+    const type = String(node.type)
+    if (![`RegularElement`, `SvelteElement`, `Component`, `SvelteComponent`].includes(type))
+      return
+    const target = type.endsWith(`Component`) ? on_components : on_elements
     for (const attr of node.attributes as Node[]) {
       if (attr.type === `Attribute` && attr.name === `class`)
         for (const cls of class_tokens(attr)) target.add(cls)

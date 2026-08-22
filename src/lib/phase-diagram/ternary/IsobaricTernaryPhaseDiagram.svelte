@@ -211,7 +211,8 @@
     return () => controller.abort()
   })
   // Phase indices of a sweep over other entries mean nothing against the current model; a sweep
-  // with stale options still shows the same phases while its replacement runs
+  // with stale options still shows the same phases while its replacement runs (dimmed, so
+  // continuous option changes such as a pressure drag don't flicker the views)
   const diagram_raw = $derived(sweep?.entries === entries ? sweep.diagram : null)
   const fresh = $derived(diagram_raw !== null && sweep?.options === compute_options)
 
@@ -426,7 +427,7 @@
         {:else if !mounted || !webgpu_available()}
           <div class="prism-fallback">WebGPU is required for the 3D prism view.</div>
         {:else if diagram_raw}
-          <div class="prism-canvas">
+          <div class={[`prism-canvas`, { stale: !fresh }]}>
             <Canvas createRenderer={create_renderer}>
               <TernaryPrismScene
                 diagram={diagram_raw}
@@ -513,7 +514,7 @@
       </div>
 
       {#if (settings.show_map || settings.show_events) && diagram_raw}
-        <div class="side-panel">
+        <div class={[`side-panel`, { stale: !fresh }]}>
           {#if settings.show_map}
             <PhaseStabilityMap
               diagram={diagram_raw}
@@ -645,6 +646,13 @@
   .section-panel :is(:global(.ternary-section), .prism-canvas, .prism-fallback) {
     flex: 1;
     min-height: 280px;
+  }
+  .prism-canvas,
+  .side-panel {
+    transition: opacity 0.2s ease;
+    &.stale {
+      opacity: 0.45;
+    }
   }
   .prism-canvas {
     position: relative;
