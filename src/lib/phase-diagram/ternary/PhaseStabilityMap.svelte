@@ -5,6 +5,7 @@
   // cursor and row highlights is rendered once into an offscreen layer and blitted per frame.
   import { add_alpha, get_d3_interpolator } from '$lib/colors'
   import { get_formula_label_segments } from '$lib/composition/format'
+  import { clamp01 } from '$lib/utils'
   import { ticks as d3_ticks } from 'd3-array'
   import type { HTMLAttributes } from 'svelte/elements'
   import { type CanvasFrame, create_canvas_surface } from './canvas-surface.svelte'
@@ -27,15 +28,7 @@
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     diagram: TernaryPhaseDiagram
-    settings: Pick<
-      TernaryDisplay,
-      | `map_sort`
-      | `map_filter`
-      | `show_map_elements`
-      | `max_e_above_hull`
-      | `color_scale`
-      | `show_event_lines`
-    >
+    settings: TernaryDisplay
     temperature: number
     selected_phase?: number | null
     hovered_phase?: number | null
@@ -113,8 +106,7 @@
   const row_top = (row: number) => top_pad + row * row_height
   const ramp = $derived(get_d3_interpolator(settings.color_scale))
   const color_of = (e_above_hull: number) => {
-    const fraction = e_above_hull / Math.max(settings.max_e_above_hull, 1e-9)
-    return ramp(Math.min(1, Math.max(0, fraction)))
+    return ramp(clamp01(e_above_hull / Math.max(settings.max_e_above_hull, 1e-9)))
   }
 
   // === Drawing ===

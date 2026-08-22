@@ -20,8 +20,6 @@ export type FreeEnergyMode = FreeEnergySource | `auto`
 
 export interface FreeEnergyOptions {
   mode?: FreeEnergyMode
-  interpolate?: boolean // tabulated G(T): interpolate between bracketing temperatures
-  max_interpolation_gap?: number // K, largest bracket still interpolated (default 500)
   // Gas atmospheres for elements supplied as gases (O from O2, ...); pressures in bar
   gas_config?: GasThermodynamicsConfig
   gas_pressures?: Partial<Record<GasSpecies, number>>
@@ -45,7 +43,6 @@ export interface DiagramPhase {
   n_atoms: number // atoms per reduced formula unit (reaction balancing)
   is_element: boolean
   source: FreeEnergySource
-  t_range: Vec2 | null
 }
 
 // Equilibrium assemblage of a composition: tie-triangle vertices with atom fractions
@@ -114,17 +111,12 @@ export type DiagramProgress = { done: number; total: number }
 
 // === Viewer ===
 
-export type TernaryView = `section` | `prism`
-export type SectionFaceColorMode = `uniform` | `formation_energy` | `facet_index`
-export type StabilityMapSort = `first_stable` | `composition` | `min_e_hull`
-export type StabilityMapFilter = `stable_ever` | `near_hull` | `all`
-
 // Everything the controls pane toggles; compute settings (model, T range, gases) are separate
 export interface TernaryDisplay {
-  view: TernaryView
+  view: `section` | `prism`
   show_tie_lines: boolean
   show_tie_triangles: boolean
-  face_color_mode: SectionFaceColorMode
+  face_color_mode: `uniform` | `formation_energy` | `facet_index`
   face_opacity: number
   show_unstable: boolean
   max_e_above_hull: number // eV/atom: unstable-phase cutoff and stability-map colour ceiling
@@ -135,8 +127,8 @@ export interface TernaryDisplay {
   show_upcoming: boolean // ring phases that change at the next transition on heating
   show_map: boolean
   show_events: boolean
-  map_sort: StabilityMapSort
-  map_filter: StabilityMapFilter
+  map_sort: `first_stable` | `composition` | `min_e_hull`
+  map_filter: `stable_ever` | `near_hull` | `all`
   show_map_elements: boolean
   show_event_lines: boolean
   show_sheets: boolean // prism: vertical sheets swept by tie-lines between transitions
@@ -182,20 +174,13 @@ export const TERNARY_COLORS = Object.freeze({
   element: `#9e9e9e`,
 })
 
-export const DEFAULT_GAS_PRESSURE = 0.2095 // bar, air
-
-export interface SectionPhaseHover {
-  kind: `phase`
-  phase: DiagramPhase
-  e_above_hull: number
-  position: Vec2
-}
-export interface SectionCompositionHover {
-  kind: `composition`
-  barycentric: Vec3
-  decomposition: Decomposition | null
-  position: Vec2
-}
-export type SectionHover = SectionPhaseHover | SectionCompositionHover
+export type SectionHover =
+  | { kind: `phase`; phase: DiagramPhase; e_above_hull: number; position: Vec2 }
+  | {
+      kind: `composition`
+      barycentric: Vec3
+      decomposition: Decomposition | null
+      position: Vec2
+    }
 // Hovering a phase at a temperature (stability map rows, prism rods)
 export type PhaseTemperatureHover = { phase: number; temperature: number; position: Vec2 }

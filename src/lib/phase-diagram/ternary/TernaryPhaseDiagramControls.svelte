@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { GasSpecies } from '$lib/convex-hull/types'
+  import { DEFAULT_GAS_PRESSURES, type GasSpecies } from '$lib/convex-hull/types'
   import { format_num } from '$lib/labels'
   import { NumberRangeInput, SettingsSection } from '$lib/layout'
   import type { Vec2 } from '$lib/math'
@@ -7,12 +7,7 @@
   import { ColorScaleSelect } from '$lib/plot'
   import type { ComponentProps } from 'svelte'
   import { tooltip } from 'svelte-widgets/attachments'
-  import {
-    DEFAULT_GAS_PRESSURE,
-    type FreeEnergyMode,
-    type FreeEnergySource,
-    type TernaryDisplay,
-  } from './types'
+  import type { FreeEnergyMode, FreeEnergySource, TernaryDisplay } from './types'
 
   let {
     controls_open = $bindable(false),
@@ -181,7 +176,8 @@
     speed: [`play_speed`, `Play speed (K/s)`, `Heating rate of the play button`, 10, 2000, 10],
   } satisfies Record<string, Slider>
 
-  const log_p = (gas: GasSpecies) => Math.log10(gas_pressures[gas] ?? DEFAULT_GAS_PRESSURE)
+  const log_p = (gas: GasSpecies) =>
+    Math.log10(gas_pressures[gas] ?? DEFAULT_GAS_PRESSURES[gas])
 </script>
 
 {#snippet toggle_row<K extends keyof TernaryDisplay>([key, label, options]: Toggle<K>)}

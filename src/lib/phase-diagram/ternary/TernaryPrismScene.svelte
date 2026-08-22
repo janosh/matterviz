@@ -49,16 +49,7 @@
   }: {
     diagram: TernaryPhaseDiagram
     section: IsothermalSection
-    settings: Pick<
-      TernaryDisplay,
-      | `show_sheets`
-      | `sheet_opacity`
-      | `show_rods`
-      | `show_stable_labels`
-      | `show_event_rings`
-      | `show_tie_triangles`
-      | `ghost_above_plane`
-    >
+    settings: TernaryDisplay
     temperature: number
     selected_phase?: number | null
     hovered_phase?: number | null

@@ -42,19 +42,7 @@
   }: HTMLAttributes<HTMLDivElement> & {
     model: Pick<DiagramModel, `phases` | `elements`>
     section: IsothermalSection
-    settings: Pick<
-      TernaryDisplay,
-      | `show_tie_lines`
-      | `show_tie_triangles`
-      | `face_color_mode`
-      | `face_opacity`
-      | `show_unstable`
-      | `max_e_above_hull`
-      | `show_stable_labels`
-      | `show_unstable_labels`
-      | `show_grid`
-      | `color_scale`
-    >
+    settings: TernaryDisplay
     selected_phase?: number | null
     highlighted_phases?: number[]
     emphasized_phases?: number[] // ringed, e.g. phases that change at the next transition

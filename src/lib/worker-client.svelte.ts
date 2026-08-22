@@ -47,7 +47,7 @@ type WorkerClient<Input, Options, Result, Progress = unknown> = {
   cancel: (reason?: string) => void
 }
 
-const abort_error = (signal: AbortSignal, label: string): Error =>
+export const abort_error = (signal: AbortSignal, label: string): Error =>
   signal.reason instanceof Error
     ? signal.reason
     : new DOMException(

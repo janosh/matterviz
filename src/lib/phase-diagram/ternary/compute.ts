@@ -14,7 +14,7 @@ import {
 } from '$lib/convex-hull/thermodynamics'
 import type { PhaseData } from '$lib/convex-hull/types'
 import type { ElementSymbol } from '$lib/element'
-import type { Vec2, Vec3 } from '$lib/math'
+import { partition_point, type Vec2, type Vec3 } from '$lib/math'
 import { build_free_energy_model, default_t_range } from './free-energy'
 import type {
   Decomposition,
@@ -109,7 +109,6 @@ export function prepare_diagram(
         n_atoms: count_atoms_in_composition(reduced),
         is_element: is_unary_entry(entry),
         source: model.phases[idx].source,
-        t_range: model.phases[idx].t_range,
       }
     }),
     free_energies: model.phases,
@@ -324,22 +323,6 @@ function section_from_topology(
 export const compute_section = (model: DiagramModel, temperature: number): IsothermalSection =>
   section_from_topology(model, hull_topology(model, temperature))
 
-// Index of the last item whose key is <= value (-1 if none); items sorted by key
-function last_at_or_below<Item>(
-  items: readonly Item[],
-  key: (item: Item) => number,
-  value: number,
-): number {
-  let lo = 0
-  let hi = items.length
-  while (lo < hi) {
-    const mid = (lo + hi) >> 1
-    if (key(items[mid]) <= value) lo = mid + 1
-    else hi = mid
-  }
-  return lo - 1
-}
-
 // Sections at arbitrary temperatures without recomputing the hull: the topology is constant
 // from the latest sample or transition at or below T until the next transition, so only the
 // energies move. Samples inside a data gap (no hull) fall back to a from-scratch hull.
@@ -347,15 +330,16 @@ export function create_section_evaluator(
   model: DiagramModel,
   { events, sections, temperatures }: TernaryPhaseDiagram,
 ) {
-  const event_t = (event: PhaseEvent) => event.temperature
   const intervals = new WeakMap<number[][], { assignment: FacetAssignment; edges: Vec2[] }>()
   return {
     section_at(temperature: number): IsothermalSection {
       const dg_form = dg_form_at(model, temperature)
       if (!has_references(model, dg_form))
         return section_from_topology(model, invalid_topology(temperature, dg_form))
-      const sample = sections[Math.max(0, last_at_or_below(temperatures, Number, temperature))]
-      const event = events[last_at_or_below(events, event_t, temperature)]
+      const sample =
+        sections[Math.max(0, partition_point(temperatures, (temp) => temp <= temperature) - 1)]
+      const event =
+        events[partition_point(events, (evt) => evt.temperature <= temperature) - 1]
       const { facets, stable, edges } =
         event && event.temperature >= sample.temperature
           ? { facets: event.facets_after, stable: event.stable_after, edges: null }

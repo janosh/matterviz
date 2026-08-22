@@ -21,7 +21,7 @@ import {
 import type { GasSpecies, GasThermodynamicsConfig, PhaseData } from '$lib/convex-hull/types'
 import type { ElementSymbol } from '$lib/element'
 import { element_by_symbol } from '$lib/element/data'
-import type { Vec2 } from '$lib/math'
+import { array_extent, type Vec2 } from '$lib/math'
 import { G_ELEMENT_TEMPERATURES, G_ELEMENTS } from './g-els-data'
 import type { FreeEnergyOptions, FreeEnergySource, PhaseFreeEnergy } from './types'
 
@@ -188,13 +188,12 @@ function pick_source(
   return sisso_supports(entry) ? `sisso` : `static`
 }
 
-// Absolute G(T) per atom from an entry's own data (tabulated, NaN without a bracket) or its
-// static energy
+// Absolute G(T) per atom from an entry's own data (tabulated, interpolated across gaps of up
+// to MAX_INTERPOLATION_GAP, NaN beyond) or its static energy
+const MAX_INTERPOLATION_GAP = 500 // K
 function own_g_per_atom(
   entry: PhaseData,
   tabulated: boolean,
-  interpolate: boolean,
-  max_gap: number,
 ): (temperature: number) => number {
   if (!tabulated) {
     const energy = energy_per_atom(entry)
@@ -204,17 +203,11 @@ function own_g_per_atom(
   return (temperature) => {
     const exact = temperatures.indexOf(temperature)
     if (exact !== -1) return free_energies[exact]
-    return (
-      (interpolate ? interpolate_energy_at_temperature(entry, temperature, max_gap) : null) ??
-      NaN
-    )
+    return interpolate_energy_at_temperature(entry, temperature, MAX_INTERPOLATION_GAP) ?? NaN
   }
 }
 
-const tabulated_range = ({ temperatures = [] }: PhaseData): Vec2 => [
-  Math.min(...temperatures),
-  Math.max(...temperatures),
-]
+const tabulated_range = ({ temperatures = [] }: PhaseData): Vec2 => array_extent(temperatures)
 
 const intersect_ranges = (ranges: (Vec2 | null)[]): Vec2 | null => {
   const defined = ranges.filter((range) => range !== null)
@@ -236,7 +229,7 @@ export function build_free_energy_model(
   elements: ElementSymbol[],
   options: FreeEnergyOptions = {},
 ): FreeEnergyModel {
-  const { mode = `auto`, interpolate = true, max_interpolation_gap = 500 } = options
+  const { mode = `auto` } = options
   // An exclude_from_hull element is shown but cannot define the formation-energy zero
   const unary_refs = find_lowest_energy_unary_refs(
     entries.filter((entry) => !entry.exclude_from_hull),
@@ -251,7 +244,7 @@ export function build_free_energy_model(
     const tabulated = mode !== `static` && has_tabulated_g(ref)
     return [
       el,
-      own_g_per_atom(ref, tabulated, interpolate, max_interpolation_gap),
+      own_g_per_atom(ref, tabulated),
       tabulated ? tabulated_range(ref) : null,
     ] as const
   })
@@ -313,7 +306,7 @@ export function build_free_energy_model(
       }
     }
     const tabulated = source === `tabulated`
-    const own_g = own_g_per_atom(entry, tabulated, interpolate, max_interpolation_gap)
+    const own_g = own_g_per_atom(entry, tabulated)
     return {
       source,
       t_range: intersect_ranges([

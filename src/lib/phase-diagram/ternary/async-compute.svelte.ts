@@ -2,7 +2,11 @@
 // Web Worker wrapper for compute_ternary_phase_diagram with a main-thread fallback (SSR, no
 // Worker, or a custom gas provider, which is a function and cannot cross the thread boundary).
 import type { PhaseData } from '$lib/convex-hull/types'
-import { create_worker_client, type WorkerRequestOptions } from '$lib/worker-client.svelte'
+import {
+  abort_error,
+  create_worker_client,
+  type WorkerRequestOptions,
+} from '$lib/worker-client.svelte'
 import { compute_ternary_phase_diagram } from './compute'
 import { get_volume_per_atom } from './free-energy'
 import type { DiagramProgress, TernaryPhaseDiagram, TernaryPhaseDiagramOptions } from './types'
@@ -50,12 +54,7 @@ export const compute_ternary_phase_diagram_async = (
 ): Promise<TernaryPhaseDiagram> => {
   if (options.free_energy?.gas_config?.provider) {
     const { signal, on_progress } = request_options ?? {}
-    if (signal?.aborted) {
-      const { reason } = signal as { reason: unknown }
-      return Promise.reject(
-        reason instanceof Error ? reason : new DOMException(`aborted`, `AbortError`),
-      )
-    }
+    if (signal?.aborted) return Promise.reject(abort_error(signal, `Ternary phase diagram`))
     return Promise.resolve(
       compute_ternary_phase_diagram(entries.map(slim_entry), options, on_progress),
     )

@@ -1,6 +1,5 @@
-export { compute_ternary_phase_diagram_async, slim_entry } from './async-compute.svelte'
+export { compute_ternary_phase_diagram_async } from './async-compute.svelte'
 export {
-  assign_facets,
   compute_section,
   compute_ternary_phase_diagram,
   create_section_evaluator,
