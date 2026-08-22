@@ -173,5 +173,30 @@ describe(`build_free_energy_model`, () => {
       ((1 / 3) * R_EV_PER_K * 1000 * Math.log(1e6)) / 2,
       8,
     )
+    // A tabulated O reference already carries its own entropy: pressure term only, no matter
+    // where the compound's G(T) comes from
+    const o2_tab = { ...o2, temperatures: [300, 1000], free_energies: [-2.45, -2.45] }
+    const tab_at = (pressure: number) =>
+      dg([li, co, o2_tab, li2o], { gas_config, gas_pressures: { O2: pressure } }).dg_form(1000)
+    expect(tab_at(1)).toBeCloseTo(dg([li, co, o2_tab, li2o]).dg_form(1000), 10)
+    expect(tab_at(1e-6) - tab_at(1)).toBeCloseTo(
+      ((1 / 3) * R_EV_PER_K * 1000 * Math.log(1e6)) / 2,
+      8,
+    )
+  })
+
+  test(`references: exclude_from_hull entries are skipped, disjoint tables throw`, () => {
+    const li_low = phase({ Li: 1 }, -9, { exclude_from_hull: true })
+    const model = build_free_energy_model(
+      [li_low, li, co, o2, phase({ Li: 2, O: 1 }, -4.5)],
+      elements,
+    )
+    expect(model.unary_refs.Li).toBe(li)
+    expect(model.phases[0].dg_form(300)).toBeCloseTo(-9 + 1.9, 10)
+    const o2_late = { ...o2, temperatures: [800, 1200], free_energies: [-2.45, -2.45] }
+    const li_early = { ...li, temperatures: [300, 700], free_energies: [-1.9, -1.9] }
+    expect(() => build_free_energy_model([li_early, co, o2_late], elements)).toThrow(
+      /share no temperature range: Li 300–700 K, O 800–1200 K/,
+    )
   })
 })

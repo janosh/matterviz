@@ -9,7 +9,6 @@ export {
   DEFAULT_EVENT_TOLERANCE,
   DEFAULT_N_SAMPLES,
   type DiagramModel,
-  e_above_hull_at,
   format_reaction,
   prepare_diagram,
   reaction_phase_label,

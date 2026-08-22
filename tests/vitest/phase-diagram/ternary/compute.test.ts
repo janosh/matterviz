@@ -5,7 +5,6 @@ import {
   create_section_evaluator,
   decompose_composition,
   decompose_phase,
-  e_above_hull_at,
   format_reaction,
   prepare_diagram,
 } from '$lib/phase-diagram/ternary/compute'
@@ -44,13 +43,15 @@ const expect_evaluator_matches = (
     expect(max_diff).toBeLessThan(1e-9)
   }
 }
-// Replaying the events must reproduce every sampled stable set
+// Replaying the events must reproduce every sampled stable set (re-anchored after a data gap)
 const expect_events_consistent = (diagram: TernaryPhaseDiagram) => {
-  let [stable, event_idx] = [diagram.sections[0].stable, 0]
+  let [stable, event_idx]: [number[] | null, number] = [null, 0]
   for (const section of diagram.sections) {
     while (diagram.events[event_idx]?.temperature < section.temperature)
       stable = diagram.events[event_idx++].stable_after
-    expect(section.stable).toEqual(stable)
+    if (section.stable.length === 0) stable = null
+    else if (stable) expect(section.stable).toEqual(stable)
+    else stable = section.stable
   }
   for (const [idx, windows] of diagram.stability_windows.entries()) {
     for (const [lo, hi] of windows) expect(hi).toBeGreaterThan(lo)
@@ -142,6 +143,16 @@ describe(`compute_section`, () => {
     const section = compute_section(excluded, 300)
     expect(section.stable).not.toContain(4)
     expect(section.e_above_hull[4]).toBeLessThan(0) // below a hull it is not part of
+    // An excluded element neither anchors the hull (a synthetic corner does) nor sets the
+    // formation-energy zero
+    const excluded_li = prepare_diagram(
+      [...toy_entries, phase({ Li: 1 }, -3, { exclude_from_hull: true })],
+      { elements: toy_elements },
+    )
+    expect(excluded_li.phases.map(({ label }) => label)).toContain(`Li`)
+    expect(excluded_li.phases).toHaveLength(8)
+    expect(compute_section(excluded_li, 300).stable).toEqual([0, 1, 2, 5, 6, 7])
+    expect(compute_section(excluded_li, 300).e_above_hull[4]).toBe(-3)
   })
 })
 
@@ -190,11 +201,29 @@ describe(`compute_ternary_phase_diagram`, () => {
       diagram,
       [300, 399, 401, 849, 851, 1000, 1299, 1301, 1500],
     )
-    const [t_0, t_1] = diagram.temperatures
-    expect(e_above_hull_at(diagram, 3, (t_0 + t_1) / 2)).toBeCloseTo(
-      (diagram.sections[0].e_above_hull[3] + diagram.sections[1].e_above_hull[3]) / 2,
-      10,
-    )
+  })
+
+  test(`data gaps: a sweep wider than a tabulated reference stays consistent`, () => {
+    // A flat Li table over 500-1100 K leaves the energetics alone but undefines the hull in
+    // 300-500 and 1100-1500 K
+    const li_tab = phase({ Li: 1 }, 0, {
+      temperatures: [500, 800, 1100],
+      free_energies: [0, 0, 0],
+    })
+    const entries = [...toy_entries, li_tab]
+    const wide = compute_ternary_phase_diagram(entries, {
+      elements: toy_elements,
+      t_range: [300, 1500],
+      n_samples: 7, // 300, 500, ..., 1500 plus the knots
+    })
+    const valid = (temp: number) => temp >= 500 && temp <= 1100
+    for (const section of wide.sections)
+      expect(section.stable.length > 0).toBe(valid(section.temperature))
+    // The 850 K flip lies inside the gap-free range; the 400/1300 K events are out of data
+    expect(wide.events.map((event) => Math.round(event.temperature))).toEqual([850])
+    expect(wide.stability_windows[3]).toEqual([[500, 1100]]) // ABC: whole valid range
+    expect_events_consistent(wide)
+    expect_evaluator_matches(entries, wide, [300, 499, 500, 700, 849, 851, 1100, 1101, 1500])
   })
 
   test(`options: coarse grid without bisection, explicit range, progress, static data`, () => {

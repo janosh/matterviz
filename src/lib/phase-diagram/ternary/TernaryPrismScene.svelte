@@ -15,7 +15,7 @@
     SceneCamera,
     type ThreltePointerEvent,
   } from '$lib/scene'
-  import { T } from '@threlte/core'
+  import { T, useThrelte } from '@threlte/core'
   import type { ComponentProps } from 'svelte'
   import * as extras from '@threlte/extras'
   import { ticks as d3_ticks } from 'd3-array'
@@ -179,9 +179,11 @@
   const split_y = $derived(settings.ghost_above_plane ? plane_y : y_of(t_max) + 1)
   const below_plane = new Plane(new Vector3(0, -1, 0), 0) // keeps y <= split_y
   const above_plane = new Plane(new Vector3(0, 1, 0), 0) // keeps y >= split_y
+  const { invalidate } = useThrelte()
   $effect(() => {
     below_plane.constant = split_y
     above_plane.constant = -split_y
+    invalidate() // on-demand rendering sees no prop change when a plane mutates in place
   })
   const build_facets = memo((facets: number[][]) =>
     buffer_geom(
@@ -213,7 +215,9 @@
   const tie_line_geometry = $derived(build_tie_lines(section.edges))
   const section_points = $derived(build_points(section.stable))
   dispose_on_change(() => [wire_geometry, plane_geometry, unit_cylinder, unit_sphere])
-  dispose_on_change(() => [event_ring_geometry, sheet_geometry])
+  // One call per derived geometry: a shared call would dispose a sibling still in use
+  dispose_on_change(() => [event_ring_geometry])
+  dispose_on_change(() => [sheet_geometry])
   dispose_on_change(() => [facet_geometry])
   dispose_on_change(() => [tie_line_geometry])
 
@@ -273,10 +277,12 @@
   let orbit_controls = $state<ComponentProps<typeof extras.OrbitControls>[`ref`]>()
   const pointer_of = (event: unknown) => event as ThreltePointerEvent
 
+  // Rod handlers stop Threlte propagation so the cutting plane behind a rod is not hit too
   function handle_rod_hover(phase: number, event: unknown): void {
     if (camera_is_moving || dragging_plane) return
-    const { point, nativeEvent } = pointer_of(event)
-    nativeEvent.stopPropagation()
+    const pointer = pointer_of(event)
+    pointer.stopPropagation()
+    const { point, nativeEvent } = pointer
     hovered_phase = phase
     on_hover?.({
       phase,
@@ -284,14 +290,23 @@
       position: [nativeEvent.clientX, nativeEvent.clientY],
     })
   }
-  function handle_rod_leave(): void {
-    hovered_phase = null
-    on_hover?.(null)
-  }
+  const rod_handlers = (phase: number) => ({
+    onpointerenter: (event: unknown) => handle_rod_hover(phase, event),
+    onpointermove: (event: unknown) => handle_rod_hover(phase, event),
+    onpointerleave: () => {
+      hovered_phase = null
+      on_hover?.(null)
+    },
+    onclick: (event: unknown) => {
+      pointer_of(event).stopPropagation()
+      selected_phase = selected_phase === phase ? null : phase
+    },
+  })
   // Dragging the plane pauses orbiting; a camera-facing catcher quad turns pointer motion
   // into a new height (temperature)
   function start_plane_drag(event: unknown): void {
-    pointer_of(event).nativeEvent.stopPropagation()
+    if (pointer_of(event).nativeEvent.button !== 0) return // right/middle button orbit and pan
+    pointer_of(event).stopPropagation()
     dragging_plane = true
     if (orbit_controls) orbit_controls.enabled = false
     on_hover?.(null)
@@ -336,7 +351,8 @@
   </T.LineSegments>
 {/if}
 
-<!-- Below the cutting plane solid, above ghosted; both halves share the same geometry -->
+<!-- Below the cutting plane solid, above ghosted; both halves share the same geometry. Raycasts
+ignore clipping, so only the solid copy carries pointer handlers (else every hit fires twice) -->
 {#each [[below_plane, 1], [above_plane, 0.3]] as const as [plane, alpha] (alpha)}
   <T is={ClippingGroup} clippingPlanes={[plane]}>
     {#if settings.show_sheets}
@@ -355,13 +371,7 @@
         geometry={unit_cylinder}
         position={rod.position}
         scale={[rod_radius(rod.phase), rod.length, rod_radius(rod.phase)]}
-        onpointerenter={(event: unknown) => handle_rod_hover(rod.phase, event)}
-        onpointermove={(event: unknown) => handle_rod_hover(rod.phase, event)}
-        onpointerleave={handle_rod_leave}
-        onclick={(event: unknown) => {
-          pointer_of(event).nativeEvent.stopPropagation()
-          selected_phase = selected_phase === rod.phase ? null : rod.phase
-        }}
+        {...alpha === 1 ? rod_handlers(rod.phase) : {}}
       >
         <T.MeshStandardMaterial
           color={color_of(rod.phase, rod.is_element)}

@@ -15,10 +15,11 @@ import { toy_elements, toy_entries } from './fixtures'
 
 // Toy system transitions: 400 K (ABC appears), 850 K (two tie-line flips), 1300 K (AB vanishes)
 const mounted: ReturnType<typeof mount>[] = []
-afterEach(() => {
+const unmount_all = () => {
   for (const component of mounted.splice(0)) void unmount(component)
   document.body.innerHTML = ``
-})
+}
+afterEach(unmount_all)
 // eslint-disable-next-line typescript/no-explicit-any -- mount() wants each component's exact props type
 const mount_it = (component: Component<any>, props: Record<string, unknown>) => {
   mounted.push(mount(component, { target: document.body, props }))
@@ -97,7 +98,17 @@ describe(`IsobaricTernaryPhaseDiagram`, () => {
     expect(state.temperature).toBe(1488) // 1% of the 1200 K span
     press(`ArrowLeft`, true)
     expect(state.temperature).toBeCloseTo(1299, 0) // just below the 1300 K transition
+    // Space on a focused button must activate the button, not the heating ramp
+    doc_query(`.view-toggle button`).dispatchEvent(
+      new KeyboardEvent(`keydown`, { key: ` `, bubbles: true }),
+    )
+    flushSync()
+    expect(document.querySelector(`[aria-label="Pause heating"]`)).toBeNull()
+    doc_query<HTMLButtonElement>(`.phase-event-list .phase`).click()
+    flushSync()
+    expect(document.querySelector(`.phase-event-list .phase.selected`)).not.toBeNull()
     press(`Escape`)
+    expect(document.querySelector(`.phase-event-list .phase.selected`)).toBeNull()
   })
 
   test.each([
@@ -125,7 +136,7 @@ describe(`IsobaricTernaryPhaseDiagram`, () => {
     doc_query<HTMLButtonElement>(`.view-toggle button`).click()
     flushSync()
     expect(doc_query(`.ternary-section canvas`)).toBeInstanceOf(HTMLCanvasElement)
-    document.body.innerHTML = ``
+    unmount_all()
     mount_diagram({ entries: [] })
     expect(doc_query(`.empty`).textContent).toMatch(/Drop a JSON file/)
   })
@@ -213,7 +224,7 @@ test(`TernaryPhaseDiagramControls writes display patches and gates gas controls`
   flushSync()
   expect(state.display.show_grid).toBe(false)
   expect(document.body.textContent).not.toContain(`Gas atmosphere`)
-  document.body.innerHTML = ``
+  unmount_all()
   mount_it(
     TernaryPhaseDiagramControls,
     Object.assign(props, { relevant_gases: [`O2`], gas_enabled: true }),

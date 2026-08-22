@@ -51,11 +51,9 @@ export const compute_ternary_phase_diagram_async = (
   if (options.free_energy?.gas_config?.provider) {
     const { signal, on_progress } = request_options ?? {}
     if (signal?.aborted) {
-      const reason: unknown = signal.reason
+      const { reason } = signal as { reason: unknown }
       return Promise.reject(
-        reason instanceof Error
-          ? reason
-          : new DOMException(typeof reason === `string` ? reason : `aborted`, `AbortError`),
+        reason instanceof Error ? reason : new DOMException(`aborted`, `AbortError`),
       )
     }
     return Promise.resolve(

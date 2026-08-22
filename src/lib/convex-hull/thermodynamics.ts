@@ -48,7 +48,7 @@ export function process_hull_entries(entries: PhaseData[]): ProcessedPhaseData {
 
 // Energy per atom with the (total-energy, eV) correction applied — the Materials Project
 // convention — falling back to raw energy_per_atom/energy.
-function get_energy_per_atom(entry: PhaseData): number {
+export function get_energy_per_atom(entry: PhaseData): number {
   // Math.max instead of || so pathological non-positive totals can't flip the sign
   const atoms = Math.max(count_atoms_in_composition(entry.composition), 1e-12)
   if (typeof entry.correction === `number`) {

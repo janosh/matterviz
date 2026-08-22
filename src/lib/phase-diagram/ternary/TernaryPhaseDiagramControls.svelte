@@ -263,6 +263,8 @@
             const value = evt.currentTarget.valueAsNumber
             const next: Vec2 = end ? [t_range?.[0] ?? 0, value] : [value, t_range?.[1] ?? 0]
             if (Number.isFinite(value) && next[0] < next[1]) t_range = next
+            // Rejected input: the bound value is unchanged, so restore the field by hand
+            else evt.currentTarget.value = String(t_range?.[end] ?? ``)
           }}
         />
       </label>

@@ -307,7 +307,8 @@
   }
   const end_drag = (event: PointerEvent) => {
     dragging = false
-    canvas?.releasePointerCapture(event.pointerId)
+    if (canvas?.hasPointerCapture(event.pointerId))
+      canvas.releasePointerCapture(event.pointerId)
   }
 </script>
 
@@ -321,13 +322,15 @@
     aria-valuemax={t_max}
     aria-valuenow={temperature}
     onkeydown={(event) => {
+      // Plain arrows step here; shift+arrows bubble to a host that jumps between transitions
       const dir = { ArrowRight: 1, ArrowLeft: -1, ArrowUp: 1, ArrowDown: -1 }[event.key]
-      if (!dir) return
+      if (!dir || event.shiftKey) return
       temperature = Math.min(
         t_max,
         Math.max(t_min, temperature + (dir * (t_max - t_min)) / 100),
       )
       event.preventDefault()
+      event.stopPropagation()
     }}
     onpointermove={handle_pointer_move}
     onpointerdown={handle_pointer_down}

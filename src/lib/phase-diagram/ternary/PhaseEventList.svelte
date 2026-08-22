@@ -101,7 +101,8 @@
                 {#if side_idx === 1}<span class="sep">→</span>{/if}
                 {#each side as item, item_idx (item_idx)}
                   {#if item_idx > 0}<span class="sep">+</span>{/if}
-                  <span
+                  <button
+                    type="button"
                     class={[
                       `phase`,
                       {
@@ -109,16 +110,13 @@
                         hovered: item.phase === hovered_phase,
                       },
                     ]}
-                    role="button"
-                    tabindex="0"
                     onpointerenter={() => (hovered_phase = item.phase)}
                     onpointerleave={() => (hovered_phase = null)}
                     onclick={() =>
                       (selected_phase = selected_phase === item.phase ? null : item.phase)}
-                    onkeydown={(evt) => evt.key === `Enter` && (selected_phase = item.phase)}
                     >{item.coeff}{#each item.segments as segment, seg_idx (seg_idx)}{#if segment.subscript}<sub
                           >{segment.text}</sub
-                        >{:else}{segment.text}{/if}{/each}{item.suffix}</span
+                        >{:else}{segment.text}{/if}{/each}{item.suffix}</button
                   >
                 {/each}
               {/each}
@@ -220,8 +218,13 @@
     opacity: 0.7;
   }
   .phase {
-    border-radius: 3px;
     padding: 0 2px;
+    border: none;
+    border-radius: 3px;
+    background: none;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
     &:hover,
     &.hovered {
       background: color-mix(in srgb, #ff9800 25%, transparent);

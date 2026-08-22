@@ -31,7 +31,6 @@
     compute_section,
     create_section_evaluator,
     decompose_phase,
-    e_above_hull_at,
     prepare_diagram,
   } from './compute'
   import PhaseEventList from './PhaseEventList.svelte'
@@ -101,7 +100,9 @@
     wrapper?: HTMLDivElement
     allow_file_drop?: boolean
     on_file_drop?: (entries: PhaseData[], filename: string) => void
-    on_phase_click?: (phase: DiagramPhase | null) => void // phase.entry is the source entry
+    // Click on the 2D section (phase.entry is the source entry); bind:selected_phase sees
+    // selections from every view
+    on_phase_click?: (phase: DiagramPhase | null) => void
     title?: string
     children?: Snippet<[{ diagram: TernaryPhaseDiagram | null; temperature: number }]>
   } = $props()
@@ -114,10 +115,22 @@
   let dark_mode = $state(is_dark_mode())
   $effect(() => watch_dark_mode((dark) => (dark_mode = dark)))
   let dropped_entries = $state.raw<PhaseData[] | null>(null)
+  let hover = $state<Hover | null>(null)
+  let hovered_phase = $state<number | null>(null)
   $effect(() => {
     if (entries_prop) dropped_entries = null
   })
   const entries = $derived(dropped_entries ?? entries_prop ?? [])
+  // Phase indices belong to one entry set: a new dataset invalidates the selection. Hover
+  // also ends whenever the view changes, since an unmounting view fires no pointerleave.
+  let last_entries: PhaseData[] | null = null
+  $effect(() => {
+    void [settings.view, settings.show_map, settings.show_events]
+    hovered_phase = null
+    hover = null
+    if (last_entries !== null && entries !== last_entries) selected_phase = null
+    last_entries = entries
+  })
 
   // === Model and sweep ===
 
@@ -172,15 +185,15 @@
   } | null>(null)
   $effect(() => {
     const [current_entries, current_options] = [entries, compute_options]
+    computing = Boolean(model) // an aborted sweep never clears its own flag
+    progress = null
+    compute_error = null
     if (!model) {
       diagram = null
       sweep = null
       return
     }
     const controller = new AbortController()
-    computing = true
-    progress = null
-    compute_error = null
     compute_ternary_phase_diagram_async(current_entries, current_options, {
       signal: controller.signal,
       on_progress: (update) => (progress = update),
@@ -197,8 +210,10 @@
       })
     return () => controller.abort()
   })
-  const diagram_raw = $derived(sweep?.diagram ?? null)
-  const fresh = $derived(sweep?.entries === entries && sweep?.options === compute_options)
+  // Phase indices of a sweep over other entries mean nothing against the current model; a sweep
+  // with stale options still shows the same phases while its replacement runs
+  const diagram_raw = $derived(sweep?.entries === entries ? sweep.diagram : null)
+  const fresh = $derived(diagram_raw !== null && sweep?.options === compute_options)
 
   // === Temperature ===
 
@@ -210,31 +225,32 @@
   $effect(() => {
     if (temperature !== current_t) temperature = current_t // keep the binding inside the sweep
   })
-  const set_temperature = (next: number) => (temperature = clamp_t(next))
-  // Pointer scrubbing (prism plane, stability map) outruns frames: apply once per frame
+  // Pointer scrubbing (prism plane, stability map) outruns frames: apply once per frame; a
+  // direct set (keyboard, buttons) cancels any scrub still queued
   let pending_t: number | null = null
+  let scrub_frame = 0
+  const set_temperature = (next: number) => {
+    pending_t = null
+    temperature = clamp_t(next)
+  }
   const scrub_temperature = (next: number) => {
     if (pending_t === null) {
-      requestAnimationFrame(() => {
+      scrub_frame = requestAnimationFrame(() => {
         if (pending_t !== null) set_temperature(pending_t)
-        pending_t = null
       })
     }
     pending_t = next
   }
+  $effect(() => () => cancelAnimationFrame(scrub_frame))
 
   // With the sweep in, a section at any T reuses the cached topology of its interval (no
   // hull recomputation); before that it is computed from scratch
   const evaluator = $derived(
     model && diagram_raw && fresh ? create_section_evaluator(model, diagram_raw) : null,
   )
-  const section = $derived(
-    evaluator
-      ? evaluator.section_at(current_t)
-      : model
-        ? compute_section(model, current_t)
-        : null,
-  )
+  const section_at = (temp: number) =>
+    evaluator ? evaluator.section_at(temp) : model ? compute_section(model, temp) : null
+  const section = $derived(section_at(current_t))
   const events = $derived(diagram_raw?.events ?? [])
   const next_event = $derived(events.find((event) => event.temperature > current_t) ?? null)
   const prev_event = $derived(
@@ -265,11 +281,8 @@
   }
 
   function handle_keydown(event: KeyboardEvent): void {
-    if (
-      event.target instanceof HTMLInputElement ||
-      event.target instanceof HTMLTextAreaElement
-    )
-      return
+    // Focused controls keep their own keys (space activates a button, arrows move a slider)
+    if ((event.target as Element).closest(`button, input, textarea, select`)) return
     const dir = { ArrowRight: 1, ArrowLeft: -1 }[event.key]
     if (dir) {
       const target = dir > 0 ? next_event : prev_event
@@ -283,8 +296,6 @@
 
   // === Hover ===
 
-  let hover = $state<Hover | null>(null)
-  let hovered_phase = $state<number | null>(null)
   const formula_html = (phase: number) =>
     sanitize_html(get_electro_neg_formula(model?.phases[phase].label ?? ``, false, ``))
   const windows_text = (phase: number) =>
@@ -329,12 +340,13 @@
     )}{/each}
 {/snippet}
 
+<!-- svelte-ignore a11y_no_noninteractive_tabindex -- the diagram itself handles arrow/space keys -->
 <div
   {...rest}
   bind:this={wrapper}
   class={[`ternary-phase-diagram`, rest.class, { fullscreen, dragover }]}
   role="application"
-  tabindex="-1"
+  tabindex="0"
   aria-label="{model?.elements.join(`-`) ?? ``} ternary composition-temperature phase diagram"
   onkeydown={handle_keydown}
   ondrop={(event) => {
@@ -550,10 +562,8 @@
               ? hover.data.phase
               : -1}
         {@const at_t = hover.kind === `phase_t` ? hover.data.temperature : current_t}
-        {@const e_hull =
-          hover.kind === `phase_t` && diagram_raw
-            ? e_above_hull_at(diagram_raw, phase, at_t)
-            : section.e_above_hull[phase]}
+        {@const e_hull = (hover.kind === `phase_t` ? (section_at(at_t) ?? section) : section)
+          .e_above_hull[phase]}
         {@const decomposition =
           hover.kind === `section` ? decompose_phase(model, section, phase) : null}
         {@const entry_id = model.phases[phase].entry.entry_id}

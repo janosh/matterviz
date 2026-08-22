@@ -18,7 +18,6 @@
   import type { ConvexHullEntry } from '$lib/convex-hull/types'
   import type { Vec2, Vec3 } from '$lib/math'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { SvelteMap } from 'svelte/reactivity'
   import { type CanvasFrame, create_canvas_surface } from './canvas-surface.svelte'
   import { decompose_composition, type DiagramModel } from './compute'
   import {
@@ -108,7 +107,8 @@
       is_element: phase.is_element,
     })),
   )
-  const entry_index = $derived(new SvelteMap(base_entries.map((entry, idx) => [entry, idx])))
+  // Plain Map: only read from the untracked draw frame and pointer handlers
+  const entry_index = $derived(new Map(base_entries.map((entry, idx) => [entry, idx])))
   const phase_idx_of = (entry: ConvexHullEntry) => entry_index.get(entry) ?? -1
   const hull_entries = $derived(
     base_entries.map((entry, idx) => {
@@ -128,6 +128,10 @@
           (settings.show_unstable &&
             (entry.e_above_hull ?? Infinity) <= settings.max_e_above_hull)),
     ),
+  )
+  // Most stable first: the hit-test order, and reversed the paint order (stable on top)
+  const by_stability = $derived(
+    visible_entries.toSorted((lhs, rhs) => (lhs.e_above_hull ?? 0) - (rhs.e_above_hull ?? 0)),
   )
   const energy_scale = $derived(
     get_energy_color_scale(`energy`, settings.color_scale, visible_entries),
@@ -248,8 +252,8 @@
 
     // Points, unstable first so stable vertices sit on top; the shared helper skips selected
     // and highlighted points (the 3D hull animates them on an overlay), so draw those after
-    const points = visible_entries
-      .toSorted((lhs, rhs) => (rhs.e_above_hull ?? 0) - (lhs.e_above_hull ?? 0))
+    const points = by_stability
+      .toReversed()
       .map((entry) => ({ entry, projected: project(entry.x, entry.y) }))
     const selected_entry =
       selected_phase === null ? null : (hull_entries[selected_phase] ?? null)
@@ -319,7 +323,7 @@
   function handle_pointer_move(event: MouseEvent): void {
     if (!canvas) return
     const position: Vec2 = [event.clientX, event.clientY]
-    const entry = find_hull_entry_at_mouse(canvas, event, visible_entries, project)
+    const entry = find_hull_entry_at_mouse(canvas, event, by_stability, project)
     hover_phase = entry ? phase_idx_of(entry) : null
     canvas.style.cursor = entry ? `pointer` : ``
     if (hover_phase !== null) {

@@ -37,9 +37,9 @@ export function create_canvas_surface(inputs: {
     const canvas = inputs.canvas()
     if (!canvas) return undefined
     const dpr = globalThis.devicePixelRatio || 1
-    const rect = canvas.parentElement?.getBoundingClientRect()
-    const width = rect?.width ?? 0
-    const height = inputs.height?.() ?? rect?.height ?? 0
+    // Client size excludes the parent's scrollbar, like the canvas's own CSS width: 100%
+    const width = canvas.parentElement?.clientWidth ?? 0
+    const height = inputs.height?.() ?? canvas.parentElement?.clientHeight ?? 0
     const [px_width, px_height] = [Math.round(width * dpr), Math.round(height * dpr)]
     if (!ctx || canvas.width !== px_width || canvas.height !== px_height) {
       canvas.width = px_width
@@ -54,7 +54,6 @@ export function create_canvas_surface(inputs: {
   $effect(() => {
     const canvas = inputs.canvas()
     if (!canvas) return undefined
-    resize()
     const observer = new ResizeObserver(resize)
     if (canvas.parentElement) observer.observe(canvas.parentElement)
     return () => {
@@ -63,10 +62,9 @@ export function create_canvas_surface(inputs: {
       frame_id = 0
     }
   })
-  $effect(() => {
-    inputs.height?.() // an explicit height change is not a parent resize
-    resize()
-  })
+  // An explicit height change is not a parent resize; this effect also does the initial
+  // resize, so the observer above only tracks the canvas element itself
+  $effect(resize)
   $effect(() => {
     inputs.repaint_deps()
     void text_color

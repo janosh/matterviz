@@ -8,7 +8,10 @@ import {
   TRIANGLE_VERTICES,
 } from '$lib/convex-hull/barycentric-coords'
 import { is_unary_entry } from '$lib/convex-hull/helpers'
-import { compute_lower_hull_nd, process_hull_entries } from '$lib/convex-hull/thermodynamics'
+import {
+  compute_lower_hull_nd,
+  normalize_hull_composition_keys,
+} from '$lib/convex-hull/thermodynamics'
 import type { PhaseData } from '$lib/convex-hull/types'
 import type { ElementSymbol } from '$lib/element'
 import type { Vec2, Vec3 } from '$lib/math'
@@ -47,8 +50,8 @@ export function prepare_diagram(
   options: TernaryPhaseDiagramOptions = {},
 ): DiagramModel {
   const normalized = entries.map((entry, idx) => {
-    const composition = process_hull_entries([entry]).entries[0]?.composition
-    if (!composition) {
+    const composition = normalize_hull_composition_keys(entry.composition)
+    if (Object.keys(composition).length === 0) {
       throw new Error(
         `Entry ${entry.entry_id ?? idx} has no recognizable elements in ${JSON.stringify(entry.composition)}`,
       )
@@ -69,9 +72,12 @@ export function prepare_diagram(
     throw new Error(
       `Entries contain ${foreign.join(`, `)} outside the ${elements.join(`-`)} system`,
     )
-  // Synthetic corners for elements without a reference entry (dG_f = 0 by definition)
+  // Synthetic corners for elements without a hull-eligible reference entry (dG_f = 0 by
+  // definition); an exclude_from_hull element is drawn but cannot anchor the hull
   for (const el of elements) {
-    if (!normalized.some((entry) => is_unary_entry(entry) && entry.composition[el])) {
+    const has_corner = (entry: PhaseData) =>
+      is_unary_entry(entry) && entry.composition[el] && !entry.exclude_from_hull
+    if (!normalized.some(has_corner)) {
       normalized.push({
         composition: { [el]: 1 },
         energy: 0,
@@ -146,6 +152,26 @@ function dg_form_at(model: DiagramModel, temperature: number): Float64Array {
   })
 }
 
+const at_corner = (phase: DiagramPhase, corner: number) => phase.barycentric[corner] >= 1 - EPS
+
+// Whether every corner has a hull-eligible element with a finite reference at these energies
+const has_references = ({ phases, in_hull }: DiagramModel, dg_form: Float64Array): boolean =>
+  [0, 1, 2].every((corner) =>
+    phases.some(
+      ({ idx }) =>
+        in_hull[idx] && at_corner(phases[idx], corner) && Number.isFinite(dg_form[idx]),
+    ),
+  )
+
+const invalid_topology = (temperature: number, dg_form: Float64Array): HullTopology => ({
+  temperature,
+  dg_form,
+  facets: [],
+  stable: [],
+  edges: [],
+  valid: false,
+})
+
 // Lower hull over `candidates` (phase indices, default all hull-eligible phases)
 function hull_topology(
   model: DiagramModel,
@@ -160,11 +186,10 @@ function hull_topology(
   // Every corner needs a finite reference, else formation energies are meaningless here
   const corners = [0, 1, 2].map((corner) =>
     usable
-      .filter((idx) => phases[idx].barycentric[corner] >= 1 - EPS)
+      .filter((idx) => at_corner(phases[idx], corner))
       .reduce((best, idx) => (best === -1 || dg_form[idx] < dg_form[best] ? idx : best), -1),
   )
-  if (corners.includes(-1))
-    return { temperature, dg_form, facets: [], stable: [], edges: [], valid: false }
+  if (corners.includes(-1)) return invalid_topology(temperature, dg_form)
   const points = usable.map((idx) => [
     phases[idx].barycentric[1],
     phases[idx].barycentric[2],
@@ -287,9 +312,10 @@ function e_above_hull_of(
 function section_from_topology(
   model: DiagramModel,
   { temperature, dg_form, stable, facets, edges, valid }: HullTopology,
+  assignment = valid ? assign_facets(model, facets) : null,
 ): IsothermalSection {
-  const e_above_hull = valid
-    ? e_above_hull_of(assign_facets(model, facets), dg_form, stable)
+  const e_above_hull = assignment
+    ? e_above_hull_of(assignment, dg_form, stable)
     : new Float64Array(dg_form.length).fill(NaN)
   return { temperature, dg_form, e_above_hull, stable, facets, edges }
 }
@@ -298,68 +324,61 @@ function section_from_topology(
 export const compute_section = (model: DiagramModel, temperature: number): IsothermalSection =>
   section_from_topology(model, hull_topology(model, temperature))
 
-// Sections at arbitrary temperatures without recomputing the hull: the sweep found every
-// transition, so the topology inside each interval is known and only the energies move
+// Index of the last item whose key is <= value (-1 if none); items sorted by key
+function last_at_or_below<Item>(
+  items: readonly Item[],
+  key: (item: Item) => number,
+  value: number,
+): number {
+  let lo = 0
+  let hi = items.length
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1
+    if (key(items[mid]) <= value) lo = mid + 1
+    else hi = mid
+  }
+  return lo - 1
+}
+
+// Sections at arbitrary temperatures without recomputing the hull: the topology is constant
+// from the latest sample or transition at or below T until the next transition, so only the
+// energies move. Samples inside a data gap (no hull) fall back to a from-scratch hull.
 export function create_section_evaluator(
   model: DiagramModel,
-  { events, sections }: TernaryPhaseDiagram,
+  { events, sections, temperatures }: TernaryPhaseDiagram,
 ) {
-  const intervals = new Map<
-    number,
-    { assignment: FacetAssignment; stable: number[]; edges: Vec2[] }
-  >()
+  const event_t = (event: PhaseEvent) => event.temperature
+  const intervals = new WeakMap<number[][], { assignment: FacetAssignment; edges: Vec2[] }>()
   return {
     section_at(temperature: number): IsothermalSection {
-      // Interval k holds [events[k-1].T, events[k].T); k = 0 is below the first transition
-      let lo = 0
-      let hi = events.length
-      while (lo < hi) {
-        const mid = (lo + hi) >> 1
-        if (events[mid].temperature <= temperature) lo = mid + 1
-        else hi = mid
-      }
-      let interval = intervals.get(lo)
+      const dg_form = dg_form_at(model, temperature)
+      if (!has_references(model, dg_form))
+        return section_from_topology(model, invalid_topology(temperature, dg_form))
+      const sample = sections[Math.max(0, last_at_or_below(temperatures, Number, temperature))]
+      const event = events[last_at_or_below(events, event_t, temperature)]
+      const { facets, stable, edges } =
+        event && event.temperature >= sample.temperature
+          ? { facets: event.facets_after, stable: event.stable_after, edges: null }
+          : sample
+      if (facets.length === 0) return compute_section(model, temperature)
+      let interval = intervals.get(facets)
       if (!interval) {
-        const { stable, facets } =
-          lo === 0
-            ? sections[0]
-            : { stable: events[lo - 1].stable_after, facets: events[lo - 1].facets_after }
         interval = {
           assignment: assign_facets(model, facets),
-          stable,
-          edges: lo === 0 ? sections[0].edges : facet_edges(facets),
+          edges: edges ?? facet_edges(facets),
         }
-        intervals.set(lo, interval)
+        intervals.set(facets, interval)
       }
-      const dg_form = dg_form_at(model, temperature)
-      const { assignment, stable, edges } = interval
       return {
         temperature,
         dg_form,
-        e_above_hull: e_above_hull_of(assignment, dg_form, stable),
+        e_above_hull: e_above_hull_of(interval.assignment, dg_form, stable),
         stable,
-        facets: assignment.facets,
-        edges,
+        facets,
+        edges: interval.edges,
       }
     },
   }
-}
-
-// Energy above hull of a phase at any T, linearly interpolated between sampled sections
-export function e_above_hull_at(
-  { temperatures, sections }: TernaryPhaseDiagram,
-  phase: number,
-  temperature: number,
-): number {
-  const above = temperatures.findIndex((sample) => sample >= temperature)
-  const hi = above === -1 ? temperatures.length - 1 : Math.max(1, above) // clamp past t_max
-  const lo = hi - 1
-  const [e_lo, e_hi] = [sections[lo].e_above_hull[phase], sections[hi].e_above_hull[phase]]
-  if (!Number.isFinite(e_lo) || !Number.isFinite(e_hi)) return e_hi
-  return (
-    e_lo +
-    ((temperature - temperatures[lo]) / (temperatures[hi] - temperatures[lo])) * (e_hi - e_lo)
-  )
 }
 
 // === Events ===
@@ -389,7 +408,7 @@ function balance(
   let coeffs = all.map(({ coeff }) => coeff / base)
   for (let mult = 1; mult <= 24; mult++) {
     const scaled = coeffs.map((coeff) => coeff * mult)
-    if (scaled.every((val) => Math.abs(val - Math.round(val)) < 1e-3 * mult)) {
+    if (scaled.every((val) => Math.abs(val - Math.round(val)) < 1e-3)) {
       coeffs = scaled.map(Math.round)
       break
     }
@@ -411,7 +430,8 @@ const formula_units = (
     coeff: (fractions[pos] * n_atoms) / model.phases[phase].n_atoms,
   }))
 
-// Crossing of two tie-lines as parameters along each, or null
+// Crossing of two tie-lines as parameters along each, or null; crossings within 1e-3 of an
+// endpoint are shared vertices, not flips (their reactions would need ~1000:1 coefficients)
 function crossing([pt_p, pt_q]: [Vec2, Vec2], [pt_r, pt_s]: [Vec2, Vec2]): Vec2 | null {
   const d_pq = [pt_q[0] - pt_p[0], pt_q[1] - pt_p[1]]
   const d_rs = [pt_s[0] - pt_r[0], pt_s[1] - pt_r[1]]
@@ -420,7 +440,7 @@ function crossing([pt_p, pt_q]: [Vec2, Vec2], [pt_r, pt_s]: [Vec2, Vec2]): Vec2 
   if (Math.abs(denom) < 1e-12) return null
   const t_pq = (d_pr[0] * d_rs[1] - d_pr[1] * d_rs[0]) / denom
   const t_rs = (d_pr[0] * d_pq[1] - d_pr[1] * d_pq[0]) / denom
-  const inside = (val: number) => val > WEIGHT_EPS && val < 1 - WEIGHT_EPS
+  const inside = (val: number) => val > 1e-3 && val < 1 - 1e-3
   return inside(t_pq) && inside(t_rs) ? [t_pq, t_rs] : null
 }
 
@@ -517,10 +537,11 @@ function interval_candidates(
   lo: IsothermalSection,
   hi: IsothermalSection,
 ): number[] {
-  const shifts = lo.dg_form
-    .map((value, idx) => Math.abs(hi.dg_form[idx] - value))
-    .filter(Number.isFinite)
-  const margin = 3 * Math.max(0, ...shifts) + 1e-6
+  const max_shift = lo.dg_form.reduce((max, value, idx) => {
+    const shift = Math.abs(hi.dg_form[idx] - value)
+    return shift > max ? shift : max // NaN never wins
+  }, 0)
+  const margin = 3 * max_shift + 1e-6
   return model.phases
     .filter(({ idx, is_element }) => {
       const near = Math.min(
@@ -545,9 +566,10 @@ function locate_events(
 ): void {
   if (signature(lo) === signature(hi)) return
   const mid_t = (lo.temperature + hi.temperature) / 2
-  if (!lo.valid || !hi.valid) return
+  // A data-range edge is bisected like a transition (so transitions right before it are still
+  // found) but is not itself an event
   if (hi.temperature - lo.temperature <= tolerance) {
-    events.push(make_event(model, mid_t, lo, hi))
+    if (lo.valid && hi.valid) events.push(make_event(model, mid_t, lo, hi))
     return
   }
   const mid = hull_topology(model, mid_t, candidates)
@@ -578,28 +600,35 @@ function sample_temperatures(
   ].toSorted((lhs, rhs) => lhs - rhs)
 }
 
-// Per phase: maximal [T_lo, T_hi] intervals on the hull, from the first valid section and the
-// events after it
+// Per phase: maximal [T_lo, T_hi] intervals on the hull. Transitions give exact bounds; at the
+// edges of a data gap (sections without a hull) windows span the valid samples only.
 function stability_windows(
   n_phases: number,
-  t_max: number,
-  first: IsothermalSection | undefined,
+  sections: IsothermalSection[],
   events: PhaseEvent[],
 ): Vec2[][] {
   const windows: Vec2[][] = Array.from({ length: n_phases }, () => [])
-  const open = new Map(
-    (first?.stable ?? []).map((phase) => [phase, first?.temperature ?? t_max]),
-  )
-  const close = (phase: number, temperature: number) => {
-    const start = open.get(phase)
-    if (start !== undefined) windows[phase].push([start, temperature])
-    open.delete(phase)
+  const open = new Map<number, number>()
+  const close_all = (temperature: number, phases = [...open.keys()]) => {
+    for (const phase of phases) {
+      const start = open.get(phase)
+      if (start !== undefined && temperature > start) windows[phase].push([start, temperature])
+      open.delete(phase)
+    }
   }
-  for (const event of events) {
-    for (const phase of event.vanished) close(phase, event.temperature)
-    for (const phase of event.appeared) open.set(phase, event.temperature)
+  let [event_idx, prev_t] = [0, sections[0]?.temperature ?? 0]
+  for (const section of sections) {
+    while (events[event_idx]?.temperature < section.temperature) {
+      const event = events[event_idx++]
+      close_all(event.temperature, event.vanished)
+      for (const phase of event.appeared) open.set(phase, event.temperature)
+    }
+    if (section.stable.length === 0) close_all(prev_t)
+    for (const phase of section.stable)
+      open.set(phase, Math.min(open.get(phase) ?? Infinity, section.temperature))
+    prev_t = section.temperature
   }
-  for (const phase of open.keys()) close(phase, t_max)
+  close_all(prev_t)
   return windows
 }
 
@@ -617,7 +646,17 @@ export function compute_ternary_phase_diagram(
     on_progress?.({ done: idx + 1, total: temperatures.length })
     return topology
   })
-  const sections = topologies.map((topology) => section_from_topology(model, topology))
+  // Facet assignment depends only on the topology, which most adjacent samples share
+  const assignments = new Map<string, FacetAssignment | null>()
+  const sections = topologies.map((topology) => {
+    const key = signature(topology)
+    let assignment = assignments.get(key)
+    if (assignment === undefined) {
+      assignment = topology.valid ? assign_facets(model, topology.facets) : null
+      assignments.set(key, assignment)
+    }
+    return section_from_topology(model, topology, assignment)
+  })
   const tolerance = options.event_tolerance ?? DEFAULT_EVENT_TOLERANCE
   const events: PhaseEvent[] = []
   for (let idx = 0; idx + 1 < topologies.length; idx++) {
@@ -640,12 +679,7 @@ export function compute_ternary_phase_diagram(
     temperatures,
     sections,
     events,
-    stability_windows: stability_windows(
-      model.phases.length,
-      model.t_range[1],
-      sections.find((section) => section.stable.length > 0),
-      events,
-    ),
+    stability_windows: stability_windows(model.phases.length, sections, events),
     t_range: model.t_range,
     sources: [...new Set(model.free_energies.map((phase) => phase.source))],
   }

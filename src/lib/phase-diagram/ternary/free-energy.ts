@@ -14,7 +14,10 @@ import {
   R_EV_PER_K,
 } from '$lib/convex-hull/gas-thermodynamics'
 import { interpolate_energy_at_temperature } from '$lib/convex-hull/helpers'
-import { find_lowest_energy_unary_refs } from '$lib/convex-hull/thermodynamics'
+import {
+  find_lowest_energy_unary_refs,
+  get_energy_per_atom as energy_per_atom,
+} from '$lib/convex-hull/thermodynamics'
 import type { GasSpecies, GasThermodynamicsConfig, PhaseData } from '$lib/convex-hull/types'
 import type { ElementSymbol } from '$lib/element'
 import { element_by_symbol } from '$lib/element/data'
@@ -34,17 +37,6 @@ const has_tabulated_g = (entry: PhaseData): boolean =>
   Boolean(
     entry.temperatures?.length && entry.temperatures.length === entry.free_energies?.length,
   )
-
-const energy_per_atom = (entry: PhaseData): number => {
-  const atoms = Math.max(count_atoms_in_composition(entry.composition), 1e-12)
-  if (typeof entry.correction !== `number`)
-    return entry.energy_per_atom ?? (entry.energy ?? 0) / atoms
-  const total =
-    typeof entry.energy_per_atom === `number`
-      ? entry.energy_per_atom * atoms
-      : (entry.energy ?? 0)
-  return (total + entry.correction) / atoms
-}
 
 // Volume per atom in A^3 from volume_per_atom, structure.lattice.volume / n_sites or
 // data.volume / n_atoms; null when none is available
@@ -134,13 +126,13 @@ export function sisso_supports(entry: PhaseData): boolean {
 type GasShift = (
   element: ElementSymbol,
   temperature: number,
-  source: FreeEnergySource,
+  reference_has_entropy: boolean,
 ) => number
 
-// Per-atom shift of an element's chemical potential from the atmosphere. Against 0 K DFT
-// references (tabulated/static entries) that is the full mu(T, p) - mu(0 K, 1 bar); the SISSO
-// table already holds the pure diatomic gas at 1 bar, so only k_B T ln(p/p0) remains there and
-// compound gases (CO2, CO, H2O) have no SISSO reference at all
+// Per-atom shift of an element's chemical potential from the atmosphere. Against a 0 K DFT
+// reference that is the full mu(T, p) - mu(0 K, 1 bar); a reference that already carries its
+// own G(T) (tabulated entry, SISSO's experimental 1 bar gas) only lacks k_B T ln(p/p0), and
+// compound gases (CO2, CO, H2O) have no such reference at all
 function build_gas_shift(
   config: GasThermodynamicsConfig | undefined,
   pressures_override: Partial<Record<GasSpecies, number>> | undefined,
@@ -153,20 +145,28 @@ function build_gas_shift(
   const pressures = get_effective_pressures(merged)
   const element_to_gas = { ...DEFAULT_ELEMENT_TO_GAS, ...merged.element_to_gas }
   const enabled = new Set(merged.enabled_gases)
-  return (element, temperature, source) => {
+  // Every phase is evaluated at one T before the next, so one remembered value per element
+  // spares the provider lookup for all but the first
+  const last = new Map<ElementSymbol, Vec2>()
+  return (element, temperature, reference_has_entropy) => {
     const gas = element_to_gas[element]
     if (!gas || !enabled.has(gas)) return 0
-    if (source !== `sisso`)
-      return compute_gas_correction(
-        { composition: { [element]: 1 }, energy: 0 },
-        merged,
-        temperature,
-        pressures,
-      )
-    const stoich = GAS_STOICHIOMETRY[gas]
-    return Object.keys(stoich).length === 1
-      ? (R_EV_PER_K * temperature * Math.log(pressures[gas])) / (stoich[element] ?? 1)
-      : 0
+    if (reference_has_entropy) {
+      const stoich = GAS_STOICHIOMETRY[gas]
+      return Object.keys(stoich).length === 1
+        ? (R_EV_PER_K * temperature * Math.log(pressures[gas])) / (stoich[element] ?? 1)
+        : 0
+    }
+    const memo = last.get(element)
+    if (memo?.[0] === temperature) return memo[1]
+    const shift = compute_gas_correction(
+      { composition: { [element]: 1 }, energy: 0 },
+      merged,
+      temperature,
+      pressures,
+    )
+    last.set(element, [temperature, shift])
+    return shift
   }
 }
 
@@ -237,7 +237,10 @@ export function build_free_energy_model(
   options: FreeEnergyOptions = {},
 ): FreeEnergyModel {
   const { mode = `auto`, interpolate = true, max_interpolation_gap = 500 } = options
-  const unary_refs = find_lowest_energy_unary_refs(entries)
+  // An exclude_from_hull element is shown but cannot define the formation-energy zero
+  const unary_refs = find_lowest_energy_unary_refs(
+    entries.filter((entry) => !entry.exclude_from_hull),
+  )
   // Without a reference entry the element's corner sits at dG_f = 0 (synthetic element)
   for (const el of elements) unary_refs[el] ??= { composition: { [el]: 1 }, energy: 0 }
   const gas_shift = build_gas_shift(options.gas_config, options.gas_pressures)
@@ -255,7 +258,14 @@ export function build_free_energy_model(
   const ref_g = Object.fromEntries(refs.map(([el, g_of]) => [el, g_of])) as Partial<
     Record<ElementSymbol, (temperature: number) => number>
   >
+  const ref_tabulated = new Set(refs.filter(([, , range]) => range).map(([el]) => el))
   const reference_t_range = intersect_ranges(refs.map(([, , range]) => range))
+  if (reference_t_range && !(reference_t_range[0] < reference_t_range[1])) {
+    const tables = refs
+      .filter(([, , range]) => range)
+      .map(([el, , range]) => `${el} ${range?.join(`–`)} K`)
+    throw new Error(`Elemental references share no temperature range: ${tables.join(`, `)}`)
+  }
   const compounds_use_sisso = entries.some(
     (entry) =>
       atomic_fractions(entry).length > 1 && pick_source(entry, mode, false) === `sisso`,
@@ -269,7 +279,9 @@ export function build_free_energy_model(
     const shift = (temperature: number): number =>
       gas_shift && !unary
         ? fractions.reduce(
-            (sum, [el, frac]) => sum + frac * gas_shift(el, temperature, source),
+            (sum, [el, frac]) =>
+              sum +
+              frac * gas_shift(el, temperature, source === `sisso` || ref_tabulated.has(el)),
             0,
           )
         : 0
