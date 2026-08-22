@@ -13,7 +13,7 @@ import type { DiagramProgress, TernaryPhaseDiagram, TernaryPhaseDiagramOptions }
 
 // Only what the computation reads, so megabyte structures never get cloned into the worker.
 // phases[idx].entry in the result is this slim record; hosts keep their own entries by index.
-export function slim_entry(entry: PhaseData): PhaseData {
+function slim_entry(entry: PhaseData): PhaseData {
   const volume_per_atom = get_volume_per_atom(entry)
   return {
     composition: { ...entry.composition },

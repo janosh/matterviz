@@ -233,7 +233,7 @@ export interface FacetAssignment {
   weights: Float64Array // 3 per phase
 }
 
-export function assign_facets(
+function assign_facets(
   model: Pick<DiagramModel, `phases`>,
   facets: number[][],
 ): FacetAssignment {
