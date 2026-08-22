@@ -66,18 +66,23 @@ def fetch_subsystem(elements: tuple[str, ...]) -> list[dict[str, Any]]:
     entries: list[dict[str, Any]] = []
     url: str | None = BASE_URL
     while url:
+        payload: dict[str, Any] | None = None
         for attempt in range(4):
-            response = requests.get(
-                url, params=params if url == BASE_URL else None, timeout=180
-            )
-            if response.ok and "errors" not in response.json():
-                break
+            try:
+                response = requests.get(
+                    url, params=params if url == BASE_URL else None, timeout=180
+                )
+                candidate = response.json()
+                if response.ok and "errors" not in candidate:
+                    payload = candidate
+                    break
+            except (requests.RequestException, ValueError):
+                pass
             time.sleep(5 * (attempt + 1))
-        else:
+        if payload is None:
             raise RuntimeError(
-                f"Alexandria query failed for {elements}: {response.text[:300]}"
+                f"Alexandria query failed for {elements} after 4 attempts: {url}"
             )
-        payload = response.json()
         entries.extend(payload["data"])
         url = payload.get("links", {}).get("next")
         if isinstance(url, dict):

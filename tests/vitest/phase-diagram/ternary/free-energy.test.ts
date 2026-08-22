@@ -149,11 +149,11 @@ describe(`build_free_energy_model`, () => {
     const shift_300 = at(1).dg_form(300) - base.dg_form(300)
     expect(shift_300).toBeGreaterThan(0)
     expect(at(1).dg_form(1000) - base.dg_form(1000)).toBeGreaterThan(shift_300)
+    // Elements are their own reference and never shift
     expect(
-      at(1).dg_form(1000) &&
-        build_free_energy_model([li, co, o2, li2o], elements, {
-          gas_config,
-        }).phases[2].dg_form(1000),
+      build_free_energy_model([li, co, o2, li2o], elements, { gas_config }).phases[2].dg_form(
+        1000,
+      ),
     ).toBe(0)
     // Lower pO2 destabilizes oxides by x_O k_B T ln(p) / 2
     expect(at(1e-10).dg_form(1000) - at(1).dg_form(1000)).toBeCloseTo(

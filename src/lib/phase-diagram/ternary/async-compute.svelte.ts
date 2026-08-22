@@ -49,12 +49,17 @@ export const compute_ternary_phase_diagram_async = (
   request_options?: WorkerRequestOptions<DiagramProgress>,
 ): Promise<TernaryPhaseDiagram> => {
   if (options.free_energy?.gas_config?.provider) {
+    const { signal, on_progress } = request_options ?? {}
+    if (signal?.aborted) {
+      const reason: unknown = signal.reason
+      return Promise.reject(
+        reason instanceof Error
+          ? reason
+          : new DOMException(typeof reason === `string` ? reason : `aborted`, `AbortError`),
+      )
+    }
     return Promise.resolve(
-      compute_ternary_phase_diagram(
-        entries.map(slim_entry),
-        options,
-        request_options?.on_progress,
-      ),
+      compute_ternary_phase_diagram(entries.map(slim_entry), options, on_progress),
     )
   }
   return run_diagram(entries, options, request_options)

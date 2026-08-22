@@ -315,11 +315,20 @@
   <canvas
     bind:this={canvas}
     role="slider"
-    tabindex="-1"
-    aria-label="Phase stability versus temperature"
+    tabindex="0"
+    aria-label="Phase stability versus temperature; arrow keys step the temperature"
     aria-valuemin={t_min}
     aria-valuemax={t_max}
     aria-valuenow={temperature}
+    onkeydown={(event) => {
+      const dir = { ArrowRight: 1, ArrowLeft: -1, ArrowUp: 1, ArrowDown: -1 }[event.key]
+      if (!dir) return
+      temperature = Math.min(
+        t_max,
+        Math.max(t_min, temperature + (dir * (t_max - t_min)) / 100),
+      )
+      event.preventDefault()
+    }}
     onpointermove={handle_pointer_move}
     onpointerdown={handle_pointer_down}
     onpointerup={end_drag}

@@ -31,7 +31,7 @@ export interface FreeEnergyOptions {
 export interface PhaseFreeEnergy {
   source: FreeEnergySource
   t_range: Vec2 | null // null = defined everywhere
-  dg_form: (temperature: number) => number
+  dg_form: (temperature: number) => number // eV/atom, like PhaseData.free_energies
 }
 
 // === Computed diagram ===

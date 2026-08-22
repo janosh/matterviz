@@ -101,7 +101,7 @@
     wrapper?: HTMLDivElement
     allow_file_drop?: boolean
     on_file_drop?: (entries: PhaseData[], filename: string) => void
-    on_phase_click?: (phase: DiagramPhase | null, entry: PhaseData | null) => void
+    on_phase_click?: (phase: DiagramPhase | null) => void // phase.entry is the source entry
     title?: string
     children?: Snippet<[{ diagram: TernaryPhaseDiagram | null; temperature: number }]>
   } = $props()
@@ -272,8 +272,7 @@
       return
     const dir = { ArrowRight: 1, ArrowLeft: -1 }[event.key]
     if (dir) {
-      const target =
-        dir > 0 ? next_event : events.findLast((evt) => evt.temperature < current_t - 1)
+      const target = dir > 0 ? next_event : prev_event
       if (!event.shiftKey) set_temperature(current_t + dir * (t_max - t_min) * 0.01)
       else if (target) set_temperature(target.temperature + dir)
     } else if (event.key === ` `) toggle_play()
@@ -401,11 +400,7 @@
             highlighted_phases={hovered_phase === null ? [] : [hovered_phase]}
             {emphasized_phases}
             on_hover={(data) => (hover = data && { kind: `section`, data })}
-            on_click={(phase) =>
-              on_phase_click?.(
-                phase,
-                phase && phase.idx < entries.length ? entries[phase.idx] : null,
-              )}
+            on_click={(phase) => on_phase_click?.(phase)}
           />
         {:else if !mounted || !webgpu_available()}
           <div class="prism-fallback">WebGPU is required for the 3D prism view.</div>

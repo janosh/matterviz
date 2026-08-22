@@ -93,46 +93,44 @@
         >
           <span class="icon" aria-hidden="true">{icon}</span>
           <span class="temp">{format_num(event.temperature, `.0f`)} K</span>
-          <span class="reactions">
-            {#each event.reactions as reaction, rxn_idx (rxn_idx)}
-              <span class="reaction">
-                {#each [terms(reaction, reaction.reactants), terms(reaction, reaction.products)] as side, side_idx (side_idx)}
-                  {#if side_idx === 1}<span class="sep">→</span>{/if}
-                  {#each side as item, item_idx (item_idx)}
-                    {#if item_idx > 0}<span class="sep">+</span>{/if}
-                    <span
-                      class={[
-                        `phase`,
-                        {
-                          selected: item.phase === selected_phase,
-                          hovered: item.phase === hovered_phase,
-                        },
-                      ]}
-                      role="button"
-                      tabindex="-1"
-                      onpointerenter={() => (hovered_phase = item.phase)}
-                      onpointerleave={() => (hovered_phase = null)}
-                      onclick={(evt) => {
-                        evt.stopPropagation()
-                        selected_phase = selected_phase === item.phase ? null : item.phase
-                      }}
-                      onkeydown={(evt) => evt.key === `Enter` && (selected_phase = item.phase)}
-                      >{item.coeff}{#each item.segments as segment, seg_idx (seg_idx)}{#if segment.subscript}<sub
-                            >{segment.text}</sub
-                          >{:else}{segment.text}{/if}{/each}{item.suffix}</span
-                    >
-                  {/each}
-                {/each}
-              </span>
-            {:else}
-              <span class="reaction"
-                >{event.edges_removed.length} tie-line{event.edges_removed.length === 1
-                  ? ``
-                  : `s`} replaced</span
-              >
-            {/each}
-          </span>
         </button>
+        <span class="reactions">
+          {#each event.reactions as reaction, rxn_idx (rxn_idx)}
+            <span class="reaction">
+              {#each [terms(reaction, reaction.reactants), terms(reaction, reaction.products)] as side, side_idx (side_idx)}
+                {#if side_idx === 1}<span class="sep">→</span>{/if}
+                {#each side as item, item_idx (item_idx)}
+                  {#if item_idx > 0}<span class="sep">+</span>{/if}
+                  <span
+                    class={[
+                      `phase`,
+                      {
+                        selected: item.phase === selected_phase,
+                        hovered: item.phase === hovered_phase,
+                      },
+                    ]}
+                    role="button"
+                    tabindex="0"
+                    onpointerenter={() => (hovered_phase = item.phase)}
+                    onpointerleave={() => (hovered_phase = null)}
+                    onclick={() =>
+                      (selected_phase = selected_phase === item.phase ? null : item.phase)}
+                    onkeydown={(evt) => evt.key === `Enter` && (selected_phase = item.phase)}
+                    >{item.coeff}{#each item.segments as segment, seg_idx (seg_idx)}{#if segment.subscript}<sub
+                          >{segment.text}</sub
+                        >{:else}{segment.text}{/if}{/each}{item.suffix}</span
+                  >
+                {/each}
+              {/each}
+            </span>
+          {:else}
+            <span class="reaction"
+              >{event.edges_removed.length} tie-line{event.edges_removed.length === 1
+                ? ``
+                : `s`} replaced</span
+            >
+          {/each}
+        </span>
       </li>
     {/each}
   </ol>
@@ -153,6 +151,10 @@
     padding: 0;
   }
   li {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5em;
+    padding: 3px 6px;
     border-left: 3px solid transparent;
     &.active {
       border-left-color: var(--accent-color, #1976d2);
@@ -178,8 +180,8 @@
     display: flex;
     align-items: baseline;
     gap: 0.5em;
-    width: 100%;
-    padding: 3px 6px;
+    flex: none;
+    padding: 0;
     background: none;
     border: none;
     border-radius: 0;

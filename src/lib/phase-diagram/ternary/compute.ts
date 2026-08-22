@@ -351,10 +351,8 @@ export function e_above_hull_at(
   phase: number,
   temperature: number,
 ): number {
-  const hi = Math.max(
-    1,
-    temperatures.findIndex((sample) => sample >= temperature),
-  )
+  const above = temperatures.findIndex((sample) => sample >= temperature)
+  const hi = above === -1 ? temperatures.length - 1 : Math.max(1, above) // clamp past t_max
   const lo = hi - 1
   const [e_lo, e_hi] = [sections[lo].e_above_hull[phase], sections[hi].e_above_hull[phase]]
   if (!Number.isFinite(e_lo) || !Number.isFinite(e_hi)) return e_hi
@@ -580,15 +578,18 @@ function sample_temperatures(
   ].toSorted((lhs, rhs) => lhs - rhs)
 }
 
-// Per phase: maximal [T_lo, T_hi] intervals on the hull, from the first section and the events
+// Per phase: maximal [T_lo, T_hi] intervals on the hull, from the first valid section and the
+// events after it
 function stability_windows(
   n_phases: number,
-  [t_min, t_max]: Vec2,
-  first_stable: number[],
+  t_max: number,
+  first: IsothermalSection | undefined,
   events: PhaseEvent[],
 ): Vec2[][] {
   const windows: Vec2[][] = Array.from({ length: n_phases }, () => [])
-  const open = new Map(first_stable.map((phase) => [phase, t_min]))
+  const open = new Map(
+    (first?.stable ?? []).map((phase) => [phase, first?.temperature ?? t_max]),
+  )
   const close = (phase: number, temperature: number) => {
     const start = open.get(phase)
     if (start !== undefined) windows[phase].push([start, temperature])
@@ -641,8 +642,8 @@ export function compute_ternary_phase_diagram(
     events,
     stability_windows: stability_windows(
       model.phases.length,
-      model.t_range,
-      sections.find((section) => section.stable.length > 0)?.stable ?? [],
+      model.t_range[1],
+      sections.find((section) => section.stable.length > 0),
       events,
     ),
     t_range: model.t_range,

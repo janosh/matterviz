@@ -25,8 +25,9 @@
 
   function update_url(filename: string): void {
     if (!browser) return
-    page.url.searchParams.set(`file`, filename)
-    void replace_url(`${page.url.pathname}?${page.url.searchParams.toString()}`)
+    const url = new URL(page.url) // page.url is read-only state: never mutate it in place
+    url.searchParams.set(`file`, filename)
+    void replace_url(url)
   }
 
   async function load_system(filename: string, update_url_param = true): Promise<void> {

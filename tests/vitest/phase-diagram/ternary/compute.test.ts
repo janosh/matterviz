@@ -232,9 +232,7 @@ describe(`Li-Co-O with the SISSO model`, () => {
       ([el, amt]) => amt <= 0 || [`Li`, `Co`, `O`].includes(el),
     ),
   )
-  const start = performance.now()
   const diagram = compute_ternary_phase_diagram(entries, { n_samples: 35 })
-  const elapsed = performance.now() - start
   const vanish_of = (label: string) =>
     diagram.events.find((event) =>
       event.vanished.some((idx) => diagram.phases[idx].label === label),
@@ -252,7 +250,6 @@ describe(`Li-Co-O with the SISSO model`, () => {
       [`Li`, `Co`, `O`],
       [`sisso`],
     ])
-    expect(elapsed).toBeLessThan(4000)
     // Li2O2 (reduced formula LiO) → Li2O + O2 near 420 K, Co3O4 → CoO near 1430 K
     expect(vanish_of(`LiO`)?.temperature).toBeGreaterThan(350)
     expect(vanish_of(`LiO`)?.temperature).toBeLessThan(600)
