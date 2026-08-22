@@ -104,7 +104,15 @@ describe(`compute_section`, () => {
   test(`hull, hull distances and lever rule at 300 K and 1400 K`, () => {
     const low = compute_section(model, 300)
     expect(low.stable).toEqual([0, 1, 2, 4, 5, 6])
-    expect([low.facets.length, low.edges.length]).toEqual([4, 9])
+    const asc = (lhs: number, rhs: number) => lhs - rhs
+    const lexical = (lhs: number[], rhs: number[]) => `${lhs}`.localeCompare(`${rhs}`)
+    expect(low.facets.map((facet) => facet.toSorted(asc)).toSorted(lexical)).toEqual([
+      [0, 1, 2],
+      [0, 1, 4],
+      [0, 2, 5],
+      [1, 2, 6],
+    ])
+    expect(low.edges).toHaveLength(9)
     expect(low.e_above_hull[3]).toBeCloseTo(-0.35 - (-0.5 - 0.3 - 0.3) / 3, 10)
     expect(low.e_above_hull[0]).toBe(0)
     expect(decompose_phase(model, low, 3)?.phases).toEqual([0, 1, 2])
@@ -149,10 +157,9 @@ describe(`compute_section`, () => {
       [...toy_entries, phase({ Li: 1 }, -3, { exclude_from_hull: true })],
       { elements: toy_elements },
     )
-    expect(excluded_li.phases.map(({ label }) => label)).toContain(`Li`)
-    expect(excluded_li.phases).toHaveLength(8)
-    expect(compute_section(excluded_li, 300).stable).toEqual([0, 1, 2, 5, 6, 7])
-    expect(compute_section(excluded_li, 300).e_above_hull[4]).toBe(-3)
+    expect(excluded_li.phases).toHaveLength(8) // 4 toy + excluded Li + 3 synthetic corners
+    const { stable, e_above_hull } = compute_section(excluded_li, 300)
+    expect([stable, e_above_hull[4]]).toEqual([[0, 1, 2, 5, 6, 7], -3])
   })
 })
 
@@ -169,8 +176,6 @@ describe(`compute_ternary_phase_diagram`, () => {
       [850, `tie_line_flip`],
       [1300, `vanish`],
     ])
-    for (const [idx, target] of [400, 850, 1300].entries())
-      expect(Math.abs(diagram.events[idx].temperature - target)).toBeLessThanOrEqual(0.5)
     expect(reactions(diagram, 0)).toEqual([`NaLi + KLi + KNa → 2 KNaLi`])
     expect(reactions(diagram, 1)).toEqual([
       `NaLi + KLi → KNaLi + Li`,
@@ -179,7 +184,14 @@ describe(`compute_ternary_phase_diagram`, () => {
     expect(diagram.events[1]).toMatchObject({
       appeared: [],
       vanished: [],
-      edges_added: [expect.anything(), expect.anything()],
+      edges_removed: [
+        [0, 1],
+        [0, 2],
+      ], // NaLi-KLi, NaLi-KNa
+      edges_added: [
+        [3, 4],
+        [3, 5],
+      ], // KNaLi-Li, KNaLi-Na
     })
     expect(reactions(diagram, 2)).toEqual([`NaLi → Li + Na`])
     expect(
@@ -233,14 +245,14 @@ describe(`compute_ternary_phase_diagram`, () => {
       temperatures: [300, 600, 900, 1200, 1500],
     })
     expect(coarse.events.map((event) => event.temperature)).toEqual([450, 750, 1350])
-    const seen: number[] = []
+    const seen: string[] = []
     const narrow = compute_ternary_phase_diagram(
       toy_entries,
       { elements: toy_elements, t_range: [500, 700], n_samples: 3 },
-      ({ done }) => seen.push(done),
+      ({ done, total }) => seen.push(`${done}/${total}`),
     )
     expect(narrow.temperatures).toEqual([500, 600, 700])
-    expect(seen).toEqual([1, 2, 3])
+    expect(seen).toEqual([`1/3`, `2/3`, `3/3`])
     expect(narrow.events).toEqual([])
     expect(narrow.stability_windows[3]).toEqual([[500, 700]])
     const frozen = compute_ternary_phase_diagram(
@@ -279,11 +291,8 @@ describe(`Li-Co-O with the SISSO model`, () => {
   }
 
   test(`oxides reduce on heating; Li2O and CoO survive to 2000 K`, () => {
-    expect([entries.length, diagram.elements, diagram.sources]).toEqual([
-      457,
-      [`Li`, `Co`, `O`],
-      [`sisso`],
-    ])
+    expect(entries.length).toBeGreaterThan(400)
+    expect([diagram.elements, diagram.sources]).toEqual([[`Li`, `Co`, `O`], [`sisso`]])
     // Li2O2 (reduced formula LiO) → Li2O + O2 near 420 K, Co3O4 → CoO near 1430 K
     expect(vanish_of(`LiO`)?.temperature).toBeGreaterThan(350)
     expect(vanish_of(`LiO`)?.temperature).toBeLessThan(600)

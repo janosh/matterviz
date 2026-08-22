@@ -36,33 +36,26 @@ test.each([
   expect(get_volume_per_atom({ composition: { Li: 2 }, energy: 0, ...extra })).toBe(expected)
 })
 
-describe(`SISSO descriptor`, () => {
-  test(`reduced mass, G^delta and the elemental table`, () => {
-    expect(
-      sisso_reduced_mass([
-        [`Li`, 2 / 3],
-        [`O`, 1 / 3],
-      ]),
-    ).toBeCloseTo((6.94 * 15.999) / (6.94 + 15.999), 2)
-    expect(sisso_reduced_mass([[`Li`, 1]])).toBeNull()
-    const [vol, mass, temp] = [10, 12, 1000]
-    expect(sisso_g_delta(vol, mass, temp)).toBeCloseTo(
-      (-2.48e-4 * Math.log(vol) - 8.94e-5 * (mass / vol)) * temp +
-        0.181 * Math.log(temp) -
-        0.882,
-      12,
-    )
-    const oxygen = G_ELEMENTS.O ?? []
-    expect(g_element_experimental(`O`, 300)).toBe(oxygen[0])
-    expect(g_element_experimental(`O`, 350)).toBeCloseTo((oxygen[0] + oxygen[1]) / 2, 12)
-    expect(g_element_experimental(`O`, 2000)).toBe(oxygen.at(-1))
-    for (const [el, t_out] of [
-      [`O`, 299],
-      [`O`, 2001],
-      [`Og`, 500],
-    ] as const)
-      expect(g_element_experimental(el, t_out)).toBeNaN()
-  })
+test(`SISSO descriptor: reduced mass, G^delta and the elemental table`, () => {
+  expect(
+    sisso_reduced_mass([
+      [`Li`, 2 / 3],
+      [`O`, 1 / 3],
+    ]),
+  ).toBeCloseTo((6.94 * 15.999) / (6.94 + 15.999), 2)
+  expect(sisso_reduced_mass([[`Li`, 1]])).toBeNull()
+  // Bartel 2018 Eq. 4 evaluated by hand: pins all three fitted coefficients
+  expect(sisso_g_delta(10, 12, 1000)).toBeCloseTo(-0.31002, 5)
+  const oxygen = G_ELEMENTS.O ?? []
+  expect(g_element_experimental(`O`, 300)).toBe(oxygen[0])
+  expect(g_element_experimental(`O`, 350)).toBeCloseTo((oxygen[0] + oxygen[1]) / 2, 12)
+  expect(g_element_experimental(`O`, 2000)).toBe(oxygen.at(-1))
+  for (const [el, t_out] of [
+    [`O`, 299],
+    [`O`, 2001],
+    [`Og`, 500],
+  ] as const)
+    expect(g_element_experimental(el, t_out)).toBeNaN()
 })
 
 describe(`build_free_energy_model`, () => {
@@ -149,6 +142,17 @@ describe(`build_free_energy_model`, () => {
     const shift_300 = at(1).dg_form(300) - base.dg_form(300)
     expect(shift_300).toBeGreaterThan(0)
     expect(at(1).dg_form(1000) - base.dg_form(1000)).toBeGreaterThan(shift_300)
+    // The shift scales with the oxygen fraction (LiO2 has twice Li2O's x_O) and the
+    // per-element memo must follow the temperature, not freeze at the first one asked
+    const with_lio2 = [li, co, o2, li2o, phase({ Li: 1, O: 2 }, -4)]
+    const shift_of = (idx: number) =>
+      dg(with_lio2, { gas_config, gas_pressures: { O2: 1 } }, idx).dg_form(300) -
+      dg(with_lio2, {}, idx).dg_form(300)
+    expect(shift_of(4) / shift_of(3)).toBeCloseTo(2, 10)
+    const one_model = at(1)
+    const [g_300, g_1000] = [one_model.dg_form(300), one_model.dg_form(1000)]
+    expect(g_1000 - g_300).toBeCloseTo(at(1).dg_form(1000) - at(1).dg_form(300), 10)
+    expect(one_model.dg_form(300)).toBe(g_300)
     // Elements are their own reference and never shift
     expect(
       build_free_energy_model([li, co, o2, li2o], elements, { gas_config }).phases[2].dg_form(
