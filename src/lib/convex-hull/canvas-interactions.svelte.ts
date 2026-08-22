@@ -236,7 +236,7 @@ const DIM_TO_LABEL = { 3: `Ternary`, 4: `Quaternary` } as const
 // Canvas text colour. Canvas takes a colour value, not a CSS variable, so the theme is read
 // in JS (dark-mode fallbacks for unsupported light-dark()/var() values) and the canvas
 // repainted on every flip.
-function canvas_text_color(dark_mode: boolean): string {
+export function canvas_text_color(dark_mode: boolean): string {
   const fallback = dark_mode ? `#ffffff` : `#212121`
   if (typeof document === `undefined`) return fallback
   const css_value = getComputedStyle(document.documentElement)

@@ -17,8 +17,13 @@ if (typeof document !== `undefined`) {
   })
 }
 
-// Threlte pointer event type for mesh interactions
-export type ThreltePointerEvent = { point: Vector3; nativeEvent: PointerEvent }
+// Threlte pointer event type for mesh interactions. stopPropagation() stops Threlte's own
+// dispatch to farther hits along the ray (nativeEvent.stopPropagation only stops the DOM event)
+export type ThreltePointerEvent = {
+  point: Vector3
+  nativeEvent: PointerEvent
+  stopPropagation: () => void
+}
 
 // Camera/lighting/interaction props shared by all Threlte scene components (BrillouinZoneScene, FermiSurfaceScene, StructureScene, ...)
 export type SceneControlProps = {

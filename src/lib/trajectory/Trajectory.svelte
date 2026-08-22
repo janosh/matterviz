@@ -1092,8 +1092,10 @@
     border: var(--tooltip-border);
     border-radius: 3pt;
   }
-  /* Keep ViewerPane's toggle for layout anchoring; the analysis menu owns clicks. */
-  .analysis-dropdown-wrapper :global(.analysis-toggle-anchor) {
+  /* Keep ViewerPane's toggle for layout anchoring; the analysis menu owns clicks. Fully
+     global: the wrapper is ToolbarMenu's root (a child component), so a scoped selector
+     would never match and the four pane toggles would render as bare toolbar icons. */
+  :global(.analysis-dropdown-wrapper .analysis-toggle-anchor) {
     position: absolute;
     inset: 0;
     width: 100%;
