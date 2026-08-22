@@ -9,7 +9,7 @@ import {
   prepare_diagram,
 } from '$lib/phase-diagram/ternary/compute'
 import type { TernaryPhaseDiagram } from '$lib/phase-diagram/ternary/types'
-import { describe, expect, test } from 'vitest'
+import { beforeAll, describe, expect, test } from 'vitest'
 import { load_json } from '../../setup'
 import { phase, toy_elements, toy_entries, toy_temps } from './fixtures'
 
@@ -254,14 +254,19 @@ describe(`compute_ternary_phase_diagram`, () => {
 // Materials Project Li-Co-O (457 entries with structures) under the SISSO model: the classic
 // high-temperature reductions must fall out of the sweep
 describe(`Li-Co-O with the SISSO model`, () => {
-  const entries = load_json<PhaseData[]>(
-    `${import.meta.dirname}/../../../../src/site/convex-hull/quaternaries/Li-Co-Ni-O.json.gz`,
-  ).filter((entry) =>
-    Object.entries(entry.composition).every(
-      ([el, amt]) => amt <= 0 || [`Li`, `Co`, `O`].includes(el),
-    ),
-  )
-  const diagram = compute_ternary_phase_diagram(entries, { n_samples: 35 })
+  // Loaded in beforeAll so collecting this file stays cheap when its tests are filtered out
+  let entries: PhaseData[] = []
+  let diagram: TernaryPhaseDiagram
+  beforeAll(() => {
+    entries = load_json<PhaseData[]>(
+      `${import.meta.dirname}/../../../../src/site/convex-hull/quaternaries/Li-Co-Ni-O.json.gz`,
+    ).filter((entry) =>
+      Object.entries(entry.composition).every(
+        ([el, amt]) => amt <= 0 || [`Li`, `Co`, `O`].includes(el),
+      ),
+    )
+    diagram = compute_ternary_phase_diagram(entries, { n_samples: 35 })
+  })
   const vanish_of = (label: string) =>
     diagram.events.find((event) =>
       event.vanished.some((idx) => diagram.phases[idx].label === label),

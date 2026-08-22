@@ -497,17 +497,17 @@ function make_event(
   const candidates = edges_added.filter(untouched)
   for (const [idx_p, idx_q] of edges_removed.filter(untouched)) {
     const seg_pq: [Vec2, Vec2] = [phases[idx_p].xy, phases[idx_q].xy]
-    const pos = candidates.findIndex(([idx_r, idx_s]) =>
-      crossing(seg_pq, [phases[idx_r].xy, phases[idx_s].xy]),
-    )
-    if (pos === -1) continue
-    const [idx_r, idx_s] = candidates.splice(pos, 1)[0]
-    const [t_pq, t_rs] = crossing(seg_pq, [phases[idx_r].xy, phases[idx_s].xy]) ?? [0.5, 0.5]
-    const [reactants, products] = balance(
-      formula_units(model, [idx_p, idx_q], [1 - t_pq, t_pq], 1),
-      formula_units(model, [idx_r, idx_s], [1 - t_rs, t_rs], 1),
-    )
-    reactions.push({ kind: `tie_line_flip`, reactants, products })
+    for (const [pos, [idx_r, idx_s]] of candidates.entries()) {
+      const hit = crossing(seg_pq, [phases[idx_r].xy, phases[idx_s].xy])
+      if (!hit) continue
+      candidates.splice(pos, 1)
+      const [reactants, products] = balance(
+        formula_units(model, [idx_p, idx_q], [1 - hit[0], hit[0]], 1),
+        formula_units(model, [idx_r, idx_s], [1 - hit[1], hit[1]], 1),
+      )
+      reactions.push({ kind: `tie_line_flip`, reactants, products })
+      break
+    }
   }
   const kind = decomposed.length
     ? `vanish`

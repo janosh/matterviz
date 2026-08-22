@@ -57,25 +57,29 @@ function component_only_class_selectors(file: string): string[] {
     }
   })
   const offending = new Set<string>()
-  // Only the selectors Svelte scopes count: class selectors outside any :global(...) argument
-  const visit_rule = (rule: Node): void => {
-    const block = rule.block as Node | null
-    if (rule.type === `Rule`) {
-      for (const complex of (rule.prelude as Node).children as Node[]) {
-        for (const relative of complex.children as Node[]) {
-          for (const selector of relative.selectors as Node[]) {
-            const name = String(selector.name)
-            if (
-              selector.type === `ClassSelector` &&
-              !on_elements.has(name) &&
-              on_components.has(name)
-            ) {
-              offending.add(`${file.replace(`${repo_root}/`, ``)}: .${name}`)
-            }
+  // Only the selectors Svelte scopes count: class selectors outside any :global(...) argument,
+  // including those nested in :is()/:not()/:has()/:where()
+  const visit_selector_list = (list: Node[]): void => {
+    for (const complex of list) {
+      for (const relative of complex.children as Node[]) {
+        for (const selector of relative.selectors as Node[]) {
+          const name = String(selector.name)
+          if (selector.type === `PseudoClassSelector` && name !== `global`) {
+            visit_selector_list(((selector.args as Node | null)?.children as Node[]) ?? [])
+          } else if (
+            selector.type === `ClassSelector` &&
+            !on_elements.has(name) &&
+            on_components.has(name)
+          ) {
+            offending.add(`${file.replace(`${repo_root}/`, ``)}: .${name}`)
           }
         }
       }
     }
+  }
+  const visit_rule = (rule: Node): void => {
+    const block = rule.block as Node | null
+    if (rule.type === `Rule`) visit_selector_list((rule.prelude as Node).children as Node[])
     for (const child of (block?.children as Node[] | undefined) ?? []) visit_rule(child)
   }
   for (const rule of ast.css.children) visit_rule(rule as unknown as Node)

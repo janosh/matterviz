@@ -192,6 +192,7 @@
         <button
           type="button"
           class={[`toggle-btn`, { active: display[key] === value }]}
+          aria-pressed={display[key] === value}
           onclick={() => set_display({ [key]: value })}
           {@attach tooltip({ content: tip })}>{text}</button
         >
@@ -242,6 +243,7 @@
           <button
             type="button"
             class={[`toggle-btn`, { active: free_energy_mode === mode }]}
+            aria-pressed={free_energy_mode === mode}
             onclick={() => (free_energy_mode = mode)}
             {@attach tooltip({ content: tip })}>{text}</button
           >

@@ -304,20 +304,22 @@
   })
   // Dragging the plane pauses orbiting; a camera-facing catcher quad turns pointer motion
   // into a new height (temperature)
+  const end_plane_drag = () => {
+    dragging_plane = false
+    if (orbit_controls) orbit_controls.enabled = true
+    for (const type of [`pointerup`, `pointercancel`])
+      globalThis.removeEventListener(type, end_plane_drag)
+  }
   function start_plane_drag(event: unknown): void {
     if (pointer_of(event).nativeEvent.button !== 0) return // right/middle button orbit and pan
     pointer_of(event).stopPropagation()
     dragging_plane = true
     if (orbit_controls) orbit_controls.enabled = false
     on_hover?.(null)
-    const end = () => {
-      dragging_plane = false
-      if (orbit_controls) orbit_controls.enabled = true
-      for (const type of [`pointerup`, `pointercancel`])
-        globalThis.removeEventListener(type, end)
-    }
-    for (const type of [`pointerup`, `pointercancel`]) globalThis.addEventListener(type, end)
+    for (const type of [`pointerup`, `pointercancel`])
+      globalThis.addEventListener(type, end_plane_drag)
   }
+  $effect(() => end_plane_drag) // a view switch mid-drag must not leave global listeners
   const drag_plane = (event: unknown) => {
     if (dragging_plane) temperature = clamp_t(t_of(pointer_of(event).point.y))
   }

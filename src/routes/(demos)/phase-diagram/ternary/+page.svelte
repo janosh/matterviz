@@ -23,10 +23,12 @@
   // Stale-load guard: only the newest request may write state
   let active_load: symbol | null = null
 
-  function update_url(filename: string): void {
+  // A dropped user file has no picker entry, so it clears the parameter instead of naming itself
+  function update_url(filename: string | null): void {
     if (!browser) return
     const url = new URL(page.url) // page.url is read-only state: never mutate it in place
-    url.searchParams.set(`file`, filename)
+    if (filename) url.searchParams.set(`file`, filename)
+    else url.searchParams.delete(`file`)
     void replace_url(url)
   }
 
@@ -160,6 +162,7 @@
       on_file_drop={(entries, filename) => {
         current_entries = entries
         current_file = filename
+        update_url(null)
       }}
     />
   {/if}

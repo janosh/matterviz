@@ -48,7 +48,7 @@ export function create_canvas_surface(inputs: {
       ctx = canvas.getContext(`2d`)
       ctx?.setTransform(dpr, 0, 0, dpr, 0, 0)
     }
-    dims = { width, height }
+    if (dims.width !== width || dims.height !== height) dims = { width, height }
     schedule()
   }
   $effect(() => {

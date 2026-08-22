@@ -23,6 +23,7 @@ import json
 import os
 import time
 from typing import Any
+from urllib.parse import urlparse
 
 import requests
 
@@ -65,9 +66,16 @@ def fetch_subsystem(elements: tuple[str, ...]) -> list[dict[str, Any]]:
     }
     entries: list[dict[str, Any]] = []
     url: str | None = BASE_URL
+    visited: set[str] = set()
     while url:
+        # Next links come from the response: stay on the Alexandria host and never revisit
+        if urlparse(url).netloc != urlparse(BASE_URL).netloc or url in visited:
+            raise RuntimeError(f"Refusing to follow pagination link for {elements}: {url}")
+        visited.add(url)
         payload: dict[str, Any] | None = None
         for attempt in range(4):
+            if attempt:
+                time.sleep(5 * attempt)
             try:
                 response = requests.get(
                     url, params=params if url == BASE_URL else None, timeout=180
@@ -78,13 +86,12 @@ def fetch_subsystem(elements: tuple[str, ...]) -> list[dict[str, Any]]:
                     break
             except (requests.RequestException, ValueError):
                 pass
-            time.sleep(5 * (attempt + 1))
         if payload is None:
             raise RuntimeError(
                 f"Alexandria query failed for {elements} after 4 attempts: {url}"
             )
         entries.extend(payload["data"])
-        url = payload.get("links", {}).get("next")
+        url = (payload.get("links") or {}).get("next")
         if isinstance(url, dict):
             url = url.get("href")
     return entries

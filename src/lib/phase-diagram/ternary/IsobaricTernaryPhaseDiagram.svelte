@@ -296,6 +296,14 @@
 
   // === Hover ===
 
+  // The phase a tooltip is about (null for composition probes)
+  const hover_phase = $derived(
+    hover?.kind === `phase_t`
+      ? hover.data.phase
+      : hover?.data.kind === `phase`
+        ? hover.data.phase.idx
+        : null,
+  )
   const formula_html = (phase: number) =>
     sanitize_html(get_electro_neg_formula(model?.phases[phase].label ?? ``, false, ``))
   const windows_text = (phase: number) =>
@@ -399,6 +407,7 @@
             <button
               type="button"
               class={{ active: settings.view === mode }}
+              aria-pressed={settings.view === mode}
               onclick={() => set_display({ view: mode })}>{label}</button
             >
           {/each}
@@ -554,13 +563,8 @@
           <div class="muted">{decomposition.phases.length}-phase region (atom fractions)</div>
           <div>{@render fractions(decomposition, `.1f`)}</div>
         {/if}
-      {:else}
-        {@const phase =
-          hover.kind === `section` && hover.data.kind === `phase`
-            ? hover.data.phase.idx
-            : hover.kind === `phase_t`
-              ? hover.data.phase
-              : -1}
+      {:else if hover_phase !== null}
+        {@const phase = hover_phase}
         {@const at_t = hover.kind === `phase_t` ? hover.data.temperature : current_t}
         {@const e_hull = (hover.kind === `phase_t` ? (section_at(at_t) ?? section) : section)
           .e_above_hull[phase]}
