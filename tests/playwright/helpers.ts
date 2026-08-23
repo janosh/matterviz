@@ -64,8 +64,15 @@ export const collect_page_errors = (page: Page): Error[] => {
 // instances in popErrorScope, GPUDevice buffer limits, the WebGL fallback probing a null
 // context. They come from the browser/driver, not from matterviz, so the strict fixture below
 // ignores them and keeps every other error fatal
-const GPU_ENVIRONMENT_NOISE =
-  /GPUValidationError|WebGPU Device Lost|WebGPU renderer initialization failed|getSupportedExtensions|Instance dropped|popErrorScope|GPUDevice|GPUAdapter/
+const GPU_ENVIRONMENT_NOISE = new RegExp(
+  [
+    `^THREE\\.(THREE\\.)?WebGPURenderer: (Uncaptured WebGPU GPUValidationError|WebGPU Device Lost)`,
+    `^WebGPU renderer initialization failed`,
+    `^Instance dropped in popErrorScope$`,
+    `^Failed to execute 'createBuffer' on 'GPUDevice': createBuffer failed, size \\(\\d+\\) is too large for the implementation`,
+    `^Cannot read properties of null \\(reading 'getSupportedExtensions'\\)$`,
+  ].join(`|`),
+)
 const is_gpu_noise = (message: string): boolean => GPU_ENVIRONMENT_NOISE.test(message)
 
 // `test` whose every test fails on a console.error or uncaught page error. The collectors
