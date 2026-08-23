@@ -6,13 +6,15 @@
 import type { ElementSymbol } from '$lib/element'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import type { AnyStructure, LatticeType, Pbc, Site } from '$lib/structure'
+import { get_majority_element } from '$lib/structure/bonding'
 
 export interface StructureIdPayload {
   // x, y, z of site 0, then site 1, ... in A
   xyz: Float64Array
   lattice?: LatticeType
-  // Majority element per site; only sent when the analysis groups by species
-  elements?: ElementSymbol[]
+  // Majority element per site (`X` for an empty site); only sent when the analysis groups by
+  // species
+  elements?: string[]
 }
 
 // Plain copies throughout: a Svelte $state proxy is not structured-cloneable, and the numbers
@@ -25,7 +27,7 @@ export const to_structure_id_payload = (
   const xyz = new Float64Array(sites.length * 3)
   for (const [site_idx, site] of sites.entries()) xyz.set(site.xyz, site_idx * 3)
   const payload: StructureIdPayload = { xyz }
-  if (with_elements) payload.elements = sites.map((site) => site.species[0]?.element ?? `X`)
+  if (with_elements) payload.elements = sites.map((site) => get_majority_element(site) ?? `X`)
   if (!(`lattice` in structure)) return payload
   const { lattice } = structure
   payload.lattice = {
@@ -51,7 +53,10 @@ export const structure_from_payload = ({
   const sites: Site[] = Array.from({ length: xyz.length / 3 }, (_unused, site_idx) => ({
     xyz: [xyz[site_idx * 3], xyz[site_idx * 3 + 1], xyz[site_idx * 3 + 2]],
     abc: [0, 0, 0],
-    species: elements ? [{ element: elements[site_idx], occu: 1, oxidation_state: 0 }] : [],
+    // Labels pair curves only, so a placeholder `X` never reaches element data lookups
+    species: elements
+      ? [{ element: elements[site_idx] as ElementSymbol, occu: 1, oxidation_state: 0 }]
+      : [],
     label: ``,
     properties: {},
   }))

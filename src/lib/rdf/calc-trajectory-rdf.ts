@@ -6,7 +6,7 @@
 // histograms come back, so a 100k-frame run never needs its positions in memory at once
 // (unlike MSD/VACF, which are lag analyses and need the whole series).
 import { calc_lattice_params } from '$lib/math'
-import type { AnyStructure } from '$lib/structure'
+import { get_majority_element } from '$lib/structure/bonding'
 import { is_crystal } from '$lib/structure/validation'
 import type { TrajectoryRun } from '$lib/trajectory'
 import { sweep_frames } from '$lib/trajectory/analysis'
@@ -109,9 +109,6 @@ export function rdf_shell(r: number[], g_r: number[], rho_b: number): RdfShell {
   return { ...shell, first_min_r: r[first_min], coordination: 4 * Math.PI * rho_b * integral }
 }
 
-const majority_elements = (structure: AnyStructure): string[] =>
-  structure.sites.map((site) => site.species[0]?.element ?? `X`)
-
 export async function collect_trajectory_rdf(
   run: TrajectoryRun,
   options: TrajectoryRdfOptions = {},
@@ -123,9 +120,6 @@ export async function collect_trajectory_rdf(
     on_progress,
     signal,
   } = options
-  if (!is_crystal(run.preview.structure)) {
-    throw new Error(`collect_trajectory_rdf: g(r) needs a periodic cell to normalise against`)
-  }
   let reference: { frame_number: number; elements: string[] } | undefined
   let sums: Float64Array[] = []
   let r: number[] = []
@@ -138,7 +132,7 @@ export async function collect_trajectory_rdf(
     run,
     { max_frames, on_progress, signal },
     async ({ structure }, frame_number) => {
-      const elements = majority_elements(structure)
+      const elements = structure.sites.map((site) => get_majority_element(site) ?? `X`)
       reference ??= { frame_number, elements }
       if (
         elements.length !== reference.elements.length ||
@@ -150,7 +144,9 @@ export async function collect_trajectory_rdf(
         )
       }
       if (!is_crystal(structure)) {
-        throw new Error(`collect_trajectory_rdf: frame ${frame_number} has no lattice`)
+        throw new Error(
+          `collect_trajectory_rdf: frame ${frame_number} needs a periodic cell to normalise against`,
+        )
       }
       const patterns = await calc_frame_rdfs_async(structure, { cutoff, n_bins }, { signal })
       if (sums.length === 0) {

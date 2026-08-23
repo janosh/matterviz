@@ -3,6 +3,7 @@ import { PLOT_COLORS } from '$lib/colors'
 import { SCF_AXIS_GROUP, trajectory_property_config } from '$lib/labels'
 import type { TrajPropertyConfig } from '$lib/labels'
 import {
+  array_extent,
   first_non_increasing_index,
   get_coefficient_of_variation,
   mean,
@@ -334,14 +335,13 @@ export function summarize_properties(
     const xs = frame_indices.map((frame_number) => by_frame.get(frame_number) ?? frame_number)
     const mean_x = mean(xs)
     const mean_y = mean(values)
-    let [sxx, sxy, min, max] = [0, 0, Infinity, -Infinity]
+    let [sxx, sxy] = [0, 0]
     for (const [idx, value] of values.entries()) {
       const dx = xs[idx] - mean_x
       sxx += dx * dx
       sxy += dx * (value - mean_y)
-      if (value < min) min = value
-      if (value > max) max = value
     }
+    const [min, max] = array_extent(values)
     const span = xs.length > 1 ? xs[xs.length - 1] - xs[0] : 0
     return {
       key,

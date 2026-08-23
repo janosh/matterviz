@@ -56,15 +56,10 @@ export function sweep_frame_plan(
   total_frames: number,
   max_frames: number,
 ): { frame_numbers: number[]; frame_stride: number } {
-  if (!Number.isInteger(total_frames) || total_frames < 1) {
-    throw new Error(
-      `sweep_frame_plan: total_frames must be a positive integer, got ${total_frames}`,
-    )
-  }
-  if (!Number.isInteger(max_frames) || max_frames < 1) {
-    throw new Error(
-      `sweep_frame_plan: max_frames must be a positive integer, got ${max_frames}`,
-    )
+  for (const [name, value] of Object.entries({ total_frames, max_frames })) {
+    if (!Number.isInteger(value) || value < 1) {
+      throw new Error(`sweep_frame_plan: ${name} must be a positive integer, got ${value}`)
+    }
   }
   // ceil, not floor: a stride that rounds down would let ceil(total / stride) exceed the cap
   const frame_stride = Math.max(1, Math.ceil(total_frames / max_frames))
