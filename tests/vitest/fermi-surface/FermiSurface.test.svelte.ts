@@ -321,6 +321,41 @@ test(`malformed fermi_data is reported via error_msg/on_error instead of throwin
   expect(document.body.textContent).toContain(`Invalid Fermi surface data`)
 })
 
+// A host that streams props (pymatviz) may send a bad payload and then a good one: the notice
+// the bad one raised must not stick, or the viewer stays blank until the user dismisses it
+test(`a valid fermi_data after a malformed one clears the normalization error`, async () => {
+  const props = $state<{ fermi_data: unknown; error_msg?: string }>({
+    fermi_data: { isosurfaces: [{ vertices: `nope` }] },
+  })
+  mounted.push(
+    mount(FermiSurface, {
+      target: document.body,
+      props: {
+        get fermi_data() {
+          return props.fermi_data as FermiSurfaceData
+        },
+        get error_msg() {
+          return props.error_msg
+        },
+        set error_msg(value) {
+          props.error_msg = value
+        },
+      },
+    }),
+  )
+  await tick()
+  expect(props.error_msg).toMatch(/^Invalid Fermi surface data: /)
+  props.fermi_data = typed_data
+  await tick()
+  expect(props.error_msg).toBeUndefined()
+  expect(document.body.textContent).not.toContain(`Invalid Fermi surface data`)
+  // An unrelated error (a failed file load) is not the normalizer's to clear
+  props.error_msg = `Failed to parse other.frmsf`
+  props.fermi_data = { isosurfaces: [] }
+  await tick()
+  expect(props.error_msg).toBe(`Failed to parse other.frmsf`)
+})
+
 // band_data travels the same JSON route with nested [spin][band][kx][ky][kz] energies
 test(`band_data with nested JSON energies is extracted like the typed grid`, async () => {
   vi.useFakeTimers({

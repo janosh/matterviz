@@ -212,14 +212,25 @@
   const zone_signature = (zone: BrillouinZoneData): string =>
     `${zone.order}:${zone.volume}:${zone.vertices.length}`
   let owned_zone_signature: string | undefined
+  let reported_compute_error: string | undefined
   $effect(() => {
     if (!structure) return
+    const current_signature = bz_data && zone_signature(bz_data)
+    // A caller-supplied zone is what renders, so a failure to derive one from the structure
+    // is irrelevant to it and must not blank the viewer
+    if (current_signature !== undefined && current_signature !== owned_zone_signature) return
     if (computed_bz.error) {
+      reported_compute_error = computed_bz.error
       error_msg = computed_bz.error
       untrack(() => on_error?.({ error_msg, structure, bz_order }))
+    } else {
+      // A structure that derives again clears the notice its predecessor raised
+      if (reported_compute_error !== undefined && error_msg === reported_compute_error) {
+        error_msg = undefined
+      }
+      reported_compute_error = undefined
     }
-    const current_signature = bz_data && zone_signature(bz_data)
-    if (current_signature !== undefined && current_signature !== owned_zone_signature) return
+    // On failure the owned (now stale) zone is dropped along with the ownership record
     owned_zone_signature = computed_bz.bz_data && zone_signature(computed_bz.bz_data)
     // Write only on change: this effect tracks bz_data, and a bound parent hands back a new
     // proxy for every write, so an unconditional assignment would re-run it forever

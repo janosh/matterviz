@@ -207,6 +207,74 @@ test(`keeps a caller-supplied bz_data alongside a structure and never writes it 
   expect(zone_box.zone?.volume).toBeGreaterThan(((2 * Math.PI) / 3) ** 3)
 })
 
+// The caller's zone is what renders, so a structure whose own zone cannot be derived must not
+// raise the fatal error that blanks the viewer
+test(`a caller-supplied bz_data keeps rendering when the structure's zone fails to compute`, async () => {
+  const on_error = vi.fn()
+  const coplanar = make_crystal(
+    [
+      [1, 0, 0],
+      [0, 1, 0],
+      [1, 1, 0],
+    ],
+    [[`Si`, [0, 0, 0]]],
+  )
+  const external = compute_brillouin_zone(
+    reciprocal_lattice(
+      [
+        [5, 0, 0],
+        [0, 5, 0],
+        [0, 0, 5],
+      ],
+      { two_pi: true },
+    ),
+    1,
+  )
+  const props = $state({
+    structure: coplanar,
+    bz_data: external,
+    on_error,
+    error_msg: undefined as string | undefined,
+  })
+  mounted_component = mount(BrillouinZone, { target: document.body, props })
+  await tick()
+  await tick()
+  expect(props.error_msg).toBeUndefined()
+  expect(on_error).not.toHaveBeenCalled()
+  // deep $state proxies the zone, so compare by value
+  expect(props.bz_data.volume).toBe(external.volume)
+  expect(document.body.querySelector(`.brillouin-zone`)?.textContent).not.toMatch(/singular/)
+})
+
+test(`a structure that derives again clears the previous BZ computation error`, async () => {
+  const coplanar = make_crystal(
+    [
+      [1, 0, 0],
+      [0, 1, 0],
+      [1, 1, 0],
+    ],
+    [[`Si`, [0, 0, 0]]],
+  )
+  const cubic = make_crystal(
+    [
+      [3, 0, 0],
+      [0, 3, 0],
+      [0, 0, 3],
+    ],
+    [[`Si`, [0, 0, 0]]],
+  )
+  const props = $state({
+    structure: coplanar,
+    bz_data: undefined as BrillouinZoneData | undefined,
+    error_msg: undefined as string | undefined,
+  })
+  mounted_component = mount(BrillouinZone, { target: document.body, props })
+  await vi.waitFor(() => expect(props.error_msg).toMatch(/singular/))
+  props.structure = cubic
+  await vi.waitFor(() => expect(props.bz_data?.order).toBe(1))
+  expect(props.error_msg).toBeUndefined()
+})
+
 // The IBZ is an optional overlay: a failure used to land in the fatal error_msg and blank the
 // whole viewer (and stuck there after show_ibz was switched off)
 test(`an IBZ failure keeps the zone rendered and clears once show_ibz is off`, async () => {

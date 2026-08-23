@@ -154,9 +154,20 @@
   })
   const surface_data = $derived(normalized.surface)
   const grid_data = $derived(normalized.grid)
+  // The notice this effect raised is cleared once a later payload normalises, so a host that
+  // sends a bad then a good `fermi_data` sees the surface rather than a sticky error. Errors
+  // from other sources (file parse, URL load) are left alone.
+  let reported_normalize_error: string | undefined
   $effect(() => {
     const { error } = normalized
-    if (!error) return
+    if (!error) {
+      if (reported_normalize_error !== undefined && error_msg === reported_normalize_error) {
+        error_msg = undefined
+      }
+      reported_normalize_error = undefined
+      return
+    }
+    reported_normalize_error = error
     error_msg = error
     untrack(() => on_error?.({ error_msg: error }))
   })
