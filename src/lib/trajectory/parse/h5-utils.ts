@@ -286,9 +286,9 @@ export const to_scalar_number = (data: unknown): number | null => {
   return to_finite_number(Array.isArray(data) ? data[0] : data)
 }
 
-export const unique_strings = (values: string[] | undefined): string[] => [...new Set(values)]
+const unique_strings = (values: string[] | undefined): string[] => [...new Set(values)]
 
-export const positive_integer_stride = (value: number | undefined, label: string): number => {
+const positive_integer_stride = (value: number | undefined, label: string): number => {
   const stride = value ?? 1
   if (!Number.isFinite(stride) || !Number.isInteger(stride) || stride < 1) {
     throw new Error(`${label} must be a positive integer, got ${stride}`)
@@ -296,7 +296,7 @@ export const positive_integer_stride = (value: number | undefined, label: string
   return stride
 }
 
-export const sampled_indices = (item_count: number, stride: number): number[] =>
+const sampled_indices = (item_count: number, stride: number): number[] =>
   Array.from({ length: Math.ceil(item_count / stride) }, (_unused, idx) => idx * stride)
 
 export const trajectory_signal = (
@@ -414,7 +414,7 @@ export const read_numeric_samples = (
   return values
 }
 
-export const assert_hdf5_stream_budget = (
+const assert_hdf5_stream_budget = (
   format: string,
   total_frames: number,
   selected_frames: number,
