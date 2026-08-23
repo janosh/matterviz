@@ -6,6 +6,7 @@
 // and value semantics (plotly branchvalues) by construction.
 
 import { hierarchy, treemap, treemapSquarify } from 'd3-hierarchy'
+import { clamp } from '$lib/math'
 import type { Rect } from '$lib/plot/core/layout'
 import type { PositionedArc, SunburstNode } from '$lib/plot/sunburst/sunburst'
 
@@ -86,16 +87,14 @@ export function tile_rects<Metadata>(
   // parent's value overflow the parent rect (d3 scales children by parent value;
   // compute_sunburst_layout warns). Clamping keeps overflow inside the chart,
   // mirroring the sunburst's clamp01 window projection.
-  const clamp_x = (val: number) => Math.min(Math.max(val, 0), size.width)
-  const clamp_y = (val: number) => Math.min(Math.max(val, 0), size.height)
   tiled.each((node) => {
-    const x = clamp_x(node.x0)
-    const y = clamp_y(node.y0)
+    const x = clamp(node.x0, 0, size.width)
+    const y = clamp(node.y0, 0, size.height)
     rects[node.data.node_idx] = {
       x,
       y,
-      width: Math.max(0, clamp_x(node.x1) - x),
-      height: Math.max(0, clamp_y(node.y1) - y),
+      width: Math.max(0, clamp(node.x1, 0, size.width) - x),
+      height: Math.max(0, clamp(node.y1, 0, size.height) - y),
     }
   })
   return rects

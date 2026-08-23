@@ -16,7 +16,9 @@ import {
   is_expandable_type,
   is_url,
   matches_search,
+  relative_path_segments,
   serialize_for_copy,
+  set_at_path,
   values_equal,
 } from '$lib/layout/json-tree/utils'
 import { describe, expect, it } from 'vitest'
@@ -27,62 +29,36 @@ describe(`get_value_type`, () => {
     [undefined, `undefined`],
     [`hello`, `string`],
     [42, `number`],
-    [3.14, `number`],
+    [NaN, `number`],
     [true, `boolean`],
-    [false, `boolean`],
     [Symbol(`test`), `symbol`],
     [BigInt(123), `bigint`],
     [() => {}, `function`],
-    [[], `array`],
     [[1, 2, 3], `array`],
-    [{}, `object`],
     [{ a: 1 }, `object`],
     [new Date(), `date`],
     [/test/g, `regexp`],
     [new Map(), `map`],
     [new Set(), `set`],
     [new Error(`test`), `error`],
-    [NaN, `number`],
-    [Infinity, `number`],
-    [-Infinity, `number`],
   ])(`returns %p for %s`, (value, expected) => {
     expect(get_value_type(value)).toBe(expected)
   })
 })
 
-describe(`is_expandable_type`, () => {
+// only the four container types expand; is_expandable routes through get_value_type
+describe(`is_expandable_type / is_expandable`, () => {
   it.each([
-    [`object`, true],
-    [`array`, true],
-    [`map`, true],
-    [`set`, true],
-    [`string`, false],
-    [`number`, false],
-    [`boolean`, false],
-    [`null`, false],
-    [`undefined`, false],
-    [`date`, false],
-    [`regexp`, false],
-    [`function`, false],
-  ])(`returns %p for type %s`, (type, expected) => {
-    expect(is_expandable_type(type as Parameters<typeof is_expandable_type>[0])).toBe(expected)
-  })
-})
-
-describe(`is_expandable`, () => {
-  it.each([
-    [{}, true],
-    [{ a: 1 }, true],
-    [[], true],
-    [[1, 2], true],
-    [new Map(), true],
-    [new Set(), true],
-    [`string`, false],
-    [42, false],
-    [null, false],
-    [undefined, false],
-    [new Date(), false],
-  ])(`returns %p for %j`, (value, expected) => {
+    [{ a: 1 }, `object`, true],
+    [[1, 2], `array`, true],
+    [new Map(), `map`, true],
+    [new Set(), `set`, true],
+    [`string`, `string`, false],
+    [null, `null`, false],
+    [new Date(), `date`, false],
+    [() => {}, `function`, false],
+  ] as const)(`%j (%s) -> %s`, (value, type, expected) => {
+    expect(is_expandable_type(type)).toBe(expected)
     expect(is_expandable(value)).toBe(expected)
   })
 })
@@ -439,8 +415,43 @@ describe(`get_children / get_value_at_path`, () => {
     [`missing.deeper`, undefined, undefined],
     [`data.obj.b`, `data`, 1],
     [`data`, `data`, root],
+    // Dotted root labels (filenames) are stripped textually, never split by parse_path
+    [`data.json`, `data.json`, root],
+    [`data.json.obj.b`, `data.json`, 1],
+    [`data.json.arr[1]`, `data.json`, 20],
+    [`data.json[0]`, `data.json`, undefined],
+    [`results.v2.json.map[0].value`, `results.v2.json`, `v1`],
+    // a path that merely starts with the label text is not the root
+    [`arr[1]`, `ar`, 20],
   ])(`get_value_at_path(%p, root_label=%p) = %j`, (path, root_label, expected) => {
     expect(get_value_at_path(root, path, root_label)).toEqual(expected)
+  })
+
+  it.each([
+    [`data.json`, `data.json`, []],
+    [`data.json.obj.b`, `data.json`, [`obj`, `b`]],
+    [`data.json[0].x`, `data.json`, [0, `x`]],
+    [`data.jsonl.x`, `data.json`, [`data`, `jsonl`, `x`]],
+    [`obj.b`, undefined, [`obj`, `b`]],
+  ])(`relative_path_segments(%p, %p) = %j`, (path, root_label, expected) => {
+    expect(relative_path_segments(path, root_label)).toEqual(expected)
+  })
+})
+
+describe(`set_at_path`, () => {
+  const root = { obj: { b: 1, a: 2 }, arr: [10, 20] }
+
+  it.each([
+    [`obj.b`, undefined, { obj: { b: 9, a: 2 }, arr: [10, 20] }],
+    [`arr[1]`, undefined, { obj: { b: 1, a: 2 }, arr: [10, 9] }],
+    [`diagram.obj.a`, `diagram`, { obj: { b: 1, a: 9 }, arr: [10, 20] }],
+    [`data.json.arr[0]`, `data.json`, { obj: { b: 1, a: 2 }, arr: [9, 20] }],
+    [`data.json`, `data.json`, 9], // editing the root replaces it
+    [`obj.missing.deep`, undefined, root], // invalid path leaves root untouched
+  ])(`set_at_path(%p, root_label=%p)`, (path, root_label, expected) => {
+    const result = set_at_path(root, path, 9, root_label)
+    expect(result).toEqual(expected)
+    expect(root.obj.b).toBe(1) // never mutates the input
   })
 })
 

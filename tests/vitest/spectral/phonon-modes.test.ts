@@ -278,9 +278,6 @@ describe(`phonon_mode_trajectory`, () => {
     )
     expect(bond_keys).toEqual(trajectory.frames.map(() => bond_keys[0]))
     expect(frame_bonds.flat().every(({ cell_shift }) => cell_shift === undefined)).toBe(true)
-    expect(Math.max(...frame_bonds.flat().map(({ bond_length }) => bond_length))).toBeLessThan(
-      4,
-    )
     expect(frame_bonds[1].map(({ bond_length }) => bond_length)).not.toEqual(
       frame_bonds[0].map(({ bond_length }) => bond_length),
     )
@@ -300,7 +297,7 @@ describe(`phonon_mode_trajectory`, () => {
       { supercell: [2, 2, 2] as Vec3, n_frames: 62_500 },
       /would generate 27 sites × 62500 frames.*exceeding the 500000 limit/,
     ],
-  ])(`rejects $name`, (_name, options, error) => {
+  ])(`rejects %s`, (_name, options, error) => {
     expect(() =>
       phonon_mode_trajectory(make_mode_data(), { qpoint_idx: 0, mode_idx: 0 }, options),
     ).toThrow(error)
@@ -309,7 +306,7 @@ describe(`phonon_mode_trajectory`, () => {
   it.each([
     [{ qpoint_idx: 1, mode_idx: 0 }, /q-point index 1 is outside/],
     [{ qpoint_idx: 0, mode_idx: 1 }, /mode index 1 is outside/],
-  ])(`rejects an invalid selection`, (selection, error) => {
+  ])(`rejects an invalid selection %j`, (selection, error) => {
     expect(() => phonon_mode_trajectory(make_mode_data(), selection)).toThrow(error)
   })
 

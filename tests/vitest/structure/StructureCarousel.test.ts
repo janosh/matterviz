@@ -54,14 +54,6 @@ describe(`StructureCarousel`, () => {
     expect(carousel.classList.contains(`horizontal`)).toBe(true)
     expect(document.querySelectorAll(`.structure-card`)).toHaveLength(5)
     expect(live_cards()).toBe(5)
-    expect(doc_query(`.structure-card .structure`).getAttribute(`style`)).toContain(
-      `--struct-min-width: 0`,
-    )
-    // no font/legend overrides: AtomLegend + CellSelect keep their own
-    // container-query-scaled defaults instead of tiny hardcoded sizes
-    expect(doc_query(`.structure-card .structure`).getAttribute(`style`)).not.toContain(
-      `--struct-legend-font`,
-    )
     // Four titlebar-safe cards fit the 800px host: (800 - 3*8) / 4 = 194.
     expect(carousel.getAttribute(`style`)).toContain(`inline-size: min(100%, 1002px)`)
     expect(doc_query(`.structure-carousel-track`).getAttribute(`style`)).toContain(

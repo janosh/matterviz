@@ -4,42 +4,33 @@
   // Right canvas renders one or more visualization panels in a split layout.
   // Users can click tree nodes to render in the main panel, or drag nodes
   // to specific edges to create horizontal/vertical splits.
-  import BrillouinZone from '$lib/brillouin/BrillouinZone.svelte'
   import { contrast_text_color, pick_contrast_color, resolve_backdrop } from '$lib/colors'
-  import ConvexHull from '$lib/convex-hull/ConvexHull.svelte'
-  import type { PhaseData } from '$lib/convex-hull/types'
-  import FermiSurface from '$lib/fermi-surface/FermiSurface.svelte'
-  import { is_fermi_surface_data } from '$lib/fermi-surface/types'
-  import type { VolumetricData } from '$lib/isosurface/types'
+  import { format_path } from '$lib/json-path'
   import JsonTree from '$lib/layout/json-tree/JsonTree.svelte'
-  import IsobaricBinaryPhaseDiagram from '$lib/phase-diagram/IsobaricBinaryPhaseDiagram.svelte'
-  import type { PhaseDiagramData } from '$lib/phase-diagram/types'
-  import { merge, build_structure_props_from_settings as structure_props } from '$lib/settings'
+  import { relative_path_segments } from '$lib/layout/json-tree/utils'
+  import PaneDivider from '$lib/layout/PaneDivider.svelte'
+  import { clamp } from '$lib/math'
+  import { merge } from '$lib/settings'
   import type { DefaultSettings } from '$lib/settings'
-  import Bands from '$lib/spectral/Bands.svelte'
-  import BandsAndDos from '$lib/spectral/BandsAndDos.svelte'
-  import Dos from '$lib/spectral/Dos.svelte'
-  import type { BaseBandStructure, DosInput } from '$lib/spectral/types'
-  import type { AnyStructure, LatticeType } from '$lib/structure'
+  import type { AnyStructure } from '$lib/structure'
   import {
-    is_optimade_raw,
     is_structure_like,
-    parse_optimade_from_raw,
+    optimade_structure_from_raw,
+    optimade_to_structure,
     structure_from_json,
   } from '$lib/structure/parse'
-  import Structure from '$lib/structure/Structure.svelte'
-  import type { XrdPattern } from '$lib/xrd'
-  import XrdPlot from '$lib/xrd/XrdPlot.svelte'
-  import { mount, onDestroy, unmount } from 'svelte'
+  import { is_editable_target } from '$lib/utils'
+  import { type mount, onDestroy, unmount } from 'svelte'
   import {
     detect_view_type,
     resolve_path,
     scan_renderable_paths,
     TYPE_COLORS,
     TYPE_LABELS,
+    volume_json_to_isosurface_input,
   } from './detect'
   import type { RenderableType } from './detect'
-  import PlotPanel from './PlotPanel.svelte'
+  import { mount_viewer, type ViewerMountType } from './mount-viewer'
 
   let {
     value,
@@ -70,29 +61,27 @@
   let panel_sizes = $state<number[]>([]) // flex weight per panel (parallel to panels[])
   let split_directions = $state<SplitDirection[]>([]) // direction between panels[i] and panels[i+1]
 
-  // Debounce timer for rapid clicks (cleaned up when component is destroyed)
+  // Debounce timer for rapid tree selections (cleaned up when component is destroyed)
   let select_timer: ReturnType<typeof setTimeout> | undefined
   let destroyed = false
-  $effect(() => () => {
-    destroyed = true
-    if (select_timer) clearTimeout(select_timer)
-  })
 
   // Unmount all imperatively mounted panels when this component is destroyed
   // (prevents leaked GPU devices, three.js renderers, etc.)
   $effect(() => () => {
+    destroyed = true
+    clearTimeout(select_timer)
     for (let idx = 0; idx < panels.length; idx++) {
       unmount_panel(idx)
     }
   })
 
-  // Scan for renderable paths asynchronously to avoid blocking the UI on large JSON files.
-  // Uses requestIdleCallback to yield to the main thread during tree rendering.
+  // Scan for renderable paths after the tree has rendered so large JSON files don't block
+  // the first paint (setTimeout rather than requestIdleCallback, which Safari lacks).
   let renderable_paths = $state(new Map<string, { type: RenderableType; label: string }>())
   let auto_rendered = false
   $effect(() => {
     const current_value = value
-    const idle_handle = requestIdleCallback(() => {
+    const scan_handle = setTimeout(() => {
       renderable_paths = scan_renderable_paths(current_value)
       // Auto-render if the root value itself is a single renderable type
       // (avoids forcing the user to click for single-type JSON files)
@@ -101,18 +90,29 @@
         const info = renderable_paths.get(``)
         if (info) replace_or_add_panel(``, info.type, current_value)
       }
-    })
-    return () => cancelIdleCallback(idle_handle)
+    }, 0)
+    return () => clearTimeout(scan_handle)
   })
 
-  // === Draggable sidebar divider ===
-  let sidebar_width = $state(320)
-  let is_sidebar_dragging = $state(false)
+  // Sidebar width as a fraction of the browser (PaneDivider writes --split-pane-size). The
+  // tree wants ~320 px regardless of how wide the editor is, so the ratio is seeded from that
+  // once the browser's width is known; the pixel floors keep both panes usable on a drag
+  const SIDEBAR_TARGET_PX = 320
+  const SIDEBAR_MIN_PX = 150
+  const CANVAS_MIN_PX = 200
+  let sidebar_ratio = $state(0.3)
+  let browser_element: HTMLElement | undefined = $state()
+  $effect(() => {
+    const width = browser_element?.getBoundingClientRect().width ?? 0
+    if (width <= 0) return
+    const max_ratio = Math.max(SIDEBAR_MIN_PX, width - CANVAS_MIN_PX) / width
+    sidebar_ratio = clamp(SIDEBAR_TARGET_PX / width, SIDEBAR_MIN_PX / width, max_ratio)
+  })
   let finish_drag: (() => void) | undefined
 
   onDestroy(() => finish_drag?.())
 
-  // Generic drag cleanup helper -- in a webview iframe the cursor can leave the
+  // Split-divider drag helper -- in a webview iframe the cursor can leave the
   // document entirely, so we listen for mouseup, blur, and pointerleave to ensure
   // the drag always terminates.
   function start_drag(on_move: (event: MouseEvent) => void, on_done: () => void): void {
@@ -132,22 +132,6 @@
     document.documentElement.addEventListener(`mouseleave`, cleanup, { signal })
   }
 
-  function on_sidebar_divider_mousedown(event: MouseEvent): void {
-    event.preventDefault()
-    const start_x = event.clientX
-    const start_width = sidebar_width
-    start_drag(
-      (move_event) => {
-        const delta = move_event.clientX - start_x
-        sidebar_width = Math.max(150, Math.min(start_width + delta, window.innerWidth * 0.6))
-      },
-      () => {
-        is_sidebar_dragging = false
-      },
-    )
-    is_sidebar_dragging = true
-  }
-
   // === Drag-and-drop from tree ===
   let drop_zone = $state<`top` | `bottom` | `left` | `right` | `center` | null>(null)
   let drop_target_panel_idx = $state<number>(-1)
@@ -164,11 +148,18 @@
     return idx !== -1 ? path.slice(0, idx) : path
   }
 
-  // Convert a data path (relative to JSON root) to the tree path used by JsonTree
+  // Convert a data path (relative to JSON root) to the tree path used by JsonTree, whose
+  // root node is labelled with the verbatim filename and whose children append `.key` or
+  // `[idx]` to it (so `[0]` must not get a dot: `data.json[0]`, not `data.json.[0]`)
   function data_to_tree_path(data_path: string): string {
     const clean = strip_type_suffix(data_path)
-    return filename ? (clean ? `${filename}.${clean}` : filename) : clean
+    if (!filename) return clean
+    if (!clean) return filename
+    return clean.startsWith(`[`) ? `${filename}${clean}` : `${filename}.${clean}`
   }
+  // Inverse of data_to_tree_path for paths reported by JsonTree
+  const tree_to_data_path = (tree_path: string): string =>
+    format_path(relative_path_segments(tree_path, filename))
 
   // Build a map of tree paths that are renderable (for fast draggable lookup).
   // Skip synthetic suffix paths (\x00...) since those have their own badge drag handlers.
@@ -232,10 +223,9 @@
     >()
     for (const entry of renderable_paths) {
       const tree_path = data_to_tree_path(entry[0])
-      badges_by_tree_path.set(tree_path, [
-        ...(badges_by_tree_path.get(tree_path) ?? []),
-        entry,
-      ])
+      const badges = badges_by_tree_path.get(tree_path)
+      if (badges) badges.push(entry)
+      else badges_by_tree_path.set(tree_path, [entry])
     }
     for (const node of sidebar_element.querySelectorAll<HTMLElement>(`[data-path]`)) {
       const tree_path = node.dataset.path ?? ``
@@ -285,44 +275,40 @@
     if (panels.length === 0) return
     function on_keydown(event: KeyboardEvent): void {
       if (event.key !== `Escape`) return
-      const target = event.target
-      if (
-        target instanceof HTMLElement &&
-        [`INPUT`, `SELECT`, `TEXTAREA`].includes(target.tagName)
-      )
-        return
+      if (is_editable_target(event)) return
       close_all_panels()
     }
     globalThis.addEventListener(`keydown`, on_keydown)
     return () => globalThis.removeEventListener(`keydown`, on_keydown)
   })
 
-  // Re-apply badges when tree DOM changes.
-  // Guard with a flag so our own badge DOM mutations don't re-trigger the observer,
-  // and coalesce rapid mutations into a single rAF.
-  let applying_badges = false
+  // Re-apply badges when the tree DOM changes, coalescing rapid mutations into one rAF.
+  // Badge insertion itself mutates the observed subtree and would re-schedule at rAF rate
+  // forever, so the observer is detached while applying (a flag around apply_badges cannot
+  // catch the asynchronously delivered records, and takeRecords() would also swallow unrelated
+  // tree mutations queued in the meantime).
   $effect(() => {
     if (!sidebar_element) return
+    // The scan lands after the tree has rendered, so a fresh result must re-apply badges
+    // even though no tree node changed
+    void renderable_tree_paths
+    const observe_opts = { childList: true, subtree: true }
     let pending_raf: number | null = null
+    const observer = new MutationObserver(schedule_refresh)
     function schedule_refresh(): void {
-      if (pending_raf) return
+      if (pending_raf !== null) return
       pending_raf = requestAnimationFrame(() => {
         pending_raf = null
-        if (applying_badges) return
-        applying_badges = true
-        try {
-          apply_badges()
-        } finally {
-          applying_badges = false
-        }
+        observer.disconnect()
+        apply_badges()
+        if (sidebar_element) observer.observe(sidebar_element, observe_opts)
       })
     }
     schedule_refresh()
-    const observer = new MutationObserver(schedule_refresh)
-    observer.observe(sidebar_element, { childList: true, subtree: true })
+    observer.observe(sidebar_element, observe_opts)
     return () => {
       observer.disconnect()
-      if (pending_raf) cancelAnimationFrame(pending_raf)
+      if (pending_raf !== null) cancelAnimationFrame(pending_raf)
     }
   })
 
@@ -438,131 +424,65 @@
 
   // === Component mounting ===
 
-  function prepare_structure(val: unknown): unknown {
-    if (is_optimade_raw(val)) {
-      const result = parse_optimade_from_raw(val)
-      if (result) return result
+  function prepare_structure(val: unknown): AnyStructure {
+    const optimade = optimade_structure_from_raw(val)
+    if (optimade) return optimade_to_structure(optimade)
+    return is_structure_like(val) ? structure_from_json(val) : (val as AnyStructure)
+  }
+
+  // Raw JSON values need promoting to the typed inputs the viewers expect (structures get
+  // lattices/coordinates normalised, volumetric grids become typed arrays); the shared
+  // mount_viewer table then does the same dispatch as the webview entry point
+  function json_to_viewer_input(
+    detected_type: RenderableType,
+    val: unknown,
+  ): { type: ViewerMountType; data: unknown } {
+    if (detected_type === `structure`)
+      return { type: `structure`, data: prepare_structure(val) }
+    if (detected_type === `volumetric`)
+      return { type: `isosurface`, data: volume_json_to_isosurface_input(val) }
+    if (detected_type === `brillouin_zone`) {
+      const record = val as Record<string, unknown>
+      return {
+        type: detected_type,
+        data: record.structure
+          ? { ...record, structure: prepare_structure(record.structure) }
+          : val,
+      }
     }
-    return is_structure_like(val) ? structure_from_json(val) : val
+    return { type: detected_type, data: val }
   }
 
   // Merge defaults once (reused across all panel mounts)
   const merged_defaults = $derived(merge(defaults))
-  const common_props = { fullscreen_toggle: false, style: `height:100%` }
 
   function mount_into(
     target: HTMLElement,
     val: unknown,
     detected_type: RenderableType,
-    panel_id?: string,
+    panel_id: string,
   ): ReturnType<typeof mount> | null {
-    const onclose =
-      panel_id !== undefined
-        ? () => {
-            const idx = panels.findIndex((panel) => panel.id === panel_id)
-            if (idx === -1) return
-            if (panels.length > 1) close_panel(idx)
-            else close_all_panels()
-          }
-        : undefined
-    target.innerHTML = ``
-    // Force layout so Three.js gets real dimensions
-    void target.offsetHeight
-
-    const structure_mount_props = {
-      allow_file_drop: false,
-      ...structure_props(merged_defaults),
-      ...common_props,
+    const on_close = () => {
+      const idx = panels.findIndex((panel) => panel.id === panel_id)
+      if (idx === -1) return
+      if (panels.length > 1) close_panel(idx)
+      else close_all_panels()
     }
-
     try {
-      if (detected_type === `structure`) {
-        return mount(Structure, {
-          target,
-          props: {
-            structure: prepare_structure(val) as AnyStructure,
-            ...structure_mount_props,
-          },
-        })
-      } else if (detected_type === `fermi_surface` || detected_type === `band_grid`) {
-        const props: Record<string, unknown> = { allow_file_drop: false, ...common_props }
-        if (is_fermi_surface_data(val as Parameters<typeof is_fermi_surface_data>[0])) {
-          props.fermi_data = val
-        } else props.band_data = val
-        return mount(FermiSurface, { target, props })
-      } else if (detected_type === `convex_hull`) {
-        return mount(ConvexHull, {
-          target,
-          props: { entries: val as PhaseData[], ...common_props },
-        })
-      } else if (detected_type === `phase_diagram`) {
-        return mount(IsobaricBinaryPhaseDiagram, {
-          target,
-          props: { data: val as PhaseDiagramData, ...common_props },
-        })
-      } else if (detected_type === `volumetric`) {
-        const vol_data = val as { lattice: LatticeType }
-        return mount(Structure, {
-          target,
-          props: {
-            structure: { sites: [], lattice: vol_data.lattice } as AnyStructure,
-            volumetric_data: [val as VolumetricData],
-            ...structure_mount_props,
-          },
-        })
-      } else if (detected_type === `bands_and_dos`) {
-        const data = val as Record<string, unknown>
-        // Support both { band_structure, dos } wrapper and combined-fields format
-        const band_data = (data.band_structure ?? val) as BaseBandStructure
-        const dos_data = (data.dos ?? val) as DosInput
-        return mount(BandsAndDos, {
-          target,
-          props: { band_structs: band_data, doses: dos_data, ...common_props },
-        })
-      } else if (detected_type === `band_structure`) {
-        return mount(Bands, {
-          target,
-          props: {
-            band_structs: val as BaseBandStructure,
-            ...common_props,
-            padding: { b: 60 },
-          },
-        })
-      } else if (detected_type === `dos`) {
-        return mount(Dos, {
-          target,
-          props: { doses: val as DosInput, ...common_props, padding: { b: 60 } },
-        })
-      } else if (detected_type === `brillouin_zone`) {
-        const bz_val = val as Record<string, unknown>
-        const bz_props: Record<string, unknown> = { allow_file_drop: false, ...common_props }
-        if (bz_val.structure) bz_props.structure = prepare_structure(bz_val.structure)
-        // Pass pre-computed BZ data (vertices, faces, edges) if present
-        if (bz_val.vertices && bz_val.faces) bz_props.bz_data = bz_val
-        return mount(BrillouinZone, { target, props: bz_props })
-      } else if (detected_type === `xrd`) {
-        return mount(XrdPlot, {
-          target,
-          props: { patterns: val as XrdPattern, allow_file_drop: false, ...common_props },
-        })
-      } else if (detected_type === `table`) {
-        return mount(PlotPanel, {
-          target,
-          props: { data: val, initial_type: `table`, onclose, ...common_props },
-        })
-      } else if (detected_type === `plot`) {
-        return mount(PlotPanel, { target, props: { data: val, onclose, ...common_props } })
-      }
+      const { type, data } = json_to_viewer_input(detected_type, val)
+      return mount_viewer(target, type, data, { defaults: merged_defaults, on_close })
     } catch (error) {
       console.error(`JsonBrowser: mount failed for ${detected_type}:`, error)
+      return null
     }
-    return null
   }
 
   function mount_all_panels(): void {
+    if (!canvas_element) return
     for (const panel of panels) {
       if (panel.component) continue // already mounted
-      const el = document.querySelector<HTMLElement>(`#${panel.id}`)
+      // Scoped to the canvas: a document-wide lookup misses panels inside a shadow root
+      const el = canvas_element.querySelector<HTMLElement>(`#${panel.id}`)
       if (!el) continue
       panel.element = el
       panel.component = mount_into(el, panel.val, panel.detected_type, panel.id)
@@ -694,19 +614,15 @@
 
   // === Helpers ===
 
-  function strip_root_prefix(path: string): string {
-    if (!filename || !path.startsWith(filename)) return path
-    const stripped = path.slice(filename.length)
-    return stripped.startsWith(`.`) ? stripped.slice(1) : stripped
-  }
-
-  function handle_select(path: string, val: unknown): void {
-    const data_path = strip_root_prefix(path)
-    if (select_timer) clearTimeout(select_timer)
+  // Clicking a renderable tree node renders it in the main panel. JsonTree reports a selection
+  // on every ArrowUp/ArrowDown and twice on a double-click, and each render tears down a full
+  // viewer (Three.js scene included), so selections are debounced to the last one
+  function handle_select(tree_path: string, val: unknown): void {
+    clearTimeout(select_timer)
     select_timer = setTimeout(() => {
       if (destroyed) return // component was destroyed while timer was pending
       const detected = detect_view_type(val)
-      if (detected) replace_or_add_panel(data_path, detected, val)
+      if (detected) replace_or_add_panel(tree_to_data_path(tree_path), detected, val)
     }, 150)
   }
 
@@ -731,19 +647,24 @@
 {/snippet}
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="json-browser" class:dragging={is_sidebar_dragging || split_dragging_idx >= 0}>
-  <aside class="sidebar" bind:this={sidebar_element} style="width: {sidebar_width}px">
+<div class="json-browser" class:dragging={split_dragging_idx >= 0} bind:this={browser_element}>
+  <aside class="sidebar" bind:this={sidebar_element}>
     <JsonTree
       {value}
       root_label={filename}
       default_fold_level={1}
-      onselect={handle_select}
+      on_select={handle_select}
       show_header
     />
   </aside>
 
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="divider sidebar-divider" onmousedown={on_sidebar_divider_mousedown}></div>
+  <PaneDivider
+    orientation="horizontal"
+    bind:ratio={sidebar_ratio}
+    min_px={SIDEBAR_MIN_PX}
+    second_min_px={CANVAS_MIN_PX}
+    aria-label="Resize JSON tree and viewer panes"
+  />
 
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
@@ -841,40 +762,31 @@
 
 <style>
   .json-browser {
-    display: flex;
+    display: grid;
+    /* PaneDivider writes --split-pane-size on this element while dragging; the pixel floors
+       mirror the divider's min_px/second_min_px so neither pane collapses before layout */
+    grid-template-columns: minmax(150px, var(--split-pane-size, 30%)) minmax(200px, 1fr);
+    position: relative;
     width: 100%;
     height: 100%;
     overflow: hidden;
     background: var(--vscode-editor-background, var(--page-bg, var(--surface-bg, Canvas)));
     color: var(--vscode-editor-foreground, var(--text-color, CanvasText));
+    --active-color: var(--vscode-focusBorder, #007fd4);
   }
   .json-browser.dragging {
     user-select: none;
   }
   .sidebar {
-    flex-shrink: 0;
-    min-width: 150px;
-    max-width: 60%;
+    min-width: 0;
     overflow: auto;
     padding: 4px;
   }
-  .divider {
-    width: 5px;
-    flex-shrink: 0;
-    background: var(--vscode-panel-border, rgba(255, 255, 255, 0.1));
-    cursor: col-resize;
-    transition: background 0.15s;
-  }
-  .divider:hover,
-  .json-browser.dragging .sidebar-divider {
-    background: var(--vscode-focusBorder, #007fd4);
-  }
   .canvas {
-    flex: 1;
+    min-width: 0;
     height: 100%;
     position: relative;
     overflow: hidden;
-    min-width: 200px;
   }
   /* === Panel layout === */
   .panel-container {

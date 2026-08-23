@@ -1,16 +1,10 @@
 import type { Vec3 } from '$lib/math'
 import type { Site } from '$lib/structure'
-import {
-  trajectory_from_frames,
-  TrajectoryProperties,
-  type TrajectoryFrame,
-  type TrajectoryMetadata,
-  type TrajectoryRun,
-} from '$lib/trajectory'
+import { trajectory_from_frames, type TrajectoryFrame } from '$lib/trajectory'
 import TrajectoryDataInspectorPane from '$lib/trajectory/TrajectoryDataInspectorPane.svelte'
 import { mount, tick, unmount } from 'svelte'
 import { afterEach, expect, test, vi } from 'vitest'
-import { make_trajectory_frame } from '../setup'
+import { make_run as make_shared_run, with_property_rows } from '../setup'
 
 let mounted_pane: ReturnType<typeof mount> | undefined
 afterEach(async () => {
@@ -19,23 +13,18 @@ afterEach(async () => {
   document.body.replaceChildren()
 })
 
-const CUBIC_LATTICE = { a: 3, b: 3, c: 3, alpha: 90, beta: 90, gamma: 90, volume: 27 }
-const make_run = (n_frames = 4): TrajectoryRun =>
-  trajectory_from_frames(
-    Array.from({ length: n_frames }, (_unused, frame_idx) =>
-      make_trajectory_frame(
-        frame_idx * 10,
-        3,
-        { energy: -100 - frame_idx, force_max: 0.5 - frame_idx * 0.1 },
-        CUBIC_LATTICE,
-      ),
-    ),
+const make_run = (n_frames = 4) =>
+  make_shared_run(
+    Array.from({ length: n_frames }, (_unused, frame_idx) => frame_idx * 10),
+    {
+      site_count: 3,
+      lattice_params: { a: 3, b: 3, c: 3, volume: 27 },
+      frame_metadata: (frame_idx) => ({
+        energy: -100 - frame_idx,
+        force_max: 0.5 - frame_idx * 0.1,
+      }),
+    },
   )
-const sampled_run = (frame_count: number, rows: TrajectoryMetadata[]): TrajectoryRun => ({
-  ...make_run(1),
-  frame_count,
-  properties: new TrajectoryProperties(rows, true),
-})
 const make_site = (site_idx: number, properties: Record<string, unknown>): Site => ({
   species: [{ element: `Fe`, occu: 1, oxidation_state: 0 }],
   abc: [site_idx / 10, 0.25, 0.5] as Vec3,
@@ -102,7 +91,7 @@ test(`sampled property rows keep their real frame numbers and disclose sampling`
     step: sample_idx * 200,
     properties: { energy: -100 - sample_idx, temperature: 300 + sample_idx },
   }))
-  await mount_pane({ run: sampled_run(100_000, rows) })
+  await mount_pane({ run: with_property_rows(make_run(1), rows, 100_000) })
   expect(document.body.textContent).toContain(`Sampled frames: 100 of 100,000`)
   const rendered = expect_virtualized(100)
   expect_headers(`Temperature (K)`)

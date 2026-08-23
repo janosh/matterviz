@@ -3,11 +3,9 @@ import type { ElementSymbol } from '$lib/element'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import type { MsdPositions } from '$lib/msd'
 import type { Pbc } from '$lib/structure'
-import type { TrajectoryFrame } from '$lib/trajectory'
 import { flatten_xyz_frames } from '../numeric-helpers'
-import { make_crystal } from '../setup'
 
-export { make_rng, max_abs_error, max_rel_error } from '../numeric-helpers'
+export { make_rng, max_rel_error } from '../numeric-helpers'
 
 export interface BuildPositionsOptions {
   elements?: ElementSymbol[]
@@ -56,27 +54,3 @@ export const drift_positions = (n_frames = 30, velocity = 0.2): MsdPositions =>
       [1 + velocity * frame_idx, 0, 0],
     ]),
   )
-
-// A TrajectoryFrame whose sites sit at the given Cartesian coordinates
-export function make_frame(
-  step: number,
-  xyz_list: number[][],
-  options: {
-    elements?: ElementSymbol[]
-    box_length?: number
-    coords_unwrapped?: boolean
-  } = {},
-): TrajectoryFrame {
-  const { box_length, coords_unwrapped, elements } = options
-  const crystal = make_crystal(
-    box_length ?? 1,
-    xyz_list.map((xyz, idx) => ({ element: elements?.[idx] ?? `H`, xyz: xyz as Vec3 })),
-    { charge: 0 },
-  )
-  return {
-    step,
-    // Without a box the frame is a molecule: no lattice, so nothing to unwrap against
-    structure: box_length ? crystal : { charge: 0, sites: crystal.sites },
-    ...(coords_unwrapped === undefined ? {} : { metadata: { coords_unwrapped } }),
-  }
-}

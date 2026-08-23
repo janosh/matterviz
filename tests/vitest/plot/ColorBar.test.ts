@@ -5,54 +5,69 @@ import { mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { bind_props, doc_query } from '../setup'
 
-describe(`ColorBar Horizontal (Default)`, () => {
-  test(`renders text, color scale, tick labels, and styles`, () => {
-    mount(ColorBar, {
-      target: document.body,
-      props: {
-        title: `Test Horizontal`,
-        scale: `interpolateViridis`,
-        tick_labels: 5, // D3 nice().ticks(5) for [0, 100] -> [0, 20, 40, 60, 80, 100]
-        range: [0, 100],
-        title_side: `left`,
-        tick_side: `primary`, // primary = bottom for horizontal
-        bar_style: `width: 200px; height: 20px;`,
-        title_style: `font-weight: bold;`,
-        wrapper_style: `margin: 10px;`,
-      },
+const mount_bar = (props: Record<string, unknown>) =>
+  mount(ColorBar, { target: document.body, props })
+const tick_spans = () => [
+  ...document.querySelectorAll<HTMLElement>(`.colorbar > div.bar > span.tick-label`),
+]
+const tick_texts = () => tick_spans().map((span) => span.textContent)
+
+describe(`ColorBar layout`, () => {
+  test(`forwards title/bar/wrapper styles and positions horizontal ticks`, () => {
+    mount_bar({
+      title: `Test Horizontal`,
+      scale: `interpolateViridis`,
+      tick_labels: 5, // D3 nice().ticks(5) for [0, 100] -> [0, 20, 40, 60, 80, 100]
+      range: [0, 100],
+      title_side: `left`,
+      tick_side: `primary`, // primary = bottom for horizontal
+      bar_style: `width: 200px; height: 20px;`,
+      title_style: `font-weight: bold;`,
+      wrapper_style: `margin: 10px;`,
     })
-
     const title_row = doc_query(`.colorbar .title-row`)
-    const title_span = doc_query(`.colorbar .label`)
-    expect(title_span.textContent).toBe(`Test Horizontal`)
-    // title_style is now applied to title-row
+    expect(doc_query(`.colorbar .label`).textContent).toBe(`Test Horizontal`)
     expect(title_row.getAttribute(`style`)).toContain(`font-weight: bold;`)
-    // title_side=left means title-row has left class
     expect(title_row.classList.contains(`left`)).toBe(true)
-
-    const cbar_div = doc_query(`.colorbar > div.bar`)
-    expect(cbar_div.style.width).toBe(`200px`)
-    expect(cbar_div.style.height).toBe(`20px`)
-
-    const tick_label_spans = document.querySelectorAll(`.colorbar > div.bar > span.tick-label`)
-    expect(tick_label_spans).toHaveLength(6)
-    const first_tick = tick_label_spans[0] as HTMLElement
-    expect(first_tick.style.left).toBe(`0%`)
-    expect(first_tick.classList).toContain(`horizontal`)
-    expect(first_tick.classList).toContain(`tick-primary`)
-
+    const bar = doc_query(`.colorbar > div.bar`)
+    expect([bar.style.width, bar.style.height]).toEqual([`200px`, `20px`])
+    expect(bar.classList.contains(`horizontal`)).toBe(true)
     const wrapper = doc_query(`.colorbar`)
     expect(wrapper.style.margin).toBe(`10px`)
     expect(wrapper.style.flexDirection).toBe(`row`) // title_side: left
+    expect(tick_texts()).toEqual([`0`, `20`, `40`, `60`, `80`, `100`])
+    expect(tick_spans().map((span) => span.style.left)).toEqual(
+      [0, 20, 40, 60, 80, 100].map((pct) => `${pct}%`),
+    )
+    expect(tick_spans()[0].classList).toContain(`horizontal`)
+    expect(tick_spans()[0].classList).toContain(`tick-primary`)
+  })
+
+  test(`vertical bars run bottom-up and size from the thickness variable`, () => {
+    mount_bar({
+      title: `Vertical`,
+      orientation: `vertical`,
+      range: [-50, 50],
+      tick_labels: 4, // D3 nice().ticks(4) for [-50, 50] -> [-60, -40, -20, 0, 20, 40, 60]
+      tick_side: `secondary`, // secondary = left for vertical
+    })
+    const bar = doc_query(`.colorbar > div.bar`)
+    expect(globalThis.getComputedStyle(bar).width).toBe(`10px`) // --cbar-thickness
+    expect(globalThis.getComputedStyle(bar).height).not.toBe(`10px`)
+    expect(tick_texts()).toEqual([`−60`, `−40`, `−20`, `0`, `20`, `40`, `60`])
+    // the low end sits at the bottom (top: 100%), the high end at the top
+    tick_spans().forEach((span, idx) =>
+      expect(Number(span.style.top.replace(`%`, ``))).toBeCloseTo(100 - (100 * idx) / 6, 6),
+    )
+    expect(tick_spans()[0].classList).toContain(`vertical`)
+    expect(tick_spans()[0].classList).toContain(`tick-secondary`)
   })
 
   test(`rejects invalid scale input`, () => {
     // Bare scheme names were silently prefixed before; only the canonical `interpolate*`
     // name resolves now. The cast exercises the runtime guard JavaScript callers hit.
     const scale = `Viridis` as ColorBarScale
-    expect(() => mount(ColorBar, { target: document.body, props: { scale } })).toThrow(
-      `Unknown D3 color interpolator: Viridis`,
-    )
+    expect(() => mount_bar({ scale })).toThrow(`Unknown D3 color interpolator: Viridis`)
   })
 
   // Labels are absolutely positioned, so without a gutter they overflow into neighbors.
@@ -62,356 +77,155 @@ describe(`ColorBar Horizontal (Default)`, () => {
     [{ tick_labels: 0 }, undefined],
     [{ tick_side: `inside` as const }, undefined],
   ])(`outside ticks mark a bar gutter class %j`, (props, gutter_class) => {
-    mount(ColorBar, {
-      target: document.body,
-      props: { range: [0, 1], tick_labels: 2, ...props },
-    })
+    mount_bar({ range: [0, 1], tick_labels: 2, ...props })
     const bar = doc_query(`.colorbar > div.bar`)
-    expect(bar.classList.contains(`horizontal`)).toBe(true)
     expect(bar.classList.contains(`tick-primary`)).toBe(gutter_class === `tick-primary`)
     expect(bar.classList.contains(`tick-secondary`)).toBe(gutter_class === `tick-secondary`)
   })
-})
 
-describe(`ColorBar Vertical`, () => {
-  test(`renders correctly with default vertical props`, () => {
-    mount(ColorBar, {
-      target: document.body,
-      props: {
-        title: `Test Vertical Default`,
-        orientation: `vertical`,
-        range: [0, 10],
-        tick_labels: 5, // D3 nice().ticks(5) for [0, 10] -> [0, 2, 4, 6, 8, 10]
-      },
-    })
-
-    const wrapper_vert_def = doc_query(`.colorbar`)
-    expect(wrapper_vert_def.style.flexDirection).toBe(`row`)
-
-    const title_row = doc_query(`.colorbar .title-row`)
-    const title_span_vert_def = doc_query(`.colorbar .label`)
-    expect(title_span_vert_def.textContent).toBe(`Test Vertical Default`)
-    // Vertical title_side=left uses CSS class for rotation
-    expect(title_row.classList.contains(`left`)).toBe(true)
-
-    const cbar_div = doc_query(`.colorbar > div.bar`)
-    const computed_style = globalThis.getComputedStyle(cbar_div)
-    expect(computed_style.width).toBe(`10px`) // Check computed value of --cbar-thickness
-    expect(computed_style.height).not.toBe(`10px`)
-
-    const tick_label_spans = document.querySelectorAll(`.colorbar > div.bar > span.tick-label`)
-    expect(tick_label_spans).toHaveLength(6)
-
-    const first_tick = tick_label_spans[0] as HTMLElement
-    expect(first_tick.style.top).toBe(`100%`) // 0 value is at the bottom
-    expect(first_tick.classList).toContain(`vertical`)
-    expect(first_tick.classList).toContain(`tick-primary`)
-
-    const last_tick = tick_label_spans[5] as HTMLElement
-    expect(last_tick.style.top).toBe(`0%`) // 10 value is at the top
-  })
-
-  test(`renders correctly with explicit vertical props (label top, ticks left)`, () => {
-    mount(ColorBar, {
-      target: document.body,
-      props: {
-        title: `Test Vertical Explicit`,
-        orientation: `vertical`,
-        range: [-50, 50],
-        tick_labels: 4, // D3 nice().ticks(4) for [-50, 50] -> [-60, -40, -20, 0, 20, 40, 60]
-        title_side: `top`,
-        tick_side: `secondary`, // secondary = left for vertical
-        bar_style: `width: 20px; height: 300px;`,
-        wrapper_style: `height: 300px;`,
-      },
-    })
-
-    const wrapper_vert_exp = doc_query(`.colorbar`)
-    expect(wrapper_vert_exp.style.flexDirection).toBe(`column`)
-    expect(wrapper_vert_exp.style.height).toBe(`300px`)
-
-    const title_span_vert_exp = doc_query(`.colorbar .label`)
-    expect(title_span_vert_exp.textContent).toBe(`Test Vertical Explicit`)
-
-    const cbar_div = doc_query(`.colorbar > div.bar`)
-    expect(cbar_div.style.width).toBe(`20px`)
-    expect(cbar_div.style.height).toBe(`300px`)
-
-    const tick_label_spans = document.querySelectorAll(`.colorbar > div.bar > span.tick-label`)
-    expect(tick_label_spans).toHaveLength(7)
-
-    const middle_tick = tick_label_spans[3] as HTMLElement // Tick '0'
-    expect(middle_tick.textContent).toBe(`0`)
-    expect(middle_tick.style.top).toBe(`50%`) // 0 is in the middle of [-60, 60]
-    expect(middle_tick.classList).toContain(`vertical`)
-    expect(middle_tick.classList).toContain(`tick-secondary`)
-  })
+  // The title row defaults to the side opposite the ticks; inside ticks leave it on the
+  // row axis. An explicit title_side wins and lands as a class on the title row.
+  test.each([
+    [`horizontal`, `primary`, undefined, `column`],
+    [`horizontal`, `secondary`, undefined, `column-reverse`],
+    [`vertical`, `primary`, undefined, `row`],
+    [`vertical`, `secondary`, undefined, `row-reverse`],
+    [`horizontal`, `inside`, undefined, `row`],
+    [`vertical`, `inside`, undefined, `row`],
+    [`horizontal`, `primary`, `top`, `column`],
+    [`vertical`, `primary`, `right`, `row-reverse`],
+  ] as const)(
+    `orientation=%s tick_side=%s title_side=%s -> flex-direction %s`,
+    (orientation, tick_side, title_side, flex_dir) => {
+      mount_bar({ title: `Title`, orientation, tick_side, title_side })
+      expect(doc_query(`.colorbar`).style.flexDirection).toBe(flex_dir)
+      expect(doc_query(`.colorbar .label`).textContent).toBe(`Title`)
+      if (title_side) {
+        expect(doc_query(`.colorbar .title-row`).classList.contains(title_side)).toBe(true)
+      }
+    },
+  )
 })
 
 describe(`ColorBar tick_side='inside'`, () => {
-  test(`Horizontal: hides first/last ticks, centers others, min 3 visible`, () => {
-    mount(ColorBar, {
-      target: document.body,
-      props: {
-        orientation: `horizontal`,
+  // the outermost ticks would sit on the bar ends, so they are dropped and the rest keep
+  // their fractional positions; label colour contrasts with the bar colour underneath
+  test.each([
+    [
+      `horizontal`,
+      [0, 100],
+      `left`,
+      [
+        [`20`, `20%`, `white`],
+        [`40`, `40%`, `white`],
+        [`60`, `60%`, `black`],
+        [`80`, `80%`, `black`],
+      ],
+    ],
+    [
+      `vertical`,
+      [10, 90],
+      `top`,
+      [
+        [`20`, `87.5%`, `white`],
+        [`30`, `75%`, `white`],
+        [`40`, `62.5%`, `white`],
+        [`50`, `50%`, `black`],
+        [`60`, `37.5%`, `black`],
+        [`70`, `25%`, `black`],
+        [`80`, `12.5%`, `black`],
+      ],
+    ],
+  ] as const)(
+    `%s hides the end ticks and centres the rest`,
+    (orientation, range, prop, rows) => {
+      mount_bar({
+        orientation,
         tick_side: `inside`,
-        range: [0, 100],
-        tick_labels: 6, // Request 6 -> gen 6 -> d3 gives 6 ([0, 20,.., 100]) -> slice -> 4 visible
+        range: [...range],
+        tick_labels: 6,
         scale: `interpolateViridis`,
-        style: `height: 30px;`,
-      },
-    })
-
-    const ticks = document.querySelectorAll<HTMLElement>(`.colorbar .bar > .tick-label`)
-    expect(
-      [...ticks].map((tick_label) => [
-        tick_label.textContent,
-        tick_label.style.left,
-        tick_label.style.color,
-      ]),
-    ).toEqual([
-      [`20`, `20%`, `white`],
-      [`40`, `40%`, `white`],
-      [`60`, `60%`, `black`],
-      [`80`, `80%`, `black`],
-    ])
-    expect(ticks[0].classList).toContain(`horizontal`)
-    expect(ticks[0].classList).toContain(`tick-inside`)
-  })
-
-  test(`Vertical: hides first/last ticks, centers others`, () => {
-    mount(ColorBar, {
-      target: document.body,
-      props: {
-        orientation: `vertical`,
-        tick_side: `inside`,
-        range: [10, 90],
-        tick_labels: 6, // Request 6 -> gen 6 -> d3 gives 9 ([10, 20,.., 90]) -> slice -> 7 visible
-        style: `width: 30px;`,
-      },
-    })
-
-    const tick_label_spans = document.querySelectorAll(`.colorbar > div.bar > span.tick-label`)
-    expect(tick_label_spans).toHaveLength(7)
-
-    const first_visible_tick = tick_label_spans[0] as HTMLElement
-    expect(first_visible_tick.textContent).toBe(`20`) // Range [10, 90], 9 ticks total
-    expect(first_visible_tick.style.top).toBe(`87.5%`) // 20 is 1/8th from bottom (100%)
-    expect(first_visible_tick.classList).toContain(`vertical`)
-    expect(first_visible_tick.classList).toContain(`tick-inside`)
-
-    const last_visible_tick = tick_label_spans[6] as HTMLElement
-    expect(last_visible_tick.textContent).toBe(`80`) // 80 is 7/8ths from bottom (100%)
-    expect(last_visible_tick.style.top).toBe(`12.5%`)
-  })
+      })
+      expect(
+        tick_spans().map((span) => [span.textContent, span.style[prop], span.style.color]),
+      ).toEqual(rows)
+      expect(tick_spans()[0].classList).toContain(orientation)
+      expect(tick_spans()[0].classList).toContain(`tick-inside`)
+    },
+  )
 
   test.each([
     [`transparent`, `transparent`, `white`],
     [`translucent`, `rgba(255, 255, 255, 0.1)`, `white`],
     [`unresolved`, `var(--missing-scale-color)`, `inherit`],
   ])(`handles %s custom scale colors for inside ticks`, async (_desc, color, expected) => {
-    mount(ColorBar, {
-      target: document.body,
-      props: {
-        tick_side: `inside`,
-        scale: { fn: () => color },
-        style: `--page-bg: black`,
-      },
-    })
+    mount_bar({ tick_side: `inside`, scale: { fn: () => color }, style: `--page-bg: black` })
     await tick()
     expect(doc_query(`.tick-label`).style.color).toBe(expected)
   })
 })
 
-describe(`ColorBar title_side Default Logic`, () => {
+describe(`ColorBar tick labels`, () => {
+  const day = (month: number, date: number, hours = 0, minutes = 0, seconds = 0) =>
+    new Date(2024, month, date, hours, minutes, seconds).getTime()
   test.each([
-    // [orientation, tick_side, expected_flex_dir]
-    [`horizontal`, `primary`, `column`],
-    [`horizontal`, `secondary`, `column-reverse`],
-    [`vertical`, `primary`, `row`],
-    [`vertical`, `secondary`, `row-reverse`],
-    [`horizontal`, `inside`, `row`],
-    [`vertical`, `inside`, `row`],
-  ] as const)(
-    `orientation=%s, tick_side=%s -> defaults title flex-direction to %s`,
-    (orientation, tick_side, expected_flex_dir) => {
-      mount(ColorBar, {
-        target: document.body,
-        props: { title: `Test Default Title`, orientation, tick_side },
-      })
-      const wrapper = doc_query(`.colorbar`)
-      expect(wrapper.style.flexDirection).toBe(expected_flex_dir)
-
-      // Title should exist (in title-row)
-      const title_span = doc_query(`.colorbar .label`)
-      expect(title_span).not.toBeNull()
-      expect(title_span.textContent).toBe(`Test Default Title`)
+    {
+      name: `a d3-time format`,
+      props: { range: [day(0, 1), day(11, 31)], tick_format: `%Y-%m-%d`, tick_labels: 3 },
+      expected: [`2024-01-01`, `2024-07-01`, `2024-12-31`],
     },
-  )
-})
-
-describe(`ColorBar Date/Time Formatting`, () => {
-  test(`formats ticks correctly using tick_format`, () => {
-    const date_range: Vec2 = [
-      new Date(2024, 0, 1).getTime(), // Jan 1, 2024
-      new Date(2024, 11, 31).getTime(), // Dec 31, 2024
-    ]
-
-    mount(ColorBar, {
-      target: document.body,
-      props: {
-        range: date_range,
-        tick_format: `%Y-%m-%d`, // YYYY-MM-DD format
-        tick_labels: 3, // Request 3 ticks
-        snap_ticks: false, // Use exact range for predictability
-      },
-    })
-
-    const tick_label_spans = document.querySelectorAll(`.colorbar > div.bar > span.tick-label`)
-    expect(tick_label_spans).toHaveLength(3)
-    expect(tick_label_spans[0].textContent).toBe(`2024-01-01`) // Start date
-    expect(tick_label_spans[1].textContent).toBe(`2024-07-01`) // Mid-point (approx)
-    expect(tick_label_spans[2].textContent).toBe(`2024-12-31`) // End date
-  })
-
-  test(`formats ticks with different format string`, () => {
-    const date_range: Vec2 = [
-      new Date(2024, 0, 1, 0, 0, 0).getTime(), // Start of day
-      new Date(2024, 0, 1, 23, 59, 59).getTime(), // End of day
-    ]
-
-    mount(ColorBar, {
-      target: document.body,
-      props: {
-        range: date_range,
-        tick_format: `%H:%M`, // HH:MM format
-        tick_labels: 5, // Request 5 ticks
-        snap_ticks: false,
-      },
-    })
-
-    const tick_label_spans_date_fmt = document.querySelectorAll(
-      `.colorbar > div.bar > span.tick-label`,
-    )
-    expect(tick_label_spans_date_fmt).toHaveLength(5)
-    expect(tick_label_spans_date_fmt[0].textContent).toBe(`00:00`)
-    expect([`11:59`, `12:00`]).toContain(tick_label_spans_date_fmt[2].textContent)
-    expect(tick_label_spans_date_fmt[4].textContent).toBe(`23:59`) // Near end of day
-  })
-})
-
-describe(`ColorBar Numeric Formatting`, () => {
-  test(`formats ticks correctly using numeric d3-format (e.g. '.1f')`, () => {
-    mount(ColorBar, {
-      target: document.body,
-      props: {
-        range: [0, 10],
-        tick_format: `.1r`, // Format to one decimal place
-        tick_labels: 6, // Request 6 ticks (0, 2, 4, 6, 8, 10)
-        snap_ticks: true, // Use nice range
-      },
-    })
-
-    const tick_label_spans = document.querySelectorAll(`.colorbar > div.bar > span.tick-label`)
-    expect(tick_label_spans).toHaveLength(6)
-    expect(tick_label_spans[0].textContent).toBe(`0`)
-    expect(tick_label_spans[1].textContent).toBe(`2`)
-    expect(tick_label_spans[2].textContent).toBe(`4`)
-    expect(tick_label_spans[3].textContent).toBe(`6`)
-    expect(tick_label_spans[4].textContent).toBe(`8`)
-    expect(tick_label_spans[5].textContent).toBe(`10`)
-  })
-
-  test(`formats ticks with percentage format ('p')`, () => {
-    mount(ColorBar, {
-      target: document.body,
-      props: {
-        range: [0, 1],
-        tick_format: `.0%`, // Format as percentage with no decimals
-        tick_labels: 5, // Request 5 ticks (0, 0.25, 0.5, 0.75, 1)
-        snap_ticks: false, // Use exact range
-      },
-    })
-
-    const tick_label_spans = document.querySelectorAll(`.colorbar > div.bar > span.tick-label`)
-    expect(tick_label_spans).toHaveLength(5)
-    expect(tick_label_spans[0].textContent).toBe(`0%`)
-    expect(tick_label_spans[1].textContent).toBe(`25%`)
-    expect(tick_label_spans[2].textContent).toBe(`50%`)
-    expect(tick_label_spans[3].textContent).toBe(`75%`)
-    expect(tick_label_spans[4].textContent).toBe(`100%`)
-  })
-
-  test.each([
-    { range: [0.1234, 5.6789] as Vec2, expected: [`0.123`, `2.9`, `5.68`] },
-    { range: [1000, 5000] as Vec2, expected: [`1k`, `5k`] },
-  ])(
-    `falls back to format_num for range $range when tick_format undefined`,
-    ({ range, expected }) => {
-      mount(ColorBar, {
-        target: document.body,
-        props: {
-          range,
-          tick_format: undefined,
-          tick_labels: expected.length,
-          snap_ticks: false,
-        },
-      })
-
-      const ticks = document.querySelectorAll(`.colorbar > div.bar > span.tick-label`)
-      expect(ticks).toHaveLength(expected.length)
-      expected.forEach((text, idx) => expect(ticks[idx].textContent).toBe(text))
+    {
+      name: `a numeric d3-format`,
+      props: { range: [0, 10], tick_format: `.1r`, tick_labels: 6, snap_ticks: true },
+      expected: [`0`, `2`, `4`, `6`, `8`, `10`],
     },
-  )
-})
-
-describe(`ColorBar Other Features`, () => {
-  test(`uses explicit tick_labels array, dropping duplicates and non-numbers`, () => {
-    mount(ColorBar, {
-      target: document.body,
+    {
+      name: `a percentage format`,
+      props: { range: [0, 1], tick_format: `.0%`, tick_labels: 5 },
+      expected: [`0%`, `25%`, `50%`, `75%`, `100%`],
+    },
+    {
+      name: `format_num when tick_format is undefined`,
+      props: { range: [0.1234, 5.6789], tick_labels: 3 },
+      expected: [`0.123`, `2.9`, `5.68`],
+    },
+    {
+      name: `SI suffixes from format_num`,
+      props: { range: [1000, 5000], tick_labels: 2 },
+      expected: [`1k`, `5k`],
+    },
+    {
+      name: `snap_ticks=false with the exact tick count`,
+      props: { range: [0, 99], tick_labels: 4 },
+      expected: [`0`, `33`, `66`, `99`],
+    },
+    {
+      // snap_ticks is ignored when an explicit array is passed
+      name: `an explicit array minus duplicates and non-numbers`,
       props: {
         range: [0, 100],
         tick_labels: [10, 25, `50`, 50, `n/a`, 75, 90],
-        snap_ticks: true, // snap_ticks should be ignored when array is passed
+        snap_ticks: true,
       },
-    })
-    const texts = [...document.querySelectorAll(`.colorbar > div.bar > span.tick-label`)].map(
-      (span) => span.textContent,
-    )
-    expect(texts).toEqual([`10`, `25`, `50`, `75`, `90`])
+      expected: [`10`, `25`, `50`, `75`, `90`],
+    },
+  ])(`renders $name`, ({ props, expected }) => {
+    mount_bar({ snap_ticks: false, ...props })
+    expect(tick_texts()).toEqual(expected)
   })
 
-  test(`snap_ticks=false generates exact number of ticks`, () => {
-    mount(ColorBar, {
-      target: document.body,
-      props: { range: [0, 99], tick_labels: 4, snap_ticks: false },
+  test(`formats intra-day ticks with a time format`, () => {
+    mount_bar({
+      range: [day(0, 1), day(0, 1, 23, 59, 59)],
+      tick_format: `%H:%M`,
+      tick_labels: 5,
+      snap_ticks: false,
     })
-
-    const tick_label_spans = document.querySelectorAll(`.colorbar > div.bar > span.tick-label`)
-    expect(tick_label_spans).toHaveLength(4)
-    expect(tick_label_spans[0].textContent).toBe(`0`)
-    expect(tick_label_spans[1].textContent).toBe(`33`)
-    expect(tick_label_spans[2].textContent).toBe(`66`)
-    expect(tick_label_spans[3].textContent).toBe(`99`)
-  })
-
-  test(`renders title when ticks and title are on opposite sides`, () => {
-    mount(ColorBar, {
-      target: document.body,
-      props: {
-        title: `No Overlap Test`,
-        orientation: `horizontal`,
-        title_side: `top`,
-        tick_side: `primary`,
-        tick_labels: 3,
-      },
-    })
-
-    const title_span = doc_query(`.colorbar .label`)
-    expect(title_span.textContent).toBe(`No Overlap Test`)
-    // Title row should have top class
-    const title_row = doc_query(`.colorbar .title-row`)
-    expect(title_row.classList.contains(`top`)).toBe(true)
+    const texts = tick_texts()
+    expect(texts).toHaveLength(5)
+    expect(texts[0]).toBe(`00:00`)
+    expect([`11:59`, `12:00`]).toContain(texts[2])
+    expect(texts[4]).toBe(`23:59`)
   })
 
   test.each([
@@ -449,22 +263,17 @@ describe(`ColorBar Other Features`, () => {
       left: [0, 100],
     },
   ] as const)(`$scale_type ticks for range $range`, ({ scale_type, range, ticks, left }) => {
-    mount(ColorBar, {
-      target: document.body,
-      props: { range: [...range], scale_type, tick_labels: 4, snap_ticks: true },
-    })
-    const spans = [...document.querySelectorAll<HTMLElement>(`.colorbar .tick-label`)]
-    expect(spans.map((span) => span.textContent)).toEqual(ticks)
-    spans.forEach((span, idx) =>
+    mount_bar({ range: [...range], scale_type, tick_labels: 4, snap_ticks: true })
+    expect(tick_texts()).toEqual(ticks)
+    tick_spans().forEach((span, idx) =>
       expect(Number(span.style.left.replace(`%`, ``))).toBeCloseTo(left[idx], 6),
     )
   })
+})
 
+describe(`ColorBar gradient`, () => {
   test(`log gradient spans positive bounds below LOG_EPS`, () => {
-    mount(ColorBar, {
-      target: document.body,
-      props: { range: [1e-12, 1e-6], scale_type: `log`, steps: 3, tick_labels: 4 },
-    })
+    mount_bar({ range: [1e-12, 1e-6], scale_type: `log`, steps: 3, tick_labels: 4 })
     const gradient = doc_query(`.colorbar .bar`).getAttribute(`style`) ?? ``
     // with the floor clamped at 1e-9 the midpoint 1e-9 would render the bottom color
     expect(gradient.match(/#[0-9a-f]{6}/g)).toEqual([0, 0.5, 1].map(d3_sc.interpolateViridis))
@@ -472,10 +281,7 @@ describe(`ColorBar Other Features`, () => {
 
   test(`descending range reverses the gradient and reports the niced range`, async () => {
     const state = { nice_range: [0, 1] as Vec2 }
-    mount(ColorBar, {
-      target: document.body,
-      props: bind_props({ range: [99, 0] as Vec2, tick_labels: 4, steps: 3 }, state),
-    })
+    mount_bar(bind_props({ range: [99, 0] as Vec2, tick_labels: 4, steps: 3 }, state))
     await tick()
     expect(state.nice_range).toEqual([100, 0])
     const gradient = doc_query(`.colorbar .bar`).getAttribute(`style`) ?? ``
@@ -484,62 +290,13 @@ describe(`ColorBar Other Features`, () => {
     expect(last).toBe(d3_sc.interpolateViridis(0))
   })
 
-  test(`accepts a custom interpolator`, () => {
-    const custom_scale = vi.fn((frac: number): string => `rgb(${frac * 255}, 0, 0)`) // Mock scale
-    mount(ColorBar, {
-      target: document.body,
-      props: { scale: { interpolator: custom_scale }, range: [0, 1] }, // Use default steps=50
-    })
-
-    // Verify the mock function was called (steps times)
-    expect(custom_scale).toHaveBeenCalled()
-    expect(custom_scale).toHaveBeenCalledTimes(50) // Default steps is 50
-
-    // Optional: Check if the first call was with the expected value (approx 0)
+  test(`samples a custom interpolator once per step across [0, 1]`, () => {
+    const custom_scale = vi.fn((frac: number): string => `rgb(${frac * 255}, 0, 0)`)
+    mount_bar({ scale: { interpolator: custom_scale }, range: [0, 1] }) // default steps=50
+    expect(custom_scale).toHaveBeenCalledTimes(50)
     expect(custom_scale).toHaveBeenNthCalledWith(1, expect.closeTo(0))
-    // Optional: Check if the last call was with the expected value (approx 1)
     expect(custom_scale).toHaveBeenNthCalledWith(50, expect.closeTo(1))
   })
-})
-
-describe(`Vertical Layout Specifics`, () => {
-  test(`applies default height when vertical and no explicit height is set`, () => {
-    mount(ColorBar, {
-      target: document.body,
-      props: { orientation: `vertical`, title: `Default Height Test` },
-    })
-
-    // Check the inner bar div's style for 100% height, implying wrapper has height
-    const bar_div = doc_query(`.colorbar > div.bar`)
-    const bar_style_attr = bar_div.getAttribute(`style`) ?? ``
-    expect(bar_style_attr).toContain(`--cbar-height: 100%`)
-
-    // Note: Reliably checking wrapper's computed height in jsdom is difficult.
-    // We trust the browser to apply the default value from the CSS var.
-  })
-
-  test.each([
-    { side: `left`, flex_dir: `row` },
-    { side: `right`, flex_dir: `row-reverse` },
-  ] as const)(
-    `positions rotated side titles correctly (title_side=$side)`,
-    ({ side, flex_dir }) => {
-      const title = `Rotated ${side.charAt(0).toUpperCase() + side.slice(1)} Title`
-      mount(ColorBar, {
-        target: document.body,
-        props: { orientation: `vertical`, title, title_side: side },
-      })
-
-      const wrapper = doc_query(`.colorbar`)
-      expect(wrapper.style.flexDirection).toBe(flex_dir)
-      expect(wrapper.style.getPropertyValue(`--cbar-wrapper-align-items`)).toBe(`stretch`)
-      expect(wrapper.style.getPropertyValue(`--cbar-label-display`)).toBe(`flex`)
-
-      const title_row = doc_query(`.colorbar .title-row`)
-      expect(title_row.classList.contains(side)).toBe(true)
-      expect(doc_query(`.colorbar .label`).textContent).toBe(title)
-    },
-  )
 })
 
 // Test data for interactive features

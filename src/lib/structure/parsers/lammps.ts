@@ -324,10 +324,15 @@ export const parse_lammps_data = (content: string): Crystal | null =>
 // First frame of a LAMMPS text dump as a structure.
 export const parse_lammps_dump = (content: string): AnyStructure | null =>
   guard_parse(`LAMMPS dump`, () => {
-    const lines = content.split(/\r?\n/)
+    // Character offsets of the first two frame headers, so only the first frame's text is
+    // handed to the trajectory reader (which splits it into lines itself). Stops after the
+    // second hit: a long dump has thousands of headers and only two matter here.
+    const header_regex = /^[ \t]*ITEM:[ \t]*TIMESTEP/gim
     const frame_starts: number[] = []
-    for (const [line_idx, line] of lines.entries()) {
-      if (/^\s*ITEM:\s*TIMESTEP/i.test(line)) frame_starts.push(line_idx)
+    let match = header_regex.exec(content)
+    while (match && frame_starts.length < 2) {
+      frame_starts.push(match.index)
+      match = header_regex.exec(content)
     }
     if (frame_starts.length === 0) {
       diag_error(
@@ -337,20 +342,18 @@ export const parse_lammps_dump = (content: string): AnyStructure | null =>
     }
     if (frame_starts.length > 1) {
       diag_warn(
-        `LAMMPS dump contains ${frame_starts.length} frames; parsed the first as a structure — open it as a trajectory to see the rest`,
+        `LAMMPS dump contains more than one frame; parsed the first as a structure — open it as a trajectory to see the rest`,
       )
     }
 
-    const frame_lines = lines.slice(frame_starts[0], frame_starts[1] ?? lines.length)
-    const structure = parse_lammps_trajectory(frame_lines.join(`\n`), () => {}).frames[0]
-      ?.structure
+    // The trajectory reader's warnings (unknown columns, dropped atoms) are this parser's
+    // warnings too. It has already translated absolute dump coordinates from the LAMMPS box
+    // origin into MatterViz's zero-origin lattice, and a dump frame always carries its box.
+    const frame_text = content.slice(frame_starts[0], frame_starts[1])
+    const structure = parse_lammps_trajectory(frame_text, diag_warn).frames[0]?.structure
     if (!structure || structure.sites.length === 0) {
       diag_error(`LAMMPS dump frame contains no atoms`)
       return null
     }
-    if (!(`lattice` in structure)) return { sites: structure.sites }
-
-    // The shared trajectory parser has already translated absolute dump coordinates from
-    // the LAMMPS box origin into MatterViz's zero-origin lattice.
-    return { sites: structure.sites, lattice: structure.lattice }
+    return structure
   })

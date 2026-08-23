@@ -1,3 +1,4 @@
+import { mat3x3_vec3_multiply, subtract, transpose_3x3_matrix } from '$lib/math'
 import { phonon_bands, phonon_data, phonon_dos } from '$site/phonons'
 import { describe, expect, it } from 'vitest'
 
@@ -76,14 +77,11 @@ describe(`Phonon Module Tests`, () => {
   it.each(band_entries)(`%s has monotonic cumulative distances`, (id, band_struct) => {
     expect(band_struct.distance[0], id).toBe(0)
 
-    // qpoint distances mirror the distance array and never decrease
-    // (can be equal for consecutive points at same location, e.g. repeated labels)
-    band_struct.qpoints.forEach((qpt, idx) => {
-      expect(qpt.distance, id).toBe(band_struct.distance[idx])
-      expect(Number.isFinite(qpt.distance), id).toBe(true)
-      if (idx > 0) {
-        expect(qpt.distance, id).toBeGreaterThanOrEqual(band_struct.distance[idx - 1])
-      }
+    // Distances never decrease (equal for consecutive points at the same location, e.g. the
+    // duplicated junction point between two pymatgen branches, and across a path jump)
+    band_struct.distance.forEach((dist, idx) => {
+      expect(Number.isFinite(dist), id).toBe(true)
+      if (idx > 0) expect(dist, id).toBeGreaterThanOrEqual(band_struct.distance[idx - 1])
     })
 
     // Max distance in reciprocal space should not exceed a few lattice parameters
@@ -91,6 +89,30 @@ describe(`Phonon Module Tests`, () => {
     expect(max_distance, id).toBeGreaterThan(0)
     expect(max_distance, id).toBeLessThan(100)
   })
+
+  it.each(band_entries)(
+    `%s measures every branch as its Cartesian reciprocal-space chord`,
+    (id, band_struct) => {
+      // Every branch is a straight line between two high-symmetry points, so the summed
+      // step lengths must equal the chord |Mᵀ·Δq| in the fixture's reciprocal lattice. The
+      // fixtures store q-points to 7 decimals, which zig-zags the path by up to ~1e-7 and
+      // lengthens the H2 M-K leg by 7.3e-11 over its chord, hence the 5e-10 tolerance.
+      const raw = phonon_data[id].phonon_bandstructure
+      if (!raw) throw new Error(`${id}: missing phonon_bandstructure`)
+      const recip_T = transpose_3x3_matrix(raw.recip_lattice.matrix)
+      for (const { start_index, end_index, name } of band_struct.branches) {
+        const delta_q = subtract(
+          band_struct.qpoints[end_index].frac_coords,
+          band_struct.qpoints[start_index].frac_coords,
+        )
+        const chord = Math.hypot(...mat3x3_vec3_multiply(recip_T, delta_q))
+        expect(
+          band_struct.distance[end_index] - band_struct.distance[start_index],
+          `${id}: ${name}`,
+        ).toBeCloseTo(chord, 9)
+      }
+    },
+  )
 
   it.each(band_entries)(
     `%s creates contiguous branches covering all labeled points`,
@@ -113,15 +135,21 @@ describe(`Phonon Module Tests`, () => {
         else if (end_label) expect(branch.name, id).toContain(end_label)
       }
 
-      // Branches are contiguous (each starts where the previous ends) and span the path
+      // Branches span the path and are contiguous: each starts where the previous ends, or
+      // one q-point later where the path jumps (the jump itself is not a branch)
       const sorted_branches = [...band_struct.branches].toSorted(
         (branch_a, branch_b) => branch_a.start_index - branch_b.start_index,
       )
       expect(sorted_branches[0].start_index, id).toBe(0)
       expect(sorted_branches.at(-1)?.end_index, id).toBe(band_struct.qpoints.length - 1)
-      for (let idx = 0; idx < sorted_branches.length - 1; idx++) {
-        expect(sorted_branches[idx + 1].start_index, id).toBe(sorted_branches[idx].end_index)
-      }
+      const n_jumps = sorted_branches.filter((branch, idx) => {
+        const prev_end = sorted_branches[idx - 1]?.end_index
+        if (prev_end === undefined) return false
+        expect([prev_end, prev_end + 1], id).toContain(branch.start_index)
+        return branch.start_index === prev_end + 1
+      }).length
+      // every fixture path has exactly one jump (e.g. X|R, U|K), the hexagonal H2 path two
+      expect(n_jumps, id).toBe(id.startsWith(`mp-23907`) ? 2 : 1)
 
       // Every labeled point sits on a branch boundary
       band_struct.qpoints.forEach((qpt, qpt_idx) => {
@@ -143,12 +171,14 @@ describe(`Phonon Module Tests`, () => {
       expect(transformed, `${id}: transformed data should exist`).toBeDefined()
       if (!raw || !transformed) return // Guard for TypeScript
 
-      // Transformation preserves data dimensions and labels
+      // Transformation preserves data dimensions, labels and the phonon flags
       expect(transformed.qpoints, id).toHaveLength(raw.qpoints.length)
       expect(transformed.nb_bands, id).toBe(raw.bands.length)
       expect(Object.keys(transformed.labels_dict).toSorted(), id).toEqual(
         Object.keys(raw.labels_dict).toSorted(),
       )
+      expect(transformed.has_nac, id).toBe(raw.has_nac)
+      expect(transformed.has_imaginary_modes, id).toBe(raw.has_imaginary_modes)
     },
   )
 

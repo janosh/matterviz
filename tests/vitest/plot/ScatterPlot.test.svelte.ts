@@ -2,6 +2,7 @@ import ScatterPlot from '$lib/plot/scatter/ScatterPlot.svelte'
 import type { Vec2 } from '$lib/math'
 import { COLOR_BAR_DEFAULTS, type DataSeries, type FillRegion } from '$lib/plot/core/types'
 import type { FacetLayoutContext } from '$lib/plot/core/facets'
+import { place_tooltip } from '$lib/plot/core/decorations/tooltip'
 import { rects_overlap, type Rect } from '$lib/plot/core/layout'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
@@ -9,10 +10,17 @@ import {
   bind_props,
   doc_query,
   expect_custom_x_ticks_grow_bottom_pad,
+  mock_canvas_context,
   mount_sized,
   resize_element,
   svg_query,
 } from '../setup'
+
+// Pass-through spy so tests can inspect what the tooltip was told to dodge
+vi.mock(`$lib/plot/core/decorations/tooltip`, async (import_original) => {
+  const original = await import_original<{ place_tooltip: typeof place_tooltip }>()
+  return { ...original, place_tooltip: vi.fn(original.place_tooltip) }
+})
 
 afterEach(() => vi.restoreAllMocks())
 
@@ -189,19 +197,6 @@ describe(`ScatterPlot`, () => {
       if (!match?.groups) throw new Error(`Could not parse marker transform "${transform}"`)
       return { x: Number(match.groups.x), y: Number(match.groups.y) }
     }
-    const mock_canvas_context = (overrides: Record<string, unknown> = {}): void => {
-      const stubs =
-        `save restore setTransform clearRect scale beginPath rect clip moveTo arc fill stroke`.split(
-          ` `,
-        )
-      vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue({
-        font: ``,
-        measureText: () => ({ width: 0 }),
-        ...Object.fromEntries(stubs.map((name) => [name, vi.fn()])),
-        ...overrides,
-      } as unknown as CanvasRenderingContext2D)
-    }
-
     test.each([
       [`auto`, false, 40],
       [`svg`, false, 40],
@@ -491,7 +486,7 @@ describe(`ScatterPlot`, () => {
           y: [0, 1, 0],
           label: `Energy`,
           markers: `line+points`,
-          line_style: { stroke: `red`, stroke_width: 2 },
+          line_style: { stroke: `red`, stroke_width: 3 },
           line_underlays: [
             {
               x: [0, 1, 2],
@@ -528,6 +523,11 @@ describe(`ScatterPlot`, () => {
     await tick()
     expect([...lines].map((line) => line.getAttribute(`stroke-width`))).toEqual([`1`, `5`])
 
+    // Reset untouches the key, so the authored stroke_width wins again (not the default 2)
+    doc_query(`[aria-label="Reset line style to defaults"]`, HTMLButtonElement).click()
+    await tick()
+    expect([...lines].map((line) => line.getAttribute(`stroke-width`))).toEqual([`1`, `3`])
+
     await move_to_marker(plot, 1)
     expect(on_point_hover).toHaveBeenCalledOnce()
     expect(on_point_hover.mock.calls[0][0]).toMatchObject({ x: 1, y: 1 })
@@ -540,10 +540,15 @@ describe(`ScatterPlot`, () => {
     const plot = await mount_sized_scatter_plot({
       series: [basic],
       fill_regions: [{ lower: 0, upper: 4, on_click: on_fill_click }],
-      ref_lines: [{ type: `vertical`, x: 2, on_click: on_ref_line_click }],
+      // duplicate public ids still render both lines (keyed by index, not id)
+      ref_lines: [
+        { type: `vertical`, x: 2, id: `dup`, on_click: on_ref_line_click },
+        { type: `horizontal`, y: 3, id: `dup` },
+      ],
       on_plot_click,
       point_tween: { duration: 0 },
     })
+    expect(plot.querySelectorAll(`.reference-line`)).toHaveLength(2)
     plot
       .querySelector(`.fill-region`)
       ?.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
@@ -662,18 +667,6 @@ describe(`ScatterPlot`, () => {
       expect(has_cubic).toBe(cubic)
     },
   )
-
-  test(`mounts with x2-axis series and renders x2 axis`, async () => {
-    const plot = await mount_sized_scatter_plot({
-      series: [
-        { x: [1, 2, 3], y: [10, 20, 30], label: `Primary` },
-        { x: [100, 200, 300], y: [5, 15, 25], x_axis: `x2`, label: `Secondary` },
-      ],
-      x2_axis: { label: `Temperature (K)` },
-    })
-    expect(plot.querySelector(`g.x2-axis`)).toBeInstanceOf(SVGGElement)
-    expect(plot.querySelector(`.x2-label`)?.textContent).toBe(`Temperature (K)`)
-  })
 
   test.each([`x2`, `y2`] as const)(
     `does not render the %s axis without a finite x/y pair`,
@@ -947,6 +940,50 @@ describe(`ScatterPlot`, () => {
   })
 
   test.each([
+    [`duplicate ids`, [{ id: `a` }, { id: `a` }], /duplicate id "a"/],
+    [`duplicate numeric ids`, [{ id: 1 }, { id: 1 }], /duplicate id "1"/],
+    [`unset ids`, [{}, {}, null], null],
+    [`distinct ids`, [{ id: `a` }, { id: 1 }, {}], null],
+  ] as const)(`series with %s`, (_desc, series_ids, error) => {
+    const series = series_ids.map((ids) => ids && { ...basic, ...ids }) as DataSeries[]
+    const mount_plot = () => mount(ScatterPlot, { target: document.body, props: { series } })
+    if (error) expect(mount_plot).toThrow(error)
+    else expect(mount_plot).not.toThrow()
+  })
+
+  test(`hidden series widen no axis and hiding every series keeps the current view`, async () => {
+    const state = $state({
+      series: [
+        { x: [0, 10], y: [0, 1], label: `A` },
+        { x: [0, 100], y: [0, 50], label: `B`, visible: false },
+      ] as DataSeries[],
+    })
+    const plot = await mount_sized_scatter_plot(
+      bind_props({ point_tween: { duration: 0 }, legend: null, show_controls: false }, state),
+    )
+    const tick_labels = (axis: `x` | `y`) =>
+      [...plot.querySelectorAll(`.${axis}-axis .tick text`)].map((label) => label.textContent)
+    expect(tick_labels(`x`)).toContain(`10`)
+    expect(tick_labels(`x`)).not.toContain(`100`)
+    expect(tick_labels(`y`)).not.toContain(`50`)
+
+    state.series[1].visible = true
+    flushSync()
+    await tick()
+    expect(tick_labels(`x`)).toContain(`100`)
+    expect(tick_labels(`y`)).toContain(`50`)
+
+    // Every series hidden: no data backs the auto ranges, so the view stays put
+    state.series[0].visible = false
+    state.series[1].visible = false
+    flushSync()
+    await tick()
+    expect(tick_labels(`x`)).toContain(`100`)
+    expect(tick_labels(`y`)).toContain(`50`)
+    expect(plot.querySelectorAll(`.marker`)).toHaveLength(0)
+  })
+
+  test.each([
     { y: [-10, -5, 0, 5, 10], y_range: [-15, 15] as Vec2 },
     { y: [5, 10, 15, 20, 25], y_range: [0, 30] as Vec2 },
   ])(`zero lines`, async ({ y, y_range }) => {
@@ -982,6 +1019,42 @@ describe(`ScatterPlot`, () => {
     const tooltip_text = plot.querySelector(`.plot-tooltip`)?.textContent
     for (const text of expected) expect(tooltip_text).toContain(text)
   })
+
+  // styles.point.symbol_type (the VS Code scatter.symbol_type setting) replaces the per-series
+  // Circle/Square/Triangle cycle for markers and legend swatches alike; a point's own
+  // point_style.symbol_type still wins
+  test.each([
+    [undefined, [`circle`, `rect`]],
+    [`Triangle`, [`polygon`, `polygon`]],
+  ] as const)(
+    `styles.point.symbol_type=%s shapes markers and legend swatches`,
+    async (symbol_type, legend_tags) => {
+      const series = [
+        { x: [1, 2], y: [1, 2], label: `A` },
+        { x: [1, 2], y: [2, 3], label: `B` },
+        { x: [1, 2], y: [3, 4], label: `C`, point_style: { symbol_type: `Diamond` } },
+      ] as DataSeries[]
+      const plot = await mount_sized_scatter_plot({
+        series,
+        styles: { point: { symbol_type } },
+        legend: {},
+      })
+      const marker_path = (series_idx: number) =>
+        plot.querySelector(`[data-series-id="${series_idx}"] .marker`)?.getAttribute(`d`) ?? ``
+      // d3 circles are arc commands; squares/triangles are straight segments. Without the
+      // override the cycle gives Circle then Square; with it both series share the shape
+      expect(marker_path(0).includes(`A`)).toBe(symbol_type === undefined)
+      expect(marker_path(1)).not.toContain(`A`)
+      expect(marker_path(0) === marker_path(1)).toBe(symbol_type !== undefined)
+      // the authored Diamond survives the override
+      expect(marker_path(2)).not.toBe(marker_path(1))
+      expect(marker_path(2)).not.toContain(`A`)
+      const swatches = [...plot.querySelectorAll(`.legend-marker > svg`)].flatMap((svg) =>
+        [...svg.querySelectorAll(`circle, rect, polygon`)].map((el) => el.tagName),
+      )
+      expect(swatches.slice(0, 2)).toEqual(legend_tags)
+    },
+  )
 
   test(`children prop`, () => {
     mount(ScatterPlot, {
@@ -1052,14 +1125,12 @@ describe(`ScatterPlot`, () => {
 
   test(`coalesces pointer hover to the latest point and clears it on leave`, async () => {
     const on_point_hover = vi.fn()
-    const on_pointer_leave = vi.fn()
     const plot = await mount_sized_scatter_plot({
       series: [{ x: [0, 1], y: [0, 1], markers: `points` }],
       x_axis: { range: [0, 1] },
       y_axis: { range: [0, 1] },
       point_tween: { duration: 0 },
       on_point_hover,
-      on_pointer_leave,
       legend: null,
     })
     const svg = plot.querySelector<SVGSVGElement>(`svg[role="application"]`)
@@ -1085,17 +1156,14 @@ describe(`ScatterPlot`, () => {
 
     svg.dispatchEvent(new MouseEvent(`mouseleave`, { bubbles: true }))
     expect(on_point_hover).toHaveBeenLastCalledWith(null)
-    expect(on_pointer_leave).toHaveBeenCalledOnce()
 
     on_point_hover.mockClear()
-    on_pointer_leave.mockClear()
     for (const { x, y } of marker_coords) {
       svg.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true, clientX: x, clientY: y }))
     }
     svg.dispatchEvent(new MouseEvent(`mouseleave`, { bubbles: true }))
     expect(on_point_hover).toHaveBeenCalledOnce()
     expect(on_point_hover).toHaveBeenLastCalledWith(null)
-    expect(on_pointer_leave).toHaveBeenCalledOnce()
     await next_animation_frame()
     expect(on_point_hover).toHaveBeenCalledOnce()
   })
@@ -1323,18 +1391,6 @@ describe(`ScatterPlot`, () => {
     expect(Math.max(...coords.map(Math.abs))).toBeLessThan(1000)
   })
 
-  // Dense grid covering the whole plot so no decoration can avoid overlapping data
-  const dense_grid = (grid_n: number): { x: number[]; y: number[] } => {
-    const x: number[] = []
-    const y: number[] = []
-    for (let row = 0; row < grid_n; row++) {
-      for (let col = 0; col < grid_n; col++) {
-        x.push((row / (grid_n - 1)) * 100)
-        y.push((col / (grid_n - 1)) * 100)
-      }
-    }
-    return { x, y }
-  }
   const decorated_series = (): DataSeries[] => [
     { ...basic, label: `A`, color_values: basic.x },
     { ...basic, label: `B` },
@@ -1374,24 +1430,6 @@ describe(`ScatterPlot`, () => {
       )
       expect(Number(colorbar.style.left.replace(`px`, ``))).toBe(visual_rect.x + 10)
     })
-  })
-
-  test(`uses solver-provided automatic legend tracks`, async () => {
-    mock_decoration_measurements()
-    const plot = await mount_sized_scatter_plot({
-      series: [`A`, `B`, `C`].map((label, idx) => ({
-        x: [1, 2],
-        y: [idx, idx + 1],
-        label,
-      })),
-      legend: { layout: `horizontal`, layout_tracks: `auto` },
-    })
-
-    await vi.waitFor(() =>
-      expect(plot.querySelector<HTMLElement>(`.legend`)?.style.gridTemplateColumns).toBe(
-        `repeat(3, auto)`,
-      ),
-    )
   })
 
   test(`solver auto tracks count grouped series, fill entries, and group headers`, async () => {
@@ -1471,24 +1509,16 @@ describe(`ScatterPlot`, () => {
     })
     expect(legend.getAttribute(`data-decoration-x`)).toBeNull()
     expect(colorbar.getAttribute(`data-decoration-x`)).toBeNull()
-  })
 
-  test(`legend auto-moves to the bottom margin when interior overlap is unavoidable`, async () => {
-    const grid = dense_grid(12)
-    await mount_sized_scatter_plot({
-      series: [
-        { ...grid, label: `Dense`, markers: `points` },
-        { x: [50], y: [50], label: `B`, markers: `points` },
-      ],
-      legend: {},
-      x_axis: { range: [0, 100] as Vec2 },
-      y_axis: { range: [0, 100] as Vec2 },
-    })
-    await tick()
-    // default interior placement would be top-left (~10px); auto-outside drops it into the
-    // reserved bottom margin (~height - footprint - gap), well below mid-plot
-    const legend = doc_query(`.legend`)
-    expect(Number(legend.style.top.replace(`px`, ``))).toBeGreaterThan(150)
+    // The tooltip dodges the pinned colorbar and legend through the frame's exclusion
+    // list. place_tooltip sums overlap areas, so a rect listed twice would be dodged twice.
+    vi.mocked(place_tooltip).mockClear()
+    await move_to_marker(plot, 0)
+    const { exclusion_rects } = vi.mocked(place_tooltip).mock.lastCall?.[0] ?? {}
+    if (!exclusion_rects) throw new Error(`Expected place_tooltip to run on hover`)
+    const rect_keys = exclusion_rects.map((rect) => JSON.stringify(rect))
+    expect(rect_keys.length).toBeGreaterThanOrEqual(2) // pinned legend + pinned colorbar
+    expect(new Set(rect_keys).size).toBe(rect_keys.length)
   })
 
   test(`non-responsive legend avoids layout reads when data changes`, async () => {

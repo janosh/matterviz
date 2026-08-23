@@ -2,8 +2,10 @@ import { create_display } from '$lib/file-viewer/main'
 import { base64_to_array_buffer, parse_file_content } from '$lib/file-viewer/parse'
 import type { ParseResult } from '$lib/file-viewer/parse'
 import { parse_structure_file } from '$lib/structure/parse'
+import type * as structure_parse_module from '$lib/structure/parse'
 import type { TrajectoryRun } from '$lib/trajectory'
 import { trajectory_from_frames } from '$lib/trajectory/open'
+import { summarize_run } from '$lib/trajectory/run'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import {
@@ -18,9 +20,13 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 import { make_crystal, read_binary_test_file } from '../setup'
 
 // parse_structure_file throws on parse failure but can still return a structure with
-// zero atoms (e.g. a CIF with cell params but no _atom_site records). Mock it to that
-// shape to exercise parse_file_content's no-atoms guard.
-vi.mock('$lib/structure/parse', () => ({ parse_structure_file: vi.fn() }))
+// zero atoms (e.g. a CIF with cell params but no _atom_site records). Wrap it in a spy that
+// defaults to the real parser so single tests can return that shape and exercise
+// parse_file_content's no-atoms guard.
+vi.mock('$lib/structure/parse', async (import_original) => {
+  const original = await import_original<typeof structure_parse_module>()
+  return { ...original, parse_structure_file: vi.fn(original.parse_structure_file) }
+})
 
 // Spy on the mocked mount to assert which props create_display passes to components.
 vi.mock('svelte', async (import_original) => ({
@@ -83,6 +89,33 @@ describe(`parse_file_content structure guard`, () => {
   })
 })
 
+test(`parses a POSCAR structure through the worker-safe entry`, async () => {
+  const poscar = `Si2\n1.0\n5.43 0 0\n0 5.43 0\n0 0 5.43\nSi\n2\ndirect\n0 0 0 Si\n0.25 0.25 0.25 Si\n`
+  const result = await parse_file_content(poscar, `POSCAR`)
+
+  expect(result.type).toBe(`structure`)
+  expect((result.data as { sites: unknown[] }).sites).toHaveLength(2)
+})
+
+test(`multi-frame XYZ text opens as a trajectory run`, async () => {
+  const h2 = (step: number, dz: number): string => `2\nstep=${step}\nH 0 0 0\nH 0 0 ${dz}`
+  const result = await parse_file_content(`${h2(0, 0.74)}\n${h2(1, 0.78)}`, `h2.xyz`)
+  expect(result.type).toBe(`trajectory`)
+  const run = result.data as TrajectoryRun
+  expect(run.frame_count).toBe(2)
+  expect(run.provenance).toMatchObject({ filename: `h2.xyz`, format: `xyz` })
+  expect((await run.read_frame(1)).step).toBe(1)
+  run.dispose()
+})
+
+test.each([
+  [`data.json.xz`, `XZ decompression is not supported`],
+  [`data.json.bz2`, `BZ2 decompression is not supported`],
+  [`movie.xyz.gz.gz`, `Nested compression is not supported`], // rejected before parsing the inner payload
+])(`rejects %s with %s`, async (filename, message) => {
+  await expect(parse_file_content(btoa(`content`), filename, true)).rejects.toThrow(message)
+})
+
 test(`parse_file_content renders convex hull JSON whose filename contains convex`, async () => {
   // oxfmt-ignore
   const convex_hull_entries = [
@@ -99,6 +132,46 @@ test(`parse_file_content renders convex hull JSON whose filename contains convex
     filename: `Al-Cu-convex-hull.json`,
   })
 })
+
+// Regression: the site-less structure wrapping a volumetric JSON carried the bare 3x3 matrix
+// as `lattice`, so StructureScene crashed on lattice.matrix (JsonBrowser panels shared it)
+test.each([true, false])(
+  `parse_file_content wraps volumetric JSON (periodic=%s) in a structure with a full lattice`,
+  async (periodic) => {
+    const matrix = [
+      [4, 0, 0],
+      [0, 5, 0],
+      [0, 0, 6],
+    ]
+    const volumetric = {
+      lattice: matrix,
+      origin: [0, 0, 0],
+      periodic,
+      values: Array.from({ length: 8 }, (_, idx) => idx),
+      dims: [2, 2, 2],
+    }
+    const result = await parse_file_content(JSON.stringify(volumetric), `density.json`)
+    expect(result).toMatchObject({
+      type: `isosurface`,
+      data: {
+        structure: {
+          sites: [],
+          lattice: {
+            matrix,
+            a: 4,
+            b: 5,
+            c: 6,
+            volume: 120,
+            pbc: [periodic, periodic, periodic],
+          },
+        },
+      },
+    })
+    const { volumes } = result.data as { volumes: { lattice: number[][]; dims: number[] }[] }
+    expect(volumes).toHaveLength(1)
+    expect(volumes[0]).toMatchObject({ lattice: matrix, dims: [2, 2, 2] })
+  },
+)
 
 describe(`vaspout.h5 electronic routing`, () => {
   // Parsed content details are covered by tests/vitest/trajectory/vaspout-h5.test.ts;
@@ -271,6 +344,45 @@ describe(`create_display trajectory display options`, () => {
     }
   })
 
+  // Regression: the webview used to forward invented keys (markers, point_size, show_grid,
+  // bin_count, ...) that no plot component declares, so they were spread onto the wrapper
+  // div and the corresponding VS Code settings did nothing
+  test(`plot settings reach Trajectory's scatter/histogram props under their real names`, () => {
+    const prev_data = globalThis.matterviz_data
+    globalThis.matterviz_data = {
+      ...prev_data,
+      defaults: {
+        plot: { display: { x_grid: false } },
+        scatter: { point: { size: 7 }, line: { width: 4 }, symbol_type: `Square` },
+        histogram: { bin_count: 12, mode: `single` },
+      },
+    } as typeof globalThis.matterviz_data
+    try {
+      create_display(make_container(), trajectory_result())
+      const { scatter_props, histogram_props } = last_mount_props() as {
+        scatter_props: Record<string, Record<string, unknown>>
+        histogram_props: Record<string, unknown>
+      }
+      expect(scatter_props.display).toMatchObject({ x_grid: false, y_grid: true })
+      // symbol_type rides in styles.point, the only place ScatterPlot reads a marker shape from
+      expect(scatter_props.styles.point).toMatchObject({
+        size: 7,
+        color: `#4A9EFF`,
+        symbol_type: `Square`,
+      })
+      expect(scatter_props).not.toHaveProperty(`symbol_type`)
+      expect(scatter_props.styles.line).toMatchObject({ width: 4 })
+      expect(histogram_props).toMatchObject({ bins: 12, mode: `single`, normalize: `count` })
+      expect(histogram_props.display).toMatchObject({ x_grid: false })
+      for (const stale of [`markers`, `point_size`, `line_width`, `show_grid`, `bin_count`]) {
+        expect(scatter_props).not.toHaveProperty(stale)
+        expect(histogram_props).not.toHaveProperty(stale)
+      }
+    } finally {
+      globalThis.matterviz_data = prev_data
+    }
+  })
+
   test(`rejects stale boolean legend settings`, () => {
     const prev_data = globalThis.matterviz_data
     globalThis.matterviz_data = {
@@ -297,15 +409,154 @@ describe(`create_display trajectory display options`, () => {
   )
 })
 
+// A file past the host's inline limit arrives as a marker instead of its bytes.
+// Handling it here (rather than in the host entry point, as it used to be) is
+// what lets callers that parse through this module — notably Hive's worker
+// wrapper — reach the host's streaming bridge at all. Before this, a marker fell
+// through to the structure parser and died with "XYZ frame too short".
+describe(`LARGE_FILE markers`, () => {
+  const marker = `LARGE_FILE:/data/movie.extxyz:268435456`
+  const backing = trajectory_from_frames(
+    [0, 1, 2].map((step) => ({
+      step,
+      structure: make_crystal(5, [[`H`, [0, 0, step / 10]]]),
+    })),
+    { provenance: { filename: `movie.extxyz`, format: `xyz` } },
+  )
+
+  // post_request listens on globalThis, a real EventTarget in the webview but
+  // not in vitest's node environment.
+  const with_host = (
+    respond: (request: Record<string, unknown>) => Record<string, unknown>,
+  ): { post_message: ReturnType<typeof vi.fn>; message_bus: EventTarget } => {
+    const message_bus = new EventTarget()
+    vi.stubGlobal(`addEventListener`, message_bus.addEventListener.bind(message_bus))
+    vi.stubGlobal(`removeEventListener`, message_bus.removeEventListener.bind(message_bus))
+    const post_message = vi.fn((request: Record<string, unknown>) => {
+      queueMicrotask(() =>
+        message_bus.dispatchEvent(new MessageEvent(`message`, { data: respond(request) })),
+      )
+    })
+    vi.stubGlobal(`acquireVsCodeApi`, () => ({ postMessage: post_message }))
+    return { post_message, message_bus }
+  }
+
+  // The bridge caches the host handle at import (and main.ts above already loaded it without
+  // one), so take a fresh copy of the module graph after acquireVsCodeApi is in place.
+  const fresh_parse = async () => {
+    vi.resetModules()
+    return (await import(`$lib/file-viewer/parse`)).parse_file_content
+  }
+
+  afterEach(() => vi.unstubAllGlobals())
+
+  test(`asks the host for the file and serves frames and plot rows from it`, async () => {
+    // The host keeps the indexed run and hands over only its summary; plot rows follow
+    const summary = { ...summarize_run(backing), properties: { rows: [], complete: false } }
+    const { post_message, message_bus } = with_host((request) =>
+      request.command === `request_frame`
+        ? {
+            command: `frame_response`,
+            request_id: request.request_id,
+            frame: backing.read_frame(Number(request.frame_index)),
+          }
+        : {
+            command: `large_file_response`,
+            request_id: request.request_id,
+            run_summary: summary,
+          },
+    )
+    const result = await (await fresh_parse())(marker, `movie.extxyz`)
+
+    expect(post_message).toHaveBeenCalledWith({
+      command: `request_large_file`,
+      request_id: expect.any(String),
+      file_path: `/data/movie.extxyz`,
+      // The host picks its per-format indexer from the name.
+      filename: `movie.extxyz`,
+    })
+    expect(result.type).toBe(`trajectory`)
+    const run = result.data as TrajectoryRun
+    expect(run.frame_count).toBe(3)
+    expect(run.provenance).toMatchObject({ filename: `movie.extxyz`, format: `xyz` })
+    expect(run.read_frame(0)).toBe(run.preview)
+
+    // Frames past the preview are fetched from the host one request at a time
+    const frame = await run.read_frame(2)
+    expect(post_message).toHaveBeenLastCalledWith({
+      command: `request_frame`,
+      request_id: expect.any(String),
+      file_path: `/data/movie.extxyz`,
+      filename: `movie.extxyz`,
+      frame_index: 2,
+    })
+    expect(frame.step).toBe(2)
+    expect(frame.structure.sites[0].xyz[2]).toBeCloseTo(1, 12)
+
+    // Plot rows stream in after the summary, keyed by the host file path
+    expect(run.properties.complete).toBe(false)
+    const rows = [...backing.properties.rows]
+    for (const [batch, complete, file_path] of [
+      [rows.slice(0, 2), false, `/data/movie.extxyz`],
+      [rows.slice(2), true, `/data/other.extxyz`], // another file's rows must not leak in
+      [rows.slice(2), true, `/data/movie.extxyz`],
+    ] as const) {
+      message_bus.dispatchEvent(
+        new MessageEvent(`message`, {
+          data: { command: `plot_metadata_stream`, file_path, rows: batch, complete },
+        }),
+      )
+    }
+    await run.properties.done
+    expect(run.properties.rows.map((row) => row.frame_number)).toEqual([0, 1, 2])
+    run.dispose()
+    await expect(Promise.resolve().then(() => run.read_frame(1))).rejects.toThrow(/disposed/)
+  })
+
+  test(`surfaces a host-side error for the file`, async () => {
+    with_host((request) => ({
+      command: `large_file_response`,
+      request_id: request.request_id,
+      error: `indexer crashed`,
+    }))
+    await expect((await fresh_parse())(marker, `movie.extxyz`)).rejects.toThrow(
+      `indexer crashed`,
+    )
+  })
+
+  test(`says so plainly when no host is listening`, async () => {
+    await expect((await fresh_parse())(marker, `movie.extxyz`)).rejects.toThrow(
+      /no host bridge is available/,
+    )
+  })
+
+  test(`refuses formats the host cannot index`, async () => {
+    const { post_message } = with_host(() => ({}))
+    await expect(
+      (await fresh_parse())(`LARGE_FILE:/data/charge.cube:268435456`, `charge.cube`),
+    ).rejects.toThrow(`only supported for indexed trajectories`)
+    expect(post_message).not.toHaveBeenCalled()
+  })
+
+  test(`a malformed marker fails instead of parsing as file content`, async () => {
+    await expect(
+      parse_file_content(`LARGE_FILE:/data/movie.extxyz:not-a-number`, `movie.extxyz`),
+    ).rejects.toThrow(`Malformed large file marker`)
+  })
+})
+
 describe(`VSCode Download Integration`, () => {
-  afterEach(vi.useRealTimers)
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+  })
 
   // Reset modules (clears the cached vscode_api in file-viewer/main.ts), mock the VS Code
   // API, then install the download override. Returns the postMessage mock to assert on.
   const init_download = async () => {
     vi.resetModules()
     const mock_post_message = vi.fn()
-    globalThis.acquireVsCodeApi = vi.fn(() => ({
+    vi.stubGlobal(`acquireVsCodeApi`, () => ({
       postMessage: mock_post_message,
       setState: vi.fn(),
       getState: vi.fn(),
@@ -333,7 +584,7 @@ describe(`VSCode Download Integration`, () => {
   const stub_file_reader = (outcome: `load` | `error`) => {
     vi.useFakeTimers()
 
-    globalThis.FileReader = vi.fn(function (this: FileReader) {
+    const FakeFileReader = vi.fn(function (this: FileReader) {
       // Per instance, not per stub: overlapping downloads would otherwise share one
       // listener and result, so the second read would clobber the first
       let listener: (() => void) | undefined
@@ -354,7 +605,8 @@ describe(`VSCode Download Integration`, () => {
         if (type === outcome) listener = handler as () => void
       })
       Object.defineProperty(this, `result`, { get: () => result })
-    }) as unknown as typeof FileReader
+    })
+    vi.stubGlobal(`FileReader`, FakeFileReader)
   }
 
   test(`handles binary data (PNG) correctly`, async () => {

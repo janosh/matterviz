@@ -60,7 +60,6 @@ const msg_args = {
   filename: `filename`,
   request_id: `request_id`,
   file_path: `file_path`,
-  frame_index: 0,
 } as const
 const mock_base64 = Buffer.from(`mock content`).toString(`base64`)
 
@@ -80,11 +79,6 @@ const frame_msg = (file_path: string, frame_index: number): WebviewToHostMessage
   filename: basename_of(file_path),
   frame_index,
 })
-const watch_msg = (
-  file_path: string,
-  command: `startWatching` | `stopWatching` = `startWatching`,
-): WebviewToHostMessage => ({ command, ...msg_args, file_path })
-
 type CommandCallback = (uri?: Uri) => Promise<void> | void
 
 // Swap in a capturing registerCommand mock and hand back the registry activate() fills
@@ -118,8 +112,6 @@ const mock_vscode = vi.hoisted(() => ({
     onDidChangeConfiguration: vi.fn(() => ({ dispose: vi.fn() })),
     openTextDocument: vi.fn(),
     onDidOpenTextDocument: vi.fn(() => ({ dispose: vi.fn() })),
-    onDidCreateFiles: vi.fn(() => ({ dispose: vi.fn() })),
-    onDidRenameFiles: vi.fn(() => ({ dispose: vi.fn() })),
     createFileSystemWatcher: vi.fn(() => ({
       onDidChange: vi.fn(),
       onDidDelete: vi.fn(),
@@ -385,6 +377,7 @@ describe(`MatterViz Extension`, () => {
   const mock_context = {
     extensionUri: { fsPath: `/test` },
     subscriptions: [],
+    extension: { packageJSON: { version: pkg_json.version } },
   } as unknown as ExtensionContext
 
   const set_active_editor = (file_path?: string, content = `content`): void => {
@@ -397,6 +390,15 @@ describe(`MatterViz Extension`, () => {
           },
         } as TextEditor)
       : null
+  }
+
+  // Render file_path from the active editor into a fresh panel and hand the panel back
+  const render_file = async (file_path: string, content = `content`) => {
+    const panel = { webview: make_webview(), onDidDispose: vi.fn(), visible: true }
+    mock_vscode.window.createWebviewPanel.mockReturnValueOnce(panel)
+    set_active_editor(file_path, content)
+    await render(mock_context)
+    return panel
   }
 
   test.each([
@@ -846,9 +848,8 @@ describe(`MatterViz Extension`, () => {
       return mock_opened_document?.content ?? ``
     }
 
-    // Register a file watcher via the startWatching message (populates the report)
-    const start_watching = (filename: string) =>
-      handle_msg(watch_msg(`/test/${filename}`), mock_webview)
+    // Rendering a file registers its watcher (populates the report)
+    const start_watching = (filename: string) => render_file(`/test/${filename}`)
 
     // Pick a follow-up action from the notification shown after the report is generated
     const choose_action = (action: string) => {
@@ -1110,27 +1111,42 @@ describe(`MatterViz Extension`, () => {
       expect(mock_dispose).toHaveBeenCalledTimes(3)
     })
 
-    test(`respects panel visibility for theme updates`, async () => {
-      const { mock_panel } = setup_panel({ visible: false })
+    // Rebuilding the HTML would re-read the file from disk, discarding the unsaved editor
+    // buffer the panel was rendered from, so theme/config changes are pushed as a message
+    test.each([
+      [`color theme`, () => mock_vscode.window.onDidChangeActiveColorTheme],
+      [`matterviz config`, () => mock_vscode.workspace.onDidChangeConfiguration],
+    ])(
+      `%s change posts settingsChanged without rebuilding the webview`,
+      async (_label, listener) => {
+        const { mock_panel } = setup_panel()
+        await render(mock_context)
+        const initial_html = mock_panel.webview.html
+        mock_vscode.workspace.fs.readFile.mockClear()
+        mock_vscode.window.activeColorTheme = { kind: mock_vscode.ColorThemeKind.Dark }
 
+        // the listener mocks declare no parameters, so their recorded calls type as []
+        const calls = listener().mock.calls as unknown as [(event: unknown) => void][]
+        calls[0][0]({ affectsConfiguration: (section: string) => section === `matterviz` })
+
+        expect(mock_panel.webview.postMessage).toHaveBeenCalledWith({
+          command: `settingsChanged`,
+          theme: `dark`,
+          defaults: expect.objectContaining({ structure: expect.any(Object) }),
+        })
+        expect(mock_panel.webview.html).toBe(initial_html)
+        expect(mock_vscode.workspace.fs.readFile).not.toHaveBeenCalled()
+      },
+    )
+
+    test(`config changes outside matterviz are ignored`, async () => {
+      const { mock_panel } = setup_panel()
       await render(mock_context)
-
-      // Store initial HTML after render (render always sets HTML initially)
-      const initial_html = mock_panel.webview.html
-
-      const theme_calls = mock_vscode.window.onDidChangeActiveColorTheme.mock
-        .calls as unknown as unknown[][]
-      const theme_callback = theme_calls[0]?.[0] as (() => Promise<void>) | undefined
-      expect(theme_callback).toBeDefined()
-
-      // Should not update when invisible
-      await theme_callback?.()
-      expect(mock_panel.webview.html).toBe(initial_html)
-
-      // Should update when visible
-      mock_panel.visible = true
-      await theme_callback?.()
-      expect(mock_panel.webview.html).not.toBe(initial_html)
+      const calls = mock_vscode.workspace.onDidChangeConfiguration.mock.calls as unknown as [
+        (event: unknown) => void,
+      ][]
+      calls[0][0]({ affectsConfiguration: () => false })
+      expect(mock_panel.webview.postMessage).not.toHaveBeenCalled()
     })
 
     test(`multiple panels dispose independently`, async () => {
@@ -1269,63 +1285,6 @@ describe(`MatterViz Extension`, () => {
       expect(shared_watcher.dispose).toHaveBeenCalledTimes(1)
     })
 
-    describe(`message handling`, () => {
-      const watch_path = `/test/file.cif`
-      const start_watching = watch_msg(watch_path)
-      const stop_watching = watch_msg(watch_path, `stopWatching`)
-
-      test(`startWatching registers a watcher and stopWatching disposes its subscriber`, async () => {
-        await handle_msg(start_watching, mock_webview)
-
-        expect(mock_vscode.workspace.createFileSystemWatcher).toHaveBeenCalledWith(
-          expect.objectContaining({
-            base: expect.anything(),
-            pattern: `file.cif`,
-          }),
-        )
-        expect(mock_file_system_watcher.onDidChange).toHaveBeenCalledWith(expect.any(Function))
-        expect(mock_file_system_watcher.onDidDelete).toHaveBeenCalledWith(expect.any(Function))
-        mock_file_system_watcher.dispose.mockClear()
-
-        await handle_msg(stop_watching) // no webview: must not touch the shared watcher
-        expect(mock_file_system_watcher.dispose).not.toHaveBeenCalled()
-        expect(active_watchers.has(watch_path)).toBe(true)
-
-        await handle_msg(stop_watching, mock_webview)
-        expect(mock_file_system_watcher.dispose).toHaveBeenCalled()
-      })
-
-      test.each([
-        { label: `without webview`, message: start_watching, webview: undefined },
-        {
-          label: `without file_path`,
-          message: { command: `startWatching` as const, ...msg_args },
-          webview: mock_webview,
-        },
-        {
-          label: `with relative file_path`,
-          message: watch_msg(`relative/file.cif`),
-          webview: mock_webview,
-        },
-      ])(`should handle startWatching $label gracefully`, async ({ message, webview }) => {
-        await handle_msg(message, webview)
-        expect(mock_vscode.workspace.createFileSystemWatcher).not.toHaveBeenCalled()
-      })
-
-      test(`should send error message when file watching fails`, async () => {
-        mock_vscode.workspace.createFileSystemWatcher.mockImplementation(() => {
-          throw new Error(`File system watcher creation failed`)
-        })
-
-        await handle_msg(watch_msg(`/test/large-file.cif`), mock_webview)
-
-        expect(mock_webview.postMessage).toHaveBeenCalledWith({
-          command: `error`,
-          text: expect.stringContaining(`Failed to start watching file`),
-        })
-      })
-    })
-
     describe(`file change notifications`, () => {
       test.each([
         {
@@ -1338,7 +1297,6 @@ describe(`MatterViz Extension`, () => {
               content: `mock content`,
               is_base64: false,
             }),
-            ...msg_args,
             file_path: `/test/file.cif`,
             theme: `light`,
           },
@@ -1352,13 +1310,24 @@ describe(`MatterViz Extension`, () => {
           }),
         },
       ])(`notifies webview on file $label`, async ({ register, expected }) => {
-        await handle_msg(watch_msg(`/test/file.cif`), mock_webview)
+        const panel = await render_file(`/test/file.cif`)
 
         const handler = mock_file_system_watcher[register].mock.calls[0][0]
         await handler()
 
         await vi.waitFor(() => {
-          expect(mock_webview.postMessage).toHaveBeenCalledWith(expected)
+          expect(panel.webview.postMessage).toHaveBeenCalledWith(expected)
+        })
+      })
+
+      test(`reports watcher creation failures to the webview`, async () => {
+        mock_vscode.workspace.createFileSystemWatcher.mockImplementation(() => {
+          throw new Error(`File system watcher creation failed`)
+        })
+        const panel = await render_file(`/test/large-file.cif`)
+        expect(panel.webview.postMessage).toHaveBeenCalledWith({
+          command: `error`,
+          text: expect.stringContaining(`Failed to start watching file`),
         })
       })
     })
@@ -1377,7 +1346,10 @@ describe(`MatterViz Extension`, () => {
 
     // activate() with a minimal context, then hand back the document-open callback it registered
     const get_open_document_callback = (): ((doc: unknown) => void) => {
-      activate({ subscriptions: { push: vi.fn() } } as unknown as ExtensionContext)
+      activate({
+        subscriptions: { push: vi.fn() },
+        extension: mock_context.extension,
+      } as unknown as ExtensionContext)
       const callback = (
         mock_vscode.workspace.onDidOpenTextDocument.mock.calls as unknown[][]
       )[0]?.[0] as ((doc: unknown) => void) | undefined

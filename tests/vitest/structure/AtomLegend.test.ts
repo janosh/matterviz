@@ -1,14 +1,14 @@
-import type { ElementSymbol } from '$lib'
 import { default_element_colors } from '$lib/colors'
 import { colors } from '$lib/state.svelte'
 import AtomLegend from '$lib/structure/AtomLegend.svelte'
 import {
-  DEFAULT_ATOM_COLOR_CONFIG,
   type AtomColorConfig,
+  type AtomPropertyColors,
+  DEFAULT_ATOM_COLOR_CONFIG,
 } from '$lib/structure/atom-properties'
 import type { ComponentProps } from 'svelte'
 import { mount, tick, unmount } from 'svelte'
-import { afterEach, describe, expect, onTestFinished, test, vi } from 'vitest'
+import { afterEach, describe, expect, onTestFinished, test } from 'vitest'
 import { doc_query } from '../setup'
 
 let mounted_components: ReturnType<typeof mount>[] = []
@@ -36,82 +36,91 @@ afterEach(async () => {
   mounted_components = []
 })
 
-describe(`AtomLegend Component`, () => {
-  const mock_elements = { Fe: 2, O: 3, H: 1.5, C: 12.123456789 }
+const PALETTE = [`#e41a1c`, `#377eb8`, `#4daf4a`, `#984ea3`, `#ff7f00`]
+// Per-site property colors for `values`: duplicates share the color of their first
+// occurrence and min/max are derived from the numeric values (as get_* producers do)
+const prop_colors = (
+  values: (number | string)[],
+  site_colors?: string[],
+): AtomPropertyColors => {
+  const unique_values = [...new Set(values)]
+  const nums = unique_values.filter((val): val is number => typeof val === `number`)
+  return {
+    colors:
+      site_colors ?? values.map((val) => PALETTE[unique_values.indexOf(val) % PALETTE.length]),
+    values,
+    unique_values,
+    ...(nums.length > 0 && { min_value: Math.min(...nums), max_value: Math.max(...nums) }),
+  }
+}
+const coordination = (scale_type: `continuous` | `categorical`) =>
+  ({ mode: `coordination`, scale_type }) as const
 
+const open_mode_menu = async (): Promise<HTMLButtonElement[]> => {
+  doc_query<HTMLButtonElement>(`button.mode-toggle`).click()
+  await tick()
+  return [...document.querySelectorAll<HTMLButtonElement>(`.mode-option`)]
+}
+const mode_option = async (text: string): Promise<HTMLButtonElement> => {
+  const option = (await open_mode_menu()).find((opt) => opt.textContent?.includes(text))
+  if (!option) throw new Error(`no mode option containing ${text}`)
+  return option
+}
+
+const open_remap_menu = async (): Promise<HTMLInputElement> => {
+  doc_query<HTMLLabelElement>(`label`).dispatchEvent(
+    new MouseEvent(`contextmenu`, { bubbles: true }),
+  )
+  await tick()
+  return doc_query<HTMLInputElement>(`.remap-search`)
+}
+const label_texts = (): (string | undefined)[] =>
+  [...document.querySelectorAll(`label`)].map((label) => label.textContent?.trim())
+
+describe(`AtomLegend Component`, () => {
   test.each([
     {
       desc: `basic rendering with default amounts`,
-      props: { elements: mock_elements, style: `margin: 20px;` },
+      props: { elements: { Fe: 2, O: 3, H: 1.5, C: 12.123456789 }, style: `margin: 20px;` },
       expected_labels: [`H 1.5`, `C 12.123`, `O 3`, `Fe 2`],
-      expected_count: 4,
       check_styling: true,
-    },
-    {
-      desc: `custom amount formatting`,
-      props: { elements: { Fe: 2.123456, O: 3.0 }, amount_format: `.2r` },
-      expected_labels: [`O 3.0`, `Fe 2.1`],
-      expected_count: 2,
     },
     {
       desc: `floating point precision`,
       props: { elements: { P: 1.4849999999999999, Ge: 0.515, S: 3 } },
       expected_labels: [`P 1.485`, `S 3`, `Ge 0.515`],
-      expected_count: 3,
     },
-    {
-      desc: `hide amounts`,
-      props: { elements: mock_elements, show_amounts: false },
-      expected_labels: [`H`, `C`, `O`, `Fe`],
-      expected_count: 4,
-    },
-    {
-      desc: `show amounts explicitly`,
-      props: { elements: { Fe: 2.123456 }, show_amounts: true, amount_format: `.2r` },
-      expected_labels: [`Fe 2.1`],
-      expected_count: 1,
-    },
-  ])(`$desc`, ({ props, expected_labels, expected_count, check_styling }) => {
+  ])(`$desc`, ({ props, expected_labels, check_styling }) => {
     mount_legend(props)
-
-    const labels = document.querySelectorAll(`label`)
-    expect(labels).toHaveLength(expected_count)
-
-    const label_texts = Array.from(labels).map((label) => label.textContent?.trim())
-    expect(label_texts).toEqual(expected_labels)
+    expect(label_texts()).toEqual(expected_labels)
 
     if (check_styling) {
-      // Check styling and inputs
-      const iron_label = Array.from(labels).find((label) =>
+      const iron_label = [...document.querySelectorAll(`label`)].find((label) =>
         label.textContent?.trim().startsWith(`Fe `),
       )
       if (!iron_label) throw new Error(`Expected Fe label to exist`)
       expect(iron_label.style.backgroundColor).toBe(colors.element.Fe)
-
-      const color_inputs = document.querySelectorAll(`input[type="color"]`)
-      expect(color_inputs).toHaveLength(expected_count)
-      const iron_color_input = iron_label?.querySelector(`input[type="color"]`)
-      expect((iron_color_input as HTMLInputElement | null)?.value).toBe(colors.element.Fe)
-
-      // Check custom style
+      expect(document.querySelectorAll(`input[type="color"]`)).toHaveLength(
+        expected_labels.length,
+      )
+      expect(iron_label.querySelector<HTMLInputElement>(`input[type="color"]`)?.value).toBe(
+        colors.element.Fe,
+      )
       expect(doc_query(`div`).getAttribute(`style`)).toBe(props.style)
     }
   })
 
   test(`color picker functionality`, () => {
-    mount_legend({ elements: { Fe: 2 }, elem_color_picker_title: `Custom title` })
+    mount_legend({ elements: { Fe: 2 } })
 
     const color_input = doc_query<HTMLInputElement>(`input[type="color"]`)
-    const label = doc_query<HTMLLabelElement>(`label`)
+    expect(color_input.title).toBe(`Double click to reset color`)
 
-    expect(color_input.title).toBe(`Custom title`)
-
-    // Test color change and reset
     color_input.value = `#ff0000`
     color_input.dispatchEvent(new Event(`input`, { bubbles: true }))
     expect(colors.element.Fe).toBe(`#ff0000`)
 
-    label.dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
+    doc_query(`label`).dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
     expect(colors.element.Fe).toBe(default_element_colors.Fe)
   })
 
@@ -130,56 +139,9 @@ describe(`AtomLegend Component`, () => {
     if (expected_text) {
       expect(labels[0].textContent?.trim()).toBe(expected_text)
       // Test accessibility - label contains input
-      const input = labels[0].querySelector(`input[type="color"]`)
-      expect(input).toBeInstanceOf(HTMLElement)
-      expect(labels[0].contains(input)).toBe(true)
+      expect(labels[0].querySelector(`input[type="color"]`)).toBeInstanceOf(HTMLElement)
     }
   })
-
-  test.each([
-    {
-      desc: `custom labels with formatting`,
-      get_element_label: (element: string, amount: number) =>
-        `${element.toUpperCase()}: ${amount.toFixed(1)}`,
-      elements: { Fe: 2.5, O: 1.234 },
-      expected: [`O: 1.2`, `FE: 2.5`],
-    },
-    {
-      desc: `custom labels override show_amounts`,
-      get_element_label: (element: string) => `Element ${element}`,
-      elements: { Fe: 2.5, O: 1.234 },
-      show_amounts: false,
-      expected: [`Element O`, `Element Fe`],
-    },
-    {
-      desc: `custom labels with spy function`,
-      get_element_label: vi.fn((element: string, amount: number) => `${element}-${amount}`),
-      elements: { Cu: 3.14, Zn: 2.71 },
-      expected: [`Cu-3.14`, `Zn-2.71`],
-      verify_spy: true,
-    },
-  ])(
-    `custom label functions: $desc`,
-    ({ get_element_label, elements, show_amounts, expected, verify_spy }) => {
-      mount_legend({
-        elements,
-        get_element_label,
-        ...(show_amounts !== undefined && { show_amounts }),
-      })
-
-      const label_texts = Array.from(document.querySelectorAll(`label`)).map((label) =>
-        label.textContent?.trim(),
-      )
-      expect(label_texts).toEqual(expected)
-
-      if (verify_spy) {
-        expect(get_element_label).toHaveBeenCalledTimes(Object.keys(elements).length)
-        Object.entries(elements).forEach(([elem, amt]) => {
-          expect(get_element_label).toHaveBeenCalledWith(elem, amt)
-        })
-      }
-    },
-  )
 
   test(`uses white text for oxygen red and reacts to light color updates`, async () => {
     const original_oxygen_color = colors.element.O
@@ -197,142 +159,89 @@ describe(`AtomLegend Component`, () => {
     expect(label.style.color).toBe(`black`)
   })
 
-  test(`element visibility toggle`, async () => {
-    const hidden_elements = new Set<ElementSymbol>()
-    mount_legend({ elements: { Fe: 2, O: 3 }, hidden_elements })
+  test(`element visibility toggle flips the button's accessible name`, async () => {
+    mount_legend({ elements: { Fe: 2, O: 3 } })
 
-    const labels = document.querySelectorAll(`label`)
-    const toggle_buttons = document.querySelectorAll(`button.toggle-visibility`)
-
-    expect(labels[0].classList.contains(`hidden`)).toBe(false)
-    expect(toggle_buttons[0].classList.contains(`element-hidden`)).toBe(false) // Click toggle button
-    ;(toggle_buttons[0] as HTMLButtonElement).click()
+    const toggle_buttons = document.querySelectorAll<HTMLButtonElement>(
+      `button.toggle-visibility`,
+    )
+    const names = () => [...toggle_buttons].map((btn) => btn.getAttribute(`aria-label`))
+    expect(names()).toEqual([`Hide O atoms`, `Hide Fe atoms`])
+    toggle_buttons[0].click()
     await tick()
 
-    expect(labels[0].classList.contains(`hidden`)).toBe(true)
-    expect(toggle_buttons[0].classList.contains(`element-hidden`)).toBe(true)
+    expect(names()).toEqual([`Show O atoms`, `Hide Fe atoms`])
+    expect(doc_query(`label`).classList.contains(`hidden`)).toBe(true)
   })
 
   describe(`Mode Selector`, () => {
-    test(`opens and closes mode dropdown`, async () => {
-      mount_legend({ elements: { Fe: 2 } })
+    test(`dropdown opens with every mode, disables Wyckoff without sym_data, and closes`, async () => {
+      mount_legend({ elements: { Fe: 2 }, sym_data: null })
 
       const mode_toggle = doc_query<HTMLButtonElement>(`button.mode-toggle`)
       expect(document.querySelector(`.mode-dropdown`)).toBeNull()
 
-      // Open dropdown
-      mode_toggle.click()
-      await tick()
-
-      expect(document.querySelector(`.mode-dropdown`)).toBeInstanceOf(HTMLElement)
+      const options = await open_mode_menu()
       expect(mode_toggle.getAttribute(`aria-expanded`)).toBe(`true`)
+      const option_texts = options.map((opt) => opt.textContent?.trim())
+      expect(option_texts).toEqual(
+        expect.arrayContaining([`Element`, `Coordination`, `Wyckoff Position`]),
+      )
+      const wyckoff_option = options.find((opt) => opt.textContent?.includes(`Wyckoff`))
+      expect(wyckoff_option?.disabled).toBe(true)
 
-      // Close dropdown
       mode_toggle.click()
       await tick()
-
       expect(document.querySelector(`.mode-dropdown`)).toBeNull()
       expect(mode_toggle.getAttribute(`aria-expanded`)).toBe(`false`)
     })
 
-    test(`mode options are rendered correctly`, async () => {
-      mount_legend({ elements: { Fe: 2 } })
-
-      const mode_toggle = doc_query<HTMLButtonElement>(`button.mode-toggle`)
-      mode_toggle.click()
-      await tick()
-
-      const mode_options = document.querySelectorAll(`.mode-option`)
-      expect(mode_options.length).toBeGreaterThan(0)
-
-      const option_texts = Array.from(mode_options).map((opt) => opt.textContent?.trim())
-      expect(option_texts).toContain(`Element`)
-      expect(option_texts).toContain(`Coordination`)
-      expect(option_texts).toContain(`Wyckoff Position`)
-    })
-
-    test(`switches mode when option is clicked`, async () => {
-      const atom_color_config = {
-        mode: `element` as const,
-        scale: `interpolateViridis` as const,
-        scale_type: `continuous` as const,
-      }
+    test(`clicking an option switches mode and clears hidden property values`, async () => {
+      const hidden_prop_vals = new Set<string | number>([4, 6])
       mount_legend({
-        elements: { Fe: 2 },
-        atom_color_config,
-        property_colors: {
-          colors: [`#ff0000`, `#00ff00`],
-          values: [4, 6],
-          min_value: 4,
-          max_value: 6,
-          unique_values: [4, 6],
-        },
+        elements: { Fe: 2, O: 3 },
+        atom_color_config: coordination(`categorical`),
+        property_colors: prop_colors([4, 6]),
+        hidden_prop_vals,
       })
+      expect(document.querySelector(`.property-legend`)).toBeInstanceOf(HTMLElement)
 
-      const mode_toggle = doc_query<HTMLButtonElement>(`button.mode-toggle`)
-      mode_toggle.click()
-      await tick()
-
-      const coord_option = Array.from(document.querySelectorAll(`.mode-option`)).find((opt) =>
-        opt.textContent?.includes(`Coordination`),
-      ) as HTMLButtonElement
-
-      expect(coord_option).toBeDefined()
-      coord_option.click()
+      ;(await mode_option(`Element`)).click()
       await tick()
       expect(document.querySelector(`.mode-dropdown`)).toBeNull()
+      // the stale coordination-number filter must not survive into the new mode
+      expect(hidden_prop_vals.size).toBe(0)
+      expect(document.querySelector(`.element-legend`)).toBeInstanceOf(HTMLElement)
+      expect(document.querySelector(`.property-legend`)).toBeNull()
 
       // Mode changes replace the config object rather than mutating it, so read the new
       // mode back off the UI instead of the caller's now-stale object.
-      doc_query<HTMLButtonElement>(`button.mode-toggle`).click()
-      await tick()
-      expect(doc_query(`.mode-option.selected`).textContent?.trim()).toBe(`Coordination`)
-    })
-
-    test(`wyckoff mode disabled without sym_data`, async () => {
-      mount_legend({ elements: { Fe: 2 }, sym_data: null })
-
-      const mode_toggle = doc_query<HTMLButtonElement>(`button.mode-toggle`)
-      mode_toggle.click()
-      await tick()
-
-      const wyckoff_option = Array.from(document.querySelectorAll(`.mode-option`)).find(
-        (opt) => opt.textContent?.includes(`Wyckoff`),
-      ) as HTMLButtonElement
-
-      expect(wyckoff_option).toBeDefined()
-      expect(wyckoff_option.classList.contains(`disabled`)).toBe(true)
-      expect(wyckoff_option.disabled).toBe(true)
+      await open_mode_menu()
+      expect(doc_query(`.mode-option.selected`).textContent?.trim()).toBe(`Element`)
     })
   })
 
   describe(`Property Legend - Continuous`, () => {
-    test(`renders discrete bar with one labeled segment per integer value`, () => {
+    test(`integer values render a titled discrete bar with one labeled segment per value`, () => {
       mount_legend({
-        atom_color_config: { mode: `coordination`, scale_type: `continuous` },
-        property_colors: {
-          colors: [`#440154`, `#31688e`, `#35b779`, `#fde724`],
-          values: [2, 4, 6, 8],
-          min_value: 2,
-          max_value: 8,
-          unique_values: [2, 4, 6, 8],
-        },
-        title: `Coordination Number`,
+        atom_color_config: coordination(`continuous`),
+        property_colors: prop_colors(
+          [2, 4, 6, 8],
+          [`#440154`, `#31688e`, `#35b779`, `#fde724`],
+        ),
       })
 
-      const legend = doc_query(`.property-legend`)
-      expect(legend).toBeInstanceOf(HTMLElement)
-
+      expect(doc_query(`.property-legend h4.legend-header`).textContent).toBe(`Coordination`)
       // Integer (coordination) data renders a discrete bar, not a continuous gradient
       expect(document.querySelector(`.colorbar .bar`)).toBeNull()
 
-      const segments = document.querySelectorAll(`.discrete-colorbar .discrete-segment`)
-      expect(segments).toHaveLength(4)
-      const segment_labels = Array.from(segments).map((seg) => seg.textContent?.trim())
-      expect(segment_labels).toEqual([`2`, `4`, `6`, `8`])
+      const segments = document.querySelectorAll<HTMLElement>(
+        `.discrete-colorbar .discrete-segment`,
+      )
+      expect([...segments].map((seg) => seg.textContent?.trim())).toEqual([`2`, `4`, `6`, `8`])
       // Each segment carries the color for its value
-      expect((segments[0] as HTMLElement).style.backgroundColor).toBe(`#440154`)
-      expect((segments[3] as HTMLElement).style.backgroundColor).toBe(`#fde724`)
+      expect(segments[0].style.backgroundColor).toBe(`#440154`)
+      expect(segments[3].style.backgroundColor).toBe(`#fde724`)
     })
 
     test(`renders continuous gradient for non-integer numeric values`, () => {
@@ -342,490 +251,258 @@ describe(`AtomLegend Component`, () => {
           scale_type: `continuous`,
           color_fn: () => `#000000`,
         },
-        property_colors: {
-          colors: [`#440154`, `#fde724`],
-          values: [0.5, 2.5],
-          min_value: 0.5,
-          max_value: 2.5,
-          unique_values: [0.5, 2.5],
-        },
-        title: `Charge`,
+        property_colors: prop_colors([0.5, 2.5]),
       })
 
       // Non-integer data keeps the smooth gradient ColorBar
       expect(document.querySelector(`.discrete-colorbar`)).toBeNull()
-      const gradient_bar = doc_query(`.colorbar .bar`)
-      expect(gradient_bar).toBeInstanceOf(HTMLElement)
+      expect(doc_query(`.colorbar .bar`)).toBeInstanceOf(HTMLElement)
 
       // Legend forwards min/max as gradient tick labels
-      const tick_labels = Array.from(document.querySelectorAll(`.colorbar .tick-label`)).map(
+      const tick_labels = [...document.querySelectorAll(`.colorbar .tick-label`)].map(
         (label) => label.textContent,
       )
       expect(tick_labels).toEqual([`0.5`, `2.5`])
     })
 
-    test(`falls back to gradient when integer values exceed segment cap`, () => {
-      const many_values = Array.from({ length: 25 }, (_, idx) => idx + 1)
+    // MAX_DISCRETE_SEGMENTS = 20: beyond it the segmented bar would be unreadable
+    test.each([
+      [1, true],
+      [20, true],
+      [25, false],
+    ])(`%i integer values -> discrete bar: %s`, (n_values, discrete) => {
+      const values = Array.from({ length: n_values }, (_, idx) => idx + 1)
       mount_legend({
-        atom_color_config: { mode: `coordination`, scale_type: `continuous` },
-        property_colors: {
-          colors: many_values.map(() => `#440154`),
-          values: many_values,
-          min_value: 1,
-          max_value: 25,
-          unique_values: many_values,
-        },
+        atom_color_config: coordination(`continuous`),
+        property_colors: prop_colors(values),
       })
 
-      // Too many segments would be unreadable, so keep the continuous gradient bar
-      expect(document.querySelector(`.discrete-colorbar`)).toBeNull()
-      expect(doc_query(`.colorbar .bar`)).toBeInstanceOf(HTMLElement)
-    })
-
-    test(`renders discrete bar at exactly the segment cap (20 values)`, () => {
-      const cap_values = Array.from({ length: 20 }, (_, idx) => idx + 1)
-      mount_legend({
-        atom_color_config: { mode: `coordination`, scale_type: `continuous` },
-        property_colors: {
-          colors: cap_values.map(() => `#440154`),
-          values: cap_values,
-          min_value: 1,
-          max_value: 20,
-          unique_values: cap_values,
-        },
-      })
-
-      // Exactly MAX_DISCRETE_SEGMENTS unique values still renders discrete
-      expect(document.querySelector(`.colorbar .bar`)).toBeNull()
-      expect(document.querySelectorAll(`.discrete-segment`)).toHaveLength(20)
+      expect(document.querySelector(`.colorbar .bar`) === null).toBe(discrete)
+      expect(document.querySelectorAll(`.discrete-segment`)).toHaveLength(
+        discrete ? n_values : 0,
+      )
     })
 
     test(`integer property value visibility toggle on discrete bar`, async () => {
       mount_legend({
-        atom_color_config: { mode: `coordination`, scale_type: `continuous` },
-        property_colors: {
-          colors: [`#440154`, `#fde724`],
-          values: [4, 6],
-          min_value: 4,
-          max_value: 6,
-          unique_values: [4, 6],
-        },
+        atom_color_config: coordination(`continuous`),
+        property_colors: prop_colors([4, 6]),
         hidden_prop_vals: new Set<string | number>(),
       })
 
-      const segments = document.querySelectorAll<HTMLButtonElement>(`.discrete-segment`)
-      expect(segments[0].classList.contains(`hidden`)).toBe(false)
-      expect(segments[0].getAttribute(`aria-pressed`)).toBe(`false`)
-      expect(segments[0].title).toBe(`Hide 4`)
+      const segment = doc_query<HTMLButtonElement>(`.discrete-segment`)
+      expect(segment.getAttribute(`aria-pressed`)).toBe(`false`)
+      expect(segment.getAttribute(`aria-label`)).toBe(`Hide 4`)
 
-      // Clicking hides the value: class + aria-pressed flip on
-      segments[0].click()
+      segment.click()
       await tick()
-      expect(segments[0].classList.contains(`hidden`)).toBe(true)
-      expect(segments[0].getAttribute(`aria-pressed`)).toBe(`true`)
+      expect(segment.getAttribute(`aria-pressed`)).toBe(`true`)
+      expect(segment.getAttribute(`aria-label`)).toBe(`Show 4`)
 
-      // Clicking again restores it
-      segments[0].click()
+      segment.click()
       await tick()
-      expect(segments[0].classList.contains(`hidden`)).toBe(false)
-      expect(segments[0].getAttribute(`aria-pressed`)).toBe(`false`)
+      expect(segment.getAttribute(`aria-pressed`)).toBe(`false`)
     })
 
     test(`applies custom HTML attributes via rest props`, () => {
       mount_legend({
-        atom_color_config: { mode: `coordination`, scale_type: `continuous` },
-        property_colors: {
-          colors: [`blue`, `red`],
-          values: [1, 2],
-          min_value: 1,
-          max_value: 2,
-          unique_values: [1, 2],
-        },
+        atom_color_config: coordination(`continuous`),
+        property_colors: prop_colors([1, 2]),
         'data-testid': `test-legend`,
         style: `z-index: 100;`,
       })
 
-      const legend = document.body.querySelector(`.atom-legend`)
-      expect(legend).toBeInstanceOf(HTMLElement)
-      expect(legend?.getAttribute(`data-testid`)).toBe(`test-legend`)
-      expect(legend?.getAttribute(`style`)).toContain(`z-index`)
-    })
-
-    test(`displays title for property legend`, () => {
-      mount_legend({
-        atom_color_config: { mode: `coordination`, scale_type: `continuous` },
-        property_colors: {
-          colors: [`#440154`, `#fde724`],
-          values: [2, 8],
-          min_value: 2,
-          max_value: 8,
-          unique_values: [2, 8],
-        },
-        title: `Custom Title`,
-      })
-
-      const title = doc_query(`h4.legend-header`)
-      expect(title.textContent).toBe(`Custom Title`)
-    })
-
-    test(`uses default title based on mode`, () => {
-      mount_legend({
-        atom_color_config: { mode: `coordination`, scale_type: `continuous` },
-        property_colors: {
-          colors: [`#440154`],
-          values: [4],
-          min_value: 4,
-          max_value: 4,
-          unique_values: [4],
-        },
-      })
-
-      const title = doc_query(`h4.legend-header`)
-      expect(title.textContent).toBe(`Coordination`)
-    })
-
-    test(`handles single integer value as one discrete segment`, () => {
-      mount_legend({
-        atom_color_config: { mode: `coordination`, scale_type: `continuous` },
-        property_colors: {
-          colors: [`#440154`],
-          values: [5],
-          min_value: 5,
-          max_value: 5,
-          unique_values: [5],
-        },
-      })
-
-      const segments = document.querySelectorAll(`.discrete-segment`)
-      expect(segments).toHaveLength(1)
-      expect(segments[0].textContent?.trim()).toBe(`5`)
+      const legend = doc_query(`.atom-legend`)
+      expect(legend.getAttribute(`data-testid`)).toBe(`test-legend`)
+      expect(legend.getAttribute(`style`)).toContain(`z-index`)
     })
 
     test.each([
-      [`empty unique_values`, [], []],
-      [`single value`, [42], [`rgb(255, 128, 0)`]],
-      [`two values`, [1, 2], [`red`, `blue`]],
-      [`multiple values`, [1, 2, 3, 4], [`red`, `yellow`, `green`, `blue`]],
-    ])(`handles %s without errors or NaN`, (_desc, unique_values, legend_colors) => {
-      const property_colors =
-        unique_values.length > 0
-          ? {
-              colors: legend_colors,
-              values: [...unique_values, ...unique_values], // Add duplicates
-              min_value: Math.min(...unique_values),
-              max_value: Math.max(...unique_values),
-              unique_values,
-            }
-          : null
+      [`empty unique_values`, [], [], []],
+      [`single value`, [42], [`rgb(255, 128, 0)`], [`black`]],
+      [`two values`, [1, 2], [`red`, `blue`], [`black`, `white`]],
+      [
+        `multiple values`,
+        [1, 2, 3, 4],
+        [`red`, `yellow`, `green`, `blue`],
+        [`black`, `black`, `white`, `white`],
+      ],
+      // translucent override composites against the page backdrop (white in jsdom) rather
+      // than throwing; opaque black would have picked white text
+      [
+        `translucent override`,
+        [1, 2],
+        [`rgba(0, 0, 0, 0.5)`, `rgba(0, 0, 0, 0.9)`],
+        [`black`, `white`],
+      ],
+    ])(
+      `handles %s without errors or NaN`,
+      (_desc, unique_values, legend_colors, text_colors) => {
+        // duplicated values: the legend must still render one segment per unique value
+        const property_colors =
+          unique_values.length > 0
+            ? prop_colors([...unique_values, ...unique_values], legend_colors)
+            : null
+        mount_legend({ atom_color_config: coordination(`continuous`), property_colors })
 
-      mount_legend({
-        atom_color_config: { mode: `coordination`, scale_type: `continuous` },
-        property_colors,
-      })
-
-      const legend = document.body.querySelector(`.property-legend`)
-      if (unique_values.length === 0) {
-        expect(legend).toBeNull() // no property colors -> no legend at all
-      } else {
-        expect(legend?.innerHTML).not.toContain(`NaN`)
-        expect(legend?.innerHTML).not.toContain(`undefined`)
-      }
-    })
+        const legend = document.body.querySelector(`.property-legend`)
+        if (unique_values.length === 0) {
+          expect(legend).toBeNull() // no property colors -> no legend at all
+        } else {
+          expect(legend?.innerHTML).not.toContain(`NaN`)
+          expect(legend?.innerHTML).not.toContain(`undefined`)
+          const segments = [...document.querySelectorAll<HTMLElement>(`.discrete-segment`)]
+          expect(segments.map((seg) => seg.style.color)).toEqual(text_colors)
+        }
+      },
+    )
   })
 
   describe(`Property Legend - Categorical`, () => {
-    test(`renders categorical legend with discrete values`, () => {
+    test(`renders one item per unique value with its first site color`, () => {
       mount_legend({
-        atom_color_config: { mode: `coordination`, scale_type: `categorical` },
-        property_colors: {
-          colors: [`#e41a1c`, `#377eb8`, `#4daf4a`, `#984ea3`],
-          values: [2, 4, 4, 6],
-          unique_values: [2, 4, 6],
-        },
+        atom_color_config: coordination(`categorical`),
+        property_colors: prop_colors(
+          [2, 4, 4, 6],
+          [`rgb(255, 0, 0)`, `rgb(0, 255, 0)`, `rgb(0, 0, 255)`, `rgba(0, 0, 0, 0.5)`],
+        ),
       })
 
-      const categorical = doc_query(`.categorical-legend`)
-      expect(categorical).toBeInstanceOf(HTMLElement)
-
-      const items = document.querySelectorAll(`.categorical-legend .legend-item`)
-      expect(items).toHaveLength(3) // Unique values only
-
-      const labels = document.querySelectorAll(`.category-label`)
-      const label_texts = Array.from(labels).map((label) => label.textContent?.trim())
-      expect(label_texts).toEqual([`2`, `4`, `6`])
+      const labels = [...document.querySelectorAll<HTMLElement>(`.category-label`)]
+      expect(document.querySelectorAll(`.categorical-legend .legend-item`)).toHaveLength(3)
+      expect(labels.map((label) => label.textContent?.trim())).toEqual([`2`, `4`, `6`])
+      expect(labels.map((label) => label.style.backgroundColor)).toEqual([
+        `rgb(255, 0, 0)`,
+        `rgb(0, 255, 0)`,
+        `rgba(0, 0, 0, 0.5)`,
+      ])
+      // translucent swatch composites against the page backdrop (white in jsdom) instead of
+      // throwing, so half-transparent black reads as mid grey and takes black text
+      expect(labels.map((label) => label.style.color)).toEqual([`black`, `black`, `black`])
     })
 
     test(`formats Wyckoff orbit IDs correctly`, () => {
       mount_legend({
         atom_color_config: { mode: `wyckoff`, scale_type: `categorical` },
-        property_colors: {
-          colors: [`#e41a1c`, `#377eb8`, `#4daf4a`],
-          values: [`4e|Fe`, `4e|Fe`, `2a|O`],
-          unique_values: [`4e|Fe`, `2a|O`],
-        },
+        property_colors: prop_colors([`4e|Fe`, `4e|Fe`, `2a|O`]),
       })
 
-      const labels = document.querySelectorAll(`.category-label`)
-      const label_texts = Array.from(labels).map((label) => label.textContent?.trim())
-
-      // Format: Element:count+wyckoff (e.g. Fe:24e, O:12a)
-      expect(label_texts).toContain(`Fe:24e`)
-      expect(label_texts).toContain(`O:12a`)
+      // Format: Element:multiplicity+letter (the orbit id carries the conventional-cell
+      // multiplicity; displayed-atom counts would be inflated by supercells/image atoms)
+      const labels = [...document.querySelectorAll(`.category-label`)].map((label) =>
+        label.textContent?.trim(),
+      )
+      expect(labels).toEqual([`Fe:4e`, `O:2a`])
     })
 
     test(`property value visibility toggle`, async () => {
-      const hidden_prop_vals = new Set<string | number>()
       mount_legend({
-        atom_color_config: { mode: `coordination`, scale_type: `categorical` },
-        property_colors: {
-          colors: [`#e41a1c`, `#377eb8`],
-          values: [4, 6],
-          unique_values: [4, 6],
-        },
-        hidden_prop_vals,
+        atom_color_config: coordination(`categorical`),
+        property_colors: prop_colors([4, 6]),
+        hidden_prop_vals: new Set<string | number>(),
       })
 
-      const labels = document.querySelectorAll(`.category-label`)
-      const toggle_buttons = document.querySelectorAll(
+      const toggle_buttons = document.querySelectorAll<HTMLButtonElement>(
         `.categorical-legend button.toggle-visibility`,
       )
-
-      expect(labels[0].classList.contains(`hidden`)).toBe(false)
-      expect(toggle_buttons[0].classList.contains(`element-hidden`)).toBe(false) // Click toggle button
-      ;(toggle_buttons[0] as HTMLButtonElement).click()
+      const names = () => [...toggle_buttons].map((btn) => btn.getAttribute(`aria-label`))
+      expect(names()).toEqual([`Hide 4`, `Hide 6`])
+      toggle_buttons[0].click()
       await tick()
 
-      expect(labels[0].classList.contains(`hidden`)).toBe(true)
-      expect(toggle_buttons[0].classList.contains(`element-hidden`)).toBe(true)
-    })
-
-    test(`maps colors correctly when sites > unique values`, () => {
-      mount_legend({
-        atom_color_config: { mode: `coordination`, scale_type: `categorical` },
-        property_colors: {
-          colors: [`rgb(255, 0, 0)`, `rgb(255, 0, 0)`, `rgb(0, 0, 255)`],
-          values: [10, 10, 20],
-          unique_values: [10, 20],
-          min_value: 10,
-          max_value: 20,
-        },
-      })
-
-      const labels = Array.from(document.querySelectorAll<HTMLElement>(`.category-label`))
-      const color_map = new Map(
-        labels.map((label) => [label.textContent?.trim(), label.style.backgroundColor]),
-      )
-
-      expect(color_map.get(`10`)).toBe(`rgb(255, 0, 0)`)
-      expect(color_map.get(`20`)).toBe(`rgb(0, 0, 255)`)
+      expect(names()).toEqual([`Show 4`, `Hide 6`])
+      expect(doc_query(`.category-label`).classList.contains(`hidden`)).toBe(true)
     })
   })
 
   describe(`Mode Switching Behavior`, () => {
-    test(`clears hidden property values when switching modes`, async () => {
-      const hidden_prop_vals = new Set([4, 6])
+    test.each([
+      [`element`, { mode: `element`, scale_type: `continuous` } as const, null, true, false],
+      [`coordination`, coordination(`continuous`), prop_colors([4]), false, true],
+      [
+        `element with no elements`,
+        { mode: `element`, scale_type: `continuous` } as const,
+        null,
+        false,
+        false,
+        {},
+      ],
+    ])(
+      `%s mode shows element legend=%s, property legend=%s`,
+      (
+        _desc,
+        atom_color_config,
+        property_colors,
+        element_legend,
+        property_legend,
+        elements = { Fe: 2, O: 3 },
+      ) => {
+        mount_legend({ elements, atom_color_config, property_colors })
 
-      // Mount with coordination mode
-      mount_legend({
-        elements: { Fe: 2, O: 3 },
-        atom_color_config: { mode: `coordination`, scale_type: `categorical` },
-        property_colors: {
-          colors: [`#e41a1c`, `#377eb8`],
-          values: [4, 6],
-          unique_values: [4, 6],
-        },
-        hidden_prop_vals,
-      })
-
-      // Initially, categorical legend should show items
-      const labels = document.querySelectorAll(`.category-label`)
-      expect(labels).toHaveLength(2)
-      expect(document.querySelector(`.property-legend`)).toBeInstanceOf(HTMLElement)
-
-      // Clear and remount with element mode to simulate mode switch
-      document.body.innerHTML = ``
-      mount_legend({
-        elements: { Fe: 2, O: 3 },
-        atom_color_config: { mode: `element`, scale_type: `continuous` },
-        hidden_prop_vals,
-      })
-      await tick()
-
-      // After mode switch, the element legend should be shown
-      expect(document.querySelector(`.element-legend`)).toBeInstanceOf(HTMLElement)
-      expect(document.querySelector(`.property-legend`)).toBeNull()
-    })
-
-    test(`shows element legend when mode is element`, () => {
-      mount_legend({
-        elements: { Fe: 2, O: 3 },
-        atom_color_config: { mode: `element`, scale_type: `continuous` },
-      })
-
-      expect(document.querySelector(`.element-legend`)).toBeInstanceOf(HTMLElement)
-      expect(document.querySelector(`.property-legend`)).toBeNull()
-    })
-
-    test(`shows property legend when mode is not element`, () => {
-      mount_legend({
-        elements: { Fe: 2, O: 3 },
-        atom_color_config: { mode: `coordination`, scale_type: `continuous` },
-        property_colors: {
-          colors: [`#440154`],
-          values: [4],
-          min_value: 4,
-          max_value: 4,
-          unique_values: [4],
-        },
-      })
-
-      expect(document.querySelector(`.property-legend`)).toBeInstanceOf(HTMLElement)
-      expect(document.querySelector(`.element-legend`)).toBeNull()
-    })
-
-    test(`hides all legends when elements is empty and no property colors`, () => {
-      mount_legend({
-        elements: {},
-        atom_color_config: { mode: `element`, scale_type: `continuous` },
-      })
-
-      expect(document.querySelector(`.element-legend`)).toBeNull()
-      expect(document.querySelector(`.property-legend`)).toBeNull()
-    })
+        expect(document.querySelector(`.element-legend`) !== null).toBe(element_legend)
+        expect(document.querySelector(`.property-legend`) !== null).toBe(property_legend)
+      },
+    )
   })
 
   describe(`Element Remapping`, () => {
     test.each([
-      [{ H: `Na` } as const, `Sodium (remapped from H)`, `remapped`],
-      [undefined, `Hydrogen`, `not remapped`],
-    ])(`tooltip shows %s element name when %s`, (element_mapping, expected_title, _) => {
-      mount_legend({ elements: { H: 1 }, element_mapping })
-      expect(doc_query<HTMLLabelElement>(`label`).title).toBe(expected_title)
-    })
+      [
+        `remapped`,
+        { H: `Na`, He: `Cl` } as const,
+        `Sodium (remapped from H)`,
+        [`Na 1`, `Cl 2`, `Li 3`],
+        [true, true, false],
+      ],
+      [`not remapped`, undefined, `Hydrogen`, [`H 1`, `He 2`, `Li 3`], [false, false, false]],
+    ])(
+      `labels show the %s element's name, symbol, color and class`,
+      (_desc, element_mapping, expected_title, expected_labels, remapped_flags) => {
+        mount_legend({ elements: { H: 1, He: 2, Li: 3 }, element_mapping })
+        const labels = [...document.querySelectorAll<HTMLLabelElement>(`label`)]
+        expect(labels[0].title).toBe(expected_title)
+        expect(labels[0].style.backgroundColor).toBe(colors.element[element_mapping?.H ?? `H`])
+        expect(label_texts()).toEqual(expected_labels)
+        expect(labels.map((label) => label.classList.contains(`remapped`))).toEqual(
+          remapped_flags,
+        )
+      },
+    )
 
-    test(`displays remapped element symbol in label`, () => {
-      mount_legend({ elements: { H: 2, He: 3 }, element_mapping: { H: `Na`, He: `Cl` } })
-      const labels = Array.from(document.querySelectorAll(`label`)).map((label) =>
-        label.textContent?.trim(),
-      )
-      expect(labels).toEqual([`Na 2`, `Cl 3`])
-    })
-
-    test(`uses remapped element color`, () => {
-      mount_legend({ elements: { H: 1 }, element_mapping: { H: `Fe` } })
-      expect(doc_query<HTMLLabelElement>(`label`).style.backgroundColor).toBe(
-        colors.element.Fe,
-      )
-    })
-
-    test.each([
-      [{ H: `Na` } as const, true, `remapped`],
-      [undefined, false, `not remapped`],
-    ])(`label has remapped class=%s when %s`, (element_mapping, has_class, _) => {
-      mount_legend({ elements: { H: 1 }, element_mapping })
-      expect(doc_query<HTMLLabelElement>(`label`).classList.contains(`remapped`)).toBe(
-        has_class,
-      )
-    })
-
-    test(`opens remap dropdown on right-click`, async () => {
-      mount_legend({ elements: { Fe: 2 } })
-
-      const label = doc_query<HTMLLabelElement>(`label`)
+    test(`right-click opens a searchable remap dropdown that Escape closes`, async () => {
+      mount_legend({ elements: { H: 1 } })
       expect(document.querySelector(`.remap-dropdown`)).toBeNull()
 
-      // Right-click to open dropdown
-      label.dispatchEvent(new MouseEvent(`contextmenu`, { bubbles: true }))
-      await tick()
-
-      expect(document.querySelector(`.remap-dropdown`)).toBeInstanceOf(HTMLElement)
-      expect(document.querySelector(`.remap-search`)).toBeInstanceOf(HTMLElement)
-    })
-
-    test(`remap dropdown has search input and element options`, async () => {
-      mount_legend({ elements: { Fe: 2 } })
-
-      const label = doc_query<HTMLLabelElement>(`label`)
-      label.dispatchEvent(new MouseEvent(`contextmenu`, { bubbles: true }))
-      await tick()
-
-      const search_input = doc_query<HTMLInputElement>(`.remap-search`)
+      const search_input = await open_remap_menu()
       expect(search_input.placeholder).toBe(`Search elements...`)
-
-      const options = document.querySelectorAll(`.remap-option`)
-      expect(options.length).toBeGreaterThan(0)
-    })
-
-    test(`clicking remap option updates element_mapping`, async () => {
-      let element_mapping: Record<string, string> | undefined
-      mount_legend({
-        elements: { H: 1 },
-        get element_mapping() {
-          return element_mapping
-        },
-        set element_mapping(val) {
-          element_mapping = val
-        },
-      })
-
-      const label = doc_query<HTMLLabelElement>(`label`)
-      label.dispatchEvent(new MouseEvent(`contextmenu`, { bubbles: true }))
-      await tick()
-
-      // Find and click Na option
-      const options = Array.from(document.querySelectorAll(`.remap-option`))
-      const na_option = options.find(
-        (opt) => opt.querySelector(`b`)?.textContent === `Na`,
-      ) as HTMLButtonElement
-
-      expect(na_option).toBeDefined()
-      na_option.click()
-      await tick()
-
-      expect(element_mapping).toEqual({ H: `Na` })
-      expect(document.querySelector(`.remap-dropdown`)).toBeNull() // Dropdown closes
-    })
-
-    test(`search filters element options`, async () => {
-      mount_legend({ elements: { H: 1 } })
-
-      const label = doc_query<HTMLLabelElement>(`label`)
-      label.dispatchEvent(new MouseEvent(`contextmenu`, { bubbles: true }))
-      await tick()
-
-      const search_input = doc_query<HTMLInputElement>(`.remap-search`)
       const initial_options_count = document.querySelectorAll(`.remap-option`).length
+      expect(initial_options_count).toBeGreaterThan(0)
 
-      // Type 'sodium' to filter
       search_input.value = `sodium`
       search_input.dispatchEvent(new Event(`input`, { bubbles: true }))
       await tick()
-
       const filtered_options = document.querySelectorAll(`.remap-option`)
       expect(filtered_options.length).toBeLessThan(initial_options_count)
       expect(filtered_options.length).toBeGreaterThan(0)
-    })
 
-    test(`Escape closes remap dropdown`, async () => {
-      mount_legend({ elements: { Fe: 2 } })
-
-      const label = doc_query<HTMLLabelElement>(`label`)
-      label.dispatchEvent(new MouseEvent(`contextmenu`, { bubbles: true }))
-      await tick()
-
-      expect(document.querySelector(`.remap-dropdown`)).toBeInstanceOf(HTMLElement)
-
-      const search_input = doc_query<HTMLInputElement>(`.remap-search`)
       search_input.dispatchEvent(
         new KeyboardEvent(`keydown`, { key: `Escape`, bubbles: true }),
       )
       await tick()
-
       expect(document.querySelector(`.remap-dropdown`)).toBeNull()
     })
 
-    test(`reset option removes mapping`, async () => {
-      let element_mapping: Record<string, string> | undefined = { H: `Na` }
+    test.each([
+      [`picking Na maps H to Na`, undefined, `.remap-option:has(b)`, `Na`, { H: `Na` }],
+      [
+        `reset removes the mapping`,
+        { H: `Na` },
+        `.remap-option.reset`,
+        `Reset to H`,
+        undefined,
+      ],
+    ] as const)(`%s`, async (_desc, initial, selector, option_text, expected) => {
+      let element_mapping: Record<string, string> | undefined = initial
       mount_legend({
         elements: { H: 1 },
         get element_mapping() {
@@ -835,60 +512,17 @@ describe(`AtomLegend Component`, () => {
           element_mapping = val
         },
       })
+      await open_remap_menu()
 
-      const label = doc_query<HTMLLabelElement>(`label`)
-      label.dispatchEvent(new MouseEvent(`contextmenu`, { bubbles: true }))
-      await tick()
-
-      // Should have reset option since H is remapped
-      const reset_option = doc_query<HTMLButtonElement>(`.remap-option.reset`)
-      expect(reset_option).toBeInstanceOf(HTMLElement)
-      expect(reset_option.textContent).toContain(`Reset to H`)
-
-      reset_option.click()
-      await tick()
-
-      expect(element_mapping).toBeUndefined() // Empty mapping becomes undefined
-    })
-
-    test(`multiple elements can be remapped independently`, () => {
-      const element_mapping: Record<string, string> = { H: `Na`, He: `Cl` }
-      mount_legend({ elements: { H: 1, He: 2, Li: 3 }, element_mapping })
-
-      const labels = document.querySelectorAll(`label`)
-      expect(labels[0].textContent?.trim()).toBe(`Na 1`)
-      expect(labels[0].classList.contains(`remapped`)).toBe(true)
-      expect(labels[1].textContent?.trim()).toBe(`Cl 2`)
-      expect(labels[1].classList.contains(`remapped`)).toBe(true)
-      expect(labels[2].textContent?.trim()).toBe(`Li 3`)
-      expect(labels[2].classList.contains(`remapped`)).toBe(false)
-    })
-  })
-
-  describe(`Accessibility`, () => {
-    test(`toggle visibility buttons have descriptive titles`, () => {
-      mount_legend({ elements: { Fe: 2, O: 3 } })
-
-      const toggle_buttons = document.querySelectorAll(`button.toggle-visibility`)
-      expect((toggle_buttons[0] as HTMLButtonElement).title).toBe(`Hide O atoms`)
-      expect((toggle_buttons[1] as HTMLButtonElement).title).toBe(`Hide Fe atoms`)
-    })
-
-    test(`property value toggle buttons have descriptive titles`, () => {
-      mount_legend({
-        atom_color_config: { mode: `coordination`, scale_type: `categorical` },
-        property_colors: {
-          colors: [`#e41a1c`, `#377eb8`],
-          values: [4, 6],
-          unique_values: [4, 6],
-        },
-      })
-
-      const toggle_buttons = document.querySelectorAll(
-        `.categorical-legend button.toggle-visibility`,
+      const option = [...document.querySelectorAll<HTMLButtonElement>(selector)].find((opt) =>
+        opt.textContent?.includes(option_text),
       )
-      expect((toggle_buttons[0] as HTMLButtonElement).title).toBe(`Hide 4`)
-      expect((toggle_buttons[1] as HTMLButtonElement).title).toBe(`Hide 6`)
+      if (!option) throw new Error(`no remap option ${option_text}`)
+      option.click()
+      await tick()
+
+      expect(element_mapping).toEqual(expected) // empty mapping becomes undefined
+      expect(document.querySelector(`.remap-dropdown`)).toBeNull() // Dropdown closes
     })
   })
 })

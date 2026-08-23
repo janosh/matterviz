@@ -4,13 +4,10 @@ import {
   type MeasuredAxis,
 } from '$lib/plot/core/layout'
 import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest'
+import { mock_canvas_context } from '../setup'
 
 const CI_MULTIPLIER = [`true`, `1`].includes(process.env.CI ?? ``) ? 5 : 1
 const AXIS_SIZE = 1200
-const operation_measurements: {
-  workload: string
-  measure_text_calls?: number
-}[] = []
 const measure_text = vi.fn((text: string) => ({ width: Array.from(text).length * 6 }))
 
 const generated_labels = (tick_count: number): string[] =>
@@ -40,16 +37,10 @@ const generated_axis = (tick_count: number, axis_size = AXIS_SIZE): MeasuredAxis
 
 describe(`adaptive layout performance`, { timeout: 10_000 * CI_MULTIPLIER }, () => {
   beforeAll(() => {
-    vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue({
-      font: ``,
-      measureText: measure_text,
-    } as unknown as CanvasRenderingContext2D)
+    mock_canvas_context({ measureText: measure_text })
   })
 
   afterAll(() => {
-    console.info(
-      `adaptive layout operation measurements: ${JSON.stringify(operation_measurements)}`,
-    )
     clear_tick_metrics_cache()
     vi.restoreAllMocks()
   })
@@ -60,11 +51,6 @@ describe(`adaptive layout performance`, { timeout: 10_000 * CI_MULTIPLIER }, () 
       measure_text.mockClear()
       const layout = resolve_tick_layout(generated_axis(tick_count), AXIS_SIZE, `x`)
       const measure_text_calls = measure_text.mock.calls.length
-      operation_measurements.push({
-        workload: `default-layout-${tick_count}`,
-        measure_text_calls,
-      })
-
       expect(layout.labels).toHaveLength(tick_count)
       expect(layout.visible_tick_indices.length).toBeGreaterThanOrEqual(2)
       expect(
@@ -101,9 +87,5 @@ describe(`adaptive layout performance`, { timeout: 10_000 * CI_MULTIPLIER }, () 
     expect(resized_result.labels).toHaveLength(500)
     expect(resolve_tick_layout(axis, AXIS_SIZE, `x`)).toBe(cold_result)
     expect(measure_text).not.toHaveBeenCalled()
-    operation_measurements.push({
-      workload: `cache-and-resize-500`,
-      measure_text_calls: cold_measurements,
-    })
   })
 })

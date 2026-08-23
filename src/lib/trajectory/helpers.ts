@@ -1,23 +1,20 @@
 import { ELEM_SYMBOLS, type ElementSymbol } from '$lib/element/types'
 import type { Vec3 } from '$lib/math'
-import * as math from '$lib/math'
+import type * as math from '$lib/math'
 import type { AnyStructure } from '$lib/structure/index'
-import { cart_to_frac_with_fallback } from '$lib/structure/parsers/shared'
+import {
+  cart_to_frac_with_fallback,
+  make_lattice,
+  matrix3x3_from_rows,
+  parse_float_token,
+} from '$lib/structure/parsers/shared'
 import type { Pbc } from '$lib/structure/pbc'
 import { make_site } from '$lib/structure/site'
-import { normalize_scientific_notation } from '$lib/utils'
 import type { TrajectoryFrame, TrajectoryPositionStream } from './index'
 import type { WarnFn } from './parse/shared'
 
-// Strict numeric token parser for the text formats: Number() rejects the trailing junk and
-// `1,5` that parseFloat silently truncates, and the NaN retry keeps Fortran `1.0D-3`
-// exponents readable without paying for the normalisation on every well-formed token.
-// A missing or blank token is NaN, not the 0 that Number(``) returns.
-export const parse_float_token = (token: string | undefined): number => {
-  if (!token) return NaN
-  const num = Number(token)
-  return Number.isNaN(num) ? Number(normalize_scientific_notation(token)) : num
-}
+// Numeric/element helpers shared with the structure parsers live in structure/parsers/shared
+export { count_elements, parse_float_token } from '$lib/structure/parsers/shared'
 
 export const is_supported_trajectory_signal_shape = (
   sample_shape: number[],
@@ -29,24 +26,8 @@ export const is_supported_trajectory_signal_shape = (
     ((sample_shape[0] === 3 && sample_shape[1] === 3) ||
       (sample_shape[0] === n_atoms && sample_shape[1] === 3)))
 
-export function validate_3x3_matrix(data: unknown): math.Matrix3x3 {
-  if (!Array.isArray(data) || data.length !== 3) {
-    throw new Error(
-      `Expected 3x3 matrix, got array of length ${Array.isArray(data) ? data.length : `non-array`}`,
-    )
-  }
-
-  if (
-    !data.every(
-      (row) =>
-        (Array.isArray(row) || (ArrayBuffer.isView(row) && `length` in row)) &&
-        math.is_finite_vec3_like(row as ArrayLike<unknown>),
-    )
-  ) {
-    throw new Error(`Invalid 3x3 matrix structure`)
-  }
-  return data as math.Matrix3x3
-}
+export const validate_3x3_matrix = (data: unknown): math.Matrix3x3 =>
+  matrix3x3_from_rows(data, `lattice matrix`)
 
 export const convert_atomic_numbers = (numbers: number[]): ElementSymbol[] =>
   numbers.map((num) => {
@@ -54,28 +35,6 @@ export const convert_atomic_numbers = (numbers: number[]): ElementSymbol[] =>
     if (!symbol) throw new Error(`Unknown atomic number in trajectory data: ${num}`)
     return symbol
   })
-
-export const count_elements = (elements: readonly string[]): Record<string, number> => {
-  const counts: Record<string, number> = {}
-  for (const element of elements) counts[element] = (counts[element] || 0) + 1
-  return counts
-}
-
-// Singular cells (a 2D slab with a zero c vector, a molecule written with a zero Lattice)
-// cannot be inverted for fractional coordinates; fall back to per-axis-length division so
-// one degenerate frame does not make the whole trajectory unloadable.
-const cart_to_frac_for = (
-  lattice_matrix: math.Matrix3x3,
-  warn: WarnFn = console.warn,
-): ((xyz: Vec3) => Vec3) => {
-  const { convert, exact } = cart_to_frac_with_fallback(lattice_matrix)
-  if (!exact) {
-    warn(
-      `Singular lattice ${JSON.stringify(lattice_matrix)}; fractional coordinates use the axis-length approximation`,
-    )
-  }
-  return convert
-}
 
 export const create_structure = (
   positions: number[][],
@@ -96,7 +55,15 @@ export const create_structure = (
       `create_structure got ${site_properties.length} site property bags for ${positions.length} positions`,
     )
   }
-  const cart_to_frac = lattice_matrix ? cart_to_frac_for(lattice_matrix, warn) : null
+  // Singular cells (a 2D slab with a zero c vector, a molecule written with a zero Lattice)
+  // cannot be inverted for fractional coordinates; the per-axis-length fallback keeps one
+  // degenerate frame from making the whole trajectory unloadable
+  const cart_to_frac = lattice_matrix
+    ? cart_to_frac_with_fallback(lattice_matrix, {
+        context: `lattice ${JSON.stringify(lattice_matrix)}`,
+        warn: warn ?? console.warn,
+      }).convert
+    : null
 
   const sites = positions.map((pos, idx) => {
     if (
@@ -118,16 +85,7 @@ export const create_structure = (
     )
   })
 
-  return lattice_matrix
-    ? {
-        sites,
-        lattice: {
-          matrix: lattice_matrix,
-          ...math.calc_lattice_params(lattice_matrix),
-          pbc: pbc ?? ([true, true, true] satisfies Pbc),
-        },
-      }
-    : { sites }
+  return lattice_matrix ? { sites, lattice: make_lattice(lattice_matrix, pbc) } : { sites }
 }
 
 export const create_trajectory_frame = (
@@ -152,7 +110,6 @@ export const position_stream_transferables = (
   const buffers = new Set<ArrayBuffer>()
   const add = (values: Float64Array) => buffers.add(values.buffer as ArrayBuffer)
   add(data.positions)
-  for (const values of Object.values(data.scalars ?? {})) add(values)
   for (const values of Object.values(data.vectors ?? {})) add(values)
   for (const signal of Object.values(data.signals ?? {})) add(signal.values)
   return [...buffers]

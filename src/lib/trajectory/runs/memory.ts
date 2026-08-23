@@ -1,5 +1,6 @@
 // In-memory run: every frame materialised. Built by the eager parsers, from JSON payloads
 // (anywidget / JupyterLab), by PhononModeExplorer and by tests.
+import { first_non_increasing_index } from '$lib/math'
 import { full_data_extractor } from '../extract'
 import { is_supported_trajectory_signal_shape } from '../helpers'
 import type {
@@ -95,11 +96,7 @@ function validate_frames(
     }
     if (!values.every(Number.isFinite))
       throw new Error(`signals.${key}.values are not all finite`)
-    if (
-      !steps.every(
-        (step, idx) => is_finite_number(step) && (idx === 0 || step > steps[idx - 1]),
-      )
-    ) {
+    if (!steps.every(is_finite_number) || first_non_increasing_index(steps) !== null) {
       throw new Error(`signals.${key}.steps must be finite and strictly increasing`)
     }
     if (unit !== undefined && (typeof unit !== `string` || !unit.trim())) {
@@ -154,9 +151,9 @@ export function trajectory_from_frames(
       assert_frame_idx({ frame_count: all.length }, frame_idx)
       return all[frame_idx]
     },
-    collect_positions: async (options, on_progress, signal) => {
+    collect_positions: async (options) => {
       const all = live_frames()
-      return accumulate_positions(all.length, (idx) => all[idx], options, on_progress, signal)
+      return accumulate_positions(all.length, (idx) => all[idx], options)
     },
     dispose: () => {
       disposed = true

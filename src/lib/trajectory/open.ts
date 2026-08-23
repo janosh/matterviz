@@ -2,6 +2,7 @@
 // registry); the only policy here is the single size threshold above which text/ASE payloads
 // are indexed lazily instead of materialised. Decompression and HDF5 group choice belong to
 // the caller (the file viewer): an ambiguous HDF5 file throws Hdf5GroupSelectionRequiredError.
+import { HDF5_EXT_REGEX } from '$lib/constants'
 import { DEFAULTS } from '$lib/settings'
 import { is_plain_object } from '$lib/utils'
 import type { AnyStructure } from '$lib/structure/index'
@@ -9,7 +10,6 @@ import { is_structure_like, parse_xyz, structure_from_json } from '$lib/structur
 import { get_parse_errors, reset_parse_diagnostics } from '$lib/structure/parsers/shared'
 import { FORMAT_PATTERNS, xyz_ext_hint } from './format-detect'
 import { count_xyz_frames } from './helpers'
-import { HDF5_EXT_REGEX } from './filename'
 import type { ParseProgress, TrajectoryFrame, TrajectorySource } from './index'
 import { parse_ase_trajectory } from './parse/ase'
 import { open_hdf5_trajectory } from './parse/hdf5'

@@ -36,6 +36,35 @@ export const escape_csv_field = (value: number | string | null | undefined): str
   return `"${field.replaceAll(`"`, `""`)}"`
 }
 
+// One CSV record from its cells
+export const csv_line = (cells: readonly (number | string | null | undefined)[]): string =>
+  cells.map(escape_csv_field).join(`,`)
+
+// Row objects to CSV text; the first row's keys are the header and column order
+export function rows_to_csv(rows: Record<string, number | string | null>[]): string {
+  if (rows.length === 0) return ``
+  const headers = Object.keys(rows[0])
+  return [
+    csv_line(headers),
+    ...rows.map((row) => csv_line(headers.map((key) => row[key]))),
+  ].join(`\n`)
+}
+
+// Binary-prefixed file size, e.g. 1536 -> `1.50 KiB`. d3-free so the Node/VS Code and
+// JupyterLab bundles can import it without dragging d3-format along.
+const BYTE_UNITS = [`B`, `KiB`, `MiB`, `GiB`, `TiB`, `PiB`] as const
+export const format_bytes = (bytes?: number): string => {
+  if (bytes === undefined || !Number.isFinite(bytes)) return `Unknown`
+  let [value, unit_idx] = [bytes, 0]
+  while (Math.abs(value) >= 1024 && unit_idx < BYTE_UNITS.length - 1) {
+    value /= 1024
+    unit_idx++
+  }
+  // Bytes are integral; a fractional input (an averaged size) must not print as `1023.5 B`
+  if (unit_idx === 0) return `${Math.round(value)} B`
+  return `${value.toFixed(2)} ${BYTE_UNITS[unit_idx]}`
+}
+
 // Normalize unicode minus (U+2212) to ASCII hyphen-minus.
 export const normalize_unicode_minus = (value: string): string => value.replaceAll('−', `-`)
 
@@ -77,6 +106,14 @@ export function decode_url_safe_base64(encoded: string): string | undefined {
   } catch {
     return undefined
   }
+}
+
+// True when a keyboard event originates from a text-editing element (form field or
+// contenteditable), so viewer shortcuts leave typing alone.
+export const is_editable_target = (event: Event): boolean => {
+  const { target } = event
+  if (!(target instanceof HTMLElement)) return false
+  return [`INPUT`, `TEXTAREA`, `SELECT`].includes(target.tagName) || target.isContentEditable
 }
 
 // Viewer keyboard convention: a handler returns `true` when it handled the event, so

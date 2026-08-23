@@ -2,7 +2,7 @@
   import type { Vec3 } from '$lib/math'
   import type { DataSeries } from '$lib/plot'
   import { ScatterPlot } from '$lib/plot'
-  import type { Snippet } from 'svelte'
+  import { untrack, type Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'
   import { compute_fermi_slice } from './compute'
@@ -50,18 +50,15 @@
     return [`k₁`, `k₂`]
   })
 
-  // Compute slice with error handling
-  let slice_data = $state<FermiSliceData | null>(null)
-  $effect(() => {
-    if (!fermi_data) {
-      slice_data = null
-      return
-    }
+  // Slice of the current surface; a failed slice (e.g. zero Miller indices) reports through
+  // on_error and renders empty
+  let slice_data = $derived.by((): FermiSliceData | null => {
+    if (!fermi_data) return null
     try {
-      slice_data = compute_fermi_slice(fermi_data, { miller_indices, distance })
+      return compute_fermi_slice(fermi_data, { miller_indices, distance })
     } catch (err) {
-      slice_data = null
-      on_error?.(to_error(err))
+      untrack(() => on_error?.(to_error(err)))
+      return null
     }
   })
 

@@ -250,7 +250,7 @@
             search={{ placeholder: `Filter frames`, fuzzy: true }}
             export_data={{ formats: [`csv`, `json`], filename: `trajectory-frames` }}
             initial_sort={{ column: `frame_idx` }}
-            onrowclick={(_event, row) => {
+            on_row_click={(_event, row) => {
               if (typeof row.frame_idx === `number`) on_step_change?.(row.frame_idx)
             }}
             {...table_props}
@@ -265,7 +265,7 @@
               search={{ placeholder: `Filter atoms`, fuzzy: true }}
               export_data={{ formats: [`csv`, `json`], filename: `frame-atoms` }}
               initial_sort={{ column: `site_idx` }}
-              onrowclick={(_event, row) => {
+              on_row_click={(_event, row) => {
                 if (typeof row.site_idx === `number`) on_site_select?.(row.site_idx)
               }}
               {...table_props}

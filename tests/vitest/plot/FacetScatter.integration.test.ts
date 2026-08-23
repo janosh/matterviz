@@ -7,49 +7,8 @@ import BinnedScatterPlot from '$lib/plot/scatter/BinnedScatterPlot.svelte'
 import ScatterPlot from '$lib/plot/scatter/ScatterPlot.svelte'
 import type { DataSeries } from '$lib/plot'
 import { type Component, createRawSnippet, mount, tick, unmount } from 'svelte'
-import { afterAll, afterEach, describe, expect, test, vi } from 'vitest'
-
-const original_resize_observer = globalThis.ResizeObserver
-class ControlledResizeObserver implements ResizeObserver {
-  static instances: ControlledResizeObserver[] = []
-  readonly observed_elements: Element[] = []
-
-  constructor(private readonly callback: ResizeObserverCallback) {
-    ControlledResizeObserver.instances.push(this)
-  }
-
-  observe(element: Element): void {
-    if (!this.observed_elements.includes(element)) this.observed_elements.push(element)
-    queueMicrotask(() => this.notify(element))
-  }
-
-  unobserve(element: Element): void {
-    const element_idx = this.observed_elements.indexOf(element)
-    if (element_idx !== -1) this.observed_elements.splice(element_idx, 1)
-  }
-
-  disconnect(): void {
-    this.observed_elements.length = 0
-  }
-
-  private notify(element: Element): void {
-    if (!this.observed_elements.includes(element)) return
-    const rect =
-      element instanceof HTMLElement
-        ? { width: element.clientWidth, height: element.clientHeight }
-        : {}
-    this.callback(
-      [{ target: element, contentRect: DOMRect.fromRect(rect) } as ResizeObserverEntry],
-      this,
-    )
-  }
-
-  static notify(element: Element): void {
-    for (const observer of ControlledResizeObserver.instances) observer.notify(element)
-  }
-}
-
-globalThis.ResizeObserver = ControlledResizeObserver
+import { afterEach, describe, expect, test, vi } from 'vitest'
+import { trigger_resize_observer } from '../setup'
 
 interface PanelDatum {
   series: DataSeries[]
@@ -62,6 +21,8 @@ interface PlotCase {
   component: FacetPlotComponent
   root_selector: string
   extra_props: Record<string, unknown>
+  // Reshape the shared x/y panel series into the chart's own series type
+  to_series?: (series: DataSeries[]) => unknown[]
 }
 
 const define_plot_case = (
@@ -76,7 +37,10 @@ const define_plot_case = (
   extra_props,
 })
 const standard_props = { show_controls: false, legend: null }
-const histogram_case = define_plot_case(`Histogram`, Histogram, `.histogram`, standard_props)
+const histogram_case: PlotCase = {
+  ...define_plot_case(`Histogram`, Histogram, `.histogram`, standard_props),
+  to_series: (series) => series.map(({ x: _x, y, ...rest }) => ({ ...rest, values: y })),
+}
 const plot_cases: PlotCase[] = [
   define_plot_case(`ScatterPlot`, ScatterPlot, `.scatter`, {
     show_controls: false,
@@ -134,7 +98,7 @@ const mount_facet_plot = async (plot_case: PlotCase, panels = panel_inputs) => {
         plot_mounts += 1
         const props: Record<string, unknown> = {
           ...plot_case.extra_props,
-          series: data.series,
+          series: plot_case.to_series?.(data.series) ?? data.series,
           padding: data.padding,
           x_axis: { label: `Shared x` },
           y_axis: { label: `Shared y` },
@@ -201,12 +165,8 @@ describe(`FacetGrid + Cartesian plots`, () => {
       await unmount(component)
       target.remove()
     }
-    // Svelte's bind:clientWidth shares one ResizeObserver for the whole page, created on the
-    // first mount; clearing `instances` here would disconnect later tests' resizes from it
     vi.restoreAllMocks()
   })
-
-  afterAll(() => void (globalThis.ResizeObserver = original_resize_observer))
 
   test.each(plot_cases)(
     `$name aligns shared ranges and plot rectangles with only outer axes`,
@@ -241,7 +201,7 @@ describe(`FacetGrid + Cartesian plots`, () => {
           clientWidth: { value: width, configurable: true },
           clientHeight: { value: height, configurable: true },
         })
-        ControlledResizeObserver.notify(plot)
+        trigger_resize_observer(plot)
       }
       await tick()
       const expected_offsets = [

@@ -3,9 +3,9 @@ import { MAGNETIC_ORDERING_CATEGORY } from '$lib/convex-hull/types'
 import { IS_CI } from '../helpers'
 import { dom_click, get_canvas_hash, open_controls_pane, open_info_pane } from './utils'
 
-test.describe(`ConvexHull3D (Ternary)`, () => {
+test.describe(`ConvexHullCanvas dim=3 (Ternary)`, () => {
   test.beforeEach(async ({ page }) => {
-    test.skip(IS_CI, `ConvexHull3D tests timeout in CI`)
+    test.skip(IS_CI, `Ternary hull tests timeout in CI`)
     await page.goto(`/convex-hull`, { waitUntil: `networkidle` })
     // Wait for data to load - the ternary-grid only renders after loaded_data.size > 0
     await expect(page.locator(`.ternary-grid`).first()).toBeVisible({ timeout: 15_000 })

@@ -12,8 +12,7 @@
   } from '$lib/convex-hull'
   import {
     ConvexHull2D,
-    ConvexHull3D,
-    ConvexHull4D,
+    ConvexHullCanvas,
     ConvexHullStats,
     GAS_SPECIES,
     process_hull_for_stats,
@@ -23,19 +22,9 @@
     demo_temperatures,
     make_demo_phase,
   } from '$site/convex-hull/demo-temperature'
+  import { hull_system_name, quaternary_files, quinary_files } from '$site/convex-hull'
   import { onMount } from 'svelte'
   import { SvelteMap } from 'svelte/reactivity'
-
-  // vite-plugin-json-gz decompresses at build time, lazy chunks are code-split.
-  // Do NOT use query:'?url': Rolldown doesn't emit .json.gz as assets for globs.
-  const quaternary_files = import.meta.glob<{ default: PhaseData[] }>(
-    `$site/convex-hull/quaternaries/*.json.gz`,
-    { eager: false },
-  )
-  const quinary_files = import.meta.glob<{ default: PhaseData[] }>(
-    `$site/convex-hull/quinaries/*.json.gz`,
-    { eager: false },
-  )
 
   let entries_map = $state(new SvelteMap<string, PhaseData[]>())
   let loaded_data = $state(new SvelteMap<string, PhaseData[]>())
@@ -278,7 +267,7 @@
       .toSorted()
       .map((path) => ({
         path,
-        title: path.split(`/`).pop()?.replace(`.json.gz`, ``) ?? path,
+        title: hull_system_name(path),
       })),
   )
   const selected_quinary_entries = $derived(
@@ -424,7 +413,7 @@
     <h2>Ternary Chemical Systems</h2>
     <div class="ternary-grid">
       {#each ternary_examples as { title, entries } (title)}
-        <ConvexHull3D {entries} controls={{ title }} />
+        <ConvexHullCanvas dim={3} {entries} controls={{ title }} />
       {/each}
     </div>
   </section>
@@ -434,8 +423,9 @@
     {@render feature_list(quaternary_features)}
     <div class="quaternary-grid">
       {#each [...loaded_data.entries()].filter( ([p]) => p.includes(`quaternaries`) ) as [path, data] (path)}
-        {@const title = path.split(`/`).pop()?.split(`.`).shift()?.replace(`.json`, ``)}
-        <ConvexHull4D
+        {@const title = hull_system_name(path)}
+        <ConvexHullCanvas
+          dim={4}
           entries={entries_map.get(path) || data}
           controls={{ title }}
           on_file_drop={handle_file_drop(path)}
@@ -458,7 +448,8 @@
       <h2>Statistics Panel</h2>
       {@render feature_list(stats_features)}
       <div class="stats-example-grid">
-        <ConvexHull3D
+        <ConvexHullCanvas
+          dim={3}
           entries={na_fe_o_entries}
           controls={{ title: `Na-Fe-O with Stats` }}
           bind:phase_stats
@@ -483,7 +474,8 @@
       <h3>Side-by-Side Layout</h3>
       {@render feature_list(side_by_side_features)}
       <div class="side-by-side-example">
-        <ConvexHull3D
+        <ConvexHullCanvas
+          dim={3}
           entries={li_co_ni_o_data}
           controls={{ title: `Li-Co-O` }}
           bind:phase_stats={side_phase_stats}
@@ -520,7 +512,8 @@
             pulse_speed: 4,
           }}
         />
-        <ConvexHull3D
+        <ConvexHullCanvas
+          dim={3}
           entries={na_fe_o_entries}
           controls={{ title: `Na-Fe-O (${highlighted_na_fe_o.length} highlighted)` }}
           highlighted_entries={highlighted_na_fe_o}
@@ -531,7 +524,8 @@
             pulse_speed: 3,
           }}
         />
-        <ConvexHull4D
+        <ConvexHullCanvas
+          dim={4}
           entries={li_co_ni_o_quaternary}
           controls={{ title: `Li-Co-Ni-O (${highlighted_li_co_ni_o.length} highlighted)` }}
           highlighted_entries={highlighted_li_co_ni_o}
@@ -554,7 +548,8 @@
           <div class="marker-legend">
             {#each magnetic_marker_legend as item (item)}<span>{item}</span>{/each}
           </div>
-          <ConvexHull3D
+          <ConvexHullCanvas
+            dim={3}
             entries={magnetic_ternary_entries}
             controls={{ title: `Na-Fe-O Magnetic Orderings` }}
           />
@@ -584,11 +579,13 @@
           controls={{ title: `Li-Fe with G(T)` }}
           style="height: 500px"
         />
-        <ConvexHull3D
+        <ConvexHullCanvas
+          dim={3}
           entries={temp_ternary_entries}
           controls={{ title: `Li-Fe-O with G(T)` }}
         />
-        <ConvexHull4D
+        <ConvexHullCanvas
+          dim={4}
           entries={temp_quaternary_entries}
           controls={{ title: `Li-Fe-Ni-O with G(T)` }}
         />
@@ -616,7 +613,8 @@
           bind:gas_pressures={gas_demo_pressures}
           style="height: 500px"
         />
-        <ConvexHull3D
+        <ConvexHullCanvas
+          dim={3}
           entries={gas_demo_ternary_entries}
           controls={{ title: `Fe-Ni-O with ${selected_demo_gas} Pressure` }}
           gas_config={gas_demo_config}

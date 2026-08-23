@@ -17,7 +17,7 @@
     place_right = true,
     width = 500,
     height = 400,
-    onclose,
+    on_close,
     close_on_outside = true,
     show_drag_handle = true,
     stats,
@@ -30,7 +30,7 @@
     place_right?: boolean
     width?: number
     height?: number
-    onclose?: () => void
+    on_close?: () => void
     close_on_outside?: boolean
     show_drag_handle?: boolean
     stats?: StructurePopupStats
@@ -46,12 +46,12 @@
 </script>
 
 {#snippet close_button()}
-  <button class="close-btn" onclick={() => onclose?.()} title="Close (Esc)">
+  <button class="close-btn" onclick={() => on_close?.()} title="Close (Esc)">
     <Icon icon={Cross} />
   </button>
 {/snippet}
 
-<svelte:window onkeydown={(event) => event.key === `Escape` && onclose?.()} />
+<svelte:window onkeydown={(event) => event.key === `Escape` && on_close?.()} />
 
 <!-- dismiss_on release, not the default press: this floats over a pannable convex-hull
 plot, so starting a pan behind it must not make it vanish under the cursor -->
@@ -59,7 +59,7 @@ plot, so starting a pan behind it must not make it vanish under the cursor -->
   {@attach click_outside({
     enabled: close_on_outside,
     dismiss_on: `release`,
-    callback: () => onclose?.(),
+    callback: () => on_close?.(),
   })}
   {@attach draggable({
     handle_selector: `.drag-handle`,

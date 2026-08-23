@@ -15,6 +15,7 @@ import {
   FermiSurface,
   HeatmapMatrix,
   Histogram,
+  is_plain_object,
   IsobaricBinaryPhaseDiagram,
   PeriodicTable,
   RdfPlot,
@@ -124,22 +125,18 @@ const pick_props = (model: AnyModel, keys: readonly string[]) =>
   Object.fromEntries(keys.map((key) => [key, get_prop(model, key)]))
 
 // Derived prop bundling several traits into one object prop (deps == picked keys),
-// e.g. lattice_props / bands_props / dos_props.
+// e.g. bands_props / dos_props.
 const picked_prop = (name: string, keys: readonly string[]): DrivenProp =>
   derived_prop(name, keys, (model) => pick_props(model, keys))
-
-const as_record = (value: unknown): Record<string, unknown> =>
-  value && typeof value === `object` && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {}
 
 const merge_object_prop = (
   base: unknown,
   key: string,
   value: unknown,
 ): Record<string, unknown> | undefined => {
-  if (value === undefined) return base === undefined ? undefined : as_record(base)
-  return { ...as_record(base), [key]: value }
+  const base_record = is_plain_object(base) ? base : {}
+  if (value === undefined) return base === undefined ? undefined : base_record
+  return { ...base_record, [key]: value }
 }
 
 // Derived prop that folds a flat source trait into a target object trait under sub_key
@@ -166,6 +163,8 @@ const plot_common_prop_keys = [
 ] as const
 
 const plot_common_drive = [...drive_props(plot_common_prop_keys), ...axis_props]
+// Every plot component (the generic plots and the Bands/Dos/XrdPlot/RdfPlot wrappers alike)
+// declares these four controls props and forwards the pane attribute dicts to its PlotControls
 const plot_control_keys = [
   `show_controls`,
   `controls_open`,
@@ -235,12 +234,7 @@ const scene_pick_keys = [
   // via {...scene_props}, not as top-level Structure props
   `show_site_labels`,
   `show_site_indices`,
-] as const
-// All scene traits (deps for the reactive scene_props derived prop); auto_rotate and gizmo
-// are defaulted in get_scene_props rather than picked verbatim.
-const scene_prop_keys = [...scene_pick_keys, `auto_rotate`, `gizmo`] as const
-
-const lattice_prop_keys = [
+  // unit-cell rendering also lives in scene_props
   `cell_edge_opacity`,
   `cell_surface_opacity`,
   `cell_edge_color`,
@@ -248,6 +242,9 @@ const lattice_prop_keys = [
   `cell_edge_width`,
   `show_cell_vectors`,
 ] as const
+// All scene traits (deps for the reactive scene_props derived prop); auto_rotate and gizmo
+// are defaulted in get_scene_props rather than picked verbatim.
+const scene_prop_keys = [...scene_pick_keys, `auto_rotate`, `gizmo`] as const
 
 // Top-level Structure traits the trajectory forwards into its nested structure_props
 // (show_site_labels/show_site_indices are NOT here -- they ride inside scene_props).
@@ -270,7 +267,6 @@ const get_scene_props = (model: AnyModel) => ({
 // Trajectory forwards a fixed config object to its embedded Structure view.
 const get_structure_props = (model: AnyModel) => ({
   scene_props: get_scene_props(model),
-  lattice_props: pick_props(model, lattice_prop_keys),
   ...pick_props(model, traj_structure_prop_keys),
   fullscreen_toggle: false,
 })
@@ -400,7 +396,6 @@ export const WIDGETS: Record<string, WidgetSpec> = {
       writeback_prop(`selected_sites`, []),
       writeback_prop(`hovered_site_idx`),
       derived_prop(`scene_props`, scene_prop_keys, get_scene_props),
-      picked_prop(`lattice_props`, lattice_prop_keys),
     ],
   },
   trajectory: {
@@ -432,7 +427,7 @@ export const WIDGETS: Record<string, WidgetSpec> = {
       writeback_prop(`display_mode`, `structure+scatter`),
       derived_prop(
         `structure_props`,
-        [...scene_prop_keys, ...lattice_prop_keys, ...traj_structure_prop_keys],
+        [...scene_prop_keys, ...traj_structure_prop_keys],
         get_structure_props,
       ),
     ],

@@ -1,5 +1,6 @@
 import ThemeControl from '$lib/theme/ThemeControl.svelte'
 import { mount } from 'svelte'
+import ThemeControlTypeFixture from './ThemeControlTypeFixture.svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
 
@@ -46,5 +47,15 @@ describe(`ThemeControl`, () => {
     const select = doc_query(`select.theme-control.custom-theme-control`)
     expect(select.getAttribute(`data-testid`)).toBe(`theme-select`)
     expect(select.getAttribute(`aria-label`)).toBe(`Select theme`)
+  })
+
+  // The type-level pin lives in ThemeControlTypeFixture.svelte (svelte-check covers tests/):
+  // the native `onchange` is omitted from the props, so `onchange={…}` is a compile error rather
+  // than a handler that silently receives a DOM Event instead of the ThemeMode `on_change` gets
+  test(`on_change replaces the native onchange (fixture mounts and stays silent)`, () => {
+    const on_change = vi.fn()
+    mount(ThemeControlTypeFixture, { target: document.body, props: { on_change } })
+    expect(document.querySelectorAll(`select.theme-control`)).toHaveLength(2)
+    expect(on_change).not.toHaveBeenCalled()
   })
 })

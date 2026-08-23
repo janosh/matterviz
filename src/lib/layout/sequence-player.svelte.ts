@@ -1,4 +1,5 @@
 import { FPS_STEP } from '$lib/constants'
+import { clamp } from '$lib/math'
 import { untrack } from 'svelte'
 
 // Shared playback/navigation for ordered collections. Getter inputs preserve reactivity
@@ -37,7 +38,7 @@ export function create_sequence_player(inputs: SequencePlayerInputs) {
   const normalize_fps = (value: number): number => {
     const finite = Number.isFinite(value) ? value : fps_limits[0]
     const stepped = snap_fps(finite)
-    return Math.max(fps_limits[0], Math.min(fps_limits[1], stepped))
+    return clamp(stepped, fps_limits[0], fps_limits[1])
   }
   const playback_fps = $derived(normalize_fps(inputs.fps()))
 
@@ -49,7 +50,7 @@ export function create_sequence_player(inputs: SequencePlayerInputs) {
   function set_valid_index(index: number, setter: (index: number) => void): void {
     const count = inputs.count()
     if (count < 1 || !Number.isFinite(index)) return
-    const next_index = Math.min(Math.max(Math.round(index), 0), count - 1)
+    const next_index = clamp(Math.round(index), 0, count - 1)
     if (next_index !== inputs.index()) setter(next_index)
   }
 
@@ -128,7 +129,7 @@ export function create_sequence_player(inputs: SequencePlayerInputs) {
         set_playing(false)
         return
       }
-      accumulated_ms += Math.min(Math.max(now - last_timestamp, 0), 250)
+      accumulated_ms += clamp(now - last_timestamp, 0, 250)
       last_timestamp = now
       const step_ms = 1000 / playback_fps
       while (accumulated_ms >= step_ms) {

@@ -1,6 +1,5 @@
 import type { ChemicalElement, ElementSymbol } from '$lib/element'
 import { element_data } from '$lib/element'
-import { escape_csv_field } from '$lib/utils'
 import type { Snippet } from 'svelte'
 
 // Key format for color_overrides lookups: `${x_key}\0${y_key}`
@@ -68,7 +67,7 @@ type ElementAxisOrdering =
 export type HeatmapNormalizeMode = `linear` | `log`
 // auto: data min/max; robust: 2nd-98th percentile; fixed: color_scale_range as given
 export type HeatmapDomainMode = `auto` | `robust` | `fixed`
-export type LegendPosition = `right` | `bottom`
+export type ColorBarPosition = `right` | `bottom`
 export type SymmetricMode = false | `lower` | `upper`
 
 // Tooltip snippet type for HeatmapMatrix
@@ -101,16 +100,6 @@ export function matrix_to_rows(
     }
     return row
   })
-}
-
-export function rows_to_csv(rows: Record<string, number | string | null>[]): string {
-  if (rows.length === 0) return ``
-  const headers = Object.keys(rows[0])
-  const lines = [
-    headers.map((header) => escape_csv_field(header)).join(`,`),
-    ...rows.map((row) => headers.map((header) => escape_csv_field(row[header])).join(`,`)),
-  ]
-  return lines.join(`\n`)
 }
 
 // === Helpers ===

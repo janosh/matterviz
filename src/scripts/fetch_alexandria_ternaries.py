@@ -12,7 +12,7 @@ exported (Alexandria's OPTIMADE backend times out on nelements=1 queries), so `e
 formation energy per cell relative to Alexandria's elemental references, which places the pure
 elements at 0 eV/atom exactly as the viewer's synthetic corners assume.
 
-Run with: uv run src/site/phase-diagrams/ternary/fetch-alexandria-ternaries.py
+Run with: uv run src/scripts/fetch_alexandria_ternaries.py
 """
 
 from __future__ import annotations
@@ -22,6 +22,7 @@ import itertools
 import json
 import os
 import time
+from collections import Counter
 from typing import Any
 from urllib.parse import urlparse
 
@@ -35,7 +36,7 @@ RESPONSE_FIELDS = (
     "_alexandria_hull_distance,_alexandria_energy_corrected,_alexandria_space_group,"
     "_alexandria_band_gap,_alexandria_magnetization"
 )
-# Demo categories for these live in index.ts next to this script
+# Demo categories for these live in src/site/phase-diagrams/ternary/index.ts
 SYSTEMS = (
     "Li-Co-O",
     "Li-Mn-O",
@@ -50,7 +51,7 @@ SYSTEMS = (
     "Ti-N-O",
     "Cu-Zn-O",
 )
-out_dir = os.path.dirname(os.path.abspath(__file__))
+out_dir = f"{os.path.dirname(os.path.abspath(__file__))}/../site/phase-diagrams/ternary"
 
 
 def fetch_subsystem(elements: tuple[str, ...]) -> list[dict[str, Any]]:
@@ -109,9 +110,7 @@ def volume_per_atom(lattice: list[list[float]], n_sites: int) -> float:
 def to_entry(item: dict[str, Any]) -> dict[str, Any]:
     """Convert one OPTIMADE structure into a slim matterviz convex-hull entry."""
     attrs = item["attributes"]
-    composition: dict[str, int] = {}
-    for species in attrs["species_at_sites"]:
-        composition[species] = composition.get(species, 0) + 1
+    composition = dict(Counter(attrs["species_at_sites"]))
     n_sites = attrs["nsites"]
     e_form = attrs["_alexandria_formation_energy_per_atom"]
     e_hull = attrs["_alexandria_hull_distance"]
@@ -134,7 +133,7 @@ def to_entry(item: dict[str, Any]) -> dict[str, Any]:
 
 
 def main() -> None:
-    """Fetch every system into <A-B-C>.json.gz next to this script."""
+    """Fetch every system into <A-B-C>.json.gz under src/site/phase-diagrams/ternary."""
     for system in SYSTEMS:
         elements = tuple(system.split("-"))
         filename = f"{out_dir}/{system}.json.gz"

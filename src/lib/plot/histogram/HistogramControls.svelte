@@ -2,7 +2,7 @@
   // NOTE: Axis config objects must be reassigned (not mutated) to trigger $bindable reactivity.
   import { NumberRangeInput, SettingsSection } from '$lib/layout'
   import type { Vec2 } from '$lib/math'
-  import type { BarStyle, DataSeries, PlotConfig } from '$lib/plot'
+  import type { BarStyle, HistogramSeries, PlotConfig } from '$lib/plot'
   import { PlotControls } from '$lib/plot'
   import type { PlotControlsProps } from '$lib/plot/core/types'
   import { HISTOGRAM_NORMALIZE, type HistogramNormalize } from '$lib/plot/histogram/histogram'
@@ -35,7 +35,7 @@
     ...rest
   }: Omit<PlotControlsProps, `children` | `post_children`> & {
     // Series data for multi-series controls
-    series?: readonly DataSeries[]
+    series?: readonly HistogramSeries[]
     // Histogram-specific controls
     bins?: number
     normalize?: HistogramNormalize

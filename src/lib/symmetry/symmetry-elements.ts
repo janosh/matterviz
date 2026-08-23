@@ -17,6 +17,7 @@
 //   part of (W, w_loc)ⁿ vanishes, the average of {0, (W,w_loc)·0, …} is exactly fixed
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
+import { wrap_to_unit_cell } from '$lib/structure/pbc'
 import type { MoyoDataset } from '@spglib/moyo-wasm'
 
 // All element kinds in display order (axes first, then planes, then point elements).
@@ -47,6 +48,10 @@ export type SymmetryElement = {
   point: Vec3
   // Intrinsic screw/glide translation in fractional coordinates (null if none)
   translation: Vec3 | null
+  // Lattice-invariant key of the element's geometric locus (the axis line, the plane, or the
+  // center), independent of kind/label: a 2-fold, a 4_2 screw and a -4 on the same line share
+  // it, which is how renderers find sub-axes to hide. See element_locus_key.
+  locus: string
 }
 
 // Per-kind overlay visibility. Kinds absent from the record are hidden.
@@ -58,20 +63,38 @@ export type ShowSymmetryKinds = Partial<Record<SymmetryElementKind, boolean>>
 // SymmetryElementControls (or the show_kinds prop).
 export const DEFAULT_SHOW_SYM_KINDS: ShowSymmetryKinds = { rotation: true }
 
-// Human-readable labels + representative legend colors per kind. mirror/glide/
-// rotoinversion/inversion match the SymmetryElements.svelte render colors exactly;
-// rotation/screw axes are colored by rotation order in-scene, so their swatch uses the
-// 2-fold color as representative.
+// moyo's operations live in the input-cell frame, so the viewer blanks the overlay while a
+// conventional/primitive cell is rendered. Shown by SymmetryElementControls and toasted by
+// the structure viewer when the cell is switched with the overlay on.
+export const SYM_ELEMENTS_INPUT_FRAME_NOTE = `Symmetry elements are drawn only in the original (input) cell`
+
+// Default render colors of SymmetryElements.svelte, the single source for the legend swatches
+// too. Axes (rotation, screw, rotoinversion) are colored by rotation order in-scene.
+export const SYM_ELEM_COLORS = {
+  axis_by_order: { 2: `#e63946`, 3: `#2a9d8f`, 4: `#3a6fb0`, 6: `#9c27b0` } as Record<
+    number,
+    string
+  >,
+  mirror: `#ffb703`,
+  glide: `#8ecae6`,
+  inversion: `#555555`,
+}
+// Legend swatch for the order-colored axis kinds: the whole order palette, 2 → 6
+const axis_palette = Object.values(SYM_ELEM_COLORS.axis_by_order).join(`, `)
+const AXIS_SWATCH = `linear-gradient(90deg, ${axis_palette})`
+
+// Human-readable labels + legend swatch (a CSS background) per kind, matching what
+// SymmetryElements.svelte renders by default
 export const SYM_ELEM_KIND_INFO: Record<
   SymmetryElementKind,
   { label: string; color: string }
 > = {
-  rotation: { label: `rotation axes`, color: `#e63946` },
-  screw: { label: `screw axes`, color: `#e76f51` },
-  mirror: { label: `mirror planes`, color: `#ffb703` },
-  glide: { label: `glide planes`, color: `#8ecae6` },
-  rotoinversion: { label: `rotoinversion axes`, color: `#9c27b0` },
-  inversion: { label: `inversion centers`, color: `#555555` },
+  rotation: { label: `rotation axes`, color: AXIS_SWATCH },
+  screw: { label: `screw axes`, color: AXIS_SWATCH },
+  mirror: { label: `mirror planes`, color: SYM_ELEM_COLORS.mirror },
+  glide: { label: `glide planes`, color: SYM_ELEM_COLORS.glide },
+  rotoinversion: { label: `rotoinversion axes`, color: AXIS_SWATCH },
+  inversion: { label: `inversion centers`, color: SYM_ELEM_COLORS.inversion },
 }
 
 // Tally elements per kind (for legend labels like "mirror planes (9)")
@@ -193,21 +216,6 @@ function fixed_point(mat: Matrix3x3, w_loc: Vec3, order: number): Vec3 {
   return sum.map((val) => val / order) as Vec3
 }
 
-// NOTE on epsilon: 1e-8 is the loosest of three intentionally different wrap
-// helpers (vs wrap_frac_coord @1e-10 [[src/lib/structure/pbc.ts:26]] for parsed
-// coords and wrap_frac @1e-9 [[src/lib/symmetry/wyckoff.ts]] for standardized
-// Wyckoff positions). Inputs here are fixed points / intercepts obtained by
-// solving linear systems and averaging over operation order, so float error is
-// largest; the result feeds toFixed()-based dedup keys for symmetry elements,
-// which need both near-0 and near-1 snapped onto exactly 0 to stay stable near
-// cell boundaries. Do not unify: tightening this epsilon breaks element dedup.
-const wrap_point = (pos: Vec3): Vec3 =>
-  pos.map((coord) => {
-    const wrapped = coord - Math.floor(coord) // always in [0, 1)
-    // snap near-0 and near-1 (which wraps to near-0) onto exactly 0
-    return wrapped < 1e-8 || wrapped > 1 - 1e-8 ? 0 : wrapped
-  }) as Vec3
-
 // Enumerate lattice translations invariant under W (lying along the axis / in the
 // plane), including centering vectors of non-primitive cells (I/F/A/B/C/R): without
 // them, e.g. the body-centering (1/2,1/2,1/2) period along ⟨111⟩ axes is missed and
@@ -263,8 +271,6 @@ function glide_letter(glide_vec: Vec3): string {
   if (is_int(glide_vec.map((val) => val * 4))) return `d`
   return `g`
 }
-
-type ClassifiedOperation = Omit<SymmetryElement, `point`> & { point: Vec3 }
 
 // All translation-independent data derived from a rotation matrix W (plus centerings).
 // Cached per distinct W in symmetry_elements_from_ops: supercell inputs can carry
@@ -326,11 +332,7 @@ function line_covectors(axis: Vec3): [Vec3, Vec3] {
   candidates.sort((vec_a, vec_b) => math.dot(vec_a, vec_a) - math.dot(vec_b, vec_b))
   for (const first of candidates) {
     for (const second of candidates) {
-      const cross: Vec3 = [
-        first[1] * second[2] - first[2] * second[1],
-        first[2] * second[0] - first[0] * second[2],
-        first[0] * second[1] - first[1] * second[0],
-      ]
+      const cross = math.cross_3d(first, second)
       // cross === ±axis exactly. Testing each sign as a whole rules out a mixed-sign
       // match like (1, -1, 0) against (1, 1, 0), which is not a scalar multiple.
       const is_multiple = (sign: number) => cross.every((val, idx) => val === sign * axis[idx])
@@ -460,15 +462,46 @@ function build_rotation_info(
   }
 }
 
+// Canonical key for the geometric locus of an element at `point` with rotation data `info`.
+// Elements are identified modulo lattice translations:
+// - inversion centers: the wrapped center
+// - planes: (normal, offset s = x₀·normal mod 1) — lattice translations change s by an
+//   integer since the normal is an integer vector
+// - axis lines: (direction, covector coordinates of x₀ mod 1) — wrapping merges
+//   lattice-equivalent parallel lines, see line_covectors
+function element_locus_key(point: Vec3, info: RotationInfo): string {
+  // Snap both ends of [0, 1): a wrapped coordinate at 1 - 1e-9 is the same lattice point as
+  // 0 (wrap_to_unit_cell only snaps within 1e-10)
+  const fmt = (val: number) =>
+    (Math.abs(val) < 1e-4 || Math.abs(val - 1) < 1e-4 ? 0 : val).toFixed(4)
+  // Fractional coordinate of an integer covector against the element point, mod 1. Both
+  // operands are lattice quantities, so a lattice translation shifts this by an integer
+  // and the wrapped value is invariant — which is what "modulo lattice translations" needs.
+  const covector_coord = (covector: Vec3) => {
+    const raw = math.dot(point, covector)
+    return fmt(raw - Math.floor(raw + 1e-6))
+  }
+  if (info.axis === null) return `center|${point.map(fmt).join(`,`)}`
+  const axis_key = info.axis.join(`,`)
+  if (info.kind === `mirror`) {
+    if (!info.normal_eq) throw new Error(`Plane element has no plane-equation normal`)
+    return `plane|${axis_key}|${covector_coord(info.normal_eq)}`
+  }
+  if (!info.covectors) throw new Error(`Axis element has no covector basis`)
+  const [first, second] = info.covectors
+  return `line|${axis_key}|${covector_coord(first)},${covector_coord(second)}`
+}
+
 // Classify the operation (info.mat, w) given precomputed rotation-dependent data
-function classify_with_rotation_info(info: RotationInfo, w: Vec3): ClassifiedOperation {
+function classify_with_rotation_info(info: RotationInfo, w: Vec3): SymmetryElement {
   const { mat, proj, mat_order, kind, order, axis } = info
   const w_intrinsic = math.mat3x3_vec3_multiply(proj, w)
   const w_loc = math.subtract(w, w_intrinsic)
-  const point = wrap_point(fixed_point(mat, w_loc, mat_order))
+  const point = wrap_to_unit_cell(fixed_point(mat, w_loc, mat_order))
+  const locus = element_locus_key(point, info)
 
   if (kind === `inversion`) {
-    return { kind, order: 1, label: `-1`, axis: null, point, translation: null }
+    return { kind, order: 1, label: `-1`, axis: null, point, translation: null, locus }
   }
 
   if (kind === `proper`) {
@@ -486,6 +519,7 @@ function classify_with_rotation_info(info: RotationInfo, w: Vec3): ClassifiedOpe
       axis,
       point,
       translation: is_screw ? ((axis as Vec3).map((val) => val * lambda) as Vec3) : null,
+      locus,
     }
   }
 
@@ -499,11 +533,12 @@ function classify_with_rotation_info(info: RotationInfo, w: Vec3): ClassifiedOpe
       axis,
       point,
       translation: is_glide ? glide_vec : null,
+      locus,
     }
   }
 
   // Rotoinversion −3/−4/−6 (no intrinsic translation: P = 0, so w_i = 0)
-  return { kind, order, label: `-${order}`, axis, point, translation: null }
+  return { kind, order, label: `-${order}`, axis, point, translation: null, locus }
 }
 
 // Classify a single operation (rotation as flat column-major 9-array, translation
@@ -516,37 +551,9 @@ export function classify_symmetry_op(
   rotation: readonly number[],
   translation: readonly number[],
   centerings: readonly Vec3[] = [],
-): ClassifiedOperation | null {
+): SymmetryElement | null {
   const info = build_rotation_info(rotation, centerings)
   return info ? classify_with_rotation_info(info, translation as Vec3) : null
-}
-
-// Canonical dedup key for the geometric locus of an element. Elements are identified
-// modulo lattice translations:
-// - inversion centers: the wrapped center
-// - planes: (normal, offset s = x₀·normal mod 1) — lattice translations change s by an
-//   integer since the normal is an integer vector
-// - axis lines: (direction, line intercept x₀ − λ·u wrapped mod 1) — wrapping merges
-//   lattice-equivalent parallel lines
-function element_locus_key(elem: ClassifiedOperation, info: RotationInfo): string {
-  const fmt = (val: number) => (Math.abs(val) < 1e-4 ? 0 : val).toFixed(4)
-  // Fractional coordinate of an integer covector against the element point, mod 1. Both
-  // operands are lattice quantities, so a lattice translation shifts this by an integer
-  // and the wrapped value is invariant — which is what "modulo lattice translations" needs.
-  const covector_coord = (covector: Vec3) => {
-    const raw = math.dot(elem.point, covector)
-    const wrapped = raw - Math.floor(raw + 1e-6)
-    return fmt(wrapped >= 1 - 1e-4 ? 0 : wrapped)
-  }
-  if (elem.axis === null) return `center|${elem.point.map(fmt).join(`,`)}`
-  const axis_key = elem.axis.join(`,`)
-  if (elem.kind === `mirror` || elem.kind === `glide`) {
-    if (!info.normal_eq) throw new Error(`Plane element has no plane-equation normal`)
-    return `plane|${axis_key}|${covector_coord(info.normal_eq)}`
-  }
-  if (!info.covectors) throw new Error(`Axis element has no covector basis`)
-  const [first, second] = info.covectors
-  return `line|${axis_key}|${covector_coord(first)},${covector_coord(second)}`
 }
 
 // Derive all distinct symmetry elements (modulo lattice translations) from a list of
@@ -566,7 +573,7 @@ export function symmetry_elements_from_ops(
   const centerings: Vec3[] = []
   for (const { rotation, translation } of operations) {
     if (!is_identity(mat_round(mat3_from_flat_col_major(rotation)))) continue
-    const wrapped = wrap_point(translation)
+    const wrapped = wrap_to_unit_cell(translation)
     if (is_zero_vec(wrapped)) continue
     const key = wrapped.map((val) => val.toFixed(6)).join(`,`)
     if (centering_keys.has(key)) continue
@@ -591,7 +598,7 @@ export function symmetry_elements_from_ops(
         for (let dz = 0; dz <= 1; dz++) {
           const shifted: Vec3 = [translation[0] + dx, translation[1] + dy, translation[2] + dz]
           const elem = classify_with_rotation_info(info, shifted)
-          const key = `${elem.kind}|${elem.label}|${element_locus_key(elem, info)}`
+          const key = `${elem.kind}|${elem.label}|${elem.locus}`
           if (!seen.has(key)) seen.set(key, elem)
         }
       }
@@ -642,8 +649,8 @@ export function clip_line_to_cell(
   point: Vec3,
   direction: Vec3,
   lattice: Matrix3x3,
-  eps = 1e-9,
 ): [Vec3, Vec3] | null {
+  const eps = 1e-9
   let t_min = -Infinity
   let t_max = Infinity
   for (let dim = 0; dim < 3; dim++) {
@@ -659,11 +666,9 @@ export function clip_line_to_cell(
   if (t_min >= t_max - eps || !Number.isFinite(t_min) || !Number.isFinite(t_max)) {
     return null
   }
+  const to_cart = math.create_frac_to_cart(lattice)
   const endpoint = (t_param: number): Vec3 =>
-    frac_to_cart_direction(
-      point.map((coord, idx) => coord + t_param * direction[idx]) as Vec3,
-      lattice,
-    )
+    to_cart(point.map((coord, idx) => coord + t_param * direction[idx]) as Vec3)
   return [endpoint(t_min), endpoint(t_max)]
 }
 
@@ -677,7 +682,8 @@ export function clip_plane_to_cell(
   normal_frac: Vec3,
   lattice: Matrix3x3,
 ): Vec3[] {
-  const normal_cart = frac_to_cart_direction(normal_frac, lattice)
+  const to_cart = math.create_frac_to_cart(lattice)
+  const normal_cart = to_cart(normal_frac)
   const n_eq: Vec3 = [
     math.dot(lattice[0], normal_cart),
     math.dot(lattice[1], normal_cart),
@@ -709,7 +715,7 @@ export function clip_plane_to_cell(
     const key = frac.map((val) => val.toFixed(6)).join(`,`)
     if (seen.has(key)) continue
     seen.add(key)
-    cart_points.push(frac_to_cart_direction(frac, lattice))
+    cart_points.push(to_cart(frac))
   }
   if (cart_points.length < 3) return []
 

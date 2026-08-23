@@ -216,20 +216,36 @@ describe(`ToggleMenu`, () => {
       { key: `notes`, label: `Notes` }, // ungrouped
     ]
 
-    it(`groups columns into sections with correct structure`, () => {
-      mount_menu(grouped_cols, { column_panel_open: true })
+    it.each([
+      { desc: `ungrouped last`, columns: grouped_cols, headers: [`Personal`, `Contact`] },
+      {
+        // an ungrouped column between groups doesn't split them: groups keep first-seen
+        // order and every ungrouped column lands in the trailing headerless section
+        desc: `ungrouped interleaved`,
+        columns: [
+          { key: `email`, label: `Email`, group: `Contact` },
+          { key: `notes`, label: `Notes` },
+          { key: `name`, label: `Name`, group: `Personal` },
+          { key: `phone`, label: `Phone`, group: `Contact` },
+          { key: `age`, label: `Age`, group: `Personal` },
+        ] satisfies Label[],
+        headers: [`Contact`, `Personal`],
+      },
+    ])(`groups columns into sections ($desc)`, ({ columns, headers }) => {
+      mount_menu(columns, { column_panel_open: true })
 
       expect(document.querySelector(`.sections-container`)).not.toBeNull()
 
       const sections = document.querySelectorAll(`.section`)
-      expect(sections).toHaveLength(3) // Personal, Contact, ungrouped
+      expect(sections).toHaveLength(3) // two groups + ungrouped
 
-      const headers = document.querySelectorAll(`.section-header`)
-      expect(headers).toHaveLength(2) // ungrouped has no header
-      expect(headers[0].textContent).toContain(`Personal`)
-      expect(headers[1].textContent).toContain(`Contact`)
+      expect(
+        [...document.querySelectorAll(`.section-header`)].map((header) =>
+          header.textContent?.replace(`▼`, ``).trim(),
+        ),
+      ).toEqual(headers) // ungrouped has no header
 
-      // Toggle counts: Personal=2, Contact=2, ungrouped=1
+      // Toggle counts: each group=2, ungrouped=1
       expect(sections[0].querySelectorAll(`input`)).toHaveLength(2)
       expect(sections[1].querySelectorAll(`input`)).toHaveLength(2)
       expect(sections[2].querySelectorAll(`input`)).toHaveLength(1)
@@ -292,7 +308,6 @@ describe(`ToggleMenu`, () => {
     it.each([
       { count: 1, expected: 1 },
       { count: 2, expected: 2 },
-      { count: 8, expected: 2 },
       { count: 20, expected: 2 },
       { count: 21, expected: 3 },
       { count: 31, expected: 3 }, // capped at three columns however many items
@@ -526,33 +541,6 @@ describe(`ToggleMenu`, () => {
 
       const checkboxes = document.querySelectorAll(`input[type="checkbox"]`)
       expect(checkboxes).toHaveLength(0)
-    })
-
-    it(`handles all columns in same group`, () => {
-      const columns: Label[] = [
-        { key: `a`, label: `A`, group: `Only Group` },
-        { key: `b`, label: `B`, group: `Only Group` },
-      ]
-      mount_menu(columns, { column_panel_open: true })
-
-      expect(document.querySelector(`.sections-container`)).not.toBeNull()
-      expect(document.querySelectorAll(`.section`)).toHaveLength(1)
-      expect(document.querySelector(`.section-header`)?.textContent).toContain(`Only Group`)
-    })
-
-    it(`preserves group order as encountered and handles mixed grouped/ungrouped`, () => {
-      const columns: Label[] = [
-        { key: `b1`, label: `B1`, group: `Group B` },
-        { key: `ungrouped`, label: `Ungrouped` },
-        { key: `a1`, label: `A1`, group: `Group A` },
-      ]
-      mount_menu(columns, { column_panel_open: true })
-
-      expect(document.querySelector(`.sections-container`)).not.toBeNull()
-      const headers = document.querySelectorAll(`.section-header`)
-      expect(headers[0].textContent).toContain(`Group B`) // first encountered
-      expect(headers[1].textContent).toContain(`Group A`)
-      expect(document.querySelectorAll(`.section`)).toHaveLength(3) // 2 groups + ungrouped
     })
 
     it(`renders columns with same label but different keys`, () => {

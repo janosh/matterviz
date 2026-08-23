@@ -4,12 +4,23 @@ import {
   type FreeAnnotationDecorationItem,
   type PlotTitleLineKind,
 } from '$lib/plot'
+import { execFileSync } from 'node:child_process'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { describe, expect, expectTypeOf, test } from 'vitest'
 
 const repo_root = resolve(import.meta.dirname, `../..`)
 const lib_dir = join(repo_root, `src/lib`)
+const dist_dir = join(repo_root, `dist`)
+// `prepare` only runs svelte-kit sync; the svelte-package output is an explicit build step.
+// Locally the built-output checks skip; CI builds dist first, so a missing dist there means
+// the checks would silently stop running
+const has_dist = existsSync(join(dist_dir, `index.js`))
+if (!has_dist) {
+  if (process.env.CI)
+    throw new Error(`dist/ missing — run pnpm package:dist before the unit tests`)
+  console.warn(`dist/ not built: skipping built-output checks (run \`pnpm package:dist\`)`)
+}
 const pkg = JSON.parse(readFileSync(join(repo_root, `package.json`), `utf8`)) as {
   exports: Record<string, string | Record<string, string>>
   sideEffects: string[]
@@ -91,14 +102,45 @@ describe(`package.json exports`, () => {
     expect(resolve_plot_title({ text: `Title` }, { width: 100 }).lines[0]?.kind).toBe(`title`)
   })
 
-  test(`worker-backed parser ships its sibling worker entry`, () => {
-    expect(existsSync(join(repo_root, `dist/file-viewer/parse-worker.js`))).toBe(true)
+  test.skipIf(!has_dist)(`worker-backed parser ships its sibling worker entry`, () => {
+    expect(existsSync(join(dist_dir, `file-viewer/parse-worker.js`))).toBe(true)
+  })
+
+  // svelte-package copies whatever sits in src/lib, gitignored or not: an ignored local dir
+  // must never reach dist/ (and from there the npm tarball).
+  // Untracked-but-not-ignored sources (new files awaiting a commit) count as sources.
+  test.skipIf(!has_dist)(`every dist/ top-level entry comes from a src/lib source`, () => {
+    const git_args = [
+      `ls-files`,
+      `--cached`,
+      `--others`,
+      `--exclude-standard`,
+      `--`,
+      `src/lib`,
+    ]
+    const source_stems = new Set(
+      execFileSync(`git`, git_args, { cwd: repo_root, encoding: `utf8` })
+        .split(`\n`)
+        .filter(Boolean)
+        // `utils.ts` -> utils, `effects.svelte.ts` -> effects.svelte, `Foo.svelte` -> Foo.svelte
+        .map((file) =>
+          file
+            .slice(`src/lib/`.length)
+            .split(`/`)[0]
+            .replace(/\.(?:ts|js|mjs)$/, ``),
+        ),
+    )
+    const orphans = readdirSync(dist_dir).filter(
+      (entry) =>
+        !entry.startsWith(`.`) && !source_stems.has(entry.replace(/\.d\.ts$|\.js$/, ``)),
+    )
+    expect(orphans, `dist/ entries without a src/lib source`).toEqual([])
   })
 
   // I/O-bound, not logic: dynamically importing the svelte-package output in dist/ (the
   // structure export pulls in three.js) shares disk and CPU with every other worker under a
   // full-suite run, where 15 s was not always enough.
-  test(
+  test.skipIf(!has_dist)(
     `built structure and element entry points retain strict public exports`,
     { timeout: 60_000 },
     async () => {
@@ -109,12 +151,8 @@ describe(`package.json exports`, () => {
       })
       expect(Object.keys(structure_export).toSorted()).toEqual(
         [
-          `convert_instanced_meshes_to_regular`,
           `create_structure_filename`,
           `export_structure_as`,
-          `export_structure_as_glb`,
-          `export_structure_as_obj`,
-          `generate_mtl_content`,
           `STRUCT_TEXT_FORMATS`,
           `structure_to_cif_str`,
           `structure_to_json_str`,
@@ -144,21 +182,25 @@ describe(`package.json exports`, () => {
     },
   )
 
-  test(`symmetry builds retain default and overridable WASM resolution`, () => {
-    const source = readFileSync(join(repo_root, `dist/symmetry/analyze.js`), `utf8`)
-    // undefined must reach init() untouched so wasm-bindgen resolves the .wasm next to its
-    // glue module; the anywidget build below rewrites that resolution to a CDN/host URL
-    expect(source).toMatch(
-      /init\(source === undefined \? undefined : \{ module_or_path: source \}\)/,
-    )
-    expect(source).not.toContain(`moyo_wasm_bg.wasm`)
-    const widget_config = readFileSync(
-      `${repo_root}/extensions/anywidget/vite.config.ts`,
-      `utf8`,
-    )
-    expect(widget_config).toContain(`globalThis.matterviz_moyo_wasm_url ??`)
-    expect(widget_config).toContain(`code.replace(moyo_glue_url, moyo_wasm_source)`)
-  })
+  test.skipIf(!has_dist)(
+    `symmetry builds retain default and overridable WASM resolution`,
+    () => {
+      const source = readFileSync(join(dist_dir, `symmetry/analyze.js`), `utf8`)
+      // undefined must reach init() untouched so wasm-bindgen resolves the .wasm next to its
+      // glue module; the anywidget build rewrites that resolution to a CDN/host URL via the
+      // shared moyo plugin in src/vite-plugins.ts
+      expect(source).toMatch(
+        /init\(source === undefined \? undefined : \{ module_or_path: source \}\)/,
+      )
+      expect(source).not.toContain(`moyo_wasm_bg.wasm`)
+      const widget_config = readFileSync(
+        `${repo_root}/extensions/anywidget/vite.config.ts`,
+        `utf8`,
+      )
+      expect(widget_config).toContain(`globalThis.matterviz_moyo_wasm_url ??`)
+      expect(widget_config).toContain(`vite_plugin_moyo_wasm_source(`)
+    },
+  )
 
   test(`embedded theme side effects stay isolated from the normal theme barrel`, () => {
     const source = readFileSync(join(lib_dir, `theme/index.ts`), `utf8`)

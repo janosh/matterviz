@@ -2,6 +2,8 @@ import type { Vec2 } from '$lib/math'
 import * as math from '$lib/math'
 import {
   accumulate_extent,
+  collect_scale_values,
+  collect_size_values,
   create_color_scale,
   create_scale,
   empty_extent,
@@ -276,6 +278,30 @@ describe(`scales`, () => {
           }
         }
       }
+    })
+  })
+
+  describe(`collect_scale_values / collect_size_values`, () => {
+    test.each([
+      [`plain arrays`, [{ size_values: [1, 2, 3] }, { size_values: [4] }], [1, 2, 3, 4]],
+      [`skips null/NaN/Infinity`, [{ size_values: [1, null, NaN, Infinity, 5] }], [1, 5]],
+      [`typed arrays`, [{ size_values: new Float32Array([2, 8]) }], [2, 8]],
+      [`null series and missing sizes`, [null, undefined, {}, { size_values: null }], []],
+    ])(`%s`, (_desc, series, expected) => {
+      expect(collect_size_values(series)).toEqual(expected)
+      // the size-only pass matches the combined colour+size pass
+      expect(collect_scale_values(series).size_values).toEqual(expected)
+    })
+
+    test(`colour extent ignores nulls and non-finite values`, () => {
+      const { color_extent, color_range } = collect_scale_values([
+        { color_values: [3, null, NaN, 9] },
+        null,
+        { color_values: new Float64Array([-1, Infinity]) },
+      ])
+      expect(color_extent).toEqual({ min: -1, max: 9, n_finite: 3 })
+      expect(color_range).toEqual([-1, 9])
+      expect(collect_scale_values([{}]).color_range).toEqual([0, 1])
     })
   })
 
@@ -599,15 +625,11 @@ describe(`scales`, () => {
       expect(ticks.every((tick) => tick >= -100 && tick <= 100)).toBe(true)
     })
 
-    test.each([
-      [0, `arcsinh threshold must be a positive finite number, got 0`],
-      [-1, `arcsinh threshold must be a positive finite number, got -1`],
-      [-0.001, `arcsinh threshold must be a positive finite number, got -0.001`],
-      [NaN, `arcsinh threshold must be a positive finite number, got NaN`],
-      [Infinity, `arcsinh threshold must be a positive finite number, got Infinity`],
-      [-Infinity, `arcsinh threshold must be a positive finite number, got -Infinity`],
-    ])(`throws for invalid threshold %s`, (threshold, error_msg) => {
+    // scale_arcsinh and get_arcsinh_threshold share the validation, so one table covers both
+    test.each([0, -1, NaN, Infinity])(`throws for invalid threshold %s`, (threshold) => {
+      const error_msg = `arcsinh threshold must be a positive finite number, got ${threshold}`
       expect(() => scale_arcsinh(threshold)).toThrow(error_msg)
+      expect(() => get_arcsinh_threshold({ type: `arcsinh`, threshold })).toThrow(error_msg)
     })
   })
 
@@ -738,17 +760,6 @@ describe(`scales`, () => {
       [undefined, 1],
     ])(`get_arcsinh_threshold(%s) = %s`, (input, expected) => {
       expect(get_arcsinh_threshold(input as ScaleType | undefined)).toBe(expected)
-    })
-
-    test.each([
-      [0, `arcsinh threshold must be a positive finite number, got 0`],
-      [-1, `arcsinh threshold must be a positive finite number, got -1`],
-      [-0.5, `arcsinh threshold must be a positive finite number, got -0.5`],
-      [NaN, `arcsinh threshold must be a positive finite number, got NaN`],
-      [Infinity, `arcsinh threshold must be a positive finite number, got Infinity`],
-      [-Infinity, `arcsinh threshold must be a positive finite number, got -Infinity`],
-    ])(`get_arcsinh_threshold throws for invalid threshold %s`, (threshold, error_msg) => {
-      expect(() => get_arcsinh_threshold({ type: `arcsinh`, threshold })).toThrow(error_msg)
     })
   })
 

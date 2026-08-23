@@ -9,6 +9,7 @@
     PeriodicTableDemo,
     PhononSpectraDemo,
   } from '$site'
+  import { site_file_info } from '$site/imports'
   import { molecule_files } from '$site/molecules'
   import { structure_files } from '$site/structures'
   import { get_trajectory_type, trajectory_files } from '$site/trajectories'
@@ -131,10 +132,7 @@
 </p>
 
 <FilePicker
-  files={Object.keys(trajectory_files).map((file_path) => ({
-    name: file_path.split(`/`).pop() || file_path,
-    url: file_path.split(`/site`).at(-1) || ``,
-  }))}
+  files={Object.keys(trajectory_files).map((path) => site_file_info(path))}
   show_category_filters={false}
   type_mapper={get_trajectory_type}
   active_files={[active_trajectory_file]}

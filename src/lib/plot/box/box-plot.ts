@@ -3,7 +3,7 @@
 
 import { ascending } from 'd3-array'
 import type { Vec2 } from '$lib/math'
-import { quantile_unordered } from '$lib/math'
+import { array_extent, mean as mean_of, quantile_unordered, sample_std } from '$lib/math'
 import type { HandlerProps } from '$lib/plot/core/types'
 import { DEFAULTS } from '$lib/settings'
 import { clamp01 } from '$lib/utils'
@@ -155,15 +155,8 @@ export function compute_box_stats(
   const n_vals = vals.length
   if (n_vals === 0) return { ...EMPTY_STATS, outliers: [] }
 
-  let sum = 0
-  let data_min = Infinity
-  let data_max = -Infinity
-  for (const val of vals) {
-    sum += val
-    if (val < data_min) data_min = val
-    if (val > data_max) data_max = val
-  }
-  const mean = sum / n_vals
+  const [data_min, data_max] = array_extent(vals)
+  const mean = mean_of(vals)
 
   const qtl = (prob: number): number => quantile_unordered(vals, prob)
   const collect_beyond = (lo: number, hi: number): number[] =>
@@ -188,12 +181,7 @@ export function compute_box_stats(
     whisker_high = qtl(clamp01(pct_high / 100))
     outliers = collect_beyond(whisker_low, whisker_high)
   } else if (whisker_mode === `std`) {
-    let variance_sum = 0
-    for (const val of vals) {
-      const delta = val - mean
-      variance_sum += delta * delta
-    }
-    const std = n_vals > 1 ? Math.sqrt(variance_sum / (n_vals - 1)) : 0
+    const std = sample_std(vals)
     const low_bound = mean - whisker_range * std
     const high_bound = mean + whisker_range * std
     // Clamp whisker ends to the data extent so they never extend past real values

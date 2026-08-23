@@ -3,7 +3,7 @@
   import type { ComponentProps } from 'svelte'
   import { SvelteSet } from 'svelte/reactivity'
 
-  // Extra JsonTree props (editable, oncopy, ...) forwarded as-is
+  // Extra JsonTree props (editable, on_copy, ...) forwarded as-is
   let rest: Partial<ComponentProps<typeof JsonTree>> = $props()
 
   let value = $state<Record<string, Record<string, string>>>({

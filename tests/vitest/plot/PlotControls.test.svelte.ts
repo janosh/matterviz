@@ -110,6 +110,21 @@ describe(`PlotControls`, () => {
       expect(input.classList.contains(`invalid`)).toBe(!valid)
     })
 
+    test(`reset restores the format the axis was mounted with`, () => {
+      const state = $state<{ x_axis: { format?: string } }>({ x_axis: { format: `.3f` } })
+      mount_controls(bind_props({}, state))
+      const input = doc_query<HTMLInputElement>(`[data-testid="tick-format-section"] input`)
+      input.value = `.1e`
+      input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      flushSync()
+      expect(state.x_axis.format).toBe(`.1e`)
+      doc_query<HTMLButtonElement>(
+        `button[aria-label="Reset tick format to defaults"]`,
+      ).click()
+      flushSync()
+      expect(state.x_axis.format).toBe(`.3f`)
+    })
+
     test(`format inputs fill their grid column`, () => {
       mount_controls({ has_x2_points: true, has_y2_points: true })
       const inputs = document.querySelectorAll<HTMLInputElement>(
@@ -117,6 +132,50 @@ describe(`PlotControls`, () => {
       )
       expect(inputs).toHaveLength(4)
       for (const input of inputs) expect(getComputedStyle(input).width).toBe(`100%`)
+    })
+  })
+
+  describe(`tick count inputs`, () => {
+    const tick_inputs = () => [
+      ...document.querySelectorAll<HTMLInputElement>(`[data-testid="ticks-section"] input`),
+    ]
+    const type_into = (input: HTMLInputElement, value: string) => {
+      input.value = value
+      input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      flushSync()
+    }
+
+    test(`writes integer counts into the live axis ticks, empty hands back to auto`, () => {
+      const state = $state<{ x_axis: { ticks?: number }; y_axis: { ticks?: number } }>({
+        x_axis: {},
+        y_axis: { ticks: 4 },
+      })
+      mount_controls(bind_props({ has_x2_points: true }, state))
+      const [x_input, x2_input, y_input] = tick_inputs()
+      expect(tick_inputs().map((input) => input.value)).toEqual([``, ``, `4`])
+      expect(tick_inputs().map((input) => input.placeholder)).toEqual([`auto`, `auto`, `auto`])
+      type_into(x_input, `12`)
+      expect(state.x_axis.ticks).toBe(12)
+      // non-integers, zero/negatives and absurd counts are ignored, the input keeps its text
+      for (const bad of [`2.5`, `0`, `-3`, `1000`]) type_into(x_input, bad)
+      expect(state.x_axis.ticks).toBe(12)
+      type_into(y_input, ``)
+      expect(state.y_axis.ticks).toBeUndefined()
+      // x2 has no binding here, so the input is still rendered and editable without throwing
+      type_into(x2_input, `3`)
+      doc_query<HTMLButtonElement>(`button[aria-label="Reset ticks to defaults"]`).click()
+      flushSync()
+      expect(state.x_axis.ticks).toBeUndefined()
+      expect(state.y_axis.ticks).toBe(4)
+    })
+
+    test(`an explicit tick list disables the input instead of overwriting it`, () => {
+      const state = $state<{ x_axis: { ticks?: number[] } }>({ x_axis: { ticks: [0, 5, 10] } })
+      mount_controls(bind_props({}, state))
+      const [x_input] = tick_inputs()
+      expect(x_input.disabled).toBe(true)
+      expect(x_input.placeholder).toBe(`custom`)
+      expect(state.x_axis.ticks).toEqual([0, 5, 10])
     })
   })
 
@@ -182,29 +241,6 @@ describe(`PlotControls`, () => {
       const zero_lines = get_checkboxes_in_group(`zero line`)
       expect(zero_lines).toHaveLength(expected)
     })
-  })
-
-  test(`tick controls only render when enabled and use configured defaults`, () => {
-    // section titles render in <h4> headers (not inside the <section> itself)
-    const has_ticks_section = () =>
-      Array.from(document.querySelectorAll(`h4`)).some((header) =>
-        header.textContent?.includes(`Ticks`),
-      )
-    mount_controls({ show_ticks: false })
-    expect(has_ticks_section()).toBe(false)
-
-    document.body.innerHTML = ``
-    mount_controls({
-      show_ticks: true,
-      x_axis: { ticks: undefined },
-      y_axis: { ticks: undefined },
-    })
-    expect(has_ticks_section()).toBe(true)
-    const tick_inputs = document.querySelectorAll<HTMLInputElement>(`input[min="2"][max="20"]`)
-    expect([...tick_inputs].map((input) => input.value)).toEqual(
-      [DEFAULTS.plot.x_ticks, DEFAULTS.plot.y_ticks].map(String),
-    )
-    expect(document.querySelector(`button[aria-label="Reset ticks to defaults"]`)).toBeNull()
   })
 
   test(`controls visibility toggles`, () => {

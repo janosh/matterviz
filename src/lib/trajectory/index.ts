@@ -7,6 +7,7 @@ import type { AnyStructure, Pbc } from '$lib/structure/index'
 import type { TrajectoryRun } from './run'
 
 export * from './analysis'
+export * from './positions'
 export type * from './analysis-pane'
 export {
   Hdf5GroupSelectionRequiredError,
@@ -127,9 +128,6 @@ export interface TrajHandlerData extends FileLoadData {
   error_msg?: string
   file_size?: number
   total_atoms?: number
-  fps?: number
-  mode?: `structure+scatter` | `structure` | `scatter` | `histogram` | `structure+histogram`
-  fullscreen?: boolean
 }
 
 // Imperative navigation handle for hosts (VS Code, JupyterLab); see on_controller
@@ -155,8 +153,7 @@ export interface TrajectoryPositionStream {
   coords_unwrapped: boolean
   frame_stride: number
   steps: number[]
-  // Opt-in site properties, parallel to positions.
-  scalars?: Record<string, Float64Array>
+  // Opt-in per-atom vec3 site properties (velocities), parallel to positions.
   vectors?: Record<string, Float64Array>
   // Requested frame-level signals on their native step axes.
   signals?: Record<string, TrajectorySignal>
@@ -168,9 +165,17 @@ export interface PositionStreamOptions {
   // Hard ceiling on the allocated position buffer; the sweep throws (with the stride
   // that would fit) rather than attempting a multi-GB allocation.
   max_bytes?: number
-  // Required per-atom scalar and vec3 properties.
-  scalar_keys?: string[]
+  // Required per-atom vec3 properties.
   vector_keys?: string[]
   // Frame metadata keys to collect as scalar, vec3, or 3x3 signals.
   signal_keys?: string[]
+}
+
+// What a run's collect_positions takes: the sweep options plus the progress / cancellation
+// plumbing of one particular call
+export interface CollectPositionsOptions extends PositionStreamOptions {
+  on_progress?: (progress: ParseProgress) => void
+  // Rejects with the signal's reason once aborted, so an analysis pane that no longer wants
+  // the answer stops the frame reads
+  signal?: AbortSignal
 }

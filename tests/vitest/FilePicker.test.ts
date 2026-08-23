@@ -55,12 +55,19 @@ describe(`FilePicker`, () => {
     ).toEqual(active)
   })
 
-  // Type inference from the name when `type` is absent: trailing .gz is ignored, only the last
-  // extension counts, and extensionless names fall back to `file` with the fallback paint.
+  // Type inference from the name when `type` is absent: every compression suffix is ignored,
+  // only the last remaining extension counts, extensionless names (VASP inputs) are typed by
+  // their own name, and an empty name falls back to `file` with the fallback paint.
   it.each([
     [`compressed.cif.gz`, `CIF`],
+    [`data.json.gz`, `JSON`],
+    [`x.tar.xz`, `TAR`],
+    [`traj.h5.gz.zip`, `H5`],
     [`file.name.with.dots.xyz`, `XYZ`],
     [`POSCAR`, `POSCAR`],
+    [`CONTCAR.bz2`, `CONTCAR`],
+    [`INCAR`, `INCAR`],
+    [`README`, `README`],
     [`edge case`, `EDGE CASE`],
     [``, `FILE`],
   ])(`infers the type of %j as %s`, (name, expected_type) => {
@@ -165,6 +172,29 @@ describe(`FilePicker`, () => {
     await vi.waitFor(() => expect(badge.style.color).toBe(`black`))
 
     void unmount(component)
+  })
+
+  it(`watches the DOM once per picker, not once per badge`, () => {
+    // happy-dom rejects a spied constructor, so count distinct observers via observe()
+    const count_observers = (n_files: number): number => {
+      const observe_spy = vi.spyOn(MutationObserver.prototype, `observe`)
+      const files = Array.from({ length: n_files }, (_, idx) => ({
+        name: `file-${idx}.cif`,
+        url: `/files/${idx}`,
+        label: `File ${idx}`,
+      }))
+      const component = mount(FilePicker, { target: document.body, props: { files } })
+      flushSync()
+      expect(document.querySelectorAll(`.file-type-badge`)).toHaveLength(n_files)
+      const n_observers = new Set(observe_spy.mock.contexts).size
+      observe_spy.mockRestore()
+      void unmount(component)
+      return n_observers
+    }
+    // backdrop token + shared badge-contrast epoch, each pairing an ancestor-attribute
+    // observer with a dark-mode watcher; the count must not scale with the badge count
+    expect(count_observers(5)).toBe(4)
+    expect(count_observers(20)).toBe(4)
   })
 
   const formats = [`CIF`, `XYZ`, `JSON`, `TRAJ`, `DAT`, `POSCAR_FILE`]

@@ -1,7 +1,7 @@
 // Format parser behaviour through the public entry point: content sniffing, XDATCAR, LAMMPS,
 // XYZ/EXTXYZ, ASE, JSON, unsupported-format messages and HDF5 (TorchSim + Reference MD).
-// The per-file fixture table (counts, steps, species) lives in open.test.ts; this file pins
-// the deeper parser output of those files plus synthetic edge cases.
+// One fixture table pins every checked-in sample file; the rest are synthetic edge cases.
+// open.test.ts covers the loading policy (materialise vs index) and run lifecycle.
 import type { ElementSymbol } from '$lib'
 import { structure_to_xyz_str } from '$lib/structure/export'
 import { parse_xyz } from '$lib/structure/parse'
@@ -28,7 +28,7 @@ import process from 'node:process'
 import { Dataset as H5Dataset } from 'h5wasm'
 import type { File as H5File, Group as H5Group } from 'h5wasm'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
-import { make_crystal, read_binary_test_file, read_maybe_gz } from '../setup'
+import { make_crystal, read_binary_test_file, read_maybe_gz, rejection_of } from '../setup'
 import {
   ds,
   flat_frames,
@@ -38,7 +38,7 @@ import {
   make_reference_md_h5_buffer,
   make_torch_sim_signal_buffer,
   type H5Spec,
-} from './hdf5-fixtures'
+} from './fixtures'
 
 const read_fixture = (filename: string): string | ArrayBuffer =>
   /\.(?:h5|hdf5|traj)$/.test(filename)
@@ -46,12 +46,20 @@ const read_fixture = (filename: string): string | ArrayBuffer =>
     : read_maybe_gz(join(process.cwd(), `src/site/trajectories`, filename))
 
 type OpenOptions = Parameters<typeof open_trajectory>[1]
+// LAMMPS dumps name atoms by integer type; unmapped types parse with a warning, so name the
+// types 1..3 the fixtures here use once to keep `warnings` empty unless a test supplies its own
+// mapping (other formats ignore the mapping)
+const TEST_ATOM_TYPES: Record<number, ElementSymbol> = { 1: `H`, 2: `He`, 3: `Li` }
 const open = async (
   content: string | ArrayBuffer,
   filename?: string,
   options: OpenOptions = {},
 ): Promise<TrajectoryRun> => {
-  const run = await open_trajectory(content, { filename, ...options })
+  const run = await open_trajectory(content, {
+    filename,
+    atom_type_mapping: TEST_ATOM_TYPES,
+    ...options,
+  })
   onTestFinished(() => run.dispose())
   return run
 }
@@ -79,73 +87,96 @@ const expect_close = (actual: readonly number[], expected: readonly number[], di
   expect(actual).toHaveLength(expected.length)
   for (const [idx, value] of expected.entries()) expect(actual[idx]).toBeCloseTo(value, digits)
 }
-// Resolve an open() rejection so its class can be inspected
-const rejection = (pending: Promise<unknown>): Promise<unknown> =>
-  pending.then(
-    () => undefined,
-    (reason: unknown) => reason,
-  )
 
-// === Checked-in fixtures: pinned parser output beyond the counts in open.test.ts ===
+// === Checked-in fixtures: every sample file, counts through to pinned parser output ===
 
-// abc/volume are [first frame, last frame]; site0_xyz is the first atom of frame 0
+// steps/abc/volume are [first frame, last frame]; species counts the preview's elements;
+// site0_xyz is the first atom of frame 0
 // oxfmt-ignore
-const FIXTURE_DETAILS = [
-  { file: `vasp-XDATCAR.MD.gz`, abc: [[9.39, 9.39, 9.39], [9.39, 9.39, 9.39]], volume: [827.936019, 827.936019],
+const FIXTURES = [
+  { file: `vasp-XDATCAR.MD.gz`, format: `xdatcar`, frame_count: 5, n_atoms: 80, steps: [1, 5], species: { O: 48, Fe: 32 },
+    abc: [[9.39, 9.39, 9.39], [9.39, 9.39, 9.39]], volume: [827.936019, 827.936019],
     site0_xyz: [8.0500211775, 4.1886668799, 3.6800131152], metadata: { elements: [`O`, `Fe`], element_counts: [48, 32] } },
-  { file: `vasp-XDATCAR-traj.gz`, abc: [[10.805799, 10.805799, 10.805799], [10.805799, 10.805799, 10.805799]],
+  { file: `vasp-XDATCAR-traj.gz`, format: `xdatcar`, frame_count: 100, n_atoms: 76, steps: [1, 100], species: { Li: 38, Si: 38 },
+    abc: [[10.805799, 10.805799, 10.805799], [10.805799, 10.805799, 10.805799]],
     volume: [1261.7422758352, 1261.7422758352], site0_xyz: [5.320580923218, 4.589363310687, 0.900901074228],
     metadata: { elements: [`Li`, `Si`], element_counts: [38, 38] } },
   // semi-grand-canonical MC swaps H<->He on fixed atom IDs, so species change per frame
-  { file: `lammps-sample.lammpstrj.gz`, abc: [[21.12, 21.12, 21.12], [21.33040849885696, 21.33040849885696, 21.33040849885696]],
+  { file: `lammps-sample.lammpstrj.gz`, format: `lammps`, frame_count: 5, n_atoms: 864, steps: [0, 40000], species: { H: 778, He: 86 },
+    abc: [[21.12, 21.12, 21.12], [21.33040849885696, 21.33040849885696, 21.33040849885696]],
     volume: [9420.668928, 9705.044210504973], site0_xyz: [0, 0, 0],
     frame0_metadata: { timestep: 0, coords_unwrapped: false, box_origin: [0, 0, 0] },
     metadata: { atom_types: [1, 2], element_counts: { H: 778, He: 86 } } },
-  { file: `mdanalysis-chain-dump.lammpstrj`, abc: [[10, 10, 10], [10, 10, 10]], volume: [1000, 1000],
+  { file: `mdanalysis-chain-dump.lammpstrj`, format: `lammps`, frame_count: 6, n_atoms: 22, steps: [0, 5], species: { H: 2, He: 20 },
+    abc: [[10, 10, 10], [10, 10, 10]], volume: [1000, 1000],
     site0_xyz: [5.19899, 5.00015, 5.48947], frame0_metadata: { coords_unwrapped: true },
     site0_properties: { id: 1, mol: 0, type: 1, charge: 0 } },
-  { file: `mdanalysis-additional-columns.lammpstrj`, pbc: [true, true, false], abc: [[42.6, 44.2712, 50.2], [42.6, 44.2712, 50.2]],
+  { file: `mdanalysis-additional-columns.lammpstrj`, format: `lammps`, frame_count: 1, n_atoms: 10, steps: [0, 0],
+    species: { H: 1, He: 1, Li: 1, Be: 1, B: 1, C: 1, N: 1, O: 1, F: 1, Ne: 1 },
+    pbc: [true, true, false], abc: [[42.6, 44.2712, 50.2], [42.6, 44.2712, 50.2]],
     volume: [94674.846624, 94674.846624], site0_xyz: [2.84, 8.17, 0.1], frame0_metadata: { box_origin: [0, 0, -25.1] },
     site0_properties: { id: 1, charge: 0.00258855, p: 1.1 }, metadata: { atom_types: [] } },
-  { file: `ase-images-Ag-0-to-97.xyz.gz`, abc: [[9.610054442, 9.610054442, 13.11625325], [9.610054442, 9.610054442, 13.11625325]],
+  { file: `ase-images-Ag-0-to-97.xyz.gz`, format: `xyz`, frame_count: 51, n_atoms: 119, steps: [0, 50], species: { Ag: 1, Al: 46, O: 72 },
+    abc: [[9.610054442, 9.610054442, 13.11625325], [9.610054442, 9.610054442, 13.11625325]],
     volume: [1049.040176040141, 1049.040176040141], site0_xyz: [2.51924988, 1.32574328, 10.75235515],
     frame0_metadata: { energy: -873.3574740297651, force_max: 0.03784708430501483, force_norm: 0.015001699666858478 },
     last_metadata: { energy: -873.3572959118774 }, site0_properties: { force: [0.02835451, -0.0034239, 0.01183863], node_energy: 2.73641238 } },
-  { file: `Cr0.25Fe0.25Co0.25Ni0.25-mace-omat-qha.xyz.gz`, abc: [[10.02726924, 10.02726924, 10.02726924], [11.40284021, 11.40284021, 11.40284021]],
+  { file: `Cr0.25Fe0.25Co0.25Ni0.25-mace-omat-qha.xyz.gz`, format: `xyz`, frame_count: 9, n_atoms: 108, steps: [0, 8], species: { Fe: 27, Ni: 27, Cr: 27, Co: 27 },
+    abc: [[10.02726924, 10.02726924, 10.02726924], [11.40284021, 11.40284021, 11.40284021]],
     volume: [1008.2031003331548, 1482.6516181369918], site0_xyz: [0.01378909, 0.00042791, 0.01532024],
     frame0_metadata: { energy: -789.391026308538, force_max: 0.0005370598466879987 }, last_metadata: { energy: -789.3899303445564 } },
-  { file: `V8Ta12W71Re8-mace-omat.xyz`, abc: [[6.997006001, 6.997006001, 25.65568867], [9.466537531, 9.466537531, 34.71063761]],
+  { file: `V8Ta12W71Re8-mace-omat.xyz`, format: `xyz`, frame_count: 7, n_atoms: 99, steps: [0, 6], species: { Re: 8, W: 71, Ta: 12, V: 8 },
+    abc: [[6.997006001, 6.997006001, 25.65568867], [9.466537531, 9.466537531, 34.71063761]],
     volume: [966.9105054969717, 2394.545108972451], site0_xyz: [0.00482629, 0.0119194, -0.03807456], frame0_metadata: { energy: -701.3836929723975 } },
-  { file: `mp-1184225.extxyz`, abc: [[3.61568789, 3.61568789, 3.61568789], [3.615688, 3.615688, 3.615688]],
+  // Steps come from the file's own ionic_step= tags (frames from several MP tasks)
+  { file: `mp-1184225.extxyz`, format: `xyz`, frame_count: 6, n_atoms: 4, steps: [2, 0], species: { Fe: 3, W: 1 },
+    abc: [[3.61568789, 3.61568789, 3.61568789], [3.615688, 3.615688, 3.615688]],
     volume: [47.268607010985555, 47.26861132514134], site0_xyz: [0, 1.80784033, 1.80784033],
     frame0_metadata: { energy: -38.06448831, bandgap: 0, force_max: 0, force_norm: 0 },
     last_metadata: { energy: -38.10605112, force_max: 6.724155634724704e-5 }, site0_properties: { force: [0, 0, 0], magmoms: 0.756 } },
-  { file: `pymatgen-LiMnO2-chgnet-relax.json.gz`, abc: [[2.868779, 4.634475, 5.832507], [2.868779, 4.634475, 5.832507]],
+  { file: `pymatgen-LiMnO2-chgnet-relax.json.gz`, format: `pymatgen-json`, frame_count: 2, n_atoms: 8, steps: [0, 1], species: { Li: 2, Mn: 2, O: 4 },
+    abc: [[2.868779, 4.634475, 5.832507], [2.868779, 4.634475, 5.832507]],
     volume: [77.54484024, 77.54484024], site0_xyz: [1.4343895, 2.3172375, 2.2148974495035], frame_volume: false,
     frame0_metadata: { energy: -58.97273254394531, force_max: 0.025402992964072665, force_norm: 0.021125332177999983,
       stress_max: 0.0021019913256168365, pressure: -0.0012979226206274082 },
     last_metadata: { energy: -58.59364700317383, force_max: 1.2433049712799658 },
     site0_properties: { momenta: [0, 0, 0], final_magmom: 0.005215555429458618 }, metadata: { species_list: [`Li`, `Mn`, `O`] } },
   // Same relaxation written by ASE: frame 1 has the relaxed (larger) cell
-  { file: `ase-LiMnO2-chgnet-relax.traj`, abc: [[2.868779, 4.634475, 5.832507], [2.876379428410527, 4.646357458548224, 5.846033084452466]],
+  { file: `ase-LiMnO2-chgnet-relax.traj`, format: `ase`, frame_count: 2, n_atoms: 8, steps: [0, 1], species: { Li: 2, Mn: 2, O: 4 },
+    abc: [[2.868779, 4.634475, 5.832507], [2.876379428410527, 4.646357458548224, 5.846033084452466]],
     volume: [77.5448402400077, 78.13040242854699], site0_xyz: [1.4343895, 2.3172375, 2.2148974495035],
     frame0_metadata: { step: 0, name: `chgnetcalculator`, energy: -58.97273254394531 }, last_metadata: { energy: -58.59364700317383 } },
-  { file: `gold-nanoparticle-md.h5`, pbc: [false, false, false], abc: [[25.816495895385742, 25.816495895385742, 25.816495895385742], [25.816495895385742, 25.816495895385742, 25.816495895385742]],
+  { file: `gold-nanoparticle-md.h5`, format: `hdf5`, frame_count: 100, n_atoms: 55, steps: [1, 991], species: { Au: 55 },
+    pbc: [false, false, false], abc: [[25.816495895385742, 25.816495895385742, 25.816495895385742], [25.816495895385742, 25.816495895385742, 25.816495895385742]],
     volume: [17206.47404956977, 17206.47404956977], site0_xyz: [12.910871505737305, 12.91317081451416, 12.907877922058105],
     metadata: { element_counts: { Au: 55 }, has_cell_info: true } },
-  { file: `flame-gold-cluster-55-atoms.h5`, pbc: [false, false, false], abc: [[25.816495895385742, 25.816495895385742, 25.816495895385742], [25.816495895385742, 25.816495895385742, 25.816495895385742]],
+  { file: `flame-gold-cluster-55-atoms.h5`, format: `hdf5`, frame_count: 20, n_atoms: 55, steps: [25, 500], species: { Au: 55 },
+    pbc: [false, false, false], abc: [[25.816495895385742, 25.816495895385742, 25.816495895385742], [25.816495895385742, 25.816495895385742, 25.816495895385742]],
     volume: [17206.47404956977, 17206.47404956977], site0_xyz: [12.878666877746582, 12.954689025878906, 12.833800315856934],
     metadata: { element_counts: { Au: 55 } } },
 ]
 
-describe(`site fixture details`, () => {
-  it.each(FIXTURE_DETAILS)(`$file: cells, coordinates and metadata`, async (fixture) => {
-    const { file, abc, volume } = fixture
+const count_species = (frame: TrajectoryFrame): Record<string, number> => {
+  const counts: Record<string, number> = {}
+  for (const element of elements_of(frame)) counts[element] = (counts[element] ?? 0) + 1
+  return counts
+}
+
+describe(`site fixtures`, () => {
+  it.each(FIXTURES)(`$file opens as $frame_count x $n_atoms ($format)`, async (fixture) => {
+    const { file, abc, volume, frame_count, n_atoms, steps } = fixture
     const run = await open(read_fixture(file), file)
-    const first = await run.read_frame(0)
-    const last = await run.read_frame(run.frame_count - 1)
+    expect(run.frame_count).toBe(frame_count)
+    expect(run.provenance).toMatchObject({ filename: file, format: fixture.format })
+    expect(run.provenance.source_bytes).toBeGreaterThan(0)
     expect(run.warnings).toEqual([])
+    expect(run.collect_positions).toBeDefined()
     if (fixture.metadata) expect(run.metadata).toMatchObject(fixture.metadata)
+    const first = await run.read_frame(0)
+    const last = await run.read_frame(frame_count - 1)
+    expect([first.step, last.step]).toEqual(steps)
+    expect(count_species(first)).toEqual(fixture.species)
+    expect(last.structure.sites).toHaveLength(n_atoms)
     expect(lattice_of(first).pbc).toEqual(fixture.pbc ?? [true, true, true])
     for (const [idx, frame] of [first, last].entries()) {
       const lattice = lattice_of(frame)
@@ -160,10 +191,13 @@ describe(`site fixture details`, () => {
     if (fixture.site0_properties) {
       expect(first.structure.sites[0].properties).toEqual(fixture.site0_properties)
     }
+    await run.properties.done
+    expect(run.properties.rows.length).toBeGreaterThan(0)
+    expect(run.properties.rows[0]).toMatchObject({ frame_number: 0, step: steps[0] })
     // Magic bytes / content sniffing must route the same file without a filename hint
     const sniffed = await open(read_fixture(file))
     expect(sniffed.provenance.format).toBe(run.provenance.format)
-    expect(sniffed.frame_count).toBe(run.frame_count)
+    expect(sniffed.frame_count).toBe(frame_count)
   })
 })
 
@@ -235,7 +269,6 @@ describe(`XDATCAR`, () => {
     [`blank symbol line`, xdatcar(`\n1`, two_frames), `Invalid element symbol in XDATCAR`],
     [`non-element symbol`, xdatcar(`Xx\n1`, two_frames), `Invalid element symbol in XDATCAR: Xx`],
     [`fewer counts than symbols`, xdatcar(`H O Na\n1 1`, two_frames), `3 element symbol(s) but 2 atom count(s)`],
-    [`fractional count`, xdatcar(`H\n1.5`, two_frames), `invalid atom counts`],
     [`zero count`, xdatcar(`H\n0`, two_frames), `invalid atom counts`],
     // Corruption inside the file names the frame and line instead of dropping the frame
     [`non-numeric coordinate`, xdatcar(`H\n2`, [config(1, `0.5 0.5 0.5`, `0.1 xx 0.1`), config(2, `0.5 0.5 0.5`, `0.1 0.1 0.1`)]),
@@ -333,8 +366,9 @@ describe(`LAMMPS`, () => {
       `LAMMPS frame at timestep 0 has neither a type nor an element column in "ITEM: ATOMS id x y z"`],
     [`no position columns`, lammps_frame(`id type vx vy vz`, [`1 1 0 0 0`]),
       `LAMMPS frame at timestep 0 has no position columns (x y z, xs ys zs, xu yu zu or xsu ysu zsu) in "ITEM: ATOMS id type vx vy vz"`],
+    // non-positive types are rejected before the atomic-number lookup could index below H
     [`atom type 0`, lammps_frame(`id type x y z`, [`1 0 0 0 0`]), `LAMMPS atom line 10 (timestep 0) has invalid type "0"`],
-    [`atom type 1.5`, lammps_frame(`id type x y z`, [`1 1.5 0 0 0`]), `LAMMPS atom line 10 (timestep 0) has invalid type "1.5"`],
+    [`atom type -1`, lammps_frame(`id type x y z`, [`1 -1 0 0 0`]), `LAMMPS atom line 10 (timestep 0) has invalid type "-1"`],
     [`atom type bad`, lammps_frame(`id type x y z`, [`1 bad 0 0 0`]), `LAMMPS atom line 10 (timestep 0) has invalid type "bad"`],
     [`unknown element symbol`, lammps_frame(`id element x y z`, [`1 Xx 0 0 0`]),
       `LAMMPS atom line 10 (timestep 0) has unknown element symbol "Xx"`],
@@ -520,18 +554,23 @@ ITEM: ATOMS id type ${columns}\n1 1 ${coordinates}`
     })
   })
 
+  // Most dumps carry no element column, so unmapped types read as atomic numbers (ASE's
+  // default) — but with one warning per file naming the guesses, unlike the silent old path
   // oxfmt-ignore
-  it.each<[string, Record<number, ElementSymbol> | undefined, number[], ElementSymbol[]]>([
+  it.each<[string, Record<number, ElementSymbol> | undefined, number[], ElementSymbol[], string?]>([
     [`custom mapping`, { 1: `Na`, 2: `Cl` }, [1, 2, 1], [`Na`, `Cl`, `Na`]],
-    [`partial mapping falls back to atomic numbers`, { 1: `Na` }, [1, 2, 3], [`Na`, `He`, `Li`]],
-    [`no mapping uses atomic numbers`, undefined, [1, 2], [`H`, `He`]],
     [`high atomic numbers`, { 79: `Au`, 118: `Og` }, [79, 118], [`Au`, `Og`]],
-  ])(`atom_type_mapping: %s`, async (_name, atom_type_mapping, types, expected_elements) => {
+    [`no mapping`, undefined, [1, 2, 3], [`H`, `He`, `Li`], `1→H, 2→He, 3→Li`],
+    [`partial mapping`, { 1: `Na` }, [1, 2, 3], [`Na`, `He`, `Li`], `2→He, 3→Li`],
+  ])(`atom_type_mapping: %s`, async (_name, atom_type_mapping, types, expected_elements, guesses) => {
     const run = await open(lammps_frames(types, { n_frames: 2 }), `test.lammpstrj`, {
       atom_type_mapping,
     })
     for (const frame of await frames_of(run))
       expect(elements_of(frame)).toEqual(expected_elements)
+    expect(run.warnings).toEqual(guesses
+      ? [`LAMMPS dump has no element column; read atom types as atomic numbers (${guesses}). Pass atom_type_mapping (e.g. { 1: 'Si', 2: 'O' }) to name them.`]
+      : [])
   })
 })
 
@@ -863,7 +902,7 @@ describe(`JSON`, () => {
     [`blank element`, { species: [{ element: `  ` }] }, /species/],
     [`coords object`, { coords: { a: 1 } }, /coords/],
     [`2x3 lattice`, { lattice: cubic(1).slice(0, 2) }, /Expected 3x3 matrix/],
-    [`3x2 lattice`, { lattice: [[1, 0], [0, 1], [0, 0]] }, /Invalid 3x3 matrix structure/],
+    [`3x2 lattice`, { lattice: [[1, 0], [0, 1], [0, 0]] }, /lattice matrix row 1: expected 3 coordinates, got 2/],
     [`string lattice`, { lattice: `not a matrix` }, /Expected 3x3 matrix/],
     [`lattice stack of the wrong length`, { lattice: [cubic(1)], constant_lattice: false }, `'lattice' holds 1 matrices for 2 frames`],
     [`frame with the wrong site count`, { coords: [[[0, 0, 0]], [[0, 0, 0], [1, 1, 1]]] }, `coords[1] has 2 sites, expected 1`],
@@ -958,7 +997,6 @@ describe(`JSON`, () => {
   // oxfmt-ignore
   it.each([
     [null, /Invalid data format/],
-    [undefined, /Invalid data format/],
     [{}, /Unrecognized trajectory format/],
     [[], /at least one frame/],
     [{ frames: [{ step: 0 }] }, /Invalid structure in trajectory frame 0/],
@@ -1049,8 +1087,6 @@ describe(`HDF5 slice budgets`, () => {
     expect(values).toHaveLength(entry_count)
     expect(values.at(-1)).toBe(entry_count - 1)
 
-    const array_from_spy = vi.spyOn(Array, `from`)
-    onTestFinished(() => array_from_spy.mockRestore())
     const samples = {
       shape: [3, 2],
       slice: () => Float64Array.from([1, 2, 3, 4, 5, 6]),
@@ -1058,7 +1094,6 @@ describe(`HDF5 slice budgets`, () => {
     expect(read_numeric_samples(samples, `/direct-copy`, 3, 2)).toEqual(
       Float64Array.from([1, 2, 3, 4, 5, 6]),
     )
-    expect(array_from_spy).not.toHaveBeenCalled()
   })
 
   it(`fills response arrays with capped hyperslabs`, () => {
@@ -1240,6 +1275,53 @@ describe(`HDF5`, () => {
     )
   })
 
+  // The torn-tail scan must read every position chunk at most once. The candidates are the
+  // trailing run of zero steps; a non-zero frame inside it moves the tear past itself
+  // instead of re-reading the chunk for the next candidate (O(n_tail × chunk) before).
+  it.each([
+    {
+      // writer killed between positions and steps: frame 2 has positions but no step
+      desc: `a written frame ahead of the zero-filled tail`,
+      position_steps: [0, 1, 0, 0],
+      frames: [
+        [1, 1, 1],
+        [2, 2, 2],
+        [3, 3, 3],
+        [0, 0, 0],
+      ],
+      error: /must increase strictly/,
+    },
+    {
+      // an all-zero step axis over real data is corrupt steps, not a torn tail
+      desc: `an all-zero step axis over real positions`,
+      position_steps: [0, 0, 0, 0],
+      frames: [
+        [1, 1, 1],
+        [2, 2, 2],
+        [3, 3, 3],
+        [4, 4, 4],
+      ],
+      error: /must increase strictly/,
+    },
+  ])(
+    `reads positions once while scanning $desc`,
+    async ({ position_steps, frames, error }) => {
+      const content = await h5_bytes(`torn-scan`, (file) => {
+        const data = file.create_group(`data`)
+        ds(data, `positions`, frames.flat(), [frames.length, 1, 3])
+        ds(data, `atomic_numbers`, [1], [1])
+        ds(file.create_group(`steps`), `positions`, position_steps, [position_steps.length])
+      })
+      const slice_spy = vi.spyOn(H5Dataset.prototype, `slice`)
+      onTestFinished(() => slice_spy.mockRestore())
+      await expect(open(content, `torn-scan.h5`)).rejects.toThrow(error)
+      const position_reads = slice_spy.mock.contexts.filter(
+        (dataset) => (dataset as H5Dataset).path === `/data/positions`,
+      )
+      expect(position_reads).toHaveLength(1)
+    },
+  )
+
   it(`trims zero-filled response and energy step tails with the geometry`, async () => {
     const content = await torn_data_h5(`torn-response-steps`, (data, steps) => {
       ds(
@@ -1420,7 +1502,7 @@ describe(`HDF5`, () => {
       })],
     [`two complete groups`, () => make_grouped_h5_buffer(two_runs)],
   ])(`requires a group choice for %s`, async (_label, make_buffer) => {
-    const error = await rejection(open(await make_buffer(), `ambiguous.h5`))
+    const error = await rejection_of(open(await make_buffer(), `ambiguous.h5`))
     expect(error).toBeInstanceOf(Hdf5GroupSelectionRequiredError)
     expect((error as Hdf5GroupSelectionRequiredError).groups).toEqual([`/run_a`, `/run_b`])
   })

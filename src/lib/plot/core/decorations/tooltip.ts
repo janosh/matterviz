@@ -1,3 +1,4 @@
+import { clamp } from '$lib/math'
 import type { Rect } from '$lib/plot/core/layout'
 
 const DIRECTIONS = [`right-below`, `left-below`, `right-above`, `left-above`] as const
@@ -34,10 +35,8 @@ const validate_rect = (rect: Rect, label: string): void => {
   }
 }
 
-const clamp_axis = (value: number, size: number, start: number, extent: number): number => {
-  const end = start + Math.max(0, extent - size)
-  return Math.max(start, Math.min(value, end))
-}
+const clamp_axis = (value: number, size: number, start: number, extent: number): number =>
+  clamp(value, start, start + Math.max(0, extent - size))
 
 const intersection_area = (left: Rect, right: Rect): number => {
   const width = Math.max(

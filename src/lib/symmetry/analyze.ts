@@ -1,5 +1,6 @@
 // moyo-wasm bridge: the one place the WASM module is initialized and a structure is handed
 // to moyo's analyze_cell, plus thin wrappers over its space-group database lookups.
+import { symbol_to_atomic_number } from '$lib/element/helpers'
 import { ELEM_SYMBOLS } from '$lib/element/types'
 import * as math from '$lib/math'
 import { DEFAULTS } from '$lib/settings'
@@ -41,14 +42,17 @@ export type SymmetryDataset = MoyoDataset & {
 // Memoized so concurrent first callers share one instantiation; a failed attempt is
 // forgotten so the next call can retry (e.g. after a transient fetch error).
 let init_promise: Promise<unknown> | null = null
+let wasm_ready = false
 export function ensure_moyo_wasm_ready(source?: InitInput): Promise<void> {
   // wasm-bindgen resolves the default .wasm relative to its glue module
-  init_promise ??= init(source === undefined ? undefined : { module_or_path: source }).catch(
-    (err: unknown) => {
+  init_promise ??= init(source === undefined ? undefined : { module_or_path: source })
+    .then(() => {
+      wasm_ready = true
+    })
+    .catch((err: unknown) => {
       init_promise = null
       throw err
-    },
-  )
+    })
   return init_promise.then(() => undefined)
 }
 
@@ -72,8 +76,10 @@ function site_atomic_number(site: Site, site_idx: number): number {
       best_occupancy = occupancy
     }
   }
-  const atomic_number = ELEM_SYMBOLS.indexOf(selected as (typeof ELEM_SYMBOLS)[number]) + 1
-  if (atomic_number === 0) throw new Error(`Unknown element at site ${site_idx}: ${selected}`)
+  const atomic_number = symbol_to_atomic_number(selected)
+  if (atomic_number === undefined) {
+    throw new Error(`Unknown element at site ${site_idx}: ${selected}`)
+  }
   return atomic_number
 }
 
@@ -126,27 +132,27 @@ export function count_symmetry_op_kinds(
   return counts
 }
 
+// Whether `value` is an integer in [min, max]. The WASM entry points below take a u32/i32 and
+// panic (not throw) on a fractional, negative or NaN number, which SymmetryStats would hit
+// inside a $derived from a malformed public `sym_data` prop, so every number is range-checked
+// here first and the lookups return [] instead.
+const is_int_in_range = (value: number, min: number, max: number): boolean =>
+  Number.isInteger(value) && value >= min && value <= max
+
 // All Wyckoff positions of the space-group setting given by hall_number (1-530), ordered
-// general-position-first. moyo returns [] for out-of-range hall numbers. Returns [] when the
-// WASM module is not initialized (SSR, unit tests) — callers treat the database as an optional
-// enrichment, never a hard requirement.
-export function spacegroup_wyckoff_positions(hall_number: number): MoyoWyckoffPosition[] {
-  try {
-    return wyckoff_positions(hall_number)
-  } catch {
-    return []
-  }
-}
+// general-position-first. Returns [] for a hall number outside that range and before the WASM
+// module is initialized (SSR, component tests) — callers treat the database as an optional
+// enrichment, never a hard requirement. Anything moyo itself throws propagates.
+export const spacegroup_wyckoff_positions = (hall_number: number): MoyoWyckoffPosition[] =>
+  wasm_ready && is_int_in_range(hall_number, 1, 530) ? wyckoff_positions(hall_number) : []
 
 // All Hall-symbol entries (settings) of the ITA space group `spacegroup_number` (1-230),
-// ordered by Hall number. Returns [] when the WASM module is not initialized.
-export function spacegroup_settings(spacegroup_number: number): MoyoHallSymbolEntry[] {
-  try {
-    return hall_symbol_entries_from_number(spacegroup_number)
-  } catch {
-    return []
-  }
-}
+// ordered by Hall number. Returns [] for a number outside that range and before the WASM
+// module is initialized.
+export const spacegroup_settings = (spacegroup_number: number): MoyoHallSymbolEntry[] =>
+  wasm_ready && is_int_in_range(spacegroup_number, 1, 230)
+    ? hall_symbol_entries_from_number(spacegroup_number)
+    : []
 
 // Cell described by a MoyoCell (std_cell or prim_std_cell) as a Crystal. moyo-wasm uses the
 // same row-major serialization for output as for input, so the flat basis is row-major with

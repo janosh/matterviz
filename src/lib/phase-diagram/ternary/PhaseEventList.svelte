@@ -6,7 +6,7 @@
   import { format_num } from '$lib/labels'
   import type { HTMLAttributes } from 'svelte/elements'
   import { tooltip } from 'svelte-widgets/attachments'
-  import { reaction_phase_label } from './compute'
+  import { format_reaction_coeff, reaction_phase_label } from './compute'
   import type { PhaseEventKind, Reaction, TernaryPhaseDiagram } from './types'
 
   let {
@@ -42,7 +42,7 @@
       const cut = full.indexOf(` (`)
       return {
         phase,
-        coeff: Math.abs(coeff - 1) < 1e-6 ? `` : `${format_num(coeff, `.3~r`)} `,
+        coeff: format_reaction_coeff(coeff),
         segments: get_formula_label_segments(cut === -1 ? full : full.slice(0, cut)),
         suffix: cut === -1 ? `` : full.slice(cut),
       }

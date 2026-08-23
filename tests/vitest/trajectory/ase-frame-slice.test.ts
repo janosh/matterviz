@@ -3,8 +3,6 @@
 // tests pin the two things that makes possible — that a frame's byte span is
 // self-contained, and that decoding the span yields exactly the frame the
 // whole-file parser produces.
-import type { Vec3 } from '$lib/math'
-import type { TrajectoryFrame } from '$lib/trajectory'
 import type { AseFrameOptions } from '$lib/trajectory/parse/ase'
 import {
   decode_ase_frame,
@@ -45,9 +43,6 @@ const index_frame_spans = (buffer: ArrayBuffer): FrameSpan[] => {
   return spans
 }
 
-const positions_of = (frame: TrajectoryFrame): Vec3[] =>
-  frame.structure.sites.map((site) => site.xyz)
-
 describe(`ASE frame slicing`, () => {
   const buffer = read_binary_test_file(FIXTURE)
   const spans = index_frame_spans(buffer)
@@ -84,30 +79,16 @@ describe(`ASE frame slicing`, () => {
     expect(whole_file.frames).toHaveLength(spans.length)
 
     let cached_numbers: number[] | undefined
-    let max_abs_diff = 0
     for (const [frame_idx, span] of spans.entries()) {
       const { frame, numbers } = decode_span(span, frame_idx, {
         base_offset: span.byte_offset,
         fallback_numbers: cached_numbers,
       })
       cached_numbers = numbers
-
-      const expected = whole_file.frames[frame_idx]
-      const streamed_positions = positions_of(frame)
-      const expected_positions = positions_of(expected)
-      expect(streamed_positions).toHaveLength(expected_positions.length)
-      for (const [site_idx, expected_xyz] of expected_positions.entries()) {
-        for (const [axis_idx, expected_value] of expected_xyz.entries()) {
-          const streamed_value = streamed_positions[site_idx][axis_idx]
-          max_abs_diff = Math.max(max_abs_diff, Math.abs(streamed_value - expected_value))
-        }
-      }
       // Same float64 bytes read through a rebased offset, so the frames must be
-      // bit-identical, not merely close.
-      expect(frame).toEqual(expected)
+      // bit-identical (toEqual on numbers is exact), not merely close.
+      expect(frame).toEqual(whole_file.frames[frame_idx])
     }
-    // Reading the same IEEE-754 doubles from a slice cannot perturb them.
-    expect(max_abs_diff).toBe(0)
   })
 
   test(`the atomic numbers cached from frame 0 carry into later frames`, () => {

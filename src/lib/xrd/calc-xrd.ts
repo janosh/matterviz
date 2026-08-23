@@ -448,7 +448,6 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
     options.accelerating_voltage,
   )
 
-  // Symmetry refinement (symprec > 0) is not implemented in TS version. Option retained for API parity.
   const recip_rows = math.reciprocal_lattice(structure.lattice.matrix)
 
   // Bragg condition bounds: reciprocal vector length r = 2 sin(theta) / lambda.
@@ -496,7 +495,7 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
 
     const asin_arg = (wavelength * g_norm) / 2
     // asin domain can exceed 1 by FP error — clamp to avoid NaN
-    const clamped_asin_arg = Math.min(1, Math.max(-1, asin_arg))
+    const clamped_asin_arg = math.clamp(asin_arg, -1, 1)
     // Exact back-reflection is unobservable and its Lorentz denominator is genuinely 0, so
     // the clamp below would invent a ~2e12 intensity that then takes the normalization max
     // and drops every real reflection. Only a range reaching 180 enumerates it.

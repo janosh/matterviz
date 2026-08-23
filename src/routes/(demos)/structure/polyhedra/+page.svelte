@@ -1,11 +1,11 @@
 <script lang="ts">
-  import { browser } from '$app/environment'
   import { page } from '$app/state'
   import { DEFAULTS } from '$lib/settings'
   import type { AnyStructure, Molecule } from '$lib/structure'
   import { Structure } from '$lib/structure'
   import { parse_structure_file } from '$lib/structure/parse'
   import type { Vec3 } from '$lib/math'
+  import { file_param } from '$site/state.svelte'
   import { structure_file_text } from '$site/structures'
   import batio3_poscar from '$site/structures/BaTiO3-tetragonal.poscar?raw'
   import lifepo4_cif from '$site/structures/LiFePO4.cif?raw'
@@ -18,13 +18,12 @@
   let url_structure = $derived.by(() => {
     // ?file=/?supercell= are a dev-only convenience; url.searchParams is off-limits during
     // prerender (would 500 the static build), so only read them client-side
-    if (!browser) return null
-    const file_param = page.url.searchParams.get(`file`)
-    if (!file_param) return null
-    const text = structure_file_text(file_param)
+    const requested = file_param()
+    if (!requested) return null
+    const text = structure_file_text(requested)
     if (!text) return null
     try {
-      return parse_structure_file(text, file_param)
+      return parse_structure_file(text, requested)
     } catch {
       return null
     }
@@ -82,7 +81,7 @@
   onMount(() => {
     const supercell = page.url.searchParams.get(`supercell`)
     if (supercell) supercell_scaling = supercell
-    else if (page.url.searchParams.get(`file`)) supercell_scaling = `1x1x1`
+    else if (file_param()) supercell_scaling = `1x1x1`
   })
   let scene_props = $state({
     show_polyhedra: `crystals` as const,

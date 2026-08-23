@@ -1,5 +1,5 @@
-import { TdbInfoPanel } from '$lib/phase-diagram'
-import type { TdbParseResult } from '$lib/phase-diagram/parse'
+import TdbInfoPanel from '$site/phase-diagrams/TdbInfoPanel.svelte'
+import type { TdbParseResult } from '$site/phase-diagrams/tdb-parse'
 import { mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 

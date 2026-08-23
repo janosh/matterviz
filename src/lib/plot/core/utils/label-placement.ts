@@ -1,4 +1,5 @@
 import type { Point2D } from '$lib/math'
+import type { FacetAxis } from '$lib/plot/core/facets'
 import type { PlotScaleFn } from '$lib/plot/core/scales'
 import type { FontSpec } from '$lib/plot/core/text-metrics'
 import {
@@ -7,12 +8,10 @@ import {
   resolve_font_size_css,
 } from '$lib/plot/core/text-metrics'
 import type {
-  AxisConfig,
   DataSeries,
   LabelPlacementConfig,
   LabelPlacementWeights,
 } from '$lib/plot/core/types'
-import { is_time_scale } from '$lib/plot/core/types'
 
 // Anneal budget and start temperature for a re-solve that inherits the previous layout. Far
 // below the cold defaults (2000, 1): the layout is good, so the pass only nudges what moved.
@@ -500,12 +499,8 @@ function cull_dense_labels(
 export function compute_label_positions(
   filtered_series: DataSeries[],
   config: LabelPlacementConfig,
-  scales: {
-    x_scale_fn: PlotScaleFn
-    y_scale_fn: PlotScaleFn
-    y2_scale_fn: PlotScaleFn
-    x_axis: AxisConfig
-  },
+  // Per-axis pixel scales; each point anchors to its series' x/x2 and y/y2 scale
+  scales: Record<FacetAxis, PlotScaleFn>,
   bounds: {
     width: number
     height: number
@@ -515,7 +510,6 @@ export function compute_label_positions(
   // instead of searching afresh. Overwritten here, so pass one Map per plot and reuse it.
   warm_start?: Map<string, Point2D>,
 ): Record<string, Point2D> {
-  const { x_scale_fn, y_scale_fn, y2_scale_fn, x_axis } = scales
   const { width, height, pad } = bounds
 
   const plot_bounds: PlotBounds = {
@@ -533,12 +527,10 @@ export function compute_label_positions(
     for (const pt of series.filtered_data ?? []) {
       if (!pt.point_label?.auto_placement || !pt.point_label.text) continue
 
-      const ax = is_time_scale(x_axis.scale_type)
-        ? x_scale_fn(new Date(pt.x))
-        : x_scale_fn(pt.x)
-      const anchor_x = ax + (pt.point_offset?.x ?? 0)
-      const anchor_y =
-        (series.y_axis === `y2` ? y2_scale_fn : y_scale_fn)(pt.y) + (pt.point_offset?.y ?? 0)
+      const x_scale = series.x_axis === `x2` ? scales.x2 : scales.x
+      const y_scale = series.y_axis === `y2` ? scales.y2 : scales.y
+      const anchor_x = x_scale(pt.x) + (pt.point_offset?.x ?? 0)
+      const anchor_y = y_scale(pt.y) + (pt.point_offset?.y ?? 0)
       const label_size =
         pt.point_label.size ??
         estimate_label_size(pt.point_label.text, pt.point_label.font_size)

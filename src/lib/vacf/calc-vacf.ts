@@ -4,17 +4,42 @@
 // VACF(dt) = <v(t0 + dt) . v(t0)> averaged over every atom AND every time origin t0,
 // reported both raw and normalized by VACF(0). VDOS(f) is the cosine transform of the
 // windowed normalized VACF: the power spectrum of the atomic motion, peaking wherever the
-// system vibrates. Longer lags have fewer origins, so `n_origins` and `std_error` come back
-// per lag and callers are expected to show that the tail is statistically weak.
-import { THZ_TO_INVERSE_CM } from '$lib/constants'
-import { correlation_window, cosine_spectrum_length, even_cosine_spectrum } from '$lib/fft'
-// Imported from the kernel module, not $lib/msd: the barrel pulls in MsdPlot.svelte, which
-// a Web Worker bundle cannot load.
+// system vibrates. Longer lags have fewer origins, so `n_origins` comes back per lag and
+// callers are expected to show that the tail is statistically weak.
+//
+// The origin average is taken with the Wiener–Khinchin theorem rather than a direct
+// lags x origins x atoms loop: the sum over origins of v(t) . v(t + lag) is the
+// autocorrelation of each velocity component, i.e. the inverse transform of its power
+// spectrum. Zero-padding every component to >= 2 n_frames makes the circular correlation
+// linear, so the result is the exact origin sum up to round-off: measured against the direct
+// Welford loop at 2000 frames x 64 atoms (damped oscillators + noise, stored and
+// central-difference velocities), max |Δ| = 8e-16 on VACF values of magnitude 0.17 and
+// 8.5e-14 on VDOS values of magnitude 19 (both <= 5e-15 of the curve maximum, i.e. a few
+// tens of f64 eps), in 14 ms against 315 ms. The cost scales as n log n instead of n^2 in
+// the frame count, and no longer needs an origin-thinning budget: 2000 atoms x 2000 frames
+// run in 0.27 s.
 import {
+  correlation_window,
+  cosine_spectrum_length,
+  even_cosine_spectrum,
+  fft_in_place,
+  next_power_of_two,
+} from '$lib/fft'
+import {
+  frequency_unit_label,
+  md_frequency_factor,
+  MD_FREQUENCY_UNITS,
+  thz_per_inverse_time,
+  TIME_UNIT_TO_THZ,
+} from '$lib/spectral/frequency-units'
+import {
+  curve_slots,
   group_atoms_by_element,
-  unwrap_flat_positions,
-  welford_update,
-} from '$lib/msd/calc-msd'
+  lag_range,
+  resolve_lag_time_unit,
+  unwrapped_positions_of,
+  validate_position_stream_layout,
+} from '$lib/trajectory/positions'
 import type {
   VacfCurve,
   VacfFrequencyUnit,
@@ -23,7 +48,14 @@ import type {
   VacfResult,
   VelocitySource,
 } from './index'
-import { thz_per_inverse_time, TIME_UNIT_TO_THZ } from './units'
+
+// Frequency axes the VDOS can be reported on; see `VacfFrequencyUnit` for what `1/frame` means
+export const VACF_FREQUENCY_UNITS = [...MD_FREQUENCY_UNITS, `1/frame`] as const
+
+// Zero-pad the mirrored VACF to 4 x 2 x n_lags (rounded up to a power of two) before
+// transforming. Padding only interpolates the spectrum — it buys a finer frequency grid,
+// not resolution — and 4x keeps peak positions within a quarter bin of the continuum value.
+const VDOS_ZERO_PAD_FACTOR = 4
 
 const fail = (message: string): never => {
   throw new Error(`calc_vacf: ${message}`)
@@ -62,32 +94,74 @@ export function central_difference_velocities(
   return velocities
 }
 
-// Frequency conversion factor from cycles per `time_unit` to `frequency_unit`. `dt`
-// converts back to cycles per collected frame when that axis is requested. Throws rather
-// than inventing a scale for unconvertible physical units, so it is only called once a
-// VDOS is actually wanted — a skipped VDOS reports no frequency axis at all.
-const frequency_factor = (
-  dt: number,
-  time_unit: string,
-  frequency_unit: VacfFrequencyUnit,
-): number => {
-  // Cycles per collected frame: independent of whether `time_unit` is THz-convertible
-  if (frequency_unit === `1/frame`) return dt
-  const to_thz = thz_per_inverse_time(time_unit)
-  if (to_thz !== undefined) {
-    return frequency_unit === `THz` ? to_thz : to_thz * THZ_TO_INVERSE_CM
+// Per-group sums over atoms and time origins of v(t) . v(t + lag), for lags 0..max_lag.
+// Slot `group_sizes.length` is the all-atom total. One forward FFT per PAIR of velocity
+// components accumulates their |V(f)|^2 into the group's power spectrum; one inverse FFT per
+// group then yields the autocorrelation sums. Forward and inverse coincide up to 1/n_fft here
+// because a power spectrum is real and even.
+export function autocorrelation_sums(
+  velocities: Float64Array,
+  n_frames: number,
+  n_atoms: number,
+  atom_group: Int32Array,
+  n_groups: number,
+  max_lag: number,
+): Float64Array[] {
+  // >= 2 n_frames so the circular correlation of the padded series equals the linear one
+  // for every lag below n_frames
+  const n_fft = next_power_of_two(2 * n_frames)
+  const re = new Float64Array(n_fft)
+  const im = new Float64Array(n_fft)
+  const power = Array.from({ length: n_groups }, () => new Float64Array(n_fft))
+  const frame_size = n_atoms * 3
+  // Component offsets within a frame, bucketed by group, so two components of the same
+  // group can share one complex transform
+  const group_components = Array.from({ length: n_groups }, (): number[] => [])
+  for (let atom_idx = 0; atom_idx < n_atoms; atom_idx++) {
+    for (let axis = 0; axis < 3; axis++) {
+      group_components[atom_group[atom_idx]].push(atom_idx * 3 + axis)
+    }
   }
-  const convertible = Object.keys(TIME_UNIT_TO_THZ).join(`, `)
-  const reason =
-    time_unit === `frame`
-      ? `no timestep was supplied, so the only honest axis is '1/frame'. Pass dt and ` +
-        `time_unit (one of ${convertible}) to get real frequencies.`
-      : `time_unit '${time_unit}' with frequency_unit '${frequency_unit}' is not convertible; ` +
-        `use frequency_unit '1/frame', or a time_unit of ${convertible}`
-  return fail(
-    `cannot report a ${frequency_unit} frequency axis for a lag axis in ` +
-      `'${time_unit}': ${reason}`,
-  )
+  for (const [group, components] of group_components.entries()) {
+    const group_power = power[group]
+    for (let pair_idx = 0; pair_idx < components.length; pair_idx += 2) {
+      // Two real series a, b packed as z = a + i b: with Z(k) their joint transform,
+      // |A(k)|^2 + |B(k)|^2 = (|Z(k)|^2 + |Z(-k)|^2) / 2, which halves the FFT count. An
+      // unpaired last component leaves b = 0, where the identity reduces to |Z(k)|^2.
+      const first = components[pair_idx]
+      const second = pair_idx + 1 < components.length ? components[pair_idx + 1] : null
+      re.fill(0)
+      im.fill(0)
+      for (let frame_idx = 0; frame_idx < n_frames; frame_idx++) {
+        re[frame_idx] = velocities[frame_idx * frame_size + first]
+        if (second !== null) im[frame_idx] = velocities[frame_idx * frame_size + second]
+      }
+      fft_in_place(re, im)
+      for (let bin = 0; bin < n_fft; bin++) {
+        const mirror = bin === 0 ? 0 : n_fft - bin
+        group_power[bin] +=
+          (re[bin] ** 2 + im[bin] ** 2 + re[mirror] ** 2 + im[mirror] ** 2) / 2
+      }
+    }
+  }
+  // A lone species IS the total (0 + x is exact), so its sums are copied rather than paying
+  // a second n_fft buffer and inverse transform for the same numbers
+  if (n_groups > 1) {
+    const total_power = new Float64Array(n_fft)
+    for (const group_power of power) {
+      for (let bin = 0; bin < n_fft; bin++) total_power[bin] += group_power[bin]
+    }
+    power.push(total_power)
+  }
+  const sums = power.map((group_power) => {
+    im.fill(0)
+    fft_in_place(group_power, im)
+    const group_sums = new Float64Array(max_lag + 1)
+    for (let lag = 0; lag <= max_lag; lag++) group_sums[lag] = group_power[lag] / n_fft
+    return group_sums
+  })
+  if (n_groups === 1) sums.push(sums[0].slice())
+  return sums
 }
 
 export function calc_vacf(input: VacfInput, options: VacfOptions = {}): VacfResult {
@@ -97,52 +171,19 @@ export function calc_vacf(input: VacfInput, options: VacfOptions = {}): VacfResu
     n_frames: n_position_frames,
     n_atoms,
     elements,
-    lattice_matrices,
-    coords_unwrapped,
   } = input
   const {
     dt = 1,
-    time_unit: requested_time_unit,
     max_lag_fraction = 0.5,
     max_lags = 4096,
-    // Rough (origin x atom) operation budget; exceeding it throws unless the caller
-    // explicitly accepts the aliasing risk by setting `origin_stride`
-    work_budget = 2e8,
     velocity_source: requested_source = `auto`,
     vdos: vdos_options = {},
   } = options
 
-  if (n_atoms < 1) fail(`need at least 1 atom, got ${n_atoms}`)
-  if (elements.length !== n_atoms) {
-    fail(
-      `got ${elements.length} element labels for ${n_atoms} atoms; atom order is the ` +
-        `atom identity and must be one label per atom`,
-    )
-  }
-  const expected_positions = n_position_frames * n_atoms * 3
-  if (positions.length !== expected_positions) {
-    fail(
-      `positions has ${positions.length} entries but ${n_position_frames} frames x ` +
-        `${n_atoms} atoms x 3 requires ${expected_positions}`,
-    )
-  }
-  if (!(dt > 0)) fail(`dt must be positive, got ${dt}`)
-  // Same rule as calc_msd: a run without a timestep needs an explicit dt, so a dt without
-  // a unit would mean inventing a time axis (and, here, a frequency axis on top of it).
-  if (options.dt !== undefined && !requested_time_unit) {
-    fail(
-      `dt was supplied (${options.dt}) without time_unit; pass e.g. time_unit: 'fs' so the ` +
-        `lag axis and the VDOS frequency axis carry real units`,
-    )
-  }
-  if (options.dt !== undefined && requested_time_unit === `frame`) {
-    fail(`time_unit 'frame' cannot be combined with dt; omit dt for a frame-based lag axis`)
-  }
-  if (!(max_lag_fraction > 0) || max_lag_fraction > 1) {
-    fail(`max_lag_fraction must be in (0, 1], got ${max_lag_fraction}`)
-  }
-  if (lattice_matrices && lattice_matrices.length !== n_position_frames) {
-    fail(`got ${lattice_matrices.length} lattice matrices for ${n_position_frames} frames`)
+  validate_position_stream_layout(input, `calc_vacf`, 1)
+  const time_unit = resolve_lag_time_unit(`calc_vacf`, options.dt, options.time_unit, `fs`)
+  if (!Number.isInteger(max_lags) || max_lags < 2) {
+    fail(`max_lags must be an integer >= 2, got ${max_lags}`)
   }
 
   // === velocities ===
@@ -163,10 +204,10 @@ export function calc_vacf(input: VacfInput, options: VacfOptions = {}): VacfResu
   let n_frames: number
   let unwrapped = false
   if (velocity_source === `stored` && stored_velocities) {
-    if (stored_velocities.length !== expected_positions) {
+    if (stored_velocities.length !== positions.length) {
       fail(
         `velocities has ${stored_velocities.length} entries but ${n_position_frames} frames ` +
-          `x ${n_atoms} atoms x 3 requires ${expected_positions}; the velocity buffer must ` +
+          `x ${n_atoms} atoms x 3 requires ${positions.length}; the velocity buffer must ` +
           `share the positions' frame-major layout`,
       )
     }
@@ -176,112 +217,33 @@ export function calc_vacf(input: VacfInput, options: VacfOptions = {}): VacfResu
     // Differentiating wrapped coordinates turns every periodic-image jump into a velocity
     // spike of half a box per frame, which swamps the whole spectrum. Honour the parser's
     // already-unwrapped flag though: re-folding LAMMPS xu/yu/zu truncates real motion.
-    const has_lattice = Boolean(lattice_matrices?.some((matrix) => matrix != null))
-    unwrapped = !coords_unwrapped && !options.skip_unwrap && has_lattice
-    const pbc = options.pbc ?? input.pbc ?? [true, true, true]
-    const coords = unwrapped
-      ? unwrap_flat_positions(positions, n_position_frames, n_atoms, lattice_matrices, pbc)
-      : positions
-    velocities = central_difference_velocities(coords, n_position_frames, n_atoms, dt)
+    const coords = unwrapped_positions_of(input)
+    unwrapped = coords.unwrapped
+    velocities = central_difference_velocities(coords.coords, n_position_frames, n_atoms, dt)
     n_frames = n_position_frames - 2
   }
   if (n_frames < 2) fail(`need at least 2 velocity frames to form a lag, got ${n_frames}`)
 
-  // === lag / origin grid ===
+  // === lag grid ===
   // Lag 0 is included: it is the mean squared speed the whole curve normalizes by, and the
   // cosine transform needs the series to start there.
-  // max_lags caps the lag RANGE, never the lag spacing. Decimating a correlation function
-  // before transforming it is undersampling with no anti-alias filter: at lag_stride 3 a
-  // 0.4 cycles/frame mode reports as 0.067, i.e. 400 THz read as 67 THz at dt = 1 fs, and
-  // the peak moves rather than disappearing so the plot still looks plausible. Truncating
-  // the window instead costs frequency resolution, which the plot shows.
-  const max_lag = Math.min(
-    Math.max(1, Math.floor((n_frames - 1) * max_lag_fraction)),
-    Math.max(1, max_lags - 1),
-  )
-  // Still available as an explicit opt-in for a caller who knows their spectrum is
-  // band-limited well below the decimated Nyquist.
-  const lag_stride = options.lag_stride ?? 1
-  if (!Number.isInteger(lag_stride) || lag_stride < 1) {
-    fail(`lag_stride must be a positive integer, got ${lag_stride}`)
-  }
-  const lags: number[] = []
-  for (let lag = 0; lag <= max_lag; lag += lag_stride) lags.push(lag)
-  if (lags.length < 2) {
-    fail(`lag_stride ${lag_stride} exceeds the maximum lag ${max_lag}; nothing to transform`)
-  }
-
-  // Sampling every Nth time origin phase-locks to periodic motion: a velocity repeating
-  // every 8 frames, sampled at origin_stride 8, is read at the same phase every time and
-  // an oscillation with mean square speed 0.5 comes back as a flat zero curve. MSD can
-  // thin origins because it averages a monotone displacement; a correlation function
-  // cannot. So thinning is never applied silently — a caller over budget is told the
-  // stride to set and what it costs.
-  const unstrided_work = lags.reduce((total, lag) => total + (n_frames - lag) * n_atoms, 0)
-  const origin_stride = options.origin_stride ?? 1
-  if (!Number.isInteger(origin_stride) || origin_stride < 1) {
-    fail(`origin_stride must be a positive integer, got ${origin_stride}`)
-  }
-  if (origin_stride === 1 && unstrided_work > work_budget) {
-    const suggested = Math.ceil(unstrided_work / work_budget)
-    fail(
-      `${lags.length} lags over ${n_frames} frames x ${n_atoms} atoms needs ` +
-        `${unstrided_work} origin-atom operations, over the ${work_budget} budget. Collect ` +
-        `fewer frames (frame_stride), shorten the lag window (max_lags, currently ` +
-        `${max_lags}), or set origin_stride >= ${suggested} — but note a strided origin ` +
-        `sample aliases motion whose period divides the stride`,
-    )
-  }
+  const max_lag = Math.min(lag_range(`calc_vacf`, n_frames, max_lag_fraction), max_lags - 1)
+  const lags = Array.from({ length: max_lag + 1 }, (_unused, lag) => lag)
+  const n_origins = lags.map((lag) => n_frames - lag)
 
   // === accumulate, grouped by element ===
-  // Slot n_groups is the all-atom total, so one pass over atoms feeds every curve.
   const { labels, group_sizes, atom_group } = group_atoms_by_element(elements)
-  const n_groups = labels.length
-
-  // Welford rather than sum / sum-of-squares: for a ballistic or perfectly periodic run
-  // every origin agrees and the naive form loses the whole variance to cancellation,
-  // reporting ~sqrt(eps) * vacf instead of 0.
   const curve_sizes = [...group_sizes, n_atoms]
-  const mean_vacf = Array.from(curve_sizes, () => new Float64Array(lags.length))
-  const m2_vacf = Array.from(curve_sizes, () => new Float64Array(lags.length))
-  const origin_counts = new Int32Array(lags.length)
-  const origin_sums = new Float64Array(curve_sizes.length)
-
-  for (let lag_idx = 0; lag_idx < lags.length; lag_idx++) {
-    const lag = lags[lag_idx]
-    const last_origin = n_frames - 1 - lag
-    let n_origins = 0
-    for (let origin = 0; origin <= last_origin; origin += origin_stride) {
-      origin_sums.fill(0)
-      const base_from = origin * n_atoms * 3
-      const base_to = (origin + lag) * n_atoms * 3
-      for (let atom_idx = 0; atom_idx < n_atoms; atom_idx++) {
-        const off_from = base_from + atom_idx * 3
-        const off_to = base_to + atom_idx * 3
-        origin_sums[atom_group[atom_idx]] +=
-          velocities[off_to] * velocities[off_from] +
-          velocities[off_to + 1] * velocities[off_from + 1] +
-          velocities[off_to + 2] * velocities[off_from + 2]
-      }
-      n_origins++
-      let total_for_origin = 0
-      for (let group = 0; group < n_groups; group++) total_for_origin += origin_sums[group]
-      origin_sums[n_groups] = total_for_origin
-      for (const [slot, size] of curve_sizes.entries()) {
-        welford_update(
-          mean_vacf[slot],
-          m2_vacf[slot],
-          lag_idx,
-          n_origins,
-          origin_sums[slot] / size,
-        )
-      }
-    }
-    origin_counts[lag_idx] = n_origins
-  }
+  const sums = autocorrelation_sums(
+    velocities,
+    n_frames,
+    n_atoms,
+    atom_group,
+    labels.length,
+    max_lag,
+  )
 
   // === axes ===
-  const time_unit = requested_time_unit ?? `frame`
   const times = lags.map((lag) => lag * dt)
   // Differentiated velocities are Å per lag-axis time unit by construction. Stored ones
   // carry whatever the file used, so without an explicit label the honest answer is that
@@ -293,58 +255,48 @@ export function calc_vacf(input: VacfInput, options: VacfOptions = {}): VacfResu
         ? `(${input.velocity_unit})^2`
         : `(file velocity units)^2`
 
-  const {
-    window = `hann`,
-    window_options = {},
-    zero_pad_factor = 4,
-    skip: skip_vdos = false,
-  } = vdos_options
-  // Lag sub-sampling widens the effective sampling interval, so the frequency axis is
-  // built from dt * lag_stride, not dt
-  const sample_interval = dt * lag_stride
+  const { window = `hann` } = vdos_options
   const frequency_unit: VacfFrequencyUnit =
     vdos_options.frequency_unit ??
     (thz_per_inverse_time(time_unit) === undefined ? `1/frame` : `THz`)
-
-  const weights = correlation_window(lags.length, window, window_options)
-  // even_cosine_spectrum mirrors the lags and rounds up, so the grid is known before any
-  // transform runs: f_bin = bin / (n_fft * sample_interval), converted into the unit asked
-  // for. A skipped VDOS gets no axis at all rather than an unlabelled one.
-  const n_fft = skip_vdos ? 0 : cosine_spectrum_length(lags.length, zero_pad_factor)
-  let frequencies: number[] = []
-  if (!skip_vdos) {
-    const bin_spacing =
-      frequency_factor(dt, time_unit, frequency_unit) / (n_fft * sample_interval)
-    frequencies = Array.from({ length: n_fft / 2 + 1 }, (_unused, bin) => bin * bin_spacing)
+  if (!VACF_FREQUENCY_UNITS.includes(frequency_unit)) {
+    fail(`unknown frequency_unit '${frequency_unit}'`)
   }
-
-  const make_curve = (label: string, slot: number): VacfCurve => {
-    const vacf = Array.from(mean_vacf[slot])
-    const m2 = m2_vacf[slot]
-    // Welford's m2 is a sum of squared deviations, so the unbiased sample variance divides
-    // by count - 1; using count under-reports by 41% at the n = 2 tail.
-    const std_error = Array.from(origin_counts, (count, lag_idx) =>
-      count < 2 ? 0 : Math.sqrt(m2[lag_idx] / (count - 1) / count),
+  const weights = correlation_window(lags.length, window)
+  // even_cosine_spectrum mirrors the lags and rounds up, so the grid is known before any
+  // transform runs: f_bin = bin / (n_fft * dt), converted into the unit asked for. Inverse
+  // frames means cycles per collected frame whatever dt is, so there the spacing is 1 / n_fft.
+  // Throws rather than inventing a scale for unconvertible physical units.
+  const n_fft = cosine_spectrum_length(lags.length, VDOS_ZERO_PAD_FACTOR)
+  const bin_spacing = (): number => {
+    if (frequency_unit === `1/frame`) return 1 / n_fft
+    const factor = md_frequency_factor(time_unit, frequency_unit)
+    if (factor !== null) return factor / (n_fft * dt)
+    const convertible = Object.keys(TIME_UNIT_TO_THZ).join(`, `)
+    const reason =
+      time_unit === `frame`
+        ? `no timestep was supplied, so the only honest axis is '1/frame'. Pass dt and ` +
+          `time_unit (one of ${convertible}) to get real frequencies.`
+        : `time_unit '${time_unit}' with frequency_unit '${frequency_unit}' is not convertible; ` +
+          `use frequency_unit '1/frame', or a time_unit of ${convertible}`
+    return fail(
+      `cannot report a ${frequency_unit} frequency axis for a lag axis in ` +
+        `'${time_unit}': ${reason}`,
     )
+  }
+  const spacing = bin_spacing()
+  const frequencies = Array.from({ length: n_fft / 2 + 1 }, (_unused, bin) => bin * spacing)
+
+  const make_curve = ({ label, slot }: { label: string; slot: number }): VacfCurve => {
+    const size = curve_sizes[slot]
+    const vacf = Array.from(sums[slot], (sum, lag) => sum / (n_origins[lag] * size))
     // A group whose atoms are all exactly at rest has VACF(0) = 0 and no direction to
     // normalize along. Zeros are the truthful answer; dividing would give NaN.
     const zero_lag = vacf[0]
     const vacf_normalized =
       zero_lag === 0 ? vacf.map(() => 0) : vacf.map((value) => value / zero_lag)
-
-    // A fresh n_origins array per curve: callers mutating one must not corrupt the others
-    const shared = {
-      label,
-      n_atoms: curve_sizes[slot],
-      vacf,
-      vacf_normalized,
-      std_error,
-      n_origins: Array.from(origin_counts),
-    }
-    if (skip_vdos) return { ...shared, vdos: [], peak_frequency: null }
-
     const windowed = vacf_normalized.map((value, lag_idx) => value * weights[lag_idx])
-    const { spectrum } = even_cosine_spectrum(windowed, zero_pad_factor)
+    const { spectrum } = even_cosine_spectrum(windowed, VDOS_ZERO_PAD_FACTOR)
     // The cosine transform of a real even signal is real, but a VACF that has not decayed
     // inside the window can push a bin slightly negative; that is truncation, not a
     // physical negative DOS, so it is reported as-is rather than clamped.
@@ -352,28 +304,28 @@ export function calc_vacf(input: VacfInput, options: VacfOptions = {}): VacfResu
     for (let bin = 1; bin < spectrum.length; bin++) {
       if (spectrum[bin] > spectrum[peak_bin]) peak_bin = bin
     }
-    return { ...shared, vdos: Array.from(spectrum), peak_frequency: frequencies[peak_bin] }
-  }
-
-  const curves: VacfCurve[] = [make_curve(`Total`, n_groups)]
-  // A lone species adds nothing over the total, so only a mixture gets element curves
-  if (n_groups > 1) {
-    const by_label = [...labels.keys()].toSorted((left, right) =>
-      labels[left].localeCompare(labels[right]),
-    )
-    for (const slot of by_label) curves.push(make_curve(labels[slot], slot))
+    return {
+      label,
+      n_atoms: size,
+      vacf,
+      vacf_normalized,
+      // A fresh array per curve: callers mutating one must not corrupt the others
+      n_origins: [...n_origins],
+      vdos: Array.from(spectrum),
+      peak_frequency: frequencies[peak_bin],
+    }
   }
 
   return {
     lags,
     times,
-    curves,
+    curves: curve_slots(labels).map(make_curve),
     dt,
     time_unit,
     x_label: time_unit === `frame` ? `Lag (frames)` : `Lag time (${time_unit})`,
     frequencies,
     frequency_unit,
-    frequency_label: `Frequency (${frequency_unit})`,
+    frequency_label: `Frequency (${frequency_unit_label(frequency_unit)})`,
     window,
     n_fft,
     velocity_source,
@@ -381,8 +333,6 @@ export function calc_vacf(input: VacfInput, options: VacfOptions = {}): VacfResu
     n_frames,
     n_atoms,
     unwrapped,
-    lag_stride,
-    origin_stride,
     frame_stride: input.frame_stride,
   }
 }

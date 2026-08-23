@@ -6,9 +6,10 @@ import { calc_coordination_nums } from '$lib/coordination/calc-coordination'
 import { ATOM_COLOR_MODE_OPTIONS, DEFAULTS, type AtomColorMode } from '$lib/settings'
 import type { AnyStructure, Site } from '$lib/structure'
 import type { BondingStrategy } from '$lib/structure/bonding'
+import { get_orig_site_idx } from '$lib/structure/site'
 import { CNA_TYPE_COLORS, CNA_TYPE_NAMES } from '$lib/structure-id/calc-cna'
 import { CNA_TYPE_PROPERTY } from '$lib/structure-id/calc-structure-id'
-import type { MoyoDataset } from '@spglib/moyo-wasm'
+import type { WyckoffPos } from '$lib/symmetry/wyckoff'
 import { rgb } from 'd3-color'
 
 type SimpleAtomColorMode = Exclude<AtomColorMode, `property` | `custom`>
@@ -39,7 +40,6 @@ export interface AtomPropertyColors {
 
 const GRAY = `#808080`
 const DEFAULT_COLOR_SCALE = DEFAULTS.structure.atom_color_scale
-type SymmetryDataWithOrigMap = MoyoDataset & { orig_site_indices_by_input_idx?: number[][] }
 
 const to_hex = (interp_fn: (t: number) => string, frac: number) =>
   rgb(interp_fn(frac)).formatHex()
@@ -104,80 +104,48 @@ export const apply_categorical_color_scale = (
 ): { colors: string[]; unique_values: string[] } =>
   vals.length > 0 ? make_categorical(vals, scale) : { colors: [], unique_values: [] }
 
-// Get original site index for property color lookup.
-// Supercell atoms use orig_unit_cell_idx, image atoms use orig_site_idx, otherwise use site_idx.
-export const get_orig_site_idx = (site: Site | undefined, site_idx: number): number =>
-  typeof site?.properties?.orig_unit_cell_idx === `number`
-    ? site.properties.orig_unit_cell_idx
-    : typeof site?.properties?.orig_site_idx === `number`
-      ? site.properties.orig_site_idx
-      : site_idx
-
 export function get_coordination_colors(
   structure: AnyStructure,
   strategy: BondingStrategy = `electroneg_ratio`,
   scale: D3InterpolateName = DEFAULT_COLOR_SCALE,
   type: ColorScaleType = `continuous`,
 ): AtomPropertyColors {
-  const coord_nums = calc_coordination_nums(structure, strategy).sites.map(
-    (site) => site.coordination_num,
-  )
+  const coord_nums = calc_coordination_nums(structure, { strategy }).coordination_nums
 
   const { colors, unique_values } = apply_color_scale(coord_nums, scale, type)
   return build_prop_colors(coord_nums, colors, unique_values)
 }
 
+// Color sites by Wyckoff orbit. `wyckoff_rows` must already be mapped onto `structure`'s site
+// indices (map_wyckoff_to_all_atoms for anything but the analyzed cell itself), so a
+// conventional/primitive/supercell view colors by where each displayed atom actually sits
+// rather than by whatever site shared its index in the analyzed cell. Orbit ids are
+// `${multiplicity}${letter}|${element}` (e.g. `4a|Fe`); sites no row claims are `unknown`.
 export function get_wyckoff_colors(
   structure: AnyStructure,
-  sym_data: SymmetryDataWithOrigMap | null,
+  wyckoff_rows: readonly WyckoffPos[],
   scale: D3InterpolateName = DEFAULT_COLOR_SCALE,
 ): AtomPropertyColors {
-  const n_sites = structure.sites.length
-  if (!sym_data?.wyckoffs || sym_data.wyckoffs.length === 0) {
-    return {
-      colors: Array(n_sites).fill(GRAY),
-      values: Array(n_sites).fill(`unknown`),
-      unique_values: [`unknown`],
+  const orbit_ids: (string | null)[] = Array(structure.sites.length).fill(null)
+  for (const { wyckoff, elem, site_indices } of wyckoff_rows) {
+    for (const site_idx of site_indices) {
+      if (site_idx < orbit_ids.length) orbit_ids[site_idx] = `${wyckoff}|${elem}`
     }
   }
-
-  // moyo's wyckoffs array is indexed by INPUT cell sites (the merged moyo input cell),
-  // so map letters to original sites through orig_site_indices_by_input_idx
-  const wyckoff_by_orig_idx = new Map<number, string | null>()
-  const mapping_by_input_idx = sym_data.orig_site_indices_by_input_idx
-  if (mapping_by_input_idx) {
-    for (let input_idx = 0; input_idx < sym_data.wyckoffs.length; input_idx += 1) {
-      const wyckoff = sym_data.wyckoffs[input_idx]
-      for (const orig_idx of mapping_by_input_idx[input_idx] ?? []) {
-        if (!wyckoff_by_orig_idx.has(orig_idx)) wyckoff_by_orig_idx.set(orig_idx, wyckoff)
-      }
-    }
+  // Ramp over the claimed orbits only, then gray-fill unclaimed sites (as property mode does)
+  const known = orbit_ids.filter((orbit_id) => orbit_id !== null)
+  const { colors: known_colors, unique_values } = apply_categorical_color_scale(known, scale)
+  let known_idx = 0
+  const colors = orbit_ids.map((orbit_id) =>
+    orbit_id === null ? GRAY : known_colors[known_idx++],
+  )
+  const values = orbit_ids.map((orbit_id) => orbit_id ?? `unknown`)
+  return {
+    colors,
+    values,
+    unique_values:
+      known.length < orbit_ids.length ? [...unique_values, `unknown`] : unique_values,
   }
-
-  // Create unique orbit identifiers: Wyckoff position + element symbol
-  const orbit_ids = structure.sites.map((site, idx) => {
-    const sym_idx = get_orig_site_idx(site, idx)
-    const mapped_wyckoff = wyckoff_by_orig_idx.get(sym_idx)
-    if (mapped_wyckoff !== undefined) {
-      const element = site.species[0]?.element ?? `?`
-      return mapped_wyckoff ? `${mapped_wyckoff}|${element}` : `unknown`
-    }
-
-    if (sym_idx >= sym_data.wyckoffs.length) {
-      console.error(
-        `[get_wyckoff_colors] Site ${idx} (maps to ${sym_idx}) has no Wyckoff data. ` +
-          `Structure has ${n_sites} sites but symmetry data only has ${sym_data.wyckoffs.length}.`,
-      )
-      return `unknown`
-    }
-
-    const wyckoff = sym_data.wyckoffs[sym_idx]
-    const element = site.species[0]?.element ?? `?`
-    return wyckoff ? `${wyckoff}|${element}` : `unknown`
-  })
-
-  const { colors, unique_values } = apply_categorical_color_scale(orbit_ids, scale)
-  return { colors, values: orbit_ids, unique_values }
 }
 
 // POSCAR selective dynamics is a PER-AXIS flag triple (`T`/`F` per lattice direction), so an
@@ -406,18 +374,58 @@ export function get_custom_colors(
   return { colors, values: strs, unique_values }
 }
 
+export type AtomColorSources = {
+  // Cell the displayed structure tiles (cell-transformed, pre-supercell/pre-image). Coordination
+  // is computed here so it reflects the infinite crystal, then followed to every displayed copy
+  // through its supercell/image provenance. Defaults to the displayed structure itself.
+  base?: AnyStructure
+  // Index into `base` of a displayed site. Defaults to following both provenance properties
+  // (orig_unit_cell_idx, then orig_site_idx); a caller whose input structure already carries
+  // orig_unit_cell_idx from a supercell built elsewhere must not follow it (see
+  // StructureSession.to_base_site_idx).
+  to_base_idx?: (site: Site, site_idx: number) => number
+  bonding_strategy?: BondingStrategy
+  // Wyckoff rows whose site_indices already index the DISPLAYED structure
+  wyckoff_rows?: readonly WyckoffPos[]
+}
+
+// Re-index colors computed on the base cell onto the displayed sites. Range/legend stats stay
+// those of the base cell (a supercell has the same distinct values, image atoms add none).
+const expand_to_displayed = (
+  base_colors: AtomPropertyColors,
+  displayed: AnyStructure,
+  to_base_idx: (site: Site, site_idx: number) => number,
+): AtomPropertyColors => {
+  const base_indices = displayed.sites.map(to_base_idx)
+  return {
+    ...base_colors,
+    colors: base_indices.map((base_idx) => base_colors.colors[base_idx] ?? GRAY),
+    values: base_indices.map((base_idx) => base_colors.values[base_idx] ?? `unknown`),
+  }
+}
+
+// Per-site colors for the DISPLAYED structure, indexed by displayed site. Only coordination is
+// remapped through provenance; property/custom/selective modes read each displayed site
+// directly, so a caller-supplied supercell carrying per-site data (phonon eigen-displacements,
+// ...) colors by that data rather than by whatever its unit-cell ancestor carried.
 export function get_atom_colors(
   structure: AnyStructure,
   config: AtomColorConfig,
-  bonding_strategy: BondingStrategy = `electroneg_ratio`,
-  sym_data: MoyoDataset | null = null,
+  {
+    base = structure,
+    to_base_idx = get_orig_site_idx,
+    bonding_strategy = `electroneg_ratio`,
+    wyckoff_rows = [],
+  }: AtomColorSources = {},
 ): AtomPropertyColors {
   const normalized_config = normalize_atom_color_config(config)
   const { mode, scale, scale_type } = normalized_config
 
-  if (mode === `coordination`)
-    return get_coordination_colors(structure, bonding_strategy, scale, scale_type)
-  if (mode === `wyckoff`) return get_wyckoff_colors(structure, sym_data, scale)
+  if (mode === `coordination`) {
+    const on_base = get_coordination_colors(base, bonding_strategy, scale, scale_type)
+    return base === structure ? on_base : expand_to_displayed(on_base, structure, to_base_idx)
+  }
+  if (mode === `wyckoff`) return get_wyckoff_colors(structure, wyckoff_rows, scale)
   if (mode === `selective_dynamics`) return get_selective_dynamics_colors(structure, scale)
   if (mode === `property`)
     return get_site_property_colors(
@@ -432,15 +440,14 @@ export function get_atom_colors(
   return { colors: [], values: [] }
 }
 
-// Helper: Get property colors with null safety check
-// Returns null if structure is missing, mode is element, or no colors computed
+// get_atom_colors with the "nothing to color by" cases folded to null: no structure, element
+// mode, or no site declares the property
 export function get_property_colors(
   structure: AnyStructure | undefined,
   config: AtomColorConfig,
-  bonding_strategy: BondingStrategy,
-  sym_data: MoyoDataset | null,
+  sources: AtomColorSources = {},
 ): AtomPropertyColors | null {
   if (!structure) return null
-  const result = get_atom_colors(structure, config, bonding_strategy, sym_data)
+  const result = get_atom_colors(structure, config, sources)
   return result.colors.length > 0 ? result : null
 }

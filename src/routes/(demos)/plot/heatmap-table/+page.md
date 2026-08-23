@@ -345,7 +345,7 @@ All 118 chemical elements with physical and chemical properties. Features column
   bind:selected_rows
   pagination={{ page_size: 20 }}
   sort_hint="Click headers to sort, Shift+click for multi-sort"
-  onrowdblclick={(_, row) => window.open(`/${row.Name.toLowerCase()}`, `_blank`)}
+  on_row_double_click={(_, row) => window.open(`/${row.Name.toLowerCase()}`, `_blank`)}
   style="margin: 0 auto"
 />
 

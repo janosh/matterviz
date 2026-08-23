@@ -28,7 +28,7 @@
     {
       "id": "liquid",
       "name": "Liquid",
-      "color": "liquid",
+      "color": "rgba(135, 206, 250, 0.6)",
       "bounds": [
         [0, 1600],
         [1, 1600],
@@ -41,13 +41,13 @@
     {
       "id": "delta",
       "name": "δ (BCC)",
-      "color": "bcc_a2",
+      "color": "rgba(255, 182, 193, 0.6)",
       "bounds": [[0, 1538], [0.015, 1495], [0, 1394]]
     },
     {
       "id": "gamma",
       "name": "γ (FCC)",
-      "color": "fcc_a1",
+      "color": "rgba(144, 238, 144, 0.6)",
       "bounds": [
         [0, 1394],
         [0.015, 1495],
@@ -74,37 +74,37 @@
     {
       "id": "l_plus_delta",
       "name": "L + δ",
-      "color": "two_phase_bcc_liquid",
+      "color": "rgba(255, 200, 200, 0.5)",
       "bounds": [[0, 1538], [0.077, 1495], [0.015, 1495]]
     },
     {
       "id": "l_plus_gamma",
       "name": "L + γ",
-      "color": "two_phase_fcc_liquid",
+      "color": "rgba(180, 230, 180, 0.5)",
       "bounds": [[0.077, 1495], [0.645, 1147], [0.32, 1147], [0.024, 1495]]
     },
     {
       "id": "l_plus_fe3c",
       "name": "L + Fe3C",
-      "color": "two_phase_intermetallic",
+      "color": "rgba(255, 220, 180, 0.5)",
       "bounds": [[0.645, 1147], [0.95, 1147], [0.95, 1227], [1, 1227]]
     },
     {
       "id": "gamma_plus_fe3c",
       "name": "γ + Fe3C",
-      "color": "two_phase_gamma",
+      "color": "rgba(180, 200, 250, 0.5)",
       "bounds": [[0.32, 1147], [0.95, 1147], [0.95, 727], [0.115, 727]]
     },
     {
       "id": "alpha_plus_gamma",
       "name": "α + γ",
-      "color": "two_phase_mixed",
+      "color": "rgba(230, 200, 220, 0.5)",
       "bounds": [[0.003, 892], [0.003, 727], [0.115, 727], [0.115, 832]]
     },
     {
       "id": "alpha_plus_fe3c",
       "name": "α + Fe3C",
-      "color": "two_phase_alt",
+      "color": "rgba(220, 200, 240, 0.5)",
       "bounds": [[0, 400], [0.95, 400], [0.95, 727], [0.115, 727], [0.003, 727]]
     }
   ],

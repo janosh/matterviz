@@ -540,17 +540,20 @@ function clip_polyhedron_by_plane(
   return result
 }
 
-// Try to build hull from vertices, returns null on failure
-function try_build_hull(
+// Hull of a clipped vertex set. Fewer than 4 vertices (or a degenerate hull) means the clip
+// plane did not cut the polyhedron the way a symmetry plane must; a skipped plane would
+// yield a wrong IBZ volume and multiplicity, so this throws instead.
+function clipped_hull(
   vertices: Vec3[],
   edge_sharp_angle_deg: number,
-): ConvexHullData | null {
-  if (vertices.length < 4) return null
-  try {
-    return compute_convex_hull(vertices, edge_sharp_angle_deg)
-  } catch {
-    return null
+  plane: ClippingPlane,
+): ConvexHullData {
+  if (vertices.length < 4) {
+    throw new Error(
+      `IBZ clipping by plane n=[${plane.normal.map((val) => val.toFixed(4)).join(`, `)}] left ${vertices.length} vertices (need ≥ 4 for a polyhedron)`,
+    )
   }
+  return compute_convex_hull(vertices, edge_sharp_angle_deg)
 }
 
 // Compute the irreducible Brillouin zone by clipping the full BZ with symmetry planes
@@ -558,7 +561,7 @@ export function compute_irreducible_bz(
   bz_data: BrillouinZoneData,
   point_group_ops: Matrix3x3[],
   edge_sharp_angle_deg = 5,
-): IrreducibleBZData | null {
+): IrreducibleBZData {
   // Convert fractional rotations to Cartesian k-space rotations
   // R_cart = Bᵀ · W^{-T} · B^{-T}, where B is k_lattice (reciprocal vectors as rows)
   const cartesian_ops = point_group_ops.map((W) =>
@@ -584,17 +587,12 @@ export function compute_irreducible_bz(
     // n·x ≤ 0 always contains the reference direction) so clip directly — flipping a
     // plane would select the wrong half-space and break the fundamental-domain property
     const clipped = clip_polyhedron_by_plane(current_vertices, current_faces, plane)
-    const hull = try_build_hull(clipped, edge_sharp_angle_deg)
-    if (hull) {
-      current_vertices = hull.vertices
-      current_faces = hull.faces
-    } else {
-      console.warn(`IBZ clipping: degenerate clip result, skipping plane`)
-    }
+    const hull = clipped_hull(clipped, edge_sharp_angle_deg, plane)
+    current_vertices = hull.vertices
+    current_faces = hull.faces
   }
 
-  const hull = try_build_hull(current_vertices, edge_sharp_angle_deg)
-  if (!hull) return null
+  const hull = compute_convex_hull(current_vertices, edge_sharp_angle_deg)
 
   return {
     vertices: hull.vertices,

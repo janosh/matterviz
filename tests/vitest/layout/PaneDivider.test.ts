@@ -8,10 +8,12 @@ const pointer_event = (
 ): PointerEvent =>
   new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 1, ...init })
 
+type PixelClamps = { min_px?: number; max_px?: number; second_min_px?: number }
 const mount_divider = (
   orientation: `horizontal` | `vertical`,
   direction: `ltr` | `rtl` = `ltr`,
   ratio?: number,
+  clamps: PixelClamps = {},
 ) => {
   const parent = document.createElement(`div`)
   parent.dir = direction
@@ -19,7 +21,10 @@ const mount_divider = (
   document.body.append(parent)
   parent.getBoundingClientRect = () =>
     DOMRect.fromRect({ x: 100, y: 50, width: 400, height: 200 })
-  const component = mount(PaneDivider, { target: parent, props: { orientation, ratio } })
+  const component = mount(PaneDivider, {
+    target: parent,
+    props: { orientation, ratio, ...clamps },
+  })
   onTestFinished(() => unmount(component).finally(() => parent.remove()))
   flushSync()
   const divider = parent.querySelector<HTMLElement>(`[role="separator"]`)
@@ -85,4 +90,46 @@ test(`an active drag ignores other pointers and ends on lost capture`, () => {
   divider.dispatchEvent(pointer_event(`pointerdown`, { button: 1, pointerId: 9 }))
   divider.dispatchEvent(pointer_event(`pointermove`, { clientX: 200, pointerId: 9 }))
   expect(parent.style.getPropertyValue(`--split-pane-size`)).toBe(`75%`)
+})
+
+// Pixel clamps tighten the [15%, 85%] ratio clamps using the container's measured size (400
+// px wide, 200 px tall here); an over-constrained container settles at the first pane's floor
+test.each([
+  [`min_px`, `horizontal`, { min_px: 120 }, { clientX: 120 }, 30, { clientX: 480 }, 85],
+  [`max_px`, `horizontal`, { max_px: 100 }, { clientX: 480 }, 25, { clientX: 120 }, 15],
+  [
+    `second_min_px`,
+    `horizontal`,
+    { second_min_px: 300 },
+    { clientX: 480 },
+    25,
+    { clientX: 120 },
+    15,
+  ],
+  [`vertical min_px`, `vertical`, { min_px: 80 }, { clientY: 60 }, 40, { clientY: 240 }, 85],
+  [
+    `both floors`,
+    `horizontal`,
+    { min_px: 200, second_min_px: 300 },
+    { clientX: 120 },
+    50,
+    { clientX: 480 },
+    50,
+  ],
+] as const)(
+  `%s clamps pointer drags in pixels`,
+  (_name, orientation, clamps, low, low_pct, high, high_pct) => {
+    const { divider, parent } = mount_divider(orientation, `ltr`, 0.5, clamps)
+    divider.dispatchEvent(pointer_event(`pointerdown`, { pointerId: 4 }))
+    divider.dispatchEvent(pointer_event(`pointermove`, { ...low, pointerId: 4 }))
+    expect(parent.style.getPropertyValue(`--split-pane-size`)).toBe(`${low_pct}%`)
+    divider.dispatchEvent(pointer_event(`pointermove`, { ...high, pointerId: 4 }))
+    expect(parent.style.getPropertyValue(`--split-pane-size`)).toBe(`${high_pct}%`)
+  },
+)
+
+test(`an initial ratio outside the pixel clamps is shown clamped`, () => {
+  const { divider, parent } = mount_divider(`horizontal`, `ltr`, 0.2, { min_px: 160 })
+  expect(parent.style.getPropertyValue(`--split-pane-size`)).toBe(`40%`)
+  expect(divider.getAttribute(`aria-valuenow`)).toBe(`40`)
 })

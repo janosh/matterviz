@@ -5,6 +5,7 @@
   import { format_value_or_num } from '$lib/labels'
   import type { Vec2 } from '$lib/math'
   import type {
+    AxisConfig,
     BandwidthOption,
     BasePlotProps,
     BoxHandlerProps,
@@ -39,12 +40,11 @@
     resolve_legend_visibility,
   } from '$lib/plot/core/utils/series-visibility'
   import { DEFAULT_PLOT_PADDING, filter_padding } from '$lib/plot/core/layout'
-  import { LOG_EPS } from '$lib/math'
-  import type { IndexedRefLine } from '$lib/plot/core/reference-line'
-  import { group_ref_lines_by_z, index_ref_lines } from '$lib/plot/core/reference-line'
-  import { get_relative_coords } from '$lib/plot/core/interactions'
+  import { AXIS_DEFAULTS, X2_AXIS_DEFAULTS } from '$lib/plot/core/axis-utils'
+  import { index_ref_lines } from '$lib/plot/core/reference-line'
+  import { get_relative_coords, is_activation_key } from '$lib/plot/core/interactions'
   import { get_nice_data_range } from '$lib/plot/core/scales'
-  import { DEFAULT_SERIES_COLORS } from '$lib/plot/core/types'
+  import { DEFAULT_SERIES_COLORS, get_scale_type_name } from '$lib/plot/core/types'
   import { resolve_plot_display, sync_category_zero_display } from '$lib/plot/core/display'
   import { DEFAULTS } from '$lib/settings'
   import type { Snippet } from 'svelte'
@@ -203,20 +203,8 @@
 
   // Merge secondary-axis defaults as deriveds instead of assigning back into the
   // $bindable props (which would push library defaults into the parent's bound state)
-  let y2_axis = $derived({
-    format: ``,
-    scale_type: `linear`,
-    ticks: 5,
-    range: [null, null],
-    ...y2_axis_prop,
-  } as typeof y2_axis_prop)
-  let x2_axis = $derived({
-    format: ``,
-    scale_type: `linear`,
-    ticks: 5,
-    range: [null, null],
-    ...x2_axis_prop,
-  } as typeof x2_axis_prop)
+  let y2_axis = $derived<AxisConfig>({ ...AXIS_DEFAULTS, ...y2_axis_prop })
+  let x2_axis = $derived<AxisConfig>({ ...X2_AXIS_DEFAULTS, ...x2_axis_prop })
 
   const plot_axes = $derived({ x: x_axis, x2: x2_axis, y: y_axis, y2: y2_axis })
 
@@ -256,10 +244,7 @@
     clip_id_prefix: `box-clip`,
   })
 
-  let hovered_ref_line_idx = $state<number | null>(null)
-
   let indexed_ref_lines = $derived(index_ref_lines(ref_lines))
-  let ref_lines_by_z = $derived(group_ref_lines_by_z(indexed_ref_lines))
 
   // === Box stats + slot model ===
   const box_color = (idx: number): string =>
@@ -356,7 +341,11 @@
       let clip = box_item.series.clip ?? kde_clip
       // On a log value axis the KDE grid tail (data_min - cut*bandwidth) is usually <= 0 →
       // NaN pixels + LOG_EPS range pollution. Clamp the grid to the smallest positive sample.
-      if ((is_secondary(box_item.series) ? val_axis2 : val_axis).scale_type === `log`) {
+      if (
+        get_scale_type_name(
+          (is_secondary(box_item.series) ? val_axis2 : val_axis).scale_type,
+        ) === `log`
+      ) {
         const min_pos = samples.reduce(
           (min, val) => (val > 0 && val < min ? val : min),
           Infinity,
@@ -405,8 +394,10 @@
   let show_x2 = $derived(has_secondary && orientation === `horizontal`)
   let show_y2 = $derived(has_secondary && orientation === `vertical`)
 
-  // Collect value-axis points (whiskers, quartiles, outliers, KDE tails) for auto-range
-  const value_points = (boxes: Box[]): { x: number; y: number }[] =>
+  // Collect value-axis points (whiskers, quartiles, outliers, KDE tails) for auto-range. On a
+  // log axis non-positive stats (a whisker_low of exactly 0, negative outliers) are dropped:
+  // nicing them would pin the floor at LOG_EPS and stretch the axis across a dozen decades.
+  const value_points = (boxes: Box[], log_axis: boolean): { x: number; y: number }[] =>
     boxes.flatMap((box_item) => {
       const { whisker_low, whisker_high, q1, q3, median, mean, outliers } = box_item.stats
       const vals = [whisker_low, whisker_high, q1, q3, median]
@@ -419,7 +410,9 @@
       }
       const kde = violin_kdes.get(box_item.idx)
       if (kde && kde.grid.length > 0) vals.push(kde.grid[0], kde.grid[kde.grid.length - 1])
-      return vals.filter(Number.isFinite).map((val) => ({ x: 0, y: val }))
+      return vals
+        .filter((val) => Number.isFinite(val) && (!log_axis || val > 0))
+        .map((val) => ({ x: 0, y: val }))
     })
 
   let auto_ranges = $derived.by(() => {
@@ -441,7 +434,7 @@
       limit: [number | null, number | null],
       scale_type: ScaleType,
     ): Vec2 => {
-      const pts = value_points(boxes)
+      const pts = value_points(boxes, get_scale_type_name(scale_type) === `log`)
       if (pts.length === 0) return [0, 1]
       const has_outliers =
         show_outliers && boxes.some((box_item) => box_item.stats.outliers.length > 0)
@@ -530,20 +523,16 @@
   )
   // Value scale for a box (vertical -> y/y2, horizontal -> x/x2), made log-safe: on a
   // log value axis, stats at values <= 0 (whisker_low is often exactly 0; negative
-  // outliers) have no finite pixel. Clamp to LOG_EPS so whiskers/boxes/labels draw
-  // toward the plot edge (the clip group crops the overshoot) instead of NaN coords.
+  // outliers) have no finite pixel. Clamp to the range floor so whiskers/boxes/labels end
+  // at the plot edge (like BarPlot's bars) instead of NaN coords or a far-off LOG_EPS pixel.
   const box_val_scale = (srs: BoxPlotSeries<Metadata>): ((val: number) => number) => {
     const vertical = orientation === `vertical`
     const secondary = is_secondary(srs)
-    const scale = vertical
-      ? secondary
-        ? frame.scales.y2
-        : frame.scales.y
-      : secondary
-        ? frame.scales.x2
-        : frame.scales.x
-    const axis = vertical ? (secondary ? y2_axis : y_axis) : secondary ? x2_axis : x_axis
-    return axis.scale_type === `log` ? (val) => scale(Math.max(val, LOG_EPS)) : scale
+    const axis_key = vertical ? (secondary ? `y2` : `y`) : secondary ? `x2` : `x`
+    const scale = frame.scales[axis_key]
+    if (get_scale_type_name(plot_axes[axis_key].scale_type) !== `log`) return scale
+    const floor = Math.min(...frame.ranges.current[axis_key])
+    return (val) => scale(Math.max(val, floor))
   }
 
   // Categorical tick labels (slot index -> category name) unless user provides a label mapping
@@ -637,19 +626,6 @@
   />
 {/snippet}
 
-{#snippet ref_lines_layer(lines: readonly IndexedRefLine[])}
-  <ReferenceLinesLayer
-    {lines}
-    ranges={frame.ranges.current}
-    scales={frame.scales}
-    clip_path_id={frame.clip_path_id}
-    decoration_solution={frame.decoration_solution}
-    bind:hovered_line_idx={hovered_ref_line_idx}
-    on_click={on_ref_line_click}
-    on_hover={on_ref_line_hover}
-  />
-{/snippet}
-
 <CartesianFrame
   {frame}
   plot_class="box-plot"
@@ -670,27 +646,18 @@
     clear_hover()
   }}
   {header_controls}
+  {user_content}
   {children}
   {...rest}
 >
   {#snippet layers()}
     {@const pad = frame.pad}
-    {@render user_content?.({
-      height: frame.height,
-      width: frame.width,
-      x_scale_fn: frame.scales.x,
-      x2_scale_fn: frame.scales.x2,
-      y_scale_fn: frame.scales.y,
-      y2_scale_fn: frame.scales.y2,
-      pad,
-      x_range: frame.ranges.current.x,
-      x2_range: frame.ranges.current.x2,
-      y_range: frame.ranges.current.y,
-      y2_range: frame.ranges.current.y2,
-      fullscreen,
-    })}
-
-    {@render ref_lines_layer(ref_lines_by_z.below_grid)}
+    <ReferenceLinesLayer
+      {frame}
+      z="below-grid"
+      on_click={on_ref_line_click}
+      on_hover={on_ref_line_hover}
+    />
 
     <PlotAxes
       {frame}
@@ -707,7 +674,12 @@
       <ZeroLines {frame} display={resolved_display} />
     </g>
 
-    {@render ref_lines_layer(ref_lines_by_z.below_lines)}
+    <ReferenceLinesLayer
+      {frame}
+      z="below-lines"
+      on_click={on_ref_line_click}
+      on_hover={on_ref_line_hover}
+    />
 
     <!-- Continuous box/violin geometry clips to the chart. Outlier marker centers are
          range-bounded, but their complete circles may extend into the plot padding. -->
@@ -774,7 +746,7 @@
             onmouseleave={clear_hover}
             onclick={(evt) => on_box_click?.({ ...get_box_data(box_item, color), event: evt })}
             onkeydown={(evt) => {
-              if (evt.key === `Enter` || evt.key === ` `) {
+              if (is_activation_key(evt)) {
                 evt.preventDefault()
                 on_box_click?.({ ...get_box_data(box_item, color), event: evt })
               }
@@ -886,8 +858,18 @@
       {/each}
     </g>
 
-    {@render ref_lines_layer(ref_lines_by_z.below_points)}
-    {@render ref_lines_layer(ref_lines_by_z.above_all)}
+    <ReferenceLinesLayer
+      {frame}
+      z="below-points"
+      on_click={on_ref_line_click}
+      on_hover={on_ref_line_hover}
+    />
+    <ReferenceLinesLayer
+      {frame}
+      z="above-all"
+      on_click={on_ref_line_click}
+      on_hover={on_ref_line_hover}
+    />
   {/snippet}
 
   {#snippet overlays()}
@@ -914,7 +896,8 @@
         {#if tooltip}
           {@render tooltip({ ...hover_info, fullscreen })}
         {:else}
-          {@const fmt = orientation === `vertical` ? y_axis.format : x_axis.format}
+          {@const fmt =
+            orientation === `vertical` ? hover_info.y_axis.format : hover_info.x_axis.format}
           {@const stat = hover_info.stats}
           {@const rows = [
             [`max`, stat.whisker_high],

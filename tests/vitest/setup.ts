@@ -1,4 +1,5 @@
 import type { AnyStructure, ElementCategory, ElementSymbol, Vec3 } from '$lib'
+import type { PhaseData } from '$lib/convex-hull/types'
 import { flatten_grid } from '$lib/isosurface/grid'
 import {
   make_volume as make_volume_from_values,
@@ -7,10 +8,17 @@ import {
 import * as math from '$lib/math'
 import { clear_tick_metrics_cache } from '$lib/plot/core/tick-layout'
 import { clear_text_metrics_cache } from '$lib/plot/core/text-metrics'
-import type { Crystal, Pbc, Site } from '$lib/structure'
-import type { TrajectoryFrame } from '$lib/trajectory'
+import type { Crystal, Molecule, Pbc, Site } from '$lib/structure'
+import type {
+  TrajectoryFrame,
+  TrajectoryMetadata,
+  TrajectoryPositionStream,
+} from '$lib/trajectory'
+import { TrajectoryProperties, type TrajectoryRun } from '$lib/trajectory/run'
+import { type MemoryRunExtras, trajectory_from_frames } from '$lib/trajectory/runs/memory'
 import { ensure_moyo_wasm_ready } from '$lib/symmetry/analyze'
-import type { MoyoDataset } from '@spglib/moyo-wasm'
+import { to_error } from '$lib/utils'
+import type { SymmetryDataset } from '$lib/symmetry'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { gunzipSync } from 'node:zlib'
@@ -121,19 +129,6 @@ export const hdf5_group_option = (
   return option
 }
 
-export const delay_file_read = async (
-  file: File,
-): Promise<{ release: () => void; restore: () => void }> => {
-  const content = await file.arrayBuffer()
-  const delayed_read = Promise.withResolvers<ArrayBuffer>()
-  const array_buffer_spy = vi.spyOn(file, `arrayBuffer`).mockReturnValue(delayed_read.promise)
-  onTestFinished(() => array_buffer_spy.mockRestore())
-  return {
-    release: () => delayed_read.resolve(content),
-    restore: () => array_buffer_spy.mockRestore(),
-  }
-}
-
 export const make_ambiguous_hdf5 = async (): Promise<ArrayBuffer> => {
   const h5wasm = await import(`h5wasm`)
   const { FS } = await h5wasm.ready
@@ -174,6 +169,18 @@ export const deferred_fetch_responses = () => {
   )
   onTestFinished(() => fetch_spy.mockRestore())
   return responses
+}
+
+// Stub URL.createObjectURL/revokeObjectURL for the current test (restored on finish), so
+// download/export code paths run without happy-dom's blob URL handling.
+export const mock_object_url = (url = `blob:test-url`) => {
+  const create = vi.spyOn(URL, `createObjectURL`).mockReturnValue(url)
+  const revoke = vi.spyOn(URL, `revokeObjectURL`).mockImplementation(() => {})
+  onTestFinished(() => {
+    create.mockRestore()
+    revoke.mockRestore()
+  })
+  return { create, revoke }
 }
 
 export const flush_render = async (): Promise<void> => {
@@ -353,13 +360,51 @@ export async function resize_element(
   await tick()
 }
 
+// happy-dom has no canvas: stub a 2D context whose drawing calls are all spies (so charts that
+// paint to canvas can mount and tests can count/inspect calls) and whose measureText reports
+// `px_per_char` per character (0 = nothing is ever crowded). Installed on every canvas via
+// getContext; vi.restoreAllMocks() or the returned spy's mockRestore() removes it.
+export const CANVAS_NOOP_METHODS = [
+  `setTransform`,
+  `clearRect`,
+  `save`,
+  `restore`,
+  `beginPath`,
+  `closePath`,
+  `rect`,
+  `clip`,
+  `fillRect`,
+  `strokeRect`,
+  `arc`,
+  `moveTo`,
+  `lineTo`,
+  `fill`,
+  `stroke`,
+  `fillText`,
+  `drawImage`,
+  `scale`,
+  `translate`,
+] as const
+export const mock_canvas_context = (
+  overrides: Partial<Record<keyof CanvasRenderingContext2D, unknown>> = {},
+  px_per_char = 0,
+): CanvasRenderingContext2D => {
+  const ctx = {
+    font: ``,
+    measureText: vi.fn((label: string) => ({ width: label.length * px_per_char })),
+    ...Object.fromEntries(CANVAS_NOOP_METHODS.map((name) => [name, vi.fn()])),
+    ...overrides,
+  } as unknown as CanvasRenderingContext2D
+  vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue(ctx)
+  return ctx
+}
+
 // jsdom has no text metrics, so canvas-measured tick labels all come out 0 wide and nothing
 // ever looks crowded. Stand in a proportional-ish width per character. Caller restores.
-export const mock_text_measurement = (px_per_char = 7) =>
-  vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue({
-    font: ``,
-    measureText: (label: string) => ({ width: label.length * px_per_char }),
-  } as unknown as CanvasRenderingContext2D)
+export const mock_text_measurement = (px_per_char = 7) => {
+  mock_canvas_context({}, px_per_char)
+  return vi.mocked(HTMLCanvasElement.prototype.getContext)
+}
 
 export async function with_measured_text<T>(
   run: () => T | Promise<T>,
@@ -507,6 +552,17 @@ export function read_maybe_gz(file_path: string): string {
     : buffer.toString(`utf8`)
 }
 
+// Convex-hull/chempot PhaseData fixture: total `energy` derives from `energy_per_atom` ×
+// atom count (so e_form, hull distances and chempot planes all agree); `overrides` wins.
+export const make_phase = (
+  composition: Record<string, number>,
+  energy_per_atom = 0,
+  overrides: Partial<PhaseData> = {},
+): PhaseData => {
+  const atoms = Object.values(composition).reduce((sum, amt) => sum + amt, 0)
+  return { composition, energy_per_atom, energy: energy_per_atom * atoms, ...overrides }
+}
+
 // Read and JSON.parse a (possibly gzipped) JSON file. Cast the result at the call site.
 // Generic param is a typed-load convenience for call sites (load_json<Foo>(path)),
 // not used for inference, hence the single-use type parameter is intentional.
@@ -582,6 +638,47 @@ export const make_trajectory_frame = (
     }),
   },
 })
+
+// In-memory TrajectoryRun over make_trajectory_frame frames: `steps` is a step list or a frame
+// count (steps 0..n-1); `frame_metadata(frame_idx)` fills each frame's metadata; the remaining
+// options are forwarded to trajectory_from_frames (provenance, time_step, warnings, ...).
+export const make_run = (
+  steps: number | readonly number[] = 3,
+  {
+    site_count = 2,
+    lattice_params,
+    frame_metadata = () => ({}),
+    ...extras
+  }: MemoryRunExtras & {
+    site_count?: number
+    lattice_params?: Record<string, number>
+    frame_metadata?: (frame_idx: number) => Record<string, unknown>
+  } = {},
+): TrajectoryRun => {
+  const step_list =
+    typeof steps === `number` ? Array.from({ length: steps }, (_unused, idx) => idx) : steps
+  return trajectory_from_frames(
+    step_list.map((step, frame_idx) =>
+      make_trajectory_frame(step, site_count, frame_metadata(frame_idx), lattice_params),
+    ),
+    extras,
+  )
+}
+
+// The same run with its plot rows replaced (and optionally a different frame_count), for
+// panes that read sampled/progressive property rows rather than the frames
+export const with_property_rows = (
+  run: TrajectoryRun,
+  rows: TrajectoryMetadata[],
+  frame_count = run.frame_count,
+): TrajectoryRun => ({ ...run, frame_count, properties: new TrajectoryProperties(rows, true) })
+
+// Resolve a rejection to its reason so the error class/fields can be inspected
+export const rejection_of = (pending: Promise<unknown>): Promise<unknown> =>
+  pending.then(
+    () => undefined,
+    (reason: unknown) => reason,
+  )
 
 // Test data factory for creating mock structures. Site coords are deliberately
 // inconsistent (abc all-zero, xyz spaced along x) and the default lattice is
@@ -706,6 +803,100 @@ export function make_crystal(
   }
 }
 
+// Cubic crystal from xyz-only sites (element defaults to C, label to the element symbol)
+export const make_struct = (
+  sites: { xyz: Vec3; element?: ElementSymbol }[],
+  lattice_const = 10,
+): Crystal =>
+  make_crystal(
+    lattice_const,
+    sites.map(({ xyz, element = `C` }) => ({ element, xyz, label: element })),
+  )
+
+// Lattice-free structure from [element, xyz] pairs; abc is meaningless without a cell
+export const make_molecule = (atoms: [string, Vec3][]): Molecule => ({
+  sites: atoms.map(([element, xyz], idx) => ({
+    species: [{ element: element as ElementSymbol, occu: 1, oxidation_state: 0 }],
+    abc: [0, 0, 0] as Vec3,
+    xyz,
+    label: `${element}${idx}`,
+    properties: {},
+  })),
+})
+
+// Conventional rocksalt NaCl cell (4 Na + 4 Cl): every ion octahedrally coordinated by 6
+// counter-ions, only 3 of which sit inside the box (the rest are periodic images)
+export const make_rocksalt = (lattice_const = 5.64): Crystal =>
+  make_crystal(lattice_const, [
+    [`Na`, [0, 0, 0]],
+    [`Na`, [0.5, 0.5, 0]],
+    [`Na`, [0.5, 0, 0.5]],
+    [`Na`, [0, 0.5, 0.5]],
+    [`Cl`, [0.5, 0, 0]],
+    [`Cl`, [0, 0.5, 0]],
+    [`Cl`, [0, 0, 0.5]],
+    [`Cl`, [0.5, 0.5, 0.5]],
+  ])
+
+// Trajectory frame with sites at explicit Cartesian coordinates. With `box_length` the
+// structure is a cubic crystal (abc derived); without one it is a molecule, so there is no
+// lattice to unwrap against. Per-site `velocities` land in site.properties.velocity.
+export const make_frame = (
+  step: number,
+  xyz_list: number[][],
+  options: {
+    elements?: ElementSymbol[]
+    box_length?: number
+    coords_unwrapped?: boolean
+    velocities?: (number[] | undefined)[]
+  } = {},
+): TrajectoryFrame => {
+  const { box_length, coords_unwrapped, elements, velocities } = options
+  const crystal = make_crystal(
+    box_length ?? 1,
+    xyz_list.map((xyz, idx) => ({
+      element: elements?.[idx] ?? `H`,
+      xyz: xyz as Vec3,
+      ...(velocities?.[idx] && { properties: { velocity: velocities[idx] } }),
+    })),
+    { charge: 0 },
+  )
+  return {
+    step,
+    structure: box_length ? crystal : { charge: 0, sites: crystal.sites },
+    ...(coords_unwrapped === undefined ? {} : { metadata: { coords_unwrapped } }),
+  }
+}
+
+// Position stream laid out frame-major: positions[(frame * n_atoms + atom) * 3 + axis].
+// Defaults to a 10 A cubic cell per frame with full pbc and wrapped coords.
+export const make_position_stream = (
+  frames: number[][][], // [frame][atom][axis]
+  elements: ElementSymbol[],
+  overrides: Partial<TrajectoryPositionStream> = {},
+): TrajectoryPositionStream => {
+  const n_frames = frames.length
+  const n_atoms = elements.length
+  const positions = new Float64Array(n_frames * n_atoms * 3)
+  for (const [frame_idx, frame] of frames.entries()) {
+    for (const [atom_idx, xyz] of frame.entries()) {
+      positions.set(xyz, (frame_idx * n_atoms + atom_idx) * 3)
+    }
+  }
+  return {
+    positions,
+    n_frames,
+    n_atoms,
+    elements,
+    lattice_matrices: Array.from({ length: n_frames }, () => cubic_matrix(10)),
+    pbc: [true, true, true],
+    coords_unwrapped: false,
+    frame_stride: 1,
+    steps: Array.from({ length: n_frames }, (_, idx) => idx),
+    ...overrides,
+  }
+}
+
 // Shared 3x3 matrix fixtures
 export const IDENTITY_MATRIX3: math.Matrix3x3 = [
   [1, 0, 0],
@@ -736,7 +927,7 @@ export const make_wyckoff_dataset = (
   numbers: number[],
   wyckoffs: (string | null)[],
   orig_site_indices_by_input_idx?: number[][],
-): MoyoDataset => {
+): SymmetryDataset => {
   const letter = (idx: number) => /[a-z]+$/.exec(wyckoffs[idx] ?? ``)?.[0] ?? null
   // Orbit representative = first site sharing this letter + element (null letter ⇒ own orbit)
   const orbits = wyckoffs.map((_w, idx) =>
@@ -754,7 +945,7 @@ export const make_wyckoff_dataset = (
     std_linear: [1, 0, 0, 0, 1, 0, 0, 0, 1],
     orig_site_indices_by_input_idx:
       orig_site_indices_by_input_idx ?? positions.map((_pos, idx) => [idx]),
-  } as unknown as MoyoDataset
+  } as unknown as SymmetryDataset
 }
 
 // ResizeObserver mock: report a useful initial size and allow tests to trigger later
@@ -881,6 +1072,12 @@ Object.defineProperty(navigator, `clipboard`, {
   value: { writeText: vi.fn().mockResolvedValue(undefined) },
   writable: true,
 })
+// Reset the shared writeText mock for one test (clears calls from earlier tests); pass an
+// error to make the copy fail
+export const mock_clipboard_write = (error?: Error) => {
+  const write_text = vi.mocked(navigator.clipboard.writeText).mockReset()
+  return error ? write_text.mockRejectedValue(error) : write_text.mockResolvedValue(undefined)
+}
 
 // Test structure fixtures
 export const simple_structure: AnyStructure = {
@@ -993,4 +1190,101 @@ export const complex_structure: AnyStructure = {
     gamma: 90.0,
     volume: 125.0,
   },
+}
+
+// === Worker stub ===
+// happy-dom has no Worker, so the analysis modules only ever reach their synchronous
+// fallback. Installing this stub before the async module is imported (create_worker_client
+// keeps one worker per module) exercises the real postMessage plumbing: payloads are
+// structured-cloned exactly as a browser would (a Svelte $state proxy or a function throws
+// here too) and `compute` plays the worker script, replying `{ id, result, error }` on the
+// next microtask. A throwing `compute` becomes an error reply, as the real worker scripts
+// do; without `compute` the stub never replies and the test drives `emit` itself. Module
+// isolation per test file makes the global stub self-cleaning.
+export type StubWorkerMessage = { id: number; input: unknown; options?: unknown }
+export type StubWorkerInstance<Message = StubWorkerMessage> = {
+  url: string
+  options: WorkerOptions | undefined
+  posted: { message: Message; transfer: Transferable[] }[]
+  terminated: number
+  emit: (type: string, event: unknown) => void
+}
+
+export const install_stub_worker = <Message extends { id: number } = StubWorkerMessage>(
+  compute?: (message: Message) => unknown,
+) => {
+  const instances: StubWorkerInstance<Message>[] = []
+  const posted: { message: Message; transfer: Transferable[] }[] = []
+  let next_error: string | null = null
+
+  class StubWorker implements StubWorkerInstance<Message> {
+    url: string
+    options: WorkerOptions | undefined
+    posted: { message: Message; transfer: Transferable[] }[] = []
+    terminated = 0
+    onmessage: ((event: unknown) => void) | null = null
+    onerror: ((event: unknown) => void) | null = null
+    private readonly listeners = new Map<string, ((event: unknown) => void)[]>()
+
+    constructor(url: URL | string, options?: WorkerOptions) {
+      this.url = String(url)
+      this.options = options
+      instances.push(this)
+    }
+    addEventListener(type: string, handler: (event: unknown) => void): void {
+      this.listeners.set(type, [...(this.listeners.get(type) ?? []), handler])
+    }
+    removeEventListener(type: string, handler: (event: unknown) => void): void {
+      this.listeners.set(
+        type,
+        (this.listeners.get(type) ?? []).filter((fn) => fn !== handler),
+      )
+    }
+    emit(type: string, event: unknown): void {
+      for (const handler of this.listeners.get(type) ?? []) handler(event)
+      if (type === `message`) this.onmessage?.(event)
+      if (type === `error`) this.onerror?.(event)
+    }
+    terminate(): void {
+      this.terminated++
+    }
+    postMessage(message: Message, transfer: Transferable[] = []): void {
+      const cloned = structuredClone(message)
+      this.posted.push({ message: cloned, transfer })
+      posted.push({ message: cloned, transfer })
+      if (!compute) return
+      const error = next_error
+      next_error = null
+      queueMicrotask(() => {
+        if (this.terminated) return // a terminated worker delivers nothing
+        let data: { id: number; result: unknown; error: string | null }
+        try {
+          data = error
+            ? { id: cloned.id, result: null, error }
+            : { id: cloned.id, result: structuredClone(compute(cloned)), error: null }
+        } catch (err) {
+          data = { id: cloned.id, result: null, error: to_error(err).message }
+        }
+        this.emit(`message`, { data, preventDefault: () => {} })
+      })
+    }
+  }
+
+  vi.stubGlobal(`Worker`, StubWorker)
+  return {
+    // Every worker constructed so far, oldest first
+    instances,
+    // Every post across all instances
+    posted,
+    // The next post replies with this error instead of calling `compute`
+    fail_next: (error: string) => {
+      next_error = error
+    },
+    // Forget recorded posts and a pending one-shot error (for afterEach)
+    reset: () => {
+      posted.length = 0
+      for (const instance of instances) instance.posted.length = 0
+      next_error = null
+    },
+  }
 }

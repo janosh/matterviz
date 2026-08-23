@@ -14,19 +14,11 @@ import {
 import type { PhaseData } from '$lib/convex-hull/types'
 import type { ElementSymbol } from '$lib/element'
 import { solve_linear_system } from '$lib/math'
-import { describe, expect, test } from 'vitest'
-import { load_json } from '../setup'
+import { describe, expect, test, vi } from 'vitest'
+import { make_rng } from '../numeric-helpers'
+import { load_json, make_phase } from '../setup'
 import pymatgen_quinary from './fixtures/quinary_pymatgen_reference.json' with { type: 'json' }
 
-// Test fixture factory - derives total energy from energy_per_atom and composition
-const make_phase = (
-  composition: Partial<Record<ElementSymbol, number>>,
-  energy_per_atom: number,
-  overrides: Partial<PhaseData> = {},
-): PhaseData => {
-  const atoms = Object.values(composition).reduce((sum, count) => sum + count, 0)
-  return { composition, energy_per_atom, energy: energy_per_atom * atoms, ...overrides }
-}
 const make_elem = (el: string, energy = -1.0) =>
   make_phase({ [el]: 1 }, energy, { entry_id: el })
 
@@ -35,18 +27,56 @@ describe(`normalize_hull_composition_keys`, () => {
     [{ 'Fe2+': 1, 'O2-': 2 }, { Fe: 1, O: 2 }, `strips oxidation states`],
     [{ 'V4+': 1, V: 2, 'V3+': 0.5 }, { V: 3.5 }, `merges duplicate elements`],
     [{ Fe: 1, O: 0, Li: -1, Na: NaN, K: Infinity }, { Fe: 1 }, `filters invalid amounts`],
-    [{ Fe2O3: 1 }, { Fe: 1 }, `extracts first element from compound-like keys`],
-    [{ '12345': 1, '67890': 2 }, {}, `returns empty for invalid keys`],
+    [{ Fe2O3: 0 }, {}, `non-positive amounts are dropped before the key is checked`],
+    // pymatgen Composition.as_dict() species forms passed through by pymatviz
+    [{ 'Fe2+,spin=5': 1, 'Fe3+,spin=-5': 2, 'O2-': 4 }, { Fe: 3, O: 4 }, `spin suffixes`],
+    [{ 'Fe2.5+': 2, 'O2-': 5 }, { Fe: 2, O: 5 }, `fractional oxidation states`],
+    [{ 'Li+': 1, 'Cl-': 1 }, { Li: 1, Cl: 1 }, `unit charges without a digit`],
+    [{ D: 2, T: 1, 'H+': 1, O: 2 }, { H: 4, O: 2 }, `hydrogen isotopes map to H`],
+    [{ 'D+': 1, 'T2-': 1 }, { H: 2 }, `charged isotopes`],
   ])(`%s → %o (%s)`, (input, expected, _desc) => {
     expect(normalize_hull_composition_keys(input)).toEqual(expected)
   })
+
+  test.each([
+    [{ 'X0+': 1, Li: 1, O: 1 }, { Li: 1, O: 1 }, `X0+`],
+    [{ Xa: 2, Fe: 1 }, { Fe: 1 }, `Xa`],
+    [{ 'Xx2+,spin=1': 1, Fe: 1 }, { Fe: 1 }, `Xx2+,spin=1`],
+    [{ 'Xe2+': 1, X: 1 }, { Xe: 1 }, `X`],
+  ] as [Record<string, number>, Record<string, number>, string][])(
+    `skips pymatgen DummySpecies %o with a warning (%s)`,
+    (input, expected, key) => {
+      const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
+      expect(normalize_hull_composition_keys(input)).toEqual(expected)
+      expect(warn).toHaveBeenCalledOnce()
+      expect(warn.mock.calls[0][0]).toContain(`DummySpecies key "${key}"`)
+      warn.mockRestore()
+    },
+  )
+
+  test.each([
+    [{ Fe2O3: 1 }, `compound-like key`],
+    [{ '12345': 1 }, `numeric key`],
+    [{ Zz: 1 }, `unknown symbol`],
+    [{ fe: 1 }, `lowercase symbol`],
+    [{ 'Fe2+,spin=': 1 }, `spin without a value`],
+    [{ 'Fe2+spin=5': 1 }, `spin without the comma`],
+    [{ 'Fe++': 1 }, `doubled charge sign`],
+  ] as [Record<string, number>, string][])(
+    `throws on %o (%s) instead of guessing an element`,
+    (input) => {
+      expect(() => normalize_hull_composition_keys(input)).toThrow(
+        /Unrecognized composition key/,
+      )
+    },
+  )
 })
 
 describe(`process_hull_entries`, () => {
   test(`normalizes keys, drops empty compositions and collects sorted elements`, () => {
     const entries: PhaseData[] = [
-      make_phase({ 'Fe3+': 1, 'O2-': 2 } as Partial<Record<ElementSymbol, number>>, -4.0),
-      make_phase({ '123': 1 } as Partial<Record<ElementSymbol, number>>, -4.0),
+      make_phase({ 'Fe3+': 1, 'O2-': 2 }, -4.0),
+      make_phase({ Li: 0 }, -4.0),
       make_phase({ O: 1 }, -2.0),
     ]
     const result = process_hull_entries(entries)
@@ -126,12 +156,8 @@ function brute_force_e_hull(points: number[][], query: number[]): number {
   return best
 }
 
-// Deterministic LCG so failures reproduce
-let seed = 12345
-const rand = () => {
-  seed = (seed * 1103515245 + 12345) & 0x7fffffff
-  return seed / 0x7fffffff
-}
+// Deterministic RNG so failures reproduce
+const rand = make_rng(12345)
 // Random point in the composition simplex (reduced coords) with a random energy
 const random_point = (spatial_dim: number, energy: number): number[] => {
   const weights = Array.from({ length: spatial_dim + 1 }, () => -Math.log(rand() + 1e-12))
@@ -290,6 +316,17 @@ describe(`calculate_e_above_hull`, () => {
     expect(results[`Fe-high`]).toBeCloseTo(0.5, 10)
   })
 
+  test(`oxidation-state keys are normalized against plain-symbol references`, () => {
+    const refs = [...fe_o_refs, make_phase({ Fe: 1, O: 1 }, -7.5, { entry_id: `FeO` })]
+    const charged = { 'Fe2+': 1, 'O2-': 1 }
+    expect(
+      calculate_e_above_hull(make_phase(charged, -6.5, { entry_id: `FeO-charged` }), refs),
+    ).toBeCloseTo(1.0, 10)
+    expect(() => calculate_e_above_hull(make_phase({ Fe2O3: 1 }, -6.5), refs)).toThrow(
+      /Unrecognized composition key/,
+    )
+  })
+
   // A compound below the elemental tie-plane shapes the hull; a same-composition
   // polymorph 0.5 eV/atom higher must land exactly 0.5 above it, and an excluded compound
   // must not shape it at all
@@ -298,9 +335,7 @@ describe(`calculate_e_above_hull`, () => {
     { arity: 4, els: [`Li`, `Fe`, `P`, `O`] },
     { arity: 5, els: [`Li`, `Na`, `K`, `Rb`, `Cs`] },
   ])(`arity-$arity: compounds shape the hull unless exclude_from_hull`, ({ els }) => {
-    const comp = Object.fromEntries(els.map((el) => [el, 1])) as Partial<
-      Record<ElementSymbol, number>
-    >
+    const comp = Object.fromEntries(els.map((el) => [el, 1]))
     const refs = [
       ...els.map((el) => make_elem(el, 0)),
       make_phase(comp, -1.0, { entry_id: `stable-compound` }),
@@ -322,13 +357,18 @@ describe(`calculate_e_above_hull`, () => {
     { arity: 2, comp: { Fe: 1, O: 1 } },
     { arity: 3, comp: { Li: 1, Fe: 1, O: 1 } },
     { arity: 4, comp: { Li: 1, Fe: 1, P: 1, O: 1 } },
-  ])(`arity-$arity: all refs at e_form = 0 → hull is the tie-plane at 0`, ({ comp }) => {
-    const refs = Object.keys(comp).map((el) => make_elem(el, 0))
-    expect(
-      calculate_e_above_hull(make_phase(comp, 0.5, { entry_id: `above` }), refs),
-    ).toBeCloseTo(0.5, 10)
-    expect(calculate_e_above_hull(make_phase(comp, -0.2, { entry_id: `below` }), refs)).toBe(0)
-  })
+  ] as { arity: number; comp: Record<string, number> }[])(
+    `arity-$arity: all refs at e_form = 0 → hull is the tie-plane at 0`,
+    ({ comp }) => {
+      const refs = Object.keys(comp).map((el) => make_elem(el, 0))
+      expect(
+        calculate_e_above_hull(make_phase(comp, 0.5, { entry_id: `above` }), refs),
+      ).toBeCloseTo(0.5, 10)
+      expect(calculate_e_above_hull(make_phase(comp, -0.2, { entry_id: `below` }), refs)).toBe(
+        0,
+      )
+    },
+  )
 
   test(`missing pure-element references default to e_form = 0 corners`, () => {
     // Only Fe reference + precomputed e_form: the O corner is synthesized at 0
@@ -459,9 +499,16 @@ describe(`pymatgen cross-validation`, () => {
       ...composition_to_barycentric_nd(entry.composition, elements).slice(1),
       entry.e_form_per_atom as number,
     ])
-    const start = performance.now()
-    const facets = compute_lower_hull_nd(points)
-    expect(performance.now() - start).toBeLessThan(50) // ~1.6 ms typical, generous for CI
+    // Best of three: a single run can be stalled by a GC pause or a loaded CI box, a
+    // regression in the algorithm slows every run
+    let best_ms = Infinity
+    let facets: ReturnType<typeof compute_lower_hull_nd> = []
+    for (let run = 0; run < 3; run++) {
+      const start = performance.now()
+      facets = compute_lower_hull_nd(points)
+      best_ms = Math.min(best_ms, performance.now() - start)
+    }
+    expect(best_ms).toBeLessThan(50) // ~1.6 ms typical, generous for CI
     expect(facets.length).toBeGreaterThan(20)
   })
 })

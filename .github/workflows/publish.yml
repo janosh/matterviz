@@ -162,8 +162,6 @@ jobs:
         uses: ./.github/actions/setup
         with:
           extensions: anywidget
-      - name: Build component library dependency
-        run: pnpm package:dist
       - name: Build, size-gate, and package anywidget bundle
         working-directory: extensions/anywidget
         env:

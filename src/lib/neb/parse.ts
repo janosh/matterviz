@@ -35,11 +35,9 @@ import { create_warning_collector } from '$lib/trajectory/parse/shared'
 import { build_xyz_frame, parse_xyz_comment_metadata } from '$lib/trajectory/parse/xyz'
 import type { NebImage, ReactionPath } from './index'
 import { assert_path } from './reaction-path'
+import { is_plain_object } from '$lib/utils'
 
 export const REACTION_PATH_FORMAT = `matterviz-reaction-path`
-
-const is_record = (val: unknown): val is Record<string, unknown> =>
-  typeof val === `object` && val !== null && !Array.isArray(val)
 
 // A NaN energy silently poisons every derived barrier, so all three readers funnel their
 // energy through here. `message` is a thunk so context is only built on the failing path.
@@ -65,10 +63,10 @@ function parse_forces(val: unknown, context: string): Vec3[] | undefined {
 }
 
 function parse_image(raw: unknown, context: string): NebImage {
-  if (!is_record(raw)) {
+  if (!is_plain_object(raw)) {
     throw new Error(`${context} must be an object with "energy" and "structure"`)
   }
-  if (!is_record(raw.structure)) {
+  if (!is_plain_object(raw.structure)) {
     throw new Error(`${context} is missing a "structure" object`)
   }
   const structure = parse_structure_file(JSON.stringify(raw.structure), `${context}.json`)
@@ -91,7 +89,7 @@ function parse_image(raw: unknown, context: string): NebImage {
 
 function parse_path_body(raw: unknown, context: string, energy_unit?: string): ReactionPath {
   const body = Array.isArray(raw) ? { images: raw } : raw
-  if (!is_record(body) || !Array.isArray(body.images)) {
+  if (!is_plain_object(body) || !Array.isArray(body.images)) {
     throw new Error(`${context} must be an image array or an object with an "images" array`)
   }
   const path: ReactionPath = {
@@ -120,7 +118,7 @@ export function parse_reaction_path_json(
       { cause: exc },
     )
   }
-  if (!is_record(raw)) {
+  if (!is_plain_object(raw)) {
     throw new Error(`${filename} must contain a JSON object, got ${typeof raw}`)
   }
   if (typeof raw.format === `string` && raw.format !== REACTION_PATH_FORMAT) {
@@ -130,7 +128,7 @@ export function parse_reaction_path_json(
   }
   const energy_unit = typeof raw.energy_unit === `string` ? raw.energy_unit : undefined
 
-  if (is_record(raw.paths)) {
+  if (is_plain_object(raw.paths)) {
     const entries = Object.entries(raw.paths)
     if (entries.length === 0) throw new Error(`${filename} has an empty "paths" record`)
     return Object.fromEntries(
@@ -206,9 +204,11 @@ const is_xyz = (filename: string) => /\.(?:xyz|extxyz)$/i.test(filename)
 function is_reaction_path_json(content: string): boolean {
   try {
     const raw: unknown = JSON.parse(content)
-    if (!is_record(raw)) return false
+    if (!is_plain_object(raw)) return false
     return (
-      raw.format === REACTION_PATH_FORMAT || Array.isArray(raw.images) || is_record(raw.paths)
+      raw.format === REACTION_PATH_FORMAT ||
+      Array.isArray(raw.images) ||
+      is_plain_object(raw.paths)
     )
   } catch {
     return false

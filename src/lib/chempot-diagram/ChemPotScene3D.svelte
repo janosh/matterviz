@@ -5,7 +5,13 @@
   import type { Vec2, Vec3 } from '$lib/math'
   import type { AxisConfig3D, CameraProjection3D, DisplayConfig3D } from '$lib/plot/core/types'
   import { sanitize_html } from '$lib/sanitize'
-  import { build_orbit_props, dispose_on_change, line_geometry, SceneCamera } from '$lib/scene'
+  import {
+    build_orbit_props,
+    dispose_on_change,
+    line_geometry,
+    SceneCamera,
+    SceneLights,
+  } from '$lib/scene'
   import { T } from '@threlte/core'
   import * as extras from '@threlte/extras'
   import { scaleLinear } from 'd3-scale'
@@ -17,13 +23,7 @@
 
   type OverlayGeometry = { geometry: BufferGeometry; color: string }
   type BacksideIndices = [0 | 1, 0 | 1, 0 | 1]
-  type RenderDomain = {
-    formula: string
-    points_3d: number[][]
-    ann_loc: number[]
-    is_draw_formula: boolean
-    label_font_size: number
-  }
+  type RenderDomain = { formula: string; points_3d: number[][] }
   type HoverMesh = { formula: string; geometry: BufferGeometry; info: ChemPotHoverInfo3D }
   type DomainLabel = VisibleDomainLabel & { segments: FormulaLabelSegment[] }
   const axis_indices = [0, 1, 2] as const
@@ -374,8 +374,7 @@
   bind:orbit_controls
 />
 
-<T.AmbientLight intensity={0.8} />
-<T.DirectionalLight position={[1, 1, 1]} intensity={0.5} />
+<SceneLights ambient={0.8} directional={0.5} key_position={[1, 1, 1]} />
 
 {#if hull_geometry}
   {#key hull_geometry}

@@ -27,7 +27,7 @@
     {
       "id": "liquid",
       "name": "Liquid",
-      "color": "liquid",
+      "color": "rgba(135, 206, 250, 0.6)",
       "bounds": [
         [0, 1400],
         [1, 1400],
@@ -39,25 +39,25 @@
     {
       "id": "fcc_al",
       "name": "FCC (Al)",
-      "color": "fcc_a1",
+      "color": "rgba(144, 238, 144, 0.6)",
       "bounds": [[0, 933], [0.05, 821], "solvus_al[1:]", [0, 300]]
     },
     {
       "id": "fcc_cu",
       "name": "FCC (Cu)",
-      "color": "fcc_cu",
+      "color": "rgba(255, 180, 150, 0.6)",
       "bounds": [[1, 1358], "~solidus_cu[1:]", "solvus_cu[1:]", [1, 300]]
     },
     {
       "id": "al_liquid",
       "name": "FCC + L",
-      "color": "two_phase_fcc_liquid",
+      "color": "rgba(180, 230, 180, 0.5)",
       "bounds": [[0, 933], "liquidus_left[1:]", [0.05, 821]]
     },
     {
       "id": "cu_liquid",
       "name": "FCC + L",
-      "color": "two_phase_theta_cu",
+      "color": "rgba(255, 200, 180, 0.5)",
       "bounds": [
         [1, 1358],
         "~solidus_cu[1:]",
@@ -69,25 +69,25 @@
     {
       "id": "theta",
       "name": "θ (Al₂Cu)",
-      "color": "intermetallic",
+      "color": "rgba(255, 200, 150, 0.6)",
       "bounds": [[0.3, 821], [0.36, 821], [0.36, 300], [0.3, 300]]
     },
     {
       "id": "al_theta",
       "name": "FCC + θ",
-      "color": "two_phase",
+      "color": "rgba(255, 235, 156, 0.5)",
       "bounds": [[0.05, 821], [0.3, 821], [0.3, 300], [0.02, 300], "~solvus_al[1:]"]
     },
     {
       "id": "theta_cu",
       "name": "θ + FCC",
-      "color": "two_phase_intermetallic",
+      "color": "rgba(255, 220, 180, 0.5)",
       "bounds": [[0.36, 821], [0.88, 821], "solvus_cu[1:]", [0.95, 300], [0.36, 300]]
     },
     {
       "id": "theta_liquid",
       "name": "θ + L",
-      "color": "two_phase_theta_liquid",
+      "color": "rgba(255, 235, 200, 0.5)",
       "bounds": [
         [0.17, 821],
         [0.25, 900],

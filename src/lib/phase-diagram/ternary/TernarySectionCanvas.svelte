@@ -16,9 +16,9 @@
   } from '$lib/convex-hull/canvas-draw'
   import { get_energy_color_scale, merge_highlight_style } from '$lib/convex-hull/helpers'
   import type { ConvexHullEntry } from '$lib/convex-hull/types'
-  import type { Vec2, Vec3 } from '$lib/math'
+  import { lerp, type Vec2, type Vec3 } from '$lib/math'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { type CanvasFrame, create_canvas_surface } from './canvas-surface.svelte'
+  import { type CanvasFrame, create_canvas_surface } from '$lib/canvas-surface.svelte'
   import { decompose_composition, type DiagramModel } from './compute'
   import {
     type Decomposition,
@@ -65,6 +65,7 @@
       size,
       origin_x: (width - size) / 2,
       origin_y: (height + size * TRIANGLE_HEIGHT) / 2,
+      scale: Math.min(width, height) / 600, // marker/ring radii relative to a 600px canvas
     }
   })
   const project = (x_pos: number, y_pos: number): Projected => ({
@@ -83,10 +84,13 @@
 
   // === Entries in ConvexHullEntry shape for the shared canvas helpers ===
 
-  // Created once per phase set; per temperature only the energy fields are refreshed in place
+  // Created once per phase set; per temperature hull_entries layers the energy fields on top.
+  // phase_idx links an entry back to model.phases (the shared hit-test returns the entry).
+  type SectionEntry = ConvexHullEntry & { phase_idx: number }
   const base_entries = $derived(
-    model.phases.map((phase): ConvexHullEntry => ({
+    model.phases.map((phase): SectionEntry => ({
       ...phase.entry,
+      phase_idx: phase.idx,
       entry_id: phase.entry.entry_id ?? `phase-${phase.idx}`,
       reduced_formula: phase.label,
       x: phase.xy[0],
@@ -95,22 +99,23 @@
       is_element: phase.is_element,
     })),
   )
-  // Plain Map: only read from the untracked draw frame and pointer handlers
-  const entry_index = $derived(new Map(base_entries.map((entry, idx) => [entry, idx])))
-  const phase_idx_of = (entry: ConvexHullEntry) => entry_index.get(entry) ?? -1
-  const hull_entries = $derived(
-    base_entries.map((entry, idx) => {
+  const hull_entries = $derived.by(() => {
+    const stable_set = new Set(section.stable)
+    return base_entries.map((entry, idx): SectionEntry | null => {
       const dist = section.e_above_hull[idx]
       if (!Number.isFinite(dist)) return null
-      entry.e_above_hull = dist
-      entry.is_stable = dist <= 0
-      entry.e_form_per_atom = section.dg_form[idx]
-      return entry
-    }),
-  )
+      // exclude_from_hull phases can sit below the hull (negative distance) without being on it
+      return {
+        ...entry,
+        e_above_hull: dist,
+        is_stable: stable_set.has(idx),
+        e_form_per_atom: section.dg_form[idx],
+      }
+    })
+  })
   const visible_entries = $derived(
     hull_entries.filter(
-      (entry): entry is ConvexHullEntry =>
+      (entry): entry is SectionEntry =>
         entry !== null &&
         (entry.is_stable === true ||
           (settings.show_unstable &&
@@ -158,21 +163,24 @@
   }
 
   function draw_frame({ ctx, width, height, text_color }: CanvasFrame): void {
-    const scale = Math.min(width, height) / 600
+    const { scale } = layout
     const [corner_a, corner_b, corner_c] = TRIANGLE_VERTICES
     if (settings.show_grid) {
       ctx.strokeStyle = add_alpha(text_color, 0.12)
       ctx.lineWidth = 1
       ctx.setLineDash([3, 4])
-      const lerp = (from: readonly number[], to: readonly number[], frac: number) =>
-        project(from[0] + (to[0] - from[0]) * frac, from[1] + (to[1] - from[1]) * frac)
+      const grid_point = (from: readonly number[], to: readonly number[], frac: number) =>
+        project(lerp(from[0], to[0], frac), lerp(from[1], to[1], frac))
       for (let step = 1; step < 10; step++) {
         const frac = step / 10
         for (const [start, end] of [
           [corner_a, corner_b, corner_c],
           [corner_b, corner_c, corner_a],
           [corner_c, corner_a, corner_b],
-        ].map(([from, to_a, to_b]) => [lerp(from, to_a, frac), lerp(from, to_b, frac)])) {
+        ].map(([from, to_a, to_b]) => [
+          grid_point(from, to_a, frac),
+          grid_point(from, to_b, frac),
+        ])) {
           stroke_path(ctx, [start, end])
         }
       }
@@ -245,8 +253,11 @@
       .map((entry) => ({ entry, projected: project(entry.x, entry.y) }))
     const selected_entry =
       selected_phase === null ? null : (hull_entries[selected_phase] ?? null)
-    const highlighted = new Set(highlighted_phases)
-    const is_highlighted = (entry: ConvexHullEntry) => highlighted.has(phase_idx_of(entry))
+    // Identity is valid here: every point passed below comes from this frame's hull_entries
+    const highlighted = new Set<ConvexHullEntry | null | undefined>(
+      highlighted_phases.map((idx) => hull_entries[idx]),
+    )
+    const is_highlighted = (entry: ConvexHullEntry) => highlighted.has(entry)
     const opts = {
       scale,
       shadow_factor: 0,
@@ -311,8 +322,8 @@
   function handle_pointer_move(event: MouseEvent): void {
     if (!canvas) return
     const position: Vec2 = [event.clientX, event.clientY]
-    const entry = find_hull_entry_at_mouse(canvas, event, by_stability, project)
-    hover_phase = entry ? phase_idx_of(entry) : null
+    const entry = find_hull_entry_at_mouse(canvas, event, by_stability, project, layout.scale)
+    hover_phase = entry ? entry.phase_idx : null
     canvas.style.cursor = entry ? `pointer` : ``
     if (hover_phase !== null) {
       hover_composition = null

@@ -119,11 +119,6 @@ export async function request_large_file_content(
     timeout,
     `Large file timeout`,
     (data, resolve, reject) => {
-      if (data.command === `large_file_progress`) {
-        // TODO maybe forward file load progress to UI
-        console.info(`Progress: ${data.stage} - ${data.progress}%`)
-        return false
-      }
       if (data.command !== `large_file_response`) return false
       if (data.error) reject(new Error(data.error))
       else if (data.run_summary && typeof data.run_summary === `object`) {

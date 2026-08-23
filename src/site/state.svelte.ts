@@ -1,4 +1,6 @@
+import { browser } from '$app/environment'
 import { goto } from '$app/navigation'
+import { page } from '$app/state'
 import { SvelteMap } from 'svelte/reactivity'
 
 // Remove adapter-static HTML filenames before SvelteKit client navigation.
@@ -12,6 +14,21 @@ export const replace_url = (url: string | URL): Promise<void> =>
     keepFocus: true,
     noScroll: true,
   })
+
+// `?file=<fixture name>` deep-links the demo pages. Read client-side only: url.searchParams
+// is off-limits during prerender (it would 500 the static build).
+export const file_param = (): string | null =>
+  browser ? page.url.searchParams.get(`file`) : null
+
+// Write `?file=` (null drops it: a user-dropped file has no fixture entry to name) on a copy
+// of page.url, which is read-only reactive state from $app/state
+export const set_file_param = (filename: string | null): void => {
+  if (!browser) return
+  const url = new URL(page.url)
+  if (filename) url.searchParams.set(`file`, filename)
+  else url.searchParams.delete(`file`)
+  void replace_url(url)
+}
 
 export const routes = Object.keys(import.meta.glob(`../routes/**/+page.{svx,svelte,md}`))
   .filter((filename) => !filename.includes(`/(hide)/`))

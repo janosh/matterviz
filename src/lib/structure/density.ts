@@ -3,13 +3,14 @@
 import { element_by_symbol } from '$lib/element/data'
 import type { ElementSymbol } from '$lib/element/types'
 import type { AnyStructure, Crystal } from './index'
+import { is_image_site } from './site'
 
 export const get_element_counts = (
   structure: AnyStructure,
 ): Partial<Record<ElementSymbol, number>> => {
   const elements: Partial<Record<ElementSymbol, number>> = {}
   for (const site of structure.sites) {
-    if (typeof site.properties?.orig_site_idx === `number`) continue
+    if (is_image_site(site)) continue
     for (const { element, occu } of site.species) {
       elements[element] = (elements[element] ?? 0) + occu
     }

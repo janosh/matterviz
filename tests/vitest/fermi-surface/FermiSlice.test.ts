@@ -35,9 +35,9 @@ function create_mock_fermi_data(band_indices: number[] = [0, 1]): FermiSurfaceDa
   ]
   return {
     isosurfaces: band_indices.map((band_index) => ({
-      vertices,
-      faces,
-      normals: vertices.map(() => [0, 0, 1] as Vec3),
+      positions: Float32Array.from(vertices.flat()),
+      indices: Uint32Array.from(faces.flat()),
+      normals: Float32Array.from(vertices.flatMap(() => [0, 0, 1])),
       band_index,
       spin: null,
     })),
@@ -48,18 +48,13 @@ function create_mock_fermi_data(band_indices: number[] = [0, 1]): FermiSurfaceDa
     ] as Matrix3x3,
     fermi_energy: 0,
     reciprocal_cell: `wigner_seitz`,
-    metadata: {
-      n_bands: band_indices.length,
-      n_surfaces: band_indices.length,
-      total_area: 1,
-    },
+    metadata: { n_bands: band_indices.length, n_surfaces: band_indices.length },
   }
 }
 
 describe(`FermiSlice`, () => {
   test.each([
     [`omitted defaults to visible for one band`, [0], undefined, true],
-    [`true shows one band`, [0], true, true],
     [`false hides three bands`, [0, 1, 2], false, false],
   ] as const)(`legend visibility: %s`, async (_desc, bands, show_legend, expected) => {
     const plot = await mount_sized(
@@ -114,10 +109,9 @@ describe(`FermiSlice`, () => {
     })
     await tick()
 
-    expect(received?.export_svg).toBeTypeOf(`function`)
-    const exported = received?.export_svg()
-    expect(exported === null || typeof exported === `string`).toBe(true)
     expect(document.querySelector(`.children-rendered`)).not.toBeNull()
     expect(received?.slice_data).toBeNull() // null when no fermi_data
+    // the empty axes still export as a standalone SVG document
+    expect(received?.export_svg()).toMatch(/^<svg[^>]*role="application"/)
   })
 })

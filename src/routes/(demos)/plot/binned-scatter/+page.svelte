@@ -273,7 +273,7 @@
         e_form: clicked_point.e_form,
         e_above_hull: clicked_point.e_above_hull,
       }}
-      onclose={clear_selection}
+      on_close={clear_selection}
       style={popup_place_right
         ? `left: ${popup_pos.x}px; top: ${popup_pos.y}px`
         : `right: ${(plot_host?.clientWidth ?? 0) - popup_pos.x}px; top: ${popup_pos.y}px`}

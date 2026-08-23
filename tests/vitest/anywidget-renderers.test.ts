@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { DEFAULTS } from '../../src/lib/settings'
+import { is_plain_object } from '../../src/lib/utils'
 import { flushSync } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { MockModel } from './anywidget-mock-model'
@@ -38,6 +39,7 @@ vi.mock(`matterviz`, async () => {
   return {
     ...Object.fromEntries(component_names.map((name) => [name, stub_module.default])),
     volume_from_json: (raw: unknown) => raw,
+    is_plain_object,
     // the real one builds a run and throws on malformed payloads (covered in open.test.ts)
     trajectory_from_json: (value: unknown) => ({ run_of: value }),
   }
@@ -288,23 +290,28 @@ describe(`WIDGET_MODEL_KEYS contract`, () => {
       ]),
     )
     expect(WIDGET_MODEL_KEYS.scatter_plot_3d).toContain(`show_legend`)
+    // pymatviz's PlotControlsTraits documents all four controls traits for every plot widget,
+    // and Bands/Dos/XrdPlot/RdfPlot forward the pane attribute dicts to their PlotControls
+    const control_keys = [
+      `show_controls`,
+      `controls_open`,
+      `controls_toggle_props`,
+      `controls_pane_props`,
+    ]
     for (const widget_type of [
       `scatter_plot`,
       `scatter_plot_3d`,
       `bar_plot`,
       `histogram`,
+      `treemap`,
       `band_structure`,
       `dos`,
       `rdf_plot`,
       `xrd`,
+      `bands_and_dos`,
     ]) {
-      expect(WIDGET_MODEL_KEYS[widget_type]).toEqual(
-        expect.arrayContaining([
-          `show_controls`,
-          `controls_open`,
-          `controls_toggle_props`,
-          `controls_pane_props`,
-        ]),
+      expect(WIDGET_MODEL_KEYS[widget_type], widget_type).toEqual(
+        expect.arrayContaining(control_keys),
       )
       expect(WIDGET_MODEL_KEYS[widget_type]).not.toContain(`controls`)
     }
@@ -374,8 +381,10 @@ describe(`widget config wiring`, () => {
     },
   )
 
-  test.each([`band_structure`, `dos`, `scatter_plot_3d`, `rdf_plot`, `xrd`] as const)(
-    `%s forwards flat controls`,
+  // Every plot widget forwards all four controls traits, the wrappers (Bands/Dos/RdfPlot/
+  // XrdPlot) included: they declare the pane attribute props and hand them to PlotControls
+  test.each([`scatter_plot_3d`, `band_structure`, `dos`, `rdf_plot`, `xrd`] as const)(
+    `%s forwards flat controls including the pane attribute props`,
     (widget_type) => {
       const model = new MockModel({
         widget_type,
@@ -404,20 +413,18 @@ describe(`widget config wiring`, () => {
       controls_pane_props: { style: `width: 20rem` },
     })
     const stub = run_widget(`bands_and_dos`, model)
+    const controls = {
+      show_controls: false,
+      controls_open: true,
+      controls_toggle_props: { title: `Plot options` },
+      controls_pane_props: { style: `width: 20rem` },
+    }
     expect(stub.read().bands_props).toEqual({
       band_type: `line`,
       show_legend: false,
-      show_controls: false,
-      controls_open: true,
-      controls_toggle_props: { title: `Plot options` },
-      controls_pane_props: { style: `width: 20rem` },
+      ...controls,
     })
-    expect(stub.read().dos_props).toMatchObject({
-      show_controls: false,
-      controls_open: true,
-      controls_toggle_props: { title: `Plot options` },
-      controls_pane_props: { style: `width: 20rem` },
-    })
+    expect(stub.read().dos_props).toMatchObject(controls)
     expect(`show_controls` in stub.read()).toBe(false)
   })
 })

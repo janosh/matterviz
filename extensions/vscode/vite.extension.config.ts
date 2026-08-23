@@ -1,7 +1,7 @@
-import { svelte } from '@sveltejs/vite-plugin-svelte'
+import { builtinModules } from 'node:module'
 import { resolve } from 'node:path'
-import { defineConfig, type PluginOption } from 'vite'
-import { vite_plugin_json_gz } from '../../src/vite-plugins.ts'
+import { defineConfig } from 'vite'
+import { lib_aliases, vite_plugin_json_gz } from '../../src/vite-plugins.ts'
 
 export default defineConfig({
   build: {
@@ -11,27 +11,16 @@ export default defineConfig({
       fileName: () => `extension.js`,
     },
     rollupOptions: {
-      external: [
-        `vscode`,
-        `fs`,
-        `path`,
-        `node:buffer`,
-        `node:fs`,
-        `node:os`,
-        `node:path`,
-        `os`,
-      ],
+      // Every node builtin must stay external, bare or `node:`-prefixed: one missing from this
+      // list is silently replaced by an empty browser stub (node-io's zlib/stream decompression
+      // broke that way)
+      external: [`vscode`, /^node:/, ...builtinModules],
     },
     minify: false,
     emptyOutDir: false,
   },
-  resolve: {
-    alias: {
-      $lib: resolve(import.meta.dirname, `../../src/lib`),
-    },
-  },
-  // vite@8's Plugin type and the svelte plugin's bundled copy are two instances
-  // of the same type; comparing them exceeds TS's instantiation depth, so widen
-  // to vite's own PluginOption[] to keep defineConfig's overload check shallow.
-  plugins: [vite_plugin_json_gz(), svelte()] as PluginOption[],
+  resolve: { alias: lib_aliases },
+  // No svelte(): the host deep-imports $lib modules (never the component barrels), so a
+  // .svelte file reaching this bundle is a dependency-graph regression and should fail loudly
+  plugins: [vite_plugin_json_gz()],
 })

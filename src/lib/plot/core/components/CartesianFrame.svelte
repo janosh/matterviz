@@ -14,6 +14,7 @@
   import PlotMarginals from '$lib/plot/core/components/PlotMarginals.svelte'
   import PlotTitle from '$lib/plot/core/components/PlotTitle.svelte'
   import ZoomRect from '$lib/plot/core/components/ZoomRect.svelte'
+  import type { UserContentProps } from '$lib/plot/core/types'
   import type { Snippet } from 'svelte'
   import { onDestroy } from 'svelte'
   import type { ClassValue, HTMLAttributes } from 'svelte/elements'
@@ -66,6 +67,8 @@
     on_mouse_move?: (event: MouseEvent) => void
     on_mouse_click?: (event: MouseEvent) => void
     header_controls?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
+    // Caller-drawn SVG rendered first inside the plot SVG, with the scales and ranges
+    user_content?: Snippet<[UserContentProps]>
     // Marks, axes, zero lines and reference lines, in the chart's own paint order
     layers?: Snippet
     // Legend, tooltip and controls pane, rendered after the SVG
@@ -92,6 +95,7 @@
     on_mouse_move,
     on_mouse_click,
     header_controls,
+    user_content,
     layers,
     overlays,
     children,
@@ -203,6 +207,20 @@
         </clipPath>
       </defs>
 
+      {@render user_content?.({
+        height: frame.height,
+        width: frame.width,
+        x_scale_fn: frame.scales.x,
+        x2_scale_fn: frame.scales.x2,
+        y_scale_fn: frame.scales.y,
+        y2_scale_fn: frame.scales.y2,
+        pad: frame.pad,
+        x_range: frame.ranges.current.x,
+        x2_range: frame.ranges.current.x2,
+        y_range: frame.ranges.current.y,
+        y2_range: frame.ranges.current.y2,
+        fullscreen,
+      })}
       {@render layers?.()}
 
       <!-- After the marks so the drag rect stays visible over dense points and canvases -->

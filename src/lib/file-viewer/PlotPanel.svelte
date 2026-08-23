@@ -19,11 +19,11 @@
   let {
     data,
     initial_type,
-    onclose,
+    on_close,
   }: {
     data: unknown
     initial_type?: PlotType
-    onclose?: () => void
+    on_close?: () => void
   } = $props()
 
   let columns = $derived(extract_columns(data))
@@ -131,8 +131,8 @@
 {#if columns.size > 0}
   <div class="plot-panel">
     <div class="toolbar">
-      {#if onclose}
-        <button class="close-btn" onclick={onclose} title="Back to overview (Esc)">
+      {#if on_close}
+        <button class="close-btn" onclick={on_close} title="Back to overview (Esc)">
           &times;
         </button>
       {/if}

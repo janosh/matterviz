@@ -30,6 +30,6 @@ This directory contains example Fermi surface data files for testing and demonst
 
 ## Adding Files
 
-Files matching `*.bxsf(.gz)`, `*.frmsf(.gz)`, `*.json(.gz)` are auto-discovered via `import.meta.glob` in `index.ts`.
+Files matching `*.bxsf(.gz)`, `*.frmsf(.gz)`, `*.json(.gz)` are auto-discovered via `import.meta.glob` in `../fermi-surfaces.ts`.
 
-For FRMSF color data files, add the filename to `FRMSF_COLOR_DATA_FILES` in `index.ts`.
+For FRMSF color data files, add the filename to `FRMSF_COLOR_DATA_FILES` in `../fermi-surfaces.ts`.

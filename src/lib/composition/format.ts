@@ -102,32 +102,156 @@ export const get_electro_neg_formula = (
 ): string =>
   format_formula_generic(input, sort_by_electronegativity, plain_text, delim, amount_format)
 
+// === Formula markup (subscripts/superscripts) ===
+
+// Markup token for rendering a formula: plain text, subscript, or superscript run.
+// (Not FormulaSpecies from ./parse, which is an element/amount pair.)
+export interface FormulaMarkupToken {
+  text?: string
+  sub?: string
+  sup?: string
+}
+
+// Check if a component name is a compound (vs single element)
+// Returns true if name contains digits (e.g., "Fe3C", "SiO2") or multiple uppercase letters
+// that indicate multiple elements (e.g., "MgO", "CaO")
+// Single elements like "Fe", "Ca", "He" return false
+export function is_compound(name: string): boolean {
+  if (!name) return false
+  // Contains digits -> likely a compound (Fe3C, SiO2, Al2O3)
+  if (/\d/.test(name)) return true
+  // Single element pattern: one uppercase followed by optional lowercase (Fe, Ca, He, C)
+  if (/^[A-Z][a-z]?$/.test(name)) return false
+  return (name.match(/[A-Z]/g)?.length ?? 0) >= 2
+}
+
+// Tokenize a chemical formula for rendering with subscripts/superscripts
+// Examples:
+//   "Fe3C" -> [{text: "Fe"}, {sub: "3"}, {text: "C"}]
+//   "SiO2" -> [{text: "Si"}, {text: "O"}, {sub: "2"}]
+//   "Li0.5FeO2" -> [{text: "Li"}, {sub: "0.5"}, {text: "Fe"}, {text: "O"}, {sub: "2"}]
+//   "Fe" -> [{text: "Fe"}]
+//   "α-Fe" -> [{text: "α-Fe"}] (Greek phases pass through unchanged)
+// Token classes: number runs (incl. decimals) become subscripts; a '-' at the end of the string
+// or followed by digits is a charge superscript ("O2-", "Cl-2"), any other '-' stays a text
+// hyphen ("Fe-Fe3C"); element symbols (uppercase + lowercase run) are separate text tokens; any
+// other run of characters merges into the preceding text token. '+' never gets here (early
+// return above).
+const FORMULA_TOKEN_RE =
+  /(?<sub>\d+(?:\.\d+)?)|(?<sup>-(?:\d+|$))|(?<element>[A-Z][a-z]*)|(?<other>-|[^A-Z\d-]+)/g
+
+export function tokenize_formula_markup(formula: string): FormulaMarkupToken[] {
+  if (!formula) return []
+  // Greek letters or multi-phase notation pass through unchanged
+  if (/[α-ωΑ-Ω]/.test(formula) || formula.includes(`+`)) return [{ text: formula }]
+
+  const tokens: FormulaMarkupToken[] = []
+  for (const { groups } of formula.matchAll(FORMULA_TOKEN_RE)) {
+    const { sub, sup, element, other } = groups ?? {}
+    const prev = tokens.at(-1)
+    if (sub) tokens.push({ sub })
+    else if (sup) tokens.push({ sup })
+    else if (element) tokens.push({ text: element })
+    else if (other !== `-` && prev?.text !== undefined) prev.text += other
+    else tokens.push({ text: other })
+  }
+  return tokens
+}
+
+// Flat label segments for canvas/3D renderers that can only offset subscripts: adjacent
+// plain runs (incl. charge superscripts and " + " separators) are merged into one segment.
 export interface FormulaLabelSegment {
   text: string
   subscript: boolean
 }
 
-export function get_formula_label_segments(formula: string): FormulaLabelSegment[] {
+// Labels are often entry names rather than formulas (`mp-1234`, `2 Fe2O3`): a number or charge
+// run at the start of the label, or right after whitespace, is a prefix/id rather than a
+// stoichiometry and stays plain text. (Only here: tokenize_formula_markup keeps formula
+// semantics for the HTML/SVG renderers.)
+export function get_formula_label_segments(label: string): FormulaLabelSegment[] {
   const segments: FormulaLabelSegment[] = []
-  let cursor = 0
-
-  for (const match of formula.matchAll(/(?<letter>[A-Za-z])(?<amount>\d+(?:\.\d+)?)/g)) {
-    const match_idx = match.index ?? 0
-    const prefix = match[1]
-    const amount = match[2]
-    const amount_idx = match_idx + prefix.length
-    if (amount_idx > cursor) {
-      segments.push({ text: formula.slice(cursor, amount_idx), subscript: false })
+  const push = (text: string, subscript: boolean): void => {
+    const prev = segments.at(-1)
+    if (prev && !subscript && !prev.subscript) prev.text += text
+    else segments.push({ text, subscript })
+  }
+  for (const part of label.split(/(?<separator>\s*\+\s*)/)) {
+    if (part.trim() === `+`) {
+      push(part, false)
+      continue
     }
-    segments.push({ text: amount, subscript: true })
-    cursor = amount_idx + amount.length
+    const tokens = tokenize_formula_markup(part)
+    for (const [idx, token] of tokens.entries()) {
+      const prev_text = idx === 0 ? `` : tokens[idx - 1].text
+      const at_word_start = idx === 0 || /\s$/.test(prev_text ?? ``)
+      if (token.sub !== undefined && !at_word_start) push(token.sub, true)
+      else push(token.text ?? token.sub ?? token.sup ?? ``, false)
+    }
+  }
+  return segments.length > 0 ? segments : [{ text: label, subscript: false }]
+}
+
+// Baseline shifts for sub/superscript (SVG dy values are cumulative across tspans)
+const DY = { sub: 0.25, sup: -0.4 } as const
+
+// Format chemical formula as SVG tspan elements with subscripts
+// Tracks cumulative baseline offset and adds trailing reset so concatenated text aligns
+export function format_formula_svg(formula: string, use_subscripts = true): string {
+  if (!use_subscripts || !is_compound(formula)) return formula
+
+  let result = ``
+  let offset = 0
+
+  for (const token of tokenize_formula_markup(formula)) {
+    if (token.text !== undefined) {
+      result += offset ? `<tspan dy="${-offset}em">${token.text}</tspan>` : token.text
+      offset = 0
+    } else {
+      const dy = token.sub !== undefined ? DY.sub : DY.sup
+      result += `<tspan dy="${dy}em" font-size="0.75em">${token.sub ?? token.sup}</tspan>`
+      offset += dy
+    }
   }
 
-  if (cursor < formula.length) {
-    segments.push({ text: formula.slice(cursor), subscript: false })
-  }
-  return segments.length > 0 ? segments : [{ text: formula, subscript: false }]
+  // Reset baseline after trailing subscript/superscript using a zero-width space
+  // (empty tspans may not apply dy in all SVG renderers)
+  if (offset) result += `<tspan dy="${-offset}em">\u200B</tspan>`
+  return result
 }
+
+// Format chemical formula as HTML with <sub> and <sup> tags
+export function format_formula_html(formula: string, use_subscripts = true): string {
+  if (!use_subscripts || !is_compound(formula)) return formula
+
+  return tokenize_formula_markup(formula)
+    .map(
+      (token) =>
+        token.text ?? (token.sub ? `<sub>${token.sub}</sub>` : `<sup>${token.sup}</sup>`),
+    )
+    .join(``)
+}
+
+// Split a multi-phase label on " + " and format each part with the given formatter
+function format_label_parts(
+  label: string,
+  use_subscripts: boolean,
+  formatter: (formula: string, use_sub: boolean) => string,
+): string {
+  if (!use_subscripts) return label
+  return label
+    .split(/(?<separator>\s*\+\s*)/)
+    .map((part) => (part.trim() === `+` ? part : formatter(part.trim(), use_subscripts)))
+    .join(``)
+}
+
+// Format a phase region label (e.g. "La2NiO4 + NiO") as SVG with subscripts
+export const format_label_svg = (label: string, use_subscripts = true): string =>
+  format_label_parts(label, use_subscripts, format_formula_svg)
+
+// Format a phase region label as HTML with subscripts (splits on " + ")
+export const format_label_html = (label: string, use_subscripts = true): string =>
+  format_label_parts(label, use_subscripts, format_formula_html)
 
 export function format_oxi_state(oxidation?: number): string {
   if (oxidation === undefined || oxidation === 0) return ``

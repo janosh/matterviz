@@ -1,6 +1,5 @@
 import CellSelect from '$lib/structure/CellSelect.svelte'
-import type { CellType } from '$lib/symmetry'
-import type { MoyoDataset } from '@spglib/moyo-wasm'
+import type { CellType, SymmetryDataset } from '$lib/symmetry'
 import { mount, tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { bind_props, doc_query } from '../setup'
@@ -11,15 +10,14 @@ const mock_sym_data = {
   hall_number: 523,
   international_short: `Fm-3m`,
   choice: ``,
-} as unknown as MoyoDataset
+} as unknown as SymmetryDataset
 
 type CellSelectProps = {
   supercell_scaling: string
   cell_type?: CellType
-  sym_data?: MoyoDataset | null
+  sym_data?: SymmetryDataset | null
   loading?: boolean
   direction?: `up` | `down`
-  align?: `left` | `right`
   suppress_hover?: boolean
 }
 
@@ -36,12 +34,8 @@ async function mount_and_open(props: CellSelectProps): Promise<void> {
 describe(`CellSelect`, () => {
   describe(`rendering`, () => {
     test.each([
-      [`1x1x1`, `original`, `1x1x1`],
       [`2x2x2`, `original`, `2x2x2`],
-      [`3x3x1`, `original`, `3x3x1`],
       [`1x1x1`, `primitive`, `Prim 1x1x1`],
-      [`2x2x2`, `primitive`, `Prim 2x2x2`],
-      [`1x1x1`, `conventional`, `Conv 1x1x1`],
       [`3x3x3`, `conventional`, `Conv 3x3x3`],
     ] as const)(`displays "%s" with cell_type=%s as "%s"`, (scaling, cell_type, expected) => {
       mount(CellSelect, {
@@ -74,12 +68,16 @@ describe(`CellSelect`, () => {
       })
 
       // Initially hidden
+      const toggle = doc_query<HTMLButtonElement>(`.toggle-btn`)
+      expect(doc_query(`.cell-select`).getAttribute(`role`)).toBe(`group`)
       expect(document.querySelector(`.dropdown`)).toBeNull()
+      expect(toggle.getAttribute(`aria-expanded`)).toBe(`false`)
 
       // Opens on click
-      doc_query<HTMLButtonElement>(`.toggle-btn`).click()
+      toggle.click()
       await tick()
       expect(document.querySelector(`.dropdown`)).toBeInstanceOf(HTMLElement)
+      expect(toggle.getAttribute(`aria-expanded`)).toBe(`true`)
 
       // Close by mouseleave
       doc_query(`.cell-select`).dispatchEvent(new MouseEvent(`mouseleave`, { bubbles: true }))
@@ -147,45 +145,32 @@ describe(`CellSelect`, () => {
       await tick()
       expect(document.querySelector(`.dropdown`)).toBeNull()
     })
-
-    test.each([
-      [`down`, `right`, false, false],
-      [`up`, `right`, true, false],
-      [`down`, `left`, false, true],
-      [`up`, `left`, true, true],
-    ] as const)(
-      `direction=%s, align=%s applies open-up=%s, align-left=%s`,
-      async (direction, align, has_open_up, has_align_left) => {
-        await mount_and_open({ supercell_scaling: `1x1x1`, direction, align })
-        const dropdown = doc_query(`.dropdown`)
-        expect(dropdown.classList.contains(`open-up`)).toBe(has_open_up)
-        expect(dropdown.classList.contains(`align-left`)).toBe(has_align_left)
-      },
-    )
   })
 
   describe(`cell type buttons`, () => {
-    test(`shows all three cell type buttons with correct labels`, async () => {
-      await mount_and_open({ supercell_scaling: `1x1x1` })
-      const buttons = document.querySelectorAll(`.cell-type-btn`)
-      expect(buttons).toHaveLength(3)
-      expect(Array.from(buttons).map((btn) => btn.textContent?.trim())).toEqual([
-        `Orig`,
-        `Prim`,
-        `Conv`,
-      ])
-    })
-
+    // Prim/Conv need symmetry data; their tooltip says so while disabled
     test.each([
       [null, [false, true, true]],
       [mock_sym_data, [false, false, false]],
-    ] as const)(`sym_data=%s sets disabled states %s`, async (sym_data, expected_disabled) => {
-      await mount_and_open({ supercell_scaling: `1x1x1`, sym_data })
-      const buttons = document.querySelectorAll<HTMLButtonElement>(`.cell-type-btn`)
-      expected_disabled.forEach((disabled, idx) => {
-        expect(buttons[idx].disabled).toBe(disabled)
-      })
-    })
+    ] as const)(
+      `sym_data=%s: labels, disabled states %s and tooltips`,
+      async (sym_data, disabled) => {
+        await mount_and_open({ supercell_scaling: `1x1x1`, sym_data })
+        const buttons = [...document.querySelectorAll<HTMLButtonElement>(`.cell-type-btn`)]
+        expect(buttons.map((btn) => btn.textContent?.trim())).toEqual([`Orig`, `Prim`, `Conv`])
+        expect(buttons.map((btn) => btn.disabled)).toEqual(disabled)
+        const tooltips = buttons.map((btn) => btn.getAttribute(`aria-label`))
+        expect(tooltips[0]).toBe(`Original unit cell (as provided)`)
+        if (sym_data) {
+          expect(tooltips.slice(1)).toEqual([
+            `Primitive cell (smallest repeating unit)`,
+            `Conventional cell (standardized representation)`,
+          ])
+        } else {
+          for (const tip of tooltips.slice(1)) expect(tip).toContain(`requires symmetry data`)
+        }
+      },
+    )
 
     test.each([
       [`original`, 0],
@@ -205,25 +190,6 @@ describe(`CellSelect`, () => {
         })
       },
     )
-
-    test.each([
-      [`original`, `Original unit cell (as provided)`],
-      [`primitive`, `Primitive cell (smallest repeating unit)`],
-      [`conventional`, `Conventional cell (standardized representation)`],
-    ] as const)(`%s button has tooltip "%s"`, async (cell_type, expected_tooltip) => {
-      await mount_and_open({ supercell_scaling: `1x1x1`, sym_data: mock_sym_data })
-      const idx = cell_type === `original` ? 0 : cell_type === `primitive` ? 1 : 2
-      const btn = document.querySelectorAll<HTMLButtonElement>(`.cell-type-btn`)[idx]
-      expect(btn.getAttribute(`aria-label`)).toBe(expected_tooltip)
-    })
-
-    test(`disabled buttons have "requires symmetry data" in tooltip`, async () => {
-      await mount_and_open({ supercell_scaling: `1x1x1`, sym_data: null })
-      const buttons = document.querySelectorAll<HTMLButtonElement>(`.cell-type-btn`)
-      for (const btn of [buttons[1], buttons[2]]) {
-        expect(btn.getAttribute(`aria-label`)).toContain(`requires symmetry data`)
-      }
-    })
 
     test.each([
       [mock_sym_data, `primitive`],
@@ -251,22 +217,15 @@ describe(`CellSelect`, () => {
   describe(`supercell presets`, () => {
     const presets = [`1x1x1`, `2x2x2`, `3x3x3`, `2x2x1`, `3x3x1`, `2x1x1`]
 
-    test(`shows all preset buttons with correct labels`, async () => {
-      await mount_and_open({ supercell_scaling: `1x1x1` })
-      const buttons = document.querySelectorAll(`.preset-btn`)
-      expect(buttons).toHaveLength(6)
+    test(`shows all preset buttons and marks only the active one selected`, async () => {
+      await mount_and_open({ supercell_scaling: `3x3x1` })
+      const buttons = [...document.querySelectorAll(`.preset-btn`)]
+      expect(buttons.map((btn) => normalize_supercell_label(btn.textContent))).toEqual(presets)
       expect(
-        Array.from(buttons).map((button_elem) =>
-          normalize_supercell_label(button_elem.textContent),
-        ),
-      ).toEqual(presets)
-    })
-
-    test.each(presets)(`marks %s as selected when active`, async (preset) => {
-      await mount_and_open({ supercell_scaling: preset })
-      const selected = document.querySelector(`.preset-btn.selected`)
-      expect(normalize_supercell_label(selected?.textContent)).toBe(preset)
-      expect(document.querySelectorAll(`.preset-btn.selected`)).toHaveLength(1)
+        buttons
+          .filter((btn) => btn.classList.contains(`selected`))
+          .map((btn) => normalize_supercell_label(btn.textContent)),
+      ).toEqual([`3x3x1`])
     })
 
     test(`clicking preset updates scaling and closes menu`, async () => {
@@ -293,14 +252,10 @@ describe(`CellSelect`, () => {
       expect(input.value).toBe(`3x3x1`)
     })
 
+    // validity itself is parse_supercell_scaling's job (supercell.test.ts); this is the class
     test.each([
       [`2x2x2`, false],
-      [`3×1×2`, false],
-      [`5`, false],
-      [`invalid`, true],
       [`2x2`, true],
-      [`0x1x1`, true],
-      [``, true],
     ])(`input "%s" has invalid class: %s`, async (input_val, should_be_invalid) => {
       await mount_and_open({ supercell_scaling: `1x1x1` })
       const input = doc_query<HTMLInputElement>(`.custom-input-row input`)
@@ -362,72 +317,24 @@ describe(`CellSelect`, () => {
   })
 
   describe(`external prop sync`, () => {
-    test(`input syncs when scaling changes externally`, async () => {
-      let scaling = $state(`1x1x1`)
-      mount(CellSelect, {
-        target: document.body,
-        props: {
-          get supercell_scaling() {
-            return scaling
-          },
-          set supercell_scaling(val) {
-            scaling = val
-          },
-        },
-      })
-
-      scaling = `4x4x4`
-      await tick()
-
-      doc_query<HTMLButtonElement>(`.toggle-btn`).click()
-      await tick()
-
-      expect(doc_query<HTMLInputElement>(`.custom-input-row input`).value).toBe(`4x4x4`)
-    })
-
-    test(`toggle button updates when props change`, async () => {
+    test(`toggle label and custom input follow externally changed props`, async () => {
       const state: { supercell_scaling: string; cell_type: CellType } = $state({
         supercell_scaling: `1x1x1`,
         cell_type: `original`,
       })
-      mount(CellSelect, {
-        target: document.body,
-        props: bind_props({}, state),
-      })
+      mount(CellSelect, { target: document.body, props: bind_props({}, state) })
 
       const toggle = doc_query<HTMLButtonElement>(`.toggle-btn`)
       expect(normalize_supercell_label(toggle.textContent)).toBe(`1x1x1`)
 
-      state.supercell_scaling = `2x2x2`
-      await tick()
-      expect(normalize_supercell_label(toggle.textContent)).toBe(`2x2x2`)
-
+      state.supercell_scaling = `4x4x4`
       state.cell_type = `primitive`
       await tick()
-      expect(normalize_supercell_label(toggle.textContent)).toBe(`Prim 2x2x2`)
-    })
-  })
+      expect(normalize_supercell_label(toggle.textContent)).toBe(`Prim 4x4x4`)
 
-  describe(`accessibility`, () => {
-    test(`has correct ARIA attributes and roles`, async () => {
-      mount(CellSelect, {
-        target: document.body,
-        props: { supercell_scaling: `1x1x1` },
-      })
-
-      const toggle = doc_query<HTMLButtonElement>(`.toggle-btn`)
-      const container = doc_query(`.cell-select`)
-
-      // Container role
-      expect(container.getAttribute(`role`)).toBe(`group`)
-
-      // Toggle button
-      expect(toggle.getAttribute(`aria-expanded`)).toBe(`false`)
-
-      // After opening
       toggle.click()
       await tick()
-      expect(toggle.getAttribute(`aria-expanded`)).toBe(`true`)
+      expect(doc_query<HTMLInputElement>(`.custom-input-row input`).value).toBe(`4x4x4`)
     })
   })
 })

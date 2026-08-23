@@ -1,7 +1,5 @@
 import {
   calc_trajectory_spectroscopy,
-  type RamanGeometry,
-  type RamanSignal,
   type TrajectorySpectroscopyInput,
   type TrajectorySpectroscopyOptions,
   validate_trajectory_signal,
@@ -64,45 +62,8 @@ const peak_near = (
     Math.abs(peak.frequency - frequency) < Math.abs(best.frequency - frequency) ? peak : best,
   )
 
-const RAW = { preprocessing: `raw` as const, frequency_unit: `1/frame` as const }
+const RAW = { preprocessing: `raw` as const, frequency_unit: `1/step` as const }
 const RAW_SPECTRUM = { ...RAW, window: `none` as const, zero_pad_factor: 1 as const }
-
-const clone_geometry = (
-  input: TrajectorySpectroscopyInput,
-  extras: Partial<TrajectorySignal> = {},
-): TrajectorySignal => ({
-  values: new Float64Array(input.positions.positions),
-  sample_shape: [input.positions.n_atoms, 3],
-  steps: [...input.positions.steps],
-  ...extras,
-})
-
-const axis_signals = (series: TrajectorySignal) => ({ x: series, y: series, z: series })
-
-const dipole_field_raman = (
-  input: TrajectorySpectroscopyInput,
-  extras: {
-    response?: TrajectorySignal
-    field_strength?: number
-    plus?: ReturnType<typeof axis_signals>
-    minus?: ReturnType<typeof axis_signals>
-  } = {},
-): RamanSignal => {
-  const response = extras.response ?? signal(128, [3], () => [0, 0, 0])
-  const fresh_geometry = () => axis_signals(clone_geometry(input))
-  return {
-    kind: `field_response`,
-    response: `dipole`,
-    field_strength: extras.field_strength ?? 0.01,
-    field_unit: `V/A`,
-    plus: axis_signals(response),
-    minus: axis_signals(response),
-    geometry: {
-      plus: extras.plus ?? fresh_geometry(),
-      minus: extras.minus ?? fresh_geometry(),
-    },
-  }
-}
 
 const tumbling_spectra = (
   elements: ElementSymbol[],
@@ -177,7 +138,7 @@ const tumbling_spectra = (
   })
   const options = {
     preprocessing: `body_fixed`,
-    frequency_unit: `1/frame`,
+    frequency_unit: `1/step`,
     window: `none`,
     zero_pad_factor: 1,
   } as const
@@ -202,6 +163,57 @@ describe(`calc_trajectory_spectroscopy`, () => {
     )
   })
 
+  // Same vocabulary as the VACF: `auto` prefers stored velocities, `stored` insists on them,
+  // `central_difference` differentiates the positions even when velocities are supplied
+  it.each([
+    [undefined, true, `stored`],
+    [undefined, false, `central_difference`],
+    [`auto`, true, `stored`],
+    [`auto`, false, `central_difference`],
+    [`stored`, true, `stored`],
+    [`central_difference`, true, `central_difference`],
+    [`central_difference`, false, `central_difference`],
+  ] as const)(
+    `velocity_source=%s with stored velocities=%s reports %s`,
+    (velocity_source, has_velocities, expected) => {
+      const input = make_input()
+      if (!has_velocities) input.velocities = null
+      const result = calc_trajectory_spectroscopy(input, { ...RAW_SPECTRUM, velocity_source })
+      expect(result.velocity_source).toBe(expected)
+      // the reported source must be the one actually used: the spectrum has to match the
+      // reference computed from that source alone
+      const reference_input = make_input()
+      if (expected === `central_difference`) reference_input.velocities = null
+      const reference = calc_trajectory_spectroscopy(reference_input, RAW_SPECTRUM)
+      expect(reference.velocity_source).toBe(expected)
+      expect(result.vdos.power).toEqual(reference.vdos.power)
+      // and differ from the other source's spectrum (the fixture's stored velocities are
+      // not the derivative of its positions)
+      const other_input = make_input()
+      if (expected === `stored`) other_input.velocities = null
+      const other = calc_trajectory_spectroscopy(other_input, RAW_SPECTRUM)
+      expect(other.velocity_source).not.toBe(expected)
+      expect(result.vdos.power).not.toEqual(other.vdos.power)
+    },
+  )
+
+  it(`velocity_source 'stored' throws without a velocity signal`, () => {
+    const input = make_input()
+    input.velocities = null
+    expect(() =>
+      calc_trajectory_spectroscopy(input, { ...RAW_SPECTRUM, velocity_source: `stored` }),
+    ).toThrow(/velocity_source 'stored' was requested but no velocity signal was supplied/)
+  })
+
+  it(`rejects an unknown velocity_source`, () => {
+    expect(() =>
+      calc_trajectory_spectroscopy(make_input(), {
+        ...RAW_SPECTRUM,
+        velocity_source: `finite_difference` as unknown as `auto`,
+      }),
+    ).toThrow(/velocity_source/)
+  })
+
   // Ground truth for the VDOS pipeline: a pure velocity sinusoid at a known physical
   // frequency must peak there, and the curve must be exactly the mass-weighted
   // one_sided_periodogram of those velocities with the fs → THz Jacobian applied.
@@ -216,7 +228,6 @@ describe(`calc_trajectory_spectroscopy`, () => {
       ...options,
       preprocessing: `raw`,
       frequency_unit: `THz`,
-      velocity_source: `stored`,
     })
     const peak_idx = vdos.power.indexOf(Math.max(...vdos.power))
     // Within one frequency bin (zero-padded grid spacing), not just the Rayleigh width
@@ -295,7 +306,7 @@ describe(`calc_trajectory_spectroscopy`, () => {
       `short position buffer`,
       (input: TrajectorySpectroscopyInput) =>
         (input.positions.positions = input.positions.positions.slice(1)),
-      /positions have .* values/,
+      /positions has .* entries but 128 frames/,
     ],
     [
       `non-finite position`,
@@ -305,7 +316,7 @@ describe(`calc_trajectory_spectroscopy`, () => {
     [
       `element count`,
       (input: TrajectorySpectroscopyInput) => input.positions.elements.pop(),
-      /have 1 elements/,
+      /got 1 element labels for 2 atoms/,
     ],
     [
       `descending steps`,
@@ -332,12 +343,12 @@ describe(`calc_trajectory_spectroscopy`, () => {
     [
       `fractional atom count`,
       (input: TrajectorySpectroscopyInput) => (input.positions.n_atoms = 1.5),
-      /n_atoms must be a positive integer/,
+      /element labels for 1\.5 atoms/,
     ],
     [
       `fractional frame count`,
       (input: TrajectorySpectroscopyInput) => (input.positions.n_frames = 127.5),
-      /n_frames must be a positive integer/,
+      /entries but 127\.5 frames/,
     ],
     [
       `malformed PBC`,
@@ -382,31 +393,10 @@ describe(`calc_trajectory_spectroscopy`, () => {
       /Raman signal kind 'susceptibility' is not supported/,
     ],
     [
-      `Raman field-response kind`,
-      (input: TrajectorySpectroscopyInput) => {
-        input.raman_signal = dipole_field_raman(input)
-        Reflect.set(input.raman_signal, `response`, `current`)
-      },
-      {},
-      /Raman field-response kind 'current' is not supported/,
-    ],
-    [
-      `Raman geometry kind`,
+      `Raman channel`,
       () => {},
-      { raman_geometry: { kind: `crystal` } },
-      /Raman geometry kind 'crystal' is not supported/,
-    ],
-    [
-      `Raman powder channel`,
-      () => {},
-      { raman_geometry: { kind: `powder`, channel: `polarized` } },
-      /Raman powder channel 'polarized' is not supported/,
-    ],
-    [
-      `infinite activity SNR`,
-      () => {},
-      { activity_snr: Number.POSITIVE_INFINITY },
-      /activity_snr must be finite and >= 0/,
+      { raman_channel: `polarized` },
+      /Raman channel 'polarized' is not supported/,
     ],
     [
       `body-fixed current IR`,
@@ -447,23 +437,6 @@ describe(`calc_trajectory_spectroscopy`, () => {
       expect(() => calc_trajectory_spectroscopy(input, options)).toThrow(expected)
     },
   )
-
-  it(`rejects malformed polarized Raman vectors`, () => {
-    const input = make_input()
-    input.raman_signal = {
-      kind: `polarizability`,
-      series: signal(128, [3, 3], () => [1, 0, 0, 0, 1, 0, 0, 0, 1]),
-    }
-    const raman_geometry = {
-      kind: `polarized`,
-      incident: [1, 0, 0],
-      scattered: [0, 1, 0],
-    } satisfies RamanGeometry
-    Reflect.set(raman_geometry, `incident`, [1, 0, 0, 1])
-    expect(() => calc_trajectory_spectroscopy(input, { ...RAW, raman_geometry })).toThrow(
-      /polarization vectors must contain exactly three finite components/,
-    )
-  })
 
   it(`returns the same physical raw IR spectrum for equivalent time units`, () => {
     const make_timed_input = (time_step: number, time_unit: string) => {
@@ -513,17 +486,16 @@ describe(`calc_trajectory_spectroscopy`, () => {
   })
 
   it.each([
-    [{ time_step: Number.NaN, time_unit: `fs` }, /time_step must be finite and > 0/],
     [{ time_step: 0, time_unit: `fs` }, /time_step must be finite and > 0/],
     [{ time_step: 1 }, /time_step and time_unit must be supplied together/],
     [{ time_unit: `fs` }, /time_step and time_unit must be supplied together/],
     [{ time_step: 1, time_unit: ` ` }, /time_unit must be a non-empty string/],
-  ])(`validates supplied physical time metadata in 1/frame mode`, (metadata, error) => {
+  ])(`validates supplied physical time metadata in 1/step mode`, (metadata, error) => {
     const input = Object.assign(make_input(), metadata)
     expect(() => calc_trajectory_spectroscopy(input, RAW)).toThrow(error)
   })
 
-  it(`uses independent signal step spacing for 1/frame frequencies`, () => {
+  it(`uses independent signal step spacing for 1/step frequencies`, () => {
     const input = make_input()
     const response_steps = Array.from({ length: 64 }, (_unused, sample_idx) => sample_idx * 2)
     input.infrared_signal = {
@@ -546,16 +518,14 @@ describe(`calc_trajectory_spectroscopy`, () => {
     expect(ir.nyquist).toBe(0.25)
   })
 
-  it(`accepts decimal step grids that are uniform within computed f64 roundoff`, () => {
+  // Uniform within computed f64 roundoff: a decimal grid, and the same grid translated to a
+  // large step origin where the absolute roundoff of each step is far larger
+  it.each([
+    [`decimal step grid`, (step: number) => step * 0.1],
+    [`large step origin`, (step: number) => 1e12 + step * 0.1],
+  ])(`accepts a %s that is uniform within f64 roundoff`, (_label, transform) => {
     const input = make_input()
-    input.positions.steps = input.positions.steps.map((step) => step * 0.1)
-    if (input.velocities) input.velocities.steps = [...input.positions.steps]
-    expect(() => calc_trajectory_spectroscopy(input, { ...RAW, window: `none` })).not.toThrow()
-  })
-
-  it(`accepts an exactly uniform cadence translated to a large step origin`, () => {
-    const input = make_input()
-    input.positions.steps = input.positions.steps.map((step) => 1e12 + step * 0.1)
+    input.positions.steps = input.positions.steps.map(transform)
     if (input.velocities) input.velocities.steps = [...input.positions.steps]
     expect(() => calc_trajectory_spectroscopy(input, RAW_SPECTRUM)).not.toThrow()
   })
@@ -620,7 +590,7 @@ describe(`calc_trajectory_spectroscopy`, () => {
     expect(peak.ir_activity).toBe(`active`)
     expect(peak.displacement).toBeUndefined()
     expect(peak.displacement_unavailable_reason).toMatch(
-      /exceeds the position Nyquist frequency 0.25 1\/frame/,
+      /exceeds the position Nyquist frequency 0.25 1\/step/,
     )
   })
 
@@ -678,57 +648,110 @@ describe(`calc_trajectory_spectroscopy`, () => {
     },
   )
 
-  it(`recovers the direct polarizability spectrum from central field differences`, () => {
-    const direct = signal(128, [3, 3], (sample_idx) => {
-      const value = Math.sin(2 * Math.PI * 0.125 * sample_idx)
-      return [value, 0.2 * value, 0, 0.2 * value, -value, 0, 0, 0, 0]
-    })
-    const field_strength = 0.02
-    const response = (axis: number, sign: number): TrajectorySignal =>
-      signal(128, [3], (sample_idx) =>
-        [0, 1, 2].map(
-          (row) => sign * field_strength * direct.values[sample_idx * 9 + row * 3 + axis],
-        ),
-      )
-    const field_input = make_input()
-    const geometry_signal = (): TrajectorySignal => clone_geometry(field_input)
-    const field_signal: RamanSignal = {
-      kind: `field_response`,
-      response: `dipole`,
-      field_strength,
-      field_unit: `V/A`,
-      plus: { x: response(0, 1), y: response(1, 1), z: response(2, 1) },
-      minus: { x: response(0, -1), y: response(1, -1), z: response(2, -1) },
-      geometry: {
-        plus: { x: geometry_signal(), y: geometry_signal(), z: geometry_signal() },
-        minus: { x: geometry_signal(), y: geometry_signal(), z: geometry_signal() },
+  // Pins the ω² asymmetry between the response spectra: IR from a dipole is the power
+  // spectrum of μ̇ and carries (2πν)², while the classical Placzek Raman spectrum is the
+  // plain polarizability power spectrum FT⟨α(0)α(t)⟩ (the ω² from α̇ cancels against the
+  // 1/ω·Bose prefactor) and IR from a current is already a derivative. Two tones at
+  // ν₁ = 10 THz and ν₂ = 40 THz with amplitudes 1 and 2: a flat spectrum gives a peak ratio
+  // of (A₁/A₂)² = 1/4, the ω² weighting tilts it by (ν₁/ν₂)² = 1/16 to 1/64.
+  const two_tone_vector = (tone_1: number, tone_2: number) => [tone_1 + tone_2, 0, 0]
+  it.each([
+    {
+      label: `Raman isotropic tensor`,
+      kind: `polarizability` as const,
+      expected_ratio: 1 / 4,
+      // both tones share an isotropic tensor, so the anisotropic channel is silent
+      components: (tone_1: number, tone_2: number) => {
+        const value = tone_1 + tone_2
+        return [value, 0, 0, 0, value, 0, 0, 0, value]
       },
-    }
-    const direct_input = make_input()
-    direct_input.raman_signal = { kind: `polarizability`, series: direct }
-    field_input.raman_signal = field_signal
-    const options = RAW_SPECTRUM
-    const direct_result = calc_trajectory_spectroscopy(direct_input, options)
-    const field_result = calc_trajectory_spectroscopy(field_input, options)
-    const direct_power = direct_result.raman?.unpolarized.power ?? []
-    const field_power = field_result.raman?.unpolarized.power ?? []
-    const maximum = Math.max(...direct_power)
-    const max_absolute_error = Math.max(
-      ...direct_power.map((value, frequency_idx) =>
-        Math.abs(field_power[frequency_idx] - value),
-      ),
-    )
-    const max_relative_error = Math.max(
-      ...direct_power.map((value, frequency_idx) =>
-        Math.abs(value) > 1e-12 * maximum
-          ? Math.abs(field_power[frequency_idx] - value) / Math.abs(value)
-          : 0,
-      ),
-    )
-    expect(max_absolute_error).toBeLessThan(1e-14 * maximum)
-    expect(max_relative_error).toBeLessThan(1e-14)
-    expect(field_result.raman?.field_response?.max_geometry_deviation).toBe(0)
-  })
+      channels: [`isotropic`, `unpolarized`] as const,
+    },
+    {
+      label: `Raman mixed isotropic/traceless tensors`,
+      kind: `polarizability` as const,
+      expected_ratio: 1 / 4,
+      // ν₁ on the isotropic mean (ᾱ = A₁, weight 45) and ν₂ on a traceless tensor with
+      // γ² = ½[(2A₂)² + A₂² + A₂²] = 3A₂² (unpolarized weight 7): the same 1/4 amplitude
+      // ratio appears in `unpolarized` as 45A₁² / (21A₂²) = 45/84
+      components: (tone_1: number, tone_2: number) => [
+        tone_1 + tone_2,
+        0,
+        0,
+        0,
+        tone_1 - tone_2,
+        0,
+        0,
+        0,
+        tone_1,
+      ],
+      channels: [`unpolarized`] as const,
+      unpolarized_weights: [45, 21],
+    },
+    {
+      label: `IR dipole`,
+      kind: `dipole` as const,
+      expected_ratio: 1 / 64,
+      components: two_tone_vector,
+    },
+    {
+      label: `IR current`,
+      kind: `current` as const,
+      expected_ratio: 1 / 4,
+      components: two_tone_vector,
+    },
+  ])(
+    `$label two-tone peak ratio is $expected_ratio`,
+    ({ expected_ratio, kind, components, channels = [], unpolarized_weights }) => {
+      // 512 frames at 400/1024 fs (exact in binary): Rayleigh width 5 THz, 4x zero padding
+      // gives a 1.25 THz grid, so 10 THz (bin 8) and 40 THz (bin 32) sit exactly on it,
+      // 6 Rayleigh widths apart. The symmetric Hann main lobes (±2 Rayleigh) do not overlap;
+      // the residual sidelobe leakage shifts the measured ratios by 4.7e-4 relative.
+      const [n_frames, time_step_fs] = [512, 400 / 1024]
+      const [frequency_1_thz, frequency_2_thz, amplitude_1, amplitude_2] = [10, 40, 1, 2]
+      const input = make_input(0.125, 1, n_frames)
+      input.time_step = time_step_fs
+      input.time_unit = `fs`
+      const is_raman = kind === `polarizability`
+      const series = signal(n_frames, is_raman ? [3, 3] : [3], (sample_idx) => {
+        const time_fs = sample_idx * time_step_fs
+        return components(
+          amplitude_1 * Math.cos(2 * Math.PI * frequency_1_thz * 1e-3 * time_fs),
+          amplitude_2 * Math.cos(2 * Math.PI * frequency_2_thz * 1e-3 * time_fs),
+        )
+      })
+      if (kind === `polarizability`) input.raman_signal = { kind, series }
+      else input.infrared_signal = { kind, series }
+      const result = calc_trajectory_spectroscopy(input, {
+        preprocessing: `raw`,
+        frequency_unit: `THz`,
+        window: `hann`,
+        zero_pad_factor: 4,
+      })
+      const curves = is_raman
+        ? channels.map((channel) => result.raman?.[channel])
+        : [result.ir]
+      for (const curve of curves) {
+        expect(curve).toBeDefined()
+        if (!curve) return
+        const bin_1 = curve.frequencies.findIndex((value) => Math.abs(value - 10) < 1e-9)
+        const bin_2 = curve.frequencies.findIndex((value) => Math.abs(value - 40) < 1e-9)
+        expect(bin_1).toBe(8)
+        expect(bin_2).toBe(32)
+        // both tones are resolved: each stands far above the valley between them (the
+        // ω²-tilted IR lobe at 10 THz crests one bin above the tone, so the heights are
+        // read at the tone bins, where the weights are exactly (2πν₁)² and (2πν₂)²)
+        const valley = curve.power[(bin_1 + bin_2) / 2]
+        expect(curve.power[bin_1]).toBeGreaterThan(1e3 * valley)
+        expect(curve.power[bin_2]).toBeGreaterThan(1e3 * valley)
+        const [weight_1, weight_2] = unpolarized_weights ?? [1, 1]
+        const ratio = curve.power[bin_1] / weight_1 / (curve.power[bin_2] / weight_2)
+        // 1% relative tolerance: 20x the measured 4.7e-4 leakage error, while a wrongly
+        // applied or missing ω² changes the ratio 16-fold
+        expect(Math.abs(ratio / expected_ratio - 1)).toBeLessThan(0.01)
+      }
+    },
+  )
 
   it(`requires geometry-step correspondence only for body-fixed Raman`, () => {
     const input = make_input()
@@ -747,33 +770,7 @@ describe(`calc_trajectory_spectroscopy`, () => {
     ).toThrow(/body-frame processing has no position at that step/)
   })
 
-  it(`rejects mismatched finite-field geometries with the measured deviation`, () => {
-    const input = make_input()
-    const mismatched = clone_geometry(input)
-    mismatched.values[5] += 2e-10
-    input.raman_signal = dipole_field_raman(input, {
-      minus: { x: mismatched, y: clone_geometry(input), z: clone_geometry(input) },
-    })
-    expect(() => calc_trajectory_spectroscopy(input, RAW)).toThrow(
-      /differ by 2.*e-10 A, exceeding the 1e-10 A limit/,
-    )
-  })
-
-  it(`compares finite-field geometries after converting nanometers to angstrom`, () => {
-    const input = make_input()
-    const geometry_nm = clone_geometry(input, {
-      values: Float64Array.from(input.positions.positions, (value) => value / 10),
-      unit: `nm`,
-    })
-    input.raman_signal = dipole_field_raman(input, {
-      plus: axis_signals(geometry_nm),
-      minus: axis_signals(geometry_nm),
-    })
-    const result = calc_trajectory_spectroscopy(input, RAW)
-    expect(result.raman?.field_response?.max_geometry_deviation).toBeLessThan(Number.EPSILON)
-  })
-
-  it(`rejects periodic total dipoles and periodic finite-field dipole response`, () => {
+  it(`rejects periodic total dipoles`, () => {
     const input = make_input()
     input.positions.pbc = [true, false, false]
     input.positions.lattice_matrices = Array.from({ length: 128 }, () => [
@@ -784,11 +781,6 @@ describe(`calc_trajectory_spectroscopy`, () => {
     input.infrared_signal = { kind: `dipole`, series: signal(128, [3], () => [1, 0, 0]) }
     expect(() => calc_trajectory_spectroscopy(input, { preprocessing: `remove_com` })).toThrow(
       /total dipole is not a valid periodic IR signal/,
-    )
-    input.infrared_signal = null
-    input.raman_signal = dipole_field_raman(input)
-    expect(() => calc_trajectory_spectroscopy(input, { preprocessing: `remove_com` })).toThrow(
-      /periodic Raman field response must use polarization/,
     )
   })
 

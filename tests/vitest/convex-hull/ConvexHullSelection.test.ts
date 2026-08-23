@@ -1,8 +1,8 @@
-import { ConvexHull, ConvexHull2D, ConvexHull3D, ConvexHull4D } from '$lib/convex-hull'
+import { ConvexHull, ConvexHull2D, ConvexHullCanvas } from '$lib/convex-hull'
 import type { PhaseData } from '$lib/convex-hull/types'
 import { type Component, type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { doc_query, mount_sized } from '../setup'
+import { create_drop_event, doc_query, make_phase, mount_sized } from '../setup'
 import ConvexHullSelectionHarness from './ConvexHullSelectionHarness.svelte'
 
 // Force the canvas hit-test to resolve to a real plot entry so hovering can be
@@ -34,6 +34,7 @@ const make_canvas_context = (
         if (prop === `canvas`) return canvas
         if (prop === `measureText`) return () => ({ width: 20 })
         if (prop === `getLineDash`) return () => []
+        if (prop === `createLinearGradient`) return () => ({ addColorStop: vi.fn() })
         if (prop === `clearRect`) return on_clear
         return vi.fn()
       },
@@ -85,13 +86,13 @@ describe(`convex hull replacement state`, () => {
   })
 
   test.each([
-    [`automatic`, ConvexHull],
-    [`2D`, ConvexHull2D],
-    [`3D`, ConvexHull3D],
-    [`4D`, ConvexHull4D],
-  ] as [string, Component][])(
+    [`automatic`, ConvexHull, {}],
+    [`2D`, ConvexHull2D, {}],
+    [`3D`, ConvexHullCanvas, { dim: 3 }],
+    [`4D`, ConvexHullCanvas, { dim: 4 }],
+  ] as [string, Component, Record<string, unknown>][])(
     `renders a useful missing-entries error from the %s component`,
-    async (_name, component) => {
+    async (_name, component, dim_props) => {
       for (const hidden of [false, true]) {
         const target = document.createElement(`div`)
         const onclick = vi.fn()
@@ -100,6 +101,7 @@ describe(`convex hull replacement state`, () => {
           mount(component, {
             target,
             props: {
+              ...dim_props,
               id: `missing-hull`,
               'aria-label': `Missing hull`,
               class: `consumer-class`,
@@ -128,6 +130,82 @@ describe(`convex hull replacement state`, () => {
           target.querySelector(`.convex-hull-2d, .convex-hull-3d, .convex-hull-4d, canvas`),
         ).toBeNull()
       }
+    },
+  )
+
+  // An unparsable composition key in the entries PROP (not a dropped file) must surface as
+  // the empty state with the message instead of throwing out of a $derived mid-render
+  const compound_key_entries = [
+    make_phase({ Li: 1 }),
+    make_phase({ O: 1 }),
+    make_phase({ Li2O: 1 }, -6),
+  ]
+  test.each([
+    [`automatic`, ConvexHull, {}],
+    [`2D`, ConvexHull2D, {}],
+    [`3D`, ConvexHullCanvas, { dim: 3 }],
+    [`4D`, ConvexHullCanvas, { dim: 4 }],
+  ] as [string, Component, Record<string, unknown>][])(
+    `renders the error of an invalid entries prop from the %s component`,
+    async (_name, component, dim_props) => {
+      const target = document.createElement(`div`)
+      document.body.append(target)
+      track_component(
+        mount(component, {
+          target,
+          props: { ...dim_props, entries: compound_key_entries, id: `bad-hull` },
+        }),
+      )
+      await tick()
+
+      const empty_state = target.querySelector<HTMLElement>(`.empty-state`)
+      expect(empty_state?.getAttribute(`role`)).toBe(`alert`)
+      expect(empty_state?.id).toBe(`bad-hull`)
+      expect(target.textContent).toContain(`Invalid convex hull data`)
+      expect(target.textContent).toContain(`Unrecognized composition key "Li2O"`)
+      expect(target.textContent).not.toContain(`Missing convex hull data`)
+      expect(
+        target.querySelector(`.convex-hull-2d, .convex-hull-3d, .convex-hull-4d, canvas`),
+      ).toBeNull()
+    },
+  )
+
+  test.each([
+    [`spin + oxidation`, { 'Fe2+,spin=5': 1, 'Fe3+,spin=-5': 2, 'O2-': 4 }, [`Fe`, `O`]],
+    [`fractional oxidation`, { 'Fe2.5+': 2, 'O2-': 5 }, [`Fe`, `O`]],
+    [`isotopes`, { D: 2, 'O2-': 1 }, [`H`, `O`]],
+  ] as const)(
+    `pymatgen %s species keys in the entries prop render a binary hull`,
+    async (_name, composition, elements) => {
+      const target = document.createElement(`div`)
+      document.body.append(target)
+      const entries = [
+        ...elements.map((el) => make_phase({ [el]: 1 }, 0, { entry_id: el })),
+        make_phase({ ...composition }, -10, { entry_id: `compound` }),
+      ]
+      let stable_entries: PhaseData[] = []
+      track_component(
+        mount(ConvexHull, {
+          target,
+          props: {
+            entries,
+            get stable_entries() {
+              return stable_entries
+            },
+            set stable_entries(value: PhaseData[]) {
+              stable_entries = value
+            },
+          },
+        }),
+      )
+      await tick()
+      flushSync()
+
+      expect(target.querySelector(`.convex-hull-2d`)).not.toBeNull()
+      expect(target.querySelector(`.empty-state`)).toBeNull()
+      expect(stable_entries.map((entry) => entry.entry_id)).toEqual(
+        expect.arrayContaining([`compound`]),
+      )
     },
   )
 
@@ -217,6 +295,34 @@ describe(`convex hull replacement state`, () => {
       const event = new DragEvent(`drop`, { bubbles: true, cancelable: true })
       doc_query(`.convex-hull-${dim}`).dispatchEvent(event)
       expect(event.defaultPrevented).toBe(true)
+    },
+  )
+
+  // Composition keys are validated inside the drop handler, so a compound-like key ("Fe2O3")
+  // reports through on_error instead of throwing from the hull pipeline's $derived mid-render
+  // (and, via the auto-dimension wrapper, instead of being mis-counted as a binary system).
+  test.each([
+    [`2d`, false],
+    [`3d`, false],
+    [`4d`, false],
+    [`2d`, true],
+  ] as const)(
+    `dropping entries with compound-like composition keys reports an error (%s, wrapper=%s)`,
+    async (dim, use_wrapper) => {
+      await mount_harness({ dim, use_wrapper })
+      const console_error = vi.spyOn(console, `error`).mockImplementation(() => {})
+      const stable_before = test_text(`stable-count`)
+      const bad_entries = JSON.stringify([{ composition: { Fe2O3: 1 }, energy: -1 }])
+      doc_query(`.convex-hull-${dim}`).dispatchEvent(
+        create_drop_event(new File([bad_entries], `bad-hull.json`)),
+      )
+      await vi.waitFor(() => expect(console_error).toHaveBeenCalledOnce())
+      expect(console_error.mock.calls[0][0]).toMatch(
+        /bad-hull\.json: Unrecognized composition key "Fe2O3"/,
+      )
+      // the component kept its previous entries and is still mounted
+      expect(document.body.querySelector(`.convex-hull-${dim}`)).not.toBeNull()
+      expect(test_text(`stable-count`)).toBe(stable_before)
     },
   )
 

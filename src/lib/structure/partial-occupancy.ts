@@ -1,5 +1,6 @@
 import type { Vec3 } from '$lib/math'
 import type { Site } from '$lib/structure'
+import { is_image_site } from '$lib/structure/site'
 
 const PARTIAL_OCCUPANCY_SLICE_GAP_RAD = 1e-3
 const OCCUPANCY_EPS = 1e-6
@@ -30,8 +31,6 @@ type CapArcConfig = {
   arc_length: number
 }
 
-const is_image_atom = (site: Site): boolean =>
-  typeof site.properties?.orig_site_idx === `number`
 const make_render_site = (
   sites: Site[],
   site_idx: number,
@@ -41,7 +40,7 @@ const make_render_site = (
   site_idx,
   site: site_override ?? sites[site_idx],
   is_image_atom: source_site_indices.some((source_site_idx) =>
-    is_image_atom(sites[source_site_idx]),
+    is_image_site(sites[source_site_idx]),
   ),
   source_site_indices,
 })

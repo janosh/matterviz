@@ -18,6 +18,7 @@ import {
   iter_cif_loops,
   parsed_result,
   parse_cif_uncertain_number,
+  read_cell_params,
   split_cif_tokens,
   vec3_from_values,
 } from './shared'
@@ -61,27 +62,12 @@ const build_atom_site_indices = (headers: string[]): Record<string, number> => {
   return indices
 }
 
-// Key-value cell parameters (`_cell.length_a   5.43`); mmCIF never puts these in a loop.
-// Tags match exactly: a prefix match would let `_cell.length_a_esd` (the uncertainty,
-// which some writers emit first) win over `_cell.length_a`.
-const read_cell_params = (lines: string[]): number[] | null => {
-  const tags = [`length_a`, `length_b`, `length_c`, `angle_alpha`, `angle_beta`, `angle_gamma`]
-  const values = tags.map((tag) => {
-    const line = lines.find(
-      (candidate) => candidate.trim().toLowerCase().split(/\s+/)[0] === `_cell.${tag}`,
-    )
-    const token = line?.trim().split(/\s+/)[1]
-    if (token === undefined || is_missing(token)) return null
-    return parse_cif_uncertain_number(token)
-  })
-  if (values.some((value) => value === null)) return null
-  const params = values.filter((value): value is number => value !== null)
-  if (is_placeholder_cell(params)) {
+// The `_cell` block, or null for a molecule: absent cell tags, or the 1 1 1 90 90 90
+// placeholder MD and docking tools write for aperiodic systems
+const read_mmcif_cell = (lines: string[]): number[] | null => {
+  const params = read_cell_params(lines, `mmCIF`)
+  if (params && is_placeholder_cell(params)) {
     diag_warn(`mmCIF: ignoring placeholder _cell (1 1 1 90 90 90), treating as molecule`)
-    return null
-  }
-  if (params.slice(0, 3).some((length) => length <= 0)) {
-    diag_error(`mmCIF _cell has non-positive edge lengths: [${params.join(`, `)}]`)
     return null
   }
   return params
@@ -221,7 +207,7 @@ export const parse_mmcif = (content: string): AnyStructure | null =>
       )
     }
 
-    const cell_params = read_cell_params(lines)
+    const cell_params = read_mmcif_cell(lines)
     const lattice_matrix = cell_params ? cell_params_to_matrix(cell_params) : null
     if (is_fractional && !lattice_matrix) {
       diag_error(`mmCIF has fractional coordinates but no usable _cell parameters`)

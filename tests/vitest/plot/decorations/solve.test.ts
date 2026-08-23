@@ -9,7 +9,12 @@ import {
   type ReferenceAnnotationCandidate,
   type ReferenceAnnotationDecorationItem,
 } from '$lib/plot/core/decorations'
-import { compute_element_placement, rects_overlap, type Rect } from '$lib/plot/core/layout'
+import {
+  compute_element_placement,
+  rect_within_rect,
+  rects_overlap,
+  type Rect,
+} from '$lib/plot/core/layout'
 import { describe, expect, test } from 'vitest'
 
 const base_pad = { t: 20, b: 40, l: 50, r: 20 }
@@ -87,6 +92,14 @@ describe(`decoration solver`, () => {
     expect(solve_decorations(sparse_scene).placements[0]).toMatchObject(direct)
   })
 
+  const expect_no_overlaps = (rects: readonly Rect[]): void => {
+    for (let left_idx = 0; left_idx < rects.length; left_idx++) {
+      for (let right_idx = left_idx + 1; right_idx < rects.length; right_idx++) {
+        expect(rects_overlap(rects[left_idx], rects[right_idx])).toBe(false)
+      }
+    }
+  }
+
   test(`keeps all interior placements mutually exclusive`, () => {
     const solution = solve_decorations(
       scene_for([
@@ -103,16 +116,74 @@ describe(`decoration solver`, () => {
       ]),
     )
     expect(solution.placements.every(({ location }) => location === `interior`)).toBe(true)
-    for (let left_idx = 0; left_idx < solution.placements.length; left_idx++) {
-      for (let right_idx = left_idx + 1; right_idx < solution.placements.length; right_idx++) {
+    expect_no_overlaps(solution.placements.map(placement_rect))
+  })
+
+  // Every decoration kind at once, with a host exclusion: the solution must be deterministic
+  // across item order, keep every placement on the canvas (interior ones inside the plot
+  // bounds), never touch the exclusion and keep the pad finite and monotone
+  test(`keeps automatic placements clear of host exclusions`, () => {
+    const scene: DecorationScene = {
+      width: 640,
+      height: 420,
+      base_pad: { t: 24, b: 36, l: 48, r: 28 },
+      obstacles_norm: [{ x: 0.5, y: 0.5 }],
+      exclusion_rects: [{ x: 54, y: 30, width: 145, height: 92 }],
+      items: [
+        {
+          id: `legend`,
+          kind: `legend`,
+          footprint: { width: 110, height: 65 },
+          auto_tracks: {
+            item_count: 6,
+            orientation: `horizontal`,
+            item_extents: Array.from({ length: 6 }, () => ({ width: 70, height: 18 })),
+          },
+        },
+        { id: `colorbar`, kind: `colorbar`, footprint: { width: 42, height: 145 } },
+        { id: `free-note`, kind: `free-annotation`, footprint: { width: 90, height: 40 } },
+        reference_item(
+          `reference-note`,
+          [
+            [120, 70],
+            [310, 100],
+            [310, 250],
+            [520, 320],
+            [120, 320],
+          ].map(([x, y]) => reference_candidate(x, y, `center`)),
+        ),
+      ],
+    }
+    const first = solve_decorations(scene)
+    expect(solve_decorations(scene)).toEqual(first)
+    expect(solve_decorations({ ...scene, items: scene.items.toReversed() })).toEqual(first)
+    expect(first.placements).toHaveLength(scene.items.length)
+    expect(first.plot_bounds.width).toBeGreaterThanOrEqual(0)
+    expect(first.plot_bounds.height).toBeGreaterThanOrEqual(0)
+    for (const side of [`t`, `b`, `l`, `r`] as const) {
+      expect(Number.isFinite(first.pad[side])).toBe(true)
+      expect(first.pad[side]).toBeGreaterThanOrEqual(scene.base_pad[side])
+      expect(first.pad[side]).toBeLessThanOrEqual(
+        side === `t` || side === `b` ? scene.height : scene.width,
+      )
+    }
+
+    const canvas_bounds = { x: 0, y: 0, width: scene.width, height: scene.height }
+    const placement_rects = first.placements.map(placement_rect)
+    first.placements.forEach((placement, placement_idx) => {
+      const rect = placement_rects[placement_idx]
+      expect(rect_within_rect(rect, canvas_bounds)).toBe(true)
+      if (placement.location === `interior`) {
+        expect(rect_within_rect(rect, first.plot_bounds)).toBe(true)
+      }
+      for (const exclusion of scene.exclusion_rects ?? []) {
         expect(
-          rects_overlap(
-            placement_rect(solution.placements[left_idx]),
-            placement_rect(solution.placements[right_idx]),
-          ),
+          rects_overlap(rect, exclusion),
+          `${placement.id} overlaps host exclusion ${JSON.stringify(exclusion)}`,
         ).toBe(false)
       }
-    }
+    })
+    expect_no_overlaps(placement_rects)
   })
 
   test(`resolves the existing right-side colorbar and legend conflict`, () => {

@@ -21,13 +21,6 @@ export interface WebviewBootstrapData {
   moyo_wasm_url?: string
 }
 
-type WatchedFileContext = {
-  file_path: string
-  request_id?: string
-  filename?: string
-  frame_index?: number
-}
-
 type HostFileRequest = {
   file_path: string
   // The host picks a per-format indexer/decoder from the name. The VS Code
@@ -41,8 +34,20 @@ export type HostRequest =
   | ({ command: `request_large_file` } & HostFileRequest)
   | ({ command: `request_frame`; frame_index: number } & HostFileRequest)
 
-export type FileChangeMessage = WatchedFileContext &
-  ({ command: `fileUpdated`; data: FileData; theme?: ThemeName } | { command: `fileDeleted` })
+// The host watches the rendered file itself (no webview subscription step)
+export type FileChangeMessage =
+  | { command: `fileUpdated`; file_path: string; data: FileData; theme?: ThemeName }
+  | { command: `fileDeleted`; file_path: string }
+
+// Theme or settings changed on the host; the webview re-applies them to the view it already
+// holds instead of the host rebuilding the HTML (which would re-read the file from disk)
+export type SettingsChangedMessage = {
+  command: `settingsChanged`
+  theme: ThemeName
+  // Always sent (a theme-only push still carries the current defaults) so the webview never
+  // mistakes a missing field for "reset to DEFAULTS"
+  defaults: PartialSettings
+}
 
 export type WebviewToHostMessage =
   | { command: `info` | `error`; text: string }
@@ -53,14 +58,12 @@ export type WebviewToHostMessage =
       content: string
       is_binary?: boolean
     }
-  | ({ command: `startWatching` } & WatchedFileContext)
-  | { command: `stopWatching`; file_path: string }
 
 // Replies carry the request_id of the WebviewToHostMessage they answer
 export type HostToWebviewMessage =
   | FileChangeMessage
+  | SettingsChangedMessage
   | { command: `error`; text: string }
-  | { command: `large_file_progress`; request_id: string; stage: string; progress: number }
   | {
       command: `large_file_response`
       request_id: string

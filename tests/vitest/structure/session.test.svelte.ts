@@ -9,11 +9,16 @@ import type {
   MeasureMode,
   StructureBond,
 } from '$lib/structure'
+import type { AtomColorConfig } from '$lib/structure/atom-properties'
+import { DEFAULT_ATOM_COLOR_CONFIG } from '$lib/structure/atom-properties'
 import { MAX_HISTORY, StructureSession } from '$lib/structure/session.svelte'
-import type { CellType } from '$lib/symmetry'
+import { is_image_site } from '$lib/structure/site'
+import { make_supercell } from '$lib/structure/supercell'
+import type { CellType, SymmetryDataset } from '$lib/symmetry'
+import { analyze_structure_symmetry } from '$lib/symmetry'
 import { flushSync } from 'svelte'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { get_dummy_structure } from '../setup'
+import { get_dummy_structure, init_moyo_for_tests, make_crystal } from '../setup'
 
 type Host = {
   structure: AnyStructure | undefined
@@ -30,6 +35,8 @@ type Host = {
   apply_supercell_scaling: boolean
   show_image_atoms: boolean
   cell_type: CellType
+  sym_data: SymmetryDataset | null
+  atom_color_config: AtomColorConfig
 }
 
 const crystal = (atoms = 3): AnyStructure => get_dummy_structure(`H`, atoms, true)
@@ -50,6 +57,8 @@ function make_session(initial: Partial<Host> = {}) {
     apply_supercell_scaling: true,
     show_image_atoms: false,
     cell_type: `original`,
+    sym_data: null,
+    atom_color_config: DEFAULT_ATOM_COLOR_CONFIG,
     ...initial,
   })
   const notices: string[] = []
@@ -80,7 +89,9 @@ function make_session(initial: Partial<Host> = {}) {
       show_image_atoms: () => host.show_image_atoms,
       cell_type: () => host.cell_type,
       set_cell_type: (value) => (host.cell_type = value),
-      sym_data: () => null,
+      sym_data: () => host.sym_data,
+      atom_color_config: () => host.atom_color_config,
+      bonding_strategy: () => `electroneg_ratio`,
       on_notice: (message) => notices.push(message),
     })
   })
@@ -137,6 +148,52 @@ describe(`display pipeline`, () => {
     destroy()
   })
 
+  // A caller-supplied supercell (phonon mode explorer) carries orig_unit_cell_idx into a cell
+  // that is not displayed; edits and coordination colors must index the displayed sites, not
+  // follow those indices. Only the session's own supercell and image-atom provenance are followed.
+  it(`ignores foreign orig_unit_cell_idx on the input structure`, () => {
+    const base = make_crystal(4, [
+      { element: `Na`, abc: [0, 0, 0] },
+      { element: `Cl`, abc: [0.5, 0.5, 0.5] },
+    ])
+    const foreign = make_supercell(base, [2, 1, 1])
+    expect(foreign.sites.map((site) => site.properties.orig_unit_cell_idx)).toEqual([
+      0, 1, 0, 1,
+    ])
+    const coordination_config: AtomColorConfig = {
+      ...DEFAULT_ATOM_COLOR_CONFIG,
+      mode: `coordination`,
+    }
+    const { host, session, destroy } = make_session({
+      structure: foreign,
+      show_image_atoms: true,
+      atom_color_config: coordination_config,
+    })
+    const displayed = session.displayed_structure?.sites ?? []
+    expect(displayed.length).toBeGreaterThan(4)
+    // the third displayed site is the second Na copy; deleting it must not resolve to site 0
+    // (its unit-cell ancestor), and image atoms map to the displayed site they mirror
+    expect([...session.scene_to_structure_indices([2])]).toEqual([2])
+    const image_idx = displayed.findIndex((site) => site.properties.orig_site_idx === 2)
+    expect(image_idx).toBeGreaterThan(3)
+    expect([...session.scene_to_structure_indices([image_idx])]).toEqual([2])
+    // coordination colors follow the same mapping: every displayed site gets its own value
+    const values = session.property_colors?.values ?? []
+    expect(values).toHaveLength(displayed.length)
+    expect(values.slice(0, 4)).toEqual(Array(4).fill(values[0]))
+    expect(values[image_idx]).toBe(values[2])
+
+    // once the session tiles a supercell itself, its orig_unit_cell_idx is followed
+    host.supercell_scaling = `1x2x1`
+    flushSync()
+    expect(session.supercell_structure?.sites).toHaveLength(8)
+    const site_idx = session.displayed_structure?.sites.findIndex(
+      (site) => site.properties.orig_unit_cell_idx === 3 && !is_image_site(site),
+    )
+    expect([...session.scene_to_structure_indices([site_idx ?? -1])]).toEqual([3])
+    destroy()
+  })
+
   it(`shows an already-materialized supercell as-is and falls back on invalid scaling`, () => {
     const { host, session, destroy } = make_session({
       supercell_scaling: `3x3x3`,
@@ -150,6 +207,68 @@ describe(`display pipeline`, () => {
     expect(session.has_supercell).toBe(false)
     expect(session.displayed_structure?.sites).toHaveLength(3)
     expect(session.bond_edits_enabled).toBe(true)
+    destroy()
+  })
+})
+
+describe(`symmetry-aware display`, () => {
+  // Primitive fcc Cu: the 1-atom input cell expands to a 4-atom conventional cell, so every
+  // site-indexed consumer must be re-expressed onto the displayed cell
+  const FCC_A = 3.61
+  const prim_fcc_cu = () =>
+    make_crystal(
+      [
+        [0, FCC_A / 2, FCC_A / 2],
+        [FCC_A / 2, 0, FCC_A / 2],
+        [FCC_A / 2, FCC_A / 2, 0],
+      ],
+      [{ element: `Cu`, abc: [0, 0, 0] }],
+    )
+
+  it(`maps Wyckoff rows and Wyckoff colors onto the displayed conventional cell`, async () => {
+    await init_moyo_for_tests()
+    const structure = prim_fcc_cu()
+    const sym_data = await analyze_structure_symmetry(structure)
+    const wyckoff_config: AtomColorConfig = {
+      ...DEFAULT_ATOM_COLOR_CONFIG,
+      mode: `wyckoff`,
+      scale_type: `categorical`,
+    }
+    const { host, session, destroy } = make_session({
+      structure,
+      sym_data,
+      atom_color_config: wyckoff_config,
+    })
+    expect(session.shows_input_frame).toBe(true)
+    expect(session.wyckoff_rows).toEqual([
+      expect.objectContaining({ wyckoff: `4a`, elem: `Cu`, site_indices: [0] }),
+    ])
+    expect(session.property_colors?.values).toEqual([`4a|Cu`])
+
+    host.cell_type = `conventional`
+    flushSync()
+    expect(session.displayed_structure?.sites).toHaveLength(4)
+    expect(session.shows_input_frame).toBe(false)
+    // all four conventional-cell copies belong to the single 4a row ...
+    expect(session.wyckoff_rows[0].site_indices).toEqual([0, 1, 2, 3])
+    // ... and are colored by it (indexing the analyzed cell would leave three `unknown`)
+    expect(session.property_colors?.values).toEqual(Array(4).fill(`4a|Cu`))
+    expect(new Set(session.property_colors?.colors).size).toBe(1)
+
+    // a supercell of the input cell stays in the input frame; image atoms join their row
+    host.cell_type = `original`
+    host.supercell_scaling = `2x1x1`
+    host.show_image_atoms = true
+    flushSync()
+    expect(session.shows_input_frame).toBe(true)
+    const n_displayed = session.displayed_structure?.sites.length ?? 0
+    expect(n_displayed).toBeGreaterThan(2)
+    expect(session.wyckoff_rows[0].site_indices).toHaveLength(n_displayed)
+    expect(session.property_colors?.colors).toHaveLength(n_displayed)
+
+    host.atom_color_config = DEFAULT_ATOM_COLOR_CONFIG
+    flushSync()
+    expect(session.property_colors).toBeNull()
     destroy()
   })
 })
@@ -299,6 +418,47 @@ describe(`edit-atoms`, () => {
     expect(host.structure?.sites[0].xyz[0]).toBeCloseTo(0.5, 12)
     for (let step = 0; step < MAX_HISTORY + 5; step++) session.push_undo()
     expect(session.history.undo_stack).toHaveLength(MAX_HISTORY)
+    destroy()
+  })
+
+  // A zero c-vector (extXYZ `Lattice="... 0 0 0"`) parses fine but has no cart->frac inverse;
+  // the pointer handlers must surface that as a notice instead of throwing, and keep editing
+  // xyz while leaving abc alone
+  it(`edits a singular-lattice crystal with a notice instead of throwing`, () => {
+    const singular = make_crystal(
+      [
+        [5, 0, 0],
+        [0, 5, 0],
+        [0, 0, 0],
+      ],
+      [
+        { element: `Na`, abc: [0.1, 0.2, 0] },
+        { element: `Cl`, abc: [0.6, 0.7, 0] },
+      ],
+    )
+    const { host, session, notices, destroy } = make_session({
+      measure_mode: `edit-atoms`,
+      structure: singular,
+    })
+    const notice = `Cannot edit fractional coordinates: lattice is singular`
+    expect(() => session.move_sites([0], [1, 0, 0])).not.toThrow()
+    flushSync()
+    expect(host.structure?.sites[0].xyz).toEqual([1.5, 1, 0])
+    expect(host.structure?.sites[0].abc).toEqual([0.1, 0.2, 0])
+    expect(notices.filter((msg) => msg === notice)).toHaveLength(1)
+
+    expect(() => session.add_atom([2, 2, 0], `O`)).not.toThrow()
+    flushSync()
+    expect(host.structure?.sites[2].species[0].element).toBe(`O`)
+    expect(notices.filter((msg) => msg === notice)).toHaveLength(2)
+
+    host.selected_sites = [1]
+    flushSync()
+    expect(session.duplicate_selected()).toBe(true)
+    flushSync()
+    expect(host.structure?.sites[3].xyz).toEqual([3.5, 4, 0.5])
+    expect(host.structure?.sites[3].abc).toEqual([0.6, 0.7, 0])
+    expect(notices.filter((msg) => msg === notice)).toHaveLength(3)
     destroy()
   })
 

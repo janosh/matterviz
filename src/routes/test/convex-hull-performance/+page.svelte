@@ -2,7 +2,7 @@
   import { replaceState } from '$app/navigation'
   import type { ElementSymbol } from '$lib'
   import type { PhaseData } from '$lib/convex-hull'
-  import { ConvexHull2D, ConvexHull3D, ConvexHull4D } from '$lib/convex-hull'
+  import { ConvexHull2D, ConvexHullCanvas } from '$lib/convex-hull'
   import Spinner from '$lib/feedback/Spinner.svelte'
   import { tick } from 'svelte'
 
@@ -248,7 +248,8 @@
           {enable_click_selection}
         />
       {:else if dimension === `3d`}
-        <ConvexHull3D
+        <ConvexHullCanvas
+          dim={3}
           entries={generated_entries}
           controls={{
             title:
@@ -261,7 +262,8 @@
           {enable_click_selection}
         />
       {:else}
-        <ConvexHull4D
+        <ConvexHullCanvas
+          dim={4}
           entries={generated_entries}
           controls={{
             title:

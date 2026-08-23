@@ -2,7 +2,6 @@
 import { compute_brillouin_zone } from '$lib/brillouin/compute'
 import {
   compute_fermi_slice,
-  compute_surface_area,
   detect_irreducible_bz,
   extract_fermi_surface,
   upsample_grid,
@@ -14,9 +13,59 @@ import type {
   FermiIsosurface,
   FermiSurfaceData,
 } from '$lib/fermi-surface/types'
+import { vertex_count } from '$lib/fermi-surface/types'
 import * as math from '$lib/math'
 import type { Matrix3x3, Matrix4Tuple, Vec3 } from '$lib/math'
 import { describe, expect, test } from 'vitest'
+
+// Vertex `idx` of a typed-array mesh as a Vec3
+const vertex_at = ({ positions }: FermiIsosurface, idx: number): Vec3 => [
+  positions[3 * idx],
+  positions[3 * idx + 1],
+  positions[3 * idx + 2],
+]
+const vertices_of = (surface: FermiIsosurface): Vec3[] =>
+  Array.from({ length: vertex_count(surface) }, (_, idx) => vertex_at(surface, idx))
+
+// Summed triangle area of a mesh — the marching-cubes accuracy metric used below
+const surface_area = (surface: FermiIsosurface): number => {
+  const { positions, indices } = surface
+  let total = 0
+  for (let tri = 0; tri < indices.length; tri += 3) {
+    const [idx0, idx1, idx2] = [indices[tri], indices[tri + 1], indices[tri + 2]]
+    const edge = (idx: number): Vec3 => [
+      positions[3 * idx] - positions[3 * idx0],
+      positions[3 * idx + 1] - positions[3 * idx0 + 1],
+      positions[3 * idx + 2] - positions[3 * idx0 + 2],
+    ]
+    total += 0.5 * Math.hypot(...math.cross_3d(edge(idx1), edge(idx2)))
+  }
+  return total
+}
+const total_area = (data: FermiSurfaceData): number =>
+  data.isosurfaces.reduce((sum, surface) => sum + surface_area(surface), 0)
+
+// Test-side FermiIsosurface from plain arrays (N-gon faces fan-triangulated like the JSON parser)
+const mesh_from = (
+  vertices: Vec3[],
+  faces: number[][],
+  extra: Partial<Pick<FermiIsosurface, `properties`>> = {},
+): FermiIsosurface => ({
+  positions: Float32Array.from(vertices.flat()),
+  indices: Uint32Array.from(
+    faces.flatMap((face) =>
+      Array.from({ length: Math.max(face.length - 2, 0) }, (_, fan) => [
+        face[0],
+        face[fan + 1],
+        face[fan + 2],
+      ]).flat(),
+    ),
+  ),
+  normals: new Float32Array(3 * vertices.length),
+  band_index: 0,
+  spin: null,
+  ...extra,
+})
 
 const scaled = (scale: number): Matrix3x3 => [
   [scale, 0, 0],
@@ -47,37 +96,25 @@ const make_band_grid = (
   return { values, dims, order: `z_fastest` }
 }
 
-// n³ grid of fn(frac coords); denom n−1 = endpoint-inclusive BXSF (point i ↔ i/(n−1)),
-// denom n = periodic FRMSF (i ↔ i/n, no duplicated endpoint)
-const build_nested = <Val>(
-  grid_n: number,
-  denom: number,
-  fn: (fx: number, fy: number, fz: number) => Val,
-) =>
-  Array.from({ length: grid_n }, (_x, ix) =>
-    Array.from({ length: grid_n }, (_y, iy) =>
-      Array.from({ length: grid_n }, (_z, iz) => fn(ix / denom, iy / denom, iz / denom)),
-    ),
-  )
-
 const make_band_data = (
   grid_n: number,
   energy_fn: (fx: number, fy: number, fz: number) => number,
-  opts: {
-    k_lattice?: Matrix3x3
-    periodic?: boolean
-    velocity_fn?: (fx: number, fy: number, fz: number) => Vec3
-  } = {},
+  opts: { k_lattice?: Matrix3x3; periodic?: boolean; grid_shift?: Vec3 } = {},
 ): BandGridData => {
-  const { k_lattice = IDENTITY, periodic, velocity_fn } = opts
+  const { k_lattice = IDENTITY, periodic, grid_shift } = opts
   const denom = periodic ? grid_n : grid_n - 1
   const dims: Vec3 = [grid_n, grid_n, grid_n]
+  const [sx, sy, sz] = grid_shift ?? [0, 0, 0]
   return {
     energies: [
-      [make_band_grid(dims, (ix, iy, iz) => energy_fn(ix / denom, iy / denom, iz / denom))],
+      [
+        make_band_grid(dims, (ix, iy, iz) =>
+          energy_fn((ix + sx) / denom, (iy + sy) / denom, (iz + sz) / denom),
+        ),
+      ],
     ],
-    ...(velocity_fn && { velocities: [[build_nested(grid_n, denom, velocity_fn)]] }),
     ...(periodic && { periodic }),
+    ...(grid_shift && { grid_shift }),
     k_grid: dims,
     k_lattice,
     fermi_energy: 0,
@@ -113,50 +150,46 @@ describe(`extract_fermi_surface`, () => {
 
     expect(result.isosurfaces).toHaveLength(1)
     expect(result.fermi_energy).toBe(9)
-    expect(result.reciprocal_cell).toBe(`wigner_seitz`)
+    expect(result.reciprocal_cell).toBe(`parallelepiped`)
+    expect(result.metadata).toEqual({ n_bands: 1, n_surfaces: 1 })
     // Radius 3 index units = 3/9 of the unit cell; MC area slightly under 4π(1/3)² = 1.396
-    expect(result.metadata.total_area).toBeGreaterThan(1.3)
-    expect(result.metadata.total_area).toBeLessThan(1.4)
+    expect(total_area(result)).toBeGreaterThan(1.3)
+    expect(total_area(result)).toBeLessThan(1.4)
+    // Renderer-ready buffers: one normal per vertex, triangle index triples
+    const [iso] = result.isosurfaces
+    expect(iso.normals).toHaveLength(iso.positions.length)
+    expect(iso.indices.length % 3).toBe(0)
   })
 
   test(`respects mu offset`, () => {
     const band_data = create_spherical_band_data(10, 9)
     // mu=0 gives surface at E_F=9 (radius 3); mu=7 at E_F=16 (radius 4): area ratio (4/3)²
-    const area_0 = extract_fermi_surface(band_data, { mu: 0 }).metadata.total_area
-    const area_7 = extract_fermi_surface(band_data, { mu: 7 }).metadata.total_area
+    const area_0 = total_area(extract_fermi_surface(band_data, { mu: 0 }))
+    const area_7 = total_area(extract_fermi_surface(band_data, { mu: 7 }))
     expect(area_7 / area_0).toBeCloseTo(16 / 9, 1)
   })
 
   test(`returns empty isosurfaces when no intersection`, () => {
     const band_data = create_spherical_band_data(10, 100) // Fermi level too high
     const result = extract_fermi_surface(band_data)
-
     expect(result.isosurfaces).toHaveLength(0)
-    expect(result.metadata.total_area).toBe(0)
+    expect(result.metadata.n_surfaces).toBe(0)
   })
 
-  test(`filters by selected_bands`, () => {
-    const band_data = create_spherical_band_data(10, 9)
+  test(`extracts every band and spin channel`, () => {
+    const band_data = create_spherical_band_data(8, 4)
     band_data.energies[0].push(band_data.energies[0][0]) // duplicate band
     band_data.n_bands = 2
-
-    const all = extract_fermi_surface(band_data)
-    expect(all.isosurfaces.map((iso) => iso.band_index)).toEqual([0, 1])
-    const only_0 = extract_fermi_surface(band_data, { selected_bands: [0] })
-    expect(only_0.isosurfaces.map((iso) => iso.band_index)).toEqual([0])
-  })
-
-  test(`handles multiple spin channels`, () => {
-    const band_data = create_spherical_band_data(8, 4)
     band_data.energies.push([...band_data.energies[0]])
     band_data.n_spins = 2
 
     const result = extract_fermi_surface(band_data)
-    expect(result.isosurfaces.map((iso) => iso.spin)).toEqual([`up`, `down`])
-    expect(result.metadata.has_spin).toBe(true)
-    expect(
-      extract_fermi_surface(band_data, { selected_spins: [`down`] }).isosurfaces,
-    ).toHaveLength(1)
+    expect(result.isosurfaces.map((iso) => [iso.spin, iso.band_index])).toEqual([
+      [`up`, 0],
+      [`up`, 1],
+      [`down`, 0],
+      [`down`, 1],
+    ])
   })
 })
 
@@ -172,7 +205,7 @@ describe(`free-electron sphere (numerical verification)`, () => {
   const CUBIC = scaled(B_LEN)
 
   // Endpoint-inclusive grids place point i at frac i/(n−1) (BXSF), periodic ones at i/n
-  // (FRMSF); marching_cubes `centered` shifts frac by −0.5 so k = (frac − 0.5)·b. `center_x`
+  // (FRMSF); extraction centres the cell on Γ so k = (frac − 0.5)·b. `center_x`
   // moves the sphere centre along k_x using the minimum-image distance, so a sphere at the
   // zone-boundary X point wraps across the ±k_x faces.
   const free_electron = (n: number, periodic: boolean, center_x = 0): BandGridData => {
@@ -198,15 +231,22 @@ describe(`free-electron sphere (numerical verification)`, () => {
     }
   }
 
+  // Memoised: the 48³ extraction is reused by several tests below and the result is never
+  // mutated
+  const sphere_cache = new Map<string, FermiIsosurface>()
   const extract_sphere = (n: number, periodic: boolean, interpolation_factor = 1) => {
+    const key = `${n}|${periodic}|${interpolation_factor}`
+    const cached = sphere_cache.get(key)
+    if (cached) return cached
     const { isosurfaces } = extract_fermi_surface(free_electron(n, periodic), {
       interpolation_factor,
     })
     expect(isosurfaces).toHaveLength(1)
+    sphere_cache.set(key, isosurfaces[0])
     return isosurfaces[0]
   }
   const rel_area_error = (iso: FermiIsosurface) =>
-    (compute_surface_area(iso) - SPHERE_AREA) / SPHERE_AREA
+    (surface_area(iso) - SPHERE_AREA) / SPHERE_AREA
 
   // Measured relative area errors (inscribed-polyhedron deficit, O(h²)): N=24 → −8.7e-3,
   // N=48 → −2.1e-3 endpoint-inclusive; −7.9e-3 / −2.0e-3 periodic
@@ -222,7 +262,6 @@ describe(`free-electron sphere (numerical verification)`, () => {
       const rel_err = rel_area_error(iso)
       expect(rel_err).toBeLessThan(0) // marching cubes inscribes the sphere
       expect(Math.abs(rel_err)).toBeLessThan(max_rel_err)
-      expect(iso.area).toBeCloseTo(compute_surface_area(iso), 12)
     },
   )
 
@@ -246,7 +285,7 @@ describe(`free-electron sphere (numerical verification)`, () => {
     const iso = extract_sphere(n, periodic)
     const spacing = B_LEN / (periodic ? n : n - 1)
     let max_dr = 0
-    for (const vertex of iso.vertices) {
+    for (const vertex of vertices_of(iso)) {
       max_dr = Math.max(max_dr, Math.abs(Math.hypot(...vertex) - K_F))
     }
     expect(max_dr).toBeLessThan(0.05 * spacing)
@@ -258,10 +297,11 @@ describe(`free-electron sphere (numerical verification)`, () => {
     const err_48 = Math.abs(rel_area_error(extract_sphere(48, false)))
     expect(err_up).toBeLessThan(err_raw / 3)
     expect(err_up).toBeLessThan(1.1 * err_48)
-    // Periodic upsampling reproduces the exact periodic quadratic, so it equals N=48 exactly
-    expect(compute_surface_area(extract_sphere(24, true, 2))).toBeCloseTo(
-      compute_surface_area(extract_sphere(48, true)),
-      10,
+    // Periodic upsampling reproduces the exact periodic quadratic, so it equals N=48 up to
+    // Float32 vertex rounding (measured ≤ 2e-6 relative)
+    expect(surface_area(extract_sphere(24, true, 2))).toBeCloseTo(
+      surface_area(extract_sphere(48, true)),
+      4,
     )
   })
 
@@ -269,18 +309,19 @@ describe(`free-electron sphere (numerical verification)`, () => {
   // inward (toward Γ) for an E < E_F electron pocket. Measured dot(n, v̂) = −1.0000 everywhere.
   test(`normals point inward (toward decreasing E) for an electron pocket`, () => {
     const iso = extract_sphere(24, false)
-    expect(iso.normals).toHaveLength(iso.vertices.length)
+    expect(iso.normals).toHaveLength(iso.positions.length)
     let max_dot = -Infinity
-    for (let idx = 0; idx < iso.vertices.length; idx++) {
-      const vertex = iso.vertices[idx]
-      max_dot = Math.max(max_dot, math.dot(iso.normals[idx], vertex) / Math.hypot(...vertex))
+    for (let idx = 0; idx < vertex_count(iso); idx++) {
+      const vertex = vertex_at(iso, idx)
+      const normal = Array.from(iso.normals.subarray(3 * idx, 3 * idx + 3)) as Vec3
+      max_dot = Math.max(max_dot, math.dot(normal, vertex) / Math.hypot(...vertex))
     }
     expect(max_dot).toBeLessThan(-0.999)
   })
 
   test(`periodic and endpoint-inclusive grids agree on the area`, () => {
-    const area_bxsf = compute_surface_area(extract_sphere(48, false))
-    const area_frmsf = compute_surface_area(extract_sphere(48, true))
+    const area_bxsf = surface_area(extract_sphere(48, false))
+    const area_frmsf = surface_area(extract_sphere(48, true))
     expect(Math.abs(area_bxsf - area_frmsf) / SPHERE_AREA).toBeLessThan(2e-4)
   })
 
@@ -295,41 +336,54 @@ describe(`free-electron sphere (numerical verification)`, () => {
     let max_coord = 0
     let n_on_pos_face = 0
     let n_on_neg_face = 0
-    for (const vertex of iso.vertices) {
+    // Float32 positions: B_LEN/2 ≈ 0.785 rounds to ~6e-8
+    for (const vertex of vertices_of(iso)) {
       max_coord = Math.max(max_coord, ...vertex.map(Math.abs))
-      if (Math.abs(vertex[0] - B_LEN / 2) < 1e-9) n_on_pos_face++
-      if (Math.abs(vertex[0] + B_LEN / 2) < 1e-9) n_on_neg_face++
+      if (Math.abs(vertex[0] - B_LEN / 2) < 1e-6) n_on_pos_face++
+      if (Math.abs(vertex[0] + B_LEN / 2) < 1e-6) n_on_neg_face++
     }
-    expect(max_coord).toBeLessThanOrEqual(B_LEN / 2 + 1e-12)
+    expect(max_coord).toBeLessThanOrEqual(B_LEN / 2 + 1e-6)
     expect(n_on_pos_face).toBeGreaterThan(50)
     expect(n_on_neg_face).toBe(n_on_pos_face)
   })
 })
 
 describe(`grid/lattice conventions`, () => {
-  // Planar isosurface at fx=iso: every vertex sits at grid frac_x=iso, so a velocity
-  // field v=[fx,0,0] must sample to exactly iso everywhere. Hexagonal catches a missing
-  // transpose; off-center iso catches wrap/centering errors.
+  // A half-step grid shift (FRMSF lshift=2) places point i at (i + ½)/n. Sampling the sphere
+  // on that shifted mesh and telling the extractor about the shift must reproduce the same
+  // sphere centre; ignoring the shift (the old behaviour) moves the surface by half a voxel.
   test.each([
-    { name: `identity`, k_lattice: IDENTITY, iso: 0.5 },
-    { name: `identity`, k_lattice: IDENTITY, iso: 0.25 },
-    { name: `hexagonal`, k_lattice: HEXAGONAL, iso: 0.5 },
-    { name: `hexagonal`, k_lattice: HEXAGONAL, iso: 0.25 },
-  ])(
-    `velocities sample the true k-point ($name lattice, plane at fx=$iso)`,
-    ({ k_lattice, iso }) => {
-      const band_data = make_band_data(21, (fx) => fx, {
-        k_lattice,
-        velocity_fn: (fx) => [fx, 0, 0],
-      })
-      const result = extract_fermi_surface(band_data, { mu: iso, compute_velocities: true })
-      const props = result.isosurfaces[0]?.properties ?? []
-      expect(props.length).toBeGreaterThan(0)
-      for (const vel of props) expect(vel).toBeCloseTo(iso, 2)
-      expect(result.isosurfaces[0].avg_velocity).toBeCloseTo(iso, 2)
-      expect(result.metadata.has_velocities).toBe(true)
-    },
-  )
+    { name: `identity`, k_lattice: IDENTITY },
+    { name: `hexagonal`, k_lattice: HEXAGONAL },
+  ])(`grid_shift moves the surface by half a voxel ($name lattice)`, ({ k_lattice }) => {
+    const grid_n = 20
+    const centroid = (data: BandGridData): Vec3 => {
+      const { isosurfaces } = extract_fermi_surface(data, { mu: 0.3 })
+      const verts = vertices_of(isosurfaces[0])
+      return verts
+        .reduce<Vec3>((sum, vec) => math.add(sum, vec), [0, 0, 0])
+        .map((val) => val / verts.length) as Vec3
+    }
+    const unshifted = centroid(make_band_data(grid_n, sphere, { k_lattice, periodic: true }))
+    const shifted_data = make_band_data(grid_n, sphere, {
+      k_lattice,
+      periodic: true,
+      grid_shift: [0.5, 0.5, 0.5],
+    })
+    const shifted = centroid(shifted_data)
+    // Both describe a sphere centred at frac (0.5, 0.5, 0.5) → Cartesian Σ 0.5·bᵢ − ½Σbᵢ = 0
+    for (const axis of [0, 1, 2]) {
+      expect(unshifted[axis]).toBeCloseTo(0, 3)
+      expect(shifted[axis]).toBeCloseTo(0, 3)
+    }
+    // Dropping the shift from the same shifted grid displaces the centroid by ½ voxel
+    const ignored = centroid({ ...shifted_data, grid_shift: undefined })
+    const half_voxel = math.scale(
+      k_lattice.reduce<Vec3>((sum, row) => math.add(sum, row), [0, 0, 0]),
+      0.5 / grid_n,
+    )
+    for (const axis of [0, 1, 2]) expect(ignored[axis]).toBeCloseTo(-half_voxel[axis], 3)
+  })
 
   // Sphere of radius 0.3 around frac (0.5,0.5,0.5) must keep its radius through
   // extraction and upsampling — a mixed-up grid convention rescales it by ~n/(n−1)
@@ -341,7 +395,7 @@ describe(`grid/lattice conventions`, () => {
   ])(`sphere keeps its radius: %s`, (_label, periodic, interpolation_factor) => {
     const band_data = make_band_data(20, sphere, { periodic })
     const { isosurfaces } = extract_fermi_surface(band_data, { mu: 0.3, interpolation_factor })
-    const verts = isosurfaces[0].vertices
+    const verts = vertices_of(isosurfaces[0])
     const mean_radius = verts.reduce((sum, vec) => sum + Math.hypot(...vec), 0) / verts.length
     expect(mean_radius).toBeCloseTo(0.3, 2)
   })
@@ -407,63 +461,6 @@ describe(`grid/lattice conventions`, () => {
       [],
     )
   })
-
-  // Full-BZ cylinder along z (open surface spanning one axis ⇒ 2D sheet); classification
-  // must be invariant under pure rescaling of k_lattice
-  test.each([1, 2, 0.8])(`full-BZ cylinder is 2D at lattice scale %d`, (scale) => {
-    const band_data = make_band_data(21, (fx, fy) => Math.hypot(fx - 0.5, fy - 0.5), {
-      k_lattice: scaled(scale),
-    })
-    const result = extract_fermi_surface(band_data, { mu: 0.3, compute_dimensionality: true })
-    expect(result.isosurfaces[0].dimensionality).toBe(`2D`)
-    expect(result.isosurfaces[0].orientation).toEqual([0, 0, 1])
-  })
-
-  test(`closed pocket is 3D with no orientation`, () => {
-    const band_data = make_band_data(21, sphere)
-    const result = extract_fermi_surface(band_data, { mu: 0.3, compute_dimensionality: true })
-    expect(result.isosurfaces[0].dimensionality).toBe(`3D`)
-    expect(result.isosurfaces[0].orientation).toBeNull()
-  })
-})
-
-describe(`compute_surface_area`, () => {
-  test.each([
-    {
-      label: `single triangle`,
-      vertices: [
-        [0, 0, 0],
-        [1, 0, 0],
-        [0, 1, 0],
-      ] as Vec3[],
-      faces: [[0, 1, 2]],
-      area: 0.5, // 0.5 * base * height
-    },
-    {
-      label: `unit square (2 triangles)`,
-      vertices: [
-        [0, 0, 0],
-        [1, 0, 0],
-        [1, 1, 0],
-        [0, 1, 0],
-      ] as Vec3[],
-      faces: [
-        [0, 1, 2],
-        [0, 2, 3],
-      ],
-      area: 1.0,
-    },
-    { label: `empty surface`, vertices: [] as Vec3[], faces: [] as number[][], area: 0 },
-  ])(`computes area of $label`, ({ vertices, faces, area }) => {
-    const surface: FermiIsosurface = {
-      vertices,
-      faces,
-      normals: [],
-      band_index: 0,
-      spin: null,
-    }
-    expect(compute_surface_area(surface)).toBeCloseTo(area, 5)
-  })
 })
 
 describe(`compute_fermi_slice`, () => {
@@ -492,20 +489,15 @@ describe(`compute_fermi_slice`, () => {
     [0, 1, 2, 3], [4, 7, 6, 5], [0, 4, 5, 1], [2, 6, 7, 3], [0, 3, 7, 4], [1, 5, 6, 2],
   ]
 
-  const make_box_fermi_data = (faces: number[][] = tri_faces): FermiSurfaceData => ({
-    isosurfaces: [
-      {
-        vertices: box_vertices,
-        faces,
-        normals: box_vertices.map(() => [0, 0, 1]),
-        band_index: 0,
-        spin: null,
-      },
-    ],
+  const make_box_fermi_data = (
+    faces: number[][] = tri_faces,
+    properties?: Float32Array,
+  ): FermiSurfaceData => ({
+    isosurfaces: [mesh_from(box_vertices, faces, { properties })],
     k_lattice: IDENTITY,
     fermi_energy: 0,
     reciprocal_cell: `wigner_seitz`,
-    metadata: { n_bands: 1, n_surfaces: 1, total_area: 1 },
+    metadata: { n_bands: 1, n_surfaces: 1 },
   })
 
   // Slicing the box at z=0.05 cuts its four side walls: one closed unit-square contour
@@ -524,9 +516,10 @@ describe(`compute_fermi_slice`, () => {
     const [isoline] = slice.isolines
     expect(isoline.is_closed).toBe(true)
     expect(isoline.band_index).toBe(0)
-    // Every contour point lies on the z=0.05 plane on the box perimeter (|x| or |y| = 0.5)
+    // Every contour point lies on the z=0.05 plane on the box perimeter (|x| or |y| = 0.5);
+    // box corners are exactly representable in Float32 and 0.05 interpolates within 1e-8
     for (const [px, py, pz] of isoline.points) {
-      expect(pz).toBeCloseTo(0.05, 12)
+      expect(pz).toBeCloseTo(0.05, 7)
       expect(Math.max(Math.abs(px), Math.abs(py))).toBeCloseTo(0.5, 12)
     }
     // Consecutive points must be close: contours are traced, not random scribbles
@@ -535,6 +528,19 @@ describe(`compute_fermi_slice`, () => {
       const [x2, y2] = isoline.points_2d[idx + 1]
       expect(Math.hypot(x2 - x1, y2 - y1)).toBeLessThanOrEqual(1.0 + 1e-12)
     }
+  })
+
+  test(`interpolates per-vertex properties along the contour`, () => {
+    // property = z·10 → every contour point at z=0.05 must carry 0.5
+    const properties = Float32Array.from(box_vertices, (vertex) => vertex[2] * 10)
+    const slice = compute_fermi_slice(make_box_fermi_data(tri_faces, properties), {
+      miller_indices: [0, 0, 1],
+      distance: 0.05,
+    })
+    expect(slice.metadata.has_properties).toBe(true)
+    const [isoline] = slice.isolines
+    expect(isoline.properties).toHaveLength(isoline.points.length)
+    for (const value of isoline.properties ?? []) expect(value).toBeCloseTo(0.5, 6)
   })
 
   test(`throws error for zero miller indices [0, 0, 0]`, () => {
@@ -559,17 +565,11 @@ describe(`compute_fermi_slice`, () => {
 
 describe(`detect_irreducible_bz`, () => {
   const make_data = (...vertex_lists: Vec3[][]): FermiSurfaceData => ({
-    isosurfaces: vertex_lists.map((vertices) => ({
-      vertices,
-      faces: [],
-      normals: [],
-      band_index: 0,
-      spin: null,
-    })),
+    isosurfaces: vertex_lists.map((vertices) => mesh_from(vertices, [])),
     k_lattice: IDENTITY,
     fermi_energy: 0,
     reciprocal_cell: `wigner_seitz`,
-    metadata: { n_bands: 1, n_surfaces: vertex_lists.length, total_area: 0 },
+    metadata: { n_bands: 1, n_surfaces: vertex_lists.length },
   })
 
   // 11 vertices (> IRREDUCIBLE_BZ_MIN_VERTICES), all in the positive octant

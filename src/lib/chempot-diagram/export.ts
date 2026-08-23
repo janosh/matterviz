@@ -1,9 +1,9 @@
 // Export helpers for chemical potential diagrams (shared between 2D and 3D views).
 import { dpi_to_scale } from '$lib/io/export'
 import { download } from '$lib/io/fetch'
+import { export_scene_as } from '$lib/scene'
 import { escape_html as xml_escape } from '$lib/utils'
 import * as THREE from 'three/webgpu'
-import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
 
 export const get_json_string = (payload: unknown): string => JSON.stringify(payload, null, 2)
 
@@ -183,7 +183,6 @@ export function export_glb_file(parts: ChemPotGlbParts, basename: string): void 
     formula_meshes = [],
     formula_edges = [],
   } = parts
-  const gltf_exporter = new GLTFExporter()
   const export_root = new THREE.Group()
   const add_mesh = (
     geometry: THREE.BufferGeometry,
@@ -208,13 +207,7 @@ export function export_glb_file(parts: ChemPotGlbParts, basename: string): void 
   for (const { geometry, color } of formula_edges) {
     add_lines(geometry, new THREE.Color(color))
   }
-  gltf_exporter.parse(
-    export_root,
-    (result) => {
-      if (!(result instanceof ArrayBuffer)) return
-      download(result, `${basename}.glb`, `model/gltf-binary`)
-    },
-    (err) => console.error(`Failed to export GLB:`, err),
-    { binary: true, onlyVisible: false },
+  export_scene_as(export_root, `glb`, basename).catch((err: unknown) =>
+    console.error(`Failed to export GLB:`, err),
   )
 }

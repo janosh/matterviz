@@ -25,25 +25,25 @@
     {
       "id": "liquid",
       "name": "Liquid",
-      "color": "liquid",
+      "color": "rgba(135, 206, 250, 0.6)",
       "bounds": [[0, 1400], [1, 1400], [1, 693], "~liquidus"]
     },
     {
       "id": "alpha",
       "name": "α brass (FCC)",
-      "color": "fcc_a1",
+      "color": "rgba(144, 238, 144, 0.6)",
       "bounds": [[0, 1358], "solidus_alpha", [0, 300]]
     },
     {
       "id": "alpha_beta",
       "name": "α + β",
-      "color": "two_phase",
+      "color": "rgba(255, 235, 156, 0.5)",
       "bounds": ["solidus_alpha", [0.28, 300], [0.35, 300], [0.38, 700], [0.4, 903]]
     },
     {
       "id": "beta",
       "name": "β/γ brass",
-      "color": "bcc_a2",
+      "color": "rgba(255, 182, 193, 0.6)",
       "bounds": [
         [0.4, 903],
         [0.38, 700],
@@ -56,7 +56,7 @@
     {
       "id": "beta_eta",
       "name": "β + η",
-      "color": "two_phase_alt",
+      "color": "rgba(220, 200, 240, 0.5)",
       "bounds": [
         [0.65, 903],
         [0.63, 700],
@@ -69,31 +69,31 @@
     {
       "id": "eta",
       "name": "η (HCP Zn-rich)",
-      "color": "hcp_a3",
+      "color": "rgba(221, 160, 221, 0.6)",
       "bounds": ["solidus_eta[:-1]", [0.75, 300], [0.99, 300], [0.98, 500], [0.97, 693]]
     },
     {
       "id": "eta_zn",
       "name": "η + Zn",
-      "color": "two_phase_eta",
+      "color": "rgba(230, 200, 230, 0.5)",
       "bounds": [[0.97, 693], [0.98, 500], [0.99, 300], [1, 300], [1, 693]]
     },
     {
       "id": "alpha_liquid",
       "name": "α + L",
-      "color": "two_phase_fcc_liquid",
+      "color": "rgba(180, 230, 180, 0.5)",
       "bounds": [[0, 1358], [0.15, 1200], [0.3, 1050], [0.37, 903], [0.35, 903]]
     },
     {
       "id": "beta_liquid",
       "name": "β + L",
-      "color": "two_phase_bcc_liquid",
+      "color": "rgba(255, 200, 200, 0.5)",
       "bounds": [[0.37, 903], [0.5, 850], [0.7, 750], [0.7, 903], [0.4, 903]]
     },
     {
       "id": "eta_liquid",
       "name": "η + L",
-      "color": "two_phase_ausn",
+      "color": "rgba(200, 180, 230, 0.5)",
       "bounds": [[0.7, 750], [0.85, 710], [1, 693], "~solidus_eta"]
     }
   ],

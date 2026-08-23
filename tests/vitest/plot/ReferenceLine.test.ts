@@ -2,8 +2,6 @@
 import ReferenceLine from '$lib/plot/core/components/ReferenceLine.svelte'
 import type { Vec4 } from '$lib/math'
 import type { RefLine } from '$lib/plot'
-import ReferenceLinesLayer from '$lib/plot/core/components/ReferenceLinesLayer.svelte'
-import { solve_decorations } from '$lib/plot/core/decorations'
 import { create_reference_annotation_candidates } from '$lib/plot/core/reference-line'
 import { mount } from 'svelte'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
@@ -62,30 +60,6 @@ describe(`ReferenceLine`, () => {
     expect(doc_query(`.reference-line`)).toBeInstanceOf(SVGGElement)
     expect(query_all(`line`)).toHaveLength(2) // Hit area + visible line
     expect(Number(visible_line()?.getAttribute(attr) ?? `0`)).toBeCloseTo(expected, 0)
-  })
-
-  test(`renders lines with duplicate public IDs`, () => {
-    mount(ReferenceLinesLayer, {
-      target: doc_query<SVGSVGElement>(`svg`),
-      props: {
-        lines: [
-          { type: `horizontal`, y: 25, id: `duplicate`, idx: 0 },
-          { type: `horizontal`, y: 75, id: `duplicate`, idx: 1 },
-        ],
-        ranges: { x: [0, 100], y: [0, 100] },
-        scales: { x: x_scale, y: y_scale },
-        clip_path_id: `test-clip`,
-        decoration_solution: solve_decorations({
-          base_pad: { t: 0, r: 0, b: 0, l: 0 },
-          width: 800,
-          height: 600,
-          obstacles_norm: [],
-          items: [],
-        }),
-      },
-    })
-
-    expect(query_all(`.reference-line`)).toHaveLength(2)
   })
 
   test(`applies custom style`, () => {

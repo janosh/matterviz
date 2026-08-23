@@ -1,6 +1,7 @@
 import { color as d3_color, rgb, type RGBColor } from 'd3-color'
 import * as d3_sc from 'd3-scale-chromatic'
 import type { ColorSchemeName } from '$lib/constants'
+import { clamp } from '$lib/math'
 import {
   COLOR_THEMES,
   get_system_mode,
@@ -122,11 +123,10 @@ const to_rgb = (color: string): RGBColor | undefined => {
   // discarding channels from explicit rgba(..., 0).
   if (![parsed.r, parsed.g, parsed.b].every(Number.isFinite))
     return parsed.opacity === 0 ? rgb(0, 0, 0, 0) : undefined
-  const clamp_channel = (channel: number) => Math.max(0, Math.min(255, channel))
   return rgb(
-    clamp_channel(parsed.r),
-    clamp_channel(parsed.g),
-    clamp_channel(parsed.b),
+    clamp(parsed.r, 0, 255),
+    clamp(parsed.g, 0, 255),
+    clamp(parsed.b, 0, 255),
     clamp01(parsed.opacity),
   )
 }
@@ -173,6 +173,9 @@ export const PLOT_COLORS = [
   `#bee3f8`,
   `#c6f6d5`,
 ] as const
+
+// Series color for the idx-th trace, cycling through PLOT_COLORS
+export const plot_color = (idx: number): string => PLOT_COLORS[idx % PLOT_COLORS.length]
 
 const parse_rgb = (color: string): RGBColor => {
   const parsed = to_rendered_rgb(color)
@@ -263,6 +266,40 @@ export function pick_contrast_color(paint: Paint): string {
 // currentcolor), where inheriting the surrounding text color is the only honest answer.
 export const contrast_text_color = (paint: Paint): string =>
   is_concrete_color(paint.background) ? pick_contrast_color(paint) : `currentColor`
+
+// pick_contrast_color memoized by background string, for grids that paint far fewer
+// distinct fills than cells. `alpha` is applied to every background before compositing;
+// the cache is dropped whenever `backdrop` or `alpha` change. Returns null for backgrounds
+// JS cannot resolve (CSS vars, currentcolor, null). A plain Map on purpose: entries are
+// written during render, which a SvelteMap would reject, and nothing reacts to the cache
+// filling; the reactive reads (`backdrop()`, `alpha()`) happen on every call so callers'
+// effects still track them.
+export const contrast_color_memo = (
+  opts: { backdrop?: () => string | undefined; alpha?: () => number } = {},
+): ((background: string | null | undefined) => string | null) => {
+  let memo = new Map<string, string>()
+  let memo_backdrop: string | undefined
+  let memo_alpha: number | undefined
+  return (background) => {
+    const backdrop = opts.backdrop?.()
+    const alpha = opts.alpha?.()
+    if (backdrop !== memo_backdrop || alpha !== memo_alpha) {
+      memo = new Map()
+      memo_backdrop = backdrop
+      memo_alpha = alpha
+    }
+    if (!is_concrete_color(background)) return null
+    let contrast = memo.get(background)
+    if (contrast === undefined) {
+      contrast = pick_contrast_color({
+        background: alpha === undefined ? background : add_alpha(background, alpha),
+        backdrop,
+      })
+      memo.set(background, contrast)
+    }
+    return contrast
+  }
+}
 
 // Detect dark mode: checks data-theme attribute, then the persisted theme
 // preference (resolving `auto` against the OS), then falls back to OS preference.

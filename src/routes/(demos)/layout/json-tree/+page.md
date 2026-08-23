@@ -227,8 +227,8 @@ Click nodes and values to see callbacks fire:
 value={{ user: { name: "Click me", id: 42 }, items: [1, 2, 3] }}
 show_header={false}
 default_fold_level={5}
-onselect={handle_select}
-oncopy={handle_copy}
+on_select={handle_select}
+on_copy={handle_copy}
 />
 
 ### Prop Variants
@@ -284,8 +284,8 @@ All built-in, no props needed:
 | `max_string_length`  | `number`                | `200`       | Truncate long strings                                |
 | `highlight_changes`  | `boolean`               | `true`      | Flash on value change                                |
 | `compare_value`      | `unknown`               | -           | Diff against this value (shows adds/removes/changes) |
-| `onselect`           | `(path, value) => void` | -           | Node click callback                                  |
-| `oncopy`             | `(path, value) => void` | -           | Copy callback                                        |
+| `on_select`          | `(path, value) => void` | -           | Node click callback                                  |
+| `on_copy`            | `(path, value) => void` | -           | Copy callback                                        |
 | `download_filename`  | `string`                | auto        | Custom filename for JSON download                    |
 
 ## CSS Customization

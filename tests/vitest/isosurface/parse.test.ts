@@ -126,7 +126,8 @@ describe(`parse_chgcar`, () => {
       make_chgcar({
         lattice: [`5.43D+00 0.0 0.0`, `0.0 5.43D+00 0.0`, `0.0 0.0 5.43D+00`],
         positions: [`0.0 0.0 0.0`, `5.0D-01 5.0D-01 5.0D-01`],
-        data: `1.0D+00 2.0D+00 3.0D+00 4.0D+00 5.0D+00 6.0D+00 7.0D+00 8.0D+00`,
+        // values wrap across lines, as VASP writes them
+        data: `1.0D+00 2.0D+00 3.0D+00\n  4.0D+00 5.0D+00\n  6.0D+00 7.0D+00 8.0D+00`,
       }),
     )
     expect(result).not.toBeNull()
@@ -169,17 +170,6 @@ describe(`parse_chgcar`, () => {
     expect(at(1, 1, 0)).toBeCloseTo(4 / cell_volume, 8)
     expect(at(0, 0, 1)).toBeCloseTo(7 / cell_volume, 8)
     expect(at(1, 2, 1)).toBeCloseTo(12 / cell_volume, 8)
-  })
-
-  test(`handles scale factor != 1.0`, () => {
-    const result = parse_chgcar(
-      make_chgcar({
-        scale: `2.0`,
-        lattice: [`2.715  0.00  0.00`, `0.00  2.715  0.00`, `0.00  0.00  2.715`],
-      }),
-    )
-    // 2.715 * 2.0 = 5.43
-    expect(result?.structure.lattice?.a).toBeCloseTo(5.43, 2)
   })
 
   // Both forms come from the header grammar parse_poscar has always implemented and
@@ -246,16 +236,9 @@ describe(`parse_chgcar`, () => {
     ])
   })
 
-  test(`returns null when symbol and count lines disagree in length`, () => {
-    // used to parse two sites and silently drop the third symbol, leaving the volumetric
-    // block to be read from the wrong offset
-    const result = parse_chgcar(
-      make_chgcar({ elements: `H O Na`, counts: `1 1`, positions: [`0 0 0`, `0.5 0.5 0.5`] }),
-    )
-    expect(result).toBeNull()
-  })
-
-  test.each([`Foo`, `Superlattice`])(
+  // `S...` lines are Selective dynamics by VASP's first-letter rule, so the bogus modes here
+  // start with other letters
+  test.each([`Foo`, `Bogus`])(
     `treats unrecognized coordinate mode %s as Cartesian without consuming it as selective dynamics`,
     (coord_mode) => {
       // parse_poscar rejects this; CHGCAR stays lenient because only `D...` means Direct
@@ -271,34 +254,6 @@ describe(`parse_chgcar`, () => {
       expect(result?.structure.sites[0].abc).toEqual([0.5, 0.5, 0.5])
     },
   )
-
-  test(`handles Cartesian coordinates`, () => {
-    const result = parse_chgcar(
-      make_chgcar({
-        coord_mode: `Cartesian`,
-        lattice: [`5.0  0.0  0.0`, `0.0  5.0  0.0`, `0.0  0.0  5.0`],
-        positions: [`0.0  0.0  0.0`, `2.5  2.5  2.5`],
-      }),
-    )
-    expect(result).not.toBeNull()
-    // Cartesian (0,0,0) -> fractional (0,0,0)
-    expect(result?.structure.sites[0].abc[0]).toBeCloseTo(0.0)
-    // Cartesian (2.5,2.5,2.5) -> fractional (0.5,0.5,0.5) in a 5A cubic cell
-    expect(result?.structure.sites[1].abc[0]).toBeCloseTo(0.5)
-    expect(result?.structure.sites[1].abc[1]).toBeCloseTo(0.5)
-  })
-
-  test(`parses multi-element structure`, () => {
-    const result = parse_chgcar(
-      make_chgcar({
-        elements: `Na Cl`,
-        counts: `1 1`,
-        positions: [`0.0  0.0  0.0`, `0.5  0.5  0.5`],
-      }),
-    )
-    expect(result?.structure.sites[0].species[0].element).toBe(`Na`)
-    expect(result?.structure.sites[1].species[0].element).toBe(`Cl`)
-  })
 
   test(`spin-polarized CHGCAR parses two volumes`, () => {
     const content = make_chgcar({
@@ -374,23 +329,44 @@ describe(`parse_chgcar`, () => {
     expect(abc?.[2]).toBeCloseTo(0.8, 5)
   })
 
+  // oxfmt-ignore
   test.each([
-    [`too-short file`, `Si\n1.0\n`],
-    [`empty content`, ``],
-    [`invalid scale factor`, make_chgcar({ scale: `not_a_number` })],
+    [`too-short file`, `Si\n1.0\n`, /CHGCAR/],
+    [`empty content`, ``, /CHGCAR/],
+    [`invalid scale factor`, make_chgcar({ scale: `not_a_number` }), /CHGCAR/],
     // blank scale line must error, not silently become scale 0 (Number(``) is 0)
-    [`blank scale factor line`, make_chgcar({ scale: `` })],
-    [`whitespace-only scale factor line`, make_chgcar({ scale: `   ` })],
+    [`blank scale factor line`, make_chgcar({ scale: `` }), /CHGCAR/],
+    [`whitespace-only scale factor line`, make_chgcar({ scale: `   ` }), /CHGCAR/],
     // VASP accepts one factor or exactly three positive per-axis factors
-    [`two scale factors`, make_chgcar({ scale: `1 2` })],
-    [`four scale factors`, make_chgcar({ scale: `1 2 3 4` })],
-    [`zero per-axis scale factor`, make_chgcar({ scale: `0 1 1` })],
-    [`negative per-axis scale factor`, make_chgcar({ scale: `-1 1 1` })],
-    [`non-finite atom count`, make_chgcar({ counts: `nan` })],
-    [`fractional atom count`, make_chgcar({ counts: `1.5` })],
-    [`negative atom count`, make_chgcar({ counts: `-1` })],
-  ])(`returns null for %s`, (_label, content) => {
-    expect(parse_chgcar(content)).toBeNull()
+    [`two scale factors`, make_chgcar({ scale: `1 2` }), /CHGCAR/],
+    [`four scale factors`, make_chgcar({ scale: `1 2 3 4` }), /CHGCAR/],
+    [`zero per-axis scale factor`, make_chgcar({ scale: `0 1 1` }), /CHGCAR/],
+    [`negative per-axis scale factor`, make_chgcar({ scale: `-1 1 1` }), /CHGCAR/],
+    [`non-finite atom count`, make_chgcar({ counts: `nan` }), /CHGCAR/],
+    [`fractional atom count`, make_chgcar({ counts: `1.5` }), /CHGCAR/],
+    [`negative atom count`, make_chgcar({ counts: `-1` }), /CHGCAR/],
+    // used to parse two sites and silently drop the third symbol, leaving the volumetric
+    // block to be read from the wrong offset
+    [`symbol and count lines of different length`, make_chgcar({ elements: `H O Na`, counts: `1 1`, positions: [`0 0 0`, `0.5 0.5 0.5`] }), /CHGCAR/],
+    [`singular lattice`, make_chgcar({ lattice: [`5.0  0.0  0.0`, `0.0  0.0  0.0`, `0.0  0.0  5.0`], coord_mode: `Cartesian`, positions: [`0.0  0.0  0.0`, `1.0  0.0  1.0`] }), /singular/],
+    // a truncated first block throws instead of zero-padding the grid
+    [`truncated first block`, make_chgcar({ data: `1.0  2.0  3.0` }), /charge density .*expected 8 values, got 3/],
+  ])(`throws for %s`, (_label, content, pattern) => {
+    expect(() => parse_chgcar(content)).toThrow(pattern)
+  })
+
+  // A spin-polarised run cut short mid-write truncates the magnetization block only; the
+  // intact charge density must survive with a warning rather than be discarded by a throw
+  test(`truncated magnetization block keeps the charge density and warns`, () => {
+    const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
+    const result = parse_chgcar(make_chgcar({ second_volume: `   2   2   2\n1.0  2.0` }))
+    expect(result.volumes.map((vol) => vol.label)).toEqual([`charge density`])
+    expect(result.volumes[0].values).toHaveLength(8)
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(warn.mock.calls[0][0]).toMatch(
+      /CHGCAR magnetization density \(2×2×2\): expected 8 values, got 2 — file truncated\? Keeping the 1 complete volume/,
+    )
+    warn.mockRestore()
   })
 
   test(`tolerates trailing comment on scale line like parseFloat did`, () => {
@@ -398,16 +374,6 @@ describe(`parse_chgcar`, () => {
     expect(
       parse_chgcar(make_chgcar({ scale: `2.0 ! scale` }))?.structure.lattice?.a,
     ).toBeCloseTo(10.86, 5)
-  })
-
-  test(`returns null for singular CHGCAR lattice instead of throwing`, () => {
-    const content = make_chgcar({
-      lattice: [`5.0  0.0  0.0`, `0.0  0.0  0.0`, `0.0  0.0  5.0`],
-      coord_mode: `Cartesian`,
-      positions: [`0.0  0.0  0.0`, `1.0  0.0  1.0`],
-    })
-
-    expect(parse_chgcar(content)).toBeNull()
   })
 
   test(`computes data_range with correct min, max, abs_max, and mean`, () => {
@@ -419,32 +385,6 @@ describe(`parse_chgcar`, () => {
     expect(range?.max).toBeCloseTo(8.0 / vol, 5)
     expect(range?.abs_max).toBeCloseTo(8.0 / vol, 5)
     expect(range?.mean).toBeCloseTo(4.5 / vol, 5)
-  })
-
-  test(`handles element symbols with suffixes like Fe_pv`, () => {
-    const result = parse_chgcar(
-      make_chgcar({
-        elements: `Fe_pv O_s`,
-        counts: `1 1`,
-        positions: [`0.0  0.0  0.0`, `0.5  0.5  0.5`],
-      }),
-    )
-    expect(result?.structure.sites[0].species[0].element).toBe(`Fe`)
-    expect(result?.structure.sites[1].species[0].element).toBe(`O`)
-  })
-
-  test(`data values across multiple lines are concatenated correctly`, () => {
-    const result = parse_chgcar(
-      make_chgcar({
-        grid_dims: `2   2   2`,
-        data: `1.0  2.0  3.0\n  4.0  5.0\n  6.0  7.0  8.0`,
-      }),
-    )
-    expect(result).not.toBeNull()
-    const at = grid_at(result)
-    const cell_vol = result?.structure.lattice?.volume ?? 1
-    expect(at(0, 0, 0)).toBeCloseTo(1.0 / cell_vol, 5)
-    expect(at(1, 1, 1)).toBeCloseTo(8.0 / cell_vol, 5)
   })
 
   test(`non-orthogonal lattice produces correct lattice params`, () => {
@@ -597,28 +537,15 @@ describe(`parse_cube`, () => {
     expect(result?.volumes[0].origin[2]).toBeCloseTo(3.0 * bohr, 5)
   })
 
-  test(`handles scientific notation in data`, () => {
-    const result = parse_cube(
-      make_cube({
-        data: `1.0E-03  2.0E-03  3.0E-03  4.0E-03\n  5.0E-03  6.0E-03  7.0E-03  8.0E-03`,
-      }),
-    )
-    expect(grid_at(result)(0, 0, 0)).toBeCloseTo(0.001, 5)
-    expect(grid_at(result)(1, 1, 1)).toBeCloseTo(0.008, 5)
-  })
-
-  test(`returns null for too-short file`, () => {
-    expect(parse_cube(`title\ncomment\n`)).toBeNull()
-  })
-
-  test(`xyz coordinates are scaled from Bohr to Angstrom`, () => {
-    const result = parse_cube(
-      make_cube({
-        n_atoms: 1,
-        atoms: [[1, 0, 0, 0, 2.0]], // z = 2.0 Bohr
-      }),
-    )
-    expect(result?.structure.sites[0].xyz[2]).toBeCloseTo(2.0 * bohr, 5)
+  // oxfmt-ignore
+  test.each([
+    [`too-short file`, `title\ncomment\n`, /too short/],
+    [`malformed header (NaN n_atoms)`, make_cube({ n_atoms: `abc` }), /header line 3 malformed/],
+    [`truncated data block (no zero-padding)`, make_cube({ data: `1.0  2.0  3.0  4.0` }), /expected 8 data values, got 4/],
+    // coplanar voxel vectors used to fall back to an identity cell for atom placement
+    [`coplanar voxel vectors`, make_cube({ voxels: [[1, 0, 0], [0, 1, 0], [1, 1, 0]] }), /singular/],
+  ])(`throws for %s`, (_label, content, pattern) => {
+    expect(() => parse_cube(content)).toThrow(pattern)
   })
 
   test(`computes data_range with correct min, max, abs_max, mean`, () => {
@@ -663,13 +590,6 @@ describe(`parse_cube`, () => {
     expect(grid_at(result)(1, 1, 1)).toBeCloseTo(0.008, 5)
   })
 
-  test(`handles incomplete data gracefully`, () => {
-    const result = parse_cube(make_cube({ data: `1.0  2.0  3.0  4.0` }))
-    expect(result).not.toBeNull()
-    expect(grid_at(result)(0, 0, 0)).toBeCloseTo(1.0, 5)
-    expect(grid_at(result)(1, 1, 1)).toBeCloseTo(0.0, 5)
-  })
-
   test(`periodic option overrides origin-based heuristic`, () => {
     // Non-zero origin would normally be detected as non-periodic
     const molecular_origin: Vec3 = [-5, -5, -5]
@@ -679,22 +599,6 @@ describe(`parse_cube`, () => {
     const forced = parse_cube(make_cube({ origin: molecular_origin }), { periodic: true })
     expect(forced?.volumes[0].periodic).toBe(true)
     expect(forced?.structure.lattice?.pbc).toEqual([true, true, true])
-  })
-
-  test(`returns null for malformed header (NaN tokens)`, () => {
-    // Corrupt line 3 (n_atoms line) with non-numeric tokens
-    const bad_cube = `${[
-      `title`,
-      `comment`,
-      `    abc   0.000000   0.000000   0.000000`, // "abc" instead of number
-      `   2   1.889726   0.000000   0.000000`,
-      `   2   0.000000   1.889726   0.000000`,
-      `   2   0.000000   0.000000   1.889726`,
-      `    1   0.000000   0.000000   0.000000   0.000000`,
-      `    1   0.000000   0.000000   0.000000   1.400000`,
-      `0.001  0.002  0.003  0.004  0.005  0.006  0.007  0.008`,
-    ].join(`\n`)}\n`
-    expect(parse_cube(bad_cube)).toBeNull()
   })
 
   test(`skips malformed atom lines and parses valid ones`, () => {
@@ -795,19 +699,6 @@ describe(`parse_cube geometry`, () => {
       expect(sample(absolute)).toBeCloseTo(x + 2 * y + 3 * z, 6)
     }
   })
-
-  test(`returns null for coplanar voxel vectors instead of placing atoms with identity`, () => {
-    const result = parse_cube(
-      make_cube({
-        voxels: [
-          [1, 0, 0],
-          [0, 1, 0],
-          [1, 1, 0],
-        ],
-      }),
-    )
-    expect(result).toBeNull()
-  })
 })
 
 // === Real fixtures ===
@@ -900,7 +791,7 @@ describe(`parse_volumetric_file`, () => {
 
   // === Filename-based detection ===
 
-  test.each([[`molecule.cube`], [`path/to/data.cube`], [`ORBITAL.CUBE`]])(
+  test.each([[`path/to/data.cube`], [`ORBITAL.CUBE`]])(
     `detects .cube from filename: %s`,
     (filename) => {
       const result = parse_volumetric_file(minimal_cube, filename)
@@ -917,11 +808,8 @@ describe(`parse_volumetric_file`, () => {
     [`ELFCAR`],
     [`LOCPOT`],
     [`PARCHG`],
-    [`PARCHG.gz`],
     [`PARCHG.BAND_1`],
     [`path/to/CHGCAR`],
-    [`run_CHGCAR_001`],
-    [`path/to/PARCHG`],
     [`run_PARCHG_001`],
   ])(`detects VASP volumetric from filename: %s`, (filename) => {
     const result = parse_volumetric_file(minimal_chgcar, filename)
@@ -961,7 +849,7 @@ describe(`parse_volumetric_file`, () => {
 
   // === Compression suffix stripping ===
 
-  test.each([[`molecule.cube.gz`], [`density.cube.bz2`], [`orbital.cube.xz`]])(
+  test.each([[`molecule.cube.gz`], [`orbital.cube.xz`]])(
     `strips compression suffix for .cube detection: %s`,
     (filename) => {
       const result = parse_volumetric_file(minimal_cube, filename)

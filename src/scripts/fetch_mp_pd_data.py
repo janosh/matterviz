@@ -1,5 +1,8 @@
 """Fetch quaternary phase diagram data from Materials Project and calculate
-e_above_hull for tetrahedron visualization on /phase-diagrams page."""
+e_above_hull for tetrahedron visualization on /phase-diagrams page.
+
+Run with: uv run src/scripts/fetch_mp_pd_data.py
+"""
 
 from __future__ import annotations
 
@@ -11,7 +14,7 @@ from mp_api.client import MPRester
 from pymatgen.analysis.phase_diagram import PhaseDiagram
 from pymatgen.entries.computed_entries import ComputedStructureEntry
 
-out_dir = f"{os.path.dirname(__file__)}/quaternaries"
+out_dir = f"{os.path.dirname(os.path.abspath(__file__))}/../site/convex-hull/quaternaries"
 os.makedirs(out_dir, exist_ok=True)
 chemical_systems = (
     "Li-Fe-P-O",

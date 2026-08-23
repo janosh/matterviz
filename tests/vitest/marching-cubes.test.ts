@@ -1,8 +1,7 @@
 // Tests for the marching cubes algorithm and vertex normal computation
 import {
   compute_vertex_normals,
-  marching_cubes,
-  marching_cubes_buffers,
+  marching_cubes as marching_cubes_buffers,
 } from '$lib/marching-cubes'
 import type { ScalarGrid3D, ScalarGridArray, ScalarGridOrder } from '$lib/marching-cubes'
 import { flatten_grid } from '$lib/isosurface/grid'
@@ -12,8 +11,36 @@ import { describe, expect, test } from 'vitest'
 import { cubic_matrix, make_grid } from './setup'
 
 const IDENTITY = cubic_matrix(1)
-const NON_PERIODIC = { periodic: false, centered: false }
-const PERIODIC = { periodic: true, centered: false }
+const NON_PERIODIC = { periodic: false }
+const PERIODIC = { periodic: true }
+
+const unpack_vec3 = (values: ArrayLike<number>): Vec3[] =>
+  Array.from({ length: values.length / 3 }, (_, idx) => [
+    values[3 * idx],
+    values[3 * idx + 1],
+    values[3 * idx + 2],
+  ])
+
+// Test-side object view of the typed-array result: nested grids are flattened, positions
+// and normals unpacked to Vec3 and the index to triangles, so expectations read naturally
+const marching_cubes = (
+  grid: number[][][] | ScalarGrid3D,
+  isovalue: number,
+  lattice: Matrix3x3,
+  options: Parameters<typeof marching_cubes_buffers>[3] = {},
+) => {
+  const raw = marching_cubes_buffers(
+    Array.isArray(grid) ? flatten_grid(grid) : grid,
+    isovalue,
+    lattice,
+    options,
+  )
+  return {
+    vertices: unpack_vec3(raw.positions),
+    faces: unpack_vec3(raw.indices),
+    normals: unpack_vec3(raw.normals),
+  }
+}
 
 const gaussian_grid = (size: number): number[][][] => {
   const center = (size - 1) / 2
@@ -102,14 +129,6 @@ describe(`marching_cubes`, () => {
     expect(marching_cubes(grid, 0.7, IDENTITY, NON_PERIODIC).faces.length).toBeLessThanOrEqual(
       result.faces.length,
     )
-
-    const buffers = marching_cubes_buffers(grid, 0.5, IDENTITY, {
-      ...NON_PERIODIC,
-      normals: true,
-    })
-    expect(Array.from(buffers.indices)).toEqual(result.faces.flat())
-    expect_array_close(buffers.positions, result.vertices.flat())
-    expect_array_close(buffers.normals, result.normals.flat())
   })
 
   test(`flatten_grid returns canonical z-fastest marching-cubes input`, () => {
@@ -142,14 +161,6 @@ describe(`marching_cubes`, () => {
       const scalar_grid = as_scalar_grid(grid, order, precision)
       const original_values = scalar_grid.values.slice()
       expect_result_parity(marching_cubes(scalar_grid, 0.45, IDENTITY, NON_PERIODIC), expected)
-
-      const buffers = marching_cubes_buffers(scalar_grid, 0.45, IDENTITY, {
-        ...NON_PERIODIC,
-        normals: true,
-      })
-      expect(Array.from(buffers.indices)).toEqual(expected.faces.flat())
-      expect_array_close(buffers.positions, expected.vertices.flat())
-      expect_array_close(buffers.normals, expected.normals.flat())
       expect(scalar_grid.values).toEqual(original_values)
     }
   })
@@ -190,8 +201,6 @@ describe(`marching_cubes`, () => {
         dims: dimensions,
         order: `z_fastest`,
       }
-      const result = marching_cubes(grid, 0.5, IDENTITY, NON_PERIODIC)
-      expect([result.vertices, result.faces, result.normals]).toEqual([[], [], []])
       const buffers = marching_cubes_buffers(grid, 0.5, IDENTITY, NON_PERIODIC)
       expect([
         buffers.positions.length,
@@ -225,35 +234,22 @@ describe(`marching_cubes`, () => {
       { ...valid_scalar_grid, values: new Int32Array(8) },
       TypeError,
     ],
+    [`nested arrays (callers flatten first)`, gaussian_grid(3), TypeError],
   ] satisfies [string, unknown, ErrorConstructor][])(
     `ScalarGrid3D rejects %s`,
     (_label, grid, error) => {
-      expect(() => marching_cubes(grid as ScalarGrid3D, 0.5, IDENTITY)).toThrow(error)
+      expect(() => marching_cubes_buffers(grid as ScalarGrid3D, 0.5, IDENTITY)).toThrow(error)
     },
   )
-
-  test(`centered=true shifts vertices relative to uncentered`, () => {
-    const grid = gaussian_grid(8)
-    const centered = marching_cubes(grid, 0.5, IDENTITY, { ...NON_PERIODIC, centered: true })
-    const uncentered = marching_cubes(grid, 0.5, IDENTITY, NON_PERIODIC)
-    expect(centered.faces).toEqual(uncentered.faces)
-    for (let vertex_idx = 0; vertex_idx < centered.vertices.length; vertex_idx++) {
-      for (let axis = 0; axis < 3; axis++) {
-        expect(centered.vertices[vertex_idx][axis]).toBeCloseTo(
-          uncentered.vertices[vertex_idx][axis] - 0.5,
-        )
-      }
-    }
-  })
 
   test(`position_offset translates buffer vertices and is skipped when unset`, () => {
     const grid = gaussian_grid(6)
     const offset: Vec3 = [1.5, -2, 0.25]
-    const base = marching_cubes_buffers(grid, 0.5, IDENTITY, {
+    const base = marching_cubes_buffers(flatten_grid(grid), 0.5, IDENTITY, {
       ...NON_PERIODIC,
       normals: false,
     })
-    const shifted = marching_cubes_buffers(grid, 0.5, IDENTITY, {
+    const shifted = marching_cubes_buffers(flatten_grid(grid), 0.5, IDENTITY, {
       ...NON_PERIODIC,
       normals: false,
       position_offset: offset,
@@ -296,20 +292,12 @@ describe(`marching_cubes`, () => {
     expect(max_edge).toBeLessThan(0.5)
   })
 
-  test(`interpolate=false places vertices differently than interpolated`, () => {
+  test(`edge vertices sit at the linearly interpolated crossing`, () => {
+    // value = ix², iso 2 crosses the x-edge between ix=1 (1) and ix=2 (4) at frac 1/3
     const grid = make_grid(4, 4, 4, (ix) => ix * ix)
-    const interp = marching_cubes(grid, 2, IDENTITY, { ...NON_PERIODIC, interpolate: true })
-    const no_interp = marching_cubes(grid, 2, IDENTITY, {
-      ...NON_PERIODIC,
-      interpolate: false,
-    })
-    expect(no_interp.vertices.length).toBeGreaterThan(0)
-    expect(no_interp.faces).toHaveLength(interp.faces.length)
-    expect(
-      no_interp.vertices.some(
-        (vertex, idx) => Math.abs(vertex[0] - interp.vertices[idx][0]) > 1e-6,
-      ),
-    ).toBe(true)
+    const { vertices } = marching_cubes(grid, 2, IDENTITY, NON_PERIODIC)
+    expect(vertices.length).toBeGreaterThan(0)
+    for (const [x_coord] of vertices) expect(x_coord).toBeCloseTo((1 + 1 / 3) / 3, 6)
   })
 
   test.each([
@@ -440,25 +428,19 @@ describe(`marching_cubes`, () => {
     },
   )
 
-  test.each([
-    [1, 0.501],
-    [2, 1.01],
-  ])(
-    `default centered=true keeps vertices within half-lattice bounds at scale=%d`,
-    (scale, bound) => {
-      const lattice: Matrix3x3 = [
-        [scale, 0, 0],
-        [0, scale, 0],
-        [0, 0, scale],
-      ]
-      const grid = make_grid(4, 4, 4, (ix) => (ix / 3) * 2)
-      const result = marching_cubes(grid, 1.0, lattice, { periodic: false })
-      expect(result.vertices.length).toBeGreaterThan(0)
-      for (const vert of result.vertices) {
-        for (const coord of vert) expect(Math.abs(coord)).toBeLessThanOrEqual(bound)
+  test.each([1, 2])(`vertices span the lattice cell from the origin at scale=%d`, (scale) => {
+    const lattice = cubic_matrix(scale)
+    const grid = make_grid(4, 4, 4, (ix) => (ix / 3) * 2)
+    const result = marching_cubes(grid, 1.0, lattice, { periodic: false })
+    expect(result.vertices.length).toBeGreaterThan(0)
+    for (const vert of result.vertices) {
+      expect(vert[0]).toBeCloseTo(scale / 2, 6) // iso 1 at ix = 1.5 of 3 intervals
+      for (const coord of vert) {
+        expect(coord).toBeGreaterThanOrEqual(0)
+        expect(coord).toBeLessThanOrEqual(scale + 1e-6)
       }
-    },
-  )
+    }
+  })
 
   // Analytic sphere: value = distance from the grid center, iso = radius in grid units.
   test(`analytic sphere: closed mesh, area within 0.5% of 4πr², normals radial and consistent with winding`, () => {
@@ -510,46 +492,34 @@ describe(`marching_cubes`, () => {
 })
 
 describe(`compute_vertex_normals`, () => {
-  const xy_triangle: Vec3[] = [
-    [0, 0, 0],
-    [1, 0, 0],
-    [0, 1, 0],
-  ]
-  const xy_quad: Vec3[] = [...xy_triangle, [1, 1, 0]]
+  const xy_triangle = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0])
+  const xy_quad = new Float32Array([...xy_triangle, 1, 1, 0])
 
   test.each([
-    { label: `xy-plane triangle`, vertices: xy_triangle, face: [0, 1, 2] },
-    { label: `quad via fan triangulation`, vertices: xy_quad, face: [0, 1, 3, 2] },
-  ])(`$label produces positive z-direction unit normals`, ({ vertices, face }) => {
-    const normals = compute_vertex_normals(vertices, [face])
-    expect(normals).toHaveLength(vertices.length)
+    { label: `xy-plane triangle`, positions: xy_triangle, indices: [0, 1, 2] },
+    { label: `quad as two triangles`, positions: xy_quad, indices: [0, 1, 3, 0, 3, 2] },
+  ])(`$label produces positive z-direction unit normals`, ({ positions, indices }) => {
+    const normals = unpack_vec3(compute_vertex_normals(positions, Uint32Array.from(indices)))
+    expect(normals).toHaveLength(positions.length / 3)
     for (const normal of normals) {
       expect(Math.hypot(...normal)).toBeCloseTo(1, 5)
       expect(normal[2]).toBeCloseTo(1, 5)
     }
   })
 
-  test.each([
-    { label: `empty inputs`, vertices: [] as Vec3[], faces: [] as number[][] },
-    { label: `face with fewer than 3 indices`, vertices: xy_triangle, faces: [[0, 1]] },
-    { label: `face with out-of-bounds index`, vertices: xy_triangle, faces: [[0, 1, 99]] },
-    { label: `face with negative index`, vertices: xy_triangle, faces: [[-1, 1, 2]] },
-  ])(`returns zero normals for $label`, ({ vertices, faces }) => {
-    expect(compute_vertex_normals(vertices, faces)).toEqual(vertices.map(() => [0, 0, 0]))
+  test(`empty mesh yields no normals and out-of-range indices throw`, () => {
+    expect(compute_vertex_normals(new Float32Array(0), new Uint32Array(0))).toHaveLength(0)
+    expect(() => compute_vertex_normals(xy_triangle, Uint32Array.from([0, 1, 99]))).toThrow(
+      RangeError,
+    )
   })
 
   test(`averages normals from shared vertices`, () => {
-    const normals = compute_vertex_normals(
-      [
-        [0, 0, 0],
-        [1, 0, 0],
-        [0, 1, 0],
-        [0, 0, 1],
-      ],
-      [
-        [0, 1, 2],
-        [0, 1, 3],
-      ],
+    const normals = unpack_vec3(
+      compute_vertex_normals(
+        new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1]),
+        Uint32Array.from([0, 1, 2, 0, 1, 3]),
+      ),
     )
     const shared = normals[0]
     expect(Math.hypot(...shared)).toBeCloseTo(1, 5)

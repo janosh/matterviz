@@ -1,8 +1,8 @@
 import {
-  BINARY_VIEWER_EXTENSIONS,
+  BINARY_VIEWER_EXT_REGEX,
   COMPRESSION_EXTENSIONS_REGEX,
   CONFIG_DIRS_REGEX,
-  ext_regex,
+  HDF5_EXT_REGEX,
   TRAJ_KEYWORDS_REGEX,
 } from '$lib/constants'
 import { FERMI_FILE_RE, VOLUMETRIC_EXT_RE, VOLUMETRIC_VASP_RE } from '$lib/file-viewer/types'
@@ -21,10 +21,8 @@ export const normalize_browser_supported_filename = (filename: string): string |
   return detect_compression_format(normalized) ? null : normalized
 }
 
-const BINARY_VIEWER_EXT_RE = ext_regex(BINARY_VIEWER_EXTENSIONS)
-
 export const should_encode_filename_as_base64 = (filename: string): boolean =>
-  detect_compression_format(filename) !== null || BINARY_VIEWER_EXT_RE.test(filename)
+  detect_compression_format(filename) !== null || BINARY_VIEWER_EXT_REGEX.test(filename)
 
 const normalize_eligible_filename = (filename: unknown): string | null => {
   if (typeof filename !== `string` || !filename || CONFIG_DIRS_REGEX.test(filename))
@@ -63,7 +61,7 @@ export const is_auto_renderable_filename = (filename: unknown): boolean => {
     is_fermi_or_volumetric(normalized) ||
     AUTO_RENDER_VASP_NAME_RE.test(normalized) ||
     AUTO_RENDER_EXT_RE.test(normalized) ||
-    (/\.(?:h5|hdf5)$/i.test(normalized) &&
+    (HDF5_EXT_REGEX.test(normalized) &&
       (/vaspout/i.test(normalized) || TRAJ_KEYWORDS_REGEX.test(normalized)))
   )
 }

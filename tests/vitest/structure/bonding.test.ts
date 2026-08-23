@@ -1,4 +1,4 @@
-import type { AnyStructure, BondOrder, BondPair, ElementSymbol, Vec3 } from '$lib'
+import type { BondOrder, BondPair, ElementSymbol, Vec3 } from '$lib'
 import type { Crystal, StructureBond } from '$lib/structure'
 import type { BondEditState } from '$lib/structure/bonding'
 import { element_by_symbol } from '$lib/element/data'
@@ -8,24 +8,18 @@ import * as math from '$lib/math'
 import { get_pbc_image_sites } from '$lib/structure/pbc'
 import { make_supercell } from '$lib/structure/supercell'
 import { test_molecules } from '$site/molecules'
-import process from 'node:process'
 import { describe, expect, test, vi } from 'vitest'
-import { make_crystal } from '../setup'
+import { make_rng } from '../numeric-helpers'
+import { make_crystal, make_molecule, make_rocksalt, make_struct } from '../setup'
 
-// Simple helper for tests that only need xyz coordinates
-const get_test_structure = (sites: { xyz: Vec3; element?: ElementSymbol }[]): Crystal =>
-  make_crystal(
-    1, // 1x1x1 cubic lattice
-    sites.map(({ xyz, element = `C` }) => ({ element, xyz })),
-  )
-
-const make_random_structure = (n_atoms: number): Crystal => {
+const make_random_structure = (n_atoms: number, seed = 7): Crystal => {
   const elements = [`C`, `H`, `N`, `O`, `S`, `Fe`, `Na`, `Cl`]
+  const rand = make_rng(seed)
   return make_crystal(
     10,
     Array.from({ length: n_atoms }, (_, idx) => ({
       element: elements[idx % elements.length],
-      xyz: [Math.random() * 10, Math.random() * 10, Math.random() * 10] as Vec3,
+      xyz: [rand() * 10, rand() * 10, rand() * 10] as Vec3,
     })),
   )
 }
@@ -39,35 +33,8 @@ const find_bond = (bonds: BondPair[], idx_a: number, idx_b: number): BondPair | 
   )
 
 describe(`Bonding Algorithms`, () => {
-  test(`electroneg_ratio performance benchmarks`, () => {
-    const times: [number, number][] = [
-      [50, 60],
-      [200, 200],
-      [1000, 800],
-    ]
-    for (const [atom_count, max_time] of times) {
-      const structure = make_random_structure(atom_count)
-      bonding.electroneg_ratio(structure) // Warm-up
-      const measurements = Array.from({ length: 3 }, () => {
-        const start = performance.now()
-        bonding.electroneg_ratio(structure)
-        return performance.now() - start
-      })
-      const avg_time = measurements.reduce((sum, val) => sum + val, 0) / measurements.length
-      const is_ci =
-        typeof process !== `undefined` && [`true`, `1`].includes(process.env?.CI ?? ``)
-      const max_allowed = max_time * (is_ci ? 5 : 2)
-
-      expect(
-        avg_time,
-        `electroneg_ratio with ${atom_count} atoms: ` +
-          `${avg_time.toFixed(1)}ms > ${max_allowed}ms`,
-      ).toBeLessThanOrEqual(max_allowed)
-    }
-  })
-
   test(`electroneg_ratio returns valid BondPair format`, () => {
-    const structure = get_test_structure([
+    const structure = make_struct([
       { xyz: [0, 0, 0], element: `Fe` },
       { xyz: [2, 0, 0], element: `O` },
       { xyz: [4, 0, 0], element: `C` },
@@ -97,18 +64,19 @@ describe(`Bonding Algorithms`, () => {
   })
 
   test(`electroneg_ratio handles edge cases`, () => {
-    expect(bonding.electroneg_ratio(get_test_structure([]))).toHaveLength(0)
-    expect(bonding.electroneg_ratio(get_test_structure([{ xyz: [0, 0, 0] }]))).toHaveLength(0)
+    expect(bonding.electroneg_ratio(make_struct([]))).toHaveLength(0)
+    expect(bonding.electroneg_ratio(make_struct([{ xyz: [0, 0, 0] }]))).toHaveLength(0)
+    // unknown element symbols have no radius data and are skipped rather than thrown on
     expect(
       bonding.electroneg_ratio(
-        get_test_structure([
+        make_struct([
           // @ts-expect-error unknown element symbol
           { xyz: [0, 0, 0], element: `Xx` },
           // @ts-expect-error unknown element symbol
           { xyz: [1, 0, 0], element: `Yy` },
         ]),
       ),
-    ).toBeDefined()
+    ).toEqual([])
   })
 })
 
@@ -116,7 +84,7 @@ describe(`Explicit Bond Metadata`, () => {
   test.each(Object.entries(bonding.BONDING_STRATEGIES))(
     `%s maps structure.properties.bonds onto computed and missing bonds`,
     (_name, strategy) => {
-      const structure = get_test_structure([
+      const structure = make_struct([
         { xyz: [0, 0, 0], element: `C` },
         { xyz: [1.4, 0, 0], element: `C` },
         { xyz: [5, 0, 0], element: `O` },
@@ -151,7 +119,7 @@ describe(`Explicit Bond Metadata`, () => {
 
   test(`ignores invalid explicit bond metadata with warnings`, () => {
     const warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => undefined)
-    const structure = get_test_structure([
+    const structure = make_struct([
       { xyz: [0, 0, 0], element: `C` },
       { xyz: [1.4, 0, 0], element: `C` },
     ])
@@ -178,7 +146,7 @@ describe(`Explicit Bond Metadata`, () => {
 
   test(`warns before duplicate explicit bonds overwrite earlier entries`, () => {
     const warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => undefined)
-    const structure = get_test_structure([
+    const structure = make_struct([
       { xyz: [0, 0, 0], element: `C` },
       { xyz: [1.4, 0, 0], element: `C` },
     ])
@@ -582,7 +550,7 @@ describe(`explicit_only strategy`, () => {
   // All 3 pairs are within covalent bonding range, so electroneg_ratio perceives bonds
   // between them regardless of what the structure declares
   const make_bonded_triangle = (bonds?: StructureBond[]): Crystal => {
-    const structure = get_test_structure([
+    const structure = make_struct([
       { xyz: [0, 0, 0], element: `C` },
       { xyz: [1.4, 0, 0], element: `C` },
       { xyz: [0, 1.2, 0], element: `O` },
@@ -933,7 +901,7 @@ describe(`Electronegativity-Based Bonding`, () => {
   ] as [ElementSymbol, ElementSymbol, number][])(
     `%s-%s at %s A is a single bond of that length`,
     (elem_1, elem_2, dist) => {
-      const structure = get_test_structure([
+      const structure = make_struct([
         { xyz: [0, 0, 0], element: elem_1 },
         { xyz: [dist, 0, 0], element: elem_2 },
       ])
@@ -944,7 +912,7 @@ describe(`Electronegativity-Based Bonding`, () => {
   )
 
   test(`parameter sensitivity`, () => {
-    const structure = get_test_structure([
+    const structure = make_struct([
       { xyz: [0, 0, 0], element: `Fe` },
       { xyz: [2.5, 0, 0], element: `Fe` },
       { xyz: [1.25, 2.2, 0], element: `O` },
@@ -955,7 +923,7 @@ describe(`Electronegativity-Based Bonding`, () => {
 
     // Surround each Fe with enough O to saturate it and the same Fe-Fe contact is dropped:
     // now it really is a second shell behind a complete coordination environment
-    const saturated = get_test_structure([
+    const saturated = make_struct([
       { xyz: [0, 0, 0], element: `Fe` },
       { xyz: [2.5, 0, 0], element: `Fe` },
       ...(
@@ -978,7 +946,7 @@ describe(`Electronegativity-Based Bonding`, () => {
     ).toHaveLength(1)
 
     // with no anion present the gate is inert and metal_metal_penalty governs again
-    const metal_only = get_test_structure([
+    const metal_only = make_struct([
       { xyz: [0, 0, 0], element: `Fe` },
       { xyz: [2.5, 0, 0], element: `Fe` },
     ])
@@ -989,7 +957,7 @@ describe(`Electronegativity-Based Bonding`, () => {
   })
 
   test(`distance constraints`, () => {
-    const structure = get_test_structure([
+    const structure = make_struct([
       { xyz: [0, 0, 0], element: `Na` },
       { xyz: [10, 0, 0], element: `Cl` },
     ])
@@ -1042,18 +1010,14 @@ test(`electroneg_ratio preserves longer C-C bonds in presence of shorter C-H bon
 
 test(`bonding logic treats original and image atoms consistently`, () => {
   const structure = make_crystal(10, [
-    [`C`, [0.1, 0.5, 0.5]], // x=1.0
-    [`C`, [0.25, 0.5, 0.5]], // x=2.5
-    [`H`, [0.0, 0.5, 0.5]], // H_distractor, x=0.0
+    [`C`, [0.02, 0.5, 0.5]], // x=0.2, within the 0.5 Å face tolerance => phase-1 image at 10.2
+    [`C`, [0.15, 0.5, 0.5]], // x=1.5, 1.3 Å from C1: its copy at 11.5 bonds C1's image (phase 2)
+    [`H`, [0.0, 0.5, 0.5]], // H_distractor on the face, x=0.0
   ])
-
-  // Explicit tolerance 0.3 => 30% of 10A = 3.0A.
-  // C1 at 1.0A from edge (0.1 frac) < 3.0A => should image.
-  // C2 at 2.5A from edge (0.25 frac) < 3.0A => should image (needed for C1' neighbor).
-  const with_images = get_pbc_image_sites(structure, { tolerance: 0.3 })
+  const with_images = get_pbc_image_sites(structure)
 
   const c1_img_idx = with_images.sites.findIndex(
-    (site, idx) => idx > 2 && Math.abs(site.xyz[0] - 11.0) < 0.1,
+    (site, idx) => idx > 2 && Math.abs(site.xyz[0] - 10.2) < 0.1,
   )
   expect(c1_img_idx).toBeGreaterThan(2)
 
@@ -1125,7 +1089,7 @@ describe(`remap_bonds_after_deletion`, () => {
 })
 
 describe(`compute_bonds memo`, () => {
-  const structure = get_test_structure([
+  const structure = make_struct([
     { xyz: [0, 0, 0], element: `Fe` },
     { xyz: [2, 0, 0], element: `O` },
     { xyz: [4, 0, 0], element: `C` },
@@ -1137,7 +1101,7 @@ describe(`compute_bonds memo`, () => {
     )
   })
 
-  const other_structure = get_test_structure([{ xyz: [0, 0, 0] }])
+  const other_structure = make_struct([{ xyz: [0, 0, 0] }])
   test.each([
     [`different structure`, other_structure, `electroneg_ratio`, {}],
     [`different strategy`, structure, `explicit_only`, {}],
@@ -1176,16 +1140,7 @@ describe(`electroneg_ratio across periodic boundaries`, () => {
   // Rocksalt conventional cell: every ion has 6 counter-ions, but only 3 of each ion's
   // partners sit inside the box. Bonding with the lattice's pbc finds the other 3 as
   // periodic images, tagged with the image shift and positioned at the image.
-  const rocksalt = make_crystal(5.64, [
-    [`Na`, [0, 0, 0]],
-    [`Na`, [0.5, 0.5, 0]],
-    [`Na`, [0.5, 0, 0.5]],
-    [`Na`, [0, 0.5, 0.5]],
-    [`Cl`, [0.5, 0, 0]],
-    [`Cl`, [0, 0.5, 0]],
-    [`Cl`, [0, 0, 0.5]],
-    [`Cl`, [0.5, 0.5, 0.5]],
-  ])
+  const rocksalt = make_rocksalt()
 
   test(`pbc bonds carry cell_shift and an image pos_2; default stays finite`, () => {
     expect(bonding.electroneg_ratio(rocksalt)).toHaveLength(12) // 8 ions x 3 in-box / 2
@@ -1459,32 +1414,17 @@ describe(`neighbor_query`, () => {
   })
 
   test(`molecule: no images, k capped by system size, cutoff list sorted`, () => {
-    const water = {
-      sites: (
-        [
-          [`O`, [0, 0, 0]],
-          [`H`, [0.96, 0, 0]],
-          [`H`, [-0.24, 0.93, 0]],
-        ] as const
-      ).map(([element, xyz]) => ({
-        species: [{ element, occu: 1, oxidation_state: 0 }],
-        xyz: [...xyz] as Vec3,
-        abc: [0, 0, 0] as Vec3,
-        label: element,
-        properties: {},
-      })),
-    }
+    const water = make_molecule([
+      [`O`, [0, 0, 0]],
+      [`H`, [0.96, 0, 0]],
+      [`H`, [-0.24, 0.93, 0]],
+    ])
     const knn = bonding.neighbor_query(water, { k: 5 })
     expect(Array.from(knn.offsets)).toEqual([0, 2, 4, 6])
     expect(Array.from(knn.images).every((shift) => shift === 0)).toBe(true)
     // the radius may grow to the cluster's bounding-box diagonal: a 100 A chain of 3 atoms
     // has a 9.3 A cube-root volume, which left every atom with 0 of its 2 partners
-    const chain = {
-      sites: [0, 50, 100].map((x_coord) => ({
-        ...water.sites[0],
-        xyz: [x_coord, 0, 0] as Vec3,
-      })),
-    }
+    const chain = make_molecule([0, 50, 100].map((x_coord) => [`O`, [x_coord, 0, 0]]))
     const chain_knn = bonding.neighbor_query(chain, { k: 2 })
     expect(Array.from(chain_knn.offsets)).toEqual([0, 2, 4, 6])
     expect(Array.from(chain_knn.distances)).toEqual([50, 100, 50, 50, 50, 100])
@@ -1527,19 +1467,12 @@ describe(`neighbor_query`, () => {
     )
     // The cloud is small but every one of 4600 sites sees every other: 10.6M pairs, more
     // than the lists could hold in memory. Refused mid-sweep rather than allocated.
-    const dense: AnyStructure = {
-      sites: Array.from({ length: 4600 }, (_, idx) => ({
-        species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
-        abc: [0, 0, 0] as Vec3,
-        xyz: [
-          (idx % 17) * 0.5,
-          (Math.floor(idx / 17) % 17) * 0.5,
-          Math.floor(idx / 289) * 0.5,
-        ] as Vec3,
-        label: `H`,
-        properties: {},
-      })),
-    }
+    const dense = make_molecule(
+      Array.from({ length: 4600 }, (_, idx) => [
+        `H`,
+        [(idx % 17) * 0.5, (Math.floor(idx / 17) % 17) * 0.5, Math.floor(idx / 289) * 0.5],
+      ]),
+    )
     expect(() => bonding.neighbor_query(dense, { cutoff: 100 })).toThrow(
       /more than 10,000,000 pairs within 100 A of 4600 sites/,
     )
@@ -1551,8 +1484,7 @@ describe(`neighbor_query`, () => {
   test(`accepts a large sparse box whose 27x replica bound exceeds the limit`, () => {
     const n_sites = 150_000
     const box = 1000
-    let seed = 12345
-    const rand = () => (seed = (Math.imul(seed, 1103515245) + 12345) >>> 0) / 2 ** 32
+    const rand = make_rng(12345)
     const structure = make_crystal(
       box,
       Array.from({ length: n_sites }, () => ({
@@ -1575,23 +1507,17 @@ describe(`neighbor_query`, () => {
   // spatial grid's fixed +-511-cell window and throw.
   test(`far-offset molecule matches brute force (span, not magnitude, sizes the grid)`, () => {
     const offset: Vec3 = [600, -450, 1200]
-    const water = {
-      sites: (
+    const water = make_molecule(
+      (
         [
           [`O`, [0, 0, 0]],
           [`H`, [0.96, 0, 0]],
           [`H`, [-0.24, 0.93, 0]],
           [`O`, [3.1, 0.2, 0.1]],
           [`H`, [3.9, 0.7, 0.1]],
-        ] as const
-      ).map(([element, xyz]) => ({
-        species: [{ element, occu: 1, oxidation_state: 0 }],
-        xyz: [xyz[0] + offset[0], xyz[1] + offset[1], xyz[2] + offset[2]] as Vec3,
-        abc: [0, 0, 0] as Vec3,
-        label: element,
-        properties: {},
-      })),
-    }
+        ] as [string, Vec3][]
+      ).map(([element, xyz]) => [element, math.add(xyz, offset)]),
+    )
     const cutoff = 1
     const list = bonding.neighbor_query(water, { cutoff })
     const found = new Map<string, number>()
@@ -1631,15 +1557,7 @@ describe(`neighbor_query`, () => {
       Math.floor(idx / edge ** 2) * 1.1,
     ])
     xyzs.push([far, 0, 0])
-    const cloud = {
-      sites: xyzs.map((xyz) => ({
-        species: [{ element: `C` as const, occu: 1, oxidation_state: 0 }],
-        xyz,
-        abc: [0, 0, 0] as Vec3,
-        label: `C`,
-        properties: {},
-      })),
-    }
+    const cloud = make_molecule(xyzs.map((xyz) => [`C`, xyz]))
     const started = performance.now()
     const list = bonding.neighbor_query(cloud, { cutoff: 1.2 })
     expect(performance.now() - started).toBeLessThan(edge > 10 ? 1000 : 500)

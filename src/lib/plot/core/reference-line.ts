@@ -15,12 +15,7 @@ import {
   type ReferenceAnnotationTextAnchor,
 } from '$lib/plot/core/decorations'
 import type { Rect } from '$lib/plot/core/layout'
-import type {
-  LayerZIndex,
-  RefLine,
-  RefLineAnnotation,
-  RefLineValue,
-} from '$lib/plot/core/types'
+import type { RefLine, RefLineAnnotation, RefLineValue } from '$lib/plot/core/types'
 import {
   measure_text_line,
   resolve_font_size_css,
@@ -45,22 +40,6 @@ export const index_ref_lines = (ref_lines: RefLine[] | undefined): IndexedRefLin
     .filter((line) => line.visible !== false)
     .map((line, idx) => ({ ...line, idx }))
 
-// Z-index groups for ordered rendering
-interface RefLinesByZIndex {
-  below_grid: IndexedRefLine[]
-  below_lines: IndexedRefLine[]
-  below_points: IndexedRefLine[]
-  above_all: IndexedRefLine[]
-}
-
-// Map z-index type values to object keys
-const Z_INDEX_KEY_MAP: Record<LayerZIndex, keyof RefLinesByZIndex> = {
-  'below-grid': `below_grid`,
-  'below-lines': `below_lines`,
-  'below-points': `below_points`,
-  'above-all': `above_all`,
-}
-
 const apply_span = (
   start_val: number,
   end_val: number,
@@ -71,21 +50,6 @@ const apply_span = (
     span[0] !== null ? Math.max(start_val, span[0]) : start_val,
     span[1] !== null ? Math.min(end_val, span[1]) : end_val,
   ]
-}
-
-// Group indexed ref_lines by z-index for ordered rendering
-export function group_ref_lines_by_z(lines: IndexedRefLine[]): RefLinesByZIndex {
-  const groups: RefLinesByZIndex = {
-    below_grid: [],
-    below_lines: [],
-    below_points: [],
-    above_all: [],
-  }
-  for (const line of lines) {
-    const key = Z_INDEX_KEY_MAP[line.z_index ?? `below-lines`]
-    groups[key].push(line)
-  }
-  return groups
 }
 
 // Convert RefLineValue (number | Date | string) to a finite number. Strings may be numeric

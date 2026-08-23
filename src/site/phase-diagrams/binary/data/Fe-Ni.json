@@ -42,19 +42,19 @@
     {
       "id": "liquid",
       "name": "Liquid",
-      "color": "liquid",
+      "color": "rgba(135, 206, 250, 0.6)",
       "bounds": [[0, 1900], [1, 1900], [1, 1728], "~liquidus[1:]"]
     },
     {
       "id": "fcc_liquid",
       "name": "FCC + L",
-      "color": "two_phase_fcc_alt",
+      "color": "rgba(200, 230, 200, 0.5)",
       "bounds": [[0, 1811], "liquidus[1:]", [1, 1728], "~solidus[1:]"]
     },
     {
       "id": "fcc",
       "name": "γ (FCC)",
-      "color": "fcc_a1",
+      "color": "rgba(144, 238, 144, 0.6)",
       "bounds": [
         [0, 1811],
         "solidus[1:]",
@@ -67,7 +67,7 @@
     {
       "id": "bcc_fcc",
       "name": "α + γ",
-      "color": "two_phase",
+      "color": "rgba(255, 235, 156, 0.5)",
       "bounds": [
         [0, 1394],
         "solvus_gamma[1:]",
@@ -80,7 +80,7 @@
     {
       "id": "bcc",
       "name": "α (BCC)",
-      "color": "bcc_a2",
+      "color": "rgba(255, 182, 193, 0.6)",
       "bounds": [[0, 1185], "solvus_alpha[1:]", [0.27, 300], [0, 300]]
     }
   ],

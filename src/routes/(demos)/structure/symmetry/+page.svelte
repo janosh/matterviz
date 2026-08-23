@@ -1,11 +1,14 @@
 <script lang="ts">
-  import { browser } from '$app/environment'
-  import { page } from '$app/state'
   import EmptyState from '$lib/EmptyState.svelte'
   import FilePicker from '$lib/FilePicker.svelte'
   import type { AnyStructure } from '$lib/structure'
   import { Structure } from '$lib/structure'
-  import type { CellType, ShowSymmetryKinds, SymmetrySettings } from '$lib/symmetry'
+  import type {
+    CellType,
+    ShowSymmetryKinds,
+    SymmetryDataset,
+    SymmetrySettings,
+  } from '$lib/symmetry'
   import {
     DEFAULT_SHOW_SYM_KINDS,
     default_sym_settings,
@@ -19,8 +22,7 @@
     WyckoffTable,
   } from '$lib/symmetry'
   import { structure_files } from '$site/structures'
-  import { replace_url } from '$site/state.svelte'
-  import type { MoyoDataset } from '@spglib/moyo-wasm'
+  import { file_param, set_file_param } from '$site/state.svelte'
   import { onMount } from 'svelte'
 
   let wasm_ready = $state(false)
@@ -33,9 +35,9 @@
   let hovered_wyckoff_sites = $state<number[]>([])
   let active_wyckoff_sites = $state<number[]>([])
   // Symmetry data for each example
-  let top_ex_sym_data = $state<MoyoDataset | null>(null)
-  let two_col_sym_data = $state<MoyoDataset | null>(null)
-  let stacked_sym_data = $state<MoyoDataset | null>(null)
+  let top_ex_sym_data = $state<SymmetryDataset | null>(null)
+  let two_col_sym_data = $state<SymmetryDataset | null>(null)
+  let stacked_sym_data = $state<SymmetryDataset | null>(null)
   // Symmetry settings for layout examples (independent controls)
   let wide_example_symmetry_settings = $state<SymmetrySettings>(default_sym_settings)
   let two_col_sym_settings = $state<SymmetrySettings>(default_sym_settings)
@@ -46,11 +48,11 @@
   // Per-kind overlay visibility; starts with rotation axes only to avoid overplotting
   let show_sym_kinds = $state<ShowSymmetryKinds>({ ...DEFAULT_SHOW_SYM_KINDS })
   // Cell type of the top example viewer (bound to its controls). moyo operations live in
-  // the input-cell (original) frame, so only overlay the elements while that frame is
-  // rendered; switching cell type re-expresses the lattice and would misplace them.
+  // the input-cell (original) frame: the viewer only draws the overlay while that frame is
+  // rendered, and the controls say so while a conventional/primitive cell is shown.
   let top_ex_cell_type = $state<CellType>(`original`)
   const sym_elements = $derived(
-    show_sym_elements && top_ex_cell_type === `original` && top_ex_sym_data
+    show_sym_elements && top_ex_sym_data
       ? symmetry_elements_from_ops(top_ex_sym_data.operations ?? [])
       : [],
   )
@@ -64,8 +66,7 @@
 
   // Update filename from URL
   $effect(() => {
-    if (!browser) return
-    const file = page.url.searchParams.get(`file`)
+    const file = file_param()
     if (file && file !== source_filename) {
       source_filename = file
       display_filename = file
@@ -139,6 +140,7 @@
         <SymmetryElementControls
           elements={sym_elements}
           bind:show_kinds={show_sym_kinds}
+          in_input_frame={top_ex_cell_type === `original`}
           style="margin: 0.5em 0 0 1.5em"
         />
       {/if}
@@ -165,8 +167,7 @@
     on_file_load={({ structure, filename = ``, source_filename: loaded_source_filename }) => {
       display_filename = filename || source_filename
       source_filename = loaded_source_filename ?? source_filename
-      page.url.searchParams.set(`file`, source_filename)
-      replace_url(`${page.url.pathname}?${page.url.searchParams.toString()}`)
+      set_file_param(source_filename)
       current_structure = structure || null
     }}
     style="height: 100%; min-height: 500px"

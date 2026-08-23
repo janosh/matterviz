@@ -11,10 +11,10 @@
     PhaseHoverInfo,
     TempUnit,
   } from './types'
+  import { format_label_html } from '$lib/composition/format'
   import {
     convert_temp,
     format_composition,
-    format_label_html,
     format_temperature,
     get_phase_stability_range,
   } from './utils'

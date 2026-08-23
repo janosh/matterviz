@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { PLOT_COLORS } from '$lib/colors'
+  import { plot_color } from '$lib/colors'
   import EmptyState from '$lib/EmptyState.svelte'
   import { SettingsSection } from '$lib/layout'
   import type { Vec2 } from '$lib/math'
@@ -12,12 +12,10 @@
   import {
     apply_gaussian_smearing,
     calculate_sigma_step,
-    convert_frequencies,
     extract_efermi,
     extract_pdos,
     format_dos_tooltip,
     format_sigma,
-    FREQUENCY_UNITS,
     IMAGINARY_MODE_NOISE_THRESHOLD,
     negative_fraction,
     NORMALIZATION_MODES,
@@ -26,6 +24,12 @@
     SPIN_MODES,
     validate_sigma_range,
   } from './helpers'
+  import {
+    convert_frequencies,
+    FREQUENCY_UNITS,
+    frequency_unit_label,
+    parse_frequency_unit,
+  } from './frequency-units'
   import type {
     DosData,
     DosInput,
@@ -55,6 +59,8 @@
     // Controls configuration
     show_controls = $bindable(true),
     controls_open = $bindable(false),
+    controls_toggle_props,
+    controls_pane_props,
     show_sigma_control = true,
     show_normalize_control = false,
     show_units_control = false,
@@ -85,6 +91,9 @@
   } = $props()
 
   const is_horizontal = $derived(orientation === `horizontal`)
+  // Accept the spellings found in the wild (`cm-1`, `cm⁻¹`) at the prop boundary; every read
+  // below uses the canonical unit so no $derived throws on an alias
+  let unit = $derived(parse_frequency_unit(units) ?? units)
 
   // Normalize input to dict format - converts any DosInput format to DosData
   // If pdos_type is set, extract projected DOS from the input instead
@@ -166,14 +175,14 @@
 
       for (let dos_idx = 0; dos_idx < dos_entries.length; dos_idx++) {
         const [label, dos] = dos_entries[dos_idx]
-        const color = PLOT_COLORS[dos_idx % PLOT_COLORS.length]
+        const color = plot_color(dos_idx)
 
         // Get frequencies or energies using discriminated union type narrowing
         let x_values = dos.type === `phonon` ? dos.frequencies : dos.energies
 
         // Convert units if needed
-        if (dos.type === `phonon` && units !== `THz`) {
-          x_values = convert_frequencies(x_values, units)
+        if (dos.type === `phonon` && unit !== `THz`) {
+          x_values = convert_frequencies(x_values, unit)
         }
 
         // Check for spin-down data (only for electronic DOS)
@@ -262,16 +271,14 @@
               x_values: [...x_values],
               upper_densities: [...densities_down],
               lower_densities: prev_spin_down ?? x_values.map(() => 0),
-              color: PLOT_COLORS[(dos_idx * 2 + 1) % PLOT_COLORS.length],
+              color: plot_color(dos_idx * 2 + 1),
             })
             cumulative_spin_down = densities_down
           }
 
           // Use a slightly different shade for spin-down in overlay mode
           const spin_down_color =
-            effective_spin_mode === `overlay`
-              ? PLOT_COLORS[(dos_idx * 2 + 1) % PLOT_COLORS.length]
-              : color
+            effective_spin_mode === `overlay` ? plot_color(dos_idx * 2 + 1) : color
 
           const series_down: DataSeries = {
             x: is_horizontal ? densities_down : x_values,
@@ -333,10 +340,18 @@
 
   // Get axis labels based on orientation
   let x_label = $derived(
-    is_horizontal ? `Density of States` : is_phonon ? `Frequency (${units})` : `Energy (eV)`,
+    is_horizontal
+      ? `Density of States`
+      : is_phonon
+        ? `Frequency (${frequency_unit_label(unit)})`
+        : `Energy (eV)`,
   )
   let y_label = $derived(
-    is_horizontal ? (is_phonon ? `Frequency (${units})` : `Energy (eV)`) : `Density of States`,
+    is_horizontal
+      ? is_phonon
+        ? `Frequency (${frequency_unit_label(unit)})`
+        : `Energy (eV)`
+      : `Density of States`,
   )
 
   // Compute final axis configurations with default labels
@@ -440,6 +455,8 @@
     {...rest}
     bind:show_controls
     bind:controls_open
+    {controls_toggle_props}
+    {controls_pane_props}
   >
     {#snippet tooltip({ x_formatted, y_formatted, label })}
       {@const tooltip_data = format_dos_tooltip(
@@ -448,7 +465,7 @@
         label ?? null,
         is_horizontal,
         is_phonon,
-        units,
+        unit,
         final_x_axis.label ?? ``,
         internal_y_axis.label ?? ``,
         Object.keys(doses_dict).length,
@@ -511,7 +528,7 @@
           class="ctrl-line"
           current_values={{
             ...(show_normalize_control ? { normalize } : {}),
-            ...(show_units_control && is_phonon ? { units } : {}),
+            ...(show_units_control && is_phonon ? { units: unit } : {}),
           }}
           on_reset={() => {
             if (show_normalize_control) normalize = null
@@ -532,9 +549,15 @@
           {#if show_units_control && is_phonon}
             <label>
               <span>Frequency</span>
-              <select id="dos-units" bind:value={units}>
-                {#each FREQUENCY_UNITS as unit (unit)}
-                  <option value={unit}>{unit}</option>
+              <select
+                id="dos-units"
+                value={unit}
+                onchange={(event) => {
+                  units = parse_frequency_unit(event.currentTarget.value) ?? unit
+                }}
+              >
+                {#each FREQUENCY_UNITS as option (option)}
+                  <option value={option}>{frequency_unit_label(option)}</option>
                 {/each}
               </select>
             </label>

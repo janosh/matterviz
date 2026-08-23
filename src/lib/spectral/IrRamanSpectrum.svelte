@@ -11,9 +11,10 @@
   import {
     convert_frequencies,
     FREQUENCY_UNITS,
-    NORMALIZATION_MODES,
-    normalize_densities,
-  } from './helpers'
+    frequency_unit_label,
+    parse_frequency_unit,
+  } from './frequency-units'
+  import { NORMALIZATION_MODES, normalize_densities } from './helpers'
   import { broaden_spectrum, spectrum_sticks, to_transmittance } from './ir-raman'
   import type {
     FrequencyUnit,
@@ -26,7 +27,7 @@
   let {
     spectrum,
     kind = $bindable(`ir`),
-    units = $bindable(`cm-1`),
+    units = $bindable(`cm^-1`),
     fwhm = $bindable(10),
     shape_factor = $bindable(0.5),
     normalize = $bindable(`max`),
@@ -43,7 +44,7 @@
   }: ComponentProps<typeof ScatterPlot> & {
     spectrum: VibrationalSpectrum
     kind?: SpectrumKind
-    units?: FrequencyUnit // defaults to cm-1, the vibrational spectroscopy convention
+    units?: FrequencyUnit // defaults to cm^-1, the vibrational spectroscopy convention
     fwhm?: number // peak width in the currently selected frequency unit
     shape_factor?: number // pseudo-Voigt mixing: 0 = Gaussian, 1 = Lorentzian
     normalize?: NormalizationMode
@@ -56,15 +57,18 @@
     on_mode_select?: (mode_idx: number) => void
   } = $props()
 
+  // Accept the spellings found in the wild (`cm-1`, `cm⁻¹`) at the prop boundary; every read
+  // below uses the canonical unit so no $derived throws on an alias
+  let unit = $derived(parse_frequency_unit(units) ?? units)
+
   // FWHM is quoted in the displayed unit, so rescale it when the user switches units;
-  // otherwise 10 cm^-1 would silently become 10 THz. prev_units is intentionally a plain
+  // otherwise 10 cm^-1 would silently become 10 THz. prev_unit is intentionally a plain
   // local: it is bookkeeping for the effect, not reactive state anything renders.
-  let prev_units = units
+  let prev_unit = parse_frequency_unit(units) ?? units
   $effect(() => {
-    if (units === prev_units) return
-    const rescale =
-      convert_frequencies([1], units)[0] / convert_frequencies([1], prev_units)[0]
-    prev_units = units
+    if (unit === prev_unit) return
+    const rescale = convert_frequencies([1], unit)[0] / convert_frequencies([1], prev_unit)[0]
+    prev_unit = unit
     fwhm *= rescale
   })
 
@@ -72,7 +76,7 @@
   let sticks = $derived(
     !spectrum?.modes?.length || raman_unavailable
       ? { x: [], y: [] }
-      : spectrum_sticks(spectrum, kind, { unit: units }),
+      : spectrum_sticks(spectrum, kind, { unit }),
   )
   let stick_modes = $derived(
     spectrum?.modes?.filter((mode) => !mode.is_acoustic && !mode.is_imaginary) ?? [],
@@ -132,7 +136,7 @@
   })
 
   let final_x_axis = $derived({
-    label: `Frequency (${units})`,
+    label: `Frequency (${frequency_unit_label(unit)})`,
     format: `.4~s`,
     range: plot_range,
     ...x_axis,
@@ -182,7 +186,7 @@
   >
     {#snippet tooltip({ x_formatted, y_formatted })}
       Frequency: {x_formatted}
-      {units}<br />
+      {frequency_unit_label(unit)}<br />
       {intensity_label}: {y_formatted}
     {/snippet}
 
@@ -192,14 +196,14 @@
         class="ctrl-line"
         current_values={{
           kind,
-          units,
+          units: unit,
           presentation,
           show_sticks,
           ...(!is_transmittance ? { normalize } : {}),
         }}
         on_reset={() => {
           kind = `ir`
-          units = `cm-1`
+          units = `cm^-1`
           presentation = `absorbance`
           show_sticks = true
           if (!is_transmittance) normalize = `max`
@@ -215,9 +219,15 @@
         </label>
         <label>
           <span>Frequency</span>
-          <select id="ir-raman-units" bind:value={units}>
-            {#each FREQUENCY_UNITS as unit (unit)}
-              <option value={unit}>{unit}</option>
+          <select
+            id="ir-raman-units"
+            value={unit}
+            onchange={(event) => {
+              units = parse_frequency_unit(event.currentTarget.value) ?? unit
+            }}
+          >
+            {#each FREQUENCY_UNITS as option (option)}
+              <option value={option}>{frequency_unit_label(option)}</option>
             {/each}
           </select>
         </label>
@@ -288,7 +298,7 @@
               y2={tip}
               role="button"
               tabindex="0"
-              aria-label={`Select mode ${mode.mode_idx + 1} at ${format_num(position, `.4~`)} ${units}`}
+              aria-label={`Select mode ${mode.mode_idx + 1} at ${format_num(position, `.4~`)} ${frequency_unit_label(unit)}`}
               onclick={() => select_mode(mode.mode_idx)}
               onkeydown={(event) => {
                 if (event.key !== `Enter` && event.key !== ` `) return

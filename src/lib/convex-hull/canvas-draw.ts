@@ -1,11 +1,12 @@
-// Canvas drawing shared by ConvexHull3D/4D: markers, points, pulse overlay, labels, faces.
-import { add_alpha, PLOT_COLORS } from '$lib/colors'
+// Canvas drawing for ConvexHullCanvas: markers, points, pulse overlay, labels, faces, plus
+// the ternary/quaternary strategies (camera, projection, simplex outline, axes).
+import { add_alpha, plot_color } from '$lib/colors'
 import type { D3InterpolateName } from '$lib/colors'
 import { get_formula_label_segments } from '$lib/composition/format'
 import type { FormulaLabelSegment } from '$lib/composition/format'
 import type { ElementSymbol } from '$lib/element'
-import { type D3SymbolName, symbol_map } from '$lib/labels'
-import { array_min } from '$lib/math'
+import { type D3SymbolName, format_num, symbol_map } from '$lib/labels'
+import { array_min, clamp, mean, to_radians, type Vec3 } from '$lib/math'
 import {
   centered_rect,
   pad_rect,
@@ -13,7 +14,11 @@ import {
   rects_overlap,
 } from '$lib/plot/core/layout'
 import type { Rect } from '$lib/plot/core/layout'
+import { DEFAULTS } from '$lib/settings'
+import { clamp01 } from '$lib/utils'
+import { ticks } from 'd3-array'
 import { symbol } from 'd3-shape'
+import { TETRAHEDRON_VERTICES, TRIANGLE_VERTICES } from './barycentric-coords'
 import {
   entry_is_stable,
   get_composition_label_entries,
@@ -220,18 +225,19 @@ export function draw_pulse_overlay(
   }
 }
 
-// Mouse hit-testing against projected points (first hit wins)
-export function find_hull_entry_at_mouse(
+// Mouse hit-testing against projected points (first hit wins). `container_scale` is the
+// same canvas_dims.scale the markers were drawn with, so hit radii match drawn radii.
+export function find_hull_entry_at_mouse<Entry extends ConvexHullEntry>(
   canvas: HTMLCanvasElement | undefined,
   event: MouseEvent,
-  plot_entries: ConvexHullEntry[],
+  plot_entries: Entry[],
   project_point: ProjectPoint,
-): ConvexHullEntry | null {
+  container_scale: number,
+): Entry | null {
   if (!canvas) return null
   const rect = canvas.getBoundingClientRect()
   const mouse_x = event.clientX - rect.left
   const mouse_y = event.clientY - rect.top
-  const container_scale = Math.min(canvas.clientWidth || 600, canvas.clientHeight || 600) / 600
   for (const entry of plot_entries) {
     const projected = project_point(entry.x, entry.y, entry.z)
     const distance = Math.hypot(mouse_x - projected.x, mouse_y - projected.y)
@@ -242,18 +248,20 @@ export function find_hull_entry_at_mouse(
 
 // === Simplex outline ===
 
-// Dashed outline of the composition simplex, one stroke for all edges
+// Dashed outline of the composition simplex (edges in data coords), one stroke for all edges
 export function draw_dashed_edges(
   ctx: CanvasRenderingContext2D,
-  edges: [Projected, Projected][],
+  edges: [Vec3, Vec3][],
+  project: ProjectPoint,
 ): void {
   ctx.strokeStyle = CONVEX_HULL_STYLE.structure_line.color
   ctx.lineWidth = CONVEX_HULL_STYLE.structure_line.line_width
   ctx.setLineDash(CONVEX_HULL_STYLE.structure_line.dash)
   ctx.beginPath()
   for (const [start, end] of edges) {
-    ctx.moveTo(start.x, start.y)
-    ctx.lineTo(end.x, end.y)
+    const [from, to] = [project(...start), project(...end)]
+    ctx.moveTo(from.x, from.y)
+    ctx.lineTo(to.x, to.y)
   }
   ctx.stroke()
   ctx.setLineDash([]) // every later stroke sets its own strokeStyle
@@ -437,9 +445,6 @@ export type HullFace = {
   facet_idx: number
 }
 
-const mean = (values: number[]): number =>
-  values.reduce((sum, value) => sum + value, 0) / values.length
-
 // Drawable faces of the lower hull, back to front: each triangle facet is one face, each
 // tetrahedron facet contributes the 4 triangles that drop one of its vertices
 export function build_hull_faces(
@@ -506,7 +511,7 @@ export function face_color_resolver(
   if (mode === `dominant_element`) {
     return (face) => element_colors[dominant_element(face.vertices, elements)] ?? `#888888`
   }
-  if (mode === `facet_index`) return (face) => PLOT_COLORS[face.facet_idx % PLOT_COLORS.length]
+  if (mode === `facet_index`) return (face) => plot_color(face.facet_idx)
   return () => uniform_color
 }
 
@@ -526,4 +531,339 @@ export function draw_face(
   ctx.strokeStyle = stroke
   ctx.lineWidth = 1
   ctx.stroke()
+}
+
+export type HullFaceOpts = FaceColorOpts & {
+  opacity: number
+  e_form_min: number // most negative formation energy, the fully opaque end of uniform mode
+  gradient: boolean // uniform mode: per-vertex opacity gradient, else one mean opacity per face
+  stroke_alpha: (fill_alpha: number) => number
+}
+
+// Lower-hull faces, back to front. Uniform mode fades faces with their formation energy;
+// the other colour modes use the fixed opacity.
+export function draw_hull_faces(
+  ctx: CanvasRenderingContext2D,
+  faces: HullFace[],
+  opts: HullFaceOpts,
+): void {
+  const { mode, opacity, e_form_min, gradient, stroke_alpha } = opts
+  const face_color = face_color_resolver(faces, opts)
+  // Fraction of the funnel depth, mapped onto the face opacity
+  const norm_alpha = (e_form: number): number =>
+    clamp01(e_form / Math.min(e_form_min, -1e-6)) * opacity
+  for (const face of faces) {
+    const color = face_color(face)
+    if (mode !== `uniform` || !gradient) {
+      const alpha = mode === `uniform` ? norm_alpha(face.e_form) : opacity
+      draw_face(
+        ctx,
+        face.projected,
+        add_alpha(color, alpha),
+        add_alpha(color, stroke_alpha(alpha)),
+      )
+      continue
+    }
+    // Screen-space linear gradient solving a*x + b*y + c = alpha at the three projected vertices
+    const [p1, p2, p3] = face.projected
+    const [a1, a2, a3] = face.vertices.map((vertex) => norm_alpha(vertex.e_form_per_atom ?? 0))
+    const det = p1.x * (p2.y - p3.y) + p2.x * (p3.y - p1.y) + p3.x * (p1.y - p2.y)
+    const coef_a = (a1 * (p2.y - p3.y) + a2 * (p3.y - p1.y) + a3 * (p1.y - p2.y)) / det
+    const coef_b = (a1 * (p3.x - p2.x) + a2 * (p1.x - p3.x) + a3 * (p2.x - p1.x)) / det
+    const mag = Math.hypot(coef_a, coef_b)
+    const [alpha_min, alpha_max] = [Math.min(a1, a2, a3), Math.max(a1, a2, a3)]
+    const alpha_mean = (a1 + a2 + a3) / 3
+    let fill: string | CanvasGradient = add_alpha(color, alpha_mean)
+    if (Math.abs(det) > 1e-9 && mag > 1e-9) {
+      const [dir_x, dir_y] = [coef_a / mag, coef_b / mag]
+      const center_x = (p1.x + p2.x + p3.x) / 3
+      const center_y = (p1.y + p2.y + p3.y) / 3
+      const [s_min, s_max] = [(alpha_min - alpha_mean) / mag, (alpha_max - alpha_mean) / mag]
+      const grad = ctx.createLinearGradient(
+        center_x + dir_x * s_min,
+        center_y + dir_y * s_min,
+        center_x + dir_x * s_max,
+        center_y + dir_y * s_max,
+      )
+      grad.addColorStop(0, add_alpha(color, alpha_min))
+      grad.addColorStop(1, add_alpha(color, alpha_max))
+      fill = grad
+    }
+    draw_face(ctx, face.projected, fill, add_alpha(color, stroke_alpha(alpha_max)))
+  }
+}
+
+// === Dimension strategies ===
+
+// Zoom + pan are shared; the rotation angles are the strategy's
+export type HullCamera = { zoom: number; center_x: number; center_y: number }
+type TernaryCamera = HullCamera & { elevation: number; azimuth: number } // degrees
+type QuaternaryCamera = HullCamera & { rotation_x: number; rotation_y: number } // radians
+
+// Formation energy span of the plotted entries: the ternary view scales E_form into its depth
+// axis with `z_scale` about `center`; uniform-mode faces fade towards `min` in both
+export type EnergyRange = { min: number; max: number; center: number; z_scale: number }
+
+export function energy_range_of(entries: ConvexHullEntry[]): EnergyRange {
+  let [min, max] = [0, 0]
+  for (const entry of entries) {
+    const e_form = entry.e_form_per_atom ?? 0
+    min = Math.min(min, e_form)
+    max = Math.max(max, e_form)
+  }
+  return { min, max, center: (min + max) / 2, z_scale: 0.75 / Math.max(max - min, 0.001) }
+}
+
+// Per-frame view the strategies draw against
+type HullView = {
+  project: ProjectPoint
+  energy_range: EnergyRange
+  text_color: string
+  font_size: number
+  scale: number // canvas container scale factor
+}
+
+// What differs between the ternary (triangle prism with an energy axis) and quaternary
+// (tetrahedron) hull canvases; ConvexHullCanvas.svelte is everything they share. Method
+// syntax on purpose: its bivariant parameters let a strategy over a concrete camera type sit
+// in a HullCanvasStrategy<HullCamera> record without the component knowing the angles.
+export interface HullCanvasStrategy<Camera extends HullCamera = HullCamera> {
+  dim: 3 | 4
+  kind: `ternary` | `quaternary` // DEFAULTS.convex_hull section
+  corners: readonly (readonly number[])[]
+  camera_default: Camera // initial view, restored by reset_camera
+  wheel_clamp: [min: number, max: number] // zoom clamp range
+  shadow_factor: number // scales the depth-based point shadow offset
+  corner_labels: { font_size: number; offset: number }
+  // Uniform-mode faces: a per-vertex opacity gradient down the 3D funnel, or one mean opacity
+  // per face for the many thin 4D faces
+  face_gradient: boolean
+  face_stroke_alpha(fill_alpha: number): number
+  // Plain drag rotates the view (Cmd/Ctrl-drag pans)
+  rotate(camera: Camera, dx: number, dy: number): void
+  // Data coords → view coords [x, y, depth] about the simplex centroid, before to_screen
+  rotate_point(camera: Camera, point: Vec3, energy_range: EnergyRange): Vec3
+  // Dashed simplex outline, edges in data coords
+  outline_edges(energy_range: EnergyRange): [Vec3, Vec3][]
+  // Axes drawn over the faces (none in 4D)
+  draw_axes?(ctx: CanvasRenderingContext2D, camera: Camera, view: HullView): void
+  // Keyboard actions beyond the shared ones
+  actions?(camera: Camera, view_scale: number): Record<string, () => void>
+  // Orientation gizmo ↔ camera angles (3D only)
+  gizmo?: {
+    to_three(camera: Camera): { position: Vec3; up: Vec3 }
+    from_three(camera: Camera, position: Vec3, view_scale: number): void
+  }
+}
+
+// Formation energy axis on whichever triangle vertex currently projects leftmost (changes
+// with rotation): ticks plus a rotated "E_form (eV/atom)" label with "form" as subscript
+function draw_energy_axis(
+  ctx: CanvasRenderingContext2D,
+  { project, energy_range, text_color, font_size, scale }: HullView,
+): void {
+  const { min: e_min, max: e_max, center: e_mid } = energy_range
+  if (Math.abs(e_max - e_min) < 1e-6) return
+  const projected_vertices = TRIANGLE_VERTICES.map(([vx, vy]) => project(vx, vy, e_mid))
+  const leftmost_idx = projected_vertices.reduce(
+    (min_idx, proj, idx) => (proj.x < projected_vertices[min_idx].x ? idx : min_idx),
+    0,
+  )
+  const [axis_x, axis_y] = TRIANGLE_VERTICES[leftmost_idx]
+  const tick_len = 6 * scale
+
+  ctx.save()
+  ctx.fillStyle = text_color
+  ctx.textAlign = `right`
+  ctx.textBaseline = `middle`
+  ctx.strokeStyle = CONVEX_HULL_STYLE.structure_line.color
+  ctx.font = `${font_size}px Arial`
+  for (const tick of ticks(e_min, e_max, 5)) {
+    const { x, y } = project(axis_x, axis_y, tick)
+    ctx.beginPath()
+    ctx.moveTo(x - tick_len, y)
+    ctx.lineTo(x, y)
+    ctx.stroke()
+    ctx.fillText(format_num(tick, `.2~`), x - tick_len - 4, y)
+  }
+
+  const { x: label_x, y: label_y } = project(axis_x, axis_y, e_mid)
+  const sub_font_size = Math.round(font_size * 0.75)
+  ctx.translate(label_x - 50 * scale, label_y)
+  ctx.rotate(-Math.PI / 2)
+  ctx.textAlign = `left`
+  // Measure widths in each font, then draw — ordered to minimize font switches
+  ctx.font = `bold ${font_size}px Arial`
+  const e_width = ctx.measureText(`E`).width
+  const suffix_width = ctx.measureText(` (eV/atom)`).width
+  ctx.font = `${sub_font_size}px Arial`
+  const form_width = ctx.measureText(`form`).width
+  const offset = -(e_width + form_width + suffix_width) / 2
+  ctx.fillText(`form`, offset + e_width, font_size * 0.3)
+  ctx.font = `bold ${font_size}px Arial`
+  ctx.fillText(`E`, offset, 0)
+  ctx.fillText(` (eV/atom)`, offset + e_width + form_width, 0)
+  ctx.restore()
+}
+
+const GIZMO_CAM_DIST = 5
+const MIN_ELEV_FOR_ENERGY_AXIS = 5 // degrees — below this the axis ticks collapse to a point
+const TRIANGLE_CENTROID = simplex_centroid(TRIANGLE_VERTICES)
+const TETRAHEDRON_CENTROID = simplex_centroid(TETRAHEDRON_VERTICES)
+
+// Center the camera on the triangle's visual center for its elevation. The centroid (rotation
+// center) sits at 1/3 height while the bbox center is at 1/2 height — a difference of
+// sqrt(3)/12 in data units, scaled by cos(elevation) so the offset only applies in
+// near-top-down views.
+function center_ternary_camera(camera: TernaryCamera, view_scale: number): void {
+  camera.center_x = 0
+  camera.center_y = (Math.sqrt(3) / 12) * view_scale * Math.cos(to_radians(camera.elevation))
+}
+
+const ternary_defaults = DEFAULTS.convex_hull.ternary
+const TERNARY_HULL_STRATEGY: HullCanvasStrategy<TernaryCamera> = {
+  dim: 3,
+  kind: `ternary`,
+  corners: TRIANGLE_VERTICES,
+  camera_default: {
+    elevation: ternary_defaults.camera_elevation,
+    azimuth: ternary_defaults.camera_azimuth,
+    zoom: ternary_defaults.camera_zoom,
+    center_x: 0,
+    center_y: -50, // Shift up to better show the formation energy funnel
+  },
+  wheel_clamp: [0.5, 10],
+  shadow_factor: 0.1,
+  corner_labels: { font_size: 16, offset: 0.05 },
+  face_gradient: true,
+  face_stroke_alpha: (fill_alpha) => Math.min(0.6, fill_alpha * 3),
+  rotate(camera, dx, dy) {
+    camera.azimuth += dx * 0.3 // drag right rotates clockwise around z
+    camera.elevation -= dy * 0.3 // drag down tilts the view down
+  },
+  // Rz(azimuth) then Rx(-elevation) about the centroid, energy scaled into the view
+  rotate_point(camera, [x, y, z], { center: e_ctr, z_scale }) {
+    const [elev, azim] = [to_radians(camera.elevation), to_radians(camera.azimuth)]
+    const [cos_az, sin_az] = [Math.cos(azim), Math.sin(azim)]
+    const [cos_el, sin_el] = [Math.cos(-elev), Math.sin(-elev)]
+    const [dx, dy, dz] = [
+      x - TRIANGLE_CENTROID[0],
+      y - TRIANGLE_CENTROID[1],
+      (z - e_ctr) * z_scale,
+    ]
+    const [x1, y1] = [dx * cos_az - dy * sin_az, dx * sin_az + dy * cos_az]
+    return [x1, y1 * cos_el - dz * sin_el, y1 * sin_el + dz * cos_el]
+  },
+  // Dashed triangle prism: base triangle at E_form = 0, bottom triangle at the most negative
+  // formation energy, and vertical edges connecting corresponding corners
+  outline_edges({ min: e_form_min }) {
+    const edges: [Vec3, Vec3][] = []
+    for (const [idx, [vx, vy]] of TRIANGLE_VERTICES.entries()) {
+      const [nx, ny] = TRIANGLE_VERTICES[(idx + 1) % 3]
+      for (const z_plane of [0, e_form_min]) {
+        edges.push([
+          [vx, vy, z_plane],
+          [nx, ny, z_plane],
+        ])
+      }
+      edges.push([
+        [vx, vy, 0],
+        [vx, vy, e_form_min],
+      ])
+    }
+    return edges
+  },
+  draw_axes(ctx, camera, view) {
+    // Hide the energy axis in near-top-down views where its ticks collapse to a point
+    if (Math.abs(camera.elevation) < MIN_ELEV_FOR_ENERGY_AXIS) return
+    draw_energy_axis(ctx, view)
+  },
+  actions: (camera, view_scale) => ({
+    t: () => {
+      camera.elevation = 0
+      camera.azimuth = 0
+      center_ternary_camera(camera, view_scale)
+    },
+  }),
+  gizmo: {
+    // elevation/azimuth (degrees) → Three.js camera position + up vector
+    to_three({ elevation, azimuth }) {
+      const [elev, azim] = [to_radians(elevation), to_radians(azimuth)]
+      const [sin_el, cos_el, sin_az, cos_az] = [
+        Math.sin(elev),
+        Math.cos(elev),
+        Math.sin(azim),
+        Math.cos(azim),
+      ]
+      return {
+        position: [
+          -sin_az * sin_el * GIZMO_CAM_DIST,
+          -cos_az * sin_el * GIZMO_CAM_DIST,
+          cos_el * GIZMO_CAM_DIST,
+        ],
+        up: [sin_az * cos_el, cos_az * cos_el, sin_el],
+      }
+    },
+    from_three(camera, [cam_x, cam_y, cam_z], view_scale) {
+      const dist = Math.hypot(cam_x, cam_y, cam_z)
+      if (dist < 1e-6) return
+      const elev_rad = Math.acos(clamp(cam_z / dist, -1, 1))
+      const sin_elev = Math.sin(elev_rad)
+      camera.azimuth =
+        Math.abs(sin_elev) > 1e-6
+          ? (Math.atan2(-cam_x / (dist * sin_elev), -cam_y / (dist * sin_elev)) * 180) /
+            Math.PI
+          : 0
+      camera.elevation = (elev_rad * 180) / Math.PI
+      center_ternary_camera(camera, view_scale)
+    },
+  },
+}
+
+const quaternary_defaults = DEFAULTS.convex_hull.quaternary
+const QUATERNARY_HULL_STRATEGY: HullCanvasStrategy<QuaternaryCamera> = {
+  dim: 4,
+  kind: `quaternary`,
+  corners: TETRAHEDRON_VERTICES,
+  camera_default: {
+    rotation_x: quaternary_defaults.camera_rotation_x,
+    rotation_y: quaternary_defaults.camera_rotation_y,
+    zoom: quaternary_defaults.camera_zoom,
+    center_x: 0,
+    center_y: 20, // Slight offset to avoid legend overlap
+  },
+  wheel_clamp: [1.0, 15],
+  shadow_factor: 2,
+  corner_labels: { font_size: 18, offset: 0.06 },
+  face_gradient: false,
+  face_stroke_alpha: (fill_alpha) => Math.min(0.4, fill_alpha * 4),
+  rotate(camera, dx, dy) {
+    camera.rotation_y += dx * 0.005
+    camera.rotation_x = clamp(camera.rotation_x - dy * 0.005, -Math.PI / 3, Math.PI / 3)
+  },
+  // Ry(rotation_y) then Rx(rotation_x) about the centroid (Materials Project camera)
+  rotate_point(camera, [x, y, z]) {
+    const [cx, cy, cz] = [
+      x - TETRAHEDRON_CENTROID[0],
+      y - TETRAHEDRON_CENTROID[1],
+      z - TETRAHEDRON_CENTROID[2],
+    ]
+    const [cos_x, sin_x] = [Math.cos(camera.rotation_x), Math.sin(camera.rotation_x)]
+    const [cos_y, sin_y] = [Math.cos(camera.rotation_y), Math.sin(camera.rotation_y)]
+    const [x1, z1] = [cx * cos_y - cz * sin_y, cx * sin_y + cz * cos_y]
+    return [x1, cy * cos_x - z1 * sin_x, cy * sin_x + z1 * cos_x]
+  },
+  // Every pair of tetrahedron corners
+  outline_edges: () =>
+    TETRAHEDRON_VERTICES.flatMap((start, start_idx) =>
+      TETRAHEDRON_VERTICES.slice(start_idx + 1).map((end): [Vec3, Vec3] => [
+        [...start],
+        [...end],
+      ]),
+    ),
+}
+
+export const HULL_CANVAS_STRATEGIES: Record<3 | 4, HullCanvasStrategy> = {
+  3: TERNARY_HULL_STRATEGY,
+  4: QUATERNARY_HULL_STRATEGY,
 }

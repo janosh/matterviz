@@ -21,14 +21,14 @@
     offset,
     animation_duration = DEFAULT_FLY_TO_DURATION_MS,
     fade_duration = 200,
-    onstart,
-    onchange,
-    onend,
+    on_start,
+    on_change,
+    on_end,
     ...axis_styles
   }: GizmoOptions & {
-    onstart?: () => void
-    onchange?: () => void
-    onend?: () => void
+    on_start?: () => void
+    on_change?: () => void
+    on_end?: () => void
   } = $props()
 
   const {
@@ -202,9 +202,9 @@
     controls: () => active_controls,
     duration_ms: () => animation_duration,
     invalidate,
-    onstart: () => onstart?.(),
-    onchange: () => onchange?.(),
-    onend: () => onend?.(),
+    on_start: () => on_start?.(),
+    on_change: () => on_change?.(),
+    on_end: () => on_end?.(),
   })
 
   const raycaster = new THREE.Raycaster()

@@ -2,14 +2,10 @@ import type { CompositionType } from '$lib/composition'
 import type { ElementSymbol } from '$lib/element'
 import { element_by_symbol, element_data } from '$lib/element'
 import type { FileLoadData } from '$lib/io/types'
-import type { VolumeSliceSettings } from '$lib/isosurface/slice-settings'
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { CameraProjection } from '$lib/settings'
-import type { ComponentProps } from 'svelte'
-import type LatticeComponent from './Lattice.svelte'
 import type { Pbc } from './pbc'
-import type StructureSceneComponent from './StructureScene.svelte'
 
 export { default as Arrow } from './Arrow.svelte'
 export * from './atom-properties'
@@ -271,6 +267,8 @@ export function get_structure_vector_keys(structure: AnyStructure): string[] {
   return [...seen].sort(compare_vector_keys)
 }
 
+// Payload of Structure's on_file_load / on_error / on_fullscreen_change / on_camera_move /
+// on_camera_reset callbacks; each emitter fills the fields it knows
 export interface StructureHandlerData extends FileLoadData {
   structure?: AnyStructure
   file_size?: number
@@ -281,11 +279,4 @@ export interface StructureHandlerData extends FileLoadData {
   camera_target?: Vec3
   camera_zoom?: number
   camera_has_moved?: boolean
-  color_scheme?: string
-  performance_mode?: `quality` | `speed`
-  display_mode?: StructureDisplayMode
-  active_volume_idx?: number
-  slice_settings?: Partial<VolumeSliceSettings>
-  scene_props?: ComponentProps<typeof StructureSceneComponent>
-  lattice_props?: ComponentProps<typeof LatticeComponent>
 }

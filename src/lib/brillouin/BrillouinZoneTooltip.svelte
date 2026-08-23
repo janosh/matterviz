@@ -4,6 +4,7 @@
   import { format_num } from '$lib/labels'
   import { KCoords, TooltipContent } from '$lib/tooltip'
   import type { BZHoverData, BZTooltipProp } from './types'
+  import { ordinal_label } from './types'
 
   let {
     hover_data,
@@ -12,9 +13,6 @@
     hover_data: BZHoverData
     tooltip?: BZTooltipProp
   } = $props()
-
-  // Ordinal for BZ order (only 1-3 in practice)
-  const ordinal = (num: number) => `${num}${[`th`, `st`, `nd`, `rd`][num] ?? `th`}`
 </script>
 
 <TooltipContent data={hover_data} snippet_arg={{ hover_data }} {tooltip}>
@@ -23,7 +21,7 @@
       <div style="margin-bottom: 4px">
         {#if hover_data.is_ibz}<strong>Irreducible BZ</strong>{/if}
         {#if hover_data.bz_order > 1}
-          <span class="bz-tooltip-badge">{ordinal(hover_data.bz_order)}</span>
+          <span class="bz-tooltip-badge">{ordinal_label(hover_data.bz_order)}</span>
         {/if}
       </div>
     {/if}

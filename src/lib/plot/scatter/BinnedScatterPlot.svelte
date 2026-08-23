@@ -9,12 +9,14 @@
   import { format_value } from '$lib/labels'
   import type { Point2D, Vec2 } from '$lib/math'
   import { create_pulse_animation } from '$lib/effects.svelte'
-  import ColorBar from '$lib/plot/core/components/ColorBar.svelte'
-  import PlotAxis from '$lib/plot/core/components/PlotAxis.svelte'
+  import type ColorBar from '$lib/plot/core/components/ColorBar.svelte'
+  import ColorBarDecoration from '$lib/plot/core/components/ColorBarDecoration.svelte'
+  import PlotAxes from '$lib/plot/core/components/PlotAxes.svelte'
   import PlotTooltip from '$lib/plot/core/components/PlotTooltip.svelte'
   import CartesianFrame from '$lib/plot/core/components/CartesianFrame.svelte'
   import ReferenceLinesLayer from '$lib/plot/core/components/ReferenceLinesLayer.svelte'
   import { create_cartesian_frame } from '$lib/plot/core/cartesian-frame.svelte'
+  import { create_colorbar_decoration } from '$lib/plot/core/colorbar-decoration.svelte'
   import {
     decoration_data_attrs,
     decoration_placement_revision,
@@ -22,14 +24,9 @@
     type DecorationItem,
   } from '$lib/plot/core/decorations'
   import type { FacetLayoutContext } from '$lib/plot/core/facets'
-  import { get_relative_coords } from '$lib/plot/core/interactions'
+  import { get_relative_coords, range_bounds } from '$lib/plot/core/interactions'
   import { create_placed_tween } from '$lib/plot/core/placed-tween.svelte'
-  import {
-    AXIS_TITLE_OFFSET,
-    element_position_for_footprint,
-    full_footprint_or,
-    y_axis_label_x,
-  } from '$lib/plot/core/layout'
+  import { element_position_for_footprint, full_footprint_or } from '$lib/plot/core/layout'
   import { get_series_color } from '$lib/plot/core/data-transform'
   import type { MarginalSeriesInput, MarginalsProp } from '$lib/plot/core/marginals'
   import {
@@ -43,7 +40,6 @@
     density_bin_at_point,
     first_point_in_bin,
     pick_from_index,
-    range_bounds,
     scale_bin_transform,
     series_extents,
     should_render_points,
@@ -54,7 +50,11 @@
     DenseInternalPoint,
     DensePointSeries,
   } from '$lib/plot/scatter/adaptive-density'
-  import { create_color_scale, create_size_scale } from '$lib/plot/core/scales'
+  import {
+    collect_size_values,
+    create_color_scale,
+    create_size_scale,
+  } from '$lib/plot/core/scales'
   import type {
     AxisConfig,
     BasePlotProps,
@@ -163,9 +163,7 @@
   let hovered_bin = $state<DensityBin | null>(null)
   let hovered_point = $state<DenseInternalPoint<Metadata> | null>(null)
   let tooltip_pos = $state<Point2D>({ x: 0, y: 0 })
-  let colorbar_element = $state<HTMLDivElement>()
   let annotation_element = $state<HTMLDivElement>()
-  let colorbar_size_revision = $state(0)
   let annotation_size_revision = $state(0)
   let label_measure_root = $state<HTMLDivElement>()
   let label_sizes = new SvelteMap<string, LabelSize>()
@@ -173,6 +171,7 @@
   // Tick labels default to `.2~g` (the frame measures padding with the same config)
   const final_x_axis = $derived({ format: `.2~g`, ...x_axis })
   const final_y_axis = $derived({ format: `.2~g`, ...y_axis })
+  const grid_display = { x_grid: true, y_grid: true }
   const x_scale_type = $derived(final_x_axis.scale_type ?? `linear`)
   const y_scale_type = $derived(final_y_axis.scale_type ?? `linear`)
   const resolved_marginals = $derived(
@@ -339,40 +338,27 @@
     }
     return points
   })
-  // Fallback sizes include room for overflowing tick labels before the first measurement.
-  // Reads the orientation off the prop, not color_bar_props (whose title changes with the
-  // visible count), so data changes don't trigger a layout read.
-  const colorbar_is_vertical = $derived(color_bar?.orientation === `vertical`)
-  const colorbar_footprint = $derived.by(() => {
-    void colorbar_size_revision
-    return full_footprint_or(
-      colorbar_element,
-      colorbar_is_vertical
-        ? COLOR_BAR_DEFAULTS.vertical_footprint
-        : COLOR_BAR_DEFAULTS.horizontal_footprint,
-    )
-  })
-  const annotation_footprint = $derived.by(() => {
-    void annotation_size_revision
-    return full_footprint_or(annotation_element, { width: 120, height: 50 })
-  })
   const show_colorbar = $derived(
     has_plot_size &&
       color_bar_props !== null &&
       render_mode === `density` &&
       density_result.max_count > 0,
   )
+  // Orientation comes off the prop, not color_bar_props (whose title changes with the
+  // visible count), so data changes don't trigger a layout read.
+  const colorbar = create_colorbar_decoration({
+    id: `density-colorbar`,
+    enabled: () => show_colorbar,
+    horizontal: () => color_bar?.orientation !== `vertical`,
+    dims: () => ({ width, height }),
+    decoration_solution: () => frame.decoration_solution,
+  })
+  const annotation_footprint = $derived.by(() => {
+    void annotation_size_revision
+    return full_footprint_or(annotation_element, { width: 120, height: 50 })
+  })
   const decoration_items = $derived.by((): DecorationItem[] => {
-    const items: DecorationItem[] = []
-    if (show_colorbar) {
-      items.push({
-        id: `density-colorbar`,
-        kind: `colorbar`,
-        footprint: colorbar_footprint,
-        horizontal: !colorbar_is_vertical,
-        clearance: COLOR_BAR_DEFAULTS.axis_clearance,
-      })
-    }
+    const items: DecorationItem[] = [...colorbar.items]
     if (annotation && has_plot_size) {
       items.push({
         id: `free-annotation`,
@@ -383,20 +369,9 @@
     }
     return items
   })
-  const colorbar_placement = $derived(
-    get_decoration_placement(frame.decoration_solution, `density-colorbar`),
-  )
   const annotation_placement = $derived(
     get_decoration_placement(frame.decoration_solution, `free-annotation`),
   )
-  const colorbar_tween = create_placed_tween({
-    placement: () => element_position_for_footprint(colorbar_placement, colorbar_footprint),
-    dims: () => ({ width, height }),
-    responsive: () => false,
-    element: () => colorbar_element,
-    on_element_resize: () => (colorbar_size_revision += 1),
-    placement_revision: () => decoration_placement_revision(colorbar_placement),
-  })
   const annotation_tween = create_placed_tween({
     placement: () =>
       element_position_for_footprint(annotation_placement, annotation_footprint),
@@ -406,7 +381,7 @@
     on_element_resize: () => (annotation_size_revision += 1),
     placement_revision: () =>
       annotation_placement &&
-      `${annotation_placement.x}:${annotation_placement.y}:${colorbar_size_revision}`,
+      `${annotation_placement.x}:${annotation_placement.y}:${colorbar.size_revision}`,
   })
 
   // Switch to individual markers once few enough points are visible (unless disabled)
@@ -422,16 +397,7 @@
       ? `points`
       : `density`
   })
-  const all_size_values = $derived.by(() => {
-    const values: number[] = []
-    for (const srs of series) {
-      for (const size_value of Array.from(srs.size_values ?? [])) {
-        if (size_value != null && Number.isFinite(size_value)) values.push(size_value)
-      }
-    }
-    return values
-  })
-  const size_scale_fn = $derived(create_size_scale(size_scale, all_size_values))
+  const size_scale_fn = $derived(create_size_scale(size_scale, collect_size_values(series)))
   const min_point_radius = $derived(
     size_scale.radius_range?.[0] ?? SCALE_DEFAULTS.binned_radius[0],
   )
@@ -732,7 +698,7 @@
     point_label_positions = compute_label_positions(
       label_series,
       actual_label_placement_config,
-      { x_scale_fn, y_scale_fn, y2_scale_fn: y_scale_fn, x_axis },
+      frame.scales,
       { width, height, pad },
       label_offsets,
     )
@@ -888,45 +854,13 @@
       {@attach attach_canvas(`marked-points`, (canvas) => (overlay_canvas = canvas))}
     ></foreignObject>
 
+    <!-- Overlay ref lines ignore z-order: every level renders here, below the axes -->
     <g class="reference-lines">
-      <!-- sorted bounds so an inverted axis range (e.g. [1, 0]) keeps its lines -->
-      <ReferenceLinesLayer
-        lines={indexed_ref_lines}
-        ranges={{ x: range_bounds(x_range), y: range_bounds(y_range) }}
-        scales={{ x: x_scale_fn, y: y_scale_fn }}
-        clip_path_id={frame.clip_path_id}
-        decoration_solution={frame.decoration_solution}
-      />
+      {#each [`below-grid`, `below-lines`, `below-points`, `above-all`] as const as z (z)}
+        <ReferenceLinesLayer {frame} {z} />
+      {/each}
     </g>
-    {#if facet.axis_visible(`x`)}
-      <PlotAxis
-        side="x"
-        ticks={frame.ticks.x}
-        place={x_scale_fn}
-        axis={final_x_axis}
-        on_tick_font={(font) => (frame.tick_font = font)}
-        {pad}
-        {width}
-        {height}
-        show_grid
-        label_x={pad.l + plot_rect.width / 2}
-        label_y={height - pad.b + AXIS_TITLE_OFFSET}
-      />
-    {/if}
-    {#if facet.axis_visible(`y`)}
-      <PlotAxis
-        side="y"
-        ticks={frame.ticks.y}
-        place={y_scale_fn}
-        axis={final_y_axis}
-        {pad}
-        {width}
-        {height}
-        show_grid
-        label_x={y_axis_label_x(final_y_axis, pad.l, frame.tick_label_widths.y_max)}
-        label_y={pad.t + plot_rect.height / 2}
-      />
-    {/if}
+    <PlotAxes {frame} display={grid_display} />
 
     {#if point_label_payloads.length}
       <g class="point-label-leaders" clip-path="url(#{frame.clip_path_id})">
@@ -976,19 +910,14 @@
     {/if}
 
     {#if show_colorbar && color_bar_props}
-      <div
-        bind:this={colorbar_element}
-        class="color-bar"
-        {...decoration_data_attrs(colorbar_placement)}
-        style="left: {colorbar_tween.coords.current.x}px; top: {colorbar_tween.coords.current
-          .y}px"
-      >
-        <ColorBar
-          {...color_bar_props}
-          scale={{ fn: color_scale_fn, domain: auto_color_range }}
-          range={auto_color_range}
-        />
-      </div>
+      <ColorBarDecoration
+        decoration={colorbar}
+        color_bar={{
+          ...color_bar_props,
+          scale: { fn: color_scale_fn, domain: auto_color_range },
+          range: auto_color_range,
+        }}
+      />
     {/if}
 
     {#if has_plot_size && annotation}
@@ -1099,10 +1028,6 @@
     left: 0;
     top: 0;
     transform: none;
-  }
-  .color-bar {
-    pointer-events: auto;
-    position: absolute;
   }
   .annotation {
     pointer-events: none;

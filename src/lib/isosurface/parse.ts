@@ -14,20 +14,18 @@ import {
 } from '$lib/structure/parsers/vasp-header'
 import { wrap_to_unit_cell } from '$lib/structure/pbc'
 import { make_site } from '$lib/structure/site'
-import { normalize_scientific_notation, parse_leading_num } from '$lib/utils'
+import { normalize_scientific_notation, parse_leading_num, to_error } from '$lib/utils'
 import { transpose_x_fastest } from './grid'
 import { make_volume, type VolumetricData, type VolumetricFileData } from './types'
 
 // === Parse error contract ===
-// parse_chgcar/parse_cube return null and record reasons here (mirrored to console.error).
-// parse_volumetric_file resets per call and throws when the FILENAME identifies a volumetric
-// format that fails to parse, but returns null when content doesn't look volumetric at all
-// (probe semantics — callers then fall back to structure parsing).
-let vol_parse_errors: string[] = []
-const vol_error = (message: string): void => {
-  vol_parse_errors.push(message)
-  console.error(message)
-}
+// parse_chgcar/parse_cube throw on anything malformed or truncated — a volume silently
+// zero-padded past a truncated block renders a wrong field that looks plausible. The one
+// exception: a CHGCAR whose *second* (magnetization) block is cut short keeps the complete
+// charge density and warns, since that volume is intact.
+// parse_volumetric_file first runs the cheap looks_like_volumetric probe: null means the
+// content is not volumetric at all (callers fall back to structure parsing); a positive probe
+// commits to the format and lets its parser's errors propagate.
 
 // === Fast number parsing utilities ===
 
@@ -103,8 +101,8 @@ export function parse_decimal_token(text: string, start: number, end: number): n
 // Parse whitespace-separated numbers directly from a string, starting at `pos`.
 // Writes into a pre-allocated Float64Array and returns { count, end_pos }.
 // Stops at `max_count` numbers, end of string, or when encountering a line
-// starting with a letter (e.g. "augmentation" in CHGCAR).
-function parse_float_block(
+// starting with a letter (e.g. "augmentation" in CHGCAR, "BAND:" in BXSF).
+export function parse_float_block(
   text: string,
   pos: number,
   max_count: number,
@@ -163,8 +161,7 @@ function find_line_offset(text: string, target_line: number): number {
 // === CHGCAR Parser ===
 
 // VASP writes Fortran-style exponents (1.0D-04) that a bare Number() turns into NaN.
-// Used for the coordinate lines after the header (which parse_vasp_header normalizes on its
-// own). Non-throwing on purpose: parse_chgcar reports failures via vol_error, returning null.
+// Used for the coordinate lines after the header (which parse_vasp_header normalizes on its own).
 const parse_vasp_vec3 = (line: string): Vec3 =>
   line
     .trim()
@@ -175,7 +172,7 @@ const parse_vasp_vec3 = (line: string): Vec3 =>
 // Parse VASP CHGCAR/AECCAR/ELFCAR/LOCPOT/PARCHG file format.
 // CHGCAR/PARCHG consists of a POSCAR header followed by volumetric data on a 3D grid.
 // Spin-polarized files contain two data blocks (total charge + magnetization).
-export function parse_chgcar(content: string): VolumetricFileData | null {
+export function parse_chgcar(content: string): VolumetricFileData {
   // Strip leading whitespace
   let pos = 0
   while (pos < content.length && content.charCodeAt(pos) <= 32) pos++
@@ -184,10 +181,7 @@ export function parse_chgcar(content: string): VolumetricFileData | null {
   // that isn't `D...` as Cartesian, and the result object keeps this parser non-throwing.
   const cursor = text_cursor(content, pos)
   const parsed = parse_vasp_header(cursor, { format: `CHGCAR`, coord_mode: `lenient` })
-  if (!parsed.ok) {
-    vol_error(parsed.error)
-    return null
-  }
+  if (!parsed.ok) throw new Error(parsed.error)
   const { scale, lattice, elements, counts, is_direct } = parsed.header
   pos = cursor.position()
   let cur: { line: string; next: number }
@@ -197,9 +191,10 @@ export function parse_chgcar(content: string): VolumetricFileData | null {
   let frac_to_cart: (v: Vec3) => Vec3
   try {
     ;({ cart_to_frac, frac_to_cart } = math.create_lattice_converters(lattice))
-  } catch {
-    vol_error(`CHGCAR: lattice matrix is singular; cannot convert coordinates`)
-    return null
+  } catch (error) {
+    throw new Error(`CHGCAR: lattice matrix is singular; cannot convert coordinates`, {
+      cause: error,
+    })
   }
   const sites: Site[] = []
   let atom_idx = 0
@@ -210,8 +205,7 @@ export function parse_chgcar(content: string): VolumetricFileData | null {
 
     for (let count_idx = 0; count_idx < count; count_idx++) {
       if (pos >= content.length) {
-        vol_error(`CHGCAR: file ends before all atom coordinates are read`)
-        return null
+        throw new Error(`CHGCAR: file ends before all atom coordinates are read`)
       }
       cur = read_text_line(content, pos)
       const coords = parse_vasp_vec3(cur.line)
@@ -275,10 +269,12 @@ export function parse_chgcar(content: string): VolumetricFileData | null {
     pos = end_pos
 
     if (parsed_count < total_points) {
-      console.warn(
-        `CHGCAR volume ${vol_idx}: expected ${total_points} values, got ${parsed_count}`,
-      )
-      if (parsed_count === 0) break
+      const message = `CHGCAR ${volume_labels[vol_idx]} (${ngx}×${ngy}×${ngz}): expected ${total_points} values, got ${parsed_count} — file truncated?`
+      // A truncated first block leaves nothing usable; a truncated magnetization block (a
+      // spin-polarised run cut short mid-write) must not discard the intact charge density
+      if (vol_idx === 0) throw new Error(message)
+      console.warn(`${message} Keeping the ${volumes.length} complete volume(s).`)
+      break
     }
 
     // CHGCAR stores rho * V_cell, so normalize by dividing by cell volume.
@@ -286,7 +282,7 @@ export function parse_chgcar(content: string): VolumetricFileData | null {
     const cell_volume = Math.abs(lattice_params.volume)
     const divisor = cell_volume > 1e-30 ? cell_volume : 1
     const dims: Vec3 = [ngx, ngy, ngz]
-    const values = transpose_x_fastest(data.subarray(0, parsed_count), dims, divisor)
+    const values = transpose_x_fastest(data, dims, divisor)
     volumes.push(
       make_volume(values, dims, {
         lattice,
@@ -305,10 +301,7 @@ export function parse_chgcar(content: string): VolumetricFileData | null {
     }
   }
 
-  if (volumes.length === 0) {
-    vol_error(`No volumetric data found in CHGCAR`)
-    return null
-  }
+  if (volumes.length === 0) throw new Error(`No volumetric data found in CHGCAR`)
 
   return { structure, volumes }
 }
@@ -321,16 +314,13 @@ export function parse_chgcar(content: string): VolumetricFileData | null {
 export function parse_cube(
   content: string,
   options: { periodic?: boolean } = {},
-): VolumetricFileData | null {
+): VolumetricFileData {
   // Quick line count check: need at least 7 lines (2 title + 1 header + 3 voxel + 1 atom)
   let line_count = 0
   for (let idx = 0; idx < content.length && line_count < 7; idx++) {
     if (content.charCodeAt(idx) === 10) line_count++
   }
-  if (line_count < 6) {
-    vol_error(`.cube file too short`)
-    return null
-  }
+  if (line_count < 6) throw new Error(`.cube file too short (${line_count} lines)`)
 
   // Parse header (first 6 lines + atom lines)
   let pos = 0
@@ -345,8 +335,9 @@ export function parse_cube(
   // (negative n_atoms indicates orbital data with extra header line)
   const line2 = header_lines[2].split(/\s+/).map(Number)
   if (line2.length < 4 || line2.some(isNaN)) {
-    vol_error(`.cube header line 3 malformed: expected 4 numbers`)
-    return null
+    throw new Error(
+      `.cube header line 3 malformed: expected 4 numbers, got "${header_lines[2]}"`,
+    )
   }
   const n_atoms = Math.abs(line2[0])
   const has_orbital_header = line2[0] < 0
@@ -360,8 +351,7 @@ export function parse_cube(
     header_lines[5].split(/\s+/).map(Number),
   ]
   if (voxel_lines.some((line) => line.length < 4 || line.some(isNaN))) {
-    vol_error(`.cube voxel lines malformed: expected 4 numbers per line`)
-    return null
+    throw new Error(`.cube voxel lines malformed: expected 4 numbers per line`)
   }
 
   const n_grid: Vec3 = [
@@ -402,9 +392,13 @@ export function parse_cube(
   let cube_cart_to_frac: (v: Vec3) => Vec3
   try {
     cube_cart_to_frac = math.create_cart_to_frac(lattice)
-  } catch {
-    vol_error(`.cube voxel vectors are singular (coplanar); cannot place atoms in the grid`)
-    return null
+  } catch (error) {
+    throw new Error(
+      `.cube voxel vectors are singular (coplanar); cannot place atoms in the grid`,
+      {
+        cause: error,
+      },
+    )
   }
 
   for (let atom_idx = 0; atom_idx < n_atoms; atom_idx++) {
@@ -456,17 +450,13 @@ export function parse_cube(
   const total_points = n_grid[0] * n_grid[1] * n_grid[2]
   const data = new Float64Array(total_points)
   const { count: parsed_count } = parse_float_block(content, pos, total_points, data)
-
   if (parsed_count < total_points) {
-    console.warn(`.cube: expected ${total_points} data values, got ${parsed_count}`)
-    if (parsed_count === 0) {
-      vol_error(`No volumetric data found in .cube file`)
-      return null
-    }
+    throw new Error(
+      `.cube (${n_grid.join(`×`)}): expected ${total_points} data values, got ${parsed_count} — file truncated?`,
+    )
   }
 
-  // .cube data is already z-fastest (z varies fastest, then y, then x); an
-  // incomplete block leaves its zero-initialized tail in place
+  // .cube data is already z-fastest (z varies fastest, then y, then x)
   const volumes: VolumetricData[] = [
     make_volume(data, n_grid, {
       lattice,
@@ -483,36 +473,24 @@ export function parse_cube(
 const atomic_number_to_symbol = (atomic_number: number): ElementSymbol =>
   ELEM_SYMBOLS[atomic_number - 1] ?? `H`
 
-// Auto-detect and parse volumetric file by filename + content (see parse error contract at top)
-export function parse_volumetric_file(
+export type VolumetricFormat = `cube` | `chgcar`
+
+// Cheap format probe: the filename when it names a volumetric format, else the first ~10
+// lines (.cube header shape) or a POSCAR-like header followed by a grid-dimension line
+// within the first 25 kB (CHGCAR, as opposed to a plain POSCAR/CONTCAR). Never reads the
+// data body and never throws; null means "not volumetric".
+export function looks_like_volumetric(
   content: string,
   filename?: string,
-): VolumetricFileData | null {
-  vol_parse_errors = []
-  const fail = (format: string): never => {
-    const detail = vol_parse_errors.length ? `: ${vol_parse_errors.join(`; `)}` : ``
-    throw new Error(
-      `Failed to parse ${format} file${filename ? ` '${filename}'` : ``}${detail}`,
-    )
-  }
+): VolumetricFormat | null {
   // Strip compression suffixes so "CHGCAR.gz" and "molecule.cube.bz2" match correctly
   const lower_name = strip_compression_extensions(filename ?? ``)
+  if (lower_name.endsWith(`.cube`)) return `cube`
+  if (VASP_VOLUMETRIC_REGEX.test(lower_name)) return `chgcar`
 
-  // Extension-based detection (filename is authoritative: parse failure throws)
-  if (lower_name.endsWith(`.cube`)) return parse_cube(content) ?? fail(`.cube`)
+  const lines = content.slice(0, find_line_offset(content, 10)).split(/\r?\n/)
 
-  // VASP volumetric file detection by filename
-  if (VASP_VOLUMETRIC_REGEX.test(lower_name)) {
-    return parse_chgcar(content) ?? fail(`VASP volumetric (CHGCAR-like)`)
-  }
-
-  // Content-based detection (only parse first few lines, not the whole file)
-  // Find enough lines for detection without splitting the entire string
-  const detection_end = find_line_offset(content, 10)
-  const detection_text = content.slice(0, detection_end)
-  const lines = detection_text.split(/\r?\n/)
-
-  // .cube detection: line 3 has 4 numbers (n_atoms + origin), line 4 has 4 numbers (grid dim + voxel)
+  // .cube: line 3 has 4 numbers (n_atoms + origin), line 4 has 4 numbers (grid dim + voxel)
   if (lines.length > 4) {
     const line2_tokens = lines[2].trim().split(/\s+/)
     const line3_tokens = lines[3].trim().split(/\s+/)
@@ -522,27 +500,40 @@ export function parse_volumetric_file(
       line2_tokens.every((tok) => !isNaN(Number(tok))) &&
       line3_tokens.every((tok) => !isNaN(Number(tok)))
     ) {
-      return parse_cube(content)
+      return `cube`
     }
   }
 
-  // CHGCAR detection: requires POSCAR-like header (scale factor on line 2) AND
-  // a grid dimensions line (3 integers) somewhere after the header. This distinguishes
-  // CHGCAR from plain POSCAR/CONTCAR files which share the same header format.
+  // CHGCAR: POSCAR-like header (scale factor on line 2) AND a grid-dimensions line (3
+  // integers) somewhere after the header — the latter distinguishes it from POSCAR/CONTCAR
   if (lines.length > 2 && !isNaN(parse_leading_num(normalize_scientific_notation(lines[1])))) {
-    // Scan for grid dimensions line (3 integers) starting from ~line 7
     let scan_pos = find_line_offset(content, 7)
-    // Only scan a limited window, not the entire file
     // Scan enough to cover large atom blocks (~100 chars/atom × ~200 atoms max)
     const scan_end = Math.min(content.length, scan_pos + 25000)
     while (scan_pos < scan_end) {
       const { line, next } = read_text_line(content, scan_pos)
-      if (/^\s*\d+\s+\d+\s+\d+\s*$/.test(line)) {
-        return parse_chgcar(content)
-      }
+      if (/^\s*\d+\s+\d+\s+\d+\s*$/.test(line)) return `chgcar`
       scan_pos = next
     }
   }
-
   return null
+}
+
+// Parse a volumetric file when `looks_like_volumetric` recognises it; null otherwise so
+// callers fall back to structure parsing. Once a format is recognised its parser's errors
+// (malformed header, truncated grid, …) propagate with the filename attached.
+export function parse_volumetric_file(
+  content: string,
+  filename?: string,
+): VolumetricFileData | null {
+  const format = looks_like_volumetric(content, filename)
+  if (!format) return null
+  try {
+    return format === `cube` ? parse_cube(content) : parse_chgcar(content)
+  } catch (error) {
+    throw new Error(
+      `Failed to parse ${format === `cube` ? `.cube` : `VASP volumetric (CHGCAR-like)`} file${filename ? ` '${filename}'` : ``}: ${to_error(error).message}`,
+      { cause: error },
+    )
+  }
 }

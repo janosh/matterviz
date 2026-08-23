@@ -1,8 +1,9 @@
+import { colors } from '$lib/state.svelte'
 import type { WyckoffPos } from '$lib/symmetry'
 import { WyckoffTable } from '$lib/symmetry'
 import type { MoyoWyckoffPosition } from '@spglib/moyo-wasm'
 import { mount } from 'svelte'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, onTestFinished, test } from 'vitest'
 import { doc_query } from '../setup'
 
 describe(`WyckoffTable`, () => {
@@ -34,6 +35,22 @@ describe(`WyckoffTable`, () => {
 
     const rendered_rows = document.querySelectorAll(`tbody tr`)
     expect(rendered_rows).toHaveLength(2)
+  })
+
+  // Element badge text contrast: a translucent user override must composite against the
+  // page backdrop (white in jsdom) instead of throwing mid-render
+  test.each([
+    [`#000000`, `white`],
+    [`rgba(0, 0, 0, 0.5)`, `black`],
+    [`var(--elem-color)`, `currentcolor`],
+  ])(`element color %s renders badge text %s`, (elem_color, text_color) => {
+    const original_color = colors.element.Ac
+    onTestFinished(() => {
+      colors.element.Ac = original_color
+    })
+    colors.element.Ac = elem_color
+    mount_table([{ wyckoff: `1a`, elem: `Ac`, abc: [0, 0, 0], site_indices: [0] }])
+    expect(doc_query(`tbody td span`).style.color).toBe(text_color)
   })
 
   describe(`space-group Wyckoff database integration`, () => {

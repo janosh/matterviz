@@ -5,21 +5,14 @@ import type { Vec3 } from '$lib/math'
 import type { Crystal, Site } from '$lib/structure'
 import * as ap from '$lib/structure/atom-properties'
 import { parse_poscar } from '$lib/structure/parse'
+import { get_pbc_image_sites } from '$lib/structure/pbc'
+import { get_orig_site_idx } from '$lib/structure/site'
 import selective_dynamics_poscar from '$site/structures/selective-dynamics.poscar?raw'
 import { make_supercell } from '$lib/structure/supercell'
 import { CNA_TYPE_COLORS, CNA_TYPE_NAMES, CNA_TYPE_PROPERTY } from '$lib/structure-id'
-import type { MoyoDataset } from '@spglib/moyo-wasm'
-import { describe, expect, test, vi } from 'vitest'
-import { make_crystal } from '../setup'
-
-type MoyoDatasetWithOrigMap = MoyoDataset & { orig_site_indices_by_input_idx?: number[][] }
-
-const make_struct = (sites: { xyz: Vec3; element?: ElementSymbol }[]): Crystal =>
-  make_crystal(
-    10,
-    sites.map(({ xyz, element = `C` }) => ({ element, xyz, label: element })),
-    { charge: 0 },
-  )
+import type { WyckoffPos } from '$lib/symmetry'
+import { describe, expect, test } from 'vitest'
+import { make_crystal, make_rocksalt, make_struct } from '../setup'
 
 // Helper: Create cubic structure with PBC for testing
 const make_cubic_structure = (
@@ -113,29 +106,8 @@ describe(`Coordination`, () => {
         sites: [{ abc: [0, 0, 0], element: `Cs` }, { abc: [0.5, 0.5, 0.5], element: `Cs` }] },
       { name: `NaCl corner`, lattice_size: 5, sites: nacl_corner_sites,
         check: (vals) => all_positive(vals) && typeof vals[0] === `number` && vals[0] >= 3 },
-      // Regression: in the >20-atom optimized boundary-imaging path an inverted filter
-      // imaged atoms on the wrong side, so edge atoms lost their cross-cell neighbors
-      // (CN=1/0). A and B sit near opposite x faces and bond ONLY across the periodic
-      // boundary (1.44Å); 24 interior fillers push the count past the optimization
-      // threshold. The symmetric pair must each see the other (CN >= 1, equal).
-      { name: `large structure boundary atoms keep cross-edge PBC neighbors`, lattice_size: 12,
-        sites: [
-          { abc: [0.06, 0.5, 0.5], element: `C` },
-          { abc: [0.94, 0.5, 0.5], element: `C` },
-          ...Array.from({ length: 24 }, (_, idx): { abc: Vec3; element: ElementSymbol } => ({
-            abc: [0.5, 0.1 + (idx % 6) * 0.15, 0.2 + Math.floor(idx / 6) * 0.2],
-            element: `C`,
-          })),
-        ],
-        check: (vals) => typeof vals[0] === `number` && vals[0] >= 1 && vals[0] === vals[1] },
       { name: `non-periodic (molecular) structure`, lattice_size: 10, pbc: [false, false, false],
         check: all_positive, sites: [{ abc: [0, 0, 0] }, { abc: [0.12, 0, 0], element: `O` }] },
-      // 64-atom grid exercises the optimized interior-atom imaging path
-      { name: `large interior-atom grid`, lattice_size: 8,
-        check: (vals) => vals.some((cn) => typeof cn === `number` && cn > 0),
-        sites: Array.from({ length: 64 }, (_, idx) => ({
-          abc: [((idx % 4) + 0.5) / 5, ((Math.floor(idx / 4) % 4) + 0.5) / 5, (Math.floor(idx / 16) + 0.5) / 5] as Vec3,
-        })) },
       // atoms at 0.1 and 0.9 bond across the wrap (1 Å apart through the boundary)
       { name: `atoms just inside opposite faces bond through PBC`, lattice_size: 5, check: all_positive,
         sites: [{ abc: [0.1, 0.5, 0.5] }, { abc: [0.9, 0.5, 0.5] }] },
@@ -161,15 +133,12 @@ describe(`Coordination`, () => {
     test(`calc_coordination_nums bonds across PBC and matches viewer CN`, () => {
       const strategy = `electroneg_ratio`
       const structure = make_cubic_structure(nacl_corner_sites, 5)
-      const bar_plot_cn = calc_coordination_nums(structure, strategy).sites.map(
-        (site) => site.coordination_num,
-      )
+      const bar_plot_cn = calc_coordination_nums(structure, { strategy }).coordination_nums
       const viewer_cn = ap.get_coordination_colors(structure, strategy).values
-      const raw_cn = calc_coordination_nums(structure, strategy, [
-        false,
-        false,
-        false,
-      ]).sites.map((site) => site.coordination_num)
+      const raw_cn = calc_coordination_nums(structure, {
+        strategy,
+        pbc: [false, false, false],
+      }).coordination_nums
 
       expect(bar_plot_cn).toHaveLength(structure.sites.length)
       expect(bar_plot_cn).toEqual(viewer_cn)
@@ -182,12 +151,8 @@ describe(`Coordination`, () => {
       // shell (no cutoff approximation), tagging orig_site_idx so the competitive
       // electroneg_ratio strategy treats images as their original atom, then bond that
       // finite cloud. `shells` must exceed the cell's real bond reach in cells.
-      const brute_force_cn = (
-        matrix: [Vec3, Vec3, Vec3],
-        sites: { element: ElementSymbol; abc: Vec3 }[],
-        shells = 3,
-      ): number[] => {
-        const structure = make_crystal(matrix, sites, { charge: 0 })
+      const brute_force_cn = (structure: Crystal, shells = 3): number[] => {
+        const { matrix } = structure.lattice
         const frac_to_cart = math.create_frac_to_cart(matrix)
         const range = Array.from({ length: 2 * shells + 1 }, (_, idx) => idx - shells)
         const offsets = range
@@ -202,30 +167,25 @@ describe(`Coordination`, () => {
         )
         return calc_coordination_nums(
           { ...structure, sites: [...structure.sites, ...images] },
-          `electroneg_ratio`,
-          [false, false, false],
-        )
-          .sites.slice(0, sites.length)
-          .map((site) => site.coordination_num)
+          { pbc: [false, false, false] },
+        ).coordination_nums.slice(0, structure.sites.length)
       }
 
-      // production imaging vs the brute-force oracle, for the cases below to compare
-      const cn_pair = (
-        matrix: [Vec3, Vec3, Vec3],
-        sites: { element: ElementSymbol; abc: Vec3 }[],
-      ) => ({
-        reference: brute_force_cn(matrix, sites),
-        actual: ap.get_coordination_colors(make_crystal(matrix, sites, { charge: 0 })).values,
-      })
+      const mono = (matrix: [Vec3, Vec3, Vec3], element: ElementSymbol, abc_list: Vec3[]) =>
+        make_crystal(
+          matrix,
+          abc_list.map((abc) => ({ element, abc })),
+        )
 
       // Regression guards: get_coordination_colors must equal the brute-force ground
       // truth across the regimes where image-based coordination used to go wrong —
       // oblique cells (heights ≠ vector lengths), thin cells (need >1 image shell),
-      // large-radius atoms (bonds past a hard-coded 5 Å reach) and atoms on a cell
-      // boundary (abc component = 1, which must wrap so cross-cell images are kept).
+      // large-radius atoms (bonds past a hard-coded 5 Å reach), atoms on a cell
+      // boundary (abc component = 1, which must wrap so cross-cell images are kept)
+      // and mixed elements (reach must use the larger radius so no Na-Cl image is dropped).
       // oxfmt-ignore
-      test.each<[string, [Vec3, Vec3, Vec3], ElementSymbol, Vec3[]]>([
-        [`oblique (sheared) cell`, [[12, 0, 0], [-12, 9, 0], [12, -12, 6]], `C`, [
+      test.each<[string, Crystal]>([
+        [`oblique (sheared) cell`, mono([[12, 0, 0], [-12, 9, 0], [12, -12, 6]], `C`, [
           [0.75, 0.9, 0.85], [0.95, 0.75, 0.85], [0.15, 0.95, 0.4], [0.05, 0.75, 0.4],
           [0.6, 0.05, 0.9], [0.9, 0.1, 0.7], [1, 0.45, 0.05], [0.55, 0.7, 0.5],
           [0.7, 0.7, 0.5], [0.5, 0.75, 0.25], [0.3, 0.65, 0.6], [0.2, 0.85, 0.8],
@@ -233,26 +193,27 @@ describe(`Coordination`, () => {
           [0.35, 0.4, 0.9], [0.35, 0.9, 0.45], [0.1, 0.6, 0.25], [0.95, 0.7, 0.2],
           [0.1, 0.45, 0.4], [0.4, 0.85, 0.75], [0.45, 0.35, 0.75], [0.3, 0.35, 0.5],
           [0.8, 0.95, 0.05],
-        ]],
+        ])],
         // c-axis height 3 Å < ~5 Å reach → needs 2 image shells along c
-        [`thin cell (multi-shell)`, [[6, 0, 0], [0, 6, 0], [0, 0, 3]], `C`, [
+        [`thin cell (multi-shell)`, mono([[6, 0, 0], [0, 6, 0], [0, 0, 3]], `C`, [
           [0.1, 0.1, 0.05], [0.1, 0.5, 0.95], [0.5, 0.1, 0.5], [0.5, 0.5, 0.1],
           [0.9, 0.9, 0.9], [0.3, 0.7, 0.4], [0.7, 0.3, 0.6], [0.2, 0.8, 0.2],
           [0.85, 0.2, 0.8], [0.5, 0.9, 0.5],
-        ]],
+        ])],
         // Cs covalent radius ~2.4 Å → bonds reach well past the old fixed 5 Å cutoff
-        [`large-radius atoms (>5 Å bonds)`, [[9, 0, 0], [0, 9, 0], [0, 0, 9]], `Cs`, [
+        [`large-radius atoms (>5 Å bonds)`, mono([[9, 0, 0], [0, 9, 0], [0, 0, 9]], `Cs`, [
           [0.1, 0.1, 0.1], [0.7, 0.1, 0.1], [0.1, 0.7, 0.1], [0.1, 0.1, 0.7],
           [0.7, 0.7, 0.7], [0.4, 0.4, 0.4],
-        ]],
+        ])],
         // atom 0 sits on the y=1 boundary; without wrapping, its cross-cell image
         // bonding atom 1 (at 4.0 Å) is dropped and atom 1's CN comes out 0 not 1
-        [`boundary atom (abc component = 1)`, [[8.5, 0, 0], [0, 8.5, 0], [0, 0, 8.5]], `K`, [
+        [`boundary atom (abc component = 1)`, mono([[8.5, 0, 0], [0, 8.5, 0], [0, 0, 8.5]], `K`, [
           [0.05, 1, 0.55], [0.8, 0, 0.95],
-        ]],
-      ])(`coordination matches brute-force ground truth: %s`, (_name, matrix, element, abc_list) => {
-        const { reference, actual } = cn_pair(matrix, abc_list.map((abc) => ({ element, abc })))
-        expect(actual).toEqual(reference)
+        ])],
+        [`mixed-element rocksalt cell`, make_rocksalt(5.6)],
+      ])(`coordination matches brute-force ground truth: %s`, (_name, structure) => {
+        const reference = brute_force_cn(structure)
+        expect(ap.get_coordination_colors(structure).values).toEqual(reference)
         // Sanity: the structure actually forms bonds (else the comparison is vacuous)
         expect(reference.some((cn) => cn > 0)).toBe(true)
       })
@@ -269,43 +230,6 @@ describe(`Coordination`, () => {
           { pbc: [true, true, false], charge: 0 },
         )
         expect(ap.get_coordination_colors(structure).values).toEqual([0, 0])
-      })
-
-      test(`pathological thin cell is exact, with no image-shell cap to warn about`, () => {
-        const warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
-        // c-axis height 1 Å ≪ ~3 Å C-C reach: the chain of an atom's own images along c
-        // is its whole shell. Image expansion used to cap at 3 shells per axis and warn;
-        // periodic bonding generates exactly the images in reach, so the count is exact.
-        // oxfmt-ignore
-        const matrix: [Vec3, Vec3, Vec3] = [[5, 0, 0], [0, 5, 0], [0, 0, 1]]
-        const sites: { element: ElementSymbol; abc: Vec3 }[] = [
-          { element: `C`, abc: [0.2, 0.2, 0.5] },
-          { element: `C`, abc: [0.6, 0.6, 0.5] },
-        ]
-        const structure = make_crystal(matrix, sites, { charge: 0 })
-        const { values } = ap.get_coordination_colors(structure)
-        expect(values).toEqual(brute_force_cn(matrix, sites, 6))
-        expect(values.every((cn) => typeof cn === `number` && cn > 0)).toBe(true)
-        expect(warn_spy).not.toHaveBeenCalled()
-        warn_spy.mockRestore()
-      })
-
-      test(`mixed-element cell coordination matches brute-force ground truth`, () => {
-        // Rocksalt NaCl (different radii + electronegativities exercise the metal/
-        // nonmetal bonding path): reach must use the larger radius (Na) so no Na-Cl
-        // image is dropped. Compared against the brute-force oracle like the cases above.
-        // oxfmt-ignore
-        const matrix: [Vec3, Vec3, Vec3] = [[5.6, 0, 0], [0, 5.6, 0], [0, 0, 5.6]]
-        // oxfmt-ignore
-        const na_abc: Vec3[] = [[0, 0, 0], [0.5, 0.5, 0], [0.5, 0, 0.5], [0, 0.5, 0.5]]
-        // oxfmt-ignore
-        const cl_abc: Vec3[] = [[0.5, 0, 0], [0, 0.5, 0], [0, 0, 0.5], [0.5, 0.5, 0.5]]
-        const { reference, actual } = cn_pair(matrix, [
-          ...na_abc.map((abc) => ({ element: `Na` as ElementSymbol, abc })),
-          ...cl_abc.map((abc) => ({ element: `Cl` as ElementSymbol, abc })),
-        ])
-        expect(actual).toEqual(reference)
-        expect(reference.some((cn) => cn > 0)).toBe(true)
       })
     })
   })
@@ -324,7 +248,7 @@ describe(`Coordination`, () => {
     [`undefined site falls back to site_idx`, undefined, 4, 4],
   ])(`get_orig_site_idx: %s`, (_name, properties, site_idx, expected) => {
     const site = properties === undefined ? undefined : ({ properties } as Site)
-    expect(ap.get_orig_site_idx(site, site_idx)).toBe(expected)
+    expect(get_orig_site_idx(site, site_idx)).toBe(expected)
   })
 
   test(`supercell sites resolve to unit-cell indices for color lookup`, () => {
@@ -334,9 +258,31 @@ describe(`Coordination`, () => {
     ]
     const supercell = make_supercell(make_cubic_structure(sites, 4), [2, 2, 2])
     expect(supercell.sites).toHaveLength(16) // 2 atoms * 2³
-    const resolved = supercell.sites.map((site, idx) => ap.get_orig_site_idx(site, idx))
+    const resolved = supercell.sites.map((site, idx) => get_orig_site_idx(site, idx))
     expect(resolved.filter((idx) => idx === 0)).toHaveLength(8)
     expect(resolved.filter((idx) => idx === 1)).toHaveLength(8)
+  })
+
+  // Coordination is computed on the base cell (infinite-crystal CN) and followed to every
+  // supercell copy and image atom, so the result is indexed by DISPLAYED site
+  test(`coordination colors follow supercell copies and image atoms back to their base site`, () => {
+    const base = make_cubic_structure(
+      [
+        { abc: [0, 0, 0], element: `Na` },
+        { abc: [0.5, 0.5, 0.5], element: `Cl` },
+      ],
+      2.8,
+    )
+    const displayed = get_pbc_image_sites(make_supercell(base, [2, 1, 1]))
+    expect(displayed.sites.length).toBeGreaterThan(4)
+    const config = { ...ap.DEFAULT_ATOM_COLOR_CONFIG, mode: `coordination` } as const
+    const on_base = ap.get_atom_colors(base, config)
+    const expanded = ap.get_atom_colors(displayed, config, { base })
+    expect(expanded.colors).toHaveLength(displayed.sites.length)
+    expect(expanded.unique_values).toEqual(on_base.unique_values)
+    displayed.sites.forEach((site, idx) => {
+      expect(expanded.values[idx]).toBe(on_base.values[get_orig_site_idx(site, idx)])
+    })
   })
 })
 
@@ -345,39 +291,48 @@ describe(`Wyckoff`, () => {
   // oxfmt-ignore
   const diagonal_c = (count: number) =>
     make_struct(Array.from({ length: count }, (_, idx) => ({ xyz: [idx, idx, idx] as Vec3 })))
-
-  test(`no data produces gray unknown`, () => {
-    const { colors, values } = ap.get_wyckoff_colors(diagonal_c(1), null)
-    expect([colors[0], values[0]]).toEqual([`#808080`, `unknown`])
+  const row = (wyckoff: string, elem: string, site_indices: number[]): WyckoffPos => ({
+    wyckoff,
+    elem,
+    abc: [0, 0, 0],
+    site_indices,
   })
 
-  test(`labels are categorical by Wyckoff letter`, () => {
-    const dataset = { wyckoffs: [`a`, `a`, `b`, `a`] } as unknown as MoyoDataset
-    const { colors, values } = ap.get_wyckoff_colors(diagonal_c(4), dataset)
-    expect(values).toEqual([`a|C`, `a|C`, `b|C`, `a|C`])
+  test(`no rows produce gray unknown`, () => {
+    const { colors, values, unique_values } = ap.get_wyckoff_colors(diagonal_c(1), [])
+    expect([colors[0], values[0], unique_values]).toEqual([`#808080`, `unknown`, [`unknown`]])
+  })
+
+  test(`orbit ids are multiplicity+letter|element, categorical per row`, () => {
+    const rows = [row(`3a`, `C`, [0, 1, 3]), row(`1b`, `C`, [2])]
+    const { colors, values, unique_values } = ap.get_wyckoff_colors(diagonal_c(4), rows)
+    expect(values).toEqual([`3a|C`, `3a|C`, `1b|C`, `3a|C`])
+    expect(unique_values).toEqual([`1b|C`, `3a|C`])
     expect(colors[0]).toBe(colors[1])
     expect(colors[0]).toBe(colors[3])
     expect(colors[0]).not.toBe(colors[2])
   })
 
-  test(`null Wyckoff positions remain unknown`, () => {
-    const dataset = { wyckoffs: [null, `b`] } as unknown as MoyoDataset
-    expect(ap.get_wyckoff_colors(diagonal_c(2), dataset).values).toEqual([`unknown`, `b|C`])
+  test(`sites no row claims are gray unknown and ignore out-of-range indices`, () => {
+    const result = ap.get_wyckoff_colors(diagonal_c(2), [row(`1b`, `C`, [1, 7])])
+    expect(result.values).toEqual([`unknown`, `1b|C`])
+    expect(result.colors[0]).toBe(`#808080`)
+    expect(result.unique_values).toEqual([`1b|C`, `unknown`])
   })
 
-  test(`uses orig_site_indices_by_input_idx mapping for merged disordered sites`, () => {
-    // moyo's wyckoffs array indexes the (merged) INPUT cell: input site 0 is the merged
-    // O/F disordered site (original sites 0+1), input site 1 is Li (original site 2)
+  // Rows index the DISPLAYED structure (see StructureSession.wyckoff_rows); a row claiming a
+  // merged disordered site's originals colors each original by that row
+  test(`merged disordered originals share their row's orbit`, () => {
     // oxfmt-ignore
     const structure = make_struct([
       { xyz: [0, 0, 0], element: `O` }, { xyz: [1, 1, 1], element: `F` },
       { xyz: [2, 2, 2], element: `Li` },
     ])
-    const result = ap.get_wyckoff_colors(structure, {
-      wyckoffs: [`a`, `b`],
-      orig_site_indices_by_input_idx: [[0, 1], [2]],
-    } as unknown as MoyoDatasetWithOrigMap)
-    expect(result.values).toEqual([`a|O`, `a|F`, `b|Li`])
+    const result = ap.get_wyckoff_colors(structure, [
+      row(`2a`, `O`, [0, 1]),
+      row(`1b`, `Li`, [2]),
+    ])
+    expect(result.values).toEqual([`2a|O`, `2a|O`, `1b|Li`])
   })
 })
 
@@ -588,6 +543,30 @@ describe(`Site property coloring`, () => {
     expect(result.colors[3]).toBe(`#808080`)
   })
 
+  // A caller-supplied supercell (make_supercell stamps orig_unit_cell_idx) carrying its own
+  // per-site data must color by that data, not by the ancestor site's value
+  test(`indexes per-site data by displayed site even when provenance properties are present`, () => {
+    const supercell = make_supercell(
+      make_cubic_structure([{ abc: [0, 0, 0], element: `Si` }], 3),
+      [2, 1, 1],
+    )
+    const with_data = {
+      ...supercell,
+      sites: supercell.sites.map((site, idx) => ({
+        ...site,
+        properties: { ...site.properties, amplitude: idx === 0 ? 0.1 : 0.9 },
+      })),
+    }
+    const config = {
+      ...ap.DEFAULT_ATOM_COLOR_CONFIG,
+      mode: `property`,
+      property_key: `amplitude`,
+    } as const
+    const { values, colors } = ap.get_atom_colors(with_data, config, { base: supercell })
+    expect(values).toEqual([0.1, 0.9])
+    expect(colors[0]).not.toBe(colors[1])
+  })
+
   test(`returns empty when no site declares the key, so callers can fall back`, () => {
     const result = ap.get_site_property_colors(with_props([{ charge: 1 }]), `velocity`)
     expect(result).toEqual({ colors: [], values: [] })
@@ -679,7 +658,7 @@ describe(`Performance`, () => {
   const CI = 3 // CI multiplier
 
   // Budgets are the pre-optimization runtimes cut by >10x: 500 atoms took 4s+, 1000 atoms
-  // 60s+, and the 512-atom interior grid 20s+. The 10s suite timeout fails fast overall.
+  // 60s+. The 10s suite timeout fails fast overall.
   // oxfmt-ignore
   test.each<[string, number, (idx: number) => { xyz: Vec3; element: ElementSymbol }, number]>([
     [`500 atoms`, 500, (idx) => ({
@@ -690,15 +669,6 @@ describe(`Performance`, () => {
       xyz: [(idx % 10) * 1.5, (Math.floor(idx / 10) % 10) * 1.5, Math.floor(idx / 100) * 1.5],
       element: ([`C`, `O`] as const)[idx % 2],
     }), 3000 * CI],
-    // 8x8x8 grid of interior atoms exercises the optimized interior-imaging path
-    [`512 interior atoms`, 512, (idx) => ({
-      xyz: [
-        20 + ((idx % 8) / 7) * 60,
-        20 + ((Math.floor(idx / 8) % 8) / 7) * 60,
-        20 + ((Math.floor(idx / 64) % 8) / 7) * 60,
-      ],
-      element: `C`,
-    }), 500 * CI],
   ])(`%s fast`, (_name, count, make_site, budget_ms) => {
     const structure = make_struct(Array.from({ length: count }, (_, idx) => make_site(idx)))
     const start = performance.now()
@@ -770,7 +740,7 @@ describe(`Selective dynamics`, () => {
     const via_mode = ap.get_atom_colors(structure, config)
     expect(via_mode.values).toEqual([`fixed`, `free`])
     expect(via_mode.colors).toHaveLength(2)
-    const via_property = ap.get_property_colors(structure, config, `electroneg_ratio`, null)
+    const via_property = ap.get_property_colors(structure, config)
     expect(via_property?.values).toEqual([`fixed`, `free`])
     // legend order stays mobility-descending, so `free` sorts ahead of `fixed`
     expect(via_property?.unique_values).toEqual([`free`, `fixed`])

@@ -7,7 +7,11 @@
   import type { Vec2, Vec3 } from '$lib/math'
   import ColorBar from '$lib/plot/core/components/ColorBar.svelte'
   import PlotLegend from '$lib/plot/core/components/PlotLegend.svelte'
-  import { build_legend_items, get_series_color } from '$lib/plot/core/data-transform'
+  import {
+    build_legend_items,
+    first_point_style,
+    get_series_color,
+  } from '$lib/plot/core/data-transform'
   import type { Sides } from '$lib/plot/core/layout'
   import type {
     AxisConfig3D,
@@ -189,9 +193,7 @@
   let legend_data = $derived(
     build_legend_items(series, (srs, series_idx) => ({
       symbol_type: `Circle` as const,
-      symbol_color:
-        (Array.isArray(srs.point_style) ? srs.point_style[0]?.fill : srs.point_style?.fill) ??
-        get_series_color(series_idx),
+      symbol_color: first_point_style(srs)?.fill ?? get_series_color(series_idx),
     })),
   )
   // Lift the gizmo above the color bar when one is shown; otherwise pass `gizmo` through as-is

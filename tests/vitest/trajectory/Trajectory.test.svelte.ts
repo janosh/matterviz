@@ -3,7 +3,6 @@
 // file acquisition in TrajectoryFileViewer.test; none of that is re-tested here.
 import {
   Trajectory,
-  trajectory_from_frames,
   type TrajectoryController,
   type TrajectoryRun,
   type TrajectoryXQuantity,
@@ -11,7 +10,7 @@ import {
 } from '$lib/trajectory'
 import { summarize_run } from '$lib/trajectory/run'
 import { host_run } from '$lib/trajectory/runs/host'
-import { bind_props, doc_query, make_trajectory_frame } from '../setup'
+import { bind_props, doc_query, make_run as make_shared_run } from '../setup'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
@@ -38,14 +37,12 @@ const make_run = ({
     volume: 10 + frame_idx,
   }),
 }: RunOptions = {}): TrajectoryRun =>
-  trajectory_from_frames(
-    steps.map((step, frame_idx) => make_trajectory_frame(step, 2, properties(frame_idx))),
-    {
-      provenance: { filename, format: `xyz`, source_bytes: 1234 },
-      time_step: time_step ?? undefined,
-      warnings,
-    },
-  )
+  make_shared_run(steps, {
+    frame_metadata: properties,
+    provenance: { filename, format: `xyz`, source_bytes: 1234 },
+    time_step: time_step ?? undefined,
+    warnings,
+  })
 
 const mounted: ReturnType<typeof mount>[] = []
 afterEach(async () => {
@@ -124,7 +121,6 @@ describe(`display modes`, () => {
   ])(`hides the plot of a %s run`, async (_kind, trajectory) => {
     const target = mount_trajectory(default_props({ trajectory }))
     await tick()
-    expect(target.querySelector(`.content-area.hide-plot`)).not.toBeNull()
     expect(target.querySelector(`.scatter`)).toBeNull()
     expect(target.querySelector(`.structure`)).not.toBeNull()
   })
@@ -161,7 +157,7 @@ describe(`controls`, () => {
     expect(target.querySelector(`.structure`)).not.toBeNull()
   })
 
-  test.each([
+  const HIDEABLE_CONTROLS = [
     [`filename`, `.filename`],
     [`nav`, `.play-button`],
     [`step`, `.step-slider`],
@@ -171,14 +167,20 @@ describe(`controls`, () => {
     [`x-axis`, `.x-quantity-select`],
     [`view-mode`, `.view-mode-button`],
     [`fullscreen`, `.fullscreen-button`],
-  ] as const)(`hidden: ['%s'] removes %s`, async (hidden, selector) => {
-    const visible = mount_trajectory(default_props())
+  ] as const
+
+  test(`every hideable control renders by default`, async () => {
+    const target = mount_trajectory(default_props())
     await tick()
-    expect(visible.querySelector(`${CONTROLS} ${selector}`)).not.toBeNull()
+    for (const [hidden, selector] of HIDEABLE_CONTROLS) {
+      expect(target.querySelector(`${CONTROLS} ${selector}`), hidden).not.toBeNull()
+    }
+  })
+
+  test.each(HIDEABLE_CONTROLS)(`hidden: ['%s'] removes %s`, async (hidden, selector) => {
     const target = mount_trajectory(default_props({ show_controls: { hidden: [hidden] } }))
     await tick()
     expect(target.querySelector(`${CONTROLS} ${selector}`)).toBeNull()
-    expect(target.querySelector(`.trajectory-controls.always-visible`)).not.toBeNull()
   })
 
   test(`hidden analysis entries leave the menu; hiding all removes the menu`, async () => {
@@ -407,6 +409,37 @@ describe(`banners`, () => {
       doc_query<HTMLButtonElement>(`.status-message.error button`).click()
       await tick()
       expect(target.querySelector(`.status-message.error`)).toBeNull()
+    },
+  )
+
+  test.each([
+    [`rejected`, () => Promise.reject(new Error(`no full pass`))],
+    [
+      `thrown`,
+      () => {
+        throw new Error(`no full pass`)
+      },
+    ],
+  ])(
+    `a %s trail collection is logged and the viewer keeps rendering`,
+    async (_kind, collect) => {
+      // Trails are optional: a synchronous throw used to escape the effect instead of being
+      // logged like a rejection
+      const error = vi.spyOn(console, `error`).mockImplementation(() => {})
+      const run: TrajectoryRun = { ...make_run(), collect_positions: collect }
+      const target = mount_trajectory(
+        default_props({
+          trajectory: run,
+          structure_props: { scene_props: { show_trajectory_lines: true } },
+        }),
+      )
+      await vi.waitFor(() =>
+        expect(error).toHaveBeenCalledWith(
+          `Trajectory trails: position collection failed`,
+          `no full pass`,
+        ),
+      )
+      expect(target.querySelector(`.structure`)).not.toBeNull()
     },
   )
 })

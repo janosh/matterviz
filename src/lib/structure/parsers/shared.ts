@@ -15,7 +15,7 @@ import type {
   StructureBond,
 } from '$lib/structure'
 import { get_bond_key, normalize_structure_bond } from '$lib/structure/bonding'
-import { normalize_scientific_notation, parse_num_token, to_error } from '$lib/utils'
+import { normalize_scientific_notation, to_error } from '$lib/utils'
 
 // === Parse diagnostics ===
 // See the parse error contract at the top of parse.ts: parsers record reasons here and
@@ -49,11 +49,21 @@ export const guard_parse = <T>(format: string, parse: () => T | null): T | null 
 
 // === Numeric coercion ===
 
-// Parse a coordinate value that might be in various scientific notation formats
-export function parse_coordinate(str: string): number {
-  const normalized = normalize_scientific_notation(str.trim())
-  const value = Number(normalized)
-  if (isNaN(value)) throw new Error(`Invalid coordinate value: ${str}`)
+// Strict numeric token parser for the text formats: Number() rejects the trailing junk and
+// `1,5` that parseFloat silently truncates, and the NaN retry keeps Fortran `1.0D-3`
+// exponents readable without paying for the normalisation on every well-formed token.
+// A missing or blank token is NaN, not the 0 that Number(``) returns.
+export const parse_float_token = (token: string | undefined): number => {
+  if (token === undefined || token.trim() === ``) return NaN
+  const num = Number(token)
+  return Number.isNaN(num) ? Number(normalize_scientific_notation(token)) : num
+}
+
+// A coordinate token: like parse_float_token, but a blank, non-numeric or non-finite
+// value is an error rather than NaN/Infinity for the caller to trip over later
+export const parse_coordinate = (token: string): number => {
+  const value = parse_float_token(token)
+  if (!Number.isFinite(value)) throw new Error(`Invalid coordinate value: '${token}'`)
   return value
 }
 
@@ -79,23 +89,89 @@ export const row_tokens = (
   return null
 }
 
-export const vec3_from_values = (
-  values: readonly unknown[] | undefined,
-  context: string,
-): Vec3 => {
-  if (values?.length !== 3) {
-    throw new Error(`Invalid ${context}: expected 3 coordinates, got ${values?.length ?? 0}`)
+// Arrays and typed arrays (HDF5 readers hand out Float64Array rows) both count as rows
+const is_array_like = (value: unknown): value is ArrayLike<unknown> =>
+  Array.isArray(value) || ArrayBuffer.isView(value)
+
+export const vec3_from_values = (values: unknown, context: string): Vec3 => {
+  const array_like = is_array_like(values) ? values : undefined
+  if (array_like?.length !== 3) {
+    throw new Error(
+      `Invalid ${context}: expected 3 coordinates, got ${array_like?.length ?? 0}`,
+    )
   }
-  const coords = math.finite_vec3_from_values(values)
+  const coords = math.finite_vec3_from_values(array_like)
   if (!coords) {
     throw new Error(
-      `Invalid ${context}: expected 3 finite coordinates, got [${values.map(String).join(`, `)}]`,
+      `Invalid ${context}: expected 3 finite coordinates, got [${Array.from(array_like, String).join(`, `)}]`,
     )
   }
   return coords
 }
 
+// Build a 3x3 matrix from 3 row vectors (lattice vectors as rows); the error context for a
+// bad row is suffixed with its 1-based index
+export const matrix3x3_from_rows = (rows: unknown, context: string): math.Matrix3x3 => {
+  if (!is_array_like(rows) || rows.length !== 3) {
+    const got = is_array_like(rows) ? `${rows.length} rows` : typeof rows
+    throw new Error(`Expected 3x3 matrix for ${context}, got ${got}`)
+  }
+  return [
+    vec3_from_values(rows[0], `${context} row 1`),
+    vec3_from_values(rows[1], `${context} row 2`),
+    vec3_from_values(rows[2], `${context} row 3`),
+  ]
+}
+
+// Tally element symbols (site species or per-atom elements) into symbol -> count
+export const count_elements = (elements: readonly string[]): Record<string, number> => {
+  const counts: Record<string, number> = {}
+  for (const element of elements) counts[element] = (counts[element] ?? 0) + 1
+  return counts
+}
+
 // === Lattice construction ===
+
+// Key-value cell parameters as CIF (`_cell_length_a 5.43(2)`) and mmCIF (`_cell.length_a 5.43`)
+// write them; neither dialect puts them in a loop. Tags are matched exactly on a line's
+// first token (case-insensitively), so `_cell_length_a_su` / `_cell.length_a_esd` (the
+// uncertainty, which some writers emit first) cannot shadow the value and the order of the
+// lines in the file does not matter. Returns [a, b, c, alpha, beta, gamma], or null when
+// any tag is absent or unset (`.` / `?`). A tag whose value does not parse, or a
+// non-positive edge length, is corruption and throws.
+export const read_cell_params = (
+  lines: readonly string[],
+  dialect: `CIF` | `mmCIF`,
+): number[] | null => {
+  const separator = dialect === `CIF` ? `_` : `.`
+  const tags = [`length_a`, `length_b`, `length_c`, `angle_alpha`, `angle_beta`, `angle_gamma`]
+  const tag_for = (name: string) => `_cell${separator}${name}`
+  const wanted = new Set(tags.map(tag_for))
+  const token_by_tag = new Map<string, { token: string | undefined; line: string }>()
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (!/^_cell[_.]/i.test(trimmed)) continue
+    const [tag, token] = trimmed.split(/\s+/)
+    const key = tag.toLowerCase()
+    if (wanted.has(key) && !token_by_tag.has(key))
+      token_by_tag.set(key, { token, line: trimmed })
+  }
+  const values = tags.map((name) => {
+    const found = token_by_tag.get(tag_for(name))
+    if (!found?.token || [`.`, `?`].includes(found.token)) return null
+    const value = parse_cif_uncertain_number(found.token)
+    if (value === null) {
+      throw new Error(`Invalid ${dialect} cell parameter in line: ${found.line}`)
+    }
+    return value
+  })
+  const params = values.filter((value): value is number => value !== null)
+  if (params.length < tags.length) return null
+  if (params.slice(0, 3).some((length) => length <= 0)) {
+    throw new Error(`${dialect} cell has non-positive edge lengths: [${params.join(`, `)}]`)
+  }
+  return params
+}
 
 // Lattice matrix from the [a, b, c, alpha, beta, gamma] tuple that PDB CRYST1, mmCIF
 // _cell and MOL2 CRYSIN all write
@@ -172,10 +248,11 @@ const approximate_cart_to_frac = (xyz: Vec3, axis_lengths: Vec3): Vec3 => [
 
 // cart→frac converter that falls back to per-axis-length division for singular lattices.
 // axis_lengths defaults to the row norms of the lattice matrix; naming the cell in
-// `context` makes the fallback warn on the caller's behalf.
+// `context` makes the fallback warn on the caller's behalf (through `warn`, default the
+// parse-diagnostics channel; trajectory readers pass their collector).
 export const cart_to_frac_with_fallback = (
   matrix: math.Matrix3x3,
-  opts: { axis_lengths?: Vec3; context?: string } = {},
+  opts: { axis_lengths?: Vec3; context?: string; warn?: (message: string) => void } = {},
 ): { convert: (xyz: Vec3) => Vec3; exact: boolean } => {
   try {
     return { convert: math.create_cart_to_frac(matrix), exact: true }
@@ -188,7 +265,8 @@ export const cart_to_frac_with_fallback = (
     Math.hypot(...matrix[2]),
   ]
   if (opts.context) {
-    diag_warn(`Singular ${opts.context}, using axis-length fallback for cart→frac`)
+    const warn = opts.warn ?? diag_warn
+    warn(`Singular ${opts.context}, using axis-length fallback for cart→frac`)
   }
   return { convert: (xyz: Vec3) => approximate_cart_to_frac(xyz, lengths), exact: false }
 }
@@ -247,8 +325,8 @@ export const resolve_bonds = (
 
 // Parse a CIF numeric token, stripping a trailing uncertainty like "1.234(5)"
 export const parse_cif_uncertain_number = (token: string): number | null => {
-  const value = parse_num_token(token.split(`(`)[0])
-  return isNaN(value) ? null : value
+  const value = parse_float_token(token.split(`(`)[0])
+  return Number.isNaN(value) ? null : value
 }
 
 // Walk CIF loop_ blocks: yields each loop's header tags plus the index of its first data line

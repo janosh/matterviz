@@ -1,4 +1,3 @@
-import type { TrajectoryFrame } from '$lib/trajectory'
 import {
   energy_data_extractor,
   force_stress_data_extractor,
@@ -8,12 +7,6 @@ import {
 import { open_trajectory } from '$lib/trajectory/open'
 import { describe, expect, it } from 'vitest'
 import { make_trajectory_frame, read_binary_test_file } from '../setup'
-
-const frame_with_lattice = (
-  step: number,
-  lattice: Record<string, number>,
-  metadata: Record<string, unknown> = {},
-): TrajectoryFrame => make_trajectory_frame(step, 1, metadata, lattice)
 
 describe(`trajectory data extractors`, () => {
   it(`extracts all supported energy fields and keeps zeroes`, () => {
@@ -62,10 +55,11 @@ describe(`trajectory data extractors`, () => {
   })
 
   it(`extracts lattice geometry and prefers an explicit density`, () => {
-    const frame = frame_with_lattice(
+    const frame = make_trajectory_frame(
       4,
-      { a: 2, b: 2, c: 2, alpha: 90, beta: 90, gamma: 90, volume: 8 },
+      1,
       { density: 0, temperature: 300 },
+      { a: 2, b: 2, c: 2, alpha: 90, beta: 90, gamma: 90, volume: 8 },
     )
     expect(structural_data_extractor(frame)).toMatchObject({
       Step: 4,
@@ -82,16 +76,11 @@ describe(`trajectory data extractors`, () => {
   })
 
   it(`combines energy, force, SCF, and structural fields`, () => {
-    const frame = frame_with_lattice(
+    const frame = make_trajectory_frame(
       0,
+      1,
+      { energy: -10, force_max: 2, n_scf_steps: 8, scf_energy_delta: 1e-6, density: 2.5 },
       { a: 1, b: 1, c: 1, volume: 1 },
-      {
-        energy: -10,
-        force_max: 2,
-        n_scf_steps: 8,
-        scf_energy_delta: 1e-6,
-        density: 2.5,
-      },
     )
     expect(full_data_extractor(frame)).toMatchObject({
       Step: 0,
@@ -115,11 +104,11 @@ describe(`trajectory data extractors`, () => {
           full_data_extractor(await run.read_frame(frame_idx)),
         ),
       )
-      expect(rows).toHaveLength(20)
-      for (const row of rows) {
-        expect(row.volume).toBeGreaterThan(0)
-        expect(Number.isFinite(row.Step)).toBe(true)
-      }
+      // 20 frames written every 25 steps in a fixed 25.8165 A cubic box
+      expect(rows.map((row) => row.Step)).toEqual(
+        Array.from({ length: 20 }, (_unused, idx) => 25 * (idx + 1)),
+      )
+      for (const row of rows) expect(row.volume).toBeCloseTo(17206.47404956977, 6)
     } finally {
       run.dispose()
     }

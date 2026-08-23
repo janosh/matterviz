@@ -25,13 +25,10 @@ const CELL_OFFSET = 512
 const pack_cell_key = (x: number, y: number, z: number): number =>
   (x + CELL_OFFSET) * 1048576 + (y + CELL_OFFSET) * 1024 + (z + CELL_OFFSET)
 
-// Wrap a single fractional coordinate to [0, 1), clamping near-1 values to 0 and rounding
-// to 15 digits to suppress floating-point noise.
-// NOTE on epsilon: the tightest of three intentionally different wrap helpers. Coordinates
-// here come almost straight from file parsing, so a 1e-10 snap + toFixed(15) preserves
-// maximal precision. Compare wrap_frac @1e-9 [[src/lib/symmetry/wyckoff.ts]] (post-moyo)
-// and wrap_point @1e-8 [[src/lib/symmetry/symmetry-elements.ts:214]] (feeds dedup keys).
-// Do not unify: loosening this changes snapping near cell boundaries for parsed structures.
+// Wrap a single fractional coordinate to [0, 1), snapping near-1 values to 0 and rounding
+// to 15 digits to suppress floating-point noise. The one wrap helper for parsed coordinates,
+// moyo-standardized Wyckoff positions and symmetry-element fixed points alike; the symmetry
+// dedup keys downstream quantize at 1e-4 / 1e-8, far coarser than this snap.
 export const wrap_frac_coord = (coord: number): number => {
   const wrapped = coord - Math.floor(coord)
   if (wrapped >= 1 - 1e-10) return 0
@@ -54,10 +51,7 @@ const is_scattered_trajectory = (sites: Site[]): boolean => {
   return atoms_outside_cell.length > sites.length * 0.1
 }
 
-export function find_image_atoms(
-  structure: AnyStructure,
-  { tolerance }: { tolerance?: number } = {},
-): [number, Vec3, Vec3, boolean?][] {
+export function find_image_atoms(structure: AnyStructure): [number, Vec3, Vec3, boolean?][] {
   // Find image atoms for PBC. Returns [atom_idx, image_xyz, image_abc, is_completion?]
   // tuples; is_completion marks phase-2 images that only complete bonds / coordination
   // polyhedra at cell faces (renderers may hide them). Skips scattered trajectories.
@@ -76,8 +70,8 @@ export function find_image_atoms(
   // Boundary tolerance: physical 0.5 Å as fractional per-axis, so large cells (MOFs)
   // don't over-generate (a flat 0.05 fractional would be huge there)
   const PHYSICAL_TOLERANCE = 0.5 // Å
-  const tolerances = vec_lens.map(
-    (vec_len) => tolerance ?? (vec_len > 0 ? PHYSICAL_TOLERANCE / vec_len : 0.05),
+  const tolerances = vec_lens.map((vec_len) =>
+    vec_len > 0 ? PHYSICAL_TOLERANCE / vec_len : 0.05,
   )
 
   const { pbc } = structure.lattice // no images across vacuum
@@ -288,11 +282,8 @@ export function find_image_atoms(
 
 // Return structure with image atoms added (unchanged when none are generated,
 // e.g. for scattered trajectory-like data)
-export function get_pbc_image_sites(
-  ...args: Parameters<typeof find_image_atoms>
-): AnyStructure {
-  const structure = args[0]
-  const image_sites = find_image_atoms(...args)
+export function get_pbc_image_sites(structure: AnyStructure): AnyStructure {
+  const image_sites = find_image_atoms(structure)
   if (image_sites.length === 0) return structure
   const imaged_struct = { ...structure, sites: [...structure.sites] }
 

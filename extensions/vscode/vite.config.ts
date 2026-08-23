@@ -1,7 +1,11 @@
 import { svelte } from '@sveltejs/vite-plugin-svelte'
 import { resolve } from 'node:path'
 import { defineConfig, type PluginOption } from 'vite'
-import { three_compat_alias, vite_plugin_json_gz } from '../../src/vite-plugins.ts'
+import {
+  json_gz_worker_plugins,
+  lib_aliases,
+  vite_plugin_json_gz,
+} from '../../src/vite-plugins.ts'
 import { mock_vscode } from './tests/vscode-mock.ts'
 
 export default defineConfig(({ mode }) => ({
@@ -25,7 +29,7 @@ export default defineConfig(({ mode }) => ({
   ] as PluginOption[],
   // ES-format workers keep code splitting: with the default iife format the parse worker
   // inlined the lazily-imported h5wasm chunk and weighed 5 MB per fresh worker
-  worker: { format: `es`, plugins: () => [vite_plugin_json_gz()] as PluginOption[] },
+  worker: { format: `es`, plugins: json_gz_worker_plugins() as () => PluginOption[] },
   build: {
     outDir: `dist`,
     rollupOptions: {
@@ -35,12 +39,5 @@ export default defineConfig(({ mode }) => ({
     emptyOutDir: false,
     chunkSizeWarningLimit: 6000,
   },
-  resolve: {
-    // Array form so `three` matches exactly — a string alias prefix-matches and would
-    // rewrite three/webgpu, three/tsl and three/examples/* too.
-    alias: [
-      { find: `$lib`, replacement: resolve(import.meta.dirname, `../../src/lib`) },
-      three_compat_alias,
-    ],
-  },
+  resolve: { alias: lib_aliases },
 }))

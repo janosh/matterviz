@@ -17,7 +17,6 @@
     DEFAULT_ISOSURFACE_SETTINGS,
     label_file_volumes,
     lattices_match,
-    materialize_layers,
     merge_imported_volumes,
   } from '$lib/isosurface/types'
   import { format_num } from '$lib/labels'
@@ -276,7 +275,7 @@
       ) {
         const merged = merge_imported_volumes(
           volumetric_data,
-          materialize_layers(isosurface_settings, active_volume_idx),
+          isosurface_settings.layers,
           incoming,
           active_volume_idx,
         )
@@ -300,7 +299,7 @@
     (volumetric_data ?? []).reduce((sum, vol) => sum + vol.values.length, 0),
   )
   let n_surfaces = $derived(
-    (isosurface_settings.layers ?? []).reduce(
+    isosurface_settings.layers.reduce(
       (sum, layer) => sum + (layer.visible ? (layer.show_negative ? 2 : 1) : 0),
       0,
     ),

@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { sanitize_html } from '$lib/sanitize'
+  import { goto } from '$app/navigation'
   import { page } from '$app/state'
+  import { sanitize_html } from '$lib/sanitize'
   import { Icon } from 'svelte-widgets'
   import { Database, Globe, Link } from 'svelte-widgets/icons'
   import {
@@ -14,12 +15,13 @@
   import type { OptimadeProvider, OptimadeStructure } from '$lib/api/optimade'
   import { Composition, get_electro_neg_formula } from '$lib/composition'
   import { Structure } from '$lib/structure'
-  import type { Crystal } from '$lib/structure'
-  import { optimade_to_crystal } from '$lib/structure/parse'
-  import { untrack } from 'svelte'
+  import type { AnyStructure } from '$lib/structure'
+  import { optimade_to_structure } from '$lib/structure/parse'
+  import { onMount, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { tooltip } from 'svelte-widgets/attachments'
 
+  // Without props the viewer is driven by the /optimade-[slug] route and keeps the URL in sync
   let {
     structure_id: init_structure_id,
     selected_provider: init_provider,
@@ -28,54 +30,44 @@
     structure_id?: string
     selected_provider?: string
   } & HTMLAttributes<HTMLDivElement> = $props()
+  const routed = untrack(() => !init_structure_id && !init_provider)
 
-  let structure = $state<Crystal | null>(null)
-  let [loading_struct, loading_suggestions] = $state([false, false])
+  let structure = $state<AnyStructure | null>(null)
+  let loading_struct = $state(false)
+  let loading_suggestions = $state(false)
   let struct_error = $state<string | null>(null)
   let available_providers = $state<OptimadeProvider[]>([])
   let providers_error = $state<string | null>(null)
-  // Using $state with untrack() - these are initialized from props but mutated by user interactions
+  // Initialized from props but mutated by user interactions, hence $state + untrack
   let selected_db = $state(untrack(() => init_provider ?? `mp`))
   let input_value = $state(untrack(() => init_structure_id ?? ``))
   let suggested_structures = $state<OptimadeStructure[]>([])
-  let last_loaded_db = $state<string | null>(null)
   let structure_id = $derived(input_value.trim())
   let provider_config = $derived(
     available_providers.find((provider) => provider.id === selected_db),
   )
 
-  $effect(() => {
-    // Initialize from URL slug (only if no props provided)
-    if (init_structure_id || init_provider) return // Props take precedence
+  onMount(load_providers)
 
+  // Route slug (e.g. /optimade-mp-149 or /optimade-cod-1000000) picks provider + id
+  $effect(() => {
+    if (!routed || available_providers.length === 0) return
     const decoded_slug = decode_structure_id(page.params.slug ?? ``)
-    if (available_providers.length > 0) {
-      const provider = detect_provider_from_slug(decoded_slug, available_providers)
-      if (provider) {
-        selected_db = provider
-        input_value = decoded_slug.startsWith(`${provider}-`)
-          ? decoded_slug
-          : `${provider}-${decoded_slug}`
-      } else input_value = decoded_slug
-    }
+    const provider = detect_provider_from_slug(decoded_slug, available_providers)
+    if (provider) {
+      selected_db = provider
+      input_value = decoded_slug.startsWith(`${provider}-`)
+        ? decoded_slug
+        : `${provider}-${decoded_slug}`
+    } else input_value = decoded_slug
   })
 
+  // Suggestions follow the provider only (not every structure navigation within it)
   $effect(() => {
-    // Load providers on mount
-    load_providers()
+    if (available_providers.length > 0) void load_suggested_structures()
   })
-
-  // Load data when database or structure ID changes
   $effect(() => {
-    if (selected_db && available_providers.length > 0) {
-      // Only load suggested structures when switching to different database
-      // prevents refetching when navigating between structures within same database
-      if (last_loaded_db !== selected_db) {
-        load_suggested_structures()
-        last_loaded_db = selected_db
-      }
-    }
-    if (structure_id && selected_db) load_structure_data()
+    if (structure_id && available_providers.length > 0) void load_structure_data()
   })
 
   async function load_providers() {
@@ -87,17 +79,16 @@
     })
   }
 
-  // Every keystroke starts a fetch; only the latest may write back, else a slow older
-  // response lands on top of a newer structure
+  // Every keystroke/provider switch starts a fetch; only the latest may write back, else a
+  // slow older response lands on top of a newer one
   let structure_request_id = 0
   async function load_structure_data() {
     const request_id = ++structure_request_id
-    const requested_id = structure_id
     loading_struct = true
     struct_error = null
     let error: string | null = null
     const data = await fetch_optimade_structure(
-      requested_id,
+      structure_id,
       selected_db,
       available_providers,
     ).catch((err) => {
@@ -105,28 +96,31 @@
       return null
     })
     if (request_id !== structure_request_id) return
-
     if (data) {
-      structure = optimade_to_crystal(data)
-      if (!structure) error = `Failed to convert structure data`
-    } else error ??= `Structure ${requested_id} not found`
+      try {
+        structure = optimade_to_structure(data)
+      } catch (err) {
+        error = `Failed to convert structure data: ${err}`
+      }
+    }
     struct_error = error
     loading_struct = false
   }
 
+  let suggestions_request_id = 0
   async function load_suggested_structures() {
+    const request_id = ++suggestions_request_id
     loading_suggestions = true
-    suggested_structures = await fetch_suggested_structures(
-      selected_db,
-      available_providers,
-      12,
-    )
+    const structures = await fetch_suggested_structures(selected_db, available_providers, 12)
+    if (request_id !== suggestions_request_id) return
+    suggested_structures = structures
     loading_suggestions = false
   }
 
   function navigate_to_structure(id: string) {
     input_value = id
-    history.pushState({}, ``, `/optimade-${encode_structure_id(id)}`)
+    if (routed)
+      void goto(`/optimade-${encode_structure_id(id)}`, { keepFocus: true, noScroll: true })
   }
 </script>
 
@@ -273,7 +267,8 @@
     border: 1px solid var(--border-color);
     background: var(--surface-bg);
   }
-  .fetch-button {
+  .fetch-button,
+  .retry-button {
     padding: 0.4em 0.8em;
     font-size: 0.95em;
     border-radius: 4pt;
@@ -364,13 +359,6 @@
     text-align: center;
     color: #ff6b6b;
     margin: 1em 0;
-  }
-  .retry-button {
-    padding: 0.4em 0.8em;
-    font-size: 0.9em;
-    border-radius: 4pt;
-    border: 1px solid var(--border-color);
-    background: var(--btn-bg);
   }
   @media (max-width: 1250px) {
     .main-layout {

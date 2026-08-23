@@ -12,19 +12,20 @@
     ReciprocalVectors,
   } from '$lib/brillouin'
   import type { D3InterpolateName } from '$lib/colors'
-  import type { Matrix4Tuple, Vec2, Vec3 } from '$lib/math'
+  import type { Vec2, Vec3 } from '$lib/math'
   import {
     bind_renderer,
     build_orbit_props,
     create_orthographic_zoom,
     SceneCamera,
+    SceneLights,
   } from '$lib/scene'
   import type { SceneControlProps, ThreltePointerEvent } from '$lib/scene'
   import { DEFAULTS } from '$lib/settings'
   import { ortho_zoom_for_extent } from '$lib/structure/camera-fit'
   import { T } from '@threlte/core'
   import * as extras from '@threlte/extras'
-  import { SvelteMap } from 'svelte/reactivity'
+  import { SvelteSet } from 'svelte/reactivity'
   import {
     BackSide,
     BufferGeometry,
@@ -32,12 +33,17 @@
     DoubleSide,
     FrontSide,
     Matrix4,
-    OrthographicCamera,
+    MeshBasicMaterial,
+    MeshStandardMaterial,
     Plane,
     Vector3,
   } from 'three/webgpu'
   import * as constants from './constants'
-  import { build_isosurface_geometry, nearest_vertex_index } from './geometry'
+  import {
+    apply_vertex_colors,
+    build_isosurface_geometry,
+    nearest_vertex_index,
+  } from './geometry'
   import { IDENTITY_4x4, lattice_point_group_matrices } from './symmetry'
   import type {
     ColorProperty,
@@ -50,11 +56,12 @@
   let {
     fermi_data = $bindable(),
     bz_data = $bindable(),
-    camera_position = $bindable(),
     camera_projection = $bindable(DEFAULTS.fermi.camera_projection),
     // Fermi surface styling
     color_property = DEFAULTS.fermi.color_property,
     color_scale = DEFAULTS.fermi.color_scale,
+    // Name of the per-vertex property shown in the hover tooltip
+    property_label = `Property`,
     representation = DEFAULTS.fermi.representation,
     surface_opacity = $bindable(DEFAULTS.fermi.surface_opacity),
     selected_bands,
@@ -94,11 +101,11 @@
   }: SceneControlProps & {
     fermi_data?: FermiSurfaceData
     bz_data?: BrillouinZoneData
-    camera_position?: Vec3 | undefined
     width?: number // viewport size, needed to turn the relative initial_zoom into a fit
     height?: number
     color_property?: ColorProperty
     color_scale?: D3InterpolateName
+    property_label?: string
     representation?: RepresentationMode
     surface_opacity?: number
     selected_bands?: number[]
@@ -165,34 +172,34 @@
     ) ?? [],
   )
 
-  // Compute average vertex distance from origin for each surface (used for render ordering)
-  // Smaller distance = inner surface = render first (lower renderOrder)
-  // Larger distance = outer surface = render last (higher renderOrder)
+  // Mean vertex distance from origin: inner sheets (small radius) render first so outer
+  // transparent shells blend over them
   function compute_surface_radius(surface: FermiIsosurface): number {
-    if (surface.vertices.length === 0) return 0
+    const { positions } = surface
+    if (positions.length === 0) return 0
     let sum = 0
-    for (const vertex of surface.vertices) {
-      sum += Math.hypot(vertex[0], vertex[1], vertex[2])
+    for (let idx = 0; idx < positions.length; idx += 3) {
+      sum += Math.hypot(positions[idx], positions[idx + 1], positions[idx + 2])
     }
-    return sum / surface.vertices.length
+    return sum / (positions.length / 3)
   }
 
-  // Map from surface to its render order based on size (inner surfaces first)
-  let surface_render_orders = $derived.by((): Map<FermiIsosurface, number> => {
-    const by_radius = visible_surfaces
-      .map((surface) => ({ surface, radius: compute_surface_radius(surface) }))
-      .toSorted((surf_a, surf_b) => surf_a.radius - surf_b.radius)
-    // Smaller radius (inner) = lower order = rendered first
-    return new SvelteMap(by_radius.map(({ surface }, idx) => [surface, idx]))
-  })
-
-  // Per-vertex scalar colouring applies to velocity/custom properties; band/spin colouring is
-  // a single material colour per surface
-  const use_vertex_colors = $derived(
-    color_property === `velocity` || color_property === `custom`,
+  // Render order per surface (inner = lower = first). Plain Map: rebuilt wholesale by the
+  // derived, never mutated, so nothing reads it reactively.
+  let surface_render_orders = $derived(
+    new Map(
+      visible_surfaces
+        .map((surface) => ({ surface, radius: compute_surface_radius(surface) }))
+        .toSorted((surf_a, surf_b) => surf_a.radius - surf_b.radius)
+        .map(({ surface }, idx) => [surface, idx]),
+    ),
   )
 
-  // Compute property range for color scaling
+  // `property` maps the per-vertex scalars through the colour scale; band/spin colouring is a
+  // single material colour per surface
+  const use_vertex_colors = $derived(color_property === `property`)
+
+  // Property range for color scaling across all visible surfaces
   let property_range = $derived.by((): Vec2 => {
     if (!use_vertex_colors) return [0, 1]
     let [min_val, max_val] = [Infinity, -Infinity]
@@ -215,27 +222,57 @@
     return constants.BAND_COLORS[surface.band_index % constants.BAND_COLORS.length]
   }
 
-  // Indexed geometries, one per visible surface (same order as visible_surfaces). Rebuilt when
-  // the surfaces, the colour property or the colour scale change; the previous set is disposed
-  // by the effect below. Custom BufferGeometries are the only three resources needing manual
-  // disposal here — materials created via <T.Mesh*Material> in the template are Threlte-owned.
-  let geometries = $derived.by((): (BufferGeometry | null)[] => {
-    const color_spec = use_vertex_colors
-      ? { colormap: color_scale, color_range: property_range }
-      : undefined
-    return visible_surfaces.map((surface) => build_isosurface_geometry(surface, color_spec))
+  // One BufferGeometry per visible surface object, built once and kept for as long as the
+  // surface stays visible: the positions/normals/index buffers are shared with the surface, so
+  // a colour-mode or colour-scale change only rewrites the colour attribute (see the effect
+  // below) instead of re-uploading the mesh. A surface that leaves the scene (deselected band,
+  // new fermi_data) has its geometry disposed and evicted, so a later reappearance uploads a
+  // fresh one rather than reviving a disposed object. Plain Map: the cache is bookkeeping,
+  // not state the template reads.
+  const geometry_cache = new Map<FermiIsosurface, BufferGeometry | null>()
+  const colored_geometries = new SvelteSet<BufferGeometry>()
+  let geometries = $derived(
+    visible_surfaces.map((surface) => {
+      let geometry = geometry_cache.get(surface)
+      if (geometry === undefined) {
+        geometry = build_isosurface_geometry(surface)
+        geometry_cache.set(surface, geometry)
+      }
+      return geometry
+    }),
+  )
+  $effect(() => {
+    const visible = new Set(visible_surfaces)
+    for (const [surface, geometry] of geometry_cache) {
+      if (visible.has(surface)) continue
+      geometry?.dispose()
+      if (geometry) colored_geometries.delete(geometry)
+      geometry_cache.delete(surface)
+    }
+  })
+  $effect(() => () => {
+    for (const geometry of geometry_cache.values()) geometry?.dispose()
+    geometry_cache.clear()
   })
 
+  // Vertex-colour attributes follow the colour property/scale/range. Tracked separately so the
+  // material can switch `vertexColors` without proxying three objects.
   $effect(() => {
-    const current = geometries
-    return () => {
-      for (const geometry of current) geometry?.dispose()
+    const spec = use_vertex_colors
+      ? { colormap: color_scale, color_range: property_range }
+      : null
+    for (const [idx, geometry] of geometries.entries()) {
+      if (!geometry) continue
+      apply_vertex_colors(geometry, visible_surfaces[idx], spec)
+      if (geometry.hasAttribute(`color`)) colored_geometries.add(geometry)
+      else colored_geometries.delete(geometry)
     }
+    threlte.invalidate()
   })
 
   // Count total triangles and auto-disable tiling for very large surfaces
   let total_triangles = $derived(
-    visible_surfaces.reduce((sum, surface) => sum + surface.faces.length, 0),
+    visible_surfaces.reduce((sum, surface) => sum + surface.indices.length / 3, 0),
   )
   let effective_tile_bz = $derived(
     tile_bz && total_triangles < constants.MAX_TRIANGLES_FOR_TILING,
@@ -253,9 +290,7 @@
   // BZ centroid as rotation center
   const rotation_target = $derived(polyhedron_centroid(bz_data?.vertices))
 
-  const computed_camera_position = $derived(
-    camera_position || default_camera_position(scene_size),
-  )
+  const computed_camera_position = $derived(default_camera_position(scene_size))
 
   // initial_zoom is relative (50 = fit to the shorter viewport edge), so it has to go through
   // ortho_zoom_for_extent — handing it to the camera raw treats it as an absolute zoom and
@@ -280,6 +315,7 @@
     min_zoom: () => min_zoom,
     max_zoom: () => max_zoom,
     measured: () => width > 0 && height > 0,
+    camera: () => camera,
   })
 
   const orbit_controls_props = $derived(
@@ -290,45 +326,101 @@
       zoom_speed,
       zoom_to_cursor,
       pan_speed,
-      max_zoom: ortho_zoom.max_zoom,
-      min_zoom: ortho_zoom.min_zoom,
       auto_rotate,
       rotation_damping,
-      // keep the user's zoom as the baseline the next resize rescales from
-      onend_extra: () => {
-        if (camera instanceof OrthographicCamera) ortho_zoom.zoom = camera.zoom
-      },
+      ...ortho_zoom.orbit_zoom_props(),
     }),
   )
 
-  // Get material props for two-pass transparent rendering
-  // Pass 1 (back faces): renders interior/back of surfaces first
-  // Pass 2 (front faces): renders exterior/front of surfaces on top
-  // This avoids z-fighting while showing both sides correctly
-  const get_material_props = (
+  // Materials are created once per (surface, pass, colouring) and shared by every symmetry
+  // copy, so a tiled cubic surface needs 2 materials rather than 96. Created imperatively (not
+  // via <T.Mesh*Material>) because Threlte would otherwise instantiate one per <T.Mesh>.
+  type MaterialPass = `wireframe` | `front` | `back`
+  type SurfaceMaterial = MeshBasicMaterial | MeshStandardMaterial
+  const material_cache = new Map<string, { material: SurfaceMaterial; pass: MaterialPass }>()
+  // Two-pass transparency: back faces first (pass=back), front faces second (pass=front);
+  // opaque and wireframe draw both sides in one pass
+  const configure_material = (material: SurfaceMaterial, pass: MaterialPass): void => {
+    const is_transparent = surface_opacity < 1
+    material.transparent = is_transparent
+    material.opacity = surface_opacity
+    material.side =
+      pass === `wireframe` || !is_transparent
+        ? DoubleSide
+        : pass === `back`
+          ? BackSide
+          : FrontSide
+  }
+  const material_key = (
+    surface_idx: number,
     surface_color: string,
     has_vertex_colors: boolean,
+    pass: MaterialPass,
+  ): string => `${surface_idx}|${pass}|${has_vertex_colors ? `vc` : surface_color}`
+  const get_material = (
     surface_idx: number,
-    pass: `front` | `back`,
-  ) => {
-    const is_transparent = surface_opacity < 1
-    const base = {
-      transparent: is_transparent,
-      opacity: surface_opacity,
-      // Two-pass: back faces first (pass=back), front faces second (pass=front)
-      // For opaque: just use DoubleSide
-      side: is_transparent ? (pass === `back` ? BackSide : FrontSide) : DoubleSide,
-      depthWrite: true,
-      depthTest: true,
-      // Polygon offset helps separate overlapping geometry
-      polygonOffset: true,
-      polygonOffsetFactor: 1 + surface_idx * 0.5,
-      polygonOffsetUnits: 1 + surface_idx * 0.5,
-    }
-
-    if (has_vertex_colors) return { ...base, vertexColors: true }
-    return { ...base, color: surface_color }
+    surface_color: string,
+    has_vertex_colors: boolean,
+    pass: MaterialPass,
+  ): SurfaceMaterial => {
+    const key = material_key(surface_idx, surface_color, has_vertex_colors, pass)
+    const cached = material_cache.get(key)
+    if (cached) return cached.material
+    const material: SurfaceMaterial =
+      pass === `wireframe`
+        ? new MeshBasicMaterial({ wireframe: true })
+        : new MeshStandardMaterial({
+            metalness: 0.1,
+            roughness: 0.6,
+            // Polygon offset helps separate overlapping geometry
+            polygonOffset: true,
+            polygonOffsetFactor: 1 + surface_idx * 0.5,
+            polygonOffsetUnits: 1 + surface_idx * 0.5,
+          })
+    material.vertexColors = has_vertex_colors
+    if (!has_vertex_colors) material.color.set(surface_color)
+    configure_material(material, pass)
+    material_cache.set(key, { material, pass })
+    return material
   }
+  // Opacity changes mutate the shared materials in place (no Threlte prop to watch), so the
+  // on-demand renderer has to be told to repaint
+  $effect(() => {
+    for (const { material, pass } of material_cache.values())
+      configure_material(material, pass)
+    threlte.invalidate()
+  })
+  // Passes the template renders for the current representation/opacity
+  const material_passes = $derived<MaterialPass[]>(
+    representation === `wireframe`
+      ? [`wireframe`]
+      : surface_opacity < 1
+        ? [`back`, `front`]
+        : [`front`],
+  )
+  // Evict materials the current render no longer requests (deselected band, colour-mode or
+  // representation switch, opacity crossing 1), mirroring the geometry eviction above
+  $effect(() => {
+    const live_keys = new Set<string>()
+    for (const [surface_idx, surface] of visible_surfaces.entries()) {
+      const geometry = geometries[surface_idx]
+      if (!geometry) continue
+      const has_vertex_colors = colored_geometries.has(geometry)
+      const surface_color = get_surface_color(surface)
+      for (const pass of material_passes) {
+        live_keys.add(material_key(surface_idx, surface_color, has_vertex_colors, pass))
+      }
+    }
+    for (const [key, { material }] of material_cache) {
+      if (live_keys.has(key)) continue
+      material.dispose()
+      material_cache.delete(key)
+    }
+  })
+  $effect(() => () => {
+    for (const { material } of material_cache.values()) material.dispose()
+    material_cache.clear()
+  })
 
   // Inverse of k_lattice for Cartesian->fractional conversion (cached)
   const k_lattice_inv = $derived(k_lattice_inverse(fermi_data?.k_lattice))
@@ -339,6 +431,11 @@
     effective_tile_bz && fermi_data
       ? lattice_point_group_matrices(fermi_data.k_lattice)
       : [IDENTITY_4x4],
+  )
+  // Inverses map a hovered world point back into the untiled geometry's local space; built
+  // once per tiling change rather than per pointer event
+  const inverse_symmetry_ops = $derived(
+    symmetry_ops.map((sym_matrix) => new Matrix4().fromArray(sym_matrix).invert()),
   )
 
   // Throttle state for pointer move events to avoid O(n) vertex lookups causing jank
@@ -352,7 +449,6 @@
     geometry: BufferGeometry,
     surface_color: string,
     sym_idx: number,
-    sym_matrix: Matrix4Tuple,
   ): void {
     const now = performance.now()
     if (now - last_hover_time < constants.HOVER_THROTTLE_MS) return
@@ -364,16 +460,13 @@
 
     // Nearest vertex for the property lookup is found in local space: the geometry's
     // positions are the raw surface vertices before sym_matrix
-    const local_point = event.point
-      .clone()
-      .applyMatrix4(new Matrix4().fromArray(sym_matrix).invert())
+    const local_point = event.point.clone().applyMatrix4(inverse_symmetry_ops[sym_idx])
     const nearest_idx = nearest_vertex_index(geometry, [
       local_point.x,
       local_point.y,
       local_point.z,
     ])
     const property_value = surface.properties?.[nearest_idx]
-    const has_velocities = fermi_data?.metadata?.has_velocities
 
     const { clientX, clientY } = event.nativeEvent
     hover_data = {
@@ -384,8 +477,7 @@
       screen_position: { x: clientX, y: clientY },
       surface_color,
       property_value,
-      property_name:
-        property_value != null ? (has_velocities ? `velocity` : `custom`) : undefined,
+      property_name: property_value === undefined ? undefined : property_label,
       is_tiled: effective_tile_bz,
       symmetry_index: sym_idx,
       n_symmetry_ops: symmetry_ops.length,
@@ -406,9 +498,7 @@
   {gizmo}
 />
 
-<T.DirectionalLight position={[3, 10, 10]} intensity={directional_light} />
-<T.DirectionalLight position={[-3, -5, -10]} intensity={directional_light * 0.5} />
-<T.AmbientLight intensity={ambient_light} />
+<SceneLights ambient={ambient_light} directional={directional_light} fill={0.5} />
 
 <T is={clipping_group} position={rotation_target}>
   <!-- Brillouin zone overlay -->
@@ -434,45 +524,21 @@
     {@const renderOrder = surface_render_orders.get(surface) ?? surface_idx}
 
     <!-- A surface without per-vertex properties falls back to its flat colour even in
-         velocity/custom mode, otherwise vertexColors would read a missing attribute -->
+         property mode, otherwise vertexColors would read a missing attribute -->
     {#if geometry}
-      {@const has_vertex_colors = geometry.hasAttribute(`color`)}
+      {@const has_vertex_colors = colored_geometries.has(geometry)}
       {#each symmetry_ops as sym_matrix, sym_idx (`sym-${sym_idx}`)}
-        {#snippet mesh_pass(order: number, pass: `wireframe` | `front` | `back`)}
+        {#snippet mesh_pass(order: number, pass: MaterialPass)}
           <T.Mesh
             {geometry}
+            material={get_material(surface_idx, surface_color, has_vertex_colors, pass)}
             matrix={sym_matrix}
             matrixAutoUpdate={false}
             renderOrder={order}
             onpointermove={(event: ThreltePointerEvent) =>
-              handle_pointer_move(
-                event,
-                surface,
-                geometry,
-                surface_color,
-                sym_idx,
-                sym_matrix,
-              )}
+              handle_pointer_move(event, surface, geometry, surface_color, sym_idx)}
             onpointerleave={clear_hover}
-          >
-            {#if pass === `wireframe`}
-              <T.MeshBasicMaterial
-                color={surface_color}
-                wireframe
-                transparent={surface_opacity < 1}
-                opacity={surface_opacity}
-                depthWrite={true}
-                depthTest={true}
-              />
-            {:else}
-              <T.MeshStandardMaterial
-                {...get_material_props(surface_color, has_vertex_colors, surface_idx, pass)}
-                metalness={0.1}
-                roughness={0.6}
-                flatShading={false}
-              />
-            {/if}
-          </T.Mesh>
+          />
         {/snippet}
 
         {#if representation === `wireframe`}

@@ -1,14 +1,12 @@
-import { calc_lattice_params, transpose_3x3_matrix } from '$lib/math'
+import { calc_lattice_params, first_non_increasing_index } from '$lib/math'
 import type { Pbc } from '$lib/structure/pbc'
 import {
   convert_atomic_numbers,
   count_elements,
   create_trajectory_frame,
-  validate_3x3_matrix,
 } from '$lib/trajectory/helpers'
 import type {
   PositionStreamOptions,
-  TrajectoryMetadata,
   TrajectoryPositionStream,
   TrajectorySignalDescriptor,
 } from '$lib/trajectory/index'
@@ -17,15 +15,20 @@ import type * as h5wasm from 'h5wasm'
 import {
   Hdf5GroupSelectionRequiredError,
   assert_hdf5_stream_budget,
+  attach_site_vectors,
   attribute_value,
+  dataset_at,
+  dataset_shape,
   hdf5_frames_per_slice,
   is_hdf5_dataset,
   is_hdf5_group,
+  lattice_from_values,
   positive_integer_stride,
   read_numeric_first_axis,
   read_numeric_hyperslab,
   read_numeric_samples,
   sampled_indices,
+  sampled_property_rows,
   string_value,
   to_number_array,
   to_scalar_number,
@@ -52,20 +55,8 @@ const required_dataset = (h5_file: h5wasm.File, path: string): Dataset => {
   throw new Error(`Reference MD HDF5 is missing dataset ${path}`)
 }
 
-const optional_dataset = (h5_file: h5wasm.File, path: string): Dataset | undefined => {
-  const entity = h5_file.get(path)
-  return is_hdf5_dataset(entity) ? entity : undefined
-}
-
-const shape_of = (dataset: Dataset, path: string): number[] => {
-  const shape = dataset.shape
-  if (!shape || shape.some((size) => !Number.isInteger(size) || size < 1)) {
-    throw new Error(
-      `Reference MD HDF5 dataset ${path} has invalid shape [${shape?.join(`, `)}]`,
-    )
-  }
-  return shape
-}
+const shape_of = (dataset: Dataset, path: string): number[] =>
+  dataset_shape(dataset, path, `Reference MD HDF5`)
 
 const values_of = (dataset: Dataset, path: string): number[] => {
   const values = to_number_array(dataset.to_array())
@@ -174,7 +165,7 @@ const optional_observable = (
   unit?: string,
 ): ObservableManifest | undefined => {
   const path = `${molecule_path}/observables/${name}`
-  const dataset = optional_dataset(h5_file, path)
+  const dataset = dataset_at(h5_file, path)
   if (!dataset) return undefined
   ensure_shape(shape_of(dataset, path), expected_shape, path)
   return { dataset, path, sample_shape, ...(unit ? { unit } : {}) }
@@ -290,12 +281,12 @@ export const parse_reference_md_h5_file = (
       `Reference MD HDF5 frames require matching non-empty ${production_steps_path} and ${times_path}`,
     )
   }
-  for (let frame_idx = 1; frame_idx < production_steps.length; frame_idx++) {
-    if (!(production_steps[frame_idx] > production_steps[frame_idx - 1])) {
-      throw new Error(`Reference MD HDF5 ${production_steps_path} must increase strictly`)
-    }
-    if (!(times_ps[frame_idx] > times_ps[frame_idx - 1])) {
-      throw new Error(`Reference MD HDF5 ${times_path} must increase strictly`)
+  for (const [axis, path] of [
+    [production_steps, production_steps_path],
+    [times_ps, times_path],
+  ] as const) {
+    if (first_non_increasing_index(axis) !== null) {
+      throw new Error(`Reference MD HDF5 ${path} must increase strictly`)
     }
   }
   const n_frames = production_steps.length
@@ -316,13 +307,7 @@ export const parse_reference_md_h5_file = (
   if (selected_cell_values.length !== 9) {
     throw new Error(`Reference MD HDF5 dataset ${cells_path} must contain 9 selected values`)
   }
-  const lattice_matrix = transpose_3x3_matrix(
-    validate_3x3_matrix(
-      Array.from({ length: 3 }, (_unused, row_idx) =>
-        selected_cell_values.slice(row_idx * 3, row_idx * 3 + 3),
-      ),
-    ),
-  )
+  const lattice_matrix = lattice_from_values(selected_cell_values)
   const velocity_dataset = required_dataset(h5_file, velocity_path)
   const velocity_shape = [n_frames, replica_count, n_atoms, 3]
   ensure_shape(shape_of(velocity_dataset, velocity_path), velocity_shape, velocity_path)
@@ -436,28 +421,45 @@ export const parse_reference_md_h5_file = (
     checkpoint_bytes,
     CHECKPOINT_BUDGET_BYTES,
   )
-  const checkpoint_positions: Float64Array[] = []
-  const integrated_positions = Float64Array.from(initial_positions)
-  const previous_velocity = new Float64Array(velocity_sample_size)
-  let have_previous_velocity = false
-  for (let chunk_start = 0; chunk_start < n_frames; chunk_start += velocity_frames_per_slice) {
-    const chunk_end = Math.min(chunk_start + velocity_frames_per_slice, n_frames)
-    const chunk = read_replica_frames(velocity_manifest, chunk_start, chunk_end)
-    for (let frame_idx = chunk_start; frame_idx < chunk_end; frame_idx++) {
-      const offset = (frame_idx - chunk_start) * velocity_sample_size
-      integrate_velocity_sample(
-        integrated_positions,
-        previous_velocity,
-        chunk,
-        offset,
-        have_previous_velocity ? times_ps[frame_idx] - times_ps[frame_idx - 1] : undefined,
-      )
-      have_previous_velocity = true
-      if (frame_idx % checkpoint_interval === 0) {
-        checkpoint_positions.push(integrated_positions.slice())
+  // Trapezoid-integrate the velocity samples of frames [start_frame, end_frame) into
+  // `positions`, reading them in slice-sized chunks; `on_frame` sees each frame once the
+  // integration has reached it, with the chunk and the frame's offset into it
+  const integrate_velocity_frames = (
+    start_frame: number,
+    end_frame: number,
+    positions: Float64Array,
+    on_frame?: (frame_idx: number, chunk: number[], offset: number) => void,
+  ): void => {
+    const previous_velocity = new Float64Array(velocity_sample_size)
+    let has_previous = false
+    for (
+      let chunk_start = start_frame;
+      chunk_start < end_frame;
+      chunk_start += velocity_frames_per_slice
+    ) {
+      const chunk_end = Math.min(chunk_start + velocity_frames_per_slice, end_frame)
+      const chunk = read_replica_frames(velocity_manifest, chunk_start, chunk_end)
+      for (let frame_idx = chunk_start; frame_idx < chunk_end; frame_idx++) {
+        const offset = (frame_idx - chunk_start) * velocity_sample_size
+        integrate_velocity_sample(
+          positions,
+          previous_velocity,
+          chunk,
+          offset,
+          has_previous ? times_ps[frame_idx] - times_ps[frame_idx - 1] : undefined,
+        )
+        has_previous = true
+        on_frame?.(frame_idx, chunk, offset)
       }
     }
   }
+  const checkpoint_positions: Float64Array[] = []
+  const integrated_positions = Float64Array.from(initial_positions)
+  integrate_velocity_frames(0, n_frames, integrated_positions, (frame_idx) => {
+    if (frame_idx % checkpoint_interval === 0) {
+      checkpoint_positions.push(integrated_positions.slice())
+    }
+  })
   const assert_frame_number = (frame_number: number): void => {
     if (!Number.isInteger(frame_number) || frame_number < 0 || frame_number >= n_frames) {
       throw new Error(
@@ -470,27 +472,8 @@ export const parse_reference_md_h5_file = (
     const checkpoint_idx = Math.floor(frame_number / checkpoint_interval)
     const checkpoint_frame = checkpoint_idx * checkpoint_interval
     const positions = checkpoint_positions[checkpoint_idx].slice()
-    if (checkpoint_frame === frame_number) return positions
-    const replay_previous_velocity = new Float64Array(velocity_sample_size)
-    let replay_has_previous = false
-    for (
-      let chunk_start = checkpoint_frame;
-      chunk_start <= frame_number;
-      chunk_start += velocity_frames_per_slice
-    ) {
-      const chunk_end = Math.min(chunk_start + velocity_frames_per_slice, frame_number + 1)
-      const chunk = read_replica_frames(velocity_manifest, chunk_start, chunk_end)
-      for (let frame_idx = chunk_start; frame_idx < chunk_end; frame_idx++) {
-        const offset = (frame_idx - chunk_start) * velocity_sample_size
-        integrate_velocity_sample(
-          positions,
-          replay_previous_velocity,
-          chunk,
-          offset,
-          replay_has_previous ? times_ps[frame_idx] - times_ps[frame_idx - 1] : undefined,
-        )
-        replay_has_previous = true
-      }
+    if (checkpoint_frame !== frame_number) {
+      integrate_velocity_frames(checkpoint_frame, frame_number + 1, positions)
     }
     return positions
   }
@@ -518,33 +501,26 @@ export const parse_reference_md_h5_file = (
       production_steps[frame_number],
       metadata_for_frame(frame_number),
     )
-    for (const [atom_idx, site] of frame.structure.sites.entries()) {
-      site.properties = {
-        ...site.properties,
-        velocity: velocity.slice(atom_idx * 3, atom_idx * 3 + 3),
-      }
-    }
+    attach_site_vectors(frame, `velocity`, velocity)
     return frame
   }
-  // Plot rows for at most ~1000 evenly spaced frames
-  const sampled_properties = (): TrajectoryMetadata[] => {
-    const stride = Math.max(1, Math.ceil(n_frames / 1000))
-    const frame_indices = sampled_indices(n_frames, stride)
-    const energy_values = energy ? read_replica_frames(energy, 0, n_frames, stride) : null
-    const temperature_values = temperature
-      ? read_replica_frames(temperature, 0, n_frames, stride)
-      : null
-    return frame_indices.map((frame_number, sample_idx) => ({
-      frame_number,
-      step: production_steps[frame_number],
-      properties: {
-        time_ps: times_ps[frame_number],
-        volume,
-        ...(energy_values ? { energy: energy_values[sample_idx] } : {}),
-        ...(temperature_values ? { temperature: temperature_values[sample_idx] } : {}),
+  const sampled_properties = () =>
+    sampled_property_rows(
+      n_frames,
+      (frame_idx) => production_steps[frame_idx],
+      (frame_indices, stride) => {
+        const energy_values = energy ? read_replica_frames(energy, 0, n_frames, stride) : null
+        const temperature_values = temperature
+          ? read_replica_frames(temperature, 0, n_frames, stride)
+          : null
+        return frame_indices.map((frame_number, sample_idx) => ({
+          time_ps: times_ps[frame_number],
+          volume,
+          ...(energy_values ? { energy: energy_values[sample_idx] } : {}),
+          ...(temperature_values ? { temperature: temperature_values[sample_idx] } : {}),
+        }))
       },
-    }))
-  }
+    )
   const trajectory_metadata = {
     molecule: molecule_name,
     replica_idx,
@@ -589,16 +565,9 @@ export const parse_reference_md_h5_file = (
       options.frame_stride,
       `Reference MD frame_stride`,
     )
-    const scalar_keys = unique_strings(options.scalar_keys)
     const vector_keys = unique_strings(options.vector_keys)
     const signal_keys = unique_strings(options.signal_keys)
     const unknown_keys = [
-      ...scalar_keys.filter(
-        (key) =>
-          (key !== `energy` && key !== `temperature`) ||
-          (key === `energy` && !energy) ||
-          (key === `temperature` && !temperature),
-      ),
       ...vector_keys.filter((key) => key !== `velocity`),
       ...signal_keys.filter((key) => !signal_manifest[key]),
     ]
@@ -618,7 +587,7 @@ export const parse_reference_md_h5_file = (
       `Reference MD`,
       n_frames,
       selected_frame_count,
-      velocity_sample_size * (1 + vector_keys.length) + scalar_keys.length + 10,
+      velocity_sample_size * (1 + vector_keys.length) + 10,
       signal_values,
       options.max_bytes ?? Number.POSITIVE_INFINITY,
     )
@@ -631,43 +600,20 @@ export const parse_reference_md_h5_file = (
       ? new Float64Array(n_frames * velocity_sample_size)
       : null
     const stream_positions = Float64Array.from(initial_positions)
-    const stream_previous_velocity = new Float64Array(velocity_sample_size)
-    let stream_has_previous = false
     let selected_idx = 0
-    for (
-      let chunk_start = 0;
-      chunk_start < n_frames;
-      chunk_start += velocity_frames_per_slice
-    ) {
-      const chunk_end = Math.min(chunk_start + velocity_frames_per_slice, n_frames)
-      const chunk = read_replica_frames(velocity_manifest, chunk_start, chunk_end)
-      native_velocity?.set(chunk, chunk_start * velocity_sample_size)
-      for (let frame_idx = chunk_start; frame_idx < chunk_end; frame_idx++) {
-        const velocity_offset = (frame_idx - chunk_start) * velocity_sample_size
-        integrate_velocity_sample(
-          stream_positions,
-          stream_previous_velocity,
-          chunk,
-          velocity_offset,
-          stream_has_previous ? times_ps[frame_idx] - times_ps[frame_idx - 1] : undefined,
-        )
-        stream_has_previous = true
-        if (frame_idx % frame_stride !== 0) continue
-        positions.set(stream_positions, selected_idx * velocity_sample_size)
-        selected_velocities?.set(
-          chunk.slice(velocity_offset, velocity_offset + velocity_sample_size),
-          selected_idx * velocity_sample_size,
-        )
-        selected_idx++
-      }
-    }
-    const scalars = Object.fromEntries(
-      scalar_keys.map((key) => {
-        const manifest = key === `energy` ? energy : temperature
-        if (!manifest) throw new Error(`Reference MD HDF5 has no scalar ${key}`)
-        return [key, read_replica_samples(manifest, frame_stride)]
-      }),
-    )
+    integrate_velocity_frames(0, n_frames, stream_positions, (frame_idx, chunk, offset) => {
+      // The native signal wants every frame, so copy each chunk in one bulk set as it
+      // arrives (offset 0 is the chunk's first frame); only the strided vector slices
+      if (offset === 0) native_velocity?.set(chunk, frame_idx * velocity_sample_size)
+      const selected = frame_idx % frame_stride === 0
+      if (!selected) return
+      selected_velocities?.set(
+        chunk.slice(offset, offset + velocity_sample_size),
+        selected_idx * velocity_sample_size,
+      )
+      positions.set(stream_positions, selected_idx * velocity_sample_size)
+      selected_idx++
+    })
     const signals = Object.fromEntries(
       signal_keys.map((key) => {
         const manifest = signal_manifest[key]
@@ -696,7 +642,6 @@ export const parse_reference_md_h5_file = (
       coords_unwrapped: true,
       frame_stride,
       steps: frame_indices.map((frame_idx) => production_steps[frame_idx]),
-      ...(Object.keys(scalars).length > 0 ? { scalars } : {}),
       ...(selected_velocities ? { vectors: { velocity: selected_velocities } } : {}),
       ...(Object.keys(signals).length > 0 ? { signals } : {}),
     }

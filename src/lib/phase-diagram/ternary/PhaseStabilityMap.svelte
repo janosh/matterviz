@@ -5,10 +5,11 @@
   // cursor and row highlights is rendered once into an offscreen layer and blitted per frame.
   import { add_alpha, get_d3_interpolator } from '$lib/colors'
   import { get_formula_label_segments } from '$lib/composition/format'
+  import { clamp } from '$lib/math'
   import { clamp01 } from '$lib/utils'
   import { ticks as d3_ticks } from 'd3-array'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { type CanvasFrame, create_canvas_surface } from './canvas-surface.svelte'
+  import { type CanvasFrame, create_canvas_surface } from '$lib/canvas-surface.svelte'
   import {
     type PhaseTemperatureHover,
     TERNARY_COLORS,
@@ -271,7 +272,7 @@
     const x_pos = event.clientX - rect.left
     return {
       row: Math.floor((event.clientY - rect.top - top_pad) / row_height),
-      temp: Math.min(t_max, Math.max(t_min, t_of(x_pos))),
+      temp: clamp(t_of(x_pos), t_min, t_max),
       in_plot: x_pos >= label_width,
     }
   }

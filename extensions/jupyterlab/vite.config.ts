@@ -2,30 +2,23 @@ import { svelte } from '@sveltejs/vite-plugin-svelte'
 import { resolve } from 'node:path'
 import type { Plugin, PluginOption } from 'vite'
 import { defineConfig } from 'vite'
-import { three_compat_alias, vite_plugin_json_gz } from '../../src/vite-plugins.ts'
+import {
+  json_gz_worker_plugins,
+  lib_aliases,
+  vite_plugin_json_gz,
+  vite_plugin_moyo_wasm_source,
+} from '../../src/vite-plugins.ts'
 
-const repo_root = resolve(import.meta.dirname, `../..`)
 // Root and extension Vite instances have recursively incompatible Plugin types.
 const json_gz_plugin = () => vite_plugin_json_gz() as unknown as PluginOption
 
-const moyo_glue_url = `new URL('moyo_wasm_bg.wasm', import.meta.url)`
-
-// wasm-bindgen looks next to the glue module; after bundling that breaks. Rewrite
-// to a Vite `?url` import so the .wasm ships in the labextension (air-gapped Hub).
-const moyo_wasm_asset_plugin = (): Plugin => ({
-  name: `moyo-wasm-asset`,
-  enforce: `pre`,
-  transform(code: string, id: string) {
-    if (!id.includes(`@spglib/moyo-wasm`) || !code.includes(moyo_glue_url)) return null
-    return {
-      code: `import __moyo_wasm_url from '@spglib/moyo-wasm/moyo_wasm_bg.wasm?url';\n${code.replace(
-        moyo_glue_url,
-        `__moyo_wasm_url`,
-      )}`,
-      map: null,
-    }
-  },
-})
+// Ship the .wasm in the labextension (air-gapped Hub) via a Vite `?url` import
+const moyo_wasm_asset_plugin = (): PluginOption =>
+  vite_plugin_moyo_wasm_source(
+    `moyo-wasm-asset`,
+    `__moyo_wasm_url`,
+    `import __moyo_wasm_url from '@spglib/moyo-wasm/moyo_wasm_bg.wasm?url';\n`,
+  ) as unknown as PluginOption
 
 // `__vitePreload` uses `import(<expression>)`, which webpack can't analyze. With
 // modulePreload off the dep lists are empty, so stub to `base_module()`.
@@ -50,7 +43,7 @@ export default defineConfig({
     stub_vite_preload(),
     svelte({ compilerOptions: { runes: true } }),
   ],
-  worker: { plugins: () => [json_gz_plugin()] },
+  worker: { plugins: json_gz_worker_plugins() as unknown as () => PluginOption[] },
   build: {
     outDir: `lib`,
     target: `es2023`,
@@ -78,7 +71,5 @@ export default defineConfig({
     },
     chunkSizeWarningLimit: 6000, // three.js + MatterViz graph
   },
-  resolve: {
-    alias: [{ find: `$lib`, replacement: `${repo_root}/src/lib` }, three_compat_alias],
-  },
+  resolve: { alias: lib_aliases },
 })

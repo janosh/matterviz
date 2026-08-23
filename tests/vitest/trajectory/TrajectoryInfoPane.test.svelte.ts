@@ -1,30 +1,24 @@
 import TrajectoryInfoPane from '$lib/trajectory/TrajectoryInfoPane.svelte'
 import {
   trajectory_from_frames,
-  TrajectoryProperties,
   type TrajectoryFrame,
   type TrajectoryMetadata,
   type TrajectoryRun,
 } from '$lib/trajectory'
 import { mount, tick } from 'svelte'
 import { afterEach, expect, test, vi } from 'vitest'
-import { doc_query } from '../setup'
+import { doc_query, make_crystal, with_property_rows } from '../setup'
 
 afterEach(() => {
   document.body.replaceChildren()
   vi.restoreAllMocks()
 })
 
-// oxfmt-ignore
 const frame: TrajectoryFrame = {
-  structure: {
-    sites: [
-      { species: [{ element: `Si`, occu: 1, oxidation_state: 0 }], abc: [0, 0, 0],
-        xyz: [0, 0, 0], label: `Si1`, properties: {} },
-      { species: [{ element: `Si`, occu: 1, oxidation_state: 0 }], abc: [0.25, 0.25, 0.25],
-        xyz: [0.25, 0.25, 0.25], label: `Si2`, properties: {} },
-    ],
-  },
+  structure: make_crystal(1, [
+    [`Si`, [0, 0, 0]],
+    [`Si`, [0.25, 0.25, 0.25]],
+  ]),
   step: 10,
   metadata: { energy: -1 },
 }
@@ -41,11 +35,8 @@ const make_metadata = (
     step: frame_number,
     properties: properties(frame_number),
   }))
-const sampled_run = (frame_count: number, rows: TrajectoryMetadata[] = []): TrajectoryRun => ({
-  ...make_run([frame]),
-  frame_count,
-  properties: new TrajectoryProperties(rows, true),
-})
+const sampled_run = (frame_count: number, rows: TrajectoryMetadata[] = []): TrajectoryRun =>
+  with_property_rows(make_run([frame]), rows, frame_count)
 
 const mount_pane = async (run: TrajectoryRun, current_step_idx: number) => {
   const props = $state({
@@ -129,8 +120,7 @@ test(`omits sampled and fixed-volume notes from complete property rows`, async (
     force_max: 0.5,
     volume: 100,
   }))
-  const run = { ...sampled_run(40, rows), properties: new TrajectoryProperties(rows, true) }
-  await mount_pane(run, 5)
+  await mount_pane(sampled_run(40, rows), 5)
   const text = pane_text()
   expect(text).toContain(`Energy Range`)
   expect(text).not.toContain(`sampled`)

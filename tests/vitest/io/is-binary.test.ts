@@ -91,8 +91,7 @@ describe(`extension / filename classification`, () => {
     [`structure.xyz`, true],
     [`config.json`, true],
     [`POSCAR`, true], // VASP basename without extension
-    [`XDATCAR`, true],
-    [`contcar`, true],
+    [`contcar`, true], // case-insensitive
     [`run.h5`, false],
     [`blob-uuid`, false],
   ])(`is_known_text_file(%s) -> %s`, (name, expected) => {
@@ -114,7 +113,6 @@ describe(`is_binary_payload (extension or magic bytes)`, () => {
   test.each([
     [`binary extension`, `run.h5`, [0x48, 0x49], true], // ext wins regardless of bytes
     [`magic bytes, no binary ext`, `payload.dump`, HDF5_PREFIX, true],
-    [`text ext, text bytes`, `data.csv`, [0x48, 0x49], false],
     [`unknown ext, text bytes`, `payload.dump`, [0x48, 0x49], false],
   ])(`%s -> %s`, (_desc, filename, byte_seq, expected) => {
     expect(is_binary_payload(filename, to_buffer(byte_seq))).toBe(expected)

@@ -20,7 +20,36 @@ export function next_power_of_two(value: number): number {
 // offset * (n / span) per stage: 3x faster than a cos/sin per butterfly with bit-identical
 // output, and unlike a forward recurrence the error does not grow with the stage length
 // (measured 8.5e-14 absolute against a Kahan-summed DFT at n = 65536 on outputs of
-// magnitude ~1e2, i.e. ~1e-15 relative).
+// magnitude ~1e2, i.e. ~1e-15 relative). The table is cached per length: a VACF runs
+// 3 x n_atoms transforms of the same size back to back, and rebuilding n/2 cos/sin pairs
+// each time cost as much as the butterflies themselves. Only the most recent few lengths
+// are kept: one n = 2^22 table is 64 MB, so an analysis that walked through every
+// zero-padded length would otherwise pin hundreds of MB for the page's lifetime.
+const MAX_CACHED_TWIDDLE_TABLES = 4
+// Map insertion order is the recency order: a hit is re-inserted to move it to the back
+const twiddle_tables = new Map<number, { re: Float64Array; im: Float64Array }>()
+const twiddles_for = (n_points: number): { re: Float64Array; im: Float64Array } => {
+  const cached = twiddle_tables.get(n_points)
+  if (cached) {
+    twiddle_tables.delete(n_points)
+    twiddle_tables.set(n_points, cached)
+    return cached
+  }
+  const half_n = n_points / 2
+  const table = { re: new Float64Array(half_n), im: new Float64Array(half_n) }
+  for (let idx = 0; idx < half_n; idx++) {
+    const angle = (-2 * Math.PI * idx) / n_points
+    table.re[idx] = Math.cos(angle)
+    table.im[idx] = Math.sin(angle)
+  }
+  if (twiddle_tables.size >= MAX_CACHED_TWIDDLE_TABLES) {
+    const oldest_length = twiddle_tables.keys().next().value
+    if (oldest_length !== undefined) twiddle_tables.delete(oldest_length)
+  }
+  twiddle_tables.set(n_points, table)
+  return table
+}
+
 export function fft_in_place(re: Float64Array, im: Float64Array): void {
   const n_points = re.length
   if (im.length !== n_points) {
@@ -49,15 +78,7 @@ export function fft_in_place(re: Float64Array, im: Float64Array): void {
     }
   }
 
-  const half_n = n_points / 2
-  const twiddle_re = new Float64Array(half_n)
-  const twiddle_im = new Float64Array(half_n)
-  for (let idx = 0; idx < half_n; idx++) {
-    const angle = (-2 * Math.PI * idx) / n_points
-    twiddle_re[idx] = Math.cos(angle)
-    twiddle_im[idx] = Math.sin(angle)
-  }
-
+  const { re: twiddle_re, im: twiddle_im } = twiddles_for(n_points)
   for (let span = 2; span <= n_points; span *= 2) {
     const half = span / 2
     const table_step = n_points / span
@@ -212,6 +233,8 @@ export function one_sided_periodogram(
   const n_fft = next_power_of_two(Math.ceil(zero_pad_factor * n_samples))
   const n_frequencies = n_fft / 2 + 1
   const power = new Float64Array(n_frequencies)
+  const real = new Float64Array(n_fft)
+  const imaginary = new Float64Array(n_fft)
   const component_means = new Float64Array(n_components)
   for (let sample_idx = 0; sample_idx < n_samples; sample_idx++) {
     const base = sample_idx * n_components
@@ -236,8 +259,10 @@ export function one_sided_periodogram(
       )
     }
     if (component_weight === 0) continue
-    const real = new Float64Array(n_fft)
-    const imaginary = new Float64Array(n_fft)
+    // One scratch pair for every component: a 2000-atom spectroscopy run transforms 6000
+    // components, and allocating 2 x n_fft per component dominated the FFT itself
+    real.fill(0)
+    imaginary.fill(0)
     for (let sample_idx = 0; sample_idx < n_samples; sample_idx++) {
       real[sample_idx] =
         (values[sample_idx * n_components + component_idx] - component_means[component_idx]) *

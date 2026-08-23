@@ -2,9 +2,10 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 // Isolate watcher behavior from palette data and theme registration side effects.
+// Black (and transparent black, which is_dark_color must filter out first) read as dark.
 vi.mock(`$lib/colors`, () => ({
   perceived_brightness: (color: string) =>
-    color.replaceAll(` `, ``) === `rgba(0,0,0,0)` ? 0 : 1,
+    [`rgba(0,0,0,0)`, `rgb(0,0,0)`, `#000`].includes(color.replaceAll(` `, ``)) ? 0 : 1,
 }))
 vi.mock(`$lib/theme`, () => ({ COLOR_THEMES: { light: `light`, dark: `dark` } }))
 vi.mock(`$lib/theme/themes.mjs`, () => ({}))
@@ -53,6 +54,8 @@ afterEach(() => {
   document.body.innerHTML = ``
   document.body.className = ``
   document.documentElement.removeAttribute(`style`)
+  delete document.documentElement.dataset.theme
+  globalThis.jupyterlab = undefined
   globalThis.MATTERVIZ_THEMES = undefined
   globalThis.MATTERVIZ_CSS_MAP = undefined
 })
@@ -80,6 +83,43 @@ describe(`embedded theme helpers`, () => {
     host.dataset.theme = `dark`
 
     expect(detect_parent_theme(inner)).toBe(`dark`)
+  })
+
+  // Host signals must beat the OS preference: a dark JupyterLab on a light OS is dark.
+  // Regression: matchMedia used to be consulted before the host branches, making them dead.
+  test.each([
+    [`<html data-theme>`, () => (document.documentElement.dataset.theme = `dark`)],
+    [`<body class>`, () => document.body.classList.add(`vscode-dark`)],
+    [
+      `JupyterLab shell dataset`,
+      () => {
+        globalThis.jupyterlab = {
+          application: { shell: { dataset: { theme: `JupyterLab Dark` } } },
+        }
+      },
+    ],
+  ])(`%s overrides a light system preference`, async (_label, apply_host_signal) => {
+    prefers_dark = false
+    apply_host_signal()
+    const { detect_parent_theme } = await import(`$lib/theme/embedded`)
+    expect(detect_parent_theme()).toBe(`dark`)
+  })
+
+  // A plain page background is weaker than the OS preference (a site styling its body dark on
+  // a light OS is not a themed host); it only decides when matchMedia is unavailable
+  test(`document background decides only when matchMedia is unavailable`, async () => {
+    prefers_dark = false
+    document.documentElement.style.backgroundColor = `#000`
+    const { detect_parent_theme } = await import(`$lib/theme/embedded`)
+    expect(detect_parent_theme()).toBe(`light`)
+    globalThis.matchMedia = undefined as unknown as typeof matchMedia
+    expect(detect_parent_theme()).toBe(`dark`)
+  })
+
+  test(`falls back to the system preference when the host declares nothing`, async () => {
+    prefers_dark = true
+    const { detect_parent_theme } = await import(`$lib/theme/embedded`)
+    expect(detect_parent_theme()).toBe(`dark`)
   })
 
   test(`ignores transparent rgba document backgrounds`, async () => {

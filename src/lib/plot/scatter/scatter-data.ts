@@ -4,6 +4,7 @@ import type { D3SymbolName } from '$lib/labels'
 import { symbol_names } from '$lib/labels'
 import {
   build_legend_items,
+  first_point_style,
   get_series_color,
   get_series_symbol,
 } from '$lib/plot/core/data-transform'
@@ -35,35 +36,30 @@ const prop_getter = <T>(
   return () => prop
 }
 
-// Filter series data to only include points within bounds and augment with internal data.
-// Full x/y arrays are kept on each returned series (via spread) so connecting lines can
-// continue through off-range points; only filtered_data (rendered markers) is range-limited.
-//
-// Perf: this runs on every pan/zoom/resize tick, so it tests raw x/y against the bounds
-// *before* building an InternalPoint. Allocating first and filtering after made a zoomed-in
-// view cost the same as the full view even when it dropped 96% of the points.
-export function filter_series_to_ranges<Metadata = Record<string, unknown>>(
-  series: readonly DataSeries<Metadata>[],
-  ranges: AxisRanges,
-): (DataSeries<Metadata> & { filtered_data: InternalPoint<Metadata>[] })[] {
-  const x_bounds = sorted_bounds(ranges.x)
-  const x2_bounds = sorted_bounds(ranges.x2)
-  const y_bounds = sorted_bounds(ranges.y)
-  const y2_bounds = sorted_bounds(ranges.y2)
+// A series with every finite point materialized once (see materialize_series_points)
+export type MaterializedSeries<Metadata = Record<string, unknown>> = DataSeries<Metadata> & {
+  points: InternalPoint<Metadata>[]
+  orig_series_idx: number
+}
 
-  const out: (DataSeries<Metadata> & { filtered_data: InternalPoint<Metadata>[] })[] = []
-
+// Build the InternalPoints of every visible, well-formed series once per data change. Points
+// with a non-finite x or y are dropped here (Number.isFinite also rejects null/undefined/NaN).
+// Range filtering happens on every pan/zoom/resize tick, so it must not re-allocate these:
+// filter_series_to_ranges only picks from this list, which also keeps point identity stable
+// across frames (hover/selection compare logical keys, but fewer allocations is still the
+// difference between a smooth and a stuttering pan at 100k points).
+export function materialize_series_points<Metadata = Record<string, unknown>>(
+  series: readonly (DataSeries<Metadata> | null | undefined)[],
+): MaterializedSeries<Metadata>[] {
+  const out: MaterializedSeries<Metadata>[] = []
   for (let series_idx = 0; series_idx < series.length; series_idx++) {
     const data_series = series[series_idx]
-    // Missing series yield no points, and empty series are dropped below
+    // Missing series yield no points, and empty series are dropped when filtering
     if (!data_series) continue
-
     const { x: xs, y: ys, color_values, size_values } = data_series
     if (!Array.isArray(xs) || !Array.isArray(ys)) continue
     assert_series_lengths(data_series, series_idx)
     if (!(data_series.visible ?? true)) continue
-    const [x_lo, x_hi] = (data_series.x_axis ?? `x1`) === `x2` ? x2_bounds : x_bounds
-    const [y_lo, y_hi] = (data_series.y_axis ?? `y1`) === `y2` ? y2_bounds : y_bounds
 
     const get_metadata = prop_getter(data_series.metadata)
     const get_point_style = prop_getter(data_series.point_style)
@@ -71,15 +67,12 @@ export function filter_series_to_ranges<Metadata = Record<string, unknown>>(
     const get_point_label = prop_getter(data_series.point_label)
     const get_point_offset = prop_getter(data_series.point_offset)
 
-    const filtered_data: InternalPoint<Metadata>[] = []
+    const points: InternalPoint<Metadata>[] = []
     for (let point_idx = 0; point_idx < xs.length; point_idx++) {
-      // Number.isFinite also rejects null/undefined/NaN, matching the old in_range guard
       const x = xs[point_idx]
-      if (!Number.isFinite(x) || !(x >= x_lo && x <= x_hi)) continue
       const y = ys[point_idx]
-      if (!Number.isFinite(y) || !(y >= y_lo && y <= y_hi)) continue
-
-      filtered_data.push({
+      if (!Number.isFinite(x) || !Number.isFinite(y)) continue
+      points.push({
         x,
         y,
         color_value: color_values?.[point_idx],
@@ -93,16 +86,45 @@ export function filter_series_to_ranges<Metadata = Record<string, unknown>>(
         size_value: size_values?.[point_idx],
       })
     }
-
     // orig_series_idx keeps auto-cycled colors/symbols stable across filtering
+    out.push({ ...data_series, visible: true, points, orig_series_idx: series_idx })
+  }
+  return out
+}
+
+// Filter series data to only include points within bounds. Full x/y arrays are kept on each
+// returned series (via spread) so connecting lines can continue through off-range points;
+// only filtered_data (rendered markers) is range-limited. Pass the materialized points when
+// the caller can cache them across frames; otherwise they are built here.
+export function filter_series_to_ranges<Metadata = Record<string, unknown>>(
+  series: readonly (DataSeries<Metadata> | null | undefined)[],
+  ranges: AxisRanges,
+  materialized: readonly MaterializedSeries<Metadata>[] = materialize_series_points(series),
+): (DataSeries<Metadata> & { filtered_data: InternalPoint<Metadata>[] })[] {
+  const x_bounds = sorted_bounds(ranges.x)
+  const x2_bounds = sorted_bounds(ranges.x2)
+  const y_bounds = sorted_bounds(ranges.y)
+  const y2_bounds = sorted_bounds(ranges.y2)
+
+  const out: (DataSeries<Metadata> & { filtered_data: InternalPoint<Metadata>[] })[] = []
+  for (const data_series of materialized) {
+    const [x_lo, x_hi] = (data_series.x_axis ?? `x1`) === `x2` ? x2_bounds : x_bounds
+    const [y_lo, y_hi] = (data_series.y_axis ?? `y1`) === `y2` ? y2_bounds : y_bounds
+    const filtered_data: InternalPoint<Metadata>[] = []
+    for (const point of data_series.points) {
+      // NaN bounds fail both comparisons, so they reject every point
+      if (point.x >= x_lo && point.x <= x_hi && point.y >= y_lo && point.y <= y_hi) {
+        filtered_data.push(point)
+      }
+    }
     if (
       filtered_data.length > 0 ||
       (data_series.markers ?? DEFAULT_MARKERS).includes(`line`)
     ) {
-      out.push({ ...data_series, visible: true, filtered_data, orig_series_idx: series_idx })
+      const { points: _points, ...rest } = data_series
+      out.push({ ...rest, filtered_data })
     }
   }
-
   return out
 }
 
@@ -140,6 +162,8 @@ export function build_legend_data<Metadata = Record<string, unknown>>(
   series: readonly DataSeries<Metadata>[],
   computed_fills: readonly LegendFill[],
   color_scale_fn: (value: number) => string,
+  // Marker shape override (StyleOverrides.point.symbol_type); swatches must match the markers
+  default_symbol?: D3SymbolName,
 ): LegendItem[] {
   const items = build_legend_items(
     series,
@@ -147,36 +171,34 @@ export function build_legend_data<Metadata = Record<string, unknown>>(
       // Series-index defaults give auto-cycled colors/symbols
       const series_default_color = get_series_color(series_idx)
       const display_style: LegendDisplayStyle = {
-        symbol_type: get_series_symbol(series_idx),
+        symbol_type: default_symbol ?? get_series_symbol(series_idx),
         symbol_color: series_default_color,
         line_color: series_default_color,
       }
       const series_markers = data_series?.markers ?? DEFAULT_MARKERS
-      const first_point_style = Array.isArray(data_series?.point_style)
-        ? data_series.point_style[0]
-        : data_series?.point_style
+      const point_style = first_point_style(data_series)
 
       if (!series_markers.includes(`points`)) {
         // No points marker: no symbol swatch in the legend
         display_style.symbol_type = undefined
         display_style.symbol_color = undefined
-      } else if (first_point_style) {
+      } else if (point_style) {
         if (
           !Array.isArray(data_series?.point_style) &&
-          typeof first_point_style.symbol_type === `string` &&
-          symbol_names.includes(first_point_style.symbol_type)
+          typeof point_style.symbol_type === `string` &&
+          symbol_names.includes(point_style.symbol_type)
         ) {
-          display_style.symbol_type = first_point_style.symbol_type
+          display_style.symbol_type = point_style.symbol_type
         }
-        if (first_point_style.fill) display_style.symbol_color = first_point_style.fill
+        if (point_style.fill) display_style.symbol_color = point_style.fill
         // Fall back to stroke when the fill is missing/none/transparent
         if (
-          first_point_style.stroke &&
+          point_style.stroke &&
           (!display_style.symbol_color ||
             display_style.symbol_color === `none` ||
             display_style.symbol_color.startsWith(`rgba(`, 0))
         ) {
-          display_style.symbol_color = first_point_style.stroke
+          display_style.symbol_color = point_style.stroke
         }
       }
 
@@ -190,8 +212,8 @@ export function build_legend_data<Metadata = Record<string, unknown>>(
           /* oxlint-disable @typescript-eslint/prefer-nullish-coalescing -- empty-string colors should fall through */
           line_color =
             (first_cv != null ? color_scale_fn(first_cv) : undefined) ||
-            first_point_style?.fill ||
-            first_point_style?.stroke ||
+            point_style?.fill ||
+            point_style?.stroke ||
             series_default_color
           /* oxlint-enable @typescript-eslint/prefer-nullish-coalescing */
         }
@@ -276,17 +298,14 @@ export function pick_tooltip_bg<Metadata = Record<string, unknown>>(
     if (is_opaque_color(stroke_color)) return stroke_color
   }
   if (series_markers.includes(`line`)) {
-    const first_point_style = Array.isArray(series?.point_style)
-      ? series.point_style[0]
-      : series?.point_style
+    const series_style = first_point_style(series)
     const first_color_value = series?.color_values?.[0]
     let line_color_candidate = series?.line_style?.stroke
-    if (is_transparent_or_none(line_color_candidate))
-      line_color_candidate = first_point_style?.fill
+    if (is_transparent_or_none(line_color_candidate)) line_color_candidate = series_style?.fill
     if (is_transparent_or_none(line_color_candidate) && first_color_value != null)
       line_color_candidate = color_scale_fn(first_color_value)
     if (is_transparent_or_none(line_color_candidate) && series_markers.includes(`points`))
-      line_color_candidate = first_point_style?.stroke
+      line_color_candidate = series_style?.stroke
     if (is_opaque_color(line_color_candidate)) return line_color_candidate
   }
   return `rgba(0, 0, 0, 0.7)`

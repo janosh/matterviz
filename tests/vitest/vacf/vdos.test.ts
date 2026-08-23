@@ -4,6 +4,7 @@ import { build_vacf_input, circular_motion, ideal_gas } from './helpers'
 
 // THz -> cm^-1, the same factor calc-vacf derives from the speed of light
 const THZ_TO_INVERSE_CM = 1e12 / (299792458 * 100)
+const n_bins = (result: VacfResult) => result.frequencies.length
 
 // One atom orbiting at `frequency` cycles per frame, with analytic velocities attached
 const orbit = (n_frames: number, frequency: number) => {
@@ -55,39 +56,26 @@ describe(`VDOS peak position`, () => {
       max_lags: 64,
     })
 
-    expect(result.lag_stride).toBe(1)
-    expect(result.lags.length).toBeLessThanOrEqual(64)
+    expect(result.lags).toEqual(Array.from({ length: 64 }, (_unused, lag) => lag))
     const bin_spacing = result.frequencies[1] - result.frequencies[0]
-    const peak = result.curves[0].peak_frequency ?? 0
+    const peak = result.curves[0].peak_frequency
     expect(Math.abs(peak - cycles_per_frame * 1000)).toBeLessThan(bin_spacing)
     // and specifically not where a stride-8 decimation would have folded it
     expect(Math.abs(peak - 50)).toBeGreaterThan(bin_spacing)
   })
 
-  it(`refuses to thin time origins on its own`, () => {
-    // A velocity repeating every 8 frames read at origin_stride 8 is sampled at one phase
-    // forever, so a real oscillation comes back as an all-zero curve.
+  it(`averages every time origin, so a phase-locking stride cannot zero an oscillation`, () => {
+    // A velocity repeating every 8 frames read at every 8th origin would be sampled at one
+    // phase forever and come back as a flat curve; the full origin average sees cos^2 = 1/2
     const period = 8
     const n_frames = 80
     const velocities = Array.from({ length: n_frames }, (_, frame_idx) => [
       [Math.cos((2 * Math.PI * frame_idx) / period), 0, 0],
     ])
     const positions = Array.from({ length: n_frames }, () => [[0, 0, 0]])
-    const input = build_vacf_input(positions, { velocity_frames: velocities })
-
-    const honest = calc_vacf(input, {})
-    expect(honest.origin_stride).toBe(1)
-    expect(honest.curves[0].vacf[0]).toBeCloseTo(0.5, 10)
-
-    // opting in is still possible, and still wrong for this signal - which is the point
-    const phase_locked = calc_vacf(input, { origin_stride: period })
-    expect(phase_locked.curves[0].vacf[0]).toBeCloseTo(1, 10)
-  })
-
-  it(`names the stride and the risk when the work budget is exceeded`, () => {
-    expect(() => calc_vacf(orbit(400, 0.05), { work_budget: 100 })).toThrow(
-      /origin_stride >= \d+.*aliases motion whose period divides the stride/s,
-    )
+    const result = calc_vacf(build_vacf_input(positions, { velocity_frames: velocities }))
+    expect(result.curves[0].n_origins).toEqual(result.lags.map((lag) => n_frames - lag))
+    expect(result.curves[0].vacf[0]).toBeCloseTo(0.5, 10)
   })
 
   it(`reports the same peak in cm^-1`, () => {
@@ -115,8 +103,8 @@ describe(`VDOS peak position`, () => {
   })
 
   it(`reports inverse-frame frequencies when dt is supplied but the axis asks for frames`, () => {
-    // frequency_factor returns dt for 1/frame, which cancels against sample_interval, so
-    // the grid (and Nyquist) are independent of the numerical dt.
+    // Inverse frames means cycles per collected frame, so the grid (and Nyquist) are
+    // independent of the numerical dt
     const result = calc_vacf(orbit(600, 0.02), {
       dt: 2,
       time_unit: `fs`,
@@ -146,6 +134,14 @@ describe(`VDOS peak position`, () => {
 })
 
 describe(`windowing`, () => {
+  it(`zero-pads the mirrored VACF 4x so the grid is 8 x n_lags bins wide`, () => {
+    const result = calc_vacf(orbit(600, 0.03), { dt: 1, time_unit: `fs` })
+    // 300 lags (floor(599 / 2) + lag 0) mirrored to 600 and padded 4x -> 2400 -> 4096
+    expect(result.lags).toHaveLength(300)
+    expect(result.n_fft).toBe(4096)
+    expect(n_bins(result)).toBe(result.n_fft / 2 + 1)
+  })
+
   it(`suppresses truncation ringing that the rectangular window leaves behind`, () => {
     // An orbit truncated mid-cycle: the rectangular window's sinc sidelobes ring across
     // the whole axis, Hann's fall away far faster. Measured as the spectral weight more
@@ -171,26 +167,6 @@ describe(`windowing`, () => {
     const rectangular = sidelobe_fraction(`none`)
     expect(sidelobe_fraction(`hann`)).toBeLessThan(rectangular / 2)
     expect(sidelobe_fraction(`gaussian`)).toBeLessThan(rectangular / 2)
-  })
-
-  it(`only interpolates the spectrum when zero padding grows`, () => {
-    // More padding must move the peak by less than a bin, not to a different frequency
-    const coarse = calc_vacf(orbit(600, 0.03), {
-      dt: 1,
-      time_unit: `fs`,
-      vdos: { zero_pad_factor: 1 },
-    })
-    const fine = calc_vacf(orbit(600, 0.03), {
-      dt: 1,
-      time_unit: `fs`,
-      vdos: { zero_pad_factor: 8 },
-    })
-    expect(fine.n_fft).toBe(coarse.n_fft * 8)
-    const coarse_bin = coarse.frequencies[1] - coarse.frequencies[0]
-    const offset = Math.abs(
-      (fine.curves[0].peak_frequency ?? 0) - (coarse.curves[0].peak_frequency ?? 0),
-    )
-    expect(offset).toBeLessThan(coarse_bin)
   })
 })
 
@@ -255,20 +231,6 @@ describe(`no-dt policy`, () => {
 })
 
 describe(`frequency axis bookkeeping`, () => {
-  it(`folds lag_stride into the frequency grid so the peak stays put`, () => {
-    // Sampling every second lag halves the Nyquist frequency; the axis must be built from
-    // dt * lag_stride or the same mode reads at twice its frequency
-    const options = { dt: 1, time_unit: `fs` } as const
-    const dense = calc_vacf(orbit(1000, 0.01), options)
-    const thinned = calc_vacf(orbit(1000, 0.01), { ...options, lag_stride: 2 })
-    expect(thinned.lag_stride).toBe(2)
-    const bin_spacing = thinned.frequencies[1] - thinned.frequencies[0]
-    const offset = Math.abs(
-      (thinned.curves[0].peak_frequency ?? 0) - (dense.curves[0].peak_frequency ?? 0),
-    )
-    expect(offset).toBeLessThan(bin_spacing)
-  })
-
   it(`starts the grid at DC and reaches Nyquist`, () => {
     const result = calc_vacf(orbit(200, 0.05), { dt: 2, time_unit: `fs` })
     expect(result.frequencies[0]).toBe(0)
@@ -276,15 +238,5 @@ describe(`frequency axis bookkeeping`, () => {
     // Nyquist for a 2 fs sample interval is 1 / (2 * 2 fs) = 250 THz
     expect(result.frequencies.at(-1)).toBeCloseTo(250, 8)
     expect(result.curves[0].vdos).toHaveLength(result.frequencies.length)
-  })
-
-  it(`omits the spectrum entirely when the VDOS is skipped`, () => {
-    const result = calc_vacf(orbit(50, 0.1), { vdos: { skip: true } })
-    expect(result.frequencies).toEqual([])
-    expect(result.n_fft).toBe(0)
-    for (const curve of result.curves) {
-      expect(curve.vdos).toEqual([])
-      expect(curve.peak_frequency).toBeNull()
-    }
   })
 })

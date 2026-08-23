@@ -16,8 +16,8 @@ import {
 import TernarySectionCanvas from '$lib/phase-diagram/ternary/TernarySectionCanvas.svelte'
 import { type Component, flushSync, mount, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { doc_query } from '../../setup'
-import { phase, toy_elements, toy_entries } from './fixtures'
+import { doc_query, make_phase } from '../../setup'
+import { toy_elements, toy_entries } from './fixtures'
 
 // Toy system transitions: 400 K (ABC appears), 850 K (two tie-line flips), 1300 K (AB vanishes)
 const mounted: ReturnType<typeof mount>[] = []
@@ -204,8 +204,8 @@ test(`TernarySectionCanvas: of two entries at one composition the stable one tak
   // The metastable polymorph comes first in entry order, so raw-order hit-testing would pick it
   const entries = [
     ...toy_entries,
-    phase({ Li: 1 }, 0.2, { entry_id: `Li-hi` }),
-    phase({ Li: 1 }, 0, { entry_id: `Li-gs` }),
+    make_phase({ Li: 1 }, 0.2, { entry_id: `Li-hi` }),
+    make_phase({ Li: 1 }, 0, { entry_id: `Li-gs` }),
   ]
   const model = prepare_diagram(entries, { elements: toy_elements })
   const hovers: (SectionHover | null)[] = []
@@ -221,6 +221,77 @@ test(`TernarySectionCanvas: of two entries at one composition the stable one tak
   )
   const [hovered] = hovers
   expect(hovered?.kind === `phase` && hovered.phase.entry.entry_id).toBe(`Li-gs`)
+})
+
+test(`TernarySectionCanvas: an exclude_from_hull phase below the hull is not painted stable`, () => {
+  // Negative hull distance but not a hull vertex: with unstable phases hidden it must not be
+  // drawn (nor out-rank the true ground state in the hit test)
+  const entries = [
+    ...toy_entries,
+    make_phase({ Li: 1 }, -0.3, { entry_id: `Li-excluded`, exclude_from_hull: true }),
+    make_phase({ Li: 1 }, 0, { entry_id: `Li-gs` }),
+  ]
+  const model = prepare_diagram(entries, { elements: toy_elements })
+  const section = compute_section(model, 300)
+  const excluded_idx = model.phases.findIndex((item) => item.entry.entry_id === `Li-excluded`)
+  expect(section.e_above_hull[excluded_idx]).toBeLessThan(0)
+  expect(section.stable).not.toContain(excluded_idx)
+  const hovers: (SectionHover | null)[] = []
+  mount_it(TernarySectionCanvas, {
+    model,
+    section,
+    settings: { ...TERNARY_DISPLAY_DEFAULTS, show_unstable: false },
+    on_hover: (data: SectionHover | null) => hovers.push(data),
+  })
+  doc_query(`.ternary-section canvas`).dispatchEvent(
+    new PointerEvent(`pointermove`, { clientX: 707, clientY: 566, bubbles: true }),
+  )
+  const [hovered] = hovers
+  expect(hovered?.kind === `phase` && hovered.phase.entry.entry_id).toBe(`Li-gs`)
+})
+
+test(`TernarySectionCanvas: a section change rebuilds entries without mutating the model`, () => {
+  // AB is tabulated 300-1500 K: stable at 300 K, undefined (NaN distance) at 2000 K
+  const model = prepare_diagram(toy_entries, { elements: toy_elements })
+  const ab_idx = model.phases.findIndex((phase) => phase.entry.entry_id === `AB`)
+  const entries_before = structuredClone(model.phases.map((phase) => phase.entry))
+  const state = $state({ section: compute_section(model, 300) })
+  const hovers: (SectionHover | null)[] = []
+  mount_it(
+    TernarySectionCanvas,
+    bound(
+      {
+        model,
+        settings: { ...TERNARY_DISPLAY_DEFAULTS, show_unstable: false },
+        on_hover: (data: SectionHover | null) => hovers.push(data),
+      },
+      state,
+      `section`,
+    ),
+  )
+  // AB's xy projected into the mocked 800×600 canvas (triangle size 614.3 px, origin 92.85/566)
+  const [ab_x, ab_y] = model.phases[ab_idx].xy
+  const hover_ab = () => {
+    doc_query(`.ternary-section canvas`).dispatchEvent(
+      new PointerEvent(`pointermove`, {
+        clientX: 92.85 + ab_x * 614.3,
+        clientY: 566 - ab_y * 614.3,
+        bubbles: true,
+      }),
+    )
+    return hovers.at(-1)
+  }
+  const at_300 = hover_ab()
+  expect(at_300?.kind === `phase` && at_300.phase.idx).toBe(ab_idx)
+  expect(at_300?.kind === `phase` && at_300.e_above_hull).toBe(0)
+
+  state.section = compute_section(model, 2000)
+  flushSync()
+  expect(state.section.e_above_hull[ab_idx]).toBeNaN()
+  // AB has no entry in this section, so the pointer lands on the composition, not the phase
+  expect(hover_ab()?.kind).toBe(`composition`)
+  // the per-section energy fields never leak into the model's entries
+  expect(model.phases.map((phase) => phase.entry)).toEqual(entries_before)
 })
 
 describe(`PhaseEventList`, () => {
@@ -262,7 +333,11 @@ describe(`PhaseStabilityMap`, () => {
   // Two extra phases separate the row filters: one 50 meV above the KLi-KNa tie-line (near
   // the hull, never stable), one far above the hull everywhere
   const map_diagram = compute_ternary_phase_diagram(
-    [...toy_entries, phase({ Li: 1, Na: 1, K: 2 }, -0.25), phase({ Li: 3, Na: 1 }, 0.5)],
+    [
+      ...toy_entries,
+      make_phase({ Li: 1, Na: 1, K: 2 }, -0.25),
+      make_phase({ Li: 3, Na: 1 }, 0.5),
+    ],
     { elements: toy_elements },
   )
   test.each([
@@ -380,8 +455,13 @@ test(`TernaryPhaseDiagramControls writes display patches, T range and gas pressu
   expect(document.body.textContent).toContain(`p(O2)`)
   const p_slider = doc_query<HTMLInputElement>(`input[type=range][min="-12"]`)
   expect(Number(p_slider.value)).toBeCloseTo(Math.log10(0.2095), 6)
+  // Dragging only previews the readout; the bound pressure (a full re-sweep) commits on release
   p_slider.value = `-6`
   p_slider.dispatchEvent(new Event(`input`, { bubbles: true }))
+  flushSync()
+  expect(state.gas_pressures.O2).toBeUndefined()
+  expect(doc_query(`.pressure`).textContent).toContain(`1e-6`)
+  p_slider.dispatchEvent(new Event(`change`, { bubbles: true }))
   flushSync()
   expect(state.gas_pressures.O2).toBeCloseTo(1e-6, 12)
 })

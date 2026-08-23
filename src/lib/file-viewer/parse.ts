@@ -1,5 +1,5 @@
 // Worker-safe file parsing with no Svelte or DOM imports.
-import { COMPRESSION_EXTENSIONS_REGEX } from '$lib/constants'
+import { BINARY_VIEWER_EXT_REGEX, COMPRESSION_EXTENSIONS_REGEX } from '$lib/constants'
 import { parse_fermi_file } from '$lib/fermi-surface/parse'
 import {
   decompress_data,
@@ -7,7 +7,6 @@ import {
   detect_compression_format,
 } from '$lib/io/decompress'
 import { parse_volumetric_file } from '$lib/isosurface/parse'
-import { volume_from_json } from '$lib/isosurface/types'
 import { is_vaspwave_filename, parse_vaspwave_charge } from '$lib/isosurface/parse-vaspwave'
 import { parse_structure_file } from '$lib/structure/parse'
 import { is_indexable_trajectory_filename } from '$lib/trajectory/format-detect'
@@ -22,7 +21,7 @@ import { parse_large_file_marker } from './host-transfer'
 import type { ViewType } from './types'
 import { FERMI_FILE_RE, VOLUMETRIC_EXT_RE, VOLUMETRIC_VASP_RE } from './types'
 import type { RenderableType } from './detect'
-import { detect_view_type } from './detect'
+import { detect_view_type, volume_json_to_isosurface_input } from './detect'
 
 // Maps detect.ts RenderableType to ViewType for direct rendering.
 // Types not listed here fall through to json_browser (which can render all types
@@ -125,7 +124,7 @@ export const parse_file_content = async (
     // Compressed binary formats (e.g. vaspwave.h5.gz as ferrox stores them on S3,
     // or compressed ASE .traj files): decompress to binary first — generic text
     // decompression would corrupt their bytes — so routing sees the inner name.
-    const is_binary_format = /\.(?:h5|hdf5|traj)$/i.test(filename)
+    const is_binary_format = BINARY_VIEWER_EXT_REGEX.test(filename)
     if (compression_format) {
       // gzip/deflate/zip inflate here; unsupported formats fail with a clear extraction error
       if (is_binary_format) buffer = await decompress_data_binary(buffer, compression_format)
@@ -186,13 +185,10 @@ export const parse_file_content = async (
             // generic JSON handling below
           }
         }
-        // Volumetric JSON (nested grid or flat values) becomes a typed-array volume and
-        // is wrapped in { structure, volumes } for the isosurface renderer
         if (detected === `volumetric`) {
-          const volume = volume_from_json(parsed_json)
           return {
             type: `isosurface`,
-            data: { structure: { sites: [], lattice: volume.lattice }, volumes: [volume] },
+            data: volume_json_to_isosurface_input(parsed_json),
             filename,
           }
         }

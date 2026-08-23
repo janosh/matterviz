@@ -1,12 +1,18 @@
-// Tests for indexed BufferGeometry construction from Fermi isosurfaces
-import { build_isosurface_geometry, nearest_vertex_index } from '$lib/fermi-surface/geometry'
+// Tests for indexed BufferGeometry construction and colouring of Fermi isosurfaces
+import {
+  apply_vertex_colors,
+  build_isosurface_geometry,
+  nearest_vertex_index,
+} from '$lib/fermi-surface/geometry'
+import type { VertexColorSpec } from '$lib/fermi-surface/geometry'
 import type { FermiIsosurface } from '$lib/fermi-surface/types'
 import { css_to_linear_rgb } from '$lib/scene/colors'
 import { get_d3_interpolator } from '$lib/colors'
 import type { Vec3 } from '$lib/math'
+import type { BufferAttribute } from 'three/webgpu'
 import { describe, expect, test } from 'vitest'
 
-// Unit-square sheet at z=0 plus one vertex lifted to z=1, so normals are non-trivial
+// Unit-square sheet at z=0 plus one vertex lifted to z=1
 const vertices: Vec3[] = [
   [0, 0, 0],
   [1, 0, 0],
@@ -15,96 +21,49 @@ const vertices: Vec3[] = [
   [0.5, 0.5, 1],
 ]
 const make_surface = (overrides: Partial<FermiIsosurface> = {}): FermiIsosurface => ({
-  vertices,
-  faces: [[0, 1, 2, 3]], // one quad → two triangles (0,1,2), (0,2,3)
-  normals: vertices.map(() => [0, 0, 1]),
+  positions: Float32Array.from(vertices.flat()),
+  indices: Uint32Array.from([0, 1, 2, 0, 2, 3]),
+  normals: Float32Array.from(vertices.flatMap(() => [0, 0, 1])),
   band_index: 0,
   spin: null,
   ...overrides,
 })
+const viridis: VertexColorSpec = { colormap: `interpolateViridis`, color_range: [0, 1] }
 
 describe(`build_isosurface_geometry`, () => {
-  test(`builds an indexed geometry: one position per vertex, fan-triangulated index`, () => {
-    const geometry = build_isosurface_geometry(make_surface())
+  test(`wraps the surface buffers without copying`, () => {
+    const surface = make_surface()
+    const geometry = build_isosurface_geometry(surface)
     if (!geometry) throw new Error(`expected geometry`)
     expect(geometry.getAttribute(`position`).count).toBe(5)
-    expect(Array.from(geometry.getAttribute(`position`).array)).toEqual(vertices.flat())
-    expect(Array.from(geometry.getIndex()?.array ?? [])).toEqual([0, 1, 2, 0, 2, 3])
-    expect(geometry.getAttribute(`normal`).count).toBe(5)
+    expect(geometry.getAttribute(`position`).array).toBe(surface.positions)
+    expect(geometry.getAttribute(`normal`).array).toBe(surface.normals)
+    expect(geometry.getIndex()?.array).toBe(surface.indices)
     expect(geometry.hasAttribute(`color`)).toBe(false)
     expect(geometry.boundingSphere?.radius).toBeGreaterThan(0.7)
     geometry.dispose()
   })
 
   test.each([
-    {
-      label: `faces with out-of-range indices`,
-      faces: [
-        [0, 1, 2],
-        [0, 2, 9],
-        [-1, 0, 1],
-      ],
-      expected: [0, 1, 2],
-    },
-    {
-      label: `degenerate sub-3 faces`,
-      faces: [
-        [0, 1],
-        [1, 2, 3],
-      ],
-      expected: [1, 2, 3],
-    },
-  ])(`drops $label`, ({ faces, expected }) => {
-    const geometry = build_isosurface_geometry(make_surface({ faces }))
-    expect(Array.from(geometry?.getIndex()?.array ?? [])).toEqual(expected)
-    geometry?.dispose()
-  })
-
-  test.each([
-    { label: `no vertices`, overrides: { vertices: [] as Vec3[] } },
-    { label: `no faces`, overrides: { faces: [] as number[][] } },
-    { label: `only invalid faces`, overrides: { faces: [[7, 8, 9]] } },
+    { label: `no vertices`, overrides: { positions: new Float32Array(0) } },
+    { label: `no triangles`, overrides: { indices: new Uint32Array(0) } },
   ])(`returns null for $label`, ({ overrides }) => {
     expect(build_isosurface_geometry(make_surface(overrides))).toBeNull()
   })
+})
 
-  test(`computes area-weighted vertex normals when the surface has none`, () => {
-    // Tent: base quad plus four side triangles to the apex; apex normal points straight up
-    const faces = [
-      [0, 2, 1],
-      [0, 3, 2], // base, wound to face −z
-      [0, 1, 4],
-      [1, 2, 4],
-      [2, 3, 4],
-      [3, 0, 4],
-    ]
-    const geometry = build_isosurface_geometry(make_surface({ faces, normals: [] }))
-    if (!geometry) throw new Error(`expected geometry`)
-    const normals = geometry.getAttribute(`normal`).array
-    const apex = Array.from(normals.subarray(12, 15))
-    expect(apex[0]).toBeCloseTo(0, 6)
-    expect(apex[1]).toBeCloseTo(0, 6)
-    expect(apex[2]).toBeCloseTo(1, 6)
-    for (let idx = 0; idx < 5; idx++) {
-      expect(
-        Math.hypot(normals[3 * idx], normals[3 * idx + 1], normals[3 * idx + 2]),
-      ).toBeCloseTo(1, 6)
-    }
-    geometry.dispose()
-  })
-
+describe(`apply_vertex_colors`, () => {
   test(`maps per-vertex properties through the colormap once per vertex (linear RGB)`, () => {
-    const properties = [0, 0.25, 0.5, 0.75, 1]
-    const geometry = build_isosurface_geometry(make_surface({ properties }), {
-      colormap: `interpolateViridis`,
-      color_range: [0, 1],
-    })
+    const properties = Float32Array.from([0, 0.25, 0.5, 0.75, 1])
+    const surface = make_surface({ properties })
+    const geometry = build_isosurface_geometry(surface)
     if (!geometry) throw new Error(`expected geometry`)
+    apply_vertex_colors(geometry, surface, viridis)
     const colors = geometry.getAttribute(`color`)
     expect(colors.count).toBe(5)
-    const viridis = get_d3_interpolator(`interpolateViridis`)
+    const interpolator = get_d3_interpolator(`interpolateViridis`)
     for (const [idx, prop] of properties.entries()) {
-      const [red, green, blue] = css_to_linear_rgb(viridis(prop))
+      const [red, green, blue] = css_to_linear_rgb(interpolator(prop))
       // 256-entry LUT quantization: measured max per-channel deviation 0.0065 in linear RGB
       expect(Math.abs(colors.array[3 * idx] - red)).toBeLessThan(0.01)
       expect(Math.abs(colors.array[3 * idx + 1] - green)).toBeLessThan(0.01)
@@ -113,13 +72,35 @@ describe(`build_isosurface_geometry`, () => {
     geometry.dispose()
   })
 
-  test(`skips the colour attribute when properties do not cover every vertex`, () => {
-    const geometry = build_isosurface_geometry(make_surface({ properties: [1, 2] }), {
-      colormap: `interpolateViridis`,
+  test(`recolours in place and removes the attribute when colouring is switched off`, () => {
+    const surface = make_surface({ properties: Float32Array.from([0, 0.25, 0.5, 0.75, 1]) })
+    const geometry = build_isosurface_geometry(surface)
+    if (!geometry) throw new Error(`expected geometry`)
+    apply_vertex_colors(geometry, surface, viridis)
+    const first = geometry.getAttribute(`color`) as BufferAttribute
+    const before = Array.from(first.array)
+    const version_before = first.version
+    apply_vertex_colors(geometry, surface, {
+      colormap: `interpolateMagma`,
       color_range: [0, 1],
     })
-    expect(geometry?.hasAttribute(`color`)).toBe(false)
-    geometry?.dispose()
+    // Same buffer, new values, flagged for re-upload — the mesh buffers are untouched
+    expect(geometry.getAttribute(`color`)).toBe(first)
+    expect(Array.from(first.array)).not.toEqual(before)
+    expect(first.version).toBeGreaterThan(version_before) // needsUpdate bumped the version
+    expect(geometry.getAttribute(`position`).array).toBe(surface.positions)
+    apply_vertex_colors(geometry, surface, null)
+    expect(geometry.hasAttribute(`color`)).toBe(false)
+    geometry.dispose()
+  })
+
+  test(`skips the colour attribute when properties do not cover every vertex`, () => {
+    const surface = make_surface({ properties: Float32Array.from([1, 2]) })
+    const geometry = build_isosurface_geometry(surface)
+    if (!geometry) throw new Error(`expected geometry`)
+    apply_vertex_colors(geometry, surface, viridis)
+    expect(geometry.hasAttribute(`color`)).toBe(false)
+    geometry.dispose()
   })
 })
 

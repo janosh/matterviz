@@ -1,8 +1,10 @@
 import ConvexHullControls from '$lib/convex-hull/ConvexHullControls.svelte'
+import { hull_style_css } from '$lib/convex-hull/helpers'
 import { default_controls } from '$lib/convex-hull/index'
 import type { ConvexHullEntry } from '$lib/convex-hull/types'
 import { flushSync, mount, type ComponentProps } from 'svelte'
 import { describe, expect, test } from 'vitest'
+import { doc_query } from '../setup'
 
 const mag = (magnetic_ordering?: string): ConvexHullEntry => ({
   composition: { Fe: 1, O: 1 },
@@ -136,6 +138,27 @@ describe(`ConvexHullControls category filters (magnetic default)`, () => {
     first_input.value = ``
     first_input.dispatchEvent(new Event(`input`, { bubbles: true }))
     expect(state).toMatchObject({ [key]: 12 })
+  })
+
+  test(`legend swatches read the CSS vars that hull_style_css defines on the wrapper`, () => {
+    // Same wiring as the hull components: hull_style_css goes on the wrapper, the controls
+    // render inside it, so each swatch must pick up its colour through the inherited var
+    const wrapper = document.createElement(`div`)
+    wrapper.setAttribute(`style`, hull_style_css({ stable: `#111`, unstable: `#222` }))
+    document.body.append(wrapper)
+    mount(ConvexHullControls, {
+      target: wrapper,
+      props: {
+        controls_open: true,
+        stable_entries: [mag()],
+        unstable_entries: [mag()],
+        merged_controls: default_controls,
+      },
+    })
+    const swatch_background = (kind: string) =>
+      getComputedStyle(doc_query(`.marker.${kind}`)).background
+    expect(swatch_background(`stable`)).toBe(`#111`)
+    expect(swatch_background(`unstable`)).toBe(`#222`)
   })
 
   test(`Space key also activates the stable/unstable legend toggles`, () => {

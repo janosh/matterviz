@@ -32,28 +32,54 @@ export const DEFAULT_ISO_COLORMAP: IsoColormap = `interpolateViridis`
 export const is_signed_range = (data_range: DataRange): boolean =>
   data_range.min < -data_range.abs_max * 0.01 && data_range.max > data_range.abs_max * 0.01
 
-const LUT_SIZE = 256
+export const COLORMAP_LUT_SIZE = 256
 
-// LUTs cached per colormap name — building one parses 256 CSS color strings.
-// Private so the mutable cached arrays cannot be corrupted by consumers.
-const lut_cache = new Map<string, Float32Array>()
-
-function get_colormap_lut(colormap: D3InterpolateName): Float32Array {
-  const cached = lut_cache.get(colormap)
+// Sample a d3 colormap into a flat RGB lookup table of COLORMAP_LUT_SIZE entries, converting
+// each CSS colour string with `to_rgb` (linear floats for vertex colours, 8-bit sRGB for
+// canvas pixels). Cached per (colormap, cache): building one parses 256 CSS colour strings.
+export function build_colormap_lut<Lut extends Float32Array | Uint8ClampedArray>(
+  colormap: D3InterpolateName,
+  cache: Map<D3InterpolateName, Lut>,
+  lut_ctor: new (length: number) => Lut,
+  to_rgb: (css: string) => readonly [number, number, number],
+): Lut {
+  const cached = cache.get(colormap)
   if (cached) return cached
   const interpolator = get_d3_interpolator(colormap)
-  const lut = new Float32Array(LUT_SIZE * 3)
-  for (let idx = 0; idx < LUT_SIZE; idx++) {
-    // Vertex colors are read as Linear-sRGB, so d3's sRGB output must be converted. Uncached:
-    // the finished LUT is the cache, and 256 one-shot keys per colormap would evict the shared
-    // memo's element colors for nothing.
-    const [red, green, blue] = parse_linear_rgb(interpolator(idx / (LUT_SIZE - 1)))
+  const lut = new lut_ctor(COLORMAP_LUT_SIZE * 3)
+  for (let idx = 0; idx < COLORMAP_LUT_SIZE; idx++) {
+    const [red, green, blue] = to_rgb(interpolator(idx / (COLORMAP_LUT_SIZE - 1)))
     lut[idx * 3] = red
     lut[idx * 3 + 1] = green
     lut[idx * 3 + 2] = blue
   }
-  lut_cache.set(colormap, lut)
+  cache.set(colormap, lut)
   return lut
+}
+
+// Private so the mutable cached arrays cannot be corrupted by consumers
+const linear_lut_cache = new Map<D3InterpolateName, Float32Array>()
+
+// Vertex colors are read as Linear-sRGB, so d3's sRGB output is converted. parse_linear_rgb is
+// uncached on purpose: the finished LUT is the cache, and 256 one-shot keys per colormap
+// would evict the shared memo's element colors for nothing.
+const get_colormap_lut = (colormap: D3InterpolateName): Float32Array =>
+  build_colormap_lut(colormap, linear_lut_cache, Float32Array, parse_linear_rgb)
+
+// Range for a colormap over values in [min, max]. `true` forces a range symmetric about
+// zero, `false` keeps [min, max] as is, and `auto` (the default) symmetrises only when the
+// values straddle zero so diverging colormaps keep zero at their centre.
+export type ColorRangeSymmetry = boolean | `auto`
+export function fit_color_range(
+  min: number,
+  max: number,
+  symmetric: ColorRangeSymmetry = `auto`,
+): Vec2 {
+  if (symmetric === true || (symmetric === `auto` && min < 0 && max > 0)) {
+    const abs_max = Math.max(Math.abs(min), Math.abs(max))
+    return [-abs_max, abs_max]
+  }
+  return [min, max]
 }
 
 interface VertexColorOptions {
@@ -91,7 +117,7 @@ export function scalars_to_vertex_colors(
     // span === 0 maps everything to the middle of the colormap
     const normalized = span === 0 ? 0.5 : (value - range_min) * inv_span
     const clamped = normalized < 0 ? 0 : Math.min(1, normalized)
-    const lut_idx = Math.round(clamped * (LUT_SIZE - 1)) * 3
+    const lut_idx = Math.round(clamped * (COLORMAP_LUT_SIZE - 1)) * 3
     colors[idx * 3] = lut[lut_idx]
     colors[idx * 3 + 1] = lut[lut_idx + 1]
     colors[idx * 3 + 2] = lut[lut_idx + 2]
@@ -118,12 +144,12 @@ export function auto_color_config(data_range: DataRange): {
 // ignoring non-finite (out-of-bounds) markers. This is the default when a layer
 // has no explicit color_range: the whole-volume range is usually dominated by
 // extreme values near nuclei that never appear on the rendered surface.
-// `symmetric` (pass when the source field is signed) forces a range symmetric
+// `symmetric: true` (pass when the source field is signed) forces a range symmetric
 // about zero even when the sampled values happen to be one-signed, so diverging
-// colormaps keep zero at their center.
+// colormaps keep zero at their center; see fit_color_range for the other modes.
 export function compute_scalar_range(
   scalar_arrays: Float32Array[],
-  { symmetric = false }: { symmetric?: boolean } = {},
+  { symmetric = `auto` }: { symmetric?: ColorRangeSymmetry } = {},
 ): Vec2 {
   let min = Infinity
   let max = -Infinity
@@ -135,9 +161,5 @@ export function compute_scalar_range(
     }
   }
   if (min === Infinity) return [0, 1] // no finite samples
-  if (symmetric || (min < 0 && max > 0)) {
-    const abs_max = Math.max(Math.abs(min), Math.abs(max))
-    return [-abs_max, abs_max]
-  }
-  return [min, max]
+  return fit_color_range(min, max, symmetric)
 }

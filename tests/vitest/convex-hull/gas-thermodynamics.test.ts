@@ -15,12 +15,7 @@ import {
 import type { GasSpecies, GasThermodynamicsConfig, PhaseData } from '$lib/convex-hull/types'
 import { DEFAULT_GAS_PRESSURES, GAS_SPECIES } from '$lib/convex-hull/types'
 import { describe, expect, test } from 'vitest'
-
-// Helper to create test entries with default energy=0
-const make_entry = (comp: Record<string, number>, energy = 0): PhaseData => ({
-  composition: comp,
-  energy,
-})
+import { make_phase } from '../setup'
 
 describe(`gas-thermodynamics: physical data tables`, () => {
   // pin the stoichiometry/gas-mapping tables — a typo here silently skews all corrections
@@ -105,7 +100,7 @@ describe(`gas-thermodynamics: chemical potential calculations`, () => {
 
 describe(`gas-thermodynamics: analyze_gas_data`, () => {
   test(`returns no gas elements when config has no enabled gases`, () => {
-    const entries = [make_entry({ Fe: 1, O: 2 })]
+    const entries = [make_phase({ Fe: 1, O: 2 })]
     const config: GasThermodynamicsConfig = {}
     const result = analyze_gas_data(entries, config)
 
@@ -115,7 +110,7 @@ describe(`gas-thermodynamics: analyze_gas_data`, () => {
   })
 
   test(`detects O from O2 when O2 is enabled`, () => {
-    const entries = [make_entry({ Fe: 2, O: 3 })]
+    const entries = [make_phase({ Fe: 2, O: 3 })]
     const config: GasThermodynamicsConfig = { enabled_gases: [`O2`] }
     const result = analyze_gas_data(entries, config)
 
@@ -125,7 +120,7 @@ describe(`gas-thermodynamics: analyze_gas_data`, () => {
   })
 
   test(`detects multiple gas elements`, () => {
-    const entries = [make_entry({ Fe: 1, O: 1, N: 1 })]
+    const entries = [make_phase({ Fe: 1, O: 1, N: 1 })]
     const config: GasThermodynamicsConfig = { enabled_gases: [`O2`, `N2`] }
     const result = analyze_gas_data(entries, config)
 
@@ -137,7 +132,7 @@ describe(`gas-thermodynamics: analyze_gas_data`, () => {
   })
 
   test(`ignores elements not from enabled gases`, () => {
-    const entries = [make_entry({ Fe: 1, O: 1 })]
+    const entries = [make_phase({ Fe: 1, O: 1 })]
     const config: GasThermodynamicsConfig = { enabled_gases: [`N2`] } // O2 not enabled
     const result = analyze_gas_data(entries, config)
 
@@ -147,7 +142,7 @@ describe(`gas-thermodynamics: analyze_gas_data`, () => {
 
   test(`respects custom element_to_gas mapping`, () => {
     // Use Xe (xenon) as a custom element mapped to O2 for testing
-    const entries = [make_entry({ Fe: 1, Xe: 1 })]
+    const entries = [make_phase({ Fe: 1, Xe: 1 })]
     const config: GasThermodynamicsConfig = {
       enabled_gases: [`O2`],
       element_to_gas: { Xe: `O2` }, // Custom: Xe comes from O2
@@ -193,13 +188,13 @@ describe(`gas-thermodynamics: get_effective_pressures`, () => {
 
 describe(`gas-thermodynamics: apply_gas_corrections`, () => {
   test(`returns entries unchanged when no gas config`, () => {
-    const entries = [make_entry({ Fe: 2, O: 3 }, -10)]
+    const entries = [make_phase({ Fe: 2, O: 3 }, -2)]
     const result = apply_gas_corrections(entries, undefined, 500)
     expect(result).toBe(entries)
   })
 
   test(`returns entries unchanged when no enabled gases`, () => {
-    const entries = [make_entry({ Fe: 2, O: 3 }, -10)]
+    const entries = [make_phase({ Fe: 2, O: 3 }, -2)]
     const config: GasThermodynamicsConfig = { enabled_gases: [] }
     const result = apply_gas_corrections(entries, config, 500)
     expect(result).toBe(entries)
@@ -207,9 +202,9 @@ describe(`gas-thermodynamics: apply_gas_corrections`, () => {
 
   test(`only applies correction to unary (elemental) entries`, () => {
     const entries = [
-      make_entry({ O: 1 }, 0), // Unary O - should be corrected
-      make_entry({ Fe: 1 }, 0), // Unary Fe - no O, no correction
-      make_entry({ Fe: 2, O: 3 }, -10), // Binary Fe2O3 - should NOT be corrected
+      make_phase({ O: 1 }), // Unary O - should be corrected
+      make_phase({ Fe: 1 }), // Unary Fe - no O, no correction
+      make_phase({ Fe: 2, O: 3 }, -2), // Binary Fe2O3 - should NOT be corrected
     ]
     const config: GasThermodynamicsConfig = {
       enabled_gases: [`O2`],
@@ -224,7 +219,7 @@ describe(`gas-thermodynamics: apply_gas_corrections`, () => {
   })
 
   test(`leaves compound entries unchanged`, () => {
-    const entries = [make_entry({ Fe: 1, O: 1 }, -5)] // FeO compound
+    const entries = [make_phase({ Fe: 1, O: 1 }, -2.5)] // FeO compound
     const config: GasThermodynamicsConfig = {
       enabled_gases: [`O2`],
       pressures: { O2: 0.21 },
@@ -250,7 +245,7 @@ describe(`gas-thermodynamics: apply_gas_corrections`, () => {
   })
 
   test(`correction to O reference changes with pressure`, () => {
-    const entries = [make_entry({ O: 1 }, 0)]
+    const entries = [make_phase({ O: 1 })]
     const config_low_P: GasThermodynamicsConfig = {
       enabled_gases: [`O2`],
       pressures: { O2: 0.001 }, // Low pressure
@@ -296,7 +291,7 @@ describe(`gas-thermodynamics: formatting`, () => {
 
 describe(`gas-thermodynamics: multi-gas scenarios`, () => {
   test(`apply_gas_corrections applies to both O and N unary references`, () => {
-    const entries = [make_entry({ O: 1 }), make_entry({ N: 1 }), make_entry({ Fe: 1 })]
+    const entries = [make_phase({ O: 1 }), make_phase({ N: 1 }), make_phase({ Fe: 1 })]
     const config: GasThermodynamicsConfig = {
       enabled_gases: [`O2`, `N2`],
       pressures: { O2: 0.21, N2: 0.78 },
@@ -313,11 +308,11 @@ describe(`gas-thermodynamics: multi-gas scenarios`, () => {
 
   test(`quaternary system with multiple gas elements`, () => {
     const entries = [
-      make_entry({ Fe: 1 }),
-      make_entry({ O: 1 }),
-      make_entry({ N: 1 }),
-      make_entry({ H: 1 }),
-      make_entry({ Fe: 0.5, O: 0.25, N: 0.25 }),
+      make_phase({ Fe: 1 }),
+      make_phase({ O: 1 }),
+      make_phase({ N: 1 }),
+      make_phase({ H: 1 }),
+      make_phase({ Fe: 0.5, O: 0.25, N: 0.25 }),
     ]
     const config: GasThermodynamicsConfig = {
       enabled_gases: [`O2`, `N2`, `H2`],

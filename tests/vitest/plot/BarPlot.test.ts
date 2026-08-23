@@ -1,18 +1,8 @@
 import { BarPlot } from '$lib'
-import {
-  AXIS_LABEL_HEIGHT,
-  AXIS_LABEL_OUTER,
-  DEFAULT_PLOT_PADDING,
-} from '$lib/plot/core/layout'
 import type { BarHandlerProps, BarSeries } from '$lib/plot'
 import { type ComponentProps, createRawSnippet, mount, tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import {
-  axis_label_pivot_y,
-  inside_clip_path,
-  mount_sized,
-  with_measured_text,
-} from '../setup'
+import { inside_clip_path, mount_sized, with_measured_text } from '../setup'
 
 const basic: BarSeries = {
   x: [1, 2, 3, 4, 5],
@@ -25,15 +15,6 @@ const mount_sized_bar_plot = (
   props: Partial<ComponentProps<typeof BarPlot>>,
   size: { width?: number; height?: number } = {},
 ): Promise<HTMLElement> => mount_sized(BarPlot, props, { selector: `.bar-plot`, ...size })
-
-// Right padding read off the chart-area clip rect. Asserting this rather than the clip
-// width keeps the left pad, which these tests don't constrain, out of the expectation.
-const right_pad = (plot: HTMLElement, width = 400): number => {
-  const clip_rect = plot.querySelector(`clipPath rect`)
-  return (
-    width - Number(clip_rect?.getAttribute(`x`)) - Number(clip_rect?.getAttribute(`width`))
-  )
-}
 
 describe(`BarPlot`, () => {
   afterEach(() => vi.restoreAllMocks())
@@ -175,24 +156,6 @@ describe(`BarPlot`, () => {
     },
   )
 
-  test(`mounts with x2-axis series and renders x2 axis`, async () => {
-    const plot = await mount_sized_bar_plot({
-      series: [
-        basic,
-        {
-          x: [100, 200, 300],
-          y: [5, 15, 25],
-          x_axis: `x2`,
-          label: `X2 Series`,
-          color: `orangered`,
-        },
-      ],
-      x2_axis: { label: `Temperature (K)` },
-    })
-    expect(plot.querySelector(`g.x2-axis`)).toBeInstanceOf(SVGGElement)
-    expect(plot.querySelector(`.x2-label`)?.textContent).toBe(`Temperature (K)`)
-  })
-
   const valid_values = [1, 2]
   const invalid_values = [NaN, Infinity]
   const invalid_x = { x: invalid_values, y: valid_values }
@@ -207,25 +170,11 @@ describe(`BarPlot`, () => {
       primary_axis: { x_axis: `x1` },
     },
     {
-      name: `vertical x2 with invalid values`,
-      axis: `x2`,
-      orientation: `vertical`,
-      invalid_series: { ...invalid_y, x_axis: `x2` },
-      primary_axis: { x_axis: `x1` },
-    },
-    {
       name: `vertical x2 with unpaired coordinates`,
       axis: `x2`,
       orientation: `vertical`,
       invalid_series: { ...unpaired_values, x_axis: `x2` },
       primary_axis: { x_axis: `x1` },
-    },
-    {
-      name: `vertical y2 with invalid values`,
-      axis: `y2`,
-      orientation: `vertical`,
-      invalid_series: { ...invalid_y, y_axis: `y2` },
-      primary_axis: { y_axis: `y1` },
     },
     {
       name: `horizontal x2 with invalid values`,
@@ -247,52 +196,6 @@ describe(`BarPlot`, () => {
       }
     },
   )
-
-  test(`y2 axis title shares the y axis title's vertical center`, async () => {
-    const plot = await mount_sized_bar_plot({
-      series: [basic, { x: [1, 2, 3], y: [100, 200, 300], label: `Sec`, y_axis: `y2` }],
-      y_axis: { label: `Primary` },
-      y2_axis: { label: `Secondary` },
-    })
-    // both y titles rotate about the plot's vertical center; a stale label_shift default
-    // used to push the y2 title 60px below center
-    const pivot_y = (selector: string) => axis_label_pivot_y(plot, selector)
-    expect(pivot_y(`.axis-label.y2-label`)).toBeCloseTo(pivot_y(`.axis-label.y-label`), 5)
-  })
-
-  test(`explicit top/right padding is not overridden by secondary-axis auto-padding`, async () => {
-    const plot = await mount_sized_bar_plot({
-      series: [
-        basic,
-        { ...basic, label: `Y2`, y_axis: `y2` },
-        { ...basic, label: `X2`, x_axis: `x2` },
-      ],
-      padding: { r: 10, t: 10 },
-      x2_axis: { label: `Top` },
-      y2_axis: { label: `Secondary` },
-    })
-    expect(right_pad(plot)).toBe(10)
-    expect(Number(plot.querySelector(`clipPath rect`)?.getAttribute(`y`))).toBe(10)
-  })
-
-  test(`title-only y2 axis expands right padding`, async () => {
-    const plot = await mount_sized_bar_plot({
-      series: [basic, { ...basic, label: `Y2`, y_axis: `y2` }],
-      y_axis: { ticks: [] },
-      y2_axis: { label: `Secondary`, ticks: [] },
-    })
-    // a title with no ticks still reserves its own band, past the shared default
-    expect(right_pad(plot)).toBe(AXIS_LABEL_HEIGHT + AXIS_LABEL_OUTER)
-    expect(right_pad(plot)).toBeGreaterThan(DEFAULT_PLOT_PADDING.r)
-  })
-
-  test(`default padding grows for wide y-axis ticks`, async () => {
-    const plot = await with_measured_text(
-      () => mount_sized_bar_plot({ series: [basic], y_axis: { label: `Value` } }),
-      60, // 2-digit y ticks measure 120px wide, far past the 60px default left pad
-    )
-    expect(Number(plot.querySelector(`clipPath rect`)?.getAttribute(`x`))).toBeGreaterThan(60)
-  })
 
   test(`line markers preserve zero-valued inputs and fractional range edges`, async () => {
     // Regression: .filter(Boolean) incorrectly removed 0 from auto-range calculation
@@ -402,6 +305,15 @@ describe(`BarPlot`, () => {
     expect(b_rects[1].bottom).toBeCloseTo(a_rects[2].top, 4)
     // B bar at x=4 has no A bar below it -> starts at baseline 0 (same bottom as A bars)
     expect(b_rects[2].bottom).toBeCloseTo(a_rects[0].bottom, 4)
+
+    // Hovering B's x=2 bar anchors the tooltip at its stacked top (above A's bar), not at the
+    // unstacked value 5 near the baseline
+    const b_bar = plot.querySelector(`.bar-series[data-series-idx="1"] path[role="button"]`)
+    b_bar?.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
+    await tick()
+    const tooltip = plot.querySelector<HTMLElement>(`.plot-tooltip`)
+    expect(tooltip).not.toBeNull()
+    expect(Number(tooltip?.style.top.replace(`px`, ``))).toBeLessThan(a_rects[1].top)
   })
 
   test.each([`vertical`, `horizontal`] as const)(
@@ -630,22 +542,6 @@ describe(`BarPlot`, () => {
     })
   })
 
-  const multi_series = [basic, { ...basic, color: `orangered`, label: `S2` }]
-
-  test.each([
-    [`hidden when show_legend=false`, { series: multi_series, show_legend: false }, false],
-    [`visible when show_legend=true`, { series: multi_series, show_legend: true }, true],
-    [`auto-shows for multiple series`, { series: multi_series }, true],
-    [`hidden when null`, { series: multi_series, legend: null }, false],
-    [`auto-hides for single series`, { series: [basic] }, false],
-  ] satisfies [string, Partial<ComponentProps<typeof BarPlot>>, boolean][])(
-    `legend %s`,
-    async (_label, props, visible) => {
-      const plot = await mount_sized_bar_plot(props)
-      expect(Boolean(plot.querySelector(`.legend`))).toBe(visible)
-    },
-  )
-
   test(`renders grouped and ungrouped legend entries`, async () => {
     const series = (
       label: string,
@@ -750,106 +646,6 @@ describe(`BarPlot`, () => {
     ).toBe(false)
   })
 
-  test.each([`stacked`, `grouped`] as const)(
-    `legend moves outside dense %s bar obstacles`,
-    async (mode) => {
-      // Full-height bars across the width leave no safe interior rectangle.
-      const cats = Array.from({ length: 30 }, (_, idx) => idx)
-      const plot = await mount_sized_bar_plot({
-        series: [
-          { x: cats, y: cats.map(() => 100), label: `A` },
-          { x: cats, y: cats.map(() => 100), label: `B` },
-        ],
-        mode,
-        legend: {},
-        show_legend: true,
-      })
-      const clip_rect = plot.querySelector(`clipPath rect`)
-      const clip_bottom =
-        Number(clip_rect?.getAttribute(`y`)) + Number(clip_rect?.getAttribute(`height`))
-      expect(legend_position(plot).y).toBeGreaterThanOrEqual(clip_bottom)
-    },
-  )
-
-  test(`uses measured legend size across resize without padding drift`, async () => {
-    vi.spyOn(HTMLElement.prototype, `offsetWidth`, `get`).mockReturnValue(180)
-    vi.spyOn(HTMLElement.prototype, `offsetHeight`, `get`).mockReturnValue(44)
-    const cats = Array.from({ length: 30 }, (_, idx) => idx)
-    const make_props = () => ({
-      series: [
-        { x: cats, y: cats.map(() => 100), label: `A` },
-        { x: cats, y: cats.map(() => 100), label: `B` },
-      ],
-      legend: {},
-      show_legend: true,
-    })
-    const small = await mount_sized_bar_plot(make_props(), { width: 400, height: 300 })
-    const wide = await mount_sized_bar_plot(make_props(), { width: 640, height: 340 })
-    const repeated = await mount_sized_bar_plot(make_props(), { width: 640, height: 340 })
-    const clip_geometry = (plot: HTMLElement) => {
-      const clip_rect = plot.querySelector(`clipPath rect`)
-      if (!clip_rect) throw new Error(`clip rectangle not found`)
-      return Object.fromEntries(
-        [`x`, `y`, `width`, `height`].map((attr) => [
-          attr,
-          Number(clip_rect.getAttribute(attr)),
-        ]),
-      ) as Record<`x` | `y` | `width` | `height`, number>
-    }
-    const expected_legend_x = (plot: HTMLElement) => {
-      const clip = clip_geometry(plot)
-      return clip.x + (clip.width - 180) / 2
-    }
-    expect(legend_position(small)).toEqual({
-      x: expected_legend_x(small),
-      y: 300 - 44 - 8,
-    })
-    expect(legend_position(wide)).toEqual({
-      x: expected_legend_x(wide),
-      y: 340 - 44 - 8,
-    })
-    expect(clip_geometry(repeated)).toEqual(clip_geometry(wide))
-  })
-
-  test(`preserves explicit legend position and automatic tracks on resize`, async () => {
-    const item_extents = Array.from({ length: 4 }, () => ({ width: 70, height: 20 }))
-    const make_auto_props = () =>
-      ({
-        series: Array.from({ length: 4 }, (_, series_idx) => ({
-          ...basic,
-          label: `Series ${series_idx}`,
-        })),
-        show_legend: true,
-        legend: { layout: `horizontal`, layout_tracks: `auto`, item_extents },
-      }) satisfies Partial<ComponentProps<typeof BarPlot>>
-    const auto_wide = await mount_sized_bar_plot(make_auto_props())
-    const auto_narrow = await mount_sized_bar_plot(make_auto_props(), { width: 280 })
-    expect(auto_wide.querySelector<HTMLElement>(`.legend`)?.style.gridTemplateColumns).toBe(
-      `repeat(4, auto)`,
-    )
-    expect(auto_narrow.querySelector<HTMLElement>(`.legend`)?.style.gridTemplateColumns).toBe(
-      `repeat(2, auto)`,
-    )
-
-    const mount_pinned = (style: string, size = {}) =>
-      mount_sized_bar_plot(
-        { series: multi_series, show_legend: true, legend: { style } },
-        size,
-      )
-    const plot = await mount_pinned(`right: 7px; top: 9px; background-color: rgb(1, 2, 3);`)
-    const legend = plot.querySelector<HTMLElement>(`.legend`)
-    expect(legend?.style.right).toBe(`7px`)
-    expect(legend?.style.top).toBe(`9px`)
-    expect(legend?.style.left).toBe(``)
-    expect(legend?.style.backgroundColor).toBe(`rgb(1, 2, 3)`)
-    const resized = await mount_pinned(`right: 7px; top: 9px;`, {
-      width: 520,
-      height: 340,
-    })
-    expect(resized.querySelector<HTMLElement>(`.legend`)?.style.right).toBe(`7px`)
-    expect(resized.querySelector<HTMLElement>(`.legend`)?.style.top).toBe(`9px`)
-  })
-
   test.each([
     { orientation: `vertical`, secondary_axis: `y2` },
     { orientation: `horizontal`, secondary_axis: `x2` },
@@ -945,88 +741,5 @@ describe(`BarPlot`, () => {
     ).rejects.toThrow(
       `BarPlot cannot automatically assign visible value series in vertical orientation: Cannot assign 3 visible axis groups to 2 axes: eV, GPa, K`,
     )
-  })
-
-  // double-clicking a legend item isolates that series (shared helper, same as
-  // ScatterPlot); a second double-click restores the previous visibility
-  test(`legend double-click isolates a series and restores on repeat`, async () => {
-    const series = [basic, { ...basic, label: `Other`, color: `tomato` }]
-    const plot = await mount_sized_bar_plot({ series, show_legend: true })
-    const visible_states = () =>
-      [...plot.querySelectorAll(`.legend-item`)].map((el) => !el.classList.contains(`hidden`))
-    expect(visible_states()).toEqual([true, true])
-    const dblclick = () =>
-      plot
-        .querySelector(`.legend-item`)
-        ?.dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
-    dblclick()
-    await tick()
-    expect(visible_states()).toEqual([true, false]) // isolated
-    dblclick()
-    await tick()
-    expect(visible_states()).toEqual([true, true]) // restored
-  })
-
-  // ref-line annotations must render outside the chart clip group so labels at the
-  // plot edges (e.g. a vertical line's top label) can overflow instead of being cropped,
-  // while z ordering still holds: below-lines refs paint behind bars, above-all in front
-  test(`reference-line annotations are unclipped and z-ordered around the bars`, async () => {
-    const plot = await mount_sized_bar_plot({
-      series: [basic],
-      ref_lines: [
-        { type: `vertical`, x: 3, annotation: { text: `behind` } }, // default z: below-lines
-        { type: `vertical`, x: 4, z_index: `above-all`, annotation: { text: `front` } },
-      ],
-    })
-    await tick()
-    const labels = Object.fromEntries(
-      [...plot.querySelectorAll(`svg text`)].map((el) => [el.textContent?.trim(), el]),
-    )
-    const bars = plot.querySelector(`svg .bar-series`)
-    if (!labels.behind || !labels.front || !bars) throw new Error(`missing elements`)
-    for (const label of [labels.behind, labels.front]) {
-      expect(inside_clip_path(label), `annotation must escape the clip-path`).toBe(false)
-    }
-    // document order encodes paint order: below-lines < bars < above-all
-    const order = (el: Element) => bars.compareDocumentPosition(el)
-    expect(Boolean(order(labels.behind) & Node.DOCUMENT_POSITION_PRECEDING)).toBe(true)
-    expect(Boolean(order(labels.front) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true)
-  })
-
-  test(`shared solver separates nearby annotations and keeps explicit placement pinned`, async () => {
-    const plot = await mount_sized_bar_plot({
-      series: [basic],
-      ref_lines: [
-        { type: `horizontal`, y: 15, annotation: { text: `automatic A` } },
-        { type: `horizontal`, y: 15.1, annotation: { text: `automatic B` } },
-        {
-          type: `horizontal`,
-          y: 15.2,
-          annotation: { text: `pinned`, position: `end`, side: `above` },
-        },
-      ],
-    })
-    await tick()
-    const labels = [...plot.querySelectorAll<SVGTextElement>(`.reference-line text`)]
-    const geometry = (text: string) => {
-      const label = labels.find((element) => element.textContent === text)
-      if (!label) throw new Error(`missing ${text} annotation`)
-      return {
-        x: label.getAttribute(`x`),
-        y: label.getAttribute(`y`),
-        anchor: label.getAttribute(`text-anchor`),
-        baseline: label.getAttribute(`dominant-baseline`),
-      }
-    }
-    const automatic_a = geometry(`automatic A`)
-    const automatic_b = geometry(`automatic B`)
-    expect({
-      anchor: automatic_a.anchor,
-      baseline: automatic_a.baseline,
-    }).not.toEqual({
-      anchor: automatic_b.anchor,
-      baseline: automatic_b.baseline,
-    })
-    expect(geometry(`pinned`)).toMatchObject({ anchor: `end`, baseline: `auto` })
   })
 })

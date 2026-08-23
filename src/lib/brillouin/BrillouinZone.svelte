@@ -8,7 +8,8 @@
   import { ViewerChrome } from '$lib/layout'
   import type { Vec3 } from '$lib/math'
   import { PlotTooltip } from '$lib/plot'
-  import { create_renderer, webgpu_available } from '$lib/scene'
+  import { create_renderer, create_viewer_loader, webgpu_available } from '$lib/scene'
+  import type { ViewerParseContext } from '$lib/scene'
   import { DEFAULTS } from '$lib/settings'
   import type { Crystal } from '$lib/structure'
   import { parse_structure_file } from '$lib/structure/parse'
@@ -30,7 +31,7 @@
     extract_point_group_from_operations,
   } from './compute'
   import { reciprocal_lattice } from '$lib/math'
-  import { to_error } from '$lib/utils'
+  import { is_editable_target, to_error } from '$lib/utils'
   import type {
     BrillouinZoneData,
     BrillouinZoneSettings,
@@ -158,51 +159,82 @@
   function safe_parse(
     content: string | ArrayBuffer,
     filename: string,
-    metadata?: io.FileLoadMeta,
-  ): boolean {
+    metadata: io.FileLoadMeta | undefined,
+    { mark_owned }: ViewerParseContext<Crystal>,
+  ): void {
     try {
       const parsed = parse_structure_file(io.as_text(content), filename)
       if (!parsed) throw new Error(`Failed to parse structure from ${filename}`)
 
       structure = parsed as Crystal
+      mark_owned(structure)
       current_filename = filename
       const file_size = io.content_byte_size(content)
       on_file_load?.({ structure, bz_data, bz_order, filename, ...metadata, file_size })
-      return true
     } catch (err) {
       error_msg = `Failed to parse ${filename}: ${to_error(err).message}`
       on_error?.({ error_msg, filename, ...metadata })
-      return false
     }
   }
 
-  // Compute BZ when structure/order changes
-  $effect(() => {
-    // Skip if bz_data was already provided externally (has valid vertices)
-    if (bz_data?.vertices?.length) return
-
-    if (!structure || !(`lattice` in structure) || !structure.lattice) {
-      bz_data = undefined
-      return
-    }
-
-    try {
-      const k_lattice = reciprocal_lattice(structure.lattice.matrix, { two_pi: true })
-      // Ensure bz_order is 1, 2, or 3
-      const valid_order = Math.min(Math.max(1, bz_order), 3) as 1 | 2 | 3
-      bz_data = compute_brillouin_zone(k_lattice, valid_order)
-    } catch (err) {
-      const msg = to_error(err).message
-      error_msg = `BZ computation failed: ${msg}`
-      bz_data = undefined
-      untrack(() => on_error?.({ error_msg, structure, bz_order }))
-    }
+  const loader = create_viewer_loader<Crystal>({
+    data_url: () => data_url,
+    inline_string: () => structure_string,
+    current_value: () => structure,
+    allow_file_drop: () => allow_file_drop,
+    on_file_drop: () => on_file_drop,
+    set_loading: (value) => (loading = value),
+    set_error: (message) => (error_msg = message),
+    set_dragover: (over) => (dragover = over),
+    parse: safe_parse,
+    report_error: (message, filename) => {
+      error_msg = message
+      on_error?.({ error_msg: message, filename })
+    },
   })
 
-  // Compute IBZ when show_ibz is enabled and structure changes
+  // Zone of the current structure at the current order. The component only ever overwrites a
+  // `bz_data` it derived itself (or none): a caller-supplied zone, e.g. pymatviz's
+  // `BrillouinZoneWidget(structure=..., bz_data=...)`, is theirs to keep and is never written
+  // back through the bindable, while structure/bz_order changes still re-derive an owned zone.
+  const computed_bz = $derived.by((): { bz_data?: BrillouinZoneData; error?: string } => {
+    if (!structure || !(`lattice` in structure) || !structure.lattice) return {}
+    try {
+      const k_lattice = reciprocal_lattice(structure.lattice.matrix, { two_pi: true })
+      const valid_order = Math.min(Math.max(1, bz_order), 3) as 1 | 2 | 3
+      return { bz_data: compute_brillouin_zone(k_lattice, valid_order) }
+    } catch (err) {
+      return { error: `BZ computation failed: ${to_error(err).message}` }
+    }
+  })
+  // Ownership is tracked by value, not identity: a bound parent re-proxies every write, so the
+  // zone read back from `bz_data` is never `===` the object that was assigned to it
+  const zone_signature = (zone: BrillouinZoneData): string =>
+    `${zone.order}:${zone.volume}:${zone.vertices.length}`
+  let owned_zone_signature: string | undefined
+  $effect(() => {
+    if (!structure) return
+    if (computed_bz.error) {
+      error_msg = computed_bz.error
+      untrack(() => on_error?.({ error_msg, structure, bz_order }))
+    }
+    const current_signature = bz_data && zone_signature(bz_data)
+    if (current_signature !== undefined && current_signature !== owned_zone_signature) return
+    owned_zone_signature = computed_bz.bz_data && zone_signature(computed_bz.bz_data)
+    // Write only on change: this effect tracks bz_data, and a bound parent hands back a new
+    // proxy for every write, so an unconditional assignment would re-run it forever
+    if (current_signature !== owned_zone_signature) bz_data = computed_bz.bz_data
+  })
+
+  // Compute IBZ when show_ibz is enabled and structure changes. The IBZ is an optional
+  // overlay, so its failures (symmetry analysis rejecting, a degenerate wedge) are reported
+  // through on_error and a dismissible notice while the zone itself keeps rendering — they
+  // never go into the fatal `error_msg`, which blanks the whole viewer.
+  let ibz_error = $state<string | undefined>()
   $effect(() => {
     if (!show_ibz || !bz_data || !structure?.lattice) {
       ibz_data = null
+      ibz_error = undefined
       return
     }
 
@@ -214,11 +246,13 @@
         if (stale) return
         const point_group_ops = extract_point_group_from_operations(sym_data.operations)
         ibz_data = compute_irreducible_bz(captured_bz, point_group_ops)
+        ibz_error = undefined
       })
       .catch((err) => {
         if (stale) return
-        console.warn(`IBZ computation failed:`, err)
         ibz_data = null
+        ibz_error = `IBZ computation failed: ${to_error(err).message}`
+        on_error?.({ error_msg: ibz_error, structure, bz_order })
       })
 
     return () => {
@@ -226,70 +260,8 @@
     }
   })
 
-  const handle_load_error = (error: unknown, filename: string): void => {
-    error_msg = to_error(error).message
-    on_error?.({ error_msg, filename })
-  }
-
-  // Load structure from URL or string
-  const data_url_loader = io.create_data_url_loader<Crystal>()
-
-  $effect(() => {
-    if (data_url || !structure_string) return
-    loading = true
-    error_msg = undefined
-    try {
-      safe_parse(structure_string, `string`)
-    } finally {
-      loading = false
-    }
-  })
-
-  $effect(() =>
-    data_url_loader.request({
-      url: data_url,
-      current_value: structure,
-      set_loading: (value) => (loading = value),
-      clear_error: () => (error_msg = undefined),
-      // Without mark_owned the structure this URL just produced reads as caller-supplied
-      // on the next effect run, so the loader stops fetching and a second data_url never
-      // loads at all.
-      on_load: async ({ content, filename, metadata, is_current, mark_owned }) => {
-        if (on_file_drop) {
-          try {
-            await on_file_drop(content, filename, metadata)
-            if (!is_current()) return
-            mark_owned()
-          } catch (error) {
-            if (is_current()) handle_load_error(error, filename)
-          }
-          return
-        }
-        if (is_current() && safe_parse(content, filename, metadata)) mark_owned(structure)
-      },
-      on_error: handle_load_error,
-    }),
-  )
-
-  const file_drop_zone = io.file_drop_zone({
-    allow: () => allow_file_drop,
-    on_drop: async (content, filename, metadata) => {
-      await (on_file_drop || safe_parse)(content, filename, metadata)
-    },
-    on_error: (msg) => {
-      error_msg = msg
-      on_error?.({ error_msg: msg })
-    },
-    set_loading: (val) => {
-      loading = val
-      if (val) error_msg = undefined
-    },
-    on_dragover: (over) => (dragover = over),
-  })
-
   function onkeydown(event: KeyboardEvent) {
-    const target = event.target
-    if (target instanceof HTMLElement && [`INPUT`, `TEXTAREA`].includes(target.tagName)) return
+    if (is_editable_target(event)) return
 
     if (event.key === `f` && fullscreen_toggle) fullscreen = !fullscreen
     else if (event.key === `i`) info_pane_open = !info_pane_open
@@ -312,7 +284,7 @@
   {onkeydown}
   {...rest}
   class={[`brillouin-zone`, rest.class]}
-  {@attach file_drop_zone}
+  {@attach loader.drop_zone}
 >
   {@render children?.({ structure, bz_data })}
   {#if loading}
@@ -320,6 +292,12 @@
   {:else if error_msg}
     <StatusMessage bind:message={error_msg} type="error" dismissible />
   {:else if structure && `lattice` in structure}
+    <StatusMessage
+      bind:message={ibz_error}
+      type="warning"
+      dismissible
+      style="position: absolute; top: 0.5em; left: 50%; transform: translateX(-50%); max-width: 90%; z-index: 1"
+    />
     <ViewerChrome
       {controls_config}
       filename={current_filename}

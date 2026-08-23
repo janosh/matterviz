@@ -10,7 +10,7 @@ import type { Vec3 } from '$lib/math'
 import { DEFAULTS } from '$lib/settings'
 import type { AnyStructure, BondPair } from '$lib/structure'
 import { css_to_linear_rgb } from '$lib/scene/colors'
-import { get_orig_site_idx } from './atom-properties'
+import { get_orig_site_idx } from './site'
 import { get_majority_element, has_framework_potential, is_spectator_center } from './bonding'
 
 export type PolyhedraColorMode = `vertex` | `center` | `uniform`

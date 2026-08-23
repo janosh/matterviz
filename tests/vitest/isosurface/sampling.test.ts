@@ -260,8 +260,6 @@ describe(`compare_volume_grids`, () => {
 
     // 11 finite points → divisor 10: a 5e-4 lattice delta is a 5e-5 voxel delta
     // (within the 1e-4 tolerance), while 2e-3 → 2e-4 exceeds it
-    // 11 finite points → divisor 10: 5e-4 lattice delta → 5e-5 voxel (ok);
-    // 2e-3 lattice → 2e-4 voxel (exceeds 1e-4)
     const near_voxel = linear_volume(
       11,
       [
@@ -416,17 +414,17 @@ describe(`extract_volume_range`, () => {
       [0, 1],
     ])
     const isovalue = 0.15
-    const surface = marching_cubes(extracted, isovalue, extracted.lattice, {
+    const { positions } = marching_cubes(extracted, isovalue, extracted.lattice, {
       periodic: false,
-      centered: false,
-      interpolate: true,
       normals: false,
     })
     const sample = create_volume_sampler(volume)
 
-    expect(surface.vertices.length).toBeGreaterThan(0)
-    for (const vertex of surface.vertices) {
-      expect(sample(vertex)).toBeCloseTo(isovalue, 5)
+    expect(positions.length).toBeGreaterThan(0)
+    for (let idx = 0; idx < positions.length; idx += 3) {
+      const vertex: Vec3 = [positions[idx], positions[idx + 1], positions[idx + 2]]
+      // Float32 vertex rounding (~1e-7) times the field gradient (≤ ~0.8/Å) stays under 1e-5
+      expect(sample(vertex)).toBeCloseTo(isovalue, 4)
     }
   })
 

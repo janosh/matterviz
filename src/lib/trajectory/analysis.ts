@@ -1,15 +1,17 @@
 // Shared entry points of the whole-trajectory analyses (MSD, VACF, structure-id,
 // spectroscopy, trails): one place that turns a run into a position sweep, and the frame
 // accounting the analysis panes display before a sweep starts.
-import type { ParseProgress, PositionStreamOptions, TrajectoryPositionStream } from './index'
+import type { CollectPositionsOptions, TrajectoryPositionStream } from './index'
 import type { TrajectoryRun } from './run'
+
+export type CollectTrajectoryPositionsOptions = CollectPositionsOptions & {
+  // Names the analysis in the error a frame-at-a-time run raises, e.g. `MSD`
+  analysis_name: string
+}
 
 export const collect_trajectory_positions = (
   run: TrajectoryRun,
-  options: PositionStreamOptions,
-  on_progress: ((progress: ParseProgress) => void) | undefined,
-  analysis_name: string,
-  signal?: AbortSignal,
+  { analysis_name, ...options }: CollectTrajectoryPositionsOptions,
 ): Promise<TrajectoryPositionStream> => {
   if (!run.collect_positions) {
     throw new Error(
@@ -18,7 +20,7 @@ export const collect_trajectory_positions = (
         `time. Open the file directly (not through the host) to analyse it.`,
     )
   }
-  return run.collect_positions(options, on_progress, signal)
+  return run.collect_positions(options)
 }
 
 // Frame counts and stride advice for the analysis panes

@@ -135,7 +135,7 @@ An interactive search filter for chemical formulas. The search mode is automatic
   bind:mode_locked
   {history_key}
   {normalize_exact}
-  onparse={(parsed) => {
+  on_parse={(parsed) => {
     parse_preview = JSON.stringify(parsed, null, 2)
   }}
   on_validation={(validation) => {
@@ -214,7 +214,7 @@ Additional features in `FormulaFilter`:
 
 - exact-mode canonicalization (`NaCl` normalizes to `ClNa` by default)
 - optional mode lock (`bind:mode_locked`) to prevent automatic mode inference
-- validation hooks (`validate`, `on_validation`) and structured parsing callbacks (`onparse`)
+- validation hooks (`validate`, `on_validation`) and structured parsing callbacks (`on_parse`)
 - searchable, pinnable, clearable history entries
 - token chips for include/exclude and wildcard expressions
 

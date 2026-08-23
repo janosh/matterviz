@@ -1,6 +1,5 @@
 <script lang="ts">
-  import type { TdbParseResult } from './parse'
-  import { extract_tdb_reference, summarize_models } from './utils'
+  import { extract_tdb_reference, summarize_models, type TdbParseResult } from './tdb-parse'
 
   interface Props {
     result: TdbParseResult

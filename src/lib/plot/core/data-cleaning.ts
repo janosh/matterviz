@@ -2,10 +2,10 @@
 // removal, smoothing (moving average / Savitzky-Golay / Gaussian) and oscillation/instability
 // detection, plus the multi-series, xyz and trajectory-property orchestrators built on them.
 
-import type { Vec2 } from '$lib/math'
+import { median, type Vec2 } from '$lib/math'
 import { assert_series_lengths, type DataSeries } from '$lib/plot/core/types'
 import { apply_gaussian_smearing } from '$lib/spectral/helpers'
-import { Adder, median as d3_median } from 'd3-array'
+import { Adder } from 'd3-array'
 
 // === Types ===
 
@@ -38,12 +38,6 @@ export interface LocalOutlierConfig {
   window_half?: number // Points on each side for local context (default: 7)
   mad_threshold?: number // MADs from local median to flag outlier (default: 2.0)
   max_iterations?: number // Iterative passes to catch clustered outliers (default: 5)
-}
-
-export interface LocalOutlierResult {
-  kept_indices: number[]
-  removed_indices: number[]
-  iterations_used: number
 }
 
 export interface InstabilityResult {
@@ -93,7 +87,6 @@ const DEFAULT_LOCAL_WINDOW_HALF = 7
 const DEFAULT_LOCAL_MAD_THRESHOLD = 2.0
 const DEFAULT_LOCAL_MAX_ITERATIONS = 5
 
-const median = (values: number[]): number => d3_median(values) ?? 0
 const index_range = (length: number): number[] => Array.from({ length }, (_, idx) => idx)
 const pick = <T>(arr: readonly T[], indices: readonly number[]): T[] =>
   indices.map((idx) => arr[idx])
@@ -111,9 +104,8 @@ const create_cleaning_quality = (
 // === Instability detection ===
 
 // Sample variance of each point's surrounding window (non-finite values are skipped)
-export function compute_local_variance(values: number[], window_size: number): number[] {
+function compute_local_variance(values: number[], window_size: number): number[] {
   const len = values.length
-  if (len === 1) return [0]
   const half_window = Math.floor(window_size / 2)
   const result: number[] = Array(len)
   for (let idx = 0; idx < len; idx++) {
@@ -151,9 +143,12 @@ function detect_derivative_variance(
   if (derivs.length < window_size) return NO_ONSET
   const local_var = compute_local_variance(derivs, window_size)
   const baseline_end = Math.min(Math.floor(derivs.length / 4), 50)
-  const baseline_vars = local_var.slice(0, Math.max(baseline_end, window_size))
-  const baseline_median = median(baseline_vars.filter((val) => val > 0))
-  if (baseline_median === 0) return NO_ONSET
+  const baseline_vars = local_var
+    .slice(0, Math.max(baseline_end, window_size))
+    .filter((val) => val > 0)
+  // A flat baseline (every window variance 0) gives no scale to compare against
+  if (baseline_vars.length === 0) return NO_ONSET
+  const baseline_median = median(baseline_vars)
   let max_score = 0
   for (let idx = baseline_end; idx < local_var.length; idx++) {
     const ratio = local_var[idx] / baseline_median
@@ -182,7 +177,7 @@ function detect_amplitude_growth(values: number[], window_size: number): MethodR
     amplitudes.push(max_deviation)
   }
   if (amplitudes.length < 10) return NO_ONSET
-  const baseline_end = Math.floor(amplitudes.length / 4)
+  const baseline_end = Math.floor(amplitudes.length / 4) // >= 2, so the slice is never empty
   const baseline_amp = median(amplitudes.slice(0, baseline_end))
   if (baseline_amp === 0) return NO_ONSET
   let max_score = 0
@@ -338,7 +333,7 @@ function compute_savgol_coefficients(window: number, order: number): number[] {
 }
 
 // Savitzky-Golay filter (derivative-preserving) - O(n * window)
-export function smooth_savitzky_golay(
+function smooth_savitzky_golay(
   values: number[],
   window: number,
   polynomial_order: number = DEFAULT_POLYNOMIAL_ORDER,
@@ -401,27 +396,23 @@ function local_median_and_mad(
   return { local_median, local_mad }
 }
 
-// Iterative sliding-window MAD outlier detection. Statistics are always computed from the
-// original values (not the progressively filtered ones) so one removal cannot shift its
-// neighbours' statistics and cascade into false positives. Points within window_half of either
-// end are never flagged: their one-sided window makes the local median trail any trend, which
-// used to delete the genuine endpoints of every monotonic series.
-export function remove_local_outliers(
+// Iterative sliding-window MAD outlier detection; returns the indices to drop. Statistics are
+// always computed from the original values (not the progressively filtered ones) so one removal
+// cannot shift its neighbours' statistics and cascade into false positives. Points within
+// window_half of either end are never flagged: their one-sided window makes the local median
+// trail any trend, which used to delete the genuine endpoints of every monotonic series.
+function remove_local_outliers(
   y_values: readonly number[],
-  config: LocalOutlierConfig = {},
-): LocalOutlierResult {
+  config: LocalOutlierConfig,
+): number[] {
   const window_half = config.window_half ?? DEFAULT_LOCAL_WINDOW_HALF
   const mad_threshold = config.mad_threshold ?? DEFAULT_LOCAL_MAD_THRESHOLD
   const max_iterations = config.max_iterations ?? DEFAULT_LOCAL_MAX_ITERATIONS
   const len = y_values.length
   // Need enough neighbours for meaningful local statistics
-  if (len < window_half * 2 + 1) {
-    return { kept_indices: index_range(len), removed_indices: [], iterations_used: 0 }
-  }
+  if (len < window_half * 2 + 1) return []
   const kept = Array<boolean>(len).fill(true)
-  let iterations_used = 0
   for (let iter = 0; iter < max_iterations; iter++) {
-    iterations_used = iter + 1
     let removed_any = false
     for (let idx = window_half; idx < len - window_half; idx++) {
       if (!kept[idx] || !Number.isFinite(y_values[idx])) continue
@@ -435,17 +426,12 @@ export function remove_local_outliers(
     }
     if (!removed_any) break
   }
-  const indices = index_range(len)
-  return {
-    kept_indices: indices.filter((idx) => kept[idx]),
-    removed_indices: indices.filter((idx) => !kept[idx]),
-    iterations_used,
-  }
+  return index_range(len).filter((idx) => !kept[idx])
 }
 
 // === Invalid values and bounds ===
 
-export function handle_invalid_values(
+function handle_invalid_values(
   values: number[],
   mode: InvalidValueMode,
 ): { cleaned: number[]; removed_indices: number[]; invalid_count: number } {
@@ -501,7 +487,7 @@ const is_in_bounds = (y_val: number, x_val: number, bounds: PhysicalBounds): boo
   return below === null && above === null
 }
 
-export function apply_bounds(
+function apply_bounds(
   x_values: readonly number[],
   y_values: number[],
   bounds: PhysicalBounds,
@@ -522,11 +508,6 @@ export function apply_bounds(
 }
 
 // === Series orchestration ===
-
-export const sync_metadata = <M>(
-  metadata: M[] | M | undefined,
-  kept_indices: number[],
-): M[] | M | undefined => (Array.isArray(metadata) ? pick(metadata, kept_indices) : metadata)
 
 export function clean_series<T extends DataSeries>(
   series: T,
@@ -566,7 +547,7 @@ export function clean_series<T extends DataSeries>(
   }
 
   if (config.local_outliers) {
-    const { removed_indices } = remove_local_outliers(y_arr, config.local_outliers)
+    const removed_indices = remove_local_outliers(y_arr, config.local_outliers)
     quality.outliers_removed = removed_indices.length
     drop(removed_indices)
   }
@@ -589,8 +570,8 @@ export function clean_series<T extends DataSeries>(
   result_series.x = x_arr
   result_series.y = y_arr
   if (series.raw_y) result_series.raw_y = pick(series.raw_y, kept)
-  if (series.metadata !== undefined)
-    result_series.metadata = sync_metadata(series.metadata, kept)
+  // Per-point metadata arrays are filtered alongside y; scalar metadata passes through untouched
+  if (Array.isArray(series.metadata)) result_series.metadata = pick(series.metadata, kept)
   if (series.color_values) result_series.color_values = pick(series.color_values, kept)
   if (series.size_values) result_series.size_values = pick(series.size_values, kept)
   return { series: result_series, quality }

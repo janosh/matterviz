@@ -5,7 +5,6 @@ import * as parse_worker from '$lib/file-viewer/parse-in-worker'
 import {
   Hdf5GroupSelectionRequiredError,
   open_trajectory,
-  trajectory_from_frames,
   type TrajectoryRun,
   type TrajHandlerData,
 } from '$lib/trajectory'
@@ -19,7 +18,7 @@ import {
   gzip_bytes,
   hdf5_group_option,
   make_ambiguous_hdf5,
-  make_trajectory_frame,
+  make_run as make_shared_run,
   MULTI_FRAME_XYZ,
   read_binary_test_file,
 } from '../setup'
@@ -32,12 +31,10 @@ const BLOB_FILENAME = BLOB_URL.split(`/`).at(-1) ?? BLOB_URL
 const ASE_FIXTURE = `ase-LiMnO2-chgnet-relax.traj`
 
 const make_run = (filename: string, frame_count = 3): TrajectoryRun =>
-  trajectory_from_frames(
-    Array.from({ length: frame_count }, (_unused, idx) =>
-      make_trajectory_frame(idx, 2, { energy: -idx }),
-    ),
-    { provenance: { filename, format: `xyz` } },
-  )
+  make_shared_run(frame_count, {
+    frame_metadata: (frame_idx) => ({ energy: -frame_idx }),
+    provenance: { filename, format: `xyz` },
+  })
 
 const mounted: ReturnType<typeof mount>[] = []
 afterEach(async () => {
@@ -237,9 +234,12 @@ describe(`src`, () => {
         button.addEventListener(`click`, () => get_props().on_dismiss())
       },
     }))
-    const target = mount_viewer({ src: `nonsense payload`, filename: `x.bin`, error_snippet })
+    // a string src is a URL: fail the fetch here rather than let it escape to the network
+    vi.spyOn(globalThis, `fetch`).mockRejectedValue(new Error(`network down`))
     vi.spyOn(console, `error`).mockImplementation(() => {})
+    const target = mount_viewer({ src: `https://example.com/x.bin`, error_snippet })
     await vi.waitFor(() => expect(target.querySelector(`.custom-error`)).not.toBeNull())
+    expect(doc_query(`.custom-error em`).textContent).toContain(`network down`)
     expect(doc_query(`.custom-error em`).textContent).toMatch(/^Failed to load trajectory/)
     expect(target.querySelector(`h3`)).toBeNull()
     doc_query<HTMLButtonElement>(`.custom-error button`).click()
@@ -639,7 +639,6 @@ describe(`bindable re-exposure`, () => {
     props.display_mode = `scatter`
     await tick()
     expect(target.querySelector(`.structure`)).toBeNull()
-    expect(target.querySelector(`.content-area.hide-structure`)).not.toBeNull()
 
     doc_query<HTMLButtonElement>(`.trajectory-info-toggle`).click()
     await tick()

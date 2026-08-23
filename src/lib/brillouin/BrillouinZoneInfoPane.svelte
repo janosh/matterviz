@@ -1,12 +1,12 @@
 <script lang="ts">
-  import { ViewerPane, info_pane_icon, type PaneProps } from '$lib/overlays'
-  import type { InfoItem } from '$lib/layout'
+  import { info_pane_icon, type InfoPaneRow, type PaneProps, ViewerPane } from '$lib/overlays'
   import InfoPaneCards from '$lib/overlays/InfoPaneCards.svelte'
   import { format_num } from '$lib/labels'
   import type { Crystal } from '$lib/structure'
   import { analyze_structure_symmetry } from '$lib/symmetry'
   import type { MoyoDataset } from '@spglib/moyo-wasm'
   import type { BrillouinZoneData } from './types'
+  import { ordinal_label } from './types'
 
   let {
     pane_open = $bindable(false),
@@ -33,17 +33,16 @@
 
   let pane_data = $derived.by(() => {
     if (!structure || !bz_data) return []
-    const sections: { title: string; items: InfoItem[] }[] = []
+    const sections: { title: string; items: InfoPaneRow[] }[] = []
 
     // Brillouin Zone section
-    const bz_order_suffix = [`st`, `nd`, `rd`][bz_data.order - 1] ?? `th`
     sections.push(
       {
         title: `Brillouin Zone`,
         items: [
           {
             label: `Order`,
-            value: `${bz_data.order}${bz_order_suffix}`,
+            value: ordinal_label(bz_data.order),
             key: `bz-order`,
           },
           {
@@ -92,7 +91,7 @@
     )
 
     // Reciprocal Lattice section
-    const k_lattice_items: InfoItem[] = bz_data.k_lattice.map((vec, idx) => ({
+    const k_lattice_items: InfoPaneRow[] = bz_data.k_lattice.map((vec, idx) => ({
       label: [`b₁`, `b₂`, `b₃`][idx],
       value: `(${vec.map((coord) => format_num(coord, `.3~f`)).join(`, `)})`,
       key: `reciprocal-${[`b1`, `b2`, `b3`][idx]}`,

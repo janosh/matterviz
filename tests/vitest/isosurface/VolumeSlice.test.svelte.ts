@@ -83,18 +83,18 @@ describe(`VolumeSlice`, () => {
   ] satisfies { mode: VolumeSliceMode; fills: boolean; contours: boolean }[]
 
   test.each(mode_cases)(`renders $mode mode`, async ({ mode, fills, contours }) => {
-    const onrender = vi.fn()
+    const on_render = vi.fn()
     const { canvas, context } = await mount_volume_slice({
       mode,
       contour_levels: [4, 8, 12],
-      onrender,
+      on_render,
     })
 
     expect(canvas?.width).toBe(4)
     expect(canvas?.height).toBe(4)
     expect(context.putImageData).toHaveBeenCalledTimes(fills ? 1 : 0)
     expect(context.stroke.mock.calls.length > 0).toBe(contours)
-    expect(onrender).toHaveBeenCalledWith(
+    expect(on_render).toHaveBeenCalledWith(
       expect.objectContaining({
         color_range: [0, 15],
         contour_thresholds: [4, 8, 12],

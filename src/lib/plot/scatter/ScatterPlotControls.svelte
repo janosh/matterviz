@@ -31,7 +31,9 @@
     series?: readonly DataSeries[]
     styles?: StyleOverrides
     selected_series_idx?: number
-    on_touch?: (key: string) => void
+    // Reports a style key the user changed (is_touched) or reset back to untouched, so the
+    // host only overrides authored per-series styles for keys the user actually set
+    on_touch?: (key: string, is_touched: boolean) => void
     children?: Snippet<
       [{ styles: StyleOverrides; selected_series_idx: number } & Required<PlotConfig>]
     >
@@ -53,21 +55,17 @@
     visible_series.some((srs) => srs?.size_values?.some((val) => val != null)),
   )
 
-  $effect(() => {
-    // Initialize show_points/show_lines from defaults
-    styles.show_points ??= DEFAULTS.scatter.show_points
-    styles.show_lines ??= DEFAULTS.scatter.show_lines
-  })
-
   const touch = ({ target }: Event) => {
     if (!(target instanceof Element)) return
     const key = target.closest(`[data-key]`)?.getAttribute(`data-key`)
-    if (key) on_touch?.(key)
+    if (key) on_touch?.(key, true)
   }
 
+  // Reset restores the defaults in the pane and untouches every key, so authored
+  // per-series styles show again instead of being overridden by the defaults
   const reset_style = (kind: `point` | `line`) => () => {
     styles[kind] = { ...DEFAULTS.scatter[kind] }
-    for (const key of Object.keys(DEFAULTS.scatter[kind])) on_touch?.(`${kind}.${key}`)
+    for (const key of Object.keys(DEFAULTS.scatter[kind])) on_touch?.(`${kind}.${key}`, false)
   }
 </script>
 

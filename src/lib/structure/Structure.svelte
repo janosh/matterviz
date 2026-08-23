@@ -12,7 +12,7 @@
   import { Icon } from 'svelte-widgets'
   import { BrillouinZone, Grid2x2, HeatmapMatrix, Reset } from 'svelte-widgets/icons'
   import type * as io from '$lib/io'
-  import { handle_and_prevent } from '$lib/utils'
+  import { handle_and_prevent, is_editable_target } from '$lib/utils'
   import { webgpu_available } from '$lib/scene'
   import type { VolumeSliceSettings } from '$lib/isosurface/slice-settings'
   import type { IsosurfaceSettings, VolumetricData } from '$lib/isosurface/types'
@@ -43,9 +43,8 @@
     get_element_counts,
     get_structure_vector_keys,
   } from '$lib/structure'
-  import type { CellType, SymmetrySettings } from '$lib/symmetry'
+  import type { CellType, SymmetryDataset, SymmetrySettings } from '$lib/symmetry'
   import * as symmetry from '$lib/symmetry'
-  import type { MoyoDataset } from '@spglib/moyo-wasm'
   import type { ComponentProps, Snippet } from 'svelte'
   import { untrack } from 'svelte'
   import { forward_window_keydown, tooltip } from 'svelte-widgets/attachments'
@@ -54,7 +53,6 @@
   import type { Camera, Scene } from 'three/webgpu'
   import {
     DEFAULT_ATOM_COLOR_CONFIG,
-    get_property_colors,
     normalize_atom_color_config,
     type AtomColorConfig,
   } from './atom-properties'
@@ -97,16 +95,9 @@
     multi: { mode: `multi`, icon: Grid2x2, label: `3D 2×2 grid` },
     slice: { mode: `slice`, icon: HeatmapMatrix, label: `2D cross-section` },
   } as const
-  // Local scene/lattice models: deep-cloned so UI mutations never leak into the shared defaults
+  // Local scene model (cell rendering included): deep-cloned so UI mutations never leak into
+  // the shared defaults
   let scene_props = $state(structuredClone(DEFAULTS.structure) as SceneProps)
-  let lattice_props = $state({
-    cell_edge_opacity: DEFAULTS.structure.cell_edge_opacity,
-    cell_surface_opacity: DEFAULTS.structure.cell_surface_opacity,
-    cell_edge_color: DEFAULTS.structure.cell_edge_color,
-    cell_surface_color: DEFAULTS.structure.cell_surface_color,
-    cell_edge_width: DEFAULTS.structure.cell_edge_width,
-    show_cell_vectors: DEFAULTS.structure.show_cell_vectors,
-  })
 
   let {
     structure = $bindable(),
@@ -115,10 +106,12 @@
     displacement_rmsd = $bindable(undefined),
     bonds = $bindable(),
     scene_props: scene_props_in = $bindable(),
+    // Top-level like show_image_atoms (not a scene_props key): Trajectory binds it to start
+    // collecting trail positions when the user toggles it on in the controls pane. Seeded from
+    // scene_props once so `scene_props={{ show_trajectory_lines: true }}` is honored.
     show_trajectory_lines = $bindable(
       scene_props_in?.show_trajectory_lines ?? DEFAULTS.structure.show_trajectory_lines,
     ),
-    lattice_props: lattice_props_in = $bindable(),
     active_pane = $bindable(null),
     multi_view = $bindable(false),
     views = DEFAULT_STRUCTURE_VIEWS,
@@ -187,7 +180,6 @@
     bonds?: StructureBond[]
     scene_props?: ComponentProps<typeof StructureScene>
     show_trajectory_lines?: boolean
-    lattice_props?: ComponentProps<typeof StructureScene>[`lattice_props`]
     // bindable: the one floating pane that is open
     active_pane?: StructurePane | null
     // Ovito-style 2x2 grid; collapses to one pane while the viewer is too small for it
@@ -243,7 +235,7 @@
     // Output: the structure as rendered (supercell + image atoms). Writes are overwritten.
     displayed_structure?: AnyStructure
     hidden_elements?: Set<ElementSymbol>
-    sym_data?: MoyoDataset | null
+    sym_data?: SymmetryDataset | null
     symmetry_settings?: Partial<SymmetrySettings>
     volumetric_data?: VolumetricData[]
     isosurface_settings?: IsosurfaceSettings
@@ -295,6 +287,8 @@
     cell_type: () => cell_type,
     set_cell_type: (value) => (cell_type = value),
     sym_data: () => sym_data,
+    atom_color_config: () => atom_color_config,
+    bonding_strategy: () => scene_props.bonding_strategy,
     on_notice: show_toast,
   })
 
@@ -341,12 +335,6 @@
     if (normalized !== atom_color_config) atom_color_config = normalized
     if (scene_props_in && typeof scene_props_in === `object`) {
       mirror_scene_props(scene_props, scene_props_in)
-      if (scene_props_in.show_trajectory_lines !== undefined) {
-        show_trajectory_lines = scene_props_in.show_trajectory_lines
-      }
-    }
-    if (lattice_props_in && typeof lattice_props_in === `object`) {
-      Object.assign(lattice_props, lattice_props_in)
     }
   })
 
@@ -381,6 +369,10 @@
   $effect(() => {
     colors.element = ELEMENT_COLOR_SCHEMES[color_scheme as ColorSchemeName]
   })
+
+  // Isosurface geometry-worker failures (chunk 404, OOM): the scene keeps its previous
+  // surfaces, so without this notice the user would only see an unchanged view
+  let isosurface_error = $state<string>()
 
   // === symmetry ===
   let symmetry_run_id = 0
@@ -427,6 +419,23 @@
         symmetry_error = `Symmetry analysis failed: ${err?.message || err}`
         console.error(`Symmetry analysis failed:`, err)
       })
+  })
+
+  // The symmetry-element overlay is blanked outside the input frame (StructureViewport), which
+  // would otherwise look like the overlay silently vanished: say why whenever the overlay is
+  // on and the rendered cell stops being the input cell (cell switch, or overlay enabled
+  // while a conventional/primitive cell is shown)
+  let overlay_hidden_by_frame = false
+  $effect(() => {
+    const hidden =
+      symmetry.has_visible_symmetry_overlay(
+        scene_props.symmetry_elements ?? [],
+        scene_props.symmetry_elements_props?.show_kinds,
+      ) && !session.shows_input_frame
+    if (hidden && !overlay_hidden_by_frame) {
+      untrack(() => show_toast(symmetry.SYM_ELEMENTS_INPUT_FRAME_NOTE))
+    }
+    overlay_hidden_by_frame = hidden
   })
 
   // === layout ===
@@ -503,9 +512,6 @@
   let active_scene_sites = $derived([
     ...new SvelteSet([...(scene_props.active_sites ?? []), ...session.highlighted_sites]),
   ])
-  let property_colors = $derived(
-    get_property_colors(structure, atom_color_config, scene_props.bonding_strategy, sym_data),
-  )
   // Primary-pane outputs: scene/camera for export, readouts for the controls pane
   let scene = $state<Scene | undefined>(undefined)
   let camera = $state<Camera | undefined>(undefined)
@@ -523,7 +529,7 @@
     in_grid: is_multi_view_active,
     active: is_multi_view_active && session.active_pane_idx === pane_idx,
     interactive: !is_multi_view_active || session.active_pane_idx === pane_idx,
-    onactivate: () => (session.active_pane_idx = pane_idx),
+    on_activate: () => (session.active_pane_idx = pane_idx),
     reset_token: session.reset_token,
     report_moved: (moved: boolean) => session.report_pane_moved(pane_idx, moved),
   })
@@ -537,12 +543,11 @@
       sphere_segments: effective_sphere_segments,
     },
     gizmo: scene_gizmo_props,
-    lattice_props,
     volumetric_data,
     active_volume_idx,
     isosurface_settings,
-    atom_color_config,
-    sym_data,
+    on_isosurface_error: (message: string) => (isosurface_error = message),
+    property_colors: session.property_colors,
     active_sites: active_scene_sites,
   })
 
@@ -604,10 +609,7 @@
   // === keyboard ===
   // Returns true when the key was handled so the caller can suppress the browser default
   function handle_keydown(event: KeyboardEvent): boolean {
-    const target = event.target
-    const is_input_focused =
-      target instanceof HTMLElement &&
-      ([`INPUT`, `TEXTAREA`, `SELECT`].includes(target.tagName) || target.isContentEditable)
+    const is_input_focused = is_editable_target(event)
     // Escape leaves add-atom mode even from its element input
     if (event.key === `Escape` && measure_mode === `edit-atoms` && session.add_atom_mode) {
       session.add_atom_mode = false
@@ -822,6 +824,7 @@
           bind:hovered_site_idx
           bind:selected_sites
           {sym_data}
+          wyckoff_positions={session.wyckoff_rows}
           {@attach tooltip({ content: `Structure info pane` })}
         />
       {/if}
@@ -852,7 +855,6 @@
           }
           bind:scene_props
           bind:show_trajectory_lines
-          bind:lattice_props
           bind:show_image_atoms
           bind:supercell_scaling
           bind:background_color
@@ -887,7 +889,7 @@
     {#if display_mode === `structure` && structure?.sites?.length}
       <AtomLegend
         bind:atom_color_config
-        {property_colors}
+        property_colors={session.property_colors}
         elements={get_element_counts(session.supercell_structure ?? structure)}
         bind:hidden_elements
         bind:hidden_prop_vals={session.hidden_prop_vals}
@@ -977,6 +979,15 @@
         dismissible
         class="symmetry-error"
         style="position: absolute; bottom: 0.5rem; right: 0.5rem; max-width: min(90%, 400px); font-size: 0.75rem; padding: 0.3rem 0.6rem; z-index: var(--z-index-viewer-tooltip, 1000)"
+      />
+    {/if}
+    {#if isosurface_error}
+      <StatusMessage
+        bind:message={isosurface_error}
+        type="warning"
+        dismissible
+        class="isosurface-error"
+        style="position: absolute; top: 0.5rem; left: 50%; transform: translateX(-50%); max-width: 90%; font-size: 0.75rem; padding: 0.3rem 0.6rem; z-index: var(--z-index-viewer-tooltip, 1000)"
       />
     {/if}
   {:else if structure}

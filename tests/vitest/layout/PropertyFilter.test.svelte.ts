@@ -1,7 +1,7 @@
 import { PropertyFilter } from '$lib/layout'
 import { type ComponentProps, flushSync, mount } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { doc_query } from '../setup'
+import { bind_props, doc_query } from '../setup'
 
 describe(`PropertyFilter`, () => {
   const inputs = () => document.querySelectorAll<HTMLInputElement>(`input[type="number"]`)
@@ -53,7 +53,7 @@ describe(`PropertyFilter`, () => {
     expect(Boolean(document.querySelector(`.unit-label`))).toBe(expected)
   })
 
-  test(`clear button and Escape reset both bounds and fire onclear before onchange`, () => {
+  test(`clear button and Escape reset both bounds and fire on_clear before on_change`, () => {
     const calls: string[] = []
     const state = $state<{ min_value?: number; max_value?: number }>({
       min_value: 10,
@@ -61,27 +61,18 @@ describe(`PropertyFilter`, () => {
     })
     mount(PropertyFilter, {
       target: document.body,
-      props: {
-        label: `Test`,
-        get min_value() {
-          return state.min_value
+      props: bind_props(
+        {
+          label: `Test`,
+          on_clear: () => {
+            calls.push(`clear`)
+          },
+          on_change: (min: number | undefined, max: number | undefined) => {
+            calls.push(`change:${min}:${max}`)
+          },
         },
-        set min_value(val) {
-          state.min_value = val
-        },
-        get max_value() {
-          return state.max_value
-        },
-        set max_value(val) {
-          state.max_value = val
-        },
-        onclear: () => {
-          calls.push(`clear`)
-        },
-        onchange: (min: number | undefined, max: number | undefined) => {
-          calls.push(`change:${min}:${max}`)
-        },
-      },
+        state,
+      ),
     })
     flushSync()
     const clear_btn = doc_query<HTMLButtonElement>(`.clear-btn`)
@@ -105,15 +96,15 @@ describe(`PropertyFilter`, () => {
   })
 
   test(`blur reports the current bounds and Enter blurs the input`, () => {
-    const onchange = vi.fn()
-    mount_filter({ min_value: 5, max_value: 10, onchange })
+    const on_change = vi.fn()
+    mount_filter({ min_value: 5, max_value: 10, on_change })
     const [min_input] = inputs()
     min_input.focus()
     min_input.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }))
     expect(document.activeElement).not.toBe(min_input)
     min_input.dispatchEvent(new Event(`blur`, { bubbles: true }))
     flushSync()
-    expect(onchange).toHaveBeenCalledWith(5, 10)
+    expect(on_change).toHaveBeenCalledWith(5, 10)
   })
 
   test.each([

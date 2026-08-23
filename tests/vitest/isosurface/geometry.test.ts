@@ -9,8 +9,8 @@ import {
 } from '$lib/isosurface/geometry'
 import { create_volume_sampler } from '$lib/isosurface/sampling'
 import { MAX_GRID_POINTS } from '$lib/isosurface/types'
-import { afterEach, beforeAll, describe, expect, test, vi } from 'vitest'
-import { cubic_matrix, make_grid, make_volume } from '../setup'
+import { afterEach, beforeAll, describe, expect, test } from 'vitest'
+import { cubic_matrix, install_stub_worker, make_grid, make_volume } from '../setup'
 
 // Periodic Gaussian blob centred in a 10 A cubic cell
 const blob_volume = (n_pts = 16) =>
@@ -112,81 +112,33 @@ describe(`compute_isosurface_geometries`, () => {
 })
 
 // === Worker client wiring ===
+// Abort/teardown/dedupe rules of the shared client are covered by worker-client.test.ts
 
-type Listener = (event: {
-  data: unknown
-  message?: string
-  preventDefault: () => void
-}) => void
-type Posted = { message: { id: number; input: GeometryInput }; transfer: Transferable[] }
-
-let terminate_count = 0
-const posted: Posted[] = []
-let reply_delay_ms = 0
-
-class StubWorker {
-  private readonly listeners = new Map<string, Listener[]>()
-
-  addEventListener(type: string, handler: Listener): void {
-    this.listeners.set(type, [...(this.listeners.get(type) ?? []), handler])
-  }
-
-  postMessage(message: Posted[`message`], transfer: Transferable[] = []): void {
-    // A real worker receives a structured clone; Svelte proxies would throw here
-    const cloned = structuredClone(message)
-    posted.push({ message: cloned, transfer })
-    setTimeout(() => {
-      const result = compute_isosurface_geometries(cloned.input)
-      for (const handler of this.listeners.get(`message`) ?? []) {
-        handler({ data: { id: cloned.id, result, error: null }, preventDefault: () => {} })
-      }
-    }, reply_delay_ms)
-  }
-
-  terminate(): void {
-    terminate_count++
-  }
-}
-
+const stub = install_stub_worker<{ id: number; input: GeometryInput }>(({ input }) =>
+  compute_isosurface_geometries(input),
+)
 let compute_geometries_async: typeof ComputeGeometriesAsync
 
 beforeAll(async () => {
-  vi.stubGlobal(`Worker`, StubWorker)
   ;({ compute_geometries_async } = await import(`$lib/isosurface/async-geometry.svelte`))
 })
+afterEach(stub.reset)
 
-afterEach(() => {
-  posted.length = 0
-  terminate_count = 0
-  reply_delay_ms = 0
-})
+test(`compute_geometries_async posts a cloneable payload and returns the worker result`, async () => {
+  const volume = blob_volume()
+  const result = await compute_geometries_async(blob_input(volume))
+  expect(stub.posted).toHaveLength(1)
+  const payload = stub.posted[0].message.input.volumes[0]
+  expect(payload.volume.values).toBeInstanceOf(Float64Array)
+  expect(payload.volume.values).toHaveLength(volume.values.length)
+  expect(payload.volume.lattice).toEqual(volume.lattice)
+  // Value buffers stay owned by the caller (copied, not transferred)
+  expect(stub.posted[0].transfer).toEqual([])
+  expect(volume.values).toHaveLength(16 ** 3)
 
-describe(`compute_geometries_async`, () => {
-  test(`posts a cloneable payload and returns the worker result`, async () => {
-    const volume = blob_volume()
-    const result = await compute_geometries_async(blob_input(volume))
-    expect(posted).toHaveLength(1)
-    const payload = posted[0].message.input.volumes[0]
-    expect(payload.volume.values).toBeInstanceOf(Float64Array)
-    expect(payload.volume.values).toHaveLength(volume.values.length)
-    expect(payload.volume.lattice).toEqual(volume.lattice)
-    // Value buffers stay owned by the caller (copied, not transferred)
-    expect(posted[0].transfer).toEqual([])
-    expect(volume.values).toHaveLength(16 ** 3)
-
-    const sync = compute_isosurface_geometries(blob_input(volume))
-    expect(result.volumes[0].grid.dims).toEqual(sync.volumes[0].grid.dims)
-    expect(result.volumes[0].surfaces[0].positions).toEqual(
-      sync.volumes[0].surfaces[0].positions,
-    )
-  })
-
-  test(`aborting the only waiter rejects and tears the worker down`, async () => {
-    reply_delay_ms = 50
-    const controller = new AbortController()
-    const pending = compute_geometries_async(blob_input(), { signal: controller.signal })
-    controller.abort(new Error(`superseded`))
-    await expect(pending).rejects.toThrow(`superseded`)
-    expect(terminate_count).toBe(1)
-  })
+  const sync = compute_isosurface_geometries(blob_input(volume))
+  expect(result.volumes[0].grid.dims).toEqual(sync.volumes[0].grid.dims)
+  expect(result.volumes[0].surfaces[0].positions).toEqual(
+    sync.volumes[0].surfaces[0].positions,
+  )
 })

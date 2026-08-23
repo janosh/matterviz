@@ -223,7 +223,7 @@
 <h2 id="phonon-units-and-shading">Phonon Units and Highlight Regions</h2>
 <Bands
   band_structs={mock_band_structure}
-  units="cm-1"
+  units="cm^-1"
   highlight_regions={[
     {
       y_min: 40,

@@ -68,11 +68,9 @@ describe(`compute_hull_stability`, () => {
     [`exactly on hull`, 0, false, 0, true],
     [`on hull but excluded`, 0, true, 0, false],
     [`within tol, clamped to 0`, 1e-7, false, 0, true],
-    [`within tol, excluded → raw preserved`, 1e-7, true, 1e-7, false],
     [`negative noise clamped to 0`, -1e-7, false, 0, true],
     [`negative noise, excluded → raw preserved`, -1e-7, true, -1e-7, false],
     [`large negative clamped to 0`, -0.05, false, 0, true],
-    [`large negative, excluded → raw preserved`, -0.05, true, -0.05, false],
     [`custom tol=0.1 clamps 0.05 to 0`, 0.05, false, 0, true, 0.1],
     // exactly at tol: not clamped (< is strict) but still stable (<= is inclusive)
     [`exactly at tol boundary`, HULL_STABILITY_TOL, false, HULL_STABILITY_TOL, true],

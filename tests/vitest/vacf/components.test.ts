@@ -1,12 +1,7 @@
 // Covers the worker plumbing of compute_vacf_async and the two UI components.
 // happy-dom has no Worker, so a stub is installed before the module is imported and the
 // real postMessage path runs; the components then exercise the synchronous fallback.
-import type { Vec3 } from '$lib/math'
-import {
-  trajectory_from_frames,
-  type TrajectoryFrame,
-  type TrajectoryRun,
-} from '$lib/trajectory'
+import { trajectory_from_frames, type TrajectoryRun } from '$lib/trajectory'
 import type * as VacfAsyncModule from '$lib/vacf/async-compute.svelte'
 import { calc_vacf } from '$lib/vacf/calc-vacf'
 import type { VacfInput, VacfOptions, VacfResult } from '$lib/vacf/index'
@@ -15,52 +10,13 @@ import VacfPlot from '$lib/vacf/VacfPlot.svelte'
 import { type Component, type ComponentProps, mount, tick, unmount } from 'svelte'
 import { SvelteMap } from 'svelte/reactivity'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
-import { bind_props, make_crystal } from '../setup'
+import { bind_props, install_stub_worker, make_frame } from '../setup'
 import { build_vacf_input, circular_motion } from './helpers'
 
-type WorkerMessage = { id: number; input: VacfInput; options: VacfOptions }
-type Listener = (event: {
-  data: unknown
-  message?: string
-  preventDefault: () => void
-}) => void
-
-let last_worker_url: string | undefined
-let last_worker_options: WorkerOptions | undefined
-const posted: { message: WorkerMessage; transfer: Transferable[] }[] = []
-
-class StubWorker {
-  private readonly listeners = new SvelteMap<string, Listener[]>()
-
-  constructor(url: URL | string, options?: WorkerOptions) {
-    last_worker_url = String(url)
-    last_worker_options = options
-  }
-
-  addEventListener(type: string, handler: Listener): void {
-    this.listeners.set(type, [...(this.listeners.get(type) ?? []), handler])
-  }
-
-  postMessage(message: WorkerMessage, transfer: Transferable[] = []): void {
-    // The real worker receives a structured clone; if the payload still carried a Svelte
-    // $state proxy this would throw, exactly as it would in a browser.
-    const cloned = structuredClone(message)
-    posted.push({ message: cloned, transfer })
-    queueMicrotask(() => {
-      // Mirrors vacf-worker.ts, which turns a thrown kernel error into an error reply
-      // rather than letting it escape the worker
-      let data: { id: number; result: unknown; error: string | null }
-      try {
-        data = { id: cloned.id, result: calc_vacf(cloned.input, cloned.options), error: null }
-      } catch (err) {
-        data = { id: cloned.id, result: null, error: (err as Error).message }
-      }
-      for (const handler of this.listeners.get(`message`) ?? []) {
-        handler({ data, preventDefault: () => {} })
-      }
-    })
-  }
-}
+// Mirrors vacf-worker.ts: a thrown kernel error becomes an error reply instead of escaping
+const stub = install_stub_worker<{ id: number; input: VacfInput; options: VacfOptions }>(
+  ({ input, options }) => calc_vacf(input, options),
+)
 
 let compute_vacf_async: typeof VacfAsyncModule.compute_vacf_async
 let vacf_async_module: typeof VacfAsyncModule
@@ -71,14 +27,13 @@ const orbit_input = (n_frames: number, with_velocities = true): VacfInput => {
 }
 
 beforeAll(async () => {
-  vi.stubGlobal(`Worker`, StubWorker)
   // Imported after the stub so the module-level singleton picks it up
   vacf_async_module = await import(`$lib/vacf/async-compute.svelte`)
   ;({ compute_vacf_async } = vacf_async_module)
 })
 
 afterEach(() => {
-  posted.length = 0
+  stub.reset()
   vi.restoreAllMocks()
 })
 
@@ -90,17 +45,18 @@ describe(`worker code path`, () => {
     const input = orbit_input(60, stored)
     const sync = calc_vacf(input)
     const result = await compute_vacf_async(input)
-    expect(posted).toHaveLength(1)
+    expect(stub.posted).toHaveLength(1)
     expect(result).toEqual(sync)
-    expect(posted[0].message.input.velocities === null).toBe(!stored)
+    expect(stub.posted[0].message.input.velocities === null).toBe(!stored)
   })
 
-  it(`points the worker at the vacf worker module as an ES module`, () => {
+  it(`points the one module worker at the vacf worker module as an ES module`, () => {
     // Vite only detects and rewrites the worker when the URL keeps the `./` prefix and the
     // `.js` extension. Detection turns the source `.js` spec into the real `.ts` module
     // tagged `?worker_file`; losing that means the app 404s on the worker at runtime.
-    expect(last_worker_url).toMatch(/\/src\/lib\/vacf\/vacf-worker\.ts\?worker_file/)
-    expect(last_worker_options).toEqual({ type: `module` })
+    expect(stub.instances).toHaveLength(1)
+    expect(stub.instances[0].url).toMatch(/\/src\/lib\/vacf\/vacf-worker\.ts\?worker_file/)
+    expect(stub.instances[0].options).toEqual({ type: `module` })
   })
 
   // Transferring would detach the caller's buffer, breaking the dedupe cache on a repeat
@@ -108,8 +64,8 @@ describe(`worker code path`, () => {
   it(`copies position and velocity buffers without transferring`, async () => {
     const input = orbit_input(15)
     await compute_vacf_async(input)
-    const { input: payload } = posted[0].message
-    expect(posted[0].transfer).toHaveLength(0)
+    const { input: payload } = stub.posted[0].message
+    expect(stub.posted[0].transfer).toHaveLength(0)
     expect(input.positions).toHaveLength(15 * 3)
     expect(payload.positions).toHaveLength(15 * 3)
     expect(payload.velocities).toHaveLength(15 * 3)
@@ -176,7 +132,7 @@ describe(`VacfPlot`, () => {
 
   it(`says the axis is in inverse frames when no timestep was supplied`, async () => {
     const text = await mount_plot({ result: calc_vacf(orbit_input(80)) })
-    expect(text).toContain(`no timestep supplied, so frequencies are per frame`)
+    expect(text).toContain(`no timestep supplied, so frequencies are per collected frame`)
     expect(text).toContain(`Frequency (1/frame)`)
   })
 
@@ -239,19 +195,11 @@ describe(`VacfPlot`, () => {
 describe(`TrajectoryVacfPane`, () => {
   const make_run = (n_frames: number): TrajectoryRun => {
     const { positions, velocities } = circular_motion(n_frames, 0.04, 1)
-    const frames: TrajectoryFrame[] = positions.map((frame, frame_idx) => {
-      const crystal = make_crystal(
-        20,
-        frame.map((xyz, atom_idx) => ({
-          element: `H`,
-          xyz: xyz as Vec3,
-          properties: { velocity: velocities[frame_idx][atom_idx] as Vec3 },
-        })),
-        { charge: 0 },
-      )
-      return { step: frame_idx, structure: { charge: 0, sites: crystal.sites } }
-    })
-    return trajectory_from_frames(frames)
+    return trajectory_from_frames(
+      positions.map((frame, frame_idx) =>
+        make_frame(frame_idx, frame, { velocities: velocities[frame_idx] }),
+      ),
+    )
   }
 
   const run_collect = async () => {

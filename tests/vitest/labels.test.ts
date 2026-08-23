@@ -5,10 +5,8 @@ import {
   ELEM_HEATMAP_KEYS,
   ELEM_HEATMAP_LABELS,
   ELEM_PROPERTY_LABELS,
-  format_bytes,
   format_fractional,
   format_num,
-  format_power_ten,
   format_tick_values,
   format_value,
   format_vec3,
@@ -80,23 +78,6 @@ test(`format_tick_values increases default precision until distinct values have 
   expect(format_tick_values([-1539, -1000, -1538])).toEqual([`−1.54k`, `−1k`, `−1.54k`])
   expect(format_tick_values([1000, 1000])).toEqual([`1k`, `1k`])
   expect(format_tick_values([-1539, -1538], `.3~s`)).toEqual([`-1.54k`, `-1.54k`])
-})
-
-test.each([
-  [`1.23e-4`, `1.23×10<sup>-4</sup>`],
-  [`1e−3`, `10<sup>-3</sup>`],
-  [`.5e3`, `.5×10<sup>3</sup>`],
-  [`1.e3`, `1.×10<sup>3</sup>`],
-  [`5.67e+8`, `5.67×10<sup>8</sup>`],
-  [`1e6`, `10<sup>6</sup>`],
-  [`multiple 1.2e3 and 4.5E-6`, `multiple 1.2×10<sup>3</sup> and 4.5×10<sup>-6</sup>`],
-  [`1×10<sup>3</sup>`, `1×10&lt;sup&gt;3&lt;/sup&gt;`],
-  [`<img src=x onerror=x> 1e3`, `&lt;img src=x onerror=x&gt; 10<sup>3</sup>`],
-  [`step2e3 and 1e3e4`, `step2e3 and 1e3e4`],
-  [`1e+-3`, `1e+-3`],
-  [`no scientific notation`, `no scientific notation`],
-])(`format_power_ten(%s)`, (input, expected) => {
-  expect(format_power_ten(input)).toBe(expected)
 })
 
 const element_data_keys = Object.keys(element_data[0])
@@ -362,44 +343,4 @@ describe(`format_value`, () => {
       expect(format_value(value, formatter)).toBe(expected)
     },
   )
-})
-
-describe(`format_bytes`, () => {
-  test.each([
-    // Undefined and edge cases
-    [undefined, `Unknown`],
-    [NaN, `Unknown`],
-    [Infinity, `Unknown`],
-    [-Infinity, `Unknown`],
-
-    // Bytes range (< 1024)
-    [0, `0 B`],
-    [1, `1 B`],
-    [500, `500 B`],
-    [1023, `1023 B`],
-
-    // Kibibytes range (1024 - 1024*1024)
-    [1024, `1.00 KiB`],
-    [1536, `1.50 KiB`],
-    [10240, `10.00 KiB`],
-    [102400, `100.00 KiB`],
-    [1024 * 1024 - 1, `1024.00 KiB`],
-
-    // Mebibytes range (1024*1024 - 1024*1024*1024)
-    [1024 * 1024, `1.00 MiB`],
-    [1024 * 1024 * 1.5, `1.50 MiB`],
-    [1024 * 1024 * 10, `10.00 MiB`],
-    [1024 * 1024 * 100, `100.00 MiB`],
-    [1024 * 1024 * 500, `500.00 MiB`],
-    [1024 * 1024 * 1024 - 1, `1024.00 MiB`],
-
-    // Gibibytes range (>= 1024*1024*1024)
-    [1024 * 1024 * 1024, `1.00 GiB`],
-    [1024 * 1024 * 1024 * 1.5, `1.50 GiB`],
-    [1024 * 1024 * 1024 * 10, `10.00 GiB`],
-    [1024 * 1024 * 1024 * 100, `100.00 GiB`],
-    [1024 * 1024 * 1024 * 1000, `1000.00 GiB`],
-  ])(`format_bytes(%s) should return %s`, (bytes, expected) => {
-    expect(format_bytes(bytes)).toBe(expected)
-  })
 })

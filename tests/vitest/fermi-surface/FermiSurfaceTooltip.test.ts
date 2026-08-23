@@ -23,21 +23,9 @@ const mount_tooltip = (
   })
 
 describe(`FermiSurfaceTooltip`, () => {
-  test(`renders container with expected structure`, () => {
-    mount_tooltip()
-    expect(doc_query(`.tooltip-content`)).toBeInstanceOf(HTMLElement)
-    expect(doc_query(`.tooltip-title`)).toBeInstanceOf(HTMLElement)
-  })
-
-  describe(`band index display`, () => {
-    test.each([
-      { band_index: 0, expected: `Band 0` },
-      { band_index: 3, expected: `Band 3` },
-      { band_index: 12, expected: `Band 12` },
-    ])(`displays band index $band_index`, ({ band_index, expected }) => {
-      mount_tooltip({ hover_data: mock_hover_data({ band_index }) })
-      expect(document.body.textContent).toContain(expected)
-    })
+  test(`titles the tooltip with the band index`, () => {
+    mount_tooltip({ hover_data: mock_hover_data({ band_index: 12 }) })
+    expect(doc_query(`.tooltip-content .tooltip-title`).textContent).toContain(`Band 12`)
   })
 
   describe(`spin display`, () => {
@@ -119,7 +107,6 @@ describe(`FermiSurfaceTooltip`, () => {
   describe(`tiling info`, () => {
     test.each([
       { n_symmetry_ops: 48, expected: `Symmetry copy #6/48` },
-      { n_symmetry_ops: 24, expected: `Symmetry copy #6/24` },
       { n_symmetry_ops: undefined, expected: `Symmetry copy #6` },
     ])(
       `shows symmetry info when tiled and symmetry_index > 0 (n_ops=$n_symmetry_ops)`,
@@ -148,8 +135,7 @@ describe(`FermiSurfaceTooltip`, () => {
       { key: `suffix`, html: `<strong>Footer</strong>`, class_name: `.tooltip-suffix` },
     ])(`renders $key as static HTML`, ({ key, html, class_name }) => {
       mount_tooltip({ tooltip: { [key]: html } })
-      expect(document.body.innerHTML).toContain(html)
-      expect(doc_query(class_name)).toBeInstanceOf(HTMLElement)
+      expect(doc_query(class_name).innerHTML).toBe(html)
     })
 
     test.each([

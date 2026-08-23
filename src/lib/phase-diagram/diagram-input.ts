@@ -25,7 +25,7 @@ interface DiagramInputMeta {
 export interface RegionInput {
   id: string
   name: string
-  color: string // key into DIAGRAM_COLORS or rgba string
+  color?: string // raw CSS color; omitted → get_phase_color(name) picks from the palette
   bounds: BoundElement[] // curve refs or inline [x,t] points
   label_position?: DiagramPoint
 }

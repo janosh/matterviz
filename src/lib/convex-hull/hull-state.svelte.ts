@@ -89,19 +89,24 @@ function get_gas_corrected_entries(
 export type EnergySourceMode = `precomputed` | `on-the-fly`
 
 // Which energies the hull can be built from. The user toggle only applies when the data
-// carries both E_form and E_above_hull; otherwise compute on the fly when unary references
-// allow it, else fall back to whatever is precomputed.
+// carries both E_form and E_above_hull and nothing has shifted the energies since they were
+// computed; temperature-dependent free energies and gas-pressure corrections change `energy`
+// only, so the hull must be rebuilt on the fly for them to have any effect. Without unary
+// references nothing can be recomputed and the precomputed values are all there is.
 export interface EnergyModeInfo {
   has_precomputed_e_form: boolean
   has_precomputed_hull: boolean
   can_compute: boolean // unary references exist for every element (E_form and hull alike)
+  // Temperature or gas-pressure corrections are active, so the energy mode is forced on the fly
+  corrections_active: boolean
   energy_mode: EnergySourceMode
   unary_refs: Record<string, PhaseData>
 }
 
-function compute_energy_mode_info(
+export function compute_energy_mode_info(
   entries: PhaseData[],
   energy_source_mode: EnergySourceMode,
+  corrections_active: boolean,
 ): EnergyModeInfo {
   const has_precomputed_e_form =
     entries.length > 0 && entries.every((entry) => typeof entry.e_form_per_atom === `number`)
@@ -111,13 +116,19 @@ function compute_energy_mode_info(
   const can_compute = entries.every((entry) =>
     Object.keys(entry.composition).every((el) => el in unary_refs),
   )
-  const energy_mode =
-    has_precomputed_e_form && has_precomputed_hull
-      ? energy_source_mode
-      : can_compute
-        ? `on-the-fly`
-        : `precomputed`
-  return { has_precomputed_e_form, has_precomputed_hull, can_compute, energy_mode, unary_refs }
+  let energy_mode: EnergySourceMode = energy_source_mode
+  if (!can_compute) energy_mode = `precomputed`
+  else if (corrections_active || !has_precomputed_e_form || !has_precomputed_hull) {
+    energy_mode = `on-the-fly`
+  }
+  return {
+    has_precomputed_e_form,
+    has_precomputed_hull,
+    can_compute,
+    corrections_active,
+    energy_mode,
+    unary_refs,
+  }
 }
 
 // Hull coordinates of a plotted entry: simplex position + formation energy. 2D/3D already
@@ -130,8 +141,21 @@ export function create_hull_data_pipeline(inputs: HullDataPipelineInputs) {
   const kind = DIM_TO_KIND[dim]
   const default_threshold = DEFAULTS.convex_hull[kind].max_hull_dist_show_phases
 
+  // Composition keys are normalized once here ("Fe3+" → Fe) so every later stage, including
+  // the unary-reference lookup, sees plain element symbols. Unrecognized keys ("Fe2O3") come
+  // straight from the entries prop, so the throw is caught and surfaced as `error` for the
+  // components to render instead of propagating out of a $derived mid-render.
+  const normalized_source = $derived.by((): { entries: PhaseData[]; error: string | null } => {
+    try {
+      return { entries: thermo.process_hull_entries(inputs.entries()).entries, error: null }
+    } catch (err) {
+      return { entries: [], error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+  const source_entries = $derived(normalized_source.entries)
+
   // Temperature-dependent free energy support
-  const temp_analysis = $derived(helpers.analyze_temperature_data(inputs.entries()))
+  const temp_analysis = $derived(helpers.analyze_temperature_data(source_entries))
 
   // Initialize or reset temperature when it's undefined or no longer valid
   $effect(() => {
@@ -147,11 +171,11 @@ export function create_hull_data_pipeline(inputs: HullDataPipelineInputs) {
   const temp_filtered_entries = $derived.by(() => {
     const temperature = inputs.temperature()
     return temp_analysis.has_temp_data && temperature !== undefined
-      ? helpers.filter_entries_at_temperature(inputs.entries(), temperature, {
+      ? helpers.filter_entries_at_temperature(source_entries, temperature, {
           interpolate: inputs.interpolate_temperature(),
           max_interpolation_gap: inputs.max_interpolation_gap(),
         })
-      : inputs.entries()
+      : source_entries
   })
 
   // Gas-dependent chemical potential corrections (T, P); room temperature without T data
@@ -165,7 +189,11 @@ export function create_hull_data_pipeline(inputs: HullDataPipelineInputs) {
   )
 
   const energy_info = $derived(
-    compute_energy_mode_info(gas_result.entries, inputs.energy_source_mode()),
+    compute_energy_mode_info(
+      gas_result.entries,
+      inputs.energy_source_mode(),
+      temp_analysis.has_temp_data || gas_result.entries !== temp_filtered_entries,
+    ),
   )
 
   // Formation energies per the energy mode + category marker shapes (no-op without data)
@@ -181,7 +209,10 @@ export function create_hull_data_pipeline(inputs: HullDataPipelineInputs) {
     return helpers.apply_category_markers(with_e_form, inputs.entry_category())
   })
 
-  const pd_data = $derived(thermo.process_hull_entries(effective_entries))
+  const pd_data = $derived({
+    entries: effective_entries,
+    elements: thermo.collect_hull_elements(effective_entries),
+  })
 
   // Pre-compute polymorph stats once for O(1) tooltip lookups
   const polymorph_stats_map = $derived(helpers.compute_all_polymorph_stats(effective_entries))
@@ -321,6 +352,10 @@ export function create_hull_data_pipeline(inputs: HullDataPipelineInputs) {
   })
 
   return {
+    // Message of an invalid entries prop (null when every composition key parsed)
+    get error() {
+      return normalized_source.error
+    },
     get has_temp_data() {
       return temp_analysis.has_temp_data
     },

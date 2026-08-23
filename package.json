@@ -276,12 +276,11 @@
     "knip": "knip --include dependencies,exports,types,nsExports",
     "publint": "publint",
     "package:dist": "svelte-package && node src/scripts/package-dist-assets.mjs",
-    "prepare": "svelte-kit sync && pnpm run package:dist",
+    "prepare": "svelte-kit sync",
     "prepublishOnly": "pnpm run package:dist"
   },
   "dependencies": {
     "@spglib/moyo-wasm": "^0.15.0",
-    "@sveltejs/kit": "2.70.3",
     "@threlte/core": "^8.5.16",
     "@threlte/extras": "^9.21.0",
     "d3-array": "^3.2.4",
@@ -305,6 +304,7 @@
   "devDependencies": {
     "@playwright/test": "^1.62.1",
     "@sveltejs/adapter-static": "3.0.10",
+    "@sveltejs/kit": "2.70.3",
     "@sveltejs/package": "^2.5.8",
     "@sveltejs/vite-plugin-svelte": "^7.3.0",
     "@types/d3-array": "^3.2.2",

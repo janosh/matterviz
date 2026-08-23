@@ -35,8 +35,10 @@ jobs:
       # extension imports $lib types directly (file-viewer/eligibility, io/decompress,
       # trajectory/format-detect), so a change to a shared type broke it silently -
       # e.g. making HostFileRequest.filename required produced four errors nothing caught.
-      - name: Type-check VS Code extension
-        run: pnpm -C extensions/vscode run typecheck
+      - name: Type-check and test VS Code extension
+        run: |
+          pnpm -C extensions/vscode run typecheck
+          pnpm -C extensions/vscode test
 
       # Its settings and custom-editor selectors are generated from $lib, but only by a local
       # prebuild, so a change to the shared lists could land with package.json left behind.
@@ -83,5 +85,8 @@ jobs:
       - name: Install dependencies
         uses: ./.github/actions/setup
 
-      - name: Validate package exports and types
-        run: pnpm run publint
+      # publint checks that every export target exists, so build dist/ first
+      - name: Build and validate package exports and types
+        run: |
+          pnpm package:dist
+          pnpm run publint

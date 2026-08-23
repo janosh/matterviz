@@ -20,6 +20,10 @@ runs:
         # Registry packages ship their generated artifacts, so their prepare scripts do not
         # need to run. Without a pnpm-workspace.yaml allowlist, keep skipped builds non-fatal.
         pnpm install --config.strict-dep-builds=false
+        # anywidget depends on `matterviz: file:../..`, which pnpm copies (hard-links) at install
+        # time, so the svelte-package output must exist before that install or the copy has no
+        # dist/ (root `prepare` only runs svelte-kit sync).
+        case " $EXTENSIONS " in *" anywidget "*) pnpm package:dist ;; esac
         # --ignore-workspace: a freshly released dep trips pnpm's cooldown
         # (minimumReleaseAge), auto-creating a pnpm-workspace.yaml that makes these
         # standalone extension installs no-ops (skipping anywidget/@types/node/matterviz).

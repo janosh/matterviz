@@ -1,7 +1,21 @@
 import JsonBrowser from '$lib/file-viewer/JsonBrowser.svelte'
+import { mount_viewer } from '$lib/file-viewer/mount-viewer'
+import type * as MountViewerModule from '$lib/file-viewer/mount-viewer'
 import { flushSync, mount, unmount } from 'svelte'
-import { expect, onTestFinished, test, vi } from 'vitest'
+import { afterEach, expect, onTestFinished, test, vi } from 'vitest'
 import { doc_query } from '../setup'
+
+// Pass-through spy: a panel render is one mount_viewer call, so the count tells how many
+// viewers a burst of tree selections really built
+vi.mock(`$lib/file-viewer/mount-viewer`, async (import_original) => {
+  const original = await import_original<typeof MountViewerModule>()
+  return { ...original, mount_viewer: vi.fn(original.mount_viewer) }
+})
+
+afterEach(() => {
+  vi.mocked(mount_viewer).mockClear()
+  vi.useRealTimers()
+})
 
 const table_rows = (start: number, count: number) =>
   Array.from({ length: count }, (_, idx) => ({ x: start + idx, y: start + idx + 1 }))
@@ -24,25 +38,23 @@ const mouse_down = (element: Element): void => {
   flushSync()
 }
 
-test(`replacing a drag finalizes the previous drag without clearing the new one`, async () => {
-  vi.stubGlobal(`requestIdleCallback`, (callback: IdleRequestCallback) =>
-    window.setTimeout(() => callback({ didTimeout: false, timeRemaining: () => 50 }), 0),
-  )
-  vi.stubGlobal(`cancelIdleCallback`, window.clearTimeout)
-  vi.stubGlobal(`requestAnimationFrame`, () => 1)
-  const component = mount(JsonBrowser, {
-    target: document.body,
-    props: {
-      value: {
-        first: table_rows(1, 3),
-        second: table_rows(4, 4),
-      },
-    },
+// Real rAF/MutationObserver on purpose: the badge pass mutates the subtree it observes, so a
+// stubbed no-op rAF would hide a re-schedule loop
+const mount_browser = (props: { value: unknown; filename?: string }) => {
+  const component = mount(JsonBrowser, { target: document.body, props })
+  onTestFinished(() => unmount(component))
+  return component
+}
+
+const next_frames = (count: number): Promise<void> =>
+  new Promise((resolve) => {
+    const step = (remaining: number) =>
+      remaining === 0 ? resolve() : requestAnimationFrame(() => step(remaining - 1))
+    step(count)
   })
-  onTestFinished(async () => {
-    await unmount(component)
-    vi.unstubAllGlobals()
-  })
+
+test(`split divider drag activates and terminates on mouseup`, async () => {
+  mount_browser({ value: { first: table_rows(1, 3), second: table_rows(4, 4) } })
 
   const first_chip = await vi.waitFor(() => doc_query(`.renderable-chip`))
   first_chip.click()
@@ -57,14 +69,110 @@ test(`replacing a drag finalizes the previous drag without clearing the new one`
 
   const split_divider = await vi.waitFor(() => doc_query(`.split-divider`))
   mouse_down(split_divider)
-  expect(split_divider.classList.contains(`active`)).toBe(true)
-
-  mouse_down(doc_query(`.sidebar-divider`))
-  expect(split_divider.classList.contains(`active`)).toBe(false)
   const browser = doc_query(`.json-browser`)
+  expect(split_divider.classList.contains(`active`)).toBe(true)
   expect(browser.classList.contains(`dragging`)).toBe(true)
 
   globalThis.dispatchEvent(new MouseEvent(`mouseup`))
   flushSync()
+  expect(split_divider.classList.contains(`active`)).toBe(false)
   expect(browser.classList.contains(`dragging`)).toBe(false)
+  // the sidebar is resized by the shared PaneDivider, not a bespoke mouse handler
+  expect(doc_query(`.pane-divider`).getAttribute(`aria-orientation`)).toBe(`vertical`)
 })
+
+// Regression: the root node is labelled with the verbatim filename, and `data.json` used
+// to be split at its dot, so no badge matched its tree node and clicking nodes never
+// resolved a value (click-to-render was dead for every real filename)
+const keyed = { first: table_rows(1, 3), other: 1 }
+test.each([
+  [`data.json`, keyed, `data.json.first`, `first`],
+  [`results.v2.json`, keyed, `results.v2.json.first`, `first`],
+  [`data.json`, [table_rows(1, 3)], `data.json[0]`, `[0]`],
+  [undefined, keyed, `first`, `first`],
+])(
+  `filename %s: badges attach to tree node %s and clicking it renders`,
+  async (filename, value, tree_path, data_path) => {
+    mount_browser({ value, filename })
+
+    const badge = await vi.waitFor(() => doc_query(`.renderable-badge`))
+    const node = badge.closest<HTMLElement>(`[data-path]`)
+    expect(node?.dataset.path).toBe(tree_path)
+    expect(node?.draggable).toBe(true)
+
+    // Badge injection mutates the observed subtree; it must settle instead of re-applying
+    // (and replacing every badge) on each animation frame
+    const badge_count = document.querySelectorAll(`.renderable-badge`).length
+    await next_frames(3)
+    expect(document.querySelectorAll(`.renderable-badge`)).toHaveLength(badge_count)
+    expect(document.contains(badge)).toBe(true)
+
+    // Clicking the node resolves its value through the dotted root label and renders it
+    node?.click()
+    const label = await vi.waitFor(() => doc_query(`.panel-label`))
+    expect(label.textContent).toBe(`Table: ${data_path}`)
+  },
+)
+
+// JsonTree reports a selection on every ArrowUp/ArrowDown and twice on a double-click, and
+// each render unmounts and remounts a full viewer, so a burst of selections must build one
+test(`rapid tree selections render only the last one after a 150 ms debounce`, async () => {
+  vi.useFakeTimers()
+  const value = { first: table_rows(1, 3), second: table_rows(4, 3), third: table_rows(7, 3) }
+  mount_browser({ value })
+  flushSync()
+  // 100 ms apart: slower than the debounce, but each would be its own viewer without it
+  for (const path of [`first`, `second`, `third`]) {
+    doc_query(`[data-path="${path}"]`).click()
+    await vi.advanceTimersByTimeAsync(100)
+  }
+  await vi.advanceTimersByTimeAsync(49)
+  expect(document.querySelector(`.viz-panel`)).toBeNull()
+  expect(mount_viewer).not.toHaveBeenCalled()
+
+  await vi.advanceTimersByTimeAsync(100)
+  expect(mount_viewer).toHaveBeenCalledTimes(1)
+  expect(doc_query(`.panel-label`).textContent).toBe(`Table: third`)
+})
+
+test(`a selection pending when the browser unmounts never renders`, async () => {
+  vi.useFakeTimers()
+  const component = mount(JsonBrowser, {
+    target: document.body,
+    props: { value: { first: table_rows(1, 3) } },
+  })
+  flushSync()
+  doc_query(`[data-path="first"]`).click()
+  await unmount(component)
+  await vi.advanceTimersByTimeAsync(300)
+  expect(mount_viewer).not.toHaveBeenCalled()
+})
+
+// The tree wants ~320 px whatever the editor width: the default ratio is seeded from that,
+// and dragging can shrink neither the tree below 150 px nor the viewer below 200 px
+test.each([
+  [1000, `32%`, 50, `15%`, 950, `80%`],
+  [500, `60%`, 50, `30%`, 450, `60%`],
+])(
+  `sidebar in a %i px browser starts at %s and drags clamp to [%s, %s]`,
+  (width, seeded, min_client_x, min_size, max_client_x, max_size) => {
+    const rect = DOMRect.fromRect({ x: 0, y: 0, width, height: 600 })
+    vi.spyOn(HTMLElement.prototype, `getBoundingClientRect`).mockReturnValue(rect)
+    mount_browser({ value: { first: table_rows(1, 3) } })
+    flushSync()
+    const browser = doc_query(`.json-browser`)
+    expect(browser.style.getPropertyValue(`--split-pane-size`)).toBe(seeded)
+
+    const divider = doc_query(`.pane-divider`)
+    const pointer = (type: string, clientX: number) =>
+      divider.dispatchEvent(
+        new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 3, clientX }),
+      )
+    pointer(`pointerdown`, width / 2)
+    pointer(`pointermove`, min_client_x)
+    expect(browser.style.getPropertyValue(`--split-pane-size`)).toBe(min_size)
+    pointer(`pointermove`, max_client_x)
+    expect(browser.style.getPropertyValue(`--split-pane-size`)).toBe(max_size)
+    pointer(`pointerup`, max_client_x)
+  },
+)

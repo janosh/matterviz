@@ -12,6 +12,7 @@ import type {
   Site,
   StructureBond,
 } from '$lib/structure'
+import { get_orig_site_idx } from '$lib/structure/site'
 
 const covalent_radii = new Map<string, number>(
   element_data.flatMap((el) =>
@@ -588,24 +589,10 @@ export function apply_explicit_bond_metadata(
 // covalent-radius perception both invents spurious bonds and misses coordination bonds.
 // Structures without declared bonds yield no bonds — falling back to a perception
 // strategy here would hide a missing or unparsed bond block.
-// `_options` is unused but required: compute_bonds calls the strategy union with two
-// arguments, which TS rejects if any registry member has a lower arity.
-export const explicit_only = (structure: AnyStructure, _options = {}): BondPair[] =>
+export const explicit_only = (structure: AnyStructure): BondPair[] =>
   get_explicit_bond_metadata(structure).map((bond) =>
     structure_bond_to_bond_pair(structure, bond),
   )
-
-// Helper to extract numeric index from site properties
-function get_orig_idx(site: Site, fallback: number): number {
-  const props = site.properties
-  if (!props) return fallback
-
-  const raw = props.orig_unit_cell_idx ?? props.orig_site_idx
-  if (raw === undefined) return fallback
-
-  const num = Number(raw)
-  return Number.isFinite(num) ? num : fallback
-}
 
 // === Geometric PBC neighbor query ===
 // Purely geometric fixed-radius / k-nearest neighbor lists with periodic images. The single
@@ -1156,7 +1143,14 @@ const SHELL_TOL = 1.001
 // whose metal-metal contacts are structural.
 const MIN_ANION_SHELL = 4
 
-export const BONDING_STRATEGIES = { electroneg_ratio, explicit_only } as const
+type BondingStrategyFn = (
+  structure: AnyStructure,
+  options?: Record<string, unknown>,
+) => BondPair[]
+export const BONDING_STRATEGIES = {
+  electroneg_ratio,
+  explicit_only,
+} as const satisfies Record<string, BondingStrategyFn>
 export type BondingStrategy = keyof typeof BONDING_STRATEGIES
 
 // Memo for the costly neighbor search: WeakMap keyed by structure (GC'd with it), each holding a
@@ -1174,7 +1168,8 @@ export function compute_bonds(
   let by_sig = bond_memo.get(structure)
   const cached = by_sig?.get(sig)
   if (cached) return cached
-  const bonds = BONDING_STRATEGIES[strategy](structure, options)
+  const strategy_fn: BondingStrategyFn = BONDING_STRATEGIES[strategy]
+  const bonds = strategy_fn(structure, options)
   if (!by_sig) bond_memo.set(structure, (by_sig = new Map()))
   by_sig.set(sig, bonds)
   return bonds
@@ -1255,11 +1250,10 @@ export function electroneg_ratio(
     }
     elem_ids[idx] = elem_id
     // Valid orig indices always reference a site in this structure; fall back to
-    // the site's own index on malformed orig_*_idx properties so the typed
+    // the site's own index on out-of-range orig_*_idx properties so the typed
     // `closest` array below stays bounded by n_sites
-    const orig_idx = get_orig_idx(sites[idx], idx)
-    orig_idxs[idx] =
-      Number.isInteger(orig_idx) && orig_idx >= 0 && orig_idx < n_sites ? orig_idx : idx
+    const orig_idx = get_orig_site_idx(sites[idx], idx)
+    orig_idxs[idx] = orig_idx >= 0 && orig_idx < n_sites ? orig_idx : idx
   }
   // Closest normalized bond distance per original atom (typed array instead of Map).
   // Filled by each sweep, so no initial fill here.

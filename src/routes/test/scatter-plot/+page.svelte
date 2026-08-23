@@ -32,118 +32,6 @@
     },
   ]
 
-  // === Marker Types Data ===
-  const points_data = basic_data
-
-  const line_data = {
-    x: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-    y: [5, 8, 7, 9, 12, 10, 14, 16, 15, 19],
-    point_style: {
-      fill: `tomato`,
-      radius: 5,
-      stroke: `white`,
-      stroke_width: 1,
-    },
-  }
-
-  const line_points_data = {
-    x: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-    y: [3, 5, 4, 6, 8, 7, 10, 12, 11, 14],
-    point_style: {
-      fill: `forestgreen`,
-      radius: 5,
-      stroke: `white`,
-      stroke_width: 1,
-    },
-  }
-
-  // === Range Test Data ===
-  const wide_range_data = {
-    x: [-1000, -100, -10, -1, 0, 1, 10, 100, 1000],
-    y: [-500, -50, -5, -0.5, 0, 0.5, 5, 50, 500],
-    point_style: {
-      fill: `steelblue`,
-      radius: 5,
-      stroke: `white`,
-      stroke_width: 1,
-    },
-  }
-
-  const small_range_data = {
-    x: [0.0001, 0.0002, 0.0003, 0.0004, 0.0005],
-    y: [0.00001, 0.00002, 0.00003, 0.00004, 0.00005],
-    point_style: {
-      fill: `tomato`,
-      radius: 5,
-      stroke: `white`,
-      stroke_width: 1,
-    },
-  }
-
-  // === Log Scale Data ===
-  const log_scale_data = {
-    x: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-    y: [10, 20, 40, 80, 160, 320, 640, 1280, 2560, 5120],
-    point_style: {
-      fill: `steelblue`,
-      radius: 5,
-      stroke: `white`,
-      stroke_width: 1,
-    },
-  }
-
-  const log_scale_data2 = {
-    x: [0.1, 0.5, 1, 5, 10, 50, 100, 500, 1000],
-    y: [5, 15, 45, 135, 405, 1215, 3645, 10935, 32805],
-    point_style: {
-      fill: `tomato`,
-      radius: 5,
-      stroke: `white`,
-      stroke_width: 1,
-    },
-  }
-
-  // === Custom Style Data ===
-  const rainbow_data = {
-    x: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-    y: [10, 15, 13, 17, 20, 18, 22, 25, 23, 28],
-    point_style: [
-      { fill: `#ff0000`, radius: 8, stroke: `black`, stroke_width: 2 },
-      { fill: `#ff7f00`, radius: 7, stroke: `black`, stroke_width: 2 },
-      { fill: `#ffff00`, radius: 6, stroke: `black`, stroke_width: 2 },
-      { fill: `#00ff00`, radius: 7, stroke: `black`, stroke_width: 2 },
-      { fill: `#0000ff`, radius: 8, stroke: `black`, stroke_width: 2 },
-      { fill: `#4b0082`, radius: 9, stroke: `black`, stroke_width: 2 },
-      { fill: `#8f00ff`, radius: 8, stroke: `black`, stroke_width: 2 },
-      { fill: `#ff00ff`, radius: 7, stroke: `black`, stroke_width: 2 },
-      { fill: `#00ffff`, radius: 6, stroke: `black`, stroke_width: 2 },
-      { fill: `#ff9999`, radius: 7, stroke: `black`, stroke_width: 2 },
-    ],
-  }
-
-  const multi_series_data1 = {
-    x: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-    y: [5, 8, 7, 9, 12, 10, 14, 16, 15, 19],
-    point_style: {
-      fill: `#ff5555`,
-      radius: 6,
-      stroke: `#882222`,
-      stroke_width: 1.5,
-    },
-  }
-
-  const multi_series_data2 = {
-    x: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-    y: [3, 5, 4, 6, 8, 7, 10, 12, 11, 14],
-    point_style: {
-      fill: `#5555ff`,
-      radius: 6,
-      stroke: `#222288`,
-      stroke_width: 1.5,
-    },
-  }
-
-  // === Color Scale Data ===
   let color_scale = $state({ type: `linear` as const })
 
   const color_scale_data = {
@@ -155,15 +43,6 @@
     point_style: { radius: 10, stroke: `black`, stroke_width: 1 },
   }
 
-  // === Custom Tooltip Data ===
-  const custom_tooltip_data = {
-    x: [1, 2, 3],
-    y: [5, 8, 6],
-    metadata: [{ info: `Point A` }, { info: `Point B` }, { info: `Point C` }],
-    point_style: { fill: `purple`, radius: 6 },
-  }
-
-  // === Bind Hovered Data ===
   let is_plot_hovered = $state(false)
   const bind_hovered_data = {
     x: [10, 20, 30],
@@ -282,41 +161,6 @@
     })),
   )
 
-  // === Leader Line Test Data ===
-  // Tight cluster where SA must displace labels, triggering leader lines
-  const leader_line_cluster = generate_cluster(50, 50, 6, 3, `LL`)
-  const leader_line_series: DataSeries[] = [
-    {
-      x: leader_line_cluster.x,
-      y: leader_line_cluster.y,
-      point_style: leader_line_cluster.point_style as PointStyle[],
-      point_label: (leader_line_cluster.point_label as LabelStyle[]).map((lbl) => ({
-        ...lbl,
-        auto_placement: true,
-      })),
-    },
-  ]
-
-  // === SA Tuning Test Data ===
-  // Grid of evenly spaced points for testing different SA iteration counts
-  let sa_test_iterations = $state(2000)
-  const grid_points = {
-    x: [20, 50, 80, 20, 50, 80, 20, 50, 80],
-    y: [20, 20, 20, 50, 50, 50, 80, 80, 80],
-  }
-  const sa_tuning_series: DataSeries[] = [
-    {
-      ...grid_points,
-      point_style: { fill: `teal`, radius: 5 },
-      point_label: grid_points.x.map((_, idx) => ({
-        text: `Grid-${idx + 1}`,
-        auto_placement: true,
-        font_size: `10px`,
-      })),
-    },
-  ]
-
-  // === Automatic Color Bar Placement Data ===
   let auto_placement_density = $state({
     top_left: 10,
     top_right: 50,
@@ -384,14 +228,6 @@
   })
 
   // Legend test data
-  const legend_single_series: DataSeries[] = [
-    {
-      x: [1, 2],
-      y: [3, 4],
-      metadata: { label: `Single Series` },
-      point_style: { fill: `steelblue`, radius: 5 },
-    },
-  ]
   const legend_multi_series: DataSeries[] = [
     {
       x: [1, 2],
@@ -405,56 +241,6 @@
       metadata: { label: `Series B` },
       point_style: { fill: `blue`, radius: 5 },
     },
-  ]
-  const legend_zero_series: DataSeries[] = []
-
-  // === Legend Deduplication Test Data ===
-  // Same label in different legend_groups should NOT be deduplicated
-  const legend_dedupe_different_groups: DataSeries[] = [
-    {
-      x: [1, 2],
-      y: [1, 2],
-      label: `Energy`,
-      legend_group: `DFT`,
-      point_style: { fill: `blue` },
-    },
-    {
-      x: [1, 2],
-      y: [2, 3],
-      label: `Energy`,
-      legend_group: `ML`,
-      point_style: { fill: `red` },
-    },
-  ]
-  // Same label in same legend_group should be deduplicated
-  const legend_dedupe_same_group: DataSeries[] = [
-    {
-      x: [1, 2],
-      y: [1, 2],
-      label: `Energy`,
-      legend_group: `DFT`,
-      point_style: { fill: `blue` },
-    },
-    {
-      x: [1, 2],
-      y: [2, 3],
-      label: `Energy`,
-      legend_group: `DFT`,
-      point_style: { fill: `red` },
-    },
-  ]
-  // Same label without legend_group should be deduplicated
-  const legend_dedupe_no_group: DataSeries[] = [
-    { x: [1, 2], y: [1, 2], label: `Energy`, point_style: { fill: `blue` } },
-    { x: [1, 2], y: [2, 3], label: `Energy`, point_style: { fill: `red` } },
-  ]
-
-  // === Auto-Cycling Colors/Symbols Test Data ===
-  // Series WITHOUT explicit colors/symbols to test auto-differentiation
-  const auto_cycle_series: DataSeries[] = [
-    { x: [1, 2, 3], y: [1, 2, 3], label: `Auto Series 1` },
-    { x: [1, 2, 3], y: [2, 3, 4], label: `Auto Series 2` },
-    { x: [1, 2, 3], y: [3, 4, 5], label: `Auto Series 3` },
   ]
 
   // === Linear-to-Log Transition Test Data ===
@@ -516,33 +302,6 @@
     return data as DataSeries // Cast return value to satisfy the derived type
   })
 
-  // === Line Style Data ===
-  const solid_line_data_1 = {
-    x: [1, 2, 3, 4, 5],
-    y: [2, 4, 3, 5, 4],
-    point_style: { fill: `steelblue` }, // Needed for line color fallback
-    label: `Solid Line 1`, // Add unique label for key
-  }
-  const solid_line_data_2 = {
-    x: [1, 2, 3, 4, 5],
-    y: [6, 8, 7, 9, 8],
-    line_style: { stroke: `steelblue`, stroke_width: 2 }, // Explicit style
-    label: `Solid Line 2`, // Add unique label for key
-  }
-  const dashed_line_data = {
-    x: [1, 2, 3, 4, 5],
-    y: [10, 12, 11, 13, 12],
-    line_style: { stroke: `crimson`, stroke_width: 3, line_dash: `5 2` },
-    label: `Dashed Line`, // Add unique label for key
-  }
-  const custom_dash_data = {
-    x: [1, 2, 3, 4, 5],
-    y: [14, 16, 15, 17, 16],
-    line_style: { stroke: `forestgreen`, stroke_width: 1, line_dash: `10 5 2 5` },
-    label: `Custom Dash Line`, // Add unique label for key
-  }
-
-  // --- Point Event Test State ---
   let last_clicked_point_id = $state<string | null>(null)
   let last_double_clicked_point_id = $state<string | null>(null)
 
@@ -628,98 +387,6 @@
   />
 </section>
 
-<section id="marker-types">
-  <h2>Marker Types</h2>
-  <h3>Points Only</h3>
-  <ScatterPlot
-    id="plot-points-only"
-    series={[{ ...points_data, markers: `points` }]}
-    x_axis={{ label: `X Axis` }}
-    y_axis={{ label: `Y Axis (Points)` }}
-  />
-  <h3>Line Only</h3>
-  <ScatterPlot
-    id="plot-line-only"
-    series={[{ ...line_data, markers: `line` }]}
-    x_axis={{ label: `X Axis` }}
-    y_axis={{ label: `Y Axis (Line)` }}
-  />
-  <h3>Line + Points</h3>
-  <ScatterPlot
-    id="plot-line-points"
-    series={[line_points_data]}
-    x_axis={{ label: `X Axis` }}
-    y_axis={{ label: `Y Axis (Line+Points)` }}
-  />
-</section>
-
-<section id="range-test">
-  <h2>Data Range Examples</h2>
-
-  <div id="wide-range">
-    <h3>Wide Range (-1000 to 1000)</h3>
-    <ScatterPlot
-      series={[wide_range_data]}
-      x_axis={{ label: `X Axis`, range: [-1100, 1100] }}
-      y_axis={{ label: `Y Axis`, range: [-550, 550] }}
-    />
-  </div>
-
-  <div id="small-range">
-    <h3>Very Small Range</h3>
-    <ScatterPlot
-      series={[small_range_data]}
-      x_axis={{ label: `X Axis`, range: [0, 0.0006] }}
-      y_axis={{ label: `Y Axis`, range: [0, 0.00006] }}
-    />
-  </div>
-</section>
-
-<section id="log-scale">
-  <h2>Logarithmic Scale Examples</h2>
-  <div id="log-y">
-    <h3>Y-Axis Log Scale</h3>
-    <ScatterPlot
-      series={[log_scale_data]}
-      x_axis={{ label: `X Axis (Linear)`, range: [-1100, 1100] }}
-      y_axis={{ label: `Y Axis (Log)`, range: [1, 6000], scale_type: `log` }}
-    />
-  </div>
-  <div id="log-x">
-    <h3>X-Axis Log Scale</h3>
-    <ScatterPlot
-      series={[log_scale_data2]}
-      x_axis={{
-        label: `X Axis (Log)`,
-        format: `~s`,
-        range: [0.01, 1100],
-        scale_type: `log`,
-      }}
-      y_axis={{ label: `Y Axis (Linear)`, format: `~s` }}
-    />
-  </div>
-</section>
-
-<section id="custom-style">
-  <h2>Custom Styling Examples</h2>
-  <div id="rainbow-points">
-    <h3>Rainbow Points</h3>
-    <ScatterPlot
-      series={[{ ...rainbow_data, markers: `points` }]}
-      x_axis={{ label: `X Axis` }}
-      y_axis={{ label: `Y Axis` }}
-    />
-  </div>
-  <div id="multiple-series">
-    <h3>Multiple Series</h3>
-    <ScatterPlot
-      series={[multi_series_data1, multi_series_data2]}
-      x_axis={{ label: `X Axis` }}
-      y_axis={{ label: `Y Axis` }}
-    />
-  </div>
-</section>
-
 <section id="color-scale">
   <h2>Color Scale Examples</h2>
   <div id="color-scale-toggle">
@@ -740,16 +407,6 @@
       color_bar={{}}
     />
   </div>
-</section>
-
-<section id="custom-tooltip">
-  <h2>Custom Tooltip Example</h2>
-  <ScatterPlot series={[{ ...custom_tooltip_data, markers: `points` }]}>
-    {#snippet tooltip(props)}
-      Point Info: <strong>{props.metadata?.info}</strong><br />
-      Coords: ({props.x_formatted}, {props.y_formatted})
-    {/snippet}
-  </ScatterPlot>
 </section>
 
 <section id="bind-hovered">
@@ -776,44 +433,6 @@
       x_axis={{ label: `X`, range: [0, 100] }}
       y_axis={{ label: `Y`, range: [0, 100] }}
       style="height: 450px; width: 100%"
-    />
-  {/key}
-</section>
-
-<section
-  id="leader-line-test"
-  style="height: 550px; width: 600px; border: 1px solid lightgray; margin-top: 20px; padding: 10px"
->
-  <h2>Leader Line Test</h2>
-  <p>
-    Dense cluster where SA displaces labels far enough to trigger dotted leader lines. Verify
-    that lines connect each displaced label back to its marker.
-  </p>
-  <ScatterPlot
-    series={leader_line_series.map((srs) => ({ ...srs, markers: `points` }))}
-    x_axis={{ label: `X`, range: [30, 70] }}
-    y_axis={{ label: `Y`, range: [30, 70] }}
-    label_placement_config={{ sa_iterations: 3000, leader_line_threshold: 10 }}
-    style="height: 420px; width: 100%"
-  />
-</section>
-
-<section
-  id="sa-tuning-test"
-  style="height: 550px; width: 600px; border: 1px solid lightgray; margin-top: 20px; padding: 10px"
->
-  <h2>SA Tuning Test</h2>
-  <label>
-    SA iterations: {sa_test_iterations}
-    <input type="range" min="100" max="5000" step="100" bind:value={sa_test_iterations} />
-  </label>
-  {#key sa_test_iterations}
-    <ScatterPlot
-      series={sa_tuning_series.map((srs) => ({ ...srs, markers: `points` }))}
-      x_axis={{ label: `X`, range: [0, 100] }}
-      y_axis={{ label: `Y`, range: [0, 100] }}
-      label_placement_config={{ sa_iterations: sa_test_iterations }}
-      style="height: 420px; width: 100%"
     />
   {/key}
 </section>
@@ -852,24 +471,6 @@
 
 <section id="legend-tests">
   <h2>Legend Rendering Tests</h2>
-  <h3>Single Series (Default Legend) - No Legend Expected</h3>
-  <ScatterPlot
-    series={legend_single_series.map((srs) => ({ ...srs, markers: `points` }))}
-    id="legend-single-default"
-  />
-  <h3>Single Series (legend=null) - No Legend Expected</h3>
-  <ScatterPlot
-    series={legend_single_series.map((srs) => ({ ...srs, markers: `points` }))}
-    legend={null}
-    id="legend-single-null"
-  />
-  <h3>Single Series (show_legend) - Legend Expected</h3>
-  <ScatterPlot
-    series={legend_single_series.map((srs) => ({ ...srs, markers: `points` }))}
-    legend={{ layout: `horizontal` }}
-    show_legend
-    id="legend-single-config"
-  />
   <h3>Multi Series (Default Legend) - Legend Expected</h3>
   <ScatterPlot
     series={legend_multi_series.map((srs) => ({ ...srs, markers: `points` }))}
@@ -877,37 +478,6 @@
     id="legend-multi-default"
     show_controls
   />
-  <h3>Zero Series - No Legend Expected</h3>
-  <ScatterPlot series={legend_zero_series} id="legend-zero" />
-  <h3>Same Label, Different Groups - 2 Legend Items Expected</h3>
-  <ScatterPlot
-    series={legend_dedupe_different_groups}
-    legend={{ draggable: false }}
-    id="legend-dedupe-different-groups"
-  />
-  <h3>Same Label, Same Group - 1 Legend Item Expected (Deduplicated)</h3>
-  <ScatterPlot
-    series={legend_dedupe_same_group}
-    legend={{ draggable: false }}
-    show_legend
-    id="legend-dedupe-same-group"
-  />
-  <h3>Same Label, No Group - 1 Legend Item Expected (Deduplicated)</h3>
-  <ScatterPlot
-    series={legend_dedupe_no_group}
-    legend={{ draggable: false }}
-    show_legend
-    id="legend-dedupe-no-group"
-  />
-</section>
-
-<section id="auto-cycling-test">
-  <h2>Auto-Cycling Colors and Symbols Test</h2>
-  <p>
-    Series without explicit colors or symbols should automatically get different colors and
-    marker shapes to distinguish them.
-  </p>
-  <ScatterPlot series={auto_cycle_series} legend={{ draggable: false }} id="auto-cycle-plot" />
 </section>
 
 <section id="lin-log-transition">
@@ -993,34 +563,6 @@
   </ScatterPlot>
 </section>
 
-<section>
-  <h2>Line Styling Test</h2>
-  <h3>Solid Lines</h3>
-  <ScatterPlot
-    id="solid-line-plot"
-    series={[
-      { ...solid_line_data_1, markers: `line` },
-      { ...solid_line_data_2, markers: `line` },
-    ]}
-    x_axis={{ label: `X Axis` }}
-    y_axis={{ label: `Y Axis` }}
-  />
-  <h3>Dashed Line</h3>
-  <ScatterPlot
-    id="dashed-line-plot"
-    series={[{ ...dashed_line_data, markers: `line` }]}
-    x_axis={{ label: `X Axis` }}
-    y_axis={{ label: `Y Axis` }}
-  />
-  <h3>Custom Dashed Line</h3>
-  <ScatterPlot
-    id="custom-dash-plot"
-    series={[{ ...custom_dash_data, markers: `line` }]}
-    x_axis={{ label: `X Axis` }}
-    y_axis={{ label: `Y Axis` }}
-  />
-</section>
-
 <!-- Added Tooltip Precedence Test -->
 <section id="tooltip-precedence-test">
   <h2>Tooltip Background Color Precedence Test</h2>
@@ -1069,119 +611,6 @@
     ]}
     hover_config={{ threshold_px: 100 }}
     style="height: 200px; width: 300px"
-  />
-</section>
-
-<!-- Axis Color Test -->
-<section id="axis-color-test">
-  <h2>Axis Label Coloring Test</h2>
-  <p>Tests axis label coloring behavior with different configurations.</p>
-
-  <h3>Single Axis (No Coloring)</h3>
-  <ScatterPlot
-    id="single-axis-plot"
-    series={[basic_data]}
-    x_axis={{ label: `X Axis` }}
-    y_axis={{ label: `Y Axis` }}
-  />
-
-  <h3>Dual Axis (With Coloring)</h3>
-  <ScatterPlot
-    id="dual-axis-plot"
-    series={[
-      {
-        ...multi_series_data1,
-        y_axis: `y1`,
-        line_style: { stroke: `#ff5555`, stroke_width: 2 },
-      },
-      {
-        ...multi_series_data2,
-        y_axis: `y2`,
-        line_style: { stroke: `#5555ff`, stroke_width: 2 },
-      },
-    ]}
-    x_axis={{ label: `X Axis` }}
-    y_axis={{ label: `Y1 Axis` }}
-    y2_axis={{ label: `Y2 Axis` }}
-  />
-
-  <h3>Color Scale (No Axis Coloring)</h3>
-  <ScatterPlot
-    id="color-scale-axis-plot"
-    series={[
-      {
-        ...multi_series_data1,
-        y_axis: `y1`,
-        color_values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-      },
-      { ...multi_series_data2, y_axis: `y2` },
-    ]}
-    x_axis={{ label: `X Axis` }}
-    y_axis={{ label: `Y1 Axis` }}
-    y2_axis={{ label: `Y2 Axis` }}
-  />
-
-  <h3>Custom Axis Colors</h3>
-  <ScatterPlot
-    id="custom-axis-colors-plot"
-    series={[
-      { ...multi_series_data1, y_axis: `y1` },
-      { ...multi_series_data2, y_axis: `y2` },
-    ]}
-    x_axis={{ label: `X Axis` }}
-    y_axis={{ label: `Y1 Axis (Custom Red)`, color: `#ff0000` }}
-    y2_axis={{ label: `Y2 Axis (Custom Green)`, color: `#00ff00` }}
-  />
-
-  <h3>Disabled Axis Coloring</h3>
-  <ScatterPlot
-    id="disabled-axis-colors-plot"
-    series={[
-      {
-        ...multi_series_data1,
-        y_axis: `y1`,
-        line_style: { stroke: `#ff5555`, stroke_width: 2 },
-      },
-      {
-        ...multi_series_data2,
-        y_axis: `y2`,
-        line_style: { stroke: `#5555ff`, stroke_width: 2 },
-      },
-    ]}
-    x_axis={{ label: `X Axis` }}
-    y_axis={{ label: `Y1 Axis` }}
-    y2_axis={{ label: `Y2 Axis` }}
-  />
-
-  <h3>X2 Axis (Dual X-Axes)</h3>
-  <p>
-    Bottom axis: wavelength (nm). Top axis: energy (eV). Each series plotted on its own
-    x-scale.
-  </p>
-  <ScatterPlot
-    id="x2-axis-plot"
-    series={[
-      {
-        x: [400, 500, 600, 700, 800],
-        y: [0.2, 0.8, 0.95, 0.7, 0.3],
-        label: `Wavelength`,
-        markers: `line+points`,
-        line_style: { stroke: `#7c3aed`, stroke_width: 2 },
-        point_style: { fill: `#7c3aed`, radius: 4 },
-      },
-      {
-        x: [1.55, 1.77, 2.07, 2.48, 3.1],
-        y: [0.35, 0.6, 0.9, 0.75, 0.15],
-        label: `Energy`,
-        x_axis: `x2`,
-        markers: `line+points`,
-        line_style: { stroke: `#ea580c`, stroke_width: 2 },
-        point_style: { fill: `#ea580c`, radius: 4 },
-      },
-    ]}
-    x_axis={{ label: `Wavelength (nm)`, color: `#7c3aed` }}
-    x2_axis={{ label: `Energy (eV)`, color: `#ea580c` }}
-    y_axis={{ label: `Intensity` }}
   />
 </section>
 

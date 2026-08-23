@@ -1,5 +1,6 @@
 import type { FileInfo, FileTypePaint } from '$lib'
 import { file_type_paint } from '$lib'
+import { fixture_ext, site_file_info } from '$site/imports'
 import { SvelteSet } from 'svelte/reactivity'
 
 // The static symlink serves these fixtures at /fermi-surfaces/<name>.
@@ -27,14 +28,12 @@ const CATEGORY_BY_EXT: Record<string, { category: string; category_icon: string 
 
 export const fermi_surface_files: FileInfo[] = Object.keys(fermi_file_modules)
   .map((path) => {
-    const name = path.split(`/`).pop() ?? path
-    const url = path.replace(`/src/site`, ``)
-    const ext = name.replace(/\.gz$/i, ``).split(`.`).pop()?.toLowerCase() ?? ``
+    const file = site_file_info(path, { type: fixture_ext(path) })
     const category =
-      ext === `frmsf` && FRMSF_COLOR_DATA_FILES.has(name)
+      file.type === `frmsf` && FRMSF_COLOR_DATA_FILES.has(file.name)
         ? { category: `FRMSF Color`, category_icon: `🎨` }
-        : (CATEGORY_BY_EXT[ext] ?? { category: `Unknown`, category_icon: `📄` })
-    return { name, url, type: ext, ...category }
+        : (CATEGORY_BY_EXT[file.type ?? ``] ?? { category: `Unknown`, category_icon: `📄` })
+    return { ...file, ...category }
   })
   .toSorted((file_a, file_b) => file_a.name.localeCompare(file_b.name))
 

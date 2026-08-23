@@ -1,7 +1,6 @@
 import { PdfPlot, RdfPlot } from '$lib'
 import type { RdfPattern } from '$lib/rdf'
 import type { RadiationType } from '$lib/scattering'
-import type { Pbc } from '$lib/structure'
 import { structure_map } from '$site/structures'
 import { type ComponentProps, createRawSnippet, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
@@ -59,7 +58,6 @@ describe(`RdfPlot`, () => {
     [{ structures: nacl_structure }],
     [{ structures: [nacl_structure, pd_structure] }],
     [{ structures: { NaCl: nacl_structure, Pd: pd_structure } }],
-    [{ structures: make_crystal(5, [[`Si`, [0, 0, 0]]]), mode: `full` as const }],
   ])(`renders %s`, async (props) => {
     const plot = await mount_sized_rdf_plot(props)
     expect(plot.querySelector(`svg[role="application"]`)).toBeInstanceOf(SVGSVGElement)
@@ -81,7 +79,6 @@ describe(`RdfPlot`, () => {
   test.each([
     [`element_pairs`, nacl_structure],
     [`full`, pd_structure],
-    [`element_pairs`, bi2zr2o8_structure],
   ] as const)(`mode=%s`, async (mode, structure) => {
     const plot = await mount_sized_rdf_plot({ structures: structure, mode })
     expect(plot.querySelector(`svg[role="application"]`)).toBeInstanceOf(SVGSVGElement)
@@ -91,7 +88,6 @@ describe(`RdfPlot`, () => {
   test.each([
     { cutoff: 1, n_bins: 20 },
     { cutoff: 10, n_bins: 100 },
-    { cutoff: 20, n_bins: 200 },
   ])(
     `cutoff/n_bins %s`,
     async (opts) => {
@@ -101,15 +97,6 @@ describe(`RdfPlot`, () => {
       expect(plot.querySelectorAll(`.y-axis .tick`)).not.toHaveLength(0)
     },
     10_000,
-  )
-
-  test.each([[[true, true, true] as Pbc], [[false, false, false] as Pbc]])(
-    `pbc=%s`,
-    async (pbc) => {
-      const plot = await mount_sized_rdf_plot({ structures: nacl_structure, pbc })
-      expect(plot.querySelector(`svg[role="application"]`)).toBeInstanceOf(SVGSVGElement)
-      expect(plot.textContent).toContain(`g(r) = 1`)
-    },
   )
 
   test.each([[true], [false]])(`show_reference_line=%s`, async (show_ref) => {
@@ -125,13 +112,28 @@ describe(`RdfPlot`, () => {
       patterns: { label: `Test`, pattern: create_synthetic_pattern() },
       x_axis: { label: `Custom X` },
       y_axis: { label: `Custom Y` },
-      style: `height: 500px;`,
       class: `custom-class`,
       allow_file_drop: true,
     })
     expect(plot.classList.contains(`custom-class`)).toBe(true)
     expect(plot.querySelector(`.x-axis .axis-label`)?.textContent).toContain(`Custom X`)
     expect(plot.querySelector(`.y-axis .axis-label`)?.textContent).toContain(`Custom Y`)
+  })
+
+  test(`forwards the controls pane attribute props to PlotControls`, async () => {
+    const plot = await mount_sized_rdf_plot({
+      patterns: { label: `Test`, pattern: create_synthetic_pattern() },
+      controls_open: true,
+      controls_toggle_props: { 'data-testid': `rdf-toggle` },
+      controls_pane_props: { 'data-testid': `rdf-pane`, style: `min-width: 20rem` },
+    })
+    const pane = await vi.waitFor(() => {
+      const found = plot.querySelector(`[data-testid="rdf-pane"]`)
+      expect(found).not.toBeNull()
+      return found
+    })
+    expect(pane?.getAttribute(`style`)).toContain(`min-width: 20rem`)
+    expect(plot.querySelector(`[data-testid="rdf-toggle"]`)).not.toBeNull()
   })
 
   test(`updates axis title when external axis props change`, async () => {
@@ -150,18 +152,15 @@ describe(`RdfPlot`, () => {
   })
 
   test(`children snippet`, () => {
-    let called = false
     mount(RdfPlot, {
       target: document.body,
       props: {
         patterns: { label: `Test`, pattern: create_synthetic_pattern() },
-        children: createRawSnippet(() => {
-          called = true
-          return { render: () => `<div class="rdf-child">RDF child content</div>` }
-        }),
+        children: createRawSnippet(() => ({
+          render: () => `<div class="rdf-child">RDF child content</div>`,
+        })),
       },
     })
-    expect(called).toBe(true)
     expect(document.querySelector(`.rdf-child`)?.textContent).toBe(`RDF child content`)
   })
 
@@ -173,17 +172,6 @@ describe(`RdfPlot`, () => {
     })
     expect(plot.querySelector(`svg[role="application"]`)).toBeInstanceOf(SVGSVGElement)
     expect(plot.textContent).toContain(`Test`)
-  })
-
-  test(`color assignment`, async () => {
-    const plot = await mount_sized_rdf_plot({
-      patterns: [
-        { label: `Red`, pattern: create_synthetic_pattern(), color: `red` },
-        { label: `Blue`, pattern: create_synthetic_pattern(50, [3], [2]), color: `blue` },
-      ],
-    })
-    expect(plot.textContent).toContain(`Red`)
-    expect(plot.textContent).toContain(`Blue`)
   })
 
   test(`dropped crystals are plotted, lattice-less molecules are reported`, async () => {

@@ -9,7 +9,8 @@
 import type { Matrix3x3, Vec2, Vec3 } from '$lib/math'
 import { broaden_peaks } from '$lib/lineshape'
 import { SvelteSet } from 'svelte/reactivity'
-import { ACOUSTIC_FREQ_THRESHOLD, convert_frequencies } from './helpers'
+import { convert_frequencies } from './frequency-units'
+import { ACOUSTIC_FREQ_THRESHOLD } from './helpers'
 import type {
   BornChargeData,
   Complex,
@@ -236,7 +237,7 @@ export function spectrum_sticks(
     include_imaginary?: boolean
   } = {},
 ): SpectrumCurve {
-  const { unit = `cm-1`, include_acoustic = false, include_imaginary = false } = options
+  const { unit = `cm^-1`, include_acoustic = false, include_imaginary = false } = options
   if (kind === `raman` && !spectrum.has_raman) {
     throw new Error(
       `spectrum_sticks: Raman requested but this spectrum has no polarizability data. ` +

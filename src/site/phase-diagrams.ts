@@ -2,7 +2,8 @@ import type { FileInfo } from '$lib'
 import type { PhaseDiagramData } from '$lib/phase-diagram'
 import { build_diagram } from '$lib/phase-diagram/build-diagram'
 import type { DiagramInput } from '$lib/phase-diagram/diagram-input'
-import { normalize_system_name } from '$lib/phase-diagram/parse'
+import { normalize_system_name } from '$site/phase-diagrams/tdb-parse'
+import { glob_basename, site_file_info } from '$site/imports'
 import { SvelteMap } from 'svelte/reactivity'
 
 const diagram_modules = import.meta.glob<DiagramInput>(`./phase-diagrams/binary/data/*.json`, {
@@ -15,10 +16,9 @@ const tdb_modules = import.meta.glob(`$site/phase-diagrams/tdb/*.tdb`, {
   query: `?url`,
 })
 
-const built_diagrams = Object.entries(diagram_modules).map(([path, input]) => {
-  const name = path.split(`/`).pop()?.replace(`.json`, ``) ?? path
-  return [name, build_diagram(input)] as const
-})
+const built_diagrams = Object.entries(diagram_modules).map(
+  ([path, input]) => [glob_basename(path).replace(`.json`, ``), build_diagram(input)] as const,
+)
 
 const binary_phase_diagram_files: FileInfo[] = built_diagrams.map(([name]) => ({
   name: `${name}.json`,
@@ -28,11 +28,9 @@ const binary_phase_diagram_files: FileInfo[] = built_diagrams.map(([name]) => ({
   category_icon: `📊`,
 }))
 
-const tdb_files: FileInfo[] = Object.keys(tdb_modules).map((path) => {
-  const name = path.split(`/`).pop() ?? path
-  const url = path.replace(`/src/site`, ``) // e.g. /phase-diagrams/tdb/Al-Fe.tdb
-  return { name, url, type: `tdb`, category: `TDB`, category_icon: `📄` }
-})
+const tdb_files: FileInfo[] = Object.keys(tdb_modules).map((path) =>
+  site_file_info(path, { type: `tdb`, category: `TDB`, category_icon: `📄` }),
+)
 
 export const all_phase_diagram_files: FileInfo[] = [
   ...binary_phase_diagram_files,

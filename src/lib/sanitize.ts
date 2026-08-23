@@ -1,5 +1,5 @@
 import DOMPurify from 'dompurify'
-import { format_formula_html } from './phase-diagram/utils'
+import { format_formula_html } from './composition/format'
 import { escape_html } from './utils'
 
 const SAFE_TAGS = [`a`, `b`, `i`, `em`, `strong`, `sub`, `sup`, `br`, `span`, `code`, `small`]

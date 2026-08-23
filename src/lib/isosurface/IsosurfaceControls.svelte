@@ -1,8 +1,7 @@
 <script lang="ts">
-  // Controls panel for isosurface visualization settings (isovalue, opacity, colors, etc.)
-  // Single-isovalue mode preserves the classic UI; explicit-layers mode groups
-  // surfaces under their geometry-source volume and exposes cross-volume scalar
-  // coloring (color source, colormap, value range) per surface.
+  // Controls panel for isosurface visualization settings. Surfaces are grouped under their
+  // geometry-source volume; each exposes isovalue, opacity, colour and optional cross-volume
+  // scalar colouring (color source, colormap, value range).
   import { Icon } from 'svelte-widgets'
   import { Reset } from 'svelte-widgets/icons'
   import type { D3InterpolateName } from '$lib/colors'
@@ -16,11 +15,11 @@
   import { compare_volume_grids } from './sampling'
   import type { IsosurfaceLayer, IsosurfaceSettings, VolumetricData } from './types'
   import {
+    auto_isosurface_settings,
     auto_volume_layer,
     DEFAULT_ISOSURFACE_SETTINGS,
-    generate_layers,
-    materialize_layers,
     normalize_active_volume_idx,
+    pin_layers,
     remove_volume,
   } from './types'
 
@@ -40,18 +39,6 @@
     if (normalized_idx !== active_volume_idx) active_volume_idx = normalized_idx
   })
 
-  // Use precomputed data_range from the active volume
-  let data_range = $derived(
-    volumes[active_volume_idx]?.data_range ?? { min: 0, max: 1, abs_max: 1, mean: 0 },
-  )
-
-  let slider_max = $derived(Math.max(data_range.abs_max, 0.001))
-  let step = $derived(slider_max / 200)
-  // Explicit layers mode is active whenever layers is set — an empty array means
-  // "zero surfaces" (all removed), NOT a fallback to implicit single-surface mode
-  let is_multi_layer = $derived(settings.layers != null)
-  let n_layers = $derived(settings.layers?.length ?? 1)
-
   const vol_label = (idx: number): string => volumes[idx]?.label ?? `Volume ${idx + 1}`
 
   // Resolve a layer's geometry volume the same way for grouping, warnings, and
@@ -63,34 +50,30 @@
   const color_vol_of = (layer: IsosurfaceLayer): VolumetricData | undefined =>
     layer.color_volume_idx != null ? volumes[layer.color_volume_idx] : undefined
 
-  function set_layer_count(count: number) {
-    settings.layers = count <= 1 ? undefined : generate_layers(data_range, count)
-  }
-
   function update_layer(idx: number, updates: Partial<IsosurfaceLayer>) {
-    if (!settings.layers) return
     settings.layers = settings.layers.map((layer, layer_idx) =>
       layer_idx === idx ? { ...layer, ...updates } : layer,
     )
   }
 
   function remove_layer(idx: number) {
-    if (settings.layers)
-      settings.layers = settings.layers.filter((_layer, layer_idx) => layer_idx !== idx)
+    settings.layers = settings.layers.filter((_layer, layer_idx) => layer_idx !== idx)
   }
 
   function add_surface(vol_idx: number) {
     const vol = volumes[vol_idx]
     if (!vol) return
-    const layers: IsosurfaceLayer[] = materialize_layers(settings, active_volume_idx)
-    layers.push(auto_volume_layer(vol, vol_idx, layers.length))
+    const layers: IsosurfaceLayer[] = pin_layers(settings.layers, active_volume_idx)
+    // nth shell of this volume: steps the isovalue/opacity ladder so it never coincides
+    // with the surfaces the volume already has
+    const shell_idx = layers.filter((layer) => layer.volume_idx === vol_idx).length
+    layers.push(auto_volume_layer(vol, vol_idx, layers.length, shell_idx))
     settings.layers = layers
     active_volume_idx = vol_idx
   }
 
   function handle_remove_volume(vol_idx: number) {
-    const layers = materialize_layers(settings, active_volume_idx)
-    const result = remove_volume(volumes, layers, vol_idx, active_volume_idx)
+    const result = remove_volume(volumes, settings.layers, vol_idx, active_volume_idx)
     volumes = result.volumes
     settings.layers = result.layers
     // Keep the active volume pointing at the same physical volume (indices shift)
@@ -111,19 +94,12 @@
     })
   }
 
-  // Picking a color source in single-isovalue mode materializes explicit layers
-  function set_single_color_source(color_idx: number | null) {
-    if (color_idx === null) return
-    settings.layers = materialize_layers(settings, active_volume_idx)
-    set_color_source(0, color_idx)
-  }
-
   // Update one bound of a layer's color range. An empty input resets the whole
   // range to auto-fit (renderer fits it to the values sampled on the surface).
   // Typing into an auto range seeds the other bound from the color volume's
   // full data range as a starting point.
   function update_color_range(layer_idx: number, bound: 0 | 1, raw_value: string) {
-    const layer = settings.layers?.[layer_idx]
+    const layer = settings.layers[layer_idx]
     if (!layer) return
     if (raw_value.trim() === ``) {
       update_layer(layer_idx, { color_range: undefined })
@@ -149,25 +125,20 @@
     return compat.ok ? null : (compat.reason ?? `grids differ`)
   }
 
-  // Layers grouped by geometry-source volume for the tree-style multi-layer UI
+  // Layers grouped by geometry-source volume for the tree-style UI
   let grouped_layers = $derived.by(() => {
     const groups = volumes.map((_vol, vol_idx) => ({
       vol_idx,
       entries: [] as { layer: IsosurfaceLayer; layer_idx: number }[],
     }))
-    for (const [layer_idx, layer] of (settings.layers ?? []).entries()) {
+    for (const [layer_idx, layer] of settings.layers.entries()) {
       groups[resolve_geo_idx(layer)]?.entries.push({ layer, layer_idx })
     }
     return groups
   })
 
-  // Halo pads geometry volumes only, so gate on volumes that actually render
-  // surfaces (color-source-only volumes don't count)
-  let any_periodic = $derived(
-    settings.layers
-      ? settings.layers.some((layer) => volumes[resolve_geo_idx(layer)]?.periodic)
-      : (volumes[active_volume_idx]?.periodic ?? false),
-  )
+  // Halo and display range only apply to periodic volumes
+  let any_periodic = $derived(volumes.some((vol) => vol.periodic))
 
   // Update one bound of the fractional display range. Clearing an input resets
   // that bound to its default (0 or 1); a fully default range unsets display_range
@@ -228,51 +199,19 @@
 <SettingsSection
   title="Isosurface"
   current_values={{
-    isovalue: settings.isovalue,
-    opacity: settings.opacity,
-    show_negative: settings.show_negative,
     wireframe: settings.wireframe,
     halo: settings.halo,
-    layers: n_layers,
+    layers: settings.layers.length,
     display_range: settings.display_range?.flat().join(`,`) ?? ``,
   }}
-  on_reset={() => (settings = { ...DEFAULT_ISOSURFACE_SETTINGS })}
+  on_reset={() =>
+    (settings =
+      volumes.length > 0
+        ? auto_isosurface_settings(volumes[0])
+        : { ...DEFAULT_ISOSURFACE_SETTINGS })}
   layout="grid"
   class="isosurface-settings"
 >
-  {#if !is_multi_layer && volumes.length > 1}
-    <label
-      {@attach tooltip({
-        content: `Select which volume to display (e.g. charge vs magnetization)`,
-      })}
-    >
-      <span>Volume</span>
-      <select bind:value={active_volume_idx}>
-        {#each volumes as _vol, idx (idx)}
-          <option value={idx}>{vol_label(idx)}</option>
-        {/each}
-      </select>
-    </label>
-  {/if}
-  {#if !is_multi_layer}
-    <label
-      {@attach tooltip({
-        content: `Number of isosurface shells at different density thresholds`,
-      })}
-    >
-      <span>Layers</span>
-      <select
-        value={n_layers}
-        onchange={(event) => set_layer_count(Number(event.currentTarget.value))}
-      >
-        {#each [1, 2, 3, 4, 5] as count (count)}
-          <option value={count}>{count}</option>
-        {/each}
-      </select>
-    </label>
-  {/if}
-  <!-- Sync both settings.show_negative (single-layer fallback) and all layer entries
-    so the toggle works consistently regardless of which mode is active -->
   <label
     {@attach tooltip({
       content: `Show negative lobe at −isovalue (for orbitals, ESP, magnetization)`,
@@ -281,18 +220,13 @@
     <span>Neg. lobe</span>
     <input
       type="checkbox"
-      checked={is_multi_layer
-        ? (settings.layers?.some((layer) => layer.show_negative) ?? false)
-        : settings.show_negative}
+      checked={settings.layers.some((layer) => layer.show_negative)}
       onchange={(event) => {
         const checked = event.currentTarget.checked
-        settings.show_negative = checked
-        if (settings.layers) {
-          settings.layers = settings.layers.map((layer) => ({
-            ...layer,
-            show_negative: checked,
-          }))
-        }
+        settings.layers = settings.layers.map((layer) => ({
+          ...layer,
+          show_negative: checked,
+        }))
       }}
     />
   </label>
@@ -301,202 +235,176 @@
     <input type="checkbox" bind:checked={settings.wireframe} />
   </label>
 
-  {#if is_multi_layer && settings.layers}
-    <!-- Multi-layer mode: surfaces grouped under their geometry-source volume -->
-    {#each grouped_layers as { vol_idx, entries } (vol_idx)}
-      {@const vol = volumes[vol_idx]}
-      <div class="volume-group">
-        <div class="volume-header">
-          <span class="volume-label" title={vol_label(vol_idx)}>{vol_label(vol_idx)}</span>
-          <span class="volume-dims">{vol.dims.join(`×`)}</span>
-          {#if entries.length === 0}
-            <span
-              class="volume-note"
-              {@attach tooltip({
-                content: `No surfaces — this volume is still available as a color source for other surfaces`,
-              })}>color source only</span
-            >
-          {/if}
+  <!-- Surfaces grouped under their geometry-source volume -->
+  {#each grouped_layers as { vol_idx, entries } (vol_idx)}
+    {@const vol = volumes[vol_idx]}
+    <div class="volume-group">
+      <div class="volume-header">
+        <span class="volume-label" title={vol_label(vol_idx)}>{vol_label(vol_idx)}</span>
+        <span class="volume-dims">{vol.dims.join(`×`)}</span>
+        <span
+          class="volume-range"
+          {@attach tooltip({ content: `Data range [min, max] of this volume` })}
+          >{format_num(vol.data_range.min, `.3~g`)}–{format_num(
+            vol.data_range.max,
+            `.3~g`,
+          )}</span
+        >
+        {#if entries.length === 0}
+          <span
+            class="volume-note"
+            {@attach tooltip({
+              content: `No surfaces — this volume is still available as a color source for other surfaces`,
+            })}>color source only</span
+          >
+        {/if}
+        <button
+          type="button"
+          class="icon-btn"
+          onclick={() => add_surface(vol_idx)}
+          aria-label="Add surface for {vol_label(vol_idx)}"
+          {@attach tooltip({ content: `Add an isosurface from this volume` })}>+</button
+        >
+        {#if volumes.length > 1}
           <button
             type="button"
             class="icon-btn"
-            onclick={() => add_surface(vol_idx)}
-            aria-label="Add surface for {vol_label(vol_idx)}"
-            {@attach tooltip({ content: `Add an isosurface from this volume` })}>+</button
+            onclick={() => handle_remove_volume(vol_idx)}
+            aria-label="Remove volume {vol_label(vol_idx)}"
+            {@attach tooltip({ content: `Remove this volume and its surfaces` })}>×</button
           >
-          {#if volumes.length > 1}
-            <button
-              type="button"
-              class="icon-btn"
-              onclick={() => handle_remove_volume(vol_idx)}
-              aria-label="Remove volume {vol_label(vol_idx)}"
-              {@attach tooltip({ content: `Remove this volume and its surfaces` })}>×</button
-            >
-          {/if}
-        </div>
+        {/if}
+      </div>
 
-        {#each entries as { layer, layer_idx } (layer_idx)}
-          {@const layer_abs_max = Math.max(vol.data_range.abs_max, 0.001)}
-          {@const layer_step = layer_abs_max / 200}
-          {@const warning = compat_warning(layer)}
-          {@const color_vol = color_vol_of(layer)}
-          <div class="layer-row">
-            <input
-              type="checkbox"
-              checked={layer.visible}
-              onchange={() => update_layer(layer_idx, { visible: !layer.visible })}
-              {@attach tooltip({ content: `Toggle surface visibility` })}
-            />
+      {#each entries as { layer, layer_idx } (layer_idx)}
+        {@const layer_abs_max = Math.max(vol.data_range.abs_max, 0.001)}
+        {@const layer_step = layer_abs_max / 200}
+        {@const warning = compat_warning(layer)}
+        {@const color_vol = color_vol_of(layer)}
+        <div class="layer-row">
+          <input
+            type="checkbox"
+            checked={layer.visible}
+            onchange={() => update_layer(layer_idx, { visible: !layer.visible })}
+            {@attach tooltip({ content: `Toggle surface visibility` })}
+          />
+          <input
+            type="color"
+            value={layer.color}
+            onchange={(event) => update_layer(layer_idx, { color: event.currentTarget.value })}
+            {@attach tooltip({
+              content:
+                layer.color_volume_idx != null
+                  ? `Fallback color (surface uses colormap)`
+                  : `Surface color`,
+            })}
+          />
+          {#if layer.show_negative}
             <input
               type="color"
-              value={layer.color}
+              value={layer.negative_color}
               onchange={(event) =>
-                update_layer(layer_idx, { color: event.currentTarget.value })}
-              {@attach tooltip({
-                content:
-                  layer.color_volume_idx != null
-                    ? `Fallback color (surface uses colormap)`
-                    : `Surface color`,
-              })}
+                update_layer(layer_idx, { negative_color: event.currentTarget.value })}
+              {@attach tooltip({ content: `Color for the negative (−isovalue) surface` })}
             />
-            <label
-              class="slider-field"
-              {@attach tooltip({
-                content: `Density threshold — surface is drawn where grid values equal this`,
-              })}
-            >
-              <span>Iso</span>
-              <input
-                type="range"
-                class="isovalue-slider"
-                min={layer_step}
-                max={layer_abs_max}
-                step={layer_step}
-                value={layer.isovalue}
-                oninput={(event) =>
-                  update_layer(layer_idx, { isovalue: Number(event.currentTarget.value) })}
-                aria-label="Isovalue"
-              />
-              <span class="layer-value">{format_num(layer.isovalue, `.3~g`)}</span>
-            </label>
-            <label class="slider-field" {@attach tooltip({ content: `Surface transparency` })}>
-              <span>Op</span>
-              <input
-                type="range"
-                class="opacity-slider"
-                min={0.1}
-                max={1}
-                step={0.05}
-                value={layer.opacity}
-                oninput={(event) =>
-                  update_layer(layer_idx, { opacity: Number(event.currentTarget.value) })}
-                aria-label="Opacity"
-              />
-              <span class="layer-value">{format_num(layer.opacity, `.2f`)}</span>
-            </label>
-            <button
-              type="button"
-              class="icon-btn"
-              onclick={() => remove_layer(layer_idx)}
-              aria-label="Remove surface"
-              {@attach tooltip({ content: `Remove this surface` })}>×</button
-            >
-          </div>
-          <div class="color-row">
-            {@render color_source_select(
-              layer.color_volume_idx ?? -1,
-              (idx) => set_color_source(layer_idx, idx),
-              `Color surface by another volume's values`,
-            )}
-            {#if color_vol}
-              {@const explicit_range = layer.color_range}
-              {@const auto_colormap = auto_color_config(color_vol.data_range).colormap}
-              <ColorScaleSelect
-                options={[...ISO_COLORMAPS]}
-                value={layer.colormap ?? DEFAULT_ISO_COLORMAP}
-                selected={[layer.colormap ?? DEFAULT_ISO_COLORMAP]}
-                onadd={({ option }) =>
-                  update_layer(layer_idx, {
-                    colormap: option as D3InterpolateName,
-                  })}
-                color_bar={{
-                  bar_style: `height: 8px`,
-                  title_style: `width: 4em; font-size: 1em;`,
-                }}
-                liSelectedStyle="width: 100%; margin: 0; padding: 0; background: transparent;"
-                aria-label="Colormap for sampled values"
-                {@attach tooltip({ content: `Colormap for sampled values` })}
-              />
-              <div class="color-range" aria-label="Colormap value range">
-                <span>Range</span>
-                {@render range_bound_input(layer_idx, 0, explicit_range)}
-                <span aria-hidden="true">&ndash;</span>
-                {@render range_bound_input(layer_idx, 1, explicit_range)}
-              </div>
-              {#if explicit_range || (layer.colormap ?? DEFAULT_ISO_COLORMAP) !== auto_colormap}
-                {@const reset_color_label = `Reset colormap + range to auto-fit`}
-                <button
-                  type="button"
-                  class="icon-btn"
-                  onclick={() => set_color_source(layer_idx, layer.color_volume_idx ?? null)}
-                  aria-label={reset_color_label}
-                  {@attach tooltip({ content: reset_color_label })}
-                >
-                  <Icon icon={Reset} aria-hidden="true" style="--icon-size: 12px" />
-                </button>
-              {/if}
-              {#if warning}
-                <span
-                  class="compat-warning"
-                  {@attach tooltip({
-                    content: `Grids differ (${warning}) — values are resampled by trilinear interpolation in shared coordinates`,
-                  })}>⚠</span
-                >
-              {/if}
+          {/if}
+          <label
+            class="slider-field"
+            {@attach tooltip({
+              content: `Density threshold — surface is drawn where grid values equal this`,
+            })}
+          >
+            <span>Iso</span>
+            <input
+              type="range"
+              class="isovalue-slider"
+              min={layer_step}
+              max={layer_abs_max}
+              step={layer_step}
+              value={layer.isovalue}
+              oninput={(event) =>
+                update_layer(layer_idx, { isovalue: Number(event.currentTarget.value) })}
+              aria-label="Isovalue"
+            />
+            <span class="layer-value">{format_num(layer.isovalue, `.3~g`)}</span>
+          </label>
+          <label class="slider-field" {@attach tooltip({ content: `Surface transparency` })}>
+            <span>Op</span>
+            <input
+              type="range"
+              class="opacity-slider"
+              min={0.1}
+              max={1}
+              step={0.05}
+              value={layer.opacity}
+              oninput={(event) =>
+                update_layer(layer_idx, { opacity: Number(event.currentTarget.value) })}
+              aria-label="Opacity"
+            />
+            <span class="layer-value">{format_num(layer.opacity, `.2f`)}</span>
+          </label>
+          <button
+            type="button"
+            class="icon-btn"
+            onclick={() => remove_layer(layer_idx)}
+            aria-label="Remove surface"
+            {@attach tooltip({ content: `Remove this surface` })}>×</button
+          >
+        </div>
+        <div class="color-row">
+          {@render color_source_select(
+            layer.color_volume_idx ?? -1,
+            (idx) => set_color_source(layer_idx, idx),
+            `Color surface by another volume's values`,
+          )}
+          {#if color_vol}
+            {@const explicit_range = layer.color_range}
+            {@const auto_colormap = auto_color_config(color_vol.data_range).colormap}
+            <ColorScaleSelect
+              options={[...ISO_COLORMAPS]}
+              value={layer.colormap ?? DEFAULT_ISO_COLORMAP}
+              selected={[layer.colormap ?? DEFAULT_ISO_COLORMAP]}
+              onadd={({ option }) =>
+                update_layer(layer_idx, { colormap: option as D3InterpolateName })}
+              color_bar={{
+                bar_style: `height: 8px`,
+                title_style: `width: 4em; font-size: 1em;`,
+              }}
+              liSelectedStyle="width: 100%; margin: 0; padding: 0; background: transparent;"
+              aria-label="Colormap for sampled values"
+              {@attach tooltip({ content: `Colormap for sampled values` })}
+            />
+            <div class="color-range" aria-label="Colormap value range">
+              <span>Range</span>
+              {@render range_bound_input(layer_idx, 0, explicit_range)}
+              <span aria-hidden="true">&ndash;</span>
+              {@render range_bound_input(layer_idx, 1, explicit_range)}
+            </div>
+            {#if explicit_range || (layer.colormap ?? DEFAULT_ISO_COLORMAP) !== auto_colormap}
+              {@const reset_color_label = `Reset colormap + range to auto-fit`}
+              <button
+                type="button"
+                class="icon-btn"
+                onclick={() => set_color_source(layer_idx, layer.color_volume_idx ?? null)}
+                aria-label={reset_color_label}
+                {@attach tooltip({ content: reset_color_label })}
+              >
+                <Icon icon={Reset} aria-hidden="true" style="--icon-size: 12px" />
+              </button>
             {/if}
-          </div>
-        {/each}
-      </div>
-    {/each}
-  {:else}
-    <!-- Single-layer: isovalue slider full width -->
-    <label
-      {@attach tooltip({
-        content: `Density threshold — surface is drawn where grid values equal this`,
-      })}
-    >
-      <span>Isovalue</span>
-      <span>{format_num(settings.isovalue, `.3~g`)}</span>
-      <input type="range" min={step} max={slider_max} {step} bind:value={settings.isovalue} />
-    </label>
-
-    <label
-      {@attach tooltip({
-        content: `Surface transparency — lower values reveal inner structure`,
-      })}
-    >
-      <span>Opacity</span>
-      <span>{format_num(settings.opacity, `.2f`)}</span>
-      <input type="range" min={0.1} max={1} step={0.05} bind:value={settings.opacity} />
-    </label>
-    <label {@attach tooltip({ content: `Color for the positive isovalue surface` })}>
-      <span>+ color</span>
-      <input type="color" bind:value={settings.positive_color} />
-    </label>
-    {#if settings.show_negative}
-      <label {@attach tooltip({ content: `Color for the negative (−isovalue) surface` })}>
-        <span>&minus; color</span>
-        <input type="color" bind:value={settings.negative_color} />
-      </label>
-    {/if}
-    {#if volumes.length > 1}
-      {@render color_source_select(
-        -1,
-        set_single_color_source,
-        `Color this surface by another volume's values (e.g. density by ESP)`,
-      )}
-    {/if}
-  {/if}
+            {#if warning}
+              <span
+                class="compat-warning"
+                {@attach tooltip({
+                  content: `Grids differ (${warning}) — values are resampled by trilinear interpolation in shared coordinates`,
+                })}>⚠</span
+              >
+            {/if}
+          {/if}
+        </div>
+      {/each}
+    </div>
+  {/each}
 
   {#if any_periodic}
     <label
@@ -548,15 +456,6 @@
       </div>
     </div>
   {/if}
-
-  {#if !is_multi_layer && volumes[active_volume_idx]}
-    <div class="grid-info">
-      {volumes[active_volume_idx].dims.join(` × `)} grid &nbsp;|&nbsp; [{format_num(
-        data_range.min,
-        `.3~g`,
-      )}, {format_num(data_range.max, `.3~g`)}]
-    </div>
-  {/if}
 </SettingsSection>
 
 <style>
@@ -593,12 +492,6 @@
     cursor: pointer;
     background: transparent;
   }
-  .grid-info {
-    grid-column: 1 / -1;
-    font-size: 0.75em;
-    opacity: 0.7;
-    padding: 2px 0;
-  }
   .volume-group {
     grid-column: 1 / -1;
     display: flex;
@@ -624,6 +517,7 @@
     max-width: 14em;
   }
   .volume-dims,
+  .volume-range,
   .volume-note {
     opacity: 0.6;
     white-space: nowrap;

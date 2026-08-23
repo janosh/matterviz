@@ -439,7 +439,7 @@ describe(`marginal hover tooltips`, () => {
 
 describe(`marginal value-axis`, () => {
   const samples = [1, 2, 2, 3, 3, 3, 4, 4, 5]
-  const hist_series = [{ x: samples.map((_, idx) => idx), y: samples, label: `vals` }]
+  const hist_series = [{ values: samples, label: `vals` }]
 
   const tick_labels = (axis: Element | null): string[] =>
     [...(axis?.querySelectorAll(`text:not(.marginal-axis-title)`) ?? [])].map(
@@ -539,7 +539,7 @@ describe(`marginal value-axis`, () => {
     ],
   ] as [string, MarginalSideInput, boolean][])(`%s`, async (_desc, top, present) => {
     const root = await mount_histogram({
-      series: [{ x: [], y: [], label: `empty` }],
+      series: [{ values: [], label: `empty` }],
       marginals: { top },
     })
     expect(root.querySelector(`.marginal-axis-top`) !== null).toBe(present)

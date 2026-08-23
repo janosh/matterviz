@@ -259,7 +259,7 @@
       e_above_hull: selected_entry?.e_above_hull,
       e_form: selected_entry?.e_form_per_atom,
     }}
-    onclose={selection.close_structure_popup}
+    on_close={selection.close_structure_popup}
   />
 {/if}
 

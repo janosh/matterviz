@@ -12,20 +12,18 @@
   import { get_electro_neg_formula } from '$lib/composition'
   import { element_by_symbol, type ElementSymbol } from '$lib/element'
   import { format_num } from '$lib/labels'
-  import type { Vec2 } from '$lib/math'
   import { colors } from '$lib/state.svelte'
   import { get_density, type AnyStructure } from '$lib/structure'
-  import {
-    count_symmetry_op_kinds,
-    wyckoff_positions_from_moyo,
-    WyckoffTable,
-  } from '$lib/symmetry'
-  import type { MoyoDataset } from '@spglib/moyo-wasm'
+  import type { SymmetryDataset, WyckoffPos } from '$lib/symmetry'
+  import { count_symmetry_op_kinds, WyckoffTable } from '$lib/symmetry'
   import type { HTMLAttributes } from 'svelte/elements'
 
   type SiteCard = InfoPaneCard & { idx: number; element: string; element_name: string }
 
   const SITE_PAGE_SIZE = 100
+  // Default `atom_count_thresholds`: below the first the site list starts expanded, above the
+  // second it is omitted, in between it starts collapsed. The chevron always toggles.
+  const DEFAULT_ATOM_COUNT_THRESHOLDS: [number, number] = [50, 500]
   const USAGE_TIPS = [
     [`File Drop`, `Drop POSCAR, XYZ, CIF or JSON files to load structures`],
     [
@@ -53,26 +51,31 @@
   let {
     structure,
     pane_open = $bindable(false),
-    atom_count_thresholds = [50, 500],
     toggle_props = {},
     pane_props = {},
     highlighted_sites = $bindable([]),
     hovered_site_idx = $bindable(null),
     selected_sites = $bindable([]),
     sym_data = null,
+    wyckoff_positions = [],
+    atom_count_thresholds = DEFAULT_ATOM_COUNT_THRESHOLDS,
     ...rest
-  }: Omit<HTMLAttributes<HTMLDivElement>, `onclose`> & {
+  }: HTMLAttributes<HTMLDivElement> & {
     structure: AnyStructure
     pane_open?: boolean
-    // Below the first threshold the site list starts expanded; above the second it is
-    // omitted. In between it starts collapsed. The chevron always toggles.
-    atom_count_thresholds?: Vec2
+    // [expanded_below, listed_up_to]: the site list starts expanded under the first count and
+    // is omitted above the second, so large structures can still list their sites on request
+    atom_count_thresholds?: [number, number]
     toggle_props?: PaneToggleProps
     pane_props?: PaneProps
     highlighted_sites?: number[] // Sites highlighted from Wyckoff table hover
     hovered_site_idx?: number | null // Site hovered in this pane or in the 3D scene
     selected_sites?: number[] // Sites selected from Wyckoff table click
-    sym_data?: MoyoDataset | null // Symmetry analysis data (bindable for external access)
+    sym_data?: SymmetryDataset | null // Symmetry analysis data for the Symmetry card
+    // Wyckoff rows whose site_indices address the sites the scene renders (StructureSession
+    // .wyckoff_rows), so hovering/clicking a row highlights the right atoms in conventional/
+    // primitive cells and supercells too, not the analyzed cell's indices
+    wyckoff_positions?: WyckoffPos[]
   } = $props()
 
   const { copy } = create_clipboard_feedback()
@@ -289,7 +292,6 @@
     site_cards.find((card) => card.idx === selected_sites[0])?.key ?? null,
   )
 
-  let wyckoff_positions = $derived(pane_open ? wyckoff_positions_from_moyo(sym_data) : [])
   let wyckoff_table_expanded = $derived(wyckoff_positions.length < atom_count_thresholds[0])
 </script>
 
@@ -311,7 +313,7 @@
   <div class="structure-info">
     <InfoPaneCards cards={structure_cards} empty_label="structure info" show_filter={false} />
 
-    {#if wyckoff_positions.length > 0}
+    {#if pane_open && wyckoff_positions.length > 0}
       <details class="wyckoff" bind:open={wyckoff_table_expanded}>
         <summary>Wyckoff table ({wyckoff_positions.length})</summary>
         {#if wyckoff_table_expanded}

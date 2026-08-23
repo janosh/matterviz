@@ -5,6 +5,7 @@ import type { AnyStructure } from '$lib/structure'
 import { create_worker_client, type WorkerRequestOptions } from '$lib/worker-client.svelte'
 import { calc_structure_id } from './calc-structure-id'
 import type { StructureIdOptions, StructureIdResult } from './calc-structure-id'
+import { to_structure_id_payload } from './worker-payload'
 
 const run_structure_id = create_worker_client<
   AnyStructure,
@@ -15,23 +16,12 @@ const run_structure_id = create_worker_client<
   create_worker: () =>
     new Worker(new URL(`./structure-id-worker.js`, import.meta.url), { type: `module` }),
   compute_sync: calc_structure_id,
-  // Unlike MSD's flat position buffer a structure is a deep object graph, so it has to be
-  // snapshotted rather than passed by reference. Only what the analysis reads is carried.
-  build_payload: (structure) => ({
-    sites: structure.sites.map(({ xyz, abc, species, label }) => ({
-      xyz: $state.snapshot(xyz),
-      abc: $state.snapshot(abc),
-      species: $state.snapshot(species),
-      label,
-      // Dropped on purpose: properties can hold arbitrary non-cloneable values (functions,
-      // DOM nodes) and nothing in the analysis reads them.
-      properties: {},
-    })),
-    ...(`lattice` in structure ? { lattice: $state.snapshot(structure.lattice) } : {}),
-  }),
+  // Positions and lattice only (see worker-payload.ts); site properties can hold arbitrary
+  // non-cloneable values (functions, DOM nodes) and nothing in the analysis reads them
+  build_payload: to_structure_id_payload,
 })
 
-export const compute_structure_id_async = (
+export const calc_structure_id_async = (
   structure: AnyStructure,
   options: StructureIdOptions = {},
   request_options?: WorkerRequestOptions,

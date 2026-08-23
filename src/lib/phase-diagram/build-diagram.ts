@@ -8,7 +8,6 @@
 //   - "curve_name[:-1]" - slice (skip last point)
 //   - "~curve_name[1:-1]" - reverse then slice
 
-import { resolve_diagram_color } from './colors'
 import type { BoundElement, DiagramInput, DiagramPoint } from './diagram-input'
 import type { BoundaryType, PhaseBoundary, PhaseDiagramData, PhaseRegion } from './types'
 
@@ -73,8 +72,9 @@ function expand_bounds(
       let points = curves[ref.name]
 
       if (!points) {
-        console.warn(`Unknown curve: ${ref.name}`)
-        continue
+        throw new Error(
+          `Unknown curve "${ref.name}" in region bounds; known curves: ${Object.keys(curves).join(`, `) || `none`}`,
+        )
       }
 
       // Apply reverse first (to match Python's `reversed(curve)[1:]` pattern)
@@ -152,7 +152,7 @@ export function build_diagram(input: DiagramInput): PhaseDiagramData {
       id: region.id,
       name: region.name,
       vertices,
-      color: resolve_diagram_color(region.color),
+      ...(region.color ? { color: region.color } : {}),
       ...(region.label_position && { label_position: region.label_position }),
     }
   })

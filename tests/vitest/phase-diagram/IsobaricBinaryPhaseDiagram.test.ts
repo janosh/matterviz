@@ -255,24 +255,42 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
   // the parser, and that an unrelated file is ignored rather than reported.
   test(`dropped SVG reaches the parser, other files are ignored`, async () => {
     const wrapper = await mount_diagram()
-    const console_error = vi.spyOn(console, `error`).mockImplementation(() => {})
     const drop = async (file: File) => {
       wrapper.dispatchEvent(create_drop_event(file))
       await tick()
     }
 
     await drop(new File([`not an svg`], `notes.txt`, { type: `text/plain` }))
-    await vi.waitFor(() => expect(console_error).not.toHaveBeenCalled())
+    await tick()
+    expect(wrapper.querySelector(`.error`)).toBeNull()
 
     // a contentless SVG throws inside parse_phase_diagram_svg, and the shared handler
-    // reports it against the dropped filename — which is what proves the parse ran on it
+    // reports it against the dropped filename as a visible error banner (not a console
+    // message) — which is what proves the parse ran on it
     await drop(
       new File([`<svg xmlns="http://www.w3.org/2000/svg"></svg>`], `pd.svg`, {
         type: `image/svg+xml`,
       }),
     )
-    await vi.waitFor(() => expect(console_error.mock.calls[0]?.[1]).toContain(`pd.svg`))
-    console_error.mockRestore()
+    await vi.waitFor(() =>
+      expect(wrapper.querySelector(`.error[role="alert"]`)?.textContent).toContain(`pd.svg`),
+    )
+    // the previously rendered diagram is kept behind the banner
+    expect(wrapper.querySelectorAll(`.phase-regions path`).length).toBeGreaterThan(0)
+  })
+
+  test(`an unbuildable diagram_input shows an error banner instead of silently using data`, async () => {
+    const wrapper = await mount_diagram({
+      diagram_input: {
+        meta: { components: [`A`, `B`], temp_range: [0, 1000] },
+        curves: {},
+        regions: [{ id: `L`, name: `L`, bounds: [`liquidus`] }], // unknown curve → throws
+      },
+    })
+    await tick()
+    expect(wrapper.querySelector(`.error[role="alert"]`)?.textContent).toMatch(
+      /Invalid phase diagram input/,
+    )
   })
 })
 

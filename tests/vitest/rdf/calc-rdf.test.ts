@@ -1,4 +1,3 @@
-import type { Vec3 } from '$lib'
 import * as math from '$lib/math'
 import type { Matrix3x3 } from '$lib/math'
 import { calculate_all_pair_rdfs, calculate_rdf } from '$lib/rdf'
@@ -90,21 +89,8 @@ describe(`calculate_rdf`, () => {
     expect(shell_coordination(pattern, density, 1.6 * a_len, 1.9 * a_len)).toBeCloseTo(8, 9)
   })
 
-  // For uncorrelated points g(r) = 1 up to counting noise: each bin holds on average
-  // N ρ 4π r² Δr pairs (≈ 1900 at r = 10 Å here), so its relative standard deviation is
-  // ~2.3% and the mean over the last 8 bins ~0.8%; 0.05 is a > 5σ bound.
-  test(`random positions: g(r) → 1 within 0.05 in the tail (ideal-gas limit)`, () => {
-    let seed = 12345
-    const random = () => ((seed = (seed * 1664525 + 1013904223) % 2 ** 32), seed / 2 ** 32)
-    const sites = Array.from({ length: 500 }, () => ({
-      element: `Si`,
-      xyz: [random() * 30, random() * 30, random() * 30] as Vec3,
-    }))
-    const { g_r } = calculate_rdf(make_crystal(30, sites), { cutoff: 12, n_bins: 75 })
-    const tail = g_r.slice(-8)
-    const tail_mean = tail.reduce((sum, val) => sum + val, 0) / tail.length
-    expect(Math.abs(tail_mean - 1)).toBeLessThan(0.05)
-  })
+  // The ideal-gas tail limit (g(r) -> 1 for uncorrelated points) is pinned on the same
+  // calculate_rdf core by calc-pdf.test.ts (`disordered cell`), with a sharper bound.
 
   test(`rocksalt partials: Na-Cl first shell is 6 at a/2, Na-Na is 12 at a/√2, Cl-Na = Na-Cl`, () => {
     const opts = { cutoff: 6, n_bins: 60 }

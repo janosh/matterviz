@@ -1,4 +1,3 @@
-import type { Pbc } from '$lib/structure'
 import type { TrajectoryPositionStream } from '$lib/trajectory'
 
 export { compute_msd_async } from './async-compute.svelte'
@@ -57,14 +56,8 @@ export interface MsdOptions {
   time_unit?: string
   // Largest lag as a fraction of the trajectory length (longer lags have too few origins)
   max_lag_fraction?: number
-  // Sub-sample lags / time origins. Omit to auto-tune against `work_budget`.
+  // Cap on the number of distinct lags evaluated; longer runs sub-sample lags evenly
   max_lags?: number
-  lag_stride?: number
-  origin_stride?: number
-  work_budget?: number
-  pbc?: Pbc
-  // Skip the unwrap pass (set automatically when coords_unwrapped is true)
-  skip_unwrap?: boolean
   fit?: EinsteinFitOptions
 }
 
@@ -82,6 +75,8 @@ export interface MsdResult {
   n_atoms: number
   // False when the input was already unwrapped or had no lattice
   unwrapped: boolean
+  // Every `lag_stride`-th lag was evaluated (from `max_lags`) and every `origin_stride`-th
+  // time origin averaged (auto-tuned against an internal work budget)
   lag_stride: number
   origin_stride: number
   frame_stride: number

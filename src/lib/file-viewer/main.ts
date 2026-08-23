@@ -5,13 +5,7 @@
 // Import MatterViz parsing functions and components
 // oxlint-disable-next-line eslint-plugin-import/no-unassigned-import -- side-effect only
 import '$lib/app.css'
-import ConvexHull from '$lib/convex-hull/ConvexHull.svelte'
 import type { PhaseData } from '$lib/convex-hull/types'
-import FermiSurface from '$lib/fermi-surface/FermiSurface.svelte'
-import { is_fermi_surface_data } from '$lib/fermi-surface/types'
-import type { VolumetricData } from '$lib/isosurface/types'
-import IsobaricBinaryPhaseDiagram from '$lib/phase-diagram/IsobaricBinaryPhaseDiagram.svelte'
-import type { PhaseDiagramData } from '$lib/phase-diagram/types'
 import { legend_mode_to_prop } from '$lib/plot/core/utils/series-visibility'
 import { merge, build_structure_props_from_settings as structure_props } from '$lib/settings'
 import type { DefaultSettings } from '$lib/settings'
@@ -20,7 +14,6 @@ import Bands from '$lib/spectral/Bands.svelte'
 import BandsAndDos from '$lib/spectral/BandsAndDos.svelte'
 import Dos from '$lib/spectral/Dos.svelte'
 import type { AnyStructure } from '$lib/structure'
-import Structure from '$lib/structure/Structure.svelte'
 import { ensure_moyo_wasm_ready } from '$lib/symmetry'
 import { apply_theme_to_dom, is_valid_theme_name } from '$lib/theme/index'
 // oxlint-disable-next-line eslint-plugin-import/no-unassigned-import -- side-effect only
@@ -32,8 +25,14 @@ import { mount, unmount } from 'svelte'
 import TrajectoryWithDos from './TrajectoryWithDos.svelte'
 import type { VSCodeAPI } from './host-bridge'
 import { get_vscode_api } from './host-bridge'
-import type { FileChangeMessage, FileData, WebviewBootstrapData } from './host-protocol'
+import type {
+  FileChangeMessage,
+  FileData,
+  SettingsChangedMessage,
+  WebviewBootstrapData,
+} from './host-protocol'
 import JsonBrowser from './JsonBrowser.svelte'
+import { mount_viewer, type ViewerMountType } from './mount-viewer'
 import type { ParseResult } from './parse'
 import { parse_in_worker } from './parse-in-worker'
 import { escape_html, to_error } from '$lib/utils'
@@ -101,6 +100,12 @@ const install_cross_origin_worker_shim = (): void => {
 }
 if (vscode_api) install_cross_origin_worker_shim()
 let current_app: MatterVizApp | null = null
+// The parse result behind current_app: a host settings change remounts it with the new
+// defaults instead of re-parsing (or the host re-reading the file from disk)
+let current_result: ParseResult | null = null
+// Set when the bootstrap parse/mount threw and the error display is on screen, so a later
+// host settings change re-attempts the display instead of finding nothing to remount
+let initial_display_failed = false
 let file_change_listener_registered = false
 let file_change_generation = 0
 let file_change_queue: Promise<void> = Promise.resolve()
@@ -174,7 +179,78 @@ export const unmount_display = async (app: MatterVizApp): Promise<void> => {
 async function unmount_current_app(): Promise<void> {
   const app = current_app
   current_app = null
+  current_result = null
   if (app) await unmount_display(app)
+}
+
+const mount_result = (container: HTMLElement, result: ParseResult): void => {
+  current_app = create_display(container, result)
+  current_result = result
+}
+
+// Re-apply theme and defaults from the host to the view already on screen. Only a defaults
+// change remounts (theme is pure CSS), and the remount reuses the parsed result, so an
+// unsaved editor buffer rendered via fileUpdated survives and a host-served run stays open.
+const handle_settings_change = async (
+  { theme, defaults }: SettingsChangedMessage,
+  lifecycle_generation: number,
+): Promise<void> => {
+  if (!is_current_lifecycle(lifecycle_generation)) return
+  const bootstrap = globalThis.matterviz_data
+  if (is_valid_theme_name(theme)) {
+    apply_theme_to_dom(theme)
+    // initialize() re-reads the theme from the bootstrap on re-init
+    if (bootstrap) bootstrap.theme = theme
+  }
+  // A message without defaults (a host that only pushes theme) must not reset to DEFAULTS
+  const defaults_changed =
+    bootstrap !== undefined &&
+    defaults !== undefined &&
+    JSON.stringify(bootstrap.defaults) !== JSON.stringify(defaults)
+  if (defaults_changed) bootstrap.defaults = defaults
+  const container = document.querySelector<HTMLElement>(`#matterviz-app`)
+  // The bootstrap display failed (parse or mount threw) and its error is on screen: there is
+  // nothing to remount, so re-attempt from the bootstrap payload the way the host's old
+  // HTML rebuild did (the new defaults may be exactly what the parse needed)
+  if (initial_display_failed) {
+    if (container && bootstrap?.data) {
+      await display_bootstrap_file(container, bootstrap.data, lifecycle_generation)
+    }
+    return
+  }
+  if (!defaults_changed) return
+  const app = current_app
+  const result = current_result
+  if (!container || !app || !result) return
+  current_app = null
+  // Keep the run alive for the remount; once detached from display_runs, cleanup can no
+  // longer dispose it, so a lifecycle that ends mid-remount must dispose it here
+  const run = display_runs.get(app)
+  display_runs.delete(app)
+  await unmount(app)
+  if (!is_current_lifecycle(lifecycle_generation)) {
+    run?.dispose()
+    return
+  }
+  // create_display re-registers the run in display_runs; if it throws, nothing else owns it
+  try {
+    mount_result(container, result)
+  } catch (error) {
+    run?.dispose()
+    throw error
+  }
+}
+
+const process_settings_change = (message: SettingsChangedMessage): void => {
+  if (viewer_disposed) return
+  const lifecycle_generation = viewer_lifecycle_generation
+  // Serialized behind pending file changes so a remount never races a reload
+  file_change_queue = file_change_queue
+    .then(() => handle_settings_change(message, lifecycle_generation))
+    .catch((error: unknown) => {
+      console.error(`Failed to apply host settings:`, error)
+      vscode_api?.postMessage({ command: `error`, text: `Failed to apply settings: ${error}` })
+    })
 }
 
 // Handle file change events from extension
@@ -212,7 +288,7 @@ const handle_file_change = async (
     if (container) {
       await unmount_current_app()
       if (!is_current_file_change(generation)) return
-      current_app = create_display(container, result)
+      mount_result(container, result)
     }
 
     vscode_api?.postMessage({ command: `info`, text: `File reloaded successfully` })
@@ -253,6 +329,15 @@ const parse_file_data = (
     signal,
     load_options: { index_above_bytes },
   })
+}
+
+// Human-readable names for the single-viewer ParseResult types in the host info log
+const VIEWER_LOG_LABELS: Record<Extract<ParseResult[`type`], ViewerMountType>, string> = {
+  structure: `Structure`,
+  fermi_surface: `Fermi surface`,
+  isosurface: `Volumetric data`,
+  convex_hull: `Convex hull`,
+  phase_diagram: `Phase diagram`,
 }
 
 // Create error display in container
@@ -307,13 +392,6 @@ export const create_display = (
   // Get defaults and create props
   const defaults = merge(globalThis.matterviz_data?.defaults)
   const common_props = { style: `height: 100%; border-radius: 0`, fullscreen_toggle: false }
-  // Only viewers with a drop zone declare allow_file_drop; elsewhere it would land on the div
-  const no_file_drop = { ...common_props, allow_file_drop: false }
-  const embedded_structure_props = {
-    ...structure_props(defaults),
-    ...no_file_drop,
-    persist_settings: false,
-  }
 
   let app: MatterVizApp
   let log_message: string
@@ -374,35 +452,6 @@ export const create_display = (
     }
     const parts = [bands ? `bands` : null, dos ? `DOS` : null].filter(Boolean).join(` + `)
     log_message = `Electronic structure rendered: ${filename} (${parts})`
-  } else if (result.type === `fermi_surface`) {
-    const props: Record<string, unknown> = { ...no_file_drop }
-    if (is_fermi_surface_data(result.data as Parameters<typeof is_fermi_surface_data>[0])) {
-      props.fermi_data = result.data
-    } else props.band_data = result.data
-    app = mount(FermiSurface, { target: container, props })
-    log_message = `Fermi surface rendered: ${filename}`
-  } else if (result.type === `isosurface`) {
-    // VolumetricFileData has structure + volumes; render via Structure with volumetric_data
-    const vol_file = result.data as { structure: AnyStructure; volumes: VolumetricData[] }
-    app = mount(Structure, {
-      target: container,
-      props: {
-        structure: vol_file.structure,
-        volumetric_data: vol_file.volumes,
-        ...embedded_structure_props,
-      },
-    })
-    log_message = `Volumetric data rendered: ${filename}`
-  } else if (result.type === `convex_hull`) {
-    const entries = result.data as PhaseData[]
-    app = mount(ConvexHull, { target: container, props: { entries, ...no_file_drop } })
-    log_message = `Convex hull rendered: ${filename} (${entries.length} entries)`
-  } else if (result.type === `phase_diagram`) {
-    app = mount(IsobaricBinaryPhaseDiagram, {
-      target: container,
-      props: { data: result.data as PhaseDiagramData, ...common_props },
-    })
-    log_message = `Phase diagram rendered: ${filename}`
   } else if (result.type === `json_browser`) {
     app = mount(JsonBrowser, {
       target: container,
@@ -410,13 +459,15 @@ export const create_display = (
     })
     log_message = `JSON browser opened: ${filename}`
   } else {
-    // Default: structure
-    const structure = result.data as AnyStructure
-    app = mount(Structure, {
-      target: container,
-      props: { structure, ...embedded_structure_props },
-    })
-    log_message = `Structure rendered: ${filename} (${structure.sites?.length ?? 0} sites)`
+    // Single-viewer results share the dispatch table with JsonBrowser panels
+    app = mount_viewer(container, result.type, result.data, { defaults })
+    const detail =
+      result.type === `convex_hull`
+        ? ` (${(result.data as PhaseData[]).length} entries)`
+        : result.type === `structure`
+          ? ` (${(result.data as AnyStructure).sites?.length ?? 0} sites)`
+          : ``
+    log_message = `${VIEWER_LOG_LABELS[result.type]} rendered: ${filename}${detail}`
   }
 
   vscode_api?.postMessage({ command: `info`, text: log_message })
@@ -426,11 +477,6 @@ export const create_display = (
 // Map defaults to trajectory component props
 const trajectory_props = (defaults: DefaultSettings) => {
   const { trajectory, plot, scatter, histogram } = defaults
-  // Settings every plot kind honours, so adding one does not have to be remembered twice
-  const shared_plot_props = {
-    show_grid: plot.grid_lines,
-    show_axis_labels: plot.axis_labels,
-  }
   // Loading/UX settings belong to TrajectoryFileViewer, not the viewer mounted here; spreading
   // them would land on the wrapper div
   const {
@@ -438,24 +484,58 @@ const trajectory_props = (defaults: DefaultSettings) => {
     allow_file_drop: _allow_file_drop,
     ...trajectory_component_props
   } = trajectory
+  // Every key below is a declared ScatterPlot/Histogram prop; anything else would be spread
+  // onto the plot's wrapper div as an unknown HTML attribute
+  const { show_points, show_lines, point, line, symbol_type } = scatter
   return {
     ...trajectory_component_props,
     structure_props: { ...structure_props(defaults), persist_settings: false },
     scatter_props: {
-      markers: scatter.symbol_type,
-      line_width: scatter.line.width,
-      point_size: scatter.point.size,
+      display: plot.display,
+      // matterviz.scatter.symbol_type is the marker shape for every point without its own
+      styles: { show_points, show_lines, point: { ...point, symbol_type }, line },
       show_legend: legend_mode_to_prop(scatter.show_legend),
-      ...shared_plot_props,
     },
     histogram_props: {
+      display: plot.display,
+      bins: histogram.bin_count,
+      normalize: histogram.normalize,
       mode: histogram.mode,
+      bar: histogram.bar,
       show_legend: legend_mode_to_prop(histogram.show_legend),
-      bin_count: histogram.bin_count,
-      ...shared_plot_props,
     },
     property_labels: {},
   }
+}
+
+// Parse the bootstrap file and mount it; on failure show the error display, report it to the
+// host and remember the failure so a later settings change can retry
+const display_bootstrap_file = async (
+  container: HTMLElement,
+  file_data: FileData,
+  lifecycle_generation: number,
+): Promise<void> => {
+  const controller = replace_parse_controller()
+  try {
+    const result = await parse_file_data(file_data, controller.signal)
+    if (!is_current_lifecycle(lifecycle_generation)) return
+    mount_result(container, result)
+    initial_display_failed = false
+  } catch (error) {
+    if (!is_current_lifecycle(lifecycle_generation)) return
+    report_display_error(container, to_error(error))
+  }
+}
+
+const report_display_error = (container: HTMLElement | null, err: Error): void => {
+  initial_display_failed = true
+  const filename = globalThis.matterviz_data?.data?.filename
+  const label = filename?.trim() ? filename : `Unknown file`
+  if (container) create_error_display(container, err, label)
+  vscode_api?.postMessage({
+    command: `error`,
+    text: `Error rendering ${label}: ${err.message}`,
+  })
 }
 
 // Initialize the MatterViz application from data passed by the extension
@@ -477,25 +557,20 @@ async function initialize(lifecycle_generation: number): Promise<MatterVizApp | 
   const container = document.querySelector<HTMLElement>(`#matterviz-app`)
   if (!container) throw new Error(`Target container not found in DOM`)
 
-  const controller = replace_parse_controller()
-  const result = await parse_file_data(file_data, controller.signal)
+  await display_bootstrap_file(container, file_data, lifecycle_generation)
   if (!is_current_lifecycle(lifecycle_generation)) return null
-  const app = create_display(container, result)
 
-  // Store the app instance for file watching
-  current_app = app
-
-  // Listen for file change messages from extension
+  // Listen for file change and settings messages from the host
   if (vscode_api && !file_change_listener_registered) {
     globalThis.addEventListener(`message`, (event) => {
-      if ([`fileUpdated`, `fileDeleted`].includes(event.data.command)) {
-        process_file_change(event.data)
-      }
+      const command = event.data?.command
+      if ([`fileUpdated`, `fileDeleted`].includes(command)) process_file_change(event.data)
+      else if (command === `settingsChanged`) process_settings_change(event.data)
     })
     file_change_listener_registered = true
   }
 
-  return app
+  return current_app
 }
 
 // Cleanup function to properly dispose of components
@@ -505,6 +580,7 @@ async function cleanup_matterviz(): Promise<void> {
   active_parse_controller = null
   file_change_generation++
   viewer_lifecycle_generation++
+  initial_display_failed = false
   file_change_queue = Promise.resolve()
   await unmount_current_app()
 }
@@ -517,27 +593,17 @@ global_window.initializeMatterViz = async (): Promise<MatterVizApp | null> => {
   }
 
   viewer_disposed = false
+  initial_display_failed = false
   const lifecycle_generation = ++viewer_lifecycle_generation
   try {
     // initialize() already records the app in current_app
     return await initialize(lifecycle_generation)
   } catch (error) {
     if (!is_current_lifecycle(lifecycle_generation)) return null
-    const err = to_error(error)
-    const container = document.querySelector<HTMLElement>(`#matterviz-app`)
-    if (container) {
-      create_error_display(
-        container,
-        err,
-        globalThis.matterviz_data?.data?.filename || `Unknown file`,
-      )
-    }
-    vscode_api?.postMessage({
-      command: `error`,
-      text: `Error rendering ${
-        globalThis.matterviz_data?.data?.filename || `Unknown file`
-      }: ${err.message}`,
-    })
+    report_display_error(
+      document.querySelector<HTMLElement>(`#matterviz-app`),
+      to_error(error),
+    )
     return null
   }
 }

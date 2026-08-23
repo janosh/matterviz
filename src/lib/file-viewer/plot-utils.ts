@@ -1,6 +1,6 @@
 // Utilities for extracting plottable columns from JSON data and building plot series.
 
-import type { BarSeries, DataSeries, DataSeries3D } from '$lib/plot'
+import type { BarSeries, DataSeries, DataSeries3D, HistogramSeries } from '$lib/plot'
 
 export type PlotType = `scatter` | `scatter3d` | `bar` | `histogram` | `table`
 
@@ -256,13 +256,8 @@ export function build_bar_series(
 export function build_histogram_series(
   columns: Map<string, ColumnInfo>,
   mapping: AxisMapping,
-): DataSeries {
+): HistogramSeries {
   const col = get_col(columns, mapping.x ?? mapping.y)
-  if (!col) return { x: [], y: [] }
-
-  const values = to_numbers(col.values).filter(isFinite)
-  return {
-    x: values.map((_, idx) => idx),
-    y: values,
-  }
+  if (!col) return { values: [] }
+  return { values: to_numbers(col.values).filter(isFinite) }
 }

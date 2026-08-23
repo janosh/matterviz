@@ -155,7 +155,10 @@ export const TEXT_VIEWER_EXTENSIONS = Object.freeze(
 // Binary containers MatterViz can actually decode, i.e. the payloads a host must hand over
 // as bytes rather than text. .xtc/.dcd/.trr are absent on purpose: there is no reader for
 // them, so claiming them as an opener only replaces a working handler with an error.
-export const BINARY_VIEWER_EXTENSIONS = Object.freeze([`traj`, `h5`, `hdf5`])
+const HDF5_EXTENSIONS = Object.freeze([`h5`, `hdf5`])
+export const HDF5_EXT_REGEX = ext_regex(HDF5_EXTENSIONS)
+export const BINARY_VIEWER_EXTENSIONS = Object.freeze([`traj`, ...HDF5_EXTENSIONS])
+export const BINARY_VIEWER_EXT_REGEX = ext_regex(BINARY_VIEWER_EXTENSIONS)
 
 // VASP's canonical filenames carry no extension, so hosts have to match them as name stems.
 export const VASP_VIEWER_STEMS = Object.freeze([

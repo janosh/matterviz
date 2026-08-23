@@ -1,5 +1,6 @@
 import type { ElementSymbol } from '$lib/element'
-import { calc_vacf, central_difference_velocities } from '$lib/vacf'
+import { group_atoms_by_element } from '$lib/trajectory/positions'
+import { autocorrelation_sums, calc_vacf, central_difference_velocities } from '$lib/vacf'
 import { describe, expect, it } from 'vitest'
 import { cubic_matrix } from '../setup'
 import {
@@ -10,10 +11,79 @@ import {
   max_rel_error,
 } from './helpers'
 
-// f64 machine epsilon, the yardstick every "is this just round-off?" claim below is
-// measured against
-const F64_EPS = Number.EPSILON // 2.220446049250313e-16
-const skip_vdos = { vdos: { skip: true } } as const
+// The definition, spelled out: sum over atoms and every time origin of v(t) . v(t + lag)
+const direct_autocorrelation_sum = (
+  velocities: Float64Array,
+  n_frames: number,
+  n_atoms: number,
+  lag: number,
+  atoms: number[],
+): number => {
+  let total = 0
+  for (let origin = 0; origin + lag < n_frames; origin++) {
+    for (const atom_idx of atoms) {
+      const from = (origin * n_atoms + atom_idx) * 3
+      const to = ((origin + lag) * n_atoms + atom_idx) * 3
+      total +=
+        velocities[to] * velocities[from] +
+        velocities[to + 1] * velocities[from + 1] +
+        velocities[to + 2] * velocities[from + 2]
+    }
+  }
+  return total
+}
+
+describe(`autocorrelation_sums (Wiener-Khinchin) against the direct origin loop`, () => {
+  it.each([
+    [`ideal gas, mixed elements`, 60, 8, 12345],
+    [`ideal gas, odd frame count`, 37, 5, 777],
+    [`ideal gas, 2 frames`, 2, 3, 9],
+  ])(`matches the direct sum for %s to 1e-12`, (_label, n_frames, n_atoms, seed) => {
+    const { velocities } = ideal_gas(n_frames, n_atoms, seed)
+    const flat = Float64Array.from(velocities.flat(2))
+    const elements = Array.from({ length: n_atoms }, (_unused, idx) => (idx % 2 ? `He` : `H`))
+    const { labels, atom_group } = group_atoms_by_element(elements)
+    const max_lag = n_frames - 1
+    const sums = autocorrelation_sums(
+      flat,
+      n_frames,
+      n_atoms,
+      atom_group,
+      labels.length,
+      max_lag,
+    )
+    const groups = [...labels.keys(), labels.length]
+    let worst = 0
+    let largest = 0
+    for (const slot of groups) {
+      const atoms = [...atom_group.keys()].filter(
+        (atom_idx) => slot === labels.length || atom_group[atom_idx] === slot,
+      )
+      for (let lag = 0; lag <= max_lag; lag++) {
+        const expected = direct_autocorrelation_sum(flat, n_frames, n_atoms, lag, atoms)
+        worst = Math.max(worst, Math.abs(sums[slot][lag] - expected))
+        largest = Math.max(largest, Math.abs(expected))
+      }
+    }
+    // Sums of O(1) products over <= 60 origins x 8 atoms: an FFT round trip of length 128
+    // carries a few tens of eps of round-off, far under this bound and far above zero
+    expect(worst).toBeLessThan(1e-12)
+    expect(largest).toBeGreaterThan(1)
+  })
+
+  it(`reproduces the direct VACF of an orbiting atom through calc_vacf`, () => {
+    const [n_frames, frequency] = [50, 0.07]
+    const { positions, velocities } = circular_motion(n_frames, frequency, 1.3)
+    const flat = Float64Array.from(velocities.flat(2))
+    const result = calc_vacf(build_vacf_input(positions, { velocity_frames: velocities }), {
+      max_lag_fraction: 1,
+    })
+    const expected = result.lags.map(
+      (lag) => direct_autocorrelation_sum(flat, n_frames, 1, lag, [0]) / (n_frames - lag),
+    )
+    expect(max_abs_error(result.curves[0].vacf, expected)).toBeLessThan(1e-12)
+  })
+})
 
 describe(`analytic VACF limits`, () => {
   it.each([
@@ -22,28 +92,17 @@ describe(`analytic VACF limits`, () => {
     [`mid frequency`, 0.05, 500],
   ])(
     `circular motion (%s) gives VACF = cos(2 pi f lag) exactly`,
-    (label, frequency, n_frames) => {
+    (_label, frequency, n_frames) => {
       const { positions, velocities } = circular_motion(n_frames, frequency)
-      const result = calc_vacf(
-        build_vacf_input(positions, { velocity_frames: velocities }),
-        skip_vdos,
-      )
+      const result = calc_vacf(build_vacf_input(positions, { velocity_frames: velocities }))
       const [total] = result.curves
       const omega = 2 * Math.PI * frequency
       const expected = result.lags.map((lag) => Math.cos(omega * lag))
 
-      const worst_abs = max_abs_error(total.vacf_normalized, expected)
-      console.info(
-        `${label} (f = ${frequency}/frame): max |vacf - cos| = ${worst_abs.toExponential(3)} ` +
-          `= ${(worst_abs / F64_EPS).toFixed(1)} f64 eps over ${result.lags.length} lags`,
-      )
-      // Every origin sees the same value, so the only error left is the round-off of
-      // summing n_origins identical terms: a few hundred eps at these lengths.
-      expect(worst_abs).toBeLessThan(1e-12)
-      // Same reason the spread must vanish: the naive sum-of-squares variance would
-      // report ~sqrt(eps) * vacf here instead.
-      const vacf_scale = Math.abs(total.vacf[0])
-      expect(Math.max(...total.std_error)).toBeLessThan(1e-13 * vacf_scale)
+      // Every origin sees the same value, so the only error left is the round-off of the
+      // FFT round trip over n_origins identical terms: a few hundred eps at these lengths.
+      expect(max_abs_error(total.vacf_normalized, expected)).toBeLessThan(1e-12)
+      expect(total.n_origins).toEqual(result.lags.map((lag) => n_frames - lag))
     },
   )
 
@@ -53,16 +112,10 @@ describe(`analytic VACF limits`, () => {
     // independent products, so the per-lag standard error is ~1/sqrt(3e4) = 6e-3.
     const [n_frames, n_atoms] = [400, 200]
     const { positions, velocities } = ideal_gas(n_frames, n_atoms, 314159)
-    const result = calc_vacf(
-      build_vacf_input(positions, { velocity_frames: velocities }),
-      skip_vdos,
-    )
+    const result = calc_vacf(build_vacf_input(positions, { velocity_frames: velocities }))
     const [total] = result.curves
     const tail = total.vacf_normalized.slice(1)
     const worst = Math.max(...tail.map(Math.abs))
-    console.info(
-      `ideal gas: max |VACF(lag > 0)| = ${worst.toExponential(3)} over ${tail.length} lags`,
-    )
     // 0.05 is ~8 sampling standard errors: comfortably above noise, far below any real
     // correlation (a liquid VACF sits at 0.3-0.9 for the first few lags)
     expect(worst).toBeLessThan(0.05)
@@ -74,7 +127,7 @@ describe(`analytic VACF limits`, () => {
       [1.5, -2.25, 0.75],
       [4, 4, 4],
     ])
-    const result = calc_vacf(build_vacf_input(frames), skip_vdos)
+    const result = calc_vacf(build_vacf_input(frames))
     for (const curve of result.curves) {
       expect(curve.vacf.every((value) => value === 0)).toBe(true)
       expect(curve.vacf_normalized.every((value) => value === 0)).toBe(true)
@@ -89,7 +142,7 @@ describe(`analytic VACF limits`, () => {
       [5, 5, 5],
     ])
     const elements: ElementSymbol[] = [`H`, `He`]
-    const result = calc_vacf(build_vacf_input(frames, { elements }), skip_vdos)
+    const result = calc_vacf(build_vacf_input(frames, { elements }))
     expect(result.curves.map((curve) => curve.label)).toEqual([`Total`, `H`, `He`])
     const [total, hydrogen, helium] = result.curves
     expect(hydrogen.vacf[0]).toBeCloseTo(0.09, 12)
@@ -106,7 +159,7 @@ describe(`velocity sources`, () => {
     const [frequency, n_frames] = [0.05, 500]
     const omega = 2 * Math.PI * frequency
     const { positions, velocities } = circular_motion(n_frames, frequency, 1.7)
-    const options = { ...skip_vdos, max_lag_fraction: 0.4 } as const
+    const options = { max_lag_fraction: 0.4 } as const
 
     const stored = calc_vacf(
       build_vacf_input(positions, { velocity_frames: velocities }),
@@ -122,11 +175,9 @@ describe(`velocity sources`, () => {
     const stored_curve = stored.curves[0].vacf_normalized.slice(0, n_common)
     const diff_curve = differenced.curves[0].vacf_normalized.slice(0, n_common)
 
-    const worst_abs = max_abs_error(diff_curve, stored_curve)
-    const worst_rel = max_rel_error(diff_curve, stored_curve)
     // A cosine crosses zero, and 6e-15 divided by a reference of 4e-14 is a relative
-    // error of 0.16 that says nothing about either curve. Away from the crossings the
-    // relative error is the honest figure, so report both.
+    // error of 0.16 that says nothing about either curve, so the relative error is only
+    // taken away from the crossings.
     const away_from_zero = stored_curve
       .map((_unused, idx) => idx)
       .filter((idx) => Math.abs(stored_curve[idx]) > 0.1)
@@ -134,25 +185,14 @@ describe(`velocity sources`, () => {
       away_from_zero.map((idx) => diff_curve[idx]),
       away_from_zero.map((idx) => stored_curve[idx]),
     )
-    console.info(
-      `stored vs central difference over ${n_common} lags: max |a - b| = ` +
-        `${worst_abs.toExponential(3)} (${(worst_abs / F64_EPS).toFixed(1)} f64 eps), ` +
-        `max rel = ${worst_rel.toExponential(3)} overall but ` +
-        `${worst_rel_away.toExponential(3)} where |cos| > 0.1`,
-    )
     expect(worst_rel_away).toBeLessThan(1e-13)
     // Both are the same cosine to within the round-off of a few hundred summed origins
-    expect(worst_abs).toBeLessThan(1e-12)
+    expect(max_abs_error(diff_curve, stored_curve)).toBeLessThan(1e-12)
 
     // The raw amplitudes differ by the stencil factor, which is 1.6e-2 relative here —
     // five orders of magnitude above f64 eps, i.e. physics rather than arithmetic
     const stencil_ratio = (Math.sin(omega) / omega) ** 2
     const measured_ratio = differenced.curves[0].vacf[0] / stored.curves[0].vacf[0]
-    console.info(
-      `raw VACF(0) ratio ${measured_ratio.toPrecision(12)} vs analytic ` +
-        `(sin w / w)^2 = ${stencil_ratio.toPrecision(12)}, ` +
-        `rel error ${Math.abs(measured_ratio / stencil_ratio - 1).toExponential(3)}`,
-    )
     expect(measured_ratio).toBeCloseTo(stencil_ratio, 12)
     expect(Math.abs(1 - stencil_ratio)).toBeGreaterThan(1e-3)
   })
@@ -167,11 +207,14 @@ describe(`velocity sources`, () => {
     )
     const unwrapped = calc_vacf(
       build_vacf_input(wrapped, { lattice: cubic_matrix(box), pbc: [true, true, true] }),
-      skip_vdos,
     )
+    // Flagging the coordinates as already unwrapped is the one way to skip the unwrap
     const folded = calc_vacf(
-      build_vacf_input(wrapped, { lattice: cubic_matrix(box), pbc: [true, true, true] }),
-      { ...skip_vdos, skip_unwrap: true },
+      build_vacf_input(wrapped, {
+        lattice: cubic_matrix(box),
+        pbc: [true, true, true],
+        coords_unwrapped: true,
+      }),
     )
     expect(unwrapped.unwrapped).toBe(true)
     expect(folded.unwrapped).toBe(false)
@@ -179,10 +222,6 @@ describe(`velocity sources`, () => {
     const expected = unwrapped.lags.map((lag) => Math.cos(2 * Math.PI * 0.03 * lag))
     const unwrapped_error = max_abs_error(unwrapped.curves[0].vacf_normalized, expected)
     const folded_error = max_abs_error(folded.curves[0].vacf_normalized, expected)
-    console.info(
-      `wrapped orbit: unwrapped max |vacf - cos| = ${unwrapped_error.toExponential(3)}, ` +
-        `re-folded = ${folded_error.toExponential(3)}`,
-    )
     expect(unwrapped_error).toBeLessThan(1e-12)
     expect(folded_error).toBeGreaterThan(0.5)
   })
@@ -195,7 +234,6 @@ describe(`velocity sources`, () => {
         pbc: [true, true, true],
         coords_unwrapped: true,
       }),
-      skip_vdos,
     )
     expect(result.unwrapped).toBe(false)
     const expected = result.lags.map((lag) => Math.cos(2 * Math.PI * 0.04 * lag))
@@ -213,7 +251,6 @@ describe(`velocity sources`, () => {
     const { positions, velocities } = circular_motion(100, 0.06)
     const result = calc_vacf(build_vacf_input(positions, { velocity_frames: velocities }), {
       velocity_source: `central_difference`,
-      ...skip_vdos,
     })
     expect(result.velocity_source).toBe(`central_difference`)
     expect(result.n_frames).toBe(98)

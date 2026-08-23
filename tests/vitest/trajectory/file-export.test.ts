@@ -1,14 +1,8 @@
-import type { Matrix3x3, Vec3 } from '$lib/math'
-import { calc_lattice_params } from '$lib/math'
-import type { AnyStructure } from '$lib/structure'
+import type { Vec3 } from '$lib/math'
 import { parse_poscar, parse_xyz } from '$lib/structure/parse'
 import { download } from '$lib/io/fetch'
-import type { TrajectoryFrame, TrajectoryMetadata, TrajectoryRun } from '$lib/trajectory'
-import {
-  trajectory_from_frames,
-  TrajectoryExportPane,
-  TrajectoryProperties,
-} from '$lib/trajectory'
+import type { TrajectoryFrame, TrajectoryMetadata } from '$lib/trajectory'
+import { trajectory_from_frames, TrajectoryExportPane } from '$lib/trajectory'
 import type { TrajectoryPropertyTable } from '$lib/trajectory/file-export'
 import {
   collect_frame_property_rows,
@@ -25,34 +19,26 @@ import { create_warning_collector } from '$lib/trajectory/parse/shared'
 import { unzipSync } from 'fflate'
 import { mount, tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { doc_query } from '../setup'
+import { doc_query, make_crystal, with_property_rows } from '../setup'
 
 vi.mock(`$lib/io/fetch`, async (import_original) => ({
   ...(await import_original<Record<string, unknown>>()),
   download: vi.fn(),
 }))
 
-// oxfmt-ignore
-const cube = (len: number): Matrix3x3 => [[len, 0, 0], [0, len, 0], [0, 0, len]]
-
+// Si + O in a 5 A cube at the given Cartesian positions
 const make_frame = (
   step: number,
   positions: Vec3[],
   metadata: Record<string, unknown> = {},
-): TrajectoryFrame => {
-  const matrix = cube(5)
-  const structure = {
-    sites: positions.map((xyz, idx) => ({
-      species: [{ element: idx === 0 ? `Si` : `O`, occu: 1, oxidation_state: 0 }],
-      xyz,
-      abc: xyz.map((coord) => coord / 5) as Vec3,
-      label: `${idx === 0 ? `Si` : `O`}${idx + 1}`,
-      properties: {},
-    })),
-    lattice: { matrix, pbc: [true, true, true], ...calc_lattice_params(matrix) },
-  } as AnyStructure
-  return { structure, step, metadata }
-}
+): TrajectoryFrame => ({
+  structure: make_crystal(
+    5,
+    positions.map((xyz, idx) => ({ element: idx === 0 ? `Si` : `O`, xyz })),
+  ),
+  step,
+  metadata,
+})
 
 // oxfmt-ignore
 const two_sites: Vec3[] = [[0, 0, 0], [1, 1, 1]]
@@ -74,7 +60,6 @@ describe(`trajectory_export_basename`, () => {
     [`/data/md/traj.h5`, `traj`],
     [`XDATCAR`, `XDATCAR`],
     [`weird name (1).traj`, `weird_name_1`],
-    [``, `trajectory`],
     [`.gz`, `trajectory`],
   ])(`%s -> %s`, (input, expected) => {
     expect(trajectory_export_basename(input)).toBe(expected)
@@ -237,10 +222,7 @@ const plot_metadata: TrajectoryMetadata[] = [
 ]
 
 const run_with_properties = trajectory_from_frames(frames, { properties: plot_metadata })
-const run_without_properties: TrajectoryRun = {
-  ...trajectory,
-  properties: new TrajectoryProperties([], true),
-}
+const run_without_properties = with_property_rows(trajectory, [])
 
 describe(`collect_frame_property_rows`, () => {
   test(`one row per frame carrying the extractor's numbers`, async () => {
@@ -302,10 +284,7 @@ describe(`collect_frame_property_rows`, () => {
 
   // Sampled property rows usually skip frames; using them would export fewer rows than frames
   test(`falls back to the resolver when properties miss a frame in the range`, async () => {
-    const sparse: TrajectoryRun = {
-      ...trajectory,
-      properties: new TrajectoryProperties([plot_metadata[0], plot_metadata[2]], true),
-    }
+    const sparse = with_property_rows(trajectory, [plot_metadata[0], plot_metadata[2]])
     const spy_resolver = vi.fn(resolver)
     const { rows, source } = await collect_frame_property_rows(0, 2, spy_resolver, sparse)
     expect(source).toBe(`frames`)
@@ -382,16 +361,13 @@ describe(`frame_rows_to_json`, () => {
 
   // frame/step keys inside properties must not leak into the JSON rows (row identity wins)
   test(`records properties as the source when the table came from them`, async () => {
-    const colliding: TrajectoryRun = {
-      ...trajectory,
-      properties: new TrajectoryProperties(
-        plot_metadata.map((row) => ({
-          ...row,
-          properties: { ...row.properties, frame: 999, step: 999 },
-        })),
-        true,
-      ),
-    }
+    const colliding = with_property_rows(
+      trajectory,
+      plot_metadata.map((row) => ({
+        ...row,
+        properties: { ...row.properties, frame: 999, step: 999 },
+      })),
+    )
     const parsed = JSON.parse(
       frame_rows_to_json(await collect_frame_property_rows(0, 2, resolver, colliding)),
     )

@@ -10,39 +10,9 @@ import { host_run } from '$lib/trajectory/runs/host'
 import { indexed_text_run } from '$lib/trajectory/runs/indexed-text'
 import { serve_run_over_port, worker_run } from '$lib/trajectory/runs/worker'
 import { describe, expect, it, test } from 'vitest'
-import { make_rng, max_abs_error } from '../numeric-helpers'
+import { max_abs_error } from '../numeric-helpers'
 import { read_binary_test_file } from '../setup'
-
-// Deterministic EXTXYZ: a cubic cell that breathes, atoms jittering around a grid, an energy
-// that drifts with the frame index. Shared with open.test.ts and the perf test.
-export function synthetic_extxyz(n_frames: number, n_atoms: number, seed = 7): string {
-  const rng = make_rng(seed)
-  const side = Math.ceil(Math.cbrt(n_atoms))
-  const chunks: string[] = []
-  for (let frame_idx = 0; frame_idx < n_frames; frame_idx++) {
-    const cell = 10 + 0.01 * frame_idx
-    chunks.push(
-      `${n_atoms}`,
-      `Lattice="${cell} 0 0 0 ${cell} 0 0 0 ${cell}" Properties=species:S:1:pos:R:3:forces:R:3 ` +
-        `energy=${(-5 * n_atoms - 0.001 * frame_idx).toFixed(6)} step=${frame_idx * 10} pbc="T T T"`,
-    )
-    for (let atom_idx = 0; atom_idx < n_atoms; atom_idx++) {
-      const base = [
-        atom_idx % side,
-        Math.floor(atom_idx / side) % side,
-        Math.floor(atom_idx / side ** 2),
-      ]
-      const pos = base.map((coord) => ((coord + 0.5) * cell) / side + 0.05 * (rng() - 0.5))
-      const force = [rng() - 0.5, rng() - 0.5, rng() - 0.5]
-      chunks.push(
-        `${atom_idx % 2 ? `Cu` : `Au`} ${pos.map((val) => val.toFixed(5)).join(` `)} ${force
-          .map((val) => val.toFixed(4))
-          .join(` `)}`,
-      )
-    }
-  }
-  return `${chunks.join(`\n`)}\n`
-}
+import { synthetic_extxyz } from './fixtures'
 
 const N_FRAMES = 40
 const N_ATOMS = 27
@@ -237,11 +207,13 @@ describe(`collect_positions parity with the memory run`, () => {
     const run = make_worker_run()
     const controller = new AbortController()
     controller.abort()
-    await expect(run.collect_positions?.({}, undefined, controller.signal)).rejects.toThrow(
+    await expect(run.collect_positions?.({ signal: controller.signal })).rejects.toThrow(
       /abort/i,
     )
     const progress: number[] = []
-    const stream = await run.collect_positions?.({}, (step) => progress.push(step.current))
+    const stream = await run.collect_positions?.({
+      on_progress: (step) => progress.push(step.current),
+    })
     expect(stream?.n_frames).toBe(N_FRAMES)
     run.dispose()
   })
@@ -349,7 +321,13 @@ describe(`trajectory_from_frames validation`, () => {
       `signal length`,
       reference_frames.slice(0, 1),
       { signals: { dipole: { values: new Float64Array(2), sample_shape: [3], steps: [0] } } },
-      /signals.dipole needs/,
+      /signals.dipole needs a Float64Array of 3 values/,
+    ],
+    [
+      `signal sample shape`,
+      reference_frames.slice(0, 1),
+      { signals: { dipole: { values: new Float64Array(), sample_shape: [0], steps: [0] } } },
+      /sample_shape must be scalar/,
     ],
   ])(`rejects %s`, (_label, frames, extras, pattern) => {
     expect(() => trajectory_from_frames(frames, extras)).toThrow(pattern)

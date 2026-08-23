@@ -2,6 +2,7 @@
 // colours into instanced or vertex attributes, which the renderer reads as Linear-sRGB.
 import { rgb as parse_rgb } from 'd3-color'
 import { Color, SRGBColorSpace } from 'three/webgpu'
+import { clamp } from '$lib/math'
 
 type LinearRgb = readonly [number, number, number]
 
@@ -17,8 +18,8 @@ export function parse_linear_rgb(css_color: string): LinearRgb {
   const { r, g, b } = parse_rgb(css_color)
   if (Number.isFinite(r) && Number.isFinite(g) && Number.isFinite(b)) {
     // d3 keeps out-of-gamut channels as authored (`rgb(300, -20, 0)`); CSS clamps them
-    const clamp = (channel: number) => Math.min(255, Math.max(0, channel)) / 255
-    parse_scratch.setRGB(clamp(r), clamp(g), clamp(b), SRGBColorSpace)
+    const to_unit = (channel: number) => clamp(channel, 0, 255) / 255
+    parse_scratch.setRGB(to_unit(r), to_unit(g), to_unit(b), SRGBColorSpace)
   } else parse_scratch.setRGB(0.5, 0.5, 0.5)
   return [parse_scratch.r, parse_scratch.g, parse_scratch.b]
 }

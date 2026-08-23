@@ -1,8 +1,7 @@
 <script lang="ts">
-  import type { Vec2 } from '$lib/math'
-  import type { DataSeries, ScaleType } from '$lib/plot'
+  import type { HistogramSeries, ScaleType } from '$lib/plot'
   import { Histogram } from '$lib/plot'
-  import { generate_normal } from '$site/plot-utils'
+  import { generate_normal } from '$site/histogram-data'
 
   let bin_count = $state(20)
   let sample_size = $state(1000)
@@ -21,22 +20,17 @@
   let bin_count_100 = $state(100)
   let x_tick_count = $state(10)
   let y_tick_count = $state(8)
-  let x_range = $state<Vec2 | undefined>(undefined)
-  let y_range = $state<Vec2 | undefined>(undefined)
-  let is_plot_hovered = $state(false)
 
   let basic_data = $derived.by(() => {
     const values = generate_normal(sample_size, 5, 2)
     return [
       {
-        x: values.map((_, idx) => idx),
-        y: values,
+        values,
         label: `Normal Distribution`,
         visible: true,
-        line_style: { stroke: `#2563eb` },
-        point_style: { fill: `#2563eb` },
+        color: `#2563eb`,
       },
-    ] as DataSeries[]
+    ] as HistogramSeries[]
   })
 
   let multiple_series_data = $derived.by(() => {
@@ -46,30 +40,24 @@
 
     return [
       {
-        x: normal_data.map((_, idx) => idx),
-        y: normal_data,
+        values: normal_data,
         label: `Normal (μ=5, σ=2)`,
         visible: normal_visible,
-        line_style: { stroke: `#2563eb`, stroke_width },
-        point_style: { fill: `#2563eb` },
+        color: `#2563eb`,
       },
       {
-        x: exponential_data.map((_, idx) => idx),
-        y: exponential_data,
+        values: exponential_data,
         label: `Exponential (λ=0.3)`,
         visible: exponential_visible,
-        line_style: { stroke: `#dc2626`, stroke_width },
-        point_style: { fill: `#dc2626` },
+        color: `#dc2626`,
       },
       {
-        x: uniform_data.map((_, idx) => idx),
-        y: uniform_data,
+        values: uniform_data,
         label: `Uniform (0-15)`,
         visible: uniform_visible,
-        line_style: { stroke: `#16a34a`, stroke_width },
-        point_style: { fill: `#16a34a` },
+        color: `#16a34a`,
       },
-    ] as DataSeries[]
+    ] as HistogramSeries[]
   })
 
   let log_data = $derived.by(() => {
@@ -78,22 +66,18 @@
 
     return [
       {
-        x: log_normal.map((_, idx) => idx),
-        y: log_normal,
+        values: log_normal,
         label: `Log-normal`,
         visible: true,
-        line_style: { stroke: `#2563eb` },
-        point_style: { fill: `#2563eb` },
+        color: `#2563eb`,
       },
       {
-        x: power_law.map((_, idx) => idx),
-        y: power_law,
+        values: power_law,
         label: `Power law`,
         visible: true,
-        line_style: { stroke: `#dc2626` },
-        point_style: { fill: `#dc2626` },
+        color: `#dc2626`,
       },
-    ] as DataSeries[]
+    ] as HistogramSeries[]
   })
 
   let real_world_data = $derived.by(() => {
@@ -114,24 +98,20 @@
 
     return [
       {
-        x: values.map((_, idx) => idx),
-        y: values,
+        values,
         label: distribution_type.charAt(0).toUpperCase() + distribution_type.slice(1),
         visible: true,
-        line_style: { stroke: `#2563eb` },
-        point_style: { fill: `#2563eb` },
+        color: `#2563eb`,
       },
-    ] as DataSeries[]
+    ] as HistogramSeries[]
   })
 
   let bin_comparison_data = $derived.by(() => {
     const values = generate_normal(1000, 0, 1)
     const base_series = {
-      x: values.map((_, idx) => idx),
-      y: values,
+      values,
       visible: true,
-      line_style: { stroke: `#2563eb` },
-      point_style: { fill: `#2563eb` },
+      color: `#2563eb`,
     }
 
     if (show_overlay) {
@@ -139,121 +119,21 @@
         { ...base_series, label: `${bin_count_10} bins` },
         { ...base_series, label: `${bin_count_30} bins` },
         { ...base_series, label: `${bin_count_100} bins` },
-      ] as DataSeries[]
+      ] as HistogramSeries[]
     }
-    return [{ ...base_series, label: `${single_bin_count} bins` }] as DataSeries[]
+    return [{ ...base_series, label: `${single_bin_count} bins` }] as HistogramSeries[]
   })
 
   let tick_test_data = $derived.by(() => {
     const values = generate_normal(800, 0, 1)
     return [
       {
-        x: values.map((_, idx) => idx),
-        y: values,
+        values,
         label: `Tick Configuration Test`,
         visible: true,
-        line_style: { stroke: `#2563eb` },
-        point_style: { fill: `#2563eb` },
+        color: `#2563eb`,
       },
-    ] as DataSeries[]
-  })
-
-  let range_test_data = $derived.by(() => {
-    const values = generate_normal(1000, 0, 1)
-    return [
-      {
-        x: values.map((_, idx) => idx),
-        y: values,
-        label: `Range Control Test`,
-        visible: true,
-        line_style: { stroke: `#2563eb` },
-        point_style: { fill: `#2563eb` },
-      },
-    ] as DataSeries[]
-  })
-
-  let zero_lines_data = $derived.by(() => {
-    const values = generate_normal(500, 2, 1)
-    return [
-      {
-        x: values.map((_, idx) => idx),
-        y: values,
-        label: `Zero Lines Test`,
-        visible: true,
-        line_style: { stroke: `#2563eb` },
-        point_style: { fill: `#2563eb` },
-      },
-    ] as DataSeries[]
-  })
-
-  let custom_tooltip_data = $derived.by(() => {
-    const values = generate_normal(300, 5, 1)
-    return [
-      {
-        x: values.map((_, idx) => idx),
-        y: values,
-        label: `Custom Tooltip`,
-        visible: true,
-        line_style: { stroke: `#8b5cf6` },
-        point_style: { fill: `#8b5cf6` },
-      },
-    ] as DataSeries[]
-  })
-
-  let zoom_test_data = $derived.by(() => {
-    const values = generate_normal(1000, 0, 1)
-    return [
-      {
-        x: values.map((_, idx) => idx),
-        y: values,
-        label: `Zoom/Pan Test`,
-        visible: true,
-        line_style: { stroke: `#059669` },
-        point_style: { fill: `#059669` },
-      },
-    ] as DataSeries[]
-  })
-
-  let hovered_data = $derived.by(() => {
-    const values = generate_normal(500, 0, 1)
-    return [
-      {
-        x: values.map((_, idx) => idx),
-        y: values,
-        label: `Hover Test`,
-        visible: true,
-        line_style: { stroke: `#dc2626` },
-        point_style: { fill: `#dc2626` },
-      },
-    ] as DataSeries[]
-  })
-
-  let wide_range_data = $derived.by(() => {
-    const values = [...generate_normal(200, -1000, 100), ...generate_normal(200, 1000, 100)]
-    return [
-      {
-        x: values.map((_, idx) => idx),
-        y: values,
-        label: `Wide Range`,
-        visible: true,
-        line_style: { stroke: `#7c3aed` },
-        point_style: { fill: `#7c3aed` },
-      },
-    ] as DataSeries[]
-  })
-
-  let small_range_data = $derived.by(() => {
-    const values = generate_normal(500, 0.0001, 0.00001)
-    return [
-      {
-        x: values.map((_, idx) => idx),
-        y: values,
-        label: `Small Range`,
-        visible: true,
-        line_style: { stroke: `#ea580c` },
-        point_style: { fill: `#ea580c` },
-      },
-    ] as DataSeries[]
+    ] as HistogramSeries[]
   })
 
   // Y2 axis test series
@@ -262,23 +142,19 @@
     const y2_values = generate_normal(500, 50, 10)
     return [
       {
-        x: y1_values.map((_, idx) => idx),
-        y: y1_values,
+        values: y1_values,
         label: `Y1 Series`,
         visible: true,
-        line_style: { stroke: `#2563eb` },
-        point_style: { fill: `#2563eb` },
+        color: `#2563eb`,
       },
       {
-        x: y2_values.map((_, idx) => idx),
-        y: y2_values,
+        values: y2_values,
         label: `Y2 Series`,
         visible: true,
-        line_style: { stroke: `#dc2626` },
-        point_style: { fill: `#dc2626` },
+        color: `#dc2626`,
         y_axis: `y2`,
       },
-    ] as DataSeries[]
+    ] as HistogramSeries[]
   })
 
   let y2_different_scale_data = $derived.by(() => {
@@ -286,47 +162,19 @@
     const large_values = generate_normal(500, 1000, 200)
     return [
       {
-        x: small_values.map((_, idx) => idx),
-        y: small_values,
+        values: small_values,
         label: `Small Scale (Y1)`,
         visible: true,
-        line_style: { stroke: `#059669` },
-        point_style: { fill: `#059669` },
+        color: `#059669`,
       },
       {
-        x: large_values.map((_, idx) => idx),
-        y: large_values,
+        values: large_values,
         label: `Large Scale (Y2)`,
         visible: true,
-        line_style: { stroke: `#f59e0b` },
-        point_style: { fill: `#f59e0b` },
+        color: `#f59e0b`,
         y_axis: `y2`,
       },
-    ] as DataSeries[]
-  })
-
-  let x2_axis_data = $derived.by(() => {
-    const kg_values = generate_normal(400, 70, 10)
-    const lbs_values = generate_normal(400, 154, 22)
-    return [
-      {
-        x: kg_values.map((_, idx) => idx),
-        y: kg_values,
-        label: `Mass (kg)`,
-        visible: true,
-        line_style: { stroke: `#0ea5e9` },
-        point_style: { fill: `#0ea5e9` },
-      },
-      {
-        x: lbs_values.map((_, idx) => idx),
-        y: lbs_values,
-        label: `Mass (lbs)`,
-        visible: true,
-        x_axis: `x2`,
-        line_style: { stroke: `#f97316` },
-        point_style: { fill: `#f97316` },
-      },
-    ] as DataSeries[]
+    ] as HistogramSeries[]
   })
 </script>
 
@@ -366,6 +214,7 @@
   bins={30}
   mode="overlay"
   show_legend
+  bar={{ opacity: overlay_opacity, stroke_width }}
 />
 
 <section data-testid="logarithmic-scales-section">
@@ -453,80 +302,6 @@
   />
 </section>
 
-<Histogram
-  id="range-controls"
-  series={range_test_data}
-  bins={30}
-  mode="single"
-  x_axis={{ label: `Value (Custom Range)`, range: x_range }}
-  y_axis={{ label: `Count (Custom Range)`, range: y_range }}
-/>
-
-<Histogram
-  id="zero-lines"
-  series={zero_lines_data}
-  bins={25}
-  mode="single"
-  x_axis={{ label: `Value` }}
-  y_axis={{ label: `Count` }}
-/>
-
-<Histogram
-  id="custom-tooltip"
-  series={custom_tooltip_data}
-  bins={20}
-  mode="single"
-  x_axis={{ label: `Value` }}
-  y_axis={{ label: `Count` }}
->
-  {#snippet tooltip(props)}
-    <div style="background: #8b5cf6; color: white; padding: 8px; border-radius: 4px">
-      <strong>Custom Tooltip</strong><br />
-      Value: {props.value.toFixed(2)}<br />
-      Count: {props.count}<br />
-      Property: {props.property}
-    </div>
-  {/snippet}
-</Histogram>
-
-<Histogram
-  id="zoom-pan"
-  series={zoom_test_data}
-  bins={40}
-  mode="single"
-  x_axis={{ label: `Value` }}
-  y_axis={{ label: `Count` }}
-/>
-
-Plot is currently hovered: <strong>{is_plot_hovered}</strong>
-<Histogram
-  id="bind-hovered"
-  series={hovered_data}
-  bins={25}
-  mode="single"
-  x_axis={{ label: `Value` }}
-  y_axis={{ label: `Count` }}
-  bind:hovered={is_plot_hovered}
-/>
-
-<Histogram
-  id="wide-range"
-  series={wide_range_data}
-  bins={50}
-  mode="single"
-  x_axis={{ label: `Value (Wide Range)` }}
-  y_axis={{ label: `Count` }}
-/>
-
-<Histogram
-  id="small-range"
-  series={small_range_data}
-  bins={30}
-  mode="single"
-  x_axis={{ label: `Value (Small Range)`, format: `.6f` }}
-  y_axis={{ label: `Count` }}
-/>
-
 <section id="y2-axis-histogram">
   <h2>Y2 Axis Histogram</h2>
   <Histogram
@@ -550,19 +325,5 @@ Plot is currently hovered: <strong>{is_plot_hovered}</strong>
     x_axis={{ label: `Value` }}
     y_axis={{ label: `Small Count` }}
     y2_axis={{ label: `Large Count` }}
-  />
-</section>
-
-<section id="x2-axis-histogram">
-  <h2>X2 Axis Histogram (Dual X-Axes)</h2>
-  <p>Bottom: mass in kg. Top: mass in lbs. Each distribution on its own x-scale.</p>
-  <Histogram
-    series={x2_axis_data}
-    bins={25}
-    mode="overlay"
-    show_legend
-    x_axis={{ label: `Mass (kg)`, color: `#0ea5e9` }}
-    x2_axis={{ label: `Mass (lbs)`, color: `#f97316` }}
-    y_axis={{ label: `Count` }}
   />
 </section>

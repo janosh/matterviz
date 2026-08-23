@@ -5,11 +5,15 @@ import { mount, tick, unmount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 import { bind_props, doc_query } from '../setup'
 
-const make_fermi_data = (band_indices = [0, 1]): FermiSurfaceData => ({
+const make_fermi_data = (
+  band_indices = [0, 1],
+  with_properties = false,
+): FermiSurfaceData => ({
   isosurfaces: band_indices.map((band_index) => ({
-    vertices: [],
-    faces: [],
-    normals: [],
+    positions: new Float32Array(3),
+    indices: new Uint32Array(0),
+    normals: new Float32Array(3),
+    ...(with_properties && { properties: new Float32Array(1) }),
     band_index,
     spin: null,
   })),
@@ -20,19 +24,15 @@ const make_fermi_data = (band_indices = [0, 1]): FermiSurfaceData => ({
   ],
   fermi_energy: 0,
   reciprocal_cell: `parallelepiped`,
-  metadata: {
-    n_bands: band_indices.length,
-    n_surfaces: band_indices.length,
-    total_area: 0,
-  },
+  metadata: { n_bands: band_indices.length, n_surfaces: band_indices.length },
 })
 
 describe(`FermiSurfaceControls`, () => {
   test.each([
     {
-      name: `initializes missing selected bands and resets invalid custom coloring`,
+      name: `initializes missing selected bands and resets property coloring without properties`,
       initial_selected_bands: undefined,
-      initial_color_property: `custom` as ColorProperty,
+      initial_color_property: `property` as ColorProperty,
       expected_selected_bands: [0, 1],
       expected_color_property: `band` as ColorProperty,
     },
@@ -90,12 +90,15 @@ describe(`FermiSurfaceControls`, () => {
       color_property: ColorProperty
       color_scale: D3InterpolateName
     }>({
-      color_property: `velocity`,
+      color_property: `property`,
       color_scale: `interpolateViridis`,
     })
     const component = mount(FermiSurfaceControls, {
       target: document.body,
-      props: bind_props({ controls_open: true, fermi_data: make_fermi_data() }, state),
+      props: bind_props(
+        { controls_open: true, fermi_data: make_fermi_data([0, 1], true) },
+        state,
+      ),
     })
 
     try {

@@ -92,11 +92,11 @@ export const serve_run_over_port = (run: TrajectoryRun): MessagePort => {
           post({ id, result: frame })
         } else if (method === `collect_positions`) {
           if (!active.collect_positions) throw new Error(`Run cannot collect positions`)
-          const stream = await active.collect_positions(
-            args[0] as PositionStreamOptions | undefined,
-            (progress) => post({ id, progress }),
-            controller.signal,
-          )
+          const stream = await active.collect_positions({
+            ...(args[0] as PositionStreamOptions | undefined),
+            on_progress: (progress) => post({ id, progress }),
+            signal: controller.signal,
+          })
           post({ id, result: stream }, position_stream_transferables(stream))
         } else throw new Error(`Unsupported run port method: ${String(method)}`)
       } catch (error) {
@@ -237,7 +237,9 @@ export const worker_run = (
     },
     ...(summary.has_collect_positions
       ? {
-          collect_positions: (options, on_progress, signal) =>
+          // Only the cloneable sweep options cross the port; progress and abort travel as
+          // port messages
+          collect_positions: ({ on_progress, signal, ...options } = {}) =>
             rpc<TrajectoryPositionStream>(`collect_positions`, [options], signal, on_progress),
         }
       : {}),

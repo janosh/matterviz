@@ -1,25 +1,14 @@
 // Exercises the real spectroscopy Web Worker request path, including structured cloning
-// of every typed-array signal and the nested finite-field geometry payload.
-import type { create_trajectory_spectroscopy_async_runner } from '$lib/spectral/trajectory-spectroscopy-async.svelte'
+// of every typed-array signal. Generic client rules live in worker-client.test.ts.
+import type { compute_trajectory_spectroscopy_async } from '$lib/spectral/trajectory-spectroscopy-async.svelte'
 import {
   calc_trajectory_spectroscopy,
   type TrajectorySpectroscopyInput,
   type TrajectorySpectroscopyOptions,
 } from '$lib/spectral/trajectory-spectroscopy'
 import type { TrajectorySignal } from '$lib/trajectory'
-import { SvelteMap } from 'svelte/reactivity'
-import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
-
-type WorkerMessage = {
-  id: number
-  input: TrajectorySpectroscopyInput
-  options: TrajectorySpectroscopyOptions
-}
-type Listener = (event: {
-  data: unknown
-  message?: string
-  preventDefault: () => void
-}) => void
+import { afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { install_stub_worker } from '../setup'
 
 const signal = (
   n_samples: number,
@@ -52,15 +41,9 @@ const make_input = (): TrajectorySpectroscopyInput => {
     0,
     0,
   ])
-  const negative_response = {
-    ...response,
-    values: Float64Array.from(response.values, (value) => -value),
-  }
-  const geometry = (): TrajectorySignal => ({
-    values: new Float64Array(positions),
-    sample_shape: [2, 3],
-    steps: [...steps],
-    unit: `A`,
+  const polarizability = signal(n_frames, [3, 3], (sample_idx) => {
+    const value = 1 + 0.1 * Math.sin((2 * Math.PI * sample_idx) / 4)
+    return [value, 0, 0, 0, value, 0, 0, 0, value]
   })
   return {
     positions: {
@@ -77,82 +60,26 @@ const make_input = (): TrajectorySpectroscopyInput => {
     masses: Float64Array.from([1, 1]),
     velocities,
     infrared_signal: { kind: `dipole`, series: response },
-    raman_signal: {
-      kind: `field_response`,
-      response: `dipole`,
-      field_strength: 0.01,
-      field_unit: `V/A`,
-      plus: { x: response, y: response, z: response },
-      minus: { x: negative_response, y: negative_response, z: negative_response },
-      geometry: {
-        plus: { x: geometry(), y: geometry(), z: geometry() },
-        minus: { x: geometry(), y: geometry(), z: geometry() },
-      },
-    },
+    raman_signal: { kind: `polarizability`, series: polarizability },
     time_step: 0.5,
     time_unit: `fs`,
     metadata: { model: `synthetic` },
   }
 }
 
-let construction_count = 0
-let last_worker_url: string | undefined
-let last_worker_options: WorkerOptions | undefined
-let force_error: string | null = null
-const posted: { message: WorkerMessage; transfer: Transferable[] }[] = []
-
-class StubWorker {
-  private readonly listeners = new SvelteMap<string, Listener[]>()
-
-  constructor(url: URL | string, options?: WorkerOptions) {
-    construction_count++
-    last_worker_url = String(url)
-    last_worker_options = options
-  }
-
-  addEventListener(type: string, handler: Listener): void {
-    this.listeners.set(type, [...(this.listeners.get(type) ?? []), handler])
-  }
-
-  terminate(): void {}
-
-  postMessage(message: WorkerMessage, transfer: Transferable[] = []): void {
-    const cloned = structuredClone(message)
-    posted.push({ message: cloned, transfer })
-    queueMicrotask(() => {
-      const data = force_error
-        ? { id: cloned.id, result: null, error: force_error }
-        : {
-            id: cloned.id,
-            result: structuredClone(
-              calc_trajectory_spectroscopy(cloned.input, cloned.options),
-            ),
-            error: null,
-          }
-      force_error = null
-      for (const handler of this.listeners.get(`message`) ?? []) {
-        handler({ data, preventDefault: () => {} })
-      }
-    })
-  }
-}
-
-let compute_spectroscopy_async: ReturnType<
-  typeof create_trajectory_spectroscopy_async_runner
->[`compute`]
+const stub = install_stub_worker<{
+  id: number
+  input: TrajectorySpectroscopyInput
+  options: TrajectorySpectroscopyOptions
+}>(({ input, options }) => calc_trajectory_spectroscopy(input, options))
+let compute_spectroscopy_async: typeof compute_trajectory_spectroscopy_async
 
 beforeAll(async () => {
-  vi.stubGlobal(`Worker`, StubWorker)
-  const { create_trajectory_spectroscopy_async_runner: create_runner } = await import(
+  ;({ compute_trajectory_spectroscopy_async: compute_spectroscopy_async } = await import(
     `$lib/spectral/trajectory-spectroscopy-async.svelte`
-  )
-  compute_spectroscopy_async = create_runner().compute
+  ))
 })
-
-afterEach(() => {
-  posted.length = 0
-  force_error = null
-})
+afterEach(stub.reset)
 
 describe(`trajectory spectroscopy worker code path`, () => {
   it(`round-trips the full signal payload through one module worker`, async () => {
@@ -165,31 +92,29 @@ describe(`trajectory spectroscopy worker code path`, () => {
     } as const
     const result = await compute_spectroscopy_async(input, options)
     expect(result).toEqual(calc_trajectory_spectroscopy(input, options))
-    expect(posted).toHaveLength(1)
-    expect(posted[0].transfer).toHaveLength(0)
-    expect(posted[0].message.input.positions.positions).toBeInstanceOf(Float64Array)
-    expect(posted[0].message.input.positions.positions).not.toBe(input.positions.positions)
-    const payload_raman = posted[0].message.input.raman_signal
-    expect(payload_raman?.kind).toBe(`field_response`)
-    if (payload_raman?.kind !== `field_response`) return
-    expect(payload_raman.geometry.plus.x.values).toBeInstanceOf(Float64Array)
-    expect(payload_raman.geometry.plus.x.values).not.toBe(
-      input.raman_signal?.kind === `field_response`
-        ? input.raman_signal.geometry.plus.x.values
-        : undefined,
-    )
+    expect(stub.posted).toHaveLength(1)
+    expect(stub.posted[0].transfer).toHaveLength(0)
+    const payload = stub.posted[0].message.input
+    expect(payload.positions.positions).toBeInstanceOf(Float64Array)
+    expect(payload.positions.positions).not.toBe(input.positions.positions)
+    expect(payload.raman_signal?.series.values).toBeInstanceOf(Float64Array)
+    expect(payload.raman_signal?.series.values).not.toBe(input.raman_signal?.series.values)
     await compute_spectroscopy_async(make_input(), { preprocessing: `raw` })
-    expect(construction_count).toBe(1)
-    expect(last_worker_url).toMatch(
+    expect(stub.instances).toHaveLength(1)
+    expect(stub.instances[0].url).toMatch(
       /\/src\/lib\/spectral\/trajectory-spectroscopy-worker\.ts\?worker_file/,
     )
-    expect(last_worker_options).toEqual({ type: `module` })
+    expect(stub.instances[0].options).toEqual({ type: `module` })
   })
 
-  it(`rejects worker errors`, async () => {
-    force_error = `synthetic spectroscopy worker failure`
-    await expect(
-      compute_spectroscopy_async(make_input(), { preprocessing: `raw` }),
-    ).rejects.toThrow(/synthetic spectroscopy worker failure/)
+  it(`.cancel rejects the in-flight request and terminates the worker`, async () => {
+    const pending = compute_spectroscopy_async(make_input(), { preprocessing: `raw` })
+    expect(stub.instances).toHaveLength(1)
+    compute_spectroscopy_async.cancel(`pane unmounted`)
+    await expect(pending).rejects.toThrow(`pane unmounted`)
+    expect(stub.instances[0].terminated).toBe(1)
+    // the next request gets a fresh worker, not the dead channel
+    await compute_spectroscopy_async(make_input(), { preprocessing: `raw` })
+    expect(stub.instances).toHaveLength(2)
   })
 })

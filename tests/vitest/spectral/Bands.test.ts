@@ -1,9 +1,9 @@
 import type { Vec2 } from '$lib/math'
 import Bands from '$lib/spectral/Bands.svelte'
-import type { BaseBandStructure } from '$lib/spectral/types'
+import type { BaseBandStructure, FrequencyUnit } from '$lib/spectral/types'
 import type { ComponentProps } from 'svelte'
 import { mount, tick } from 'svelte'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { bind_props, expect_plot_controls, mount_sized } from '../setup'
 
 const base_band_structure: BaseBandStructure = {
@@ -76,16 +76,11 @@ const spin_polarized_electronic = {
 } as BaseBandStructure & { efermi: number; spin_down_bands: number[][] }
 
 const mount_bands = async (props: ComponentProps<typeof Bands>): Promise<void> => {
-  document.body.innerHTML = ``
   mount(Bands, { target: document.body, props })
   await tick()
 }
 
 const line_count = (): number => document.querySelectorAll(`svg path[fill="none"]`).length
-
-afterEach(() => {
-  document.body.innerHTML = ``
-})
 
 describe(`Bands component`, () => {
   it.each([
@@ -190,10 +185,37 @@ describe(`Bands component`, () => {
     expect(
       document.querySelector(`[role="status"][aria-label="Bands unavailable"]`),
     ).toBeInstanceOf(HTMLElement)
-    expect(document.querySelector(`.empty-state`)).toBeInstanceOf(HTMLElement)
     expect(document.body.textContent).toContain(`different q-point paths`)
     expect(line_count()).toBe(0)
   })
+
+  it.each([
+    [`a single pymatgen dict`, (pmg: object) => pmg, ``],
+    [`a labelled dict of structures`, (pmg: object) => ({ broken: pmg }), `broken: `],
+  ])(
+    `names the missing reciprocal lattice key for %s instead of the generic empty state`,
+    async (_label, wrap, prefix) => {
+      // pymatgen-shaped but without lattice_rec: the k-path cannot be measured
+      const pmg = {
+        '@class': `PhononBandStructureSymmLine`,
+        qpoints: [
+          [0, 0, 0],
+          [0.5, 0, 0],
+        ],
+        bands: [[0, 1]],
+      }
+      await mount_bands({
+        band_structs: wrap(pmg) as BaseBandStructure,
+        'data-testid': `pmg-missing-lattice`,
+      })
+      expect(line_count()).toBe(0)
+      const text = document.body.textContent ?? ``
+      expect(text).toContain(
+        `${prefix}pymatgen band structure needs a finite 3x3 reciprocal lattice under 'lattice_rec.matrix'`,
+      )
+      expect(text).not.toContain(`No valid band structure data`)
+    },
+  )
 
   // Mismatched paths: union appends the second structure's segment after the canonical path,
   // intersection has nothing in common and falls through to the EmptyState
@@ -245,10 +267,22 @@ describe(`Bands component`, () => {
     expect(Boolean(plot.querySelector(`.legend`))).toBe(expected)
   })
 
-  it(`updates phonon y-axis label when units change`, async () => {
-    await mount_bands({ band_structs: base_band_structure, units: `cm-1` })
-    expect(document.body.textContent).toContain(`Frequency (cm-1)`)
-  })
+  // `cm-1`/`cm⁻¹` are the spellings found in the wild; they must map to cm^-1 at the prop
+  // boundary instead of throwing inside convert_frequencies
+  it.each([`cm^-1`, `cm-1`, `cm⁻¹`])(
+    `renders the phonon y-axis in %s as cm⁻¹`,
+    async (units) => {
+      await mount_bands({
+        band_structs: base_band_structure,
+        units: units as FrequencyUnit,
+        show_controls: true,
+        controls_open: true,
+      })
+      expect(document.body.textContent).toContain(`Frequency (cm⁻¹)`)
+      const select = document.querySelector<HTMLSelectElement>(`#bands-units`)
+      expect(select?.value).toBe(`cm^-1`)
+    },
+  )
 
   it(`forwards flat control props and controls_open binding`, async () => {
     expect.hasAssertions()
@@ -258,11 +292,15 @@ describe(`Bands component`, () => {
         {
           band_structs: base_band_structure,
           controls_toggle_props: { 'data-testid': `bands-toggle` },
-          controls_pane_props: { 'data-testid': `bands-pane` },
+          controls_pane_props: { 'data-testid': `bands-pane`, style: `min-width: 20rem` },
         },
         controls_state,
       ),
     )
+    // the pane attribute dict reaches PlotControls (it used to travel via ...rest only)
+    expect(
+      document.querySelector(`[data-testid="bands-pane"]`)?.getAttribute(`style`),
+    ).toContain(`min-width: 20rem`)
     // The controls pane lives in CartesianFrame's measured-only branch, which renders once the
     // bind:clientWidth effect has flushed; poll for it rather than trusting a single tick.
     const path_select = await vi.waitFor(() => {
@@ -274,10 +312,6 @@ describe(`Bands component`, () => {
     const units_section = document.querySelector(`#bands-units`)?.closest(`section`)
     expect(path_section).not.toBeNull()
     expect(units_section).toBe(path_section)
-    expect(path_section?.classList.contains(`ctrl-line`)).toBe(true)
-    expect(
-      document.querySelector(`.plot-controls-pane`)?.classList.contains(`compact-settings`),
-    ).toBe(true)
     await expect_plot_controls(document, controls_state, `bands`)
   })
 
@@ -313,22 +347,12 @@ describe(`Bands component`, () => {
     expect(on_point_click).toHaveBeenCalledOnce()
   })
 
-  it(`shows band-gap annotation when electronic gap exists`, async () => {
+  it(`annotates the electronic gap and ignores the units prop for electronic values`, async () => {
     await mount_bands({
       band_structs: spin_polarized_electronic,
       band_type: `electronic`,
       band_spin_mode: `up_only`,
-      show_gap_annotation: true,
-    })
-    expect(document.body.textContent).toContain(`Eg:`)
-  })
-
-  it(`ignores units prop for electronic y-range/gap values`, async () => {
-    await mount_bands({
-      band_structs: spin_polarized_electronic,
-      band_type: `electronic`,
-      band_spin_mode: `up_only`,
-      units: `cm-1`,
+      units: `cm^-1`,
       show_gap_annotation: true,
     })
     expect(document.body.textContent).toContain(`Energy (eV)`)

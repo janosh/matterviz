@@ -1,15 +1,10 @@
 // Marching Cubes algorithm for isosurface extraction
 // Based on the classic algorithm by Lorensen & Cline (1987)
-import { flatten_grid, grid_dimensions, scalar_grid_strides } from '$lib/isosurface/grid'
-import type { ScalarGridLike } from '$lib/isosurface/grid'
+import { grid_dimensions, scalar_grid_strides } from '$lib/isosurface/grid'
+import type { ScalarGrid3D } from '$lib/isosurface/grid'
 import { matrix_inverse_3x3, type Matrix3x3, type Vec3 } from '$lib/math'
 
-export type {
-  ScalarGrid3D,
-  ScalarGridArray,
-  ScalarGridLike,
-  ScalarGridOrder,
-} from '$lib/isosurface/grid'
+export type { ScalarGrid3D, ScalarGridArray, ScalarGridOrder } from '$lib/isosurface/grid'
 
 // Edge table: for each cube configuration (256 cases), which edges are intersected
 // Each bit indicates whether that edge has an intersection
@@ -308,13 +303,7 @@ const CUBE_VERTS_Z = new Int8Array([0, 0, 0, 0, 1, 1, 1, 1])
 const EDGE_V1 = new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7, 0, 1, 2, 3])
 const EDGE_V2 = new Uint8Array([1, 2, 3, 0, 5, 6, 7, 4, 4, 5, 6, 7])
 
-interface MarchingCubesResult {
-  vertices: Vec3[]
-  faces: number[][] // triangles as arrays of 3 vertex indices
-  normals: Vec3[]
-}
-
-interface MarchingCubesBuffers {
+export interface MarchingCubesBuffers {
   positions: Float32Array
   indices: Uint32Array
   normals: Float32Array
@@ -323,19 +312,15 @@ interface MarchingCubesBuffers {
 interface MarchingCubesOptions {
   // Whether to apply periodic boundary conditions (wrap around grid edges)
   periodic?: boolean
-  // Interpolation for smoother surfaces (linear interpolation on edges)
-  interpolate?: boolean
-  // Whether to center the grid at the origin (shift by -0.5 in fractional coords)
-  // Default true for proper Brillouin zone visualization centered at Γ point
-  centered?: boolean
   // Whether to compute per-vertex normals via central differences on the grid.
   // Default true. Set false to skip (caller can use geometry.computeVertexNormals() instead).
   normals?: boolean
-  // Cartesian translation applied before positions are rounded to Float32 buffers.
+  // Cartesian translation added to every vertex, e.g. −½(a*+b*+c*) to centre a reciprocal
+  // cell on Γ, or a grid-shift correction for half-step k-meshes.
   position_offset?: Vec3
 }
 
-type GrowableArray = Float32Array | Float64Array | Uint32Array
+type GrowableArray = Float32Array | Uint32Array
 
 // Double the capacity of a typed array until `needed` entries fit
 const grow = <Arr extends GrowableArray>(array: Arr, needed: number): Arr => {
@@ -347,39 +332,31 @@ const grow = <Arr extends GrowableArray>(array: Arr, needed: number): Arr => {
   return bigger
 }
 
-// Core extraction into growable typed arrays. Hot per-vertex work (edge interpolation,
-// gradient, lattice transform) is all scalar so nothing is allocated per cube or vertex.
-function marching_cubes_core<Arr extends Float32Array | Float64Array>(
-  grid: ScalarGridLike,
-  iso_value: number,
+// Extract the isosurface of a scalar grid as renderer-ready Float32 positions/normals and a
+// Uint32 triangle index. Vertices land at lattice·frac (+ position_offset), where frac spans
+// [0, 1] across the grid (periodic grids: [0, 1) with the last cube wrapping to index 0).
+// Hot per-vertex work (edge interpolation, gradient, lattice transform) is all scalar so
+// nothing is allocated per cube or vertex.
+export function marching_cubes(
+  grid: ScalarGrid3D,
+  isovalue: number,
   k_lattice: Matrix3x3,
-  options: MarchingCubesOptions,
-  make_array: new (length: number) => Arr,
-): { positions: Arr; indices: Uint32Array; normals: Arr } {
-  const {
-    periodic = true,
-    interpolate = true,
-    centered = true,
-    normals: compute_norms = true,
-    position_offset,
-  } = options
-  // When centered=true, shift fractional coordinates by -0.5 so the grid is
-  // centered at the origin (Γ point). This is needed for proper BZ visualization.
-  const center_offset = centered ? 0.5 : 0
+  options: MarchingCubesOptions = {},
+): MarchingCubesBuffers {
+  const { periodic = true, normals: compute_norms = true, position_offset } = options
   const [offset_x, offset_y, offset_z] = position_offset ?? [0, 0, 0]
 
   const [nx, ny, nz] = grid_dimensions(grid)
   if (nx < 2 || ny < 2 || nz < 2) {
     return {
-      positions: new make_array(0),
+      positions: new Float32Array(0),
       indices: new Uint32Array(0),
-      normals: new make_array(0),
+      normals: new Float32Array(0),
     }
   }
 
-  const scalar_grid = Array.isArray(grid) ? flatten_grid(grid) : grid
-  const values = scalar_grid.values
-  const [stride_x, stride_y, stride_z] = scalar_grid_strides(scalar_grid)
+  const { values } = grid
+  const [stride_x, stride_y, stride_z] = scalar_grid_strides(grid)
 
   // Non-periodic grids: n points span [0,1] with spacing 1/(n-1) — endpoints at 0 and 1.
   // Periodic grids: n points span [0,1) with spacing 1/n — point n wraps back to 0.
@@ -402,8 +379,8 @@ function marching_cubes_core<Arr extends Float32Array | Float64Array>(
     }
   }
 
-  let positions = new make_array(0)
-  let normals = new make_array(0)
+  let positions = new Float32Array(0)
+  let normals = new Float32Array(0)
   let indices = new Uint32Array(0)
   let n_vertices = 0
   let n_indices = 0
@@ -499,14 +476,10 @@ function marching_cubes_core<Arr extends Float32Array | Float64Array>(
     const val_1 = cube_values[v1_idx]
     const val_2 = cube_values[v2_idx]
     const value_delta = val_2 - val_1
-    const frac = interpolate
-      ? Math.abs(value_delta) < 1e-10
-        ? 0
-        : (iso_value - val_1) / value_delta
-      : 0.5
-    const fx = (ix + ox1 + frac * (ox2 - ox1)) * inv_nx - center_offset
-    const fy = (iy + oy1 + frac * (oy2 - oy1)) * inv_ny - center_offset
-    const fz = (iz + oz1 + frac * (oz2 - oz1)) * inv_nz - center_offset
+    const frac = Math.abs(value_delta) < 1e-10 ? 0 : (isovalue - val_1) / value_delta
+    const fx = (ix + ox1 + frac * (ox2 - ox1)) * inv_nx
+    const fy = (iy + oy1 + frac * (oy2 - oy1)) * inv_ny
+    const fz = (iz + oz1 + frac * (oz2 - oz1)) * inv_nz
 
     const vert_idx = n_vertices++
     positions = grow(positions, 3 * n_vertices)
@@ -580,14 +553,14 @@ function marching_cubes_core<Arr extends Float32Array | Float64Array>(
         cube_values[7] = values[offset_01 + z1_offset]
 
         let cube_index = 0
-        if (cube_values[0] < iso_value) cube_index |= 1
-        if (cube_values[1] < iso_value) cube_index |= 2
-        if (cube_values[2] < iso_value) cube_index |= 4
-        if (cube_values[3] < iso_value) cube_index |= 8
-        if (cube_values[4] < iso_value) cube_index |= 16
-        if (cube_values[5] < iso_value) cube_index |= 32
-        if (cube_values[6] < iso_value) cube_index |= 64
-        if (cube_values[7] < iso_value) cube_index |= 128
+        if (cube_values[0] < isovalue) cube_index |= 1
+        if (cube_values[1] < isovalue) cube_index |= 2
+        if (cube_values[2] < isovalue) cube_index |= 4
+        if (cube_values[3] < isovalue) cube_index |= 8
+        if (cube_values[4] < isovalue) cube_index |= 16
+        if (cube_values[5] < isovalue) cube_index |= 32
+        if (cube_values[6] < isovalue) cube_index |= 64
+        if (cube_values[7] < isovalue) cube_index |= 128
 
         // Cube entirely inside or outside
         if (EDGE_TABLE[cube_index] === 0) continue
@@ -611,82 +584,55 @@ function marching_cubes_core<Arr extends Float32Array | Float64Array>(
   }
 
   return {
-    positions: positions.slice(0, 3 * n_vertices) as Arr,
+    positions: positions.slice(0, 3 * n_vertices),
     indices: indices.slice(0, n_indices),
-    normals: normals.slice(0, compute_norms ? 3 * n_vertices : 0) as Arr,
+    normals: normals.slice(0, compute_norms ? 3 * n_vertices : 0),
   }
 }
 
-// Renderer-facing form: Float32 positions/normals and Uint32 indices ready for
-// BufferGeometry, with no intermediate per-vertex objects.
-export const marching_cubes_buffers = (
-  grid: ScalarGridLike,
-  iso_value: number,
-  k_lattice: Matrix3x3,
-  options: MarchingCubesOptions = {},
-): MarchingCubesBuffers =>
-  marching_cubes_core(grid, iso_value, k_lattice, options, Float32Array)
-
-const unpack_vec3 = (values: ArrayLike<number>): Vec3[] =>
-  Array.from({ length: values.length / 3 }, (_, idx) => [
-    values[3 * idx],
-    values[3 * idx + 1],
-    values[3 * idx + 2],
-  ])
-
-// Object form for analysis code (Fermi-surface topology, velocities) that wants Vec3
-// vertices in full float64 precision.
-export function marching_cubes(
-  grid: ScalarGridLike,
-  iso_value: number,
-  k_lattice: Matrix3x3,
-  options: MarchingCubesOptions = {},
-): MarchingCubesResult {
-  const raw = marching_cubes_core(grid, iso_value, k_lattice, options, Float64Array)
-  return {
-    vertices: unpack_vec3(raw.positions),
-    faces: unpack_vec3(raw.indices),
-    normals: unpack_vec3(raw.normals),
-  }
-}
-
-// Compute per-vertex normals from faces using area-weighted averaging
-// Uses fan triangulation for N-gon faces (quads, etc.)
-export function compute_vertex_normals(vertices: Vec3[], faces: number[][]): Vec3[] {
-  const normals: Vec3[] = vertices.map(() => [0, 0, 0])
-  for (const face of faces) {
-    if (face.length < 3) continue
-    if (face.some((idx) => idx < 0 || idx >= vertices.length)) continue
-
-    // Fan triangulation: for N vertices, process N-2 triangles (0,1,2), (0,2,3), ...
-    const [v0_x, v0_y, v0_z] = vertices[face[0]]
-    for (let fan_idx = 1; fan_idx < face.length - 1; fan_idx++) {
-      const idx1 = face[fan_idx]
-      const idx2 = face[fan_idx + 1]
-      const e1_x = vertices[idx1][0] - v0_x
-      const e1_y = vertices[idx1][1] - v0_y
-      const e1_z = vertices[idx1][2] - v0_z
-      const e2_x = vertices[idx2][0] - v0_x
-      const e2_y = vertices[idx2][1] - v0_y
-      const e2_z = vertices[idx2][2] - v0_z
-      // Cross product (face normal * 2 * area) accumulated onto the triangle's vertices
-      const nx = e1_y * e2_z - e1_z * e2_y
-      const ny = e1_z * e2_x - e1_x * e2_z
-      const nz = e1_x * e2_y - e1_y * e2_x
-      for (const idx of [face[0], idx1, idx2]) {
-        normals[idx][0] += nx
-        normals[idx][1] += ny
-        normals[idx][2] += nz
-      }
+// Area-weighted per-vertex normals for an indexed triangle mesh (flat xyz positions,
+// triangle index triples). Out-of-range indices throw: a mesh that references missing
+// vertices is corrupt, not a rendering edge case.
+export function compute_vertex_normals(
+  positions: Float32Array,
+  indices: Uint32Array,
+): Float32Array {
+  const n_vertices = positions.length / 3
+  const normals = new Float32Array(positions.length)
+  for (let tri = 0; tri < indices.length; tri += 3) {
+    const [idx0, idx1, idx2] = [indices[tri], indices[tri + 1], indices[tri + 2]]
+    if (idx0 >= n_vertices || idx1 >= n_vertices || idx2 >= n_vertices) {
+      throw new RangeError(
+        `Triangle ${tri / 3} references vertex ${Math.max(idx0, idx1, idx2)} of ${n_vertices}`,
+      )
+    }
+    const [v0_x, v0_y, v0_z] = [
+      positions[3 * idx0],
+      positions[3 * idx0 + 1],
+      positions[3 * idx0 + 2],
+    ]
+    const e1_x = positions[3 * idx1] - v0_x
+    const e1_y = positions[3 * idx1 + 1] - v0_y
+    const e1_z = positions[3 * idx1 + 2] - v0_z
+    const e2_x = positions[3 * idx2] - v0_x
+    const e2_y = positions[3 * idx2 + 1] - v0_y
+    const e2_z = positions[3 * idx2 + 2] - v0_z
+    // Cross product (face normal × 2 × area) accumulated onto the triangle's vertices
+    const nx = e1_y * e2_z - e1_z * e2_y
+    const ny = e1_z * e2_x - e1_x * e2_z
+    const nz = e1_x * e2_y - e1_y * e2_x
+    for (const idx of [idx0, idx1, idx2]) {
+      normals[3 * idx] += nx
+      normals[3 * idx + 1] += ny
+      normals[3 * idx + 2] += nz
     }
   }
-
-  for (const normal of normals) {
-    const len = Math.hypot(normal[0], normal[1], normal[2])
+  for (let idx = 0; idx < normals.length; idx += 3) {
+    const len = Math.hypot(normals[idx], normals[idx + 1], normals[idx + 2])
     if (len > 0) {
-      normal[0] /= len
-      normal[1] /= len
-      normal[2] /= len
+      normals[idx] /= len
+      normals[idx + 1] /= len
+      normals[idx + 2] /= len
     }
   }
   return normals

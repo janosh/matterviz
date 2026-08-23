@@ -1,4 +1,5 @@
-// Top-level structure identification: one neighbor query feeds both CNA and CSP.
+// Top-level structure identification: a k-nearest neighbor query feeds adaptive CNA and CSP;
+// fixed-cutoff CNA runs on the cutoff query that defines it.
 import type { AnyStructure, Pbc } from '$lib/structure'
 import { neighbor_query } from '$lib/structure/bonding'
 import type { CnaMode, CnaTypeName } from './calc-cna'
@@ -19,8 +20,8 @@ export interface StructureIdOptions {
   cutoff?: number
   // Nearest neighbors entering the CSP sum: 12 for fcc, 8 for bcc. Must be even.
   n_csp_neighbors?: number
-  // Skip either analysis when only the other is wanted. They share one neighbor list, so
-  // running both costs barely more than running one.
+  // Skip either analysis when only the other is wanted. In adaptive mode they share one
+  // neighbor list, so running both costs barely more than running one.
   skip_cna?: boolean
   skip_csp?: boolean
   // Overrides the lattice's own periodicity flags
@@ -37,13 +38,12 @@ export interface StructureIdResult {
   populations: Record<CnaTypeName, number>
   n_atoms: number
   cna_mode: CnaMode
-  // The global cutoff in `fixed` mode; null in `adaptive` mode, where it varies per atom
-  cutoff: number | null
   n_csp_neighbors: number
   // Sites that could not be given a CSP value because they have fewer than n_csp_neighbors
   // neighbors (cluster surfaces, isolated fragments)
   n_csp_undefined: number
-  // Radius of the neighbor query that fed the analysis, in A
+  // Largest radius searched by the neighbor queries that fed the analysis, in A: the grown
+  // k-nearest radius, or the fixed CNA cutoff when that was the only query
   neighbor_cutoff: number
 }
 
@@ -69,8 +69,11 @@ export function calc_structure_id(
   }
   // Reject bad N before the k-nearest search grows a cutoff for a k that can never be satisfied.
   if (!skip_csp) validate_csp_neighbors(n_csp_neighbors)
-  // Fixed-cutoff CNA is DEFINED by its cutoff, so that query is the one it must see. Every
-  // other case takes a k-nearest query sized for whichever analysis wants more neighbors.
+  // Fixed-cutoff CNA is DEFINED by its cutoff, so that query is the one it must see. Adaptive
+  // CNA and CSP both want the k nearest neighbors and share one query sized for whichever
+  // asks for more. CSP never runs on the fixed-cutoff list: the shell a cutoff encloses is
+  // not the k nearest (a vacancy neighbor's 11-atom shell would read as NaN, a wide cutoff
+  // would need its block truncated), so in fixed mode it gets its own k query.
   const fixed_cutoff = cna_mode === `fixed` && !skip_cna ? (cutoff ?? NaN) : null
   if (fixed_cutoff !== null && !(fixed_cutoff > 0)) {
     throw new Error(
@@ -79,16 +82,24 @@ export function calc_structure_id(
     )
   }
   const k_neighbors = Math.max(
-    skip_cna ? 0 : N_ADAPTIVE_CNA_NEIGHBORS,
+    skip_cna || fixed_cutoff !== null ? 0 : N_ADAPTIVE_CNA_NEIGHBORS,
     skip_csp ? 0 : n_csp_neighbors,
   )
-  const list = neighbor_query(
-    structure,
-    fixed_cutoff === null ? { k: k_neighbors, pbc } : { cutoff: fixed_cutoff, pbc },
-  )
 
-  const cna_types = skip_cna ? null : calc_cna(list, cna_mode)
-  const centrosymmetry = skip_csp ? null : calc_centrosymmetry(list, n_csp_neighbors)
+  let cna_types: Int8Array | null = null
+  let centrosymmetry: Float64Array | null = null
+  let neighbor_cutoff = 0
+  if (fixed_cutoff !== null) {
+    const list = neighbor_query(structure, { cutoff: fixed_cutoff, pbc })
+    cna_types = calc_cna(list, `fixed`)
+    neighbor_cutoff = list.cutoff
+  }
+  if (k_neighbors > 0) {
+    const list = neighbor_query(structure, { k: k_neighbors, pbc })
+    if (!skip_cna && fixed_cutoff === null) cna_types = calc_cna(list, cna_mode)
+    if (!skip_csp) centrosymmetry = calc_centrosymmetry(list, n_csp_neighbors)
+    neighbor_cutoff = Math.max(neighbor_cutoff, list.cutoff)
+  }
 
   const populations = Object.fromEntries(CNA_TYPE_NAMES.map((name) => [name, 0])) as Record<
     CnaTypeName,
@@ -107,10 +118,9 @@ export function calc_structure_id(
     populations,
     n_atoms,
     cna_mode,
-    cutoff: fixed_cutoff,
     n_csp_neighbors,
     n_csp_undefined,
-    neighbor_cutoff: list.cutoff,
+    neighbor_cutoff,
   }
 }
 

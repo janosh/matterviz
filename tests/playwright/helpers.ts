@@ -10,8 +10,141 @@ const CI_CANVAS_TIMEOUT = 15_000
 // Centralized CI detection - use this instead of inline process.env.CI checks
 export const IS_CI = [`true`, `1`].includes(process.env.CI ?? ``)
 
+const is_mac = process.platform === `darwin`
+// KeyboardEvent init flag and Playwright key name for the platform's primary modifier
+export const primary_modifier = is_mac ? `metaKey` : `ctrlKey`
+export const primary_modifier_key = is_mac ? `Meta` : `Control`
+
 export const is_present = <Value>(value: Value | null | undefined): value is Value =>
   value != null
+
+// Collect console.error messages / uncaught page errors emitted after this call
+export const collect_console_errors = (page: Page): string[] => {
+  const console_errors: string[] = []
+  page.on(`console`, (msg) => {
+    if (msg.type() === `error`) console_errors.push(msg.text())
+  })
+  return console_errors
+}
+export const collect_page_errors = (page: Page): Error[] => {
+  const page_errors: Error[] = []
+  page.on(`pageerror`, (error) => page_errors.push(error))
+  return page_errors
+}
+
+// Dispatch the structure test page's `set-scene-props` / `set-lattice-props` hooks
+export const set_scene_props = (page: Page, detail: Record<string, unknown>): Promise<void> =>
+  page.evaluate((props) => {
+    globalThis.dispatchEvent(new CustomEvent(`set-scene-props`, { detail: props }))
+  }, detail)
+export const set_lattice_props = (
+  page: Page,
+  detail: Record<string, unknown>,
+): Promise<void> =>
+  page.evaluate((props) => {
+    globalThis.dispatchEvent(new CustomEvent(`set-lattice-props`, { detail: props }))
+  }, detail)
+
+// Bounding box of a canvas scrolled into view (boundingBox() is only meaningful once laid out)
+export async function canvas_box(canvas: Locator) {
+  await canvas.scrollIntoViewIfNeeded()
+  const box = await canvas.boundingBox()
+  if (!box) throw new Error(`canvas has no bounding box`)
+  return box
+}
+export const canvas_center = async (
+  canvas: Locator,
+  offset: { x?: number; y?: number } = {},
+): Promise<{ x: number; y: number }> => {
+  const box = await canvas_box(canvas)
+  return {
+    x: box.x + box.width / 2 + (offset.x ?? 0),
+    y: box.y + box.height / 2 + (offset.y ?? 0),
+  }
+}
+// Drag across the canvas center by (dx, dy) in viewport px (orbits with left, pans with right)
+export async function drag_canvas(
+  canvas: Locator,
+  {
+    dx = 100,
+    dy = 0,
+    button = `left`,
+    steps = 5,
+  }: {
+    dx?: number
+    dy?: number
+    button?: `left` | `right`
+    steps?: number
+  } = {},
+): Promise<void> {
+  const page = canvas.page()
+  const { x, y } = await canvas_center(canvas)
+  await page.mouse.move(x - dx / 2, y - dy / 2)
+  await page.mouse.down({ button })
+  await page.mouse.move(x + dx / 2, y + dy / 2, { steps })
+  await page.mouse.up({ button })
+}
+
+// WebGPU canvases read back black via drawImage, so decode the compositor PNG in-page.
+// Returns a handle to { data, width, height, background } where background is the mean
+// RGB of the four corner pixels. Callers must dispose the handle.
+export const decode_canvas_png = (page: Page, screenshot: Buffer) =>
+  page.evaluateHandle(async (base64_png) => {
+    const bytes = Uint8Array.from(atob(base64_png), (char) => char.charCodeAt(0))
+    const bitmap = await createImageBitmap(new Blob([bytes], { type: `image/png` }))
+    const offscreen = document.createElement(`canvas`)
+    offscreen.width = bitmap.width
+    offscreen.height = bitmap.height
+    const context = offscreen.getContext(`2d`)
+    if (!context) throw new Error(`Failed to create 2D canvas context`)
+    context.drawImage(bitmap, 0, 0)
+    bitmap.close()
+    const { data, width, height } = context.getImageData(
+      0,
+      0,
+      offscreen.width,
+      offscreen.height,
+    )
+    const corner_indices = [
+      0,
+      (width - 1) * 4,
+      (height - 1) * width * 4,
+      (height * width - 1) * 4,
+    ]
+    const background = [0, 1, 2].map(
+      (channel) =>
+        corner_indices.reduce((sum, pixel_idx) => sum + data[pixel_idx + channel], 0) /
+        corner_indices.length,
+    )
+    return { data, width, height, background }
+  }, screenshot.toString(`base64`))
+
+// Instances actually uploaded to the GPU, read from the live scene graph. The bond filter
+// has a fast path that returns the unfiltered array when nothing is hidden, so counts are
+// the only way to tell "bonds were filtered" from "view changed". Atoms are reported
+// alongside bonds because they pin down which half of the pipeline is at fault when this
+// disagrees with the legend: a scene still in the element-hidden state drops both, while a
+// scene that only lost its bond mesh keeps its full atom count.
+export const rendered_instance_counts = (
+  page: Page,
+  canvas_selector = `#test-structure canvas`,
+): Promise<{ bonds: number; atoms: number }> =>
+  page.evaluate(async (selector) => {
+    const module_path = `/src/lib/io/export.ts` // via variable so tsc doesn't resolve it
+    const { scene_registry } = await import(/* @vite-ignore */ module_path)
+    const canvas = document.querySelector(selector)
+    const scene = canvas && scene_registry.get(canvas)?.scene
+    if (!scene) throw new Error(`structure canvas not registered`)
+    const counts = { bonds: 0, atoms: 0 }
+    // bond cylinders are the only instanced mesh carrying per-end colors
+    scene.traverse((node: { geometry?: { attributes?: object }; count?: number }) => {
+      if (node.count === undefined || !node.geometry) return
+      const attributes = node.geometry.attributes ?? {}
+      if (`instanceColorStart` in attributes) counts.bonds += node.count
+      else counts.atoms += node.count
+    })
+    return counts
+  }, canvas_selector)
 
 export const numeric_y_ticks = async (plot: Locator): Promise<string[]> =>
   (await plot.locator(`g.y-axis text`).allTextContents()).filter(
@@ -263,6 +396,119 @@ export const reset_plot_area = (plot: Locator, { clip }: PlotArea): Promise<void
     position: { x: clip.x + clip.width / 2, y: clip.y + clip.height / 2 },
   })
 
+// Open a plot's control pane (toggle is hover-revealed) and return toggle + pane locators
+export async function open_plot_controls(
+  plot: Locator,
+): Promise<{ toggle: Locator; pane: Locator }> {
+  await plot.hover()
+  const toggle = plot.locator(`button.pane-toggle`)
+  await expect(toggle).toBeVisible()
+  await toggle.click()
+  const pane = plot.locator(`.draggable-pane`)
+  await expect(pane).toBeVisible()
+  return { toggle, pane }
+}
+
+// Wait for a histogram/bar chart to render its first bar and return the bars locator
+export async function wait_for_bars(plot: Locator): Promise<Locator> {
+  const bars = plot.locator(`path[role="button"]`)
+  await expect(bars.first()).toBeVisible()
+  return bars
+}
+
+// Drag-zoom inside the plot area: both axis ranges shrink; double-click restores them
+export async function expect_zoom_shrinks_axes(page: Page, plot: Locator): Promise<void> {
+  const x_axis = plot.locator(`g.x-axis`)
+  const y_axis = plot.locator(`g.y-axis`)
+  const zoom_rect = plot.locator(`rect.zoom-rect`)
+  await expect(x_axis.locator(`.tick text`).first()).toBeVisible()
+  const initial_x = await get_tick_range(x_axis)
+  const initial_y = await get_tick_range(y_axis)
+  expect(initial_x.range).toBeGreaterThan(0)
+  expect(initial_y.range).toBeGreaterThan(0)
+
+  // drag from the bottom-left toward the top-right: legends favor the upper corners, and a
+  // mousedown on the legend would drag it instead of starting a zoom
+  const area = await measure_plot_area(plot)
+  const { clip, svg_box } = area
+  await page.mouse.move(
+    svg_box.x + clip.x + clip.width * 0.2,
+    svg_box.y + clip.y + clip.height * 0.8,
+  )
+  await page.mouse.down()
+  await page.mouse.move(
+    svg_box.x + clip.x + clip.width * 0.8,
+    svg_box.y + clip.y + clip.height * 0.2,
+    { steps: 10 },
+  )
+  await expect(zoom_rect).toBeVisible()
+  await page.mouse.up()
+  await expect(zoom_rect).toBeHidden()
+
+  await expect(async () => {
+    const zoomed_x = await get_tick_range(x_axis)
+    const zoomed_y = await get_tick_range(y_axis)
+    expect(zoomed_x.range).toBeGreaterThan(0)
+    expect(zoomed_y.range).toBeGreaterThan(0)
+    expect(zoomed_x.range).toBeLessThan(initial_x.range)
+    expect(zoomed_y.range).toBeLessThan(initial_y.range)
+  }).toPass()
+
+  await reset_plot_area(plot, area)
+  await expect.poll(() => get_tick_range(x_axis)).toEqual(initial_x)
+  // tick generation may legitimately settle on one tick fewer after the reset
+  await expect
+    .poll(async () => (await get_tick_range(y_axis)).range)
+    .toBeGreaterThanOrEqual(initial_y.range * 0.75)
+}
+
+// Shift+drag pans horizontally: no zoom rect, x ticks shift, y range stays; dblclick resets
+export async function expect_shift_drag_pans(page: Page, plot: Locator): Promise<void> {
+  const x_axis = plot.locator(`g.x-axis`)
+  const y_axis = plot.locator(`g.y-axis`)
+  const zoom_rect = plot.locator(`rect.zoom-rect`)
+  await expect(x_axis.locator(`.tick text`).first()).toBeVisible()
+  const initial_x = await get_tick_range(x_axis)
+  const initial_y = await get_tick_range(y_axis)
+
+  const area = await measure_plot_area(plot)
+  const { clip, svg_box } = area
+  const y = svg_box.y + clip.y + clip.height / 2
+  await page.keyboard.down(`Shift`)
+  await page.mouse.move(svg_box.x + clip.x + clip.width * 0.3, y)
+  await page.mouse.down()
+  await page.mouse.move(svg_box.x + clip.x + clip.width * 0.7, y, { steps: 10 })
+  await expect(zoom_rect).toBeHidden()
+  await page.mouse.up()
+  await page.keyboard.up(`Shift`)
+
+  await expect
+    .poll(async () => (await get_tick_range(x_axis)).ticks)
+    .not.toEqual(initial_x.ticks)
+  const panned_y = await get_tick_range(y_axis)
+  expect(Math.abs(panned_y.range - initial_y.range)).toBeLessThan(initial_y.range * 0.1)
+
+  await reset_plot_area(plot, area)
+  await expect.poll(async () => (await get_tick_range(x_axis)).ticks).toEqual(initial_x.ticks)
+}
+
+// Poll until an element's bounding box stops moving (placement animations, layout solves)
+export async function wait_for_stable_bbox(
+  locator: Locator,
+  timeout = 3000,
+): Promise<{ x: number; y: number; width: number; height: number }> {
+  let previous = await locator.boundingBox()
+  await expect(async () => {
+    const current = await locator.boundingBox()
+    if (!current || !previous) throw new Error(`element has no bounding box`)
+    const moved = Math.hypot(current.x - previous.x, current.y - previous.y)
+    previous = current
+    expect(moved).toBeLessThan(1)
+  }).toPass({ timeout, intervals: [50, 100, 200] })
+  if (!previous) throw new Error(`element has no bounding box`)
+  return previous
+}
+
 export async function expect_bottom_within(outer: Locator, inner: Locator): Promise<void> {
   const [outer_box, inner_box] = await Promise.all([outer.boundingBox(), inner.boundingBox()])
   if (!outer_box || !inner_box) throw new Error(`Missing bounding box`)
@@ -390,21 +636,6 @@ export async function expect_gizmo_click_flies_camera(
   const after = await sweep_gizmo_handles(canvas, options)
   expect(after.length, `gizmo handles after the fly-to`).toBeGreaterThan(0)
   expect(after.map((hit) => hit.key)).not.toEqual(before.map((hit) => hit.key))
-}
-
-// Assert that test-page-only hooks exist (clearer failures when test page changes)
-// Use this when tests rely on data-testid elements that only exist in test pages
-export async function assert_test_hook_exists(
-  page: Page,
-  testid: string,
-  description?: string,
-): Promise<Locator> {
-  const locator = page.locator(`[data-testid="${testid}"]`)
-  await expect(
-    locator,
-    description ?? `Test hook [data-testid="${testid}"] not found`,
-  ).toBeVisible()
-  return locator
 }
 
 // Switch to edit-atoms mode via the Structure component's dropdown UI.

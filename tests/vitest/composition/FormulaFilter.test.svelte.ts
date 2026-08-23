@@ -31,9 +31,9 @@ describe(`FormulaFilter`, () => {
 
   test(`clicking mode hint cycles through modes and reformats input`, async () => {
     // Mode hint is always clickable and clicking it reformats the input
-    const onchange = vi.fn()
+    const on_change = vi.fn()
     const state = $state({ value: `LiFePO4` })
-    mount(FormulaFilter, { target: document.body, props: bind_props({ onchange }, state) })
+    mount(FormulaFilter, { target: document.body, props: bind_props({ on_change }, state) })
     await tick()
 
     const get_mode_btn = () =>
@@ -44,19 +44,19 @@ describe(`FormulaFilter`, () => {
     // Click to cycle: exact → elements (reformats to comma-separated)
     get_mode_btn()?.click()
     flushSync()
-    expect(onchange).toHaveBeenLastCalledWith(`Fe,Li,O,P`, `elements`)
+    expect(on_change).toHaveBeenLastCalledWith(`Fe,Li,O,P`, `elements`)
     expect(get_mode_btn()?.textContent).toContain(`has elements`)
 
     // Click again: elements → chemsys (reformats to dash-separated)
     get_mode_btn()?.click()
     flushSync()
-    expect(onchange).toHaveBeenLastCalledWith(`Fe-Li-O-P`, `chemsys`)
+    expect(on_change).toHaveBeenLastCalledWith(`Fe-Li-O-P`, `chemsys`)
     expect(get_mode_btn()?.textContent).toContain(`chemical system`)
 
     // Click again: chemsys → exact (reformats to concatenated)
     get_mode_btn()?.click()
     flushSync()
-    expect(onchange).toHaveBeenLastCalledWith(`FeLiOP`, `exact`)
+    expect(on_change).toHaveBeenLastCalledWith(`FeLiOP`, `exact`)
     expect(get_mode_btn()?.textContent).toContain(`exact formula`)
   })
 
@@ -68,11 +68,11 @@ describe(`FormulaFilter`, () => {
   ])(
     `reformats "$from" to "$expected" when cycling to $to_mode mode`,
     async ({ from, to_mode, expected }) => {
-      const onchange = vi.fn()
+      const on_change = vi.fn()
       const state = $state({ value: from })
       mount(FormulaFilter, {
         target: document.body,
-        props: bind_props({ onchange }, state),
+        props: bind_props({ on_change }, state),
       })
       await tick()
 
@@ -83,28 +83,42 @@ describe(`FormulaFilter`, () => {
       while (attempts < 3) {
         get_mode_btn()?.click()
         flushSync()
-        const last_call = onchange.mock.calls[onchange.mock.calls.length - 1]
+        const last_call = on_change.mock.calls[on_change.mock.calls.length - 1]
         if (last_call[1] === to_mode) break
         attempts++
       }
 
-      expect(onchange).toHaveBeenLastCalledWith(expected, to_mode)
+      expect(on_change).toHaveBeenLastCalledWith(expected, to_mode)
     },
   )
 
+  // Mode is inferred from the value on first render (e.g. URL params without search_mode)
+  // and written to the search_mode binding; blur normalizes the value in that mode. A '-'
+  // inside a range constraint does not make the input a chemsys.
   test.each([
-    [`Li,Fe`, `elements`],
-    [`Li-Fe-O`, `chemsys`],
-    [`LiFePO4`, `exact`],
-  ])(`infers mode "%s" from input "%s"`, async (input, expected_mode) => {
-    const onchange = vi.fn()
-    const state = $state({ value: input })
-    mount(FormulaFilter, { target: document.body, props: bind_props({ onchange }, state) })
-    await tick()
-    get_input().dispatchEvent(new Event(`blur`, { bubbles: true }))
-    flushSync()
-    expect(onchange).toHaveBeenCalledWith(expect.any(String), expected_mode)
-  })
+    [`Li,Fe`, `elements`, `Fe,Li`],
+    [`Li,Fe:1-2`, `elements`, `Fe:1-2,Li`],
+    [`Fe:1-2`, `elements`, `Fe:1-2`],
+    [`Li-Fe-O`, `chemsys`, `Fe-Li-O`],
+    [`Fe:1-2-Li`, `chemsys`, `Fe:1-2-Li`],
+    [`LiFePO4`, `exact`, `FeLiO4P`],
+    [`NaCl`, `exact`, `ClNa`],
+  ] as const)(
+    `"%s" infers mode %s and normalizes on blur`,
+    async (input, mode, normalized) => {
+      const on_change = vi.fn()
+      const state: { value: string; search_mode: FormulaSearchMode } = $state({
+        value: input,
+        search_mode: `elements`,
+      })
+      mount(FormulaFilter, { target: document.body, props: bind_props({ on_change }, state) })
+      await tick()
+      expect(state.search_mode).toBe(mode)
+      get_input().dispatchEvent(new Event(`blur`, { bubbles: true }))
+      flushSync()
+      expect(on_change).toHaveBeenCalledWith(normalized, mode)
+    },
+  )
 
   test(`disabled state applies`, () => {
     mount(FormulaFilter, { target: document.body, props: { value: ``, disabled: true } })
@@ -123,25 +137,25 @@ describe(`FormulaFilter`, () => {
   })
 
   test(`clears value on click or Escape`, () => {
-    const onchange = vi.fn()
-    const onclear = vi.fn()
+    const on_change = vi.fn()
+    const on_clear = vi.fn()
     mount(FormulaFilter, {
       target: document.body,
-      props: { value: `Fe`, onchange, onclear },
+      props: { value: `Fe`, on_change, on_clear },
     })
 
     // Click clear button
     doc_query<HTMLButtonElement>(`.clear-btn`).click()
     flushSync()
-    expect(onclear).toHaveBeenCalled()
-    expect(onchange).toHaveBeenCalledWith(``, `elements`)
+    expect(on_clear).toHaveBeenCalled()
+    expect(on_change).toHaveBeenCalledWith(``, `elements`)
 
     // Reset for Escape test
     document.body.innerHTML = ``
     const onclear2 = vi.fn()
     mount(FormulaFilter, {
       target: document.body,
-      props: { value: `Fe`, onclear: onclear2 },
+      props: { value: `Fe`, on_clear: onclear2 },
     })
     get_input().dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape`, bubbles: true }))
     flushSync()
@@ -174,27 +188,6 @@ describe(`FormulaFilter`, () => {
     await tick()
     expect(get_input().value).toBe(`Fe,O`)
   })
-
-  test.each([
-    { initial_value: `Li-Fe-O`, expected_mode: `chemsys` },
-    { initial_value: `LiFePO4`, expected_mode: `exact` },
-    { initial_value: `Li,Fe`, expected_mode: `elements` },
-  ])(
-    `infers mode=$expected_mode on first render from value="$initial_value" (e.g. URL params)`,
-    async ({ initial_value, expected_mode }) => {
-      // Regression test: when value is set from URL params without search_mode,
-      // the component should infer the correct mode from the value format
-      const state: { search_mode: FormulaSearchMode } = $state({
-        search_mode: `elements`,
-      })
-      mount(FormulaFilter, {
-        target: document.body,
-        props: bind_props({ value: initial_value }, state),
-      })
-      await tick()
-      expect(state.search_mode).toBe(expected_mode)
-    },
-  )
 
   test(`re-infers mode when value prop changes externally`, async () => {
     // When parent updates value prop without search_mode, mode should be re-inferred
@@ -232,30 +225,15 @@ describe(`FormulaFilter`, () => {
     expect(state.search_mode).toBe(expected_mode)
   })
 
-  test.each([
-    // Alphabetical order: Fe before O, Fe before Li
-    { input: `Fe,O`, expected: `Fe,O`, mode: `elements` },
-    { input: `Fe-Li`, expected: `Fe-Li`, mode: `chemsys` },
-    { input: `NaCl`, expected: `ClNa`, mode: `exact` },
-  ])(`normalizes "$input" to "$expected" (mode=$mode)`, async ({ input, expected, mode }) => {
-    const onchange = vi.fn()
-    const state = $state({ value: input })
-    mount(FormulaFilter, { target: document.body, props: bind_props({ onchange }, state) })
-    await tick()
-    get_input().dispatchEvent(new Event(`blur`, { bubbles: true }))
-    flushSync()
-    expect(onchange).toHaveBeenCalledWith(expected, mode)
-  })
-
   test(`Enter key triggers normalization`, async () => {
-    const onchange = vi.fn()
+    const on_change = vi.fn()
     const state = $state({ value: `Fe-Li` })
-    mount(FormulaFilter, { target: document.body, props: bind_props({ onchange }, state) })
+    mount(FormulaFilter, { target: document.body, props: bind_props({ on_change }, state) })
     await tick()
     get_input().dispatchEvent(new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }))
     flushSync()
     // Alphabetical order: Fe before Li
-    expect(onchange).toHaveBeenCalledWith(`Fe-Li`, `chemsys`)
+    expect(on_change).toHaveBeenCalledWith(`Fe-Li`, `chemsys`)
   })
 
   test(`spreads additional attributes to wrapper`, () => {
@@ -277,8 +255,8 @@ describe(`FormulaFilter`, () => {
     })
 
     test(`toggles, displays content, and applies example on click`, () => {
-      const onchange = vi.fn()
-      mount(FormulaFilter, { target: document.body, props: { value: ``, onchange } })
+      const on_change = vi.fn()
+      mount(FormulaFilter, { target: document.body, props: { value: ``, on_change } })
       const help_btn = doc_query<HTMLButtonElement>(`.help-btn`)
 
       expect(document.querySelector(`.examples-dropdown`)).toBeNull()
@@ -296,14 +274,14 @@ describe(`FormulaFilter`, () => {
         .find((tag) => tag.textContent === `Li-Fe-O`)
         ?.click()
       flushSync()
-      expect(onchange).toHaveBeenCalledWith(`Li-Fe-O`, `chemsys`)
+      expect(on_change).toHaveBeenCalledWith(`Li-Fe-O`, `chemsys`)
       expect(get_input().value).toBe(`Li-Fe-O`)
       expect(document.querySelector(`.examples-dropdown`)).toBeNull()
     })
 
     test(`Escape closes dropdown first, then clears value`, () => {
-      const onclear = vi.fn()
-      mount(FormulaFilter, { target: document.body, props: { value: `Fe`, onclear } })
+      const on_clear = vi.fn()
+      mount(FormulaFilter, { target: document.body, props: { value: `Fe`, on_clear } })
       doc_query<HTMLButtonElement>(`.help-btn`).click()
       flushSync()
       expect(document.querySelector(`.examples-dropdown`)).toBeInstanceOf(HTMLElement)
@@ -313,18 +291,18 @@ describe(`FormulaFilter`, () => {
       flushSync()
       expect(document.querySelector(`.examples-dropdown`)).toBeNull()
       expect(get_input().value).toBe(`Fe`)
-      expect(onclear).not.toHaveBeenCalled()
+      expect(on_clear).not.toHaveBeenCalled()
 
       // Second Escape clears value
       get_input().dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape`, bubbles: true }))
       flushSync()
       expect(get_input().value).toBe(``)
-      expect(onclear).toHaveBeenCalled()
+      expect(on_clear).toHaveBeenCalled()
     })
 
     test(`examples include wildcard patterns and apply correctly`, () => {
-      const onchange = vi.fn()
-      mount(FormulaFilter, { target: document.body, props: { value: ``, onchange } })
+      const on_change = vi.fn()
+      mount(FormulaFilter, { target: document.body, props: { value: ``, on_change } })
       doc_query<HTMLButtonElement>(`.help-btn`).click()
       flushSync()
 
@@ -343,7 +321,7 @@ describe(`FormulaFilter`, () => {
         ?.click()
       flushSync()
 
-      expect(onchange).toHaveBeenCalledWith(`Li-Fe-*-*`, `chemsys`)
+      expect(on_change).toHaveBeenCalledWith(`Li-Fe-*-*`, `chemsys`)
       expect(get_input().value).toBe(`Li-Fe-*-*`)
     })
   })
@@ -371,25 +349,25 @@ describe(`FormulaFilter`, () => {
     ])(
       `normalizes wildcard input "$input" to "$expected" (mode=$mode)`,
       async ({ input, expected, mode }) => {
-        const onchange = vi.fn()
+        const on_change = vi.fn()
         const state = $state({ value: input })
         mount(FormulaFilter, {
           target: document.body,
-          props: bind_props({ onchange }, state),
+          props: bind_props({ on_change }, state),
         })
         await tick()
         get_input().dispatchEvent(new Event(`blur`, { bubbles: true }))
         flushSync()
-        expect(onchange).toHaveBeenCalledWith(expected, mode)
+        expect(on_change).toHaveBeenCalledWith(expected, mode)
       },
     )
 
     test(`preserves wildcards when cycling through modes`, async () => {
-      const onchange = vi.fn()
+      const on_change = vi.fn()
       const state = $state({ value: `Li-Fe-*-*` })
       mount(FormulaFilter, {
         target: document.body,
-        props: bind_props({ onchange }, state),
+        props: bind_props({ on_change }, state),
       })
       await tick()
 
@@ -402,17 +380,17 @@ describe(`FormulaFilter`, () => {
       // Cycle to exact - wildcards should be preserved
       get_mode_btn()?.click()
       flushSync()
-      expect(onchange).toHaveBeenLastCalledWith(`FeLi**`, `exact`)
+      expect(on_change).toHaveBeenLastCalledWith(`FeLi**`, `exact`)
 
       // Cycle to elements - wildcards should be preserved
       get_mode_btn()?.click()
       flushSync()
-      expect(onchange).toHaveBeenLastCalledWith(`Fe,Li,*,*`, `elements`)
+      expect(on_change).toHaveBeenLastCalledWith(`Fe,Li,*,*`, `elements`)
 
       // Cycle back to chemsys - wildcards should be preserved
       get_mode_btn()?.click()
       flushSync()
-      expect(onchange).toHaveBeenLastCalledWith(`Fe-Li-*-*`, `chemsys`)
+      expect(on_change).toHaveBeenLastCalledWith(`Fe-Li-*-*`, `chemsys`)
     })
 
     test.each([
@@ -424,11 +402,11 @@ describe(`FormulaFilter`, () => {
     ])(
       `reformats wildcard "$from" to "$expected" when cycling to $to_mode mode`,
       async ({ from, to_mode, expected }) => {
-        const onchange = vi.fn()
+        const on_change = vi.fn()
         const state = $state({ value: from })
         mount(FormulaFilter, {
           target: document.body,
-          props: bind_props({ onchange }, state),
+          props: bind_props({ on_change }, state),
         })
         await tick()
 
@@ -439,12 +417,12 @@ describe(`FormulaFilter`, () => {
         while (attempts < 3) {
           get_mode_btn()?.click()
           flushSync()
-          const last_call = onchange.mock.calls[onchange.mock.calls.length - 1]
+          const last_call = on_change.mock.calls[on_change.mock.calls.length - 1]
           if (last_call[1] === to_mode) break
           attempts++
         }
 
-        expect(onchange).toHaveBeenLastCalledWith(expected, to_mode)
+        expect(on_change).toHaveBeenLastCalledWith(expected, to_mode)
       },
     )
 
@@ -486,32 +464,32 @@ describe(`FormulaFilter`, () => {
     })
 
     test(`handles multiple wildcards with varied positions`, async () => {
-      const onchange = vi.fn()
+      const on_change = vi.fn()
       const state = $state({ value: `*-Li-*-O-*` })
       mount(FormulaFilter, {
         target: document.body,
-        props: bind_props({ onchange }, state),
+        props: bind_props({ on_change }, state),
       })
       await tick()
       get_input().dispatchEvent(new Event(`blur`, { bubbles: true }))
       flushSync()
 
       // Elements should be sorted, wildcards appended
-      expect(onchange).toHaveBeenCalledWith(`Li-O-*-*-*`, `chemsys`)
+      expect(on_change).toHaveBeenCalledWith(`Li-O-*-*-*`, `chemsys`)
     })
 
     test(`Enter key normalizes wildcard input`, async () => {
-      const onchange = vi.fn()
+      const on_change = vi.fn()
       const state = $state({ value: `*,Fe,Li,*` })
       mount(FormulaFilter, {
         target: document.body,
-        props: bind_props({ onchange }, state),
+        props: bind_props({ on_change }, state),
       })
       await tick()
       get_input().dispatchEvent(new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }))
       flushSync()
       // Elements are sorted alphabetically, wildcards appended
-      expect(onchange).toHaveBeenCalledWith(`Fe,Li,*,*`, `elements`)
+      expect(on_change).toHaveBeenCalledWith(`Fe,Li,*,*`, `elements`)
     })
   })
 
@@ -616,13 +594,13 @@ describe(`FormulaFilter`, () => {
     })
 
     test(`clicking a history item sets value and closes dropdown`, () => {
-      const onchange = vi.fn()
-      seed_mount_focus([`Fe,O`, `Li,Na`], { onchange })
+      const on_change = vi.fn()
+      seed_mount_focus([`Fe,O`, `Li,Na`], { on_change })
       doc_query<HTMLButtonElement>(`.history-value`).dispatchEvent(
         new MouseEvent(`mousedown`, { bubbles: true }),
       )
       flushSync()
-      expect(onchange).toHaveBeenCalledWith(`Fe,O`, `elements`)
+      expect(on_change).toHaveBeenCalledWith(`Fe,O`, `elements`)
       expect(history_dropdown()).toBeNull()
     })
 
@@ -638,8 +616,8 @@ describe(`FormulaFilter`, () => {
     })
 
     test(`removing item clamps focused index to prevent out-of-bounds Enter`, () => {
-      const onchange = vi.fn()
-      seed_mount_focus([`Fe,O`, `Li,Na`, `Si,O`], { onchange })
+      const on_change = vi.fn()
+      seed_mount_focus([`Fe,O`, `Li,Na`, `Si,O`], { on_change })
       // Navigate to last item (index 2)
       for (let step = 0; step < 3; step++) keydown(`ArrowDown`)
       flushSync()
@@ -650,9 +628,9 @@ describe(`FormulaFilter`, () => {
       // Enter should select the clamped item, not crash
       keydown(`Enter`)
       flushSync()
-      expect(onchange).toHaveBeenCalled()
+      expect(on_change).toHaveBeenCalled()
       expect([`Fe,O`, `Si,O`]).toContain(
-        onchange.mock.calls[onchange.mock.calls.length - 1][0],
+        on_change.mock.calls[on_change.mock.calls.length - 1][0],
       )
     })
 
@@ -689,29 +667,29 @@ describe(`FormulaFilter`, () => {
     })
 
     test(`Enter selects focused history item`, () => {
-      const onchange = vi.fn()
-      seed_mount_focus([`Fe,O`, `Li,Na`], { onchange })
+      const on_change = vi.fn()
+      seed_mount_focus([`Fe,O`, `Li,Na`], { on_change })
       keydown(`ArrowDown`)
       keydown(`ArrowDown`)
       keydown(`Enter`)
       flushSync()
-      expect(onchange).toHaveBeenCalledWith(`Li,Na`, `elements`)
+      expect(on_change).toHaveBeenCalledWith(`Li,Na`, `elements`)
     })
 
     test(`Escape closes history dropdown before clearing value`, () => {
-      const onclear = vi.fn()
-      seed_mount_focus([`Fe,O`], { value: `Li`, onclear })
+      const on_clear = vi.fn()
+      seed_mount_focus([`Fe,O`], { value: `Li`, on_clear })
       expect(history_dropdown()).toBeInstanceOf(HTMLElement)
       // First Escape closes history
       keydown(`Escape`)
       flushSync()
       expect(history_dropdown()).toBeNull()
       expect(get_input().value).toBe(`Li`)
-      expect(onclear).not.toHaveBeenCalled()
+      expect(on_clear).not.toHaveBeenCalled()
       // Second Escape clears value
       keydown(`Escape`)
       flushSync()
-      expect(onclear).toHaveBeenCalled()
+      expect(on_clear).toHaveBeenCalled()
     })
 
     test(`examples and history are mutually exclusive`, () => {
@@ -814,13 +792,13 @@ describe(`FormulaFilter`, () => {
       expect(state.search_mode).toBe(`elements`)
     })
 
-    test(`onparse emits structured token data`, () => {
-      const onparse = vi.fn()
-      mount_filter({ value: ``, onparse })
+    test(`on_parse emits structured token data`, () => {
+      const on_parse = vi.fn()
+      mount_filter({ value: ``, on_parse })
       submit_input(`+Li,-O`)
 
-      expect(onparse).toHaveBeenCalled()
-      const last = onparse.mock.calls[onparse.mock.calls.length - 1][0]
+      expect(on_parse).toHaveBeenCalled()
+      const last = on_parse.mock.calls[on_parse.mock.calls.length - 1][0]
       expect(last.tokens.length).toBeGreaterThan(0)
       expect(last.tokens.some((tok: { operator: string }) => tok.operator === `exclude`)).toBe(
         true,
@@ -858,11 +836,11 @@ describe(`FormulaFilter`, () => {
     })
 
     test(`invalid non-exact tokens are not silently dropped on submit`, () => {
-      const onchange = vi.fn()
+      const on_change = vi.fn()
       const on_validation = vi.fn()
-      mount_filter({ value: ``, onchange, on_validation })
+      mount_filter({ value: ``, on_change, on_validation })
       submit_input(`Li,Xx`)
-      expect(onchange).not.toHaveBeenCalled()
+      expect(on_change).not.toHaveBeenCalled()
       const invalid_validation = on_validation.mock.calls
         .map(
           (call) =>
@@ -889,22 +867,22 @@ describe(`FormulaFilter`, () => {
       // deleting the hydrate dot in normalization would glue digits: CuSO45H2O
       [`hydrate dot survives normalization`, {}, `CuSO4·5H2O`, `CuH10O9S`],
     ])(`exact mode: %s`, (_name, props, input, expected) => {
-      const onchange = vi.fn()
-      mount_filter({ value: ``, onchange, ...props })
+      const on_change = vi.fn()
+      mount_filter({ value: ``, on_change, ...props })
       submit_input(input)
-      expect(onchange).toHaveBeenLastCalledWith(expected, `exact`)
+      expect(on_change).toHaveBeenLastCalledWith(expected, `exact`)
     })
 
     test(`mode hint click is ignored while mode is locked`, () => {
-      const onchange = vi.fn()
+      const on_change = vi.fn()
       mount_filter({
         value: `Li,Fe`,
         mode_locked: true,
-        onchange,
+        on_change,
       })
       doc_query<HTMLButtonElement>(`.mode-hint.clickable`).click()
       flushSync()
-      expect(onchange).not.toHaveBeenCalled()
+      expect(on_change).not.toHaveBeenCalled()
       expect(doc_query(`.mode-hint.clickable`).classList.contains(`locked`)).toBe(true)
     })
 
@@ -943,24 +921,24 @@ describe(`FormulaFilter`, () => {
     })
 
     test(`normalizes and sorts constrained include/exclude token input`, () => {
-      const onchange = vi.fn()
-      mount_filter({ value: ``, onchange })
+      const on_change = vi.fn()
+      mount_filter({ value: ``, on_change })
       submit_input(`-O,+Li,Fe:1-2,*`)
-      expect(onchange).toHaveBeenLastCalledWith(`Fe:1-2,Li,*,-O`, `elements`)
+      expect(on_change).toHaveBeenLastCalledWith(`Fe:1-2,Li,*,-O`, `elements`)
     })
 
     test(`keeps chemsys ranges intact while tokenizing`, () => {
-      const onchange = vi.fn()
-      mount_filter({ value: ``, onchange, search_mode: `chemsys`, mode_locked: true })
+      const on_change = vi.fn()
+      mount_filter({ value: ``, on_change, search_mode: `chemsys`, mode_locked: true })
       submit_input(`Fe:1-2-Li`)
-      expect(onchange).toHaveBeenLastCalledWith(`Fe:1-2-Li`, `chemsys`)
+      expect(on_change).toHaveBeenLastCalledWith(`Fe:1-2-Li`, `chemsys`)
     })
 
     test(`supports custom examples prop and applies custom example`, () => {
-      const onchange = vi.fn()
+      const on_change = vi.fn()
       mount_filter({
         value: ``,
-        onchange,
+        on_change,
         examples: [
           {
             label: `Custom`,
@@ -977,7 +955,7 @@ describe(`FormulaFilter`, () => {
       expect(example_btn).toBeDefined()
       example_btn?.click()
       flushSync()
-      expect(onchange).toHaveBeenLastCalledWith(`Co,Ni`, `elements`)
+      expect(on_change).toHaveBeenLastCalledWith(`Co,Ni`, `elements`)
     })
   })
 })

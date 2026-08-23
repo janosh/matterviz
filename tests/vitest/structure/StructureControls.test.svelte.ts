@@ -19,7 +19,9 @@ import {
   cubic_matrix,
   doc_query,
   expect_labelled_settings_grid,
+  IDENTITY_MATRIX3,
   make_crystal,
+  make_position_stream,
   simple_structure,
   trigger_resize_observer,
 } from '../setup'
@@ -72,57 +74,38 @@ type AtomColorConfigProps = NonNullable<
   ComponentProps<typeof StructureControls>['atom_color_config']
 >
 
-const trail_stream = (): TrajectoryPositionStream => ({
-  positions: new Float64Array(9),
-  n_frames: 3,
-  n_atoms: 1,
-  elements: [`H`],
-  lattice_matrices: Array.from({ length: 3 }, () => [
-    [1, 0, 0],
-    [0, 1, 0],
-    [0, 0, 1],
-  ]),
-  pbc: [false, false, false],
-  coords_unwrapped: true,
-  frame_stride: 1,
-  steps: [0, 1, 2],
-})
+// three frames of one stationary H atom: enough for the trail-length controls to appear
+const trail_stream = (): TrajectoryPositionStream =>
+  make_position_stream(
+    Array.from({ length: 3 }, () => [[0, 0, 0]]),
+    [`H`],
+    {
+      lattice_matrices: Array.from({ length: 3 }, () => IDENTITY_MATRIX3),
+      pbc: [false, false, false],
+      coords_unwrapped: true,
+    },
+  )
 
 describe(`StructureControls inputs`, () => {
   test.each([
-    {
-      scaling: `2x2x2`,
-      aria: `false`,
-      has_error: false,
-      border_includes: ``,
-      title_includes: `Valid supercell scaling: 2x2x2`,
-    },
-    { scaling: `1`, aria: `false`, has_error: false, border_includes: `` },
+    { scaling: `2x2x2`, invalid: false, title_includes: `Valid supercell scaling: 2x2x2` },
     {
       scaling: `invalid`,
-      aria: `true`,
-      has_error: true,
-      border_includes: `dashed red`,
+      invalid: true,
       title_includes: `Invalid format. Use "2x2x2", "3x1x2", or "2"`,
     },
-    { scaling: `2x2`, aria: `true`, has_error: true, border_includes: `dashed red` },
-  ])(
-    `supercell input state: $scaling`,
-    async ({ scaling, aria, has_error, border_includes, title_includes }) => {
-      await mount_controls({
-        structure: simple_structure,
-        controls_open: true,
-        supercell_scaling: scaling,
-      })
-      const input = doc_query<HTMLInputElement>(`input[placeholder="1x1x1"]`)
-      expect(input.getAttribute(`aria-invalid`)).toBe(aria)
-      const error_message = document.querySelector(`[data-testid="supercell-input-error"]`)
-      expect(error_message !== null).toBe(has_error)
-      if (border_includes) expect(input.style.border).toContain(border_includes)
-      else expect(input.style.border).toBe(``)
-      if (title_includes) expect(input.title).toContain(title_includes)
-    },
-  )
+  ])(`supercell input state: $scaling`, async ({ scaling, invalid, title_includes }) => {
+    await mount_controls({
+      structure: simple_structure,
+      controls_open: true,
+      supercell_scaling: scaling,
+    })
+    const input = doc_query<HTMLInputElement>(`input[placeholder="1x1x1"]`)
+    expect(input.getAttribute(`aria-invalid`)).toBe(String(invalid))
+    const error_message = document.querySelector(`[data-testid="supercell-input-error"]`)
+    expect(error_message !== null).toBe(invalid)
+    expect(input.title).toContain(title_includes)
+  })
 
   // The supercell input needs a lattice, so neither a lattice-less structure nor no
   // structure at all may render one - and neither may crash the controls
@@ -229,8 +212,8 @@ describe(`StructureControls inputs`, () => {
 
 describe(`StructureControls schema rows`, () => {
   // Every uniform row is generated from SETTINGS_CONFIG: the entry's value type picks the
-  // control and the control shows the bound value. Rows with accessors (lattice_props, the
-  // show_image_atoms bindable) write back to their own target, not scene_props.
+  // control and the control shows the bound value. Rows with accessors (the show_image_atoms /
+  // show_trajectory_lines bindables) write back to their own target, not scene_props.
   test(`render the control matching each setting's type, value and bounds`, async () => {
     const state = $state({
       scene_props: {
@@ -241,8 +224,9 @@ describe(`StructureControls schema rows`, () => {
         auto_bond_order: true,
         polyhedra_color_mode: `uniform` as const,
         bond_thickness: 0.2,
+        cell_edge_color: `#123456`,
+        show_cell_vectors: false,
       },
-      lattice_props: { cell_edge_color: `#123456`, show_cell_vectors: false },
       show_image_atoms: false,
     })
     const target = await mount_bound_controls(state, {
@@ -275,7 +259,7 @@ describe(`StructureControls schema rows`, () => {
       [`auto_bond_order`, true],
       [`same_size_atoms`, false],
       [`zoom_to_cursor`, false],
-      [`show_cell_vectors`, false], // lattice_props row
+      [`show_cell_vectors`, false],
       [`show_image_atoms`, false], // local bindable row
       [`show_displacement_arrows`, true],
     ] as const
@@ -286,7 +270,7 @@ describe(`StructureControls schema rows`, () => {
 
     const swatches = [
       [`bond_color`, DEFAULTS.structure.bond_color],
-      [`cell_edge_color`, `#123456`], // lattice_props row
+      [`cell_edge_color`, `#123456`],
       [`displacement_arrow_color`, DEFAULTS.structure.displacement_arrow_color],
       [`site_label_color`, DEFAULTS.structure.site_label_color],
     ] as const
@@ -331,10 +315,9 @@ describe(`StructureControls schema rows`, () => {
     await tick()
     expect(state.scene_props.bond_color).toBe(`#abcdef`)
     expect(state.scene_props.bond_thickness).toBe(0.35)
-    expect(state.lattice_props.show_cell_vectors).toBe(true)
+    expect(state.scene_props.show_cell_vectors).toBe(true)
     expect(state.show_image_atoms).toBe(true)
-    // ...and nothing leaked onto scene_props from the accessor rows
-    expect(state.scene_props.show_cell_vectors).toBe(DEFAULTS.structure.show_cell_vectors)
+    // ...and nothing leaked onto scene_props from the accessor row
     expect(state.scene_props.show_image_atoms).toBe(DEFAULTS.structure.show_image_atoms)
   })
 
@@ -359,13 +342,6 @@ describe(`StructureControls schema rows`, () => {
         polyhedra_color_mode: `uniform` as const,
         vector_color_mode: `uniform` as const,
         trajectory_position_stream: { ...stream, elements: [`H`, `O`], n_atoms: 2 },
-      },
-      lattice_props: {
-        show_cell_vectors: true,
-        cell_edge_color: DEFAULTS.structure.cell_edge_color,
-        cell_edge_opacity: DEFAULTS.structure.cell_edge_opacity,
-        cell_surface_color: DEFAULTS.structure.cell_surface_color,
-        cell_surface_opacity: DEFAULTS.structure.cell_surface_opacity,
       },
       show_image_atoms: true,
       show_trajectory_lines: true,
@@ -404,11 +380,7 @@ describe(`StructureControls schema rows`, () => {
     // Every schema-backed slider writes a number (never the input's string) to the object
     // that owns the key, and every schema-backed checkbox flips its own target.
     const owner_of = (key: string): Record<string, unknown> =>
-      key in state.lattice_props
-        ? state.lattice_props
-        : key in state && key !== `scene_props`
-          ? state
-          : state.scene_props
+      key in state && key !== `scene_props` ? state : state.scene_props
     const schema_rows = [...target.querySelectorAll<HTMLElement>(`label[data-key]`)].filter(
       (row) => (row.dataset.key ?? ``) in SETTINGS_CONFIG.structure,
     )
@@ -431,9 +403,8 @@ describe(`StructureControls schema rows`, () => {
         expect(owner[key], key).toBe(!before)
       }
     }
-    // accessor rows wrote to their own owners, not scene_props
-    expect(state.lattice_props.cell_edge_opacity).toBe(0.5)
-    expect(state.scene_props.cell_edge_opacity).toBe(DEFAULTS.structure.cell_edge_opacity)
+    // the cell rows are plain scene_props rows
+    expect(state.scene_props.cell_edge_opacity).toBe(0.5)
   })
 
   test(`conditional rows follow their gate`, async () => {
@@ -475,6 +446,28 @@ describe(`StructureControls schema rows`, () => {
     await tick()
     expect(state.scene_props.site_label_offset).toEqual([0.1, 0.2, -0.5])
     expect(state.scene_props.rotation).toEqual([0, Math.PI, Math.PI / 2])
+  })
+
+  // Rotation number inputs clamp to [0, 360] then wrap 360 -> 0; the paired slider shows it
+  test.each([
+    [`999`, 0], // above max clamps to 360, which wraps to 0
+    [`-90`, 0], // below min clamps to 0
+    [`360`, 0], // the wrap boundary itself
+    [`359`, 359],
+    [`180`, 180],
+  ])(`rotation input %s lands on %i degrees`, async (typed, degrees) => {
+    const state = $state({ scene_props: { ...DEFAULTS.structure } })
+    const target = await mount_bound_controls(state)
+    const [number_input] = target.querySelectorAll<HTMLInputElement>(
+      `[data-key="rotation"] input[type="number"]`,
+    )
+    const [range_input] = target.querySelectorAll<HTMLInputElement>(
+      `[data-key="rotation"] input[type="range"]`,
+    )
+    set_input(number_input, typed)
+    await tick()
+    expect(range_input.valueAsNumber).toBe(degrees)
+    expect(state.scene_props.rotation[0]).toBeCloseTo((degrees * Math.PI) / 180, 12)
   })
 })
 
@@ -555,12 +548,8 @@ describe(`StructureControls layout`, () => {
 const mount_persisted_controls = async () => {
   save_structure_view_state(
     create_structure_view_state({
-      scene_props: {
-        atom_radius: 1.35,
-        ambient_light: 2.5,
-        show_trajectory_lines: true,
-      },
-      lattice_props: { cell_edge_opacity: 0.75 },
+      scene_props: { atom_radius: 1.35, ambient_light: 2.5, cell_edge_opacity: 0.75 },
+      show_trajectory_lines: true,
       color_scheme: `Jmol`,
       background_color: `#123456`,
       background_opacity: 0.4,
@@ -571,14 +560,6 @@ const mount_persisted_controls = async () => {
   )
   const state = $state({
     scene_props: { ...DEFAULTS.structure },
-    lattice_props: {
-      cell_edge_opacity: DEFAULTS.structure.cell_edge_opacity,
-      cell_surface_opacity: DEFAULTS.structure.cell_surface_opacity,
-      cell_edge_color: DEFAULTS.structure.cell_edge_color,
-      cell_surface_color: DEFAULTS.structure.cell_surface_color,
-      cell_edge_width: DEFAULTS.structure.cell_edge_width,
-      show_cell_vectors: DEFAULTS.structure.show_cell_vectors,
-    },
     color_scheme: DEFAULTS.color_scheme,
     background_color: undefined,
     background_opacity: DEFAULTS.background_opacity,
@@ -595,8 +576,7 @@ describe(`StructureControls reactive props`, () => {
   test(`restores persisted settings and treats them as the reset snapshot`, async () => {
     const { state, target } = await mount_persisted_controls()
     expect(state).toMatchObject({
-      scene_props: { atom_radius: 1.35, ambient_light: 2.5 },
-      lattice_props: { cell_edge_opacity: 0.75 },
+      scene_props: { atom_radius: 1.35, ambient_light: 2.5, cell_edge_opacity: 0.75 },
       color_scheme: `Jmol`,
       background_color: `#123456`,
       background_opacity: 0.4,

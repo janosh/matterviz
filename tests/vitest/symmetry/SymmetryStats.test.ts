@@ -1,12 +1,13 @@
+import type { SymmetryDataset } from '$lib/symmetry'
 import { SymmetryStats } from '$lib/symmetry'
-import type { MoyoDataset } from '@spglib/moyo-wasm'
 import { flushSync, mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
-import { doc_query } from '../setup'
+import { doc_query, make_wyckoff_dataset } from '../setup'
 
-// Helper function to create mock MoyoDataset for testing
-function create_mock_sym_data(overrides: Partial<MoyoDataset> = {}): MoyoDataset {
+// Mock dataset: one H atom on Wyckoff `a`, space group 225, plus the given overrides
+function create_mock_sym_data(overrides: Partial<SymmetryDataset> = {}): SymmetryDataset {
   const default_data = {
+    ...make_wyckoff_dataset([[0, 0, 0]], [1], [`a`]),
     number: 225,
     hm_symbol: `Fm-3m`,
     hall_number: 523,
@@ -25,20 +26,12 @@ function create_mock_sym_data(overrides: Partial<MoyoDataset> = {}): MoyoDataset
         translation: [0.5, 0.0, 0.0] as const,
       },
     ],
-    std_cell: {
-      lattice: {
-        basis: [5.0, 0.0, 0.0, 0.0, 5.0, 0.0, 0.0, 0.0, 5.0] as const,
-      },
-      positions: [[0.0, 0.0, 0.0]],
-      numbers: [1] as const,
-    },
-    wyckoffs: [`a`],
   }
-  return { ...default_data, ...overrides } as MoyoDataset
+  return { ...default_data, ...overrides } as SymmetryDataset
 }
 
 describe(`SymmetryStats`, () => {
-  test.each<MoyoDataset | null | undefined>([null, undefined])(
+  test.each<SymmetryDataset | null | undefined>([null, undefined])(
     `displays no-data message when sym_data is %s`,
     (sym_data) => {
       mount(SymmetryStats, { target: document.body, props: { sym_data } })
@@ -209,29 +202,28 @@ describe(`SymmetryStats`, () => {
   })
 
   describe(`Stats grid section`, () => {
+    // Distinct orbits, not atoms: two H on `a` + one He on `b` are 2 Wyckoff positions
     test.each([
-      { wyckoffs: [`a`], numbers: [1], expected: 1 },
-      { wyckoffs: [`a`, `b`, `c`], numbers: [1, 2, 3], expected: 3 },
-      { wyckoffs: [], numbers: [], expected: 0 },
+      { wyckoffs: [`a`], numbers: [1], expected: 1, sequence: `a` },
+      { wyckoffs: [`a`, `a`, `b`], numbers: [1, 1, 2], expected: 2, sequence: `b a` },
+      { wyckoffs: [`a`, `b`, `c`], numbers: [1, 2, 3], expected: 3, sequence: `c b a` },
+      { wyckoffs: [], numbers: [], expected: 0, sequence: `` },
     ])(
-      `displays wyckoff count: $expected for $numbers.length atoms`,
-      ({ wyckoffs, numbers, expected }) => {
-        // std_cell.numbers determines atom count, wyckoffs provides labels
-        const std_cell = {
-          lattice: { basis: [5.0, 0.0, 0.0, 0.0, 5.0, 0.0, 0.0, 0.0, 5.0] },
-          positions: numbers.map(() => [0.0, 0.0, 0.0]),
-          numbers,
-        }
+      `Wyckoff Positions tile counts $expected distinct orbits`,
+      ({ wyckoffs, numbers, expected, sequence }) => {
+        const positions = numbers.map((_, idx) => [idx / 4, 0, 0])
         mount(SymmetryStats, {
           target: document.body,
           props: {
-            sym_data: create_mock_sym_data({
-              wyckoffs,
-              std_cell,
-            } as Partial<MoyoDataset>),
+            sym_data: create_mock_sym_data(make_wyckoff_dataset(positions, numbers, wyckoffs)),
           },
         })
-        expect(doc_query(`.stats-grid`).textContent).toContain(`${expected}`)
+        const tiles = Array.from(document.querySelectorAll(`.stats-grid > div`)).map((tile) =>
+          tile.textContent?.replaceAll(/\s+/g, ` `).trim(),
+        )
+        expect(tiles).toContain(`Wyckoff Positions ${expected}`)
+        if (sequence) expect(tiles).toContain(`Wyckoff Sequence ${sequence}`)
+        else expect(tiles.some((tile) => tile?.startsWith(`Wyckoff Sequence`))).toBe(false)
       },
     )
 
@@ -289,7 +281,7 @@ describe(`SymmetryStats`, () => {
           { rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1], translation: [0.5, 0.0, 0.0] }, // translation
           { rotation: [-1, 0, 0, 0, -1, 0, 0, 0, 1], translation: [0.0, 0.0, 0.0] }, // rotation
           { rotation: [-1, 0, 0, 0, -1, 0, 0, 0, 1], translation: [0.5, 0.0, 0.0] }, // roto-translation
-        ] as MoyoDataset[`operations`],
+        ] as SymmetryDataset[`operations`],
         expected: { total: `3`, patterns: [`1T`, `1R`, `1RT`] },
       },
     ])(`$desc`, ({ operations, expected }) => {

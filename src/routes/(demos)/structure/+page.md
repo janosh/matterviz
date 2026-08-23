@@ -2,8 +2,6 @@
 
 ```svelte example
 <script lang="ts">
-  import { page } from '$app/state'
-  import { goto } from '$app/navigation'
   import { browser } from '$app/environment'
   import { Structure, type StructureHandlerData } from 'matterviz'
   import { MultiSelect as Select } from 'svelte-widgets'
@@ -11,6 +9,7 @@
   import { molecule_files } from '$site/molecules'
   import FilePicker from '$lib/FilePicker.svelte'
   import { decode_url_safe_base64, get_electro_neg_formula } from '$lib'
+  import { file_param, set_file_param } from '$site/state.svelte'
 
   const default_filename = `Bi2Zr2O8-Fm3m.json`
   let source_filename = $state(default_filename)
@@ -40,7 +39,7 @@
       }
       return
     }
-    const file = page.url.searchParams.get(`file`)
+    const file = file_param()
     if (file && file !== source_filename) {
       source_filename = file
       display_filename = file
@@ -55,12 +54,7 @@
     display_filename = data.filename ?? source_filename
     if (hash_structure_string) return
     source_filename = data.source_filename ?? source_filename
-    page.url.searchParams.set(`file`, source_filename)
-    goto(`${page.url.pathname}?${page.url.searchParams.toString()}`, {
-      replaceState: true,
-      keepFocus: true,
-      noScroll: true,
-    })
+    set_file_param(source_filename)
   }}
 >
   <h3 style="position: absolute; margin: 1ex 1em; font-family: monospace; z-index: 1">

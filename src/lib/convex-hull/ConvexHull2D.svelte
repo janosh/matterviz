@@ -194,7 +194,9 @@
         radius: sized ? base_radius * (hl?.size_multiplier ?? 1) : base_radius,
         symbol_type: entry.marker && marker_d3_name(entry.marker),
         is_highlighted: Boolean(hl),
-        highlight_effect: hl?.effect,
+        // size/colour effects are already applied above via radius/fill
+        highlight_effect:
+          hl?.effect === `pulse` || hl?.effect === `glow` ? hl.effect : undefined,
         highlight_color: hl?.color,
       }
     })
@@ -301,8 +303,12 @@
   <line x1={pad.l} x2={width - pad.r} y1={y0} y2={y0} {...stroke} />
 {/snippet}
 
-{#if entries_prop === undefined}
-  <MissingConvexHullData {...rest} style="{style}; height: var(--hull-height, 500px)" />
+{#if entries_prop === undefined || hull_data.error}
+  <MissingConvexHullData
+    {...rest}
+    error={hull_data.error}
+    style="{style}; height: var(--hull-height, 500px)"
+  />
 {:else}
   <ScatterPlot
     {...rest}

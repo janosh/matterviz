@@ -1,8 +1,8 @@
 // Gather whole-trajectory velocities (or the positions to differentiate) for VACF/VDOS.
-import type { Vec3 } from '$lib/math'
+import { is_finite_vec3_like } from '$lib/math'
 import { collect_trajectory_positions } from '$lib/trajectory/analysis'
 import type {
-  ParseProgress,
+  CollectPositionsOptions,
   TrajectoryFrame,
   TrajectoryPositionStream,
   TrajectoryRun,
@@ -19,15 +19,13 @@ import type { VacfInput } from './index'
 // VacfInput.velocity_unit unset and calc_vacf labels stored VACF as file velocity units.
 export const VELOCITY_SITE_PROPERTY = `velocity`
 
-interface VacfCollectOptions {
-  // Collect every Nth frame; use `suggest_vacf_frame_stride` to stay inside the budget.
-  // Note that striding coarsens the velocity sampling and so lowers the VDOS Nyquist
-  // frequency by the same factor — a stride of 10 aliases everything above f_Nyquist/10.
-  frame_stride?: number
-  max_bytes?: number
-  on_progress?: (progress: ParseProgress) => void
-  signal?: AbortSignal
-}
+// Use `suggest_vacf_frame_stride` for a frame_stride that stays inside the budget. Note that
+// striding coarsens the velocity sampling and so lowers the VDOS Nyquist frequency by the
+// same factor — a stride of 10 aliases everything above f_Nyquist/10.
+type VacfCollectOptions = Pick<
+  CollectPositionsOptions,
+  `frame_stride` | `max_bytes` | `on_progress` | `signal`
+>
 
 // Frame stride that keeps positions AND velocities inside `max_bytes`, or null when the
 // atom count is not yet known (no frame has been read). Budgets two buffers whenever the
@@ -42,16 +40,13 @@ export function suggest_vacf_frame_stride(
   return suggest_frame_stride(run.frame_count, n_atoms * buffers, max_bytes)
 }
 
-const is_vec3 = (value: unknown): value is Vec3 =>
-  Array.isArray(value) && value.length === 3 && value.every(Number.isFinite)
-
 const site_velocity = (frame: TrajectoryFrame, atom_idx: number): unknown =>
   frame.structure.sites[atom_idx]?.properties?.[VELOCITY_SITE_PROPERTY]
 
 // A frame carries velocities or it does not; write_frame_velocities enforces that
 // all-or-nothing rule, so site 0 speaks for the whole frame.
 const has_velocities = (frame?: TrajectoryFrame): boolean =>
-  frame !== undefined && is_vec3(site_velocity(frame, 0))
+  frame !== undefined && is_finite_vec3_like(site_velocity(frame, 0))
 
 // Velocity channel of a streamed position sweep, if one was requested and produced.
 //
@@ -81,12 +76,6 @@ export async function collect_vacf_input(
   run: TrajectoryRun,
   options: VacfCollectOptions = {},
 ): Promise<VacfInput> {
-  const {
-    frame_stride = 1,
-    max_bytes = DEFAULT_POSITION_STREAM_MAX_BYTES,
-    on_progress,
-    signal,
-  } = options
   // 3 rather than MSD's 2: central differences drop the first and last frame, so a
   // 2-frame run leaves no velocity at all
   if (run.frame_count < 3) {
@@ -94,17 +83,12 @@ export async function collect_vacf_input(
       `collect_vacf_input: need at least 3 frames to differentiate velocities, got ${run.frame_count}`,
     )
   }
-
-  const stream = await collect_trajectory_positions(
-    run,
-    {
-      frame_stride,
-      max_bytes,
-      ...(has_velocities(run.preview) ? { vector_keys: [VELOCITY_SITE_PROPERTY] } : {}),
-    },
-    on_progress,
-    `VACF`,
-    signal,
-  )
+  const stream = await collect_trajectory_positions(run, {
+    frame_stride: 1,
+    max_bytes: DEFAULT_POSITION_STREAM_MAX_BYTES,
+    ...options,
+    ...(has_velocities(run.preview) ? { vector_keys: [VELOCITY_SITE_PROPERTY] } : {}),
+    analysis_name: `VACF`,
+  })
   return { ...stream, velocities: stream_velocities(stream) }
 }

@@ -326,3 +326,31 @@ export function normalize_system_name(input: string): string {
   // Sort alphabetically and join with hyphen
   return elements.toSorted().join(`-`)
 }
+
+// Extract reference/citation from TDB comments
+export function extract_tdb_reference(comments: string[]): string | null {
+  const ref_keywords = [`reference`, `citation`, `database`, `assessed by`]
+  for (const comment of comments) {
+    const lower = comment.toLowerCase()
+    if (ref_keywords.some((kw) => lower.includes(kw))) {
+      const ref = comment.replace(/^\$\s*/, ``).trim()
+      // Skip incomplete references (must have substantial content after keyword)
+      if (ref.length > 30 && !ref.endsWith(`from`)) return ref
+    }
+  }
+  return null
+}
+
+// Summarize sublattice models from TDB phases
+export function summarize_models(
+  phases: { sublattice_count: number; sublattice_sites: number[] }[],
+): string {
+  const counts = new Map<number, number>()
+  for (const phase of phases) {
+    counts.set(phase.sublattice_count, (counts.get(phase.sublattice_count) ?? 0) + 1)
+  }
+  return [...counts.entries()]
+    .toSorted(([sl_a], [sl_b]) => sl_a - sl_b)
+    .map(([sublattices, count]) => `${count}×${sublattices}-SL`)
+    .join(`, `)
+}

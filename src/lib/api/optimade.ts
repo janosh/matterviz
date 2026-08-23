@@ -176,7 +176,7 @@ export async function fetch_optimade_structure(
   structure_id: string,
   provider: string,
   providers: OptimadeProvider[],
-): Promise<OptimadeStructure | null> {
+): Promise<OptimadeStructure> {
   const api_base = await get_api_base(provider, providers)
   const encoded_id = encode_structure_id(structure_id)
   const response = await fetch_with_cors_proxy(`${api_base}/structures/${encoded_id}`)

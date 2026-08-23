@@ -4,10 +4,8 @@ import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { AnyStructure, LatticeType, Site } from '$lib/structure'
 import {
-  convert_instanced_meshes_to_regular,
   create_structure_filename,
   export_structure_as,
-  generate_mtl_content,
   structure_to_cif_str,
   structure_to_json_str,
   structure_to_poscar_str,
@@ -17,33 +15,11 @@ import { parse_cif, parse_poscar, parse_structure_file, parse_xyz } from '$lib/s
 import ba_ti_o3_tetragonal from '$site/structures/BaTiO3-tetragonal.poscar?raw'
 import extended_xyz_quartz from '$site/structures/quartz.extxyz?raw'
 import tio2_cif from '$site/structures/TiO2.cif?raw'
-import { MTLLoader } from 'three/examples/jsm/loaders/MTLLoader.js'
-import type { MeshPhongMaterial } from 'three/webgpu'
-import {
-  BufferGeometry,
-  Color,
-  Float32BufferAttribute,
-  InstancedBufferAttribute,
-  InstancedMesh,
-  Mesh,
-  MeshStandardMaterial,
-  Scene,
-  ShaderMaterial,
-  SphereGeometry,
-} from 'three/webgpu'
 import { assert, beforeEach, describe, expect, it, test, vi } from 'vitest'
 import { complex_structure, simple_structure } from '../setup'
 
 vi.mock(`$lib/io/fetch`, () => ({ download: vi.fn() }))
 const mock_download = vi.mocked(download)
-
-// Mock the get_electro_neg_formula function
-vi.mock(`$lib/composition`, async (import_original) => {
-  const actual = await import_original<Record<string, unknown>>()
-  return { ...actual, get_electro_neg_formula: vi.fn() }
-})
-const { get_electro_neg_formula } = await import(`$lib/composition`)
-const mock_get_electro_neg_formula = vi.mocked(get_electro_neg_formula)
 
 // Local factories to cut fixture boilerplate: single-species site + diagonal lattice
 const make_site = (
@@ -77,23 +53,22 @@ const water_xyz_rows = [
 // Test cases for structure export
 // oxfmt-ignore
 const export_cases = [
-  { name: `simple structure`, structure: simple_structure, formula: `H2O`,
+  { name: `simple structure`, structure: simple_structure,
     filename_contains: [`test_h2o`, `H2O`, `3sites`],
-    expected_xyz: [`3`, `test_h2o H2O`, ...water_xyz_rows] },
-  { name: `complex structure`, structure: complex_structure, formula: `LiFeP4O7`,
-    filename_contains: [`test_complex`, `LiFeP4O7`, `7sites`],
+    expected_xyz: [`3`, `test_h2o H2 O`, ...water_xyz_rows] },
+  { name: `complex structure`, structure: complex_structure,
+    filename_contains: [`test_complex`, `LiFePO4`, `7sites`],
     expected_xyz: [
-      `7`, `test_complex LiFeP4O7`, `Li 0.000000 0.000000 0.000000`,
+      `7`, `test_complex Li Fe P O4`, `Li 0.000000 0.000000 0.000000`,
       `Fe 2.500000 0.000000 0.000000`, `P 0.000000 2.500000 0.000000`,
       `O 1.250000 1.250000 0.000000`, `O 3.750000 1.250000 0.000000`,
       `O 1.250000 3.750000 0.000000`, `O 3.750000 3.750000 0.000000`,
     ] },
   { name: `structure without ID`, structure: { ...simple_structure, id: undefined },
-    formula: `H2O`, filename_contains: [`H2O`, `3sites`],
-    expected_xyz: [`3`, `H2O`, ...water_xyz_rows] },
+    filename_contains: [`H2O`, `3sites`],
+    expected_xyz: [`3`, `H2 O`, ...water_xyz_rows] },
   { name: `empty structure`, structure: { ...simple_structure, sites: [] },
-    formula: `Empty`, filename_contains: [`test_h2o`, `Empty`],
-    expected_xyz: [`0`, `test_h2o Empty`] },
+    filename_contains: [`test_h2o`], expected_xyz: [`0`, `test_h2o`] },
 ]
 const export_fmt_cases = export_cases.flatMap((test_case) => [
   { ...test_case, fmt: `xyz` as const, mime: `text/plain`, ext: `xyz` },
@@ -101,16 +76,12 @@ const export_fmt_cases = export_cases.flatMap((test_case) => [
 ])
 
 describe(`Export functionality`, () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-    mock_get_electro_neg_formula.mockReturnValue(`H2O`)
-  })
+  beforeEach(() => vi.clearAllMocks())
 
   describe(`Structure export (XYZ/JSON)`, () => {
     it.each(export_fmt_cases)(
       `exports $name to $fmt`,
-      ({ structure, expected_xyz, formula, filename_contains, fmt, mime, ext }) => {
-        mock_get_electro_neg_formula.mockReturnValue(formula)
+      ({ structure, expected_xyz, filename_contains, fmt, mime, ext }) => {
         export_structure_as(fmt, structure)
         expect(mock_download).toHaveBeenCalledOnce()
         const [content, filename, mime_type] = mock_download.mock.calls[0]
@@ -127,15 +98,10 @@ describe(`Export functionality`, () => {
       },
     )
 
-    it.each([
-      { fmt: `xyz`, error_msg: `Failed to export XYZ:` },
-      { fmt: `json`, error_msg: `Failed to export JSON:` },
-    ] as const)(`handles undefined structure gracefully`, ({ fmt, error_msg }) => {
-      const console_error = vi.spyOn(console, `error`).mockImplementation(() => {})
-      export_structure_as(fmt, undefined)
-      expect(console_error).toHaveBeenCalledWith(error_msg, expect.any(Error))
+    it.each([`cif`, `poscar`] as const)(`throws for a molecule as %s`, (fmt) => {
+      const molecule = { sites: simple_structure.sites }
+      expect(() => export_structure_as(fmt, molecule)).toThrow(`No lattice information`)
       expect(mock_download).not.toHaveBeenCalled()
-      console_error.mockRestore()
     })
   })
 
@@ -331,39 +297,33 @@ describe(`Export functionality`, () => {
     const repeated_sites = (count: number, element: ElementSymbol) =>
       Array.from({ length: count }, () => make_site(element))
 
-    it(`strips HTML tags from chemical formulas`, () => {
-      // Mock returns HTML when called without plain_text flag
-      mock_get_electro_neg_formula.mockImplementation((_struct, plain_text) =>
-        plain_text ? `Li2O` : `Li<sub>2</sub>O`,
-      )
+    it(`uses the plain-text formula (no HTML subscripts) with spaces removed`, () => {
+      // Li2O renders as Li<sub>2</sub>O in HTML mode, so any markup here means the
+      // plain_text flag was dropped
       const structure = {
         id: `lithium_oxide`,
-        sites: repeated_sites(3, `Li`),
+        sites: [...repeated_sites(2, `Li`), make_site(`O`)],
       } as AnyStructure
-      const result = create_structure_filename(structure, `xyz`)
-      expect(result).toContain(`Li2O`)
-      expect(result).not.toMatch(/<\/?sub>/)
+      expect(create_structure_filename(structure, `xyz`)).toBe(`lithium_oxide-Li2O-3sites.xyz`)
 
-      // Verify plain_text flag is always true to prevent HTML leaking into filenames
-      expect(mock_get_electro_neg_formula).toHaveBeenCalledWith(expect.any(Object), true)
-    })
-
-    it(`removes spaces from chemical formulas`, () => {
-      mock_get_electro_neg_formula.mockReturnValue(`Li4 Fe4 P4 O16`)
-      const structure = { id: `mp-19017`, sites: repeated_sites(28, `Li`) } as AnyStructure
-      expect(create_structure_filename(structure, `png`)).toBe(
-        `mp-19017-Li4Fe4P4O16-28sites.png`,
-      )
+      const two_element = {
+        id: `mp-19017`,
+        sites: [...repeated_sites(4, `Li`), ...repeated_sites(4, `O`)],
+      } as AnyStructure
+      expect(create_structure_filename(two_element, `png`)).toBe(`mp-19017-Li4O4-8sites.png`)
+      // no extension yields the bare basename (3D exporters append .obj/.mtl/.glb themselves)
+      expect(create_structure_filename(two_element)).toBe(`mp-19017-Li4O4-8sites`)
+      expect(create_structure_filename(undefined)).toBe(`structure`)
+      expect(create_structure_filename(undefined, `cif`)).toBe(`structure.cif`)
     })
 
     // oxfmt-ignore
     it.each([
       { desc: `sanitizes invalid chars and condenses underscores`, id: `A/B:C*D?E"FH|`,
-        formula: `Li2/O`, ext: `xyz`, expected: `A_B_C_D_E_FH-Li2_O-1sites.xyz` },
+        ext: `xyz`, expected: `A_B_C_D_E_FH-H-1sites.xyz` },
       { desc: `handles consecutive invalid characters`, id: `___test///name:::here___`,
-        formula: `test`, ext: `cif`, expected: `test_name_here-test-1sites.cif` },
-    ])(`$desc`, ({ id, formula, ext, expected }) => {
-      mock_get_electro_neg_formula.mockReturnValue(formula)
+        ext: `cif`, expected: `test_name_here-H-1sites.cif` },
+    ])(`$desc`, ({ id, ext, expected }) => {
       const structure = { id, sites: [make_site(`H`)] } as AnyStructure
       const result = create_structure_filename(structure, ext)
       expect(result).toBe(expected)
@@ -371,7 +331,6 @@ describe(`Export functionality`, () => {
     })
 
     it(`avoids null/undefined in filename from symmetry/lattice`, () => {
-      mock_get_electro_neg_formula.mockReturnValue(`Test`)
       const structure = {
         id: `test`,
         sites: [make_site(`H`)],
@@ -379,7 +338,7 @@ describe(`Export functionality`, () => {
         lattice: { lattice_system: undefined },
       } as AnyStructure
       const result = create_structure_filename(structure, `xyz`)
-      expect(result).toBe(`test-Test-1sites.xyz`)
+      expect(result).toBe(`test-H-1sites.xyz`)
       expect(result).not.toMatch(/null|undefined/)
     })
   })
@@ -650,9 +609,9 @@ describe(`Export functionality`, () => {
     // pbc rides along with the cell: an aperiodic axis is only meaningful when there is one
     // oxfmt-ignore
     it.each([
-      { name: `with lattice information`, expected_comment: `lattice_test H2O Lattice="${cube2_lattice_str}" Properties=species:S:1:pos:R:3 pbc="T T T"`,
+      { name: `with lattice information`, expected_comment: `lattice_test H Lattice="${cube2_lattice_str}" Properties=species:S:1:pos:R:3 pbc="T T T"`,
         structure: { id: `lattice_test`, sites: [make_site(`H`)], lattice: diag_lattice(2) } },
-      { name: `without lattice information`, expected_comment: `no_lattice_test H2O Properties=species:S:1:pos:R:3`,
+      { name: `without lattice information`, expected_comment: `no_lattice_test H Properties=species:S:1:pos:R:3`,
         structure: { id: `no_lattice_test`, sites: [make_site(`H`)] } },
     ])(`handles XYZ $name correctly`, ({ structure, expected_comment }) => {
       expect(structure_to_xyz_str(structure).split(`\n`)[1]).toBe(expected_comment)
@@ -802,221 +761,5 @@ describe(`Round-trip CIF and POSCAR exports`, () => {
     assert(round_tripped, `Failed to parse exported file ${filename}`)
 
     assert_structures_equal(original, round_tripped, filename)
-  })
-})
-
-// Tests for 3D export color preservation (Issue #203)
-describe(`3D Export Color Preservation`, () => {
-  describe(`convert_instanced_meshes_to_regular color precedence`, () => {
-    // Colors below use component form (already in working color space) so values
-    // round-trip exactly through instanceColor buffers and material colors
-    const converted_group_colors = (scene: Scene, name: string): number[][] => {
-      const converted = convert_instanced_meshes_to_regular(scene)
-      const colors: number[][] = []
-      converted.traverse((obj) => {
-        if (obj.name === name) {
-          for (const child of obj.children) {
-            const mat = (child as Mesh).material as MeshStandardMaterial
-            colors.push([mat.color.r, mat.color.g, mat.color.b])
-          }
-        }
-      })
-      return colors
-    }
-
-    test(`reads per-instance colors instead of the white base material`, () => {
-      // Mirrors InstancedAtoms/ArrowInstances: white material + instanceColor buffer
-      const scene = new Scene()
-      const atoms = new InstancedMesh(
-        new SphereGeometry(0.5, 4, 4),
-        new MeshStandardMaterial(),
-        2,
-      )
-      atoms.name = `atoms`
-      atoms.setColorAt(0, new Color(1, 0, 0))
-      atoms.setColorAt(1, new Color(0, 0, 1))
-      scene.add(atoms)
-
-      expect(converted_group_colors(scene, `atoms`)).toEqual([
-        [1, 0, 0],
-        [0, 0, 1],
-      ])
-    })
-
-    test(`keeps the material color when every instance color is white`, () => {
-      // Mirrors material-colored instancing (for example ScatterPlot3D): Three creates an
-      // all-white instanceColor buffer that multiplies, rather than replaces, material.color.
-      const scene = new Scene()
-      const material_colored = new InstancedMesh(
-        new SphereGeometry(0.5, 4, 4),
-        new MeshStandardMaterial({ color: new Color(0, 1, 0) }),
-        1,
-      )
-      material_colored.name = `material-colored`
-      material_colored.setColorAt(0, new Color(1, 1, 1))
-      scene.add(material_colored)
-
-      expect(converted_group_colors(scene, `material-colored`)).toEqual([[0, 1, 0]])
-    })
-
-    // Gradient bonds carry two colors per instance in geometry attributes; the export takes
-    // their per-channel midpoint and ignores both the shader material and instanceColor
-    test(`shader-material bond gradients win over instance colors, per instance`, () => {
-      const scene = new Scene()
-      const bond_geometry = new SphereGeometry(0.5, 4, 4)
-      bond_geometry.setAttribute(
-        `instanceColorStart`,
-        new InstancedBufferAttribute(new Float32Array([1, 0, 0, 0.2, 0.4, 0.6, 0, 0, 1]), 3),
-      )
-      bond_geometry.setAttribute(
-        `instanceColorEnd`,
-        new InstancedBufferAttribute(new Float32Array([0, 0, 1, 0.8, 0.2, 0.4, 0, 1, 0]), 3),
-      )
-      const bonds = new InstancedMesh(
-        bond_geometry,
-        new ShaderMaterial({ vertexShader: ``, fragmentShader: `` }),
-        3,
-      )
-      bonds.name = `bonds`
-      for (let idx = 0; idx < 3; idx++) bonds.setColorAt(idx, new Color(0, 1, 0))
-      scene.add(bonds)
-
-      const colors = converted_group_colors(scene, `bonds`)
-      expect(colors).toHaveLength(3)
-      for (const [idx, expected] of [
-        [0.5, 0, 0.5],
-        [0.5, 0.3, 0.5],
-        [0, 0.5, 0.5],
-      ].entries()) {
-        for (const channel of [0, 1, 2])
-          expect(colors[idx][channel]).toBeCloseTo(expected[channel], 5)
-      }
-    })
-
-    // Per-instance and non-standard color attributes break GLTF accessor-count validation,
-    // so the clone is stripped of them while the standard `position`/`color` stay and the
-    // live scene's geometry is untouched
-    test(`cleans cloned geometry without mutating the live scene`, () => {
-      const scene = new Scene()
-      const geometry = new BufferGeometry()
-      for (const attr of [
-        `instanceColorStart`,
-        `instanceColorEnd`,
-        `customColor`,
-        `position`,
-        `color`,
-      ]) {
-        geometry.setAttribute(attr, new Float32BufferAttribute([1, 0, 0], 3))
-      }
-      scene.add(new Mesh(geometry, new MeshStandardMaterial()))
-
-      const converted = convert_instanced_meshes_to_regular(scene)
-      const converted_mesh = converted.children[0]
-      if (!(converted_mesh instanceof Mesh)) throw new Error(`Expected a converted mesh`)
-      expect(converted_mesh.geometry).not.toBe(geometry)
-      const kept = [
-        `instanceColorStart`,
-        `instanceColorEnd`,
-        `customColor`,
-        `position`,
-        `color`,
-      ].filter((attr) => converted_mesh.geometry.hasAttribute(attr))
-      expect(kept).toEqual([`position`, `color`])
-      expect(geometry.hasAttribute(`instanceColorStart`)).toBe(true)
-    })
-  })
-
-  describe(`generate_mtl_content`, () => {
-    test(`header and empty scene`, () => {
-      const mtl = generate_mtl_content(new Scene())
-      expect(mtl).toContain(`# MTL file generated by MatterViz`)
-      expect(mtl).not.toContain(`newmtl`)
-    })
-
-    // Kd is written in sRGB, so the endpoints pass through but mid-tones do not: 0.5 working
-    // (linear) is 0.735361 sRGB. Emitting the linear value instead reads back ~2x too dark.
-    // Ka is 20% of the diffuse in LINEAR light, then encoded — scaling the encoded value
-    // instead would decode to ~4% and leave the ambient term far too dark.
-    const rgb_cases = [
-      {
-        name: `red`,
-        rgb: [1, 0, 0],
-        kd: `1.000000 0.000000 0.000000`,
-        ka: `0.484535 0.000000 0.000000`,
-      },
-      {
-        name: `green`,
-        rgb: [0, 1, 0],
-        kd: `0.000000 1.000000 0.000000`,
-        ka: `0.000000 0.484535 0.000000`,
-      },
-      {
-        name: `blue`,
-        rgb: [0, 0, 1],
-        kd: `0.000000 0.000000 1.000000`,
-        ka: `0.000000 0.000000 0.484535`,
-      },
-      {
-        name: `purple`,
-        rgb: [0.5, 0, 0.5],
-        kd: `0.735361 0.000000 0.735361`,
-        ka: `0.349196 0.000000 0.349196`,
-      },
-    ]
-
-    const mtl_for_color = (rgb: number[], name = `test`): string => {
-      const scene = new Scene()
-      const mat = new MeshStandardMaterial({ color: new Color(...rgb) })
-      mat.name = name
-      scene.add(new Mesh(new SphereGeometry(1), mat))
-      return generate_mtl_content(scene)
-    }
-
-    // Ka is string-only (MTLLoader ignores it). Kd must also round-trip through MTLLoader,
-    // which treats it as sRGB — writing linear values reads back ~2x too dark.
-    test.each(rgb_cases)(`$name Kd/Ka strings and MTLLoader round-trip`, ({ rgb, kd, ka }) => {
-      const mtl = mtl_for_color(rgb)
-      expect(mtl).toContain(`Kd ${kd}`)
-      expect(mtl).toContain(`Ka ${ka}`)
-      const { color } = new MTLLoader().parse(mtl, ``).create(`test`) as MeshPhongMaterial
-      for (const [idx, channel] of [color.r, color.g, color.b].entries()) {
-        // six-decimal sRGB quantization → ~1e-5 linear; linear-write error is ~0.29
-        expect(channel, `channel ${idx}`).toBeCloseTo(rgb[idx], 4)
-      }
-    })
-
-    test(`material properties and deduplication`, () => {
-      const scene = new Scene()
-      const geom = new SphereGeometry(1)
-
-      // Add two meshes with same material name
-      const mat1 = new MeshStandardMaterial({ color: new Color(1, 0, 0) })
-      mat1.name = `shared`
-      scene.add(new Mesh(geom, mat1))
-      const mat2 = new MeshStandardMaterial({ color: new Color(0, 1, 0) })
-      mat2.name = `shared`
-      scene.add(new Mesh(geom, mat2))
-
-      const mtl = generate_mtl_content(scene)
-      expect(mtl.match(/newmtl shared/g)).toHaveLength(1) // deduplicated
-      expect(mtl).toContain(`Ks`) // specular
-      expect(mtl).toContain(`Ns`) // specular exponent
-      expect(mtl).toContain(`Ka`) // ambient
-      expect(mtl).toContain(`illum`) // illumination
-    })
-
-    // unnamed materials and materials without a color (ShaderMaterial) both fall back
-    test.each([
-      [`unnamed MeshStandardMaterial`, () => new MeshStandardMaterial()],
-      [`ShaderMaterial`, () => new ShaderMaterial({ vertexShader: ``, fragmentShader: `` })],
-    ])(`default name and white color for %s`, (_label, make_material) => {
-      const scene = new Scene()
-      scene.add(new Mesh(new SphereGeometry(1), make_material()))
-      const mtl = generate_mtl_content(scene)
-      expect(mtl).toContain(`newmtl default_material`)
-      // white default takes the same linear-then-encode path as a real color
-      expect(mtl).toContain(`Kd 1.000000 1.000000 1.000000`)
-      expect(mtl).toContain(`Ka 0.484535 0.484535 0.484535`)
-    })
   })
 })

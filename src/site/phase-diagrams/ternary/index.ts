@@ -1,20 +1,17 @@
 // Ternary chemical systems for the /phase-diagram/ternary demo: Alexandria PBE entries
-// (fetch-alexandria-ternaries.py) plus ternary subsets of the Materials Project quaternaries
+// (src/scripts/fetch_alexandria_ternaries.py) plus ternary subsets of the Materials Project quaternaries
 // used by the convex-hull demo. Loaded lazily: vite-plugin-json-gz decompresses at build time
 // and each glob entry becomes its own chunk.
 import type { PhaseData } from '$lib/convex-hull/types'
 import type { ElementSymbol } from '$lib/element'
 import type { FileInfo } from '$lib/io'
+import { hull_system_name, quaternary_loader } from '$site/convex-hull'
 
 const alexandria_files = import.meta.glob<{ default: PhaseData[] }>(`./*.json.gz`, {
   eager: false,
 })
-const mp_quaternary_files = import.meta.glob<{ default: PhaseData[] }>(
-  `$site/convex-hull/quaternaries/*.json.gz`,
-  { eager: false },
-)
 
-// Demo categories per system (mirrors SYSTEMS in fetch-alexandria-ternaries.py)
+// Demo categories per system (mirrors SYSTEMS in src/scripts/fetch_alexandria_ternaries.py)
 const CATEGORIES: Record<string, [category: string, icon: string]> = {
   'Li-Co-O': [`Li-ion cathodes`, `🔋`],
   'Li-Mn-O': [`Li-ion cathodes`, `🔋`],
@@ -45,7 +42,7 @@ export interface TernarySystemFile extends FileInfo {
 
 const alexandria_systems: TernarySystemFile[] = Object.entries(alexandria_files).map(
   ([path, loader]) => {
-    const system = path.split(`/`).pop()?.replace(`.json.gz`, ``) ?? path
+    const system = hull_system_name(path)
     const [category, category_icon] = CATEGORIES[system] ?? [`Other`, `🧪`]
     return {
       name: `${system}.json.gz`,
@@ -65,8 +62,7 @@ const MP_SUBSETS: [file: string, systems: string[]][] = [
   [`Na-Fe-P-O`, [`Na-Fe-O`, `Fe-P-O`, `Na-P-O`]],
 ]
 const mp_systems: TernarySystemFile[] = MP_SUBSETS.flatMap(([file, systems]) => {
-  const loader = mp_quaternary_files[`/src/site/convex-hull/quaternaries/${file}.json.gz`]
-  if (!loader) return []
+  const loader = quaternary_loader(file)
   return systems.map((system) => ({
     name: `MP ${system}.json.gz`,
     label: `${system} (MP)`,

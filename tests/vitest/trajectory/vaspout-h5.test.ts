@@ -7,7 +7,7 @@ import { parse_vaspout_h5_file } from '$lib/trajectory/parse/vaspout-h5'
 import { is_trajectory_file } from '$lib/trajectory/format-detect'
 import type * as h5wasm from 'h5wasm'
 import { describe, expect, it } from 'vitest'
-import { read_binary_test_file } from '../setup'
+import { read_binary_test_file, rejection_of } from '../setup'
 
 const VASPOUT_FIXTURE_DIR = `tests/vitest/fixtures/vasp-hdf5`
 const read_vaspout = (filename: string): ArrayBuffer =>
@@ -100,17 +100,11 @@ describe(`vaspout.h5 parsing`, () => {
   })
 
   it(`throws electronic-only data for bands-only vaspout files`, async () => {
-    const direct = await Promise.resolve()
-      .then(() => parse_fixture(`vaspout-tinisn-bands-only.h5`))
-      .then(
-        () => undefined,
-        (error: unknown) => error,
-      )
-    const dispatched = await open_trajectory(read_vaspout(`vaspout-tinisn-bands-only.h5`), {
-      filename: `vaspout.h5`,
-    }).then(
-      () => undefined,
-      (error: unknown) => error,
+    const direct = await rejection_of(parse_fixture(`vaspout-tinisn-bands-only.h5`))
+    const dispatched = await rejection_of(
+      open_trajectory(read_vaspout(`vaspout-tinisn-bands-only.h5`), {
+        filename: `vaspout.h5`,
+      }),
     )
     for (const error of [direct, dispatched]) {
       expect(error).toBeInstanceOf(VaspoutElectronicOnlyError)
@@ -123,12 +117,7 @@ describe(`vaspout.h5 parsing`, () => {
   // Second no-structure exit: ion species datasets exist but the geometry is
   // missing/torn — files with electronic results render those, others throw.
   it(`falls back to electronic-only when geometry is torn but a DOS exists`, async () => {
-    const error = await Promise.resolve()
-      .then(() => parse_fixture(`vaspout-si-dos-torn-structure.h5`))
-      .then(
-        () => undefined,
-        (reason: unknown) => reason,
-      )
+    const error = await rejection_of(parse_fixture(`vaspout-si-dos-torn-structure.h5`))
     expect(error).toBeInstanceOf(VaspoutElectronicOnlyError)
     if (!(error instanceof VaspoutElectronicOnlyError)) throw error
     const electronic = error.electronic

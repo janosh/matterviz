@@ -3,7 +3,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { gunzipSync, gzipSync } from 'node:zlib'
 import { describe, expect, test } from 'vitest'
-import { three_compat_alias, vite_plugin_json_gz } from '../../src/vite-plugins'
+import {
+  three_compat_alias,
+  vite_plugin_json_gz,
+  vite_plugin_moyo_wasm_source,
+} from '../../src/vite-plugins'
 
 const fixture_path = `${import.meta.dirname}/fixtures/file-viewer/all-viz-types.json.gz`
 const expected_data = JSON.parse(gunzipSync(readFileSync(fixture_path)).toString(`utf-8`))
@@ -85,5 +89,35 @@ describe(`three_compat_alias`, () => {
   test(`resolves to an existing shim regardless of importing config depth`, () => {
     expect(three_compat_alias.replacement).toMatch(/src\/lib\/scene\/three-compat\.ts$/)
     expect(readFileSync(three_compat_alias.replacement, `utf-8`)).toContain(`three`)
+  })
+})
+
+// The plugin keys on wasm-bindgen's exact glue literal; if a moyo-wasm upgrade changes it
+// the rewrite silently stops and bundles resolve the .wasm next to the glue again
+describe(`vite_plugin_moyo_wasm_source`, () => {
+  const glue_id = `/node_modules/@spglib/moyo-wasm/moyo_wasm.js`
+  const glue_literal = `new URL('moyo_wasm_bg.wasm', import.meta.url)`
+  const glue_code = `const wasm_url = ${glue_literal};\nexport default wasm_url`
+  const transform = (code: string, id: string) => {
+    const plugin = vite_plugin_moyo_wasm_source(
+      `test-moyo`,
+      `WASM_SOURCE`,
+      `import x from 'y'\n`,
+    )
+    return (plugin.transform as (code: string, id: string) => unknown)(code, id)
+  }
+
+  test(`replaces the glue literal with the source expression and prepends the prelude`, () => {
+    expect(transform(glue_code, glue_id)).toEqual({
+      code: `import x from 'y'\nconst wasm_url = WASM_SOURCE;\nexport default wasm_url`,
+      map: null,
+    })
+  })
+
+  test.each([
+    [`non-moyo id`, glue_code, `/node_modules/other/index.js`],
+    [`moyo id without the glue literal`, `export const unrelated = 1`, glue_id],
+  ])(`leaves %s untouched`, (_label, code, id) => {
+    expect(transform(code, id)).toBeNull()
   })
 })

@@ -1,6 +1,7 @@
 import { StructureInfoPane } from '$lib'
 import { info_pane_icon } from '$lib/overlays'
-import type { MoyoDataset } from '@spglib/moyo-wasm'
+import type { Vec3 } from '$lib/math'
+import type { SymmetryDataset, WyckoffPos } from '$lib/symmetry'
 import type { ComponentProps } from 'svelte'
 import { mount, tick } from 'svelte'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
@@ -14,7 +15,7 @@ describe(`StructureInfoPane`, () => {
   const mount_info_pane = (props: ComponentProps<typeof StructureInfoPane>) =>
     mount(StructureInfoPane, { target: document.body, props })
 
-  const make_sym_data = (position_count = 1): MoyoDataset => {
+  const make_sym_data = (position_count = 1): SymmetryDataset => {
     const positions = Array.from({ length: position_count }, (): [number, number, number] => [
       0, 0, 0,
     ])
@@ -39,10 +40,19 @@ describe(`StructureInfoPane`, () => {
     }
   }
 
+  // One single-site Wyckoff row per atom, so row and card counts track atom_count together
+  const rows_per_site = (atom_count: number): WyckoffPos[] =>
+    Array.from({ length: atom_count }, (_, idx) => ({
+      wyckoff: `1a`,
+      elem: `H`,
+      abc: [0, 0, 0],
+      site_indices: [idx],
+    }))
+
   test.each([
     [`small`, 1, true],
-    [`collapsed_with_toggle`, 2, false],
-    [`upper_bound_collapsed`, 3, false],
+    [`collapsed_with_toggle`, 50, false],
+    [`upper_bound_collapsed`, 500, false],
   ] as const)(
     `site list and symmetry table threshold behavior: %s`,
     async (_scenario_name, atom_count, expanded_by_default) => {
@@ -51,15 +61,18 @@ describe(`StructureInfoPane`, () => {
         structure,
         pane_open: true,
         sym_data: make_sym_data(atom_count),
-        atom_count_thresholds: [2, 3],
+        wyckoff_positions: rows_per_site(atom_count),
       })
 
       const content = document.body.textContent || ``
       expect(content).toContain(`(${atom_count} sites)`)
       const sites = doc_query<HTMLDetailsElement>(`.sites`)
       expect(sites.open).toBe(expanded_by_default)
+      // site cards page at 100, Wyckoff rows do not
       const default_row_count = expanded_by_default ? atom_count : 0
-      expect(document.querySelectorAll(`.site-card`)).toHaveLength(default_row_count)
+      expect(document.querySelectorAll(`.site-card`)).toHaveLength(
+        Math.min(default_row_count, 100),
+      )
 
       const wyckoff = doc_query<HTMLDetailsElement>(`.wyckoff`)
       expect(wyckoff.open).toBe(expanded_by_default)
@@ -74,10 +87,39 @@ describe(`StructureInfoPane`, () => {
       await tick()
       expect(sites.open).toBe(!expanded_by_default)
       expect(document.querySelectorAll(`.site-card`)).toHaveLength(
-        expanded_by_default ? 0 : atom_count,
+        expanded_by_default ? 0 : Math.min(atom_count, 100),
       )
     },
   )
+
+  // The pane must highlight whatever site indices its rows carry, which the session has
+  // already re-expressed onto the displayed (conventional/primitive/supercell) structure — it
+  // must not recompute rows from sym_data, whose indices address the analyzed cell only
+  test(`Wyckoff row hover and click forward the row's (displayed) site indices`, async () => {
+    const state = { highlighted_sites: [] as number[], selected_sites: [] as number[] }
+    mount_info_pane(
+      bind_props(
+        {
+          structure: get_dummy_structure(`H`, 2, true),
+          pane_open: true,
+          sym_data: make_sym_data(2),
+          wyckoff_positions: [
+            { wyckoff: `8c`, elem: `H`, abc: [0, 0, 0] as Vec3, site_indices: [3, 5, 9] },
+          ],
+        },
+        state,
+      ),
+    )
+    const row = doc_query<HTMLTableRowElement>(`.wyckoff-row`)
+    expect(row.textContent).toContain(`8c`)
+    row.dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
+    expect(state.highlighted_sites).toEqual([3, 5, 9])
+    row.click()
+    await tick()
+    expect(state.selected_sites).toEqual([3, 5, 9])
+    row.dispatchEvent(new MouseEvent(`mouseleave`, { bubbles: true }))
+    expect(state.highlighted_sites).toEqual([])
+  })
 
   // Closed pane stays mounted (display:none); site cards must not rebuild while closed.
   test.each([
@@ -101,13 +143,39 @@ describe(`StructureInfoPane`, () => {
 
   test(`omits sites section entirely above max threshold`, () => {
     const structure = get_dummy_structure(`H`, 600, true)
-    mount_info_pane({ structure, pane_open: true, atom_count_thresholds: [50, 500] })
+    mount_info_pane({ structure, pane_open: true })
 
     const content = document.body.textContent || ``
     expect(content).not.toContain(`Frac.`)
     expect(content).not.toContain(`Cart.`)
     expect(document.querySelector(`.sites`)).toBeNull()
   })
+
+  // `atom_count_thresholds` = [expanded_below, listed_up_to]: the defaults (50, 500) can be
+  // raised so a large structure still lists its sites, or lowered to collapse small ones
+  test.each([
+    // [atom_count, thresholds, list rendered?, expanded by default?]
+    [600, undefined, false, false],
+    [600, [50, 1000], true, false],
+    [600, [1000, 1000], true, true],
+    [30, undefined, true, true],
+    [30, [10, 20], false, false],
+    [30, [10, 100], true, false],
+  ] as const)(
+    `%i sites with atom_count_thresholds=%j lists sites: %s, expanded: %s`,
+    (atom_count, thresholds, listed, expanded) => {
+      const structure = get_dummy_structure(`H`, atom_count, true)
+      mount_info_pane({
+        structure,
+        pane_open: true,
+        ...(thresholds ? { atom_count_thresholds: [...thresholds] } : {}),
+      })
+      const sites = document.querySelector<HTMLDetailsElement>(`.sites`)
+      expect(sites !== null).toBe(listed)
+      expect(sites?.open ?? false).toBe(expanded)
+      expect(document.querySelectorAll(`.site-card`).length > 0).toBe(expanded)
+    },
+  )
 
   test(`site cards hover, filter, select, copy, and keyboard navigate`, async () => {
     const structure = get_dummy_structure(`H`, 3, true)
@@ -173,7 +241,7 @@ describe(`StructureInfoPane`, () => {
 
   test(`windows large expanded site lists`, async () => {
     const structure = get_dummy_structure(`H`, 120, true)
-    mount_info_pane({ structure, pane_open: true, atom_count_thresholds: [50, 500] })
+    mount_info_pane({ structure, pane_open: true })
 
     expect(document.querySelectorAll(`.site-card`)).toHaveLength(0)
     const sites = doc_query<HTMLDetailsElement>(`.sites`)
@@ -197,12 +265,8 @@ describe(`StructureInfoPane`, () => {
   test(`pages to the selected site when it sits beyond the first page`, async () => {
     const structure = get_dummy_structure(`H`, 120, true)
     const scroll_spy = vi.spyOn(HTMLElement.prototype, `scrollIntoView`)
-    mount_info_pane({
-      structure,
-      pane_open: true,
-      atom_count_thresholds: [200, 500],
-      selected_sites: [110],
-    })
+    mount_info_pane({ structure, pane_open: true, selected_sites: [110] })
+    doc_query<HTMLDetailsElement>(`.sites summary`).click()
     await tick()
 
     expect(document.querySelector(`.pager`)?.textContent).toContain(`21-120 of 120`)
@@ -237,12 +301,7 @@ describe(`StructureInfoPane`, () => {
 
   test(`places symmetry section between Cell and Sites content`, () => {
     const structure = get_dummy_structure(`H`, 2, true)
-    mount_info_pane({
-      structure,
-      pane_open: true,
-      sym_data: make_sym_data(),
-      atom_count_thresholds: [10, 500],
-    })
+    mount_info_pane({ structure, pane_open: true, sym_data: make_sym_data() })
 
     const section_titles = Array.from(
       document.querySelectorAll(`.structure-info h4, .sites summary`),

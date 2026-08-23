@@ -48,11 +48,11 @@ describe(`StructurePopup`, () => {
       expect_close: false,
     },
   ])(`$name`, ({ props = {}, act, expect_close }) => {
-    const onclose = vi.fn()
-    mount_popup({ onclose, ...props })
+    const on_close = vi.fn()
+    mount_popup({ on_close, ...props })
     act()
-    if (expect_close) expect(onclose).toHaveBeenCalledOnce()
-    else expect(onclose).not.toHaveBeenCalled()
+    if (expect_close) expect(on_close).toHaveBeenCalledOnce()
+    else expect(on_close).not.toHaveBeenCalled()
   })
 
   test(`requests hover-visible structure controls`, () => {

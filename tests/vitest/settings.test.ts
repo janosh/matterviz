@@ -57,12 +57,14 @@ describe(`Settings`, () => {
     })
 
     test(`overrides specified values while preserving defaults`, () => {
+      // PartialSettings is deep-partial, so a single leaf of a nested group type-checks
       const result = merge({
         color_scheme: `Jmol`,
         structure: { atom_radius: 1.5 },
         brillouin: { bz_order: 2 },
         fermi: { mu: 0.25 },
         trajectory: { auto_play: true },
+        scatter: { point: { size: 9 } },
       })
 
       // Overrides applied
@@ -71,13 +73,15 @@ describe(`Settings`, () => {
       expect(result.brillouin.bz_order).toBe(2)
       expect(result.fermi.mu).toBe(0.25)
       expect(result.trajectory.auto_play).toBe(true)
+      expect(result.scatter.point.size).toBe(9)
 
       // Defaults preserved
       expect(result.structure.show_atoms).toBe(DEFAULTS.structure.show_atoms)
       expect(result.brillouin.edge_color).toBe(DEFAULTS.brillouin.edge_color)
       expect(result.fermi.representation).toBe(DEFAULTS.fermi.representation)
       expect(result.trajectory.fps).toBe(DEFAULTS.trajectory.fps)
-      expect(result.scatter.point.size).toBe(DEFAULTS.scatter.point.size)
+      expect(result.scatter.point.color).toBe(DEFAULTS.scatter.point.color)
+      expect(result.scatter.line).toEqual(DEFAULTS.scatter.line)
     })
 
     test(`merges symmetry overrides while preserving symmetry defaults`, () => {
@@ -221,15 +225,11 @@ describe(`Settings`, () => {
     // that leaf. Each needs a reason; anything else that differs is drift, and an entry whose
     // prop now matches the schema (or no longer exists) fails as stale.
     const deliberate: Record<string, Record<string, string>> = {
-      'brillouin/BrillouinZoneScene': {
-        camera_position: `undefined auto-fits the zone; structure.camera_position is the structure viewer's`,
-      },
       'convex-hull/ConvexHull': {
         hull_face_opacity: `undefined resolves per dimension through get_convex_hull_defaults (ternary 0.3, quaternary 0.03)`,
         max_hull_dist_show_phases: `undefined resolves per dimension through get_convex_hull_defaults (binary 0.1, ternary 0.5)`,
       },
       'fermi-surface/FermiSurfaceScene': {
-        camera_position: `undefined auto-fits the zone; structure.camera_position is the structure viewer's`,
         vector_scale: `reciprocal-lattice vector length as in DEFAULTS.brillouin.vector_scale (1), not structure.vector_scale`,
       },
       'scene/SceneCamera': {
@@ -513,7 +513,8 @@ test(`settings builder groups structure props`, () => {
 
   expect(props.scene_props).toEqual(DEFAULTS.structure)
   expect(props.scene_props).not.toBe(DEFAULTS.structure) // embedders mutate scene_props
-  expect(props.lattice_props.cell_edge_width).toBe(DEFAULTS.structure.cell_edge_width)
+  expect(props.show_image_atoms).toBe(DEFAULTS.structure.show_image_atoms)
+  expect(props.show_trajectory_lines).toBe(DEFAULTS.structure.show_trajectory_lines)
 })
 
 describe(`Structure viewer state serialization`, () => {
@@ -540,8 +541,8 @@ describe(`Structure viewer state serialization`, () => {
         atom_radius: 1.25,
         camera_projection: `perspective`,
         vector_configs: { force: { visible: false } },
+        cell_edge_opacity: 0.8,
       },
-      lattice_props: { cell_edge_opacity: 0.8 },
       color_scheme: `Jmol`,
       background_color: `#123456`,
       background_opacity: 0.4,

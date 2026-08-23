@@ -6,6 +6,7 @@
     build_orbit_props,
     create_orthographic_zoom,
     SceneCamera,
+    SceneLights,
   } from '$lib/scene'
   import type { SceneControlProps, ThreltePointerEvent } from '$lib/scene'
   import { DEFAULTS } from '$lib/settings'
@@ -13,7 +14,6 @@
   import Cylinder from '$lib/structure/Cylinder.svelte'
   import { T } from '@threlte/core'
   import * as extras from '@threlte/extras'
-  import { OrthographicCamera } from 'three/webgpu'
   import {
     bz_fit_extent,
     cartesian_to_fractional,
@@ -33,7 +33,6 @@
 
   let {
     bz_data = $bindable(),
-    camera_position = $bindable(),
     camera_projection = $bindable(DEFAULTS.brillouin.camera_projection),
     surface_color = $bindable(DEFAULTS.brillouin.surface_color),
     surface_opacity = $bindable(DEFAULTS.brillouin.surface_opacity),
@@ -71,7 +70,6 @@
   }: SceneControlProps &
     Partial<Omit<BrillouinZoneSettings, `bz_order`>> & {
       bz_data?: BrillouinZoneData
-      camera_position?: Vec3 | undefined
       width?: number // viewport size, needed to turn the relative initial_zoom into a fit
       height?: number
       ibz_data?: IrreducibleBZData | null
@@ -93,9 +91,7 @@
   // BZ centroid as rotation center; mean k-vector magnitude for camera positioning
   const rotation_target = $derived(polyhedron_centroid(bz_data?.vertices))
   const bz_size = $derived(k_space_size(bz_data?.k_lattice))
-  const computed_camera_position = $derived(
-    camera_position || default_camera_position(bz_size),
-  )
+  const computed_camera_position = $derived(default_camera_position(bz_size))
 
   // initial_zoom is relative (50 = fit to the shorter viewport edge), so it has to go through
   // ortho_zoom_for_extent — handing it to the camera raw treats it as an absolute zoom and
@@ -115,6 +111,7 @@
     min_zoom: () => min_zoom,
     max_zoom: () => max_zoom,
     measured: () => width > 0 && height > 0,
+    camera: () => camera,
   })
 
   const orbit_controls_props = $derived(
@@ -125,14 +122,9 @@
       zoom_speed,
       zoom_to_cursor,
       pan_speed,
-      max_zoom: ortho_zoom.max_zoom,
-      min_zoom: ortho_zoom.min_zoom,
       auto_rotate,
       rotation_damping,
-      // keep the user's zoom as the baseline the next resize rescales from
-      onend_extra: () => {
-        if (camera instanceof OrthographicCamera) ortho_zoom.zoom = camera.zoom
-      },
+      ...ortho_zoom.orbit_zoom_props(),
     }),
   )
 
@@ -245,8 +237,7 @@
   {gizmo}
 />
 
-<T.DirectionalLight position={[3, 10, 10]} intensity={directional_light} />
-<T.AmbientLight intensity={ambient_light} />
+<SceneLights ambient={ambient_light} directional={directional_light} />
 
 <T.Group position={rotation_target}>
   {#if bz_data}

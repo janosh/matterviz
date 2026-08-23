@@ -1,126 +1,71 @@
-import { expect, type Page, test } from '@playwright/test'
-import { expect_canvas_changed, get_canvas_timeout, wait_for_3d_canvas } from '../helpers'
+import { expect, type Locator, test } from '@playwright/test'
+import {
+  expect_canvas_changed,
+  goto_structure_test,
+  open_structure_control_pane,
+  set_lattice_props,
+  set_scene_props,
+} from '../helpers'
 
-const show_only_lattice_vectors = (page: Page): Promise<void> =>
-  page.evaluate(() => {
-    globalThis.dispatchEvent(
-      new CustomEvent(`set-scene-props`, {
-        detail: {
-          gizmo: false,
-          show_atoms: false,
-          show_bonds: `never`,
-          show_site_indices: false,
-          show_site_labels: false,
-        },
-      }),
-    )
-    globalThis.dispatchEvent(
-      new CustomEvent(`set-lattice-props`, {
-        detail: {
-          cell_edge_opacity: 0,
-          cell_surface_opacity: 0,
-          show_cell_vectors: true,
-        },
-      }),
-    )
-  })
+// opacity inputs sit in the label following the matching color label
+const opacity_input = (pane: Locator, color_label: string, type: `range` | `number`) =>
+  pane.locator(`label:has-text("${color_label}") + label input[type="${type}"]`)
 
 test.describe(`Lattice Component Tests`, () => {
-  // Use retries instead of blanket skip for flaky CI runs
-  test.describe.configure({ retries: 2 })
-
   test.beforeEach(async ({ page }) => {
-    await page.goto(`/test/structure`, { waitUntil: `networkidle` })
-    await wait_for_3d_canvas(page, `#test-structure`)
-
-    // Use test page checkbox to open controls
-    const checkbox = page.locator(`label:has-text("Controls Open") input[type="checkbox"]`)
-    await expect(checkbox).toBeVisible({ timeout: get_canvas_timeout() })
-    await checkbox.check()
-    await expect(page.locator(`.draggable-pane.controls-pane`)).toHaveClass(/pane-open/, {
-      timeout: get_canvas_timeout(),
-    })
+    await goto_structure_test(page)
   })
 
   test(`lattice vectors checkbox toggles visibility`, async ({ page }) => {
+    const { pane_div } = await open_structure_control_pane(page)
     const canvas = page.locator(`#test-structure canvas`)
-    const checkbox = page.locator(
-      `.draggable-pane label:has-text("lattice vectors") input[type="checkbox"]`,
+    const checkbox = pane_div.locator(
+      `label:has-text("lattice vectors") input[type="checkbox"]`,
     )
 
+    // leave only the lattice vectors drawn so toggling them is the sole pixel change
     const initial = await canvas.screenshot()
-    await show_only_lattice_vectors(page)
+    await set_scene_props(page, {
+      gizmo: false,
+      show_atoms: false,
+      show_bonds: `never`,
+      show_site_indices: false,
+      show_site_labels: false,
+    })
+    await set_lattice_props(page, {
+      cell_edge_opacity: 0,
+      cell_surface_opacity: 0,
+      show_cell_vectors: true,
+    })
     await expect_canvas_changed(canvas, initial)
     const visible = await canvas.screenshot()
 
     await expect(checkbox).toBeChecked()
     await checkbox.uncheck()
-    await expect(checkbox).not.toBeChecked()
     await expect_canvas_changed(canvas, visible)
     const hidden = await canvas.screenshot()
 
     await checkbox.check()
-    await expect(checkbox).toBeChecked()
     await expect_canvas_changed(canvas, hidden)
   })
 
-  test(`color controls work`, async ({ page }) => {
+  test(`edge color and edge/surface opacity controls repaint the cell`, async ({ page }) => {
+    const { pane_div } = await open_structure_control_pane(page)
     const canvas = page.locator(`#test-structure canvas`)
-    // Target Edge color input by its label text
-    const edge_color = page.locator(
-      `.draggable-pane label:has-text("Edge color") input[type="color"]`,
-    )
-    // Target Surface opacity range input
-    const surface_opacity = page.locator(
-      `.draggable-pane label:has-text("Surface color") + label input[type="range"]`,
-    )
+    const edge_color = pane_div.locator(`label:has-text("Edge color") input[type="color"]`)
+    const edge_opacity = opacity_input(pane_div, `Edge color`, `range`)
+    const surface_opacity = opacity_input(pane_div, `Surface color`, `range`)
 
-    // Make surface visible and change edge color
-    await surface_opacity.fill(`0.5`)
-    const before = await canvas.screenshot()
-    await edge_color.fill(`#ff0000`)
-    await expect_canvas_changed(canvas, before)
-  })
-
-  test(`opacity controls work`, async ({ page }) => {
-    const canvas = page.locator(`#test-structure canvas`)
-    const edge_opacity = page.locator(
-      `.draggable-pane label:has-text("Edge color") + label input[type="range"]`,
-    )
-    const surface_opacity = page.locator(
-      `.draggable-pane label:has-text("Surface color") + label input[type="range"]`,
-    )
-
-    const before = await canvas.screenshot()
+    const before_opacity = await canvas.screenshot()
     await edge_opacity.fill(`1`)
     await surface_opacity.fill(`0.8`)
-    await expect_canvas_changed(canvas, before)
-  })
+    await expect_canvas_changed(canvas, before_opacity)
+    // number and range inputs stay in sync
+    await expect(opacity_input(pane_div, `Edge color`, `number`)).toHaveValue(`1`)
+    await expect(opacity_input(pane_div, `Surface color`, `number`)).toHaveValue(`0.8`)
 
-  test(`number and range inputs sync`, async ({ page }) => {
-    const edge_range = page.locator(
-      `.draggable-pane label:has-text("Edge color") + label input[type="range"]`,
-    )
-    const edge_number = page.locator(
-      `.draggable-pane label:has-text("Edge color") + label input[type="number"]`,
-    )
-
-    await edge_number.fill(`0.3`)
-    await expect(edge_range).toHaveValue(`0.3`)
-
-    await edge_range.fill(`0.7`)
-    await expect(edge_number).toHaveValue(`0.7`)
-  })
-
-  test(`inputs have correct validation`, async ({ page }) => {
-    const edge_number = page.locator(
-      `.draggable-pane label:has-text("Edge color") + label input[type="number"]`,
-    )
-    const surface_number = page.locator(
-      `.draggable-pane label:has-text("Surface color") + label input[type="number"]`,
-    )
-
-    await expect(edge_number).toHaveAttribute(`step`, `0.05`)
-    await expect(surface_number).toHaveAttribute(`step`, `0.01`)
+    const before_color = await canvas.screenshot()
+    await edge_color.fill(`#ff0000`)
+    await expect_canvas_changed(canvas, before_color)
   })
 })

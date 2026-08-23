@@ -1,6 +1,39 @@
-// Synthetic HDF5 files built in h5wasm's in-memory FS, for layouts and torn-file scenarios no
-// checked-in fixture covers. Shared by open.test.ts and parse.test.ts.
+// Synthetic trajectory inputs shared by the trajectory and spectral tests: a deterministic
+// EXTXYZ generator and HDF5 files built in h5wasm's in-memory FS for layouts and torn-file
+// scenarios no checked-in fixture covers.
 import type { File as H5File, Group as H5Group } from 'h5wasm'
+import { make_rng } from '../numeric-helpers'
+
+// Deterministic EXTXYZ: a cubic cell that breathes, atoms jittering around a grid, an energy
+// that drifts with the frame index.
+export function synthetic_extxyz(n_frames: number, n_atoms: number, seed = 7): string {
+  const rng = make_rng(seed)
+  const side = Math.ceil(Math.cbrt(n_atoms))
+  const chunks: string[] = []
+  for (let frame_idx = 0; frame_idx < n_frames; frame_idx++) {
+    const cell = 10 + 0.01 * frame_idx
+    chunks.push(
+      `${n_atoms}`,
+      `Lattice="${cell} 0 0 0 ${cell} 0 0 0 ${cell}" Properties=species:S:1:pos:R:3:forces:R:3 ` +
+        `energy=${(-5 * n_atoms - 0.001 * frame_idx).toFixed(6)} step=${frame_idx * 10} pbc="T T T"`,
+    )
+    for (let atom_idx = 0; atom_idx < n_atoms; atom_idx++) {
+      const base = [
+        atom_idx % side,
+        Math.floor(atom_idx / side) % side,
+        Math.floor(atom_idx / side ** 2),
+      ]
+      const pos = base.map((coord) => ((coord + 0.5) * cell) / side + 0.05 * (rng() - 0.5))
+      const force = [rng() - 0.5, rng() - 0.5, rng() - 0.5]
+      chunks.push(
+        `${atom_idx % 2 ? `Cu` : `Au`} ${pos.map((val) => val.toFixed(5)).join(` `)} ${force
+          .map((val) => val.toFixed(4))
+          .join(` `)}`,
+      )
+    }
+  }
+  return `${chunks.join(`\n`)}\n`
+}
 
 export const ds = (group: H5File | H5Group, name: string, data: number[], shape: number[]) =>
   group.create_dataset({ name, data, shape })

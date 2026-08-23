@@ -1,9 +1,6 @@
 <script lang="ts">
   import type { PhaseData } from '$lib/convex-hull/types'
-  import Spinner from '$lib/feedback/Spinner.svelte'
   import { plural } from '$lib/labels'
-  import { to_error } from '$lib/utils'
-  import { compute_chempot_async } from './async-compute.svelte'
   import ChemPotDiagram2D from './ChemPotDiagram2D.svelte'
   import ChemPotDiagram3D from './ChemPotDiagram3D.svelte'
   import { get_ternary_combinations } from './compute'
@@ -56,30 +53,6 @@
   // Scale down sub-diagrams in grid mode
   const grid_width = $derived(Math.max(280, Math.round(width * 0.48)))
   const grid_height = $derived(Math.max(240, Math.round(height * 0.48)))
-
-  // Pre-warm the worker's N-D computation cache before mounting heavy 3D
-  // children. Fires one async call with the first projection — subsequent
-  // child calls for different element triples hit the cached N-D result.
-  let grid_cache_ready = $state(false)
-  let grid_error = $state<string | null>(null)
-  $effect(() => {
-    grid_cache_ready = false
-    grid_error = null
-    if (!show_grid) return
-    let cancelled = false
-    compute_chempot_async(entries, { ...config, elements: ternary_combos[0] })
-      .then(() => {
-        if (!cancelled) grid_cache_ready = true
-      })
-      .catch((err) => {
-        if (cancelled) return
-        console.error(`Grid precompute failed:`, err)
-        grid_error = to_error(err).message
-      })
-    return () => {
-      cancelled = true
-    }
-  })
 </script>
 
 <div>
@@ -122,32 +95,20 @@
       Showing all {ternary_combos.length} ternary projections of the
       {display_elements.length}-element system ({display_elements.join(`-`)})
     </p>
-    {#if grid_error}
-      <div class="chempot-error" role="alert">
-        <h3>Grid computation failed</h3>
-        <p>{grid_error}</p>
-      </div>
-    {:else if !grid_cache_ready}
-      <Spinner
-        text="Computing {display_elements.length}-element chemical potential domains..."
-        style="--spinner-size: 1.2em"
-      />
-    {:else}
-      <div class="projection-grid">
-        {#each ternary_combos as combo (combo.join(`|`))}
-          <div style="min-width: 0">
-            <h4 class="projection-label">{combo.join(`-`)} projection</h4>
-            <ChemPotDiagram3D
-              {entries}
-              config={{ ...config, elements: combo }}
-              width={grid_width}
-              height={grid_height}
-              bind:temperature
-            />
-          </div>
-        {/each}
-      </div>
-    {/if}
+    <div class="projection-grid">
+      {#each ternary_combos as combo (combo.join(`|`))}
+        <div style="min-width: 0">
+          <h4 class="projection-label">{combo.join(`-`)} projection</h4>
+          <ChemPotDiagram3D
+            {entries}
+            config={{ ...config, elements: combo }}
+            width={grid_width}
+            height={grid_height}
+            bind:temperature
+          />
+        </div>
+      {/each}
+    </div>
   {/if}
 </div>
 

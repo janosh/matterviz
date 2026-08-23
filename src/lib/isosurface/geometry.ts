@@ -1,7 +1,7 @@
 // Isosurface geometry extraction shared by the main-thread fallback and geometry-worker.ts:
 // prepares each volume's finite marching-cubes grid (display-range extraction or budget
 // downsampling) and extracts every requested isovalue on it.
-import { marching_cubes_buffers } from '$lib/marching-cubes'
+import { marching_cubes } from '$lib/marching-cubes'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import type { ScalarGrid3D } from './grid'
 import { type DisplayRange, prepare_geometry_grid } from './sampling'
@@ -42,11 +42,9 @@ export interface GeometryResult {
 }
 
 // Marching-cubes options for a finite display window in scene coordinates
-export const finite_grid_options = (vertex_shift: Vec3) =>
+const finite_grid_options = (vertex_shift: Vec3) =>
   ({
     periodic: false,
-    interpolate: true,
-    centered: false,
     normals: false, // BufferGeometry.computeVertexNormals() on the main thread
     position_offset: vertex_shift,
   }) as const
@@ -64,7 +62,7 @@ export function compute_isosurface_geometries(input: GeometryInput): GeometryRes
     ]
     const surfaces = job.surfaces.map(({ token, isovalue }): GeometrySurfaceResult => {
       const marching_start = performance.now()
-      const { positions, indices } = marching_cubes_buffers(
+      const { positions, indices } = marching_cubes(
         grid,
         isovalue,
         lattice,

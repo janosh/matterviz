@@ -2,9 +2,9 @@ import { expect, test } from '@playwright/test'
 import { IS_CI } from '../helpers'
 import { ensure_pane_visible, get_canvas_hash, open_info_and_controls } from './utils'
 
-test.describe(`ConvexHull4D (Quaternary)`, () => {
+test.describe(`ConvexHullCanvas dim=4 (Quaternary)`, () => {
   test.beforeEach(async ({ page }) => {
-    test.skip(IS_CI, `ConvexHull4D tests timeout in CI`)
+    test.skip(IS_CI, `Quaternary hull tests timeout in CI`)
     await page.goto(`/convex-hull`, { waitUntil: `networkidle` })
     // Wait for data to fully load - check for canvas inside diagram which only renders after data loads
     const quaternary_grid = page.locator(`.quaternary-grid`).first()

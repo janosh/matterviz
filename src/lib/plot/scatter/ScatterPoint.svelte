@@ -1,7 +1,7 @@
 <script lang="ts">
   import { type D3SymbolName, symbol_map } from '$lib/labels'
   import type { Point2D } from '$lib/math'
-  import type { HoverStyle, LabelStyle, Point, PointStyle } from '$lib/plot/core/types'
+  import type { HoverStyle, LabelStyle, PointStyle } from '$lib/plot/core/types'
   import { create_settling_tween } from '$lib/plot/core/settling-tween.svelte'
   import {
     estimate_label_size,
@@ -35,7 +35,7 @@
     style?: PointStyle
     hover?: HoverStyle
     label?: LabelStyle
-    offset?: Point[`offset`]
+    offset?: Point2D
     point_tween?: TweenOptions<Point2D>
     is_hovered?: boolean
     is_selected?: boolean
@@ -96,7 +96,7 @@
       stroke="var(--effect-ring-stroke, white)"
       stroke-width="var(--effect-ring-stroke-width, 1)"
     />
-  {:else if style.is_highlighted && style.highlight_effect?.match(/pulse|glow/)}
+  {:else if style.is_highlighted && style.highlight_effect}
     <circle
       r={(style.radius ?? 4) * 2}
       class={[`effect-ring`, style.highlight_effect]}

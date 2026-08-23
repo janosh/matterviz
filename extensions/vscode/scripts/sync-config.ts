@@ -7,7 +7,7 @@ import {
   VASP_VIEWER_STEMS,
   VASP_VOLUMETRIC_FILES,
 } from '$lib/constants'
-import { SETTINGS_CONFIG, type SettingType } from '$lib/settings'
+import { DEPRECATED_SETTINGS, SETTINGS_CONFIG, type SettingType } from '$lib/settings'
 
 // VS Code settings read by extension.ts directly rather than forwarded to the webview
 const HOST_SETTING_KEYS = [`matterviz.theme`, `matterviz.auto_render`, `matterviz.open_beside`]
@@ -63,9 +63,14 @@ export const build_custom_editor_selectors = (): { filenamePattern: string }[] =
   )
 }
 
-// Every non-web_only leaf of SETTINGS_CONFIG as a `matterviz.<path>` VS Code setting.
-// Exported so tests can check the generated ids against what the code actually reads.
-export const build_vscode_settings = (): Record<string, Record<string, unknown>> => {
+// Every non-web_only leaf of SETTINGS_CONFIG as a `matterviz.<path>` VS Code setting, plus a
+// deprecated entry (type + deprecationMessage, no default) for each removed key so the editor
+// flags stale settings.json values. Exported so tests can check the generated ids against what
+// the code actually reads; the schema/removed-key parameters let tests feed their own.
+export const build_vscode_settings = (
+  settings_schema: unknown = SETTINGS_CONFIG,
+  deprecated_settings: typeof DEPRECATED_SETTINGS = DEPRECATED_SETTINGS,
+): Record<string, Record<string, unknown>> => {
   const vscode_config: Record<string, Record<string, unknown>> = {}
 
   const process_setting_schema = (schema: unknown, key_path: string): void => {
@@ -89,6 +94,7 @@ export const build_vscode_settings = (): Record<string, Record<string, unknown>>
     if (schema.minItems !== undefined) config.minItems = schema.minItems
     if (schema.maxItems !== undefined) config.maxItems = schema.maxItems
     if (schema.enum) config.enum = Object.keys(schema.enum)
+    if (schema.deprecated) config.deprecationMessage = schema.deprecated
 
     // Empty-array defaults cannot reveal an item type, so default those to string.
     if (Array.isArray(schema.value)) {
@@ -97,7 +103,14 @@ export const build_vscode_settings = (): Record<string, Record<string, unknown>>
     vscode_config[key_path] = config
   }
 
-  process_setting_schema(SETTINGS_CONFIG, `matterviz`)
+  process_setting_schema(settings_schema, `matterviz`)
+  for (const [key_path, { type, deprecated }] of Object.entries(deprecated_settings)) {
+    const full_path = `matterviz.${key_path}`
+    if (full_path in vscode_config) {
+      throw new Error(`${full_path} is both a live setting and listed in DEPRECATED_SETTINGS`)
+    }
+    vscode_config[full_path] = { type, deprecationMessage: deprecated }
+  }
   return vscode_config
 }
 

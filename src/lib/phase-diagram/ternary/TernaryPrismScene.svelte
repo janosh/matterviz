@@ -8,11 +8,12 @@
   import { get_formula_label_segments } from '$lib/composition/format'
   import { TRIANGLE_VERTICES } from '$lib/convex-hull/barycentric-coords'
   import { format_num } from '$lib/labels'
-  import type { Vec2, Vec3 } from '$lib/math'
+  import { clamp, type Vec2, type Vec3 } from '$lib/math'
   import {
     build_orbit_props,
     dispose_on_change,
     SceneCamera,
+    SceneLights,
     type ThreltePointerEvent,
   } from '$lib/scene'
   import { T, useThrelte } from '@threlte/core'
@@ -66,7 +67,6 @@
   const [t_min, t_max] = $derived(diagram.t_range)
   const y_of = (temp: number) => ((temp - t_min) / (t_max - t_min) - 0.5) * HEIGHT
   const t_of = (y_pos: number) => (y_pos / HEIGHT + 0.5) * (t_max - t_min) + t_min
-  const clamp_t = (temp: number) => Math.min(t_max, Math.max(t_min, temp))
   // Triangle xy → scene xz at height y (z flipped so the triangle reads like the 2D section
   // from above); at_t places it at a temperature
   const at = ([x_pos, y_pos]: readonly number[], y_scene = 0): Vec3 => [
@@ -277,7 +277,7 @@
     hovered_phase = phase
     on_hover?.({
       phase,
-      temperature: clamp_t(t_of(point.y)),
+      temperature: clamp(t_of(point.y), t_min, t_max),
       position: [nativeEvent.clientX, nativeEvent.clientY],
     })
   }
@@ -312,7 +312,7 @@
   }
   $effect(() => end_plane_drag) // a view switch mid-drag must not leave global listeners
   const drag_plane = (event: unknown) => {
-    if (dragging_plane) temperature = clamp_t(t_of(pointer_of(event).point.y))
+    if (dragging_plane) temperature = clamp(t_of(pointer_of(event).point.y), t_min, t_max)
   }
 </script>
 
@@ -331,9 +331,13 @@
   {orbit_props}
   bind:orbit_controls
 />
-<T.AmbientLight intensity={0.9} />
-<T.DirectionalLight position={[2, 3, 1.5]} intensity={0.8} />
-<T.DirectionalLight position={[-1.5, 1, -2]} intensity={0.3} />
+<SceneLights
+  ambient={0.9}
+  directional={0.8}
+  fill={0.375}
+  key_position={[2, 3, 1.5]}
+  fill_position={[-1.5, 1, -2]}
+/>
 
 <T.LineSegments geometry={wire_geometry}>
   <T.LineBasicMaterial color={add_alpha(text_color, 0.7)} transparent />

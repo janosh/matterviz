@@ -1,16 +1,11 @@
 import type { DataSeries } from '$lib/plot'
 import {
-  apply_bounds,
   clean_multi_series,
   clean_series,
   clean_xyz,
-  compute_local_variance,
   detect_instability,
-  handle_invalid_values,
-  remove_local_outliers,
+  type InvalidValueMode,
   smooth_moving_average,
-  smooth_savitzky_golay,
-  sync_metadata,
 } from '$lib/plot/core/data-cleaning'
 import { describe, expect, it } from 'vitest'
 
@@ -37,29 +32,42 @@ const variance = (values: readonly number[], mean: number): number =>
 const alternating = (length: number, high = 10) =>
   Array.from({ length }, (_, idx) => (idx % 2 ? high : 0))
 
-describe(`compute_local_variance`, () => {
-  it.each([
-    { input: [], window: 5, expected: [] },
-    { input: [42], window: 5, expected: [0] },
-    { input: [5, 5, 5, 5], window: 3, expected: [0, 0, 0, 0] },
-    // window 3 at idx 1 covers [1, 2, 3]: sample variance 1; edges cover two values: 0.5
-    { input: [1, 2, 3, 4], window: 3, expected: [0.5, 1, 1, 0.5] },
-    // NaN is skipped, so idx 2 sees [2, 4] and idx 1 sees [1, 2]
-    { input: [1, 2, NaN, 4], window: 3, expected: [0.5, 0.5, 2, 0] },
-  ])(`window $window over $input -> $expected`, ({ input, window, expected }) => {
-    expect(compute_local_variance(input, window)).toEqual(expected)
-  })
-})
+// Series of y against its own index as x
+const indexed = (y: number[]) => ({ x: y.map((_, idx) => idx), y })
+// Cleans y against its index and returns the x (= original index) values that survived
+const kept_indices = (y: number[], config: Parameters<typeof clean_series>[1]) =>
+  clean_series(indexed(y), { ...config, in_place: false }).series.x
 
 describe(`detect_instability`, () => {
+  // A perfectly linear ramp has zero derivative variance everywhere, so the variance method has
+  // no baseline scale: it must opt out rather than divide by an empty-baseline median
   it(`reports no onset for stable linear data, even with NaN holes`, () => {
     const { x, y } = linear(100, 0.5)
-    expect(detect_instability(x, y)).toMatchObject({ detected: false, onset_index: -1 })
+    expect(detect_instability(x, y)).toMatchObject({
+      detected: false,
+      onset_index: -1,
+      method_scores: { derivative_variance: 0 },
+    })
     y[25] = NaN
     y[26] = NaN
     const with_holes = detect_instability(x, y)
     expect(with_holes.detected).toBe(false)
     expect(with_holes.combined_score).toBeGreaterThanOrEqual(0)
+  })
+
+  it.each([
+    { y: [], window_size: 5 },
+    { y: [42], window_size: 5 },
+    { y: [1, 2, NaN, 4, 5, 6, 7, 8, 9], window_size: 5 }, // fewer finite points than 2 windows
+  ])(`returns the empty result for $y.length points`, ({ y, window_size }) => {
+    const x = y.map((_, idx) => idx)
+    expect(detect_instability(x, y, { window_size })).toEqual({
+      detected: false,
+      onset_index: -1,
+      onset_x: NaN,
+      combined_score: 0,
+      method_scores: { derivative_variance: 0, amplitude_growth: 0, sign_changes: 0 },
+    })
   })
 
   it(`locates the onset of growing oscillations`, () => {
@@ -97,130 +105,6 @@ describe(`detect_instability`, () => {
   })
 })
 
-describe(`remove_local_outliers`, () => {
-  it.each([
-    { y: [], kept: [], iterations: 0 },
-    { y: [1, 2, 3], kept: [0, 1, 2], iterations: 0 }, // below window size
-    { y: Array.from({ length: 30 }, (_, idx) => idx * 0.5), kept: undefined, iterations: 1 },
-    { y: Array<number>(30).fill(5), kept: undefined, iterations: 1 }, // zero MAD
-  ])(`keeps every point of $y.length smooth values`, ({ y, kept, iterations }) => {
-    const result = remove_local_outliers(y)
-    expect(result.kept_indices).toEqual(kept ?? y.map((_, idx) => idx))
-    expect(result.removed_indices).toEqual([])
-    expect(result.iterations_used).toBe(iterations)
-  })
-
-  it.each([
-    { spikes: { 15: 100 }, length: 30 },
-    { spikes: { 10: 100, 25: -100, 40: 50 }, length: 50 },
-    { spikes: { 20: 50, 21: -30, 22: 60 }, length: 50 }, // cluster needs iterations
-  ])(`removes exactly the spiked indices $spikes`, ({ spikes, length }) => {
-    const y = Array.from({ length }, (_, idx) => idx * 0.5)
-    for (const [idx, val] of Object.entries(spikes)) y[Number(idx)] = val
-    const result = remove_local_outliers(y, { window_half: 5, mad_threshold: 2 })
-    expect(result.removed_indices).toEqual(Object.keys(spikes).map(Number))
-    expect(result.iterations_used).toBeLessThan(5) // stops once a pass removes nothing
-  })
-
-  // Regression: one-sided edge windows flagged the endpoints of every monotonic series
-  it(`never flags the endpoints of a steep ramp`, () => {
-    const ramp = Array.from({ length: 30 }, (_, idx) => idx * 50)
-    expect(
-      remove_local_outliers(ramp, { window_half: 5, mad_threshold: 2 }).removed_indices,
-    ).toEqual([])
-  })
-
-  it(`skips NaN, respects mad_threshold and tolerates regular oscillation`, () => {
-    const with_nan = [1, 2, NaN, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
-    expect(remove_local_outliers(with_nan).removed_indices).toEqual([])
-
-    const bumped = Array.from({ length: 50 }, (_, idx) => idx + Math.sin(idx) * 2)
-    bumped[25] += 10
-    expect(remove_local_outliers(bumped, { mad_threshold: 1.5 }).removed_indices).toContain(25)
-    expect(remove_local_outliers(bumped, { mad_threshold: 5 }).removed_indices).toEqual([])
-
-    const sine = Array.from({ length: 100 }, (_, idx) => Math.sin(idx / 10) * 5)
-    expect(
-      remove_local_outliers(sine, { window_half: 10, mad_threshold: 3 }).removed_indices,
-    ).toEqual([])
-  })
-})
-
-describe(`handle_invalid_values`, () => {
-  it.each([
-    {
-      mode: `remove`,
-      y: [0, NaN, 4, Infinity, 8],
-      cleaned: [0, 4, 8],
-      removed: [1, 3],
-      count: 2,
-    },
-    {
-      mode: `propagate`,
-      y: [0, NaN, 4, 6, 8],
-      cleaned: [0, NaN, 4, 6, 8],
-      removed: [],
-      count: 1,
-    },
-    {
-      mode: `interpolate`,
-      y: [0, 2, NaN, 6, 8],
-      cleaned: [0, 2, 4, 6, 8],
-      removed: [],
-      count: 1,
-    },
-    // edges hold the nearest finite value; runs interpolate linearly
-    {
-      mode: `interpolate`,
-      y: [NaN, 2, 4, 6, NaN],
-      cleaned: [2, 2, 4, 6, 6],
-      removed: [],
-      count: 2,
-    },
-    {
-      mode: `interpolate`,
-      y: [0, NaN, NaN, NaN, 8],
-      cleaned: [0, 2, 4, 6, 8],
-      removed: [],
-      count: 3,
-    },
-    { mode: `interpolate`, y: [NaN, NaN], cleaned: [0, 0], removed: [], count: 2 },
-  ] as const)(`$mode on $y`, ({ mode, y, cleaned, removed, count }) => {
-    expect(handle_invalid_values([...y], mode)).toEqual({
-      cleaned,
-      removed_indices: removed,
-      invalid_count: count,
-    })
-  })
-})
-
-describe(`apply_bounds`, () => {
-  const x = [0, 1, 2, 3, 4]
-  const y = [-5, 0, 5, 10, 15]
-
-  it.each([
-    { mode: `clamp`, expected_y: [0, 0, 5, 10, 10], filtered: [] },
-    { mode: `filter`, expected_y: y, filtered: [0, 4] },
-    { mode: `null`, expected_y: [NaN, 0, 5, 10, NaN], filtered: [] },
-    { mode: undefined, expected_y: [0, 0, 5, 10, 10], filtered: [] }, // default clamp
-  ] as const)(`mode $mode`, ({ mode, expected_y, filtered }) => {
-    expect(apply_bounds(x, y, { min: 0, max: 10, mode })).toEqual({
-      y: expected_y,
-      violations: 2,
-      filtered_indices: filtered,
-    })
-  })
-
-  it(`resolves x-dependent bounds per point`, () => {
-    expect(apply_bounds(x, [0, 2, 4, 6, 8], { max: (x_val) => x_val * 1.5 }).y).toEqual([
-      0, 1.5, 3, 4.5, 6,
-    ])
-    expect(apply_bounds(x, [0, 0, 0, 0, 0], { min: (x_val) => x_val * 0.5 }).y).toEqual([
-      0, 0.5, 1, 1.5, 2,
-    ])
-  })
-})
-
 describe(`smooth_moving_average`, () => {
   it.each([
     { values: [1, 2, 3, 4, 5], window: 1, expected: [1, 2, 3, 4, 5] },
@@ -242,54 +126,6 @@ describe(`smooth_moving_average`, () => {
   })
 })
 
-describe(`smooth_savitzky_golay`, () => {
-  it.each([
-    { values: [], window: 5 },
-    { values: [1, 2], window: 5 },
-  ])(`returns $values unchanged when shorter than a kernel`, ({ values, window }) => {
-    expect(smooth_savitzky_golay(values, window)).toEqual(values)
-  })
-
-  // The odd/min/max window clamps must still leave a symmetric kernel that reproduces
-  // polynomials up to `order` at interior points (pre-fix, window=3/order=2 erred by ~11)
-  it.each([
-    { length: 21, window: 3, order: 2, half: 1 }, // max(window, order + 2) -> even 4 -> 3
-    { length: 21, window: 1, order: 2, half: 1 },
-    { length: 6, window: 9, order: 2, half: 2 }, // min(window, even length) -> 6 -> 5
-    { length: 21, window: 5, order: 2, half: 2 },
-    { length: 21, window: 7, order: 3, half: 3 },
-  ])(
-    `reproduces a quadratic with window=$window order=$order`,
-    ({ length, window, order, half }) => {
-      const quad = Array.from({ length }, (_, idx) => 2 * idx * idx - 3 * idx + 5)
-      const out = smooth_savitzky_golay(quad, window, order)
-      expect(out).toHaveLength(length)
-      // interior points only: truncated edge kernels are renormalized, not exact
-      for (let idx = half; idx < length - half; idx++)
-        expect(out[idx]).toBeCloseTo(quad[idx], 6)
-    },
-  )
-
-  it(`damps oscillations and renormalizes over finite neighbours`, () => {
-    const oscillating = alternating(9, 2)
-    expect(variance(smooth_savitzky_golay(oscillating, 5, 2), 1)).toBeLessThan(
-      variance(oscillating, 1),
-    )
-    const smoothed = smooth_savitzky_golay([1, 2, NaN, 4, 5, 6, 7], 5, 2)
-    expect(smoothed).toHaveLength(7)
-    expect(smoothed.slice(0, 2).concat(smoothed.slice(3)).every(Number.isFinite)).toBe(true)
-    // A fully determined fit (window = order + 1) has no neighbours to smooth a NaN center with
-    expect(smooth_savitzky_golay([1, 2, NaN, 4, 5], 3, 2)[2]).toBeNaN()
-  })
-})
-
-it(`sync_metadata filters arrays and passes scalars through`, () => {
-  expect(sync_metadata(undefined, [0, 1])).toBeUndefined()
-  const scalar = { key: `value` }
-  expect(sync_metadata(scalar, [0, 1])).toBe(scalar)
-  expect(sync_metadata([`a`, `b`, `c`, `d`, `e`], [0, 2, 4])).toEqual([`a`, `c`, `e`])
-})
-
 describe(`clean_series`, () => {
   it(`rejects misaligned raw values before cleaning`, () => {
     expect(() => clean_series({ id: `energy`, x: [0, 1], y: [2, 3], raw_y: [2] })).toThrow(
@@ -306,7 +142,10 @@ describe(`clean_series`, () => {
   ])(`removes invalid points of y=$y`, ({ x, y, kept_x }) => {
     const { series, quality } = clean_series({ x, y }, { in_place: false })
     expect(series.x).toEqual(kept_x)
-    expect(quality.points_removed).toBe(x.length - kept_x.length)
+    expect(quality).toMatchObject({
+      points_removed: x.length - kept_x.length,
+      invalid_values_found: x.length - kept_x.length,
+    })
   })
 
   it(`keeps every aligned array in sync when filtering`, () => {
@@ -332,12 +171,30 @@ describe(`clean_series`, () => {
     })
     const null_colors = clean_series({ x: [0, 1], y: [0, NaN], color_values: null })
     expect(null_colors.series.color_values).toBeNull()
+    // scalar (non-array) metadata describes the whole series and passes through by reference
+    const scalar = { key: `value` }
+    const with_scalar = clean_series({ x: [0, 1], y: [0, NaN], metadata: scalar })
+    expect(with_scalar.series.metadata).toBe(scalar)
   })
 
   it(`mutates in place by default, including interpolated values`, () => {
     const series: DataSeries = { x: [0, 1, 2, 3, 4], y: [0, NaN, 4, 6, 8] }
     expect(clean_series(series, { invalid_values: `interpolate` }).series).toBe(series)
     expect(series.y).toEqual([0, 2, 4, 6, 8])
+  })
+
+  // edges hold the nearest finite value; runs interpolate linearly; nothing finite -> 0
+  it.each([
+    { y: [NaN, 2, 4, 6, NaN], cleaned: [2, 2, 4, 6, 6], count: 2 },
+    { y: [0, NaN, NaN, NaN, 8], cleaned: [0, 2, 4, 6, 8], count: 3 },
+    { y: [NaN, NaN], cleaned: [0, 0], count: 2 },
+  ])(`interpolates $y`, ({ y, cleaned, count }) => {
+    const { series, quality } = clean_series(indexed(y), {
+      invalid_values: `interpolate`,
+      in_place: false,
+    })
+    expect(series.y).toEqual(cleaned)
+    expect(quality).toMatchObject({ points_removed: 0, invalid_values_found: count })
   })
 
   it(`propagates invalid values when asked`, () => {
@@ -351,6 +208,7 @@ describe(`clean_series`, () => {
 
   it.each([
     { mode: `clamp`, x: [0, 1, 2, 3, 4], y: [0, 5, 10, 15, 20], removed: 0 },
+    { mode: undefined, x: [0, 1, 2, 3, 4], y: [0, 5, 10, 15, 20], removed: 0 }, // default clamp
     { mode: `filter`, x: [1, 2, 3], y: [5, 10, 15], removed: 2 },
     { mode: `null`, x: [0, 1, 2, 3, 4], y: [NaN, 5, 10, 15, NaN], removed: 0 },
   ] as const)(`applies $mode bounds`, ({ mode, x, y, removed }) => {
@@ -363,17 +221,132 @@ describe(`clean_series`, () => {
     expect(quality).toMatchObject({ bounds_violations: 2, points_removed: removed })
   })
 
+  it(`resolves x-dependent bounds per point`, () => {
+    const x = [0, 1, 2, 3, 4]
+    const clamp_max = clean_series(
+      { x, y: [0, 2, 4, 6, 8] },
+      { bounds: { max: (x_val) => x_val * 1.5 }, in_place: false },
+    )
+    expect(clamp_max.series.y).toEqual([0, 1.5, 3, 4.5, 6])
+    expect(clamp_max.quality.bounds_violations).toBe(4)
+    const clamp_min = clean_series(
+      { x, y: [0, 0, 0, 0, 0] },
+      { bounds: { min: (x_val) => x_val * 0.5 }, in_place: false },
+    )
+    expect(clamp_min.series.y).toEqual([0, 0.5, 1, 1.5, 2])
+  })
+
   it.each([
     { type: `moving_avg`, window: 3 },
     { type: `savgol`, window: 5 },
     { type: `gaussian`, sigma: 1 },
   ] as const)(`applies $type smoothing`, (smooth) => {
     const y = alternating(20)
-    const { series } = clean_series(
-      { x: y.map((_, idx) => idx), y },
-      { smooth, in_place: false },
-    )
+    const { series } = clean_series(indexed(y), { smooth, in_place: false })
     expect(variance(series.y, 5)).toBeLessThan(variance(y, 5))
+  })
+
+  describe(`savgol smoothing`, () => {
+    const savgol = (
+      y: number[],
+      window: number,
+      polynomial_order?: number,
+      invalid_values?: InvalidValueMode,
+    ) =>
+      clean_series(indexed(y), {
+        smooth: { type: `savgol`, window, polynomial_order },
+        invalid_values,
+        in_place: false,
+      }).series.y
+
+    it.each([{ values: [] }, { values: [1, 2] }])(
+      `returns $values unchanged when shorter than a kernel`,
+      ({ values }) => expect(savgol(values, 5)).toEqual(values),
+    )
+
+    // The odd/min/max window clamps must still leave a symmetric kernel that reproduces
+    // polynomials up to `order` at interior points (pre-fix, window=3/order=2 erred by ~11)
+    it.each([
+      { length: 21, window: 3, order: 2, half: 1 }, // max(window, order + 2) -> even 4 -> 3
+      { length: 21, window: 1, order: 2, half: 1 },
+      { length: 6, window: 9, order: 2, half: 2 }, // min(window, even length) -> 6 -> 5
+      { length: 21, window: 5, order: 2, half: 2 },
+      { length: 21, window: 7, order: 3, half: 3 },
+    ])(
+      `reproduces a quadratic with window=$window order=$order`,
+      ({ length, window, order, half }) => {
+        const quad = Array.from({ length }, (_, idx) => 2 * idx * idx - 3 * idx + 5)
+        const out = savgol(quad, window, order)
+        expect(out).toHaveLength(length)
+        // interior points only: truncated edge kernels are renormalized, not exact
+        for (let idx = half; idx < length - half; idx++)
+          expect(out[idx]).toBeCloseTo(quad[idx], 6)
+      },
+    )
+
+    it(`damps oscillations and renormalizes over finite neighbours`, () => {
+      const oscillating = alternating(9, 2)
+      expect(variance(savgol(oscillating, 5, 2), 1)).toBeLessThan(variance(oscillating, 1))
+      // invalid_values: propagate keeps the NaN in place so the kernel has to skip it
+      const smoothed = savgol([1, 2, NaN, 4, 5, 6, 7], 5, 2, `propagate`)
+      expect(smoothed).toHaveLength(7)
+      expect(smoothed.slice(0, 2).concat(smoothed.slice(3)).every(Number.isFinite)).toBe(true)
+      // A fully determined fit (window = order + 1) has no neighbours to smooth a NaN center with
+      expect(savgol([1, 2, NaN, 4, 5], 3, 2, `propagate`)[2]).toBeNaN()
+    })
+  })
+
+  describe(`local outliers`, () => {
+    const outliers = { window_half: 5, mad_threshold: 2 }
+
+    it.each([
+      { y: [] },
+      { y: [1, 2, 3] }, // below window size
+      { y: Array.from({ length: 30 }, (_, idx) => idx * 0.5) },
+      { y: Array<number>(30).fill(5) }, // zero MAD
+      // Regression: one-sided edge windows flagged the endpoints of every monotonic series
+      { y: Array.from({ length: 30 }, (_, idx) => idx * 50) },
+    ])(`keeps every point of $y.length smooth values`, ({ y }) => {
+      const { series, quality } = clean_series(indexed(y), {
+        local_outliers: outliers,
+        in_place: false,
+      })
+      expect(series.y).toEqual(y)
+      expect(quality).toMatchObject({ outliers_removed: 0, points_removed: 0 })
+    })
+
+    it.each([
+      { spikes: { 15: 100 }, length: 30 },
+      { spikes: { 10: 100, 25: -100, 40: 50 }, length: 50 },
+      { spikes: { 20: 50, 21: -30, 22: 60 }, length: 50 }, // cluster needs iterations
+    ])(`removes exactly the spiked indices $spikes`, ({ spikes, length }) => {
+      const y = Array.from({ length }, (_, idx) => idx * 0.5)
+      for (const [idx, val] of Object.entries(spikes)) y[Number(idx)] = val
+      const kept = new Set(kept_indices(y, { local_outliers: outliers }))
+      const removed = y.map((_, idx) => idx).filter((idx) => !kept.has(idx))
+      expect(removed).toEqual(Object.keys(spikes).map(Number))
+    })
+
+    it(`skips NaN, respects mad_threshold and tolerates regular oscillation`, () => {
+      const with_nan = Array.from({ length: 20 }, (_, idx) => (idx === 2 ? NaN : idx + 1))
+      const { quality } = clean_series(indexed(with_nan), {
+        local_outliers: {},
+        in_place: false,
+      })
+      expect(quality).toMatchObject({ invalid_values_found: 1, outliers_removed: 0 })
+
+      const bumped = Array.from({ length: 50 }, (_, idx) => idx + Math.sin(idx) * 2)
+      bumped[25] += 10
+      expect(kept_indices(bumped, { local_outliers: { mad_threshold: 1.5 } })).not.toContain(
+        25,
+      )
+      expect(kept_indices(bumped, { local_outliers: { mad_threshold: 5 } })).toHaveLength(50)
+
+      const sine = Array.from({ length: 100 }, (_, idx) => Math.sin(idx / 10) * 5)
+      expect(
+        kept_indices(sine, { local_outliers: { window_half: 10, mad_threshold: 3 } }),
+      ).toHaveLength(100)
+    })
   })
 
   it.each([

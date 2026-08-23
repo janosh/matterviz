@@ -1,8 +1,13 @@
 <script lang="ts">
-  import { ViewerPane, info_pane_icon, type ViewerPaneOptions } from '$lib/overlays'
-  import type { InfoItem } from '$lib/layout'
+  import {
+    info_pane_icon,
+    type InfoPaneRow,
+    ViewerPane,
+    type ViewerPaneOptions,
+  } from '$lib/overlays'
   import InfoPaneCards from '$lib/overlays/InfoPaneCards.svelte'
-  import { format_bytes, format_num } from '$lib/labels'
+  import { format_num } from '$lib/labels'
+  import { format_bytes } from '$lib/utils'
   import { array_extent } from '$lib/math'
   import type { TrajectoryFrame, TrajectoryRun } from './index'
   import { get_frame_step_samples, get_frame_time_step } from './plotting'
@@ -29,7 +34,7 @@
     pane_open?: boolean
   } = $props()
 
-  type Section = { title: string; items: InfoItem[] }
+  type Section = { title: string; items: InfoPaneRow[] }
 
   const is_valid_number = (val: unknown): val is number =>
     typeof val === `number` && Number.isFinite(val)
@@ -46,10 +51,10 @@
     value: string | null,
     key?: string,
     tooltip?: string,
-  ): InfoItem | null => (value ? { label, value, key, tooltip } : null)
+  ): InfoPaneRow | null => (value ? { label, value, key, tooltip } : null)
 
   // oxlint-disable-next-line eslint-plugin-unicorn/prefer-native-coercion-functions -- type predicate needed for narrowing
-  const is_info_item = (item: unknown): item is InfoItem => Boolean(item)
+  const is_info_item = (item: unknown): item is InfoPaneRow => Boolean(item)
 
   // Drop a section whose items all filtered out as falsy
   const section = (title: string, items: unknown[]): Section | null => {

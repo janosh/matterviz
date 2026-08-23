@@ -1,15 +1,21 @@
 <script lang="ts">
-  import { PLOT_COLORS } from '$lib/colors'
+  import { plot_color } from '$lib/colors'
   import EmptyState from '$lib/EmptyState.svelte'
   import { format_num } from '$lib/labels'
   import { sanitize_html } from '$lib/sanitize'
-  import { is_plain_object } from '$lib/utils'
+  import { is_plain_object, to_error } from '$lib/utils'
   import { SettingsSection } from '$lib/layout'
   import type { Vec2 } from '$lib/math'
   import ScatterPlot from '$lib/plot/scatter/ScatterPlot.svelte'
   import { sync_axis_range } from '$lib/plot/core/shared-axes'
   import type { AxisConfig, DataSeries, FillRegion } from '$lib/plot/core/types'
   import * as helpers from '$lib/spectral/helpers'
+  import {
+    convert_frequencies,
+    FREQUENCY_UNITS,
+    frequency_unit_label,
+    parse_frequency_unit,
+  } from '$lib/spectral/frequency-units'
   import type {
     BandsSpinMode,
     BandStructureType,
@@ -44,6 +50,8 @@
     show_gap_annotation = true,
     show_controls = $bindable(true),
     controls_open = $bindable(false),
+    controls_toggle_props,
+    controls_pane_props,
     id = undefined,
     'data-testid': data_testid = undefined,
     point_hit_padding = 3,
@@ -124,9 +132,13 @@
 
   // Normalized structures in plot order, each with its per-branch segment keys (aligned with
   // bs.branches). A single structure is recognised by its marker fields (matterviz: qpoints +
-  // branches; pymatgen: @class/@module with qpoints/kpoints + bands).
-  let structures = $derived.by(() => {
-    if (!band_structs) return []
+  // branches; pymatgen: @class/@module with qpoints/kpoints + bands). Entries whose
+  // normalization throws (pymatgen shape missing its reciprocal lattice) are collected as
+  // parse errors so the empty state can name the defect instead of a generic message.
+  let { structures, parse_errors } = $derived.by(() => {
+    const parsed: { label: string; bs: BaseBandStructure; keys: string[] }[] = []
+    const errors: string[] = []
+    if (!band_structs) return { structures: parsed, parse_errors: errors }
     const raw = band_structs as Record<string, unknown>
     const has_points = [raw.qpoints, raw.kpoints].some(
       (points) => Array.isArray(points) && points.length > 0,
@@ -136,10 +148,15 @@
       (!is_pymatgen && has_points && `branches` in raw) ||
       (is_pymatgen && has_points && (`bands` in raw || Array.isArray(raw.frequencies_cm)))
     const entries: [string, unknown][] = is_single ? [[`default`, raw]] : Object.entries(raw)
-    return entries.flatMap(([label, input]) => {
-      const bs = helpers.normalize_band_structure(input)
-      return bs ? [{ label, bs, keys: helpers.branch_segment_keys(bs) }] : []
-    })
+    for (const [label, input] of entries) {
+      try {
+        const bs = helpers.normalize_band_structure(input)
+        if (bs) parsed.push({ label, bs, keys: helpers.branch_segment_keys(bs) })
+      } catch (error) {
+        errors.push(`${is_single ? `` : `${label}: `}${to_error(error).message}`)
+      }
+    }
+    return { structures: parsed, parse_errors: errors }
   })
   let num_structures = $derived(structures.length)
 
@@ -182,8 +199,11 @@
       : `overlay`
   })
 
+  // Accept the spellings found in the wild (`cm-1`, `cm⁻¹`) at the prop boundary; every read
+  // below uses the canonical unit so no $derived throws on an alias
+  let unit = $derived(parse_frequency_unit(units) ?? units)
   const convert_band_values = (values: number[]): number[] =>
-    detected_band_type === `phonon` ? helpers.convert_frequencies(values, units) : values
+    detected_band_type === `phonon` ? convert_frequencies(values, unit) : values
 
   // Collect all path segments across structures once (shared by strict checks and plotting)
   let all_segments = $derived.by(() => {
@@ -243,7 +263,7 @@
     const markers = rest.on_point_click ? `line+points` : `line`
 
     for (const [bs_idx, { label, bs, keys }] of structures.entries()) {
-      const color = PLOT_COLORS[bs_idx % PLOT_COLORS.length]
+      const color = plot_color(bs_idx)
       const structure_label = label || `Structure ${bs_idx + 1}`
       const gamma_indices =
         detected_band_type === `phonon` ? helpers.find_gamma_indices(bs) : []
@@ -386,7 +406,10 @@
 
   // Internal y_axis that ScatterPlot binds to - syncs zoom changes back to parent
   let internal_y_axis = $derived({
-    label: detected_band_type === `phonon` ? `Frequency (${units})` : `Energy (eV)`,
+    label:
+      detected_band_type === `phonon`
+        ? `Frequency (${frequency_unit_label(unit)})`
+        : `Energy (eV)`,
     format: `.2f`,
     label_shift: { y: 15 },
     range: y_range,
@@ -470,7 +493,7 @@
   let empty_state_msg = $derived(
     strict_path_error ??
       (num_structures === 0
-        ? `No valid band structure data to display.`
+        ? (parse_errors[0] ?? `No valid band structure data to display.`)
         : `No plottable band segments were found in the provided data.`),
   )
   // Only the generic DOM attributes make sense on the EmptyState div
@@ -515,6 +538,8 @@
     {...rest}
     bind:show_controls
     bind:controls_open
+    {controls_toggle_props}
+    {controls_pane_props}
   >
     {#snippet tooltip({ x, y, y_formatted, label, metadata })}
       {@const y_label_full = internal_y_axis.label ?? ``}
@@ -583,7 +608,7 @@
         class="ctrl-line"
         current_values={{
           path_mode,
-          ...(detected_band_type === `phonon` ? { units } : {}),
+          ...(detected_band_type === `phonon` ? { units: unit } : {}),
           ...(detected_band_type === `electronic`
             ? { band_spin_mode, show_gap_annotation }
             : {}),
@@ -609,9 +634,15 @@
         {#if detected_band_type === `phonon`}
           <label>
             <span>Frequency</span>
-            <select id="bands-units" bind:value={units}>
-              {#each helpers.FREQUENCY_UNITS as unit (unit)}
-                <option value={unit}>{unit}</option>
+            <select
+              id="bands-units"
+              value={unit}
+              onchange={(event) => {
+                units = parse_frequency_unit(event.currentTarget.value) ?? unit
+              }}
+            >
+              {#each FREQUENCY_UNITS as option (option)}
+                <option value={option}>{frequency_unit_label(option)}</option>
               {/each}
             </select>
           </label>

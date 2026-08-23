@@ -1,4 +1,3 @@
-import { THZ_TO_INVERSE_CM } from '$lib/constants'
 import { element_by_symbol } from '$lib/element/data'
 import { is_elem_symbol } from '$lib/element/helpers'
 import {
@@ -8,66 +7,51 @@ import {
   type PeriodogramResult,
   type WindowType,
 } from '$lib/fft'
+import {
+  md_frequency_factor,
+  MD_FREQUENCY_UNITS,
+  type MdFrequencyUnit,
+} from '$lib/spectral/frequency-units'
 import type { Complex } from '$lib/spectral/types'
 import type { Pbc } from '$lib/structure'
 import {
+  clamp,
+  cross_3d,
   dot,
+  first_non_increasing_index,
   mat3x3_vec3_multiply,
+  median,
   partition_point,
   transpose_3x3_matrix,
   type Matrix3x3,
   type Vec3,
 } from '$lib/math'
 import type { TrajectoryPositionStream, TrajectorySignal } from '$lib/trajectory'
+import {
+  unwrap_flat_positions,
+  validate_position_stream_layout,
+} from '$lib/trajectory/positions'
+import type { VelocitySource } from '$lib/vacf'
 import { central_difference_velocities } from '$lib/vacf/calc-vacf'
-import { thz_per_inverse_time } from '$lib/vacf/units'
-import { unwrap_flat_positions } from '$lib/msd/calc-msd'
 
-type TrajectoryFrequencyUnit = `THz` | `cm^-1` | `1/frame`
+// `1/step` is cycles per MD step (the signals carry their own step axes), the honest axis
+// when the run records no timestep. Distinct from the VACF's `1/frame`, which counts
+// collected frames.
+export type TrajectoryFrequencyUnit = MdFrequencyUnit | `1/step`
+export const TRAJECTORY_FREQUENCY_UNITS = [...MD_FREQUENCY_UNITS, `1/step`] as const
 type SpectralActivity = `active` | `inactive` | `unknown`
 export type SpectroscopyPreprocessing = `body_fixed` | `remove_com` | `raw`
-type SpectroscopyVelocitySource = `stored` | `central_difference` | `auto`
-export type RamanChannel =
-  | `isotropic`
-  | `anisotropic`
-  | `vv`
-  | `vh`
-  | `unpolarized`
-  | `polarized`
+export const RAMAN_CHANNELS = [`isotropic`, `anisotropic`, `vv`, `vh`, `unpolarized`] as const
+// Powder-averaged Raman channels. A polarized single-crystal geometry has no producer in
+// the trajectory viewer, so only the orientation-averaged combinations are offered.
+export type RamanChannel = (typeof RAMAN_CHANNELS)[number]
 
 export type InfraredSignal =
   | { kind: `dipole`; series: TrajectorySignal }
   | { kind: `polarization`; series: TrajectorySignal; branch_continuous: true }
   | { kind: `current`; series: TrajectorySignal }
 
-type FieldAxisSignals = Record<`x` | `y` | `z`, TrajectorySignal>
-const CARTESIAN_AXES = [`x`, `y`, `z`] as const
-
-interface FieldResponseGeometry {
-  plus: FieldAxisSignals
-  minus: FieldAxisSignals
-}
-
-export type RamanSignal =
-  | { kind: `polarizability`; series: TrajectorySignal }
-  | {
-      kind: `field_response`
-      response: `dipole` | `polarization`
-      branch_continuous?: true
-      field_strength: number
-      field_unit: string
-      plus: FieldAxisSignals
-      minus: FieldAxisSignals
-      geometry: FieldResponseGeometry
-    }
-
-export type RamanGeometry =
-  | { kind: `powder`; channel?: Exclude<RamanChannel, `polarized`> }
-  | {
-      kind: `polarized`
-      incident: [number, number, number]
-      scattered: [number, number, number]
-    }
+export type RamanSignal = { kind: `polarizability`; series: TrajectorySignal }
 
 export interface TrajectorySpectroscopyInput {
   positions: TrajectoryPositionStream
@@ -83,14 +67,23 @@ export interface TrajectorySpectroscopyInput {
 export interface TrajectorySpectroscopyOptions {
   frequency_unit?: TrajectoryFrequencyUnit
   preprocessing?: SpectroscopyPreprocessing
-  velocity_source?: SpectroscopyVelocitySource
+  // `auto` (default) uses stored velocities when the input carries them and differentiates
+  // the prepared positions otherwise; `stored` throws without a velocity signal;
+  // `central_difference` ignores stored velocities (same vocabulary as the VACF)
+  velocity_source?: VelocitySource | `auto`
   window?: WindowType
   zero_pad_factor?: number
-  peak_prominence?: number
-  activity_relative_threshold?: number
-  activity_snr?: number
-  raman_geometry?: RamanGeometry
+  // Powder channel reported as `raman.selected_channel` and used for peak assignment
+  raman_channel?: RamanChannel
 }
+
+// Peak detection: a local maximum of the normalized spectrum counts once it stands this far
+// above the surrounding minimum (within two Rayleigh widths)
+const PEAK_PROMINENCE = 0.02
+// IR / Raman activity: a peak is active once its normalized power clears
+// max(ACTIVITY_RELATIVE_THRESHOLD, median + ACTIVITY_SNR * MAD) of that spectrum
+const ACTIVITY_RELATIVE_THRESHOLD = 0.01
+const ACTIVITY_SNR = 6
 
 export interface TrajectorySpectrumCurve {
   frequencies: number[]
@@ -109,11 +102,7 @@ interface RamanSpectrumResult {
   vv: TrajectorySpectrumCurve
   vh: TrajectorySpectrumCurve
   unpolarized: TrajectorySpectrumCurve
-  polarized?: TrajectorySpectrumCurve
   selected_channel: RamanChannel
-  field_response?: {
-    max_geometry_deviation: number
-  }
 }
 
 interface TrajectorySpectralPeak {
@@ -138,7 +127,7 @@ export interface TrajectorySpectroscopyResult {
   peaks: TrajectorySpectralPeak[]
   frequency_unit: TrajectoryFrequencyUnit
   preprocessing: SpectroscopyPreprocessing
-  velocity_source: Exclude<SpectroscopyVelocitySource, `auto`>
+  velocity_source: VelocitySource
   reference_positions: number[][]
   elements: string[]
   masses: number[]
@@ -163,8 +152,6 @@ const require_one_of = <Allowed extends string>(
 }
 
 const shape_text = (shape: number[]): string => `[${shape.join(`, `)}]`
-const sample_size_of = (shape: number[]): number =>
-  shape.reduce((total, value) => total * value, 1)
 const arrays_equal = <Value>(left: ArrayLike<Value>, right: ArrayLike<Value>): boolean => {
   if (left.length !== right.length) return false
   for (let idx = 0; idx < left.length; idx++) if (left[idx] !== right[idx]) return false
@@ -180,13 +167,12 @@ const require_finite = (values: ArrayLike<number>, label: string, noun: string):
 
 const require_strict_steps = (steps: ArrayLike<number>, label: string): void => {
   require_finite(steps, label, `step`)
-  for (let idx = 1; idx < steps.length; idx++) {
-    if (!(steps[idx] > steps[idx - 1])) {
-      fail(
-        `${label} steps must increase strictly; step ${idx - 1} is ` +
-          `${steps[idx - 1]} and step ${idx} is ${steps[idx]}`,
-      )
-    }
+  const violation = first_non_increasing_index(steps)
+  if (violation !== null) {
+    fail(
+      `${label} steps must increase strictly; step ${violation - 1} is ` +
+        `${steps[violation - 1]} and step ${violation} is ${steps[violation]}`,
+    )
   }
 }
 
@@ -212,7 +198,7 @@ export function validate_trajectory_signal(
         `dimensions must be positive integers and rank must be at most 2`,
     )
   }
-  const sample_size = sample_size_of(signal.sample_shape)
+  const sample_size = signal.sample_shape.reduce((total, size) => total * size, 1)
   if (signal.values.length !== signal.steps.length * sample_size) {
     fail(
       `${label} has ${signal.values.length} values but ${signal.steps.length} samples × ` +
@@ -225,35 +211,16 @@ export function validate_trajectory_signal(
   require_strict_steps(signal.steps, label)
 }
 
+// The shared layout check covers counts and buffer length (a fractional n_atoms or n_frames
+// fails it too, since element and step counts are integers); the step axis, value and
+// lattice finiteness and pbc shape are spectroscopy's own
 const validate_position_stream = (stream: TrajectoryPositionStream): void => {
-  if (!Number.isInteger(stream.n_atoms) || stream.n_atoms < 1) {
-    fail(`n_atoms must be a positive integer, got ${stream.n_atoms}`)
-  }
-  if (!Number.isInteger(stream.n_frames) || stream.n_frames < 1) {
-    fail(`n_frames must be a positive integer, got ${stream.n_frames}`)
-  }
-  const expected_values = stream.n_frames * stream.n_atoms * 3
-  if (stream.positions.length !== expected_values) {
-    fail(
-      `positions have ${stream.positions.length} values but ${stream.n_frames} frames × ` +
-        `${stream.n_atoms} atoms × 3 requires ${expected_values}`,
-    )
-  }
+  validate_position_stream_layout(stream, `calc_trajectory_spectroscopy`, 1)
   require_finite(stream.positions, `position`, `value`)
-  if (stream.elements.length !== stream.n_atoms) {
-    fail(
-      `positions declare ${stream.n_atoms} atoms but have ${stream.elements.length} elements`,
-    )
-  }
   if (stream.steps.length !== stream.n_frames) {
     fail(`positions have ${stream.n_frames} frames but ${stream.steps.length} steps`)
   }
   require_strict_steps(stream.steps, `position`)
-  if (stream.lattice_matrices && stream.lattice_matrices.length !== stream.n_frames) {
-    fail(
-      `positions have ${stream.n_frames} frames but ${stream.lattice_matrices.length} lattice matrices`,
-    )
-  }
   for (const [frame_idx, lattice] of stream.lattice_matrices?.entries() ?? []) {
     if (lattice === null) continue
     if (
@@ -305,21 +272,22 @@ const normalize_power = (power: ArrayLike<number>): number[] => {
   return maximum > 0 ? values.map((value) => value / maximum) : values.fill(0)
 }
 
+// Cycles per `time_unit` -> `frequency_unit`; 1 for the per-step axis
 const frequency_factor = (
   frequency_unit: TrajectoryFrequencyUnit,
   time_unit: string | undefined,
 ): number => {
-  if (frequency_unit === `1/frame`) return 1
+  if (frequency_unit === `1/step`) return 1
   if (!time_unit) {
     return fail(
-      `frequency_unit '${frequency_unit}' requires time_unit; use '1/frame' otherwise`,
+      `frequency_unit '${frequency_unit}' requires time_unit; use '1/step' otherwise`,
     )
   }
-  const to_thz = thz_per_inverse_time(time_unit)
-  if (to_thz === undefined) {
+  const factor = md_frequency_factor(time_unit, frequency_unit)
+  if (factor === null) {
     return fail(`time_unit '${time_unit}' cannot be converted to ${frequency_unit}`)
   }
-  return frequency_unit === `THz` ? to_thz : to_thz * THZ_TO_INVERSE_CM
+  return factor
 }
 
 const sample_interval = (
@@ -329,7 +297,7 @@ const sample_interval = (
   label: string,
 ): number => {
   const step_delta = uniform_step_delta(steps, label)
-  if (frequency_unit === `1/frame`) return step_delta
+  if (frequency_unit === `1/step`) return step_delta
   if (!(time_step && time_step > 0)) {
     return fail(`${label} needs a positive simulation time_step for ${frequency_unit}`)
   }
@@ -374,12 +342,11 @@ const combine_curves = (
   return { ...left, power, normalized_power: normalize_power(power) }
 }
 
-const normalize_vec = (vector: number[]): [number, number, number] => {
-  if (vector.length !== 3 || !vector.every(Number.isFinite)) {
-    fail(`polarization vectors must contain exactly three finite components`)
-  }
-  const norm = Math.hypot(...vector)
-  if (!(norm > 0)) fail(`polarization vectors must be non-zero`)
+// Unit vector of a molecular axis; math's normalize_vec returns zeros for a degenerate input,
+// which here would silently drop the rotation instead of reporting the degenerate geometry
+const unit_axis = (vector: ArrayLike<number>): Vec3 => {
+  const norm = Math.hypot(vector[0], vector[1], vector[2])
+  if (!(norm > 0)) fail(`molecular axis must be non-zero`)
   return [vector[0] / norm, vector[1] / norm, vector[2] / norm]
 }
 
@@ -558,12 +525,6 @@ const solve_inertia = (inertia: number[][], angular_momentum: number[]): number[
   return angular_velocity
 }
 
-const cross_product = (left: ArrayLike<number>, right: ArrayLike<number>): number[] => [
-  left[1] * right[2] - left[2] * right[1],
-  left[2] * right[0] - left[0] * right[2],
-  left[0] * right[1] - left[1] * right[0],
-]
-
 interface PreparedMotion {
   positions: Float64Array
   lab_positions: Float64Array
@@ -587,14 +548,11 @@ const linear_anchor = (
   }
   if (!(radius > 0)) return null
   const base = atom_idx * 3
-  const axis = normalize_vec(Array.from(centered.subarray(base, base + 3)))
+  const axis = unit_axis(centered.subarray(base, base + 3))
   let maximum_perpendicular = 0
   for (let candidate_idx = 0; candidate_idx < n_atoms; candidate_idx++) {
     const candidate_base = candidate_idx * 3
-    const perpendicular = cross_product(
-      centered.subarray(candidate_base, candidate_base + 3),
-      axis,
-    )
+    const perpendicular = cross_3d(centered.subarray(candidate_base, candidate_base + 3), axis)
     maximum_perpendicular = Math.max(maximum_perpendicular, Math.hypot(...perpendicular))
   }
   return maximum_perpendicular <= 1e-8 * radius ? { atom_idx, axis } : null
@@ -604,16 +562,13 @@ const axis_rotation = (
   source: [number, number, number],
   target: [number, number, number],
 ): Matrix3x3 => {
-  const cosine = Math.max(
-    -1,
-    Math.min(1, source[0] * target[0] + source[1] * target[1] + source[2] * target[2]),
-  )
-  let rotation_axis = cross_product(source, target)
+  const cosine = clamp(dot(source, target), -1, 1)
+  let rotation_axis: number[] = cross_3d(source, target)
   let sine = Math.hypot(...rotation_axis)
   if (sine <= 1e-14) {
     if (cosine > 0) return IDENTITY
     const helper: [number, number, number] = Math.abs(source[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0]
-    rotation_axis = normalize_vec(cross_product(source, helper))
+    rotation_axis = unit_axis(cross_3d(source, helper))
     sine = 0
   } else rotation_axis = rotation_axis.map((value) => value / sine)
   const [axis_x, axis_y, axis_z] = rotation_axis
@@ -672,10 +627,12 @@ const prepare_positions = (
           pbc,
         )
       : stream.positions
+  // Nothing downstream writes to the prepared buffers, so the raw frame shares one
+  // unwrapped copy instead of holding three
   if (preprocessing === `raw`) {
     return {
-      positions: new Float64Array(unwrapped),
-      lab_positions: new Float64Array(unwrapped),
+      positions: unwrapped,
+      lab_positions: unwrapped,
       rotations: identity_rotations(stream.n_frames),
       reference_positions: mean_geometry(unwrapped, stream.n_frames, stream.n_atoms),
     }
@@ -697,7 +654,7 @@ const prepare_positions = (
     if (preprocessing === `body_fixed` && !periodic) {
       if (linear && previous_axis) {
         const base = linear.atom_idx * 3
-        const current_axis = normalize_vec(Array.from(centered.subarray(base, base + 3)))
+        const current_axis = unit_axis(centered.subarray(base, base + 3))
         const transport = axis_rotation(current_axis, previous_axis)
         rotation = dot(previous_rotation, transport)
         previous_axis = current_axis
@@ -717,7 +674,7 @@ const prepare_positions = (
   }
   return {
     positions: prepared,
-    lab_positions: new Float64Array(unwrapped),
+    lab_positions: unwrapped,
     rotations,
     reference_positions: mean_geometry(prepared, stream.n_frames, stream.n_atoms),
   }
@@ -766,16 +723,12 @@ const rotate_tensor_signal = (values: Float64Array, rotations: Matrix3x3[]): Flo
   const rotated = new Float64Array(values.length)
   for (let sample_idx = 0; sample_idx < rotations.length; sample_idx++) {
     const base = sample_idx * 9
-    const tensor = [
-      [values[base], values[base + 1], values[base + 2]],
-      [values[base + 3], values[base + 4], values[base + 5]],
-      [values[base + 6], values[base + 7], values[base + 8]],
-    ] as Matrix3x3
-    const symmetric = [
-      [tensor[0][0], (tensor[0][1] + tensor[1][0]) / 2, (tensor[0][2] + tensor[2][0]) / 2],
-      [(tensor[1][0] + tensor[0][1]) / 2, tensor[1][1], (tensor[1][2] + tensor[2][1]) / 2],
-      [(tensor[2][0] + tensor[0][2]) / 2, (tensor[2][1] + tensor[1][2]) / 2, tensor[2][2]],
-    ] as Matrix3x3
+    const [xx, xy, xz, yx, yy, yz, zx, zy, zz] = values.subarray(base, base + 9)
+    const symmetric: Matrix3x3 = [
+      [xx, (xy + yx) / 2, (xz + zx) / 2],
+      [(yx + xy) / 2, yy, (yz + zy) / 2],
+      [(zx + xz) / 2, (zy + yz) / 2, zz],
+    ]
     const transformed = dot(
       dot(rotations[sample_idx], symmetric),
       transpose_3x3_matrix(rotations[sample_idx]),
@@ -819,40 +772,44 @@ const remove_rigid_velocity = (
       stream.n_atoms,
       masses,
     ).centered
-    const inertia = Array.from({ length: 3 }, () => [0, 0, 0])
-    const angular_momentum = [0, 0, 0]
-    for (let atom_idx = 0; atom_idx < stream.n_atoms; atom_idx++) {
-      const position_base = atom_idx * 3
-      const velocity_base = (sample_idx * stream.n_atoms + atom_idx) * 3
-      const position = Array.from(
-        centered_positions.subarray(position_base, position_base + 3),
-      )
-      const velocity = [
-        velocities[velocity_base] - center_velocity[0],
-        velocities[velocity_base + 1] - center_velocity[1],
-        velocities[velocity_base + 2] - center_velocity[2],
-      ]
-      const radius_squared = position.reduce((total, value) => total + value * value, 0)
-      for (let row_idx = 0; row_idx < 3; row_idx++) {
-        for (let col_idx = 0; col_idx < 3; col_idx++) {
-          inertia[row_idx][col_idx] +=
-            masses[atom_idx] *
-            ((row_idx === col_idx ? radius_squared : 0) -
-              position[row_idx] * position[col_idx])
+    // remove_com only subtracts the centre-of-mass velocity; the inertia tensor and angular
+    // momentum are only ever consumed by the body-fixed solve
+    let angular_velocity: number[] = [0, 0, 0]
+    if (preprocessing === `body_fixed`) {
+      const inertia = Array.from({ length: 3 }, () => [0, 0, 0])
+      const angular_momentum = [0, 0, 0]
+      for (let atom_idx = 0; atom_idx < stream.n_atoms; atom_idx++) {
+        const position_base = atom_idx * 3
+        const velocity_base = (sample_idx * stream.n_atoms + atom_idx) * 3
+        const position = Array.from(
+          centered_positions.subarray(position_base, position_base + 3),
+        )
+        const velocity = [
+          velocities[velocity_base] - center_velocity[0],
+          velocities[velocity_base + 1] - center_velocity[1],
+          velocities[velocity_base + 2] - center_velocity[2],
+        ]
+        const radius_squared = position.reduce((total, value) => total + value * value, 0)
+        for (let row_idx = 0; row_idx < 3; row_idx++) {
+          for (let col_idx = 0; col_idx < 3; col_idx++) {
+            inertia[row_idx][col_idx] +=
+              masses[atom_idx] *
+              ((row_idx === col_idx ? radius_squared : 0) -
+                position[row_idx] * position[col_idx])
+          }
+        }
+        const contribution = cross_3d(position, velocity)
+        for (let axis = 0; axis < 3; axis++) {
+          angular_momentum[axis] += masses[atom_idx] * contribution[axis]
         }
       }
-      const contribution = cross_product(position, velocity)
-      for (let axis = 0; axis < 3; axis++) {
-        angular_momentum[axis] += masses[atom_idx] * contribution[axis]
-      }
+      angular_velocity = solve_inertia(inertia, angular_momentum)
     }
-    const angular_velocity =
-      preprocessing === `body_fixed` ? solve_inertia(inertia, angular_momentum) : [0, 0, 0]
     const rotation = prepared.rotations[position_frame_idx]
     for (let atom_idx = 0; atom_idx < stream.n_atoms; atom_idx++) {
       const position_base = atom_idx * 3
       const velocity_base = (sample_idx * stream.n_atoms + atom_idx) * 3
-      const rotation_velocity = cross_product(
+      const rotation_velocity = cross_3d(
         angular_velocity,
         centered_positions.subarray(position_base, position_base + 3),
       )
@@ -867,6 +824,11 @@ const remove_rigid_velocity = (
   return output
 }
 
+// One-sided power spectrum of a (windowed, zero-padded) MD signal on the requested
+// frequency axis. `frequency_squared` multiplies by (2πν)² and is IR-dipole only: the
+// classical IR absorption α(ω)n(ω) ∝ ω·tanh(βħω/2)·FT⟨μ(0)μ(t)⟩ → (βħ/2)·ω²·FT⟨μμ⟩, i.e.
+// the power spectrum of μ̇. A `current` IR signal is already μ̇ so it skips the factor, and
+// Raman never applies it (see calculate_raman). The VDOS is a velocity power spectrum.
 const build_curve = (
   values: Float64Array,
   n_components: number,
@@ -889,7 +851,7 @@ const build_curve = (
   const curve = curve_from_periodogram(periodogram, interval, options.frequency_unit, factor)
   if (!frequency_squared) return curve
   const physical_factor =
-    options.frequency_unit === `1/frame` ? 1 : frequency_factor(`THz`, input.time_unit)
+    options.frequency_unit === `1/step` ? 1 : frequency_factor(`THz`, input.time_unit)
   const power = curve.power.map((value, frequency_idx) => {
     const physical_frequency = periodogram.frequencies[frequency_idx] * physical_factor
     return value * (2 * Math.PI * physical_frequency) ** 2
@@ -897,140 +859,27 @@ const build_curve = (
   return { ...curve, power, normalized_power: normalize_power(power) }
 }
 
-const geometry_length_to_angstrom = (unit: string | undefined, label: string): number => {
-  if (unit === undefined) return 1
-  const normalized = unit.trim().toLowerCase()
-  if ([`a`, `å`, `angstrom`, `angstroms`].includes(normalized)) return 1
-  if ([`nm`, `nanometer`, `nanometers`].includes(normalized)) return 10
-  return fail(`${label} unit '${unit}' cannot be converted to A`)
-}
-
-const field_response_geometry_deviation = (
-  raman_signal: Extract<RamanSignal, { kind: `field_response` }>,
-  input: TrajectorySpectroscopyInput,
-): number => {
-  const position_by_step = step_index_map(input.positions.steps)
-  const geometry_size = input.positions.n_atoms * 3
-  let maximum = 0
-  for (const axis of CARTESIAN_AXES) {
-    const plus = raman_signal.geometry.plus[axis]
-    const minus = raman_signal.geometry.minus[axis]
-    validate_trajectory_signal(plus, [input.positions.n_atoms, 3], `Raman +${axis} geometry`)
-    validate_trajectory_signal(minus, [input.positions.n_atoms, 3], `Raman -${axis} geometry`)
-    const plus_factor = geometry_length_to_angstrom(plus.unit, `Raman +${axis} geometry`)
-    const minus_factor = geometry_length_to_angstrom(minus.unit, `Raman -${axis} geometry`)
-    const response_steps = raman_signal.plus[axis].steps
-    if (
-      !arrays_equal(plus.steps, response_steps) ||
-      !arrays_equal(minus.steps, response_steps)
-    ) {
-      return fail(`Raman finite-field response and geometry steps must match for ${axis}`)
-    }
-    for (let sample_idx = 0; sample_idx < response_steps.length; sample_idx++) {
-      const frame_idx = position_by_step.get(response_steps[sample_idx])
-      if (frame_idx === undefined) {
-        return fail(
-          `Raman finite-field geometry at step ${response_steps[sample_idx]} has no matching trajectory position`,
-        )
-      }
-      for (let component_idx = 0; component_idx < geometry_size; component_idx++) {
-        const offset = sample_idx * geometry_size + component_idx
-        const main_value = input.positions.positions[frame_idx * geometry_size + component_idx]
-        maximum = Math.max(
-          maximum,
-          Math.abs(plus.values[offset] * plus_factor - minus.values[offset] * minus_factor),
-          Math.abs(plus.values[offset] * plus_factor - main_value),
-          Math.abs(minus.values[offset] * minus_factor - main_value),
-        )
-      }
-    }
-  }
-  if (maximum > 1e-10) {
-    return fail(
-      `Raman finite-field geometries differ by ${maximum} A, exceeding the 1e-10 A limit`,
-    )
-  }
-  return maximum
-}
-
-const field_response_signal = (
-  raman_signal: Extract<RamanSignal, { kind: `field_response` }>,
-  input: TrajectorySpectroscopyInput,
-): { signal: TrajectorySignal; max_geometry_deviation: number } => {
-  if (!raman_signal.field_unit.trim()) {
-    return fail(`Raman field_unit must be a non-empty string`)
-  }
-  if (!(raman_signal.field_strength > 0) || !Number.isFinite(raman_signal.field_strength)) {
-    return fail(
-      `Raman field_strength must be finite and > 0, got ${raman_signal.field_strength}`,
-    )
-  }
-  const first = raman_signal.plus.x
-  const values = new Float64Array(first.steps.length * 9)
-  for (const [axis_idx, axis] of CARTESIAN_AXES.entries()) {
-    const plus = raman_signal.plus[axis]
-    const minus = raman_signal.minus[axis]
-    validate_trajectory_signal(plus, [3], `Raman +${axis} response`)
-    validate_trajectory_signal(minus, [3], `Raman -${axis} response`)
-    if (plus.unit !== first.unit || minus.unit !== first.unit) {
-      return fail(
-        `Raman finite-field response units must match across every plus/minus branch`,
-      )
-    }
-    if (!arrays_equal(plus.steps, first.steps) || !arrays_equal(minus.steps, first.steps)) {
-      return fail(`Raman finite-field response signals must have identical step axes`)
-    }
-    for (let sample_idx = 0; sample_idx < first.steps.length; sample_idx++) {
-      for (let response_axis = 0; response_axis < 3; response_axis++) {
-        values[sample_idx * 9 + response_axis * 3 + axis_idx] =
-          (plus.values[sample_idx * 3 + response_axis] -
-            minus.values[sample_idx * 3 + response_axis]) /
-          (2 * raman_signal.field_strength)
-      }
-    }
-  }
-  return {
-    signal: {
-      values,
-      sample_shape: [3, 3],
-      steps: [...first.steps],
-      unit: `${first.unit ?? raman_signal.response}/${raman_signal.field_unit}`,
-    },
-    max_geometry_deviation: field_response_geometry_deviation(raman_signal, input),
-  }
-}
-
+// Classical Placzek Raman spectrum: the power spectrum FT⟨α(0)α(t)⟩ of the (body-frame)
+// polarizability tensor, split into the isotropic mean ᾱ = tr(α)/3 and the anisotropic
+// invariant γ² = ½[(xx−yy)² + (yy−zz)² + (zz−xx)²] + 3(xy² + yz² + xz²), then combined into
+// the powder channels VV = 45ᾱ² + 4γ², VH = 3γ², unpolarized = VV + VH = 45ᾱ² + 7γ².
+// Intensities are relative only. The full classical expression (Thomas, Brehm, Kirchner,
+// PCCP 2013) is I(ω) ∝ (ω_L−ω)⁴ · (1/ω) · [1−e^{−βħω}]⁻¹ · FT⟨α̇α̇⟩; with FT⟨α̇α̇⟩ = ω²·FT⟨αα⟩
+// the classical-limit Bose×1/ω factor k_BT/(ħω²) cancels the ω² exactly, so no ω² weighting
+// is applied (unlike IR from a dipole). The (ω_L−ω)⁴ excitation factor (≲10% over
+// 0–3000 cm⁻¹ at visible ω_L) and the Bose factor are omitted.
 const calculate_raman = (
   input: TrajectorySpectroscopyInput,
-  signal: RamanSignal,
+  polarizability: TrajectorySignal,
   prepared: PreparedMotion,
   options: Required<
     Pick<
       TrajectorySpectroscopyOptions,
-      `frequency_unit` | `preprocessing` | `window` | `zero_pad_factor`
+      `frequency_unit` | `preprocessing` | `window` | `zero_pad_factor` | `raman_channel`
     >
-  > & {
-    raman_geometry?: RamanGeometry
-  },
-  periodic: boolean,
+  >,
 ): RamanSpectrumResult => {
-  if (periodic && signal.kind === `field_response`) {
-    if (signal.response === `dipole`) {
-      return fail(`periodic Raman field response must use polarization, not total dipole`)
-    }
-    if (signal.response === `polarization` && signal.branch_continuous !== true) {
-      return fail(`periodic Raman field-response polarization must be branch-continuous`)
-    }
-  }
-  const field_response =
-    signal.kind === `field_response` ? field_response_signal(signal, input) : null
-  const polarizability =
-    signal.kind === `polarizability` ? signal.series : field_response?.signal
-  if (!polarizability) return fail(`Raman field response did not produce a polarizability`)
   validate_trajectory_signal(polarizability, [3, 3], `Raman polarizability`)
-  if (periodic && !options.raman_geometry) {
-    return fail(`periodic Raman requires an explicit powder or polarized geometry`)
-  }
   const rotations =
     options.preprocessing === `body_fixed`
       ? rotations_for_steps(
@@ -1054,7 +903,6 @@ const calculate_raman = (
     values: Float64Array,
     n_components: number,
     component_weights?: Float64Array,
-    label = `Raman polarizability`,
   ) =>
     build_curve(
       values,
@@ -1062,58 +910,20 @@ const calculate_raman = (
       polarizability.steps,
       input,
       options,
-      label,
+      `Raman polarizability`,
       component_weights,
-      true,
     )
   const isotropic = raman_curve(isotropic_values, 1)
   const anisotropic = raman_curve(anisotropic_values, 6, RAMAN_ANISOTROPIC_WEIGHTS)
-  const vv = combine_curves(isotropic, anisotropic, 45, 4)
-  const vh = combine_curves(isotropic, anisotropic, 0, 3)
-  const unpolarized = combine_curves(isotropic, anisotropic, 45, 7)
-  let polarized: TrajectorySpectrumCurve | undefined
-  if (options.raman_geometry?.kind === `polarized`) {
-    const incident = normalize_vec(options.raman_geometry.incident)
-    const scattered = normalize_vec(options.raman_geometry.scattered)
-    const projected = new Float64Array(n_samples)
-    for (let sample_idx = 0; sample_idx < n_samples; sample_idx++) {
-      const base = sample_idx * 9
-      let projection = 0
-      for (let row_idx = 0; row_idx < 3; row_idx++) {
-        for (let col_idx = 0; col_idx < 3; col_idx++) {
-          projection +=
-            scattered[row_idx] * rotated[base + row_idx * 3 + col_idx] * incident[col_idx]
-        }
-      }
-      projected[sample_idx] = projection
-    }
-    polarized = raman_curve(projected, 1, undefined, `Raman polarized response`)
-  }
-  const selected_channel: RamanChannel =
-    options.raman_geometry?.kind === `polarized`
-      ? `polarized`
-      : (options.raman_geometry?.channel ?? `unpolarized`)
   return {
     isotropic,
     anisotropic,
-    vv,
-    vh,
-    unpolarized,
-    ...(polarized ? { polarized } : {}),
-    selected_channel,
-    ...(signal.kind === `field_response`
-      ? {
-          field_response: {
-            max_geometry_deviation: field_response?.max_geometry_deviation ?? 0,
-          },
-        }
-      : {}),
+    vv: combine_curves(isotropic, anisotropic, 45, 4),
+    vh: combine_curves(isotropic, anisotropic, 0, 3),
+    unpolarized: combine_curves(isotropic, anisotropic, 45, 7),
+    selected_channel: options.raman_channel,
   }
 }
-
-const selected_raman_curve = (raman: RamanSpectrumResult): TrajectorySpectrumCurve =>
-  raman[raman.selected_channel] ??
-  fail(`Raman channel '${raman.selected_channel}' is unavailable`)
 
 interface PeakCandidate {
   frequency: number
@@ -1125,7 +935,6 @@ interface PeakCandidate {
 const curve_candidates = (
   curve: TrajectorySpectrumCurve | null,
   source: PeakCandidate[`source`],
-  minimum_prominence: number,
 ): PeakCandidate[] => {
   if (!curve) return []
   const { normalized_power, frequencies, rayleigh_resolution, frequency_spacing } = curve
@@ -1153,7 +962,7 @@ const curve_candidates = (
       )
     }
     const prominence = value - Math.max(left_minimum, right_minimum)
-    if (prominence >= minimum_prominence) {
+    if (prominence >= PEAK_PROMINENCE) {
       candidates.push({
         frequency: frequencies[frequency_idx],
         prominence,
@@ -1165,15 +974,6 @@ const curve_candidates = (
   return candidates
 }
 
-const median = (values: number[]): number => {
-  if (values.length === 0) return 0
-  const sorted = values.toSorted((left, right) => left - right)
-  const midpoint = Math.floor(sorted.length / 2)
-  return sorted.length % 2 === 0
-    ? (sorted[midpoint - 1] + sorted[midpoint]) / 2
-    : sorted[midpoint]
-}
-
 interface CurveActivityStats {
   background_median: number
   threshold: number
@@ -1181,8 +981,6 @@ interface CurveActivityStats {
 
 const curve_activity_stats = (
   curve: TrajectorySpectrumCurve | null,
-  relative_threshold: number,
-  activity_snr: number,
 ): CurveActivityStats | null => {
   if (!curve) return null
   const background_median = median(curve.normalized_power)
@@ -1191,7 +989,7 @@ const curve_activity_stats = (
   )
   return {
     background_median,
-    threshold: Math.max(relative_threshold, background_median + activity_snr * mad),
+    threshold: Math.max(ACTIVITY_RELATIVE_THRESHOLD, background_median + ACTIVITY_SNR * mad),
   }
 }
 
@@ -1200,8 +998,11 @@ const curve_score = (
   frequency: number,
   stats: CurveActivityStats | null,
 ): { score: number | null; activity: SpectralActivity; prominence: number } => {
-  if (!(curve && stats)) return { score: null, activity: `unknown`, prominence: 0 }
-  if (frequency < (curve.frequencies[0] ?? 0) || frequency > curve.nyquist) {
+  if (
+    !(curve && stats) ||
+    frequency < (curve.frequencies[0] ?? 0) ||
+    frequency > curve.nyquist
+  ) {
     return { score: null, activity: `unknown`, prominence: 0 }
   }
   const radius = 2 * curve.rayleigh_resolution
@@ -1285,21 +1086,12 @@ const detect_peaks = (
   raman: TrajectorySpectrumCurve | null,
   prepared_positions: Float64Array,
   input: TrajectorySpectroscopyInput,
-  options: Required<
-    Pick<
-      TrajectorySpectroscopyOptions,
-      | `frequency_unit`
-      | `window`
-      | `peak_prominence`
-      | `activity_relative_threshold`
-      | `activity_snr`
-    >
-  >,
+  options: Required<Pick<TrajectorySpectroscopyOptions, `frequency_unit` | `window`>>,
 ): TrajectorySpectralPeak[] => {
   const candidates = [
-    ...curve_candidates(vdos, `vdos`, options.peak_prominence),
-    ...curve_candidates(ir, `ir`, options.peak_prominence),
-    ...curve_candidates(raman, `raman`, options.peak_prominence),
+    ...curve_candidates(vdos, `vdos`),
+    ...curve_candidates(ir, `ir`),
+    ...curve_candidates(raman, `raman`),
   ].toSorted((left, right) => left.frequency - right.frequency)
   const groups: PeakCandidate[][] = []
   for (const candidate of candidates) {
@@ -1343,35 +1135,26 @@ const detect_peaks = (
       displacements[frequency_idx],
     ]),
   )
-  const ir_stats = curve_activity_stats(
-    ir,
-    options.activity_relative_threshold,
-    options.activity_snr,
-  )
-  const raman_stats = curve_activity_stats(
-    raman,
-    options.activity_relative_threshold,
-    options.activity_snr,
-  )
+  const ir_stats = curve_activity_stats(ir)
+  const raman_stats = curve_activity_stats(raman)
   return groups.map((group, group_idx) => {
     const frequency = frequencies[group_idx]
     const displacement = displacement_by_frequency.get(frequency)
     const ir_score = curve_score(ir, frequency, ir_stats)
     const raman_score = curve_score(raman, frequency, raman_stats)
-    const prominence = (source: PeakCandidate[`source`]): number =>
-      Math.max(
-        0,
-        ...group
-          .filter((candidate) => candidate.source === source)
-          .map(({ prominence: value }) => value),
-      )
+    const vdos_prominence = Math.max(
+      0,
+      ...group.flatMap((candidate) =>
+        candidate.source === `vdos` ? [candidate.prominence] : [],
+      ),
+    )
     return {
       frequency,
       ir_activity: ir_score.activity,
       raman_activity: raman_score.activity,
       ir_score: ir_score.score,
       raman_score: raman_score.score,
-      vdos_prominence: prominence(`vdos`),
+      vdos_prominence,
       ir_prominence: ir_score.prominence,
       raman_prominence: raman_score.prominence,
       potentially_mixed: new Set(group.map(({ source }) => source)).size < group.length,
@@ -1418,9 +1201,7 @@ export const calc_trajectory_spectroscopy = (
   const pbc = stream.pbc ?? ([false, false, false] satisfies Pbc)
   const periodic = pbc.some(Boolean)
   const { time_step, time_unit } = input
-  const has_time_step = time_step !== undefined
-  const has_time_unit = time_unit !== undefined
-  if (has_time_step !== has_time_unit) {
+  if ((time_step === undefined) !== (time_unit === undefined)) {
     fail(`time_step and time_unit must be supplied together`)
   }
   if (time_step !== undefined && (!Number.isFinite(time_step) || !(time_step > 0))) {
@@ -1430,8 +1211,8 @@ export const calc_trajectory_spectroscopy = (
     fail(`time_unit must be a non-empty string`)
   }
   const frequency_unit = require_one_of(
-    options.frequency_unit ?? (input.time_step && input.time_unit ? `cm^-1` : `1/frame`),
-    [`THz`, `cm^-1`, `1/frame`],
+    options.frequency_unit ?? (time_step && time_unit ? `cm^-1` : `1/step`),
+    TRAJECTORY_FREQUENCY_UNITS,
     `frequency_unit`,
   )
   const preprocessing = require_one_of(
@@ -1452,31 +1233,7 @@ export const calc_trajectory_spectroscopy = (
     )
   }
   if (input.raman_signal) {
-    require_one_of(
-      input.raman_signal.kind,
-      [`polarizability`, `field_response`],
-      `Raman signal kind`,
-    )
-  }
-  if (input.raman_signal?.kind === `field_response`) {
-    require_one_of(
-      input.raman_signal.response,
-      [`dipole`, `polarization`],
-      `Raman field-response kind`,
-    )
-  }
-  if (options.raman_geometry) {
-    require_one_of(options.raman_geometry.kind, [`powder`, `polarized`], `Raman geometry kind`)
-  }
-  if (
-    options.raman_geometry?.kind === `powder` &&
-    options.raman_geometry.channel !== undefined
-  ) {
-    require_one_of(
-      options.raman_geometry.channel,
-      [`isotropic`, `anisotropic`, `vv`, `vh`, `unpolarized`],
-      `Raman powder channel`,
-    )
+    require_one_of(input.raman_signal.kind, [`polarizability`], `Raman signal kind`)
   }
   if (periodic && preprocessing === `body_fixed`) {
     fail(`body_fixed preprocessing is only valid for non-periodic systems`)
@@ -1503,23 +1260,17 @@ export const calc_trajectory_spectroscopy = (
     preprocessing,
     window: require_one_of(options.window ?? `hann`, WINDOW_TYPES, `window`),
     zero_pad_factor: options.zero_pad_factor ?? 4,
-    peak_prominence: options.peak_prominence ?? 0.02,
-    activity_relative_threshold: options.activity_relative_threshold ?? 0.01,
-    activity_snr: options.activity_snr ?? 6,
-  }
-  for (const label of [`peak_prominence`, `activity_relative_threshold`] as const) {
-    const value = calculation_options[label]
-    if (!(value >= 0 && value <= 1)) fail(`${label} must be between 0 and 1`)
-  }
-  if (
-    !Number.isFinite(calculation_options.activity_snr) ||
-    calculation_options.activity_snr < 0
-  ) {
-    fail(`activity_snr must be finite and >= 0`)
+    raman_channel: require_one_of(
+      options.raman_channel ?? `unpolarized`,
+      RAMAN_CHANNELS,
+      `Raman channel`,
+    ),
   }
   const prepared = prepare_positions(stream, masses, preprocessing)
 
-  let velocity_source: Exclude<SpectroscopyVelocitySource, `auto`>
+  // `auto`: stored velocities win whenever the input carries them; otherwise the prepared
+  // positions are differentiated
+  let velocity_source: VelocitySource
   let velocity_values: Float64Array
   let velocity_steps: number[]
   if (requested_velocity_source === `stored` && !input.velocities) {
@@ -1587,6 +1338,8 @@ export const calc_trajectory_spectroscopy = (
           )
         : identity_rotations(series.steps.length)
     const ir_values = rotate_vector_signal(series, rotations)
+    // dipole/polarization spectra get the ω² of the classical absorption coefficient; a
+    // current signal is already the time derivative and must not be weighted again
     ir = build_curve(
       ir_values,
       3,
@@ -1600,19 +1353,12 @@ export const calc_trajectory_spectroscopy = (
   }
 
   const raman = input.raman_signal
-    ? calculate_raman(
-        input,
-        input.raman_signal,
-        prepared,
-        { ...calculation_options, raman_geometry: options.raman_geometry },
-        periodic,
-      )
+    ? calculate_raman(input, input.raman_signal.series, prepared, calculation_options)
     : null
-  const raman_curve = raman ? selected_raman_curve(raman) : null
   const peaks = detect_peaks(
     vdos,
     ir,
-    raman_curve,
+    raman ? raman[raman.selected_channel] : null,
     prepared.positions,
     input,
     calculation_options,

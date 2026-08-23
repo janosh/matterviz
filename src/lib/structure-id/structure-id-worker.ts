@@ -1,12 +1,9 @@
-import { to_error } from '$lib/utils'
+import { serve_worker } from '$lib/worker-serve'
+import type { StructureIdOptions } from './calc-structure-id'
 import { calc_structure_id } from './calc-structure-id'
+import type { StructureIdPayload } from './worker-payload'
+import { structure_from_payload } from './worker-payload'
 
-self.addEventListener(`message`, (event: MessageEvent) => {
-  const { id, input, options } = event.data
-  try {
-    const result = calc_structure_id(input, options)
-    postMessage({ id, result, error: null })
-  } catch (err) {
-    postMessage({ id, result: null, error: to_error(err).message })
-  }
-})
+serve_worker((payload: StructureIdPayload, options: StructureIdOptions) =>
+  calc_structure_id(structure_from_payload(payload), options),
+)

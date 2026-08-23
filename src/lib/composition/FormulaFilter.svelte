@@ -79,10 +79,10 @@
     max_history = 5, // Max recent inputs to remember; 0 disables history dropdown
     history_key = `formula-filter-history`, // localStorage key for persisting history
     validate,
-    onparse,
+    on_parse,
     on_validation,
-    onchange,
-    onclear,
+    on_change,
+    on_clear,
     ...rest
   }: {
     value: string // Current filter value (normalized on blur/enter)
@@ -103,10 +103,10 @@
       search_mode: FormulaSearchMode,
       parsed: FormulaFilterParseResult,
     ) => FormulaFilterValidation | null
-    onparse?: (parsed: FormulaFilterParseResult) => void
+    on_parse?: (parsed: FormulaFilterParseResult) => void
     on_validation?: (validation: FormulaFilterValidation) => void
-    onchange?: (value: string, search_mode: FormulaSearchMode) => void // Callback when value changes
-    onclear?: () => void // Callback when clear button is clicked
+    on_change?: (value: string, search_mode: FormulaSearchMode) => void // Callback when value changes
+    on_clear?: () => void // Callback when clear button is clicked
   } & HTMLAttributes<HTMLDivElement> = $props()
 
   let input_value = $state(value)
@@ -269,9 +269,11 @@
     if (!trimmed) return `elements`
     if (/^[+\-!]\s*\w/.test(trimmed)) return `elements`
     if (trimmed.includes(`+`) || trimmed.includes(`!`)) return `elements`
-    if (trimmed.includes(`:`)) return trimmed.includes(`-`) ? `chemsys` : `elements`
     if (trimmed.includes(`,`)) return `elements` // Li,Fe,O → has elements
-    if (trimmed.includes(`-`)) return `chemsys` // Li-Fe-O → chemical system
+    // A range constraint like "Fe:1-2" contains '-' inside the range; only dashes left after
+    // stripping the ranges are chemsys separators (Li-Fe-O, Fe:1-2-Li)
+    if (trimmed.replaceAll(/:\s*\d+-\d+/g, ``).includes(`-`)) return `chemsys`
+    if (trimmed.includes(`:`)) return `elements` // Fe:1-2, Fe:2 → single constrained element
     return `exact` // LiFePO4 → exact formula
   }
 
@@ -466,7 +468,7 @@
 
   function run_validation(next_value: string, next_mode: FormulaSearchMode): void {
     const parsed = parse_query(next_value, next_mode)
-    onparse?.(parsed)
+    on_parse?.(parsed)
 
     const default_validation: FormulaFilterValidation = parsed.is_valid
       ? { state: `valid`, message: null }
@@ -534,7 +536,7 @@
     value = reformatted
     input_value = reformatted
     run_validation(reformatted, next_mode)
-    onchange?.(reformatted, next_mode)
+    on_change?.(reformatted, next_mode)
   }
 
   function set_value(new_value: string, forced_mode?: FormulaSearchMode): void {
@@ -547,7 +549,7 @@
     if (new_value.trim()) add_to_history(new_value)
     close_history()
     run_validation(value, mode)
-    onchange?.(value, mode)
+    on_change?.(value, mode)
   }
 
   function sync_value(): void {
@@ -606,7 +608,7 @@
   }
 
   function clear_filter(): void {
-    onclear?.()
+    on_clear?.()
     set_value(``)
   }
 

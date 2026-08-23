@@ -11,6 +11,7 @@
 
 import { load as yaml_load } from 'js-yaml'
 import type { Matrix3x3, Vec3 } from '$lib/math'
+import { is_plain_object } from '$lib/utils'
 import type {
   BornChargeData,
   PhononMode,
@@ -26,9 +27,6 @@ const EIGENVECTOR_NORM_TOL = 1e-3
 
 const is_finite_number = (val: unknown): val is number =>
   typeof val === `number` && Number.isFinite(val)
-
-const is_record = (val: unknown): val is Record<string, unknown> =>
-  val !== null && typeof val === `object` && !Array.isArray(val)
 
 // Read exactly `len` finite numbers out of an unknown value, else throw with context.
 // Shared by the YAML and BORN paths, which both consume fixed-length numeric rows.
@@ -175,7 +173,8 @@ function parse_atoms(data: Record<string, unknown>): PhononModeAtom[] {
     )
   }
   return raw_points.map((point, atom_idx) => {
-    if (!is_record(point)) throw new Error(`phonopy YAML atom ${atom_idx} is not a mapping`)
+    if (!is_plain_object(point))
+      throw new Error(`phonopy YAML atom ${atom_idx} is not a mapping`)
     const { symbol, mass } = point
     if (typeof symbol !== `string` || symbol.length === 0) {
       throw new Error(`phonopy YAML atom ${atom_idx} has no 'symbol'`)
@@ -198,7 +197,7 @@ function parse_atoms(data: Record<string, unknown>): PhononModeAtom[] {
 // Frequencies are returned in the file's own unit, which phonopy writes as THz.
 export function parse_phonon_modes(content: string): PhononModeData {
   const parsed: unknown = yaml_load(content)
-  if (!is_record(parsed)) throw new Error(`phonopy YAML did not parse to a mapping`)
+  if (!is_plain_object(parsed)) throw new Error(`phonopy YAML did not parse to a mapping`)
 
   const atoms = parse_atoms(parsed)
   const n_atoms = atoms.length
@@ -216,7 +215,8 @@ export function parse_phonon_modes(content: string): PhononModeData {
   }
 
   const qpoints: PhononQPointModes[] = raw_phonon.map((entry, q_idx) => {
-    if (!is_record(entry)) throw new Error(`phonopy YAML phonon[${q_idx}] is not a mapping`)
+    if (!is_plain_object(entry))
+      throw new Error(`phonopy YAML phonon[${q_idx}] is not a mapping`)
     const q_position = to_vec3(entry[`q-position`], `phonopy YAML phonon[${q_idx}] q-position`)
     const raw_band = entry.band
     if (!Array.isArray(raw_band) || raw_band.length === 0) {
@@ -225,7 +225,7 @@ export function parse_phonon_modes(content: string): PhononModeData {
 
     const modes: PhononMode[] = raw_band.map((band_entry, mode_idx) => {
       const context = `phonopy YAML phonon[${q_idx}].band[${mode_idx}]`
-      if (!is_record(band_entry)) throw new Error(`${context} is not a mapping`)
+      if (!is_plain_object(band_entry)) throw new Error(`${context} is not a mapping`)
       const { frequency } = band_entry
       if (!is_finite_number(frequency)) {
         throw new Error(`${context}: 'frequency' is not a finite number`)

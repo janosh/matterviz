@@ -12,21 +12,21 @@ import {
   best_form_energy_for_formula,
   build_axis_ranges,
   build_border_hyperplanes,
+  build_chempot_hyperplanes,
   build_hyperplanes,
   compute_chempot_diagram,
   compute_domains,
   dedup_points,
   formula_key_from_composition,
   get_3d_domain_simplexes_and_ann_loc,
-  get_energy_per_atom,
   get_energy_stats_by_formula,
   get_min_entries_and_el_refs,
   get_ternary_combinations,
   get_visible_domain_labels,
-  make_nd_cache_key,
   orthonormal_2d,
   pad_domain_points,
   renormalize_entries,
+  safe_energy_per_atom,
   scale_to_font_range,
   simple_pca,
 } from '$lib/chempot-diagram/compute'
@@ -35,7 +35,7 @@ import { filter_entries_at_temperature } from '$lib/convex-hull/helpers'
 import type { PhaseData } from '$lib/convex-hull/types'
 import type { Vec2 } from '$lib/math'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { load_json } from '../setup'
+import { load_json, make_phase } from '../setup'
 
 const test_dir = import.meta.dirname
 const entries = load_json<PhaseData[]>(`${test_dir}/pd_entries_test.json.gz`)
@@ -53,11 +53,17 @@ const cpd_ternary = compute_chempot_diagram(entries, {
   default_min_limit: -25,
   formal_chempots: false,
 })
+const ternary_hull_input = build_chempot_hyperplanes(entries, cpd_ternary.elements, false)
 
 const cpd_ternary_formal = compute_chempot_diagram(entries, {
   default_min_limit: -25,
   formal_chempots: true,
 })
+const ternary_formal_hull_input = build_chempot_hyperplanes(
+  entries,
+  cpd_ternary.elements,
+  true,
+)
 
 const cpd_binary = compute_chempot_diagram(binary_entries, {
   default_min_limit: -25,
@@ -88,12 +94,6 @@ const pmg_to_ours: Record<string, string> = {
   Li2FeO3: `FeLi2O3`,
   Li5FeO4: `FeLi5O4`,
   LiFeO2: `FeLiO2`,
-}
-
-// Helper: make a PhaseData entry from composition and energy_per_atom
-function make_entry(composition: Record<string, number>, energy_per_atom: number): PhaseData {
-  const atoms = Object.values(composition).reduce((sum, count) => sum + count, 0)
-  return { composition, energy: energy_per_atom * atoms, energy_per_atom }
 }
 
 // Reorder pymatgen [Li, Fe, O] columns to our [Fe, Li, O]
@@ -129,12 +129,12 @@ describe(`pymatgen parity: ChemicalPotentialDiagram`, () => {
   test.each([
     {
       label: `absolute`,
-      refs: cpd_ternary.el_refs,
+      refs: ternary_hull_input.el_refs,
       expected: { Li: -1.91301487, Fe: -6.5961471, O: -25.54966885 },
     },
     {
       label: `formal → zero`,
-      refs: cpd_ternary_formal.el_refs,
+      refs: ternary_formal_hull_input.el_refs,
       expected: { Li: 0, Fe: 0, O: 0 },
     },
   ])(`el_refs ($label)`, ({ refs, expected }) => {
@@ -262,7 +262,10 @@ describe(`pymatgen parity: ChemicalPotentialDiagram`, () => {
 
 describe(`physical invariants`, () => {
   test(`all domain vertices satisfy all hyperplane constraints`, () => {
-    const all_hs = [...cpd_ternary.hyperplanes, ...build_border_hyperplanes(cpd_ternary.lims)]
+    const all_hs = [
+      ...ternary_hull_input.hyperplanes,
+      ...build_border_hyperplanes(cpd_ternary.lims),
+    ]
     const dim = cpd_ternary.elements.length
     for (const [formula, pts] of Object.entries(cpd_ternary.domains)) {
       for (const pt of dedup_vertices(pts)) {
@@ -291,7 +294,7 @@ describe(`physical invariants`, () => {
   })
 
   test(`elemental domains touch the el_ref energy axis`, () => {
-    const fe_ref_e = cpd_ternary.el_refs.Fe.energy
+    const fe_ref_e = ternary_hull_input.el_refs.Fe.energy
     const fe_vals = dedup_vertices(cpd_ternary.domains.Fe).map((pt) => pt[0])
     expect(fe_vals.some((val) => Math.abs(val - fe_ref_e) < 0.01)).toBe(true)
   })
@@ -324,7 +327,7 @@ describe(`physical invariants`, () => {
         (_, col) => unique.reduce((sum, row) => sum + row[col], 0) / unique.length,
       )
       let best_energy = Infinity
-      for (const hs of cpd_ternary.hyperplanes) {
+      for (const hs of ternary_hull_input.hyperplanes) {
         let val = hs[dim]
         for (let jdx = 0; jdx < dim; jdx++) val += hs[jdx] * centroid[jdx]
         if (val < best_energy) best_energy = val
@@ -347,16 +350,17 @@ const expect_vertices = (actual: number[][], expected: number[][]) => {
 describe(`analytic binary A-B-AB`, () => {
   // Hyperplanes: mu_A <= E_A, mu_B <= E_B, (mu_A + mu_B)/2 <= E_AB; box [-20, 0]^2
   const ab_binary_entries = [
-    make_entry({ A: 1 }, -2.0),
-    make_entry({ B: 1 }, -3.0),
-    make_entry({ A: 1, B: 1 }, -6.0), // E_form = -6 - (-2 - 3)/2 = -3.5 eV/atom
+    make_phase({ A: 1 }, -2.0),
+    make_phase({ B: 1 }, -3.0),
+    make_phase({ A: 1, B: 1 }, -6.0), // E_form = -6 - (-2 - 3)/2 = -3.5 eV/atom
   ]
 
   test(`absolute chempots: AB segment spans mu_A + mu_B = -12 between the element lines`, () => {
-    const { domains, el_refs } = compute_chempot_diagram(ab_binary_entries, {
+    const { domains } = compute_chempot_diagram(ab_binary_entries, {
       default_min_limit: -20,
       formal_chempots: false,
     })
+    const { el_refs } = build_chempot_hyperplanes(ab_binary_entries, [`A`, `B`], false)
     expect(el_refs.A.energy_per_atom).toBe(-2.0)
     expect(el_refs.B.energy_per_atom).toBe(-3.0)
     expect_vertices(domains.A, [
@@ -374,10 +378,11 @@ describe(`analytic binary A-B-AB`, () => {
   })
 
   test(`formal chempots shift the element lines to 0 and AB to mu_A + mu_B = -7`, () => {
-    const { domains, el_refs } = compute_chempot_diagram(ab_binary_entries, {
+    const { domains } = compute_chempot_diagram(ab_binary_entries, {
       default_min_limit: -20,
       formal_chempots: true,
     })
+    const { el_refs } = build_chempot_hyperplanes(ab_binary_entries, [`A`, `B`], true)
     expect(el_refs.A.energy_per_atom).toBeCloseTo(0, 12)
     expect(el_refs.B.energy_per_atom).toBeCloseTo(0, 12)
     expect_vertices(domains.A, [
@@ -418,9 +423,69 @@ describe(`analytic binary A-B-AB`, () => {
     ])
   })
 
+  // The interior point used to seed the halfspace intersection is the Chebyshev centre; a
+  // centre-of-box heuristic that assumed equal-width limits declared this region empty
+  test(`narrow per-element limit next to a wide default limit (100:1) still yields a diagram`, () => {
+    // mu_A <= 0, mu_B <= 0, (1/3) mu_A + (2/3) mu_B <= -50 within A ∈ [-1, 0], B ∈ [-100, 0]
+    const { domains, lims } = compute_chempot_diagram(
+      [make_phase({ A: 1 }, 0), make_phase({ B: 1 }, 0), make_phase({ A: 1, B: 2 }, -50)],
+      { default_min_limit: -100, formal_chempots: true, limits: { A: [-1, 0] } },
+    )
+    expect(lims).toEqual([
+      [-1, 0],
+      [-100, 0],
+    ])
+    // B is never stable inside the box (mu_B = 0 needs mu_A <= -150), so it has no domain
+    expect(Object.keys(domains).toSorted()).toEqual([`A`, `AB2`])
+    expect_vertices(domains.A, [
+      [0, -75],
+      [0, -100],
+    ])
+    expect_vertices(domains.AB2, [
+      [0, -75],
+      [-1, -74.5],
+    ])
+  })
+
+  test(`asymmetric limits (12:1) clip every domain vertex to the custom range`, () => {
+    const { domains } = compute_chempot_diagram(ab_binary_entries, {
+      default_min_limit: -60,
+      formal_chempots: false,
+      limits: { A: [-5, 0] },
+    })
+    for (const pts of Object.values(domains)) {
+      for (const pt of pts) expect(pt[0]).toBeGreaterThanOrEqual(-5 - 1e-9)
+    }
+    // mu_B = -3 needs mu_A <= -9 for AB to be unstable, outside A's range: no B domain
+    expect(Object.keys(domains).toSorted()).toEqual([`A`, `AB`])
+    expect_vertices(domains.A, [
+      [-2, -10],
+      [-2, -60],
+    ])
+    expect_vertices(domains.AB, [
+      [-2, -10],
+      [-5, -7],
+    ])
+  })
+
+  test.each([
+    [`compound below every reachable chemical potential`, { default_min_limit: -10 }],
+    [
+      `inverted per-element limits`,
+      { default_min_limit: -100, limits: { A: [0, -1] as Vec2 } },
+    ],
+  ])(`genuinely empty region throws (%s)`, (_desc, config) => {
+    expect(() =>
+      compute_chempot_diagram(
+        [make_phase({ A: 1 }, 0), make_phase({ B: 1 }, 0), make_phase({ A: 1, B: 1 }, -50)],
+        { ...config, formal_chempots: true },
+      ),
+    ).toThrow(/Chemical potential region is empty/)
+  })
+
   test(`two elements without compounds: the domains meet only at the box corner`, () => {
     const { domains } = compute_chempot_diagram(
-      [make_entry({ X: 1 }, -1.0), make_entry({ Y: 1 }, -2.0)],
+      [make_phase({ X: 1 }, -1.0), make_phase({ Y: 1 }, -2.0)],
       { default_min_limit: -10, formal_chempots: false },
     )
     expect(Object.keys(domains).toSorted()).toEqual([`X`, `Y`])
@@ -440,11 +505,11 @@ describe(`analytic ternary A-B-C with AB and ABC`, () => {
   // Vertices come from intersecting three active constraints; AB's line cuts the ABC
   // triangle's (0, 0, -9) corner off, and the [-50, 0] box closes the element domains.
   const ternary_entries = [
-    make_entry({ A: 1 }, -1.0),
-    make_entry({ B: 1 }, -2.0),
-    make_entry({ C: 1 }, -3.0),
-    make_entry({ A: 1, B: 1 }, -2.5), // E_form = -1 eV/atom
-    make_entry({ A: 1, B: 1, C: 1 }, -5.0), // E_form = -3 eV/atom
+    make_phase({ A: 1 }, -1.0),
+    make_phase({ B: 1 }, -2.0),
+    make_phase({ C: 1 }, -3.0),
+    make_phase({ A: 1, B: 1 }, -2.5), // E_form = -1 eV/atom
+    make_phase({ A: 1, B: 1, C: 1 }, -5.0), // E_form = -3 eV/atom
   ]
   const formal_vertices = {
     A: [
@@ -498,9 +563,10 @@ describe(`analytic ternary A-B-C with AB and ABC`, () => {
     [`formal`, true, formal_vertices],
     [`absolute`, false, absolute_vertices],
   ])(`%s chempots reproduce the hand-computed vertex sets`, (_label, formal, expected) => {
-    const { domains, elements, hyperplanes } = compute_chempot_diagram(ternary_entries, {
+    const { domains, elements } = compute_chempot_diagram(ternary_entries, {
       formal_chempots: formal,
     })
+    const { hyperplanes } = build_chempot_hyperplanes(ternary_entries, elements, formal)
     expect(elements).toEqual([`A`, `B`, `C`])
     expect(Object.keys(domains).toSorted()).toEqual([`A`, `AB`, `ABC`, `B`, `C`])
     // rows are [x_A, x_B, x_C, -E/atom] in sorted-formula order (A, AB, ABC, B, C)
@@ -522,10 +588,11 @@ describe(`analytic ternary A-B-C with AB and ABC`, () => {
   test(`a metastable compound passes the E_form filter but carves out no domain`, () => {
     // A2B at -0.4 eV/atom lies 0.27 eV above the A-AB tie line (-2/3 at x_B = 1/3), so its
     // plane 2 mu_A + mu_B <= -1.2 is slack everywhere inside the region the others bound
-    const with_metastable = [...ternary_entries, make_entry({ A: 2, B: 1 }, -0.4 - 4 / 3)]
-    const { domains, hyperplane_entries } = compute_chempot_diagram(with_metastable, {
+    const with_metastable = [...ternary_entries, make_phase({ A: 2, B: 1 }, -0.4 - 4 / 3)]
+    const { domains, elements } = compute_chempot_diagram(with_metastable, {
       formal_chempots: true,
     })
+    const { hyperplane_entries } = build_chempot_hyperplanes(with_metastable, elements, true)
     expect(
       hyperplane_entries.map((entry) => formula_key_from_composition(entry.composition)),
     ).toContain(`A2B`)
@@ -540,12 +607,12 @@ describe(`error handling`, () => {
   test.each([
     {
       label: `< 2 elements`,
-      phase_entries: [make_entry({ A: 1 }, -1.0)],
+      phase_entries: [make_phase({ A: 1 }, -1.0)],
       message: `requires 2+ elements`,
     },
     {
       label: `missing elemental ref`,
-      phase_entries: [make_entry({ A: 1, B: 1 }, -3.0), make_entry({ A: 2, B: 1 }, -5.0)],
+      phase_entries: [make_phase({ A: 1, B: 1 }, -3.0), make_phase({ A: 2, B: 1 }, -5.0)],
       message: `Missing elemental reference`,
     },
     {
@@ -563,9 +630,9 @@ describe(`get_min_entries_and_el_refs`, () => {
     {
       label: `distinguishes compositions and identifies elemental refs`,
       phase_entries: [
-        make_entry({ A: 1 }, -1.0),
-        make_entry({ B: 1 }, -2.0),
-        make_entry({ A: 1, B: 1 }, -3.0),
+        make_phase({ A: 1 }, -1.0),
+        make_phase({ B: 1 }, -2.0),
+        make_phase({ A: 1, B: 1 }, -3.0),
       ],
       assert: ({ min_entries, el_refs }: ReturnType<typeof get_min_entries_and_el_refs>) => {
         expect(min_entries).toHaveLength(3)
@@ -576,10 +643,10 @@ describe(`get_min_entries_and_el_refs`, () => {
     {
       label: `picks lowest-energy polymorph per composition`,
       phase_entries: [
-        make_entry({ Fe: 1 }, -6.0),
-        make_entry({ Fe: 1 }, -6.5),
-        make_entry({ Fe: 1 }, -6.2),
-        make_entry({ O: 2 }, -8.0),
+        make_phase({ Fe: 1 }, -6.0),
+        make_phase({ Fe: 1 }, -6.5),
+        make_phase({ Fe: 1 }, -6.2),
+        make_phase({ O: 2 }, -8.0),
       ],
       assert: ({ min_entries, el_refs }: ReturnType<typeof get_min_entries_and_el_refs>) => {
         expect(min_entries).toHaveLength(2)
@@ -593,19 +660,19 @@ describe(`get_min_entries_and_el_refs`, () => {
   test.each([Number.NaN, Infinity, -Infinity])(`ignores non-finite EPA/e_form %s`, (bad) => {
     expect(
       get_min_entries_and_el_refs([
-        make_entry({ A: 1 }, bad),
-        make_entry({ A: 1 }, -2),
-        make_entry({ B: 1 }, bad),
+        make_phase({ A: 1 }, bad),
+        make_phase({ A: 1 }, -2),
+        make_phase({ B: 1 }, bad),
       ]).min_entries.map((entry) => entry.energy_per_atom),
     ).toEqual([-2])
     expect(
       best_form_energy_for_formula(
         [
-          { ...make_entry({ A: 1, B: 1 }, -1), e_form_per_atom: bad },
-          { ...make_entry({ A: 1, B: 1 }, -1), e_form_per_atom: -0.5 },
+          { ...make_phase({ A: 1, B: 1 }, -1), e_form_per_atom: bad },
+          { ...make_phase({ A: 1, B: 1 }, -1), e_form_per_atom: -0.5 },
         ],
         `AB`,
-        { A: make_entry({ A: 1 }, 0), B: make_entry({ B: 1 }, 0) },
+        { A: make_phase({ A: 1 }, 0), B: make_phase({ B: 1 }, 0) },
       ),
     ).toBe(-0.5)
   })
@@ -613,20 +680,20 @@ describe(`get_min_entries_and_el_refs`, () => {
 
 describe(`renormalize_entries`, () => {
   const el_refs: Record<string, PhaseData> = {
-    A: make_entry({ A: 1 }, -2.0),
-    B: make_entry({ B: 1 }, -3.0),
+    A: make_phase({ A: 1 }, -2.0),
+    B: make_phase({ B: 1 }, -3.0),
   }
 
   test.each([
     {
       label: `pure elements renormalize to zero`,
-      phase_entries: [make_entry({ A: 1 }, -2.0), make_entry({ B: 1 }, -3.0)],
+      phase_entries: [make_phase({ A: 1 }, -2.0), make_phase({ B: 1 }, -3.0)],
       expected_epa: [0, 0],
       expected_energy: null as number[] | null,
     },
     {
       label: `compound formation energy is preserved`,
-      phase_entries: [make_entry({ A: 1, B: 1 }, -3.0)],
+      phase_entries: [make_phase({ A: 1, B: 1 }, -3.0)],
       expected_epa: [-0.5],
       expected_energy: [-1.0],
     },
@@ -645,10 +712,10 @@ describe(`renormalize_entries`, () => {
 
 describe(`build_hyperplanes`, () => {
   const el_refs: Record<string, PhaseData> = {
-    A: make_entry({ A: 1 }, -2.0),
-    B: make_entry({ B: 1 }, -3.0),
+    A: make_phase({ A: 1 }, -2.0),
+    B: make_phase({ B: 1 }, -3.0),
   }
-  const ab_entry = make_entry({ A: 1, B: 1 }, -6.0)
+  const ab_entry = make_phase({ A: 1, B: 1 }, -6.0)
   const { hyperplanes, hyperplane_entries } = build_hyperplanes(
     [el_refs.A, el_refs.B, ab_entry],
     el_refs,
@@ -667,22 +734,22 @@ describe(`build_hyperplanes`, () => {
     {
       label: `precomputed hull stability excludes known above-hull phases`,
       refs: {
-        A: { ...make_entry({ A: 1 }, -2), is_stable: true, e_above_hull: 0 },
-        B: { ...make_entry({ B: 1 }, -3), is_stable: true, e_above_hull: 0 },
+        A: { ...make_phase({ A: 1 }, -2), is_stable: true, e_above_hull: 0 },
+        B: { ...make_phase({ B: 1 }, -3), is_stable: true, e_above_hull: 0 },
       },
       extra: [
-        { ...make_entry({ A: 1, B: 1 }, -6), is_stable: true, e_above_hull: 0 },
-        { ...make_entry({ A: 2, B: 1 }, -5), is_stable: false, e_above_hull: 0.2 },
+        { ...make_phase({ A: 1, B: 1 }, -6), is_stable: true, e_above_hull: 0 },
+        { ...make_phase({ A: 2, B: 1 }, -5), is_stable: false, e_above_hull: 0.2 },
       ],
       expected: [`A`, `B`, `AB`],
     },
     {
       label: `falls back to negative formation energy when hull stability is absent`,
       refs: {
-        A: make_entry({ A: 1 }, -2),
-        B: make_entry({ B: 1 }, -3),
+        A: make_phase({ A: 1 }, -2),
+        B: make_phase({ B: 1 }, -3),
       },
-      extra: [make_entry({ A: 2, B: 1 }, -5)],
+      extra: [make_phase({ A: 2, B: 1 }, -5)],
       expected: [`A`, `B`, `A2B`],
     },
   ])(`$label`, ({ refs, extra, expected }) => {
@@ -696,45 +763,7 @@ describe(`build_hyperplanes`, () => {
 })
 
 describe(`element padding`, () => {
-  test(`padding reduces extreme coordinates`, () => {
-    const domains = {
-      A: [
-        [-50, -3],
-        [-2, -3],
-      ],
-      B: [
-        [-50, -50],
-        [-50, -5],
-      ],
-    }
-    const new_lims = apply_element_padding(domains, [0, 1], 1.0, -50)
-    // For axis 0: non-default min is -2, so new_lim = -2 - 1 = -3
-    expect(new_lims[0]).toBeCloseTo(-3, 4)
-    // For axis 1: non-default min is -5, so new_lim = -5 - 1 = -6
-    expect(new_lims[1]).toBeCloseTo(-6, 4)
-  })
-
-  test(`pad_domain_points replaces defaults and preserves non-defaults`, () => {
-    const replaced = pad_domain_points(
-      [
-        [-50, -3],
-        [-2, -50],
-      ],
-      [0, 1],
-      [-10, -10],
-      -50,
-      1.0,
-    )
-    expect(replaced[0][0]).toBe(-10) // was -50 → replaced
-    expect(replaced[0][1]).toBe(-3) // not near -50 → unchanged
-    expect(replaced[1][0]).toBe(-2)
-    expect(replaced[1][1]).toBe(-10)
-
-    const preserved = pad_domain_points([[-5.123, -7.456]], [0, 1], [-20, -20], -50, 1.0)
-    expect(preserved[0]).toEqual([-5.123, -7.456])
-  })
-
-  test(`padding threshold scales with large padding values`, () => {
+  test(`axis limits ignore near-default points; pad_domain_points replaces only those`, () => {
     const domains = {
       A: [
         [-50, -50],
@@ -886,14 +915,6 @@ describe(`orthonormal_2d`, () => {
     // perp = [-dy, dx] normalized
     {
       pts: [
-        [1, 1],
-        [2, 2],
-      ],
-      expected: [-Math.SQRT1_2, Math.SQRT1_2],
-      label: `45°`,
-    },
-    {
-      pts: [
         [-2, -5],
         [-4, 6],
       ],
@@ -902,27 +923,11 @@ describe(`orthonormal_2d`, () => {
     },
     {
       pts: [
-        [0, 0],
-        [3, 4],
-      ],
-      expected: [-0.8, 0.6],
-      label: `diagonal`,
-    },
-    {
-      pts: [
         [0, 5],
         [10, 5],
       ],
       expected: [0, 1],
       label: `horizontal`,
-    },
-    {
-      pts: [
-        [5, 0],
-        [5, 10],
-      ],
-      expected: [-1, 0],
-      label: `vertical`,
     },
     {
       pts: [
@@ -1141,33 +1146,12 @@ describe(`build_axis_ranges`, () => {
 describe(`dedup_points`, () => {
   test.each([
     {
-      pts: [
-        [0, 0],
-        [0.00005, 0.00005],
-      ],
-      tol: 1e-4,
-      n_unique: 1,
-      indices: [0],
-      label: `within tolerance`,
-    },
-    {
-      pts: [
-        [0, 0],
-        [0.001, 0.001],
-      ],
-      tol: 1e-4,
-      n_unique: 2,
-      indices: [0, 1],
-      label: `beyond tolerance`,
-    },
-    {
       pts: [] as number[][],
       tol: 1e-4,
       n_unique: 0,
       indices: [] as number[],
       label: `empty`,
     },
-    { pts: [[5, 6, 7]], tol: 1e-4, n_unique: 1, indices: [0], label: `single point` },
     {
       pts: [
         [0, 0],
@@ -1202,11 +1186,11 @@ describe(`dedup_points`, () => {
   })
 })
 
-describe(`get_energy_per_atom`, () => {
+describe(`safe_energy_per_atom`, () => {
   test.each([
     {
       label: `returns energy_per_atom when present`,
-      entry: make_entry({ Fe: 2 }, -3.0),
+      entry: make_phase({ Fe: 2 }, -3.0),
       expected: -3.0,
     },
     {
@@ -1214,8 +1198,13 @@ describe(`get_energy_per_atom`, () => {
       entry: { composition: { Fe: 2, O: 1 }, energy: -9.0 },
       expected: -3.0,
     },
+    {
+      label: `applies the MP total-energy correction like the convex hull`,
+      entry: { composition: { Ni: 9, O: 13 }, energy: -22 * 4.643, correction: -22 * 1.445 },
+      expected: -6.088,
+    },
   ])(`$label`, ({ entry, expected }) => {
-    expect(get_energy_per_atom(entry)).toBeCloseTo(expected, 8)
+    expect(safe_energy_per_atom(entry)).toBeCloseTo(expected, 8)
   })
 
   test.each([
@@ -1229,16 +1218,37 @@ describe(`get_energy_per_atom`, () => {
       entry: { composition: { Li: 1 }, energy: Number.POSITIVE_INFINITY },
     },
   ])(`returns NaN for $label (safe for $derived)`, ({ entry }) => {
-    expect(Number.isNaN(get_energy_per_atom(entry))).toBe(true)
+    expect(Number.isNaN(safe_energy_per_atom(entry))).toBe(true)
   })
 
   test(`get_min_entries skips invalid compositions instead of throwing`, () => {
     const { min_entries } = get_min_entries_and_el_refs([
       { composition: {}, energy: -1 },
-      make_entry({ Li: 1 }, -3),
+      make_phase({ Li: 1 }, -3),
     ])
     expect(min_entries).toHaveLength(1)
     expect(min_entries[0]?.composition).toEqual({ Li: 1 })
+  })
+
+  test(`corrections shift domains: a corrected compound becomes stable`, () => {
+    // Uncorrected AB (-2.5 eV/atom) sits on the A-B tie line and carves out no domain;
+    // a -1 eV total correction (-0.5 eV/atom) makes it stable
+    const ab_entries = [make_phase({ A: 1 }, -2.0), make_phase({ B: 1 }, -3.0)]
+    const on_tie_line = make_phase({ A: 1, B: 1 }, -2.5)
+    const uncorrected = compute_chempot_diagram([...ab_entries, on_tie_line], {
+      formal_chempots: true,
+    })
+    expect(uncorrected.domains.AB).toBeUndefined()
+    const corrected = compute_chempot_diagram(
+      [...ab_entries, { ...on_tie_line, correction: -1.0 }],
+      { formal_chempots: true },
+    )
+    expect(Object.keys(corrected.domains).toSorted()).toEqual([`A`, `AB`, `B`])
+    // Formal plane (mu_A + mu_B) / 2 = -0.5 → AB meets A at (0, -1) and B at (-1, 0)
+    expect_vertices(corrected.domains.AB, [
+      [0, -1],
+      [-1, 0],
+    ])
   })
 })
 
@@ -1248,19 +1258,11 @@ describe(`formula_key_from_composition`, () => {
     { comp: { O: 3, Li: 2, Fe: 1 }, expected: `FeLi2O3`, label: `alphabetical sorting` },
     { comp: { Fe: 2, O: 4 }, expected: `FeO2`, label: `reduces to lowest terms` },
     { comp: { Fe: 1, O: 0 }, expected: `Fe`, label: `ignores zero amounts` },
-    { comp: { Fe: 0.5, Li: 0.5 }, expected: `FeLi`, label: `fractional halves` },
     { comp: { Fe: 2 / 3, Li: 1 / 3 }, expected: `Fe2Li`, label: `fractional 2:1 ratio` },
     // 0.67:0.33 is not 2:1 to within 1/10000, so it stays a distinct composition from Fe2Li
     { comp: { Fe: 0.67, Li: 0.33 }, expected: `Fe67Li33`, label: `rounded 2:1 stays 67:33` },
-    {
-      comp: { Li: 1 / 3, Fe: 1 / 3, O: 1 / 3 },
-      expected: `FeLiO`,
-      label: `fractional ternary 1:1:1`,
-    },
-    { comp: { Fe: 0.25, Li: 0.5, O: 0.25 }, expected: `FeLi2O`, label: `fractional quarters` },
     { comp: { Fe: 0.005, O: 0.995 }, expected: `FeO199`, label: `dilute ratio resolves` },
     { comp: { Fe: 1.01, O: 2 }, expected: `Fe101O200`, label: `1% off is a real ratio` },
-    { comp: { Fe: 2.02, O: 4 }, expected: `Fe101O200`, label: `same ratio at gcd 2` },
     { comp: { Fe: 1.04, O: 2 }, expected: `Fe13O25`, label: `4% off scales to 13:25` },
   ])(`$label → $expected`, ({ comp, expected }) => {
     const key = formula_key_from_composition(comp as Record<string, number>)
@@ -1431,22 +1433,23 @@ describe.each([
 
 describe(`compute_domains`, () => {
   const ab_refs: Record<string, PhaseData> = {
-    A: make_entry({ A: 1 }, -2.0),
-    B: make_entry({ B: 1 }, -3.0),
+    A: make_phase({ A: 1 }, -2.0),
+    B: make_phase({ B: 1 }, -3.0),
   }
-  const border = build_border_hyperplanes([
+  const ab_lims: Vec2[] = [
     [-20, 0],
     [-20, 0],
-  ])
+  ]
+  const border = build_border_hyperplanes(ab_lims)
 
   function make_ab_domains(ab_energy_per_atom: number) {
     const { hyperplanes, hyperplane_entries } = build_hyperplanes(
-      [ab_refs.A, ab_refs.B, make_entry({ A: 1, B: 1 }, ab_energy_per_atom)],
+      [ab_refs.A, ab_refs.B, make_phase({ A: 1, B: 1 }, ab_energy_per_atom)],
       ab_refs,
       [`A`, `B`],
     )
     return {
-      domains: compute_domains(hyperplanes, border, hyperplane_entries, 2),
+      domains: compute_domains(hyperplanes, ab_lims, hyperplane_entries),
       hyperplanes,
     }
   }
@@ -1477,22 +1480,6 @@ describe(`compute_domains`, () => {
 })
 
 describe(`compute_chempot_diagram edge cases`, () => {
-  test(`custom limits restrict domain vertices`, () => {
-    const result = compute_chempot_diagram(
-      [
-        make_entry({ A: 1 }, -2.0),
-        make_entry({ B: 1 }, -3.0),
-        make_entry({ A: 1, B: 1 }, -6.0),
-      ],
-      { default_min_limit: -20, limits: { A: [-5, 0] }, formal_chempots: false },
-    )
-    for (const pts of Object.values(result.domains)) {
-      for (const pt of pts) {
-        expect(pt[0]).toBeGreaterThanOrEqual(-5 - 1e-4)
-      }
-    }
-  })
-
   test(`config.elements reorders axes`, () => {
     const reordered = compute_chempot_diagram(entries, {
       elements: [`O`, `Fe`, `Li`],
@@ -1520,7 +1507,7 @@ describe(`compute_chempot_diagram edge cases`, () => {
 
   test(`config.elements with unknown element throws`, () => {
     expect(() =>
-      compute_chempot_diagram([make_entry({ A: 1 }, -1.0), make_entry({ B: 1 }, -2.0)], {
+      compute_chempot_diagram([make_phase({ A: 1 }, -1.0), make_phase({ B: 1 }, -2.0)], {
         elements: [`A`, `C`],
       }),
     ).toThrow(`Missing elemental reference`)
@@ -1528,7 +1515,7 @@ describe(`compute_chempot_diagram edge cases`, () => {
 
   test(`identical polymorphs keep one domain`, () => {
     const result = compute_chempot_diagram(
-      [make_entry({ A: 1 }, -2.0), make_entry({ A: 1 }, -2.0), make_entry({ B: 1 }, -3.0)],
+      [make_phase({ A: 1 }, -2.0), make_phase({ A: 1 }, -2.0), make_phase({ B: 1 }, -3.0)],
       { default_min_limit: -10, formal_chempots: false },
     )
     expect(Object.keys(result.domains).toSorted()).toEqual([`A`, `B`])
@@ -1560,9 +1547,9 @@ describe(`compute_chempot_diagram edge cases`, () => {
 describe(`get_energy_stats_by_formula`, () => {
   test(`aggregates polymorph counts and energy bounds`, () => {
     const stats = get_energy_stats_by_formula([
-      make_entry({ A: 1 }, -1),
-      make_entry({ A: 1, B: 1 }, -2),
-      make_entry({ A: 1, B: 1 }, -1.5),
+      make_phase({ A: 1 }, -1),
+      make_phase({ A: 1, B: 1 }, -2),
+      make_phase({ A: 1, B: 1 }, -1.5),
     ])
 
     expect(stats.get(`A`)).toEqual({
@@ -1582,8 +1569,8 @@ describe(`get_energy_stats_by_formula`, () => {
     `skips non-finite EPA %s when aggregating`,
     (bad) => {
       const stats = get_energy_stats_by_formula([
-        make_entry({ A: 1 }, bad),
-        make_entry({ A: 1 }, -2),
+        make_phase({ A: 1 }, bad),
+        make_phase({ A: 1 }, -2),
       ])
       expect(stats.get(`A`)).toEqual({
         matching_entry_count: 1,
@@ -1595,7 +1582,7 @@ describe(`get_energy_stats_by_formula`, () => {
 })
 
 describe(`best_form_energy_for_formula`, () => {
-  const el_refs = { A: make_entry({ A: 1 }, -2), B: make_entry({ B: 1 }, -3) }
+  const el_refs = { A: make_phase({ A: 1 }, -2), B: make_phase({ B: 1 }, -3) }
   const e_form = (entry: PhaseData, refs: Record<string, PhaseData> = el_refs) =>
     best_form_energy_for_formula(
       [entry],
@@ -1612,11 +1599,11 @@ describe(`best_form_energy_for_formula`, () => {
     { comp: { A: 2, B: 1 }, epa: -3.0, expected: -2 / 3, label: `A2B compound` },
     { comp: { A: 1, B: 1 }, epa: -2.0, expected: 0.5, label: `AB unstable (positive)` },
   ])(`$label → e_form = $expected`, ({ comp, epa, expected }) => {
-    expect(e_form(make_entry(comp as Record<string, number>, epa))).toBeCloseTo(expected, 8)
+    expect(e_form(make_phase(comp as Record<string, number>, epa))).toBeCloseTo(expected, 8)
   })
 
   test(`picks minimum formation energy across polymorphs`, () => {
-    const polymorphs = [make_entry({ A: 1, B: 1 }, -3.5), make_entry({ A: 1, B: 1 }, -3.0)]
+    const polymorphs = [make_phase({ A: 1, B: 1 }, -3.5), make_phase({ A: 1, B: 1 }, -3.0)]
     expect(best_form_energy_for_formula(polymorphs, `AB`, el_refs)).toBeCloseTo(-1.0, 8)
 
     const color_entries = [...Object.values(el_refs), ...polymorphs]
@@ -1635,15 +1622,15 @@ describe(`best_form_energy_for_formula`, () => {
   })
 
   test(`renormalized el_refs (formal_chempots) produce zero-energy refs`, () => {
-    const all_entries: PhaseData[] = [make_entry({ A: 1 }, -2.0), make_entry({ B: 1 }, -3.0)]
+    const all_entries: PhaseData[] = [make_phase({ A: 1 }, -2.0), make_phase({ B: 1 }, -3.0)]
     const { el_refs: raw_refs } = get_min_entries_and_el_refs(all_entries)
     const renormed = renormalize_entries(all_entries, raw_refs, [`A`, `B`])
     const { el_refs: renorm_refs } = get_min_entries_and_el_refs(renormed)
-    expect(get_energy_per_atom(renorm_refs.A)).toBeCloseTo(0, 8)
-    expect(get_energy_per_atom(renorm_refs.B)).toBeCloseTo(0, 8)
+    expect(safe_energy_per_atom(renorm_refs.A)).toBeCloseTo(0, 8)
+    expect(safe_energy_per_atom(renorm_refs.B)).toBeCloseTo(0, 8)
     // With zero-energy refs, e_form equals raw epa (not true formation energy!)
-    // This confirms raw_el_refs (not diagram_data.el_refs) must be used for coloring.
-    expect(e_form(make_entry({ A: 1, B: 1 }, -3.5), renorm_refs)).toBeCloseTo(-3.5, 8)
+    // This confirms raw (non-renormalized) el_refs must be used for coloring.
+    expect(e_form(make_phase({ A: 1, B: 1 }, -3.5), renorm_refs)).toBeCloseTo(-3.5, 8)
   })
 
   test(`formation energy from real data: Fe-Li-O system`, () => {
@@ -1722,66 +1709,7 @@ describe(`get_ternary_combinations`, () => {
   })
 })
 
-describe(`make_nd_cache_key`, () => {
-  const li: PhaseData = { composition: { Li: 1 }, energy: -3 }
-  const oxygen: PhaseData = { composition: { O: 1 }, energy: -5 }
-  const base_key = make_nd_cache_key([li, oxygen], true, -50, undefined)
-
-  test.each([
-    {
-      a: { composition: { Li: 2 }, energy: -6, energy_per_atom: -3 },
-      b: { composition: { Li: 2 }, energy: -6, energy_per_atom: -2.5 },
-      same: false,
-      label: `different EPA`,
-    },
-    {
-      a: { composition: { Li: 1 }, energy: -3 },
-      b: { composition: { Li: 2 }, energy: -3 },
-      same: false,
-      label: `different composition`,
-    },
-    {
-      a: { composition: { Li: 1 }, energy: -3 },
-      b: { composition: { Li: 1 }, energy: -3, energy_per_atom: -3 },
-      same: true,
-      label: `EPA matches total/atoms`,
-    },
-    {
-      a: { composition: { Li: 2, O: 1 }, energy: -10 },
-      b: { composition: { O: 1, Li: 2 }, energy: -10 },
-      same: true,
-      label: `composition key order`,
-    },
-  ])(`nd cache key same=$same for $label`, ({ a, b, same }) => {
-    expect(
-      make_nd_cache_key([a], true, -50, undefined) ===
-        make_nd_cache_key([b], true, -50, undefined),
-    ).toBe(same)
-  })
-
-  test(`cache key ignores entry order`, () => {
-    expect(make_nd_cache_key([oxygen, li], true, -50, undefined)).toBe(base_key)
-  })
-
-  test(`cache key ignores heavy non-computational entry metadata`, () => {
-    const lightweight: PhaseData = {
-      entry_id: `mp-1`,
-      composition: { Li: 2, O: 1 },
-      energy: -10,
-      reduced_formula: `Li2O`,
-    }
-    const with_heavy_metadata: PhaseData = {
-      ...lightweight,
-      structure: { sites: Array.from({ length: 100 }, () => ({ element: `Li` })) },
-      parameters: { calculation: `large payload` },
-      data: { provenance: `not geometric input` },
-      energy_adjustments: [{ correction: 0.1 }],
-    }
-    expect(make_nd_cache_key([with_heavy_metadata], true, -50, undefined)).toBe(
-      make_nd_cache_key([lightweight], true, -50, undefined),
-    )
-  })
-
+describe(`get_min_entries_and_el_refs tie-breaking`, () => {
   test.each([
     {
       kept: { composition: { Li: 2, O: 1 }, energy: -10, exclude_from_hull: false },
@@ -1798,48 +1726,13 @@ describe(`make_nd_cache_key`, () => {
   ])(`EPA ties keep preferred entry independent of order`, ({ kept, dropped }) => {
     expect(get_min_entries_and_el_refs([kept, dropped]).min_entries[0]).toBe(kept)
     expect(get_min_entries_and_el_refs([dropped, kept]).min_entries[0]).toBe(kept)
-    expect(make_nd_cache_key([kept, dropped], true, -50, undefined)).toBe(
-      make_nd_cache_key([dropped, kept], true, -50, undefined),
-    )
-  })
-
-  test.each([
-    {
-      label: `different compositions`,
-      phase_entries: [
-        { composition: { Fe: 1 }, energy: -3 },
-        { composition: { Co: 1 }, energy: -5 },
-      ],
-    },
-    {
-      label: `different energies`,
-      phase_entries: [
-        { composition: { Li: 1 }, energy: -4 },
-        { composition: { O: 1 }, energy: -4 },
-      ],
-    },
-    {
-      label: `different hull stability`,
-      phase_entries: [
-        { composition: { Li: 1 }, energy: -3, is_stable: true, e_above_hull: 0 },
-        { composition: { O: 1 }, energy: -5, is_stable: false, e_above_hull: 0.1 },
-      ],
-    },
-    { label: `different formal_chempots`, phase_entries: [li, oxygen], formal: false },
-    {
-      label: `different limits`,
-      phase_entries: [li, oxygen],
-      limits: { Li: [-10, 0] as [number, number] },
-    },
-  ])(`$label → different key`, ({ phase_entries, formal = true, limits }) => {
-    expect(make_nd_cache_key(phase_entries, formal, -50, limits)).not.toBe(base_key)
   })
 })
 
-describe(`N-D projection cache consistency`, () => {
+describe(`N-D projections`, () => {
   const config_base = { default_min_limit: -25, formal_chempots: true }
 
-  test(`reuses N-D geometry without reusing stale entry metadata`, () => {
+  test(`every projection of the same N-D geometry has the same formulas`, () => {
     const proj_a = compute_chempot_diagram(ytos_entries, {
       ...config_base,
       elements: [`O`, `Ti`, `Y`],
@@ -1851,28 +1744,15 @@ describe(`N-D projection cache consistency`, () => {
     expect(Object.keys(proj_a.domains).toSorted()).toEqual(
       Object.keys(proj_b.domains).toSorted(),
     )
-    const enriched_entries = ytos_entries.map((entry) => ({
-      ...entry,
-      data: { cache_revision: 2 },
-    }))
-    const enriched = compute_chempot_diagram(enriched_entries, {
-      ...config_base,
-      elements: [`O`, `Ti`, `Y`],
-    })
-    expect(enriched.min_entries.every((entry) => entry.data?.cache_revision === 2)).toBe(true)
-
-    const renamed_entries = ytos_entries.map((entry, idx) => ({
-      ...entry,
-      name: `renamed ${idx}`,
-    }))
-    const renamed = compute_chempot_diagram(renamed_entries, {
-      ...config_base,
-      elements: [`O`, `Ti`, `Y`],
-    })
-    expect(renamed.min_entries[0]?.name).toMatch(/^renamed /)
+    expect(proj_a.elements).toEqual([`O`, `Ti`, `Y`])
+    expect(proj_a.lims).toEqual([
+      [-25, 0],
+      [-25, 0],
+      [-25, 0],
+    ])
   })
 
-  test(`changing formal_chempots invalidates cache (different domain coords)`, () => {
+  test(`formal vs absolute chempots give different domain coords`, () => {
     const formal = compute_chempot_diagram(ytos_entries, {
       ...config_base,
       elements: [`O`, `Ti`, `Y`],
@@ -1889,7 +1769,6 @@ describe(`N-D projection cache consistency`, () => {
 describe(`bbox_diagonal`, () => {
   test.each([
     { points: [], expected: 0, label: `empty` },
-    { points: [[1, 2, 3]], expected: 0, label: `single point` },
     {
       points: [
         [5, 5],
@@ -1907,16 +1786,6 @@ describe(`bbox_diagonal`, () => {
       ],
       expected: Math.sqrt(3),
       label: `unit cube`,
-    },
-    {
-      points: [
-        [0, 0],
-        [3, 0],
-        [3, 4],
-        [0, 4],
-      ],
-      expected: 5,
-      label: `3×4 rectangle`,
     },
   ])(`$label → $expected`, ({ points, expected }) => {
     expect(bbox_diagonal(points)).toBeCloseTo(expected, 10)

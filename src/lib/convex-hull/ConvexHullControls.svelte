@@ -66,7 +66,7 @@
     toggle_props = {},
     pane_props = {},
     ...rest
-  }: Omit<HTMLAttributes<HTMLDivElement>, `onclose`> & {
+  }: HTMLAttributes<HTMLDivElement> & {
     // Display controls
     color_mode?: `stability` | `energy`
     color_scale?: D3InterpolateName
@@ -283,8 +283,17 @@
   </h4>
 
   <SettingsSection title="Display" layout="grid">
-    <!-- Energy source selection (only if both options are available) -->
-    {#if energy_info?.has_precomputed_e_form && energy_info.has_precomputed_hull && energy_info.can_compute}
+    <!-- Energy source selection (only if both options are available and nothing forces a rebuild) -->
+    {#if energy_info?.corrections_active && energy_info.can_compute}
+      <div class="setting">
+        <span class="control-label">Energy source</span>
+        <span
+          style="opacity: 0.75"
+          title="Temperature or gas-pressure corrections shift the raw energies, so formation energies and hull distances are recomputed on the fly"
+          >On the fly (T / P corrections active)</span
+        >
+      </div>
+    {:else if energy_info?.has_precomputed_e_form && energy_info.has_precomputed_hull && energy_info.can_compute}
       {@render toggle_row(`Energy source`, [
         [
           `Precomputed`,
@@ -528,10 +537,10 @@
     aspect-ratio: 1;
   }
   .marker.stable {
-    background: var(--stable-color, #0072b2);
+    background: var(--hull-stable-color, #0072b2);
   }
   .marker.unstable {
-    background: var(--unstable-color, #e69f00);
+    background: var(--hull-unstable-color, #e69f00);
   }
   .face-color-mode-buttons {
     display: flex;

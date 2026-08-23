@@ -11,13 +11,16 @@ import {
   parse_xrdml_file,
   parse_xy_file,
 } from '$lib/xrd/parse'
+import { decimate_pattern } from '$lib/xrd'
 import { zipSync } from 'fflate'
 import fs from 'node:fs'
 import path from 'node:path'
 import zlib from 'node:zlib'
 import { describe, expect, test } from 'vitest'
 
-// Three points normalised to max = 100: 100/200/300 → 33.3/66.7/100
+// Three points normalised to max = 100 (like compute_xrd_pattern, so measured and computed
+// patterns overlay at the same scale): 100/200/300 → 33.3/66.7/100. Every point is kept; only
+// XrdPlot thins for display.
 const rounded = (result: { x: number[]; y: number[] }) => ({
   x: result.x,
   y: result.y.map((val) => Math.round(val * 100) / 100),
@@ -133,27 +136,31 @@ describe(`parse_xy_file`, () => {
   test.each([
     [1000, 1000],
     [1001, 1000],
-    [4000, 1000],
     // a 0.001° step over 130° (spreading that many values into Math.max overflows the stack)
     [130_000, 1000],
-  ])(`%i points subsample to at most %i, keeping the strongest peaks`, (count, max_points) => {
-    // 30 peaks off the uniform grid (20–100 tall on a background of 1)
-    const peak_indices = Array.from(
-      { length: 30 },
-      (_, idx) => idx * Math.floor(count / 31) + 7,
-    )
-    const lines = Array.from({ length: count }, (_, idx) => {
-      const peak = peak_indices.indexOf(idx)
-      return `${10 + idx * 0.01} ${peak === -1 ? 1 : 20 + (peak * 80) / 29}`
-    })
-    const result = parse_xy_file(lines.join(`\n`))
-    expect(result.x.length).toBeLessThanOrEqual(max_points)
-    if (count <= max_points) expect(result.x).toHaveLength(count)
-    const kept = peak_indices.filter((idx) =>
-      result.x.some((x_val) => Math.abs(x_val - (10 + idx * 0.01)) < 1e-9),
-    )
-    expect(kept.length).toBeGreaterThanOrEqual(count <= max_points ? 30 : 25)
-  })
+  ])(
+    `%i points parse in full and decimate to at most %i, keeping the strongest peaks`,
+    (count, max_points) => {
+      // 30 peaks off the uniform grid (20–100 tall on a background of 1)
+      const peak_indices = Array.from(
+        { length: 30 },
+        (_, idx) => idx * Math.floor(count / 31) + 7,
+      )
+      const lines = Array.from({ length: count }, (_, idx) => {
+        const peak = peak_indices.indexOf(idx)
+        return `${10 + idx * 0.01} ${peak === -1 ? 1 : 20 + (peak * 80) / 29}`
+      })
+      const parsed = parse_xy_file(lines.join(`\n`))
+      expect(parsed.x).toHaveLength(count) // the parser never thins a scan
+      const result = decimate_pattern(parsed, max_points)
+      expect(result.x.length).toBeLessThanOrEqual(max_points)
+      if (count <= max_points) expect(result).toBe(parsed)
+      const kept = peak_indices.filter((idx) =>
+        result.x.some((x_val) => Math.abs(x_val - (10 + idx * 0.01)) < 1e-9),
+      )
+      expect(kept.length).toBeGreaterThanOrEqual(count <= max_points ? 30 : 25)
+    },
+  )
 })
 
 describe(`parse_block_scan (ILL / PSI neutron layouts)`, () => {
@@ -635,7 +642,10 @@ describe(`real example files`, () => {
     expect(result.x.length).toBeGreaterThan(10)
     expect(result.x[0]).toBeCloseTo(first, 3)
     expect(result.x[result.x.length - 1]).toBeCloseTo(last, 3)
-    expect(Math.max(...result.y)).toBeCloseTo(100, 9)
+    // looped: the parser keeps every point and a spread over a 130k-point scan overflows
+    let max_y = -Infinity
+    for (const val of result.y) if (val > max_y) max_y = val
+    expect(max_y).toBeCloseTo(100, 9)
     expect(result.y.every(Number.isFinite)).toBe(true)
   })
 

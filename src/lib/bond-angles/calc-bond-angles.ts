@@ -39,13 +39,14 @@ export interface BondAngleOptions {
   pbc?: Pbc
 }
 
-// A single angle: the two bond vectors from `center_idx` to a pair of its neighbours. A
-// neighbour reached through a cell boundary reports the site index of its periodic image.
-interface BondAngleTriplet {
+// A single angle, subtended at site `center_idx` by two of its bonded neighbours
+export interface BondAngleTriplet {
   center_idx: number
+  // Site indices of the two outer atoms (the base site for a neighbour reached through a
+  // cell boundary), so a histogram bar can be traced back to the atoms it counts
   neighbor_idxs: [number, number]
-  center_element: string
-  // Outer elements sorted alphabetically, so `H-Si-O` and `O-Si-H` collapse to one label
+  // `outer-center-outer` with the outer elements sorted alphabetically, so `H-Si-O` and
+  // `O-Si-H` collapse to one label
   triplet: string
   angle: number
 }
@@ -53,9 +54,6 @@ interface BondAngleTriplet {
 interface BondAngleSeries {
   triplet: string
   counts: number[]
-  // Probability density over degrees, normalised by the STRUCTURE's grand total angle
-  // count (not this series'), so the per-triplet densities add up to the total density
-  density: number[]
   // Angles in this series only
   n_angles: number
 }
@@ -109,21 +107,8 @@ export const angle_bin_centers = (n_bins: number, bin_width: number): number[] =
 export const angle_bin_index = (angle: number, n_bins: number, bin_width: number): number =>
   Math.min(n_bins - 1, Math.floor(angle / bin_width))
 
-// Counts -> probability density over degrees: sum(density) * bin_width === 1 when
-// `n_angles` is the total the counts were drawn from. This is the normalisation that makes
-// structures of different sizes comparable; raw counts scale with the number of atoms.
-export const to_angle_density = (
-  counts: readonly number[],
-  n_angles: number,
-  bin_width: number,
-): number[] => {
-  if (n_angles <= 0) return counts.map(() => 0)
-  const scale = 1 / (n_angles * bin_width)
-  return counts.map((count) => count * scale)
-}
-
 // Every bond angle in the structure, one entry per unordered neighbour pair per centre.
-export function compute_bond_angles(
+export function calc_bond_angles(
   structure: AnyStructure,
   options: BondAngleOptions = {},
 ): BondAngleTriplet[] {
@@ -139,7 +124,37 @@ export function compute_bond_angles(
   const bonds = compute_bonds(structure, strategy, {
     pbc: lattice_pbc_or_throw(structure, options.pbc),
   })
-  const element_of = sites.map((site) => get_majority_element(site) ?? UNKNOWN_ELEMENT)
+  // Elements as small integers so the inner loop indexes a label table instead of
+  // building one `A-B-C` string per angle
+  const elements: string[] = []
+  const elem_id_of = new Map<string, number>()
+  const elem_of_site = new Int32Array(n_sites)
+  for (const [site_idx, site] of sites.entries()) {
+    const element = get_majority_element(site) ?? UNKNOWN_ELEMENT
+    let elem_id = elem_id_of.get(element)
+    if (elem_id === undefined) {
+      elem_id = elements.length
+      elements.push(element)
+      elem_id_of.set(element, elem_id)
+    }
+    elem_of_site[site_idx] = elem_id
+  }
+  const n_elems = elements.length
+  // Filled on first use, keyed by the packed (center, low, high) index so (center, outer_1,
+  // outer_2) and (center, outer_2, outer_1) share an entry without reserving n_elems^3 slots
+  const labels = new Map<number, string>()
+  const label_of = (center: number, outer_1: number, outer_2: number): string => {
+    const [low, high] = outer_1 <= outer_2 ? [outer_1, outer_2] : [outer_2, outer_1]
+    const slot = (center * n_elems + low) * n_elems + high
+    let label = labels.get(slot)
+    if (label === undefined) {
+      // Alphabetical by element symbol, not by first-seen id
+      const [outer_a, outer_b] = [elements[low], elements[high]].toSorted()
+      label = `${outer_a}-${elements[center]}-${outer_b}`
+      labels.set(slot, label)
+    }
+    return label
+  }
 
   // Both bonding strategies emit each unordered pair once, so a naive pass leaves every
   // centre's neighbour list half full. Register each bond from BOTH ends, storing the
@@ -150,13 +165,18 @@ export function compute_bond_angles(
   // already sit at their true Cartesian positions, so folding would collapse distinct
   // neighbours: in a 2-atom chain with a = 4 and bond length a/2, the centre's partners at
   // +2 and -2 both fold to -2, turning the correct {180: 2} into {0: 1, 180: 1}.
-  type Neighbor = { site_idx: number; vec: Vec3 }
+  type Neighbor = { site_idx: number; elem_id: number; vec: Vec3 }
   const adjacency: Neighbor[][] = Array.from({ length: n_sites }, () => [])
   for (const { site_idx_1, site_idx_2, pos_1, pos_2 } of bonds) {
     const delta: Vec3 = [pos_2[0] - pos_1[0], pos_2[1] - pos_1[1], pos_2[2] - pos_1[2]]
-    adjacency[site_idx_1].push({ site_idx: site_idx_2, vec: delta })
+    adjacency[site_idx_1].push({
+      site_idx: site_idx_2,
+      elem_id: elem_of_site[site_idx_2],
+      vec: delta,
+    })
     adjacency[site_idx_2].push({
       site_idx: site_idx_1,
+      elem_id: elem_of_site[site_idx_1],
       vec: [-delta[0], -delta[1], -delta[2]],
     })
   }
@@ -168,26 +188,22 @@ export function compute_bond_angles(
 
   const triplets: BondAngleTriplet[] = []
   for (let center_idx = 0; center_idx < n_sites; center_idx++) {
-    const center_element = element_of[center_idx]
-    if (center_filter && !center_filter.has(center_element)) continue
+    const center = elem_of_site[center_idx]
+    if (center_filter && !center_filter.has(elements[center])) continue
     const all_neighbors = adjacency[center_idx]
     const neighbors = neighbor_filter
-      ? all_neighbors.filter((neighbor) => neighbor_filter.has(element_of[neighbor.site_idx]))
+      ? all_neighbors.filter((neighbor) => neighbor_filter.has(elements[neighbor.elem_id]))
       : all_neighbors
     if (neighbors.length < 2) continue
 
     for (let first = 0; first < neighbors.length - 1; first++) {
       const near_1 = neighbors[first]
-      const elem_1 = element_of[near_1.site_idx]
       for (let second = first + 1; second < neighbors.length; second++) {
         const near_2 = neighbors[second]
-        const elem_2 = element_of[near_2.site_idx]
-        const [outer_1, outer_2] = elem_1 <= elem_2 ? [elem_1, elem_2] : [elem_2, elem_1]
         triplets.push({
           center_idx,
           neighbor_idxs: [near_1.site_idx, near_2.site_idx],
-          center_element,
-          triplet: `${outer_1}-${center_element}-${outer_2}`,
+          triplet: label_of(center, near_1.elem_id, near_2.elem_id),
           angle: angle_between_vectors(near_1.vec, near_2.vec, `degrees`),
         })
       }
@@ -197,7 +213,7 @@ export function compute_bond_angles(
 }
 
 // Histogram a triplet list that has already been computed. Kept separate from
-// compute_bond_angles so re-binning (e.g. a bin-width slider) never re-runs the image
+// calc_bond_angles so re-binning (e.g. a bin-width slider) never re-runs the image
 // expansion and bond search.
 export function bin_bond_angles(
   triplets: readonly BondAngleTriplet[],
@@ -218,11 +234,9 @@ export function bin_bond_angles(
     counts[bin_idx] += 1
   }
 
-  const n_angles = triplets.length
   const make_series = (triplet: string, counts: number[]): BondAngleSeries => ({
     triplet,
     counts,
-    density: to_angle_density(counts, n_angles, bin_width),
     n_angles: counts.reduce((sum, count) => sum + count, 0),
   })
 
@@ -230,7 +244,7 @@ export function bin_bond_angles(
     bin_centers: angle_bin_centers(n_bins, bin_width),
     bin_width,
     n_bins,
-    n_angles,
+    n_angles: triplets.length,
     total: make_series(TOTAL_TRIPLET_LABEL, total_counts),
     by_triplet: Array.from(counts_by_triplet.entries())
       .toSorted(([label_a], [label_b]) => label_a.localeCompare(label_b))
@@ -239,9 +253,9 @@ export function bin_bond_angles(
 }
 
 // Bond-angle distribution: histogram of every bond angle over 0-180 degrees, plus one
-// histogram per triplet type. Series carry raw `counts` and a `density` normalised by the
-// structure's grand total angle count (see BondAngleSeries).
+// histogram per triplet type. Series carry raw counts; to_angle_bar_series in ./series.ts
+// turns them into densities where structures of different sizes need comparing.
 export const calc_bond_angle_distribution = (
   structure: AnyStructure,
   options: BondAngleOptions = {},
-): BondAngleData => bin_bond_angles(compute_bond_angles(structure, options), options)
+): BondAngleData => bin_bond_angles(calc_bond_angles(structure, options), options)

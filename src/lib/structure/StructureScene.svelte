@@ -14,10 +14,10 @@
     brighten_hex,
     build_orbit_props,
     create_fly_to,
+    create_orthographic_zoom,
     DEFAULT_FLY_TO_DURATION_MS,
-    get_orthographic_zoom_bounds,
-    resize_orthographic_zoom,
     SceneCamera,
+    SceneLights,
   } from '$lib/scene'
   import type { SceneControlProps } from '$lib/scene'
   import type { ShowBonds, VectorColorMode, VectorLayerConfig } from '$lib/settings'
@@ -34,16 +34,18 @@
     StructureBond,
   } from '$lib/structure'
   import {
-    atomic_radii,
     camera_needs_fit,
     camera_position_for_target,
     Cylinder,
     get_all_site_vectors,
     get_center_of_mass,
+    get_orig_site_idx,
     get_structure_vector_keys,
+    is_image_site,
     Lattice,
     ortho_zoom_for_extent,
     perspective_distance_for_extent,
+    site_display_radius,
     structure_fit_frame,
     vector_display_defaults,
     VECTOR_PALETTE,
@@ -51,12 +53,7 @@
   import ArrowInstances from './ArrowInstances.svelte'
   import InstancedAtoms from './InstancedAtoms.svelte'
   import SiteLabels from './SiteLabels.svelte'
-  import {
-    DEFAULT_ATOM_COLOR_CONFIG,
-    get_orig_site_idx,
-    get_property_colors,
-    type AtomColorConfig,
-  } from '$lib/structure/atom-properties'
+  import type { AtomPropertyColors } from '$lib/structure/atom-properties'
   import type { SymmetryElement } from '$lib/symmetry'
   import { has_visible_symmetry_overlay } from '$lib/symmetry/symmetry-elements'
   import SymmetryElements from '$lib/symmetry/SymmetryElements.svelte'
@@ -68,7 +65,6 @@
     merge_split_partial_sites,
     PARTIAL_OCCUPANCY_CAP_ARC,
   } from '$lib/structure/partial-occupancy'
-  import type { MoyoDataset } from '@spglib/moyo-wasm'
   import { T, useTask } from '@threlte/core'
   import * as extras from '@threlte/extras'
   import { type ComponentProps, type Snippet, untrack } from 'svelte'
@@ -81,7 +77,6 @@
     DoubleSide,
     Euler,
     MeshBasicMaterial,
-    OrthographicCamera,
     SphereGeometry,
     Vector3,
   } from 'three/webgpu'
@@ -179,7 +174,6 @@
     vector_arrow_head_length = DEFAULTS.structure.vector_arrow_head_length,
     gizmo = DEFAULTS.structure.gizmo,
     hovered_idx = $bindable(null),
-    float_fmt = `.3~f`,
     auto_rotate = DEFAULTS.structure.auto_rotate,
     bond_thickness = DEFAULTS.structure.bond_thickness,
     bond_color = DEFAULTS.structure.bond_color,
@@ -204,7 +198,12 @@
     ambient_light = DEFAULTS.structure.ambient_light,
     directional_light = DEFAULTS.structure.directional_light,
     sphere_segments = DEFAULTS.structure.sphere_segments,
-    lattice_props = {},
+    cell_edge_color = DEFAULTS.structure.cell_edge_color,
+    cell_surface_color = DEFAULTS.structure.cell_surface_color,
+    cell_edge_width = DEFAULTS.structure.cell_edge_width,
+    cell_edge_opacity = DEFAULTS.structure.cell_edge_opacity,
+    cell_surface_opacity = DEFAULTS.structure.cell_surface_opacity,
+    show_cell_vectors = DEFAULTS.structure.show_cell_vectors,
     symmetry_elements = [],
     symmetry_elements_props = {},
     symmetry_declutter = true,
@@ -235,8 +234,7 @@
     hidden_prop_vals = $bindable(new SvelteSet<number | string>()),
     element_radius_overrides = $bindable<Partial<Record<ElementSymbol, number>>>({}),
     site_radius_overrides = $bindable<SvelteMap<number, number>>(new SvelteMap()),
-    atom_color_config = { ...DEFAULT_ATOM_COLOR_CONFIG },
-    sym_data = null,
+    property_colors = null,
     // Edit-atoms mode callbacks
     on_sites_moved,
     on_operation_start,
@@ -250,6 +248,7 @@
     isosurface_settings = DEFAULT_ISOSURFACE_SETTINGS,
     active_volume_idx = 0,
     volume_scaling = [1, 1, 1],
+    on_isosurface_error = undefined,
     interactive = true,
     fly_to_request = $bindable(undefined),
     reference_structure = undefined,
@@ -270,7 +269,7 @@
     trajectory_lines_result = $bindable(null),
   }: SceneControlProps & {
     structure?: AnyStructure
-    base_structure?: AnyStructure // The original structure without image atoms, used for property color calculation
+    base_structure?: AnyStructure // untransformed cell: supplies the drawn lattice and the displacement reference
     atom_radius?: number // scale factor for atomic radii
     same_size_atoms?: boolean // uniform radius for all atoms (else per-element atomic radii)
     camera_position?: [x: number, y: number, z: number] // initial camera position from which to render the scene
@@ -295,7 +294,6 @@
     vector_arrow_head_radius?: number
     vector_arrow_head_length?: number
     hovered_idx?: number | null
-    float_fmt?: string
     bond_thickness?: number
     bond_color?: string
     bonding_strategy?: BondingStrategy
@@ -315,7 +313,13 @@
     polyhedra_included_elements?: readonly string[] // force-include (bypasses spectator hiding)
     polyhedra_rendered_elements?: string[] // (output) elements that currently have polyhedra
     sphere_segments?: number
-    lattice_props?: ComponentProps<typeof Lattice>
+    // Unit-cell rendering (forwarded to Lattice)
+    cell_edge_color?: string
+    cell_surface_color?: string
+    cell_edge_width?: number
+    cell_edge_opacity?: number
+    cell_surface_opacity?: number
+    show_cell_vectors?: boolean
     // Symmetry elements (from symmetry_elements_from_ops) to overlay on the structure.
     // Fractional coords must refer to the SAME cell as the rendered lattice (moyo
     // operations are in the input-cell frame, i.e. the original untransformed cell).
@@ -360,8 +364,9 @@
     hidden_prop_vals?: Set<number | string> // Track hidden property values (e.g. Wyckoff positions, coordination numbers)
     element_radius_overrides?: Partial<Record<ElementSymbol, number>> // Per-element absolute radius in Angstroms
     site_radius_overrides?: Map<number, number> | SvelteMap<number, number> // Per-site absolute radius in Angstroms
-    atom_color_config?: AtomColorConfig // Atom coloring configuration
-    sym_data?: MoyoDataset | null // Symmetry data for Wyckoff coloring
+    // Per-site colors/values for the active non-element coloring mode, indexed by the sites of
+    // `structure` (see StructureSession.property_colors). Null = color atoms by element.
+    property_colors?: AtomPropertyColors | null
     // Edit-atoms mode callbacks and state
     on_sites_moved?: (scene_indices: number[], delta: Vec3) => void
     on_operation_start?: () => void
@@ -376,6 +381,8 @@
     isosurface_settings?: IsosurfaceSettings // Isosurface rendering settings
     active_volume_idx?: number // Volume implicit single-isovalue settings apply to
     volume_scaling?: Vec3 // Supercell tiling applied to isosurface geometry
+    // Isosurface geometry-worker failures (the surfaces stay stale), for a host notice
+    on_isosurface_error?: (message: string) => void
     // When false, render the scene without hover/edit raycast helpers. Used by multi-side
     // view so inactive panes skip interaction-only work while the active pane stays editable.
     interactive?: boolean
@@ -406,6 +413,8 @@
     trajectory_lines_result?: TrajectoryLinesStats | null // (output) vertex/segment counts
   } = $props()
 
+  // Tooltip / measurement readout precision (coordinates in Å, angles in degrees)
+  const FLOAT_FMT = `.3~f`
   const threlte = bind_renderer((threlte_scene, threlte_camera) => {
     scene = threlte_scene
     camera = threlte_camera
@@ -429,8 +438,8 @@
     controls: () => orbit_controls,
     duration_ms: () => DEFAULT_FLY_TO_DURATION_MS,
     invalidate: threlte.invalidate,
-    onstart: () => (camera_is_moving = true),
-    onend: () => (camera_is_moving = false),
+    on_start: () => (camera_is_moving = true),
+    on_end: () => (camera_is_moving = false),
   })
   useTask(Symbol(`matterviz-structure-fly-to`), (delta) => fly_to.step(delta), {
     autoInvalidate: false,
@@ -518,8 +527,7 @@
           : `not-allowed`
       }
       if (measure_mode === `edit-atoms`) {
-        const site = structure?.sites?.[hovered_idx]
-        if (site?.properties?.orig_site_idx != null) return `not-allowed`
+        if (is_image_site(structure?.sites?.[hovered_idx])) return `not-allowed`
       }
       return `pointer`
     }
@@ -596,7 +604,7 @@
   }
 
   const is_image_bond_site = (site_idx: number): boolean =>
-    structure?.sites?.[site_idx]?.properties?.orig_site_idx != null
+    is_image_site(structure?.sites?.[site_idx])
 
   const can_select_bond_site = (site_idx: number): boolean =>
     bond_edits_enabled && structure?.sites?.[site_idx] != null
@@ -626,12 +634,6 @@
       filtered_bond_pairs.find((bond) => matches_bond_key(bond, key))?.bond_order
     )
   }
-
-  const midpoint = (pos_1: Vec3, pos_2: Vec3): Vec3 => [
-    (pos_1[0] + pos_2[0]) / 2,
-    (pos_1[1] + pos_2[1]) / 2,
-    (pos_1[2] + pos_2[2]) / 2,
-  ]
 
   const BOND_ENDPOINT_HIT_FRACTION = 0.3
   const BOND_ENDPOINT_SITE_MATCH_TOLERANCE = 1e-6
@@ -732,7 +734,7 @@
 
   function get_bond_context_menu_position(bond: BondPair, event?: BondContextMenuEvent): Vec3 {
     const parent = event?.object?.parent
-    if (!event?.point || !parent) return midpoint(bond.pos_1, bond.pos_2)
+    if (!event?.point || !parent) return math.lerp_vec3(bond.pos_1, bond.pos_2, 0.5)
 
     const local_point = event.point.clone()
     parent.worldToLocal(local_point)
@@ -977,8 +979,7 @@
       // Inactive panes don't drive edit-atoms selection (gizmo/add-plane are interactive-gated)
       if (!interactive) return
       // Block image atoms (detected by orig_site_idx property from PBC)
-      const site = structure?.sites?.[site_index]
-      if (site?.properties?.orig_site_idx != null) return
+      if (is_image_site(structure?.sites?.[site_index])) return
 
       const is_selected = selected_sites.includes(site_index)
       // threlte dispatches plain objects wrapping the DOM event, so read shift
@@ -1106,9 +1107,7 @@
   // Excludes PBC image atoms (orig_site_idx) so toggling image atoms doesn't affect arrow sizing.
   let char_atom_spacing = $derived.by(() => {
     if (!lattice || !structure?.sites?.length) return structure_size
-    const n_real = structure.sites.filter(
-      (site) => site.properties?.orig_site_idx == null,
-    ).length
+    const n_real = structure.sites.filter((site) => !is_image_site(site)).length
     return n_real > 0 ? Math.cbrt(lattice.volume / n_real) : structure_size
   })
 
@@ -1145,31 +1144,24 @@
   const zoom_for = (extent: number) =>
     ortho_zoom_for_extent(extent, width, height, initial_zoom)
 
-  let computed_zoom = $state(untrack(() => initial_zoom))
-  // Untracked fit_extent avoids trajectory jumps; effect.pre reframes camera resets.
-  let current_fit_zoom = $state(0)
+  // The fit follows resizes and explicit camera (re)fits only — tracking fit_extent here would
+  // make every trajectory frame jump the zoom; effect.pre below reframes camera resets.
+  let fit_zoom = $state(untrack(() => initial_zoom))
   // Non-reactive: this only compares successive effect runs and must not schedule another run.
   const camera_fit_cache: { previous_view?: string } = {}
   let camera_view = $derived(`${camera_projection}:${camera_direction?.join(`,`) ?? ``}`)
-  let zoom_bounds = $derived(
-    get_orthographic_zoom_bounds(current_fit_zoom, min_zoom, max_zoom),
-  )
   $effect(() => {
     if (!(width > 0) || !(height > 0)) return
     const next_fit_zoom = zoom_for(untrack(() => fit_extent))
-    if (next_fit_zoom === current_fit_zoom) return
-    const live_zoom = untrack(() =>
-      camera instanceof OrthographicCamera ? camera.zoom : undefined,
-    )
-    computed_zoom = resize_orthographic_zoom(
-      live_zoom,
-      current_fit_zoom,
-      next_fit_zoom,
-      min_zoom,
-      max_zoom,
-    )
-    current_fit_zoom = next_fit_zoom
+    fit_zoom = next_fit_zoom
     initial_computed_zoom = next_fit_zoom
+  })
+  const ortho_zoom = create_orthographic_zoom({
+    fit_zoom: () => fit_zoom,
+    min_zoom: () => min_zoom,
+    max_zoom: () => max_zoom,
+    measured: () => width > 0 && height > 0,
+    camera: () => camera,
   })
 
   $effect.pre(() => {
@@ -1179,9 +1171,10 @@
     camera_fit_cache.previous_view = camera_view
     // Auto-place at content center; missing/zero camera_direction → default angled view.
     if (should_fit && structure && width > 0 && height > 0) {
-      computed_zoom = zoom_for(fit_extent)
-      current_fit_zoom = computed_zoom
-      initial_computed_zoom = computed_zoom
+      const next_fit_zoom = zoom_for(fit_extent)
+      fit_zoom = next_fit_zoom
+      initial_computed_zoom = next_fit_zoom
+      ortho_zoom.reset_to_fit()
       // Orthographic framing is controlled by zoom; its camera only needs a safe standoff.
       const distance =
         camera_projection === `perspective`
@@ -1239,33 +1232,6 @@
       : []
   })
 
-  // Compute property-based colors when not using element coloring
-  // Use base_structure (original unit cell) for color calculation
-  let property_colors = $derived(
-    get_property_colors(
-      base_structure || structure,
-      atom_color_config,
-      bonding_strategy,
-      sym_data,
-    ),
-  )
-  // Compute weighted average radius for a site based on species occupancies
-  // Normalizes by total occupancy so vacancy-containing sites render at full size
-  const element_radius = (element: ElementSymbol): number =>
-    element_radius_overrides?.[element] ?? atomic_radii[element] ?? 1
-  const calc_weighted_radius = (site: Site): number => {
-    // ordered sites need no weighting; skipping the two reduce closures matters because
-    // this runs for every atom of a large supercell
-    const [only] = site.species
-    if (site.species.length === 1 && only.occu === 1) return element_radius(only.element)
-    const total_occu = site.species.reduce((sum, { occu }) => sum + occu, 0)
-    const weighted_sum = site.species.reduce(
-      (sum, { element, occu }) => sum + occu * element_radius(element),
-      0,
-    )
-    return total_occu > 0 ? weighted_sum / total_occu : 1
-  }
-
   // Disordered sites are often stored as separate split sites (one species each)
   // at the same position; merge_split_partial_sites groups them into one render
   // site whose `species` holds every element. Shared by atom rendering and the
@@ -1290,11 +1256,9 @@
 
     const atoms = []
     for (const { site_idx, site, is_image_atom } of render_sites) {
-      const orig_idx = get_orig_site_idx(site, site_idx)
-
       // Skip sites with hidden property values
       if (filter_prop_vals) {
-        const prop_val = prop_values?.[orig_idx]
+        const prop_val = prop_values?.[site_idx]
         if (prop_val !== undefined && hidden_prop_vals.has(prop_val)) continue
       }
 
@@ -1306,17 +1270,18 @@
       // …) they'd float disconnected outside the cell — hide them.
       if (site.properties?.completion_image && hide_completion_images) continue
 
-      // Calculate radius: same_size > site override > element override > default
-      // All radii scale uniformly with atom_radius for consistent slider behavior
+      // Calculate radius: same_size > site override > occupancy-weighted element radius
+      // (element overrides included, shared with camera-fit). All radii scale uniformly
+      // with atom_radius for consistent slider behavior
       const base_radius = same_size_atoms
         ? 1
         : ((has_radius_overrides ? site_radius_overrides?.get(site_idx) : undefined) ??
-          calc_weighted_radius(site))
+          site_display_radius(site, element_radius_overrides))
       const radius = base_radius * effective_atom_radius
 
       // Use property color if available (e.g. coordination number, Wyckoff position)
       // Otherwise, each species gets its own element color (important for disordered sites)
-      const site_property_color = prop_colors?.[orig_idx]
+      const site_property_color = prop_colors?.[site_idx]
 
       const visible_species = filter_elements
         ? site.species.filter(({ element }) => !hidden_elements.has(element))
@@ -1353,7 +1318,7 @@
       if (!site.species.some(({ element }) => !hidden_elements.has(element))) return false
     } else if (site.species.length === 0) return false
     if (hidden_prop_vals.size === 0) return true
-    const prop_val = property_colors?.values[get_orig_site_idx(site, site_idx)]
+    const prop_val = property_colors?.values[site_idx]
     return prop_val === undefined || !hidden_prop_vals.has(prop_val)
   }
 
@@ -1473,11 +1438,9 @@
 
   // Color of a site: property color (coordination/Wyckoff modes) or element color
   const polyhedra_site_color = (site_idx: number): string => {
-    const site = structure?.sites[site_idx]
-    const orig_idx = get_orig_site_idx(site, site_idx)
-    const element = get_majority_element(site)
+    const element = get_majority_element(structure?.sites[site_idx])
     return (
-      property_colors?.colors[orig_idx] ?? (element && colors.element?.[element]) ?? `#808080`
+      property_colors?.colors[site_idx] ?? (element && colors.element?.[element]) ?? `#808080`
     )
   }
 
@@ -1640,7 +1603,9 @@
   // Checks site_radius_overrides first for consistency with visible atoms
   const get_site_radius = (site: Site, site_idx: number | null): number => {
     const override = site_idx !== null ? site_radius_overrides?.get(site_idx) : undefined
-    const base_radius = same_size_atoms ? 1 : (override ?? calc_weighted_radius(site))
+    const base_radius = same_size_atoms
+      ? 1
+      : (override ?? site_display_radius(site, element_radius_overrides))
     return base_radius * effective_atom_radius
   }
 
@@ -1804,11 +1769,7 @@
             } else if (effective_mode === `uniform`) {
               arrow_color = vector_color
             } else {
-              const majority_element =
-                site.species.length > 0
-                  ? site.species.reduce((max, spec) => (spec.occu > max.occu ? spec : max))
-                      .element
-                  : undefined
+              const majority_element = get_majority_element(site)
               arrow_color =
                 (majority_element && colors.element?.[majority_element]) || vector_color
             }
@@ -1952,17 +1913,17 @@
       zoom_speed,
       zoom_to_cursor,
       pan_speed,
-      max_zoom: camera_projection === `orthographic` ? zoom_bounds.max_zoom : max_zoom,
-      // The initial fit may need to zoom below the interaction floor for large structures.
-      min_zoom: camera_projection === `orthographic` ? zoom_bounds.min_zoom : min_zoom,
       auto_rotate,
       rotation_damping,
+      // zoom limits (the initial fit may sit below the interaction floor for large structures)
+      // plus the gesture-end sync that keeps the user's zoom as the resize baseline
+      ...ortho_zoom.orbit_zoom_props(),
       set_camera_is_moving: (moving) => (camera_is_moving = moving),
       // Close hover tooltips + bond context menu while the camera moves. Only hide the
       // VISIBLE menu (not bond_context_target): clicking a menu button fires this
       // orbit-controls start handler before the button's own handler runs, which still
       // needs the target bond to apply the edit (see bond_context_target comment).
-      onstart_extra: () => {
+      on_start_extra: () => {
         cancel_atom_hover_clear()
         hovered_idx = null
         hovered_bond_key = null
@@ -2027,7 +1988,7 @@
   {camera_projection}
   position={camera_position}
   fov={effective_fov}
-  zoom={computed_zoom}
+  zoom={ortho_zoom.zoom}
   near={camera_near}
   far={camera_far}
   orbit_props={orbit_controls_props}
@@ -2035,8 +1996,7 @@
   bind:orbit_controls
 />
 
-<T.DirectionalLight position={[3, 10, 10]} intensity={directional_light} />
-<T.AmbientLight intensity={ambient_light} />
+<SceneLights ambient={ambient_light} directional={directional_light} />
 
 <!-- Apply manual rotation around center: translate to origin, rotate, translate back -->
 <T.Group position={rotation_target}>
@@ -2351,8 +2311,8 @@
 
       <!-- hovered site tooltip -->
       {#if hovered_site && !camera_is_moving && (atom_tooltip_active || active_sites.includes(hovered_idx ?? -1))}
-        {@const abc = hovered_site.abc.map((val) => format_num(val, float_fmt)).join(`, `)}
-        {@const xyz = hovered_site.xyz.map((val) => format_num(val, float_fmt)).join(`, `)}
+        {@const abc = hovered_site.abc.map((val) => format_num(val, FLOAT_FMT)).join(`, `)}
+        {@const xyz = hovered_site.xyz.map((val) => format_num(val, FLOAT_FMT)).join(`, `)}
         {@const bond_neighbors = (() => {
           if (hovered_idx == null || !structure?.sites) return []
           return filtered_bond_pairs
@@ -2406,7 +2366,15 @@
       {/if}
 
       {#if visual_lattice}
-        <Lattice matrix={visual_lattice.matrix} {...lattice_props} />
+        <Lattice
+          matrix={visual_lattice.matrix}
+          {cell_edge_color}
+          {cell_surface_color}
+          {cell_edge_width}
+          {cell_edge_opacity}
+          {cell_surface_opacity}
+          {show_cell_vectors}
+        />
         {#if symmetry_elements.length > 0}
           <SymmetryElements
             elements={symmetry_elements}
@@ -2496,6 +2464,7 @@
           settings={isosurface_settings}
           {active_volume_idx}
           tiling={volume_scaling}
+          on_error={on_isosurface_error}
         />
       {/if}
 
@@ -2517,7 +2486,7 @@
                   thickness={0.12}
                   color={measure_line_color}
                 />
-                {@const mid_pos = midpoint(pos_i, pos_j)}
+                {@const mid_pos = math.lerp_vec3(pos_i, pos_j, 0.5)}
                 {@const direct = math.euclidean_dist(pos_i, pos_j)}
                 {@const pbc = lattice
                   ? math.pbc_dist(pos_i, pos_j, lattice.matrix, undefined, lattice.pbc)
@@ -2526,11 +2495,11 @@
                 <extras.HTML center position={mid_pos}>
                   <span class="measure-label">
                     {#if differ}
-                      PBC: {format_num(pbc, float_fmt)} Å<br /><small>
-                        Direct: {format_num(direct, float_fmt)} Å</small
+                      PBC: {format_num(pbc, FLOAT_FMT)} Å<br /><small>
+                        Direct: {format_num(direct, FLOAT_FMT)} Å</small
                       >
                     {:else}
-                      {format_num(pbc, float_fmt)} Å
+                      {format_num(pbc, FLOAT_FMT)} Å
                     {/if}
                   </span>
                 </extras.HTML>
@@ -2575,7 +2544,7 @@
               {@const offset_dir = math.scale(bisector, 1 / bis_norm)}
               {@const label_pos = math.add(center.xyz, math.scale(offset_dir, 0.6))}
               <extras.HTML center position={label_pos}>
-                <span class="measure-label">{format_num(angle_deg, float_fmt)}°</span>
+                <span class="measure-label">{format_num(angle_deg, FLOAT_FMT)}°</span>
               </extras.HTML>
             {/if}
           {/if}
@@ -2605,8 +2574,8 @@
               lattice?.pbc,
             )}
             <!-- label sits on the central bond, the axis the torsion is measured about -->
-            <extras.HTML center position={midpoint(draw_2, draw_3)}>
-              <span class="measure-label">{format_num(torsion_deg, float_fmt)}°</span>
+            <extras.HTML center position={math.lerp_vec3(draw_2, draw_3, 0.5)}>
+              <span class="measure-label">{format_num(torsion_deg, FLOAT_FMT)}°</span>
             </extras.HTML>
           {/if}
         {/if}

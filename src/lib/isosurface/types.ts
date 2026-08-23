@@ -140,16 +140,12 @@ export interface IsosurfaceLayer {
   color_range?: Vec2
 }
 
-// Isosurface rendering settings
+// Isosurface rendering settings: every rendered surface is an explicit layer (an empty
+// `layers` array renders nothing), plus options shared by all layers.
 export interface IsosurfaceSettings {
-  isovalue: number
-  opacity: number
-  positive_color: string // color for positive isovalue lobe
-  negative_color: string // color for negative isovalue lobe
-  show_negative: boolean // whether to render the negative lobe (-isovalue)
+  layers: IsosurfaceLayer[]
   wireframe: boolean
   halo: number // fraction of cell to extend isosurface beyond boundaries (0 = clip at cell edge, 0.5 = half cell)
-  layers?: IsosurfaceLayer[] // if set, overrides single-isovalue mode
   // Fractional display range per lattice axis for periodic volumes, VESTA-style:
   // e.g. [[-0.15, 2.15], [-0.15, 2.15], [0, 1]] repeats surfaces periodically and
   // clips them exactly at the fractional bounds. Unset = follow the structure's
@@ -261,33 +257,32 @@ export function downsample_grid(
   return { grid: { values: out, dims: [new_nx, new_ny, new_nz], order: `z_fastest` }, factor }
 }
 
-// Default isosurface rendering settings
+// Default isosurface rendering settings (no layers: nothing renders until a volume adds one)
 export const DEFAULT_ISOSURFACE_SETTINGS: IsosurfaceSettings = {
-  isovalue: 0.05,
-  opacity: 0.6,
-  positive_color: `#3b82f6`, // blue
-  negative_color: `#ef4444`, // red
-  show_negative: false,
+  layers: [],
   wireframe: false,
   halo: 0,
 }
 
 const field_has_significant_negatives = ({ min, abs_max }: DataRange): boolean =>
   min < -abs_max * 0.01
-const default_isovalue = ({ abs_max }: DataRange): number =>
-  abs_max > 0 ? abs_max * 0.2 : DEFAULT_ISOSURFACE_SETTINGS.isovalue
 
-// Compute reasonable isosurface settings from a volume's data range.
-// Sets isovalue to 20% of abs_max and enables negative lobe when data has
-// significant negative values (>1% of max).
-export function auto_isosurface_settings(data_range: DataRange): IsosurfaceSettings {
-  return {
-    ...DEFAULT_ISOSURFACE_SETTINGS,
-    // Fall back to default isovalue for all-zero grids to keep controls usable
-    isovalue: default_isovalue(data_range),
-    show_negative: field_has_significant_negatives(data_range),
-  }
-}
+// [isovalue fraction of abs_max, opacity] for the nth shell auto-added to one volume. Shell 0
+// is the usual 20% envelope; each further "+" steps through the 0.8 → 0.1 ladder
+// (alternating inner/outer so consecutive shells never coincide), inner high-isovalue shells
+// more opaque than the outer ones around them so every shell stays visible. Cycles past 6.
+export const SHELL_STEPS: readonly (readonly [fraction: number, opacity: number])[] = [
+  [0.2, 0.6],
+  [0.8, 0.8],
+  [0.5, 0.7],
+  [0.1, 0.3],
+  [0.65, 0.75],
+  [0.35, 0.65],
+]
+// Isovalue at a fraction of abs_max; all-zero grids fall back to a small positive value so
+// controls stay usable
+const fractional_isovalue = ({ abs_max }: DataRange, fraction: number): number =>
+  abs_max > 0 ? abs_max * fraction : 0.05
 
 // Visible layer colored from the categorical palette (negative lobe takes the next
 // swatch) with the negative lobe enabled when the field is signed
@@ -305,55 +300,42 @@ const palette_layer = (
   negative_color: LAYER_COLORS[(color_offset + 1) % LAYER_COLORS.length],
 })
 
-// Generate N evenly-spaced isosurface layers across a data range.
-// Layers are spaced from 10% to 80% of abs_max with decreasing opacity
-// for outer (lower-isovalue) shells so inner shells remain visible.
-export function generate_layers(data_range: DataRange, n_layers: number): IsosurfaceLayer[] {
-  if (n_layers <= 0 || data_range.abs_max <= 0) return []
-  // Space isovalues from high (inner, fraction 0.8) to low (outer, fraction 0.1)
-  return Array.from({ length: n_layers }, (_, idx) => {
-    const fraction = n_layers === 1 ? 0.2 : 0.8 - (idx / (n_layers - 1)) * 0.7
-    const opacity = n_layers === 1 ? 0.6 : 0.8 - idx * (0.5 / Math.max(n_layers - 1, 1))
-    return palette_layer(data_range, data_range.abs_max * fraction, opacity, idx)
-  })
-}
-
-// Build a default isosurface layer for a newly added volume: isovalue at 20% of
-// abs_max, next unused palette color, and negative lobe when the data is signed.
+// Build a default isosurface layer for a volume: the `shell_idx`th SHELL_STEPS entry (20% of
+// abs_max at opacity 0.6 for the first surface), next unused palette color, and negative
+// lobe when the data is signed. `shell_idx` is how many layers the volume already has, so
+// repeated "+" clicks add distinguishable shells instead of coincident copies.
 export const auto_volume_layer = (
   volume: VolumetricData,
   volume_idx: number,
   color_offset = 0,
-): IsosurfaceLayer => ({
-  ...palette_layer(volume.data_range, default_isovalue(volume.data_range), 0.6, color_offset),
-  volume_idx,
+  shell_idx = 0,
+): IsosurfaceLayer => {
+  const [fraction, opacity] = SHELL_STEPS[shell_idx % SHELL_STEPS.length]
+  return {
+    ...palette_layer(
+      volume.data_range,
+      fractional_isovalue(volume.data_range, fraction),
+      opacity,
+      color_offset,
+    ),
+    volume_idx,
+  }
+}
+
+// Settings for a freshly loaded file: one auto layer on its first volume (further volumes of
+// the same file, e.g. a CHGCAR's magnetization block, stay available as colour sources or
+// for manually added surfaces)
+export const auto_isosurface_settings = (volume: VolumetricData): IsosurfaceSettings => ({
+  ...DEFAULT_ISOSURFACE_SETTINGS,
+  layers: [auto_volume_layer(volume, 0)],
 })
 
 // Pin layers still relying on the implicit active volume to an explicit volume_idx
-const pin_layers = (layers: IsosurfaceLayer[], active_volume_idx: number) =>
-  layers.map((layer) => ({ ...layer, volume_idx: layer.volume_idx ?? active_volume_idx }))
-
-// Convert single-isovalue settings into an explicit layers array (no-op when
-// layers already exist — an explicit empty array means zero surfaces and is
-// preserved). Used when entering multi-volume mode so the implicit
-// active-volume surface survives as an editable layer.
-export const materialize_layers = (
-  settings: IsosurfaceSettings,
+export const pin_layers = (
+  layers: IsosurfaceLayer[],
   active_volume_idx: number,
 ): (IsosurfaceLayer & { volume_idx: number })[] =>
-  pin_layers(
-    settings.layers ?? [
-      {
-        isovalue: settings.isovalue,
-        color: settings.positive_color,
-        opacity: settings.opacity,
-        visible: true,
-        show_negative: settings.show_negative,
-        negative_color: settings.negative_color,
-      },
-    ],
-    active_volume_idx,
-  )
+  layers.map((layer) => ({ ...layer, volume_idx: layer.volume_idx ?? active_volume_idx }))
 
 // Remove a volume from the registry: drops layers whose geometry references it,
 // unsets color sources pointing at it, and shifts higher indices down by one.
@@ -364,17 +346,17 @@ export function remove_volume(
   removed_idx: number,
   active_volume_idx = 0,
 ): { volumes: VolumetricData[]; layers: IsosurfaceLayer[] } {
-  const remap = (idx: number | undefined): number | undefined => {
-    if (idx === undefined || idx === removed_idx) return undefined
-    return idx > removed_idx ? idx - 1 : idx
-  }
+  const shift = (idx: number): number => (idx > removed_idx ? idx - 1 : idx)
+  const remap = (idx: number | undefined): number | undefined =>
+    idx === undefined || idx === removed_idx ? undefined : shift(idx)
   return {
     volumes: volumes.filter((_vol, idx) => idx !== removed_idx),
     layers: layers
       .filter((layer) => (layer.volume_idx ?? active_volume_idx) !== removed_idx)
       .map((layer) => ({
         ...layer,
-        volume_idx: remap(layer.volume_idx ?? active_volume_idx) ?? 0,
+        // the filter above already dropped layers on the removed volume, so only the shift remains
+        volume_idx: shift(layer.volume_idx ?? active_volume_idx),
         color_volume_idx: remap(layer.color_volume_idx),
       })),
   }

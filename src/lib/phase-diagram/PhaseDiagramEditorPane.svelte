@@ -13,14 +13,14 @@
     editor_open = $bindable(false),
     diagram_input = $bindable<DiagramInput | null>(null),
     data = null,
-    ondata,
+    on_data,
     icon_style = ``,
     toggle_props: caller_toggle_props = {},
   }: {
     editor_open?: boolean
     diagram_input?: DiagramInput | null
     data?: PhaseDiagramData | null
-    ondata?: (data: PhaseDiagramData) => void
+    on_data?: (data: PhaseDiagramData) => void
     icon_style?: string
     toggle_props?: PaneToggleProps
   } = $props()
@@ -63,7 +63,7 @@
     }
     // PhaseDiagramData format — clear diagram_input so rebuilt_data doesn't shadow
     diagram_input = null
-    ondata?.(updated as PhaseDiagramData)
+    on_data?.(updated as PhaseDiagramData)
   }
 </script>
 
@@ -87,7 +87,7 @@
       default_fold_level={2}
       download_filename="diagram-data.json"
       editable
-      onchange={handle_change}
+      on_change={handle_change}
     />
   {:else}
     <p class="placeholder">

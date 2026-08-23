@@ -35,6 +35,27 @@ export const to_structure_entries = (
   )
 }
 
+// Run an analysis over every entry, reporting the structures it rejects (a NaN position, a
+// degenerate lattice: neighbor_query throws on both) instead of letting the throw take the
+// whole render down. Entries that compute are kept, so one bad dropped file does not blank
+// the others. The failure rides back with the results because writing to a prop from inside
+// a $derived is state_unsafe_mutation; callers hop it into `error_msg` with an $effect.
+export const compute_structure_entries = <Data>(
+  entries: readonly StructureEntry[],
+  compute: (structure: AnyStructure) => Data,
+): { entries: (StructureEntry & { data: Data })[]; error: string | undefined } => {
+  const computed: (StructureEntry & { data: Data })[] = []
+  const failures: string[] = []
+  for (const entry of entries) {
+    try {
+      computed.push({ ...entry, data: compute(entry.structure) })
+    } catch (exc) {
+      failures.push(`${entry.label}: ${to_error(exc).message}`)
+    }
+  }
+  return { entries: computed, error: failures.length > 0 ? failures.join(`; `) : undefined }
+}
+
 // Drop handler that parses each dropped file into a StructureEntry. Callers read as getters
 // so a reactive prop is not captured at construction time; `on_file_drop` returning a
 // callback replaces the parsing entirely so the caller can take over the drop.

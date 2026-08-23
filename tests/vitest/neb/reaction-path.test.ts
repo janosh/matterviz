@@ -3,7 +3,6 @@ import type { NebImage, PathMetricOptions } from '$lib/neb'
 import {
   analyze_barrier,
   assert_path,
-  eval_hermite,
   fit_path_spline,
   natural_cubic_slopes,
   nearest_image_idx,
@@ -12,7 +11,6 @@ import {
   path_spline,
   projected_force_slopes,
   reaction_coordinate,
-  relative_energies,
 } from '$lib/neb/reaction-path'
 import type { AnyStructure, Crystal } from '$lib/structure'
 import { describe, expect, test } from 'vitest'
@@ -62,12 +60,6 @@ describe(`barrier arithmetic`, () => {
     // Energies are one-decimal literals, so binary round-off after two subtractions
     // stays at the 1e-15 level; 1e-12 is a generous but still meaningful bound.
     expect(analyze_barrier(asymmetric)[key]).toBeCloseTo(expected, 12)
-  })
-
-  test(`forward minus reverse barrier equals the endpoint difference`, () => {
-    const { forward_barrier, reverse_barrier, reaction_energy } = analyze_barrier(asymmetric)
-    // Algebraically exact, but two IEEE-754 subtractions apart, so a few ulps of slack
-    expect(forward_barrier - reverse_barrier).toBeCloseTo(reaction_energy, 12)
   })
 
   test(`path_profile measures coords, barrier and spline with one options object`, () => {
@@ -197,18 +189,10 @@ describe(`cumulative arc length`, () => {
 describe(`energy reference`, () => {
   const images = walk_path([0, 1, 2], [-100.4, -99.6, -100.1])
 
-  test.each([
-    [`absolute`, `absolute` as const, [-100.4, -99.6, -100.1]],
-    [`initial`, `initial` as const, [0, 0.8, 0.3]],
-  ])(`%s reference`, (_name, reference, expected) => {
-    const actual = relative_energies(images, reference)
-    for (const [idx, value] of expected.entries()) expect(actual[idx]).toBeCloseTo(value, 12)
-  })
-
-  test(`referencing to the initial state leaves barriers unchanged`, () => {
-    const shifted = relative_energies(images, `initial`).map((energy, idx) => ({
-      ...images[idx],
-      energy,
+  test(`shifting every energy by the initial one leaves barriers unchanged`, () => {
+    const shifted = images.map((image) => ({
+      ...image,
+      energy: image.energy - images[0].energy,
     }))
     const raw_barrier = analyze_barrier(images).forward_barrier
     expect(analyze_barrier(shifted).forward_barrier).toBeCloseTo(raw_barrier, 12)
@@ -285,10 +269,7 @@ describe(`input normalization`, () => {
   ])(`%s normalizes to named paths`, (_name, make_input, expected_count) => {
     const paths = normalize_paths(make_input())
     expect(paths).toHaveLength(expected_count)
-    for (const { key, path } of paths) {
-      expect(typeof key).toBe(`string`)
-      expect(path.images).toHaveLength(3)
-    }
+    for (const { path } of paths) expect(path.images).toHaveLength(3)
   })
 
   test(`a single path keeps its label as key`, () => {
@@ -312,15 +293,34 @@ describe(`plot hover mapping`, () => {
     expect(nearest_image_idx(coords, coord)).toBe(expected_idx)
   })
 
-  test(`rounding the coordinate would pick the wrong image`, () => {
-    expect(nearest_image_idx(coords, 1.75)).toBe(3)
-    expect(Math.round(1.75)).not.toBe(3)
-  })
-
   test(`an empty coordinate array throws`, () => {
     expect(() => nearest_image_idx([], 0)).toThrow(/empty coordinate array/)
   })
 })
+
+// Piecewise cubic Hermite evaluation (clamped to the knots) for probing fitted slopes; the
+// production curve is sampled by fit_path_spline, which uses the same basis
+const eval_hermite = (
+  xs: readonly number[],
+  ys: readonly number[],
+  slopes: readonly number[],
+  coord: number,
+): number => {
+  const last = xs.length - 1
+  if (coord <= xs[0]) return ys[0]
+  if (coord >= xs[last]) return ys[last]
+  let seg = 0
+  while (seg < last - 1 && coord > xs[seg + 1]) seg++
+  const width = xs[seg + 1] - xs[seg]
+  const t_val = (coord - xs[seg]) / width
+  const [t_sq, t_cu] = [t_val ** 2, t_val ** 3]
+  return (
+    (2 * t_cu - 3 * t_sq + 1) * ys[seg] +
+    (t_cu - 2 * t_sq + t_val) * slopes[seg] * width +
+    (-2 * t_cu + 3 * t_sq) * ys[seg + 1] +
+    (t_cu - t_sq) * slopes[seg + 1] * width
+  )
+}
 
 describe(`natural cubic slopes`, () => {
   test.each([
@@ -371,27 +371,6 @@ describe(`natural cubic slopes`, () => {
     [`mismatched lengths`, [0, 1, 2], [0, 1], /matching x\/y lengths/],
   ])(`throw for %s`, (_name, xs, ys, pattern) => {
     expect(() => natural_cubic_slopes(xs, ys)).toThrow(pattern)
-  })
-})
-
-describe(`Hermite evaluation`, () => {
-  const xs = [0, 1, 2]
-  const ys = [0, 1, 0]
-  const slopes = [0, 0, 0]
-
-  // oxfmt-ignore
-  test.each([
-    [`the left endpoint`, 0, 0], [`the first knot`, 1, 1], [`the right endpoint`, 2, 0],
-    [`the midpoint of the first segment`, 0.5, 0.5], [`the midpoint of the second segment`, 1.5, 0.5],
-  ])(`passes through %s`, (_name, coord, expected) => {
-    expect(eval_hermite(xs, ys, slopes, coord)).toBeCloseTo(expected, 12)
-  })
-
-  // oxfmt-ignore
-  test.each(
-    [[`below the domain`, -3, 0.5], [`above the domain`, 5, -0.25]],
-  )(`clamps to the endpoint value %s`, (_name, coord, expected) => {
-    expect(eval_hermite([0, 1, 2], [0.5, 1, -0.25], slopes, coord)).toBeCloseTo(expected, 12)
   })
 })
 

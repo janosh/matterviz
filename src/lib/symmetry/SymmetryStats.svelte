@@ -1,10 +1,9 @@
 <script lang="ts">
-  import type { MoyoDataset } from '@spglib/moyo-wasm'
   import type { Snippet } from 'svelte'
   import { tooltip } from 'svelte-widgets/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SETTINGS_CONFIG } from '$lib/settings'
-  import type { SymmetrySettings } from './analyze'
+  import type { SymmetryDataset, SymmetrySettings } from './analyze'
   import {
     count_symmetry_op_kinds,
     default_sym_settings,
@@ -20,7 +19,7 @@
   } from './wyckoff'
 
   type SymmetrySnippet = Snippet<
-    [{ sym_data?: MoyoDataset | null; settings: SymmetrySettings }]
+    [{ sym_data?: SymmetryDataset | null; settings: SymmetrySettings }]
   >
 
   let {
@@ -32,7 +31,7 @@
     header,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
-    sym_data?: MoyoDataset | null
+    sym_data?: SymmetryDataset | null
     settings?: SymmetrySettings
     show_tooltips?: boolean
     children?: SymmetrySnippet

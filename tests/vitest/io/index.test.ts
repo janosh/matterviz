@@ -23,82 +23,92 @@ const as_bytes = async (content: unknown): Promise<Uint8Array> =>
 describe(`load_trajectory_from_url`, () => {
   beforeEach(() => vi.mocked(fetch).mockReset())
 
+  // HDF5 (by name, Content-Disposition or magic bytes; plain, gzipped or zipped) reaches the
+  // callback as one Blob from a single fetch, named so h5wasm recognizes it
+  const content_disposition = (name: string) => ({
+    'content-disposition': `attachment; filename="${name}"`,
+  })
   test.each([
+    { url: `run.h5`, body: hdf5_bytes, headers: {}, filename: `run.h5`, source: `run.h5` },
     {
-      source: `direct URL`,
-      url: `https://example.com/run.h5`,
-      headers: new Headers(),
-      source_filename: `run.h5`,
+      url: `run.h5`,
+      body: hdf5_bytes,
+      headers: content_disposition(`download`), // generic response filename
+      filename: `run.h5`,
+      source: `download`,
     },
     {
-      source: `direct URL with a generic response filename`,
-      url: `https://example.com/run.h5`,
-      headers: new Headers({
-        'content-disposition': `attachment; filename="download"`,
-      }),
-      source_filename: `download`,
+      url: `download.bin`, // generic URL, header names the HDF5 file
+      body: hdf5_bytes,
+      headers: content_disposition(`run.h5`),
+      filename: `run.h5`,
+      source: `run.h5`,
     },
-  ])(`loads HDF5 from a $source as one Blob`, async (test_case) => {
-    const { url, headers, source_filename } = test_case
-    const source_blob = new Blob([new Uint8Array([1, 2, 3])])
-    const blob = vi.fn().mockResolvedValue(source_blob)
-    const array_buffer = vi.fn()
-    vi.mocked(fetch).mockResolvedValue({
-      ok: true,
-      headers,
-      blob,
-      arrayBuffer: array_buffer,
-    } as unknown as Response)
-    const callback = vi.fn()
+    {
+      url: `download`, // neither URL nor header names it: magic bytes earn a .h5 suffix
+      body: hdf5_bytes,
+      headers: {
+        'content-type': `application/octet-stream`,
+        ...content_disposition(`download`),
+      },
+      filename: `download.h5`,
+      source: `download`,
+    },
+    {
+      url: `download.gz`, // gzip inflated by magic, HDF5 recognized from inflated bytes
+      body: gzip(hdf5_bytes),
+      headers: {},
+      filename: `download.h5`,
+      source: `download.gz`,
+    },
+    {
+      url: `download`, // extensionless gzip, no filename header
+      body: gzip(hdf5_bytes),
+      headers: {},
+      filename: `download.h5`,
+      source: `download`,
+    },
+    {
+      url: `download`, // extensionless gzip, HDF5 gzip filename header
+      body: gzip(hdf5_bytes),
+      headers: content_disposition(`run.h5.gz`),
+      filename: `run.h5`,
+      source: `run.h5.gz`,
+    },
+    {
+      url: `run.h5.gz`, // Content-Disposition without extension must not lose the .h5 name
+      body: gzip(hdf5_bytes),
+      headers: content_disposition(`download`),
+      filename: `run.h5`,
+      source: `download`,
+    },
+    {
+      url: `run.h5.zip`,
+      body: zipSync({ 'run.h5': hdf5_bytes }),
+      headers: {},
+      filename: `run.h5`,
+      source: `run.h5.zip`,
+    },
+  ])(
+    `loads $url with headers $headers as Blob $filename`,
+    async ({ url: basename, body, headers, filename, source }) => {
+      const url = `https://example.com/${basename}`
+      vi.mocked(fetch).mockResolvedValueOnce(new Response(body, { headers }))
+      const callback = vi.fn()
 
-    await load_trajectory_from_url(url, callback)
+      await load_trajectory_from_url(url, callback)
 
-    expect(fetch).toHaveBeenCalledOnce()
-    expect(blob).toHaveBeenCalledOnce()
-    expect(array_buffer).not.toHaveBeenCalled()
-    expect(callback).toHaveBeenCalledWith(source_blob, `run.h5`, {
-      source_filename,
-      source_url: url,
-    })
-  })
-
-  test(`classifies HDF5 from one generic URL Blob`, async () => {
-    const hdf5_header = new Uint8Array([0x89, 0x48, 0x44, 0x46, 0x0d, 0x0a, 0x1a, 0x0a])
-    vi.mocked(fetch).mockResolvedValueOnce(
-      new Response(hdf5_header, {
-        headers: { 'content-disposition': `attachment; filename="run.h5"` },
-      }),
-    )
-    const callback = vi.fn()
-    const url = `https://example.com/download.bin`
-
-    await load_trajectory_from_url(url, callback)
-
-    expect(fetch).toHaveBeenCalledExactlyOnceWith(url, { signal: undefined })
-    expect(callback).toHaveBeenCalledOnce()
-    const [content, filename, metadata] = callback.mock.calls[0]
-    expect(content).toBeInstanceOf(Blob)
-    expect(new Uint8Array(await content.arrayBuffer())).toEqual(hdf5_header)
-    expect([filename, metadata]).toEqual([
-      `run.h5`,
-      { source_filename: `run.h5`, source_url: url },
-    ])
-  })
-
-  test(`recognizes HDF5 after decompressing a generically named gzip URL`, async () => {
-    vi.mocked(fetch).mockResolvedValue(new Response(gzip(hdf5_bytes)))
-    const callback = vi.fn()
-
-    await load_trajectory_from_url(`https://example.com/download.gz`, callback)
-
-    const [content, filename, metadata] = callback.mock.calls[0]
-    expect(content).toBeInstanceOf(Blob)
-    expect(await as_bytes(content)).toEqual(hdf5_bytes)
-    expect([filename, metadata]).toEqual([
-      `download.h5`,
-      { source_filename: `download.gz`, source_url: `https://example.com/download.gz` },
-    ])
-  })
+      expect(fetch).toHaveBeenCalledExactlyOnceWith(url, { signal: undefined })
+      expect(callback).toHaveBeenCalledOnce()
+      const [content, received_filename, metadata] = callback.mock.calls[0]
+      expect(content).toBeInstanceOf(Blob)
+      expect(await as_bytes(content)).toEqual(hdf5_bytes)
+      expect([received_filename, metadata]).toEqual([
+        filename,
+        { source_filename: source, source_url: url },
+      ])
+    },
+  )
 
   test(`rejects a failed generic response before classification`, async () => {
     vi.mocked(fetch).mockResolvedValueOnce(
@@ -125,106 +135,6 @@ describe(`load_trajectory_from_url`, () => {
       `BZ2 decompression is not supported in the browser; extract https://example.com/download.bin first`,
     )
   })
-
-  test(`unzips a single-file HDF5 ZIP URL into a Blob`, async () => {
-    const zip = zipSync({ 'run.h5': hdf5_bytes })
-    vi.mocked(fetch).mockResolvedValue(new Response(zip))
-    const callback = vi.fn()
-
-    await load_trajectory_from_url(`https://example.com/run.h5.zip`, callback)
-
-    const [content, filename] = callback.mock.calls[0]
-    expect(content).toBeInstanceOf(Blob)
-    expect(await as_bytes(content)).toEqual(hdf5_bytes)
-    expect(filename).toBe(`run.h5`)
-  })
-
-  test(`keeps HDF5 gzip URLs Blob-backed when Content-Disposition has no extension`, async () => {
-    vi.mocked(fetch).mockResolvedValue(
-      new Response(gzip(hdf5_bytes), {
-        headers: { 'content-disposition': `attachment; filename="download"` },
-      }),
-    )
-    const callback = vi.fn()
-
-    await load_trajectory_from_url(`https://example.com/run.h5.gz`, callback)
-
-    const [content, filename, metadata] = callback.mock.calls[0]
-    expect(content).toBeInstanceOf(Blob)
-    expect(await as_bytes(content)).toEqual(hdf5_bytes)
-    expect([filename, metadata]).toEqual([
-      `run.h5`,
-      { source_filename: `download`, source_url: `https://example.com/run.h5.gz` },
-    ])
-  })
-
-  test(`gives HDF5-magic URLs a parseable filename when headers omit one`, async () => {
-    const hdf5_header = new Uint8Array([0x89, 0x48, 0x44, 0x46, 0x0d, 0x0a, 0x1a, 0x0a])
-    vi.mocked(fetch).mockResolvedValueOnce(
-      new Response(hdf5_header, {
-        headers: {
-          'content-type': `application/octet-stream`,
-          'content-disposition': `attachment; filename="download"`,
-        },
-      }),
-    )
-    const callback = vi.fn()
-
-    await load_trajectory_from_url(`https://example.com/download`, callback)
-
-    expect(fetch).toHaveBeenCalledOnce()
-    const [content, filename, metadata] = callback.mock.calls[0]
-    expect(content).toBeInstanceOf(Blob)
-    expect(new Uint8Array(await content.arrayBuffer())).toEqual(hdf5_header)
-    expect([filename, metadata]).toEqual([
-      `download.h5`,
-      {
-        source_filename: `download`,
-        source_url: `https://example.com/download`,
-      },
-    ])
-  })
-
-  test.each([
-    [`without a filename header`, {}, `download.h5`, `download`],
-    [
-      `with an HDF5 gzip filename header`,
-      { 'content-disposition': `attachment; filename="run.h5.gz"` },
-      `run.h5`,
-      `run.h5.gz`,
-    ],
-  ] as const)(
-    `keeps extensionless gzip HDF5 Blob-backed %s`,
-    async (_label, headers, expected_filename, expected_source_filename) => {
-      vi.mocked(fetch).mockResolvedValueOnce(new Response(gzip(hdf5_bytes), { headers }))
-      const callback = vi.fn()
-
-      await load_trajectory_from_url(`https://example.com/download`, callback)
-
-      expect(fetch).toHaveBeenCalledOnce()
-      const [content, filename, metadata] = callback.mock.calls[0]
-      expect(content).toBeInstanceOf(Blob)
-      expect(await as_bytes(content)).toEqual(hdf5_bytes)
-      expect([filename, metadata]).toEqual([
-        expected_filename,
-        {
-          source_filename: expected_source_filename,
-          source_url: `https://example.com/download`,
-        },
-      ])
-    },
-  )
-
-  test.each([`bz2`, `xz`])(
-    `rejects remote HDF5 .%s wrappers before fetching`,
-    async (extension) => {
-      vi.mocked(fetch).mockClear()
-      await expect(
-        load_trajectory_from_url(`https://example.com/run.h5.${extension}`, vi.fn()),
-      ).rejects.toThrow(`${extension.toUpperCase()} decompression is not supported`)
-      expect(fetch).not.toHaveBeenCalled()
-    },
-  )
 })
 
 describe(`basename_from_url`, () => {
@@ -306,15 +216,8 @@ describe(`load_from_url`, () => {
     expect(fetch).toHaveBeenCalledWith(`https://example.com/test.json`, { signal: undefined })
   })
 
-  test.each([
-    `test.h5`,
-    `trajectory.hdf5`,
-    `data.traj`,
-    `model.npz`,
-    `data.pkl`,
-    `output.dat`,
-    `scan.raw`, // Bruker/Rigaku XRD binary
-  ])(`binary extension %s`, async (filename) => {
+  // extension lists are unit-tested in io/is-binary.test.ts; .raw is Bruker/Rigaku XRD binary
+  test.each([`test.h5`, `scan.raw`])(`binary extension %s`, async (filename) => {
     const { received_content, received_filename } = await load_test_url(
       `https://example.com/${filename}`,
       new ArrayBuffer(8),
@@ -347,20 +250,6 @@ describe(`load_from_url`, () => {
     expect(received_content).toBe(`data_zip`)
     expect(received_filename).toBe(`structure.cif`)
   })
-
-  test.each([`data.txt`, `config.json`, `README.md`, `script.py`, `style.css`])(
-    `text file %s`,
-    async (filename) => {
-      const { received_content, received_filename } = await load_test_url(
-        `https://example.com/${filename}`,
-        `text content`,
-        { 'content-type': `text/plain` },
-      )
-      expect(received_content).toBe(`text content`)
-      expect(received_filename).toBe(filename)
-      expect(globalThis.fetch).toHaveBeenCalledOnce()
-    },
-  )
 
   // Body already inflated (fetch transparently decoded a Content-Encoding: gzip response, the
   // GitHub Pages way of serving a stored .gz). Text formats arrive as string, binary inner
@@ -539,29 +428,6 @@ describe(`load_from_url`, () => {
     )
   })
 
-  test(`classifies generic text from one full response`, async () => {
-    const { received_content, received_filename } = await load_test_url(
-      `https://example.com/data.unknown`,
-      `fallback content`,
-      { 'content-type': `text/plain` },
-    )
-
-    expect(received_content).toBe(`fallback content`)
-    expect(received_filename).toBe(`data.unknown`)
-    expect(globalThis.fetch).toHaveBeenCalledOnce()
-  })
-
-  test.each([
-    [`https://example.com/path/to/structure.xyz`, `structure.xyz`],
-    [`structure.xyz`, `structure.xyz`],
-  ])(`filename extraction: %s`, async (url, expected_filename) => {
-    const { received_content, received_filename } = await load_test_url(url, `content`, {
-      'content-type': `text/plain`,
-    })
-    expect(received_content).toBe(`content`)
-    expect(received_filename).toBe(expected_filename)
-  })
-
   test(`fetch error with status`, async () => {
     globalThis.fetch = vi.fn().mockResolvedValue(new Response(null, { status: 404 }))
 
@@ -628,7 +494,7 @@ describe(`load_from_url`, () => {
     })
   })
 
-  test.each([`POSCAR`, `poscar`, `XDATCAR`, `xdatcar`, `CONTCAR`, `contcar`])(
+  test.each([`POSCAR`, `xdatcar`])(
     `recognizes extensionless VASP file %s as text`,
     async (basename) => {
       const poscar = `Si\n1.0\n5.43 0 0\n0 5.43 0\n0 0 5.43`

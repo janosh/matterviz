@@ -1,20 +1,22 @@
 <script lang="ts">
-  import { browser } from '$app/environment'
-  import { page } from '$app/state'
   import FilePicker from '$lib/FilePicker.svelte'
-  import { decompress_data } from '$lib/io/decompress'
-  import type { DiagramInput, PhaseDiagramData, TdbParseResult } from '$lib/phase-diagram'
+  import { dropped_file_url, file_drop_zone, load_from_url } from '$lib/io'
+  import type { DiagramInput, PhaseDiagramData } from '$lib/phase-diagram'
   import {
     build_diagram,
-    get_system_name,
     IsobaricBinaryPhaseDiagram,
     parse_phase_diagram_svg,
-    parse_tdb,
-    TdbInfoPanel,
   } from '$lib/phase-diagram'
+  import {
+    get_system_name,
+    parse_tdb,
+    type TdbParseResult,
+  } from '$site/phase-diagrams/tdb-parse'
+  import TdbInfoPanel from '$site/phase-diagrams/TdbInfoPanel.svelte'
   import { to_error } from '$lib/utils'
   import { all_phase_diagram_files, find_precomputed_diagram } from '$site/phase-diagrams'
-  import { replace_url } from '$site/state.svelte'
+  import { file_param, set_file_param } from '$site/state.svelte'
+  import { onMount } from 'svelte'
 
   // Track currently loaded diagram
   let current_data = $state<PhaseDiagramData | null>(null)
@@ -31,220 +33,85 @@
   }
   let tdb = $state<TdbState | null>(null)
 
-  // Helper to check file type from filename
   const has_ext = (name: string, ext: string) => name.toLowerCase().endsWith(ext)
-  const is_tdb = (name: string) => has_ext(name, `.tdb`)
-  const is_svg = (name: string) => has_ext(name, `.svg`)
-  const is_gzipped = (name: string) => has_ext(name, `.gz`)
 
-  // Helper for consistent error formatting
-  const format_error = (context: string, exc: unknown) =>
-    `${context}: ${to_error(exc).message}`
-
-  async function load_phase_diagram(url: string): Promise<PhaseDiagramData> {
-    if (url.startsWith(`builtin:`)) {
-      const system = url.slice(`builtin:`.length)
-      const diagram = find_precomputed_diagram(system)
-      if (!diagram) throw new Error(`Unknown built-in phase diagram: ${system}`)
-      return diagram
-    }
-    const response = await fetch(url)
-    if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`)
-    return (await response.json()) as PhaseDiagramData
-  }
-
-  // Token for race condition protection - each load gets a unique Symbol
+  // Stale-load guard: every load gets a token and only the newest one may write state
   let active_load: symbol | null = null
 
-  // Check if this load is still the active one (not superseded)
-  const is_stale = (token: symbol) => active_load !== token
-
-  // Sync URL parameter to current file on load
-  $effect(() => {
-    if (!browser) return
-    const file_param = page.url.searchParams.get(`file`)
-    if (file_param && file_param !== current_file) {
-      const file_info = all_phase_diagram_files.find((file) => file.name === file_param)
-      if (file_info?.url) load_file(file_info.url, file_param, false)
+  // Parse fetched or dropped content by filename. TDB files are parsed but not solved; a
+  // matching precomputed diagram (if any) is shown instead. Throws on malformed content.
+  function apply_content(content: string | ArrayBuffer, filename: string, sync_url = true) {
+    const text = typeof content === `string` ? content : new TextDecoder().decode(content)
+    // Drop any earlier SVG import: the viewer prefers a rebuilt diagram_input over data
+    current_diagram_input = null
+    if (has_ext(filename, `.tdb`)) {
+      const result = parse_tdb(text)
+      const system_name = get_system_name(result.data.elements.map((el) => el.symbol))
+      const precomputed_data = find_precomputed_diagram(system_name) ?? null
+      tdb = { result, system_name, precomputed_data }
+      if (precomputed_data) current_data = precomputed_data
+    } else {
+      tdb = null
+      if (has_ext(filename, `.svg`)) {
+        current_diagram_input = parse_phase_diagram_svg(text)
+        current_data = build_diagram(current_diagram_input)
+      } else current_data = JSON.parse(text) as PhaseDiagramData
     }
-  })
-
-  // Update URL when current file changes
-  function update_url(filename: string): void {
-    if (!browser) return
-    page.url.searchParams.set(`file`, filename)
-    replace_url(`${page.url.pathname}?${page.url.searchParams.toString()}`)
+    current_file = filename
+    if (sync_url) set_file_param(filename)
   }
 
-  // Unified file loader with race condition protection
-  // Handles both TDB and JSON files, uses Symbol token for stale request detection
-  async function load_file(
-    url: string,
-    filename: string,
-    update_url_param: boolean = true,
-  ): Promise<boolean> {
-    const token = Symbol(`load-token`)
+  // Load a picker entry: built-in diagrams come precomputed from $site/phase-diagrams, the
+  // rest (TDB, SVG, JSON, gzipped or not) are fetched and decompressed by $lib/io
+  async function load_file(url: string, filename: string, sync_url = true): Promise<void> {
+    const token = Symbol(filename)
     active_load = token
     loading = true
     error_message = null
     tdb = null
-
     try {
-      if (is_tdb(filename)) {
-        // TDB files: fetch content, parse, optionally load precomputed diagram
-        const res = await fetch(url)
-        if (is_stale(token)) return false
-        if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`)
-        const content = await res.text()
-        if (is_stale(token)) return false
-
-        parse_tdb_content(content, filename)
-        load_precomputed()
-        return true
-      } else if (is_svg(filename)) {
-        const res = await fetch(url)
-        if (is_stale(token)) return false
-        if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`)
-        const content = await res.text()
-        if (is_stale(token)) return false
-        current_diagram_input = parse_phase_diagram_svg(content)
-        current_data = build_diagram(current_diagram_input)
+      if (url.startsWith(`builtin:`)) {
+        const system = url.slice(`builtin:`.length)
+        const diagram = find_precomputed_diagram(system)
+        if (!diagram) throw new Error(`Unknown built-in phase diagram: ${system}`)
+        current_diagram_input = null
+        current_data = diagram
         current_file = filename
-        if (update_url_param) update_url(filename)
-        return true
+        if (sync_url) set_file_param(filename)
+      } else {
+        await load_from_url(url, (content) => {
+          if (active_load === token) apply_content(content, filename, sync_url)
+        })
       }
-      // JSON files: load directly
-      const data = await load_phase_diagram(url)
-      if (is_stale(token)) return false
-      current_data = data
-      current_file = filename
-      if (update_url_param) update_url(filename)
-      return true
     } catch (exc) {
-      if (is_stale(token)) return false
-      error_message = format_error(`Failed to load`, exc)
-      return false
+      if (active_load === token) error_message = `Failed to load: ${to_error(exc).message}`
     } finally {
-      if (!is_stale(token)) loading = false
+      if (active_load === token) loading = false
     }
   }
 
-  // Parse TDB content and set up state (used by both load_file and parse_file_content).
-  // parse_tdb throws on non-TDB content; the callers' try/catch reports that.
-  function parse_tdb_content(content: string, filename: string): void {
-    const result = parse_tdb(content)
-    const system_name = get_system_name(result.data.elements.map((el) => el.symbol))
-    const precomputed_data = find_precomputed_diagram(system_name) ?? null
-    tdb = { result, system_name, precomputed_data }
-    current_file = filename
-    update_url(filename)
-  }
-
-  // Parse file content as phase diagram data (for local file drops)
-  async function parse_file_content(
-    content: string | ArrayBuffer,
-    filename: string,
-  ): Promise<void> {
-    loading = true
-    error_message = null
-    try {
-      if (is_tdb(filename)) {
-        if (typeof content === `string`) {
-          parse_tdb_content(content, filename)
-          load_precomputed()
-        }
-        return
-      }
-      if (is_svg(filename)) {
-        if (typeof content === `string`) {
-          current_diagram_input = parse_phase_diagram_svg(content)
-          current_data = build_diagram(current_diagram_input)
-          current_file = filename
-          update_url(filename)
-          tdb = null
-        }
-        return
-      }
-      // Handle JSON/gzipped JSON files
-      const json_string =
-        typeof content === `string` ? content : await decompress_data(content, `gzip`)
-      current_data = JSON.parse(json_string) as PhaseDiagramData
-      current_file = filename
-      update_url(filename)
-      tdb = null
-    } catch (exc) {
-      console.error(`Failed to parse file "${filename}":`, exc)
-      error_message = format_error(`Failed to parse ${filename}`, exc)
-    } finally {
-      loading = false
-    }
-  }
-
-  // Handle direct file drop (local files)
-  function handle_direct_file_drop(file: File): void {
-    const reader = new FileReader()
-    const handle_load = async (): Promise<void> => {
-      try {
-        const content = reader.result
-        if (content) {
-          await parse_file_content(content, file.name)
-        }
-      } catch (exc) {
-        error_message = format_error(`Failed to parse file`, exc)
-      }
-    }
-    reader.addEventListener(`load`, () => void handle_load())
-
-    if (is_gzipped(file.name)) reader.readAsArrayBuffer(file)
-    else reader.readAsText(file)
-  }
-
-  // Main file drop handler
-  function handle_file_drop(event: DragEvent): void {
+  // FilePicker drags carry the entry's URL; built-in diagrams have no fetchable URL, so claim
+  // those before file_drop_zone (which fetches every URL drop) sees them
+  function handle_builtin_drop(event: DragEvent): void {
+    const url = dropped_file_url(event)
+    if (!url?.startsWith(`builtin:`)) return
     event.preventDefault()
-    error_message = null
-
-    // First check for URL data from FilePicker (internal drag)
-    const url = event.dataTransfer?.getData(`text/plain`)
-    const json_data = event.dataTransfer?.getData(`application/json`)
-
-    if (url && json_data) {
-      // Internal drag from FilePicker - parse the JSON to get file info
-      try {
-        const { name } = JSON.parse(json_data) as { name: string }
-        if (url.startsWith(`/`)) void load_file(url, name || url.split(`/`).pop() || `unknown`)
-        return
-      } catch (exc) {
-        console.warn(
-          `Failed to parse internal drag data, falling through to file handling ${exc}`,
-        )
-      }
-    }
-
-    // Handle direct file drop from filesystem
-    const file = event.dataTransfer?.files[0]
-    if (!file) return
-
-    handle_direct_file_drop(file)
-  }
-
-  function handle_drag_over(event: DragEvent): void {
-    event.preventDefault()
+    event.stopImmediatePropagation()
+    const entry = all_phase_diagram_files.find((file) => file.url === url)
+    void load_file(url, entry?.name ?? url)
   }
 
   function load_precomputed(): void {
     if (tdb?.precomputed_data) current_data = tdb.precomputed_data
   }
 
-  // Load example A-B eutectic diagram as default when no other diagram is loaded
-  const example_file_name = `A-B.json`
-  $effect(() => {
-    if (browser && !current_data && !loading) {
-      const example_file = all_phase_diagram_files.find(
-        (file) => file.name === example_file_name,
-      )
-      if (example_file?.url) load_file(example_file.url, example_file_name, false)
-    }
+  // ?file= deep link, else the example A-B eutectic diagram
+  onMount(() => {
+    const requested = file_param()
+    const target =
+      all_phase_diagram_files.find((file) => file.name === requested) ??
+      all_phase_diagram_files.find((file) => file.name === `A-B.json`)
+    if (target?.url) void load_file(target.url, target.name, false)
   })
 </script>
 
@@ -277,8 +144,14 @@
 
 <div
   class={['diagram-container', { loading }]}
-  ondrop={handle_file_drop}
-  ondragover={handle_drag_over}
+  ondropcapture={handle_builtin_drop}
+  {@attach file_drop_zone({
+    allow: () => true,
+    max_files: 1,
+    on_drop: (content, filename) => apply_content(content, filename),
+    on_error: (msg) => (error_message = msg),
+    set_loading: (value) => (loading = value),
+  })}
   role="region"
   aria-label="Phase diagram viewer - drag and drop files here"
 >

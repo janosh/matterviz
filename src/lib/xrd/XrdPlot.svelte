@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { add_alpha, PLOT_COLORS } from '$lib/colors'
+  import { add_alpha, plot_color } from '$lib/colors'
   import EmptyState from '$lib/EmptyState.svelte'
   import StatusMessage from '$lib/feedback/StatusMessage.svelte'
   import * as io from '$lib/io'
@@ -20,8 +20,12 @@
   import type { RadiationType } from '$lib/scattering'
   import type { BroadeningParams } from './broadening'
   import { compute_broadened_pattern, DEFAULT_BROADENING } from './broadening'
-  import { format_hkl } from './index'
+  import { decimate_pattern, format_hkl } from './index'
   import type { Hkl, HklFormat, PatternEntry, XrdPattern } from './index'
+
+  // Measured scans can run to 10⁵ points; the stick/profile views stay responsive at this
+  // budget while the peak-preserving thinning keeps every significant maximum
+  const MAX_RENDERED_POINTS = 1000
 
   function is_xrd_pattern(obj: unknown): obj is XrdPattern {
     const { x: x_vals, y: y_vals } = (obj ?? {}) as { x?: unknown; y?: unknown }
@@ -39,6 +43,8 @@
     radiation = $bindable(`xray`),
     show_controls = $bindable(true),
     controls_open = $bindable(false),
+    controls_toggle_props,
+    controls_pane_props,
     x_axis = {},
     y_axis = {},
     allow_file_drop = true,
@@ -87,7 +93,7 @@
   const series_style = (entry: PatternEntry, entry_idx: number) => ({
     label: pattern_entries.length > 1 ? entry.label : ``,
     color: add_alpha(
-      entry.color ?? PLOT_COLORS[entry_idx % PLOT_COLORS.length],
+      entry.color ?? plot_color(entry_idx),
       pattern_entries.length > 1 ? 0.6 : 1,
     ),
   })
@@ -104,8 +110,14 @@
           ).map(([label, value]) =>
             `pattern` in value ? { label, ...value } : { label, pattern: value as XrdPattern },
           )
-    // Merge user-provided patterns with any dropped-on-the-fly entries
-    return [...base_entries, ...dropped_entries]
+    // Merge user-provided patterns with any dropped-on-the-fly entries. Only measured scans
+    // (no hkls) are thinned: every reflection of a computed stick pattern is a labelled peak
+    return [...base_entries, ...dropped_entries].map((entry) => ({
+      ...entry,
+      pattern: entry.pattern.hkls
+        ? entry.pattern
+        : decimate_pattern(entry.pattern, MAX_RENDERED_POINTS),
+    }))
   })
 
   // Compute global max intensity for normalization (as in pymatviz xrd_pattern)
@@ -371,6 +383,8 @@
         controls_extra={broadening_controls_snippet}
         bind:show_controls
         bind:controls_open
+        {controls_toggle_props}
+        {controls_pane_props}
       />
     {:else}
       <!-- Discrete Stick View -->
@@ -404,6 +418,8 @@
         controls_extra={broadening_controls_snippet}
         bind:show_controls
         bind:controls_open
+        {controls_toggle_props}
+        {controls_pane_props}
       />
     {/if}
   </div>

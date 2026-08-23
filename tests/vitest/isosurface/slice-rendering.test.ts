@@ -15,12 +15,15 @@ const make_slice = () => ({
 })
 
 describe(`slice rendering helpers`, () => {
-  test.each([`auto`, false, true] as const)(
-    `resolves bounds when symmetric=%s`,
-    (symmetric) => {
-      expect(resolve_slice_color_range(make_slice(), undefined, symmetric)).toEqual([-2, 2])
-    },
-  )
+  // Asymmetric fixtures so the three symmetric modes give distinguishable answers
+  test.each([
+    [`auto`, [-1, 3], [-3, 3]], // signed data: centred on zero
+    [`auto`, [1, 3], [1, 3]], // positive-only data: left alone
+    [false, [-1, 3], [-1, 3]],
+    [true, [1, 3], [-3, 3]],
+  ] as const)(`symmetric=%s resolves %j to %j`, (symmetric, [min, max], expected) => {
+    expect(resolve_slice_color_range({ min, max }, undefined, symmetric)).toEqual(expected)
+  })
 
   test(`honors an explicit color range`, () => {
     expect(resolve_slice_color_range(make_slice(), [3, -1], `auto`)).toEqual([3, -1])

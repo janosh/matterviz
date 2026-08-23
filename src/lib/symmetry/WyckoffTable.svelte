@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { contrast_text_color } from '$lib/colors'
+  import { contrast_text_color, resolve_backdrop } from '$lib/colors'
   import { format_fractional } from '$lib/labels'
   import { colors } from '$lib/state.svelte'
   import type { MoyoWyckoffPosition } from '@spglib/moyo-wasm'
@@ -49,6 +49,11 @@
     rows.some((pos) => pos.site_symmetry) || unoccupied_rows.length > 0,
   )
 
+  // Element colors may be translucent (user overrides), so badge text contrast is computed
+  // against the page color behind the table
+  let table_node = $state<HTMLTableElement>()
+  const backdrop = resolve_backdrop(() => table_node)
+
   const get_row_key = (wyckoff_pos: WyckoffPos, row_idx: number) =>
     `${wyckoff_pos.wyckoff}-${wyckoff_pos.elem}-${wyckoff_pos.site_indices.join(`,`)}-${row_idx}`
   let selected_key = $state<string | null>(null)
@@ -68,7 +73,7 @@
 </script>
 
 {#if rows.length > 0 || unoccupied_rows.length > 0}
-  <table {...rest} class={[`wyckoff-table`, rest.class]}>
+  <table bind:this={table_node} {...rest} class={[`wyckoff-table`, rest.class]}>
     <thead>
       <tr>
         {#each [[`Wyckoff`, `Wyckoff position: Multiplicity + Letter`], [`Element`, `Chemical element symbol`], [`Fractional Coords`, `Fractional coordinates within the unit cell`], ...(has_ita_coords ? [[`ITA Coords`, `Representative coordinates from the International Tables: x/y/z mark free parameters, fractions mark symmetry-fixed coordinates`]] : []), ...(has_site_symmetry ? [[`Site Symm.`, `Site symmetry: point group of operations leaving the site invariant`]] : [])] as [col, title] (col)}
@@ -99,7 +104,10 @@
           <td>
             <span
               style:background-color={colors.element[elem]}
-              style:color={contrast_text_color({ background: colors.element[elem] })}
+              style:color={contrast_text_color({
+                background: colors.element[elem],
+                backdrop: backdrop.current,
+              })}
               style="display: inline-block; padding: 0 4pt; border-radius: 3pt; line-height: 1.25"
             >
               {elem}

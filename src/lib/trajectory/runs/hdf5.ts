@@ -38,10 +38,12 @@ export const hdf5_run = (
       assert_frame_idx({ frame_count }, frame_idx)
       return frame_idx === 0 ? preview : live().read_frame(frame_idx)
     },
-    collect_positions: async (options, on_progress, signal) => {
+    // Sync hyperslab reads: there is no frame loop to report progress from, so the one
+    // stage announces itself and the result follows
+    collect_positions: async ({ on_progress, signal, ...options } = {}) => {
       signal?.throwIfAborted()
       on_progress?.({ current: 0, total: 100, stage: `Reading HDF5 datasets` })
-      return live().collect_positions(options ?? {})
+      return live().collect_positions(options)
     },
     dispose: () => {
       if (disposed) return

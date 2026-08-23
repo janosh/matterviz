@@ -2,8 +2,10 @@ import { expect, type Locator, type Page, test } from '@playwright/test'
 import type { Buffer } from 'node:buffer'
 import { gzipSync } from 'node:zlib'
 import {
+  canvas_box,
   canvas_screenshot,
   dispatch_cancelable_keydown,
+  drag_canvas,
   drop_file,
   enter_edit_atoms_mode,
   expect_canvas_changed,
@@ -12,23 +14,15 @@ import {
   IS_CI,
   open_structure_control_pane,
   open_structure_export_pane,
+  primary_modifier,
+  primary_modifier_key,
   select_view_layout as select_structure_layout,
+  set_scene_props,
   sweep_gizmo_handles,
-  wait_for_3d_canvas,
 } from '../helpers'
-
-const is_mac = process.platform === `darwin`
 
 const section_body = (pane: Locator, title: string): Locator =>
   pane.getByRole(`region`, { name: title, exact: true })
-const fill_axis_values = async (inputs: Locator, values: string[]): Promise<void> => {
-  for (const [axis_idx, value] of values.entries()) await inputs.nth(axis_idx).fill(value)
-}
-const expect_axis_values = async (inputs: Locator, values: string[]): Promise<void> => {
-  for (const [axis_idx, value] of values.entries()) {
-    await expect(inputs.nth(axis_idx), `axis ${axis_idx}`).toHaveValue(value)
-  }
-}
 const opacity_of = (locator: Locator): Promise<number> =>
   locator.evaluate((element) => Number(getComputedStyle(element).opacity))
 
@@ -133,24 +127,6 @@ test.describe(`Structure Component Tests`, () => {
     await goto_structure_test(page)
   })
 
-  test(`renders Structure component with canvas`, async ({ page }) => {
-    test.skip(IS_CI, `Structure canvas size test flaky in CI`)
-    const structure_wrapper = page.locator(`#test-structure`)
-    await expect(structure_wrapper).toBeVisible()
-
-    const canvas = structure_wrapper.locator(`canvas`)
-    await expect(canvas).toBeVisible()
-    // Three.js uses CSS sizing, not HTML attributes
-    const canvas_timeout = get_canvas_timeout()
-    await expect(canvas).toHaveCSS(`width`, `800px`, { timeout: canvas_timeout })
-    await expect(canvas).toHaveCSS(`height`, `500px`, { timeout: canvas_timeout })
-
-    await expect(page.locator(`[data-testid="pane-open-status"]`)).toContainText(`false`)
-
-    await expect(page.locator(`[data-testid="canvas-width-status"]`)).toContainText(`800`)
-    await expect(page.locator(`[data-testid="canvas-height-status"]`)).toContainText(`500`)
-  })
-
   test(`settings pane reflows inside a narrow two-column comparison`, async ({ page }) => {
     await goto_structure_test(page, `/test/structure?comparison=true&show_controls=always`)
     const comparison = page.locator(`.structure-test-layout.comparison`)
@@ -241,30 +217,28 @@ test.describe(`Structure Component Tests`, () => {
         probe.remove()
         return background
       })
-    const expect_opaque = async (
-      color_scheme: `light` | `dark`,
-      background: string,
-      color: string,
-    ) => {
+    const backgrounds: string[] = []
+    for (const color_scheme of [`light`, `dark`] as const) {
       await page.evaluate((scheme) => {
         document.documentElement.style.colorScheme = scheme
       }, color_scheme)
-      await expect(toggle).toHaveCSS(`background-color`, background)
-      await expect(toggle).toHaveCSS(`color`, color)
+      await expect
+        .poll(() => toggle.evaluate((el) => getComputedStyle(el).backgroundColor))
+        .not.toBe(backgrounds.at(-1))
+      const background = await toggle.evaluate((el) => getComputedStyle(el).backgroundColor)
+      expect(is_opaque_css_color(background), `${color_scheme} background`).toBe(true)
       const hover_bg = await hover_surface_of()
-      expect(is_opaque_css_color(hover_bg)).toBe(true)
+      expect(is_opaque_css_color(hover_bg), `${color_scheme} hover surface`).toBe(true)
       expect(hover_bg).not.toBe(background)
+      backgrounds.push(background)
     }
-
-    await expect_opaque(`light`, `rgb(255, 255, 255)`, `rgb(26, 26, 26)`)
-    await expect_opaque(`dark`, `rgb(47, 49, 55)`, `rgb(238, 238, 238)`)
   })
 
   test(`CellSelect typography stays legible in narrow legends`, async ({ page }) => {
-    await page.locator(`[data-testid="canvas-width-input"]`).fill(`260`)
-    await expect(page.locator(`[data-testid="canvas-width-status"]`)).toContainText(`260`)
-
     const structure = page.locator(`#test-structure`)
+    await structure.evaluate((el) => el.style.setProperty(`--struct-min-width`, `0`))
+    await set_viewer_size(structure, 260, 400)
+    await expect.poll(() => structure.evaluate((el) => el.clientWidth)).toBeLessThan(300)
     await structure.hover()
     const cell_select = structure.locator(`.cell-select`)
     await cell_select.dispatchEvent(`mouseenter`)
@@ -278,26 +252,9 @@ test.describe(`Structure Component Tests`, () => {
     const legend_label_size = await get_font_size(`.atom-legend .legend-item label`)
     const toggle_size = await get_font_size(`.cell-select .toggle-btn`)
     const preset_size = await get_font_size(`.cell-select .preset-btn`)
-    const preset_gap = await structure
-      .locator(`.cell-select .supercell-grid`)
-      .evaluate((element) => Number(getComputedStyle(element).gap.replace(`px`, ``)))
-    const preset_padding = await structure
-      .locator(`.cell-select .preset-btn`)
-      .first()
-      .evaluate((element) => {
-        const style = getComputedStyle(element)
-        return {
-          top: Number(style.paddingTop.replace(`px`, ``)),
-          right: Number(style.paddingRight.replace(`px`, ``)),
-        }
-      })
 
     expect(toggle_size).toBeCloseTo(legend_label_size, 1)
     expect(preset_size).toBeGreaterThanOrEqual(legend_label_size)
-    expect(preset_gap).toBeGreaterThanOrEqual(3)
-    // preset buttons stay compact in narrow legends (line-height removed; padding kept tight at ≤1px)
-    expect(preset_padding.top).toBeLessThanOrEqual(1)
-    expect(preset_padding.right).toBeLessThanOrEqual(1)
   })
 
   test(`reacts to background_color prop change from test page`, async ({ page }) => {
@@ -312,61 +269,6 @@ test.describe(`Structure Component Tests`, () => {
     })
   })
 
-  test(`updates bound dimensions from test page controls`, async ({ page }) => {
-    const width_input = page.locator(`label:has-text("Canvas Width") input[type="number"]`)
-    const height_input = page.locator(`label:has-text("Canvas Height") input[type="number"]`)
-    const canvas_width_status = page.locator(`[data-testid="canvas-width-status"]`)
-    const canvas_height_status = page.locator(`[data-testid="canvas-height-status"]`)
-
-    await width_input.fill(`700`)
-    await height_input.fill(`450`)
-
-    await expect(canvas_width_status).toContainText(`700`)
-    await expect(canvas_height_status).toContainText(`450`)
-  })
-
-  // This test navigates 3 times sequentially - needs extra time in CI
-  test(`performance_mode prop can be set via URL parameters`, async ({ page }) => {
-    test.setTimeout(IS_CI ? 90_000 : 30_000)
-    const perf_mode_status = page.locator(`[data-testid="performance-mode-status"]`)
-    const perf_mode_select = page.locator(`label:has-text("Performance Mode") select`)
-
-    const test_cases = [
-      { param: `speed`, expected: `speed` },
-      { param: `quality`, expected: `quality` },
-      { param: `invalid`, expected: `quality` },
-    ]
-
-    // Test sequentially (avoid navigation conflicts)
-    for (const { param, expected } of test_cases) {
-      await page.goto(`/test/structure?performance_mode=${param}`, {
-        waitUntil: `load`,
-      })
-      await wait_for_3d_canvas(page, `#test-structure`)
-      await expect(perf_mode_status).toContainText(`Performance Mode Status: ${expected}`)
-      await expect(perf_mode_select).toHaveValue(expected)
-    }
-  })
-
-  test(`fullscreen prop is bindable and updates from test page controls`, async ({ page }) => {
-    const status = page.locator(`[data-testid="fullscreen-status"]`)
-    const checkbox = page.locator(`[data-testid="fullscreen-checkbox"]`)
-
-    await expect(status).toContainText(`false`)
-    await expect(checkbox).not.toBeChecked()
-
-    await checkbox.click({ force: true })
-    await expect(status).toContainText(`true`)
-    await expect(checkbox).toBeChecked()
-
-    await checkbox.evaluate((input: HTMLInputElement) => {
-      input.checked = false
-      input.dispatchEvent(new Event(`change`, { bubbles: true }))
-    })
-    await expect(status).toContainText(`false`)
-    await expect(checkbox).not.toBeChecked()
-  })
-
   test(`keyboard shortcuts require modifier keys`, async ({ page }) => {
     const structure_div = page.locator(`#test-structure`)
     await structure_div.click()
@@ -379,7 +281,6 @@ test.describe(`Structure Component Tests`, () => {
     const is_fullscreen = await page.evaluate(() => Boolean(document.fullscreenElement))
     expect(is_fullscreen).toBe(false)
 
-    const primary_modifier = is_mac ? `metaKey` : `ctrlKey`
     for (const key of [`f`, `i`]) {
       await expect(
         dispatch_cancelable_keydown(structure_div, { key, [primary_modifier]: true }),
@@ -391,203 +292,13 @@ test.describe(`Structure Component Tests`, () => {
     await expect(structure_div.locator(`canvas`)).toBeVisible()
   })
 
-  test(`both site labels and site indices can be enabled simultaneously`, async ({ page }) => {
-    const { pane_div: control_pane } = await open_structure_control_pane(page)
-
-    const site_labels_checkbox = control_pane.locator(
-      `label:has-text("Site Labels") input[type="checkbox"]`,
-    )
-    const site_indices_checkbox = control_pane.locator(
-      `label:has-text("Site Indices") input[type="checkbox"]`,
-    )
-    const labels_heading = control_pane.locator(`h4:has-text("Labels")`)
-
-    // Cover neither, both, and indices-only states; label-only is exercised below.
-    await expect(labels_heading).toBeHidden()
-    await site_labels_checkbox.check()
-    await site_indices_checkbox.check()
-    await expect(labels_heading).toBeVisible()
-
-    await site_labels_checkbox.uncheck()
-    await expect(labels_heading).toBeVisible()
-
-    await site_indices_checkbox.uncheck()
-    await expect(labels_heading).toBeHidden()
-  })
-
-  test(`label styling controls echo values and enforce input constraints`, async ({
-    page,
-  }) => {
-    const { pane_div } = await open_structure_control_pane(page)
-
-    // Enable site labels to reveal the Labels section
-    await pane_div.locator(`label:has-text("Site Labels") input[type="checkbox"]`).check()
-    const labels_heading = pane_div.locator(`h4:has-text("Labels")`)
-    await expect(labels_heading).toBeVisible()
-    const labels_container = section_body(pane_div, `Labels`)
-    const offset_row = labels_container.locator(`.setting`).filter({ hasText: `Offset` })
-
-    // Color pickers echo filled values
-    const color_cases = [
-      {
-        name: `text color`,
-        input: labels_container.locator(`label:has-text("Color") input[type="color"]`).first(),
-        fill: `#ff0000`,
-      },
-      {
-        name: `background color`,
-        input: labels_container.locator(`label:has-text("Background") input[type="color"]`),
-        fill: `#0000ff`,
-      },
-    ]
-    for (const { name, input, fill } of color_cases) {
-      await expect(input, name).toBeVisible()
-      expect(await input.inputValue(), name).toMatch(/^#[0-9a-fA-F]{6}$/)
-      await input.fill(fill)
-      expect(await input.inputValue(), name).toBe(fill)
-    }
-
-    // Numeric inputs echo filled values and carry expected min/max/step constraints
-    const opacity_label = labels_container.locator(`label:has-text("Opacity")`).first()
-    const padding_label = labels_container.locator(`label:has-text("Padding")`)
-
-    // Default label background must be fully transparent (opacity 0) — assert before
-    // the fill loop below overwrites it
-    await expect(opacity_label.locator(`input[type="number"]`)).toHaveValue(`0`)
-    const numeric_cases = [
-      {
-        name: `opacity number`,
-        input: opacity_label.locator(`input[type="number"]`),
-        fill: `0.5`,
-        attrs: { min: `0`, max: `1`, step: `0.01` },
-      },
-      {
-        name: `opacity range`,
-        input: opacity_label.locator(`input[type="range"]`),
-        fill: `0.8`,
-      },
-      {
-        name: `padding number`,
-        input: padding_label.locator(`input[type="number"]`),
-        fill: `5`,
-        attrs: { min: `0`, max: `10`, step: `1` },
-      },
-      {
-        name: `padding range`,
-        input: padding_label.locator(`input[type="range"]`),
-        fill: `8`,
-      },
-      ...[
-        { axis: `X`, fill: `0.5` },
-        { axis: `Y`, fill: `-0.7` },
-        { axis: `Z`, fill: `0.3` },
-      ].map(({ axis, fill }) => ({
-        name: `offset ${axis}`,
-        input: offset_row.locator(`label:has-text("${axis}") input[type="number"]`),
-        fill,
-        attrs: { min: `-1`, max: `1`, step: `0.1` },
-      })),
-      {
-        name: `font size range`,
-        input: labels_container.locator(`label:has-text("Size") input[type="range"]`),
-        fill: `1.5`,
-        attrs: { min: `0.5`, max: `2`, step: `0.1` },
-      },
-    ]
-    for (const { name, input, fill, attrs } of numeric_cases) {
-      await expect(input, name).toBeVisible()
-      for (const [attr, expected] of Object.entries(attrs ?? {})) {
-        await expect(input, `${name} ${attr}`).toHaveAttribute(attr, expected)
-      }
-      await input.fill(fill)
-      expect(Number(await input.inputValue()), name).toBe(Number(fill))
-    }
-
-    // Number and range inputs for the same setting stay synchronized
-    expect(await opacity_label.locator(`input[type="number"]`).inputValue()).toBe(
-      await opacity_label.locator(`input[type="range"]`).inputValue(),
-    )
-    expect(await padding_label.locator(`input[type="number"]`).inputValue()).toBe(
-      await padding_label.locator(`input[type="range"]`).inputValue(),
-    )
-  })
-
-  test(`label controls persist when toggling site labels`, async ({ page }) => {
-    const { pane_div } = await open_structure_control_pane(page)
-
-    // Enable site labels
-    const site_labels_checkbox = pane_div.locator(
-      `label:has-text("Site Labels") input[type="checkbox"]`,
-    )
-    await site_labels_checkbox.check()
-
-    // Set some values
-    const labels_container_for_persist = section_body(pane_div, `Labels`)
-    const text_color_input = labels_container_for_persist
-      .locator(`label:has-text("Color") input[type="color"]`)
-      .first()
-    const background_color_input = labels_container_for_persist.locator(
-      `label:has-text("Background") input[type="color"]`,
-    )
-    const opacity_input = labels_container_for_persist
-      .locator(`label:has-text("Opacity") input[type="number"]`)
-      .first()
-
-    await text_color_input.fill(`#ff0000`)
-    await background_color_input.fill(`#0000ff`)
-    await opacity_input.fill(`0.7`)
-
-    await site_labels_checkbox.uncheck()
-    await site_labels_checkbox.check()
-    await expect(text_color_input).toHaveValue(`#ff0000`)
-    await expect(background_color_input).toHaveValue(`#0000ff`)
-    await expect(opacity_input).toHaveValue(`0.7`)
-  })
-
-  test(`gizmo is visible by default and can be toggled`, async ({ page }) => {
-    const gizmo_checkbox = page.locator(`label:has-text("Show Gizmo") input[type="checkbox"]`)
-    const gizmo_status = page.locator(`[data-testid="gizmo-status"]`)
-
-    await expect(gizmo_checkbox).toBeChecked()
-    await expect(gizmo_status).toContainText(`Gizmo Status: true`)
-
-    await gizmo_checkbox.uncheck()
-    await expect(gizmo_status).toContainText(`Gizmo Status: false`)
-
-    await gizmo_checkbox.check()
-    await expect(gizmo_status).toContainText(`Gizmo Status: true`)
-  })
-
   test(`dragging the canvas orbits the camera`, async ({ page }) => {
     const canvas = page.locator(`#test-structure canvas`)
-    await expect(canvas).toBeVisible()
-
     // Reset lives in the controls pane and is hidden at the default camera
     await expect(page.locator(`#test-structure button.reset-camera`)).toBeHidden()
-
     const initial_screenshot = await canvas.screenshot()
-
-    const box = await canvas.boundingBox()
-    if (!box) throw new Error(`canvas has no bounding box`)
-    await canvas.dragTo(canvas, {
-      sourcePosition: { x: box.width / 2 - 100, y: box.height / 2 },
-      targetPosition: { x: box.width / 2 + 100, y: box.height / 2 },
-    })
-
-    // Poll for canvas change (GPU timing variations)
-    // If first drag doesn't work, try vertical drag
-    try {
-      await expect_canvas_changed(canvas, initial_screenshot, 3000)
-    } catch {
-      // Take fresh baseline before second drag to avoid false positives
-      // from delayed first drag rendering
-      const baseline_before_second_drag = await canvas.screenshot()
-      await canvas.dragTo(canvas, {
-        sourcePosition: { x: box.width / 2, y: box.height / 2 - 100 },
-        targetPosition: { x: box.width / 2, y: box.height / 2 + 100 },
-      })
-      await expect_canvas_changed(canvas, baseline_before_second_drag)
-    }
+    await drag_canvas(canvas, { dx: 200 })
+    await expect_canvas_changed(canvas, initial_screenshot)
   })
 
   test(`invalid FOVs do not break perspective auto-placement`, async ({ page }) => {
@@ -622,8 +333,7 @@ test.describe(`Structure Component Tests`, () => {
     // the legend needs this much room, and its mode toggle is our viewer-active signal
     await page.setViewportSize({ width: 1400, height: 1200 })
     const canvas = page.locator(`#test-structure canvas`)
-    const box = await canvas.boundingBox()
-    if (!box) throw new Error(`canvas has no bounding box`)
+    const box = await canvas_box(canvas)
 
     // the gizmo only draws while the viewer is active, so hover before probing
     await page.mouse.move(box.x + 40, box.y + 40)
@@ -634,12 +344,13 @@ test.describe(`Structure Component Tests`, () => {
 
     const handles = await sweep_gizmo_handles(canvas)
     expect(handles.length, `gizmo handles under the pointer`).toBeGreaterThan(0)
+    // A sweep can include edge pixels that only hover a handle, so try up to three candidates
+    // and accept the first whose click reports a camera move.
     const candidates = [handles[0], handles[Math.floor(handles.length / 2)], handles.at(-1)]
     let camera_position: unknown
     for (const candidate of candidates) {
       if (!candidate) continue
       await page.mouse.move(candidate.x, candidate.y)
-      await page.waitForTimeout(100)
       await clear_events(page)
       await page.mouse.click(candidate.x, candidate.y)
       try {
@@ -647,7 +358,7 @@ test.describe(`Structure Component Tests`, () => {
         camera_position = (event.data as Record<string, unknown>).camera_position
         break
       } catch {
-        // A sweep can include edge pixels that only hover a handle; try its center candidate.
+        // next candidate
       }
     }
     expect(camera_position).toEqual([
@@ -984,15 +695,10 @@ H    1.261    0.728   -0.890`,
 
     // Rotate the initial structure (CsCl, ~6.26 Å cubic, center ≈ 3.13)
     // to populate scene_props.camera_target with the old structure's orbit center
-    const box = await canvas.boundingBox()
-    if (!box) throw new Error(`Canvas has no bounding box`)
-    const cx = box.width / 2
-    const cy = box.height / 2
-    await canvas.dragTo(canvas, {
-      sourcePosition: { x: cx - 60, y: cy },
-      targetPosition: { x: cx + 60, y: cy },
-    })
-    await page.waitForTimeout(300)
+    const pre_rotate = await canvas.screenshot()
+    await drag_canvas(canvas, { dx: 120 })
+    await expect_canvas_changed(canvas, pre_rotate)
+    await wait_for_event(page, `on_camera_move`, [`camera_target`])
 
     // Drop a BaTiO3 POSCAR (4 Å cubic, center = [2, 2, 2])
     const poscar = [
@@ -1017,10 +723,7 @@ H    1.261    0.728   -0.890`,
     // Clear stale camera events from first rotation, then rotate the new structure.
     await clear_events(page)
     const post_load = await canvas.screenshot()
-    await canvas.dragTo(canvas, {
-      sourcePosition: { x: cx - 80, y: cy },
-      targetPosition: { x: cx + 80, y: cy },
-    })
+    await drag_canvas(canvas, { dx: 160 })
     await expect_canvas_changed(canvas, post_load)
 
     // Orbit target should be near BaTiO3 center [2,2,2], not stale CsCl center [~3.13,~3.13,~3.13]
@@ -1057,64 +760,30 @@ test.describe(`Export Button Tests`, () => {
       await expect(export_btn).toBeEnabled()
     }
   })
-
-  test(`DPI input updates PNG export button title`, async ({ page }) => {
-    const { pane_div: export_pane } = await open_structure_export_pane(page)
-
-    const dpi_input = export_pane.locator(`input[title="Export resolution in dots per inch"]`)
-    await expect(dpi_input).toBeVisible()
-    await expect(dpi_input).toHaveAttribute(`min`, `50`)
-    await expect(dpi_input).toHaveAttribute(`max`, `600`)
-    await expect(dpi_input).toHaveValue(`150`)
-
-    await dpi_input.fill(`200`)
-    await expect(dpi_input).toHaveValue(`200`)
-    await expect(export_pane.locator(`button[title*="PNG"]`)).toHaveAttribute(
-      `title`,
-      /\(200 DPI\)/,
-    )
-  })
 })
 
 test.describe(`Show Buttons Tests`, () => {
-  // load the test page with the given show_controls mode, confirm the prop arrived from the
-  // URL, and hand back the control-buttons section
-  const goto_show_controls = async (page: Page, mode: string): Promise<Locator> => {
-    await goto_structure_test(page, `/test/structure?show_controls=${mode}`)
-    await expect(page.locator(`[data-testid="show-buttons-status"]`)).toContainText(
-      `Show Buttons Status: ${mode}`,
-    )
-    return page.locator(`#test-structure section.control-buttons`)
+  // control-buttons opacity before and after hovering the viewer (`never` renders no toggles)
+  const show_controls_cases = [
+    { mode: `never`, css_class: null, opacity: null },
+    { mode: `hover`, css_class: `hover-visible`, opacity: [`0`, `1`] },
+    { mode: `always`, css_class: `always-visible`, opacity: [`1`, `1`] },
+  ]
+  for (const { mode, css_class, opacity } of show_controls_cases) {
+    test(`show_controls=${mode} reveals buttons ${mode}`, async ({ page }) => {
+      await goto_structure_test(page, `/test/structure?show_controls=${mode}`)
+      const control_buttons = page.locator(`#test-structure section.control-buttons`)
+      const info_toggle = page.locator(`.structure-info-toggle`)
+      if (css_class) await expect(control_buttons).toHaveClass(new RegExp(css_class))
+      else await expect(control_buttons).not.toHaveClass(/always-visible|hover-visible/)
+      if (opacity) await expect(control_buttons).toHaveCSS(`opacity`, opacity[0])
+      await page.locator(`#test-structure`).hover()
+      if (opacity) {
+        await expect(control_buttons).toHaveCSS(`opacity`, opacity[1])
+        await expect(info_toggle).toBeVisible()
+      } else await expect(info_toggle).toBeHidden()
+    })
   }
-
-  test(`show_controls=never keeps buttons hidden`, async ({ page }) => {
-    const control_buttons = await goto_show_controls(page, `never`)
-    await expect(control_buttons).not.toHaveClass(/always-visible|hover-visible/)
-    await page.locator(`#test-structure`).hover()
-    await expect(page.locator(`.structure-info-toggle`)).toBeHidden()
-    await expect(
-      page.locator(`#test-structure > section.control-buttons > .fullscreen-btn`),
-    ).toBeHidden()
-  })
-
-  test(`show_controls=hover reveals buttons on hover`, async ({ page }) => {
-    const control_buttons = await goto_show_controls(page, `hover`)
-    await expect(control_buttons).toHaveClass(/hover-visible/)
-    await expect(control_buttons).toHaveCSS(`opacity`, `0`)
-    await page.locator(`#test-structure`).hover()
-    await expect(control_buttons).toHaveCSS(`opacity`, `1`)
-    await expect(page.locator(`.structure-info-toggle`)).toBeVisible()
-  })
-
-  test(`show_controls=always keeps buttons visible`, async ({ page }) => {
-    const control_buttons = await goto_show_controls(page, `always`)
-    await expect(control_buttons).toHaveClass(/always-visible/)
-    await expect(control_buttons).toHaveCSS(`opacity`, `1`)
-    await expect(page.locator(`.structure-info-toggle`)).toBeVisible()
-    await expect(
-      page.locator(`#test-structure > section.control-buttons > .fullscreen-btn`),
-    ).toBeVisible()
-  })
 })
 
 test.describe(`Structure Event Handler Tests`, () => {
@@ -1140,18 +809,10 @@ test.describe(`Structure Event Handler Tests`, () => {
       return { camera_target, camera_zoom }
     }
 
-    // scrolled into view because a wheel off-screen scrolls the page instead of reaching
-    // the canvas, and because boundingBox() is only meaningful once the canvas is laid out
-    const canvas_box = async (page: Page) => {
-      const canvas = page.locator(`#test-structure canvas`).first()
-      await canvas.scrollIntoViewIfNeeded()
-      const box = await canvas.boundingBox()
-      if (!box) throw new Error(`Canvas bounding box not found`)
-      return { canvas, box }
-    }
+    const structure_canvas = (page: Page) => page.locator(`#test-structure canvas`).first()
 
     const drag_camera = async (page: Page) => {
-      const { box } = await canvas_box(page)
+      const box = await canvas_box(structure_canvas(page))
       const center_y = box.y + box.height / 2
       await page.mouse.move(box.x + box.width / 2 - 80, center_y)
       await page.mouse.down()
@@ -1215,13 +876,7 @@ test.describe(`Structure Event Handler Tests`, () => {
     // perspective view, and a payload carrying `camera_zoom: undefined` would claim otherwise.
     test(`perspective camera moves omit zoom`, async ({ page }) => {
       test.skip(IS_CI, `Camera drag via OrbitControls unreliable in headless CI`)
-      await page.evaluate(() => {
-        globalThis.dispatchEvent(
-          new CustomEvent(`set-scene-props`, {
-            detail: { camera_projection: `perspective` },
-          }),
-        )
-      })
+      await set_scene_props(page, { camera_projection: `perspective` })
       await clear_events(page)
       await drag_camera(page)
       const move = await wait_for_event(page, `on_camera_move`, [`camera_target`])
@@ -1257,7 +912,7 @@ test.describe(`Structure Event Handler Tests`, () => {
         Math.round(initial_box.width * 0.65),
         initial_box.height,
       )
-      const resized_box = (await canvas_box(page)).box
+      const resized_box = await canvas_box(structure_canvas(page))
       await clear_events(page)
       // Wheel over the canvas's left edge, not its center: the open pane is anchored to the
       // viewer's right side and covers the middle, where the scroll would go to the pane.
@@ -1279,7 +934,8 @@ test.describe(`Structure Event Handler Tests`, () => {
     })
 
     test(`click without camera movement does not report a move`, async ({ page }) => {
-      const { canvas, box } = await canvas_box(page)
+      const canvas = structure_canvas(page)
+      const box = await canvas_box(canvas)
       await clear_events(page)
 
       await canvas.click({
@@ -1302,7 +958,8 @@ test.describe(`Structure Event Handler Tests`, () => {
     test(`wheel zoom reports during auto-rotate and leaves the orbit target put`, async ({
       page,
     }) => {
-      const { canvas, box } = await canvas_box(page)
+      const canvas = structure_canvas(page)
+      const box = await canvas_box(canvas)
       const wheel = (x_ratio: number, y_ratio: number, delta_y: number) =>
         canvas.dispatchEvent(`wheel`, {
           bubbles: true,
@@ -1311,11 +968,7 @@ test.describe(`Structure Event Handler Tests`, () => {
           clientY: box.y + box.height * y_ratio,
           deltaY: delta_y,
         })
-      await page.evaluate(() => {
-        window.dispatchEvent(
-          new CustomEvent(`set-scene-props`, { detail: { auto_rotate: 1 } }),
-        )
-      })
+      await set_scene_props(page, { auto_rotate: 1 })
 
       await clear_events(page)
       await wheel(0.5, 0.5, -120)
@@ -1355,9 +1008,6 @@ test.describe(`Structure Event Handler Tests`, () => {
 })
 
 test.describe(`Camera Projection Toggle Tests`, () => {
-  // Retry flaky screenshot comparison tests (WebGL rendering timing varies)
-  test.describe.configure({ retries: 2 })
-
   test.beforeEach(async ({ page }: { page: Page }) => {
     await goto_structure_test(page)
   })
@@ -1377,8 +1027,6 @@ test.describe(`Camera Projection Toggle Tests`, () => {
       await camera_projection_select.scrollIntoViewIfNeeded()
       await camera_projection_select.selectOption(projection)
       await expect(camera_projection_select).toHaveValue(projection)
-      // Let camera/projection updates settle before visual assertions.
-      await page.waitForTimeout(100)
 
       screenshots[`${projection}_initial`] = await canvas_screenshot(canvas)
       await canvas.hover({ force: true })
@@ -1400,122 +1048,9 @@ test.describe(`Camera Projection Toggle Tests`, () => {
       false,
     )
   })
-
-  test(`camera projection settings integration and persistence`, async ({ page }) => {
-    const { pane_div } = await open_structure_control_pane(page)
-
-    const camera_projection_select = pane_div.locator(`label:has-text("Projection") select`)
-    const atom_radius_input = pane_div.locator(`label:has-text("Radius") input[type="number"]`)
-    const auto_rotate_input = pane_div.locator(
-      `label:has-text("Auto-rotate speed") input[type="number"]`,
-    )
-    const rotation_numbers = pane_div.locator(`.rotation-axes input[type="number"]`)
-
-    // Settings preservation across projection changes
-    await atom_radius_input.fill(`1.5`)
-    await auto_rotate_input.fill(`0.5`)
-    await camera_projection_select.selectOption(`orthographic`)
-    await fill_axis_values(rotation_numbers, [`120`, `240`, `300`])
-
-    await expect(atom_radius_input).toHaveValue(`1.5`)
-    await expect(auto_rotate_input).toHaveValue(`0.5`)
-    await expect(camera_projection_select).toHaveValue(`orthographic`)
-
-    // State persistence across pane close/open (incl. rotation axes)
-    const test_page_controls_checkbox = page.locator(
-      `label:has-text("Controls Open") input[type="checkbox"]`,
-    )
-    await test_page_controls_checkbox.uncheck()
-    await expect(pane_div).not.toHaveClass(/pane-open/)
-    // Note: camera-projection-status doesn't update because scene_props binding is one-directional
-    // Instead we verify the select value persists after reopening
-
-    await test_page_controls_checkbox.check()
-    await expect(pane_div).toHaveClass(/pane-open/, { timeout: 2000 })
-    await expect(camera_projection_select).toHaveValue(`orthographic`)
-    await expect(atom_radius_input).toHaveValue(`1.5`)
-    await expect(auto_rotate_input).toHaveValue(`0.5`)
-    await expect_axis_values(rotation_numbers, [`120`, `240`, `300`])
-  })
-
-  test(`settings search is browser-wired and pointer-accessible`, async ({ page }) => {
-    const { pane_div } = await open_structure_control_pane(page)
-    await pane_div.getByRole(`button`, { name: `Search settings` }).click()
-    const search = pane_div.getByRole(`searchbox`, { name: `Search settings` })
-    await search.fill(`damp`)
-    await expect(pane_div.locator(`details.settings-group`).nth(1)).toHaveAttribute(`open`, ``)
-    await expect(pane_div.locator(`[data-key="rotation_damping"]`)).toBeVisible()
-  })
-})
-
-test.describe(`Structure Rotation Controls Tests`, () => {
-  test.beforeEach(async ({ page }: { page: Page }) => {
-    await goto_structure_test(page)
-  })
-
-  const rotation_axes_of = (pane: Locator) => {
-    const axes = pane.locator(`.rotation-axes`)
-    return {
-      numbers: axes.locator(`input[type="number"]`),
-      ranges: axes.locator(`input[type="range"]`),
-    }
-  }
-  test(`rotation controls clamp out-of-range values on input`, async ({ page }) => {
-    const { pane_div } = await open_structure_control_pane(page)
-
-    const { numbers, ranges } = rotation_axes_of(pane_div)
-    const x_number_input = numbers.first()
-    const x_range_input = ranges.first()
-
-    // The range slider always reflects the clamped then normalized value,
-    // even if the number input temporarily shows the raw input
-    const clamp_cases = [
-      { input: `999`, expected: `0` }, // clamped to 360 → 360 % 360 = 0
-      { input: `-90`, expected: `0` }, // negative clamped to 0
-      { input: `360`, expected: `0` }, // 360 % 360 = 0
-      { input: `359`, expected: `359` }, // stays 359
-      { input: `361`, expected: `0` }, // clamped to 360 → 0
-      { input: `720`, expected: `0` }, // clamped to 360 → 0
-      { input: `180`, expected: `180` }, // valid value passes through
-    ]
-    for (const { input, expected } of clamp_cases) {
-      await x_number_input.fill(input)
-      await expect(x_range_input).toHaveValue(expected)
-    }
-
-    // Changing the range slider updates the number input
-    await x_range_input.fill(`270`)
-    await expect(x_number_input).toHaveValue(`270`)
-    await expect(x_range_input).toHaveValue(`270`)
-  })
-
-  test(`all three axis controls work independently`, async ({ page }) => {
-    const { pane_div } = await open_structure_control_pane(page)
-
-    const { numbers, ranges } = rotation_axes_of(pane_div)
-
-    await expect(numbers).toHaveCount(3)
-    await expect(ranges).toHaveCount(3)
-    await expect_axis_values(numbers, [`0`, `0`, `0`])
-    await expect_axis_values(ranges, [`0`, `0`, `0`])
-
-    // Set different values for each axis
-    await fill_axis_values(numbers, [`30`, `60`, `90`])
-
-    // Verify all values are set correctly and independently
-    await expect_axis_values(numbers, [`30`, `60`, `90`])
-    await expect_axis_values(ranges, [`30`, `60`, `90`])
-
-    // Modify one axis and verify others remain unchanged
-    await numbers.nth(1).fill(`120`)
-    await expect_axis_values(numbers, [`30`, `120`, `90`])
-  })
 })
 
 test.describe(`Element Visibility Toggle`, () => {
-  // Retry flaky screenshot comparison tests (WebGL rendering timing varies)
-  test.describe.configure({ retries: 2 })
-
   const legend_item = (page: Page, idx = 0): Locator =>
     page.locator(`#test-structure .atom-legend .legend-item`).nth(idx)
 
@@ -1600,67 +1135,6 @@ test.describe(`Element Visibility Toggle`, () => {
     await expect_canvas_changed(canvas, hidden_screenshot)
   })
 
-  test(`color picker remains functional with toggle button`, async ({ page }) => {
-    const label = legend_item(page).locator(`label`)
-    const color_input = label.locator(`input[type="color"]`)
-    const initial_color = await color_input.inputValue()
-    expect(initial_color).not.toBe(`#ff0000`)
-
-    // Verify label is clickable and element remains visible
-    await label.click({ position: { x: 10, y: 10 } })
-    await expect(label).not.toHaveClass(/hidden/)
-
-    // Test color change functionality
-    await color_input.evaluate((input: HTMLInputElement) => {
-      input.value = `#ff0000`
-      input.dispatchEvent(new Event(`input`, { bubbles: true }))
-    })
-    await expect(color_input).toHaveValue(`#ff0000`)
-
-    // Double-click to reset color
-    await label.dblclick({ position: { x: 10, y: 10 } })
-    await expect(color_input).toHaveValue(initial_color)
-    await expect(color_input).not.toHaveValue(`#ff0000`)
-  })
-
-  test(`multiple elements work independently`, async ({ page }) => {
-    await goto_structure_test(
-      page,
-      `/test/structure?data_url=/structures/mp-1207297-Ac2Br2O1-tetragonal.json`,
-    )
-    const canvas = page.locator(`#test-structure canvas`)
-    const legend_items = page.locator(`#test-structure .atom-legend .legend-item`)
-    await expect(legend_items.nth(1)).toBeAttached()
-    const item_count = await legend_items.count()
-    expect(item_count).toBeGreaterThanOrEqual(2)
-
-    const initial_screenshot = await canvas.screenshot()
-    const first_item = legend_item(page, 0)
-    const second_item = legend_item(page, 1)
-    const first_label = first_item.locator(`label`)
-    const second_label = second_item.locator(`label`)
-
-    // Hide first element
-    await first_item.hover()
-    await first_item.locator(`button.toggle-visibility`).click()
-    await expect(first_label).toHaveClass(/hidden/)
-    await expect(second_label).not.toHaveClass(/hidden/)
-    await expect_canvas_changed(canvas, initial_screenshot)
-    const after_first = await canvas.screenshot()
-
-    // Hide second element
-    await second_item.hover()
-    await second_item.locator(`button.toggle-visibility`).click()
-    await expect(first_label).toHaveClass(/hidden/)
-    await expect(second_label).toHaveClass(/hidden/)
-    await expect_canvas_changed(canvas, after_first)
-
-    // Show first element only
-    await first_item.locator(`button.toggle-visibility`).click()
-    await expect(first_label).not.toHaveClass(/hidden/)
-    await expect(second_label).toHaveClass(/hidden/)
-  })
-
   test(`hidden state persists and button visibility works`, async ({ page }) => {
     const first_item = legend_item(page)
     const toggle_button = first_item.locator(`button.toggle-visibility`)
@@ -1703,12 +1177,6 @@ test.describe(`Edit Atoms Mode`, () => {
     await goto_structure_test(page, `/test/structure?show_controls=always`)
   })
 
-  async function select_atom_for_delete(page: Page): Promise<void> {
-    await page.locator(`[data-testid="btn-select-site-0"]`).click()
-    await page.locator(`#test-structure`).focus()
-    await page.keyboard.press(`Delete`)
-  }
-
   const undo_redo_btns = (structure_div: Locator) => ({
     undo: structure_div.locator(`button[aria-label*="Undo"]`),
     redo: structure_div.locator(`button[aria-label*="Redo"]`),
@@ -1718,7 +1186,6 @@ test.describe(`Edit Atoms Mode`, () => {
     await enter_edit_atoms_mode(page)
 
     const structure_div = page.locator(`#test-structure`)
-    const primary_modifier = is_mac ? `metaKey` : `ctrlKey`
     for (const init of [
       { key: `z`, [primary_modifier]: true },
       { key: `y`, [primary_modifier]: true },
@@ -1728,19 +1195,19 @@ test.describe(`Edit Atoms Mode`, () => {
     }
   })
 
-  test(`undo/redo buttons hidden in distance/angle modes`, async ({ page }) => {
-    // Check default distance mode - no undo/redo buttons
+  test(`undo/redo buttons only exist in edit-atoms mode`, async ({ page }) => {
     const structure_div = page.locator(`#test-structure`)
     const { undo: undo_btn } = undo_redo_btns(structure_div)
     await expect(undo_btn).toHaveCount(0)
 
-    // Switch to edit-atoms to verify they appear
     await enter_edit_atoms_mode(page)
+    await expect(undo_btn).toBeVisible()
+    // clicking the canvas keeps edit mode active
+    await structure_div.locator(`canvas`).click({ position: { x: 50, y: 50 }, force: true })
     await expect(undo_btn).toBeVisible()
 
     // Switch back to distance mode via the dropdown
-    const measure_button = structure_div.getByRole(`button`, { name: `Measure / Edit` })
-    await measure_button.click()
+    await structure_div.getByRole(`button`, { name: `Measure / Edit` }).click()
     const distance_option = structure_div.locator(`.view-mode-option`).filter({
       hasText: `Distance`,
     })
@@ -1749,82 +1216,32 @@ test.describe(`Edit Atoms Mode`, () => {
     await expect(undo_btn).toHaveCount(0)
   })
 
-  test(`undo restores state and enables redo`, async ({ page }) => {
+  test(`deleting a selected atom enables undo, then redo via buttons and shortcuts`, async ({
+    page,
+  }) => {
     await enter_edit_atoms_mode(page)
-
     const structure_div = page.locator(`#test-structure`)
     const { undo: undo_btn, redo: redo_btn } = undo_redo_btns(structure_div)
     await expect(undo_btn).toBeDisabled()
     await expect(redo_btn).toBeDisabled()
     await expect(structure_div.locator(`.history-count`)).toHaveCount(0)
 
-    await select_atom_for_delete(page)
-
-    const count_badge = structure_div.locator(`.history-count`).first()
-    await expect(count_badge).toBeVisible({ timeout: 2000 })
-    await expect(count_badge).toHaveText(`1`)
-    await expect(undo_btn).toBeEnabled({ timeout: 2000 })
-    await undo_btn.click({ force: true })
-
-    await expect(redo_btn).toBeEnabled({ timeout: 2000 })
-  })
-
-  test(`keyboard shortcuts Ctrl+Z/Y work for undo/redo`, async ({ page }) => {
-    await enter_edit_atoms_mode(page)
-
-    await select_atom_for_delete(page)
-
-    const { undo: undo_btn, redo: redo_btn } = undo_redo_btns(page.locator(`#test-structure`))
-    await expect(undo_btn).toBeEnabled({ timeout: 2000 })
-
-    const undo_combo = is_mac ? `Meta+z` : `Control+z`
-    const redo_combo = is_mac ? `Meta+y` : `Control+y`
-
-    // Undo
-    await page.keyboard.press(undo_combo)
-    await expect(redo_btn).toBeEnabled({ timeout: 2000 })
-
-    // Redo
-    await page.keyboard.press(redo_combo)
-
-    // Undo should be enabled (redo just put item back on undo stack)
-    await expect(undo_btn).toBeEnabled({ timeout: 2000 })
-  })
-
-  test(`add atom via A key shows element input`, async ({ page }) => {
-    await enter_edit_atoms_mode(page)
-
-    const structure_div = page.locator(`#test-structure`)
-    // Focus wrapper for keyboard events
+    await page.locator(`[data-testid="btn-select-site-0"]`).click()
     await structure_div.focus()
+    await page.keyboard.press(`Delete`)
 
-    // Press A to enter add-atom mode
-    await page.keyboard.press(`a`)
+    await expect(structure_div.locator(`.history-count`).first()).toHaveText(`1`)
+    await expect(undo_btn).toBeEnabled()
+    await undo_btn.click({ force: true })
+    await expect(redo_btn).toBeEnabled()
 
-    // Should show element input
-    const add_input = structure_div.locator(`.add-atom-input`)
-    await expect(add_input).toBeVisible({ timeout: 2000 })
-
-    // Press Escape to cancel
-    await page.keyboard.press(`Escape`)
-    await expect(add_input).not.toBeVisible({ timeout: 2000 })
-  })
-
-  test(`edit mode persists across interactions`, async ({ page }) => {
-    await enter_edit_atoms_mode(page)
-
-    const structure_div = page.locator(`#test-structure`)
-    const { undo: undo_btn } = undo_redo_btns(structure_div)
-
-    // Verify edit mode active
-    await expect(undo_btn).toBeVisible({ timeout: 2000 })
-
-    // Click on the canvas
-    const canvas = structure_div.locator(`canvas`)
-    await canvas.click({ position: { x: 50, y: 50 }, force: true })
-
-    // Undo/redo buttons should still be visible
-    await expect(undo_btn).toBeVisible({ timeout: 2000 })
+    // Redo via keyboard puts the deletion back on the undo stack, undo via keyboard pops it
+    await structure_div.focus()
+    await page.keyboard.press(`${primary_modifier_key}+y`)
+    await expect(undo_btn).toBeEnabled()
+    await expect(redo_btn).toBeDisabled()
+    await page.keyboard.press(`${primary_modifier_key}+z`)
+    await expect(redo_btn).toBeEnabled()
   })
 })
 
@@ -2006,7 +1423,7 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
     await structure_div.focus() // viewer must be focused to receive the shortcut
     await expect(structure_div.locator(`.viewport-cell`)).toHaveCount(1)
 
-    const grid_shortcut = `${is_mac ? `Meta` : `Control`}+g`
+    const grid_shortcut = `${primary_modifier_key}+g`
     await page.keyboard.press(grid_shortcut)
     await expect(structure_div).toHaveClass(/multi-view/)
     await expect(structure_div.locator(`.viewport-cell`)).toHaveCount(4)

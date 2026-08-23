@@ -1,6 +1,6 @@
 // Serializers for HeatmapTable's export menu and clipboard copy. All work from one plain-text
 // matrix (`TableMatrix`), so CSV, TSV, markdown and LaTeX can't drift apart.
-import { escape_csv_field } from '$lib/utils'
+import { csv_line } from '$lib/utils'
 import { strip_html } from './data'
 import type { RowData } from './index'
 
@@ -24,9 +24,11 @@ export const table_to_delimited = (
   { headers, rows }: TableMatrix,
   delimiter: `,` | `\t`,
 ): string => {
-  const quote = (str: string) =>
-    delimiter === `,` ? escape_csv_field(str) : str.replaceAll(/[\t\r\n]+/g, ` `)
-  return [headers, ...rows].map((cells) => cells.map(quote).join(delimiter)).join(`\n`)
+  const to_line = (cells: string[]): string =>
+    delimiter === `,`
+      ? csv_line(cells)
+      : cells.map((str) => str.replaceAll(/[\t\r\n]+/g, ` `)).join(delimiter)
+  return [headers, ...rows].map(to_line).join(`\n`)
 }
 
 // JSON array of row objects keyed by header. Unlike the matrix exporters this keeps numbers,

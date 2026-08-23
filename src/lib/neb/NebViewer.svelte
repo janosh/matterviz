@@ -91,9 +91,15 @@
     named_paths.find((entry) => entry.key === active_path_key) ?? named_paths[0],
   )
   // The one options object both the summary table below and the plot's own annotation
-  // measure the path with, so the two cannot report different barriers.
+  // measure the path with, so the two cannot report different barriers. Profiles are
+  // computed once here and handed to the plot.
   const coord_options = $derived({ mode: coord_mode, metric })
-  const profile = $derived(active ? path_profile(active.path, coord_options) : null)
+  const profiles = $derived(
+    Object.fromEntries(
+      named_paths.map(({ key, path }) => [key, path_profile(path, coord_options)]),
+    ),
+  )
+  const profile = $derived(active ? profiles[active.key] : null)
   const n_images = $derived(active?.path.images.length ?? 0)
   const image_idx = $derived(
     Math.min(Math.max(active_image_idx, 0), Math.max(n_images - 1, 0)),
@@ -234,6 +240,7 @@
       <NebPlot
         {...plot_props}
         paths={merged}
+        {profiles}
         {coord_options}
         bind:coord_mode
         bind:energy_reference

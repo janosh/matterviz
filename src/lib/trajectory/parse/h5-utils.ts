@@ -1,6 +1,8 @@
 import { is_elem_symbol } from '$lib/element/helpers'
 import type { ElementSymbol } from '$lib/element/types'
-import type { Matrix3x3 } from '$lib/math'
+import { transpose_3x3_matrix, type Matrix3x3 } from '$lib/math'
+import { validate_3x3_matrix } from '$lib/trajectory/helpers'
+import type { TrajectoryFrame, TrajectoryMetadata } from '$lib/trajectory/index'
 import type { Dataset, Entity, Group } from 'h5wasm'
 import type * as h5wasm from 'h5wasm'
 
@@ -35,6 +37,84 @@ export const string_value = (value: unknown): string | undefined => {
   if (value instanceof Uint8Array) return new TextDecoder().decode(value).trim() || undefined
   if (Array.isArray(value) && value.length === 1) return string_value(value[0])
   return undefined
+}
+
+// The dataset at `path`, or null when the entity is missing or is a group
+export const dataset_at = (h5_file: h5wasm.File, path: string | undefined): Dataset | null => {
+  if (!path) return null
+  const entity = h5_file.get(path)
+  return is_hdf5_dataset(entity) ? entity : null
+}
+
+// A dataset's shape, rejecting scalars and degenerate axes: every dataset the trajectory
+// parsers read is indexed along at least one axis of positive length
+export const dataset_shape = (dataset: Dataset, path: string, format: string): number[] => {
+  const shape = dataset.shape ?? []
+  if (shape.length === 0 || shape.some((size) => !Number.isInteger(size) || size < 1)) {
+    throw new Error(`${format} dataset ${path} has invalid shape [${shape.join(`, `)}]`)
+  }
+  return shape
+}
+
+// Exactly `count` numbers along a single axis (step axes, per-replica ids)
+export const read_numeric_1d = (
+  dataset: Dataset,
+  path: string,
+  count: number,
+  format: string,
+): number[] => {
+  const shape = dataset_shape(dataset, path, format)
+  if (shape.length !== 1 || shape[0] !== count) {
+    throw new Error(
+      `${format} dataset ${path} has shape [${shape.join(`, `)}], expected [${count}]`,
+    )
+  }
+  return Array.from(read_numeric_samples(dataset, path, count, 1))
+}
+
+// HDF5 stores cells as row-major [3, 3] with lattice vectors along the first axis; the
+// structure convention keeps them as columns, hence the transpose
+export const lattice_from_values = (values: ArrayLike<number>, offset = 0): Matrix3x3 =>
+  transpose_3x3_matrix(
+    validate_3x3_matrix(
+      Array.from({ length: 3 }, (_unused, row_idx) =>
+        Array.from(
+          { length: 3 },
+          (_unused_2, column_idx) => values[offset + row_idx * 3 + column_idx],
+        ),
+      ),
+    ),
+  )
+
+// Write a per-atom vec3 channel (velocities) onto a frame's sites
+export const attach_site_vectors = (
+  frame: TrajectoryFrame,
+  key: string,
+  values: ArrayLike<number>,
+): void => {
+  for (const [atom_idx, site] of frame.structure.sites.entries()) {
+    site.properties = {
+      ...site.properties,
+      [key]: Array.from({ length: 3 }, (_unused, axis) => values[atom_idx * 3 + axis]),
+    }
+  }
+}
+
+// Plot rows for at most ~1000 evenly spaced frames: the plot is sampled, never the run.
+// `read_properties` receives the sampled frame indices and the stride to read them with.
+export const sampled_property_rows = (
+  n_frames: number,
+  step_of: (frame_idx: number) => number,
+  read_properties: (frame_indices: number[], stride: number) => Record<string, number>[],
+): TrajectoryMetadata[] => {
+  const stride = Math.max(1, Math.ceil(n_frames / 1000))
+  const frame_indices = sampled_indices(n_frames, stride)
+  const properties = read_properties(frame_indices, stride)
+  return frame_indices.map((frame_number, sample_idx) => ({
+    frame_number,
+    step: step_of(frame_number),
+    properties: properties[sample_idx],
+  }))
 }
 
 export const read_dataset = (h5_file: h5wasm.File, path: string): unknown => {

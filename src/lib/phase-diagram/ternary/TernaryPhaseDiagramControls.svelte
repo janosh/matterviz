@@ -176,8 +176,16 @@
     speed: [`play_speed`, `Play speed (K/s)`, `Heating rate of the play button`, 10, 2000, 10],
   } satisfies Record<string, Slider>
 
+  // Slider position previews locally while dragging; the bound pressure (which triggers a
+  // full worker re-sweep) is only committed on release
+  let preview_log_p = $state<Partial<Record<GasSpecies, number>>>({})
   const log_p = (gas: GasSpecies) =>
-    Math.log10(gas_pressures[gas] ?? DEFAULT_GAS_PRESSURES[gas])
+    preview_log_p[gas] ?? Math.log10(gas_pressures[gas] ?? DEFAULT_GAS_PRESSURES[gas])
+  function commit_pressure(gas: GasSpecies, log_pressure: number): void {
+    const { [gas]: _dropped, ...remaining } = preview_log_p
+    preview_log_p = remaining
+    gas_pressures = { ...gas_pressures, [gas]: 10 ** log_pressure }
+  }
 </script>
 
 {#snippet toggle_row<K extends keyof TernaryDisplay>([key, label, options]: Toggle<K>)}
@@ -271,7 +279,7 @@
       min={8}
       max={400}
       step={8}
-      title="Temperatures sampled for the stability map; transitions are bisected exactly regardless"
+      title="Temperatures sampled for the stability map. Transitions between adjacent samples are bisected to within 0.5 K, but a phase stable only inside one sampling interval is missed; raise this if the diagram looks incomplete"
       bind:value={n_samples}>Samples</NumberRangeInput
     >
     {#if relevant_gases.length > 0}
@@ -294,10 +302,8 @@
             step="0.25"
             value={log_p(gas)}
             oninput={(evt) =>
-              (gas_pressures = {
-                ...gas_pressures,
-                [gas]: 10 ** evt.currentTarget.valueAsNumber,
-              })}
+              (preview_log_p = { ...preview_log_p, [gas]: evt.currentTarget.valueAsNumber })}
+            onchange={(evt) => commit_pressure(gas, evt.currentTarget.valueAsNumber)}
           />
         </label>
       {/each}

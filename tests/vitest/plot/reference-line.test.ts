@@ -1,11 +1,9 @@
 import type { Vec2 } from '$lib/math'
 import { place_reference_annotation, solve_decorations } from '$lib/plot/core/decorations'
-import type { IndexedRefLine } from '$lib/plot/core/reference-line'
 import {
   calculate_annotation_position,
   create_reference_annotation_candidates,
   estimate_reference_annotation_metrics,
-  group_ref_lines_by_z,
   index_ref_lines,
   normalize_point,
   normalize_value,
@@ -17,6 +15,7 @@ import {
 import type { RefLine } from '$lib/plot/core/types'
 import { clear_text_metrics_cache } from '$lib/plot/core/text-metrics'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { mock_canvas_context } from '../setup'
 
 describe(`normalize_value`, () => {
   test.each([
@@ -284,14 +283,13 @@ describe(`reference annotation candidates`, () => {
   afterEach(() => vi.restoreAllMocks())
 
   test(`uses measured glyph width and ascent for annotation footprints`, () => {
-    vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue({
-      font: ``,
+    mock_canvas_context({
       measureText: () => ({
         width: 37,
         actualBoundingBoxAscent: 9,
         actualBoundingBoxDescent: 3,
       }),
-    } as unknown as CanvasRenderingContext2D)
+    })
     const measured = estimate_reference_annotation_metrics({ text: `Wiii`, padding: 3 })
     const candidate = create_reference_annotation_candidates(
       endpoints,
@@ -303,17 +301,13 @@ describe(`reference annotation candidates`, () => {
   })
 
   test(`resolves relative em font-size before measuring annotation text`, () => {
-    const context = {
-      font: ``,
+    const context = mock_canvas_context({
       measureText: () => ({
         width: 20,
         actualBoundingBoxAscent: 8,
         actualBoundingBoxDescent: 2,
       }),
-    }
-    vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue(
-      context as unknown as CanvasRenderingContext2D,
-    )
+    })
     vi.spyOn(window, `getComputedStyle`).mockReturnValue({
       fontFamily: `serif`,
       fontSize: `20px`,
@@ -445,31 +439,32 @@ describe(`index_ref_lines`, () => {
     expect(index_ref_lines(input as RefLine[] | undefined)).toEqual([])
   })
 
-  test(`adds index and filters invisible lines`, () => {
-    const lines: RefLine[] = [
-      { type: `horizontal`, y: 10, visible: false },
-      { type: `vertical`, x: 20 },
-      { type: `horizontal`, y: 30, visible: false },
-    ]
+  test.each([
+    {
+      desc: `filters invisible lines`,
+      lines: [
+        { type: `horizontal`, y: 10, visible: false },
+        { type: `vertical`, x: 20 },
+        { type: `horizontal`, y: 30, visible: false },
+      ] satisfies RefLine[],
+      expected: [{ type: `vertical`, idx: 0 }],
+    },
+    {
+      // `idx` is the keyed-each key, so lines sharing a public `id` must still get distinct keys
+      desc: `keeps distinct idx for duplicate public ids`,
+      lines: [
+        { type: `horizontal`, y: 1, id: `dup` },
+        { type: `horizontal`, y: 2, id: `dup` },
+      ] satisfies RefLine[],
+      expected: [
+        { id: `dup`, y: 1, idx: 0 },
+        { id: `dup`, y: 2, idx: 1 },
+      ],
+    },
+  ])(`$desc`, ({ lines, expected }) => {
     const result = index_ref_lines(lines)
-    expect(result).toHaveLength(1)
-    expect(result[0]).toMatchObject({ type: `vertical`, idx: 0 })
-  })
-})
-
-describe(`group_ref_lines_by_z`, () => {
-  test(`groups lines by z_index, defaults to below-lines`, () => {
-    const lines: IndexedRefLine[] = [
-      { type: `horizontal`, y: 1, z_index: `below-grid`, idx: 0 },
-      { type: `horizontal`, y: 2, z_index: `below-lines`, idx: 1 },
-      { type: `horizontal`, y: 3, z_index: `below-points`, idx: 2 },
-      { type: `horizontal`, y: 4, z_index: `above-all`, idx: 3 },
-      { type: `horizontal`, y: 5, idx: 4 }, // no z_index → defaults to below-lines
-    ]
-    const result = group_ref_lines_by_z(lines)
-    expect(result.below_grid).toHaveLength(1)
-    expect(result.below_lines).toHaveLength(2) // includes default
-    expect(result.below_points).toHaveLength(1)
-    expect(result.above_all).toHaveLength(1)
+    // array toMatchObject checks length too
+    expect(result).toMatchObject(expected)
+    expect(new Set(result.map((line) => line.idx)).size).toBe(result.length)
   })
 })

@@ -7,7 +7,6 @@ export { default as FermiSurfaceTooltip } from './FermiSurfaceTooltip.svelte'
 
 export * from './compute'
 export * from './constants'
-export * from './export'
 export * from './geometry'
 export * from './parse'
 export * from './symmetry'

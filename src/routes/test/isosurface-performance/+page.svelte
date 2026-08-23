@@ -1,6 +1,7 @@
 <script lang="ts">
   import Isosurface from '$lib/isosurface/Isosurface.svelte'
-  import type { IsosurfaceProfileEvent, IsosurfaceProfiler } from '$lib/isosurface/profile'
+  import type { IsosurfaceProfileMeta } from '$lib/isosurface/profile'
+  import { ISOSURFACE_MEASURE_PREFIX, set_isosurface_profiling } from '$lib/isosurface/profile'
   import type {
     IsosurfaceLayer,
     IsosurfaceSettings,
@@ -37,11 +38,13 @@
   let range_mode = $state<RangeMode>(`unit`)
   let color_mode = $state<`cross_grid` | `same_grid`>(`cross_grid`)
   let volumes = $state.raw<VolumetricData[]>([])
-  let settings = $state<IsosurfaceSettings>({ ...DEFAULT_ISOSURFACE_SETTINGS, layers: [] })
-  // Unproxied so the profiler doesn't bill itself to what it measures; `event_count` is the
-  // reactive half that makes the markup re-read this array.
+  let settings = $state<IsosurfaceSettings>({ ...DEFAULT_ISOSURFACE_SETTINGS })
+  // Stage timings collected from the `isosurface:<stage>` User Timing measures the renderer
+  // publishes. Unproxied so the observer doesn't bill itself to what it measures;
+  // `event_count` is the reactive half that makes the markup re-read this array.
+  type ProfileEvent = { stage: string; duration_ms: number; meta: IsosurfaceProfileMeta }
   // svelte-ignore non_reactive_update
-  let profile_events: IsosurfaceProfileEvent[] = []
+  let profile_events: ProfileEvent[] = []
   let event_count = $state(0)
   let fps = $state<number | undefined>()
   let heap_bytes = $state<number | undefined>()
@@ -106,23 +109,30 @@
     }
   }
 
-  const profiler: IsosurfaceProfiler = (event) => {
-    profile_events.push(event)
+  const record_measure = (entry: PerformanceEntry) => {
+    if (!entry.name.startsWith(ISOSURFACE_MEASURE_PREFIX)) return
+    const stage = entry.name.slice(ISOSURFACE_MEASURE_PREFIX.length)
+    const { detail } = entry as PerformanceMeasure
+    profile_events.push({
+      stage,
+      duration_ms: entry.duration,
+      meta: (detail ?? {}) as IsosurfaceProfileMeta,
+    })
     event_count = profile_events.length
-    if (event.stage === `rebuild_total` || event.stage === `recolor_total`) {
+    if (stage === `rebuild_total` || stage === `recolor_total`) {
       heap_bytes = (performance as Performance & { memory?: { usedJSHeapSize: number } })
         .memory?.usedJSHeapSize
     }
   }
 
   function change_isovalue(): void {
-    const layers = settings.layers ?? []
+    const { layers } = settings
     if (!layers[0]) return
     layers[0].isovalue = layers[0].isovalue >= 0.24 ? 0.18 : layers[0].isovalue + 0.01
   }
 
   function recolor(): void {
-    const layers = settings.layers ?? []
+    const { layers } = settings
     if (!layers[0]) return
     layers[0].colormap =
       layers[0].colormap === `interpolateRdBu` ? `interpolateViridis` : `interpolateRdBu`
@@ -159,7 +169,16 @@
     if ([`same_grid`, `cross_grid`].includes(requested_color ?? ``)) {
       color_mode = requested_color as typeof color_mode
     }
+    const observer = new PerformanceObserver((list) => {
+      for (const entry of list.getEntries()) record_measure(entry)
+    })
+    observer.observe({ entryTypes: [`measure`] })
+    set_isosurface_profiling(true)
     rebuild_scenario()
+    return () => {
+      set_isosurface_profiling(false)
+      observer.disconnect()
+    }
   })
 </script>
 
@@ -174,7 +193,7 @@
       <T.AmbientLight intensity={1.4} />
       <T.DirectionalLight position={[5, 8, 10]} intensity={2} />
       <T.Group rotation={[0, animation_angle, 0]}>
-        <Isosurface {volumes} {settings} {profiler} />
+        <Isosurface {volumes} {settings} />
       </T.Group>
     </Canvas>
   {/if}

@@ -6,8 +6,7 @@
 // extension host as well as in components. The viewer mirrors `properties` into `$state`
 // through `subscribe` (see session.svelte.ts).
 import type {
-  ParseProgress,
-  PositionStreamOptions,
+  CollectPositionsOptions,
   TrajectoryFrame,
   TrajectoryMetadata,
   TrajectoryPositionStream,
@@ -107,11 +106,7 @@ export interface TrajectoryRun {
   // aborted and throws/rejects after dispose().
   read_frame(frame_idx: number, signal?: AbortSignal): FrameResult
   // Present iff the run supports full-pass analyses (MSD/VACF/CNA/spectroscopy/trails)
-  collect_positions?(
-    options?: PositionStreamOptions,
-    on_progress?: (progress: ParseProgress) => void,
-    signal?: AbortSignal,
-  ): Promise<TrajectoryPositionStream>
+  collect_positions?(options?: CollectPositionsOptions): Promise<TrajectoryPositionStream>
   // Releases bytes, worker + frame port, HDF5 handle, index. Idempotent.
   dispose(): void
 }

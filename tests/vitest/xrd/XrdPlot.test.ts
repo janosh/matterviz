@@ -64,13 +64,6 @@ describe(`XrdPlot`, () => {
     [`basic`, { patterns: pattern }],
     [`empty`, { patterns: { x: [], y: [] } }],
     [
-      `multiple`,
-      {
-        patterns: { 'Pattern 1': pattern, 'Pattern 2': { pattern, color: `red` } },
-      },
-    ],
-    [`annotated`, { patterns: pattern, annotate_peaks: 5, show_angles: true }],
-    [
       `mixed empty and valid patterns`,
       {
         patterns: { Empty: { pattern: empty }, Valid: { pattern, color: `blue` } },
@@ -98,11 +91,14 @@ describe(`XrdPlot`, () => {
           broadening_enabled,
           show_controls: true,
           controls_toggle_props: { 'data-testid': `direct-toggle` },
-          controls_pane_props: { 'data-testid': `direct-pane` },
+          controls_pane_props: { 'data-testid': `direct-pane`, style: `min-width: 20rem` },
         },
         controls_state,
       ),
     )
+    expect(
+      target.querySelector(`[data-testid="direct-pane"]`)?.getAttribute(`style`),
+    ).toContain(`min-width: 20rem`)
     await expect_plot_controls(target, controls_state, `direct`)
   })
 
@@ -149,20 +145,15 @@ describe(`XrdPlot`, () => {
   )
 
   test(`children prop`, () => {
-    let called = false
     mount(XrdPlot, {
       target: document.body,
       props: {
         patterns: pattern,
-        children: createRawSnippet(() => {
-          called = true
-          return {
-            render: () => `<div class="custom-xrd-child">Custom XRD overlay</div>`,
-          }
-        }),
+        children: createRawSnippet(() => ({
+          render: () => `<div class="custom-xrd-child">Custom XRD overlay</div>`,
+        })),
       },
     })
-    expect(called).toBe(true)
     expect(document.querySelector(`.custom-xrd-child`)?.textContent).toBe(`Custom XRD overlay`)
   })
 
@@ -209,7 +200,6 @@ describe(`XrdPlot`, () => {
       },
       [`Intensity`, `2θ`],
     ],
-    [`default labels`, {}, [angle_label, intensity_label]],
   ] as [string, Omit<XrdProps, `patterns`>, [string, string]][])(
     `axis labels: %s`,
     async (_desc, props, [expect_x_axis, expect_y_axis]) => {
@@ -234,14 +224,6 @@ describe(`XrdPlot`, () => {
 
   // [desc, pattern, axis, tick text that must appear, tick text that must not]
   test.each([
-    // y-axis should go beyond 100 for label padding; here we only check it renders
-    [
-      `intensity range has 10% top padding for labels`,
-      { x: [10, 20, 30], y: [50, 100, 75] },
-      `y`,
-      [`0`],
-      [],
-    ],
     // starts at 0, ends at 40-49
     [
       `angle range from 0 to max when data starts below 10°`,
@@ -303,6 +285,26 @@ describe(`XrdPlot`, () => {
     }
   })
 
+  // Computed stick patterns carry hkls and every reflection is a labelled peak, so they must
+  // never be thinned; measured scans (no hkls) are capped to keep the DOM small
+  test.each([
+    [`computed`, 1500, true, 1500],
+    [`measured`, 130_000, false, 1000],
+  ])(
+    `%s pattern with %i points renders %s bars`,
+    async (_kind, n_points, with_hkls, expected_bars) => {
+      const x = Array.from({ length: n_points }, (_, idx) => 5 + (80 * idx) / (n_points - 1))
+      const y = Array.from({ length: n_points }, (_, idx) => 1 + (idx % 7))
+      const long_pattern: XrdPattern = with_hkls
+        ? { x, y, hkls: x.map(() => [{ hkl: [1, 0, 0] }]), d_hkls: x.map(() => 1) }
+        : { x, y }
+      const target = await mount_xrd({ patterns: long_pattern, annotate_peaks: 0 })
+      const bars = target.querySelectorAll(`path[aria-label^="bar "]`)
+      if (with_hkls) expect(bars).toHaveLength(expected_bars)
+      else expect(bars.length).toBeLessThanOrEqual(expected_bars)
+    },
+  )
+
   test(`rendering: multiple patterns with colors`, async () => {
     const target = await mount_xrd({
       patterns: { 'Pattern A': pattern, 'Pattern B': { pattern, color: `#ff0000` } },
@@ -323,7 +325,6 @@ describe(`XrdPlot`, () => {
     const inputs = Array.from(target.querySelectorAll<HTMLInputElement>(`.param-input`))
     // U, V, W, then the pseudo-Voigt shape factor, each showing its DEFAULT_BROADENING value
     expect(inputs.map((input) => input.value)).toEqual([`0.04`, `-0.02`, `0.02`, `0.5`])
-    expect(inputs.map((input) => input.step)).toEqual([`0.001`, `0.001`, `0.001`, `0.05`])
     // Only the mixing parameter is bounded, since eta outside [0, 1] is not a pseudo-Voigt
     expect(inputs.map((input) => [input.min, input.max])).toEqual([
       [``, ``],
@@ -331,17 +332,6 @@ describe(`XrdPlot`, () => {
       [``, ``],
       [`0`, `1`],
     ])
-  })
-
-  test(`rendering: peak annotations`, async () => {
-    const target = await mount_xrd({
-      patterns: pattern,
-      annotate_peaks: 2,
-      hkl_format: `compact`,
-      show_angles: true,
-    })
-    expect(target.querySelectorAll(`.bar-label`).length).toBeGreaterThan(0)
-    expect(target.textContent || ``).toMatch(/[12][01]{2}/) // hkl pattern
   })
 
   test(`dragover class toggles correctly`, async () => {

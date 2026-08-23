@@ -14,6 +14,7 @@ import {
 } from '$lib/convex-hull/thermodynamics'
 import type { PhaseData } from '$lib/convex-hull/types'
 import type { ElementSymbol } from '$lib/element'
+import { format_num } from '$lib/labels'
 import { partition_point, type Vec2, type Vec3 } from '$lib/math'
 import { build_free_energy_model, default_t_range } from './free-energy'
 import type {
@@ -684,18 +685,20 @@ export function reaction_phase_label(
   return twin ? `${label} (${entry.entry_id ?? `#${phase}`})` : label
 }
 
+// Stoichiometric coefficient prefix ("2 ", "0.5 "); unit coefficients are left implicit
+export const format_reaction_coeff = (coeff: number): string =>
+  Math.abs(coeff - 1) < 1e-6 ? `` : `${format_num(coeff, `.3~r`)} `
+
 // "Li2CO3 → Li2O + CO2" style plain-text reaction (heating direction)
 export function format_reaction(
   diagram: Pick<TernaryPhaseDiagram, `phases`>,
   reaction: Reaction,
 ): string {
-  const coeff_text = (coeff: number) =>
-    Math.abs(coeff - 1) < 1e-6 ? `` : `${Number(coeff.toPrecision(3))} `
   const side = (items: ReactionSide) =>
     items
       .map(
         ({ phase, coeff }) =>
-          `${coeff_text(coeff)}${reaction_phase_label(diagram, reaction, phase)}`,
+          `${format_reaction_coeff(coeff)}${reaction_phase_label(diagram, reaction, phase)}`,
       )
       .join(` + `)
   return `${side(reaction.reactants)} → ${side(reaction.products)}`

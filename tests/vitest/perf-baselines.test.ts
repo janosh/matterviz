@@ -9,7 +9,7 @@ import { JsonTree } from '$lib/layout/json-tree'
 import { calculate_e_above_hull } from '$lib/convex-hull/thermodynamics'
 import type { PhaseData } from '$lib/convex-hull/types'
 import { parse_chgcar } from '$lib/isosurface/parse'
-import { marching_cubes_buffers } from '$lib/marching-cubes'
+import { marching_cubes } from '$lib/marching-cubes'
 import type { Vec3 } from '$lib/math'
 import ScatterPlot from '$lib/plot/scatter/ScatterPlot.svelte'
 import { neighbor_query } from '$lib/structure/bonding'
@@ -403,7 +403,7 @@ describe(`perf baselines`, { timeout: 120_000 }, () => {
   test(`marching cubes 64^3`, async () => {
     const grid = make_grid(64)
     await measure(`marching cubes 64^3`, () => {
-      const { positions, indices } = marching_cubes_buffers(grid, 0, IDENTITY_MATRIX3)
+      const { positions, indices } = marching_cubes(grid, 0, IDENTITY_MATRIX3)
       expect(positions.length).toBeGreaterThan(3 * 10_000)
       expect(indices.length % 3).toBe(0)
     })

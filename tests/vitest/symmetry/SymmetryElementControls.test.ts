@@ -4,8 +4,10 @@ import {
   count_symmetry_elements,
   DEFAULT_SHOW_SYM_KINDS,
   has_visible_symmetry_overlay,
+  SYM_ELEM_COLORS,
   SYM_ELEM_KIND_INFO,
   SYM_ELEM_KINDS,
+  SYM_ELEMENTS_INPUT_FRAME_NOTE,
   SymmetryElementControls,
 } from '$lib/symmetry'
 import { flushSync, mount } from 'svelte'
@@ -21,6 +23,7 @@ const make_elem = (
   axis: kind === `inversion` ? null : [0, 0, 1],
   point: [0, 0, 0],
   translation: null,
+  locus: `${kind}|${String(overrides.point ?? [0, 0, 0])}`,
   ...overrides,
 })
 
@@ -88,10 +91,22 @@ describe(`DEFAULT_SHOW_SYM_KINDS`, () => {
 })
 
 describe(`SYM_ELEM_KIND_INFO`, () => {
-  test(`covers every kind with label and color`, () => {
-    for (const kind of SYM_ELEM_KINDS) {
+  // Swatches must show what the overlay renders: planes/centers their exact color, the
+  // order-colored axis kinds the whole order palette
+  test(`covers every kind with a label and a swatch matching the render colors`, () => {
+    const hex = /^#[0-9a-f]{6}$/i
+    for (const kind of SYM_ELEM_KINDS)
       expect(SYM_ELEM_KIND_INFO[kind].label.length).toBeGreaterThan(0)
-      expect(SYM_ELEM_KIND_INFO[kind].color).toMatch(/^#[0-9a-f]{6}$/i)
+    for (const kind of [`mirror`, `glide`, `inversion`] as const) {
+      expect(SYM_ELEM_KIND_INFO[kind].color).toBe(SYM_ELEM_COLORS[kind])
+      expect(SYM_ELEM_KIND_INFO[kind].color).toMatch(hex)
+    }
+    for (const kind of [`rotation`, `screw`, `rotoinversion`] as const) {
+      const swatch = SYM_ELEM_KIND_INFO[kind].color
+      expect(swatch).toMatch(/^linear-gradient\(/)
+      for (const color of Object.values(SYM_ELEM_COLORS.axis_by_order)) {
+        expect(swatch).toContain(color)
+      }
     }
   })
 })
@@ -157,4 +172,23 @@ describe(`SymmetryElementControls`, () => {
     flushSync()
     expect(document.body.querySelector(`.sym-elem-controls`)).toBeNull()
   })
+
+  // The viewer blanks the overlay outside the analyzed (input) cell; the toggles must say so
+  // rather than look like they stopped working
+  test.each([true, false])(
+    `in_input_frame=%s disables toggles and notes why`,
+    (in_input_frame) => {
+      mount(SymmetryElementControls, {
+        target: document.body,
+        props: { elements: SAMPLE_ELEMENTS, in_input_frame },
+      })
+      flushSync()
+      const inputs = [...document.body.querySelectorAll(`input`)]
+      expect(inputs).toHaveLength(6)
+      expect(inputs.every((inp) => inp.disabled === !in_input_frame)).toBe(true)
+      const note = document.body.querySelector(`.frame-note`)
+      if (in_input_frame) expect(note).toBeNull()
+      else expect(note?.textContent).toBe(SYM_ELEMENTS_INPUT_FRAME_NOTE)
+    },
+  )
 })

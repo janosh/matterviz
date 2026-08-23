@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { PLOT_COLORS } from '$lib/colors'
+  import { plot_color } from '$lib/colors'
   import { get_electro_neg_formula } from '$lib/composition'
   import { StatusMessage } from '$lib/feedback'
   import type { FileLoadCallback } from '$lib/io'
@@ -37,6 +37,8 @@
     drag_dropped = $bindable([]),
     show_controls = $bindable(true),
     controls_open = $bindable(false),
+    controls_toggle_props,
+    controls_pane_props,
     ...rest
   }: {
     patterns?: RdfEntry | RdfEntry[]
@@ -109,7 +111,7 @@
       visible: mode === `element_pairs` ? idx < 3 : true,
       markers: `line` as const,
       line_style: {
-        stroke: entry.color ?? PLOT_COLORS[idx % PLOT_COLORS.length],
+        stroke: entry.color ?? plot_color(idx),
         stroke_width: 2,
       },
     })),
@@ -143,6 +145,8 @@
     {...rest}
     bind:show_controls
     bind:controls_open
+    {controls_toggle_props}
+    {controls_pane_props}
     {series}
     {ref_lines}
     x_axis={{ label: `r (Å)`, range: [0, max_r], ...x_axis }}

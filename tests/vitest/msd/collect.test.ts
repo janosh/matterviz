@@ -3,13 +3,14 @@ import { calc_msd, collect_msd_positions, MsdPlot, suggest_msd_frame_stride } fr
 import TrajectoryMsdPane from '$lib/msd/TrajectoryMsdPane.svelte'
 import {
   trajectory_from_frames,
+  type CollectPositionsOptions,
   type ParseProgress,
-  type PositionStreamOptions,
   type TrajectoryRun,
 } from '$lib/trajectory'
 import { mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { drift_positions, make_frame, max_rel_error, on_x_axis } from './helpers'
+import { make_frame } from '../setup'
+import { drift_positions, max_rel_error, on_x_axis } from './helpers'
 
 const drift_per_frame = 0.13
 const make_run = (n_frames: number): TrajectoryRun =>
@@ -54,16 +55,13 @@ describe(`collect_msd_positions`, () => {
     const backing = make_run(4)
     const progress = vi.fn<(update: ParseProgress) => void>()
     const controller = new AbortController()
-    const collect_positions = vi.fn(
-      async (
-        options?: PositionStreamOptions,
-        on_progress?: (update: ParseProgress) => void,
-        signal?: AbortSignal,
-      ) => {
-        on_progress?.({ current: 1, total: 4, stage: `Collecting` })
-        return backing.collect_positions?.(options, undefined, signal) as Promise<MsdPositions>
-      },
-    )
+    const collect_positions = vi.fn(async (options?: CollectPositionsOptions) => {
+      options?.on_progress?.({ current: 1, total: 4, stage: `Collecting` })
+      return backing.collect_positions?.({
+        ...options,
+        on_progress: undefined,
+      }) as Promise<MsdPositions>
+    })
     const run = { ...backing, collect_positions }
     await collect_msd_positions(run, {
       frame_stride: 2,
@@ -71,11 +69,12 @@ describe(`collect_msd_positions`, () => {
       on_progress: progress,
       signal: controller.signal,
     })
-    expect(collect_positions).toHaveBeenCalledWith(
-      { frame_stride: 2, max_bytes: 4096 },
-      progress,
-      controller.signal,
-    )
+    expect(collect_positions).toHaveBeenCalledWith({
+      frame_stride: 2,
+      max_bytes: 4096,
+      on_progress: progress,
+      signal: controller.signal,
+    })
     expect(progress).toHaveBeenCalledWith({ current: 1, total: 4, stage: `Collecting` })
   })
 

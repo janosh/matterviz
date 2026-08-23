@@ -1,10 +1,13 @@
 <script lang="ts">
-  import { PLOT_COLORS } from '$lib/colors'
+  import { plot_color } from '$lib/colors'
   import { format_value } from '$lib/labels'
   import type { Vec2 } from '$lib/math'
   import type { StructurePlotProps } from '$lib/plot/bar'
   import StructureBarPlot from '$lib/plot/bar/StructureBarPlot.svelte'
-  import { to_structure_entries } from '$lib/plot/core/structure-input'
+  import {
+    compute_structure_entries,
+    to_structure_entries,
+  } from '$lib/plot/core/structure-input'
   import type { StructureEntry } from '$lib/plot/core/structure-input'
   import type { BarHandlerProps, BarSeries } from '$lib/plot/core/types'
   import { calc_coordination_nums } from './calc-coordination'
@@ -39,16 +42,21 @@
   let dropped_entries = $state<StructureEntry[]>([])
 
   // Bonded across each structure's own pbc, the same call the 3D viewer makes, so
-  // boundary-atom coordination matches it.
-  const entries_with_data = $derived(
-    [...to_structure_entries(structures), ...dropped_entries].map((entry) => ({
-      ...entry,
-      data: calc_coordination_nums(entry.structure, strategy),
-    })),
+  // boundary-atom coordination matches it. A structure the neighbor search rejects is
+  // reported through error_msg rather than crashing the plot.
+  const computed = $derived(
+    compute_structure_entries(
+      [...to_structure_entries(structures), ...dropped_entries],
+      (structure) => calc_coordination_nums(structure, { strategy }),
+    ),
   )
+  $effect(() => {
+    error_msg = computed.error
+  })
 
   // Every split mode reduces to a list of CN->count histograms, one per series
   const groups = $derived.by<CnGroup[]>(() => {
+    const entries_with_data = computed.entries
     if (split_mode === `by_element`) {
       // One series per element, summed across all structures
       const by_element = new SvelteMap<string, SvelteMap<number, number>>()
@@ -92,7 +100,7 @@
       x: cns,
       y: cns.map((cn) => histogram.get(cn) ?? 0),
       label,
-      color: color ?? PLOT_COLORS[idx % PLOT_COLORS.length],
+      color: color ?? plot_color(idx),
       bar_width: 0.8,
       visible: true,
       metadata,

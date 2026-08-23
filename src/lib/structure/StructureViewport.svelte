@@ -15,14 +15,13 @@
   import type { AnyStructure, StructureHandlerData } from '$lib/structure'
   import type { DisplacementSummary } from '$lib/structure/measure'
   import type { TrajectoryLinesStats } from '$lib/structure/trajectory-lines'
-  import type { MoyoDataset } from '@spglib/moyo-wasm'
   import { Canvas } from '@threlte/core'
   import type { ComponentProps } from 'svelte'
   import { untrack } from 'svelte'
   import { SvelteSet } from 'svelte/reactivity'
   import { create_renderer, responsive_gizmo_size } from '$lib/scene'
   import { type Camera, OrthographicCamera, type Scene } from 'three/webgpu'
-  import type { AtomColorConfig } from './atom-properties'
+  import type { AtomPropertyColors } from './atom-properties'
   import type { StructureSession } from './session.svelte'
   import StructureScene from './StructureScene.svelte'
 
@@ -76,7 +75,7 @@
     label = undefined,
     reset_token = 0,
     interactive = true,
-    onactivate = undefined,
+    on_activate = undefined,
     report_moved = undefined,
     on_camera_move = undefined,
     on_camera_reset = undefined,
@@ -88,12 +87,11 @@
     reference_structure = undefined,
     scene_props = {},
     gizmo = false,
-    lattice_props = {},
     volumetric_data = undefined,
     isosurface_settings = undefined,
     active_volume_idx = 0,
-    atom_color_config = undefined,
-    sym_data = null,
+    on_isosurface_error = undefined,
+    property_colors = null,
     active_sites = [],
     camera_direction = undefined,
     camera_projection = `orthographic`,
@@ -117,7 +115,7 @@
     label?: string
     reset_token?: number
     interactive?: boolean
-    onactivate?: () => void
+    on_activate?: () => void
     report_moved?: (moved: boolean) => void
     on_camera_move?: (data: StructureHandlerData) => void
     on_camera_reset?: (data: StructureHandlerData) => void
@@ -126,12 +124,11 @@
     reference_structure?: AnyStructure // comparison geometry for displacement arrows
     scene_props?: ComponentProps<typeof StructureScene>
     gizmo?: boolean | ComponentProps<typeof StructureScene>[`gizmo`]
-    lattice_props?: ComponentProps<typeof StructureScene>[`lattice_props`]
     volumetric_data?: VolumetricData[]
     isosurface_settings?: IsosurfaceSettings
     active_volume_idx?: number
-    atom_color_config?: AtomColorConfig
-    sym_data?: MoyoDataset | null
+    on_isosurface_error?: (message: string) => void
+    property_colors?: AtomPropertyColors | null
     active_sites?: number[]
     camera_direction?: Vec3
     camera_projection?: CameraProjection
@@ -396,7 +393,7 @@
   style:--canvas-cursor={cursor}
   bind:clientWidth={width}
   bind:clientHeight={height}
-  onpointerenter={onactivate}
+  onpointerenter={on_activate}
   ondblclick={handle_dblclick}
 >
   {#if label}<span class="viewport-label">{label}</span>{/if}
@@ -416,6 +413,7 @@
         {reference_structure}
         {...scene_props}
         {...in_grid ? { auto_rotate: 0 } : {}}
+        symmetry_elements={session.shows_input_frame ? scene_props.symmetry_elements : []}
         bind:camera_position
         bind:camera_target
         bind:fly_to_request
@@ -424,10 +422,10 @@
         {camera_direction}
         {interactive}
         gizmo={gizmo_prop}
-        {lattice_props}
         {volumetric_data}
         {isosurface_settings}
         {active_volume_idx}
+        {on_isosurface_error}
         volume_scaling={session.volume_scaling}
         bind:camera_is_moving
         bind:selected_sites={
@@ -473,8 +471,7 @@
         measure_mode={session.inputs.measure_mode()}
         {width}
         {height}
-        {atom_color_config}
-        {sym_data}
+        {property_colors}
         on_sites_moved={session.move_sites}
         on_operation_start={session.push_undo}
         on_bond_edit_start={session.push_bond_undo}

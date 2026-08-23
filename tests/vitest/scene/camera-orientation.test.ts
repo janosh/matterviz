@@ -211,9 +211,9 @@ describe(`camera fly-to`, () => {
       controls: () => controls,
       duration_ms: () => duration_ms,
       invalidate: () => (invalidations += 1),
-      onstart: () => hook_calls.push(`start`),
-      onchange: () => hook_calls.push(`change`),
-      onend: () => hook_calls.push(`end`),
+      on_start: () => hook_calls.push(`start`),
+      on_change: () => hook_calls.push(`change`),
+      on_end: () => hook_calls.push(`end`),
     })
     const offset = () => camera.position.clone().sub(controls.target)
     return { camera, controls, fly, hook_calls, invalidations: () => invalidations, offset }

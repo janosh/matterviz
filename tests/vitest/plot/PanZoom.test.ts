@@ -8,7 +8,7 @@ type LocalPoint = { x: number; y: number; button?: number }
 
 const xy_series = () => [{ x: [0, 1, 2], y: [1, 2, 3] }]
 const y_series = () => [{ y: [1, 2, 3] }]
-const histogram_series = () => [{ x: [], y: [1, 2, 3] }]
+const histogram_series = () => [{ values: [1, 2, 3] }]
 const plot_cases = [
   [`BarPlot`, () => mount_sized(BarPlot, { series: xy_series() }, { selector: `.bar-plot` })],
   [`BoxPlot`, () => mount_sized(BoxPlot, { series: y_series() }, { selector: `.box-plot` })],

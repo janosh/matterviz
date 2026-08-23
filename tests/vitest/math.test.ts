@@ -721,6 +721,35 @@ test.each([
   expect(math.get_coefficient_of_variation(values)).toBeCloseTo(expected, 3)
 })
 
+test.each([
+  [5, 0, 10, 5],
+  [-1, 0, 10, 0],
+  [11, 0, 10, 10],
+  [0.5, 0, 1, 0.5],
+  [3, 3, 3, 3],
+  [NaN, 0, 1, NaN],
+])(`clamp(%f, %f, %f) = %f`, (value, lo, hi, expected) => {
+  expect(math.clamp(value, lo, hi)).toBe(expected)
+})
+
+// mean / sample_std / median agree with the textbook definitions and with d3-array
+test.each([
+  { values: [1, 2, 3, 4], mean: 2.5, std: Math.sqrt(5 / 3), median: 2.5 },
+  { values: [7], mean: 7, std: 0, median: 7 },
+  { values: [3, 1, 2], mean: 2, std: 1, median: 2 },
+  { values: [-2, 2], mean: 0, std: Math.SQRT2 * 2, median: 0 },
+  { values: [], mean: NaN, std: 0, median: NaN },
+])(`descriptive stats of $values`, ({ values, mean, std, median }) => {
+  expect(math.mean(values)).toBe(mean)
+  expect(math.sample_std(values)).toBeCloseTo(std, 12)
+  expect(math.median(values)).toBe(median)
+  if (values.length > 0) expect(math.median(values)).toBe(d3_quantile(values, 0.5))
+  // median must leave its input untouched
+  const copy = [...values]
+  math.median(copy)
+  expect(copy).toEqual(values)
+})
+
 describe(`det_nxn`, () => {
   // oxfmt-ignore
   test.each([
@@ -826,7 +855,7 @@ describe(`cross_3d`, () => {
     [[0, 0, 0], [1, 2, 3], [0, 0, 0], `zero vector`],
     [[1e10, 0, 0], [0, 1e10, 0], [0, 0, 1e20], `large numbers`],
   ])(`%s`, (v1, v2, expected) => {
-    const result = math.cross_3d(v1 as Vec3, v2 as Vec3)
+    const result = math.cross_3d(v1, v2)
     // For large values (≥1e10), use lower precision due to floating-point precision limits
     const precision = expected.some((val) => Math.abs(val) >= 1e10) ? 5 : 10
     expect(result).toEqual(expected.map((val) => expect.closeTo(val, precision)))
