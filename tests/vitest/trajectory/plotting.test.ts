@@ -10,6 +10,7 @@ import {
   get_frame_time_step,
   prepare_trajectory_scatter_series,
   should_hide_plot,
+  summarize_properties,
 } from '$lib/trajectory/plotting'
 import type { PlotSeriesOptions } from '$lib/trajectory/plotting'
 import { describe, expect, it } from 'vitest'
@@ -295,6 +296,35 @@ describe(`generate_plot_series`, () => {
     )
     expect(series).toHaveLength(should_include ? 1 : 0)
     if (match) expect(find_series_by_label(series, key)).toMatchObject(match)
+  })
+})
+
+describe(`summarize_properties`, () => {
+  it(`reports mean, std, range and the least-squares drift per varying property`, () => {
+    // energy falls linearly (drift = full change, std > 0), volume jitters around 100 with no
+    // trend, force is constant and so not reported; `step` is an axis coordinate, not a property
+    const rows = create_rows([
+      { energy: -10, volume: 100, force_max: 0.5, step: 0 },
+      { energy: -11, volume: 102, force_max: 0.5, step: 10 },
+      { energy: -12, volume: 102, force_max: 0.5, step: 20 },
+      { energy: -13, volume: 100, force_max: 0.5, step: 30 },
+    ])
+    const by_key = new Map(summarize_properties(rows).map((stat) => [stat.key, stat]))
+    expect([...by_key.keys()].toSorted()).toEqual([`energy`, `volume`])
+    expect(by_key.get(`energy`)).toMatchObject({
+      n_samples: 4,
+      mean: -11.5,
+      min: -13,
+      max: -10,
+    })
+    expect(by_key.get(`energy`)?.drift).toBeCloseTo(-3, 12)
+    expect(by_key.get(`energy`)?.std).toBeCloseTo(Math.sqrt(5 / 3), 12)
+    expect(by_key.get(`volume`)?.drift).toBeCloseTo(0, 12)
+    // the drift is slope x span, so it is invariant to the x scale a caller chooses
+    const in_steps = summarize_properties(rows, (row) => row.step).find(
+      (stat) => stat.key === `energy`,
+    )
+    expect(in_steps?.drift).toBeCloseTo(-3, 12)
   })
 })
 

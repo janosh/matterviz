@@ -22,6 +22,7 @@
   import { format_num, trajectory_property_config, type TrajPropertyConfig } from '$lib/labels'
   import type { Vec2 } from '$lib/math'
   import TrajectoryMsdPane from '$lib/msd/TrajectoryMsdPane.svelte'
+  import TrajectoryRdfPane from '$lib/rdf/TrajectoryRdfPane.svelte'
   import { sanitize_html } from '$lib/sanitize'
   import { FullscreenButton } from '$lib/layout'
   import { ToolbarMenu } from '$lib/overlays'
@@ -80,6 +81,7 @@
     | `info`
     | `msd`
     | `vacf`
+    | `rdf`
     | `spectroscopy`
     | `structure-id`
     | `data-inspector`
@@ -99,6 +101,7 @@
     | `export-pane`
     | `msd-pane`
     | `vacf-pane`
+    | `rdf-pane`
     | `spectroscopy-pane`
     | `structure-id-pane`
     | `data-inspector-pane`
@@ -615,6 +618,12 @@
       icon: Graph,
     },
     {
+      pane: `rdf`,
+      control_name: `rdf-pane`,
+      label: `Radial distribution function`,
+      icon: Graph,
+    },
+    {
       pane: `spectroscopy`,
       control_name: `spectroscopy-pane`,
       label: `Trajectory IR/Raman & VDOS`,
@@ -792,6 +801,12 @@
                 {...correlation_pane_props}
                 bind:pane_open={
                   () => is_pane_open(`vacf`), (open) => set_pane_open(`vacf`, open)
+                }
+              />
+              <TrajectoryRdfPane
+                {...analysis_pane_props}
+                bind:pane_open={
+                  () => is_pane_open(`rdf`), (open) => set_pane_open(`rdf`, open)
                 }
               />
               <TrajectoryStructureIdPane

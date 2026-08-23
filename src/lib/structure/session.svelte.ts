@@ -295,11 +295,23 @@ export class StructureSession {
       wyckoff_rows: config.mode === `wyckoff` ? this.wyckoff_rows : [],
     })
   })
-  // Site-indexed UI state is only valid while atom count, order and species are unchanged
+  // Site-indexed UI state is only valid while atom count, order and species are unchanged.
+  // Trajectory frames share label strings and species arrays with their predecessor, so a
+  // per-site identity check usually answers without rebuilding the string for every site.
+  private last_topology: { sites: readonly Site[]; signature: string } | undefined
   private readonly topology_signature = $derived.by((): string => {
     const sites = this.inputs.structure()?.sites
     if (!Array.isArray(sites)) return ``
-    return sites
+    const last = this.last_topology
+    const unchanged =
+      last !== undefined &&
+      last.sites.length === sites.length &&
+      sites.every(
+        (site, idx) =>
+          site.label === last.sites[idx].label && site.species === last.sites[idx].species,
+      )
+    if (unchanged) return last.signature
+    const signature = sites
       .map(
         ({ label, species }) =>
           `${label}\0${species
@@ -309,6 +321,8 @@ export class StructureSession {
             .join(`,`)}`,
       )
       .join(SITE_SEPARATOR)
+    this.last_topology = { sites, signature }
+    return signature
   })
 
   // === selection, validated against the displayed structure ===

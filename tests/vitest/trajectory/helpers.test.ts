@@ -6,9 +6,19 @@ import {
 } from '$lib/trajectory/helpers'
 import type { ElementSymbol } from '$lib/element'
 import type { Matrix3x3 } from '$lib/math'
+import { columns_to_csv } from '$lib/trajectory/analysis'
 import { describe, expect, it } from 'vitest'
 
 describe(`trajectory helpers`, () => {
+  it(`columns_to_csv writes one row per index, quotes keys with commas and pads short columns`, () => {
+    const csv = columns_to_csv({
+      lag: [1, 2, 3],
+      'msd, total': Float64Array.of(0.5, 1),
+    })
+    expect(csv).toBe(`lag,"msd, total"\n1,0.5\n2,1\n3,NaN`)
+    expect(columns_to_csv({})).toBe(``)
+  })
+
   it(`create_structure keeps positions and species, rejects non-3D positions`, () => {
     const elements: ElementSymbol[] = [`H`, `He`]
     const structure = create_structure(

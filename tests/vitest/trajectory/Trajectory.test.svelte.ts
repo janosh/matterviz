@@ -194,6 +194,7 @@ describe(`controls`, () => {
     ].map((span) => span.textContent)
     expect(labels).toEqual([
       `Velocity autocorrelation & VDOS`,
+      `Radial distribution function`,
       `Structure identification`,
       `Data inspector`,
     ])
@@ -204,6 +205,7 @@ describe(`controls`, () => {
           hidden: [
             `msd-pane`,
             `vacf-pane`,
+            `rdf-pane`,
             `spectroscopy-pane`,
             `structure-id-pane`,
             `data-inspector-pane`,

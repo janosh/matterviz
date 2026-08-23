@@ -1250,6 +1250,15 @@
     const hide_completion_images =
       !applies_to_structure(effective_show_bonds) &&
       !applies_to_structure(effective_show_polyhedra)
+    // Props arrive through two spread layers (Structure → Viewport → here), so every read
+    // inside the loop would walk that proxy chain per site: read them once
+    const [uniform_size, radius_scale, radius_overrides, site_overrides] = [
+      same_size_atoms,
+      effective_atom_radius,
+      element_radius_overrides,
+      site_radius_overrides,
+    ]
+    const hidden_centers = polyhedra_hide_center_atoms ? polyhedra_center_site_idxs : null
 
     const atoms = []
     for (const { site_idx, site, is_image_atom } of render_sites) {
@@ -1260,7 +1269,7 @@
       }
 
       // Optionally hide atoms at the center of a rendered polyhedron
-      if (polyhedra_hide_center_atoms && polyhedra_center_site_idxs.has(site_idx)) continue
+      if (hidden_centers?.has(site_idx)) continue
 
       // Phase-2 PBC images exist only to complete bonds/coordination polyhedra at
       // cell faces. When neither renders (polyhedra toggled off, symmetry declutter,
@@ -1270,11 +1279,11 @@
       // Calculate radius: same_size > site override > occupancy-weighted element radius
       // (element overrides included, shared with camera-fit). All radii scale uniformly
       // with atom_radius for consistent slider behavior
-      const base_radius = same_size_atoms
+      const base_radius = uniform_size
         ? 1
-        : ((has_radius_overrides ? site_radius_overrides?.get(site_idx) : undefined) ??
-          site_display_radius(site, element_radius_overrides))
-      const radius = base_radius * effective_atom_radius
+        : ((has_radius_overrides ? site_overrides?.get(site_idx) : undefined) ??
+          site_display_radius(site, radius_overrides))
+      const radius = base_radius * radius_scale
 
       // Use property color if available (e.g. coordination number, Wyckoff position)
       // Otherwise, each species gets its own element color (important for disordered sites)
@@ -1531,10 +1540,10 @@
 
     // Resolve once per site, not once per bond endpoint. Bond writes these values directly
     // into its persistent instance-color buffers without allocating per-cylinder objects.
-    const element_colors = colors.element
+    const [element_colors, fallback_color] = [colors.element, bond_color]
     return structure.sites.map((site) => {
       const element = get_majority_element(site)
-      return (element && element_colors?.[element]) || bond_color
+      return (element && element_colors?.[element]) || fallback_color
     })
   })
 
@@ -1677,8 +1686,16 @@
     // arrows or affect autoscaling. null entries = hidden site.
     const active_set = new Set(active_keys)
     let max_mag = 0
+    // Per-site prop reads walk the Structure → Viewport → scene spread chain; read once
+    const nothing_hidden = hidden_elements.size === 0 && hidden_prop_vals.size === 0
+    const [color_mode, uniform_color, normalize_arrows, element_colors] = [
+      vector_color_mode,
+      vector_color,
+      vector_normalize,
+      colors.element,
+    ]
     const site_vec_maps = structure.sites.map((site, site_idx) => {
-      if (!is_site_visible(site_idx)) return null
+      if (nothing_hidden ? site.species.length === 0 : !is_site_visible(site_idx)) return null
       const map = new Map<string, Vec3>()
       for (const { key, vec } of get_all_site_vectors(site, false)) {
         map.set(key, vec)
@@ -1752,11 +1769,11 @@
           } else if (!is_single) arrow_color = layer_color
           else {
             const effective_mode =
-              vector_color_mode === `auto`
+              color_mode === `auto`
                 ? key.startsWith(`magmom`) || key.startsWith(`spin`)
                   ? `spin_direction`
                   : `element`
-                : vector_color_mode
+                : color_mode
             if (effective_mode === `magnitude`) {
               const mag = Math.hypot(...vec)
               const norm = max_mag > 1e-10 ? mag / max_mag : 0
@@ -1764,17 +1781,17 @@
             } else if (effective_mode === `spin_direction`) {
               arrow_color = spin_direction_color(vec)
             } else if (effective_mode === `uniform`) {
-              arrow_color = vector_color
+              arrow_color = uniform_color
             } else {
               const majority_element = get_majority_element(site)
               arrow_color =
-                (majority_element && colors.element?.[majority_element]) || vector_color
+                (majority_element && element_colors?.[majority_element]) || uniform_color
             }
           }
 
           const offset = site_offsets?.[site_idx]?.get(key)
           const position = offset ? math.add(site.xyz, offset) : site.xyz
-          const arrow_vec = vector_normalize ? math.normalize_vec(vec) : vec
+          const arrow_vec = normalize_arrows ? math.normalize_vec(vec) : vec
 
           return {
             site_idx,

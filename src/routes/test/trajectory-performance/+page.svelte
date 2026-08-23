@@ -14,6 +14,7 @@
   // run is only meaningful in a browser anyway, so the defaults stand until the client runs
   const n_frames = browser ? Number(page.url.searchParams.get(`frames`) ?? 300) : 300
   const n_atoms = browser ? Number(page.url.searchParams.get(`atoms`) ?? 64) : 64
+  const fps = browser ? Number(page.url.searchParams.get(`fps`) ?? 30) : 30
 
   // mulberry32 so every run sees identical coordinates
   const make_rng = (seed: number) => () => {
@@ -79,13 +80,7 @@
 </script>
 
 {#if run}
-  <Trajectory
-    trajectory={run}
-    bind:current_step_idx
-    auto_play
-    fps={30}
-    show_controls="always"
-  />
+  <Trajectory trajectory={run} bind:current_step_idx auto_play {fps} show_controls="always" />
 {/if}
 
 <pre data-testid="perf-metrics">{JSON.stringify({

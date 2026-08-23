@@ -2,7 +2,12 @@
 import { PLOT_COLORS } from '$lib/colors'
 import { SCF_AXIS_GROUP, trajectory_property_config } from '$lib/labels'
 import type { TrajPropertyConfig } from '$lib/labels'
-import { first_non_increasing_index, get_coefficient_of_variation } from '$lib/math'
+import {
+  first_non_increasing_index,
+  get_coefficient_of_variation,
+  mean,
+  sample_std,
+} from '$lib/math'
 import {
   assign_axes,
   axis_group_key,
@@ -300,6 +305,54 @@ const cached_property_statistics = (rows: readonly TrajectoryMetadata[]): Proper
   let stats = stats_cache.get(rows)
   if (!stats) stats_cache.set(rows, (stats = row_property_statistics(rows)))
   return stats
+}
+
+export interface PropertySummary {
+  key: string
+  n_samples: number
+  mean: number
+  // Sample standard deviation over the sampled frames
+  std: number
+  min: number
+  max: number
+  // Least-squares slope of value against x times the x span: the systematic change over the
+  // run, separated from the fluctuation `std` measures. A well-equilibrated NVT run has a
+  // temperature drift far below its std; a relaxation has an energy drift that IS the story.
+  drift: number
+}
+
+// Run-level statistics of every plottable property (see filter_plottable), keyed by property.
+// `x_of` maps a row to the abscissa the drift is taken against (frame number by default; a
+// time axis gives the same drift with the slope in per-time units).
+export function summarize_properties(
+  rows: readonly TrajectoryMetadata[],
+  x_of: (row: TrajectoryMetadata) => number = (row) => row.frame_number,
+): PropertySummary[] {
+  const by_frame = new Map(rows.map((row) => [row.frame_number, x_of(row)]))
+  return [...cached_property_statistics(rows)].map(([key, { values, frame_indices }]) => {
+    const n_samples = values.length
+    const xs = frame_indices.map((frame_number) => by_frame.get(frame_number) ?? frame_number)
+    const mean_x = mean(xs)
+    const mean_y = mean(values)
+    let [sxx, sxy, min, max] = [0, 0, Infinity, -Infinity]
+    for (const [idx, value] of values.entries()) {
+      const dx = xs[idx] - mean_x
+      sxx += dx * dx
+      sxy += dx * (value - mean_y)
+      if (value < min) min = value
+      if (value > max) max = value
+    }
+    const span = xs.length > 1 ? xs[xs.length - 1] - xs[0] : 0
+    return {
+      key,
+      n_samples,
+      mean: mean_y,
+      std: sample_std(values),
+      min,
+      max,
+      drift: sxx > 0 ? (sxy / sxx) * span : 0,
+    }
+  })
 }
 
 export function extract_label_and_unit(

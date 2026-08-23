@@ -2,15 +2,12 @@
   import { format_num } from '$lib/labels'
   import type { ViewerPaneOptions } from '$lib/overlays'
   import type { TrajectoryRun } from '$lib/trajectory'
+  import { sweep_frame_plan } from '$lib/trajectory/analysis'
   import type { AnalysisCollectOptions } from '$lib/trajectory/analysis-pane'
   import TrajectoryAnalysisPane from '$lib/trajectory/TrajectoryAnalysisPane.svelte'
   import { Lattice } from 'svelte-widgets/icons'
   import type { StructureIdSweep } from './collect'
-  import {
-    collect_structure_id_sweep,
-    DEFAULT_MAX_SWEEP_FRAMES,
-    sweep_frame_plan,
-  } from './collect'
+  import { collect_structure_id_sweep, DEFAULT_MAX_SWEEP_FRAMES } from './collect'
   import StructureTypePlot from './StructureTypePlot.svelte'
 
   let {

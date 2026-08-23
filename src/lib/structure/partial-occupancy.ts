@@ -44,13 +44,16 @@ const make_render_site = (
   ),
   source_site_indices,
 })
+// Allocation-free: runs for every site of every trajectory frame
 const is_split_partial_site = (site: Site, hidden_elements: ReadonlySet<string>): boolean => {
-  const visible_species = site.species.filter(({ element }) => !hidden_elements.has(element))
-  const total_visible_occupancy = visible_species.reduce(
-    (occupancy_sum, { occu }) => occupancy_sum + occu,
-    0,
-  )
-  return visible_species.length === 1 && total_visible_occupancy < 1 - OCCUPANCY_EPS
+  let n_visible = 0
+  let total_visible_occupancy = 0
+  for (const { element, occu } of site.species) {
+    if (hidden_elements.size > 0 && hidden_elements.has(element)) continue
+    n_visible++
+    total_visible_occupancy += occu
+  }
+  return n_visible === 1 && total_visible_occupancy < 1 - OCCUPANCY_EPS
 }
 
 const group_split_partial_indices = (
@@ -139,6 +142,21 @@ export const compute_slice_geometry = (
   slice_gap_rad: number = PARTIAL_OCCUPANCY_SLICE_GAP_RAD,
 ): SliceGeometry[] => {
   if (visible_species.length === 0) return []
+  // Ordered site (the common case): one full turn, no gap, no caps
+  const [only] = visible_species
+  if (visible_species.length === 1 && Math.abs(only.occu - 1) <= OCCUPANCY_EPS) {
+    return [
+      {
+        element: only.element,
+        occupancy: only.occu,
+        start_phi: 0,
+        end_phi: 2 * Math.PI,
+        phi_length: 2 * Math.PI,
+        render_start_cap: false,
+        render_end_cap: false,
+      },
+    ]
+  }
   const total_visible_occupancy = visible_species.reduce(
     (occupancy_sum, { occu }) => occupancy_sum + occu,
     0,

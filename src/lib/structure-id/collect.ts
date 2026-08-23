@@ -1,5 +1,6 @@
 // Sweep structure identification (CNA + CSP) across sampled frames of a trajectory run.
 import type { TrajectoryRun } from '$lib/trajectory'
+import { sweep_frames } from '$lib/trajectory/analysis'
 import { calc_structure_id_async } from './async-compute.svelte'
 import type { StructureIdOptions, StructureIdResult } from './calc-structure-id'
 
@@ -27,31 +28,6 @@ export interface StructureIdSweep {
   frame_stride: number
 }
 
-// Evenly spaced source-frame indices, at most `max_frames` of them. Exported so a UI can
-// show the sample count and stride before committing to the sweep.
-export function sweep_frame_plan(
-  total_frames: number,
-  max_frames: number = DEFAULT_MAX_SWEEP_FRAMES,
-): { frame_numbers: number[]; frame_stride: number } {
-  if (!Number.isInteger(total_frames) || total_frames < 1) {
-    throw new Error(
-      `sweep_frame_plan: total_frames must be a positive integer, got ${total_frames}`,
-    )
-  }
-  if (!Number.isInteger(max_frames) || max_frames < 1) {
-    throw new Error(
-      `sweep_frame_plan: max_frames must be a positive integer, got ${max_frames}`,
-    )
-  }
-  // ceil, not floor: a stride that rounds down would let ceil(total / stride) exceed the cap
-  const frame_stride = Math.max(1, Math.ceil(total_frames / max_frames))
-  const frame_numbers: number[] = []
-  for (let frame_number = 0; frame_number < total_frames; frame_number += frame_stride) {
-    frame_numbers.push(frame_number)
-  }
-  return { frame_numbers, frame_stride }
-}
-
 export async function collect_structure_id_sweep(
   run: TrajectoryRun,
   sweep_options: StructureIdSweepOptions = {},
@@ -63,26 +39,21 @@ export async function collect_structure_id_sweep(
     signal,
   } = sweep_options
 
-  const { frame_numbers, frame_stride } = sweep_frame_plan(run.frame_count, max_frames)
-
-  const results: StructureIdResult[] = []
-  // Sequential, not Promise.all: one worker serves every request anyway, so concurrency
-  // buys nothing but a progress bar that jumps from 0 to 100 and n_frames structures
-  // snapshotted into memory at once.
-  for (const [done, frame_number] of frame_numbers.entries()) {
-    signal?.throwIfAborted()
-    const frame = await run.read_frame(frame_number, signal)
-    const result = await calc_structure_id_async(frame.structure, options, { signal })
-    if (results.length > 0 && result.n_atoms !== results[0].n_atoms) {
-      throw new Error(
-        `collect_structure_id_sweep: frame ${frame_number} has ${result.n_atoms} atoms but ` +
-          `frame ${frame_numbers[0]} has ${results[0].n_atoms}; per-type populations across ` +
-          `a varying atom count are not comparable`,
-      )
-    }
-    results.push(result)
-    on_progress?.(done + 1, frame_numbers.length)
-  }
-
-  return { frame_numbers, results, frame_stride }
+  let first: { frame_number: number; n_atoms: number } | undefined
+  return sweep_frames(
+    run,
+    { max_frames, on_progress, signal },
+    async (frame, frame_number) => {
+      const result = await calc_structure_id_async(frame.structure, options, { signal })
+      first ??= { frame_number, n_atoms: result.n_atoms }
+      if (result.n_atoms !== first.n_atoms) {
+        throw new Error(
+          `collect_structure_id_sweep: frame ${frame_number} has ${result.n_atoms} atoms but ` +
+            `frame ${first.frame_number} has ${first.n_atoms}; per-type populations across ` +
+            `a varying atom count are not comparable`,
+        )
+      }
+      return result
+    },
+  )
 }

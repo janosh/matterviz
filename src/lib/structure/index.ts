@@ -167,8 +167,20 @@ const VECTOR_KEY_PREFIXES = [
   `phonon`,
 ] as const
 
-export const is_vector_key = (key: string): boolean =>
-  VECTOR_KEY_PREFIXES.some((prefix) => key === prefix || key.startsWith(`${prefix}_`))
+// Memoised: the scan below asks this for every property key of every site on every
+// trajectory frame, and the set of distinct key names in a session is tiny
+const vector_key_memo = new Map<string, boolean>()
+export const is_vector_key = (key: string): boolean => {
+  let is_vector = vector_key_memo.get(key)
+  if (is_vector === undefined) {
+    is_vector = VECTOR_KEY_PREFIXES.some(
+      (prefix) => key === prefix || key.startsWith(`${prefix}_`),
+    )
+    if (vector_key_memo.size >= 1024) vector_key_memo.clear()
+    vector_key_memo.set(key, is_vector)
+  }
+  return is_vector
+}
 
 // Default color palette for distinguishing multiple vector layers
 export const VECTOR_PALETTE = [
@@ -258,9 +270,11 @@ export function get_all_site_vectors(
 export function get_structure_vector_keys(structure: AnyStructure): string[] {
   const seen = new Set<string>()
   for (const site of structure.sites) {
-    const props = site.properties ?? {}
-    for (const key of Object.keys(props)) {
-      if (is_vector_key(key) && try_parse_vec3(props[key])) seen.add(key)
+    const props = site.properties
+    if (!props) continue
+    // for-in (no key array per site) and a key already seen skips its vector check
+    for (const key in props) {
+      if (!seen.has(key) && is_vector_key(key) && try_parse_vec3(props[key])) seen.add(key)
     }
   }
   // oxlint-disable-next-line eslint-plugin-unicorn/no-array-sort -- spread creates a fresh array

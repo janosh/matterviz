@@ -459,7 +459,11 @@ export function structure_bond_to_bond_pair(
     )
   }
   const pos_1 = site_1.xyz
-  const pos_2 = math.add(site_2.xyz, lattice_translation(structure, cell_shift))
+  // In-cell bonds (the vast majority) skip the translation allocation
+  const pos_2 =
+    cell_shift === undefined || is_zero_cell_shift(cell_shift)
+      ? site_2.xyz
+      : math.add(site_2.xyz, lattice_translation(structure, cell_shift))
   return {
     pos_1,
     pos_2,
@@ -471,6 +475,14 @@ export function structure_bond_to_bond_pair(
   }
 }
 
+// Validated bonds per raw `properties.bonds` array: trajectory frames (and synthesised phonon
+// frames) share one bonds array across thousands of structures, and only the site count and
+// lattice presence can change what passes validation.
+const explicit_bond_memo = new WeakMap<
+  object,
+  { n_sites: number; has_lattice: boolean; bonds: StructureBond[] }
+>()
+
 export function get_explicit_bond_metadata(structure: AnyStructure): StructureBond[] {
   const raw_bonds = structure.properties?.bonds
   if (raw_bonds === undefined) return []
@@ -478,6 +490,10 @@ export function get_explicit_bond_metadata(structure: AnyStructure): StructureBo
     console.warn(`Ignoring structure.properties.bonds because it is not an array`)
     return []
   }
+  const n_sites = structure.sites.length
+  const has_lattice = `lattice` in structure
+  const memo = explicit_bond_memo.get(raw_bonds)
+  if (memo?.n_sites === n_sites && memo.has_lattice === has_lattice) return memo.bonds
 
   const explicit_bonds = new Map<string, StructureBond>()
   for (const [entry_idx, raw_bond] of raw_bonds.entries()) {
@@ -553,7 +569,9 @@ export function get_explicit_bond_metadata(structure: AnyStructure): StructureBo
       normalize_structure_bond(site_idx_1, site_idx_2, bond_order, cell_shift),
     )
   }
-  return [...explicit_bonds.values()]
+  const bonds = [...explicit_bonds.values()]
+  explicit_bond_memo.set(raw_bonds, { n_sites, has_lattice, bonds })
+  return bonds
 }
 
 export function apply_explicit_bond_metadata(

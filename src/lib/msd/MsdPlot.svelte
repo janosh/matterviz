@@ -108,13 +108,35 @@
     style={rest.style ?? `height: 320px;`}
   />
   {#if show_summary}
-    <AnalysisSummary headers={[`Species`, `Atoms`, `D`, `R²`, `Fit lags`]}>
+    <AnalysisSummary
+      headers={[`Species`, `Atoms`, `D`, `R²`, `Fit lags`]}
+      downloads={[
+        {
+          label: `MSD CSV`,
+          filename: `msd.csv`,
+          columns: () => ({
+            lag_frames: summary.lags,
+            [`lag_time_${summary.time_unit}`]: summary.times,
+            ...Object.fromEntries(
+              summary.curves.flatMap(({ label, msd, std_error, n_origins }) => [
+                [`msd_${label}_A2`, msd],
+                [`std_error_${label}_A2`, std_error],
+                [`n_origins_${label}`, n_origins],
+              ]),
+            ),
+          }),
+        },
+      ]}
+    >
       {#each summary.curves as { label, n_atoms, fit } (label)}
         <tr>
           <td>{label}</td>
           <td>{n_atoms}</td>
           <td>
             {fit ? `${format_num(fit.diffusion_coefficient, `.3~e`)} ${fit.units}` : `—`}
+            {#if fit?.diffusion_coefficient_cm2_s != null}
+              <br /><small>{format_num(fit.diffusion_coefficient_cm2_s, `.3~e`)} cm²/s</small>
+            {/if}
           </td>
           <td>{fit ? format_num(fit.r_squared, `.4~f`) : `—`}</td>
           <td>{fit ? `${fit.lag_window[0]}–${fit.lag_window[1]}` : `—`}</td>

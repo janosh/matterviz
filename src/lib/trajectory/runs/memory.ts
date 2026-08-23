@@ -120,6 +120,23 @@ export function trajectory_from_frames(
   extras: MemoryRunExtras = {},
 ): TrajectoryRun {
   validate_frames(frames, extras)
+  return trajectory_from_frame_source(frames.length, (frame_idx) => frames[frame_idx], {
+    ...extras,
+    properties: extras.properties ?? rows_from_frames(frames, extras.data_extractor),
+  })
+}
+
+// Synchronous frame source that is not materialised up front (phonon mode animation builds
+// each frame from a displacement pattern on read). Nothing is validated here: the caller
+// guarantees a constant site count and supplies the property rows.
+export function trajectory_from_frame_source(
+  frame_count: number,
+  read: (frame_idx: number) => TrajectoryFrame,
+  extras: Omit<MemoryRunExtras, `data_extractor`> & { properties: TrajectoryMetadata[] },
+): TrajectoryRun {
+  if (!Number.isInteger(frame_count) || frame_count < 1) {
+    throw new Error(`Trajectory must have at least one frame, got ${frame_count}`)
+  }
   const {
     provenance = {},
     metadata = {},
@@ -127,33 +144,30 @@ export function trajectory_from_frames(
     time_step,
     atom_masses,
     signals,
+    properties,
   } = extras
   let disposed = false
-  const live_frames = (): TrajectoryFrame[] => {
+  const live = (): void => {
     if (disposed) throw disposed_error(`In-memory trajectory`)
-    return frames
   }
   return {
-    frame_count: frames.length,
-    preview: frames[0],
+    frame_count,
+    preview: read(0),
     provenance,
-    properties: new TrajectoryProperties(
-      extras.properties ?? rows_from_frames(frames, extras.data_extractor),
-      true,
-    ),
+    properties: new TrajectoryProperties(properties, true),
     ...(time_step ? { time_step } : {}),
     ...(atom_masses ? { atom_masses } : {}),
     ...(signals ? { signals } : {}),
     metadata,
     warnings,
     read_frame: (frame_idx) => {
-      const all = live_frames()
-      assert_frame_idx({ frame_count: all.length }, frame_idx)
-      return all[frame_idx]
+      live()
+      assert_frame_idx({ frame_count }, frame_idx)
+      return read(frame_idx)
     },
     collect_positions: async (options) => {
-      const all = live_frames()
-      return accumulate_positions(all.length, (idx) => all[idx], options)
+      live()
+      return accumulate_positions(frame_count, read, options)
     },
     dispose: () => {
       disposed = true

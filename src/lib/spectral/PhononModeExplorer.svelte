@@ -10,6 +10,7 @@
   import type { ComponentProps } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import Bands from './Bands.svelte'
+  import { frequency_unit_per_thz } from './frequency-units'
   import { are_qpoints_equivalent, phonon_explorer_views } from './helpers'
   import IrRamanSpectrum from './IrRamanSpectrum.svelte'
   import {
@@ -21,7 +22,10 @@
     PHONON_VECTOR_KEY,
     default_phonon_mode_selection,
     phonon_band_structure_from_modes,
-    phonon_mode_trajectory,
+    phonon_mode_character,
+    phonon_mode_pattern,
+    phonon_mode_run,
+    phonon_supercell,
   } from './phonon-modes'
   import type {
     PhononExplorerView,
@@ -102,20 +106,31 @@
   $effect(() => {
     if (!view || !visible_views.includes(view)) view = visible_views[0]
   })
-  let trajectory_result = $derived.by(() => {
-    const selected_mode = selection
-    if (!selected_mode) return { value: null, error: null }
-    return try_generate(() =>
-      phonon_mode_trajectory(mode_data, selected_mode, {
-        amplitude,
-        supercell,
-        n_frames,
-      }),
-    )
+  // Three stages so each control redoes only its own work: the supercell (tiling + bonding)
+  // survives mode and amplitude changes and keys the camera framing, the displacement pattern
+  // survives amplitude changes, and frames are synthesised on read
+  let supercell_result = $derived(try_generate(() => phonon_supercell(mode_data, supercell)))
+  let pattern_result = $derived.by(() => {
+    const [cell, selected] = [supercell_result.value, selection]
+    if (!cell || !selected) return { value: null, error: null }
+    return try_generate(() => phonon_mode_pattern(cell, selected))
   })
+  let trajectory_result = $derived.by(() => {
+    const pattern = pattern_result.value
+    if (!pattern) return { value: null, error: null }
+    return try_generate(() => phonon_mode_run(pattern, { amplitude, n_frames }))
+  })
+  let generation_error = $derived(
+    supercell_result.error ?? pattern_result.error ?? trajectory_result.error,
+  )
   let selected_qpoint = $derived(selection && mode_data.qpoints[selection.qpoint_idx])
   let selected_mode = $derived(selection && selected_qpoint?.modes[selection.mode_idx])
-  let commensurate = $derived(trajectory_result.value?.metadata?.is_commensurate ?? true)
+  let commensurate = $derived(pattern_result.value?.is_commensurate ?? true)
+  let character = $derived(
+    selected_mode?.eigenvector && phonon_mode_character(mode_data, selected_mode.eigenvector),
+  )
+  const wavenumber = (thz: number): string =>
+    `${format_num(thz * frequency_unit_per_thz(`cm^-1`), `.1f`)} cm⁻¹`
 
   let reset_key = ``
   $effect(() => {
@@ -176,10 +191,7 @@
 <div {...rest} class={[`phonon-mode-explorer`, rest.class]}>
   {#if error_msg}<StatusMessage bind:message={error_msg} type="error" dismissible />{/if}
   {#if band_result.error}<StatusMessage message={band_result.error} type="error" />{/if}
-  {#if trajectory_result.error}<StatusMessage
-      message={trajectory_result.error}
-      type="error"
-    />{/if}
+  {#if generation_error}<StatusMessage message={generation_error} type="error" />{/if}
   {#if !commensurate}
     <StatusMessage
       message="This q-point is not commensurate with the selected supercell, so opposite box faces do not repeat periodically."
@@ -190,8 +202,23 @@
     {#if selected_mode && selection && selected_qpoint}
       <div class="mode-summary" data-testid="phonon-mode-summary">
         <strong>Mode {selection.mode_idx + 1}</strong>
-        <span class="frequency">{format_num(selected_mode.frequency, `.5~`)} THz</span>
+        <span class="frequency"
+          >{format_num(selected_mode.frequency, `.5~`)} THz
+          <small>{wavenumber(selected_mode.frequency)}</small></span
+        >
         <span class="qpoint">q = [{format_qpoint(selected_qpoint.q_position, `.4~`)}]</span>
+        {#if character}
+          <span
+            class="character"
+            title="Share of the mass-weighted mode each element carries · participation ratio {format_num(
+              character.participation_ratio,
+              `.2f`,
+            )} (1 = all atoms move equally)"
+            >{character.element_weights
+              .map(([symbol, weight]) => `${symbol} ${format_num(weight * 100, `.0f`)}%`)
+              .join(` · `)}</span
+          >
+        {/if}
         {#if selected_mode.frequency < 0}<span class="unstable"
             >Unstable mode · periodic mode-shape preview</span
           >{/if}
@@ -229,6 +256,7 @@
               `info-pane`,
               `msd-pane`,
               `vacf-pane`,
+              `rdf-pane`,
               `structure-id-pane`,
               `data-inspector-pane`,
               `x-axis`,
@@ -236,6 +264,8 @@
             ],
           }}
           structure_props={{
+            // Re-frame the camera only when the displayed cell changes, not per mode/amplitude
+            structure_series_key: supercell_result.value?.structure,
             analyze_symmetry: false,
             apply_supercell_scaling: false,
             show_image_atoms: false,
@@ -361,6 +391,10 @@
     }
     .unstable {
       color: var(--warning-color, #b45309);
+    }
+    .character {
+      color: var(--text-muted, #6b7280);
+      font-size: 0.9em;
     }
   }
   .tabs {

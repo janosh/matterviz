@@ -104,9 +104,14 @@ test(`labels ranges from sampled property rows honestly`, async () => {
   await mount_pane(sampled_run(1000, rows), 500)
   const text = pane_text()
   expect(text).toContain(`Energy Range −12 - −10 eV (3 sampled)`)
-  expect(text).toContain(`Force Range 50m - 500m eV/Å (3 sampled)`)
+  expect(text).toContain(`Mean ± σ −11 ± 1 eV`)
+  expect(text).toContain(`Fmax Range 50m - 500m eV/Å (3 sampled)`)
   expect(text).toContain(`Volume Range 100 - 130 Å³ (3 sampled)`)
-  expect(text).toContain(`30%`)
+  // least-squares slope over frames 0..999 times the span: +20 Å³ on a 116.7 Å³ mean
+  expect(text).toContain(`Drift +20 Å³ (+17.15%)`)
+  // energy leads, then volume; force comes last
+  expect(text.indexOf(`Energy Range`)).toBeLessThan(text.indexOf(`Volume Range`))
+  expect(text.indexOf(`Volume Range`)).toBeLessThan(text.indexOf(`Fmax Range`))
   expect(
     document.body.querySelector(`[data-testid="energy-range"] [title]`)?.getAttribute(`title`),
   ).toBe(
@@ -123,8 +128,11 @@ test(`omits sampled and fixed-volume notes from complete property rows`, async (
   await mount_pane(sampled_run(40, rows), 5)
   const text = pane_text()
   expect(text).toContain(`Energy Range`)
+  expect(text).toContain(`Drift −3.9 eV (−32.64%)`)
   expect(text).not.toContain(`sampled`)
+  // constant volume and force carry no statistics worth a card
   expect(text).not.toContain(`Volume Range`)
+  expect(text).not.toContain(`Fmax Range`)
 })
 
 test(`summarises many property rows without spreading them into Math.min`, async () => {
@@ -146,7 +154,7 @@ test(`summarises many property rows without spreading them into Math.min`, async
 
 test(`shows no ranges when a run has no property rows`, async () => {
   await mount_pane(sampled_run(1000), 500)
-  for (const label of [`Energy Range`, `Force Range`, `Volume Range`]) {
+  for (const label of [`Energy Range`, `Fmax Range`, `Volume Range`]) {
     expect(pane_text()).not.toContain(label)
   }
 })

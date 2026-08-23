@@ -134,7 +134,35 @@
     )}
   {/if}
   {#if show_summary}
-    <AnalysisSummary headers={[`Species`, `Atoms`, `VACF(0)`, `Peak`]}>
+    <AnalysisSummary
+      headers={[`Species`, `Atoms`, `VACF(0)`, `Peak`]}
+      downloads={[
+        {
+          label: `VACF CSV`,
+          filename: `vacf.csv`,
+          columns: () => ({
+            lag_frames: summary.lags,
+            [`lag_time_${summary.time_unit}`]: summary.times,
+            ...Object.fromEntries(
+              summary.curves.flatMap(({ label, vacf, vacf_normalized }) => [
+                [`vacf_${label}`, vacf],
+                [`vacf_normalized_${label}`, vacf_normalized],
+              ]),
+            ),
+          }),
+        },
+        {
+          label: `VDOS CSV`,
+          filename: `vdos.csv`,
+          columns: () => ({
+            [`frequency_${summary.frequency_unit}`]: summary.frequencies,
+            ...Object.fromEntries(
+              summary.curves.map(({ label, vdos }) => [`vdos_${label}`, vdos]),
+            ),
+          }),
+        },
+      ]}
+    >
       {#each summary.curves as { label, n_atoms, vacf, peak_frequency } (label)}
         <tr>
           <td>{label}</td>

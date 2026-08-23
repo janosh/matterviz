@@ -5,9 +5,9 @@ import * as async_compute from '$lib/structure-id/async-compute.svelte'
 import {
   collect_structure_id_sweep,
   DEFAULT_MAX_SWEEP_FRAMES,
-  sweep_frame_plan,
 } from '$lib/structure-id/collect'
 import { trajectory_from_frames, type TrajectoryRun } from '$lib/trajectory'
+import { sweep_frame_plan } from '$lib/trajectory/analysis'
 import { describe, expect, it, vi } from 'vitest'
 import { make_fcc, with_vacancy } from './lattices'
 
@@ -56,8 +56,10 @@ describe(`sweep_frame_plan`, () => {
     },
   )
 
-  it(`defaults to DEFAULT_MAX_SWEEP_FRAMES samples`, () => {
-    expect(sweep_frame_plan(10_000).frame_numbers).toHaveLength(DEFAULT_MAX_SWEEP_FRAMES)
+  it(`caps at DEFAULT_MAX_SWEEP_FRAMES samples`, () => {
+    expect(sweep_frame_plan(10_000, DEFAULT_MAX_SWEEP_FRAMES).frame_numbers).toHaveLength(
+      DEFAULT_MAX_SWEEP_FRAMES,
+    )
   })
 
   it.each([

@@ -22,6 +22,9 @@ export interface EinsteinFitOptions {
 export interface EinsteinFit {
   // D = slope / (2 * dimensionality), in Å²/<time_unit>
   diffusion_coefficient: number
+  // The same D in the unit diffusion coefficients are quoted in; null when the time unit is
+  // `frame` or not one of fs / ps / ns
+  diffusion_coefficient_cm2_s: number | null
   slope: number
   intercept: number
   r_squared: number
