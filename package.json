@@ -276,7 +276,7 @@
     "knip": "knip --include dependencies,exports,types,nsExports",
     "publint": "publint",
     "package:dist": "svelte-package && node src/scripts/package-dist-assets.mjs",
-    "build:anywidget": "pnpm package:dist && pnpm -C extensions/anywidget install --ignore-workspace && pnpm -C extensions/anywidget build",
+    "build:anywidget": "pnpm package:dist && pnpm -C extensions/anywidget install --ignore-workspace --config.strict-dep-builds=false && pnpm -C extensions/anywidget build",
     "prepare": "node src/scripts/prepare.mjs",
     "prepublishOnly": "pnpm run package:dist"
   },

@@ -86,9 +86,12 @@
   let safe_ratio = $derived(clamp_ratio(ratio))
   let safe_px = $derived(clamp_px(first_px ?? 0))
   let pane_size = $derived(px_mode ? `${safe_px}px` : `${safe_ratio * 100}%`)
-  // aria values are in the mode's own unit: percent of the container, or px
+  // aria values are in the mode's own unit: percent of the container, or px. Both follow the
+  // effective clamps, so pixel floors tightening the ratio range show in the announced bounds
   let aria_bounds = $derived(
-    px_mode ? px_bounds(container_size) : [min_ratio * 100, max_ratio * 100],
+    px_mode
+      ? px_bounds(container_size)
+      : ratio_bounds(container_size).map((bound) => bound * 100),
   )
   let aria_value = $derived(Math.round(px_mode ? safe_px : safe_ratio * 100))
 

@@ -1191,11 +1191,12 @@ describe(`HDF5`, () => {
     expect(run.provenance.format).toBe(`hdf5`)
     expect(await steps_of(run)).toEqual([0, 1, 2, 3])
     expect(run.atom_masses).toEqual([1.008, 15.999])
-    // Lazy HDF5 signals are descriptors (no `values`) until collect_positions streams them
+    // Lazy HDF5 signals are descriptors (no `values`) until collect_positions streams them;
+    // only the velocity sits on the geometry's step axis
     expect(run.signals).toEqual({
-      velocity: { sample_shape: [2, 3], sample_count: 4, unit: `A/fs` },
-      dipole: { sample_shape: [3], sample_count: 2 },
-      polarizability: { sample_shape: [3, 3], sample_count: 3 },
+      velocity: { sample_shape: [2, 3], sample_count: 4, frame_aligned: true, unit: `A/fs` },
+      dipole: { sample_shape: [3], sample_count: 2, frame_aligned: false },
+      polarizability: { sample_shape: [3, 3], sample_count: 3, frame_aligned: false },
     })
     expect(Object.values(run.signals ?? {}).every(is_signal_descriptor)).toBe(true)
     const frame = await run.read_frame(3)
@@ -1256,6 +1257,7 @@ describe(`HDF5`, () => {
     expect(offset.signals?.velocity).toEqual({
       sample_shape: [2, 3],
       sample_count: 2,
+      frame_aligned: false,
       unit: `A/fs`,
     })
     await expect(collect(offset, { vector_keys: [`velocity`] })).rejects.toThrow(
@@ -1451,8 +1453,8 @@ describe(`HDF5`, () => {
     expect(run.time_step).toEqual({ value: 0.25, unit: `ps` })
     expect(run.atom_masses).toEqual([1.008, 15.999])
     expect(run.signals).toEqual({
-      velocity: { sample_shape: [2, 3], sample_count: 3, unit: `A/ps` },
-      dipole: { sample_shape: [3], sample_count: 3, unit: `e*A` },
+      velocity: { sample_shape: [2, 3], sample_count: 3, frame_aligned: true, unit: `A/ps` },
+      dipole: { sample_shape: [3], sample_count: 3, frame_aligned: true, unit: `e*A` },
     })
     const { signals } = await collect(run, { signal_keys: [`velocity`, `dipole`] })
     expect(signals?.velocity).toMatchObject({
@@ -1598,7 +1600,12 @@ describe(`HDF5`, () => {
       species: [{ element: `H` }],
     })
     expect(run.atom_masses).toEqual([1])
-    expect(run.signals?.dipole).toEqual({ sample_shape: [3], sample_count: 2 })
+    // the dipole is sampled on the run's own geometry steps [0, 2]
+    expect(run.signals?.dipole).toEqual({
+      sample_shape: [3],
+      sample_count: 2,
+      frame_aligned: true,
+    })
     const { signals } = await collect(run, { signal_keys: [`dipole`] })
     expect(signals?.dipole).toMatchObject({
       steps: [0, 2],

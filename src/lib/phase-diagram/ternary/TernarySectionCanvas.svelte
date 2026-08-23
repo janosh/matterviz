@@ -12,6 +12,7 @@
     draw_hull_points,
     face_color_resolver,
     find_hull_entry_at_mouse,
+    type LabelOpts,
     type Projected,
   } from '$lib/convex-hull/canvas-draw'
   import { get_energy_color_scale, merge_highlight_style } from '$lib/convex-hull/helpers'
@@ -198,8 +199,23 @@
     highlight_style,
   })
 
+  // Shared by the base and the overlay so a label repainted on the overlay lands on its
+  // base placement (placement is order-dependent across all entries)
+  const label_opts = ({ width, height, text_color }: CanvasFrame): LabelOpts => ({
+    project,
+    elements: model.elements,
+    scale: layout.scale,
+    text_color,
+    width,
+    height,
+    show_stable_labels: settings.show_stable_labels,
+    show_unstable_labels: settings.show_unstable_labels,
+    max_hull_dist_show_labels: settings.max_e_above_hull,
+  })
+
   // Base layer: everything that doesn't change while the pointer moves
-  function draw_frame({ ctx, width, height, text_color }: CanvasFrame): void {
+  function draw_frame(frame: CanvasFrame): void {
+    const { ctx, text_color } = frame
     const { scale } = layout
     const [corner_a, corner_b, corner_c] = TRIANGLE_VERTICES
     if (settings.show_grid) {
@@ -240,17 +256,7 @@
       true,
     )
     draw_hull_points(ctx, points, point_opts)
-    draw_hull_labels(ctx, visible_entries, {
-      project,
-      elements: model.elements,
-      scale,
-      text_color,
-      width,
-      height,
-      show_stable_labels: settings.show_stable_labels,
-      show_unstable_labels: settings.show_unstable_labels,
-      max_hull_dist_show_labels: settings.max_e_above_hull,
-    })
+    draw_hull_labels(ctx, visible_entries, label_opts(frame))
     draw_corner_labels(ctx, TRIANGLE_VERTICES, [0.5, TRIANGLE_HEIGHT / 3], {
       project,
       elements: model.elements,
@@ -261,7 +267,8 @@
   }
 
   // Overlay layer: hover + selection decorations, repainted without touching the section
-  function draw_overlay({ ctx, width, height, text_color }: CanvasFrame): void {
+  function draw_overlay(frame: CanvasFrame): void {
+    const { ctx, width, height, text_color } = frame
     ctx.clearRect(0, 0, width, height)
     const { scale } = layout
     const hovered = hover_composition?.decomposition.phases.map((idx) => hull_entries[idx])
@@ -275,13 +282,18 @@
       )
       const stroke = settings.show_tie_lines ? add_alpha(text_color, 0.9) : `transparent`
       draw_face(ctx, hovered_face.projected, fill, stroke)
-      // The tint covers the base; repaint the face's vertices so they stay crisp
+      // The tint covers the base; repaint the face's vertices and their labels so the
+      // markers stay crisp and the formula text isn't washed out
       const vertices = new Set<ConvexHullEntry>(hovered_face.vertices)
       draw_hull_points(
         ctx,
         points.filter(({ entry }) => vertices.has(entry)),
         point_opts,
       )
+      draw_hull_labels(ctx, visible_entries, {
+        ...label_opts(frame),
+        paint_only: (entry) => vertices.has(entry),
+      })
     }
     // Composition probe: dashed spokes to the tie-triangle vertices
     if (hover_composition) {

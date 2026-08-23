@@ -1,14 +1,9 @@
 // Smoke coverage for IsobaricTernaryPhaseDiagram on its demo route: the isothermal section
 // canvas renders and tracks the viewport, the 2D/3D view toggle swaps canvases, and a dropped
-// entries file recomputes the diagram.
-import { expect, test } from '@playwright/test'
-import {
-  collect_console_errors,
-  collect_page_errors,
-  drop_file,
-  IS_CI,
-  require_bbox,
-} from '../helpers'
+// entries file recomputes the diagram. Every test fails on a console/page error, navigation
+// and first render included.
+import { expect } from '@playwright/test'
+import { drop_file, IS_CI, require_bbox, test_without_errors as test } from '../helpers'
 
 const DIAGRAM = `.ternary-phase-diagram`
 const SECTION_CANVAS = `${DIAGRAM} .ternary-section canvas[aria-label]`
@@ -37,11 +32,7 @@ test.describe(`IsobaricTernaryPhaseDiagram smoke`, () => {
     await expect(page.locator(SECTION_CANVAS)).toBeVisible({ timeout: LOAD_TIMEOUT })
   })
 
-  test(`renders the section canvas without errors and follows the viewport`, async ({
-    page,
-  }) => {
-    const console_errors = collect_console_errors(page)
-    const page_errors = collect_page_errors(page)
+  test(`renders the section canvas and follows the viewport`, async ({ page }) => {
     const canvas = page.locator(SECTION_CANVAS)
     const wide = await require_bbox(canvas, `ternary section canvas`)
     expect(wide.width).toBeGreaterThan(0)
@@ -58,9 +49,6 @@ test.describe(`IsobaricTernaryPhaseDiagram smoke`, () => {
     await expect
       .poll(async () => (await require_bbox(canvas)).width, { timeout: LOAD_TIMEOUT })
       .toBeLessThan(wide.width)
-
-    expect(page_errors).toEqual([])
-    expect(console_errors).toEqual([])
   })
 
   test(`view toggle swaps the 2D section for the 3D prism and back`, async ({ page }) => {

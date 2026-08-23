@@ -329,6 +329,9 @@ export type LabelOpts = {
   show_stable_labels: boolean
   show_unstable_labels: boolean
   max_hull_dist_show_labels: number
+  // Paint only these entries' labels. Placement still runs over all `entries` so the
+  // painted subset lands exactly where a full pass would put it (overlay repaints).
+  paint_only?: (entry: ConvexHullEntry) => boolean
 }
 
 // Compound labels that pass the label toggles, one per composition, most stable first
@@ -366,7 +369,7 @@ export function draw_hull_labels(
   entries: ConvexHullEntry[],
   opts: LabelOpts,
 ): void {
-  const { project, elements, scale, text_color, width, height } = opts
+  const { project, elements, scale, text_color, width, height, paint_only } = opts
   const label_height = LABEL_FONT_SIZE + 2
   const padding = Math.max(1, 2 * scale)
   const canvas_rect: Rect = { x: 0, y: 0, width, height }
@@ -401,7 +404,7 @@ export function draw_hull_labels(
       occupied.push(rect)
       return true
     })
-    if (!placement) continue
+    if (!placement || (paint_only && !paint_only(entry))) continue
 
     let text_x = placement[0] - text_width / 2
     for (const segment of segments) {

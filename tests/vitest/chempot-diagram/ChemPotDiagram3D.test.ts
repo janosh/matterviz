@@ -96,9 +96,20 @@ test(`toggling a formula overlay builds only that domain's hull`, async () => {
   // colours follow the draw order, not the cache
   expect(third.formula_meshes.map(({ color }) => color)).toHaveLength(3)
   // un-drawing disposes that overlay's geometry and rebuilds only the occlusion hull
-  const dispose = vi.spyOn(first.formula_meshes[0].geometry as { dispose(): void }, `dispose`)
+  const fe2o3_geometry = first.formula_meshes[0].geometry
+  // Disposal must run after the flush, once the scene holds the new mesh list: the scene's
+  // `formula_meshes` is the component's live derived, so reading it here would re-enter
+  // the derived (and throw) if the eviction still disposed inside it
+  const meshes_at_dispose: object[][] = []
+  const dispose = vi
+    .spyOn(fe2o3_geometry as { dispose(): void }, `dispose`)
+    .mockImplementation(() => {
+      meshes_at_dispose.push(scene().formula_meshes.map(({ geometry }) => geometry))
+    })
   const removed = toggle(`Fe2O3`)
   expect(removed.builds).toBe(1)
   expect(removed.formula_meshes).toHaveLength(2)
   expect(dispose).toHaveBeenCalledOnce()
+  expect(meshes_at_dispose).toEqual([removed.formula_meshes.map(({ geometry }) => geometry)])
+  expect(meshes_at_dispose[0]).not.toContain(fe2o3_geometry)
 })

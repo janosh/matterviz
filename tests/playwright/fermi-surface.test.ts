@@ -1,12 +1,12 @@
 // Smoke coverage for the FermiSurface viewer on its demo route: the WebGPU canvas renders and
 // tracks the viewport, a control toggles, and a dropped BXSF grid replaces the demo file.
-import { expect, type Page, test } from '@playwright/test'
+// Every test fails on a console/page error, navigation and first render included.
+import { expect, type Page } from '@playwright/test'
 import {
-  collect_console_errors,
-  collect_page_errors,
   drop_file,
   IS_CI,
   require_bbox,
+  test_without_errors as test,
   wait_for_3d_canvas,
 } from './helpers'
 
@@ -53,11 +53,7 @@ test.describe(`FermiSurface smoke`, () => {
     await wait_for_3d_canvas(page, VIEWER, LOAD_TIMEOUT)
   })
 
-  test(`renders the surface canvas without errors and follows the viewport`, async ({
-    page,
-  }) => {
-    const console_errors = collect_console_errors(page)
-    const page_errors = collect_page_errors(page)
+  test(`renders the surface canvas and follows the viewport`, async ({ page }) => {
     const canvas = page.locator(`${VIEWER} canvas`)
     const wide = await require_bbox(canvas, `Fermi surface canvas`)
     expect(wide.width).toBeGreaterThan(0)
@@ -69,9 +65,6 @@ test.describe(`FermiSurface smoke`, () => {
     await expect
       .poll(async () => (await require_bbox(canvas)).width, { timeout: LOAD_TIMEOUT })
       .toBeLessThan(wide.width)
-
-    expect(page_errors).toEqual([])
-    expect(console_errors).toEqual([])
   })
 
   test(`Show BZ toggle hides the BZ opacity slider`, async ({ page }) => {

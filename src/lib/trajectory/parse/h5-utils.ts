@@ -305,9 +305,12 @@ export const trajectory_signal = (
   steps: number[],
 ): TrajectorySignal => ({ values, sample_shape, steps, ...(unit ? { unit } : {}) })
 
+// `frame_aligned_of` says whether the signal's step axis is the geometry's (see
+// `TrajectorySignalDescriptor.frame_aligned`); the parser knows both axes, consumers don't
 export const signal_descriptors = <Manifest extends { sample_shape: number[]; unit?: string }>(
   manifest: Record<string, Manifest>,
   sample_count_of: (signal: Manifest) => number,
+  frame_aligned_of: (signal: Manifest) => boolean,
 ): Record<string, TrajectorySignalDescriptor> =>
   Object.fromEntries(
     Object.entries(manifest).map(([key, signal]) => [
@@ -315,6 +318,7 @@ export const signal_descriptors = <Manifest extends { sample_shape: number[]; un
       {
         sample_shape: signal.sample_shape,
         sample_count: sample_count_of(signal),
+        frame_aligned: frame_aligned_of(signal),
         ...(signal.unit ? { unit: signal.unit } : {}),
       },
     ]),

@@ -1,4 +1,4 @@
-import { expect, type Locator, type Page } from '@playwright/test'
+import { expect, type Locator, type Page, test as base } from '@playwright/test'
 import { Buffer } from 'node:buffer'
 import process from 'node:process'
 
@@ -58,6 +58,30 @@ export const collect_page_errors = (page: Page): Error[] => {
   page.on(`pageerror`, (error) => page_errors.push(error))
   return page_errors
 }
+
+// Headless Chromium without a real GPU emits these while three acquires (or fails to acquire)
+// a WebGPU device; they come from the browser/driver, not from matterviz, so the strict
+// fixture below ignores them and keeps every other error fatal
+const GPU_ENVIRONMENT_NOISE =
+  /GPUValidationError|WebGPU Device Lost|WebGPU renderer initialization failed|getSupportedExtensions/
+const is_gpu_noise = (message: string): boolean => GPU_ENVIRONMENT_NOISE.test(message)
+
+// `test` whose every test fails on a console.error or uncaught page error. The collectors
+// are an automatic fixture, so they are listening before any beforeEach `page.goto()` and
+// navigation/first-render errors count too; both lists are asserted empty after each test.
+export const test_without_errors = base.extend<{
+  errors: { console: string[]; page: Error[] }
+}>({
+  errors: [
+    async ({ page }, use) => {
+      const errors = { console: collect_console_errors(page), page: collect_page_errors(page) }
+      await use(errors)
+      expect(errors.page.filter((error) => !is_gpu_noise(error.message))).toEqual([])
+      expect(errors.console.filter((message) => !is_gpu_noise(message))).toEqual([])
+    },
+    { auto: true },
+  ],
+})
 
 // Dispatch the structure test page's `set-scene-props` hook (cell rendering keys included)
 export const set_scene_props = (page: Page, detail: Record<string, unknown>): Promise<void> =>

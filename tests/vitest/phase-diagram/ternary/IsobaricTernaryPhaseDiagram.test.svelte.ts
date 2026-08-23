@@ -217,9 +217,11 @@ test.each([
 
 // Hovering repaints only the overlay canvas: the base (faces, points, labels) is several
 // hundred paths and used to be redrawn on every pointer move. clearRect opens every repaint,
-// so counting it per layer says which canvas redrew.
+// so counting it per layer says which canvas redrew. The hover tint sits above the base's
+// labels, so the hovered face's vertex labels are repainted on the overlay (fillText).
 test(`TernarySectionCanvas: hover and selection repaint the overlay, not the section`, async () => {
   const clears = { base: 0, overlay: 0 }
+  const fills = { base: 0, overlay: 0 }
   vi.stubGlobal(
     `Path2D`,
     class {
@@ -235,6 +237,7 @@ test(`TernarySectionCanvas: hover and selection repaint the overlay, not the sec
           if (prop === `canvas`) return this
           if (prop === `measureText`) return () => ({ width: 20 })
           if (prop === `clearRect`) return () => clears[layer]++
+          if (prop === `fillText`) return () => fills[layer]++
           return vi.fn()
         },
       })
@@ -253,6 +256,9 @@ test(`TernarySectionCanvas: hover and selection repaint the overlay, not the sec
     await let_frames_run()
     const painted = { ...clears }
     expect(painted.base).toBeGreaterThan(0)
+    expect(fills.base).toBeGreaterThan(0)
+    // nothing is hovered yet, so the overlay has painted no text
+    expect(fills.overlay).toBe(0)
     // 5 hovers over compositions inside the triangle (xy → px via the mocked 800×600 canvas)
     const canvas = doc_query(`.ternary-section canvas`)
     for (const frac of [0.3, 0.35, 0.4, 0.45, 0.5]) {
@@ -266,12 +272,18 @@ test(`TernarySectionCanvas: hover and selection repaint the overlay, not the sec
       flushSync()
       await let_frames_run()
     }
+    // the hovered tie-triangle's vertex labels are repainted above the tint: some text per
+    // hover, but less than the base's full label pass (5 hovers < 5 base passes)
+    const base_fills = fills.base
+    expect(fills.overlay).toBeGreaterThan(0)
+    expect(fills.overlay).toBeLessThan(5 * base_fills)
     state.selected_phase = 0
     flushSync()
     await let_frames_run()
     // was 6 base repaints (one per hover + the selection) before the overlay split
     expect(clears.base - painted.base).toBe(0)
     expect(clears.overlay - painted.overlay).toBe(6)
+    expect(fills.base).toBe(base_fills)
   } finally {
     get_context.mockRestore()
     vi.unstubAllGlobals()

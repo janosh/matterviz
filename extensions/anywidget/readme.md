@@ -42,7 +42,9 @@ The publish workflow's size gate fails if either WASM creeps back in.
 pnpm install && pnpm package:dist
 
 cd extensions/anywidget
-pnpm install
+# strict-dep-builds=false: the published svelte-widgets dep ships its built artifacts, so
+# pnpm 11's default of failing on its skipped lifecycle script is safe to relax
+pnpm install --config.strict-dep-builds=false
 pnpm build        # -> build/matterviz.js + build/matterviz.css
 ```
 

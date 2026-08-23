@@ -433,32 +433,45 @@ describe(`collect_trajectory_spectroscopy_input`, () => {
   })
 
   it.each([
-    // a lazy [n_atoms, 3] velocity with one sample per frame shares the geometry step axis
-    // and streams strided beside positions; on its own axis it is a native-cadence read
+    // a lazy [n_atoms, 3] velocity the parser marked frame_aligned (one sample per frame on
+    // the geometry steps) streams strided beside positions; on its own axis it is a
+    // native-cadence read, even with as many samples as frames: the steps decide, not the
+    // count (the vector_keys read of a shifted axis throws in the parser)
     [
       `on the geometry steps`,
       {},
       { vector_keys: [`velocity`], signal_keys: [`dipole`, `polarizability`] },
+      [0, 1, 2, 3],
     ],
     [
       `on its own step axis`,
       { velocity_steps: [0, 2] },
       { vector_keys: [], signal_keys: [`velocity`, `dipole`, `polarizability`] },
+      [0, 2],
+    ],
+    [
+      `with one sample per frame on shifted steps`,
+      { velocity_steps: [1, 2, 3, 4] },
+      { vector_keys: [], signal_keys: [`velocity`, `dipole`, `polarizability`] },
+      [1, 2, 3, 4],
     ],
   ])(
     `routes an HDF5 velocity descriptor %s through the matching collect channel`,
-    async (_label, fixture, channels) => {
+    async (_label, fixture, channels, velocity_steps) => {
       const run = await open_torch_sim(fixture)
       try {
+        const frame_aligned = channels.vector_keys.length > 0
+        expect(run.signals?.velocity).toMatchObject({
+          sample_count: velocity_steps.length,
+          frame_aligned,
+        })
         const keys = { infrared_key: `dipole`, raman_key: `polarizability` }
         expect(spectroscopy_stream_channels(run, keys)).toEqual(channels)
         const input = await collect_trajectory_spectroscopy_input(run, {
           ...keys,
           preprocessing: `remove_com`,
         })
-        expect(input.velocities?.steps).toEqual(
-          channels.vector_keys.length > 0 ? [0, 1, 2, 3] : [0, 2],
-        )
+        expect(input.velocities?.steps).toEqual(velocity_steps)
         expect(input.metadata?.signal_sources).toMatchObject({ velocity: `stream:velocity` })
       } finally {
         run.dispose()

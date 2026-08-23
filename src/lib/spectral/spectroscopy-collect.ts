@@ -55,12 +55,15 @@ export const infrared_kind_from_key = (key: string): InfraredSignal[`kind`] => {
   return normalized_key.includes(`current`) ? `current` : `dipole`
 }
 
-// A lazy per-atom velocity with one [n_atoms, 3] sample per frame shares the geometry step
-// axis, so the run can stream it strided beside positions (`vector_keys`) instead of reading
-// the whole series; a descriptor on its own cadence stays a native-cadence `signal_keys` read
+// A lazy per-atom [n_atoms, 3] velocity the parser marked `frame_aligned` (one sample per
+// frame on the geometry's steps) can be streamed strided beside positions (`vector_keys`)
+// instead of reading the whole series. A descriptor on its own cadence stays a
+// native-cadence `signal_keys` read: equal sample counts alone don't make the step axes
+// match (velocities on steps [1, 2, 3, 4] beside frames on [0, 1, 2, 3]), and a `vector_keys`
+// read of such a signal throws in the HDF5 parser
 const streams_as_vector = (run: TrajectoryRun, signal: TrajectoryRunSignal): boolean =>
   is_signal_descriptor(signal) &&
-  signal.sample_count === run.frame_count &&
+  signal.frame_aligned === true &&
   arrays_equal(signal.sample_shape, [run.preview.structure.sites.length, 3])
 
 // Per-site vector and frame-signal channels a collect streams alongside positions, so the

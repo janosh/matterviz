@@ -951,7 +951,10 @@
   // toggling one overlay builds one hull instead of every overlay's (k + 1 ConvexGeometry
   // builds per toggle with k overlays, now 2 — the other is the base occlusion hull).
   // Geometries evicted from the cache (formula un-drawn, domain or stretch changed) are
-  // disposed here; the teardown effect below disposes whatever is left on unmount.
+  // queued in `evicted_geometries` and disposed by the effect after the mesh/edge data
+  // deriveds: the scene meshes may still reference them during the flush that evicts them.
+  // The teardown effect disposes whatever is left on unmount.
+  const evicted_geometries: THREE.BufferGeometry[] = []
   function memo_overlay_geometry(
     build: (domain: RenderDomain) => THREE.BufferGeometry | null,
   ): (domains: RenderDomain[]) => Map<string, THREE.BufferGeometry> {
@@ -978,7 +981,9 @@
         )
       }
       for (const [formula, entry] of cache) {
-        if (next.get(formula) !== entry) entry.geometry?.dispose()
+        if (next.get(formula) !== entry && entry.geometry) {
+          evicted_geometries.push(entry.geometry)
+        }
       }
       cache.clear()
       const result = new Map<string, THREE.BufferGeometry>()
@@ -1027,6 +1032,16 @@
       ([formula, geometry]) => ({ geometry, color: overlay_color(formula) }),
     ),
   )
+  // Runs after the deriveds above settle (and the scene has the new lists), so no mesh
+  // still points at a geometry when it is disposed
+  const dispose_evicted = () => {
+    for (const geometry of evicted_geometries.splice(0)) geometry.dispose()
+  }
+  $effect(() => {
+    void [formula_edge_data, formula_mesh_data]
+    dispose_evicted()
+    return dispose_evicted
+  })
 
   function get_touches_limits(points_3d: number[][], lims: Vec2[]): string[] {
     const limit_tol = 1e-3

@@ -47,6 +47,9 @@ test.each([
   (orientation, direction, position, aria) => {
     const { divider, parent } = mount_divider(orientation, direction)
     expect(divider.getAttribute(`aria-orientation`)).toBe(aria)
+    // no pixel clamps: the announced range is the bare ratio range
+    expect(divider.getAttribute(`aria-valuemin`)).toBe(`15`)
+    expect(divider.getAttribute(`aria-valuemax`)).toBe(`85`)
     divider.dispatchEvent(pointer_event(`pointerdown`, { pointerId: 7 }))
     divider.dispatchEvent(pointer_event(`pointermove`, { ...position, pointerId: 7 }))
 
@@ -101,7 +104,8 @@ test(`an active drag ignores other pointers and ends on lost capture`, () => {
 // Pixel clamps tighten the [15%, 85%] ratio clamps using the container's measured size (400
 // px wide, 200 px tall here); an over-constrained container settles at the first pane's floor,
 // and a floor wider than the container caps at 100% rather than pushing the divider outside.
-// Rows: clamps, orientation, then (pointer coordinate along the axis, expected split %) pairs
+// Rows: clamps, orientation, then (pointer coordinate along the axis, expected split %) pairs;
+// the aria range announces the same tightened bounds (in %), not the bare 15/85
 test.each([
   [{ min_px: 120 }, `horizontal`, 120, 30, 480, 85],
   [{ min_px: 500, second_min_px: 50 }, `horizontal`, 120, 100, 480, 100],
@@ -113,6 +117,8 @@ test.each([
   `%j clamps %s pointer drags in pixels`,
   (clamps, orientation, low, low_pct, high, high_pct) => {
     const { divider, parent } = mount_divider(orientation, `ltr`, 0.5, clamps)
+    expect(divider.getAttribute(`aria-valuemin`)).toBe(`${Math.min(low_pct, high_pct)}`)
+    expect(divider.getAttribute(`aria-valuemax`)).toBe(`${Math.max(low_pct, high_pct)}`)
     const axis = orientation === `horizontal` ? `clientX` : `clientY`
     divider.dispatchEvent(pointer_event(`pointerdown`, { pointerId: 4 }))
     for (const [coord, pct] of [

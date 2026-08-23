@@ -359,9 +359,16 @@ describe(`widget config wiring`, () => {
     flushSync()
     expect(stub.read().loading_options).toEqual({ atom_type_mapping: mapping })
     expect(`atom_type_mapping` in stub.read()).toBe(false)
-    model.push_from_python(`atom_type_mapping`, null)
-    flushSync()
-    expect(`loading_options` in stub.read()).toBe(false)
+    // clearing the trait (None) or an empty mapping ({}) drops loading_options entirely,
+    // never leaving a `{ atom_type_mapping: null }` shell behind
+    for (const cleared of [null, {}]) {
+      model.push_from_python(`atom_type_mapping`, mapping)
+      flushSync()
+      model.push_from_python(`atom_type_mapping`, cleared)
+      flushSync()
+      expect(stub.read().loading_options).toBeUndefined()
+      expect(`loading_options` in stub.read()).toBe(false)
+    }
     expect(WIDGET_MODEL_KEYS.trajectory).toContain(`atom_type_mapping`)
   })
 
