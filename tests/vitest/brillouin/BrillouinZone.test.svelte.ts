@@ -5,7 +5,7 @@ import { reciprocal_lattice } from '$lib/math'
 import type * as symmetry from '$lib/symmetry'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, expect, test, vi } from 'vitest'
-import { cubic_matrix, make_crystal, type SimpleSite } from '../setup'
+import { create_drop_event, cubic_matrix, make_crystal, type SimpleSite } from '../setup'
 
 // The IBZ needs moyo's point group; stand in for the WASM analysis so a test can make it fail
 const analyze_structure_symmetry = vi.hoisted(() => vi.fn())
@@ -121,6 +121,21 @@ test(`a throwing on_file_load keeps the parsed structure and the URL's ownership
   expect(on_file_load).toHaveBeenLastCalledWith(
     expect.objectContaining({ filename: `b.poscar` }),
   )
+})
+
+// Dropped files report through the drop zone's per-batch summary, like every viewer; a parse
+// failure must not be swallowed into a per-file message first
+test(`a dropped file that fails to parse is reported by the drop zone`, async () => {
+  const on_error = vi.fn()
+  const props = $state({ error_msg: undefined as string | undefined, on_error })
+  mounted_component = mount(BrillouinZone, { target: document.body, props })
+  await tick() // the drop-zone attachment is wired one flush after mount
+  document.body
+    .querySelector(`.brillouin-zone`)
+    ?.dispatchEvent(create_drop_event(new File([`garbage`], `bad.poscar`)))
+  await vi.waitFor(() => expect(on_error).toHaveBeenCalledTimes(1))
+  expect(props.error_msg).toMatch(/^Failed to load 1 file — bad\.poscar: /)
+  expect(props.error_msg).not.toMatch(/Failed to parse bad\.poscar/)
 })
 
 // The file viewer mounts the component with only {k_lattice, vertices, faces}: the zone renders

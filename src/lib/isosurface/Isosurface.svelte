@@ -32,6 +32,7 @@
     type GeometryVolumeJob,
   } from './geometry'
   import type { ScalarGrid3D } from './grid'
+  import { get_isosurface_error_handler, type IsosurfaceErrorHandler } from './context'
   import { record_stage, time_stage } from './profile'
   import type { DisplayRange } from './sampling'
   import { resolve_volume_display_range, sample_volume_at_positions } from './sampling'
@@ -55,8 +56,13 @@
     // Called when the geometry worker fails after construction (chunk 404, OOM, module
     // import failure) so the host can tell the user why the surfaces did not update. A
     // worker that cannot be constructed at all falls back to the main thread silently.
-    on_error?: (message: string) => void
+    // Falls back to the handler a host (Structure) registered via set_isosurface_error_handler
+    on_error?: IsosurfaceErrorHandler
   } = $props()
+
+  // Context is read once at init: Structure registers its handler before the scene mounts
+  const context_on_error = get_isosurface_error_handler()
+  const report_error = (message: string): void => (on_error ?? context_on_error)?.(message)
 
   // Geometry and colour updates mutate three objects in place (setAttribute, needsUpdate),
   // which bypasses the <T> props Threlte watches, so under the hosts' on-demand render mode
@@ -356,7 +362,7 @@
       } catch (error) {
         if (generation !== rebuild_generation || abort.signal.aborted) return
         console.error(`Isosurface geometry worker failed; keeping previous surfaces`, error)
-        on_error?.(`Isosurface geometry failed: ${to_error(error).message}`)
+        report_error(`Isosurface geometry failed: ${to_error(error).message}`)
         return
       } finally {
         if (geometry_abort === abort) geometry_abort = undefined

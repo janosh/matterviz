@@ -90,7 +90,6 @@
     volumetric_data = undefined,
     isosurface_settings = undefined,
     active_volume_idx = 0,
-    on_isosurface_error = undefined,
     property_colors = null,
     active_sites = [],
     camera_direction = undefined,
@@ -127,7 +126,6 @@
     volumetric_data?: VolumetricData[]
     isosurface_settings?: IsosurfaceSettings
     active_volume_idx?: number
-    on_isosurface_error?: (message: string) => void
     property_colors?: AtomPropertyColors | null
     active_sites?: number[]
     camera_direction?: Vec3
@@ -425,7 +423,6 @@
         {volumetric_data}
         {isosurface_settings}
         {active_volume_idx}
-        {on_isosurface_error}
         volume_scaling={session.volume_scaling}
         bind:camera_is_moving
         bind:selected_sites={

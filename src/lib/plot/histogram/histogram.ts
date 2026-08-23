@@ -7,21 +7,14 @@ import { accumulate_extent, empty_extent, nice_range_from_extent } from '$lib/pl
 import type { AxisConfig, ScaleType } from '$lib/plot/core/types'
 import { get_arcsinh_threshold, get_scale_type_name } from '$lib/plot/core/types'
 
-// One distribution to bin. `values` are the samples; everything else is legend/axis metadata.
-// Legacy `DataSeries`-shaped input (`{ x, y, line_style }`, still what pymatviz's
-// HistogramWidget sends) is accepted too: `y` is the sample array and `x` is ignored. Read the
-// samples through `histogram_samples` rather than either field directly.
+// One distribution to bin, in canonical form: `values` are the samples; everything else is
+// legend/axis metadata. Histogram internals only ever read this shape.
 export interface HistogramSeries {
   id?: string | number // stable key for series reordering
-  values?: readonly number[]
-  // Legacy sample array (used when `values` is absent); `x` is a DataSeries leftover and unused
-  y?: readonly number[]
-  x?: readonly number[]
+  values: readonly number[]
   label?: string
   // Bar fill; defaults to the auto-cycled series palette (a lone series uses `bar.color`)
   color?: string
-  // Legacy colour source: `line_style.stroke` is honoured when `color` is unset
-  line_style?: { stroke?: string; [key: string]: unknown }
   visible?: boolean
   legend_group?: string
   // Which value axis the samples bin on (`x2`: top) and which count axis the bars use
@@ -29,15 +22,28 @@ export interface HistogramSeries {
   y_axis?: `y1` | `y2`
 }
 
-// The samples of a series: `values`, else the legacy `y` array, else nothing
-export const histogram_samples = (series_data: HistogramSeries): readonly number[] =>
-  series_data.values ?? series_data.y ?? []
+// Legacy `DataSeries`-shaped input (`{ x, y, line_style }`, still what pymatviz's
+// HistogramWidget sends): `y` is the sample array when `values` is absent, `x` is ignored and
+// `line_style.stroke` is the colour when `color` is unset. Normalised by `to_histogram_series`.
+export interface LegacyHistogramSeries extends Omit<HistogramSeries, `values`> {
+  values?: readonly number[]
+  y?: readonly number[]
+  x?: readonly number[]
+  line_style?: { stroke?: string; [key: string]: unknown }
+}
 
-// Explicit `color` wins, then a legacy `line_style.stroke`, then the cycled palette
-export const histogram_series_color = (
-  series_data: HistogramSeries,
-  fallback: string,
-): string => series_data.color ?? series_data.line_style?.stroke ?? fallback
+// What `Histogram`'s `series` prop accepts: canonical or legacy entries
+export type HistogramSeriesInput = HistogramSeries | LegacyHistogramSeries
+
+// Normalise one prop entry into the canonical shape (applied once per series in
+// `Histogram.svelte`). A sample-less legacy entry yields `values: []` and renders nothing.
+export const to_histogram_series = (input: HistogramSeriesInput): HistogramSeries => {
+  const { values, y, x: _ignored, line_style, color, ...rest }: LegacyHistogramSeries = input
+  const series: HistogramSeries = { ...rest, values: values ?? y ?? [] }
+  const fill = color ?? line_style?.stroke
+  if (fill !== undefined) series.color = fill
+  return series
+}
 
 // [min, max] range where either bound may be null (unset)
 type RangeLimit = [number | null, number | null]
@@ -178,6 +184,7 @@ interface HistogramBinConfig {
   x2_scale_type?: ScaleType
   bins: number
   normalize?: HistogramNormalize
+  // Resolved bar fill per series (a lone series takes `bar.color`, else `color` or the palette)
   series_color: (series_data: HistogramSeries, series_idx: number) => string
 }
 
@@ -191,7 +198,7 @@ export function compute_histogram_bins(
   return entries.map(({ series_data, series_idx }) => {
     const use_x2 = series_data.x_axis === `x2`
     const { edges, counts } = bin_values(
-      histogram_samples(series_data),
+      series_data.values,
       use_x2 ? config.x2_domain : config.x_domain,
       n_bins,
       use_x2 ? config.x2_scale_type : config.x_scale_type,

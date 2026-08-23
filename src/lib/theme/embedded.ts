@@ -101,27 +101,25 @@ export function detect_parent_theme(target_element?: HTMLElement): ThemeType {
   }
 }
 
+// Theme of a shadow host and its ancestors. A declared marker anywhere up the chain (the
+// page's `data-theme`, a host's theme class) beats colour sniffing at every level: a shadow
+// host styled with its own light panel background must not out-vote the dark page above it
 function check_element_hierarchy(element: Element): ThemeType | null {
-  let current_element: Element | null = element
-
-  while (current_element) {
-    const declared = declared_theme(current_element)
-    if (declared) return declared
-
-    // Check computed styles
-    const computed_style = getComputedStyle(current_element)
-    const bg_color = computed_style.backgroundColor
-    const text_color = computed_style.color
-
-    const is_dark = is_dark_color(bg_color)
-    if (is_dark !== null) return is_dark ? `dark` : `light`
-
-    const text_is_dark = is_dark_color(text_color)
-    if (text_is_dark !== null) return text_is_dark ? `light` : `dark`
-
-    current_element = current_element.parentElement
+  const chain: Element[] = []
+  for (let current: Element | null = element; current; current = current.parentElement) {
+    chain.push(current)
   }
-
+  for (const current of chain) {
+    const declared = declared_theme(current)
+    if (declared) return declared
+  }
+  for (const current of chain) {
+    const computed_style = getComputedStyle(current)
+    const is_dark = is_dark_color(computed_style.backgroundColor)
+    if (is_dark !== null) return is_dark ? `dark` : `light`
+    const text_is_dark = is_dark_color(computed_style.color)
+    if (text_is_dark !== null) return text_is_dark ? `light` : `dark`
+  }
   return null
 }
 

@@ -10,7 +10,7 @@ export type SankeyLinkColorMode = `source` | `target` | `gradient` | `static`
 export interface SankeyNode<Metadata = Record<string, unknown>> {
   id?: string | number // stable id (defaults to array index); referenced by links
   label?: string
-  color?: string // defaults to cycled DEFAULT_SERIES_COLORS
+  color?: string // defaults to cycled PLOT_COLORS
   metadata?: Metadata
 }
 

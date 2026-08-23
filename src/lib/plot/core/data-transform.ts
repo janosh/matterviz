@@ -1,11 +1,7 @@
 import type { D3SymbolName } from '$lib/labels'
 import type { DataSeries, LegendItem, PointStyle } from '$lib/plot/core/types'
-import { DEFAULT_SERIES_COLORS, DEFAULT_SERIES_SYMBOLS } from '$lib/plot/core/types'
+import { DEFAULT_SERIES_SYMBOLS } from '$lib/plot/core/types'
 import { DEFAULTS } from '$lib/settings'
-
-// Get auto-cycling color for series at given index (wraps every 10)
-export const get_series_color = (series_idx: number): string =>
-  DEFAULT_SERIES_COLORS[series_idx % DEFAULT_SERIES_COLORS.length]
 
 // Get auto-cycling symbol for series at given index (wraps every 7)
 export const get_series_symbol = (series_idx: number): D3SymbolName =>

@@ -24,7 +24,8 @@
   } from '$lib/plot/core/axis-utils'
   import type { AxisChangeState } from '$lib/plot/core/axis-utils'
   import { create_cartesian_frame } from '$lib/plot/core/cartesian-frame.svelte'
-  import { build_legend_items, get_series_color } from '$lib/plot/core/data-transform'
+  import { plot_color } from '$lib/colors'
+  import { build_legend_items } from '$lib/plot/core/data-transform'
   import type { FacetLayoutContext } from '$lib/plot/core/facets'
   import {
     create_legend_visibility,
@@ -51,10 +52,10 @@
     compute_histogram_bins,
     type HistogramBin,
     type HistogramNormalize,
-    histogram_samples,
     type HistogramSeries,
-    histogram_series_color,
+    type HistogramSeriesInput,
     log_safe_range,
+    to_histogram_series,
   } from '$lib/plot/histogram/histogram'
   import ZeroLines from '$lib/plot/core/components/ZeroLines.svelte'
   import { DEFAULTS } from '$lib/settings'
@@ -114,7 +115,8 @@
   }: Omit<HTMLAttributes<HTMLDivElement>, `title`> &
     BasePlotProps &
     PlotConfig & {
-      series: HistogramSeries[]
+      // Canonical `{ values, … }` entries, or the legacy `{ x, y, line_style }` shape
+      series: HistogramSeriesInput[]
       // Component-specific props
       bins?: number
       normalize?: HistogramNormalize
@@ -148,12 +150,15 @@
       facet_layout?: FacetLayoutContext
     } = $props()
 
-  // Legend toggles write back into the bindable series prop; see create_legend_visibility
-  const legend_vis = create_legend_visibility(
-    () => series,
+  // Legend toggles write back into the bindable series prop (in the caller's shape); see
+  // create_legend_visibility. The normaliser runs once here so everything below reads the
+  // canonical `values`/`color` fields only.
+  const legend_vis = create_legend_visibility<HistogramSeriesInput>(
+    () => resolved_series_in,
     (next) => (series_in = next),
   )
-  let series: HistogramSeries[] = $derived(legend_vis.resolve(series_in))
+  let resolved_series_in: HistogramSeriesInput[] = $derived(legend_vis.resolve(series_in))
+  let series: HistogramSeries[] = $derived(resolved_series_in.map(to_histogram_series))
 
   // Merge defaults without writing library-owned values into the caller's bound state.
   // No default tick format: PlotAxis falls back to format_num, which uses SI
@@ -223,9 +228,8 @@
     const x2_extent = empty_extent()
     const y2_extent = empty_extent()
     for (const srs of selected_series) {
-      const samples = histogram_samples(srs)
-      accumulate_extent(srs.x_axis === `x2` ? x2_extent : x1_extent, samples)
-      if (srs.y_axis === `y2`) accumulate_extent(y2_extent, samples)
+      accumulate_extent(srs.x_axis === `x2` ? x2_extent : x1_extent, srs.values)
+      if (srs.y_axis === `y2`) accumulate_extent(y2_extent, srs.values)
     }
     return { x1_extent, x2_extent, y2_extent }
   })
@@ -365,14 +369,14 @@
   })
 
   // a lone series uses the configured bar color; with multiple, each gets its own
-  // (`color`, then a legacy `line_style.stroke`, then the cycled palette)
+  // (`color`, then the cycled palette)
   const series_color = (series_data: HistogramSeries, series_idx: number): string =>
     selected_series.length === 1
       ? resolved_bar.color
-      : histogram_series_color(series_data, get_series_color(series_idx))
+      : (series_data.color ?? plot_color(series_idx))
   const marginal_series = $derived<MarginalSeriesInput[]>(
     selected_series_entries.map(({ series_data, series_idx }) => ({
-      x: histogram_samples(series_data),
+      x: series_data.values,
       color: series_color(series_data, series_idx),
       label: series_data.label,
       visible: true,

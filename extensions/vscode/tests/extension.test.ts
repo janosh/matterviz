@@ -27,6 +27,7 @@ import {
   active_watchers,
   auto_render_timers,
   create_html,
+  deactivate,
   get_defaults,
   get_file,
   get_theme,
@@ -91,10 +92,13 @@ const capture_commands = (): Map<string, CommandCallback> => {
   return commands
 }
 
+// One shared log channel: extension.ts creates it lazily and keeps it for the session
+const mock_output_channel = vi.hoisted(() => ({ info: vi.fn(), dispose: vi.fn() }))
 const mock_vscode = vi.hoisted(() => ({
   window: {
     showInformationMessage: vi.fn(),
     showErrorMessage: vi.fn(),
+    createOutputChannel: vi.fn(() => mock_output_channel),
     showTextDocument: vi.fn(),
     showSaveDialog: vi.fn(),
     createWebviewPanel: vi.fn(),
@@ -661,16 +665,35 @@ describe(`MatterViz Extension`, () => {
     expect(html).toContain(`matterviz-app`)
   })
 
+  // `error` stays a toast; `info` (one per successful render, so every auto-save) goes to the
+  // MatterViz output channel instead of a notification
   test.each([
-    [{ command: `info`, text: `Test message` }, `showInformationMessage`],
-    [{ command: `error`, text: `Error message` }, `showErrorMessage`],
-    [{ command: `info`, text: `"><script>alert(1)</script>` }, `showInformationMessage`],
-    [{ command: `error`, text: `javascript:alert(1)` }, `showErrorMessage`],
-  ] as const)(`message handling: %s`, async (message, expected_method) => {
+    [{ command: `error`, text: `Error message` }],
+    [{ command: `error`, text: `javascript:alert(1)` }],
+  ] as const)(`error message handling: %s`, async (message) => {
     await handle_msg(message)
-    expect(
-      mock_vscode.window[expected_method as keyof typeof mock_vscode.window],
-    ).toHaveBeenCalledWith(message.text)
+    expect(mock_vscode.window.showErrorMessage).toHaveBeenCalledWith(message.text)
+    expect(mock_output_channel.info).not.toHaveBeenCalled()
+  })
+
+  test.each([
+    [{ command: `info`, text: `Structure rendered: a.cif (8 sites)` }],
+    [{ command: `info`, text: `"><script>alert(1)</script>` }],
+  ] as const)(`info message handling logs instead of toasting: %s`, async (message) => {
+    deactivate() // drop a channel an earlier test created so lazy creation is observable
+    mock_output_channel.dispose.mockClear()
+    await handle_msg(message)
+    await handle_msg(message)
+    expect(mock_output_channel.info).toHaveBeenCalledTimes(2)
+    expect(mock_output_channel.info).toHaveBeenCalledWith(message.text)
+    expect(mock_vscode.window.showInformationMessage).not.toHaveBeenCalled()
+    // one log channel per session, named so users can find it in the Output panel
+    expect(mock_vscode.window.createOutputChannel).toHaveBeenCalledExactlyOnceWith(
+      `MatterViz`,
+      { log: true },
+    )
+    deactivate()
+    expect(mock_output_channel.dispose).toHaveBeenCalledTimes(1)
   })
 
   test.each([`content`, `<script>alert("XSS")</script>`])(
@@ -1391,6 +1414,7 @@ describe(`MatterViz Extension`, () => {
         'structure.vector_configs': { force: { visible: true } },
         'trajectory.auto_play': true,
         'trajectory.show_controls': false,
+        'trajectory.atom_type_mapping': { '1': `Si`, '2': `O` },
         'scatter.point.size': 7,
         background_color: `#111111`,
       })
@@ -1402,7 +1426,11 @@ describe(`MatterViz Extension`, () => {
           same_size_atoms: DEFAULTS.structure.same_size_atoms,
           vector_configs: { force: { visible: true } },
         },
-        trajectory: { auto_play: true, show_controls: false },
+        trajectory: {
+          auto_play: true,
+          show_controls: false,
+          atom_type_mapping: { '1': `Si`, '2': `O` },
+        },
         scatter: { point: { size: 7 } },
         background_color: `#111111`,
       })

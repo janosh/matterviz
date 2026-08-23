@@ -9,7 +9,6 @@
   import JsonTree from '$lib/layout/json-tree/JsonTree.svelte'
   import { relative_path_segments } from '$lib/layout/json-tree/utils'
   import PaneDivider from '$lib/layout/PaneDivider.svelte'
-  import { clamp } from '$lib/math'
   import { merge } from '$lib/settings'
   import type { DefaultSettings } from '$lib/settings'
   import type { AnyStructure } from '$lib/structure'
@@ -85,20 +84,12 @@
     return () => clearTimeout(scan_handle)
   })
 
-  // Sidebar width as a fraction of the browser (PaneDivider writes --split-pane-size). The
-  // tree wants ~320 px regardless of how wide the editor is, so the ratio is seeded from that
-  // once the browser's width is known; the pixel floors keep both panes usable on a drag
-  const SIDEBAR_TARGET_PX = 320
+  // Sidebar width in px (PaneDivider writes it to --split-pane-size): the tree wants ~320 px
+  // regardless of how wide the editor is, and the divider's pixel clamps keep both panes
+  // usable on a drag and as the browser resizes
   const SIDEBAR_MIN_PX = 150
   const CANVAS_MIN_PX = 200
-  let sidebar_ratio = $state(0.3)
-  let browser_element: HTMLElement | undefined = $state()
-  $effect(() => {
-    const width = browser_element?.getBoundingClientRect().width ?? 0
-    if (width <= 0) return
-    const max_ratio = Math.max(SIDEBAR_MIN_PX, width - CANVAS_MIN_PX) / width
-    sidebar_ratio = clamp(SIDEBAR_TARGET_PX / width, SIDEBAR_MIN_PX / width, max_ratio)
-  })
+  let sidebar_px = $state(320)
   let finish_drag: (() => void) | undefined
 
   onDestroy(() => {
@@ -595,7 +586,7 @@
 {/snippet}
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="json-browser" class:dragging={split_dragging_idx >= 0} bind:this={browser_element}>
+<div class="json-browser" class:dragging={split_dragging_idx >= 0}>
   <aside class="sidebar" bind:this={sidebar_element}>
     <JsonTree
       {value}
@@ -608,7 +599,7 @@
 
   <PaneDivider
     orientation="horizontal"
-    bind:ratio={sidebar_ratio}
+    bind:first_px={sidebar_px}
     min_px={SIDEBAR_MIN_PX}
     second_min_px={CANVAS_MIN_PX}
     aria-label="Resize JSON tree and viewer panes"
@@ -708,9 +699,8 @@
 <style>
   .json-browser {
     display: grid;
-    /* PaneDivider writes --split-pane-size on this element while dragging; the pixel floors
-       mirror the divider's min_px/second_min_px so neither pane collapses before layout */
-    grid-template-columns: minmax(150px, var(--split-pane-size, 30%)) minmax(200px, 1fr);
+    /* PaneDivider owns the sidebar width (px, clamped) and writes it to --split-pane-size */
+    grid-template-columns: var(--split-pane-size, 320px) minmax(0, 1fr);
     position: relative;
     width: 100%;
     height: 100%;

@@ -215,6 +215,94 @@ test.each([
   },
 )
 
+// Hovering repaints only the overlay canvas: the base (faces, points, labels) is several
+// hundred paths and used to be redrawn on every pointer move. clearRect opens every repaint,
+// so counting it per layer says which canvas redrew. The hover tint sits above the base's
+// labels, so the hovered face's vertex labels are repainted on the overlay (fillText).
+test(`TernarySectionCanvas: hover and selection repaint the overlay, not the section`, async () => {
+  const clears = { base: 0, overlay: 0 }
+  const fills = { base: 0, overlay: 0 }
+  const face_tints = { base: 0, overlay: 0 } // draw_face is the overlay's only closePath
+  vi.stubGlobal(
+    `Path2D`,
+    class {
+      arc(): void {}
+    },
+  )
+  const get_context = vi
+    .spyOn(HTMLCanvasElement.prototype, `getContext`)
+    .mockImplementation(function (this: HTMLCanvasElement) {
+      const layer = this.classList.contains(`pulse-overlay`) ? `overlay` : `base`
+      return new Proxy({} as CanvasRenderingContext2D, {
+        get: (_target, prop) => {
+          if (prop === `canvas`) return this
+          if (prop === `measureText`) return () => ({ width: 20 })
+          if (prop === `clearRect`) return () => clears[layer]++
+          if (prop === `fillText`) return () => fills[layer]++
+          if (prop === `closePath`) return () => face_tints[layer]++
+          return vi.fn()
+        },
+      })
+    })
+  const let_frames_run = () => new Promise((resolve) => setTimeout(resolve, 40))
+  try {
+    const model = prepare_diagram(toy_entries, { elements: toy_elements })
+    const state = $state({ selected_phase: null as number | null })
+    mount_it(
+      TernarySectionCanvas,
+      bind_props(
+        { model, section: compute_section(model, 300), settings: TERNARY_DISPLAY_DEFAULTS },
+        state,
+      ),
+    )
+    await let_frames_run()
+    const painted = { ...clears }
+    expect(painted.base).toBeGreaterThan(0)
+    expect(fills.base).toBeGreaterThan(0)
+    // nothing is hovered yet, so the overlay has painted no text
+    expect(fills.overlay).toBe(0)
+    // 5 hovers over compositions inside the triangle (xy → px via the mocked 800×600 canvas)
+    const canvas = doc_query(`.ternary-section canvas`)
+    const hover = async ([x_pos, y_pos]: Vec2) => {
+      canvas.dispatchEvent(
+        new PointerEvent(`pointermove`, {
+          clientX: 92.85 + x_pos * 614.3,
+          clientY: 566 - y_pos * 614.3,
+          bubbles: true,
+        }),
+      )
+      flushSync()
+      await let_frames_run()
+    }
+    for (const frac of [0.3, 0.35, 0.4, 0.45, 0.5]) await hover([frac, 0.2])
+    // the hovered tie-triangle's vertex labels are repainted above the tint: some text per
+    // hover, but less than the base's full label pass (5 hovers < 5 base passes)
+    const base_fills = fills.base
+    expect(fills.overlay).toBeGreaterThan(0)
+    expect(fills.overlay).toBeLessThan(5 * base_fills)
+    // one tinted face (closePath) per interior hover; a composition on the AB-AC tie-line
+    // decomposes into two phases and tints both neighbouring tie-triangles
+    expect(face_tints.overlay).toBe(5)
+    const [ab, ac] = [`AB`, `AC`].map((id) => {
+      const phase = model.phases.find((candidate) => candidate.entry.entry_id === id)
+      if (!phase) throw new Error(`${id} not in the model`)
+      return phase.xy
+    })
+    await hover([(ab[0] + ac[0]) / 2, (ab[1] + ac[1]) / 2])
+    expect(face_tints.overlay).toBe(7)
+    state.selected_phase = 0
+    flushSync()
+    await let_frames_run()
+    // was 7 base repaints (one per hover + the selection) before the overlay split
+    expect(clears.base - painted.base).toBe(0)
+    expect(clears.overlay - painted.overlay).toBe(7)
+    expect(fills.base).toBe(base_fills)
+  } finally {
+    get_context.mockRestore()
+    vi.unstubAllGlobals()
+  }
+})
+
 test(`TernarySectionCanvas: a section change rebuilds entries without mutating the model`, () => {
   // AB is tabulated 300-1500 K: stable at 300 K, undefined (NaN distance) at 2000 K
   const model = prepare_diagram(toy_entries, { elements: toy_elements })

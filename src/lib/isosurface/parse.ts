@@ -508,15 +508,18 @@ export function looks_like_volumetric(
     }
   }
 
-  // CHGCAR: POSCAR-like header (scale factor on line 2) AND a grid-dimensions line (3
-  // integers) somewhere after the header — the latter distinguishes it from POSCAR/CONTCAR
+  // CHGCAR: POSCAR-like header (scale factor on line 2) AND, after the header, a blank line
+  // followed by the grid-dimensions line (3 integers). The blank line is what separates it
+  // from a POSCAR/CONTCAR whose coordinate line happens to be integers (`0 0 0`)
   if (lines.length > 2 && !isNaN(parse_leading_num(normalize_scientific_notation(lines[1])))) {
     let scan_pos = find_line_offset(content, 7)
     // Scan enough to cover large atom blocks (~100 chars/atom × ~200 atoms max)
     const scan_end = Math.min(content.length, scan_pos + 25000)
+    let prev_blank = false
     while (scan_pos < scan_end) {
       const { line, next } = read_text_line(content, scan_pos)
-      if (/^\s*\d+\s+\d+\s+\d+\s*$/.test(line)) return `chgcar`
+      if (prev_blank && /^\s*\d+\s+\d+\s+\d+\s*$/.test(line)) return `chgcar`
+      prev_blank = line.trim() === ``
       scan_pos = next
     }
   }

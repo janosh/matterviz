@@ -227,7 +227,6 @@ export const worker_run = (
     ...(summary.time_step ? { time_step: summary.time_step } : {}),
     ...(summary.atom_masses ? { atom_masses: summary.atom_masses } : {}),
     ...(summary.signals ? { signals: summary.signals } : {}),
-    ...(summary.signal_descriptors ? { signal_descriptors: summary.signal_descriptors } : {}),
     metadata: summary.metadata,
     warnings: summary.warnings,
     read_frame: (frame_idx, signal) => {

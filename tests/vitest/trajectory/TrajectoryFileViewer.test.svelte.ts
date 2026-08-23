@@ -10,7 +10,7 @@ import {
 } from '$lib/trajectory'
 import TrajectoryFileViewer from '$lib/trajectory/TrajectoryFileViewer.svelte'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
-import { afterEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeAll, describe, expect, test, vi } from 'vitest'
 import {
   bind_props,
   create_drop_event,
@@ -175,6 +175,28 @@ describe(`src`, () => {
       source_filename: `dropped.xyz`,
       file,
     })
+  })
+
+  // loading_options.atom_type_mapping is how hosts (the anywidget's trait, the VS Code
+  // setting) name the bare integer types of a LAMMPS dump; string keys (JSON) must work too
+  test.each([
+    [{ '1': `Si`, '2': `O` }, [`Si`, `O`, `O`]],
+    [undefined, [`H`, `He`, `He`]],
+  ] as const)(`LAMMPS src with atom_type_mapping %o`, async (atom_type_mapping, elements) => {
+    const dump = `ITEM: TIMESTEP\n0\nITEM: NUMBER OF ATOMS\n3\nITEM: BOX BOUNDS pp pp pp\n0 5\n0 5\n0 5
+ITEM: ATOMS id type x y z\n1 1 0 0 0\n2 2 1 1 1\n3 2 2 2 2`
+    const on_file_load = vi.fn<(data: TrajHandlerData) => void>()
+    mount_viewer({
+      src: new File([dump], `dump.lammpstrj`),
+      loading_options: { atom_type_mapping },
+      on_file_load,
+    })
+    await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledOnce())
+    const run = on_file_load.mock.calls[0][0].trajectory
+    expect(run?.preview.structure.sites.map((site) => site.species[0].element)).toEqual(
+      elements,
+    )
+    expect(run?.warnings).toHaveLength(atom_type_mapping ? 0 : 1)
   })
 
   test(`binary src uses filename for detection and reports the full payload`, async () => {
@@ -465,13 +487,25 @@ describe(`drops`, () => {
   })
 })
 
-describe(`HDF5 group picker`, () => {
+// Each group choice mounts the full <Trajectory> viewer (~0.4 s cold for the first 3D mount
+// in a worker, 5-10x that under CPU contention) and the first test does so three times, so
+// the describe gets more than the 5 s default. Parsing a group itself takes ~5 ms.
+describe(`HDF5 group picker`, { timeout: 20_000 }, () => {
+  // Writing the fixture loads and initialises h5wasm (the same instance the passthrough
+  // parse then reuses). That WASM compile is the one slow step here: ~0.7 s alone, several
+  // seconds under CPU contention, so it runs once up front under its own timeout instead
+  // of inside the first test's budget.
+  let ambiguous_bytes: ArrayBuffer
+  beforeAll(async () => {
+    ambiguous_bytes = await make_ambiguous_hdf5()
+  }, 60_000)
+
   const drop_ambiguous = async (props: Props = {}) => {
     passthrough_worker()
     const on_file_load = vi.fn<(data: TrajHandlerData) => void>()
     const on_error = vi.fn<(data: TrajHandlerData) => void>()
     const target = mount_viewer({ on_file_load, on_error, ...props })
-    drop(target, new File([await make_ambiguous_hdf5()], `ambiguous.h5`))
+    drop(target, new File([ambiguous_bytes], `ambiguous.h5`))
     await vi.waitFor(() =>
       expect(target.querySelectorAll(`button[data-hdf5-group]`)).toHaveLength(8),
     )

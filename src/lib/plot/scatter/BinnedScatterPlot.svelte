@@ -27,7 +27,7 @@
   import { get_relative_coords, range_bounds } from '$lib/plot/core/interactions'
   import { create_placed_tween } from '$lib/plot/core/placed-tween.svelte'
   import { element_position_for_footprint, full_footprint_or } from '$lib/plot/core/layout'
-  import { get_series_color } from '$lib/plot/core/data-transform'
+  import { plot_color } from '$lib/colors'
   import type { MarginalSeriesInput, MarginalsProp } from '$lib/plot/core/marginals'
   import {
     add_sides,
@@ -181,7 +181,7 @@
     series.map((srs, idx) => ({
       x: srs.x,
       y: srs.y,
-      color: srs.color ?? get_series_color(idx),
+      color: srs.color ?? plot_color(idx),
       label: srs.label,
       visible: true,
     })),
@@ -510,7 +510,7 @@
     const [x_min, x_max] = range_bounds(x_range)
     const [y_min, y_max] = range_bounds(y_range)
     for (const [series_idx, srs] of series.entries()) {
-      const color = srs.color ?? get_series_color(series_idx)
+      const color = srs.color ?? plot_color(series_idx)
       const n_points = srs.x.length
       for (let point_idx = 0; point_idx < n_points; point_idx++) {
         const x = srs.x[point_idx]
@@ -549,7 +549,7 @@
       if (!Number.isFinite(x) || !Number.isFinite(y)) continue
       if (x < x_min || x > x_max || y < y_min || y > y_max) continue
       const radius = point_radius_for_value(srs.size_values?.[point_idx])
-      const color = srs.color ?? get_series_color(series_idx)
+      const color = srs.color ?? plot_color(series_idx)
       draw_marker(ctx, x_scale_fn(x), y_scale_fn(y), radius, color, 1, pulse)
     }
     ctx.globalAlpha = 1
@@ -636,7 +636,7 @@
   })
 
   const point_color = (point: DenseInternalPoint<Metadata>): string =>
-    series[point.series_idx]?.color ?? get_series_color(point.series_idx)
+    series[point.series_idx]?.color ?? plot_color(point.series_idx)
 
   const point_label_key = (point: DenseInternalPoint<Metadata>): string =>
     `${point.series_idx}-${point.point_idx}`

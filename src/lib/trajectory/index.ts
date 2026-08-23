@@ -111,11 +111,22 @@ export interface TrajectorySignal {
   unit?: string
 }
 
+// A signal the run can stream on request (collect_positions `signal_keys`, or `vector_keys`
+// for a per-atom [n_atoms, 3] signal with one sample per frame) but has not loaded
 export interface TrajectorySignalDescriptor {
   sample_shape: number[]
   sample_count: number
   unit?: string
+  // true when the signal's step axis is the geometry's (one sample per frame, same steps),
+  // decided by the parser that has both axes. Only then may a [n_atoms, 3] signal be
+  // streamed strided beside positions via `vector_keys`; `sample_count === frame_count`
+  // alone does not imply it (a velocity on steps [1, 2, 3, 4] beside frames on [0, 1, 2, 3])
+  frame_aligned?: boolean
 }
+
+// One entry of `TrajectoryRun.signals`: loaded (`values` present) or a lazy descriptor. Use
+// `is_loaded_signal` / `is_signal_descriptor` from run.ts to tell them apart.
+export type TrajectoryRunSignal = TrajectorySignal | TrajectorySignalDescriptor
 
 export type TrajectorySource = string | ArrayBuffer | Blob
 

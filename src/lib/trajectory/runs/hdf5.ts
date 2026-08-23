@@ -15,7 +15,7 @@ export const hdf5_run = (
   provenance: TrajectoryProvenance,
   warnings: readonly string[],
 ): TrajectoryRun => {
-  const { frame_count, atom_masses, signal_descriptors, metadata } = source
+  const { frame_count, atom_masses, signals, metadata } = source
   if (frame_count < 1) throw new Error(`HDF5 trajectory has no frames`)
   const preview = source.read_frame(0)
   const time_step = time_step_of(source.time_step, source.time_unit)
@@ -31,7 +31,7 @@ export const hdf5_run = (
     properties: new TrajectoryProperties(source.properties, true),
     ...(time_step ? { time_step } : {}),
     ...(atom_masses ? { atom_masses } : {}),
-    ...(signal_descriptors ? { signal_descriptors } : {}),
+    ...(signals ? { signals } : {}),
     metadata,
     warnings,
     read_frame: (frame_idx) => {

@@ -1,5 +1,6 @@
 // Mounts Isosurface.svelte against a recording Threlte stub: layer resolution, geometry
 // rebuild/reuse, lobe signs, render ordering and cross-volume vertex coloring.
+import { ISOSURFACE_ERROR_CONTEXT } from '$lib/isosurface/context'
 import Isosurface from '$lib/isosurface/Isosurface.svelte'
 import type {
   IsosurfaceLayer,
@@ -74,14 +75,14 @@ const with_layers = (
   extra: Partial<IsosurfaceSettings> = {},
 ): IsosurfaceSettings => ({ ...DEFAULT_ISOSURFACE_SETTINGS, layers, ...extra })
 
-const mount_isosurface = (overrides: Partial<Props> = {}) => {
+const mount_isosurface = (overrides: Partial<Props> = {}, context?: Map<unknown, unknown>) => {
   const props = $state<Props>({
     volumes: [positive_volume()],
     settings: with_layers([layer(0.3)]),
     active_volume_idx: 0,
     ...overrides,
   })
-  const component = mount(Isosurface, { target: document.body, props })
+  const component = mount(Isosurface, { target: document.body, props, context })
   teardown = () => void unmount(component)
   return props
 }
@@ -266,27 +267,43 @@ describe(`Isosurface`, () => {
   })
 
   // A worker that dies after construction (chunk 404, OOM, module import failure) used to be
-  // console.error'd only, leaving the user staring at an unchanged scene with no explanation
-  test(`worker failure after construction reports through on_error`, async () => {
-    vi.stubGlobal(`Worker`, vi.fn()) // only `typeof Worker` is consulted; the stub never runs
-    compute_geometries_async.mockRejectedValueOnce(
-      new Error(`Failed to fetch dynamically imported module`),
-    )
-    const error_spy = vi.spyOn(console, `error`).mockImplementation(() => {})
-    const on_error = vi.fn()
-    // ≥ 200k grid points routes geometry through the worker
-    const big_n = 59
-    const values = new Float64Array(big_n ** 3).fill(0.1)
-    const vol = positive_volume()
-    const big_volume: VolumetricData = { ...vol, values, dims: [big_n, big_n, big_n] }
-    mount_isosurface({ volumes: [big_volume], on_error })
-    await settle()
-    expect(compute_geometries_async).toHaveBeenCalledTimes(1)
-    expect(on_error).toHaveBeenCalledWith(
-      `Isosurface geometry failed: Failed to fetch dynamically imported module`,
-    )
-    expect(meshes()).toHaveLength(0)
-    expect(error_spy).toHaveBeenCalled()
-    vi.unstubAllGlobals()
-  })
+  // console.error'd only, leaving the user staring at an unchanged scene with no explanation.
+  // Standalone usage reports through the on_error prop; inside a host (Structure) the handler
+  // comes from context, and an explicit prop still wins over it
+  test.each([
+    [`on_error prop`, true, false],
+    [`context handler`, false, true],
+    [`prop over context`, true, true],
+  ])(
+    `worker failure after construction reports through %s`,
+    async (_label, with_prop, with_context) => {
+      vi.stubGlobal(`Worker`, vi.fn()) // only `typeof Worker` is consulted; the stub never runs
+      compute_geometries_async
+        .mockClear()
+        .mockRejectedValueOnce(new Error(`Failed to fetch dynamically imported module`))
+      const error_spy = vi.spyOn(console, `error`).mockImplementation(() => {})
+      const prop_handler = vi.fn()
+      const context_handler = vi.fn()
+      // ≥ 200k grid points routes geometry through the worker
+      const big_n = 59
+      const values = new Float64Array(big_n ** 3).fill(0.1)
+      const vol = positive_volume()
+      const big_volume: VolumetricData = { ...vol, values, dims: [big_n, big_n, big_n] }
+      mount_isosurface(
+        { volumes: [big_volume], on_error: with_prop ? prop_handler : undefined },
+        with_context ? new Map([[ISOSURFACE_ERROR_CONTEXT, context_handler]]) : undefined,
+      )
+      await settle()
+      expect(compute_geometries_async).toHaveBeenCalledTimes(1)
+      const message = `Isosurface geometry failed: Failed to fetch dynamically imported module`
+      const [winner, loser] = with_prop
+        ? [prop_handler, context_handler]
+        : [context_handler, prop_handler]
+      expect(winner).toHaveBeenCalledWith(message)
+      expect(loser).not.toHaveBeenCalled()
+      expect(meshes()).toHaveLength(0)
+      expect(error_spy).toHaveBeenCalled()
+      vi.unstubAllGlobals()
+    },
+  )
 })

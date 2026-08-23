@@ -118,6 +118,29 @@ test(`multi-frame XYZ text opens as a trajectory run`, async () => {
   run.dispose()
 })
 
+// The host's matterviz.trajectory.atom_type_mapping arrives in load_options with string keys
+// (JSON); the LAMMPS reader names the types from it instead of guessing atomic numbers
+test.each([
+  [{ '1': `Si`, '2': `O` }, [`Si`, `O`, `O`], 0],
+  [undefined, [`H`, `He`, `He`], 1],
+] as const)(
+  `LAMMPS dump with atom_type_mapping %o`,
+  async (atom_type_mapping, elements, n_warnings) => {
+    const dump = `ITEM: TIMESTEP\n0\nITEM: NUMBER OF ATOMS\n3\nITEM: BOX BOUNDS pp pp pp\n0 5\n0 5\n0 5
+ITEM: ATOMS id type x y z\n1 1 0 0 0\n2 2 1 1 1\n3 2 2 2 2`
+    const result = await parse_file_content(dump, `dump.lammpstrj`, false, {
+      atom_type_mapping,
+    })
+    expect(result.type).toBe(`trajectory`)
+    const run = result.data as TrajectoryRun
+    expect(run.preview.structure.sites.map((site) => site.species[0].element)).toEqual(
+      elements,
+    )
+    expect(run.warnings).toHaveLength(n_warnings)
+    run.dispose()
+  },
+)
+
 test.each([
   [`data.json.xz`, `XZ decompression is not supported`],
   [`data.json.bz2`, `BZ2 decompression is not supported`],
@@ -314,6 +337,7 @@ describe(`create_display trajectory display options`, () => {
       `loading_options`,
       `spinner_props`,
       `index_above_bytes`,
+      `atom_type_mapping`,
       `allow_file_drop`,
       `enable_tips`,
     ]) {

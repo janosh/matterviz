@@ -755,7 +755,16 @@ const parse_torch_sim_datasets = (
       ...(Object.keys(signals).length > 0 ? { signals } : {}),
     }
   }
-  const signal_descriptors = describe_signals(signal_manifest, (signal) => signal.steps.length)
+  // One sample per surviving frame on exactly the geometry steps: only such a signal can be
+  // streamed strided beside positions (`vector_keys`)
+  const shares_geometry_steps = (signal: TorchSimSignalManifest): boolean =>
+    signal.steps.length === valid_frame_count &&
+    signal.steps.every((step, frame_idx) => step === steps[frame_idx])
+  const signal_descriptors = describe_signals(
+    signal_manifest,
+    (signal) => signal.steps.length,
+    shares_geometry_steps,
+  )
   const collect_positions = (
     options: PositionStreamOptions = {},
   ): TrajectoryPositionStream => {
@@ -798,10 +807,7 @@ const parse_torch_sim_datasets = (
     const vectors = Object.fromEntries(
       vector_keys.map((key) => {
         const signal = signal_manifest[key]
-        if (
-          signal.steps.length !== valid_frame_count ||
-          signal.steps.some((step, frame_idx) => step !== steps[frame_idx])
-        ) {
+        if (!shares_geometry_steps(signal)) {
           throw new Error(`TorchSim HDF5 vector ${key} does not share geometry steps`)
         }
         return [
@@ -849,7 +855,7 @@ const parse_torch_sim_datasets = (
     read_frame: load_frame,
     properties: sampled_properties(),
     collect_positions,
-    ...(Object.keys(signal_descriptors).length > 0 ? { signal_descriptors } : {}),
+    ...(Object.keys(signal_descriptors).length > 0 ? { signals: signal_descriptors } : {}),
   }
 }
 

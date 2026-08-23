@@ -70,6 +70,13 @@ export const active_auto_render_panels = new Map<string, vscode.WebviewPanel>()
 // Set from context.extension.packageJSON on activation (importing ../package.json would embed
 // the whole manifest in the bundle)
 let extension_version = `unknown`
+// "MatterViz" entry in the Output panel. Render confirmations land here rather than as toasts:
+// with auto-save every keystroke re-renders, and a notification per render buried the editor
+let output_channel: vscode.LogOutputChannel | undefined
+export const log_info = (message: string): void => {
+  output_channel ??= vscode.window.createOutputChannel(`MatterViz`, { log: true })
+  output_channel.info(message)
+}
 
 // The hashed `<prefix>*<suffix>` file in dist/assets, if the build output is there (it is
 // not in tests)
@@ -320,7 +327,7 @@ export const handle_msg = async (
   webview?: WebviewLike,
 ): Promise<void> => {
   if (msg.command === `info` && msg.text) {
-    vscode.window.showInformationMessage(msg.text)
+    log_info(msg.text)
   } else if (msg.command === `error` && msg.text) {
     vscode.window.showErrorMessage(msg.text)
   } else if (msg.command === `request_large_file` && msg.file_path && webview) {
@@ -676,7 +683,7 @@ class Provider implements vscode.CustomReadonlyEditorProvider {
 // Activate extension
 export const activate = (context: vscode.ExtensionContext) => {
   extension_version = String(context.extension.packageJSON.version)
-  console.info(`MatterViz extension activated (v${extension_version})`)
+  log_info(`MatterViz extension activated (v${extension_version})`)
 
   // Set initial context for currently active editor
   update_supported_resource_context(vscode.window.activeTextEditor?.document.uri)
@@ -871,4 +878,6 @@ export const deactivate = (): void => {
   for (const run of active_runs.values()) run.dispose()
   active_runs.clear()
   active_auto_render_panels.clear()
+  output_channel?.dispose()
+  output_channel = undefined
 }

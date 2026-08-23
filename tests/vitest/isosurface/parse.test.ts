@@ -874,8 +874,13 @@ describe(`parse_volumetric_file`, () => {
 
   // === Plain POSCAR not misidentified as CHGCAR ===
 
-  test(`does not misidentify plain POSCAR as CHGCAR`, () => {
-    // POSCAR has the same header format as CHGCAR but no grid dimensions line
+  // POSCAR has the same header as CHGCAR; only a blank line followed by the grid-dimension
+  // integers marks a CHGCAR, so integer coordinates (`0 0 0`) alone must not be mistaken for it
+  test.each([
+    [`fractional coordinates`, [`  0.0  0.0  0.0`, `  0.5  0.5  0.5`]],
+    [`integer coordinates`, [`0 0 0`, `1 1 1`]],
+    [`a trailing blank line`, [`0 0 0`, `1 1 1`, ``]],
+  ])(`does not misidentify a plain POSCAR with %s as CHGCAR`, (_label, coords) => {
     const poscar = [
       `Si2`,
       `   1.0`,
@@ -885,10 +890,8 @@ describe(`parse_volumetric_file`, () => {
       `   Si`,
       `   2`,
       `Direct`,
-      `  0.0  0.0  0.0`,
-      `  0.5  0.5  0.5`,
+      ...coords,
     ].join(`\n`)
-    const result = parse_volumetric_file(poscar, `unknown.dat`)
-    expect(result).toBeNull()
+    expect(parse_volumetric_file(poscar, `unknown.dat`)).toBeNull()
   })
 })

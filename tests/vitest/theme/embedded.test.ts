@@ -85,6 +85,32 @@ describe(`embedded theme helpers`, () => {
     expect(detect_parent_theme(inner)).toBe(`dark`)
   })
 
+  // A declared marker further up the hierarchy beats colour sniffing lower down: a shadow host
+  // (marimo cell) with its own panel background inside a data-theme page takes the page's
+  // theme. Regression: each ancestor used to be sniffed before the walk reached the marker
+  test.each([
+    [`dark`, `#fff`, `light`],
+    [`light`, `#000`, `dark`],
+  ] as const)(
+    `data-theme=%s ancestor beats a %s shadow host background`,
+    async (declared, host_bg, sniffed) => {
+      const { detect_parent_theme } = await import(`$lib/theme/embedded`)
+      const page = document.createElement(`div`)
+      page.dataset.theme = declared
+      document.body.append(page)
+      const host = document.createElement(`div`)
+      host.style.backgroundColor = host_bg
+      page.append(host)
+      const inner = document.createElement(`div`)
+      host.attachShadow({ mode: `open` }).append(inner)
+
+      expect(detect_parent_theme(inner)).toBe(declared)
+      // without a declared marker above, the host's own background decides
+      delete page.dataset.theme
+      expect(detect_parent_theme(inner)).toBe(sniffed)
+    },
+  )
+
   // Host signals must beat the OS preference: a dark JupyterLab on a light OS is dark.
   // Regression: matchMedia used to be consulted before the host branches, making them dead.
   test.each([

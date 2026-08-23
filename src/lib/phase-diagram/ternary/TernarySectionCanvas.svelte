@@ -12,6 +12,7 @@
     draw_hull_points,
     face_color_resolver,
     find_hull_entry_at_mouse,
+    type LabelOpts,
     type Projected,
   } from '$lib/convex-hull/canvas-draw'
   import { get_energy_color_scale, merge_highlight_style } from '$lib/convex-hull/helpers'
@@ -51,6 +52,7 @@
   } = $props()
 
   let canvas = $state<HTMLCanvasElement>()
+  let overlay_canvas = $state<HTMLCanvasElement>()
   let hover_composition = $state<{ xy: Vec2; decomposition: Decomposition } | null>(null)
   let hover_phase: number | null = null
 
@@ -162,7 +164,58 @@
     ctx.stroke()
   }
 
-  function draw_frame({ ctx, width, height, text_color }: CanvasFrame): void {
+  // Tie-triangles and their colours, shared by the base (all faces) and the overlay (the
+  // hovered face), so a hover doesn't rebuild the face list
+  const faces = $derived(
+    build_hull_faces(
+      section.facets.flatMap((facet) => {
+        const entries = facet.map((idx) => hull_entries[idx])
+        return entries.every((entry) => entry !== null) ? [entries] : []
+      }),
+      project,
+    ),
+  )
+  const face_color = $derived(
+    face_color_resolver(faces, {
+      mode: settings.face_color_mode,
+      uniform_color: TERNARY_COLORS.face,
+      color_scale: settings.color_scale,
+      element_colors: default_element_colors,
+      elements: model.elements,
+    }),
+  )
+  // Stable-first paint order reversed so stable vertices sit on top
+  const points = $derived(
+    by_stability
+      .toReversed()
+      .map((entry) => ({ entry, projected: project(entry.x, entry.y) })),
+  )
+  const point_opts = $derived({
+    scale: layout.scale,
+    shadow_factor: 0,
+    selected_entry: null,
+    is_highlighted: () => false,
+    get_point_color: point_color,
+    highlight_style,
+  })
+
+  // Shared by the base and the overlay so a label repainted on the overlay lands on its
+  // base placement (placement is order-dependent across all entries)
+  const label_opts = ({ width, height, text_color }: CanvasFrame): LabelOpts => ({
+    project,
+    elements: model.elements,
+    scale: layout.scale,
+    text_color,
+    width,
+    height,
+    show_stable_labels: settings.show_stable_labels,
+    show_unstable_labels: settings.show_unstable_labels,
+    max_hull_dist_show_labels: settings.max_e_above_hull,
+  })
+
+  // Base layer: everything that doesn't change while the pointer moves
+  function draw_frame(frame: CanvasFrame): void {
+    const { ctx, text_color } = frame
     const { scale } = layout
     const [corner_a, corner_b, corner_c] = TRIANGLE_VERTICES
     if (settings.show_grid) {
@@ -188,33 +241,11 @@
     }
 
     // Tie-triangles
-    const faces = build_hull_faces(
-      section.facets.flatMap((facet) => {
-        const entries = facet.map((idx) => hull_entries[idx])
-        return entries.every((entry) => entry !== null) ? [entries] : []
-      }),
-      project,
-    )
-    const color_of = face_color_resolver(faces, {
-      mode: settings.face_color_mode,
-      uniform_color: TERNARY_COLORS.face,
-      color_scale: settings.color_scale,
-      element_colors: default_element_colors,
-      elements: model.elements,
-    })
-    const hovered = hover_composition?.decomposition.phases.map((idx) => hull_entries[idx])
     for (const face of faces) {
-      const is_hovered =
-        hovered?.every((entry) => entry && face.vertices.includes(entry)) ?? false
       const fill = settings.show_tie_triangles
-        ? add_alpha(
-            color_of(face),
-            is_hovered ? Math.min(1, settings.face_opacity + 0.25) : settings.face_opacity,
-          )
-        : add_alpha(color_of(face), is_hovered ? 0.2 : 0)
-      const stroke = settings.show_tie_lines
-        ? add_alpha(text_color, is_hovered ? 0.9 : 0.45)
+        ? add_alpha(face_color(face), settings.face_opacity)
         : `transparent`
+      const stroke = settings.show_tie_lines ? add_alpha(text_color, 0.45) : `transparent`
       draw_face(ctx, face.projected, fill, stroke)
     }
     ctx.strokeStyle = add_alpha(text_color, 0.6)
@@ -224,7 +255,49 @@
       TRIANGLE_VERTICES.map(([x_pos, y_pos]) => project(x_pos, y_pos)),
       true,
     )
+    draw_hull_points(ctx, points, point_opts)
+    draw_hull_labels(ctx, visible_entries, label_opts(frame))
+    draw_corner_labels(ctx, TRIANGLE_VERTICES, [0.5, TRIANGLE_HEIGHT / 3], {
+      project,
+      elements: model.elements,
+      text_color,
+      font_size: 14,
+      offset: 0.045,
+    })
+  }
 
+  // Overlay layer: hover + selection decorations, repainted without touching the section
+  function draw_overlay(frame: CanvasFrame): void {
+    const { ctx, width, height, text_color } = frame
+    ctx.clearRect(0, 0, width, height)
+    const { scale } = layout
+    const hovered = hover_composition?.decomposition.phases.map((idx) => hull_entries[idx])
+    // Faces containing every phase of the assemblage: the tie-triangle around an interior
+    // composition, or both neighbours of a tie-line
+    const hovered_faces = hovered
+      ? faces.filter((face) =>
+          hovered.every((entry) => entry && face.vertices.includes(entry)),
+        )
+      : []
+    if (hovered_faces.length > 0) {
+      const stroke = settings.show_tie_lines ? add_alpha(text_color, 0.9) : `transparent`
+      for (const face of hovered_faces) {
+        const fill = add_alpha(face_color(face), settings.show_tie_triangles ? 0.25 : 0.2)
+        draw_face(ctx, face.projected, fill, stroke)
+      }
+      // The tint covers the base; repaint the faces' vertices and their labels so the
+      // markers stay crisp and the formula text isn't washed out
+      const vertices = new Set<ConvexHullEntry>(hovered_faces.flatMap((face) => face.vertices))
+      draw_hull_points(
+        ctx,
+        points.filter(({ entry }) => vertices.has(entry)),
+        point_opts,
+      )
+      draw_hull_labels(ctx, visible_entries, {
+        ...label_opts(frame),
+        paint_only: (entry) => vertices.has(entry),
+      })
+    }
     // Composition probe: dashed spokes to the tie-triangle vertices
     if (hover_composition) {
       const point = project(...hover_composition.xy)
@@ -245,76 +318,37 @@
         ring(ctx, project(...model.phases[idx].xy), 11 * scale, TERNARY_COLORS.highlight)
       }
     }
-
-    // Points, unstable first so stable vertices sit on top; the shared helper skips selected
-    // and highlighted points (the 3D hull animates them on an overlay), so draw those after
-    const points = by_stability
-      .toReversed()
-      .map((entry) => ({ entry, projected: project(entry.x, entry.y) }))
+    // Selected/highlighted points: ring, then the marker again on top of it
     const selected_entry =
       selected_phase === null ? null : (hull_entries[selected_phase] ?? null)
-    // Identity is valid here: every point passed below comes from this frame's hull_entries
-    const highlighted = new Set<ConvexHullEntry | null | undefined>(
+    // Identity is valid here: points and hull_entries come from the same derivation
+    const highlighted = new Set<ConvexHullEntry | null>(
       highlighted_phases.map((idx) => hull_entries[idx]),
     )
-    const is_highlighted = (entry: ConvexHullEntry) => highlighted.has(entry)
-    const opts = {
-      scale,
-      shadow_factor: 0,
-      selected_entry,
-      is_highlighted,
-      get_point_color: point_color,
-      highlight_style,
-    }
-    draw_hull_points(ctx, points, opts)
     for (const point of points) {
       const selected = point.entry === selected_entry
-      if (!selected && !is_highlighted(point.entry)) continue
+      if (!selected && !highlighted.has(point.entry)) continue
       ring(
         ctx,
         point.projected,
         9 * scale,
         selected ? TERNARY_COLORS.selected : TERNARY_COLORS.highlight,
       )
-      draw_hull_points(ctx, [point], {
-        ...opts,
-        selected_entry: null,
-        is_highlighted: () => false,
-      })
+      draw_hull_points(ctx, [point], point_opts)
     }
-    draw_hull_labels(ctx, visible_entries, {
-      project,
-      elements: model.elements,
-      scale,
-      text_color,
-      width,
-      height,
-      show_stable_labels: settings.show_stable_labels,
-      show_unstable_labels: settings.show_unstable_labels,
-      max_hull_dist_show_labels: settings.max_e_above_hull,
-    })
-    draw_corner_labels(ctx, TRIANGLE_VERTICES, [0.5, TRIANGLE_HEIGHT / 3], {
-      project,
-      elements: model.elements,
-      text_color,
-      font_size: 14,
-      offset: 0.045,
-    })
   }
 
   const surface = create_canvas_surface({
     canvas: () => canvas,
+    overlay_canvas: () => overlay_canvas,
     draw: draw_frame,
-    repaint_deps: () => [
-      section,
-      visible_entries,
-      layout,
-      settings,
-      selected_phase,
-      highlighted_phases,
-      emphasized_phases,
-      hover_composition,
-    ],
+    draw_overlay,
+    repaint_deps: () => [section, visible_entries, faces, points, point_opts, settings],
+  })
+  // Hover and selection only repaint the overlay (the base is several hundred paths)
+  $effect(() => {
+    void [hover_composition, selected_phase, highlighted_phases, emphasized_phases]
+    surface.schedule(false)
   })
 
   // === Pointer ===
@@ -366,6 +400,7 @@
     onpointerleave={handle_pointer_leave}
     onclick={handle_click}
   ></canvas>
+  <canvas bind:this={overlay_canvas} class="pulse-overlay" aria-hidden="true"></canvas>
 </div>
 
 <style>
@@ -379,5 +414,10 @@
     display: block;
     width: 100%;
     height: 100%;
+  }
+  canvas.pulse-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
   }
 </style>

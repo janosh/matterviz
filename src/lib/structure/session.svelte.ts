@@ -334,9 +334,6 @@ export class StructureSession {
   // Set before every internal structure write so the invalidation effect keeps history and
   // selection for the session's own edits (external loads/frames clear both)
   private is_internal_edit = false
-  // The structure this session last wrote, read back through the binding so a proxied prop
-  // compares equal; lets the loader keep attributing an edited URL-loaded structure to its URL
-  last_edited_structure = $state.raw<AnyStructure | undefined>(undefined)
 
   // === edit-bonds ===
   added_bonds = $state<StructureBond[]>([])
@@ -590,7 +587,6 @@ export class StructureSession {
   private write_structure(next: AnyStructure): void {
     this.is_internal_edit = true
     this.inputs.set_structure(next)
-    this.last_edited_structure = this.inputs.structure()
   }
 
   // Index into base_structure of a displayed site: image atoms name the site they mirror and

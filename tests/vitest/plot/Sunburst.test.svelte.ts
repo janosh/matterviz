@@ -1,6 +1,6 @@
 import { Sunburst } from '$lib'
 import type { PositionedArc, SunburstNode, SunburstNodeHandlerProps } from '$lib/plot'
-import { DEFAULT_SERIES_COLORS } from '$lib/plot'
+import { PLOT_COLORS } from '$lib/colors'
 import { type ComponentProps, flushSync, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { mount_sized, resize_element } from '../setup'
@@ -81,7 +81,7 @@ describe(`Sunburst`, () => {
     const fill = (label: keyof typeof IDX) => arc_path(plot, label).getAttribute(`fill`)
     expect(fill(`A`)).toBe(`#e15759`) // explicit
     expect(fill(`A1`)).toBe(`#e15759`) // inherited
-    expect(fill(`B`)).toBe(DEFAULT_SERIES_COLORS[0]) // palette
+    expect(fill(`B`)).toBe(PLOT_COLORS[0]) // palette
   })
 
   test(`forwards group gaps into arc projection`, async () => {

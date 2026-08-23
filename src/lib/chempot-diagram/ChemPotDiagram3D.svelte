@@ -946,42 +946,95 @@
     },
   ])
 
-  // Build formula overlay edge geometries (per formula, colored) using crease edges
-  const formula_edge_data = $derived.by(() => {
-    if (!draw_formula_lines || formulas_to_draw.length === 0) return []
-    const result: { geometry: THREE.BufferGeometry; color: string }[] = []
-    for (const domain of render_domains) {
-      if (!overlay_formulas.has(domain.formula)) continue
-      const color_idx = formulas_to_draw.indexOf(domain.formula) % formula_colors.length
-      const positions = domain.edges.flatMap(([pt_a, pt_b]) => [
-        ...to_render_xyz(pt_a),
-        ...to_render_xyz(pt_b),
-      ])
-      const geom = new THREE.BufferGeometry()
-      geom.setAttribute(`position`, new THREE.Float32BufferAttribute(positions, 3))
-      result.push({ geometry: geom, color: formula_colors[color_idx] })
+  // Overlay geometry is per domain and depends only on that domain's points and the axis
+  // stretch, so it is cached per formula and kept while the formula stays an overlay:
+  // toggling one overlay builds one hull instead of every overlay's (k + 1 ConvexGeometry
+  // builds per toggle with k overlays, now 2 — the other is the base occlusion hull).
+  // Geometries evicted from the cache (formula un-drawn, domain or stretch changed) are
+  // queued in `evicted_geometries` and disposed by the effect after the mesh/edge data
+  // deriveds: the scene meshes may still reference them during the flush that evicts them.
+  // The teardown effect disposes whatever is left on unmount.
+  const evicted_geometries: THREE.BufferGeometry[] = []
+  type OverlayGeometry = { geometry: THREE.BufferGeometry; color: string }
+  function memo_overlay_geometry(
+    build: (domain: RenderDomain) => THREE.BufferGeometry | null,
+  ): (domains: RenderDomain[]) => OverlayGeometry[] {
+    type Entry = {
+      domain: RenderDomain
+      swiz: typeof swiz
+      geometry: THREE.BufferGeometry | null
     }
-    return result
-  })
-
-  // Build formula overlay mesh geometries (convex hull surface)
-  const formula_mesh_data = $derived.by(() => {
-    const result: { geometry: THREE.BufferGeometry; color: string }[] = []
-    if (!draw_formula_meshes) return result
-    for (const domain of render_domains) {
-      if (!overlay_formulas.has(domain.formula) || domain.points_3d.length < 4) continue
-      const color_idx = formulas_to_draw.indexOf(domain.formula) % formula_colors.length
-      const unique = dedup_3d(domain.points_3d)
-      if (unique.length < 4) continue
-      const vectors = unique.map((pt) => to_vec3(pt))
-      try {
-        const geom = merge_coplanar_geometry(new ConvexGeometry(vectors))
-        result.push({ geometry: geom, color: formula_colors[color_idx] })
-      } catch {
-        // Degenerate hull, skip
+    let cache = new Map<string, Entry>()
+    $effect(() => () => {
+      for (const { geometry } of cache.values()) geometry?.dispose()
+      cache.clear()
+    })
+    return (domains) => {
+      const next = new Map<string, Entry>()
+      const result: OverlayGeometry[] = []
+      for (const domain of domains) {
+        const cached = cache.get(domain.formula)
+        const entry =
+          cached?.domain === domain && cached.swiz === swiz
+            ? cached
+            : { domain, swiz, geometry: build(domain) }
+        next.set(domain.formula, entry)
+        if (entry.geometry) {
+          result.push({ geometry: entry.geometry, color: overlay_color(domain.formula) })
+        }
       }
+      for (const [formula, entry] of cache) {
+        if (next.get(formula) !== entry && entry.geometry) {
+          evicted_geometries.push(entry.geometry)
+        }
+      }
+      cache = next
+      return result
     }
-    return result
+  }
+  const overlay_domains = $derived(
+    render_domains.filter((domain) => overlay_formulas.has(domain.formula)),
+  )
+  const overlay_color = (formula: string): string =>
+    formula_colors[formulas_to_draw.indexOf(formula) % formula_colors.length]
+
+  // Formula overlay edges (crease edges, per formula)
+  const overlay_edge_geometries = memo_overlay_geometry((domain) => {
+    const positions = domain.edges.flatMap(([pt_a, pt_b]) => [
+      ...to_render_xyz(pt_a),
+      ...to_render_xyz(pt_b),
+    ])
+    const geom = new THREE.BufferGeometry()
+    geom.setAttribute(`position`, new THREE.Float32BufferAttribute(positions, 3))
+    return geom
+  })
+  const formula_edge_data = $derived(
+    overlay_edge_geometries(draw_formula_lines ? overlay_domains : []),
+  )
+
+  // Formula overlay meshes (convex hull surface, per formula)
+  const overlay_mesh_geometries = memo_overlay_geometry((domain) => {
+    if (domain.points_3d.length < 4) return null
+    const unique = dedup_3d(domain.points_3d)
+    if (unique.length < 4) return null
+    try {
+      return merge_coplanar_geometry(new ConvexGeometry(unique.map((pt) => to_vec3(pt))))
+    } catch {
+      return null // degenerate hull
+    }
+  })
+  const formula_mesh_data = $derived(
+    overlay_mesh_geometries(draw_formula_meshes ? overlay_domains : []),
+  )
+  // Runs after the deriveds above settle (and the scene has the new lists), so no mesh
+  // still points at a geometry when it is disposed
+  const dispose_evicted = () => {
+    for (const geometry of evicted_geometries.splice(0)) geometry.dispose()
+  }
+  $effect(() => {
+    void [formula_edge_data, formula_mesh_data]
+    dispose_evicted()
+    return dispose_evicted
   })
 
   function get_touches_limits(points_3d: number[][], lims: Vec2[]): string[] {
@@ -1138,8 +1191,7 @@
 
   dispose_on_change(() => [edge_geometry])
   dispose_on_change(() => [occlusion_hull_geometry])
-  dispose_on_change(() => formula_edge_data.map((data) => data.geometry))
-  dispose_on_change(() => formula_mesh_data.map((data) => data.geometry))
+  // formula_edge_data/formula_mesh_data geometries are owned by their per-formula caches
   dispose_on_change(() => hover_geometries.map((data) => data.geometry))
 
   let label_occlusion_frame: number | null = null

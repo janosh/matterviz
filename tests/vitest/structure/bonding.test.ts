@@ -1543,7 +1543,8 @@ describe(`neighbor_query`, () => {
   // cube-root widening of a cubic bin left that axis with ~span/bin bins (5e7 bins at 1e11 A,
   // tens of GB at 1e14 A); a cubic bin widened until the grid fits put the whole cluster into
   // one bin, so the sweep went O(n^2) (50k atoms: 0.1 -> 4 s). Only the stretched axis may
-  // widen; the cluster must stay spread over the other two.
+  // widen; the cluster must stay spread over the other two. The memory blow-up surfaces here
+  // as an allocation failure; the O(n^2) one is timed in perf-baselines.test.ts.
   test.each([
     [1e6, 10],
     [1e11, 10],
@@ -1558,9 +1559,7 @@ describe(`neighbor_query`, () => {
     ])
     xyzs.push([far, 0, 0])
     const cloud = make_molecule(xyzs.map((xyz) => [`C`, xyz]))
-    const started = performance.now()
     const list = bonding.neighbor_query(cloud, { cutoff: 1.2 })
-    expect(performance.now() - started).toBeLessThan(edge > 10 ? 1000 : 500)
     // cubic grid at 1.1 A: 3 edge^2 (edge - 1) axis-adjacent pairs, each listed from both ends
     expect(list.neighbors).toHaveLength(6 * edge ** 2 * (edge - 1))
     expect(

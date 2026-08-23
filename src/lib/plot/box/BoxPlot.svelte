@@ -31,7 +31,8 @@
   import type { MarginalSeriesInput, MarginalsProp } from '$lib/plot/core/marginals'
   import { normalize_marginals } from '$lib/plot/core/marginals'
   import { build_obstacles_norm, clip_bar } from '$lib/plot/core/decorations'
-  import { build_legend_items, get_series_color } from '$lib/plot/core/data-transform'
+  import { plot_color } from '$lib/colors'
+  import { build_legend_items } from '$lib/plot/core/data-transform'
   import { compute_box_stats } from '$lib/plot/box/box-plot'
   import { gaussian_kde, type KdeResult } from '$lib/plot/box/kde'
   import { create_cartesian_frame } from '$lib/plot/core/cartesian-frame.svelte'
@@ -246,7 +247,7 @@
   let indexed_ref_lines = $derived(index_ref_lines(ref_lines))
 
   // === Box stats + slot model ===
-  const box_color = (idx: number): string => series[idx]?.color ?? get_series_color(idx)
+  const box_color = (idx: number): string => series[idx]?.color ?? plot_color(idx)
 
   // Which glyph(s) a series draws (per-series kind overrides the component default)
   const effective_kind = (srs: BoxPlotSeries<Metadata>): ViolinKind => srs.kind ?? kind

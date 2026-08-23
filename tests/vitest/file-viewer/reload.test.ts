@@ -202,6 +202,41 @@ test(`serializes reloads and guards cleanup, markers, and initialization`, async
   expect(mount).toHaveBeenCalledTimes(mount_count)
 })
 
+// matterviz.trajectory.atom_type_mapping is a parser input, not a component prop: it rides in
+// load_options next to index_above_bytes, and the empty default is omitted so the LAMMPS
+// reader keeps guessing (and warning) the way it does without any host. A settings.json
+// `null` (which merge() passes through in place of the default) counts as unset too
+test(`the atom_type_mapping setting reaches the parser and an empty or null map is omitted`, async () => {
+  parse_file_content.mockResolvedValueOnce(result(`dump`))
+  await boot(`dump`)
+  expect(parse_in_worker).toHaveBeenLastCalledWith(
+    `dump`,
+    `dump.json`,
+    false,
+    expect.objectContaining({ load_options: { index_above_bytes: 4096 } }),
+  )
+
+  const mapping = { 1: `Si`, 2: `O` }
+  const cases: [unknown, Record<string, unknown>][] = [
+    [mapping, { index_above_bytes: 4096, atom_type_mapping: mapping }],
+    [null, { index_above_bytes: 4096 }],
+  ]
+  for (const [idx, [atom_type_mapping, load_options]] of cases.entries()) {
+    parse_file_content.mockResolvedValueOnce(result(`dump`))
+    post_settings(`light`, { trajectory: { index_above_bytes: 4096, atom_type_mapping } })
+    // a parsed result is remounted, not re-parsed, so re-read the file to see the new options
+    await vi.waitFor(() => expect(mount).toHaveBeenCalledTimes(idx + 2))
+    update_file(`dump`)
+    await vi.waitFor(() => expect(parse_in_worker).toHaveBeenCalledTimes(idx + 2))
+    expect(parse_in_worker).toHaveBeenLastCalledWith(
+      `dump`,
+      `dump.json`,
+      false,
+      expect.objectContaining({ load_options }),
+    )
+  }
+})
+
 // A host theme/settings change must not re-read or re-parse the file (the host may have
 // rendered an unsaved editor buffer): theme is applied to the DOM, changed defaults remount
 // the already-parsed result, unchanged defaults are a no-op

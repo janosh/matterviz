@@ -2,7 +2,7 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
-  import { type D3InterpolateName, resolve_computed_color } from '$lib/colors'
+  import { type D3InterpolateName, plot_color, resolve_computed_color } from '$lib/colors'
   import { format_value, format_value_or_num } from '$lib/labels'
   import { sanitize_html } from '$lib/sanitize'
   import { partition_point, type Point2D, type Vec2 } from '$lib/math'
@@ -60,11 +60,7 @@
     X2_AXIS_DEFAULTS,
   } from '$lib/plot/core/axis-utils'
   import type { AxisChangeState } from '$lib/plot/core/axis-utils'
-  import {
-    first_point_style,
-    get_series_color,
-    get_series_symbol,
-  } from '$lib/plot/core/data-transform'
+  import { first_point_style, get_series_symbol } from '$lib/plot/core/data-transform'
   import type { FacetLayoutContext } from '$lib/plot/core/facets'
   import { build_obstacles_norm } from '$lib/plot/core/decorations'
   import {
@@ -548,7 +544,7 @@
         color:
           srs?.line_style?.stroke ??
           first_point_style(srs)?.fill ??
-          get_series_color(srs?.orig_series_idx ?? idx),
+          plot_color(srs?.orig_series_idx ?? idx),
         label: srs?.label,
         visible: srs?.visible ?? true,
         x_axis: srs?.x_axis,
@@ -636,7 +632,7 @@
       : [3, 2.5]
     const default_radius =
       visible_marker_count >= DENSE_MARKER_COUNT ? dense_radius : sparse_radius
-    const default_fill = get_series_color(series_idx)
+    const default_fill = plot_color(series_idx)
     // styles.point.symbol_type is only ever set by a caller (DEFAULTS.scatter.point has none),
     // so it needs no touched gate: it replaces the per-series cycle, never an authored style
     const default_symbol = point_ctrl?.symbol_type ?? get_series_symbol(series_idx)
@@ -1376,7 +1372,7 @@
       {#each filtered_series as series_data (series_data._id)}
         {#if (series_data.markers ?? DEFAULT_MARKERS).includes(`line`)}
           {@const project = series_projector(series_data)}
-          {@const series_default_color = get_series_color(series_data.orig_series_idx ?? 0)}
+          {@const series_default_color = plot_color(series_data.orig_series_idx ?? 0)}
           {@const apply_line_controls = applies_style_controls(series_data)}
           {@const ls = series_data.line_style}
           {@const tc = (key: string) => apply_line_controls && touched.has(key)}

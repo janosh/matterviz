@@ -12,9 +12,6 @@ import {
 import type { DensePointSeries } from '$lib/plot/scatter/adaptive-density'
 import { describe, expect, it } from 'vitest'
 
-const CI_MULTIPLIER = [`true`, `1`].includes(process.env.CI ?? ``) ? 5 : 1
-const PSEUDO_RANDOM_MULTIPLIER = 48_271
-
 describe(`adaptive density utilities`, () => {
   const series: DensePointSeries<{ id: string }>[] = [
     {
@@ -284,25 +281,4 @@ describe(`adaptive density utilities`, () => {
       expect(bin?.y_range.map(Math.round)).toEqual([10, 100])
     })
   })
-
-  it(`bins one million finite points below the interaction latency budget`, () => {
-    const n_points = 1_000_000
-    const x = new Float32Array(n_points)
-    const y = new Float32Array(n_points)
-    for (let idx = 0; idx < n_points; idx++) {
-      x[idx] = (idx % 10_000) / 10_000
-      y[idx] = ((idx * PSEUDO_RANDOM_MULTIPLIER) % 1_000_000) / 1_000_000
-    }
-
-    const start = performance.now()
-    const result = bin_points([{ x, y }], [0, 1], [0, 1], 512, 512)
-    const elapsed_ms = performance.now() - start
-
-    expect(result.visible_count).toBe(n_points)
-    expect(result.max_count).toBeGreaterThan(0)
-    expect(
-      elapsed_ms,
-      `1M-point density binning took ${elapsed_ms.toFixed(1)}ms`,
-    ).toBeLessThan(500 * CI_MULTIPLIER)
-  }, 10_000)
 })

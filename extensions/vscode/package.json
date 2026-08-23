@@ -1,7 +1,7 @@
 {
   "name": "matterviz",
   "displayName": "MatterViz",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Visualize crystal structures and MD trajectories in VSCode",
   "categories": [
     "Data Science",
@@ -518,9 +518,12 @@
           "maximum": 4
         },
         "matterviz.structure.vector_configs": {
-          "type": "string",
+          "type": "object",
           "default": {},
-          "description": "Per-key configuration for site vector layers. Keys map to site property names (e.g. force, magmom, force_DFT). Auto-populated when a structure with vector data loads."
+          "description": "Per-key configuration for site vector layers. Keys map to site property names (e.g. force, magmom, force_DFT). Auto-populated when a structure with vector data loads.",
+          "additionalProperties": {
+            "type": "object"
+          }
         },
         "matterviz.structure.vector_scale": {
           "type": "number",
@@ -926,6 +929,14 @@
           "description": "Trajectory files (XYZ, EXTXYZ, ASE .traj) larger than this many bytes are parsed in a Web Worker and decoded frame by frame on demand instead of all at once",
           "minimum": 1000000,
           "maximum": 2000000000
+        },
+        "matterviz.trajectory.atom_type_mapping": {
+          "type": "object",
+          "default": {},
+          "description": "Element symbol for each LAMMPS dump atom type, e.g. { \"1\": \"Si\", \"2\": \"O\" }. Dumps rarely carry an element column; unmapped types are read as atomic numbers (type 1 = H, 2 = He, ...)",
+          "additionalProperties": {
+            "type": "string"
+          }
         },
         "matterviz.histogram.mode": {
           "type": "string",

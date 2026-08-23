@@ -36,7 +36,8 @@
   import * as THREE from 'three/webgpu'
   import { Line2 } from 'three/examples/jsm/lines/webgpu/Line2.js'
   import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js'
-  import { first_point_style, get_series_color } from '$lib/plot/core/data-transform'
+  import { plot_color } from '$lib/colors'
+  import { first_point_style } from '$lib/plot/core/data-transform'
   import { normalize_to_scene } from '$lib/plot/core/reference-line'
   import ReferenceLine3D from '$lib/plot/core/components/ReferenceLine3D.svelte'
   import ReferencePlane from '$lib/plot/core/components/ReferencePlane.svelte'
@@ -53,7 +54,7 @@
     surfaces = [],
     ref_lines = [],
     ref_planes = [],
-    color_scale_fn = () => get_series_color(0),
+    color_scale_fn = () => plot_color(0),
     size_scale = SCALE_DEFAULTS.size_3d,
     camera_position = [10, 10, 10] as Vec3,
     camera_projection = `perspective` as CameraProjection3D,
@@ -309,7 +310,7 @@
       const color =
         pt.color_value != null
           ? color_scale_fn(pt.color_value)
-          : (pt.point_style?.fill ?? get_series_color(pt.series_idx))
+          : (pt.point_style?.fill ?? plot_color(pt.series_idx))
       const radius =
         pt.size_value != null
           ? size_scale_fn(pt.size_value)
@@ -370,8 +371,7 @@
       if (!line_style || !(srs.visible ?? true)) continue
       const positions: number[] = []
       positions_by_series.set(series_idx, positions)
-      const color =
-        line_style.stroke ?? first_point_style(srs)?.fill ?? get_series_color(series_idx)
+      const color = line_style.stroke ?? first_point_style(srs)?.fill ?? plot_color(series_idx)
       eligible.push({
         series_idx,
         positions,

@@ -62,6 +62,58 @@ describe(`PlotTooltip`, () => {
     await vi.waitFor(() => expect(tooltip.style.color).toBe(`white`))
   })
 
+  // Tooltip props change on every mousemove; the measure + color observers must be
+  // created once per host element, not rebuilt per move (was 2 MutationObservers/move).
+  test(`mousemoves re-read colors without rebuilding observers`, () => {
+    const count_constructions = <Name extends `ResizeObserver` | `MutationObserver`>(
+      name: Name,
+    ) => {
+      const Original = globalThis[name]
+      let count = 0
+      globalThis[name] = new Proxy(Original, {
+        construct(target, args, new_target) {
+          count++
+          return Reflect.construct(target, args, new_target)
+        },
+      })
+      return {
+        get count() {
+          return count
+        },
+        restore: () => (globalThis[name] = Original),
+      }
+    }
+    const resize_observers = count_constructions(`ResizeObserver`)
+    const mutation_observers = count_constructions(`MutationObserver`)
+    try {
+      const props = $state<{ x: number; y: number; bg_color: string | null }>({
+        x: 0,
+        y: 0,
+        bg_color: `#000000`,
+      })
+      mount(PlotTooltip, {
+        target: document.body,
+        props: Object.assign(props, { children: make_children() }),
+      })
+      flushSync()
+      const tooltip = doc_query(`.plot-tooltip`)
+      const at_mount = [resize_observers.count, mutation_observers.count]
+      expect(at_mount[0]).toBe(1)
+      for (let idx = 1; idx <= 50; idx++) {
+        props.x = idx
+        props.y = 2 * idx
+        props.bg_color = idx % 2 ? `#ffffff` : `#000000`
+        flushSync()
+      }
+      expect(tooltip.style.left).toBe(`56px`)
+      expect(tooltip.style.color).toBe(`white`) // last bg is black → still re-reads
+      expect([resize_observers.count, mutation_observers.count]).toEqual(at_mount)
+    } finally {
+      resize_observers.restore()
+      mutation_observers.restore()
+    }
+  })
+
   test(`passes through class and style`, () => {
     const tooltip = mount_tooltip({
       class: `custom-tooltip my-class`,

@@ -8,17 +8,24 @@
   let {
     orientation,
     ratio = $bindable(0.5),
+    first_px = $bindable(undefined),
     min_px,
     max_px,
     second_min_px,
     'aria-label': aria_label = `Resize panes`,
   }: {
     orientation: Orientation
+    // Ratio mode (default): the first pane's share of the container, clamped to [15%, 85%]
     ratio?: number
+    // Pixel mode: when set, the first pane is sized in px (--split-pane-size becomes `${px}px`)
+    // and the ratio clamps don't apply, so a sidebar keeps its width however wide the container
+    // gets. The pixel clamps below re-apply against the measured container on every resize
+    first_px?: number
     'aria-label'?: string
-    // Pixel clamps on top of the [15%, 85%] ratio clamps, so a narrow container can't squeeze a
-    // pane below a usable size: min_px/max_px bound the first pane, second_min_px reserves room
-    // for the second. They need the container's measured size, so they're skipped until layout
+    // Pixel clamps so a narrow container can't squeeze a pane below a usable size: min_px/max_px
+    // bound the first pane, second_min_px reserves room for the second. In ratio mode they
+    // tighten the [15%, 85%] clamps. They need the container's measured size, so they're skipped
+    // until layout (ratio mode) or only min_px/max_px apply (pixel mode)
     min_px?: number
     max_px?: number
     second_min_px?: number
@@ -27,9 +34,23 @@
   let divider = $state<HTMLDivElement>()
   let active_pointer = $state<number>()
   let drag_from_right = false
-  const clamp_ratio = (value: number): number => {
-    const bounds = divider?.parentElement?.getBoundingClientRect()
-    const size = (orientation === `horizontal` ? bounds?.width : bounds?.height) ?? 0
+
+  // Container extent along the drag axis, re-measured whenever the container resizes so the
+  // pixel clamps (and a pixel-sized first pane) follow it
+  let container_size = $state(0)
+  const measure_container = (bounds = divider?.parentElement?.getBoundingClientRect()) => {
+    container_size = (orientation === `horizontal` ? bounds?.width : bounds?.height) ?? 0
+  }
+  $effect(() => {
+    const parent = divider?.parentElement
+    if (!parent) return
+    measure_container()
+    const observer = new ResizeObserver(() => measure_container())
+    observer.observe(parent)
+    return () => observer.disconnect()
+  })
+
+  const ratio_bounds = (size: number): [number, number] => {
     let lo = min_ratio
     let hi = max_ratio
     if (size > 0) {
@@ -40,37 +61,72 @@
       // A container too small for both pixel floors splits at the first pane's floor
       hi = Math.max(lo, hi)
     }
+    return [lo, hi]
+  }
+  const clamp_ratio = (value: number): number => {
+    const [lo, hi] = ratio_bounds(container_size)
     return clamp(Number.isFinite(value) ? value : 0.5, lo, hi)
   }
-  let safe_ratio = $derived(clamp_ratio(ratio))
+  // Pixel mode has no ratio clamps; as above, an over-constrained container settles at the
+  // first pane's floor
+  const px_bounds = (size: number): [number, number] => {
+    const lo = Math.max(0, min_px ?? 0)
+    let hi = max_px ?? Number.POSITIVE_INFINITY
+    if (size > 0) hi = Math.min(hi, size - (second_min_px ?? 0))
+    return [lo, Math.max(lo, hi)]
+  }
+  const clamp_px = (value: number): number => {
+    const [lo, hi] = px_bounds(container_size)
+    return clamp(Number.isFinite(value) ? value : lo, lo, hi)
+  }
 
-  const update_parent = (value: number): void => {
-    divider?.parentElement?.style.setProperty(`--split-pane-size`, `${value * 100}%`)
+  let px_mode = $derived(first_px !== undefined)
+  let safe_ratio = $derived(clamp_ratio(ratio))
+  let safe_px = $derived(clamp_px(first_px ?? 0))
+  let pane_size = $derived(px_mode ? `${safe_px}px` : `${safe_ratio * 100}%`)
+  // aria values are in the mode's own unit: percent of the container, or px. Both follow the
+  // effective clamps, so pixel floors tightening the ratio range show in the announced bounds
+  let aria_bounds = $derived(
+    px_mode
+      ? px_bounds(container_size)
+      : ratio_bounds(container_size).map((bound) => bound * 100),
+  )
+  let aria_value = $derived(Math.round(px_mode ? safe_px : safe_ratio * 100))
+
+  const update_parent = (value: string): void => {
+    divider?.parentElement?.style.setProperty(`--split-pane-size`, value)
   }
   const is_right_to_left = (): boolean => {
     const parent = divider?.parentElement
     return parent ? getComputedStyle(parent).direction === `rtl` : false
   }
 
+  // Pointer/keyboard updates write the style directly: effects only flush after the handler
+  // returns, and the pane should follow the pointer within the same event
   const apply_ratio = (value: number): void => {
     ratio = clamp_ratio(value)
-    update_parent(ratio)
+    update_parent(`${ratio * 100}%`)
+  }
+  const apply_px = (value: number): void => {
+    first_px = clamp_px(value)
+    update_parent(`${first_px}px`)
   }
 
-  $effect(() => update_parent(safe_ratio))
+  $effect(() => update_parent(pane_size))
 
   const resize_from_pointer = (event: PointerEvent): void => {
     if (active_pointer !== event.pointerId || !divider?.parentElement) return
     const bounds = divider.parentElement.getBoundingClientRect()
-    const horizontal = orientation === `horizontal`
-    const size = horizontal ? bounds.width : bounds.height
-    if (size <= 0) return
-    const position = horizontal
-      ? drag_from_right
-        ? bounds.right - event.clientX
-        : event.clientX - bounds.left
-      : event.clientY - bounds.top
-    apply_ratio(position / size)
+    measure_container(bounds)
+    if (container_size <= 0) return
+    const position =
+      orientation === `horizontal`
+        ? drag_from_right
+          ? bounds.right - event.clientX
+          : event.clientX - bounds.left
+        : event.clientY - bounds.top
+    if (px_mode) apply_px(position)
+    else apply_ratio(position / container_size)
   }
 
   const start_resize = (event: PointerEvent): void => {
@@ -94,7 +150,11 @@
       orientation === `horizontal` ? horizontal_keys : [`ArrowUp`, `ArrowDown`]
     if (event.key !== decrease_key && event.key !== increase_key) return
     event.preventDefault()
-    apply_ratio(safe_ratio + (event.key === decrease_key ? -0.05 : 0.05))
+    const direction = event.key === decrease_key ? -1 : 1
+    if (px_mode) {
+      // 5% of the container per keypress, or a fixed stride before layout
+      apply_px(safe_px + direction * (container_size > 0 ? container_size * 0.05 : 16))
+    } else apply_ratio(safe_ratio + direction * 0.05)
   }
 </script>
 
@@ -106,9 +166,9 @@
   role="separator"
   aria-label={aria_label}
   aria-orientation={orientation === `horizontal` ? `vertical` : `horizontal`}
-  aria-valuemin={min_ratio * 100}
-  aria-valuemax={max_ratio * 100}
-  aria-valuenow={Math.round(safe_ratio * 100)}
+  aria-valuemin={Math.round(aria_bounds[0])}
+  aria-valuemax={Number.isFinite(aria_bounds[1]) ? Math.round(aria_bounds[1]) : undefined}
+  aria-valuenow={aria_value}
   tabindex="0"
   title="Drag to resize panes"
   onkeydown={resize_from_keyboard}

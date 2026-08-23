@@ -490,7 +490,8 @@ describe(`pymatgen cross-validation`, () => {
     }
   })
 
-  test(`Li-Co-Ni-O: quickhull builds the 4D hull of 775 entries in well under a frame`, () => {
+  // Timing of the 4D quickhull lives in perf-baselines.test.ts
+  test(`Li-Co-Ni-O: quickhull builds a many-facet 4D hull from 775 entries`, () => {
     const entries = fixtures[1][1]
     const elements = [
       ...new Set(entries.flatMap((entry) => Object.keys(entry.composition))),
@@ -499,17 +500,7 @@ describe(`pymatgen cross-validation`, () => {
       ...composition_to_barycentric_nd(entry.composition, elements).slice(1),
       entry.e_form_per_atom as number,
     ])
-    // Best of three: a single run can be stalled by a GC pause or a loaded CI box, a
-    // regression in the algorithm slows every run
-    let best_ms = Infinity
-    let facets: ReturnType<typeof compute_lower_hull_nd> = []
-    for (let run = 0; run < 3; run++) {
-      const start = performance.now()
-      facets = compute_lower_hull_nd(points)
-      best_ms = Math.min(best_ms, performance.now() - start)
-    }
-    expect(best_ms).toBeLessThan(50) // ~1.6 ms typical, generous for CI
-    expect(facets.length).toBeGreaterThan(20)
+    expect(compute_lower_hull_nd(points).length).toBeGreaterThan(20)
   })
 })
 

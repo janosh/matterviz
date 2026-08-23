@@ -355,7 +355,13 @@ export const parse_reference_md_h5_file = (
     },
     ...(dipole ? { dipole } : {}),
   }
-  const signal_descriptors = describe_signals(signal_manifest, () => n_frames)
+  // Every observable is stored [n_frames, replica, ...] on the production steps, so all of
+  // them share the geometry's step axis
+  const signal_descriptors = describe_signals(
+    signal_manifest,
+    () => n_frames,
+    () => true,
+  )
   const velocity_frames_per_slice = hdf5_frames_per_slice(velocity_sample_size)
   const read_replica_frames = (
     manifest: ObservableManifest,
@@ -605,7 +611,7 @@ export const parse_reference_md_h5_file = (
     time_step: integration_timestep_ps,
     time_unit: `ps`,
     atom_masses,
-    signal_descriptors,
+    signals: signal_descriptors,
     metadata: trajectory_metadata,
   }
 }

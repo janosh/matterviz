@@ -2,6 +2,7 @@ import { is_finite_vec3_like } from '$lib/math'
 import { collect_trajectory_positions } from '$lib/trajectory/analysis'
 import { values_per_sample } from '$lib/trajectory/helpers'
 import type { CollectPositionsOptions, TrajectoryRun, TrajectorySignal } from '$lib/trajectory'
+import { is_loaded_signal, is_signal_descriptor } from '$lib/trajectory/run'
 import {
   DEFAULT_POSITION_STREAM_MAX_BYTES,
   parse_frame_signal,
@@ -49,8 +50,26 @@ export const infrared_kind_from_key = (key: string): InfraredSignal[`kind`] => {
   return normalized_key.includes(`current`) ? `current` : `dipole`
 }
 
+// How a collect streams the run's velocity: a loaded run signal needs no channel; site
+// properties and a lazy per-atom [n_atoms, 3] descriptor the parser marked `frame_aligned`
+// (one sample per frame on the geometry's steps) stream strided beside positions
+// (`vector_keys`); a descriptor on its own cadence is a native-cadence `signal_keys` read.
+// Equal sample counts alone don't make the step axes match (velocities on steps [1, 2, 3, 4]
+// beside frames on [0, 1, 2, 3]), and a `vector_keys` read of such a signal throws in the
+// HDF5 parser
+const velocity_channel = (run: TrajectoryRun, key: string): `vector` | `signal` | null => {
+  const signal = run.signals?.[key]
+  if (!signal) return has_site_velocities(run, key) ? `vector` : null
+  if (is_loaded_signal(signal)) return null
+  const n_atoms = run.preview.structure.sites.length
+  return signal.frame_aligned && arrays_equal(signal.sample_shape, [n_atoms, 3])
+    ? `vector`
+    : `signal`
+}
+
 // Per-site vector and frame-signal channels a collect streams alongside positions, so the
-// pane's memory budget (suggest_frame_stride) and the collector size the same buffers
+// pane's memory budget (suggest_frame_stride) and the collector size the same buffers. A
+// loaded run signal needs no channel; a descriptor or frame-metadata key is streamed.
 export const spectroscopy_stream_channels = (
   run: TrajectoryRun,
   keys: {
@@ -60,21 +79,18 @@ export const spectroscopy_stream_channels = (
   },
 ): { vector_keys: string[]; signal_keys: string[] } => {
   const { velocity_key = `velocity`, infrared_key, raman_key } = keys
-  const trajectory_velocity = velocity_key ? run.signals?.[velocity_key] : null
-  const descriptor_velocity = velocity_key ? run.signal_descriptors?.[velocity_key] : null
-  const signal_keys = [
-    descriptor_velocity ? velocity_key : null,
-    infrared_key,
-    raman_key,
-  ].filter((key): key is string => Boolean(key && !run.signals?.[key]))
-  const vector_keys =
-    velocity_key &&
-    !trajectory_velocity &&
-    !descriptor_velocity &&
-    has_site_velocities(run, velocity_key)
-      ? [velocity_key]
-      : []
-  return { vector_keys, signal_keys }
+  const channel = velocity_key ? velocity_channel(run, velocity_key) : null
+  const response_keys = [infrared_key, raman_key].filter((key): key is string => {
+    const signal = key ? run.signals?.[key] : undefined
+    return Boolean(key) && (signal === undefined || is_signal_descriptor(signal))
+  })
+  return {
+    vector_keys: velocity_key && channel === `vector` ? [velocity_key] : [],
+    signal_keys: [
+      ...(velocity_key && channel === `signal` ? [velocity_key] : []),
+      ...response_keys,
+    ],
+  }
 }
 
 // Strided positions keep every Nth frame, but run-level and HDF5-streamed signals arrive on
@@ -117,11 +133,7 @@ export const trajectory_signal_keys = (
   expected_shape?: number[],
 ): string[] => {
   if (!run) return []
-  const declared_signals = {
-    ...run.signal_descriptors,
-    ...run.signals,
-  }
-  const declared_keys = Object.entries(declared_signals).flatMap(([key, { sample_shape }]) =>
+  const declared_keys = Object.entries(run.signals ?? {}).flatMap(([key, { sample_shape }]) =>
     !expected_shape || arrays_equal(sample_shape, expected_shape) ? [key] : [],
   )
   // Frame metadata is only a response signal when it is named like one: LAMMPS box origins
@@ -203,14 +215,17 @@ export async function collect_trajectory_spectroscopy_input(
   // signal keeps its native cadence, so a dipole sampled every step beside positions kept
   // every 20th is not decimated or emptied by the stride
   const signal_of = (key: string, align: boolean): TrajectorySignal | undefined => {
-    const series = run.signals?.[key] ?? stream.signals?.[key]
+    const declared = run.signals?.[key]
+    const series = declared && is_loaded_signal(declared) ? declared : stream.signals?.[key]
     return series && align && frame_stride > 1
       ? align_signal_to_steps(series, stream.steps, key, frame_stride)
       : series
   }
   const align_responses = preprocessing === `body_fixed`
 
+  const declared_velocity = velocity_key ? run.signals?.[velocity_key] : undefined
   const velocity_signal = velocity_key ? signal_of(velocity_key, true) : undefined
+  // Strided per-atom velocities: site properties, or a descriptor streamed via vector_keys
   const site_velocities = velocity_key ? stream.vectors?.[velocity_key] : undefined
   const velocities =
     velocity_signal ??
@@ -219,19 +234,19 @@ export async function collect_trajectory_spectroscopy_input(
           values: site_velocities,
           sample_shape: [stream.n_atoms, 3],
           steps: [...stream.steps],
+          ...(declared_velocity?.unit ? { unit: declared_velocity.unit } : {}),
         }
       : null)
   // Provenance label for the metadata, distinct from calc_trajectory_spectroscopy's
   // `velocity_source` (stored vs central_difference)
-  const velocity_provenance = !velocity_key
-    ? null
-    : run.signals?.[velocity_key]
-      ? velocity_key
-      : velocity_signal
-        ? `stream:${velocity_key}`
-        : site_velocities
-          ? `site:${velocity_key}`
-          : null
+  const velocity_provenance =
+    !velocity_key || !velocities
+      ? null
+      : !declared_velocity
+        ? `site:${velocity_key}`
+        : is_loaded_signal(declared_velocity)
+          ? velocity_key
+          : `stream:${velocity_key}`
   const mass_values = mass_source === `standard` ? null : recorded_masses(run)
   if (mass_source === `recorded` && !mass_values) {
     throw new Error(`Recorded masses were requested, but the trajectory carries none`)

@@ -34,9 +34,9 @@ import type {
 import JsonBrowser from './JsonBrowser.svelte'
 import { TYPE_LABELS } from './detect'
 import { mount_viewer } from './mount-viewer'
-import type { ParseResult } from './parse'
+import type { ParseResult, TrajectoryLoadOptions } from './parse'
 import { parse_in_worker } from './parse-in-worker'
-import { escape_html, to_error } from '$lib/utils'
+import { escape_html, is_plain_object, to_error } from '$lib/utils'
 
 export type { VSCodeAPI } from './host-bridge'
 
@@ -129,7 +129,8 @@ const global_window = globalThis as unknown as Window
 const is_current = (gen: number): boolean => gen === generation
 const get_container = (): HTMLElement | null =>
   document.querySelector<HTMLElement>(`#matterviz-app`)
-// Tell the host (VS Code surfaces these as notifications); a no-op outside a host
+// Tell the host (VS Code shows `error` as a toast and logs `info` to its output channel); a
+// no-op outside a host
 const post_to_host = (command: `info` | `error`, text: string): void => {
   vscode_api?.postMessage({ command, text })
 }
@@ -319,11 +320,16 @@ const parse_file_data = (
   { content, filename, is_base64 }: FileData,
   signal: AbortSignal,
 ): Promise<ParseResult> => {
-  const { index_above_bytes } = merge(globalThis.matterviz_data?.defaults).trajectory
-  return parse_in_worker(content, filename, is_base64, {
-    signal,
-    load_options: { index_above_bytes },
-  })
+  const { index_above_bytes, atom_type_mapping } = merge(
+    globalThis.matterviz_data?.defaults,
+  ).trajectory
+  // An empty map (or a settings.json `null`, which merge() passes through) is "not
+  // configured": the LAMMPS reader then guesses and warns as usual
+  const load_options: TrajectoryLoadOptions = { index_above_bytes }
+  if (is_plain_object(atom_type_mapping) && Object.keys(atom_type_mapping).length > 0) {
+    load_options.atom_type_mapping = atom_type_mapping
+  }
+  return parse_in_worker(content, filename, is_base64, { signal, load_options })
 }
 
 // Create error display in container
@@ -469,6 +475,7 @@ const trajectory_props = (defaults: DefaultSettings) => {
   // them would land on the wrapper div
   const {
     index_above_bytes: _index_above_bytes,
+    atom_type_mapping: _atom_type_mapping,
     allow_file_drop: _allow_file_drop,
     ...trajectory_component_props
   } = trajectory

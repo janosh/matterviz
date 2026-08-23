@@ -1,7 +1,9 @@
 // The Threlte canvas never mounts under happy-dom (no navigator.gpu), so the viewport is
 // swapped for a stub that only reports an isosurface worker failure. This pins the host side
-// of Isosurface.on_error: Structure → StructureViewport → StructureScene → Isosurface
-// (prop plumbing is type-checked) and back up into a dismissible warning notice.
+// of Isosurface's error path: Structure registers a handler in context, Isosurface (a few
+// layers down) picks it up without pass-through props, and the message lands in a
+// dismissible warning notice.
+import { get_isosurface_error_handler } from '$lib/isosurface/context'
 import Structure from '$lib/structure/Structure.svelte'
 import { structures } from '$site/structures'
 import { flushSync, mount, tick, unmount } from 'svelte'
@@ -10,10 +12,11 @@ import { doc_query, make_grid, make_volume } from '../setup'
 
 const worker_message = `Isosurface geometry failed: Failed to fetch dynamically imported module`
 vi.mock(`$lib/structure/StructureViewport.svelte`, () => ({
-  // Plain Svelte 5 component function: fires the error callback the real viewport would
-  // forward from Isosurface after its geometry worker rejects
-  default: (_anchor: Node, props: { on_isosurface_error?: (message: string) => void }) => {
-    $effect(() => props.on_isosurface_error?.(worker_message))
+  // Plain Svelte 5 component function: reads the context handler the way Isosurface does and
+  // fires it as Isosurface would after its geometry worker rejects
+  default: () => {
+    const on_error = get_isosurface_error_handler()
+    $effect(() => on_error?.(worker_message))
   },
 }))
 

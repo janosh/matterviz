@@ -8,7 +8,7 @@
 import { hsl } from 'd3-color'
 import type { HierarchyRectangularNode } from 'd3-hierarchy'
 import { hierarchy, partition } from 'd3-hierarchy'
-import { DEFAULT_SERIES_COLORS } from '$lib/plot/core/types'
+import { PLOT_COLORS } from '$lib/colors'
 import { DEFAULTS } from '$lib/settings'
 
 // === Sunburst chart types ===
@@ -198,7 +198,7 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
   const arcs: PositionedArc<Metadata>[] = []
   const seen_ids = new Set<string | number>()
   const root_value = root.value ?? 0
-  const palette_len = DEFAULT_SERIES_COLORS.length
+  const palette_len = PLOT_COLORS.length
   let depth1_count = 0 // running index among depth-1 nodes, for palette cycling
 
   // Resolved fill for a node: explicit > depth-1 palette > inherited, optionally
@@ -211,7 +211,7 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
     const base =
       explicit ??
       (depth === 1
-        ? DEFAULT_SERIES_COLORS[depth1_count++ % palette_len]
+        ? PLOT_COLORS[depth1_count++ % palette_len]
         : (parent_base ?? `transparent`))
     let color = base
     if (!explicit && depth > 1 && level_lighten > 0) {

@@ -747,20 +747,6 @@ export const DEFAULT_GRID_STYLE = {
 
 export const DEFAULT_MARKERS = `line+points` as const
 
-// Default series colors for auto-differentiation (similar to d3 schemeTableau10)
-export const DEFAULT_SERIES_COLORS = [
-  `#4e79a7`, // blue
-  `#f28e2c`, // orange
-  `#e15759`, // red
-  `#76b7b2`, // teal
-  `#59a14f`, // green
-  `#edc949`, // yellow
-  `#af7aa1`, // purple
-  `#ff9da7`, // pink
-  `#9c755f`, // brown
-  `#bab0ab`, // gray
-] as const
-
 // Default series symbols for auto-differentiation (cycling through distinct shapes)
 export const DEFAULT_SERIES_SYMBOLS = [
   `Circle`,

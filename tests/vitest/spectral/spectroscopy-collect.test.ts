@@ -1,9 +1,15 @@
 import {
   calc_trajectory_spectroscopy,
   collect_trajectory_spectroscopy_input,
+  spectroscopy_stream_channels,
   trajectory_signal_keys,
 } from '$lib/spectral'
-import type { MemoryRunExtras, TrajectoryFrame, TrajectoryRun } from '$lib/trajectory'
+import {
+  is_signal_descriptor,
+  type MemoryRunExtras,
+  type TrajectoryFrame,
+  type TrajectoryRun,
+} from '$lib/trajectory'
 import { open_trajectory, trajectory_from_frames } from '$lib/trajectory/open'
 import { describe, expect, it } from 'vitest'
 import { make_torch_sim_signal_buffer } from '../trajectory/fixtures'
@@ -381,16 +387,25 @@ describe(`collect_trajectory_spectroscopy_input`, () => {
     ).rejects.toThrow(/metadata signal "current"/)
   })
 
+  const open_torch_sim = (
+    options: Parameters<typeof make_torch_sim_signal_buffer>[0] = {},
+  ): Promise<TrajectoryRun> =>
+    make_torch_sim_signal_buffer(options).then((buffer) =>
+      open_trajectory(buffer, { filename: `torch-sim.h5` }),
+    )
+
   it(`streams descriptor-backed HDF5 velocity and response signals at native cadence`, async () => {
-    const run = await open_trajectory(await make_torch_sim_signal_buffer(), {
-      filename: `torch-sim.h5`,
-    })
+    const run = await open_torch_sim()
     try {
-      expect(run.signals).toBeUndefined()
+      expect(Object.values(run.signals ?? {}).every(is_signal_descriptor)).toBe(true)
       expect(trajectory_signal_keys(run)).toEqual([`dipole`, `polarizability`, `velocity`])
       expect(trajectory_signal_keys(run, [2, 3])).toEqual([`velocity`])
       const input = await collect_trajectory_spectroscopy_input(run)
       expect(input.positions).toMatchObject({ n_frames: 4, n_atoms: 2, steps: [0, 1, 2, 3] })
+      // the frame-aligned velocity descriptor streams strided through vector_keys and comes
+      // back identical to the native-cadence signal_keys read at stride 1
+      const native = await run.collect_positions?.({ signal_keys: [`velocity`] })
+      expect(input.velocities).toEqual(native?.signals?.velocity)
       expect(input.velocities).toMatchObject({
         sample_shape: [2, 3],
         steps: [0, 1, 2, 3],
@@ -418,6 +433,77 @@ describe(`collect_trajectory_spectroscopy_input`, () => {
   })
 
   it.each([
+    // a lazy [n_atoms, 3] velocity the parser marked frame_aligned (one sample per frame on
+    // the geometry steps) streams strided beside positions; on its own axis it is a
+    // native-cadence read, even with as many samples as frames: the steps decide, not the
+    // count (the vector_keys read of a shifted axis throws in the parser)
+    [
+      `on the geometry steps`,
+      {},
+      { vector_keys: [`velocity`], signal_keys: [`dipole`, `polarizability`] },
+      [0, 1, 2, 3],
+    ],
+    [
+      `on its own step axis`,
+      { velocity_steps: [0, 2] },
+      { vector_keys: [], signal_keys: [`velocity`, `dipole`, `polarizability`] },
+      [0, 2],
+    ],
+    [
+      `with one sample per frame on shifted steps`,
+      { velocity_steps: [1, 2, 3, 4] },
+      { vector_keys: [], signal_keys: [`velocity`, `dipole`, `polarizability`] },
+      [1, 2, 3, 4],
+    ],
+  ])(
+    `routes an HDF5 velocity descriptor %s through the matching collect channel`,
+    async (_label, fixture, channels, velocity_steps) => {
+      const run = await open_torch_sim(fixture)
+      try {
+        const frame_aligned = channels.vector_keys.length > 0
+        expect(run.signals?.velocity).toMatchObject({
+          sample_count: velocity_steps.length,
+          frame_aligned,
+        })
+        const keys = { infrared_key: `dipole`, raman_key: `polarizability` }
+        expect(spectroscopy_stream_channels(run, keys)).toEqual(channels)
+        const input = await collect_trajectory_spectroscopy_input(run, {
+          ...keys,
+          preprocessing: `remove_com`,
+        })
+        expect(input.velocities?.steps).toEqual(velocity_steps)
+        expect(input.metadata?.signal_sources).toMatchObject({ velocity: `stream:velocity` })
+      } finally {
+        run.dispose()
+      }
+    },
+  )
+
+  it(`fits a strided velocity descriptor into a budget the native-cadence read overruns`, async () => {
+    const run = await open_torch_sim()
+    try {
+      // stride 2 keeps 2 of 4 frames: positions + velocities + step = 13 values each (208 B)
+      // beside 304 B of native-cadence dipole/polarizability; the full velocity series alone
+      // would add 224 B, so the signal_keys path cannot fit in 560 B but the vector path does
+      const max_bytes = 560
+      await expect(
+        run.collect_positions?.({
+          frame_stride: 2,
+          max_bytes,
+          signal_keys: [`velocity`, `dipole`, `polarizability`],
+        }),
+      ).rejects.toThrow(`native-cadence signals need`)
+      const input = await collect_trajectory_spectroscopy_input(run, {
+        frame_stride: 2,
+        max_bytes,
+      })
+      expect(input.velocities).toMatchObject({ steps: [0, 2], unit: `A/fs` })
+    } finally {
+      run.dispose()
+    }
+  })
+
+  it.each([
     // Streamed signals arrive on their native step axis like run-level ones. A stride must
     // drop the skipped velocity steps (rigid-motion removal finds orphan samples otherwise)
     // but only body-frame rotation needs the response signals on the kept steps too
@@ -430,9 +516,7 @@ describe(`collect_trajectory_spectroscopy_input`, () => {
   ] as const)(
     `sub-samples HDF5-streamed velocities to the strided position steps and responses only under %s`,
     async (preprocessing, raman_steps, raman_values) => {
-      const run = await open_trajectory(await make_torch_sim_signal_buffer(), {
-        filename: `torch-sim.h5`,
-      })
+      const run = await open_torch_sim()
       try {
         const input = await collect_trajectory_spectroscopy_input(run, {
           frame_stride: 2,

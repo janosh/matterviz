@@ -1,6 +1,6 @@
 import { type AnyStructure, type MeasureMode, Structure } from '$lib'
-import type { VolumetricData } from '$lib/isosurface'
-import { DEFAULT_ISOSURFACE_SETTINGS } from '$lib/isosurface/types'
+import type { IsosurfaceLayer, VolumetricData } from '$lib/isosurface'
+import { auto_volume_layer, DEFAULT_ISOSURFACE_SETTINGS } from '$lib/isosurface/types'
 import { create_frac_to_cart, type Vec3 } from '$lib/math'
 import { DEFAULTS } from '$lib/settings'
 import {
@@ -11,6 +11,7 @@ import * as symmetry from '$lib/symmetry'
 import type { StructureBond, StructureHandlerData, StructurePane } from '$lib/structure'
 import { get_element_counts } from '$lib/structure'
 import type { Pbc } from '$lib/structure/pbc'
+import { open_structure_text } from '$lib/structure/loader'
 import { make_supercell } from '$lib/structure/supercell'
 import { structures } from '$site/structures'
 import { type ComponentProps, flushSync, mount, tick } from 'svelte'
@@ -547,6 +548,39 @@ describe(`Structure`, () => {
       )
     } finally {
       error_spy.mockRestore()
+    }
+  })
+
+  // `wyckoff_positions` is the viewer's own mapped Wyckoff table (site indices on the displayed
+  // cell), so consumers such as the symmetry demo need not re-run map_wyckoff_to_all_atoms
+  test(`binds wyckoff_positions once symmetry analysis lands and remaps them per cell type`, async () => {
+    vi.stubEnv(`VITEST`, ``)
+    await init_moyo_for_tests()
+    try {
+      const prim_fcc_cu = make_crystal(fcc_primitive_matrix(3.61), [
+        { element: `Cu`, abc: [0, 0, 0] },
+      ])
+      const state = $state<{
+        sym_data: symmetry.SymmetryDataset | null
+        wyckoff_positions: symmetry.WyckoffPos[]
+        cell_type: symmetry.CellType
+      }>({ sym_data: null, wyckoff_positions: [], cell_type: `original` })
+      // no image atoms so site_indices are exactly the cell's own sites
+      mount_structure(bind_props({ structure: prim_fcc_cu, show_image_atoms: false }, state))
+      flushSync()
+      expect(state.wyckoff_positions).toEqual([])
+      await vi.waitFor(() => expect(state.sym_data).not.toBeNull())
+      flushSync()
+      expect(state.wyckoff_positions).toEqual([
+        expect.objectContaining({ wyckoff: `4a`, elem: `Cu`, site_indices: [0] }),
+      ])
+      // the conventional fcc cell holds four copies of the lone 4a site
+      state.cell_type = `conventional`
+      flushSync()
+      expect(state.wyckoff_positions).toHaveLength(1)
+      expect(state.wyckoff_positions[0].site_indices).toEqual([0, 1, 2, 3])
+    } finally {
+      vi.unstubAllEnvs()
     }
   })
 
@@ -1236,7 +1270,7 @@ describe(`Structure string parsing`, () => {
     })
     await vi.waitFor(() =>
       expect(on_error).toHaveBeenCalledWith({
-        error_msg: expect.stringContaining(`Failed to parse structure from string`),
+        error_msg: expect.stringMatching(/^Failed to parse string: /),
         filename: `string`,
       }),
     )
@@ -1270,27 +1304,48 @@ describe(`Structure string parsing`, () => {
     await vi.waitFor(() => expect(state.loading).toBe(false))
   })
 
+  // A host handler's failure is reported in its own words, with the payload's source identity
   test(`reports async data_url handler failures`, async () => {
     mock_fetch_response(SAMPLE_POSCAR_CONTENT)
     const on_error = vi.fn()
-    const console_error = vi.spyOn(console, `error`).mockImplementation(() => {})
-    try {
-      mount_structure({
-        data_url: `/test.poscar`,
-        on_file_drop: async () => {
-          throw new Error(`handler failed`)
-        },
-        on_error,
-      })
-      await vi.waitFor(() =>
-        expect(on_error).toHaveBeenCalledWith({
-          error_msg: `Failed to load structure: handler failed`,
-          filename: `test.poscar`,
-        }),
-      )
-    } finally {
-      console_error.mockRestore()
-    }
+    mount_structure({
+      data_url: `/test.poscar`,
+      on_file_drop: async () => {
+        throw new Error(`handler failed`)
+      },
+      on_error,
+    })
+    await vi.waitFor(() =>
+      expect(on_error).toHaveBeenCalledWith({
+        error_msg: `handler failed`,
+        filename: `test.poscar`,
+        source_filename: `test.poscar`,
+        source_url: `/test.poscar`,
+      }),
+    )
+  })
+
+  // Dropping several files at once reports every failure in one message (and still loads the
+  // good ones) instead of each parse error overwriting the last
+  test(`a multi-file drop aggregates parse failures and keeps the parsable file`, async () => {
+    const on_file_load = vi.fn<(data: StructureHandlerData) => void>()
+    const state = { error_msg: undefined as string | undefined }
+    mount_structure(bind_props({ structure: undefined, on_file_load }, state))
+    await tick()
+    doc_query(`.structure`).dispatchEvent(
+      create_drop_event([
+        new File([`garbage`], `bad.poscar`),
+        new File([SAMPLE_POSCAR_CONTENT], `good.poscar`),
+        new File([`more garbage`], `worse.cif`),
+      ]),
+    )
+    await vi.waitFor(() => expect(state.error_msg).toMatch(/^Failed to load 2 files — /))
+    expect(state.error_msg).toMatch(/bad\.poscar: .*; worse\.cif: /)
+    expect(on_file_load).toHaveBeenCalledOnce()
+    expect(on_file_load.mock.calls[0][0]).toMatchObject({
+      filename: `good.poscar`,
+      total_atoms: 5,
+    })
   })
 
   test(`keeps compressed source identity separate from the logical filename`, async () => {
@@ -1317,6 +1372,65 @@ describe(`Structure string parsing`, () => {
       source: `density.CHGCAR`,
       source_filename: `density.CHGCAR.gz`,
     })
+  })
+
+  // A host that passes isosurface_settings alongside data_url (pymatviz) wants its layers on
+  // the loaded volume, not the automatic 20 %-of-|max| layer
+  const caller_layer = {
+    isovalue: 0.05,
+    color: `#3b82f6`,
+    opacity: 0.6,
+    visible: true,
+    show_negative: false,
+    negative_color: `#ef4444`,
+  }
+  test.each<[string, IsosurfaceLayer[], (volumes: VolumetricData[]) => IsosurfaceLayer[]]>([
+    [`caller layers`, [caller_layer], () => [caller_layer]],
+    [`no layers`, [], (volumes) => [auto_volume_layer(volumes[0], 0)]],
+  ])(
+    `a data_url volume keeps %s supplied before it loaded`,
+    async (_label, layers, expected_layers) => {
+      mock_fetch_response(SAMPLE_CHGCAR_CONTENT)
+      const state = {
+        volumetric_data: undefined as VolumetricData[] | undefined,
+        isosurface_settings: { ...DEFAULT_ISOSURFACE_SETTINGS, layers },
+      }
+      mount_structure(bind_props({ data_url: `/density.CHGCAR` }, state))
+
+      await vi.waitFor(() => expect(state.volumetric_data).toHaveLength(1))
+      expect(state.isosurface_settings.layers).toEqual(
+        expected_layers(state.volumetric_data ?? []),
+      )
+    },
+  )
+
+  // Layers index the volumes they were made for: a structure in a different cell drops the
+  // volumes AND their layers, so the next volume gets its own automatic layer instead of
+  // inheriting one scaled to the previous field (CHGCAR values are hundreds, cube values ~0.01)
+  test(`layers die with the volumes an unrelated structure replaces`, () => {
+    const empty = {
+      structure: undefined,
+      volumetric_data: undefined,
+      isosurface_settings: { ...DEFAULT_ISOSURFACE_SETTINGS, halo: 0.2 },
+      active_volume_idx: 0,
+    }
+    const with_a = open_structure_text(empty, SAMPLE_CHGCAR_CONTENT, `a.CHGCAR`).document
+    expect(with_a.isosurface_settings.layers).toHaveLength(1)
+    const other_cell = SAMPLE_CHGCAR_CONTENT.replace(
+      `1 0 0\n0 1 0\n0 0 1`,
+      `2 0 0\n0 2 0\n0 0 2`,
+    )
+    const with_b = open_structure_text(
+      with_a,
+      other_cell.split(`\n\n`)[0],
+      `b.poscar`,
+    ).document
+    expect(with_b.volumetric_data).toEqual([])
+    expect(with_b.isosurface_settings).toEqual({ ...with_a.isosurface_settings, layers: [] })
+    const with_c = open_structure_text(with_b, other_cell, `c.CHGCAR`).document
+    expect(with_c.isosurface_settings.layers).toEqual([
+      auto_volume_layer(with_c.volumetric_data?.[0] as VolumetricData, 0),
+    ])
   })
 
   const structure_json = (element: string, count = 1) =>
@@ -1432,7 +1546,40 @@ describe(`Structure string parsing`, () => {
     )
     const status_msg = doc_query(`.status-message.error`)
     expect(status_msg.getAttribute(`role`)).toBe(`alert`)
-    expect(status_msg.textContent).toContain(`Failed to load structure`)
+    expect(status_msg.textContent).toContain(
+      `Failed to fetch /missing-structure.json: HTTP 404`,
+    )
+  })
+
+  // Deleting an atom writes a new structure object through the binding. Without re-claiming it
+  // for the URL the loader reads it as caller-supplied and never fetches the next data_url.
+  test(`an edited URL-loaded structure still follows a data_url change`, async () => {
+    const fetch_mock = vi.fn(
+      async (url: string | URL | Request) =>
+        new Response(structure_json(request_url(url).includes(`b.json`) ? `He` : `H`, 3)),
+    )
+    vi.stubGlobal(`fetch`, fetch_mock)
+    const on_file_load = vi.fn<(data: StructureHandlerData) => void>()
+    const props = $state<ComponentProps<typeof Structure>>({
+      data_url: `/a.json`,
+      structure: undefined,
+      selected_sites: [],
+      measure_mode: `edit-atoms`,
+      on_file_load,
+    })
+    mount_structure(props)
+    await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(1))
+    await tick()
+    props.selected_sites = [0]
+    doc_query(`.structure`).dispatchEvent(
+      new KeyboardEvent(`keydown`, { key: `Delete`, cancelable: true, bubbles: true }),
+    )
+    await tick()
+    expect(props.structure?.sites).toHaveLength(2)
+
+    props.data_url = `/b.json`
+    await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(2))
+    expect(props.structure?.sites[0]?.species[0]?.element).toBe(`He`)
   })
 })
 

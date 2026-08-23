@@ -67,7 +67,7 @@
 
 ## Anatomy
 
-`Structure` is a viewer over a structure you pass in (`structure`), fetch (`data_url`) or parse from text (`structure_string`). Its state is split in three: `loader.svelte.ts` acquires files (URL, drop, decompression, volumetric merges), the headless `StructureSession` (`session.svelte.ts`) owns the display pipeline (wrap → bonds → cell transform → supercell → element map → image atoms), the selection it validates against what is on screen, atom/bond editing with undo/redo and the multi-pane camera bookkeeping, and the component itself renders panes, toolbar, keyboard shortcuts and the single or 2×2 viewport layout. One bindable `active_pane: 'controls' | 'info' | 'export' | null` says which floating pane is open.
+`Structure` is a viewer over a structure you pass in (`structure`), fetch (`data_url`) or parse from text (`structure_string`). Its state is split in three: the shared `scene/viewer-loader.svelte.ts` acquires files (URL, drop, decompression) and `loader.ts` parses them into the next document (including volumetric merges), the headless `StructureSession` (`session.svelte.ts`) owns the display pipeline (wrap → bonds → cell transform → supercell → element map → image atoms), the selection it validates against what is on screen, atom/bond editing with undo/redo and the multi-pane camera bookkeeping, and the component itself renders panes, toolbar, keyboard shortcuts and the single or 2×2 viewport layout. One bindable `active_pane: 'controls' | 'info' | 'export' | null` says which floating pane is open.
 
 ## Explicit Bond Orders
 

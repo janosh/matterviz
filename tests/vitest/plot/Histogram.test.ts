@@ -3,11 +3,11 @@ import {
   bin_values,
   compute_count_range,
   compute_histogram_bins,
-  histogram_samples,
   type HistogramSeries,
-  histogram_series_color,
+  type HistogramSeriesInput,
   log_safe_range,
   normalize_counts,
+  to_histogram_series,
 } from '$lib/plot/histogram/histogram'
 import { tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
@@ -240,20 +240,24 @@ describe(`Histogram`, () => {
     })
     const modern_bars = bars_of()
     expect(modern_bars.length).toBeGreaterThan(0)
-    await mount_histogram({
-      series: [
-        {
-          x: [0, 1, 2, 3, 4, 5, 6, 7],
-          y: samples_a,
-          label: `A`,
-          line_style: { stroke: `red` },
-        },
-        { x: [], y: samples_b, label: `B`, line_style: { stroke: `blue` } },
-      ],
-      bins: 4,
-      mode: `overlay`,
-    })
+    const legacy_a = {
+      x: [0, 1, 2, 3, 4, 5, 6, 7],
+      y: samples_a,
+      label: `A`,
+      line_style: { stroke: `red` },
+    }
+    const legacy_b = { x: [], y: samples_b, label: `B`, line_style: { stroke: `blue` } }
+    const state = { series: [legacy_a, legacy_b] }
+    await mount_histogram(bind_props({ bins: 4, mode: `overlay`, show_legend: true }, state))
     expect(bars_of()).toEqual(modern_bars)
+    // legend toggles write back into the bound prop in the caller's own (legacy) shape: the
+    // normaliser only feeds the component's internals
+    const legend_items = document.querySelectorAll<HTMLElement>(`.legend-item`)
+    expect(legend_items).toHaveLength(2)
+    legend_items[1].click()
+    await tick()
+    expect(state.series[0]).toBe(legacy_a)
+    expect(state.series[1]).toStrictEqual({ ...legacy_b, visible: false })
     // a legacy series without samples renders nothing instead of throwing mid-render
     await mount_histogram({ series: [{ x: [1, 2], label: `empty` }], bins: 4 })
     expect(bars_of()).toEqual([])
@@ -512,26 +516,24 @@ describe(`Histogram`, () => {
     expect(empty.map(({ value }) => value)).toEqual([0, 0])
   })
 
+  // The normaliser is the only place the legacy `{ x, y, line_style }` shape is understood:
+  // its output carries `values` (possibly empty) and `color`, never the legacy keys
   // oxfmt-ignore
-  test.each<[string, HistogramSeries, readonly number[]]>([
-    [`values`, { values: [1, 2, 3] }, [1, 2, 3]],
-    [`legacy y (x ignored)`, { x: [10, 20, 30], y: [1, 2, 3] }, [1, 2, 3]],
-    [`values over y`, { values: [1, 2, 3], y: [7, 8, 9] }, [1, 2, 3]],
-    [`neither`, { x: [1, 2], label: `empty` }, []],
-  ])(`histogram_samples reads %s`, (_name, series_data, expected) => {
-    expect(histogram_samples(series_data)).toEqual(expected)
+  test.each<[string, HistogramSeriesInput, HistogramSeries]>([
+    [`values`, { values: [1, 2, 3], label: `a` }, { values: [1, 2, 3], label: `a` }],
+    [`legacy y (x dropped)`, { x: [10, 20, 30], y: [1, 2, 3] }, { values: [1, 2, 3] }],
+    [`values over y`, { values: [1, 2, 3], y: [7, 8, 9] }, { values: [1, 2, 3] }],
+    [`no samples`, { x: [1, 2], label: `empty` }, { values: [], label: `empty` }],
+    [`color over line_style.stroke`, { values: [1], color: `red`, line_style: { stroke: `blue` } }, { values: [1], color: `red` }],
+    [`legacy line_style.stroke`, { values: [1], line_style: { stroke: `blue`, width: 2 } }, { values: [1], color: `blue` }],
+    [`no colour`, { values: [1], line_style: { width: 2 } }, { values: [1] }],
+    [`metadata passthrough`, { id: 7, y: [150], visible: false, legend_group: `g`, x_axis: `x2`, y_axis: `y2` }, { id: 7, values: [150], visible: false, legend_group: `g`, x_axis: `x2`, y_axis: `y2` }],
+  ])(`to_histogram_series normalises %s`, (_name, input, expected) => {
+    const series_data = to_histogram_series(input)
+    expect(series_data).toStrictEqual(expected) // strict: no leftover legacy keys
+    // a sample-less series bins to empty bars rather than throwing
     const [hist] = histogram_bins([{ series_data, series_idx: 0 }])
-    const [reference] = histogram_bins([{ series_data: { values: expected }, series_idx: 0 }])
-    expect(hist.bins).toEqual(reference.bins)
-  })
-
-  // oxfmt-ignore
-  test.each<[string, HistogramSeries, string]>([
-    [`color`, { values: [1], color: `red`, line_style: { stroke: `blue` } }, `red`],
-    [`legacy line_style.stroke`, { values: [1], line_style: { stroke: `blue` } }, `blue`],
-    [`the palette fallback`, { values: [1], line_style: { width: 2 } }, `fallback`],
-  ])(`histogram_series_color prefers %s`, (_name, series_data, expected) => {
-    expect(histogram_series_color(series_data, `fallback`)).toBe(expected)
+    expect(hist.bins.reduce((sum, { count }) => sum + count, 0)).toBe(expected.values.length)
   })
 
   test(`compute_histogram_bins and compute_count_range`, () => {

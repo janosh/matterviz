@@ -100,10 +100,17 @@ export const make_grouped_h5_buffer = (
     }
   })
 
-export const make_torch_sim_signal_buffer = (
+// Four 2-atom frames at steps 0..3 with velocities (idx / 10, one [2, 3] sample per frame
+// unless `velocity_steps` puts them on their own axis), a dipole and a polarizability
+export const make_torch_sim_signal_buffer = ({
   dipole_steps = [0, 2],
   include_dipole_steps = true,
-): Promise<ArrayBuffer> =>
+  velocity_steps = [0, 1, 2, 3],
+}: {
+  dipole_steps?: number[]
+  include_dipole_steps?: boolean
+  velocity_steps?: number[]
+} = {}): Promise<ArrayBuffer> =>
   h5_bytes(`torch-sim-signals`, (file) => {
     const data = file.create_group(`data`)
     const steps = file.create_group(`steps`)
@@ -118,8 +125,8 @@ export const make_torch_sim_signal_buffer = (
     ds(
       data,
       `velocities`,
-      Array.from({ length: 24 }, (_unused, idx) => idx / 10),
-      [4, 2, 3],
+      Array.from({ length: 6 * velocity_steps.length }, (_unused, idx) => idx / 10),
+      [velocity_steps.length, 2, 3],
     ).create_attribute(`unit`, `A/fs`)
     ds(data, `dipole`, [1, 0, 0, 0, 1, 0], [2, 3])
     ds(
@@ -139,7 +146,7 @@ export const make_torch_sim_signal_buffer = (
       [3, 3, 3],
     )
     ds(steps, `positions`, [0, 1, 2, 3], [4])
-    ds(steps, `velocities`, [0, 1, 2, 3], [4])
+    ds(steps, `velocities`, velocity_steps, [velocity_steps.length])
     if (include_dipole_steps) {
       ds(steps, `dipole`, dipole_steps, [2])
     }

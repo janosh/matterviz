@@ -1,7 +1,7 @@
+import { PLOT_COLORS } from '$lib/colors'
 import type { SunburstNode } from '$lib/plot'
 import {
   compute_sunburst_layout,
-  DEFAULT_SERIES_COLORS,
   sunburst_from_labels_parents,
   sunburst_from_paths,
 } from '$lib/plot'
@@ -29,7 +29,7 @@ describe(`compute_sunburst_layout`, () => {
     const { arcs, root, max_depth } = compute_sunburst_layout(tree)
     expect(root).toBe(arcs[0])
     expect(max_depth).toBe(2)
-    const [c0, c1] = DEFAULT_SERIES_COLORS
+    const [c0, c1] = PLOT_COLORS
     // [id, node_idx, subtree_end, parent_idx, depth, value, is_leaf, color, hatch] per
     // arc: pre-order indexing gives contiguous subtree ranges, auto-ids slash-join
     // labels, descendants inherit their depth-1 ancestor's palette color, and hatch

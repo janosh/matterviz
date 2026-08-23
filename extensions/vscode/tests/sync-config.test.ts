@@ -47,6 +47,35 @@ describe(`sync-config`, () => {
     },
   )
 
+  // Object-valued leaves (free-form maps) used to be emitted as `type: string`, so VS Code
+  // rejected every value a user could type for them
+  test.each([
+    [`string values by default`, {}, { type: `string` }],
+    [`declared value type`, { additionalProperties: { type: `object` } }, { type: `object` }],
+  ])(`an object leaf is a JSON-schema object map with %s`, (_name, extra, additional) => {
+    const schema = {
+      trajectory: {
+        atom_type_mapping: { value: {}, description: `LAMMPS types to elements`, ...extra },
+      },
+    }
+    expect(
+      build_vscode_settings(schema, {})[`matterviz.trajectory.atom_type_mapping`],
+    ).toEqual({
+      type: `object`,
+      default: {},
+      description: `LAMMPS types to elements`,
+      additionalProperties: additional,
+    })
+    expect(generated[`matterviz.trajectory.atom_type_mapping`]).toMatchObject({
+      type: `object`,
+      additionalProperties: { type: `string` },
+    })
+    expect(generated[`matterviz.structure.vector_configs`]).toMatchObject({
+      type: `object`,
+      additionalProperties: { type: `object` },
+    })
+  })
+
   test(`a removed key may not collide with a live setting`, () => {
     const schema = { plot: { new_toggle: { value: true, description: `New toggle` } } }
     const removed = { 'plot.new_toggle': { type: `boolean` as const, deprecated: `Removed` } }

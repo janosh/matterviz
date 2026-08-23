@@ -348,29 +348,16 @@ describe(`size limit`, () => {
   })
 })
 
-describe(`performance tests`, () => {
-  test.each([
-    [1000, `2x2x2`, 8000, 200],
-    [1000, `4x4x4`, 64000, 1500],
-  ])(
-    `constructs supercell for %d atoms with scaling %s`,
-    (atom_count, scaling, expected_atoms, timeout_ms) => {
-      const test_structure = make_crystal(
-        1,
-        Array.from({ length: atom_count }, (_, idx) => ({
-          element: `H`,
-          abc: [(idx % 10) / 10, (idx % 100) / 100, idx / 1000] as Vec3,
-        })),
-      )
-
-      const start_time = performance.now()
-      const supercell = make_supercell(test_structure, scaling)
-      const duration = performance.now() - start_time
-
-      expect(supercell.sites).toHaveLength(expected_atoms)
-      expect(duration).toBeLessThan(timeout_ms * 3) // CI multiplier
-      expect(supercell.sites.every((site) => site.xyz && site.abc)).toBe(true)
-    },
-    10000,
+// Timing of large supercells lives in perf-baselines.test.ts
+test(`constructs a 64k-site supercell with xyz and abc on every site`, () => {
+  const test_structure = make_crystal(
+    1,
+    Array.from({ length: 1000 }, (_, idx) => ({
+      element: `H`,
+      abc: [(idx % 10) / 10, (idx % 100) / 100, idx / 1000] as Vec3,
+    })),
   )
+  const supercell = make_supercell(test_structure, `4x4x4`)
+  expect(supercell.sites).toHaveLength(64_000)
+  expect(supercell.sites.every((site) => site.xyz && site.abc)).toBe(true)
 })

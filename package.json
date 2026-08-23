@@ -1,6 +1,6 @@
 {
   "name": "matterviz",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Interactive visualizations for materials science: periodic tables, 3D structures, MD trajectories, heatmaps, scatter plots.",
   "keywords": [
     "chemistry",
@@ -276,7 +276,8 @@
     "knip": "knip --include dependencies,exports,types,nsExports",
     "publint": "publint",
     "package:dist": "svelte-package && node src/scripts/package-dist-assets.mjs",
-    "prepare": "svelte-kit sync",
+    "build:anywidget": "pnpm package:dist && pnpm -C extensions/anywidget install --ignore-workspace --config.strict-dep-builds=false && pnpm -C extensions/anywidget build",
+    "prepare": "node src/scripts/prepare.mjs",
     "prepublishOnly": "pnpm run package:dist"
   },
   "dependencies": {
@@ -320,7 +321,7 @@
     "@types/d3-time-format": "^4.0.3",
     "@types/node": "^26.2.0",
     "@types/three": "^0.185.4",
-    "@vitest/coverage-v8": "4.1.11",
+    "@vitest/coverage-v8": "4.1.10",
     "@wooorm/starry-night": "^3.10.0",
     "happy-dom": "^20.11.2",
     "knip": "^6.32.2",
@@ -334,7 +335,7 @@
     "typescript": "^6.0.3",
     "vite": "^8.2.1",
     "vite-plus": "0.2.9",
-    "vitest": "4.1.11"
+    "vitest": "4.1.10"
   },
   "peerDependencies": {
     "svelte": "^5.48.0"
