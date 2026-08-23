@@ -92,7 +92,6 @@ export function parse_tdb(content: string): TdbParseResult {
     )
   }
 
-  // Derive binary system from elements (excluding VA)
   const real_elements = elements.map((el) => el.symbol).filter(is_real_element)
   const binary_system: [string, string] | undefined =
     real_elements.length === 2 ? [real_elements[0], real_elements[1]] : undefined
@@ -288,7 +287,6 @@ function extract_elements_from_string(input: string): string[] | null {
       }
     }
 
-    // Try single-letter symbol (backtrack if two-letter path failed)
     const one_letter = upper[idx]
     if (KNOWN_ELEMENTS.has(one_letter)) {
       const rest = parse(idx + 1)
@@ -306,7 +304,6 @@ function extract_elements_from_string(input: string): string[] | null {
 export function normalize_system_name(input: string): string {
   if (!input) return ``
 
-  // First try splitting on common delimiters
   const delimiter_parts = input.split(/[-_]/).filter(Boolean)
 
   let elements: string[]
@@ -323,7 +320,6 @@ export function normalize_system_name(input: string): string {
     elements = parsed
   }
 
-  // Sort alphabetically and join with hyphen
   return elements.toSorted().join(`-`)
 }
 

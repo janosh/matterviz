@@ -83,23 +83,38 @@ const set_file_data = (content: string, filename: string = `${content}.json`): v
     defaults: { trajectory: { index_above_bytes: 4096 } },
   }
 }
+// Cleared spies and an empty mount point for the next webview lifecycle
+const reset = (): void => {
+  for (const mock of [mount, unmount, parse_file_content, parse_in_worker, post_message]) {
+    mock.mockClear()
+  }
+  document.body.innerHTML = `<div id="matterviz-app"></div>`
+}
+// Bootstrap a fresh webview showing `content`; parse mocks are queued by the caller first
+const boot = (content: string, filename?: string) => {
+  reset()
+  set_file_data(content, filename)
+  return initialize_matterviz?.()
+}
+const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0))
+const host_error = (text: unknown) => ({ command: `error`, text })
+const last_mounted_props = () => mount.mock.lastCall?.[1].props
 
+// A host -> webview postMessage as the listener in main.ts sees it
+const host_message = (data: Record<string, unknown>): boolean =>
+  globalThis.dispatchEvent(new MessageEvent(`message`, { data }))
 const update_file = (version: string): boolean =>
-  globalThis.dispatchEvent(
-    new MessageEvent(`message`, {
-      data: {
-        command: `fileUpdated`,
-        data: { content: version, filename: `${version}.json`, is_base64: false },
-      },
-    }),
-  )
+  host_message({
+    command: `fileUpdated`,
+    data: { content: version, filename: `${version}.json`, is_base64: false },
+  })
 // `defaults` omitted entirely when undefined: models a host that only pushes the theme
 const post_settings = (theme: string, defaults?: unknown): boolean =>
-  globalThis.dispatchEvent(
-    new MessageEvent(`message`, {
-      data: { command: `settingsChanged`, theme, ...(defaults !== undefined && { defaults }) },
-    }),
-  )
+  host_message({
+    command: `settingsChanged`,
+    theme,
+    ...(defaults !== undefined && { defaults }),
+  })
 
 test(`serializes reloads and guards cleanup, markers, and initialization`, async () => {
   expect(create_display).toBeTypeOf(`function`)
@@ -109,9 +124,7 @@ test(`serializes reloads and guards cleanup, markers, and initialization`, async
     .mockReturnValueOnce(stale_parse.promise)
     .mockResolvedValueOnce(result(`fresh`))
 
-  set_file_data(`initial`)
-  document.body.innerHTML = `<div id="matterviz-app"></div>`
-  await window.initializeMatterViz?.()
+  await boot(`initial`)
   expect(parse_in_worker).toHaveBeenCalledWith(
     `initial`,
     `initial.json`,
@@ -143,7 +156,7 @@ test(`serializes reloads and guards cleanup, markers, and initialization`, async
 
   const cleanup_unmount = Promise.withResolvers<undefined>()
   unmount.mockReturnValueOnce(cleanup_unmount.promise)
-  const cleanup = window.cleanupMatterViz?.()
+  const cleanup = cleanup_matterviz?.()
   await vi.waitFor(() => expect(unmount).toHaveBeenCalledTimes(2))
   update_file(`after-cleanup`)
   expect(parse_file_content).toHaveBeenCalledTimes(4)
@@ -154,16 +167,16 @@ test(`serializes reloads and guards cleanup, markers, and initialization`, async
     .mockResolvedValueOnce(result(`reinitialized`))
     .mockResolvedValueOnce(result(`new-session`))
   set_file_data(`reinitialized`)
-  await window.initializeMatterViz?.()
+  await initialize_matterviz?.()
   update_file(`new-session`)
   await vi.waitFor(() => {
     expect(parse_file_content).toHaveBeenCalledTimes(6)
     expect(mount).toHaveBeenCalledTimes(4)
   })
   cleanup_parse.resolve(result(`during-cleanup`))
-  await new Promise((resolve) => setTimeout(resolve, 0))
+  await flush()
   expect(mount).toHaveBeenCalledTimes(4)
-  await window.cleanupMatterViz?.()
+  await cleanup_matterviz?.()
 
   // A parse failure is reported to the host (marker handling itself is covered in
   // file-viewer/main.test.ts; delegate to the real parser for this one case)
@@ -171,20 +184,19 @@ test(`serializes reloads and guards cleanup, markers, and initialization`, async
     await vi.importActual<typeof ParseModule>(`$lib/file-viewer/parse`)
   parse_file_content.mockImplementationOnce(real_parse_file_content)
   set_file_data(`LARGE_FILE:/tmp/structure.cif:536870912`, `structure.cif`)
-  expect(await window.initializeMatterViz?.()).toBeNull()
+  expect(await initialize_matterviz?.()).toBeNull()
   expect(parse_file_content).toHaveBeenCalledTimes(7)
-  expect(post_message).toHaveBeenLastCalledWith({
-    command: `error`,
-    text: expect.stringContaining(`only supported for indexed trajectories`),
-  })
+  expect(post_message).toHaveBeenLastCalledWith(
+    host_error(expect.stringContaining(`only supported for indexed trajectories`)),
+  )
 
   const initialization_parse = Promise.withResolvers<ParseResult>()
   parse_file_content.mockReturnValueOnce(initialization_parse.promise)
   set_file_data(`pending-initialization`)
-  const pending_initialization = window.initializeMatterViz?.()
+  const pending_initialization = initialize_matterviz?.()
   await vi.waitFor(() => expect(parse_file_content).toHaveBeenCalledTimes(8))
   const mount_count = mount.mock.calls.length
-  await window.cleanupMatterViz?.()
+  await cleanup_matterviz?.()
   initialization_parse.resolve(result(`pending-initialization`))
   expect(await pending_initialization).toBeNull()
   expect(mount).toHaveBeenCalledTimes(mount_count)
@@ -194,23 +206,20 @@ test(`serializes reloads and guards cleanup, markers, and initialization`, async
 // rendered an unsaved editor buffer): theme is applied to the DOM, changed defaults remount
 // the already-parsed result, unchanged defaults are a no-op
 test(`settingsChanged re-applies theme and remounts the parsed result without re-parsing`, async () => {
-  for (const mock of [mount, unmount, parse_file_content]) mock.mockClear()
   parse_file_content.mockResolvedValueOnce(result(`settings`))
-  set_file_data(`settings`)
-  document.body.innerHTML = `<div id="matterviz-app"></div>`
-  await initialize_matterviz?.()
+  await boot(`settings`)
   expect(mount).toHaveBeenCalledTimes(1)
 
   post_settings(`dark`, { trajectory: { index_above_bytes: 4096 } })
   await vi.waitFor(() => expect(document.documentElement.dataset.theme).toBe(`dark`))
-  await new Promise((resolve) => setTimeout(resolve, 0))
+  await flush()
   expect(unmount).not.toHaveBeenCalled()
 
   post_settings(`light`, { structure: { atom_radius: 0.3 } })
   await vi.waitFor(() => expect(unmount).toHaveBeenCalledTimes(1))
   await vi.waitFor(() => expect(mount).toHaveBeenCalledTimes(2))
   expect(document.documentElement.dataset.theme).toBe(`light`)
-  expect(mount.mock.lastCall?.[1].props).toMatchObject({
+  expect(last_mounted_props()).toMatchObject({
     value: `settings`,
     defaults: expect.objectContaining({
       structure: expect.objectContaining({ atom_radius: 0.3 }),
@@ -222,7 +231,7 @@ test(`settingsChanged re-applies theme and remounts the parsed result without re
   // neither remounts nor resets the stored defaults
   post_settings(`dark`)
   await vi.waitFor(() => expect(document.documentElement.dataset.theme).toBe(`dark`))
-  await new Promise((resolve) => setTimeout(resolve, 0))
+  await flush()
   expect(unmount).toHaveBeenCalledTimes(1)
   expect(mount).toHaveBeenCalledTimes(2)
   expect(globalThis.matterviz_data).toMatchObject({
@@ -235,8 +244,7 @@ test(`settingsChanged re-applies theme and remounts the parsed result without re
 // remount must hand it to the new app, and a lifecycle that ends (or a mount that fails)
 // mid-remount must dispose it exactly once
 test(`settingsChanged remount keeps the trajectory run alive and never leaks it`, async () => {
-  for (const mock of [mount, unmount, parse_file_content, post_message]) mock.mockClear()
-  document.body.innerHTML = `<div id="matterviz-app"></div>`
+  reset()
   const make_run = (): TrajectoryRun =>
     ({ dispose: vi.fn(), frame_count: 3, metadata: {} }) as unknown as TrajectoryRun
   const init_run = async (name: string): Promise<TrajectoryRun> => {
@@ -255,7 +263,7 @@ test(`settingsChanged remount keeps the trajectory run alive and never leaks it`
   await vi.waitFor(() => expect(mount).toHaveBeenCalledTimes(2))
   expect(unmount).toHaveBeenCalledTimes(1)
   expect(run_a.dispose).not.toHaveBeenCalled()
-  expect(mount.mock.lastCall?.[1].props.trajectory).toBe(run_a)
+  expect(last_mounted_props()?.trajectory).toBe(run_a)
   await cleanup_matterviz?.()
   expect(unmount).toHaveBeenCalledTimes(2)
   expect(run_a.dispose).toHaveBeenCalledTimes(1)
@@ -271,7 +279,7 @@ test(`settingsChanged remount keeps the trajectory run alive and never leaks it`
   await cleanup_matterviz?.()
   expect(run_b.dispose).not.toHaveBeenCalled()
   pending_unmount.resolve(undefined)
-  await new Promise((resolve) => setTimeout(resolve, 0))
+  await flush()
   expect(run_b.dispose).toHaveBeenCalledTimes(1)
   expect(mount).toHaveBeenCalledTimes(mount_count)
 
@@ -282,10 +290,9 @@ test(`settingsChanged remount keeps the trajectory run alive and never leaks it`
   })
   post_settings(`light`, changed_defaults)
   await vi.waitFor(() => expect(run_c.dispose).toHaveBeenCalledTimes(1))
-  expect(post_message).toHaveBeenLastCalledWith({
-    command: `error`,
-    text: expect.stringContaining(`mount failed`),
-  })
+  expect(post_message).toHaveBeenLastCalledWith(
+    host_error(expect.stringContaining(`mount failed`)),
+  )
 })
 
 // A failed bootstrap display (the parse threw, the error display is on screen) used to be
@@ -293,23 +300,19 @@ test(`settingsChanged remount keeps the trajectory run alive and never leaks it`
 // re-attempt the display from the bootstrap payload the same way instead of bailing because
 // there is nothing to remount
 test(`settingsChanged re-attempts a failed initial display from the bootstrap payload`, async () => {
-  for (const mock of [mount, unmount, parse_file_content, post_message]) mock.mockClear()
-  document.body.innerHTML = `<div id="matterviz-app"></div>`
   parse_file_content.mockRejectedValueOnce(new Error(`needs a bigger index threshold`))
-  set_file_data(`retry`)
-  expect(await initialize_matterviz?.()).toBeNull()
+  expect(await boot(`retry`)).toBeNull()
   expect(document.body.textContent).toContain(`needs a bigger index threshold`)
-  expect(post_message).toHaveBeenLastCalledWith({
-    command: `error`,
-    text: `Error rendering retry.json: needs a bigger index threshold`,
-  })
+  expect(post_message).toHaveBeenLastCalledWith(
+    host_error(`Error rendering retry.json: needs a bigger index threshold`),
+  )
   expect(mount).not.toHaveBeenCalled()
 
   // Neither a theme-only push nor unchanged defaults can affect a parse, so neither retries
   post_settings(`dark`)
   post_settings(`dark`, { trajectory: { index_above_bytes: 4096 } })
   await vi.waitFor(() => expect(document.documentElement.dataset.theme).toBe(`dark`))
-  await new Promise((resolve) => setTimeout(resolve, 0))
+  await flush()
   expect(parse_file_content).toHaveBeenCalledTimes(1)
 
   // A retry that fails again re-reports and keeps the error display
@@ -317,10 +320,9 @@ test(`settingsChanged re-attempts a failed initial display from the bootstrap pa
   post_settings(`dark`, { trajectory: { index_above_bytes: 8192 } })
   await vi.waitFor(() => expect(parse_file_content).toHaveBeenCalledTimes(2))
   await vi.waitFor(() => expect(document.body.textContent).toContain(`still broken`))
-  expect(post_message).toHaveBeenLastCalledWith({
-    command: `error`,
-    text: `Error rendering retry.json: still broken`,
-  })
+  expect(post_message).toHaveBeenLastCalledWith(
+    host_error(`Error rendering retry.json: still broken`),
+  )
   expect(mount).not.toHaveBeenCalled()
 
   // The changed defaults reach the parser and the mounted component; theme applies as usual
@@ -333,7 +335,7 @@ test(`settingsChanged re-attempts a failed initial display from the bootstrap pa
     false,
     expect.objectContaining({ load_options: { index_above_bytes: 16_384 } }),
   )
-  expect(mount.mock.lastCall?.[1].props).toMatchObject({
+  expect(last_mounted_props()).toMatchObject({
     value: `retry`,
     defaults: expect.objectContaining({
       trajectory: expect.objectContaining({ index_above_bytes: 16_384 }),
@@ -353,20 +355,16 @@ test(`settingsChanged re-attempts a failed initial display from the bootstrap pa
 // reload that fails while nothing is on screen is what gets retried, a reload that lands
 // mid-retry wins silently (no AbortError reported), and a deleted file is never resurrected
 test(`settingsChanged retries the latest host file and never a superseded or deleted one`, async () => {
-  for (const mock of [mount, unmount, parse_file_content, post_message]) mock.mockClear()
-  document.body.innerHTML = `<div id="matterviz-app"></div>`
   parse_file_content.mockRejectedValueOnce(new Error(`bootstrap broken`))
-  set_file_data(`bootstrap`)
-  expect(await initialize_matterviz?.()).toBeNull()
+  expect(await boot(`bootstrap`)).toBeNull()
 
   // A failed reload with nothing on screen replaces the error display and the retry source
   parse_file_content.mockRejectedValueOnce(new Error(`reload broken`))
   update_file(`reloaded`)
   await vi.waitFor(() => expect(document.body.textContent).toContain(`reload broken`))
-  expect(post_message).toHaveBeenLastCalledWith({
-    command: `error`,
-    text: `Error rendering reloaded.json: reload broken`,
-  })
+  expect(post_message).toHaveBeenLastCalledWith(
+    host_error(`Error rendering reloaded.json: reload broken`),
+  )
   parse_file_content.mockResolvedValueOnce(result(`reloaded`))
   post_settings(`light`, { structure: { atom_radius: 0.3 } })
   await vi.waitFor(() => expect(mount).toHaveBeenCalledTimes(1))
@@ -393,22 +391,18 @@ test(`settingsChanged retries the latest host file and never a superseded or del
   update_file(`newer`)
   retry_parse.reject(new DOMException(`aborted`, `AbortError`))
   await vi.waitFor(() => expect(mount).toHaveBeenCalledTimes(2))
-  expect(mount.mock.lastCall?.[1].props.value).toBe(`newer`)
+  expect(last_mounted_props()?.value).toBe(`newer`)
   expect(post_message.mock.calls.map(([msg]) => msg.command)).not.toContain(`error`)
   post_settings(`light`, { structure: { atom_radius: 0.7 } })
   await vi.waitFor(() => expect(mount).toHaveBeenCalledTimes(3))
-  expect(mount.mock.lastCall?.[1].props.value).toBe(`newer`)
+  expect(last_mounted_props()?.value).toBe(`newer`)
   expect(parse_file_content).toHaveBeenCalledTimes(6)
 
   // After fileDeleted there is nothing to retry or remount
-  globalThis.dispatchEvent(
-    new MessageEvent(`message`, {
-      data: { command: `fileDeleted`, file_path: `/tmp/newer.json` },
-    }),
-  )
+  host_message({ command: `fileDeleted`, file_path: `/tmp/newer.json` })
   await vi.waitFor(() => expect(document.body.textContent).toContain(`File Deleted`))
   post_settings(`light`, { structure: { atom_radius: 0.9 } })
-  await new Promise((resolve) => setTimeout(resolve, 0))
+  await flush()
   expect(parse_file_content).toHaveBeenCalledTimes(6)
   expect(mount).toHaveBeenCalledTimes(3)
   expect(document.body.textContent).toContain(`File Deleted`)
@@ -418,20 +412,16 @@ test(`settingsChanged retries the latest host file and never a superseded or del
 // what the host asked for: the next settings change must re-parse the new file (the new
 // defaults may be what its parse needed), not remount the stale one
 test(`settingsChanged after a failed reload re-parses the new file instead of remounting the old`, async () => {
-  for (const mock of [mount, unmount, parse_file_content, post_message]) mock.mockClear()
-  document.body.innerHTML = `<div id="matterviz-app"></div>`
   parse_file_content.mockResolvedValueOnce(result(`old`))
-  set_file_data(`old`)
-  await initialize_matterviz?.()
+  await boot(`old`)
   expect(mount).toHaveBeenCalledTimes(1)
 
   parse_file_content.mockRejectedValueOnce(new Error(`reload broken`))
   update_file(`new`)
   await vi.waitFor(() =>
-    expect(post_message).toHaveBeenLastCalledWith({
-      command: `error`,
-      text: `Error rendering new.json: reload broken`,
-    }),
+    expect(post_message).toHaveBeenLastCalledWith(
+      host_error(`Error rendering new.json: reload broken`),
+    ),
   )
   // the old display stays up rather than being replaced by the error display
   expect(unmount).not.toHaveBeenCalled()
@@ -441,7 +431,7 @@ test(`settingsChanged after a failed reload re-parses the new file instead of re
   post_settings(`light`, { structure: { atom_radius: 0.3 } })
   await vi.waitFor(() => expect(mount).toHaveBeenCalledTimes(2))
   expect(parse_in_worker).toHaveBeenLastCalledWith(`new`, `new.json`, false, expect.anything())
-  expect(mount.mock.lastCall?.[1].props.value).toBe(`new`)
+  expect(last_mounted_props()?.value).toBe(`new`)
   expect(unmount).toHaveBeenCalledTimes(1)
 })
 
@@ -449,11 +439,8 @@ test(`settingsChanged after a failed reload re-parses the new file instead of re
 // then fails to parse, the next settings change must retry the reload's file rather than find
 // a disposed result to "remount" and do nothing
 test(`settingsChanged after a superseded remount and a failed reload re-parses the reload's file`, async () => {
-  for (const mock of [mount, unmount, parse_file_content, post_message]) mock.mockClear()
-  document.body.innerHTML = `<div id="matterviz-app"></div>`
   parse_file_content.mockResolvedValueOnce(result(`shown`))
-  set_file_data(`shown`)
-  await initialize_matterviz?.()
+  await boot(`shown`)
 
   const pending_unmount = Promise.withResolvers<undefined>()
   unmount.mockReturnValueOnce(pending_unmount.promise)
@@ -474,16 +461,13 @@ test(`settingsChanged after a superseded remount and a failed reload re-parses t
     false,
     expect.anything(),
   )
-  expect(mount.mock.lastCall?.[1].props.value).toBe(`reloaded`)
+  expect(last_mounted_props()?.value).toBe(`reloaded`)
 })
 
 // The bootstrap display is queued like every other host message: a settings change that lands
 // during its parse waits for the mount and remounts it, instead of starting a retry parse that
 // aborts the bootstrap one (a spurious AbortError report plus a second parse)
 test(`settingsChanged during the bootstrap parse waits for it instead of racing it`, async () => {
-  for (const mock of [mount, unmount, parse_file_content, parse_in_worker, post_message])
-    mock.mockClear()
-  document.body.innerHTML = `<div id="matterviz-app"></div>`
   const bootstrap_parse = Promise.withResolvers<ParseResult>()
   parse_in_worker.mockImplementationOnce(
     (_content, _filename, _is_base64, { signal }) =>
@@ -494,40 +478,33 @@ test(`settingsChanged during the bootstrap parse waits for it instead of racing 
         void bootstrap_parse.promise.then(resolve)
       }),
   )
-  set_file_data(`boot`)
-  const initializing = initialize_matterviz?.()
+  const initializing = boot(`boot`)
   await vi.waitFor(() => expect(parse_in_worker).toHaveBeenCalledTimes(1))
 
   post_settings(`light`, { structure: { atom_radius: 0.3 } })
-  await new Promise((resolve) => setTimeout(resolve, 0))
+  await flush()
   expect(mount).not.toHaveBeenCalled()
   bootstrap_parse.resolve(result(`boot`))
   expect(await initializing).not.toBeNull()
   await vi.waitFor(() => expect(mount).toHaveBeenCalledTimes(2))
   expect(parse_in_worker).toHaveBeenCalledTimes(1)
   expect(unmount).toHaveBeenCalledTimes(1)
-  expect(mount.mock.lastCall?.[1].props.defaults).toMatchObject({
-    structure: { atom_radius: 0.3 },
-  })
+  expect(last_mounted_props()?.defaults).toMatchObject({ structure: { atom_radius: 0.3 } })
   expect(post_message.mock.calls.map(([msg]) => msg.command)).not.toContain(`error`)
 })
 
 // A bootstrap that throws before it can display anything (an empty payload) must still leave
 // the webview listening, so the host's next reload reaches it
 test(`a bootstrap that fails before displaying still accepts host reloads`, async () => {
-  for (const mock of [mount, parse_file_content, post_message]) mock.mockClear()
-  document.body.innerHTML = `<div id="matterviz-app"></div>`
-  set_file_data(``, ``)
-  expect(await initialize_matterviz?.()).toBeNull()
-  expect(post_message).toHaveBeenLastCalledWith({
-    command: `error`,
-    text: expect.stringContaining(`No data provided`),
-  })
+  expect(await boot(``, ``)).toBeNull()
+  expect(post_message).toHaveBeenLastCalledWith(
+    host_error(expect.stringContaining(`No data provided`)),
+  )
 
   parse_file_content.mockResolvedValueOnce(result(`late`))
   update_file(`late`)
   await vi.waitFor(() => expect(mount).toHaveBeenCalledTimes(1))
-  expect(mount.mock.lastCall?.[1].props.value).toBe(`late`)
+  expect(last_mounted_props()?.value).toBe(`late`)
 })
 
 test(`routes cross-origin worker scripts through a same-origin blob module`, async () => {

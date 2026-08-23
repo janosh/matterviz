@@ -52,16 +52,18 @@
 
   function make_test_volume(size: number, kind: `density` | `color`): VolumetricData {
     const values = new Float64Array(size ** 3)
+    // periodic distance from the cell center along one fractional axis
+    const delta = (frac: number) => Math.min(Math.abs(frac - 0.5), 1 - Math.abs(frac - 0.5))
     let idx = 0
     for (let x_idx = 0; x_idx < size; x_idx++) {
       const x_frac = x_idx / size
-      const x_delta = Math.min(Math.abs(x_frac - 0.5), 1 - Math.abs(x_frac - 0.5))
+      const x_delta = delta(x_frac)
       for (let y_idx = 0; y_idx < size; y_idx++) {
         const y_frac = y_idx / size
-        const y_delta = Math.min(Math.abs(y_frac - 0.5), 1 - Math.abs(y_frac - 0.5))
+        const y_delta = delta(y_frac)
         for (let z_idx = 0; z_idx < size; z_idx++) {
           const z_frac = z_idx / size
-          const z_delta = Math.min(Math.abs(z_frac - 0.5), 1 - Math.abs(z_frac - 0.5))
+          const z_delta = delta(z_frac)
           values[idx++] =
             kind === `density`
               ? Math.exp(-(x_delta ** 2 + y_delta ** 2 + z_delta ** 2) / 0.045)

@@ -7,7 +7,7 @@ import type { compute_msd_async as ComputeMsdAsync } from '$lib/msd/async-comput
 import { calc_msd } from '$lib/msd/calc-msd'
 import type { MsdOptions, MsdPositions } from '$lib/msd/index'
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
-import { install_stub_worker } from '../setup'
+import { expect_module_worker, install_stub_worker } from '../setup'
 import { drift_positions } from './helpers'
 
 const stub = install_stub_worker<{ id: number; input: MsdPositions; options: MsdOptions }>(
@@ -28,13 +28,7 @@ describe(`worker code path`, () => {
     await compute_msd_async(drift_positions(20))
     expect(stub.posted).toHaveLength(2)
     expect(result.curves[0].msd).toEqual(calc_msd(positions).curves[0].msd)
-    // Vite only detects and rewrites the worker when the URL keeps the `./` prefix and
-    // the `.js` extension (see chempot-diagram). Detection turns the source `.js` spec
-    // into the real `.ts` module tagged `?worker_file`; losing that means the app would
-    // 404 on the worker at runtime and silently never enter this branch.
-    expect(stub.instances).toHaveLength(1)
-    expect(stub.instances[0].url).toMatch(/\/src\/lib\/msd\/msd-worker\.ts\?worker_file/)
-    expect(stub.instances[0].options).toEqual({ type: `module` })
+    expect_module_worker(stub.instances, `src/lib/msd/msd-worker.ts`)
   })
 
   it(`sends a structured-cloneable flat payload, never transferring the caller's buffer`, async () => {

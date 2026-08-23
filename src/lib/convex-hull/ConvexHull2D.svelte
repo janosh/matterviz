@@ -25,7 +25,7 @@
   } from './helpers'
   import { create_hull_data_pipeline } from './hull-state.svelte'
   import type { BaseConvexHullProps } from './index'
-  import { CONVEX_HULL_STYLE, default_controls, default_hull_config } from './index'
+  import { CONVEX_HULL_STYLE, default_controls, merge_hull_config } from './index'
   import MissingConvexHullData from './MissingConvexHullData.svelte'
   import type { ConvexHullEntry } from './types'
   import { MAGNETIC_ORDERING_CATEGORY } from './types'
@@ -87,11 +87,7 @@
 
   const merged_controls = $derived({ ...default_controls, ...controls })
   const controls_config = $derived(normalize_show_controls(show_controls))
-  const merged_config = $derived({
-    ...default_hull_config,
-    ...config,
-    colors: { ...default_hull_config.colors, ...config.colors },
-  })
+  const merged_config = $derived(merge_hull_config(config))
   // Narrow deriveds to primitive fields so heavy downstream deriveds (scatter series,
   // hull segments) don't recompute whenever the broad merged_config object is recreated.
   const stable_color = $derived(merged_config.colors?.stable)

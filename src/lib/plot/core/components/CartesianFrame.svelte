@@ -52,6 +52,7 @@
     css_prefix: string
     // Per-chart fallbacks for CSS_VAR_DEFAULTS entries whose default differs
     css_var_fallbacks?: Record<string, string>
+    // Accessible name when neither the title nor the x/y axis labels give one (`Bar chart`)
     aria_label: string
     fullscreen?: boolean
     fullscreen_toggle?: boolean
@@ -103,6 +104,13 @@
   }: Props = $props()
 
   const pan_zoom = $derived(frame.pan_zoom)
+  // An explicit aria-label wins; otherwise the title, then `X label vs Y label`, then the fallback
+  const svg_aria_label = $derived(
+    aria_label_override ??
+      (frame.title_config?.text ||
+        [frame.axes.x.label, frame.axes.y.label].filter(Boolean).join(` vs `) ||
+        aria_label),
+  )
 
   const css_vars = $derived(
     Object.entries(css_var_defaults(css_prefix))
@@ -168,7 +176,7 @@
     <svg
       bind:this={frame.svg_element}
       role="application"
-      aria-label={aria_label_override ?? aria_label}
+      aria-label={svg_aria_label}
       tabindex="0"
       onfocusin={() => pan_zoom.set_focused(true)}
       onfocusout={() => pan_zoom.set_focused(false)}

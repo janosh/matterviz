@@ -9,13 +9,11 @@ import {
   get_tick_range,
   measure_plot_area,
   open_plot_controls,
+  require_bbox,
   set_input_value,
+  svg_rect,
   wait_for_stable_bbox,
 } from '../helpers'
-
-// Check if array values are in ascending order (empty arrays are vacuously ascending)
-const is_ascending = (arr: number[]): boolean =>
-  arr.every((val, idx) => idx === 0 || val >= arr[idx - 1])
 
 // Set the four quadrant density sliders of the colorbar placement fixture
 const set_density = async (
@@ -48,14 +46,6 @@ const bbox_area = async (locator: Locator): Promise<number> => {
   return bbox ? bbox.width * bbox.height : 0
 }
 
-const get_svg_rect = (rect: Locator) =>
-  rect.evaluate((el) => ({
-    x: Number(el.getAttribute(`x`)),
-    y: Number(el.getAttribute(`y`)),
-    width: Number(el.getAttribute(`width`)),
-    height: Number(el.getAttribute(`height`)),
-  }))
-
 // Hover a marker to show its tooltip. The SVG's onmouseenter must set hovered=true before
 // onmousemove can pick the closest point, so enter the SVG first, then move to the marker.
 const hover_to_show_tooltip = async (
@@ -66,9 +56,8 @@ const hover_to_show_tooltip = async (
   const svg = get_chart_svg(plot)
   const tooltip = plot.locator(`.plot-tooltip`)
   await expect(async () => {
-    const svg_bbox = await svg.boundingBox()
-    const marker_bbox = await marker.boundingBox()
-    if (!svg_bbox || !marker_bbox) throw new Error(`Bounding boxes not available`)
+    const svg_bbox = await require_bbox(svg, `svg`)
+    const marker_bbox = await require_bbox(marker, `marker`)
     await page.mouse.move(svg_bbox.x + 10, svg_bbox.y + 10)
     await page.mouse.move(
       marker_bbox.x + marker_bbox.width / 2,
@@ -102,7 +91,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
         .map(Number)
         .filter((val) => !isNaN(val))
       expect(values.length).toBeGreaterThan(0)
-      expect(is_ascending(values)).toBe(true)
+      expect(values).toEqual(values.toSorted((val_a, val_b) => val_a - val_b))
       await expect(axis_ticks.locator(`text`).first()).toBeVisible()
       await expect(axis_ticks.locator(`text`).last()).toBeVisible()
     }
@@ -161,11 +150,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
     // strips align with the plot area: top spans its width and sits above it,
     // right spans its height and sits to the right of it
-    const [clip, top, right] = await Promise.all([
-      get_svg_rect(plot_clip),
-      get_svg_rect(top_hit),
-      get_svg_rect(right_hit),
-    ])
+    const [clip, top, right] = await Promise.all([plot_clip, top_hit, right_hit].map(svg_rect))
     expect(top.x).toBeCloseTo(clip.x, 1)
     expect(top.width).toBeCloseTo(clip.width, 1)
     expect(top.y + top.height).toBeLessThan(clip.y)
@@ -173,8 +158,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     expect(right.height).toBeCloseTo(clip.height, 1)
     expect(right.x).toBeGreaterThan(clip.x + clip.width)
 
-    const top_hit_box = await top_hit.boundingBox()
-    if (!top_hit_box) throw new Error(`top marginal hit box missing`)
+    const top_hit_box = await require_bbox(top_hit, `top marginal hit box`)
     await page.mouse.move(
       top_hit_box.x + top_hit_box.width * 0.55,
       top_hit_box.y + top_hit_box.height * 0.45,
@@ -195,8 +179,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     expect(await get_tick_range(x_axis)).toEqual(before_drag)
 
     // zooming the host plot shrinks both axes and recomputes the top KDE
-    const svg_box = await svg.boundingBox()
-    if (!svg_box) throw new Error(`scatter svg box missing`)
+    const svg_box = await require_bbox(svg, `scatter svg`)
     const initial_x = await get_tick_range(x_axis)
     const initial_y = await get_tick_range(y_axis)
     const top_kde_before = await top_strip.locator(`path[fill="none"]`).getAttribute(`d`)
@@ -361,12 +344,10 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await page.mouse.down()
     await page.mouse.move(svg_box.x + clip.x + 5, svg_box.y + clip.y + 5, { steps: 5 })
     await expect(zoom_rect).toBeVisible()
-    const rect_inside = await zoom_rect.boundingBox()
-    if (!rect_inside) throw new Error(`Rect box inside not found`)
+    const rect_inside = await require_bbox(zoom_rect, `zoom rect inside`)
     await page.mouse.move(svg_box.x - 50, svg_box.y - 50, { steps: 5 })
     await expect(zoom_rect).toBeVisible()
-    const rect_outside = await zoom_rect.boundingBox()
-    if (!rect_outside) throw new Error(`Rect box outside not found`)
+    const rect_outside = await require_bbox(zoom_rect, `zoom rect outside`)
     expect(rect_outside.width).toBeGreaterThan(rect_inside.width)
     expect(rect_outside.height).toBeGreaterThan(rect_inside.height)
     await page.mouse.up()
@@ -531,12 +512,9 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
     const legend = plot.locator(`.legend`)
     if ((await legend.count()) > 0) {
-      const [legend_bbox, colorbar_bbox] = await Promise.all([
-        legend.boundingBox(),
-        colorbar.boundingBox(),
-      ])
-      if (!legend_bbox || !colorbar_bbox) throw new Error(`missing legend/colorbar geometry`)
-      expect(rects_overlap(legend_bbox, colorbar_bbox)).toBe(false)
+      expect(rects_overlap(await require_bbox(legend), await require_bbox(colorbar))).toBe(
+        false,
+      )
     }
 
     await page.setViewportSize({ width: 900, height: 700 })
@@ -593,8 +571,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     expect(await tooltip.textContent()).not.toBe(first_tooltip_text)
 
     // markers nearest the right and bottom edges must not push the tooltip out of the plot
-    const plot_box = await plot.boundingBox()
-    if (!plot_box) throw new Error(`plot has no bounding box`)
+    const plot_box = await require_bbox(plot, `plot`)
     const header_box = await plot.locator(`.header-controls`).boundingBox()
     const marker_boxes = await Promise.all(
       (await markers.all()).map(async (marker) => ({
@@ -619,8 +596,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     const bottommost = hoverable.toSorted((a, b) => (b.bbox?.y ?? 0) - (a.bbox?.y ?? 0))[0]
     for (const { marker } of [rightmost, bottommost]) {
       await hover_to_show_tooltip(page, plot, marker)
-      const tooltip_box = await tooltip.boundingBox()
-      if (!tooltip_box) throw new Error(`tooltip has no bounding box`)
+      const tooltip_box = await require_bbox(tooltip, `tooltip`)
       expect(tooltip_box.x + tooltip_box.width).toBeLessThanOrEqual(
         plot_box.x + plot_box.width + 50,
       )
@@ -859,8 +835,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await page.keyboard.down(`Shift`)
     await expect(svg).toHaveCSS(`cursor`, `grab`)
 
-    const svg_box = await svg.boundingBox()
-    if (!svg_box) throw new Error(`SVG box not found`)
+    const svg_box = await require_bbox(svg, `svg`)
     await page.mouse.move(svg_box.x + 100, svg_box.y + 100)
     await page.mouse.down()
     // Cursor is set on document.body during pan drag
@@ -876,8 +851,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     const y_axis = plot.locator(`g.y-axis`)
     await expect(y_axis.locator(`.tick text`).first()).toBeVisible()
     const initial_y = await get_tick_range(y_axis)
-    const svg_box = await svg.boundingBox()
-    if (!svg_box) throw new Error(`SVG box not found`)
+    const svg_box = await require_bbox(svg, `svg`)
     const shift_wheel = async () => {
       await page.mouse.move(svg_box.x + svg_box.width / 2, svg_box.y + svg_box.height / 2)
       await page.keyboard.down(`Shift`)
@@ -914,8 +888,7 @@ test.describe(`Legend Placement Stability`, () => {
     const legend = plot.locator(`.legend`)
     // Wait for smart placement to move the legend away from the top-left fallback corner
     const legend_bbox = await wait_for_stable_bbox(legend)
-    const plot_bbox = await plot.boundingBox()
-    if (!plot_bbox) throw new Error(`plot has no bounding box`)
+    const plot_bbox = await require_bbox(plot, `plot`)
     const legend_center_x = legend_bbox.x + legend_bbox.width / 2
     const legend_center_y = legend_bbox.y + legend_bbox.height / 2
     expect(legend_center_x).toBeGreaterThan(plot_bbox.x)
@@ -950,8 +923,7 @@ test.describe(`Legend Placement Stability`, () => {
     await series_a.click()
     await expect(series_a).toHaveClass(/hidden/)
     // hover lock: the legend does not re-place while the pointer is on it
-    const after_toggle = await legend.boundingBox()
-    if (!after_toggle) throw new Error(`legend has no bounding box`)
+    const after_toggle = await require_bbox(legend, `legend`)
     expect(
       Math.hypot(after_toggle.x - initial_pos.x, after_toggle.y - initial_pos.y),
     ).toBeLessThan(10)
@@ -967,8 +939,7 @@ test.describe(`Legend Placement Stability`, () => {
         else await expect(items.nth(idx)).not.toHaveClass(/hidden/)
       }
     }
-    const plot_bbox = await plot.boundingBox()
-    if (!plot_bbox) throw new Error(`plot has no bounding box`)
+    const plot_bbox = await require_bbox(plot, `plot`)
     await page.mouse.move(plot_bbox.x + 10, plot_bbox.y + 10)
     const final_pos = await wait_for_stable_bbox(legend)
     expect(final_pos.width).toBeGreaterThan(50)

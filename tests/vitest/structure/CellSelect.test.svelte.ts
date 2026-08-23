@@ -24,9 +24,11 @@ type CellSelectProps = {
 const normalize_supercell_label = (label: string | undefined): string | undefined =>
   label?.replaceAll(`\u200A`, ``).trim()
 
+const mount_select = (props: CellSelectProps) =>
+  mount(CellSelect, { target: document.body, props })
 // Helper to mount component and open dropdown.
 async function mount_and_open(props: CellSelectProps): Promise<void> {
-  mount(CellSelect, { target: document.body, props })
+  mount_select(props)
   doc_query<HTMLButtonElement>(`.toggle-btn`).click()
   await tick()
 }
@@ -38,10 +40,7 @@ describe(`CellSelect`, () => {
       [`1x1x1`, `primitive`, `Prim 1x1x1`],
       [`3x3x3`, `conventional`, `Conv 3x3x3`],
     ] as const)(`displays "%s" with cell_type=%s as "%s"`, (scaling, cell_type, expected) => {
-      mount(CellSelect, {
-        target: document.body,
-        props: { supercell_scaling: scaling, cell_type },
-      })
+      mount_select({ supercell_scaling: scaling, cell_type })
       expect(normalize_supercell_label(doc_query(`.toggle-btn`).textContent)).toBe(expected)
     })
 
@@ -49,10 +48,7 @@ describe(`CellSelect`, () => {
       [true, true],
       [false, false],
     ])(`loading=%s shows spinner=%s`, (loading, has_spinner) => {
-      mount(CellSelect, {
-        target: document.body,
-        props: { supercell_scaling: `1x1x1`, loading },
-      })
+      mount_select({ supercell_scaling: `1x1x1`, loading })
       expect(Boolean(document.querySelector(`.toggle-btn .spinner`))).toBe(has_spinner)
     })
   })
@@ -62,10 +58,7 @@ describe(`CellSelect`, () => {
 
     test(`opens on click/mouseenter (after hover-intent delay), closes on mouseleave`, async () => {
       vi.useFakeTimers()
-      mount(CellSelect, {
-        target: document.body,
-        props: { supercell_scaling: `1x1x1` },
-      })
+      mount_select({ supercell_scaling: `1x1x1` })
 
       // Initially hidden
       const toggle = doc_query<HTMLButtonElement>(`.toggle-btn`)
@@ -97,10 +90,7 @@ describe(`CellSelect`, () => {
 
     test(`mouseleave during the hover-intent delay cancels opening`, async () => {
       vi.useFakeTimers()
-      mount(CellSelect, {
-        target: document.body,
-        props: { supercell_scaling: `1x1x1` },
-      })
+      mount_select({ supercell_scaling: `1x1x1` })
 
       doc_query(`.cell-select`).dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
       doc_query(`.cell-select`).dispatchEvent(new MouseEvent(`mouseleave`, { bubbles: true }))
@@ -112,13 +102,10 @@ describe(`CellSelect`, () => {
     test(`suppress_hover blocks hover/focus opening and closes an open menu`, async () => {
       vi.useFakeTimers()
       let suppressed = $state(false)
-      mount(CellSelect, {
-        target: document.body,
-        props: {
-          supercell_scaling: `1x1x1`,
-          get suppress_hover() {
-            return suppressed
-          },
+      mount_select({
+        supercell_scaling: `1x1x1`,
+        get suppress_hover() {
+          return suppressed
         },
       })
 
@@ -322,7 +309,7 @@ describe(`CellSelect`, () => {
         supercell_scaling: `1x1x1`,
         cell_type: `original`,
       })
-      mount(CellSelect, { target: document.body, props: bind_props({}, state) })
+      mount_select(bind_props({}, state))
 
       const toggle = doc_query<HTMLButtonElement>(`.toggle-btn`)
       expect(normalize_supercell_label(toggle.textContent)).toBe(`1x1x1`)

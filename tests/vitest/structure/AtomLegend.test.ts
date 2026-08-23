@@ -159,19 +159,30 @@ describe(`AtomLegend Component`, () => {
     expect(label.style.color).toBe(`black`)
   })
 
-  test(`element visibility toggle flips the button's accessible name`, async () => {
-    mount_legend({ elements: { Fe: 2, O: 3 } })
+  // The same toggle-visibility buttons serve the element legend and the categorical property
+  // legend; each flips its accessible name and hides its label
+  // oxfmt-ignore
+  test.each([
+    [`element`, false, `label`, [`Hide O atoms`, `Hide Fe atoms`], [`Show O atoms`, `Hide Fe atoms`]],
+    [`property value`, true, `.category-label`, [`Hide 4`, `Hide 6`], [`Show 4`, `Hide 6`]],
+  ])(`%s visibility toggle flips the button's accessible name`, async (_desc, categorical, label_selector, before, after) => {
+    const property_props = {
+      atom_color_config: coordination(`categorical`),
+      property_colors: prop_colors([4, 6]),
+      hidden_prop_vals: new Set<string | number>(),
+    }
+    mount_legend({ elements: { Fe: 2, O: 3 }, ...(categorical && property_props) })
 
     const toggle_buttons = document.querySelectorAll<HTMLButtonElement>(
       `button.toggle-visibility`,
     )
     const names = () => [...toggle_buttons].map((btn) => btn.getAttribute(`aria-label`))
-    expect(names()).toEqual([`Hide O atoms`, `Hide Fe atoms`])
+    expect(names()).toEqual(before)
     toggle_buttons[0].click()
     await tick()
 
-    expect(names()).toEqual([`Show O atoms`, `Hide Fe atoms`])
-    expect(doc_query(`label`).classList.contains(`hidden`)).toBe(true)
+    expect(names()).toEqual(after)
+    expect(doc_query(label_selector).classList.contains(`hidden`)).toBe(true)
   })
 
   describe(`Mode Selector`, () => {
@@ -393,25 +404,6 @@ describe(`AtomLegend Component`, () => {
         label.textContent?.trim(),
       )
       expect(labels).toEqual([`Fe:4e`, `O:2a`])
-    })
-
-    test(`property value visibility toggle`, async () => {
-      mount_legend({
-        atom_color_config: coordination(`categorical`),
-        property_colors: prop_colors([4, 6]),
-        hidden_prop_vals: new Set<string | number>(),
-      })
-
-      const toggle_buttons = document.querySelectorAll<HTMLButtonElement>(
-        `.categorical-legend button.toggle-visibility`,
-      )
-      const names = () => [...toggle_buttons].map((btn) => btn.getAttribute(`aria-label`))
-      expect(names()).toEqual([`Hide 4`, `Hide 6`])
-      toggle_buttons[0].click()
-      await tick()
-
-      expect(names()).toEqual([`Show 4`, `Hide 6`])
-      expect(doc_query(`.category-label`).classList.contains(`hidden`)).toBe(true)
     })
   })
 

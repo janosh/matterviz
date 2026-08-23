@@ -12,16 +12,15 @@ import {
   count_elements,
   create_trajectory_frame,
   is_supported_trajectory_signal_shape,
+  values_per_sample,
 } from '$lib/trajectory/helpers'
 import type {
   PositionStreamOptions,
   TrajectoryPositionStream,
   TrajectorySignal,
-  TrajectorySignalDescriptor,
 } from '$lib/trajectory/index'
 import {
   Hdf5GroupSelectionRequiredError,
-  assert_hdf5_stream_budget,
   attach_site_vectors,
   attribute_value,
   dataset_at,
@@ -30,16 +29,16 @@ import {
   is_hdf5_dataset,
   is_hdf5_group,
   lattice_from_values,
-  positive_integer_stride,
   read_numeric_1d as read_1d,
   read_numeric_hyperslab,
   read_numeric_samples,
-  sampled_indices,
+  resolve_stream_channels,
   sampled_property_rows,
+  signal_descriptors as describe_signals,
   string_value,
   to_scalar_number,
   open_h5_source,
-  unique_strings,
+  trajectory_signal,
 } from './h5-utils'
 import { is_reference_md_h5_file, parse_reference_md_h5_file } from './reference-md-h5'
 import type { LazyTrajectorySource, ParsedTrajectory, WarningCollector } from './shared'
@@ -166,8 +165,6 @@ const flatten_numeric = (value: unknown): number[] | null => {
   return flattened
 }
 
-const product = (values: number[]): number => values.reduce((total, value) => total * value, 1)
-
 const FORMAT = `TorchSim HDF5`
 const dataset_shape = (dataset: Dataset, path: string): number[] =>
   shape_of_dataset(dataset, path, FORMAT)
@@ -291,18 +288,16 @@ const discover_torch_sim_signals = (
   return { signal_manifest, atom_masses, mass_path, signal_paths }
 }
 
-const read_torch_sim_signal = ({
-  dataset,
-  path,
-  steps,
-  sample_shape,
-  unit,
-}: TorchSimSignalManifest): TrajectorySignal => ({
-  values: read_numeric_samples(dataset, path, steps.length, product(sample_shape)),
-  sample_shape,
-  steps: [...steps],
-  ...(unit ? { unit } : {}),
-})
+const read_torch_sim_signal = (signal: TorchSimSignalManifest): TrajectorySignal => {
+  const { dataset, path, steps, sample_shape } = signal
+  const values = read_numeric_samples(
+    dataset,
+    path,
+    steps.length,
+    values_per_sample(sample_shape),
+  )
+  return trajectory_signal(values, signal, [...steps])
+}
 
 type TorchSimConfig = {
   structural_parent: string
@@ -353,26 +348,31 @@ const parse_torch_sim_datasets = (
   const position_values_per_frame = n_atoms * 3
   const is_per_atom_vector = ({ sample_shape }: TorchSimSignalManifest): boolean =>
     sample_shape.length === 2 && sample_shape[0] === n_atoms && sample_shape[1] === 3
-  const atomic_number_shape = dataset_shape(atomic_numbers_dataset, atomic_number_path)
-  const dynamic_atomic_numbers =
-    atomic_number_shape.length === 2 &&
-    n_frames > 1 &&
-    atomic_number_shape[0] === n_frames &&
-    atomic_number_shape[1] === n_atoms
-  const static_atomic_numbers_with_frame_axis =
-    atomic_number_shape.length === 2 &&
-    atomic_number_shape[0] === 1 &&
-    atomic_number_shape[1] === n_atoms
-  if (
-    !dynamic_atomic_numbers &&
-    !static_atomic_numbers_with_frame_axis &&
-    (atomic_number_shape.length !== 1 || atomic_number_shape[0] !== n_atoms)
-  ) {
+  // A per-structure dataset is stored once (`base` shape), once behind a frame axis
+  // (`[1, ...base]`) or per frame (`[n_frames, ...base]`)
+  const frame_axis_layout = (
+    shape: number[],
+    base: number[],
+    what: string,
+  ): `static` | `static_with_frame_axis` | `dynamic` => {
+    const matches_base = (offset: number): boolean =>
+      shape.length === base.length + offset &&
+      base.every((size, idx) => shape[idx + offset] === size)
+    if (matches_base(1) && n_frames > 1 && shape[0] === n_frames) return `dynamic`
+    if (matches_base(1) && shape[0] === 1) return `static_with_frame_axis`
+    if (matches_base(0)) return `static`
+    const base_text = base.join(`, `)
     throw new Error(
-      `HDF5 atomic numbers have shape [${atomic_number_shape.join(`, `)}]; expected ` +
-        `[${n_atoms}], [1, ${n_atoms}], or [${n_frames}, ${n_atoms}]`,
+      `HDF5 ${what} have shape [${shape.join(`, `)}]; expected [${base_text}], ` +
+        `[1, ${base_text}], or [${n_frames}, ${base_text}]`,
     )
   }
+  const atomic_number_layout = frame_axis_layout(
+    dataset_shape(atomic_numbers_dataset, atomic_number_path),
+    [n_atoms],
+    `atomic numbers`,
+  )
+  const dynamic_atomic_numbers = atomic_number_layout === `dynamic`
   const static_atomic_numbers = dynamic_atomic_numbers
     ? null
     : read_numeric_hyperslab(atomic_numbers_dataset, atomic_number_path, [[]])
@@ -381,37 +381,18 @@ const parse_torch_sim_datasets = (
     read_numeric_hyperslab(atomic_numbers_dataset, atomic_number_path, [[0, 1]])
   const elements = convert_atomic_numbers(first_atomic_numbers)
   const cells_dataset = dataset_at(h5_file, cell_path)
-  const cell_shape =
-    cells_dataset && cell_path ? dataset_shape(cells_dataset, cell_path) : null
-  const dynamic_cells =
-    cell_shape?.length === 3 &&
-    n_frames > 1 &&
-    cell_shape[0] === n_frames &&
-    cell_shape[1] === 3 &&
-    cell_shape[2] === 3
-  const static_cell_with_frame_axis =
-    cell_shape?.length === 3 &&
-    cell_shape[0] === 1 &&
-    cell_shape[1] === 3 &&
-    cell_shape[2] === 3
-  if (
-    cell_shape &&
-    !dynamic_cells &&
-    !static_cell_with_frame_axis &&
-    (cell_shape.length !== 2 || cell_shape[0] !== 3 || cell_shape[1] !== 3)
-  ) {
-    throw new Error(
-      `HDF5 cells have shape [${cell_shape.join(`, `)}]; expected [3, 3], [1, 3, 3], or ` +
-        `[${n_frames}, 3, 3]`,
-    )
-  }
+  const cell_layout =
+    cells_dataset && cell_path
+      ? frame_axis_layout(dataset_shape(cells_dataset, cell_path), [3, 3], `cells`)
+      : null
+  const dynamic_cells = cell_layout === `dynamic`
   const static_lattice =
-    cells_dataset && cell_path && !dynamic_cells
+    cells_dataset && cell_path && cell_layout && !dynamic_cells
       ? lattice_from_values(
           read_numeric_hyperslab(
             cells_dataset,
             cell_path,
-            static_cell_with_frame_axis ? [[0, 1]] : [[]],
+            cell_layout === `static_with_frame_axis` ? [[0, 1]] : [[]],
           ),
         )
       : undefined
@@ -427,7 +408,7 @@ const parse_torch_sim_datasets = (
     : Array.from({ length: n_frames }, (_unused, frame_idx) => frame_idx)
   const pbc_dataset = dataset_at(h5_file, pbc_path)
   const pbc_shape = pbc_dataset && pbc_path ? dataset_shape(pbc_dataset, pbc_path) : null
-  const pbc_sample_size = pbc_shape ? product(pbc_shape.slice(1)) : 0
+  const pbc_sample_size = pbc_shape ? values_per_sample(pbc_shape.slice(1)) : 0
   const pbc_values =
     pbc_dataset && pbc_path && pbc_shape
       ? Array.from(
@@ -633,7 +614,7 @@ const parse_torch_sim_datasets = (
   if (energy_steps && energy_step_path) validate_steps(energy_steps, energy_step_path)
   const energy_is_frame_aligned =
     candidate_energy_shape !== null &&
-    product(candidate_energy_shape.slice(1)) === 1 &&
+    values_per_sample(candidate_energy_shape.slice(1)) === 1 &&
     candidate_energy_shape[0] === n_frames &&
     (!energy_steps ||
       (energy_steps.length === valid_frame_count &&
@@ -774,63 +755,39 @@ const parse_torch_sim_datasets = (
       ...(Object.keys(signals).length > 0 ? { signals } : {}),
     }
   }
-  const signal_descriptors: Record<string, TrajectorySignalDescriptor> = Object.fromEntries(
-    Object.entries(signal_manifest).map(([key, signal]) => [
-      key,
-      {
-        sample_shape: signal.sample_shape,
-        sample_count: signal.steps.length,
-        ...(signal.unit ? { unit: signal.unit } : {}),
-      },
-    ]),
-  )
+  const signal_descriptors = describe_signals(signal_manifest, (signal) => signal.steps.length)
   const collect_positions = (
     options: PositionStreamOptions = {},
   ): TrajectoryPositionStream => {
-    const frame_stride = positive_integer_stride(
-      options.frame_stride,
-      `TorchSim HDF5 frame_stride`,
-    )
     if (!streamed_pbc) {
       throw new Error(
         `TorchSim HDF5 analysis does not support PBC flags that vary between frames`,
       )
     }
-    const vector_keys = unique_strings(options.vector_keys)
-    const signal_keys = unique_strings(options.signal_keys)
-    const unknown_keys = [
-      ...vector_keys.filter((key) => !signal_manifest[key]),
-      ...signal_keys.filter((key) => !signal_manifest[key]),
-    ]
-    if (unknown_keys.length > 0) {
-      throw new Error(`TorchSim HDF5 has no channels named ${unknown_keys.join(`, `)}`)
-    }
-    for (const key of vector_keys) {
-      const signal = signal_manifest[key]
-      if (!is_per_atom_vector(signal)) {
-        throw new Error(
-          `TorchSim HDF5 vector ${key} has sample shape [${signal.sample_shape.join(`, `)}], expected [${n_atoms}, 3]`,
-        )
-      }
-    }
-    const selected_frame_count = Math.ceil(valid_frame_count / frame_stride)
-    const signal_value_count = signal_keys.reduce(
-      (total, key) =>
-        total +
-        signal_manifest[key].steps.length * (product(signal_manifest[key].sample_shape) + 1),
-      0,
-    )
-    assert_hdf5_stream_budget(
-      `TorchSim HDF5`,
+    const { frame_stride, vector_keys, signal_keys, frame_indices } = resolve_stream_channels(
+      FORMAT,
+      options,
       valid_frame_count,
-      selected_frame_count,
-      position_values_per_frame * (1 + vector_keys.length) +
-        1 +
-        (static_lattice || dynamic_cells ? 9 : 0),
-      signal_value_count,
-      options.max_bytes ?? Number.POSITIVE_INFINITY,
+      {
+        is_vector: (key) => {
+          const signal = signal_manifest[key]
+          if (signal && !is_per_atom_vector(signal)) {
+            throw new Error(
+              `TorchSim HDF5 vector ${key} has sample shape [${signal.sample_shape.join(`, `)}], expected [${n_atoms}, 3]`,
+            )
+          }
+          return Boolean(signal)
+        },
+        is_signal: (key) => Boolean(signal_manifest[key]),
+        values_per_frame: (n_vectors) =>
+          position_values_per_frame * (1 + n_vectors) +
+          1 +
+          (static_lattice || dynamic_cells ? 9 : 0),
+        signal_values: (key) =>
+          signal_manifest[key].steps.length *
+          (values_per_sample(signal_manifest[key].sample_shape) + 1),
+      },
     )
-    const frame_indices = sampled_indices(valid_frame_count, frame_stride)
     const positions = read_numeric_samples(
       positions_dataset,
       position_path,

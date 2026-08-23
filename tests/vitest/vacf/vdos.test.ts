@@ -171,42 +171,38 @@ describe(`windowing`, () => {
 })
 
 describe(`no-dt policy`, () => {
-  it(`refuses a dt without a time_unit`, () => {
-    expect(() => calc_vacf(orbit(50, 0.1), { dt: 0.5 })).toThrow(
-      /dt was supplied \(0.5\) without time_unit/,
-    )
-  })
-
-  it(`refuses a dt with the frame sentinel time unit`, () => {
-    expect(() => calc_vacf(orbit(50, 0.1), { dt: 0.5, time_unit: `frame` })).toThrow(
+  const not_convertible = (time_unit: string) =>
+    `time_unit '${time_unit}' with frequency_unit 'THz' is not convertible; use frequency_unit '1/frame'`
+  it.each([
+    [`a dt without a time_unit`, { dt: 0.5 }, /dt was supplied \(0.5\) without time_unit/],
+    [
+      `a dt with the frame sentinel time unit`,
+      { dt: 0.5, time_unit: `frame` },
       /time_unit 'frame' cannot be combined with dt/,
-    )
+    ],
+    [
+      `a THz axis when no timestep was supplied`,
+      { vdos: { frequency_unit: `THz` } },
+      /no timestep was supplied, so the only honest axis is '1\/frame'/,
+    ],
+    [
+      `a cm^-1 axis when no timestep was supplied`,
+      { vdos: { frequency_unit: `cm^-1` } },
+      /no timestep was supplied, so the only honest axis is '1\/frame'/,
+    ],
+    [
+      `a THz axis for time_unit 'arbitrary units'`,
+      { dt: 1, time_unit: `arbitrary units`, vdos: { frequency_unit: `THz` } },
+      not_convertible(`arbitrary units`),
+    ],
+    [
+      `a THz axis for time_unit 'toString'`,
+      { dt: 1, time_unit: `toString`, vdos: { frequency_unit: `THz` } },
+      not_convertible(`toString`),
+    ],
+  ] as const)(`refuses %s`, (_label, options, error) => {
+    expect(() => calc_vacf(orbit(50, 0.1), options)).toThrow(error)
   })
-
-  it.each([`THz`, `cm^-1`] as const)(
-    `refuses a %s axis when no timestep was supplied`,
-    (frequency_unit) => {
-      expect(() => calc_vacf(orbit(50, 0.1), { vdos: { frequency_unit } })).toThrow(
-        /no timestep was supplied, so the only honest axis is '1\/frame'/,
-      )
-    },
-  )
-
-  it.each([`arbitrary units`, `toString`] as const)(
-    `refuses a THz axis for time_unit %s`,
-    (time_unit) => {
-      expect(() =>
-        calc_vacf(orbit(50, 0.1), {
-          dt: 1,
-          time_unit,
-          vdos: { frequency_unit: `THz` },
-        }),
-      ).toThrow(
-        `time_unit '${time_unit}' with frequency_unit 'THz' is not convertible; ` +
-          `use frequency_unit '1/frame'`,
-      )
-    },
-  )
 
   it(`rejects inherited Object keys as THz-convertible time units`, () => {
     // Without Object.hasOwn, TIME_UNIT_TO_THZ['toString'] is a function and would be

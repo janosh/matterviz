@@ -1,5 +1,5 @@
 import type { FileInfo, Molecule } from '$lib'
-import { fixture_ext, site_file_info } from '$site/imports'
+import { fixture_ext, glob_basename, site_file_info } from '$site/imports'
 
 const molecules = Object.entries(
   import.meta.glob<Molecule>(`./molecules/*.json`, {
@@ -7,8 +7,7 @@ const molecules = Object.entries(
     import: `default`,
   }),
 ).map(([path, mol]) => {
-  const id = path.split(`/`).at(-1)?.split(`.`)[0]
-  mol.id = id
+  mol.id = glob_basename(path).split(`.`)[0]
   return mol
 })
 

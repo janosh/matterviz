@@ -2,6 +2,7 @@
 // throws an Error naming the format and what was missing — no parser guesses a start angle
 // or step size, because a wrong x axis looks exactly like a real scan.
 import { ext_of, strip_compression_extensions } from '$lib/io'
+import { array_max } from '$lib/math'
 import { to_error } from '$lib/utils'
 import type { XrdPattern } from './index'
 
@@ -67,8 +68,7 @@ function finalize(x_values: number[], y_values: number[], format: string): XrdPa
   if (x_values.length !== y_values.length) {
     throw new Error(`${format}: ${x_values.length} angles but ${y_values.length} intensities`)
   }
-  let max_y = -Infinity
-  for (const val of y_values) if (val > max_y) max_y = val // spread overflows past ~120k points
+  const max_y = array_max(y_values)
   const scale = max_y > 0 ? 100 / max_y : 1
   return { x: x_values, y: y_values.map((val) => val * scale) }
 }

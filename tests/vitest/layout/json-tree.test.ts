@@ -27,9 +27,6 @@ const keydown = (key: string, init: KeyboardEventInit = {}) =>
 const mouse = (type: string, init: MouseEventInit = {}) =>
   new MouseEvent(type, { bubbles: true, ...init })
 
-const mock_clipboard = (reject = false) =>
-  mock_clipboard_write(reject ? new Error(`Clipboard error`) : undefined)
-
 const node_at = (path: string) =>
   document.querySelector<HTMLElement>(`.json-node[data-path="${CSS.escape(path)}"]`)
 const tree = () => doc_query<HTMLDivElement>(`.json-tree`)
@@ -236,7 +233,7 @@ describe(`folding`, () => {
   )
 
   it(`clicking a collapsed key expands it, clicking an expanded key copies its value`, async () => {
-    const write_text = mock_clipboard()
+    const write_text = mock_clipboard_write()
     mount_tree({ value: { nested: { deep: 42 } }, show_header: false, default_fold_level: 1 })
     expect(node_at(`nested.deep`)).toBeNull()
     expect(doc_query(`.node-key`).classList.contains(`collapsed`)).toBe(true) // ▸ hint
@@ -373,7 +370,7 @@ describe(`header toggles`, () => {
 
 describe(`copy and download`, () => {
   it(`copy-all writes the JSON, shows feedback and fires on_copy`, async () => {
-    const write_text = mock_clipboard()
+    const write_text = mock_clipboard_write()
     const on_copy = vi.fn()
     const value = { name: `test`, count: 42, nested: { a: 1 } }
     mount_tree({ value, on_copy })
@@ -387,7 +384,7 @@ describe(`copy and download`, () => {
   })
 
   it(`shows error feedback when the clipboard write fails`, async () => {
-    const write_text = mock_clipboard(true)
+    const write_text = mock_clipboard_write(new Error(`Clipboard error`))
     mount_tree({ value: { a: 1 } })
     control_group(2)[0].click()
     await vi.waitFor(() => expect(write_text).toHaveBeenCalled())
@@ -412,7 +409,7 @@ describe(`copy and download`, () => {
   })
 
   it(`clicking a value copies it with inline feedback and fires on_copy`, async () => {
-    const write_text = mock_clipboard()
+    const write_text = mock_clipboard_write()
     const on_copy = vi.fn()
     mount_tree({ value: { name: `test` }, show_header: false, on_copy })
     fire(doc_query(`.json-value`), mouse(`click`, { clientX: 40, clientY: 60 }))
@@ -425,7 +422,7 @@ describe(`copy and download`, () => {
   })
 
   it(`Shift+click and middle-click on a key or node row copy only that path`, async () => {
-    const write_text = mock_clipboard()
+    const write_text = mock_clipboard_write()
     mount_tree({ value: { my_key: { inner: 1 } }, show_header: false, default_fold_level: 5 })
     fire(
       node_at(`my_key.inner`)?.querySelector(`.node-key`),
@@ -554,7 +551,7 @@ describe(`keyboard navigation and selection`, () => {
   })
 
   it(`focused node: Enter/Space copy leaves and toggle containers, arrows fold/unfold`, async () => {
-    const write_text = mock_clipboard()
+    const write_text = mock_clipboard_write()
     mount_tree({
       value: { key: 42, obj: { a: 1 } },
       show_header: false,
@@ -580,7 +577,7 @@ describe(`keyboard navigation and selection`, () => {
   })
 
   it(`Ctrl+click toggles selection, Shift extends a range, Ctrl+C copies all, Escape clears`, async () => {
-    const write_text = mock_clipboard()
+    const write_text = mock_clipboard_write()
     mount_tree({
       value: { a: 1, b: 2, c: 3, d: 4 },
       show_header: false,
@@ -639,7 +636,7 @@ describe(`context menu and pinning`, () => {
   })
 
   it(`copies value/path and folds children from the menu`, async () => {
-    const write_text = mock_clipboard()
+    const write_text = mock_clipboard_write()
     mount_tree({ value: { key: { a: { b: 1 } } }, show_header: false, default_fold_level: 5 })
     await open_menu(node_at(`key`))
     await click_and_tick(menu_button(`Copy path`))
@@ -663,7 +660,7 @@ describe(`context menu and pinning`, () => {
   })
 
   it(`pins paths into a panel that copies, unpins and clears`, async () => {
-    const write_text = mock_clipboard()
+    const write_text = mock_clipboard_write()
     mount_tree({ value: { a: 1, b: { c: 2 } }, show_header: false, default_fold_level: 5 })
     await open_menu(node_at(`a`))
     await click_and_tick(menu_button(`Pin this path`))
@@ -741,7 +738,7 @@ describe(`inline editing`, () => {
   })
 
   test(`a value update inside the click-to-copy delay does not cancel the pending copy`, async () => {
-    mock_clipboard()
+    mock_clipboard_write()
     const on_copy = vi.fn()
     mount(JsonTreeReplacementHarness, {
       target: document.body,
@@ -759,7 +756,7 @@ describe(`unmount`, () => {
   test(`pending search debounce and copy feedback timers are cleared`, async () => {
     vi.useFakeTimers()
     try {
-      mock_clipboard()
+      mock_clipboard_write()
       const component = mount(JsonTree, { target: document.body, props: { value: { a: 1 } } })
       flushSync()
       const input = doc_query<HTMLInputElement>(`.search-input`)

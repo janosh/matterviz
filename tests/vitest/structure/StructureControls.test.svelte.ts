@@ -74,6 +74,16 @@ type AtomColorConfigProps = NonNullable<
   ComponentProps<typeof StructureControls>['atom_color_config']
 >
 
+// simple_structure with two vector site properties, so the Site vectors section and its
+// per-key scale inputs render
+const vector_structure = {
+  ...simple_structure,
+  sites: simple_structure.sites.map((site) => ({
+    ...site,
+    properties: { ...site.properties, force: [0.1, 0, 0], magmom: [0, 0.2, 0] },
+  })),
+}
+
 // three frames of one stationary H atom: enough for the trail-length controls to appear
 const trail_stream = (): TrajectoryPositionStream =>
   make_position_stream(
@@ -324,13 +334,6 @@ describe(`StructureControls schema rows`, () => {
   // The full row inventory with every conditional section open, in pane order. A row that
   // silently drops out of the schema tables (or loses its data-key) fails here by name.
   test(`render every control row and write each back to its own target`, async () => {
-    const vector_structure = {
-      ...simple_structure,
-      sites: simple_structure.sites.map((site) => ({
-        ...site,
-        properties: { ...site.properties, force: [0.1, 0, 0], magmom: [0, 0.2, 0] },
-      })),
-    }
     const stream = trail_stream()
     const state = $state({
       scene_props: {
@@ -869,14 +872,6 @@ describe(`StructureControls reactive props`, () => {
   // vectors, whose per-key scales live in vector_configs rather than under a scene_props key
   // and so have to be tracked by hand.
   test(`offers section resets only after changes and restores defaults`, async () => {
-    // two vector keys so the per-key scale inputs render at all
-    const vector_structure = {
-      ...simple_structure,
-      sites: simple_structure.sites.map((site) => ({
-        ...site,
-        properties: { ...site.properties, force: [0.1, 0, 0], magmom: [0, 0.2, 0] },
-      })),
-    }
     // every key defined at its default, so the mount-time snapshot the reset offer compares
     // against isn't perturbed by `bind:` writing back into an undefined prop
     const state = $state({

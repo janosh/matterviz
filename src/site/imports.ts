@@ -14,11 +14,11 @@ export const glob_text = (value: unknown): string => {
 
 export const glob_basename = (path: string): string => path.split(`/`).pop() ?? path
 
-// Lower-case last dot-segment of a fixture name after stripping a trailing .gz
+// Lower-case last dot-segment of a fixture name or path after stripping a trailing .gz
 // (`pb_vf3D.frmsf.gz` -> `frmsf`); extension-less names return the whole stem
 // (`Si-CHGCAR.gz` -> `si-chgcar`)
-export const fixture_ext = (name: string): string =>
-  name.replace(/\.gz$/i, ``).split(`.`).pop()?.toLowerCase() ?? ``
+export const fixture_ext = (path: string): string =>
+  glob_basename(path).replace(/\.gz$/i, ``).split(`.`).pop()?.toLowerCase() ?? ``
 
 // FileInfo for an import.meta.glob key under $site: static/<dir> symlinks src/site/<dir>, so
 // the fixture is served at the path with the /src/site prefix dropped

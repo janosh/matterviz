@@ -8,7 +8,7 @@ import {
 } from '$lib/spectral/trajectory-spectroscopy'
 import type { TrajectorySignal } from '$lib/trajectory'
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
-import { install_stub_worker } from '../setup'
+import { expect_module_worker, install_stub_worker } from '../setup'
 
 const signal = (
   n_samples: number,
@@ -100,11 +100,7 @@ describe(`trajectory spectroscopy worker code path`, () => {
     expect(payload.raman_signal?.series.values).toBeInstanceOf(Float64Array)
     expect(payload.raman_signal?.series.values).not.toBe(input.raman_signal?.series.values)
     await compute_spectroscopy_async(make_input(), { preprocessing: `raw` })
-    expect(stub.instances).toHaveLength(1)
-    expect(stub.instances[0].url).toMatch(
-      /\/src\/lib\/spectral\/trajectory-spectroscopy-worker\.ts\?worker_file/,
-    )
-    expect(stub.instances[0].options).toEqual({ type: `module` })
+    expect_module_worker(stub.instances, `src/lib/spectral/trajectory-spectroscopy-worker.ts`)
   })
 
   it(`.cancel rejects the in-flight request and terminates the worker`, async () => {

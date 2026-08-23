@@ -237,9 +237,7 @@
       point_hit_padding?: number
     } = $props()
 
-  // Legend toggles write `visible` into the bindable series prop so bound parents see
-  // them, and `series` layers the user's overrides back on whenever the parent
-  // replaces the array so hidden series stay hidden
+  // Legend toggles write back into the bindable series prop; see create_legend_visibility
   const legend_vis = create_legend_visibility(
     () => series,
     (next) => (series_in = next),
@@ -1298,9 +1296,7 @@
   plot_class="scatter"
   css_prefix="scatter"
   css_var_fallbacks={{ 'min-height': `350px` }}
-  aria_label={frame.title_config?.text ||
-    [final_x_axis.label, final_y_axis.label].filter(Boolean).join(` vs `) ||
-    `Scatter plot`}
+  aria_label="Scatter plot"
   bind:fullscreen
   bind:wrapper
   {fullscreen_toggle}

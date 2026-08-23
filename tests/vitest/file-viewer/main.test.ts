@@ -48,6 +48,16 @@ const fixture_base64 = (name: string, gzip = false): string => {
 const make_container = () => ({ style: {}, innerHTML: `` }) as unknown as HTMLElement
 const last_mount_props = () =>
   vi.mocked(mount).mock.calls.at(-1)?.[1]?.props as Record<string, unknown>
+// Run `body` with host `defaults` in the bootstrap payload create_display reads, then restore
+const with_defaults = (defaults: unknown, body: () => void): void => {
+  const prev_data = globalThis.matterviz_data
+  globalThis.matterviz_data = { ...prev_data, defaults } as typeof globalThis.matterviz_data
+  try {
+    body()
+  } finally {
+    globalThis.matterviz_data = prev_data
+  }
+}
 
 describe(`Webview Integration - ASE Binary Trajectory Support`, () => {
   test.each([
@@ -323,12 +333,7 @@ describe(`create_display trajectory display options`, () => {
     [`always`, true],
     [`never`, false],
   ] as const)(`show_legend setting %s maps to %s`, (mode, expected) => {
-    const prev_data = globalThis.matterviz_data
-    globalThis.matterviz_data = {
-      ...prev_data,
-      defaults: { scatter: { show_legend: mode }, histogram: { show_legend: mode } },
-    } as typeof globalThis.matterviz_data
-    try {
+    with_defaults({ scatter: { show_legend: mode }, histogram: { show_legend: mode } }, () => {
       create_display(make_container(), trajectory_result())
       const { scatter_props, histogram_props } = last_mount_props() as {
         scatter_props: Record<string, unknown>
@@ -339,25 +344,19 @@ describe(`create_display trajectory display options`, () => {
       // LegendConfig has no `show` field, so `legend` would leak onto the DOM via ...rest.
       expect(scatter_props).not.toHaveProperty(`legend`)
       expect(histogram_props).not.toHaveProperty(`legend`)
-    } finally {
-      globalThis.matterviz_data = prev_data
-    }
+    })
   })
 
   // Regression: the webview used to forward invented keys (markers, point_size, show_grid,
   // bin_count, ...) that no plot component declares, so they were spread onto the wrapper
   // div and the corresponding VS Code settings did nothing
   test(`plot settings reach Trajectory's scatter/histogram props under their real names`, () => {
-    const prev_data = globalThis.matterviz_data
-    globalThis.matterviz_data = {
-      ...prev_data,
-      defaults: {
-        plot: { display: { x_grid: false } },
-        scatter: { point: { size: 7 }, line: { width: 4 }, symbol_type: `Square` },
-        histogram: { bin_count: 12, mode: `single` },
-      },
-    } as typeof globalThis.matterviz_data
-    try {
+    const defaults = {
+      plot: { display: { x_grid: false } },
+      scatter: { point: { size: 7 }, line: { width: 4 }, symbol_type: `Square` },
+      histogram: { bin_count: 12, mode: `single` },
+    }
+    with_defaults(defaults, () => {
       create_display(make_container(), trajectory_result())
       const { scatter_props, histogram_props } = last_mount_props() as {
         scatter_props: Record<string, Record<string, unknown>>
@@ -378,24 +377,15 @@ describe(`create_display trajectory display options`, () => {
         expect(scatter_props).not.toHaveProperty(stale)
         expect(histogram_props).not.toHaveProperty(stale)
       }
-    } finally {
-      globalThis.matterviz_data = prev_data
-    }
+    })
   })
 
   test(`rejects stale boolean legend settings`, () => {
-    const prev_data = globalThis.matterviz_data
-    globalThis.matterviz_data = {
-      ...prev_data,
-      defaults: { scatter: { show_legend: true }, histogram: { show_legend: true } },
-    } as unknown as typeof globalThis.matterviz_data
-    try {
+    with_defaults({ scatter: { show_legend: true }, histogram: { show_legend: true } }, () => {
       expect(() => create_display(make_container(), trajectory_result())).toThrow(
         `Invalid legend visibility mode: true`,
       )
-    } finally {
-      globalThis.matterviz_data = prev_data
-    }
+    })
   })
 
   test.each([[undefined], [{}]])(

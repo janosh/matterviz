@@ -19,6 +19,7 @@ import { beforeAll, describe, expect, test } from 'vitest'
 import {
   col_major,
   cubic_matrix,
+  fcc_primitive_matrix,
   IDENTITY_MATRIX3 as IDENTITY,
   init_moyo_for_tests,
   make_crystal,
@@ -395,18 +396,10 @@ describe(`symmetry_elements_from_ops: space group inventories`, () => {
     // fixed points can differ by a lattice vector that is not along the axis; a perpendicular
     // -foot intercept keyed such lines differently and left 5 of 12 sub-axes drawn inside
     // their enclosing axes, while the covector-based locus is lattice-invariant.
-    const si_a = 5.43
-    const prim_diamond = make_crystal(
-      [
-        [0, si_a / 2, si_a / 2],
-        [si_a / 2, 0, si_a / 2],
-        [si_a / 2, si_a / 2, 0],
-      ],
-      [
-        { element: `Si`, abc: [0, 0, 0] },
-        { element: `Si`, abc: [0.25, 0.25, 0.25] },
-      ],
-    )
+    const prim_diamond = make_crystal(fcc_primitive_matrix(5.43), [
+      { element: `Si`, abc: [0, 0, 0] },
+      { element: `Si`, abc: [0.25, 0.25, 0.25] },
+    ])
     const { operations } = await analyze_structure_symmetry(prim_diamond)
     const axes = symmetry_elements_from_ops(operations).filter(
       (elem) => elem.axis && elem.kind !== `mirror` && elem.kind !== `glide`,

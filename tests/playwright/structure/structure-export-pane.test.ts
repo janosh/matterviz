@@ -1,8 +1,8 @@
-import { expect, type Page, test } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 import { goto_structure_test, IS_CI, open_structure_export_pane } from '../helpers'
 
 test.describe(`StructureExportPane Tests`, () => {
-  test.beforeEach(async ({ page }: { page: Page }) => {
+  test.beforeEach(async ({ page }) => {
     test.skip(IS_CI, `StructureExportPane tests timeout in CI`)
     // always-visible controls: in hover mode the canvas intercepts the toggle's hit test
     await goto_structure_test(page, `/test/structure?show_controls=always`)
@@ -50,33 +50,28 @@ test.describe(`StructureExportPane Tests`, () => {
     }
   })
 
-  test.describe(`format label hover tooltips`, () => {
-    const text_format_tooltips = [
-      { label: `JSON`, expected_text: `Pymatgen`, link_href: `pymatgen.org` },
-      { label: `XYZ`, expected_text: `ASE`, link_href: `wiki.fysik.dtu.dk/ase` },
-      { label: `CIF`, expected_text: `IUCr`, link_href: `iucr.org` },
-      { label: `POSCAR`, expected_text: `VASP`, link_href: `vasp.at` },
-    ]
+  const text_format_tooltips = [
+    { label: `JSON`, expected_text: `Pymatgen`, link_href: `pymatgen.org` },
+    { label: `XYZ`, expected_text: `ASE`, link_href: `wiki.fysik.dtu.dk/ase` },
+    { label: `CIF`, expected_text: `IUCr`, link_href: `iucr.org` },
+    { label: `POSCAR`, expected_text: `VASP`, link_href: `vasp.at` },
+  ]
+  for (const { label, expected_text, link_href } of text_format_tooltips) {
+    test(`${label} format label shows tooltip with link on hover`, async ({ page }) => {
+      const { pane_div } = await open_structure_export_pane(page)
+      await pane_div.getByText(label, { exact: true }).hover()
 
-    for (const { label, expected_text, link_href } of text_format_tooltips) {
-      test(`${label} format shows tooltip with link on hover`, async ({ page }) => {
-        const { pane_div } = await open_structure_export_pane(page)
+      // svelte-widgets tooltips mount on document.body
+      const tooltip_elem = page.locator(`.custom-tooltip`)
+      await expect(tooltip_elem).toBeVisible()
+      await expect(tooltip_elem).toContainText(expected_text)
+      const tooltip_link = tooltip_elem.locator(`a[href*="${link_href}"]`)
+      await expect(tooltip_link).toBeVisible()
+      await expect(tooltip_link).toHaveAttribute(`target`, `_blank`)
 
-        const label_span = pane_div.getByText(label, { exact: true })
-        await label_span.hover()
-
-        // svelte-widgets tooltips mount on document.body
-        const tooltip_elem = page.locator(`.custom-tooltip`)
-        await expect(tooltip_elem).toBeVisible()
-        await expect(tooltip_elem).toContainText(expected_text)
-        const tooltip_link = tooltip_elem.locator(`a[href*="${link_href}"]`)
-        await expect(tooltip_link).toBeVisible()
-        await expect(tooltip_link).toHaveAttribute(`target`, `_blank`)
-
-        // Move mouse away from the label
-        await pane_div.locator(`h4:has-text("Export as text")`).hover()
-        await expect(tooltip_elem).toBeHidden()
-      })
-    }
-  })
+      // Move mouse away from the label
+      await pane_div.locator(`h4:has-text("Export as text")`).hover()
+      await expect(tooltip_elem).toBeHidden()
+    })
+  }
 })

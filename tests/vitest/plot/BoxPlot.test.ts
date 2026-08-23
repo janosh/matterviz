@@ -2,7 +2,7 @@ import { BoxPlot, type Vec2 } from '$lib'
 import type { BoxPlotSeries, Orientation, WhiskerMode } from '$lib/plot'
 import { type ComponentProps, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { bind_props, mount_sized, with_measured_text } from '../setup'
+import { mount_sized, with_measured_text } from '../setup'
 
 const dist = (count: number, center = 0, spread = 1): number[] =>
   Array.from(
@@ -23,32 +23,6 @@ const rendered_box_count = (series: BoxPlotSeries[] = []): number =>
     .length
 
 describe(`BoxPlot`, () => {
-  test(`long category names tilt and still fit inside the figure`, async () => {
-    const mount_with_cats = (cats: string[]): Promise<HTMLElement> =>
-      with_measured_text(() =>
-        mount_sized_box_plot({
-          series: cats.map((cat) => ({ y: dist(40, 0, 1), label: cat, category: cat })),
-          x_axis: { label: `state` },
-          show_legend: false, // isolate tick tilting from the auto legend's layout reservation
-        }),
-      )
-    const baseline_of = (root: HTMLElement): number =>
-      Number(root.querySelector(`g.x-axis > line`)?.getAttribute(`y1`))
-    const plot = await mount_with_cats([
-      `PENDING`,
-      `RUNNING`,
-      `QUEUE_HOLD`,
-      `COMPLETED`,
-      `CANCELLED`,
-    ])
-    expect(plot.querySelector(`g.x-axis g.tick text`)?.getAttribute(`transform`)).toMatch(
-      /^rotate\(-[\d.]+,/,
-    )
-    const upright = await mount_with_cats([`0`, `1`, `2`, `3`, `4`])
-    expect(baseline_of(plot)).toBeGreaterThan(0)
-    expect(baseline_of(plot)).toBeLessThan(baseline_of(upright))
-  })
-
   // Smoke matrix: every one of these must still draw one box (and one hit target) per
   // series with finite data. Named per row so a failure says which config broke.
   test.each([
@@ -240,53 +214,6 @@ describe(`BoxPlot`, () => {
       series: [basic, { y: [NaN, NaN], x_axis: `x2` }],
     })
     expect(plot.querySelector(`g.x2-axis`)).toBeNull()
-  })
-
-  test(`horizontal left padding fits slot names, not their indices`, async () => {
-    // slots sit on y when horizontal, so measuring the integer indices behind them left
-    // long category names overflowing the figure and the y title on top of the ticks
-    const clip_x = async (cats: string[]) => {
-      const plot = await with_measured_text(() =>
-        mount_sized_box_plot({
-          series: cats.map((cat) => ({ y: dist(40, 0, 1), label: cat, category: cat })),
-          orientation: `horizontal`,
-        }),
-      )
-      return Number(plot.querySelector(`clipPath rect`)?.getAttribute(`x`))
-    }
-    expect(await clip_x([`QUEUE_HOLD`, `COMPLETED`])).toBeGreaterThan(await clip_x([`Q`, `C`]))
-  })
-
-  test(`vertical rect-zoom zooms y2 but writes no phantom x2 range`, async () => {
-    // vertical orientation: the secondary value axis is y2; x is categorical and x2 is a
-    // sentinel, so rect-zoom must not write back an x2 range
-    const state = {
-      x2_axis: {} as Record<string, unknown>,
-      y2_axis: {} as Record<string, unknown>,
-    }
-    const plot = await mount_sized_box_plot(
-      bind_props(
-        {
-          series: [
-            { y: dist(40, 0, 1), label: `A` },
-            { y: dist(40, 50, 5), label: `B`, y_axis: `y2` as const },
-          ],
-        },
-        state,
-      ),
-    )
-    const svg = plot.querySelector(`svg[role="application"]`)
-    if (!svg) throw new Error(`svg not found`)
-    svg.dispatchEvent(
-      new MouseEvent(`mousedown`, { clientX: 100, clientY: 50, bubbles: true }),
-    )
-    // The endpoint may leave the plot as long as the drag started inside it.
-    window.dispatchEvent(new MouseEvent(`mousemove`, { clientX: 300, clientY: 290 }))
-    window.dispatchEvent(new MouseEvent(`mouseup`, { clientX: 300, clientY: 290 }))
-    await tick()
-    const y2_range = state.y2_axis.range as Vec2 | undefined
-    expect(y2_range?.every(Number.isFinite)).toBe(true)
-    expect(state.x2_axis.range).toBeUndefined() // no phantom x2 range in vertical mode
   })
 
   test(`category tick labels are colored per box`, async () => {

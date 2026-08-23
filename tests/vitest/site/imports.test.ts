@@ -1,5 +1,5 @@
 // $site/imports glob helpers and the structure demo picker built from them
-import { glob_default, glob_text } from '$site/imports'
+import { fixture_ext, glob_default, glob_text, site_file_info } from '$site/imports'
 import { structure_files } from '$site/structures'
 import { expect, test } from 'vitest'
 
@@ -20,6 +20,21 @@ test.each([
   [`nullish`, null, ``], // structure_file_text's missing-entry check relies on ``
 ])(`glob_text %s`, (_desc, input, expected) => {
   expect(glob_text(input)).toBe(expected)
+})
+
+// fixture_ext drops a trailing .gz then takes the last dot-segment; site_file_info serves
+// $site fixtures from the static symlink (the /src/site prefix is dropped from the URL)
+test.each([
+  [`/src/site/fermi-surfaces/pb_vf3D.frmsf.gz`, `frmsf`, `/fermi-surfaces/pb_vf3D.frmsf.gz`],
+  [`/src/site/isosurfaces/Si-CHGCAR.gz`, `si-chgcar`, `/isosurfaces/Si-CHGCAR.gz`],
+  [`/src/site/structures/LiFePO4.cif`, `cif`, `/structures/LiFePO4.cif`],
+])(`fixture_ext + site_file_info %s`, (path, ext, url) => {
+  expect(fixture_ext(path)).toBe(ext)
+  expect(site_file_info(path, { type: ext })).toEqual({
+    name: path.split(`/`).pop(),
+    url,
+    type: ext,
+  })
 })
 
 // Regression: a prior `typeof content === 'string'` filter dropped every crystal

@@ -3,29 +3,18 @@ import type { D3InterpolateName } from '$lib/colors'
 import type { ColorProperty, FermiSurfaceData } from '$lib/fermi-surface/types'
 import { mount, tick, unmount } from 'svelte'
 import { describe, expect, test } from 'vitest'
-import { bind_props, doc_query } from '../setup'
+import { bind_props, doc_query, make_fermi_isosurface, make_fermi_surface } from '../setup'
 
-const make_fermi_data = (
-  band_indices = [0, 1],
-  with_properties = false,
-): FermiSurfaceData => ({
-  isosurfaces: band_indices.map((band_index) => ({
-    positions: new Float32Array(3),
-    indices: new Uint32Array(0),
-    normals: new Float32Array(3),
-    ...(with_properties && { properties: new Float32Array(1) }),
-    band_index,
-    spin: null,
-  })),
-  k_lattice: [
-    [1, 0, 0],
-    [0, 1, 0],
-    [0, 0, 1],
-  ],
-  fermi_energy: 0,
-  reciprocal_cell: `parallelepiped`,
-  metadata: { n_bands: band_indices.length, n_surfaces: band_indices.length },
-})
+// One single-vertex sheet per band, optionally carrying a per-vertex property
+const make_fermi_data = (band_indices = [0, 1], with_properties = false): FermiSurfaceData =>
+  make_fermi_surface(
+    band_indices.map((band_index) =>
+      make_fermi_isosurface([[0, 0, 0]], [], {
+        band_index,
+        ...(with_properties && { properties: new Float32Array(1) }),
+      }),
+    ),
+  )
 
 describe(`FermiSurfaceControls`, () => {
   test.each([

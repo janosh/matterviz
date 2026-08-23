@@ -5,6 +5,7 @@
     BarStyle,
     DataLoaderFn,
     HistogramHandlerProps,
+    LayerZIndex,
     PanConfig,
     RefLine,
     RefLineEvent,
@@ -147,9 +148,7 @@
       facet_layout?: FacetLayoutContext
     } = $props()
 
-  // Legend toggles write `visible` into the bindable series prop so bound parents see
-  // them, and `series` layers the user's overrides back on whenever the parent
-  // replaces the array so hidden series stay hidden
+  // Legend toggles write back into the bindable series prop; see create_legend_visibility
   const legend_vis = create_legend_visibility(
     () => series,
     (next) => (series_in = next),
@@ -323,11 +322,7 @@
     obstacles: () => obstacles_norm,
     legend: () => legend,
     legend_visible: () => should_show_legend,
-    legend_items: () =>
-      series.map((series_data, series_idx) => ({
-        label: series_data.label ?? `Series ${series_idx + 1}`,
-        legend_group: series_data.legend_group,
-      })),
+    legend_items: () => legend_data,
     marginals: () => resolved_marginals,
     ref_lines: () => indexed_ref_lines,
     pan: () => pan,
@@ -463,14 +458,16 @@
   $effect(try_auto_load)
 </script>
 
+{#snippet ref_lines_layer(z: LayerZIndex)}
+  <ReferenceLinesLayer {frame} {z} on_click={on_ref_line_click} on_hover={on_ref_line_hover} />
+{/snippet}
+
 <CartesianFrame
   {frame}
   plot_class="histogram"
   css_prefix="histogram"
   css_var_fallbacks={{ 'svg-max-height': `100%` }}
-  aria_label={frame.title_config?.text ||
-    [final_x_axis.label, final_y_axis.label].filter(Boolean).join(` vs `) ||
-    `Histogram`}
+  aria_label="Histogram"
   bind:fullscreen
   {fullscreen_toggle}
   require_size={false}
@@ -487,31 +484,10 @@
   {...rest}
 >
   {#snippet layers()}
-    <!-- Reference lines: below grid (must render first to appear behind grid) -->
-    <ReferenceLinesLayer
-      {frame}
-      z="below-grid"
-      on_click={on_ref_line_click}
-      on_hover={on_ref_line_hover}
-    />
-
+    {@render ref_lines_layer(`below-grid`)}
     <ZeroLines {frame} display={resolved_display} />
-
-    <!-- Reference lines: below lines -->
-    <ReferenceLinesLayer
-      {frame}
-      z="below-lines"
-      on_click={on_ref_line_click}
-      on_hover={on_ref_line_hover}
-    />
-
-    <!-- Reference lines: below points -->
-    <ReferenceLinesLayer
-      {frame}
-      z="below-points"
-      on_click={on_ref_line_click}
-      on_hover={on_ref_line_hover}
-    />
+    {@render ref_lines_layer(`below-lines`)}
+    {@render ref_lines_layer(`below-points`)}
 
     <PlotAxes
       {frame}
@@ -569,13 +545,7 @@
       </g>
     {/each}
 
-    <!-- Reference lines: above all -->
-    <ReferenceLinesLayer
-      {frame}
-      z="above-all"
-      on_click={on_ref_line_click}
-      on_hover={on_ref_line_hover}
-    />
+    {@render ref_lines_layer(`above-all`)}
   {/snippet}
 
   {#snippet overlays()}

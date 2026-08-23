@@ -6,10 +6,13 @@ import { count_atoms_in_composition, get_reduced_formula } from '$lib/compositio
 import { compute_quickhull_nd, get_energy_per_atom } from '$lib/convex-hull/thermodynamics'
 import type { PhaseData } from '$lib/convex-hull/types'
 import {
+  array_extent,
   combinations,
   convex_hull_2d,
   cross_3d,
   EPS,
+  euclidean_dist,
+  normalize_vec,
   polygon_centroid,
   subtract,
 } from '$lib/math'
@@ -496,12 +499,7 @@ export function build_axis_ranges(
   elements: string[],
 ): { element: string; min_val: number; max_val: number }[] {
   return elements.map((element, axis_idx) => {
-    let [min_val, max_val] = [Infinity, -Infinity]
-    for (const point of points) {
-      const val = point[axis_idx]
-      if (val < min_val) min_val = val
-      if (val > max_val) max_val = val
-    }
+    const [min_val, max_val] = array_extent(points.map((point) => point[axis_idx]))
     return { element, min_val, max_val }
   })
 }
@@ -615,12 +613,8 @@ export function simple_pca(
 
 // Compute orthonormal vector to a 2D line segment (for label offset in 2D diagrams)
 export function orthonormal_2d(line_pts: number[][]): Vec2 {
-  const dx = line_pts[1][0] - line_pts[0][0]
-  const dy = line_pts[1][1] - line_pts[0][1]
-  const perp: Vec2 = [-dy, dx]
-  const len = Math.hypot(perp[0], perp[1])
-  if (len < EPS) return [0, 1]
-  return [perp[0] / len, perp[1] / len]
+  const [dx, dy] = subtract(line_pts[1], line_pts[0])
+  return normalize_vec<Vec2>([-dy, dx], [0, 1])
 }
 
 // Deduplicate points within tolerance, returning unique points and index mapping
@@ -684,8 +678,7 @@ export function get_3d_domain_simplexes_and_ann_loc(points_3d: number[][]): {
   // Out-of-plane residual of the 2-component reconstruction, relative to the domain size
   const max_residual = Math.max(
     ...unique.map((point, idx) => {
-      const reconstructed = unproject(scores[idx][0], scores[idx][1])
-      return Math.hypot(...point.map((val, dim) => val - reconstructed[dim]))
+      return euclidean_dist(point, unproject(scores[idx][0], scores[idx][1]))
     }),
   )
   const is_planar = max_residual <= 1e-6 * bbox_diagonal(unique)
@@ -731,17 +724,11 @@ export function get_3d_domain_simplexes_and_ann_loc(points_3d: number[][]): {
 // the min and max corners). Returns 0 for fewer than 2 points.
 export function bbox_diagonal(points: number[][]): number {
   if (points.length < 2) return 0
-  let sq_sum = 0
-  for (let col = 0; col < points[0].length; col++) {
-    let lo = Infinity,
-      hi = -Infinity
-    for (const pt of points) {
-      lo = Math.min(lo, pt[col])
-      hi = Math.max(hi, pt[col])
-    }
-    sq_sum += (hi - lo) ** 2
-  }
-  return Math.sqrt(sq_sum)
+  const sq_spans = points[0].map((_, col) => {
+    const [lo, hi] = array_extent(points.map((pt) => pt[col]))
+    return (hi - lo) ** 2
+  })
+  return Math.sqrt(sq_spans.reduce((sum, sq_span) => sum + sq_span, 0))
 }
 
 // Map an array of raw size values to font sizes via linear interpolation.

@@ -78,13 +78,10 @@ const matplotlib_svg = (boundary_paths: string[], extra = ``) =>
 
 const MPL_BOUNDARIES = [`M 300 500 L 300 300`, `M 100 300 L 300 300`]
 
-const expect_points_close = (actual: DiagramPoint[], expected: DiagramPoint[]) => {
-  expect(actual).toHaveLength(expected.length)
-  for (const [idx, [exp_x, exp_y]] of expected.entries()) {
-    expect(actual[idx][0]).toBeCloseTo(exp_x, 6)
-    expect(actual[idx][1]).toBeCloseTo(exp_y, 6)
-  }
-}
+const expect_points_close = (actual: DiagramPoint[], expected: DiagramPoint[]) =>
+  expect(actual).toEqual(
+    expected.map(([exp_x, exp_y]) => [expect.closeTo(exp_x, 6), expect.closeTo(exp_y, 6)]),
+  )
 
 describe(`parse_phase_diagram_svg`, () => {
   it.each([

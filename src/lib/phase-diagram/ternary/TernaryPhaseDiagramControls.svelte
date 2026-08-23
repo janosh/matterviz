@@ -188,20 +188,29 @@
   }
 </script>
 
+<!-- One mutually exclusive button per [value, text, tip] option -->
+{#snippet toggle_group<V>(
+  options: readonly [V, string, string][],
+  current: V,
+  select: (value: V) => void,
+)}
+  <div class="toggle-group">
+    {#each options as [value, text, tip] (value)}
+      <button
+        type="button"
+        class={[`toggle-btn`, { active: current === value }]}
+        aria-pressed={current === value}
+        onclick={() => select(value)}
+        {@attach tooltip({ content: tip })}>{text}</button
+      >
+    {/each}
+  </div>
+{/snippet}
+
 {#snippet toggle_row<K extends keyof TernaryDisplay>([key, label, options]: Toggle<K>)}
   <div class="setting">
     <span class="control-label">{label}</span>
-    <div class="toggle-group">
-      {#each options as [value, text, tip] (value)}
-        <button
-          type="button"
-          class={[`toggle-btn`, { active: display[key] === value }]}
-          aria-pressed={display[key] === value}
-          onclick={() => set_display({ [key]: value })}
-          {@attach tooltip({ content: tip })}>{text}</button
-        >
-      {/each}
-    </div>
+    {@render toggle_group(options, display[key], (value) => set_display({ [key]: value }))}
   </div>
 {/snippet}
 
@@ -242,17 +251,7 @@
   <SettingsSection title="Free energy model" layout="grid">
     <div class="setting">
       <span class="control-label">G(T)</span>
-      <div class="toggle-group">
-        {#each MODES as [mode, text, tip] (mode)}
-          <button
-            type="button"
-            class={[`toggle-btn`, { active: free_energy_mode === mode }]}
-            aria-pressed={free_energy_mode === mode}
-            onclick={() => (free_energy_mode = mode)}
-            {@attach tooltip({ content: tip })}>{text}</button
-          >
-        {/each}
-      </div>
+      {@render toggle_group(MODES, free_energy_mode, (mode) => (free_energy_mode = mode))}
     </div>
     {#each t_range ? [0, 1] : [] as end (end)}
       <label

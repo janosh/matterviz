@@ -1,8 +1,4 @@
-import {
-  trajectory_from_frames,
-  type CollectPositionsOptions,
-  type TrajectoryRun,
-} from '$lib/trajectory'
+import type { CollectPositionsOptions, TrajectoryRun } from '$lib/trajectory'
 import {
   calc_vacf,
   collect_vacf_input,
@@ -10,21 +6,10 @@ import {
   VELOCITY_SITE_PROPERTY,
 } from '$lib/vacf'
 import { describe, expect, it, vi } from 'vitest'
-import { make_frame } from '../setup'
-import { circular_motion, max_abs_error } from './helpers'
+import { max_abs_error, orbit_run } from './helpers'
 
-const make_run = (n_frames: number, with_velocities: boolean): TrajectoryRun => {
-  const { positions, velocities } = circular_motion(n_frames, 0.03, 1.5)
-  return trajectory_from_frames(
-    positions.map((frame, frame_idx) =>
-      make_frame(
-        frame_idx,
-        frame,
-        with_velocities ? { velocities: velocities[frame_idx] } : {},
-      ),
-    ),
-  )
-}
+const make_run = (n_frames: number, with_velocities: boolean): TrajectoryRun =>
+  orbit_run(n_frames, 0.03, 1.5, with_velocities)
 
 describe(`collect_vacf_input`, () => {
   it(`collects stored per-atom velocities and reproduces the analytic circular VACF`, async () => {

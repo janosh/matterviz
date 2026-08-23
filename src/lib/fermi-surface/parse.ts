@@ -1,6 +1,6 @@
 // Parsers for Fermi surface file formats (BXSF, FRMSF, JSON)
 import { BOHR_TO_ANGSTROM, HARTREE_TO_EV } from '$lib/constants'
-import { parse_decimal_token, parse_float_block } from '$lib/isosurface/parse'
+import { parse_float_block } from '$lib/isosurface/parse'
 import { flatten_grid } from '$lib/isosurface/grid'
 import { compute_vertex_normals } from '$lib/marching-cubes'
 import type { Matrix3x3, Vec3 } from '$lib/math'
@@ -135,34 +135,6 @@ function parse_bxsf(content: string): BandGridData {
   }
 }
 
-// Read `count` numbers, one per line (first token only, any trailing columns such as
-// FermiSurfer's auxiliary colour data are skipped), starting at `pos`. Returns the number of
-// values read and the position after the last consumed line.
-function parse_first_column_block(
-  text: string,
-  pos: number,
-  count: number,
-  out: Float64Array,
-  scale: number,
-): { count: number; end_pos: number } {
-  const len = text.length
-  let n_read = 0
-  while (n_read < count && pos < len) {
-    // Skip leading whitespace (including blank lines)
-    let code = text.charCodeAt(pos)
-    while (pos < len && code <= 32) code = text.charCodeAt(++pos)
-    if (pos >= len) break
-    const start = pos
-    while (pos < len && text.charCodeAt(pos) > 32) pos++
-    const value = parse_decimal_token(text, start, pos)
-    if (Number.isNaN(value)) break
-    out[n_read++] = value * scale
-    // Drop the rest of the line
-    while (pos < len && text.charCodeAt(pos) !== 10) pos++
-  }
-  return { count: n_read, end_pos: pos }
-}
-
 // Parse FRMSF format used by FermiSurfer
 // Format: https://mitsuaki1987.github.io/fermisurfer/en/_build/html/ops.html
 function parse_frmsf(content: string): BandGridData {
@@ -201,23 +173,26 @@ function parse_frmsf(content: string): BandGridData {
     throw new Error(`FRMSF: Invalid reciprocal lattice vector`)
   }
 
-  // Band energies, one per line in z-fastest order, converted from Hartree to eV as read.
-  // FRMSF has a single spin channel (no spin-polarized support in the standard format).
+  // Band energies, one per line in z-fastest order (trailing columns such as FermiSurfer's
+  // auxiliary colour data are dropped), converted from Hartree to eV. FRMSF has a single spin
+  // channel (no spin-polarized support in the standard format).
   const total_points = k_grid[0] * k_grid[1] * k_grid[2]
   const energies: BandEnergyGrid[][] = [[]]
   for (let band_idx = 0; band_idx < n_bands; band_idx++) {
     const energy_values = new Float64Array(total_points)
-    const { count, end_pos } = parse_first_column_block(
+    const { count, end_pos } = parse_float_block(
       content,
       reader.position(),
       total_points,
       energy_values,
-      HARTREE_TO_EV,
+      0,
+      true,
     )
     reader.seek(end_pos)
     if (count < total_points) {
       throw new Error(`FRMSF band ${band_idx}: expected ${total_points} values, got ${count}`)
     }
+    for (let idx = 0; idx < total_points; idx++) energy_values[idx] *= HARTREE_TO_EV
     energies[0].push(make_band_grid(energy_values, k_grid))
   }
 

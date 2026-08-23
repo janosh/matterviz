@@ -171,17 +171,14 @@
     on_error: (msg) => (drop_error = `Phase diagram file drop failed: ${msg}`),
   })
 
-  // Merge config with centralized defaults using shared helper
   const merged_config = $derived(merge_phase_diagram_config(config))
 
   // Dimensions - use container size directly, no fallback to avoid layout shift
   let width = $state(0)
   let height = $state(0)
 
-  // Margin from config
   const margin = $derived(merged_config.margin)
 
-  // Pre-computed plot edges to avoid repeated calculations
   const left = $derived(margin.l)
   const right = $derived(width - margin.r)
   const top = $derived(margin.t)
@@ -193,7 +190,6 @@
   // Auto-extends to 0/1 when edge regions contain a pure component
   const x_domain = $derived(compute_x_domain(x_axis.range, effective_data))
 
-  // Scales
   const x_scale = $derived(scaleLinear().domain(x_domain).range([left, right]))
 
   const data_temp_unit = $derived<TempUnit>(effective_data.temperature_unit ?? `K`)
@@ -219,7 +215,6 @@
     y_scale_display.ticks(tick_count(y_axis, PHASE_DIAGRAM_DEFAULTS.y_ticks)),
   )
 
-  // Transform regions to SVG coordinates
   const transformed_regions = $derived(
     effective_data.regions.map((region) => {
       const svg_vertices = transform_vertices(region.vertices, x_scale, y_scale)
@@ -248,7 +243,6 @@
     }),
   )
 
-  // Transform boundaries to SVG coordinates
   const transformed_boundaries = $derived(
     effective_data.boundaries.map((boundary) => ({
       ...boundary,
@@ -256,7 +250,6 @@
     })),
   )
 
-  // Transform special points to SVG coordinates
   const transformed_special_points = $derived(
     (effective_data.special_points ?? []).map((point) => ({
       ...point,
@@ -265,12 +258,10 @@
     })),
   )
 
-  // Hover state
   let hover_info = $state<PhaseHoverInfo | null>(null)
   // Locked tooltip state (click to lock, click again to unlock)
   let locked_hover_info = $state<PhaseHoverInfo | null>(null)
 
-  // Clear hover state helper (used in multiple places)
   function clear_hover() {
     hover_info = null
     hovered_region = null
@@ -287,7 +278,6 @@
     })
   })
 
-  // Handle click to lock/unlock tooltip
   function handle_click() {
     if (locked_hover_info) {
       // Unlock if already locked
@@ -298,7 +288,6 @@
     }
   }
 
-  // Effective hover info - locked takes precedence
   const effective_hover_info = $derived(locked_hover_info ?? hover_info)
 
   // Tie-line geometry (SVG px) for the active lever-rule mode; null outside two-phase regions.
@@ -332,7 +321,6 @@
   let copy_feedback_pos = $state<{ x: number; y: number } | null>(null)
   let copy_feedback_timeout: ReturnType<typeof setTimeout> | undefined
 
-  // Handle double-click to copy tooltip data
   async function handle_double_click(event: MouseEvent) {
     const info = effective_hover_info
     if (!info) return
@@ -356,7 +344,6 @@
     }
   }
 
-  // Find nearest special point within threshold (in SVG pixels)
   function find_nearby_special_point(svg_x: number, svg_y: number, threshold: number = 20) {
     let nearest: (typeof transformed_special_points)[0] | null = null
     let min_dist = threshold
@@ -370,7 +357,6 @@
     return nearest
   }
 
-  // Pointer move handler (unified mouse/touch via Pointer Events API)
   function handle_pointer_move(event: PointerEvent & { currentTarget: SVGElement }) {
     const rect = event.currentTarget.getBoundingClientRect()
     const svg_x = event.clientX - rect.left
@@ -406,7 +392,6 @@
     clear_hover()
   }
 
-  // Document-level keyboard shortcuts
   function handle_doc_keydown(event: KeyboardEvent) {
     if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key === `E`) {
       event.preventDefault()
@@ -416,7 +401,6 @@
     }
   }
 
-  // SVG keyboard handler (Enter/Space to toggle lock)
   function handle_svg_keydown(event: KeyboardEvent) {
     if (event.key === `Enter` || event.key === ` `) {
       event.preventDefault()
@@ -424,7 +408,6 @@
     }
   }
 
-  // Cleanup timeout on unmount to prevent memory leaks
   $effect(() => () => clearTimeout(copy_feedback_timeout))
 
   const component_a = $derived(effective_data.components[0])
@@ -446,7 +429,6 @@
   )
 </script>
 
-<!-- Grid lines snippet for DRY rendering -->
 {#snippet grid_lines(ticks: number[], vertical: boolean)}
   {#each ticks as tick (tick)}
     <line
@@ -573,7 +555,6 @@
         {/each}
       </defs>
 
-      <!-- Background -->
       <rect
         x={left}
         y={top}
@@ -582,7 +563,6 @@
         fill={merged_config.colors.background}
       />
 
-      <!-- Grid lines -->
       {#if show_grid}
         <g class="grid" style="pointer-events: none">
           {@render grid_lines(x_ticks, true)}
@@ -590,7 +570,6 @@
         </g>
       {/if}
 
-      <!-- Phase regions -->
       <g class="phase-regions">
         {#each transformed_regions as region (region.id)}
           <path
@@ -604,7 +583,6 @@
         {/each}
       </g>
 
-      <!-- Boundaries -->
       {#if show_boundaries}
         <g class="boundaries">
           {#each transformed_boundaries as boundary (boundary.id)}
@@ -621,7 +599,6 @@
         </g>
       {/if}
 
-      <!-- Region labels -->
       {#if show_labels}
         <g class="region-labels" style="pointer-events: none">
           {#each transformed_regions as region (region.id)}
@@ -730,7 +707,6 @@
         </g>
       {/if}
 
-      <!-- X-axis -->
       <g class="x-axis">
         <line
           x1={left}
@@ -767,7 +743,6 @@
         </text>
       </g>
 
-      <!-- Y-axis -->
       <g class="y-axis">
         <line
           x1={left}
@@ -863,7 +838,6 @@
       {#if copy_feedback_pos}<ClickFeedback visible position={copy_feedback_pos} />{/if}
     {/key}
 
-    <!-- Custom children -->
     {@render children?.({ width, height, fullscreen })}
   {/if}
 </div>

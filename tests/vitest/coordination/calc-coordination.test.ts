@@ -5,10 +5,9 @@ import { to_structure_entries } from '$lib'
 import { element_by_symbol } from '$lib/element/data'
 import type { StructureEntry, StructureInput } from '$lib'
 import { calc_coordination_nums, CoordinationBarPlot } from '$lib/coordination'
-import type { Molecule } from '$lib/structure'
 import { tick } from 'svelte'
 import { describe, expect, test } from 'vitest'
-import { make_crystal, make_rocksalt, mount_sized } from '../setup'
+import { make_crystal, make_molecule, make_rocksalt, mount_sized } from '../setup'
 
 // Simple cubic structure (NaCl-like)
 const simple_cubic = make_crystal(5, [
@@ -17,15 +16,12 @@ const simple_cubic = make_crystal(5, [
   [`Na`, [0.5, 0, 0], 1],
   { element: `Cl`, abc: [0, 0.5, 0.5], oxidation_state: -1 },
 ])
-// Water, so a lattice-less molecule exercises the single-structure input shape. Built in a
-// 10 Å box and stripped of its lattice, so the O-H separation stays a plain 0.958 Å.
-const water: Molecule = {
-  sites: make_crystal(10, [
-    [`O`, [0.5, 0.5, 0.5]],
-    [`H`, [0.5757, 0.5587, 0.5]],
-    [`H`, [0.4243, 0.5587, 0.5]],
-  ]).sites,
-}
+// Water, so a lattice-less molecule exercises the single-structure input shape (O-H 0.958 Å)
+const water = make_molecule([
+  [`O`, [5, 5, 5]],
+  [`H`, [5.757, 5.587, 5]],
+  [`H`, [4.243, 5.587, 5]],
+])
 
 test.each([
   [`lone crystal`, simple_cubic, [`Structure`]],

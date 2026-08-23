@@ -7,7 +7,7 @@
   import type { D3InterpolateName } from '$lib/colors'
   import { format_num } from '$lib/labels'
   import { SettingsSection } from '$lib/layout'
-  import type { Vec2 } from '$lib/math'
+  import { clamp, type Vec2 } from '$lib/math'
   import { ColorScaleSelect } from '$lib/plot'
   import { tooltip } from 'svelte-widgets/attachments'
   import { auto_color_config, DEFAULT_ISO_COLORMAP, ISO_COLORMAPS } from './coloring'
@@ -44,7 +44,7 @@
   // Resolve a layer's geometry volume the same way for grouping, warnings, and
   // data ranges (out-of-range indices clamp so stale layers stay editable/removable)
   const resolve_geo_idx = (layer: IsosurfaceLayer): number =>
-    Math.min(Math.max(layer.volume_idx ?? active_volume_idx, 0), volumes.length - 1)
+    clamp(layer.volume_idx ?? active_volume_idx, 0, volumes.length - 1)
 
   // The layer's scalar-color-source volume, if any
   const color_vol_of = (layer: IsosurfaceLayer): VolumetricData | undefined =>

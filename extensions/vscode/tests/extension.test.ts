@@ -392,14 +392,30 @@ describe(`MatterViz Extension`, () => {
       : null
   }
 
+  // A WebviewPanel stand-in whose listener disposables all report to `dispose`
+  const make_panel = (dispose?: () => void) => ({
+    webview: make_webview(dispose),
+    onDidDispose: vi.fn(),
+  })
+
   // Render file_path from the active editor into a fresh panel and hand the panel back
   const render_file = async (file_path: string, content = `content`) => {
-    const panel = { webview: make_webview(), onDidDispose: vi.fn(), visible: true }
+    const panel = make_panel()
     mock_vscode.window.createWebviewPanel.mockReturnValueOnce(panel)
     set_active_editor(file_path, content)
     await render(mock_context)
     return panel
   }
+
+  // The bootstrap payload create_html inlines into the webview HTML
+  const bootstrap_data_of = (html: string) =>
+    JSON.parse(/matterviz_data=(?<json>\{[\s\S]*?\});/.exec(html)?.[1] ?? `{}`)
+
+  // Invoke the callback a panel registered on a VS Code event mock (typed as parameterless)
+  const fire_event = (
+    listener: { mock: { calls: unknown[][] } },
+    event: unknown = undefined,
+  ): void => (listener.mock.calls[0][0] as (event: unknown) => void)(event)
 
   test.each([
     [`test.gz`, true],
@@ -546,10 +562,7 @@ describe(`MatterViz Extension`, () => {
 
     const data = await read_file(`/test/${ase_filename}`)
     const html = create_html(mock_webview, mock_context, { data, theme: `light` })
-    const parsed_data = JSON.parse(
-      /matterviz_data=(?<json>\{[\s\S]*?\});/.exec(html)?.[1] ?? `{}`,
-    )
-    expect(parsed_data).toEqual({
+    expect(bootstrap_data_of(html)).toEqual({
       data: { filename: ase_filename, content: mock_base64, is_base64: true },
       theme: `light`,
     })
@@ -751,21 +764,12 @@ describe(`MatterViz Extension`, () => {
   ] as const)(
     `render from %s creates a panel and watches the file`,
     async (_source, file_path, use_editor) => {
-      const basename = file_path.split(`/`).pop() as string
-      if (use_editor) {
-        mock_vscode.window.tabGroups.activeTabGroup.activeTab = null
-        set_active_editor(file_path)
-      } else {
-        mock_vscode.window.activeTextEditor = null
-        mock_vscode.window.tabGroups.activeTabGroup.activeTab = {
-          input: { uri: { fsPath: file_path } },
-        } as unknown as Tab
-      }
-      mock_vscode.window.createWebviewPanel.mockReturnValue({
-        webview: make_webview(),
-        onDidDispose: vi.fn(),
-        visible: true,
-      })
+      const basename = basename_of(file_path)
+      set_active_editor(use_editor ? file_path : undefined)
+      mock_vscode.window.tabGroups.activeTabGroup.activeTab = use_editor
+        ? null
+        : ({ input: { uri: { fsPath: file_path } } } as unknown as Tab)
+      mock_vscode.window.createWebviewPanel.mockReturnValue(make_panel())
 
       await render(mock_context)
 
@@ -1055,11 +1059,7 @@ describe(`MatterViz Extension`, () => {
       }
 
       const html = create_html(mock_webview, mock_context, data)
-
-      const parsed_data = JSON.parse(
-        /matterviz_data=(?<json>\{[\s\S]*?\});/.exec(html)?.[1] ?? `{}`,
-      )
-      expect(parsed_data.theme).toBe(`dark`)
+      expect(bootstrap_data_of(html).theme).toBe(`dark`)
     })
 
     // high-contrast auto mappings (HighContrast → black, HighContrastLight → white)
@@ -1077,14 +1077,9 @@ describe(`MatterViz Extension`, () => {
   })
 
   describe(`Panel listener cleanup`, () => {
-    const setup_panel = (options = {}) => {
+    const setup_panel = () => {
       const mock_dispose = vi.fn()
-      const mock_panel = {
-        webview: make_webview(mock_dispose),
-        onDidDispose: vi.fn(),
-        visible: true,
-        ...options,
-      }
+      const mock_panel = make_panel(mock_dispose)
 
       mock_vscode.window.createWebviewPanel.mockReturnValue(mock_panel)
       mock_vscode.window.onDidChangeActiveColorTheme.mockReturnValue({
@@ -1107,7 +1102,7 @@ describe(`MatterViz Extension`, () => {
       expect(mock_panel.onDidDispose).toHaveBeenCalled()
 
       // Test cleanup
-      mock_panel.onDidDispose.mock.calls[0][0]()
+      fire_event(mock_panel.onDidDispose)
       expect(mock_dispose).toHaveBeenCalledTimes(3)
     })
 
@@ -1124,10 +1119,9 @@ describe(`MatterViz Extension`, () => {
         const initial_html = mock_panel.webview.html
         mock_vscode.workspace.fs.readFile.mockClear()
         mock_vscode.window.activeColorTheme = { kind: mock_vscode.ColorThemeKind.Dark }
-
-        // the listener mocks declare no parameters, so their recorded calls type as []
-        const calls = listener().mock.calls as unknown as [(event: unknown) => void][]
-        calls[0][0]({ affectsConfiguration: (section: string) => section === `matterviz` })
+        fire_event(listener(), {
+          affectsConfiguration: (section: string) => section === `matterviz`,
+        })
 
         expect(mock_panel.webview.postMessage).toHaveBeenCalledWith({
           command: `settingsChanged`,
@@ -1142,18 +1136,17 @@ describe(`MatterViz Extension`, () => {
     test(`config changes outside matterviz are ignored`, async () => {
       const { mock_panel } = setup_panel()
       await render(mock_context)
-      const calls = mock_vscode.workspace.onDidChangeConfiguration.mock.calls as unknown as [
-        (event: unknown) => void,
-      ][]
-      calls[0][0]({ affectsConfiguration: () => false })
+      fire_event(mock_vscode.workspace.onDidChangeConfiguration, {
+        affectsConfiguration: () => false,
+      })
       expect(mock_panel.webview.postMessage).not.toHaveBeenCalled()
     })
 
     test(`multiple panels dispose independently`, async () => {
       const dispose1 = vi.fn()
       const dispose2 = vi.fn()
-      const panel1 = { webview: make_webview(dispose1), onDidDispose: vi.fn() }
-      const panel2 = { webview: make_webview(dispose2), onDidDispose: vi.fn() }
+      const panel1 = make_panel(dispose1)
+      const panel2 = make_panel(dispose2)
 
       mock_vscode.window.createWebviewPanel
         .mockReturnValueOnce(panel1)
@@ -1172,7 +1165,7 @@ describe(`MatterViz Extension`, () => {
       await render(mock_context)
       await render(mock_context)
 
-      panel1.onDidDispose.mock.calls[0][0]()
+      fire_event(panel1.onDidDispose)
       expect(dispose1).toHaveBeenCalledTimes(3)
       expect(dispose2).not.toHaveBeenCalled()
     })
@@ -1213,7 +1206,7 @@ describe(`MatterViz Extension`, () => {
         expect(active_watchers.has(file_path)).toBe(true)
 
         // Dispose tears down message/theme/config listeners and the file watcher
-        panel.onDidDispose.mock.calls[0][0]()
+        fire_event(panel.onDidDispose)
         expect(mock_dispose).toHaveBeenCalledTimes(3)
         expect(active_watchers.has(file_path)).toBe(false)
       })
@@ -1239,34 +1232,17 @@ describe(`MatterViz Extension`, () => {
         onDidDelete: vi.fn(),
         dispose: vi.fn(),
       }
-      const disposable = () => ({ dispose: vi.fn() })
-      const webview1 = make_webview()
-      const webview2 = make_webview()
-      const panel1 = { webview: webview1, onDidDispose: vi.fn(), visible: true }
-      const panel2 = { webview: webview2, onDidDispose: vi.fn(), visible: true }
-
       mock_vscode.workspace.createFileSystemWatcher.mockReturnValue(shared_watcher)
-      mock_vscode.window.onDidChangeActiveColorTheme.mockReturnValue(disposable())
-      mock_vscode.workspace.onDidChangeConfiguration.mockReturnValue(disposable())
-      mock_vscode.window.createWebviewPanel
-        .mockReturnValueOnce(panel1)
-        .mockReturnValueOnce(panel2)
-      set_active_editor(`/test/file.cif`)
-
-      await render(mock_context)
-      await render(mock_context)
+      const panel1 = await render_file(`/test/file.cif`)
+      const panel2 = await render_file(`/test/file.cif`)
 
       expect(mock_vscode.workspace.createFileSystemWatcher).toHaveBeenCalledTimes(1)
 
-      const change_handler = shared_watcher.onDidChange.mock.calls[0]?.[0] as
-        | (() => Promise<void> | void)
-        | undefined
-      expect(change_handler).toBeDefined()
       mock_vscode.workspace.fs.readFile.mockClear()
-      await change_handler?.()
+      fire_event(shared_watcher.onDidChange)
 
       await vi.waitFor(() => {
-        for (const webview of [webview1, webview2]) {
+        for (const { webview } of [panel1, panel2]) {
           expect(webview.postMessage).toHaveBeenCalledWith(
             expect.objectContaining({
               command: `fileUpdated`,
@@ -1278,10 +1254,10 @@ describe(`MatterViz Extension`, () => {
       // one shared read fans out to both panels rather than one read per panel
       expect(mock_vscode.workspace.fs.readFile).toHaveBeenCalledTimes(1)
 
-      panel1.onDidDispose.mock.calls[0]?.[0]()
+      fire_event(panel1.onDidDispose)
       expect(shared_watcher.dispose).not.toHaveBeenCalled()
 
-      panel2.onDidDispose.mock.calls[0]?.[0]()
+      fire_event(panel2.onDidDispose)
       expect(shared_watcher.dispose).toHaveBeenCalledTimes(1)
     })
 
@@ -1311,9 +1287,7 @@ describe(`MatterViz Extension`, () => {
         },
       ])(`notifies webview on file $label`, async ({ register, expected }) => {
         const panel = await render_file(`/test/file.cif`)
-
-        const handler = mock_file_system_watcher[register].mock.calls[0][0]
-        await handler()
+        fire_event(mock_file_system_watcher[register])
 
         await vi.waitFor(() => {
           expect(panel.webview.postMessage).toHaveBeenCalledWith(expected)

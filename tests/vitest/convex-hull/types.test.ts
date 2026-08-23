@@ -6,7 +6,17 @@ import {
   is_on_hull,
   is_unary_entry,
 } from '$lib/convex-hull/helpers'
+import { default_hull_config, merge_hull_config } from '$lib/convex-hull/index'
 import { describe, expect, test } from 'vitest'
+
+test(`merge_hull_config overrides defaults and merges colors one level deep`, () => {
+  expect(merge_hull_config({})).toEqual(default_hull_config)
+  expect(merge_hull_config({ show_hull: false, colors: { stable: `#000` } })).toEqual({
+    ...default_hull_config,
+    show_hull: false,
+    colors: { ...default_hull_config.colors, stable: `#000` },
+  })
+})
 
 describe(`arity helpers`, () => {
   const make = (composition: Record<string, number>) => ({ composition }) as PhaseData

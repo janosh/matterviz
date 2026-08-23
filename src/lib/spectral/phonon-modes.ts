@@ -14,7 +14,8 @@ import {
   complex_phase,
   multiply_complex,
 } from './complex-mode'
-import { acoustic_mode_indices, is_gamma_point } from './ir-raman'
+import { is_gamma_point } from './helpers'
+import { acoustic_mode_indices } from './ir-raman'
 import type {
   Complex,
   PhononBandStructure,

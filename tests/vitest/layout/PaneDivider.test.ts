@@ -94,47 +94,28 @@ test(`an active drag ignores other pointers and ends on lost capture`, () => {
 
 // Pixel clamps tighten the [15%, 85%] ratio clamps using the container's measured size (400
 // px wide, 200 px tall here); an over-constrained container settles at the first pane's floor,
-// and a floor wider than the container caps at 100% rather than pushing the divider outside
+// and a floor wider than the container caps at 100% rather than pushing the divider outside.
+// Rows: clamps, orientation, then (pointer coordinate along the axis, expected split %) pairs
 test.each([
-  [`min_px`, `horizontal`, { min_px: 120 }, { clientX: 120 }, 30, { clientX: 480 }, 85],
-  [
-    `min_px past the container`,
-    `horizontal`,
-    { min_px: 500, second_min_px: 50 },
-    { clientX: 120 },
-    100,
-    { clientX: 480 },
-    100,
-  ],
-  [`max_px`, `horizontal`, { max_px: 100 }, { clientX: 480 }, 25, { clientX: 120 }, 15],
-  [
-    `second_min_px`,
-    `horizontal`,
-    { second_min_px: 300 },
-    { clientX: 480 },
-    25,
-    { clientX: 120 },
-    15,
-  ],
-  [`vertical min_px`, `vertical`, { min_px: 80 }, { clientY: 60 }, 40, { clientY: 240 }, 85],
-  [
-    `both floors`,
-    `horizontal`,
-    { min_px: 200, second_min_px: 300 },
-    { clientX: 120 },
-    50,
-    { clientX: 480 },
-    50,
-  ],
+  [{ min_px: 120 }, `horizontal`, 120, 30, 480, 85],
+  [{ min_px: 500, second_min_px: 50 }, `horizontal`, 120, 100, 480, 100],
+  [{ max_px: 100 }, `horizontal`, 480, 25, 120, 15],
+  [{ second_min_px: 300 }, `horizontal`, 480, 25, 120, 15],
+  [{ min_px: 80 }, `vertical`, 60, 40, 240, 85],
+  [{ min_px: 200, second_min_px: 300 }, `horizontal`, 120, 50, 480, 50],
 ] as const)(
-  `%s clamps pointer drags in pixels`,
-  (_name, orientation, clamps, low, low_pct, high, high_pct) => {
+  `%j clamps %s pointer drags in pixels`,
+  (clamps, orientation, low, low_pct, high, high_pct) => {
     const { divider, parent } = mount_divider(orientation, `ltr`, 0.5, clamps)
+    const axis = orientation === `horizontal` ? `clientX` : `clientY`
     divider.dispatchEvent(pointer_event(`pointerdown`, { pointerId: 4 }))
-    divider.dispatchEvent(pointer_event(`pointermove`, { ...low, pointerId: 4 }))
-    expect(parent.style.getPropertyValue(`--split-pane-size`)).toBe(`${low_pct}%`)
-    divider.dispatchEvent(pointer_event(`pointermove`, { ...high, pointerId: 4 }))
-    expect(parent.style.getPropertyValue(`--split-pane-size`)).toBe(`${high_pct}%`)
+    for (const [coord, pct] of [
+      [low, low_pct],
+      [high, high_pct],
+    ]) {
+      divider.dispatchEvent(pointer_event(`pointermove`, { [axis]: coord, pointerId: 4 }))
+      expect(parent.style.getPropertyValue(`--split-pane-size`)).toBe(`${pct}%`)
+    }
   },
 )
 

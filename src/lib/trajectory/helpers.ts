@@ -16,6 +16,10 @@ import type { WarnFn } from './parse/shared'
 // Numeric/element helpers shared with the structure parsers live in structure/parsers/shared
 export { count_elements, parse_float_token } from '$lib/structure/parsers/shared'
 
+// Number of values in one sample of the given shape (1 for a scalar)
+export const values_per_sample = (shape: number[]): number =>
+  shape.reduce((product, size) => product * size, 1)
+
 export const is_supported_trajectory_signal_shape = (
   sample_shape: number[],
   n_atoms: number,
@@ -122,7 +126,7 @@ export const read_ndarray_from_view = (
 ): number[][] => {
   const [shape, dtype, absolute_offset] = ref.ndarray as [number[], string, number]
   const array_offset = absolute_offset - base_offset
-  const total = shape.reduce((product, dim_size) => product * dim_size, 1)
+  const total = values_per_sample(shape)
 
   const readers: Record<string, { bytes: number; read: (pos: number) => number }> = {
     int64: { bytes: 8, read: (pos) => Number(view.getBigInt64(pos, true)) },

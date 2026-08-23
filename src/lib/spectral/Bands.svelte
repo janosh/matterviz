@@ -158,7 +158,6 @@
   })
   let num_structures = $derived(structures.length)
 
-  // Auto-detect band type if not explicitly set
   let detected_band_type = $derived.by((): BandStructureType => {
     if (band_type) return band_type
     if (!band_structs) return `phonon`
@@ -184,7 +183,6 @@
     return `phonon`
   })
 
-  // Auto-detect Fermi level from electronic band structure data if not explicitly provided
   let effective_fermi_level = $derived(
     fermi_level ??
       (detected_band_type === `electronic` ? helpers.extract_efermi(band_structs) : undefined),
@@ -376,30 +374,13 @@
     return [flat[0] ?? 0, flat.at(-1) ?? 1]
   })
 
-  // Calculate y-range, enforcing 0 minimum for phonon bands without imaginary modes
   let y_range = $derived.by((): Vec2 | undefined => {
     const all_values = structures.flatMap(({ bs }) => [
       ...bs.bands.flat(),
       ...(bs.spin_down_bands?.flat() ?? []),
     ])
-    const finite = convert_band_values(all_values).filter(Number.isFinite)
-    if (finite.length === 0) return undefined
-    let min_val = Infinity
-    let max_val = -Infinity
-    for (const val of finite) {
-      if (val < min_val) min_val = val
-      if (val > max_val) max_val = val
-    }
-    if (
-      // clamp phonon min to 0 if negatives are noise
-      detected_band_type === `phonon` &&
-      min_val < 0 &&
-      helpers.negative_fraction(finite) < helpers.IMAGINARY_MODE_NOISE_THRESHOLD
-    ) {
-      min_val = 0
-    }
-    const padding = (max_val - min_val) * 0.02
-    return [min_val === 0 ? 0 : min_val - padding, max_val + padding]
+    const is_phonon = detected_band_type === `phonon`
+    return helpers.padded_frequency_range(convert_band_values(all_values), is_phonon)
   })
 
   // Internal y_axis that ScatterPlot binds to - syncs zoom changes back to parent
@@ -414,8 +395,6 @@
     ...y_axis,
   })
 
-  // Sync zoom changes from ScatterPlot back to parent via bindable y_axis
-  // Also clears parent range when internal range becomes invalid (auto-range reset)
   $effect(() => {
     const next = sync_axis_range(y_axis, internal_y_axis.range)
     if (next !== y_axis) y_axis = next

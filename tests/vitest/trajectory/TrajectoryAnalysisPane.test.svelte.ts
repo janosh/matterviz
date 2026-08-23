@@ -8,11 +8,10 @@ import type {
 } from '$lib/trajectory/analysis-pane'
 import TrajectoryAnalysisPane from '$lib/trajectory/TrajectoryAnalysisPane.svelte'
 import { to_error } from '$lib/utils'
-import { type ComponentProps, createRawSnippet, mount, tick, unmount } from 'svelte'
+import { type ComponentProps, createRawSnippet, mount, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { bind_props, doc_query, make_run as make_shared_run } from '../setup'
+import { bind_props, doc_query, make_run, settle } from '../setup'
 
-const make_run = (n_frames: number): TrajectoryRun => make_shared_run(n_frames)
 const frame_only_run = (n_frames: number): TrajectoryRun => {
   const { collect_positions: _collect_positions, ...run } = make_run(n_frames)
   return run
@@ -25,14 +24,6 @@ afterEach(async () => {
   mounted = undefined
   document.body.replaceChildren()
 })
-
-const settle = async (): Promise<void> => {
-  for (let round = 0; round < 3; round++) {
-    await tick()
-    await Promise.resolve()
-    await tick()
-  }
-}
 
 // Mount with a collector that records its options and resolves after one microtask; the
 // `children` snippet is a no-op since only the chrome is under test

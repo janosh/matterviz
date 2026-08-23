@@ -71,27 +71,23 @@ export const active_auto_render_panels = new Map<string, vscode.WebviewPanel>()
 // the whole manifest in the bundle)
 let extension_version = `unknown`
 
-let wasm_filename_cache: string | null = null
-
-function get_wasm_filename(ext_path: string): string | null {
-  if (wasm_filename_cache) return wasm_filename_cache
+// The hashed `<prefix>*<suffix>` file in dist/assets, if the build output is there (it is
+// not in tests)
+const find_asset = (ext_path: string, prefix: string, suffix: string): string | undefined => {
   const assets_dir = path.join(ext_path, `dist`, `assets`)
-
-  // In tests, the assets directory might not exist
-  if (!fs.existsSync(assets_dir)) {
-    console.warn(`Assets directory not found: ${assets_dir}`)
-    return null
-  }
-
-  const wasm_file = fs
+  if (!fs.existsSync(assets_dir)) return undefined
+  return fs
     .readdirSync(assets_dir)
-    .find((file: string) => file.startsWith(`moyo_wasm_bg-`) && file.endsWith(`.wasm`))
-  if (!wasm_file) {
-    console.warn(`moyo-wasm not found in ${assets_dir}`)
-    return null
-  }
-  wasm_filename_cache = wasm_file
-  return wasm_file
+    .find((name: string) => name.startsWith(prefix) && name.endsWith(suffix))
+}
+
+let wasm_filename_cache: string | undefined
+
+// Symmetry analysis needs the WASM; its absence is worth a warning, a missing stylesheet is not
+const get_wasm_filename = (ext_path: string): string | undefined => {
+  wasm_filename_cache ??= find_asset(ext_path, `moyo_wasm_bg-`, `.wasm`)
+  if (!wasm_filename_cache) console.warn(`moyo-wasm not found in ${ext_path}/dist/assets`)
+  return wasm_filename_cache
 }
 
 // Auto-open only unambiguous structure/trajectory files (not JSON/YAML keyword matches)
@@ -100,12 +96,8 @@ export const should_auto_render = is_auto_renderable_filename
 // Update the shared VS Code context for files MatterViz can open/view
 const update_supported_resource_context = (uri?: vscode.Uri): void => {
   // Prefer explicit URI; otherwise fall back to the active editor filename
-  const filename = uri?.fsPath
-    ? path.basename(uri.fsPath)
-    : vscode.window.activeTextEditor?.document?.fileName
-      ? path.basename(vscode.window.activeTextEditor.document.fileName)
-      : ``
-  const is_supported = is_matterviz_filename(filename)
+  const file_path = uri?.fsPath || vscode.window.activeTextEditor?.document?.fileName || ``
+  const is_supported = is_matterviz_filename(path.basename(file_path))
   vscode.commands.executeCommand(`setContext`, `matterviz.supported_resource`, is_supported)
 }
 
@@ -285,34 +277,20 @@ export const create_html = (
   data: WebviewBootstrapData,
 ): string => {
   const nonce = Math.random().toString(36).slice(2, 34)
-  const webview_uri = webview.asWebviewUri(
-    vscode.Uri.joinPath(context.extensionUri as vscode.Uri, `dist`, `webview.js`),
-  )
-  const js_uri = typeof webview_uri === `string` ? webview_uri : webview_uri.toString()
-  const assets_dir = path.join(context.extensionUri.fsPath, `dist`, `assets`)
-  const css_file = fs.existsSync(assets_dir)
-    ? fs
-        .readdirSync(assets_dir)
-        .find((file) => file.startsWith(`main-`) && file.endsWith(`.css`))
-    : undefined
-  const css_href = css_file
-    ? webview
-        .asWebviewUri(
-          vscode.Uri.joinPath(context.extensionUri as vscode.Uri, `dist`, `assets`, css_file),
-        )
-        .toString()
-    : undefined
-
-  // Resolve WASM URI for webview (enables symmetry analysis)
-  // Include in data object instead of global scope for cleaner functional approach
-  const wasm_filename = get_wasm_filename(context.extensionUri.fsPath)
-  let moyo_wasm_url: string | undefined
-  if (wasm_filename) {
-    const wasm_uri = webview.asWebviewUri(
-      vscode.Uri.joinPath(context.extensionUri as vscode.Uri, `dist`, `assets`, wasm_filename),
+  const ext_path = context.extensionUri.fsPath
+  // Webview-loadable URL for a file under dist/
+  const dist_uri = (...segments: string[]): string =>
+    String(
+      webview.asWebviewUri(
+        vscode.Uri.joinPath(context.extensionUri as vscode.Uri, `dist`, ...segments),
+      ),
     )
-    moyo_wasm_url = typeof wasm_uri === `string` ? wasm_uri : wasm_uri.toString()
-  }
+  const js_uri = dist_uri(`webview.js`)
+  const css_file = find_asset(ext_path, `main-`, `.css`)
+  const css_href = css_file && dist_uri(`assets`, css_file)
+  // The WASM URL rides in the bootstrap data (enables symmetry analysis)
+  const wasm_filename = get_wasm_filename(ext_path)
+  const moyo_wasm_url = wasm_filename && dist_uri(`assets`, wasm_filename)
 
   const webview_data = { ...data, moyo_wasm_url }
 
@@ -634,8 +612,7 @@ export const render = async (
     // Use the same resolved path as get_file so active-tab fallbacks still get a watcher
     create_webview_panel(context, file, target?.fsPath)
   } catch (error: unknown) {
-    const message = to_error(error).message
-    vscode.window.showErrorMessage(`Failed: ${message}`)
+    vscode.window.showErrorMessage(`Failed: ${to_error(error).message}`)
   }
 }
 
@@ -691,8 +668,7 @@ class Provider implements vscode.CustomReadonlyEditorProvider {
       setup_webview_panel(this.context, webview_panel, await read_file(file_path), file_path)
       // Note: webview_panel disposal is managed by VSCode for custom editors
     } catch (error: unknown) {
-      const message = to_error(error).message
-      vscode.window.showErrorMessage(`Failed: ${message}`)
+      vscode.window.showErrorMessage(`Failed: ${to_error(error).message}`)
     }
   }
 }
@@ -879,8 +855,9 @@ async function report_bug(): Promise<void> {
       )
     }
   } catch (error: unknown) {
-    const message = to_error(error).message
-    vscode.window.showErrorMessage(`Failed to collect debug information: ${message}`)
+    vscode.window.showErrorMessage(
+      `Failed to collect debug information: ${to_error(error).message}`,
+    )
   }
 }
 

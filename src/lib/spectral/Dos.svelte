@@ -12,6 +12,7 @@
   import {
     apply_gaussian_smearing,
     calculate_sigma_step,
+    closed_edge_path,
     extract_efermi,
     extract_pdos,
     format_dos_tooltip,
@@ -132,165 +133,113 @@
     return result
   })
 
-  // Determine if this is phonon or electronic DOS using discriminated union
   let is_phonon = $derived(Object.values(doses_dict)[0]?.type === `phonon`)
 
-  // Auto-detect Fermi level from electronic DOS data if not explicitly provided
-  let effective_fermi_level = $derived.by((): number | undefined => {
-    if (fermi_level !== undefined) return fermi_level
-    if (is_phonon) return undefined
-    return extract_efermi(doses)
-  })
+  let effective_fermi_level = $derived(
+    fermi_level ?? (is_phonon ? undefined : extract_efermi(doses)),
+  )
 
-  // Check if any DOS in the dict has spin-polarized data
   let has_spin_polarized = $derived(
     Object.values(doses_dict).some(
       (dos) => dos.type === `electronic` && dos.spin_down_densities?.length,
     ),
   )
 
-  // Effective spin mode: null means auto-detect (mirror if spin data exists)
-  let effective_spin_mode = $derived.by((): SpinMode => {
-    if (spin_mode !== null) return spin_mode
-    return has_spin_polarized ? `mirror` : null
-  })
+  // A null spin_mode auto-detects: mirror when spin data exists
+  let effective_spin_mode = $derived<SpinMode>(
+    spin_mode ?? (has_spin_polarized ? `mirror` : null),
+  )
 
   // Convert DOS data to scatter plot series and stacked area data
-  // Performance: Only recalculates when doses_dict, units, sigma, normalize, or spin_mode changes
   let { series_data, stacked_areas } = $derived.by(
     (): { series_data: DataSeries[]; stacked_areas: StackedAreaData[] } => {
-      if (Object.keys(doses_dict).length === 0) {
-        return { series_data: [], stacked_areas: [] }
-      }
-
       const all_series: DataSeries[] = []
       const areas: StackedAreaData[] = []
-      const dos_entries = Object.entries(doses_dict)
-      // Separate cumulative trackers for spin-up and spin-down in overlay mode
-      // This prevents spin-down from incorrectly stacking on top of spin-up
+      // Separate cumulative trackers so spin-down never stacks on top of spin-up
       let cumulative_spin_up: number[] | null = null
       let cumulative_spin_down: number[] | null = null
 
-      for (let dos_idx = 0; dos_idx < dos_entries.length; dos_idx++) {
-        const [label, dos] = dos_entries[dos_idx]
+      for (const [dos_idx, [label, dos]] of Object.entries(doses_dict).entries()) {
         const color = plot_color(dos_idx)
-
-        // Get frequencies or energies using discriminated union type narrowing
-        let x_values = dos.type === `phonon` ? dos.frequencies : dos.energies
-
-        // Convert units if needed
-        if (dos.type === `phonon` && unit !== `THz`) {
-          x_values = convert_frequencies(x_values, unit)
-        }
-
-        // Check for spin-down data (only for electronic DOS)
+        const x_values =
+          dos.type === `phonon` && unit !== `THz`
+            ? convert_frequencies(dos.frequencies, unit)
+            : dos.type === `phonon`
+              ? dos.frequencies
+              : dos.energies
         const has_spin_down =
           dos.type === `electronic` && dos.spin_down_densities?.length === dos.densities.length
-        const should_show_spin_up = effective_spin_mode !== `down_only`
-        const should_show_spin_down =
-          has_spin_down && effective_spin_mode !== `up_only` && effective_spin_mode !== null
+        const series_label = label || `DOS ${dos_idx + 1}`
 
-        // Process spin-up (or total) densities
-        if (should_show_spin_up) {
-          let densities_up =
-            sigma > 0
-              ? apply_gaussian_smearing(x_values, dos.densities, sigma)
-              : [...dos.densities]
-
-          densities_up = normalize_densities(densities_up, x_values, normalize)
-
-          // Store previous cumulative for area fill baseline
-          const prev_cumulative = cumulative_spin_up ? [...cumulative_spin_up] : null
-
-          // For stacked plots, accumulate densities (only if array lengths match)
-          if (stack && cumulative_spin_up?.length === densities_up.length) {
-            densities_up = densities_up.map(
-              (density, idx) => density + (cumulative_spin_up?.[idx] ?? 0),
-            )
-          } else if (stack && cumulative_spin_up) {
-            console.warn(`DOS stacking: length mismatch for "${label}"`)
+        // Smear and normalize one spin channel, then (when `cumulative` is given) stack it on
+        // the previous DOS and record the area fill between the two
+        const channel = (
+          raw: number[],
+          cumulative: number[] | null | false,
+          fill_color: string,
+          warn_label: string,
+        ): number[] => {
+          let densities = sigma > 0 ? apply_gaussian_smearing(x_values, raw, sigma) : [...raw]
+          densities = normalize_densities(densities, x_values, normalize)
+          if (cumulative === false) return densities
+          if (cumulative?.length === densities.length) {
+            densities = densities.map((density, idx) => density + (cumulative[idx] ?? 0))
+          } else if (cumulative) {
+            console.warn(`DOS stacking${warn_label}: length mismatch for "${label}"`)
           }
-
-          // Store stacked area data for rendering
-          if (stack) {
-            areas.push({
-              x_values: [...x_values],
-              upper_densities: [...densities_up],
-              lower_densities: prev_cumulative ?? x_values.map(() => 0),
-              color,
-            })
-            cumulative_spin_up = densities_up
-          }
-
-          const spin_label =
-            has_spin_down && effective_spin_mode
-              ? `${label || `DOS ${dos_idx + 1}`} (↑)`
-              : label || `DOS ${dos_idx + 1}`
-
-          const series_up: DataSeries = {
-            x: is_horizontal ? densities_up : x_values,
-            y: is_horizontal ? x_values : densities_up,
-            markers: `line`,
-            label: spin_label,
-            line_style: { stroke: color, stroke_width: 1.5 },
-            point_style: { fill: stack ? color : undefined },
-          }
-          all_series.push(series_up)
+          areas.push({
+            x_values: [...x_values],
+            upper_densities: [...densities],
+            lower_densities: cumulative ? [...cumulative] : x_values.map(() => 0),
+            color: fill_color,
+          })
+          return densities
         }
-
-        // Process spin-down densities if available
-        if (should_show_spin_down && dos.type === `electronic` && dos.spin_down_densities) {
-          let densities_down =
-            sigma > 0
-              ? apply_gaussian_smearing(x_values, dos.spin_down_densities, sigma)
-              : [...dos.spin_down_densities]
-
-          densities_down = normalize_densities(densities_down, x_values, normalize)
-
-          // For mirror mode, negate the densities
-          if (effective_spin_mode === `mirror`) {
-            densities_down = densities_down.map((density) => -density)
-          }
-
-          // For stacked plots with overlay mode, use separate spin-down cumulative
-          // This prevents spin-down from stacking on top of spin-up within the same DOS
-          if (stack && effective_spin_mode === `overlay`) {
-            const prev_spin_down = cumulative_spin_down ? [...cumulative_spin_down] : null
-            if (cumulative_spin_down?.length === densities_down.length) {
-              densities_down = densities_down.map(
-                (density, idx) => density + (cumulative_spin_down?.[idx] ?? 0),
-              )
-            } else if (cumulative_spin_down) {
-              console.warn(`DOS stacking (spin-down): length mismatch for "${label}"`)
-            }
-
-            // Store stacked area for spin-down
-            areas.push({
-              x_values: [...x_values],
-              upper_densities: [...densities_down],
-              lower_densities: prev_spin_down ?? x_values.map(() => 0),
-              color: plot_color(dos_idx * 2 + 1),
-            })
-            cumulative_spin_down = densities_down
-          }
-
-          // Use a slightly different shade for spin-down in overlay mode
-          const spin_down_color =
-            effective_spin_mode === `overlay` ? plot_color(dos_idx * 2 + 1) : color
-
-          const series_down: DataSeries = {
-            x: is_horizontal ? densities_down : x_values,
-            y: is_horizontal ? x_values : densities_down,
+        const push_series = (
+          densities: number[],
+          suffix: string,
+          stroke: string,
+          dash?: string,
+        ) =>
+          all_series.push({
+            x: is_horizontal ? densities : x_values,
+            y: is_horizontal ? x_values : densities,
             markers: `line`,
-            label: `${label || `DOS ${dos_idx + 1}`} (↓)`,
-            line_style: {
-              stroke: spin_down_color,
-              stroke_width: 1.5,
-              line_dash: effective_spin_mode === `overlay` ? `4,2` : undefined,
-            },
-            point_style: { fill: stack ? spin_down_color : undefined },
-          }
-          all_series.push(series_down)
+            label: `${series_label}${suffix}`,
+            line_style: { stroke, stroke_width: 1.5, line_dash: dash },
+            point_style: { fill: stack ? stroke : undefined },
+          })
+
+        if (effective_spin_mode !== `down_only`) {
+          const densities = channel(
+            dos.densities,
+            stack ? cumulative_spin_up : false,
+            color,
+            ``,
+          )
+          if (stack) cumulative_spin_up = densities
+          push_series(densities, has_spin_down && effective_spin_mode ? ` (↑)` : ``, color)
+        }
+        if (
+          has_spin_down &&
+          effective_spin_mode !== `up_only` &&
+          effective_spin_mode !== null &&
+          dos.type === `electronic` &&
+          dos.spin_down_densities
+        ) {
+          const overlay = effective_spin_mode === `overlay`
+          // Overlay gets its own shade and dash; mirror negates the densities instead
+          const down_color = overlay ? plot_color(dos_idx * 2 + 1) : color
+          let densities = channel(
+            dos.spin_down_densities,
+            stack && overlay ? cumulative_spin_down : false,
+            down_color,
+            ` (spin-down)`,
+          )
+          if (stack && overlay) cumulative_spin_down = densities
+          if (effective_spin_mode === `mirror`)
+            densities = densities.map((density) => -density)
+          push_series(densities, ` (↓)`, down_color, overlay ? `4,2` : undefined)
         }
       }
       return { series_data: all_series, stacked_areas: areas }
@@ -310,7 +259,6 @@
       negative_fraction(all_freqs) < IMAGINARY_MODE_NOISE_THRESHOLD,
   )
 
-  // Check if we have mirrored spin-down data (negative densities)
   let has_mirrored_spin = $derived(effective_spin_mode === `mirror` && has_spin_polarized)
 
   // Density axis starts at 0 (unless mirror mode needs negative values); frequency axis
@@ -336,23 +284,12 @@
     ),
   )
 
-  // Get axis labels based on orientation
-  let x_label = $derived(
-    is_horizontal
-      ? `Density of States`
-      : is_phonon
-        ? `Frequency (${frequency_unit_label(unit)})`
-        : `Energy (eV)`,
+  let value_label = $derived(
+    is_phonon ? `Frequency (${frequency_unit_label(unit)})` : `Energy (eV)`,
   )
-  let y_label = $derived(
-    is_horizontal
-      ? is_phonon
-        ? `Frequency (${frequency_unit_label(unit)})`
-        : `Energy (eV)`
-      : `Density of States`,
-  )
+  let x_label = $derived(is_horizontal ? `Density of States` : value_label)
+  let y_label = $derived(is_horizontal ? value_label : `Density of States`)
 
-  // Compute final axis configurations with default labels
   let final_x_axis = $derived({
     label: x_label,
     format: `.2f`,
@@ -369,8 +306,6 @@
     range: y_range,
     ...y_axis,
   })
-  // Sync zoom changes from ScatterPlot back to parent via bindable y_axis
-  // Also clears parent range when internal range becomes invalid (auto-range reset)
   $effect(() => {
     const next = sync_axis_range(y_axis, internal_y_axis.range)
     if (next !== y_axis) y_axis = next
@@ -383,7 +318,6 @@
     y_zero_line: true,
   })
 
-  // Determine if we have valid data to display
   let has_valid_data = $derived(series_data.length > 0)
 
   // Auto-detect sigma range based on frequency/energy range
@@ -396,7 +330,6 @@
     return [0, max_sigma]
   })
 
-  // Computed values for sigma slider
   let safe_sigma_range = $derived(validate_sigma_range(effective_sigma_range))
   let sigma_step = $derived(calculate_sigma_step(effective_sigma_range))
 
@@ -428,14 +361,7 @@
       upper_coords.push(`${upper_x.toFixed(2)},${upper_y.toFixed(2)}`)
       lower_coords.push(`${lower_x.toFixed(2)},${lower_y.toFixed(2)}`)
     }
-    // Trace upper edge forward, lower edge backward, close path
-    return `M${upper_coords[0]} ${upper_coords
-      .slice(1)
-      .map((coord) => `L${coord}`)
-      .join(` `)} ${lower_coords
-      .toReversed()
-      .map((coord) => `L${coord}`)
-      .join(` `)} Z`
+    return closed_edge_path(upper_coords, lower_coords)
   }
 </script>
 

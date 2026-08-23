@@ -1,7 +1,7 @@
 import { add_alpha } from '$lib/colors'
 import { DEFAULT_PNG_DPI } from '$lib/constants'
 import { format_num } from '$lib/labels'
-import { point_in_polygon, type Vec2 } from '$lib/math'
+import { array_extent, point_in_polygon, type Vec2 } from '$lib/math'
 import type { Sides } from '$lib/plot/core/layout'
 import { line } from 'd3-shape'
 import type {
@@ -19,10 +19,8 @@ import type {
 // Convert temperature between units (K, °C, °F)
 export function convert_temp(value: number, from: TempUnit, to: TempUnit): number {
   if (from === to) return value
-  // Convert to Kelvin first
   const kelvin =
     from === `°C` ? value + 273.15 : from === `°F` ? (value - 32) * (5 / 9) + 273.15 : value
-  // Convert from Kelvin to target
   return to === `K` ? kelvin : to === `°C` ? kelvin - 273.15 : (kelvin - 273.15) * (9 / 5) + 32
 }
 
@@ -162,7 +160,6 @@ export const find_phase_at_point = (
     point_in_polygon(composition, temperature, region.vertices),
   ) ?? null
 
-// SVG path generator using d3-shape
 const path_line = line()
   .x((point) => point[0])
   .y((point) => point[1])
@@ -402,6 +399,41 @@ export function calculate_vertical_lever_rule(
   }
 }
 
+// Lever rule of the active mode as one [phase, fraction, location] row per tie-line end
+// (compositions for the horizontal rule, temperatures for the vertical one); null when the
+// hover info carries no lever rule for that mode
+export function lever_rule_rows(
+  info: PhaseHoverInfo,
+  mode: LeverRuleMode,
+  comp_unit: CompUnit,
+  temp_unit: TempUnit,
+  data_temp_unit: TempUnit = temp_unit,
+): { vertical: boolean; rows: [string, number, string][] } | null {
+  const { lever_rule: lr, vertical_lever_rule: vlr } = info
+  if (mode === `vertical` && vlr) {
+    const temp = (val: number) =>
+      format_temperature(convert_temp(val, data_temp_unit, temp_unit), temp_unit)
+    return {
+      vertical: true,
+      rows: [
+        [vlr.bottom_phase, vlr.fraction_bottom, temp(vlr.bottom_temperature)],
+        [vlr.top_phase, vlr.fraction_top, temp(vlr.top_temperature)],
+      ],
+    }
+  }
+  if (mode === `horizontal` && lr) {
+    const comp = (val: number) => format_composition(val, comp_unit)
+    return {
+      vertical: false,
+      rows: [
+        [lr.left_phase, lr.fraction_left, comp(lr.left_composition)],
+        [lr.right_phase, lr.fraction_right, comp(lr.right_composition)],
+      ],
+    }
+  }
+  return null
+}
+
 // Format hover info as copyable text for clipboard
 // Only includes lever rule data for the active mode to match tooltip display
 export function format_hover_info_text(
@@ -425,25 +457,12 @@ export function format_hover_info_text(
     )} ${component_a})`,
   ]
 
-  const { lever_rule: lr, vertical_lever_rule: vlr } = info
-  const lever_line = (phase: string, fraction: number, location: string) =>
-    `  ${phase}: ${format_num(fraction * 100, `.1f`)}% (at ${location})`
-  if (lever_rule_mode === `horizontal` && lr) {
-    const comp = (val: number) => format_composition(val, comp_unit)
-    lines.push(
-      ``,
-      `Lever Rule:`,
-      lever_line(lr.left_phase, lr.fraction_left, comp(lr.left_composition)),
-      lever_line(lr.right_phase, lr.fraction_right, comp(lr.right_composition)),
-    )
-  } else if (lever_rule_mode === `vertical` && vlr) {
-    const temp = (val: number) => format_temperature(to_display(val), temp_unit)
-    lines.push(
-      ``,
-      `Vertical Lever Rule:`,
-      lever_line(vlr.bottom_phase, vlr.fraction_bottom, temp(vlr.bottom_temperature)),
-      lever_line(vlr.top_phase, vlr.fraction_top, temp(vlr.top_temperature)),
-    )
+  const lever = lever_rule_rows(info, lever_rule_mode, comp_unit, temp_unit, data_temp_unit)
+  if (lever) {
+    lines.push(``, lever.vertical ? `Vertical Lever Rule:` : `Lever Rule:`)
+    for (const [phase, fraction, location] of lever.rows) {
+      lines.push(`  ${phase}: ${format_num(fraction * 100, `.1f`)}% (at ${location})`)
+    }
   }
 
   return lines.join(`\n`)
@@ -454,8 +473,8 @@ export function get_phase_stability_range(
   region: PhaseRegion,
 ): { t_min: number; t_max: number } | null {
   if (!region.vertices?.length) return null
-  const temps = region.vertices.map(([, temp]) => temp)
-  return { t_min: Math.min(...temps), t_max: Math.max(...temps) }
+  const [t_min, t_max] = array_extent(region.vertices.map(([, temp]) => temp))
+  return { t_min, t_max }
 }
 
 // Compute the x-axis domain for a binary phase diagram.
@@ -469,17 +488,13 @@ export function compute_x_domain(
   if (lo != null && hi != null) return [lo, hi]
   if (!data) return [lo ?? 0, hi ?? 1]
 
-  let data_min = Infinity
-  let data_max = -Infinity
-  const x_values = [
-    ...data.regions.flatMap((region) => region.vertices),
-    ...data.boundaries.flatMap((boundary) => boundary.points),
-    ...(data.special_points ?? []).map((point) => point.position),
-  ]
-  for (const [x_val] of x_values) {
-    if (x_val < data_min) data_min = x_val
-    if (x_val > data_max) data_max = x_val
-  }
+  const [data_min, data_max] = array_extent(
+    [
+      ...data.regions.flatMap((region) => region.vertices),
+      ...data.boundaries.flatMap((boundary) => boundary.points),
+      ...(data.special_points ?? []).map((point) => point.position),
+    ].map(([x_val]) => x_val),
+  )
   if (data_min > data_max) return [lo ?? 0, hi ?? 1] // no finite data
 
   // Auto-extend to 0/1 when an edge region is named after the pure component AND the

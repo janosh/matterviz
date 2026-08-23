@@ -6,7 +6,7 @@
   import { format_value } from '$lib/labels'
   import { sanitize_html } from '$lib/sanitize'
   import { SettingsSection } from '$lib/layout'
-  import type { Vec2 } from '$lib/math'
+  import { array_extent, array_max, type Vec2 } from '$lib/math'
   import type {
     AxisConfig,
     BarHandlerProps,
@@ -118,25 +118,17 @@
     }))
   })
 
-  // Compute global max intensity for normalization (as in pymatviz xrd_pattern)
-  const global_max_intensity = $derived.by(() => {
-    let max_val = 0
-    for (const entry of pattern_entries) {
-      for (const intensity of entry.pattern.y) if (intensity > max_val) max_val = intensity
-    }
-    return max_val || 1
-  })
+  // Global max intensity for normalization (as in pymatviz xrd_pattern); 1 when every
+  // pattern is empty or flat so the division below stays finite
+  const global_max_intensity = $derived(
+    Math.max(0, ...pattern_entries.map((entry) => array_max(entry.pattern.y))) || 1,
+  )
 
-  // Overall 2θ domain (degrees). Looped rather than spread: Math.min(...xs) over a
-  // multi-thousand-point profile can overflow the argument stack.
+  // Overall 2θ domain (degrees)
   const angle_range = $derived.by((): Vec2 => {
-    let [min_x, max_x] = [Infinity, 0]
-    for (const entry of pattern_entries) {
-      for (const angle of entry.pattern.x) {
-        if (angle < min_x) min_x = angle
-        if (angle > max_x) max_x = angle
-      }
-    }
+    const extents = pattern_entries.map((entry) => array_extent(entry.pattern.x))
+    const min_x = Math.min(...extents.map(([lo]) => lo))
+    const max_x = Math.max(0, ...extents.map(([, hi]) => hi))
     if (!Number.isFinite(min_x)) return [0, 90] // every pattern was empty
     return [min_x > 10 ? Math.floor(min_x) : 0, Math.ceil(max_x)]
   })

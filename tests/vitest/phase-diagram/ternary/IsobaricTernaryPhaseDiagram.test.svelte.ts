@@ -16,7 +16,7 @@ import {
 import TernarySectionCanvas from '$lib/phase-diagram/ternary/TernarySectionCanvas.svelte'
 import { type Component, flushSync, mount, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { doc_query, make_phase } from '../../setup'
+import { bind_props, doc_query, make_phase } from '../../setup'
 import { toy_elements, toy_entries } from './fixtures'
 
 // Toy system transitions: 400 K (ABC appears), 850 K (two tie-line flips), 1300 K (AB vanishes)
@@ -31,25 +31,6 @@ const mount_it = (component: Component<any>, props: Record<string, unknown>) => 
   mounted.push(mount(component, { target: document.body, props }))
   flushSync()
 }
-// Getter/setter props stand in for bind: (never spread the result, that snapshots the values)
-const bound = <T extends object>(
-  props: Record<string, unknown>,
-  state: T,
-  ...keys: (keyof T)[]
-): Record<string, unknown> =>
-  Object.defineProperties(
-    props,
-    Object.fromEntries(
-      keys.map((key) => [
-        key,
-        {
-          get: () => state[key],
-          set: (value: T[keyof T]) => (state[key] = value),
-          enumerable: true,
-        },
-      ]),
-    ),
-  )
 const mount_diagram = (props: Record<string, unknown> = {}) =>
   mount_it(IsobaricTernaryPhaseDiagram, {
     entries: toy_entries,
@@ -107,12 +88,7 @@ describe(`IsobaricTernaryPhaseDiagram`, () => {
     })
     mount_it(
       IsobaricTernaryPhaseDiagram,
-      bound(
-        { entries: toy_entries, options: { elements: toy_elements } },
-        state,
-        `temperature`,
-        `diagram`,
-      ),
+      bind_props({ entries: toy_entries, options: { elements: toy_elements } }, state),
     )
     await wait_for_events()
     expect([state.temperature, temp_input().value]).toEqual([1500, `1500`])
@@ -164,7 +140,7 @@ describe(`IsobaricTernaryPhaseDiagram`, () => {
     })
     mount_it(
       IsobaricTernaryPhaseDiagram,
-      bound({ options: { elements: toy_elements } }, state, `entries`, `diagram`),
+      bind_props({ options: { elements: toy_elements } }, state),
     )
     await wait_for_events()
     state.entries = [...toy_entries] // same data, new identity: old phase indices are void
@@ -200,55 +176,44 @@ describe(`IsobaricTernaryPhaseDiagram`, () => {
   })
 })
 
-test(`TernarySectionCanvas: of two entries at one composition the stable one takes the hit`, () => {
-  // The metastable polymorph comes first in entry order, so raw-order hit-testing would pick it
-  const entries = [
-    ...toy_entries,
-    make_phase({ Li: 1 }, 0.2, { entry_id: `Li-hi` }),
-    make_phase({ Li: 1 }, 0, { entry_id: `Li-gs` }),
-  ]
-  const model = prepare_diagram(entries, { elements: toy_elements })
-  const hovers: (SectionHover | null)[] = []
-  mount_it(TernarySectionCanvas, {
-    model,
-    section: compute_section(model, 300),
-    settings: { ...TERNARY_DISPLAY_DEFAULTS, max_e_above_hull: 0.5 },
-    on_hover: (data: SectionHover | null) => hovers.push(data),
-  })
-  // Li corner at xy [1, 0] projected into the mocked 800×600 canvas
-  doc_query(`.ternary-section canvas`).dispatchEvent(
-    new PointerEvent(`pointermove`, { clientX: 707, clientY: 566, bubbles: true }),
-  )
-  const [hovered] = hovers
-  expect(hovered?.kind === `phase` && hovered.phase.entry.entry_id).toBe(`Li-gs`)
-})
-
-test(`TernarySectionCanvas: an exclude_from_hull phase below the hull is not painted stable`, () => {
-  // Negative hull distance but not a hull vertex: with unstable phases hidden it must not be
-  // drawn (nor out-rank the true ground state in the hit test)
-  const entries = [
-    ...toy_entries,
-    make_phase({ Li: 1 }, -0.3, { entry_id: `Li-excluded`, exclude_from_hull: true }),
-    make_phase({ Li: 1 }, 0, { entry_id: `Li-gs` }),
-  ]
-  const model = prepare_diagram(entries, { elements: toy_elements })
-  const section = compute_section(model, 300)
-  const excluded_idx = model.phases.findIndex((item) => item.entry.entry_id === `Li-excluded`)
-  expect(section.e_above_hull[excluded_idx]).toBeLessThan(0)
-  expect(section.stable).not.toContain(excluded_idx)
-  const hovers: (SectionHover | null)[] = []
-  mount_it(TernarySectionCanvas, {
-    model,
-    section,
-    settings: { ...TERNARY_DISPLAY_DEFAULTS, show_unstable: false },
-    on_hover: (data: SectionHover | null) => hovers.push(data),
-  })
-  doc_query(`.ternary-section canvas`).dispatchEvent(
-    new PointerEvent(`pointermove`, { clientX: 707, clientY: 566, bubbles: true }),
-  )
-  const [hovered] = hovers
-  expect(hovered?.kind === `phase` && hovered.phase.entry.entry_id).toBe(`Li-gs`)
-})
+// Hovering the Li corner (xy [1, 0] in the mocked 800×600 canvas) must hit the ground state
+// even when another Li entry comes first in entry order
+test.each([
+  {
+    desc: `a metastable polymorph listed first`,
+    extra: make_phase({ Li: 1 }, 0.2, { entry_id: `Li-hi` }),
+    settings: { max_e_above_hull: 0.5 },
+  },
+  {
+    // Negative hull distance but not a hull vertex: with unstable phases hidden it must not be
+    // drawn (nor out-rank the true ground state in the hit test)
+    desc: `an exclude_from_hull phase below the hull`,
+    extra: make_phase({ Li: 1 }, -0.3, { entry_id: `Li-excluded`, exclude_from_hull: true }),
+    settings: { show_unstable: false },
+  },
+])(
+  `TernarySectionCanvas: $desc does not take the hit from the stable one`,
+  ({ extra, settings }) => {
+    const entries = [...toy_entries, extra, make_phase({ Li: 1 }, 0, { entry_id: `Li-gs` })]
+    const model = prepare_diagram(entries, { elements: toy_elements })
+    const section = compute_section(model, 300)
+    const extra_idx = model.phases.findIndex((item) => item.entry.entry_id === extra.entry_id)
+    expect(section.stable).not.toContain(extra_idx)
+    if (extra.exclude_from_hull) expect(section.e_above_hull[extra_idx]).toBeLessThan(0)
+    const hovers: (SectionHover | null)[] = []
+    mount_it(TernarySectionCanvas, {
+      model,
+      section,
+      settings: { ...TERNARY_DISPLAY_DEFAULTS, ...settings },
+      on_hover: (data: SectionHover | null) => hovers.push(data),
+    })
+    doc_query(`.ternary-section canvas`).dispatchEvent(
+      new PointerEvent(`pointermove`, { clientX: 707, clientY: 566, bubbles: true }),
+    )
+    const [hovered] = hovers
+    expect(hovered?.kind === `phase` && hovered.phase.entry.entry_id).toBe(`Li-gs`)
+  },
+)
 
 test(`TernarySectionCanvas: a section change rebuilds entries without mutating the model`, () => {
   // AB is tabulated 300-1500 K: stable at 300 K, undefined (NaN distance) at 2000 K
@@ -259,14 +224,13 @@ test(`TernarySectionCanvas: a section change rebuilds entries without mutating t
   const hovers: (SectionHover | null)[] = []
   mount_it(
     TernarySectionCanvas,
-    bound(
+    bind_props(
       {
         model,
         settings: { ...TERNARY_DISPLAY_DEFAULTS, show_unstable: false },
         on_hover: (data: SectionHover | null) => hovers.push(data),
       },
       state,
-      `section`,
     ),
   )
   // AB's xy projected into the mocked 800×600 canvas (triangle size 614.3 px, origin 92.85/566)
@@ -297,7 +261,7 @@ test(`TernarySectionCanvas: a section change rebuilds entries without mutating t
 describe(`PhaseEventList`, () => {
   test(`formats reactions, marks active and involved events, toggles selection`, () => {
     const state = $state<{ selected_phase: number | null }>({ selected_phase: null })
-    mount_it(PhaseEventList, bound({ diagram, temperature: 900 }, state, `selected_phase`))
+    mount_it(PhaseEventList, bind_props({ diagram, temperature: 900 }, state))
     const items = [...document.querySelectorAll(`.phase-event-list li`)]
     expect(items[1].className).toContain(`active`) // 850 K flip is the last one at or below 900 K
     expect(text(`.phase-event-list .reaction`)).toBe(`NaLi+KLi+KNa→2KNaLi`)
@@ -368,12 +332,7 @@ describe(`PhaseStabilityMap`, () => {
     })
     mount_it(
       PhaseStabilityMap,
-      bound(
-        { diagram, settings: TERNARY_DISPLAY_DEFAULTS, row_height: 10 },
-        state,
-        `temperature`,
-        `selected_phase`,
-      ),
+      bind_props({ diagram, settings: TERNARY_DISPLAY_DEFAULTS, row_height: 10 }, state),
     )
     const canvas = doc_query(`.phase-stability-map canvas`)
     const down = (clientX: number) => {
@@ -404,7 +363,7 @@ test(`TernaryPhaseDiagramControls writes display patches, T range and gas pressu
   const mount_controls = (extra: Record<string, unknown>) =>
     mount_it(
       TernaryPhaseDiagramControls,
-      bound(
+      bind_props(
         {
           controls_open: true,
           set_display: (patch: Partial<TernaryDisplay>) => {
@@ -413,10 +372,6 @@ test(`TernaryPhaseDiagramControls writes display patches, T range and gas pressu
           ...extra,
         },
         state,
-        `display`,
-        `free_energy_mode`,
-        `t_range`,
-        `gas_pressures`,
       ),
     )
   mount_controls({ relevant_gases: [] })

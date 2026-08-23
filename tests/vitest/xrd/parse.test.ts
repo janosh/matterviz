@@ -11,6 +11,7 @@ import {
   parse_xrdml_file,
   parse_xy_file,
 } from '$lib/xrd/parse'
+import { array_max } from '$lib/math'
 import { decimate_pattern } from '$lib/xrd'
 import { zipSync } from 'fflate'
 import fs from 'node:fs'
@@ -642,10 +643,7 @@ describe(`real example files`, () => {
     expect(result.x.length).toBeGreaterThan(10)
     expect(result.x[0]).toBeCloseTo(first, 3)
     expect(result.x[result.x.length - 1]).toBeCloseTo(last, 3)
-    // looped: the parser keeps every point and a spread over a 130k-point scan overflows
-    let max_y = -Infinity
-    for (const val of result.y) if (val > max_y) max_y = val
-    expect(max_y).toBeCloseTo(100, 9)
+    expect(array_max(result.y)).toBeCloseTo(100, 9)
     expect(result.y.every(Number.isFinite)).toBe(true)
   })
 

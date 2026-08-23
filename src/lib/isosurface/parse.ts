@@ -102,12 +102,15 @@ export function parse_decimal_token(text: string, start: number, end: number): n
 // Writes into a pre-allocated Float64Array and returns { count, end_pos }.
 // Stops at `max_count` numbers, end of string, or when encountering a line
 // starting with a letter (e.g. "augmentation" in CHGCAR, "BAND:" in BXSF).
+// `first_column_only` reads one number per line and drops trailing columns (FRMSF's
+// auxiliary colour data).
 export function parse_float_block(
   text: string,
   pos: number,
   max_count: number,
   data: Float64Array,
   data_offset: number = 0,
+  first_column_only = false,
 ): { count: number; end_pos: number } {
   let idx = data_offset
   const target = data_offset + max_count
@@ -142,6 +145,7 @@ export function parse_float_block(
 
     const num = parse_decimal_token(text, start, pos)
     if (!Number.isNaN(num)) data[idx++] = num
+    if (first_column_only) while (pos < len && text.charCodeAt(pos) !== 10) pos++
   }
   return { count: idx - data_offset, end_pos: pos }
 }

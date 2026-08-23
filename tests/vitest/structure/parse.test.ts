@@ -5,8 +5,8 @@ import type { AnyStructure } from '$lib/structure'
 import { explicit_only } from '$lib/structure/bonding'
 import {
   detect_structure_type,
-  is_optimade_raw,
   is_structure_file,
+  optimade_structure_from_raw,
   optimade_to_structure,
   parse_cif,
   parse_phonopy_yaml,
@@ -554,8 +554,14 @@ describe(`Auto-detection & Error Handling`, () => {
   })
 })
 
+// `_cell_*` tags for a cell with edges a, b, c (Å) and angles (°); cubic unless told otherwise
+const cif_cell = (a: number | string, b = a, c = a, angles = [90, 90, 90]): string =>
+  [
+    ...[a, b, c].map((len, idx) => `_cell_length_${`abc`[idx]}  ${len}`),
+    ...angles.map((ang, idx) => `_cell_angle_${[`alpha`, `beta`, `gamma`][idx]}  ${ang}`),
+  ].join(`\n`)
 // Cubic 5 Å cell plus the standard label/symbol/fract_x/y/z atom-site loop header
-const cell5 = `_cell_length_a  5.000\n_cell_length_b  5.000\n_cell_length_c  5.000\n_cell_angle_alpha  90\n_cell_angle_beta  90\n_cell_angle_gamma  90`
+const cell5 = cif_cell(`5.000`)
 const site_loop = `loop_\n_atom_site_label\n_atom_site_type_symbol\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z`
 // same loop without _atom_site_type_symbol, so the element has to come from the label
 const label_loop = `loop_\n_atom_site_label\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\n_atom_site_occupancy`
@@ -606,7 +612,7 @@ O2   O   0.410  0.140  0.880  1.000`
     },
     {
       name: `monoclinic (β ≠ 90°)`,
-      cif: `data_monoclinic_test\n_cell_length_a                         10.000\n_cell_length_b                         5.000\n_cell_length_c                         8.000\n_cell_angle_alpha                      90\n_cell_angle_beta                       95\n_cell_angle_gamma                      90\nloop_\n_atom_site_label\n_atom_site_type_symbol\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\n_atom_site_occupancy\nRu1  Ru  0.000  0.000  0.000  1.000\nP1   P   0.250  0.250  0.250  1.000\nS1   S   0.500  0.500  0.500  1.000`,
+      cif: `data_monoclinic_test\n${cif_cell(10, 5, 8, [90, 95, 90])}\n${site_loop}\n_atom_site_occupancy\nRu1  Ru  0.000  0.000  0.000  1.000\nP1   P   0.250  0.250  0.250  1.000\nS1   S   0.500  0.500  0.500  1.000`,
       expected_lattice: { beta: 95 },
       expected_abc: [
         { element: `Ru`, abc: [0.0, 0.0, 0.0] },
@@ -685,15 +691,9 @@ O2   O   0.410  0.140  0.880  1.000`
     type CifOpts = { angles?: string; atom_types?: string[]; atom_sites?: string[] }
     const make_cif = (symbol: string, opts: CifOpts = {}): string => {
       const { angles = `90 90 90`, atom_types = [], atom_sites = [`Fe1 Fe 0 0 0`] } = opts
-      const [alpha, beta, gamma] = angles.split(` `)
       return [
         `data_test`,
-        `_cell_length_a 5`,
-        `_cell_length_b 5`,
-        `_cell_length_c 5`,
-        `_cell_angle_alpha ${alpha}`,
-        `_cell_angle_beta ${beta}`,
-        `_cell_angle_gamma ${gamma}`,
+        cif_cell(5, 5, 5, angles.split(` `).map(Number)),
         `_symmetry_space_group_name_H-M '${symbol}'`,
         `loop_`,
         `_space_group_symop_operation_xyz`,
@@ -701,12 +701,7 @@ O2   O   0.410  0.140  0.880  1.000`
         ...(atom_types.length
           ? [`loop_`, `_atom_type_symbol`, `_atom_type_number_in_cell`, ...atom_types]
           : []),
-        `loop_`,
-        `_atom_site_label`,
-        `_atom_site_type_symbol`,
-        `_atom_site_fract_x`,
-        `_atom_site_fract_y`,
-        `_atom_site_fract_z`,
+        site_loop,
         ...atom_sites,
       ].join(`\n`)
     }
@@ -998,12 +993,7 @@ O2   O   0.410  0.140  0.880  1.000`
 
     test(`should normalize decorated _atom_type_symbol in _atom_type_number_in_cell loop`, () => {
       const cif_with_decorated_symbols = `data_test_decorated_symbols
-_cell_length_a 5.0
-_cell_length_b 5.0
-_cell_length_c 5.0
-_cell_angle_alpha 90
-_cell_angle_beta 90
-_cell_angle_gamma 90
+${cell5}
 loop_
 _atom_type_symbol
 _atom_type_oxidation_number
@@ -1013,12 +1003,7 @@ _atom_type_scat_dispersion_imag
 Sn2+ 2 2 0.0 0.0
 Fe3+ 3 1 0.0 0.0
 O2- -2 3 0.0 0.0
-loop_
-_atom_site_label
-_atom_site_type_symbol
-_atom_site_fract_x
-_atom_site_fract_y
-_atom_site_fract_z
+${site_loop}
 Sn1 Sn2+ 0.0 0.0 0.0
 Sn2 Sn2+ 0.5 0.5 0.5
 Fe1 Fe3+ 0.25 0.25 0.25
@@ -1036,7 +1021,7 @@ O3 O2- 0.75 0.25 0.75`
 
   describe(`CIF Parser Edge Cases`, () => {
     // 4 Å cubic cell with a label-only atom-site loop
-    const cell4 = `_cell_length_a 4.0\n_cell_length_b 4.0\n_cell_length_c 4.0\n_cell_angle_alpha 90\n_cell_angle_beta 90\n_cell_angle_gamma 90`
+    const cell4 = cif_cell(4)
     const label_cif = (...rows: string[]) =>
       `\ndata_test\n${cell4}\n${label_loop}\n${rows.join(`\n`)}\n`
 
@@ -1067,14 +1052,13 @@ O3 O2- 0.75 0.25 0.75`
     // parse -> structure_to_cif_str -> parse round trip instead of being renumbered
     test(`round-trips _atom_site_label through structure_to_cif_str`, () => {
       const labels = [`Fe1`, `Fe2`, `O1a`, `OH2`]
-      const loop = `loop_\n_atom_site_label\n_atom_site_type_symbol\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z`
       const rows = [
         `Fe1 Fe 0 0 0`,
         `Fe2 Fe 0.5 0.5 0.5`,
         `O1a O 0.25 0.25 0.25`,
         `OH2 O 0.75 0.75 0.75`,
       ]
-      const parsed = parse_cif(`data_test\n${cell4}\n${loop}\n${rows.join(`\n`)}`)
+      const parsed = parse_cif(`data_test\n${cell4}\n${site_loop}\n${rows.join(`\n`)}`)
       assert(parsed, `Failed to parse labelled CIF`)
       expect(parsed.sites.map((site) => site.label)).toEqual(labels)
       const reparsed = parse_cif(structure_to_cif_str(parsed))
@@ -1087,12 +1071,7 @@ O3 O2- 0.75 0.25 0.75`
   // symmetry image landing on an existing image of the same row is dropped, not doubled.
   test(`merges CIF rows at one position into a disordered site and expands them by symmetry`, () => {
     const mixed_occupancy_cif = `data_mixed_occupancy
-_cell_length_a                         5.50000
-_cell_length_b                         5.50000
-_cell_length_c                         5.50000
-_cell_angle_alpha                      90
-_cell_angle_beta                       90
-_cell_angle_gamma                      90
+${cif_cell(5.5)}
 
 loop_
 _space_group_symop_operation_xyz
@@ -1208,12 +1187,7 @@ Se6 Se2- 2 a 0.0050(4) 0.4480(6) 0.9025(6) 0.9102(6) 1. 0`
   test(`parses CIF with compound symmetry operations (x-y, -x+y) correctly`, () => {
     // P-3 space group has compound expressions: '-y, x-y, z', 'y, -x+y, -z', etc.
     const cif = `data_CsKB8
-_cell_length_a 6.6611
-_cell_length_b 6.6611
-_cell_length_c 8.184
-_cell_angle_alpha 90
-_cell_angle_beta 90
-_cell_angle_gamma 120
+${cif_cell(6.6611, 6.6611, 8.184, [90, 90, 120])}
 loop_
  _symmetry_equiv_pos_site_id
  _symmetry_equiv_pos_as_xyz
@@ -1251,7 +1225,7 @@ loop_
   // P1 CIF with a 5 Å cubic cell whose symop loop and single atom-site row are supplied
   const p1_cif = (symops: string[], atom_row: string) => {
     const symop_rows = symops.map((symop) => `   '${symop}'`).join(`\n`)
-    return `data_test\n_cell_length_a 5.0\n_cell_length_b 5.0\n_cell_length_c 5.0\n_cell_angle_alpha 90\n_cell_angle_beta 90\n_cell_angle_gamma 90\n_space_group_name_H-M_alt 'P 1'\n_space_group_IT_number 1\n\nloop_\n_space_group_symop_operation_xyz\n${symop_rows}\n\nloop_\n_atom_site_label\n_atom_site_type_symbol\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\n${atom_row}`
+    return `data_test\n${cell5}\n_space_group_name_H-M_alt 'P 1'\n_space_group_IT_number 1\n\nloop_\n_space_group_symop_operation_xyz\n${symop_rows}\n\n${site_loop}\n${atom_row}`
   }
 
   // `?` is CIF's unknown-value token, so neither the label nor the symbol names an element
@@ -1862,7 +1836,7 @@ describe(`OPTIMADE JSON Detection`, () => {
     [`null value`, null, false],
     [`non-structure JSON`, { name: `test`, value: 123 }, false],
   ])(`should detect %s correctly`, (_name, data, expected) => {
-    expect(is_optimade_raw(data)).toBe(expected)
+    expect(optimade_structure_from_raw(data) !== null).toBe(expected)
   })
 })
 

@@ -3,7 +3,7 @@
 
 import { type VolumetricFileData, volume_from_json } from '$lib/isosurface/types'
 import { build_path } from '$lib/json-path'
-import { is_optimade_raw, is_structure_like } from '$lib/structure/parse'
+import { is_structure_like, optimade_structure_from_raw } from '$lib/structure/parse'
 import { make_lattice } from '$lib/structure/parsers/shared'
 import type { Pbc } from '$lib/structure/pbc'
 import { is_plain_object } from '$lib/utils'
@@ -314,7 +314,7 @@ export function is_plottable_data(obj: unknown): boolean {
 // and generic tabular data last.
 export function detect_view_type(value: unknown): RenderableType | null {
   if (value == null) return null
-  if (as_record(value) && is_optimade_raw(value)) return `structure`
+  if (as_record(value) && optimade_structure_from_raw(value)) return `structure`
   if (is_fermi_surface(value)) return `fermi_surface`
   if (is_band_grid(value)) return `band_grid`
   if (is_phase_diagram(value)) return `phase_diagram`
@@ -346,7 +346,7 @@ export const volume_json_to_isosurface_input = (raw: unknown): VolumetricFileDat
 
 // === Renderable Path Scanner ===
 
-interface RenderablePath {
+export interface RenderablePath {
   type: RenderableType
   label: string
 }

@@ -30,6 +30,7 @@ import {
   safe_energy_per_atom,
   scale_to_font_range,
   simple_pca,
+  type VisibleDomainLabel,
 } from '$lib/chempot-diagram/compute'
 import { get_domain_color_data } from '$lib/chempot-diagram/color'
 import { filter_entries_at_temperature } from '$lib/convex-hull/helpers'
@@ -115,6 +116,62 @@ const sort_rows = (pts: number[][]): number[][] =>
 const dedup_vertices = (pts: number[][], tol: number = 1e-4): number[][] =>
   dedup_points(pts, tol).unique
 
+// Element-wise toBeCloseTo over rows of numbers
+const close_rows = (rows: number[][], digits: number) =>
+  rows.map((row) => row.map((val) => expect.closeTo(val, digits)))
+
+// Elemental references of the analytic A-B test systems
+const AB_REFS: Record<string, PhaseData> = {
+  A: make_phase({ A: 1 }, -2.0),
+  B: make_phase({ B: 1 }, -3.0),
+}
+
+// Every domain vertex lies inside the diagram's axis limits (4-decimal tolerance)
+function expect_within_lims({
+  domains,
+  lims,
+}: {
+  domains: Record<string, number[][]>
+  lims: Vec2[]
+}) {
+  for (const pts of Object.values(domains)) {
+    for (const pt of pts) {
+      for (const [axis, [lo, hi]] of lims.entries()) {
+        expect(pt[axis]).toBeGreaterThanOrEqual(lo - 1e-4)
+        expect(pt[axis]).toBeLessThanOrEqual(hi + 1e-4)
+      }
+    }
+  }
+}
+
+// Each element's domain touches its own mu = 0 axis (formal chempots)
+function expect_elemental_touch({
+  domains,
+  elements,
+}: {
+  domains: Record<string, number[][]>
+  elements: string[]
+}) {
+  for (const [el_idx, el] of elements.entries()) {
+    expect(
+      dedup_vertices(domains[el]).some((pt) => Math.abs(pt[el_idx]) < 0.01),
+      `${el} formal domain should touch mu_${el}=0`,
+    ).toBe(true)
+  }
+}
+
+// Every vertex satisfies every halfspace a·x + b <= 0 (rows are [...normal, offset])
+function expect_feasible(domains: Record<string, number[][]>, halfspaces: number[][]) {
+  for (const [formula, pts] of Object.entries(domains)) {
+    for (const pt of dedup_vertices(pts)) {
+      for (const hs of halfspaces) {
+        const val = pt.reduce((sum, coord, idx) => sum + hs[idx] * coord, hs[pt.length])
+        expect(val, `Vertex of ${formula} violates halfspace`).toBeLessThanOrEqual(1e-4)
+      }
+    }
+  }
+}
+
 describe(`pymatgen parity: ChemicalPotentialDiagram`, () => {
   test(`diagram metadata matches pymatgen`, () => {
     expect(cpd_binary.elements).toEqual([`Fe`, `O`])
@@ -158,12 +215,7 @@ describe(`pymatgen parity: ChemicalPotentialDiagram`, () => {
       [-25, 0],
       [-25, 0],
     ]
-    const border = build_border_hyperplanes(lims)
-    for (let idx = 0; idx < desired.length; idx++) {
-      for (let jdx = 0; jdx < desired[idx].length; jdx++) {
-        expect(border[idx][jdx]).toBeCloseTo(desired[idx][jdx], 5)
-      }
-    }
+    expect(build_border_hyperplanes(lims)).toEqual(close_rows(desired, 5))
   })
 
   test.each([
@@ -250,48 +302,23 @@ describe(`pymatgen parity: ChemicalPotentialDiagram`, () => {
     const our_key = pmg_to_ours[pmg_formula] ?? pmg_formula
     const actual_pts = cpd_ternary.domains[our_key]
     expect(actual_pts, `Domain missing for ${our_key}`).toBeDefined()
-    const sorted_actual = sort_rows(dedup_vertices(actual_pts))
-    const sorted_expected = sort_rows(reorder_cols(pmg_vertices))
-    expect(sorted_actual).toHaveLength(sorted_expected.length)
-    for (let idx = 0; idx < sorted_expected.length; idx++) {
-      for (let jdx = 0; jdx < sorted_expected[idx].length; jdx++) {
-        expect(sorted_actual[idx][jdx]).toBeCloseTo(sorted_expected[idx][jdx], 4)
-      }
-    }
+    const expected = sort_rows(reorder_cols(pmg_vertices))
+    expect(sort_rows(dedup_vertices(actual_pts))).toEqual(close_rows(expected, 4))
   })
 })
 
 describe(`physical invariants`, () => {
   test(`all domain vertices satisfy all hyperplane constraints`, () => {
-    const all_hs = [
-      ...ternary_hull_input.hyperplanes,
-      ...build_border_hyperplanes(cpd_ternary.lims),
-    ]
-    const dim = cpd_ternary.elements.length
-    for (const [formula, pts] of Object.entries(cpd_ternary.domains)) {
-      for (const pt of dedup_vertices(pts)) {
-        for (const hs of all_hs) {
-          let val = hs[dim]
-          for (let jdx = 0; jdx < dim; jdx++) val += hs[jdx] * pt[jdx]
-          expect(val, `Vertex of ${formula} violates halfspace`).toBeLessThanOrEqual(1e-4)
-        }
-      }
-    }
+    const border = build_border_hyperplanes(cpd_ternary.lims)
+    expect(border).toHaveLength(2 * cpd_ternary.elements.length)
+    expect_feasible(cpd_ternary.domains, [...ternary_hull_input.hyperplanes, ...border])
   })
 
   test(`vertices within limits and every element has a domain`, () => {
     for (const el of cpd_ternary.elements) {
       expect(cpd_ternary.domains[el], `Element ${el} has no domain`).toBeDefined()
     }
-    for (const pts of Object.values(cpd_ternary.domains)) {
-      for (const pt of pts) {
-        for (let dim = 0; dim < cpd_ternary.elements.length; dim++) {
-          const [lo, hi] = cpd_ternary.lims[dim]
-          expect(pt[dim]).toBeGreaterThanOrEqual(lo - 1e-4)
-          expect(pt[dim]).toBeLessThanOrEqual(hi + 1e-4)
-        }
-      }
-    }
+    expect_within_lims(cpd_ternary)
   })
 
   test(`elemental domains touch the el_ref energy axis`, () => {
@@ -301,14 +328,7 @@ describe(`physical invariants`, () => {
   })
 
   test(`formal chempots touch mu=0 and are non-positive`, () => {
-    for (const el of cpd_ternary_formal.elements) {
-      const domain = dedup_vertices(cpd_ternary_formal.domains[el])
-      const el_idx = cpd_ternary_formal.elements.indexOf(el)
-      expect(
-        domain.some((pt) => Math.abs(pt[el_idx]) < 0.01),
-        `${el} formal domain should touch mu_${el}=0`,
-      ).toBe(true)
-    }
+    expect_elemental_touch(cpd_ternary_formal)
     for (const pts of Object.values(cpd_ternary_formal.domains)) {
       for (const pt of pts) {
         for (const chempot of pt) {
@@ -351,8 +371,7 @@ const expect_vertices = (actual: number[][], expected: number[][]) => {
 describe(`analytic binary A-B-AB`, () => {
   // Hyperplanes: mu_A <= E_A, mu_B <= E_B, (mu_A + mu_B)/2 <= E_AB; box [-20, 0]^2
   const ab_binary_entries = [
-    make_phase({ A: 1 }, -2.0),
-    make_phase({ B: 1 }, -3.0),
+    ...Object.values(AB_REFS),
     make_phase({ A: 1, B: 1 }, -6.0), // E_form = -6 - (-2 - 3)/2 = -3.5 eV/atom
   ]
 
@@ -680,17 +699,12 @@ describe(`get_min_entries_and_el_refs`, () => {
 })
 
 describe(`renormalize_entries`, () => {
-  const el_refs: Record<string, PhaseData> = {
-    A: make_phase({ A: 1 }, -2.0),
-    B: make_phase({ B: 1 }, -3.0),
-  }
-
   test.each([
     {
       label: `pure elements renormalize to zero`,
-      phase_entries: [make_phase({ A: 1 }, -2.0), make_phase({ B: 1 }, -3.0)],
+      phase_entries: Object.values(AB_REFS),
       expected_epa: [0, 0],
-      expected_energy: null as number[] | null,
+      expected_energy: [0, 0],
     },
     {
       label: `compound formation energy is preserved`,
@@ -699,27 +713,20 @@ describe(`renormalize_entries`, () => {
       expected_energy: [-1.0],
     },
   ])(`$label`, ({ phase_entries, expected_epa, expected_energy }) => {
-    const renormed = renormalize_entries(phase_entries, el_refs, [`A`, `B`])
-    for (let idx = 0; idx < expected_epa.length; idx++) {
-      expect(renormed[idx].energy_per_atom).toBeCloseTo(expected_epa[idx], 8)
-    }
-    if (expected_energy) {
-      for (let idx = 0; idx < expected_energy.length; idx++) {
-        expect(renormed[idx].energy).toBeCloseTo(expected_energy[idx], 8)
-      }
-    }
+    const renormed = renormalize_entries(phase_entries, AB_REFS, [`A`, `B`])
+    expect(renormed.map((entry) => [entry.energy_per_atom, entry.energy])).toEqual(
+      close_rows(
+        expected_epa.map((epa, idx) => [epa, expected_energy[idx]]),
+        8,
+      ),
+    )
   })
 })
 
 describe(`build_hyperplanes`, () => {
-  const el_refs: Record<string, PhaseData> = {
-    A: make_phase({ A: 1 }, -2.0),
-    B: make_phase({ B: 1 }, -3.0),
-  }
-  const ab_entry = make_phase({ A: 1, B: 1 }, -6.0)
   const { hyperplanes, hyperplane_entries } = build_hyperplanes(
-    [el_refs.A, el_refs.B, ab_entry],
-    el_refs,
+    [...Object.values(AB_REFS), make_phase({ A: 1, B: 1 }, -6.0)],
+    AB_REFS,
     [`A`, `B`],
   )
 
@@ -802,11 +809,13 @@ describe(`simple_pca`, () => {
       [-10.57055758, 0.10248767],
     ]
     const { scores } = simple_pca(points_3d, 2)
-    for (let idx = 0; idx < expected_2d.length; idx++) {
-      for (let jdx = 0; jdx < 2; jdx++) {
-        expect(Math.abs(scores[idx][jdx])).toBeCloseTo(Math.abs(expected_2d[idx][jdx]), 3)
-      }
-    }
+    // component signs are arbitrary, so compare magnitudes
+    expect(scores.map((row) => row.map(Math.abs))).toEqual(
+      close_rows(
+        expected_2d.map((row) => row.map(Math.abs)),
+        3,
+      ),
+    )
   })
 
   test(`projections are zero-mean`, () => {
@@ -1014,14 +1023,9 @@ describe(`config.elements projection vs subsystem`, () => {
         is_interior(pt, -50),
       )
 
-      expect(feo_tight_interior).toHaveLength(feo_wide_interior.length)
-      const sorted_t = sort_rows(feo_tight_interior)
-      const sorted_w = sort_rows(feo_wide_interior)
-      for (let idx = 0; idx < sorted_t.length; idx++) {
-        for (let jdx = 0; jdx < sorted_t[idx].length; jdx++) {
-          expect(sorted_t[idx][jdx]).toBeCloseTo(sorted_w[idx][jdx], 3)
-        }
-      }
+      expect(sort_rows(feo_tight_interior)).toEqual(
+        close_rows(sort_rows(feo_wide_interior), 3),
+      )
     })
 
     test(`formal vs absolute produces same domains`, () => {
@@ -1066,25 +1070,11 @@ describe(`YTOS quaternary system (projection mode)`, () => {
     const key = `O7Ti2Y2`
     expect(ytos_y_ti_o.domains[key], `Domain for ${key} (Y2Ti2O7)`).toBeDefined()
     expect(dedup_vertices(ytos_y_ti_o.domains[key]).length).toBeGreaterThanOrEqual(3)
-
     for (const pts of Object.values(ytos_y_ti_o.domains)) {
-      for (const pt of pts) {
-        for (let dim = 0; dim < 3; dim++) {
-          expect(pt[dim]).toBeLessThanOrEqual(1e-4)
-          expect(pt[dim]).toBeGreaterThanOrEqual(ytos_y_ti_o.lims[dim][0] - 1e-4)
-          expect(pt[dim]).toBeLessThanOrEqual(ytos_y_ti_o.lims[dim][1] + 1e-4)
-        }
-      }
+      for (const pt of pts) for (const chempot of pt) expect(chempot).toBeLessThanOrEqual(1e-4)
     }
-
-    for (const el of ytos_y_ti_o.elements) {
-      const domain = dedup_vertices(ytos_y_ti_o.domains[el])
-      const el_idx = ytos_y_ti_o.elements.indexOf(el)
-      expect(
-        domain.some((pt) => Math.abs(pt[el_idx]) < 0.01),
-        `${el} should touch mu=0`,
-      ).toBe(true)
-    }
+    expect_within_lims(ytos_y_ti_o)
+    expect_elemental_touch(ytos_y_ti_o)
   })
 
   test(`projection produces more domains than subsystem filtering`, () => {
@@ -1234,7 +1224,7 @@ describe(`safe_energy_per_atom`, () => {
   test(`corrections shift domains: a corrected compound becomes stable`, () => {
     // Uncorrected AB (-2.5 eV/atom) sits on the A-B tie line and carves out no domain;
     // a -1 eV total correction (-0.5 eV/atom) makes it stable
-    const ab_entries = [make_phase({ A: 1 }, -2.0), make_phase({ B: 1 }, -3.0)]
+    const ab_entries = Object.values(AB_REFS)
     const on_tie_line = make_phase({ A: 1, B: 1 }, -2.5)
     const uncorrected = compute_chempot_diagram([...ab_entries, on_tie_line], {
       formal_chempots: true,
@@ -1433,20 +1423,15 @@ describe.each([
 })
 
 describe(`compute_domains`, () => {
-  const ab_refs: Record<string, PhaseData> = {
-    A: make_phase({ A: 1 }, -2.0),
-    B: make_phase({ B: 1 }, -3.0),
-  }
   const ab_lims: Vec2[] = [
     [-20, 0],
     [-20, 0],
   ]
-  const border = build_border_hyperplanes(ab_lims)
 
   function make_ab_domains(ab_energy_per_atom: number) {
     const { hyperplanes, hyperplane_entries } = build_hyperplanes(
-      [ab_refs.A, ab_refs.B, make_phase({ A: 1, B: 1 }, ab_energy_per_atom)],
-      ab_refs,
+      [...Object.values(AB_REFS), make_phase({ A: 1, B: 1 }, ab_energy_per_atom)],
+      AB_REFS,
       [`A`, `B`],
     )
     return {
@@ -1458,19 +1443,8 @@ describe(`compute_domains`, () => {
   test(`stable compound → 3 domains with valid vertices`, () => {
     const { domains, hyperplanes } = make_ab_domains(-6.0)
     expect(Object.keys(domains).toSorted()).toEqual([`A`, `AB`, `B`])
-    for (const pts of Object.values(domains)) {
-      expect(pts.length).toBeGreaterThanOrEqual(2)
-    }
-    // All vertices satisfy all halfspace constraints
-    const all_hs = [...hyperplanes, ...border]
-    for (const [formula, pts] of Object.entries(domains)) {
-      for (const pt of pts) {
-        for (const hs of all_hs) {
-          const val = hs[0] * pt[0] + hs[1] * pt[1] + hs[2]
-          expect(val, `Vertex of ${formula} violates halfspace`).toBeLessThanOrEqual(1e-4)
-        }
-      }
-    }
+    for (const pts of Object.values(domains)) expect(pts.length).toBeGreaterThanOrEqual(2)
+    expect_feasible(domains, [...hyperplanes, ...build_border_hyperplanes(ab_lims)])
   })
 
   test(`unstable compound → no domain for AB`, () => {
@@ -1557,14 +1531,13 @@ describe(`compute_chempot_diagram edge cases`, () => {
     )
     // Verify axes actually swapped: Fe domain's O-axis range (col 0 in reordered)
     // should match its col 2 range in default [Fe,Li,O] order
-    const fe_reordered = dedup_vertices(reordered.domains.Fe)
-    const fe_default = dedup_vertices(cpd_ternary.domains.Fe)
-    const re_o_vals = fe_reordered.map((pt) => pt[0]).toSorted((val_a, val_b) => val_a - val_b)
-    const def_o_vals = fe_default.map((pt) => pt[2]).toSorted((val_a, val_b) => val_a - val_b) // O is axis 2 in default
-    expect(re_o_vals).toHaveLength(def_o_vals.length)
-    for (let idx = 0; idx < re_o_vals.length; idx++) {
-      expect(re_o_vals[idx]).toBeCloseTo(def_o_vals[idx], 4)
-    }
+    const o_values = (domain: number[][], o_axis: number) =>
+      dedup_vertices(domain)
+        .map((pt) => [pt[o_axis]])
+        .toSorted(([val_a], [val_b]) => val_a - val_b)
+    expect(o_values(reordered.domains.Fe, 0)).toEqual(
+      close_rows(o_values(cpd_ternary.domains.Fe, 2), 4),
+    )
   })
 
   test(`config.elements with unknown element throws`, () => {
@@ -1644,8 +1617,7 @@ describe(`get_energy_stats_by_formula`, () => {
 })
 
 describe(`best_form_energy_for_formula`, () => {
-  const el_refs = { A: make_phase({ A: 1 }, -2), B: make_phase({ B: 1 }, -3) }
-  const e_form = (entry: PhaseData, refs: Record<string, PhaseData> = el_refs) =>
+  const e_form = (entry: PhaseData, refs: Record<string, PhaseData> = AB_REFS) =>
     best_form_energy_for_formula(
       [entry],
       formula_key_from_composition(entry.composition),
@@ -1666,16 +1638,16 @@ describe(`best_form_energy_for_formula`, () => {
 
   test(`picks minimum formation energy across polymorphs`, () => {
     const polymorphs = [make_phase({ A: 1, B: 1 }, -3.5), make_phase({ A: 1, B: 1 }, -3.0)]
-    expect(best_form_energy_for_formula(polymorphs, `AB`, el_refs)).toBeCloseTo(-1.0, 8)
+    expect(best_form_energy_for_formula(polymorphs, `AB`, AB_REFS)).toBeCloseTo(-1.0, 8)
 
-    const color_entries = [...Object.values(el_refs), ...polymorphs]
+    const color_entries = [...Object.values(AB_REFS), ...polymorphs]
     const color_data = get_domain_color_data({
       formulas: [`A`, `B`, `AB`],
       color_mode: `formation_energy`,
       color_scale: `interpolateViridis`,
       reverse_color_scale: false,
       entries: color_entries,
-      el_refs,
+      el_refs: AB_REFS,
       energy_stats: get_energy_stats_by_formula(color_entries),
     })
 
@@ -1684,9 +1656,8 @@ describe(`best_form_energy_for_formula`, () => {
   })
 
   test(`renormalized el_refs (formal_chempots) produce zero-energy refs`, () => {
-    const all_entries: PhaseData[] = [make_phase({ A: 1 }, -2.0), make_phase({ B: 1 }, -3.0)]
-    const { el_refs: raw_refs } = get_min_entries_and_el_refs(all_entries)
-    const renormed = renormalize_entries(all_entries, raw_refs, [`A`, `B`])
+    const all_entries = Object.values(AB_REFS)
+    const renormed = renormalize_entries(all_entries, AB_REFS, [`A`, `B`])
     const { el_refs: renorm_refs } = get_min_entries_and_el_refs(renormed)
     expect(safe_energy_per_atom(renorm_refs.A)).toBeCloseTo(0, 8)
     expect(safe_energy_per_atom(renorm_refs.B)).toBeCloseTo(0, 8)
@@ -1865,83 +1836,76 @@ describe(`scale_to_font_range`, () => {
 })
 
 describe(`get_visible_domain_labels`, () => {
-  test(`returns one area-weighted label per visible formula`, () => {
-    const face_positions = [
-      // Two triangles for one square facet owned by AB
-      0, 0, 0, 2, 0, 0, 2, 2, 0, 0, 0, 0, 2, 2, 0, 0, 2, 0,
-      // One separate facet owned by AC
-      10, 0, 0, 11, 0, 0, 10, 1, 0,
-    ]
-    const labels = get_visible_domain_labels(
-      face_positions,
-      [`AB`, `AB`, `AC`],
-      new Map([
+  // face_positions are flat xyz triangle vertices; one label per formula at the area-weighted
+  // centroid of its visible faces, sized by the font map
+  const unit_triangle = [0, 0, 0, 1, 0, 0, 0, 1, 0]
+  test.each([
+    {
+      label: `one area-weighted label per visible formula`,
+      positions: [
+        // Two triangles for one square facet owned by AB, one separate facet owned by AC
+        0, 0, 0, 2, 0, 0, 2, 2, 0, 0, 0, 0, 2, 2, 0, 0, 2, 0, 10, 0, 0, 11, 0, 0, 10, 1, 0,
+      ],
+      face_formulas: [`AB`, `AB`, `AC`],
+      sizes: new Map([
         [`AB`, 14],
         [`AC`, 10],
         [`AD`, 8],
       ]),
-    )
-
-    expect(labels.map((label) => label.formula)).toEqual([`AB`, `AC`])
-    expect(labels[0].position).toEqual([1, 1, 0])
-    expect(labels[0].label_font_size).toBe(14)
-    expect(labels[1].position).toEqual([10 + 1 / 3, 1 / 3, 0])
-  })
-
-  test(`ignores zero-area faces and formulas without visible facets`, () => {
-    const labels = get_visible_domain_labels(
-      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0],
-      [`AB`, `AC`],
-      new Map([[`AB`, 12]]),
-    )
-
-    expect(labels).toEqual([])
-  })
-
-  test(`combines separated visible facets of the same domain`, () => {
-    const labels = get_visible_domain_labels(
-      [
-        // Two equal-area facets owned by AB, separated in space
-        0, 0, 0, 1, 0, 0, 0, 1, 0, 3, 0, 0, 4, 0, 0, 3, 1, 0,
+      expected: [
+        { formula: `AB`, position: [1, 1, 0], label_font_size: 14 },
+        { formula: `AC`, position: [10 + 1 / 3, 1 / 3, 0], label_font_size: 10 },
       ],
-      [`AB`, `AB`],
-      new Map([[`AB`, 12]]),
-    )
-
-    expect(labels).toHaveLength(1)
-    expect(labels[0].formula).toBe(`AB`)
-    expect(labels[0].label_font_size).toBe(12)
-    expect(labels[0].position).toEqual([expect.closeTo(11 / 6), expect.closeTo(1 / 3), 0])
-  })
-
-  test(`ignores trailing face-domain entries without triangles`, () => {
-    const labels = get_visible_domain_labels(
-      [0, 0, 0, 1, 0, 0, 0, 1, 0],
-      [`AB`, `AC`],
-      new Map([
+    },
+    {
+      label: `ignores zero-area faces and formulas without visible facets`,
+      positions: [0, 0, 0, 0, 0, 0, 0, 0, 0, ...unit_triangle],
+      face_formulas: [`AB`, `AC`],
+      sizes: new Map([[`AB`, 12]]),
+      expected: [],
+    },
+    {
+      label: `combines separated visible facets of the same domain`,
+      // Two equal-area facets owned by AB, separated in space
+      positions: [...unit_triangle, 3, 0, 0, 4, 0, 0, 3, 1, 0],
+      face_formulas: [`AB`, `AB`],
+      sizes: new Map([[`AB`, 12]]),
+      expected: [
+        {
+          formula: `AB`,
+          position: [expect.closeTo(11 / 6), expect.closeTo(1 / 3), 0],
+          label_font_size: 12,
+        },
+      ],
+    },
+    {
+      label: `ignores trailing face-domain entries without triangles`,
+      positions: unit_triangle,
+      face_formulas: [`AB`, `AC`],
+      sizes: new Map([
         [`AB`, 12],
         [`AC`, 10],
       ]),
-    )
-
-    expect(labels.map((label) => label.formula)).toEqual([`AB`])
-  })
-
-  test(`preserves pinned labels for overlay domains without visible facets`, () => {
-    const labels = get_visible_domain_labels(
-      [0, 0, 0, 1, 0, 0, 0, 1, 0],
-      [`AB`],
-      new Map([[`AB`, 12]]),
-      [
+      expected: [{ formula: `AB`, position: [1 / 3, 1 / 3, 0], label_font_size: 12 }],
+    },
+    {
+      label: `preserves pinned labels for overlay domains without visible facets`,
+      positions: unit_triangle,
+      face_formulas: [`AB`],
+      sizes: new Map([[`AB`, 12]]),
+      pinned: [
         { formula: `AC`, position: [2, 2, 2], label_font_size: 10 },
         { formula: `AB`, position: [9, 9, 9], label_font_size: 99 },
+      ] as VisibleDomainLabel[],
+      expected: [
+        { formula: `AB`, position: [1 / 3, 1 / 3, 0], label_font_size: 12 },
+        { formula: `AC`, position: [2, 2, 2], label_font_size: 10 },
       ],
+    },
+  ])(`$label`, ({ positions, face_formulas, sizes, pinned, expected }) => {
+    expect(get_visible_domain_labels(positions, face_formulas, sizes, pinned)).toEqual(
+      expected,
     )
-
-    expect(labels.map((label) => label.formula)).toEqual([`AB`, `AC`])
-    expect(labels[0].position).toEqual([1 / 3, 1 / 3, 0])
-    expect(labels[0].label_font_size).toBe(12)
-    expect(labels[1]).toEqual({ formula: `AC`, position: [2, 2, 2], label_font_size: 10 })
   })
 })
 

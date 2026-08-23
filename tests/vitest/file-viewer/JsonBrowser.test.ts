@@ -63,19 +63,27 @@ const next_frames = (count: number): Promise<void> =>
     step(count)
   })
 
-test(`split divider drag activates and terminates on mouseup`, async () => {
-  mount_browser({ value: { first: table_rows(1, 3), second: table_rows(4, 4) } })
+// The placeholder's first chip renders the first renderable path into the main panel
+const click_first_chip = async (): Promise<void> => {
+  const chip = await vi.waitFor(() => doc_query(`.renderable-chip`))
+  chip.click()
+}
 
-  const first_chip = await vi.waitFor(() => doc_query(`.renderable-chip`))
-  first_chip.click()
-
+// Drop a tree node's table onto the edge of the first panel, splitting it
+const drop_table_onto_panel = async (data_path: string): Promise<void> => {
   const panel = await vi.waitFor(() => doc_query(`.viz-panel`))
   vi.spyOn(panel, `getBoundingClientRect`).mockReturnValue(new DOMRect(0, 0, 100, 100))
   const canvas = doc_query(`.canvas`)
   canvas.dispatchEvent(drag_event(`dragover`))
   canvas.dispatchEvent(
-    drag_event(`drop`, JSON.stringify({ data_path: `second`, detected_type: `table` })),
+    drag_event(`drop`, JSON.stringify({ data_path, detected_type: `table` })),
   )
+}
+
+test(`split divider drag activates and terminates on mouseup`, async () => {
+  mount_browser({ value: { first: table_rows(1, 3), second: table_rows(4, 4) } })
+  await click_first_chip()
+  await drop_table_onto_panel(`second`)
 
   const split_divider = await vi.waitFor(() => doc_query(`.split-divider`))
   mouse_down(split_divider)
@@ -153,10 +161,6 @@ test(`replacing, closing and destroying panels unmounts their viewers`, async ()
     props: { value: { first: table_rows(1, 3), second: table_rows(4, 3) } },
   })
   const viewer_apps = () => vi.mocked(mount_viewer).mock.results.map(({ value }) => value)
-  const click_first_chip = async () => {
-    const chip = await vi.waitFor(() => doc_query(`.renderable-chip`))
-    chip.click()
-  }
   await click_first_chip()
   await vi.waitFor(() => expect(mount_viewer).toHaveBeenCalledTimes(1))
 
@@ -210,8 +214,7 @@ test(`a failing viewer mount renders an error in its panel and a failing unmount
   vi.mocked(mount_viewer).mockImplementationOnce(() => {
     throw new Error(`viewer exploded`)
   })
-  const first_chip = await vi.waitFor(() => doc_query(`.renderable-chip`))
-  first_chip.click()
+  await click_first_chip()
   const panel_error = await vi.waitFor(() => doc_query(`.viz-panel .panel-error`))
   expect(panel_error.textContent).toBe(`Failed to render Table: viewer exploded`)
   expect(console_error).toHaveBeenCalledWith(
@@ -223,13 +226,7 @@ test(`a failing viewer mount renders an error in its panel and a failing unmount
   doc_query(`[data-path="second"]`).click()
   await vi.waitFor(() => expect(mount_viewer).toHaveBeenCalledTimes(2))
   expect(document.querySelector(`.panel-error`)).toBeNull()
-  const panel = doc_query(`.viz-panel`)
-  vi.spyOn(panel, `getBoundingClientRect`).mockReturnValue(new DOMRect(0, 0, 100, 100))
-  const canvas = doc_query(`.canvas`)
-  canvas.dispatchEvent(drag_event(`dragover`))
-  canvas.dispatchEvent(
-    drag_event(`drop`, JSON.stringify({ data_path: `first`, detected_type: `table` })),
-  )
+  await drop_table_onto_panel(`first`)
   await vi.waitFor(() => expect(mount_viewer).toHaveBeenCalledTimes(3))
   vi.mocked(unmount).mockClear()
   vi.mocked(unmount).mockImplementationOnce(() => {

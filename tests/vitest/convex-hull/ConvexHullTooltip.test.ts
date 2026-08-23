@@ -120,34 +120,27 @@ describe(`ConvexHullTooltip`, () => {
     )
   })
 
-  describe(`highlight badge`, () => {
-    test(`shows badge with color when highlight_style provided`, () => {
-      mount_tooltip({ highlight_style: { color: `#00ff00` } })
-      expect(doc_query(`.highlight-badge`).textContent).toContain(`★ Highlighted`)
-      expect(doc_query(`.tooltip-content`).style.getPropertyValue(`--highlight-color`)).toBe(
-        `#00ff00`,
-      )
-    })
-
-    test(`hides badge without highlight_style`, () => {
-      mount_tooltip()
-      expect(document.querySelector(`.highlight-badge`)).toBeNull()
-    })
+  test(`highlight badge and colour var render only with a highlight_style`, () => {
+    mount_tooltip()
+    expect(document.querySelector(`.highlight-badge`)).toBeNull()
+    document.body.innerHTML = ``
+    mount_tooltip({ highlight_style: { color: `#00ff00` } })
+    expect(doc_query(`.highlight-badge`).textContent).toContain(`★ Highlighted`)
+    expect(doc_query(`.tooltip-content`).style.getPropertyValue(`--highlight-color`)).toBe(
+      `#00ff00`,
+    )
   })
 
   describe(`fractional composition`, () => {
-    test(`displays with subscripts for binary+ entries`, () => {
-      mount_tooltip({ entry: mock_entry({ composition: { Fe: 1, O: 2 } }) })
+    // subscripted plain decimals (never unicode fractions) for binary+ entries
+    test.each([
+      { composition: { Fe: 1, O: 2 }, matches: [/Fe<sub>0\.33<\/sub>/, /O<sub>0\.67<\/sub>/] },
+      { composition: { Li: 1, Fe: 1 }, matches: [/Li<sub>0\.5<\/sub>/, /Fe<sub>0\.5<\/sub>/] },
+    ])(`displays $composition with subscripts`, ({ composition, matches }) => {
+      mount_tooltip({ entry: mock_entry({ composition }) })
       const html = document.body.innerHTML
       expect(html).toContain(`Fractional:`)
-      expect(html).toMatch(/Fe<sub>0\.33<\/sub>/)
-      expect(html).toMatch(/O<sub>0\.67<\/sub>/)
-    })
-
-    test(`uses plain decimals not unicode fractions`, () => {
-      mount_tooltip({ entry: mock_entry({ composition: { Li: 1, Fe: 1 } }) })
-      const html = document.body.innerHTML
-      expect(html).toContain(`0.5`)
+      for (const pattern of matches) expect(html).toMatch(pattern)
       expect(html).not.toMatch(/[½⅓⅔]/)
     })
 

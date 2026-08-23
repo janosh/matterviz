@@ -514,6 +514,19 @@ const cif_symop_of = (row: string, n_columns: number, symop_col: number): string
     .replaceAll(/\s+/g, ``)
 }
 
+// Data lines of the loop whose header ends before `data_start`, up to the next loop_/data_
+// block. Blank lines and `#` comments are skipped, as are semicolon text fields (multi-line
+// values are not supported, like in parse_mmcif).
+const cif_loop_lines = (lines: readonly string[], data_start: number): string[] => {
+  const rows: string[] = []
+  for (let idx = data_start; idx < lines.length; idx++) {
+    const line = lines[idx].trim()
+    if (line === `loop_` || line.startsWith(`data_`)) break
+    if (line && !line.startsWith(`#`) && !line.startsWith(`;`)) rows.push(line)
+  }
+  return rows
+}
+
 // Keep one disorder group (the lowest-numbered, by absolute value since a minus prefix
 // marks a site disordered about a special position) and drop the mutually exclusive
 // others; rows without a group (`.`, `?`, blank) are always kept
@@ -540,57 +553,32 @@ export const parse_cif = (content: string): Crystal | null =>
       return null
     }
 
-    // Find atom site loop that actually contains coordinates (fract or Cartn)
+    // Find the first atom-site loop that has coordinates (fract or Cartn) and data rows
     const lines = text.split(`\n`)
-    let atom_headers: string[] = []
+    let header_indices: Record<string, number> = {}
+    let coord_cols: ReturnType<typeof cif_coord_columns> = null
     const atom_data_lines: string[] = []
     const symmetry_ops: string[] = []
 
     for (const { headers, data_start } of iter_cif_loops(lines)) {
-      let jj = data_start
-
       const symop_re = /_symmetry_equiv_pos_as_xyz|_space_group_symop_operation_xyz/i
       const symop_col = headers.findIndex((header) => symop_re.test(header))
       if (symop_col !== -1) {
-        // Collect symmetry operations
-        while (jj < lines.length) {
-          const line = lines[jj].trim()
-          if (line === `loop_` || line.startsWith(`data_`)) break
-          if (line && !line.startsWith(`#`) && !line.startsWith(`;`)) {
-            symmetry_ops.push(cif_symop_of(line, headers.length, symop_col))
-          }
-          jj++
+        for (const line of cif_loop_lines(lines, data_start)) {
+          symmetry_ops.push(cif_symop_of(line, headers.length, symop_col))
         }
         continue
       }
-
-      // Not an atom-site loop → continue search
       if (!headers.some((header) => header.includes(`_atom_site_`))) continue
-
-      // Check if this loop contains coordinate headers
-      if (!cif_coord_columns(build_cif_atom_site_header_indices(headers))) continue
-
-      // This is the desired atom-site loop with coordinates: collect data lines. Semicolon
-      // text fields are not supported (like in parse_mmcif) and are skipped.
-      atom_headers = headers
-      while (jj < lines.length) {
-        const line = lines[jj].trim()
-        if (line === `loop_` || line.startsWith(`data_`)) break
-        if (line && !line.startsWith(`#`) && !line.startsWith(`;`)) atom_data_lines.push(line)
-        jj++
-      }
+      header_indices = build_cif_atom_site_header_indices(headers)
+      coord_cols = cif_coord_columns(header_indices)
+      if (!coord_cols) continue
+      atom_data_lines.push(...cif_loop_lines(lines, data_start))
       if (atom_data_lines.length > 0) break
     }
 
-    if (atom_headers.length === 0 || atom_data_lines.length === 0) {
+    if (!coord_cols || atom_data_lines.length === 0) {
       diag_error(`No valid atom site loop found in CIF file`)
-      return null
-    }
-
-    const header_indices = build_cif_atom_site_header_indices(atom_headers)
-    const coord_cols = cif_coord_columns(header_indices)
-    if (!coord_cols) {
-      diag_error(`CIF atom site loop missing coordinates (fract or Cartn)`)
       return null
     }
     const max_required_idx = Math.max(...coord_cols.columns)
@@ -1043,10 +1031,6 @@ export function parse_structure_file(content: string, filename?: string): AnyStr
 }
 
 // === OPTIMADE ===
-
-// Check if already-parsed JSON is OPTIMADE-like
-export const is_optimade_raw = (raw: unknown): boolean =>
-  Boolean(optimade_structure_from_raw(raw))
 
 // The OPTIMADE structure in raw JSON-like data, or null: responses nest it under `data`,
 // either directly or as the first entry of a list

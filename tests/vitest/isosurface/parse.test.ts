@@ -4,6 +4,7 @@ import {
   parse_chgcar,
   parse_cube,
   parse_decimal_token,
+  parse_float_block,
   parse_volumetric_file,
 } from '$lib/isosurface/parse'
 import type { VolumetricFileData } from '$lib/isosurface/types'
@@ -104,6 +105,19 @@ describe(`parse_decimal_token`, () => {
     const padded = `  ${token}\n`
     const reference = Number(normalize_scientific_notation(token))
     expect(Object.is(parse_decimal_token(padded, 2, 2 + token.length), reference)).toBe(true)
+  })
+})
+
+describe(`parse_float_block`, () => {
+  const text = `1 2 3\n\n  4 5\n6 7\naugmentation 8\n`
+  test.each([
+    { first_column_only: false, values: [1, 2, 3, 4, 5, 6, 7], label: `every token` },
+    { first_column_only: true, values: [1, 4, 6], label: `the first token per line` },
+  ])(`reads $label and stops at a letter-led line`, ({ first_column_only, values }) => {
+    const data = new Float64Array(10)
+    const { count, end_pos } = parse_float_block(text, 0, 10, data, 0, first_column_only)
+    expect(Array.from(data.subarray(0, count))).toEqual(values)
+    expect(text.slice(end_pos)).toBe(`\naugmentation 8\n`)
   })
 })
 

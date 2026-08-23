@@ -18,6 +18,33 @@ export const primary_modifier_key = is_mac ? `Meta` : `Control`
 export const is_present = <Value>(value: Value | null | undefined): value is Value =>
   value != null
 
+type Box = { x: number; y: number; width: number; height: number }
+
+// boundingBox() of an element that must be laid out
+export const require_bbox = async (locator: Locator, label = `element`): Promise<Box> => {
+  const box = await locator.boundingBox()
+  if (!box) throw new Error(`${label} has no bounding box`)
+  return box
+}
+
+// Bounding boxes of the first `count` matches (all by default), skipping unrendered ones
+export const bounding_boxes = async (locator: Locator, count = Infinity): Promise<Box[]> =>
+  (
+    await Promise.all((await locator.all()).slice(0, count).map((el) => el.boundingBox()))
+  ).filter(is_present)
+
+// x/y/width/height attributes of an SVG <rect>
+export const svg_rect = (rect: Locator): Promise<Box> =>
+  rect.evaluate((el) => ({
+    x: Number(el.getAttribute(`x`)),
+    y: Number(el.getAttribute(`y`)),
+    width: Number(el.getAttribute(`width`)),
+    height: Number(el.getAttribute(`height`)),
+  }))
+
+export const tick_texts = (plot: Locator, axis: `x` | `y` | `y2`): Promise<string[]> =>
+  plot.locator(`g.${axis}-axis .tick text`).allTextContents()
+
 // Collect console.error messages / uncaught page errors emitted after this call
 export const collect_console_errors = (page: Page): string[] => {
   const console_errors: string[] = []
@@ -32,18 +59,29 @@ export const collect_page_errors = (page: Page): Error[] => {
   return page_errors
 }
 
-// Dispatch the structure test page's `set-scene-props` / `set-lattice-props` hooks
+// Dispatch the structure test page's `set-scene-props` hook (cell rendering keys included)
 export const set_scene_props = (page: Page, detail: Record<string, unknown>): Promise<void> =>
   page.evaluate((props) => {
     globalThis.dispatchEvent(new CustomEvent(`set-scene-props`, { detail: props }))
   }, detail)
-export const set_lattice_props = (
+
+// Load a structure into the test page via its `set-structure` hook, applying scene props in
+// the same round trip (the page resets camera_target on structure change, so pass cameras here)
+export const set_structure = (
   page: Page,
-  detail: Record<string, unknown>,
+  structure: Record<string, unknown>,
+  scene_props?: Record<string, unknown>,
 ): Promise<void> =>
-  page.evaluate((props) => {
-    globalThis.dispatchEvent(new CustomEvent(`set-lattice-props`, { detail: props }))
-  }, detail)
+  page.evaluate(
+    ({ struct, props }) => {
+      globalThis.dispatchEvent(
+        new CustomEvent(`set-structure`, { detail: { structure: struct } }),
+      )
+      if (props)
+        globalThis.dispatchEvent(new CustomEvent(`set-scene-props`, { detail: props }))
+    },
+    { struct: structure, props: scene_props },
+  )
 
 // Bounding box of a canvas scrolled into view (boundingBox() is only meaningful once laid out)
 export async function canvas_box(canvas: Locator) {
@@ -206,6 +244,9 @@ export async function goto_structure_test(
   return wait_for_3d_canvas(page, container_selector)
 }
 
+// The structure test page's viewer canvas (strict: single-view layouts only)
+export const structure_canvas = (page: Page): Locator => page.locator(`#test-structure canvas`)
+
 // Open the structure viewer's gear-icon settings pane (forcing hover-only
 // controls visible) and return the pane locator
 export async function open_settings_pane(page: Page): Promise<Locator> {
@@ -337,8 +378,7 @@ export function get_axis_range_inputs(pane: Locator, axis_label: string) {
 export async function get_tick_range(
   axis_locator: Locator,
 ): Promise<{ ticks: number[]; range: number }> {
-  const tick_texts = await axis_locator.locator(`.tick text`).allTextContents()
-  const ticks = tick_texts
+  const ticks = (await axis_locator.locator(`.tick text`).allTextContents())
     .map((text) => (text ? Number(text) : NaN))
     .filter((num) => !isNaN(num))
   if (ticks.length < 2) return { ticks, range: 0 }
@@ -355,16 +395,10 @@ export async function set_range_input(input: Locator, value: string): Promise<vo
 export const get_chart_svg = (plot: Locator): Locator =>
   plot.locator(`:scope > svg[role="application"]`)
 
-type PlotRect = { x: number; y: number; width: number; height: number }
-type PlotArea = { clip: PlotRect; svg_box: PlotRect }
+type PlotArea = { clip: Box; svg_box: Box }
 
 export async function measure_plot_area(plot: Locator): Promise<PlotArea> {
-  const clip = await plot.locator(`clipPath rect`).evaluate((element) => ({
-    x: Number(element.getAttribute(`x`)),
-    y: Number(element.getAttribute(`y`)),
-    width: Number(element.getAttribute(`width`)),
-    height: Number(element.getAttribute(`height`)),
-  }))
+  const clip = await svg_rect(plot.locator(`clipPath rect`))
   const svg_box = await get_chart_svg(plot).boundingBox()
   if (
     !svg_box ||
@@ -575,6 +609,19 @@ export async function expect_canvas_changed(
     const current = await canvas_screenshot(canvas)
     expect(initial.equals(current)).toBe(false)
   }).toPass({ timeout: effective_timeout })
+}
+
+// Run `act` and assert it repaints the canvas; resolves to the repainted screenshot so
+// successive steps can chain their baselines
+export async function expect_canvas_changed_by(
+  canvas: Locator,
+  act: () => Promise<unknown>,
+  timeout?: number,
+): Promise<Buffer> {
+  const before = await canvas.screenshot()
+  await act()
+  await expect_canvas_changed(canvas, before, timeout)
+  return canvas.screenshot()
 }
 
 export type GizmoHandleHit = { key: string; x: number; y: number }

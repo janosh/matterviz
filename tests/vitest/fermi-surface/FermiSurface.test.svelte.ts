@@ -1,10 +1,9 @@
 import FermiSurface from '$lib/fermi-surface/FermiSurface.svelte'
-import { normalize_fermi_surface } from '$lib/fermi-surface/parse'
+import { type BandGridJson, normalize_fermi_surface } from '$lib/fermi-surface/parse'
 import type { BandGridData, FermiSurfaceData } from '$lib/fermi-surface/types'
-import type { Matrix3x3 } from '$lib/math'
 import { createRawSnippet, mount, tick, unmount, type ComponentProps } from 'svelte'
 import { afterEach, expect, test, vi } from 'vitest'
-import { create_drop_event } from '../setup'
+import { bind_props, create_drop_event, IDENTITY_MATRIX3, make_bxsf } from '../setup'
 
 const mounted: ReturnType<typeof mount>[] = []
 const mock_animation_frames = (): FrameRequestCallback[] => {
@@ -30,10 +29,6 @@ afterEach(async () => {
   vi.useRealTimers()
   for (const component of mounted.splice(0)) await unmount(component)
 })
-
-// 3×3×3 band grid with one band, so the viewer extracts a surface after loading it
-const bxsf = (fermi_energy: number) =>
-  `# Fermi energy: ${fermi_energy} eV\nBEGIN_BLOCK_BANDGRID_3D\n  band_energies\n  BEGIN_BANDGRID_3D\n    1\n    3 3 3\n    0.0 0.0 0.0\n    1.0 0.0 0.0\n    0.0 1.0 0.0\n    0.0 0.0 1.0\n    BAND:   1\n    5.0 6.0 5.0\n    6.0 7.0 6.0\n    5.0 6.0 5.0\n    6.0 7.0 6.0\n    7.0 8.0 7.0\n    6.0 7.0 6.0\n    5.0 6.0 5.0\n    6.0 7.0 6.0\n    5.0 6.0 5.0\n  END_BANDGRID_3D\nEND_BLOCK_BANDGRID_3D\n`
 
 test(`custom file drop handler receives content and bypasses default parsing`, async () => {
   const drop_deferred = Promise.withResolvers<undefined>()
@@ -62,11 +57,7 @@ test(`default file parsing yields while loading state renders`, async () => {
   const on_file_load = vi.fn()
   const content = JSON.stringify({
     isosurfaces: [],
-    k_lattice: [
-      [1, 0, 0],
-      [0, 1, 0],
-      [0, 0, 1],
-    ],
+    k_lattice: IDENTITY_MATRIX3,
     fermi_energy: 0,
     reciprocal_cell: `wigner_seitz`,
     metadata: { n_bands: 1, n_surfaces: 0 },
@@ -107,7 +98,7 @@ test(`a slow first data_url cannot overwrite a newer one`, async () => {
   mounted.push(mount(FermiSurface, { target: document.body, props }))
 
   await vi.waitFor(() => expect(responses.has(url_a)).toBe(true))
-  responses.get(url_a)?.(new Response(bxsf(1)))
+  responses.get(url_a)?.(new Response(make_bxsf(1)))
   await vi.waitFor(() => expect(frame_callbacks).toHaveLength(1))
 
   props.data_url = url_b
@@ -115,7 +106,7 @@ test(`a slow first data_url cannot overwrite a newer one`, async () => {
   frame_callbacks.shift()?.(0)
   frame_callbacks.shift()?.(0)
 
-  responses.get(url_b)?.(new Response(bxsf(2)))
+  responses.get(url_b)?.(new Response(make_bxsf(2)))
   await vi.waitFor(() => expect(frame_callbacks).toHaveLength(1))
   frame_callbacks.shift()?.(0)
   frame_callbacks.shift()?.(0)
@@ -134,7 +125,7 @@ test(`a second data_url still loads after re-extraction with a bound fermi_data`
     toFake: [`setTimeout`, `clearTimeout`, `requestAnimationFrame`, `cancelAnimationFrame`],
   })
   vi.spyOn(globalThis, `fetch`).mockImplementation(() =>
-    Promise.resolve(new Response(bxsf(6))),
+    Promise.resolve(new Response(make_bxsf(6))),
   )
   const on_file_load = vi.fn()
   const props = $state({
@@ -182,11 +173,7 @@ test(`extracts fermi_data from a band_data prop and re-extracts when mu changes`
       ],
     ],
     k_grid: [grid_n, grid_n, grid_n] as [number, number, number],
-    k_lattice: [
-      [1, 0, 0],
-      [0, 1, 0],
-      [0, 0, 1],
-    ] as [[number, number, number], [number, number, number], [number, number, number]],
+    k_lattice: IDENTITY_MATRIX3,
     fermi_energy: 0.3,
     n_bands: 1,
     n_spins: 1,
@@ -235,11 +222,6 @@ test(`extracts fermi_data from a band_data prop and re-extracts when mu changes`
 // as plain vertices/faces/normals rows (IFermi `as_dict()` or our own export format) rather
 // than the Float32Array/Uint32Array form parse_fermi_file returns. Both must render the same
 // surface; previously the JSON form threw inside detect_irreducible_bz/compute_surface_radius.
-const identity: Matrix3x3 = [
-  [1, 0, 0],
-  [0, 1, 0],
-  [0, 0, 1],
-]
 // 12 vertices in the positive octant (enough for irreducible-BZ detection) forming a fan of
 // 10 triangles plus one quad that fan-triangulates into two
 const json_vertices = Array.from({ length: 12 }, (_, idx) => [
@@ -253,7 +235,7 @@ const json_faces = [
 ]
 const matterviz_json = {
   isosurfaces: [{ vertices: json_vertices, faces: json_faces, band_index: 3, spin: null }],
-  k_lattice: identity,
+  k_lattice: IDENTITY_MATRIX3,
   fermi_energy: 1.25,
   reciprocal_cell: `wigner_seitz`,
   metadata: { n_bands: 1, n_surfaces: 1 },
@@ -264,7 +246,7 @@ const ifermi_json = {
   isosurfaces: {
     '3': [{ vertices: json_vertices, faces: json_faces, band_idx: 3, dimensionality: `3D` }],
   },
-  reciprocal_space: { '@class': `WignerSeitzCell`, reciprocal_lattice: identity },
+  reciprocal_space: { '@class': `WignerSeitzCell`, reciprocal_lattice: IDENTITY_MATRIX3 },
 }
 const typed_data = normalize_fermi_surface(matterviz_json)
 
@@ -284,27 +266,18 @@ test.each([
       })
     },
   })) as ComponentProps<typeof FermiSurface>[`children`]
-  const props = $state<{ tile_bz: boolean; error_msg?: string }>({ tile_bz: false })
+  // Every bound key must be present for bind_props to wire it
+  const props = $state<{ tile_bz: boolean; error_msg?: string }>({
+    tile_bz: false,
+    error_msg: undefined,
+  })
   mounted.push(
     mount(FermiSurface, {
       target: document.body,
-      props: {
-        fermi_data: fermi_data as FermiSurfaceData,
-        children,
-        on_error,
-        get tile_bz() {
-          return props.tile_bz
-        },
-        set tile_bz(value) {
-          props.tile_bz = value
-        },
-        get error_msg() {
-          return props.error_msg
-        },
-        set error_msg(value) {
-          props.error_msg = value
-        },
-      },
+      props: bind_props(
+        { fermi_data: fermi_data as FermiSurfaceData, children, on_error },
+        props,
+      ),
     }),
   )
   await tick()
@@ -332,22 +305,12 @@ test(`malformed fermi_data reports via error_msg/on_error and a later valid one 
   const on_error = vi.fn()
   const props = $state<{ fermi_data: unknown; error_msg?: string }>({
     fermi_data: { isosurfaces: [{ vertices: `nope` }] },
+    error_msg: undefined,
   })
   mounted.push(
     mount(FermiSurface, {
       target: document.body,
-      props: {
-        on_error,
-        get fermi_data() {
-          return props.fermi_data as FermiSurfaceData
-        },
-        get error_msg() {
-          return props.error_msg
-        },
-        set error_msg(value) {
-          props.error_msg = value
-        },
-      },
+      props: bind_props({ on_error }, props) as ComponentProps<typeof FermiSurface>,
     }),
   )
   await tick()
@@ -380,27 +343,17 @@ test(`band_data with nested JSON energies is extracted like the typed grid`, asy
       ),
     ),
   )
-  const props = $state<{ fermi_data?: FermiSurfaceData }>({})
+  const props = $state<{ fermi_data?: FermiSurfaceData }>({ fermi_data: undefined })
+  const band_data: BandGridJson = {
+    energies: [[nested]],
+    k_grid: [grid_n, grid_n, grid_n],
+    k_lattice: IDENTITY_MATRIX3,
+    fermi_energy: 0.3,
+    n_bands: 1,
+    n_spins: 1,
+  }
   mounted.push(
-    mount(FermiSurface, {
-      target: document.body,
-      props: {
-        band_data: {
-          energies: [[nested]],
-          k_grid: [grid_n, grid_n, grid_n],
-          k_lattice: identity,
-          fermi_energy: 0.3,
-          n_bands: 1,
-          n_spins: 1,
-        },
-        get fermi_data() {
-          return props.fermi_data
-        },
-        set fermi_data(value) {
-          props.fermi_data = value
-        },
-      },
-    }),
+    mount(FermiSurface, { target: document.body, props: bind_props({ band_data }, props) }),
   )
   await vi.advanceTimersByTimeAsync(200)
   expect(props.fermi_data?.isosurfaces).toHaveLength(1)

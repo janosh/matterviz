@@ -2,6 +2,7 @@
 import { SUBSCRIPT_MAP } from '$lib/labels'
 import { is_plain_object } from '$lib/utils'
 import {
+  array_extent,
   euclidean_dist,
   mat3x3_vec3_multiply,
   subtract,
@@ -125,7 +126,6 @@ export function get_ribbon_config(
   return { opacity: 0.3, max_width: 6, scale: 1, ...source }
 }
 
-// Normalize DOS densities according to specified mode.
 export function normalize_densities(
   densities: number[],
   freqs_or_energies: number[],
@@ -743,7 +743,6 @@ export function extract_pdos(
   return Object.keys(result).length > 0 ? result : null
 }
 
-// Shift a single DOS object's energies by the given amount
 const shift_dos_energies = <T extends PymatgenDos>(dos: T, shift: number): T => ({
   ...dos,
   efermi: dos.efermi - shift,
@@ -816,16 +815,18 @@ export function generate_ribbon_path(
     lower_points.push(`${x_px.toFixed(2)},${y_lower_px.toFixed(2)}`)
   }
 
-  // Combine: upper edge forward, lower edge backward, close path
-  const path_parts = [
+  return closed_edge_path(upper_points, lower_points)
+}
+
+// SVG path tracing the upper edge forward and the lower edge backward, closed (edge points
+// are pre-formatted `x,y` pixel pairs)
+export const closed_edge_path = (upper_points: string[], lower_points: string[]): string =>
+  [
     `M${upper_points[0]}`,
     ...upper_points.slice(1).map((pt) => `L${pt}`),
     ...lower_points.toReversed().map((pt) => `L${pt}`),
     `Z`,
-  ]
-
-  return path_parts.join(` `)
-}
+  ].join(` `)
 
 // Extract efermi from a data source (band structure or DOS).
 // Handles both single objects with an efermi field and dicts of objects.
@@ -880,23 +881,31 @@ const single_or_dict_values = (input: unknown, marker_keys: string[]): unknown[]
   return marker_keys.some((key) => key in input) ? [input] : Object.values(input)
 }
 
-// Compute frequency/energy range from bands and DOS. Clamps phonon min to 0 if noise < 0.5%.
+// Min/max of the finite `values` padded by `padding_factor` of the span; a phonon range whose
+// negatives are numerical noise (< IMAGINARY_MODE_NOISE_THRESHOLD) is clamped to start at 0
+export function padded_frequency_range(
+  values: readonly number[],
+  is_phonon: boolean,
+  padding_factor = 0.02,
+): Vec2 | undefined {
+  const finite = values.filter(Number.isFinite)
+  if (finite.length === 0) return undefined
+  let [min_val, max_val] = array_extent(finite)
+  if (is_phonon && min_val < 0 && negative_fraction(finite) < IMAGINARY_MODE_NOISE_THRESHOLD) {
+    min_val = 0
+  }
+  const padding = (max_val - min_val) * padding_factor
+  return [min_val === 0 ? 0 : min_val - padding, max_val + padding]
+}
+
+// Shared frequency/energy range of bands and DOS, see padded_frequency_range
 export function compute_frequency_range(
   band_structs: unknown,
   doses: unknown,
   padding_factor = 0.02,
 ): Vec2 | undefined {
-  let [min_val, max_val] = [Infinity, -Infinity]
   let is_phonon = false
-  const all_freqs: number[] = []
-  const collect_frequencies = (values: readonly number[]): void => {
-    for (const value of values) {
-      if (!Number.isFinite(value)) continue
-      all_freqs.push(value)
-      min_val = Math.min(min_val, value)
-      max_val = Math.max(max_val, value)
-    }
-  }
+  const frequency_lists: (readonly number[])[] = []
 
   // Electronic markers are read from the raw input: normalization strips them (every
   // normalized structure has qpoints). Bands that aren't electronic are phonon bands.
@@ -911,28 +920,16 @@ export function compute_frequency_range(
     }
   })
   if (bs_list.length > 0 && !raw_band_structs.some(is_electronic_band_struct)) is_phonon = true
-  for (const bs of bs_list) for (const band of bs.bands) collect_frequencies(band)
+  for (const bs of bs_list) frequency_lists.push(...bs.bands)
 
   for (const raw of single_or_dict_values(doses, [`densities`])) {
     const dos = normalize_dos(raw)
     if (!dos) continue
     // DOS type detection: explicit type field is authoritative
     is_phonon = dos.type === `phonon`
-    collect_frequencies(dos.type === `phonon` ? dos.frequencies : dos.energies)
+    frequency_lists.push(dos.type === `phonon` ? dos.frequencies : dos.energies)
   }
-
-  if (!Number.isFinite(min_val) || !Number.isFinite(max_val)) return undefined
-  // clamp phonon noise to 0
-  if (
-    is_phonon &&
-    min_val < 0 &&
-    negative_fraction(all_freqs) < IMAGINARY_MODE_NOISE_THRESHOLD
-  ) {
-    min_val = 0
-  }
-  // Calculate padding from (possibly clamped) range for consistency with Bands.svelte
-  const padding = (max_val - min_val) * padding_factor
-  return [min_val === 0 ? 0 : min_val - padding, max_val + padding]
+  return padded_frequency_range(frequency_lists.flat(), is_phonon, padding_factor)
 }
 
 // Parse axis label: "Frequency (THz)" → { name: "Frequency", unit: "THz" }
@@ -1030,12 +1027,13 @@ const compute_slope = (x_vals: number[], y_vals: number[], idx: number): number 
   return dx ? (y_vals[hi] - y_vals[lo]) / dx : null
 }
 
-// Find Gamma-point indices (q ≈ integer lattice point) in a band structure.
-// Returns indices of q-points whose fractional coordinates are all within 0.01 of integers.
+// A q-point counts as Gamma when every fractional coordinate is within 0.01 of an integer
+export const is_gamma_point = (frac_coords: Vec3): boolean =>
+  frac_coords.every((coord) => Math.abs(coord - Math.round(coord)) < 0.01)
+
+// Indices of the Gamma points (q ≈ integer lattice point) in a band structure
 export const find_gamma_indices = (bs: types.BaseBandStructure): number[] =>
-  bs.qpoints.flatMap(({ frac_coords }, q_idx) =>
-    frac_coords.every((coord) => Math.abs(coord - Math.round(coord)) < 0.01) ? [q_idx] : [],
-  )
+  bs.qpoints.flatMap(({ frac_coords }, q_idx) => (is_gamma_point(frac_coords) ? [q_idx] : []))
 
 // Threshold below which a band's frequency at Gamma is considered acoustic (THz).
 // Assumes bands are stored in THz (normalize_band_structure converts to THz).

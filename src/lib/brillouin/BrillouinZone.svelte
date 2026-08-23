@@ -29,7 +29,7 @@
     compute_irreducible_bz,
     extract_point_group_from_operations,
   } from './compute'
-  import { reciprocal_lattice } from '$lib/math'
+  import { clamp, reciprocal_lattice } from '$lib/math'
   import { is_editable_target, to_error } from '$lib/utils'
   import type {
     BrillouinZoneData,
@@ -188,8 +188,7 @@
     if (!structure?.lattice) return {}
     try {
       const k_lattice = reciprocal_lattice(structure.lattice.matrix, { two_pi: true })
-      const valid_order = Math.min(Math.max(1, bz_order), 3) as 1 | 2 | 3
-      return { zone: compute_brillouin_zone(k_lattice, valid_order) }
+      return { zone: compute_brillouin_zone(k_lattice, clamp(bz_order, 1, 3) as 1 | 2 | 3) }
     } catch (err) {
       return { error: `BZ computation failed: ${to_error(err).message}` }
     }

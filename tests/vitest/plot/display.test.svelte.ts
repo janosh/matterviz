@@ -1,5 +1,11 @@
-import { resolve_plot_display, sync_category_zero_display } from '$lib/plot/core/display'
+import {
+  create_category_display,
+  resolve_plot_display,
+  sync_category_zero_display,
+} from '$lib/plot/core/display.svelte'
+import type { DisplayConfig } from '$lib/plot/core/types'
 import { DEFAULTS } from '$lib/settings'
+import { flushSync } from 'svelte'
 import { describe, expect, test } from 'vitest'
 
 describe(`resolve_plot_display`, () => {
@@ -57,4 +63,28 @@ describe(`sync_category_zero_display`, () => {
     })
     expect(display.x_zero_line).toBe(true)
   })
+})
+
+// The reactive wrapper the categorical charts mount: the bound display loses its category
+// zero lines as the category axis flips, and the resolved config follows
+test(`create_category_display syncs the bound display and resolves it per category axis`, () => {
+  const inputs = $state<{ display: DisplayConfig; axis: `x` | `y` | null }>({
+    display: { ...DEFAULTS.plot.display },
+    axis: `x`,
+  })
+  const cleanup = $effect.root(() => {
+    const category = create_category_display(
+      () => inputs.display,
+      () => inputs.axis,
+    )
+    flushSync()
+    expect(inputs.display).toMatchObject({ x_zero_line: false, y_zero_line: true })
+    expect(category.resolved).toMatchObject({ x_zero_line: false, y_zero_line: true })
+    flushSync(() => (inputs.axis = `y`))
+    expect(inputs.display).toMatchObject({ x_zero_line: true, y_zero_line: false })
+    expect(category.resolved).toMatchObject({ x_zero_line: true, y_zero_line: false })
+    flushSync(() => (inputs.axis = null))
+    expect(category.resolved).toMatchObject({ x_zero_line: true, y_zero_line: true })
+  })
+  cleanup()
 })

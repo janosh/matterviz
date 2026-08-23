@@ -1,5 +1,6 @@
 import type { AnyStructure, ElementCategory, ElementSymbol, Vec3 } from '$lib'
 import type { PhaseData } from '$lib/convex-hull/types'
+import type { FermiIsosurface, FermiSurfaceData } from '$lib/fermi-surface/types'
 import { flatten_grid } from '$lib/isosurface/grid'
 import {
   make_volume as make_volume_from_values,
@@ -186,6 +187,16 @@ export const mock_object_url = (url = `blob:test-url`) => {
 export const flush_render = async (): Promise<void> => {
   flushSync()
   await tick()
+}
+
+// Ticks and microtasks enough for an $effect to run, an async compute it kicked off to
+// settle and the result to render
+export const settle = async (rounds = 3): Promise<void> => {
+  for (let round = 0; round < rounds; round++) {
+    await tick()
+    await Promise.resolve()
+    await tick()
+  }
 }
 
 export const svg_query = (selector: string): SVGElement => doc_query<SVGElement>(selector)
@@ -417,18 +428,6 @@ export async function with_measured_text<T>(
     spy.mockRestore()
   }
 }
-
-export const expect_custom_x_ticks_grow_bottom_pad = async (
-  baseline_y: (ticks: Record<number, string>) => Promise<number>,
-  values: number[],
-): Promise<void> =>
-  with_measured_text(async () => {
-    const long = Object.fromEntries(values.map((value) => [value, `CATEGORY_LABEL_${value}`]))
-    const short = Object.fromEntries(values.map((value) => [value, `${value}`]))
-    const [with_long, with_short] = [await baseline_y(long), await baseline_y(short)]
-    expect(with_short).toBeGreaterThan(0)
-    expect(with_long).toBeLessThan(with_short)
-  })
 
 // Mount a component into a fresh container, find its root via `selector`, and
 // resize it so width/height-dependent rendering (SVG plots, canvases) kicks in.
@@ -911,6 +910,80 @@ export const cubic_matrix = (a: number): math.Matrix3x3 => [
   [0, 0, a],
 ]
 
+// Primitive fcc cell of the conventional cubic cell with edge `a` (the 1-atom Cu / 2-atom
+// diamond input that moyo standardizes to the 4-/8-atom conventional cell)
+export const fcc_primitive_matrix = (a: number): math.Matrix3x3 => [
+  [0, a / 2, a / 2],
+  [a / 2, 0, a / 2],
+  [a / 2, a / 2, 0],
+]
+
+// === Fermi surface fixtures ===
+// Typed-array FermiIsosurface from plain vertex rows and N-gon faces (fan-triangulated like
+// the JSON parser); normals all point +z
+export const make_fermi_isosurface = (
+  vertices: Vec3[],
+  faces: number[][],
+  extra: Partial<FermiIsosurface> = {},
+): FermiIsosurface => ({
+  positions: Float32Array.from(vertices.flat()),
+  indices: Uint32Array.from(
+    faces.flatMap((face) =>
+      Array.from({ length: Math.max(face.length - 2, 0) }, (_, fan) => [
+        face[0],
+        face[fan + 1],
+        face[fan + 2],
+      ]).flat(),
+    ),
+  ),
+  normals: Float32Array.from(vertices.flatMap(() => [0, 0, 1])),
+  band_index: 0,
+  spin: null,
+  ...extra,
+})
+
+// FermiSurfaceData around `isosurfaces` with an identity k-lattice
+export const make_fermi_surface = (
+  isosurfaces: FermiIsosurface[],
+  extra: Partial<FermiSurfaceData> = {},
+): FermiSurfaceData => ({
+  isosurfaces,
+  k_lattice: IDENTITY_MATRIX3,
+  fermi_energy: 0,
+  reciprocal_cell: `wigner_seitz`,
+  metadata: {
+    n_bands: new Set(isosurfaces.map((iso) => iso.band_index)).size,
+    n_surfaces: isosurfaces.length,
+  },
+  ...extra,
+})
+
+// Thin box: a unit square sheet at z=0 extruded to z=0.1, as 12 triangles
+export const BOX_VERTICES: Vec3[] = [
+  [-0.5, -0.5, 0],
+  [0.5, -0.5, 0],
+  [0.5, 0.5, 0],
+  [-0.5, 0.5, 0],
+  [-0.5, -0.5, 0.1],
+  [0.5, -0.5, 0.1],
+  [0.5, 0.5, 0.1],
+  [-0.5, 0.5, 0.1],
+]
+// oxfmt-ignore
+export const BOX_TRI_FACES = [
+  [0, 1, 2], [0, 2, 3], // bottom
+  [4, 6, 5], [4, 7, 6], // top
+  [0, 4, 5], [0, 5, 1], // front
+  [2, 6, 7], [2, 7, 3], // back
+  [0, 3, 7], [0, 7, 4], // left
+  [1, 5, 6], [1, 6, 2], // right
+]
+
+// 3×3×3 single-band BXSF grid on an identity reciprocal lattice; the centre point is the 8.0
+// maximum and the `# Fermi energy` header comment carries `fermi_energy`
+export const make_bxsf = (fermi_energy = 7) =>
+  `# Sample BXSF file\n# Fermi energy: ${fermi_energy} eV\n\nBEGIN_BLOCK_BANDGRID_3D\n  band_energies\n  BEGIN_BANDGRID_3D\n    1\n    3 3 3\n    0.0 0.0 0.0\n    1.0 0.0 0.0\n    0.0 1.0 0.0\n    0.0 0.0 1.0\n    BAND:   1\n    5.0 6.0 5.0\n    6.0 7.0 6.0\n    5.0 6.0 5.0\n    6.0 7.0 6.0\n    7.0 8.0 7.0\n    6.0 7.0 6.0\n    5.0 6.0 5.0\n    6.0 7.0 6.0\n    5.0 6.0 5.0\n  END_BANDGRID_3D\nEND_BLOCK_BANDGRID_3D\n`
+
 // Encode a 3x3 matrix as a flat 9-array in COLUMN-major order — how moyo/nalgebra serialize
 // rotation matrices on the wire (inverse of mat3_from_flat_col_major in symmetry-elements).
 export const col_major = (mat: math.Matrix3x3): number[] => {
@@ -1208,6 +1281,20 @@ export type StubWorkerInstance<Message = StubWorkerMessage> = {
   posted: { message: Message; transfer: Transferable[] }[]
   terminated: number
   emit: (type: string, event: unknown) => void
+}
+
+// The one module worker a `create_worker_client` module constructs points at `worker_path`
+// (e.g. `src/lib/msd/msd-worker.ts`) as an ES module. Vite only detects and rewrites the
+// worker when the URL keeps the `./` prefix and the `.js` extension; detection turns the
+// source `.js` spec into the real `.ts` module tagged `?worker_file`, and losing that means
+// the app 404s on the worker at runtime and silently never enters the worker branch.
+export const expect_module_worker = (
+  instances: { url: string; options: WorkerOptions | undefined }[],
+  worker_path: string,
+): void => {
+  expect(instances).toHaveLength(1)
+  expect(instances[0].url).toMatch(new RegExp(`/${worker_path}\\?worker_file`))
+  expect(instances[0].options).toEqual({ type: `module` })
 }
 
 export const install_stub_worker = <Message extends { id: number } = StubWorkerMessage>(

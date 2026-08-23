@@ -29,7 +29,7 @@
   import { hull_distance_range, hull_style_css } from './helpers'
   import { create_hull_data_pipeline, KIND_LABEL } from './hull-state.svelte'
   import type { BaseConvexHullProps, ConvexHullGizmoOptions, Hull3DProps } from './index'
-  import { default_controls, default_hull_config } from './index'
+  import { default_controls, merge_hull_config } from './index'
   import MissingConvexHullData from './MissingConvexHullData.svelte'
   import type { ConvexHullEntry, HullFaceColorMode } from './types'
   import { MAGNETIC_ORDERING_CATEGORY } from './types'
@@ -98,11 +98,7 @@
   const entries = $derived(entries_prop ?? [])
   const merged_controls = $derived({ ...default_controls, ...controls })
   const controls_config = $derived(normalize_show_controls(show_controls))
-  const merged_config = $derived({
-    ...default_hull_config,
-    ...config,
-    colors: { ...default_hull_config.colors, ...config.colors },
-  })
+  const merged_config = $derived(merge_hull_config(config))
 
   // Shared reactive data pipeline (temperature → gas → energies → coordinates → hull)
   const hull_data = create_hull_data_pipeline({

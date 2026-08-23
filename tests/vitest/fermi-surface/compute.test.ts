@@ -17,6 +17,14 @@ import { vertex_count } from '$lib/fermi-surface/types'
 import * as math from '$lib/math'
 import type { Matrix3x3, Matrix4Tuple, Vec3 } from '$lib/math'
 import { describe, expect, test } from 'vitest'
+import {
+  BOX_TRI_FACES,
+  BOX_VERTICES,
+  cubic_matrix,
+  IDENTITY_MATRIX3,
+  make_fermi_isosurface,
+  make_fermi_surface,
+} from '../setup'
 
 // Vertex `idx` of a typed-array mesh as a Vec3
 const vertex_at = ({ positions }: FermiIsosurface, idx: number): Vec3 => [
@@ -45,34 +53,6 @@ const surface_area = (surface: FermiIsosurface): number => {
 const total_area = (data: FermiSurfaceData): number =>
   data.isosurfaces.reduce((sum, surface) => sum + surface_area(surface), 0)
 
-// Test-side FermiIsosurface from plain arrays (N-gon faces fan-triangulated like the JSON parser)
-const mesh_from = (
-  vertices: Vec3[],
-  faces: number[][],
-  extra: Partial<Pick<FermiIsosurface, `properties`>> = {},
-): FermiIsosurface => ({
-  positions: Float32Array.from(vertices.flat()),
-  indices: Uint32Array.from(
-    faces.flatMap((face) =>
-      Array.from({ length: Math.max(face.length - 2, 0) }, (_, fan) => [
-        face[0],
-        face[fan + 1],
-        face[fan + 2],
-      ]).flat(),
-    ),
-  ),
-  normals: new Float32Array(3 * vertices.length),
-  band_index: 0,
-  spin: null,
-  ...extra,
-})
-
-const scaled = (scale: number): Matrix3x3 => [
-  [scale, 0, 0],
-  [0, scale, 0],
-  [0, 0, scale],
-]
-const IDENTITY = scaled(1)
 // k_latticeᵀ ≠ k_lattice exposes a missing transpose in cart→frac conversion
 const HEXAGONAL: Matrix3x3 = [
   [1, 0, 0],
@@ -96,12 +76,18 @@ const make_band_grid = (
   return { values, dims, order: `z_fastest` }
 }
 
+// Single-band grid sampling `energy_fn` at fractional coordinates (ix + shift)/denom
 const make_band_data = (
   grid_n: number,
   energy_fn: (fx: number, fy: number, fz: number) => number,
-  opts: { k_lattice?: Matrix3x3; periodic?: boolean; grid_shift?: Vec3 } = {},
+  opts: {
+    k_lattice?: Matrix3x3
+    periodic?: boolean
+    grid_shift?: Vec3
+    fermi_energy?: number
+  } = {},
 ): BandGridData => {
-  const { k_lattice = IDENTITY, periodic, grid_shift } = opts
+  const { k_lattice = IDENTITY_MATRIX3, periodic, grid_shift, fermi_energy = 0 } = opts
   const denom = periodic ? grid_n : grid_n - 1
   const dims: Vec3 = [grid_n, grid_n, grid_n]
   const [sx, sy, sz] = grid_shift ?? [0, 0, 0]
@@ -117,7 +103,7 @@ const make_band_data = (
     ...(grid_shift && { grid_shift }),
     k_grid: dims,
     k_lattice,
-    fermi_energy: 0,
+    fermi_energy,
     n_bands: 1,
     n_spins: 1,
   }
@@ -127,22 +113,10 @@ const sphere = (fx: number, fy: number, fz: number) => Math.hypot(fx - 0.5, fy -
 
 describe(`extract_fermi_surface`, () => {
   // Band data with a spherical isosurface: energy = distance² from grid center (in index units)
-  function create_spherical_band_data(grid_size: number, fermi_energy: number): BandGridData {
-    const center = (grid_size - 1) / 2
-    const dims: Vec3 = [grid_size, grid_size, grid_size]
-    const band = make_band_grid(
-      dims,
-      (ix, iy, iz) => (ix - center) ** 2 + (iy - center) ** 2 + (iz - center) ** 2,
-    )
-    return {
-      energies: [[band]],
-      k_grid: dims,
-      k_lattice: IDENTITY,
+  const create_spherical_band_data = (grid_size: number, fermi_energy: number): BandGridData =>
+    make_band_data(grid_size, (fx, fy, fz) => (sphere(fx, fy, fz) * (grid_size - 1)) ** 2, {
       fermi_energy,
-      n_bands: 1,
-      n_spins: 1,
-    }
-  }
+    })
 
   test(`extracts Fermi surface from band data`, () => {
     const band_data = create_spherical_band_data(10, 9) // Fermi level at radius^2 = 9
@@ -202,33 +176,23 @@ describe(`free-electron sphere (numerical verification)`, () => {
   const K_F = 0.6 * (Math.PI / A_LATT)
   const E_F = HBAR2_OVER_2M * K_F * K_F
   const SPHERE_AREA = 4 * Math.PI * K_F * K_F
-  const CUBIC = scaled(B_LEN)
+  const CUBIC = cubic_matrix(B_LEN)
 
   // Endpoint-inclusive grids place point i at frac i/(n−1) (BXSF), periodic ones at i/n
   // (FRMSF); extraction centres the cell on Γ so k = (frac − 0.5)·b. `center_x`
   // moves the sphere centre along k_x using the minimum-image distance, so a sphere at the
   // zone-boundary X point wraps across the ±k_x faces.
   const free_electron = (n: number, periodic: boolean, center_x = 0): BandGridData => {
-    const denom = periodic ? n : n - 1
-    const k_of = (idx: number) => (idx / denom - 0.5) * B_LEN
+    const k_of = (frac: number) => (frac - 0.5) * B_LEN
     const min_image = (dk: number) => dk - B_LEN * Math.round(dk / B_LEN)
-    const dims: Vec3 = [n, n, n]
-    return {
-      energies: [
-        [
-          make_band_grid(dims, (ix, iy, iz) => {
-            const dx = min_image(k_of(ix) - center_x)
-            return HBAR2_OVER_2M * (dx * dx + k_of(iy) ** 2 + k_of(iz) ** 2)
-          }),
-        ],
-      ],
-      k_grid: dims,
-      k_lattice: CUBIC,
-      fermi_energy: E_F,
-      n_bands: 1,
-      n_spins: 1,
-      periodic,
-    }
+    return make_band_data(
+      n,
+      (fx, fy, fz) => {
+        const dx = min_image(k_of(fx) - center_x)
+        return HBAR2_OVER_2M * (dx * dx + k_of(fy) ** 2 + k_of(fz) ** 2)
+      },
+      { k_lattice: CUBIC, periodic, fermi_energy: E_F },
+    )
   }
 
   // Memoised: the 48³ extraction is reused by several tests below and the result is never
@@ -353,7 +317,7 @@ describe(`grid/lattice conventions`, () => {
   // on that shifted mesh and telling the extractor about the shift must reproduce the same
   // sphere centre; ignoring the shift (the old behaviour) moves the surface by half a voxel.
   test.each([
-    { name: `identity`, k_lattice: IDENTITY },
+    { name: `identity`, k_lattice: IDENTITY_MATRIX3 },
     { name: `hexagonal`, k_lattice: HEXAGONAL },
   ])(`grid_shift moves the surface by half a voxel ($name lattice)`, ({ k_lattice }) => {
     const grid_n = 20
@@ -452,7 +416,7 @@ describe(`grid/lattice conventions`, () => {
         ],
       ],
       k_grid: [1, grid_n, grid_n],
-      k_lattice: IDENTITY,
+      k_lattice: IDENTITY_MATRIX3,
       fermi_energy: 0.3,
       n_bands: 1,
       n_spins: 1,
@@ -464,45 +428,20 @@ describe(`grid/lattice conventions`, () => {
 })
 
 describe(`compute_fermi_slice`, () => {
-  // Thin box: a square sheet at z=0 extruded to z=0.1
-  const box_vertices: Vec3[] = [
-    [-0.5, -0.5, 0],
-    [0.5, -0.5, 0],
-    [0.5, 0.5, 0],
-    [-0.5, 0.5, 0],
-    [-0.5, -0.5, 0.1],
-    [0.5, -0.5, 0.1],
-    [0.5, 0.5, 0.1],
-    [-0.5, 0.5, 0.1],
-  ]
-  // oxfmt-ignore
-  const tri_faces = [
-    [0, 1, 2], [0, 2, 3], // bottom
-    [4, 6, 5], [4, 7, 6], // top
-    [0, 4, 5], [0, 5, 1], // front
-    [2, 6, 7], [2, 7, 3], // back
-    [0, 3, 7], [0, 7, 4], // left
-    [1, 5, 6], [1, 6, 2], // right
-  ]
   // oxfmt-ignore
   const quad_faces = [
     [0, 1, 2, 3], [4, 7, 6, 5], [0, 4, 5, 1], [2, 6, 7, 3], [0, 3, 7, 4], [1, 5, 6, 2],
   ]
 
   const make_box_fermi_data = (
-    faces: number[][] = tri_faces,
+    faces: number[][] = BOX_TRI_FACES,
     properties?: Float32Array,
-  ): FermiSurfaceData => ({
-    isosurfaces: [mesh_from(box_vertices, faces, { properties })],
-    k_lattice: IDENTITY,
-    fermi_energy: 0,
-    reciprocal_cell: `wigner_seitz`,
-    metadata: { n_bands: 1, n_surfaces: 1 },
-  })
+  ): FermiSurfaceData =>
+    make_fermi_surface([make_fermi_isosurface(BOX_VERTICES, faces, { properties })])
 
   // Slicing the box at z=0.05 cuts its four side walls: one closed unit-square contour
   test.each([
-    [`triangles`, tri_faces],
+    [`triangles`, BOX_TRI_FACES],
     [`quads`, quad_faces], // regression: the 4th edge of a quad used to be skipped
   ])(`slices the box walls into one closed unit-square contour (%s)`, (_label, faces) => {
     const slice = compute_fermi_slice(make_box_fermi_data(faces), {
@@ -532,8 +471,8 @@ describe(`compute_fermi_slice`, () => {
 
   test(`interpolates per-vertex properties along the contour`, () => {
     // property = z·10 → every contour point at z=0.05 must carry 0.5
-    const properties = Float32Array.from(box_vertices, (vertex) => vertex[2] * 10)
-    const slice = compute_fermi_slice(make_box_fermi_data(tri_faces, properties), {
+    const properties = Float32Array.from(BOX_VERTICES, (vertex) => vertex[2] * 10)
+    const slice = compute_fermi_slice(make_box_fermi_data(BOX_TRI_FACES, properties), {
       miller_indices: [0, 0, 1],
       distance: 0.05,
     })
@@ -564,13 +503,8 @@ describe(`compute_fermi_slice`, () => {
 })
 
 describe(`detect_irreducible_bz`, () => {
-  const make_data = (...vertex_lists: Vec3[][]): FermiSurfaceData => ({
-    isosurfaces: vertex_lists.map((vertices) => mesh_from(vertices, [])),
-    k_lattice: IDENTITY,
-    fermi_energy: 0,
-    reciprocal_cell: `wigner_seitz`,
-    metadata: { n_bands: 1, n_surfaces: vertex_lists.length },
-  })
+  const make_data = (...vertex_lists: Vec3[][]): FermiSurfaceData =>
+    make_fermi_surface(vertex_lists.map((vertices) => make_fermi_isosurface(vertices, [])))
 
   // 11 vertices (> IRREDUCIBLE_BZ_MIN_VERTICES), all in the positive octant
   const positive_verts: Vec3[] = Array.from({ length: 11 }, (_, idx) => [
@@ -605,7 +539,7 @@ describe(`detect_irreducible_bz`, () => {
 describe(`lattice_point_group_matrices`, () => {
   // Real-space lattices (rows) → reciprocal k_lattice via reciprocal_lattice(two_pi)
   const real_lattices = {
-    cubic: scaled(4),
+    cubic: cubic_matrix(4),
     hexagonal: [
       [3, 0, 0],
       [-1.5, (3 * Math.sqrt(3)) / 2, 0],

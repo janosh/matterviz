@@ -125,21 +125,18 @@ export function is_compound(name: string): boolean {
   return (name.match(/[A-Z]/g)?.length ?? 0) >= 2
 }
 
-// Tokenize a chemical formula for rendering with subscripts/superscripts
-// Examples:
-//   "Fe3C" -> [{text: "Fe"}, {sub: "3"}, {text: "C"}]
-//   "SiO2" -> [{text: "Si"}, {text: "O"}, {sub: "2"}]
-//   "Li0.5FeO2" -> [{text: "Li"}, {sub: "0.5"}, {text: "Fe"}, {text: "O"}, {sub: "2"}]
-//   "Fe" -> [{text: "Fe"}]
-//   "α-Fe" -> [{text: "α-Fe"}] (Greek phases pass through unchanged)
 // Token classes: number runs (incl. decimals) become subscripts; a '-' at the end of the string
 // or followed by digits is a charge superscript ("O2-", "Cl-2"), any other '-' stays a text
 // hyphen ("Fe-Fe3C"); element symbols (uppercase + lowercase run) are separate text tokens; any
 // other run of characters merges into the preceding text token. '+' never gets here (early
-// return above).
+// return in tokenize_formula_markup).
 const FORMULA_TOKEN_RE =
   /(?<sub>\d+(?:\.\d+)?)|(?<sup>-(?:\d+|$))|(?<element>[A-Z][a-z]*)|(?<other>-|[^A-Z\d-]+)/g
+// Multi-phase labels ("La2NiO4 + NiO") split on their " + " separators, which are kept
+const PHASE_SEPARATOR_RE = /(?<separator>\s*\+\s*)/
 
+// Tokenize a chemical formula for rendering with subscripts/superscripts, e.g.
+// "Li0.5FeO2" -> [{text: "Li"}, {sub: "0.5"}, {text: "Fe"}, {text: "O"}, {sub: "2"}]
 export function tokenize_formula_markup(formula: string): FormulaMarkupToken[] {
   if (!formula) return []
   // Greek letters or multi-phase notation pass through unchanged
@@ -177,7 +174,7 @@ export function get_formula_label_segments(label: string): FormulaLabelSegment[]
     else segments.push({ text, subscript })
   }
   // the ` + ` separators tokenize to a single plain text token themselves
-  for (const part of label.split(/(?<separator>\s*\+\s*)/)) {
+  for (const part of label.split(PHASE_SEPARATOR_RE)) {
     const tokens = tokenize_formula_markup(part)
     for (const [idx, token] of tokens.entries()) {
       const at_word_start = idx === 0 || /\s$/.test(tokens[idx - 1].text ?? ``)
@@ -236,7 +233,7 @@ function format_label_parts(
 ): string {
   if (!use_subscripts) return label
   return label
-    .split(/(?<separator>\s*\+\s*)/)
+    .split(PHASE_SEPARATOR_RE)
     .map((part) => (part.trim() === `+` ? part : formatter(part.trim(), use_subscripts)))
     .join(``)
 }

@@ -3,7 +3,7 @@
   import { page } from '$app/state'
   import { DragOverlay, StatusMessage } from '$lib/feedback'
   import FilePicker from '$lib/FilePicker.svelte'
-  import { load_from_url, type FileLoadMeta } from '$lib/io'
+  import { as_text, load_from_url, type FileLoadMeta } from '$lib/io'
   import { parse_volumetric_file } from '$lib/isosurface/parse'
   import { format_num } from '$lib/labels'
   import { parse_structure_file } from '$lib/structure/parse'
@@ -40,9 +40,6 @@
   // Use precomputed data_range from the active volume
   let data_range = $derived(volumetric_data?.[active_volume_idx]?.data_range)
   let active_volume = $derived(volumetric_data?.[active_volume_idx])
-
-  const decode_content = (content: string | ArrayBuffer): string =>
-    content instanceof ArrayBuffer ? new TextDecoder().decode(content) : content
 
   function reset_loaded_content() {
     structure = undefined
@@ -102,7 +99,7 @@
     try {
       const parse_start = performance.now()
       await load_from_url(url, (content, filename) => {
-        parse_and_apply(decode_content(content), filename)
+        parse_and_apply(as_text(content), filename)
       })
       parse_time_ms = Math.round(performance.now() - parse_start)
     } catch (error) {
@@ -148,8 +145,7 @@
     parse_time_ms = undefined
     reset_loaded_content()
     const parse_start = performance.now()
-    const text = decode_content(content)
-    parse_and_apply(text, filename)
+    parse_and_apply(as_text(content), filename)
     parse_time_ms = Math.round(performance.now() - parse_start)
   }
 </script>

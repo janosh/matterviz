@@ -4,9 +4,10 @@
 // every chart, so the per-chart test files only keep behaviour specific to their own marks.
 import { BarPlot, BoxPlot, Histogram, ScatterPlot } from '$lib'
 import type { Vec2 } from '$lib/math'
+import { type AxisConfig, COLOR_BAR_DEFAULTS } from '$lib/plot/core/types'
 import { AXIS_LABEL_HEIGHT, DEFAULT_PLOT_PADDING } from '$lib/plot/core/layout'
 import BinnedScatterPlot from '$lib/plot/scatter/BinnedScatterPlot.svelte'
-import { type Component, tick } from 'svelte'
+import { type Component, createRawSnippet, tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
   axis_label_pivot_y,
@@ -171,6 +172,57 @@ const axis_charts: AxisChart[] = [
   },
 ]
 
+// Charts with a category axis: the frame measures their category names (not the slot
+// indices behind them) when reserving padding, on whichever side the orientation puts them
+const categorical_charts = [
+  {
+    name: `BarPlot`,
+    component: BarPlot,
+    selector: `.bar-plot`,
+    props: (cats: string[], orientation: `vertical` | `horizontal`) => ({
+      series: [{ x: cats, y: cats.map((_cat, idx) => idx + 1), color: `blue` }],
+      orientation,
+    }),
+  },
+  {
+    name: `BoxPlot`,
+    component: BoxPlot,
+    selector: `.box-plot`,
+    props: (cats: string[], orientation: `vertical` | `horizontal`) => ({
+      series: cats.map((cat) => ({ y: dist(40), label: cat, category: cat })),
+      orientation,
+      show_legend: false, // isolate tick tilting from the auto legend's layout reservation
+    }),
+  },
+]
+
+// Charts that hand a colorbar to the frame's solver through create_colorbar_decoration
+const colorbar_charts = [
+  {
+    name: `ScatterPlot`,
+    component: ScatterPlot,
+    selector: `.scatter`,
+    props: () => ({
+      series: [{ x: [0, 100], y: [90, 90], color_values: [1, 2] }],
+      x_axis: { range: [0, 100] },
+      y_axis: { range: [0, 100] },
+      legend: null,
+      color_bar: {},
+    }),
+  },
+  {
+    name: `BinnedScatterPlot`,
+    component: BinnedScatterPlot,
+    selector: `.binned-scatter`,
+    props: () => ({
+      series: [{ x: [0.5], y: [0.5] }],
+      density: { auto_point_mode: { max_points: 0, max_points_per_px: 0 }, bin_px: 20 },
+      x_axis: { range: [0, 1] },
+      y_axis: { range: [0, 1] },
+    }),
+  },
+]
+
 const mount_chart = (
   chart: Pick<FrameChart, `component` | `selector`>,
   props: Record<string, unknown>,
@@ -228,45 +280,51 @@ describe(`cartesian frame`, () => {
     },
   )
 
-  // Rect zoom inverts the drag rect and writes it into each bindable axis prop, so the
-  // range sync effect can't snap the view straight back to the auto range. x2/y2 have no
-  // data behind them here, so their [0, 1] sentinel scales must stay out of the props.
-  test(`rect zoom writes only the primary axis ranges back to the props`, async () => {
-    const bound = $state({
-      x_axis: { range: [0, 10] as Vec2 },
-      y_axis: { range: [0, 10] as Vec2 },
-      x2_axis: {},
-      y2_axis: {},
-    })
-    await mount_sized(
-      BarPlot,
-      bind_props({ series: [{ x: [0, 1, 2], y: [1, 2, 3] }] }, bound),
-      {
-        selector: `.bar-plot`,
-      },
-    )
+  // Rect zoom inverts the drag rect and writes it into each bindable axis prop, so the range
+  // sync effect can't snap the view straight back to the auto range. A secondary axis is only
+  // written when data sits on it: otherwise its [0, 1] sentinel scale must stay out of the props
+  test.each(frame_charts)(
+    `$name rect zoom writes the dragged ranges into the bound axis props`,
+    async (chart) => {
+      const pinned: Vec2 = [0, 400]
+      const bound = $state<Record<`x_axis` | `x2_axis` | `y_axis` | `y2_axis`, AxisConfig>>({
+        x_axis: { range: pinned },
+        x2_axis: { range: pinned },
+        y_axis: { range: pinned },
+        y2_axis: { range: pinned },
+      })
+      const plot = await mount_chart(
+        chart,
+        bind_props(chart.secondary_props([100, 200, 300]), bound),
+      )
+      // jsdom reports a zero-origin bounding rect, so client coords are plot-local; drag the
+      // middle half of the plot width and the second quarter of its height
+      const clip = clip_rect(plot)
+      const at = (fx: number, fy: number): MouseEventInit => ({
+        bubbles: true,
+        clientX: clip.x + clip.width * fx,
+        clientY: clip.y + clip.height * fy,
+      })
+      doc_query(`svg[role="application"]`).dispatchEvent(
+        new MouseEvent(`mousedown`, at(0.25, 0.25)),
+      )
+      window.dispatchEvent(new MouseEvent(`mousemove`, at(0.75, 0.5)))
+      window.dispatchEvent(new MouseEvent(`mouseup`, at(0.75, 0.5)))
+      await tick()
 
-    // jsdom reports a zero-origin bounding rect, so client coords are plot-local
-    const at = (x: number, y: number): MouseEventInit => ({
-      button: 0,
-      buttons: 1,
-      clientX: x,
-      clientY: y,
-    })
-    const svg = doc_query<SVGSVGElement>(`svg[role="application"]`)
-    svg.dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true, ...at(150, 120) }))
-    window.dispatchEvent(new MouseEvent(`mousemove`, at(300, 200)))
-    window.dispatchEvent(new MouseEvent(`mouseup`, { ...at(300, 200), buttons: 0 }))
-    await tick()
-
-    for (const [min, max] of [bound.x_axis.range, bound.y_axis.range]) {
-      expect(min).toBeGreaterThan(0)
-      expect(max).toBeLessThan(10)
-      expect(max).toBeGreaterThan(min)
-    }
-    expect(bound.x2_axis).toEqual({}) // a write would have added a `range` key
-    expect(bound.y2_axis).toEqual({})
-  })
+      const zoomed = (axis: `x` | `x2` | `y` | `y2`) => bound[`${axis}_axis`].range
+      for (const axis of [`x`, `y`, ...chart.secondary_axes] as const) {
+        const [min, max] = zoomed(axis) ?? []
+        expect(min, axis).toBeGreaterThan(pinned[0])
+        expect(max, axis).toBeLessThan(pinned[1])
+        // the dragged rect spans at most half the pinned range on either axis
+        expect((max ?? 0) - (min ?? 0), axis).toBeLessThan((pinned[1] - pinned[0]) / 2)
+        expect(max, axis).toBeGreaterThan(min ?? Infinity)
+      }
+      // BoxPlot's vertical boxes carry no x2 data, so the sentinel x2 scale is never inverted
+      if (!chart.secondary_axes.includes(`x2`)) expect(zoomed(`x2`)).toEqual(pinned)
+    },
+  )
 
   // The frame owns legend dragging: a dropped legend keeps the drop position (clamped to the
   // plot) and leaves solver ownership, so the data-decoration-* stamps go away
@@ -289,14 +347,60 @@ describe(`cartesian frame`, () => {
     expect(pinned.getAttribute(`data-decoration-x`)).toBeNull()
   })
 
-  test.each(frame_charts)(`$name applies an aria-label only to its SVG`, async (chart) => {
-    const aria_label = `${chart.name} accessible plot`
-    const plot = await mount_chart(chart, { ...chart.props(), 'aria-label': aria_label })
-    expect(plot.getAttribute(`aria-label`)).toBeNull()
-    expect(plot.querySelector(`svg[role="application"]`)?.getAttribute(`aria-label`)).toBe(
-      aria_label,
-    )
+  // The accessible name comes from the axis labels unless the caller passes one explicitly;
+  // either way only the SVG carries it, not the wrapper
+  test.each(axis_charts)(
+    `$name derives the SVG aria-label from the axis labels`,
+    async (chart) => {
+      const svg_label = (plot: HTMLElement) =>
+        plot.querySelector(`svg[role="application"]`)?.getAttribute(`aria-label`)
+      const labelled = await mount_chart(chart, {
+        ...chart.props(),
+        x_axis: { label: `Temperature` },
+        y_axis: { label: `Pressure` },
+      })
+      expect(svg_label(labelled)).toBe(`Temperature vs Pressure`)
+      expect(labelled.getAttribute(`aria-label`)).toBeNull()
+      const aria_label = `${chart.name} accessible plot`
+      const explicit = await mount_chart(chart, { ...chart.props(), 'aria-label': aria_label })
+      expect(svg_label(explicit)).toBe(aria_label)
+      expect(explicit.getAttribute(`aria-label`)).toBeNull()
+    },
+  )
+
+  test.each(frame_charts)(`$name renders the children snippet`, async (chart) => {
+    const plot = await mount_chart(chart, {
+      ...chart.props(),
+      children: createRawSnippet(() => ({
+        render: () => `<div class="custom-child">Custom overlay content</div>`,
+      })),
+    })
+    expect(plot.querySelector(`.custom-child`)?.textContent).toBe(`Custom overlay content`)
   })
+
+  // Auto-padding has to measure the custom strings the axis actually draws, not the numeric
+  // tick values behind them, or the labels tilt into a band nobody reserved
+  test.each(axis_charts)(
+    `$name bottom padding follows custom x tick labels, not their numeric values`,
+    async (chart) => {
+      // read the baseline off a tick group's translate: ScatterPlot draws no x spine
+      const baseline_y = async (ticks: Record<number, string>): Promise<number> => {
+        const plot = await mount_chart(chart, {
+          ...chart.props(),
+          x_axis: { ticks, tick: { label: { rotation: 45 } } },
+        })
+        const transform = plot.querySelector(`g.x-axis g.tick`)?.getAttribute(`transform`)
+        return Number(/,\s*(?<axis_y>[\d.]+)\)/.exec(transform ?? ``)?.groups?.axis_y)
+      }
+      await with_measured_text(async () => {
+        const long = Object.fromEntries([0, 1, 2].map((val) => [val, `CATEGORY_LABEL_${val}`]))
+        const short = Object.fromEntries([0, 1, 2].map((val) => [val, `${val}`]))
+        const [with_long, with_short] = [await baseline_y(long), await baseline_y(short)]
+        expect(with_short).toBeGreaterThan(0)
+        expect(with_long).toBeLessThan(with_short)
+      })
+    },
+  )
 
   // resolve_legend_visibility itself is unit-tested in series-visibility.test.ts; this checks
   // each chart wires its own auto default through and that legend=null stays the hard off switch
@@ -520,6 +624,60 @@ describe(`cartesian frame`, () => {
     },
   )
 
+  const long_cats = [`PENDING`, `RUNNING`, `QUEUE_HOLD`, `COMPLETED`, `CANCELLED`]
+  test.each(categorical_charts)(
+    `$name rotates long category names outward and keeps short ones upright`,
+    async (chart) => {
+      const mount_with_cats = (cats: string[], strategies?: `rotate`[]) =>
+        with_measured_text(() =>
+          mount_chart(chart, {
+            ...chart.props(cats, `vertical`),
+            x_axis: { label: `state`, tick: { label: { auto_layout: { strategies } } } },
+          }),
+        )
+      const x_tick_labels = (plot: HTMLElement) => [
+        ...plot.querySelectorAll(`g.x-axis g.tick text`),
+      ]
+      const baseline_of = (plot: HTMLElement): number =>
+        Number(plot.querySelector(`g.x-axis > line`)?.getAttribute(`y1`))
+      const long = await mount_with_cats(long_cats, [`rotate`])
+      const long_labels = x_tick_labels(long)
+      expect(long_labels.length).toBeGreaterThan(2)
+      for (const label of long_labels) {
+        expect(label.getAttribute(`transform`)).toMatch(/^rotate\(-[\d.]+,/)
+      }
+      // Side padding lets every label trail outward instead of flipping the first into the marks
+      expect(long_labels.map((label) => label.getAttribute(`text-anchor`))).toEqual(
+        Array(long_labels.length).fill(`end`),
+      )
+      const short = await mount_with_cats([`A`, `B`, `C`])
+      const short_labels = x_tick_labels(short)
+      expect(short_labels).toHaveLength(3) // else the loop below asserts nothing
+      for (const label of short_labels) expect(label.getAttribute(`transform`)).toBeNull()
+      // the tilted labels still fit: the x baseline moves up to make room for them
+      expect(baseline_of(long)).toBeGreaterThan(0)
+      expect(baseline_of(long)).toBeLessThan(baseline_of(short))
+    },
+  )
+
+  // Horizontal orientation moves the categories onto y, so the left padding has to be measured
+  // from the category names; measuring the integer slot indices behind them left long names
+  // overrunning the reserved gutter and the y title on top of the ticks
+  test.each(categorical_charts)(
+    `$name horizontal orientation sizes left padding from category names`,
+    async (chart) => {
+      const left_pad_for = (cats: string[]) =>
+        with_measured_text(async () => {
+          const plot = await mount_chart(chart, chart.props(cats, `horizontal`))
+          return clip_rect(plot).x
+        })
+      const long = await left_pad_for([`QUEUE_HOLD`, `COMPLETED`, `CANCELLED`])
+      const short = await left_pad_for([`A`, `B`, `C`])
+      expect(short).toBeGreaterThan(0)
+      expect(long).toBeGreaterThan(short)
+    },
+  )
+
   // ref-line annotations render outside the chart clip group so labels at the plot edges
   // (e.g. a vertical line's top label) can overflow instead of being cropped, while z ordering
   // still holds: below-lines refs paint behind the marks, above-all in front
@@ -585,6 +743,41 @@ describe(`cartesian frame`, () => {
         JSON.stringify({ auto_a, auto_b }),
       ).toBe(true)
       expect(geometry(`pinned`)).toMatchObject({ anchor: `end`, baseline: `auto` })
+    },
+  )
+
+  // The solver reserves the colorbar's full footprint (bar plus tick labels overflowing it),
+  // keeps that rectangle axis_clearance away from every plot edge and positions the wrapper
+  // so the overflowing labels, not the bar, sit at the solved rect
+  test.each(colorbar_charts)(
+    `$name keeps overflowing colorbar ticks clear of the plot axes`,
+    async (chart) => {
+      vi.spyOn(HTMLElement.prototype, `offsetWidth`, `get`).mockReturnValue(220)
+      vi.spyOn(HTMLElement.prototype, `offsetHeight`, `get`).mockReturnValue(30)
+      vi.spyOn(Element.prototype, `getBoundingClientRect`).mockImplementation(
+        function (this: Element): DOMRect {
+          if (this.classList.contains(`tick-label`)) {
+            return DOMRect.fromRect({ x: 90, y: 128, width: 240, height: 18 })
+          }
+          return DOMRect.fromRect({ x: 100, y: 100, width: 220, height: 30 })
+        },
+      )
+      const plot = await mount_chart(chart, chart.props(), { width: 800, height: 600 })
+      const clearance = COLOR_BAR_DEFAULTS.axis_clearance
+      await vi.waitFor(() => {
+        const colorbar = doc_query(`.colorbar-wrapper`)
+        const [x, y, width, height] = [`x`, `y`, `width`, `height`].map((key) =>
+          Number(colorbar.getAttribute(`data-decoration-${key}`)),
+        )
+        const area = clip_rect(plot)
+        expect({ width, height }).toEqual({ width: 240, height: 46 })
+        expect(x).toBeGreaterThanOrEqual(area.x + clearance)
+        expect(y).toBeGreaterThanOrEqual(area.y + clearance)
+        expect(x + width).toBeLessThanOrEqual(area.x + area.width - clearance)
+        expect(y + height).toBeLessThanOrEqual(area.y + area.height - clearance)
+        expect(Math.min(x - area.x, area.x + area.width - (x + width))).toBe(clearance)
+        expect(Number(colorbar.style.left.replace(`px`, ``))).toBe(x + 10)
+      })
     },
   )
 })

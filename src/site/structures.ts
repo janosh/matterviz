@@ -7,14 +7,14 @@ import {
   structure_from_json,
 } from '$lib/structure/parse'
 import { is_crystal } from '$lib/structure/validation'
-import { fixture_ext, glob_text, site_file_info } from '$site/imports'
+import { fixture_ext, glob_basename, glob_text, site_file_info } from '$site/imports'
 import { SvelteMap } from 'svelte/reactivity'
 
 export const structures = Object.entries(
   import.meta.glob<unknown>(`./structures/*.json`, { eager: true, import: `default` }),
 )
   .flatMap(([path, data]) => {
-    const id = path.split(`/`).at(-1)?.split(`.`)[0] as string
+    const id = glob_basename(path).split(`.`)[0]
     const optimade = optimade_structure_from_raw(data)
     // optimade_to_structure throws on a malformed fixture on purpose: that should fail loudly
     // at build/test time rather than silently drop the structure from the demo list.

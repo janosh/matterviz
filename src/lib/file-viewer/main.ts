@@ -129,6 +129,10 @@ const global_window = globalThis as unknown as Window
 const is_current = (gen: number): boolean => gen === generation
 const get_container = (): HTMLElement | null =>
   document.querySelector<HTMLElement>(`#matterviz-app`)
+// Tell the host (VS Code surfaces these as notifications); a no-op outside a host
+const post_to_host = (command: `info` | `error`, text: string): void => {
+  vscode_api?.postMessage({ command, text })
+}
 
 // Set up VSCode-specific download override for file exports
 export const setup_vscode_download = (): void => {
@@ -156,19 +160,13 @@ export const setup_vscode_download = (): void => {
         reader.addEventListener(`load`, () => send_message(reader.result as string, true))
         reader.addEventListener(`error`, () => {
           console.error(`Failed to read binary data for download`)
-          vscode_api?.postMessage({
-            command: `error`,
-            text: `Failed to read binary data for download`,
-          })
+          post_to_host(`error`, `Failed to read binary data for download`)
         })
         reader.readAsDataURL(data)
       }
     } catch (error) {
       console.error(`VSCode download failed:`, error)
-      vscode_api?.postMessage({
-        command: `error`,
-        text: `Download failed: ${error}`,
-      })
+      post_to_host(`error`, `Download failed: ${error}`)
     }
   }
 }
@@ -204,7 +202,7 @@ const enqueue = (gen: number, task: () => Promise<void>, failure_label: string):
     .catch((error: unknown) => {
       if (!is_current(gen)) return
       console.error(`${failure_label}:`, error)
-      vscode_api?.postMessage({ command: `error`, text: `${failure_label}: ${error}` })
+      post_to_host(`error`, `${failure_label}: ${error}`)
     })
 }
 
@@ -460,7 +458,7 @@ export const create_display = (
     log_message = `${label} rendered: ${filename}${detail}`
   }
 
-  vscode_api?.postMessage({ command: `info`, text: log_message })
+  post_to_host(`info`, log_message)
   return app
 }
 
@@ -506,10 +504,7 @@ const report_display_error = (
 ): void => {
   const label = filename?.trim() ? filename : `Unknown file`
   if (container && !current_app) create_error_display(container, err, label)
-  vscode_api?.postMessage({
-    command: `error`,
-    text: `Error rendering ${label}: ${err.message}`,
-  })
+  post_to_host(`error`, `Error rendering ${label}: ${err.message}`)
 }
 
 // Host file-change and settings messages go through the work queue like the bootstrap display,

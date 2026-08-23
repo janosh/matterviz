@@ -4,17 +4,13 @@ import {
   convert_atomic_numbers,
   count_elements,
   create_trajectory_frame,
+  values_per_sample,
 } from '$lib/trajectory/helpers'
-import type {
-  PositionStreamOptions,
-  TrajectoryPositionStream,
-  TrajectorySignalDescriptor,
-} from '$lib/trajectory/index'
+import type { PositionStreamOptions, TrajectoryPositionStream } from '$lib/trajectory/index'
 import type { Dataset, Group } from 'h5wasm'
 import type * as h5wasm from 'h5wasm'
 import {
   Hdf5GroupSelectionRequiredError,
-  assert_hdf5_stream_budget,
   attach_site_vectors,
   attribute_value,
   dataset_at,
@@ -23,16 +19,16 @@ import {
   is_hdf5_dataset,
   is_hdf5_group,
   lattice_from_values,
-  positive_integer_stride,
   read_numeric_first_axis,
   read_numeric_hyperslab,
   read_numeric_samples,
-  sampled_indices,
+  resolve_stream_channels,
   sampled_property_rows,
+  signal_descriptors as describe_signals,
   string_value,
   to_number_array,
   to_scalar_number,
-  unique_strings,
+  trajectory_signal,
 } from './h5-utils'
 import type { LazyTrajectorySource, ParsedTrajectory } from './shared'
 
@@ -66,21 +62,14 @@ const values_of = (dataset: Dataset, path: string): number[] => {
 
 const values_of_first_axis = (dataset: Dataset, path: string): number[] => {
   const shape = shape_of(dataset, path)
-  const values_per_entry = shape.slice(1).reduce((product, size) => product * size, 1)
   return read_numeric_first_axis(
     dataset,
     path,
     shape[0],
-    values_per_entry,
+    values_per_sample(shape.slice(1)),
     `Reference MD HDF5 dataset`,
   )
 }
-
-const slice_values = (
-  dataset: Dataset,
-  path: string,
-  ranges: Parameters<Dataset[`slice`]>[0],
-): number[] => read_numeric_hyperslab(dataset, path, ranges)
 
 const ensure_shape = (shape: number[], expected: number[], path: string): void => {
   if (shape.length !== expected.length || shape.some((size, idx) => size !== expected[idx])) {
@@ -178,7 +167,7 @@ const replica_value = (
   replica_idx: number,
 ): number => {
   ensure_shape(shape_of(dataset, path), [replica_count], path)
-  const values = slice_values(dataset, path, [[replica_idx, replica_idx + 1]])
+  const values = read_numeric_hyperslab(dataset, path, [[replica_idx, replica_idx + 1]])
   if (values.length !== 1) {
     throw new Error(`Reference MD HDF5 dataset ${path} must yield one selected replica value`)
   }
@@ -296,12 +285,12 @@ export const parse_reference_md_h5_file = (
     [replica_count, n_atoms, 3],
     positions_path,
   )
-  const initial_positions = slice_values(initial_positions_dataset, positions_path, [
+  const initial_positions = read_numeric_hyperslab(initial_positions_dataset, positions_path, [
     [replica_idx, replica_idx + 1],
   ])
   const cells_dataset = required_dataset(h5_file, cells_path)
   ensure_shape(shape_of(cells_dataset, cells_path), [replica_count, 3, 3], cells_path)
-  const selected_cell_values = slice_values(cells_dataset, cells_path, [
+  const selected_cell_values = read_numeric_hyperslab(cells_dataset, cells_path, [
     [replica_idx, replica_idx + 1],
   ])
   if (selected_cell_values.length !== 9) {
@@ -366,12 +355,7 @@ export const parse_reference_md_h5_file = (
     },
     ...(dipole ? { dipole } : {}),
   }
-  const signal_descriptors: Record<string, TrajectorySignalDescriptor> = Object.fromEntries(
-    Object.entries(signal_manifest).map(([key, { sample_shape, unit }]) => [
-      key,
-      { sample_shape, sample_count: n_frames, ...(unit ? { unit } : {}) },
-    ]),
-  )
+  const signal_descriptors = describe_signals(signal_manifest, () => n_frames)
   const velocity_frames_per_slice = hdf5_frames_per_slice(velocity_sample_size)
   const read_replica_frames = (
     manifest: ObservableManifest,
@@ -379,17 +363,16 @@ export const parse_reference_md_h5_file = (
     end: number,
     stride = 1,
   ): number[] =>
-    slice_values(manifest.dataset, manifest.path, [
+    read_numeric_hyperslab(manifest.dataset, manifest.path, [
       [start, end, stride],
       [replica_idx, replica_idx + 1],
     ])
   const read_replica_samples = (manifest: ObservableManifest, stride = 1): Float64Array => {
-    const sample_size = manifest.sample_shape.reduce((product, size) => product * size, 1)
     return read_numeric_samples(
       manifest.dataset,
       manifest.path,
       n_frames,
-      sample_size,
+      values_per_sample(manifest.sample_shape),
       stride,
       (start, end, sample_stride) => [
         [start, end, sample_stride],
@@ -414,13 +397,8 @@ export const parse_reference_md_h5_file = (
       previous_velocity[coordinate_idx] = velocity
     }
   }
-  const CHECKPOINT_BUDGET_BYTES = 32 * 1024 * 1024
   const checkpoint_bytes = velocity_sample_size * Float64Array.BYTES_PER_ELEMENT
-  const checkpoint_interval = reference_checkpoint_interval(
-    n_frames,
-    checkpoint_bytes,
-    CHECKPOINT_BUDGET_BYTES,
-  )
+  const checkpoint_interval = reference_checkpoint_interval(n_frames, checkpoint_bytes)
   // Trapezoid-integrate the velocity samples of frames [start_frame, end_frame) into
   // `positions`, reading them in slice-sized chunks; `on_frame` sees each frame once the
   // integration has reached it, with the chunk and the frame's offset into it
@@ -540,12 +518,7 @@ export const parse_reference_md_h5_file = (
     const signals = Object.fromEntries(
       Object.entries(signal_manifest).map(([key, manifest]) => [
         key,
-        {
-          values: read_replica_samples(manifest),
-          sample_shape: manifest.sample_shape,
-          steps: [...production_steps],
-          ...(manifest.unit ? { unit: manifest.unit } : {}),
-        },
+        trajectory_signal(read_replica_samples(manifest), manifest, [...production_steps]),
       ]),
     )
     return {
@@ -561,37 +534,19 @@ export const parse_reference_md_h5_file = (
   const collect_positions = (
     options: PositionStreamOptions = {},
   ): TrajectoryPositionStream => {
-    const frame_stride = positive_integer_stride(
-      options.frame_stride,
-      `Reference MD frame_stride`,
-    )
-    const vector_keys = unique_strings(options.vector_keys)
-    const signal_keys = unique_strings(options.signal_keys)
-    const unknown_keys = [
-      ...vector_keys.filter((key) => key !== `velocity`),
-      ...signal_keys.filter((key) => !signal_manifest[key]),
-    ]
-    if (unknown_keys.length > 0) {
-      throw new Error(`Reference MD HDF5 has no channels named ${unknown_keys.join(`, `)}`)
-    }
-    const selected_frame_count = Math.ceil(n_frames / frame_stride)
-    const selected_values = selected_frame_count * velocity_sample_size
-    const signal_values = signal_keys.reduce(
-      (total, key) =>
-        total +
-        n_frames *
-          (signal_manifest[key].sample_shape.reduce((product, size) => product * size, 1) + 1),
-      0,
-    )
-    assert_hdf5_stream_budget(
-      `Reference MD`,
+    const { frame_stride, vector_keys, signal_keys, frame_indices } = resolve_stream_channels(
+      `Reference MD HDF5`,
+      options,
       n_frames,
-      selected_frame_count,
-      velocity_sample_size * (1 + vector_keys.length) + 10,
-      signal_values,
-      options.max_bytes ?? Number.POSITIVE_INFINITY,
+      {
+        is_vector: (key) => key === `velocity`,
+        is_signal: (key) => Boolean(signal_manifest[key]),
+        values_per_frame: (n_vectors) => velocity_sample_size * (1 + n_vectors) + 10,
+        signal_values: (key) =>
+          n_frames * (values_per_sample(signal_manifest[key].sample_shape) + 1),
+      },
     )
-    const frame_indices = sampled_indices(n_frames, frame_stride)
+    const selected_values = frame_indices.length * velocity_sample_size
     const positions = new Float64Array(selected_values)
     const selected_velocities = vector_keys.includes(`velocity`)
       ? new Float64Array(selected_values)
@@ -621,15 +576,7 @@ export const parse_reference_md_h5_file = (
           key === `velocity` && native_velocity
             ? native_velocity
             : read_replica_samples(manifest)
-        return [
-          key,
-          {
-            values,
-            sample_shape: manifest.sample_shape,
-            steps: [...production_steps],
-            ...(manifest.unit ? { unit: manifest.unit } : {}),
-          },
-        ]
+        return [key, trajectory_signal(values, manifest, [...production_steps])]
       }),
     )
     return {

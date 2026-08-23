@@ -297,20 +297,13 @@ describe(`extract_tdb_reference`, () => {
     },
   )
 
-  test(`returns null for empty comments`, () => {
-    expect(extract_tdb_reference([])).toBeNull()
-  })
-
-  test(`returns null when no keywords match`, () => {
-    expect(extract_tdb_reference([`$ Just a regular comment`, `$ Another one`])).toBeNull()
-  })
-
-  test(`skips short references (<=30 chars)`, () => {
-    expect(extract_tdb_reference([`$ Reference: short`])).toBeNull()
-  })
-
-  test(`skips references ending with "from"`, () => {
-    expect(extract_tdb_reference([`$ Reference data was extracted from`])).toBeNull()
+  test.each([
+    [`empty comments`, []],
+    [`no keyword matches`, [`$ Just a regular comment`, `$ Another one`]],
+    [`a short reference (<=30 chars)`, [`$ Reference: short`]],
+    [`a reference ending with "from"`, [`$ Reference data was extracted from`]],
+  ])(`returns null for %s`, (_desc, comments) => {
+    expect(extract_tdb_reference(comments)).toBeNull()
   })
 
   test(`strips leading $ from reference text`, () => {
@@ -324,32 +317,26 @@ describe(`extract_tdb_reference`, () => {
 // === summarize_models ===
 
 describe(`summarize_models`, () => {
-  test(`summarizes single sublattice type`, () => {
-    expect(
-      summarize_models([
+  test.each([
+    { phases: [], expected: `` },
+    { phases: [{ sublattice_count: 4, sublattice_sites: [1, 1, 1, 1] }], expected: `1×4-SL` },
+    {
+      phases: [
         { sublattice_count: 2, sublattice_sites: [1, 1] },
         { sublattice_count: 2, sublattice_sites: [1, 3] },
-      ]),
-    ).toBe(`2×2-SL`)
-  })
-
-  test(`summarizes multiple sublattice types sorted by count`, () => {
-    expect(
-      summarize_models([
+      ],
+      expected: `2×2-SL`,
+    },
+    // multiple sublattice types sorted by count
+    {
+      phases: [
         { sublattice_count: 3, sublattice_sites: [1, 1, 1] },
         { sublattice_count: 2, sublattice_sites: [1, 1] },
         { sublattice_count: 2, sublattice_sites: [1, 3] },
-      ]),
-    ).toBe(`2×2-SL, 1×3-SL`)
-  })
-
-  test(`returns empty string for no phases`, () => {
-    expect(summarize_models([])).toBe(``)
-  })
-
-  test(`handles single phase`, () => {
-    expect(summarize_models([{ sublattice_count: 4, sublattice_sites: [1, 1, 1, 1] }])).toBe(
-      `1×4-SL`,
-    )
+      ],
+      expected: `2×2-SL, 1×3-SL`,
+    },
+  ])(`$phases.length phases → "$expected"`, ({ phases, expected }) => {
+    expect(summarize_models(phases)).toBe(expected)
   })
 })

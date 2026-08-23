@@ -10,7 +10,7 @@ import {
   SYM_ELEMENTS_INPUT_FRAME_NOTE,
   SymmetryElementControls,
 } from '$lib/symmetry'
-import { flushSync, mount } from 'svelte'
+import { type ComponentProps, flushSync, mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 
 const make_elem = (
@@ -111,13 +111,15 @@ describe(`SYM_ELEM_KIND_INFO`, () => {
   })
 })
 
+// Mount the controls into document.body and flush the first render
+const mount_controls = (props: ComponentProps<typeof SymmetryElementControls>) => {
+  mount(SymmetryElementControls, { target: document.body, props })
+  flushSync()
+}
+
 describe(`SymmetryElementControls`, () => {
   test(`renders one checkbox per PRESENT kind with counts, in display order`, () => {
-    mount(SymmetryElementControls, {
-      target: document.body,
-      props: { elements: SAMPLE_ELEMENTS },
-    })
-    flushSync()
+    mount_controls({ elements: SAMPLE_ELEMENTS })
     const labels = [...document.body.querySelectorAll(`label`)]
     // display order = SYM_ELEM_KINDS: axes (rotation, screw, rotoinversion) before planes
     expect(labels.map((lbl) => lbl.textContent?.trim())).toEqual([
@@ -131,11 +133,7 @@ describe(`SymmetryElementControls`, () => {
   })
 
   test(`default state checks only rotation axes`, () => {
-    mount(SymmetryElementControls, {
-      target: document.body,
-      props: { elements: SAMPLE_ELEMENTS },
-    })
-    flushSync()
+    mount_controls({ elements: SAMPLE_ELEMENTS })
     const checked = [...document.body.querySelectorAll(`input`)].map((inp) => inp.checked)
     // only the first checkbox (rotation axes) is checked by DEFAULT_SHOW_SYM_KINDS
     expect(checked).toEqual([true, false, false, false, false, false])
@@ -144,19 +142,15 @@ describe(`SymmetryElementControls`, () => {
   test(`toggling a checkbox updates the bound show_kinds (reassigned, not mutated)`, () => {
     const initial: ShowSymmetryKinds = { rotation: true }
     let bound = initial
-    mount(SymmetryElementControls, {
-      target: document.body,
-      props: {
-        elements: SAMPLE_ELEMENTS,
-        get show_kinds() {
-          return bound
-        },
-        set show_kinds(val: ShowSymmetryKinds) {
-          bound = val
-        },
+    mount_controls({
+      elements: SAMPLE_ELEMENTS,
+      get show_kinds() {
+        return bound
+      },
+      set show_kinds(val: ShowSymmetryKinds) {
+        bound = val
       },
     })
-    flushSync()
     // find the mirror checkbox by its label text (robust to display-order changes)
     const mirror_label = [...document.body.querySelectorAll(`label`)].find((lbl) =>
       lbl.textContent?.includes(`mirror`),
@@ -168,8 +162,7 @@ describe(`SymmetryElementControls`, () => {
   })
 
   test(`renders nothing for empty elements`, () => {
-    mount(SymmetryElementControls, { target: document.body, props: { elements: [] } })
-    flushSync()
+    mount_controls({ elements: [] })
     expect(document.body.querySelector(`.sym-elem-controls`)).toBeNull()
   })
 
@@ -178,11 +171,7 @@ describe(`SymmetryElementControls`, () => {
   test.each([true, false])(
     `in_input_frame=%s disables toggles and notes why`,
     (in_input_frame) => {
-      mount(SymmetryElementControls, {
-        target: document.body,
-        props: { elements: SAMPLE_ELEMENTS, in_input_frame },
-      })
-      flushSync()
+      mount_controls({ elements: SAMPLE_ELEMENTS, in_input_frame })
       const inputs = [...document.body.querySelectorAll(`input`)]
       expect(inputs).toHaveLength(6)
       expect(inputs.every((inp) => inp.disabled === !in_input_frame)).toBe(true)

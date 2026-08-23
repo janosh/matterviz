@@ -2,13 +2,15 @@ import { colors } from '$lib/state.svelte'
 import type { WyckoffPos } from '$lib/symmetry'
 import { WyckoffTable } from '$lib/symmetry'
 import type { MoyoWyckoffPosition } from '@spglib/moyo-wasm'
-import { mount } from 'svelte'
+import { type ComponentProps, mount } from 'svelte'
 import { describe, expect, onTestFinished, test } from 'vitest'
 import { doc_query } from '../setup'
 
 describe(`WyckoffTable`, () => {
-  const mount_table = (wyckoff_positions: WyckoffPos[]) =>
-    mount(WyckoffTable, { target: document.body, props: { wyckoff_positions } })
+  const mount_table = (
+    wyckoff_positions: WyckoffPos[],
+    extra: Partial<ComponentProps<typeof WyckoffTable>> = {},
+  ) => mount(WyckoffTable, { target: document.body, props: { wyckoff_positions, ...extra } })
 
   test(`renders nothing without rows`, () => {
     mount_table([])
@@ -71,20 +73,14 @@ describe(`WyckoffTable`, () => {
     const unoccupied_selector = `tbody tr[title^="Wyckoff position not occupied"]`
 
     test(`renders without ITA columns when no db_positions given`, () => {
-      mount(WyckoffTable, {
-        target: document.body,
-        props: { wyckoff_positions: occupied },
-      })
+      mount_table(occupied)
       expect(header_cells()).toEqual([`Wyckoff`, `Element`, `Fractional Coords`])
       expect(document.querySelectorAll(`tbody tr`)).toHaveLength(2)
       expect(doc_query(`tbody tr td:nth-child(3)`).textContent).toBe(`(0, 0, 0)`)
     })
 
     test(`adds ITA coords + site symmetry columns from db_positions`, () => {
-      mount(WyckoffTable, {
-        target: document.body,
-        props: { wyckoff_positions: occupied, db_positions },
-      })
+      mount_table(occupied, { db_positions })
       expect(header_cells()).toEqual([
         `Wyckoff`,
         `Element`,
@@ -101,10 +97,7 @@ describe(`WyckoffTable`, () => {
     })
 
     test(`show_unoccupied lists empty Wyckoff positions as muted non-interactive rows`, () => {
-      mount(WyckoffTable, {
-        target: document.body,
-        props: { wyckoff_positions: occupied, db_positions, show_unoccupied: true },
-      })
+      mount_table(occupied, { db_positions, show_unoccupied: true })
       const unoccupied_rows = Array.from(document.querySelectorAll(unoccupied_selector))
       expect(unoccupied_rows.map((row) => row.textContent?.trim().slice(0, 2))).toEqual([
         `1b`,

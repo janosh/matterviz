@@ -11,6 +11,7 @@ import { get_d3_interpolator } from '$lib/colors'
 import type { Vec3 } from '$lib/math'
 import type { BufferAttribute } from 'three/webgpu'
 import { describe, expect, test } from 'vitest'
+import { make_fermi_isosurface } from '../setup'
 
 // Unit-square sheet at z=0 plus one vertex lifted to z=1
 const vertices: Vec3[] = [
@@ -20,14 +21,15 @@ const vertices: Vec3[] = [
   [0, 1, 0],
   [0.5, 0.5, 1],
 ]
-const make_surface = (overrides: Partial<FermiIsosurface> = {}): FermiIsosurface => ({
-  positions: Float32Array.from(vertices.flat()),
-  indices: Uint32Array.from([0, 1, 2, 0, 2, 3]),
-  normals: Float32Array.from(vertices.flatMap(() => [0, 0, 1])),
-  band_index: 0,
-  spin: null,
-  ...overrides,
-})
+const make_surface = (overrides: Partial<FermiIsosurface> = {}): FermiIsosurface =>
+  make_fermi_isosurface(
+    vertices,
+    [
+      [0, 1, 2],
+      [0, 2, 3],
+    ],
+    overrides,
+  )
 const viridis: VertexColorSpec = { colormap: `interpolateViridis`, color_range: [0, 1] }
 
 describe(`build_isosurface_geometry`, () => {

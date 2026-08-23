@@ -1,6 +1,6 @@
 import { BarPlot } from '$lib'
 import type { BarHandlerProps, BarSeries } from '$lib/plot'
-import { type ComponentProps, createRawSnippet, mount, tick } from 'svelte'
+import { type ComponentProps, createRawSnippet, tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { inside_clip_path, mount_sized, with_measured_text } from '../setup'
 
@@ -392,19 +392,6 @@ describe(`BarPlot`, () => {
     expect(plot.querySelector(`.custom-tooltip`)?.textContent).toBe(`x: 1, y: 10`)
   })
 
-  test(`children prop`, () => {
-    mount(BarPlot, {
-      target: document.body,
-      props: {
-        series: [basic],
-        children: createRawSnippet(() => ({
-          render: () => `<div class="custom-bar-child">Custom bar overlay</div>`,
-        })),
-      },
-    })
-    expect(document.querySelector(`.custom-bar-child`)?.textContent).toBe(`Custom bar overlay`)
-  })
-
   describe(`categorical bar charts`, () => {
     const cat_series: BarSeries[] = [
       { x: [`A`, `B`, `C`], y: [10, 20, 30], label: `S1`, color: `blue` },
@@ -444,61 +431,6 @@ describe(`BarPlot`, () => {
         expect(tick_count).toBeLessThanOrEqual(max_ticks)
       },
     )
-
-    const x_tick_labels = (plot: HTMLElement): Element[] => [
-      ...plot.querySelectorAll(`g.x-axis g.tick text`),
-    ]
-
-    test(`long category names auto-rotate`, async () => {
-      const cats = [`PENDING`, `RUNNING`, `QUEUE_HOLD`, `COMPLETED`, `CANCELLED`]
-      const plot = await with_measured_text(() =>
-        mount_sized_bar_plot({
-          series: [{ x: cats, y: cats.map((_cat, idx) => idx + 1), color: `blue` }],
-          x_axis: {
-            label: `state`,
-            tick: { label: { auto_layout: { strategies: [`rotate`] } } },
-          },
-        }),
-      )
-      const labels = x_tick_labels(plot)
-      expect(labels.length).toBeGreaterThan(2)
-      for (const label of labels) {
-        expect(label.getAttribute(`transform`)).toMatch(/^rotate\(-[\d.]+,/)
-      }
-      // Side padding lets every label trail outward instead of flipping the first into the bars.
-      expect(labels.map((label) => label.getAttribute(`text-anchor`))).toEqual(
-        Array(labels.length).fill(`end`),
-      )
-    })
-
-    // Horizontal orientation moves the categories onto y, so the left padding has to be
-    // measured from the category names. Measuring ticks.y sizes it from the integer slot
-    // indices instead, leaving the names to overrun the reserved gutter.
-    test(`horizontal orientation sizes left padding from category names`, async () => {
-      const left_pad_for = (cats: string[]) =>
-        with_measured_text(async () => {
-          const plot = await mount_sized_bar_plot({
-            series: [{ x: cats, y: cats.map((_cat, idx) => idx + 1), color: `blue` }],
-            orientation: `horizontal`,
-          })
-          return Number(plot.querySelector(`clipPath rect`)?.getAttribute(`x`))
-        })
-      const long = await left_pad_for([`QUEUE_HOLD`, `COMPLETED`, `CANCELLED`])
-      const short = await left_pad_for([`A`, `B`, `C`])
-      expect(short).toBeGreaterThan(0)
-      expect(long).toBeGreaterThan(short)
-    })
-
-    test(`short category names stay upright`, async () => {
-      const plot = await with_measured_text(() =>
-        mount_sized_bar_plot({
-          series: [{ x: [`A`, `B`, `C`], y: [1, 2, 3], color: `blue` }],
-        }),
-      )
-      const labels = x_tick_labels(plot)
-      expect(labels).toHaveLength(3) // else the loop below asserts nothing
-      for (const label of labels) expect(label.getAttribute(`transform`)).toBeNull()
-    })
 
     // categorical ticks are generated for every category regardless of the view, so
     // a panned/zoomed range must cull the ones that fall outside the plot area

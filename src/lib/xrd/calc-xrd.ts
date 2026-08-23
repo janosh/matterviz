@@ -529,10 +529,8 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
 
   if (peaks.length === 0) return { x: [], y: [] }
 
-  // Scale intensities so that the max intensity is 100, and filter by scaled tol.
-  // Looped rather than spread: Math.max(...) over a large peak list can overflow the stack.
-  let max_intensity = -Infinity
-  for (const peak of peaks) if (peak.intensity > max_intensity) max_intensity = peak.intensity
+  // Scale intensities so that the max intensity is 100, and filter by scaled tol
+  const max_intensity = math.array_max(peaks.map((peak) => peak.intensity))
 
   const xs: number[] = []
   const ys: number[] = []
@@ -552,10 +550,8 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
   // in electrons² for X-rays but fm² for neutrons and Å² for electrons, so a small b_coh
   // or a suppressed form factor puts every peak under 1 and a floor of 1 silently
   // under-scales the whole pattern (Mo Kα on a 2 Å H cell topped out at 43.6, not 100).
-  // Looped rather than spread for the same stack-overflow reason as max_intensity above.
-  if ((options.scaled ?? true) && ys.length > 0) {
-    let max_y = -Infinity
-    for (const val of ys) if (val > max_y) max_y = val
+  if (options.scaled ?? true) {
+    const max_y = math.array_max(ys)
     if (max_y > 0) for (let idx = 0; idx < ys.length; idx++) ys[idx] = (ys[idx] / max_y) * 100
   }
 

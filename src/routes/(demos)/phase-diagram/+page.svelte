@@ -1,6 +1,6 @@
 <script lang="ts">
   import FilePicker from '$lib/FilePicker.svelte'
-  import { dropped_file_url, file_drop_zone, load_from_url } from '$lib/io'
+  import { as_text, dropped_file_url, file_drop_zone, load_from_url } from '$lib/io'
   import type { DiagramInput, PhaseDiagramData } from '$lib/phase-diagram'
   import {
     build_diagram,
@@ -41,7 +41,7 @@
   // Parse fetched or dropped content by filename. TDB files are parsed but not solved; a
   // matching precomputed diagram (if any) is shown instead. Throws on malformed content.
   function apply_content(content: string | ArrayBuffer, filename: string, sync_url = true) {
-    const text = typeof content === `string` ? content : new TextDecoder().decode(content)
+    const text = as_text(content)
     // Drop any earlier SVG import: the viewer prefers a rebuilt diagram_input over data
     current_diagram_input = null
     if (has_ext(filename, `.tdb`)) {
@@ -99,10 +99,6 @@
     event.stopImmediatePropagation()
     const entry = all_phase_diagram_files.find((file) => file.url === url)
     void load_file(url, entry?.name ?? url)
-  }
-
-  function load_precomputed(): void {
-    if (tdb?.precomputed_data) current_data = tdb.precomputed_data
   }
 
   // ?file= deep link, else the example A-B eutectic diagram
@@ -178,7 +174,9 @@
       has_precomputed={tdb.precomputed_data !== null}
       is_precomputed_loaded={tdb.precomputed_data !== null &&
         current_data === tdb.precomputed_data}
-      on_load_precomputed={load_precomputed}
+      on_load_precomputed={() => {
+        if (tdb?.precomputed_data) current_data = tdb.precomputed_data
+      }}
       style="margin: 0.5em"
     />
   {/if}

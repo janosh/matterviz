@@ -482,52 +482,37 @@ describe(`helpers: temperature interpolation`, () => {
 
   describe(`analyze_temperature_data`, () => {
     test.each([
-      [`empty entries`, [] as PhaseData[]],
-      [
-        `entries without temp data`,
-        [
+      { desc: `empty entries`, entries: [] as PhaseData[], expected: [] as number[] },
+      {
+        desc: `entries without temp data`,
+        entries: [
           { composition: { Fe: 1 }, energy: 0 },
           { composition: { Li: 1 }, energy: 0 },
         ] as PhaseData[],
-      ],
-    ])(`returns has_temp_data=false for %s`, (_desc, entries) => {
+        expected: [],
+      },
+      {
+        desc: `the union of temperatures from multiple entries`,
+        entries: [
+          make_entry([300, 600], [-1, -2]),
+          make_entry([600, 900, 1200], [-1, -2, -3]),
+        ],
+        expected: [300, 600, 900, 1200],
+      },
+      {
+        desc: `entries with mismatched array lengths ignored`,
+        entries: [make_entry([300, 600], [-1]), make_entry([900], [-2])],
+        expected: [900],
+      },
+      {
+        desc: `entries with empty arrays ignored`,
+        entries: [make_entry([], []), make_entry([300, 600], [-1, -2])],
+        expected: [300, 600],
+      },
+    ])(`available_temperatures for $desc`, ({ entries, expected }) => {
       const result = helpers.analyze_temperature_data(entries)
-      expect(result.has_temp_data).toBe(false)
-      expect(result.available_temperatures).toEqual([])
-    })
-
-    test(`returns union of temperatures from multiple entries`, () => {
-      const entries = [
-        make_entry([300, 600], [-1, -2]),
-        make_entry([600, 900, 1200], [-1, -2, -3]),
-      ]
-      const result = helpers.analyze_temperature_data(entries)
-      expect(result.has_temp_data).toBe(true)
-      expect(result.available_temperatures).toEqual([300, 600, 900, 1200])
-    })
-
-    test(`ignores entries with mismatched array lengths`, () => {
-      const entries: PhaseData[] = [
-        {
-          composition: { Fe: 1 },
-          energy: 0,
-          temperatures: [300, 600],
-          free_energies: [-1],
-        },
-        make_entry([900], [-2]),
-      ]
-      const result = helpers.analyze_temperature_data(entries)
-      expect(result.has_temp_data).toBe(true)
-      expect(result.available_temperatures).toEqual([900])
-    })
-
-    test(`ignores entries with empty arrays`, () => {
-      const entries: PhaseData[] = [
-        { composition: { Fe: 1 }, energy: 0, temperatures: [], free_energies: [] },
-        make_entry([300, 600], [-1, -2]),
-      ]
-      const result = helpers.analyze_temperature_data(entries)
-      expect(result.available_temperatures).toEqual([300, 600])
+      expect(result.has_temp_data).toBe(expected.length > 0)
+      expect(result.available_temperatures).toEqual(expected)
     })
   })
 
@@ -568,47 +553,52 @@ describe(`helpers: temperature interpolation`, () => {
   })
 
   describe(`filter_entries_at_temperature with interpolation`, () => {
-    test(`includes entries with exact temperature match`, () => {
-      const entries = [make_entry([300, 600], [-1, -2])]
-      const result = helpers.filter_entries_at_temperature(entries, 300)
-      expect(result).toHaveLength(1)
-      expect(result[0].energy).toBe(-1)
-      expect(result[0].energy_per_atom).toBe(-1) // G(T) is per atom; both fields updated
-    })
-
-    test(`interpolates when exact match missing but bracketed (default options)`, () => {
-      const entries = [make_entry([300, 600], [-1, -2])]
-      const result = helpers.filter_entries_at_temperature(entries, 450)
-      expect(result).toHaveLength(1)
-      expect(result[0].energy).toBeCloseTo(-1.5)
-    })
-
-    test(`excludes entries when interpolation disabled and no exact match`, () => {
-      const entries = [make_entry([300, 600], [-1, -2])]
-      const result = helpers.filter_entries_at_temperature(entries, 450, {
-        interpolate: false,
-      })
-      expect(result).toHaveLength(0)
-    })
-
-    test(`excludes entries when gap exceeds max_interpolation_gap`, () => {
-      const entries = [make_entry([300, 900], [-1, -2])]
-      const result = helpers.filter_entries_at_temperature(entries, 600, {
-        interpolate: true,
-        max_interpolation_gap: 500,
-      })
-      expect(result).toHaveLength(0)
-    })
-
-    test(`keeps static entries (no temp data) unchanged`, () => {
-      const static_entry: PhaseData = { composition: { Fe: 1 }, energy: -0.5 }
-      const entries = [static_entry, make_entry([300, 600], [-1, -2])]
-      const result = helpers.filter_entries_at_temperature(entries, 450, {
-        interpolate: true,
-      })
-      expect(result).toHaveLength(2)
-      expect(result[0].energy).toBe(-0.5) // static entry unchanged
-      expect(result[1].energy).toBeCloseTo(-1.5) // interpolated
+    const static_entry: PhaseData = { composition: { Fe: 1 }, energy: -0.5 }
+    test.each([
+      {
+        desc: `exact temperature match`,
+        entries: [make_entry([300, 600], [-1, -2])],
+        temp: 300,
+        options: undefined,
+        expected: [-1],
+      },
+      {
+        desc: `interpolation when bracketed (default options)`,
+        entries: [make_entry([300, 600], [-1, -2])],
+        temp: 450,
+        options: undefined,
+        expected: [-1.5],
+      },
+      {
+        desc: `interpolation disabled and no exact match → dropped`,
+        entries: [make_entry([300, 600], [-1, -2])],
+        temp: 450,
+        options: { interpolate: false },
+        expected: [],
+      },
+      {
+        desc: `gap exceeds max_interpolation_gap → dropped`,
+        entries: [make_entry([300, 900], [-1, -2])],
+        temp: 600,
+        options: { interpolate: true, max_interpolation_gap: 500 },
+        expected: [],
+      },
+      {
+        desc: `static entries (no temp data) kept unchanged`,
+        entries: [static_entry, make_entry([300, 600], [-1, -2])],
+        temp: 450,
+        options: { interpolate: true },
+        expected: [-0.5, -1.5],
+      },
+    ])(`$desc`, ({ entries, temp, options, expected }) => {
+      const result = helpers.filter_entries_at_temperature(entries, temp, options)
+      expect(result.map((entry) => entry.energy)).toEqual(
+        expected.map((energy) => expect.closeTo(energy, 10)),
+      )
+      // G(T) is per atom; both fields are updated for temperature-dependent entries
+      for (const entry of result.filter((ent) => ent.temperatures)) {
+        expect(entry.energy_per_atom).toBe(entry.energy)
+      }
     })
   })
 

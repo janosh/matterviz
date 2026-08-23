@@ -38,14 +38,16 @@
   let supercell_scaling = $state(`1x1x1`)
   let show_image_atoms = $state(true)
   let bonds = $state<StructureBond[] | undefined>()
-  let comparison_mode = $derived(browser && page.url.searchParams.get(`comparison`) === `true`)
+  // ?data_url= loads an external structure in place of the static one
+  const url_params = browser ? page.url.searchParams : new URLSearchParams()
+  const data_url = url_params.get(`data_url`) || undefined
+  const comparison_mode = url_params.get(`comparison`) === `true`
+  let structure = $state<Crystal | undefined>(
+    data_url ? undefined : (mp1_struct as unknown as Crystal),
+  )
 
   // capture event data for testing
   let event_calls = $state<{ event: string; data: unknown }[]>([])
-
-  // Structure state - can be overridden by data_url
-  let structure = $state<Crystal | undefined>(mp1_struct as unknown as Crystal)
-
   const create_event_handler = (event_name: string) => (data: unknown) => {
     // camera moves arrive in bursts; dropping the structure keeps the log cheap to serialize
     const recorded_data =
@@ -55,90 +57,38 @@
     event_calls.push({ event: event_name, data: recorded_data })
   }
 
-  // React to URL parameters for testing
+  // Component props the specs set via URL parameters
+  const show_controls_param = url_params.get(`show_controls`)
+  if ([`always`, `hover`, `never`].includes(show_controls_param ?? ``)) {
+    show_controls = show_controls_param as typeof show_controls
+  }
+  if (url_params.has(`enable_measure_mode`)) {
+    enable_measure_mode = url_params.get(`enable_measure_mode`) === `true`
+  }
+  for (const key of [`show_site_labels`, `show_site_indices`] as const) {
+    if (url_params.has(key)) scene_props[key] = url_params.get(key) === `true`
+  }
+
+  // Custom-event hooks the specs dispatch on window (see tests/playwright/helpers.ts)
   $effect(() => {
-    if (typeof window === `undefined`) return
-    const url_params = new URLSearchParams(window.location.search)
-
-    // Data URL for loading external structures
-    if (url_params.has(`data_url`)) {
-      const data_url = url_params.get(`data_url`)
-      if (data_url) {
-        // Clear the static structure to allow data_url loading
-        structure = undefined
-      }
-    }
-
-    // Component properties
-    if (url_params.has(`show_controls`)) {
-      const param = url_params.get(`show_controls`) as `always` | `hover` | `never` | null
-      if (param && [`always`, `hover`, `never`].includes(param)) show_controls = param
-    }
-    if (url_params.has(`enable_measure_mode`)) {
-      const param = url_params.get(`enable_measure_mode`)
-      if (param === `true`) enable_measure_mode = true
-      else if (param === `false`) enable_measure_mode = false
-    }
-
-    // Site labeling parameters
-    if (url_params.has(`show_site_labels`)) {
-      const param = url_params.get(`show_site_labels`)
-      scene_props.show_site_labels = param === `true`
-    }
-    if (url_params.has(`show_site_indices`)) {
-      const param = url_params.get(`show_site_indices`)
-      scene_props.show_site_indices = param === `true`
-    }
-  })
-
-  $effect(() => {
-    // Listen for custom events from tests
-    if (typeof window === `undefined`) return
-
-    // cell rendering keys live on scene_props; the event name is kept for the playwright specs
-    const handle_lattice_props = (event: Event) => {
-      const { detail } = event as CustomEvent
-      Object.assign(scene_props, detail)
-    }
-
-    const handle_scene_props = (event: Event) => {
-      const { detail } = event as CustomEvent
-      Object.assign(scene_props, detail)
-    }
-
-    const handle_set_structure = (event: Event) => {
-      const { detail } = event as CustomEvent
-      structure = detail.structure as Crystal
-      scene_props.vector_configs = detail.vector_configs ?? {}
-    }
-
-    const handle_set_bonds = (event: Event) => {
-      const { detail } = event as CustomEvent
-      bonds = detail.bonds as StructureBond[] | undefined
-    }
-
     const controller = new AbortController()
     const { signal } = controller
-    window.addEventListener(`set-lattice-props`, handle_lattice_props, { signal })
-    window.addEventListener(`set-scene-props`, handle_scene_props, { signal })
-    window.addEventListener(`set-structure`, handle_set_structure, { signal })
-    window.addEventListener(`set-bonds`, handle_set_bonds, { signal })
-
+    const on = (name: string, handler: (detail: Record<string, unknown>) => void) =>
+      window.addEventListener(name, (event) => handler((event as CustomEvent).detail), {
+        signal,
+      })
+    on(`set-scene-props`, (detail) => Object.assign(scene_props, detail))
+    on(`set-structure`, (detail) => {
+      structure = detail.structure as Crystal
+      Object.assign(scene_props, { vector_configs: detail.vector_configs ?? {} })
+    })
+    on(`set-bonds`, (detail) => (bonds = detail.bonds as StructureBond[] | undefined))
     return () => controller.abort()
   })
 
   $effect(() => {
     Reflect.set(globalThis, `event_calls`, event_calls)
-  })
-
-  $effect(() => {
-    if (typeof window === `undefined`) return
-    ;(globalThis as Record<string, unknown>).structure_bonds = bonds
-  })
-
-  $effect(() => {
-    if (typeof window === `undefined`) return
-    ;(globalThis as Record<string, unknown>).bond_edit_mode = bond_edit_mode
+    Reflect.set(globalThis, `structure_bonds`, bonds)
   })
 </script>
 
@@ -180,9 +130,7 @@
   <Structure
     id="test-structure"
     {structure}
-    data_url={typeof window !== `undefined`
-      ? new URLSearchParams(window.location.search).get(`data_url`) || undefined
-      : undefined}
+    {data_url}
     bind:active_pane
     {background_color}
     {show_controls}

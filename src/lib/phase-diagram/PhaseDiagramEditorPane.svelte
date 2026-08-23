@@ -3,7 +3,6 @@
   import { ViewerPane, type PaneToggleProps } from '$lib/overlays'
   import { JsonTree } from '$lib/layout/json-tree'
   import { set_at_path } from '$lib/layout/json-tree/utils'
-  import type { ComponentProps } from 'svelte'
   import { build_diagram } from './build-diagram'
   import type { DiagramInput } from './diagram-input'
   import type { PhaseDiagramData } from './types'

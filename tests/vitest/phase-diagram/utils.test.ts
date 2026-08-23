@@ -1,4 +1,4 @@
-import { polygon_centroid, type Vec2 } from '$lib/math'
+import type { Vec2 } from '$lib/math'
 import type { CompUnit, PhaseDiagramData, PhaseRegion, TempUnit } from '$lib/phase-diagram'
 import {
   calculate_lever_rule,
@@ -134,44 +134,6 @@ describe(`generate_boundary_path`, () => {
       expect(generate_boundary_path(points)).toBe(expected)
     },
   )
-})
-
-describe(`polygon_centroid`, () => {
-  test.each([
-    {
-      vertices: [
-        [0, 0],
-        [2, 0],
-        [2, 2],
-        [0, 2],
-      ],
-      expected: [1, 1],
-      desc: `square`,
-    },
-    {
-      vertices: [
-        [0, 0],
-        [3, 0],
-        [0, 3],
-      ],
-      expected: [1, 1],
-      desc: `triangle`,
-    },
-    { vertices: [[5, 10]], expected: [5, 10], desc: `single vertex` },
-    {
-      vertices: [
-        [0, 0],
-        [10, 10],
-      ],
-      expected: [5, 5],
-      desc: `two vertices`,
-    },
-    { vertices: [], expected: [0, 0], desc: `empty array` },
-  ] as const)(`$desc → ($expected)`, ({ vertices, expected }) => {
-    const [cx, cy] = polygon_centroid([...vertices] as Vec2[])
-    expect(cx).toBeCloseTo(expected[0], 5)
-    expect(cy).toBeCloseTo(expected[1], 5)
-  })
 })
 
 // Palette by key (hex); get_phase_color returns these opaque (`hex`) or with alpha (`rgba`)
@@ -498,36 +460,20 @@ describe(`calculate_vertical_lever_rule`, () => {
 })
 
 describe(`compute_label_properties`, () => {
-  test(`returns valid result for normal bounds`, () => {
-    const result = compute_label_properties(`Liquid`, { width: 100, height: 80 }, 12)
-    expect(result).toEqual({ rotation: 0, lines: [`Liquid`], scale: 1 })
-  })
-
+  // Unwrapped single-line labels: degenerate bounds, empty labels and a zero font size all
+  // fall back to rotation 0 / scale 1
   test.each([
-    { width: 0, height: 100, desc: `zero width` },
-    { width: -10, height: 50, desc: `negative width` },
-    { width: 100, height: 0, desc: `zero height` },
-    { width: 50, height: -5, desc: `negative height` },
-  ])(`handles degenerate bounds: $desc`, ({ width, height }) => {
-    expect(compute_label_properties(`Test`, { width, height }, 12)).toEqual({
+    { label: `Liquid`, width: 100, height: 80, font_size: 12, desc: `normal bounds` },
+    { label: `Test`, width: 0, height: 100, font_size: 12, desc: `zero width` },
+    { label: `Test`, width: -10, height: 50, font_size: 12, desc: `negative width` },
+    { label: `Test`, width: 100, height: 0, font_size: 12, desc: `zero height` },
+    { label: `Test`, width: 50, height: -5, font_size: 12, desc: `negative height` },
+    { label: ``, width: 100, height: 80, font_size: 12, desc: `empty label → no lines` },
+    { label: `Test`, width: 100, height: 80, font_size: 0, desc: `zero font_size` },
+  ])(`$desc`, ({ label, width, height, font_size }) => {
+    expect(compute_label_properties(label, { width, height }, font_size)).toEqual({
       rotation: 0,
-      lines: [`Test`],
-      scale: 1,
-    })
-  })
-
-  test(`empty label returns no lines`, () => {
-    expect(compute_label_properties(``, { width: 100, height: 80 }, 12)).toEqual({
-      rotation: 0,
-      lines: [],
-      scale: 1,
-    })
-  })
-
-  test(`zero font_size returns scale=1`, () => {
-    expect(compute_label_properties(`Test`, { width: 100, height: 80 }, 0)).toEqual({
-      rotation: 0,
-      lines: [`Test`],
+      lines: label ? [label] : [],
       scale: 1,
     })
   })
@@ -601,42 +547,6 @@ describe(`convert_temp`, () => {
       expect(convert_temp(500, unit, unit)).toBe(500)
     },
   )
-})
-
-// === x_domain word boundary regex pattern ===
-
-describe(`word boundary regex for component matching`, () => {
-  // Tests the \b regex pattern used in IsobaricBinaryPhaseDiagram's x_domain
-  function matches_component(region_name: string, component: string): boolean {
-    const escaped = component.replaceAll(/[.*+?^${}()|[\]\\]/g, `\\$&`)
-    return new RegExp(`\\b${escaped}\\b`).test(region_name)
-  }
-
-  // [region_name, component, should_match]
-  test.each([
-    // Should match: pure component names
-    [`Fe`, `Fe`, true],
-    [`α(Fe)`, `Fe`, true],
-    [`Liquid + Fe`, `Fe`, true],
-    [`Fe + Fe3C`, `Fe`, true],
-    [`C`, `C`, true],
-    [`α(C)`, `C`, true],
-    [`Fe3C`, `Fe3C`, true],
-    [`Liquid + Fe3C`, `Fe3C`, true],
-    [`Cu`, `Cu`, true],
-    // Should NOT match: element as substring of compound
-    [`Fe3C`, `Fe`, false],
-    [`FeO`, `Fe`, false],
-    [`Fe2O3`, `Fe`, false],
-    [`NiFe2O4`, `Fe`, false],
-    [`Fe3C`, `C`, false],
-    [`SiC`, `C`, false],
-    [`Fe3C2`, `Fe3C`, false],
-    [`Cu3Au`, `Cu`, false],
-    [`CuO`, `Cu`, false],
-  ])(`"%s" contains "%s" → %s`, (region, component, expected) => {
-    expect(matches_component(region, component)).toBe(expected)
-  })
 })
 
 // === get_phase_stability_range ===
@@ -750,5 +660,16 @@ describe(`compute_x_domain`, () => {
   test(`uses data extent when region names don't match component names`, () => {
     const non_matching = make_data([make_region(`Liquid`, 0.1, 0.9)])
     expect(compute_x_domain(undefined, non_matching)).toEqual([0.1, 0.9])
+  })
+
+  // components must match as whole words: Fe3C/SiC are compounds, α(Fe) and "Liquid + C" are
+  // the pure components
+  test.each([
+    [`Fe3C`, `SiC`, [0.02, 0.98]],
+    [`α(Fe)`, `Liquid + C`, [0, 1]],
+  ])(`edge regions %s / %s in the Fe-C system → %j`, (left, right, expected) => {
+    const regions = [make_region(left, 0.02, 0.3), make_region(right, 0.7, 0.98)]
+    const data = { ...make_data(regions), components: [`Fe`, `C`] as [string, string] }
+    expect(compute_x_domain(undefined, data)).toEqual(expected)
   })
 })

@@ -1,6 +1,6 @@
 import TdbInfoPanel from '$site/phase-diagrams/TdbInfoPanel.svelte'
 import type { TdbParseResult } from '$site/phase-diagrams/tdb-parse'
-import { mount } from 'svelte'
+import { type ComponentProps, mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 
 const create_tdb_result = (
@@ -47,18 +47,21 @@ const create_tdb_result = (
   binary_system: [`AL`, `ZN`],
   temperature_range: [300, 1000],
 })
+const mount_panel = (
+  props: Partial<ComponentProps<typeof TdbInfoPanel>> = {},
+  data: Partial<TdbParseResult[`data`]> = {},
+) =>
+  mount(TdbInfoPanel, {
+    target: document.body,
+    props: { result: create_tdb_result(data), ...props },
+  })
+const panel_text = () => document.querySelector(`.tdb-info-panel`)?.textContent
 
 describe(`TdbInfoPanel`, () => {
   test(`displays system name, phases, and temperature range`, () => {
-    const result = create_tdb_result()
-    mount(TdbInfoPanel, {
-      target: document.body,
-      props: { result, system_name: `Al-Zn` },
-    })
-
-    const panel = document.querySelector(`.tdb-info-panel`)
-    expect(panel?.textContent).toContain(`Al-Zn`)
-    expect(panel?.textContent).toMatch(/300\s*–\s*1000\s*K/)
+    mount_panel({ system_name: `Al-Zn` })
+    expect(panel_text()).toContain(`Al-Zn`)
+    expect(panel_text()).toMatch(/300\s*–\s*1000\s*K/)
 
     const phases = document.querySelector(`.phases`)
     expect(phases?.textContent).toContain(`LIQUID`)
@@ -66,38 +69,36 @@ describe(`TdbInfoPanel`, () => {
   })
 
   test(`displays functions/parameters count and model summary`, () => {
-    const result = create_tdb_result({
-      functions: [
-        { name: `F1`, expression: ``, temperature_ranges: [] },
-        { name: `F2`, expression: ``, temperature_ranges: [] },
-        { name: `F3`, expression: ``, temperature_ranges: [] },
-      ],
-      parameters: [
-        { type: `G`, phase: `L`, constituents: [], order: 0, expression: `` },
-        { type: `L`, phase: `L`, constituents: [], order: 0, expression: `` },
-      ],
-      phases: [
-        { name: `LIQUID`, model_hints: ``, sublattice_count: 1, sublattice_sites: [1] },
-        {
-          name: `FCC_A1`,
-          model_hints: `%A`,
-          sublattice_count: 2,
-          sublattice_sites: [1, 1],
-        },
-        {
-          name: `HCP`,
-          model_hints: `%A`,
-          sublattice_count: 2,
-          sublattice_sites: [1, 0.5],
-        },
-      ],
-    })
-    mount(TdbInfoPanel, { target: document.body, props: { result } })
-
-    const panel = document.querySelector(`.tdb-info-panel`)
-    expect(panel?.textContent).toContain(`3 / 2`)
-    expect(panel?.textContent).toContain(`1×1-SL`)
-    expect(panel?.textContent).toContain(`2×2-SL`)
+    mount_panel(
+      {},
+      {
+        functions: [
+          { name: `F1`, expression: ``, temperature_ranges: [] },
+          { name: `F2`, expression: ``, temperature_ranges: [] },
+          { name: `F3`, expression: ``, temperature_ranges: [] },
+        ],
+        parameters: [
+          { type: `G`, phase: `L`, constituents: [], order: 0, expression: `` },
+          { type: `L`, phase: `L`, constituents: [], order: 0, expression: `` },
+        ],
+        phases: [
+          { name: `LIQUID`, model_hints: ``, sublattice_count: 1, sublattice_sites: [1] },
+          {
+            name: `FCC_A1`,
+            model_hints: `%A`,
+            sublattice_count: 2,
+            sublattice_sites: [1, 1],
+          },
+          {
+            name: `HCP`,
+            model_hints: `%A`,
+            sublattice_count: 2,
+            sublattice_sites: [1, 0.5],
+          },
+        ],
+      },
+    )
+    for (const part of [`3 / 2`, `1×1-SL`, `2×2-SL`]) expect(panel_text()).toContain(part)
   })
 
   test.each([
@@ -108,48 +109,26 @@ describe(`TdbInfoPanel`, () => {
     ],
     [[`$ Simple comment without reference keywords`], false, `Ref:`],
   ])(`reference display: comments=%j → shown=%s`, (comments, should_show, text) => {
-    const result = create_tdb_result({ comments })
-    mount(TdbInfoPanel, { target: document.body, props: { result } })
-
-    const panel = document.querySelector(`.tdb-info-panel`)
-    if (should_show) {
-      expect(document.querySelector(`.ref`)?.textContent).toContain(text)
-    } else {
-      expect(panel?.textContent).not.toContain(text)
-    }
+    mount_panel({}, { comments })
+    if (should_show) expect(document.querySelector(`.ref`)?.textContent).toContain(text)
+    else expect(panel_text()).not.toContain(text)
   })
 
   describe(`precomputed diagram states`, () => {
     test(`loaded → shows success message`, () => {
-      const result = create_tdb_result()
-      mount(TdbInfoPanel, {
-        target: document.body,
-        props: {
-          result,
-          system_name: `Al-Zn`,
-          has_precomputed: true,
-          is_precomputed_loaded: true,
-        },
-      })
-
+      mount_panel({ system_name: `Al-Zn`, has_precomputed: true, is_precomputed_loaded: true })
       const notice = document.querySelector(`.notice.success`)
       expect(notice?.textContent).toContain(`Phase diagram loaded`)
       expect(notice?.textContent).toContain(`pycalphad`)
     })
 
     test(`available → shows load button that works`, () => {
-      const result = create_tdb_result()
       let load_called = false
-      mount(TdbInfoPanel, {
-        target: document.body,
-        props: {
-          result,
-          has_precomputed: true,
-          is_precomputed_loaded: false,
-          on_load_precomputed: () => (load_called = true),
-        },
+      mount_panel({
+        has_precomputed: true,
+        is_precomputed_loaded: false,
+        on_load_precomputed: () => (load_called = true),
       })
-
       const btn = document.querySelector(`.load-btn`) as HTMLButtonElement
       expect(btn).not.toBeNull()
       btn?.click()
@@ -157,12 +136,7 @@ describe(`TdbInfoPanel`, () => {
     })
 
     test(`not available → shows pycalphad code snippet`, () => {
-      const result = create_tdb_result()
-      mount(TdbInfoPanel, {
-        target: document.body,
-        props: { result, has_precomputed: false },
-      })
-
+      mount_panel({ has_precomputed: false })
       const code = document.querySelector(`code`)
       expect(code?.textContent).toContain(`from pycalphad import Database, binplot`)
       expect(code?.textContent).toMatch(/\['AL', 'ZN', 'VA'\]/)
@@ -170,9 +144,7 @@ describe(`TdbInfoPanel`, () => {
   })
 
   test(`falls back to binary_system when no system_name provided`, () => {
-    const result = create_tdb_result()
-    mount(TdbInfoPanel, { target: document.body, props: { result } })
-
-    expect(document.querySelector(`.tdb-info-panel`)?.textContent).toContain(`AL-ZN`)
+    mount_panel()
+    expect(panel_text()).toContain(`AL-ZN`)
   })
 })

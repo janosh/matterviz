@@ -1,13 +1,14 @@
 import { expect, type Locator, type Page, test } from '@playwright/test'
 import {
+  bounding_boxes,
   expect_shift_drag_pans,
   expect_zoom_shrinks_axes,
   get_axis_range_inputs,
   get_tick_range,
-  is_present,
   open_plot_controls,
   set_input_value,
   set_range_input,
+  tick_texts,
   wait_for_bars,
 } from '../helpers'
 
@@ -25,8 +26,15 @@ const set_section_range = async (
 }
 
 const bar_count = (plot: Locator) => plot.locator(`path[role="button"]`).count()
-const tick_texts = (plot: Locator, axis: `x` | `y` | `y2`) =>
-  plot.locator(`g.${axis}-axis .tick text`).allTextContents()
+const series_groups = (plot: Locator) => plot.locator(`g.histogram-series`)
+// re-binning changes bar counts, so count the series that still render any bar
+const visible_series_count = async (plot: Locator): Promise<number> => {
+  const groups = await series_groups(plot).all()
+  const counts = await Promise.all(
+    groups.map((group) => group.locator(`path[role="button"]`).count()),
+  )
+  return counts.filter((count) => count > 0).length
+}
 
 test.describe(`Histogram Component Tests`, () => {
   test.beforeEach(async ({ page }) => {
@@ -42,9 +50,7 @@ test.describe(`Histogram Component Tests`, () => {
     await expect(histogram.locator(`g.x-axis .tick`).first()).toBeVisible()
     await expect(histogram.locator(`g.y-axis .tick`).first()).toBeVisible()
     // no click handler -> no pointer cursor
-    expect(await bars.first().evaluate((el) => getComputedStyle(el).cursor)).not.toBe(
-      `pointer`,
-    )
+    await expect(bars.first()).not.toHaveCSS(`cursor`, `pointer`)
 
     // fewer bins -> fewer bars; 50 narrow bins keep the 1px minimum bar width
     const initial = await bar_count(histogram)
@@ -52,9 +58,7 @@ test.describe(`Histogram Component Tests`, () => {
     await expect.poll(() => bar_count(histogram)).toBeLessThan(initial)
     await set_section_range(page, `basic-single-series-section`, `Bin Count`, 50)
     await expect.poll(() => bar_count(histogram)).toBeGreaterThan(initial)
-    for (const box of (
-      await Promise.all((await bars.all()).map((bar) => bar.boundingBox()))
-    ).filter(is_present)) {
+    for (const box of await bounding_boxes(bars)) {
       expect(box.width).toBeGreaterThanOrEqual(1)
       expect(box.height).toBeGreaterThan(0)
     }
@@ -102,7 +106,7 @@ test.describe(`Histogram Component Tests`, () => {
   }) => {
     const histogram = page.locator(`#multiple-series-overlay`)
     const bars = await wait_for_bars(histogram)
-    expect(await histogram.locator(`g.histogram-series`).count()).toBeGreaterThan(1)
+    expect(await series_groups(histogram).count()).toBeGreaterThan(1)
     expect(Number(await bars.first().getAttribute(`stroke-width`))).toBeGreaterThan(0)
 
     await bars.first().hover({ force: true })
@@ -120,24 +124,16 @@ test.describe(`Histogram Component Tests`, () => {
     // single-series histogram shows no legend
     await expect(page.locator(`#basic-single-series .legend`)).toHaveCount(0)
 
-    // toggle each series off and on (re-binning changes bar counts, so count series with
-    // bars), then all off: no bars but legend and axes remain
-    const series_groups = histogram.locator(`g.histogram-series`)
-    const visible_series_count = async () => {
-      let count = 0
-      for (const group of await series_groups.all()) {
-        if ((await group.locator(`path[role="button"]`).count()) > 0) count++
-      }
-      return count
-    }
-    expect(await visible_series_count()).toBe(item_count)
+    // toggle each series off and on, then all off: no bars but legend and axes remain
+    const visible_series = () => visible_series_count(histogram)
+    expect(await visible_series()).toBe(item_count)
     for (let idx = 0; idx < item_count; idx++) {
       await items.nth(idx).click()
       await expect(items.nth(idx)).toHaveClass(/hidden/)
-      await expect.poll(visible_series_count).toBe(item_count - 1)
+      await expect.poll(visible_series).toBe(item_count - 1)
       await items.nth(idx).click()
       await expect(items.nth(idx)).not.toHaveClass(/hidden/)
-      await expect.poll(visible_series_count).toBe(item_count)
+      await expect.poll(visible_series).toBe(item_count)
     }
     for (let idx = 0; idx < item_count; idx++) await items.nth(idx).click()
     await expect(bars).toHaveCount(0)
@@ -146,7 +142,7 @@ test.describe(`Histogram Component Tests`, () => {
     await expect(histogram.locator(`g.x-axis`)).toBeVisible()
     await expect(histogram.locator(`g.y-axis`)).toBeVisible()
     for (let idx = 0; idx < item_count; idx++) await items.nth(idx).click()
-    await expect.poll(visible_series_count).toBe(item_count)
+    await expect.poll(visible_series).toBe(item_count)
   })
 
   test(`controls pane re-bins and switches scale type`, async ({ page }) => {
@@ -179,8 +175,7 @@ test.describe(`Histogram Component Tests`, () => {
     const histogram = page.locator(`#basic-single-series`)
     await wait_for_bars(histogram)
     await histogram.hover()
-    const toggle = histogram.locator(`button.pane-toggle`)
-    await toggle.focus()
+    await histogram.locator(`button.pane-toggle`).focus()
     await page.keyboard.press(`Enter`)
     const pane = histogram.locator(`.draggable-pane`)
     await expect(pane).toBeVisible()
@@ -202,9 +197,9 @@ test.describe(`Histogram Component Tests`, () => {
     expect(await property_select.locator(`option`).count()).toBeGreaterThan(1)
     await property_select.selectOption({ index: 1 })
     await expect(property_select).not.toHaveValue(``)
-    await expect.poll(() => histogram.locator(`g.histogram-series`).count()).toBe(1)
+    await expect.poll(() => series_groups(histogram).count()).toBe(1)
     await mode_select.selectOption(`overlay`)
-    await expect.poll(() => histogram.locator(`g.histogram-series`).count()).toBeGreaterThan(1)
+    await expect.poll(() => series_groups(histogram).count()).toBeGreaterThan(1)
 
     const legend_checkbox = pane.getByLabel(`Show legend`)
     await legend_checkbox.uncheck()
@@ -298,13 +293,8 @@ test.describe(`Histogram Component Tests`, () => {
     await histogram.scrollIntoViewIfNeeded()
     await wait_for_bars(histogram)
     await expect(histogram.locator(`g.y2-axis .tick`).first()).toBeVisible()
-    const series_groups = histogram.locator(`g.histogram-series`)
-    await expect(series_groups).toHaveCount(2)
-    for (const idx of [0, 1]) {
-      expect(
-        await series_groups.nth(idx).locator(`path[role="button"]`).count(),
-      ).toBeGreaterThan(0)
-    }
+    await expect(series_groups(histogram)).toHaveCount(2)
+    expect(await visible_series_count(histogram)).toBe(2)
 
     // zoom changes both count axes, reset restores both
     const initial_y1 = await tick_texts(histogram, `y`)
@@ -316,36 +306,20 @@ test.describe(`Histogram Component Tests`, () => {
     // legend hides one series' bars and restores them
     const items = histogram.locator(`.legend .legend-item`)
     await expect(items).toHaveCount(2)
-    const visible_series_count = async () => {
-      let count = 0
-      for (const group of await series_groups.all()) {
-        if ((await group.locator(`path[role="button"]`).count()) > 0) count++
-      }
-      return count
-    }
     await items.first().click()
-    await expect.poll(visible_series_count).toBe(1)
+    await expect.poll(() => visible_series_count(histogram)).toBe(1)
     await items.first().click()
-    await expect.poll(visible_series_count).toBe(2)
+    await expect.poll(() => visible_series_count(histogram)).toBe(2)
 
     // different magnitudes get different count axes, so bars sit at distinct heights
     const scaled = page.locator(`#y2-different-scale .histogram`)
     await scaled.scrollIntoViewIfNeeded()
     await wait_for_bars(scaled)
     expect(await tick_texts(scaled, `y`)).not.toEqual(await tick_texts(scaled, `y2`))
-    const scaled_groups = scaled.locator(`g.histogram-series`)
     const top_ys = new Set<number>()
     for (const idx of [0, 1]) {
-      const boxes = (
-        await Promise.all(
-          (
-            await scaled_groups.nth(idx).locator(`path[role="button"]`).all()
-          )
-            .slice(0, 3)
-            .map((bar) => bar.boundingBox()),
-        )
-      ).filter(is_present)
-      for (const box of boxes) top_ys.add(Math.round(box.y))
+      const bars = series_groups(scaled).nth(idx).locator(`path[role="button"]`)
+      for (const box of await bounding_boxes(bars, 3)) top_ys.add(Math.round(box.y))
     }
     expect(top_ys.size).toBeGreaterThan(1)
   })

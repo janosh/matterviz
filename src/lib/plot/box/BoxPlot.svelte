@@ -10,6 +10,7 @@
     BasePlotProps,
     BoxHandlerProps,
     BoxPlotSeries,
+    LayerZIndex,
     LegendConfig,
     Orientation,
     PanConfig,
@@ -30,7 +31,7 @@
   import type { MarginalSeriesInput, MarginalsProp } from '$lib/plot/core/marginals'
   import { normalize_marginals } from '$lib/plot/core/marginals'
   import { build_obstacles_norm, clip_bar } from '$lib/plot/core/decorations'
-  import { build_legend_items } from '$lib/plot/core/data-transform'
+  import { build_legend_items, get_series_color } from '$lib/plot/core/data-transform'
   import { compute_box_stats } from '$lib/plot/box/box-plot'
   import { gaussian_kde, type KdeResult } from '$lib/plot/box/kde'
   import { create_cartesian_frame } from '$lib/plot/core/cartesian-frame.svelte'
@@ -40,12 +41,16 @@
     resolve_legend_visibility,
   } from '$lib/plot/core/utils/series-visibility'
   import { DEFAULT_PLOT_PADDING, filter_padding } from '$lib/plot/core/layout'
-  import { AXIS_DEFAULTS, X2_AXIS_DEFAULTS } from '$lib/plot/core/axis-utils'
+  import {
+    AXIS_DEFAULTS,
+    category_tick_labels,
+    X2_AXIS_DEFAULTS,
+  } from '$lib/plot/core/axis-utils'
   import { index_ref_lines } from '$lib/plot/core/reference-line'
   import { get_relative_coords, is_activation_key } from '$lib/plot/core/interactions'
   import { get_nice_data_range } from '$lib/plot/core/scales'
-  import { DEFAULT_SERIES_COLORS, get_scale_type_name } from '$lib/plot/core/types'
-  import { resolve_plot_display, sync_category_zero_display } from '$lib/plot/core/display'
+  import { get_scale_type_name } from '$lib/plot/core/types'
+  import { create_category_display } from '$lib/plot/core/display.svelte'
   import { DEFAULTS } from '$lib/settings'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -182,9 +187,7 @@
       facet_layout?: FacetLayoutContext
     } = $props()
 
-  // Legend toggles write `visible` into the bindable series prop so bound parents see
-  // them, and `series` layers the user's overrides back on whenever the parent
-  // replaces the array so hidden series stay hidden
+  // Legend toggles write back into the bindable series prop; see create_legend_visibility
   const legend_vis = create_legend_visibility(
     () => series,
     (next) => (series_in = next),
@@ -219,11 +222,7 @@
     obstacles: () => obstacles_norm,
     legend: () => legend,
     legend_visible: () => should_show_legend,
-    legend_items: () =>
-      series.map((series_data, series_idx) => ({
-        label: series_data.label ?? `Box ${series_idx + 1}`,
-        legend_group: series_data.legend_group,
-      })),
+    legend_items: () => legend_data,
     marginals: () => resolved_marginals,
     ref_lines: () => indexed_ref_lines,
     pan: () => pan,
@@ -247,8 +246,7 @@
   let indexed_ref_lines = $derived(index_ref_lines(ref_lines))
 
   // === Box stats + slot model ===
-  const box_color = (idx: number): string =>
-    series[idx]?.color ?? DEFAULT_SERIES_COLORS[idx % DEFAULT_SERIES_COLORS.length]
+  const box_color = (idx: number): string => series[idx]?.color ?? get_series_color(idx)
 
   // Which glyph(s) a series draws (per-series kind overrides the component default)
   const effective_kind = (srs: BoxPlotSeries<Metadata>): ViolinKind => srs.kind ?? kind
@@ -280,26 +278,10 @@
   )
   let cat_axis: `x` | `y` = $derived(orientation === `horizontal` ? `y` : `x`)
 
-  // Keep category-axis zeros off (and settings checkboxes in sync) across orientation flips.
-  let category_zero_sync: ReturnType<typeof sync_category_zero_display> = {
-    axis: null,
-    disabled_keys: [],
-  }
-  $effect.pre(() => {
-    category_zero_sync = sync_category_zero_display(
-      display,
-      DEFAULTS.plot.display,
-      slot_list.length > 0 ? cat_axis : null,
-      category_zero_sync,
-    )
-  })
-
-  const resolved_display = $derived(
-    resolve_plot_display(
-      display,
-      DEFAULTS.plot.display,
-      slot_list.length > 0 ? cat_axis : null,
-    ),
+  // Keeps category-axis zeros off (and settings checkboxes in sync) across orientation flips
+  const category_display = create_category_display(
+    () => display,
+    () => (slot_list.length > 0 ? cat_axis : null),
   )
 
   let slot_lookup = $derived(new SvelteMap(slot_list.map((slot, idx) => [slot, idx])))
@@ -535,15 +517,9 @@
     return (val) => scale(Math.max(val, floor))
   }
 
-  // Categorical tick labels (slot index -> category name) unless user provides a label mapping
-  let effective_cat_ticks = $derived.by(() => {
-    if (slot_list.length === 0) return undefined
-    const user_ticks = cat_axis === `x` ? x_axis.ticks : y_axis.ticks
-    if (user_ticks != null && typeof user_ticks === `object` && !Array.isArray(user_ticks)) {
-      return user_ticks
-    }
-    return Object.fromEntries(slot_list.map((cat, idx) => [idx, cat]))
-  })
+  let effective_cat_ticks = $derived(
+    category_tick_labels(slot_list, plot_axes[cat_axis].ticks),
+  )
 
   // === Legend ===
   let legend_data = $derived(
@@ -626,6 +602,10 @@
   />
 {/snippet}
 
+{#snippet ref_lines_layer(z: LayerZIndex)}
+  <ReferenceLinesLayer {frame} {z} on_click={on_ref_line_click} on_hover={on_ref_line_hover} />
+{/snippet}
+
 <CartesianFrame
   {frame}
   plot_class="box-plot"
@@ -634,9 +614,7 @@
     'font-weight': `var(--scatter-font-weight)`,
     'font-size': `var(--scatter-font-size)`,
   }}
-  aria_label={frame.title_config?.text ||
-    [x_axis.label, y_axis.label].filter(Boolean).join(` vs `) ||
-    `Box plot`}
+  aria_label="Box plot"
   bind:fullscreen
   {fullscreen_toggle}
   marginals={resolved_marginals}
@@ -652,16 +630,11 @@
 >
   {#snippet layers()}
     {@const pad = frame.pad}
-    <ReferenceLinesLayer
-      {frame}
-      z="below-grid"
-      on_click={on_ref_line_click}
-      on_hover={on_ref_line_hover}
-    />
+    {@render ref_lines_layer(`below-grid`)}
 
     <PlotAxes
       {frame}
-      display={resolved_display}
+      display={category_display.resolved}
       label_ticks={{ [cat_axis]: effective_cat_ticks }}
       tick_color={{ [cat_axis]: (tick: number) => slot_colors.get(tick) }}
     />
@@ -671,15 +644,10 @@
          self-clips to the plot area inside ReferenceLine, only its annotation text
          is allowed to overflow the plot edges. -->
     <g clip-path="url(#{frame.clip_path_id})">
-      <ZeroLines {frame} display={resolved_display} />
+      <ZeroLines {frame} display={category_display.resolved} />
     </g>
 
-    <ReferenceLinesLayer
-      {frame}
-      z="below-lines"
-      on_click={on_ref_line_click}
-      on_hover={on_ref_line_hover}
-    />
+    {@render ref_lines_layer(`below-lines`)}
 
     <!-- Continuous box/violin geometry clips to the chart. Outlier marker centers are
          range-bounded, but their complete circles may extend into the plot padding. -->
@@ -858,18 +826,8 @@
       {/each}
     </g>
 
-    <ReferenceLinesLayer
-      {frame}
-      z="below-points"
-      on_click={on_ref_line_click}
-      on_hover={on_ref_line_hover}
-    />
-    <ReferenceLinesLayer
-      {frame}
-      z="above-all"
-      on_click={on_ref_line_click}
-      on_hover={on_ref_line_hover}
-    />
+    {@render ref_lines_layer(`below-points`)}
+    {@render ref_lines_layer(`above-all`)}
   {/snippet}
 
   {#snippet overlays()}

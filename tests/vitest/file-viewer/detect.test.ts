@@ -368,6 +368,8 @@ describe(`detect_view_type`, () => {
 describe(`scan_renderable_paths`, () => {
   // Scan fixture once and reuse across related assertions
   const fixture_paths = scan_renderable_paths(fixture)
+  // The smallest value detect_view_type accepts as a structure
+  const si_structure = { sites: [{ species: [{ element: `Si` }], abc: [0, 0, 0] }] }
 
   test(`finds all expected types in test fixture`, () => {
     expect(fixture_paths.size).toBeGreaterThanOrEqual(9)
@@ -403,42 +405,19 @@ describe(`scan_renderable_paths`, () => {
   })
 
   test(`respects max_depth`, () => {
-    const deep = {
-      a: { b: { c: { sites: [{ species: [{ element: `Si` }], abc: [0, 0, 0] }] } } },
-    }
+    const deep = { a: { b: { c: si_structure } } }
     expect(scan_renderable_paths(deep, ``, 2).size).toBe(0)
     expect(scan_renderable_paths(deep, ``, 4).size).toBe(1)
   })
 
   test(`scans array elements`, () => {
-    const data = {
-      items: [
-        { composition: { Li: 1 }, energy: -1.5 },
-        { sites: [{ species: [{ element: `Si` }], abc: [0, 0, 0] }] },
-      ],
-    }
+    const data = { items: [{ composition: { Li: 1 }, energy: -1.5 }, si_structure] }
     expect(scan_renderable_paths(data).get(`items[1]`)?.type).toBe(`structure`)
   })
 
   test.each([
-    [
-      `root-level dotted key`,
-      {
-        'mp-1234.structure': {
-          sites: [{ species: [{ element: `Si` }], abc: [0, 0, 0] }],
-        },
-      },
-      `["mp-1234.structure"]`,
-    ],
-    [
-      `nested dotted key`,
-      {
-        results: {
-          'calc.1': { sites: [{ species: [{ element: `Cu` }], abc: [0, 0, 0] }] },
-        },
-      },
-      `results["calc.1"]`,
-    ],
+    [`root-level dotted key`, { 'mp-1234.structure': si_structure }, `["mp-1234.structure"]`],
+    [`nested dotted key`, { results: { 'calc.1': si_structure } }, `results["calc.1"]`],
   ] as [string, unknown, string][])(
     `handles %s via bracket notation`,
     (_, data, expected_path) => {
@@ -456,14 +435,13 @@ describe(`scan_renderable_paths`, () => {
     { label: `empty`, key: `` },
     { label: `numeric-looking`, key: `0` },
   ])(`round-trips renderable object key: $label`, ({ key }) => {
-    const original = { sites: [{ species: [{ element: `Si` }], abc: [0, 0, 0] }] }
-    const data = { root: { [key]: original } }
+    const data = { root: { [key]: si_structure } }
     const paths = scan_renderable_paths(data)
     const path = [...paths.keys()][0]
 
     expect(paths.size).toBe(1)
     expect(path).toBe(`root[${JSON.stringify(key)}]`)
-    expect(resolve_path(data, path)).toBe(original)
+    expect(resolve_path(data, path)).toBe(si_structure)
   })
 
   test(`all scanned paths resolve back to the original value`, () => {

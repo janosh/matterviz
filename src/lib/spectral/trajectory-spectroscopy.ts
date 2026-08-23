@@ -96,12 +96,7 @@ export interface TrajectorySpectrumCurve {
   nyquist: number
 }
 
-interface RamanSpectrumResult {
-  isotropic: TrajectorySpectrumCurve
-  anisotropic: TrajectorySpectrumCurve
-  vv: TrajectorySpectrumCurve
-  vh: TrajectorySpectrumCurve
-  unpolarized: TrajectorySpectrumCurve
+type RamanSpectrumResult = Record<RamanChannel, TrajectorySpectrumCurve> & {
   selected_channel: RamanChannel
 }
 
@@ -152,8 +147,11 @@ const require_one_of = <Allowed extends string>(
 }
 
 const shape_text = (shape: number[]): string => `[${shape.join(`, `)}]`
-const arrays_equal = <Value>(left: ArrayLike<Value>, right: ArrayLike<Value>): boolean => {
-  if (left.length !== right.length) return false
+export const arrays_equal = <Value>(
+  left: ArrayLike<Value> | undefined,
+  right: ArrayLike<Value>,
+): boolean => {
+  if (!left || left.length !== right.length) return false
   for (let idx = 0; idx < left.length; idx++) if (left[idx] !== right[idx]) return false
   return true
 }
@@ -683,12 +681,16 @@ const prepare_positions = (
 const step_index_map = (steps: number[]) =>
   new Map(steps.map((step, step_idx) => [step, step_idx]))
 
-const rotations_for_steps = (
+// Body-frame rotation for every sample of a signal (looked up by MD step in the position
+// frames); identity when the preprocessing keeps the laboratory frame
+const signal_rotations = (
+  preprocessing: SpectroscopyPreprocessing,
   position_steps: number[],
   rotations: Matrix3x3[],
   signal_steps: number[],
   label: string,
 ): Matrix3x3[] => {
+  if (preprocessing !== `body_fixed`) return identity_rotations(signal_steps.length)
   const positions_by_step = step_index_map(position_steps)
   return signal_steps.map((step) => {
     const frame_idx = positions_by_step.get(step)
@@ -880,15 +882,13 @@ const calculate_raman = (
   >,
 ): RamanSpectrumResult => {
   validate_trajectory_signal(polarizability, [3, 3], `Raman polarizability`)
-  const rotations =
-    options.preprocessing === `body_fixed`
-      ? rotations_for_steps(
-          input.positions.steps,
-          prepared.rotations,
-          polarizability.steps,
-          `Raman polarizability`,
-        )
-      : identity_rotations(polarizability.steps.length)
+  const rotations = signal_rotations(
+    options.preprocessing,
+    input.positions.steps,
+    prepared.rotations,
+    polarizability.steps,
+    `Raman polarizability`,
+  )
   const rotated = rotate_tensor_signal(polarizability.values, rotations)
   const n_samples = polarizability.steps.length
   const isotropic_values = new Float64Array(n_samples)
@@ -1328,15 +1328,13 @@ export const calc_trajectory_spectroscopy = (
   if (input.infrared_signal) {
     const { series } = input.infrared_signal
     validate_trajectory_signal(series, [3], `IR ${input.infrared_signal.kind}`)
-    const rotations =
-      preprocessing === `body_fixed`
-        ? rotations_for_steps(
-            stream.steps,
-            prepared.rotations,
-            series.steps,
-            `IR ${input.infrared_signal.kind}`,
-          )
-        : identity_rotations(series.steps.length)
+    const rotations = signal_rotations(
+      preprocessing,
+      stream.steps,
+      prepared.rotations,
+      series.steps,
+      `IR ${input.infrared_signal.kind}`,
+    )
     const ir_values = rotate_vector_signal(series, rotations)
     // dipole/polarization spectra get the ω² of the classical absorption coefficient; a
     // current signal is already the time derivative and must not be weighted again

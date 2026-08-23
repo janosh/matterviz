@@ -6,7 +6,7 @@
   // Geometry is cached per layer so colormap/color-range changes never rerun
   // marching cubes, and sampled scalars are cached so they only remap through the
   // colormap LUT.
-  import type { Matrix3x3, Vec3 } from '../math'
+  import { clamp, type Matrix3x3, type Vec3 } from '../math'
   import { to_error } from '../utils'
   import { T, useThrelte } from '@threlte/core'
   import { untrack } from 'svelte'
@@ -74,7 +74,7 @@
   let resolved_layers = $derived.by((): ResolvedLayer[] => {
     const n_vols = volumes.length
     if (n_vols === 0) return []
-    const active_idx = Math.min(Math.max(active_volume_idx, 0), n_vols - 1)
+    const active_idx = clamp(active_volume_idx, 0, n_vols - 1)
     return pin_layers(settings.layers, active_idx).filter(
       (layer) => layer.volume_idx >= 0 && layer.volume_idx < n_vols,
     )

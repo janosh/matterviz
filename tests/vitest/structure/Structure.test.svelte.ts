@@ -21,6 +21,7 @@ import {
   create_drop_event,
   deferred_fetch_responses,
   doc_query,
+  fcc_primitive_matrix,
   IDENTITY_MATRIX3,
   init_moyo_for_tests,
   make_crystal,
@@ -56,17 +57,22 @@ const mount_bound_structure = (
   return state
 }
 
-const select_structure_layout = async (label: string): Promise<void> => {
-  doc_query<HTMLButtonElement>(`button[aria-label^="View layout:"]`).click()
+// Open the dropdown menu behind `trigger` and click the option labelled `label`
+const pick_menu_option = async (trigger: string, label: string): Promise<void> => {
+  doc_query<HTMLButtonElement>(trigger).click()
   await tick()
-  const option = Array.from(
-    document.querySelectorAll<HTMLButtonElement>(`.view-layout-dropdown .view-mode-option`),
-  ).find((button) => button.textContent?.trim() === label)
-  if (!option) throw new Error(`Missing structure layout option: ${label}`)
+  const option = [...document.querySelectorAll<HTMLButtonElement>(`.view-mode-option`)].find(
+    (button) => button.textContent?.trim() === label,
+  )
+  if (!option) throw new Error(`Missing menu option: ${label}`)
   option.click()
   flushSync()
   await tick()
 }
+const select_structure_layout = (label: string): Promise<void> =>
+  pick_menu_option(`button[aria-label^="View layout:"]`, label)
+const select_measure_mode = (label: string): Promise<void> =>
+  pick_menu_option(`button[aria-label="Measure / Edit"]`, label)
 
 const set_aria_input = (aria_label: string, value: string): void => {
   const input = doc_query<HTMLInputElement>(`input[aria-label="${aria_label}"]`)
@@ -548,15 +554,9 @@ describe(`Structure`, () => {
   // conventional/primitive views; that must be said (toast), not happen silently
   test(`toasts why the symmetry overlay vanishes when the cell leaves the input frame`, async () => {
     await init_moyo_for_tests()
-    const half = 3.61 / 2
-    const prim_fcc_cu = make_crystal(
-      [
-        [0, half, half],
-        [half, 0, half],
-        [half, half, 0],
-      ],
-      [{ element: `Cu`, abc: [0, 0, 0] }],
-    )
+    const prim_fcc_cu = make_crystal(fcc_primitive_matrix(3.61), [
+      { element: `Cu`, abc: [0, 0, 0] },
+    ])
     const sym_data = await symmetry.analyze_structure_symmetry(prim_fcc_cu)
     const symmetry_elements = symmetry.symmetry_elements_from_ops(sym_data.operations ?? [])
     expect(symmetry.has_visible_symmetry_overlay(symmetry_elements)).toBe(true)
@@ -957,25 +957,15 @@ describe(`Structure`, () => {
     const props = $state<{ measure_mode: MeasureMode }>({ measure_mode: `angle` })
     mount_structure(bind_props({ structure, show_controls: true }, props))
     await tick()
-    const pick = async (label: string) => {
-      doc_query<HTMLButtonElement>(`button[aria-label="Measure / Edit"]`).click()
-      await tick()
-      const option = [
-        ...document.querySelectorAll<HTMLButtonElement>(`.view-mode-option`),
-      ].find((button) => button.textContent?.trim() === label)
-      if (!option) throw new Error(`Missing measure option ${label}`)
-      option.click()
-      await tick()
-    }
-    await pick(`Distance`)
+    await select_measure_mode(`Distance`)
     expect(props.measure_mode).toBe(`distance`)
-    await pick(`Dihedral`)
+    await select_measure_mode(`Dihedral`)
     expect(props.measure_mode).toBe(`dihedral`)
-    await pick(`Edit Atoms`)
+    await select_measure_mode(`Edit Atoms`)
     expect(props.measure_mode).toBe(`edit-atoms`)
     // the toolbar for the active mode appears, and distance has none
     expect(document.querySelector(`.edit-mode-toolbar`)).not.toBeNull()
-    await pick(`Distance`)
+    await select_measure_mode(`Distance`)
     expect(props.measure_mode).toBe(`distance`)
     expect(document.querySelector(`.edit-mode-toolbar`)).toBeNull()
   })
@@ -1374,15 +1364,18 @@ describe(`Structure string parsing`, () => {
     expect(fetch_mock).not.toHaveBeenCalled()
   })
 
-  test(`ignores a stale structure URL completion`, async () => {
+  // Mount with `/a.json` as a pending (deferred) fetch and wait for the request to be issued
+  const mount_pending_url = async (extra: ComponentProps<typeof Structure> = {}) => {
     const responses = deferred_fetch_responses()
-    const on_file_load = vi.fn()
-    const props = $state<ComponentProps<typeof Structure>>({
-      data_url: `/a.json`,
-      on_file_load,
-    })
+    const props = $state<ComponentProps<typeof Structure>>({ data_url: `/a.json`, ...extra })
     mount_structure(props)
     await vi.waitFor(() => expect(responses.has(`/a.json`)).toBe(true))
+    return { responses, props }
+  }
+
+  test(`ignores a stale structure URL completion`, async () => {
+    const on_file_load = vi.fn()
+    const { responses, props } = await mount_pending_url({ on_file_load })
 
     props.data_url = `/b.json`
     await vi.waitFor(() => expect(responses.has(`/b.json`)).toBe(true))
@@ -1398,14 +1391,10 @@ describe(`Structure string parsing`, () => {
   })
 
   test(`an unrelated prop change does not abort and restart an in-flight data_url fetch`, async () => {
-    const responses = deferred_fetch_responses()
-    const props = $state<ComponentProps<typeof Structure>>({
-      data_url: `/a.json`,
+    const { responses, props } = await mount_pending_url({
       isosurface_settings: { ...DEFAULT_ISOSURFACE_SETTINGS },
       active_volume_idx: 0,
     })
-    mount_structure(props)
-    await vi.waitFor(() => expect(responses.get(`/a.json`)).toHaveLength(1))
     props.isosurface_settings = { ...DEFAULT_ISOSURFACE_SETTINGS }
     props.active_volume_idx = 2
     await tick()
@@ -1414,14 +1403,8 @@ describe(`Structure string parsing`, () => {
   })
 
   test(`on_error reports the requested URL, not a superseded data_url`, async () => {
-    const responses = deferred_fetch_responses()
     const on_error = vi.fn()
-    const props = $state<ComponentProps<typeof Structure>>({
-      data_url: `/a.json`,
-      on_error,
-    })
-    mount_structure(props)
-    await vi.waitFor(() => expect(responses.has(`/a.json`)).toBe(true))
+    const { responses, props } = await mount_pending_url({ on_error })
 
     props.data_url = `/b.json`
     await vi.waitFor(() => expect(responses.has(`/b.json`)).toBe(true))
@@ -1473,24 +1456,11 @@ describe(`Multi-side view`, () => {
     mount_structure(props)
     await tick()
 
-    const layout_button = doc_query<HTMLButtonElement>(
-      `button[aria-label="View layout: 3D single view"]`,
-    )
+    doc_query(`button[aria-label="View layout: 3D single view"]`)
     expect(document.querySelector(`.view-mode-caret`)).toBeNull()
     expect(doc_query(`.structure`).classList.contains(`multi-view`)).toBe(false)
 
-    layout_button.click()
-    await tick()
-    const dropdown = doc_query(`.view-mode-dropdown`)
-
-    const grid_option = [
-      ...dropdown.querySelectorAll<HTMLButtonElement>(`.view-mode-option`),
-    ].find((button) => button.textContent?.trim() === `3D 2×2 grid`)
-    if (!grid_option) throw new Error(`Missing structure layout option: 3D 2×2 grid`)
-    grid_option.click()
-    flushSync()
-    await tick()
-
+    await select_structure_layout(`3D 2×2 grid`)
     expect(props.multi_view).toBe(true)
     expect(doc_query(`.structure`).classList.contains(`multi-view`)).toBe(true)
     expect(document.querySelector(`.view-mode-dropdown`)).toBeNull()

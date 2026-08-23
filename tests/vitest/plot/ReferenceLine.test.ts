@@ -44,14 +44,22 @@ describe(`ReferenceLine`, () => {
     document.body.innerHTML = `<div style="width: 800px; height: 600px"><svg width="800" height="600"></svg></div>`
   })
 
-  test.each<{ ref_line: RefLine; attr: string; expected: number }>([
-    { ref_line: { type: `horizontal`, y: 50 }, attr: `y1`, expected: y_scale(50) },
-    { ref_line: { type: `vertical`, x: 50 }, attr: `x1`, expected: x_scale(50) },
-  ])(`renders $ref_line.type line at the scaled position`, ({ ref_line, attr, expected }) => {
+  // Expected endpoint attributes of the visible line, in pixels
+  test.each<{ ref_line: RefLine; expected: Record<string, number> }>([
+    { ref_line: { type: `horizontal`, y: 50 }, expected: { y1: y_scale(50) } },
+    { ref_line: { type: `vertical`, x: 50 }, expected: { x1: x_scale(50) } },
+    {
+      ref_line: { type: `horizontal`, y: 50, x_span: [20, 80] },
+      expected: { x1: x_scale(20), x2: x_scale(80) },
+    },
+    { ref_line: { type: `line`, p1: [20, 20], p2: [80, 80] }, expected: {} },
+  ])(`renders $ref_line.type line at the scaled position`, ({ ref_line, expected }) => {
     mount_line(ref_line)
     expect(doc_query(`.reference-line`)).toBeInstanceOf(SVGGElement)
     expect(query_all(`line`)).toHaveLength(2) // Hit area + visible line
-    expect(Number(visible_line()?.getAttribute(attr) ?? `0`)).toBeCloseTo(expected, 0)
+    for (const [attr, value] of Object.entries(expected)) {
+      expect(Number(visible_line()?.getAttribute(attr) ?? `0`)).toBeCloseTo(value, 0)
+    }
   })
 
   test(`applies custom style`, () => {
@@ -120,18 +128,6 @@ describe(`ReferenceLine`, () => {
 
     group.dispatchEvent(new MouseEvent(`mouseleave`, { bubbles: true }))
     expect(on_hover).toHaveBeenLastCalledWith(null)
-  })
-
-  test(`respects x_span constraint`, () => {
-    mount_line({ type: `horizontal`, y: 50, x_span: [20, 80] })
-    const line = visible_line()
-    expect(Number(line?.getAttribute(`x1`) ?? `0`)).toBeCloseTo(x_scale(20), 0)
-    expect(Number(line?.getAttribute(`x2`) ?? `0`)).toBeCloseTo(x_scale(80), 0)
-  })
-
-  test(`renders a point-defined line`, () => {
-    mount_line({ type: `line`, p1: [20, 20], p2: [80, 80] })
-    expect(query_all(`line`)).toHaveLength(2)
   })
 
   test.each([

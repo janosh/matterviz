@@ -38,6 +38,7 @@
   import {
     AXIS_DEFAULTS,
     type AxisChangeState,
+    category_tick_labels,
     create_axis_loader,
     X2_AXIS_DEFAULTS,
   } from '$lib/plot/core/axis-utils'
@@ -63,7 +64,7 @@
   import { clamp01 } from '$lib/utils'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { resolve_plot_display, sync_category_zero_display } from '$lib/plot/core/display'
+  import { create_category_display } from '$lib/plot/core/display.svelte'
   import PlotTooltip from '$lib/plot/core/components/PlotTooltip.svelte'
   import { bar_path } from '$lib/plot/core/svg'
   import ZeroLines from '$lib/plot/core/components/ZeroLines.svelte'
@@ -184,9 +185,7 @@
       facet_layout?: FacetLayoutContext
     } = $props()
 
-  // Legend toggles write `visible` into the bindable series prop so bound parents see
-  // them, and `series` layers the user's overrides back on whenever the parent
-  // replaces the array so hidden series stay hidden
+  // Legend toggles write back into the bindable series prop; see create_legend_visibility
   const legend_vis = create_legend_visibility(
     () => series,
     (next) => (series_in = next),
@@ -214,11 +213,7 @@
     obstacles: () => obstacles_norm,
     legend: () => legend,
     legend_visible: () => should_show_legend,
-    legend_items: () =>
-      series.map((series_data, series_idx) => ({
-        label: series_data.label ?? `Series ${series_idx + 1}`,
-        legend_group: series_data.legend_group,
-      })),
+    legend_items: () => legend_data,
     marginals: () => resolved_marginals,
     ref_lines: () => indexed_ref_lines,
     pan: () => pan,
@@ -226,8 +221,13 @@
     // Categorical axes show one tick per category instead of generated numeric ticks
     tick_override: (axis) =>
       cat_tick_indices.length > 0 && axis === cat_axis ? cat_tick_indices : undefined,
+    // Numeric x keeps its own ticks: measuring `undefined` would size the padding from the
+    // numeric values instead of the user's custom labels
     measured_axes: () => ({
-      [cat_axis]: { ...plot_axes[cat_axis], ticks: effective_cat_ticks },
+      [cat_axis]: {
+        ...plot_axes[cat_axis],
+        ticks: effective_cat_ticks ?? plot_axes[cat_axis].ticks,
+      },
     }),
     // Secondary axes write the raw $bindable props so library defaults aren't pushed
     // into the parent's bound state
@@ -284,26 +284,10 @@
   )
   let cat_axis: `x` | `y` = $derived(orientation === `horizontal` ? `y` : `x`)
 
-  // Keep category-axis zeros off (and settings checkboxes in sync) across orientation flips.
-  let category_zero_sync: ReturnType<typeof sync_category_zero_display> = {
-    axis: null,
-    disabled_keys: [],
-  }
-  $effect.pre(() => {
-    category_zero_sync = sync_category_zero_display(
-      display,
-      DEFAULTS.plot.display,
-      category_list.length > 0 ? cat_axis : null,
-      category_zero_sync,
-    )
-  })
-
-  const resolved_display = $derived(
-    resolve_plot_display(
-      display,
-      DEFAULTS.plot.display,
-      category_list.length > 0 ? cat_axis : null,
-    ),
+  // Keeps category-axis zeros off (and settings checkboxes in sync) across orientation flips
+  const category_display = create_category_display(
+    () => display,
+    () => (category_list.length > 0 ? cat_axis : null),
   )
 
   // Keep every category available to the shared adaptive resolver. Its measured, bounded
@@ -469,17 +453,9 @@
   let color_scale_fn = $derived(create_color_scale(color_scale, scale_values.color_range))
   let size_scale_fn = $derived(create_size_scale(size_scale, scale_values.size_values))
 
-  // Auto-generate tick labels for categorical data (unless user provides explicit ticks)
-  // In vertical mode categories are on x-axis; in horizontal mode on y-axis
-  let effective_cat_ticks = $derived.by(() => {
-    if (category_list.length === 0) return undefined
-    // Only respect user ticks when they're a Record (custom label mapping),
-    // not a number (tick count) or array (tick positions)
-    const user_ticks = cat_axis === `x` ? x_axis.ticks : y_axis.ticks
-    if (user_ticks != null && typeof user_ticks === `object` && !Array.isArray(user_ticks))
-      return user_ticks
-    return Object.fromEntries(category_list.map((cat, idx): [number, string] => [idx, cat]))
-  })
+  let effective_cat_ticks = $derived(
+    category_tick_labels(category_list, plot_axes[cat_axis].ticks),
+  )
 
   // Legend swatch: bars show a square, line series a line and/or their first point's symbol
   const legend_swatch = (srs: BarSeries<Metadata>): LegendItem[`display_style`] => {
@@ -615,9 +591,7 @@
     'font-weight': `var(--scatter-font-weight)`,
     'font-size': `var(--scatter-font-size)`,
   }}
-  aria_label={frame.title_config?.text ||
-    [x_axis.label, y_axis.label].filter(Boolean).join(` vs `) ||
-    `Bar chart`}
+  aria_label="Bar chart"
   bind:fullscreen
   {fullscreen_toggle}
   marginals={resolved_marginals}
@@ -641,7 +615,7 @@
 
     <PlotAxes
       {frame}
-      display={resolved_display}
+      display={category_display.resolved}
       label_ticks={{ [cat_axis]: effective_cat_ticks }}
       {axis_loading}
       on_axis_change={handle_axis_change}
@@ -652,7 +626,7 @@
          self-clips to the plot area inside ReferenceLine, only its annotation text
          is allowed to overflow the plot edges. -->
     <g clip-path="url(#{frame.clip_path_id})">
-      <ZeroLines {frame} display={resolved_display} />
+      <ZeroLines {frame} display={category_display.resolved} />
     </g>
 
     {@render ref_lines_layer(`below-lines`)}

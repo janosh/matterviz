@@ -12,10 +12,8 @@ type Matrix4x4 = [Vec4, Vec4, Vec4, Vec4]
 export const is_finite_vec3_like = (values: unknown): values is ArrayLike<number> => {
   if (typeof values !== `object` || values === null) return false
   const array_like = values as ArrayLike<unknown>
-  if (array_like.length !== 3) return false
-  return [0, 1, 2].every(
-    (idx) => typeof array_like[idx] === `number` && Number.isFinite(array_like[idx]),
-  )
+  // Number.isFinite does not coerce, so non-numbers fail too
+  return array_like.length === 3 && [0, 1, 2].every((idx) => Number.isFinite(array_like[idx]))
 }
 
 export const finite_vec3_from_values = (values: unknown): Vec3 | undefined => {

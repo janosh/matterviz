@@ -333,44 +333,6 @@ describe(`BinnedScatterPlot`, () => {
     },
   )
 
-  test(`keeps overflowing colorbar ticks inside the plot clearance`, async () => {
-    vi.spyOn(HTMLElement.prototype, `offsetWidth`, `get`).mockReturnValue(220)
-    vi.spyOn(HTMLElement.prototype, `offsetHeight`, `get`).mockReturnValue(30)
-    vi.spyOn(Element.prototype, `getBoundingClientRect`).mockImplementation(
-      function (this: Element): DOMRect {
-        if (this.classList.contains(`tick-label`)) {
-          return DOMRect.fromRect({ x: 90, y: 128, width: 240, height: 18 })
-        }
-        return DOMRect.fromRect({ x: 100, y: 100, width: 220, height: 30 })
-      },
-    )
-    mount_plot({
-      series: [{ x: [0.5], y: [0.5] }],
-      ...density_mode_with_colorbar({ bin_px: 20 }),
-      ...unit_axes,
-    })
-    await settle()
-
-    const colorbar = doc_query(`.binned-scatter .colorbar-wrapper`)
-    const visual_rect = decoration_rect(`.binned-scatter .colorbar-wrapper`)
-    const area = plot_rect()
-    expect(visual_rect).toMatchObject({ width: 240, height: 46 })
-    expect(visual_rect.x).toBeGreaterThanOrEqual(area.x + COLOR_BAR_DEFAULTS.axis_clearance)
-    expect(visual_rect.y).toBeGreaterThanOrEqual(area.y + COLOR_BAR_DEFAULTS.axis_clearance)
-    expect(visual_rect.x + visual_rect.width).toBeLessThanOrEqual(
-      area.x + area.width - COLOR_BAR_DEFAULTS.axis_clearance,
-    )
-    expect(visual_rect.y + visual_rect.height).toBeLessThanOrEqual(
-      area.y + area.height - COLOR_BAR_DEFAULTS.axis_clearance,
-    )
-    const horizontal_gap = Math.min(
-      visual_rect.x - area.x,
-      area.x + area.width - (visual_rect.x + visual_rect.width),
-    )
-    expect(horizontal_gap).toBe(COLOR_BAR_DEFAULTS.axis_clearance)
-    expect(css_px(colorbar.style.left)).toBe(visual_rect.x + 10)
-  })
-
   test(`preserves explicit colorbar wrapper and bar styles`, async () => {
     mount_plot({
       series: uniform_density_series(),

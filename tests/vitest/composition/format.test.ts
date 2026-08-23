@@ -113,171 +113,99 @@ describe(`get_formula_label_segments`, () => {
   })
 })
 
-// === Chemical Formula Parsing ===
+// === Formula markup (is_compound / tokenize / HTML / SVG) ===
 
 describe(`is_compound`, () => {
   test.each([
-    // Elements → false
+    // single elements, Greek phases and empty input are not compounds
     [`C`, false],
     [`Fe`, false],
     [`Si`, false],
     [`He`, false],
-    // Compounds with digits → true
+    [``, false],
+    [`α`, false],
+    [`α-Fe`, false],
+    // digits or several capitals mark a compound
     [`Fe3C`, true],
     [`SiO2`, true],
     [`Al2O3`, true],
     [`H2O`, true],
-    // Multi-element without digits → true
     [`MgO`, true],
     [`NaCl`, true],
     [`FeO`, true],
-    // Edge cases → false
-    [``, false],
-    [`α`, false],
-    [`α-Fe`, false],
   ])(`%s → %s`, (name, expected) => {
     expect(is_compound(name)).toBe(expected)
   })
 })
 
 describe(`tokenize_formula_markup`, () => {
+  const text = (run: string) => ({ text: run })
+  const sub = (digits: string) => ({ sub: digits })
   test.each([
-    { formula: `Fe`, expected: [{ text: `Fe` }], desc: `simple element` },
-    {
-      formula: `Fe3C`,
-      expected: [{ text: `Fe` }, { sub: `3` }, { text: `C` }],
-      desc: `compound`,
-    },
-    {
-      formula: `SiO2`,
-      expected: [{ text: `Si` }, { text: `O` }, { sub: `2` }],
-      desc: `oxide`,
-    },
-    {
-      formula: `Al2O3`,
-      expected: [{ text: `Al` }, { sub: `2` }, { text: `O` }, { sub: `3` }],
-      desc: `complex oxide`,
-    },
-    {
-      formula: `C12H22O11`,
-      expected: [
-        { text: `C` },
-        { sub: `12` },
-        { text: `H` },
-        { sub: `22` },
-        { text: `O` },
-        { sub: `11` },
-      ],
-      desc: `multi-digit subscripts`,
-    },
-    { formula: `MgO`, expected: [{ text: `Mg` }, { text: `O` }], desc: `no subscripts` },
-    {
-      formula: `O2-`,
-      expected: [{ text: `O` }, { sub: `2` }, { sup: `-` }],
-      desc: `charge notation`,
-    },
-    { formula: `α`, expected: [{ text: `α` }], desc: `Greek letter` },
-    { formula: `α + β`, expected: [{ text: `α + β` }], desc: `Greek multi-phase` },
-    {
-      formula: `Li0.5FeO2`,
-      expected: [{ text: `Li` }, { sub: `0.5` }, { text: `Fe` }, { text: `O` }, { sub: `2` }],
-      desc: `decimal subscript`,
-    },
-    { formula: ``, expected: [], desc: `empty string` },
-  ])(`$desc: "$formula"`, ({ formula, expected }) => {
+    [`Fe`, [text(`Fe`)]],
+    [`Fe3C`, [text(`Fe`), sub(`3`), text(`C`)]],
+    [`SiO2`, [text(`Si`), text(`O`), sub(`2`)]],
+    [`Al2O3`, [text(`Al`), sub(`2`), text(`O`), sub(`3`)]],
+    [`C12H22O11`, [text(`C`), sub(`12`), text(`H`), sub(`22`), text(`O`), sub(`11`)]],
+    [`MgO`, [text(`Mg`), text(`O`)]],
+    [`Li0.5FeO2`, [text(`Li`), sub(`0.5`), text(`Fe`), text(`O`), sub(`2`)]],
+    [`O2-`, [text(`O`), sub(`2`), { sup: `-` }]], // charge notation
+    // Greek letters and multi-phase labels pass through whole
+    [`α`, [text(`α`)]],
+    [`α + β`, [text(`α + β`)]],
+    [``, []],
+  ])(`%s`, (formula, expected) => {
     expect(tokenize_formula_markup(formula)).toEqual(expected)
   })
 })
 
-describe(`format_formula_html`, () => {
+// SVG baselines: a subscript drops 0.25em, a superscript rises 0.4em, and the shifts are
+// cumulative across tspans, so trailing text (or a zero-width space after a trailing
+// sub/superscript, since empty tspans may not apply dy everywhere) resets the running offset
+const svg_sub = (digits: string) => `<tspan dy="0.25em" font-size="0.75em">${digits}</tspan>`
+const svg_sup = (sign: string) => `<tspan dy="-0.4em" font-size="0.75em">${sign}</tspan>`
+const svg_reset = (dy: number, content = `\u200B`) => `<tspan dy="${dy}em">${content}</tspan>`
+
+type Formatter = (formula: string, use_subscripts?: boolean) => string
+describe.each<[string, Formatter, [string, string][]]>([
+  [
+    `format_formula_html`,
+    format_formula_html,
+    [
+      [`Fe3C`, `Fe<sub>3</sub>C`],
+      [`SiO2`, `SiO<sub>2</sub>`],
+      [`Al2O3`, `Al<sub>2</sub>O<sub>3</sub>`],
+    ],
+  ],
+  [
+    `format_formula_svg`,
+    format_formula_svg,
+    [
+      [`Fe3C`, `Fe${svg_sub(`3`)}${svg_reset(-0.25, `C`)}`],
+      [`SiO2`, `SiO${svg_sub(`2`)}${svg_reset(-0.25)}`],
+      [`O2-`, `O${svg_sub(`2`)}${svg_sup(`-`)}${svg_reset(0.4 - 0.25)}`],
+    ],
+  ],
+  // labels split on " + " and format each phase on its own
+  [`format_label_html`, format_label_html, [[`Fe3C + NiO`, `Fe<sub>3</sub>C + NiO`]]],
+  [
+    `format_label_svg`,
+    format_label_svg,
+    [[`Fe3C + NiO`, `Fe${svg_sub(`3`)}${svg_reset(-0.25, `C`)} + NiO`]],
+  ],
+])(`%s`, (_name, format_fn, cases) => {
+  test.each(cases)(`%s → %s`, (formula, expected) => {
+    expect(format_fn(formula)).toBe(expected)
+  })
+
+  // plain elements, Greek phases and use_subscripts=false pass through unchanged
   test.each([
-    [`Fe`, `Fe`],
-    [`Fe3C`, `Fe<sub>3</sub>C`],
-    [`SiO2`, `SiO<sub>2</sub>`],
-    [`Al2O3`, `Al<sub>2</sub>O<sub>3</sub>`],
-    [`α`, `α`],
-    [``, ``],
-  ])(`"%s" → "%s"`, (formula, expected) => {
-    expect(format_formula_html(formula)).toBe(expected)
-  })
-
-  test(`respects use_subscripts=false`, () => {
-    expect(format_formula_html(`Fe3C`, false)).toBe(`Fe3C`)
-  })
-})
-
-describe(`format_formula_svg`, () => {
-  test.each([`Fe`, `α`, `α + β`])(`returns %s unchanged`, (input) => {
-    expect(format_formula_svg(input)).toBe(input)
-  })
-
-  test(`formats compound with tspan subscripts`, () => {
-    const result = format_formula_svg(`Fe3C`)
-    expect(result).toContain(`Fe`)
-    expect(result).toContain(`<tspan`)
-    expect(result).toContain(`>3</tspan>`)
-    expect(result).toContain(`C`)
-  })
-
-  test(`formats oxide correctly`, () => {
-    const result = format_formula_svg(`SiO2`)
-    expect(result).toContain(`Si`)
-    expect(result).toContain(`O`)
-    expect(result).toContain(`>2</tspan>`)
-  })
-
-  test(`adds trailing baseline reset when formula ends with subscript`, () => {
-    // Uses zero-width space \u200B to ensure dy is applied in all SVG renderers
-    expect(format_formula_svg(`SiO2`)).toMatch(/<tspan dy="-0\.25em">\u200B<\/tspan>$/)
-  })
-
-  test(`no trailing reset when formula ends with text`, () => {
-    // Fe3C ends with "C" in a baseline-reset tspan, not a zero-width-space reset
-    const result = format_formula_svg(`Fe3C`)
-    expect(result).toMatch(/C<\/tspan>$/)
-    expect(result).not.toContain(`\u200B`)
-  })
-
-  test(`cumulative offset for consecutive sub/superscripts`, () => {
-    // O2- has subscript (0.25em) then superscript (-0.4em), reset ≈ 0.15em
-    expect(format_formula_svg(`O2-`)).toMatch(/<tspan dy="0\.15\d*em">\u200B<\/tspan>$/)
-  })
-
-  test(`respects use_subscripts=false`, () => {
-    expect(format_formula_svg(`Fe3C`, false)).toBe(`Fe3C`)
-  })
-})
-
-// === format_label_svg / format_label_html ===
-
-describe(`format_label_svg`, () => {
-  test(`formats compound and preserves + separator`, () => {
-    const result = format_label_svg(`Fe3C + NiO`)
-    expect(result).toContain(`>3</tspan>`)
-    expect(result).toContain(` + `)
-    expect(result).toContain(`Ni`)
-  })
-})
-
-describe(`format_label_html`, () => {
-  test(`formats compound and preserves + separator`, () => {
-    const result = format_label_html(`Fe3C + NiO`)
-    expect(result).toContain(`Fe<sub>3</sub>C`)
-    expect(result).toContain(` + `)
-  })
-})
-
-// Shared behavior for both format_label_* functions
-describe.each([
-  [`format_label_svg`, format_label_svg],
-  [`format_label_html`, format_label_html],
-])(`%s`, (_name, format_fn) => {
-  test(`passes through Greek letters unchanged`, () => {
-    expect(format_fn(`α + β`)).toBe(`α + β`)
-  })
-
-  test(`respects use_subscripts=false`, () => {
-    expect(format_fn(`Fe3C + NiO`, false)).toBe(`Fe3C + NiO`)
+    [`Fe`, true],
+    [``, true],
+    [`α + β`, true],
+    [`Fe3C + NiO`, false],
+  ])(`%s passes through (use_subscripts=%s)`, (input, use_subscripts) => {
+    expect(format_fn(input, use_subscripts)).toBe(input)
   })
 })
 

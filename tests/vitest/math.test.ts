@@ -1184,6 +1184,9 @@ test.each([
   [`rectangle`, [[0, 0], [4, 0], [4, 2], [0, 2]], [2, 1]],
   // zero signed area, so the shoelace formula falls back to the vertex average
   [`degenerate collinear polygon`, [[0, 0], [1, 0], [2, 0]], [1, 0]],
+  [`triangle`, [[0, 0], [3, 0], [0, 3]], [1, 1]],
+  [`single vertex`, [[5, 10]], [5, 10]],
+  [`two vertices`, [[0, 0], [10, 10]], [5, 5]],
   [`empty polygon (must not throw)`, [], [0, 0]],
 ] as [string, Vec2[], Vec2][])(`polygon_centroid: %s`, (_name, vertices, expected) => {
   expect(math.polygon_centroid(vertices)).toEqual(

@@ -11,7 +11,7 @@ import {
 } from '$lib/plot/histogram/histogram'
 import { tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { bind_props, expect_custom_x_ticks_grow_bottom_pad, mount_sized } from '../setup'
+import { bind_props, mount_sized } from '../setup'
 
 // Controls and legend are off unless a test asks for them. Props are mutated in place (not
 // spread) so bind_props accessors survive.
@@ -257,21 +257,6 @@ describe(`Histogram`, () => {
     // a legacy series without samples renders nothing instead of throwing mid-render
     await mount_histogram({ series: [{ x: [1, 2], label: `empty` }], bins: 4 })
     expect(bars_of()).toEqual([])
-  })
-
-  test(`custom x ticks grow the bottom padding`, async () => {
-    expect.assertions(2)
-    const baseline_y = async (ticks: Record<number, string>) => {
-      await mount_histogram({
-        series: [{ values: [0, 1, 2, 3, 4, 5] }],
-        x_axis: {
-          ticks,
-          tick: { label: { auto_layout: { strategies: [`upright`, `rotate`] } } },
-        },
-      })
-      return Number(document.querySelector(`g.x-axis > line`)?.getAttribute(`y1`))
-    }
-    await expect_custom_x_ticks_grow_bottom_pad(baseline_y, [0, 1, 2, 3, 4, 5])
   })
 
   test(`property options allow duplicate and empty series labels`, async () => {

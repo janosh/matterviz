@@ -18,7 +18,12 @@ import type { CellType, SymmetryDataset } from '$lib/symmetry'
 import { analyze_structure_symmetry } from '$lib/symmetry'
 import { flushSync } from 'svelte'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { get_dummy_structure, init_moyo_for_tests, make_crystal } from '../setup'
+import {
+  fcc_primitive_matrix,
+  get_dummy_structure,
+  init_moyo_for_tests,
+  make_crystal,
+} from '../setup'
 
 type Host = {
   structure: AnyStructure | undefined
@@ -214,16 +219,8 @@ describe(`display pipeline`, () => {
 describe(`symmetry-aware display`, () => {
   // Primitive fcc Cu: the 1-atom input cell expands to a 4-atom conventional cell, so every
   // site-indexed consumer must be re-expressed onto the displayed cell
-  const FCC_A = 3.61
   const prim_fcc_cu = () =>
-    make_crystal(
-      [
-        [0, FCC_A / 2, FCC_A / 2],
-        [FCC_A / 2, 0, FCC_A / 2],
-        [FCC_A / 2, FCC_A / 2, 0],
-      ],
-      [{ element: `Cu`, abc: [0, 0, 0] }],
-    )
+    make_crystal(fcc_primitive_matrix(3.61), [{ element: `Cu`, abc: [0, 0, 0] }])
 
   it(`maps Wyckoff rows and Wyckoff colors onto the displayed conventional cell`, async () => {
     await init_moyo_for_tests()

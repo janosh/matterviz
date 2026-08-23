@@ -21,6 +21,20 @@ export const X2_AXIS_DEFAULTS = {
 
 type AxisType = `x` | `x2` | `y` | `y2`
 
+// Tick labels of a categorical axis (slot index -> category name). A user-supplied label
+// mapping (a Record) wins; a tick count or tick positions don't apply to category slots
+// and are ignored. Undefined without categories so the axis falls back to generated ticks.
+export const category_tick_labels = (
+  categories: readonly string[],
+  user_ticks: AxisConfig[`ticks`],
+): AxisConfig[`ticks`] => {
+  if (categories.length === 0) return undefined
+  if (user_ticks != null && typeof user_ticks === `object` && !Array.isArray(user_ticks)) {
+    return user_ticks
+  }
+  return Object.fromEntries(categories.map((cat, idx) => [idx, cat]))
+}
+
 // Any chart series the axis loader can replace (DataSeries, BarSeries, HistogramSeries, ...)
 type LoadableSeries = { id?: string | number; visible?: boolean }
 

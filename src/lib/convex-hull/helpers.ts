@@ -2,7 +2,7 @@ import { type D3InterpolateName, get_d3_interpolator } from '$lib/colors'
 import type { ElementSymbol } from '$lib/element'
 import { element_by_symbol } from '$lib/element/data'
 import { format_fractional, format_num } from '$lib/labels'
-import { array_extent } from '$lib/math'
+import { array_extent, array_max } from '$lib/math'
 import { scaleSequential } from 'd3-scale'
 import type {
   ConvexHullConfig,
@@ -35,12 +35,16 @@ export function compute_hull_stability(
 
 type StabilityEntry = { is_stable?: boolean; e_above_hull?: number }
 
-// [min, max] energy above hull across entries, for ColorBar ranges (max floored at 0.1).
-// Filter to finite values: NaN/undefined distances would otherwise produce a broken range.
+const is_finite = (val: unknown): val is number =>
+  typeof val === `number` && Number.isFinite(val)
+
+// Finite hull distances only: NaN/undefined would otherwise poison every range below
+const finite_hull_dists = (entries: readonly StabilityEntry[]): number[] =>
+  entries.map((entry) => entry.e_above_hull).filter(is_finite)
+
+// [min, max] energy above hull across entries, for ColorBar ranges (max floored at 0.1)
 export const hull_distance_range = (entries: PhaseData[]): [number, number] => {
-  const dists = entries
-    .map((entry) => entry.e_above_hull)
-    .filter((val): val is number => typeof val === `number` && Number.isFinite(val))
+  const dists = finite_hull_dists(entries)
   if (dists.length === 0) return [0, 0.1]
   const [min_dist, max_dist] = array_extent(dists)
   return [min_dist, Math.max(max_dist, 0.1)]
@@ -145,17 +149,10 @@ export function get_energy_color_scale(
   color_scale: D3InterpolateName,
   plot_entries: { e_above_hull?: number }[],
 ): ((value: number) => string) | null {
-  if (color_mode !== `energy` || plot_entries.length === 0) return null
-  let lo = Number.POSITIVE_INFINITY
-  let hi_raw = 0.1
-  for (const entry of plot_entries) {
-    const val = entry.e_above_hull
-    if (typeof val !== `number` || !Number.isFinite(val)) continue
-    lo = Math.min(lo, val)
-    hi_raw = Math.max(hi_raw, val)
-  }
-  if (!Number.isFinite(lo)) return null
-  const hi = Math.max(hi_raw, lo + 1e-6)
+  const dists = color_mode === `energy` ? finite_hull_dists(plot_entries) : []
+  if (dists.length === 0) return null
+  const [lo, max_dist] = array_extent(dists)
+  const hi = Math.max(max_dist, 0.1, lo + 1e-6)
   const interpolator = get_d3_interpolator(color_scale)
   return scaleSequential(interpolator).domain([lo, hi])
 }
@@ -179,13 +176,7 @@ export function get_point_color_for_entry(
 // Compute a consistent max energy threshold for controls (shared)
 export function calc_max_hull_dist_in_data(processed_entries: PhaseData[]): number {
   if (processed_entries.length === 0) return 0.5
-  let max_hull_dist = 0
-  for (const entry of processed_entries) {
-    const val = entry.e_above_hull
-    if (typeof val === `number` && Number.isFinite(val)) {
-      max_hull_dist = Math.max(max_hull_dist, val)
-    }
-  }
+  const max_hull_dist = Math.max(0, array_max(finite_hull_dists(processed_entries)))
   return Math.max(0.1, max_hull_dist + 0.001)
 }
 
@@ -337,9 +328,6 @@ export interface PolymorphStats {
 
 // Energy metric types for consistent polymorph comparison
 type EnergyMetric = `e_form_per_atom` | `energy_per_atom` | `e_above_hull` | null
-
-const is_finite = (val: unknown): val is number =>
-  typeof val === `number` && Number.isFinite(val)
 
 // Compute energy_per_atom from total energy and composition
 function compute_energy_per_atom(entry: PhaseData): number | null {

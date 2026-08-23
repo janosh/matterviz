@@ -2,7 +2,7 @@ import { ConvexHull, ConvexHull2D, ConvexHullCanvas } from '$lib/convex-hull'
 import type { PhaseData } from '$lib/convex-hull/types'
 import { type Component, type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { create_drop_event, doc_query, make_phase, mount_sized } from '../setup'
+import { bind_props, create_drop_event, doc_query, make_phase, mount_sized } from '../setup'
 import ConvexHullSelectionHarness from './ConvexHullSelectionHarness.svelte'
 
 // Force the canvas hit-test to resolve to a real plot entry so hovering can be
@@ -249,26 +249,23 @@ describe(`convex hull replacement state`, () => {
         ...kept_elements.map((el) => with_temps({ [el]: 1 }, [300, 600], el)),
         with_temps({ O: 1 }, [300], `O`),
       ]
-      let stable_entries: PhaseData[] = []
-      const target = await mount_hull(component, {
-        ...dim_props,
-        entries,
-        temperature: 600,
-        interpolate_temperature: false,
-        get stable_entries() {
-          return stable_entries
-        },
-        set stable_entries(value: PhaseData[]) {
-          stable_entries = value
-        },
-      })
+      const state = { stable_entries: [] as PhaseData[] }
+      const target = await mount_hull(
+        component,
+        bind_props(
+          { ...dim_props, entries, temperature: 600, interpolate_temperature: false },
+          state,
+        ),
+      )
       flushSync()
 
       expect(target.querySelector(`.empty-state`)).toBeNull()
       expect(target.querySelector(plot_selector)).not.toBeNull()
       expect(target.querySelector(`.temperature-slider`)).not.toBeNull()
       // the dropped element is closed with a synthetic corner so the hull still spans it
-      expect(stable_entries.map((entry) => entry.entry_id)).toContain(`synthetic-element:O`)
+      expect(state.stable_entries.map((entry) => entry.entry_id)).toContain(
+        `synthetic-element:O`,
+      )
       expect(console_error).not.toHaveBeenCalled()
     },
   )
@@ -284,23 +281,13 @@ describe(`convex hull replacement state`, () => {
         ...elements.map((el) => make_phase({ [el]: 1 }, 0, { entry_id: el })),
         make_phase({ ...composition }, -10, { entry_id: `compound` }),
       ]
-      let stable_entries: PhaseData[] = []
-      const target = await mount_hull(ConvexHull, {
-        entries,
-        get stable_entries() {
-          return stable_entries
-        },
-        set stable_entries(value: PhaseData[]) {
-          stable_entries = value
-        },
-      })
+      const state = { stable_entries: [] as PhaseData[] }
+      const target = await mount_hull(ConvexHull, bind_props({ entries }, state))
       flushSync()
 
       expect(target.querySelector(`.convex-hull-2d`)).not.toBeNull()
       expect(target.querySelector(`.empty-state`)).toBeNull()
-      expect(stable_entries.map((entry) => entry.entry_id)).toEqual(
-        expect.arrayContaining([`compound`]),
-      )
+      expect(state.stable_entries.map((entry) => entry.entry_id)).toContain(`compound`)
     },
   )
 

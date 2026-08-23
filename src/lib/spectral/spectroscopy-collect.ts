@@ -1,5 +1,6 @@
 import { is_finite_vec3_like } from '$lib/math'
 import { collect_trajectory_positions } from '$lib/trajectory/analysis'
+import { values_per_sample } from '$lib/trajectory/helpers'
 import type { CollectPositionsOptions, TrajectoryRun, TrajectorySignal } from '$lib/trajectory'
 import {
   DEFAULT_POSITION_STREAM_MAX_BYTES,
@@ -7,6 +8,7 @@ import {
 } from '$lib/trajectory/runs/accumulate'
 import { SvelteSet } from 'svelte/reactivity'
 import {
+  arrays_equal,
   standard_masses_for_elements,
   type InfraredSignal,
   type SpectroscopyPreprocessing,
@@ -97,7 +99,7 @@ const align_signal_to_steps = (
       `Signal '${key}' has no samples on the strided position steps (frame_stride=${frame_stride}); use stride 1`,
     )
   }
-  const sample_size = signal.sample_shape.reduce((product, size) => product * size, 1)
+  const sample_size = values_per_sample(signal.sample_shape)
   const values = new Float64Array(kept_indices.length * sample_size)
   for (const [out_idx, sample_idx] of kept_indices.entries()) {
     const start = sample_idx * sample_size
@@ -110,10 +112,6 @@ const align_signal_to_steps = (
   }
 }
 
-const matching_shape = (shape: number[] | undefined, expected_shape: number[]): boolean =>
-  shape?.length === expected_shape.length &&
-  shape.every((size, idx) => size === expected_shape[idx])
-
 export const trajectory_signal_keys = (
   run: TrajectoryRun | undefined,
   expected_shape?: number[],
@@ -124,7 +122,7 @@ export const trajectory_signal_keys = (
     ...run.signals,
   }
   const declared_keys = Object.entries(declared_signals).flatMap(([key, { sample_shape }]) =>
-    !expected_shape || matching_shape(sample_shape, expected_shape) ? [key] : [],
+    !expected_shape || arrays_equal(sample_shape, expected_shape) ? [key] : [],
   )
   // Frame metadata is only a response signal when it is named like one: LAMMPS box origins
   // and other vec3 bookkeeping would otherwise show up as IR candidates
@@ -133,7 +131,7 @@ export const trajectory_signal_keys = (
   const metadata_keys = Object.entries(metadata).flatMap(([key, value]) =>
     RESPONSE_SIGNAL_KEY.test(key) &&
     (!expected_shape ||
-      matching_shape(parse_frame_signal(value, key, n_atoms)?.sample_shape, expected_shape))
+      arrays_equal(parse_frame_signal(value, key, n_atoms)?.sample_shape, expected_shape))
       ? [key]
       : [],
   )

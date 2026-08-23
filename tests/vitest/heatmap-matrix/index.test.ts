@@ -1,5 +1,6 @@
 // Tests for HeatmapMatrix types, helpers, and element axis orderings.
 
+import type { ChemicalElement } from '$lib/element'
 import {
   ELEMENT_ORDERINGS,
   elements_to_axis,
@@ -59,14 +60,11 @@ describe(`built-in orderings`, () => {
         ({ atomic_number: `number`, electronegativity: `electronegativity_pauling` } as const)[
           ordering as string
         ] ?? ordering
-      const values = axis.map((item) => item.data?.[key as keyof typeof item.data] ?? null)
-      const null_start = values.findIndex((value) => value === null)
-      const non_null = values.slice(0, null_start === -1 ? undefined : null_start) as number[]
+      const values = axis.map((item) => item.data?.[key as keyof ChemicalElement] ?? null)
+      const non_null = values.filter((value): value is number => value !== null)
       expect(non_null.length).toBeGreaterThan(0)
-      expect(non_null.every((value, idx) => idx === 0 || value >= non_null[idx - 1])).toBe(
-        true,
-      )
-      expect(values.slice(non_null.length).every((value) => value === null)).toBe(true)
+      const nulls = Array<null>(values.length - non_null.length).fill(null)
+      expect(values).toEqual([...non_null.toSorted((val_a, val_b) => val_a - val_b), ...nulls])
     },
   )
 

@@ -49,6 +49,10 @@ interface FilledShape {
 const detect_format = (doc: Document): SvgFormat =>
   doc.querySelector(`[id^="xtick_"], [id^="ytick_"]`) ? `matplotlib` : `simple`
 
+// Non-null results of `fn` over every element matching `selector`
+const query_map = <T>(doc: Document, selector: string, fn: (el: Element) => T | null): T[] =>
+  Array.from(doc.querySelectorAll(selector), fn).filter((item): item is T => item !== null)
+
 // === Axis Scale Extraction ===
 
 // Extract x and y axis scales from tick marks
@@ -56,62 +60,43 @@ function extract_axis_scales(
   doc: Document,
   format: SvgFormat,
 ): { x_scale: LinearScale; y_scale: LinearScale } {
-  const x_ticks: Tick[] = []
-  const y_ticks: Tick[] = []
-
-  if (format === `matplotlib`) extract_matplotlib_ticks(doc, x_ticks, y_ticks)
-  else extract_simple_ticks(doc, x_ticks, y_ticks)
-
+  const [x_ticks, y_ticks] =
+    format === `matplotlib` ? extract_matplotlib_ticks(doc) : extract_simple_ticks(doc)
   return {
     x_scale: build_scale(`x`, x_ticks),
     y_scale: build_scale(`y`, y_ticks), // y-axis inverted (SVG y down, temp up)
   }
 }
 
-// Extract ticks from matplotlib SVG (id="xtick_N", comment-based values)
-function extract_matplotlib_ticks(doc: Document, x_ticks: Tick[], y_ticks: Tick[]): void {
-  const axes: [string, string, Tick[]][] = [
-    [`xtick_`, `x`, x_ticks],
-    [`ytick_`, `y`, y_ticks],
-  ]
-  for (const [prefix, attr, ticks] of axes) {
-    for (const group of Array.from(doc.querySelectorAll(`[id^="${prefix}"]`))) {
+// Matplotlib ticks: <use> markers inside id="xtick_N"/"ytick_N" groups, value in an XML comment
+function extract_matplotlib_ticks(doc: Document): [Tick[], Tick[]] {
+  const ticks_of = (axis: `x` | `y`) =>
+    query_map(doc, `[id^="${axis}tick_"]`, (group) => {
       const value = extract_comment_number(group)
       const use_el = group.querySelector(`use`)
-      if (value !== null && use_el) {
-        const px = parse_float_attr(use_el, attr)
-        if (px !== null) ticks.push({ px, value })
-      }
-    }
-  }
+      const px = use_el && parse_float_attr(use_el, axis)
+      return value !== null && px !== null ? { px, value } : null
+    })
+  return [ticks_of(`x`), ticks_of(`y`)]
 }
 
-// Extract ticks from simple SVG (class-based text elements)
-function extract_simple_ticks(doc: Document, x_ticks: Tick[], y_ticks: Tick[]): void {
-  // Y-axis ticks: class="tick-text" with text-anchor: end
-  for (const text_el of Array.from(doc.querySelectorAll(`.tick-text`))) {
+// Simple-format ticks: y values are <text class="tick-text"> right after their tick <line>
+// (px from its y1), x values <text class="tick-text-x"> (px from its x attribute); both are
+// offset by the parent group's translate
+function extract_simple_ticks(doc: Document): [Tick[], Tick[]] {
+  const tick_of = (text_el: Element, px: number | null, axis: 0 | 1): Tick | null => {
     const value = leading_number(text_el.textContent)
-    if (isNaN(value)) continue
-
-    // Find the immediately preceding sibling tick line (not just any line in parent)
-    const tick_line = text_el.previousElementSibling
-    if (!tick_line || !tick_line.matches(`.tick-line, line`)) continue
-    const py = parse_float_attr(tick_line, `y1`)
-    // Apply parent group transform if present
-    const transform_y = parse_translate(text_el.parentElement)?.[1] ?? 0
-    if (py !== null) y_ticks.push({ px: py + transform_y, value })
+    if (isNaN(value) || px === null) return null
+    return { px: px + (parse_translate(text_el.parentElement)?.[axis] ?? 0), value }
   }
-
-  // X-axis ticks: class="tick-text-x"
-  for (const text_el of Array.from(doc.querySelectorAll(`.tick-text-x`))) {
-    const value = leading_number(text_el.textContent)
-    if (isNaN(value)) continue
-
-    const px_x = parse_float_attr(text_el, `x`)
-    // Apply parent group transform if present
-    const transform_x = parse_translate(text_el.parentElement)?.[0] ?? 0
-    if (px_x !== null) x_ticks.push({ px: px_x + transform_x, value })
-  }
+  return [
+    query_map(doc, `.tick-text-x`, (el) => tick_of(el, parse_float_attr(el, `x`), 0)),
+    query_map(doc, `.tick-text`, (el) => {
+      const tick_line = el.previousElementSibling
+      if (!tick_line?.matches(`.tick-line, line`)) return null
+      return tick_of(el, parse_float_attr(tick_line, `y1`), 1)
+    }),
+  ]
 }
 
 // Build a linear scale from tick data points. Fewer than two ticks means the SVG is neither a
@@ -145,156 +130,99 @@ function build_scale(axis: `x` | `y`, ticks: Tick[]): LinearScale {
 
 // === Boundary Extraction ===
 
-// Extract phase boundary lines from SVG and convert to data coordinates
-function extract_boundaries(
-  doc: Document,
-  format: SvgFormat,
-  x_scale: LinearScale,
-  y_scale: LinearScale,
-): Boundary[] {
-  const boundaries: Boundary[] = []
-  const epsilon = 0.5 // pixel tolerance for classifying horizontal/vertical
-
+// Pixel endpoints of the candidate boundary lines: matplotlib line2d_N groups holding one
+// straight path segment, or simple-format <line class="phase-boundary"> elements
+function extract_boundary_lines(doc: Document, format: SvgFormat): Vec4[] {
   if (format === `matplotlib`) {
-    // Matplotlib: look for line2d_N groups with path elements (skip tick marks at line2d_1..12ish)
-    for (const group of Array.from(doc.querySelectorAll(`[id^="line2d_"]`))) {
+    return query_map(doc, `[id^="line2d_"]`, (group) => {
       const path_el = group.querySelector(`path`)
       const d_attr = path_el?.getAttribute(`d`)
-      if (!path_el || typeof d_attr !== `string`) continue
-
+      if (!path_el || typeof d_attr !== `string`) return null
       // Multi-segment paths are not straight boundaries
       const segments = parse_path_segments(d_attr)
-      if (segments.length !== 1) continue
+      if (segments.length !== 1) return null
       const [x1, y1, x2, y2] = segments[0]
-
       // Skip tick mark lines (short lines, typically < 10px)
-      if (Math.abs(x2 - x1) < 15 && Math.abs(y2 - y1) < 15) continue
-
+      if (Math.abs(x2 - x1) < 15 && Math.abs(y2 - y1) < 15) return null
       // Hairlines are axis furniture (matplotlib draws ticks and spines at 0.8 px); an
       // unparsable/absent stroke-width (0) is kept as a boundary
       const stroke_width = parse_stroke_width(path_el)
-      if (stroke_width > 0 && stroke_width < 1) continue
-
-      add_boundary(boundaries, [x1, y1, x2, y2], x_scale, y_scale, epsilon)
-    }
-  } else {
-    // Simple: <line class="phase-boundary">
-    for (const line_el of Array.from(
-      doc.querySelectorAll(`.phase-boundary, line[class*="phase-boundary"]`),
-    )) {
-      const x1 = parse_float_attr(line_el, `x1`)
-      const y1 = parse_float_attr(line_el, `y1`)
-      const x2 = parse_float_attr(line_el, `x2`)
-      const y2 = parse_float_attr(line_el, `y2`)
-      if (x1 === null || y1 === null || x2 === null || y2 === null) {
-        throw new Error(
-          `Phase boundary line is missing numeric x1/y1/x2/y2 attributes: ${line_el.outerHTML.slice(0, 200)}`,
-        )
-      }
-
-      add_boundary(boundaries, [x1, y1, x2, y2], x_scale, y_scale, epsilon)
-    }
+      return stroke_width > 0 && stroke_width < 1 ? null : segments[0]
+    })
   }
-
-  return boundaries
+  return query_map(doc, `.phase-boundary, line[class*="phase-boundary"]`, (line_el) => {
+    const coords = [`x1`, `y1`, `x2`, `y2`].map((attr) => parse_float_attr(line_el, attr))
+    if (coords.some((coord) => coord === null)) {
+      throw new Error(
+        `Phase boundary line is missing numeric x1/y1/x2/y2 attributes: ${line_el.outerHTML.slice(0, 200)}`,
+      )
+    }
+    return coords as Vec4
+  })
 }
 
-// Add a boundary line (pixel endpoints), classifying as horizontal or vertical
-function add_boundary(
-  boundaries: Boundary[],
+// Axis-aligned boundary (0.5 px tolerance) in data coordinates, null for diagonal lines
+function to_boundary(
   [px_x1, px_y1, px_x2, px_y2]: Vec4,
   x_scale: LinearScale,
   y_scale: LinearScale,
-  epsilon: number,
-): void {
-  const is_vertical = Math.abs(px_x1 - px_x2) < epsilon
-  const is_horizontal = Math.abs(px_y1 - px_y2) < epsilon
-
-  if (!is_vertical && !is_horizontal) return // skip diagonal lines
-
-  const data_x1 = x_scale.to_data(px_x1)
-  const data_y1 = y_scale.to_data(px_y1)
-  const data_x2 = x_scale.to_data(px_x2)
-  const data_y2 = y_scale.to_data(px_y2)
-
-  boundaries.push({
+): Boundary | null {
+  const is_vertical = Math.abs(px_x1 - px_x2) < 0.5
+  const is_horizontal = Math.abs(px_y1 - px_y2) < 0.5
+  if (!is_vertical && !is_horizontal) return null
+  const [data_x1, data_x2] = [x_scale.to_data(px_x1), x_scale.to_data(px_x2)]
+  const [data_y1, data_y2] = [y_scale.to_data(px_y1), y_scale.to_data(px_y2)]
+  return {
     x1: Math.min(data_x1, data_x2),
     y1: Math.min(data_y1, data_y2),
     x2: Math.max(data_x1, data_x2),
     y2: Math.max(data_y1, data_y2),
     orientation: is_vertical ? `vertical` : `horizontal`,
-  })
+  }
 }
 
 // === Label Extraction ===
 
-// Extract phase region labels with their pixel positions
+// Phase region labels (text containing "+", which axis labels lack) with pixel positions.
+// Matplotlib stores the LaTeX text in XML comments of text_N groups and may split a label
+// into a following continuation group ("+ La$_3$Ni$_2$O$_7$"); the simple format uses
+// <text class="label-main"> positioned by transform or x/y attributes.
 function extract_labels(doc: Document, format: SvgFormat): Label[] {
-  const labels: Label[] = []
-  if (format === `matplotlib`) extract_matplotlib_labels(doc, labels)
-  else extract_simple_labels(doc, labels)
-  return labels
-}
-
-// Extract labels from matplotlib SVG using XML comments
-function extract_matplotlib_labels(doc: Document, labels: Label[]): void {
-  // Find text groups with comments containing phase names
-  // Matplotlib may split multi-line labels (especially rotated ones) into
-  // separate <g> groups: text_N has "La$_2$NiO$_4$", followed by a sibling
-  // with "+ La$_3$Ni$_2$O$_7$". We concatenate these continuation groups.
-  for (const group of Array.from(doc.querySelectorAll(`[id^="text_"]`))) {
-    let comment = find_comment_text(group)
-    if (!comment) continue
-
-    // Check following sibling groups for continuation comments starting with "+"
-    let sibling = group.nextElementSibling
-    while (sibling) {
-      // Stop at the next text_N group (that's a separate label)
-      if (sibling.id?.startsWith(`text_`)) break
-      const continuation = find_comment_text(sibling)
-      if (continuation?.trimStart().startsWith(`+`)) {
-        comment += ` ${continuation.trim()}`
+  if (format === `matplotlib`) {
+    return query_map(doc, `[id^="text_"]`, (group) => {
+      let comment = find_comment_text(group)
+      if (!comment) return null
+      for (
+        let sibling = group.nextElementSibling;
+        sibling && !sibling.id?.startsWith(`text_`);
         sibling = sibling.nextElementSibling
-      } else {
-        break
+      ) {
+        const continuation = find_comment_text(sibling)
+        if (!continuation?.trimStart().startsWith(`+`)) break
+        comment += ` ${continuation.trim()}`
       }
-    }
-
-    if (!comment.includes(`+`)) continue // skip axis labels (no "+")
-
-    // Clean LaTeX: "La$_2$NiO$_4$ + NiO" -> "La2NiO4 + NiO"
-    const text = comment
-      .trim()
-      .replaceAll(/\$_\{(?<digits>[^}]*)\}\$/g, `$1`) // $_{10}$ -> 10
-      .replaceAll(/\$_(?<digit>\d)\$/g, `$1`) // $_2$ -> 2
-      .replaceAll(`$`, ``) // remove any remaining $
-      .replaceAll(/\s+/g, ` `)
-      .trim()
-
-    // Get position from transform="translate(x, y)"
-    const pos = parse_translate(group.querySelector(`g[transform]`)) ?? parse_translate(group)
-    if (!pos) continue
-
-    labels.push({ text, px_x: pos[0], px_y: pos[1] })
+      if (!comment.includes(`+`)) return null
+      // Clean LaTeX: "La$_2$NiO$_4$ + NiO" -> "La2NiO4 + NiO"
+      const text = comment
+        .trim()
+        .replaceAll(/\$_\{(?<digits>[^}]*)\}\$/g, `$1`) // $_{10}$ -> 10
+        .replaceAll(/\$_(?<digit>\d)\$/g, `$1`) // $_2$ -> 2
+        .replaceAll(`$`, ``) // remove any remaining $
+        .replaceAll(/\s+/g, ` `)
+        .trim()
+      const pos =
+        parse_translate(group.querySelector(`g[transform]`)) ?? parse_translate(group)
+      return pos && { text, px_x: pos[0], px_y: pos[1] }
+    })
   }
-}
-
-// Extract labels from simple SVG using class="label-main"
-function extract_simple_labels(doc: Document, labels: Label[]): void {
-  for (const text_el of Array.from(doc.querySelectorAll(`.label-main`))) {
-    // Get plain text content (strips tspan tags)
+  return query_map(doc, `.label-main`, (text_el) => {
     const text = (text_el.textContent ?? ``).replaceAll(/\s+/g, ` `).trim()
-    if (!text.includes(`+`)) continue // skip non-phase labels
-
-    // Get position from transform or x/y attributes
+    if (!text.includes(`+`)) return null
     const pos = parse_translate(text_el)
     const px_x = pos?.[0] ?? parse_float_attr(text_el, `x`)
     const px_y = pos?.[1] ?? parse_float_attr(text_el, `y`)
-
-    if (px_x !== null && px_y !== null) {
-      labels.push({ text, px_x, px_y })
-    }
-  }
+    return px_x !== null && px_y !== null ? { text, px_x, px_y } : null
+  })
 }
 
 // === Region Fill Extraction ===
@@ -385,31 +313,22 @@ function fill_at_px(shapes: FilledShape[], [px_x, px_y]: Vec2): string | undefin
 
 const split_phase_label = (label: Label) => label.text.split(/\s*\+\s*/)
 
-// Infer binary components from region labels
+// Infer binary components from region labels sorted by x: each end's pure component is the
+// phase of its two-phase end region absent from the three regions at the other end (for
+// "La2NiO4 + La2O3" on the left, La2O3 is the pure A endpoint)
 function infer_components(labels: Label[]): [string, string] {
-  // Sort labels by x position, split each into phases
   const sorted = labels.toSorted((label_a, label_b) => label_a.px_x - label_b.px_x)
   if (sorted.length < 2) return [`A`, `B`]
-
-  const leftmost = split_phase_label(sorted[0])
-  const rightmost = split_phase_label(sorted[sorted.length - 1])
-
-  // Component A: the unique phase in the leftmost region that doesn't appear on the right
-  // For "La2NiO4 + La2O3", La2O3 is the pure A endpoint
-  let comp_a = `A`
-  if (leftmost.length === 2) {
-    const right_phases = new Set(sorted.slice(-3).flatMap(split_phase_label))
-    comp_a = leftmost.find((phase) => !right_phases.has(phase)) ?? leftmost[1] ?? `A`
+  const end_component = (end: Label, other_end: Label[], fallback: string): string => {
+    const phases = split_phase_label(end)
+    if (phases.length !== 2) return fallback
+    const other_phases = new Set(other_end.flatMap(split_phase_label))
+    return phases.find((phase) => !other_phases.has(phase)) ?? phases[1]
   }
-
-  // Component B: the unique phase in the rightmost region that doesn't appear on the left
-  let comp_b = `B`
-  if (rightmost.length === 2) {
-    const left_phases = new Set(sorted.slice(0, 3).flatMap(split_phase_label))
-    comp_b = rightmost.find((phase) => !left_phases.has(phase)) ?? rightmost[1] ?? `B`
-  }
-
-  return [comp_a, comp_b]
+  return [
+    end_component(sorted[0], sorted.slice(-3), `A`),
+    end_component(sorted[sorted.length - 1], sorted.slice(0, 3), `B`),
+  ]
 }
 
 // === Region Inference ===
@@ -443,46 +362,28 @@ function infer_regions(
   const n_rows = y_coords.length - 1
   const cell_ids = Array.from({ length: n_cols }, () => Array(n_rows).fill(-1))
 
-  // Check which cell edges have boundaries
+  // Walled cell edges: h_walls[col][row] is the bottom edge of cell (col, row), v_walls[col][row]
+  // its left edge; the plot edges are always walls
   const h_walls = Array.from({ length: n_cols }, () => Array(n_rows + 1).fill(false))
   const v_walls = Array.from({ length: n_cols + 1 }, () => Array(n_rows).fill(false))
-
-  // Mark horizontal walls (bottom/top of cells)
+  for (const col_walls of h_walls) for (const row of [0, n_rows]) col_walls[row] = true
+  for (const col of [0, n_cols]) v_walls[col].fill(true)
+  // Cell intervals of `coords` that the span [lo, hi] covers
+  const spanned_cells = (lo: number, hi: number, coords: number[]): number[] =>
+    coords
+      .slice(0, -1)
+      .flatMap((cell_min, idx) =>
+        lo <= cell_min + 1e-6 && hi >= coords[idx + 1] - 1e-6 ? [idx] : [],
+      )
   for (const hb of horizontals) {
     const row = find_coord_index(y_coords, hb.y1)
     if (row === -1) continue
-    for (let col = 0; col < n_cols; col++) {
-      const cell_x_min = x_coords[col]
-      const cell_x_max = x_coords[col + 1]
-      // Check if the boundary spans this cell's x range
-      if (hb.x1 <= cell_x_min + 1e-6 && hb.x2 >= cell_x_max - 1e-6) {
-        h_walls[col][row] = true
-      }
-    }
+    for (const col of spanned_cells(hb.x1, hb.x2, x_coords)) h_walls[col][row] = true
   }
-
-  // Mark vertical walls (left/right of cells)
   for (const vb of verticals) {
     const col = find_coord_index(x_coords, vb.x1)
     if (col === -1) continue
-    for (let row = 0; row < n_rows; row++) {
-      const cell_y_min = y_coords[row]
-      const cell_y_max = y_coords[row + 1]
-      // Check if the boundary spans this cell's y range
-      if (vb.y1 <= cell_y_min + 1e-6 && vb.y2 >= cell_y_max - 1e-6) {
-        v_walls[col][row] = true
-      }
-    }
-  }
-
-  // Plot edges are always walls
-  for (let col = 0; col < n_cols; col++) {
-    h_walls[col][0] = true // bottom edge
-    h_walls[col][n_rows] = true // top edge
-  }
-  for (let row = 0; row < n_rows; row++) {
-    v_walls[0][row] = true // left edge
-    v_walls[n_cols][row] = true // right edge
+    for (const row of spanned_cells(vb.y1, vb.y2, y_coords)) v_walls[col][row] = true
   }
 
   // Flood-fill to assign region IDs
@@ -495,20 +396,12 @@ function infer_regions(
     }
   }
 
-  // Assign labels to regions by checking which region contains each label's position
+  // Each label names the region of the cell under it
   const region_labels = new Map<number, string>()
   for (const label of labels) {
-    const data_x = x_scale.to_data(label.px_x)
-    const data_y = y_scale.to_data(label.px_y)
-
-    const col = find_cell_index(x_coords, data_x)
-    const row = find_cell_index(y_coords, data_y)
-    if (col >= 0 && col < n_cols && row >= 0 && row < n_rows) {
-      const region_id = cell_ids[col][row]
-      if (region_id !== -1) {
-        region_labels.set(region_id, label.text)
-      }
-    }
+    const col = find_cell_index(x_coords, x_scale.to_data(label.px_x))
+    const row = find_cell_index(y_coords, y_scale.to_data(label.px_y))
+    if (col !== -1 && row !== -1) region_labels.set(cell_ids[col][row], label.text)
   }
 
   // Build region polygons by tracing the outline of each region's merged cells
@@ -570,15 +463,10 @@ function flood_fill(
     if (cell_ids[col][row] !== -1) continue
 
     cell_ids[col][row] = region_id
-
-    // Check neighbors (no wall between them)
-    // Left neighbor: check v_walls[col][row]
+    // Neighbours with no wall between them (left, right, bottom, top)
     if (col > 0 && !v_walls[col][row]) stack.push([col - 1, row])
-    // Right neighbor: check v_walls[col+1][row]
     if (col < n_cols - 1 && !v_walls[col + 1][row]) stack.push([col + 1, row])
-    // Bottom neighbor: check h_walls[col][row]
     if (row > 0 && !h_walls[col][row]) stack.push([col, row - 1])
-    // Top neighbor: check h_walls[col][row+1]
     if (row < n_rows - 1 && !h_walls[col][row + 1]) stack.push([col, row + 1])
   }
 }
@@ -694,44 +582,28 @@ function generate_curves(boundaries: Boundary[]): Record<string, DiagramPoint[]>
 
 // Parse a phase diagram SVG string and return a DiagramInput
 export function parse_phase_diagram_svg(svg_string: string): DiagramInput {
-  const parser = new DOMParser()
-  const doc = parser.parseFromString(svg_string, `image/svg+xml`)
-
-  // Check for parse errors
+  const doc = new DOMParser().parseFromString(svg_string, `image/svg+xml`)
   const parse_error = doc.querySelector(`parsererror`)
-  if (parse_error) {
-    throw new Error(`Invalid SVG: ${parse_error.textContent}`)
-  }
+  if (parse_error) throw new Error(`Invalid SVG: ${parse_error.textContent}`)
 
   const format = detect_format(doc)
   const { x_scale, y_scale } = extract_axis_scales(doc, format)
-  const boundaries = extract_boundaries(doc, format, x_scale, y_scale)
-  const labels = extract_labels(doc, format)
-  const components = infer_components(labels)
-
-  if (boundaries.length === 0) {
-    throw new Error(`No phase boundaries found in SVG`)
-  }
-
-  const regions = infer_regions(
-    boundaries,
-    labels,
-    extract_filled_shapes(doc),
-    x_scale,
-    y_scale,
+  const boundaries = extract_boundary_lines(doc, format).flatMap(
+    (line) => to_boundary(line, x_scale, y_scale) ?? [],
   )
-  const curves = generate_curves(boundaries)
+  const labels = extract_labels(doc, format)
+  if (boundaries.length === 0) throw new Error(`No phase boundaries found in SVG`)
 
   return {
     meta: {
-      components,
+      components: infer_components(labels),
       temp_range: y_scale.domain,
       temp_unit: `K`,
       comp_unit: `fraction`,
       title: `Imported Phase Diagram`,
     },
-    curves,
-    regions,
+    curves: generate_curves(boundaries),
+    regions: infer_regions(boundaries, labels, extract_filled_shapes(doc), x_scale, y_scale),
   }
 }
 
@@ -761,38 +633,35 @@ function parse_float_attr(el: Element, attr: string): number | null {
   return isNaN(parsed) ? null : parsed
 }
 
-// Extract a number from XML comment nodes inside a group element
-function extract_comment_number(group: Element): number | null {
+// Text of every XML comment node inside `group`, in document order
+function* comment_texts(group: Element): Generator<string> {
   const walker = group.ownerDocument.createTreeWalker(group, NodeFilter.SHOW_COMMENT)
-  let node: Comment | null
-  while ((node = walker.nextNode() as Comment | null)) {
-    const value = leading_number(node.textContent)
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    yield node.textContent ?? ``
+  }
+}
+
+// First number found in an XML comment inside a group element
+function extract_comment_number(group: Element): number | null {
+  for (const text of comment_texts(group)) {
+    const value = leading_number(text)
     if (!isNaN(value)) return value
   }
   return null
 }
 
-// Find the first XML comment text inside or preceding a group
+// First XML comment text (longer than one character) inside a group, else the nearest
+// comment preceding it before the previous element
 function find_comment_text(group: Element): string | null {
-  // Check comment nodes inside the group
-  const walker = group.ownerDocument.createTreeWalker(group, NodeFilter.SHOW_COMMENT)
-  let node: Comment | null
-  while ((node = walker.nextNode() as Comment | null)) {
-    const text = node.textContent?.trim()
+  for (const text of comment_texts(group)) if (text.trim().length > 1) return text.trim()
+  for (
+    let sibling = group.previousSibling;
+    sibling && sibling.nodeType !== Node.ELEMENT_NODE;
+    sibling = sibling.previousSibling
+  ) {
+    const text = sibling.nodeType === Node.COMMENT_NODE ? sibling.textContent?.trim() : ``
     if (text && text.length > 1) return text
   }
-
-  // Check preceding sibling comments
-  let sibling = group.previousSibling
-  while (sibling) {
-    if (sibling.nodeType === Node.COMMENT_NODE) {
-      const text = sibling.textContent?.trim()
-      if (text && text.length > 1) return text
-    }
-    if (sibling.nodeType === Node.ELEMENT_NODE) break // stop at previous element
-    sibling = sibling.previousSibling
-  }
-
   return null
 }
 

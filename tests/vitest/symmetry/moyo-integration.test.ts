@@ -21,7 +21,7 @@ import {
 import { structure_map } from '$site/structures'
 import { space_group_type } from '@spglib/moyo-wasm'
 import { beforeAll, describe, expect, test } from 'vitest'
-import { init_moyo_for_tests, make_crystal } from '../setup'
+import { fcc_primitive_matrix, init_moyo_for_tests, make_crystal } from '../setup'
 
 // Helper to get structure or throw with descriptive error
 function get_structure(id: string) {
@@ -38,30 +38,16 @@ const analyze_crystal = (crystal: Crystal, symprec = 1e-4) =>
 
 // Shared primitive/non-conventional input cells reused across the orbit-mapping tests.
 // Each returns a fresh Crystal so tests can't cross-contaminate via shared references.
-const FCC_A = 3.61 // primitive FCC Cu: 1-atom input expands to a 4-atom conventional cell
+// primitive FCC Cu: 1-atom input expands to a 4-atom conventional cell
 const prim_fcc_cu = () =>
-  make_crystal(
-    [
-      [0, FCC_A / 2, FCC_A / 2],
-      [FCC_A / 2, 0, FCC_A / 2],
-      [FCC_A / 2, FCC_A / 2, 0],
-    ],
-    [{ element: `Cu`, abc: [0, 0, 0] }],
-  )
+  make_crystal(fcc_primitive_matrix(3.61), [{ element: `Cu`, abc: [0, 0, 0] }])
 
-const SI_A = 5.43 // primitive diamond Si: 2-atom input expands to an 8-atom conventional cell
+// primitive diamond Si: 2-atom input expands to an 8-atom conventional cell
 const prim_diamond_si = () =>
-  make_crystal(
-    [
-      [0, SI_A / 2, SI_A / 2],
-      [SI_A / 2, 0, SI_A / 2],
-      [SI_A / 2, SI_A / 2, 0],
-    ],
-    [
-      { element: `Si`, abc: [0, 0, 0] },
-      { element: `Si`, abc: [0.25, 0.25, 0.25] },
-    ],
-  )
+  make_crystal(fcc_primitive_matrix(5.43), [
+    { element: `Si`, abc: [0, 0, 0] },
+    { element: `Si`, abc: [0.25, 0.25, 0.25] },
+  ])
 
 const PO_A = 3.35 // 2x1x1 supercell of simple-cubic Po: 2-atom input reduces to a 1-atom std cell
 const supercell_po = () =>

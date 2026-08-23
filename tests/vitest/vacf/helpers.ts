@@ -1,7 +1,9 @@
 // Shared fixtures for VACF/VDOS tests: analytic trajectory builders and error metrics.
+import { trajectory_from_frames, type TrajectoryRun } from '$lib/trajectory'
 import type { VacfInput } from '$lib/vacf'
 import { build_positions, type BuildPositionsOptions } from '../msd/helpers'
 import { flatten_xyz_frames, make_rng } from '../numeric-helpers'
+import { make_frame } from '../setup'
 
 export { make_rng, max_abs_error, max_rel_error } from '../numeric-helpers'
 
@@ -48,6 +50,26 @@ export function circular_motion(
     ])
   }
   return { positions, velocities }
+}
+
+// In-memory run of the circular orbit, with the analytic velocities stored per site unless
+// `with_velocities` is false (so calc_vacf has to differentiate the positions)
+export const orbit_run = (
+  n_frames: number,
+  frequency: number,
+  amplitude: number,
+  with_velocities = true,
+): TrajectoryRun => {
+  const { positions, velocities } = circular_motion(n_frames, frequency, amplitude)
+  return trajectory_from_frames(
+    positions.map((frame, frame_idx) =>
+      make_frame(
+        frame_idx,
+        frame,
+        with_velocities ? { velocities: velocities[frame_idx] } : {},
+      ),
+    ),
+  )
 }
 
 // Ideal gas: every atom draws an independent velocity each frame, so the VACF is a delta

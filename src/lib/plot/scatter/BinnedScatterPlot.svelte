@@ -818,9 +818,7 @@
   {frame}
   plot_class="binned-scatter"
   css_prefix="binned-scatter"
-  aria_label={frame.title_config?.text ||
-    [final_x_axis.label, final_y_axis.label].filter(Boolean).join(` vs `) ||
-    `Binned scatter plot`}
+  aria_label="Binned scatter plot"
   bind:fullscreen
   bind:wrapper
   {fullscreen_toggle}

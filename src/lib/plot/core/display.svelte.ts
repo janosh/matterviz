@@ -1,3 +1,4 @@
+import { DEFAULTS } from '$lib/settings'
 import type { DisplayConfig } from './types'
 
 const category_zero_keys = {
@@ -68,4 +69,25 @@ export const sync_category_zero_display = (
   )
   for (const key of disabled_keys) display[key] = false
   return { axis: category_axis, disabled_keys, display }
+}
+
+// Display config of a chart with a category axis (BarPlot, BoxPlot): keeps the category zero
+// lines off in the bound `display` across orientation flips and resolves the merged config.
+// Creates an $effect.pre, so it must be called during component init.
+export function create_category_display(
+  display: () => DisplayConfig,
+  category_axis: () => CategoryAxis,
+): { readonly resolved: DisplayConfig } {
+  let sync: CategoryZeroSyncState = { axis: null, disabled_keys: [] }
+  $effect.pre(() => {
+    sync = sync_category_zero_display(display(), DEFAULTS.plot.display, category_axis(), sync)
+  })
+  const resolved = $derived(
+    resolve_plot_display(display(), DEFAULTS.plot.display, category_axis()),
+  )
+  return {
+    get resolved() {
+      return resolved
+    },
+  }
 }

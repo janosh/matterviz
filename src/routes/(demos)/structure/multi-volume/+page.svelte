@@ -3,7 +3,7 @@
   import { page } from '$app/state'
   import { DragOverlay, StatusMessage } from '$lib/feedback'
   import FilePicker from '$lib/FilePicker.svelte'
-  import { load_from_url } from '$lib/io'
+  import { as_text, load_from_url } from '$lib/io'
   import { auto_color_config } from '$lib/isosurface/coloring'
   import { parse_volumetric_file } from '$lib/isosurface/parse'
   import type {
@@ -38,9 +38,6 @@
   let load_time_ms = $state<number | undefined>()
   let dragover_hint = $state(false)
 
-  const decode = (content: string | ArrayBuffer): string =>
-    content instanceof ArrayBuffer ? new TextDecoder().decode(content) : content
-
   // Monotonic token so a stale async load can never overwrite a newer selection
   let load_counter = 0
 
@@ -50,7 +47,7 @@
     if (!file) throw new Error(`Unknown demo file ${name}`)
     let parsed: VolumetricFileData | null = null
     await load_from_url(file.url, (content, filename) => {
-      parsed = parse_volumetric_file(decode(content), filename)
+      parsed = parse_volumetric_file(as_text(content), filename)
     })
     if (!parsed) throw new Error(`Failed to parse ${name}`)
     return parsed

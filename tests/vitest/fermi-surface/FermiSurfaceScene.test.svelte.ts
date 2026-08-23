@@ -2,12 +2,13 @@
 // meshes must survive an opacity-slider tick (they are shared per surface/pass and recompiled
 // on rebuild) and a surface whose geometry cannot be built must not get any.
 import FermiSurfaceScene from '$lib/fermi-surface/FermiSurfaceScene.svelte'
-import type { FermiIsosurface, FermiSurfaceData } from '$lib/fermi-surface/types'
+import type { FermiIsosurface } from '$lib/fermi-surface/types'
 import type * as threlte_core from '@threlte/core'
 import { flushSync, mount, unmount } from 'svelte'
 import type { Material } from 'three/webgpu'
 import { afterEach, expect, test, vi } from 'vitest'
 import { threlte_stub } from '../isosurface/threlte-stub'
+import { bind_props, make_fermi_surface } from '../setup'
 
 const invalidate = vi.hoisted(() => vi.fn())
 vi.mock(`@threlte/core`, async (original) => {
@@ -52,17 +53,7 @@ const sheet = (band_index: number, n_vertices = 3): FermiIsosurface => ({
   band_index,
   spin: null,
 })
-const fermi_data: FermiSurfaceData = {
-  isosurfaces: [sheet(0), sheet(1, 0), sheet(2)],
-  k_lattice: [
-    [1, 0, 0],
-    [0, 1, 0],
-    [0, 0, 1],
-  ],
-  fermi_energy: 0,
-  reciprocal_cell: `wigner_seitz`,
-  metadata: { n_bands: 3, n_surfaces: 3 },
-}
+const fermi_data = make_fermi_surface([sheet(0), sheet(1, 0), sheet(2)])
 
 const mesh_materials = (): Material[] =>
   threlte_stub.nodes
@@ -73,19 +64,10 @@ test(`an opacity tick reuses the materials; crossing opaque rebuilds them`, () =
   const props = $state({ surface_opacity: 0.6 })
   const component = mount(FermiSurfaceScene, {
     target: document.body,
-    props: {
-      fermi_data,
-      tile_bz: false,
-      show_bz: false,
-      show_vectors: false,
-      gizmo: false,
-      get surface_opacity() {
-        return props.surface_opacity
-      },
-      set surface_opacity(value) {
-        props.surface_opacity = value
-      },
-    },
+    props: bind_props(
+      { fermi_data, tile_bz: false, show_bz: false, show_vectors: false, gizmo: false },
+      props,
+    ),
   })
   teardown = () => void unmount(component)
   flushSync()

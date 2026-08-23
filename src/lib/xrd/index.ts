@@ -1,5 +1,5 @@
 import type { CompositionType } from '$lib/composition'
-import type { Vec2, Vec3 } from '$lib/math'
+import { array_max, type Vec2, type Vec3 } from '$lib/math'
 import type { RadiationType } from '$lib/scattering'
 import type { RadiationKey } from './calc-xrd'
 
@@ -47,9 +47,7 @@ export function decimate_pattern(pattern: XrdPattern, max_points: number): XrdPa
   const { x: x_vals, y: y_vals } = pattern
   const num_points = x_vals.length
   if (num_points <= max_points) return pattern
-  let max_y = -Infinity
-  for (const val of y_vals) if (val > max_y) max_y = val // spread overflows past ~120k points
-  const threshold = 0.05 * max_y
+  const threshold = 0.05 * array_max(y_vals)
   const peaks: number[] = []
   for (let idx = 1; idx < num_points - 1; idx++) {
     const [prev, val, next] = [y_vals[idx - 1], y_vals[idx], y_vals[idx + 1]]

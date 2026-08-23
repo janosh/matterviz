@@ -10,7 +10,10 @@ import { make_bcc, make_fcc, make_hcp } from './lattices'
 
 // Mounting BarPlot in happy-dom costs seconds, so every case here earns its mount
 describe(`StructureTypePlot`, { timeout: 30_000 }, () => {
-  afterEach(() => {
+  let mounted: ReturnType<typeof mount>[] = []
+  afterEach(async () => {
+    await Promise.all(mounted.map((component) => unmount(component)))
+    mounted = []
     document.body.replaceChildren()
     vi.restoreAllMocks()
   })
@@ -19,6 +22,18 @@ describe(`StructureTypePlot`, { timeout: 30_000 }, () => {
     mount_sized(StructureTypePlot, props, {
       selector: `.bar-plot, .status-message, section`,
     })
+  // Mount with every prop bound to `state`; returns an early unmount, else afterEach unmounts
+  const mount_bound = (state: Partial<ComponentProps<typeof StructureTypePlot>>) => {
+    const component = mount(StructureTypePlot, {
+      target: document.body,
+      props: bind_props({}, state),
+    })
+    mounted.push(component)
+    return () => {
+      mounted = mounted.filter((other) => other !== component)
+      return unmount(component)
+    }
+  }
 
   const fcc_result = calc_structure_id(make_fcc([2, 2, 2]), { skip_csp: true })
   const bcc_result = calc_structure_id(make_bcc([2, 2, 2]), { skip_csp: true })
@@ -145,31 +160,25 @@ describe(`StructureTypePlot`, { timeout: 30_000 }, () => {
       loading: false,
       error_msg: undefined as string | undefined,
     })
-    const component = mount(StructureTypePlot, {
-      target: document.body,
-      props: bind_props({}, state),
-    })
-    try {
-      flushSync()
-      expect(state.loading).toBe(true)
-      expect(signals[0]?.aborted).toBe(false)
-      state.structures = undefined
-      flushSync()
-      expect(state.loading).toBe(false)
-      expect(signals[0]?.aborted).toBe(true)
+    const unmount_plot = mount_bound(state)
+    flushSync()
+    expect(state.loading).toBe(true)
+    expect(signals[0]?.aborted).toBe(false)
+    state.structures = undefined
+    flushSync()
+    expect(state.loading).toBe(false)
+    expect(signals[0]?.aborted).toBe(true)
 
-      pending_compute.resolve(fcc_result)
-      await tick()
-      await Promise.resolve()
-      expect(state.id_results).toEqual([])
+    pending_compute.resolve(fcc_result)
+    await tick()
+    await Promise.resolve()
+    expect(state.id_results).toEqual([])
 
-      state.structures = [{ label: `a`, structure: make_fcc([1, 1, 1]) }]
-      flushSync()
-      expect(signals).toHaveLength(2)
-      expect(signals[1]?.aborted).toBe(false)
-    } finally {
-      await unmount(component)
-    }
+    state.structures = [{ label: `a`, structure: make_fcc([1, 1, 1]) }]
+    flushSync()
+    expect(signals).toHaveLength(2)
+    expect(signals[1]?.aborted).toBe(false)
+    await unmount_plot()
     // unmount aborts the worker request without reporting the abort as an error
     expect(signals[1]?.aborted).toBe(true)
     await tick()
@@ -187,26 +196,19 @@ describe(`StructureTypePlot`, { timeout: 30_000 }, () => {
       error_msg: string | undefined
       id_results: StructureIdResult[]
     }>({ structures: make_fcc([1, 1, 1]), error_msg: undefined, id_results: [] })
-    const component = mount(StructureTypePlot, {
-      target: document.body,
-      props: bind_props({}, state),
-    })
-    try {
-      await vi.waitFor(() => expect(state.error_msg).toBe(`synthetic failure`))
-      expect(document.body.textContent).toContain(`synthetic failure`)
+    mount_bound(state)
+    await vi.waitFor(() => expect(state.error_msg).toBe(`synthetic failure`))
+    expect(document.body.textContent).toContain(`synthetic failure`)
 
-      state.structures = undefined
-      flushSync()
-      expect(state.error_msg).toBeUndefined()
+    state.structures = undefined
+    flushSync()
+    expect(state.error_msg).toBeUndefined()
 
-      state.structures = make_fcc([2, 2, 2])
-      await vi.waitFor(() => expect(state.id_results).toHaveLength(1))
-      expect(compute_spy).toHaveBeenCalledTimes(2)
-      expect(state.error_msg).toBeUndefined()
-      expect(document.body.textContent).not.toContain(`synthetic failure`)
-    } finally {
-      await unmount(component)
-    }
+    state.structures = make_fcc([2, 2, 2])
+    await vi.waitFor(() => expect(state.id_results).toHaveLength(1))
+    expect(compute_spy).toHaveBeenCalledTimes(2)
+    expect(state.error_msg).toBeUndefined()
+    expect(document.body.textContent).not.toContain(`synthetic failure`)
   })
 
   test(`equivalent recreated ID options do not recompute`, async () => {

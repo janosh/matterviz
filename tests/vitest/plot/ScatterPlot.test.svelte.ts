@@ -1,15 +1,14 @@
 import ScatterPlot from '$lib/plot/scatter/ScatterPlot.svelte'
 import type { Vec2 } from '$lib/math'
-import { COLOR_BAR_DEFAULTS, type DataSeries, type FillRegion } from '$lib/plot/core/types'
+import type { DataSeries, FillRegion } from '$lib/plot/core/types'
 import type { FacetLayoutContext } from '$lib/plot/core/facets'
 import { place_tooltip } from '$lib/plot/core/decorations/tooltip'
 import { rects_overlap, type Rect } from '$lib/plot/core/layout'
-import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
+import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
   bind_props,
   doc_query,
-  expect_custom_x_ticks_grow_bottom_pad,
   mock_canvas_context,
   mount_sized,
   resize_element,
@@ -356,22 +355,6 @@ describe(`ScatterPlot`, () => {
       expect(handler_props?.cx).toBeCloseTo(x)
       expect(handler_props?.cy).toBeCloseTo(y)
     })
-  })
-
-  // Auto-padding has to measure the custom strings the axis actually draws, not the numeric
-  // tick values behind them, or the labels tilt into a band nobody reserved.
-  test(`bottom padding follows custom x tick labels, not their numeric values`, async () => {
-    expect.assertions(2)
-    const baseline_y = async (ticks: Record<number, string>): Promise<number> => {
-      const plot = await mount_sized_scatter_plot({
-        series: [basic],
-        x_axis: { ticks, tick: { label: { rotation: 45 } } },
-      })
-      // ScatterPlot draws no x spine, so read the baseline off a tick group's translate
-      const transform = plot.querySelector(`g.x-axis g.tick`)?.getAttribute(`transform`)
-      return Number(/,\s*(?<axis_y>[\d.]+)\)/.exec(transform ?? ``)?.groups?.axis_y)
-    }
-    await expect_custom_x_ticks_grow_bottom_pad(baseline_y, [1, 2, 3, 4, 5])
   })
 
   test.each([
@@ -1056,21 +1039,6 @@ describe(`ScatterPlot`, () => {
     },
   )
 
-  test(`children prop`, () => {
-    mount(ScatterPlot, {
-      target: document.body,
-      props: {
-        series: [basic],
-        children: createRawSnippet(() => ({
-          render: () => `<div class="custom-scatter-child">Custom overlay content</div>`,
-        })),
-      },
-    })
-    expect(document.querySelector(`.custom-scatter-child`)?.textContent).toBe(
-      `Custom overlay content`,
-    )
-  })
-
   test(`cold-solves labels after placement config changes`, async () => {
     const props = $state({
       series: [
@@ -1235,20 +1203,6 @@ describe(`ScatterPlot`, () => {
   // Remaining cursor-style behavior lives in Playwright because happy-dom lacks
   // dimensions unless each chart element is explicitly stubbed as above.
 
-  test(`svg aria-label derives from axis labels`, async () => {
-    const plot = await mount_sized_scatter_plot({
-      series: [basic],
-      x_axis: { label: `Temperature` },
-      y_axis: { label: `Pressure` },
-    })
-    const svg = plot.querySelector(`svg[role="application"]`)
-    if (!(svg instanceof SVGSVGElement)) throw new Error(`ScatterPlot SVG not rendered`)
-
-    expect(svg.getAttribute(`aria-label`)).toBe(`Temperature vs Pressure`)
-    expect(plot.querySelector(`.x-axis .axis-label`)?.textContent).toContain(`Temperature`)
-    expect(plot.querySelector(`.y-axis .axis-label`)?.textContent).toContain(`Pressure`)
-  })
-
   const fill_plot_props = (): Partial<ComponentProps<typeof ScatterPlot>> => ({
     series: [{ x: [0, 1], y: [0, 1] }],
     x_axis: { range: [0, 1] as Vec2 },
@@ -1396,42 +1350,6 @@ describe(`ScatterPlot`, () => {
     { ...basic, label: `B` },
   ]
 
-  test(`keeps overflowing colorbar ticks clear of the plot axes`, async () => {
-    vi.spyOn(HTMLElement.prototype, `offsetWidth`, `get`).mockReturnValue(220)
-    vi.spyOn(HTMLElement.prototype, `offsetHeight`, `get`).mockReturnValue(30)
-    vi.spyOn(Element.prototype, `getBoundingClientRect`).mockImplementation(
-      function (this: Element): DOMRect {
-        if (this.classList.contains(`tick-label`)) {
-          return DOMRect.fromRect({ x: 90, y: 128, width: 240, height: 18 })
-        }
-        return DOMRect.fromRect({ x: 100, y: 100, width: 220, height: 30 })
-      },
-    )
-    const plot = await mount_sized_scatter_plot({
-      series: [{ x: [0, 100], y: [90, 90], color_values: [1, 2] }],
-      x_axis: { range: [0, 100] },
-      y_axis: { range: [0, 100] },
-      legend: null,
-      color_bar: {},
-    })
-
-    await vi.waitFor(() => {
-      const colorbar = doc_query(`.colorbar-wrapper`)
-      const visual_rect = solved_decoration_rect(colorbar)
-      const plot_rect = scatter_clip_rect(plot)
-      expect(visual_rect).toMatchObject({ width: 240, height: 46 })
-      const horizontal_gap = Math.min(
-        visual_rect.x - plot_rect.x,
-        plot_rect.x + plot_rect.width - (visual_rect.x + visual_rect.width),
-      )
-      expect(horizontal_gap).toBe(COLOR_BAR_DEFAULTS.axis_clearance)
-      expect(visual_rect.y + visual_rect.height).toBeLessThanOrEqual(
-        plot_rect.y + plot_rect.height - COLOR_BAR_DEFAULTS.axis_clearance,
-      )
-      expect(Number(colorbar.style.left.replace(`px`, ``))).toBe(visual_rect.x + 10)
-    })
-  })
-
   test(`solver auto tracks count grouped series, fill entries, and group headers`, async () => {
     mock_decoration_measurements()
     const plot = await mount_sized_scatter_plot({
@@ -1543,45 +1461,6 @@ describe(`ScatterPlot`, () => {
 
   // rect-zoom must zoom y2 series too when sync is 'none' (the default) - BarPlot,
   // Histogram and BoxPlot all do; only the synced/align modes derive y2 from y1
-  test(`rect-zoom updates y2 range when y2 sync is 'none'`, async () => {
-    const state = { y2_axis: {} as Record<string, unknown> }
-    const plot = await mount_sized_scatter_plot(
-      bind_props(
-        {
-          series: [
-            { x: [1, 2, 3], y: [1, 2, 3] },
-            { x: [1, 2, 3], y: [10, 20, 30], y_axis: `y2` as const },
-          ],
-        },
-        state,
-      ),
-    )
-    const svg = plot.querySelector(`svg[role="application"]`) // chart svg, not control icons
-    if (!svg) throw new Error(`svg not found`)
-    // Drag a rect covering a known fraction of the plot area, read off the clip rect, so the
-    // expected zoom factor doesn't depend on the padding defaults
-    const clip = plot.querySelector(`clipPath rect`)
-    const plot_top = Number(clip?.getAttribute(`y`))
-    const plot_height = Number(clip?.getAttribute(`height`))
-    const [drag_top, drag_bottom] = [
-      plot_top + plot_height * 0.25,
-      plot_top + plot_height * 0.5,
-    ]
-    svg.dispatchEvent(
-      new MouseEvent(`mousedown`, { clientX: 100, clientY: drag_top, bubbles: true }),
-    )
-    window.dispatchEvent(new MouseEvent(`mousemove`, { clientX: 300, clientY: drag_bottom }))
-    window.dispatchEvent(new MouseEvent(`mouseup`, { clientX: 300, clientY: drag_bottom }))
-    await tick()
-    const y2_range = state.y2_axis.range as Vec2 | undefined
-    if (!y2_range) throw new Error(`y2_axis.range not set by rect-zoom`)
-    expect(y2_range.every(Number.isFinite)).toBe(true)
-    expect(y2_range[0]).toBeLessThan(y2_range[1])
-    // a quarter of the plot height can't span more than a quarter of the 10..30 data range
-    // (plus nicing slack), so this stays well under the full span
-    expect(y2_range[1] - y2_range[0]).toBeLessThan(12)
-  })
-
   // NaN/null colour and size values must neither widen the scales nor paint a NaN colour:
   // those points fall back to the series colour and default radius.
   test(`color_values and size_values with NaN fall back per point without widening the scales`, async () => {

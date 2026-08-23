@@ -9,88 +9,83 @@ import { describe, expect, it } from 'vitest'
 import { make_trajectory_frame, read_binary_test_file } from '../setup'
 
 describe(`trajectory data extractors`, () => {
-  it(`extracts all supported energy fields and keeps zeroes`, () => {
-    const frame = make_trajectory_frame(5, 1, {
-      energy: -10.5,
-      energy_per_atom: -5.25,
-      potential_energy: -12,
-      kinetic_energy: 1.5,
-      total_energy: 0,
-    })
-    expect(energy_data_extractor(frame)).toEqual({
-      Step: 5,
-      energy: -10.5,
-      energy_per_atom: -5.25,
-      potential_energy: -12,
-      kinetic_energy: 1.5,
-      total_energy: 0,
-    })
-  })
-
-  it(`calculates force statistics and copies stress metadata`, () => {
-    const frame = make_trajectory_frame(1, 1, {
-      forces: [
-        [1, 0, 0],
-        [0, 2, 0],
-        [0, 0, 3],
-      ],
-      stress_max: 2.1,
-      pressure: 0,
-    })
-    expect(force_stress_data_extractor(frame)).toEqual({
-      Step: 1,
-      force_max: 3,
-      force_norm: expect.closeTo(Math.sqrt(14 / 3), 12),
-      stress_max: 2.1,
-      pressure: 0,
-    })
-  })
-
-  it(`uses scalar force summaries when no force array is present`, () => {
-    expect(
-      force_stress_data_extractor(
-        make_trajectory_frame(2, 1, { force_max: 0, force_norm: 3.5 }),
-      ),
-    ).toEqual({ Step: 2, force_max: 0, force_norm: 3.5 })
-  })
-
-  it(`extracts lattice geometry and prefers an explicit density`, () => {
-    const frame = make_trajectory_frame(
+  const forces = [
+    [1, 0, 0],
+    [0, 2, 0],
+    [0, 0, 3],
+  ]
+  const cubic = { a: 2, b: 2, c: 2, alpha: 90, beta: 90, gamma: 90, volume: 8 }
+  const energies = {
+    energy: -10.5,
+    energy_per_atom: -5.25,
+    potential_energy: -12,
+    kinetic_energy: 1.5,
+    total_energy: 0,
+  }
+  const full = {
+    energy: -10,
+    force_max: 2,
+    n_scf_steps: 8,
+    scf_energy_delta: 1e-6,
+    density: 2.5,
+  }
+  // `exact` rows pin the whole record; the others may carry extra derived fields
+  it.each([
+    [
+      `all supported energy fields (keeping zeroes)`,
+      energy_data_extractor,
+      5,
+      energies,
+      undefined,
+      { Step: 5, ...energies },
+      true,
+    ],
+    [
+      `force statistics and copied stress metadata`,
+      force_stress_data_extractor,
+      1,
+      { forces, stress_max: 2.1, pressure: 0 },
+      undefined,
+      {
+        Step: 1,
+        force_max: 3,
+        force_norm: expect.closeTo(Math.sqrt(14 / 3), 12),
+        stress_max: 2.1,
+        pressure: 0,
+      },
+      true,
+    ],
+    [
+      `scalar force summaries when no force array is present`,
+      force_stress_data_extractor,
+      2,
+      { force_max: 0, force_norm: 3.5 },
+      undefined,
+      { Step: 2, force_max: 0, force_norm: 3.5 },
+      true,
+    ],
+    [
+      `lattice geometry, preferring an explicit density`,
+      structural_data_extractor,
       4,
-      1,
       { density: 0, temperature: 300 },
-      { a: 2, b: 2, c: 2, alpha: 90, beta: 90, gamma: 90, volume: 8 },
-    )
-    expect(structural_data_extractor(frame)).toMatchObject({
-      Step: 4,
-      a: 2,
-      b: 2,
-      c: 2,
-      alpha: 90,
-      beta: 90,
-      gamma: 90,
-      volume: 8,
-      density: 0,
-      temperature: 300,
-    })
-  })
-
-  it(`combines energy, force, SCF, and structural fields`, () => {
-    const frame = make_trajectory_frame(
+      cubic,
+      { Step: 4, ...cubic, density: 0, temperature: 300 },
+      false,
+    ],
+    [
+      `combined energy, force, SCF and structural fields`,
+      full_data_extractor,
       0,
-      1,
-      { energy: -10, force_max: 2, n_scf_steps: 8, scf_energy_delta: 1e-6, density: 2.5 },
+      full,
       { a: 1, b: 1, c: 1, volume: 1 },
-    )
-    expect(full_data_extractor(frame)).toMatchObject({
-      Step: 0,
-      energy: -10,
-      force_max: 2,
-      n_scf_steps: 8,
-      scf_energy_delta: 1e-6,
-      volume: 1,
-      density: 2.5,
-    })
+      { Step: 0, ...full, volume: 1 },
+      false,
+    ],
+  ])(`extracts %s`, (_label, extractor, step, metadata, lattice, expected, exact) => {
+    const row = extractor(make_trajectory_frame(step, 1, metadata, lattice))
+    if (exact) expect(row).toEqual(expected)
+    else expect(row).toMatchObject(expected)
   })
 
   it(`extracts every frame of a lazy HDF5 run`, async () => {

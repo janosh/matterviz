@@ -1,7 +1,6 @@
 // Covers the worker plumbing of compute_vacf_async and the two UI components.
 // happy-dom has no Worker, so a stub is installed before the module is imported and the
 // real postMessage path runs; the components then exercise the synchronous fallback.
-import { trajectory_from_frames, type TrajectoryRun } from '$lib/trajectory'
 import type * as VacfAsyncModule from '$lib/vacf/async-compute.svelte'
 import { calc_vacf } from '$lib/vacf/calc-vacf'
 import type { VacfInput, VacfOptions, VacfResult } from '$lib/vacf/index'
@@ -10,8 +9,8 @@ import VacfPlot from '$lib/vacf/VacfPlot.svelte'
 import { type Component, type ComponentProps, mount, tick, unmount } from 'svelte'
 import { SvelteMap } from 'svelte/reactivity'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
-import { bind_props, install_stub_worker, make_frame } from '../setup'
-import { build_vacf_input, circular_motion } from './helpers'
+import { bind_props, expect_module_worker, install_stub_worker, settle } from '../setup'
+import { build_vacf_input, circular_motion, orbit_run } from './helpers'
 
 // Mirrors vacf-worker.ts: a thrown kernel error becomes an error reply instead of escaping
 const stub = install_stub_worker<{ id: number; input: VacfInput; options: VacfOptions }>(
@@ -48,15 +47,7 @@ describe(`worker code path`, () => {
     expect(stub.posted).toHaveLength(1)
     expect(result).toEqual(sync)
     expect(stub.posted[0].message.input.velocities === null).toBe(!stored)
-  })
-
-  it(`points the one module worker at the vacf worker module as an ES module`, () => {
-    // Vite only detects and rewrites the worker when the URL keeps the `./` prefix and the
-    // `.js` extension. Detection turns the source `.js` spec into the real `.ts` module
-    // tagged `?worker_file`; losing that means the app 404s on the worker at runtime.
-    expect(stub.instances).toHaveLength(1)
-    expect(stub.instances[0].url).toMatch(/\/src\/lib\/vacf\/vacf-worker\.ts\?worker_file/)
-    expect(stub.instances[0].options).toEqual({ type: `module` })
+    expect_module_worker(stub.instances, `src/lib/vacf/vacf-worker.ts`)
   })
 
   // Transferring would detach the caller's buffer, breaking the dedupe cache on a repeat
@@ -71,16 +62,6 @@ describe(`worker code path`, () => {
     expect(payload.velocities).toHaveLength(15 * 3)
   })
 })
-
-// Ticks and microtasks enough for the $effect to run, the compute promise to settle and
-// the result to render
-const settle = async () => {
-  for (let round = 0; round < 3; round++) {
-    await tick()
-    await Promise.resolve()
-    await tick()
-  }
-}
 
 const mount_and_read = async <Props extends Record<string, unknown>>(
   component: Component<Props>,
@@ -193,15 +174,6 @@ describe(`VacfPlot`, () => {
 })
 
 describe(`TrajectoryVacfPane`, () => {
-  const make_run = (n_frames: number): TrajectoryRun => {
-    const { positions, velocities } = circular_motion(n_frames, 0.04, 1)
-    return trajectory_from_frames(
-      positions.map((frame, frame_idx) =>
-        make_frame(frame_idx, frame, { velocities: velocities[frame_idx] }),
-      ),
-    )
-  }
-
   const run_collect = async () => {
     const button = document.querySelector<HTMLButtonElement>(
       `.trajectory-vacf-controls button`,
@@ -217,7 +189,7 @@ describe(`TrajectoryVacfPane`, () => {
 
   it(`starts empty, then collects and plots on click`, async () => {
     const initial_text = await mount_and_read(TrajectoryVacfPane, {
-      run: make_run(60),
+      run: orbit_run(60, 0.04, 1),
       pane_open: true,
     })
     expect(initial_text).toContain(`No VACF data to display`)
@@ -235,7 +207,7 @@ describe(`TrajectoryVacfPane`, () => {
       TrajectoryVacfPane,
       bind_props(
         {
-          run: make_run(40),
+          run: orbit_run(40, 0.04, 1),
           pane_open: true,
           default_dt: 2,
           default_time_unit: `steps`,
@@ -259,7 +231,7 @@ describe(`TrajectoryVacfPane`, () => {
   it(`does not recompute the VACF when the stride changes without a timestep`, async () => {
     const compute = vi.spyOn(vacf_async_module, `compute_vacf_async`)
     await mount_and_read(TrajectoryVacfPane, {
-      run: make_run(40),
+      run: orbit_run(40, 0.04, 1),
       pane_open: true,
     })
     await run_collect()
@@ -275,7 +247,7 @@ describe(`TrajectoryVacfPane`, () => {
   })
 
   it(`disables collection for a frame-only run`, async () => {
-    const { collect_positions: _collect_positions, ...run } = make_run(40)
+    const { collect_positions: _collect_positions, ...run } = orbit_run(40, 0.04, 1)
     await mount_and_read(TrajectoryVacfPane, { run, pane_open: true })
     expect(document.body.textContent).toContain(`only serves individual frames`)
     expect(

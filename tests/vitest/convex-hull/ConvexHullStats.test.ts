@@ -439,12 +439,11 @@ describe(`ConvexHullStats`, () => {
 
     test(`on_entry_click receives the clicked row's entry after sorting reorders rows`, () => {
       const clicked: ConvexHullEntry[] = []
-      mount_stats({
+      mount_stats_table({
         stable_entries: [],
         unstable_entries: unstable, // LiFeO2 (0.15) before Li2O (0.05) in the input
         on_entry_click: (entry: ConvexHullEntry) => clicked.push(entry),
       })
-      switch_to_table()
 
       doc_query(`tbody tr`).click() // first row under the default E_hull ascending sort
       flushSync()
@@ -484,13 +483,11 @@ describe(`ConvexHullStats`, () => {
         reduced_formula: `FeO`,
       })
 
-      mount_stats({ stable_entries: [ternary, binary] })
-      switch_to_table()
+      mount_stats_table({ stable_entries: [ternary, binary] })
       expect(get_table_filter_select(`Min N`)).toBeInstanceOf(HTMLElement)
 
       document.body.innerHTML = ``
-      mount_stats({ stable_entries: [binary] })
-      switch_to_table()
+      mount_stats_table({ stable_entries: [binary] })
       // With only binary entries, max_n_el ≤ 2 so no min N_el filter shown
       expect(get_table_filter_select(`Min N`)).toBeNull()
       // Export controls (HeatmapTable built-in) should still be available without filters
@@ -595,12 +592,11 @@ describe(`ConvexHullStats`, () => {
         expected_text: `entry-A`,
       },
     ])(`highlights row matching $desc`, ({ entries, highlight_id, expected_text }) => {
-      mount_stats({
+      mount_stats_table({
         stable_entries: entries(),
         unstable_entries: [],
         highlighted_entry_id: highlight_id,
       })
-      switch_to_table()
 
       const styled = get_rows_with_style()
       expect(styled).toHaveLength(1)
@@ -611,12 +607,11 @@ describe(`ConvexHullStats`, () => {
       { desc: `undefined`, highlight_id: undefined as string | undefined },
       { desc: `nonexistent`, highlight_id: `nonexistent` },
     ])(`no row highlighted when ID is $desc`, ({ highlight_id }) => {
-      mount_stats({
+      mount_stats_table({
         stable_entries: [make_entry_with_id(`mp-1`)],
         unstable_entries: [],
         highlighted_entry_id: highlight_id,
       })
-      switch_to_table()
       expect(get_rows_with_style()).toHaveLength(0)
     })
   })
@@ -683,7 +678,7 @@ describe(`ConvexHullStats`, () => {
         entry_id: `mp-123`,
         reduced_formula: `Fe`,
       })
-      mount_stats({
+      mount_stats_table({
         stable_entries: [target_entry],
         unstable_entries: [],
         entry_href: (entry: ConvexHullEntry) => {
@@ -691,7 +686,6 @@ describe(`ConvexHullStats`, () => {
           return `/materials/${entry.entry_id}`
         },
       })
-      switch_to_table()
 
       // Callback received the correct entry
       expect(received_entries.length).toBeGreaterThanOrEqual(1)
@@ -746,7 +740,7 @@ describe(`ConvexHullStats`, () => {
     test(`hidden when no polymorphs but table-filters visible`, () => {
       // Ternary entry → max_n_el > 2 → table-filters renders,
       // but unique compositions → no Polymorphs dropdown
-      mount_stats({
+      mount_stats_table({
         stable_entries: [
           mock_entry({
             composition: { Li: 1, Fe: 1, O: 2 },
@@ -760,7 +754,6 @@ describe(`ConvexHullStats`, () => {
           }),
         ],
       })
-      switch_to_table()
       expect(document.querySelector(`.table-filters`)).toBeInstanceOf(HTMLElement)
       expect(document.body.textContent).not.toContain(`Polymorphs`)
     })

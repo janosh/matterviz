@@ -1,9 +1,9 @@
 // oxlint-disable eslint-plugin-unicorn/relative-url-style -- Vite worker detection needs the `./` prefix
-// calc_trajectory_spectroscopy via a persistent Web Worker. `.cancel(reason?)` rejects every
-// in-flight request and terminates the worker; `.release()` terminates it only when nothing
-// is in flight (a pane's unmount path: the client is shared by every mounted pane, so one
-// unmount must not reject another pane's request).
+// calc_trajectory_spectroscopy via a persistent Web Worker; see create_worker_client for
+// `.cancel` / `.release` semantics. The client is shared by every mounted pane, so a pane's
+// unmount path is `.release()` (terminates only when nothing is in flight), never `.cancel()`.
 import type { TrajectorySignal } from '$lib/trajectory'
+import { plain_position_stream } from '$lib/trajectory/async-result.svelte'
 import { create_worker_client } from '$lib/worker-client.svelte'
 import {
   calc_trajectory_spectroscopy,
@@ -12,9 +12,8 @@ import {
   type TrajectorySpectroscopyResult,
 } from './trajectory-spectroscopy'
 
-// Worker messages cannot clone Svelte proxies, and `$state.snapshot(input)` deep-copied every
-// buffer before postMessage copied it again. Rebuilding the payload field by field hands the
-// raw typed arrays straight to structured clone; only the small plain parts are snapshotted.
+// Same field-by-field rebuild as plain_position_stream: raw typed arrays straight to
+// structured clone, only the small plain parts snapshotted
 const plain_signal = (signal: TrajectorySignal): TrajectorySignal => ({
   values: signal.values,
   sample_shape: $state.snapshot(signal.sample_shape),
@@ -34,30 +33,9 @@ export const compute_trajectory_spectroscopy_async = create_worker_client<
     }),
   compute_sync: calc_trajectory_spectroscopy,
   build_payload: (input): TrajectorySpectroscopyInput => {
-    const { positions, infrared_signal, raman_signal } = input
+    const { infrared_signal, raman_signal } = input
     return {
-      positions: {
-        positions: positions.positions,
-        n_frames: positions.n_frames,
-        n_atoms: positions.n_atoms,
-        coords_unwrapped: positions.coords_unwrapped,
-        frame_stride: positions.frame_stride,
-        elements: $state.snapshot(positions.elements),
-        lattice_matrices: $state.snapshot(positions.lattice_matrices),
-        pbc: $state.snapshot(positions.pbc),
-        steps: $state.snapshot(positions.steps),
-        ...(positions.vectors ? { vectors: { ...positions.vectors } } : {}),
-        ...(positions.signals
-          ? {
-              signals: Object.fromEntries(
-                Object.entries(positions.signals).map(([key, signal]) => [
-                  key,
-                  plain_signal(signal),
-                ]),
-              ),
-            }
-          : {}),
-      },
+      positions: plain_position_stream(input.positions),
       masses: input.masses,
       velocities: input.velocities ? plain_signal(input.velocities) : null,
       infrared_signal: infrared_signal

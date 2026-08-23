@@ -5,6 +5,34 @@
 // follows an option keystroke), its settlement is ignored, and a failure clears the stale
 // curves so the plot's empty-state message can show the error.
 import { to_error } from '$lib/utils'
+import type { TrajectoryPositionStream } from './index'
+
+// Structured-cloneable copy of a position stream for a worker payload. Svelte proxies cannot
+// be cloned and `$state.snapshot(stream)` would deep-copy the buffer before postMessage copies
+// it again, so the typed array goes straight through and only the small plain parts are
+// snapshotted. Per-site `vectors` / frame `signals` are dropped: the analyses read them off
+// the input they were lifted into (VACF velocities, spectroscopy signals), never off the stream.
+export const plain_position_stream = ({
+  positions,
+  n_frames,
+  n_atoms,
+  coords_unwrapped,
+  frame_stride,
+  elements,
+  lattice_matrices,
+  pbc,
+  steps,
+}: TrajectoryPositionStream): TrajectoryPositionStream => ({
+  positions,
+  n_frames,
+  n_atoms,
+  coords_unwrapped,
+  frame_stride,
+  elements: $state.snapshot(elements),
+  lattice_matrices: $state.snapshot(lattice_matrices),
+  pbc: $state.snapshot(pbc),
+  steps: $state.snapshot(steps),
+})
 
 interface AsyncResultBinding<Input, Options, Result> {
   // Reactive reads; the effect re-runs whenever either changes identity

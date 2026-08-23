@@ -146,23 +146,12 @@ const merged_prop = (target: string, sub_key: string, source: string): DrivenPro
     merge_object_prop(get_prop(model, target), sub_key, get_prop(model, source)),
   )
 
-const axis_props: readonly DrivenProp[] = [
-  merged_prop(`x_axis`, `range`, `x_range`),
-  merged_prop(`x2_axis`, `range`, `x2_range`),
-  merged_prop(`y_axis`, `range`, `y_range`),
-  merged_prop(`y2_axis`, `range`, `y2_range`),
+const plot_common_drive: readonly DrivenProp[] = [
+  ...drive_props([`series`, `display`, `legend`, `ref_lines`, `padding`, `range_padding`]),
+  ...[`x`, `x2`, `y`, `y2`].map((axis) =>
+    merged_prop(`${axis}_axis`, `range`, `${axis}_range`),
+  ),
 ]
-
-const plot_common_prop_keys = [
-  `series`,
-  `display`,
-  `legend`,
-  `ref_lines`,
-  `padding`,
-  `range_padding`,
-] as const
-
-const plot_common_drive = [...drive_props(plot_common_prop_keys), ...axis_props]
 // Every plot component (the generic plots and the Bands/Dos/XrdPlot/RdfPlot wrappers alike)
 // declares these four controls props and forwards the pane attribute dicts to its PlotControls
 const plot_control_keys = [
@@ -178,41 +167,10 @@ const with_plot_controls = (keys: readonly string[]): DrivenProp[] => [
   ...plot_controls_drive,
   ...drive_props(keys),
 ]
-
-const scatter_plot_drive: readonly DrivenProp[] = [
+// The 2D cartesian plots: the shared series/axis traits, the controls, and their own keys
+const cartesian_plot_drive = (keys: readonly string[]): DrivenProp[] => [
   ...plot_common_drive,
-  ...with_plot_controls([
-    `styles`,
-    `show_legend`,
-    `marker_renderer`,
-    `color_scale`,
-    `color_bar`,
-    `size_scale`,
-    `fill_regions`,
-    `error_bands`,
-    `hover_config`,
-    `label_placement_config`,
-    `point_tween`,
-    `line_tween`,
-  ]),
-]
-
-const bar_plot_drive: readonly DrivenProp[] = [
-  ...plot_common_drive,
-  ...with_plot_controls([
-    `show_legend`,
-    `orientation`,
-    `mode`,
-    `bar`,
-    `line`,
-    `color_scale`,
-    `size_scale`,
-  ]),
-]
-
-const histogram_drive: readonly DrivenProp[] = [
-  ...plot_common_drive,
-  ...with_plot_controls([`show_legend`, `bins`, `mode`, `selected_property`, `bar`]),
+  ...with_plot_controls(keys),
 ]
 
 // Scene traits forwarded verbatim into scene_props via pick_props.
@@ -437,7 +395,23 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     // selected_point drives the highlight from Python; active_point/hovered_point are
     // written back via the interaction callbacks.
     base_drive: style_base_drive,
-    drive: [...scatter_plot_drive, drive_prop(`selected_point`)],
+    drive: [
+      ...cartesian_plot_drive([
+        `styles`,
+        `show_legend`,
+        `marker_renderer`,
+        `color_scale`,
+        `color_bar`,
+        `size_scale`,
+        `fill_regions`,
+        `error_bands`,
+        `hover_config`,
+        `label_placement_config`,
+        `point_tween`,
+        `line_tween`,
+      ]),
+      drive_prop(`selected_point`),
+    ],
     interactions: scatter_interactions,
     interaction_model_keys: [`active_point`, `hovered_point`],
   },
@@ -461,8 +435,24 @@ export const WIDGETS: Record<string, WidgetSpec> = {
       `camera_projection`,
     ]),
   },
-  bar_plot: { component: BarPlot, base_drive: style_base_drive, drive: bar_plot_drive },
-  histogram: { component: Histogram, base_drive: style_base_drive, drive: histogram_drive },
+  bar_plot: {
+    component: BarPlot,
+    base_drive: style_base_drive,
+    drive: cartesian_plot_drive([
+      `show_legend`,
+      `orientation`,
+      `mode`,
+      `bar`,
+      `line`,
+      `color_scale`,
+      `size_scale`,
+    ]),
+  },
+  histogram: {
+    component: Histogram,
+    base_drive: style_base_drive,
+    drive: cartesian_plot_drive([`show_legend`, `bins`, `mode`, `selected_property`, `bar`]),
+  },
   composition: {
     component: Composition,
     base_drive: style_base_drive,

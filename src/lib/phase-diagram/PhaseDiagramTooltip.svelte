@@ -17,6 +17,7 @@
     format_composition,
     format_temperature,
     get_phase_stability_range,
+    lever_rule_rows,
   } from './utils'
 
   let {
@@ -111,28 +112,16 @@
     return min_dist
   })
 
-  // Normalized lever rule display data (unifies horizontal and vertical modes):
-  // one [phase, fraction, location] row per end of the tie-line
-  const lever_display = $derived.by(() => {
-    const { lever_rule: lr, vertical_lever_rule: vlr } = hover_info
-    if (lever_rule_mode === `vertical` && vlr) {
-      const temp = (val: number) => format_temperature(to_display(val), temperature_unit)
-      const rows: [string, number, string][] = [
-        [vlr.bottom_phase, vlr.fraction_bottom, temp(vlr.bottom_temperature)],
-        [vlr.top_phase, vlr.fraction_top, temp(vlr.top_temperature)],
-      ]
-      return { label: `Lever Rule (vertical)`, rows }
-    }
-    if (lever_rule_mode === `horizontal` && lr) {
-      const comp = (val: number) => format_composition(val, composition_unit)
-      const rows: [string, number, string][] = [
-        [lr.left_phase, lr.fraction_left, comp(lr.left_composition)],
-        [lr.right_phase, lr.fraction_right, comp(lr.right_composition)],
-      ]
-      return { label: `Lever Rule`, rows }
-    }
-    return null
-  })
+  // Lever rule of the active mode, one [phase, fraction, location] row per tie-line end
+  const lever_display = $derived(
+    lever_rule_rows(
+      hover_info,
+      lever_rule_mode,
+      composition_unit,
+      temperature_unit,
+      data_unit,
+    ),
+  )
 </script>
 
 <TooltipContent data={hover_info} snippet_arg={hover_info} {tooltip}>
@@ -206,9 +195,9 @@
     </dl>
 
     {#if lever_display}
-      {@const { label, rows } = lever_display}
+      {@const { vertical, rows } = lever_display}
       <div class="lever">
-        <span>{label}</span>
+        <span>{vertical ? `Lever Rule (vertical)` : `Lever Rule`}</span>
         <div class="bar">
           {#each rows as [phase, fraction], idx (idx)}
             <div

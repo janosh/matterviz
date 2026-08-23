@@ -219,6 +219,13 @@ export const default_hull_config: ConvexHullConfig = {
   colors: { stable: `#0072B2`, unstable: `#E69F00` },
 }
 
+// User config over default_hull_config, colors merged one level deep
+export const merge_hull_config = (config: ConvexHullConfig): ConvexHullConfig => ({
+  ...default_hull_config,
+  ...config,
+  colors: { ...default_hull_config.colors, ...config.colors },
+})
+
 // Shared convex hull styles (single source of truth shared by 2D, 3D, and 4D)
 export const CONVEX_HULL_STYLE = Object.freeze({
   structure_line: Object.freeze({

@@ -1,22 +1,24 @@
 import { rects_overlap } from '$lib/plot/core/layout'
-import { expect, type Locator, test } from '@playwright/test'
+import { expect, type Locator, type Page, test } from '@playwright/test'
 import {
+  bounding_boxes,
   expect_shift_drag_pans,
   expect_zoom_shrinks_axes,
-  is_present,
   open_plot_controls,
+  require_bbox,
+  tick_texts,
 } from '../helpers'
 
 // Bars render as <path> (rounded-rect path) with an aria-label.
 const bars_of = (plot: Locator) => plot.locator(`svg path[aria-label^="bar "]`)
-const first_boxes = async (plot: Locator, count = 4) =>
-  (
-    await Promise.all(
-      (await bars_of(plot).all()).slice(0, count).map((bar) => bar.boundingBox()),
-    )
-  ).filter(is_present)
-const tick_texts = (plot: Locator, axis: `x` | `y` | `y2`) =>
-  plot.locator(`g.${axis}-axis .tick text`).allTextContents()
+const bar_boxes = (plot: Locator, count = 4) => bounding_boxes(bars_of(plot), count)
+// Scroll a test section's plot into view and wait for its first bar
+const ready_plot = async (page: Page, section_id: string) => {
+  const plot = page.locator(`${section_id} .bar-plot`)
+  await plot.scrollIntoViewIfNeeded()
+  await expect(bars_of(plot).first()).toBeVisible()
+  return plot
+}
 
 test.describe(`BarPlot Component Tests`, () => {
   test.beforeEach(async ({ page }) => {
@@ -92,12 +94,7 @@ test.describe(`BarPlot Component Tests`, () => {
     await bars.first().hover({ force: true })
     const tooltip = plot.locator(`.plot-tooltip`)
     await expect(tooltip).toBeVisible()
-    const [legend_box, tooltip_box] = await Promise.all([
-      legend.boundingBox(),
-      tooltip.boundingBox(),
-    ])
-    if (!legend_box || !tooltip_box) throw new Error(`missing legend/tooltip geometry`)
-    expect(rects_overlap(legend_box, tooltip_box)).toBe(false)
+    expect(rects_overlap(await require_bbox(legend), await require_bbox(tooltip))).toBe(false)
 
     const initial_bars = await bars.count()
     expect(initial_bars).toBeGreaterThan(0)
@@ -137,10 +134,8 @@ test.describe(`BarPlot Component Tests`, () => {
   test(`controls pane toggles grid, reformats ticks and flips orientation`, async ({
     page,
   }) => {
-    const plot = page.locator(`#basic-bar .bar-plot`)
-    const bars = bars_of(plot)
-    await expect(bars.first()).toBeVisible()
-    const dims_before = await first_boxes(plot, 12)
+    const plot = await ready_plot(page, `#basic-bar`)
+    const dims_before = await bar_boxes(plot, 12)
     // with range_padding 0 the 4 wide bars aren't majority-vertical; just require
     // unambiguous verticals to exist so the flip below is observable
     const vertical_before = dims_before.filter((bb) => bb.height > bb.width).length
@@ -163,7 +158,7 @@ test.describe(`BarPlot Component Tests`, () => {
     await pane.getByRole(`combobox`).first().selectOption(`horizontal`)
     await expect
       .poll(async () => {
-        const dims = await first_boxes(plot, 12)
+        const dims = await bar_boxes(plot, 12)
         const horizontal = dims.filter((bb) => bb.width > bb.height).length
         const vertical = dims.filter((bb) => bb.height > bb.width).length
         return horizontal > vertical && vertical < vertical_before
@@ -181,7 +176,7 @@ test.describe(`BarPlot Component Tests`, () => {
       const plot = page.locator(plot_id)
       await expect(bars_of(plot).first()).toBeVisible()
       // mixed signs place bars on both sides of the baseline
-      const positions = (await first_boxes(plot)).map((bb) => bb[axis])
+      const positions = (await bar_boxes(plot)).map((bb) => bb[axis])
       expect(Math.max(...positions) - Math.min(...positions)).toBeGreaterThan(0)
     }
 
@@ -198,17 +193,15 @@ test.describe(`BarPlot Component Tests`, () => {
   })
 
   test(`per-bar width arrays change bar widths`, async ({ page }) => {
-    const widths = (await first_boxes(page.locator(`#width-array`))).map((bb) => bb.width)
+    const widths = (await bar_boxes(page.locator(`#width-array`))).map((bb) => bb.width)
     expect(new Set(widths.map((width) => Math.round(width))).size).toBeGreaterThan(1)
   })
 
   test(`y2 series get an independent axis, zoom together and line series can use y2`, async ({
     page,
   }) => {
-    const plot = page.locator(`#y2-axis-bar .bar-plot`)
-    await plot.scrollIntoViewIfNeeded()
+    const plot = await ready_plot(page, `#y2-axis-bar`)
     await expect(plot.locator(`g.y2-axis .tick`).first()).toBeVisible()
-    await expect(bars_of(plot).first()).toBeVisible()
     const initial_y2 = await tick_texts(plot, `y2`)
     await expect_zoom_shrinks_axes(page, plot)
     await expect.poll(() => tick_texts(plot, `y2`)).toEqual(initial_y2)
@@ -218,10 +211,8 @@ test.describe(`BarPlot Component Tests`, () => {
     await scaled.scrollIntoViewIfNeeded()
     await expect(scaled.locator(`g.y2-axis .tick text`).first()).toBeVisible()
     expect(await tick_texts(scaled, `y`)).not.toEqual(await tick_texts(scaled, `y2`))
-    const stacked = page.locator(`#y2-stacked .bar-plot`)
-    await stacked.scrollIntoViewIfNeeded()
-    await expect(bars_of(stacked).first()).toBeVisible()
-    const ys = (await first_boxes(stacked)).map((bb) => Math.round(bb.y))
+    const stacked = await ready_plot(page, `#y2-stacked`)
+    const ys = (await bar_boxes(stacked)).map((bb) => Math.round(bb.y))
     expect(new Set(ys).size).toBeGreaterThan(1)
 
     const line_plot = page.locator(`#y2-line-series .bar-plot`)
@@ -230,23 +221,17 @@ test.describe(`BarPlot Component Tests`, () => {
     await expect(line_plot.locator(`g.y2-axis`)).toBeVisible()
   })
 
-  // CATEGORICAL BAR CHART TESTS
-
   test(`categorical bars label the category axis, honor custom order and flip with orientation`, async ({
     page,
   }) => {
-    const plot = page.locator(`#categorical-bar .bar-plot`)
-    await plot.scrollIntoViewIfNeeded()
-    await expect(bars_of(plot).first()).toBeVisible()
+    const plot = await ready_plot(page, `#categorical-bar`)
     const x_ticks = await tick_texts(plot, `x`)
     for (const material of [`Si`, `GaAs`, `Diamond`, `CdTe`])
       expect(x_ticks).toContain(material)
     expect(x_ticks).not.toContain(`0`)
 
     // stacked: union of all categories = 6 ticks; missing categories pad with y=0
-    const stacked = page.locator(`#categorical-stacked .bar-plot`)
-    await stacked.scrollIntoViewIfNeeded()
-    await expect(bars_of(stacked).first()).toBeVisible()
+    const stacked = await ready_plot(page, `#categorical-stacked`)
     expect(await tick_texts(stacked, `x`)).toHaveLength(6)
     const y_max = Math.max(
       ...(await tick_texts(stacked, `y`)).map(Number).filter(Number.isFinite),
@@ -255,16 +240,12 @@ test.describe(`BarPlot Component Tests`, () => {
     expect(y_max).toBeLessThan(20)
 
     // horizontal: categories move to the y axis
-    const horizontal = page.locator(`#categorical-horizontal .bar-plot`)
-    await horizontal.scrollIntoViewIfNeeded()
-    await expect(bars_of(horizontal).first()).toBeVisible()
+    const horizontal = await ready_plot(page, `#categorical-horizontal`)
     expect(await tick_texts(horizontal, `y`)).toContain(`Si`)
     expect(await tick_texts(horizontal, `x`)).not.toContain(`Si`)
 
     // explicit x_axis.categories filters and orders
-    const custom = page.locator(`#categorical-custom-order .bar-plot`)
-    await custom.scrollIntoViewIfNeeded()
-    await expect(bars_of(custom).first()).toBeVisible()
+    const custom = await ready_plot(page, `#categorical-custom-order`)
     expect(await tick_texts(custom, `x`)).toEqual([`Diamond`, `GaN`, `Si`, `GaAs`])
   })
 
@@ -273,15 +254,16 @@ test.describe(`BarPlot Component Tests`, () => {
     const plot = section.locator(`.bar-plot`)
     await plot.scrollIntoViewIfNeeded()
     const bar = bars_of(plot).first()
-    await bar.hover()
-    await expect(plot.locator(`.plot-tooltip`)).toHaveText(/Oxygen|Silicon|Aluminum|Iron/)
-
-    const info = section.locator(`.categorical-handler-info`)
     const element_name = /Oxygen|Silicon|Aluminum|Iron/
-    await expect(info.locator(`p`).first()).toContainText(`Hovering:`)
-    await expect(info.locator(`p`).first()).toHaveText(element_name)
+    await bar.hover()
+    await expect(plot.locator(`.plot-tooltip`)).toHaveText(element_name)
+
+    const info_lines = section.locator(`.categorical-handler-info p`)
+    const [hover_p, click_p] = [info_lines.first(), info_lines.last()]
+    await expect(hover_p).toContainText(`Hovering:`)
+    await expect(hover_p).toHaveText(element_name)
     await bar.click()
-    await expect(info.locator(`p`).last()).toContainText(`Clicked:`)
-    await expect(info.locator(`p`).last()).toHaveText(element_name)
+    await expect(click_p).toContainText(`Clicked:`)
+    await expect(click_p).toHaveText(element_name)
   })
 })

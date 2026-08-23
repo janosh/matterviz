@@ -5,13 +5,15 @@ import {
   drag_canvas,
   enter_edit_atoms_mode,
   expect_canvas_changed,
+  expect_canvas_changed_by,
   get_canvas_timeout,
   goto_structure_test,
   IS_CI,
   primary_modifier_key,
   rendered_instance_counts,
-  set_lattice_props,
   set_scene_props,
+  set_structure,
+  structure_canvas,
 } from '../helpers'
 
 // Screenshot the canvas and assert it rendered non-trivial pixel data.
@@ -21,6 +23,13 @@ const expect_canvas_renders = async (canvas: Locator): Promise<Buffer> => {
   return screenshot
 }
 
+const wait_frames = (page: Page, count: number) =>
+  page.evaluate(async (frames) => {
+    for (let frame_idx = 0; frame_idx < frames; frame_idx++) {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    }
+  }, count)
+
 // Load a centered scene from species (element + occupancy) placed at one
 // position. Multiple species at the same spot model a disordered site (stored as
 // separate split sites). Optional rotation tips the wedge axis toward the camera.
@@ -29,38 +38,29 @@ async function load_centered_scene(
   species: { element: string; occu: number }[],
   rotation?: [number, number, number],
 ): Promise<void> {
-  await page.evaluate(
-    async ({ specs, rot }) => {
-      const structure = {
-        sites: specs.map(({ element, occu }) => ({
-          species: [{ element, occu, oxidation_state: 0 }],
-          abc: [0.25, 0.25, 0.5],
-          xyz: [0, 0, 0],
-          label: element,
-          properties: {},
-        })),
+  await set_structure(
+    page,
+    {
+      sites: species.map(({ element, occu }) => ({
+        species: [{ element, occu, oxidation_state: 0 }],
+        abc: [0.25, 0.25, 0.5],
+        xyz: [0, 0, 0],
+        label: element,
         properties: {},
-      }
-      window.dispatchEvent(new CustomEvent(`set-structure`, { detail: { structure } }))
-      window.dispatchEvent(
-        new CustomEvent(`set-scene-props`, {
-          detail: {
-            atom_radius: 2.5,
-            camera_position: [0, 0, 8],
-            camera_target: [0, 0, 0],
-            ...(rot ? { rotation: rot } : {}),
-            show_bonds: `never`,
-            show_site_indices: false,
-            show_site_labels: false,
-          },
-        }),
-      )
-      for (let frame_idx = 0; frame_idx < 5; frame_idx++) {
-        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
-      }
+      })),
+      properties: {},
     },
-    { specs: species, rot: rotation },
+    {
+      atom_radius: 2.5,
+      camera_position: [0, 0, 8],
+      camera_target: [0, 0, 0],
+      ...(rotation ? { rotation } : {}),
+      show_bonds: `never`,
+      show_site_indices: false,
+      show_site_labels: false,
+    },
   )
+  await wait_frames(page, 5)
 }
 
 // Disordered tsumcorite M2 site: Zn+Fe+Pb at a single position.
@@ -82,9 +82,13 @@ const hover_canvas_center = async (canvas: Locator): Promise<void> => {
   const box = await canvas_box(canvas)
   await canvas.hover({ position: { x: box.width / 2, y: box.height / 2 }, force: true })
 }
+const hover_canvas_corner = (canvas: Locator) =>
+  canvas.hover({ position: { x: 4, y: 4 }, force: true })
+
+const site_tooltip = (page: Page) => page.locator(`[role="tooltip"]:has(.coordinates)`)
 
 test.describe(`StructureScene Component Tests`, () => {
-  test.beforeEach(async ({ page }: { page: Page }) => {
+  test.beforeEach(async ({ page }) => {
     // Skip in CI - 3D canvas and camera control tests are unreliable
     test.skip(IS_CI, `3D scene tests are flaky in CI`)
     await goto_structure_test(page)
@@ -115,9 +119,9 @@ test.describe(`StructureScene Component Tests`, () => {
     page,
   }) => {
     await load_centered_scene(page, [{ element: `C`, occu: 1 }])
-    const canvas = page.locator(`#test-structure canvas`)
+    const canvas = structure_canvas(page)
     await hover_canvas_center(canvas)
-    const tooltip = page.locator(`[role="tooltip"]:has(.coordinates)`)
+    const tooltip = site_tooltip(page)
     await expect(tooltip).toBeVisible({ timeout: get_canvas_timeout() })
     const elements = tooltip.locator(`.elements`)
     await expect(elements.locator(`strong`)).toHaveText(/^\s*C\s*$/)
@@ -133,12 +137,10 @@ test.describe(`StructureScene Component Tests`, () => {
     // Check visibility immediately after each frame so a short disappearance fails.
     // 20 frames covers roughly 1/3 s at 60fps, enough to catch transient hover loss.
     for (let frame_idx = 0; frame_idx < 20; frame_idx++) {
-      await page.evaluate(
-        () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
-      )
+      await wait_frames(page, 1)
       expect(await tooltip.isVisible()).toBe(true)
     }
-    await canvas.hover({ position: { x: 4, y: 4 }, force: true })
+    await hover_canvas_corner(canvas)
     await expect(tooltip).toBeHidden({ timeout: get_canvas_timeout() })
   })
 
@@ -147,9 +149,8 @@ test.describe(`StructureScene Component Tests`, () => {
     // single-species sites at the same position. The tooltip must show every
     // element, not just the majority one (regression guard).
     await load_disordered_site_scene(page)
-    await hover_canvas_center(page.locator(`#test-structure canvas`))
-    const tooltip = page.locator(`[role="tooltip"]:has(.coordinates)`)
-    const elements = tooltip.locator(`.elements`)
+    await hover_canvas_center(structure_canvas(page))
+    const elements = site_tooltip(page).locator(`.elements`)
     await expect(elements).toBeVisible({ timeout: get_canvas_timeout() })
     for (const element of [`Zn`, `Fe`, `Pb`]) {
       await expect(elements.locator(`strong`).filter({ hasText: element })).toBeVisible()
@@ -180,17 +181,18 @@ test.describe(`StructureScene Component Tests`, () => {
     // Rotation tips the wedge (Y) axis toward the camera so the weak pole faces us.
     await load_disordered_site_scene(page, [-Math.PI / 2, 0, 0])
 
-    const canvas = page.locator(`#test-structure canvas`)
+    const canvas = structure_canvas(page)
     const box = await canvas_box(canvas)
-    const tooltip = page.locator(`[role="tooltip"]:has(.coordinates)`)
-    const cx = box.width / 2
-    const cy = box.height / 2
+    const tooltip = site_tooltip(page)
 
     // Points along the formerly-dead equatorial band through the ball center.
     for (const dx of [0, -24, 24, -12, 12]) {
-      await canvas.hover({ position: { x: 4, y: 4 }, force: true })
+      await hover_canvas_corner(canvas)
       await expect(tooltip).toBeHidden({ timeout: get_canvas_timeout() })
-      await canvas.hover({ position: { x: cx + dx, y: cy }, force: true })
+      await canvas.hover({
+        position: { x: box.width / 2 + dx, y: box.height / 2 },
+        force: true,
+      })
       await expect(tooltip, `point (${dx}, 0) should be hoverable`).toBeVisible({
         timeout: get_canvas_timeout(),
       })
@@ -198,20 +200,15 @@ test.describe(`StructureScene Component Tests`, () => {
   })
 
   test(`camera controls (rotation, zoom, pan) each change the view`, async ({ page }) => {
-    const canvas = page.locator(`#test-structure canvas`)
-    const initial_screenshot = await canvas.screenshot()
-
-    await drag_canvas(canvas, { dx: 100 })
-    await expect_canvas_changed(canvas, initial_screenshot)
-    const after_rotation = await canvas.screenshot()
-
-    await hover_canvas_center(canvas)
-    await page.mouse.wheel(0, -200) // Zoom in
-    await expect_canvas_changed(canvas, after_rotation)
-    const after_zoom = await canvas.screenshot()
-
-    await drag_canvas(canvas, { dx: 50, dy: 30, button: `right` }) // pan
-    await expect_canvas_changed(canvas, after_zoom)
+    const canvas = structure_canvas(page)
+    await expect_canvas_changed_by(canvas, () => drag_canvas(canvas, { dx: 100 }))
+    await expect_canvas_changed_by(canvas, async () => {
+      await hover_canvas_center(canvas)
+      await page.mouse.wheel(0, -200) // Zoom in
+    })
+    await expect_canvas_changed_by(canvas, () =>
+      drag_canvas(canvas, { dx: 50, dy: 30, button: `right` }),
+    ) // pan
   })
 
   // Regression guard for commit 16dbcf0b (disordered sites wrongly used only the first
@@ -219,7 +216,7 @@ test.describe(`StructureScene Component Tests`, () => {
   // so the only difference between the two renders is the second species' color.
   test(`disordered sites color each species segment by its own element`, async ({ page }) => {
     const console_errors = collect_console_errors(page)
-    const canvas = page.locator(`#test-structure canvas`)
+    const canvas = structure_canvas(page)
 
     // Pole-on rotation shows all species wedges as pie slices. auto_rotate must be off
     // so the canvas can settle for the pixel comparison below.
@@ -287,7 +284,7 @@ test.describe(`StructureScene Component Tests`, () => {
     page,
   }) => {
     const console_errors = collect_console_errors(page)
-    const canvas = page.locator(`#test-structure canvas`)
+    const canvas = structure_canvas(page)
     const white = { cell_edge_color: `#ffffff`, cell_surface_color: `#ffffff` }
 
     const opacity_cases = {
@@ -300,7 +297,7 @@ test.describe(`StructureScene Component Tests`, () => {
     const renders: Record<string, Buffer> = {}
     let previous = await expect_canvas_renders(canvas)
     for (const [name, opacities] of Object.entries(opacity_cases)) {
-      await set_lattice_props(page, { ...white, ...opacities })
+      await set_scene_props(page, { ...white, ...opacities })
       await expect_canvas_changed(canvas, previous)
       previous = await expect_canvas_renders(canvas)
       renders[name] = previous
@@ -314,7 +311,7 @@ test.describe(`StructureScene Component Tests`, () => {
 
     // colors repaint the (visible) cell
     for (const color of [`#ff0000`, `#00ff00`, `#0000ff`]) {
-      await set_lattice_props(page, {
+      await set_scene_props(page, {
         ...opacity_cases.both,
         cell_edge_color: color,
         cell_surface_color: color,
@@ -326,11 +323,11 @@ test.describe(`StructureScene Component Tests`, () => {
 
     // extreme line widths and out-of-range opacities are clamped, not fatal
     for (const cell_edge_width of [1, 5, 10]) {
-      await set_lattice_props(page, { ...white, cell_edge_opacity: 1, cell_edge_width })
+      await set_scene_props(page, { ...white, cell_edge_opacity: 1, cell_edge_width })
       await expect_canvas_renders(canvas)
     }
     for (const opacity of [-0.5, 1.5]) {
-      await set_lattice_props(page, {
+      await set_scene_props(page, {
         ...white,
         cell_edge_opacity: opacity,
         cell_surface_opacity: opacity,
@@ -344,7 +341,7 @@ test.describe(`StructureScene Component Tests`, () => {
   // rendered atom sizes must visibly change
   test(`same_size_atoms visibly changes atom scaling`, async ({ page }) => {
     const console_errors = collect_console_errors(page)
-    const canvas = page.locator(`#test-structure canvas`)
+    const canvas = structure_canvas(page)
 
     await set_scene_props(page, { same_size_atoms: false, atom_radius: 1, show_atoms: true })
     const per_element_radii = await expect_canvas_renders(canvas)
@@ -356,7 +353,7 @@ test.describe(`StructureScene Component Tests`, () => {
 })
 
 test.describe(`Edit Atoms Scene`, () => {
-  test.beforeEach(async ({ page }: { page: Page }) => {
+  test.beforeEach(async ({ page }) => {
     test.skip(IS_CI, `Edit atoms scene tests require WebGL, skip in CI`)
     await goto_structure_test(page)
     await enter_edit_atoms_mode(page)
@@ -365,39 +362,31 @@ test.describe(`Edit Atoms Scene`, () => {
   test(`click toggles selection, shift+click extends it, shortcuts don't error`, async ({
     page,
   }) => {
-    const canvas = page.locator(`#test-structure canvas`)
+    const canvas = structure_canvas(page)
     const console_errors = collect_console_errors(page)
     const first_atom = { x: 350, y: 200 }
     const second_atom = { x: 450, y: 300 }
+    const click_atom = (position: { x: number; y: number }, modifiers?: `Shift`[]) =>
+      expect_canvas_changed_by(canvas, () =>
+        canvas.click({ position, modifiers, force: true }),
+      )
 
     // Click selects, clicking again deselects
-    const initial = await canvas.screenshot()
-    await canvas.click({ position: first_atom, force: true })
-    await expect_canvas_changed(canvas, initial)
-    const selected = await canvas.screenshot()
-    await canvas.click({ position: first_atom, force: true })
-    await expect_canvas_changed(canvas, selected)
-    const deselected = await canvas.screenshot()
+    await click_atom(first_atom)
+    await click_atom(first_atom)
 
     // Plain click on another atom replaces the selection; shift+click adds to it
-    await canvas.click({ position: first_atom, force: true })
-    await expect_canvas_changed(canvas, deselected)
-    const single_selection = await canvas.screenshot()
-    await canvas.click({ position: second_atom, force: true })
-    await expect_canvas_changed(canvas, single_selection)
-    const replaced = await canvas.screenshot()
-    await canvas.click({ position: first_atom, force: true })
-    await expect_canvas_changed(canvas, replaced)
-    const before_shift = await canvas.screenshot()
-    await canvas.click({ position: second_atom, modifiers: [`Shift`], force: true })
-    await expect_canvas_changed(canvas, before_shift)
+    await click_atom(first_atom)
+    const replaced = await click_atom(second_atom)
+    await click_atom(first_atom)
+    await click_atom(second_atom, [`Shift`])
     expect(replaced.equals(await canvas.screenshot())).toBe(false)
 
     // Keyboard shortcuts should not cause errors
     await page.keyboard.press(`Delete`)
     await page.keyboard.press(`${primary_modifier_key}+z`)
     await page.keyboard.press(`${primary_modifier_key}+y`)
-    expect((await canvas.screenshot()).length).toBeGreaterThan(1000)
+    await expect_canvas_renders(canvas)
     expect(console_errors).toHaveLength(0)
   })
 })

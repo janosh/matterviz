@@ -51,10 +51,8 @@
     }
   })
 
-  // Compute shared frequency/energy range from both bands and DOS data
   let shared_frequency_range = $derived(helpers.compute_frequency_range(band_structs, doses))
 
-  // Extract Fermi level from electronic band structure or DOS data
   let fermi_level = $derived(
     helpers.extract_efermi(band_structs) ?? helpers.extract_efermi(doses),
   )

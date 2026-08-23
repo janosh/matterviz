@@ -29,7 +29,7 @@
     TYPE_LABELS,
     volume_json_to_isosurface_input,
   } from './detect'
-  import type { RenderableType } from './detect'
+  import type { RenderablePath, RenderableType } from './detect'
   import { mount_viewer, type ViewerMountType } from './mount-viewer'
 
   let {
@@ -46,11 +46,13 @@
   // Panels are a flat list with a split direction between consecutive panels and a parallel
   // array of flex weights. Each panel's viewer is mounted by the attach_viewer attachment on
   // its element, so a panel lives exactly as long as its DOM node (the list is keyed by id).
-  interface PanelInfo {
-    id: number // each-block key: a replaced panel gets a new id and so a fresh viewer
+  interface PanelSpec {
     data_path: string
     detected_type: RenderableType
     val: unknown
+  }
+  interface PanelInfo extends PanelSpec {
+    id: number // each-block key: a replaced panel gets a new id and so a fresh viewer
   }
 
   type SplitDirection = `horizontal` | `vertical`
@@ -66,7 +68,7 @@
 
   // Scan for renderable paths after the tree has rendered so large JSON files don't block
   // the first paint (setTimeout rather than requestIdleCallback, which Safari lacks).
-  let renderable_paths = $state(new Map<string, { type: RenderableType; label: string }>())
+  let renderable_paths = $state(new Map<string, RenderablePath>())
   let auto_rendered = false
   $effect(() => {
     const current_value = value
@@ -74,10 +76,10 @@
       renderable_paths = scan_renderable_paths(current_value)
       // Auto-render if the root value itself is a single renderable type
       // (avoids forcing the user to click for single-type JSON files)
-      if (!auto_rendered && renderable_paths.has(``)) {
+      const root = renderable_paths.get(``)
+      if (root && !auto_rendered) {
         auto_rendered = true
-        const info = renderable_paths.get(``)
-        if (info) replace_or_add_panel(``, info.type, current_value)
+        replace_or_add_panel({ data_path: ``, detected_type: root.type, val: current_value })
       }
     }, 0)
     return () => clearTimeout(scan_handle)
@@ -140,6 +142,17 @@
     return idx !== -1 ? path.slice(0, idx) : path
   }
 
+  // The panel a badge, chip or drop payload asks for; null when its type is unknown or its
+  // path no longer resolves in `value`
+  function resolve_renderable(raw_path: unknown, detected_type: unknown): PanelSpec | null {
+    if (typeof raw_path !== `string`) return null
+    if (typeof detected_type !== `string` || !(detected_type in TYPE_LABELS)) return null
+    const data_path = strip_type_suffix(raw_path)
+    const val = resolve_path(value, data_path)
+    if (val === undefined) return null
+    return { data_path, detected_type: detected_type as RenderableType, val }
+  }
+
   // Convert a data path (relative to JSON root) to the tree path used by JsonTree, whose
   // root node is labelled with the verbatim filename and whose children append `.key` or
   // `[idx]` to it (so `[0]` must not get a dot: `data.json[0]`, not `data.json.[0]`)
@@ -173,28 +186,22 @@
       }
       const origin = event.target
       if (!(origin instanceof HTMLElement)) return
-      // If dragging a badge directly, use its own data attributes
-      const badge = origin.closest(`.renderable-badge`) as HTMLElement | null
-      if (badge) {
-        const data_path = badge.dataset.renderable_path ?? ``
-        const detected_type = badge.dataset.renderable_type ?? ``
-        event.dataTransfer.setData(`text/plain`, JSON.stringify({ data_path, detected_type }))
-        event.dataTransfer.effectAllowed = `copy`
-        return
-      }
-      // Otherwise dragging a tree node -- look up from tree path
-      const target = origin.closest(`[data-path]`) as HTMLElement | null
-      if (!target) return
-      const tree_path = target.getAttribute(`data-path`) ?? ``
-      const info = renderable_tree_paths.get(tree_path)
+      // A badge carries its own path/type; a tree node is looked up by its tree path
+      const badge = origin.closest<HTMLElement>(`.renderable-badge`)
+      const node = badge ? null : origin.closest<HTMLElement>(`[data-path]`)
+      if (!badge && !node) return
+      const info = badge
+        ? {
+            data_path: badge.dataset.renderable_path ?? ``,
+            type: badge.dataset.renderable_type,
+          }
+        : renderable_tree_paths.get(node?.dataset.path ?? ``)
       if (!info) {
         event.preventDefault()
         return
       }
-      event.dataTransfer.setData(
-        `text/plain`,
-        JSON.stringify({ data_path: info.data_path, detected_type: info.type }),
-      )
+      const payload = { data_path: info.data_path, detected_type: info.type ?? `` }
+      event.dataTransfer.setData(`text/plain`, JSON.stringify(payload))
       event.dataTransfer.effectAllowed = `copy`
     }
     sidebar_element.addEventListener(`dragstart`, on_dragstart)
@@ -209,10 +216,7 @@
     for (const existing of sidebar_element.querySelectorAll(`.renderable-badge`)) {
       existing.remove()
     }
-    const badges_by_tree_path = new Map<
-      string,
-      [string, { type: RenderableType; label: string }][]
-    >()
+    const badges_by_tree_path = new Map<string, [string, RenderablePath][]>()
     for (const entry of renderable_paths) {
       const tree_path = data_to_tree_path(entry[0])
       const badges = badges_by_tree_path.get(tree_path)
@@ -246,17 +250,13 @@
     function on_badge_click(event: MouseEvent): void {
       const origin = event.target
       if (!(origin instanceof HTMLElement)) return
-      const badge = origin.closest(`.renderable-badge`) as HTMLElement | null
+      const badge = origin.closest<HTMLElement>(`.renderable-badge`)
       if (!badge) return
       event.stopPropagation()
       event.preventDefault()
-      const raw_path = badge.dataset.renderable_path ?? ``
-      const data_path = strip_type_suffix(raw_path)
-      const detected_type = badge.dataset.renderable_type
-      if (!detected_type || !(detected_type in TYPE_LABELS)) return
-      const val = resolve_path(value, data_path)
-      if (val !== undefined)
-        replace_or_add_panel(data_path, detected_type as RenderableType, val)
+      const { renderable_path, renderable_type } = badge.dataset
+      const spec = resolve_renderable(renderable_path ?? ``, renderable_type)
+      if (spec) replace_or_add_panel(spec)
     }
     sidebar_element.addEventListener(`click`, on_badge_click, true)
     return () => sidebar_element?.removeEventListener(`click`, on_badge_click, true)
@@ -307,61 +307,45 @@
   // === Panel management ===
 
   let panel_id_count = 0
-  const make_panel = (
-    data_path: string,
-    detected_type: RenderableType,
-    val: unknown,
-  ): PanelInfo => ({ id: panel_id_count++, data_path, detected_type, val })
+  const make_panel = (spec: PanelSpec): PanelInfo => ({ id: panel_id_count++, ...spec })
 
   // Click replaces the single/first panel; drag adds a split. Re-selecting what the first
   // panel already shows is a no-op: a new id would tear down and rebuild its viewer
-  function replace_or_add_panel(
-    data_path: string,
-    detected_type: RenderableType,
-    val: unknown,
-  ): void {
+  function replace_or_add_panel(spec: PanelSpec): void {
     const [first] = panels
     if (
-      first?.data_path === data_path &&
-      first.detected_type === detected_type &&
-      first.val === val
+      first?.data_path === spec.data_path &&
+      first.detected_type === spec.detected_type &&
+      first.val === spec.val
     )
       return
     if (!first) panel_sizes = [1]
-    panels = [make_panel(data_path, detected_type, val), ...panels.slice(1)]
+    panels = [make_panel(spec), ...panels.slice(1)]
   }
 
+  // Only reached with a panel to split (on_canvas_drop sends an empty canvas to
+  // replace_or_add_panel), so the target panel always exists
   function add_panel_with_split(
-    data_path: string,
-    detected_type: RenderableType,
-    val: unknown,
+    spec: PanelSpec,
     target_idx: number,
     zone: `top` | `bottom` | `left` | `right`,
   ): void {
-    const new_panel = make_panel(data_path, detected_type, val)
     const direction: SplitDirection =
       zone === `top` || zone === `bottom` ? `vertical` : `horizontal`
-    const insert_before = zone === `top` || zone === `left`
-
-    if (panels.length === 0) {
-      panels = [new_panel]
-      panel_sizes = [1]
-    } else {
-      const new_panels = [...panels]
-      const new_sizes = [...panel_sizes]
-      const new_dirs = [...split_directions]
-      const insert_idx = insert_before ? target_idx : target_idx + 1
-      // Split the target panel's size in half: new panel gets half, target keeps half
-      const target_size = new_sizes[target_idx] ?? 1
-      new_sizes[target_idx] = target_size / 2
-      new_panels.splice(insert_idx, 0, new_panel)
-      new_sizes.splice(insert_idx, 0, target_size / 2)
-      // Add direction between the two panels
-      new_dirs.splice(target_idx, 0, direction)
-      panels = new_panels
-      panel_sizes = new_sizes
-      split_directions = new_dirs
-    }
+    const insert_idx = zone === `top` || zone === `left` ? target_idx : target_idx + 1
+    const new_panels = [...panels]
+    const new_sizes = [...panel_sizes]
+    const new_dirs = [...split_directions]
+    // Split the target panel's size in half: new panel gets half, target keeps half
+    const target_size = new_sizes[target_idx] ?? 1
+    new_sizes[target_idx] = target_size / 2
+    new_panels.splice(insert_idx, 0, make_panel(spec))
+    new_sizes.splice(insert_idx, 0, target_size / 2)
+    // Add direction between the two panels
+    new_dirs.splice(target_idx, 0, direction)
+    panels = new_panels
+    panel_sizes = new_sizes
+    split_directions = new_dirs
   }
 
   function close_panel(idx: number): void {
@@ -525,17 +509,11 @@
     drop_target_panel_idx = -1
     if (!raw) return
     try {
-      const parsed = JSON.parse(raw) as { data_path: string; detected_type: RenderableType }
-      const data_path = strip_type_suffix(parsed.data_path)
-      const { detected_type } = parsed
-      if (!detected_type || !(detected_type in TYPE_LABELS)) return
-      const val = resolve_path(value, data_path)
-      if (val === undefined) return
-      if (panels.length === 0 || zone === `center` || !zone) {
-        replace_or_add_panel(data_path, detected_type, val)
-      } else {
-        add_panel_with_split(data_path, detected_type, val, target_idx, zone)
-      }
+      const parsed = JSON.parse(raw) as { data_path?: string; detected_type?: unknown }
+      const spec = resolve_renderable(parsed.data_path, parsed.detected_type)
+      if (!spec) return
+      if (panels.length === 0 || zone === `center` || !zone) replace_or_add_panel(spec)
+      else add_panel_with_split(spec, target_idx, zone)
     } catch (error) {
       console.error(`JsonBrowser: drop failed:`, error)
     }
@@ -590,8 +568,9 @@
   function handle_select(tree_path: string, val: unknown): void {
     clearTimeout(select_timer)
     select_timer = setTimeout(() => {
-      const detected = detect_view_type(val)
-      if (detected) replace_or_add_panel(tree_to_data_path(tree_path), detected, val)
+      const detected_type = detect_view_type(val)
+      if (detected_type)
+        replace_or_add_panel({ data_path: tree_to_data_path(tree_path), detected_type, val })
     }, 150)
   }
 
@@ -670,11 +649,8 @@
                   info.type,
                 )}66;"
                 onclick={() => {
-                  const clean_path = strip_type_suffix(data_path)
-                  const val = resolve_path(value, clean_path)
-                  if (val !== undefined) {
-                    replace_or_add_panel(clean_path, info.type, val)
-                  }
+                  const spec = resolve_renderable(data_path, info.type)
+                  if (spec) replace_or_add_panel(spec)
                 }}
               >
                 <span class="chip-dot" style="background: {type_color(info.type)};"></span>

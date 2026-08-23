@@ -5,6 +5,7 @@ import * as math from '$lib/math'
 import type { ElementSymbol } from '$lib/element'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import type { Pbc } from '$lib/structure/index'
+import { values_per_sample } from '../helpers'
 import type {
   CollectPositionsOptions,
   ParseProgress,
@@ -121,8 +122,7 @@ class PositionAccumulator {
     if (n_frames < 1) throw new Error(`PositionAccumulator: n_frames must be >= 1`)
     if (n_atoms < 1) throw new Error(`PositionAccumulator: n_atoms must be >= 1`)
     const signal_values_per_frame = Object.values(signal_shapes).reduce(
-      (total, sample_shape) =>
-        total + sample_shape.reduce((product, size) => product * size, 1),
+      (total, sample_shape) => total + values_per_sample(sample_shape),
       0,
     )
     const frame_bytes = bytes_per_frame(n_atoms, channels, signal_values_per_frame)
@@ -144,8 +144,7 @@ class PositionAccumulator {
       if (!sample_shape) {
         throw new Error(`PositionAccumulator: signal "${key}" has no initial shape`)
       }
-      const sample_size = sample_shape.reduce((product, size) => product * size, 1)
-      this.signal_values[key] = new Float64Array(n_frames * sample_size)
+      this.signal_values[key] = new Float64Array(n_frames * values_per_sample(sample_shape))
     }
   }
 
@@ -313,7 +312,7 @@ class PositionAccumulator {
     const signals = Object.fromEntries(
       Object.entries(this.signal_values).map(([key, values]) => {
         const sample_shape = this.signal_shapes[key]
-        const sample_size = sample_shape.reduce((product, size) => product * size, 1)
+        const sample_size = values_per_sample(sample_shape)
         return [
           key,
           {

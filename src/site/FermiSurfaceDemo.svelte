@@ -45,15 +45,12 @@
     if (sync_url) set_file_param(file.name)
 
     try {
-      const { load_from_url } = await import(`$lib/io`)
+      const { as_text, load_from_url } = await import(`$lib/io`)
 
       await load_from_url(file.url, (content, filename) => {
-        const text =
-          content instanceof ArrayBuffer ? new TextDecoder().decode(content) : content
-
         // Pre-computed meshes render directly; band grids are extracted by FermiSurface
         // itself (at its current mu / interpolation settings) and written back via bind
-        const parsed = parse_fermi_file(text, filename)
+        const parsed = parse_fermi_file(as_text(content), filename)
         if (is_fermi_surface_data(parsed)) {
           fermi_data = parsed
           band_data = undefined

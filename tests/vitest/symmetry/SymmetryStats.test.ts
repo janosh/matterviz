@@ -1,6 +1,6 @@
 import type { SymmetryDataset } from '$lib/symmetry'
 import { SymmetryStats } from '$lib/symmetry'
-import { flushSync, mount } from 'svelte'
+import { type ComponentProps, flushSync, mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 import { doc_query, make_wyckoff_dataset } from '../setup'
 
@@ -30,11 +30,22 @@ function create_mock_sym_data(overrides: Partial<SymmetryDataset> = {}): Symmetr
   return { ...default_data, ...overrides } as SymmetryDataset
 }
 
+const mount_stats = (
+  props: ComponentProps<typeof SymmetryStats> = { sym_data: create_mock_sym_data() },
+) => mount(SymmetryStats, { target: document.body, props })
+const get_symprec_input = () => doc_query<HTMLInputElement>(`.controls input[type="number"]`)
+// Type into the symprec field the way a user does: one input event per keystroke
+const type_symprec = (input: HTMLInputElement, value: string) => {
+  input.value = value
+  input.dispatchEvent(new Event(`input`, { bubbles: true }))
+  flushSync()
+}
+
 describe(`SymmetryStats`, () => {
   test.each<SymmetryDataset | null | undefined>([null, undefined])(
     `displays no-data message when sym_data is %s`,
     (sym_data) => {
-      mount(SymmetryStats, { target: document.body, props: { sym_data } })
+      mount_stats({ sym_data })
 
       const container = doc_query(`.symmetry-stats`)
       const no_data_div = container.querySelector(`.no-data`)
@@ -51,12 +62,9 @@ describe(`SymmetryStats`, () => {
 
   describe(`Controls section`, () => {
     test(`renders controls with correct defaults`, () => {
-      mount(SymmetryStats, {
-        target: document.body,
-        props: { sym_data: create_mock_sym_data() },
-      })
+      mount_stats()
 
-      const symprec_input = doc_query<HTMLInputElement>(`.controls input[type="number"]`)
+      const symprec_input = get_symprec_input()
       expect(symprec_input.value).toBe(`0.0001`) // 1e-4
       expect(Number(symprec_input.step)).toBeCloseTo(1e-4, 12)
 
@@ -84,14 +92,9 @@ describe(`SymmetryStats`, () => {
     ])(
       `accepts custom settings: symprec=$symprec, algo=$algo`,
       ({ symprec, algo, expected_symprec, expected_algo }) => {
-        mount(SymmetryStats, {
-          target: document.body,
-          props: { sym_data: create_mock_sym_data(), settings: { symprec, algo } },
-        })
+        mount_stats({ sym_data: create_mock_sym_data(), settings: { symprec, algo } })
         flushSync()
-        expect(doc_query<HTMLInputElement>(`.controls input[type="number"]`).value).toBe(
-          expected_symprec,
-        )
+        expect(get_symprec_input().value).toBe(expected_symprec)
         expect(doc_query<HTMLSelectElement>(`.controls select`).value).toBe(expected_algo)
       },
     )
@@ -100,21 +103,17 @@ describe(`SymmetryStats`, () => {
     // a live view of how often the component reassigned settings
     const mount_with_tracked_settings = () => {
       const state = { update_count: 0, settings: { symprec: 1e-4, algo: `Moyo` as const } }
-      mount(SymmetryStats, {
-        target: document.body,
-        props: {
-          sym_data: create_mock_sym_data(),
-          get settings() {
-            return state.settings
-          },
-          set settings(val) {
-            state.update_count++
-            Object.assign(state.settings, val)
-          },
+      mount_stats({
+        sym_data: create_mock_sym_data(),
+        get settings() {
+          return state.settings
+        },
+        set settings(val) {
+          state.update_count++
+          Object.assign(state.settings, val)
         },
       })
-      const symprec_input = doc_query<HTMLInputElement>(`.controls input[type="number"]`)
-      return { state, symprec_input }
+      return { state, symprec_input: get_symprec_input() }
     }
 
     test(`symprec uses oninput for immediate updates`, () => {
@@ -123,9 +122,7 @@ describe(`SymmetryStats`, () => {
 
       // Simulate typing (input events should trigger updates)
       for (const val of [`0.0`, `0.00`, `0.001`]) {
-        symprec_input.value = val
-        symprec_input.dispatchEvent(new Event(`input`, { bubbles: true }))
-        flushSync()
+        type_symprec(symprec_input, val)
       }
       expect(state.update_count).toBe(3)
 
@@ -137,9 +134,7 @@ describe(`SymmetryStats`, () => {
 
     test(`symprec ignores incomplete scientific notation while typing`, () => {
       const { state, symprec_input } = mount_with_tracked_settings()
-      symprec_input.value = `1e-`
-      symprec_input.dispatchEvent(new Event(`input`, { bubbles: true }))
-      flushSync()
+      type_symprec(symprec_input, `1e-`)
 
       expect(state.update_count).toBe(0)
       expect(state.settings.symprec).toBe(1e-4)
@@ -152,43 +147,30 @@ describe(`SymmetryStats`, () => {
     ])(
       `symprec step follows order of magnitude for $symprec_input_value`,
       ({ symprec_input_value, expected_step }) => {
-        mount(SymmetryStats, {
-          target: document.body,
-          props: { sym_data: create_mock_sym_data() },
-        })
+        mount_stats()
 
-        const symprec_input = doc_query<HTMLInputElement>(`.controls input[type="number"]`)
+        const symprec_input = get_symprec_input()
         expect(Number(symprec_input.step)).toBeCloseTo(1e-4, 12)
 
-        symprec_input.value = symprec_input_value
-        symprec_input.dispatchEvent(new Event(`input`, { bubbles: true }))
-        flushSync()
+        type_symprec(symprec_input, symprec_input_value)
         expect(Number(symprec_input.step)).toBeCloseTo(expected_step, 12)
       },
     )
 
     test(`symprec input keeps focus while typing`, () => {
-      mount(SymmetryStats, {
-        target: document.body,
-        props: { sym_data: create_mock_sym_data() },
-      })
-      const symprec_input = doc_query<HTMLInputElement>(`.controls input[type="number"]`)
+      mount_stats()
+      const symprec_input = get_symprec_input()
       symprec_input.focus()
 
       for (const val of [`0.0`, `0.00`, `0.001`]) {
-        symprec_input.value = val
-        symprec_input.dispatchEvent(new Event(`input`, { bubbles: true }))
-        flushSync()
+        type_symprec(symprec_input, val)
         expect(document.activeElement).toBe(symprec_input)
       }
     })
 
     test(`escape blurs symprec input`, () => {
-      mount(SymmetryStats, {
-        target: document.body,
-        props: { sym_data: create_mock_sym_data() },
-      })
-      const symprec_input = doc_query<HTMLInputElement>(`.controls input[type="number"]`)
+      mount_stats()
+      const symprec_input = get_symprec_input()
       symprec_input.focus()
       expect(document.activeElement).toBe(symprec_input)
 
@@ -212,11 +194,8 @@ describe(`SymmetryStats`, () => {
       `Wyckoff Positions tile counts $expected distinct orbits`,
       ({ wyckoffs, numbers, expected, sequence }) => {
         const positions = numbers.map((_, idx) => [idx / 4, 0, 0])
-        mount(SymmetryStats, {
-          target: document.body,
-          props: {
-            sym_data: create_mock_sym_data(make_wyckoff_dataset(positions, numbers, wyckoffs)),
-          },
+        mount_stats({
+          sym_data: create_mock_sym_data(make_wyckoff_dataset(positions, numbers, wyckoffs)),
         })
         const tiles = Array.from(document.querySelectorAll(`.stats-grid > div`)).map((tile) =>
           tile.textContent?.replaceAll(/\s+/g, ` `).trim(),
@@ -228,20 +207,14 @@ describe(`SymmetryStats`, () => {
     )
 
     test(`displays "?" in space group when Hermann-Mauguin symbol is missing`, () => {
-      mount(SymmetryStats, {
-        target: document.body,
-        props: { sym_data: create_mock_sym_data({ hm_symbol: undefined }) },
-      })
+      mount_stats({ sym_data: create_mock_sym_data({ hm_symbol: undefined }) })
       const text = doc_query(`.stats-grid`).textContent
       // HM symbol is now shown inline with space group number as "225 (?)"
       expect(text).toContain(`225 (?)`)
     })
 
     test(`removes whitespace in Hermann-Mauguin symbol display`, () => {
-      mount(SymmetryStats, {
-        target: document.body,
-        props: { sym_data: create_mock_sym_data({ number: 227, hm_symbol: `F d -3 m` }) },
-      })
+      mount_stats({ sym_data: create_mock_sym_data({ number: 227, hm_symbol: `F d -3 m` }) })
       const text = doc_query(`.stats-grid`).textContent
       expect(text).toContain(`227 (Fd-3m)`)
     })
@@ -255,10 +228,7 @@ describe(`SymmetryStats`, () => {
       [194, `hexagonal`],
       [225, `cubic`],
     ] as const)(`space group %d → %s crystal system`, (space_group, crystal_system) => {
-      mount(SymmetryStats, {
-        target: document.body,
-        props: { sym_data: create_mock_sym_data({ number: space_group }) },
-      })
+      mount_stats({ sym_data: create_mock_sym_data({ number: space_group }) })
       expect(doc_query(`.stats-grid`).textContent).toContain(crystal_system)
     })
   })
@@ -289,7 +259,7 @@ describe(`SymmetryStats`, () => {
         operations === undefined
           ? create_mock_sym_data()
           : create_mock_sym_data({ operations })
-      mount(SymmetryStats, { target: document.body, props: { sym_data } })
+      mount_stats({ sym_data })
 
       const text = doc_query(`.sym-ops-summary`).textContent || ``
       expect(text).toContain(expected.total)
@@ -310,10 +280,7 @@ describe(`SymmetryStats`, () => {
     ])(
       `show_tooltips=$show_tooltips`,
       ({ show_tooltips, symprec_contains, algo_contains }) => {
-        mount(SymmetryStats, {
-          target: document.body,
-          props: { sym_data: create_mock_sym_data(), show_tooltips },
-        })
+        mount_stats({ sym_data: create_mock_sym_data(), show_tooltips })
 
         const symprec_title = doc_query(`.controls label:has(input[type="number"]) span`).title
         const algo_title = doc_query(`.controls label:has(select) span`).title
@@ -330,12 +297,7 @@ describe(`SymmetryStats`, () => {
   })
 
   test.each([1e-10, 1e-2, 0.5, 1.0])(`accepts extreme symprec: %f`, (symprec) => {
-    mount(SymmetryStats, {
-      target: document.body,
-      props: { sym_data: create_mock_sym_data(), settings: { symprec, algo: `Moyo` } },
-    })
-    expect(
-      Number(doc_query<HTMLInputElement>(`.controls input[type="number"]`).value),
-    ).toBeCloseTo(symprec, 10)
+    mount_stats({ sym_data: create_mock_sym_data(), settings: { symprec, algo: `Moyo` } })
+    expect(Number(get_symprec_input().value)).toBeCloseTo(symprec, 10)
   })
 })
