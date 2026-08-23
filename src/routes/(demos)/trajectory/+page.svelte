@@ -41,8 +41,8 @@
   the RDF pane averages every element pair's g(r) over a capped sample of frames (each normalised
   by its own cell volume, so NPT runs work) and reads the first-shell position and coordination numbers
   off each curve. Every analysis table offers its curves as CSV, and the info pane reports mean ±
-  σ, range and least-squares drift for each plotted property, so equilibration can be judged at a
-  glance.
+  σ, range and least-squares drift for up to eight prioritised properties (energy, temperature, pressure,
+  volume, density, forces first), so equilibration can be judged at a glance.
 </p>
 
 <div class="full-bleed traj-pair">

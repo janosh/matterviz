@@ -20,7 +20,7 @@ beforeAll(async () => {
 })
 afterEach(stub.reset)
 
-test(`ships positions, lattice and elements, and matches the sync per-pair histograms`, async () => {
+test(`ships positions, lattice and species, and matches the sync per-pair histograms`, async () => {
   const crystal = make_crystal(4, [
     [`Na`, [0, 0, 0]],
     [`Cl`, [0.5, 0.5, 0.5]],
@@ -29,8 +29,8 @@ test(`ships positions, lattice and elements, and matches the sync per-pair histo
   const result = await calc_frame_rdfs_async(crystal, { cutoff: 5, n_bins: 50 })
   expect_module_worker(stub.instances, `src/lib/rdf/rdf-worker.ts`)
   const { input: payload } = stub.posted[0].message
-  expect(Object.keys(payload).toSorted()).toEqual([`elements`, `lattice`, `xyz`])
-  expect(payload.elements).toEqual([`Na`, `Cl`])
+  expect(Object.keys(payload).toSorted()).toEqual([`lattice`, `species`, `xyz`])
+  expect(payload.species).toEqual(crystal.sites.map((site) => site.species))
   expect(result.map((pattern) => pattern.element_pair)).toEqual([
     [`Cl`, `Cl`],
     [`Cl`, `Na`],

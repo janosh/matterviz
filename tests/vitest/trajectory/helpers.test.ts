@@ -10,12 +10,13 @@ import { columns_to_csv } from '$lib/trajectory/analysis'
 import { describe, expect, it } from 'vitest'
 
 describe(`trajectory helpers`, () => {
-  it(`columns_to_csv writes one row per index, quotes keys with commas and pads short columns`, () => {
+  it(`columns_to_csv writes one row per index, quotes delimiter/quote/newline keys and pads short columns`, () => {
     const csv = columns_to_csv({
       lag: [1, 2, 3],
       'msd, total': Float64Array.of(0.5, 1),
+      'g "Na-Cl"\n': [7],
     })
-    expect(csv).toBe(`lag,"msd, total"\n1,0.5\n2,1\n3,NaN`)
+    expect(csv).toBe(`lag,"msd, total","g ""Na-Cl""\n"\n1,0.5,7\n2,1,NaN\n3,NaN,NaN`)
     expect(columns_to_csv({})).toBe(``)
   })
 

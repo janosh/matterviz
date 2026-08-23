@@ -114,7 +114,8 @@
     const suffix = is_sample ? ` (${format_num(covered_frames, `.3~s`)} sampled)` : ``
     // Drift against the run's own step axis, so a dump written every 500 steps and one written
     // every step agree; fluctuation and drift are what tell equilibration from relaxation
-    const statistics = total_frames > 1 ? summarize_properties(run.properties.rows) : []
+    const statistics =
+      total_frames > 1 ? summarize_properties(run.properties.rows, (row) => row.step) : []
     const stat_sections = statistics
       .filter((stat) => stat.n_samples > 1)
       .toSorted(

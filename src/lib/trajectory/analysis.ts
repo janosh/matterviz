@@ -97,11 +97,13 @@ export async function sweep_frames<Result>(
 
 // Column-wise numbers to CSV (header row = keys, one row per index, `NaN` for a short
 // column), the shape every analysis result already has: a lag/r/frequency axis plus one
-// column per curve. Keys containing a comma are quoted.
+// column per curve. Header fields holding a delimiter, quote or line break are quoted.
 export function columns_to_csv(columns: Record<string, ArrayLike<number>>): string {
+  const csv_field = (field: string): string =>
+    /[",\r\n]/.test(field) ? `"${field.replaceAll(`"`, `""`)}"` : field
   const keys = Object.keys(columns)
   const n_rows = Math.max(0, ...keys.map((key) => columns[key].length))
-  const header = keys.map((key) => (key.includes(`,`) ? `"${key}"` : key)).join(`,`)
+  const header = keys.map(csv_field).join(`,`)
   const rows = Array.from({ length: n_rows }, (_unused, row_idx) =>
     keys.map((key) => String(columns[key][row_idx] ?? NaN)).join(`,`),
   )

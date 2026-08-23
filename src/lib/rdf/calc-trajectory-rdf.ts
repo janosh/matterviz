@@ -6,7 +6,6 @@
 // histograms come back, so a 100k-frame run never needs its positions in memory at once
 // (unlike MSD/VACF, which are lag analyses and need the whole series).
 import { calc_lattice_params } from '$lib/math'
-import { get_majority_element } from '$lib/structure/bonding'
 import { is_crystal } from '$lib/structure/validation'
 import type { TrajectoryRun } from '$lib/trajectory'
 import { sweep_frames } from '$lib/trajectory/analysis'
@@ -120,7 +119,11 @@ export async function collect_trajectory_rdf(
     on_progress,
     signal,
   } = options
-  let reference: { frame_number: number; elements: string[] } | undefined
+  // Composition signature of the first analysed frame: every species and occupancy per site,
+  // since mixed-occupancy sites feed every partial g(r) they carry
+  let reference:
+    | { frame_number: number; signature: string; counts: Map<string, number> }
+    | undefined
   let sums: Float64Array[] = []
   let r: number[] = []
   let pairs: [string, string][] = []
@@ -132,12 +135,17 @@ export async function collect_trajectory_rdf(
     run,
     { max_frames, on_progress, signal },
     async ({ structure }, frame_number) => {
-      const elements = structure.sites.map((site) => get_majority_element(site) ?? `X`)
-      reference ??= { frame_number, elements }
-      if (
-        elements.length !== reference.elements.length ||
-        elements.some((element, idx) => element !== reference?.elements[idx])
-      ) {
+      const counts = new Map<string, number>()
+      const signature = structure.sites
+        .map(({ species }) => {
+          for (const { element, occu } of species) {
+            counts.set(element, (counts.get(element) ?? 0) + occu)
+          }
+          return species.map(({ element, occu }) => `${element}:${occu}`).join(`,`)
+        })
+        .join(`;`)
+      reference ??= { frame_number, signature, counts }
+      if (signature !== reference.signature) {
         throw new Error(
           `collect_trajectory_rdf: frame ${frame_number} has a different composition or atom ` +
             `order than frame ${reference.frame_number}; a time-averaged g(r) needs one composition`,
@@ -164,10 +172,8 @@ export async function collect_trajectory_rdf(
   const n_frames = frame_numbers.length
   // ρ_b averaged as <N_b / V>, the density the per-frame normalisation used
   const inverse_volume = volumes.reduce((total, volume) => total + 1 / volume, 0) / n_frames
-  const counts = new Map<string, number>()
-  for (const element of reference?.elements ?? []) {
-    counts.set(element, (counts.get(element) ?? 0) + 1)
-  }
+  // Occupancy-weighted atom counts, as the per-frame normalisation weighted them
+  const counts = reference?.counts ?? new Map<string, number>()
   const curves = pairs.map(([el_a, el_b], pair_idx): TrajectoryRdfCurve => {
     const g_r = Array.from(sums[pair_idx], (sum) => sum / n_frames)
     const [n_a, n_b] = [counts.get(el_a) ?? 0, counts.get(el_b) ?? 0]
@@ -188,7 +194,7 @@ export async function collect_trajectory_rdf(
     frame_stride,
     cutoff,
     n_bins,
-    n_atoms: reference?.elements.length ?? 0,
+    n_atoms: run.preview.structure.sites.length,
     mean_volume: volumes.reduce((total, volume) => total + volume, 0) / n_frames,
   }
 }

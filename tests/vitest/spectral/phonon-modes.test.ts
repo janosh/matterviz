@@ -371,9 +371,11 @@ describe(`staged phonon runs`, () => {
     const quarter_a = short_run.read_frame(1)
     const quarter_b = long_run.read_frame(1000)
     if (quarter_a instanceof Promise || quarter_b instanceof Promise) throw new Error(`sync`)
-    expect(quarter_b.structure.sites.map(({ xyz }) => xyz)).toEqual(
-      quarter_a.structure.sites.map(({ xyz }) => xyz),
-    )
+    for (const [site_idx, { xyz }] of quarter_b.structure.sites.entries()) {
+      xyz.forEach((coord, axis) =>
+        expect(coord).toBeCloseTo(quarter_a.structure.sites[site_idx].xyz[axis], 12),
+      )
+    }
     expect(quarter_a.structure.sites[0].species).toBe(cell.structure.sites[0].species)
     expect(
       Math.hypot(

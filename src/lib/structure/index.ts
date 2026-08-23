@@ -272,8 +272,8 @@ export function get_structure_vector_keys(structure: AnyStructure): string[] {
   for (const site of structure.sites) {
     const props = site.properties
     if (!props) continue
-    // for-in (no key array per site) and a key already seen skips its vector check
-    for (const key in props) {
+    // a key already seen skips its prefix and vector checks
+    for (const key of Object.keys(props)) {
       if (!seen.has(key) && is_vector_key(key) && try_parse_vec3(props[key])) seen.add(key)
     }
   }

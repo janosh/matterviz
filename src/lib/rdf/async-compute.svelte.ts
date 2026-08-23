@@ -16,7 +16,7 @@ export const calc_frame_rdfs_async = create_worker_client<
   create_worker: () =>
     new Worker(new URL(`./rdf-worker.js`, import.meta.url), { type: `module` }),
   compute_sync: calc_frame_rdfs,
-  // Positions, lattice and one element per site (see worker-payload.ts); site properties can
+  // Positions, lattice and species per site (see worker-payload.ts); site properties can
   // hold non-cloneable values and nothing in the histogram reads them
   build_payload: (structure) => to_structure_id_payload(structure, true),
 })

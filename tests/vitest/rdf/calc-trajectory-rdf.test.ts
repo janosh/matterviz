@@ -65,6 +65,47 @@ describe(`collect_trajectory_rdf`, () => {
     )
   })
 
+  test(`keeps every species of a mixed-occupancy site, weighted by occupancy`, async () => {
+    // Na0.5K0.5 on every cation site: K-Cl and Na-Cl see the same 6 Cl neighbours, and with
+    // 2 K-equivalents per 4 Cl each Cl sees 3 K (CN(A|B) = CN(B|A) · N_a / N_b = 6 · 2 / 4)
+    const mixed = rocksalt()
+    mixed.sites = mixed.sites.map((site) =>
+      site.species[0].element === `Na`
+        ? {
+            ...site,
+            species: [
+              { element: `Na`, occu: 0.5, oxidation_state: 0 },
+              { element: `K`, occu: 0.5, oxidation_state: 0 },
+            ],
+          }
+        : site,
+    )
+    const result = await collect_trajectory_rdf(run_of([mixed, mixed]), {
+      cutoff: 6,
+      n_bins: 120,
+    })
+    expect(result.curves.map((curve) => curve.label)).toEqual([
+      `Cl-Cl`,
+      `Cl-K`,
+      `Cl-Na`,
+      `K-K`,
+      `K-Na`,
+      `Na-Na`,
+    ])
+    const cl_k = result.curves[1]
+    expect(cl_k.shell.coordination).toBeCloseTo(3, 6)
+    expect(cl_k.coordination_reverse).toBeCloseTo(6, 6)
+    // a frame whose minority species differs is a different composition, majority or not
+    const shifted = { ...mixed, sites: mixed.sites.map((site) => ({ ...site })) }
+    shifted.sites[0].species = [
+      { element: `Na`, occu: 0.6, oxidation_state: 0 },
+      { element: `K`, occu: 0.4, oxidation_state: 0 },
+    ]
+    await expect(
+      collect_trajectory_rdf(run_of([mixed, shifted]), { n_bins: 20 }),
+    ).rejects.toThrow(/different composition/)
+  })
+
   test.each([
     [
       `a lattice-less frame`,
