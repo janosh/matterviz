@@ -6,8 +6,10 @@
 import { mean as mean_of } from '$lib/math'
 import { thz_per_inverse_time } from '$lib/spectral/frequency-units'
 import {
+  analysis_fail,
   curve_slots,
   group_atoms_by_element,
+  lag_axis_label,
   lag_range,
   resolve_lag_time_unit,
   unwrapped_positions_of,
@@ -28,11 +30,7 @@ import type {
 // full one.
 const WORK_BUDGET = 2e8
 
-// Prefixes every guard message with the function that raised it, so most guards stay on
-// one line
-const fail = (message: string): never => {
-  throw new Error(`fit_einstein_diffusion: ${message}`)
-}
+const fail = analysis_fail(`fit_einstein_diffusion`)
 
 // One Welford step for slot `idx` of a running mean / sum-of-squared-deviations pair.
 // `count` is the sample number including this one.
@@ -221,7 +219,7 @@ export function calc_msd(input: MsdPositions, options: MsdOptions = {}): MsdResu
     curves: curve_slots(labels).map(make_curve),
     dt,
     time_unit,
-    x_label: time_unit === `frame` ? `Lag (frames)` : `Lag time (${time_unit})`,
+    x_label: lag_axis_label(time_unit),
     n_frames,
     n_atoms,
     unwrapped,

@@ -249,7 +249,7 @@ describe(`TrajectoryVacfPane`, () => {
   it(`disables collection for a frame-only run`, async () => {
     const { collect_positions: _collect_positions, ...run } = orbit_run(40, 0.04, 1)
     await mount_and_read(TrajectoryVacfPane, { run, pane_open: true })
-    expect(document.body.textContent).toContain(`only serves individual frames`)
+    expect(document.body.textContent).toContain(`only serves frames one at a time`)
     expect(
       document.querySelector<HTMLButtonElement>(`.trajectory-vacf-controls button`)?.disabled,
     ).toBe(true)

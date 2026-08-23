@@ -535,22 +535,23 @@
   const resolved_marginals = $derived(
     normalize_marginals(marginals, { top: true, right: true }),
   )
-  // Map series to the generic marginal input, reusing the line/legend color fallback
+  // Map series to the generic marginal input, reusing the line/legend color fallback. Skipped
+  // (the default) while no strip is enabled so data changes don't pay for it.
   const marginal_series = $derived<MarginalSeriesInput[]>(
-    series_with_ids.map((srs, idx) => {
-      return {
-        x: srs?.x ?? [],
-        y: srs?.y ?? [],
-        color:
-          srs?.line_style?.stroke ??
-          first_point_style(srs)?.fill ??
-          plot_color(srs?.orig_series_idx ?? idx),
-        label: srs?.label,
-        visible: srs?.visible ?? true,
-        x_axis: srs?.x_axis,
-        y_axis: srs?.y_axis,
-      }
-    }),
+    Object.values(resolved_marginals).some(Boolean)
+      ? series_with_ids.map((srs, idx) => ({
+          x: srs?.x ?? [],
+          y: srs?.y ?? [],
+          color:
+            srs?.line_style?.stroke ??
+            first_point_style(srs)?.fill ??
+            plot_color(srs?.orig_series_idx ?? idx),
+          label: srs?.label,
+          visible: srs?.visible ?? true,
+          x_axis: srs?.x_axis,
+          y_axis: srs?.y_axis,
+        }))
+      : [],
   )
   // Finite color extent and finite size values across all series, one pass. NaN/null entries
   // fall back to the series color/radius per point, so they must not widen either scale.

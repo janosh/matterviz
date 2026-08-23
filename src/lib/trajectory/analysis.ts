@@ -7,6 +7,24 @@ import type {
   TrajectoryPositionStream,
 } from './index'
 import type { TrajectoryRun } from './run'
+import { DEFAULT_POSITION_STREAM_MAX_BYTES, suggest_frame_stride } from './runs/accumulate'
+
+// The stream options an analysis's collector exposes to its pane
+export type AnalysisStreamOptions = Pick<
+  CollectPositionsOptions,
+  `frame_stride` | `max_bytes` | `on_progress` | `signal`
+>
+
+// Frame stride that keeps `buffers` position-sized arrays per frame inside `max_bytes`, or
+// null while the atom count is unknown (no frame read yet)
+export function suggest_analysis_frame_stride(
+  run: TrajectoryRun,
+  max_bytes = DEFAULT_POSITION_STREAM_MAX_BYTES,
+  buffers = 1,
+): number | null {
+  const n_atoms = run.preview.structure.sites.length
+  return n_atoms ? suggest_frame_stride(run.frame_count, n_atoms * buffers, max_bytes) : null
+}
 
 export type CollectTrajectoryPositionsOptions = CollectPositionsOptions & {
   // Names the analysis in the error a frame-at-a-time run raises, e.g. `MSD`
@@ -17,27 +35,36 @@ export const collect_trajectory_positions = (
   run: TrajectoryRun,
   { analysis_name, ...options }: CollectTrajectoryPositionsOptions,
 ): Promise<TrajectoryPositionStream> => {
-  if (!run.collect_positions) {
-    throw new Error(
-      `${analysis_name} needs a pass over all ${run.frame_count} frames, but this ` +
-        `${run.provenance.format ?? `host-served`} trajectory only serves frames one at a ` +
-        `time. Open the file directly (not through the host) to analyse it.`,
-    )
-  }
+  if (!run.collect_positions) throw new Error(no_full_pass_message(run, analysis_name))
   return run.collect_positions(options)
 }
 
+// Why a run without collect_positions cannot be analysed; shown by the panes and thrown by
+// collect_trajectory_positions so the two never drift apart
+export const no_full_pass_message = (run: TrajectoryRun, analysis_name: string): string =>
+  `${analysis_name} needs a pass over all ${run.frame_count} frames, but this ` +
+  `${run.provenance.format ?? `host-served`} trajectory only serves frames one at a time. ` +
+  `Open the file directly (not through the host) to analyse it.`
+
 // Frame counts and stride advice for the analysis panes
+// Integer >= 1 from a numeric input, else `fallback`: <input type="number"> writes null when
+// cleared and Infinity for a `1e999` entry, and the sweep/stride helpers reject both outright
+export const positive_int = (value: number | null | undefined, fallback: number): number =>
+  value != null && Number.isFinite(value) && value >= 1 ? Math.floor(value) : fallback
+
+// Adapts a sweep's (done, total) callback to the pane's progress shape
+export const sweep_progress =
+  (on_progress: (progress: { current: number; total: number; stage: string }) => void) =>
+  (done: number, total: number): void =>
+    on_progress({ current: done, total, stage: `frame ${done} of ${total}` })
+
 export function analysis_pane_setup(
   run: TrajectoryRun | undefined,
   // Omit for a pane that reads frames one at a time and so has no buffer to budget
   suggest_stride?: (run: TrajectoryRun) => number | null,
   frame_stride: number | null = 1,
 ) {
-  const safe_stride =
-    frame_stride !== null && Number.isFinite(frame_stride) && frame_stride >= 1
-      ? Math.floor(frame_stride)
-      : 1
+  const safe_stride = positive_int(frame_stride, 1)
   const total_frames = run?.frame_count ?? 0
   return {
     total_frames,

@@ -1,16 +1,12 @@
 // Gather whole-trajectory velocities (or the positions to differentiate) for VACF/VDOS.
 import { is_finite_vec3_like } from '$lib/math'
-import { collect_trajectory_positions } from '$lib/trajectory/analysis'
-import type {
-  CollectPositionsOptions,
-  TrajectoryFrame,
-  TrajectoryPositionStream,
-  TrajectoryRun,
-} from '$lib/trajectory'
 import {
-  DEFAULT_POSITION_STREAM_MAX_BYTES,
-  suggest_frame_stride,
-} from '$lib/trajectory/runs/accumulate'
+  type AnalysisStreamOptions,
+  collect_trajectory_positions,
+  suggest_analysis_frame_stride,
+} from '$lib/trajectory/analysis'
+import type { TrajectoryFrame, TrajectoryPositionStream, TrajectoryRun } from '$lib/trajectory'
+import { DEFAULT_POSITION_STREAM_MAX_BYTES } from '$lib/trajectory/runs/accumulate'
 import type { VacfInput } from './index'
 
 // Site property the parsers write per-atom velocities to (extXYZ vx/vy/vz, LAMMPS dump
@@ -19,26 +15,15 @@ import type { VacfInput } from './index'
 // VacfInput.velocity_unit unset and calc_vacf labels stored VACF as file velocity units.
 export const VELOCITY_SITE_PROPERTY = `velocity`
 
-// Use `suggest_vacf_frame_stride` for a frame_stride that stays inside the budget. Note that
-// striding coarsens the velocity sampling and so lowers the VDOS Nyquist frequency by the
-// same factor — a stride of 10 aliases everything above f_Nyquist/10.
-type VacfCollectOptions = Pick<
-  CollectPositionsOptions,
-  `frame_stride` | `max_bytes` | `on_progress` | `signal`
->
-
-// Frame stride that keeps positions AND velocities inside `max_bytes`, or null when the
-// atom count is not yet known (no frame has been read). Budgets two buffers whenever the
-// first frame carries velocities, since both are collected.
-export function suggest_vacf_frame_stride(
+// Frame stride that keeps positions AND velocities inside `max_bytes` (two buffers whenever
+// the first frame carries velocities, since both are collected). Note that striding coarsens
+// the velocity sampling and so lowers the VDOS Nyquist frequency by the same factor — a
+// stride of 10 aliases everything above f_Nyquist/10.
+export const suggest_vacf_frame_stride = (
   run: TrajectoryRun,
-  max_bytes: number = DEFAULT_POSITION_STREAM_MAX_BYTES,
-): number | null {
-  const n_atoms = run.preview.structure.sites.length
-  if (!n_atoms) return null
-  const buffers = has_velocities(run.preview) ? 2 : 1
-  return suggest_frame_stride(run.frame_count, n_atoms * buffers, max_bytes)
-}
+  max_bytes?: number,
+): number | null =>
+  suggest_analysis_frame_stride(run, max_bytes, has_velocities(run.preview) ? 2 : 1)
 
 const site_velocity = (frame: TrajectoryFrame, atom_idx: number): unknown =>
   frame.structure.sites[atom_idx]?.properties?.[VELOCITY_SITE_PROPERTY]
@@ -74,7 +59,7 @@ function stream_velocities(stream: TrajectoryPositionStream): Float64Array | nul
 
 export async function collect_vacf_input(
   run: TrajectoryRun,
-  options: VacfCollectOptions = {},
+  options: AnalysisStreamOptions = {},
 ): Promise<VacfInput> {
   // 3 rather than MSD's 2: central differences drop the first and last frame, so a
   // 2-frame run leaves no velocity at all

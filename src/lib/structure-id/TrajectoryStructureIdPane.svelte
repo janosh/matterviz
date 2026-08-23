@@ -2,7 +2,7 @@
   import { format_num } from '$lib/labels'
   import type { ViewerPaneOptions } from '$lib/overlays'
   import type { TrajectoryRun } from '$lib/trajectory'
-  import { sweep_frame_plan } from '$lib/trajectory/analysis'
+  import { positive_int, sweep_frame_plan, sweep_progress } from '$lib/trajectory/analysis'
   import type { AnalysisCollectOptions } from '$lib/trajectory/analysis-pane'
   import TrajectoryAnalysisPane from '$lib/trajectory/TrajectoryAnalysisPane.svelte'
   import { Lattice } from 'svelte-widgets/icons'
@@ -26,13 +26,7 @@
   let normalize = $state(false)
   let error_msg = $state<string | undefined>(undefined)
 
-  // sweep_frame_plan rejects a non-integer or sub-1 cap outright, so normalise once here.
-  // Number.isFinite also catches the Infinity a `1e999` entry produces.
-  let safe_max_frames = $derived(
-    max_frames !== null && Number.isFinite(max_frames) && max_frames >= 1
-      ? Math.floor(max_frames)
-      : DEFAULT_MAX_SWEEP_FRAMES,
-  )
+  let safe_max_frames = $derived(positive_int(max_frames, DEFAULT_MAX_SWEEP_FRAMES))
 
   // The sweep loads one frame at a time, so there is no position buffer to stride: the
   // shared pane's frame-stride control stays hidden and `max_frames` caps the sample instead.
@@ -45,8 +39,7 @@
       max_frames: safe_max_frames,
       // CSP is not plotted here, and skipping it drops the second neighbor pass per frame
       options: { skip_csp: true },
-      on_progress: (done, total) =>
-        on_progress({ current: done, total, stage: `frame ${done} of ${total}` }),
+      on_progress: sweep_progress(on_progress),
     })
 </script>
 

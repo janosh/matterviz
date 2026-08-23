@@ -254,11 +254,22 @@ export function phonon_supercell(
     )
   }
   const scaling = parse_supercell_scaling(supercell)
-  const n_cells = scaling[0] * scaling[1] * scaling[2]
-  if (data.n_atoms * n_cells > MAX_PHONON_SUPERCELL_SITES) {
+  // Count the cell as displayed: an atom on a zero-coordinate axis gains a positive-face copy,
+  // so that axis holds scaling + 1 of it (see close_supercell_faces)
+  const n_sites = data.atoms.reduce(
+    (total, { coordinates }) =>
+      total +
+      scaling.reduce(
+        (per_atom, scale, axis) =>
+          per_atom * (scale + (Math.abs(coordinates[axis]) <= CELL_FACE_TOLERANCE ? 1 : 0)),
+        1,
+      ),
+    0,
+  )
+  if (n_sites > MAX_PHONON_SUPERCELL_SITES) {
     throw new Error(
-      `Phonon supercell ${scaling.join(`x`)} would display ${data.n_atoms * n_cells} sites, ` +
-        `exceeding the ${MAX_PHONON_SUPERCELL_SITES} limit. Reduce the supercell.`,
+      `Phonon supercell ${scaling.join(`x`)} would display ${n_sites} sites (face copies ` +
+        `included), exceeding the ${MAX_PHONON_SUPERCELL_SITES} limit. Reduce the supercell.`,
     )
   }
   const frac_to_cart = math.create_frac_to_cart(data.lattice)
@@ -292,7 +303,6 @@ export function phonon_supercell(
       ),
     },
   }
-  const n_sites = structure.sites.length
   const atom_idx = new Uint32Array(n_sites)
   const cell_position = new Float64Array(n_sites * 3)
   for (const [site_idx, site] of structure.sites.entries()) {

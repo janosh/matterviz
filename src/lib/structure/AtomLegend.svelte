@@ -14,7 +14,7 @@
   import { SETTINGS_CONFIG } from '$lib/settings'
   import { colors } from '$lib/state.svelte'
   import type { AnyStructure } from '$lib/structure'
-  import { atomic_radii, site_display_radius } from '$lib/structure'
+  import { atomic_radii, site_base_radius } from '$lib/structure'
   import type { AtomColorMode } from '$lib/settings'
   import type { AtomColorConfig, AtomPropertyColors } from '$lib/structure/atom-properties'
   import {
@@ -239,12 +239,12 @@
     site_radius_overrides?.delete(site_idx)
   }
 
-  // Same rule the scene renders with: site override, else occupancy-weighted element radius
+  // Same rule the scene renders with
   const get_site_radius = (site_idx: number): number => {
-    const override = site_radius_overrides?.get(site_idx)
-    if (override !== undefined) return override
     const site = structure?.sites?.[site_idx]
-    return site ? site_display_radius(site, element_radius_overrides) : 1
+    return site
+      ? site_base_radius(site, site_idx, { element_radius_overrides, site_radius_overrides })
+      : (site_radius_overrides?.get(site_idx) ?? 1)
   }
 </script>
 

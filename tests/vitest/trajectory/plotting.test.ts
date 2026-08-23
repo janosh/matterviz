@@ -87,21 +87,18 @@ describe(`generate_plot_series`, () => {
       unit: `eV`,
       y_axis: `y1`,
       visible: true,
-      metadata: expect.arrayContaining([expect.objectContaining({ property_key: `energy` })]),
+      metadata: expect.objectContaining({ property_key: `energy` }),
     })
-    expect(energy?.metadata).toHaveLength(3)
     expect(find_series_by_label(series, `f`)).toMatchObject({
       unit: `eV/Å`,
       y_axis: `y2`,
       visible: true,
-      metadata: expect.arrayContaining([
-        expect.objectContaining({ property_key: `force_max` }),
-      ]),
+      metadata: expect.objectContaining({ property_key: `force_max` }),
     })
     // volume omitted from default_visible_properties, not the 2-group cap
     expect(find_series_by_label(series, `volume`)).toMatchObject({
       visible: false,
-      metadata: expect.arrayContaining([expect.objectContaining({ property_key: `volume` })]),
+      metadata: expect.objectContaining({ property_key: `volume` }),
     })
   })
 

@@ -70,6 +70,7 @@
     get_frame_step_samples,
     get_frame_time_step,
     prepare_trajectory_scatter_series,
+    property_key,
     should_hide_plot,
     X_QUANTITY_LABELS,
   } from './plotting'
@@ -463,10 +464,8 @@
   $effect(() => {
     if (plot_series.length === 0) return
     const visible_keys = plot_series.flatMap((srs) => {
-      if (!srs.visible) return []
-      const metadata = Array.isArray(srs.metadata) ? srs.metadata[0] : srs.metadata
-      const key = metadata?.property_key
-      return typeof key === `string` ? [key] : []
+      const key = srs.visible ? property_key(srs) : undefined
+      return key === undefined ? [] : [key]
     })
     const current = untrack(() => visible_properties) || []
     const has_changed =

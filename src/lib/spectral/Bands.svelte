@@ -374,14 +374,19 @@
     return [flat[0] ?? 0, flat.at(-1) ?? 1]
   })
 
-  let y_range = $derived.by((): Vec2 | undefined => {
-    const all_values = structures.flatMap(({ bs }) => [
-      ...bs.bands.flat(),
-      ...(bs.spin_down_bands?.flat() ?? []),
-    ])
-    const is_phonon = detected_band_type === `phonon`
-    return helpers.padded_frequency_range(convert_band_values(all_values), is_phonon)
-  })
+  // Range in the data's own unit; unit conversion is a positive scale factor, which commutes
+  // with extent, the noise clamp and the proportional padding, so a units change converts the
+  // two endpoints instead of re-flattening every band
+  let raw_y_range = $derived.by((): Vec2 | undefined =>
+    helpers.padded_frequency_range(
+      structures.flatMap(({ bs }) => [
+        ...bs.bands.flat(),
+        ...(bs.spin_down_bands?.flat() ?? []),
+      ]),
+      detected_band_type === `phonon`,
+    ),
+  )
+  let y_range = $derived(raw_y_range && (convert_band_values(raw_y_range) as Vec2))
 
   // Internal y_axis that ScatterPlot binds to - syncs zoom changes back to parent
   let internal_y_axis = $derived({
@@ -517,12 +522,9 @@
     bind:controls_open
   >
     {#snippet tooltip({ x, y, y_formatted, label, metadata })}
-      {@const y_label_full = internal_y_axis.label ?? ``}
-      {@const [, y_label, y_unit] = y_label_full.match(/^(.+?)\s*\(([^)]+)\)$/) ?? [
-        ,
-        y_label_full,
-        ``,
-      ]}
+      {@const { name: y_label, unit: y_unit } = helpers.parse_axis_label(
+        internal_y_axis.label ?? ``,
+      )}
       {@const segment = Object.entries(internal_x_positions).find(
         ([, [start, end]]) => x >= start && x <= end,
       )}

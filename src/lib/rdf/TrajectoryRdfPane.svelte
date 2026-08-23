@@ -5,7 +5,7 @@
   import { format_num } from '$lib/labels'
   import type { ViewerPaneOptions } from '$lib/overlays'
   import type { TrajectoryRun } from '$lib/trajectory'
-  import { sweep_frame_plan } from '$lib/trajectory/analysis'
+  import { positive_int, sweep_frame_plan, sweep_progress } from '$lib/trajectory/analysis'
   import type { AnalysisCollectOptions } from '$lib/trajectory/analysis-pane'
   import AnalysisSummary from '$lib/trajectory/AnalysisSummary.svelte'
   import TrajectoryAnalysisPane from '$lib/trajectory/TrajectoryAnalysisPane.svelte'
@@ -36,8 +36,6 @@
   let n_bins = $state<number | null>(DEFAULT_RDF_BINS)
   let error_msg = $state<string | undefined>(undefined)
 
-  const positive_int = (value: number | null, fallback: number): number =>
-    value !== null && Number.isFinite(value) && value >= 1 ? Math.floor(value) : fallback
   let safe_max_frames = $derived(positive_int(max_frames, DEFAULT_RDF_MAX_FRAMES))
   let safe_bins = $derived(positive_int(n_bins, DEFAULT_RDF_BINS))
   let safe_cutoff = $derived(
@@ -60,8 +58,7 @@
       max_frames: safe_max_frames,
       cutoff: safe_cutoff,
       n_bins: safe_bins,
-      on_progress: (done, total) =>
-        on_progress({ current: done, total, stage: `frame ${done} of ${total}` }),
+      on_progress: sweep_progress(on_progress),
     })
 
   let entries = $derived<RdfEntry[]>(

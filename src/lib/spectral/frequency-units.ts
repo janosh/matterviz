@@ -46,16 +46,18 @@ export function convert_frequencies(
 }
 
 // Accepts the spellings found in the wild (cm-1, cm^-1, cm⁻¹, hartree, …); null when unknown
-export const parse_frequency_unit = (unit: unknown): FrequencyUnit | null => {
-  if (typeof unit !== `string`) return null
-  const normalized = unit.trim().toLowerCase()
-  if (normalized === `thz`) return `THz`
-  if (normalized === `ev`) return `eV`
-  if (normalized === `mev`) return `meV`
-  if (normalized === `ha` || normalized === `hartree`) return `Ha`
-  if ([`cm-1`, `cm^-1`, `cm⁻¹`].includes(normalized)) return `cm^-1`
-  return null
+const UNIT_ALIASES: Record<string, FrequencyUnit> = {
+  thz: `THz`,
+  ev: `eV`,
+  mev: `meV`,
+  ha: `Ha`,
+  hartree: `Ha`,
+  'cm-1': `cm^-1`,
+  'cm^-1': `cm^-1`,
+  'cm⁻¹': `cm^-1`,
 }
+export const parse_frequency_unit = (unit: unknown): FrequencyUnit | null =>
+  typeof unit === `string` ? (UNIT_ALIASES[unit.trim().toLowerCase()] ?? null) : null
 
 // How a unit reads on an axis label
 export const frequency_unit_label = (unit: string): string =>

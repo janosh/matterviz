@@ -45,7 +45,7 @@
     Lattice,
     ortho_zoom_for_extent,
     perspective_distance_for_extent,
-    site_display_radius,
+    site_base_radius,
     structure_fit_frame,
     vector_display_defaults,
     VECTOR_PALETTE,
@@ -63,7 +63,8 @@
   import {
     compute_slice_geometry,
     merge_split_partial_sites,
-    PARTIAL_OCCUPANCY_CAP_ARC,
+    CAP_ARC_LENGTH,
+    CAP_ARC_START,
   } from '$lib/structure/partial-occupancy'
   import { T, useTask } from '@threlte/core'
   import * as extras from '@threlte/extras'
@@ -93,6 +94,7 @@
     get_bond_key,
     get_explicit_bond_metadata,
     get_majority_element,
+    rendered_bond_key_for,
     set_bond_order as apply_set_bond_order,
     structure_bond_to_bond_pair,
   } from './bonding'
@@ -575,12 +577,8 @@
   const canonical_bond_target = (bond: BondKeyTarget): BondKeyTarget =>
     canonicalize_bond_target(bond, structure?.sites)
 
-  const bond_key_for = (bond: BondKeyTarget): string => {
-    const target = canonical_bond_target(bond)
-    return get_bond_key(target.site_idx_1, target.site_idx_2, target.cell_shift)
-  }
-  const rendered_bond_key_for = (bond: BondKeyTarget): string =>
-    get_bond_key(bond.site_idx_1, bond.site_idx_2, bond.cell_shift)
+  const bond_key_for = (bond: BondKeyTarget): string =>
+    rendered_bond_key_for(canonical_bond_target(bond))
 
   const matches_bond_key = (bond: BondKeyTarget, key: string): boolean =>
     bond_key_for(bond) === key
@@ -764,26 +762,6 @@
     if (close_menu) close_bond_context_menu()
   }
 
-  const find_visible_bond = (
-    target: BondKeyTarget,
-    canonical_target: BondKeyTarget = target,
-  ): BondPair | undefined => {
-    const rendered_key = rendered_bond_key_for(target)
-    const canonical_key = bond_key_for(canonical_target)
-    return (
-      filtered_bond_pairs.find((bond) => rendered_bond_key_for(bond) === rendered_key) ??
-      filtered_bond_pairs.find((bond) => bond_key_for(bond) === canonical_key)
-    )
-  }
-
-  function open_bond_order_menu_for_target(
-    target: BondKeyTarget,
-    canonical_target: BondKeyTarget = target,
-  ) {
-    const bond = find_visible_bond(target, canonical_target)
-    if (bond) open_bond_context_menu(bond)
-  }
-
   function add_or_restore_pair(site_idx_1: number, site_idx_2: number) {
     if (!interactive) return // inactive panes must not mutate shared bond state
     const rendered_target = { site_idx_1, site_idx_2 }
@@ -809,7 +787,14 @@
         )
       : canonical_result
     if (result.action === `already-visible`) {
-      open_bond_order_menu_for_target(rendered_target, target)
+      const [rendered_key, canonical_key] = [
+        rendered_bond_key_for(rendered_target),
+        bond_key_for(target),
+      ]
+      const bond =
+        filtered_bond_pairs.find((pair) => rendered_bond_key_for(pair) === rendered_key) ??
+        filtered_bond_pairs.find((pair) => bond_key_for(pair) === canonical_key)
+      if (bond) open_bond_context_menu(bond)
       return
     }
     apply_bond_edit_result(result, false)
@@ -1246,18 +1231,13 @@
     const { values: prop_values, colors: prop_colors } = property_colors ?? {}
     const filter_prop_vals = hidden_prop_vals.size > 0
     const filter_elements = hidden_elements.size > 0
-    const has_radius_overrides = (site_radius_overrides?.size ?? 0) > 0
     const hide_completion_images =
       !applies_to_structure(effective_show_bonds) &&
       !applies_to_structure(effective_show_polyhedra)
     // Props arrive through two spread layers (Structure → Viewport → here), so every read
     // inside the loop would walk that proxy chain per site: read them once
-    const [uniform_size, radius_scale, radius_overrides, site_overrides] = [
-      same_size_atoms,
-      effective_atom_radius,
-      element_radius_overrides,
-      site_radius_overrides,
-    ]
+    const radius_scale = effective_atom_radius
+    const radius_opts = { same_size_atoms, element_radius_overrides, site_radius_overrides }
     const hidden_centers = polyhedra_hide_center_atoms ? polyhedra_center_site_idxs : null
 
     const atoms = []
@@ -1276,14 +1256,8 @@
       // …) they'd float disconnected outside the cell — hide them.
       if (site.properties?.completion_image && hide_completion_images) continue
 
-      // Calculate radius: same_size > site override > occupancy-weighted element radius
-      // (element overrides included, shared with camera-fit). All radii scale uniformly
-      // with atom_radius for consistent slider behavior
-      const base_radius = uniform_size
-        ? 1
-        : ((has_radius_overrides ? site_overrides?.get(site_idx) : undefined) ??
-          site_display_radius(site, radius_overrides))
-      const radius = base_radius * radius_scale
+      // All radii scale uniformly with atom_radius for consistent slider behavior
+      const radius = site_base_radius(site, site_idx, radius_opts) * radius_scale
 
       // Use property color if available (e.g. coordination number, Wyckoff position)
       // Otherwise, each species gets its own element color (important for disordered sites)
@@ -1349,8 +1323,10 @@
     )
   })
 
+  // Only the edit-bonds handlers read these, so outside that mode skip the per-bond
+  // canonicalisation pass a trajectory would otherwise pay on every frame
   let editable_perceived_bond_pairs = $derived(
-    interactive && bond_edits_enabled
+    interactive && bond_edits_enabled && measure_mode === `edit-bonds`
       ? perceived_bond_pairs.map((bond) => ({ ...bond, ...canonical_bond_target(bond) }))
       : [],
   )
@@ -1411,7 +1387,9 @@
   })
 
   let editable_bond_pairs = $derived(
-    interactive && bond_edits_enabled ? bonds_to_render.filter(can_edit_bond) : [],
+    interactive && bond_edits_enabled && measure_mode === `edit-bonds`
+      ? bonds_to_render.filter(can_edit_bond)
+      : [],
   )
 
   // Coordination polyhedra around cation-like centers, derived from the same
@@ -1513,16 +1491,17 @@
     // Plain Maps: built and consumed inside deriveds, so per-entry reactivity
     // (SvelteMap) would only add signal overhead for potentially thousands of sites
     const offsets = new Map<number, Vec3>()
-    if (bonds_to_render.length === 0) return offsets
+    // Only SiteLabels reads these, so skip the bond walk while no labels are shown
+    if (bonds_to_render.length === 0 || (!show_site_labels && !show_site_indices))
+      return offsets
 
     const bond_directions_by_site = new Map<number, Vec3[]>()
     const add_bond_direction = (site_idx: number, pos_1: Vec3, pos_2: Vec3) => {
       const direction = math.normalize_vec(math.subtract(pos_2, pos_1), [0, 0, 0])
       if (Math.hypot(...direction) < LABEL_OFFSET_EPS) return
-      bond_directions_by_site.set(site_idx, [
-        ...(bond_directions_by_site.get(site_idx) ?? []),
-        direction,
-      ])
+      const directions = bond_directions_by_site.get(site_idx)
+      if (directions) directions.push(direction)
+      else bond_directions_by_site.set(site_idx, [direction])
     }
 
     for (const { site_idx_1, site_idx_2, pos_1, pos_2 } of bonds_to_render) {
@@ -1547,73 +1526,60 @@
     })
   })
 
-  let radius_by_site_idx = $derived.by(() => {
-    const map = new Map<number, number>()
+  // One pass over atom_data (>10k entries for a 3x3x3 supercell, rebuilt every trajectory
+  // frame) splits it for rendering and keeps each site's first entry: a partial-occupancy
+  // site contributes one wedge per species, but labels, hit targets and highlight lookups
+  // want one anchor per site. Full-occupancy atoms render as ONE InstancedMesh per set
+  // (per-atom color/radius live in instance buffers); image atoms get their own mesh because
+  // they ghost (desaturate + translucent) and lose interactivity in edit-atoms mode.
+  let atom_groups = $derived.by(() => {
+    const first_by_site = new Map<number, (typeof atom_data)[number]>()
+    const base: typeof atom_data = []
+    const image: typeof atom_data = []
+    const partial: typeof atom_data = []
     for (const atom of atom_data) {
-      if (!map.has(atom.site_idx)) map.set(atom.site_idx, atom.radius)
+      if (!first_by_site.has(atom.site_idx)) first_by_site.set(atom.site_idx, atom)
+      if (atom.has_partial_occupancy) partial.push(atom)
+      else (atom.is_image_atom ? image : base).push(atom)
     }
-    return map
+    return { first_by_site, base, image, partial }
   })
-  // First visible species/property color per site — same source the atom mesh uses.
-  let color_by_site_idx = $derived.by(() => {
-    const map = new Map<number, string>()
-    for (const atom of atom_data) {
-      if (!map.has(atom.site_idx) && atom.color) map.set(atom.site_idx, atom.color)
-    }
-    return map
+  const site_anchor = ({ site_idx, position, radius }: (typeof atom_data)[number]) => ({
+    site_idx,
+    position,
+    radius,
   })
 
   // Partial-occupancy atoms render as separate wedge (lune) meshes that converge
   // to a point at the sphere's poles, leaving the ball hard to hover from some
   // angles. Give each such site one invisible full-sphere hit target so it's as
   // reliably hoverable as an ordered atom (single solid sphere). One per site.
-  let partial_hit_targets = $derived.by(() => {
-    if (!interactive) return []
-    const targets = new Map<number, EditableAtomHitTarget & { is_image_atom: boolean }>()
-    for (const atom of atom_data) {
-      if (!atom.has_partial_occupancy || targets.has(atom.site_idx)) continue
-      targets.set(atom.site_idx, {
-        site_idx: atom.site_idx,
-        position: atom.position,
-        radius: atom.radius,
-        is_image_atom: atom.is_image_atom,
-      })
-    }
-    return [...targets.values()]
-  })
+  let partial_hit_targets = $derived(
+    interactive
+      ? [...atom_groups.first_by_site.values()]
+          .filter((atom) => atom.has_partial_occupancy)
+          .map((atom) => ({ ...site_anchor(atom), is_image_atom: atom.is_image_atom }))
+      : [],
+  )
 
-  let editable_atom_hit_targets = $derived.by(() => {
-    if (
-      !interactive ||
-      measure_mode !== `edit-bonds` ||
-      bond_edit_mode !== `add` ||
-      !bond_edits_enabled
-    ) {
-      return []
-    }
+  let editable_atom_hit_targets = $derived(
+    interactive &&
+      measure_mode === `edit-bonds` &&
+      bond_edit_mode === `add` &&
+      bond_edits_enabled
+      ? [...atom_groups.first_by_site.values()]
+          .filter((atom) => can_select_bond_site(atom.site_idx))
+          .map(site_anchor)
+      : [],
+  )
 
-    const targets = new Map<number, EditableAtomHitTarget>()
-    for (const atom of atom_data) {
-      if (!can_select_bond_site(atom.site_idx)) continue
-      if (targets.has(atom.site_idx)) continue
-      targets.set(atom.site_idx, {
-        site_idx: atom.site_idx,
-        position: atom.position,
-        radius: atom.radius,
-      })
-    }
-    return [...targets.values()]
-  })
-
-  // Get radius for a site (for highlight fallback when site is hidden/filtered)
-  // Checks site_radius_overrides first for consistency with visible atoms
-  const get_site_radius = (site: Site, site_idx: number | null): number => {
-    const override = site_idx !== null ? site_radius_overrides?.get(site_idx) : undefined
-    const base_radius = same_size_atoms
-      ? 1
-      : (override ?? site_display_radius(site, element_radius_overrides))
-    return base_radius * effective_atom_radius
-  }
+  // Radius of a site that atom_data may have filtered out (highlight fallback)
+  const get_site_radius = (site: Site, site_idx: number | null): number =>
+    site_base_radius(site, site_idx ?? -1, {
+      same_size_atoms,
+      element_radius_overrides,
+      site_radius_overrides,
+    }) * effective_atom_radius
 
   // Sites to outline with a translucent sphere: hovered + all selected/active sites. Kept
   // independent of the pulse animation so this list (with its per-site radius lookups) only
@@ -1637,14 +1603,15 @@
       if (!site) return
       const radius =
         site_idx !== null
-          ? (radius_by_site_idx.get(site_idx) ?? get_site_radius(site, site_idx))
+          ? (atom_groups.first_by_site.get(site_idx)?.radius ??
+            get_site_radius(site, site_idx))
           : get_site_radius(site, site_idx)
       targets.push({ kind, site, site_idx, color, radius })
     }
     const hover_color =
       hovered_idx !== null
         ? brighten_hex(
-            color_by_site_idx.get(hovered_idx) ??
+            atom_groups.first_by_site.get(hovered_idx)?.color ??
               (hovered_site?.species[0] && colors.element?.[hovered_site.species[0].element]),
           )
         : brighten_hex(undefined)
@@ -1882,41 +1849,11 @@
     return visible.map((arrow) => ({ ...arrow, scale, color: displacement_arrow_color }))
   })
 
-  // Full-occupancy atoms split into base and PBC-image sets. Each set renders
-  // as ONE InstancedMesh (per-atom color/radius live in instance buffers), so
-  // no per-element grouping is needed. Image atoms get their own mesh because
-  // they ghost (desaturate + translucent) and lose interactivity in edit-atoms mode.
-  let instanced_atom_sets = $derived.by(() => {
-    const base: typeof atom_data = []
-    const image: typeof atom_data = []
-    for (const atom of atom_data) {
-      if (!atom.has_partial_occupancy) (atom.is_image_atom ? image : base).push(atom)
-    }
-    return { base, image }
-  })
-
-  // One label anchor per visible site (sites can contribute several atom_data
-  // entries, e.g. partial-occupancy wedges — label each site once)
-  let label_entries = $derived.by(() => {
-    if (!show_site_labels && !show_site_indices) return []
-    const seen = new Set<number>()
-    const entries: { site_idx: number; position: Vec3; radius: number }[] = []
-    for (const atom of atom_data) {
-      if (seen.has(atom.site_idx)) continue
-      seen.add(atom.site_idx)
-      entries.push({
-        site_idx: atom.site_idx,
-        position: atom.position,
-        radius: atom.radius,
-      })
-    }
-    return entries
-  })
-
-  // Partial-occupancy atoms render as separate wedge meshes (see template below).
-  // Derived so the filter isn't re-run inline on every render of the atoms group.
-  let partial_occupancy_atoms = $derived(
-    atom_data.filter((atom) => atom.has_partial_occupancy),
+  // One label anchor per visible site
+  let label_entries = $derived(
+    show_site_labels || show_site_indices
+      ? [...atom_groups.first_by_site.values()].map(site_anchor)
+      : [],
   )
 
   let orbit_controls_props = $derived(
@@ -2020,27 +1957,27 @@
         <!-- Instanced rendering for full-occupancy atoms: one InstancedMesh for
           base atoms and one for PBC image atoms (which ghost + lose interaction
           in edit-atoms mode). Pointer events are resolved via raycast instanceId. -->
-        {#if instanced_atom_sets.base.length > 0}
+        {#if atom_groups.base.length > 0}
           <InstancedAtoms
-            atoms={instanced_atom_sets.base}
+            atoms={atom_groups.base}
             {sphere_segments}
             positions_only={defer_expensive_geometry}
-            {...atom_instance_events(instanced_atom_sets.base, false)}
+            {...atom_instance_events(atom_groups.base, false)}
           />
         {/if}
-        {#if instanced_atom_sets.image.length > 0}
+        {#if atom_groups.image.length > 0}
           {@const edit_mode_image = measure_mode === `edit-atoms`}
           <InstancedAtoms
-            atoms={instanced_atom_sets.image}
+            atoms={atom_groups.image}
             {sphere_segments}
             ghost={edit_mode_image}
             positions_only={defer_expensive_geometry}
-            {...atom_instance_events(instanced_atom_sets.image, edit_mode_image)}
+            {...atom_instance_events(atom_groups.image, edit_mode_image)}
           />
         {/if}
 
         <!-- Regular rendering for partial occupancy atoms -->
-        {#each partial_occupancy_atoms as atom (atom.site_idx + atom.element + atom.occupancy)}
+        {#each atom_groups.partial as atom (atom.site_idx + atom.element + atom.occupancy)}
           {@const partial_edit_image = measure_mode === `edit-atoms` && atom.is_image_atom}
           {@const ghost_opacity = partial_edit_image ? 0.5 : 1}
           <!-- Visual only: pointer interaction handled by the invisible full-sphere
@@ -2059,16 +1996,11 @@
             </T.Mesh>
 
             <!-- Flat caps closing the wedge at its start/end azimuthal angles -->
-            {#each [[atom.render_start_cap, atom.start_phi, PARTIAL_OCCUPANCY_CAP_ARC.start_cap_arc_start], [atom.render_end_cap, atom.end_phi, PARTIAL_OCCUPANCY_CAP_ARC.end_cap_arc_start]] as const as [render_cap, phi, arc_start], cap_idx (cap_idx)}
+            {#each [[atom.render_start_cap, atom.start_phi], [atom.render_end_cap, atom.end_phi]] as const as [render_cap, phi], cap_idx (cap_idx)}
               {#if render_cap}
                 <T.Mesh rotation={[0, phi, 0]}>
                   <T.CircleGeometry
-                    args={[
-                      0.5,
-                      sphere_segments,
-                      arc_start,
-                      PARTIAL_OCCUPANCY_CAP_ARC.arc_length,
-                    ]}
+                    args={[0.5, sphere_segments, CAP_ARC_START, CAP_ARC_LENGTH]}
                   />
                   <T.MeshStandardMaterial
                     color={partial_color}

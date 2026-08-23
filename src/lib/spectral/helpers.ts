@@ -166,13 +166,9 @@ export function apply_gaussian_smearing(
   const cutoff = 4 * sigma
   const inv_two_sigma_sq = 1 / (2 * sigma ** 2)
 
-  let ascending = true
-  for (let idx = 1; idx < n_pts; idx++) {
-    if (freqs_or_energies[idx] < freqs_or_energies[idx - 1]) {
-      ascending = false
-      break
-    }
-  }
+  const ascending = freqs_or_energies.every(
+    (value, idx) => idx === 0 || value >= freqs_or_energies[idx - 1],
+  )
 
   let window_start = 0
   let window_end = 0
@@ -933,7 +929,7 @@ export function compute_frequency_range(
 }
 
 // Parse axis label: "Frequency (THz)" → { name: "Frequency", unit: "THz" }
-function parse_axis_label(label: string): { name: string; unit?: string } {
+export function parse_axis_label(label: string): { name: string; unit?: string } {
   const match = /^(?<name>.+?)\s*\((?<unit>[^)]+)\)$/.exec(label)
   return match ? { name: match[1], unit: match[2] } : { name: label }
 }

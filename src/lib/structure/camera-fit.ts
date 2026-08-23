@@ -60,14 +60,17 @@ export const site_display_radius = (
   return total_occu > 0 ? weighted / total_occu : 1
 }
 
-// same_size > site override > occupancy-weighted element (matches StructureScene)
-const site_base_radius = (site: Site, site_idx: number, opts: StructureFitOpts): number => {
-  if (opts.same_size_atoms) return 1
-  return (
-    opts.site_radius_overrides?.get(site_idx) ??
-    site_display_radius(site, opts.element_radius_overrides)
-  )
-}
+// The one precedence rule for how big a site renders, shared by the scene, the camera fit and
+// the legend: same_size > site override > occupancy-weighted element radius
+export const site_base_radius = (
+  site: Site,
+  site_idx: number,
+  opts: Omit<StructureFitOpts, `atom_radius_scale`>,
+): number =>
+  opts.same_size_atoms
+    ? 1
+    : (opts.site_radius_overrides?.get(site_idx) ??
+      site_display_radius(site, opts.element_radius_overrides))
 
 export function structure_fit_frame(
   structure: AnyStructure | null | undefined,
@@ -79,43 +82,43 @@ export function structure_fit_frame(
   if (!sites.length && !lattice) return empty_frame()
 
   const scale = opts.atom_radius_scale ?? 0.7
-  const samples: [Vec3, number][] = sites.map((site, site_idx) => [
-    site.xyz,
-    site_base_radius(site, site_idx, opts) * scale,
-  ])
+  // Sites then the 8 cell corners (radius 0); one typed array of radii instead of a tuple
+  // per site, which a 10k-site supercell allocated on every fit
+  const radii = Float64Array.from(
+    sites,
+    (site, idx) => site_base_radius(site, idx, opts) * scale,
+  )
+  const corners: Vec3[] = []
   if (lattice) {
     const [a_vec, b_vec, c_vec] = lattice.matrix
     for (let corner_idx = 0; corner_idx < 8; corner_idx++) {
-      const a_on = corner_idx & 1
-      const b_on = (corner_idx >> 1) & 1
-      const c_on = (corner_idx >> 2) & 1
-      samples.push([
-        [
-          a_on * a_vec[0] + b_on * b_vec[0] + c_on * c_vec[0],
-          a_on * a_vec[1] + b_on * b_vec[1] + c_on * c_vec[1],
-          a_on * a_vec[2] + b_on * b_vec[2] + c_on * c_vec[2],
-        ],
-        0,
-      ])
+      const [a_on, b_on, c_on] = [corner_idx & 1, (corner_idx >> 1) & 1, (corner_idx >> 2) & 1]
+      corners.push(
+        [0, 1, 2].map((ax) => a_on * a_vec[ax] + b_on * b_vec[ax] + c_on * c_vec[ax]) as Vec3,
+      )
     }
+  }
+  const for_each_sample = (visit: (point: Vec3, radius: number) => void): void => {
+    for (const [idx, site] of sites.entries()) visit(site.xyz, radii[idx])
+    for (const corner of corners) visit(corner, 0)
   }
 
   const min: Vec3 = [Infinity, Infinity, Infinity]
   const max: Vec3 = [-Infinity, -Infinity, -Infinity]
-  for (const [point, radius] of samples) {
+  for_each_sample((point, radius) => {
     for (let axis = 0; axis < 3; axis++) {
       min[axis] = Math.min(min[axis], point[axis] - radius)
       max[axis] = Math.max(max[axis], point[axis] + radius)
     }
-  }
+  })
   if (!Number.isFinite(min[0])) return empty_frame()
 
   const center = math.add(min, math.scale(math.subtract(max, min), 0.5))
   let radius_sq = 0
-  for (const [point, radius] of samples) {
+  for_each_sample((point, radius) => {
     const reach = math.euclidean_dist(point, center) + radius
     radius_sq = Math.max(radius_sq, reach * reach)
-  }
+  })
   if (!(radius_sq > 0)) return { center, extent: 10 }
   return {
     center,

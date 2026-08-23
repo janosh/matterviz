@@ -150,9 +150,7 @@ export function validate_position_stream_layout(
   analysis_name: string,
   min_frames: number,
 ): void {
-  const fail = (message: string): never => {
-    throw new Error(`${analysis_name}: ${message}`)
-  }
+  const fail = analysis_fail(analysis_name)
   const { n_frames, n_atoms, positions, elements, lattice_matrices } = stream
   if (n_frames < min_frames) fail(`need at least ${min_frames} frames, got ${n_frames}`)
   if (n_atoms < 1) fail(`need at least 1 atom, got ${n_atoms}`)
@@ -176,6 +174,18 @@ export function validate_position_stream_layout(
 
 // The dt / time_unit contract shared by MSD and VACF: a run may not record a timestep, so a
 // dt without a unit would mean inventing a time axis. Returns the unit to label axes with.
+// Guard thrower that prefixes every message with the analysis raising it, so most guards
+// stay on one line
+export const analysis_fail =
+  (analysis_name: string) =>
+  (message: string): never => {
+    throw new Error(`${analysis_name}: ${message}`)
+  }
+
+// Axis label of a lag axis in `time_unit` (as returned by resolve_lag_time_unit)
+export const lag_axis_label = (time_unit: string): string =>
+  time_unit === `frame` ? `Lag (frames)` : `Lag time (${time_unit})`
+
 export function resolve_lag_time_unit(
   analysis_name: string,
   dt: number | undefined,

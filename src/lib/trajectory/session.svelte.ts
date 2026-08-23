@@ -7,7 +7,6 @@ import { clamp } from '$lib/math'
 import type { AnyStructure } from '$lib/structure'
 import { to_error } from '$lib/utils'
 import { untrack } from 'svelte'
-import { SvelteMap } from 'svelte/reactivity'
 import type { TrajectoryController, TrajectoryFrame, TrajectoryMetadata } from './index'
 import type { TrajectoryRun } from './run'
 
@@ -72,7 +71,8 @@ export function create_trajectory_session(
   })
 
   // === frame cache (per run; swapping runs drops it) ===
-  const cache = new SvelteMap<number, TrajectoryFrame>()
+  // Plain Map: nothing reactive reads it, and a SvelteMap would mint a signal per frame index
+  const cache = new Map<number, TrajectoryFrame>()
   let cache_owner: TrajectoryRun | undefined
   let cache_atoms = 0
   const claim_cache = (run: TrajectoryRun): void => {

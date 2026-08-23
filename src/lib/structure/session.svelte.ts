@@ -135,6 +135,30 @@ class History<Entry> {
 // Joins per-site signature entries; a control character cannot occur in a label or element
 const SITE_SEPARATOR = `\u0001`
 
+// Whether two site lists describe the same atoms in the same order. Plain loops, no
+// closures: this runs over every site of every trajectory frame
+function same_topology(sites: readonly Site[], last: readonly Site[]): boolean {
+  if (sites.length !== last.length) return false
+  for (let idx = 0; idx < sites.length; idx++) {
+    const { label, species } = sites[idx]
+    const previous = last[idx]
+    if (label !== previous.label) return false
+    if (species === previous.species) continue
+    if (species.length !== previous.species.length) return false
+    for (let entry_idx = 0; entry_idx < species.length; entry_idx++) {
+      const entry = species[entry_idx]
+      const previous_entry = previous.species[entry_idx]
+      if (
+        entry.element !== previous_entry.element ||
+        entry.occu !== previous_entry.occu ||
+        entry.oxidation_state !== previous_entry.oxidation_state
+      )
+        return false
+    }
+  }
+  return true
+}
+
 // Per-key change detection for the invalidation effect: true when `value` differs from the
 // value last seen under `key` (never on the first sight). A plain Map on purpose: it is read
 // and written inside the effect it serves.
@@ -296,21 +320,15 @@ export class StructureSession {
     })
   })
   // Site-indexed UI state is only valid while atom count, order and species are unchanged.
-  // Trajectory frames share label strings and species arrays with their predecessor, so a
-  // per-site identity check usually answers without rebuilding the string for every site.
+  // Trajectory frames almost always keep the topology, so compare against the previous sites
+  // field by field first: that is an order of magnitude cheaper than rebuilding the string
+  // for every site, which parsers that allocate fresh species arrays per frame would force.
   private last_topology: { sites: readonly Site[]; signature: string } | undefined
   private readonly topology_signature = $derived.by((): string => {
     const sites = this.inputs.structure()?.sites
     if (!Array.isArray(sites)) return ``
     const last = this.last_topology
-    const unchanged =
-      last !== undefined &&
-      last.sites.length === sites.length &&
-      sites.every(
-        (site, idx) =>
-          site.label === last.sites[idx].label && site.species === last.sites[idx].species,
-      )
-    if (unchanged) return last.signature
+    if (last && same_topology(sites, last.sites)) return last.signature
     const signature = sites
       .map(
         ({ label, species }) =>

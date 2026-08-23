@@ -4,6 +4,7 @@
   import { SettingsSection } from '$lib/layout'
   import type { Vec2 } from '$lib/math'
   import ScatterPlot from '$lib/plot/scatter/ScatterPlot.svelte'
+  import { accumulate_extent, empty_extent } from '$lib/plot/core/scales'
   import { sync_axis_range } from '$lib/plot/core/shared-axes'
   import type { AxisConfig, DataSeries } from '$lib/plot/core/types'
   import { extent } from 'd3-array'
@@ -264,25 +265,18 @@
   // Density axis starts at 0 (unless mirror mode needs negative values); frequency axis
   // clamps to 0 only when negative phonon frequencies are numerical noise.
   // Prefer d3 extent over Math.min/max(...arr) — large DOS grids can blow the call stack.
-  const compute_range = (values: number[], is_density_axis: boolean): Vec2 | undefined => {
-    if (values.length === 0) return undefined
-    const [min_val, max_val] = extent(values) as [number, number]
-    if (is_density_axis && has_mirrored_spin) return [min_val, max_val]
-    if (is_density_axis || clamp_to_zero) return [0, max_val]
-    return [min_val, max_val]
+  // Folds over each series' own array instead of concatenating them: this re-runs on every
+  // sigma-slider tick and legend toggle over grids of up to 1e7 points.
+  const compute_range = (axis: `x` | `y`, is_density_axis: boolean): Vec2 | undefined => {
+    let acc = empty_extent()
+    for (const srs of series_data) acc = accumulate_extent(acc, srs[axis])
+    if (acc.min === undefined || acc.max === undefined) return undefined
+    if (is_density_axis && has_mirrored_spin) return [acc.min, acc.max]
+    if (is_density_axis || clamp_to_zero) return [0, acc.max]
+    return [acc.min, acc.max]
   }
-  let x_range = $derived(
-    compute_range(
-      series_data.flatMap((srs) => srs.x),
-      is_horizontal,
-    ),
-  )
-  let y_range = $derived(
-    compute_range(
-      series_data.flatMap((srs) => srs.y),
-      !is_horizontal,
-    ),
-  )
+  let x_range = $derived(compute_range(`x`, is_horizontal))
+  let y_range = $derived(compute_range(`y`, !is_horizontal))
 
   let value_label = $derived(
     is_phonon ? `Frequency (${frequency_unit_label(unit)})` : `Energy (eV)`,

@@ -266,8 +266,12 @@ export function get_all_site_vectors(
 }
 
 // Collect the union of all vector property keys across all sites in a structure,
-// preserving VECTOR_KEY_PREFIXES priority order.
+// preserving VECTOR_KEY_PREFIXES priority order. Memoised per structure: Structure, its
+// controls and every scene pane ask for the same answer on every trajectory frame.
+const vector_keys_memo = new WeakMap<AnyStructure, string[]>()
 export function get_structure_vector_keys(structure: AnyStructure): string[] {
+  const memo = vector_keys_memo.get(structure)
+  if (memo) return memo
   const seen = new Set<string>()
   for (const site of structure.sites) {
     const props = site.properties
@@ -278,7 +282,9 @@ export function get_structure_vector_keys(structure: AnyStructure): string[] {
     }
   }
   // oxlint-disable-next-line eslint-plugin-unicorn/no-array-sort -- spread creates a fresh array
-  return [...seen].sort(compare_vector_keys)
+  const keys = [...seen].sort(compare_vector_keys)
+  vector_keys_memo.set(structure, keys)
+  return keys
 }
 
 // Payload of Structure's on_file_load / on_error / on_fullscreen_change / on_camera_move /

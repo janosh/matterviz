@@ -910,8 +910,14 @@ export function normalize_fractional_coords<T extends AnyStructure>(
   pbc: Pbc | undefined = `lattice` in structure ? structure.lattice.pbc : undefined,
 ): T {
   if (!(`lattice` in structure) || !pbc) return structure
-  const needs_wrapping = structure.sites.some((site) =>
-    site.abc.some((coord, axis) => pbc[axis] && (coord < 0 || coord >= 1)),
+  // Plain loop: this runs on every trajectory frame and nearly always finds nothing to wrap
+  const [wrap_a, wrap_b, wrap_c] = pbc
+  const outside = (coord: number): boolean => coord < 0 || coord >= 1
+  const needs_wrapping = structure.sites.some(
+    ({ abc }) =>
+      (wrap_a && outside(abc[0])) ||
+      (wrap_b && outside(abc[1])) ||
+      (wrap_c && outside(abc[2])),
   )
   if (!needs_wrapping) return structure
 

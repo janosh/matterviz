@@ -294,7 +294,7 @@ describe(`phonon_mode_trajectory`, () => {
     [
       `oversized supercell`,
       { supercell: [500, 500, 1] as Vec3 },
-      /would display 250000 sites.*exceeding the 200000 limit/,
+      /would display 502002 sites.*exceeding the 200000 limit/,
     ],
   ])(`rejects %s`, (_name, options, error) => {
     expect(() =>
