@@ -59,11 +59,13 @@ export const collect_page_errors = (page: Page): Error[] => {
   return page_errors
 }
 
-// Headless Chromium without a real GPU emits these while three acquires (or fails to acquire)
-// a WebGPU device; they come from the browser/driver, not from matterviz, so the strict
-// fixture below ignores them and keeps every other error fatal
+// Headless Chromium without a real GPU (swiftshader on CI, no adapter locally) emits these
+// while three acquires or drives a WebGPU device: validation/device-lost reports, dropped
+// instances in popErrorScope, GPUDevice buffer limits, the WebGL fallback probing a null
+// context. They come from the browser/driver, not from matterviz, so the strict fixture below
+// ignores them and keeps every other error fatal
 const GPU_ENVIRONMENT_NOISE =
-  /GPUValidationError|WebGPU Device Lost|WebGPU renderer initialization failed|getSupportedExtensions/
+  /GPUValidationError|WebGPU Device Lost|WebGPU renderer initialization failed|getSupportedExtensions|Instance dropped|popErrorScope|GPUDevice|GPUAdapter/
 const is_gpu_noise = (message: string): boolean => GPU_ENVIRONMENT_NOISE.test(message)
 
 // `test` whose every test fails on a console.error or uncaught page error. The collectors
