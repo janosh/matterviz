@@ -66,8 +66,11 @@ export const collect_page_errors = (page: Page): Error[] => {
 // ignores them and keeps every other error fatal
 const GPU_ENVIRONMENT_NOISE = new RegExp(
   [
-    `^THREE\\.(THREE\\.)?WebGPURenderer: (Uncaptured WebGPU GPUValidationError|WebGPU Device Lost)`,
-    `^WebGPU renderer initialization failed`,
+    // three prefixes every driver report it forwards; the payload after the colon is the
+    // driver's (validation error text, device-lost message + reason)
+    `^THREE\\.(THREE\\.)?WebGPURenderer: (Uncaptured WebGPU GPUValidationError: |WebGPU Device Lost:)`,
+    // create_renderer's own log; only the device-acquisition causes are environment noise
+    `^WebGPU renderer initialization failed(:| )\\s*(Error: )?.*\\b(adapter|GPUDevice|Instance|WebGPU is not supported)\\b`,
     `^Instance dropped in popErrorScope$`,
     `^Failed to execute 'createBuffer' on 'GPUDevice': createBuffer failed, size \\(\\d+\\) is too large for the implementation`,
     `^Cannot read properties of null \\(reading 'getSupportedExtensions'\\)$`,
