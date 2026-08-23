@@ -158,13 +158,10 @@ const frame_charts: FrameChart[] = [
 // BinnedScatterPlot mounts the frame too but has no legend, so it only joins the axis and
 // reference-line tests; it takes its ref lines via `overlays` rather than a top-level prop
 type AxisChart = Pick<FrameChart, `name` | `component` | `selector` | `props`> & {
-  ref_line_props: (ref_lines: Record<string, unknown>[]) => Record<string, unknown>
+  ref_line_props?: (ref_lines: Record<string, unknown>[]) => Record<string, unknown>
 }
 const axis_charts: AxisChart[] = [
-  ...frame_charts.map((chart): AxisChart => ({
-    ...chart,
-    ref_line_props: (ref_lines) => ({ ref_lines }),
-  })),
+  ...frame_charts,
   {
     name: `BinnedScatterPlot`,
     component: BinnedScatterPlot,
@@ -556,17 +553,18 @@ describe(`cartesian frame`, () => {
   test.each(axis_charts)(
     `$name shared solver separates nearby annotations and keeps explicit placement pinned`,
     async (chart) => {
+      const ref_lines = [
+        { type: `vertical`, x: 1, annotation: { text: `automatic A` } },
+        { type: `vertical`, x: 1.02, annotation: { text: `automatic B` } },
+        {
+          type: `vertical`,
+          x: 1.04,
+          annotation: { text: `pinned`, position: `end`, side: `above` },
+        },
+      ]
       const plot = await mount_chart(chart, {
         ...chart.props(),
-        ...chart.ref_line_props([
-          { type: `vertical`, x: 1, annotation: { text: `automatic A` } },
-          { type: `vertical`, x: 1.02, annotation: { text: `automatic B` } },
-          {
-            type: `vertical`,
-            x: 1.04,
-            annotation: { text: `pinned`, position: `end`, side: `above` },
-          },
-        ]),
+        ...(chart.ref_line_props?.(ref_lines) ?? { ref_lines }),
       })
       await tick()
       const geometry = (text: string) => {

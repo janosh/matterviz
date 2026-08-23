@@ -301,21 +301,6 @@ export function draw_corner_labels(
 
 // === Labels ===
 
-// Centered notice in place of the plot, e.g. when the dataset's arity doesn't match the diagram
-export function draw_notice(
-  ctx: CanvasRenderingContext2D,
-  text: string,
-  text_color: string,
-  width: number,
-  height: number,
-): void {
-  ctx.fillStyle = text_color
-  ctx.font = `16px Arial`
-  ctx.textAlign = `center`
-  ctx.textBaseline = `middle`
-  ctx.fillText(text, width / 2, height / 2)
-}
-
 const LABEL_FONT_SIZE = 12
 const LABEL_FONT = `${LABEL_FONT_SIZE}px Arial`
 const LABEL_SUBSCRIPT_FONT = `${LABEL_FONT_SIZE - 1}px Arial`

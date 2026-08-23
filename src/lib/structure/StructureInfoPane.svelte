@@ -21,9 +21,6 @@
   type SiteCard = InfoPaneCard & { idx: number; element: string; element_name: string }
 
   const SITE_PAGE_SIZE = 100
-  // Default `atom_count_thresholds`: below the first the site list starts expanded, above the
-  // second it is omitted, in between it starts collapsed. The chevron always toggles.
-  const DEFAULT_ATOM_COUNT_THRESHOLDS: [number, number] = [50, 500]
   const USAGE_TIPS = [
     [`File Drop`, `Drop POSCAR, XYZ, CIF or JSON files to load structures`],
     [
@@ -58,13 +55,13 @@
     selected_sites = $bindable([]),
     sym_data = null,
     wyckoff_positions = [],
-    atom_count_thresholds = DEFAULT_ATOM_COUNT_THRESHOLDS,
+    atom_count_thresholds = [50, 500],
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     structure: AnyStructure
     pane_open?: boolean
-    // [expanded_below, listed_up_to]: the site list starts expanded under the first count and
-    // is omitted above the second, so large structures can still list their sites on request
+    // [expanded_below, listed_up_to]: the site list starts expanded under the first count, is
+    // omitted above the second and starts collapsed in between. The chevron always toggles.
     atom_count_thresholds?: [number, number]
     toggle_props?: PaneToggleProps
     pane_props?: PaneProps

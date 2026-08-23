@@ -343,8 +343,14 @@ function is_valid_band_grid_json(obj: unknown): obj is BandGridJson {
 }
 
 // Flatten nested JSON band grids into BandEnergyGrid storage, checking that every band
-// matches k_grid (a ragged or mis-sized band would otherwise read garbage in marching cubes)
-function normalize_band_grid_json(json: BandGridJson): BandGridData {
+// matches k_grid (a ragged or mis-sized band would otherwise read garbage in marching cubes).
+// `source` names the offending input in the error for a malformed shape.
+function band_grid_from_json(json: unknown, source: string): BandGridData {
+  if (!is_valid_band_grid_json(json)) {
+    throw new Error(
+      `Invalid ${source}: expected non-empty 'energies' grid, 3 'k_grid' dims, and 3x3 'k_lattice'`,
+    )
+  }
   const { k_grid } = json
   const energies = json.energies.map((bands, spin_idx) => {
     if (!Array.isArray(bands)) {
@@ -419,13 +425,7 @@ export function normalize_fermi_surface(
 export function normalize_band_grid(
   data: BandGridData | BandGridJson | Record<string, unknown>,
 ): BandGridData {
-  if (is_typed_band_grid(data)) return data
-  if (!is_valid_band_grid_json(data)) {
-    throw new Error(
-      `Invalid band_data: expected non-empty 'energies' grid, 3 'k_grid' dims, and 3x3 'k_lattice'`,
-    )
-  }
-  return normalize_band_grid_json(data)
+  return is_typed_band_grid(data) ? data : band_grid_from_json(data, `band_data`)
 }
 
 // Route an already-parsed JSON object to the matching Fermi surface / band grid shape
@@ -449,12 +449,7 @@ function fermi_data_from_json(data: Record<string, unknown>): FermiSurfaceData |
 
   // Check if it's BandGridData (raw grid data)
   if (data.energies && data.k_grid && data.k_lattice) {
-    if (!is_valid_band_grid_json(data)) {
-      throw new Error(
-        `Invalid BandGridData JSON: expected non-empty 'energies' grid, 3 'k_grid' dims, and 3x3 'k_lattice'`,
-      )
-    }
-    return normalize_band_grid_json(data)
+    return band_grid_from_json(data, `BandGridData JSON`)
   }
 
   // Try to extract from nested structure (e.g. IFermi output)
@@ -473,25 +468,22 @@ function fermi_data_from_json(data: Record<string, unknown>): FermiSurfaceData |
   )
   if (bs) {
     const first_spin = bs.energies[0]
-    const grid_data = {
-      energies: bs.energies,
-      k_grid: bs.k_grid ?? bs.kgrid,
-      k_lattice: bs.k_lattice ?? bs.reciprocal_lattice,
-      fermi_energy: bs.fermi_energy ?? bs.efermi ?? 0,
-      n_bands:
-        first_nonzero(
-          bs.n_bands,
-          bs.nbands,
-          Array.isArray(first_spin) ? first_spin.length : undefined,
-        ) ?? 0,
-      n_spins: first_nonzero(bs.n_spins, bs.nspins, bs.energies.length) ?? 1,
-    }
-    if (!is_valid_band_grid_json(grid_data)) {
-      throw new Error(
-        `Invalid band_structure JSON: expected non-empty 'energies' grid, 3 'k_grid' dims, and 3x3 'k_lattice'`,
-      )
-    }
-    return normalize_band_grid_json(grid_data)
+    return band_grid_from_json(
+      {
+        energies: bs.energies,
+        k_grid: bs.k_grid ?? bs.kgrid,
+        k_lattice: bs.k_lattice ?? bs.reciprocal_lattice,
+        fermi_energy: bs.fermi_energy ?? bs.efermi ?? 0,
+        n_bands:
+          first_nonzero(
+            bs.n_bands,
+            bs.nbands,
+            Array.isArray(first_spin) ? first_spin.length : undefined,
+          ) ?? 0,
+        n_spins: first_nonzero(bs.n_spins, bs.nspins, bs.energies.length) ?? 1,
+      },
+      `band_structure JSON`,
+    )
   }
 
   // Check for pymatgen BandStructure format (k-path, not k-grid)

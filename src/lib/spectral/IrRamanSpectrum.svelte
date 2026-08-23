@@ -7,7 +7,7 @@
   import ScatterPlot from '$lib/plot/scatter/ScatterPlot.svelte'
   import { sync_axis_range } from '$lib/plot/core/shared-axes'
   import { extent } from 'd3-array'
-  import type { ComponentProps } from 'svelte'
+  import { untrack, type ComponentProps } from 'svelte'
   import {
     convert_frequencies,
     FREQUENCY_UNITS,
@@ -64,12 +64,11 @@
   // FWHM is quoted in the displayed unit, so rescale it when the user switches units;
   // otherwise 10 cm^-1 would silently become 10 THz. prev_unit is intentionally a plain
   // local: it is bookkeeping for the effect, not reactive state anything renders.
-  let prev_unit = parse_frequency_unit(units) ?? units
+  let prev_unit = untrack(() => unit)
   $effect(() => {
     if (unit === prev_unit) return
-    const rescale = convert_frequencies([1], unit)[0] / convert_frequencies([1], prev_unit)[0]
+    fwhm = convert_frequencies([fwhm], unit, prev_unit)[0]
     prev_unit = unit
-    fwhm *= rescale
   })
 
   let raman_unavailable = $derived(kind === `raman` && !spectrum?.has_raman)
@@ -222,9 +221,8 @@
           <select
             id="ir-raman-units"
             value={unit}
-            onchange={(event) => {
-              units = parse_frequency_unit(event.currentTarget.value) ?? unit
-            }}
+            onchange={(event) =>
+              (units = parse_frequency_unit(event.currentTarget.value) ?? unit)}
           >
             {#each FREQUENCY_UNITS as option (option)}
               <option value={option}>{frequency_unit_label(option)}</option>

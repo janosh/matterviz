@@ -8,7 +8,6 @@ import { symbol_names } from '$lib/labels'
 import type { Vec2, Vec3 } from '$lib/math'
 import type { GizmoOptions } from '$lib/scene/gizmo'
 import type { LegendVisibilityMode } from '$lib/plot/core/utils/series-visibility'
-import { is_plain_object, merge_nested } from './utils'
 
 // One leaf of the settings schema. `web_only` settings (fullscreen toggles) are skipped
 // when the schema is synced into the VS Code extension's contributed configuration.
@@ -23,45 +22,6 @@ export interface SettingType<T = unknown> {
   maxItems?: number
   items?: { minimum?: number; maximum?: number; multipleOf?: number }
   web_only?: true
-  // Still read, but on its way out: sync-config emits it as the VS Code `deprecationMessage`
-  deprecated?: string
-}
-
-// Settings removed from the schema that users may still have in their VS Code settings.json.
-// sync-config keeps them in the contributed configuration as deprecated entries (type plus
-// `deprecationMessage`, no default) so the editor flags them instead of silently ignoring them.
-export const DEPRECATED_SETTINGS: Readonly<
-  Record<string, { type: `boolean` | `number` | `string`; deprecated: string }>
-> = {
-  'plot.grid_lines': {
-    type: `boolean`,
-    deprecated: `Removed; use matterviz.plot.display.x_grid / matterviz.plot.display.y_grid`,
-  },
-  'plot.axis_labels': { type: `boolean`, deprecated: `Removed; had no effect` },
-  'plot.x_format': {
-    type: `string`,
-    deprecated: `Removed; tick formats are set per plot in its controls pane (Tick format)`,
-  },
-  'plot.x2_format': {
-    type: `string`,
-    deprecated: `Removed; tick formats are set per plot in its controls pane (Tick format)`,
-  },
-  'plot.y_format': {
-    type: `string`,
-    deprecated: `Removed; tick formats are set per plot in its controls pane (Tick format)`,
-  },
-  'plot.y2_format': {
-    type: `string`,
-    deprecated: `Removed; tick formats are set per plot in its controls pane (Tick format)`,
-  },
-  'plot.x_ticks': {
-    type: `number`,
-    deprecated: `Removed; tick counts follow the plot size automatically`,
-  },
-  'plot.y_ticks': {
-    type: `number`,
-    deprecated: `Removed; tick counts follow the plot size automatically`,
-  },
 }
 
 export const SHOW_BONDS_OPTIONS = [`never`, `always`, `crystals`, `molecules`] as const
@@ -1265,25 +1225,36 @@ type DeepPartial<T> = {
   [Key in keyof T]?: T[Key] extends Record<string, unknown> ? DeepPartial<T[Key]> : T[Key]
 }
 
-// Partial settings at every nesting level (`{ scatter: { point: { size: 5 } } }`), matching
-// what merge() accepts at runtime: it fills gaps from DEFAULTS down to the leaf groups.
+// Partial settings at every nesting level (`{ scatter: { point: { size: 5 } } }`): merge()
+// fills the gaps from DEFAULTS at every level, so the type and the runtime agree whatever
+// depth the schema grows to.
 export type PartialSettings = DeepPartial<DefaultSettings>
 
-// Merge all top-level setting groups to the schema's full nesting depth.
-export const merge = (user: PartialSettings = {}): DefaultSettings => {
-  const merged = { ...DEFAULTS, ...user } as DefaultSettings
-  for (const key of Object.keys(DEFAULTS) as (keyof DefaultSettings)[]) {
-    const defaults = DEFAULTS[key]
-    if (!is_plain_object(defaults)) continue
-    // merge_nested fills the two nesting levels the schema has, so a deep-partial group is
-    // a valid (shallow) Partial of it at runtime
-    const overrides = user[key] as Partial<typeof defaults> | undefined
-    Object.assign(merged, {
-      [key]: merge_nested(defaults, is_plain_object(overrides) ? overrides : undefined),
-    })
-  }
-  return merged
+// Plain records only (object literals, JSON.parse output, null-prototype objects): a Date, Map
+// or typed array is a leaf value, not a group of settings to recurse into
+const is_plain_record = (val: unknown): val is Record<string, unknown> => {
+  if (typeof val !== `object` || val === null) return false
+  const proto: unknown = Object.getPrototypeOf(val)
+  return proto === Object.prototype || proto === null
 }
+
+// Recurse wherever both sides are plain records; anything else the user supplies (a primitive,
+// array, null, Date, ...) replaces the default, and an undefined user value keeps it
+const merge_deep = <T>(defaults: T, user: unknown): T => {
+  if (!is_plain_record(defaults) || !is_plain_record(user)) {
+    return (user === undefined ? defaults : user) as T
+  }
+  const merged: Record<string, unknown> = { ...defaults }
+  for (const [key, value] of Object.entries(user)) {
+    // JSON.parse yields an own `__proto__` key; assigning it would rewire merged's prototype
+    if (key === `__proto__`) continue
+    merged[key] = merge_deep(defaults[key], value)
+  }
+  return merged as T
+}
+
+export const merge = (user: PartialSettings = {}): DefaultSettings =>
+  merge_deep(DEFAULTS, user)
 
 // Group the structure defaults into the prop bundles <Structure> expects. Used by embedders
 // (file viewer, VS Code webview) that build a viewer from settings alone.

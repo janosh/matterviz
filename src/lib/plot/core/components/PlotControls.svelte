@@ -71,19 +71,26 @@
   const axis_labels = { x: `X`, x2: `X2`, y: `Y`, y2: `Y2` } as const
   const axis_config = (axis: AxisKey): AxisConfig =>
     axis === `x` ? x_axis : axis === `x2` ? x2_axis : axis === `y` ? y_axis : y2_axis
-  // Reset targets: the axis configs as first handed to the pane
-  const initial_ranges = untrack(() => axis_record((axis) => axis_config(axis).range))
-  const initial_formats = untrack(() => axis_record((axis) => axis_config(axis).format))
-  const initial_ticks = untrack(() => axis_record((axis) => axis_config(axis).ticks))
+  // Each axis-field section (range, ticks, format) keys its values by axis; SettingsSection
+  // snapshots them at mount and hands the changed ones back on Reset, so the pane keeps no
+  // mount-time copies of the axis configs itself. Ticks is the exception: its section diffs
+  // the numeric projection (`tick_count`), which cannot carry a mount-time tick list/interval,
+  // so Reset restores the full mount-time `ticks` value kept here instead
+  const is_axis_key = (key: string): key is AxisKey =>
+    (all_axes as readonly string[]).includes(key)
+  const mount_ticks = untrack(() => axis_record((axis) => axis_config(axis).ticks))
+  const reset_axis_field =
+    <Field extends keyof AxisConfig>(field: Field) =>
+    (key: string, value: unknown) => {
+      if (!is_axis_key(key)) return
+      if (field === `ticks`) update_axis(key, { ticks: mount_ticks[key] })
+      else update_axis(key, { [field]: value as AxisConfig[Field] })
+    }
   // The Ticks inputs only edit numeric tick counts; an explicit tick list/map/interval set on
   // the axis is left alone (and shown as `custom`), and an empty input hands back to auto
-  const tick_count = (axis: AxisKey): number | null => {
+  const tick_count = (axis: AxisKey): number | undefined => {
     const { ticks } = axis_config(axis)
-    return typeof ticks === `number` ? ticks : null
-  }
-  const has_custom_ticks = (axis: AxisKey): boolean => {
-    const { ticks } = axis_config(axis)
-    return ticks !== undefined && typeof ticks !== `number`
+    return typeof ticks === `number` ? ticks : undefined
   }
   const MAX_TICK_COUNT = 100
   const update_tick_count = (axis: AxisKey, value: string) => {
@@ -257,10 +264,8 @@
     <SettingsSection
       title="Axis range"
       class="ctrl-line axis-fields"
-      current_values={axis_values(`range`, (axis) => axis_config(axis).range)}
-      on_reset={() => {
-        for (const axis of all_axes) update_axis(axis, { range: initial_ranges[axis] })
-      }}
+      current_values={axis_record((axis) => axis_config(axis).range)}
+      on_reset_key={reset_axis_field(`range`)}
       layout="flow"
     >
       {#each visible_axes as [axis, label] (axis)}
@@ -386,14 +391,13 @@
       title="Ticks"
       data-testid="ticks-section"
       class="ctrl-line axis-fields"
-      current_values={axis_values(`ticks`, tick_count)}
-      on_reset={() => {
-        for (const axis of all_axes) update_axis(axis, { ticks: initial_ticks[axis] })
-      }}
+      current_values={axis_record(tick_count)}
+      on_reset_key={reset_axis_field(`ticks`)}
       layout="flow"
     >
       {#each visible_axes as [axis, label] (axis)}
-        {@const custom = has_custom_ticks(axis)}
+        {@const count = tick_count(axis)}
+        {@const custom = count === undefined && axis_config(axis).ticks !== undefined}
         <label>
           <span>{label}</span>
           <input
@@ -401,7 +405,7 @@
             min="1"
             max={MAX_TICK_COUNT}
             step="1"
-            value={tick_count(axis) ?? ``}
+            value={count ?? ``}
             placeholder={custom ? `custom` : `auto`}
             disabled={custom}
             aria-label="{label} axis tick count"
@@ -416,10 +420,8 @@
       title="Tick format"
       data-testid="tick-format-section"
       class="ctrl-line formats tick-format-section"
-      current_values={axis_values(`format`, (axis) => axis_config(axis).format)}
-      on_reset={() => {
-        for (const axis of all_axes) update_axis(axis, { format: initial_formats[axis] })
-      }}
+      current_values={axis_record((axis) => axis_config(axis).format)}
+      on_reset_key={reset_axis_field(`format`)}
       layout="flow"
     >
       {#each visible_axes as [axis, label] (axis)}

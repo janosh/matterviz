@@ -324,9 +324,10 @@ test.each(lattices)(
       image_atoms.filter(([idx, , , is_completion]) => idx === 2 && !is_completion),
     ).toHaveLength(0)
 
-    // the face atom at a=1 wraps to a=0 (shift -1) keeping its b, c fractions
+    // the face atom at a=1 wraps to exactly a=0 (snapped, not 1e-16 noise) keeping b and c
     const wrapped = image_atoms.find(([idx, , abc]) => idx === 1 && Math.abs(abc[0]) < 1e-8)
     if (!wrapped) throw new Error(`no wrapped a-face image found`)
+    expect(wrapped[2][0]).toBe(0)
     expect(wrapped[2][1]).toBeCloseTo(0.5, 12)
     expect(wrapped[2][2]).toBeCloseTo(0, 12)
 
@@ -542,25 +543,6 @@ describe(`wrap_to_unit_cell`, () => {
   ])(`wraps %d to exactly %d`, (input, expected) => {
     expect(wrap_to_unit_cell([input, input, input])).toEqual([expected, expected, expected])
   })
-})
-
-test(`upper boundary at abc=1.0 images wrap near 0 via epsilon`, () => {
-  const structure = make_crystal(5, [[`Cl`, [1.0, 0.5, 0.5]]])
-
-  const images = find_image_atoms(structure)
-  expect(images.length).toBeGreaterThan(0)
-  // pick the x-translated replica (wrapped to 0 along x)
-  const candidate = images.find(([, , image_abc]) => Math.abs(image_abc[0]) < 1e-8)
-  if (!candidate) throw new Error(`no wrapped x-boundary image found`)
-  const [, img_xyz, img_abc] = candidate
-
-  // fractional x is exactly 0 (snapped, not 1e-16 noise) and y,z equal the original
-  expect(img_abc[0]).toBe(0)
-  expect(img_abc[1]).toBeCloseTo(0.5, 12)
-  expect(img_abc[2]).toBeCloseTo(0.5, 12)
-
-  // xyz must be consistent with L^T * abc
-  assert_xyz_matches_lattice(structure.lattice.matrix, img_abc, img_xyz)
 })
 
 test(`find_image_atoms skips image generation along non-periodic axes (slab)`, () => {

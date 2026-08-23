@@ -23,15 +23,12 @@ export type WyckoffPos = {
   coordinates?: string
 }
 
-// 8-decimal key of a wrapped position. wrap_to_unit_cell only snaps within 1e-10 of 1, so a
-// coordinate in [1 - 1e-9, 1 - 1e-10) survives as 0.999999999x and would round to 1.00000000;
-// it is re-wrapped after rounding so it keys like its lattice-equivalent partner at 0.
+// Dedup key of a wrapped position at 8 decimals. wrap_to_unit_cell only snaps within 1e-10 of
+// 1, so a coordinate just below that rounds up to 1e8 and is folded back onto 0 by the modulo
+// to key like its lattice-equivalent partner at 0.
 const position_key = (pos: Vec3) =>
   wrap_to_unit_cell(pos)
-    .map((coord) => {
-      const rounded = coord.toFixed(8)
-      return rounded === `1.00000000` ? `0.00000000` : rounded
-    })
+    .map((coord) => Math.round(coord * 1e8) % 1e8)
     .join(`,`)
 
 // Mapper from input-cell to standardized-cell fractional coordinates. moyo's (std_linear P,

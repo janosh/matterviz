@@ -1,3 +1,11 @@
+import * as lib from '$lib'
+import type {
+  VacfInput,
+  VacfOptions,
+  VacfResult,
+  WorkerClient,
+  WorkerRequestOptions,
+} from '$lib'
 import {
   resolve_plot_title,
   type DecorationSide,
@@ -100,6 +108,27 @@ describe(`package.json exports`, () => {
     expectTypeOf<FreeAnnotationDecorationItem[`kind`]>().toEqualTypeOf<`free-annotation`>()
     expectTypeOf<PlotTitleLineKind>().toEqualTypeOf<`title` | `subtitle`>()
     expect(resolve_plot_title({ text: `Title` }, { width: 100 }).lines[0]?.kind).toBe(`title`)
+  })
+
+  // The changelog promises the three worker clients and their shared `WorkerClient` type on
+  // the root barrel; a client missing from its module barrel would only be reachable by
+  // deep-importing a .svelte.ts file
+  test(`root barrel publishes every compute_*_async worker client and the WorkerClient type`, () => {
+    for (const client of [
+      lib.compute_msd_async,
+      lib.compute_vacf_async,
+      lib.compute_trajectory_spectroscopy_async,
+    ]) {
+      expect(client).toBeTypeOf(`function`)
+      expect(client.cancel).toBeTypeOf(`function`)
+      expect(client.release).toBeTypeOf(`function`)
+    }
+    expectTypeOf(lib.compute_vacf_async).toExtend<
+      WorkerClient<VacfInput, VacfOptions, VacfResult>
+    >()
+    expectTypeOf<WorkerRequestOptions>().toHaveProperty(`signal`)
+    expectTypeOf<WorkerRequestOptions>().toHaveProperty(`on_progress`)
+    expectTypeOf<WorkerRequestOptions>().toHaveProperty(`transfer`)
   })
 
   test.skipIf(!has_dist)(`worker-backed parser ships its sibling worker entry`, () => {

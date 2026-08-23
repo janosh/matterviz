@@ -6,6 +6,7 @@
   import ConvexHull2D from './ConvexHull2D.svelte'
   import ConvexHullCanvas from './ConvexHullCanvas.svelte'
   import type { BaseConvexHullProps, Hull3DProps } from './index'
+  import MissingConvexHullData from './MissingConvexHullData.svelte'
   import { process_hull_entries } from './thermodynamics'
 
   // Union type combining all possible props from 2D, 3D, and 4D components
@@ -50,13 +51,20 @@
     ...rest
   }: ConvexHullProps = $props()
 
+  // An empty array is the usual "not loaded yet" shape (the anywidget bridge sends [] before
+  // the data arrives), so it gets the neutral missing-data state like `undefined`
+  const entries = $derived(entries_prop?.length ? entries_prop : undefined)
+
   // Detect dimensionality from the same key parser the hull pipeline uses (oxidation states
-  // stripped, compound-like keys rejected) so routing and processing can't disagree. A
-  // rejected key is an `entries` prop problem, so instead of throwing mid-render the error
-  // routes to ConvexHull2D, whose pipeline renders the same message as its empty state.
+  // stripped, compound-like keys rejected) so routing and processing can't disagree. Like the
+  // pipeline's own arity check this runs on the raw entries, before any temperature or gas
+  // filtering, so a temperature that drops every entry of one element can't reroute the
+  // diagram. A rejected key is an `entries` prop problem, so instead of throwing mid-render
+  // the error routes to ConvexHull2D, whose pipeline renders the same message as its empty
+  // state.
   const parsed = $derived.by((): { elements: ElementSymbol[]; invalid: boolean } => {
     try {
-      return { elements: process_hull_entries(entries_prop ?? []).elements, invalid: false }
+      return { elements: process_hull_entries(entries ?? []).elements, invalid: false }
     } catch {
       return { elements: [], invalid: true }
     }
@@ -92,19 +100,51 @@
     element_count === 3 || element_count === 4 ? element_count : null,
   )
   const ConvexHullComponent = $derived(
-    entries_prop === undefined || parsed.invalid || element_count === 2
+    entries === undefined || parsed.invalid || element_count === 2
       ? ConvexHull2D
       : canvas_dim
         ? ConvexHullCanvas
         : null,
   ) as Component<ConvexHullProps & { dim?: 3 | 4 }> | null
+
+  // `rest` carries the non-bindable component props too (controls, config, callbacks, …).
+  // Only the DOM attributes may reach the empty state, while `hidden`, `onclick`, aria-* and
+  // data-* must all survive, so the component props are named and everything else passes.
+  const HULL_PROP_KEYS = new Set<string>([
+    `controls`,
+    `config`,
+    `show_controls`,
+    `on_point_click`,
+    `on_point_hover`,
+    `fullscreen_toggle`,
+    `enable_info_pane`,
+    `label_threshold`,
+    `entry_category`,
+    `allow_file_drop`,
+    `on_file_drop`,
+    `enable_click_selection`,
+    `enable_structure_preview`,
+    `highlight_style`,
+    `tooltip`,
+    `interpolate_temperature`,
+    `max_interpolation_gap`,
+    `gas_config`,
+    `hull_face_color_mode`,
+    `element_colors`,
+    `gizmo`,
+    `x_axis`,
+    `y_axis`,
+  ] satisfies (keyof ConvexHullProps)[])
+  const dom_attrs = $derived(
+    Object.fromEntries(Object.entries(rest).filter(([key]) => !HULL_PROP_KEYS.has(key))),
+  )
 </script>
 
 <!-- keyed so a 3 ↔ 4 element switch remounts the canvas with its new dimension -->
 {#if ConvexHullComponent}
   {#key canvas_dim}
     <ConvexHullComponent
-      entries={entries_prop}
+      {entries}
       dim={canvas_dim ?? undefined}
       {...rest}
       bind:fullscreen
@@ -135,38 +175,11 @@
     />
   {/key}
 {:else}
-  <!-- Error state for unsupported dimensionalities -->
-  <div class="convex-hull-error">
-    <h3>Unsupported Chemical System</h3>
-    <p>
-      Convex hulls require 2, 3, or 4 elements. Found {element_count} element{element_count ===
-      1
-        ? ``
-        : `s`}:
-    </p>
-    <strong>{elements.join(`, `)}</strong>
-  </div>
+  <MissingConvexHullData
+    {...dom_attrs}
+    error="Convex hulls require 2, 3 or 4 elements, found {element_count}: {elements.join(
+      `, `,
+    )}"
+    style="{rest.style ?? ``}; height: var(--hull-height, 500px)"
+  />
 {/if}
-
-<style>
-  .convex-hull-error {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    box-sizing: border-box;
-    height: var(--hull-height, 500px);
-    padding: 2em;
-    text-align: center;
-    color: var(--convex-hull-text-color, #666);
-    border: 1px solid var(--convex-hull-border-color, #ccc);
-    border-radius: var(--border-radius, 3pt);
-    background: var(--convex-hull-bg, transparent);
-    h3 {
-      margin: 0 0 1em;
-    }
-    p {
-      margin: 0 0 0.5em;
-    }
-  }
-</style>

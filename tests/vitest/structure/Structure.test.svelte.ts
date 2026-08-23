@@ -560,23 +560,20 @@ describe(`Structure`, () => {
     const sym_data = await symmetry.analyze_structure_symmetry(prim_fcc_cu)
     const symmetry_elements = symmetry.symmetry_elements_from_ops(sym_data.operations ?? [])
     expect(symmetry.has_visible_symmetry_overlay(symmetry_elements)).toBe(true)
-    const state = $state<{
-      cell_type: symmetry.CellType
-      sym_data: symmetry.SymmetryDataset | null
-    }>({
+    const props = $state<ComponentProps<typeof Structure>>({
+      structure: prim_fcc_cu,
+      scene_props: { symmetry_elements },
       cell_type: `original`,
       sym_data: null,
     })
-    mount_structure(
-      bind_props({ structure: prim_fcc_cu, scene_props: { symmetry_elements } }, state),
-    )
+    mount_structure(props)
     flushSync()
     // the mount-time analysis reset has run; hand the viewer its symmetry data now
-    state.sym_data = sym_data
+    props.sym_data = sym_data
     flushSync()
     expect(document.querySelector(`.edit-toast`)).toBeNull()
 
-    state.cell_type = `conventional`
+    props.cell_type = `conventional`
     flushSync()
     expect(doc_query(`.edit-toast`).textContent).toBe(symmetry.SYM_ELEMENTS_INPUT_FRAME_NOTE)
   })
@@ -865,7 +862,7 @@ describe(`Structure`, () => {
       document.dispatchEvent(new Event(`fullscreenchange`))
       await tick()
     }
-    const props = $state<{ fullscreen: boolean }>({ fullscreen: false })
+    const props = $state({ fullscreen: false })
     mount_structure(bind_props({ structure, show_controls: `always` as const }, props))
     const wrapper = doc_query(`.structure`)
     wrapper.requestFullscreen = request_fullscreen
@@ -897,7 +894,7 @@ describe(`Structure`, () => {
       .spyOn(HTMLElement.prototype, `clientHeight`, `get`)
       .mockReturnValue(480)
     try {
-      const props = $state<{ width: number; height: number }>({ width: 0, height: 0 })
+      const props = $state({ width: 0, height: 0 })
       mount_structure(bind_props({ structure }, props))
       await tick()
       expect([props.width, props.height]).toEqual([640, 480])
@@ -926,15 +923,12 @@ describe(`Structure`, () => {
           scene_props: { atom_radius: 1.35 },
         }),
       )
-      const props = $state<{
-        color_scheme: string
-        show_image_atoms: boolean
-        supercell_scaling: string
-      }>({
+      const defaults = {
         color_scheme: DEFAULTS.color_scheme,
         show_image_atoms: true,
         supercell_scaling: `1x1x1`,
-      })
+      }
+      const props = $state({ ...defaults })
       mount_structure(
         bind_props(
           { structure, show_controls: `always` as const, persist_settings: persist },
@@ -945,11 +939,7 @@ describe(`Structure`, () => {
       expect(props).toEqual(
         persist
           ? { color_scheme: `Jmol`, show_image_atoms: false, supercell_scaling: `2x2x1` }
-          : {
-              color_scheme: DEFAULTS.color_scheme,
-              show_image_atoms: true,
-              supercell_scaling: `1x1x1`,
-            },
+          : defaults,
       )
       // the scene settings land in the controls pane (atom radius slider)
       doc_query<HTMLButtonElement>(`button.structure-controls-toggle`).click()

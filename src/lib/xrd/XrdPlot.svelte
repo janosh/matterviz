@@ -43,8 +43,6 @@
     radiation = $bindable(`xray`),
     show_controls = $bindable(true),
     controls_open = $bindable(false),
-    controls_toggle_props,
-    controls_pane_props,
     x_axis = {},
     y_axis = {},
     allow_file_drop = true,
@@ -383,8 +381,6 @@
         controls_extra={broadening_controls_snippet}
         bind:show_controls
         bind:controls_open
-        {controls_toggle_props}
-        {controls_pane_props}
       />
     {:else}
       <!-- Discrete Stick View -->
@@ -418,8 +414,6 @@
         controls_extra={broadening_controls_snippet}
         bind:show_controls
         bind:controls_open
-        {controls_toggle_props}
-        {controls_pane_props}
       />
     {/if}
   </div>

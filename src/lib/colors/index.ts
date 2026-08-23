@@ -267,34 +267,51 @@ export function pick_contrast_color(paint: Paint): string {
 export const contrast_text_color = (paint: Paint): string =>
   is_concrete_color(paint.background) ? pick_contrast_color(paint) : `currentColor`
 
+// Distinct backgrounds a memo holds at once. A continuous colour scale yields a new string
+// per distinct value, so a long-lived grid fed changing data would otherwise grow the cache
+// without bound; past this many the oldest entry goes (FIFO), so a working set just over the
+// limit still mostly hits instead of recomputing every cell after a wholesale clear.
+export const CONTRAST_MEMO_LIMIT = 10_000
+
 // pick_contrast_color memoized by background string, for grids that paint far fewer
 // distinct fills than cells. `alpha` is applied to every background before compositing;
 // the cache is dropped whenever `backdrop` or `alpha` change. Returns null for backgrounds
-// JS cannot resolve (CSS vars, currentcolor, null). A plain Map on purpose: entries are
-// written during render, which a SvelteMap would reject, and nothing reacts to the cache
-// filling; the reactive reads (`backdrop()`, `alpha()`) happen on every call so callers'
-// effects still track them.
+// JS cannot resolve (CSS vars, currentcolor, null). `pick` swaps the picker (custom
+// choices, or a spy to observe cache misses). A plain Map on purpose: entries are written
+// during render, which a SvelteMap would reject, and nothing reacts to the cache filling;
+// the reactive reads (`backdrop()`, `alpha()`) happen on every call so callers' effects
+// still track them.
 export const contrast_color_memo = (
-  opts: { backdrop?: () => string | undefined; alpha?: () => number } = {},
+  opts: {
+    backdrop?: () => string | undefined
+    alpha?: () => number
+    pick?: (paint: Paint) => string
+  } = {},
 ): ((background: string | null | undefined) => string | null) => {
-  let memo = new Map<string, string>()
+  const { pick = pick_contrast_color } = opts
+  const memo = new Map<string, string>()
   let memo_backdrop: string | undefined
   let memo_alpha: number | undefined
   return (background) => {
     const backdrop = opts.backdrop?.()
     const alpha = opts.alpha?.()
     if (backdrop !== memo_backdrop || alpha !== memo_alpha) {
-      memo = new Map()
+      memo.clear()
       memo_backdrop = backdrop
       memo_alpha = alpha
     }
     if (!is_concrete_color(background)) return null
     let contrast = memo.get(background)
     if (contrast === undefined) {
-      contrast = pick_contrast_color({
+      contrast = pick({
         background: alpha === undefined ? background : add_alpha(background, alpha),
         backdrop,
       })
+      // Map iterates in insertion order, so the first key is the oldest entry
+      if (memo.size >= CONTRAST_MEMO_LIMIT) {
+        const oldest = memo.keys().next().value
+        if (oldest !== undefined) memo.delete(oldest)
+      }
       memo.set(background, contrast)
     }
     return contrast

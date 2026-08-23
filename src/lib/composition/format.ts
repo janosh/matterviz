@@ -176,17 +176,13 @@ export function get_formula_label_segments(label: string): FormulaLabelSegment[]
     if (prev && !subscript && !prev.subscript) prev.text += text
     else segments.push({ text, subscript })
   }
+  // the ` + ` separators tokenize to a single plain text token themselves
   for (const part of label.split(/(?<separator>\s*\+\s*)/)) {
-    if (part.trim() === `+`) {
-      push(part, false)
-      continue
-    }
     const tokens = tokenize_formula_markup(part)
     for (const [idx, token] of tokens.entries()) {
-      const prev_text = idx === 0 ? `` : tokens[idx - 1].text
-      const at_word_start = idx === 0 || /\s$/.test(prev_text ?? ``)
-      if (token.sub !== undefined && !at_word_start) push(token.sub, true)
-      else push(token.text ?? token.sub ?? token.sup ?? ``, false)
+      const at_word_start = idx === 0 || /\s$/.test(tokens[idx - 1].text ?? ``)
+      const subscript = token.sub !== undefined && !at_word_start
+      push(token.text ?? token.sub ?? token.sup ?? ``, subscript)
     }
   }
   return segments.length > 0 ? segments : [{ text: label, subscript: false }]

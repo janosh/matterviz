@@ -836,7 +836,9 @@ O2   O   0.410  0.140  0.880  1.000`
   // type symbol wins over the label, and the label fills in when the symbol names nothing.
   // Labels are read first capital + trailing lowercase, and an all-caps label two letters
   // first like pymatgen's `_parse_symbol` (`FE1` -> Fe); when both readings are elements
-  // (`CA`, `HO`, `FE`) the file warns once
+  // (`CA`, `HO`, `FE`) the file warns once. Water, deuterium and polyatomic-group labels
+  // (pymatgen's special map plus common anions) name the atom they stand for without any
+  // ambiguity (`NO3` used to read as nobelium, `Ow1` as a per-row fallback element)
   // oxfmt-ignore
   test.each([
     [`FE1 FE2+`, `Fe`, false], [`CL1 CL`, `Cl`, false], [`Na1 NA`, `Na`, false],
@@ -844,6 +846,12 @@ O2   O   0.410  0.140  0.880  1.000`
     [`Fe1 .`, `Fe`, false], [`Ru(1) .`, `Ru`, false], [`O1a .`, `O`, false],
     [`site1_Fe_center .`, `Fe`, false], [`OH2 .`, `O`, false], [`ZR1 .`, `Zr`, false],
     [`CA .`, `Ca`, true], [`HO1 ?`, `Ho`, true], [`FE1 ?`, `Fe`, true], [`CL1 .`, `Cl`, true],
+    [`CD .`, `Cd`, true], [`ND1 .`, `Nd`, true], [`HG .`, `Hg`, true],
+    [`NO3 .`, `N`, false], [`CO3 .`, `C`, false], [`PO4 .`, `P`, false], [`SO4 .`, `S`, false],
+    [`NH4 .`, `N`, false], [`CN .`, `C`, false], [`OH .`, `O`, false], [`OH2 ?`, `O`, false],
+    [`Ow1 .`, `O`, false], [`Hw1 .`, `H`, false], [`Wat1 .`, `O`, false], [`wat .`, `O`, false],
+    [`D1 .`, `H`, false], [`D2 D`, `H`, false], [`Dy1 .`, `Dy`, false], [`CO1 .`, `Co`, true],
+    [`CO3 Co`, `Co`, false], [`Ow1 Ow`, `O`, false], [`Wat1 Wat`, `O`, false],
   ])(`reads the element of CIF rows '%s' as %s`, (label_and_symbol, expected, ambiguous) => {
     const warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
     // the same label twice: an ambiguous reading must still warn only once per file
@@ -851,8 +859,10 @@ O2   O   0.410  0.140  0.880  1.000`
     const result = parse_cif(`data_test\n${cell5}\n${site_loop}\n${rows}`)
     assert(result, `Failed to parse CIF rows ${rows}`)
     expect(result.sites.map((site) => site.species[0].element)).toEqual([expected, expected])
+    // group/water rows must neither warn as ambiguous nor fall back to a default element
+    expect(warn_spy.mock.calls.filter(([msg]) => String(msg).includes(`fallback`))).toEqual([])
     const ambiguity_warnings = warn_spy.mock.calls.filter(([msg]) =>
-      String(msg).includes(`ambiguous all-caps labels`),
+      String(msg).includes(`ambiguous all-caps atom-site labels (no usable _atom_site_type_symbol)`),
     )
     expect(ambiguity_warnings).toHaveLength(ambiguous ? 1 : 0)
     if (ambiguous) {

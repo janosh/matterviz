@@ -273,7 +273,7 @@ export function parse_chgcar(content: string): VolumetricFileData {
       // A truncated first block leaves nothing usable; a truncated magnetization block (a
       // spin-polarised run cut short mid-write) must not discard the intact charge density
       if (vol_idx === 0) throw new Error(message)
-      console.warn(`${message} Keeping the ${volumes.length} complete volume(s).`)
+      console.warn(`${message} Keeping the intact charge density.`)
       break
     }
 

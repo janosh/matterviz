@@ -293,24 +293,31 @@ function halfspace_value(halfspace: number[], point: number[], dim: number): num
 // unit border normals, right-hand sides eV-scale chemical potentials)
 const LP_TOL = 1e-10
 
-// Chebyshev centre of the halfspace intersection {mu : a_i·mu + b_i <= 0}: the centre of the
-// largest inscribed ball, i.e. the (mu, r) maximising r subject to a_i·mu + |a_i|·r + b_i <= 0
-// for every row (entries and borders alike). Solved exactly by a small dense two-phase
-// simplex in y = mu - lo >= 0 (dim + 1 structural variables, one slack per row, one artificial
-// for phase 1; Bland's rule so it cannot cycle). Every entry row has |a_i| = 1 only for pure
-// elements, so unlike a diagonal-shift heuristic this is correct for arbitrary per-element
-// limit widths. `radius` is -Infinity when no point satisfies every constraint.
-function chebyshev_centre(
-  all_hs: number[][],
+// Chebyshev centre of the chemical potential region {mu : a_i·mu + b_i <= 0} (entry rows and
+// the box borders from `lims`): the centre of the largest inscribed ball, i.e. the (mu, r)
+// maximising r subject to a_i·mu + |a_i|·r + b_i <= 0 for every row. Every entry row has
+// |a_i| = 1 only for pure elements, so unlike a diagonal-shift heuristic this is correct for
+// arbitrary per-element limit widths. Solved exactly by a small dense simplex in
+// y = mu - lo >= 0 (dim + 1 structural variables, one slack per row; Bland's rule so it cannot
+// cycle). Entry normals are composition fractions (>= 0), so a_i·mu is smallest at the box's
+// lower corner: lo is feasible whenever the region is non-empty, which makes the slack basis
+// feasible from the start (no phase 1) and a negative slack at lo a proof that the region is
+// empty (`radius` -Infinity). Exported for tests.
+//
+// Invariant (not re-checked here): every entry row has non-negative normals. The only
+// producer is build_hyperplanes over entries that build_chempot_hyperplanes has already
+// screened for positive composition amounts, so a negative fraction cannot reach this point.
+export function chebyshev_centre(
+  entry_hs: number[][],
   lims: Vec2[],
 ): { centre: number[]; radius: number } {
   const dim = lims.length
   const lo = lims.map(([low]) => low)
+  const all_hs = [...entry_hs, ...build_border_hyperplanes(lims)]
   const n_rows = all_hs.length
-  const r_col = dim // columns: y_0..y_{dim-1}, r, slack per row, artificial, RHS
+  const r_col = dim // columns: y_0..y_{dim-1}, r, one slack per row, RHS
   const slack_col = dim + 1
-  const art_col = slack_col + n_rows
-  const rhs_col = art_col + 1
+  const rhs_col = slack_col + n_rows
 
   const tableau = all_hs.map((halfspace, row) => {
     const line: number[] = Array(rhs_col + 1).fill(0)
@@ -323,14 +330,15 @@ function chebyshev_centre(
     }
     line[r_col] = Math.sqrt(norm_sq)
     line[slack_col + row] = 1
-    line[art_col] = -1
     line[rhs_col] = rhs
     return line
   })
+  if (tableau.some((line) => line[rhs_col] < -LP_TOL)) return { centre: [], radius: -Infinity }
   const basis = all_hs.map((_, row) => slack_col + row)
-  // Reduced-cost row of the objective being maximised (entries are -c_j): a negative entry
-  // marks an improving column
-  let objective: number[] = Array(rhs_col + 1).fill(0)
+  // Reduced costs of the maximised objective r (entries are -c_j): a negative entry marks an
+  // improving column
+  const objective: number[] = Array(rhs_col + 1).fill(0)
+  objective[r_col] = -1
 
   const pivot = (pivot_row: number, pivot_col: number) => {
     const row = tableau[pivot_row]
@@ -346,62 +354,25 @@ function chebyshev_centre(
   }
 
   // Bland's rule: lowest-index improving column enters, lowest-index basic variable among the
-  // minimum-ratio rows leaves. Returns false when the objective is unbounded.
-  const run_simplex = (n_cols: number): boolean => {
-    while (true) {
-      const enter = objective.findIndex((val, col) => col < n_cols && val < -LP_TOL)
-      if (enter === -1) return true
-      let leave = -1
-      let best_ratio = Infinity
-      for (let row = 0; row < n_rows; row++) {
-        const coeff = tableau[row][enter]
-        if (coeff <= LP_TOL) continue
-        const ratio = tableau[row][rhs_col] / coeff
-        const ties = Math.abs(ratio - best_ratio) <= LP_TOL && basis[row] < basis[leave]
-        if (ratio < best_ratio - LP_TOL || ties) [leave, best_ratio] = [row, ratio]
-      }
-      if (leave === -1) return false
-      pivot(leave, enter)
-    }
-  }
-
-  // Phase 1: the slack basis is infeasible when some RHS is negative. Pivoting the artificial
-  // in at the most violated row makes every RHS non-negative; minimising it then finds a
-  // feasible basis (artificial back at 0) or proves infeasibility.
-  let worst_row = -1
-  for (let row = 0; row < n_rows; row++) {
-    if (
-      tableau[row][rhs_col] < -LP_TOL &&
-      (worst_row === -1 || tableau[row][rhs_col] < tableau[worst_row][rhs_col])
+  // minimum-ratio rows leaves. The minimum is found first so the tie window is measured from
+  // the true minimum, not from whichever candidate happened to be scanned earlier.
+  while (true) {
+    const enter = objective.findIndex((val, col) => col < rhs_col && val < -LP_TOL)
+    if (enter === -1) break
+    const ratios = tableau.map((line) =>
+      line[enter] > LP_TOL ? line[rhs_col] / line[enter] : Infinity,
     )
-      worst_row = row
-  }
-  if (worst_row !== -1) {
-    objective[art_col] = 1
-    pivot(worst_row, art_col)
-    run_simplex(rhs_col)
-    const art_row = basis.indexOf(art_col)
-    if (art_row !== -1) {
-      if (tableau[art_row][rhs_col] > LP_TOL) return { centre: [], radius: -Infinity }
-      // Drive the artificial out at zero level (RHS is 0, so any non-zero pivot keeps
-      // feasibility); an all-zero row is redundant and may keep it harmlessly
-      const out_col = tableau[art_row].findIndex(
-        (val, col) => col < art_col && Math.abs(val) > LP_TOL,
-      )
-      if (out_col !== -1) pivot(art_row, out_col)
+    const min_ratio = Math.min(...ratios)
+    // Unreachable in practice: r is bounded by the upper borders (each axis contributes a row
+    // with +1 in the r column), so every improving column has a positive pivot candidate
+    if (min_ratio === Infinity) break
+    let leave = -1
+    for (let row = 0; row < n_rows; row++) {
+      if (ratios[row] - min_ratio > LP_TOL) continue
+      if (leave === -1 || basis[row] < basis[leave]) leave = row
     }
-    for (const row of tableau) row[art_col] = 0
+    pivot(leave, enter)
   }
-
-  // Phase 2: maximise r from the feasible basis (objective row made consistent with it)
-  objective = Array(rhs_col + 1).fill(0)
-  objective[r_col] = -1
-  for (let row = 0; row < n_rows; row++) {
-    const factor = objective[basis[row]]
-    if (factor === 0) continue
-    for (let col = 0; col <= rhs_col; col++) objective[col] -= factor * tableau[row][col]
-  }
-  run_simplex(art_col) // r is bounded by the upper borders, so this returns optimal
 
   const centre = [...lo]
   let radius = 0
@@ -411,19 +382,6 @@ function chebyshev_centre(
     else if (variable === r_col) radius = tableau[row][rhs_col]
   }
   return { centre, radius }
-}
-
-// Strictly interior point of the halfspace intersection: the Chebyshev centre. Throws when the
-// intersection has no interior (an entry with formation energy below the lower limit, or
-// inverted limits).
-function interior_point(all_hs: number[][], lims: Vec2[]): number[] {
-  const { centre, radius } = chebyshev_centre(all_hs, lims)
-  if (!(radius > LP_TOL)) {
-    throw new Error(
-      `Chemical potential region is empty: largest inscribed radius ${radius} eV for limits ${JSON.stringify(lims)}`,
-    )
-  }
-  return centre
 }
 
 // Compute chemical potential domains as the vertices of the halfspace intersection
@@ -451,7 +409,14 @@ export function compute_domains(
   for (const formula of entry_formulas) domains[formula] ??= []
   if (n_entries === 0) return domains
 
-  const centre = interior_point(all_hs, lims)
+  // The Chebyshev centre is strictly interior unless the region has no interior (an entry with
+  // formation energy below the lower limit, or inverted limits)
+  const { centre, radius } = chebyshev_centre(hyperplanes, lims)
+  if (!(radius > LP_TOL)) {
+    throw new Error(
+      `Chemical potential region is empty: largest inscribed radius ${radius} eV for limits ${JSON.stringify(lims)}`,
+    )
+  }
   const slacks = all_hs.map((halfspace) => -halfspace_value(halfspace, centre, dim))
   // Scale dual points so the nearest halfspace maps to unit distance (keeps quickhull's
   // absolute tolerance meaningful regardless of the eV scale of the limits)
@@ -905,13 +870,23 @@ export function build_chempot_hyperplanes(
   hyperplane_entries: PhaseData[]
 } {
   const element_set = new Set(elements)
+  // Zero amounts mean "absent" throughout this module (formula keys, references, the element
+  // scan). A negative or NaN amount would turn into a negative hyperplane normal and break the
+  // lower-corner feasibility argument of chebyshev_centre, so reject it here where the entry
+  // is still known by name.
+  const in_subsystem = (entry: PhaseData): boolean =>
+    Object.entries(entry.composition).every(([element, amount]) => {
+      if (!(amount >= 0)) {
+        const label = entry.entry_id ?? entry.reduced_formula ?? entry.name
+        throw new Error(
+          `Invalid composition amount ${element}: ${amount} in entry ${label ?? JSON.stringify(entry.composition)}`,
+        )
+      }
+      return amount === 0 || element_set.has(element)
+    })
   // Sort by formula key so same-energy ties resolve deterministically
   const sorted_entries = entries
-    .filter((entry) =>
-      Object.entries(entry.composition).every(
-        ([element, amount]) => amount <= 0 || element_set.has(element),
-      ),
-    )
+    .filter(in_subsystem)
     .map((entry) => ({ entry, key: formula_key_from_composition(entry.composition) }))
     .toSorted((left, right) => left.key.localeCompare(right.key))
     .map(({ entry }) => entry)

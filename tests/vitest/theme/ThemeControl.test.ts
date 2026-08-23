@@ -49,9 +49,8 @@ describe(`ThemeControl`, () => {
     expect(select.getAttribute(`aria-label`)).toBe(`Select theme`)
   })
 
-  // The type-level pin lives in ThemeControlTypeFixture.svelte (svelte-check covers tests/):
-  // the native `onchange` is omitted from the props, so `onchange={…}` is a compile error rather
-  // than a handler that silently receives a DOM Event instead of the ThemeMode `on_change` gets
+  // The type-level pin (native `onchange` rejected, `on_change` accepted) lives in
+  // ThemeControlTypeFixture.svelte, which svelte-check covers; this only keeps it mounting
   test(`on_change replaces the native onchange (fixture mounts and stays silent)`, () => {
     const on_change = vi.fn()
     mount(ThemeControlTypeFixture, { target: document.body, props: { on_change } })

@@ -24,6 +24,12 @@ export function build_isosurface_geometry(surface: FermiIsosurface): BufferGeome
   return geometry
 }
 
+// Whether a surface carries one scalar per vertex, i.e. can be vertex-coloured at all
+export const has_vertex_properties = (
+  surface: FermiIsosurface,
+): surface is FermiIsosurface & { properties: Float32Array } =>
+  surface.properties?.length === surface.positions.length / 3
+
 // Set, refresh or remove the per-vertex colour attribute without touching positions or the
 // index, so colormap/range changes never rebuild the geometry. Colours are looked up once per
 // vertex through a 256-entry colormap LUT; the existing attribute's buffer is reused in place.
@@ -33,7 +39,7 @@ export function apply_vertex_colors(
   spec: VertexColorSpec | null,
 ): void {
   const existing = geometry.getAttribute(`color`) as BufferAttribute | undefined
-  if (!spec || surface.properties?.length !== surface.positions.length / 3) {
+  if (!spec || !has_vertex_properties(surface)) {
     if (existing) geometry.deleteAttribute(`color`)
     return
   }

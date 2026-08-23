@@ -49,11 +49,7 @@ import {
   pad_for_plot_title,
   type PlotTitleProp,
 } from '$lib/plot/core/plot-title'
-import type {
-  IndexedRefLine,
-  ReferenceLineRanges,
-  ReferenceLineScales,
-} from '$lib/plot/core/reference-line'
+import type { IndexedRefLine } from '$lib/plot/core/reference-line'
 import { solve_reference_annotations } from '$lib/plot/core/reference-line'
 import { create_axis_scales, generate_ticks } from '$lib/plot/core/scales'
 import type { FontSpec } from '$lib/plot/core/text-metrics'
@@ -407,20 +403,12 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
   // there (their ranges/scales are [0, 1] sentinels, which would drop or misplace the line),
   // so charts without secondary axes (BinnedScatterPlot) still honour `x_axis: 'x2'`
   const ref_line_axes = $derived.by(() => {
-    const { x, x2, y, y2 } = ranges.current
+    const x2 = opts.has_x2() ? `x2` : `x`
+    const y2 = opts.has_y2() ? `y2` : `y`
+    const { current } = ranges
     return {
-      ranges: {
-        x,
-        y,
-        ...(opts.has_x2() ? { x2 } : {}),
-        ...(opts.has_y2() ? { y2 } : {}),
-      } satisfies ReferenceLineRanges,
-      scales: {
-        x: scales.x,
-        y: scales.y,
-        ...(opts.has_x2() ? { x2: scales.x2 } : {}),
-        ...(opts.has_y2() ? { y2: scales.y2 } : {}),
-      } satisfies ReferenceLineScales,
+      ranges: { x: current.x, x2: current[x2], y: current.y, y2: current[y2] },
+      scales: { x: scales.x, x2: scales[x2], y: scales.y, y2: scales[y2] },
     }
   })
   const decoration_solution = $derived(
@@ -567,7 +555,7 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
     get ref_lines() {
       return opts.ref_lines()
     },
-    // Ranges/scales the reference lines resolve against (x2/y2 only while they carry data)
+    // Ranges/scales the reference lines resolve against (x2/y2 alias x/y until they carry data)
     get ref_line_axes() {
       return ref_line_axes
     },

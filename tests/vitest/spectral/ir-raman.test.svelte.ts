@@ -893,7 +893,7 @@ describe(`IrRamanSpectrum component`, () => {
 
   it(`forwards flat control props and controls_open binding`, async () => {
     expect.hasAssertions()
-    const controls_state = { controls_open: true }
+    const controls_state = { controls_open: true, units: `cm^-1` as FrequencyUnit }
     mount(IrRamanSpectrum, {
       target: document.body,
       props: bind_props(
@@ -906,6 +906,14 @@ describe(`IrRamanSpectrum component`, () => {
       ),
     })
     await tick()
+    // picking a unit writes back to the bound `units` (the handler is delegated, so the
+    // synthetic change event must bubble like a real one)
+    const select = document.querySelector<HTMLSelectElement>(`#ir-raman-units`)
+    if (!select) throw new Error(`units select not rendered`)
+    select.value = `THz`
+    select.dispatchEvent(new Event(`change`, { bubbles: true }))
+    await tick()
+    expect(controls_state.units).toBe(`THz`)
     await expect_plot_controls(document, controls_state, `ir-raman`)
   })
 

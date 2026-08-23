@@ -423,34 +423,41 @@ describe(`edit-atoms`, () => {
 
   // A zero c-vector (extXYZ `Lattice="... 0 0 0"`) parses fine but has no cart->frac inverse;
   // the pointer handlers must surface that as a notice instead of throwing, and keep editing
-  // xyz while leaving abc alone
-  it(`edits a singular-lattice crystal with a notice instead of throwing`, () => {
-    const singular = make_crystal(
-      [
-        [5, 0, 0],
-        [0, 5, 0],
-        [0, 0, 0],
-      ],
-      [
-        { element: `Na`, abc: [0.1, 0.2, 0] },
-        { element: `Cl`, abc: [0.6, 0.7, 0] },
-      ],
-    )
+  // xyz while leaving abc alone. A drag fires move_sites on every pointer move, so the notice
+  // is shown once per loaded structure (not once per edit) and again after an external load
+  it(`edits a singular-lattice crystal with a single notice instead of throwing`, () => {
+    const make_singular = () =>
+      make_crystal(
+        [
+          [5, 0, 0],
+          [0, 5, 0],
+          [0, 0, 0],
+        ],
+        [
+          { element: `Na`, abc: [0.1, 0.2, 0] },
+          { element: `Cl`, abc: [0.6, 0.7, 0] },
+        ],
+      )
     const { host, session, notices, destroy } = make_session({
       measure_mode: `edit-atoms`,
-      structure: singular,
+      structure: make_singular(),
     })
     const notice = `Cannot edit fractional coordinates: lattice is singular`
-    expect(() => session.move_sites([0], [1, 0, 0])).not.toThrow()
-    flushSync()
-    expect(host.structure?.sites[0].xyz).toEqual([1.5, 1, 0])
+    const notice_count = () => notices.filter((msg) => msg === notice).length
+    for (let step = 0; step < 10; step++) {
+      expect(() => session.move_sites([0], [0.1, 0, 0])).not.toThrow()
+      flushSync()
+    }
+    expect(host.structure?.sites[0].xyz).toEqual([expect.closeTo(1.5, 9), 1, 0])
     expect(host.structure?.sites[0].abc).toEqual([0.1, 0.2, 0])
-    expect(notices.filter((msg) => msg === notice)).toHaveLength(1)
+    expect(notice_count(), `10 drag moves -> 1 notice`).toBe(1)
 
     expect(() => session.add_atom([2, 2, 0], `O`)).not.toThrow()
     flushSync()
-    expect(host.structure?.sites[2].species[0].element).toBe(`O`)
-    expect(notices.filter((msg) => msg === notice)).toHaveLength(2)
+    const added = host.structure?.sites[2]
+    expect(added?.species[0].element).toBe(`O`)
+    expect(added?.abc, `a new site mirrors xyz`).toEqual([2, 2, 0])
+    expect(notice_count()).toBe(1)
 
     host.selected_sites = [1]
     flushSync()
@@ -458,7 +465,14 @@ describe(`edit-atoms`, () => {
     flushSync()
     expect(host.structure?.sites[3].xyz).toEqual([3.5, 4, 0.5])
     expect(host.structure?.sites[3].abc).toEqual([0.6, 0.7, 0])
-    expect(notices.filter((msg) => msg === notice)).toHaveLength(3)
+    expect(notice_count()).toBe(1)
+
+    // an external load of another singular lattice notifies once more
+    host.structure = make_singular()
+    flushSync()
+    session.move_sites([0], [1, 0, 0])
+    flushSync()
+    expect(notice_count()).toBe(2)
     destroy()
   })
 

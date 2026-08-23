@@ -54,10 +54,11 @@ describe(`StructureTypePlot`, { timeout: 30_000 }, () => {
     }
   })
 
-  // Callers can override the derived axis defaults (label/range/format) through the shared
-  // x_axis/y_axis props, in either layout: the override wins over the layout's own label
+  // In either layout every series is one populated CNA type (the previous per-result series
+  // cycled the type palette by result index, so "frame 1" was painted in the FCC colour), and
+  // the shared x_axis/y_axis props override the layout's own axis label/range defaults
   test.each([`by_structure`, `over_frames`] as const)(
-    `%s layout applies x_axis/y_axis overrides on top of the layout defaults`,
+    `%s layout draws one series per populated type and applies x_axis/y_axis overrides`,
     async (layout) => {
       const root = await mount_plot({
         id_results: frames,
@@ -65,25 +66,16 @@ describe(`StructureTypePlot`, { timeout: 30_000 }, () => {
         x_axis: { label: `Custom primary` },
         y_axis: { label: `Custom value`, range: [0, 1000] },
       })
+      const legend_labels = Array.from(
+        root.querySelectorAll(`.legend-item .legend-label`),
+      ).map((item) => item.textContent?.trim())
+      expect(legend_labels).toEqual([`Other`, `FCC`, `HCP`, `BCC`])
       expect(root.textContent).toContain(`Custom primary`)
       expect(root.textContent).toContain(`Custom value`)
       expect(root.textContent).not.toContain(layout === `over_frames` ? `Frame` : `Structure`)
       expect(root.textContent).not.toContain(`Atoms`)
       // the forced y range shows up in the tick labels
       expect(root.textContent).toContain(`1000`)
-    },
-  )
-
-  // Every series is a CNA type in its own colour, in both layouts; the previous per-result
-  // series cycled the type palette by result index, so "frame 1" was painted in the FCC colour
-  test.each([`by_structure`, `over_frames`] as const)(
-    `%s layout draws one series per populated type in the type colour`,
-    async (layout) => {
-      const root = await mount_plot({ id_results: frames, layout })
-      const legend_labels = Array.from(
-        root.querySelectorAll(`.legend-item .legend-label`),
-      ).map((item) => item.textContent?.trim())
-      expect(legend_labels).toEqual([`Other`, `FCC`, `HCP`, `BCC`])
     },
   )
 

@@ -153,7 +153,7 @@ describe(`StructureInfoPane`, () => {
 
   // `atom_count_thresholds` = [expanded_below, listed_up_to]: the defaults (50, 500) can be
   // raised so a large structure still lists its sites, or lowered to collapse small ones
-  test.each([
+  test.each<[number, [number, number] | undefined, boolean, boolean]>([
     // [atom_count, thresholds, list rendered?, expanded by default?]
     [600, undefined, false, false],
     [600, [50, 1000], true, false],
@@ -161,15 +161,11 @@ describe(`StructureInfoPane`, () => {
     [30, undefined, true, true],
     [30, [10, 20], false, false],
     [30, [10, 100], true, false],
-  ] as const)(
+  ])(
     `%i sites with atom_count_thresholds=%j lists sites: %s, expanded: %s`,
-    (atom_count, thresholds, listed, expanded) => {
+    (atom_count, atom_count_thresholds, listed, expanded) => {
       const structure = get_dummy_structure(`H`, atom_count, true)
-      mount_info_pane({
-        structure,
-        pane_open: true,
-        ...(thresholds ? { atom_count_thresholds: [...thresholds] } : {}),
-      })
+      mount_info_pane({ structure, pane_open: true, atom_count_thresholds })
       const sites = document.querySelector<HTMLDetailsElement>(`.sites`)
       expect(sites !== null).toBe(listed)
       expect(sites?.open ?? false).toBe(expanded)

@@ -155,7 +155,7 @@ export class StructureSession {
     const structure = this.inputs.structure()
     return structure && normalize_fractional_coords(structure)
   })
-  structure_with_bonds = $derived.by((): AnyStructure | undefined => {
+  private readonly structure_with_bonds = $derived.by((): AnyStructure | undefined => {
     const bonds = this.inputs.bonds()
     const struct = this.normalized_structure
     if (!struct || bonds === undefined) return struct
@@ -175,23 +175,25 @@ export class StructureSession {
       return struct
     }
   })
-  supercell_factors = $derived.by((): Vec3 | undefined => {
+  private readonly supercell_factors = $derived.by((): Vec3 | undefined => {
     try {
       return parse_supercell_scaling(this.inputs.supercell_scaling())
     } catch {
       return undefined
     }
   })
-  has_scaled_cell = $derived(this.supercell_factors?.some((factor) => factor !== 1) ?? false)
+  private readonly has_scaled_cell = $derived(
+    this.supercell_factors?.some((factor) => factor !== 1) ?? false,
+  )
   has_supercell = $derived.by(
     () => this.inputs.apply_supercell_scaling() && this.has_scaled_cell,
   )
-  supercell_job = $derived.by((): SupercellJob | undefined => {
+  private readonly supercell_job = $derived.by((): SupercellJob | undefined => {
     const base = this.base_structure
     if (!base || !(`lattice` in base) || !this.has_supercell) return undefined
     return { base, scaling: this.inputs.supercell_scaling() }
   })
-  supercell_is_large = $derived.by(() => {
+  private readonly supercell_is_large = $derived.by(() => {
     const job = this.supercell_job
     if (!job) return false
     const tiles = (this.supercell_factors ?? [1, 1, 1]).reduce((prod, factor) => prod * factor)
@@ -201,8 +203,8 @@ export class StructureSession {
   })
   // $state.raw: supercells hold thousands of sites and every downstream read (bonding, PBC
   // images, instancing) would otherwise traverse proxy traps
-  async_supercell = $state.raw<(SupercellJob & SupercellBuild) | undefined>(undefined)
-  supercell = $derived.by((): SupercellBuild & { loading: boolean } => {
+  private async_supercell = $state.raw<(SupercellJob & SupercellBuild) | undefined>(undefined)
+  private readonly supercell = $derived.by((): SupercellBuild & { loading: boolean } => {
     const job = this.supercell_job
     if (!job) return { structure: this.base_structure, applied: false, loading: false }
     if (!this.supercell_is_large)
@@ -262,7 +264,7 @@ export class StructureSession {
       ? get_pbc_image_sites(struct)
       : struct
   })
-  displayed_site_count = $derived(this.displayed_structure?.sites.length ?? 0)
+  private readonly displayed_site_count = $derived(this.displayed_structure?.sites.length ?? 0)
   // True while the rendered cell is the analyzed (moyo input) cell, i.e. no conventional/
   // primitive transform applies. Overlays expressed in the input frame (symmetry elements) are
   // only placed correctly then; a supercell of the input cell still qualifies.
@@ -294,7 +296,7 @@ export class StructureSession {
     })
   })
   // Site-indexed UI state is only valid while atom count, order and species are unchanged
-  topology_signature = $derived.by((): string => {
+  private readonly topology_signature = $derived.by((): string => {
     const sites = this.inputs.structure()?.sites
     if (!Array.isArray(sites)) return ``
     return sites
@@ -352,7 +354,7 @@ export class StructureSession {
       this.removed_bonds.length > 0 ||
       this.bond_order_overrides.length > 0,
   )
-  edited_bonds = $derived.by(() => {
+  private readonly edited_bonds = $derived.by(() => {
     const base = this.bond_edit_base
     if (!base || !this.has_bond_edits) return undefined
     return merge_bond_edits(
@@ -433,6 +435,7 @@ export class StructureSession {
           this.clear_bond_edits()
           if (!internal) {
             this.history.clear()
+            this.singular_lattice_notified = false
             if (inputs.highlighted_sites().length > 0) inputs.set_highlighted_sites([])
             if (measure_mode === `edit-atoms`) {
               this.clear_selection()
@@ -595,7 +598,7 @@ export class StructureSession {
   // may itself carry orig_unit_cell_idx from a supercell built outside the viewer (phonon mode
   // supercells); those index a cell that is not displayed, so they are only followed while the
   // session's own supercell is on screen.
-  to_base_site_idx = (site: Site, site_idx: number): number => {
+  private readonly to_base_site_idx = (site: Site, site_idx: number): number => {
     if (this.supercell_structure !== this.base_structure) {
       return get_orig_site_idx(site, site_idx)
     }
@@ -620,18 +623,22 @@ export class StructureSession {
     return result
   }
   // Cartesian→fractional converter for the current lattice; undefined for molecules (whose
-  // `abc` mirrors `xyz`). A singular lattice (extXYZ `Lattice="0 0 0 ..."`, a zero c-vector)
-  // parses fine but has no inverse, so matrix_inverse_3x3 throws. This runs inside pointer
-  // handlers (drag moves, click-to-add), so the throw is caught here and surfaced as a notice;
-  // callers then keep `xyz` editable and leave `abc` alone rather than writing Cartesian
-  // values into it.
+  // `abc` mirrors `xyz`) and for a singular lattice (extXYZ `Lattice="... 0 0 0"` parses fine
+  // but has no inverse). The callers are pointer handlers (drag moves, click-to-add), so the
+  // failure is surfaced as a notice and they keep editing `xyz` (each says what it does with
+  // `abc`). A drag calls this on every pointer move, so the notice is shown once per externally
+  // loaded structure (the flag resets in the invalidation effect).
+  private singular_lattice_notified = false
   private cart_to_frac(): ((xyz: Vec3) => Vec3) | undefined {
     const structure = this.inputs.structure()
     if (!structure || !(`lattice` in structure)) return undefined
     try {
       return create_cart_to_frac(structure.lattice.matrix)
     } catch {
-      this.notice(`Cannot edit fractional coordinates: lattice is singular`)
+      if (!this.singular_lattice_notified) {
+        this.notice(`Cannot edit fractional coordinates: lattice is singular`)
+      }
+      this.singular_lattice_notified = true
       return undefined
     }
   }
@@ -754,8 +761,7 @@ export class StructureSession {
           site.xyz[2] + delta[2],
         ]
         // molecules mirror xyz into abc; a singular lattice moves xyz and leaves abc alone
-        if (!to_frac || !to_cart)
-          return has_lattice ? { ...site, xyz } : { ...site, xyz, abc: xyz }
+        if (!to_frac || !to_cart) return { ...site, xyz, abc: has_lattice ? site.abc : xyz }
         const abc = wrap_to_unit_cell(to_frac(xyz))
         return { ...site, xyz: to_cart(abc), abc }
       }),

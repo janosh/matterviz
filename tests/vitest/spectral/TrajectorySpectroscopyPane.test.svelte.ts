@@ -125,7 +125,9 @@ test(`recomputes from changed settings and marks the prior result as stale`, asy
 
   await vi.waitFor(() => expect(mocks.compute).toHaveBeenCalledOnce())
   // no response signals on the run, so the pane asks for positions and velocities only,
-  // budgeted like every other sweep (1 atom x 24001 frames fits at stride 1)
+  // budgeted like every other sweep (1 atom x 24001 frames fits at stride 1); the collect
+  // learns the preprocessing (body_fixed for this non-periodic run) to know which strided
+  // signals need aligning to the kept position steps
   expect(mocks.collect).toHaveBeenCalledWith(
     run,
     expect.objectContaining({
@@ -133,6 +135,7 @@ test(`recomputes from changed settings and marks the prior result as stale`, asy
       raman_key: null,
       frame_stride: 1,
       max_bytes: 512 * 1024 * 1024,
+      preprocessing: `body_fixed`,
     }),
   )
   expect(target.textContent).toContain(`24001 total frames · timestep 1 fs`)

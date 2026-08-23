@@ -7,10 +7,37 @@ import {
   VASP_VIEWER_STEMS,
   VASP_VOLUMETRIC_FILES,
 } from '$lib/constants'
-import { DEPRECATED_SETTINGS, SETTINGS_CONFIG, type SettingType } from '$lib/settings'
+import { SETTINGS_CONFIG, type SettingType } from '$lib/settings'
 
 // VS Code settings read by extension.ts directly rather than forwarded to the webview
 const HOST_SETTING_KEYS = [`matterviz.theme`, `matterviz.auto_render`, `matterviz.open_beside`]
+
+// Settings removed from SETTINGS_CONFIG that users may still have in their settings.json. They
+// stay in the contributed configuration as deprecated entries (type plus `deprecationMessage`,
+// no default) so the editor flags them instead of silently ignoring them.
+const tick_format_removed = {
+  type: `string`,
+  deprecated: `Removed; tick formats are set per plot in its controls pane (Tick format)`,
+} as const
+const tick_count_removed = {
+  type: `number`,
+  deprecated: `Removed; tick counts follow the plot size automatically`,
+} as const
+export const DEPRECATED_SETTINGS: Readonly<
+  Record<string, { type: `boolean` | `number` | `string`; deprecated: string }>
+> = {
+  'plot.grid_lines': {
+    type: `boolean`,
+    deprecated: `Removed; use matterviz.plot.display.x_grid / matterviz.plot.display.y_grid`,
+  },
+  'plot.axis_labels': { type: `boolean`, deprecated: `Removed; had no effect` },
+  'plot.x_format': tick_format_removed,
+  'plot.x2_format': tick_format_removed,
+  'plot.y_format': tick_format_removed,
+  'plot.y2_format': tick_format_removed,
+  'plot.x_ticks': tick_count_removed,
+  'plot.y_ticks': tick_count_removed,
+}
 
 // Formats with no decoder still get a useful "Reopen Editor With…" conversion hint.
 // JupyterLab does not claim these because its file types displace the default handler.
@@ -94,7 +121,6 @@ export const build_vscode_settings = (
     if (schema.minItems !== undefined) config.minItems = schema.minItems
     if (schema.maxItems !== undefined) config.maxItems = schema.maxItems
     if (schema.enum) config.enum = Object.keys(schema.enum)
-    if (schema.deprecated) config.deprecationMessage = schema.deprecated
 
     // Empty-array defaults cannot reveal an item type, so default those to string.
     if (Array.isArray(schema.value)) {

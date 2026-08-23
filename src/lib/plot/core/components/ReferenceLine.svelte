@@ -4,6 +4,7 @@
   import type { ReferenceAnnotationCandidate } from '$lib/plot/core/decorations'
   import {
     estimate_reference_annotation_metrics,
+    type RefLineAxes,
     reference_annotation_text_rect,
     resolve_line_endpoints,
   } from '$lib/plot/core/reference-line'
@@ -13,14 +14,7 @@
   let {
     ref_line,
     line_idx,
-    x_min,
-    x_max,
-    y_min,
-    y_max,
-    x_scale,
-    x2_scale,
-    y_scale,
-    y2_scale,
+    axes,
     clip_path_id,
     hovered_line_idx = null,
     annotation_placement,
@@ -29,14 +23,7 @@
   }: {
     ref_line: RefLine
     line_idx: number
-    x_min: number
-    x_max: number
-    y_min: number
-    y_max: number
-    x_scale: (val: number) => number
-    x2_scale?: (val: number) => number
-    y_scale: (val: number) => number
-    y2_scale?: (val: number) => number
+    axes: RefLineAxes // bounds and scales of the axes this line is drawn on (resolve_ref_line_axes)
     clip_path_id: string
     hovered_line_idx?: number | null
     annotation_placement?: ReferenceAnnotationCandidate | null
@@ -44,13 +31,7 @@
     on_hover?: (event: RefLineEvent | null) => void
   } = $props()
 
-  const endpoints = $derived(
-    resolve_line_endpoints(
-      ref_line,
-      { x_min, x_max, y_min, y_max },
-      { x_scale, x2_scale, y_scale, y2_scale },
-    ),
-  )
+  const endpoints = $derived(resolve_line_endpoints(ref_line, axes))
 
   let is_focused = $state(false)
   const is_hovered = $derived(hovered_line_idx === line_idx || is_focused)

@@ -59,12 +59,11 @@
   }
 
   // File type from the explicit `type`, else the extension (ignoring compression suffixes);
-  // extensionless names (POSCAR, CONTCAR, INCAR, ...) are their own type rather than `file`
+  // ext_of returns an extensionless name (POSCAR, INCAR, ...) whole, so it is its own type
   const get_base_file_type = (file: FileInfo): string => {
     if (type_mapper) return type_mapper(file)
     if (file.type) return file.type.toLowerCase()
-    const base_name = strip_compression_extensions(file.name)
-    return (base_name.includes(`.`) ? ext_of(base_name) : base_name) || `file`
+    return ext_of(strip_compression_extensions(file.name)) || `file`
   }
   const get_category_id = (file: FileInfo): string =>
     file.category ? `${file.category_icon ?? ``} ${file.category}`.trim() : `(uncategorized)`

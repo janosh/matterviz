@@ -3,6 +3,7 @@ import {
   DEFAULTS,
   get_convex_hull_defaults,
   merge,
+  type PartialSettings,
   SETTINGS_CONFIG,
 } from '$lib/settings'
 import {
@@ -82,6 +83,55 @@ describe(`Settings`, () => {
       expect(result.trajectory.fps).toBe(DEFAULTS.trajectory.fps)
       expect(result.scatter.point.color).toBe(DEFAULTS.scatter.point.color)
       expect(result.scatter.line).toEqual(DEFAULTS.scatter.line)
+    })
+
+    // The merge recurses wherever both sides are plain objects: a level-3 leaf override keeps
+    // its siblings, an explicit undefined at any depth keeps the default, and a non-object
+    // user value (null, array) replaces the default wholesale
+    test(`fills gaps from DEFAULTS at every depth`, () => {
+      const result = merge({
+        convex_hull: { ternary: { camera_zoom: 3 } },
+        scatter: { point: undefined, line: { width: undefined, color: `red` } },
+        structure: { vector_configs: { force: { visible: false, color: null, scale: null } } },
+        trajectory: { fps_range: [1, 5] },
+      })
+      expect(result.convex_hull.ternary).toEqual({
+        ...DEFAULTS.convex_hull.ternary,
+        camera_zoom: 3,
+      })
+      expect(result.convex_hull.binary).toBe(DEFAULTS.convex_hull.binary)
+      expect(result.scatter.point).toBe(DEFAULTS.scatter.point)
+      expect(result.scatter.line).toEqual({ ...DEFAULTS.scatter.line, color: `red` })
+      expect(result.structure.vector_configs.force).toEqual({
+        visible: false,
+        color: null,
+        scale: null,
+      })
+      expect(result.trajectory.fps_range).toEqual([1, 5])
+    })
+
+    // Only plain records are groups of settings to recurse into; a Date, Map or typed array
+    // the user hands over is a leaf value and must not be flattened into `{}`
+    test.each([
+      new Map([[`force`, { visible: true }]]),
+      new Date(0),
+      new Float32Array([1, 2]),
+    ])(`keeps a non-plain user value %o as-is`, (value) => {
+      const user = { structure: { vector_configs: value } } as unknown as PartialSettings
+      expect(merge(user).structure.vector_configs).toBe(value)
+    })
+
+    test(`ignores __proto__ keys from host JSON instead of rewiring the prototype`, () => {
+      const user = JSON.parse(
+        `{"structure":{"__proto__":{"polluted":true}},"__proto__":{"x":1}}`,
+      )
+      const result = merge(user)
+      for (const obj of [result, result.structure]) {
+        expect(Object.getPrototypeOf(obj)).toBe(Object.prototype)
+        expect(`polluted` in obj || `x` in obj).toBe(false)
+      }
+      expect(result.structure.atom_radius).toBe(DEFAULTS.structure.atom_radius)
+      expect(`polluted` in {}).toBe(false)
     })
 
     test(`merges symmetry overrides while preserving symmetry defaults`, () => {

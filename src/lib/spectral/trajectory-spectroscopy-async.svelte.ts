@@ -1,7 +1,10 @@
 // oxlint-disable eslint-plugin-unicorn/relative-url-style -- Vite worker detection needs the `./` prefix
-// Async wrapper for calc_trajectory_spectroscopy via a persistent Web Worker.
+// calc_trajectory_spectroscopy via a persistent Web Worker. `.cancel(reason?)` rejects every
+// in-flight request and terminates the worker; `.release()` terminates it only when nothing
+// is in flight (a pane's unmount path: the client is shared by every mounted pane, so one
+// unmount must not reject another pane's request).
 import type { TrajectorySignal } from '$lib/trajectory'
-import { create_worker_client, type WorkerRequestOptions } from '$lib/worker-client.svelte'
+import { create_worker_client } from '$lib/worker-client.svelte'
 import {
   calc_trajectory_spectroscopy,
   type TrajectorySpectroscopyInput,
@@ -19,7 +22,7 @@ const plain_signal = (signal: TrajectorySignal): TrajectorySignal => ({
   ...(signal.unit ? { unit: signal.unit } : {}),
 })
 
-const run_spectroscopy = create_worker_client<
+export const compute_trajectory_spectroscopy_async = create_worker_client<
   TrajectorySpectroscopyInput,
   TrajectorySpectroscopyOptions,
   TrajectorySpectroscopyResult
@@ -69,16 +72,3 @@ const run_spectroscopy = create_worker_client<
     }
   },
 })
-
-// `.cancel(reason?)` rejects every in-flight request and terminates the worker; `.release()`
-// terminates it only when nothing is in flight (a pane's unmount path: the client is shared by
-// every mounted pane, so one unmount must not reject another pane's request)
-export const compute_trajectory_spectroscopy_async = Object.assign(
-  (
-    input: TrajectorySpectroscopyInput,
-    options: TrajectorySpectroscopyOptions = {},
-    request_options: WorkerRequestOptions = {},
-  ): Promise<TrajectorySpectroscopyResult> =>
-    run_spectroscopy(input, options, request_options),
-  { cancel: run_spectroscopy.cancel, release: run_spectroscopy.release },
-)

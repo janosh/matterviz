@@ -128,7 +128,15 @@ describe(`Dos component`, () => {
     })
     await tick()
     expect(document.body.textContent).toContain(`Frequency (cm⁻¹)`)
-    expect(document.querySelector<HTMLSelectElement>(`#dos-units`)?.value).toBe(`cm^-1`)
+    const select = document.querySelector<HTMLSelectElement>(`#dos-units`)
+    if (!select) throw new Error(`units select not rendered`)
+    expect(select.value).toBe(`cm^-1`)
+    // picking an option writes the canonical unit back to `units` (the handler is delegated, so
+    // the synthetic change event must bubble like a real one)
+    select.value = `meV`
+    select.dispatchEvent(new Event(`change`, { bubbles: true }))
+    await tick()
+    expect(document.body.textContent).toContain(`Frequency (meV)`)
   })
 
   // Dos forwards undefined to ScatterPlot's auto rule; explicit booleans still win.

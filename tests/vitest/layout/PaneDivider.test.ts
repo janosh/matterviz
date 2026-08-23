@@ -93,9 +93,19 @@ test(`an active drag ignores other pointers and ends on lost capture`, () => {
 })
 
 // Pixel clamps tighten the [15%, 85%] ratio clamps using the container's measured size (400
-// px wide, 200 px tall here); an over-constrained container settles at the first pane's floor
+// px wide, 200 px tall here); an over-constrained container settles at the first pane's floor,
+// and a floor wider than the container caps at 100% rather than pushing the divider outside
 test.each([
   [`min_px`, `horizontal`, { min_px: 120 }, { clientX: 120 }, 30, { clientX: 480 }, 85],
+  [
+    `min_px past the container`,
+    `horizontal`,
+    { min_px: 500, second_min_px: 50 },
+    { clientX: 120 },
+    100,
+    { clientX: 480 },
+    100,
+  ],
   [`max_px`, `horizontal`, { max_px: 100 }, { clientX: 480 }, 25, { clientX: 120 }, 15],
   [
     `second_min_px`,

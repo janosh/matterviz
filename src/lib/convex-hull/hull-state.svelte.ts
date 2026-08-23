@@ -19,6 +19,12 @@ import type {
 import { DEFAULT_GAS_TEMP } from './types'
 
 const DIM_TO_KIND = { 2: `binary`, 3: `ternary`, 4: `quaternary` } as const
+// Capitalised kind for user-facing text (error messages, aria labels)
+export const KIND_LABEL = {
+  binary: `Binary`,
+  ternary: `Ternary`,
+  quaternary: `Quaternary`,
+} as const satisfies Record<(typeof DIM_TO_KIND)[keyof typeof DIM_TO_KIND], string>
 
 // Lower hull of the plotted entries. Facet vertex indices point into `entries`; `points`
 // are the hull coordinates ([x, E_form], [x, y, E_form] or [x, y, z, E_form]) of the same,
@@ -143,8 +149,8 @@ export function create_hull_data_pipeline(inputs: HullDataPipelineInputs) {
 
   // Composition keys are normalized once here ("Fe3+" → Fe) so every later stage, including
   // the unary-reference lookup, sees plain element symbols. Unrecognized keys ("Fe2O3") come
-  // straight from the entries prop, so the throw is caught and surfaced as `error` for the
-  // components to render instead of propagating out of a $derived mid-render.
+  // straight from the entries prop, so the throw is caught and surfaced through `error`
+  // instead of propagating out of a $derived mid-render.
   const normalized_source = $derived.by((): { entries: PhaseData[]; error: string | null } => {
     try {
       return { entries: thermo.process_hull_entries(inputs.entries()).entries, error: null }
@@ -209,22 +215,23 @@ export function create_hull_data_pipeline(inputs: HullDataPipelineInputs) {
     return helpers.apply_category_markers(with_e_form, inputs.entry_category())
   })
 
-  const pd_data = $derived({
-    entries: effective_entries,
-    elements: thermo.collect_hull_elements(effective_entries),
-  })
-
   // Pre-compute polymorph stats once for O(1) tooltip lookups
   const polymorph_stats_map = $derived(helpers.compute_all_polymorph_stats(effective_entries))
 
-  const elements = $derived.by(() => {
-    if (pd_data.elements.length > dim) {
-      console.error(
-        `ConvexHull${dim}D: Dataset contains ${pd_data.elements.length} elements, but ${kind} diagrams require exactly ${dim}. Found: [${pd_data.elements.join(`, `)}]`,
-      )
-      return []
-    }
-    return pd_data.elements
+  // Elements of the entries PROP, before the temperature filter (and gas corrections, which
+  // never touch compositions). A selected temperature outside one element's `temperatures`
+  // may drop every entry of that element; the diagram then keeps its arity and closes the
+  // hull with a synthetic corner (below) instead of unmounting together with the temperature
+  // slider the user would need to recover.
+  const elements = $derived(thermo.collect_hull_elements(source_entries))
+
+  // Why the entries prop can't be plotted: a rejected composition key, or a dataset whose
+  // element count doesn't match the diagram's arity. Empty entries (data still loading) are
+  // not an error. Components render this message in place of the plot.
+  const error = $derived.by((): string | null => {
+    if (normalized_source.error) return normalized_source.error
+    if (elements.length === 0 || elements.length === dim) return null
+    return `${KIND_LABEL[kind]} convex hull requires exactly ${dim} elements, found ${elements.length}: ${elements.join(`, `)}`
   })
 
   // Simplex position of a composition with E_form on the last plotted axis (y in 2D, z in 3D)
@@ -241,7 +248,7 @@ export function create_hull_data_pipeline(inputs: HullDataPipelineInputs) {
   const coords_entries = $derived.by((): ConvexHullEntry[] => {
     if (elements.length !== dim) return []
     const coords: ConvexHullEntry[] = []
-    for (const entry of pd_data.entries) {
+    for (const entry of effective_entries) {
       const e_form = entry.e_form_per_atom
       if (typeof e_form !== `number` || !Number.isFinite(e_form)) continue
       const is_element = helpers.is_unary_entry(entry)
@@ -352,9 +359,8 @@ export function create_hull_data_pipeline(inputs: HullDataPipelineInputs) {
   })
 
   return {
-    // Message of an invalid entries prop (null when every composition key parsed)
     get error() {
-      return normalized_source.error
+      return error
     },
     get has_temp_data() {
       return temp_analysis.has_temp_data

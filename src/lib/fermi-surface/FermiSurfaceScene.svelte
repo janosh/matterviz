@@ -25,7 +25,6 @@
   import { ortho_zoom_for_extent } from '$lib/structure/camera-fit'
   import { T } from '@threlte/core'
   import * as extras from '@threlte/extras'
-  import { SvelteSet } from 'svelte/reactivity'
   import {
     BackSide,
     BufferGeometry,
@@ -42,6 +41,7 @@
   import {
     apply_vertex_colors,
     build_isosurface_geometry,
+    has_vertex_properties,
     nearest_vertex_index,
   } from './geometry'
   import { IDENTITY_4x4, lattice_point_group_matrices } from './symmetry'
@@ -230,7 +230,6 @@
   // fresh one rather than reviving a disposed object. Plain Map: the cache is bookkeeping,
   // not state the template reads.
   const geometry_cache = new Map<FermiIsosurface, BufferGeometry | null>()
-  const colored_geometries = new SvelteSet<BufferGeometry>()
   let geometries = $derived(
     visible_surfaces.map((surface) => {
       let geometry = geometry_cache.get(surface)
@@ -246,7 +245,6 @@
     for (const [surface, geometry] of geometry_cache) {
       if (visible.has(surface)) continue
       geometry?.dispose()
-      if (geometry) colored_geometries.delete(geometry)
       geometry_cache.delete(surface)
     }
   })
@@ -255,17 +253,14 @@
     geometry_cache.clear()
   })
 
-  // Vertex-colour attributes follow the colour property/scale/range. Tracked separately so the
-  // material can switch `vertexColors` without proxying three objects.
+  // Vertex-colour attributes follow the colour property/scale/range; mutating the geometry
+  // bypasses the <T> props Threlte watches, so the on-demand renderer is told to repaint
   $effect(() => {
     const spec = use_vertex_colors
       ? { colormap: color_scale, color_range: property_range }
       : null
     for (const [idx, geometry] of geometries.entries()) {
-      if (!geometry) continue
-      apply_vertex_colors(geometry, visible_surfaces[idx], spec)
-      if (geometry.hasAttribute(`color`)) colored_geometries.add(geometry)
-      else colored_geometries.delete(geometry)
+      if (geometry) apply_vertex_colors(geometry, visible_surfaces[idx], spec)
     }
     threlte.invalidate()
   })
@@ -332,41 +327,25 @@
     }),
   )
 
-  // Materials are created once per (surface, pass, colouring) and shared by every symmetry
-  // copy, so a tiled cubic surface needs 2 materials rather than 96. Created imperatively (not
-  // via <T.Mesh*Material>) because Threlte would otherwise instantiate one per <T.Mesh>.
+  // Render passes per surface: transparent surfaces draw back faces first and front faces on
+  // top (two passes), opaque and wireframe surfaces draw both sides in one. Only the
+  // transparency flag feeds the material set: the opacity value itself is written in place
+  // below, so an opacity-slider tick does not rebuild (and recompile) every material.
   type MaterialPass = `wireframe` | `front` | `back`
-  type SurfaceMaterial = MeshBasicMaterial | MeshStandardMaterial
-  const material_cache = new Map<string, { material: SurfaceMaterial; pass: MaterialPass }>()
-  // Two-pass transparency: back faces first (pass=back), front faces second (pass=front);
-  // opaque and wireframe draw both sides in one pass
-  const configure_material = (material: SurfaceMaterial, pass: MaterialPass): void => {
-    const is_transparent = surface_opacity < 1
-    material.transparent = is_transparent
-    material.opacity = surface_opacity
-    material.side =
-      pass === `wireframe` || !is_transparent
-        ? DoubleSide
-        : pass === `back`
-          ? BackSide
-          : FrontSide
-  }
-  const material_key = (
+  const is_transparent = $derived(surface_opacity < 1)
+  const material_passes = $derived<MaterialPass[]>(
+    representation === `wireframe`
+      ? [`wireframe`]
+      : is_transparent
+        ? [`back`, `front`]
+        : [`front`],
+  )
+  const make_material = (
+    surface: FermiIsosurface,
     surface_idx: number,
-    surface_color: string,
-    has_vertex_colors: boolean,
     pass: MaterialPass,
-  ): string => `${surface_idx}|${pass}|${has_vertex_colors ? `vc` : surface_color}`
-  const get_material = (
-    surface_idx: number,
-    surface_color: string,
-    has_vertex_colors: boolean,
-    pass: MaterialPass,
-  ): SurfaceMaterial => {
-    const key = material_key(surface_idx, surface_color, has_vertex_colors, pass)
-    const cached = material_cache.get(key)
-    if (cached) return cached.material
-    const material: SurfaceMaterial =
+  ) => {
+    const material =
       pass === `wireframe`
         ? new MeshBasicMaterial({ wireframe: true })
         : new MeshStandardMaterial({
@@ -377,49 +356,39 @@
             polygonOffsetFactor: 1 + surface_idx * 0.5,
             polygonOffsetUnits: 1 + surface_idx * 0.5,
           })
-    material.vertexColors = has_vertex_colors
-    if (!has_vertex_colors) material.color.set(surface_color)
-    configure_material(material, pass)
-    material_cache.set(key, { material, pass })
+    // A surface without per-vertex properties keeps its flat colour even in property mode,
+    // otherwise vertexColors would read a missing attribute
+    material.vertexColors = use_vertex_colors && has_vertex_properties(surface)
+    if (!material.vertexColors) material.color.set(get_surface_color(surface))
+    material.transparent = is_transparent
+    material.side =
+      pass === `back` ? BackSide : pass === `front` && is_transparent ? FrontSide : DoubleSide
     return material
   }
-  // Opacity changes mutate the shared materials in place (no Threlte prop to watch), so the
-  // on-demand renderer has to be told to repaint
-  $effect(() => {
-    for (const { material, pass } of material_cache.values())
-      configure_material(material, pass)
-    threlte.invalidate()
-  })
-  // Passes the template renders for the current representation/opacity
-  const material_passes = $derived<MaterialPass[]>(
-    representation === `wireframe`
-      ? [`wireframe`]
-      : surface_opacity < 1
-        ? [`back`, `front`]
-        : [`front`],
+  // One material per (surface, pass), shared by every symmetry copy so a tiled cubic surface
+  // needs 2 materials rather than 96 — hence built here instead of via <T.Mesh*Material>, which
+  // would instantiate one per <T.Mesh>. Rebuilt whenever colouring, transparency or
+  // representation change (a handful of objects; three reuses the compiled pipeline for
+  // identical parameters) and the previous set is disposed by the effect below. A surface whose
+  // geometry failed to build never renders, so it gets no materials.
+  const materials = $derived(
+    visible_surfaces.map((surface, surface_idx) =>
+      geometries[surface_idx]
+        ? material_passes.map((pass) => make_material(surface, surface_idx, pass))
+        : null,
+    ),
   )
-  // Evict materials the current render no longer requests (deselected band, colour-mode or
-  // representation switch, opacity crossing 1), mirroring the geometry eviction above
+  const live_materials = $derived(materials.flatMap((passes) => passes ?? []))
   $effect(() => {
-    const live_keys = new Set<string>()
-    for (const [surface_idx, surface] of visible_surfaces.entries()) {
-      const geometry = geometries[surface_idx]
-      if (!geometry) continue
-      const has_vertex_colors = colored_geometries.has(geometry)
-      const surface_color = get_surface_color(surface)
-      for (const pass of material_passes) {
-        live_keys.add(material_key(surface_idx, surface_color, has_vertex_colors, pass))
-      }
-    }
-    for (const [key, { material }] of material_cache) {
-      if (live_keys.has(key)) continue
-      material.dispose()
-      material_cache.delete(key)
+    const current = live_materials
+    return () => {
+      for (const material of current) material.dispose()
     }
   })
-  $effect(() => () => {
-    for (const { material } of material_cache.values()) material.dispose()
-    material_cache.clear()
+  // Opacity is a per-frame uniform, so write it in place and repaint rather than rebuild
+  $effect(() => {
+    for (const material of live_materials) material.opacity = surface_opacity
+    threlte.invalidate()
   })
 
   // Inverse of k_lattice for Cartesian->fractional conversion (cached)
@@ -523,33 +492,22 @@
     {@const surface_color = get_surface_color(surface)}
     {@const renderOrder = surface_render_orders.get(surface) ?? surface_idx}
 
-    <!-- A surface without per-vertex properties falls back to its flat colour even in
-         property mode, otherwise vertexColors would read a missing attribute -->
     {#if geometry}
-      {@const has_vertex_colors = colored_geometries.has(geometry)}
       {#each symmetry_ops as sym_matrix, sym_idx (`sym-${sym_idx}`)}
-        {#snippet mesh_pass(order: number, pass: MaterialPass)}
+        <!-- Passes of one surface draw consecutively (back before front) and inner surfaces
+             before outer ones -->
+        {#each material_passes as pass, pass_idx (pass)}
           <T.Mesh
             {geometry}
-            material={get_material(surface_idx, surface_color, has_vertex_colors, pass)}
+            material={materials[surface_idx]?.[pass_idx]}
             matrix={sym_matrix}
             matrixAutoUpdate={false}
-            renderOrder={order}
+            renderOrder={renderOrder * material_passes.length + pass_idx}
             onpointermove={(event: ThreltePointerEvent) =>
               handle_pointer_move(event, surface, geometry, surface_color, sym_idx)}
             onpointerleave={clear_hover}
           />
-        {/snippet}
-
-        {#if representation === `wireframe`}
-          {@render mesh_pass(renderOrder, `wireframe`)}
-        {:else if surface_opacity < 1}
-          <!-- Two-pass transparent rendering: back faces first, front faces on top -->
-          {@render mesh_pass(renderOrder * 2, `back`)}
-          {@render mesh_pass(renderOrder * 2 + 1, `front`)}
-        {:else}
-          {@render mesh_pass(renderOrder, `front`)}
-        {/if}
+        {/each}
       {/each}
     {/if}
   {/each}

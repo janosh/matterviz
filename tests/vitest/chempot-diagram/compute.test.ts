@@ -15,6 +15,7 @@ import {
   build_chempot_hyperplanes,
   build_hyperplanes,
   compute_chempot_diagram,
+  chebyshev_centre,
   compute_domains,
   dedup_points,
   formula_key_from_composition,
@@ -1476,6 +1477,67 @@ describe(`compute_domains`, () => {
     // AB with E_per_atom = -2.0 is above hull → no stability domain
     const { domains } = make_ab_domains(-2.0)
     expect(domains.AB).toBeUndefined()
+  })
+})
+
+describe(`chebyshev_centre`, () => {
+  const box: Vec2[] = [
+    [-10, 0],
+    [-10, 0],
+  ]
+  // Formal binary: mu_A <= 0, mu_B <= 0 and the AB plane (mu_A + mu_B)/2 <= -2 cut the corner
+  // off the [-10, 0]² box. By symmetry the largest inscribed circle sits on the diagonal,
+  // touching both lower walls and the AB line: -10 + r = -2 - r/√2 → r = 8 / (1 + 1/√2)
+  const ab_rows = [
+    [1, 0, 0],
+    [0, 1, 0],
+    [0.5, 0.5, 2],
+  ]
+  test(`maximises the inscribed radius`, () => {
+    const radius = 8 / (1 + Math.SQRT1_2)
+    const { centre, radius: found } = chebyshev_centre(ab_rows, box)
+    expect(found).toBeCloseTo(radius, 10)
+    expect(centre).toEqual([
+      expect.closeTo(-10 + radius, 10),
+      expect.closeTo(-10 + radius, 10),
+    ])
+  })
+
+  test.each([
+    [`an entry below every reachable chemical potential`, [[0.5, 0.5, 50]], box],
+    [
+      `inverted limits`,
+      ab_rows,
+      [
+        [0, -1],
+        [-10, 0],
+      ] as Vec2[],
+    ],
+  ])(`reports an empty region for %s`, (_label, rows, lims) => {
+    expect(chebyshev_centre(rows, lims).radius).toBe(-Infinity)
+  })
+
+  // The lower-corner feasibility argument needs non-negative normals. They are guaranteed at
+  // the entry boundary (build_chempot_hyperplanes names the offending entry) rather than by a
+  // per-call scan here, so a negative amount must never reach the LP.
+  test.each([
+    [`entry_id`, { entry_id: `mp-bad` }, `mp-bad`],
+    [`reduced_formula`, { reduced_formula: `AB` }, `AB`],
+    [`composition`, {}, `{"A":-0.5,"B":1.5}`],
+  ])(`a negative composition amount throws naming the entry by %s`, (_by, extra, name) => {
+    const bad = make_phase({ A: -0.5, B: 1.5 }, -3, extra)
+    const refs = [make_phase({ A: 1 }, -1), make_phase({ B: 1 }, -1)]
+    expect(() => build_chempot_hyperplanes([...refs, bad], [`A`, `B`], false)).toThrow(
+      `Invalid composition amount A: -0.5 in entry ${name}`,
+    )
+    expect(() => compute_chempot_diagram([...refs, bad])).toThrow(`in entry ${name}`)
+  })
+
+  test(`zero amounts still mean absent (no throw, entry stays in the subsystem)`, () => {
+    const refs = [make_phase({ A: 1 }, -1), make_phase({ B: 1, C: 0 }, -1)]
+    expect(build_chempot_hyperplanes(refs, [`A`, `B`], false).hyperplane_entries).toHaveLength(
+      2,
+    )
   })
 })
 

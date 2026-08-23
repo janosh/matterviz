@@ -44,4 +44,7 @@ export * from './trajectory'
 export * from './url-params'
 export * from './utils'
 export * from './vacf'
+// The shape every `compute_*_async` worker client shares (`.cancel` / `.release` and the
+// per-request `signal` / `on_progress` / `transfer` options)
+export type { WorkerClient, WorkerRequestOptions } from './worker-client.svelte'
 export * from './xrd'

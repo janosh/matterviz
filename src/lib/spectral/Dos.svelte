@@ -59,8 +59,6 @@
     // Controls configuration
     show_controls = $bindable(true),
     controls_open = $bindable(false),
-    controls_toggle_props,
-    controls_pane_props,
     show_sigma_control = true,
     show_normalize_control = false,
     show_units_control = false,
@@ -455,8 +453,6 @@
     {...rest}
     bind:show_controls
     bind:controls_open
-    {controls_toggle_props}
-    {controls_pane_props}
   >
     {#snippet tooltip({ x_formatted, y_formatted, label })}
       {@const tooltip_data = format_dos_tooltip(
@@ -552,9 +548,8 @@
               <select
                 id="dos-units"
                 value={unit}
-                onchange={(event) => {
-                  units = parse_frequency_unit(event.currentTarget.value) ?? unit
-                }}
+                onchange={(event) =>
+                  (units = parse_frequency_unit(event.currentTarget.value) ?? unit)}
               >
                 {#each FREQUENCY_UNITS as option (option)}
                   <option value={option}>{frequency_unit_label(option)}</option>

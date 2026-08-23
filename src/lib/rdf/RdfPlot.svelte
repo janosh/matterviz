@@ -37,8 +37,6 @@
     drag_dropped = $bindable([]),
     show_controls = $bindable(true),
     controls_open = $bindable(false),
-    controls_toggle_props,
-    controls_pane_props,
     ...rest
   }: {
     patterns?: RdfEntry | RdfEntry[]
@@ -145,8 +143,6 @@
     {...rest}
     bind:show_controls
     bind:controls_open
-    {controls_toggle_props}
-    {controls_pane_props}
     {series}
     {ref_lines}
     x_axis={{ label: `r (Å)`, range: [0, max_r], ...x_axis }}

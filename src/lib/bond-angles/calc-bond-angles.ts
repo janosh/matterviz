@@ -144,12 +144,12 @@ export function calc_bond_angles(
   // outer_2) and (center, outer_2, outer_1) share an entry without reserving n_elems^3 slots
   const labels = new Map<number, string>()
   const label_of = (center: number, outer_1: number, outer_2: number): string => {
-    const [low, high] = outer_1 <= outer_2 ? [outer_1, outer_2] : [outer_2, outer_1]
-    const slot = (center * n_elems + low) * n_elems + high
+    const low = Math.min(outer_1, outer_2)
+    const slot = (center * n_elems + low) * n_elems + Math.max(outer_1, outer_2)
     let label = labels.get(slot)
     if (label === undefined) {
       // Alphabetical by element symbol, not by first-seen id
-      const [outer_a, outer_b] = [elements[low], elements[high]].toSorted()
+      const [outer_a, outer_b] = [elements[outer_1], elements[outer_2]].toSorted()
       label = `${outer_a}-${elements[center]}-${outer_b}`
       labels.set(slot, label)
     }

@@ -112,13 +112,12 @@
 
   let previous_run: TrajectoryRun | undefined
   let auto_calculation_owner: TrajectoryRun | undefined
-  // Aborts the in-flight collect AND compute of the superseded request
+  // Aborts the in-flight collect AND compute of the superseded request; a request whose
+  // signal is aborted is exactly one whose result nobody will read
   let request_controller: AbortController | undefined
-  let request_generation = 0
   $effect(() => {
     if (run === previous_run) return
     previous_run = run
-    request_generation++
     request_controller?.abort()
     result = undefined
     auto_calculation_owner = undefined
@@ -150,13 +149,12 @@
 
   async function calculate(): Promise<void> {
     if (!run) return
-    const generation = ++request_generation
     const request_run = run
     const request_settings = settings_snapshot()
-    const request_is_current = () => generation === request_generation
     request_controller?.abort()
     const controller = new AbortController()
     request_controller = controller
+    const request_is_current = () => !controller.signal.aborted
     calculation_phase = `collecting`
     error_msg = undefined
     progress = null
@@ -168,6 +166,7 @@
         infrared_kind: request_settings.infrared_kind,
         polarization_branch_continuous: request_settings.polarization_branch_continuous,
         raman_key: request_settings.raman_key || null,
+        preprocessing: request_settings.options.preprocessing,
         signal: controller.signal,
         on_progress: (next_progress) => {
           if (request_is_current()) progress = next_progress
@@ -207,7 +206,6 @@
   // replacement after every abort, which nothing would use once the pane is gone). Not
   // `cancel()`: the client is shared, so another mounted pane's request must survive.
   $effect(() => () => {
-    request_generation++
     request_controller?.abort()
     compute_trajectory_spectroscopy_async.release()
   })

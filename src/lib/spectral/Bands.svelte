@@ -50,8 +50,6 @@
     show_gap_annotation = true,
     show_controls = $bindable(true),
     controls_open = $bindable(false),
-    controls_toggle_props,
-    controls_pane_props,
     id = undefined,
     'data-testid': data_testid = undefined,
     point_hit_padding = 3,
@@ -538,8 +536,6 @@
     {...rest}
     bind:show_controls
     bind:controls_open
-    {controls_toggle_props}
-    {controls_pane_props}
   >
     {#snippet tooltip({ x, y, y_formatted, label, metadata })}
       {@const y_label_full = internal_y_axis.label ?? ``}
@@ -637,9 +633,8 @@
             <select
               id="bands-units"
               value={unit}
-              onchange={(event) => {
-                units = parse_frequency_unit(event.currentTarget.value) ?? unit
-              }}
+              onchange={(event) =>
+                (units = parse_frequency_unit(event.currentTarget.value) ?? unit)}
             >
               {#each FREQUENCY_UNITS as option (option)}
                 <option value={option}>{frequency_unit_label(option)}</option>

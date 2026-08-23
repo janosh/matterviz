@@ -278,38 +278,74 @@ describe(`collect_trajectory_spectroscopy_input`, () => {
     )
   })
 
-  it(`sub-samples run-level signals to the strided position steps`, async () => {
-    // HDF5-style signals live on the full step axis; with stride 2 the positions keep steps
-    // 0, 2, 4, 6 and every signal must follow, or rigid-motion removal finds orphan samples
-    const velocity = {
-      values: Float64Array.from(every_step.flatMap((step) => [step, 0, 0])),
-      sample_shape: [1, 3],
-      steps: every_step,
-    }
-    const dipole = {
-      values: Float64Array.from(every_step.flatMap((step) => [Math.sin(step), 0, 0])),
-      sample_shape: [3],
-      steps: every_step,
-    }
-    const run = make_run({ signals: { velocity, dipole } })
+  // Run-level signals on the full step axis beside positions strided to 0, 2, 4, 6
+  const native_cadence_run = (dipole_steps: number[] = every_step) =>
+    make_run({
+      signals: {
+        velocity: {
+          values: Float64Array.from(every_step.flatMap((step) => [step, 0, 0])),
+          sample_shape: [1, 3],
+          steps: every_step,
+        },
+        dipole: {
+          values: Float64Array.from(dipole_steps.flatMap((step) => [Math.sin(step), 0, 0])),
+          sample_shape: [3],
+          steps: dipole_steps,
+        },
+      },
+    })
+
+  it.each([
+    // rigid-motion removal looks every velocity step up in the positions, so velocities are
+    // always aligned; a dipole keeps its own cadence unless body-frame rotation needs it
+    [undefined, every_step],
+    [`raw`, every_step],
+    [`remove_com`, every_step],
+    [`body_fixed`, [0, 2, 4, 6]],
+  ] as const)(
+    `with frame_stride 2 and preprocessing %s, velocities follow the kept steps and the dipole keeps steps %j`,
+    async (preprocessing, dipole_steps) => {
+      const input = await collect_trajectory_spectroscopy_input(native_cadence_run(), {
+        frame_stride: 2,
+        raman_key: null,
+        preprocessing,
+      })
+      expect(input.positions.steps).toEqual([0, 2, 4, 6])
+      expect(input.velocities).toEqual({
+        values: Float64Array.from([0, 0, 0, 2, 0, 0, 4, 0, 0, 6, 0, 0]),
+        sample_shape: [1, 3],
+        steps: [0, 2, 4, 6],
+      })
+      expect(input.infrared_signal?.series.steps).toEqual(dipole_steps)
+      expect(input.infrared_signal?.series.values).toHaveLength(3 * dipole_steps.length)
+      expect(() =>
+        calc_trajectory_spectroscopy(input, {
+          preprocessing: preprocessing ?? `remove_com`,
+          frequency_unit: `1/step`,
+        }),
+      ).not.toThrow()
+    },
+  )
+
+  it(`names a signal the stride leaves without samples on the kept steps`, async () => {
+    // a dipole sampled only on the skipped (odd) steps would become an empty spectrum
+    const run = native_cadence_run([1, 3, 5, 7])
+    await expect(
+      collect_trajectory_spectroscopy_input(run, {
+        frame_stride: 2,
+        raman_key: null,
+        preprocessing: `body_fixed`,
+      }),
+    ).rejects.toThrow(
+      `Signal 'dipole' has no samples on the strided position steps (frame_stride=2); use stride 1`,
+    )
+    // the same dipole is fine when nothing matches its steps to positions
     const input = await collect_trajectory_spectroscopy_input(run, {
       frame_stride: 2,
       raman_key: null,
+      preprocessing: `remove_com`,
     })
-    expect(input.positions.steps).toEqual([0, 2, 4, 6])
-    expect(input.velocities).toEqual({
-      values: Float64Array.from([0, 0, 0, 2, 0, 0, 4, 0, 0, 6, 0, 0]),
-      sample_shape: [1, 3],
-      steps: [0, 2, 4, 6],
-    })
-    expect(input.infrared_signal?.series.steps).toEqual([0, 2, 4, 6])
-    expect(input.infrared_signal?.series.values).toHaveLength(12)
-    expect(() =>
-      calc_trajectory_spectroscopy(input, {
-        preprocessing: `remove_com`,
-        frequency_unit: `1/step`,
-      }),
-    ).not.toThrow()
+    expect(input.infrared_signal?.series.steps).toEqual([1, 3, 5, 7])
   })
 
   it(`requires explicit continuity before accepting polarization as IR input`, async () => {
@@ -380,6 +416,41 @@ describe(`collect_trajectory_spectroscopy_input`, () => {
       run.dispose()
     }
   })
+
+  it.each([
+    // Streamed signals arrive on their native step axis like run-level ones. A stride must
+    // drop the skipped velocity steps (rigid-motion removal finds orphan samples otherwise)
+    // but only body-frame rotation needs the response signals on the kept steps too
+    [
+      `remove_com`,
+      [0, 2, 4],
+      [1, 0, 0, 0, 2, 0, 0, 0, 3, 2, 0, 0, 0, 3, 0, 0, 0, 4, 3, 0, 0, 0, 4, 0, 0, 0, 5],
+    ],
+    [`body_fixed`, [0, 2], [1, 0, 0, 0, 2, 0, 0, 0, 3, 2, 0, 0, 0, 3, 0, 0, 0, 4]],
+  ] as const)(
+    `sub-samples HDF5-streamed velocities to the strided position steps and responses only under %s`,
+    async (preprocessing, raman_steps, raman_values) => {
+      const run = await open_trajectory(await make_torch_sim_signal_buffer(), {
+        filename: `torch-sim.h5`,
+      })
+      try {
+        const input = await collect_trajectory_spectroscopy_input(run, {
+          frame_stride: 2,
+          preprocessing,
+        })
+        expect(input.positions.steps).toEqual([0, 2])
+        expect(input.velocities).toMatchObject({ sample_shape: [2, 3], steps: [0, 2] })
+        expect(input.velocities?.values).toEqual(
+          Float64Array.from([0, 1, 2, 3, 4, 5, 12, 13, 14, 15, 16, 17].map((idx) => idx / 10)),
+        )
+        expect(input.infrared_signal?.series.steps).toEqual([0, 2])
+        expect(input.raman_signal?.series.steps).toEqual(raman_steps)
+        expect(input.raman_signal?.series.values).toEqual(Float64Array.from(raman_values))
+      } finally {
+        run.dispose()
+      }
+    },
+  )
 
   it(`names the analysis when a run cannot serve a full pass`, async () => {
     const run: TrajectoryRun = { ...make_run(), collect_positions: undefined }

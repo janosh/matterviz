@@ -186,9 +186,8 @@ describe(`SymmetryElementControls`, () => {
       const inputs = [...document.body.querySelectorAll(`input`)]
       expect(inputs).toHaveLength(6)
       expect(inputs.every((inp) => inp.disabled === !in_input_frame)).toBe(true)
-      const note = document.body.querySelector(`.frame-note`)
-      if (in_input_frame) expect(note).toBeNull()
-      else expect(note?.textContent).toBe(SYM_ELEMENTS_INPUT_FRAME_NOTE)
+      const note = document.body.querySelector(`.frame-note`)?.textContent ?? null
+      expect(note).toBe(in_input_frame ? null : SYM_ELEMENTS_INPUT_FRAME_NOTE)
     },
   )
 })

@@ -264,9 +264,6 @@ export const DEFAULT_ISOSURFACE_SETTINGS: IsosurfaceSettings = {
   halo: 0,
 }
 
-const field_has_significant_negatives = ({ min, abs_max }: DataRange): boolean =>
-  min < -abs_max * 0.01
-
 // [isovalue fraction of abs_max, opacity] for the nth shell auto-added to one volume. Shell 0
 // is the usual 20% envelope; each further "+" steps through the 0.8 → 0.1 ladder
 // (alternating inner/outer so consecutive shells never coincide), inner high-isovalue shells
@@ -279,45 +276,28 @@ export const SHELL_STEPS: readonly (readonly [fraction: number, opacity: number]
   [0.65, 0.75],
   [0.35, 0.65],
 ]
-// Isovalue at a fraction of abs_max; all-zero grids fall back to a small positive value so
-// controls stay usable
-const fractional_isovalue = ({ abs_max }: DataRange, fraction: number): number =>
-  abs_max > 0 ? abs_max * fraction : 0.05
-
-// Visible layer colored from the categorical palette (negative lobe takes the next
-// swatch) with the negative lobe enabled when the field is signed
-const palette_layer = (
-  data_range: DataRange,
-  isovalue: number,
-  opacity: number,
-  color_offset: number,
-): IsosurfaceLayer => ({
-  isovalue,
-  color: LAYER_COLORS[color_offset % LAYER_COLORS.length],
-  opacity,
-  visible: true,
-  show_negative: field_has_significant_negatives(data_range),
-  negative_color: LAYER_COLORS[(color_offset + 1) % LAYER_COLORS.length],
-})
 
 // Build a default isosurface layer for a volume: the `shell_idx`th SHELL_STEPS entry (20% of
-// abs_max at opacity 0.6 for the first surface), next unused palette color, and negative
-// lobe when the data is signed. `shell_idx` is how many layers the volume already has, so
-// repeated "+" clicks add distinguishable shells instead of coincident copies.
+// abs_max at opacity 0.6 for the first surface), next unused palette color (the negative lobe
+// takes the swatch after it) and the negative lobe enabled when the field is signed.
+// `shell_idx` is how many layers the volume already has, so repeated "+" clicks add
+// distinguishable shells instead of coincident copies.
 export const auto_volume_layer = (
   volume: VolumetricData,
   volume_idx: number,
   color_offset = 0,
   shell_idx = 0,
 ): IsosurfaceLayer => {
+  const { min, abs_max } = volume.data_range
   const [fraction, opacity] = SHELL_STEPS[shell_idx % SHELL_STEPS.length]
   return {
-    ...palette_layer(
-      volume.data_range,
-      fractional_isovalue(volume.data_range, fraction),
-      opacity,
-      color_offset,
-    ),
+    // all-zero grids fall back to a small positive isovalue so controls stay usable
+    isovalue: abs_max > 0 ? abs_max * fraction : 0.05,
+    color: LAYER_COLORS[color_offset % LAYER_COLORS.length],
+    opacity,
+    visible: true,
+    show_negative: min < -abs_max * 0.01,
+    negative_color: LAYER_COLORS[(color_offset + 1) % LAYER_COLORS.length],
     volume_idx,
   }
 }

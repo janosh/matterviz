@@ -333,10 +333,8 @@ const apply_symmetry_ops = (
       const key = cif_coords_key(wrapped)
       if (seen.has(key)) continue
       seen.add(key)
-      const id =
-        atom.id === undefined || equivalent_atoms.length === 0
-          ? atom.id
-          : `${atom.id}_${equivalent_atoms.length}`
+      const suffix = equivalent_atoms.length > 0 ? `_${equivalent_atoms.length}` : ``
+      const id = atom.id && `${atom.id}${suffix}`
       equivalent_atoms.push({ ...atom, coords: wrapped, id })
     }
   }
@@ -392,49 +390,76 @@ const cif_coord_columns = (
 type CifAtom = {
   id?: string // the row's _atom_site_label, kept as the site label
   element: ElementSymbol
+  ambiguity?: string // how an ambiguous all-caps label was read (see cif_row_element)
   coords: Vec3
   coords_type: `fract` | `cart`
   occupancy: number
 }
 
-// The element a CIF atom-site row names. _atom_site_type_symbol is an element symbol with
-// an optional charge (`Fe2+`, `O2-`, and in some files uppercase `FE2+`), so its leading
-// letters are read two-then-one characters and case-normalized (`CL` is chlorine). The
-// symbol column is authoritative; the label only fills in when the symbol names no
-// element: the first capital plus its trailing lowercase letters (`Fe1` -> Fe, `Ru(1)` -> Ru,
-// `O1a` -> O, `site1_Fe_center` -> Fe). An all-caps label is read two letters first like
-// pymatgen CifParser._parse_symbol (`sym[:2].title()` before `sym[0]`): `FE1` -> Fe, `CA` -> Ca,
-// `HO1` -> Ho. When the one-letter reading is an element too (PDB-style `CA` alpha carbon, a
-// hydroxyl `HO1`), the label is recorded in `ambiguous_labels` so the caller can warn.
+// CIF labels (and the odd type symbol) that name water, deuterium or a polyatomic group
+// rather than an element, mapped to the atom they stand for. Ported from pymatgen's
+// CifParser._parse_symbol special map (`Hw`, `Ow`, `Wat`, `OH`, `NO3`) and extended with
+// common groups; read before the element readings so `NO3` is N rather than nobelium and
+// `PO4` P rather than polonium. A key must be followed by a non-letter so `D1` is deuterium
+// but `Dy1` dysprosium, and `CO3` is carbonate while all-caps `CO1` stays cobalt.
+const CIF_GROUP_ELEMENTS: Readonly<Record<string, ElementSymbol>> = {
+  Hw: `H`,
+  D: `H`,
+  Ow: `O`,
+  Wat: `O`,
+  wat: `O`,
+  OH: `O`, // also OH2
+  NO3: `N`,
+  NH4: `N`,
+  CO3: `C`,
+  CN: `C`,
+  PO4: `P`,
+  SO4: `S`,
+}
+const CIF_GROUP_RE = new RegExp(
+  `^(?<group>${Object.keys(CIF_GROUP_ELEMENTS).join(`|`)})(?![A-Za-z])`,
+)
+const cif_group_element = (text = ``): ElementSymbol | undefined => {
+  const group = CIF_GROUP_RE.exec(text)?.groups?.group
+  return group === undefined ? undefined : CIF_GROUP_ELEMENTS[group]
+}
+
+// The element a CIF atom-site row names, read in priority order. _atom_site_type_symbol is an
+// element symbol plus an optional charge (`Fe2+`, `O2-`, sometimes uppercase `FE2+`): a group
+// (CIF_GROUP_ELEMENTS), then its leading letters two-then-one case-normalized. The label only
+// fills in when the symbol names nothing: a group/water label (`NO3` -> N, `Ow1` -> O), then
+// first capital plus trailing lowercase (`Fe1`, `Ru(1)`, `O1a`, `site1_Fe_center` -> Fe). An
+// all-caps label is read two letters first like pymatgen's CifParser._parse_symbol (`FE1` ->
+// Fe, `CA` -> Ca, `HO1` -> Ho); when the one-letter reading is an element too (PDB-style `CA`
+// alpha carbon, hydroxyl `HO1`) it is returned as `ambiguity` so parse_cif can warn once per file.
 const cif_row_element = (
   raw_symbol: string | undefined,
   raw_label: string | undefined,
   atom_idx: number,
-  ambiguous_labels: Set<string>,
-): ElementSymbol => {
+): { element: ElementSymbol; ambiguity?: string } => {
   const symbol_letters = /^[A-Za-z]+/.exec(raw_symbol ?? ``)?.[0] ?? ``
-  for (const length of [2, 1]) {
-    const symbol = coerce_elem_symbol(capitalize_symbol(symbol_letters.slice(0, length)))
-    if (symbol) return symbol
-  }
-  const { letters: label_letters = ``, next_capital = `` } =
-    /(?<letters>[A-Z][a-z]*)(?<next_capital>[A-Z]?)/.exec(raw_label ?? ``)?.groups ?? {}
+  const element =
+    cif_group_element(raw_symbol) ??
+    coerce_elem_symbol(capitalize_symbol(symbol_letters.slice(0, 2))) ??
+    coerce_elem_symbol(capitalize_symbol(symbol_letters.slice(0, 1))) ??
+    cif_group_element(raw_label)
+  if (element) return { element }
+  // an all-caps label reads two letters first; `label_letters` is then its one-letter reading
+  const { all_caps = ``, letters: label_letters = all_caps[0] ?? `` } =
+    /(?<all_caps>[A-Z]{2})|(?<letters>[A-Z][a-z]*)/.exec(raw_label ?? ``)?.groups ?? {}
   if (!symbol_letters && !label_letters) {
     throw new Error(
       `Could not extract element symbol from type symbol '${raw_symbol}' / label '${raw_label}'`,
     )
   }
-  const two_letter =
-    label_letters.length === 1 && next_capital
-      ? capitalize_symbol(`${label_letters}${next_capital}`)
-      : ``
-  if (is_elem_symbol(two_letter)) {
-    if (is_elem_symbol(label_letters)) {
-      ambiguous_labels.add(`'${raw_label}' read as ${two_letter} (not ${label_letters})`)
-    }
-    return two_letter
+  const two_letter = coerce_elem_symbol(capitalize_symbol(all_caps))
+  if (two_letter) {
+    const ambiguity = is_elem_symbol(label_letters)
+      ? `'${raw_label}' read as ${two_letter} (not ${label_letters})`
+      : undefined
+    return { element: two_letter, ambiguity }
   }
-  return element_from_candidates([symbol_letters, label_letters], atom_idx)
+  return { element: element_from_candidates([symbol_letters, label_letters], atom_idx) }
 }
 
 // Parse atom data from CIF with robust error handling
@@ -444,7 +469,6 @@ const parse_cif_atom_data = (
   coords_type: `fract` | `cart`,
   coord_indices: number[],
   atom_idx: number,
-  ambiguous_labels: Set<string>,
 ): CifAtom => {
   const { label = 0, symbol = -1, occupancy = -1 } = indices
 
@@ -466,16 +490,15 @@ const parse_cif_atom_data = (
   // Explicit 0 is kept; missing / `.` / `?` (null) default to fully occupied.
   const occu = raw_occu ?? 1.0
 
-  const element = cif_row_element(
+  const { element, ambiguity } = cif_row_element(
     symbol >= 0 ? raw_data[symbol] : undefined,
     raw_data[label],
     atom_idx,
-    ambiguous_labels,
   )
   // Only a real label column names the site; `.`/`?` are CIF's unset placeholders
   const raw_id = indices.label === undefined ? undefined : raw_data[indices.label]
   const id = raw_id && ![`.`, `?`].includes(raw_id) ? raw_id : undefined
-  return { id, element, coords: coords_triplet, coords_type, occupancy: occu }
+  return { id, element, ambiguity, coords: coords_triplet, coords_type, occupancy: occu }
 }
 
 // The symmetry operation in one row of a symop loop. Ops are usually quoted (`1 'x, y, z'`),
@@ -580,7 +603,6 @@ export const parse_cif = (content: string): Crystal | null =>
       .filter((tokens) => tokens.length > max_required_idx)
     const rows =
       disorder === undefined ? complete_rows : keep_one_disorder_group(complete_rows, disorder)
-    const ambiguous_labels = new Set<string>()
     const atoms = rows
       .map((tokens, atom_idx) => {
         try {
@@ -590,7 +612,6 @@ export const parse_cif = (content: string): Crystal | null =>
             coord_cols.coords_type,
             coord_cols.columns,
             atom_idx,
-            ambiguous_labels,
           )
         } catch (error) {
           diag_warn(`Skipping invalid atom data: ${error}`)
@@ -598,9 +619,10 @@ export const parse_cif = (content: string): Crystal | null =>
         }
       })
       .filter((atom): atom is NonNullable<typeof atom> => atom !== null)
+    const ambiguous_labels = new Set(atoms.flatMap((atom) => atom.ambiguity ?? []))
     if (ambiguous_labels.size > 0) {
       diag_warn(
-        `CIF has no _atom_site_type_symbol and ambiguous all-caps labels: ${[...ambiguous_labels].join(`, `)}`,
+        `CIF has ambiguous all-caps atom-site labels (no usable _atom_site_type_symbol): ${[...ambiguous_labels].join(`, `)}`,
       )
     }
 

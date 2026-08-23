@@ -14,8 +14,9 @@ import {
   type ReferenceAnnotationSide,
   type ReferenceAnnotationTextAnchor,
 } from '$lib/plot/core/decorations'
+import { range_bounds } from '$lib/plot/core/interactions'
 import type { Rect } from '$lib/plot/core/layout'
-import type { RefLine, RefLineAnnotation, RefLineValue } from '$lib/plot/core/types'
+import type { AxisKey, RefLine, RefLineAnnotation, RefLineValue } from '$lib/plot/core/types'
 import {
   measure_text_line,
   resolve_font_size_css,
@@ -23,12 +24,21 @@ import {
 } from '$lib/plot/core/text-metrics'
 
 export type IndexedRefLine = RefLine & { idx: number }
-export type ReferenceLineRanges = { x: Vec2; x2?: Vec2; y: Vec2; y2?: Vec2 }
-export type ReferenceLineScales = {
-  x: (val: number) => number
-  x2?: (val: number) => number
-  y: (val: number) => number
-  y2?: (val: number) => number
+type Scale = (val: number) => number
+// Ranges and scales of all four axes as reference lines see them. The frame substitutes x/y
+// for x2/y2 while no series carries data there, so every entry is always a real axis.
+export type ReferenceLineAxes = {
+  ranges: Record<AxisKey, Vec2>
+  scales: Record<AxisKey, Scale>
+}
+// Sorted data bounds and pixel scales of the two axes one line is drawn against
+export type RefLineAxes = {
+  x_min: number
+  x_max: number
+  y_min: number
+  y_max: number
+  x_scale: Scale
+  y_scale: Scale
 }
 
 const reference_annotation_id = (line_idx: number): string =>
@@ -39,6 +49,19 @@ export const index_ref_lines = (ref_lines: RefLine[] | undefined): IndexedRefLin
   (ref_lines ?? [])
     .filter((line) => line.visible !== false)
     .map((line, idx) => ({ ...line, idx }))
+
+// The single place a line's x_axis/y_axis is read. Bounds are sorted so an inverted range
+// such as [1, 0] keeps its lines.
+export function resolve_ref_line_axes(
+  line: RefLine,
+  { ranges, scales }: ReferenceLineAxes,
+): RefLineAxes {
+  const x_axis = line.x_axis === `x2` ? `x2` : `x`
+  const y_axis = line.y_axis === `y2` ? `y2` : `y`
+  const [x_min, x_max] = range_bounds(ranges[x_axis])
+  const [y_min, y_max] = range_bounds(ranges[y_axis])
+  return { x_min, x_max, y_min, y_max, x_scale: scales[x_axis], y_scale: scales[y_axis] }
+}
 
 const apply_span = (
   start_val: number,
@@ -113,23 +136,11 @@ function clip_segment_to_rect(
   return [p1x + t_enter * dx, p1y + t_enter * dy, p1x + t_leave * dx, p1y + t_leave * dy]
 }
 
-// Compute the screen coordinates for a reference line
-// Returns [x1, y1, x2, y2] in pixel coordinates, or null if line is not visible
-export function resolve_line_endpoints(
-  ref_line: RefLine,
-  bounds: { x_min: number; x_max: number; y_min: number; y_max: number },
-  scales: {
-    x_scale: (val: number) => number
-    x2_scale?: (val: number) => number
-    y_scale: (val: number) => number
-    y2_scale?: (val: number) => number
-  },
-): Vec4 | null {
-  const { x_min, x_max, y_min, y_max } = bounds
-  const { x_scale, x2_scale, y_scale, y2_scale } = scales
-  // Determine which scales to use based on axis assignment
-  const active_x_scale = ref_line.x_axis === `x2` && x2_scale ? x2_scale : x_scale
-  const active_y_scale = ref_line.y_axis === `y2` && y2_scale ? y2_scale : y_scale
+// Compute the screen coordinates for a reference line against the axes it is drawn on (see
+// resolve_ref_line_axes). Returns [x1, y1, x2, y2] in pixel coordinates, or null if the line
+// is not visible.
+export function resolve_line_endpoints(ref_line: RefLine, axes: RefLineAxes): Vec4 | null {
+  const { x_min, x_max, y_min, y_max, x_scale, y_scale } = axes
 
   // Check if value is within plot bounds (for visibility)
   const is_x_visible = (x_val: number): boolean => x_val >= x_min && x_val <= x_max
@@ -224,12 +235,7 @@ export function resolve_line_endpoints(
     return null
   }
 
-  const pixels: Vec4 = [
-    active_x_scale(x1_data),
-    active_y_scale(y1_data),
-    active_x_scale(x2_data),
-    active_y_scale(y2_data),
-  ]
+  const pixels: Vec4 = [x_scale(x1_data), y_scale(y1_data), x_scale(x2_data), y_scale(y2_data)]
   return pixels.every(Number.isFinite) ? pixels : null
 }
 
@@ -483,38 +489,16 @@ export function create_reference_annotation_candidates(
   )
 }
 
-function create_reference_annotation_items({
-  lines,
-  ranges,
-  scales,
-  clearance,
-}: {
-  lines: readonly IndexedRefLine[]
-  ranges: ReferenceLineRanges
-  scales: ReferenceLineScales
-  clearance?: number
-}): ReferenceAnnotationDecorationItem[] {
+function create_reference_annotation_items(
+  lines: readonly IndexedRefLine[],
+  axes: ReferenceLineAxes,
+  clearance: number,
+): ReferenceAnnotationDecorationItem[] {
   const items: ReferenceAnnotationDecorationItem[] = []
   for (const line of lines) {
     const { annotation } = line
     if (!annotation) continue
-    const x_range = line.x_axis === `x2` ? (ranges.x2 ?? ranges.x) : ranges.x
-    const y_range = line.y_axis === `y2` ? (ranges.y2 ?? ranges.y) : ranges.y
-    const endpoints = resolve_line_endpoints(
-      line,
-      {
-        x_min: x_range[0],
-        x_max: x_range[1],
-        y_min: y_range[0],
-        y_max: y_range[1],
-      },
-      {
-        x_scale: scales.x,
-        x2_scale: scales.x2,
-        y_scale: scales.y,
-        y2_scale: scales.y2,
-      },
-    )
+    const endpoints = resolve_line_endpoints(line, resolve_ref_line_axes(line, axes))
     if (!endpoints) continue
     const candidates = create_reference_annotation_candidates(endpoints, annotation)
     items.push({
@@ -537,18 +521,19 @@ export function solve_reference_annotations({
   scales,
   clearance = 4,
   ...scene
-}: Omit<DecorationScene, `items`> & {
-  base_solution: DecorationSolution
-  lines: readonly IndexedRefLine[]
-  ranges: ReferenceLineRanges
-  scales: ReferenceLineScales
-  clearance?: number
-}): DecorationSolution {
+}: Omit<DecorationScene, `items`> &
+  ReferenceLineAxes & {
+    base_solution: DecorationSolution
+    lines: readonly IndexedRefLine[]
+    clearance?: number
+  }): DecorationSolution {
+  // `scene.base_pad` is the chart area the lines are drawn in (the base solution's pad plus
+  // any marginal-plot reservation), so normalized obstacles project onto the same pixels the
+  // annotation candidates were built from
   const annotations = solve_decorations({
     ...scene,
-    base_pad: base_solution.pad,
     exclusion_rects: [...exclusion_rects, ...decoration_placement_rects(base_solution)],
-    items: create_reference_annotation_items({ lines, ranges, scales, clearance }),
+    items: create_reference_annotation_items(lines, { ranges, scales }, clearance),
   })
   return {
     ...base_solution,

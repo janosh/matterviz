@@ -543,22 +543,23 @@ const parse_torch_sim_datasets = (
     }
     return null
   }
-  const tail_is_zero = (from_frame: number): boolean => {
-    for (let start = from_frame; start < n_frames; start += tail_chunk_size) {
-      if (
-        last_non_zero_frame_in(start, Math.min(start + tail_chunk_size, n_frames)) !== null
-      ) {
-        return false
-      }
+  // Same over [from_frame, n_frames), chunked back to front so the scan stops at the first
+  // chunk holding data and each chunk is read at most once
+  const last_non_zero_frame_from = (from_frame: number): number | null => {
+    for (let end = n_frames; end > from_frame; end -= tail_chunk_size) {
+      const last_non_zero = last_non_zero_frame_in(
+        Math.max(from_frame, end - tail_chunk_size),
+        end,
+      )
+      if (last_non_zero !== null) return last_non_zero
     }
-    return true
+    return null
   }
   // A step axis that drops back to 0 marks where the writer stopped, once everything from
   // there on is zero-filled. A zero-filled tail implies the step axis is zero from the tear to
   // the end, so the only candidates lie in the trailing run of zero steps (free to find: steps
-  // are in memory). One chunked pass from the first candidate reads each chunk exactly once;
-  // every non-zero frame pushes the candidate past itself, so a partially written frame (or a
-  // step axis that is all zeros over real data) costs no re-reads.
+  // are in memory); the tear is the frame after the last one holding data, so a partially
+  // written frame (or a step axis that is all zeros over real data) costs no re-reads.
   const first_torn_step_frame = (): number | null => {
     if (!position_steps_dataset) return null
     let zero_run_start = n_frames
@@ -566,13 +567,8 @@ const parse_torch_sim_datasets = (
     // Frame 0 has no predecessor to drop back from
     let candidate = Math.max(1, zero_run_start)
     if (candidate >= n_frames) return null
-    for (let start = candidate; start < n_frames; start += tail_chunk_size) {
-      const last_non_zero = last_non_zero_frame_in(
-        start,
-        Math.min(start + tail_chunk_size, n_frames),
-      )
-      if (last_non_zero !== null) candidate = last_non_zero + 1
-    }
+    const last_non_zero = last_non_zero_frame_from(candidate)
+    if (last_non_zero !== null) candidate = last_non_zero + 1
     // Always true inside the trailing zero run (0 <= any earlier step); kept so the criterion
     // reads as a drop back to 0 rather than "any zero step"
     if (candidate >= n_frames || steps[candidate] > steps[candidate - 1]) return null
@@ -587,7 +583,7 @@ const parse_torch_sim_datasets = (
   if (
     invalid_dynamic &&
     invalid_dynamic.frame_idx < torn_step_frame &&
-    (valid_frame_count === 0 || !tail_is_zero(valid_frame_count))
+    (valid_frame_count === 0 || last_non_zero_frame_from(valid_frame_count) !== null)
   ) {
     throw new Error(
       `Invalid HDF5 trajectory frame ${valid_frame_count} from ${position_path}: ${invalid_dynamic.reason}`,

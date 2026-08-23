@@ -201,9 +201,9 @@ export function create_hull_selection(inputs: HullSelectionInputs) {
 
 export type HullSelection = ReturnType<typeof create_hull_selection>
 
-interface CanvasInteractionInputs<Camera extends draw.HullCamera> extends HullSelectionInputs {
+interface CanvasInteractionInputs extends HullSelectionInputs {
   // Camera defaults, drag rotation, zoom clamp and point shadow of the ternary/quaternary view
-  strategy: draw.HullCanvasStrategy<Camera>
+  strategy: draw.HullCanvasStrategy
   canvas: () => HTMLCanvasElement | undefined
   // Transparent layer over `canvas` holding only the pulsing rings, so ticks skip the hull
   overlay_canvas: () => HTMLCanvasElement | undefined
@@ -220,8 +220,8 @@ interface CanvasInteractionInputs<Camera extends draw.HullCamera> extends HullSe
     draw.LabelOpts,
     `show_stable_labels` | `show_unstable_labels` | `max_hull_dist_show_labels`
   >
-  // Draws the hull onto the cleared `ctx` (CSS-pixel coordinates) once the element count
-  // matches `dim`; calls draw_points/draw_labels where they belong in its paint order
+  // Draws the hull onto the cleared `ctx` (CSS-pixel coordinates); calls
+  // draw_points/draw_labels where they belong in its paint order
   render_frame: (ctx: CanvasRenderingContext2D) => void
   // Everything else `render_frame` reads. It draws inside a rAF, where reads don't register
   // as dependencies, so anything missing leaves the canvas silently stale. List the derived
@@ -229,17 +229,13 @@ interface CanvasInteractionInputs<Camera extends draw.HullCamera> extends HullSe
   repaint_deps: () => unknown
 }
 
-const DIM_TO_LABEL = { 3: `Ternary`, 4: `Quaternary` } as const
-
-export function create_canvas_interactions<Camera extends draw.HullCamera>(
-  inputs: CanvasInteractionInputs<Camera>,
-) {
+export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
   const selection = create_hull_selection(inputs)
   const { strategy } = inputs
   const [zoom_min, zoom_max] = strategy.wheel_clamp
 
   // === Camera ===
-  const camera = $state<Camera>({ ...strategy.camera_default })
+  const camera = $state<draw.HullCamera>({ ...strategy.camera_default })
   const reset_camera = () => Object.assign(camera, strategy.camera_default)
   const recenter_camera = () => {
     camera.center_x = strategy.camera_default.center_x
@@ -379,16 +375,14 @@ export function create_canvas_interactions<Camera extends draw.HullCamera>(
     { on_tick: () => surface.schedule(false), element: inputs.wrapper },
   )
 
-  // Base canvas: the arity notice or the component's scene; overlay: the pulsing markers
+  // Base canvas: the component's scene; overlay: the pulsing markers. No elements means the
+  // data hasn't loaded (an arity mismatch unmounts the canvas instead), and the corner labels
+  // need the elements, so the scene waits for them.
   const surface = create_canvas_surface({
     canvas: inputs.canvas,
     overlay_canvas: inputs.overlay_canvas,
-    draw: ({ ctx, width, height, text_color }) => {
-      const n_elements = inputs.elements().length
-      if (n_elements === strategy.dim) return inputs.render_frame(ctx)
-      if (n_elements === 0) return
-      const notice = `${DIM_TO_LABEL[strategy.dim]} convex hull requires exactly ${strategy.dim} elements (got ${n_elements})`
-      draw.draw_notice(ctx, notice, text_color, width, height)
+    draw: ({ ctx }) => {
+      if (inputs.elements().length) inputs.render_frame(ctx)
     },
     draw_overlay: ({ ctx }) =>
       draw.draw_pulse_overlay(ctx, sorted_points_cache, hull_point_opts(), {

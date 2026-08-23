@@ -12,12 +12,14 @@ import { to_error } from '$lib/utils'
 type WorkerRequest<Input, Options> = { id: number; input: Input; options: Options }
 
 // The compute callback's own parameter types drive the request type; both `Input` and
-// `Options` are inferred from it, so they are not unnecessary despite appearing once
+// `Options` are inferred from it, so they are not unnecessary despite appearing once.
+// `options` is `undefined` when the caller omitted them, exactly as the client's
+// `compute_sync` receives it, so one `options = {}` parameter serves both paths.
 // oxlint-disable-next-line typescript-eslint/no-unnecessary-type-parameters
 export function serve_worker<Input, Options, Result>(
   compute: (
     input: Input,
-    options: Options,
+    options: Options | undefined,
     report_progress: (progress: unknown) => void,
   ) => Result,
   // Buffers inside `result` to move rather than copy back to the main thread

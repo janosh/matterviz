@@ -5,7 +5,6 @@
   import type { D3InterpolateName } from '$lib/colors'
   import { add_alpha, default_element_colors } from '$lib/colors'
   import { normalize_show_controls } from '$lib/controls'
-  import { format_num } from '$lib/labels'
   import type { Vec2 } from '$lib/math'
   import { ColorBar } from '$lib/plot'
   import { create_renderer, Gizmo, webgpu_available } from '$lib/scene'
@@ -28,7 +27,7 @@
   import { create_canvas_interactions } from './canvas-interactions.svelte'
   import ConvexHullChrome from './ConvexHullChrome.svelte'
   import { hull_distance_range, hull_style_css } from './helpers'
-  import { create_hull_data_pipeline } from './hull-state.svelte'
+  import { create_hull_data_pipeline, KIND_LABEL } from './hull-state.svelte'
   import type { BaseConvexHullProps, ConvexHullGizmoOptions, Hull3DProps } from './index'
   import { default_controls, default_hull_config } from './index'
   import MissingConvexHullData from './MissingConvexHullData.svelte'
@@ -194,12 +193,13 @@
     }),
   })
   const { camera } = interactions
-  // Current camera as data attributes (data-zoom, data-rotation-x, ...) for tests and styling
+  // Current camera as data attributes (data-zoom, data-rotation-x, ...) for tests and styling.
+  // Machine-readable, so an ASCII minus (format_num emits U+2212, which Number() rejects)
   const camera_attrs = $derived(
     Object.fromEntries(
       Object.entries(camera).map(([key, value]) => [
         `data-${key.replaceAll(`_`, `-`)}`,
-        format_num(value, `.4~f`),
+        value.toFixed(4),
       ]),
     ),
   )
@@ -278,7 +278,6 @@
   })
 
   const style = $derived(`${hull_style_css(merged_config.colors)}; ${rest.style ?? ``}`)
-  const kind_label = strategy.kind[0].toUpperCase() + strategy.kind.slice(1)
   // Missing or invalid entries render the empty state instead of the canvas
   const show_plot = $derived(entries_prop !== undefined && hull_data.error === null)
 </script>
@@ -308,7 +307,7 @@
     tabindex="-1"
     onkeydown={interactions.selection.handle_keydown}
     {...interactions.selection.drop_zone}
-    aria-label="{kind_label} convex hull visualization"
+    aria-label="{KIND_LABEL[strategy.kind]} convex hull visualization"
   >
     {@render children?.({
       stable_entries,

@@ -169,13 +169,25 @@ describe(`PlotControls`, () => {
       expect(state.y_axis.ticks).toBe(4)
     })
 
-    test(`an explicit tick list disables the input instead of overwriting it`, () => {
-      const state = $state<{ x_axis: { ticks?: number[] } }>({ x_axis: { ticks: [0, 5, 10] } })
+    test(`an explicit tick list disables the input and survives a reset after a count replaced it`, () => {
+      const state = $state<{ x_axis: { ticks?: number[] | number } }>({
+        x_axis: { ticks: [0, 5, 10] },
+      })
       mount_controls(bind_props({}, state))
       const [x_input] = tick_inputs()
       expect(x_input.disabled).toBe(true)
       expect(x_input.placeholder).toBe(`custom`)
       expect(state.x_axis.ticks).toEqual([0, 5, 10])
+      // the host swaps the list for a count: the section diffs the count projection, but Reset
+      // must hand back the list the axis was mounted with, not the projection's `undefined`
+      state.x_axis = { ticks: 7 }
+      flushSync()
+      expect(x_input.disabled).toBe(false)
+      expect(x_input.value).toBe(`7`)
+      doc_query<HTMLButtonElement>(`button[aria-label="Reset ticks to defaults"]`).click()
+      flushSync()
+      expect(state.x_axis.ticks).toEqual([0, 5, 10])
+      expect(x_input.disabled).toBe(true)
     })
   })
 

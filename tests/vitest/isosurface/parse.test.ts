@@ -364,7 +364,7 @@ describe(`parse_chgcar`, () => {
     expect(result.volumes[0].values).toHaveLength(8)
     expect(warn).toHaveBeenCalledTimes(1)
     expect(warn.mock.calls[0][0]).toMatch(
-      /CHGCAR magnetization density \(2×2×2\): expected 8 values, got 2 — file truncated\? Keeping the 1 complete volume/,
+      /CHGCAR magnetization density \(2×2×2\): expected 8 values, got 2 — file truncated\? Keeping the intact charge density/,
     )
     warn.mockRestore()
   })

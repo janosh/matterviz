@@ -1,4 +1,4 @@
-import { type FileInfo, FilePicker, file_type_paint } from '$lib'
+import { DEFAULT_FILE_TYPE_PAINTS, type FileInfo, FilePicker, file_type_paint } from '$lib'
 import { color as d3_color } from 'd3-color'
 import { flushSync, mount, unmount } from 'svelte'
 import { SvelteMap } from 'svelte/reactivity'
@@ -57,23 +57,33 @@ describe(`FilePicker`, () => {
 
   // Type inference from the name when `type` is absent: every compression suffix is ignored,
   // only the last remaining extension counts, extensionless names (VASP inputs) are typed by
-  // their own name, and an empty name falls back to `file` with the fallback paint.
+  // their lowercased name so they hit the lowercase paint keys (`poscar` is orange out of the
+  // box, a caller-supplied `incar` paint is honoured), and an empty name falls back to `file`
+  // with the grey fallback paint.
+  const grey = `rgba(128, 128, 128, 0.08)`
   it.each([
-    [`compressed.cif.gz`, `CIF`],
-    [`data.json.gz`, `JSON`],
-    [`x.tar.xz`, `TAR`],
-    [`traj.h5.gz.zip`, `H5`],
-    [`file.name.with.dots.xyz`, `XYZ`],
-    [`POSCAR`, `POSCAR`],
-    [`CONTCAR.bz2`, `CONTCAR`],
-    [`INCAR`, `INCAR`],
-    [`README`, `README`],
-    [`edge case`, `EDGE CASE`],
-    [``, `FILE`],
-  ])(`infers the type of %j as %s`, (name, expected_type) => {
-    mount(FilePicker, { target: document.body, props: { files: [{ name, url: `` }] } })
+    [`compressed.cif.gz`, `CIF`, `rgba(100, 149, 237, 0.08)`],
+    [`data.json.gz`, `JSON`, `rgba(138, 43, 226, 0.08)`],
+    [`x.tar.xz`, `TAR`, grey],
+    [`traj.h5.gz.zip`, `H5`, grey],
+    [`file.name.with.dots.xyz`, `XYZ`, `rgba(50, 205, 50, 0.08)`],
+    [`POSCAR`, `POSCAR`, `rgba(255, 140, 0, 0.08)`],
+    [`CONTCAR.bz2`, `CONTCAR`, grey],
+    [`INCAR`, `INCAR`, `rgba(1, 2, 3, 0.08)`],
+    [`README`, `README`, grey],
+    [`edge case`, `EDGE CASE`, grey],
+    [``, `FILE`, grey],
+  ])(`infers the type of %j as %s painted %s`, (name, expected_type, expected_row_bg) => {
+    const file_type_paints = {
+      ...DEFAULT_FILE_TYPE_PAINTS,
+      incar: file_type_paint(`rgb(1, 2, 3)`),
+    }
+    mount(FilePicker, {
+      target: document.body,
+      props: { files: [{ name, url: `` }], file_type_paints },
+    })
     expect(legend_text().trim()).toBe(expected_type)
-    expect(doc_query(`.file-item`).style.backgroundColor).toMatch(/^rgba\(/)
+    expect(doc_query(`.file-item`).style.backgroundColor).toBe(expected_row_bg)
   })
 
   it(`uses custom type_mapper to override file type detection`, () => {

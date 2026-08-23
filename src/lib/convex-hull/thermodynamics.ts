@@ -25,21 +25,19 @@ export function normalize_hull_composition_keys(
   const normalized: Partial<Record<ElementSymbol, number>> = {}
   for (const [key, amount] of Object.entries(composition)) {
     if (typeof amount !== `number` || !Number.isFinite(amount) || amount <= 0) continue
-    const raw_symbol = SPECIES_KEY_REGEX.exec(key)?.groups?.symbol
-    const symbol = raw_symbol && (ISOTOPE_TO_ELEMENT[raw_symbol] ?? raw_symbol)
-    if (!symbol || !is_elem_symbol(symbol)) {
-      // DummySpecies symbols start with X and are not real elements (Xe is)
-      if (raw_symbol?.startsWith(`X`)) {
-        console.warn(
-          `Skipping pymatgen DummySpecies key "${key}" in ${JSON.stringify(composition)}: it carries no element`,
-        )
-        continue
-      }
+    const raw_symbol = SPECIES_KEY_REGEX.exec(key)?.groups?.symbol ?? ``
+    const symbol = ISOTOPE_TO_ELEMENT[raw_symbol] ?? raw_symbol
+    if (is_elem_symbol(symbol)) normalized[symbol] = (normalized[symbol] ?? 0) + amount
+    // DummySpecies symbols start with X and are not real elements (Xe is)
+    else if (raw_symbol.startsWith(`X`)) {
+      console.warn(
+        `Skipping pymatgen DummySpecies key "${key}" in ${JSON.stringify(composition)}: it carries no element`,
+      )
+    } else {
       throw new Error(
         `Unrecognized composition key "${key}" in ${JSON.stringify(composition)}: expected an element symbol with optional oxidation state (e.g. "Fe", "Fe3+")`,
       )
     }
-    normalized[symbol] = (normalized[symbol] ?? 0) + amount
   }
   return normalized
 }

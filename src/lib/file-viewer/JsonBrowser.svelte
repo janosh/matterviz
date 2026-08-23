@@ -19,7 +19,7 @@
     optimade_to_structure,
     structure_from_json,
   } from '$lib/structure/parse'
-  import { is_editable_target } from '$lib/utils'
+  import { is_editable_target, to_error } from '$lib/utils'
   import { type mount, onDestroy, unmount } from 'svelte'
   import {
     detect_view_type,
@@ -43,37 +43,26 @@
   } = $props()
 
   // === Panel state ===
-  // Each panel holds a mounted component. Panels are arranged in a flat list
-  // with split info (direction) between consecutive panels.
-  // Panel sizing is stored as a parallel array of flex weights.
+  // Panels are a flat list with a split direction between consecutive panels and a parallel
+  // array of flex weights. Each panel's viewer is mounted by the attach_viewer attachment on
+  // its element, so a panel lives exactly as long as its DOM node (the list is keyed by id).
   interface PanelInfo {
-    id: string
+    id: number // each-block key: a replaced panel gets a new id and so a fresh viewer
     data_path: string
     detected_type: RenderableType
     val: unknown
-    component: ReturnType<typeof mount> | null
-    element: HTMLElement | null
   }
 
   type SplitDirection = `horizontal` | `vertical`
 
-  let panels = $state<PanelInfo[]>([])
+  // raw: panels are replaced, never mutated, and a deep proxy over large JSON values would
+  // slow every viewer that reads them
+  let panels = $state.raw<PanelInfo[]>([])
   let panel_sizes = $state<number[]>([]) // flex weight per panel (parallel to panels[])
   let split_directions = $state<SplitDirection[]>([]) // direction between panels[i] and panels[i+1]
 
-  // Debounce timer for rapid tree selections (cleaned up when component is destroyed)
+  // Debounce timer for rapid tree selections (see handle_select)
   let select_timer: ReturnType<typeof setTimeout> | undefined
-  let destroyed = false
-
-  // Unmount all imperatively mounted panels when this component is destroyed
-  // (prevents leaked GPU devices, three.js renderers, etc.)
-  $effect(() => () => {
-    destroyed = true
-    clearTimeout(select_timer)
-    for (let idx = 0; idx < panels.length; idx++) {
-      unmount_panel(idx)
-    }
-  })
 
   // Scan for renderable paths after the tree has rendered so large JSON files don't block
   // the first paint (setTimeout rather than requestIdleCallback, which Safari lacks).
@@ -110,7 +99,10 @@
   })
   let finish_drag: (() => void) | undefined
 
-  onDestroy(() => finish_drag?.())
+  onDestroy(() => {
+    finish_drag?.()
+    clearTimeout(select_timer) // a pending selection must not render into a dead browser
+  })
 
   // Split-divider drag helper -- in a webview iframe the cursor can leave the
   // document entirely, so we listen for mouseup, blur, and pointerleave to ensure
@@ -314,37 +306,29 @@
 
   // === Panel management ===
 
-  const browser_id = $props.id()
   let panel_id_count = 0
-  const make_panel_id = (): string => `panel_${browser_id}_${panel_id_count++}`
   const make_panel = (
     data_path: string,
     detected_type: RenderableType,
     val: unknown,
-  ): PanelInfo => ({
-    id: make_panel_id(),
-    data_path,
-    detected_type,
-    val,
-    component: null,
-    element: null,
-  })
+  ): PanelInfo => ({ id: panel_id_count++, data_path, detected_type, val })
 
-  // Click replaces the single/first panel; drag adds a split
+  // Click replaces the single/first panel; drag adds a split. Re-selecting what the first
+  // panel already shows is a no-op: a new id would tear down and rebuild its viewer
   function replace_or_add_panel(
     data_path: string,
     detected_type: RenderableType,
     val: unknown,
   ): void {
-    if (panels.length === 0) {
-      panels = [make_panel(data_path, detected_type, val)]
-      panel_sizes = [1]
-    } else {
-      unmount_panel(0)
-      panels[0] = make_panel(data_path, detected_type, val)
-      panels = [...panels] // trigger reactivity
-    }
-    requestAnimationFrame(() => mount_all_panels())
+    const [first] = panels
+    if (
+      first?.data_path === data_path &&
+      first.detected_type === detected_type &&
+      first.val === val
+    )
+      return
+    if (!first) panel_sizes = [1]
+    panels = [make_panel(data_path, detected_type, val), ...panels.slice(1)]
   }
 
   function add_panel_with_split(
@@ -378,11 +362,9 @@
       panel_sizes = new_sizes
       split_directions = new_dirs
     }
-    requestAnimationFrame(() => mount_all_panels())
   }
 
   function close_panel(idx: number): void {
-    unmount_panel(idx)
     const new_panels = [...panels]
     const new_sizes = [...panel_sizes]
     const new_dirs = [...split_directions]
@@ -403,23 +385,9 @@
   }
 
   function close_all_panels(): void {
-    for (let idx = panels.length - 1; idx >= 0; idx--) unmount_panel(idx)
     panels = []
     panel_sizes = []
     split_directions = []
-  }
-
-  function unmount_panel(idx: number): void {
-    const panel = panels[idx]
-    if (panel?.component) {
-      try {
-        unmount(panel.component)
-      } catch (error) {
-        console.error(`JsonBrowser: unmount failed:`, error)
-      }
-      panel.component = null
-    }
-    if (panel?.element) panel.element.innerHTML = ``
   }
 
   // === Component mounting ===
@@ -456,36 +424,38 @@
   // Merge defaults once (reused across all panel mounts)
   const merged_defaults = $derived(merge(defaults))
 
-  function mount_into(
-    target: HTMLElement,
-    val: unknown,
-    detected_type: RenderableType,
-    panel_id: string,
-  ): ReturnType<typeof mount> | null {
+  // Mounts the panel's viewer into its element and unmounts it when the element goes away
+  // (panel closed, replaced or the browser destroyed), so GPU devices and three.js renderers
+  // never leak. Reading merged_defaults here remounts every panel when the defaults change
+  const attach_viewer = (panel: PanelInfo) => (target: HTMLElement) => {
     const on_close = () => {
-      const idx = panels.findIndex((panel) => panel.id === panel_id)
+      const idx = panels.findIndex((candidate) => candidate.id === panel.id)
       if (idx === -1) return
       if (panels.length > 1) close_panel(idx)
       else close_all_panels()
     }
+    let app: ReturnType<typeof mount> | null = null
+    let error_el: HTMLElement | null = null
     try {
-      const { type, data } = json_to_viewer_input(detected_type, val)
-      return mount_viewer(target, type, data, { defaults: merged_defaults, on_close })
+      const { type, data } = json_to_viewer_input(panel.detected_type, panel.val)
+      app = mount_viewer(target, type, data, { defaults: merged_defaults, on_close })
     } catch (error) {
-      console.error(`JsonBrowser: mount failed for ${detected_type}:`, error)
-      return null
+      console.error(`JsonBrowser: mount failed for ${panel.detected_type}:`, error)
+      // A blank panel would look like an empty dataset; say what went wrong instead
+      error_el = document.createElement(`div`)
+      error_el.className = `panel-error`
+      error_el.textContent = `Failed to render ${TYPE_LABELS[panel.detected_type]}: ${to_error(error).message}`
+      target.replaceChildren(error_el)
     }
-  }
-
-  function mount_all_panels(): void {
-    if (!canvas_element) return
-    for (const panel of panels) {
-      if (panel.component) continue // already mounted
-      // Scoped to the canvas: a document-wide lookup misses panels inside a shadow root
-      const el = canvas_element.querySelector<HTMLElement>(`#${panel.id}`)
-      if (!el) continue
-      panel.element = el
-      panel.component = mount_into(el, panel.val, panel.detected_type, panel.id)
+    return () => {
+      error_el?.remove()
+      if (!app) return
+      // A viewer whose teardown throws must not keep its sibling panels from releasing theirs
+      try {
+        unmount(app)
+      } catch (error) {
+        console.error(`JsonBrowser: unmount failed for ${panel.detected_type}:`, error)
+      }
     }
   }
 
@@ -620,7 +590,6 @@
   function handle_select(tree_path: string, val: unknown): void {
     clearTimeout(select_timer)
     select_timer = setTimeout(() => {
-      if (destroyed) return // component was destroyed while timer was pending
       const detected = detect_view_type(val)
       if (detected) replace_or_add_panel(tree_to_data_path(tree_path), detected, val)
     }, 150)
@@ -736,7 +705,7 @@
             ></div>
           {/if}
           <div class="viz-panel" style="flex: {panel_sizes[idx] ?? 1}">
-            <div class="panel-mount" id={panel.id}></div>
+            <div class="panel-mount" {@attach attach_viewer(panel)}></div>
             <!-- Panel label -->
             <div
               class="panel-label"
@@ -809,6 +778,16 @@
   .panel-mount {
     width: 100%;
     height: 100%;
+  }
+  /* Created imperatively by attach_viewer, so :global keeps Svelte from stripping the rule */
+  :global(.panel-error) {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    padding: 1rem;
+    text-align: center;
+    color: var(--error-color, var(--vscode-errorForeground, #f85149));
   }
   .panel-label {
     position: absolute;

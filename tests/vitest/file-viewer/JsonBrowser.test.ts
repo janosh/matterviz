@@ -2,7 +2,8 @@ import JsonBrowser from '$lib/file-viewer/JsonBrowser.svelte'
 import { mount_viewer } from '$lib/file-viewer/mount-viewer'
 import type * as MountViewerModule from '$lib/file-viewer/mount-viewer'
 import { flushSync, mount, unmount } from 'svelte'
-import { afterEach, expect, onTestFinished, test, vi } from 'vitest'
+import type * as SvelteModule from 'svelte'
+import { afterEach, beforeEach, expect, onTestFinished, test, vi } from 'vitest'
 import { doc_query } from '../setup'
 
 // Pass-through spy: a panel render is one mount_viewer call, so the count tells how many
@@ -11,11 +12,20 @@ vi.mock(`$lib/file-viewer/mount-viewer`, async (import_original) => {
   const original = await import_original<typeof MountViewerModule>()
   return { ...original, mount_viewer: vi.fn(original.mount_viewer) }
 })
-
-afterEach(() => {
-  vi.mocked(mount_viewer).mockClear()
-  vi.useRealTimers()
+// Pass-through spy on unmount: panel viewers are mounted imperatively, so only an unmount
+// call proves a closed or replaced panel released its viewer
+vi.mock(`svelte`, async (import_original) => {
+  const original = await import_original<typeof SvelteModule>()
+  return { ...original, unmount: vi.fn(original.unmount) }
 })
+
+// Cleared before (not after) each test: mount_browser's onTestFinished unmount runs after
+// afterEach, so an afterEach reset would leave the previous browser's teardown on the spy
+beforeEach(() => {
+  vi.mocked(mount_viewer).mockClear()
+  vi.mocked(unmount).mockClear()
+})
+afterEach(() => vi.useRealTimers())
 
 const table_rows = (start: number, count: number) =>
   Array.from({ length: count }, (_, idx) => ({ x: start + idx, y: start + idx + 1 }))
@@ -133,6 +143,105 @@ test(`rapid tree selections render only the last one after a 150 ms debounce`, a
   await vi.advanceTimersByTimeAsync(100)
   expect(mount_viewer).toHaveBeenCalledTimes(1)
   expect(doc_query(`.panel-label`).textContent).toBe(`Table: third`)
+})
+
+// Viewers are mounted imperatively into each panel; a panel's viewer must be unmounted when
+// the panel is replaced by a click, closed with Escape, or the browser itself is destroyed
+test(`replacing, closing and destroying panels unmounts their viewers`, async () => {
+  const browser = mount(JsonBrowser, {
+    target: document.body,
+    props: { value: { first: table_rows(1, 3), second: table_rows(4, 3) } },
+  })
+  const viewer_apps = () => vi.mocked(mount_viewer).mock.results.map(({ value }) => value)
+  const click_first_chip = async () => {
+    const chip = await vi.waitFor(() => doc_query(`.renderable-chip`))
+    chip.click()
+  }
+  await click_first_chip()
+  await vi.waitFor(() => expect(mount_viewer).toHaveBeenCalledTimes(1))
+
+  // Click replaces the single panel: the old viewer goes, a new one comes
+  doc_query(`[data-path="second"]`).click()
+  await vi.waitFor(() => expect(mount_viewer).toHaveBeenCalledTimes(2))
+  expect(unmount).toHaveBeenCalledExactlyOnceWith(viewer_apps()[0])
+  expect(doc_query(`.panel-label`).textContent).toBe(`Table: second`)
+
+  globalThis.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape` }))
+  await vi.waitFor(() => expect(unmount).toHaveBeenCalledTimes(2))
+  expect(unmount).toHaveBeenLastCalledWith(viewer_apps()[1])
+  expect(document.querySelector(`.viz-panel`)).toBeNull()
+
+  await click_first_chip()
+  await vi.waitFor(() => expect(mount_viewer).toHaveBeenCalledTimes(3))
+  await unmount(browser)
+  expect(unmount).toHaveBeenCalledWith(viewer_apps()[2])
+})
+
+// Re-selecting what the first panel already shows must not tear down and rebuild its viewer
+test(`re-rendering the same path and value into the first panel is a no-op`, async () => {
+  mount_browser({ value: { first: table_rows(1, 3), second: table_rows(4, 3) } })
+  const badges = await vi.waitFor(() => {
+    const found = document.querySelectorAll<HTMLElement>(
+      `.renderable-badge[data-renderable_type="table"]`,
+    )
+    expect(found).toHaveLength(2)
+    return [...found]
+  })
+  badges[0].click()
+  await vi.waitFor(() => expect(mount_viewer).toHaveBeenCalledTimes(1))
+
+  badges[0].click()
+  await next_frames(2)
+  expect(mount_viewer).toHaveBeenCalledTimes(1)
+  expect(unmount).not.toHaveBeenCalled()
+
+  badges[1].click()
+  await vi.waitFor(() => expect(mount_viewer).toHaveBeenCalledTimes(2))
+  expect(unmount).toHaveBeenCalledTimes(1)
+  expect(doc_query(`.panel-label`).textContent).toBe(`Table: second`)
+})
+
+// A viewer that throws while mounting must say so inside its panel (a blank panel reads as an
+// empty dataset), and a viewer that throws while unmounting must not keep the other panels'
+// viewers from being released
+test(`a failing viewer mount renders an error in its panel and a failing unmount spares siblings`, async () => {
+  const console_error = vi.spyOn(console, `error`).mockImplementation(() => {})
+  mount_browser({ value: { first: table_rows(1, 3), second: table_rows(4, 4) } })
+  vi.mocked(mount_viewer).mockImplementationOnce(() => {
+    throw new Error(`viewer exploded`)
+  })
+  const first_chip = await vi.waitFor(() => doc_query(`.renderable-chip`))
+  first_chip.click()
+  const panel_error = await vi.waitFor(() => doc_query(`.viz-panel .panel-error`))
+  expect(panel_error.textContent).toBe(`Failed to render Table: viewer exploded`)
+  expect(console_error).toHaveBeenCalledWith(
+    `JsonBrowser: mount failed for table:`,
+    expect.any(Error),
+  )
+
+  // Replace it with a working viewer, split in a second, then make one unmount throw
+  doc_query(`[data-path="second"]`).click()
+  await vi.waitFor(() => expect(mount_viewer).toHaveBeenCalledTimes(2))
+  expect(document.querySelector(`.panel-error`)).toBeNull()
+  const panel = doc_query(`.viz-panel`)
+  vi.spyOn(panel, `getBoundingClientRect`).mockReturnValue(new DOMRect(0, 0, 100, 100))
+  const canvas = doc_query(`.canvas`)
+  canvas.dispatchEvent(drag_event(`dragover`))
+  canvas.dispatchEvent(
+    drag_event(`drop`, JSON.stringify({ data_path: `first`, detected_type: `table` })),
+  )
+  await vi.waitFor(() => expect(mount_viewer).toHaveBeenCalledTimes(3))
+  vi.mocked(unmount).mockClear()
+  vi.mocked(unmount).mockImplementationOnce(() => {
+    throw new Error(`teardown exploded`)
+  })
+  globalThis.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape` }))
+  await vi.waitFor(() => expect(unmount).toHaveBeenCalledTimes(2))
+  expect(document.querySelector(`.viz-panel`)).toBeNull()
+  expect(console_error).toHaveBeenCalledWith(
+    `JsonBrowser: unmount failed for table:`,
+    expect.any(Error),
+  )
 })
 
 test(`a selection pending when the browser unmounts never renders`, async () => {

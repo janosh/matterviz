@@ -7,7 +7,9 @@ import {
   index_ref_lines,
   normalize_point,
   normalize_value,
+  resolve_ref_line_axes,
   reference_annotation_text_rect,
+  type ReferenceLineAxes,
   resolve_line_endpoints,
   solve_reference_annotations,
   span_or,
@@ -44,6 +46,17 @@ describe(`normalize_value`, () => {
   })
 })
 
+// Four distinct axes so a test can tell which one a line resolved against
+const axes: ReferenceLineAxes = {
+  ranges: { x: [0, 10], x2: [0, 100], y: [10, 0], y2: [0, 1000] },
+  scales: {
+    x: (value) => 25 + value * 33.5,
+    x2: (value) => value,
+    y: (value) => 280 - value * 25,
+    y2: (value) => -value,
+  },
+}
+
 test(`adding reference annotations preserves resolved base geometry`, () => {
   const base_solution = solve_decorations({
     base_pad: { t: 10, r: 10, b: 10, l: 10 },
@@ -62,15 +75,94 @@ test(`adding reference annotations preserves resolved base geometry`, () => {
     height: 300,
     obstacles_norm: [],
     lines: [{ idx: 0, type: `horizontal`, y: 5, annotation: { text: `Threshold` } }],
-    ranges: { x: [0, 10], y: [0, 10] },
-    scales: { x: (value) => 25 + value * 33.5, y: (value) => 280 - value * 25 },
+    ...axes,
   })
 
   expect(solution.pad).toBe(base_solution.pad)
   expect(solution.plot_bounds).toBe(base_solution.plot_bounds)
   expect(solution.placements[0]).toBe(base_placement)
+  // y is inverted ([10, 0]) and the line still lands inside the sorted bounds
   expect(solution.placements).toHaveLength(2)
 })
+
+// The frame hands the solver the chart area including marginal-plot reservations; the base
+// solution's own pad (without them) would project normalized obstacles onto the wrong pixels
+test(`reference annotations dodge obstacles projected onto the marginal-padded chart area`, () => {
+  const scene = { width: 400, height: 300 }
+  const base_pad = { t: 10, r: 10, b: 10, l: 10 }
+  const base_solution = solve_decorations({
+    ...scene,
+    base_pad,
+    obstacles_norm: [],
+    items: [],
+  })
+  expect(base_solution.pad).toEqual(base_pad)
+  const solve = (obstacles_norm: Vec2[], pad: typeof base_pad) => {
+    const placement = solve_reference_annotations({
+      ...scene,
+      base_solution,
+      base_pad: pad,
+      obstacles_norm: obstacles_norm.map(([x, y]) => ({ x, y })),
+      // pinned, so the same candidate is chosen and only its collision score can change
+      lines: [
+        {
+          idx: 0,
+          type: `horizontal`,
+          y: 5,
+          annotation: { text: `Threshold`, position: `center`, side: `above` },
+        },
+      ],
+      ...axes,
+    }).placements.at(-1)
+    if (!placement?.reference_annotation) throw new Error(`annotation not placed`)
+    return { rect: placement.reference_annotation.rect, score: placement.score }
+  }
+  const { rect, score } = solve([], base_pad)
+  expect(score).toBeCloseTo(0)
+  // an obstacle at the label's centre, normalized against the unpadded chart area
+  const center = { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 }
+  const plot_w = scene.width - base_pad.l - base_pad.r
+  const plot_h = scene.height - base_pad.t - base_pad.b
+  const obstacle: Vec2 = [(center.x - base_pad.l) / plot_w, (center.y - base_pad.t) / plot_h]
+  expect(solve([obstacle], base_pad).score).toBeLessThan(0)
+  // with marginals reserving the top and right, that same normalized point lands elsewhere
+  const marginal_pad = { ...base_pad, t: base_pad.t + 100, r: base_pad.r + 100 }
+  expect(solve([obstacle], marginal_pad).score).toBeCloseTo(0)
+})
+
+// Every reader of a line's x_axis/y_axis (the layer and the annotation solver) goes through
+// resolve_ref_line_axes, so secondary axes and inverted ranges behave the same for lines and labels
+test.each<[Pick<RefLine, `x_axis` | `y_axis`>, ReturnType<typeof resolve_ref_line_axes>]>([
+  [
+    {},
+    {
+      x_min: 0,
+      x_max: 10,
+      y_min: 0,
+      y_max: 10,
+      x_scale: axes.scales.x,
+      y_scale: axes.scales.y,
+    },
+  ],
+  [
+    { x_axis: `x2`, y_axis: `y2` },
+    {
+      x_min: 0,
+      x_max: 100,
+      y_min: 0,
+      y_max: 1000,
+      x_scale: axes.scales.x2,
+      y_scale: axes.scales.y2,
+    },
+  ],
+])(
+  `resolve_ref_line_axes resolves %o against its axes with sorted bounds`,
+  (line, expected) => {
+    expect(resolve_ref_line_axes({ type: `horizontal`, y: 1, ...line }, axes)).toEqual(
+      expected,
+    )
+  },
+)
 
 test(`normalize_point normalizes numeric and Date tuples`, () => {
   expect(normalize_point([10, 20])).toEqual([10, 20])
@@ -88,17 +180,20 @@ test(`span_or fills nullish span bounds from the range`, () => {
 })
 
 describe(`resolve_line_endpoints`, () => {
-  const bounds = { x_min: 0, x_max: 100, y_min: 0, y_max: 100 }
-  const scales = {
+  const line_axes = {
+    x_min: 0,
+    x_max: 100,
+    y_min: 0,
+    y_max: 100,
     x_scale: (val: number) => 10 + val * 1.8,
     y_scale: (val: number) => 190 - val * 1.8,
   }
   const scaled_endpoints = (expected: readonly number[]) =>
     [
-      scales.x_scale(expected[0]),
-      scales.y_scale(expected[1]),
-      scales.x_scale(expected[2]),
-      scales.y_scale(expected[3]),
+      line_axes.x_scale(expected[0]),
+      line_axes.y_scale(expected[1]),
+      line_axes.x_scale(expected[2]),
+      line_axes.y_scale(expected[3]),
     ].map((value) => expect.closeTo(value, 8))
 
   // Expected [x1, y1, x2, y2] in data coords. Diagonal endpoints must stay paired: each
@@ -115,7 +210,7 @@ describe(`resolve_line_endpoints`, () => {
     [{ type: `diagonal`, slope: 1, intercept: 0, x_span: [20, 80] }, [20, 20, 80, 80]],
     [{ type: `diagonal`, slope: 1, intercept: 0, y_span: [30, 70] }, [30, 30, 70, 70]],
   ] as const)(`%o resolves expected endpoints`, (line, [x1, y1, x2, y2]) => {
-    expect(resolve_line_endpoints(line as RefLine, bounds, scales)).toEqual(
+    expect(resolve_line_endpoints(line as RefLine, line_axes)).toEqual(
       scaled_endpoints([x1, y1, x2, y2]),
     )
   })
@@ -153,7 +248,7 @@ describe(`resolve_line_endpoints`, () => {
       expected: [25 + 25 / 3, 0, 25 + 125 / 3, 100],
     },
   ])(`segment clipping: $desc`, ({ p1, p2, expected }) => {
-    expect(resolve_line_endpoints({ type: `segment`, p1, p2 }, bounds, scales)).toEqual(
+    expect(resolve_line_endpoints({ type: `segment`, p1, p2 }, line_axes)).toEqual(
       scaled_endpoints(expected),
     )
   })
@@ -173,9 +268,7 @@ describe(`resolve_line_endpoints`, () => {
         x_span: [...x_span],
         y_span: [...y_span],
       }
-      expect(resolve_line_endpoints(line, bounds, scales)).toEqual(
-        scaled_endpoints([...expected]),
-      )
+      expect(resolve_line_endpoints(line, line_axes)).toEqual(scaled_endpoints([...expected]))
     },
   )
 
@@ -196,7 +289,7 @@ describe(`resolve_line_endpoints`, () => {
     { type: `segment`, p1: [150, 50], p2: [200, 50] },
     { type: `segment`, p1: [50, 150], p2: [50, 200] },
   ] as RefLine[])(`%o returns null`, (line) => {
-    expect(resolve_line_endpoints(line, bounds, scales)).toBeNull()
+    expect(resolve_line_endpoints(line, line_axes)).toBeNull()
   })
 })
 

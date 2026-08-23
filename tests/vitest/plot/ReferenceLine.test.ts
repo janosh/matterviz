@@ -12,13 +12,13 @@ const query_all = <T extends Element>(selector: string): T[] =>
   Array.from(document.querySelectorAll<T>(selector))
 
 describe(`ReferenceLine`, () => {
-  const default_bounds = { x_min: 0, x_max: 100, y_min: 0, y_max: 100 }
   // Scale functions mapping data to pixels
   const x_scale = (val: number) => 50 + (val / 100) * 700 // 0-100 -> 50-750
   const y_scale = (val: number) => 550 - (val / 100) * 500 // 0-100 -> 550-50 (inverted)
+  const axes = { x_min: 0, x_max: 100, y_min: 0, y_max: 100, x_scale, y_scale }
   const horizontal_endpoints: Vec4 = [x_scale(0), y_scale(50), x_scale(100), y_scale(50)]
 
-  // Mount into the pre-created <svg> with shared scales/bounds; extra overrides per test
+  // Mount into the pre-created <svg> with shared axes; extra overrides per test
   const mount_line = (
     ref_line: RefLine,
     extra: Record<string, unknown> = {},
@@ -26,15 +26,7 @@ describe(`ReferenceLine`, () => {
     const target = doc_query<SVGSVGElement>(`svg`)
     mount(ReferenceLine, {
       target,
-      props: {
-        ref_line,
-        line_idx: 0,
-        ...default_bounds,
-        x_scale,
-        y_scale,
-        clip_path_id: `test-clip`,
-        ...extra,
-      },
+      props: { ref_line, line_idx: 0, axes, clip_path_id: `test-clip`, ...extra },
     })
     return target
   }
@@ -156,11 +148,5 @@ describe(`ReferenceLine`, () => {
   ] as const)(`aria-label uses $desc`, ({ ref_line, expected }) => {
     mount_line(ref_line)
     expect(doc_query(`.reference-line`).getAttribute(`aria-label`)).toBe(expected)
-  })
-
-  test(`uses y2_scale when y_axis is y2`, () => {
-    const y2_scale = (val: number) => 550 - (val / 200) * 500 // Different scale
-    mount_line({ type: `horizontal`, y: 50, y_axis: `y2` }, { y2_scale })
-    expect(Number(visible_line()?.getAttribute(`y1`) ?? `0`)).toBeCloseTo(y2_scale(50), 0)
   })
 })

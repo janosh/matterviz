@@ -2,6 +2,8 @@ import type { Paint } from '$lib/colors'
 import {
   add_alpha,
   composite_colors,
+  CONTRAST_MEMO_LIMIT,
+  contrast_color_memo,
   contrast_text_color,
   css_color_to_hex,
   DEFAULT_CATEGORY_COLORS,
@@ -19,7 +21,7 @@ import {
 } from '$lib/colors'
 import { ELEM_SYMBOLS } from '$lib/labels'
 import * as d3_sc from 'd3-scale-chromatic'
-import { beforeEach, describe, expect, it, test } from 'vitest'
+import { beforeEach, describe, expect, it, test, vi } from 'vitest'
 
 // Generate expected element symbols from atomic numbers 1-109 (first 109 elements)
 const EXPECTED_ELEMENTS = Array.from({ length: 109 }, (_, idx) => ELEM_SYMBOLS[idx])
@@ -287,6 +289,40 @@ describe(`pick_contrast_color`, () => {
     [{ background: `#000000` }, `white`],
   ])(`contrast_text_color(%o) = %s`, (paint, expected) => {
     expect(contrast_text_color(paint)).toBe(expected)
+  })
+
+  it(`contrast_color_memo matches pick_contrast_color and follows backdrop/alpha changes`, () => {
+    let backdrop = `white`
+    let alpha = 0.1
+    const memo = contrast_color_memo({ backdrop: () => backdrop, alpha: () => alpha })
+    expect(memo(`var(--bg)`)).toBeNull()
+    // a faint black wash over white reads as a light cell
+    expect(memo(`#000000`)).toBe(`black`)
+    // the cached answer is dropped when the backdrop changes
+    backdrop = `black`
+    expect(memo(`#000000`)).toBe(`white`)
+    alpha = 1
+    expect(memo(`#ffffff`)).toBe(`black`)
+  })
+
+  it(`contrast_color_memo evicts FIFO past the cap instead of dropping the whole cache`, () => {
+    const pick = vi.fn(pick_contrast_color)
+    const plain = contrast_color_memo({ pick })
+    const color_at = (idx: number) => `rgb(${idx % 256}, ${Math.floor(idx / 256)}, 128)`
+    const n_colors = CONTRAST_MEMO_LIMIT + 5
+    const colors = Array.from({ length: n_colors }, (_, idx) => color_at(idx))
+    // past the cache limit every answer still agrees with the unmemoized pick
+    const mismatches = colors.filter(
+      (color) => plain(color) !== pick_contrast_color({ background: color }),
+    )
+    expect(mismatches).toEqual([])
+    expect(pick).toHaveBeenCalledTimes(n_colors)
+    // the 5 oldest entries were evicted one by one; the rest are still hits. A clear-all
+    // would have dropped everything up to the cap and made these all misses.
+    for (const color of colors.slice(5)) plain(color)
+    expect(pick).toHaveBeenCalledTimes(n_colors)
+    for (const color of colors.slice(0, 5)) plain(color)
+    expect(pick).toHaveBeenCalledTimes(n_colors + 5)
   })
 })
 

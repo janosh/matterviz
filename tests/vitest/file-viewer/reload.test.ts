@@ -305,6 +305,13 @@ test(`settingsChanged re-attempts a failed initial display from the bootstrap pa
   })
   expect(mount).not.toHaveBeenCalled()
 
+  // Neither a theme-only push nor unchanged defaults can affect a parse, so neither retries
+  post_settings(`dark`)
+  post_settings(`dark`, { trajectory: { index_above_bytes: 4096 } })
+  await vi.waitFor(() => expect(document.documentElement.dataset.theme).toBe(`dark`))
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  expect(parse_file_content).toHaveBeenCalledTimes(1)
+
   // A retry that fails again re-reports and keeps the error display
   parse_file_content.mockRejectedValueOnce(new Error(`still broken`))
   post_settings(`dark`, { trajectory: { index_above_bytes: 8192 } })
@@ -340,6 +347,187 @@ test(`settingsChanged re-attempts a failed initial display from the bootstrap pa
   await vi.waitFor(() => expect(mount).toHaveBeenCalledTimes(2))
   expect(unmount).toHaveBeenCalledTimes(1)
   expect(parse_file_content).toHaveBeenCalledTimes(3)
+})
+
+// The retry source is whatever the host last asked to show, not the bootstrap payload: a
+// reload that fails while nothing is on screen is what gets retried, a reload that lands
+// mid-retry wins silently (no AbortError reported), and a deleted file is never resurrected
+test(`settingsChanged retries the latest host file and never a superseded or deleted one`, async () => {
+  for (const mock of [mount, unmount, parse_file_content, post_message]) mock.mockClear()
+  document.body.innerHTML = `<div id="matterviz-app"></div>`
+  parse_file_content.mockRejectedValueOnce(new Error(`bootstrap broken`))
+  set_file_data(`bootstrap`)
+  expect(await initialize_matterviz?.()).toBeNull()
+
+  // A failed reload with nothing on screen replaces the error display and the retry source
+  parse_file_content.mockRejectedValueOnce(new Error(`reload broken`))
+  update_file(`reloaded`)
+  await vi.waitFor(() => expect(document.body.textContent).toContain(`reload broken`))
+  expect(post_message).toHaveBeenLastCalledWith({
+    command: `error`,
+    text: `Error rendering reloaded.json: reload broken`,
+  })
+  parse_file_content.mockResolvedValueOnce(result(`reloaded`))
+  post_settings(`light`, { structure: { atom_radius: 0.3 } })
+  await vi.waitFor(() => expect(mount).toHaveBeenCalledTimes(1))
+  expect(parse_in_worker).toHaveBeenLastCalledWith(
+    `reloaded`,
+    `reloaded.json`,
+    false,
+    expect.anything(),
+  )
+
+  // A reload arriving while a retry parse is pending aborts it without an error report and is
+  // what the next settings change remounts
+  await cleanup_matterviz?.()
+  parse_file_content.mockRejectedValueOnce(new Error(`bootstrap broken`))
+  set_file_data(`bootstrap`)
+  await initialize_matterviz?.()
+  post_message.mockClear()
+  const retry_parse = Promise.withResolvers<ParseResult>()
+  parse_file_content
+    .mockReturnValueOnce(retry_parse.promise)
+    .mockResolvedValueOnce(result(`newer`))
+  post_settings(`light`, { structure: { atom_radius: 0.5 } })
+  await vi.waitFor(() => expect(parse_file_content).toHaveBeenCalledTimes(5))
+  update_file(`newer`)
+  retry_parse.reject(new DOMException(`aborted`, `AbortError`))
+  await vi.waitFor(() => expect(mount).toHaveBeenCalledTimes(2))
+  expect(mount.mock.lastCall?.[1].props.value).toBe(`newer`)
+  expect(post_message.mock.calls.map(([msg]) => msg.command)).not.toContain(`error`)
+  post_settings(`light`, { structure: { atom_radius: 0.7 } })
+  await vi.waitFor(() => expect(mount).toHaveBeenCalledTimes(3))
+  expect(mount.mock.lastCall?.[1].props.value).toBe(`newer`)
+  expect(parse_file_content).toHaveBeenCalledTimes(6)
+
+  // After fileDeleted there is nothing to retry or remount
+  globalThis.dispatchEvent(
+    new MessageEvent(`message`, {
+      data: { command: `fileDeleted`, file_path: `/tmp/newer.json` },
+    }),
+  )
+  await vi.waitFor(() => expect(document.body.textContent).toContain(`File Deleted`))
+  post_settings(`light`, { structure: { atom_radius: 0.9 } })
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  expect(parse_file_content).toHaveBeenCalledTimes(6)
+  expect(mount).toHaveBeenCalledTimes(3)
+  expect(document.body.textContent).toContain(`File Deleted`)
+})
+
+// A reload that fails to parse keeps the previous file on screen, but that file is no longer
+// what the host asked for: the next settings change must re-parse the new file (the new
+// defaults may be what its parse needed), not remount the stale one
+test(`settingsChanged after a failed reload re-parses the new file instead of remounting the old`, async () => {
+  for (const mock of [mount, unmount, parse_file_content, post_message]) mock.mockClear()
+  document.body.innerHTML = `<div id="matterviz-app"></div>`
+  parse_file_content.mockResolvedValueOnce(result(`old`))
+  set_file_data(`old`)
+  await initialize_matterviz?.()
+  expect(mount).toHaveBeenCalledTimes(1)
+
+  parse_file_content.mockRejectedValueOnce(new Error(`reload broken`))
+  update_file(`new`)
+  await vi.waitFor(() =>
+    expect(post_message).toHaveBeenLastCalledWith({
+      command: `error`,
+      text: `Error rendering new.json: reload broken`,
+    }),
+  )
+  // the old display stays up rather than being replaced by the error display
+  expect(unmount).not.toHaveBeenCalled()
+  expect(document.body.textContent).not.toContain(`reload broken`)
+
+  parse_file_content.mockResolvedValueOnce(result(`new`))
+  post_settings(`light`, { structure: { atom_radius: 0.3 } })
+  await vi.waitFor(() => expect(mount).toHaveBeenCalledTimes(2))
+  expect(parse_in_worker).toHaveBeenLastCalledWith(`new`, `new.json`, false, expect.anything())
+  expect(mount.mock.lastCall?.[1].props.value).toBe(`new`)
+  expect(unmount).toHaveBeenCalledTimes(1)
+})
+
+// A remount superseded mid-unmount by a reload disposes what it was remounting; if that reload
+// then fails to parse, the next settings change must retry the reload's file rather than find
+// a disposed result to "remount" and do nothing
+test(`settingsChanged after a superseded remount and a failed reload re-parses the reload's file`, async () => {
+  for (const mock of [mount, unmount, parse_file_content, post_message]) mock.mockClear()
+  document.body.innerHTML = `<div id="matterviz-app"></div>`
+  parse_file_content.mockResolvedValueOnce(result(`shown`))
+  set_file_data(`shown`)
+  await initialize_matterviz?.()
+
+  const pending_unmount = Promise.withResolvers<undefined>()
+  unmount.mockReturnValueOnce(pending_unmount.promise)
+  post_settings(`light`, { structure: { atom_radius: 0.3 } })
+  await vi.waitFor(() => expect(unmount).toHaveBeenCalledTimes(1))
+  parse_file_content.mockRejectedValueOnce(new Error(`reload broken`))
+  update_file(`reloaded`)
+  pending_unmount.resolve(undefined)
+  await vi.waitFor(() => expect(document.body.textContent).toContain(`reload broken`))
+  expect(mount).toHaveBeenCalledTimes(1)
+
+  parse_file_content.mockResolvedValueOnce(result(`reloaded`))
+  post_settings(`light`, { structure: { atom_radius: 0.5 } })
+  await vi.waitFor(() => expect(mount).toHaveBeenCalledTimes(2))
+  expect(parse_in_worker).toHaveBeenLastCalledWith(
+    `reloaded`,
+    `reloaded.json`,
+    false,
+    expect.anything(),
+  )
+  expect(mount.mock.lastCall?.[1].props.value).toBe(`reloaded`)
+})
+
+// The bootstrap display is queued like every other host message: a settings change that lands
+// during its parse waits for the mount and remounts it, instead of starting a retry parse that
+// aborts the bootstrap one (a spurious AbortError report plus a second parse)
+test(`settingsChanged during the bootstrap parse waits for it instead of racing it`, async () => {
+  for (const mock of [mount, unmount, parse_file_content, parse_in_worker, post_message])
+    mock.mockClear()
+  document.body.innerHTML = `<div id="matterviz-app"></div>`
+  const bootstrap_parse = Promise.withResolvers<ParseResult>()
+  parse_in_worker.mockImplementationOnce(
+    (_content, _filename, _is_base64, { signal }) =>
+      new Promise((resolve, reject) => {
+        signal.addEventListener(`abort`, () =>
+          reject(new DOMException(`aborted`, `AbortError`)),
+        )
+        void bootstrap_parse.promise.then(resolve)
+      }),
+  )
+  set_file_data(`boot`)
+  const initializing = initialize_matterviz?.()
+  await vi.waitFor(() => expect(parse_in_worker).toHaveBeenCalledTimes(1))
+
+  post_settings(`light`, { structure: { atom_radius: 0.3 } })
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  expect(mount).not.toHaveBeenCalled()
+  bootstrap_parse.resolve(result(`boot`))
+  expect(await initializing).not.toBeNull()
+  await vi.waitFor(() => expect(mount).toHaveBeenCalledTimes(2))
+  expect(parse_in_worker).toHaveBeenCalledTimes(1)
+  expect(unmount).toHaveBeenCalledTimes(1)
+  expect(mount.mock.lastCall?.[1].props.defaults).toMatchObject({
+    structure: { atom_radius: 0.3 },
+  })
+  expect(post_message.mock.calls.map(([msg]) => msg.command)).not.toContain(`error`)
+})
+
+// A bootstrap that throws before it can display anything (an empty payload) must still leave
+// the webview listening, so the host's next reload reaches it
+test(`a bootstrap that fails before displaying still accepts host reloads`, async () => {
+  for (const mock of [mount, parse_file_content, post_message]) mock.mockClear()
+  document.body.innerHTML = `<div id="matterviz-app"></div>`
+  set_file_data(``, ``)
+  expect(await initialize_matterviz?.()).toBeNull()
+  expect(post_message).toHaveBeenLastCalledWith({
+    command: `error`,
+    text: expect.stringContaining(`No data provided`),
+  })
+
+  parse_file_content.mockResolvedValueOnce(result(`late`))
+  update_file(`late`)
+  await vi.waitFor(() => expect(mount).toHaveBeenCalledTimes(1))
+  expect(mount.mock.lastCall?.[1].props.value).toBe(`late`)
 })
 
 test(`routes cross-origin worker scripts through a same-origin blob module`, async () => {

@@ -27,8 +27,13 @@ const drop_file = async (
 
 afterEach(async () => {
   vi.restoreAllMocks()
+  vi.useRealTimers()
   for (const component of mounted.splice(0)) await unmount(component)
 })
+
+// 3×3×3 band grid with one band, so the viewer extracts a surface after loading it
+const bxsf = (fermi_energy: number) =>
+  `# Fermi energy: ${fermi_energy} eV\nBEGIN_BLOCK_BANDGRID_3D\n  band_energies\n  BEGIN_BANDGRID_3D\n    1\n    3 3 3\n    0.0 0.0 0.0\n    1.0 0.0 0.0\n    0.0 1.0 0.0\n    0.0 0.0 1.0\n    BAND:   1\n    5.0 6.0 5.0\n    6.0 7.0 6.0\n    5.0 6.0 5.0\n    6.0 7.0 6.0\n    7.0 8.0 7.0\n    6.0 7.0 6.0\n    5.0 6.0 5.0\n    6.0 7.0 6.0\n    5.0 6.0 5.0\n  END_BANDGRID_3D\nEND_BLOCK_BANDGRID_3D\n`
 
 test(`custom file drop handler receives content and bypasses default parsing`, async () => {
   const drop_deferred = Promise.withResolvers<undefined>()
@@ -88,8 +93,6 @@ test(`default file parsing yields while loading state renders`, async () => {
 // safe_parse awaits a tick before committing. Without an is_current() check there, a slow
 // URL A finishes after URL B and overwrites B's surface (or reports A's parse error over it).
 test(`a slow first data_url cannot overwrite a newer one`, async () => {
-  const bxsf = (fermi_energy: number) =>
-    `# Fermi energy: ${fermi_energy} eV\nBEGIN_BLOCK_BANDGRID_3D\n  band_energies\n  BEGIN_BANDGRID_3D\n    1\n    3 3 3\n    0.0 0.0 0.0\n    1.0 0.0 0.0\n    0.0 1.0 0.0\n    0.0 0.0 1.0\n    BAND:   1\n    5.0 6.0 5.0\n    6.0 7.0 6.0\n    5.0 6.0 5.0\n    6.0 7.0 6.0\n    7.0 8.0 7.0\n    6.0 7.0 6.0\n    5.0 6.0 5.0\n    6.0 7.0 6.0\n    5.0 6.0 5.0\n  END_BANDGRID_3D\nEND_BLOCK_BANDGRID_3D\n`
   const frame_callbacks = mock_animation_frames()
   const responses = new Map<string, (response: Response) => void>()
   vi.spyOn(globalThis, `fetch`).mockImplementation((input) => {
@@ -121,6 +124,32 @@ test(`a slow first data_url cannot overwrite a newer one`, async () => {
     expect(on_file_load).toHaveBeenCalledWith(expect.objectContaining({ filename: `b.bxsf` })),
   )
   expect(on_file_load.mock.calls.map(([arg]) => arg.filename)).toEqual([`b.bxsf`])
+})
+
+// Extracting a surface from a URL-loaded grid stores a new fermi_data. A bound parent hands
+// back a proxy of it, so claiming the raw result left the loader reading the proxy as
+// caller-supplied: it dropped the URL and never fetched the next one.
+test(`a second data_url still loads after re-extraction with a bound fermi_data`, async () => {
+  vi.useFakeTimers({
+    toFake: [`setTimeout`, `clearTimeout`, `requestAnimationFrame`, `cancelAnimationFrame`],
+  })
+  vi.spyOn(globalThis, `fetch`).mockImplementation(() =>
+    Promise.resolve(new Response(bxsf(6))),
+  )
+  const on_file_load = vi.fn()
+  const props = $state({
+    data_url: `http://x/a.bxsf`,
+    fermi_data: undefined as FermiSurfaceData | undefined,
+    on_file_load,
+  })
+  mounted.push(mount(FermiSurface, { target: document.body, props }))
+  await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(1))
+  await vi.advanceTimersByTimeAsync(300) // extraction debounce + paint ticks
+  expect(props.fermi_data?.isosurfaces.length).toBeGreaterThan(0)
+
+  props.data_url = `http://x/b.bxsf`
+  await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(2))
+  expect(on_file_load.mock.calls[1][0].filename).toBe(`b.bxsf`)
 })
 
 // Regression: with only `band_data` supplied (no parse path), the viewer used to render nothing
@@ -296,34 +325,11 @@ test.each([
   if (fermi_data === typed_data) expect(rendered).toBe(typed_data)
 })
 
-test(`malformed fermi_data is reported via error_msg/on_error instead of throwing`, async () => {
+// A malformed payload is reported instead of thrown mid-render. A host that streams props
+// (pymatviz) may send a bad payload and then a good one: the notice the bad one raised must
+// not stick, or the viewer stays blank until the user dismisses it
+test(`malformed fermi_data reports via error_msg/on_error and a later valid one clears it`, async () => {
   const on_error = vi.fn()
-  const props = $state<{ error_msg?: string }>({})
-  const malformed = { isosurfaces: [{ vertices: `nope` }] } as unknown as FermiSurfaceData
-  mounted.push(
-    mount(FermiSurface, {
-      target: document.body,
-      props: {
-        fermi_data: malformed,
-        on_error,
-        get error_msg() {
-          return props.error_msg
-        },
-        set error_msg(value) {
-          props.error_msg = value
-        },
-      },
-    }),
-  )
-  await tick()
-  expect(props.error_msg).toMatch(/^Invalid Fermi surface data: /)
-  expect(on_error).toHaveBeenCalledWith({ error_msg: props.error_msg })
-  expect(document.body.textContent).toContain(`Invalid Fermi surface data`)
-})
-
-// A host that streams props (pymatviz) may send a bad payload and then a good one: the notice
-// the bad one raised must not stick, or the viewer stays blank until the user dismisses it
-test(`a valid fermi_data after a malformed one clears the normalization error`, async () => {
   const props = $state<{ fermi_data: unknown; error_msg?: string }>({
     fermi_data: { isosurfaces: [{ vertices: `nope` }] },
   })
@@ -331,6 +337,7 @@ test(`a valid fermi_data after a malformed one clears the normalization error`, 
     mount(FermiSurface, {
       target: document.body,
       props: {
+        on_error,
         get fermi_data() {
           return props.fermi_data as FermiSurfaceData
         },
@@ -345,6 +352,9 @@ test(`a valid fermi_data after a malformed one clears the normalization error`, 
   )
   await tick()
   expect(props.error_msg).toMatch(/^Invalid Fermi surface data: /)
+  expect(on_error).toHaveBeenCalledWith({ error_msg: props.error_msg })
+  expect(document.body.textContent).toContain(`Invalid Fermi surface data`)
+
   props.fermi_data = typed_data
   await tick()
   expect(props.error_msg).toBeUndefined()
@@ -354,6 +364,7 @@ test(`a valid fermi_data after a malformed one clears the normalization error`, 
   props.fermi_data = { isosurfaces: [] }
   await tick()
   expect(props.error_msg).toBe(`Failed to parse other.frmsf`)
+  expect(on_error).toHaveBeenCalledTimes(1)
 })
 
 // band_data travels the same JSON route with nested [spin][band][kx][ky][kz] energies

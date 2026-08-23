@@ -31,64 +31,62 @@
       .catch(console.error)
   })
 
+  // A zone without a structure (caller-supplied `bz_data` only) shows the zone and reciprocal
+  // lattice rows; the space group and real lattice need the structure
   let pane_data = $derived.by(() => {
-    if (!structure || !bz_data) return []
+    if (!bz_data) return []
     const sections: { title: string; items: InfoPaneRow[] }[] = []
 
     // Brillouin Zone section
-    sections.push(
-      {
-        title: `Brillouin Zone`,
-        items: [
-          {
-            label: `Order`,
-            value: ordinal_label(bz_data.order),
-            key: `bz-order`,
-          },
-          {
-            label: `Volume`,
-            value: `${format_num(bz_data.volume, `.3f`)} Å⁻³`,
-            key: `bz-volume`,
-          },
-          {
-            label: `Vertices / Faces`,
-            value: `${bz_data.vertices.length} / ${bz_data.faces.length}`,
-            key: `bz-vertices`,
-          },
-          {
-            label: `Space Group`,
-            value: `${sym_data?.number ?? ``} ${
-              sym_data?.hm_symbol ? `(${sym_data.hm_symbol})` : ``
-            }`.trim(),
-            key: `space-group`,
-          },
-        ],
-      },
-      {
-        // Real Lattice section
+    sections.push({
+      title: `Brillouin Zone`,
+      items: [
+        {
+          label: `Order`,
+          value: ordinal_label(bz_data.order),
+          key: `bz-order`,
+        },
+        {
+          label: `Volume`,
+          value: `${format_num(bz_data.volume, `.3f`)} Å⁻³`,
+          key: `bz-volume`,
+        },
+        {
+          label: `Vertices / Faces`,
+          value: `${bz_data.vertices.length} / ${bz_data.faces.length}`,
+          key: `bz-vertices`,
+        },
+        ...(structure
+          ? [
+              {
+                label: `Space Group`,
+                value: `${sym_data?.number ?? ``} ${
+                  sym_data?.hm_symbol ? `(${sym_data.hm_symbol})` : ``
+                }`.trim(),
+                key: `space-group`,
+              },
+            ]
+          : []),
+      ],
+    })
+    if (structure?.lattice) {
+      const { a, b, c, alpha, beta, gamma } = structure.lattice
+      sections.push({
         title: `Real Lattice`,
         items: [
           {
             label: `a, b, c`,
-            value: `${[structure.lattice.a, structure.lattice.b, structure.lattice.c]
-              .map((val) => format_num(val, `.3~f`))
-              .join(`, `)} Å`,
+            value: `${[a, b, c].map((val) => format_num(val, `.3~f`)).join(`, `)} Å`,
             key: `real-lattice-abc`,
           },
           {
             label: `α, β, γ`,
-            value: `${[
-              structure.lattice.alpha,
-              structure.lattice.beta,
-              structure.lattice.gamma,
-            ]
-              .map((val) => format_num(val, `.2~f`))
-              .join(`, `)}°`,
+            value: `${[alpha, beta, gamma].map((val) => format_num(val, `.2~f`)).join(`, `)}°`,
             key: `real-lattice-angles`,
           },
         ],
-      },
-    )
+      })
+    }
 
     // Reciprocal Lattice section
     const k_lattice_items: InfoPaneRow[] = bz_data.k_lattice.map((vec, idx) => ({
@@ -103,7 +101,7 @@
   })
 </script>
 
-{#if structure && bz_data}
+{#if bz_data}
   <ViewerPane
     bind:open={pane_open}
     pane_name="Brillouin zone info"

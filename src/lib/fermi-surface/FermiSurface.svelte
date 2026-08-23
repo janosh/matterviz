@@ -15,7 +15,7 @@
     export_scene_as,
     webgpu_available,
   } from '$lib/scene'
-  import type { SceneExportFormat, ViewerParseContext } from '$lib/scene'
+  import type { SceneExportFormat } from '$lib/scene'
   import { DEFAULTS } from '$lib/settings'
   import type { Crystal } from '$lib/structure'
   import { Canvas } from '@threlte/core'
@@ -160,16 +160,14 @@
   let reported_normalize_error: string | undefined
   $effect(() => {
     const { error } = normalized
-    if (!error) {
-      if (reported_normalize_error !== undefined && error_msg === reported_normalize_error) {
-        error_msg = undefined
-      }
-      reported_normalize_error = undefined
-      return
+    if (!error && reported_normalize_error && error_msg === reported_normalize_error) {
+      error_msg = undefined
     }
     reported_normalize_error = error
-    error_msg = error
-    untrack(() => on_error?.({ error_msg: error }))
+    if (error) {
+      error_msg = error
+      untrack(() => on_error?.({ error_msg: error }))
+    }
   })
 
   // Yield to browser so spinner can render before heavy computation
@@ -178,39 +176,7 @@
       requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
     )
 
-  // Parse and load Fermi surface with error handling. `is_current` is false once a newer
-  // data_url request superseded this one, so a slow URL A cannot overwrite URL B's surface or
-  // report its parse error over B's.
-  async function safe_parse(
-    content: string | ArrayBuffer,
-    filename: string,
-    metadata: io.FileLoadMeta | undefined,
-    { is_current, mark_owned }: ViewerParseContext<FermiSurfaceData | BandGridData>,
-  ): Promise<void> {
-    try {
-      await tick()
-      if (!is_current()) return
-      // parse_fermi_file throws a descriptive error when parsing fails
-      const parsed = parse_fermi_file(io.as_text(content), filename)
-      const file_size = io.content_byte_size(content)
-      current_filename = filename
-
-      // A band grid leaves fermi_data unset; the extraction effect below derives it
-      const loaded = is_fermi_surface_data(parsed)
-        ? { fermi_data: parsed, band_data: undefined }
-        : { fermi_data: undefined, band_data: parsed }
-      fermi_data = loaded.fermi_data
-      band_data = loaded.band_data
-      mark_owned(parsed)
-
-      on_file_load?.({ ...loaded, filename, ...metadata, file_size })
-    } catch (err) {
-      if (!is_current()) return
-      error_msg = `Failed to parse ${filename}: ${to_error(err).message}`
-      on_error?.({ error_msg, filename, ...metadata })
-    }
-  }
-
+  // data_url / drag-and-drop acquisition
   const loader = create_viewer_loader<FermiSurfaceData | BandGridData>({
     data_url: () => data_url,
     current_value: () => surface_data ?? grid_data,
@@ -219,10 +185,23 @@
     set_loading: (value) => (loading = value),
     set_error: (message) => (error_msg = message),
     set_dragover: (over) => (dragover = over),
-    parse: safe_parse,
-    report_error: (message, filename) => {
+    parse: async (content, filename) => {
+      await tick() // let the spinner paint before the synchronous parse
+      return parse_fermi_file(io.as_text(content), filename)
+    },
+    commit: (parsed, filename, metadata, file_size) => {
+      current_filename = filename
+      // A band grid leaves fermi_data unset; the extraction effect below derives it
+      const loaded = is_fermi_surface_data(parsed)
+        ? { fermi_data: parsed, band_data: undefined }
+        : { fermi_data: undefined, band_data: parsed }
+      fermi_data = loaded.fermi_data
+      band_data = loaded.band_data
+      on_file_load?.({ ...loaded, filename, ...metadata, file_size })
+    },
+    report_error: (message, filename, metadata) => {
       error_msg = message
-      on_error?.({ error_msg: message, filename })
+      on_error?.({ error_msg: message, filename, ...metadata })
     },
   })
 
@@ -249,12 +228,12 @@
       // point a newer run can slip in
       if (job_id !== extraction_job_id) return
       try {
-        const result = extract_fermi_surface(grid, options)
-        fermi_data = result
+        fermi_data = extract_fermi_surface(grid, options)
         error_msg = undefined
-        // Re-extraction edits URL-loaded data in place; without re-claiming it the loader
-        // would read the new object as caller-supplied and stop defending its URL
-        loader.claim(result)
+        // Re-extraction edits URL-loaded data in place; without re-claiming the surface (as read
+        // back through the prop) the loader would see a caller-supplied object and stop
+        // defending its URL
+        loader.claim()
       } catch (err) {
         const message = `Fermi surface extraction failed: ${to_error(err).message}`
         error_msg = message
