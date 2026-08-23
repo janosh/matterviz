@@ -15,7 +15,8 @@ import {
   segment_rect_intersects,
   segments_intersect,
 } from '$lib/plot/core/utils/label-placement'
-import { describe, expect, test, vi } from 'vitest'
+import { describe, expect, test } from 'vitest'
+import { mock_text_measurement } from '../setup'
 
 // === Geometry helpers ===
 
@@ -161,10 +162,7 @@ describe(`estimate_label_size`, () => {
   )
 
   test(`measures with the canvas 2D context when one exists`, () => {
-    const get_context = vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue({
-      font: ``,
-      measureText: (text: string) => ({ width: text.length * 9 }),
-    } as unknown as CanvasRenderingContext2D)
+    const get_context = mock_text_measurement(9)
     try {
       // 9 px/char beats the 6 px/char fallback, so a fallback would report 34 here
       expect(estimate_label_size(`abcd\nab`, `10px`)).toEqual({ width: 46, height: 24 })
@@ -467,17 +465,22 @@ describe(`compute_delta_energy`, () => {
 
 // === compute_label_positions (integration) ===
 
-const identity_scale = ((val: number | Date) =>
-  typeof val === `number` ? val : val.getTime()) as PlotScaleFn
-identity_scale.invert = (val: number) => val
-identity_scale.domain = (() => [0, 100]) as PlotScaleFn[`domain`]
-identity_scale.range = (() => [0, 400]) as PlotScaleFn[`range`]
+// Identity pixel scale shifted by `shift` (a pan slides every anchor by the same amount)
+const offset_scale = (shift: number): PlotScaleFn => {
+  const scale = ((val: number | Date) =>
+    (typeof val === `number` ? val : val.getTime()) + shift) as PlotScaleFn
+  scale.invert = (val: number) => val - shift
+  scale.domain = (() => [0, 100]) as PlotScaleFn[`domain`]
+  scale.range = (() => [0, 400]) as PlotScaleFn[`range`]
+  return scale
+}
+const identity_scale = offset_scale(0)
 
 const default_scales = {
-  x_scale_fn: identity_scale,
-  y_scale_fn: identity_scale,
-  y2_scale_fn: identity_scale,
-  x_axis: { label: `X` },
+  x: identity_scale,
+  x2: identity_scale,
+  y: identity_scale,
+  y2: identity_scale,
 }
 
 const default_bounds = {
@@ -524,6 +527,27 @@ const place_series = (series: DataSeries[], config = default_config) =>
 
 const place = (points: LabeledPoint[], config = default_config) =>
   place_series(make_labeled_series(points), config)
+
+// A series on the secondary axes anchors to the x2/y2 scales, not x/y
+test.each([
+  [{}, 0, 0],
+  [{ x_axis: `x2` }, 30, 0],
+  [{ y_axis: `y2` }, 0, 30],
+  [{ x_axis: `x2`, y_axis: `y2` }, 30, 30],
+] as const)(`series %j anchors labels to its own scales`, (axes, dx, dy) => {
+  const point = { x: 100, y: 100, text: `A` }
+  const [base] = Object.values(place([point]))
+  const [shifted] = Object.values(
+    compute_label_positions(
+      [{ ...make_labeled_series([point])[0], ...axes }],
+      default_config,
+      { x: identity_scale, x2: offset_scale(30), y: identity_scale, y2: offset_scale(30) },
+      default_bounds,
+    ),
+  )
+  expect(shifted.x - base.x).toBeCloseTo(dx, 6)
+  expect(shifted.y - base.y).toBeCloseTo(dy, 6)
+})
 
 function place_and_expect_finite(
   points: LabeledPoint[],
@@ -603,14 +627,9 @@ describe(`compute_label_positions`, () => {
       { x: 190, y: 200 },
       { x: 300, y: 140 },
     ].map((point, idx) => ({ ...point, text: `Label ${idx}` }))
-    // Shifting the scale slides every anchor by the same amount, which is what a pan does
     const shifted_scales = (shift: number) => {
-      const scale = ((val: number | Date) =>
-        (typeof val === `number` ? val : val.getTime()) + shift) as PlotScaleFn
-      scale.invert = (val: number) => val - shift
-      scale.domain = (() => [0, 100]) as PlotScaleFn[`domain`]
-      scale.range = (() => [0, 400]) as PlotScaleFn[`range`]
-      return { ...default_scales, x_scale_fn: scale, y_scale_fn: scale, y2_scale_fn: scale }
+      const scale = offset_scale(shift)
+      return { x: scale, x2: scale, y: scale, y2: scale }
     }
 
     // Each frame's layout should grow out of the last one. Re-solving from scratch is free to
@@ -714,50 +733,43 @@ describe(`compute_label_positions`, () => {
       expect(offsets.size).toBe(3) // else a long pan grows the map without bound
     })
 
-    // 30 solves of a dense 50-label cloud, so well past the 5 s default when the suite is
-    // running them alongside everything else.
-    test(`costs a fraction of a cold solve`, { timeout: 60_000 }, () => {
+    // A warm re-solve runs warm_sa_iterations, not the cold sa_iterations budget: the carried
+    // layout must come out identical whatever cold budget the config names (a wall-clock ratio
+    // used to assert this and flaked under load)
+    test(`warm re-solve ignores the cold iteration budget`, () => {
       const series = make_labeled_series(
-        Array.from({ length: 50 }, (_unused, idx) => ({
-          x: (idx % 10) * 9 + 5,
-          y: Math.floor(idx / 10) * 18 + 5,
+        Array.from({ length: 20 }, (_unused, idx) => ({
+          x: (idx % 5) * 9 + 5,
+          y: Math.floor(idx / 5) * 18 + 5,
           text: `Label ${idx}`,
         })),
       )
-      const config = { ...default_config, sa_iterations: 2000 }
-      const elapsed = (run: () => void) => {
-        const started = performance.now()
-        run()
-        return performance.now() - started
-      }
-      const offsets = new Map<string, { x: number; y: number }>()
-      compute_label_positions(series, config, shifted_scales(0), default_bounds, offsets)
-
-      // One cold solve is ~700 ms here, so repeating it only risks the test timeout, and a
-      // pause during it would inflate the ratio rather than shrink it. The warm solve is ~1 ms
-      // and is where a single GC pause drags the ratio under the bar (observed at 1.08x), so
-      // that is the side worth taking the best of.
-      const cold = elapsed(() =>
-        compute_label_positions(series, config, shifted_scales(1), default_bounds),
-      )
-      let warm = Infinity
-      for (let rep = 0; rep < 3; rep++) {
-        warm = Math.min(
-          warm,
-          elapsed(() =>
-            compute_label_positions(
-              series,
-              config,
-              shifted_scales(rep),
-              default_bounds,
-              offsets,
-            ),
-          ),
+      const cold_config = { ...default_config, sa_iterations: 300 }
+      const warm_solve = (sa_iterations: number) => {
+        const offsets = new Map<string, { x: number; y: number }>()
+        compute_label_positions(
+          series,
+          cold_config,
+          shifted_scales(0),
+          default_bounds,
+          offsets,
+        )
+        return compute_label_positions(
+          series,
+          { ...default_config, sa_iterations, warm_sa_iterations: 20 },
+          shifted_scales(1),
+          default_bounds,
+          offsets,
         )
       }
-      // Measured ~500x on this dense 50-label cloud; asserting 5x leaves room for slow CI while
-      // still failing outright if a change puts the full anneal back on the interactive path.
-      expect(cold / warm).toBeGreaterThan(5)
+      const cold = compute_label_positions(
+        series,
+        cold_config,
+        shifted_scales(1),
+        default_bounds,
+      )
+      expect(warm_solve(300)).toEqual(warm_solve(50))
+      expect(warm_solve(300)).not.toEqual(cold)
     })
   })
 

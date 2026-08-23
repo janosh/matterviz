@@ -2,7 +2,7 @@
 // Pure and unit-tested; mirrors the style of box-plot.ts. Never mutates inputs.
 
 import type { Vec2 } from '$lib/math'
-import { quantile_sorted, quantile_unordered } from '$lib/math'
+import { quantile_sorted, quantile_unordered, sample_std } from '$lib/math'
 
 export interface KdeResult {
   grid: number[] // evaluation points along the value axis
@@ -24,20 +24,6 @@ interface KdeOptions {
 const KDE_EXACT_SAMPLE_LIMIT = 1024
 const KDE_TAIL_SIGMA = 6
 
-function sample_deviation(sorted: readonly number[]): number {
-  const n_vals = sorted.length
-  if (n_vals < 2) return 0
-  let sum = 0
-  for (const val of sorted) sum += val
-  const mean = sum / n_vals
-  let variance_sum = 0
-  for (const val of sorted) {
-    const delta = val - mean
-    variance_sum += delta * delta
-  }
-  return Math.sqrt(variance_sum / (n_vals - 1))
-}
-
 // Silverman's rule of thumb: 0.9 * min(std, IQR/1.34) * n^(-1/5). Matches scipy/seaborn.
 // (`sigma` floors to std then 1 to avoid a zero bandwidth.)
 const silverman_from_stats = (n_vals: number, std: number, iqr: number): number => {
@@ -49,22 +35,22 @@ const silverman_from_stats = (n_vals: number, std: number, iqr: number): number 
 export function silverman_bandwidth(sorted: readonly number[]): number {
   if (sorted.length < 2) return 1
   const iqr = quantile_sorted(sorted, 0.75) - quantile_sorted(sorted, 0.25)
-  return silverman_from_stats(sorted.length, sample_deviation(sorted), iqr)
+  return silverman_from_stats(sorted.length, sample_std(sorted), iqr)
 }
 
 function silverman_bandwidth_unordered(samples: number[]): number {
   if (samples.length < 2) return 1
   const q1 = quantile_unordered(samples, 0.25)
   const q3 = quantile_unordered(samples, 0.75)
-  return silverman_from_stats(samples.length, sample_deviation(samples), q3 - q1)
+  return silverman_from_stats(samples.length, sample_std(samples), q3 - q1)
 }
 
 // Scott's rule: std * n^(-1/5) for 1-D data.
-// `samples` need not be sorted (only uses sample_deviation, unlike silverman_bandwidth)
+// `samples` need not be sorted (only uses sample_std, unlike silverman_bandwidth)
 export function scott_bandwidth(samples: readonly number[]): number {
   const n_vals = samples.length
   if (n_vals < 2) return 1
-  const std = sample_deviation(samples) || 1
+  const std = sample_std(samples) || 1
   return std * n_vals ** (-1 / 5)
 }
 

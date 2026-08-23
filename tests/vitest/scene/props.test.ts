@@ -43,16 +43,16 @@ describe(`build_orbit_props`, () => {
     expect(Math.log(0.01) / Math.log(1 - props.dampingFactor) / 60).toBeLessThan(0.5)
   })
 
-  test(`onstart/onend toggle camera_is_moving and run onstart_extra once`, () => {
+  test(`onstart/onend toggle camera_is_moving and run on_start_extra once`, () => {
     const set_camera_is_moving = vi.fn()
-    const onstart_extra = vi.fn()
-    const props = build_orbit_props({ ...opts, set_camera_is_moving, onstart_extra })
+    const on_start_extra = vi.fn()
+    const props = build_orbit_props({ ...opts, set_camera_is_moving, on_start_extra })
     props.onstart()
     expect(set_camera_is_moving).toHaveBeenCalledWith(true)
-    expect(onstart_extra).toHaveBeenCalledOnce()
+    expect(on_start_extra).toHaveBeenCalledOnce()
     props.onend()
     expect(set_camera_is_moving).toHaveBeenLastCalledWith(false)
-    expect(onstart_extra).toHaveBeenCalledOnce() // not re-run on end
+    expect(on_start_extra).toHaveBeenCalledOnce() // not re-run on end
   })
 
   describe(`page visibility`, () => {

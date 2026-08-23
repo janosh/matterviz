@@ -2,7 +2,7 @@
   import type { Crystal, FileInfo } from '$lib'
   import FilePicker from '$lib/FilePicker.svelte'
   import MillerIndexInput from '$lib/MillerIndexInput.svelte'
-  import { PLOT_COLORS } from '$lib/colors'
+  import { plot_color, PLOT_COLORS } from '$lib/colors'
   import { file_type_paint } from '$lib/io'
   import { format_num } from '$lib/labels'
   import type { Vec3 } from '$lib/math'
@@ -18,6 +18,7 @@
   import { structure_map, structures } from '$site/structures'
   import { SvelteMap } from 'svelte/reactivity'
   import { to_error } from '$lib/utils'
+  import { fixture_ext, site_file_info } from '$site/imports'
   import StructurePicker, { formula_for, hex_with_alpha } from '../../StructurePicker.svelte'
 
   // static/xrd symlinks these fixtures so the globbed files remain available at /xrd/<name>.
@@ -54,11 +55,9 @@
 
   // Convert glob results to FileInfo array
   const xrd_data_files: FileInfo[] = Object.keys(xrd_file_modules).map((path) => {
-    const name = path.split(`/`).pop() || path
-    const url = path.replace(`/src/site`, ``)
-    const ext = name.replace(/\.gz$/i, ``).split(`.`).pop()?.toLowerCase() || ``
+    const ext = fixture_ext(path)
     const { category, icon } = xrd_formats[ext] ?? ascii
-    return { name, url, type: ext, category, category_icon: icon }
+    return site_file_info(path, { type: ext, category, category_icon: icon })
   })
 
   // Cache computed XRD patterns to avoid recomputation when navigating structures. Writing
@@ -269,7 +268,7 @@
     <div class="selected-structures-grid">
       {#each selected_ids as struct_id, idx (struct_id)}
         {@const struct_obj = structure_map.get(struct_id)}
-        {@const series_color = PLOT_COLORS[idx % PLOT_COLORS.length]}
+        {@const series_color = plot_color(idx)}
         {#if struct_obj}
           <div
             class="structure-tile"

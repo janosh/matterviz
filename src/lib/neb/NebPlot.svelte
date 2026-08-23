@@ -1,7 +1,7 @@
 <script lang="ts">
   // Energy profile of one or more reaction paths, with the barrier annotated and the
   // fitted saddle drawn distinctly from the highest computed image.
-  import { PLOT_COLORS } from '$lib/colors'
+  import { plot_color } from '$lib/colors'
   import { format_num } from '$lib/labels'
   import { SettingsSection } from '$lib/layout'
   import { ScatterPlot, type DataSeries } from '$lib/plot'
@@ -12,6 +12,7 @@
     normalize_paths,
     path_energy_unit,
     path_profile,
+    type PathProfile,
     type PathSplineOptions,
   } from './reaction-path'
 
@@ -39,10 +40,15 @@
     y_axis = {},
     show_controls = $bindable(true),
     controls_open = $bindable(false),
+    profiles: given_profiles,
     ...rest
   }: {
     paths: ReactionPathInput
     coord_options?: PathSplineOptions
+    // Profiles of `paths` under (coord_options, coord_mode), keyed like normalize_paths(paths).
+    // A host that already measured them (NebViewer's barrier table) passes them in so each
+    // path is profiled once; otherwise they are computed here.
+    profiles?: Record<string, PathProfile>
     coord_mode?: ReactionCoordMode
     energy_reference?: EnergyReference
     show_spline?: boolean
@@ -63,7 +69,7 @@
   // Everything the plot needs per path, recomputed only when inputs or modes change
   const profiles = $derived(
     named_paths.map(({ key, path }, path_idx) => {
-      const profile = path_profile(path, profile_options)
+      const profile = given_profiles?.[key] ?? path_profile(path, profile_options)
       const offset = energy_reference === `initial` ? path.images[0].energy : 0
       return {
         ...profile,
@@ -71,7 +77,7 @@
         path,
         energies: profile.energies.map((energy) => energy - offset),
         offset,
-        color: PLOT_COLORS[path_idx % PLOT_COLORS.length],
+        color: plot_color(path_idx),
       }
     }),
   )

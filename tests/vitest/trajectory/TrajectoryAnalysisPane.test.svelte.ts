@@ -1,29 +1,17 @@
 // The shared chrome every whole-trajectory analysis pane (MSD, VACF, ...) is built on: the
 // timestep seeding, stride normalisation, indexed-trajectory warnings and stale-state rules
 // are tested once here against a stub collector rather than once per analysis.
-import {
-  trajectory_from_frames,
-  type ParseProgress,
-  type TrajectoryRun,
-} from '$lib/trajectory'
+import type { ParseProgress, TrajectoryRun } from '$lib/trajectory'
 import type {
   AnalysisCollectOptions,
   AnalysisPaneContext,
 } from '$lib/trajectory/analysis-pane'
 import TrajectoryAnalysisPane from '$lib/trajectory/TrajectoryAnalysisPane.svelte'
 import { to_error } from '$lib/utils'
-import { type ComponentProps, createRawSnippet, mount, tick, unmount } from 'svelte'
+import { type ComponentProps, createRawSnippet, mount, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { bind_props, doc_query, make_crystal } from '../setup'
+import { bind_props, doc_query, make_run, settle } from '../setup'
 
-const structure = make_crystal(20, [
-  [`H`, [0, 0, 0]],
-  [`He`, [0.5, 0, 0]],
-])
-const make_run = (n_frames: number): TrajectoryRun =>
-  trajectory_from_frames(
-    Array.from({ length: n_frames }, (_unused, step) => ({ step, structure })),
-  )
 const frame_only_run = (n_frames: number): TrajectoryRun => {
   const { collect_positions: _collect_positions, ...run } = make_run(n_frames)
   return run
@@ -36,14 +24,6 @@ afterEach(async () => {
   mounted = undefined
   document.body.replaceChildren()
 })
-
-const settle = async (): Promise<void> => {
-  for (let round = 0; round < 3; round++) {
-    await tick()
-    await Promise.resolve()
-    await tick()
-  }
-}
 
 // Mount with a collector that records its options and resolves after one microtask; the
 // `children` snippet is a no-op since only the chrome is under test
@@ -151,7 +131,7 @@ describe(`timestep seeding`, () => {
     expect(pane_text()).not.toContain(`per collected frame`)
   })
 
-  test(`folds the frame stride into the time per collected frame`, async () => {
+  test(`folds the frame stride into the time per collected frame and keeps the collected stride after a retype`, async () => {
     mount_pane({ default_dt: 0.5, default_time_unit: `ps`, time_unit_fallback: `fs` })
     await settle()
     const stride = doc_query(`.stub-controls input[min='1'][step='1']`, HTMLInputElement)
@@ -160,6 +140,18 @@ describe(`timestep seeding`, () => {
     await settle()
     expect(pane_text()).toContain(`5 frames × 2 atoms`)
     expect(pane_text()).toContain(`2 ps per collected frame`)
+    // Regression: retyping the stride without recollecting used to rescale dt for a buffer
+    // that was still strided by 4, so the downstream analysis recomputed with the wrong dt
+    await click_collect()
+    stride.value = `10`
+    stride.dispatchEvent(new Event(`input`))
+    await settle()
+    expect(pane_text()).toContain(`2 frames × 2 atoms`)
+    expect(pane_text()).toContain(`2 ps per collected frame`)
+    expect(pane_text()).not.toContain(`5 ps per collected frame`)
+    // Recollecting at the new stride moves dt along with it
+    await click_collect()
+    expect(pane_text()).toContain(`5 ps per collected frame`)
   })
 })
 

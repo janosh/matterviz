@@ -15,7 +15,7 @@ import type { ParsedTrajectory, WarnFn, WarningCollector } from './shared'
 
 type ExtxyzColumn = { offset: number; ncols: number; type: string }
 
-export function parse_extxyz_columns(comment: string): {
+function parse_extxyz_columns(comment: string): {
   species_col: number
   pos_col: number
   forces_col: number
@@ -76,7 +76,7 @@ function lookup_extxyz_bools(tokens: string[]): Pbc | undefined {
 
 const MOVE_FLAG_COLUMNS = [`move_mask`, `selective_dynamics`] as const
 
-export function read_extxyz_move_flags(
+function read_extxyz_move_flags(
   tokens: string[],
   layout: Record<string, ExtxyzColumn> | null,
 ): [boolean, boolean, boolean] | undefined {
@@ -121,7 +121,7 @@ function read_extxyz_column(tokens: string[], column: ExtxyzColumn): unknown {
   return ncols === 1 ? values[0] : values
 }
 
-export function parse_extxyz_pbc(comment: string): Pbc | undefined {
+function parse_extxyz_pbc(comment: string): Pbc | undefined {
   const match =
     /\bpbc\s*=\s*(?:"(?<double>[^"]*)"|'(?<single>[^']*)'|(?<bare>\S+(?:\s+\S+){0,2}))/iu.exec(
       comment,

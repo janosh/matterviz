@@ -1,12 +1,12 @@
 <script lang="ts">
-  import { StatusMessage } from '$lib/feedback'
   import { format_num } from '$lib/labels'
-  import { BarPlot } from '$lib/plot'
+  import type { StructurePlotProps } from '$lib/plot/bar'
+  import StructureBarPlot from '$lib/plot/bar/StructureBarPlot.svelte'
+  import { to_structure_entries } from '$lib/plot/core/structure-input'
+  import type { StructureEntry, StructureInput } from '$lib/plot/core/structure-input'
   import type { BarHandlerProps, BarSeries } from '$lib/plot/core/types'
-  import type { AnyStructure } from '$lib/structure'
   import { to_error } from '$lib/utils'
-  import type { ComponentProps } from 'svelte'
-  import { compute_structure_id_async } from './async-compute.svelte'
+  import { calc_structure_id_async } from './async-compute.svelte'
   import type { CnaTypeName } from './calc-cna'
   import { CNA_TYPE_COLORS, CNA_TYPE_LABELS, CNA_TYPE_NAMES } from './calc-cna'
   import type { StructureIdOptions, StructureIdResult } from './calc-structure-id'
@@ -17,63 +17,85 @@
     id_results = $bindable([]),
     structures,
     id_options = {},
-    // `by_type` puts the five CNA types on the x axis, one bar series per result — the view
-    // for comparing a handful of structures. `over_frames` puts the frame index on the x axis
-    // and draws one line per type, which is how a phase transition shows up in a trajectory.
-    layout = `by_type`,
+    // One series per CNA type in both layouts. `by_structure` puts the structures on the x
+    // axis as grouped bars — the view for comparing a handful of structures. `over_frames`
+    // puts the frame index on the x axis and draws one line per type, which is how a phase
+    // transition shows up in a trajectory.
+    layout = `by_structure`,
     normalize = false,
     frame_labels,
+    mode = $bindable(`grouped`),
     loading = $bindable(false),
     error_msg = $bindable(),
-    x_axis = {},
-    y_axis = {},
     show_controls = $bindable(true),
     controls_open = $bindable(false),
+    // Includes the shared `x_axis`/`y_axis` overrides, which StructureBarPlot merges over the
+    // layout's primary/value axis defaults below (so callers can set label, range or format)
     ...rest
-  }: {
+  }: Omit<StructurePlotProps, `structures` | `strategy`> & {
     // Precomputed per-frame results. Bindable so a parent can read back what `structures` produced.
     id_results?: StructureIdResult[]
-    // Supply structures instead of `id_results` to have this component compute (in a worker)
-    structures?: AnyStructure[]
+    // Supply structures instead of `id_results` to have this component compute (in a worker).
+    // Same shapes as CoordinationBarPlot/BondAnglePlot: one structure, a label -> structure
+    // record, or an entry array.
+    structures?: StructureInput
     id_options?: StructureIdOptions
-    layout?: `by_type` | `over_frames`
+    layout?: `by_structure` | `over_frames`
     // Plot the fraction of atoms rather than the raw count
     normalize?: boolean
-    // x tick labels in `over_frames` layout; defaults to the result index
+    // x tick labels; defaults to the entry labels of `structures`, else the result index
     frame_labels?: (number | string)[]
-    loading?: boolean
-    error_msg?: string
-    x_axis?: ComponentProps<typeof BarPlot>[`x_axis`]
-    y_axis?: ComponentProps<typeof BarPlot>[`y_axis`]
-  } & ComponentProps<typeof BarPlot> = $props()
+  } = $props()
 
+  let dropped_entries = $state<StructureEntry[]>([])
+  const entries = $derived([...to_structure_entries(structures), ...dropped_entries])
   const id_options_snapshot = $derived(JSON.stringify(id_options))
+  // Labels of the entries the current id_results were computed from; empty when the
+  // results came in through the prop instead
+  let computed_labels = $state<string[]>([])
 
   // Async compute can't be a $derived; a request id drops results of superseded inputs. The
   // cleanup also aborts them so the worker stops on a superseded input or unmount, and bumps
   // the id so the abort rejection of an unmounted plot never lands in error_msg.
   let request_id = 0
+  // Whether the previous run had inputs to compute. Only then does a run without inputs reset
+  // loading/error_msg: in results-only mode (id_results from the parent, no `structures`) those
+  // are the parent's one-way props and must not be clobbered
+  let owns_status = false
   $effect(() => {
-    const inputs = structures
+    const inputs = entries
     const options: StructureIdOptions = JSON.parse(id_options_snapshot)
     const this_request = ++request_id
-    loading = Boolean(inputs?.length)
-    if (!inputs?.length) return
+    if (inputs.length === 0) {
+      computed_labels = []
+      // A failure of the previous inputs must not outlive them: clear so an empty `structures`
+      // after a failed compute shows the empty state, not the stale error
+      if (owns_status) {
+        loading = false
+        error_msg = undefined
+      }
+      owns_status = false
+      return
+    }
+    owns_status = true
+    loading = true
     error_msg = undefined
     const controller = new AbortController()
     const { signal } = controller
     Promise.all(
-      inputs.map((structure) => compute_structure_id_async(structure, options, { signal })),
+      inputs.map(({ structure }) => calc_structure_id_async(structure, options, { signal })),
     )
       .then((computed) => {
         if (this_request !== request_id) return
         id_results = computed
+        computed_labels = inputs.map(({ label }) => label)
       })
       .catch((err) => {
         if (this_request !== request_id) return
-        // drop the stale populations, else `series` stays non-empty and the empty-state
-        // StatusMessage that owns the error display never renders
+        // drop the stale populations, else `series` stays non-empty and the plot keeps
+        // showing the previous inputs next to the error
         id_results = []
+        computed_labels = []
         error_msg = to_error(err).message
       })
       .finally(() => {
@@ -95,79 +117,58 @@
       (name) => name === `other` || id_results.some((result) => result.populations[name] > 0),
     ),
   )
-  const type_labels = $derived(live_types.map((name) => CNA_TYPE_LABELS[name]))
-  const frame_ticks = $derived(frame_labels ?? id_results.map((_result, idx) => idx))
+  const x_ticks = $derived(
+    frame_labels ??
+      (computed_labels.length === id_results.length
+        ? computed_labels
+        : id_results.map((_result, idx) => idx)),
+  )
 
-  const series = $derived.by<BarSeries<PlotMetadata>[]>(() => {
-    if (id_results.length === 0) return []
-    if (layout === `by_type`) {
-      return id_results.map((result, idx) => ({
-        x: type_labels,
-        y: live_types.map((name) => value_of(result, name)),
-        label:
-          id_results.length === 1
-            ? `${result.n_atoms} atoms`
-            : String(frame_ticks[idx] ?? idx),
-        // A single series is colored per type via the bars themselves; with several results the
-        // series need distinguishing, so fall back to the type palette cycled by index.
-        color:
-          id_results.length === 1
-            ? undefined
-            : CNA_TYPE_COLORS[CNA_TYPE_NAMES[idx % CNA_TYPE_NAMES.length]],
-        bar_width: 0.8,
-        visible: true,
-        metadata: live_types.map((name) => ({ cna_type: CNA_TYPE_LABELS[name] })),
-      }))
-    }
-    return live_types.map((name) => ({
-      x: frame_ticks,
-      y: id_results.map((result) => value_of(result, name)),
-      label: CNA_TYPE_LABELS[name],
-      color: CNA_TYPE_COLORS[name],
-      render_mode: `line` as const,
-      markers: `line+points` as const,
-      visible: true,
-      metadata: id_results.map(() => ({ cna_type: CNA_TYPE_LABELS[name] })),
-    }))
-  })
+  // `cna_type` is string metadata, which StructureBarPlot turns into the tooltip prefix
+  const series = $derived<BarSeries<PlotMetadata>[]>(
+    id_results.length === 0
+      ? []
+      : live_types.map((name) => ({
+          x: x_ticks,
+          y: id_results.map((result) => value_of(result, name)),
+          label: CNA_TYPE_LABELS[name],
+          color: CNA_TYPE_COLORS[name],
+          visible: true,
+          metadata: { cna_type: CNA_TYPE_LABELS[name] },
+          ...(layout === `over_frames`
+            ? { render_mode: `line` as const, markers: `line+points` as const }
+            : { bar_width: 0.8 }),
+        })),
+  )
 
   const value_label = $derived(normalize ? `Fraction of atoms` : `Atoms`)
-  const resolved_x_axis = $derived({
-    label: layout === `by_type` ? `Structure type` : `Frame`,
-    ...x_axis,
-  })
-  const resolved_y_axis = $derived({
+  const primary_axis = $derived({ label: layout === `over_frames` ? `Frame` : `Structure` })
+  const value_axis = $derived({
     label: value_label,
     range: [0, null] as [number, null],
     ...(normalize ? {} : { format: `d` }),
-    ...y_axis,
   })
 </script>
 
-{#if series.length === 0}
-  <!-- Single owner of the message area: an error replaces the empty state rather than
-  stacking a second StatusMessage above it -->
-  <StatusMessage
-    message={error_msg ??
-      (loading ? `Identifying structure types…` : `No structure-type data to display`)}
-    type={error_msg ? `error` : `info`}
-    style={error_msg ? `` : `border: none`}
-  />
-{:else}
-  <BarPlot
-    {...rest}
-    bind:show_controls
-    bind:controls_open
-    {series}
-    x_axis={resolved_x_axis}
-    y_axis={resolved_y_axis}
-    mode={id_results.length > 1 && layout === `by_type` ? `grouped` : `overlay`}
-    style={rest.style ?? `height: 300px;`}
-  >
-    {#snippet tooltip(info: BarHandlerProps<PlotMetadata>)}
-      {info.metadata?.cna_type ?? info.x}
-      <br />
-      {value_label}: {format_num(info.y, normalize ? `.3~f` : `d`)}
-    {/snippet}
-  </BarPlot>
-{/if}
+<StructureBarPlot
+  {...rest}
+  bind:show_controls
+  bind:controls_open
+  {series}
+  {primary_axis}
+  {value_axis}
+  subject="structure types"
+  empty_subject="structure-type data"
+  loading_message="Identifying structure types…"
+  bind:dropped_entries
+  bind:mode
+  bind:loading
+  bind:error_msg
+  style={rest.style ?? `height: 300px;`}
+>
+  {#snippet tooltip(info: BarHandlerProps<PlotMetadata>)}
+    {info.x}
+    <br />
+    {value_label}: {format_num(info.y, normalize ? `.3~f` : `d`)}
+  {/snippet}
+</StructureBarPlot>

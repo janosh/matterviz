@@ -5,7 +5,7 @@
 // and reads back scales/pad/ticks. Creates $effects, so it must be called during
 // component init. Render the returned state with CartesianFrame.svelte.
 
-import type { Vec2 } from '$lib/math'
+import { clamp, type Vec2 } from '$lib/math'
 import {
   create_legend_decoration_item,
   decoration_placement_revision,
@@ -85,15 +85,8 @@ interface CartesianFrameOptions {
   // Extra decorations solved alongside the legend (ScatterPlot's colorbar)
   decorations?: () => readonly DecorationItem[]
   // Measured rects the solver must route around but doesn't own: decorations the user
-  // positioned explicitly or is currently dragging
+  // positioned explicitly (the dragged legend is handled by the frame itself)
   exclusion_rects?: () => readonly Rect[]
-  // Extra gate on the legend joining automatic placement, beyond the frame's own checks.
-  // False while the user drags the legend or has pinned it to a manual position.
-  legend_auto_placed?: () => boolean
-  // Freeze the legend's tweened coords mid-drag
-  legend_suspended?: () => boolean
-  // Position a dragged legend keeps once the user lets go, overriding the solver
-  legend_manual_position?: () => { x: number; y: number } | null
   // Estimated legend size used until the element has been measured
   legend_footprint_fallback?: { width: number; height: number }
   marginals: () => ResolvedMarginals
@@ -109,11 +102,14 @@ interface CartesianFrameOptions {
   // Axis configs whose `range` overrides feed the range sync. Defaults to `axes`;
   // Histogram log-sanitizes its count axes here.
   range_sources?: () => Record<FacetAxis, Pick<AxisConfig, `range`>>
-  // `per-axis` leaves a panned axis alone when a different axis's auto range moves,
-  // `all-axes` resnaps every axis whenever any of them changes, `expand` additionally
-  // keeps the current view when the auto range collapses to the [0, 1] "no data"
-  // sentinel (every series hidden) so the chart doesn't jump.
-  range_sync?: `per-axis` | `all-axes` | `expand`
+  // Unset resnaps every axis whenever any of them changes. `per-axis` leaves a panned
+  // axis alone when a different axis's auto range moves; `expand` additionally keeps the
+  // current view on an axis whose auto range has no data behind it (every series hidden,
+  // see `has_data`) so the chart doesn't jump.
+  range_sync?: `per-axis` | `expand`
+  // Whether each axis's auto range is backed by finite visible data (default: all true).
+  // Only consulted by `expand`; an axis with a pinned bound always adopts its new range.
+  has_data?: () => PerAxis<boolean>
   // Tick counts per axis when the axis config leaves `ticks` unset
   tick_counts?: PerAxis<number>
   // Forwarded to the pan/zoom controller so charts can track a live rect drag
@@ -139,6 +135,8 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
   let legend_element = $state<HTMLDivElement | undefined>()
   let legend_size_revision = $state(0)
   let hovered_series_idx = $state<number | null>(null)
+  // Shared across the z-ordered ReferenceLinesLayer instances so one hover highlights one line
+  let hovered_ref_line_idx = $state<number | null>(null)
   // PlotLegendLayer binds this, so the frame owns the text and the legend config only seeds
   // it: a $derived would discard what the user typed on every new legend object.
   let legend_filter_query = $state(opts.legend()?.filter_query ?? ``)
@@ -209,7 +207,8 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
 
   // Re-derive y2 the moment the mode is toggled rather than waiting for the next data
   // change. $effect.pre so it lands before the range effect reads `current`.
-  let prev_sync_mode = $state<string>(`none`)
+  // Last applied mode; plain since only this effect reads it
+  let prev_sync_mode = `none`
   $effect.pre(() => {
     if (y2_sync.mode === prev_sync_mode) return
     prev_sync_mode = y2_sync.mode
@@ -221,7 +220,8 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
   // null for transient non-finite bounds (skip: writing NaN breaks scales and, since
   // NaN !== NaN, loops the effect).
   $effect(() => {
-    const next = resolve_axis_ranges(opts.range_sources?.() ?? opts.axes(), opts.auto_ranges())
+    const sources = opts.range_sources?.() ?? opts.axes()
+    const next = resolve_axis_ranges(sources, opts.auto_ranges())
     if (!next) return
     // untrack the read of `ranges` so the writes below can't re-trigger this effect
     // (reading + writing the same state otherwise causes effect_update_depth_exceeded).
@@ -234,9 +234,15 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
         ranges.current[axis] = [...next[axis]] as Vec2
       }
     } else if (opts.range_sync === `expand`) {
-      // Adopt each axis's new range unless it collapsed to the "no data" sentinel
+      // Adopt each axis's new range unless nothing backs it (no data, no pinned bound)
+      const has_data = opts.has_data?.() ?? {}
       for (const axis of FACET_AXES) {
-        const { range, changed } = expand_range_if_needed(initial[axis], next[axis])
+        const pinned = sources[axis].range?.some((bound) => bound != null) ?? false
+        const { range, changed } = expand_range_if_needed(
+          initial[axis],
+          next[axis],
+          (has_data[axis] ?? true) || pinned,
+        )
         if (!changed) continue
         // copy: initial is the reset target, so it must not alias the live current range
         ranges.initial[axis] = range
@@ -299,6 +305,68 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
     )
   })
   const legend_has_explicit_pos = $derived(has_explicit_position(opts.legend()?.style))
+
+  // Legend drag: a legend the user grabbed or dropped owns its position; the solver only
+  // routes around it (via exclusion rects) from then on.
+  let legend_is_dragging = $state(false)
+  let legend_manual_position = $state<{ x: number; y: number } | null>(null)
+  // Cursor offset inside the legend at drag start; plain since only the handlers read it
+  let legend_drag_offset = { x: 0, y: 0 }
+  const constrain_legend_position = (
+    position: { x: number; y: number },
+    footprint: { width: number; height: number },
+  ): { x: number; y: number } => ({
+    x: clamp(position.x, 0, Math.max(0, width - footprint.width)),
+    y: clamp(position.y, 0, Math.max(0, height - footprint.height)),
+  })
+  // Keep a dropped legend inside the plot when the plot or the legend resizes
+  $effect(() => {
+    if (!legend_manual_position || legend_is_dragging) return
+    const { x, y } = legend_manual_position
+    const constrained = constrain_legend_position(legend_manual_position, legend_footprint)
+    if (constrained.x !== x || constrained.y !== y) legend_manual_position = constrained
+  })
+  const legend_drag_start = (event: MouseEvent): void => {
+    const legend_el = event.currentTarget
+    if (!svg_element || !(legend_el instanceof HTMLElement)) return
+    legend_is_dragging = true
+    // Offset from the cursor to the legend's rendered corner (accounts for transforms)
+    const legend_rect = legend_el.getBoundingClientRect()
+    legend_drag_offset = {
+      x: event.clientX - legend_rect.left,
+      y: event.clientY - legend_rect.top,
+    }
+  }
+  const legend_drag = (event: MouseEvent): void => {
+    if (!legend_is_dragging || !svg_element || !legend_element) return
+    const svg_rect = svg_element.getBoundingClientRect()
+    legend_manual_position = constrain_legend_position(
+      {
+        x: event.clientX - svg_rect.left - legend_drag_offset.x,
+        y: event.clientY - svg_rect.top - legend_drag_offset.y,
+      },
+      legend_footprint,
+    )
+  }
+  const legend_drag_end = (): void => {
+    legend_is_dragging = false
+  }
+  // An explicitly styled or dragged legend stays outside solver ownership, but its measured
+  // rectangle remains an exclusion for the automatic items
+  const legend_pinned_rects = $derived.by((): Rect[] => {
+    if (
+      !legend_element ||
+      !(legend_has_explicit_pos || legend_is_dragging || legend_manual_position)
+    ) {
+      return []
+    }
+    const position = legend_manual_position ?? {
+      x: legend_element.offsetLeft,
+      y: legend_element.offsetTop,
+    }
+    return [{ ...position, ...legend_footprint }]
+  })
+
   const legend_item = $derived(
     create_legend_decoration_item({
       enabled:
@@ -306,19 +374,21 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
         opts.legend_visible() &&
         legend_element != null &&
         !legend_has_explicit_pos &&
-        (opts.legend_auto_placed?.() ?? true),
+        !legend_is_dragging &&
+        !legend_manual_position,
       footprint: legend_footprint,
       items: opts.legend_items(),
       config: { ...opts.legend(), filter_query: legend_filter_query },
     }),
   )
+  const pinned_rects = $derived([...legend_pinned_rects, ...(opts.exclusion_rects?.() ?? [])])
   const base_decoration_solution = $derived(
     solve_decorations({
       base_pad: effective_base_pad,
       width,
       height,
       obstacles_norm: opts.obstacles(),
-      exclusion_rects: opts.exclusion_rects?.(),
+      exclusion_rects: pinned_rects,
       items: [...(legend_item ? [legend_item] : []), ...(opts.decorations?.() ?? [])],
     }),
   )
@@ -329,6 +399,18 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
 
   const scales = $derived(create_axis_scales(opts.axes(), ranges.current, pad, width, height))
   const ticks = $derived(compute_ticks(scales, ranges.current))
+  // Reference lines on x2/y2 resolve against the primary axis while no series carries data
+  // there (their ranges/scales are [0, 1] sentinels, which would drop or misplace the line),
+  // so charts without secondary axes (BinnedScatterPlot) still honour `x_axis: 'x2'`
+  const ref_line_axes = $derived.by(() => {
+    const x2 = opts.has_x2() ? `x2` : `x`
+    const y2 = opts.has_y2() ? `y2` : `y`
+    const { current } = ranges
+    return {
+      ranges: { x: current.x, x2: current[x2], y: current.y, y2: current[y2] },
+      scales: { x: scales.x, x2: scales[x2], y: scales.y, y2: scales[y2] },
+    }
+  })
   const decoration_solution = $derived(
     solve_reference_annotations({
       base_solution: base_decoration_solution,
@@ -337,12 +419,15 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
       height,
       obstacles_norm: opts.obstacles(),
       lines: opts.ref_lines(),
-      ranges: ranges.current,
-      scales,
+      ...ref_line_axes,
     }),
   )
   const legend_placement = $derived(get_decoration_placement(decoration_solution, `legend`))
-  const exclusion_rects = $derived(decoration_placement_rects(decoration_solution))
+  // Everything a tooltip must dodge: solver placements plus the pinned/dragged decorations
+  const exclusion_rects = $derived([
+    ...pinned_rects,
+    ...decoration_placement_rects(decoration_solution),
+  ])
 
   // Use the same adaptive y/y2 bands for title placement that padding and PlotAxis render
   const tick_label_widths = $derived.by(() => {
@@ -374,8 +459,9 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
     on_element_resize: () => (legend_size_revision += 1),
     // Re-tween whenever the solved rect moves, not just when it changes side
     placement_revision: () => decoration_placement_revision(legend_placement),
-    suspended: opts.legend_suspended,
-    manual_position: opts.legend_manual_position,
+    // Freeze the tweened coords mid-drag; a dropped legend snaps to where it was left
+    suspended: () => legend_is_dragging,
+    manual_position: () => legend_manual_position,
   })
 
   const pan_zoom = create_pan_zoom({
@@ -460,10 +546,33 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
     set hovered_series_idx(idx: number | null) {
       hovered_series_idx = idx
     },
+    get hovered_ref_line_idx() {
+      return hovered_ref_line_idx
+    },
+    set hovered_ref_line_idx(idx: number | null) {
+      hovered_ref_line_idx = idx
+    },
+    get ref_lines() {
+      return opts.ref_lines()
+    },
+    // Ranges/scales the reference lines resolve against (x2/y2 alias x/y until they carry data)
+    get ref_line_axes() {
+      return ref_line_axes
+    },
     clip_path_id,
     facet,
     pan_zoom,
     legend_tween,
+    legend_drag_start,
+    legend_drag,
+    legend_drag_end,
+    get legend_is_dragging() {
+      return legend_is_dragging
+    },
+    // Where a dragged legend was dropped (null while the solver owns its position)
+    get legend_manual_position() {
+      return legend_manual_position
+    },
     get axes() {
       return opts.axes()
     },

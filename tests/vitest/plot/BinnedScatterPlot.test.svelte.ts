@@ -9,7 +9,9 @@ import { createRawSnippet, mount, tick, type ComponentProps } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
   bind_props,
+  CANVAS_NOOP_METHODS,
   doc_query,
+  mock_canvas_context,
   resize_element,
   svg_query,
   trigger_intersection,
@@ -38,6 +40,7 @@ const point_mode = (config: BinnedDensityConfig = {}): BinnedProps => ({
 afterEach(() => {
   document.body.replaceChildren()
   vi.restoreAllMocks()
+  vi.useRealTimers()
 })
 
 const settle = async () => {
@@ -144,27 +147,6 @@ const uniform_density_series = (columns = 32, rows = 24) => [
     ),
   },
 ]
-function mock_canvas_context(overrides: Partial<CanvasRenderingContext2D> = {}) {
-  const ctx = {
-    font: ``,
-    measureText: vi.fn(() => ({ width: 0 })),
-    setTransform: vi.fn(),
-    clearRect: vi.fn(),
-    save: vi.fn(),
-    beginPath: vi.fn(),
-    rect: vi.fn(),
-    clip: vi.fn(),
-    restore: vi.fn(),
-    fillRect: vi.fn(),
-    arc: vi.fn(),
-    fill: vi.fn(),
-    stroke: vi.fn(),
-    ...overrides,
-  } as unknown as CanvasRenderingContext2D
-  vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue(ctx)
-  return ctx
-}
-
 function mock_label_measurement(width: number, height: number) {
   const original_get_bounding_client_rect = Object.getOwnPropertyDescriptor(
     HTMLElement.prototype,
@@ -285,7 +267,7 @@ describe(`BinnedScatterPlot`, () => {
     const layout = async (format?: string) => {
       mock_canvas_context({
         measureText: vi.fn((label: string) => ({ width: label.length * 20 })),
-      } as unknown as Partial<CanvasRenderingContext2D>)
+      })
       mount_plot({
         series: [{ x: [0, 8e4], y: [0, 1] }],
         x_axis: format ? { format } : {},
@@ -344,50 +326,12 @@ describe(`BinnedScatterPlot`, () => {
       })
       await settle()
 
-      const colorbar = doc_query(`.binned-scatter .color-bar`)
+      const colorbar = doc_query(`.binned-scatter .colorbar-wrapper`)
       expect(colorbar.dataset.decorationLocation).toBe(expected_location)
       expect(colorbar.dataset.decorationSide ?? null).toBe(expected_side)
       expect(plot_rect()).toEqual(expected_plot_rect)
     },
   )
-
-  test(`keeps overflowing colorbar ticks inside the plot clearance`, async () => {
-    vi.spyOn(HTMLElement.prototype, `offsetWidth`, `get`).mockReturnValue(220)
-    vi.spyOn(HTMLElement.prototype, `offsetHeight`, `get`).mockReturnValue(30)
-    vi.spyOn(Element.prototype, `getBoundingClientRect`).mockImplementation(
-      function (this: Element): DOMRect {
-        if (this.classList.contains(`tick-label`)) {
-          return DOMRect.fromRect({ x: 90, y: 128, width: 240, height: 18 })
-        }
-        return DOMRect.fromRect({ x: 100, y: 100, width: 220, height: 30 })
-      },
-    )
-    mount_plot({
-      series: [{ x: [0.5], y: [0.5] }],
-      ...density_mode_with_colorbar({ bin_px: 20 }),
-      ...unit_axes,
-    })
-    await settle()
-
-    const colorbar = doc_query(`.binned-scatter .color-bar`)
-    const visual_rect = decoration_rect(`.binned-scatter .color-bar`)
-    const area = plot_rect()
-    expect(visual_rect).toMatchObject({ width: 240, height: 46 })
-    expect(visual_rect.x).toBeGreaterThanOrEqual(area.x + COLOR_BAR_DEFAULTS.axis_clearance)
-    expect(visual_rect.y).toBeGreaterThanOrEqual(area.y + COLOR_BAR_DEFAULTS.axis_clearance)
-    expect(visual_rect.x + visual_rect.width).toBeLessThanOrEqual(
-      area.x + area.width - COLOR_BAR_DEFAULTS.axis_clearance,
-    )
-    expect(visual_rect.y + visual_rect.height).toBeLessThanOrEqual(
-      area.y + area.height - COLOR_BAR_DEFAULTS.axis_clearance,
-    )
-    const horizontal_gap = Math.min(
-      visual_rect.x - area.x,
-      area.x + area.width - (visual_rect.x + visual_rect.width),
-    )
-    expect(horizontal_gap).toBe(COLOR_BAR_DEFAULTS.axis_clearance)
-    expect(css_px(colorbar.style.left)).toBe(visual_rect.x + 10)
-  })
 
   test(`preserves explicit colorbar wrapper and bar styles`, async () => {
     mount_plot({
@@ -421,7 +365,7 @@ describe(`BinnedScatterPlot`, () => {
     const anno_wrapper = doc_query(`.binned-scatter .annotation`)
     expect(anno_wrapper.querySelector(`.custom-annotation`)?.textContent).toBe(`800x600:false`)
     const anno_rect = decoration_rect(`.binned-scatter .annotation`)
-    const bar_rect = decoration_rect(`.binned-scatter .color-bar`)
+    const bar_rect = decoration_rect(`.binned-scatter .colorbar-wrapper`)
     for (const rect of [anno_rect, bar_rect]) {
       expect(Object.values(rect).every(Number.isFinite), JSON.stringify(rect)).toBe(true)
     }
@@ -463,7 +407,7 @@ describe(`BinnedScatterPlot`, () => {
     const series = $state([{ x: [0, 1], y: [0, 1] }])
     mount_plot({ series, ...density_mode_with_colorbar() })
     await settle()
-    const colorbar = doc_query(`.binned-scatter .color-bar`)
+    const colorbar = doc_query(`.binned-scatter .colorbar-wrapper`)
     const initial_position = { left: colorbar.style.left, top: colorbar.style.top }
     layout_spy.mockClear()
 
@@ -481,7 +425,7 @@ describe(`BinnedScatterPlot`, () => {
     })
     await settle()
 
-    expect(document.querySelector(`.color-bar`)).toBeNull()
+    expect(document.querySelector(`.colorbar-wrapper`)).toBeNull()
     const anno_wrapper = doc_query(`.annotation`)
     expect(anno_wrapper.style.left).toMatch(/px$/)
     expect(anno_wrapper.style.top).toMatch(/px$/)
@@ -537,6 +481,37 @@ describe(`BinnedScatterPlot`, () => {
     expect(line?.getAttribute(`stroke-dasharray`)).toBe(style.dash)
   })
 
+  // The frame keeps [0, 1] sentinel ranges/scales for x2/y2 when no series uses them, so a
+  // secondary-axis ref line must fall back to the primary axis instead of the sentinel
+  test.each([
+    [`x2`, { type: `vertical`, x: 5, x_axis: `x2` }, { type: `vertical`, x: 5 }],
+    [`y2`, { type: `horizontal`, y: 50, y_axis: `y2` }, { type: `horizontal`, y: 50 }],
+  ] as const)(
+    `a %s RefLine resolves on the primary axis when the chart has no secondary data`,
+    async (_axis, secondary, primary) => {
+      const visible_line_coords = async (ref_line: typeof secondary | typeof primary) => {
+        document.body.replaceChildren()
+        mount_plot({
+          series: [{ x: [0, 10], y: [0, 100] }],
+          x_axis: { range: [0, 10] },
+          y_axis: { range: [0, 100] },
+          overlays: { ref_lines: [ref_line] },
+          ...hidden_colorbar,
+        })
+        await settle()
+        const lines = [...document.querySelectorAll(`.reference-lines line`)].filter(
+          (line) => line.getAttribute(`stroke`) !== `transparent`,
+        )
+        return lines.map((line) =>
+          [`x1`, `y1`, `x2`, `y2`].map((attr) => Number(line.getAttribute(attr))),
+        )
+      }
+      const primary_coords = await visible_line_coords(primary)
+      expect(primary_coords).toHaveLength(1)
+      expect(await visible_line_coords(secondary)).toEqual(primary_coords)
+    },
+  )
+
   test(`drops declarative RefLines that resolve outside the axis ranges`, async () => {
     mount_plot({
       series: [{ x: [0, 1], y: [0, 1] }],
@@ -559,33 +534,6 @@ describe(`BinnedScatterPlot`, () => {
       (line) => line.getAttribute(`stroke`) !== `transparent`,
     )
     expect(visible_lines).toHaveLength(1)
-  })
-
-  test(`renders solver-placed non-overlapping RefLine annotations`, async () => {
-    mount_plot({
-      series: [{ x: [0, 1], y: [0, 1] }],
-      ...unit_axes,
-      overlays: {
-        ref_lines: [
-          { type: `horizontal`, y: 0.5, annotation: { text: `near A` } },
-          { type: `horizontal`, y: 0.51, annotation: { text: `near B` } },
-        ],
-      },
-      ...hidden_colorbar,
-    })
-    await settle()
-
-    const labels = [...document.querySelectorAll<SVGTextElement>(`.reference-lines text`)]
-    expect(labels.map((label) => label.textContent)).toEqual([`near A`, `near B`])
-    expect(
-      labels.map((label) => [
-        label.getAttribute(`text-anchor`),
-        label.getAttribute(`dominant-baseline`),
-      ]),
-    ).toEqual([
-      [`end`, `auto`],
-      [`end`, `hanging`],
-    ])
   })
 
   test(`uses density color scale type for colorbar ticks`, async () => {
@@ -678,7 +626,11 @@ describe(`BinnedScatterPlot`, () => {
     expect(on_point_click).toHaveBeenCalledOnce()
   })
 
+  // rAF is faked so the pulse can be stepped deterministically instead of sleeping
+  const advance_frames = (count: number) => vi.advanceTimersByTime(count * 16)
+
   test(`pulses the selected point and pauses while scrolled out of view`, async () => {
+    vi.useFakeTimers({ toFake: [`requestAnimationFrame`, `cancelAnimationFrame`] })
     const stroke = vi.fn()
     const radii = capture_radii({ stroke })
 
@@ -696,21 +648,23 @@ describe(`BinnedScatterPlot`, () => {
     // Assert the pulse actually advances rather than just rendering one highlighted frame:
     // the visibility gate silently froze it everywhere before, and a frozen pulse still
     // draws that first frame. Redraws show up as further arc() calls.
-    const let_frames_run = () => new Promise((resolve) => setTimeout(resolve, 60))
     const after_mount = radii.length
-    await let_frames_run()
+    advance_frames(3)
+    await settle()
     expect(radii.length).toBeGreaterThan(after_mount)
 
     trigger_intersection(binned_plot(), false)
     await settle()
     const after_pause = radii.length
-    await let_frames_run()
+    advance_frames(3)
+    await settle()
     expect(radii).toHaveLength(after_pause)
   })
 
   // The pulsing marker sits on its own canvas, so a tick repaints one circle rather than
   // every point in the plot. Counted per canvas because both share the mocked getContext.
   test(`pulse ticks repaint only the marked-points overlay`, async () => {
+    vi.useFakeTimers({ toFake: [`requestAnimationFrame`, `cancelAnimationFrame`] })
     const clears = { base: 0, overlay: 0 }
     const width_setter = vi.spyOn(HTMLCanvasElement.prototype, `width`, `set`)
     const css_width_setter = vi.spyOn(CSSStyleDeclaration.prototype, `width`, `set`)
@@ -722,12 +676,8 @@ describe(`BinnedScatterPlot`, () => {
         return {
           font: ``,
           measureText: () => ({ width: 0 }),
+          ...Object.fromEntries(CANVAS_NOOP_METHODS.map((name) => [name, vi.fn()])),
           clearRect: () => clears[layer]++,
-          ...Object.fromEntries(
-            `setTransform save beginPath rect clip restore fillRect arc fill stroke`
-              .split(` `)
-              .map((name) => [name, vi.fn()]),
-          ),
         } as unknown as CanvasRenderingContext2D
       },
     )
@@ -739,11 +689,13 @@ describe(`BinnedScatterPlot`, () => {
       ...unit_axes,
     })
     await settle()
-    await new Promise((resolve) => setTimeout(resolve, 60))
+    advance_frames(3)
+    await settle()
 
     const settled = { ...clears, resizes: resize_count() }
     expect(settled.overlay).toBeGreaterThan(0)
-    await new Promise((resolve) => setTimeout(resolve, 60))
+    advance_frames(3)
+    await settle()
     expect(clears.overlay).toBeGreaterThan(settled.overlay)
     expect(clears.base).toBe(settled.base) // points layer untouched between view changes
     expect(resize_count()).toBe(settled.resizes)
@@ -1246,20 +1198,6 @@ describe(`BinnedScatterPlot`, () => {
 
     expect(getComputedStyle(doc_query(`.point-labels .point-label`)).fontSize).toBe(`20px`)
     expect(getComputedStyle(doc_query(`.point-label-measure`)).fontSize).toBe(`20px`)
-  })
-
-  test(`auto-grows left padding for wide y-axis ticks`, async () => {
-    mock_canvas_context({
-      measureText: () => ({ width: 120 }) as TextMetrics,
-    })
-    mount_plot({
-      series: [{ x: [0, 1], y: [0, 1] }],
-      y_axis: { label: `Energy` },
-      ...hidden_colorbar,
-    })
-    await settle()
-
-    expect(plot_rect().x).toBeGreaterThan(60)
   })
 
   test(`renders rotated y-axis label as SVG text with subscript tspans`, async () => {

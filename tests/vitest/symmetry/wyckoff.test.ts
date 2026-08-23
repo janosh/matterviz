@@ -1,7 +1,7 @@
 import type { ElementSymbol } from '$lib'
 import type { Vec3 } from '$lib/math'
 import type { Crystal } from '$lib/structure'
-import type { WyckoffPos } from '$lib/symmetry'
+import type { SymmetryDataset, WyckoffPos } from '$lib/symmetry'
 import {
   apply_symmetry_operations,
   count_structure_free_params,
@@ -16,6 +16,13 @@ import { describe, expect, test } from 'vitest'
 import { make_crystal, make_wyckoff_dataset } from '../setup'
 
 describe(`wyckoff_positions_from_moyo`, () => {
+  // A plain MoyoDataset (straight from @spglib/moyo-wasm, never through analyze_structure) has
+  // no input_cell; it runs inside $derived so it must return [] rather than throw
+  test(`returns [] for a plain MoyoDataset without input_cell`, () => {
+    const { input_cell: _input, ...plain } = make_wyckoff_dataset([[0, 0, 0]], [1], [`1a`])
+    expect(wyckoff_positions_from_moyo(plain as unknown as MoyoDataset)).toEqual([])
+  })
+
   test(`handles various input scenarios`, () => {
     // Null input
     expect(wyckoff_positions_from_moyo(null)).toEqual([])
@@ -178,7 +185,7 @@ describe(`wyckoff_positions_from_moyo`, () => {
       std_linear: [1, 0, 0, 0, 1, 0, 0, 0, 1],
       std_origin_shift: [0, 0, 0],
       orig_site_indices_by_input_idx: [[0]],
-    } as unknown as MoyoDataset
+    } as unknown as SymmetryDataset
     expect(wyckoff_positions_from_moyo(primitive_input)).toEqual([
       { wyckoff: `4a`, elem: `Cu`, abc: [0, 0, 0], site_indices: [0], site_symmetry: `m-3m` },
     ])
@@ -482,6 +489,21 @@ describe(`apply_symmetry_operations`, () => {
     expect(result).toHaveLength(1)
     expect(result[0]).toEqual(expected)
   })
+
+  // wrap_to_unit_cell only snaps within 1e-10 of 1, so x = 1 - 5e-10 survives wrapping while
+  // its inversion image -x wraps to 5e-10; both round to 0.00000000 at 8 decimals and are one
+  // position (the key used to read 1.00000000 vs 0.00000000 and kept both)
+  test.each([1 - 5e-10, 1 - 1e-9, 1 - 4e-9])(
+    `dedupes a position at %d against its lattice-equivalent image near 0`,
+    (coord) => {
+      const position: Vec3 = [coord, 0.25, 0.25]
+      const result = apply_symmetry_operations(position, [
+        operations.identity,
+        operations.mirror_x,
+      ])
+      expect(result).toHaveLength(1)
+    },
+  )
 })
 
 describe(`map_wyckoff_to_all_atoms`, () => {

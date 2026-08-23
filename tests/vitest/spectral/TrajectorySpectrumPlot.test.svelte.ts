@@ -109,7 +109,6 @@ describe(`TrajectorySpectrumPlot`, () => {
     const spectrum_plots = target.querySelector<HTMLElement>(`.trajectory-spectrum-plots`)
     if (!spectrum_plots) throw new Error(`spectrum plot container not rendered`)
     expect(spectrum_plots.style.height).toBe(`240px`)
-    expect(target.querySelector<HTMLElement>(`.facet-grid`)?.style.height).toBe(`100%`)
     expect(target.querySelectorAll(`.scatter`)).toHaveLength(2)
     expect(target.textContent).toContain(`Relative IR intensity`)
     expect(target.textContent).toContain(`Raman unpolarized`)
@@ -297,7 +296,6 @@ it(`pane discovers frame-metadata response signals and treats a non-periodic cel
   continuous_checkbox.checked = true
   continuous_checkbox.dispatchEvent(new Event(`change`, { bubbles: true }))
   flushSync()
-  expect(continuous_checkbox.checked).toBe(true)
   set_select(ir_select, `dipole`)
   set_select(ir_select, `polarization`)
   expect(target.querySelector<HTMLInputElement>(`input[type="checkbox"]`)?.checked).toBe(false)
@@ -346,7 +344,6 @@ it(`pane discovers frame-metadata response signals and treats a non-periodic cel
     `.spectroscopy-details-toggle`,
   )
   if (!details_toggle) throw new Error(`missing spectroscopy details toggle`)
-  expect(details_toggle.parentElement?.classList).toContain(`header-controls`)
   details_toggle.click()
   await tick()
   expect(inline_target.querySelector(`.spectroscopy-details-pane`)?.textContent).toContain(

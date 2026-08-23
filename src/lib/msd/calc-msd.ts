@@ -3,9 +3,15 @@
 // MSD(Δt) = <|r(t0 + Δt) − r(t0)|²> averaged over every atom AND every time origin t0.
 // Longer lags have fewer origins, so `n_origins` and `std_error` are reported per lag
 // and callers are expected to show that the tail is statistically weak.
-import type { LatticeConverters, Matrix3x3, Vec3 } from '$lib/math'
-import { create_lattice_converters, min_image_displacement } from '$lib/math'
-import type { Pbc } from '$lib/structure'
+import { mean as mean_of } from '$lib/math'
+import {
+  curve_slots,
+  group_atoms_by_element,
+  lag_range,
+  resolve_lag_time_unit,
+  unwrapped_positions_of,
+  validate_position_stream_layout,
+} from '$lib/trajectory/positions'
 import type {
   EinsteinFit,
   EinsteinFitOptions,
@@ -15,13 +21,31 @@ import type {
   MsdResult,
 } from './index'
 
-// Guard helper: prefixes every message with the function that raised it, so no call
-// site has to repeat the name and most guards stay on one line
-const make_fail =
-  (fn_name: string) =>
-  (message: string): never => {
-    throw new Error(`${fn_name}: ${message}`)
-  }
+// Rough (origin x atom) operation budget the origin sub-sampling is tuned against, so a
+// 100k-frame run stays interactive. MSD can thin origins because it averages a monotone
+// displacement; the chosen stride is reported so a thinned average is never mistaken for a
+// full one.
+const WORK_BUDGET = 2e8
+
+// Prefixes every guard message with the function that raised it, so most guards stay on
+// one line
+const fail = (message: string): never => {
+  throw new Error(`fit_einstein_diffusion: ${message}`)
+}
+
+// One Welford step for slot `idx` of a running mean / sum-of-squared-deviations pair.
+// `count` is the sample number including this one.
+const welford_update = (
+  mean: Float64Array,
+  m2: Float64Array,
+  idx: number,
+  count: number,
+  value: number,
+): void => {
+  const delta = value - mean[idx]
+  mean[idx] += delta / count
+  m2[idx] += delta * (value - mean[idx])
+}
 
 // Ordinary least squares of msd against time over the requested lag window.
 // Returns null (not a widened window) when the window holds fewer than 2 points —
@@ -39,7 +63,6 @@ export function fit_einstein_diffusion(
     dimensionality = 3,
     time_unit = `frame`,
   } = options
-  const fail = make_fail(`fit_einstein_diffusion`)
   if (dimensionality <= 0) fail(`dimensionality must be positive, got ${dimensionality}`)
   if (start_fraction >= end_fraction) {
     fail(`start_fraction (${start_fraction}) must be below end_fraction (${end_fraction})`)
@@ -57,9 +80,8 @@ export function fit_einstein_diffusion(
   const picked = [...lags.keys()].filter((idx) => lags[idx] >= lo && lags[idx] <= hi)
   if (picked.length < 2) return null
 
-  const mean_of = (values: number[]) =>
-    picked.reduce((sum, idx) => sum + values[idx], 0) / picked.length
-  const [mean_x, mean_y] = [mean_of(times), mean_of(msd)]
+  const mean_x = mean_of(picked.map((idx) => times[idx]))
+  const mean_y = mean_of(picked.map((idx) => msd[idx]))
 
   let [sxx, sxy, syy] = [0, 0, 0]
   for (const idx of picked) {
@@ -89,191 +111,35 @@ export function fit_einstein_diffusion(
   }
 }
 
-// One Welford step for slot `idx` of a running mean / sum-of-squared-deviations pair.
-// `count` is the sample number including this one. Exported for $lib/vacf, which averages
-// its own per-origin samples the same way.
-export const welford_update = (
-  mean: Float64Array,
-  m2: Float64Array,
-  idx: number,
-  count: number,
-  value: number,
-): void => {
-  const delta = value - mean[idx]
-  mean[idx] += delta / count
-  m2[idx] += delta * (value - mean[idx])
-}
-
-// Map each atom onto a dense element-group slot so a single pass over atoms feeds every
-// per-element curve. Callers reserve slot `labels.length` for the all-atom total.
-// Exported for $lib/vacf, which groups the same atoms for its own curves.
-export function group_atoms_by_element(elements: readonly string[]): {
-  labels: string[]
-  group_sizes: number[]
-  atom_group: Int32Array
-} {
-  const labels: string[] = []
-  const group_sizes: number[] = []
-  const label_to_group = new Map<string, number>()
-  const atom_group = Int32Array.from(elements, (label) => {
-    let group = label_to_group.get(label)
-    if (group === undefined) {
-      group = labels.length
-      label_to_group.set(label, group)
-      labels.push(label)
-      group_sizes.push(0)
-    }
-    group_sizes[group]++
-    return group
-  })
-  return { labels, group_sizes, atom_group }
-}
-
-// Turn per-frame WRAPPED Cartesian positions into a continuous unwrapped trajectory by
-// accumulating minimum-image steps straight into a second flat buffer. Stays flat because
-// a Vec3[][] round trip costs ~660 MB of nested arrays for a 96 MB buffer (2000 frames x
-// 2000 atoms, measured), putting the module's own 512 MB collect budget out of reach. The
-// kernel is still math's verified min_image_displacement over one reused scratch pair.
-//
-// CALLER BEWARE: the input must be wrapped coordinates. Feeding coordinates that are
-// ALREADY unwrapped (e.g. a LAMMPS dump with xu/yu/zu columns, which the parser flags as
-// `coords_unwrapped: true`) re-applies the minimum image convention and silently truncates
-// every real displacement longer than half a cell — check that flag before calling this.
-//
-// Exported for $lib/vacf, which differentiates the same unwrapped coordinates, and for
-// trajectory lines, which draws them.
-export function unwrap_flat_positions(
-  positions: Float64Array,
-  n_frames: number,
-  n_atoms: number,
-  lattice_matrices: (Matrix3x3 | null)[] | null,
-  pbc: Pbc,
-): Float64Array {
-  const unwrapped = new Float64Array(positions.length)
-  // Frame 0 is the reference and is copied verbatim
-  unwrapped.set(positions.subarray(0, n_atoms * 3))
-  const from: Vec3 = [0, 0, 0]
-  const to: Vec3 = [0, 0, 0]
-  // A fixed cell hands back the same matrix every frame; only NPT rebuilds the inverse.
-  // Seeded from frame 0 because the loop starts at 1: without it, a null lattice at frame 1
-  // has no cell to fall back on and takes the plain difference the fallback below exists to
-  // avoid.
-  let cached_lattice: Matrix3x3 | null = lattice_matrices?.[0] ?? null
-  let converters: LatticeConverters | null = cached_lattice
-    ? create_lattice_converters(cached_lattice)
-    : null
-
-  for (let frame_idx = 1; frame_idx < n_frames; frame_idx++) {
-    const frame_lattice = lattice_matrices?.[frame_idx] ?? null
-    if (frame_lattice && frame_lattice !== cached_lattice) {
-      cached_lattice = frame_lattice
-      converters = create_lattice_converters(frame_lattice)
-    }
-    // Carry the last known cell into frames whose own lattice is missing. A null entry
-    // mid-trajectory is a parse gap, not a genuinely aperiodic frame: the neighbouring
-    // frames ARE wrapped, so taking the plain coordinate difference there admits a jump
-    // of up to one box length, and because the unwrap accumulates it corrupts every later
-    // frame too. One null cell in a 21-frame run reported MSD 445 Å² against a true 900.
-    const lattice = frame_lattice ?? cached_lattice
-    const prev_base = (frame_idx - 1) * n_atoms * 3
-    const base = frame_idx * n_atoms * 3
-    for (let atom_idx = 0; atom_idx < n_atoms; atom_idx++) {
-      const prev_off = prev_base + atom_idx * 3
-      const off = base + atom_idx * 3
-      for (let axis = 0; axis < 3; axis++) {
-        from[axis] = positions[prev_off + axis]
-        to[axis] = positions[off + axis]
-      }
-      // Plain difference only before any cell has been seen - nothing was wrapped yet
-      const step =
-        lattice && converters
-          ? min_image_displacement(from, to, lattice, converters, pbc)
-          : [to[0] - from[0], to[1] - from[1], to[2] - from[2]]
-      for (let axis = 0; axis < 3; axis++) {
-        unwrapped[off + axis] = unwrapped[prev_off + axis] + step[axis]
-      }
-    }
-  }
-  return unwrapped
-}
-
 export function calc_msd(input: MsdPositions, options: MsdOptions = {}): MsdResult {
-  const { positions, n_frames, n_atoms, elements, lattice_matrices, coords_unwrapped } = input
+  const { n_frames, n_atoms, elements } = input
   const {
     dt = 1,
-    time_unit: requested_time_unit,
     max_lag_fraction = 0.5,
     // Cap on the number of distinct lags evaluated before lag sub-sampling kicks in
     max_lags = 200,
-    // Rough (origin x atom) operation budget used to auto-tune `origin_stride`
-    work_budget = 2e8,
     fit: fit_options = {},
   } = options
 
-  const fail = make_fail(`calc_msd`)
-  if (n_frames < 2) fail(`need at least 2 frames to form a lag, got ${n_frames}`)
-  if (n_atoms < 1) fail(`need at least 1 atom, got ${n_atoms}`)
-  if (elements.length !== n_atoms) {
-    fail(
-      `got ${elements.length} element labels for ${n_atoms} atoms; atom order is the ` +
-        `atom identity and must be one label per atom`,
-    )
-  }
-  const expected_length = n_frames * n_atoms * 3
-  if (positions.length !== expected_length) {
-    fail(
-      `positions has ${positions.length} entries but ${n_frames} frames x ${n_atoms} ` +
-        `atoms x 3 requires ${expected_length}`,
-    )
-  }
-  if (!(dt > 0)) fail(`dt must be positive, got ${dt}`)
-  // A run may not record a timestep, so a dt without a unit would mean
-  // inventing a time axis. Demand the unit instead of guessing one.
-  if (options.dt !== undefined && !requested_time_unit) {
-    fail(
-      `dt was supplied (${options.dt}) without time_unit; pass e.g. time_unit: 'ps' ` +
-        `so the axis and diffusion coefficient carry real units`,
-    )
-  }
-  if (!(max_lag_fraction > 0) || max_lag_fraction > 1) {
-    fail(`max_lag_fraction must be in (0, 1], got ${max_lag_fraction}`)
-  }
-  if (lattice_matrices && lattice_matrices.length !== n_frames) {
-    fail(`got ${lattice_matrices.length} lattice matrices for ${n_frames} frames`)
-  }
+  validate_position_stream_layout(input, `calc_msd`, 2)
+  const time_unit = resolve_lag_time_unit(`calc_msd`, options.dt, options.time_unit, `ps`)
 
-  // Honour the parser's already-unwrapped flag: re-applying the minimum image
-  // convention to LAMMPS xu/yu/zu coordinates silently truncates real displacements.
-  const has_lattice = Boolean(lattice_matrices?.some((matrix) => matrix != null))
-  const should_unwrap = !coords_unwrapped && !options.skip_unwrap && has_lattice
-  // The collected stream carries the cell's own pbc flags; ignoring them folds real
-  // displacements along a slab's free axis back into the box (36 A² reported as 16).
-  const pbc = options.pbc ?? input.pbc ?? [true, true, true]
-  const coords = should_unwrap
-    ? unwrap_flat_positions(positions, n_frames, n_atoms, lattice_matrices, pbc)
-    : positions
+  // Honours the parser's already-unwrapped flag and the cell's own pbc flags: re-applying
+  // the minimum image convention to LAMMPS xu/yu/zu coordinates silently truncates real
+  // displacements, and folding a slab's free axis back into the box reports 16 A^2 for 36.
+  const { coords, unwrapped } = unwrapped_positions_of(input)
 
-  const max_lag = Math.max(1, Math.floor((n_frames - 1) * max_lag_fraction))
-  const lag_stride = options.lag_stride ?? Math.max(1, Math.ceil(max_lag / max_lags))
-  // Fractional strides would index the flat buffer at non-integer frame offsets
-  if (!Number.isInteger(lag_stride) || lag_stride < 1) {
-    fail(`lag_stride must be a positive integer, got ${lag_stride}`)
+  const max_lag = lag_range(`calc_msd`, n_frames, max_lag_fraction)
+  if (!Number.isInteger(max_lags) || max_lags < 1) {
+    throw new Error(`calc_msd: max_lags must be a positive integer, got ${max_lags}`)
   }
+  const lag_stride = Math.max(1, Math.ceil(max_lag / max_lags))
   // Evenly spaced lags 1..max_lag, thinned so at most `max_lags` are evaluated
   const lags: number[] = []
   for (let lag = lag_stride; lag <= max_lag; lag += lag_stride) lags.push(lag)
-  if (lags.length === 0) {
-    fail(`lag_stride ${lag_stride} exceeds the maximum lag ${max_lag}; no lags to evaluate`)
-  }
 
-  // Auto-tune origin sub-sampling so a 100k-frame run stays interactive. The chosen
-  // stride is reported in the result so a thinned average is never mistaken for a full one.
   const unstrided_work = lags.reduce((total, lag) => total + (n_frames - lag) * n_atoms, 0)
-  const origin_stride =
-    options.origin_stride ?? Math.max(1, Math.ceil(unstrided_work / work_budget))
-  if (!Number.isInteger(origin_stride) || origin_stride < 1) {
-    fail(`origin_stride must be a positive integer, got ${origin_stride}`)
-  }
+  const origin_stride = Math.max(1, Math.ceil(unstrided_work / WORK_BUDGET))
 
   // The total curve is the atom-count weighted combination of the element curves
   const { labels, group_sizes, atom_group } = group_atoms_by_element(elements)
@@ -322,10 +188,9 @@ export function calc_msd(input: MsdPositions, options: MsdOptions = {}): MsdResu
     origin_counts[lag_idx] = n_origins
   }
 
-  const time_unit = requested_time_unit ?? `frame`
   const times = lags.map((lag) => lag * dt)
 
-  const make_curve = (label: string, slot: number): MsdCurve => {
+  const make_curve = ({ label, slot }: { label: string; slot: number }): MsdCurve => {
     const msd = Array.from(mean_msd[slot])
     const m2 = m2_msd[slot]
     // Standard error of the mean over (overlapping, hence correlated) time origins.
@@ -345,25 +210,16 @@ export function calc_msd(input: MsdPositions, options: MsdOptions = {}): MsdResu
     }
   }
 
-  const curves: MsdCurve[] = [make_curve(`Total`, n_groups)]
-  // A lone species adds nothing over the total, so only a mixture gets element curves
-  if (n_groups > 1) {
-    const by_label = [...labels.keys()].toSorted((left, right) =>
-      labels[left].localeCompare(labels[right]),
-    )
-    for (const slot of by_label) curves.push(make_curve(labels[slot], slot))
-  }
-
   return {
     lags,
     times,
-    curves,
+    curves: curve_slots(labels).map(make_curve),
     dt,
     time_unit,
     x_label: time_unit === `frame` ? `Lag (frames)` : `Lag time (${time_unit})`,
     n_frames,
     n_atoms,
-    unwrapped: should_unwrap,
+    unwrapped,
     lag_stride,
     origin_stride,
     frame_stride: input.frame_stride,

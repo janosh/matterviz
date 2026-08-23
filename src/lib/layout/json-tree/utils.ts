@@ -97,13 +97,25 @@ export function get_children(value: unknown, sort_keys = false): JsonChild[] {
   return []
 }
 
+// Segments of a tree path relative to the root value. The root node's path is the verbatim
+// root_label (JsonBrowser passes filenames like `data.json`), which parse_path would split
+// into several segments, so the label is stripped textually before parsing. A path that
+// merely starts with the label text (`data.json` vs `data.jsonl`) is left alone.
+export function relative_path_segments(
+  path: string,
+  root_label?: string,
+): (string | number)[] {
+  if (!root_label || !path.startsWith(root_label)) return parse_path(path)
+  const rest = path.slice(root_label.length)
+  if (rest !== `` && !rest.startsWith(`.`) && !rest.startsWith(`[`)) return parse_path(path)
+  return parse_path(rest)
+}
+
 // Resolve a dot/bracket path (optionally prefixed by root_label) against root
 export function get_value_at_path(root: unknown, path: string, root_label?: string): unknown {
-  const segments = parse_path(path)
-  const start = root_label && segments[0] === root_label ? 1 : 0
+  const segments = relative_path_segments(path, root_label)
   let current = root
-  for (let idx = start; idx < segments.length; idx++) {
-    const segment = segments[idx]
+  for (const segment of segments) {
     const type = get_value_type(current)
     if (type === `map` || type === `set`) {
       current = get_children(current)[Number(segment)]?.value
@@ -308,12 +320,11 @@ export function set_at_path(
   new_value: unknown,
   root_label?: string,
 ): unknown {
-  const segments = parse_path(path_str)
-  const start = root_label && segments[0] === root_label ? 1 : 0
-  if (start >= segments.length) return new_value
+  const segments = relative_path_segments(path_str, root_label)
+  if (segments.length === 0) return new_value
   const cloned = structuredClone(root)
   let current = cloned as Record<string | number, unknown>
-  for (let idx = start; idx < segments.length - 1; idx++) {
+  for (let idx = 0; idx < segments.length - 1; idx++) {
     const next = current[segments[idx]]
     if (next === undefined || next === null) return root // bail — path no longer valid
     current = next as Record<string | number, unknown>

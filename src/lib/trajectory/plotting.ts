@@ -2,7 +2,7 @@
 import { PLOT_COLORS } from '$lib/colors'
 import { SCF_AXIS_GROUP, trajectory_property_config } from '$lib/labels'
 import type { TrajPropertyConfig } from '$lib/labels'
-import { get_coefficient_of_variation } from '$lib/math'
+import { first_non_increasing_index, get_coefficient_of_variation } from '$lib/math'
 import {
   assign_axes,
   axis_group_key,
@@ -86,9 +86,7 @@ export interface FrameStepSamples {
 }
 
 const strictly_increasing = (values: readonly number[]): boolean =>
-  values.every(
-    (value, idx) => Number.isFinite(value) && (idx === 0 || value > values[idx - 1]),
-  )
+  values.every(Number.isFinite) && first_non_increasing_index(values) === null
 
 // Which x quantities the data actually supports. Step and time interpolation both need a
 // monotonic frame/step grid. Steps only earn their own option when they differ from frame

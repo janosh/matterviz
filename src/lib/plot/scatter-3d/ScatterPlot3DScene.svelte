@@ -26,6 +26,7 @@
     dispose_on_change,
     line_geometry,
     SceneCamera,
+    SceneLights,
   } from '$lib/scene'
   import { T, useTask, useThrelte } from '@threlte/core'
   import * as extras from '@threlte/extras'
@@ -35,7 +36,7 @@
   import * as THREE from 'three/webgpu'
   import { Line2 } from 'three/examples/jsm/lines/webgpu/Line2.js'
   import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js'
-  import { get_series_color } from '$lib/plot/core/data-transform'
+  import { first_point_style, get_series_color } from '$lib/plot/core/data-transform'
   import { normalize_to_scene } from '$lib/plot/core/reference-line'
   import ReferenceLine3D from '$lib/plot/core/components/ReferenceLine3D.svelte'
   import ReferencePlane from '$lib/plot/core/components/ReferencePlane.svelte'
@@ -140,6 +141,7 @@
     min_zoom: () => min_zoom,
     max_zoom: () => max_zoom,
     measured: () => width > 0 && height > 0,
+    camera: () => camera,
   })
 
   // Dynamic backside positions - axes/grids/planes always face away from camera
@@ -369,9 +371,7 @@
       const positions: number[] = []
       positions_by_series.set(series_idx, positions)
       const color =
-        line_style.stroke ??
-        (Array.isArray(srs.point_style) ? srs.point_style[0]?.fill : srs.point_style?.fill) ??
-        get_series_color(series_idx)
+        line_style.stroke ?? first_point_style(srs)?.fill ?? get_series_color(series_idx)
       eligible.push({
         series_idx,
         positions,
@@ -511,14 +511,9 @@
       zoom_speed,
       zoom_to_cursor: false,
       pan_speed,
-      max_zoom: ortho_zoom.max_zoom,
-      min_zoom: ortho_zoom.min_zoom,
       auto_rotate,
       rotation_damping,
-      // keep the user's zoom as the baseline the next resize rescales from
-      onend_extra: () => {
-        if (camera instanceof THREE.OrthographicCamera) ortho_zoom.zoom = camera.zoom
-      },
+      ...ortho_zoom.orbit_zoom_props(),
     }),
   )
 
@@ -658,10 +653,13 @@
   bind:orbit_controls
 />
 
-<!-- Lighting -->
-<T.DirectionalLight position={[10, 20, 10]} intensity={directional_light} />
-<T.DirectionalLight position={[-10, -10, -10]} intensity={directional_light * 0.3} />
-<T.AmbientLight intensity={ambient_light} />
+<SceneLights
+  ambient={ambient_light}
+  directional={directional_light}
+  fill={0.3}
+  key_position={[10, 20, 10]}
+  fill_position={[-10, -10, -10]}
+/>
 
 <!-- Background planes with subtle shading - always on backside relative to camera -->
 {#if display.show_grid !== false}

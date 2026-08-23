@@ -22,9 +22,9 @@ type FlyToHooks = {
   controls: () => FlyToControls | undefined
   duration_ms: () => number
   invalidate: () => void
-  onstart?: () => void
-  onchange?: () => void
-  onend?: () => void
+  on_start?: () => void
+  on_change?: () => void
+  on_end?: () => void
 }
 
 export const DEFAULT_FLY_TO_DURATION_MS = 400
@@ -79,7 +79,7 @@ export function create_fly_to(hooks: FlyToHooks) {
 
     animation = { angle: from_dir.angleTo(to_dir), distance, elapsed: 0 }
     if (controls) controls.enabled = false
-    hooks.onstart?.()
+    hooks.on_start?.()
     hooks.invalidate()
   }
 
@@ -97,7 +97,7 @@ export function create_fly_to(hooks: FlyToHooks) {
     camera.position.copy(target).add(offset)
     camera.lookAt(target)
     controls?.update()
-    hooks.onchange?.()
+    hooks.on_change?.()
     hooks.invalidate()
     if (progress >= 1) release()
   }
@@ -109,7 +109,7 @@ export function create_fly_to(hooks: FlyToHooks) {
     animation = null
     const controls = hooks.controls()
     if (controls) controls.enabled = true
-    hooks.onend?.()
+    hooks.on_end?.()
   }
 
   return {

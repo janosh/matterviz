@@ -5,32 +5,22 @@
 import type { Vec2, Vec4 } from '$lib/math'
 import type { DiagramInput, DiagramPoint, RegionInput } from './diagram-input'
 
-// Two-phase color keys to cycle through for region assignment
-const TWO_PHASE_COLORS = [
-  `two_phase`,
-  `two_phase_intermetallic`,
-  `two_phase_fcc_liquid`,
-  `two_phase_intermetallic_alt`,
-  `two_phase_alt`,
-  `two_phase_gamma`,
-  `two_phase_mixed`,
-  `two_phase_si`,
-  `two_phase_bcc_liquid`,
-  `two_phase_hcp_liquid`,
-  `two_phase_theta_liquid`,
-  `two_phase_eta`,
-]
-
 // Round to 6 decimal places for clean floating-point output
 const round = (val: number): number => Math.round(val * 1e6) / 1e6
 
 // === Types ===
 
-type SvgFormat = `matplotlib` | `simple` | `mpds`
+type SvgFormat = `matplotlib` | `simple`
 
 interface LinearScale {
   to_data: (px: number) => number
+  to_px: (value: number) => number
   domain: Vec2 // [min_data, max_data]
+}
+
+interface Tick {
+  px: number
+  value: number
 }
 
 interface Boundary {
@@ -47,25 +37,21 @@ interface Label {
   px_y: number
 }
 
+// A filled SVG shape (region fill) with its pixel bounding box
+interface FilledShape {
+  fill: string
+  bbox: Vec4 // [min_x, min_y, max_x, max_y] in px
+}
+
 // === Format Detection ===
 
-// Detect whether the SVG is matplotlib, MPDS, or simple format
-function detect_format(doc: Document): SvgFormat {
-  // Matplotlib SVGs have xtick/ytick group IDs
-  if (doc.querySelector(`[id^="xtick_"]`) || doc.querySelector(`[id^="ytick_"]`)) {
-    return `matplotlib`
-  }
-  // MPDS SVGs (from CorelDRAW/Inkscape) have sodipodi namespace or inkscape attributes
-  const svg_el = doc.querySelector(`svg`)
-  if (
-    svg_el?.getAttribute(`sodipodi:docname`) ||
-    svg_el?.getAttribute(`inkscape:version`) ||
-    svg_el?.getAttributeNS(`http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd`, `docname`)
-  ) {
-    return `mpds`
-  }
-  return `simple`
-}
+// Matplotlib SVGs have xtick/ytick group IDs; anything else is treated as the simple format
+const detect_format = (doc: Document): SvgFormat =>
+  doc.querySelector(`[id^="xtick_"], [id^="ytick_"]`) ? `matplotlib` : `simple`
+
+// Non-null results of `fn` over every element matching `selector`
+const query_map = <T>(doc: Document, selector: string, fn: (el: Element) => T | null): T[] =>
+  Array.from(doc.querySelectorAll(selector), fn).filter((item): item is T => item !== null)
 
 // === Axis Scale Extraction ===
 
@@ -74,500 +60,275 @@ function extract_axis_scales(
   doc: Document,
   format: SvgFormat,
 ): { x_scale: LinearScale; y_scale: LinearScale } {
-  const x_ticks: { px: number; value: number }[] = []
-  const y_ticks: { px: number; value: number }[] = []
-
-  if (format === `matplotlib`) {
-    extract_matplotlib_ticks(doc, x_ticks, y_ticks)
-  } else if (format === `mpds`) {
-    return extract_mpds_scales(doc)
-  } else {
-    extract_simple_ticks(doc, x_ticks, y_ticks)
-  }
-
-  if (x_ticks.length < 2) {
-    throw new Error(`Need at least 2 x-axis ticks, found ${x_ticks.length}`)
-  }
-  if (y_ticks.length < 2) {
-    throw new Error(`Need at least 2 y-axis ticks, found ${y_ticks.length}`)
-  }
-
+  const [x_ticks, y_ticks] =
+    format === `matplotlib` ? extract_matplotlib_ticks(doc) : extract_simple_ticks(doc)
   return {
-    x_scale: build_scale(x_ticks),
-    y_scale: build_scale(y_ticks), // y-axis inverted (SVG y down, temp up)
+    x_scale: build_scale(`x`, x_ticks),
+    y_scale: build_scale(`y`, y_ticks), // y-axis inverted (SVG y down, temp up)
   }
 }
 
-// Extract ticks from matplotlib SVG (id="xtick_N", comment-based values)
-function extract_matplotlib_ticks(
-  doc: Document,
-  x_ticks: { px: number; value: number }[],
-  y_ticks: { px: number; value: number }[],
-): void {
-  const axes: [string, string, { px: number; value: number }[]][] = [
-    [`xtick_`, `x`, x_ticks],
-    [`ytick_`, `y`, y_ticks],
-  ]
-  for (const [prefix, attr, ticks] of axes) {
-    for (const group of Array.from(doc.querySelectorAll(`[id^="${prefix}"]`))) {
+// Matplotlib ticks: <use> markers inside id="xtick_N"/"ytick_N" groups, value in an XML comment
+function extract_matplotlib_ticks(doc: Document): [Tick[], Tick[]] {
+  const ticks_of = (axis: `x` | `y`) =>
+    query_map(doc, `[id^="${axis}tick_"]`, (group) => {
       const value = extract_comment_number(group)
       const use_el = group.querySelector(`use`)
-      if (value !== null && use_el) {
-        const px = parse_float_attr(use_el, attr)
-        if (px !== null) ticks.push({ px, value })
-      }
-    }
-  }
+      const px = use_el && parse_float_attr(use_el, axis)
+      return value !== null && px !== null ? { px, value } : null
+    })
+  return [ticks_of(`x`), ticks_of(`y`)]
 }
 
-// Extract ticks from simple SVG (class-based text elements)
-function extract_simple_ticks(
-  doc: Document,
-  x_ticks: { px: number; value: number }[],
-  y_ticks: { px: number; value: number }[],
-): void {
-  // Y-axis ticks: class="tick-text" with text-anchor: end
-  for (const text_el of Array.from(doc.querySelectorAll(`.tick-text`))) {
+// Simple-format ticks: y values are <text class="tick-text"> right after their tick <line>
+// (px from its y1), x values <text class="tick-text-x"> (px from its x attribute); both are
+// offset by the parent group's translate
+function extract_simple_ticks(doc: Document): [Tick[], Tick[]] {
+  const tick_of = (text_el: Element, px: number | null, axis: 0 | 1): Tick | null => {
     const value = leading_number(text_el.textContent)
-    if (isNaN(value)) continue
-
-    // Find the immediately preceding sibling tick line (not just any line in parent)
-    const tick_line = text_el.previousElementSibling
-    if (!tick_line || !tick_line.matches(`.tick-line, line`)) continue
-    const py = parse_float_attr(tick_line, `y1`)
-    // Apply parent group transform if present
-    const parent = text_el.parentElement
-    const transform_y = get_group_translate(parent, `y`)
-    if (py !== null) y_ticks.push({ px: py + transform_y, value })
+    if (isNaN(value) || px === null) return null
+    return { px: px + (parse_translate(text_el.parentElement)?.[axis] ?? 0), value }
   }
-
-  // X-axis ticks: class="tick-text-x"
-  for (const text_el of Array.from(doc.querySelectorAll(`.tick-text-x`))) {
-    const value = leading_number(text_el.textContent)
-    if (isNaN(value)) continue
-
-    const px_x = parse_float_attr(text_el, `x`)
-    // Apply parent group transform if present
-    const parent = text_el.parentElement
-    const transform_x = get_group_translate(parent, `x`)
-    if (px_x !== null) x_ticks.push({ px: px_x + transform_x, value })
-  }
+  return [
+    query_map(doc, `.tick-text-x`, (el) => tick_of(el, parse_float_attr(el, `x`), 0)),
+    query_map(doc, `.tick-text`, (el) => {
+      const tick_line = el.previousElementSibling
+      if (!tick_line?.matches(`.tick-line, line`)) return null
+      return tick_of(el, parse_float_attr(tick_line, `y1`), 1)
+    }),
+  ]
 }
 
-// Extract scales from MPDS SVGs using tick mark paths and text values
-// MPDS SVGs store tick marks as multi-segment paths with major ticks (longer)
-// and minor ticks (shorter). Text values are not positionally useful but
-// tell us the data range.
-function extract_mpds_scales(doc: Document): {
-  x_scale: LinearScale
-  y_scale: LinearScale
-} {
-  // Extract all numeric text values to infer axis ranges
-  const numbers: number[] = []
-  for (const text_el of Array.from(doc.querySelectorAll(`text`))) {
-    const val = leading_number(text_el.textContent)
-    if (!isNaN(val)) numbers.push(val)
-  }
-
-  // Separate composition (0-100 at%) from temperature (typically 100-3000)
-  // Note: value 100 appears in both filters (valid as 100 at% and 100°C).
-  // This is intentional — only endpoints are used for scale mapping.
-  const comp_vals = [
-    ...new Set(numbers.filter((value) => value >= 0 && value <= 100 && value % 10 === 0)),
-  ].toSorted((a, b) => a - b)
-  const temp_vals = [
-    ...new Set(numbers.filter((value) => value >= 100 && value % 100 === 0 && value <= 3000)),
-  ].toSorted((a, b) => a - b)
-
-  if (comp_vals.length < 2 || temp_vals.length < 2) {
+// Build a linear scale from tick data points. Fewer than two ticks means the SVG is neither a
+// matplotlib export nor the simple class-based format (e.g. an MPDS export), so say so
+// instead of failing on the missing tick.
+function build_scale(axis: `x` | `y`, ticks: Tick[]): LinearScale {
+  if (ticks.length < 2) {
     throw new Error(
-      `MPDS SVG: could not infer axis ranges (found ${comp_vals.length} composition, ${temp_vals.length} temperature values)`,
+      `could not find ${axis}-axis tick marks in this SVG (need at least 2, found ${ticks.length})`,
     )
   }
-
-  // Find tick mark paths — multi-segment paths with stroke-width ~0.5
-  // containing both major (longer) and minor (shorter) tick marks
-  const x_major_ticks: number[] = []
-  const y_major_ticks: number[] = []
-
-  for (const path of Array.from(doc.querySelectorAll(`path`))) {
-    const path_data = path.getAttribute(`d`) ?? ``
-    const stroke_width = parse_stroke_width(path)
-
-    // Tick mark paths have stroke-width ~0.5
-    if (stroke_width < 0.3 || stroke_width > 1.0) continue
-
-    // Parse path into absolute line segments (handles both absolute & relative commands)
-    const segments = parse_path_segments(path_data)
-    if (segments.length < 3) continue
-
-    for (const [sx1, sy1, sx2, sy2] of segments) {
-      const seg_dx = Math.abs(sx2 - sx1)
-      const seg_dy = Math.abs(sy2 - sy1)
-
-      // Major ticks are longer (~3.9 px), minor are shorter (~1.7 px)
-      if (Math.hypot(seg_dx, seg_dy) < 3) continue
-
-      // Horizontal tick segments → y-axis tick (x changes, y constant)
-      if (seg_dy < 0.1 && seg_dx > 2) {
-        y_major_ticks.push(Math.round(sy1 * 100) / 100)
-      }
-      // Vertical tick segments → x-axis tick (y changes, x constant)
-      if (seg_dx < 0.1 && seg_dy > 2) {
-        x_major_ticks.push(Math.round(sx1 * 100) / 100)
-      }
-    }
-  }
-
-  // Deduplicate and sort
-  const x_ticks_sorted = [
-    ...new Set(x_major_ticks.map((value) => Math.round(value * 10) / 10)),
-  ].toSorted((a, b) => a - b)
-  const y_ticks_sorted = [
-    ...new Set(y_major_ticks.map((value) => Math.round(value * 10) / 10)),
-  ].toSorted((a, b) => a - b)
-
-  if (x_ticks_sorted.length < 2 || y_ticks_sorted.length < 2) {
-    throw new Error(
-      `MPDS SVG: could not find tick marks (found ${x_ticks_sorted.length} x-ticks, ${y_ticks_sorted.length} y-ticks)`,
-    )
-  }
-
-  // Map tick positions to data values using endpoints
-  // Only the first and last tick+value need to match for a linear scale
-  // x-axis: composition in at% → fraction; y-axis: temperature (SVG y inverted)
-  const x_ticks = [
-    { px: x_ticks_sorted[0], value: comp_vals[0] / 100 },
-    {
-      px: x_ticks_sorted[x_ticks_sorted.length - 1],
-      value: comp_vals[comp_vals.length - 1] / 100,
-    },
-  ]
-  const y_ticks = [
-    { px: y_ticks_sorted[0], value: temp_vals[temp_vals.length - 1] }, // top = highest temp
-    { px: y_ticks_sorted[y_ticks_sorted.length - 1], value: temp_vals[0] }, // bottom = lowest temp
-  ]
-
-  return {
-    x_scale: build_scale(x_ticks),
-    y_scale: build_scale(y_ticks),
-  }
-}
-
-// Build a linear scale from tick data points
-function build_scale(ticks: { px: number; value: number }[]): LinearScale {
-  ticks.sort((a, b) => a.value - b.value)
-  const first = ticks[0]
-  const last = ticks[ticks.length - 1]
+  const sorted = ticks.toSorted((tick_a, tick_b) => tick_a.value - tick_b.value)
+  const first = sorted[0]
+  const last = sorted[sorted.length - 1]
 
   const range = last.value - first.value
-  if (range === 0) {
-    return { to_data: () => first.value, domain: [first.value, last.value] }
+  const px_range = last.px - first.px
+  if (range === 0 || px_range === 0) {
+    throw new Error(
+      `${axis}-axis ticks span a zero range (values ${first.value}..${last.value}, px ${first.px}..${last.px}); cannot build scale`,
+    )
   }
-  const px_per_unit = (last.px - first.px) / range
+  const px_per_unit = px_range / range
 
   return {
     to_data: (px: number) => first.value + (px - first.px) / px_per_unit,
+    to_px: (value: number) => first.px + (value - first.value) * px_per_unit,
     domain: [first.value, last.value],
   }
 }
 
 // === Boundary Extraction ===
 
-// Extract phase boundary lines from SVG and convert to data coordinates
-function extract_boundaries(
-  doc: Document,
-  format: SvgFormat,
-  x_scale: LinearScale,
-  y_scale: LinearScale,
-): Boundary[] {
-  const boundaries: Boundary[] = []
-  const epsilon = 0.5 // pixel tolerance for classifying horizontal/vertical
-
-  if (format === `mpds`) {
-    extract_mpds_boundaries(doc, boundaries, x_scale, y_scale, epsilon)
-  } else if (format === `matplotlib`) {
-    // Matplotlib: look for line2d_N groups with path elements (skip tick marks at line2d_1..12ish)
-    for (const group of Array.from(doc.querySelectorAll(`[id^="line2d_"]`))) {
+// Pixel endpoints of the candidate boundary lines: matplotlib line2d_N groups holding one
+// straight path segment, or simple-format <line class="phase-boundary"> elements
+function extract_boundary_lines(doc: Document, format: SvgFormat): Vec4[] {
+  if (format === `matplotlib`) {
+    return query_map(doc, `[id^="line2d_"]`, (group) => {
       const path_el = group.querySelector(`path`)
-      if (!path_el) continue
-
-      const d_attr = path_el.getAttribute(`d`)
-      if (!d_attr) continue
-
-      // Parse "M x1 y1 L x2 y2" path data
-      const coords = parse_ml_path(d_attr)
-      if (!coords) continue
-
+      const d_attr = path_el?.getAttribute(`d`)
+      if (!path_el || typeof d_attr !== `string`) return null
+      // Multi-segment paths are not straight boundaries
+      const segments = parse_path_segments(d_attr)
+      if (segments.length !== 1) return null
+      const [x1, y1, x2, y2] = segments[0]
       // Skip tick mark lines (short lines, typically < 10px)
-      const dx = Math.abs(coords.x2 - coords.x1)
-      const dy = Math.abs(coords.y2 - coords.y1)
-      if (dx < 15 && dy < 15) continue
-
-      // Check stroke-width to distinguish boundaries from axis lines;
-      // only include lines with meaningful stroke
-      const stroke_width = parse_stroke_width(path_el) || 1
-      if (stroke_width < 1) continue
-
-      add_boundary(boundaries, coords, x_scale, y_scale, epsilon)
-    }
-  } else {
-    // Simple: <line class="phase-boundary">
-    for (const line_el of Array.from(
-      doc.querySelectorAll(`.phase-boundary, line[class*="phase-boundary"]`),
-    )) {
-      const x1 = parse_float_attr(line_el, `x1`)
-      const y1 = parse_float_attr(line_el, `y1`)
-      const x2 = parse_float_attr(line_el, `x2`)
-      const y2 = parse_float_attr(line_el, `y2`)
-      if (x1 === null || y1 === null || x2 === null || y2 === null) continue
-
-      add_boundary(boundaries, { x1, y1, x2, y2 }, x_scale, y_scale, epsilon)
-    }
+      if (Math.abs(x2 - x1) < 15 && Math.abs(y2 - y1) < 15) return null
+      // Hairlines are axis furniture (matplotlib draws ticks and spines at 0.8 px); an
+      // unparsable/absent stroke-width (0) is kept as a boundary
+      const stroke_width = parse_stroke_width(path_el)
+      return stroke_width > 0 && stroke_width < 1 ? null : segments[0]
+    })
   }
-
-  return boundaries
+  return query_map(doc, `.phase-boundary, line[class*="phase-boundary"]`, (line_el) => {
+    const coords = [`x1`, `y1`, `x2`, `y2`].map((attr) => parse_float_attr(line_el, attr))
+    if (coords.some((coord) => coord === null)) {
+      throw new Error(
+        `Phase boundary line is missing numeric x1/y1/x2/y2 attributes: ${line_el.outerHTML.slice(0, 200)}`,
+      )
+    }
+    return coords as Vec4
+  })
 }
 
-// Extract boundaries from MPDS SVGs — simple M x1,y1 L x2,y2 path elements
-// inside the plot area with thin stroke (0.216) and dark color
-function extract_mpds_boundaries(
-  doc: Document,
-  boundaries: Boundary[],
+// Axis-aligned boundary (0.5 px tolerance) in data coordinates, null for diagonal lines
+function to_boundary(
+  [px_x1, px_y1, px_x2, px_y2]: Vec4,
   x_scale: LinearScale,
   y_scale: LinearScale,
-  epsilon: number,
-): void {
-  // Find the plot border to filter boundaries inside it
-  const plot_rect = find_mpds_plot_rect(doc)
-  if (!plot_rect) return
-
-  const { left, right, top, bottom } = plot_rect
-
-  for (const path of Array.from(doc.querySelectorAll(`path`))) {
-    const path_data = path.getAttribute(`d`) ?? ``
-    const style = path.getAttribute(`style`) ?? ``
-
-    // Skip tick mark paths (stroke-width > 0.3)
-    const stroke_width = parse_stroke_width(path)
-    if (stroke_width > 0.3 || stroke_width === 0) continue
-
-    // Skip filled regions (phase region fills)
-    if (
-      (style.includes(`fill-rule`) || style.includes(`fill: #`) || style.includes(`fill:#`)) &&
-      !style.includes(`fill: none`) &&
-      !style.includes(`fill:none`)
-    ) {
-      continue
-    }
-
-    // Skip red annotation lines
-    if (style.includes(`#e30016`) || style.includes(`#E30016`)) continue
-
-    // Parse as simple M...L line
-    const coords = parse_ml_path(path_data)
-    if (!coords) continue
-
-    // Must be inside the plot area
-    const inside =
-      coords.x1 >= left - 1 &&
-      coords.x1 <= right + 1 &&
-      coords.x2 >= left - 1 &&
-      coords.x2 <= right + 1 &&
-      coords.y1 >= top - 1 &&
-      coords.y1 <= bottom + 1 &&
-      coords.y2 >= top - 1 &&
-      coords.y2 <= bottom + 1
-    if (!inside) continue
-
-    // Skip very short segments (< 10px)
-    const dx = Math.abs(coords.x2 - coords.x1)
-    const dy = Math.abs(coords.y2 - coords.y1)
-    if (dx < 10 && dy < 10) continue
-
-    // Skip the plot border itself (connects all 4 edges)
-    const touches_left = Math.abs(coords.x1 - left) < 2 || Math.abs(coords.x2 - left) < 2
-    const touches_right = Math.abs(coords.x1 - right) < 2 || Math.abs(coords.x2 - right) < 2
-    if (touches_left && touches_right) continue // spans full width = likely axis
-
-    add_boundary(boundaries, coords, x_scale, y_scale, epsilon)
-  }
-}
-
-// Find the plot area rectangle in an MPDS SVG
-// Handles both M...L...L...L...Z and M...V...H...V...Z formats
-function find_mpds_plot_rect(
-  doc: Document,
-): { left: number; right: number; top: number; bottom: number } | null {
-  for (const path of Array.from(doc.querySelectorAll(`path`))) {
-    const path_data = path.getAttribute(`d`) ?? ``
-    const style = path.getAttribute(`style`) ?? ``
-    if (!style.includes(`fill: none`) && !style.includes(`fill:none`)) continue
-    if (!path_data.includes(`Z`) && !path_data.includes(`z`)) continue
-
-    // Parse path into absolute segments and extract corner points
-    const segments = parse_path_segments(path_data)
-    if (segments.length < 3) continue // rectangle needs at least 3 segments (4th is Z)
-
-    // Collect all x and y coordinates from segment endpoints
-    const xs: number[] = []
-    const ys: number[] = []
-    for (const [x1, y1, x2, y2] of segments) {
-      xs.push(Math.round(x1 * 10) / 10, Math.round(x2 * 10) / 10)
-      ys.push(Math.round(y1 * 10) / 10, Math.round(y2 * 10) / 10)
-    }
-
-    const unique_x = [...new Set(xs)]
-    const unique_y = [...new Set(ys)]
-
-    // Rectangle has exactly 2 unique x and 2 unique y values
-    if (unique_x.length === 2 && unique_y.length === 2) {
-      return {
-        left: Math.min(...unique_x),
-        right: Math.max(...unique_x),
-        top: Math.min(...unique_y),
-        bottom: Math.max(...unique_y),
-      }
-    }
-  }
-  return null
-}
-
-// Add a boundary line, classifying as horizontal or vertical
-function add_boundary(
-  boundaries: Boundary[],
-  px: { x1: number; y1: number; x2: number; y2: number },
-  x_scale: LinearScale,
-  y_scale: LinearScale,
-  epsilon: number,
-): void {
-  const is_vertical = Math.abs(px.x1 - px.x2) < epsilon
-  const is_horizontal = Math.abs(px.y1 - px.y2) < epsilon
-
-  if (!is_vertical && !is_horizontal) return // skip diagonal lines
-
-  const data_x1 = x_scale.to_data(px.x1)
-  const data_y1 = y_scale.to_data(px.y1)
-  const data_x2 = x_scale.to_data(px.x2)
-  const data_y2 = y_scale.to_data(px.y2)
-
-  boundaries.push({
+): Boundary | null {
+  const is_vertical = Math.abs(px_x1 - px_x2) < 0.5
+  const is_horizontal = Math.abs(px_y1 - px_y2) < 0.5
+  if (!is_vertical && !is_horizontal) return null
+  const [data_x1, data_x2] = [x_scale.to_data(px_x1), x_scale.to_data(px_x2)]
+  const [data_y1, data_y2] = [y_scale.to_data(px_y1), y_scale.to_data(px_y2)]
+  return {
     x1: Math.min(data_x1, data_x2),
     y1: Math.min(data_y1, data_y2),
     x2: Math.max(data_x1, data_x2),
     y2: Math.max(data_y1, data_y2),
     orientation: is_vertical ? `vertical` : `horizontal`,
-  })
+  }
 }
 
 // === Label Extraction ===
 
-// Extract phase region labels with their pixel positions
+// Phase region labels (text containing "+", which axis labels lack) with pixel positions.
+// Matplotlib stores the LaTeX text in XML comments of text_N groups and may split a label
+// into a following continuation group ("+ La$_3$Ni$_2$O$_7$"); the simple format uses
+// <text class="label-main"> positioned by transform or x/y attributes.
 function extract_labels(doc: Document, format: SvgFormat): Label[] {
-  const labels: Label[] = []
-
   if (format === `matplotlib`) {
-    extract_matplotlib_labels(doc, labels)
-  } else if (format === `mpds`) {
-    // MPDS labels use garbled encoding; skip label extraction
-    // Regions will get auto-generated names from infer_regions
-  } else {
-    extract_simple_labels(doc, labels)
-  }
-
-  return labels
-}
-
-// Extract labels from matplotlib SVG using XML comments
-function extract_matplotlib_labels(doc: Document, labels: Label[]): void {
-  // Find text groups with comments containing phase names
-  // Matplotlib may split multi-line labels (especially rotated ones) into
-  // separate <g> groups: text_N has "La$_2$NiO$_4$", followed by a sibling
-  // with "+ La$_3$Ni$_2$O$_7$". We concatenate these continuation groups.
-  for (const group of Array.from(doc.querySelectorAll(`[id^="text_"]`))) {
-    let comment = find_comment_text(group)
-    if (!comment) continue
-
-    // Check following sibling groups for continuation comments starting with "+"
-    let sibling = group.nextElementSibling
-    while (sibling) {
-      // Stop at the next text_N group (that's a separate label)
-      if (sibling.id?.startsWith(`text_`)) break
-      const continuation = find_comment_text(sibling)
-      if (continuation?.trimStart().startsWith(`+`)) {
-        comment += ` ${continuation.trim()}`
+    return query_map(doc, `[id^="text_"]`, (group) => {
+      let comment = find_comment_text(group)
+      if (!comment) return null
+      for (
+        let sibling = group.nextElementSibling;
+        sibling && !sibling.id?.startsWith(`text_`);
         sibling = sibling.nextElementSibling
-      } else {
-        break
+      ) {
+        const continuation = find_comment_text(sibling)
+        if (!continuation?.trimStart().startsWith(`+`)) break
+        comment += ` ${continuation.trim()}`
       }
-    }
-
-    if (!comment.includes(`+`)) continue // skip axis labels (no "+")
-
-    // Clean LaTeX: "La$_2$NiO$_4$ + NiO" -> "La2NiO4 + NiO"
-    const text = comment
-      .trim()
-      .replaceAll(/\$_\{(?<digits>[^}]*)\}\$/g, `$1`) // $_{10}$ -> 10
-      .replaceAll(/\$_(?<digit>\d)\$/g, `$1`) // $_2$ -> 2
-      .replaceAll(`$`, ``) // remove any remaining $
-      .replaceAll(/\s+/g, ` `)
-      .trim()
-
-    // Get position from transform="translate(x, y)"
-    const pos = parse_translate(group.querySelector(`g[transform]`)) ?? parse_translate(group)
-    if (!pos) continue
-
-    labels.push({ text, px_x: pos[0], px_y: pos[1] })
+      if (!comment.includes(`+`)) return null
+      // Clean LaTeX: "La$_2$NiO$_4$ + NiO" -> "La2NiO4 + NiO"
+      const text = comment
+        .trim()
+        .replaceAll(/\$_\{(?<digits>[^}]*)\}\$/g, `$1`) // $_{10}$ -> 10
+        .replaceAll(/\$_(?<digit>\d)\$/g, `$1`) // $_2$ -> 2
+        .replaceAll(`$`, ``) // remove any remaining $
+        .replaceAll(/\s+/g, ` `)
+        .trim()
+      const pos =
+        parse_translate(group.querySelector(`g[transform]`)) ?? parse_translate(group)
+      return pos && { text, px_x: pos[0], px_y: pos[1] }
+    })
   }
-}
-
-// Extract labels from simple SVG using class="label-main"
-function extract_simple_labels(doc: Document, labels: Label[]): void {
-  for (const text_el of Array.from(doc.querySelectorAll(`.label-main`))) {
-    // Get plain text content (strips tspan tags)
+  return query_map(doc, `.label-main`, (text_el) => {
     const text = (text_el.textContent ?? ``).replaceAll(/\s+/g, ` `).trim()
-    if (!text.includes(`+`)) continue // skip non-phase labels
-
-    // Get position from transform or x/y attributes
+    if (!text.includes(`+`)) return null
     const pos = parse_translate(text_el)
     const px_x = pos?.[0] ?? parse_float_attr(text_el, `x`)
     const px_y = pos?.[1] ?? parse_float_attr(text_el, `y`)
+    return px_x !== null && px_y !== null ? { text, px_x, px_y } : null
+  })
+}
 
-    if (px_x !== null && px_y !== null) {
-      labels.push({ text, px_x, px_y })
+// === Region Fill Extraction ===
+
+// Fills that are page/axes backgrounds rather than phase regions (matplotlib's
+// figure and axes patches are white)
+const BACKGROUND_FILLS = new Set([`#fff`, `#ffffff`, `white`, `rgb(255,255,255)`])
+
+// Fill colour of an element from style="fill: ..." or the fill attribute; null if unset/none
+function element_fill(el: Element): string | null {
+  const style_match = /(?:^|;)\s*fill\s*:\s*(?<fill>[^;]+)/.exec(
+    el.getAttribute(`style`) ?? ``,
+  )
+  const fill = (style_match?.groups?.fill ?? el.getAttribute(`fill`))?.trim()
+  if (!fill || fill === `none` || fill === `transparent`) return null
+  if (BACKGROUND_FILLS.has(fill.toLowerCase().replaceAll(/\s+/g, ``))) return null
+  return fill
+}
+
+// Pixel bounding box of a rect/polygon/path element, or of a <use> instance of one shifted by
+// its x/y offset (matplotlib's fill_between puts the polygon in <defs> and fills the <use>).
+// Other transforms are not applied.
+function shape_bbox(el: Element): Vec4 | null {
+  const tag = el.tagName.toLowerCase()
+  if (tag === `use`) {
+    const href = el.getAttribute(`href`) ?? el.getAttribute(`xlink:href`) ?? ``
+    const target = href.startsWith(`#`)
+      ? el.ownerDocument.querySelector(`[id="${href.slice(1).replaceAll(`"`, `\\"`)}"]`)
+      : null
+    const bbox = target && target.tagName.toLowerCase() !== `use` ? shape_bbox(target) : null
+    if (!bbox) return null
+    const [dx, dy] = [parse_float_attr(el, `x`) ?? 0, parse_float_attr(el, `y`) ?? 0]
+    return [bbox[0] + dx, bbox[1] + dy, bbox[2] + dx, bbox[3] + dy]
+  }
+  if (tag === `rect`) {
+    const x_px = parse_float_attr(el, `x`) ?? 0
+    const y_px = parse_float_attr(el, `y`) ?? 0
+    const width = parse_float_attr(el, `width`)
+    const height = parse_float_attr(el, `height`)
+    if (width === null || height === null) return null
+    return [x_px, y_px, x_px + width, y_px + height]
+  }
+  const points: number[] = []
+  if (tag === `polygon`) {
+    const raw = el.getAttribute(`points`) ?? ``
+    points.push(...(raw.match(NUMBER_REGEX) ?? []).map(Number))
+  } else if (tag === `path`) {
+    const d_attr = el.getAttribute(`d`)
+    if (d_attr === null) return null
+    points.push(...parse_path_segments(d_attr).flat())
+  }
+  if (points.length < 4) return null
+  const xs = points.filter((_, idx) => idx % 2 === 0)
+  const ys = points.filter((_, idx) => idx % 2 === 1)
+  return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]
+}
+
+// Collect all non-background filled shapes (candidate phase region fills). Transformed shapes
+// are skipped since shape_bbox ignores transforms (their pixel bbox would be wrong).
+function extract_filled_shapes(doc: Document): FilledShape[] {
+  const shapes: FilledShape[] = []
+  for (const el of Array.from(doc.querySelectorAll(`rect, polygon, path, use`))) {
+    const fill = element_fill(el)
+    if (fill === null || el.hasAttribute(`transform`)) continue
+    const bbox = shape_bbox(el)
+    if (bbox) shapes.push({ fill, bbox })
+  }
+  return shapes
+}
+
+// Fill of the smallest filled shape whose bbox contains the given pixel point
+function fill_at_px(shapes: FilledShape[], [px_x, px_y]: Vec2): string | undefined {
+  let best: FilledShape | undefined
+  let best_area = Infinity
+  for (const shape of shapes) {
+    const [min_x, min_y, max_x, max_y] = shape.bbox
+    if (px_x < min_x || px_x > max_x || px_y < min_y || px_y > max_y) continue
+    const area = (max_x - min_x) * (max_y - min_y)
+    if (area < best_area) {
+      best = shape
+      best_area = area
     }
   }
+  return best?.fill
 }
 
 // === Component Inference ===
 
 const split_phase_label = (label: Label) => label.text.split(/\s*\+\s*/)
 
-// Infer binary components from region labels
+// Infer binary components from region labels sorted by x: each end's pure component is the
+// phase of its two-phase end region absent from the three regions at the other end (for
+// "La2NiO4 + La2O3" on the left, La2O3 is the pure A endpoint)
 function infer_components(labels: Label[]): [string, string] {
-  // Sort labels by x position, split each into phases
-  const sorted = labels.toSorted((a, b) => a.px_x - b.px_x)
+  const sorted = labels.toSorted((label_a, label_b) => label_a.px_x - label_b.px_x)
   if (sorted.length < 2) return [`A`, `B`]
-
-  const leftmost = split_phase_label(sorted[0])
-  const rightmost = split_phase_label(sorted[sorted.length - 1])
-
-  // Component A: the unique phase in the leftmost region that doesn't appear on the right
-  // For "La2NiO4 + La2O3", La2O3 is the pure A endpoint
-  let comp_a = `A`
-  if (leftmost.length === 2) {
-    const right_phases = new Set(sorted.slice(-3).flatMap(split_phase_label))
-    comp_a = leftmost.find((phase) => !right_phases.has(phase)) ?? leftmost[1] ?? `A`
+  const end_component = (end: Label, other_end: Label[], fallback: string): string => {
+    const phases = split_phase_label(end)
+    if (phases.length !== 2) return fallback
+    const other_phases = new Set(other_end.flatMap(split_phase_label))
+    return phases.find((phase) => !other_phases.has(phase)) ?? phases[1]
   }
-
-  // Component B: the unique phase in the rightmost region that doesn't appear on the left
-  let comp_b = `B`
-  if (rightmost.length === 2) {
-    const left_phases = new Set(sorted.slice(0, 3).flatMap(split_phase_label))
-    comp_b = rightmost.find((phase) => !left_phases.has(phase)) ?? rightmost[1] ?? `B`
-  }
-
-  return [comp_a, comp_b]
+  return [
+    end_component(sorted[0], sorted.slice(-3), `A`),
+    end_component(sorted[sorted.length - 1], sorted.slice(0, 3), `B`),
+  ]
 }
 
 // === Region Inference ===
@@ -576,6 +337,7 @@ function infer_components(labels: Label[]): [string, string] {
 function infer_regions(
   boundaries: Boundary[],
   labels: Label[],
+  filled_shapes: FilledShape[],
   x_scale: LinearScale,
   y_scale: LinearScale,
 ): RegionInput[] {
@@ -600,46 +362,28 @@ function infer_regions(
   const n_rows = y_coords.length - 1
   const cell_ids = Array.from({ length: n_cols }, () => Array(n_rows).fill(-1))
 
-  // Check which cell edges have boundaries
+  // Walled cell edges: h_walls[col][row] is the bottom edge of cell (col, row), v_walls[col][row]
+  // its left edge; the plot edges are always walls
   const h_walls = Array.from({ length: n_cols }, () => Array(n_rows + 1).fill(false))
   const v_walls = Array.from({ length: n_cols + 1 }, () => Array(n_rows).fill(false))
-
-  // Mark horizontal walls (bottom/top of cells)
+  for (const col_walls of h_walls) for (const row of [0, n_rows]) col_walls[row] = true
+  for (const col of [0, n_cols]) v_walls[col].fill(true)
+  // Cell intervals of `coords` that the span [lo, hi] covers
+  const spanned_cells = (lo: number, hi: number, coords: number[]): number[] =>
+    coords
+      .slice(0, -1)
+      .flatMap((cell_min, idx) =>
+        lo <= cell_min + 1e-6 && hi >= coords[idx + 1] - 1e-6 ? [idx] : [],
+      )
   for (const hb of horizontals) {
     const row = find_coord_index(y_coords, hb.y1)
     if (row === -1) continue
-    for (let col = 0; col < n_cols; col++) {
-      const cell_x_min = x_coords[col]
-      const cell_x_max = x_coords[col + 1]
-      // Check if the boundary spans this cell's x range
-      if (hb.x1 <= cell_x_min + 1e-6 && hb.x2 >= cell_x_max - 1e-6) {
-        h_walls[col][row] = true
-      }
-    }
+    for (const col of spanned_cells(hb.x1, hb.x2, x_coords)) h_walls[col][row] = true
   }
-
-  // Mark vertical walls (left/right of cells)
   for (const vb of verticals) {
     const col = find_coord_index(x_coords, vb.x1)
     if (col === -1) continue
-    for (let row = 0; row < n_rows; row++) {
-      const cell_y_min = y_coords[row]
-      const cell_y_max = y_coords[row + 1]
-      // Check if the boundary spans this cell's y range
-      if (vb.y1 <= cell_y_min + 1e-6 && vb.y2 >= cell_y_max - 1e-6) {
-        v_walls[col][row] = true
-      }
-    }
-  }
-
-  // Plot edges are always walls
-  for (let col = 0; col < n_cols; col++) {
-    h_walls[col][0] = true // bottom edge
-    h_walls[col][n_rows] = true // top edge
-  }
-  for (let row = 0; row < n_rows; row++) {
-    v_walls[0][row] = true // left edge
-    v_walls[n_cols][row] = true // right edge
+    for (const row of spanned_cells(vb.y1, vb.y2, y_coords)) v_walls[col][row] = true
   }
 
   // Flood-fill to assign region IDs
@@ -652,23 +396,15 @@ function infer_regions(
     }
   }
 
-  // Assign labels to regions by checking which region contains each label's position
+  // Each label names the region of the cell under it
   const region_labels = new Map<number, string>()
   for (const label of labels) {
-    const data_x = x_scale.to_data(label.px_x)
-    const data_y = y_scale.to_data(label.px_y)
-
-    const col = find_cell_index(x_coords, data_x)
-    const row = find_cell_index(y_coords, data_y)
-    if (col >= 0 && col < n_cols && row >= 0 && row < n_rows) {
-      const region_id = cell_ids[col][row]
-      if (region_id !== -1) {
-        region_labels.set(region_id, label.text)
-      }
-    }
+    const col = find_cell_index(x_coords, x_scale.to_data(label.px_x))
+    const row = find_cell_index(y_coords, y_scale.to_data(label.px_y))
+    if (col !== -1 && row !== -1) region_labels.set(cell_ids[col][row], label.text)
   }
 
-  // Build region polygons from merged cells
+  // Build region polygons by tracing the outline of each region's merged cells
   const regions: RegionInput[] = []
   for (let region_id = 0; region_id < next_region_id; region_id++) {
     const name = region_labels.get(region_id) ?? `Region ${region_id + 1}`
@@ -679,34 +415,30 @@ function infer_regions(
         .replaceAll(/[^a-z0-9]+/g, `_`)
         .replaceAll(/^_|_$/g, ``) || `region_${region_id + 1}`
 
-    // Find bounding box of all cells in this region
-    let [min_x, max_x] = [Infinity, -Infinity]
-    let [min_y, max_y] = [Infinity, -Infinity]
+    const bounds: DiagramPoint[] = trace_region_outline(
+      cell_ids,
+      region_id,
+      n_cols,
+      n_rows,
+      name,
+    ).map(([col, row]) => [round(x_coords[col]), round(y_coords[row])])
+
+    // Region colour: fill of the SVG shape under the centre of the region's largest cell (a
+    // point guaranteed inside the region, unlike the centroid of a thin L or U shape)
+    let [probe_col, probe_row, probe_area] = [-1, -1, -Infinity]
     for (let col = 0; col < n_cols; col++) {
       for (let row = 0; row < n_rows; row++) {
         if (cell_ids[col][row] !== region_id) continue
-        min_x = Math.min(min_x, x_coords[col])
-        max_x = Math.max(max_x, x_coords[col + 1])
-        min_y = Math.min(min_y, y_coords[row])
-        max_y = Math.max(max_y, y_coords[row + 1])
+        const area = (x_coords[col + 1] - x_coords[col]) * (y_coords[row + 1] - y_coords[row])
+        if (area > probe_area) [probe_col, probe_row, probe_area] = [col, row, area]
       }
     }
+    const color = fill_at_px(filled_shapes, [
+      x_scale.to_px((x_coords[probe_col] + x_coords[probe_col + 1]) / 2),
+      y_scale.to_px((y_coords[probe_row] + y_coords[probe_row + 1]) / 2),
+    ])
 
-    if (min_x === Infinity) continue
-
-    const bounds: DiagramPoint[] = [
-      [round(min_x), round(min_y)],
-      [round(max_x), round(min_y)],
-      [round(max_x), round(max_y)],
-      [round(min_x), round(max_y)],
-    ]
-
-    regions.push({
-      id: slug,
-      name,
-      color: TWO_PHASE_COLORS[region_id % TWO_PHASE_COLORS.length],
-      bounds,
-    })
+    regions.push({ id: slug, name, ...(color ? { color } : {}), bounds })
   }
 
   return regions
@@ -731,17 +463,100 @@ function flood_fill(
     if (cell_ids[col][row] !== -1) continue
 
     cell_ids[col][row] = region_id
-
-    // Check neighbors (no wall between them)
-    // Left neighbor: check v_walls[col][row]
+    // Neighbours with no wall between them (left, right, bottom, top)
     if (col > 0 && !v_walls[col][row]) stack.push([col - 1, row])
-    // Right neighbor: check v_walls[col+1][row]
     if (col < n_cols - 1 && !v_walls[col + 1][row]) stack.push([col + 1, row])
-    // Bottom neighbor: check h_walls[col][row]
     if (row > 0 && !h_walls[col][row]) stack.push([col, row - 1])
-    // Top neighbor: check h_walls[col][row+1]
     if (row < n_rows - 1 && !h_walls[col][row + 1]) stack.push([col, row + 1])
   }
+}
+
+// Trace the outer outline of the cells belonging to region_id as a rectilinear polygon
+// in grid-vertex coordinates [col_idx, row_idx], counter-clockwise in data space (x right,
+// temperature up) with collinear vertices removed. Boundary edges are emitted with the
+// region interior on their left and chained into a loop; at a pinch vertex (two region
+// cells touching only diagonally) the right-hand turn keeps the traversal on one loop.
+// Any remaining edges after the outer loop closes belong to holes and are dropped. Flood-filled
+// cells always yield a closed loop; should the chain still break (an unclosed outline or a
+// turn with nowhere to go) the region falls back to the bounding box of its cells with a
+// warning, so one pathological region cannot fail the whole import. Exported for tests.
+export function trace_region_outline(
+  cell_ids: number[][],
+  region_id: number,
+  n_cols: number,
+  n_rows: number,
+  name: string = `Region ${region_id + 1}`,
+): Vec2[] {
+  const in_region = (col: number, row: number): boolean =>
+    col >= 0 && col < n_cols && row >= 0 && row < n_rows && cell_ids[col][row] === region_id
+
+  const vertex_key = ([col, row]: Vec2) => `${col},${row}`
+  const outgoing = new Map<string, Vec2[]>()
+  const add_edge = (from: Vec2, to: Vec2) => {
+    const key = vertex_key(from)
+    const edges = outgoing.get(key)
+    if (edges) edges.push(to)
+    else outgoing.set(key, [to])
+  }
+
+  let start: Vec2 | null = null
+  let [min_col, max_col, min_row, max_row] = [Infinity, -Infinity, Infinity, -Infinity]
+  for (let col = 0; col < n_cols; col++) {
+    for (let row = 0; row < n_rows; row++) {
+      if (!in_region(col, row)) continue
+      // Lowest-then-leftmost cell: its bottom-left corner touches only this cell
+      if (!start || row < start[1] || (row === start[1] && col < start[0])) start = [col, row]
+      min_col = Math.min(min_col, col)
+      max_col = Math.max(max_col, col + 1)
+      min_row = Math.min(min_row, row)
+      max_row = Math.max(max_row, row + 1)
+      if (!in_region(col, row - 1)) add_edge([col, row], [col + 1, row]) // bottom, left→right
+      if (!in_region(col + 1, row)) add_edge([col + 1, row], [col + 1, row + 1]) // right, up
+      if (!in_region(col, row + 1)) add_edge([col + 1, row + 1], [col, row + 1]) // top, right→left
+      if (!in_region(col - 1, row)) add_edge([col, row + 1], [col, row]) // left, down
+    }
+  }
+  if (!start) throw new Error(`Region ${region_id} has no cells; cannot trace its outline`)
+
+  const loop: Vec2[] = [start]
+  let prev: Vec2 | null = null
+  let current: Vec2 = start
+  while (true) {
+    const key = vertex_key(current)
+    const candidates = outgoing.get(key) ?? []
+    if (candidates.length === 0) {
+      console.warn(
+        `Phase region "${name}": outline is not closed at grid vertex (${key}); using its bounding box instead`,
+      )
+      return [
+        [min_col, min_row],
+        [max_col, min_row],
+        [max_col, max_row],
+        [min_col, max_row],
+      ]
+    }
+    // Prefer the right-hand turn (negative cross product of incoming × outgoing direction)
+    let next = candidates[0]
+    if (prev && candidates.length > 1) {
+      const [in_dx, in_dy] = [current[0] - prev[0], current[1] - prev[1]]
+      const turn = (to: Vec2) => in_dx * (to[1] - current[1]) - in_dy * (to[0] - current[0])
+      next = candidates.reduce((best, cand) => (turn(cand) < turn(best) ? cand : best))
+    }
+    candidates.splice(candidates.indexOf(next), 1)
+    if (next[0] === start[0] && next[1] === start[1]) break
+    loop.push(next)
+    prev = current
+    current = next
+  }
+
+  // Drop vertices lying on a straight run between their neighbours
+  return loop.filter((vertex, idx) => {
+    const before = loop[(idx + loop.length - 1) % loop.length]
+    const after = loop[(idx + 1) % loop.length]
+    const same_col = before[0] === vertex[0] && vertex[0] === after[0]
+    const same_row = before[1] === vertex[1] && vertex[1] === after[1]
+    return !same_col && !same_row
+  })
 }
 
 // === Curve Generation ===
@@ -767,57 +582,29 @@ function generate_curves(boundaries: Boundary[]): Record<string, DiagramPoint[]>
 
 // Parse a phase diagram SVG string and return a DiagramInput
 export function parse_phase_diagram_svg(svg_string: string): DiagramInput {
-  const parser = new DOMParser()
-  const doc = parser.parseFromString(svg_string, `image/svg+xml`)
-
-  // Check for parse errors
+  const doc = new DOMParser().parseFromString(svg_string, `image/svg+xml`)
   const parse_error = doc.querySelector(`parsererror`)
-  if (parse_error) {
-    throw new Error(`Invalid SVG: ${parse_error.textContent}`)
-  }
+  if (parse_error) throw new Error(`Invalid SVG: ${parse_error.textContent}`)
 
   const format = detect_format(doc)
   const { x_scale, y_scale } = extract_axis_scales(doc, format)
-  const boundaries = extract_boundaries(doc, format, x_scale, y_scale)
+  const boundaries = extract_boundary_lines(doc, format).flatMap(
+    (line) => to_boundary(line, x_scale, y_scale) ?? [],
+  )
   const labels = extract_labels(doc, format)
-  const components = format === `mpds` ? infer_mpds_components(doc) : infer_components(labels)
-
-  if (boundaries.length === 0) {
-    throw new Error(`No phase boundaries found in SVG`)
-  }
-
-  const regions = infer_regions(boundaries, labels, x_scale, y_scale)
-  const curves = generate_curves(boundaries)
-
-  // MPDS SVGs use °C for temperature
-  const temp_unit = format === `mpds` ? `°C` : `K`
+  if (boundaries.length === 0) throw new Error(`No phase boundaries found in SVG`)
 
   return {
     meta: {
-      components,
+      components: infer_components(labels),
       temp_range: y_scale.domain,
-      temp_unit,
+      temp_unit: `K`,
       comp_unit: `fraction`,
       title: `Imported Phase Diagram`,
     },
-    curves,
-    regions,
+    curves: generate_curves(boundaries),
+    regions: infer_regions(boundaries, labels, extract_filled_shapes(doc), x_scale, y_scale),
   }
-}
-
-// Infer components from MPDS SVGs by finding element-like text content
-// MPDS SVGs have readable element names as text (e.g., "Cu", "Si")
-function infer_mpds_components(doc: Document): [string, string] {
-  const elements = new Set<string>()
-  for (const text_el of Array.from(doc.querySelectorAll(`text`))) {
-    const content = text_el.textContent?.trim() ?? ``
-    // Match single/two-letter element symbols, exclude common non-element text
-    if (/^[A-Z][a-z]?$/.test(content) && content !== `L` && content !== `M`) {
-      elements.add(content)
-    }
-  }
-  const unique = [...elements]
-  return [unique[0] ?? `A`, unique[1] ?? `B`]
 }
 
 // === Utility Functions ===
@@ -831,8 +618,9 @@ function leading_number(text: string | null | undefined): number {
 
 // Parse stroke-width from style or direct attribute (0 if missing, `2px` units ok)
 function parse_stroke_width(el: Element): number {
-  const style_match = /stroke-width:\s*(?<width>[\d.]+)/.exec(el.getAttribute(`style`) ?? ``)
-  if (style_match) return Number(style_match[1])
+  const width = /stroke-width:\s*(?<width>[\d.]+)/.exec(el.getAttribute(`style`) ?? ``)?.groups
+    ?.width
+  if (width !== undefined) return Number(width)
   const parsed = leading_number(el.getAttribute(`stroke-width`))
   return isNaN(parsed) ? 0 : parsed
 }
@@ -845,134 +633,114 @@ function parse_float_attr(el: Element, attr: string): number | null {
   return isNaN(parsed) ? null : parsed
 }
 
-// Extract a number from XML comment nodes inside a group element
-function extract_comment_number(group: Element): number | null {
+// Text of every XML comment node inside `group`, in document order
+function* comment_texts(group: Element): Generator<string> {
   const walker = group.ownerDocument.createTreeWalker(group, NodeFilter.SHOW_COMMENT)
-  let node: Comment | null
-  while ((node = walker.nextNode() as Comment | null)) {
-    const value = leading_number(node.textContent)
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    yield node.textContent ?? ``
+  }
+}
+
+// First number found in an XML comment inside a group element
+function extract_comment_number(group: Element): number | null {
+  for (const text of comment_texts(group)) {
+    const value = leading_number(text)
     if (!isNaN(value)) return value
   }
   return null
 }
 
-// Find the first XML comment text inside or preceding a group
+// First XML comment text (longer than one character) inside a group, else the nearest
+// comment preceding it before the previous element
 function find_comment_text(group: Element): string | null {
-  // Check comment nodes inside the group
-  const walker = group.ownerDocument.createTreeWalker(group, NodeFilter.SHOW_COMMENT)
-  let node: Comment | null
-  while ((node = walker.nextNode() as Comment | null)) {
-    const text = node.textContent?.trim()
+  for (const text of comment_texts(group)) if (text.trim().length > 1) return text.trim()
+  for (
+    let sibling = group.previousSibling;
+    sibling && sibling.nodeType !== Node.ELEMENT_NODE;
+    sibling = sibling.previousSibling
+  ) {
+    const text = sibling.nodeType === Node.COMMENT_NODE ? sibling.textContent?.trim() : ``
     if (text && text.length > 1) return text
   }
-
-  // Check preceding sibling comments
-  let sibling = group.previousSibling
-  while (sibling) {
-    if (sibling.nodeType === Node.COMMENT_NODE) {
-      const text = sibling.textContent?.trim()
-      if (text && text.length > 1) return text
-    }
-    if (sibling.nodeType === Node.ELEMENT_NODE) break // stop at previous element
-    sibling = sibling.previousSibling
-  }
-
   return null
 }
+
+const NUMBER_REGEX = /[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?/g
+const PATH_TOKEN_REGEX = new RegExp(`[MmLlHhVvCcSsQqTtAaZz]|${NUMBER_REGEX.source}`, `g`)
 
 // Parse SVG path data into absolute line segments [x1,y1,x2,y2]
 // Handles all SVG path commands (M/L/H/V/C/S/Q/T/A/Z, both absolute and relative)
 // Curves (C/S/Q/T/A) are approximated as straight lines from start to endpoint
 // After M/m, implicit coordinates are treated as L/l per SVG spec
+// Throws on malformed data (unknown characters, missing coordinates) with a `d` snippet
 function parse_path_segments(path_str: string): Vec4[] {
+  const snippet = path_str.length > 80 ? `${path_str.slice(0, 80)}…` : path_str
+  const malformed = (reason: string) =>
+    new Error(`Malformed SVG path data "${snippet}": ${reason}`)
+
+  const leftover = path_str.replace(PATH_TOKEN_REGEX, ``).replaceAll(/[\s,]/g, ``)
+  if (leftover) throw malformed(`unexpected characters "${leftover.slice(0, 20)}"`)
+  const tokens = path_str.match(PATH_TOKEN_REGEX)
+  if (!tokens) throw malformed(`no path commands`)
+
   const segments: Vec4[] = []
   let [cursor_x, cursor_y] = [0, 0]
   let [start_x, start_y] = [0, 0]
   let last_cmd = ``
+  const line_to = (x2: number, y2: number) => {
+    segments.push([cursor_x, cursor_y, x2, y2])
+    cursor_x = x2
+    cursor_y = y2
+  }
 
-  // Numbers to skip before the endpoint x,y for each curve command
-  const curve_skip: Record<string, number> = { C: 4, S: 2, Q: 2, T: 0, A: 5 }
-  const tokens = path_str.match(/[MmLlHhVvCcSsQqTtAaZz]|[-+]?[\d]*\.?[\d]+(?:[eE][-+]?\d+)?/g)
-  if (!tokens) return segments
+  // Numbers to skip before the endpoint x,y for each lineto-like command (curves are
+  // approximated by the straight line to their endpoint)
+  const endpoint_skip: Record<string, number> = { L: 0, C: 4, S: 2, Q: 2, T: 0, A: 5 }
+  const is_command = (token: string | undefined) =>
+    token !== undefined && /^[A-Za-z]$/.test(token)
 
   let idx = 0
-  const peek = () => tokens[idx]
-  const next_num = () => Number(tokens[idx++] || `0`)
+  const next_num = (cmd: string): number => {
+    const token = tokens[idx]
+    if (token === undefined || is_command(token)) {
+      throw malformed(`command "${cmd}" is missing a coordinate at token ${idx}`)
+    }
+    idx++
+    return Number(token)
+  }
 
   while (idx < tokens.length) {
-    let cmd = peek() ?? ``
-
-    if (cmd.length === 1 && /[A-Za-z]/.test(cmd)) {
+    let cmd = tokens[idx]
+    if (is_command(cmd)) {
       idx++
       last_cmd = cmd
     } else {
       // Implicit repeat: after M→L, after m→l, others repeat themselves
+      if (!last_cmd) throw malformed(`coordinates before any command`)
       cmd = last_cmd === `M` ? `L` : last_cmd === `m` ? `l` : last_cmd
     }
 
-    if (cmd === `M` || cmd === `m`) {
-      const next_x = next_num()
-      const next_y = next_num()
-      cursor_x = cmd === `M` ? next_x : cursor_x + next_x
-      cursor_y = cmd === `M` ? next_y : cursor_y + next_y
+    // Lowercase commands are relative to the current point
+    const upper = cmd.toUpperCase()
+    const abs_x = (val: number) => (cmd === upper ? val : cursor_x + val)
+    const abs_y = (val: number) => (cmd === upper ? val : cursor_y + val)
+    if (upper === `M`) {
+      cursor_x = abs_x(next_num(cmd))
+      cursor_y = abs_y(next_num(cmd))
       start_x = cursor_x
       start_y = cursor_y
-      last_cmd = cmd
-    } else if (cmd === `L` || cmd === `l`) {
-      const next_x = next_num()
-      const next_y = next_num()
-      const x2 = cmd === `L` ? next_x : cursor_x + next_x
-      const y2 = cmd === `L` ? next_y : cursor_y + next_y
-      segments.push([cursor_x, cursor_y, x2, y2])
-      cursor_x = x2
-      cursor_y = y2
-    } else if (cmd === `H` || cmd === `h`) {
-      const next_x = next_num()
-      const x2 = cmd === `H` ? next_x : cursor_x + next_x
-      segments.push([cursor_x, cursor_y, x2, cursor_y])
-      cursor_x = x2
-    } else if (cmd === `V` || cmd === `v`) {
-      const next_y = next_num()
-      const y2 = cmd === `V` ? next_y : cursor_y + next_y
-      segments.push([cursor_x, cursor_y, cursor_x, y2])
-      cursor_y = y2
-    } else if (cmd === `Z` || cmd === `z`) {
-      if (cursor_x !== start_x || cursor_y !== start_y) {
-        segments.push([cursor_x, cursor_y, start_x, start_y])
-      }
-      cursor_x = start_x
-      cursor_y = start_y
+    } else if (upper === `H`) line_to(abs_x(next_num(cmd)), cursor_y)
+    else if (upper === `V`) line_to(cursor_x, abs_y(next_num(cmd)))
+    else if (upper === `Z`) {
+      if (cursor_x !== start_x || cursor_y !== start_y) line_to(start_x, start_y)
     } else {
-      // Curve commands: skip control/arc params, use endpoint as straight line
-      // C=4 skip, S=2, Q=2, T=0, A=5 (numbers before the final x,y endpoint)
-      const upper = cmd.toUpperCase()
-      const skip = curve_skip[upper]
-      if (skip !== undefined) {
-        for (let skip_idx = 0; skip_idx < skip; skip_idx++) next_num()
-        const end_x = next_num()
-        const end_y = next_num()
-        const x2 = cmd === upper ? end_x : cursor_x + end_x
-        const y2 = cmd === upper ? end_y : cursor_y + end_y
-        segments.push([cursor_x, cursor_y, x2, y2])
-        cursor_x = x2
-        cursor_y = y2
-      } else {
-        idx++ // skip unknown tokens
-      }
+      const skip = endpoint_skip[upper]
+      if (skip === undefined) throw malformed(`unknown command "${cmd}"`)
+      for (let skip_idx = 0; skip_idx < skip; skip_idx++) next_num(cmd)
+      line_to(abs_x(next_num(cmd)), abs_y(next_num(cmd)))
     }
   }
   return segments
-}
-
-// Parse a simple 2-point line path (M...L only). Returns null for multi-segment paths
-// to enforce the single-line contract expected by boundary extraction.
-function parse_ml_path(
-  path_str: string,
-): { x1: number; y1: number; x2: number; y2: number } | null {
-  const segments = parse_path_segments(path_str)
-  if (segments.length !== 1) return null
-  const [x1, y1, x2, y2] = segments[0]
-  return { x1, y1, x2, y2 }
 }
 
 // Parse translate(x, y) or translate(x) from a transform attribute
@@ -981,20 +749,15 @@ function parse_translate(el: Element | null): Vec2 | null {
   const match = /translate\(\s*(?<x>[\d.eE+-]+)(?:\s*[,\s]\s*(?<y>[\d.eE+-]+))?\s*\)/.exec(
     el?.getAttribute(`transform`) ?? ``,
   )
-  if (!match) return null
-  return [Number(match[1]), match[2] ? Number(match[2]) : 0]
-}
-
-// Get translate X or Y from a group's transform attribute
-function get_group_translate(el: Element | null, axis: `x` | `y`): number {
-  const coords = parse_translate(el)
-  return coords ? coords[axis === `x` ? 0 : 1] : 0
+  if (!match?.groups) return null
+  const { x, y } = match.groups
+  return [Number(x), y ? Number(y) : 0]
 }
 
 // Collect unique sorted values from an array (with epsilon deduplication)
 function collect_unique_sorted(values: number[]): number[] {
   if (values.length === 0) return []
-  const sorted = values.toSorted((a, b) => a - b)
+  const sorted = values.toSorted((val_a, val_b) => val_a - val_b)
   const unique: number[] = [sorted[0]]
   for (let idx = 1; idx < sorted.length; idx++) {
     if (Math.abs(sorted[idx] - unique[unique.length - 1]) > 1e-4) {
@@ -1004,20 +767,12 @@ function collect_unique_sorted(values: number[]): number[] {
   return unique
 }
 
-// Find the index of a coordinate in a sorted array (with epsilon tolerance)
-function find_coord_index(coords: number[], value: number): number {
-  for (let idx = 0; idx < coords.length; idx++) {
-    if (Math.abs(coords[idx] - value) < 1e-4) return idx
-  }
-  return -1
-}
+// Index of a coordinate in a sorted array (with epsilon tolerance), -1 if absent
+const find_coord_index = (coords: number[], value: number): number =>
+  coords.findIndex((coord) => Math.abs(coord - value) < 1e-4)
 
-// Find which cell interval a value falls into
-function find_cell_index(coords: number[], value: number): number {
-  for (let idx = 0; idx < coords.length - 1; idx++) {
-    if (value >= coords[idx] - 1e-4 && value <= coords[idx + 1] + 1e-4) {
-      return idx
-    }
-  }
-  return -1
-}
+// Index of the cell interval [coords[idx], coords[idx + 1]] containing value, -1 if none
+const find_cell_index = (coords: number[], value: number): number =>
+  coords
+    .slice(0, -1)
+    .findIndex((lower, idx) => value >= lower - 1e-4 && value <= coords[idx + 1] + 1e-4)

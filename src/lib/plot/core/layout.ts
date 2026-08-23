@@ -29,8 +29,6 @@ export const AXIS_LABEL_HEIGHT = 20
 // Axis titles historically used a 200px foreignObject. Retain that as the deterministic
 // wrapping span for vertical titles, whose available height is not forwarded through PlotAxis.
 export const AXIS_TITLE_WRAP_WIDTH = 200
-// Air past an axis title's glyph box; 0 sits titles flush against the plot edge
-export const AXIS_LABEL_OUTER = 0
 // Distance from an x/x2 axis baseline to the title center.
 export const AXIS_TITLE_OFFSET = TICK_LABEL_HEIGHT + LABEL_GAP_DEFAULT
 
@@ -251,14 +249,14 @@ export function y_axis_label_x(
   const tick_shift = inside ? 0 : (axis.tick?.label?.shift?.x ?? 0)
   const tick_extent = inside ? 0 : max_tick_width + 8 - tick_shift
   const title_height = resolve_axis_title_layout(axis).height || AXIS_LABEL_HEIGHT
-  const title_center = AXIS_LABEL_OUTER + title_height / 2
+  const title_center = title_height / 2
   return Math.max(
     title_center,
     pad_l - tick_extent - LABEL_GAP_DEFAULT - title_height / 2 + (axis.label_shift?.x ?? 0),
   )
 }
 
-// Right y2-title x: mirror of y_axis_label_x (title center in its band, past the outer air).
+// Right y2-title x: mirror of y_axis_label_x (title center in its band).
 export function y2_axis_label_x(
   axis: AxisConfig,
   width: number,
@@ -273,10 +271,7 @@ export function y2_axis_label_x(
     LABEL_GAP_DEFAULT +
     title_height / 2 +
     (axis.label_shift?.x ?? 0)
-  return Math.min(
-    width - AXIS_LABEL_OUTER - title_height / 2,
-    width - pad_r + tick_shift + label_offset,
-  )
+  return Math.min(width - title_height / 2, width - pad_r + tick_shift + label_offset)
 }
 
 // Ignore undefined sides so optional props never override defaults.
@@ -444,7 +439,7 @@ export const calc_auto_padding = ({
     const tick_offset = !has_outside_ticks
       ? 0
       : 8 + Math.max(0, side === `left` ? -tick_shift : tick_shift)
-    const title_band = has_title ? title_layout.height + AXIS_LABEL_OUTER : 0
+    const title_band = has_title ? title_layout.height : 0
     const title_gap = has_title && has_outside_ticks ? label_gap : 0
     const title_shift = axis.label_shift?.x ?? 0
     const title_shift_outward = Math.max(0, side === `left` ? -title_shift : title_shift)
@@ -494,8 +489,7 @@ export const calc_auto_padding = ({
         Math.max(0, tick_band - TICK_LABEL_HEIGHT) +
         title_layout.height / 2
       : 0
-    const outer_air = has_title || has_outside_ticks ? AXIS_LABEL_OUTER : 0
-    return Math.max(default_padding.t, Math.max(tick_reach, title_reach) + outer_air)
+    return Math.max(default_padding.t, Math.max(tick_reach, title_reach))
   }
 
   // Bottom depends on the angle the x labels will render at, since a rotated label projects
@@ -516,7 +510,7 @@ export const calc_auto_padding = ({
     const below_baseline =
       title_height > 0 ? band + LABEL_GAP_DEFAULT + title_height / 2 : band
     const title_shift = title_height > 0 ? Math.max(0, x_axis.label_shift?.y ?? 0) : 0
-    const content_reach = below_baseline + tick_shift + title_shift + AXIS_LABEL_OUTER
+    const content_reach = below_baseline + tick_shift + title_shift
     return Math.max(default_padding.b, content_reach)
   }
 

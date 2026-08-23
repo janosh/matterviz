@@ -2,7 +2,7 @@
   // Per-column filter for a HeatmapTable header: a funnel button opening a panel whose
   // controls depend on the column's data — a range for numbers, a checklist for few distinct
   // values, a substring box otherwise. The host owns `open` (only one header popover may be
-  // open at a time) and persists the filter itself through `onchange`.
+  // open at a time) and persists the filter itself through `on_change`.
   import { format_num } from '$lib/labels'
   import type { ColumnFilter, Label, RowData } from '$lib/table'
   import {
@@ -22,8 +22,8 @@
     filter,
     stats,
     open,
-    ontoggle,
-    onchange,
+    on_toggle,
+    on_change,
   }: {
     col: Label
     rows: RowData[]
@@ -33,8 +33,8 @@
     // Column extent shown as the range inputs' placeholders
     stats?: { min: number; max: number }
     open: boolean
-    ontoggle: () => void
-    onchange: (filter: ColumnFilter | undefined) => void
+    on_toggle: () => void
+    on_change: (filter: ColumnFilter | undefined) => void
   } = $props()
 
   // Lazy: the distinct-value scan is O(rows) and only runs for the open panel
@@ -56,7 +56,7 @@
     class={['column-filter-trigger', { active: Boolean(filter) }]}
     aria-label="Filter {strip_html(col.label)}"
     aria-expanded={open}
-    onclick={ontoggle}
+    onclick={on_toggle}
   >
     <Icon icon={Filter} />
   </button>
@@ -65,7 +65,7 @@
     <div
       class="column-filter-panel"
       onkeydown={(event) => {
-        if (event.key === `Escape`) ontoggle()
+        if (event.key === `Escape`) on_toggle()
       }}
     >
       {#if panel.kind === `numeric`}
@@ -78,7 +78,7 @@
               value={range?.[bound] ?? ``}
               placeholder={stats ? format_num(stats[bound], `.3~g`) : ``}
               oninput={(event) =>
-                onchange(with_numeric_bound(filter, bound, event.currentTarget.value))}
+                on_change(with_numeric_bound(filter, bound, event.currentTarget.value))}
             />
           </label>
         {/each}
@@ -91,7 +91,7 @@
               <input
                 type="checkbox"
                 checked={selected === null || selected.includes(option)}
-                onchange={() => onchange(with_category_toggled(filter, option, options))}
+                onchange={() => on_change(with_category_toggled(filter, option, options))}
               />
               {option || `(blank)`}
             </label>
@@ -104,12 +104,12 @@
           value={filter?.kind === `text` ? filter.text : ``}
           oninput={(event) => {
             const text = event.currentTarget.value
-            onchange(text ? { kind: `text`, text } : undefined)
+            on_change(text ? { kind: `text`, text } : undefined)
           }}
         />
       {/if}
       {#if filter}
-        <button type="button" class="column-filter-clear" onclick={() => onchange(undefined)}>
+        <button type="button" class="column-filter-clear" onclick={() => on_change(undefined)}>
           Clear filter
         </button>
       {/if}

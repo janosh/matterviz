@@ -25,8 +25,7 @@ export {
 } from './barycentric-coords'
 export { default as ConvexHull } from './ConvexHull.svelte'
 export { default as ConvexHull2D } from './ConvexHull2D.svelte'
-export { default as ConvexHull3D } from './ConvexHull3D.svelte'
-export { default as ConvexHull4D } from './ConvexHull4D.svelte'
+export { default as ConvexHullCanvas } from './ConvexHullCanvas.svelte'
 export { default as ConvexHullControls } from './ConvexHullControls.svelte'
 export { default as ConvexHullInfoPane } from './ConvexHullInfoPane.svelte'
 export { default as ConvexHullStats } from './ConvexHullStats.svelte'
@@ -193,7 +192,7 @@ export interface Hull3DProps {
 
 export type GizmoPlacement = `top-right` | `bottom-right` | `top-left` | `bottom-left`
 
-// Gizmo options for ConvexHull3D: where to park the gizmo's wrapper element, plus the
+// Gizmo options for the ternary ConvexHullCanvas: where to park the gizmo's wrapper element, plus the
 // appearance options forwarded to <Gizmo>.
 export type ConvexHullGizmoOptions = Record<string, unknown> & {
   placement?: GizmoPlacement
@@ -203,10 +202,7 @@ export type ConvexHullGizmoOptions = Record<string, unknown> & {
 // Default legend configuration shared by 3D and 4D diagrams
 export const default_controls: ConvexHullControlsType = {
   title: ``,
-  position: `top-right`,
-  width: 280,
   show_counts: true,
-  show_color_toggle: true,
   show_label_controls: true,
 }
 
@@ -217,26 +213,18 @@ export const default_controls: ConvexHullControlsType = {
 // the settings schema. Keep it that way: don't add keys here that exist in
 // DEFAULTS.convex_hull (read those via DEFAULTS instead) or the two will drift.
 export const default_hull_config: ConvexHullConfig = {
-  width: 600,
-  height: 600,
-  unstable_threshold: 0.2,
   show_labels: true,
   show_hull: true,
-  point_size: 8,
-  line_width: 2,
   font_size: 12,
-  colors: {
-    stable: `#0072B2`,
-    unstable: `#E69F00`,
-    hull_line: `var(--accent-color, #1976D2)`,
-    background: `transparent`,
-    text: `var(--text-color, #212121)`,
-    edge: `var(--text-color, #212121)`,
-    tooltip_bg: `var(--tooltip-bg, rgba(0, 0, 0, 0.85))`,
-    tooltip_text: `var(--tooltip-text, white)`,
-    annotation: `var(--text-color, #212121)`,
-  },
+  colors: { stable: `#0072B2`, unstable: `#E69F00` },
 }
+
+// User config over default_hull_config, colors merged one level deep
+export const merge_hull_config = (config: ConvexHullConfig): ConvexHullConfig => ({
+  ...default_hull_config,
+  ...config,
+  colors: { ...default_hull_config.colors, ...config.colors },
+})
 
 // Shared convex hull styles (single source of truth shared by 2D, 3D, and 4D)
 export const CONVEX_HULL_STYLE = Object.freeze({

@@ -6,9 +6,9 @@
   // Geometry is cached per layer so colormap/color-range changes never rerun
   // marching cubes, and sampled scalars are cached so they only remap through the
   // colormap LUT.
-  import { marching_cubes_buffers } from '../marching-cubes'
-  import type { Matrix3x3, Vec3 } from '../math'
-  import { T } from '@threlte/core'
+  import { clamp, type Matrix3x3, type Vec3 } from '../math'
+  import { to_error } from '../utils'
+  import { T, useThrelte } from '@threlte/core'
   import { untrack } from 'svelte'
   import { SvelteSet } from 'svelte/reactivity'
   import {
@@ -26,57 +26,56 @@
     scalars_to_vertex_colors,
   } from './coloring'
   import { compute_geometries_async } from './async-geometry.svelte'
-  import { finite_grid_options, type GeometryVolumeJob } from './geometry'
+  import {
+    compute_isosurface_geometries,
+    type GeometryResult,
+    type GeometryVolumeJob,
+  } from './geometry'
   import type { ScalarGrid3D } from './grid'
-  import {
-    type IsosurfaceProfileMeta,
-    type IsosurfaceProfiler,
-    profile_stage,
-    record_profile,
-  } from './profile'
+  import { record_stage, time_stage } from './profile'
   import type { DisplayRange } from './sampling'
-  import {
-    prepare_geometry_grid,
-    resolve_volume_display_range,
-    sample_volume_at_positions,
-  } from './sampling'
+  import { resolve_volume_display_range, sample_volume_at_positions } from './sampling'
   import type { IsosurfaceLayer, IsosurfaceSettings, VolumetricData } from './types'
-  import { DEFAULT_ISOSURFACE_SETTINGS, MAX_GRID_POINTS, materialize_layers } from './types'
+  import { DEFAULT_ISOSURFACE_SETTINGS, MAX_GRID_POINTS, pin_layers } from './types'
 
   let {
     volumes = [],
     settings = DEFAULT_ISOSURFACE_SETTINGS,
     active_volume_idx = 0,
     tiling = [1, 1, 1],
-    profiler = undefined,
+    on_error,
   }: {
     volumes?: VolumetricData[]
     settings?: IsosurfaceSettings
-    // Volume that implicit single-isovalue settings apply to when no explicit
-    // layers are set (also the fallback for layers without volume_idx)
+    // Volume that layers without an explicit volume_idx render from
     active_volume_idx?: number
     // Supercell tiling applied to geometry volumes (color sampling always uses
     // the original volume with periodic wrapping for full fidelity)
     tiling?: Vec3
-    // Internal benchmark hook. Deliberately not re-exported from the package API.
-    profiler?: IsosurfaceProfiler
+    // Called when the geometry worker fails after construction (chunk 404, OOM, module
+    // import failure) so the host can tell the user why the surfaces did not update. A
+    // worker that cannot be constructed at all falls back to the main thread silently.
+    on_error?: (message: string) => void
   } = $props()
+
+  // Geometry and colour updates mutate three objects in place (setAttribute, needsUpdate),
+  // which bypasses the <T> props Threlte watches, so under the hosts' on-demand render mode
+  // nothing would repaint until the next orbit without an explicit invalidate
+  const threlte = useThrelte()
 
   let reference_origin = $derived<Vec3>(volumes[0]?.origin ?? [0, 0, 0])
   let reference_origin_key = $derived(reference_origin.join(`,`))
 
-  type ResolvedLayer = ReturnType<typeof materialize_layers>[number]
+  type ResolvedLayer = ReturnType<typeof pin_layers>[number]
 
-  // Resolve layers: explicit layers array if provided (an empty array means zero
-  // surfaces), else one implicit layer from single-isovalue settings bound to
-  // the (clamped) active volume. Layers with an explicitly out-of-range volume_idx
-  // are skipped rather than clamped — silently rendering a different volume's data
-  // would be scientifically wrong.
+  // Layers pinned to the (clamped) active volume. Layers with an explicitly out-of-range
+  // volume_idx are skipped rather than clamped — silently rendering a different volume's
+  // data would be scientifically wrong.
   let resolved_layers = $derived.by((): ResolvedLayer[] => {
     const n_vols = volumes.length
     if (n_vols === 0) return []
-    const active_idx = Math.min(Math.max(active_volume_idx, 0), n_vols - 1)
-    return materialize_layers(settings, active_idx).filter(
+    const active_idx = clamp(active_volume_idx, 0, n_vols - 1)
+    return pin_layers(settings.layers, active_idx).filter(
       (layer) => layer.volume_idx >= 0 && layer.volume_idx < n_vols,
     )
   })
@@ -104,17 +103,16 @@
       halo: settings.halo,
     })
 
-  // === Geometry-volume preparation (range extraction or finite-grid downsampling) ===
-  // The range fully determines the prepared grid for a given volume: it encodes
-  // tiling and halo for periodic volumes and is null/explicit-crop for finite
+  // === Prepared geometry grids ===
+  // The finite marching-cubes grid of a volume (range extraction or budget downsampling),
+  // cached per volume object so isovalue changes reuse it. The range fully determines it:
+  // it encodes tiling and halo for periodic volumes and is null/explicit-crop for finite
   // ones (which ignore tiling and halo entirely).
   type PreparedGrid = {
     key: string
     grid: ScalarGrid3D<Float64Array>
     lattice: Matrix3x3
-    // Cartesian shift applied to marching-cubes vertices: range offset plus this
-    // volume's origin delta relative to the scene reference (first volume's origin)
-    vertex_shift: Vec3
+    origin: Vec3
   }
   // Keyed by volume object so removed/replaced volumes release their prepared
   // grids to GC automatically and index shifts never serve stale grids
@@ -125,37 +123,10 @@
 
   const prepared_key = (vol: VolumetricData): string =>
     `${range_key(vol)}|${reference_origin_key}`
-  const vertex_shift = (origin: Vec3): Vec3 =>
-    origin.map((value, axis) => value - reference_origin[axis]) as Vec3
 
   const current_prepared = (vol: VolumetricData): PreparedGrid | undefined => {
     const cached = prepared_cache.get(vol)
     return cached?.key === prepared_key(vol) ? cached : undefined
-  }
-
-  function prepare_geometry_volume(vol: VolumetricData): PreparedGrid {
-    const cached = current_prepared(vol)
-    if (cached) {
-      record_profile(profiler, `prepare_geometry`, 0, { cache_hit: true })
-      return cached
-    }
-    const profile_start = profiler ? performance.now() : 0
-
-    const range = effective_range(vol)
-    const { grid, lattice, origin } = prepare_geometry_grid(vol, range)
-
-    const prepared: PreparedGrid = {
-      key: prepared_key(vol),
-      grid,
-      lattice,
-      vertex_shift: vertex_shift(origin),
-    }
-    prepared_cache.set(vol, prepared)
-    record_profile(profiler, `prepare_geometry`, performance.now() - profile_start, {
-      output_points: grid.values.length,
-      extracted_range: range !== null,
-    })
-    return prepared
   }
 
   const geometry_buffer_bytes = (geometry: BufferGeometry): number =>
@@ -168,10 +139,8 @@
   const build_geometry = (
     positions: Float32Array,
     indices: Uint32Array,
-    meta: IsosurfaceProfileMeta = {},
   ): BufferGeometry | null =>
-    profile_stage(
-      profiler,
+    time_stage(
       `build_geometry`,
       () => {
         if (positions.length === 0 || indices.length === 0) return null
@@ -182,23 +151,8 @@
         geometry.computeBoundingSphere()
         return geometry
       },
-      (geometry) => ({
-        ...meta,
-        buffer_bytes: geometry ? geometry_buffer_bytes(geometry) : 0,
-      }),
+      (geometry) => ({ buffer_bytes: geometry ? geometry_buffer_bytes(geometry) : 0 }),
     )
-
-  function extract_surface(isovalue: number, prepared: PreparedGrid): BufferGeometry | null {
-    const { positions, indices } = profile_stage(profiler, `marching_cubes`, () =>
-      marching_cubes_buffers(
-        prepared.grid,
-        isovalue,
-        prepared.lattice,
-        finite_grid_options(prepared.vertex_shift),
-      ),
-    )
-    return build_geometry(positions, indices)
-  }
 
   // === Mesh entry management ===
   // Each visible layer produces up to 2 entries (positive + optional negative lobe).
@@ -275,6 +229,8 @@
     return Math.min(estimate, MAX_GRID_POINTS)
   }
 
+  // Large grids that still need preparing go to the geometry worker; small ones and
+  // already-prepared grids are cheaper on the main thread than a round trip
   const use_geometry_worker = (pending: PendingSurface[]): boolean =>
     typeof window !== `undefined` &&
     typeof Worker !== `undefined` &&
@@ -284,21 +240,70 @@
         estimated_prepared_points(surface.volume) >= 200_000,
     )
 
-  // Group pending surfaces by volume so each volume is posted and prepared once
-  const worker_jobs = (pending: PendingSurface[]): GeometryVolumeJob[] =>
-    [...Map.groupBy(pending, (surface) => surface.volume)].map(([vol, surfaces]) => ({
-      token: vol_id(vol),
-      volume: vol,
-      range: effective_range(vol),
-      reference_origin,
-      surfaces: surfaces.map(({ key, isovalue }) => ({ token: key, isovalue })),
-    }))
+  // One job per volume. A volume whose prepared grid is still valid is posted as that finite
+  // grid with no range, which prepare_geometry_grid passes through untouched, so only new or
+  // invalidated volumes are re-extracted/downsampled.
+  const geometry_jobs = (pending: PendingSurface[]): GeometryVolumeJob[] =>
+    [...Map.groupBy(pending, (surface) => surface.volume)].map(([vol, surfaces]) => {
+      const prepared = current_prepared(vol)
+      return {
+        token: vol_id(vol),
+        volume: prepared
+          ? {
+              values: prepared.grid.values,
+              dims: prepared.grid.dims,
+              order: `z_fastest`,
+              lattice: prepared.lattice,
+              origin: prepared.origin,
+              periodic: false,
+            }
+          : vol,
+        range: prepared ? null : effective_range(vol),
+        reference_origin,
+        surfaces: surfaces.map(({ key, isovalue }) => ({ token: key, isovalue })),
+      }
+    })
+
+  // Cache prepared grids and build geometries from one geometry result (worker or sync)
+  function ingest_geometry_result(
+    response: GeometryResult,
+    pending: PendingSurface[],
+    worker: boolean,
+  ): Map<string, BufferGeometry> {
+    const geometries = new Map<string, BufferGeometry>()
+    for (const volume_result of response.volumes) {
+      const source_volume = pending.find(
+        (surface) => vol_id(surface.volume) === volume_result.token,
+      )?.volume
+      if (source_volume) {
+        prepared_cache.set(source_volume, {
+          key: prepared_key(source_volume),
+          grid: volume_result.grid,
+          lattice: volume_result.lattice,
+          origin: volume_result.origin,
+        })
+      }
+      record_stage(`prepare_geometry`, volume_result.prepare_geometry_ms, {
+        worker,
+        output_points: volume_result.grid.values.length,
+      })
+      for (const surface_result of volume_result.surfaces) {
+        record_stage(`marching_cubes`, surface_result.marching_cubes_ms, {
+          worker,
+          vertices: surface_result.positions.length / 3,
+        })
+        const geometry = build_geometry(surface_result.positions, surface_result.indices)
+        if (geometry) geometries.set(surface_result.token, geometry)
+      }
+    }
+    return geometries
+  }
 
   async function rebuild_geometries(
     layers: ResolvedLayer[],
     generation: number,
   ): Promise<void> {
-    const profile_start = profiler ? performance.now() : 0
+    const profile_start = performance.now()
     let cache_hits = 0
     // Reuse geometries whose signature is unchanged (take-once so duplicate
     // layers at the same isovalue never share a geometry instance)
@@ -335,65 +340,33 @@
       }
     }
 
-    const geometries = new Map<string, BufferGeometry>()
-    let build_synchronously = !use_geometry_worker(pending)
-    if (!build_synchronously) {
+    let geometries = new Map<string, BufferGeometry>()
+    const jobs = geometry_jobs(pending)
+    if (use_geometry_worker(pending)) {
       cancel_geometry_worker()
       const abort = new AbortController()
       geometry_abort = abort
       try {
         const response = await compute_geometries_async(
-          { volumes: worker_jobs(pending) },
+          { volumes: jobs },
           { signal: abort.signal },
         )
         if (generation !== rebuild_generation) return
-        for (const volume_result of response.volumes) {
-          const source_volume = pending.find(
-            (surface) => vol_id(surface.volume) === volume_result.token,
-          )?.volume
-          if (source_volume) {
-            prepared_cache.set(source_volume, {
-              key: prepared_key(source_volume),
-              grid: volume_result.grid,
-              lattice: volume_result.lattice,
-              vertex_shift: vertex_shift(volume_result.origin),
-            })
-          }
-          record_profile(profiler, `prepare_geometry`, volume_result.prepare_geometry_ms, {
-            worker: true,
-          })
-          for (const surface_result of volume_result.surfaces) {
-            record_profile(profiler, `marching_cubes`, surface_result.marching_cubes_ms, {
-              worker: true,
-              vertices: surface_result.positions.length / 3,
-            })
-            const geometry = build_geometry(surface_result.positions, surface_result.indices, {
-              worker: true,
-            })
-            if (geometry) geometries.set(surface_result.token, geometry)
-          }
-        }
+        geometries = ingest_geometry_result(response, pending, true)
       } catch (error) {
         if (generation !== rebuild_generation || abort.signal.aborted) return
-        const message = error instanceof Error ? error.message : String(error)
-        record_profile(profiler, `prepare_geometry`, 0, {
-          worker_fallback: true,
-          error: message,
-        })
-        console.warn(`Isosurface geometry worker failed; using synchronous fallback`, error)
-        build_synchronously = true
+        console.error(`Isosurface geometry worker failed; keeping previous surfaces`, error)
+        on_error?.(`Isosurface geometry failed: ${to_error(error).message}`)
+        return
       } finally {
         if (geometry_abort === abort) geometry_abort = undefined
       }
-    }
-    if (build_synchronously) {
-      for (const surface of pending) {
-        const geometry = extract_surface(
-          surface.isovalue,
-          prepare_geometry_volume(surface.volume),
-        )
-        if (geometry) geometries.set(surface.key, geometry)
-      }
+    } else if (jobs.length > 0) {
+      geometries = ingest_geometry_result(
+        compute_isosurface_geometries({ volumes: jobs }),
+        pending,
+        false,
+      )
     }
 
     if (generation !== rebuild_generation) {
@@ -448,13 +421,14 @@
       triangles += (entry.geometry.getIndex()?.count ?? 0) / 3
       buffer_bytes += geometry_buffer_bytes(entry.geometry)
     }
-    record_profile(profiler, `rebuild_total`, performance.now() - profile_start, {
+    record_stage(`rebuild_total`, performance.now() - profile_start, {
       entries: entries.length,
       cache_hits,
       vertices,
       triangles,
       buffer_bytes,
     })
+    threlte.invalidate()
   }
 
   // Geometry-relevant inputs as a string: $derived strings only notify
@@ -498,8 +472,8 @@
   // frame (first volume's origin at the grid corner), so shift back to absolute
   // Cartesian coordinates before sampling. The bulk kernel caches each volume's
   // inverse lattice and avoids per-vertex closures or temporary position arrays.
-  function sample_entry_scalars(entry: MeshEntry, color_vol: VolumetricData): Float32Array {
-    return profile_stage(profiler, `sample_scalars`, () => {
+  const sample_entry_scalars = (entry: MeshEntry, color_vol: VolumetricData): Float32Array =>
+    time_stage(`sample_scalars`, () => {
       const positions = entry.geometry.getAttribute(`position`).array as Float32Array
       return sample_volume_at_positions(color_vol, positions, {
         out_of_bounds: color_vol.periodic ? `clamp` : `fallback`,
@@ -507,14 +481,13 @@
         out: entry.scalars ?? undefined,
       })
     })
-  }
 
   // The layer's scalar-color-source volume, if any
   const color_vol_of = (layer: IsosurfaceLayer | undefined): VolumetricData | undefined =>
     layer?.color_volume_idx != null ? volumes[layer.color_volume_idx] : undefined
 
   function apply_vertex_colors(entries: MeshEntry[], layers: ResolvedLayer[]) {
-    const profile_start = profiler ? performance.now() : 0
+    const profile_start = performance.now()
     const auto_scalars = new Map<number, Float32Array[]>()
     // First pass: (re)sample scalars for entries with a color source
     for (const entry of entries) {
@@ -531,11 +504,6 @@
       if (!entry.scalars || entry.scalars_volume_id !== color_vol_id) {
         entry.scalars = sample_entry_scalars(entry, color_vol)
         entry.scalars_volume_id = color_vol_id
-      } else {
-        record_profile(profiler, `sample_scalars`, 0, {
-          cache_hit: true,
-          vertices: entry.scalars.length,
-        })
       }
       if (!layer.color_range) {
         const scalars = auto_scalars.get(entry.layer_idx) ?? []
@@ -554,9 +522,9 @@
       const color_vol = color_vol_of(layer)
       auto_ranges.set(
         layer_idx,
-        profile_stage(profiler, `scalar_range`, () =>
+        time_stage(`scalar_range`, () =>
           compute_scalar_range(layer_scalars, {
-            symmetric: color_vol ? is_signed_range(color_vol.data_range) : false,
+            symmetric: color_vol && is_signed_range(color_vol.data_range) ? true : `auto`,
           }),
         ),
       )
@@ -569,7 +537,7 @@
       if (!layer || !entry.scalars) continue
       const color_range = layer.color_range ?? auto_ranges.get(entry.layer_idx) ?? [0, 1]
       const existing = entry.geometry.getAttribute(`color`) as BufferAttribute | undefined
-      const colors = profile_stage(profiler, `apply_colormap`, () =>
+      const colors = time_stage(`apply_colormap`, () =>
         scalars_to_vertex_colors(
           entry.scalars as Float32Array,
           {
@@ -584,9 +552,10 @@
       else entry.geometry.setAttribute(`color`, new BufferAttribute(colors, 3))
       colored_keys.add(entry.key)
     }
-    record_profile(profiler, `recolor_total`, performance.now() - profile_start, {
+    record_stage(`recolor_total`, performance.now() - profile_start, {
       entries: entries.length,
     })
+    threlte.invalidate()
   }
 
   // Color-relevant layer props as a string, including the color-source volume

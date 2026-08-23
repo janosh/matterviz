@@ -141,11 +141,11 @@ export async function canvas_to_png_blob(
       `High-DPI PNG capture failed; falling back to native canvas resolution`,
       error,
     )
-    restore()
-    return await capture_native(canvas, renderer, scene, camera)
   } finally {
     restore()
   }
+  // Reached only on failure: the renderer is back at native resolution by now
+  return capture_native(canvas, renderer, scene, camera)
 }
 
 // Export structure as PNG image from canvas (triggers browser download)

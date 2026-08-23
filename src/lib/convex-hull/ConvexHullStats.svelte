@@ -330,7 +330,7 @@
     {#if e_form_values.length > 0}
       <Histogram
         {...histogram_props}
-        series={[{ x: [], y: e_form_values, label: `Formation Energy` }]}
+        series={[{ values: e_form_values, label: `Formation Energy` }]}
         x_axis={{ label: ``, format: `.2f` }}
         bar={{ color: `steelblue`, opacity: 0.7 }}
       />
@@ -340,7 +340,7 @@
     {#if e_hull_values.length > 0}
       <Histogram
         {...histogram_props}
-        series={[{ x: [], y: e_hull_values, label: `E above hull` }]}
+        series={[{ values: e_hull_values, label: `E above hull` }]}
         x_axis={{ label: ``, format: `.2f`, range: [0, null] }}
         bar={{ color: `coral`, opacity: 0.7 }}
       />
@@ -381,7 +381,7 @@
     scroll_style="height: {table_height}; min-height: {table_height}; max-height: var(--hull-stats-max-height, 70vh); max-width: 100%; overflow: auto"
     style="width: 100%"
     root_style="min-width: 0; margin-inline: 0; flex: 1 1 0"
-    onrowclick={on_entry_click ? handle_row_click : undefined}
+    on_row_click={on_entry_click ? handle_row_click : undefined}
     export_data={{ filename: export_filename }}
   />
 {/snippet}

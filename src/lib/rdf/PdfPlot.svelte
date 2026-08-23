@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { PLOT_COLORS } from '$lib/colors'
+  import { plot_color } from '$lib/colors'
   import { get_electro_neg_formula } from '$lib/composition'
   import { StatusMessage } from '$lib/feedback'
   import { format_num } from '$lib/labels'
@@ -100,7 +100,7 @@
         legend_group: label,
         markers: `line` as const,
         line_style: {
-          stroke: PLOT_COLORS[(struct_idx * 7 + curve_idx) % PLOT_COLORS.length],
+          stroke: plot_color(struct_idx * 7 + curve_idx),
           stroke_width: curve_idx === 0 ? 2 : 1,
         },
       }))

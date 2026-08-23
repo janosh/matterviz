@@ -25,7 +25,7 @@
   } from './helpers'
   import { create_hull_data_pipeline } from './hull-state.svelte'
   import type { BaseConvexHullProps } from './index'
-  import { CONVEX_HULL_STYLE, default_controls, default_hull_config } from './index'
+  import { CONVEX_HULL_STYLE, default_controls, merge_hull_config } from './index'
   import MissingConvexHullData from './MissingConvexHullData.svelte'
   import type { ConvexHullEntry } from './types'
   import { MAGNETIC_ORDERING_CATEGORY } from './types'
@@ -87,11 +87,7 @@
 
   const merged_controls = $derived({ ...default_controls, ...controls })
   const controls_config = $derived(normalize_show_controls(show_controls))
-  const merged_config = $derived({
-    ...default_hull_config,
-    ...config,
-    colors: { ...default_hull_config.colors, ...config.colors },
-  })
+  const merged_config = $derived(merge_hull_config(config))
   // Narrow deriveds to primitive fields so heavy downstream deriveds (scatter series,
   // hull segments) don't recompute whenever the broad merged_config object is recreated.
   const stable_color = $derived(merged_config.colors?.stable)
@@ -194,7 +190,9 @@
         radius: sized ? base_radius * (hl?.size_multiplier ?? 1) : base_radius,
         symbol_type: entry.marker && marker_d3_name(entry.marker),
         is_highlighted: Boolean(hl),
-        highlight_effect: hl?.effect,
+        // size/colour effects are already applied above via radius/fill
+        highlight_effect:
+          hl?.effect === `pulse` || hl?.effect === `glow` ? hl.effect : undefined,
         highlight_color: hl?.color,
       }
     })
@@ -301,8 +299,12 @@
   <line x1={pad.l} x2={width - pad.r} y1={y0} y2={y0} {...stroke} />
 {/snippet}
 
-{#if entries_prop === undefined}
-  <MissingConvexHullData {...rest} style="{style}; height: var(--hull-height, 500px)" />
+{#if entries_prop === undefined || hull_data.error}
+  <MissingConvexHullData
+    {...rest}
+    error={hull_data.error}
+    style="{style}; height: var(--hull-height, 500px)"
+  />
 {:else}
   <ScatterPlot
     {...rest}

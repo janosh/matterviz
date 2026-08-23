@@ -1,6 +1,6 @@
 import type { ChemicalElement } from '$lib/element/types'
 import type { Vec3 } from '$lib/math'
-import { escape_html, normalize_unicode_minus } from '$lib/utils'
+import { normalize_unicode_minus } from '$lib/utils'
 import { format } from 'd3-format'
 import type { SymbolType } from 'd3-shape'
 import * as d3_symbols from 'd3-shape'
@@ -47,16 +47,6 @@ export const symbol_names = [
 export const symbol_map: Partial<Record<D3SymbolName, SymbolType>> = Object.fromEntries(
   symbol_names.map((name) => [name, symbols_by_name[name]]),
 )
-
-// Format standalone scientific notation as HTML, e.g. 1.2e-3 → 1.2×10<sup>-3</sup>.
-export const format_power_ten = (text: string): string =>
-  escape_html(text)
-    .replaceAll(
-      /(?<![\w.])(?<base>\d+(?:\.\d*)?|\.\d+)e(?<exponent>[-+−]?\d+)(?![\w.])/gi,
-      (_match, base: string, exponent: string) =>
-        `${base}×10<sup>${exponent.replace(/^\+/, ``).replace(`−`, `-`)}</sup>`,
-    )
-    .replaceAll(/(?<![\d.])1×10(?=<sup>)/g, `10`)
 
 // Format a value for display with optional time formatting
 export function format_value(value: number, formatter?: string): string {
@@ -223,21 +213,9 @@ export const format_tick_values = (
 export const format_vec3 = (vec: Readonly<Vec3>, fmt_spec = `.3~`): string =>
   `(${vec.map((coord) => format_num(coord, fmt_spec)).join(`, `)})`
 
-const BYTE_UNITS = [`B`, `KiB`, `MiB`, `GiB`, `TiB`, `PiB`] as const
-
 // "1 site" / "3 sites"
 export const plural = (count: number, noun: string): string =>
   `${count} ${noun}${count === 1 ? `` : `s`}`
-
-export const format_bytes = (bytes?: number): string => {
-  if (bytes === undefined || !Number.isFinite(bytes)) return `Unknown`
-  let [value, unit_idx] = [bytes, 0]
-  while (Math.abs(value) >= 1024 && unit_idx < BYTE_UNITS.length - 1) {
-    value /= 1024
-    unit_idx++
-  }
-  return unit_idx === 0 ? `${value} B` : `${format_num(value, `.2f`)} ${BYTE_UNITS[unit_idx]}`
-}
 
 // Replace common fractional values with unicode glyphs (e.g. 1/2 → ½). The integer part is
 // dropped: callers format fractional coordinates and stoichiometric remainders.

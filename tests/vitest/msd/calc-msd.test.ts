@@ -8,7 +8,6 @@ import {
   build_positions,
   drift_positions,
   make_rng,
-  max_abs_error,
   max_rel_error,
 } from './helpers'
 
@@ -28,12 +27,7 @@ describe(`analytic MSD limits`, () => {
 
     // Pure f64 arithmetic on an exact quadratic: only representation round-off
     // separates the two, which is ~1e-16 relative, far under this bound.
-    const ballistic_rel_error = max_rel_error(total.msd, expected)
-    console.info(
-      `ballistic ${_label}: max rel error ${ballistic_rel_error.toExponential(3)} over ` +
-        `${result.lags.length} lags`,
-    )
-    expect(ballistic_rel_error).toBeLessThan(1e-12)
+    expect(max_rel_error(total.msd, expected)).toBeLessThan(1e-12)
     // Every origin sees the same displacement, so the only spread left is the f64
     // representation noise of v*(t+lag) - v*t: ~3e-17 of the MSD scale here.
     // Naive sum-of-squares variance loses this to cancellation and reports ~1e-6 instead.
@@ -98,12 +92,6 @@ describe(`analytic MSD limits`, () => {
     expect(fit.r_squared).toBeGreaterThan(0.99)
     // Every origin from 0 to n_frames - 1 - lag inclusive contributes at lag 1
     expect(total.n_origins[0]).toBe(n_frames - result.lags[0])
-    // Print the measured numbers so the claim is evidence, not assertion
-    console.info(
-      `random walk: D=${fit.diffusion_coefficient.toExponential(6)} expected=` +
-        `${expected_d.toExponential(6)} rel_err=${(rel_error * 100).toFixed(3)}% ` +
-        `R2=${fit.r_squared.toFixed(6)}`,
-    )
   })
 })
 
@@ -128,9 +116,10 @@ describe(`periodic unwrapping`, () => {
   })
 
   it(`sawtooths without unwrapping, bounded by the box`, () => {
-    const result = calc_msd(build_positions(wrapped_frames, { lattice: box }), {
-      skip_unwrap: true,
-    })
+    // Flagging the coordinates as already unwrapped is the one way to skip the unwrap
+    const result = calc_msd(
+      build_positions(wrapped_frames, { lattice: box, coords_unwrapped: true }),
+    )
     expect(result.unwrapped).toBe(false)
     // Wrapped displacements can never exceed the box diagonal, so the long-lag MSD
     // is capped instead of growing quadratically as the unwrapped answer does.
@@ -196,13 +185,11 @@ describe(`periodic unwrapping`, () => {
   const slab_pbc = [true, true, false] as Pbc
 
   it.each([
-    [`pbc from the collected stream`, { pbc: slab_pbc }, {}, 36],
-    [`pbc overridden by the caller`, {}, { pbc: slab_pbc }, 36],
-    [`fully periodic cell`, {}, {}, 16],
-  ])(`honours %s`, (_label, input_options, options, expected) => {
+    [`pbc from the collected stream`, { pbc: slab_pbc }, 36],
+    [`fully periodic cell`, {}, 16],
+  ])(`honours %s`, (_label, input_options, expected) => {
     const result = calc_msd(
       build_positions(slab_frames, { lattice: cubic_matrix(10), ...input_options }),
-      options,
     )
     expect(result.unwrapped).toBe(true)
     expect(result.curves[0].msd[0]).toBeCloseTo(expected, 10)
@@ -223,11 +210,6 @@ describe(`periodic unwrapping`, () => {
     expect(result.unwrapped).toBe(!coords_unwrapped)
     const expected = result.lags.map((lag) => (effective_step * lag) ** 2)
     expect(max_rel_error(result.curves[0].msd, expected)).toBeLessThan(1e-12)
-  })
-
-  it(`the same trajectory flagged and unflagged does not give the same MSD`, () => {
-    const ratio = stepped(true).curves[0].msd[0] / stepped(false).curves[0].msd[0]
-    expect(ratio).toBeCloseTo((long_step / (long_step - box_length)) ** 2, 9)
   })
 })
 
@@ -251,19 +233,17 @@ describe(`time-origin averaging`, () => {
     expect(result.lags[result.lags.length - 1]).toBe(Math.floor((n_frames - 1) * fraction))
   })
 
-  it(`origin sub-sampling is reported and leaves the exact answer intact`, () => {
-    // Ballistic displacement is origin independent, so striding origins must not
-    // change the result — only the reported stride and origin counts.
-    const full = calc_msd(ballistic([0.2, 0, 0], 50))
-    const strided = calc_msd(ballistic([0.2, 0, 0], 50), { origin_stride: 4 })
-    expect(strided.origin_stride).toBe(4)
-    expect(max_abs_error(strided.curves[0].msd, full.curves[0].msd)).toBeLessThan(1e-12)
-    expect(strided.curves[0].n_origins[0]).toBeLessThan(full.curves[0].n_origins[0])
-  })
-
-  it(`auto-tunes origin_stride against the work budget and reports it`, () => {
-    const result = calc_msd(ballistic([0.2, 0, 0], 200), { work_budget: 100 })
-    expect(result.origin_stride).toBeGreaterThan(1)
+  it(`caps the evaluated lags at max_lags by widening the lag spacing`, () => {
+    // 400 frames give 199 candidate lags; max_lags 50 thins them to every 4th
+    const full = calc_msd(ballistic([0.2, 0, 0], 400))
+    const thinned = calc_msd(ballistic([0.2, 0, 0], 400), { max_lags: 50 })
+    expect(full.lag_stride).toBe(1)
+    expect(thinned.lag_stride).toBe(4)
+    expect(thinned.lags).toEqual(full.lags.filter((lag) => lag % 4 === 0))
+    expect(thinned.origin_stride).toBe(1)
+    // Ballistic MSD is exact at every lag, so thinning only drops points
+    const expected = thinned.lags.map((lag) => (0.2 * lag) ** 2)
+    expect(max_rel_error(thinned.curves[0].msd, expected)).toBeLessThan(1e-12)
   })
 })
 
@@ -411,70 +391,23 @@ describe(`input validation`, () => {
       /max_lag_fraction must be in/,
     ],
     [
-      `lag_stride above max lag`,
-      () => calc_msd(drifting(5), { lag_stride: 99 }),
-      /exceeds the maximum lag/,
-    ],
-    [
-      // A fractional stride would index the flat buffer at non-integer frame offsets
-      `fractional lag_stride`,
-      () => calc_msd(drifting(20), { lag_stride: 1.5 }),
-      /lag_stride must be a positive integer/,
-    ],
-    [
-      `fractional origin_stride`,
-      () => calc_msd(drifting(20), { origin_stride: 2.5 }),
-      /origin_stride must be a positive integer/,
+      // A fractional cap would make the derived lag stride non-integer and index the flat
+      // buffer at non-integer frame offsets
+      `fractional max_lags`,
+      () => calc_msd(drifting(20), { max_lags: 1.5 }),
+      /max_lags must be a positive integer/,
     ],
   ])(`throws on %s`, (_label, run, pattern) => {
     expect(run).toThrow(pattern)
   })
 })
 
-// happy-dom has no Worker, so these exercise the SSR/no-Worker synchronous fallback;
-// worker-path.test.ts stubs a Worker in to cover the postMessage branch.
-describe(`compute_msd_async`, () => {
-  it(`documents which code path the suite exercises`, () => {
-    expect(typeof Worker).toBe(`undefined`)
-  })
-
-  it(`matches the synchronous result`, async () => {
-    const positions = drift_positions(40)
-    const [async_result, sync_result] = [
-      await compute_msd_async(positions),
-      calc_msd(positions),
-    ]
-    expect(async_result.curves[0].msd).toEqual(sync_result.curves[0].msd)
-    expect(async_result.lags).toEqual(sync_result.lags)
-  })
-
-  it(`dedupes identical in-flight requests`, async () => {
-    const positions = drift_positions()
-    const [first, second] = [
-      compute_msd_async(positions, { max_lag_fraction: 0.5 }),
-      compute_msd_async(positions, { max_lag_fraction: 0.5 }),
-    ]
-    expect(first).toBe(second)
-    await expect(first).resolves.toBeDefined()
-  })
-
-  it.each([
-    [`different options`, { max_lag_fraction: 0.25 }],
-    [`different fit window`, { fit: { start_fraction: 0.1 } }],
-  ])(`issues a separate request for %s`, async (_label, options) => {
-    const positions = drift_positions()
-    const baseline = compute_msd_async(positions)
-    const variant = compute_msd_async(positions, options)
-    expect(variant).not.toBe(baseline)
-    await Promise.all([baseline, variant])
-  })
-
-  it(`rejects invalid input asynchronously and clears the dedupe entry`, async () => {
-    const single_frame = build_positions([[[0, 0, 0]]])
-    let promise: Promise<unknown> | undefined
-    expect(() => (promise = compute_msd_async(single_frame))).not.toThrow()
-    await expect(promise).rejects.toThrow(/at least 2 frames/)
-    // A retry must be a fresh promise, not the settled rejection
-    await expect(compute_msd_async(single_frame)).rejects.toThrow(/at least 2 frames/)
-  })
+// happy-dom has no Worker, so this exercises the SSR/no-Worker synchronous fallback;
+// worker-path.test.ts stubs a Worker in to cover the postMessage branch and
+// worker-client.test.ts the shared dedupe/abort/error rules.
+it(`compute_msd_async matches the synchronous result without a Worker`, async () => {
+  expect(typeof Worker).toBe(`undefined`)
+  const positions = drift_positions(40)
+  const async_result = await compute_msd_async(positions)
+  expect(async_result).toEqual(calc_msd(positions))
 })

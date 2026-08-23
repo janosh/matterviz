@@ -1,5 +1,6 @@
 <script lang="ts">
   import { DEFAULT_PNG_DPI } from '$lib/constants'
+  import { is_editable_target, to_error } from '$lib/utils'
   import { Filter } from 'svelte-widgets/icons'
   import type { D3InterpolateName } from '$lib/colors'
   import { get_electro_neg_formula, get_formula_label_segments } from '$lib/composition/format'
@@ -13,7 +14,7 @@
   import { FullscreenButton, SettingsSection } from '$lib/layout'
   import { ViewerPane } from '$lib/overlays'
   import type { Vec2, Vec3 } from '$lib/math'
-  import { cross_3d, merge_coplanar_triangles, normalize_vec } from '$lib/math'
+  import { add, cross_3d, merge_coplanar_triangles, normalize_vec, subtract } from '$lib/math'
   import { ColorBar, ScatterPlot3DControls } from '$lib/plot'
   import { create_renderer, dispose_on_change, webgpu_available } from '$lib/scene'
   import { pad_rect, rects_overlap } from '$lib/plot/core/layout'
@@ -26,7 +27,7 @@
   import { Canvas } from '@threlte/core'
   import type { ComponentProps } from 'svelte'
   import { onDestroy, onMount } from 'svelte'
-  import { SvelteMap, SvelteSet } from 'svelte/reactivity'
+  import { SvelteSet } from 'svelte/reactivity'
   import * as THREE from 'three/webgpu'
   import { ConvexGeometry } from 'three/examples/jsm/geometries/ConvexGeometry.js'
   import { compute_chempot_async } from './async-compute.svelte'
@@ -79,9 +80,15 @@
   import { CHEMPOT_DEFAULTS } from './types'
 
   type SceneProps = ComponentProps<typeof ChemPotScene3D>
-  // Boundary edges are kept in data coords (point pairs) so edge/hover geometry can swizzle
-  // them with whatever axis stretch is current
-  type RenderDomain = SceneProps[`render_domains`][number] & { edges: [number[], number[]][] }
+  // Domain geometry in data coords. Boundary edges are kept as point pairs so edge/hover
+  // geometry can swizzle them with whatever axis stretch is current. Which domains are drawn
+  // as formula overlays is tracked separately (overlay_formulas) so toggling an overlay never
+  // rebuilds the outlines or hover hulls.
+  type RenderDomain = SceneProps[`render_domains`][number] & {
+    edges: [number[], number[]][]
+    ann_loc: number[]
+    label_font_size: number
+  }
   type HoverMesh = SceneProps[`hover_meshes`][number]
 
   const edge_key = (key_a: string, key_b: string): string =>
@@ -261,7 +268,7 @@
         .filter(([, amount]) => amount > 0)
         .map(([element]) => element),
     )
-    return Array.from(new SvelteSet(elements)).toSorted()
+    return Array.from(new Set(elements)).toSorted()
   })
   const has_multinary_system = $derived(all_entry_elements.length > 3)
   let projection_elements_override = $state<string[] | null>(null)
@@ -289,12 +296,16 @@
     draw_formula_meshes,
     draw_formula_lines,
   })
+  // The previous diagram stays on screen (dimmed) while its replacement computes, so the
+  // <Canvas> and its camera survive temperature/padding/formal toggles instead of remounting
   let diagram_data = $state<ChemPotDiagramData | null>(null)
   let diagram_computing = $state(false)
+  let diagram_error = $state<string | null>(null)
   $effect(() => {
     if (temp_filtered_entries.length < 3) {
       diagram_data = null
       diagram_computing = false
+      diagram_error = null
       return
     }
     let cancelled = false
@@ -303,12 +314,14 @@
       .then((data) => {
         if (cancelled) return
         diagram_data = data.elements.length >= 3 ? data : null
+        diagram_error = null
         diagram_computing = false
       })
       .catch((err) => {
         if (cancelled) return
         console.error(`ChemPotDiagram3D:`, err)
         diagram_data = null
+        diagram_error = to_error(err).message
         diagram_computing = false
       })
     return () => {
@@ -352,25 +365,14 @@
   // Outline (boundary edges) and label anchor per domain. Planar domains (every domain of a
   // true ternary lies on its entry's hyperplane) take the PCA-projected 2D hull; projections
   // of quaternary+ systems yield polyhedra, whose crease edges come from a 3D hull instead.
-  // Cached by vertex content: domains recur unchanged across control toggles that rebuild
-  // render_domains (colors, overlays), and the hulls are the costly part.
-  const domain_outline_cache = new Map<
-    string,
-    { edges: [number[], number[]][]; ann_loc: number[] }
-  >()
   function get_domain_outline(points_3d: number[][]) {
-    const cache_key = points_3d.map((point) => point.join(`,`)).join(`;`)
-    const cached = domain_outline_cache.get(cache_key)
-    if (cached) return cached
     const { simplex_indices, ann_loc, is_planar } =
       get_3d_domain_simplexes_and_ann_loc(points_3d)
     const planar_edges = simplex_indices.map(([idx_a, idx_b]): [number[], number[]] => [
       points_3d[idx_a],
       points_3d[idx_b],
     ])
-    const outline = { edges: is_planar ? planar_edges : hull_crease_edges(points_3d), ann_loc }
-    domain_outline_cache.set(cache_key, outline)
-    return outline
+    return { edges: is_planar ? planar_edges : hull_crease_edges(points_3d), ann_loc }
   }
 
   // Crease edges (dihedral angle > 1°) of the 3D convex hull, as point pairs in the input
@@ -426,7 +428,6 @@
         points_3d: padded,
         edges,
         ann_loc,
-        is_draw_formula: formulas_to_draw.includes(formula),
         label_font_size: bbox_diagonal(padded),
       })
     }
@@ -439,14 +440,19 @@
     return result
   })
 
+  // Formula overlays are cut out of the base hull/edges and drawn in their own colour
+  const overlay_formulas = $derived(new SvelteSet(formulas_to_draw))
+  const base_domains = $derived(
+    render_domains.filter((domain) => !overlay_formulas.has(domain.formula)),
+  )
+
   const entry_energy_stats_by_formula = $derived(
     get_energy_stats_by_formula(temp_filtered_entries),
   )
 
   // === Region coloring ===
-  // Original (non-renormalized) elemental references for formation energy computation.
-  // diagram_data.el_refs may be renormalized to zero when formal_chempots is true,
-  // so we compute our own from the raw entries to get true DFT reference energies.
+  // Raw (non-renormalized) elemental references for true DFT formation energies; the
+  // formal-chempot pipeline renormalizes its own refs to zero.
   const raw_el_refs = $derived(get_min_entries_and_el_refs(temp_filtered_entries).el_refs)
 
   const { colors: domain_colors, color_range } = $derived(
@@ -540,13 +546,14 @@
   const default_orthographic_zoom = $derived(
     Math.min(render_width, render_height) / (data_extent * 1.6),
   )
+  // A user gesture pins the view; the defaults above would otherwise re-apply through the
+  // camera props whenever a temperature/padding/formal toggle moves the data center
   let camera_position_override = $state<Vec3 | null>(null)
   let camera_target_override = $state<Vec3 | null>(null)
   let orthographic_zoom_override = $state<number | null>(null)
   const camera_position = $derived(camera_position_override ?? default_camera_position)
   const camera_target = $derived(camera_target_override ?? default_camera_target)
   const orthographic_zoom = $derived(orthographic_zoom_override ?? default_orthographic_zoom)
-  // Label scale factor: zoom relative to default, so labels grow/shrink with zoom
   // Labels scale sub-linearly with zoom so they grow but don't dominate when zoomed in
   const zoom_scale = $derived(
     default_orthographic_zoom > 0
@@ -560,10 +567,7 @@
   // 3D convex hull crease edges (not 2D projected hull).
   const edge_geometry = $derived.by(() => {
     if (is_projection_mode) {
-      const all_points = render_domains
-        .filter((domain) => !domain.is_draw_formula)
-        .flatMap((domain) => domain.points_3d)
-      const unique_points = dedup_3d(all_points)
+      const unique_points = dedup_3d(base_domains.flatMap((domain) => domain.points_3d))
       if (unique_points.length >= 4) {
         try {
           const hull_vectors = unique_points.map((point) => to_vec3(point))
@@ -580,10 +584,9 @@
     // round so a shared edge whose endpoints came from different hyperplane triples
     // (equal to ~1e-12, not bit-identical) is still drawn once
     const point_key = (point: number[]) => point.map((val) => val.toFixed(4)).join(`,`)
-    const seen = new SvelteSet<string>()
+    const seen = new Set<string>()
     const positions: number[] = []
-    for (const domain of render_domains) {
-      if (domain.is_draw_formula) continue
+    for (const domain of base_domains) {
       for (const [pt_a, pt_b] of domain.edges) {
         const key = edge_key(point_key(pt_a), point_key(pt_b))
         if (seen.has(key)) continue
@@ -601,12 +604,7 @@
   // edges on the back side. Using all vertices together avoids gaps between domains.
   const occlusion_hull_geometry = $derived.by((): THREE.BufferGeometry | null => {
     try {
-      const all_points: number[][] = []
-      for (const domain of render_domains) {
-        if (domain.is_draw_formula) continue
-        all_points.push(...domain.points_3d)
-      }
-      const unique_points = dedup_3d(all_points)
+      const unique_points = dedup_3d(base_domains.flatMap((domain) => domain.points_3d))
       if (unique_points.length < 4) return null
       const vectors = unique_points.map((point) => to_vec3(point))
       return merge_coplanar_geometry(new ConvexGeometry(vectors))
@@ -685,8 +683,8 @@
     const n_faces = pos.count / 3
 
     // Domain vertex centroids in render coords (swizzled + axis stretch), matching hull_base_geometry.
-    const centroids = render_domains
-      .filter((domain) => !domain.is_draw_formula && domain.points_3d.length > 0)
+    const centroids = base_domains
+      .filter((domain) => domain.points_3d.length > 0)
       .map((domain) => {
         let sx = 0,
           sy = 0,
@@ -753,7 +751,7 @@
         normals.push(normalize_vec(cross_3d(e1, e2)))
       }
       // Build edge → face adjacency
-      const edge_faces = new SvelteMap<string, number[]>()
+      const edge_faces = new Map<string, number[]>()
       for (let face_idx = 0; face_idx < n_faces; face_idx++) {
         const base = face_idx * 3
         const keys = [vkey(base), vkey(base + 1), vkey(base + 2)]
@@ -791,7 +789,7 @@
         }
       }
       // Assign majority domain to each coplanar group
-      const groups = new SvelteMap<number, number[]>()
+      const groups = new Map<number, number[]>()
       for (let face_idx = 0; face_idx < n_faces; face_idx++) {
         const root = find(face_idx)
         const grp = groups.get(root)
@@ -801,7 +799,7 @@
       for (const members of groups.values()) {
         if (members.length < 2) continue
         // Find most common domain in this group
-        const counts = new SvelteMap<string, number>()
+        const counts = new Map<string, number>()
         for (const member_idx of members) {
           counts.set(result[member_idx], (counts.get(result[member_idx]) ?? 0) + 1)
         }
@@ -834,7 +832,7 @@
     const color_attr = geom.getAttribute(`color`) as THREE.BufferAttribute
 
     // Cache parsed RGB per formula to avoid redundant THREE.Color allocations
-    const rgb_cache = new SvelteMap<string, Vec3>()
+    const rgb_cache = new Map<string, Vec3>()
     for (const [formula, hex] of domain_colors) {
       const clr = new THREE.Color(hex)
       rgb_cache.set(formula, [clr.r, clr.g, clr.b])
@@ -868,9 +866,9 @@
 
     const pos = hull_base_geometry.getAttribute(`position`)
     const pinned_labels = render_domains
-      .filter((domain) => domain.is_draw_formula)
+      .filter((domain) => overlay_formulas.has(domain.formula))
       .map(domain_label)
-    const font_size_by_formula = new SvelteMap(
+    const font_size_by_formula = new Map(
       render_domains.map((domain) => [domain.formula, domain.label_font_size]),
     )
     return get_visible_domain_labels(
@@ -897,18 +895,20 @@
     colored_hull_geometry !== hull_base_geometry ? [colored_hull_geometry] : [],
   )
 
-  // Domains on the outer surface (used by the "Surface" formula overlay quick-select).
-  const surface_formulas = $derived.by((): SvelteSet<string> => {
-    const on_surface = new SvelteSet<string>()
-    if (!occlusion_hull_geometry) {
-      for (const domain of render_domains) on_surface.add(domain.formula)
-      return on_surface
-    }
+  // Domains on the outer surface of the full envelope (all domains, overlays included), used
+  // by the "Surface" overlay quick-select. Computed on demand: it needs a convex hull plus
+  // six raycasts per domain, and only a button click ever reads it.
+  function get_surface_formulas(): string[] {
+    const unique_points = dedup_3d(render_domains.flatMap((domain) => domain.points_3d))
+    if (unique_points.length < 4) return render_domains.map((domain) => domain.formula)
+    const envelope = merge_coplanar_geometry(
+      new ConvexGeometry(unique_points.map((point) => to_vec3(point))),
+    )
     // Raycast from each domain's centroid outward -- if it hits the hull,
     // the centroid is inside (interior domain). Use multiple ray directions
     // and count: if most hit, the point is interior.
     const raycaster = new THREE.Raycaster()
-    const hull_mesh = new THREE.Mesh(occlusion_hull_geometry)
+    const hull_mesh = new THREE.Mesh(envelope)
     const directions = [
       new THREE.Vector3(1, 0, 0),
       new THREE.Vector3(0, 1, 0),
@@ -917,11 +917,8 @@
       new THREE.Vector3(0, -1, 0),
       new THREE.Vector3(0, 0, -1),
     ]
+    const on_surface: string[] = []
     for (const domain of render_domains) {
-      if (domain.is_draw_formula) {
-        on_surface.add(domain.formula)
-        continue
-      }
       const origin = to_vec3(domain.ann_loc)
       // Count how many rays hit the hull from the centroid
       let hits = 0
@@ -930,10 +927,11 @@
         if (raycaster.intersectObject(hull_mesh).length > 0) hits++
       }
       // If fewer than 4 of 6 rays hit, centroid is on or near the surface
-      if (hits < 4) on_surface.add(domain.formula)
+      if (hits < 4) on_surface.push(domain.formula)
     }
+    envelope.dispose()
     return on_surface
-  })
+  }
 
   // Deduplicate 3D points within tolerance (reuses compute.ts dedup_points)
   const dedup_3d = (pts: number[][], tol: number = 1e-4): number[][] =>
@@ -953,7 +951,7 @@
     if (!draw_formula_lines || formulas_to_draw.length === 0) return []
     const result: { geometry: THREE.BufferGeometry; color: string }[] = []
     for (const domain of render_domains) {
-      if (!domain.is_draw_formula) continue
+      if (!overlay_formulas.has(domain.formula)) continue
       const color_idx = formulas_to_draw.indexOf(domain.formula) % formula_colors.length
       const positions = domain.edges.flatMap(([pt_a, pt_b]) => [
         ...to_render_xyz(pt_a),
@@ -971,7 +969,7 @@
     const result: { geometry: THREE.BufferGeometry; color: string }[] = []
     if (!draw_formula_meshes) return result
     for (const domain of render_domains) {
-      if (!domain.is_draw_formula || domain.points_3d.length < 4) continue
+      if (!overlay_formulas.has(domain.formula) || domain.points_3d.length < 4) continue
       const color_idx = formulas_to_draw.indexOf(domain.formula) % formula_colors.length
       const unique = dedup_3d(domain.points_3d)
       if (unique.length < 4) continue
@@ -1053,9 +1051,9 @@
   }
 
   // Domain adjacency: two domains are neighbors if they share any vertex (within tolerance)
-  const domain_neighbors = $derived.by((): SvelteMap<string, string[]> => {
+  const domain_neighbors = $derived.by((): Map<string, string[]> => {
     const tol = 1e-4
-    const vertex_owners = new SvelteMap<string, string[]>()
+    const vertex_owners = new Map<string, string[]>()
     for (const domain of render_domains) {
       for (const pt of domain.points_3d) {
         const key = pt.map((val) => (Math.round(val / tol) * tol).toFixed(4)).join(`,`)
@@ -1065,10 +1063,8 @@
         } else vertex_owners.set(key, [domain.formula])
       }
     }
-    const neighbors = new SvelteMap<string, SvelteSet<string>>()
-    for (const domain of render_domains) {
-      neighbors.set(domain.formula, new SvelteSet())
-    }
+    const neighbors = new Map<string, Set<string>>()
+    for (const domain of render_domains) neighbors.set(domain.formula, new Set())
     for (const owners of vertex_owners.values()) {
       if (owners.length < 2) continue
       for (let idx = 0; idx < owners.length; idx++) {
@@ -1078,8 +1074,24 @@
         }
       }
     }
-    const result = new SvelteMap<string, string[]>()
-    for (const [formula, set] of neighbors) result.set(formula, [...set].toSorted())
+    return new Map(
+      [...neighbors].map(([formula, set]) => [formula, [...set].toSorted()] as const),
+    )
+  })
+
+  // Pick hulls depend only on the geometry; the hover info attached to them is rebuilt
+  // separately below so overlay/colour toggles never re-run ConvexGeometry
+  const hover_geometries = $derived.by(() => {
+    const result: {
+      domain: RenderDomain
+      geometry: THREE.BufferGeometry
+      n_vertices: number
+    }[] = []
+    for (const domain of render_domains) {
+      if (domain.points_3d.length < 3) continue
+      const hover_geometry = create_hover_geometry(domain.points_3d)
+      if (hover_geometry) result.push({ domain, ...hover_geometry })
+    }
     return result
   })
 
@@ -1089,12 +1101,7 @@
     const lims = diagram_data.lims
     const energy_stats_by_formula = entry_energy_stats_by_formula
 
-    for (const domain of render_domains) {
-      if (domain.points_3d.length < 3) continue
-      const hover_geometry = create_hover_geometry(domain.points_3d)
-      if (!hover_geometry) continue
-      const { geometry, n_vertices } = hover_geometry
-
+    for (const { domain, geometry, n_vertices } of hover_geometries) {
       const axis_ranges = build_axis_ranges(domain.points_3d, plot_elements)
       const touches_limits = get_touches_limits(domain.points_3d, lims)
       const energy_stats = energy_stats_by_formula.get(domain.formula) ?? {
@@ -1113,7 +1120,7 @@
         axis_ranges,
         touches_limits,
         is_elemental: all_entry_elements.includes(domain.formula),
-        is_draw_formula: domain.is_draw_formula,
+        is_draw_formula: overlay_formulas.has(domain.formula),
         matching_entry_count: energy_stats.matching_entry_count,
         min_energy_per_atom: energy_stats.min_energy_per_atom,
         max_energy_per_atom: energy_stats.max_energy_per_atom,
@@ -1133,7 +1140,7 @@
   dispose_on_change(() => [occlusion_hull_geometry])
   dispose_on_change(() => formula_edge_data.map((data) => data.geometry))
   dispose_on_change(() => formula_mesh_data.map((data) => data.geometry))
-  dispose_on_change(() => hover_mesh_data.map((data) => data.geometry))
+  dispose_on_change(() => hover_geometries.map((data) => data.geometry))
 
   let label_occlusion_frame: number | null = null
   let tick_labels_occluded = false
@@ -1230,29 +1237,30 @@
   // Preserve user framing across temperature-driven geometry changes:
   // shift camera/target with domain center and keep orthographic zoom relative to extent.
   $effect(() => {
-    if (camera_position_override && camera_target_override && last_data_center) {
-      const [last_x, last_y, last_z] = last_data_center
-      const delta_x = data_center[0] - last_x
-      const delta_y = data_center[1] - last_y
-      const delta_z = data_center[2] - last_z
-      if (delta_x !== 0 || delta_y !== 0 || delta_z !== 0) {
-        camera_position_override = [
-          camera_position_override[0] + delta_x,
-          camera_position_override[1] + delta_y,
-          camera_position_override[2] + delta_z,
-        ]
-        camera_target_override = [
-          camera_target_override[0] + delta_x,
-          camera_target_override[1] + delta_y,
-          camera_target_override[2] + delta_z,
-        ]
-      }
+    // Reading the overrides re-runs this on every OrbitControls `change` (per frame while
+    // dragging or auto-rotating); with the framing baselines unchanged there is nothing to do.
+    const baseline_center = last_data_center
+    const same_center =
+      baseline_center !== null &&
+      data_center.every((coord, axis) => coord === baseline_center[axis])
+    if (same_center && default_orthographic_zoom === last_default_zoom) return
+    if (
+      camera_position_override &&
+      camera_target_override &&
+      baseline_center &&
+      !same_center
+    ) {
+      const delta = subtract(data_center, baseline_center)
+      camera_position_override = add(camera_position_override, delta)
+      camera_target_override = add(camera_target_override, delta)
     }
-    orthographic_zoom_override = rescale_zoom_to_fit(
+    const rescaled_zoom = rescale_zoom_to_fit(
       orthographic_zoom_override,
       last_default_zoom,
       default_orthographic_zoom,
     )
+    if (rescaled_zoom !== orthographic_zoom_override)
+      orthographic_zoom_override = rescaled_zoom
     last_data_center = [...data_center]
     // A zero fit means the container has no size yet; keep the last real one as the baseline
     // so the pinned zoom resumes from it rather than losing a rescale step.
@@ -1325,20 +1333,16 @@
   }
 
   function toggle_formula_selection(formula: string): void {
-    const selected_formulas = new SvelteSet(formulas_to_draw)
-    if (selected_formulas.has(formula)) selected_formulas.delete(formula)
-    else selected_formulas.add(formula)
-    overrides.set(`formulas_to_draw`, [...selected_formulas])
-  }
-
-  function select_surface_formulas(): void {
     overrides.set(
       `formulas_to_draw`,
-      render_domains
-        .filter((domain) => surface_formulas.has(domain.formula))
-        .map((domain) => domain.formula),
+      overlay_formulas.has(formula)
+        ? formulas_to_draw.filter((drawn) => drawn !== formula)
+        : [...formulas_to_draw, formula],
     )
   }
+
+  const select_surface_formulas = (): void =>
+    overrides.set(`formulas_to_draw`, get_surface_formulas())
 
   function select_neighbor_formulas(): void {
     if (hover_info?.view !== `3d`) return
@@ -1486,8 +1490,7 @@
   role="application"
   tabindex="0"
   onkeydown={(event) => {
-    if (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement)
-      return
+    if (is_editable_target(event)) return
     if (event.key === `Escape`) clear_hover_lock()
     else if (event.key === `c`) cycle_color_mode()
     else if (event.key === `f` && fullscreen_toggle) fullscreen = !fullscreen
@@ -1735,48 +1738,58 @@
   {#if show_temperature_slider && temperature !== undefined}
     <TemperatureSlider class="chempot-temp-slider" {available_temperatures} bind:temperature />
   {/if}
-  {#if diagram_computing}
-    <Spinner
-      text="Computing chemical potential domains..."
-      style="width: 100%; justify-content: center; min-height: 200px; margin: 0; --spinner-size: 1.2em"
-    />
-  {:else if !diagram_data}
-    <div class="error-state" role="alert" aria-live="polite">
-      <p>Cannot compute chemical potential diagram.</p>
-      <p>Need at least 2 elements with elemental reference entries.</p>
-    </div>
-  {:else if mounted && webgpu_available()}
-    <Canvas createRenderer={create_renderer}>
-      <ChemPotScene3D
-        bind:orbit_controls={orbit_controls_ref}
-        {render_domains}
-        {render_axis_scale}
-        {plot_elements}
-        {formal_chempots}
-        {x_axis}
-        {y_axis}
-        {z_axis}
-        {display}
-        {data_center}
-        {data_extent}
-        {camera_position}
-        {camera_target}
-        {camera_projection}
-        {orthographic_zoom}
-        {auto_rotate}
-        hull_geometry={colored_hull_geometry}
-        {hull_opacity}
-        {edge_geometry}
-        hover_meshes={hover_mesh_data}
-        on_domain_hover={handle_phase_hover}
-        on_domain_press={toggle_phase_lock}
-        on_domain_leave={handle_phase_leave}
-        formula_meshes={formula_mesh_data}
-        formula_edges={formula_edge_data}
-        domain_labels={scene_domain_labels}
-        label_scale={zoom_scale}
+  {#if !diagram_data}
+    {#if diagram_computing}
+      <Spinner
+        text="Computing chemical potential domains..."
+        style="width: 100%; justify-content: center; min-height: 200px; margin: 0; --spinner-size: 1.2em"
       />
-    </Canvas>
+    {:else}
+      <div class="error-state" role="alert" aria-live="polite">
+        <p>Cannot compute chemical potential diagram.</p>
+        <p>{diagram_error ?? `Need at least 2 elements with elemental reference entries.`}</p>
+      </div>
+    {/if}
+  {:else if mounted && webgpu_available()}
+    {#if diagram_computing}
+      <Spinner
+        text="Computing chemical potential domains..."
+        style="position: absolute; inset: 0; justify-content: center; margin: 0; z-index: 5; --spinner-size: 1.2em"
+      />
+    {/if}
+    <div class={[`scene`, { stale: diagram_computing }]}>
+      <Canvas createRenderer={create_renderer}>
+        <ChemPotScene3D
+          bind:orbit_controls={orbit_controls_ref}
+          {render_domains}
+          {render_axis_scale}
+          {plot_elements}
+          {formal_chempots}
+          {x_axis}
+          {y_axis}
+          {z_axis}
+          {display}
+          {data_center}
+          {data_extent}
+          {camera_position}
+          {camera_target}
+          {camera_projection}
+          {orthographic_zoom}
+          {auto_rotate}
+          hull_geometry={colored_hull_geometry}
+          {hull_opacity}
+          {edge_geometry}
+          hover_meshes={hover_mesh_data}
+          on_domain_hover={handle_phase_hover}
+          on_domain_press={toggle_phase_lock}
+          on_domain_leave={handle_phase_leave}
+          formula_meshes={formula_mesh_data}
+          formula_edges={formula_edge_data}
+          domain_labels={scene_domain_labels}
+          label_scale={zoom_scale}
+        />
+      </Canvas>
+    </div>
     <!-- Color bar for continuous modes -->
     {#if color_range}
       <ColorBar
@@ -1814,6 +1827,13 @@
   .chempot-diagram-3d {
     position: relative;
     container-type: size;
+  }
+  .scene {
+    height: 100%;
+    transition: opacity 0.2s ease;
+    &.stale {
+      opacity: 0.45;
+    }
   }
   .chempot-diagram-3d:fullscreen {
     background: var(--chempot-3d-bg-fullscreen, var(--bg-color, #fff));

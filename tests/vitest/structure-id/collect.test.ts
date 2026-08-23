@@ -95,7 +95,7 @@ describe(`collect_structure_id_sweep`, () => {
 
   it(`stops between frames once its signal aborts and hands the signal to every compute`, async () => {
     const controller = new AbortController()
-    const compute_spy = vi.spyOn(async_compute, `compute_structure_id_async`)
+    const compute_spy = vi.spyOn(async_compute, `calc_structure_id_async`)
     const sweep = collect_structure_id_sweep(repeat_fcc(20), {
       max_frames: 4,
       options: { skip_csp: true },

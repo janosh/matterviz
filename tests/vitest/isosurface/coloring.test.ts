@@ -2,6 +2,7 @@
 import {
   auto_color_config,
   compute_scalar_range,
+  fit_color_range,
   is_signed_range,
   scalars_to_vertex_colors,
 } from '$lib/isosurface/coloring'
@@ -101,6 +102,26 @@ describe(`scalars_to_vertex_colors`, () => {
   })
 })
 
+describe(`fit_color_range`, () => {
+  // `auto` centres on zero only for signed data, `true` always does, `false` never does
+  test.each([
+    { symmetric: `auto`, range: [-1, 3], expected: [-3, 3] },
+    { symmetric: `auto`, range: [1, 3], expected: [1, 3] },
+    { symmetric: `auto`, range: [-3, -1], expected: [-3, -1] },
+    { symmetric: true, range: [1, 3], expected: [-3, 3] },
+    { symmetric: true, range: [-3, -1], expected: [-3, 3] },
+    { symmetric: false, range: [-1, 3], expected: [-1, 3] },
+    { symmetric: false, range: [1, 3], expected: [1, 3] },
+    { symmetric: undefined, range: [-1, 3], expected: [-3, 3] }, // default is auto
+    { symmetric: undefined, range: [1, 3], expected: [1, 3] },
+  ] as const)(
+    `symmetric=$symmetric fits $range to $expected`,
+    ({ symmetric, range, expected }) => {
+      expect(fit_color_range(range[0], range[1], symmetric)).toEqual(expected)
+    },
+  )
+})
+
 describe(`compute_scalar_range`, () => {
   test.each([
     {
@@ -126,6 +147,12 @@ describe(`compute_scalar_range`, () => {
       options: { symmetric: true },
       expected: [-4, 4],
       label: `symmetric option covers negative-only samples`,
+    },
+    {
+      arrays: [[-2, 5]],
+      options: { symmetric: false },
+      expected: [-2, 5],
+      label: `symmetric=false keeps mixed-sign samples as is`,
     },
     {
       arrays: [
@@ -168,10 +195,8 @@ describe(`auto_color_config`, () => {
     expect(config.color_range).toEqual([-5, 5])
   })
 
-  test.each([
-    { range: { min: 0, max: 8, abs_max: 8, mean: 2 }, label: `non-negative` },
-    { range: { min: 0.01, max: 8, abs_max: 8, mean: 2 }, label: `positive` },
-  ])(`$label data gets Viridis over [min, max]`, ({ range }) => {
+  test(`non-negative data gets Viridis over [min, max]`, () => {
+    const range = { min: 0, max: 8, abs_max: 8, mean: 2 }
     const config = auto_color_config(range)
     expect(config.colormap).toBe(`interpolateViridis`)
     expect(config.color_range).toEqual([range.min, range.max])

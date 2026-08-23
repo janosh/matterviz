@@ -13,7 +13,7 @@ import { default_element_colors, get_d3_interpolator } from '$lib/colors'
 import type { ElementSymbol } from '$lib/element'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import { create_cart_to_frac } from '$lib/math'
-import { unwrap_flat_positions } from '$lib/msd/calc-msd'
+import { unwrapped_positions_of } from '$lib/trajectory/positions'
 import { css_to_linear_rgb, parse_linear_rgb } from '$lib/scene/colors'
 import type { TrajectoryPositionStream } from '$lib/trajectory'
 
@@ -105,36 +105,6 @@ const empty_geometry = (): TrajectoryLinesGeometry => ({
 
 const fail = (message: string): never => {
   throw new Error(`build_trajectory_lines: ${message}`)
-}
-
-// Unwrapping allocates a second copy of the whole trajectory, so it must not rerun every
-// time the playhead moves. Keyed on the stream object: a new stream (new file, new stride)
-// gets a fresh unwrap and the old buffer becomes collectable with its stream.
-const unwrap_cache = new WeakMap<TrajectoryPositionStream, Float64Array>()
-
-// Cartesian coordinates to draw trails through: minimum-image unwrapped when the source
-// stored wrapped coordinates, otherwise the stream's own buffer BY IDENTITY.
-//
-// Already-unwrapped sources (LAMMPS xu/yu/zu) are returned untouched on purpose:
-// re-applying the minimum image convention to them silently truncates any real displacement
-// beyond half a box, which is exactly the diffusion a trajectory line is drawn to show
-// (see the comment at calc-msd.ts:211-220).
-export function unwrapped_stream_positions(stream: TrajectoryPositionStream): Float64Array {
-  const { positions, coords_unwrapped, lattice_matrices, n_frames, n_atoms, pbc } = stream
-  if (coords_unwrapped) return positions
-  // No cell means nothing was ever folded, so there is nothing to undo
-  if (!lattice_matrices?.some((matrix) => matrix != null)) return positions
-  const cached = unwrap_cache.get(stream)
-  if (cached) return cached
-  const unwrapped = unwrap_flat_positions(
-    positions,
-    n_frames,
-    n_atoms,
-    lattice_matrices,
-    pbc ?? [true, true, true],
-  )
-  unwrap_cache.set(stream, unwrapped)
-  return unwrapped
 }
 
 // Collected-frame indices to draw, ascending. Interior points sit on a stride grid anchored
@@ -247,7 +217,8 @@ export function build_trajectory_lines(
 
   // `break` mode is the only consumer of wrapped coordinates — it exists precisely to show
   // where the wrapping happened, so unwrapping first would leave it nothing to break on.
-  const coords = wrap_mode === `break` ? stream.positions : unwrapped_stream_positions(stream)
+  const coords =
+    wrap_mode === `break` ? stream.positions : unwrapped_positions_of(stream).coords
 
   const point_count = atom_idxs.length * n_sampled
   const positions = new Float32Array(point_count * 3)

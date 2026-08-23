@@ -1,6 +1,6 @@
 // Tests for IsosurfaceControls component rendering and interactions
 import IsosurfaceControls from '$lib/isosurface/IsosurfaceControls.svelte'
-import { DEFAULT_ISOSURFACE_SETTINGS } from '$lib/isosurface/types'
+import { auto_isosurface_settings, DEFAULT_ISOSURFACE_SETTINGS } from '$lib/isosurface/types'
 import type {
   IsosurfaceLayer,
   IsosurfaceSettings,
@@ -74,8 +74,7 @@ describe(`IsosurfaceControls`, () => {
     {
       desc: `single volume`,
       volumes: undefined as VolumetricData[] | undefined,
-      volume_options: undefined as string[] | undefined,
-      color_by_options: undefined as string[] | undefined,
+      color_by_options: [`None (solid)`, `Volume 1`],
     },
     {
       desc: `multi volume`,
@@ -83,31 +82,24 @@ describe(`IsosurfaceControls`, () => {
         make_volume({ label: `charge density` }),
         make_volume({ label: `magnetization` }),
       ],
-      volume_options: [`charge density`, `magnetization`],
       color_by_options: [`None (solid)`, `charge density`, `magnetization`],
     },
   ])(
-    `$desc chrome: Volume / Color by / defaults`,
-    ({ volumes, volume_options, color_by_options }) => {
-      mount_controls(volumes ? { volumes } : undefined)
+    `$desc chrome: one layer row per layer, Color by lists every volume`,
+    ({ volumes, color_by_options }) => {
+      mount_controls({
+        ...(volumes && { volumes }),
+        settings: { ...DEFAULT_ISOSURFACE_SETTINGS, layers: [make_layer(0)] },
+      })
       const slider = doc_query<HTMLInputElement>(`input[type="range"]`)
       expect(Number(slider.max)).toBeCloseTo(8)
-      expect(document.querySelectorAll(`input[type="range"]`).length).toBeGreaterThanOrEqual(2)
-      expect(doc_query(`.grid-info`).textContent).toContain(`2 × 2 × 2`)
-      expect(find_label(`Layers`)?.querySelector(`select`)?.value).toBe(`1`)
+      expect(document.querySelectorAll(`.layer-row input[type="range"]`)).toHaveLength(2)
+      expect(document.querySelectorAll(`.volume-group`)).toHaveLength(volumes?.length ?? 1)
       if (!volumes) {
         expect_labelled_settings_grid(document, { section_selector: `.isosurface-settings` })
       }
-
-      const vol_select = find_label(`Volume`)?.querySelector<HTMLSelectElement>(`select`)
       const color_by = find_label(`Color by`)?.querySelector<HTMLSelectElement>(`select`)
-      if (volume_options) {
-        expect(option_texts(vol_select)).toEqual(volume_options)
-        expect(option_texts(color_by)).toEqual(color_by_options)
-      } else {
-        expect(vol_select).toBeUndefined()
-        expect(color_by).toBeUndefined()
-      }
+      expect(option_texts(color_by)).toEqual(color_by_options)
     },
   )
 
@@ -116,7 +108,10 @@ describe(`IsosurfaceControls`, () => {
     { show_neg: true, color_count: 2 },
   ])(`show_negative=$show_neg updates lobe controls`, ({ show_neg, color_count }) => {
     mount_controls({
-      settings: { ...DEFAULT_ISOSURFACE_SETTINGS, show_negative: show_neg },
+      settings: {
+        ...DEFAULT_ISOSURFACE_SETTINGS,
+        layers: [make_layer(0, { show_negative: show_neg })],
+      },
     })
     const checkbox =
       find_label(`Neg. lobe`)?.querySelector<HTMLInputElement>(`input[type="checkbox"]`)
@@ -124,25 +119,30 @@ describe(`IsosurfaceControls`, () => {
     expect(document.querySelectorAll(`input[type="color"]`)).toHaveLength(color_count)
   })
 
-  test(`multi-layer mode renders layer rows and hides single-layer controls`, () => {
-    mount_controls({
-      settings: {
-        ...DEFAULT_ISOSURFACE_SETTINGS,
-        layers: [
-          make_layer(0, { isovalue: 5, volume_idx: undefined }),
-          make_layer(0, { color: `#00ff00`, volume_idx: undefined }),
-        ],
-      },
+  test(`Neg. lobe toggle sets show_negative on every layer`, () => {
+    const props = mount_controls({
+      settings: { ...DEFAULT_ISOSURFACE_SETTINGS, layers: [make_layer(0), make_layer(0)] },
     })
+    const checkbox = find_label(`Neg. lobe`)?.querySelector<HTMLInputElement>(`input`)
+    if (!checkbox) throw new Error(`checkbox not found`)
+    checkbox.checked = true
+    checkbox.dispatchEvent(new Event(`change`, { bubbles: true }))
+    flushSync()
+    expect(props.settings.layers.map((layer) => layer.show_negative)).toEqual([true, true])
+  })
 
-    const layer_rows = document.querySelectorAll(`.layer-row`)
-    expect(layer_rows).toHaveLength(2)
-    for (const row of Array.from(layer_rows)) {
-      expect(row.querySelector(`input[type="checkbox"]`)).toBeInstanceOf(HTMLElement)
-      expect(row.querySelectorAll(`input[type="range"]`)).toHaveLength(2)
-    }
-    expect(find_label(`Isovalue`)).toBeUndefined()
-    expect(find_label(`Opacity`)).toBeUndefined()
+  // Reset mirrors a fresh file load (auto_isosurface_settings): one auto layer on volume 0,
+  // further volumes stay available as colour sources or for manually added surfaces
+  test(`reset restores the initial-load settings: one auto layer on volume 0`, () => {
+    const volumes = two_volumes()
+    const props = mount_controls({ volumes })
+    // The section's reset button only shows once a value differs from the mount snapshot
+    props.settings.wireframe = true
+    flushSync()
+    doc_query<HTMLButtonElement>(`button[aria-label="Reset isosurface to defaults"]`).click()
+    flushSync()
+    expect(props.settings).toEqual(auto_isosurface_settings(volumes[0]))
+    expect(props.settings.layers.map((layer) => layer.volume_idx)).toEqual([0])
   })
 })
 
@@ -185,7 +185,7 @@ describe(`IsosurfaceControls multi-volume`, () => {
     flushSync()
   }
 
-  test(`multi-layer mode groups surfaces under their geometry volume`, () => {
+  test(`groups surfaces under their geometry volume`, () => {
     mount_layers([make_layer(0), make_layer(0), make_layer(1)])
     const groups = document.querySelectorAll(`.volume-group`)
     expect(groups).toHaveLength(2)
@@ -193,6 +193,18 @@ describe(`IsosurfaceControls multi-volume`, () => {
     expect(groups[1].querySelectorAll(`.layer-row`)).toHaveLength(1)
     expect(groups[0].querySelector(`.volume-label`)?.textContent).toBe(`density.cube`)
     expect(groups[0].querySelector(`.volume-dims`)?.textContent).toBe(`2×2×2`)
+  })
+
+  test.each([
+    { min: 1, max: 8, text: `1–8` },
+    { min: -0.012345, max: 1234.5, text: `−0.0123–1.23e+3` },
+  ])(`volume header shows the [$min, $max] data range as $text`, ({ min, max, text }) => {
+    const abs_max = Math.max(Math.abs(min), Math.abs(max))
+    mount_controls({
+      volumes: [make_volume({ data_range: { min, max, abs_max, mean: 0 } })],
+      settings: { ...DEFAULT_ISOSURFACE_SETTINGS, layers: [make_layer(0)] },
+    })
+    expect(doc_query(`.volume-group .volume-range`).textContent).toBe(text)
   })
 
   test(`add-surface appends a layer; empty volume shows color-source-only note`, () => {
@@ -210,15 +222,39 @@ describe(`IsosurfaceControls multi-volume`, () => {
     ).toHaveLength(1)
   })
 
-  test(`removing the last layer keeps zero-surface layers mode (no implicit resurrection)`, () => {
-    mount_layers([make_layer(0)])
+  // Each "+" on the same volume used to add an identical 20%/0.6 surface on top of the last
+  test(`repeated add-surface clicks on one volume add distinct shells`, () => {
+    const props = mount_controls({
+      volumes: two_volumes(),
+      settings: { ...DEFAULT_ISOSURFACE_SETTINGS, layers: [] },
+    })
+    const add = doc_query<HTMLButtonElement>(`button[aria-label="Add surface for esp.cube"]`)
+    for (let click = 0; click < 3; click++) {
+      add.click()
+      flushSync()
+    }
+    const esp_layers = props.settings.layers.filter((layer) => layer.volume_idx === 1)
+    expect(esp_layers).toHaveLength(3)
+    // abs_max = 8: shells at 20%, 80%, 50%
+    expect(esp_layers.map((layer) => layer.isovalue)).toEqual([1.6, 6.4, 4])
+    expect(esp_layers.map((layer) => layer.opacity)).toEqual([0.6, 0.8, 0.7])
+    expect(new Set(esp_layers.map((layer) => layer.color)).size).toBe(3)
+    // Shell count is per volume: the other volume's first surface is still the 20% envelope
+    doc_query<HTMLButtonElement>(`button[aria-label="Add surface for density.cube"]`).click()
+    flushSync()
+    const density_layer = props.settings.layers.find((layer) => layer.volume_idx === 0)
+    expect(density_layer).toMatchObject({ isovalue: 1.6, opacity: 0.6 })
+    expect(props.active_volume_idx).toBe(0)
+  })
+
+  test(`removing the last layer leaves zero surfaces (no implicit resurrection)`, () => {
+    const props = mount_layers([make_layer(0)])
     document.querySelector<HTMLButtonElement>(`button[aria-label="Remove surface"]`)?.click()
     flushSync()
     expect(document.querySelectorAll(`.layer-row`)).toHaveLength(0)
-    // Volume groups remain (with add-surface buttons) instead of falling back to
-    // the single-isovalue UI, which would resurrect a surface the user removed
+    expect(props.settings.layers).toEqual([])
+    // Volume groups remain with their add-surface buttons
     expect(document.querySelectorAll(`.volume-group`)).toHaveLength(2)
-    expect(find_label(`Isovalue`)).toBeUndefined()
   })
 
   test(`color-source UI shows colormap + range; clearing a bound resets to auto`, () => {
@@ -242,7 +278,7 @@ describe(`IsosurfaceControls multi-volume`, () => {
     // bubbles: true — Svelte 5 delegates change events to the root
     range_inputs[0].dispatchEvent(new Event(`change`, { bubbles: true }))
     flushSync()
-    expect(props.settings.layers?.[0].color_range).toBeUndefined()
+    expect(props.settings.layers[0].color_range).toBeUndefined()
     expect(
       [
         ...document.querySelectorAll<HTMLInputElement>(`input[aria-label^="Color range "]`),
@@ -256,8 +292,8 @@ describe(`IsosurfaceControls multi-volume`, () => {
     range_input.value = `2.5`
     range_input.dispatchEvent(new Event(`change`, { bubbles: true }))
     flushSync()
-    expect(props.settings.layers?.[0].color_range?.[0]).toBe(2.5)
-    expect(props.settings.layers?.[0].color_range?.[1]).toBeTypeOf(`number`)
+    expect(props.settings.layers[0].color_range?.[0]).toBe(2.5)
+    expect(props.settings.layers[0].color_range?.[1]).toBeTypeOf(`number`)
   })
 
   test(`display range inputs materialize, update, and reset; hidden when non-periodic`, () => {
@@ -360,7 +396,7 @@ describe(`IsosurfaceControls multi-volume`, () => {
   ])(`$desc`, ({ layer, act, expected, reset_visible }) => {
     const props = mount_layers([make_layer(0, layer as Partial<IsosurfaceLayer>)])
     act()
-    expect(props.settings.layers?.[0]).toMatchObject(expected)
+    expect(props.settings.layers[0]).toMatchObject(expected)
     expect(
       Boolean(
         document.querySelector(`button[aria-label="Reset colormap + range to auto-fit"]`),
@@ -374,13 +410,6 @@ describe(`IsosurfaceControls multi-volume`, () => {
       .querySelector<HTMLInputElement>(`.layer-row input[type="checkbox"]`)
       ?.dispatchEvent(new Event(`change`, { bubbles: true }))
     flushSync()
-    expect(props.settings.layers?.[0].visible).toBe(false)
-  })
-
-  test(`single-isovalue Color by pick materializes layers with that color source`, () => {
-    const props = mount_controls({ volumes: two_volumes() })
-    change_select(find_label(`Color by`)?.querySelector(`select`) ?? null, `1`)
-    expect(props.settings.layers).toHaveLength(1)
-    expect(props.settings.layers?.[0]).toMatchObject({ volume_idx: 0, color_volume_idx: 1 })
+    expect(props.settings.layers[0].visible).toBe(false)
   })
 })

@@ -2,7 +2,7 @@
 // (SceneControlProps, StructureViewport) can type and size a gizmo without importing a .svelte
 // module, and so the layout is unit-testable without a Threlte context.
 import { AXIS_COLORS, NEG_AXIS_COLORS } from '$lib/colors'
-import type { Vec3 } from '$lib/math'
+import { clamp, type Vec3 } from '$lib/math'
 
 export type GizmoAxisKey = `x` | `y` | `z` | `nx` | `ny` | `nz`
 
@@ -17,7 +17,7 @@ export type GizmoAxisStyle = {
 }
 
 // Where the gizmo sits inside its canvas. `fill` uses the whole canvas, for callers that give
-// the gizmo its own <Canvas> and place that element with CSS (ConvexHull3D). Not named
+// the gizmo its own <Canvas> and place that element with CSS (ConvexHullCanvas). Not named
 // GizmoPlacement because $lib/convex-hull exports that already (its CSS-level corner).
 type GizmoAnchor = `top-left` | `top-right` | `bottom-left` | `bottom-right` | `fill`
 
@@ -55,8 +55,7 @@ export function gizmo_rect(
   const y = placement.startsWith(`top`)
     ? (offset.top ?? gap)
     : height - box - (offset.bottom ?? gap)
-  const clamp = (value: number, max: number) => Math.min(Math.max(0, value), max)
-  return { x: clamp(x, width - box), y: clamp(y, height - box), width: box, height: box }
+  return { x: clamp(x, 0, width - box), y: clamp(y, 0, height - box), width: box, height: box }
 }
 
 // Gizmo edge length for a multi-view pane. Panes are ~half the viewer, so the fixed

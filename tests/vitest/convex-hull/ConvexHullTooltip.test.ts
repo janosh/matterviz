@@ -72,25 +72,17 @@ describe(`ConvexHullTooltip`, () => {
   )
 
   describe(`entry identification`, () => {
-    test(`displays entry_id when available`, () => {
-      mount_tooltip({ entry: mock_entry({ entry_id: `mp-12345` }) })
-      expect(document.body.textContent).toContain(`mp-12345`)
-    })
-
-    test(`displays both entry_id and formula for non-unary entries`, () => {
-      mount_tooltip({
-        entry: mock_entry({ entry_id: `mp-12345`, composition: { Fe: 1, O: 2 } }),
-      })
-      expect(document.body.textContent).toContain(`mp-12345`)
-      expect(document.body.innerHTML).toMatch(/Fe.*O/)
-    })
-
-    test(`displays formula when entry_id is not available`, () => {
-      mount_tooltip({
-        entry: mock_entry({ entry_id: undefined, composition: { Li: 2, O: 1 } }),
-      })
-      expect(document.body.innerHTML).toMatch(/Li.*O/)
-    })
+    test.each([
+      { entry_id: `mp-12345`, composition: { Fe: 1, O: 2 }, formula: /Fe.*O/ },
+      { entry_id: undefined, composition: { Li: 2, O: 1 }, formula: /Li.*O/ },
+    ])(
+      `shows formula and entry_id=$entry_id for $composition`,
+      ({ entry_id, composition, formula }) => {
+        mount_tooltip({ entry: mock_entry({ entry_id, composition }) })
+        if (entry_id) expect(document.body.textContent).toContain(entry_id)
+        expect(document.body.innerHTML).toMatch(formula)
+      },
+    )
 
     test.each([
       // Element name only shown in parentheses after entry_id for unary entries
@@ -128,34 +120,27 @@ describe(`ConvexHullTooltip`, () => {
     )
   })
 
-  describe(`highlight badge`, () => {
-    test(`shows badge with color when highlight_style provided`, () => {
-      mount_tooltip({ highlight_style: { color: `#00ff00` } })
-      expect(doc_query(`.highlight-badge`).textContent).toContain(`★ Highlighted`)
-      expect(doc_query(`.tooltip-content`).style.getPropertyValue(`--highlight-color`)).toBe(
-        `#00ff00`,
-      )
-    })
-
-    test(`hides badge without highlight_style`, () => {
-      mount_tooltip()
-      expect(document.querySelector(`.highlight-badge`)).toBeNull()
-    })
+  test(`highlight badge and colour var render only with a highlight_style`, () => {
+    mount_tooltip()
+    expect(document.querySelector(`.highlight-badge`)).toBeNull()
+    document.body.innerHTML = ``
+    mount_tooltip({ highlight_style: { color: `#00ff00` } })
+    expect(doc_query(`.highlight-badge`).textContent).toContain(`★ Highlighted`)
+    expect(doc_query(`.tooltip-content`).style.getPropertyValue(`--highlight-color`)).toBe(
+      `#00ff00`,
+    )
   })
 
   describe(`fractional composition`, () => {
-    test(`displays with subscripts for binary+ entries`, () => {
-      mount_tooltip({ entry: mock_entry({ composition: { Fe: 1, O: 2 } }) })
+    // subscripted plain decimals (never unicode fractions) for binary+ entries
+    test.each([
+      { composition: { Fe: 1, O: 2 }, matches: [/Fe<sub>0\.33<\/sub>/, /O<sub>0\.67<\/sub>/] },
+      { composition: { Li: 1, Fe: 1 }, matches: [/Li<sub>0\.5<\/sub>/, /Fe<sub>0\.5<\/sub>/] },
+    ])(`displays $composition with subscripts`, ({ composition, matches }) => {
+      mount_tooltip({ entry: mock_entry({ composition }) })
       const html = document.body.innerHTML
       expect(html).toContain(`Fractional:`)
-      expect(html).toMatch(/Fe<sub>0\.33<\/sub>/)
-      expect(html).toMatch(/O<sub>0\.67<\/sub>/)
-    })
-
-    test(`uses plain decimals not unicode fractions`, () => {
-      mount_tooltip({ entry: mock_entry({ composition: { Li: 1, Fe: 1 } }) })
-      const html = document.body.innerHTML
-      expect(html).toContain(`0.5`)
+      for (const pattern of matches) expect(html).toMatch(pattern)
       expect(html).not.toMatch(/[½⅓⅔]/)
     })
 
@@ -183,51 +168,36 @@ describe(`ConvexHullTooltip`, () => {
     const make_stats = (entry_id: string, stats: PolymorphStats) =>
       new Map([[entry_id, stats]])
 
-    test(`displays stats with arrows and titles`, () => {
+    // zero counts are omitted: no `=0`, and no arrows at all when there are no polymorphs
+    test.each([
+      {
+        stats: { total: 5, higher: 2, lower: 1, equal: 2 },
+        shown: [`↑2`, `↓1`, `=2`],
+        hidden: [],
+      },
+      {
+        stats: { total: 3, higher: 2, lower: 1, equal: 0 },
+        shown: [`↑2`, `↓1`],
+        hidden: [`=0`],
+      },
+      { stats: { total: 0, higher: 0, lower: 0, equal: 0 }, shown: [], hidden: [`↑`, `↓`] },
+    ])(`renders $stats as $shown`, ({ stats, shown, hidden }) => {
       mount_tooltip({
         entry: mock_entry({ entry_id: `mp-123` }),
-        polymorph_stats_map: make_stats(`mp-123`, {
-          total: 5,
-          higher: 2,
-          lower: 1,
-          equal: 2,
-        }),
+        polymorph_stats_map: make_stats(`mp-123`, stats),
       })
       const text = document.body.textContent ?? ``
       expect(text).toContain(`Polymorphs:`)
-      expect(text).toContain(`↑2`)
-      expect(text).toContain(`↓1`)
-      expect(text).toContain(`=2`)
-      expect(document.querySelector(`[title="2 higher in energy"]`)).not.toBeNull()
-      expect(document.querySelector(`[title="1 lower in energy"]`)).not.toBeNull()
-    })
-
-    test(`hides equal count when zero`, () => {
-      mount_tooltip({
-        entry: mock_entry({ entry_id: `mp-456` }),
-        polymorph_stats_map: make_stats(`mp-456`, {
-          total: 3,
-          higher: 2,
-          lower: 1,
-          equal: 0,
-        }),
-      })
-      expect(document.body.textContent).not.toContain(`=0`)
-    })
-
-    test(`hides arrows when total=0`, () => {
-      mount_tooltip({
-        entry: mock_entry({ entry_id: `mp-789` }),
-        polymorph_stats_map: make_stats(`mp-789`, {
-          total: 0,
-          higher: 0,
-          lower: 0,
-          equal: 0,
-        }),
-      })
-      const text = document.body.textContent ?? ``
-      expect(text).toContain(`Polymorphs:`)
-      expect(text).not.toMatch(/[↑↓]/)
+      for (const part of shown) expect(text).toContain(part)
+      for (const part of hidden) expect(text).not.toContain(part)
+      if (stats.higher) {
+        expect(
+          document.querySelector(`[title="${stats.higher} higher in energy"]`),
+        ).not.toBeNull()
+        expect(
+          document.querySelector(`[title="${stats.lower} lower in energy"]`),
+        ).not.toBeNull()
+      }
     })
 
     test.each([

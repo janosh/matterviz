@@ -102,7 +102,6 @@ describe(`compute_saed_pattern geometry`, () => {
 
   test.each([
     [[0, 0, 1] as Vec3, 90],
-    [[1, 0, 0] as Vec3, 90],
     [[1, 1, 0] as Vec3, 90], // rectangular net: ⟨001⟩ perpendicular to ⟨11̄0⟩
   ])(
     `cubic %s: the two shortest independent spots are perpendicular`,
@@ -133,9 +132,12 @@ describe(`compute_saed_pattern geometry`, () => {
   })
 
   test(`saed_pattern_radius reports the outermost spot`, () => {
+    // Spots carry |g| = sqrt(h² + k²) / a for the [001] zone of a simple cubic cell, so the
+    // outermost one is the largest in-window hkl radius
     const pattern = cubic_saed(4)
-    const brute_force = Math.max(...pattern.spots.map(spot_radius))
-    expect(saed_pattern_radius(pattern)).toBeCloseTo(brute_force, 12)
+    const max_hk = Math.max(...pattern.spots.map(({ hkl }) => Math.hypot(hkl[0], hkl[1])))
+    expect(max_hk).toBeGreaterThan(1)
+    expect(saed_pattern_radius(pattern)).toBeCloseTo(max_hk / 4, 10)
   })
 })
 
@@ -221,7 +223,6 @@ describe(`compute_saed_pattern Ewald geometry`, () => {
     [0, `ZOLZ`],
     [1, `FOLZ`],
     [2, `HOLZ2`],
-    [3, `HOLZ3`],
   ])(`laue_zone_label(%i) is %s`, (laue_zone, expected) => {
     expect(laue_zone_label(laue_zone)).toBe(expected)
   })

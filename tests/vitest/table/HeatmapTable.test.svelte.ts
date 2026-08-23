@@ -392,69 +392,31 @@ describe(`HeatmapTable`, () => {
       expect(col_values(`Score`)).toEqual(expected)
     })
 
-    // Tests for sorting numbers with error/uncertainty notation (±, +-, parenthetical)
-    // Sorts by extracting the primary numeric value before the error term
-    it.each([
-      {
-        desc: `± notation`,
-        input: [`1.5 ± 0.2`, `0.8 ± 0.1`, `2.3 ± 0.5`],
-        expected: [`0.8 ± 0.1`, `1.5 ± 0.2`, `2.3 ± 0.5`],
-      },
-      {
-        desc: `+- notation`,
-        input: [`10.5 +- 1.2`, `5.2 +- 0.8`, `15.0 +- 2.0`],
-        expected: [`5.2 +- 0.8`, `10.5 +- 1.2`, `15.0 +- 2.0`],
-      },
-      {
-        desc: `parenthetical notation`,
-        input: [`1.234(5)`, `0.567(3)`, `2.890(8)`],
-        expected: [`0.567(3)`, `1.234(5)`, `2.890(8)`],
-      },
-      {
-        desc: `negative numbers`,
-        input: [`-1.5 ± 0.2`, `0.8 ± 0.1`, `-2.3 ± 0.5`],
-        expected: [`-2.3 ± 0.5`, `-1.5 ± 0.2`, `0.8 ± 0.1`],
-      },
-      {
-        desc: `scientific notation`,
-        input: [`1.5e-3 ± 0.2e-3`, `2.8e-2 ± 0.1e-2`, `5.0e-4 ± 1.0e-4`],
-        expected: [`5.0e-4 ± 1.0e-4`, `1.5e-3 ± 0.2e-3`, `2.8e-2 ± 0.1e-2`],
-      },
-      {
-        desc: `mixed plain and error notation`,
-        input: [`1.5 ± 0.2`, `0.8`, `2.3 ± 0.5`, `1.0`],
-        expected: [`0.8`, `1.0`, `1.5 ± 0.2`, `2.3 ± 0.5`],
-      },
-    ])(`sorts numbers with $desc correctly`, async ({ input, expected }) => {
-      const columns: Label[] = [{ label: `Name` }, { label: `Value`, better: `lower` }]
-
-      mount_table({ data: value_rows(input), columns })
+    // Uncertainty strings sort and colour by their primary value (parse_numeric_val covers the
+    // notations one by one in index.test.ts; this checks the table wires sorting through it)
+    it(`sorts and colours cells with mixed uncertainty notation by the primary value`, async () => {
+      const input = [`1.5 ± 0.2`, `0.8`, `2.3(5)`, `-1.0 +- 0.1`, `5.0e-4 ± 1e-4`]
+      mount_table({
+        data: value_rows(input),
+        columns: [{ label: `Name` }, { ...heatmap_col, better: `lower` }],
+      })
+      const style_attrs = () =>
+        [...document.querySelectorAll(`td[data-col="Value"]`)].map(
+          (cell) => cell.getAttribute(`style`) ?? ``,
+        )
+      // every cell is numeric, so every cell gets a (distinct) heatmap background
+      expect(style_attrs().every((style) => style.includes(`--cell-bg:`))).toBe(true)
+      expect(new Set(style_attrs()).size).toBe(input.length)
 
       document.querySelectorAll(`th`)[1].click()
       await tick()
-
-      expect(col_values(`Value`)).toEqual(expected)
-    })
-
-    // Tests for heatmap coloring with uncertainty notation strings
-    // Heatmap colors should be applied by parsing the primary numeric value
-    it.each([
-      { desc: `± notation`, values: [`1.0 ± 0.1`, `5.0 ± 0.2`, `10.0 ± 0.3`] },
-      { desc: `+- notation`, values: [`1.0 +- 0.1`, `5.0 +- 0.2`, `10.0 +- 0.3`] },
-      { desc: `parenthetical notation`, values: [`1.0(1)`, `5.0(2)`, `10.0(3)`] },
-      { desc: `mixed formats`, values: [`1.0 ± 0.1`, `5.0 +- 0.2`, `10.0(3)`] },
-      { desc: `unicode minus (−)`, values: [`−1.0 ± 0.1`, `−5.0 ± 0.2`, `−10.0 ± 0.3`] },
-      { desc: `leading decimals`, values: [`.5 ± 0.1`, `-.5 ± 0.1`, `.25(1)`] },
-    ])(`applies heatmap colors to $desc strings`, ({ values }) => {
-      mount_table({ data: value_rows(values), columns: [{ label: `Name` }, heatmap_col] })
-
-      const cells = document.querySelectorAll(`td[data-col="Value"]`)
-      const style_attrs = Array.from(cells).map((cell) => cell.getAttribute(`style`) ?? ``)
-
-      // All cells should have --cell-bg custom property set (match with colon to avoid partial matches)
-      expect(style_attrs.every((style) => style.includes(`--cell-bg:`))).toBe(true)
-      // Styles should be different for different values (different d3 colors)
-      expect(new Set(style_attrs).size).toBeGreaterThan(1)
+      expect(col_values(`Value`)).toEqual([
+        `-1.0 +- 0.1`,
+        `5.0e-4 ± 1e-4`,
+        `0.8`,
+        `1.5 ± 0.2`,
+        `2.3(5)`,
+      ])
     })
 
     // Per-cell guard: only numeric cells get --cell-bg, strings never do
@@ -1499,13 +1461,13 @@ describe(`HeatmapTable`, () => {
 
   describe(`Keyboard Navigation`, () => {
     it.each([
-      { desc: `with onrowclick`, has_click: true, expected_tabindex: `0` },
-      { desc: `without onrowclick`, has_click: false, expected_tabindex: null },
+      { desc: `with on_row_click`, has_click: true, expected_tabindex: `0` },
+      { desc: `without on_row_click`, has_click: false, expected_tabindex: null },
     ])(`tabindex $desc`, ({ has_click, expected_tabindex }) => {
       mount_table({
         data: sample_data,
         columns: sample_columns,
-        ...(has_click ? { onrowclick: () => {} } : {}),
+        ...(has_click ? { on_row_click: () => {} } : {}),
       })
 
       for (const row of Array.from(document.querySelectorAll(`tbody tr`))) {
@@ -1514,13 +1476,13 @@ describe(`HeatmapTable`, () => {
     })
 
     it.each([{ key: `Enter` }, { key: ` ` }])(
-      `triggers onrowclick on $key key`,
+      `triggers on_row_click on $key key`,
       async ({ key }) => {
         const clicked: unknown[] = []
         mount_table({
           data: sample_data,
           columns: sample_columns,
-          onrowclick: (_event: KeyboardEvent | MouseEvent, row: Record<string, unknown>) =>
+          on_row_click: (_event: KeyboardEvent | MouseEvent, row: Record<string, unknown>) =>
             clicked.push(row),
         })
 
@@ -1537,8 +1499,8 @@ describe(`HeatmapTable`, () => {
     // rendered inside a cell snippet (whose own <tr>s carry no index) and a row whose data
     // columns are all hidden must still map back to the right row object
     it(`resolves row actions through nested tables and rows without data cells`, async () => {
-      const onrowclick = vi.fn()
-      const onrowdblclick = vi.fn()
+      const on_row_click = vi.fn()
+      const on_row_double_click = vi.fn()
       const data = [{ A: 1 }, { A: 2 }]
       const cell = createRawSnippet((_args: () => CellSnippetArgs) => ({
         render: () => `<table><tbody><tr><td class="inner">x</td></tr></tbody></table>`,
@@ -1549,8 +1511,8 @@ describe(`HeatmapTable`, () => {
           {
             data,
             columns: plain_columns(`A`),
-            onrowclick,
-            onrowdblclick,
+            on_row_click,
+            on_row_double_click,
             cell,
             show_row_select: true,
           },
@@ -1562,23 +1524,23 @@ describe(`HeatmapTable`, () => {
       inner.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
       inner.dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
       inner.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }))
-      expect(onrowclick.mock.calls.map((call) => call[1])).toEqual([data[1], data[1]])
-      expect(onrowdblclick.mock.calls.map((call) => call[1])).toEqual([data[1]])
+      expect(on_row_click.mock.calls.map((call) => call[1])).toEqual([data[1], data[1]])
+      expect(on_row_double_click.mock.calls.map((call) => call[1])).toEqual([data[1]])
 
-      onrowclick.mockClear()
+      on_row_click.mockClear()
       state.hidden_columns = [`A`]
       await tick()
       const last_row = doc_query(`tbody tr[data-row-idx="1"]`)
       expect(last_row.querySelector(`td[data-row-idx]`)).toBeNull()
       last_row.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
-      expect(onrowclick.mock.calls.map((call) => call[1])).toEqual([data[1]])
+      expect(on_row_click.mock.calls.map((call) => call[1])).toEqual([data[1]])
     })
 
     // A HeatmapTable nested in a cell (a per-row mini table) carries its own data-row-idx /
     // data-col-idx attributes, so the outer lookups must stop at their own <tbody> instead of
     // resolving the inner table's coordinates against the outer rows
     it(`ignores the indices of a nested HeatmapTable when resolving rows and cells`, async () => {
-      const onrowclick = vi.fn()
+      const on_row_click = vi.fn()
       const data = [{ A: 1 }, { A: 2 }, { A: 3 }]
       // the inner markup mirrors what a nested HeatmapTable renders for its own first row
       const cell = createRawSnippet((_args: () => CellSnippetArgs) => ({
@@ -1588,14 +1550,14 @@ describe(`HeatmapTable`, () => {
       mount_table({
         data,
         columns: plain_columns(`A`),
-        onrowclick,
+        on_row_click,
         cell,
         keyboard_cells: true,
       })
       await tick()
       const inner = document.querySelectorAll<HTMLElement>(`td.inner`)[2]
       inner.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
-      expect(onrowclick.mock.calls.map((call) => call[1])).toEqual([data[2]])
+      expect(on_row_click.mock.calls.map((call) => call[1])).toEqual([data[2]])
 
       // a drag started in the inner cell selects the outer cell it sits in, not (0, 0)
       inner.dispatchEvent(new PointerEvent(`pointerdown`, { bubbles: true, button: 0 }))
@@ -2192,18 +2154,18 @@ describe(`HeatmapTable`, () => {
     })
 
     it(`suppresses the row click that follows a cell drag`, async () => {
-      const onrowclick = vi.fn()
-      await mount_sample_table({ onrowclick })
+      const on_row_click = vi.fn()
+      await mount_sample_table({ on_row_click })
 
       // drag across cells -> the click on release must not fire the row action
       drag_cells([0, 0], [1, 1])
       cell_at(1, 1).dispatchEvent(pointer(`click`))
-      expect(onrowclick).not.toHaveBeenCalled()
+      expect(on_row_click).not.toHaveBeenCalled()
 
       // plain click (pointer never moved) still fires the row action
       drag_cells([0, 0], [0, 0])
       cell_at(0, 0).dispatchEvent(pointer(`click`))
-      expect(onrowclick).toHaveBeenCalledTimes(1)
+      expect(on_row_click).toHaveBeenCalledTimes(1)
     })
 
     it(`right-click copy column copies all filtered rows across pages`, async () => {
@@ -2405,7 +2367,7 @@ describe(`HeatmapTable`, () => {
         data: many_rows,
         columns: two_cols,
         virtual: true,
-        onrowclick: () => {},
+        on_row_click: () => {},
       })
       await tick() // let bind:this resolve the scroll container
       const scroller = doc_query<HTMLDivElement>(`.table-scroll`)

@@ -34,6 +34,8 @@ Run Playwright end-to-end (E2E) tests:
 npx playwright test
 ```
 
+The root test run (`pnpm exec vp test --run`) no longer covers the VS Code extension; its host-side tests live in their own vitest project and run with `pnpm -C extensions/vscode test`.
+
 ### Test Requirements
 
 **New features should include tests.** Bug fixes should include a test that fails on the old code and passes with your fix.

@@ -91,6 +91,7 @@
     </p>
   {/snippet}
   {#snippet children({ input, collecting })}
+    <!-- results come from the sweep, so there is nothing a dropped file could add -->
     <StructureTypePlot
       id_results={input?.results ?? []}
       frame_labels={input?.frame_numbers}
@@ -98,6 +99,7 @@
       {normalize}
       loading={collecting}
       {error_msg}
+      allow_file_drop={false}
     />
   {/snippet}
 </TrajectoryAnalysisPane>

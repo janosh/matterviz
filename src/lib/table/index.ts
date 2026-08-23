@@ -1,7 +1,9 @@
-import { type D3InterpolateName, get_d3_interpolator, pick_contrast_color } from '$lib/colors'
+import { contrast_color_memo, type D3InterpolateName, get_d3_interpolator } from '$lib/colors'
 import { quantile_unordered } from '$lib/math'
+import { color_ramp_scale } from '$lib/plot/core/color-ramp'
+import { clamp01 } from '$lib/utils'
 import { max, min } from 'd3-array'
-import { scaleLog, scaleSequential } from 'd3-scale'
+import { scaleSequential } from 'd3-scale'
 import type { Snippet } from 'svelte'
 import type { ClassValue } from 'svelte/elements'
 import type { ExportFormat } from './export'
@@ -270,34 +272,40 @@ export function make_cell_color_scale(
   // On a log scale numeric_vals holds only positives, so its min doubles as the smallest
   // positive value.
   const lowest = min(numeric_vals)
-  const range = domain ? [...domain] : [lowest ?? 0, max(numeric_vals) ?? 1]
+  const range: [number, number] = domain ? [...domain] : [lowest ?? 0, max(numeric_vals) ?? 1]
 
   // A supplied domain may reach to or below zero (quantile clipping, a shared group), which
-  // a log scale can't take. Lift its low end to the column's smallest positive value so log
-  // columns stay logarithmic instead of silently rendering linear.
+  // a log scale can't take. Lift its low end so it is the column's smallest positive value
+  // rather than the LOG_EPS floor.
   if (scale_type === `log` && range[0] <= 0 && lowest != null && range[1] > 0) {
     range[0] = lowest
   }
   if (better === `lower`) range.reverse()
 
   const interpolator = get_d3_interpolator(color_scale)
-  const use_log = scale_type === `log` && range[0] > 0 && range[1] > 0
-  const log_scale = use_log ? scaleLog().domain(range).range([0, 1]).clamp(true) : null
+  // Log positions come from the shared ramp scale (same LOG_EPS floor as ColorBar/HeatmapMatrix)
+  const log_position = scale_type === `log` ? color_ramp_scale(`log`, range, [0, 1]) : null
+  // Zero sits below the positive log domain and takes its low-end colour (the floored bound,
+  // so an all-zero column still maps to a real colour)
+  const log_zero_value = log_position?.domain()[better === `lower` ? 1 : 0]
   const seq_scale = scaleSequential()
     .domain(range)
     .interpolator(interpolator)
     .clamp(Boolean(domain))
 
+  // Fills are opaque here (HeatmapTable composites translucent ones itself), so no backdrop
+  const text_by_bg = contrast_color_memo()
   return (val) => {
     // Skip null/undefined and non-finite values. Infinity must be excluded here too:
     // compute_column_stats drops it from the domain, so coloring it would paint a cell
     // the scale never accounted for.
     if (val == null || !Number.isFinite(val)) return NULL_CELL_COLOR
-    // Zero sits below the positive log domain and uses its low-end color; negatives remain invalid.
+    // Negatives remain invalid on a log scale
     if (scale_type === `log` && val < 0) return NULL_CELL_COLOR
-    const color_val =
-      scale_type === `log` && val === 0 ? range[better === `lower` ? 1 : 0] : val
-    const bg = log_scale ? interpolator(log_scale(color_val)) : seq_scale(color_val)
-    return { bg, text: pick_contrast_color({ background: bg }) }
+    const color_val = val === 0 && log_zero_value !== undefined ? log_zero_value : val
+    const bg = log_position
+      ? interpolator(clamp01(log_position(color_val)))
+      : seq_scale(color_val)
+    return { bg, text: text_by_bg(bg) }
   }
 }

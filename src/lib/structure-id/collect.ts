@@ -1,6 +1,6 @@
 // Sweep structure identification (CNA + CSP) across sampled frames of a trajectory run.
 import type { TrajectoryRun } from '$lib/trajectory'
-import { compute_structure_id_async } from './async-compute.svelte'
+import { calc_structure_id_async } from './async-compute.svelte'
 import type { StructureIdOptions, StructureIdResult } from './calc-structure-id'
 
 // a-CNA costs ~9-14 µs per atom, so a 5000-frame run of 10k atoms is 8-12 minutes of
@@ -72,7 +72,7 @@ export async function collect_structure_id_sweep(
   for (const [done, frame_number] of frame_numbers.entries()) {
     signal?.throwIfAborted()
     const frame = await run.read_frame(frame_number, signal)
-    const result = await compute_structure_id_async(frame.structure, options, { signal })
+    const result = await calc_structure_id_async(frame.structure, options, { signal })
     if (results.length > 0 && result.n_atoms !== results[0].n_atoms) {
       throw new Error(
         `collect_structure_id_sweep: frame ${frame_number} has ${result.n_atoms} atoms but ` +

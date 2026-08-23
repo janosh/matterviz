@@ -28,6 +28,7 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
     dash_segments,
     DEFAULT_SHOW_SYM_KINDS,
     frac_to_cart_direction,
+    SYM_ELEM_COLORS,
   } from './symmetry-elements'
   import { T } from '@threlte/core'
   import {
@@ -68,10 +69,10 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
     plane_edge_opacity = 0.9,
     // stripe period in Å for glide-plane fills (stripes run along the glide direction)
     glide_stripe_period = 0.7,
-    axis_colors = { 2: `#e63946`, 3: `#2a9d8f`, 4: `#3a6fb0`, 6: `#9c27b0` },
-    mirror_color = `#ffb703`,
-    glide_color = `#8ecae6`,
-    inversion_color = `#555555`,
+    axis_colors = SYM_ELEM_COLORS.axis_by_order,
+    mirror_color = SYM_ELEM_COLORS.mirror,
+    glide_color = SYM_ELEM_COLORS.glide,
+    inversion_color = SYM_ELEM_COLORS.inversion,
   }: {
     elements?: SymmetryElement[]
     lattice: Matrix3x3
@@ -113,15 +114,6 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
     return tex
   })()
 
-  // Key identifying the geometric line of an axis element (direction + intercept)
-  const line_key = (elem: SymmetryElement): string => {
-    const axis = elem.axis
-    if (!axis) return ``
-    const lambda = math.dot(elem.point, axis) / math.dot(axis, axis)
-    const intercept = elem.point.map((val, idx) => val - lambda * axis[idx])
-    return `${axis.join(`,`)}|${intercept.map((val) => val.toFixed(4)).join(`,`)}`
-  }
-
   type MaterialGroup = {
     geometry: BufferGeometry
     color: string
@@ -156,16 +148,18 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
     // Drop 2-fold axes coincident with a higher-order axis (4 contains 2, 6 contains
     // 2 and 3, -4 contains 2, …) to reduce visual clutter. Computed over the VISIBLE
     // elements only, so 2-folds reappear when their enclosing higher-order kind is
-    // toggled off.
+    // toggled off. Lines are identified by the lattice-invariant `locus` key: a
+    // perpendicular-foot intercept would key lattice-equivalent parallel lines differently
+    // in non-standard (primitive fcc, ...) frames and leave their sub-axes drawn.
     const max_order_by_line = new Map<string, number>()
     for (const elem of axis_elements) {
-      const key = line_key(elem)
-      max_order_by_line.set(key, Math.max(max_order_by_line.get(key) ?? 0, elem.order))
+      const current = max_order_by_line.get(elem.locus) ?? 0
+      max_order_by_line.set(elem.locus, Math.max(current, elem.order))
     }
 
     const parts_by_group = new Map<string, BufferGeometry[]>()
     for (const elem of axis_elements) {
-      if (hide_redundant_axes && elem.order < (max_order_by_line.get(line_key(elem)) ?? 0))
+      if (hide_redundant_axes && elem.order < (max_order_by_line.get(elem.locus) ?? 0))
         continue
       const clipped = clip_line_to_cell(elem.point, elem.axis as Vec3, lattice)
       if (!clipped) continue

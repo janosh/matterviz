@@ -24,15 +24,15 @@
   },
   "devDependencies": {
     "@spglib/moyo-wasm": "^0.15.0",
-    "@sveltejs/vite-plugin-svelte": "^7.2.0",
-    "@types/node": "^26.1.1",
+    "@sveltejs/vite-plugin-svelte": "^7.3.0",
+    "@types/node": "^26.2.0",
     "anywidget": "^0.11.0",
     "matterviz": "file:../..",
-    "svelte": "^5.56.8",
-    "svelte-widgets": "^1.5.0",
+    "svelte": "^5.56.9",
+    "svelte-widgets": "^1.6.0",
     "typescript": "^6.0.3",
-    "vite": "^8.1.5",
-    "vite-plus": "0.2.8"
+    "vite": "^8.2.1",
+    "vite-plus": "0.2.9"
   },
   "packageManager": "pnpm@11.5.0"
 }

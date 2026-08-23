@@ -5,10 +5,9 @@ import { to_structure_entries } from '$lib'
 import { element_by_symbol } from '$lib/element/data'
 import type { StructureEntry, StructureInput } from '$lib'
 import { calc_coordination_nums, CoordinationBarPlot } from '$lib/coordination'
-import type { Molecule } from '$lib/structure'
 import { tick } from 'svelte'
 import { describe, expect, test } from 'vitest'
-import { make_crystal, mount_sized } from '../setup'
+import { make_crystal, make_molecule, make_rocksalt, mount_sized } from '../setup'
 
 // Simple cubic structure (NaCl-like)
 const simple_cubic = make_crystal(5, [
@@ -17,15 +16,12 @@ const simple_cubic = make_crystal(5, [
   [`Na`, [0.5, 0, 0], 1],
   { element: `Cl`, abc: [0, 0.5, 0.5], oxidation_state: -1 },
 ])
-// Water, so a lattice-less molecule exercises the single-structure input shape. Built in a
-// 10 Å box and stripped of its lattice, so the O-H separation stays a plain 0.958 Å.
-const water: Molecule = {
-  sites: make_crystal(10, [
-    [`O`, [0.5, 0.5, 0.5]],
-    [`H`, [0.5757, 0.5587, 0.5]],
-    [`H`, [0.4243, 0.5587, 0.5]],
-  ]).sites,
-}
+// Water, so a lattice-less molecule exercises the single-structure input shape (O-H 0.958 Å)
+const water = make_molecule([
+  [`O`, [5, 5, 5]],
+  [`H`, [5.757, 5.587, 5]],
+  [`H`, [4.243, 5.587, 5]],
+])
 
 test.each([
   [`lone crystal`, simple_cubic, [`Structure`]],
@@ -50,29 +46,13 @@ describe(`calc_coordination_nums`, () => {
   // box a conventional-cell ion only sees the 3 partners inside it; the default (the
   // lattice's pbc, what the bar plot and the 3D viewer use) bonds across the faces too.
   test(`rocksalt gives CN 6 with counter-ion neighbours across periodic boundaries`, () => {
-    const rocksalt = make_crystal(5.64, [
-      [`Na`, [0, 0, 0]],
-      [`Na`, [0.5, 0.5, 0]],
-      [`Na`, [0.5, 0, 0.5]],
-      [`Na`, [0, 0.5, 0.5]],
-      [`Cl`, [0.5, 0, 0]],
-      [`Cl`, [0, 0.5, 0]],
-      [`Cl`, [0, 0, 0.5]],
-      [`Cl`, [0.5, 0.5, 0.5]],
-    ])
-    const bare = calc_coordination_nums(rocksalt, `electroneg_ratio`, [false, false, false])
-    expect(bare.sites.map((site) => site.coordination_num)).toEqual(Array(8).fill(3))
+    const rocksalt = make_rocksalt()
+    const bare = calc_coordination_nums(rocksalt, { pbc: [false, false, false] })
+    expect(bare.coordination_nums).toEqual(Array(8).fill(3))
 
-    const { sites, cn_by_element, cn_histogram, cn_histogram_by_element } =
+    const { coordination_nums, cn_histogram, cn_histogram_by_element } =
       calc_coordination_nums(rocksalt)
-    expect(sites.map((site) => site.coordination_num)).toEqual(Array(8).fill(6))
-    for (const { element, neighbor_elements } of sites) {
-      expect(neighbor_elements).toEqual(Array(6).fill(element === `Na` ? `Cl` : `Na`))
-    }
-    expect([...cn_by_element]).toEqual([
-      [`Na`, [6, 6, 6, 6]],
-      [`Cl`, [6, 6, 6, 6]],
-    ])
+    expect(coordination_nums).toEqual(Array(8).fill(6))
     expect([...cn_histogram]).toEqual([[6, 8]])
     expect([...cn_histogram_by_element].map(([el, hist]) => [el, [...hist]])).toEqual([
       [`Na`, [[6, 4]]],
@@ -91,12 +71,8 @@ describe(`calc_coordination_nums`, () => {
     )
 
     // With atoms 50 Å apart, no bonds should form with default electroneg_ratio strategy
-    const result = calc_coordination_nums(isolated_atoms, `electroneg_ratio`)
-
-    expect(result.sites).toHaveLength(2)
-    // Both atoms should have CN = 0 since they are too far apart for bonding
-    const cn_values = result.sites.map((site) => site.coordination_num)
-    expect(cn_values.every((cn) => cn === 0)).toBe(true)
+    const result = calc_coordination_nums(isolated_atoms, { strategy: `electroneg_ratio` })
+    expect(result.coordination_nums).toEqual([0, 0])
     expect(result.cn_histogram.get(0)).toBe(2)
   })
 
@@ -105,21 +81,17 @@ describe(`calc_coordination_nums`, () => {
   test(`one-atom cell counts each of its own images as a neighbour`, () => {
     const radius = element_by_symbol.get(`Po`)?.covalent_radius ?? 0
     const po = make_crystal(2 * radius, [[`Po`, [0, 0, 0]]])
-    const { sites, cn_histogram } = calc_coordination_nums(po)
-    expect(sites).toEqual([
-      {
-        site_idx: 0,
-        element: `Po`,
-        coordination_num: 6,
-        neighbor_elements: Array(6).fill(`Po`),
-      },
-    ])
+    const { coordination_nums, cn_histogram, cn_histogram_by_element } =
+      calc_coordination_nums(po)
+    expect(coordination_nums).toEqual([6])
     expect([...cn_histogram]).toEqual([[6, 1]])
+    expect([...cn_histogram_by_element].map(([el, hist]) => [el, [...hist]])).toEqual([
+      [`Po`, [[6, 1]]],
+    ])
     // a slab under an explicit pbc override loses the two vacuum-axis images
-    expect(
-      calc_coordination_nums(po, `electroneg_ratio`, [true, true, false]).sites[0]
-        .coordination_num,
-    ).toBe(4)
+    expect(calc_coordination_nums(po, { pbc: [true, true, false] }).coordination_nums).toEqual(
+      [4],
+    )
   })
 
   test(`buckets disordered sites by majority element, not species[0]`, () => {
@@ -132,12 +104,20 @@ describe(`calc_coordination_nums`, () => {
       { element: `Na`, occu: 0.3, oxidation_state: 0 },
       { element: `Cl`, occu: 0.7, oxidation_state: 0 },
     ]
-    const result = calc_coordination_nums(struct, `electroneg_ratio`)
-    expect(result.cn_by_element.has(`Cl`)).toBe(true)
-    expect(result.cn_histogram_by_element.has(`Cl`)).toBe(true)
+    const result = calc_coordination_nums(struct)
     // Minority element must NOT create its own bucket for the disordered site
-    expect(result.cn_by_element.has(`Na`)).toBe(false)
-    expect(result.sites[0].element).toBe(`Cl`)
+    expect([...result.cn_histogram_by_element.keys()]).toEqual([`Cl`, `O`])
+  })
+
+  // neighbor_query rejects a non-finite position; the wrapper must let that through rather
+  // than hand the plot a histogram computed from garbage
+  test(`throws on a NaN site position`, () => {
+    const broken = make_crystal(5, [
+      [`Na`, [0, 0, 0]],
+      [`Cl`, [0.5, 0.5, 0.5]],
+    ])
+    broken.sites[1].xyz = [NaN, 0, 0]
+    expect(() => calc_coordination_nums(broken)).toThrow(/non-finite position/)
   })
 })
 
@@ -171,6 +151,22 @@ describe(`CoordinationBarPlot`, { timeout: 30_000 }, () => {
   ])(`allow_file_drop=%s shows %s when empty`, async (allow_file_drop, message) => {
     const root = await mount_plot({ structures: {}, allow_file_drop })
     expect(root.textContent).toContain(message)
+  })
+
+  // neighbor_query throws on a non-finite position; an unguarded compute derived would take
+  // the whole render down with it. The healthy structure next to it must still plot.
+  test(`reports a NaN site as an error and keeps plotting the other structures`, async () => {
+    const broken = make_crystal(5, [
+      [`Na`, [0, 0, 0]],
+      [`Cl`, [0.5, 0.5, 0.5]],
+    ])
+    broken.sites[0].xyz = [NaN, 0, 0]
+    // the error StatusMessage is a sibling of the mount root, so read the whole container
+    const container = (await mount_plot({ structures: { cubic: simple_cubic, broken } }))
+      .parentElement
+    await tick()
+    expect(container?.textContent).toMatch(/broken: .*non-finite position/)
+    expect(container?.querySelector(`svg`)).toBeInstanceOf(SVGSVGElement)
   })
 
   // Series identity (element here, triplet in BondAnglePlot) reaches the tooltip as string

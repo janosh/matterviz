@@ -7,17 +7,17 @@ import {
 } from '$lib/structure/bonding'
 import type { Pbc } from '$lib/structure/pbc'
 
-interface CoordinationSite {
-  site_idx: number
-  element: string
-  coordination_num: number
-  neighbor_elements: string[]
+export interface CoordinationOptions {
+  strategy?: BondingStrategy
+  // Periodic axes to bond across, defaults to the structure's own lattice.pbc
+  pbc?: Pbc
 }
 
 export interface CoordinationData {
-  sites: CoordinationSite[]
-  cn_by_element: Map<string, number[]>
+  // One coordination number per site, index-aligned with structure.sites
+  coordination_nums: number[]
   cn_histogram: Map<number, number>
+  // Sites bucketed by their majority element
   cn_histogram_by_element: Map<string, Map<number, number>>
 }
 
@@ -27,9 +27,9 @@ export interface CoordinationData {
 // neighbor. Shared by the 3D viewer and CoordinationBarPlot so both report identical numbers.
 export function calc_coordination_nums(
   structure: AnyStructure,
-  strategy: BondingStrategy = `electroneg_ratio`,
-  pbc?: Pbc,
+  options: CoordinationOptions = {},
 ): CoordinationData {
+  const { strategy = `electroneg_ratio`, pbc } = options
   // via compute_bonds, not the raw strategy, so repeat passes reuse its memoized neighbor search
   const bonds = compute_bonds(structure, strategy, {
     pbc: lattice_pbc_or_throw(structure, pbc),
@@ -38,35 +38,23 @@ export function calc_coordination_nums(
   const { sites } = structure
   // Every bond is a distinct (partner, image) contact for each of its ends, and a bond from
   // a site to its own periodic image contributes both directions to that one site
-  const coordination_sites: CoordinationSite[] = sites.map((site, site_idx) => ({
-    site_idx,
-    element: get_majority_element(site) ?? `Unknown`,
-    coordination_num: 0,
-    neighbor_elements: [],
-  }))
+  const coordination_nums = sites.map(() => 0)
   for (const { site_idx_1, site_idx_2 } of bonds) {
-    const site_1 = coordination_sites[site_idx_1]
-    const site_2 = coordination_sites[site_idx_2]
-    site_1.coordination_num++
-    site_1.neighbor_elements.push(site_2.element)
-    site_2.coordination_num++
-    site_2.neighbor_elements.push(site_1.element)
+    coordination_nums[site_idx_1]++
+    coordination_nums[site_idx_2]++
   }
 
-  const cn_by_element = new Map<string, number[]>()
   const cn_histogram = new Map<number, number>()
   const cn_histogram_by_element = new Map<string, Map<number, number>>()
   const inc = (map: Map<number, number>, key: number) => map.set(key, (map.get(key) ?? 0) + 1)
-  for (const { element, coordination_num } of coordination_sites) {
-    const element_array = cn_by_element.get(element) ?? []
-    element_array.push(coordination_num)
-    cn_by_element.set(element, element_array)
-
+  for (const [site_idx, site] of sites.entries()) {
+    const coordination_num = coordination_nums[site_idx]
     inc(cn_histogram, coordination_num)
+    const element = get_majority_element(site) ?? `Unknown`
     const element_histogram = cn_histogram_by_element.get(element) ?? new Map<number, number>()
     inc(element_histogram, coordination_num)
     cn_histogram_by_element.set(element, element_histogram)
   }
 
-  return { sites: coordination_sites, cn_by_element, cn_histogram, cn_histogram_by_element }
+  return { coordination_nums, cn_histogram, cn_histogram_by_element }
 }

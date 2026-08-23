@@ -1,7 +1,12 @@
-# Source files
+# Source and build inputs (the VSIX ships dist/ only)
 src/**
 *.ts
-
-# Build files
 tsconfig.json
 .vscode/**
+scripts/**
+
+# Tests and their artifacts
+tests/**
+coverage/**
+.svelte-kit/**
+*.vsix

@@ -4,6 +4,7 @@
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import {
+  analyze_structure_symmetry,
   classify_symmetry_op,
   clip_line_to_cell,
   clip_plane_to_cell,
@@ -18,8 +19,10 @@ import { beforeAll, describe, expect, test } from 'vitest'
 import {
   col_major,
   cubic_matrix,
+  fcc_primitive_matrix,
   IDENTITY_MATRIX3 as IDENTITY,
   init_moyo_for_tests,
+  make_crystal,
 } from '../setup'
 
 const INVERSION: Matrix3x3 = [
@@ -207,6 +210,18 @@ describe(`symmetry_elements_from_ops: space group inventories`, () => {
     }
   })
 
+  // A center at 1 - 1e-9 (below wrap_to_unit_cell's 1e-10 snap) is the lattice image of the
+  // one at 0 and must share its locus key, else the same point shows up twice
+  test(`inversion centers at 1 - 1e-9 and 0 dedupe to one element`, () => {
+    const inversion = col_major(INVERSION)
+    const elements = symmetry_elements_from_ops([
+      { rotation: inversion, translation: [0, 0, 0] },
+      { rotation: inversion, translation: [2 - 2e-9, 0, 0] }, // center at w/2 = 1 - 1e-9
+    ] as MoyoDataset[`operations`])
+    expect(elements).toHaveLength(8)
+    expect(elements.every((elem) => elem.kind === `inversion`)).toBe(true)
+  })
+
   test(`P2_1/c (#14): 8 inversion centers, 4 screw axes, 2 c-glide planes`, () => {
     const elements = elements_for(14)
     expect(count_by(elements, `kind`)).toEqual({ inversion: 8, screw: 4, glide: 2 })
@@ -372,6 +387,37 @@ describe(`symmetry_elements_from_ops: space group inventories`, () => {
         }
       }
     }
+  })
+
+  test(`primitive diamond frame: every order-4 axis line carries an order-2 axis with the same locus`, async () => {
+    // W² of any order-4 operation (4, 4_1, -4) is an order-2 proper operation about the same
+    // line, so each order-4 locus must also appear as an order-2 locus — the invariant
+    // hide_redundant_axes relies on. In a primitive (non-standard) frame the two operations'
+    // fixed points can differ by a lattice vector that is not along the axis; a perpendicular
+    // -foot intercept keyed such lines differently and left 5 of 12 sub-axes drawn inside
+    // their enclosing axes, while the covector-based locus is lattice-invariant.
+    const prim_diamond = make_crystal(fcc_primitive_matrix(5.43), [
+      { element: `Si`, abc: [0, 0, 0] },
+      { element: `Si`, abc: [0.25, 0.25, 0.25] },
+    ])
+    const { operations } = await analyze_structure_symmetry(prim_diamond)
+    const axes = symmetry_elements_from_ops(operations).filter(
+      (elem) => elem.axis && elem.kind !== `mirror` && elem.kind !== `glide`,
+    )
+    const order_4 = axes.filter((elem) => elem.order === 4)
+    const order_2 = axes.filter((elem) => elem.order === 2)
+    expect(order_4.length).toBeGreaterThan(0)
+    const two_fold_loci = new Set(order_2.map((elem) => elem.locus))
+    for (const elem of order_4) expect(two_fold_loci).toContain(elem.locus)
+    // the legacy intercept key (point − λ·axis, unwrapped) misses some of these coincidences
+    const intercept_key = (elem: SymmetryElement): string => {
+      const axis = elem.axis as Vec3
+      const lambda = math.dot(elem.point, axis) / math.dot(axis, axis)
+      const intercept = elem.point.map((val, idx) => val - lambda * axis[idx])
+      return `${axis.join(`,`)}|${intercept.map((val) => val.toFixed(4)).join(`,`)}`
+    }
+    const two_fold_intercepts = new Set(order_2.map(intercept_key))
+    expect(order_4.some((elem) => !two_fold_intercepts.has(intercept_key(elem)))).toBe(true)
   })
 
   test(`P321 (#150): hexagonal in-plane 2-fold axes have correct directions`, () => {

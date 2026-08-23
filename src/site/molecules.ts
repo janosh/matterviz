@@ -1,4 +1,5 @@
 import type { FileInfo, Molecule } from '$lib'
+import { fixture_ext, glob_basename, site_file_info } from '$site/imports'
 
 const molecules = Object.entries(
   import.meta.glob<Molecule>(`./molecules/*.json`, {
@@ -6,8 +7,7 @@ const molecules = Object.entries(
     import: `default`,
   }),
 ).map(([path, mol]) => {
-  const id = path.split(`/`).at(-1)?.split(`.`)[0]
-  mol.id = id
+  mol.id = glob_basename(path).split(`.`)[0]
   return mol
 })
 
@@ -18,9 +18,10 @@ export const test_molecules = Object.fromEntries(molecules.map((mol) => [mol.id,
 // instead of emitting it as an asset. The static symlink serves them at /molecules/<name>.
 export const molecule_files: FileInfo[] = Object.keys(
   import.meta.glob(`$site/molecules/*`, { query: `?url` }),
-).map((path) => {
-  const filename = path.split(`/`).pop() ?? path
-  const type = filename.split(`.`).pop()?.toUpperCase() ?? `FILE`
-  const url = path.replace(`/src/site`, ``)
-  return { name: filename, url, type, category: `molecule`, category_icon: `🧬` }
-})
+).map((path) =>
+  site_file_info(path, {
+    type: fixture_ext(path).toUpperCase(),
+    category: `molecule`,
+    category_icon: `🧬`,
+  }),
+)

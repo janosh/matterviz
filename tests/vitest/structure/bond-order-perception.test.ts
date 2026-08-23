@@ -8,11 +8,7 @@ import type { PerceivedBond } from '$lib/structure/bond-order-perception'
 import type { ElementSymbol } from '$lib/element'
 import type { Vec2, Vec3 } from '$lib/math'
 
-function make_input(
-  elements: ElementSymbol[],
-  coords: [number, number, number][],
-  edges: Vec2[],
-) {
+function make_input(elements: ElementSymbol[], coords: Vec3[], edges: Vec2[]) {
   const sites = elements.map((element, idx) => ({
     species: [{ element, occu: 1, oxidation_state: 0 }],
     xyz: coords[idx],
@@ -33,149 +29,72 @@ function make_input(
   return { sites, bonds }
 }
 
-describe(`perceive_bond_orders scaffold`, () => {
-  test(`returns one annotated pair per input pair`, () => {
-    const { sites, bonds } = make_input(
-      [`H`, `H`],
-      [
-        [0, 0, 0],
-        [0.74, 0, 0],
-      ],
-      [[0, 1]],
-    )
-    const result = perceive_bond_orders(sites, bonds, { total_charge: 0 })
-    expect(result).toHaveLength(1)
-    expect(result[0].bond_order).toBe(1)
-    expect(result[0].perceived).toBe(true)
-  })
-
-  test(`keeps stale out-of-range bonds single without throwing`, () => {
-    const { sites, bonds } = make_input(
-      [`C`, `O`],
-      [
-        [0, 0, 0],
-        [1.2, 0, 0],
-        [2.4, 0, 0],
-      ],
-      [[0, 2]],
-    )
-
-    const result = perceive_bond_orders(sites, bonds, { total_charge: 0 })
-
-    expect(result).toEqual([
-      expect.objectContaining({
-        site_idx_1: 0,
-        site_idx_2: 2,
-        bond_order: 1,
-        perceived: false,
-      }),
-    ])
-  })
-})
-
-describe(`valence-maximization core (neutral)`, () => {
-  test(`CO2: two double bonds`, () => {
-    const { sites, bonds } = make_input(
-      [`C`, `O`, `O`],
-      [
-        [0, 0, 0],
-        [1.16, 0, 0],
-        [-1.16, 0, 0],
-      ],
-      [
-        [0, 1],
-        [0, 2],
-      ],
-    )
-    const result = perceive_bond_orders(sites, bonds, { total_charge: 0 })
-    expect(
-      result
-        .map((bond) => bond.bond_order)
-        .toSorted((left, right) => Number(left) - Number(right)),
-    ).toEqual([2, 2])
-    expect(result.every((bond) => bond.perceived)).toBe(true)
-  })
-
-  test(`HCN: one single + one triple`, () => {
-    const { sites, bonds } = make_input(
-      [`H`, `C`, `N`],
-      [
-        [0, 0, 0],
-        [1.07, 0, 0],
-        [2.22, 0, 0],
-      ],
-      [
-        [0, 1],
-        [1, 2],
-      ],
-    )
-    const result = perceive_bond_orders(sites, bonds, { total_charge: 0 })
-    const orders = result.map(
-      (bond) => [bond.site_idx_1, bond.site_idx_2, bond.bond_order] as const,
-    )
-    expect(orders.find(([idx_1, idx_2]) => idx_1 === 0 && idx_2 === 1)?.[2]).toBe(1)
-    expect(orders.find(([idx_1, idx_2]) => idx_1 === 1 && idx_2 === 2)?.[2]).toBe(3)
-  })
-
-  test(`methane: all single`, () => {
-    const { sites, bonds } = make_input(
-      [`C`, `H`, `H`, `H`, `H`],
-      [
-        [0, 0, 0],
-        [1, 0, 0],
-        [-1, 0, 0],
-        [0, 1, 0],
-        [0, -1, 0],
-      ],
-      [
-        [0, 1],
-        [0, 2],
-        [0, 3],
-        [0, 4],
-      ],
-    )
-    const result = perceive_bond_orders(sites, bonds, { total_charge: 0 })
-    expect(result.every((bond) => bond.bond_order === 1)).toBe(true)
-  })
-})
-
-describe(`combination-count bound`, () => {
-  test(`catenated S20 chain degrades to single bonds without enumerating 3^20`, () => {
-    const n_atoms = 20
-    const elements = Array.from({ length: n_atoms }, (): ElementSymbol => `S`)
-    const coords = Array.from({ length: n_atoms }, (_, idx) => [idx * 2, 0, 0] as Vec3)
-    const edges = Array.from({ length: n_atoms - 1 }, (_, idx) => [idx, idx + 1] as Vec2)
+// `expected` is compared as a sorted multiset (symmetric molecules like CO3^2- place the
+// double bond on any O); `perceived` false means the fallback (all single) ran
+describe(`perceive_bond_orders on small molecules`, () => {
+  const h_fan = (count: number) => Array.from({ length: count }, (): ElementSymbol => `H`)
+  // oxfmt-ignore
+  test.each<{
+    name: string
+    elements: ElementSymbol[]
+    coords: Vec3[]
+    edges: Vec2[]
+    charge?: number
+    expected: PerceivedBond[`bond_order`][]
+    perceived: boolean
+  }>([
+    { name: `H2`, elements: [`H`, `H`], coords: [[0, 0, 0], [0.74, 0, 0]], edges: [[0, 1]],
+      expected: [1], perceived: true },
+    // stale out-of-range bond (2.4 A C-O) stays single without throwing
+    { name: `C..O far apart`, elements: [`C`, `O`], coords: [[0, 0, 0], [1.2, 0, 0], [2.4, 0, 0]],
+      edges: [[0, 2]], expected: [1], perceived: false },
+    { name: `CO2: two double bonds`, elements: [`C`, `O`, `O`],
+      coords: [[0, 0, 0], [1.16, 0, 0], [-1.16, 0, 0]], edges: [[0, 1], [0, 2]],
+      expected: [2, 2], perceived: true },
+    { name: `HCN: single + triple`, elements: [`H`, `C`, `N`],
+      coords: [[0, 0, 0], [1.07, 0, 0], [2.22, 0, 0]], edges: [[0, 1], [1, 2]],
+      expected: [1, 3], perceived: true },
+    { name: `methane: all single`, elements: [`C`, ...h_fan(4)],
+      coords: [[0, 0, 0], [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0]],
+      edges: [[0, 1], [0, 2], [0, 3], [0, 4]], expected: [1, 1, 1, 1], perceived: true },
+    { name: `water: all single`, elements: [`O`, `H`, `H`],
+      coords: [[0, 0, 0], [0.96, 0, 0], [-0.24, 0.93, 0]], edges: [[0, 1], [0, 2]],
+      expected: [1, 1], perceived: true },
+    { name: `carbonate CO3^2-: one C=O double, two C-O single`, elements: [`C`, `O`, `O`, `O`],
+      coords: [[0, 0, 0], [1.28, 0, 0], [-0.64, 1.11, 0], [-0.64, -1.11, 0]],
+      edges: [[0, 1], [0, 2], [0, 3]], charge: -2, expected: [2, 1, 1], perceived: true },
+    // transition metal: graceful fallback to single bonds
+    { name: `ferrocene-ish (contains Fe)`, elements: [`Fe`, `C`, `C`, `C`, `C`, `C`],
+      coords: [[0, 0, 0], [1, 0, 1], [0.3, 0.95, 1], [-0.8, 0.6, 1], [-0.8, -0.6, 1], [0.3, -0.95, 1]],
+      edges: [[0, 1], [0, 2], [0, 3], [0, 4], [0, 5], [1, 2], [2, 3], [3, 4], [4, 5], [5, 1]],
+      expected: Array(10).fill(1), perceived: false },
+    // combination-count bound: degrades to single bonds without enumerating 3^20
+    { name: `catenated S20 chain`, elements: Array.from({ length: 20 }, (): ElementSymbol => `S`),
+      coords: Array.from({ length: 20 }, (_, idx) => [idx * 2, 0, 0] as Vec3),
+      edges: Array.from({ length: 19 }, (_, idx) => [idx, idx + 1] as Vec2),
+      expected: Array(19).fill(1), perceived: false },
+  ])(`$name`, ({ elements, coords, edges, charge = 0, expected, perceived }) => {
     const { sites, bonds } = make_input(elements, coords, edges)
-    const result = perceive_bond_orders(sites, bonds, { total_charge: 0 })
-    expect(result).toHaveLength(n_atoms - 1)
-    expect(result.every((bond) => bond.bond_order === 1)).toBe(true)
-    expect(result.every((bond) => !bond.perceived)).toBe(true)
+    const result = perceive_bond_orders(sites, bonds, { total_charge: charge })
+    expect(result.map((bond) => [bond.site_idx_1, bond.site_idx_2])).toEqual(edges)
+    const by_order = (left: PerceivedBond[`bond_order`], right: PerceivedBond[`bond_order`]) =>
+      String(left).localeCompare(String(right))
+    expect(result.map((bond) => bond.bond_order).toSorted(by_order)).toEqual(
+      expected.toSorted(by_order),
+    )
+    expect(result.every((bond) => bond.perceived === perceived)).toBe(true)
   })
-})
 
-describe(`charge support`, () => {
-  test(`carbonate CO3^2-: one C=O double, two C-O single`, () => {
+  test(`no bonds -> empty result`, () => {
     const { sites, bonds } = make_input(
-      [`C`, `O`, `O`, `O`],
+      [`Na`, `Cl`],
       [
         [0, 0, 0],
-        [1.28, 0, 0],
-        [-0.64, 1.11, 0],
-        [-0.64, -1.11, 0],
+        [2.8, 0, 0],
       ],
-      [
-        [0, 1],
-        [0, 2],
-        [0, 3],
-      ],
+      [],
     )
-    const result = perceive_bond_orders(sites, bonds, { total_charge: -2 })
-    expect(
-      result
-        .map((bond) => bond.bond_order)
-        .toSorted((left, right) => Number(left) - Number(right)),
-    ).toEqual([1, 1, 2])
-    expect(result.every((bond) => bond.perceived)).toBe(true)
+    expect(perceive_bond_orders(sites, bonds, {})).toHaveLength(0)
   })
 })
 
@@ -381,66 +300,6 @@ describe(`aromaticity`, () => {
     const result = perceive_bond_orders(sites, bonds, { total_charge: 0 })
     expect(result.every((bond) => bond.bond_order !== `aromatic`)).toBe(true)
     expect(result.every((bond) => bond.aromatic_ring === undefined)).toBe(true)
-  })
-})
-
-describe(`T2 graceful fallback`, () => {
-  test(`ferrocene-ish (contains Fe): all single, perceived false`, () => {
-    const { sites, bonds } = make_input(
-      [`Fe`, `C`, `C`, `C`, `C`, `C`],
-      [
-        [0, 0, 0],
-        [1, 0, 1],
-        [0.3, 0.95, 1],
-        [-0.8, 0.6, 1],
-        [-0.8, -0.6, 1],
-        [0.3, -0.95, 1],
-      ],
-      [
-        [0, 1],
-        [0, 2],
-        [0, 3],
-        [0, 4],
-        [0, 5],
-        [1, 2],
-        [2, 3],
-        [3, 4],
-        [4, 5],
-        [5, 1],
-      ],
-    )
-    const result = perceive_bond_orders(sites, bonds, { total_charge: 0 })
-    expect(result.every((bond) => bond.bond_order === 1)).toBe(true)
-    expect(result.every((bond) => !bond.perceived)).toBe(true)
-  })
-
-  test(`NaCl pair (no bonds list) → empty result`, () => {
-    const { sites, bonds } = make_input(
-      [`Na`, `Cl`],
-      [
-        [0, 0, 0],
-        [2.8, 0, 0],
-      ],
-      [],
-    )
-    expect(perceive_bond_orders(sites, bonds, {})).toHaveLength(0)
-  })
-
-  test(`water: all single`, () => {
-    const { sites, bonds } = make_input(
-      [`O`, `H`, `H`],
-      [
-        [0, 0, 0],
-        [0.96, 0, 0],
-        [-0.24, 0.93, 0],
-      ],
-      [
-        [0, 1],
-        [0, 2],
-      ],
-    )
-    const result = perceive_bond_orders(sites, bonds, { total_charge: 0 })
-    expect(result.every((bond) => bond.bond_order === 1 && bond.perceived)).toBe(true)
   })
 })
 

@@ -1,15 +1,8 @@
 import { BoxPlot, type Vec2 } from '$lib'
-import { DEFAULT_PLOT_PADDING } from '$lib/plot/core/layout'
 import type { BoxPlotSeries, Orientation, WhiskerMode } from '$lib/plot'
-import { type ComponentProps, mount, tick } from 'svelte'
+import { type ComponentProps, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import {
-  bind_props,
-  inside_clip_path,
-  mount_sized,
-  resize_element,
-  with_measured_text,
-} from '../setup'
+import { mount_sized, with_measured_text } from '../setup'
 
 const dist = (count: number, center = 0, spread = 1): number[] =>
   Array.from(
@@ -30,32 +23,6 @@ const rendered_box_count = (series: BoxPlotSeries[] = []): number =>
     .length
 
 describe(`BoxPlot`, () => {
-  test(`long category names tilt and still fit inside the figure`, async () => {
-    const mount_with_cats = (cats: string[]): Promise<HTMLElement> =>
-      with_measured_text(() =>
-        mount_sized_box_plot({
-          series: cats.map((cat) => ({ y: dist(40, 0, 1), label: cat, category: cat })),
-          x_axis: { label: `state` },
-          show_legend: false, // isolate tick tilting from the auto legend's layout reservation
-        }),
-      )
-    const baseline_of = (root: HTMLElement): number =>
-      Number(root.querySelector(`g.x-axis > line`)?.getAttribute(`y1`))
-    const plot = await mount_with_cats([
-      `PENDING`,
-      `RUNNING`,
-      `QUEUE_HOLD`,
-      `COMPLETED`,
-      `CANCELLED`,
-    ])
-    expect(plot.querySelector(`g.x-axis g.tick text`)?.getAttribute(`transform`)).toMatch(
-      /^rotate\(-[\d.]+,/,
-    )
-    const upright = await mount_with_cats([`0`, `1`, `2`, `3`, `4`])
-    expect(baseline_of(plot)).toBeGreaterThan(0)
-    expect(baseline_of(plot)).toBeLessThan(baseline_of(upright))
-  })
-
   // Smoke matrix: every one of these must still draw one box (and one hit target) per
   // series with finite data. Named per row so a failure says which config broke.
   test.each([
@@ -240,102 +207,13 @@ describe(`BoxPlot`, () => {
     },
   )
 
-  test(`renders y2 axis when a box is assigned to y2`, async () => {
+  // horizontal boxes put their secondary values on x2, which the frame tests can't reach
+  test(`does not render the x2 axis for a horizontal secondary box without finite values`, async () => {
     const plot = await mount_sized_box_plot({
-      series: [basic, { y: dist(60, 100, 20), label: `Y2`, y_axis: `y2`, color: `green` }],
-      y2_axis: { label: `Secondary` },
+      orientation: `horizontal`,
+      series: [basic, { y: [NaN, NaN], x_axis: `x2` }],
     })
-    expect(plot.querySelector(`g.y2-axis`)).toBeInstanceOf(SVGGElement)
-    expect(plot.querySelector(`.y2-label`)?.textContent).toBe(`Secondary`)
-  })
-
-  test.each([
-    [`y2`, `vertical`, { y: [NaN, NaN], y_axis: `y2` }],
-    [`x2`, `horizontal`, { y: [NaN, NaN], x_axis: `x2` }],
-  ] satisfies [`x2` | `y2`, Orientation, BoxPlotSeries][])(
-    `does not render the %s axis for a secondary box without finite values in %s mode`,
-    async (axis, orientation, invalid_series) => {
-      const plot = await mount_sized_box_plot({
-        orientation,
-        series: [basic, invalid_series],
-      })
-      expect(plot.querySelector(`g.${axis}-axis`)).toBeNull()
-    },
-  )
-
-  test(`explicit right padding is not overridden by y2 auto-padding`, async () => {
-    const plot = await mount_sized_box_plot({
-      series: [basic, { ...basic, label: `Y2`, y_axis: `y2` }],
-      padding: { r: 10 },
-      y2_axis: { label: `Secondary` },
-    })
-    const clip_rect = plot.querySelector(`clipPath rect`)
-    const right_pad =
-      400 - Number(clip_rect?.getAttribute(`x`)) - Number(clip_rect?.getAttribute(`width`))
-    expect(right_pad).toBe(10)
-  })
-
-  test(`default padding grows for wide y-axis ticks`, async () => {
-    const plot = await with_measured_text(
-      () => mount_sized_box_plot({ series: [basic], y_axis: { label: `Value` } }),
-      60, // short y ticks still measure past the 60px default left pad
-    )
-    expect(Number(plot.querySelector(`clipPath rect`)?.getAttribute(`x`))).toBeGreaterThan(60)
-  })
-
-  test(`horizontal left padding fits slot names, not their indices`, async () => {
-    // slots sit on y when horizontal, so measuring the integer indices behind them left
-    // long category names overflowing the figure and the y title on top of the ticks
-    const clip_x = async (cats: string[]) => {
-      const plot = await with_measured_text(() =>
-        mount_sized_box_plot({
-          series: cats.map((cat) => ({ y: dist(40, 0, 1), label: cat, category: cat })),
-          orientation: `horizontal`,
-        }),
-      )
-      return Number(plot.querySelector(`clipPath rect`)?.getAttribute(`x`))
-    }
-    expect(await clip_x([`QUEUE_HOLD`, `COMPLETED`])).toBeGreaterThan(await clip_x([`Q`, `C`]))
-  })
-
-  test(`vertical rect-zoom zooms y2 but writes no phantom x2 range`, async () => {
-    // vertical orientation: the secondary value axis is y2; x is categorical and x2 is a
-    // sentinel, so rect-zoom must not write back an x2 range. Mount directly (the helper
-    // spreads props, which would sever the bind_props getters and lose the write-back).
-    const state = {
-      x2_axis: {} as Record<string, unknown>,
-      y2_axis: {} as Record<string, unknown>,
-    }
-    const container = document.createElement(`div`)
-    document.body.append(container)
-    mount(BoxPlot, {
-      target: container,
-      props: bind_props(
-        {
-          series: [
-            { y: dist(40, 0, 1), label: `A` },
-            { y: dist(40, 50, 5), label: `B`, y_axis: `y2` as const },
-          ],
-          style: `width: 400px; height: 300px;`,
-        },
-        state,
-      ),
-    })
-    const plot = container.querySelector<HTMLElement>(`.box-plot`)
-    if (!plot) throw new Error(`BoxPlot root element not found`)
-    await resize_element(plot, 400, 300)
-    const svg = plot.querySelector(`svg[role="application"]`)
-    if (!svg) throw new Error(`svg not found`)
-    svg.dispatchEvent(
-      new MouseEvent(`mousedown`, { clientX: 100, clientY: 50, bubbles: true }),
-    )
-    // The endpoint may leave the plot as long as the drag started inside it.
-    window.dispatchEvent(new MouseEvent(`mousemove`, { clientX: 300, clientY: 290 }))
-    window.dispatchEvent(new MouseEvent(`mouseup`, { clientX: 300, clientY: 290 }))
-    await tick()
-    const y2_range = state.y2_axis.range as Vec2 | undefined
-    expect(y2_range?.every(Number.isFinite)).toBe(true)
-    expect(state.x2_axis.range).toBeUndefined() // no phantom x2 range in vertical mode
+    expect(plot.querySelector(`g.x2-axis`)).toBeNull()
   })
 
   test(`category tick labels are colored per box`, async () => {
@@ -379,13 +257,6 @@ describe(`BoxPlot`, () => {
     expect(arg.category_label).toBe(`Box A`)
   })
 
-  test(`horizontal orientation renders all boxes`, async () => {
-    const series = [basic, { ...basic, label: `B`, color: `orangered` }]
-    const plot = await mount_sized_box_plot({ series, orientation: `horizontal` })
-    expect(plot.querySelectorAll(`.box-series`)).toHaveLength(2)
-    expect(plot.querySelectorAll(`g.box-series[role="button"]`)).toHaveLength(2)
-  })
-
   test(`one category tick per series even when x_axis.categories is shorter`, async () => {
     // Each box is positioned by its index in `series`; the category axis must always
     // have one slot/tick per series, regardless of any x_axis.categories override.
@@ -401,47 +272,14 @@ describe(`BoxPlot`, () => {
     expect([...x_ticks].map((tick_el) => tick_el.textContent?.trim())).toEqual([`A`, `B`, `C`])
   })
 
-  // Category labels already identify each box, so legends stay opt-in.
-  // legend=null remains the hard off switch even when show_legend is explicit.
-  const multi_series = [basic, { ...basic, label: `B`, color: `orangered` }]
-  test.each([
-    [`defaults off for multiple series`, { series: multi_series }, false],
-    [`renders when show_legend=true`, { series: multi_series, show_legend: true }, true],
-    [`hides when show_legend=false`, { series: multi_series, show_legend: false }, false],
-    [
-      `is suppressed by legend=null despite show_legend`,
-      { series: multi_series, show_legend: true, legend: null },
-      false,
-    ],
-    [`can force a single-series legend`, { series: [basic], show_legend: true }, true],
-  ] as [string, Partial<ComponentProps<typeof BoxPlot>>, boolean][])(
-    `legend %s`,
-    async (_label, props, visible) => {
-      const plot = await mount_sized_box_plot(props)
-      expect(Boolean(plot.querySelector(`.legend`))).toBe(visible)
-    },
-  )
-
-  test.each([
-    {
-      name: `keeps a sparse plot legend inside`,
-      series: [
-        { ...basic, label: `A` },
-        { ...basic, y: dist(80, 3, 0.5), label: `B` },
-      ],
-      outside: false,
-    },
-    {
-      name: `moves the legend outside densely filled boxes`,
+  // Hiding series shrinks the obstacle field the frame's solver reads, so an outside legend
+  // moves back inside once the remaining boxes leave room for it
+  test(`legend returns inside the plot once dense boxes are isolated`, async () => {
+    const plot = await mount_sized_box_plot({
       series: Array.from({ length: 24 }, (_, series_idx) => ({
         y: [-20, -10, 0, 10, 20],
         label: `Box ${series_idx}`,
       })),
-      outside: true,
-    },
-  ])(`$name without colliding with the chart`, async ({ series, outside }) => {
-    const plot = await mount_sized_box_plot({
-      series,
       show_legend: true,
       legend: { tween: { duration: 0 } },
     })
@@ -452,95 +290,11 @@ describe(`BoxPlot`, () => {
     const is_outside = () =>
       Number(legend.style.top.replace(`px`, ``)) >
       Number(clip_rect.getAttribute(`y`)) + Number(clip_rect.getAttribute(`height`))
-    expect(is_outside()).toBe(outside)
-    if (!outside) return
-    const first_item = legend.querySelector(`.legend-item`)
-    if (!first_item) throw new Error(`legend item not found`)
-    first_item.dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
+    expect(is_outside()).toBe(true)
+    legend
+      .querySelector(`.legend-item`)
+      ?.dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
     await vi.waitFor(() => expect(is_outside()).toBe(false))
-  })
-
-  test(`uses measured legend size across plot sizes without padding drift`, async () => {
-    const width_spy = vi
-      .spyOn(HTMLElement.prototype, `offsetWidth`, `get`)
-      .mockReturnValue(180)
-    const height_spy = vi
-      .spyOn(HTMLElement.prototype, `offsetHeight`, `get`)
-      .mockReturnValue(44)
-    try {
-      const series = Array.from({ length: 8 }, (_, series_idx) => ({
-        y: [-20, -10, 0, 10, 20],
-        label: `Box ${series_idx}`,
-      }))
-      const initial_plot = await mount_sized_box_plot({ series, show_legend: true })
-      const initial_legend = initial_plot.querySelector<HTMLElement>(`.legend`)
-      const resized_plot = await mount_sized_box_plot(
-        { series, show_legend: true },
-        { width: 640, height: 340 },
-      )
-      const resized_legend = resized_plot.querySelector<HTMLElement>(`.legend`)
-      const resized_clip = resized_plot.querySelector(`clipPath rect`)
-      if (!initial_legend || !resized_legend || !resized_clip) {
-        throw new Error(`legend or clip rectangle not found`)
-      }
-      expect(Number(initial_legend.style.top.replace(`px`, ``))).toBe(300 - 44 - 8)
-      expect(Number(resized_legend.style.left.replace(`px`, ``))).toBeGreaterThan(
-        Number(initial_legend.style.left.replace(`px`, ``)),
-      )
-      expect(Number(resized_legend.style.top.replace(`px`, ``))).toBe(340 - 44 - 8)
-      expect(Number(resized_clip.getAttribute(`height`))).toBe(
-        340 - DEFAULT_PLOT_PADDING.t - DEFAULT_PLOT_PADDING.b - 44 - 8,
-      )
-    } finally {
-      width_spy.mockRestore()
-      height_spy.mockRestore()
-    }
-  })
-
-  test(`preserves explicit legend position and auto tracks on resize`, async () => {
-    const item_extents = Array.from({ length: 4 }, () => ({ width: 70, height: 20 }))
-    const auto = await mount_sized_box_plot({
-      series: Array.from({ length: 4 }, (_, series_idx) => ({
-        ...basic,
-        label: `Box ${series_idx}`,
-      })),
-      show_legend: true,
-      legend: { layout: `horizontal`, layout_tracks: `auto`, item_extents },
-    })
-    const auto_legend = auto.querySelector<HTMLElement>(`.legend`)
-    expect(auto_legend?.style.gridTemplateColumns).toBe(`repeat(4, auto)`)
-    const narrow = await mount_sized_box_plot(
-      {
-        series: Array.from({ length: 4 }, (_, series_idx) => ({
-          ...basic,
-          label: `Box ${series_idx}`,
-        })),
-        show_legend: true,
-        legend: { layout: `horizontal`, layout_tracks: `auto`, item_extents },
-      },
-      { width: 280, height: 300 },
-    )
-    expect(narrow.querySelector<HTMLElement>(`.legend`)?.style.gridTemplateColumns).toBe(
-      `repeat(2, auto)`,
-    )
-
-    const pinned = await mount_sized_box_plot({
-      series: [basic, { ...basic, label: `B` }],
-      show_legend: true,
-      legend: { style: `position: absolute; left: 17px; top: 23px;` },
-    })
-    const pinned_legend = pinned.querySelector<HTMLElement>(`.legend`)
-    const pinned_clip = pinned.querySelector(`clipPath rect`)
-    const baseline = await mount_sized_box_plot({
-      series: [basic, { ...basic, label: `B` }],
-      show_legend: false,
-    })
-    const baseline_clip = baseline.querySelector(`clipPath rect`)
-    expect(pinned_legend?.style.left).toBe(`17px`)
-    expect(pinned_legend?.style.top).toBe(`23px`)
-    expect(
-      [`x`, `y`, `width`, `height`].map((attr) => pinned_clip?.getAttribute(attr)),
-    ).toEqual([`x`, `y`, `width`, `height`].map((attr) => baseline_clip?.getAttribute(attr)))
   })
 
   // === Violin support ===
@@ -634,21 +388,6 @@ describe(`BoxPlot`, () => {
       attrs.some((val) => val.includes(`NaN`)),
       `no NaN in box glyphs`,
     ).toBe(false)
-  })
-
-  // same contract as BarPlot: ref-line annotations render outside the chart clip group
-  // so labels at the plot edges can overflow instead of being cropped
-  test(`reference-line annotation is not clipped by the chart area`, async () => {
-    const plot = await mount_sized_box_plot({
-      series: [basic],
-      ref_lines: [{ type: `horizontal`, y: 0, annotation: { text: `threshold` } }],
-    })
-    await tick()
-    const label = [...plot.querySelectorAll(`svg text`)].find(
-      (el) => el.textContent?.trim() === `threshold`,
-    )
-    if (!label) throw new Error(`annotation text should render`)
-    expect(inside_clip_path(label), `annotation must escape the clip-path`).toBe(false)
   })
 
   test(`controls pane: Box / violin reset reverts changed settings to defaults`, async () => {

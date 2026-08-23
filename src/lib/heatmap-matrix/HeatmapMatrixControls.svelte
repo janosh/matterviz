@@ -8,7 +8,7 @@
     HeatmapDomainMode,
     HeatmapExportFormat,
     HeatmapNormalizeMode,
-    LegendPosition,
+    ColorBarPosition,
     SymmetricMode,
   } from './index'
 
@@ -19,15 +19,15 @@
     toggle_visible = $bindable(false),
     normalize = $bindable(`linear`),
     domain_mode = $bindable(`auto`),
-    show_legend = $bindable(false),
-    legend_position = $bindable(`bottom`),
+    show_color_bar = $bindable(false),
+    color_bar_position = $bindable(`bottom`),
     search_query = $bindable(``),
     symmetric = $bindable<SymmetricMode>(false),
     show_values = $bindable<boolean | string>(false),
     show_row_summaries = $bindable(false),
     show_col_summaries = $bindable(false),
     export_formats = [`csv`, `json`],
-    onexport,
+    on_export,
     show_pane = true,
     pane_props = {},
     toggle_props = {},
@@ -39,15 +39,15 @@
     toggle_visible?: boolean
     normalize?: HeatmapNormalizeMode
     domain_mode?: HeatmapDomainMode
-    show_legend?: boolean
-    legend_position?: LegendPosition
+    show_color_bar?: boolean
+    color_bar_position?: ColorBarPosition
     search_query?: string
     symmetric?: SymmetricMode
     show_values?: boolean | string
     show_row_summaries?: boolean
     show_col_summaries?: boolean
     export_formats?: HeatmapExportFormat[]
-    onexport?: (format: HeatmapExportFormat) => void
+    on_export?: (format: HeatmapExportFormat) => void
     show_pane?: boolean
     pane_props?: PaneProps
     toggle_props?: PaneToggleProps
@@ -121,13 +121,13 @@
         </select>
       </label>
       <label>
-        <span>Legend</span>
-        <input type="checkbox" bind:checked={show_legend} />
+        <span>Color bar</span>
+        <input type="checkbox" bind:checked={show_color_bar} />
       </label>
-      {#if show_legend}
+      {#if show_color_bar}
         <label>
           <span>Position</span>
-          <select bind:value={legend_position}>
+          <select bind:value={color_bar_position}>
             <option value="right">Right</option>
             <option value="bottom">Bottom</option>
           </select>
@@ -168,7 +168,7 @@
         <span>Export</span>
         <div class="pane-row">
           {#each export_formats as export_format (export_format)}
-            <button type="button" onclick={() => onexport?.(export_format)}>
+            <button type="button" onclick={() => on_export?.(export_format)}>
               Export {export_format.toUpperCase()}
             </button>
           {/each}

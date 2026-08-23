@@ -31,7 +31,7 @@
     colorbar_title = `Value`,
     colorbar_orientation = `vertical`,
     canvas = $bindable(),
-    onrender,
+    on_render,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     slice?: SliceResult | null
@@ -47,7 +47,7 @@
     colorbar_title?: string
     colorbar_orientation?: Orientation
     canvas?: HTMLCanvasElement
-    onrender?: (detail: {
+    on_render?: (detail: {
       canvas: HTMLCanvasElement
       color_range: Vec2
       contour_thresholds: number[]
@@ -183,7 +183,7 @@
       context.putImageData(image_data, 0, 0)
     }
     if (mode !== `filled`) draw_contours(context, slice)
-    onrender?.({
+    on_render?.({
       canvas,
       color_range: resolved_color_range,
       contour_thresholds,

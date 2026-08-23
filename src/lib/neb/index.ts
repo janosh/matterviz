@@ -19,7 +19,12 @@ export {
   path_spline,
   reaction_coordinate,
 } from './reaction-path'
-export type { BarrierAnalysis, PathSpline, PathSplineOptions } from './reaction-path'
+export type {
+  BarrierAnalysis,
+  PathProfile,
+  PathSpline,
+  PathSplineOptions,
+} from './reaction-path'
 export { default as NebPlot } from './NebPlot.svelte'
 export { default as NebViewer } from './NebViewer.svelte'
 
@@ -41,7 +46,6 @@ export type ReactionPath = {
   label?: string
   // Defaults to `eV` when unset; used for axis and barrier labels only.
   energy_unit?: string
-  metadata?: Record<string, unknown>
 }
 
 // Accepted shapes: a bare image array, a single path, or a keyed record of named

@@ -8,8 +8,6 @@ import type { Plugin } from 'vite'
 import { defineConfig, type PluginOption } from 'vite-plus'
 import { configDefaults } from 'vitest/config'
 // @ts-expect-error Node ESM config load needs the .ts extension here
-import { mock_vscode } from './extensions/vscode/tests/vscode-mock.ts'
-// @ts-expect-error Node ESM config load needs the .ts extension here
 import * as shared from './src/vite-plugins.ts'
 
 // Extensions raw_text_plugin below claims and hands back as a plain string. Covers exactly
@@ -38,7 +36,8 @@ const starry_night_theme_plugin: Plugin = {
   },
 }
 
-const json_gz_plugin = () => shared.vite_plugin_json_gz({ resolve_queries: true })
+const json_gz_options = { resolve_queries: true }
+const json_gz_plugin = () => shared.vite_plugin_json_gz(json_gz_options)
 
 // Rolldown doesn't honor ?raw for unknown file types in import.meta.glob.
 // Claims the file before rolldown's parser sees it, returns raw text as a string export.
@@ -83,7 +82,6 @@ const plugins = [
   starry_night_theme_plugin as unknown,
   sveltekit() as unknown,
   live_examples() as unknown,
-  (process.env.VITEST ? mock_vscode() : null) as unknown,
 ] as PluginOption[]
 
 const config = make_config()
@@ -91,7 +89,9 @@ const config = make_config()
 export default defineConfig({
   ...config, // shared lint/fmt/build
   plugins,
-  worker: { plugins: () => [json_gz_plugin() as unknown as PluginOption] },
+  worker: {
+    plugins: shared.json_gz_worker_plugins(json_gz_options) as unknown as () => PluginOption[],
+  },
   fmt: {
     ...config.fmt,
     printWidth: 95,
@@ -133,11 +133,9 @@ export default defineConfig({
       reporter: [`text`, `json-summary`],
     },
     setupFiles: `tests/vitest/setup.ts`,
-    include: [
-      `tests/vitest/**/*.test.ts`,
-      `tests/vitest/**/*.test.svelte.ts`,
-      `extensions/vscode/tests/**/*.test.ts`,
-    ],
+    // The VS Code extension's tests run under its own vitest (pnpm -C extensions/vscode test):
+    // they need the `vscode` module mocked and the extension's own dependency tree
+    include: [`tests/vitest/**/*.test.ts`, `tests/vitest/**/*.test.svelte.ts`],
     // The perf tripwires import every heavy subsystem (~6 s of transform/import for nothing
     // when skipped), so they only exist for the opt-in run (MATTERVIZ_PERF=1; own CI job)
     exclude: [

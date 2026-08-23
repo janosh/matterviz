@@ -19,8 +19,8 @@
   let show_secondary_controls_toggle = $state(false)
   let normalize_mode = $state<`linear` | `log`>(`linear`)
   let domain_mode = $state<`auto` | `robust` | `fixed`>(`auto`)
-  let show_legend = $state(true)
-  let legend_position = $state<`right` | `bottom`>(`bottom`)
+  let show_color_bar = $state(true)
+  let color_bar_position = $state<`right` | `bottom`>(`bottom`)
   let search_query = $state(``)
   let selected_cells = $state<{ x_idx: number; y_idx: number }[]>([])
   let pinned_cell = $state<{ x_idx: number; y_idx: number } | null>(null)
@@ -120,8 +120,8 @@
       color_scale="interpolateViridis"
       normalize={normalize_mode}
       {domain_mode}
-      {show_legend}
-      {legend_position}
+      {show_color_bar}
+      {color_bar_position}
       hide_empty={hide_mode}
       {search_query}
       virtualize
@@ -130,24 +130,24 @@
       bind:pinned_cell
       tooltip_mode="both"
       enable_brush
-      onbrush={(payload) =>
+      on_brush={(payload) =>
         (brush_info = `${payload.cells.length} cells (${payload.x_range[0]}-${
           payload.x_range[1]
         }, ${payload.y_range[0]}-${payload.y_range[1]})`)}
-      onexport={(format_name) =>
+      on_export={(format_name) =>
         (last_export_status = `Exported ${format_name.toUpperCase()}`)}
       tooltip
-      onclick={(cell: CellContext) => (clicked_cell = cell)}
+      on_click={(cell: CellContext) => (clicked_cell = cell)}
     />
   </div>
   <HeatmapMatrixControls
     bind:ordering
     bind:normalize={normalize_mode}
     bind:domain_mode
-    bind:show_legend
-    bind:legend_position
+    bind:show_color_bar
+    bind:color_bar_position
     bind:search_query
-    onexport={(format_name) => (last_export_status = `Exported ${format_name.toUpperCase()}`)}
+    on_export={(format_name) => (last_export_status = `Exported ${format_name.toUpperCase()}`)}
     toggle_visible={show_primary_controls_toggle}
   >
     <label>
@@ -209,7 +209,7 @@
     {show_col_summaries}
     tile_size="20px"
     gap="1px"
-    ondblclick={(cell: CellContext) =>
+    on_double_click={(cell: CellContext) =>
       (dblclick_info = `${cell.x_item.label}-${cell.y_item.label}: ${format_cell_value(
         cell.value,
       )}`)}

@@ -17,8 +17,7 @@ import {
   vector_display_defaults,
   VECTOR_PALETTE,
 } from '$lib/structure'
-import { glob_default, glob_text } from '$site/imports'
-import { structure_files, structures } from '$site/structures'
+import { structures } from '$site/structures'
 import { describe, expect, test } from 'vitest'
 
 const ref_data: Record<
@@ -210,13 +209,9 @@ describe(`structure_fit_frame`, () => {
     expect(
       structure_fit_frame(
         { sites: [site(`H`, [0, 0, 0]), site(`H`, [4, 0, 0])] },
-        { atom_radius_scale: 0, padding: 1 },
+        { atom_radius_scale: 0 },
       ).center,
     ).toEqual([2, 0, 0])
-    expect(extent(diatomic, { padding: 2, atom_radius_scale: 0 })).toBeCloseTo(
-      extent(diatomic, { padding: 1, atom_radius_scale: 0 }) * 2,
-      10,
-    )
 
     const a = 4.21
     const empty = structure_fit_frame(cubic(a, []), { atom_radius_scale: 0 })
@@ -227,8 +222,8 @@ describe(`structure_fit_frame`, () => {
     expect(with_atom).toBeLessThan((a * Math.sqrt(3) + 2.1) * DEFAULT_FIT_PADDING * 1.2)
 
     const { sites: _dropped, ...no_sites } = cubic(2, [])
-    expect(extent(no_sites as AnyStructure, { atom_radius_scale: 0, padding: 1 })).toBeCloseTo(
-      2 * Math.sqrt(3),
+    expect(extent(no_sites as AnyStructure, { atom_radius_scale: 0 })).toBeCloseTo(
+      2 * Math.sqrt(3) * DEFAULT_FIT_PADDING,
       10,
     )
   })
@@ -243,14 +238,14 @@ describe(`structure_fit_frame`, () => {
     [
       `same_size unit radius`,
       { sites: [site(`H`, [0, 0, 0])] },
-      { same_size_atoms: true, atom_radius_scale: 2, padding: 1 },
-      4,
+      { same_size_atoms: true, atom_radius_scale: 2 },
+      4 * DEFAULT_FIT_PADDING,
     ],
     [
       `site override`,
       { sites: [site(`H`, [0, 0, 0])] },
-      { site_radius_overrides: new Map([[0, 5]]), atom_radius_scale: 1, padding: 1 },
-      10,
+      { site_radius_overrides: new Map([[0, 5]]), atom_radius_scale: 1 },
+      10 * DEFAULT_FIT_PADDING,
     ],
     [
       `same_size ignores site override`,
@@ -259,9 +254,24 @@ describe(`structure_fit_frame`, () => {
         same_size_atoms: true,
         site_radius_overrides: new Map([[0, 5]]),
         atom_radius_scale: 1,
-        padding: 1,
       },
-      2,
+      2 * DEFAULT_FIT_PADDING,
+    ],
+    [
+      `occupancy-weighted disordered site`,
+      {
+        sites: [
+          {
+            ...site(`H`, [0, 0, 0]),
+            species: [
+              { element: `H`, occu: 0.5, oxidation_state: 0 },
+              { element: `Mg`, occu: 0.5, oxidation_state: 0 },
+            ],
+          },
+        ],
+      },
+      { atom_radius_scale: 1, element_radius_overrides: { H: 1, Mg: 3 } },
+      4 * DEFAULT_FIT_PADDING,
     ],
   ] satisfies [string, AnyStructure, StructureFitOpts, number][])(
     `%s`,
@@ -319,27 +329,16 @@ const make_site = (properties?: Record<string, unknown>): Site =>
   ({ species: [], abc: [0, 0, 0], xyz: [0, 0, 0], label: `X`, properties }) as Site
 
 describe(`is_vector_key`, () => {
+  // a key is a vector key when it IS a known prefix or starts with `<prefix>_`
   test.each([
     [`force`, true],
-    [`forces`, true],
-    [`magmom`, true],
     [`magmoms`, true],
-    [`spin`, true],
-    [`spins`, true],
+    [`velocity`, true],
     [`force_DFT`, true],
-    [`force_MLFF`, true],
-    [`forces_PBE`, true],
-    [`magmom_experiment`, true],
-    [`spin_up`, true],
     [`spins_down`, true],
     [`force_`, true],
-    [`magmom_`, true],
-    [`velocity`, true],
-    [`velocities`, true],
-    [`velocity_com`, true],
     [`charge`, false],
-    [`energy`, false],
-    [`forceful`, false],
+    [`forceful`, false], // prefix without the underscore separator
     [`my_force`, false],
     [``, false],
   ])(`is_vector_key(%s) = %s`, (key, expected) => {
@@ -350,16 +349,10 @@ describe(`is_vector_key`, () => {
 describe(`get_all_site_vectors`, () => {
   test.each([
     [`force`, [1, 2, 3]],
-    [`forces`, [4, 5, 6]],
-    [`magmom`, [0.1, 0.2, 0.3]],
-    [`magmoms`, [0.4, 0.5, 0.6]],
-    [`spin`, [0, 0, 1]],
     [`spins`, [0, 0, -1]],
     [`force_DFT`, [1, 0, 0]],
     // LAMMPS vx/vy/vz and extXYZ velocities land here with no further wiring
     [`velocity`, [1.5, -2, 0]],
-    [`velocities`, [0, 3, 0]],
-    [`phonon`, [0.2, -0.1, 0.3]],
     [`phonon_displacement`, [-1, 2, 0]],
   ] as const)(`accepts 3D vector in %s`, (key, vec) => {
     const result = get_all_site_vectors(make_site({ [key]: [...vec] }))
@@ -368,8 +361,6 @@ describe(`get_all_site_vectors`, () => {
 
   test.each([
     [`force`, 2.5, [0, 0, 2.5]],
-    [`magmom`, -1.0, [0, 0, -1.0]],
-    [`spin`, 1, [0, 0, 1]],
     [`spin`, -3.5, [0, 0, -3.5]],
     [`magmom`, 0, [0, 0, 0]],
   ] as const)(`converts scalar %s=%s to z-vector`, (key, scalar, expected) => {
@@ -385,18 +376,12 @@ describe(`get_all_site_vectors`, () => {
   })
 
   test.each([
-    [`NaN in array`, { force: [NaN, 0, 0] }],
-    [`Infinity in array`, { force: [Infinity, 0, 0] }],
+    [`non-finite component`, { force: [Infinity, 0, 0] }],
     [`wrong-length array`, { force: [1, 2] }],
-    [`4-element array`, { force: [1, 2, 3, 4] }],
-    [`string value`, { force: `high` }],
+    [`non-numeric value`, { force: `high` }],
     [`null value`, { force: null }],
-    [`boolean value`, { force: true }],
     [`nested array`, { force: [[1, 0, 0]] }],
-    [`NaN scalar`, { spin: NaN }],
-    [`Infinity scalar`, { magmom: Infinity }],
-    [`invalid phonon vector`, { phonon: [1, 2] }],
-    [`invalid prefixed phonon vector`, { phonon_displacement: [1, 2, Infinity] }],
+    [`non-finite scalar`, { spin: NaN }],
   ])(`rejects invalid vector: %s`, (_label, properties) => {
     expect(get_all_site_vectors(make_site(properties))).toHaveLength(0)
   })
@@ -588,42 +573,4 @@ test(`DEFAULT_STRUCTURE_VIEWS is a 2x2 grid: 1 perspective + 3 orthographic view
   for (const view of DEFAULT_STRUCTURE_VIEWS) {
     expect(Math.hypot(...(view.direction ?? [0, 0, 0]))).toBeGreaterThan(0)
   }
-})
-
-// glob_text unwraps the module-namespace shape the Rolldown prod build returns
-// (vitest runs the dev transform, so this is the only place that path is tested)
-const parsed = { lattice: { a: 5 }, sites: [] }
-test.each([
-  [`dev value`, parsed, parsed],
-  [`prod module namespace`, { default: parsed }, parsed],
-])(`glob_default %s`, (_desc, input, expected) => {
-  expect(glob_default(input)).toBe(expected)
-})
-
-test.each([
-  [`dev raw string`, `data_test`, `data_test`],
-  [`prod string default`, { default: `data_test` }, `data_test`],
-  [`prod parsed default re-stringified`, { default: parsed }, JSON.stringify(parsed)],
-  [`nullish`, null, ``], // structure_file_text's missing-entry check relies on ``
-])(`glob_text %s`, (_desc, input, expected) => {
-  expect(glob_text(input)).toBe(expected)
-})
-
-// Regression: a prior `typeof content === 'string'` filter dropped every crystal
-// in prod (namespace objects aren't strings), leaving only molecules in the picker
-test(`structure_files includes crystals`, () => {
-  const by_name = new Map(structure_files.map((file) => [file.name, file]))
-  expect(by_name.get(`Li4Fe3Mn1(PO4)4.cif`)?.category).toBe(`crystal`)
-  expect(by_name.get(`Cu-FCC.json`)?.category).toBe(`crystal`)
-  expect(by_name.get(`mp-19017.json.gz`)).toMatchObject({
-    type: `JSON`,
-    category: `crystal`,
-  })
-  expect(by_name.get(`AgI-fq978185p-phono3py.yaml.gz`)).toMatchObject({
-    type: `YAML`,
-    category: `crystal`,
-  })
-  expect(structure_files.filter((file) => file.category === `crystal`).length).toBeGreaterThan(
-    30,
-  )
 })

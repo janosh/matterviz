@@ -1,6 +1,6 @@
 <script lang="ts">
   import { type Crystal, SETTINGS_CONFIG } from '$lib'
-  import { PLOT_COLORS } from '$lib/colors'
+  import { plot_color } from '$lib/colors'
   import type { CoordinationSplitMode } from '$lib/coordination'
   import { COORDINATION_SPLIT_MODES, CoordinationBarPlot } from '$lib/coordination'
   import { type AtomColorConfig, Structure } from '$lib/structure'
@@ -116,7 +116,7 @@
     <div class="selected-structures-grid">
       {#each selected_ids as struct_id, idx (struct_id)}
         {@const struct_obj = structure_map.get(struct_id)}
-        {@const series_color = PLOT_COLORS[idx % PLOT_COLORS.length]}
+        {@const series_color = plot_color(idx)}
         {#if struct_obj}
           <div
             class="structure-tile"

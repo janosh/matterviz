@@ -12,6 +12,13 @@ export const is_elem_symbol = (symbol: string): symbol is ElementSymbol =>
 export const coerce_elem_symbol = (symbol: string): ElementSymbol | undefined =>
   is_elem_symbol(symbol) ? symbol : undefined
 
+// Symbol -> atomic number (H = 1); undefined for unknown symbols
+const ATOMIC_NUMBER_BY_SYMBOL: ReadonlyMap<string, number> = new Map(
+  ELEM_SYMBOLS.map((symbol, idx) => [symbol, idx + 1]),
+)
+export const symbol_to_atomic_number = (symbol: string): number | undefined =>
+  ATOMIC_NUMBER_BY_SYMBOL.get(symbol)
+
 // Default element symbols used when a file omits or mangles element info
 export const FALLBACK_ELEMENTS = [
   `H`,

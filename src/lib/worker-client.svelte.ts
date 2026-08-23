@@ -14,8 +14,10 @@ interface WorkerClientConfig<Input, Options, Result> {
   // Must inline `new URL('./x-worker.js', import.meta.url)` at the call site: Vite detects
   // workers syntactically and cannot follow the URL through a variable.
   create_worker: () => Worker
-  // SSR / no-Worker fallback, run on the main thread
-  compute_sync: (input: Input, options: Options) => Result
+  // SSR / no-Worker fallback, run on the main thread. Receives `undefined` when the caller
+  // omitted options, exactly as the worker's compute does, so a defaulted `options = {}`
+  // parameter serves both paths.
+  compute_sync: (input: Input, options: Options | undefined) => Result
   // Plain, structured-cloneable stand-in for `input`. Svelte 5 $state proxies are not
   // cloneable, so callers rebuild field by field rather than deep-snapshotting - a proxied
   // typed array still reads back as its raw buffer, which keeps megabyte payloads cheap.
@@ -38,13 +40,18 @@ export interface WorkerRequestOptions<Progress = unknown> {
   transfer?: Transferable[]
 }
 
-type WorkerClient<Input, Options, Result, Progress = unknown> = {
+// The module's async entry point: modules export the client itself (e.g. `compute_vacf_async`)
+// rather than wrapping it, so `.cancel` / `.release` travel with the function.
+export type WorkerClient<Input, Options, Result, Progress = unknown> = {
   (
     input: Input,
-    options: Options,
+    options?: Options,
     request_options?: WorkerRequestOptions<Progress>,
   ): Promise<Result>
+  // Rejects every in-flight request and terminates the worker
   cancel: (reason?: string) => void
+  // Terminates the worker only when nothing is in flight (a component's unmount path)
+  release: () => void
 }
 
 export const abort_error = (signal: AbortSignal, label: string): Error =>
@@ -92,7 +99,7 @@ export function create_worker_client<
     worker?.terminate()
     worker = null
   }
-  // Also the teardown path for worker `error`/`messageerror` events
+  // Also the teardown path for worker `error`/`messageerror` events and id-less error replies
   const cancel = (reason = `${label} worker request cancelled`): void => {
     const error = new Error(reason)
     for (const request of pending_by_key.values()) request.reject(error)
@@ -174,7 +181,11 @@ export function create_worker_client<
     )
     return JSON.stringify(item_keys.toSorted())
   }
-  const request_key_of = (input: Input, options: Options, payload?: unknown): string => {
+  const request_key_of = (
+    input: Input,
+    options: Options | undefined,
+    payload?: unknown,
+  ): string => {
     const input_key = dedupe_by_payload
       ? payload_key_of(payload)
       : `input:${input_token(input)}`
@@ -206,11 +217,23 @@ export function create_worker_client<
     return request
   }
 
-  // Stop caring about a request nobody awaits anymore. The worker is torn down only when it
-  // has nothing else in flight, so an abort actually frees the CPU it was burning.
+  // Terminate the worker unless it still has requests in flight (a component's unmount path,
+  // which must not reject requests other mounted components of the same module still await)
+  const release = (): void => {
+    if (pending.size === 0) terminate_worker()
+  }
+  // Stop caring about a request nobody awaits anymore. Only reachable from an abort, so the
+  // dropped request is still executing inside the worker: terminating at once frees the CPU
+  // it was burning (an idle-timer variant left every follow-up request queued behind the
+  // abandoned compute - N keystrokes over an 8 s VACF meant N serial 8 s waits). The
+  // replacement is constructed immediately so its module graph loads while the user types.
   const drop = (request: Request): void => {
     forget(request)
-    if (pending.size === 0) terminate_worker()
+    // Another request is still in flight on this worker; terminating it would lose that
+    // result, so the abandoned compute is left to finish on its own
+    if (pending.size > 0) return
+    terminate_worker()
+    ensure_worker()
   }
 
   // Hand one caller a view of a (possibly shared) request that honours its own signal and
@@ -243,51 +266,58 @@ export function create_worker_client<
   // inlined the bundle so `new URL(..., import.meta.url)` has no usable base): the module
   // then computes on the main thread like an environment without Worker at all.
   let worker_unusable = false
-  const get_worker = (): Worker | null => {
+  // Construct the worker (if none is alive) and wire its listeners. Shared by the request
+  // path and by `drop`, which pre-warms the replacement for the next request.
+  function ensure_worker(): Worker | null {
     if (typeof Worker === `undefined` || worker_unusable) return null
-    if (!worker) {
-      try {
-        worker = create_worker()
-      } catch (error) {
-        worker_unusable = true
-        console.warn(
-          `${label} worker could not be constructed; computing on the main thread:`,
-          error,
-        )
-        return null
-      }
-      worker.addEventListener(`message`, ({ data: { id, result, error, progress } }) => {
-        const request = pending.get(id)
-        if (!request) return
-        if (progress !== undefined) {
-          for (const listener of request.progress_listeners) listener(progress)
-          return
-        }
-        pending.delete(id)
-        if (error || result === undefined) {
-          request.reject(
-            new Error(error ?? `${label} worker returned no result for request ${id}`),
-          )
-        } else request.resolve(result)
-      })
-      // Both handlers must tear the worker down: an unsettled `pending` entry leaves every
-      // caller awaiting forever, and its key stays in `pending_by_key` so each identical
-      // retry is handed the same promise that will never settle.
-      worker.addEventListener(`error`, (event) => {
-        event.preventDefault()
-        cancel(event.message || `${label} worker initialization error`)
-      })
-      // A response that fails to deserialize never reaches the `message` handler
-      worker.addEventListener(`messageerror`, () => {
-        cancel(`${label} worker sent a message that could not be deserialized`)
-      })
+    if (worker) return worker
+    try {
+      worker = create_worker()
+    } catch (error) {
+      worker_unusable = true
+      console.warn(
+        `${label} worker could not be constructed; computing on the main thread:`,
+        error,
+      )
+      return null
     }
+    worker.addEventListener(`message`, ({ data: { id, result, error, progress } }) => {
+      // serve_worker's own `messageerror` reply: the request that failed to deserialize
+      // on the worker side has no id, so nothing can be settled individually
+      if (id === null) {
+        cancel(error ?? `${label} worker reported an error with no request id`)
+        return
+      }
+      const request = pending.get(id)
+      if (!request) return
+      if (progress !== undefined) {
+        for (const listener of request.progress_listeners) listener(progress)
+        return
+      }
+      pending.delete(id)
+      if (error || result === undefined) {
+        request.reject(
+          new Error(error ?? `${label} worker returned no result for request ${id}`),
+        )
+      } else request.resolve(result)
+    })
+    // Both handlers must tear the worker down: an unsettled `pending` entry leaves every
+    // caller awaiting forever, and its key stays in `pending_by_key` so each identical
+    // retry is handed the same promise that will never settle.
+    worker.addEventListener(`error`, (event) => {
+      event.preventDefault()
+      cancel(event.message || `${label} worker initialization error`)
+    })
+    // A response that fails to deserialize never reaches the `message` handler
+    worker.addEventListener(`messageerror`, () => {
+      cancel(`${label} worker sent a message that could not be deserialized`)
+    })
     return worker
   }
 
   const compute_unsafe = (
     input: Input,
-    options: Options,
+    options: Options | undefined,
     request_options: WorkerRequestOptions<Progress>,
   ): Promise<Result> => {
     const { signal } = request_options
@@ -299,7 +329,7 @@ export function create_worker_client<
     const existing = pending_by_key.get(request_key)
     if (existing) return join(existing, request_options)
 
-    const wkr = get_worker()
+    const wkr = ensure_worker()
     if (!wkr) {
       const request = track(request_key, null)
       Promise.resolve()
@@ -329,7 +359,7 @@ export function create_worker_client<
   // or Worker instantiation failures (e.g. CSP) must reject instead
   const client = (
     input: Input,
-    options: Options,
+    options?: Options,
     request_options: WorkerRequestOptions<Progress> = {},
   ): Promise<Result> => {
     try {
@@ -339,5 +369,6 @@ export function create_worker_client<
     }
   }
   client.cancel = cancel
+  client.release = release
   return client
 }

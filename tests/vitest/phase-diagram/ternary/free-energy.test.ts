@@ -10,19 +10,22 @@ import {
 } from '$lib/phase-diagram/ternary/free-energy'
 import { G_ELEMENTS } from '$lib/phase-diagram/ternary/g-els-data'
 import { describe, expect, test } from 'vitest'
-import { phase } from './fixtures'
+import { make_phase } from '../../setup'
 
 const elements: ElementSymbol[] = [`Li`, `Co`, `O`]
-const li = phase({ Li: 1 }, -1.9, { entry_id: `Li` })
-const co = phase({ Co: 1 }, -7, { entry_id: `Co` })
-const o2 = phase({ O: 2 }, -2.45, { entry_id: `O2` })
+const li = make_phase({ Li: 1 }, -1.9, { entry_id: `Li` })
+const co = make_phase({ Co: 1 }, -7, { entry_id: `Co` })
+const o2 = make_phase({ O: 2 }, -2.45, { entry_id: `O2` })
 const refs = (2 / 3) * -1.9 + (1 / 3) * -2.45 // Li2O reference energy per atom
 const temps = [300, 500, 700]
-const li2o_tab = phase({ Li: 2, O: 1 }, -4.5, {
+const li2o_tab = make_phase({ Li: 2, O: 1 }, -4.5, {
   temperatures: temps,
   free_energies: [-4.5, -4.6, -4.7],
 })
-const li2o_vol = phase({ Li: 2, O: 1 }, -4.5, { volume_per_atom: 8, e_form_per_atom: -2.1 })
+const li2o_vol = make_phase({ Li: 2, O: 1 }, -4.5, {
+  volume_per_atom: 8,
+  e_form_per_atom: -2.1,
+})
 const dg = (entries: Parameters<typeof build_free_energy_model>[0], options = {}, idx = 3) =>
   build_free_energy_model(entries, elements, options).phases[idx]
 
@@ -60,7 +63,7 @@ test(`SISSO descriptor: reduced mass, G^delta and the elemental table`, () => {
 
 describe(`build_free_energy_model`, () => {
   test(`static, tabulated and element references`, () => {
-    const static_dg = dg([li, co, o2, phase({ Li: 2, O: 1 }, -4.5)])
+    const static_dg = dg([li, co, o2, make_phase({ Li: 2, O: 1 }, -4.5)])
     expect(static_dg.source).toBe(`static`)
     expect(static_dg.dg_form(300)).toBeCloseTo(-4.5 - refs, 10)
     expect(static_dg.dg_form(1500)).toBe(static_dg.dg_form(300))
@@ -71,12 +74,12 @@ describe(`build_free_energy_model`, () => {
     expect(tab.phases[0].dg_form(800)).toBe(0) // an element is its own reference
     expect(default_t_range(tab)).toEqual([300, 700])
     // A tabulated element reference bounds the diagram and enters every dG_f
-    const li_tab = phase({ Li: 1 }, -1.9, {
+    const li_tab = make_phase({ Li: 1 }, -1.9, {
       temperatures: temps,
       free_energies: [-1.9, -2, -2.1],
     })
     const model = build_free_energy_model(
-      [li_tab, co, o2, phase({ Li: 2, O: 1 }, -4.5)],
+      [li_tab, co, o2, make_phase({ Li: 2, O: 1 }, -4.5)],
       elements,
     )
     expect(model.reference_t_range).toEqual([300, 700])
@@ -101,7 +104,7 @@ describe(`build_free_energy_model`, () => {
 
   test(`sisso: dH_f + G^delta - sum x_e G_e(T); elements at their polymorph offset`, () => {
     const model = build_free_energy_model(
-      [li, phase({ Li: 1 }, -1.85), co, o2, li2o_vol],
+      [li, make_phase({ Li: 1 }, -1.85), co, o2, li2o_vol],
       elements,
       { mode: `sisso` },
     )
@@ -133,7 +136,7 @@ describe(`build_free_energy_model`, () => {
   })
 
   test(`gas atmosphere shifts the oxygen reference`, () => {
-    const li2o = phase({ Li: 2, O: 1 }, -4.5)
+    const li2o = make_phase({ Li: 2, O: 1 }, -4.5)
     const gas_config = { enabled_gases: [`O2` as const] }
     const at = (pressure: number, extra = {}) =>
       dg([li, co, o2, li2o], { gas_config, gas_pressures: { O2: pressure }, ...extra })
@@ -144,7 +147,7 @@ describe(`build_free_energy_model`, () => {
     expect(at(1).dg_form(1000) - base.dg_form(1000)).toBeGreaterThan(shift_300)
     // The shift scales with the oxygen fraction (LiO2 has twice Li2O's x_O) and the
     // per-element memo must follow the temperature, not freeze at the first one asked
-    const with_lio2 = [li, co, o2, li2o, phase({ Li: 1, O: 2 }, -4)]
+    const with_lio2 = [li, co, o2, li2o, make_phase({ Li: 1, O: 2 }, -4)]
     const shift_of = (idx: number) =>
       dg(with_lio2, { gas_config, gas_pressures: { O2: 1 } }, idx).dg_form(300) -
       dg(with_lio2, {}, idx).dg_form(300)
@@ -190,9 +193,9 @@ describe(`build_free_energy_model`, () => {
   })
 
   test(`references: exclude_from_hull entries are skipped, disjoint tables throw`, () => {
-    const li_low = phase({ Li: 1 }, -9, { exclude_from_hull: true })
+    const li_low = make_phase({ Li: 1 }, -9, { exclude_from_hull: true })
     const model = build_free_energy_model(
-      [li_low, li, co, o2, phase({ Li: 2, O: 1 }, -4.5)],
+      [li_low, li, co, o2, make_phase({ Li: 2, O: 1 }, -4.5)],
       elements,
     )
     expect(model.unary_refs.Li).toBe(li)

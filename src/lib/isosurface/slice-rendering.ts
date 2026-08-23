@@ -1,41 +1,31 @@
-import { get_d3_interpolator, type D3InterpolateName } from '$lib/colors'
+import type { D3InterpolateName } from '$lib/colors'
 import type { Vec2 } from '$lib/math'
 import { rgb } from 'd3-color'
+import type { ColorRangeSymmetry } from './coloring'
+import { build_colormap_lut, COLORMAP_LUT_SIZE, fit_color_range } from './coloring'
 import type { SliceResult } from './slice'
 
 export type VolumeSliceMode = `both` | `contours` | `filled`
 
-const SLICE_LUT_SIZE = 256
 const MAX_CONTOUR_LEVELS = 256
 const slice_lut_cache = new Map<D3InterpolateName, Uint8ClampedArray>()
 
-const get_slice_lut = (colormap: D3InterpolateName): Uint8ClampedArray => {
-  const cached = slice_lut_cache.get(colormap)
-  if (cached) return cached
-  const interpolator = get_d3_interpolator(colormap)
-  const lut = new Uint8ClampedArray(SLICE_LUT_SIZE * 3)
-  for (let color_idx = 0; color_idx < SLICE_LUT_SIZE; color_idx++) {
-    const color = rgb(interpolator(color_idx / (SLICE_LUT_SIZE - 1)))
-    lut[color_idx * 3] = color.r
-    lut[color_idx * 3 + 1] = color.g
-    lut[color_idx * 3 + 2] = color.b
-  }
-  slice_lut_cache.set(colormap, lut)
-  return lut
-}
+// Canvas pixels want 8-bit sRGB, so the slice LUT keeps d3's sRGB output as is
+const get_slice_lut = (colormap: D3InterpolateName): Uint8ClampedArray =>
+  build_colormap_lut(colormap, slice_lut_cache, Uint8ClampedArray, (css) => {
+    const { r: red, g: green, b: blue } = rgb(css)
+    return [red, green, blue]
+  })
 
-// Resolve an explicit or automatic slice color range.
+// Resolve an explicit or automatic slice color range. `auto` symmetry (the default) centres
+// the range on zero only when the slice straddles it.
 export function resolve_slice_color_range(
   slice: Pick<SliceResult, `min` | `max`>,
   color_range?: Vec2,
-  symmetric: boolean | `auto` = `auto`,
+  symmetric: ColorRangeSymmetry = `auto`,
 ): Vec2 {
   if (color_range) return [...color_range]
-  if (symmetric === true || (symmetric === `auto` && slice.min < 0 && slice.max > 0)) {
-    const abs_max = Math.max(Math.abs(slice.min), Math.abs(slice.max))
-    return [-abs_max, abs_max]
-  }
-  return [slice.min, slice.max]
+  return fit_color_range(slice.min, slice.max, symmetric)
 }
 
 // Convert a sampled slice to browser-sRGB RGBA pixels, preserving its exact mask.
@@ -68,7 +58,7 @@ export function slice_to_rgba(
         span === 0
           ? 0.5
           : Math.max(0, Math.min(1, (slice.data[source_idx] - range_min) * inv_span))
-      const lut_idx = Math.round(normalized * (SLICE_LUT_SIZE - 1)) * 3
+      const lut_idx = Math.round(normalized * (COLORMAP_LUT_SIZE - 1)) * 3
       pixels[pixel_idx] = lut[lut_idx]
       pixels[pixel_idx + 1] = lut[lut_idx + 1]
       pixels[pixel_idx + 2] = lut[lut_idx + 2]

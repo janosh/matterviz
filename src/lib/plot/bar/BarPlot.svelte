@@ -5,8 +5,8 @@
   import type { D3InterpolateName } from '$lib/colors'
   import { format_value_or_num } from '$lib/labels'
   import { sanitize_html } from '$lib/sanitize'
-  import type { Vec2 } from '$lib/math'
   import type {
+    AxisConfig,
     AxisLoadError,
     BarHandlerProps,
     BarMode,
@@ -16,6 +16,7 @@
     ColorScaleConfig,
     DataLoaderFn,
     InternalPoint,
+    LayerZIndex,
     LegendConfig,
     LegendItem,
     LineStyle,
@@ -27,7 +28,6 @@
     SizeScaleConfig,
     UserContentProps,
   } from '$lib/plot'
-  import type { IndexedRefLine } from '$lib/plot/core/reference-line'
   import { BarPlotControls, ScatterPoint } from '$lib/plot'
   import CartesianFrame from '$lib/plot/core/components/CartesianFrame.svelte'
   import PlotAxes from '$lib/plot/core/components/PlotAxes.svelte'
@@ -35,30 +35,36 @@
   import ReferenceLinesLayer from '$lib/plot/core/components/ReferenceLinesLayer.svelte'
   import type { MarginalSeriesInput, MarginalsProp } from '$lib/plot/core/marginals'
   import { normalize_marginals } from '$lib/plot/core/marginals'
-  import { type AxisChangeState, create_axis_loader } from '$lib/plot/core/axis-utils'
+  import {
+    AXIS_DEFAULTS,
+    type AxisChangeState,
+    category_tick_labels,
+    create_axis_loader,
+    X2_AXIS_DEFAULTS,
+  } from '$lib/plot/core/axis-utils'
   import { create_cartesian_frame } from '$lib/plot/core/cartesian-frame.svelte'
   import type { FacetLayoutContext } from '$lib/plot/core/facets'
   import {
     create_legend_visibility,
     resolve_legend_visibility,
   } from '$lib/plot/core/utils/series-visibility'
-  import { get_relative_coords } from '$lib/plot/core/interactions'
+  import { get_relative_coords, is_activation_key } from '$lib/plot/core/interactions'
   import { assign_axes } from '$lib/plot/core/axis-assignment'
   import { build_obstacles_norm, clip_bar } from '$lib/plot/core/decorations'
-  import { group_ref_lines_by_z, index_ref_lines } from '$lib/plot/core/reference-line'
+  import { index_ref_lines } from '$lib/plot/core/reference-line'
   import {
+    collect_scale_values,
     create_axis_scales,
     create_color_scale,
     create_size_scale,
   } from '$lib/plot/core/scales'
   import { DEFAULT_MARKERS, get_scale_type_name, SCALE_DEFAULTS } from '$lib/plot/core/types'
-  import { build_legend_items } from '$lib/plot/core/data-transform'
+  import { build_legend_items, first_point_style } from '$lib/plot/core/data-transform'
   import { DEFAULTS } from '$lib/settings'
-  import { extent } from 'd3-array'
+  import { clamp01 } from '$lib/utils'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { resolve_plot_display, sync_category_zero_display } from '$lib/plot/core/display'
-  import { AXIS_TITLE_OFFSET } from '$lib/plot/core/layout'
+  import { create_category_display } from '$lib/plot/core/display.svelte'
   import PlotTooltip from '$lib/plot/core/components/PlotTooltip.svelte'
   import { bar_path } from '$lib/plot/core/svg'
   import ZeroLines from '$lib/plot/core/components/ZeroLines.svelte'
@@ -179,9 +185,7 @@
       facet_layout?: FacetLayoutContext
     } = $props()
 
-  // Legend toggles write `visible` into the bindable series prop so bound parents see
-  // them, and `series` layers the user's overrides back on whenever the parent
-  // replaces the array so hidden series stay hidden
+  // Legend toggles write back into the bindable series prop; see create_legend_visibility
   const legend_vis = create_legend_visibility(
     () => series,
     (next) => (series_in = next),
@@ -194,24 +198,8 @@
   let line_state = $derived({ ...DEFAULTS.bar.line, ...line })
   // Merge secondary-axis defaults as deriveds instead of assigning back into the
   // $bindable props (which would push library defaults into the parent's bound state)
-  let y2_axis = $derived({
-    format: ``,
-    scale_type: `linear`,
-    ticks: 5,
-    label_shift: { x: 0, y: 0 }, // y2 title stays vertically centered (x pos set by y2_axis_label_x)
-    tick: { label: { shift: { x: 0, y: 0 } } }, // base offset handled in rendering
-    range: [null, null],
-    ...y2_axis_prop,
-  } as typeof y2_axis_prop)
-  let x2_axis = $derived({
-    format: ``,
-    scale_type: `linear`,
-    ticks: 5,
-    label_shift: { x: 0, y: AXIS_TITLE_OFFSET },
-    tick: { label: { shift: { x: 0, y: 0 } } },
-    range: [null, null],
-    ...x2_axis_prop,
-  } as typeof x2_axis_prop)
+  let y2_axis = $derived<AxisConfig>({ ...AXIS_DEFAULTS, ...y2_axis_prop })
+  let x2_axis = $derived<AxisConfig>({ ...X2_AXIS_DEFAULTS, ...x2_axis_prop })
 
   const plot_axes = $derived({ x: x_axis, x2: x2_axis, y: y_axis, y2: y2_axis })
 
@@ -225,11 +213,7 @@
     obstacles: () => obstacles_norm,
     legend: () => legend,
     legend_visible: () => should_show_legend,
-    legend_items: () =>
-      series.map((series_data, series_idx) => ({
-        label: series_data.label ?? `Series ${series_idx + 1}`,
-        legend_group: series_data.legend_group,
-      })),
+    legend_items: () => legend_data,
     marginals: () => resolved_marginals,
     ref_lines: () => indexed_ref_lines,
     pan: () => pan,
@@ -237,8 +221,13 @@
     // Categorical axes show one tick per category instead of generated numeric ticks
     tick_override: (axis) =>
       cat_tick_indices.length > 0 && axis === cat_axis ? cat_tick_indices : undefined,
+    // Numeric x keeps its own ticks: measuring `undefined` would size the padding from the
+    // numeric values instead of the user's custom labels
     measured_axes: () => ({
-      [cat_axis]: { ...plot_axes[cat_axis], ticks: effective_cat_ticks },
+      [cat_axis]: {
+        ...plot_axes[cat_axis],
+        ticks: effective_cat_ticks ?? plot_axes[cat_axis].ticks,
+      },
     }),
     // Secondary axes write the raw $bindable props so library defaults aren't pushed
     // into the parent's bound state
@@ -251,15 +240,10 @@
     clip_id_prefix: `chart-clip`,
   })
 
-  // Reference line hover state
-  let hovered_ref_line_idx = $state<number | null>(null)
-
   // Interactive axis loading state
   let axis_loading = $state<`x` | `x2` | `y` | `y2` | null>(null)
 
-  // Compute ref_lines with index and group by z-index (using shared utilities)
   let indexed_ref_lines = $derived(index_ref_lines(ref_lines))
-  let ref_lines_by_z = $derived(group_ref_lines_by_z(indexed_ref_lines))
 
   // Assign visible series without an explicit value axis by unit/group. The value axis is
   // y/y2 for vertical bars and x/x2 for horizontal bars. Keep this as an effective copy so
@@ -300,26 +284,10 @@
   )
   let cat_axis: `x` | `y` = $derived(orientation === `horizontal` ? `y` : `x`)
 
-  // Keep category-axis zeros off (and settings checkboxes in sync) across orientation flips.
-  let category_zero_sync: ReturnType<typeof sync_category_zero_display> = {
-    axis: null,
-    disabled_keys: [],
-  }
-  $effect.pre(() => {
-    category_zero_sync = sync_category_zero_display(
-      display,
-      DEFAULTS.plot.display,
-      category_list.length > 0 ? cat_axis : null,
-      category_zero_sync,
-    )
-  })
-
-  const resolved_display = $derived(
-    resolve_plot_display(
-      display,
-      DEFAULTS.plot.display,
-      category_list.length > 0 ? cat_axis : null,
-    ),
+  // Keeps category-axis zeros off (and settings checkboxes in sync) across orientation flips
+  const category_display = create_category_display(
+    () => display,
+    () => (category_list.length > 0 ? cat_axis : null),
   )
 
   // Keep every category available to the shared adaptive resolver. Its measured, bounded
@@ -408,10 +376,7 @@
           const y_val = srs.y[point_idx]
           const x = vertical ? category_scale(x_val) / base_w : value_scale(y_val) / base_w
           const y = vertical ? value_scale(y_val) / base_h : category_scale(x_val) / base_h
-          return {
-            x: Math.max(0, Math.min(1, x)),
-            y: Math.max(0, Math.min(1, y)),
-          }
+          return { x: clamp01(x), y: clamp01(y) }
         })
         const markers = srs.markers ?? DEFAULT_MARKERS
         obstacle_series.push({
@@ -481,48 +446,16 @@
       y_axis: srs?.y_axis,
     })),
   )
-  // Compute color values from line series for color scaling (filter to numbers only)
-  let all_color_values = $derived(
-    visible_series
-      .filter((srs: BarSeries<Metadata>) => srs.render_mode === `line`)
-      .flatMap((srs: BarSeries<Metadata>) =>
-        (srs.color_values ?? []).filter((val): val is number => typeof val === `number`),
-      ),
+  // Finite color/size values of the visible line series drive the shared color/size scales
+  const scale_values = $derived(
+    collect_scale_values(visible_series.filter((srs) => srs.render_mode === `line`)),
   )
+  let color_scale_fn = $derived(create_color_scale(color_scale, scale_values.color_range))
+  let size_scale_fn = $derived(create_size_scale(size_scale, scale_values.size_values))
 
-  // Create auto color range (safely handle empty arrays or undefined extent results)
-  let auto_color_range: Vec2 = $derived.by(() => {
-    if (all_color_values.length === 0) return [0, 1]
-    const [min_val, max_val] = extent(all_color_values)
-    return [min_val ?? 0, max_val ?? 1]
-  })
-
-  // All size values from line series (for size scale, filter to numbers only)
-  let all_size_values = $derived(
-    visible_series
-      .filter((srs: BarSeries<Metadata>) => srs.render_mode === `line`)
-      .flatMap((srs: BarSeries<Metadata>) =>
-        (srs.size_values ?? []).filter((val): val is number => typeof val === `number`),
-      ),
+  let effective_cat_ticks = $derived(
+    category_tick_labels(category_list, plot_axes[cat_axis].ticks),
   )
-
-  // Color scale function (using shared utility)
-  let color_scale_fn = $derived(create_color_scale(color_scale, auto_color_range))
-
-  // Size scale function (using shared utility)
-  let size_scale_fn = $derived(create_size_scale(size_scale, all_size_values))
-
-  // Auto-generate tick labels for categorical data (unless user provides explicit ticks)
-  // In vertical mode categories are on x-axis; in horizontal mode on y-axis
-  let effective_cat_ticks = $derived.by(() => {
-    if (category_list.length === 0) return undefined
-    // Only respect user ticks when they're a Record (custom label mapping),
-    // not a number (tick count) or array (tick positions)
-    const user_ticks = cat_axis === `x` ? x_axis.ticks : y_axis.ticks
-    if (user_ticks != null && typeof user_ticks === `object` && !Array.isArray(user_ticks))
-      return user_ticks
-    return Object.fromEntries(category_list.map((cat, idx): [number, string] => [idx, cat]))
-  })
 
   // Legend swatch: bars show a square, line series a line and/or their first point's symbol
   const legend_swatch = (srs: BarSeries<Metadata>): LegendItem[`display_style`] => {
@@ -531,9 +464,7 @@
     if (srs.render_mode !== `line`)
       return { symbol_type: `Square`, symbol_color: series_color }
     const series_markers = srs.markers ?? DEFAULT_MARKERS
-    const first_point_style = Array.isArray(srs.point_style)
-      ? srs.point_style[0]
-      : srs.point_style
+    const point_style = first_point_style(srs)
     const first_color_value = srs.color_values?.[0]
     return {
       ...(series_markers === `line` || series_markers === `line+points`
@@ -541,11 +472,11 @@
         : {}),
       ...(series_markers === `points` || series_markers === `line+points`
         ? {
-            symbol_type: first_point_style?.symbol_type ?? DEFAULTS.scatter.symbol_type,
+            symbol_type: point_style?.symbol_type ?? DEFAULTS.scatter.symbol_type,
             symbol_color:
               first_color_value != null
                 ? color_scale_fn(first_color_value)
-                : (first_point_style?.fill ?? series_color),
+                : (point_style?.fill ?? series_color),
           }
         : {}),
     }
@@ -648,17 +579,8 @@
   $effect(try_auto_load)
 </script>
 
-{#snippet ref_lines_layer(lines: readonly IndexedRefLine[])}
-  <ReferenceLinesLayer
-    {lines}
-    ranges={frame.ranges.current}
-    scales={frame.scales}
-    clip_path_id={frame.clip_path_id}
-    decoration_solution={frame.decoration_solution}
-    bind:hovered_line_idx={hovered_ref_line_idx}
-    on_click={on_ref_line_click}
-    on_hover={on_ref_line_hover}
-  />
+{#snippet ref_lines_layer(z: LayerZIndex)}
+  <ReferenceLinesLayer {frame} {z} on_click={on_ref_line_click} on_hover={on_ref_line_hover} />
 {/snippet}
 
 <CartesianFrame
@@ -669,9 +591,7 @@
     'font-weight': `var(--scatter-font-weight)`,
     'font-size': `var(--scatter-font-size)`,
   }}
-  aria_label={frame.title_config?.text ||
-    [x_axis.label, y_axis.label].filter(Boolean).join(` vs `) ||
-    `Bar chart`}
+  aria_label="Bar chart"
   bind:fullscreen
   {fullscreen_toggle}
   marginals={resolved_marginals}
@@ -684,33 +604,18 @@
     clear_hover()
   }}
   {header_controls}
+  {user_content}
   {children}
   {...rest}
 >
   {#snippet layers()}
     {@const pad = frame.pad}
-    <!-- User content (custom overlays, reference lines, etc.) -->
-    {@render user_content?.({
-      height: frame.height,
-      width: frame.width,
-      x_scale_fn: frame.scales.x,
-      x2_scale_fn: frame.scales.x2,
-      y_scale_fn: frame.scales.y,
-      y2_scale_fn: frame.scales.y2,
-      pad,
-      x_range: frame.ranges.current.x,
-      x2_range: frame.ranges.current.x2,
-      y_range: frame.ranges.current.y,
-      y2_range: frame.ranges.current.y2,
-      fullscreen,
-    })}
-
     <!-- Reference lines: below grid (rendered before axes which contain grid lines) -->
-    {@render ref_lines_layer(ref_lines_by_z.below_grid)}
+    {@render ref_lines_layer(`below-grid`)}
 
     <PlotAxes
       {frame}
-      display={resolved_display}
+      display={category_display.resolved}
       label_ticks={{ [cat_axis]: effective_cat_ticks }}
       {axis_loading}
       on_axis_change={handle_axis_change}
@@ -721,10 +626,10 @@
          self-clips to the plot area inside ReferenceLine, only its annotation text
          is allowed to overflow the plot edges. -->
     <g clip-path="url(#{frame.clip_path_id})">
-      <ZeroLines {frame} display={resolved_display} />
+      <ZeroLines {frame} display={category_display.resolved} />
     </g>
 
-    {@render ref_lines_layer(ref_lines_by_z.below_lines)}
+    {@render ref_lines_layer(`below-lines`)}
 
     <!-- Continuous line/bar geometry stays clipped to the plot. Discrete line markers are
          range-filtered by center and may extend into the padding without losing part of the icon. -->
@@ -857,7 +762,7 @@
                   }}
                   onkeydown={(evt) => {
                     const pt = get_pt(evt)
-                    if (pt && clickable && (evt.key === `Enter` || evt.key === ` `)) {
+                    if (pt && clickable && is_activation_key(evt)) {
                       evt.preventDefault()
                       do_click(pt, evt)
                     }
@@ -955,7 +860,7 @@
                         event: evt,
                       })}
                     onkeydown={(evt) => {
-                      if (evt.key === `Enter` || evt.key === ` `) {
+                      if (is_activation_key(evt)) {
                         evt.preventDefault()
                         on_bar_click?.({
                           ...get_bar_data(series_idx, bar_idx, color),
@@ -997,8 +902,8 @@
       {/each}
     </g>
 
-    {@render ref_lines_layer(ref_lines_by_z.below_points)}
-    {@render ref_lines_layer(ref_lines_by_z.above_all)}
+    {@render ref_lines_layer(`below-points`)}
+    {@render ref_lines_layer(`above-all`)}
   {/snippet}
 
   {#snippet overlays()}
@@ -1014,11 +919,16 @@
     />
 
     {#if hover_info && hovered}
+      <!-- Anchor at the bar's drawn end: in stacked mode that is the value plus what sits below -->
+      {@const stack_base =
+        mode === `stacked`
+          ? (stacked_offsets[hover_info.series_idx]?.[hover_info.bar_idx] ?? 0)
+          : 0}
       {@const cx = (hover_info.active_x_axis === `x2` ? frame.scales.x2 : frame.scales.x)(
-        hover_info.orient_x,
+        hover_info.orient_x + (orientation === `horizontal` ? stack_base : 0),
       )}
       {@const cy = (hover_info.active_y_axis === `y2` ? frame.scales.y2 : frame.scales.y)(
-        hover_info.orient_y,
+        hover_info.orient_y + (orientation === `vertical` ? stack_base : 0),
       )}
       <PlotTooltip
         x={cx}

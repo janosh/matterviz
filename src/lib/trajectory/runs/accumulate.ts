@@ -3,11 +3,12 @@
 // across frames and folds optional per-site channels and frame-level signals into the sweep.
 import * as math from '$lib/math'
 import type { ElementSymbol } from '$lib/element'
-import type { Matrix3x3 } from '$lib/math'
+import type { Matrix3x3, Vec3 } from '$lib/math'
 import type { Pbc } from '$lib/structure/index'
+import { values_per_sample } from '../helpers'
 import type {
+  CollectPositionsOptions,
   ParseProgress,
-  PositionStreamOptions,
   TrajectoryFrame,
   TrajectoryPositionStream,
   TrajectorySignal,
@@ -16,19 +17,17 @@ import type {
 export const DEFAULT_POSITION_STREAM_MAX_BYTES = 512 * 1024 * 1024
 
 type StreamChannels = {
-  scalar_keys: string[]
   vector_keys: string[]
   signal_keys: string[]
 }
-const NO_CHANNELS: StreamChannels = { scalar_keys: [], vector_keys: [], signal_keys: [] }
+const NO_CHANNELS: StreamChannels = { vector_keys: [], signal_keys: [] }
 
 const bytes_per_frame = (
   n_atoms: number,
   channels: StreamChannels,
   signal_values_per_frame = Math.max(9, 3 * n_atoms) * channels.signal_keys.length,
 ): number =>
-  (n_atoms * (3 + channels.scalar_keys.length + 3 * channels.vector_keys.length) +
-    signal_values_per_frame) *
+  (n_atoms * (3 + 3 * channels.vector_keys.length) + signal_values_per_frame) *
   Float64Array.BYTES_PER_ELEMENT
 
 const suggested_stride = (
@@ -94,7 +93,6 @@ const make_reporter =
 
 class PositionAccumulator {
   private readonly positions: Float64Array
-  private readonly scalars: Record<string, Float64Array> = {}
   private readonly vectors: Record<string, Float64Array> = {}
   private readonly signal_values: Record<string, Float64Array> = {}
   private readonly lattice_matrices: (Matrix3x3 | null)[] = []
@@ -103,6 +101,11 @@ class PositionAccumulator {
   private pbc: Pbc | null = null
   private coords_unwrapped = false
   private frame_count = 0
+  // Cartesian -> fractional converter of the last lattice seen; a fixed cell hands back the
+  // same matrix every frame, so only NPT runs rebuild the inverse
+  private cached_lattice: Matrix3x3 | null = null
+  private cart_to_frac: ((cart: Vec3) => Vec3) | null = null
+  private readonly step_scratch: Vec3 = [0, 0, 0]
 
   get collected_frames(): number {
     return this.frame_count
@@ -118,16 +121,8 @@ class PositionAccumulator {
   ) {
     if (n_frames < 1) throw new Error(`PositionAccumulator: n_frames must be >= 1`)
     if (n_atoms < 1) throw new Error(`PositionAccumulator: n_atoms must be >= 1`)
-    const overlap = channels.scalar_keys.filter((key) => channels.vector_keys.includes(key))
-    if (overlap.length > 0) {
-      throw new Error(
-        `PositionAccumulator: ${overlap.join(`, `)} requested as both a scalar and a ` +
-          `vector channel; a site property is one or the other`,
-      )
-    }
     const signal_values_per_frame = Object.values(signal_shapes).reduce(
-      (total, sample_shape) =>
-        total + sample_shape.reduce((product, size) => product * size, 1),
+      (total, sample_shape) => total + values_per_sample(sample_shape),
       0,
     )
     const frame_bytes = bytes_per_frame(n_atoms, channels, signal_values_per_frame)
@@ -141,9 +136,6 @@ class PositionAccumulator {
       )
     }
     this.positions = new Float64Array(n_frames * n_atoms * 3)
-    for (const key of channels.scalar_keys) {
-      this.scalars[key] = new Float64Array(n_frames * n_atoms)
-    }
     for (const key of channels.vector_keys) {
       this.vectors[key] = new Float64Array(n_frames * n_atoms * 3)
     }
@@ -152,8 +144,7 @@ class PositionAccumulator {
       if (!sample_shape) {
         throw new Error(`PositionAccumulator: signal "${key}" has no initial shape`)
       }
-      const sample_size = sample_shape.reduce((product, size) => product * size, 1)
-      this.signal_values[key] = new Float64Array(n_frames * sample_size)
+      this.signal_values[key] = new Float64Array(n_frames * values_per_sample(sample_shape))
     }
   }
 
@@ -247,14 +238,6 @@ class PositionAccumulator {
     atom_idx: number,
     source_frame_number: number,
   ): void {
-    const scalar_off = this.frame_count * this.n_atoms + atom_idx
-    for (const key of this.channels.scalar_keys) {
-      const value = properties?.[key]
-      if (typeof value !== `number` || !Number.isFinite(value)) {
-        throw missing_channel(source_frame_number, atom_idx, `scalar`, key, value)
-      }
-      this.scalars[key][scalar_off] = value
-    }
     for (const key of this.channels.vector_keys) {
       const value = properties?.[key]
       if (
@@ -264,7 +247,7 @@ class PositionAccumulator {
       ) {
         throw missing_channel(source_frame_number, atom_idx, `vec3`, key, value)
       }
-      const off = scalar_off * 3
+      const off = (this.frame_count * this.n_atoms + atom_idx) * 3
       this.vectors[key][off] = value[0]
       this.vectors[key][off + 1] = value[1]
       this.vectors[key][off + 2] = value[2]
@@ -278,27 +261,29 @@ class PositionAccumulator {
     if (!lattice || this.frame_count < 1 || this.n_atoms < 2) return
     // A stride weakens the displacement bound for already-unwrapped coordinates.
     if (this.coords_unwrapped && this.frame_stride > 1) return
-    const cart_to_frac = math.create_cart_to_frac(lattice)
+    if (lattice !== this.cached_lattice || !this.cart_to_frac) {
+      this.cached_lattice = lattice
+      this.cart_to_frac = math.create_cart_to_frac(lattice)
+    }
+    const { cart_to_frac, step_scratch: step } = this
     const pbc = this.pbc ?? [true, true, true]
     const prev_base = (this.frame_count - 1) * this.n_atoms * 3
     const base = this.frame_count * this.n_atoms * 3
     let far_atoms = 0
     for (let atom_idx = 0; atom_idx < this.n_atoms; atom_idx++) {
       const [prev_off, off] = [prev_base + atom_idx * 3, base + atom_idx * 3]
-      const frac_step = cart_to_frac([
-        this.positions[off] - this.positions[prev_off],
-        this.positions[off + 1] - this.positions[prev_off + 1],
-        this.positions[off + 2] - this.positions[prev_off + 2],
-      ])
-      const far = ([0, 1, 2] as const).some(
-        (axis) =>
-          pbc[axis] &&
-          Math.abs(
-            this.coords_unwrapped
-              ? frac_step[axis]
-              : frac_step[axis] - Math.round(frac_step[axis]),
-          ) > FAR_STEP_FRACTIONAL,
-      )
+      for (let axis = 0; axis < 3; axis++) {
+        step[axis] = this.positions[off + axis] - this.positions[prev_off + axis]
+      }
+      const frac_step = cart_to_frac(step)
+      let far = false
+      for (let axis = 0; axis < 3 && !far; axis++) {
+        if (!pbc[axis]) continue
+        const component = this.coords_unwrapped
+          ? frac_step[axis]
+          : frac_step[axis] - Math.round(frac_step[axis])
+        far = Math.abs(component) > FAR_STEP_FRACTIONAL
+      }
       if (far) far_atoms++
     }
     if (far_atoms <= MAX_FAR_MOVING_FRACTION * this.n_atoms) return
@@ -318,22 +303,16 @@ class PositionAccumulator {
       this.frame_count === this.n_frames
         ? buffer
         : buffer.slice(0, this.frame_count * values_per_frame)
-    const trim_all = (
-      buffers: Record<string, Float64Array>,
-      per_atom: number,
-    ): Record<string, Float64Array> | undefined =>
-      Object.keys(buffers).length === 0
-        ? undefined
-        : Object.fromEntries(
-            Object.entries(buffers).map(([key, buffer]) => [
-              key,
-              trim(buffer, this.n_atoms * per_atom),
-            ]),
-          )
+    const vectors = Object.fromEntries(
+      Object.entries(this.vectors).map(([key, buffer]) => [
+        key,
+        trim(buffer, this.n_atoms * 3),
+      ]),
+    )
     const signals = Object.fromEntries(
       Object.entries(this.signal_values).map(([key, values]) => {
         const sample_shape = this.signal_shapes[key]
-        const sample_size = sample_shape.reduce((product, size) => product * size, 1)
+        const sample_size = values_per_sample(sample_shape)
         return [
           key,
           {
@@ -346,8 +325,7 @@ class PositionAccumulator {
     )
     return {
       positions: trim(this.positions, this.n_atoms * 3),
-      scalars: trim_all(this.scalars, 1),
-      vectors: trim_all(this.vectors, 3),
+      vectors: Object.keys(vectors).length > 0 ? vectors : undefined,
       signals: Object.keys(signals).length > 0 ? signals : undefined,
       n_frames: this.frame_count,
       n_atoms: this.n_atoms,
@@ -417,20 +395,18 @@ export async function accumulate_positions(
   load_frame: (
     frame_number: number,
   ) => TrajectoryFrame | null | Promise<TrajectoryFrame | null>,
-  options: PositionStreamOptions = {},
-  on_progress?: (progress: ParseProgress) => void,
-  signal?: AbortSignal,
+  options: CollectPositionsOptions = {},
 ): Promise<TrajectoryPositionStream> {
-  signal?.throwIfAborted()
   const {
     frame_stride = 1,
     max_bytes = DEFAULT_POSITION_STREAM_MAX_BYTES,
-    scalar_keys = [],
     vector_keys = [],
     signal_keys = [],
+    on_progress,
+    signal,
   } = options
+  signal?.throwIfAborted()
   const channels: StreamChannels = {
-    scalar_keys: [...new Set(scalar_keys)],
     vector_keys: [...new Set(vector_keys)],
     signal_keys: [...new Set(signal_keys)],
   }

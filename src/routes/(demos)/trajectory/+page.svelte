@@ -10,6 +10,11 @@
   }
 
   const viewer_style = `max-height: 700px; --traj-border-radius: 6pt; --traj-overflow: clip; --sequence-controls-border-radius: 0`
+  // The sample LAMMPS dumps in the picker name atoms by bare integer type, which the parser
+  // would otherwise read as atomic numbers (H, He) with a warning. Only the LAMMPS parser
+  // reads this mapping, so it goes to the empty drop target meant for those dumps, not to
+  // the HDF5 / XDATCAR / extXYZ viewers
+  const lammps_loading_options = { atom_type_mapping: { 1: `Cu`, 2: `Zr` } } as const
 </script>
 
 <h1>Trajectory</h1>
@@ -72,6 +77,7 @@
   class="full-bleed"
   style="margin-top: 5em; {viewer_style}"
   on_file_load={handle_file_load}
+  loading_options={lammps_loading_options}
 />
 
 <p style="margin: 2em auto; text-align: center">

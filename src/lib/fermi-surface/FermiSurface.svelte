@@ -9,7 +9,13 @@
   import * as io from '$lib/io'
   import { ViewerChrome } from '$lib/layout'
   import { PlotTooltip } from '$lib/plot'
-  import { create_renderer, webgpu_available } from '$lib/scene'
+  import {
+    create_renderer,
+    create_viewer_loader,
+    export_scene_as,
+    webgpu_available,
+  } from '$lib/scene'
+  import type { SceneExportFormat } from '$lib/scene'
   import { DEFAULTS } from '$lib/settings'
   import type { Crystal } from '$lib/structure'
   import { Canvas } from '@threlte/core'
@@ -22,8 +28,9 @@
   import FermiSurfaceScene from './FermiSurfaceScene.svelte'
 
   import FermiSurfaceTooltip from './FermiSurfaceTooltip.svelte'
-  import { parse_fermi_file } from './parse'
-  import { to_error } from '$lib/utils'
+  import { normalize_band_grid, normalize_fermi_surface, parse_fermi_file } from './parse'
+  import type { BandGridJson, FermiSurfaceJson } from './parse'
+  import { is_editable_target, to_error } from '$lib/utils'
   import type {
     BandGridData,
     FermiErrorData,
@@ -33,6 +40,7 @@
     FermiSurfaceSettings,
     FermiTooltipConfig,
   } from './types'
+  import { is_fermi_surface_data } from './types'
 
   type FermiSurfaceControlName = `filename` | `fullscreen` | `controls`
 
@@ -84,16 +92,17 @@
     on_file_load,
     on_error,
     on_fullscreen_change,
-    on_mu_change,
     on_point_hover,
     ...rest
   }: Partial<FermiSurfaceSettings> & {
-    fermi_data?: FermiSurfaceData
-    band_data?: BandGridData
+    // Both accept the typed-array form `parse_fermi_file` returns and the JSON form (plain
+    // `vertices`/`faces` rows, nested energies) that pymatviz/anywidget traits can carry
+    fermi_data?: FermiSurfaceData | FermiSurfaceJson
+    band_data?: BandGridData | BandGridJson
     structure?: Crystal
     bz_data?: BrillouinZoneData
     controls_open?: boolean
-    // Label for custom property coloring (e.g. "λ(k)", "DOS", etc.)
+    // Label for the per-vertex property colouring (e.g. "Fermi velocity", "λ(k)", "DOS")
     custom_property_label?: string
     selected_bands?: number[]
     show_controls?: ShowControlsProp<FermiSurfaceControlName>
@@ -114,7 +123,6 @@
     on_file_load?: (data: FermiFileLoadData) => void
     on_error?: (data: FermiErrorData) => void
     on_fullscreen_change?: (data: FermiFullscreenData) => void
-    on_mu_change?: (mu: number) => void
     tooltip_config?: Snippet<[{ hover_data: FermiHoverData }]> | FermiTooltipConfig
     on_point_hover?: (data: FermiHoverData | null) => void
   } & HTMLAttributes<HTMLDivElement> = $props()
@@ -122,12 +130,45 @@
   let scene = $state<Scene | undefined>(undefined)
   let camera = $state<Camera | undefined>(undefined)
   let current_filename = $state<string | undefined>(undefined)
-  let recompute_job_id = 0 // monotonic counter to track latest recompute call
   let hover_data = $state<FermiHoverData | null>(null)
 
   $effect(() => on_point_hover?.(hover_data))
 
   let controls_config = $derived(normalize_show_controls(show_controls))
+
+  // Normalise the data props once at the boundary: pymatviz's `fermi_data`/`band_data` traits
+  // can only travel as JSON (plain vertex/face rows, nested energies), while everything below
+  // consumes typed arrays. Typed input passes through by identity. A malformed payload is
+  // reported through error_msg/on_error instead of throwing mid-render.
+  const normalized = $derived.by(() => {
+    try {
+      return {
+        surface: fermi_data && normalize_fermi_surface(fermi_data),
+        grid: band_data && normalize_band_grid(band_data),
+        error: undefined,
+      }
+    } catch (err) {
+      const error = `Invalid Fermi surface data: ${to_error(err).message}`
+      return { surface: undefined, grid: undefined, error }
+    }
+  })
+  const surface_data = $derived(normalized.surface)
+  const grid_data = $derived(normalized.grid)
+  // The notice this effect raised is cleared once a later payload normalises, so a host that
+  // sends a bad then a good `fermi_data` sees the surface rather than a sticky error. Errors
+  // from other sources (file parse, URL load) are left alone.
+  let reported_normalize_error: string | undefined
+  $effect(() => {
+    const { error } = normalized
+    if (!error && reported_normalize_error && error_msg === reported_normalize_error) {
+      error_msg = undefined
+    }
+    reported_normalize_error = error
+    if (error) {
+      error_msg = error
+      untrack(() => on_error?.({ error_msg: error }))
+    }
+  })
 
   // Yield to browser so spinner can render before heavy computation
   const tick = () =>
@@ -135,112 +176,102 @@
       requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
     )
 
-  // Parse and load Fermi surface with error handling
-  async function safe_parse(
-    content: string | ArrayBuffer,
-    filename: string,
-    metadata?: io.FileLoadMeta,
-    // False once a newer data_url request superseded this one, so a slow URL A cannot
-    // overwrite URL B's surface or report its parse error over B's
-    is_current: () => boolean = () => true,
-  ): Promise<boolean> {
-    try {
-      await tick()
-      if (!is_current()) return false
-      // parse_fermi_file throws a descriptive error when parsing fails
-      const parsed = parse_fermi_file(io.as_text(content), filename)
-
-      const file_size = io.content_byte_size(content)
+  // data_url / drag-and-drop acquisition
+  const loader = create_viewer_loader<FermiSurfaceData | BandGridData>({
+    data_url: () => data_url,
+    current_value: () => surface_data ?? grid_data,
+    allow_file_drop: () => allow_file_drop,
+    on_file_drop: () => on_file_drop,
+    set_loading: (value) => (loading = value),
+    set_error: (message) => (error_msg = message),
+    set_dragover: (over) => (dragover = over),
+    parse: async (content, filename) => {
+      await tick() // let the spinner paint before the synchronous parse
+      return parse_fermi_file(io.as_text(content), filename)
+    },
+    commit: (parsed, filename, metadata, file_size) => {
       current_filename = filename
+      // A band grid leaves fermi_data unset; the extraction effect below derives it
+      const loaded = is_fermi_surface_data(parsed)
+        ? { fermi_data: parsed, band_data: undefined }
+        : { fermi_data: undefined, band_data: parsed }
+      fermi_data = loaded.fermi_data
+      band_data = loaded.band_data
+      on_file_load?.({ ...loaded, filename, ...metadata, file_size })
+    },
+    report_error: (message, filename, metadata) => {
+      error_msg = message
+      on_error?.({ error_msg: message, filename, ...metadata })
+    },
+  })
 
-      // Check if it's already FermiSurfaceData or BandGridData
-      if (`isosurfaces` in parsed) {
-        fermi_data = parsed
-        band_data = undefined
-      } else {
-        band_data = parsed
-        fermi_data = extract_fermi_surface(parsed, { mu, wigner_seitz: true })
-      }
-
-      on_file_load?.({ fermi_data, band_data, filename, ...metadata, file_size })
-      return true
-    } catch (err) {
-      if (!is_current()) return false
-      error_msg = `Failed to parse ${filename}: ${to_error(err).message}`
-      on_error?.({ error_msg, filename, ...metadata })
-      return false
+  // Re-extract whenever the band grid or an extraction parameter changes — also on first
+  // mount with only `band_data` supplied, which previously rendered nothing. Debounced so a
+  // mu-slider drag does not run marching cubes on every tick; a monotonic job id drops
+  // results of superseded runs (bumped on every rerun, including one that clears band_data,
+  // so an in-flight job cannot commit a surface for a grid that is gone). `extracting` is
+  // separate from `loading` so the spinner overlays the Canvas instead of unmounting it.
+  let extraction_job_id = 0
+  let extracting = $state(false)
+  $effect(() => {
+    const job_id = ++extraction_job_id
+    if (!grid_data) {
+      extracting = false
+      return
     }
-  }
-
-  // Re-extract Fermi surface from band data with current settings
-  async function recompute_fermi_surface() {
-    if (!band_data) return
-    const job_id = ++recompute_job_id // capture this job's ID
-    await tick() // yield to check for newer jobs before committing to work
-    // Check if this job is still the latest before proceeding
-    // If stale, return without setting loading - the superseding job handles it
-    if (job_id !== recompute_job_id) return
-    // Only set loading after stale check to avoid orphaned loading states
-    loading = true
-    try {
-      const result = extract_fermi_surface(band_data, {
-        mu,
-        wigner_seitz: true,
-        interpolation_factor,
-      })
-      // Only update state if this is still the latest job
-      if (job_id === recompute_job_id) {
-        fermi_data = result
-        // Re-extraction edits URL-loaded data in place; without re-claiming it the loader
-        // would read the new object as caller-supplied and stop defending its URL.
-        if (data_url_loader.loaded_url) data_url_loader.claim(fermi_data)
+    const grid = grid_data
+    const options = { mu, interpolation_factor }
+    const timeout = setTimeout(async () => {
+      extracting = true
+      await tick()
+      // Superseded while yielding; the job is synchronous from here on, so this is the only
+      // point a newer run can slip in
+      if (job_id !== extraction_job_id) return
+      try {
+        fermi_data = extract_fermi_surface(grid, options)
+        error_msg = undefined
+        // Re-extraction edits URL-loaded data in place; without re-claiming the surface (as read
+        // back through the prop) the loader would see a caller-supplied object and stop
+        // defending its URL
+        loader.claim()
+      } catch (err) {
+        const message = `Fermi surface extraction failed: ${to_error(err).message}`
+        error_msg = message
+        untrack(() => on_error?.({ error_msg: message }))
+      } finally {
+        extracting = false
       }
-    } catch (err) {
-      console.error(`Failed to re-extract Fermi surface:`, err)
-    } finally {
-      // Only clear loading if this is still the latest job
-      if (job_id === recompute_job_id) loading = false
-    }
-  }
-
-  // Debounce recompute to avoid excessive re-computation during rapid slider drags. The
-  // controls already wrote the new mu/interpolation_factor through their bindings.
-  let recompute_timeout: ReturnType<typeof setTimeout>
-  const schedule_recompute = (): void => {
-    clearTimeout(recompute_timeout)
-    recompute_timeout = setTimeout(() => void recompute_fermi_surface(), 150)
-  }
+    }, 150)
+    return () => clearTimeout(timeout)
+  })
 
   // Export Fermi surface to various formats
-  async function handle_export(format: `stl` | `obj` | `gltf`) {
+  async function handle_export(format: SceneExportFormat) {
     if (!scene) {
       console.error(`No scene available for export`)
       return
     }
     try {
-      const { export_scene } = await import(`./export`)
-      await export_scene(scene, format, current_filename || `fermi-surface`)
+      await export_scene_as(scene, format, current_filename || `fermi-surface`)
     } catch (err) {
       console.error(`Export failed:`, err)
       error_msg = `Export failed: ${to_error(err).message}`
     }
   }
 
-  // Compute BZ when structure or fermi_data changes
-  $effect(() => {
-    // Get k_lattice from available sources (priority order)
-    const k_lattice =
-      fermi_data?.k_lattice ??
-      band_data?.k_lattice ??
+  // BZ of whichever reciprocal lattice is available (priority order)
+  const k_lattice = $derived(
+    surface_data?.k_lattice ??
+      grid_data?.k_lattice ??
       (structure?.lattice?.matrix
         ? reciprocal_lattice(structure.lattice.matrix, { two_pi: true })
-        : null)
-
+        : null),
+  )
+  $effect(() => {
     if (!k_lattice) {
       bz_data = undefined
       return
     }
-
     try {
       bz_data = compute_brillouin_zone(k_lattice, 1)
     } catch (err) {
@@ -258,51 +289,11 @@
 
   // Auto-enable BZ tiling when irreducible data is detected
   $effect(() => {
-    if (fermi_data && detect_irreducible_bz(fermi_data)) {
-      tile_bz = true
-    }
-  })
-
-  // Load from URL
-  const data_url_loader = io.create_data_url_loader()
-
-  $effect(() =>
-    data_url_loader.request({
-      url: data_url,
-      current_value: fermi_data ?? band_data,
-      set_loading: (value) => (loading = value),
-      clear_error: () => (error_msg = undefined),
-      on_load: async ({ content, filename, metadata, is_current, mark_owned }) => {
-        if (await safe_parse(content, filename, metadata, is_current)) {
-          mark_owned(fermi_data ?? band_data)
-        }
-      },
-      on_error: (err, filename) => {
-        error_msg = err.message
-        on_error?.({ error_msg, filename })
-      },
-    }),
-  )
-
-  const file_drop_zone = io.file_drop_zone({
-    allow: () => allow_file_drop,
-    on_drop: async (content, filename, metadata) => {
-      await (on_file_drop || safe_parse)(content, filename, metadata)
-    },
-    on_error: (msg) => {
-      error_msg = msg
-      on_error?.({ error_msg: msg })
-    },
-    set_loading: (val) => {
-      loading = val
-      if (val) error_msg = undefined
-    },
-    on_dragover: (over) => (dragover = over),
+    if (surface_data && detect_irreducible_bz(surface_data)) tile_bz = true
   })
 
   function handle_keydown(event: KeyboardEvent) {
-    const target = event.target
-    if (target instanceof HTMLElement && [`INPUT`, `TEXTAREA`].includes(target.tagName)) return
+    if (is_editable_target(event)) return
     // Only handle shortcuts when component is focused/hovered or contains focus
     if (!wrapper?.contains(document.activeElement) && !hovered) return
 
@@ -323,9 +314,9 @@
   onmouseleave={() => (hovered = false)}
   {...rest}
   class={[`fermi-surface`, rest.class, { active: controls_open }]}
-  {@attach file_drop_zone}
+  {@attach loader.drop_zone}
 >
-  {@render children?.({ fermi_data, bz_data })}
+  {@render children?.({ fermi_data: surface_data, bz_data })}
   {#if loading}
     <Spinner
       text="Loading Fermi surface..."
@@ -339,7 +330,14 @@
       dismissible
       style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); max-width: 90%; text-align: center"
     />
-  {:else if fermi_data || band_data}
+  {:else if surface_data || grid_data}
+    {#if extracting}
+      <Spinner
+        text="Extracting Fermi surface..."
+        style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1"
+        {...spinner_props}
+      />
+    {/if}
     <ViewerChrome
       {controls_config}
       filename={current_filename}
@@ -348,13 +346,13 @@
       {wrapper}
       fullscreen_bg_css_var="--fermi-bg-fullscreen"
       on_fullscreen_change={(value) =>
-        on_fullscreen_change?.({ fermi_data, bz_data, fullscreen: value })}
+        on_fullscreen_change?.({ fermi_data: surface_data, bz_data, fullscreen: value })}
     >
       {#if controls_config.visible(`controls`)}
         <FermiSurfaceControls
           bind:controls_open
-          {fermi_data}
-          {band_data}
+          fermi_data={surface_data}
+          band_data={grid_data}
           bind:mu
           bind:color_property
           bind:color_scale
@@ -372,11 +370,6 @@
           bind:clip_flip
           bind:interpolation_factor
           bind:camera_projection
-          on_mu_change={(new_mu) => {
-            schedule_recompute()
-            on_mu_change?.(new_mu)
-          }}
-          on_interpolation_change={schedule_recompute}
           on_export={handle_export}
         />
       {/if}
@@ -389,10 +382,11 @@
         dpr={Math.min(2, window.devicePixelRatio)}
       >
         <FermiSurfaceScene
-          {fermi_data}
+          fermi_data={surface_data}
           {bz_data}
           {color_property}
           {color_scale}
+          property_label={custom_property_label}
           {representation}
           {surface_opacity}
           {selected_bands}

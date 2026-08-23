@@ -2,6 +2,7 @@
 
 import type { LatticeConverters, Matrix3x3, Vec3 } from '$lib/math'
 import {
+  clamp,
   add,
   create_lattice_converters,
   cross_3d,
@@ -51,10 +52,7 @@ export function angle_between_vectors(v1: Vec3, v2: Vec3, mode: AngleMode = `deg
   if (n1 === 0 || n2 === 0) return 0
 
   // Normalize dot product to get cosine, clamped to [-1, 1] to avoid acos NaN
-  const cos_angle = dot(v1, v2) / (n1 * n2)
-  const clamped = Math.max(-1, Math.min(1, cos_angle))
-
-  const ang = Math.acos(clamped)
+  const ang = Math.acos(clamp(dot(v1, v2) / (n1 * n2), -1, 1))
   return mode === `degrees` ? to_degrees(ang) : ang
 }
 

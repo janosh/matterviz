@@ -15,6 +15,7 @@ import {
   FermiSurface,
   HeatmapMatrix,
   Histogram,
+  is_plain_object,
   IsobaricBinaryPhaseDiagram,
   PeriodicTable,
   RdfPlot,
@@ -124,22 +125,18 @@ const pick_props = (model: AnyModel, keys: readonly string[]) =>
   Object.fromEntries(keys.map((key) => [key, get_prop(model, key)]))
 
 // Derived prop bundling several traits into one object prop (deps == picked keys),
-// e.g. lattice_props / bands_props / dos_props.
+// e.g. bands_props / dos_props.
 const picked_prop = (name: string, keys: readonly string[]): DrivenProp =>
   derived_prop(name, keys, (model) => pick_props(model, keys))
-
-const as_record = (value: unknown): Record<string, unknown> =>
-  value && typeof value === `object` && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {}
 
 const merge_object_prop = (
   base: unknown,
   key: string,
   value: unknown,
 ): Record<string, unknown> | undefined => {
-  if (value === undefined) return base === undefined ? undefined : as_record(base)
-  return { ...as_record(base), [key]: value }
+  const base_record = is_plain_object(base) ? base : {}
+  if (value === undefined) return base === undefined ? undefined : base_record
+  return { ...base_record, [key]: value }
 }
 
 // Derived prop that folds a flat source trait into a target object trait under sub_key
@@ -149,23 +146,14 @@ const merged_prop = (target: string, sub_key: string, source: string): DrivenPro
     merge_object_prop(get_prop(model, target), sub_key, get_prop(model, source)),
   )
 
-const axis_props: readonly DrivenProp[] = [
-  merged_prop(`x_axis`, `range`, `x_range`),
-  merged_prop(`x2_axis`, `range`, `x2_range`),
-  merged_prop(`y_axis`, `range`, `y_range`),
-  merged_prop(`y2_axis`, `range`, `y2_range`),
+const plot_common_drive: readonly DrivenProp[] = [
+  ...drive_props([`series`, `display`, `legend`, `ref_lines`, `padding`, `range_padding`]),
+  ...[`x`, `x2`, `y`, `y2`].map((axis) =>
+    merged_prop(`${axis}_axis`, `range`, `${axis}_range`),
+  ),
 ]
-
-const plot_common_prop_keys = [
-  `series`,
-  `display`,
-  `legend`,
-  `ref_lines`,
-  `padding`,
-  `range_padding`,
-] as const
-
-const plot_common_drive = [...drive_props(plot_common_prop_keys), ...axis_props]
+// Every plot component (the generic plots and the Bands/Dos/XrdPlot/RdfPlot wrappers alike)
+// declares these four controls props and forwards the pane attribute dicts to its PlotControls
 const plot_control_keys = [
   `show_controls`,
   `controls_open`,
@@ -179,41 +167,10 @@ const with_plot_controls = (keys: readonly string[]): DrivenProp[] => [
   ...plot_controls_drive,
   ...drive_props(keys),
 ]
-
-const scatter_plot_drive: readonly DrivenProp[] = [
+// The 2D cartesian plots: the shared series/axis traits, the controls, and their own keys
+const cartesian_plot_drive = (keys: readonly string[]): DrivenProp[] => [
   ...plot_common_drive,
-  ...with_plot_controls([
-    `styles`,
-    `show_legend`,
-    `marker_renderer`,
-    `color_scale`,
-    `color_bar`,
-    `size_scale`,
-    `fill_regions`,
-    `error_bands`,
-    `hover_config`,
-    `label_placement_config`,
-    `point_tween`,
-    `line_tween`,
-  ]),
-]
-
-const bar_plot_drive: readonly DrivenProp[] = [
-  ...plot_common_drive,
-  ...with_plot_controls([
-    `show_legend`,
-    `orientation`,
-    `mode`,
-    `bar`,
-    `line`,
-    `color_scale`,
-    `size_scale`,
-  ]),
-]
-
-const histogram_drive: readonly DrivenProp[] = [
-  ...plot_common_drive,
-  ...with_plot_controls([`show_legend`, `bins`, `mode`, `selected_property`, `bar`]),
+  ...with_plot_controls(keys),
 ]
 
 // Scene traits forwarded verbatim into scene_props via pick_props.
@@ -235,12 +192,7 @@ const scene_pick_keys = [
   // via {...scene_props}, not as top-level Structure props
   `show_site_labels`,
   `show_site_indices`,
-] as const
-// All scene traits (deps for the reactive scene_props derived prop); auto_rotate and gizmo
-// are defaulted in get_scene_props rather than picked verbatim.
-const scene_prop_keys = [...scene_pick_keys, `auto_rotate`, `gizmo`] as const
-
-const lattice_prop_keys = [
+  // unit-cell rendering also lives in scene_props
   `cell_edge_opacity`,
   `cell_surface_opacity`,
   `cell_edge_color`,
@@ -248,6 +200,9 @@ const lattice_prop_keys = [
   `cell_edge_width`,
   `show_cell_vectors`,
 ] as const
+// All scene traits (deps for the reactive scene_props derived prop); auto_rotate and gizmo
+// are defaulted in get_scene_props rather than picked verbatim.
+const scene_prop_keys = [...scene_pick_keys, `auto_rotate`, `gizmo`] as const
 
 // Top-level Structure traits the trajectory forwards into its nested structure_props
 // (show_site_labels/show_site_indices are NOT here -- they ride inside scene_props).
@@ -270,7 +225,6 @@ const get_scene_props = (model: AnyModel) => ({
 // Trajectory forwards a fixed config object to its embedded Structure view.
 const get_structure_props = (model: AnyModel) => ({
   scene_props: get_scene_props(model),
-  lattice_props: pick_props(model, lattice_prop_keys),
   ...pick_props(model, traj_structure_prop_keys),
   fullscreen_toggle: false,
 })
@@ -400,7 +354,6 @@ export const WIDGETS: Record<string, WidgetSpec> = {
       writeback_prop(`selected_sites`, []),
       writeback_prop(`hovered_site_idx`),
       derived_prop(`scene_props`, scene_prop_keys, get_scene_props),
-      picked_prop(`lattice_props`, lattice_prop_keys),
     ],
   },
   trajectory: {
@@ -432,7 +385,7 @@ export const WIDGETS: Record<string, WidgetSpec> = {
       writeback_prop(`display_mode`, `structure+scatter`),
       derived_prop(
         `structure_props`,
-        [...scene_prop_keys, ...lattice_prop_keys, ...traj_structure_prop_keys],
+        [...scene_prop_keys, ...traj_structure_prop_keys],
         get_structure_props,
       ),
     ],
@@ -442,7 +395,23 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     // selected_point drives the highlight from Python; active_point/hovered_point are
     // written back via the interaction callbacks.
     base_drive: style_base_drive,
-    drive: [...scatter_plot_drive, drive_prop(`selected_point`)],
+    drive: [
+      ...cartesian_plot_drive([
+        `styles`,
+        `show_legend`,
+        `marker_renderer`,
+        `color_scale`,
+        `color_bar`,
+        `size_scale`,
+        `fill_regions`,
+        `error_bands`,
+        `hover_config`,
+        `label_placement_config`,
+        `point_tween`,
+        `line_tween`,
+      ]),
+      drive_prop(`selected_point`),
+    ],
     interactions: scatter_interactions,
     interaction_model_keys: [`active_point`, `hovered_point`],
   },
@@ -466,8 +435,24 @@ export const WIDGETS: Record<string, WidgetSpec> = {
       `camera_projection`,
     ]),
   },
-  bar_plot: { component: BarPlot, base_drive: style_base_drive, drive: bar_plot_drive },
-  histogram: { component: Histogram, base_drive: style_base_drive, drive: histogram_drive },
+  bar_plot: {
+    component: BarPlot,
+    base_drive: style_base_drive,
+    drive: cartesian_plot_drive([
+      `show_legend`,
+      `orientation`,
+      `mode`,
+      `bar`,
+      `line`,
+      `color_scale`,
+      `size_scale`,
+    ]),
+  },
+  histogram: {
+    component: Histogram,
+    base_drive: style_base_drive,
+    drive: cartesian_plot_drive([`show_legend`, `bins`, `mode`, `selected_property`, `bar`]),
+  },
   composition: {
     component: Composition,
     base_drive: style_base_drive,

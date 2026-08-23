@@ -55,7 +55,7 @@ Extract atom-resolved or orbital-resolved projections from `CompleteDos` using `
 
 ## Stacking and Smearing
 
-Use `stack` for filled areas, `sigma` for Gaussian smearing and `normalize` (`max`, `sum`, `integral`). Phonon DOS also accepts `units` (`THz`, `eV`, `meV`, `Ha`, `cm-1`).
+Use `stack` for filled areas, `sigma` for Gaussian smearing and `normalize` (`max`, `sum`, `integral`). Phonon DOS also accepts `units` (`THz`, `eV`, `meV`, `Ha`, `cm^-1`).
 
 ```svelte example
 <script lang="ts">

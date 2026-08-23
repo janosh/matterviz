@@ -1,6 +1,6 @@
 // Bond-order perception adapted from jensengroup/xyz2mol (MIT,
 // Kim & Kim, Bull. Korean Chem. Soc. 2015, 36, 1769). Clean-room TS port.
-import type { Vec2 } from '$lib/math'
+import { cross_3d, subtract, type Vec2 } from '$lib/math'
 import type { BondOrder, BondPair, Site, StructureBond } from '$lib/structure'
 import { get_bond_key, get_majority_element } from './bonding'
 
@@ -230,19 +230,7 @@ function find_rings(n_atoms: number, edges: Vec2[]): number[][] {
 function ring_is_planar(ring: number[], sites: Site[]): boolean {
   if (ring.length < 3) return false
   const points = ring.map((atom_idx) => sites[atom_idx].xyz)
-  const v1 = [
-    points[1][0] - points[0][0],
-    points[1][1] - points[0][1],
-    points[1][2] - points[0][2],
-  ]
-  const v2 = [
-    points[2][0] - points[0][0],
-    points[2][1] - points[0][1],
-    points[2][2] - points[0][2],
-  ]
-  const nx = v1[1] * v2[2] - v1[2] * v2[1]
-  const ny = v1[2] * v2[0] - v1[0] * v2[2]
-  const nz = v1[0] * v2[1] - v1[1] * v2[0]
+  const [nx, ny, nz] = cross_3d(subtract(points[1], points[0]), subtract(points[2], points[0]))
   const len = Math.hypot(nx, ny, nz)
   if (len < 1e-6) return false
   return points.every((point) => {

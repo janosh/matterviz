@@ -8,15 +8,11 @@ import * as math from '$lib/math'
 import {
   diag_warn,
   parse_coordinate,
+  parse_float_token,
   validate_element_symbol,
   vec3_from_values,
 } from '$lib/structure/parsers/shared'
-import {
-  normalize_scientific_notation,
-  parse_leading_num,
-  parse_num_token,
-  to_error,
-} from '$lib/utils'
+import { parse_leading_num, to_error } from '$lib/utils'
 
 // === Line cursors ===
 
@@ -123,16 +119,13 @@ export function parse_vasp_header(
     cursor.advance() // the comment line carries no data
 
     // Scale line: one factor (negative means target volume) or three per-axis Cartesian
-    // factors. Tokenized before normalizing because normalize_scientific_notation rewrites
-    // every `d`, which is only safe on a token already known to be numeric.
+    // factors, Fortran `5.0D-01` exponents included.
     const scale_line = require_line(
       cursor.peek(),
       `${format}: file ends before the scale line`,
     )
     cursor.advance()
-    const scale_tokens = split_tokens(scale_line).map((token) =>
-      parse_num_token(normalize_scientific_notation(token)),
-    )
+    const scale_tokens = split_tokens(scale_line).map(parse_float_token)
     // The leading numeric run may be followed by a comment. Accept one uniform/volume
     // factor or exactly three positive per-axis factors.
     const non_numeric = scale_tokens.findIndex((value) => !Number.isFinite(value))
@@ -247,7 +240,9 @@ export function parse_vasp_header(
         cursor.peek(),
         `${format}: file ends before the coordinate mode line`,
       )
-      has_selective_dynamics = /^selective\s+dynamics$/i.test(mode_line.trim())
+      // VASP reads only the first letter: any line starting with s/S is `Selective dynamics`,
+      // and a blank (or non-C/K) coordinate-mode line means Direct
+      has_selective_dynamics = /^s/i.test(mode_line.trim())
       if (has_selective_dynamics) {
         cursor.advance()
         mode_line = require_line(
@@ -256,7 +251,7 @@ export function parse_vasp_header(
         )
       }
       const mode = mode_line.trim().toUpperCase()
-      is_direct = mode.startsWith(`D`)
+      is_direct = mode === `` || mode.startsWith(`D`)
       if (coord_mode === `strict` && !is_direct && !/^[CK]/.test(mode)) {
         return fail(`Unknown coordinate mode in ${format}: ${mode}`)
       }

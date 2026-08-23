@@ -410,4 +410,31 @@ describe(`create_legend_visibility`, () => {
     receive([...series])
     expect(store.resolved.map((srs) => srs?.visible ?? srs)).toEqual([false, null, undefined])
   })
+
+  // Trajectory plots auto-assign y axes per unit group: restoring a hidden series must keep
+  // a dual-axis partner, while an explicit same-axis clash still hides the incompatible one
+  test.each([
+    [`automatic axes preserve a dual-axis partner`, [undefined, undefined], [true, true]],
+    [
+      `explicit same-axis assignments hide an incompatible partner`,
+      [`y1`, `y1`],
+      [true, false],
+    ],
+  ] as [string, (`y1` | undefined)[], boolean[]][])(
+    `round-trips visibility when %s`,
+    (_label, axes, expected_after_restore) => {
+      let series: DataSeries[] = [
+        { x: [0, 1], y: [1, 2], unit: `eV`, visible: true, y_axis: axes[0] },
+        { x: [0, 1], y: [3, 4], unit: `GPa`, visible: true, y_axis: axes[1] },
+      ]
+      const vis = create_legend_visibility(
+        () => series,
+        (next_series) => (series = next_series),
+      )
+      vis.on_toggle(0)
+      expect(series.map((srs) => srs.visible)).toEqual([false, true])
+      vis.on_toggle(0)
+      expect(series.map((srs) => srs.visible)).toEqual(expected_after_restore)
+    },
+  )
 })

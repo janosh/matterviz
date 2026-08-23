@@ -31,6 +31,7 @@
     allow_file_drop = true,
     on_file_drop,
     loading = $bindable(false),
+    loading_message = `Reading dropped file…`,
     error_msg = $bindable(),
     show_controls = $bindable(true),
     controls_open = $bindable(false),
@@ -61,6 +62,8 @@
     allow_file_drop?: boolean
     on_file_drop?: FileLoadCallback
     loading?: boolean
+    // Empty-state text while `loading`; wrappers that compute asynchronously name their job
+    loading_message?: string
     error_msg?: string
   } = $props()
 
@@ -94,7 +97,7 @@
 {#if series.length === 0}
   <StatusMessage
     message={loading
-      ? `Reading dropped file…`
+      ? loading_message
       : allow_file_drop
         ? `Drag and drop structure files here to compute ${subject}`
         : `No ${empty_subject} to display`}

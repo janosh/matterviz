@@ -6,27 +6,17 @@ import type { Matrix3x3, Vec3 } from '$lib/math'
 import { calc_lattice_params, create_cart_to_frac, create_frac_to_cart } from '$lib/math'
 import type { Crystal } from '$lib/structure'
 import { make_site } from '$lib/structure/site'
+import { make_rng } from '../numeric-helpers'
 
 export const FCC_LATTICE_CONST = 3.615 // Å, Cu
 export const BCC_LATTICE_CONST = 2.8665 // Å, alpha-Fe
 const HCP_LATTICE_CONST = 3.209 // Å, Mg
 const IDEAL_HCP_AXIAL_RATIO = Math.sqrt(8 / 3) // c/a for ideal hard-sphere packing
 
-// Park-Miller ("minimal standard") LCG: state <- 16807 * state mod (2^31 - 1). Vitest runs must
-// be reproducible, so no Math.random(). All intermediates stay below 2^53, so this needs no bit
-// twiddling and behaves identically on every engine.
-const LCG_MODULUS = 2147483647
-function seeded_rng(seed: number): () => number {
-  // 0 is a fixed point of the recurrence, so seeds are mapped into [1, MODULUS - 1]
-  let state = (Math.abs(Math.trunc(seed)) % (LCG_MODULUS - 1)) + 1
-  return () => {
-    state = (state * 16807) % LCG_MODULUS
-    return (state - 1) / (LCG_MODULUS - 1)
-  }
-}
-
 // Supercell from a conventional cell: `basis` are fractional coordinates in the unit cell,
-// `reps` the repeat counts along a, b, c.
+// `reps` the repeat counts along a, b, c. Not make_supercell: that translates unit-cell xyz
+// and wraps abc, which differs from the exact (rep + basis) / reps construction by up to
+// 8e-15 A and the tests lean on the exact geometry.
 function build_supercell(
   unit_matrix: Matrix3x3,
   basis: Vec3[],
@@ -122,7 +112,7 @@ export function with_random_displacements(
   amplitude: number,
   seed: number,
 ): Crystal {
-  const random = seeded_rng(seed)
+  const random = make_rng(seed)
   const cart_to_frac = create_cart_to_frac(crystal.lattice.matrix)
   const sites = crystal.sites.map((site) => {
     const xyz = site.xyz.map((coord) => coord + (random() * 2 - 1) * amplitude) as Vec3

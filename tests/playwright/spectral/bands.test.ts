@@ -1,6 +1,20 @@
-import { expect, test } from '@playwright/test'
+import { expect, type Locator, test } from '@playwright/test'
+import { require_bbox } from '../helpers'
 
-// SVG path elements have zero-size bounding boxes, so force: true is needed for hover
+const band_paths = (plot: Locator) => plot.locator(`svg path[fill="none"]`)
+const x_axis_labels = async (plot: Locator) =>
+  (await plot.locator(`g.x-axis text`).allTextContents()).join(`,`)
+
+// SVG path elements have zero-size bounding boxes, so force: true is needed for hover. The
+// nearest point can resolve to a neighbouring band, so re-hover until the tooltip matches.
+const hover_expect_tooltip = (plot: Locator, path: Locator, expected: (string | RegExp)[]) =>
+  expect(async () => {
+    await path.hover({ force: true })
+    const tooltip = plot.locator(`.plot-tooltip`)
+    await expect(tooltip).toBeVisible({ timeout: 500 })
+    for (const text of expected) await expect(tooltip).toContainText(text, { timeout: 500 })
+  }).toPass({ timeout: 5000 })
+
 test.describe(`Bands Component Tests`, () => {
   test.beforeEach(async ({ page }) => {
     await page.goto(`/test/bands`, { waitUntil: `networkidle` })
@@ -11,29 +25,43 @@ test.describe(`Bands Component Tests`, () => {
   }) => {
     const plot = page.getByTestId(`single-bands-plot`)
     await expect(plot).toBeVisible()
-
-    // Check SVG and band paths (4 bands expected from mock data)
-    const paths = plot.locator(`svg path[fill="none"]`)
+    // 4 bands expected from mock data
+    const paths = band_paths(plot)
     await expect(paths.first()).toBeVisible()
     await expect(paths).toHaveCount(4)
 
-    // Check axes and high-symmetry point labels
     await expect(plot.locator(`g.x-axis`)).toBeVisible()
     await expect(plot.locator(`g.y-axis`)).toBeVisible()
-    const x_labels = (await plot.locator(`g.x-axis text`).allTextContents()).join(``)
+    const x_labels = await x_axis_labels(plot)
     expect(x_labels).toContain(`Γ`)
     expect(x_labels).toContain(`X`)
-
-    // Verify y-axis has tick values
     const y_ticks = await plot.locator(`g.y-axis text`).allTextContents()
     expect(y_ticks.filter((tick) => !isNaN(Number(tick))).length).toBeGreaterThan(2)
   })
 
+  // path_count null only requires that bands rendered
+  for (const [id, path_count, x_labels] of [
+    [`union-path`, null, []],
+    [`intersection-path`, null, []],
+    [`union-non-canonical`, null, [`K`]], // K only exists in alt_path
+    // U-K is discontinuous and draws no paths: 2 continuous branches × 4 bands
+    [`discontinuity`, 8, [`U | K`, `Γ`, `X`, `L`]],
+    [`electronic-spin-down-only`, 4, []],
+  ] as const) {
+    test(`renders ${id} plot with band paths and labels`, async ({ page }) => {
+      const plot = page.getByTestId(`${id}-plot`)
+      await expect(plot).toBeVisible()
+      const paths = band_paths(plot)
+      await expect(paths.first()).toBeVisible()
+      if (path_count !== null) await expect(paths).toHaveCount(path_count)
+      const labels = await x_axis_labels(plot)
+      for (const label of x_labels) expect(labels).toContain(label)
+    })
+  }
+
   test(`renders multiple band structures with toggleable legend`, async ({ page }) => {
     const plot = page.getByTestId(`multiple-bands-plot`)
-    const svg = plot.locator(`svg`)
-
-    // Check legend with correct labels
+    const paths = band_paths(plot)
     const legend = plot.locator(`.legend`)
     await expect(legend).toBeVisible()
     const legend_items = legend.locator(`.legend-item`)
@@ -41,60 +69,29 @@ test.describe(`Bands Component Tests`, () => {
     await expect(legend).toContainText(`BS1`)
     await expect(legend).toContainText(`BS2`)
 
-    // Test toggling - should have 8 paths (2 structures × 4 bands)
-    await expect(svg.locator(`path[fill="none"]`)).toHaveCount(8)
+    // 2 structures × 4 bands
+    await expect(paths).toHaveCount(8)
     await legend_items.first().click()
-    await expect(svg.locator(`path[fill="none"]`)).toHaveCount(4, { timeout: 2000 })
+    await expect(paths).toHaveCount(4, { timeout: 2000 })
     await legend_items.first().click()
-    await expect(svg.locator(`path[fill="none"]`)).toHaveCount(8, { timeout: 2000 })
+    await expect(paths).toHaveCount(8, { timeout: 2000 })
   })
 
   test(`applies custom line styling and hides legend when configured`, async ({ page }) => {
-    // Check custom styling
-    const custom_plot = page.getByTestId(`custom-styling-plot`)
-    const first_path = custom_plot.locator(`path[fill="none"]`).first()
+    const first_path = band_paths(page.getByTestId(`custom-styling-plot`)).first()
     await expect(first_path).toBeVisible()
     expect(await first_path.evaluate((el) => getComputedStyle(el).stroke)).toBeTruthy()
-
-    // Check legend hidden
-    const no_legend_plot = page.getByTestId(`no-legend-plot`)
-    await expect(no_legend_plot.locator(`.legend`)).toBeHidden()
-  })
-
-  test(`renders with different path modes`, async ({ page }) => {
-    await Promise.all(
-      [`union`, `intersection`].map(async (mode) => {
-        const plot = page.getByTestId(`${mode}-path-plot`)
-        await expect(plot.locator(`path[fill="none"]`).first()).toBeVisible()
-      }),
-    )
+    await expect(page.getByTestId(`no-legend-plot`).locator(`.legend`)).toBeHidden()
   })
 
   test(`maintains responsive layout`, async ({ page }) => {
     const plot = page.getByTestId(`single-bands-plot`)
-    const initial_box = await plot.boundingBox()
-    expect(initial_box).toBeTruthy()
-
+    const initial_box = await require_bbox(plot, `plot`)
     await page.setViewportSize({ width: 800, height: 600 })
-
-    // Wait for plot to resize by checking for width change
-    await expect(async () => {
-      const new_box = await plot.boundingBox()
-      expect(new_box).toBeTruthy()
-      expect(new_box?.width).not.toBe(initial_box?.width)
-    }).toPass({ timeout: 2000 })
-
+    await expect
+      .poll(async () => (await plot.boundingBox())?.width, { timeout: 2000 })
+      .not.toBe(initial_box.width)
     await expect(plot).toBeVisible()
-  })
-
-  test(`renders non-canonical segments in union mode`, async ({ page }) => {
-    const plot = page.getByTestId(`union-non-canonical-plot`)
-    await expect(plot).toBeVisible()
-    await expect(plot.locator(`svg path[fill="none"]`).first()).toBeVisible()
-
-    // Check non-canonical segment label appears (K only in alt_path)
-    const x_labels = (await plot.locator(`g.x-axis text`).allTextContents()).join(``)
-    expect(x_labels).toContain(`K`)
   })
 
   test(`shows error state for strict mode path mismatches`, async ({ page }) => {
@@ -104,69 +101,36 @@ test.describe(`Bands Component Tests`, () => {
     await expect(plot).toContainText(`different q-point paths`)
   })
 
-  test(`shows tooltip with frequency and path on hover`, async ({ page }) => {
+  test(`tooltip shows frequency, path and band index, and hides when the mouse leaves`, async ({
+    page,
+  }) => {
     const plot = page.getByTestId(`single-bands-plot`)
-    await expect(plot).toBeVisible()
-
-    // Get the first band path
-    const first_path = plot.locator(`svg path[fill="none"]`).first()
+    const first_path = band_paths(plot).first()
     await expect(first_path).toBeVisible()
+    await hover_expect_tooltip(plot, first_path, [`THz`, `→`, /Band:\s*\d+/])
 
-    await expect(async () => {
-      await first_path.hover({ force: true })
-      const tooltip = plot.locator(`.plot-tooltip`)
-      await expect(tooltip).toBeVisible({ timeout: 500 })
-      await expect(tooltip).toContainText(`THz`)
-      await expect(tooltip).toContainText(`→`)
-    }).toPass({ timeout: 5000 })
+    const box = await require_bbox(plot, `plot`)
+    await page.mouse.move(box.x - 50, box.y - 50)
+    await expect(plot.locator(`.plot-tooltip`)).toBeHidden()
   })
 
   test(`tooltip shows series label with multiple band structures`, async ({ page }) => {
     const plot = page.getByTestId(`multiple-bands-plot`)
-    await expect(plot).toBeVisible()
-
-    // Get the first band path
-    const first_path = plot.locator(`svg path[fill="none"]`).first()
+    const first_path = band_paths(plot).first()
     await expect(first_path).toBeVisible()
-
-    await expect(async () => {
-      await first_path.hover({ force: true })
-      const tooltip = plot.locator(`.plot-tooltip`)
-      await expect(tooltip).toBeVisible({ timeout: 500 })
-      await expect(tooltip).toContainText(/BS[12]/)
-      await expect(tooltip).toContainText(`THz`)
-      await expect(tooltip).toContainText(`→`)
-    }).toPass({ timeout: 5000 })
+    await hover_expect_tooltip(plot, first_path, [/BS[12]/, `THz`, `→`])
   })
 
-  test(`tooltip disappears when mouse leaves plot area`, async ({ page }) => {
+  test(`tooltip switches band index and content between bands`, async ({ page }) => {
     const plot = page.getByTestId(`single-bands-plot`)
-    await expect(plot).toBeVisible()
-    const first_path = plot.locator(`svg path[fill="none"]`).first()
-    await expect(first_path).toBeVisible()
-
-    await expect(async () => {
-      await first_path.hover({ force: true })
-      await expect(plot.locator(`.plot-tooltip`)).toBeVisible({ timeout: 500 })
-    }).toPass({ timeout: 5000 })
-
-    // Move mouse outside plot
-    const box = await plot.boundingBox()
-    expect(box).toBeTruthy()
-    if (!box) return
-
-    await page.mouse.move(box.x - 50, box.y - 50)
-
-    // Tooltip should be hidden
-    await expect(plot.locator(`.plot-tooltip`)).toBeHidden()
-  })
-
-  test(`tooltip updates when hovering different band paths`, async ({ page }) => {
-    const plot = page.getByTestId(`single-bands-plot`)
-    await expect(plot).toBeVisible()
-    const paths = plot.locator(`svg path[fill="none"]`)
+    const paths = band_paths(plot)
     await expect(paths.first()).toBeVisible()
     const tooltip = plot.locator(`.plot-tooltip`)
+    await hover_expect_tooltip(plot, paths.nth(0), [/Band:\s*1/])
+    await hover_expect_tooltip(plot, paths.nth(2), [/Band:\s*3/])
+
+    // Bounding-box centers can resolve to the same nearby discrete point, so target
+    // exact endpoints on the lowest and highest bands.
     const hover_path_start = async (path_idx: number) => {
       const screen_point = await paths.nth(path_idx).evaluate((element) => {
         const svg_path = element as SVGPathElement
@@ -177,84 +141,16 @@ test.describe(`Bands Component Tests`, () => {
       })
       await page.mouse.move(screen_point.x, screen_point.y)
     }
-
     await expect(async () => {
       await hover_path_start(3)
       await expect(tooltip).toBeVisible({ timeout: 500 })
     }).toPass({ timeout: 5000 })
-
     const first_text = await tooltip.textContent()
     expect(first_text).toBeTruthy()
-
-    // Bounding-box centers can resolve to the same nearby discrete point, so target
-    // exact endpoints on the lowest and highest bands.
     await expect(async () => {
       await hover_path_start(0)
-      const updated_text = await tooltip.textContent()
-      expect(updated_text).not.toBe(first_text)
+      expect(await tooltip.textContent()).not.toBe(first_text)
     }).toPass({ timeout: 5000 })
-  })
-
-  test(`tooltip shows band index`, async ({ page }) => {
-    const plot = page.getByTestId(`single-bands-plot`)
-    await expect(plot).toBeVisible()
-
-    // Get the first band path
-    const first_path = plot.locator(`svg path[fill="none"]`).first()
-    await expect(first_path).toBeVisible()
-
-    await expect(async () => {
-      await first_path.hover({ force: true })
-      const tooltip = plot.locator(`.plot-tooltip`)
-      await expect(tooltip).toContainText(/Band:\s*\d+/, { timeout: 500 })
-    }).toPass({ timeout: 5000 })
-  })
-
-  test(`tooltip shows different band indices for different bands`, async ({ page }) => {
-    const plot = page.getByTestId(`single-bands-plot`)
-    await expect(plot).toBeVisible()
-    const paths = plot.locator(`svg path[fill="none"]`)
-    await expect(paths.first()).toBeVisible()
-    const tooltip = plot.locator(`.plot-tooltip`)
-
-    await expect(async () => {
-      await paths.nth(0).hover({ force: true })
-      await expect(tooltip).toContainText(/Band:\s*1/, { timeout: 500 })
-    }).toPass({ timeout: 5000 })
-
-    // Retry second hover until tooltip shows Band 3
-    await expect(async () => {
-      await paths.nth(2).hover({ force: true })
-      await expect(tooltip).toContainText(/Band:\s*3/, { timeout: 500 })
-    }).toPass({ timeout: 5000 })
-  })
-
-  test(`handles k-path discontinuities with combined labels`, async ({ page }) => {
-    const plot = page.getByTestId(`discontinuity-plot`)
-    await expect(plot).toBeVisible()
-
-    // Check that plot renders with paths
-    const paths = plot.locator(`svg path[fill="none"]`)
-    await expect(paths.first()).toBeVisible()
-    const path_count = await paths.count()
-    expect(path_count).toBeGreaterThan(0)
-
-    // Check x-axis labels for combined discontinuity label "U | K"
-    const x_labels = await plot.locator(`g.x-axis text`).allTextContents()
-    const x_labels_text = x_labels.join(`,`)
-
-    // Should have combined label for discontinuity
-    expect(x_labels_text).toContain(`U | K`)
-
-    // Should have other normal labels too
-    expect(x_labels_text).toContain(`Γ`) // GAMMA
-    expect(x_labels_text).toContain(`X`)
-    expect(x_labels_text).toContain(`L`)
-
-    // The discontinuous segment (U-K with consecutive indices) should not create paths
-    // We have 3 branches, but U-K is discontinuous, so only 2 should have paths
-    // Each of the 2 continuous branches * 4 bands = 8 paths expected
-    expect(path_count).toBe(8)
   })
 
   test(`applies phonon unit conversion and renders custom highlight region`, async ({
@@ -262,30 +158,17 @@ test.describe(`Bands Component Tests`, () => {
   }) => {
     const plot = page.getByTestId(`phonon-units-highlight-plot`)
     await expect(plot).toBeVisible()
-
-    // unit lives in the y-axis label ("Frequency (cm-1)"), not the tick text
-    await expect(plot.locator(`.axis-label.y-label`)).toContainText(`cm-1`)
-
-    const fill_paths = plot.locator(`svg path`)
-    await expect(fill_paths.first()).toBeVisible()
+    // unit lives in the y-axis label ("Frequency (cm⁻¹)"), not the tick text
+    await expect(plot.locator(`.axis-label.y-label`)).toContainText(`cm⁻¹`)
+    await expect(plot.locator(`svg path`).first()).toBeVisible()
   })
 
   test(`renders electronic spin overlay channels and gap annotation`, async ({ page }) => {
     const plot = page.getByTestId(`electronic-spin-overlay-plot`)
     await expect(plot).toBeVisible()
-
-    const line_paths = plot.locator(`svg path[fill="none"]`)
+    const line_paths = band_paths(plot)
     await expect(line_paths.first()).toBeVisible()
     expect(await line_paths.count()).toBeGreaterThan(4)
-
     await expect(plot.locator(`svg text`).filter({ hasText: `Eg:` })).toBeVisible()
-  })
-
-  test(`supports down-only electronic spin mode`, async ({ page }) => {
-    const plot = page.getByTestId(`electronic-spin-down-only-plot`)
-    await expect(plot).toBeVisible()
-    const line_paths = plot.locator(`svg path[fill="none"]`)
-    await expect(line_paths.first()).toBeVisible()
-    await expect(line_paths).toHaveCount(4)
   })
 })

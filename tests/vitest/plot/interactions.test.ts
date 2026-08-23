@@ -209,13 +209,13 @@ describe(`sync_y2_range`, () => {
 describe(`expand_range_if_needed`, () => {
   // [current, new_range, expected_range, expected_changed, desc]
   it.each([
-    // Sentinel transitions
+    // Adopt new range (expand and shrink), including ranges that happen to be [0, 1]: the
+    // old [0, 1] "no data" sentinel swallowed y data nicing to exactly [0, 1]
     [[0, 1], [5, 15], [5, 15], true, `adopts new from default`],
     [[0, 1], [0, 50], [0, 50], true, `adopts [0,50] from default`],
     [[0, 1], [0, 0.5], [0, 0.5], true, `adopts [0,0.5] from default`],
-    [[5, 15], [0, 1], [5, 15], false, `keeps current when new is default`],
-    [[0, 1], [0, 1], [0, 1], false, `both default`],
-    // Adopt new range (expand and shrink)
+    [[5, 15], [0, 1], [0, 1], true, `adopts [0,1] backed by data`],
+    [[0, 1], [0, 1], [0, 1], false, `identical [0,1]`],
     [[5, 15], [3, 15], [3, 15], true, `expands min`],
     [[5, 15], [5, 20], [5, 20], true, `expands max`],
     [[5, 15], [3, 20], [3, 20], true, `expands both`],
@@ -232,13 +232,25 @@ describe(`expand_range_if_needed`, () => {
     [[0, 100], [NaN, 50], [0, 100], false, `NaN in new → keeps current`],
     [[0, 100], [0, Infinity], [0, 100], false, `Infinity in new → keeps current`],
     [[NaN, 100], [0, 50], [0, 50], true, `NaN in current → adopts valid`],
-    [[NaN, Infinity], [NaN, 50], [0, 1], true, `both invalid → sentinel`],
+    [[NaN, Infinity], [NaN, 50], [0, 1], true, `both invalid → [0, 1] fallback`],
     // Inverted ranges (e.g. x2 axis with range [3.5, 1.4])
     [[0, 1], [3.5, 1.4], [3.5, 1.4], true, `inverted range adopted from default`],
     [[3.5, 1.4], [3.5, 1.4], [3.5, 1.4], false, `identical inverted`],
     [[3.5, 1.4], [4, 1], [4, 1], true, `inverted range updated`],
   ] as const)(`%s`, (current, new_r, expected, changed, _desc) => {
     expect(expand_range_if_needed([...current], [...new_r])).toEqual({
+      range: [...expected],
+      changed,
+    })
+  })
+
+  // has_data=false (every series hidden): keep the current view, whatever the fallback is
+  it.each([
+    [[5, 15], [0, 1], [5, 15], false],
+    [[5, 15], [0, 50], [5, 15], false],
+    [[NaN, 100], [0, 50], [0, 50], true],
+  ] as const)(`no data: %j -> %j keeps current`, (current, new_r, expected, changed) => {
+    expect(expand_range_if_needed([...current], [...new_r], false)).toEqual({
       range: [...expected],
       changed,
     })

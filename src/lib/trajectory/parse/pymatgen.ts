@@ -32,7 +32,7 @@ const frac_coords_of = (value: unknown, frame_idx: number, n_sites: number): Vec
     )
   }
   return value.map((abc, site_idx) => {
-    if (!math.is_finite_vec3_like(abc as ArrayLike<unknown>)) {
+    if (!math.is_finite_vec3_like(abc)) {
       throw new Error(
         `Invalid pymatgen Trajectory: coords[${frame_idx}][${site_idx}] is not a finite 3-vector`,
       )

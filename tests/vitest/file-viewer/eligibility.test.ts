@@ -29,6 +29,9 @@ test.each([
   [`notes.txt`, false],
   [``, false],
   [null, false],
+  [undefined, false],
+  [42, false],
+  [true, false],
 ] as const)(`is_matterviz_filename(%s) returns %s`, (filename, expected) => {
   expect(is_matterviz_filename(filename)).toBe(expected)
 })
@@ -65,6 +68,9 @@ test.each([
   [`package.json`, false],
   [``, false],
   [null, false],
+  [undefined, false],
+  [42, false],
+  [true, false],
 ] as const)(`is_auto_renderable_filename(%s) returns %s`, (filename, expected) => {
   expect(is_auto_renderable_filename(filename)).toBe(expected)
 })

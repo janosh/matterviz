@@ -695,6 +695,22 @@ describe(`PlotLegend`, () => {
   })
 
   describe(`fill region legend items`, () => {
+    const fill_item = (
+      display_style: LegendItem[`display_style`],
+      extra: Partial<LegendItem> = {},
+    ): LegendItem => ({
+      label: `Fill`,
+      visible: true,
+      series_idx: -1, // fill items use fill_idx instead
+      item_type: `fill`,
+      fill_idx: 0,
+      fill_source_type: `fill_region`,
+      fill_source_idx: 0,
+      display_style,
+      ...extra,
+    })
+    const mount_fills = (series_data: LegendItem[], props: Record<string, unknown> = {}) =>
+      mount(PlotLegend, { target: document.body, props: { series_data, ...props } })
     const fill_series_data: LegendItem[] = [
       {
         label: `Data Series`,
@@ -702,37 +718,18 @@ describe(`PlotLegend`, () => {
         series_idx: 0,
         display_style: { symbol_type: `Circle`, symbol_color: `blue` },
       },
-      {
-        label: `Fill Region`,
-        visible: true,
-        series_idx: -1, // Fill items use fill_idx instead
-        item_type: `fill`,
-        fill_idx: 0,
-        fill_source_type: `fill_region`,
-        fill_source_idx: 0,
-        display_style: {
-          fill_color: `steelblue`,
-          fill_opacity: 0.3,
-          edge_color: `darkblue`,
-        },
-      },
-      {
-        label: `Hidden Fill`,
-        visible: false,
-        series_idx: -1,
-        item_type: `fill`,
-        fill_idx: 1,
-        fill_source_type: `fill_region`,
-        fill_source_idx: 1,
-        display_style: { fill_color: `red`, fill_opacity: 0.5 },
-      },
+      fill_item(
+        { fill_color: `steelblue`, fill_opacity: 0.3, edge_color: `darkblue` },
+        { label: `Fill Region` },
+      ),
+      fill_item(
+        { fill_color: `red`, fill_opacity: 0.5 },
+        { label: `Hidden Fill`, visible: false, fill_idx: 1, fill_source_idx: 1 },
+      ),
     ]
 
     test(`renders fill swatch with correct styling and hidden state`, () => {
-      mount(PlotLegend, {
-        target: document.body,
-        props: { series_data: fill_series_data },
-      })
+      mount_fills(fill_series_data)
       const items = document.querySelectorAll(`.legend-item`)
 
       // Regular series: no fill swatch
@@ -750,15 +747,11 @@ describe(`PlotLegend`, () => {
       expect(items[2].classList.contains(`hidden`)).toBe(true)
     })
 
-    test(`on_fill_toggle routes click/keyboard to correct handler`, () => {
-      document.body.innerHTML = ``
+    test(`fill items route click/keyboard/dblclick to the fill handlers`, () => {
       const on_toggle = vi.fn()
       const on_fill_toggle = vi.fn()
-
-      mount(PlotLegend, {
-        target: document.body,
-        props: { series_data: fill_series_data, on_toggle, on_fill_toggle },
-      })
+      const on_fill_double_click = vi.fn()
+      mount_fills(fill_series_data, { on_toggle, on_fill_toggle, on_fill_double_click })
       const items = document.querySelectorAll<HTMLElement>(`.legend-item`)
 
       // Regular series click → on_toggle
@@ -776,34 +769,12 @@ describe(`PlotLegend`, () => {
       // Fill item keyboard → on_fill_toggle
       items[1].dispatchEvent(new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }))
       expect(on_fill_toggle).toHaveBeenCalledWith(`fill_region`, 0)
-    })
-
-    test(`on_fill_double_click called for fill item dblclick`, () => {
-      const on_fill_double_click = vi.fn()
-      mount(PlotLegend, {
-        target: document.body,
-        props: { series_data: fill_series_data, on_fill_double_click },
-      })
-      document
-        .querySelectorAll<HTMLElement>(`.legend-item`)[1]
-        .dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
+      items[1].dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
       expect(on_fill_double_click).toHaveBeenCalledWith(`fill_region`, 0)
     })
 
     test(`fill swatch uses defaults for missing opacity and edge`, () => {
-      const data: LegendItem[] = [
-        {
-          label: `Minimal`,
-          visible: true,
-          series_idx: -1,
-          item_type: `fill`,
-          fill_idx: 0,
-          fill_source_type: `fill_region`,
-          fill_source_idx: 0,
-          display_style: { fill_color: `green` }, // No fill_opacity or edge_color
-        },
-      ]
-      mount(PlotLegend, { target: document.body, props: { series_data: data } })
+      mount_fills([fill_item({ fill_color: `green` })]) // no fill_opacity or edge_color
       const rect = doc_query(`.fill-swatch rect`)
       expect(rect.getAttribute(`stroke`)).toBe(`none`)
       // default case (no display_style.fill_opacity) still renders the chip's fixed 0.7 opacity
@@ -818,19 +789,7 @@ describe(`PlotLegend`, () => {
       [`rgba(231, 76, 60, 0.25)`, `rgb(231, 76, 60)`],
       [`#2ecc71`, `rgb(46, 204, 113)`],
     ])(`fill swatch renders %s opaque so colors stay distinct`, (fill_color, expected) => {
-      const data: LegendItem[] = [
-        {
-          label: `Fill`,
-          visible: true,
-          series_idx: -1,
-          item_type: `fill`,
-          fill_idx: 0,
-          fill_source_type: `fill_region`,
-          fill_source_idx: 0,
-          display_style: { fill_color, fill_opacity: 0.15 },
-        },
-      ]
-      mount(PlotLegend, { target: document.body, props: { series_data: data } })
+      mount_fills([fill_item({ fill_color, fill_opacity: 0.15 })])
       const rect = doc_query(`.fill-swatch rect`)
       // color forced opaque (strips faint baked-in alpha), then a light uniform fill-opacity
       expect(rect.getAttribute(`fill`)).toBe(expected)
@@ -847,27 +806,15 @@ describe(`PlotLegend`, () => {
           [1, `green`],
         ],
       }
-      const data: LegendItem[] = [
-        {
-          label: `Gradient Fill`,
-          visible: true,
-          series_idx: -1,
-          item_type: `fill`,
-          fill_idx: 3,
-          fill_source_type: `fill_region`,
-          fill_source_idx: 0,
-          display_style: { fill_color: `yellow`, fill_gradient: gradient },
-        },
-      ]
-      mount(PlotLegend, { target: document.body, props: { series_data: data } })
+      mount_fills([
+        fill_item({ fill_color: `yellow`, fill_gradient: gradient }, { fill_idx: 3 }),
+      ])
 
       // Check gradient def is rendered (ID includes instance_id for uniqueness)
       const linear_grad = doc_query(`linearGradient`)
       expect(linear_grad.id).toMatch(/^legend-grad-.+-3$/) // legend-grad-<instance token>-<fill_idx>
-
       expect(linear_grad.getAttribute(`gradientTransform`)).toBe(`rotate(90, 0.5, 0.5)`)
 
-      // Check stops
       const stops = linear_grad.querySelectorAll(`stop`)
       expect(stops).toHaveLength(3)
       expect(stops[0].getAttribute(`offset`)).toBe(`0%`)
@@ -889,19 +836,9 @@ describe(`PlotLegend`, () => {
           [1, `black`],
         ],
       }
-      const data: LegendItem[] = [
-        {
-          label: `Radial Fill`,
-          visible: true,
-          series_idx: -1,
-          item_type: `fill`,
-          fill_idx: 5,
-          fill_source_type: `fill_region`,
-          fill_source_idx: 0,
-          display_style: { fill_color: `gray`, fill_gradient: gradient },
-        },
-      ]
-      mount(PlotLegend, { target: document.body, props: { series_data: data } })
+      mount_fills([
+        fill_item({ fill_color: `gray`, fill_gradient: gradient }, { fill_idx: 5 }),
+      ])
 
       const radial_grad = doc_query(`radialGradient`)
       expect(radial_grad.id).toMatch(/^legend-grad-.+-5$/) // legend-grad-<instance token>-<fill_idx>

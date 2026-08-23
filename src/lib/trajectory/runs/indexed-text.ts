@@ -96,9 +96,9 @@ const run_from_source = (
     metadata: {},
     warnings: collector.warnings,
     read_frame,
-    collect_positions: async (options, on_progress, signal) => {
+    collect_positions: async (options) => {
       live()
-      return accumulate_positions(frame_count, read_frame, options, on_progress, signal)
+      return accumulate_positions(frame_count, read_frame, options)
     },
     dispose: () => {
       if (disposed) return

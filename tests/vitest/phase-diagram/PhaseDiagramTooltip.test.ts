@@ -8,17 +8,31 @@ import type {
   VerticalLeverRuleResult,
 } from '$lib/phase-diagram'
 import { PhaseDiagramTooltip } from '$lib/phase-diagram'
-import type { Snippet } from 'svelte'
+import type { ComponentProps, Snippet } from 'svelte'
 import { mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 import { create_hover_info } from './fixtures/test-data'
+
+const mount_tooltip = (props: ComponentProps<typeof PhaseDiagramTooltip>) =>
+  mount(PhaseDiagramTooltip, { target: document.body, props })
+const tooltip_text = () => document.querySelector(`.phase-diagram-tooltip`)?.textContent
+const lever_text = () =>
+  document.querySelector(`.phase-info`)?.textContent?.replaceAll(/\s+/g, ` `)
+// [left bar width, right bar width, marker position]
+const lever_bars = () => [
+  ...Array.from(
+    document.querySelectorAll<HTMLElement>(`.bar > div`),
+    (bar) => bar.style.width,
+  ),
+  document.querySelector<HTMLElement>(`.bar > i`)?.style.left,
+]
 
 describe(`PhaseDiagramTooltip`, () => {
   test(`displays region name in header`, () => {
     const hover_info = create_hover_info({
       region: { id: `alpha`, name: `α (FCC)`, vertices: [] },
     })
-    mount(PhaseDiagramTooltip, { target: document.body, props: { hover_info } })
+    mount_tooltip({ hover_info })
 
     expect(document.querySelector(`header strong`)?.textContent).toBe(`α (FCC)`)
   })
@@ -29,12 +43,9 @@ describe(`PhaseDiagramTooltip`, () => {
     [1000, `°F`, `1000 °F`],
   ])(`displays temperature %d %s correctly`, (temperature, unit, expected) => {
     const hover_info = create_hover_info({ temperature })
-    mount(PhaseDiagramTooltip, {
-      target: document.body,
-      props: { hover_info, temperature_unit: unit },
-    })
+    mount_tooltip({ hover_info, temperature_unit: unit })
 
-    expect(document.querySelector(`.phase-diagram-tooltip`)?.textContent).toContain(expected)
+    expect(tooltip_text()).toContain(expected)
   })
 
   test.each([
@@ -45,59 +56,37 @@ describe(`PhaseDiagramTooltip`, () => {
     `displays composition %f as %s for component %s`,
     (composition, unit, component_b, expected) => {
       const hover_info = create_hover_info({ composition })
-      mount(PhaseDiagramTooltip, {
-        target: document.body,
-        props: { hover_info, composition_unit: unit as CompUnit, component_b },
-      })
+      mount_tooltip({ hover_info, composition_unit: unit as CompUnit, component_b })
 
-      const tooltip = document.querySelector(`.phase-diagram-tooltip`)
-      expect(tooltip?.textContent).toContain(expected)
-      expect(tooltip?.textContent).toContain(component_b)
+      expect(tooltip_text()).toContain(expected)
+      expect(tooltip_text()).toContain(component_b)
     },
   )
 
-  test(`displays complementary composition for both components`, () => {
-    const hover_info = create_hover_info({ composition: 0.3 })
-    mount(PhaseDiagramTooltip, {
-      target: document.body,
-      props: {
-        hover_info,
+  // Weight percentages need real elements (Al-Cu), unknown components (A-B) get none
+  test.each([
+    { composition: 0.3, components: [`Al`, `Cu`], contains: [`30 at%`, `Cu`, `70 at%`, `Al`] },
+    {
+      composition: 0.3,
+      components: [`Al`, `Cu`],
+      contains: [`Weight`],
+      matches: /50\.\d% Cu/,
+    },
+    { composition: 0.5, components: [`A`, `B`], absent: [`Weight`] },
+  ])(
+    `composition $composition of $components shows $contains`,
+    ({ composition, components: [component_a, component_b], contains, absent, matches }) => {
+      mount_tooltip({
+        hover_info: create_hover_info({ composition }),
         composition_unit: `at%`,
-        component_a: `Al`,
-        component_b: `Cu`,
-      },
-    })
-
-    const tooltip = document.querySelector(`.phase-diagram-tooltip`)
-    expect(tooltip?.textContent).toContain(`30 at%`)
-    expect(tooltip?.textContent).toContain(`Cu`)
-    expect(tooltip?.textContent).toContain(`70 at%`)
-    expect(tooltip?.textContent).toContain(`Al`)
-  })
-
-  test(`displays weight percentage for real elements (Al-Cu)`, () => {
-    const hover_info = create_hover_info({ composition: 0.3 })
-    mount(PhaseDiagramTooltip, {
-      target: document.body,
-      props: { hover_info, component_a: `Al`, component_b: `Cu` },
-    })
-
-    const tooltip = document.querySelector(`.phase-diagram-tooltip`)
-    expect(tooltip?.textContent).toContain(`Weight`)
-    expect(tooltip?.textContent).toMatch(/50\.\d% Cu/)
-  })
-
-  test(`does not display weight percentage for unknown elements`, () => {
-    const hover_info = create_hover_info({ composition: 0.5 })
-    mount(PhaseDiagramTooltip, {
-      target: document.body,
-      props: { hover_info, component_a: `A`, component_b: `B` },
-    })
-
-    expect(document.querySelector(`.phase-diagram-tooltip`)?.textContent).not.toContain(
-      `Weight`,
-    )
-  })
+        component_a,
+        component_b,
+      })
+      for (const part of contains ?? []) expect(tooltip_text()).toContain(part)
+      for (const part of absent ?? []) expect(tooltip_text()).not.toContain(part)
+      if (matches) expect(tooltip_text()).toMatch(matches)
+    },
+  )
 
   test(`displays stability range from region vertices`, () => {
     const hover_info = create_hover_info({
@@ -111,14 +100,10 @@ describe(`PhaseDiagramTooltip`, () => {
         ],
       },
     })
-    mount(PhaseDiagramTooltip, {
-      target: document.body,
-      props: { hover_info, temperature_unit: `K` },
-    })
+    mount_tooltip({ hover_info, temperature_unit: `K` })
 
-    const tooltip = document.querySelector(`.phase-diagram-tooltip`)
-    expect(tooltip?.textContent).toContain(`Stable`)
-    expect(tooltip?.textContent).toMatch(/500.*800/)
+    expect(tooltip_text()).toContain(`Stable`)
+    expect(tooltip_text()).toMatch(/500.*800/)
   })
 
   test.each([
@@ -138,10 +123,7 @@ describe(`PhaseDiagramTooltip`, () => {
     const hover_info = create_hover_info({
       special_point: { id: `sp`, type, position: [x, 933] },
     })
-    mount(PhaseDiagramTooltip, {
-      target: document.body,
-      props: { hover_info, component_a: `Al`, component_b: `Cu` },
-    })
+    mount_tooltip({ hover_info, component_a: `Al`, component_b: `Cu` })
     expect(document.querySelector(`.special-point-badge`)?.textContent).toBe(badge)
     expect(document.querySelector(`.special-point-description`)?.textContent ?? null).toBe(
       desc,
@@ -157,59 +139,6 @@ describe(`PhaseDiagramTooltip`, () => {
       fraction_left: 0.6,
       fraction_right: 0.4,
     }
-
-    test(`displays section with header and phase fractions`, () => {
-      const hover_info = create_hover_info({
-        region: { id: `two_phase`, name: `α + β`, vertices: [] },
-        lever_rule,
-      })
-      mount(PhaseDiagramTooltip, {
-        target: document.body,
-        props: { hover_info, composition_unit: `at%` },
-      })
-
-      const lever = document.querySelector(`.lever`)
-      expect(lever).not.toBeNull()
-      expect(lever?.querySelector(`:scope > span`)?.textContent).toBe(`Lever Rule`)
-
-      const phase_info = document.querySelector(`.phase-info`)
-      // Normalize whitespace since formatter may introduce line breaks
-      const text = phase_info?.textContent?.replaceAll(/\s+/g, ` `)
-      expect(text).toContain(`α: 60%`)
-      expect(text).toContain(`at 20 at%`)
-      expect(text).toContain(`β: 40%`)
-      expect(text).toContain(`at 80 at%`)
-    })
-
-    test(`bar widths and marker position match fractions`, () => {
-      const custom_lr: LeverRuleResult = {
-        ...lever_rule,
-        fraction_left: 0.75,
-        fraction_right: 0.25,
-      }
-      const hover_info = create_hover_info({
-        region: { id: `two_phase`, name: `α + β`, vertices: [] },
-        lever_rule: custom_lr,
-      })
-      mount(PhaseDiagramTooltip, { target: document.body, props: { hover_info } })
-
-      const bars = document.querySelectorAll<HTMLElement>(`.bar > div`)
-      expect(bars[0]?.style.width).toBe(`75%`)
-      expect(bars[1]?.style.width).toBe(`25%`)
-
-      const marker = document.querySelector<HTMLElement>(`.bar > i`)
-      expect(marker?.style.left).toBe(`75%`)
-    })
-
-    test(`not displayed when lever_rule is undefined`, () => {
-      const hover_info = create_hover_info()
-      mount(PhaseDiagramTooltip, { target: document.body, props: { hover_info } })
-
-      expect(document.querySelector(`.lever`)).toBeNull()
-    })
-  })
-
-  describe(`vertical lever rule`, () => {
     const vertical_lever_rule: VerticalLeverRuleResult = {
       bottom_phase: `α`,
       top_phase: `L`,
@@ -218,89 +147,51 @@ describe(`PhaseDiagramTooltip`, () => {
       fraction_bottom: 0.6,
       fraction_top: 0.4,
     }
-    const horiz_lever_rule: LeverRuleResult = {
-      left_phase: `α`,
-      right_phase: `L`,
-      left_composition: 0.2,
-      right_composition: 0.8,
-      fraction_left: 0.5,
-      fraction_right: 0.5,
-    }
-    const two_phase = {
-      id: `two_phase`,
-      name: `α + L`,
-      vertices: [] as Vec2[],
-    }
+    const two_phase = { id: `two_phase`, name: `α + L`, vertices: [] as Vec2[] }
 
-    test(`displays vertical label, phase fractions, and temperatures`, () => {
-      const hover_info = create_hover_info({ region: two_phase, vertical_lever_rule })
-      mount(PhaseDiagramTooltip, {
-        target: document.body,
-        props: { hover_info, lever_rule_mode: `vertical`, temperature_unit: `K` },
+    test.each([
+      {
+        mode: `horizontal`,
+        info: { lever_rule },
+        label: `Lever Rule`,
+        parts: [`α: 60%`, `at 20 at%`, `β: 40%`, `at 80 at%`],
+      },
+      {
+        mode: `vertical`,
+        info: { vertical_lever_rule },
+        label: `Lever Rule (vertical)`,
+        parts: [`α: 60%`, `at 400 K`, `L: 40%`, `at 900 K`],
+      },
+      // vertical wins over a stale horizontal rule when both are present
+      {
+        mode: `vertical`,
+        info: { lever_rule, vertical_lever_rule },
+        label: `Lever Rule (vertical)`,
+        parts: [`at 400 K`],
+      },
+    ] as const)(
+      `$mode mode displays "$label", phase fractions and bars sized by fraction`,
+      ({ mode, info, label, parts }) => {
+        const hover_info = create_hover_info({ region: two_phase, ...info })
+        mount_tooltip({ hover_info, lever_rule_mode: mode, composition_unit: `at%` })
+
+        expect(document.querySelector(`.lever > span`)?.textContent).toBe(label)
+        for (const part of parts) expect(lever_text()).toContain(part)
+        expect(lever_bars()).toEqual([`60%`, `40%`, `60%`])
+      },
+    )
+
+    // Only the active mode's rule is shown: a stale rule of the other mode must not leak
+    test.each([
+      { mode: `horizontal`, info: {}, desc: `no lever rule` },
+      { mode: `horizontal`, info: { vertical_lever_rule }, desc: `only vertical data` },
+      { mode: `vertical`, info: { lever_rule }, desc: `only horizontal data` },
+    ] as const)(`not displayed in $mode mode with $desc`, ({ mode, info }) => {
+      mount_tooltip({
+        hover_info: create_hover_info({ region: two_phase, ...info }),
+        lever_rule_mode: mode,
       })
-
-      expect(document.querySelector(`.lever > span`)?.textContent).toBe(
-        `Lever Rule (vertical)`,
-      )
-      const text = document.querySelector(`.phase-info`)?.textContent?.replaceAll(/\s+/g, ` `)
-      expect(text).toContain(`α: 60%`)
-      expect(text).toContain(`at 400 K`)
-      expect(text).toContain(`L: 40%`)
-      expect(text).toContain(`at 900 K`)
-    })
-
-    test(`bar widths and marker match vertical fractions`, () => {
-      const hover_info = create_hover_info({ region: two_phase, vertical_lever_rule })
-      mount(PhaseDiagramTooltip, {
-        target: document.body,
-        props: { hover_info, lever_rule_mode: `vertical` },
-      })
-
-      const bars = document.querySelectorAll<HTMLElement>(`.bar > div`)
-      expect(bars[0]?.style.width).toBe(`60%`)
-      expect(bars[1]?.style.width).toBe(`40%`)
-      expect(document.querySelector<HTMLElement>(`.bar > i`)?.style.left).toBe(`60%`)
-    })
-
-    test(`not displayed when lever_rule_mode is horizontal`, () => {
-      const hover_info = create_hover_info({ region: two_phase, vertical_lever_rule })
-      mount(PhaseDiagramTooltip, {
-        target: document.body,
-        props: { hover_info, lever_rule_mode: `horizontal` },
-      })
-
-      // No lever section at all — only vertical data present but mode is horizontal
       expect(document.querySelector(`.lever`)).toBeNull()
-    })
-
-    test(`horizontal lever rule hidden when mode is vertical`, () => {
-      // Regression: stale horizontal lever_rule must not display in vertical mode
-      const hover_info = create_hover_info({
-        region: two_phase,
-        lever_rule: horiz_lever_rule,
-      })
-      mount(PhaseDiagramTooltip, {
-        target: document.body,
-        props: { hover_info, lever_rule_mode: `vertical` },
-      })
-
-      expect(document.querySelector(`.lever`)).toBeNull()
-    })
-
-    test(`prefers vertical over horizontal when both present`, () => {
-      const hover_info = create_hover_info({
-        region: two_phase,
-        lever_rule: horiz_lever_rule,
-        vertical_lever_rule,
-      })
-      mount(PhaseDiagramTooltip, {
-        target: document.body,
-        props: { hover_info, lever_rule_mode: `vertical` },
-      })
-
-      expect(document.querySelector(`.lever > span`)?.textContent).toBe(
-        `Lever Rule (vertical)`,
-      )
     })
   })
 
@@ -320,10 +211,7 @@ describe(`PhaseDiagramTooltip`, () => {
             points: [[0.5, boundary_temp]],
           },
         ]
-        mount(PhaseDiagramTooltip, {
-          target: document.body,
-          props: { hover_info, boundaries, temperature_unit: unit },
-        })
+        mount_tooltip({ hover_info, boundaries, temperature_unit: unit })
 
         const info = document.querySelector(`.boundary-info`)
         expect(info).not.toBeNull()
@@ -335,10 +223,7 @@ describe(`PhaseDiagramTooltip`, () => {
 
     test(`not shown when no boundaries provided`, () => {
       const hover_info = create_hover_info({ composition: 0.5, temperature: 900 })
-      mount(PhaseDiagramTooltip, {
-        target: document.body,
-        props: { hover_info, boundaries: [] },
-      })
+      mount_tooltip({ hover_info, boundaries: [] })
       expect(document.querySelector(`.boundary-info`)).toBeNull()
     })
 
@@ -351,10 +236,7 @@ describe(`PhaseDiagramTooltip`, () => {
           points: [[0.5, 900]],
         },
       ]
-      mount(PhaseDiagramTooltip, {
-        target: document.body,
-        props: { hover_info, boundaries },
-      })
+      mount_tooltip({ hover_info, boundaries })
       expect(document.querySelector(`.boundary-info`)).toBeNull()
     })
   })
@@ -363,56 +245,20 @@ describe(`PhaseDiagramTooltip`, () => {
     test(`snippet function hides default tooltip`, () => {
       const hover_info = create_hover_info()
       const mock_snippet = (() => {}) as unknown as Snippet<[PhaseHoverInfo]>
-      mount(PhaseDiagramTooltip, {
-        target: document.body,
-        props: { hover_info, tooltip: mock_snippet },
-      })
+      mount_tooltip({ hover_info, tooltip: mock_snippet })
       expect(document.querySelector(`.phase-diagram-tooltip`)).toBeNull()
     })
 
+    // static HTML strings and functions of the hover info both render into their slot
     test.each([
-      [`prefix`, `<strong>Header</strong>`, `.tooltip-prefix`],
-      [`suffix`, `<em>Footer</em>`, `.tooltip-suffix`],
-    ] as const)(`renders static %s string`, (key, html, selector) => {
-      const hover_info = create_hover_info()
-      mount(PhaseDiagramTooltip, {
-        target: document.body,
-        props: { hover_info, tooltip: { [key]: html } },
-      })
-      expect(document.querySelector(selector)?.innerHTML).toContain(html)
+      [`prefix`, `<strong>Header</strong>`, `<strong>Header</strong>`],
+      [`suffix`, `<em>Footer</em>`, `<em>Footer</em>`],
+      [`prefix`, (info: PhaseHoverInfo) => `T=${info.temperature}`, `T=850`],
+      [`suffix`, (info: PhaseHoverInfo) => `x=${info.composition}`, `x=0.5`],
+    ] as const)(`renders %s %s`, (key, value, expected) => {
+      mount_tooltip({ hover_info: create_hover_info(), tooltip: { [key]: value } })
+      expect(document.querySelector(`.tooltip-${key}`)?.innerHTML).toBe(expected)
       expect(document.querySelector(`.phase-diagram-tooltip`)).not.toBeNull()
-    })
-
-    test.each([
-      [
-        `prefix`,
-        (info: PhaseHoverInfo) => `T=${info.temperature}`,
-        `.tooltip-prefix`,
-        `T=850`,
-      ],
-      [
-        `suffix`,
-        (info: PhaseHoverInfo) => `x=${info.composition}`,
-        `.tooltip-suffix`,
-        `x=0.5`,
-      ],
-    ] as const)(`renders %s from function`, (key, fn, selector, expected) => {
-      const hover_info = create_hover_info()
-      mount(PhaseDiagramTooltip, {
-        target: document.body,
-        props: { hover_info, tooltip: { [key]: fn } },
-      })
-      expect(document.querySelector(selector)?.textContent).toBe(expected)
-    })
-
-    test(`renders both prefix and suffix together`, () => {
-      const hover_info = create_hover_info()
-      mount(PhaseDiagramTooltip, {
-        target: document.body,
-        props: { hover_info, tooltip: { prefix: `Header`, suffix: `Footer` } },
-      })
-      expect(document.querySelector(`.tooltip-prefix`)?.textContent).toBe(`Header`)
-      expect(document.querySelector(`.tooltip-suffix`)?.textContent).toBe(`Footer`)
     })
 
     test.each([
@@ -420,46 +266,15 @@ describe(`PhaseDiagramTooltip`, () => {
       [`empty config`, {}],
     ])(`no prefix/suffix rendered with %s`, (_, tooltip) => {
       const hover_info = create_hover_info()
-      mount(PhaseDiagramTooltip, {
-        target: document.body,
-        props: { hover_info, tooltip },
-      })
+      mount_tooltip({ hover_info, tooltip })
       expect(document.querySelector(`.tooltip-prefix`)).toBeNull()
       expect(document.querySelector(`.tooltip-suffix`)).toBeNull()
       expect(document.querySelector(`.phase-diagram-tooltip`)).not.toBeNull()
     })
 
-    test(`function receives lever_rule in hover_info`, () => {
-      const lever_rule: LeverRuleResult = {
-        left_phase: `α`,
-        right_phase: `β`,
-        left_composition: 0.2,
-        right_composition: 0.8,
-        fraction_left: 0.6,
-        fraction_right: 0.4,
-      }
-      const hover_info = create_hover_info({ lever_rule })
-      mount(PhaseDiagramTooltip, {
-        target: document.body,
-        props: {
-          hover_info,
-          tooltip: {
-            prefix: (info: { lever_rule?: { left_phase: string; right_phase: string } }) =>
-              info.lever_rule
-                ? `${info.lever_rule.left_phase}/${info.lever_rule.right_phase}`
-                : ``,
-          },
-        },
-      })
-      expect(document.querySelector(`.tooltip-prefix`)?.textContent).toBe(`α/β`)
-    })
-
     test(`empty string from function hides element`, () => {
       const hover_info = create_hover_info()
-      mount(PhaseDiagramTooltip, {
-        target: document.body,
-        props: { hover_info, tooltip: { suffix: () => `` } },
-      })
+      mount_tooltip({ hover_info, tooltip: { suffix: () => `` } })
       expect(document.querySelector(`.tooltip-suffix`)).toBeNull()
     })
   })

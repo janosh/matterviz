@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { clamp } from '$lib/math'
+
   type Orientation = `horizontal` | `vertical`
   const min_ratio = 0.15
   const max_ratio = 0.85
@@ -6,19 +8,39 @@
   let {
     orientation,
     ratio = $bindable(0.5),
+    min_px,
+    max_px,
+    second_min_px,
     'aria-label': aria_label = `Resize panes`,
   }: {
     orientation: Orientation
     ratio?: number
     'aria-label'?: string
+    // Pixel clamps on top of the [15%, 85%] ratio clamps, so a narrow container can't squeeze a
+    // pane below a usable size: min_px/max_px bound the first pane, second_min_px reserves room
+    // for the second. They need the container's measured size, so they're skipped until layout
+    min_px?: number
+    max_px?: number
+    second_min_px?: number
   } = $props()
 
   let divider = $state<HTMLDivElement>()
   let active_pointer = $state<number>()
   let drag_from_right = false
   const clamp_ratio = (value: number): number => {
-    const finite_value = Number.isFinite(value) ? value : 0.5
-    return Math.min(max_ratio, Math.max(min_ratio, finite_value))
+    const bounds = divider?.parentElement?.getBoundingClientRect()
+    const size = (orientation === `horizontal` ? bounds?.width : bounds?.height) ?? 0
+    let lo = min_ratio
+    let hi = max_ratio
+    if (size > 0) {
+      // a floor wider than the container itself means the first pane takes all of it
+      if (min_px !== undefined) lo = Math.min(1, Math.max(lo, min_px / size))
+      if (max_px !== undefined) hi = Math.min(hi, max_px / size)
+      if (second_min_px !== undefined) hi = Math.min(hi, 1 - second_min_px / size)
+      // A container too small for both pixel floors splits at the first pane's floor
+      hi = Math.max(lo, hi)
+    }
+    return clamp(Number.isFinite(value) ? value : 0.5, lo, hi)
   }
   let safe_ratio = $derived(clamp_ratio(ratio))
 

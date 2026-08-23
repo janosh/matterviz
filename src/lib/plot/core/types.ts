@@ -31,7 +31,6 @@ export type {
   InstabilityResult,
   InvalidValueMode,
   LocalOutlierConfig,
-  LocalOutlierResult,
   OscillationWeights,
   PhysicalBounds,
   SmoothingConfig,
@@ -74,7 +73,6 @@ export type Point<Metadata = Record<string, unknown>> = {
   x: number
   y: number
   metadata?: Metadata
-  offset?: Point2D
 }
 
 export interface PointStyle {
@@ -87,10 +85,11 @@ export interface PointStyle {
   symbol_type?: D3SymbolName
   symbol_size?: number | null // Optional override for marker size
   cursor?: string // Cursor style for the point
-  // Highlight support for phase diagrams and other use cases
+  // Highlight ring animation for phase diagrams and other use cases (size/colour highlights
+  // are expressed through radius/fill directly)
   is_highlighted?: boolean
   highlight_color?: string
-  highlight_effect?: `pulse` | `glow` | `size` | `color` | `both`
+  highlight_effect?: `pulse` | `glow`
 }
 
 export interface HoverStyle {
@@ -156,7 +155,6 @@ export interface DataSeries<Metadata = Record<string, unknown>> {
   point_hover?: HoverStyle[] | HoverStyle // Can be array or single object
   point_label?: LabelStyle[] | LabelStyle // Can be array or single object
   point_offset?: Point2D[] | Point2D // Can be array or single object
-  point_tween?: TweenOptions<Point2D>
   visible?: boolean // Optional visibility flag
   label?: string // Optional series label for legend
   // Group name for organizing legend items. Series with the same legend_group
@@ -228,7 +226,6 @@ export interface InternalPoint<Metadata = Record<string, unknown>> extends Point
   point_hover?: HoverStyle
   point_label?: LabelStyle
   point_offset?: Point2D // Individual point offset (distinct from label offset)
-  point_tween?: TweenOptions<Point2D>
 }
 
 export interface HandlerProps<Metadata = Record<string, unknown>> {
@@ -658,6 +655,9 @@ export interface StyleOverrides {
     stroke_width?: number
     stroke_color?: string
     stroke_opacity?: number
+    // Marker shape for points without their own point_style.symbol_type (replaces the
+    // per-series symbol cycle; the VS Code `scatter.symbol_type` setting lands here)
+    symbol_type?: D3SymbolName
   }
   line?: {
     width?: number
@@ -712,7 +712,6 @@ export interface PlotControlsProps extends PlotConfig {
   // Helper flags
   has_x2_points?: boolean
   has_y2_points?: boolean
-  show_ticks?: boolean
   // Component props
   controls_title?: string
   controls_name?: string

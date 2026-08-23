@@ -25,9 +25,6 @@
     cell_edge_opacity = DEFAULTS.structure.cell_edge_opacity,
     cell_surface_opacity = DEFAULTS.structure.cell_surface_opacity,
     show_cell_vectors = true,
-    vector_colors = [`red`, `green`, `blue`],
-    vector_origin = [-1, -1, -1],
-    float_fmt = `.2f`,
   }: {
     matrix?: math.Matrix3x3
     cell_edge_color?: string
@@ -36,10 +33,11 @@
     cell_edge_opacity?: number // opacity of the cell edges
     cell_surface_opacity?: number // opacity of the cell surfaces
     show_cell_vectors?: boolean // whether to show the lattice vectors
-    vector_colors?: readonly [string, string, string] // lattice vector colors
-    vector_origin?: Vec3 // lattice vector origin (all arrows start from this point)
-    float_fmt?: string
   } = $props()
+
+  // Lattice vector arrows all start from this corner, just outside the cell, colored a/b/c
+  const VECTOR_ORIGIN: Vec3 = [-1, -1, -1]
+  const VECTOR_COLORS = [`red`, `green`, `blue`]
 
   const { invalidate } = useThrelte()
   let hovered_idx = $state<number | null>(null) // track hovered vector
@@ -137,10 +135,10 @@
     <!-- Stable A/B/C slot keys preserve Arrow instances; vector props update reactively. -->
     {#each matrix as vec, idx (idx)}
       <Arrow
-        position={vector_origin}
+        position={VECTOR_ORIGIN}
         vector={vec}
         scale={0.5}
-        color={vector_colors[idx]}
+        color={VECTOR_COLORS[idx]}
         shaft_radius={0.1}
         arrow_head_radius={0.2}
         arrow_head_length={0.8}
@@ -152,10 +150,10 @@
     <!-- Tooltip for hovered vector -->
     {#if hovered_idx !== null && matrix}
       {@const hovered_vec = matrix[hovered_idx]}
-      {@const tooltip_position = math.add(vector_origin, hovered_vec)}
+      {@const tooltip_position = math.add(VECTOR_ORIGIN, hovered_vec)}
       <CanvasTooltip position={tooltip_position}>
         <strong>{[`A`, `B`, `C`][hovered_idx]}</strong>
-        ({hovered_vec.map((coord) => format_num(coord, float_fmt)).join(`, `)}) Å
+        ({hovered_vec.map((coord) => format_num(coord, `.2f`)).join(`, `)}) Å
       </CanvasTooltip>
     {/if}
   {/if}

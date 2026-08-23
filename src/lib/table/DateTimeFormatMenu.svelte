@@ -1,7 +1,7 @@
 <script lang="ts">
   // Date/time display-mode picker for a HeatmapTable header: a calendar button opening a
   // listbox of the modes the column's kind supports. The host owns `open` (only one header
-  // popover may be open at a time) and persists the chosen mode itself through `onchange`.
+  // popover may be open at a time) and persists the chosen mode itself through `on_change`.
   import type { DateTimeFormatMode } from '$lib/table'
   import { DATETIME_MODE_LABELS, strip_html } from './data'
   import { Icon } from 'svelte-widgets'
@@ -13,15 +13,15 @@
     mode,
     options,
     open,
-    ontoggle,
-    onchange,
+    on_toggle,
+    on_change,
   }: {
     col_label: string
     mode: DateTimeFormatMode
     options: DateTimeFormatMode[]
     open: boolean
-    ontoggle: () => void
-    onchange: (mode: DateTimeFormatMode) => void
+    on_toggle: () => void
+    on_change: (mode: DateTimeFormatMode) => void
   } = $props()
 
   const label_id = $props.id()
@@ -45,7 +45,7 @@
     aria-haspopup="listbox"
     aria-expanded={open}
     data-mode={mode}
-    onclick={ontoggle}
+    onclick={on_toggle}
     {@attach tooltip({
       content: `Date/time format: ${DATETIME_MODE_LABELS[mode]}`,
       placement: `top`,
@@ -61,15 +61,15 @@
       value={mode}
       size={options.length}
       onclick={(event) => {
-        if (event.currentTarget.value === mode) ontoggle() // re-picking the current mode closes
+        if (event.currentTarget.value === mode) on_toggle() // re-picking the current mode closes
       }}
       onkeydown={(event) => {
-        if (event.key === `Escape`) ontoggle()
+        if (event.key === `Escape`) on_toggle()
       }}
       oninput={(event) => {
         const picked = event.currentTarget.value as DateTimeFormatMode
-        if (options.includes(picked)) onchange(picked)
-        ontoggle()
+        if (options.includes(picked)) on_change(picked)
+        on_toggle()
       }}
     >
       {#each options as option (option)}

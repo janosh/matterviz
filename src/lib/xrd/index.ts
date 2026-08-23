@@ -1,5 +1,5 @@
 import type { CompositionType } from '$lib/composition'
-import type { Vec2, Vec3 } from '$lib/math'
+import { array_max, type Vec2, type Vec3 } from '$lib/math'
 import type { RadiationType } from '$lib/scattering'
 import type { RadiationKey } from './calc-xrd'
 
@@ -39,6 +39,40 @@ export type XrdPattern = {
   d_hkls?: number[]
 }
 
+// Thin a long measured scan to at most `max_points` for rendering: uniform sampling plus
+// the strongest local maxima (up to 30% of the slots), so peaks that fall between uniform
+// samples survive. Patterns at or under the budget are returned as is. Peaks count when
+// they rise above 5% of the pattern maximum.
+export function decimate_pattern(pattern: XrdPattern, max_points: number): XrdPattern {
+  const { x: x_vals, y: y_vals } = pattern
+  const num_points = x_vals.length
+  if (num_points <= max_points) return pattern
+  const threshold = 0.05 * array_max(y_vals)
+  const peaks: number[] = []
+  for (let idx = 1; idx < num_points - 1; idx++) {
+    const [prev, val, next] = [y_vals[idx - 1], y_vals[idx], y_vals[idx + 1]]
+    if (val > prev && val > next && val > threshold) peaks.push(idx)
+  }
+  const peak_slots = Math.min(peaks.length, Math.floor(max_points * 0.3))
+  const uniform_slots = max_points - peak_slots
+  const top_peaks = peaks
+    .toSorted((idx_a, idx_b) => y_vals[idx_b] - y_vals[idx_a])
+    .slice(0, peak_slots)
+  const step = (num_points - 1) / Math.max(1, uniform_slots - 1)
+  const uniform = Array.from({ length: uniform_slots }, (_, idx) => Math.round(idx * step))
+  const selected = [...new Set([...uniform, ...top_peaks])].toSorted(
+    (idx_a, idx_b) => idx_a - idx_b,
+  )
+  const pick = <Item>(values: Item[]): Item[] => selected.map((idx) => values[idx])
+  const { hkls, d_hkls } = pattern
+  return {
+    x: pick(x_vals),
+    y: pick(y_vals),
+    ...(hkls && { hkls: pick(hkls) }),
+    ...(d_hkls && { d_hkls: pick(d_hkls) }),
+  }
+}
+
 export type XrdOptions = {
   wavelength?: number | RadiationKey
   // Probe particle (default `xray`). Neutron and electron patterns reuse the same geometry,
@@ -49,7 +83,6 @@ export type XrdOptions = {
   // electron_wavelength(). Only valid together with radiation: `electron`, and mutually
   // exclusive with an explicit numeric `wavelength`.
   accelerating_voltage?: number
-  symprec?: number
   debye_waller_factors?: CompositionType
   scaled?: boolean
   // 2θ window in degrees. Omitted → [0, 90] (see compute_xrd_pattern for why it stops short

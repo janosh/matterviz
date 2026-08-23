@@ -1,8 +1,12 @@
 // Data type detection for JSON values -- determines which visualization component to use.
 // Used by JsonBrowser and the file renderer to select visualization components.
 
+import { type VolumetricFileData, volume_from_json } from '$lib/isosurface/types'
 import { build_path } from '$lib/json-path'
-import { is_optimade_raw } from '$lib/structure/parse'
+import { is_structure_like, optimade_structure_from_raw } from '$lib/structure/parse'
+import { make_lattice } from '$lib/structure/parsers/shared'
+import type { Pbc } from '$lib/structure/pbc'
+import { is_plain_object } from '$lib/utils'
 
 export { resolve_path } from '$lib/json-path'
 
@@ -43,28 +47,14 @@ export const TYPE_COLORS: Record<RenderableType, string> = {
 
 // === Type Guards ===
 
-// Narrows unknown to a non-array object record; used by every type guard below
+// Nullable form of is_plain_object so the guards below can bind-and-bail in one line
 const as_record = (obj: unknown): Record<string, unknown> | null =>
-  obj && typeof obj === `object` && !Array.isArray(obj)
-    ? (obj as Record<string, unknown>)
-    : null
+  is_plain_object(obj) ? obj : null
 
 // Check that `key` on `data` is an Array with exactly `len` elements (or any length if omitted)
 const has_array = (data: Record<string, unknown>, key: string, len?: number): boolean => {
   const val = data[key]
   return Array.isArray(val) && (len === undefined || val.length === len)
-}
-
-// Structure: must have non-empty `sites` array where first site has `species` + coordinates
-function is_structure(obj: unknown): boolean {
-  const data = as_record(obj)
-  if (!data || !has_array(data, `sites`)) return false
-  const sites = data.sites as unknown[]
-  if (sites.length === 0) return false
-  const first_site = as_record(sites[0])
-  if (!first_site) return false
-  const has_species = Array.isArray(first_site.species) && first_site.species.length > 0
-  return has_species && (Array.isArray(first_site.abc) || Array.isArray(first_site.xyz))
 }
 
 // FermiSurfaceData: pre-computed isosurfaces with reciprocal lattice info
@@ -324,7 +314,7 @@ export function is_plottable_data(obj: unknown): boolean {
 // and generic tabular data last.
 export function detect_view_type(value: unknown): RenderableType | null {
   if (value == null) return null
-  if (as_record(value) && is_optimade_raw(value)) return `structure`
+  if (as_record(value) && optimade_structure_from_raw(value)) return `structure`
   if (is_fermi_surface(value)) return `fermi_surface`
   if (is_band_grid(value)) return `band_grid`
   if (is_phase_diagram(value)) return `phase_diagram`
@@ -334,15 +324,29 @@ export function detect_view_type(value: unknown): RenderableType | null {
   if (is_brillouin_zone(value)) return `brillouin_zone`
   if (is_xrd_pattern(value)) return `xrd`
   if (is_volumetric(value)) return `volumetric`
-  if (is_structure(value)) return `structure`
+  if (is_structure_like(value)) return `structure`
   if (is_convex_hull_entries(value)) return `convex_hull`
   if (is_tabular_data(value)) return `table`
   return null
 }
 
+// === Volumetric JSON ===
+
+// Volumetric JSON (nested grid or flat values) becomes a typed-array volume rendered by the
+// Structure viewer, which needs a site-less Crystal whose lattice is a full LatticeType (a
+// bare 3x3 matrix crashes the scene on lattice.matrix)
+export const volume_json_to_isosurface_input = (raw: unknown): VolumetricFileData => {
+  const volume = volume_from_json(raw)
+  const pbc: Pbc = [volume.periodic, volume.periodic, volume.periodic]
+  return {
+    structure: { sites: [], lattice: make_lattice(volume.lattice, pbc) },
+    volumes: [volume],
+  }
+}
+
 // === Renderable Path Scanner ===
 
-interface RenderablePath {
+export interface RenderablePath {
   type: RenderableType
   label: string
 }

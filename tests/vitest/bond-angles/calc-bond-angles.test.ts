@@ -3,34 +3,29 @@ import {
   angle_bin_index,
   BondAnglePlot,
   calc_bond_angle_distribution,
-  compute_bond_angles,
+  calc_bond_angles,
   resolve_angle_bins,
   to_angle_bar_series,
-  to_angle_density,
 } from '$lib/bond-angles'
 import type { BondAngleOptions, BondAngleSplitMode } from '$lib/bond-angles'
 import { element_by_symbol } from '$lib/element/data'
 import type { Vec3 } from '$lib/math'
-import type { ElementSymbol } from '$lib/element'
 import type { Molecule } from '$lib/structure'
 import { calc_coordination_nums } from '$lib/coordination/calc-coordination'
 import { structure_map } from '$site/structures'
 import { tick } from 'svelte'
 import { describe, expect, test } from 'vitest'
-import { bind_props, expect_plot_controls, make_crystal, mount_sized } from '../setup'
+import {
+  bind_props,
+  expect_plot_controls,
+  make_crystal,
+  make_molecule,
+  make_rocksalt,
+  mount_sized,
+} from '../setup'
 
 // Exact tetrahedral angle: acos(-1/3) in degrees
 const TETRAHEDRAL_ANGLE = 109.47122063449069
-
-const make_molecule = (atoms: [string, Vec3][]): Molecule => ({
-  sites: atoms.map(([element, xyz], idx) => ({
-    species: [{ element: element as ElementSymbol, occu: 1, oxidation_state: 0 }],
-    abc: [0, 0, 0] as Vec3,
-    xyz,
-    label: `${element}${idx}`,
-    properties: {},
-  })),
-})
 
 const scaled = (vec: Vec3, length: number): Vec3 => {
   const norm = Math.hypot(...vec)
@@ -60,10 +55,10 @@ const angle_tally = (triplets: readonly { angle: number }[]): Record<string, num
   tally(triplets.map((triplet) => triplet.angle.toFixed(4)))
 // ...and the same for the `A-B-C` triplet labels of a freshly computed structure
 const label_tally = (
-  structure: Parameters<typeof compute_bond_angles>[0],
-  options: Parameters<typeof compute_bond_angles>[1] = {},
+  structure: Parameters<typeof calc_bond_angles>[0],
+  options: Parameters<typeof calc_bond_angles>[1] = {},
 ): Record<string, number> =>
-  tally(compute_bond_angles(structure, options).map((triplet) => triplet.triplet))
+  tally(calc_bond_angles(structure, options).map((triplet) => triplet.triplet))
 
 const axis_dirs: Vec3[] = [
   [1, 0, 0],
@@ -99,19 +94,10 @@ const linear_triatomic = make_molecule([
 
 // Rocksalt NaCl: every Na is octahedrally surrounded by Cl and vice versa. 8 sites x
 // C(6, 2) = 120 angles, split evenly between the two centre elements.
-const rocksalt = make_crystal(5.64, [
-  [`Na`, [0, 0, 0]],
-  [`Na`, [0, 0.5, 0.5]],
-  [`Na`, [0.5, 0, 0.5]],
-  [`Na`, [0.5, 0.5, 0]],
-  [`Cl`, [0.5, 0.5, 0.5]],
-  [`Cl`, [0.5, 0, 0]],
-  [`Cl`, [0, 0.5, 0]],
-  [`Cl`, [0, 0, 0.5]],
-])
+const rocksalt = make_rocksalt()
 const palladium = fixture(`mp-2`)
 
-describe(`compute_bond_angles analytic geometry`, () => {
+describe(`calc_bond_angles analytic geometry`, () => {
   // angle_tally buckets every triplet, so the tally values also pin the total angle count
   test.each([
     [`tetrahedral methane`, methane, { [TETRAHEDRAL_ANGLE.toFixed(4)]: 6 }, `H-C-H`],
@@ -121,14 +107,38 @@ describe(`compute_bond_angles analytic geometry`, () => {
   ] as const)(
     `%s reproduces the ideal angle multiset, every angle labelled %s`,
     (_name, structure, expected, label) => {
-      const triplets = compute_bond_angles(structure)
+      const triplets = calc_bond_angles(structure)
       expect(angle_tally(triplets)).toEqual(expected)
       expect(triplets.every((triplet) => triplet.triplet === label)).toBe(true)
     },
   )
 
+  test(`every triplet names its centre and both outer site indices`, () => {
+    // methane: C at site 0, H at sites 1-4; the six angles are the C(4, 2) unordered H pairs
+    const triplets = calc_bond_angles(methane)
+    expect(triplets.every(({ center_idx }) => center_idx === 0)).toBe(true)
+    const pairs = triplets.map(({ neighbor_idxs }) => neighbor_idxs.toSorted((a, b) => a - b))
+    expect(pairs.toSorted((a, b) => a[0] - b[0] || a[1] - b[1])).toEqual([
+      [1, 2],
+      [1, 3],
+      [1, 4],
+      [2, 3],
+      [2, 4],
+      [3, 4],
+    ])
+    // the indices are the real atoms the angle is subtended by, so highlighting them must
+    // reproduce the angle from the structure itself
+    for (const { neighbor_idxs, angle } of triplets) {
+      const [vec_1, vec_2] = neighbor_idxs.map((site_idx) => methane.sites[site_idx].xyz)
+      const cos =
+        (vec_1[0] * vec_2[0] + vec_1[1] * vec_2[1] + vec_1[2] * vec_2[2]) /
+        (Math.hypot(...vec_1) * Math.hypot(...vec_2))
+      expect((Math.acos(cos) * 180) / Math.PI).toBeCloseTo(angle, 9)
+    }
+  })
+
   test(`methane H-C-H angles match acos(-1/3) to double precision`, () => {
-    const triplets = compute_bond_angles(methane)
+    const triplets = calc_bond_angles(methane)
     expect(triplets).toHaveLength(6) // else Math.max over an empty deviation list passes
     // Measured: all six come out at 109.471220634490692, i.e. bit-identical to
     // Math.acos(-1/3) in degrees (deviation exactly 0). Math.acos is not required to be
@@ -148,13 +158,13 @@ test.each([`mp-1`, `mp-2`, `mp-1234`, `mp-756175`])(
   `%s yields exactly sum_atoms C(coordination_number, 2) angles`,
   (id) => {
     const structure = fixture(id)
-    const { sites } = calc_coordination_nums(structure, `electroneg_ratio`)
-    const expected = sites.reduce(
-      (sum, site) => sum + (site.coordination_num * (site.coordination_num - 1)) / 2,
+    const { coordination_nums } = calc_coordination_nums(structure)
+    const expected = coordination_nums.reduce(
+      (sum, coordination_num) => sum + (coordination_num * (coordination_num - 1)) / 2,
       0,
     )
     expect(expected).toBeGreaterThan(0)
-    expect(compute_bond_angles(structure, { strategy: `electroneg_ratio` })).toHaveLength(
+    expect(calc_bond_angles(structure, { strategy: `electroneg_ratio` })).toHaveLength(
       expected,
     )
   },
@@ -169,14 +179,14 @@ describe(`periodic bonding`, () => {
   const simple_cubic = make_crystal(2 * radius, [[`Po`, [0, 0, 0]]])
 
   test(`six-coordinate simple cubic gives 12 right angles and 3 straight angles`, () => {
-    const triplets = compute_bond_angles(simple_cubic)
+    const triplets = calc_bond_angles(simple_cubic)
     expect(angle_tally(triplets)).toEqual({ '90.0000': 12, '180.0000': 3 })
     expect(triplets).toHaveLength(15) // C(6, 2)
-    // Every neighbour is a periodic image of atom 0 itself
-    expect(triplets.every((triplet) => triplet.neighbor_idxs.every((idx) => idx === 0))).toBe(
-      true,
-    )
+    // Every neighbour is a periodic image of atom 0 itself, reported by its base site index
     expect(triplets.every((triplet) => triplet.triplet === `Po-Po-Po`)).toBe(true)
+    expect(
+      triplets.every(({ neighbor_idxs }) => neighbor_idxs.every((idx) => idx === 0)),
+    ).toBe(true)
   })
 
   test.each<[BondAngleOptions, number]>([
@@ -186,7 +196,7 @@ describe(`periodic bonding`, () => {
     [{ pbc: [true, true, false] }, 6],
     [{ pbc: [false, false, false] }, 0],
   ])(`%j gives %s angles for a one-atom cell`, (options, expected) => {
-    expect(compute_bond_angles(simple_cubic, options)).toHaveLength(expected)
+    expect(calc_bond_angles(simple_cubic, options)).toHaveLength(expected)
   })
 
   // On real crystals periodic bonding is not a small correction: bonded as a finite box,
@@ -203,8 +213,8 @@ describe(`periodic bonding`, () => {
     `%s has %s angles across periodic boundaries but only %s in the finite box`,
     (id, periodic, bare) => {
       const structure = fixture(id)
-      expect(compute_bond_angles(structure)).toHaveLength(periodic)
-      expect(compute_bond_angles(structure, { pbc: [false, false, false] })).toHaveLength(bare)
+      expect(calc_bond_angles(structure)).toHaveLength(periodic)
+      expect(calc_bond_angles(structure, { pbc: [false, false, false] })).toHaveLength(bare)
     },
   )
 
@@ -216,7 +226,7 @@ describe(`periodic bonding`, () => {
       [`C`, [0, 0, 0]],
       [`C`, [0.5, 0, 0]],
     ])
-    const triplets = compute_bond_angles(chain, { strategy: `electroneg_ratio` })
+    const triplets = calc_bond_angles(chain, { strategy: `electroneg_ratio` })
     expect(angle_tally(triplets)).toEqual({ '180.0000': 2 })
   })
 })
@@ -224,7 +234,7 @@ describe(`periodic bonding`, () => {
 describe(`triplet labelling`, () => {
   test(`distinguishes A-B-A from B-A-B`, () => {
     expect(label_tally(rocksalt)).toEqual({ 'Cl-Na-Cl': 60, 'Na-Cl-Na': 60 })
-    expect(angle_tally(compute_bond_angles(rocksalt))).toEqual({
+    expect(angle_tally(calc_bond_angles(rocksalt))).toEqual({
       '90.0000': 96,
       '180.0000': 24,
     })
@@ -245,7 +255,7 @@ describe(`triplet labelling`, () => {
       [`H`, [h_x, h_y, 0]],
       [`H`, [-h_x, h_y, 0]],
     ])
-    const triplets = compute_bond_angles(formaldehyde)
+    const triplets = calc_bond_angles(formaldehyde)
     expect(triplets.map((triplet) => triplet.triplet)).toEqual([`H-C-O`, `H-C-O`, `H-C-H`])
     const [hco_1, hco_2, hch] = triplets.map((triplet) => triplet.angle)
     expect(hco_1).toBeCloseTo(hco_angle, 12)
@@ -285,7 +295,7 @@ describe(`explicit bonds`, () => {
   test.each([`explicit_only`, `electroneg_ratio`] as const)(
     `cell_shift on an explicit bond gives one straight angle per atom under %s`,
     (strategy) => {
-      const triplets = compute_bond_angles(shifted_chain, { strategy })
+      const triplets = calc_bond_angles(shifted_chain, { strategy })
       // Both atoms sit between two partners 4 Å apart on the x axis: one straight angle each
       expect(triplets.map((triplet) => triplet.center_idx)).toEqual([0, 1])
       for (const triplet of triplets) expect(triplet.angle).toBeCloseTo(180, 12)
@@ -296,19 +306,20 @@ describe(`explicit bonds`, () => {
   // it is the case where a mismatched key silently double-counts. Measured before the fix:
   // 132 angles as { 0: 2, 90: 104, 180: 26 } instead of the correct 120.
   test(`a periodic explicit bond does not perturb the rocksalt histogram`, () => {
+    // Na0 at the origin to the -x image of Cl4 at [0.5, 0, 0]: an existing 2.82 A contact
     const with_explicit = { ...rocksalt }
     with_explicit.properties = {
-      bonds: [{ site_idx_1: 0, site_idx_2: 5, order: 1, cell_shift: [-1, 0, 0] }],
+      bonds: [{ site_idx_1: 0, site_idx_2: 4, order: 1, cell_shift: [-1, 0, 0] }],
     }
     const expected = { '90.0000': 96, '180.0000': 24 }
     for (const structure of [rocksalt, with_explicit]) {
-      const triplets = compute_bond_angles(structure, { strategy: `electroneg_ratio` })
+      const triplets = calc_bond_angles(structure, { strategy: `electroneg_ratio` })
       expect(angle_tally(triplets)).toEqual(expected)
     }
   })
 
   test(`explicit_only without declared bonds yields no angles`, () => {
-    expect(compute_bond_angles(methane, { strategy: `explicit_only` })).toEqual([])
+    expect(calc_bond_angles(methane, { strategy: `explicit_only` })).toEqual([])
   })
 })
 
@@ -372,14 +383,14 @@ describe(`calc_bond_angle_distribution`, () => {
     expect(data.by_triplet.map((series) => series.triplet)).toEqual([`F-S-F`])
   })
 
-  test(`density integrates to 1 over degrees and per-triplet densities sum to the total`, () => {
+  test(`per-triplet counts partition the total`, () => {
     const data = calc_bond_angle_distribution(rocksalt, { bin_width: 3 })
-    const integral = data.total.density.reduce((sum, val) => sum + val, 0) * data.bin_width
-    expect(integral).toBeCloseTo(1, 12)
-    expect(data.by_triplet).toHaveLength(2)
-    for (const [bin_idx, total] of data.total.density.entries()) {
-      const summed = data.by_triplet.reduce((sum, series) => sum + series.density[bin_idx], 0)
-      expect(summed).toBeCloseTo(total, 12)
+    expect(data.by_triplet.map((series) => series.triplet)).toEqual([`Cl-Na-Cl`, `Na-Cl-Na`])
+    expect(data.by_triplet.map((series) => series.n_angles)).toEqual([60, 60])
+    for (const [bin_idx, total] of data.total.counts.entries()) {
+      expect(data.by_triplet.reduce((sum, series) => sum + series.counts[bin_idx], 0)).toBe(
+        total,
+      )
     }
   })
 
@@ -394,7 +405,6 @@ describe(`calc_bond_angle_distribution`, () => {
       const data = calc_bond_angle_distribution(structure)
       expect(data.n_angles).toBe(0)
       expect(data.total.counts.every((count) => count === 0)).toBe(true)
-      expect(data.total.density.every((val) => val === 0)).toBe(true)
     }
   })
 
@@ -408,18 +418,6 @@ describe(`calc_bond_angle_distribution`, () => {
     )
   })
 })
-
-test.each([
-  [[2, 4, 4], 10, 2, [0.1, 0.2, 0.2]],
-  [[1, 1], 2, 90, [1 / 180, 1 / 180]],
-  [[0, 0], 0, 2, [0, 0]],
-])(
-  `to_angle_density: counts %j over %s angles / %s deg bins`,
-  (counts, n_angles, bin_width, expected) => {
-    const density = to_angle_density(counts, n_angles, bin_width)
-    for (const [idx, value] of density.entries()) expect(value).toBeCloseTo(expected[idx], 15)
-  },
-)
 
 // Mounting BarPlot in happy-dom costs seconds, so every case here earns its mount
 describe(`BondAnglePlot`, { timeout: 30_000 }, () => {
@@ -521,6 +519,20 @@ describe(`BondAnglePlot`, { timeout: 30_000 }, () => {
       expect(container?.querySelector(`svg`)).toBeNull()
     },
   )
+
+  // neighbor_query throws on a non-finite position; an unguarded compute derived would take
+  // the whole render down with it. The healthy structure next to it must still plot.
+  test(`reports a NaN site as an error and keeps plotting the other structures`, async () => {
+    const broken = make_molecule([
+      [`O`, [NaN, 0, 0]],
+      [`H`, [0.757, 0.587, 0]],
+    ])
+    const container = (await mount_plot({ structures: { NaCl: rocksalt, broken } }))
+      .parentElement
+    await tick()
+    expect(container?.textContent).toMatch(/broken: .*non-finite position/)
+    expect(container?.querySelector(`svg`)).toBeInstanceOf(SVGSVGElement)
+  })
 })
 
 // The mounted plot only shows that bars exist, so the weighting maths is asserted against

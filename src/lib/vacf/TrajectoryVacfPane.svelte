@@ -4,8 +4,13 @@
   import type { TrajectoryRun } from '$lib/trajectory'
   import type { AnalysisPaneContext } from '$lib/trajectory/analysis-pane'
   import TrajectoryAnalysisPane from '$lib/trajectory/TrajectoryAnalysisPane.svelte'
+  import {
+    frequency_unit_label,
+    MD_FREQUENCY_UNITS,
+    thz_per_inverse_time,
+    TIME_UNIT_TO_THZ,
+  } from '$lib/spectral/frequency-units'
   import { collect_vacf_input, suggest_vacf_frame_stride } from './collect'
-  import { thz_per_inverse_time, TIME_UNIT_TO_THZ, VACF_FREQUENCY_UNITS } from './index'
   import type { VacfFrequencyUnit, VacfInput, VacfOptions, VacfResult } from './index'
   import VacfPlot from './VacfPlot.svelte'
 
@@ -90,11 +95,11 @@
         bind:value={frequency_unit}
         disabled={effective_frequency_unit(ctx) === `1/frame`}
       >
-        {#each VACF_FREQUENCY_UNITS.filter((unit) => unit !== `1/frame`) as unit (unit)}
-          <option value={unit}>{unit}</option>
+        {#each MD_FREQUENCY_UNITS as unit (unit)}
+          <option value={unit}>{frequency_unit_label(unit)}</option>
         {/each}
       </select>
-      <span class="hint">{effective_frequency_unit(ctx)}</span>
+      <span class="hint">{frequency_unit_label(effective_frequency_unit(ctx))}</span>
     </label>
     <label>
       Show

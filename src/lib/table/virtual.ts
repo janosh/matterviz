@@ -1,3 +1,5 @@
+import { clamp } from '$lib/math'
+
 // Index window of uniformly sized items intersecting a scrolled viewport, padded by
 // `overscan` items on each side. Shared by HeatmapTable's row virtualisation and
 // HeatmapMatrix's track windowing. `scroll` is measured from the first item, so it may be
@@ -22,9 +24,8 @@ export function virtual_window({
   min_window?: number
 }): { start: number; end: number } {
   if (count <= 0 || item_size <= 0) return { start: 0, end: 0 }
-  const clamp = (idx: number) => Math.max(0, Math.min(count, idx))
   const top = Math.min(scroll, Math.max(0, count * item_size - viewport))
-  const start = clamp(Math.floor(top / item_size) - overscan)
-  const end = clamp(Math.ceil((top + viewport) / item_size) + overscan)
-  return { start, end: Math.max(end, clamp(start + min_window)) }
+  const start = clamp(Math.floor(top / item_size) - overscan, 0, count)
+  const end = clamp(Math.ceil((top + viewport) / item_size) + overscan, 0, count)
+  return { start, end: Math.max(end, clamp(start + min_window, 0, count)) }
 }

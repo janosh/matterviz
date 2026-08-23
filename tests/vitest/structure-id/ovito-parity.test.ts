@@ -73,7 +73,7 @@ describe(`parity with OVITO ${ovito_version}`, () => {
     },
   )
 
-  test.each(labeled_cases)(`%s: centrosymmetry matches within 1e-12`, (label, ovito_case) => {
+  test.each(labeled_cases)(`%s: centrosymmetry matches within 1e-12`, (_label, ovito_case) => {
     const result = calc_structure_id(to_crystal(ovito_case), {
       skip_cna: true,
       n_csp_neighbors: ovito_case.n_csp_neighbors,
@@ -87,10 +87,6 @@ describe(`parity with OVITO ${ovito_version}`, () => {
       max_abs_error = Math.max(max_abs_error, abs_error)
       if (reference > 1e-6) max_rel_error = Math.max(max_rel_error, abs_error / reference)
     }
-    console.info(
-      `${label} CSP vs OVITO: max |a-b| = ${max_abs_error.toExponential(3)} Å², ` +
-        `max relative = ${max_rel_error.toExponential(3)}`,
-    )
     // Both sides are float64 over identical coordinates, so the only difference is the order
     // the six terms are accumulated in. Measured worst case across all fixtures is
     // 3.0e-14 Å² absolute and 1.5e-14 relative (~68 x f64 eps); two fixtures agree bit for

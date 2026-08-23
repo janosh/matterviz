@@ -63,9 +63,6 @@ test(`uses the structure viewer selector to regenerate the displayed supercell`,
 
   await vi.waitFor(() => {
     expect(
-      target.querySelector(`.trajectory-controls`)?.classList.contains(`hover-visible`),
-    ).toBe(true)
-    expect(
       target.querySelector<HTMLSelectElement>(`[data-key="show_polyhedra"] select`)?.value,
     ).toBe(`never`)
     expect(

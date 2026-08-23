@@ -5,17 +5,13 @@
   import ExportPane from '$lib/io/ExportPane.svelte'
   import { export_svg_as_png, export_svg_as_svg } from '$lib/io/export'
   import { download } from '$lib/io/fetch'
-  import type { ComponentProps } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { PhaseDiagramData } from './types'
 
   let {
     export_pane_open = $bindable(false),
     data,
-    json_payload = undefined,
     wrapper,
-    svg_element = undefined,
-    svg_query_selector = `svg.binary-phase-diagram`,
     filename = `phase-diagram`,
     png_dpi = $bindable(DEFAULT_PNG_DPI),
     icon_style = ``,
@@ -24,10 +20,7 @@
   }: HTMLAttributes<HTMLDivElement> & {
     export_pane_open?: boolean
     data?: PhaseDiagramData
-    json_payload?: unknown
     wrapper?: HTMLDivElement
-    svg_element?: SVGSVGElement | null
-    svg_query_selector?: string
     filename?: string
     png_dpi?: number
     icon_style?: string
@@ -42,12 +35,10 @@
   )
 
   const svg = $derived(
-    svg_element ?? (wrapper?.querySelector(svg_query_selector) as SVGSVGElement | null),
+    wrapper?.querySelector<SVGSVGElement>(`svg.binary-phase-diagram`) ?? null,
   )
 
-  const json_export_data = $derived(json_payload ?? data)
-  const json_string = (): string | null =>
-    json_export_data ? JSON.stringify(json_export_data, null, 2) : null
+  const json_string = (): string | null => (data ? JSON.stringify(data, null, 2) : null)
 
   const sections = $derived<ExportSection[]>([
     {
@@ -74,7 +65,7 @@
       items: [
         {
           label: `JSON`,
-          disabled: !json_export_data,
+          disabled: !data,
           on_download: () => {
             const content = json_string()
             if (content) download(content, `${full_filename}.json`, `application/json`)

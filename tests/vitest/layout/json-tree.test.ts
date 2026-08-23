@@ -3,7 +3,7 @@ import { JsonTree } from '$lib/layout'
 import { serialize_for_copy } from '$lib/layout/json-tree/utils'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, it, test, vi } from 'vitest'
-import { doc_query } from '../setup'
+import { doc_query, mock_clipboard_write } from '../setup'
 import JsonTreeReplacementHarness from './JsonTreeReplacementHarness.svelte'
 
 const mount_tree = (props: ComponentProps<typeof JsonTree>): void => {
@@ -27,17 +27,6 @@ const keydown = (key: string, init: KeyboardEventInit = {}) =>
 const mouse = (type: string, init: MouseEventInit = {}) =>
   new MouseEvent(type, { bubbles: true, ...init })
 
-const mock_clipboard = (reject = false) => {
-  const write_text = vi.fn()
-  if (reject) write_text.mockRejectedValue(new Error(`Clipboard error`))
-  else write_text.mockResolvedValue(undefined)
-  Object.defineProperty(navigator, `clipboard`, {
-    value: { writeText: write_text },
-    writable: true,
-  })
-  return write_text
-}
-
 const node_at = (path: string) =>
   document.querySelector<HTMLElement>(`.json-node[data-path="${CSS.escape(path)}"]`)
 const tree = () => doc_query<HTMLDivElement>(`.json-tree`)
@@ -45,16 +34,15 @@ const tree = () => doc_query<HTMLDivElement>(`.json-tree`)
 const control_group = (idx: number) =>
   document.querySelectorAll(`.controls`)[idx].querySelectorAll<HTMLButtonElement>(`button`)
 
-// Type into the search box and wait out the 150 ms debounce
-async function type_search(query: string): Promise<void> {
+const match_count = () => document.querySelector(`.match-count`)?.textContent ?? ``
+// Type into the search box and wait for the debounced (150 ms) search to report `expected`
+async function type_search(query: string, expected: string): Promise<void> {
   const input = doc_query<HTMLInputElement>(`.search-input`)
   input.value = query
   fire(input, new Event(`input`, { bubbles: true }))
-  await new Promise((resolve) => setTimeout(resolve, 200))
-  flushSync()
+  await vi.waitFor(() => expect(match_count()).toBe(expected))
   await tick()
 }
-const match_count = () => document.querySelector(`.match-count`)?.textContent ?? ``
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -245,7 +233,7 @@ describe(`folding`, () => {
   )
 
   it(`clicking a collapsed key expands it, clicking an expanded key copies its value`, async () => {
-    const write_text = mock_clipboard()
+    const write_text = mock_clipboard_write()
     mount_tree({ value: { nested: { deep: 42 } }, show_header: false, default_fold_level: 1 })
     expect(node_at(`nested.deep`)).toBeNull()
     expect(doc_query(`.node-key`).classList.contains(`collapsed`)).toBe(true) // ▸ hint
@@ -341,7 +329,7 @@ describe(`folding`, () => {
     mount(JsonTreeReplacementHarness, { target: document.body })
     flushSync()
     const collapsed_count = () => doc_query(`[data-testid="collapsed-count"]`).textContent
-    await type_search(`findme`)
+    await type_search(`findme`, `1 of 1`)
     const search_input = doc_query<HTMLInputElement>(`.search-input`)
     expect(search_input.value).toBe(`findme`)
 
@@ -381,22 +369,22 @@ describe(`header toggles`, () => {
 })
 
 describe(`copy and download`, () => {
-  it(`copy-all writes the JSON, shows feedback and fires oncopy`, async () => {
-    const write_text = mock_clipboard()
-    const oncopy = vi.fn()
+  it(`copy-all writes the JSON, shows feedback and fires on_copy`, async () => {
+    const write_text = mock_clipboard_write()
+    const on_copy = vi.fn()
     const value = { name: `test`, count: 42, nested: { a: 1 } }
-    mount_tree({ value, oncopy })
+    mount_tree({ value, on_copy })
     const [copy_btn] = control_group(2)
 
     await click_and_tick(copy_btn)
     const copied_text = write_text.mock.calls[0][0]
     expect(JSON.parse(copied_text)).toEqual(value)
     expect(doc_query(`.copy-feedback`).textContent).toBe(`Copied!`)
-    expect(oncopy).toHaveBeenCalledWith(`[root]`, copied_text)
+    expect(on_copy).toHaveBeenCalledWith(`[root]`, copied_text)
   })
 
   it(`shows error feedback when the clipboard write fails`, async () => {
-    const write_text = mock_clipboard(true)
+    const write_text = mock_clipboard_write(new Error(`Clipboard error`))
     mount_tree({ value: { a: 1 } })
     control_group(2)[0].click()
     await vi.waitFor(() => expect(write_text).toHaveBeenCalled())
@@ -420,12 +408,12 @@ describe(`copy and download`, () => {
     expect(mime_type).toBe(`application/json`)
   })
 
-  it(`clicking a value copies it with inline feedback and fires oncopy`, async () => {
-    const write_text = mock_clipboard()
-    const oncopy = vi.fn()
-    mount_tree({ value: { name: `test` }, show_header: false, oncopy })
+  it(`clicking a value copies it with inline feedback and fires on_copy`, async () => {
+    const write_text = mock_clipboard_write()
+    const on_copy = vi.fn()
+    mount_tree({ value: { name: `test` }, show_header: false, on_copy })
     fire(doc_query(`.json-value`), mouse(`click`, { clientX: 40, clientY: 60 }))
-    await vi.waitFor(() => expect(oncopy).toHaveBeenCalledWith(`name`, `test`))
+    await vi.waitFor(() => expect(on_copy).toHaveBeenCalledWith(`name`, `test`))
     flushSync()
     expect(write_text).toHaveBeenCalledWith(`test`)
     const feedback = doc_query(`.copy-feedback`)
@@ -434,7 +422,7 @@ describe(`copy and download`, () => {
   })
 
   it(`Shift+click and middle-click on a key or node row copy only that path`, async () => {
-    const write_text = mock_clipboard()
+    const write_text = mock_clipboard_write()
     mount_tree({ value: { my_key: { inner: 1 } }, show_header: false, default_fold_level: 5 })
     fire(
       node_at(`my_key.inner`)?.querySelector(`.node-key`),
@@ -458,9 +446,8 @@ describe(`search`, () => {
     mount_tree({ value: { bar: 1, baz: 2, bat: 3, foo: 4 }, default_fold_level: 5 })
     expect(document.querySelector(`.match-nav`)).toBeNull()
 
-    await type_search(`ba`)
+    await type_search(`ba`, `1 of 3`)
     const [prev_btn, next_btn] = document.querySelectorAll<HTMLButtonElement>(`.nav-btn`)
-    expect(match_count()).toBe(`1 of 3`)
     expect(doc_query(`.current-match`).dataset.path).toBe(`bar`)
 
     await click_and_tick(next_btn)
@@ -472,8 +459,7 @@ describe(`search`, () => {
     await click_and_tick(prev_btn)
     expect(match_count()).toBe(`3 of 3`)
 
-    await type_search(`bat`)
-    expect(match_count()).toBe(`1 of 1`)
+    await type_search(`bat`, `1 of 1`)
     expect(doc_query(`.current-match`).dataset.path).toBe(`bat`)
 
     const input = doc_query<HTMLInputElement>(`.search-input`)
@@ -491,7 +477,7 @@ describe(`search`, () => {
     [`Enter`, true, `input`, `3 of 3`],
   ])(`%s (shift=%s) on the %s steps matches`, async (key, shiftKey, target, expected) => {
     mount_tree({ value: { bar: 1, baz: 2, bat: 3 }, default_fold_level: 5 })
-    await type_search(`ba`)
+    await type_search(`ba`, `1 of 3`)
     fire(target === `tree` ? tree() : doc_query(`.search-input`), keydown(key, { shiftKey }))
     await tick()
     expect(match_count()).toBe(expected)
@@ -506,7 +492,7 @@ describe(`search`, () => {
     })
     expect(node_at(`outer.inner.target`)).toBeNull()
 
-    await type_search(`findme`)
+    await type_search(`findme`, `1 of 2`)
     expect(node_at(`outer.inner.target`)?.classList.contains(`current-match`)).toBe(true)
     expect(node_at(`other.target`)).toBeInstanceOf(HTMLElement)
     expect(scroll_into_view).toHaveBeenCalledTimes(1)
@@ -523,49 +509,49 @@ describe(`search`, () => {
 })
 
 describe(`keyboard navigation and selection`, () => {
-  it(`arrow keys walk nodes in DOM order (clamped), breadcrumb shows the path, onselect fires`, async () => {
-    const onselect = vi.fn()
+  it(`arrow keys walk nodes in DOM order (clamped), breadcrumb shows the path, on_select fires`, async () => {
+    const on_select = vi.fn()
     mount_tree({
       value: { a: { b: 1 }, c: 2 },
       show_header: false,
       default_fold_level: 5,
-      onselect,
+      on_select,
     })
     const focused_path = () =>
       document.querySelector<HTMLElement>(`.json-node.focused`)?.dataset.path
     fire(tree(), keydown(`ArrowDown`))
     expect(focused_path()).toBe(``)
-    expect(onselect).toHaveBeenLastCalledWith(``, { a: { b: 1 }, c: 2 })
+    expect(on_select).toHaveBeenLastCalledWith(``, { a: { b: 1 }, c: 2 })
     for (const _ of [1, 2, 3, 4]) fire(tree(), keydown(`ArrowDown`))
     expect(focused_path()).toBe(`c`)
-    expect(onselect).toHaveBeenLastCalledWith(`c`, 2)
+    expect(on_select).toHaveBeenLastCalledWith(`c`, 2)
     await tick()
     expect(doc_query(`.path-breadcrumb`).textContent?.trim()).toBe(`c`)
     expect(document.activeElement).toBe(node_at(`c`))
     fire(tree(), keydown(`ArrowUp`))
     fire(tree(), keydown(`ArrowUp`))
     expect(focused_path()).toBe(`a`)
-    expect(onselect).toHaveBeenLastCalledWith(`a`, { b: 1 })
+    expect(on_select).toHaveBeenLastCalledWith(`a`, { b: 1 })
   })
 
-  it(`click focuses only the clicked node and onselect resolves Map entry paths through their wrapper`, async () => {
-    const onselect = vi.fn()
+  it(`click focuses only the clicked node and on_select resolves Map entry paths through their wrapper`, async () => {
+    const on_select = vi.fn()
     const value = { m: new Map([[`k`, { deep: `v` }]]) }
-    mount_tree({ value, default_fold_level: 10, onselect })
+    mount_tree({ value, default_fold_level: 10, on_select })
     await click_and_tick(node_at(`m[0].value.deep`))
     // the click must not bubble into ancestor rows, which would re-focus each of them in
-    // turn (ending on the root) and fire onselect once per ancestor
-    expect(onselect).toHaveBeenCalledTimes(1)
-    expect(onselect).toHaveBeenCalledWith(`m[0].value.deep`, `v`)
+    // turn (ending on the root) and fire on_select once per ancestor
+    expect(on_select).toHaveBeenCalledTimes(1)
+    expect(on_select).toHaveBeenCalledWith(`m[0].value.deep`, `v`)
     expect(doc_query(`.path-breadcrumb`).textContent?.trim()).toBe(`m[0].value.deep`)
     expect(document.querySelectorAll(`.json-node.focused`)).toHaveLength(1)
     await click_and_tick(node_at(`m[0]`))
-    expect(onselect).toHaveBeenCalledTimes(2)
-    expect(onselect).toHaveBeenLastCalledWith(`m[0]`, { key: `k`, value: { deep: `v` } })
+    expect(on_select).toHaveBeenCalledTimes(2)
+    expect(on_select).toHaveBeenLastCalledWith(`m[0]`, { key: `k`, value: { deep: `v` } })
   })
 
   it(`focused node: Enter/Space copy leaves and toggle containers, arrows fold/unfold`, async () => {
-    const write_text = mock_clipboard()
+    const write_text = mock_clipboard_write()
     mount_tree({
       value: { key: 42, obj: { a: 1 } },
       show_header: false,
@@ -591,7 +577,7 @@ describe(`keyboard navigation and selection`, () => {
   })
 
   it(`Ctrl+click toggles selection, Shift extends a range, Ctrl+C copies all, Escape clears`, async () => {
-    const write_text = mock_clipboard()
+    const write_text = mock_clipboard_write()
     mount_tree({
       value: { a: 1, b: 2, c: 3, d: 4 },
       show_header: false,
@@ -650,7 +636,7 @@ describe(`context menu and pinning`, () => {
   })
 
   it(`copies value/path and folds children from the menu`, async () => {
-    const write_text = mock_clipboard()
+    const write_text = mock_clipboard_write()
     mount_tree({ value: { key: { a: { b: 1 } } }, show_header: false, default_fold_level: 5 })
     await open_menu(node_at(`key`))
     await click_and_tick(menu_button(`Copy path`))
@@ -674,7 +660,7 @@ describe(`context menu and pinning`, () => {
   })
 
   it(`pins paths into a panel that copies, unpins and clears`, async () => {
-    const write_text = mock_clipboard()
+    const write_text = mock_clipboard_write()
     mount_tree({ value: { a: 1, b: { c: 2 } }, show_header: false, default_fold_level: 5 })
     await open_menu(node_at(`a`))
     await click_and_tick(menu_button(`Pin this path`))
@@ -728,13 +714,13 @@ describe(`diff mode`, () => {
 
 describe(`inline editing`, () => {
   test(`double-click edits a leaf, Enter commits a typed value, Escape cancels`, async () => {
-    const onchange = vi.fn()
+    const on_change = vi.fn()
     mount_tree({
       value: { n: 1, s: `x` },
       show_header: false,
       default_fold_level: 5,
       editable: true,
-      onchange,
+      on_change,
     })
     fire(node_at(`n`)?.querySelector(`.json-value`), mouse(`dblclick`))
     await tick()
@@ -742,27 +728,27 @@ describe(`inline editing`, () => {
     input.value = `42`
     fire(input, new Event(`input`, { bubbles: true }))
     fire(input, keydown(`Enter`))
-    expect(onchange).toHaveBeenCalledWith(`n`, 42, 1)
+    expect(on_change).toHaveBeenCalledWith(`n`, 42, 1)
 
     fire(node_at(`s`)?.querySelector(`.json-value`), mouse(`dblclick`))
     await tick()
     fire(doc_query(`.edit-input`), keydown(`Escape`))
     expect(document.querySelector(`.edit-input`)).toBeNull()
-    expect(onchange).toHaveBeenCalledTimes(1)
+    expect(on_change).toHaveBeenCalledTimes(1)
   })
 
   test(`a value update inside the click-to-copy delay does not cancel the pending copy`, async () => {
-    mock_clipboard()
-    const oncopy = vi.fn()
+    mock_clipboard_write()
+    const on_copy = vi.fn()
     mount(JsonTreeReplacementHarness, {
       target: document.body,
-      props: { editable: true, onchange: vi.fn(), oncopy },
+      props: { editable: true, on_change: vi.fn(), on_copy },
     })
     flushSync()
     fire(node_at(`nested.findme`)?.querySelector(`.json-value`), mouse(`click`))
     // live data: the leaf re-renders with a new value before the 250 ms copy delay elapses
     await click_and_tick(doc_query(`[data-testid="replace-json"]`))
-    await vi.waitFor(() => expect(oncopy).toHaveBeenCalledWith(`nested.findme`, `new`))
+    await vi.waitFor(() => expect(on_copy).toHaveBeenCalledWith(`nested.findme`, `new`))
   })
 })
 
@@ -770,7 +756,7 @@ describe(`unmount`, () => {
   test(`pending search debounce and copy feedback timers are cleared`, async () => {
     vi.useFakeTimers()
     try {
-      mock_clipboard()
+      mock_clipboard_write()
       const component = mount(JsonTree, { target: document.body, props: { value: { a: 1 } } })
       flushSync()
       const input = doc_query<HTMLInputElement>(`.search-input`)

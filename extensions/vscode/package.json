@@ -18,18 +18,18 @@
     "sync-config": "npx tsx scripts/sync-config.ts",
     "prebuild": "npm run sync-config",
     "build": "rm -rf dist && vite build --config vite.extension.config.ts && vite build",
-    "package": "npm run build && vsce package --no-dependencies",
-    "test": "vitest",
+    "package": "npm run build && npx @vscode/vsce package --no-dependencies",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@sveltejs/vite-plugin-svelte": "^7.2.0",
-    "@types/node": "^26.1.1",
+    "@sveltejs/vite-plugin-svelte": "^7.3.0",
+    "@types/node": "^26.2.0",
     "@types/vscode": "~1.105.0",
-    "svelte": "^5.56.8",
+    "svelte": "^5.56.9",
     "typescript": "^6.0.3",
-    "vite": "^8.1.5",
-    "vitest": "4.1.10"
+    "vite": "^8.2.1",
+    "vitest": "4.1.11"
   },
   "contributes": {
     "commands": [
@@ -758,12 +758,11 @@
         "matterviz.fermi.color_property": {
           "type": "string",
           "default": "band",
-          "description": "Quantity mapped onto the Fermi surface color scale",
+          "description": "Quantity mapped onto the Fermi surface color scale ('velocity' and 'custom' were removed; use 'property')",
           "enum": [
             "band",
-            "velocity",
             "spin",
-            "custom"
+            "property"
           ]
         },
         "matterviz.fermi.color_scale": {
@@ -1508,16 +1507,6 @@
           "default": "solid",
           "description": "Line dash pattern for scatter plots (e.g. \"4,4\" for dashed)"
         },
-        "matterviz.plot.grid_lines": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show grid lines in plots"
-        },
-        "matterviz.plot.axis_labels": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show axis labels in plots"
-        },
         "matterviz.plot.display.x_grid": {
           "type": "boolean",
           "default": true,
@@ -1542,40 +1531,6 @@
           "type": "boolean",
           "default": true,
           "description": "Show Y-axis zero reference line"
-        },
-        "matterviz.plot.x_format": {
-          "type": "string",
-          "default": ".2~s",
-          "description": "Number format for X-axis ticks (D3 format specifier)"
-        },
-        "matterviz.plot.x2_format": {
-          "type": "string",
-          "default": "",
-          "description": "Number format for secondary X-axis ticks (D3 format specifier)"
-        },
-        "matterviz.plot.y_format": {
-          "type": "string",
-          "default": "d",
-          "description": "Number format for Y-axis ticks (D3 format specifier)"
-        },
-        "matterviz.plot.y2_format": {
-          "type": "string",
-          "default": "",
-          "description": "Number format for secondary Y-axis ticks (D3 format specifier)"
-        },
-        "matterviz.plot.x_ticks": {
-          "type": "number",
-          "default": 8,
-          "description": "Number of ticks on X-axis",
-          "minimum": 2,
-          "maximum": 20
-        },
-        "matterviz.plot.y_ticks": {
-          "type": "number",
-          "default": 6,
-          "description": "Number of ticks on Y-axis",
-          "minimum": 2,
-          "maximum": 20
         },
         "matterviz.convex_hull.binary.camera_zoom": {
           "type": "number",
@@ -1870,6 +1825,38 @@
           "description": "Initial camera Y rotation (rad) for quaternary (4D) convex hull",
           "minimum": -6.283,
           "maximum": 6.283
+        },
+        "matterviz.plot.grid_lines": {
+          "type": "boolean",
+          "deprecationMessage": "Removed; use matterviz.plot.display.x_grid / matterviz.plot.display.y_grid"
+        },
+        "matterviz.plot.axis_labels": {
+          "type": "boolean",
+          "deprecationMessage": "Removed; had no effect"
+        },
+        "matterviz.plot.x_format": {
+          "type": "string",
+          "deprecationMessage": "Removed; tick formats are set per plot in its controls pane (Tick format)"
+        },
+        "matterviz.plot.x2_format": {
+          "type": "string",
+          "deprecationMessage": "Removed; tick formats are set per plot in its controls pane (Tick format)"
+        },
+        "matterviz.plot.y_format": {
+          "type": "string",
+          "deprecationMessage": "Removed; tick formats are set per plot in its controls pane (Tick format)"
+        },
+        "matterviz.plot.y2_format": {
+          "type": "string",
+          "deprecationMessage": "Removed; tick formats are set per plot in its controls pane (Tick format)"
+        },
+        "matterviz.plot.x_ticks": {
+          "type": "number",
+          "deprecationMessage": "Removed; tick counts follow the plot size automatically"
+        },
+        "matterviz.plot.y_ticks": {
+          "type": "number",
+          "deprecationMessage": "Removed; tick counts follow the plot size automatically"
         }
       }
     }

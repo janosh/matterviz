@@ -17,8 +17,6 @@ const DEFAULT_CAMERA_VIEW: Vec3 = [1, 0.3, 0.8]
 export type StructureFitOpts = {
   atom_radius_scale?: number // 0 when atoms hidden
   same_size_atoms?: boolean
-  padding?: number
-  center?: Vec3
   element_radius_overrides?: Partial<Record<ElementSymbol, number>>
   site_radius_overrides?: ReadonlyMap<number, number>
 }
@@ -40,22 +38,35 @@ const element_radius = (
   overrides?: Partial<Record<ElementSymbol, number>>,
 ): number => overrides?.[element] ?? element_by_symbol.get(element)?.atomic_radius ?? 1
 
-// same_size > site override > occupancy-weighted element (matches StructureScene)
-const site_base_radius = (site: Site, site_idx: number, opts: StructureFitOpts): number => {
-  if (opts.same_size_atoms) return 1
-  const override = opts.site_radius_overrides?.get(site_idx)
-  if (override !== undefined) return override
+// Display radius of a site in Å before the global atom_radius scale: the per-element
+// override or atomic radius, occupancy-weighted over a disordered site's species. Normalized
+// by total occupancy so vacancy-containing sites render at full size. The one radius rule for
+// rendering (StructureScene), camera framing and the legend's radius readout.
+export const site_display_radius = (
+  site: Site,
+  element_radius_overrides?: Partial<Record<ElementSymbol, number>>,
+): number => {
+  // ordered-site shortcut: runs for every atom of a large supercell
   const [only] = site.species
   if (site.species.length === 1 && only.occu === 1) {
-    return element_radius(only.element, opts.element_radius_overrides)
+    return element_radius(only.element, element_radius_overrides)
   }
   let total_occu = 0
   let weighted = 0
   for (const { element, occu } of site.species) {
     total_occu += occu
-    weighted += occu * element_radius(element, opts.element_radius_overrides)
+    weighted += occu * element_radius(element, element_radius_overrides)
   }
   return total_occu > 0 ? weighted / total_occu : 1
+}
+
+// same_size > site override > occupancy-weighted element (matches StructureScene)
+const site_base_radius = (site: Site, site_idx: number, opts: StructureFitOpts): number => {
+  if (opts.same_size_atoms) return 1
+  return (
+    opts.site_radius_overrides?.get(site_idx) ??
+    site_display_radius(site, opts.element_radius_overrides)
+  )
 }
 
 export function structure_fit_frame(
@@ -99,7 +110,7 @@ export function structure_fit_frame(
   }
   if (!Number.isFinite(min[0])) return empty_frame()
 
-  const center = opts.center ?? math.add(min, math.scale(math.subtract(max, min), 0.5))
+  const center = math.add(min, math.scale(math.subtract(max, min), 0.5))
   let radius_sq = 0
   for (const [point, radius] of samples) {
     const reach = math.euclidean_dist(point, center) + radius
@@ -108,7 +119,7 @@ export function structure_fit_frame(
   if (!(radius_sq > 0)) return { center, extent: 10 }
   return {
     center,
-    extent: Math.max(1, 2 * Math.sqrt(radius_sq) * (opts.padding ?? DEFAULT_FIT_PADDING)),
+    extent: Math.max(1, 2 * Math.sqrt(radius_sq) * DEFAULT_FIT_PADDING),
   }
 }
 

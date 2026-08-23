@@ -8,7 +8,6 @@
 //   - "curve_name[:-1]" - slice (skip last point)
 //   - "~curve_name[1:-1]" - reverse then slice
 
-import { resolve_diagram_color } from './colors'
 import type { BoundElement, DiagramInput, DiagramPoint } from './diagram-input'
 import type { BoundaryType, PhaseBoundary, PhaseDiagramData, PhaseRegion } from './types'
 
@@ -26,13 +25,11 @@ export function parse_curve_ref(ref: string): CurveRef {
   let start: number | null = null
   let end: number | null = null
 
-  // Check for reverse prefix
   if (name.startsWith(`~`)) {
     reverse = true
     name = name.slice(1)
   }
 
-  // Check for slice suffix [start:end]
   const slice_match = /^(?<base>.+)\[(?<start>-?\d*):(?<end>-?\d*)\]$/.exec(name)
   if (slice_match) {
     name = slice_match[1]
@@ -65,16 +62,15 @@ function expand_bounds(
 
   for (const bound of bounds) {
     if (Array.isArray(bound)) {
-      // Inline point
       vertices.push(bound)
     } else {
-      // Curve reference
       const ref = parse_curve_ref(bound)
       let points = curves[ref.name]
 
       if (!points) {
-        console.warn(`Unknown curve: ${ref.name}`)
-        continue
+        throw new Error(
+          `Unknown curve "${ref.name}" in region bounds; known curves: ${Object.keys(curves).join(`, `) || `none`}`,
+        )
       }
 
       // Apply reverse first (to match Python's `reversed(curve)[1:]` pattern)
@@ -145,19 +141,17 @@ function get_boundary_style(btype: BoundaryType): PhaseBoundary[`style`] {
 export function build_diagram(input: DiagramInput): PhaseDiagramData {
   const { meta, curves, regions, special_points } = input
 
-  // Build regions by expanding bounds to vertices
   const built_regions: PhaseRegion[] = regions.map((region) => {
     const vertices = dedupe_consecutive_vertices(expand_bounds(region.bounds, curves))
     return {
       id: region.id,
       name: region.name,
       vertices,
-      color: resolve_diagram_color(region.color),
+      ...(region.color ? { color: region.color } : {}),
       ...(region.label_position && { label_position: region.label_position }),
     }
   })
 
-  // Build boundaries from all curves
   const boundaries: PhaseBoundary[] = Object.entries(curves).map(([name, points]) => {
     const btype = infer_boundary_type(name)
     const style = get_boundary_style(btype)

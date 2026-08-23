@@ -1,27 +1,18 @@
 <script lang="ts">
   import type { ElementSymbol, FileInfo } from '$lib'
   import type { PhaseData } from '$lib/convex-hull'
-  import { ConvexHull3D, ConvexHull4D } from '$lib/convex-hull'
+  import { ConvexHullCanvas } from '$lib/convex-hull'
   import FilePicker from '$lib/FilePicker.svelte'
+  import { hull_system_name, quaternary_files } from '$site/convex-hull'
   import { onMount } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap } from 'svelte/reactivity'
 
   let { ...rest }: HTMLAttributes<HTMLDivElement> = $props()
 
-  // vite-plugin-json-gz decompresses at build time, lazy chunks are code-split.
-  const quaternary_files = import.meta.glob<{ default: PhaseData[] }>(
-    `$site/convex-hull/quaternaries/*.json.gz`,
-    { eager: false },
-  )
-
   // Map each system (e.g. `Li-Co-Ni-O`) to its glob path + lazy loader
   const systems = Object.entries(quaternary_files)
-    .map(([path, loader]) => ({
-      name: path.split(`/`).pop()?.replace(`.json.gz`, ``) ?? path,
-      path,
-      loader,
-    }))
+    .map(([path, loader]) => ({ name: hull_system_name(path), path, loader }))
     .toSorted((sys_a, sys_b) => sys_a.name.localeCompare(sys_b.name))
 
   const loaded_data = new SvelteMap<string, PhaseData[]>()
@@ -83,12 +74,14 @@
     style="margin-block: 1em"
   />
   <div {...rest} class={[`hull-grid`, rest.class]}>
-    <ConvexHull3D
+    <ConvexHullCanvas
+      dim={3}
       entries={ternary_entries}
       controls={{ title: ternary_elements.join(`-`) }}
       style="height: 500px"
     />
-    <ConvexHull4D
+    <ConvexHullCanvas
+      dim={4}
       entries={quaternary_entries}
       controls={{ title: active_name }}
       on_file_drop={(dropped) => loaded_data.set(active_path, dropped)}

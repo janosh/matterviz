@@ -39,9 +39,8 @@ const dedupe_sort = (arr: number[]): number[] => [...new Set(arr)].toSorted((a, 
 // Formula: y = asinh(x / threshold) = ln(x/c + sqrt((x/c)² + 1))
 
 // Interface for arcsinh scale (D3-compatible)
-// Accepts both number and Date for compatibility with time-based data
 export interface ArcsinhScale {
-  (value: number | Date): number
+  (value: number): number
   domain(): Vec2
   domain(domain: Vec2): ArcsinhScale
   range(): Vec2
@@ -72,9 +71,7 @@ export function scale_arcsinh(threshold = 1): ArcsinhScale {
   const sinh_transform = (y: number): number => Math.sinh(y) * threshold
 
   // Map from data domain to output range
-  // Accepts Date for compatibility with D3 time scales
-  const scale = ((value: number | Date): number => {
-    const num_value = value instanceof Date ? value.getTime() : value
+  const scale = ((value: number): number => {
     const [d_min, d_max] = current_domain
     const [r_min, r_max] = current_range
 
@@ -86,7 +83,7 @@ export function scale_arcsinh(threshold = 1): ArcsinhScale {
     const t_max = arcsinh_transform(d_max)
 
     // Transform input value
-    const t_val = arcsinh_transform(num_value)
+    const t_val = arcsinh_transform(value)
 
     // Linear interpolation in transformed space
     if (t_max === t_min) return (r_min + r_max) / 2
@@ -237,10 +234,8 @@ function generate_positive_arcsinh_ticks(
   return result.length > count ? result.slice(-count) : result
 }
 
-// Create a scale function based on type, domain, and range
-// Note: Time scales are handled separately via create_time_scale() since ScaleTime
-// has incompatible types (invert returns Date, not number). Use is_time_scale()
-// to detect time mode and call create_time_scale() directly when needed.
+// Create a scale function based on type, domain, and range. Time axes are linear scales over
+// epoch milliseconds (tick generation alone is time-aware), so no Date wrapping is needed.
 export function create_scale(
   scale_type: ScaleType,
   domain: Vec2,
@@ -263,7 +258,6 @@ export function create_scale(
     const threshold = get_arcsinh_threshold(scale_type)
     return scale_arcsinh(threshold).domain(domain).range(output_range)
   }
-  // For 'time' or 'linear', return linear scale (time scales need create_time_scale())
   return scaleLinear().domain(domain).range(output_range)
 }
 
@@ -395,6 +389,46 @@ export function accumulate_extent(
     if (acc.max === undefined || val > acc.max) acc.max = val
   }
   return acc
+}
+
+// Series slice the colour/size scale builders read; null entries are skipped
+type ScaleValueSeries =
+  | {
+      color_values?: ArrayLike<number | null> | null
+      size_values?: ArrayLike<number | null> | null
+    }
+  | null
+  | undefined
+
+// Finite colour extent and finite size values across series in one pass. NaN/null entries
+// fall back to the series colour/radius per point, so they must not widen either scale.
+// `color_range` is [0, 1] when no finite colour value was seen.
+export function collect_scale_values(series: readonly ScaleValueSeries[]): {
+  color_extent: RunningExtent
+  color_range: Vec2
+  size_values: number[]
+} {
+  const color_extent = empty_extent()
+  for (const srs of series) {
+    if (srs?.color_values) accumulate_extent(color_extent, srs.color_values)
+  }
+  const { min = 0, max = 1 } = color_extent
+  return { color_extent, color_range: [min, max], size_values: collect_size_values(series) }
+}
+
+// Finite size values across series, for charts that size points but never colour them
+export function collect_size_values(series: readonly ScaleValueSeries[]): number[] {
+  const size_values: number[] = []
+  for (const srs of series) {
+    // index loop: size_values may be a typed array or other non-iterable ArrayLike
+    const sizes = srs?.size_values ?? []
+    const n_sizes = sizes.length
+    for (let idx = 0; idx < n_sizes; idx++) {
+      const val = sizes[idx]
+      if (typeof val === `number` && Number.isFinite(val)) size_values.push(val)
+    }
+  }
+  return size_values
 }
 
 export const nice_range_from_extent = (
@@ -568,6 +602,17 @@ export function get_tick_label(
   return null
 }
 
+// Log domain for colour ramps, shared by every colour-scale builder so they agree on the
+// floor: non-positive bounds fall back to LOG_EPS (a domain entirely <= 0 collapses to one
+// colour instead of going NaN), positive bounds are kept however small (diffusivities, rates
+// sit far below the LOG_EPS axis floor) and in the caller's order (a descending range runs
+// high-to-low). Equal bounds widen by 10% so the scale isn't degenerate.
+export const log_color_domain = ([lo, hi]: Vec2): Vec2 => {
+  const safe_lo = lo > 0 ? lo : math.LOG_EPS
+  const safe_hi = hi > 0 ? hi : math.LOG_EPS
+  return safe_lo === safe_hi ? [safe_lo, safe_lo * 1.1] : [safe_lo, safe_hi]
+}
+
 // Create a color scale function from configuration
 export function create_color_scale(
   color_scale_config: ColorScaleConfig | D3InterpolateName,
@@ -588,10 +633,7 @@ export function create_color_scale(
   const type_name = get_scale_type_name(scale_type)
 
   if (type_name === `log`) {
-    // clamp both ends (like create_scale): all-negative data otherwise yields an inverted
-    // [LOG_EPS, max<0] domain that maps every input to undefined
-    const lo = Math.max(min_val, math.LOG_EPS)
-    return scaleSequentialLog(interpolator).domain([lo, Math.max(max_val, lo * 1.1)])
+    return scaleSequentialLog(interpolator).domain(log_color_domain([min_val, max_val]))
   }
   if (type_name === `arcsinh`) {
     // For arcsinh color scale, we create a custom scale that wraps the interpolator

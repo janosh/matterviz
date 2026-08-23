@@ -8,18 +8,15 @@ export type Point3D = Point2D & { z: number }
 export type Matrix3x3 = [Vec3, Vec3, Vec3]
 type Matrix4x4 = [Vec4, Vec4, Vec4, Vec4]
 
-export const is_finite_vec3_like = (
-  values: ArrayLike<unknown> | undefined,
-): values is ArrayLike<number> => {
-  if (values?.length !== 3) return false
-  return [0, 1, 2].every(
-    (idx) => typeof values[idx] === `number` && Number.isFinite(values[idx]),
-  )
+// Any array-like (Array, typed array, arguments) holding exactly three finite numbers
+export const is_finite_vec3_like = (values: unknown): values is ArrayLike<number> => {
+  if (typeof values !== `object` || values === null) return false
+  const array_like = values as ArrayLike<unknown>
+  // Number.isFinite does not coerce, so non-numbers fail too
+  return array_like.length === 3 && [0, 1, 2].every((idx) => Number.isFinite(array_like[idx]))
 }
 
-export const finite_vec3_from_values = (
-  values: ArrayLike<unknown> | undefined,
-): Vec3 | undefined => {
+export const finite_vec3_from_values = (values: unknown): Vec3 | undefined => {
   if (!is_finite_vec3_like(values)) return undefined
   return [values[0], values[1], values[2]]
 }
@@ -53,6 +50,11 @@ const MAX_MIN_IMAGE_CANDIDATES = 100_000
 export const to_degrees = (radians: number): number => radians * RAD_TO_DEG
 export const to_radians = (degrees: number): number => degrees * DEG_TO_RAD
 
+// Clamp value into [lo, hi]. NaN passes through (Math.min/max propagate it), so callers
+// that need a finite result must check first.
+export const clamp = (value: number, lo: number, hi: number): number =>
+  Math.max(lo, Math.min(hi, value))
+
 // Index of the first value for which an initial-prefix predicate is false.
 export const partition_point = <Value>(
   values: readonly Value[],
@@ -66,6 +68,16 @@ export const partition_point = <Value>(
     else upper_idx = middle_idx
   }
   return lower_idx
+}
+
+// Index of the first entry that is not strictly greater than its predecessor (a NaN fails
+// the comparison too), or null when the sequence increases strictly. Step axes, time axes
+// and sorted grids all need this check and the offending index for their error message.
+export const first_non_increasing_index = (values: ArrayLike<number>): number | null => {
+  for (let idx = 1; idx < values.length; idx++) {
+    if (!(values[idx] > values[idx - 1])) return idx
+  }
+  return null
 }
 
 // Calculate all lattice parameters in a single efficient pass
@@ -88,7 +100,7 @@ export function calc_lattice_params(matrix: Matrix3x3): LatticeParams & { volume
   const safe_angle = (dot: number, len_1: number, len_2: number): number => {
     const denom = len_1 * len_2
     if (denom === 0) return 90 // degenerate axis: orthogonal keeps the cell round-trippable
-    return Math.acos(Math.max(-1, Math.min(1, dot / denom))) * RAD_TO_DEG
+    return Math.acos(clamp(dot / denom, -1, 1)) * RAD_TO_DEG
   }
   const alpha = safe_angle(dot(b_vec, c_vec), b, c)
   const beta = safe_angle(dot(a_vec, c_vec), a, c)
@@ -117,17 +129,33 @@ export function euclidean_dist(vec1: readonly number[], vec2: readonly number[])
 // and the integer shifts that reciprocal-space bounds say could still beat that Cartesian
 // radius are then searched. Runs per atom pair in RDF/MSD/bonding loops, so it works in
 // scalars and allocates only the returned Vec3.
-export function min_image_displacement(
+export const min_image_displacement = (
   from: Vec3,
   to: Vec3,
   lattice_matrix: Matrix3x3,
   converters?: LatticeConverters,
   pbc: Pbc = [true, true, true],
+): Vec3 => min_image_displacement_into(from, to, lattice_matrix, converters, pbc, [0, 0, 0])
+
+// Allocation-free variant for frame-major unwrap loops: writes the displacement into `out`
+// and returns it
+export function min_image_displacement_into(
+  from: Vec3,
+  to: Vec3,
+  lattice_matrix: Matrix3x3,
+  converters: LatticeConverters | undefined,
+  pbc: Pbc,
+  out: Vec3,
 ): Vec3 {
   const delta_x = to[0] - from[0]
   const delta_y = to[1] - from[1]
   const delta_z = to[2] - from[2]
-  if (!pbc[0] && !pbc[1] && !pbc[2]) return [delta_x, delta_y, delta_z]
+  if (!pbc[0] && !pbc[1] && !pbc[2]) {
+    out[0] = delta_x
+    out[1] = delta_y
+    out[2] = delta_z
+    return out
+  }
 
   const { lattice, reciprocal, reciprocal_axis_norms } =
     converters ?? create_lattice_converters(lattice_matrix)
@@ -185,7 +213,10 @@ export function min_image_displacement(
       }
     }
   }
-  return [best_x, best_y, best_z]
+  out[0] = best_x
+  out[1] = best_y
+  out[2] = best_z
+  return out
 }
 
 // Minimum distance between two points under periodic boundary conditions.
@@ -509,11 +540,40 @@ export function reduce_miller_indices(hkl: Vec3): Vec3 {
   return [hkl[0] / divisor, hkl[1] / divisor, hkl[2] / divisor]
 }
 
+// === Descriptive statistics ===
+// Plain loops, not reduce: these run over per-frame trajectory series and box-plot samples.
+
+// Arithmetic mean; NaN for empty input (0/0), matching the mathematical convention.
+export function mean(values: readonly number[]): number {
+  let sum = 0
+  for (const value of values) sum += value
+  return sum / values.length
+}
+
+// Sample standard deviation (n - 1 denominator); 0 for fewer than two values.
+export function sample_std(values: readonly number[]): number {
+  const n_vals = values.length
+  if (n_vals < 2) return 0
+  const avg = mean(values)
+  let variance_sum = 0
+  for (const value of values) {
+    const delta = value - avg
+    variance_sum += delta * delta
+  }
+  return Math.sqrt(variance_sum / (n_vals - 1))
+}
+
+// Median without mutating the input; NaN for empty input.
+export function median(values: readonly number[]): number {
+  if (values.length === 0) return NaN
+  return quantile_unordered([...values], 0.5)
+}
+
 export function get_coefficient_of_variation(values: number[]): number {
   if (values.length <= 1) return 0
-  const mean = values.reduce((sum, val) => sum + val, 0) / values.length
-  const variance = values.reduce((sum, val) => sum + (val - mean) ** 2, 0) / values.length
-  return Math.abs(mean) > 1e-10 ? Math.sqrt(variance) / Math.abs(mean) : Math.sqrt(variance)
+  const avg = mean(values)
+  const variance = values.reduce((sum, val) => sum + (val - avg) ** 2, 0) / values.length
+  return Math.abs(avg) > 1e-10 ? Math.sqrt(variance) / Math.abs(avg) : Math.sqrt(variance)
 }
 
 // Compute 4x4 determinant (used for 4D barycentric coordinates)
@@ -591,8 +651,8 @@ export function det_nxn(matrix: number[][]): number {
   return det
 }
 
-// 3D cross product
-export const cross_3d = (vec1: Vec3, vec2: Vec3): Vec3 => [
+// 3D cross product. ArrayLike so typed-array subarrays from flat position buffers work.
+export const cross_3d = (vec1: ArrayLike<number>, vec2: ArrayLike<number>): Vec3 => [
   vec1[1] * vec2[2] - vec1[2] * vec2[1],
   vec1[2] * vec2[0] - vec1[0] * vec2[2],
   vec1[0] * vec2[1] - vec1[1] * vec2[0],

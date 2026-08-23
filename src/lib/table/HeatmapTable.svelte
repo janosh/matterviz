@@ -1,14 +1,16 @@
 <script lang="ts">
   import {
-    add_alpha,
+    contrast_color_memo,
     contrast_text_color,
     type D3InterpolateName,
-    pick_contrast_color,
     resolve_backdrop,
     resolve_css_color,
   } from '$lib/colors'
   import { download } from '$lib/io/fetch'
   import { format_num } from '$lib/labels'
+  import { clamp } from '$lib/math'
+  import { is_activation_key } from '$lib/plot/core/interactions'
+  import { clamp01 } from '$lib/utils'
   import { ControlPane } from '$lib/overlays'
   import { sanitize_html, sanitize_html_ssr } from '$lib/sanitize'
   import type {
@@ -96,8 +98,8 @@
     default_num_format = `.3`,
     show_heatmap = $bindable(true),
     heatmap_class = `heatmap`,
-    onrowclick,
-    onrowdblclick,
+    on_row_click,
+    on_row_double_click,
     column_order = $bindable([]),
     column_prefs = $bindable({}),
     export_data = false,
@@ -139,8 +141,8 @@
     default_num_format?: string
     show_heatmap?: boolean
     heatmap_class?: ClassValue
-    onrowclick?: (event: MouseEvent | KeyboardEvent, row: RowData) => void
-    onrowdblclick?: (event: MouseEvent, row: RowData) => void
+    on_row_click?: (event: MouseEvent | KeyboardEvent, row: RowData) => void
+    on_row_double_click?: (event: MouseEvent, row: RowData) => void
     // Column IDs (see get_column_id) in display order. Bindable so drag reorders persist.
     column_order?: string[]
     // Per-column user tuning (width, color scale, gradient direction, date format,
@@ -158,7 +160,7 @@
     density?: `compact` | `cosy` | `comfortable`
     // Make cells keyboard-navigable: arrows move the active cell, Shift+arrow extends the
     // selection, Alt+Left/Right moves a column. Off by default so tables that only display
-    // data don't add a tab stop; rows with onrowclick keep their own row-level keys.
+    // data don't add a tab stop; rows with on_row_click keep their own row-level keys.
     keyboard_cells?: boolean
     search?: Search
     // Current search query. Bindable so parents can control or persist it.
@@ -576,7 +578,7 @@
     const measured = rows.length ? height_sum / rows.length : 0
     if (measured <= 0) return false
     if (Math.abs(measured - untrack(() => avg_row_height)) > 0.5) {
-      avg_row_height = Math.min(400, Math.max(8, measured))
+      avg_row_height = clamp(measured, 8, 400)
     }
     return true
   }
@@ -757,29 +759,26 @@
 
   // Fraction of the column's domain a value fills, for in-cell data bars. Clamped so a
   // quantile-clipped domain saturates instead of overflowing the cell.
-  const bar_fraction = (val: CellVal, view: ColumnView): number | null => {
-    const num = parse_numeric_val(val)
+  const bar_fraction = (num: number | null, view: ColumnView): number | null => {
     if (num === null || !view.stats) return null
     const [lo, hi] = view.stats.domain
     const frac = hi === lo ? 1 : (num - lo) / (hi - lo)
     // `lower is better` puts the best value at the full end, matching the color scale
     const oriented = better_of(view.col) === `lower` ? 1 - frac : frac
-    return Math.max(0, Math.min(1, oriented))
+    return clamp01(oriented)
   }
 
   const NO_COLOR: CellColor = { bg: null, text: null }
-  function calc_color(val: CellVal, view: ColumnView): CellColor {
+  // Text contrast against a translucent cell fill blended with the page
+  const translucent_text = contrast_color_memo({
+    backdrop: () => page_backdrop.current,
+    alpha: () => heatmap_opacity,
+  })
+  function calc_color(num: number | null, view: ColumnView): CellColor {
     if (!view.color) return NO_COLOR
-    const color = view.color(parse_numeric_val(val))
-    // Recompute text contrast against the effective bg (cell bg blended with page bg)
-    if (color.bg && heatmap_opacity < 1) {
-      const text = pick_contrast_color({
-        background: add_alpha(color.bg, heatmap_opacity),
-        backdrop: page_backdrop.current,
-      })
-      return { bg: color.bg, text }
-    }
-    return color
+    const color = view.color(num)
+    if (!color.bg || heatmap_opacity >= 1) return color
+    return { bg: color.bg, text: translucent_text(color.bg) }
   }
 
   // === Column drag reorder (within a group, so group headers stay contiguous) ===
@@ -858,7 +857,7 @@
     if (display_rows.length === 0 || visible_columns.length === 0) return { row: -1, col: -1 }
     const first_row = display_range.start
     return {
-      row: Math.min(Math.max(active_cell.row, first_row), first_row + display_rows.length - 1),
+      row: clamp(active_cell.row, first_row, first_row + display_rows.length - 1),
       col: Math.min(active_cell.col, visible_columns.length - 1),
     }
   })
@@ -983,8 +982,8 @@
       return true
     }
     const to = {
-      row: Math.min(sorted_data.length - 1, Math.max(0, row + row_step)),
-      col: Math.min(visible_columns.length - 1, Math.max(0, col + col_step)),
+      row: clamp(row + row_step, 0, sorted_data.length - 1),
+      col: clamp(col + col_step, 0, visible_columns.length - 1),
     }
     selection.step({ row, col }, to, event.shiftKey)
     focus_cell(to.row, to.col)
@@ -1033,11 +1032,11 @@
   async function handle_body_keydown(event: KeyboardEvent & BodyEvent) {
     const pos = cell_under(event)
     if (keyboard_cells && pos && handle_cell_keydown(event, pos)) return
-    const abs_idx = onrowclick ? row_under(event) : null
+    const abs_idx = on_row_click ? row_under(event) : null
     if (abs_idx === null) return
-    if (event.key === `Enter` || event.key === ` `) {
+    if (is_activation_key(event)) {
       event.preventDefault()
-      onrowclick?.(event, sorted_data[abs_idx])
+      on_row_click?.(event, sorted_data[abs_idx])
       return
     }
     if (event.key !== `ArrowDown` && event.key !== `ArrowUp`) return
@@ -1210,7 +1209,6 @@
   // The handle captures the pointer, so moves and the release reach it even once the cursor
   // has left the header, and there are no document listeners to unregister.
   let resize = $state<{ col_id: string; start_x: number; start_width: number } | null>(null)
-  const clamp_width = (width: number) => Math.min(500, Math.max(50, width))
   function start_resize(event: PointerEvent & { currentTarget: HTMLElement }, col_id: string) {
     event.preventDefault()
     event.stopPropagation()
@@ -1222,7 +1220,7 @@
   function resize_to(event: PointerEvent) {
     if (!resize) return
     const width = resize.start_width + event.clientX - resize.start_x
-    set_pref(resize.col_id, `width`, clamp_width(width))
+    set_pref(resize.col_id, `width`, clamp(width, 50, 500))
   }
   const end_resize = () => (resize = null)
   // Double-click the handle to fit the column to its widest rendered cell. Cells clip with
@@ -1248,7 +1246,7 @@
         element.scrollWidth + element.offsetWidth - element.clientWidth,
       )
     }
-    if (widest > 0) set_pref(col_id, `width`, clamp_width(widest + 8))
+    if (widest > 0) set_pref(col_id, `width`, clamp(widest + 8, 50, 500))
   }
 
   // Delegation keeps tooltips working as sorting, filtering and pagination replace cells
@@ -1604,8 +1602,8 @@
                   filter={prefs_of(col_id).filter}
                   stats={view.stats}
                   open={popover_open(`filter`, col_id)}
-                  ontoggle={() => toggle_popover(`filter`, col_id)}
-                  onchange={(filter) => set_pref(col_id, `filter`, filter)}
+                  on_toggle={() => toggle_popover(`filter`, col_id)}
+                  on_change={(filter) => set_pref(col_id, `filter`, filter)}
                 />
               {/if}
               {#if dt_mode}
@@ -1614,8 +1612,8 @@
                   mode={dt_mode}
                   options={datetime_format_options(col)}
                   open={popover_open(`datetime`, col_id)}
-                  ontoggle={() => toggle_popover(`datetime`, col_id)}
-                  onchange={(mode) => set_pref(col_id, `datetime_format`, mode)}
+                  on_toggle={() => toggle_popover(`datetime`, col_id)}
+                  on_change={(mode) => set_pref(col_id, `datetime_format`, mode)}
                 />
               {/if}
               <!-- svelte-ignore a11y_no_noninteractive_element_interactions, a11y_click_events_have_key_events (column resize handle; its click must not sort the header) -->
@@ -1646,11 +1644,11 @@
         onpointermove={extend_cell_drag}
         onfocusin={handle_body_focusin}
         oncontextmenu={handle_body_contextmenu}
-        onkeydown={keyboard_cells || onrowclick
+        onkeydown={keyboard_cells || on_row_click
           ? (event) => void handle_body_keydown(event)
           : undefined}
-        onclick={onrowclick ? row_handler(onrowclick) : undefined}
-        ondblclick={onrowdblclick ? row_handler(onrowdblclick) : undefined}
+        onclick={on_row_click ? row_handler(on_row_click) : undefined}
+        ondblclick={on_row_double_click ? row_handler(on_row_double_click) : undefined}
       >
         {@render virtual_spacer(spacer_top)}
         {#each display_rows as row, row_idx (get_row_id(row))}
@@ -1660,7 +1658,7 @@
             style={row.style}
             class={[row.class, { selected: row_selected }]}
             data-row-idx={abs_idx}
-            tabindex={onrowclick ? 0 : undefined}
+            tabindex={on_row_click ? 0 : undefined}
           >
             {#if show_row_select}
               <td class="select-col">
@@ -1675,7 +1673,8 @@
             {#each cols as view, col_idx (view.id)}
               {@const { col } = view}
               {@const val = row[view.key]}
-              {@const color = calc_color(val, view)}
+              {@const num = parse_numeric_val(val)}
+              {@const color = calc_color(num, view)}
               {@const date_val = view.dt_mode
                 ? format_datetime_cell(val, col, view.dt_mode)
                 : null}
@@ -1692,7 +1691,7 @@
                 class:sticky-col={col.sticky}
                 class:numeric-col={view.numeric}
                 class:cell-selected={selection.has(abs_idx, col_idx)}
-                class:best-cell={view.best !== null && parse_numeric_val(val) === view.best}
+                class:best-cell={view.best !== null && num === view.best}
                 tabindex={!keyboard_cells
                   ? undefined
                   : tab_stop.row === abs_idx && tab_stop.col === col_idx
@@ -1703,7 +1702,7 @@
                 style={view.cell_style}
               >
                 {#if view.bar}
-                  {@const fraction = bar_fraction(val, view)}
+                  {@const fraction = bar_fraction(num, view)}
                   {#if fraction !== null}
                     <!-- sits behind the cell text, so the number stays readable. With `both`,
                          the fill already paints the cell in color.bg, so a bar of that same
@@ -1802,7 +1801,7 @@
           value={page}
           onchange={(event) => {
             const val = parseInt(event.currentTarget.value, 10)
-            current_page = Math.max(1, Math.min(total_pages, Number.isNaN(val) ? 1 : val))
+            current_page = clamp(Number.isNaN(val) ? 1 : val, 1, total_pages)
             event.currentTarget.value = String(current_page)
           }}
         />

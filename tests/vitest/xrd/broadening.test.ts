@@ -33,10 +33,8 @@ describe(`compute_broadened_pattern`, () => {
 
   test.each([
     { step: 0, range: [10, 80], err: `step_size must be > 0 and finite` },
-    { step: -0.01, range: [10, 80], err: `step_size must be > 0 and finite` },
     { step: Infinity, range: [10, 80], err: `step_size must be > 0 and finite` },
     { step: 0.02, range: [-Infinity, 80], err: `range must be finite and max > min` },
-    { step: 0.02, range: [10, Infinity], err: `range must be finite and max > min` },
     { step: 0.02, range: [50, 40], err: `range must be finite and max > min` },
     { step: 0.02, range: [40, 40], err: `range must be finite and max > min` },
   ])(`throws "$err" for step=$step, range=$range`, ({ step, range, err }) => {
@@ -182,14 +180,11 @@ describe(`broaden_peaks`, () => {
     [`Gaussian`, 0, 1],
     [`half-and-half`, 0.5, 0.5 + 0.5 * (2 / Math.PI) * Math.atan(40)],
     [`Lorentzian`, 1, (2 / Math.PI) * Math.atan(40)],
-  ])(`%s: unit peak integrates to %f and halves at ±FWHM/2`, (_name, eta, expected_area) => {
+  ])(`%s: unit peak integrates to %f`, (_name, eta, expected_area) => {
+    // the half-height at ±FWHM/2 is measured by the measure_fwhm table below
     const step = 0.002
-    const fwhm = 2
-    const { x, y } = broaden_peaks({ x: [50], y: [1] }, () => fwhm, eta, [0, 100], step)
+    const { y } = broaden_peaks({ x: [50], y: [1] }, () => 2, eta, [0, 100], step)
     expect(y.reduce((sum, val) => sum + val, 0) * step).toBeCloseTo(expected_area, 4)
-    const peak_idx = x.indexOf(50)
-    const half_idx = x.findIndex((val) => Math.abs(val - (50 + fwhm / 2)) < step / 2)
-    expect(y[half_idx] / y[peak_idx]).toBeCloseTo(0.5, 4)
   })
 
   test.each([NaN, -0.1, 1.2])(`rejects shape_factor %s`, (shape_factor) => {

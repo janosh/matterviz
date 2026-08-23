@@ -3,6 +3,10 @@ import type { VolumetricData } from '$lib/isosurface'
 import { DEFAULT_ISOSURFACE_SETTINGS } from '$lib/isosurface/types'
 import { create_frac_to_cart, type Vec3 } from '$lib/math'
 import { DEFAULTS } from '$lib/settings'
+import {
+  create_structure_view_state,
+  save_structure_view_state,
+} from '$lib/settings/viewer-state'
 import * as symmetry from '$lib/symmetry'
 import type { StructureBond, StructureHandlerData, StructurePane } from '$lib/structure'
 import { get_element_counts } from '$lib/structure'
@@ -17,9 +21,15 @@ import {
   create_drop_event,
   deferred_fetch_responses,
   doc_query,
+  fcc_primitive_matrix,
+  IDENTITY_MATRIX3,
+  init_moyo_for_tests,
+  make_crystal,
   make_grid,
+  make_position_stream,
   make_volume,
   press_window_key,
+  trigger_resize_observer,
 } from '../setup'
 
 // Passthrough spy so individual tests can make make_supercell throw
@@ -47,17 +57,22 @@ const mount_bound_structure = (
   return state
 }
 
-const select_structure_layout = async (label: string): Promise<void> => {
-  doc_query<HTMLButtonElement>(`button[aria-label^="View layout:"]`).click()
+// Open the dropdown menu behind `trigger` and click the option labelled `label`
+const pick_menu_option = async (trigger: string, label: string): Promise<void> => {
+  doc_query<HTMLButtonElement>(trigger).click()
   await tick()
-  const option = Array.from(
-    document.querySelectorAll<HTMLButtonElement>(`.view-layout-dropdown .view-mode-option`),
-  ).find((button) => button.textContent?.trim() === label)
-  if (!option) throw new Error(`Missing structure layout option: ${label}`)
+  const option = [...document.querySelectorAll<HTMLButtonElement>(`.view-mode-option`)].find(
+    (button) => button.textContent?.trim() === label,
+  )
+  if (!option) throw new Error(`Missing menu option: ${label}`)
   option.click()
   flushSync()
   await tick()
 }
+const select_structure_layout = (label: string): Promise<void> =>
+  pick_menu_option(`button[aria-label^="View layout:"]`, label)
+const select_measure_mode = (label: string): Promise<void> =>
+  pick_menu_option(`button[aria-label="Measure / Edit"]`, label)
 
 const set_aria_input = (aria_label: string, value: string): void => {
   const input = doc_query<HTMLInputElement>(`input[aria-label="${aria_label}"]`)
@@ -535,6 +550,34 @@ describe(`Structure`, () => {
     }
   })
 
+  // The symmetry-element overlay only exists in the analyzed (input) cell and is blanked for
+  // conventional/primitive views; that must be said (toast), not happen silently
+  test(`toasts why the symmetry overlay vanishes when the cell leaves the input frame`, async () => {
+    await init_moyo_for_tests()
+    const prim_fcc_cu = make_crystal(fcc_primitive_matrix(3.61), [
+      { element: `Cu`, abc: [0, 0, 0] },
+    ])
+    const sym_data = await symmetry.analyze_structure_symmetry(prim_fcc_cu)
+    const symmetry_elements = symmetry.symmetry_elements_from_ops(sym_data.operations ?? [])
+    expect(symmetry.has_visible_symmetry_overlay(symmetry_elements)).toBe(true)
+    const props = $state<ComponentProps<typeof Structure>>({
+      structure: prim_fcc_cu,
+      scene_props: { symmetry_elements },
+      cell_type: `original`,
+      sym_data: null,
+    })
+    mount_structure(props)
+    flushSync()
+    // the mount-time analysis reset has run; hand the viewer its symmetry data now
+    props.sym_data = sym_data
+    flushSync()
+    expect(document.querySelector(`.edit-toast`)).toBeNull()
+
+    props.cell_type = `conventional`
+    flushSync()
+    expect(doc_query(`.edit-toast`).textContent).toBe(symmetry.SYM_ELEMENTS_INPUT_FRAME_NOTE)
+  })
+
   test(`shows safe bond editing controls by default`, async () => {
     mount_structure({ structure, measure_mode: `edit-bonds`, show_controls: true })
     await tick()
@@ -809,6 +852,124 @@ describe(`Structure`, () => {
     expect(on_fullscreen_change).toHaveBeenCalledTimes(2)
   })
 
+  // `fullscreen` is bindable: the parent's value follows the browser's fullscreen element, and
+  // setting it from the parent requests/exits fullscreen like the button does
+  test(`bind:fullscreen follows the fullscreen element and drives it`, async () => {
+    const request_fullscreen = vi.fn().mockResolvedValue(undefined)
+    const exit_fullscreen = vi.fn().mockResolvedValue(undefined)
+    const set_fullscreen_element = async (value: Element | null) => {
+      Object.defineProperty(document, `fullscreenElement`, { value, configurable: true })
+      document.dispatchEvent(new Event(`fullscreenchange`))
+      await tick()
+    }
+    const props = $state({ fullscreen: false })
+    mount_structure(bind_props({ structure, show_controls: `always` as const }, props))
+    const wrapper = doc_query(`.structure`)
+    wrapper.requestFullscreen = request_fullscreen
+    document.exitFullscreen = exit_fullscreen
+    await tick()
+
+    doc_query<HTMLButtonElement>(
+      `.structure > section.control-buttons > .fullscreen-btn`,
+    ).click()
+    await vi.waitFor(() => expect(request_fullscreen).toHaveBeenCalledOnce())
+    await set_fullscreen_element(wrapper)
+    expect(props.fullscreen).toBe(true)
+
+    props.fullscreen = false
+    await vi.waitFor(() => expect(exit_fullscreen).toHaveBeenCalledOnce())
+    await set_fullscreen_element(null)
+    expect(props.fullscreen).toBe(false)
+    expect(wrapper.classList.contains(`fullscreen`)).toBe(false)
+  })
+
+  // `width`/`height` are bindable read-outs of the wrapper's client size, kept current through
+  // the ResizeObserver behind bind:clientWidth/clientHeight (the 2x2 grid and the panes size
+  // themselves from these)
+  test(`bind:width/height report the wrapper size and follow resizes`, async () => {
+    const width_spy = vi
+      .spyOn(HTMLElement.prototype, `clientWidth`, `get`)
+      .mockReturnValue(640)
+    const height_spy = vi
+      .spyOn(HTMLElement.prototype, `clientHeight`, `get`)
+      .mockReturnValue(480)
+    try {
+      const props = $state({ width: 0, height: 0 })
+      mount_structure(bind_props({ structure }, props))
+      await tick()
+      expect([props.width, props.height]).toEqual([640, 480])
+
+      width_spy.mockReturnValue(1024)
+      height_spy.mockReturnValue(768)
+      trigger_resize_observer(doc_query(`.structure`))
+      await tick()
+      expect([props.width, props.height]).toEqual([1024, 768])
+    } finally {
+      width_spy.mockRestore()
+      height_spy.mockRestore()
+    }
+  })
+
+  // `persist_settings` reaches the controls pane: a saved browser view state is restored into
+  // the viewer's bound settings only when opted in
+  test.each([true, false])(
+    `persist_settings=%s restores saved view state`,
+    async (persist) => {
+      save_structure_view_state(
+        create_structure_view_state({
+          color_scheme: `Jmol`,
+          show_image_atoms: false,
+          supercell_scaling: `2x2x1`,
+          scene_props: { atom_radius: 1.35 },
+        }),
+      )
+      const defaults = {
+        color_scheme: DEFAULTS.color_scheme,
+        show_image_atoms: true,
+        supercell_scaling: `1x1x1`,
+      }
+      const props = $state({ ...defaults })
+      mount_structure(
+        bind_props(
+          { structure, show_controls: `always` as const, persist_settings: persist },
+          props,
+        ),
+      )
+      await tick()
+      expect(props).toEqual(
+        persist
+          ? { color_scheme: `Jmol`, show_image_atoms: false, supercell_scaling: `2x2x1` }
+          : defaults,
+      )
+      // the scene settings land in the controls pane (atom radius slider)
+      doc_query<HTMLButtonElement>(`button.structure-controls-toggle`).click()
+      await tick()
+      const radius_input = doc_query<HTMLInputElement>(
+        `[data-key="atom_radius"] input[type="number"]`,
+      )
+      expect(Number(radius_input.value)).toBe(persist ? 1.35 : DEFAULTS.structure.atom_radius)
+    },
+  )
+
+  // The Measure / Edit menu writes the bound measure_mode; distance is the default and stays
+  // selectable from every other mode
+  test(`Measure / Edit menu switches the bound measure_mode`, async () => {
+    const props = $state<{ measure_mode: MeasureMode }>({ measure_mode: `angle` })
+    mount_structure(bind_props({ structure, show_controls: true }, props))
+    await tick()
+    await select_measure_mode(`Distance`)
+    expect(props.measure_mode).toBe(`distance`)
+    await select_measure_mode(`Dihedral`)
+    expect(props.measure_mode).toBe(`dihedral`)
+    await select_measure_mode(`Edit Atoms`)
+    expect(props.measure_mode).toBe(`edit-atoms`)
+    // the toolbar for the active mode appears, and distance has none
+    expect(document.querySelector(`.edit-mode-toolbar`)).not.toBeNull()
+    await select_measure_mode(`Distance`)
+    expect(props.measure_mode).toBe(`distance`)
+    expect(document.querySelector(`.edit-mode-toolbar`)).toBeNull()
+  })
+
   test(`drag and drop passes content and metadata to on_file_drop`, async () => {
     const filename = `test.poscar`
     const on_file_drop = vi.fn()
@@ -917,6 +1078,31 @@ test(`camera projection and auto-rotate controls reflect scene_props`, async () 
   const auto_rotate_input =
     auto_rotate_label?.querySelector<HTMLInputElement>(`input[type="number"]`)
   expect(Number(auto_rotate_input?.value)).toBeCloseTo(0.5, 1)
+})
+
+// show_trajectory_lines lives outside scene_props (Trajectory binds it top-level), but a caller
+// passing it inside scene_props must still be honored instead of silently falling to the default
+test(`scene_props.show_trajectory_lines seeds the trail toggle`, async () => {
+  const trajectory_position_stream = make_position_stream(
+    Array.from({ length: 3 }, () => [[0, 0, 0]]),
+    [`H`],
+    {
+      lattice_matrices: Array.from({ length: 3 }, () => IDENTITY_MATRIX3),
+      pbc: [false, false, false],
+      coords_unwrapped: true,
+    },
+  )
+  mount_structure({
+    structure,
+    active_pane: `controls`,
+    show_controls: true,
+    scene_props: { show_trajectory_lines: true, trajectory_position_stream },
+  })
+  await tick()
+  const toggle = doc_query<HTMLInputElement>(
+    `[data-key="show_trajectory_lines"] input[type="checkbox"]`,
+  )
+  expect(toggle.checked).toBe(true)
 })
 
 test(`viewer-local setting changes do not mutate defaults or another viewer`, async () => {
@@ -1178,15 +1364,18 @@ describe(`Structure string parsing`, () => {
     expect(fetch_mock).not.toHaveBeenCalled()
   })
 
-  test(`ignores a stale structure URL completion`, async () => {
+  // Mount with `/a.json` as a pending (deferred) fetch and wait for the request to be issued
+  const mount_pending_url = async (extra: ComponentProps<typeof Structure> = {}) => {
     const responses = deferred_fetch_responses()
-    const on_file_load = vi.fn()
-    const props = $state<ComponentProps<typeof Structure>>({
-      data_url: `/a.json`,
-      on_file_load,
-    })
+    const props = $state<ComponentProps<typeof Structure>>({ data_url: `/a.json`, ...extra })
     mount_structure(props)
     await vi.waitFor(() => expect(responses.has(`/a.json`)).toBe(true))
+    return { responses, props }
+  }
+
+  test(`ignores a stale structure URL completion`, async () => {
+    const on_file_load = vi.fn()
+    const { responses, props } = await mount_pending_url({ on_file_load })
 
     props.data_url = `/b.json`
     await vi.waitFor(() => expect(responses.has(`/b.json`)).toBe(true))
@@ -1202,14 +1391,10 @@ describe(`Structure string parsing`, () => {
   })
 
   test(`an unrelated prop change does not abort and restart an in-flight data_url fetch`, async () => {
-    const responses = deferred_fetch_responses()
-    const props = $state<ComponentProps<typeof Structure>>({
-      data_url: `/a.json`,
+    const { responses, props } = await mount_pending_url({
       isosurface_settings: { ...DEFAULT_ISOSURFACE_SETTINGS },
       active_volume_idx: 0,
     })
-    mount_structure(props)
-    await vi.waitFor(() => expect(responses.get(`/a.json`)).toHaveLength(1))
     props.isosurface_settings = { ...DEFAULT_ISOSURFACE_SETTINGS }
     props.active_volume_idx = 2
     await tick()
@@ -1218,14 +1403,8 @@ describe(`Structure string parsing`, () => {
   })
 
   test(`on_error reports the requested URL, not a superseded data_url`, async () => {
-    const responses = deferred_fetch_responses()
     const on_error = vi.fn()
-    const props = $state<ComponentProps<typeof Structure>>({
-      data_url: `/a.json`,
-      on_error,
-    })
-    mount_structure(props)
-    await vi.waitFor(() => expect(responses.has(`/a.json`)).toBe(true))
+    const { responses, props } = await mount_pending_url({ on_error })
 
     props.data_url = `/b.json`
     await vi.waitFor(() => expect(responses.has(`/b.json`)).toBe(true))
@@ -1277,24 +1456,11 @@ describe(`Multi-side view`, () => {
     mount_structure(props)
     await tick()
 
-    const layout_button = doc_query<HTMLButtonElement>(
-      `button[aria-label="View layout: 3D single view"]`,
-    )
+    doc_query(`button[aria-label="View layout: 3D single view"]`)
     expect(document.querySelector(`.view-mode-caret`)).toBeNull()
     expect(doc_query(`.structure`).classList.contains(`multi-view`)).toBe(false)
 
-    layout_button.click()
-    await tick()
-    const dropdown = doc_query(`.view-mode-dropdown`)
-
-    const grid_option = [
-      ...dropdown.querySelectorAll<HTMLButtonElement>(`.view-mode-option`),
-    ].find((button) => button.textContent?.trim() === `3D 2×2 grid`)
-    if (!grid_option) throw new Error(`Missing structure layout option: 3D 2×2 grid`)
-    grid_option.click()
-    flushSync()
-    await tick()
-
+    await select_structure_layout(`3D 2×2 grid`)
     expect(props.multi_view).toBe(true)
     expect(doc_query(`.structure`).classList.contains(`multi-view`)).toBe(true)
     expect(document.querySelector(`.view-mode-dropdown`)).toBeNull()

@@ -1,7 +1,18 @@
 import BrillouinZone from '$lib/brillouin/BrillouinZone.svelte'
-import { mount, unmount } from 'svelte'
+import { compute_brillouin_zone } from '$lib/brillouin/compute'
+import type { BrillouinZoneData } from '$lib/brillouin/types'
+import { reciprocal_lattice } from '$lib/math'
+import type * as symmetry from '$lib/symmetry'
+import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, expect, test, vi } from 'vitest'
-import { make_crystal } from '../setup'
+import { cubic_matrix, make_crystal, type SimpleSite } from '../setup'
+
+// The IBZ needs moyo's point group; stand in for the WASM analysis so a test can make it fail
+const analyze_structure_symmetry = vi.hoisted(() => vi.fn())
+vi.mock(`$lib/symmetry`, async (original) => ({
+  ...(await original<typeof symmetry>()),
+  analyze_structure_symmetry,
+}))
 
 let mounted_component: ReturnType<typeof mount> | undefined
 
@@ -12,6 +23,22 @@ afterEach(async () => {
 })
 
 const poscar = `cubic\n1.0\n3 0 0\n0 3 0\n0 0 3\nSi\n1\nDirect\n0 0 0\n`
+const si_site: SimpleSite[] = [[`Si`, [0, 0, 0]]]
+const cubic = make_crystal(3, si_site)
+// A coplanar lattice has no reciprocal lattice, so no zone can be derived from it
+const coplanar = make_crystal(
+  [
+    [1, 0, 0],
+    [0, 1, 0],
+    [1, 1, 0],
+  ],
+  si_site,
+)
+// A zone of a different lattice so it cannot be confused with one computed from `cubic`
+const external = compute_brillouin_zone(
+  reciprocal_lattice(cubic_matrix(5), { two_pi: true }),
+  1,
+)
 
 // Without mark_owned, the first parsed structure looks caller-supplied and prevents the
 // loader from fetching a second URL.
@@ -29,20 +56,96 @@ test(`loads a second data_url after the first has produced a structure`, async (
     `a.poscar`,
     `b.poscar`,
   ])
+  // The payload carries the zone freshly derived from the loaded structure
+  expect(on_file_load.mock.calls[0][0].bz_data?.order).toBe(1)
+  expect(on_file_load.mock.calls[1][0].bz_data?.order).toBe(1)
+})
+
+// A host on_file_drop owns whatever it stores in `structure`; that value must not read as a
+// caller-supplied one that cancels the URL, or a second data_url would never be fetched
+test(`loads a second data_url when a host on_file_drop set the structure`, async () => {
+  vi.spyOn(globalThis, `fetch`).mockImplementation(() => Promise.resolve(new Response(poscar)))
+  const on_file_drop = vi.fn((_content: string | ArrayBuffer, _filename: string) => {
+    props.structure = cubic
+  })
+  const props = $state({
+    data_url: `http://x/a.poscar`,
+    structure: undefined as typeof cubic | undefined,
+    on_file_drop,
+  })
+  mounted_component = mount(BrillouinZone, { target: document.body, props })
+  await vi.waitFor(() => expect(on_file_drop).toHaveBeenCalledTimes(1))
+  await tick()
+
+  props.data_url = `http://x/b.poscar`
+  await vi.waitFor(() => expect(on_file_drop).toHaveBeenCalledTimes(2))
+  expect(on_file_drop.mock.calls.map((call) => call[1])).toEqual([`a.poscar`, `b.poscar`])
+})
+
+test(`reports loading while a structure_string is parsed`, async () => {
+  const on_file_load = vi.fn()
+  const props = $state({ structure_string: poscar, loading: false, on_file_load })
+  mounted_component = mount(BrillouinZone, { target: document.body, props })
+  flushSync()
+  // The parser is awaited, so the spinner covers at least one microtask
+  expect(props.loading).toBe(true)
+  await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(1))
+  expect(props.loading).toBe(false)
+  expect(on_file_load.mock.calls[0][0].bz_data?.order).toBe(1)
+})
+
+// The structure is stored before the host is notified, so a throwing on_file_load is the
+// host's failure, not a parse error — and the URL still owns the stored structure
+test(`a throwing on_file_load keeps the parsed structure and the URL's ownership of it`, async () => {
+  vi.spyOn(globalThis, `fetch`).mockImplementation(() => Promise.resolve(new Response(poscar)))
+  const on_file_load = vi.fn(() => {
+    throw new Error(`host exploded`)
+  })
+  const on_error = vi.fn()
+  const props = $state({
+    data_url: `http://x/a.poscar`,
+    structure: undefined as typeof cubic | undefined,
+    error_msg: undefined as string | undefined,
+    on_file_load,
+    on_error,
+  })
+  mounted_component = mount(BrillouinZone, { target: document.body, props })
+  await vi.waitFor(() => expect(on_error).toHaveBeenCalledTimes(1))
+  expect(props.structure?.sites).toHaveLength(1)
+  expect(props.error_msg).toMatch(/host exploded/)
+  expect(props.error_msg).not.toMatch(/Failed to parse/)
+  expect(on_error).toHaveBeenCalledWith(expect.objectContaining({ filename: `a.poscar` }))
+
+  props.data_url = `http://x/b.poscar`
+  await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(2))
+  expect(on_file_load).toHaveBeenLastCalledWith(
+    expect.objectContaining({ filename: `b.poscar` }),
+  )
+})
+
+// The file viewer mounts the component with only {k_lattice, vertices, faces}: the zone renders
+// on its own rather than asking for a structure file
+test(`a caller-supplied bz_data without a structure renders the zone`, async () => {
+  const { children, rendered } = zone_probe()
+  mounted_component = mount(BrillouinZone, {
+    target: document.body,
+    props: { bz_data: external, children, info_pane_open: true },
+  })
+  await tick()
+  await tick()
+  expect(rendered()).toBe(external)
+  const viewer = document.body.querySelector(`.brillouin-zone`)
+  expect(viewer?.textContent).not.toContain(`Drop Structure File`)
+  expect(viewer?.querySelector(`.control-buttons`)).not.toBeNull()
+  // Zone-only info rows; the real lattice needs a structure
+  expect(viewer?.textContent).toContain(`Vertices / Faces`)
+  expect(viewer?.textContent).not.toContain(`Real Lattice`)
 })
 
 // A coplanar lattice has no reciprocal lattice: the viewer must report that (error_msg +
 // on_error) rather than render NaN geometry or quietly show nothing
 test(`reports a singular lattice instead of computing a zone`, async () => {
   const on_error = vi.fn()
-  const coplanar = make_crystal(
-    [
-      [1, 0, 0],
-      [0, 1, 0],
-      [1, 1, 0],
-    ],
-    [[`Si`, [0, 0, 0]]],
-  )
   const props = $state({
     structure: coplanar,
     on_error,
@@ -81,4 +184,144 @@ test(`ignores a stale async on_file_drop failure`, async () => {
     expect(completed_filenames).toEqual([`b.poscar`])
     expect(on_error).not.toHaveBeenCalled()
   })
+})
+
+// The zone the component renders, observed through its `children` snippet (the derived zone
+// is never written back to the `bz_data` prop). The snippet type is intersected with
+// HTMLAttributes' argument-less Snippet, hence the cast.
+function zone_probe() {
+  let rendered: BrillouinZoneData | undefined
+  const children = createRawSnippet<[{ bz_data?: BrillouinZoneData }]>((get) => ({
+    render: () => `<span></span>`,
+    setup: () => {
+      $effect(() => {
+        rendered = get().bz_data
+      })
+    },
+  })) as ComponentProps<typeof BrillouinZone>[`children`]
+  return { children, rendered: () => rendered }
+}
+
+// Regression: the zone used to be computed once and then frozen (the effect early-returned
+// whenever bz_data already had vertices), so bz_order and structure changes were ignored
+test(`recomputes the zone when bz_order or the structure changes`, async () => {
+  const { children, rendered } = zone_probe()
+  const props = $state({ structure: cubic, bz_order: 1, children })
+  mounted_component = mount(BrillouinZone, { target: document.body, props })
+  await vi.waitFor(() => expect(rendered()?.order).toBe(1))
+  const first_volume = rendered()?.volume ?? 0
+  expect(first_volume).toBeCloseTo(((2 * Math.PI) / 3) ** 3, 8)
+
+  props.bz_order = 2
+  await vi.waitFor(() => expect(rendered()?.order).toBe(2))
+  expect(rendered()?.volume).toBeGreaterThan(first_volume)
+
+  props.bz_order = 1
+  props.structure = make_crystal(6, si_site)
+  // Doubling the cell halves every reciprocal vector: 1/8 of the first zone's volume
+  await vi.waitFor(() => expect(rendered()?.volume).toBeCloseTo(first_volume / 8, 8))
+})
+
+// pymatviz's BrillouinZoneWidget(structure=..., bz_data=...) hands over both: the user's zone
+// must be rendered as-is and never overwritten by (or replaced with) the structure-derived one
+test(`a caller-supplied bz_data wins over the structure-derived zone and is never written back`, async () => {
+  const { children, rendered } = zone_probe()
+  // Getter/setter props stand in for a bound parent: the getter hands the zone over by
+  // identity (a deep $state would proxy it) and any write-back would hit the setter
+  const set_bz_data = vi.fn()
+  const props = $state({ bz_order: 1, supplied: true })
+  mounted_component = mount(BrillouinZone, {
+    target: document.body,
+    props: {
+      structure: cubic,
+      children,
+      get bz_order() {
+        return props.bz_order
+      },
+      set bz_order(value) {
+        props.bz_order = value
+      },
+      get bz_data() {
+        return props.supplied ? external : undefined
+      },
+      set bz_data(value) {
+        set_bz_data(value)
+      },
+    },
+  })
+  await tick()
+  await tick()
+  expect(rendered()).toBe(external)
+
+  // Order changes only affect the derived zone; the external one keeps rendering
+  props.bz_order = 2
+  await tick()
+  await tick()
+  expect(rendered()).toBe(external)
+
+  // Clearing it falls back to the zone derived from the structure at the current order
+  props.supplied = false
+  await vi.waitFor(() => expect(rendered()?.order).toBe(2))
+  expect(rendered()?.volume).toBeGreaterThan(((2 * Math.PI) / 3) ** 3)
+  expect(set_bz_data).not.toHaveBeenCalled()
+})
+
+// The caller's zone is what renders, so a structure whose own zone cannot be derived must not
+// raise the fatal error that blanks the viewer
+test(`a caller-supplied bz_data keeps rendering when the structure's zone fails to compute`, async () => {
+  const on_error = vi.fn()
+  const props = $state({
+    structure: coplanar,
+    bz_data: external,
+    on_error,
+    error_msg: undefined as string | undefined,
+  })
+  mounted_component = mount(BrillouinZone, { target: document.body, props })
+  await tick()
+  await tick()
+  expect(props.error_msg).toBeUndefined()
+  expect(on_error).not.toHaveBeenCalled()
+  // deep $state proxies the zone, so compare by value
+  expect(props.bz_data.volume).toBe(external.volume)
+  expect(document.body.querySelector(`.brillouin-zone`)?.textContent).not.toMatch(/singular/)
+})
+
+test(`a structure that derives again clears the previous BZ computation error`, async () => {
+  const { children, rendered } = zone_probe()
+  const props = $state({
+    structure: coplanar,
+    children,
+    error_msg: undefined as string | undefined,
+  })
+  mounted_component = mount(BrillouinZone, { target: document.body, props })
+  await vi.waitFor(() => expect(props.error_msg).toMatch(/singular/))
+  props.structure = cubic
+  await vi.waitFor(() => expect(rendered()?.order).toBe(1))
+  expect(props.error_msg).toBeUndefined()
+})
+
+// The IBZ is an optional overlay: a failure used to land in the fatal error_msg and blank the
+// whole viewer (and stuck there after show_ibz was switched off)
+test(`an IBZ failure keeps the zone rendered and clears once show_ibz is off`, async () => {
+  analyze_structure_symmetry.mockRejectedValue(new Error(`degenerate point group`))
+  const on_error = vi.fn()
+  const { children, rendered } = zone_probe()
+  const props = $state({
+    structure: cubic,
+    show_ibz: true,
+    on_error,
+    children,
+    error_msg: undefined as string | undefined,
+  })
+  mounted_component = mount(BrillouinZone, { target: document.body, props })
+  await vi.waitFor(() => expect(on_error).toHaveBeenCalledTimes(1))
+  expect(on_error.mock.calls[0][0].error_msg).toMatch(/IBZ computation failed: .*degenerate/)
+  expect(props.error_msg).toBeUndefined()
+  expect(rendered()?.vertices.length).toBeGreaterThan(0)
+  const viewer = document.body.querySelector(`.brillouin-zone`)
+  expect(viewer?.querySelector(`.status-message.warning`)?.textContent).toMatch(/degenerate/)
+  expect(viewer?.querySelector(`.control-buttons`)).not.toBeNull() // zone chrome still up
+
+  props.show_ibz = false
+  await vi.waitFor(() => expect(viewer?.querySelector(`.status-message`)).toBeNull())
 })

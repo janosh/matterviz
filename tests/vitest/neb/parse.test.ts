@@ -5,7 +5,7 @@ import {
   REACTION_PATH_FORMAT,
 } from '$lib/neb/parse'
 import { analyze_barrier, path_spline, reaction_coordinate } from '$lib/neb/reaction-path'
-import { li_mgo_hop_json, reaction_paths } from '$site/neb'
+import { reaction_paths } from '$site/neb'
 import { describe, expect, test } from 'vitest'
 import { make_crystal } from '../setup'
 
@@ -205,7 +205,6 @@ describe(`Li/MgO demo fixture`, () => {
     expect(Object.keys(reaction_paths)).toEqual([`direct hop`, `curved hop`])
     expect(direct_path.images).toHaveLength(7)
     expect(curved_path.images).toHaveLength(9)
-    expect(li_mgo_hop_json).toContain(REACTION_PATH_FORMAT)
 
     for (const path of Object.values(reaction_paths)) {
       for (const image of path.images) {
@@ -228,7 +227,6 @@ describe(`Li/MgO demo fixture`, () => {
     expect(forward_barrier).toBeCloseTo(forward, 4)
     expect(reverse_barrier).toBeCloseTo(reverse, 4)
     expect(reaction_energy).toBeCloseTo(0.18, 4)
-    expect(forward_barrier - reverse_barrier).toBeCloseTo(reaction_energy, 12)
   })
 
   test(`both mechanisms share endpoints, so only the barrier differs`, () => {

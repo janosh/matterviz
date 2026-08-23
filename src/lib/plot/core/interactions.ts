@@ -190,6 +190,11 @@ export function remove_drag_listeners(
 // which arrive in either order depending on drag direction)
 export const sorted_range = (a: number, b: number): Vec2 => [Math.min(a, b), Math.max(a, b)]
 
+// Same for an axis range, which an inverted axis (e.g. [1, 0]) stores high-to-low.
+// Returns the input itself when already sorted so callers can keep identity.
+export const range_bounds = (range: Vec2): Vec2 =>
+  range[0] <= range[1] ? range : [range[1], range[0]]
+
 // Invert a drag-rect edge pair through a scale to a sorted finite data range
 // (time scales invert to Dates, coerced to epoch numbers). Returns null when
 // either bound is non-finite or the range is degenerate (zero span).
@@ -261,31 +266,23 @@ export const PINCH_ZOOM_THRESHOLD = 0.1
 // Guards curr_dist / start_dist scale from blowing up on near-coincident touches
 export const MIN_TOUCH_DISTANCE_PIXELS = 10
 
-// Helper to check if range is the default [0, 1] sentinel (no data)
-// Note: min === 0 handles -0 correctly since -0 === 0 in JavaScript
-const is_default_range = ([min, max]: Vec2) => min === 0 && max === 1
-
-// Adopt the new data range, unless all series were hidden (sentinel [0, 1] fallback).
-// NOTE: [0, 1] is the "no data" sentinel - when all series are hidden, auto ranges
-// fall back to [0, 1]. Actual data spanning exactly [0, 1] is a rare edge case.
+// Adopt the new range (expand or shrink) unless nothing backs it: `has_data` is false when
+// every series on the axis is hidden and no bound was pinned, so the auto range is only the
+// default fallback. Keeping the current view then stops the plot jumping on a legend toggle.
+// A value flag, not a range sentinel: data spanning exactly [0, 1] must still be adopted.
 export function expand_range_if_needed(
   current: Vec2,
   new_range: Vec2,
+  has_data = true,
 ): { range: Vec2; changed: boolean } {
-  // Guard against NaN/Infinity - prefer valid range, fall back to sentinel [0, 1] if both invalid
+  // Guard against NaN/Infinity - prefer valid range, fall back to [0, 1] if both invalid
   const current_valid = all_finite(current)
   const new_valid = all_finite(new_range)
   if (!current_valid && !new_valid) return { range: [0, 1], changed: true }
   if (!new_valid) return { range: current, changed: false }
   if (!current_valid) return { range: new_range, changed: true }
+  if (!has_data) return { range: current, changed: false }
 
-  // When all series are hidden, auto ranges fall back to [0, 1] sentinel.
-  // Don't shrink to that — preserve the current view so it doesn't jump.
-  if (!is_default_range(current) && is_default_range(new_range)) {
-    return { range: current, changed: false }
-  }
-
-  // Otherwise adopt the new range directly (both expand and shrink)
   const changed = new_range[0] !== current[0] || new_range[1] !== current[1]
   return { range: new_range, changed }
 }

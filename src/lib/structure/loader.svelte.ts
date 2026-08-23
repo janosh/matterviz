@@ -8,7 +8,6 @@ import {
   auto_isosurface_settings,
   label_file_volumes,
   lattices_match,
-  materialize_layers,
   merge_imported_volumes,
 } from '$lib/isosurface/types'
 import { parse_volumetric_file } from '$lib/isosurface/parse'
@@ -72,11 +71,9 @@ function open_structure_text(
     // lattices_match is false for an undefined lattice, so same_cell implies a current structure
     const same_cell = lattices_match(current_lattice, volumetric.structure.lattice?.matrix)
     if (same_cell && current.volumetric_data?.length) {
-      // Materialize the implicit single surface into explicit layers so existing surfaces
-      // survive the switch to multi-volume mode
       const merged = merge_imported_volumes(
         current.volumetric_data,
-        materialize_layers(current.isosurface_settings, current.active_volume_idx),
+        current.isosurface_settings.layers,
         incoming,
         current.active_volume_idx,
       )
@@ -98,7 +95,7 @@ function open_structure_text(
       document: {
         structure: same_cell ? current.structure : volumetric.structure,
         volumetric_data: incoming,
-        isosurface_settings: auto_isosurface_settings(incoming[0].data_range),
+        isosurface_settings: auto_isosurface_settings(incoming[0]),
         active_volume_idx: 0,
       },
       notice: same_cell

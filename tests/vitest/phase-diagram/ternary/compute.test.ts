@@ -10,8 +10,8 @@ import {
 } from '$lib/phase-diagram/ternary/compute'
 import type { TernaryPhaseDiagram } from '$lib/phase-diagram/ternary/types'
 import { beforeAll, describe, expect, test } from 'vitest'
-import { load_json } from '../../setup'
-import { phase, toy_elements, toy_entries, toy_temps } from './fixtures'
+import { load_json, make_phase } from '../../setup'
+import { toy_elements, toy_entries, toy_temps } from './fixtures'
 
 const labels = (diagram: Pick<TernaryPhaseDiagram, `phases`>, idxs: number[]) =>
   idxs.map((idx) => diagram.phases[idx].label).toSorted()
@@ -89,9 +89,13 @@ describe(`prepare_diagram`, () => {
   })
 
   test.each([
-    [[phase({ Li: 1, Na: 1 }, -0.5)], undefined, /exactly 3 elements, got 2/],
-    [[phase({ Li: 1, Na: 1, K: 1, Rb: 1 }, -0.5)], undefined, /exactly 3 elements, got 4/],
-    [[...toy_entries, phase({ Rb: 1 }, 0)], toy_elements, /outside the Li-Na-K system/],
+    [[make_phase({ Li: 1, Na: 1 }, -0.5)], undefined, /exactly 3 elements, got 2/],
+    [
+      [make_phase({ Li: 1, Na: 1, K: 1, Rb: 1 }, -0.5)],
+      undefined,
+      /exactly 3 elements, got 4/,
+    ],
+    [[...toy_entries, make_phase({ Rb: 1 }, 0)], toy_elements, /outside the Li-Na-K system/],
     [[{ composition: {}, energy: 0 }], toy_elements, /no recognizable elements/],
   ])(`rejects invalid systems (%#)`, (entries, elements, message) => {
     expect(() => prepare_diagram(entries, { elements })).toThrow(message)
@@ -134,7 +138,7 @@ describe(`compute_section`, () => {
 
   test(`edge cases: only elements, data range, exclude_from_hull`, () => {
     const elements_only = prepare_diagram(
-      [phase({ Li: 1 }, -1), phase({ Na: 1 }, -1), phase({ K: 1 }, -1)],
+      [make_phase({ Li: 1 }, -1), make_phase({ Na: 1 }, -1), make_phase({ K: 1 }, -1)],
       { elements: toy_elements },
     )
     expect(compute_section(elements_only, 500)).toMatchObject({
@@ -145,7 +149,7 @@ describe(`compute_section`, () => {
     expect(out_of_range.e_above_hull[0]).toBeNaN()
     expect(out_of_range.stable).not.toContain(0)
     const excluded = prepare_diagram(
-      [...toy_entries, phase({ Li: 3, Na: 1 }, -5, { exclude_from_hull: true })],
+      [...toy_entries, make_phase({ Li: 3, Na: 1 }, -5, { exclude_from_hull: true })],
       { elements: toy_elements },
     )
     const section = compute_section(excluded, 300)
@@ -154,7 +158,7 @@ describe(`compute_section`, () => {
     // An excluded element neither anchors the hull (a synthetic corner does) nor sets the
     // formation-energy zero
     const excluded_li = prepare_diagram(
-      [...toy_entries, phase({ Li: 1 }, -3, { exclude_from_hull: true })],
+      [...toy_entries, make_phase({ Li: 1 }, -3, { exclude_from_hull: true })],
       { elements: toy_elements },
     )
     expect(excluded_li.phases).toHaveLength(8) // 4 toy + excluded Li + 3 synthetic corners
@@ -218,7 +222,7 @@ describe(`compute_ternary_phase_diagram`, () => {
   test(`data gaps: a sweep wider than a tabulated reference stays consistent`, () => {
     // A flat Li table over 500-1100 K leaves the energetics alone but undefines the hull in
     // 300-500 and 1100-1500 K
-    const li_tab = phase({ Li: 1 }, 0, {
+    const li_tab = make_phase({ Li: 1 }, 0, {
       temperatures: [500, 800, 1100],
       free_energies: [0, 0, 0],
     })

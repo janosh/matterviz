@@ -13,6 +13,8 @@
     display,
     label_ticks = {},
     tick_color = {},
+    show_baseline = true,
+    unit_on_first_tick = false,
     axis_loading = null,
     on_axis_change,
   }: {
@@ -21,6 +23,10 @@
     // Tick label source overriding `axis.ticks` (categorical axes label their slots)
     label_ticks?: Partial<Record<FacetAxis, TicksOption>>
     tick_color?: Partial<Record<FacetAxis, (tick: number) => string | undefined>>
+    // Axis spine lines (ScatterPlot omits them)
+    show_baseline?: boolean
+    // Append `axis.unit` to the first rendered y/y2 tick label (ScatterPlot)
+    unit_on_first_tick?: boolean
     axis_loading?: FacetAxis | null
     on_axis_change?: (axis: FacetAxis, key: string) => void
   } = $props()
@@ -54,6 +60,8 @@
     width={frame.width}
     height={frame.height}
     show_grid={display[`${side}_grid`]}
+    {show_baseline}
+    unit_on_first_tick={unit_on_first_tick && (side === `y` || side === `y2`)}
     tick_label={(tick) => get_tick_label(tick, label_ticks[side] ?? axis.ticks)}
     tick_color={tick_color[side]}
     on_tick_font={side === `x` ? (font) => (frame.tick_font = font) : undefined}

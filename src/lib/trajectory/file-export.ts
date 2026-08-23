@@ -1,11 +1,10 @@
 // Serialize trajectory frames back to files. Frames are pulled one at a time through a
 // resolver rather than read off `trajectory.frames`, because an indexed trajectory keeps only
 // a handful of frames in memory and would otherwise export a truncated file.
-import { rows_to_csv } from '$lib/heatmap-matrix'
 import { trajectory_property_config } from '$lib/labels'
 import { structure_to_poscar_str, structure_to_xyz_str } from '$lib/structure/export'
 import type { Site } from '$lib/structure'
-import { to_error } from '$lib/utils'
+import { rows_to_csv, to_error } from '$lib/utils'
 import { zipSync } from 'fflate'
 import { full_data_extractor } from './extract'
 import type { TrajectoryFrame, TrajectoryMetadata } from './index'

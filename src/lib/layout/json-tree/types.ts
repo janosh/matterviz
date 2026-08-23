@@ -48,9 +48,9 @@ export interface JsonTreeProps {
   // Highlight values that change between renders (default: true)
   highlight_changes?: boolean
   // Callback when a node is selected/clicked
-  onselect?: (path: string, value: unknown) => void
+  on_select?: (path: string, value: unknown) => void
   // Callback when a value is copied
-  oncopy?: (path: string, value: string) => void
+  on_copy?: (path: string, value: string) => void
   // Custom filename for JSON download (default: "data-YYYY-MM-DD.json")
   download_filename?: string
   // Optional value to diff against - highlights additions, removals, and changes
@@ -58,7 +58,7 @@ export interface JsonTreeProps {
   // Enable inline editing of leaf values (double-click to edit)
   editable?: boolean
   // Callback when a value is edited inline (path, new_value, old_value)
-  onchange?: (path: string, new_value: unknown, old_value: unknown) => void
+  on_change?: (path: string, new_value: unknown, old_value: unknown) => void
 }
 
 // Context shared with child components (state + methods)
@@ -96,7 +96,7 @@ export interface JsonTreeContext {
     expandable: boolean,
     is_collapsed: boolean,
   ) => void
-  onchange?: (path: string, new_value: unknown, old_value: unknown) => void
+  on_change?: (path: string, new_value: unknown, old_value: unknown) => void
 }
 
 // Minimal position info for copy feedback (avoids partial MouseEvent mocks)

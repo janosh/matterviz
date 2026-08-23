@@ -5,21 +5,23 @@ import { mount, tick, unmount } from 'svelte'
 import { beforeEach, expect, onTestFinished, test, vi } from 'vitest'
 import { bind_props } from '../setup'
 
-const mocks = vi.hoisted(() => ({
-  collect: vi.fn(),
-  compute: vi.fn(),
-  cancel: vi.fn(),
-}))
+const mocks = vi.hoisted(() => {
+  const cancel = vi.fn()
+  const release = vi.fn()
+  return {
+    collect: vi.fn(),
+    compute: Object.assign(vi.fn(), { cancel, release }),
+    cancel,
+    release,
+  }
+})
 
 vi.mock(`$lib/spectral/spectroscopy-collect`, async (import_original) => ({
   ...(await import_original<Record<string, unknown>>()),
   collect_trajectory_spectroscopy_input: mocks.collect,
 }))
 vi.mock(`$lib/spectral/trajectory-spectroscopy-async.svelte`, () => ({
-  create_trajectory_spectroscopy_async_runner: () => ({
-    compute: mocks.compute,
-    cancel: mocks.cancel,
-  }),
+  compute_trajectory_spectroscopy_async: mocks.compute,
 }))
 
 const make_run = (): TrajectoryRun =>
@@ -69,13 +71,10 @@ const make_result = (name: string): TrajectorySpectroscopyResult => {
     power: [0, 1],
     normalized_power: [0, 1],
     frequency_unit: `cm^-1` as const,
-    n_fft: 2,
-    n_samples: 2,
     sample_interval: 1,
     frequency_spacing: 1,
     rayleigh_resolution: 1,
     nyquist: 1,
-    window: `hann` as const,
   }
   return {
     vdos: curve,
@@ -112,6 +111,7 @@ beforeEach(() => {
   mocks.collect.mockReset()
   mocks.compute.mockReset()
   mocks.cancel.mockReset()
+  mocks.release.mockReset()
 })
 
 test(`recomputes from changed settings and marks the prior result as stale`, async () => {
@@ -124,10 +124,19 @@ test(`recomputes from changed settings and marks the prior result as stale`, asy
   const target = render_pane({ run })
 
   await vi.waitFor(() => expect(mocks.compute).toHaveBeenCalledOnce())
-  // no response signals on the run, so the pane asks for positions and velocities only
+  // no response signals on the run, so the pane asks for positions and velocities only,
+  // budgeted like every other sweep (1 atom x 24001 frames fits at stride 1); the collect
+  // learns the preprocessing (body_fixed for this non-periodic run) to know which strided
+  // signals need aligning to the kept position steps
   expect(mocks.collect).toHaveBeenCalledWith(
     run,
-    expect.objectContaining({ infrared_key: null, raman_key: null }),
+    expect.objectContaining({
+      infrared_key: null,
+      raman_key: null,
+      frame_stride: 1,
+      max_bytes: 512 * 1024 * 1024,
+      preprocessing: `body_fixed`,
+    }),
   )
   expect(target.textContent).toContain(`24001 total frames · timestep 1 fs`)
   const fieldset = target.querySelector<HTMLFieldSetElement>(`.spectroscopy-controls`)
@@ -180,13 +189,38 @@ test(`a trajectory switch cancels blocked work and starts the replacement`, asyn
   expect(status?.querySelector(`[role="status"]`)).not.toBeNull()
   props.run = make_run()
   await vi.waitFor(() => expect(mocks.compute).toHaveBeenCalledTimes(2))
-  expect(mocks.cancel.mock.invocationCallOrder.at(-1)).toBeLessThan(
-    mocks.compute.mock.invocationCallOrder[1],
-  )
+  // the superseded request's signal is aborted before the replacement is posted
+  const first_signal: AbortSignal = mocks.compute.mock.calls[0][2].signal
+  const second_signal: AbortSignal = mocks.compute.mock.calls[1][2].signal
+  expect(first_signal.aborted).toBe(true)
+  expect(second_signal.aborted).toBe(false)
 
   second_result.resolve(make_result(`second`))
   await vi.waitFor(() => expect(props.result?.metadata.name).toBe(`second`))
   first_result.resolve(make_result(`first`))
   await tick()
   expect(props.result?.metadata.name).toBe(`second`)
+})
+
+test(`unmounting aborts the in-flight request and releases the worker`, async () => {
+  mocks.collect.mockResolvedValue(make_input())
+  mocks.compute.mockReturnValueOnce(
+    Promise.withResolvers<TrajectorySpectroscopyResult>().promise,
+  )
+  const target = document.createElement(`div`)
+  document.body.append(target)
+  onTestFinished(() => target.remove())
+  const component = mount(TrajectorySpectroscopyPane, {
+    target,
+    props: { inline: true, pane_open: true, run: make_run() },
+  })
+  await vi.waitFor(() => expect(mocks.compute).toHaveBeenCalledOnce())
+  const signal: AbortSignal = mocks.compute.mock.calls[0][2].signal
+  expect(mocks.release).not.toHaveBeenCalled()
+  await unmount(component)
+  expect(signal.aborted).toBe(true)
+  // the client pre-warms a replacement worker after every abort; nothing would use it. Only
+  // release (idle-only), never cancel: another pane's in-flight request must not be rejected
+  expect(mocks.release).toHaveBeenCalledOnce()
+  expect(mocks.cancel).not.toHaveBeenCalled()
 })

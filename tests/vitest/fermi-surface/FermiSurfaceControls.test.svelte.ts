@@ -3,36 +3,25 @@ import type { D3InterpolateName } from '$lib/colors'
 import type { ColorProperty, FermiSurfaceData } from '$lib/fermi-surface/types'
 import { mount, tick, unmount } from 'svelte'
 import { describe, expect, test } from 'vitest'
-import { bind_props, doc_query } from '../setup'
+import { bind_props, doc_query, make_fermi_isosurface, make_fermi_surface } from '../setup'
 
-const make_fermi_data = (band_indices = [0, 1]): FermiSurfaceData => ({
-  isosurfaces: band_indices.map((band_index) => ({
-    vertices: [],
-    faces: [],
-    normals: [],
-    band_index,
-    spin: null,
-  })),
-  k_lattice: [
-    [1, 0, 0],
-    [0, 1, 0],
-    [0, 0, 1],
-  ],
-  fermi_energy: 0,
-  reciprocal_cell: `parallelepiped`,
-  metadata: {
-    n_bands: band_indices.length,
-    n_surfaces: band_indices.length,
-    total_area: 0,
-  },
-})
+// One single-vertex sheet per band, optionally carrying a per-vertex property
+const make_fermi_data = (band_indices = [0, 1], with_properties = false): FermiSurfaceData =>
+  make_fermi_surface(
+    band_indices.map((band_index) =>
+      make_fermi_isosurface([[0, 0, 0]], [], {
+        band_index,
+        ...(with_properties && { properties: new Float32Array(1) }),
+      }),
+    ),
+  )
 
 describe(`FermiSurfaceControls`, () => {
   test.each([
     {
-      name: `initializes missing selected bands and resets invalid custom coloring`,
+      name: `initializes missing selected bands and resets property coloring without properties`,
       initial_selected_bands: undefined,
-      initial_color_property: `custom` as ColorProperty,
+      initial_color_property: `property` as ColorProperty,
       expected_selected_bands: [0, 1],
       expected_color_property: `band` as ColorProperty,
     },
@@ -90,12 +79,15 @@ describe(`FermiSurfaceControls`, () => {
       color_property: ColorProperty
       color_scale: D3InterpolateName
     }>({
-      color_property: `velocity`,
+      color_property: `property`,
       color_scale: `interpolateViridis`,
     })
     const component = mount(FermiSurfaceControls, {
       target: document.body,
-      props: bind_props({ controls_open: true, fermi_data: make_fermi_data() }, state),
+      props: bind_props(
+        { controls_open: true, fermi_data: make_fermi_data([0, 1], true) },
+        state,
+      ),
     })
 
     try {

@@ -74,11 +74,14 @@ describe(`create_file_drop_handler`, () => {
     expect(set_loading).not.toHaveBeenCalled()
   })
 
-  test(`calls preventDefault and sets loading true then false`, async () => {
+  test(`empty drop: prevents default, toggles loading, loads and reports nothing`, async () => {
     const event = await run()
     expect(event.preventDefault).toHaveBeenCalled()
-    expect(set_loading).toHaveBeenCalledWith(true)
+    expect(set_loading).toHaveBeenNthCalledWith(1, true)
     expect(set_loading).toHaveBeenLastCalledWith(false)
+    expect(decompress_file).not.toHaveBeenCalled()
+    expect(on_drop).not.toHaveBeenCalled()
+    expect(on_error).not.toHaveBeenCalled()
   })
 
   test(`processes a URL and files sequentially when both are present`, async () => {
@@ -110,14 +113,6 @@ describe(`create_file_drop_handler`, () => {
     )
   })
 
-  test(`decompresses file and calls on_drop`, async () => {
-    vi.mocked(decompress_file).mockResolvedValue({ content: `data`, filename: `f.cif` })
-    const file = new File([`data`], `f.cif.gz`)
-    await run({}, [file])
-    expect(decompress_file).toHaveBeenCalledWith(file)
-    expect(on_drop).toHaveBeenCalledWith(`data`, `f.cif`, source_meta(`f.cif.gz`))
-  })
-
   // DataTransfer.files reports a dropped folder as one zero-byte File named after it, so
   // the handler goes through the entry API instead. Expansion itself is svelte-widgets'
   // to test; this only pins that we route through it.
@@ -135,13 +130,6 @@ describe(`create_file_drop_handler`, () => {
     await run({}, [new File([], `structures`)], [{ webkitGetAsEntry: () => entry }])
 
     expect(on_drop).toHaveBeenCalledWith(`data`, `a.cif`, source_meta(`a.cif`))
-  })
-
-  test(`does nothing when no files and no URL error`, async () => {
-    await run()
-    expect(decompress_file).not.toHaveBeenCalled()
-    expect(on_drop).not.toHaveBeenCalled()
-    expect(on_error).not.toHaveBeenCalled()
   })
 
   test(`reports URL error when URL drop fails and no files present`, async () => {
@@ -244,7 +232,7 @@ describe(`create_file_drop_handler`, () => {
     )
     const slow_drop = vi.fn(async (_content: string | ArrayBuffer, filename: string) => {
       order.push(`start ${filename}`)
-      await new Promise((resolve) => setTimeout(resolve, 5))
+      await Promise.resolve() // yield so an interleaved drop could sneak in
       order.push(`end ${filename}`)
     })
     const handler = create_file_drop_handler({ allow: () => true, on_drop: slow_drop })

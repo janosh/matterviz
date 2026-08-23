@@ -9,7 +9,7 @@
   // plot. Whenever the pane drops its input (trajectory swapped, collect failed) it also calls
   // `on_clear` so the module drops its result — otherwise stale curves hide the new message.
   import { StatusMessage } from '$lib/feedback'
-  import { format_bytes, format_num } from '$lib/labels'
+  import { format_num } from '$lib/labels'
   import { ViewerPane, type ViewerPaneOptions } from '$lib/overlays'
   import type { ParseProgress, TrajectoryRun } from '$lib/trajectory'
   import { analysis_pane_setup } from '$lib/trajectory/analysis'
@@ -17,7 +17,7 @@
     AnalysisCollectOptions,
     AnalysisPaneContext,
   } from '$lib/trajectory/analysis-pane'
-  import { to_error } from '$lib/utils'
+  import { format_bytes, to_error } from '$lib/utils'
   import { type Snippet, untrack } from 'svelte'
   import { Graph, type IconData } from 'svelte-widgets/icons'
 
@@ -94,6 +94,10 @@
   let time_unit = $state(``)
   let use_dt = $state(false)
   let frame_stride = $state<number | null>(1)
+  // Stride the current `input` was collected with. The typed stride can change after a
+  // collect without triggering a new one, and the analyses take the time per COLLECTED frame,
+  // so dt has to follow the stride that produced the buffer, not the one in the box.
+  let collected_stride = $state<number | null>(null)
   let collecting = $state(false)
   let progress = $state<ParseProgress | null>(null)
 
@@ -103,6 +107,7 @@
 
   const clear = () => {
     input = undefined
+    collected_stride = null
     error_msg = undefined
     on_clear?.()
   }
@@ -144,7 +149,8 @@
   // Analyses take the time per COLLECTED frame, so striding has to be folded in here:
   // entering the real MD timestep with stride 5 would otherwise report D five times too large
   // (MSD) or put every VDOS peak at five times its frequency, with correct-looking units.
-  let dt_collected = $derived((dt_source ?? 1) * safe_stride)
+  // Before a collect (or for an input the caller supplied) the typed stride is the best guess.
+  let dt_collected = $derived((dt_source ?? 1) * (collected_stride ?? safe_stride))
   let has_valid_dt = $derived(
     use_dt &&
       dt_source !== null &&
@@ -209,15 +215,19 @@
     collecting = true
     error_msg = undefined
     progress = null
+    const requested_stride = safe_stride
     try {
       const collected = await collect(requested, {
-        frame_stride: safe_stride,
+        frame_stride: requested_stride,
         signal: controller.signal,
         on_progress: (parse_progress) => {
           if (is_current()) progress = parse_progress
         },
       })
-      if (is_current()) input = collected
+      if (is_current()) {
+        input = collected
+        collected_stride = requested_stride
+      }
     } catch (exc) {
       if (!is_current()) return
       clear()

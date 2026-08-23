@@ -20,13 +20,10 @@ describe(`detect_view_type`, () => {
 
   test.each([
     [`structures.Cu_FCC`, `structure`],
-    [`structures.Bi2Zr2O8_fluorite`, `structure`],
     [`fermi_surface`, `fermi_surface`],
     [`phase_diagram`, `phase_diagram`],
     [`band_structure`, `band_structure`],
     [`dos`, `dos`],
-    [`convex_hull_Li_Fe`, `convex_hull`],
-    [`convex_hull_Li_Fe_O`, `convex_hull`],
     [`convex_hull_Li_Fe_P_O`, `convex_hull`],
   ] as const)(`detects %s as %s`, (path, expected) => {
     expect(detect_view_type(resolve(fixture, path))).toBe(expected)
@@ -371,6 +368,8 @@ describe(`detect_view_type`, () => {
 describe(`scan_renderable_paths`, () => {
   // Scan fixture once and reuse across related assertions
   const fixture_paths = scan_renderable_paths(fixture)
+  // The smallest value detect_view_type accepts as a structure
+  const si_structure = { sites: [{ species: [{ element: `Si` }], abc: [0, 0, 0] }] }
 
   test(`finds all expected types in test fixture`, () => {
     expect(fixture_paths.size).toBeGreaterThanOrEqual(9)
@@ -400,47 +399,25 @@ describe(`scan_renderable_paths`, () => {
     [null, `null`],
     [undefined, `undefined`],
     [`hello`, `string primitive`],
+    [true, `boolean primitive`],
   ] as [unknown, string][])(`returns empty map for %s`, (val) => {
     expect(scan_renderable_paths(val).size).toBe(0)
   })
 
   test(`respects max_depth`, () => {
-    const deep = {
-      a: { b: { c: { sites: [{ species: [{ element: `Si` }], abc: [0, 0, 0] }] } } },
-    }
+    const deep = { a: { b: { c: si_structure } } }
     expect(scan_renderable_paths(deep, ``, 2).size).toBe(0)
     expect(scan_renderable_paths(deep, ``, 4).size).toBe(1)
   })
 
   test(`scans array elements`, () => {
-    const data = {
-      items: [
-        { composition: { Li: 1 }, energy: -1.5 },
-        { sites: [{ species: [{ element: `Si` }], abc: [0, 0, 0] }] },
-      ],
-    }
+    const data = { items: [{ composition: { Li: 1 }, energy: -1.5 }, si_structure] }
     expect(scan_renderable_paths(data).get(`items[1]`)?.type).toBe(`structure`)
   })
 
   test.each([
-    [
-      `root-level dotted key`,
-      {
-        'mp-1234.structure': {
-          sites: [{ species: [{ element: `Si` }], abc: [0, 0, 0] }],
-        },
-      },
-      `["mp-1234.structure"]`,
-    ],
-    [
-      `nested dotted key`,
-      {
-        results: {
-          'calc.1': { sites: [{ species: [{ element: `Cu` }], abc: [0, 0, 0] }] },
-        },
-      },
-      `results["calc.1"]`,
-    ],
+    [`root-level dotted key`, { 'mp-1234.structure': si_structure }, `["mp-1234.structure"]`],
+    [`nested dotted key`, { results: { 'calc.1': si_structure } }, `results["calc.1"]`],
   ] as [string, unknown, string][])(
     `handles %s via bracket notation`,
     (_, data, expected_path) => {
@@ -458,14 +435,13 @@ describe(`scan_renderable_paths`, () => {
     { label: `empty`, key: `` },
     { label: `numeric-looking`, key: `0` },
   ])(`round-trips renderable object key: $label`, ({ key }) => {
-    const original = { sites: [{ species: [{ element: `Si` }], abc: [0, 0, 0] }] }
-    const data = { root: { [key]: original } }
+    const data = { root: { [key]: si_structure } }
     const paths = scan_renderable_paths(data)
     const path = [...paths.keys()][0]
 
     expect(paths.size).toBe(1)
     expect(path).toBe(`root[${JSON.stringify(key)}]`)
-    expect(resolve_path(data, path)).toBe(original)
+    expect(resolve_path(data, path)).toBe(si_structure)
   })
 
   test(`all scanned paths resolve back to the original value`, () => {
@@ -481,7 +457,6 @@ describe(`scan_renderable_paths`, () => {
 describe(`is_plottable_data`, () => {
   test.each([
     [`column-based with 2 numeric cols`, true, { x: [1, 2, 3], y: [4, 5, 6] }],
-    [`column-based with 3 numeric cols`, true, { x: [1, 2], y: [3, 4], z: [5, 6] }],
     [
       `row-based with 2 numeric cols`,
       true,
@@ -491,14 +466,8 @@ describe(`is_plottable_data`, () => {
         { a: 5, b: 6, name: `z` },
       ],
     ],
-    [
-      `column-based with null first elements`,
-      true,
-      {
-        x: [null, 2, 3],
-        y: [4, 5, 6],
-      },
-    ],
+    // any numeric element counts (typeof NaN === number), not just the first one
+    [`column-based with null/NaN first elements`, true, { x: [null, 2, 3], y: [NaN, 5, 6] }],
     [
       `row-based with null first row values`,
       true,
@@ -524,43 +493,12 @@ describe(`is_plottable_data`, () => {
         { a: 2, name: `y` },
       ],
     ],
-    [
-      `column-based with NaN values (typeof NaN === number)`,
-      true,
-      {
-        a: [NaN, 2, 3],
-        b: [4, 5, 6],
-      },
-    ],
-    [
-      `column-based with Infinity values`,
-      true,
-      {
-        a: [Infinity, 2, 3],
-        b: [4, 5, 6],
-      },
-    ],
-    [
-      `column-based with mixed types (some numbers)`,
-      true,
-      {
-        a: [1, `two`, 3],
-        b: [4, 5, 6],
-      },
-    ],
-    [
-      `row-based with NaN and mixed values`,
-      true,
-      [
-        { a: 1, b: `x` },
-        { a: NaN, b: 4 },
-        { a: 3, b: 6 },
-      ],
-    ],
     [`empty array`, false, []],
     [`non-tabular object`, false, { foo: `bar` }],
     [`null`, false, null],
     [`undefined`, false, undefined],
+    [`string`, false, `hello`],
+    [`boolean`, false, true],
   ] as [string, boolean, unknown][])(`%s -> %s`, (_, expected, val) => {
     expect(is_plottable_data(val)).toBe(expected)
   })

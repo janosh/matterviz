@@ -5,10 +5,12 @@
   import { format_value_or_num } from '$lib/labels'
   import type { Vec2 } from '$lib/math'
   import type {
+    AxisConfig,
     BandwidthOption,
     BasePlotProps,
     BoxHandlerProps,
     BoxPlotSeries,
+    LayerZIndex,
     LegendConfig,
     Orientation,
     PanConfig,
@@ -29,7 +31,7 @@
   import type { MarginalSeriesInput, MarginalsProp } from '$lib/plot/core/marginals'
   import { normalize_marginals } from '$lib/plot/core/marginals'
   import { build_obstacles_norm, clip_bar } from '$lib/plot/core/decorations'
-  import { build_legend_items } from '$lib/plot/core/data-transform'
+  import { build_legend_items, get_series_color } from '$lib/plot/core/data-transform'
   import { compute_box_stats } from '$lib/plot/box/box-plot'
   import { gaussian_kde, type KdeResult } from '$lib/plot/box/kde'
   import { create_cartesian_frame } from '$lib/plot/core/cartesian-frame.svelte'
@@ -39,13 +41,16 @@
     resolve_legend_visibility,
   } from '$lib/plot/core/utils/series-visibility'
   import { DEFAULT_PLOT_PADDING, filter_padding } from '$lib/plot/core/layout'
-  import { LOG_EPS } from '$lib/math'
-  import type { IndexedRefLine } from '$lib/plot/core/reference-line'
-  import { group_ref_lines_by_z, index_ref_lines } from '$lib/plot/core/reference-line'
-  import { get_relative_coords } from '$lib/plot/core/interactions'
+  import {
+    AXIS_DEFAULTS,
+    category_tick_labels,
+    X2_AXIS_DEFAULTS,
+  } from '$lib/plot/core/axis-utils'
+  import { index_ref_lines } from '$lib/plot/core/reference-line'
+  import { get_relative_coords, is_activation_key } from '$lib/plot/core/interactions'
   import { get_nice_data_range } from '$lib/plot/core/scales'
-  import { DEFAULT_SERIES_COLORS } from '$lib/plot/core/types'
-  import { resolve_plot_display, sync_category_zero_display } from '$lib/plot/core/display'
+  import { get_scale_type_name } from '$lib/plot/core/types'
+  import { create_category_display } from '$lib/plot/core/display.svelte'
   import { DEFAULTS } from '$lib/settings'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -182,9 +187,7 @@
       facet_layout?: FacetLayoutContext
     } = $props()
 
-  // Legend toggles write `visible` into the bindable series prop so bound parents see
-  // them, and `series` layers the user's overrides back on whenever the parent
-  // replaces the array so hidden series stay hidden
+  // Legend toggles write back into the bindable series prop; see create_legend_visibility
   const legend_vis = create_legend_visibility(
     () => series,
     (next) => (series_in = next),
@@ -203,20 +206,8 @@
 
   // Merge secondary-axis defaults as deriveds instead of assigning back into the
   // $bindable props (which would push library defaults into the parent's bound state)
-  let y2_axis = $derived({
-    format: ``,
-    scale_type: `linear`,
-    ticks: 5,
-    range: [null, null],
-    ...y2_axis_prop,
-  } as typeof y2_axis_prop)
-  let x2_axis = $derived({
-    format: ``,
-    scale_type: `linear`,
-    ticks: 5,
-    range: [null, null],
-    ...x2_axis_prop,
-  } as typeof x2_axis_prop)
+  let y2_axis = $derived<AxisConfig>({ ...AXIS_DEFAULTS, ...y2_axis_prop })
+  let x2_axis = $derived<AxisConfig>({ ...X2_AXIS_DEFAULTS, ...x2_axis_prop })
 
   const plot_axes = $derived({ x: x_axis, x2: x2_axis, y: y_axis, y2: y2_axis })
 
@@ -231,11 +222,7 @@
     obstacles: () => obstacles_norm,
     legend: () => legend,
     legend_visible: () => should_show_legend,
-    legend_items: () =>
-      series.map((series_data, series_idx) => ({
-        label: series_data.label ?? `Box ${series_idx + 1}`,
-        legend_group: series_data.legend_group,
-      })),
+    legend_items: () => legend_data,
     marginals: () => resolved_marginals,
     ref_lines: () => indexed_ref_lines,
     pan: () => pan,
@@ -256,14 +243,10 @@
     clip_id_prefix: `box-clip`,
   })
 
-  let hovered_ref_line_idx = $state<number | null>(null)
-
   let indexed_ref_lines = $derived(index_ref_lines(ref_lines))
-  let ref_lines_by_z = $derived(group_ref_lines_by_z(indexed_ref_lines))
 
   // === Box stats + slot model ===
-  const box_color = (idx: number): string =>
-    series[idx]?.color ?? DEFAULT_SERIES_COLORS[idx % DEFAULT_SERIES_COLORS.length]
+  const box_color = (idx: number): string => series[idx]?.color ?? get_series_color(idx)
 
   // Which glyph(s) a series draws (per-series kind overrides the component default)
   const effective_kind = (srs: BoxPlotSeries<Metadata>): ViolinKind => srs.kind ?? kind
@@ -295,26 +278,10 @@
   )
   let cat_axis: `x` | `y` = $derived(orientation === `horizontal` ? `y` : `x`)
 
-  // Keep category-axis zeros off (and settings checkboxes in sync) across orientation flips.
-  let category_zero_sync: ReturnType<typeof sync_category_zero_display> = {
-    axis: null,
-    disabled_keys: [],
-  }
-  $effect.pre(() => {
-    category_zero_sync = sync_category_zero_display(
-      display,
-      DEFAULTS.plot.display,
-      slot_list.length > 0 ? cat_axis : null,
-      category_zero_sync,
-    )
-  })
-
-  const resolved_display = $derived(
-    resolve_plot_display(
-      display,
-      DEFAULTS.plot.display,
-      slot_list.length > 0 ? cat_axis : null,
-    ),
+  // Keeps category-axis zeros off (and settings checkboxes in sync) across orientation flips
+  const category_display = create_category_display(
+    () => display,
+    () => (slot_list.length > 0 ? cat_axis : null),
   )
 
   let slot_lookup = $derived(new SvelteMap(slot_list.map((slot, idx) => [slot, idx])))
@@ -356,7 +323,11 @@
       let clip = box_item.series.clip ?? kde_clip
       // On a log value axis the KDE grid tail (data_min - cut*bandwidth) is usually <= 0 →
       // NaN pixels + LOG_EPS range pollution. Clamp the grid to the smallest positive sample.
-      if ((is_secondary(box_item.series) ? val_axis2 : val_axis).scale_type === `log`) {
+      if (
+        get_scale_type_name(
+          (is_secondary(box_item.series) ? val_axis2 : val_axis).scale_type,
+        ) === `log`
+      ) {
         const min_pos = samples.reduce(
           (min, val) => (val > 0 && val < min ? val : min),
           Infinity,
@@ -405,8 +376,10 @@
   let show_x2 = $derived(has_secondary && orientation === `horizontal`)
   let show_y2 = $derived(has_secondary && orientation === `vertical`)
 
-  // Collect value-axis points (whiskers, quartiles, outliers, KDE tails) for auto-range
-  const value_points = (boxes: Box[]): { x: number; y: number }[] =>
+  // Collect value-axis points (whiskers, quartiles, outliers, KDE tails) for auto-range. On a
+  // log axis non-positive stats (a whisker_low of exactly 0, negative outliers) are dropped:
+  // nicing them would pin the floor at LOG_EPS and stretch the axis across a dozen decades.
+  const value_points = (boxes: Box[], log_axis: boolean): { x: number; y: number }[] =>
     boxes.flatMap((box_item) => {
       const { whisker_low, whisker_high, q1, q3, median, mean, outliers } = box_item.stats
       const vals = [whisker_low, whisker_high, q1, q3, median]
@@ -419,7 +392,9 @@
       }
       const kde = violin_kdes.get(box_item.idx)
       if (kde && kde.grid.length > 0) vals.push(kde.grid[0], kde.grid[kde.grid.length - 1])
-      return vals.filter(Number.isFinite).map((val) => ({ x: 0, y: val }))
+      return vals
+        .filter((val) => Number.isFinite(val) && (!log_axis || val > 0))
+        .map((val) => ({ x: 0, y: val }))
     })
 
   let auto_ranges = $derived.by(() => {
@@ -441,7 +416,7 @@
       limit: [number | null, number | null],
       scale_type: ScaleType,
     ): Vec2 => {
-      const pts = value_points(boxes)
+      const pts = value_points(boxes, get_scale_type_name(scale_type) === `log`)
       if (pts.length === 0) return [0, 1]
       const has_outliers =
         show_outliers && boxes.some((box_item) => box_item.stats.outliers.length > 0)
@@ -530,31 +505,21 @@
   )
   // Value scale for a box (vertical -> y/y2, horizontal -> x/x2), made log-safe: on a
   // log value axis, stats at values <= 0 (whisker_low is often exactly 0; negative
-  // outliers) have no finite pixel. Clamp to LOG_EPS so whiskers/boxes/labels draw
-  // toward the plot edge (the clip group crops the overshoot) instead of NaN coords.
+  // outliers) have no finite pixel. Clamp to the range floor so whiskers/boxes/labels end
+  // at the plot edge (like BarPlot's bars) instead of NaN coords or a far-off LOG_EPS pixel.
   const box_val_scale = (srs: BoxPlotSeries<Metadata>): ((val: number) => number) => {
     const vertical = orientation === `vertical`
     const secondary = is_secondary(srs)
-    const scale = vertical
-      ? secondary
-        ? frame.scales.y2
-        : frame.scales.y
-      : secondary
-        ? frame.scales.x2
-        : frame.scales.x
-    const axis = vertical ? (secondary ? y2_axis : y_axis) : secondary ? x2_axis : x_axis
-    return axis.scale_type === `log` ? (val) => scale(Math.max(val, LOG_EPS)) : scale
+    const axis_key = vertical ? (secondary ? `y2` : `y`) : secondary ? `x2` : `x`
+    const scale = frame.scales[axis_key]
+    if (get_scale_type_name(plot_axes[axis_key].scale_type) !== `log`) return scale
+    const floor = Math.min(...frame.ranges.current[axis_key])
+    return (val) => scale(Math.max(val, floor))
   }
 
-  // Categorical tick labels (slot index -> category name) unless user provides a label mapping
-  let effective_cat_ticks = $derived.by(() => {
-    if (slot_list.length === 0) return undefined
-    const user_ticks = cat_axis === `x` ? x_axis.ticks : y_axis.ticks
-    if (user_ticks != null && typeof user_ticks === `object` && !Array.isArray(user_ticks)) {
-      return user_ticks
-    }
-    return Object.fromEntries(slot_list.map((cat, idx) => [idx, cat]))
-  })
+  let effective_cat_ticks = $derived(
+    category_tick_labels(slot_list, plot_axes[cat_axis].ticks),
+  )
 
   // === Legend ===
   let legend_data = $derived(
@@ -637,17 +602,8 @@
   />
 {/snippet}
 
-{#snippet ref_lines_layer(lines: readonly IndexedRefLine[])}
-  <ReferenceLinesLayer
-    {lines}
-    ranges={frame.ranges.current}
-    scales={frame.scales}
-    clip_path_id={frame.clip_path_id}
-    decoration_solution={frame.decoration_solution}
-    bind:hovered_line_idx={hovered_ref_line_idx}
-    on_click={on_ref_line_click}
-    on_hover={on_ref_line_hover}
-  />
+{#snippet ref_lines_layer(z: LayerZIndex)}
+  <ReferenceLinesLayer {frame} {z} on_click={on_ref_line_click} on_hover={on_ref_line_hover} />
 {/snippet}
 
 <CartesianFrame
@@ -658,9 +614,7 @@
     'font-weight': `var(--scatter-font-weight)`,
     'font-size': `var(--scatter-font-size)`,
   }}
-  aria_label={frame.title_config?.text ||
-    [x_axis.label, y_axis.label].filter(Boolean).join(` vs `) ||
-    `Box plot`}
+  aria_label="Box plot"
   bind:fullscreen
   {fullscreen_toggle}
   marginals={resolved_marginals}
@@ -670,31 +624,17 @@
     clear_hover()
   }}
   {header_controls}
+  {user_content}
   {children}
   {...rest}
 >
   {#snippet layers()}
     {@const pad = frame.pad}
-    {@render user_content?.({
-      height: frame.height,
-      width: frame.width,
-      x_scale_fn: frame.scales.x,
-      x2_scale_fn: frame.scales.x2,
-      y_scale_fn: frame.scales.y,
-      y2_scale_fn: frame.scales.y2,
-      pad,
-      x_range: frame.ranges.current.x,
-      x2_range: frame.ranges.current.x2,
-      y_range: frame.ranges.current.y,
-      y2_range: frame.ranges.current.y2,
-      fullscreen,
-    })}
-
-    {@render ref_lines_layer(ref_lines_by_z.below_grid)}
+    {@render ref_lines_layer(`below-grid`)}
 
     <PlotAxes
       {frame}
-      display={resolved_display}
+      display={category_display.resolved}
       label_ticks={{ [cat_axis]: effective_cat_ticks }}
       tick_color={{ [cat_axis]: (tick: number) => slot_colors.get(tick) }}
     />
@@ -704,10 +644,10 @@
          self-clips to the plot area inside ReferenceLine, only its annotation text
          is allowed to overflow the plot edges. -->
     <g clip-path="url(#{frame.clip_path_id})">
-      <ZeroLines {frame} display={resolved_display} />
+      <ZeroLines {frame} display={category_display.resolved} />
     </g>
 
-    {@render ref_lines_layer(ref_lines_by_z.below_lines)}
+    {@render ref_lines_layer(`below-lines`)}
 
     <!-- Continuous box/violin geometry clips to the chart. Outlier marker centers are
          range-bounded, but their complete circles may extend into the plot padding. -->
@@ -774,7 +714,7 @@
             onmouseleave={clear_hover}
             onclick={(evt) => on_box_click?.({ ...get_box_data(box_item, color), event: evt })}
             onkeydown={(evt) => {
-              if (evt.key === `Enter` || evt.key === ` `) {
+              if (is_activation_key(evt)) {
                 evt.preventDefault()
                 on_box_click?.({ ...get_box_data(box_item, color), event: evt })
               }
@@ -886,8 +826,8 @@
       {/each}
     </g>
 
-    {@render ref_lines_layer(ref_lines_by_z.below_points)}
-    {@render ref_lines_layer(ref_lines_by_z.above_all)}
+    {@render ref_lines_layer(`below-points`)}
+    {@render ref_lines_layer(`above-all`)}
   {/snippet}
 
   {#snippet overlays()}
@@ -914,7 +854,8 @@
         {#if tooltip}
           {@render tooltip({ ...hover_info, fullscreen })}
         {:else}
-          {@const fmt = orientation === `vertical` ? y_axis.format : x_axis.format}
+          {@const fmt =
+            orientation === `vertical` ? hover_info.y_axis.format : hover_info.x_axis.format}
           {@const stat = hover_info.stats}
           {@const rows = [
             [`max`, stat.whisker_high],

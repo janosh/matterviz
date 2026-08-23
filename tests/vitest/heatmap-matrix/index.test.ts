@@ -1,13 +1,12 @@
 // Tests for HeatmapMatrix types, helpers, and element axis orderings.
 
-import { element_data } from '$lib/element'
+import type { ChemicalElement } from '$lib/element'
 import {
   ELEMENT_ORDERINGS,
   elements_to_axis,
   make_color_override_key,
   matrix_to_rows,
   ORDERING_LABELS,
-  rows_to_csv,
 } from '$lib/heatmap-matrix'
 import { describe, expect, test } from 'vitest'
 
@@ -50,78 +49,41 @@ describe(`elements_to_axis`, () => {
 })
 
 describe(`built-in orderings`, () => {
-  test.each(ELEMENT_ORDERINGS)(`ordering '%s' returns 118 items`, (ordering) => {
-    expect(elements_to_axis(undefined, ordering)).toHaveLength(118)
-  })
-
-  test(`atomic_number produces monotonically increasing Z values`, () => {
-    const axis = elements_to_axis(undefined, `atomic_number`)
-    expect(axis[0].label).toBe(`H`)
-    expect(axis[1].label).toBe(`He`)
-    const z_values = axis.map((item) => item.data?.number ?? 0)
-    for (let idx = 1; idx < z_values.length; idx++) {
-      expect(z_values[idx], `Z[${idx}] > Z[${idx - 1}]`).toBeGreaterThan(z_values[idx - 1])
-    }
-  })
+  // Every named ordering sorts ascending by its element property with nulls trailing; the
+  // property lookup remaps atomic_number -> number and electronegativity -> pauling values
+  test.each(ELEMENT_ORDERINGS.filter((ordering) => ordering !== `alphabetical`))(
+    `%s sorts all 118 elements ascending with nulls last`,
+    (ordering) => {
+      const axis = elements_to_axis(undefined, ordering)
+      expect(axis).toHaveLength(118)
+      const key =
+        ({ atomic_number: `number`, electronegativity: `electronegativity_pauling` } as const)[
+          ordering as string
+        ] ?? ordering
+      const values = axis.map((item) => item.data?.[key as keyof ChemicalElement] ?? null)
+      const non_null = values.filter((value): value is number => value !== null)
+      expect(non_null.length).toBeGreaterThan(0)
+      const nulls = Array<null>(values.length - non_null.length).fill(null)
+      expect(values).toEqual([...non_null.toSorted((val_a, val_b) => val_a - val_b), ...nulls])
+    },
+  )
 
   test(`alphabetical orders by symbol`, () => {
-    const axis = elements_to_axis(undefined, `alphabetical`)
-    const labels = axis.map((item) => item.label)
+    const labels = elements_to_axis(undefined, `alphabetical`).map((item) => item.label)
+    expect(labels).toHaveLength(118)
     expect(labels[0]).toBe(`Ac`)
     expect(labels).toEqual([...labels].toSorted())
-  })
-
-  test(`mendeleev_number: He near start, superheavy Og at end`, () => {
-    const axis = elements_to_axis(undefined, `mendeleev_number`)
-    const he_idx = axis.findIndex((item) => item.label === `He`)
-    const og_idx = axis.findIndex((item) => item.label === `Og`)
-    expect(he_idx).toBeLessThan(10)
-    expect(og_idx).toBeGreaterThan(100)
   })
 
   test(`electronegativity uses pauling values (Tl/Cu order differs from plain EN)`, () => {
     // Tl: electronegativity=2.04, electronegativity_pauling=1.62
     // Cu: electronegativity=1.9, electronegativity_pauling=1.9
     // pauling: Tl(1.62) < Cu(1.9) -- plain EN: Cu(1.9) < Tl(2.04)
-    const axis = elements_to_axis([`Tl`, `Cu`], `electronegativity`)
-    expect(axis[0].label).toBe(`Tl`)
-    expect(axis[1].label).toBe(`Cu`)
-  })
-
-  test(`atomic_mass puts H first`, () => {
-    expect(elements_to_axis(undefined, `atomic_mass`)[0].label).toBe(`H`)
-  })
-
-  test(`density puts Os or Ir near end (densest)`, () => {
-    const last_10 = elements_to_axis(undefined, `density`)
-      .slice(-10)
-      .map((item) => item.label)
-    expect(last_10, `expected Os or Ir in last 10 by density`).toSatisfy(
-      (labels: string[]) => labels.includes(`Os`) || labels.includes(`Ir`),
+    const labels = elements_to_axis([`Tl`, `Cu`, `Au`, `Pt`], `electronegativity`).map(
+      (item) => item.label,
     )
-  })
-
-  // Orderings with nullable properties should put nulls last
-  test.each([`melting_point`, `n_valence`] as const)(
-    `%s puts null values last`,
-    (ordering) => {
-      const axis = elements_to_axis(undefined, ordering)
-      const null_count = element_data.filter((el) => el[ordering] === null).length
-      if (null_count > 0) {
-        const last_n = axis.slice(-null_count)
-        for (const item of last_n) {
-          expect(item.data?.[ordering], item.label).toBeNull()
-        }
-        expect(axis[0].data?.[ordering]).not.toBeNull()
-      }
-    },
-  )
-
-  test(`first_ionization: He last among non-null (highest IE)`, () => {
-    const non_null = elements_to_axis(undefined, `first_ionization`).filter(
-      (item) => item.data?.first_ionization !== null,
-    )
-    expect(non_null.at(-1)?.label).toBe(`He`)
+    // pauling EN: Tl(1.62) < Cu(1.9) < Pt(2.28) < Au(2.54)
+    expect(labels).toEqual([`Tl`, `Cu`, `Pt`, `Au`])
   })
 })
 
@@ -154,38 +116,15 @@ test(`color override keys retain their persisted NUL-separated format`, () => {
   expect(make_color_override_key(`Fe`, `O`)).toBe(`Fe\0O`)
 })
 
-describe(`subset + ordering combined`, () => {
-  test(`subset sorted by electronegativity`, () => {
-    const labels = elements_to_axis([`Fe`, `Cu`, `Au`, `Pt`], `electronegativity`).map(
-      (item) => item.label,
-    )
-    // pauling EN: Fe(1.83) < Cu(1.9) < Pt(2.28) < Au(2.54)
-    expect(labels).toEqual([`Fe`, `Cu`, `Pt`, `Au`])
-  })
-})
-
-describe(`export helpers`, () => {
-  test(`matrix_to_rows and rows_to_csv serialize matrix data`, () => {
-    const x_items = [{ label: `A` }, { label: `B` }]
-    const y_items = [{ label: `X` }, { label: `Y` }]
-    const rows = matrix_to_rows(x_items, y_items, [
-      [1, 2],
-      [3, null],
-    ])
-    expect(rows).toEqual([
-      { y_key: `X`, A: 1, B: 2 },
-      { y_key: `Y`, A: 3, B: null },
-    ])
-    const csv = rows_to_csv(rows)
-    expect(csv).toContain(`y_key,A,B`)
-    expect(csv).toContain(`X,1,2`)
-    expect(csv).toContain(`Y,3,`)
-  })
-
-  test(`rows_to_csv escapes commas, quotes, and newlines`, () => {
-    const csv = rows_to_csv([{ y_key: `Fe,O`, A: `He"Ne`, B: `line1\nline2` }])
-    expect(csv).toContain(`"Fe,O"`)
-    expect(csv).toContain(`"He""Ne"`)
-    expect(csv).toContain(`"line1\nline2"`)
-  })
+test(`matrix_to_rows keys rows by y label and x labels`, () => {
+  const x_items = [{ label: `A` }, { label: `B` }]
+  const y_items = [{ label: `X` }, { label: `Y` }]
+  const rows = matrix_to_rows(x_items, y_items, [
+    [1, 2],
+    [3, null],
+  ])
+  expect(rows).toEqual([
+    { y_key: `X`, A: 1, B: 2 },
+    { y_key: `Y`, A: 3, B: null },
+  ])
 })

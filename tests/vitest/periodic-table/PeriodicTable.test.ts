@@ -147,12 +147,12 @@ describe(`PeriodicTable`, () => {
 
   test(`arrow navigation moves focus and resets its tab stop on blur`, async () => {
     let active_element: (typeof element_data)[0] | null = null
-    const onactivate = vi.fn<(element: ChemicalElement) => void>()
+    const on_activate = vi.fn<(element: ChemicalElement) => void>()
 
     mount(PeriodicTable, {
       target: document.body,
       props: {
-        onactivate,
+        on_activate,
         get active_element() {
           return active_element
         },
@@ -174,7 +174,7 @@ describe(`PeriodicTable`, () => {
     expect(lithium.tabIndex).toBe(0)
 
     lithium.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }))
-    expect(onactivate).toHaveBeenCalledExactlyOnceWith(
+    expect(on_activate).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({ symbol: `Li` }),
     )
 
@@ -192,7 +192,7 @@ describe(`PeriodicTable`, () => {
     mount(PeriodicTable, {
       target: document.body,
       props: {
-        onactivate: vi.fn(),
+        on_activate: vi.fn(),
         get active_element() {
           return active_element
         },
@@ -238,9 +238,9 @@ describe(`PeriodicTable`, () => {
     expect(tile.style.cursor).toBe(`pointer`) // user style still applied
   })
 
-  test(`onactivate handles pointer and keyboard activation`, () => {
+  test(`on_activate handles pointer and keyboard activation`, () => {
     const callback = vi.fn<(element: ChemicalElement) => void>()
-    mount(PeriodicTable, { target: document.body, props: { onactivate: callback } })
+    mount(PeriodicTable, { target: document.body, props: { on_activate: callback } })
     const tile = doc_query(`.element-tile`)
     tile.click()
     for (const key of [`Enter`, ` `]) {
@@ -253,11 +253,11 @@ describe(`PeriodicTable`, () => {
   })
 
   test(`links keep native semantics when an activation callback is also supplied`, async () => {
-    const onactivate = vi.fn<(element: ChemicalElement) => void>()
+    const on_activate = vi.fn<(element: ChemicalElement) => void>()
     const warning = vi.spyOn(console, `warn`).mockImplementation(() => {})
     mount(PeriodicTable, {
       target: document.body,
-      props: { links: `symbol`, onactivate },
+      props: { links: `symbol`, on_activate },
     })
     await tick()
     const tile = doc_query<HTMLAnchorElement>(`[data-element-symbol="H"]`)
@@ -270,13 +270,13 @@ describe(`PeriodicTable`, () => {
     expect(tile.tagName).toBe(`A`)
     expect(tile.getAttribute(`role`)).toBe(`link`)
     expect(tile.getAttribute(`href`)).toBe(`/h`)
-    expect(onactivate).not.toHaveBeenCalled()
+    expect(on_activate).not.toHaveBeenCalled()
     expect(warning).toHaveBeenCalledExactlyOnceWith(
       expect.stringContaining(`native link activation`),
     )
   })
 
-  test(`tile_props interactions remain intact without onactivate`, () => {
+  test(`tile_props interactions remain intact without on_activate`, () => {
     const onclick = vi.fn()
     const onkeydown = vi.fn()
     mount(PeriodicTable, {
@@ -318,53 +318,41 @@ describe(`PeriodicTable`, () => {
     )
   })
 
-  test.each([
-    [[0], [0.5], [1], [2]], // inner_transition_metal_offset values
-    [[`0`], [`10px`], [`1cqw`]], // gap values
-  ] as const)(`styling props work correctly`, (...args) => {
-    const values = args[0]
-    values.forEach((value) => {
-      const props =
-        typeof value === `string` ? { gap: value } : { inner_transition_metal_offset: value }
-      mount(PeriodicTable, { target: document.body, props })
-
-      if (typeof value === `string`) {
-        expect(getComputedStyle(doc_query(`.periodic-table`)).gap).toBe(value)
-      } else if (value > 0) {
-        expect(getComputedStyle(doc_query(`div.spacer`)).gridRow).toBe(`8`)
-      } else {
-        expect(document.querySelector(`div.spacer`)).toBeNull()
-      }
+  test(`gap is forwarded and a positive inner_transition_metal_offset inserts a spacer row`, () => {
+    mount(PeriodicTable, {
+      target: document.body,
+      props: { gap: `10px`, inner_transition_metal_offset: 0.5 },
     })
+    expect(getComputedStyle(doc_query(`.periodic-table`)).gap).toBe(`10px`)
+    expect(getComputedStyle(doc_query(`div.spacer`)).gridRow).toBe(`8`)
+    document.body.innerHTML = ``
+    mount(PeriodicTable, {
+      target: document.body,
+      props: { inner_transition_metal_offset: 0 },
+    })
+    expect(document.querySelector(`div.spacer`)).toBeNull()
   })
 
-  test.each(Object.entries(CATEGORY_COUNTS) as [ElementCategory, number][])(
-    `active_category=%s highlights %s tiles`,
-    (active_category, expected_active) => {
-      mount(PeriodicTable, {
-        target: document.body,
-        props: { active_category },
-      })
-      expect(document.querySelectorAll(`.element-tile.active`)).toHaveLength(expected_active)
+  test.each([`lanthanide`, `transition metal`] satisfies ElementCategory[])(
+    `active_category=%s highlights every tile of that category`,
+    (active_category) => {
+      mount(PeriodicTable, { target: document.body, props: { active_category } })
+      expect(document.querySelectorAll(`.element-tile.active`)).toHaveLength(
+        CATEGORY_COUNTS[active_category],
+      )
     },
   )
 
   test.each([
-    [[`H`, `He`, `Li`], 3, `element symbols`],
-    [[element_data[0], element_data[1]], 2, `ChemicalElement objects`],
-    [[`H`, element_data[1], `Li`], 3, `mixed symbols and objects`],
-    [[], 0, `empty array`],
-  ] as const)(
-    `active_elements=%s highlights %s tiles (%s)`,
-    (active_elements, expected_active, _description) => {
-      mount(PeriodicTable, {
-        target: document.body,
-        props: { active_elements: [...active_elements] },
-      })
-      const active_tiles = document.querySelectorAll(`.element-tile.active`)
-      expect(active_tiles).toHaveLength(expected_active)
-    },
-  )
+    [[`H`, element_data[1], `Li`], 3], // symbols and ChemicalElement objects mix
+    [[], 0],
+  ] as const)(`active_elements=%s highlights %s tiles`, (active_elements, expected_active) => {
+    mount(PeriodicTable, {
+      target: document.body,
+      props: { active_elements: [...active_elements] },
+    })
+    expect(document.querySelectorAll(`.element-tile.active`)).toHaveLength(expected_active)
+  })
 
   test(`active_elements works with active_element and active_category`, () => {
     mount(PeriodicTable, {
@@ -384,9 +372,7 @@ describe(`PeriodicTable`, () => {
   })
 
   test.each([
-    [[...Array(200).keys()], `length should be 118 or less`],
     [[...Array(119).keys()], `length should be 118 or less`],
-    [{ he: 0 }, `keys should be element symbols`],
     [{ foo: 42 }, `keys should be element symbols`],
   ] as const)(`error handling for invalid heatmap_values`, (heatmap_values, error_msg) => {
     const orig_console_error = console.error

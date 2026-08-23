@@ -18,10 +18,9 @@
     ScatterPlot as ScatterPlotIcon,
     TwoColumns,
   } from 'svelte-widgets/icons'
-  import { handle_and_prevent, to_error } from '$lib/utils'
+  import { handle_and_prevent, is_editable_target, to_error } from '$lib/utils'
   import { format_num, trajectory_property_config, type TrajPropertyConfig } from '$lib/labels'
   import type { Vec2 } from '$lib/math'
-  import { collect_msd_positions, suggest_msd_frame_stride } from '$lib/msd/collect'
   import TrajectoryMsdPane from '$lib/msd/TrajectoryMsdPane.svelte'
   import { sanitize_html } from '$lib/sanitize'
   import { FullscreenButton } from '$lib/layout'
@@ -29,7 +28,8 @@
   import PaneDivider from '$lib/layout/PaneDivider.svelte'
   import SequenceControlBar from '$lib/layout/SequenceControlBar.svelte'
   import SequenceControls from '$lib/layout/SequenceControls.svelte'
-  import type { DataSeries, Orientation } from '$lib/plot'
+  import type { DataSeries, HistogramSeries, Orientation } from '$lib/plot'
+  import { first_point_style } from '$lib/plot/core/data-transform'
   import type { ScatterHandlerProps } from '$lib/plot/core/types'
   import { Histogram, ScatterPlot } from '$lib/plot'
   import { toggle_series_visibility } from '$lib/plot/core/utils/series-visibility'
@@ -58,6 +58,8 @@
     TrajectoryExportPane,
     TrajectoryInfoPane,
   } from './index'
+  import { collect_trajectory_positions } from './analysis'
+  import { suggest_frame_stride } from './runs/accumulate'
   import {
     available_x_quantities,
     build_x_map,
@@ -315,12 +317,23 @@
     trail_stream = null
     if (!enabled) return
     const trail_controller = new AbortController()
-    const frame_stride = suggest_msd_frame_stride(owner, TRAIL_POSITION_MAX_BYTES) ?? 1
-    collect_msd_positions(owner, {
-      frame_stride,
-      max_bytes: TRAIL_POSITION_MAX_BYTES,
-      signal: trail_controller.signal,
-    })
+    // The stride budget and the collect entry point throw synchronously (a single frame
+    // over budget, a host-served run without a full pass); the async wrapper turns those
+    // into rejections so one catch covers them and the stream failures alike
+    const collect_trails = async () => {
+      const frame_stride = suggest_frame_stride(
+        owner.frame_count,
+        owner.preview.structure.sites.length,
+        TRAIL_POSITION_MAX_BYTES,
+      )
+      return collect_trajectory_positions(owner, {
+        frame_stride,
+        max_bytes: TRAIL_POSITION_MAX_BYTES,
+        signal: trail_controller.signal,
+        analysis_name: `Trajectory trails`,
+      })
+    }
+    collect_trails()
       .then((stream) => {
         if (!trail_controller.signal.aborted) trail_stream = stream
       })
@@ -345,7 +358,6 @@
     ...structure_props.scene_props,
     trajectory_position_stream: spectroscopy_open ? undefined : trail_stream,
     trajectory_line_end_frame: spectroscopy_open ? undefined : trajectory_line_end_frame,
-    show_trajectory_lines: spectroscopy_open ? false : show_trajectory_lines,
     defer_expensive_geometry: spectroscopy_open ? false : scrub_active,
   })
 
@@ -470,6 +482,19 @@
   let scatter_series = $derived(
     prepare_trajectory_scatter_series(plot_series, scatter_point_limit),
   )
+  // Histogram mode bins each property's values; keep index alignment with plot_series so
+  // legend toggles map back onto the same series_idx
+  let histogram_series = $derived<HistogramSeries[]>(
+    plot_series.map((srs) => ({
+      id: srs.id,
+      values: srs.y,
+      label: srs.label,
+      visible: srs.visible,
+      legend_group: srs.legend_group,
+      color: srs.line_style?.stroke ?? first_point_style(srs)?.fill,
+      y_axis: srs.y_axis,
+    })),
+  )
   let x_axis = $derived({
     label: x_map.unit ? `${x_map.label} (${x_map.unit})` : x_map.label,
     // step_label_positions are frame indices; the axis is drawn in x units
@@ -536,11 +561,7 @@
     // the viewer shortcuts they do not use bubble here
     const target = event.target instanceof HTMLElement ? event.target : null
     const is_sequence_slider = target?.classList.contains(`step-slider`)
-    if (
-      !is_sequence_slider &&
-      target &&
-      (target.matches(`input, textarea, select`) || target.isContentEditable)
-    ) {
+    if (!is_sequence_slider && target && is_editable_target(event)) {
       if (target.classList.contains(`step-input`) && [`Escape`, `Enter`].includes(event.key)) {
         target.blur()
       }
@@ -870,7 +891,10 @@
           ...structure_props,
           scene_props: trail_scene_props,
         }}
-        bind:show_trajectory_lines
+        bind:show_trajectory_lines={
+          () => (spectroscopy_open ? false : show_trajectory_lines),
+          (value) => (show_trajectory_lines = value)
+        }
         bind:supercell_scaling
         bind:active_pane={
           () => (active_pane === `controls` ? `controls` : structure_pane),
@@ -932,7 +956,7 @@
       {:else}
         <Histogram
           {...histogram_props}
-          series={plot_series}
+          series={histogram_series}
           x_axis={{
             label: String(histogram_props.x_axis?.label ?? y_axis_labels.y1),
             format: `.3~s`,

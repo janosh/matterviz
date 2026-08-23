@@ -27,67 +27,67 @@
     {
       "id": "liquid",
       "name": "Liquid",
-      "color": "liquid",
+      "color": "rgba(135, 206, 250, 0.6)",
       "bounds": [[0, 1400], [1, 1400], [1, 505], "~liquidus", [0, 1337]]
     },
     {
       "id": "fcc_au",
       "name": "FCC (Au)",
-      "color": "gold",
+      "color": "rgba(255, 215, 0, 0.6)",
       "bounds": [[0, 1337], [0.05, 553], "solvus_au[1:]", [0.02, 300], [0, 300]]
     },
     {
       "id": "bct_sn",
       "name": "BCT (Sn)",
-      "color": "hcp_a3",
+      "color": "rgba(221, 160, 221, 0.6)",
       "bounds": [[0.95, 490], "solvus_sn[1:]", [0.98, 300], [1, 300], [1, 505]]
     },
     {
       "id": "au5sn",
       "name": "Au₅Sn",
-      "color": "intermetallic",
+      "color": "rgba(255, 200, 150, 0.6)",
       "bounds": [[0.15, 490], [0.2, 490], [0.2, 300], [0.15, 300]]
     },
     {
       "id": "ausn",
       "name": "AuSn",
-      "color": "intermetallic_alt",
+      "color": "rgba(200, 180, 255, 0.6)",
       "bounds": [[0.45, 490], [0.55, 490], [0.55, 300], [0.45, 300]]
     },
     {
       "id": "au_liquid",
       "name": "FCC + L",
-      "color": "two_phase_au_liquid",
+      "color": "rgba(255, 235, 150, 0.5)",
       "bounds": [[0, 1337], [0.1, 1100], [0.2, 900], [0.29, 553], [0.05, 553]]
     },
     {
       "id": "sn_liquid",
       "name": "BCT + L",
-      "color": "two_phase_hcp_liquid",
+      "color": "rgba(230, 180, 230, 0.5)",
       "bounds": [[0.78, 490], [0.9, 500], [1, 505], [0.95, 490]]
     },
     {
       "id": "au_au5sn",
       "name": "FCC + Au₅Sn",
-      "color": "two_phase_au_ausn",
+      "color": "rgba(255, 230, 180, 0.5)",
       "bounds": [[0.05, 490], [0.15, 490], [0.15, 300], [0.02, 300], "~solvus_au[1:]"]
     },
     {
       "id": "au5sn_ausn",
       "name": "Au₅Sn + AuSn",
-      "color": "two_phase_intermetallic_alt",
+      "color": "rgba(255, 210, 180, 0.5)",
       "bounds": [[0.2, 490], [0.45, 490], [0.45, 300], [0.2, 300]]
     },
     {
       "id": "ausn_sn",
       "name": "AuSn + BCT",
-      "color": "two_phase_alt",
+      "color": "rgba(220, 200, 240, 0.5)",
       "bounds": [[0.55, 490], [0.95, 490], "solvus_sn[1:]", [0.98, 300], [0.55, 300]]
     },
     {
       "id": "ausn_liquid",
       "name": "AuSn + L",
-      "color": "two_phase_ausn",
+      "color": "rgba(200, 180, 230, 0.5)",
       "bounds": [
         [0.05, 490],
         [0.05, 553],

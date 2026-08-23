@@ -56,7 +56,7 @@
 
   function handle_click(event: MouseEvent) {
     event.stopPropagation()
-    if (ctx.settings.editable && ctx.onchange) {
+    if (ctx.settings.editable && ctx.on_change) {
       clearTimeout(click_timer)
       const copy_pos = { clientX: event.clientX, clientY: event.clientY }
       click_timer = setTimeout(() => ctx.copy_value(path, value, copy_pos), 250)
@@ -83,7 +83,7 @@
   let edit_input = $state<HTMLInputElement | null>(null)
 
   function start_edit(event: MouseEvent) {
-    if (!ctx.settings.editable || !ctx.onchange) return
+    if (!ctx.settings.editable || !ctx.on_change) return
     event.stopPropagation()
     clearTimeout(click_timer) // cancel pending click-to-copy
     // Pre-fill with raw value (strings without quotes)
@@ -96,7 +96,7 @@
     if (!editing) return
     editing = false
     const new_value = parse_edited_value(edit_text)
-    if (!values_equal(new_value, value)) ctx.onchange?.(path, new_value, value)
+    if (!values_equal(new_value, value)) ctx.on_change?.(path, new_value, value)
   }
 
   function handle_edit_keydown(event: KeyboardEvent) {

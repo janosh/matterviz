@@ -4,6 +4,7 @@
 
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import type { Crystal } from '$lib'
+import type { SymmetryDataset } from '$lib/symmetry'
 import {
   analyze_structure_symmetry,
   apply_symmetry_operations,
@@ -11,16 +12,16 @@ import {
   map_wyckoff_to_all_atoms,
   SPACEGROUP_SYMBOL_TO_NUM,
   spacegroup_to_crystal_sys,
+  spacegroup_settings,
   spacegroup_to_lattice_system,
   spacegroup_wyckoff_positions,
   transform_cell,
   wyckoff_positions_from_moyo,
 } from '$lib/symmetry'
 import { structure_map } from '$site/structures'
-import type { MoyoDataset } from '@spglib/moyo-wasm'
 import { space_group_type } from '@spglib/moyo-wasm'
 import { beforeAll, describe, expect, test } from 'vitest'
-import { init_moyo_for_tests, make_crystal } from '../setup'
+import { fcc_primitive_matrix, init_moyo_for_tests, make_crystal } from '../setup'
 
 // Helper to get structure or throw with descriptive error
 function get_structure(id: string) {
@@ -37,30 +38,16 @@ const analyze_crystal = (crystal: Crystal, symprec = 1e-4) =>
 
 // Shared primitive/non-conventional input cells reused across the orbit-mapping tests.
 // Each returns a fresh Crystal so tests can't cross-contaminate via shared references.
-const FCC_A = 3.61 // primitive FCC Cu: 1-atom input expands to a 4-atom conventional cell
+// primitive FCC Cu: 1-atom input expands to a 4-atom conventional cell
 const prim_fcc_cu = () =>
-  make_crystal(
-    [
-      [0, FCC_A / 2, FCC_A / 2],
-      [FCC_A / 2, 0, FCC_A / 2],
-      [FCC_A / 2, FCC_A / 2, 0],
-    ],
-    [{ element: `Cu`, abc: [0, 0, 0] }],
-  )
+  make_crystal(fcc_primitive_matrix(3.61), [{ element: `Cu`, abc: [0, 0, 0] }])
 
-const SI_A = 5.43 // primitive diamond Si: 2-atom input expands to an 8-atom conventional cell
+// primitive diamond Si: 2-atom input expands to an 8-atom conventional cell
 const prim_diamond_si = () =>
-  make_crystal(
-    [
-      [0, SI_A / 2, SI_A / 2],
-      [SI_A / 2, 0, SI_A / 2],
-      [SI_A / 2, SI_A / 2, 0],
-    ],
-    [
-      { element: `Si`, abc: [0, 0, 0] },
-      { element: `Si`, abc: [0.25, 0.25, 0.25] },
-    ],
-  )
+  make_crystal(fcc_primitive_matrix(5.43), [
+    { element: `Si`, abc: [0, 0, 0] },
+    { element: `Si`, abc: [0.25, 0.25, 0.25] },
+  ])
 
 const PO_A = 3.35 // 2x1x1 supercell of simple-cubic Po: 2-atom input reduces to a 1-atom std cell
 const supercell_po = () =>
@@ -469,7 +456,7 @@ describe(`map_wyckoff_to_all_atoms across display frames`, () => {
 
   // Analyze `orig`, then re-express its Wyckoff rows onto the `displayed` cell (whatever
   // frame the viewer renders) and return the mapped rows.
-  const map_rows = (orig: Crystal, displayed: Crystal, sym_data: MoyoDataset) =>
+  const map_rows = (orig: Crystal, displayed: Crystal, sym_data: SymmetryDataset) =>
     map_wyckoff_to_all_atoms(wyckoff_positions_from_moyo(sym_data), displayed, orig, sym_data)
 
   test(`conventional-cell display: all 4 FCC copies map to the 4a row`, async () => {
@@ -534,6 +521,24 @@ describe(`space group tables vs moyo`, () => {
       expect(SPACEGROUP_SYMBOL_TO_NUM[condensed_hm], `symbol ${condensed_hm} → number`).toBe(
         num,
       )
+    }
+  })
+})
+
+// The WASM lookups take integer ids and panic (not throw) on anything else, which a malformed
+// `sym_data` prop would trigger inside SymmetryStats' $derived; out-of-range ids return []
+describe(`space-group database lookups validate their ids`, () => {
+  beforeAll(init_moyo_for_tests)
+
+  test.each([
+    [`spacegroup_wyckoff_positions`, spacegroup_wyckoff_positions, 1, 530],
+    [`spacegroup_settings`, spacegroup_settings, 1, 230],
+  ] as const)(`%s returns rows for %i..%i and [] otherwise`, (_name, lookup, min, max) => {
+    for (const valid of [min, max, Math.floor((min + max) / 2)]) {
+      expect(lookup(valid).length, `id ${valid}`).toBeGreaterThan(0)
+    }
+    for (const invalid of [0, -1, min - 1, max + 1, 1.5, NaN, Infinity, -Infinity]) {
+      expect(lookup(invalid), `id ${invalid}`).toEqual([])
     }
   })
 })

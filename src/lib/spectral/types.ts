@@ -6,7 +6,7 @@ import type { PymatgenCompleteDos } from './helpers'
 
 export type BandStructureType = `phonon` | `electronic`
 export type PathMode = `union` | `intersection` | `strict`
-export type FrequencyUnit = `THz` | `eV` | `meV` | `Ha` | `cm-1`
+export type { FrequencyUnit } from './frequency-units'
 export type NormalizationMode = `max` | `sum` | `integral` | null
 
 // Q-point representation

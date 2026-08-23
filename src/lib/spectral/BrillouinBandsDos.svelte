@@ -3,11 +3,7 @@
   import { reciprocal_lattice } from '$lib/math'
   import type { Vec2, Vec3 } from '$lib/math'
   import type { InternalPoint, ScatterHandlerEvent } from '$lib/plot'
-  import {
-    axis_with_range,
-    max_side_padding,
-    reconcile_shared_axis_ranges,
-  } from '$lib/plot/core/shared-axes'
+  import { axis_with_range, max_side_padding } from '$lib/plot/core/shared-axes'
   import type { AxisConfig } from '$lib/plot/core/types'
   import type { Crystal } from '$lib/structure'
   import type { ComponentProps, Snippet } from 'svelte'
@@ -15,6 +11,7 @@
   import Bands from './Bands.svelte'
   import Dos from './Dos.svelte'
   import * as helpers from './helpers'
+  import { create_synced_y_axes } from './synced-axes.svelte'
   import type { BaseBandStructure, DosData, HoveredData } from './types'
 
   let {
@@ -39,19 +36,23 @@
   } = $props()
 
   // Get the first normalized band structure for path calculations
-  // Support both qpoints (phonon) and kpoints (electronic) to detect single vs dict
-  let first_band_struct = $derived(
-    helpers.normalize_band_structure(
-      `qpoints` in (band_structs as object) || `kpoints` in (band_structs as object)
-        ? band_structs
-        : Object.values(band_structs)[0],
-    ),
-  ) as BaseBandStructure | null
+  // Support both qpoints (phonon) and kpoints (electronic) to detect single vs dict. A
+  // malformed pymatgen input throws from normalization; the nested Bands reports it, so the
+  // k-path just stays empty here.
+  let first_band_struct = $derived.by((): BaseBandStructure | null => {
+    try {
+      return helpers.normalize_band_structure(
+        `qpoints` in (band_structs as object) || `kpoints` in (band_structs as object)
+          ? band_structs
+          : Object.values(band_structs)[0],
+      )
+    } catch {
+      return null
+    }
+  })
 
-  // Compute shared frequency/energy range from both bands and DOS data
   let shared_frequency_range = $derived(helpers.compute_frequency_range(band_structs, doses))
 
-  // Extract Fermi level from electronic band structure or DOS data
   let fermi_level = $derived(
     helpers.extract_efermi(band_structs) ?? helpers.extract_efermi(doses),
   )
@@ -96,31 +97,14 @@
       : { ...dos_props.y_axis },
   ]
 
-  let synced_zoom_range = $state<Vec2 | null>(null)
-  let y_axes = $state(default_y_axes())
-  let prev_sources: unknown[] | undefined
-  $effect(() => {
-    const sources = [band_structs, doses, is_desktop, bands_props.y_axis, dos_props.y_axis]
-    if (prev_sources?.every((source, idx) => source === sources[idx])) return
-    prev_sources = sources
-    y_axes = default_y_axes()
-    synced_zoom_range = null
-  })
-
-  // Detect zoom changes and sync between components (runs first to capture child updates)
-  $effect(() => {
-    if (!sync_y_zoom || !shared_frequency_range) return
-    const update = reconcile_shared_axis_ranges(
-      is_desktop ? y_axes : y_axes.slice(0, 1),
-      shared_frequency_range,
-      synced_zoom_range,
-    )
-    if (!update) return
-
-    synced_zoom_range = update.synced_range
-    // A vertical DOS uses y for density, so cross-plot range linking only applies
-    // to the desktop layout where both frequency/energy dimensions are y axes.
-    y_axes = is_desktop ? update.axes : [update.axes[0], y_axes[1]]
+  // A vertical DOS uses y for density, so cross-plot range linking only applies to the
+  // desktop layout where both frequency/energy dimensions are y axes
+  const synced = create_synced_y_axes({
+    default_axes: default_y_axes,
+    sources: () => [band_structs, doses, is_desktop, bands_props.y_axis, dos_props.y_axis],
+    shared_range: () => shared_frequency_range,
+    sync_zoom: () => sync_y_zoom,
+    linked_count: () => (is_desktop ? 2 : 1),
   })
 
   let hovered_frequency = $state<number | null>(null)
@@ -148,7 +132,7 @@
       ...bands_props.padding,
       ...(is_desktop ? shared_tb_padding : {}),
     }}
-    bind:y_axis={y_axes[0]}
+    bind:y_axis={synced.y_axes[0]}
     bind:x_positions={bands_x_positions}
     reference_frequency={hovered_frequency}
     highlighted_qpoint_index={active_qpoint_index}
@@ -188,7 +172,7 @@
       ...axis_with_range(undefined, is_desktop ? undefined : shared_frequency_range),
       ...dos_props.x_axis,
     }}
-    bind:y_axis={y_axes[1]}
+    bind:y_axis={synced.y_axes[1]}
     bind:hovered_frequency
     reference_frequency={hovered_frequency}
     padding={{

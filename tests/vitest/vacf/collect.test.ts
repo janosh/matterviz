@@ -1,11 +1,4 @@
-import type { Vec3 } from '$lib/math'
-import {
-  trajectory_from_frames,
-  type ParseProgress,
-  type PositionStreamOptions,
-  type TrajectoryFrame,
-  type TrajectoryRun,
-} from '$lib/trajectory'
+import type { CollectPositionsOptions, TrajectoryRun } from '$lib/trajectory'
 import {
   calc_vacf,
   collect_vacf_input,
@@ -13,40 +6,10 @@ import {
   VELOCITY_SITE_PROPERTY,
 } from '$lib/vacf'
 import { describe, expect, it, vi } from 'vitest'
-import { make_crystal } from '../setup'
-import { circular_motion, max_abs_error } from './helpers'
+import { max_abs_error, orbit_run } from './helpers'
 
-const make_frame = (
-  step: number,
-  xyz_list: Vec3[],
-  velocities?: (Vec3 | undefined)[],
-): TrajectoryFrame => {
-  const crystal = make_crystal(
-    20,
-    xyz_list.map((xyz, idx) => ({
-      element: `H`,
-      xyz,
-      ...(velocities?.[idx] ? { properties: { velocity: velocities[idx] } } : {}),
-    })),
-    { charge: 0 },
-  )
-  return { step, structure: { charge: 0, sites: crystal.sites } }
-}
-
-const make_run = (n_frames: number, with_velocities: boolean): TrajectoryRun => {
-  const { positions, velocities } = circular_motion(n_frames, 0.03, 1.5)
-  return trajectory_from_frames(
-    positions.map((frame, frame_idx) =>
-      make_frame(
-        frame_idx,
-        frame.map((xyz) => xyz as Vec3),
-        with_velocities
-          ? velocities[frame_idx].map((velocity) => velocity as Vec3)
-          : undefined,
-      ),
-    ),
-  )
-}
+const make_run = (n_frames: number, with_velocities: boolean): TrajectoryRun =>
+  orbit_run(n_frames, 0.03, 1.5, with_velocities)
 
 describe(`collect_vacf_input`, () => {
   it(`collects stored per-atom velocities and reproduces the analytic circular VACF`, async () => {
@@ -55,7 +18,7 @@ describe(`collect_vacf_input`, () => {
     expect(collected.velocities).toHaveLength(50 * 3)
     const omega = 2 * Math.PI * 0.03
     expect(collected.velocities?.[0]).toBeCloseTo(1.5 * omega, 12)
-    const result = calc_vacf(collected, { vdos: { skip: true } })
+    const result = calc_vacf(collected)
     expect(result.velocity_source).toBe(`stored`)
     expect(
       max_abs_error(
@@ -68,9 +31,7 @@ describe(`collect_vacf_input`, () => {
   it(`falls back to central differences when no velocities are stored`, async () => {
     const collected = await collect_vacf_input(make_run(50, false))
     expect(collected.velocities).toBeNull()
-    expect(calc_vacf(collected, { vdos: { skip: true } }).velocity_source).toBe(
-      `central_difference`,
-    )
+    expect(calc_vacf(collected).velocity_source).toBe(`central_difference`)
   })
 
   it(`strides velocities in lockstep with positions`, async () => {
@@ -91,19 +52,15 @@ describe(`collect_vacf_input`, () => {
     const backing = make_run(8, true)
     const backing_collect = backing.collect_positions
     if (!backing_collect) throw new Error(`Expected a position collector`)
-    const collect_positions = vi.fn(
-      async (
-        options?: PositionStreamOptions,
-        on_progress?: (progress: ParseProgress) => void,
-        signal?: AbortSignal,
-      ) => backing_collect(options, on_progress, signal),
+    const collect_positions = vi.fn(async (options?: CollectPositionsOptions) =>
+      backing_collect(options),
     )
     const collected = await collect_vacf_input({ ...backing, collect_positions })
-    expect(collect_positions).toHaveBeenCalledWith(
-      { frame_stride: 1, max_bytes: 512 * 1024 * 1024, vector_keys: [VELOCITY_SITE_PROPERTY] },
-      undefined,
-      undefined,
-    )
+    expect(collect_positions).toHaveBeenCalledWith({
+      frame_stride: 1,
+      max_bytes: 512 * 1024 * 1024,
+      vector_keys: [VELOCITY_SITE_PROPERTY],
+    })
     expect(collected.velocities).toBeInstanceOf(Float64Array)
   })
 

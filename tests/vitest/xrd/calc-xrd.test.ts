@@ -59,6 +59,7 @@ describe(`compute_xrd_pattern parity with pymatgen JSON`, () => {
     .filter((name) => /\.json(?:\.gz)?$/.test(name) && xrd_patterns[fixture_id(name)])
     .map((name) => ({ name, expected: xrd_patterns[fixture_id(name)] }))
 
+  // Guards the table below against silently becoming empty
   test(`found structure/XRD JSON pairs`, () => {
     expect(file_pairs.length).toBeGreaterThan(0)
   })
@@ -350,21 +351,6 @@ describe(`enumerate_reciprocal_points`, () => {
   )
 })
 
-describe(`precomputed XRD fixtures are consistent`, () => {
-  const entries = Object.entries(xrd_patterns)
-  test(`found XRD fixtures`, () => {
-    expect(entries.length).toBeGreaterThan(0)
-  })
-  test.each(entries.map(([id, pattern]) => [id, pattern] as const))(
-    `fixture %s length consistency`,
-    (_id, pattern) => {
-      expect(pattern.x).toHaveLength(pattern.y.length)
-      if (pattern.hkls) expect(pattern.hkls).toHaveLength(pattern.x.length)
-      if (pattern.d_hkls) expect(pattern.d_hkls).toHaveLength(pattern.x.length)
-    },
-  )
-})
-
 describe(`electron_wavelength`, () => {
   // Relativistic de Broglie wavelengths as tabulated in every TEM textbook (Williams & Carter
   // Table 1.1, De Graef Table 2.1), quoted to 4 significant figures. The tolerance below is
@@ -411,7 +397,8 @@ describe(`radiation types`, () => {
     scaled_intensity_tol: -1,
   })
 
-  test.each(probe_structures)(
+  // One structure suffices: the default-parameter fallthrough is the same for every input
+  test.each(probe_structures.slice(0, 1))(
     `%s: omitting radiation is exactly the X-ray path`,
     (_label, structure) => {
       const implicit = compute_xrd_pattern(structure, { wavelength: cu_wavelength })
@@ -425,12 +412,18 @@ describe(`radiation types`, () => {
     },
   )
 
+  // The same structure through the X-ray and neutron paths
+  const xray_and_neutron = (structure: Crystal, two_theta_max: number) => {
+    const shared = unfiltered(two_theta_max)
+    return ([`xray`, `neutron`] as const).map((radiation) =>
+      compute_xrd_pattern(structure, { ...shared, radiation }),
+    )
+  }
+
   test.each(probe_structures)(
     `%s: neutron peak positions match X-ray exactly, intensities do not`,
     (_label, structure) => {
-      const shared = unfiltered(120)
-      const xray = compute_xrd_pattern(structure, { ...shared, radiation: `xray` })
-      const neutron = compute_xrd_pattern(structure, { ...shared, radiation: `neutron` })
+      const [xray, neutron] = xray_and_neutron(structure, 120)
 
       // Bragg geometry is radiation-independent: identical 2θ, identical d, identical hkls
       expect(neutron.x).toEqual(xray.x)
@@ -448,16 +441,10 @@ describe(`radiation types`, () => {
     // [label, a_len, cation, anion]
     [`TiC`, 4.328, `Ti`, `C`],
     [`MnO`, 4.445, `Mn`, `O`],
-    // b_Ti + b_Al = −3.438 + 3.449 = 0.011 fm, a 99.7% cancellation: the strongest X-ray
-    // reflection is essentially extinct for neutrons
-    [`TiAl`, 4.3, `Ti`, `Al`],
   ] as const)(
     `%s rock salt: 200 dominates for X-rays but 111 dominates for neutrons`,
     (_label, a_len, cation, anion) => {
-      const structure = make_rocksalt(a_len, cation, anion)
-      const shared = unfiltered(90)
-      const xray = compute_xrd_pattern(structure, { ...shared, radiation: `xray` })
-      const neutron = compute_xrd_pattern(structure, { ...shared, radiation: `neutron` })
+      const [xray, neutron] = xray_and_neutron(make_rocksalt(a_len, cation, anion), 90)
 
       const [xray_111, xray_200] = [intensity_of(xray, `111`), intensity_of(xray, `200`)]
       const neutron_111 = intensity_of(neutron, `111`)
@@ -472,11 +459,10 @@ describe(`radiation types`, () => {
     },
   )
 
+  // b_Ti + b_Al = −3.438 + 3.449 = 0.011 fm, a 99.7% cancellation: the strongest X-ray
+  // reflection is essentially extinct for neutrons
   test(`TiAl rock salt: 200 is the strongest X-ray line and neutron-extinct`, () => {
-    const structure = make_rocksalt(4.3, `Ti`, `Al`)
-    const shared = unfiltered(90)
-    const xray = compute_xrd_pattern(structure, { ...shared, radiation: `xray` })
-    const neutron = compute_xrd_pattern(structure, { ...shared, radiation: `neutron` })
+    const [xray, neutron] = xray_and_neutron(make_rocksalt(4.3, `Ti`, `Al`), 90)
 
     expect(intensity_of(xray, `200`)).toBeCloseTo(100, 6) // strongest X-ray reflection
     // (b_Ti + b_Al)² / (b_Ti − b_Al)² = (0.011/6.887)² = 2.6e-6, so on a 0-100 scale the
@@ -633,16 +619,18 @@ describe(`add_xrd_pattern`, () => {
     expect(result.pattern?.pattern.x.length).toBeGreaterThan(0)
   })
 
-  test(`returns error for invalid structure`, async () => {
-    const result = await add_xrd_pattern(`invalid json`, `test.json`, null)
-    expect(result.error).toBeDefined()
+  test.each([
+    [`invalid JSON`, `invalid json`, /./],
+    // strip the lattice
+    [
+      `structure without lattice`,
+      JSON.stringify({ ...make_simple_cubic_structure(3), lattice: undefined }),
+      /must have a lattice/,
+    ],
+  ])(`returns an error for %s`, async (_label, content, pattern) => {
+    const result = await add_xrd_pattern(content, `test.json`, null)
+    expect(result.error).toMatch(pattern)
     expect(result.pattern).toBeUndefined()
-  })
-
-  test(`returns error for structure without lattice`, async () => {
-    const { lattice: _lattice, ...structure } = make_simple_cubic_structure(3) // strip lattice
-    const result = await add_xrd_pattern(JSON.stringify(structure), `test.json`, null)
-    expect(result.error).toMatch(/must have a lattice/)
   })
 
   test(`respects wavelength parameter`, async () => {

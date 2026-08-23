@@ -1,14 +1,19 @@
 // Helper utilities for band structure and DOS data processing
-import {
-  ELEMENTARY_CHARGE_C,
-  HARTREE_TO_EV,
-  PLANCK_J_S,
-  THZ_TO_INVERSE_CM,
-} from '$lib/constants'
 import { SUBSCRIPT_MAP } from '$lib/labels'
 import { is_plain_object } from '$lib/utils'
-import { euclidean_dist } from '$lib/math'
+import {
+  array_extent,
+  euclidean_dist,
+  mat3x3_vec3_multiply,
+  subtract,
+  transpose_3x3_matrix,
+} from '$lib/math'
 import type { Matrix3x3, Vec2, Vec3 } from '$lib/math'
+import {
+  frequency_unit_per_thz,
+  parse_frequency_unit,
+  type FrequencyUnit,
+} from './frequency-units'
 import type * as types from './types'
 import type { RibbonConfig } from './types'
 
@@ -31,16 +36,6 @@ export const phonon_explorer_views = (
   ...(spectrum?.has_raman ? ([`raman`] as const) : []),
   `modes`,
 ]
-
-// Phonon frequency unit conversions, derived from the shared CODATA constants
-const THz_TO_EV = (PLANCK_J_S * 1e12) / ELEMENTARY_CHARGE_C
-const FREQUENCY_UNIT_PER_THZ: Record<types.FrequencyUnit, number> = {
-  THz: 1,
-  eV: THz_TO_EV,
-  meV: THz_TO_EV * 1000,
-  Ha: THz_TO_EV / HARTREE_TO_EV,
-  'cm-1': THZ_TO_INVERSE_CM,
-}
 
 // Band structure constants
 export const IMAGINARY_MODE_NOISE_THRESHOLD = 0.005 // Clamp negatives < 0.5% as noise
@@ -131,20 +126,6 @@ export function get_ribbon_config(
   return { opacity: 0.3, max_width: 6, scale: 1, ...source }
 }
 
-// Convert frequencies from THz to specified units.
-export function convert_frequencies(
-  frequencies: number[],
-  unit: types.FrequencyUnit = `THz`,
-): number[] {
-  const factor = FREQUENCY_UNIT_PER_THZ[unit]
-  if (!factor) {
-    const valid_units = Object.keys(FREQUENCY_UNIT_PER_THZ).join(`, `)
-    throw new Error(`Invalid unit: ${unit}. Must be one of ${valid_units}`)
-  }
-  return factor === 1 ? frequencies : frequencies.map((freq) => freq * factor)
-}
-
-// Normalize DOS densities according to specified mode.
 export function normalize_densities(
   densities: number[],
   freqs_or_energies: number[],
@@ -282,21 +263,31 @@ export function extract_spin_channels<T>(data: unknown): { up: T; down: T | null
   return { up: record[up_key], down: down_key !== undefined ? record[down_key] : null }
 }
 
-const parse_frequency_unit = (unit: unknown): types.FrequencyUnit | null => {
-  if (typeof unit !== `string`) return null
-  const normalized = unit.trim().toLowerCase()
-  if (normalized === `thz`) return `THz`
-  if (normalized === `ev`) return `eV`
-  if (normalized === `mev`) return `meV`
-  if (normalized === `ha` || normalized === `hartree`) return `Ha`
-  if ([`cm-1`, `cm^-1`, `cm⁻¹`].includes(normalized)) return `cm-1`
-  return null
+const is_matrix3x3 = (val: unknown): val is Matrix3x3 =>
+  Array.isArray(val) &&
+  val.length === 3 &&
+  val.every((row) => is_vec3(row) && row.length === 3)
+
+// pymatgen's `as_dict()` stores the reciprocal lattice as `lattice_rec`, the phonon JSON dumped
+// by phonopy/atomate2-style workflows as `recip_lattice`. Both are producer formats, so both
+// are read. A band structure that is recognisably pymatgen-shaped but lacks either cannot
+// measure its k-path: unlike an unrecognised shape (null) this is a named, fixable defect in
+// the input, so it throws and Bands shows the message in place of the generic empty state.
+const read_recip_lattice = (pmg: Record<string, unknown>): Matrix3x3 => {
+  const lattice = [`lattice_rec`, `recip_lattice`].map((key) => pmg[key]).find(is_plain_object)
+  const matrix = lattice?.matrix
+  if (is_matrix3x3(matrix)) return matrix
+  throw new Error(
+    `pymatgen band structure needs a finite 3x3 reciprocal lattice under 'lattice_rec.matrix' (or 'recip_lattice.matrix') to measure k-path distances; got keys [${Object.keys(pmg).join(`, `)}]`,
+  )
 }
 
-// Convert pymatgen PhononBandStructureSymmLine or BandStructure to matterviz format
+// Convert pymatgen PhononBandStructureSymmLine or BandStructure to matterviz format.
+// `PhononBandStructure` only adds the optional `has_nac`/`has_imaginary_modes` flags to
+// `BaseBandStructure`; electronic input simply leaves them unset.
 function convert_pymatgen_band_structure(
   pmg: Record<string, unknown>,
-): types.BaseBandStructure | null {
+): types.PhononBandStructure | null {
   // Support both qpoints (phonon) and kpoints (electronic)
   const raw_qpts = (pmg.qpoints ?? pmg.kpoints) as unknown[] | undefined
 
@@ -325,7 +316,7 @@ function convert_pymatgen_band_structure(
   // pass through untouched; an unrecognised declared unit is a malformed input, not THz.
   // `unit: null` counts as undeclared, as it does for normalize_dos.
   const source_unit =
-    pmg.unit == null ? (has_frequencies_cm ? `cm-1` : `THz`) : parse_frequency_unit(pmg.unit)
+    pmg.unit == null ? (has_frequencies_cm ? `cm^-1` : `THz`) : parse_frequency_unit(pmg.unit)
   if (!source_unit) return null
 
   if (
@@ -342,10 +333,20 @@ function convert_pymatgen_band_structure(
     .filter((qpoint): qpoint is types.QPoint => qpoint !== null)
   if (qpoints.length === 0) return null
 
-  // Step distances and discontinuity detection (5x median threshold)
+  // Step lengths are Cartesian reciprocal-space distances |Mᵀ·Δq| (like pymatgen/phonopy);
+  // a fractional metric would distort every non-cubic path. Transpose once, not per step.
+  const recip_T = transpose_3x3_matrix(read_recip_lattice(pmg))
   const steps = qpoints
     .slice(1)
-    .map((qpoint, idx) => euclidean_dist(qpoints[idx].frac_coords, qpoint.frac_coords))
+    .map((qpoint, idx) =>
+      Math.hypot(
+        ...mat3x3_vec3_multiply(
+          recip_T,
+          subtract(qpoint.frac_coords, qpoints[idx].frac_coords),
+        ),
+      ),
+    )
+  // Discontinuity detection (5x median step)
   const sorted = steps.toSorted((a, b) => a - b)
   const threshold = (sorted[Math.floor(sorted.length / 2)] ?? 0) * 5
   // Ascending indices of the q-points that start a new segment after a path jump
@@ -359,7 +360,7 @@ function convert_pymatgen_band_structure(
     distance.push(disc_set.has(idx + 1) ? distance[idx] : distance[idx] + step)
   }
 
-  // Use pymatgen's branches if valid; otherwise infer one segment per discontinuity-free run
+  // Use pymatgen's branches if valid; otherwise infer them from the path itself
   const pmg_branches = pmg.branches as types.Branch[] | undefined
   let branches = (Array.isArray(pmg_branches) ? pmg_branches : []).filter(
     (branch) =>
@@ -371,18 +372,29 @@ function convert_pymatgen_band_structure(
   )
   if (branches.length === 0) {
     console.warn(
-      `Band structure missing 'branches' field - inferring from path discontinuities`,
+      `Band structure missing 'branches' field - inferring from labeled q-points and path discontinuities`,
     )
-    const segment_starts = [0, ...disc_indices]
-    branches = segment_starts.map((start_index, idx) => {
-      const end_index = (segment_starts[idx + 1] ?? qpoints.length) - 1
+    // Branch boundaries are the path ends, every labeled q-point (Bands only draws tick labels
+    // at branch ends, so a label mid-branch would vanish) and both sides of every jump. The
+    // jump itself (the two-point span ending on a discontinuity index) is not a branch.
+    const boundaries = [
+      ...new Set([
+        0,
+        ...qpoints.flatMap((qpoint, idx) => (qpoint.label ? [idx] : [])),
+        ...disc_indices.flatMap((idx) => [idx - 1, idx]),
+        qpoints.length - 1,
+      ]),
+    ].toSorted((a, b) => a - b)
+    branches = boundaries.slice(1).flatMap((end_index, idx) => {
+      const start_index = boundaries[idx]
+      if (disc_set.has(end_index)) return []
       const start_label = qpoints[start_index].label ?? `?`
       const end_label = qpoints[end_index].label ?? `?`
-      return { start_index, end_index, name: `${start_label}-${end_label}` }
+      return [{ start_index, end_index, name: `${start_label}-${end_label}` }]
     })
   }
 
-  const thz_per_source_unit = 1 / FREQUENCY_UNIT_PER_THZ[source_unit]
+  const thz_per_source_unit = 1 / frequency_unit_per_thz(source_unit)
   const to_thz = (band: number[]): number[] =>
     thz_per_source_unit === 1 ? band : band.map((val) => val * thz_per_source_unit)
 
@@ -403,9 +415,15 @@ function convert_pymatgen_band_structure(
     spin_down_bands: valid_spin_down_bands?.map(to_thz),
     nb_bands: raw_bands.length,
     labels_dict: labels_dict ?? {},
+    ...(typeof pmg.has_nac === `boolean` && { has_nac: pmg.has_nac }),
+    ...(typeof pmg.has_imaginary_modes === `boolean` && {
+      has_imaginary_modes: pmg.has_imaginary_modes,
+    }),
   }
 }
 
+// Returns null for shapes that are not a band structure at all. A pymatgen-shaped input that
+// lacks its reciprocal lattice throws an Error naming the missing key (see read_recip_lattice).
 export function normalize_band_structure(
   band_struct: unknown,
 ): types.BaseBandStructure | null {
@@ -502,7 +520,7 @@ export function normalize_dos(dos: unknown): types.DosData | null {
     const source_unit = declared_unit == null ? `THz` : parse_frequency_unit(declared_unit)
     if (!source_unit) return null
     const numeric_frequencies = frequencies as number[]
-    const source_unit_per_thz = FREQUENCY_UNIT_PER_THZ[source_unit]
+    const source_unit_per_thz = frequency_unit_per_thz(source_unit)
     const normalized_frequencies =
       source_unit === `THz`
         ? numeric_frequencies
@@ -725,7 +743,6 @@ export function extract_pdos(
   return Object.keys(result).length > 0 ? result : null
 }
 
-// Shift a single DOS object's energies by the given amount
 const shift_dos_energies = <T extends PymatgenDos>(dos: T, shift: number): T => ({
   ...dos,
   efermi: dos.efermi - shift,
@@ -798,16 +815,18 @@ export function generate_ribbon_path(
     lower_points.push(`${x_px.toFixed(2)},${y_lower_px.toFixed(2)}`)
   }
 
-  // Combine: upper edge forward, lower edge backward, close path
-  const path_parts = [
+  return closed_edge_path(upper_points, lower_points)
+}
+
+// SVG path tracing the upper edge forward and the lower edge backward, closed (edge points
+// are pre-formatted `x,y` pixel pairs)
+export const closed_edge_path = (upper_points: string[], lower_points: string[]): string =>
+  [
     `M${upper_points[0]}`,
     ...upper_points.slice(1).map((pt) => `L${pt}`),
     ...lower_points.toReversed().map((pt) => `L${pt}`),
     `Z`,
-  ]
-
-  return path_parts.join(` `)
-}
+  ].join(` `)
 
 // Extract efermi from a data source (band structure or DOS).
 // Handles both single objects with an efermi field and dicts of objects.
@@ -862,51 +881,55 @@ const single_or_dict_values = (input: unknown, marker_keys: string[]): unknown[]
   return marker_keys.some((key) => key in input) ? [input] : Object.values(input)
 }
 
-// Compute frequency/energy range from bands and DOS. Clamps phonon min to 0 if noise < 0.5%.
+// Min/max of the finite `values` padded by `padding_factor` of the span; a phonon range whose
+// negatives are numerical noise (< IMAGINARY_MODE_NOISE_THRESHOLD) is clamped to start at 0
+export function padded_frequency_range(
+  values: readonly number[],
+  is_phonon: boolean,
+  padding_factor = 0.02,
+): Vec2 | undefined {
+  const finite = values.filter(Number.isFinite)
+  if (finite.length === 0) return undefined
+  let [min_val, max_val] = array_extent(finite)
+  if (is_phonon && min_val < 0 && negative_fraction(finite) < IMAGINARY_MODE_NOISE_THRESHOLD) {
+    min_val = 0
+  }
+  const padding = (max_val - min_val) * padding_factor
+  return [min_val === 0 ? 0 : min_val - padding, max_val + padding]
+}
+
+// Shared frequency/energy range of bands and DOS, see padded_frequency_range
 export function compute_frequency_range(
   band_structs: unknown,
   doses: unknown,
   padding_factor = 0.02,
 ): Vec2 | undefined {
-  let [min_val, max_val] = [Infinity, -Infinity]
   let is_phonon = false
-  const all_freqs: number[] = []
-  const collect_frequencies = (values: readonly number[]): void => {
-    for (const value of values) {
-      if (!Number.isFinite(value)) continue
-      all_freqs.push(value)
-      min_val = Math.min(min_val, value)
-      max_val = Math.max(max_val, value)
-    }
-  }
+  const frequency_lists: (readonly number[])[] = []
 
   // Electronic markers are read from the raw input: normalization strips them (every
   // normalized structure has qpoints). Bands that aren't electronic are phonon bands.
   const raw_band_structs = single_or_dict_values(band_structs, [`qpoints`, `kpoints`])
-  const bs_list = raw_band_structs.flatMap((raw) => normalize_band_structure(raw) ?? [])
+  // A malformed pymatgen entry throws from normalization; Bands reports it, the range just
+  // skips it
+  const bs_list = raw_band_structs.flatMap((raw) => {
+    try {
+      return normalize_band_structure(raw) ?? []
+    } catch {
+      return []
+    }
+  })
   if (bs_list.length > 0 && !raw_band_structs.some(is_electronic_band_struct)) is_phonon = true
-  for (const bs of bs_list) for (const band of bs.bands) collect_frequencies(band)
+  for (const bs of bs_list) frequency_lists.push(...bs.bands)
 
   for (const raw of single_or_dict_values(doses, [`densities`])) {
     const dos = normalize_dos(raw)
     if (!dos) continue
     // DOS type detection: explicit type field is authoritative
     is_phonon = dos.type === `phonon`
-    collect_frequencies(dos.type === `phonon` ? dos.frequencies : dos.energies)
+    frequency_lists.push(dos.type === `phonon` ? dos.frequencies : dos.energies)
   }
-
-  if (!Number.isFinite(min_val) || !Number.isFinite(max_val)) return undefined
-  // clamp phonon noise to 0
-  if (
-    is_phonon &&
-    min_val < 0 &&
-    negative_fraction(all_freqs) < IMAGINARY_MODE_NOISE_THRESHOLD
-  ) {
-    min_val = 0
-  }
-  // Calculate padding from (possibly clamped) range for consistency with Bands.svelte
-  const padding = (max_val - min_val) * padding_factor
-  return [min_val === 0 ? 0 : min_val - padding, max_val + padding]
+  return padded_frequency_range(frequency_lists.flat(), is_phonon, padding_factor)
 }
 
 // Parse axis label: "Frequency (THz)" → { name: "Frequency", unit: "THz" }
@@ -925,7 +948,7 @@ export function format_dos_tooltip(
   label: string | null,
   is_horizontal: boolean,
   is_phonon: boolean,
-  units: types.FrequencyUnit,
+  units: FrequencyUnit,
   x_axis_label: string,
   y_axis_label: string,
   num_series: number,
@@ -962,9 +985,6 @@ export const NORMALIZATION_MODES = [
   { value: `sum`, label: `Sum=1` },
   { value: `integral`, label: `∫=1` },
 ] as const satisfies readonly { value: types.NormalizationMode; label: string }[]
-
-// Available frequency units for phonon DOS
-export const FREQUENCY_UNITS: types.FrequencyUnit[] = [`THz`, `eV`, `meV`, `cm-1`, `Ha`]
 
 // Format sigma with adaptive precision: 0→"0", <0.01→exp, <1→3dp, else→2dp
 export function format_sigma(val: number): string {
@@ -1007,12 +1027,13 @@ const compute_slope = (x_vals: number[], y_vals: number[], idx: number): number 
   return dx ? (y_vals[hi] - y_vals[lo]) / dx : null
 }
 
-// Find Gamma-point indices (q ≈ integer lattice point) in a band structure.
-// Returns indices of q-points whose fractional coordinates are all within 0.01 of integers.
+// A q-point counts as Gamma when every fractional coordinate is within 0.01 of an integer
+export const is_gamma_point = (frac_coords: Vec3): boolean =>
+  frac_coords.every((coord) => Math.abs(coord - Math.round(coord)) < 0.01)
+
+// Indices of the Gamma points (q ≈ integer lattice point) in a band structure
 export const find_gamma_indices = (bs: types.BaseBandStructure): number[] =>
-  bs.qpoints.flatMap(({ frac_coords }, q_idx) =>
-    frac_coords.every((coord) => Math.abs(coord - Math.round(coord)) < 0.01) ? [q_idx] : [],
-  )
+  bs.qpoints.flatMap(({ frac_coords }, q_idx) => (is_gamma_point(frac_coords) ? [q_idx] : []))
 
 // Threshold below which a band's frequency at Gamma is considered acoustic (THz).
 // Assumes bands are stored in THz (normalize_band_structure converts to THz).

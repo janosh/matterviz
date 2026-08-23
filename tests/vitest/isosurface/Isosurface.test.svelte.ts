@@ -1,7 +1,11 @@
 // Mounts Isosurface.svelte against a recording Threlte stub: layer resolution, geometry
 // rebuild/reuse, lobe signs, render ordering and cross-volume vertex coloring.
 import Isosurface from '$lib/isosurface/Isosurface.svelte'
-import type { IsosurfaceSettings, VolumetricData } from '$lib/isosurface/types'
+import type {
+  IsosurfaceLayer,
+  IsosurfaceSettings,
+  VolumetricData,
+} from '$lib/isosurface/types'
 import { DEFAULT_ISOSURFACE_SETTINGS } from '$lib/isosurface/types'
 import { flushSync, mount, unmount } from 'svelte'
 import type { BufferGeometry } from 'three/webgpu'
@@ -9,9 +13,16 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { make_grid, make_volume } from '../setup'
 import { threlte_stub } from './threlte-stub'
 
+// Threlte's on-demand renderer only repaints on invalidate(); the component must call it
+// after mutating three objects the <T> props don't track (vertex colours, rebuilt geometry)
+const invalidate = vi.hoisted(() => vi.fn())
 vi.mock(`@threlte/core`, async () => ({
   T: (await import(`./threlte-stub`)).threlte_stub.T,
+  useThrelte: () => ({ invalidate }),
 }))
+// Large volumes go through the geometry worker; tests swap it for a controllable stub
+const compute_geometries_async = vi.hoisted(() => vi.fn())
+vi.mock(`$lib/isosurface/async-geometry.svelte`, () => ({ compute_geometries_async }))
 
 const SIZE = 10
 // Gaussian blob centred in the cell (positive field) and a signed variant with a negative
@@ -40,13 +51,33 @@ type Props = {
   volumes: VolumetricData[]
   settings: IsosurfaceSettings
   active_volume_idx: number
+  on_error?: (message: string) => void
 }
 let teardown: (() => void) | undefined
+
+// One layer at `isovalue` with the classic blue/red lobe colours; `volume_idx` left implicit
+// so the active volume resolves it
+const layer = (
+  isovalue: number,
+  overrides: Partial<IsosurfaceLayer> = {},
+): IsosurfaceLayer => ({
+  isovalue,
+  color: `#3b82f6`,
+  opacity: 0.6,
+  visible: true,
+  show_negative: false,
+  negative_color: `#ef4444`,
+  ...overrides,
+})
+const with_layers = (
+  layers: IsosurfaceLayer[],
+  extra: Partial<IsosurfaceSettings> = {},
+): IsosurfaceSettings => ({ ...DEFAULT_ISOSURFACE_SETTINGS, layers, ...extra })
 
 const mount_isosurface = (overrides: Partial<Props> = {}) => {
   const props = $state<Props>({
     volumes: [positive_volume()],
-    settings: { ...DEFAULT_ISOSURFACE_SETTINGS },
+    settings: with_layers([layer(0.3)]),
     active_volume_idx: 0,
     ...overrides,
   })
@@ -77,8 +108,8 @@ afterEach(() => {
 })
 
 describe(`Isosurface`, () => {
-  test(`implicit single layer renders a two-pass transparent surface`, async () => {
-    mount_isosurface({ settings: { ...DEFAULT_ISOSURFACE_SETTINGS, isovalue: 0.3 } })
+  test(`a single layer renders a two-pass transparent surface`, async () => {
+    mount_isosurface()
     expect(meshes()).toHaveLength(0) // nothing before the debounce elapses
     await settle()
 
@@ -95,7 +126,7 @@ describe(`Isosurface`, () => {
       `MeshStandardMaterial`,
     ])
     expect(materials()[0].props).toMatchObject({
-      color: DEFAULT_ISOSURFACE_SETTINGS.positive_color,
+      color: `#3b82f6`,
       opacity: 0.6,
       transparent: true,
       depthWrite: false,
@@ -106,23 +137,25 @@ describe(`Isosurface`, () => {
   test.each([
     {
       desc: `opaque surfaces use one double-sided pass`,
-      settings: { opacity: 1 },
+      settings: with_layers([layer(0.3, { opacity: 1 })]),
       n_meshes: 1,
     },
-    { desc: `wireframe uses a basic material`, settings: { wireframe: true }, n_meshes: 1 },
-    { desc: `isovalue 0 renders nothing`, settings: { isovalue: 0 }, n_meshes: 0 },
-    { desc: `explicit empty layers render nothing`, settings: { layers: [] }, n_meshes: 0 },
+    {
+      desc: `wireframe uses a basic material`,
+      settings: with_layers([layer(0.3)], { wireframe: true }),
+      n_meshes: 1,
+    },
+    { desc: `isovalue 0 renders nothing`, settings: with_layers([layer(0)]), n_meshes: 0 },
+    { desc: `no layers render nothing`, settings: DEFAULT_ISOSURFACE_SETTINGS, n_meshes: 0 },
   ])(`$desc`, async ({ settings, n_meshes }) => {
-    mount_isosurface({
-      settings: { ...DEFAULT_ISOSURFACE_SETTINGS, isovalue: 0.3, ...settings },
-    })
+    mount_isosurface({ settings })
     await settle()
     expect(meshes()).toHaveLength(n_meshes)
     if (settings.wireframe) {
       expect(materials()[0].tag).toBe(`MeshBasicMaterial`)
       expect(materials()[0].props).toMatchObject({ wireframe: true })
     }
-    if (settings.opacity === 1) {
+    if (settings.layers[0]?.opacity === 1) {
       expect(materials()[0].props).toMatchObject({ transparent: false, depthWrite: true })
     }
   })
@@ -130,40 +163,25 @@ describe(`Isosurface`, () => {
   test(`negative lobe adds a second surface in negative_color`, async () => {
     mount_isosurface({
       volumes: [signed_volume()],
-      settings: { ...DEFAULT_ISOSURFACE_SETTINGS, isovalue: 0.3, show_negative: true },
+      settings: with_layers([layer(0.3, { show_negative: true })]),
     })
     await settle()
     expect(meshes()).toHaveLength(4)
     const colors = materials().map((node) => node.props.color)
-    expect(colors).toEqual([
-      DEFAULT_ISOSURFACE_SETTINGS.positive_color,
-      DEFAULT_ISOSURFACE_SETTINGS.positive_color,
-      DEFAULT_ISOSURFACE_SETTINGS.negative_color,
-      DEFAULT_ISOSURFACE_SETTINGS.negative_color,
-    ])
+    expect(colors).toEqual([`#3b82f6`, `#3b82f6`, `#ef4444`, `#ef4444`])
     expect(geometry_of(meshes()[0])).not.toBe(geometry_of(meshes()[2]))
   })
 
-  test(`explicit layers skip out-of-range volumes and default to the active volume`, async () => {
-    const layer = {
-      isovalue: 0.3,
-      color: `#112233`,
-      opacity: 1,
-      visible: true,
-      show_negative: false,
-      negative_color: `#000000`,
-    }
+  test(`layers skip out-of-range volumes and default to the active volume`, async () => {
+    const base = layer(0.3, { color: `#112233`, opacity: 1 })
     mount_isosurface({
       volumes: [signed_volume(), positive_volume()],
       active_volume_idx: 1,
-      settings: {
-        ...DEFAULT_ISOSURFACE_SETTINGS,
-        layers: [
-          layer,
-          { ...layer, color: `#445566`, volume_idx: 7 }, // out of range: skipped, not clamped
-          { ...layer, color: `#778899`, visible: false },
-        ],
-      },
+      settings: with_layers([
+        base,
+        { ...base, color: `#445566`, volume_idx: 7 }, // out of range: skipped, not clamped
+        { ...base, color: `#778899`, visible: false },
+      ]),
     })
     await settle()
     expect(meshes()).toHaveLength(1)
@@ -171,21 +189,8 @@ describe(`Isosurface`, () => {
   })
 
   test(`outer shells render before inner shells`, async () => {
-    const layer = {
-      color: `#000000`,
-      opacity: 1,
-      visible: true,
-      show_negative: false,
-      negative_color: `#000000`,
-    }
     mount_isosurface({
-      settings: {
-        ...DEFAULT_ISOSURFACE_SETTINGS,
-        layers: [
-          { ...layer, isovalue: 0.6 },
-          { ...layer, isovalue: 0.2 },
-        ],
-      },
+      settings: with_layers([layer(0.6, { opacity: 1 }), layer(0.2, { opacity: 1 })]),
     })
     await settle()
     // entries sort by isovalue / abs_max ascending, render_order = 2 * rank
@@ -197,40 +202,34 @@ describe(`Isosurface`, () => {
   })
 
   test(`color-only changes reuse geometry; isovalue changes rebuild it`, async () => {
-    const props = mount_isosurface({
-      settings: { ...DEFAULT_ISOSURFACE_SETTINGS, isovalue: 0.3, opacity: 1 },
-    })
+    const props = mount_isosurface({ settings: with_layers([layer(0.3, { opacity: 1 })]) })
     await settle()
     const geometry = geometry_of(meshes()[0])
     const dispose = vi.spyOn(geometry, `dispose`)
 
-    props.settings.positive_color = `#abcdef`
-    props.settings.opacity = 0.5
+    props.settings.layers[0].color = `#abcdef`
+    props.settings.layers[0].opacity = 0.5
     await settle()
     expect(geometry_of(meshes()[0])).toBe(geometry)
     expect(materials()[0].props).toMatchObject({ color: `#abcdef`, opacity: 0.5 })
     expect(dispose).not.toHaveBeenCalled()
 
-    props.settings.isovalue = 0.5
+    props.settings.layers[0].isovalue = 0.5
     await settle()
     expect(geometry_of(meshes()[0])).not.toBe(geometry)
     expect(dispose).toHaveBeenCalledTimes(1)
   })
 
   test(`color source volume drives vertex colors and a white base color`, async () => {
-    const layer = {
-      isovalue: 0.3,
+    const colored = layer(0.3, {
       color: `#112233`,
       opacity: 1,
-      visible: true,
-      show_negative: false,
-      negative_color: `#000000`,
       volume_idx: 0,
       color_volume_idx: 1,
-    }
+    })
     const props = mount_isosurface({
       volumes: [positive_volume(), signed_volume()],
-      settings: { ...DEFAULT_ISOSURFACE_SETTINGS, layers: [layer] },
+      settings: with_layers([colored]),
     })
     await settle()
     const geometry = geometry_of(meshes()[0])
@@ -239,29 +238,55 @@ describe(`Isosurface`, () => {
     expect(materials()[0].props).toMatchObject({ vertexColors: true, color: `#ffffff` })
     const before = Float32Array.from(color_attr.array)
 
-    // Remapping through a different colormap reuses the color buffer in place
-    props.settings.layers = [{ ...layer, colormap: `interpolateRdBu` }]
+    // Remapping through a different colormap reuses the color buffer in place; the in-place
+    // needsUpdate is invisible to Threlte, so the on-demand renderer must be invalidated
+    invalidate.mockClear()
+    props.settings.layers = [{ ...colored, colormap: `interpolateRdBu` }]
     await settle()
     expect(geometry_of(meshes()[0])).toBe(geometry)
     expect(geometry.getAttribute(`color`).array).toBe(color_attr.array)
     expect(Float32Array.from(color_attr.array)).not.toEqual(before)
+    expect(invalidate).toHaveBeenCalled()
 
     // Clearing the color source drops the attribute and restores the solid color
-    props.settings.layers = [{ ...layer, color_volume_idx: undefined }]
+    props.settings.layers = [{ ...colored, color_volume_idx: undefined }]
     await settle()
     expect(geometry.getAttribute(`color`)).toBeUndefined()
     expect(materials()[0].props).toMatchObject({ vertexColors: false, color: `#112233` })
   })
 
   test(`removing all volumes disposes every geometry`, async () => {
-    const props = mount_isosurface({
-      settings: { ...DEFAULT_ISOSURFACE_SETTINGS, isovalue: 0.3 },
-    })
+    const props = mount_isosurface()
     await settle()
     const dispose = vi.spyOn(geometry_of(meshes()[0]), `dispose`)
     props.volumes = []
     flushSync()
     expect(meshes()).toHaveLength(0)
     expect(dispose).toHaveBeenCalledTimes(1)
+  })
+
+  // A worker that dies after construction (chunk 404, OOM, module import failure) used to be
+  // console.error'd only, leaving the user staring at an unchanged scene with no explanation
+  test(`worker failure after construction reports through on_error`, async () => {
+    vi.stubGlobal(`Worker`, vi.fn()) // only `typeof Worker` is consulted; the stub never runs
+    compute_geometries_async.mockRejectedValueOnce(
+      new Error(`Failed to fetch dynamically imported module`),
+    )
+    const error_spy = vi.spyOn(console, `error`).mockImplementation(() => {})
+    const on_error = vi.fn()
+    // ≥ 200k grid points routes geometry through the worker
+    const big_n = 59
+    const values = new Float64Array(big_n ** 3).fill(0.1)
+    const vol = positive_volume()
+    const big_volume: VolumetricData = { ...vol, values, dims: [big_n, big_n, big_n] }
+    mount_isosurface({ volumes: [big_volume], on_error })
+    await settle()
+    expect(compute_geometries_async).toHaveBeenCalledTimes(1)
+    expect(on_error).toHaveBeenCalledWith(
+      `Isosurface geometry failed: Failed to fetch dynamically imported module`,
+    )
+    expect(meshes()).toHaveLength(0)
+    expect(error_spy).toHaveBeenCalled()
+    vi.unstubAllGlobals()
   })
 })

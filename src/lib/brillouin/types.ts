@@ -39,3 +39,7 @@ export type BrillouinZoneData = BZMeshData & {
 export type ConvexHullData = Pick<BZMeshData, `vertices` | `faces`> & {
   edges: Vec2[] // pairs of vertex indices
 }
+
+// "1st", "2nd", "3rd" zone labels (BZ orders are 1-3 in practice)
+export const ordinal_label = (order: number): string =>
+  `${order}${[`th`, `st`, `nd`, `rd`][order] ?? `th`}`

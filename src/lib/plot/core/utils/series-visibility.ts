@@ -28,6 +28,7 @@ type VisSeries = {
   visible?: boolean
   x?: unknown
   y?: unknown
+  values?: unknown // HistogramSeries samples
 }
 
 type SeriesAxisAccessor<Series extends VisSeries> = (
@@ -58,6 +59,7 @@ const series_source = (series: VisSeries[], length = series.length): SeriesSourc
       srs.y_axis ?? ``,
       ...data_sig(srs.x),
       ...data_sig(srs.y),
+      ...data_sig(srs.values),
     ])
 
 const same_series_source = (

@@ -4,15 +4,15 @@ import {
   auto_volume_layer,
   DEFAULT_ISOSURFACE_SETTINGS,
   downsample_grid,
-  generate_layers,
   grid_data_range,
   label_file_volumes,
   lattices_match,
   LAYER_COLORS,
-  materialize_layers,
   merge_imported_volumes,
   normalize_active_volume_idx,
+  pin_layers,
   remove_volume,
+  SHELL_STEPS,
   volume_from_json,
 } from '$lib/isosurface/types'
 import type { IsosurfaceLayer, VolumetricData } from '$lib/isosurface/types'
@@ -92,74 +92,27 @@ describe(`grid_data_range`, () => {
   )
 })
 
+const vol_with_range = (min: number, max: number): VolumetricData =>
+  make_volume_fixture(make_grid(2, 2, 2, 1), {
+    data_range: { min, max, abs_max: Math.max(Math.abs(min), Math.abs(max)), mean: 0 },
+  })
+
 describe(`auto_isosurface_settings`, () => {
-  test.each([
-    { min: 0, abs_max: 10, show_neg: false, label: `positive-only` },
-    { min: -5, abs_max: 10, show_neg: true, label: `significant negatives` },
-    {
-      min: -0.005,
-      abs_max: 1,
-      show_neg: false,
-      label: `tiny negatives below 1% threshold`,
-    },
-  ])(
-    `$label: isovalue=20% of abs_max, show_negative=$show_neg`,
-    ({ min, abs_max, show_neg }) => {
-      const settings = auto_isosurface_settings({ min, max: abs_max, abs_max, mean: 0 })
-      expect(settings.isovalue).toBeCloseTo(abs_max * 0.2)
-      expect(settings.show_negative).toBe(show_neg)
-    },
-  )
-
-  test(`falls back to default isovalue for all-zero grid`, () => {
-    const settings = auto_isosurface_settings({ min: 0, max: 0, abs_max: 0, mean: 0 })
-    expect(settings.isovalue).toBe(DEFAULT_ISOSURFACE_SETTINGS.isovalue)
-    expect(settings.show_negative).toBe(false)
-  })
-
-  test(`preserves defaults in a fresh object (not a reference to defaults)`, () => {
-    const settings = auto_isosurface_settings({ min: 0, max: 10, abs_max: 10, mean: 5 })
-    expect(settings).toEqual({ ...DEFAULT_ISOSURFACE_SETTINGS, isovalue: 2 })
-    // Mutating the result should not affect defaults
-    settings.isovalue = 999
-    expect(DEFAULT_ISOSURFACE_SETTINGS.isovalue).toBe(0.05)
-  })
-})
-
-describe(`generate_layers`, () => {
-  const range = { min: 0, max: 10, abs_max: 10, mean: 5 }
-
-  test(`generates ordered layers with palette colors and decreasing opacity`, () => {
-    const layers = generate_layers(range, 3)
-    expect(layers).toHaveLength(3)
-    expect(layers[0].isovalue).toBeGreaterThan(layers[1].isovalue)
-    expect(layers[1].isovalue).toBeGreaterThan(layers[2].isovalue)
-    expect(layers[0].opacity).toBeGreaterThan(layers[2].opacity)
-    expect(layers[0].color).toBe(LAYER_COLORS[0])
-  })
-
-  test(`single layer uses 20% of abs_max`, () => {
-    const [layer] = generate_layers(range, 1)
-    expect(layer.isovalue).toBeCloseTo(10 * 0.2)
-  })
-
-  test(`returns empty array for zero abs_max or non-positive layer count`, () => {
-    expect(generate_layers({ min: 0, max: 0, abs_max: 0, mean: 0 }, 3)).toEqual([])
-    expect(generate_layers(range, 0)).toEqual([])
-  })
-
-  test(`enables show_negative for data with significant negatives`, () => {
-    const layers = generate_layers({ min: -5, max: 10, abs_max: 10, mean: 2 }, 2)
-    expect(layers.every((layer) => layer.show_negative)).toBe(true)
+  // Layer contents (isovalue, show_negative, zero fallback) are auto_volume_layer's, below
+  test(`wraps one auto layer on volume 0 in the default settings`, () => {
+    const vol = vol_with_range(-5, 10)
+    const settings = auto_isosurface_settings(vol)
+    expect(settings).toEqual({
+      ...DEFAULT_ISOSURFACE_SETTINGS,
+      layers: [auto_volume_layer(vol, 0)],
+    })
+    // a fresh layers array, not the defaults' own
+    settings.layers.push(settings.layers[0])
+    expect(DEFAULT_ISOSURFACE_SETTINGS.layers).toEqual([])
   })
 })
 
 describe(`auto_volume_layer`, () => {
-  const vol_with_range = (min: number, max: number): VolumetricData =>
-    make_volume_fixture(make_grid(2, 2, 2, 1), {
-      data_range: { min, max, abs_max: Math.max(Math.abs(min), Math.abs(max)), mean: 0 },
-    })
-
   test(`sets isovalue to 20% of abs_max and binds volume_idx`, () => {
     const layer = auto_volume_layer(vol_with_range(0, 10), 3)
     expect(layer.isovalue).toBeCloseTo(2)
@@ -171,6 +124,7 @@ describe(`auto_volume_layer`, () => {
   test.each([
     { min: -5, max: 10, show_negative: true, label: `signed data` },
     { min: 0, max: 10, show_negative: false, label: `non-negative data` },
+    { min: -0.005, max: 1, show_negative: false, label: `negatives below the 1% threshold` },
   ])(`$label sets show_negative=$show_negative`, ({ min, max, show_negative }) => {
     expect(auto_volume_layer(vol_with_range(min, max), 0).show_negative).toBe(show_negative)
   })
@@ -182,47 +136,63 @@ describe(`auto_volume_layer`, () => {
     expect(auto_volume_layer(vol, 2, LAYER_COLORS.length).color).toBe(LAYER_COLORS[0])
   })
 
-  test(`falls back to default isovalue for all-zero data`, () => {
-    const layer = auto_volume_layer(vol_with_range(0, 0), 0)
-    expect(layer.isovalue).toBe(DEFAULT_ISOSURFACE_SETTINGS.isovalue)
+  test(`falls back to a small positive isovalue for all-zero data`, () => {
+    expect(auto_volume_layer(vol_with_range(0, 0), 0).isovalue).toBe(0.05)
+  })
+
+  // Repeated "+" clicks on one volume used to stack coincident 20%/0.6 surfaces. Shells
+  // step the 0.8 → 0.1 ladder like the old generate_layers: distinct isovalues, inner
+  // (high-isovalue) shells more opaque than outer ones.
+  test.each([
+    { shell_idx: 0, fraction: 0.2, opacity: 0.6 },
+    { shell_idx: 1, fraction: 0.8, opacity: 0.8 },
+    { shell_idx: 2, fraction: 0.5, opacity: 0.7 },
+    { shell_idx: 3, fraction: 0.1, opacity: 0.3 },
+    { shell_idx: SHELL_STEPS.length, fraction: 0.2, opacity: 0.6 }, // wraps around
+  ])(
+    `shell $shell_idx sits at $fraction·abs_max with opacity $opacity`,
+    ({ shell_idx, fraction, opacity }) => {
+      const layer = auto_volume_layer(vol_with_range(-5, 10), 3, 1, shell_idx)
+      expect(layer.isovalue).toBeCloseTo(10 * fraction)
+      expect(layer.opacity).toBe(opacity)
+      expect(layer).toMatchObject({
+        volume_idx: 3,
+        color: LAYER_COLORS[1],
+        show_negative: true,
+      })
+    },
+  )
+
+  test(`successive shells of one volume never coincide and inner shells are more opaque`, () => {
+    const vol = vol_with_range(0, 10)
+    const shells = SHELL_STEPS.map((_step, idx) => auto_volume_layer(vol, 0, idx, idx))
+    const isovalues = shells.map((layer) => layer.isovalue)
+    expect(new Set(isovalues).size).toBe(shells.length)
+    expect(new Set(shells.map((layer) => layer.color)).size).toBe(shells.length)
+    const by_isovalue = shells.toSorted((left, right) => right.isovalue - left.isovalue)
+    for (let idx = 1; idx < by_isovalue.length; idx++) {
+      expect(by_isovalue[idx - 1].opacity).toBeGreaterThan(by_isovalue[idx].opacity)
+    }
+    expect(Math.max(...isovalues)).toBeCloseTo(8)
+    expect(Math.min(...isovalues)).toBeCloseTo(1)
   })
 })
 
-describe(`materialize_layers`, () => {
-  test(`converts implicit single-isovalue settings into one explicit layer`, () => {
-    const settings = {
-      ...DEFAULT_ISOSURFACE_SETTINGS,
-      isovalue: 0.42,
-      opacity: 0.7,
-      positive_color: `#123456`,
-      show_negative: true,
-      negative_color: `#654321`,
-    }
-    const layers = materialize_layers(settings, 2)
-    expect(layers).toHaveLength(1)
-    expect(layers[0]).toMatchObject({
-      isovalue: 0.42,
-      opacity: 0.7,
-      color: `#123456`,
-      show_negative: true,
-      negative_color: `#654321`,
-      volume_idx: 2,
+describe(`pin_layers`, () => {
+  test(`pins layers without volume_idx to the active volume and keeps explicit ones`, () => {
+    const base: IsosurfaceLayer = {
+      isovalue: 0.2,
+      color: LAYER_COLORS[0],
+      opacity: 0.6,
       visible: true,
-    })
-  })
-
-  test(`pins existing layers without volume_idx to the active volume`, () => {
-    const layers: IsosurfaceLayer[] = [
-      { ...generate_layers({ min: 0, max: 1, abs_max: 1, mean: 0.5 }, 2)[0] },
-      { ...generate_layers({ min: 0, max: 1, abs_max: 1, mean: 0.5 }, 2)[1], volume_idx: 5 },
-    ]
-    const result = materialize_layers({ ...DEFAULT_ISOSURFACE_SETTINGS, layers }, 1)
+      show_negative: false,
+      negative_color: LAYER_COLORS[1],
+    }
+    const layers: IsosurfaceLayer[] = [base, { ...base, isovalue: 0.8, volume_idx: 5 }]
+    const result = pin_layers(layers, 1)
     expect(result[0].volume_idx).toBe(1) // implicit → active volume
     expect(result[1].volume_idx).toBe(5) // explicit stays
-  })
-
-  test(`preserves explicit empty layers array (zero surfaces, no resurrection)`, () => {
-    expect(materialize_layers({ ...DEFAULT_ISOSURFACE_SETTINGS, layers: [] }, 0)).toEqual([])
+    expect(pin_layers([], 0)).toEqual([])
   })
 })
 

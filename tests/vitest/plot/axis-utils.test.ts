@@ -1,5 +1,9 @@
 import type { AxisConfig, AxisLoadError, DataLoaderFn, DataSeries } from '$lib/plot'
-import { create_axis_loader, merge_series_state } from '$lib/plot/core/axis-utils'
+import {
+  category_tick_labels,
+  create_axis_loader,
+  merge_series_state,
+} from '$lib/plot/core/axis-utils'
 import { describe, expect, test, vi } from 'vitest'
 
 describe(`merge_series_state`, () => {
@@ -304,4 +308,14 @@ describe(`create_axis_loader`, () => {
     expect(data_loader).toHaveBeenCalledTimes(1)
     error_spy.mockRestore()
   })
+})
+
+test.each<[string, string[], AxisConfig[`ticks`], AxisConfig[`ticks`]]>([
+  [`no categories`, [], 5, undefined],
+  [`index -> name by default`, [`A`, `B`], undefined, { 0: `A`, 1: `B` }],
+  [`a tick count is ignored`, [`A`, `B`], 7, { 0: `A`, 1: `B` }],
+  [`tick positions are ignored`, [`A`, `B`], [0, 1], { 0: `A`, 1: `B` }],
+  [`a label mapping wins`, [`A`, `B`], { 0: `first` }, { 0: `first` }],
+])(`category_tick_labels: %s`, (_name, categories, user_ticks, expected) => {
+  expect(category_tick_labels(categories, user_ticks)).toEqual(expected)
 })

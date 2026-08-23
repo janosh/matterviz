@@ -1,4 +1,9 @@
 // oxlint-disable eslint-plugin-unicorn/relative-url-style -- Vite worker detection needs the `./` prefix
+// calc_trajectory_spectroscopy via a persistent Web Worker; see create_worker_client for
+// `.cancel` / `.release` semantics. The client is shared by every mounted pane, so a pane's
+// unmount path is `.release()` (terminates only when nothing is in flight), never `.cancel()`.
+import type { TrajectorySignal } from '$lib/trajectory'
+import { plain_position_stream } from '$lib/trajectory/async-result.svelte'
 import { create_worker_client } from '$lib/worker-client.svelte'
 import {
   calc_trajectory_spectroscopy,
@@ -7,33 +12,41 @@ import {
   type TrajectorySpectroscopyResult,
 } from './trajectory-spectroscopy'
 
-interface TrajectorySpectroscopyAsyncRunner {
-  compute: (
-    input: TrajectorySpectroscopyInput,
-    options?: TrajectorySpectroscopyOptions,
-  ) => Promise<TrajectorySpectroscopyResult>
-  cancel: (reason?: string) => void
-}
+// Same field-by-field rebuild as plain_position_stream: raw typed arrays straight to
+// structured clone, only the small plain parts snapshotted
+const plain_signal = (signal: TrajectorySignal): TrajectorySignal => ({
+  values: signal.values,
+  sample_shape: $state.snapshot(signal.sample_shape),
+  steps: $state.snapshot(signal.steps),
+  ...(signal.unit ? { unit: signal.unit } : {}),
+})
 
-export const create_trajectory_spectroscopy_async_runner =
-  (): TrajectorySpectroscopyAsyncRunner => {
-    const client = create_worker_client<
-      TrajectorySpectroscopyInput,
-      TrajectorySpectroscopyOptions,
-      TrajectorySpectroscopyResult
-    >({
-      label: `trajectory spectroscopy`,
-      create_worker: () =>
-        new Worker(new URL(`./trajectory-spectroscopy-worker.js`, import.meta.url), {
-          type: `module`,
-        }),
-      compute_sync: calc_trajectory_spectroscopy,
-      // Worker messages cannot clone Svelte proxies. A single snapshot is both a complete
-      // plain payload and less error-prone than mirroring every input variant here.
-      build_payload: (input) => $state.snapshot(input),
-    })
+export const compute_trajectory_spectroscopy_async = create_worker_client<
+  TrajectorySpectroscopyInput,
+  TrajectorySpectroscopyOptions,
+  TrajectorySpectroscopyResult
+>({
+  label: `trajectory spectroscopy`,
+  create_worker: () =>
+    new Worker(new URL(`./trajectory-spectroscopy-worker.js`, import.meta.url), {
+      type: `module`,
+    }),
+  compute_sync: calc_trajectory_spectroscopy,
+  build_payload: (input): TrajectorySpectroscopyInput => {
+    const { infrared_signal, raman_signal } = input
     return {
-      compute: (input, options = {}) => client(input, options),
-      cancel: client.cancel,
+      positions: plain_position_stream(input.positions),
+      masses: input.masses,
+      velocities: input.velocities ? plain_signal(input.velocities) : null,
+      infrared_signal: infrared_signal
+        ? { ...infrared_signal, series: plain_signal(infrared_signal.series) }
+        : null,
+      raman_signal: raman_signal
+        ? { kind: raman_signal.kind, series: plain_signal(raman_signal.series) }
+        : null,
+      ...(input.time_step !== undefined ? { time_step: input.time_step } : {}),
+      ...(input.time_unit !== undefined ? { time_unit: input.time_unit } : {}),
+      ...(input.metadata ? { metadata: $state.snapshot(input.metadata) } : {}),
     }
-  }
+  },
+})

@@ -24,14 +24,7 @@ export {
 // Types every chart takes as props: series, axes, ticks, scales, styles, handlers,
 // reference lines, fills and 3D variants.
 export * from './core/types'
-export {
-  apply_bounds,
-  clean_multi_series,
-  clean_series,
-  clean_xyz,
-  handle_invalid_values,
-  sync_metadata,
-} from './core/data-cleaning'
+export { clean_multi_series, clean_series, clean_xyz } from './core/data-cleaning'
 export type { DecorationSide, FreeAnnotationDecorationItem } from './core/decorations'
 export type {
   FacetAxis,

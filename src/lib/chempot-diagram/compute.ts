@@ -2,33 +2,35 @@
 // Ports pymatgen's ChemicalPotentialDiagram algorithm to TypeScript.
 // Reference: pymatgen/analysis/chempot_diagram.py
 
+import { count_atoms_in_composition, get_reduced_formula } from '$lib/composition/reduce'
+import { compute_quickhull_nd, get_energy_per_atom } from '$lib/convex-hull/thermodynamics'
 import type { PhaseData } from '$lib/convex-hull/types'
 import {
+  array_extent,
   combinations,
   convex_hull_2d,
   cross_3d,
   EPS,
+  euclidean_dist,
+  normalize_vec,
   polygon_centroid,
-  solve_linear_system,
   subtract,
 } from '$lib/math'
 import type { Vec2, Vec3 } from '$lib/math'
-import { count_atoms_in_composition, get_reduced_formula } from '$lib/composition/reduce'
 import { CHEMPOT_DEFAULTS, type ChemPotDiagramConfig, type ChemPotDiagramData } from './types'
 
 // === Entry Helpers ===
 
-// Energy per atom; NaN for invalid/non-finite so UI can skip without throwing.
-export function get_energy_per_atom(entry: PhaseData): number {
-  if (typeof entry.energy_per_atom === `number`) {
-    return Number.isFinite(entry.energy_per_atom) ? entry.energy_per_atom : Number.NaN
-  }
-  const atoms = count_atoms_in_composition(entry.composition)
-  if (atoms <= 0 || !Number.isFinite(entry.energy)) return Number.NaN
-  return entry.energy / atoms
+// Energy per atom (MP `correction` applied, see convex-hull/thermodynamics) or NaN when the
+// entry has no atoms or a non-finite energy, so callers can skip it without throwing.
+export function safe_energy_per_atom(entry: PhaseData): number {
+  if (count_atoms_in_composition(entry.composition) <= 0) return Number.NaN
+  const epa = get_energy_per_atom(entry)
+  return Number.isFinite(epa) ? epa : Number.NaN
 }
 
-// Same-formula EPA total order (keep aligned with make_nd_cache_key / entry_fingerprint).
+// Same-formula EPA total order: lower energy, then hull-eligible, then stable, then lower
+// e_above_hull, then a deterministic fingerprint so ties never depend on input order.
 function prefer_min_entry(
   candidate: PhaseData,
   candidate_epa: number,
@@ -79,7 +81,7 @@ export function get_min_entries_and_el_refs(entries: PhaseData[]): {
 
   for (const entry of entries) {
     const key = formula_key_from_composition(entry.composition)
-    const epa = get_energy_per_atom(entry)
+    const epa = safe_energy_per_atom(entry)
     if (!Number.isFinite(epa)) continue
     const existing = by_formula.get(key)
     if (!existing || prefer_min_entry(entry, epa, existing.entry, existing.epa)) {
@@ -106,7 +108,7 @@ function compute_form_energy_per_atom(
   el_refs: Record<string, PhaseData>,
 ): number {
   const atom_count = count_atoms_in_composition(entry.composition)
-  const energy_per_atom = get_energy_per_atom(entry)
+  const energy_per_atom = safe_energy_per_atom(entry)
   if (!(atom_count > 0) || !Number.isFinite(energy_per_atom)) return Number.NaN
   let ref_energy = 0
   for (const [element, amount] of Object.entries(entry.composition)) {
@@ -114,7 +116,7 @@ function compute_form_energy_per_atom(
     const fraction = amount / atom_count
     const ref_entry = el_refs[element]
     if (ref_entry) {
-      const ref_epa = get_energy_per_atom(ref_entry)
+      const ref_epa = safe_energy_per_atom(ref_entry)
       if (!Number.isFinite(ref_epa)) return Number.NaN
       ref_energy += fraction * ref_epa
     }
@@ -151,7 +153,7 @@ export function get_energy_stats_by_formula(
 ): Map<string, FormulaEnergyStats> {
   const stats = new Map<string, FormulaEnergyStats>()
   for (const entry of entries) {
-    const energy_per_atom = get_energy_per_atom(entry)
+    const energy_per_atom = safe_energy_per_atom(entry)
     if (!Number.isFinite(energy_per_atom)) continue
     const formula_key = formula_key_from_composition(entry.composition)
     const existing = stats.get(formula_key)
@@ -185,22 +187,25 @@ export const renormalize_entries = (
 ): PhaseData[] =>
   entries.map((entry) => {
     const atoms = count_atoms_in_composition(entry.composition)
-    const base_epa = get_energy_per_atom(entry)
+    const base_epa = safe_energy_per_atom(entry)
     if (!(atoms > 0) || !Number.isFinite(base_epa)) return entry
     let renorm_energy = 0
     for (const el of elements) {
       const frac = ((entry.composition as Record<string, number>)[el] ?? 0) / atoms
       const ref = el_refs[el]
       if (!ref) continue
-      const ref_epa = get_energy_per_atom(ref)
+      const ref_epa = safe_energy_per_atom(ref)
       if (!Number.isFinite(ref_epa)) return entry
       renorm_energy += frac * ref_epa
     }
     const new_energy_per_atom = base_epa - renorm_energy
+    // base_epa already includes the MP correction, so drop it from the renormalized copy or
+    // get_energy_per_atom would apply it a second time
     return {
       ...entry,
       energy: new_energy_per_atom * atoms,
       energy_per_atom: new_energy_per_atom,
+      correction: undefined,
     }
   })
 
@@ -216,7 +221,7 @@ export function build_hyperplanes(
   const element_ref_energies = elements.map((element) => {
     const ref_entry = el_refs[element]
     if (!ref_entry) return 0
-    const epa = get_energy_per_atom(ref_entry)
+    const epa = safe_energy_per_atom(ref_entry)
     return Number.isFinite(epa) ? epa : 0
   })
   const always_include = new Set<PhaseData>(Object.values(el_refs))
@@ -230,7 +235,7 @@ export function build_hyperplanes(
   for (const entry of min_entries) {
     const atom_count = count_atoms_in_composition(entry.composition)
     const composition = entry.composition as Record<string, number>
-    const energy_per_atom = get_energy_per_atom(entry)
+    const energy_per_atom = safe_energy_per_atom(entry)
     if (!(atom_count > 0) || !Number.isFinite(energy_per_atom)) continue
     const row = Array(n_elems + 1).fill(0)
     let ref_energy = 0
@@ -280,71 +285,124 @@ export function build_border_hyperplanes(lims: Vec2[]): number[][] {
   return borders
 }
 
-// Inline 2x2 linear solve (Cramer's rule). Returns false if singular.
-// Writes solution into out[0], out[1].
-function solve_2x2(
-  a00: number,
-  a01: number,
-  b0: number,
-  a10: number,
-  a11: number,
-  b1: number,
-  out: number[],
-): boolean {
-  const det = a00 * a11 - a01 * a10
-  if (Math.abs(det) < EPS) return false
-  out[0] = (b0 * a11 - b1 * a01) / det
-  out[1] = (a00 * b1 - a10 * b0) / det
-  return true
+// Value of halfspace row [a_1..a_dim, b] at a point: a·mu + b (feasible when <= 0)
+function halfspace_value(halfspace: number[], point: number[], dim: number): number {
+  let val = halfspace[dim]
+  for (let idx = 0; idx < dim; idx++) val += halfspace[idx] * point[idx]
+  return val
 }
 
-// Inline 3x3 linear solve via Cramer's rule. Returns false if singular.
-// Takes three halfspace rows directly to avoid array allocation in the hot loop.
-function solve_3x3(
-  a: number[],
-  b: number[],
-  c: number[],
-  offsets: number[],
-  out: number[],
-): boolean {
-  const det =
-    a[0] * (b[1] * c[2] - b[2] * c[1]) -
-    a[1] * (b[0] * c[2] - b[2] * c[0]) +
-    a[2] * (b[0] * c[1] - b[1] * c[0])
-  if (Math.abs(det) < EPS) return false
-  const inv = 1 / det
-  out[0] =
-    (offsets[0] * (b[1] * c[2] - b[2] * c[1]) -
-      a[1] * (offsets[1] * c[2] - b[2] * offsets[2]) +
-      a[2] * (offsets[1] * c[1] - b[1] * offsets[2])) *
-    inv
-  out[1] =
-    (a[0] * (offsets[1] * c[2] - b[2] * offsets[2]) -
-      offsets[0] * (b[0] * c[2] - b[2] * c[0]) +
-      a[2] * (b[0] * offsets[2] - offsets[1] * c[0])) *
-    inv
-  out[2] =
-    (a[0] * (b[1] * offsets[2] - offsets[1] * c[1]) -
-      a[1] * (b[0] * offsets[2] - offsets[1] * c[0]) +
-      offsets[0] * (b[0] * c[1] - b[1] * c[0])) *
-    inv
-  return true
+// Pivot tolerance of the Chebyshev-centre simplex (coefficients are composition fractions and
+// unit border normals, right-hand sides eV-scale chemical potentials)
+const LP_TOL = 1e-10
+
+// Chebyshev centre of the chemical potential region {mu : a_i·mu + b_i <= 0} (entry rows and
+// the box borders from `lims`): the centre of the largest inscribed ball, i.e. the (mu, r)
+// maximising r subject to a_i·mu + |a_i|·r + b_i <= 0 for every row. Every entry row has
+// |a_i| = 1 only for pure elements, so unlike a diagonal-shift heuristic this is correct for
+// arbitrary per-element limit widths. Solved exactly by a small dense simplex in
+// y = mu - lo >= 0 (dim + 1 structural variables, one slack per row; Bland's rule so it cannot
+// cycle). Entry normals are composition fractions (>= 0), so a_i·mu is smallest at the box's
+// lower corner: lo is feasible whenever the region is non-empty, which makes the slack basis
+// feasible from the start (no phase 1) and a negative slack at lo a proof that the region is
+// empty (`radius` -Infinity). Exported for tests.
+//
+// Invariant (not re-checked here): every entry row has non-negative normals. The only
+// producer is build_hyperplanes over entries that build_chempot_hyperplanes has already
+// screened for positive composition amounts, so a negative fraction cannot reach this point.
+export function chebyshev_centre(
+  entry_hs: number[][],
+  lims: Vec2[],
+): { centre: number[]; radius: number } {
+  const dim = lims.length
+  const lo = lims.map(([low]) => low)
+  const all_hs = [...entry_hs, ...build_border_hyperplanes(lims)]
+  const n_rows = all_hs.length
+  const r_col = dim // columns: y_0..y_{dim-1}, r, one slack per row, RHS
+  const slack_col = dim + 1
+  const rhs_col = slack_col + n_rows
+
+  const tableau = all_hs.map((halfspace, row) => {
+    const line: number[] = Array(rhs_col + 1).fill(0)
+    let norm_sq = 0
+    let rhs = -halfspace[dim]
+    for (let idx = 0; idx < dim; idx++) {
+      line[idx] = halfspace[idx]
+      norm_sq += halfspace[idx] ** 2
+      rhs -= halfspace[idx] * lo[idx]
+    }
+    line[r_col] = Math.sqrt(norm_sq)
+    line[slack_col + row] = 1
+    line[rhs_col] = rhs
+    return line
+  })
+  if (tableau.some((line) => line[rhs_col] < -LP_TOL)) return { centre: [], radius: -Infinity }
+  const basis = all_hs.map((_, row) => slack_col + row)
+  // Reduced costs of the maximised objective r (entries are -c_j): a negative entry marks an
+  // improving column
+  const objective: number[] = Array(rhs_col + 1).fill(0)
+  objective[r_col] = -1
+
+  const pivot = (pivot_row: number, pivot_col: number) => {
+    const row = tableau[pivot_row]
+    const inv = 1 / row[pivot_col]
+    for (let col = 0; col <= rhs_col; col++) row[col] *= inv
+    for (const other of [...tableau, objective]) {
+      if (other === row) continue
+      const factor = other[pivot_col]
+      if (factor === 0) continue
+      for (let col = 0; col <= rhs_col; col++) other[col] -= factor * row[col]
+    }
+    basis[pivot_row] = pivot_col
+  }
+
+  // Bland's rule: lowest-index improving column enters, lowest-index basic variable among the
+  // minimum-ratio rows leaves. The minimum is found first so the tie window is measured from
+  // the true minimum, not from whichever candidate happened to be scanned earlier.
+  while (true) {
+    const enter = objective.findIndex((val, col) => col < rhs_col && val < -LP_TOL)
+    if (enter === -1) break
+    const ratios = tableau.map((line) =>
+      line[enter] > LP_TOL ? line[rhs_col] / line[enter] : Infinity,
+    )
+    const min_ratio = Math.min(...ratios)
+    // Unreachable in practice: r is bounded by the upper borders (each axis contributes a row
+    // with +1 in the r column), so every improving column has a positive pivot candidate
+    if (min_ratio === Infinity) break
+    let leave = -1
+    for (let row = 0; row < n_rows; row++) {
+      if (ratios[row] - min_ratio > LP_TOL) continue
+      if (leave === -1 || basis[row] < basis[leave]) leave = row
+    }
+    pivot(leave, enter)
+  }
+
+  const centre = [...lo]
+  let radius = 0
+  for (let row = 0; row < n_rows; row++) {
+    const variable = basis[row]
+    if (variable < dim) centre[variable] += tableau[row][rhs_col]
+    else if (variable === r_col) radius = tableau[row][rhs_col]
+  }
+  return { centre, radius }
 }
 
-// Compute chemical potential domains via vertex enumeration.
-// This replaces scipy's HalfspaceIntersection.
-// For each combination of dim halfspaces, solves the linear system to find a
-// candidate vertex, checks feasibility against all halfspaces, then assigns
-// vertices to the phases whose hyperplanes are active at that vertex.
+// Compute chemical potential domains as the vertices of the halfspace intersection
+// {mu : a_i·mu + b_i <= 0}, replacing scipy's HalfspaceIntersection via the polar dual:
+// translating the origin to an interior point makes every offset negative, so each
+// halfspace becomes the dual point a_i / -(a_i·c + b_i) and every facet of the dual convex
+// hull is a vertex of the primal region (normal / -offset, translated back). Vertices are
+// then assigned to every entry whose hyperplane is active there, which also handles
+// degenerate vertices where more than `dim` planes meet (e.g. an element hyperplane
+// coinciding with the mu = 0 border in formal mode).
 export function compute_domains(
   hyperplanes: number[][],
-  border_hyperplanes: number[][],
+  lims: Vec2[],
   hyperplane_entries: PhaseData[],
-  dim: number,
 ): Record<string, number[][]> {
+  const dim = lims.length
   const n_entries = hyperplanes.length
-  const all_hs = [...hyperplanes, ...border_hyperplanes]
-  const n_total = all_hs.length
+  const all_hs = [...hyperplanes, ...build_border_hyperplanes(lims)]
   const tol = 1e-6
 
   const entry_formulas = hyperplane_entries.map((entry) =>
@@ -352,68 +410,37 @@ export function compute_domains(
   )
   const domains: Record<string, number[][]> = {}
   for (const formula of entry_formulas) domains[formula] ??= []
+  if (n_entries === 0) return domains
 
-  // Reusable buffers: the combination loop is the hot path. dim <= 3 uses the inline
-  // Cramer solvers, larger dims fill A_rows for the LU solver.
-  const mu = Array(dim).fill(0)
-  const offsets = Array(dim).fill(0)
-  const A_rows: number[][] =
-    dim > 3 ? Array.from({ length: dim }, () => Array(dim).fill(0)) : []
-  const combo = Array.from({ length: dim }, (_, idx) => idx)
-
-  function advance_combo(): boolean {
-    let pos = dim - 1
-    while (pos >= 0 && combo[pos] >= n_total - dim + pos) pos--
-    if (pos < 0) return false
-    combo[pos]++
-    for (let idx = pos + 1; idx < dim; idx++) combo[idx] = combo[idx - 1] + 1
-    return true
+  // The Chebyshev centre is strictly interior unless the region has no interior (an entry with
+  // formation energy below the lower limit, or inverted limits)
+  const { centre, radius } = chebyshev_centre(hyperplanes, lims)
+  if (!(radius > LP_TOL)) {
+    throw new Error(
+      `Chemical potential region is empty: largest inscribed radius ${radius} eV for limits ${JSON.stringify(lims)}`,
+    )
   }
+  const slacks = all_hs.map((halfspace) => -halfspace_value(halfspace, centre, dim))
+  // Scale dual points so the nearest halfspace maps to unit distance (keeps quickhull's
+  // absolute tolerance meaningful regardless of the eV scale of the limits)
+  const scale = Math.min(...slacks)
+  const dual_points = all_hs.map((halfspace, idx) =>
+    halfspace.slice(0, dim).map((coeff) => (coeff * scale) / slacks[idx]),
+  )
 
-  // Entry hyperplanes come first and combinations are lexicographic, so once the smallest
-  // selected index is a border halfspace every remaining combination is border-only and
-  // cannot belong to any domain
-  while (combo[0] < n_entries) {
-    // Offsets are the negated last column of the selected halfspaces
-    for (let row = 0; row < dim; row++) offsets[row] = -all_hs[combo[row]][dim]
-
-    let solved = false
-    if (dim === 2) {
-      const h0 = all_hs[combo[0]]
-      const h1 = all_hs[combo[1]]
-      solved = solve_2x2(h0[0], h0[1], offsets[0], h1[0], h1[1], offsets[1], mu)
-    } else if (dim === 3) {
-      solved = solve_3x3(all_hs[combo[0]], all_hs[combo[1]], all_hs[combo[2]], offsets, mu)
-    } else {
-      for (let row = 0; row < dim; row++) {
-        const hs = all_hs[combo[row]]
-        for (let col = 0; col < dim; col++) A_rows[row][col] = hs[col]
-      }
-      const result = solve_linear_system(A_rows, offsets)
-      if (result) {
-        for (let idx = 0; idx < dim; idx++) mu[idx] = result[idx]
-        solved = true
+  const seen_vertices = new Set<string>()
+  for (const facet of compute_quickhull_nd(dual_points)) {
+    // The origin is interior to the dual hull, so every facet offset is negative
+    if (!(facet.offset < -EPS)) continue
+    const vertex = facet.normal.map((val, idx) => centre[idx] - (scale * val) / facet.offset)
+    const key = vertex.map((val) => Math.round(val / tol)).join(`,`)
+    if (seen_vertices.has(key)) continue
+    seen_vertices.add(key)
+    for (let hs_idx = 0; hs_idx < n_entries; hs_idx++) {
+      if (Math.abs(halfspace_value(all_hs[hs_idx], vertex, dim)) <= tol) {
+        domains[entry_formulas[hs_idx]].push(vertex)
       }
     }
-
-    // Feasibility: every inactive halfspace must satisfy a·mu + b <= tol
-    for (let idx = 0; solved && idx < n_total; idx++) {
-      if (combo.includes(idx)) continue
-      const hs = all_hs[idx]
-      let val = hs[dim]
-      if (dim === 2) val += hs[0] * mu[0] + hs[1] * mu[1]
-      else if (dim === 3) val += hs[0] * mu[0] + hs[1] * mu[1] + hs[2] * mu[2]
-      else for (let jdx = 0; jdx < dim; jdx++) val += hs[jdx] * mu[jdx]
-      if (val > tol) solved = false
-    }
-
-    // A feasible vertex belongs to every entry whose hyperplane is active at it
-    if (solved) {
-      for (const hs_idx of combo) {
-        if (hs_idx < n_entries) domains[entry_formulas[hs_idx]].push([...mu])
-      }
-    }
-    if (!advance_combo()) break
   }
 
   return Object.fromEntries(Object.entries(domains).filter(([, domain]) => domain.length > 0))
@@ -472,12 +499,7 @@ export function build_axis_ranges(
   elements: string[],
 ): { element: string; min_val: number; max_val: number }[] {
   return elements.map((element, axis_idx) => {
-    let [min_val, max_val] = [Infinity, -Infinity]
-    for (const point of points) {
-      const val = point[axis_idx]
-      if (val < min_val) min_val = val
-      if (val > max_val) max_val = val
-    }
+    const [min_val, max_val] = array_extent(points.map((point) => point[axis_idx]))
     return { element, min_val, max_val }
   })
 }
@@ -591,12 +613,8 @@ export function simple_pca(
 
 // Compute orthonormal vector to a 2D line segment (for label offset in 2D diagrams)
 export function orthonormal_2d(line_pts: number[][]): Vec2 {
-  const dx = line_pts[1][0] - line_pts[0][0]
-  const dy = line_pts[1][1] - line_pts[0][1]
-  const perp: Vec2 = [-dy, dx]
-  const len = Math.hypot(perp[0], perp[1])
-  if (len < EPS) return [0, 1]
-  return [perp[0] / len, perp[1] / len]
+  const [dx, dy] = subtract(line_pts[1], line_pts[0])
+  return normalize_vec<Vec2>([-dy, dx], [0, 1])
 }
 
 // Deduplicate points within tolerance, returning unique points and index mapping
@@ -660,8 +678,7 @@ export function get_3d_domain_simplexes_and_ann_loc(points_3d: number[][]): {
   // Out-of-plane residual of the 2-component reconstruction, relative to the domain size
   const max_residual = Math.max(
     ...unique.map((point, idx) => {
-      const reconstructed = unproject(scores[idx][0], scores[idx][1])
-      return Math.hypot(...point.map((val, dim) => val - reconstructed[dim]))
+      return euclidean_dist(point, unproject(scores[idx][0], scores[idx][1]))
     }),
   )
   const is_planar = max_residual <= 1e-6 * bbox_diagonal(unique)
@@ -707,17 +724,11 @@ export function get_3d_domain_simplexes_and_ann_loc(points_3d: number[][]): {
 // the min and max corners). Returns 0 for fewer than 2 points.
 export function bbox_diagonal(points: number[][]): number {
   if (points.length < 2) return 0
-  let sq_sum = 0
-  for (let col = 0; col < points[0].length; col++) {
-    let lo = Infinity,
-      hi = -Infinity
-    for (const pt of points) {
-      lo = Math.min(lo, pt[col])
-      hi = Math.max(hi, pt[col])
-    }
-    sq_sum += (hi - lo) ** 2
-  }
-  return Math.sqrt(sq_sum)
+  const sq_spans = points[0].map((_, col) => {
+    const [lo, hi] = array_extent(points.map((pt) => pt[col]))
+    return (hi - lo) ** 2
+  })
+  return Math.sqrt(sq_spans.reduce((sum, sq_span) => sum + sq_span, 0))
 }
 
 // Map an array of raw size values to font sizes via linear interpolation.
@@ -810,24 +821,10 @@ export function get_visible_domain_labels(
 export const get_ternary_combinations = (elements: string[]): string[][] =>
   combinations([...elements].toSorted(), 3)
 
-// === Full N-D Computation Cache ===
-// In projection mode, the expensive vertex enumeration (compute_domains) depends only
-// on the entries, formal_chempots, default_min_limit, and limits -- NOT on which 3
-// elements are projected onto. When showing all C(n,3) ternary projections of the same
-// quaternary system, this cache avoids repeating the ~42s computation per projection.
-// Only the geometry is cached; entries, refs and hyperplanes are cheap and always come
-// from the current call so stale entry metadata never leaks into the result.
-
-let nd_cache: {
-  key: string
-  result: { domains: Record<string, number[][]>; compute_lims: Vec2[] }
-} | null = null
-
-// Lightweight entry fingerprint for N-D cache keys and deterministic equal-energy
-// tie-breaking. Heavy payloads such as structures and calculation metadata do not affect
-// the geometry; normalize a redundant explicit energy_per_atom to its effective value.
+// Deterministic fingerprint for equal-energy tie-breaking in prefer_min_entry. Only the
+// fields that affect the geometry take part (no structures or calculation metadata).
 function entry_fingerprint(entry: PhaseData): string {
-  const effective_energy = get_energy_per_atom(entry)
+  const effective_energy = safe_energy_per_atom(entry)
   const composition = Object.entries(entry.composition).toSorted(([left], [right]) =>
     left.localeCompare(right),
   )
@@ -843,19 +840,57 @@ function entry_fingerprint(entry: PhaseData): string {
   })
 }
 
-export function make_nd_cache_key(
-  entries: PhaseData[],
-  formal_chempots: boolean,
-  default_min_limit: number,
-  limits: ChemPotDiagramConfig[`limits`],
-): string {
-  return `${entries.map(entry_fingerprint).toSorted().join(`,`)}|${formal_chempots}|${default_min_limit}|${JSON.stringify(limits ?? {})}`
-}
-
 // === Main Pipeline ===
 
-// Compute the full chemical potential diagram from entries and config.
-// Returns domains, elements, refs, and all intermediate data.
+// Entries restricted to `elements` (every positive-amount element must be in the set),
+// reduced to the minimum-energy entry per formula, optionally renormalized to formal
+// chemical potentials, and turned into hyperplane rows. Shared by compute_chempot_diagram
+// and tests that inspect the intermediate hull input.
+export function build_chempot_hyperplanes(
+  entries: PhaseData[],
+  elements: string[],
+  formal_chempots: boolean,
+): {
+  min_entries: PhaseData[]
+  el_refs: Record<string, PhaseData>
+  hyperplanes: number[][]
+  hyperplane_entries: PhaseData[]
+} {
+  const element_set = new Set(elements)
+  // Zero amounts mean "absent" throughout this module (formula keys, references, the element
+  // scan). A negative or NaN amount would turn into a negative hyperplane normal and break the
+  // lower-corner feasibility argument of chebyshev_centre, so reject it here where the entry
+  // is still known by name.
+  const in_subsystem = (entry: PhaseData): boolean =>
+    Object.entries(entry.composition).every(([element, amount]) => {
+      if (!(amount >= 0)) {
+        const label = entry.entry_id ?? entry.reduced_formula ?? entry.name
+        throw new Error(
+          `Invalid composition amount ${element}: ${amount} in entry ${label ?? JSON.stringify(entry.composition)}`,
+        )
+      }
+      return amount === 0 || element_set.has(element)
+    })
+  // Sort by formula key so same-energy ties resolve deterministically
+  const sorted_entries = entries
+    .filter(in_subsystem)
+    .map((entry) => ({ entry, key: formula_key_from_composition(entry.composition) }))
+    .toSorted((left, right) => left.key.localeCompare(right.key))
+    .map(({ entry }) => entry)
+
+  let { min_entries, el_refs } = get_min_entries_and_el_refs(sorted_entries)
+  const missing_refs = elements.filter((el) => !el_refs[el])
+  if (missing_refs.length > 0) {
+    throw new Error(`Missing elemental reference entries for: ${missing_refs.join(`, `)}`)
+  }
+  if (formal_chempots) {
+    min_entries = renormalize_entries(min_entries, el_refs, elements)
+    el_refs = get_min_entries_and_el_refs(min_entries).el_refs
+  }
+  return { min_entries, el_refs, ...build_hyperplanes(min_entries, el_refs, elements) }
+}
+
+// Compute the chemical potential diagram (stability domains per formula) from entries.
 //
 // Supports two modes based on config.elements vs data dimensionality:
 // - **Subsystem mode**: config.elements matches data element count → filter entries
@@ -896,74 +931,28 @@ export function compute_chempot_diagram(
   const dim = compute_elements.length
   if (dim < 2) throw new Error(`ChemicalPotentialDiagram requires 2+ elements, got ${dim}`)
 
-  // Subsystem mode keeps only entries inside the element set (a no-op when it is the full
-  // set); sort by formula key so same-energy ties resolve deterministically
-  const element_set = new Set(compute_elements)
-  const working_entries = is_projection
-    ? entries
-    : entries.filter((entry) =>
-        Object.entries(entry.composition).every(
-          ([element, amount]) => amount <= 0 || element_set.has(element),
-        ),
-      )
-  const sorted_entries = working_entries
-    .map((entry) => ({ entry, key: formula_key_from_composition(entry.composition) }))
-    .toSorted((left, right) => left.key.localeCompare(right.key))
-    .map(({ entry }) => entry)
-
-  let { min_entries, el_refs } = get_min_entries_and_el_refs(sorted_entries)
-  const missing_refs = compute_elements.filter((el) => !el_refs[el])
-  if (missing_refs.length > 0) {
-    throw new Error(`Missing elemental reference entries for: ${missing_refs.join(`, `)}`)
-  }
-  if (formal_chempots) {
-    min_entries = renormalize_entries(min_entries, el_refs, compute_elements)
-    el_refs = get_min_entries_and_el_refs(min_entries).el_refs
-  }
-  const { hyperplanes, hyperplane_entries } = build_hyperplanes(
-    min_entries,
-    el_refs,
+  const { hyperplanes, hyperplane_entries } = build_chempot_hyperplanes(
+    entries,
     compute_elements,
+    formal_chempots,
   )
+  const compute_lims: Vec2[] = compute_elements.map(
+    (el) => limits?.[el] ?? [default_min_limit, 0],
+  )
+  const nd_domains = compute_domains(hyperplanes, compute_lims, hyperplane_entries)
 
-  const cache_key = is_projection
-    ? make_nd_cache_key(entries, formal_chempots, default_min_limit, limits)
-    : ``
-  let nd_result = is_projection && nd_cache?.key === cache_key ? nd_cache.result : null
-  if (!nd_result) {
-    const compute_lims: Vec2[] = compute_elements.map(
-      (el) => limits?.[el] ?? [default_min_limit, 0],
-    )
-    const domains = compute_domains(
-      hyperplanes,
-      build_border_hyperplanes(compute_lims),
-      hyperplane_entries,
-      dim,
-    )
-    nd_result = { domains, compute_lims }
-    if (is_projection) nd_cache = { key: cache_key, result: nd_result }
-  }
-
-  let { domains, compute_lims: lims } = nd_result
-  // Project domain vertices from N-D to display axes (column extraction)
-  if (is_projection) {
-    const col_indices = display_elements.map((element) => compute_elements.indexOf(element))
-    domains = Object.fromEntries(
-      Object.entries(domains).map(([formula, pts]) => [
-        formula,
-        pts.map((pt) => col_indices.map((idx) => pt[idx])),
-      ]),
-    )
-    lims = col_indices.map((col_idx) => nd_result.compute_lims[col_idx])
-  }
-
+  // Project domain vertices from N-D to display axes (column extraction; the identity in
+  // subsystem mode, where compute_elements is display_elements)
+  const col_indices = display_elements.map((element) => compute_elements.indexOf(element))
+  const domains = Object.fromEntries(
+    Object.entries(nd_domains).map(([formula, pts]) => [
+      formula,
+      pts.map((pt) => col_indices.map((idx) => pt[idx])),
+    ]),
+  )
   return {
     domains,
     elements: display_elements,
-    el_refs,
-    min_entries,
-    hyperplanes,
-    hyperplane_entries,
-    lims,
+    lims: col_indices.map((col_idx) => compute_lims[col_idx]),
   }
 }

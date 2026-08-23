@@ -1,7 +1,7 @@
 import { InfoTag } from '$lib/layout'
 import { flushSync, mount } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { doc_query } from '../setup'
+import { doc_query, mock_clipboard_write } from '../setup'
 
 describe(`InfoTag`, () => {
   const get_tag = (): HTMLSpanElement => doc_query(`.info-tag`)
@@ -17,20 +17,13 @@ describe(`InfoTag`, () => {
     expect(doc_query(`em`).textContent).toBe(`42`)
   })
 
-  test.each([`default`, `success`, `warning`, `error`, `info`] as const)(
-    `applies %s variant class`,
-    (variant) => {
-      mount(InfoTag, {
-        target: document.body,
-        props: { label: `Test`, value: 1, variant },
-      })
-      expect(get_tag().classList.contains(variant)).toBe(true)
-    },
-  )
-
-  test.each([`sm`, `md`, `lg`] as const)(`applies %s size class`, (size) => {
-    mount(InfoTag, { target: document.body, props: { label: `Test`, value: 1, size } })
-    expect(get_tag().classList.contains(size)).toBe(true)
+  // variant and size are passed straight through as classes
+  test.each([
+    [{ variant: `error`, size: `lg` }, [`error`, `lg`]],
+    [{}, [`default`, `md`]],
+  ] as const)(`props %j apply classes %j`, (props, classes) => {
+    mount(InfoTag, { target: document.body, props: { label: `Test`, value: 1, ...props } })
+    for (const cls of classes) expect(get_tag().classList.contains(cls)).toBe(true)
   })
 
   test.each([
@@ -50,23 +43,13 @@ describe(`InfoTag`, () => {
     },
   )
 
-  test(`defaults to variant=default and size=md`, () => {
-    mount(InfoTag, { target: document.body, props: { label: `Test`, value: 1 } })
-    expect(get_tag().classList.contains(`default`)).toBe(true)
-    expect(get_tag().classList.contains(`md`)).toBe(true)
-  })
-
   test.each([
     { value: `abc123`, copy_value: undefined, expected: `abc123` },
     { value: `abc123`, copy_value: `full-id-abc123`, expected: `full-id-abc123` },
   ])(
     `copies $expected to clipboard (copy_value=$copy_value)`,
     ({ value, copy_value, expected }) => {
-      const write_text_spy = vi.fn().mockResolvedValue(undefined)
-      Object.defineProperty(navigator, `clipboard`, {
-        value: { writeText: write_text_spy },
-        writable: true,
-      })
+      const write_text_spy = mock_clipboard_write()
       mount(InfoTag, {
         target: document.body,
         props: { label: `ID:`, value, copy_value },
@@ -92,11 +75,7 @@ describe(`InfoTag`, () => {
   })
 
   test(`custom onclick overrides copy; Enter/Space triggers click; disabled blocks both`, () => {
-    const write_text_spy = vi.fn()
-    Object.defineProperty(navigator, `clipboard`, {
-      value: { writeText: write_text_spy },
-      writable: true,
-    })
+    const write_text_spy = mock_clipboard_write()
 
     // Custom onclick overrides copy
     const onclick = vi.fn()
@@ -141,16 +120,16 @@ describe(`InfoTag`, () => {
     },
   )
 
-  test(`onremove fires without triggering tag onclick`, () => {
+  test(`on_remove fires without triggering tag onclick`, () => {
     const onclick = vi.fn()
-    const onremove = vi.fn()
+    const on_remove = vi.fn()
     mount(InfoTag, {
       target: document.body,
-      props: { label: `Test`, value: 1, removable: true, onclick, onremove },
+      props: { label: `Test`, value: 1, removable: true, onclick, on_remove },
     })
     doc_query<HTMLButtonElement>(`[aria-label="Remove"]`).click()
     flushSync()
-    expect(onremove).toHaveBeenCalled()
+    expect(on_remove).toHaveBeenCalled()
     expect(onclick).not.toHaveBeenCalled()
   })
 

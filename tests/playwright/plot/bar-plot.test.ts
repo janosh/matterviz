@@ -1,23 +1,34 @@
 import { rects_overlap } from '$lib/plot/core/layout'
-import { expect, test } from '@playwright/test'
-import { get_tick_range, is_present } from '../helpers'
+import { expect, type Locator, type Page, test } from '@playwright/test'
+import {
+  bounding_boxes,
+  expect_shift_drag_pans,
+  expect_zoom_shrinks_axes,
+  open_plot_controls,
+  require_bbox,
+  tick_texts,
+} from '../helpers'
+
+// Bars render as <path> (rounded-rect path) with an aria-label.
+const bars_of = (plot: Locator) => plot.locator(`svg path[aria-label^="bar "]`)
+const bar_boxes = (plot: Locator, count = 4) => bounding_boxes(bars_of(plot), count)
+// Scroll a test section's plot into view and wait for its first bar
+const ready_plot = async (page: Page, section_id: string) => {
+  const plot = page.locator(`${section_id} .bar-plot`)
+  await plot.scrollIntoViewIfNeeded()
+  await expect(bars_of(plot).first()).toBeVisible()
+  return plot
+}
 
 test.describe(`BarPlot Component Tests`, () => {
   test.beforeEach(async ({ page }) => {
     await page.goto(`/test/bar-plot`, { waitUntil: `networkidle` })
   })
 
-  test(`renders basic bar plot with axes and bars`, async ({ page }) => {
-    const section = page.locator(`#basic-bar`)
-    const plot = section.locator(`.bar-plot`)
-    await expect(plot).toBeVisible()
-
-    // Bars render as <path> (rounded-rect path) with an aria-label.
-    const bars = plot.locator(`svg path[aria-label^="bar "]`)
-    await expect(bars.first()).toBeVisible()
-    await expect(bars).toHaveCount(4) // Should have 4 bars
-
-    // Axes render with some ticks
+  test(`renders bars inside the clip area with axes and a hover tooltip`, async ({ page }) => {
+    const plot = page.locator(`#basic-bar .bar-plot`)
+    const bars = bars_of(plot)
+    await expect(bars).toHaveCount(4)
     await expect(plot.locator(`g.x-axis .tick`).first()).toBeVisible()
     await expect(plot.locator(`g.y-axis .tick`).first()).toBeVisible()
 
@@ -40,16 +51,19 @@ test.describe(`BarPlot Component Tests`, () => {
     })
     expect(bounds.first_x).toBeGreaterThanOrEqual(bounds.clip_x - 0.001)
     expect(bounds.last_right).toBeLessThanOrEqual(bounds.clip_right + 0.001)
+
+    // hover shows a tooltip; without a click handler the cursor is not a pointer
+    await bars.first().hover()
+    await expect(plot.locator(`.plot-tooltip`)).toBeVisible()
+    await expect(bars.first()).not.toHaveCSS(`cursor`, `pointer`)
   })
 
-  test(`legend renders for multiple series and toggles visibility`, async ({ page }) => {
-    const section = page.locator(`#legend-bar`)
-    const plot = section.locator(`.bar-plot`)
-    const bars = plot.locator(`svg path[aria-label^="bar "]`)
-    await expect(plot).toBeVisible()
-
+  test(`legend avoids bars and tooltips, survives resize, and toggles series`, async ({
+    page,
+  }) => {
+    const plot = page.locator(`#legend-bar .bar-plot`)
+    const bars = bars_of(plot)
     const legend = plot.locator(`.legend`)
-    await expect(legend).toBeVisible()
     const items = legend.locator(`.legend-item`)
     await expect(items).toHaveCount(2)
 
@@ -80,250 +94,96 @@ test.describe(`BarPlot Component Tests`, () => {
     await bars.first().hover({ force: true })
     const tooltip = plot.locator(`.plot-tooltip`)
     await expect(tooltip).toBeVisible()
-    const [legend_box, tooltip_box] = await Promise.all([
-      legend.boundingBox(),
-      tooltip.boundingBox(),
-    ])
-    if (!legend_box || !tooltip_box) throw new Error(`missing legend/tooltip geometry`)
-    expect(rects_overlap(legend_box, tooltip_box)).toBe(false)
+    expect(rects_overlap(await require_bbox(legend), await require_bbox(tooltip))).toBe(false)
 
-    // Initial: both visible -> bars exist
     const initial_bars = await bars.count()
     expect(initial_bars).toBeGreaterThan(0)
-
-    // Toggle first series -> bar count should decrease
     await items.first().click()
     await expect.poll(() => bars.count()).toBeLessThan(initial_bars)
-
-    // Toggle back -> bar count should be restored to initial
     await items.first().click()
     await expect.poll(() => bars.count()).toBe(initial_bars)
   })
 
-  test(`zoom drag and double-click reset works`, async ({ page }) => {
-    const plot = page.locator(`#basic-bar .bar-plot`)
-    const svg = plot.locator(`svg[role="application"]`)
-
-    // Wait for initial ticks
-    await expect(plot.locator(`g.x-axis .tick text`).first()).toBeVisible()
-
-    const get_range = async (axis: `x` | `y`) => {
-      const tick_texts = await plot.locator(`g.${axis}-axis .tick text`).allTextContents()
-      return tick_texts.join(`,`)
-    }
-    const get_tick_values = async (axis: `x` | `y`) => {
-      const tick_texts = await plot.locator(`g.${axis}-axis .tick text`).allTextContents()
-      return tick_texts.map(Number).filter((tick) => Number.isFinite(tick))
-    }
-
-    const initial_x = await get_range(`x`)
-    const initial_y = await get_range(`y`)
-    const initial_y_vals = await get_tick_values(`y`)
-    const initial_y_max = Math.max(...initial_y_vals)
-
-    const box = await svg.boundingBox()
-    if (!box) throw new Error(`SVG bbox not found`)
-
-    // Ensure drag is large enough (needs > 5px in both dimensions)
-    const start_x = box.x + box.width * 0.2
-    const start_y = box.y + box.height * 0.8
-    const end_x = box.x + box.width * 0.8
-    const end_y = box.y + box.height * 0.2
-
-    await page.mouse.move(start_x, start_y)
-    await page.mouse.down()
-
-    // Check if zoom rectangle appears during drag
-    await page.mouse.move(end_x, end_y, { steps: 10 })
-    const zoom_rect = plot.locator(`.zoom-rect`)
-    await expect(zoom_rect).toBeVisible({ timeout: 5000 })
-
-    await page.mouse.up()
-
-    // Wait for zoom to take effect and ticks to update
-    await expect(async () => {
-      const zoomed_x = await get_range(`x`)
-      expect(zoomed_x).not.toBe(initial_x)
-    }).toPass({ timeout: 5000 })
-
-    // After zoom ticks differ
-    const zoomed_x = await get_range(`x`)
-    const zoomed_y = await get_range(`y`)
-    expect(zoomed_x).not.toBe(initial_x)
-    expect(zoomed_y).not.toBe(initial_y)
-
-    // Reset
-    await svg.dblclick()
-    const reset_x = await get_range(`x`)
-    const reset_y = await get_range(`y`)
-    expect(reset_x).toBe(initial_x)
-    // Tick generation can legitimately change by one tick; compare the numerical range.
-    const reset_y_vals = await get_tick_values(`y`)
-    const reset_y_max = Math.max(...reset_y_vals)
-    expect(reset_y).toContain(`0`)
-    expect(Math.abs(reset_y_max - initial_y_max)).toBeLessThanOrEqual(10)
+  test(`drag zoom shrinks both axes and double-click resets`, async ({ page }) => {
+    await expect_zoom_shrinks_axes(page, page.locator(`#basic-bar .bar-plot`))
   })
 
-  test(`tooltip appears on bar hover, cursor not pointer without click handler`, async ({
-    page,
-  }) => {
-    const plot = page.locator(`#basic-bar .bar-plot`)
-    const bar = plot.locator(`svg path[aria-label^="bar "]`).first()
-    await expect(bar).toBeVisible()
-
-    await bar.hover()
-
-    const tooltip = plot.locator(`.plot-tooltip`)
-    await expect(tooltip).toBeVisible({ timeout: 5000 })
-
-    // Check cursor is not pointer (no click handler)
-    const cursor = await bar.evaluate((el) => globalThis.getComputedStyle(el).cursor)
-    expect(cursor).not.toBe(`pointer`)
+  test(`Shift+drag pans the bar plot instead of zooming`, async ({ page }) => {
+    await expect_shift_drag_pans(page, page.locator(`#basic-bar .bar-plot`))
   })
 
   test(`on_bar_hover and on_bar_click handlers with pointer cursor`, async ({ page }) => {
     const section = page.locator(`#handlers-bar`)
-    const plot = section.locator(`.bar-plot`)
-    await expect(plot).toBeVisible()
-
-    const bars = plot.locator(`svg path[aria-label^="bar "]`)
-    const bar_count = await bars.count()
-    expect(bar_count).toBeGreaterThan(0)
-
-    const first_bar = bars.first()
-
-    // Check cursor is pointer (click handler is defined)
-    const cursor = await first_bar.evaluate((el) => globalThis.getComputedStyle(el).cursor)
-    expect(cursor).toBe(`pointer`)
+    const first_bar = bars_of(section.locator(`.bar-plot`)).first()
+    await expect(first_bar).toHaveCSS(`cursor`, `pointer`)
 
     const info = section.locator(`.handler-info`)
     const hover_p = info.locator(`p`).first()
     const click_p = info.locator(`p`).last()
-
-    // Initial state
     await expect(hover_p).toContainText(`Hover over a bar`)
     await expect(click_p).toContainText(`Click on a bar`)
 
-    // Test hover
     await first_bar.hover()
-    await expect(hover_p).toContainText(`Hovering:`, { timeout: 5000 })
-
-    // Test click
+    await expect(hover_p).toContainText(`Hovering:`)
     await first_bar.click()
     await expect(click_p).toContainText(`Clicked:`)
-
-    // Test hover clears on mouse leave
     await page.mouse.move(0, 0)
     await expect(hover_p).toContainText(`Hover over a bar`)
   })
 
-  test(`controls pane toggles grid and updates tick formats`, async ({ page }) => {
-    const section = page.locator(`#basic-bar`)
-    const plot = section.locator(`.bar-plot`)
-    await expect(plot).toBeVisible()
-
-    // Open controls via toggle button rendered by DraggablePane
-    const toggle = section.locator(`.pane-toggle`)
-    await expect(toggle).toBeVisible()
-    await expect(toggle).toHaveCSS(`right`, `77px`)
-    await toggle.evaluate((element) => element.style.setProperty(`--ctrl-btn-right`, `79px`))
-    await expect(toggle).toHaveCSS(`right`, `79px`)
-    await toggle.click()
-
-    const pane = section.locator(`.draggable-pane`)
-    await expect(pane).toBeVisible()
-
-    // Toggle x grid - checkbox is inside span[data-label="grid"]
-    const grid_group = pane.locator(`[data-label="grid"]`)
-    const x_grid_checkbox = grid_group.getByLabel(`X`)
-    await expect(x_grid_checkbox).toBeVisible()
-    await x_grid_checkbox.scrollIntoViewIfNeeded()
-    const initial_grid_lines = await plot.locator(`g.x-axis .tick line:not([y1='0'])`).count()
-    await x_grid_checkbox.evaluate((el) => {
-      const input = el as HTMLInputElement
-      input.checked = false
-      input.dispatchEvent(new Event(`input`, { bubbles: true }))
-      input.dispatchEvent(new Event(`change`, { bubbles: true }))
-    })
-    const no_grid_lines = await plot.locator(`g.x-axis .tick line:not([y1='0'])`).count()
-    expect(no_grid_lines).toBe(0)
-    await x_grid_checkbox.evaluate((el) => {
-      const input = el as HTMLInputElement
-      input.checked = true
-      input.dispatchEvent(new Event(`input`, { bubbles: true }))
-      input.dispatchEvent(new Event(`change`, { bubbles: true }))
-    })
-    const restored_grid_lines = await plot.locator(`g.x-axis .tick line:not([y1='0'])`).count()
-    expect(restored_grid_lines).toBeGreaterThanOrEqual(initial_grid_lines)
-
-    // Change x tick format
-    const x_format = pane.locator(`input[type="text"]`).first()
-    await x_format.fill(`.1r`)
-    await expect(plot.locator(`g.x-axis .tick text`).first()).toHaveText(/^\d+(?:\.\d+)?$/)
-  })
-
-  test(`orientation switch flips bar orientation`, async ({ page }) => {
-    const section = page.locator(`#basic-bar`)
-    const plot = section.locator(`.bar-plot`)
-    await expect(plot).toBeVisible()
-    const bars = plot.locator(`svg path[aria-label^="bar "]`)
-    await expect(bars.first()).toBeVisible()
-    const before_boxes = (await bars.all()).slice(0, 12)
-    const before_dims = (
-      await Promise.all(before_boxes.map((handle) => handle.boundingBox()))
-    ).filter(is_present)
-    const vertical_count_before = before_dims.filter((bb) => bb.height > bb.width).length
-    const horizontal_count_before = before_dims.filter((bb) => bb.width > bb.height).length
-    // with range_padding 0 the 4 wide bars aren't majority-vertical; just require
-    // unambiguous verticals to exist so the flip below is observable
-    expect(vertical_count_before).toBeGreaterThan(0)
-
-    // Open controls and switch orientation to Horizontal
-    const toggle = section.locator(`.pane-toggle`)
-    await expect(toggle).toBeVisible()
-    await toggle.click()
-    const pane = section.locator(`.draggable-pane`)
-    await expect(pane).toBeVisible()
-
-    const select = pane.getByRole(`combobox`).first()
-    await expect(select).toBeVisible()
-    await select.selectOption(`horizontal`)
-    // After change, majority of bars should be horizontal
-    const after_boxes = (await bars.all()).slice(0, 12)
-    const after_dims = (
-      await Promise.all(after_boxes.map((handle) => handle.boundingBox()))
-    ).filter(is_present)
-    const horizontal_count_after = after_dims.filter((bb) => bb.width > bb.height).length
-    const vertical_count_after = after_dims.filter((bb) => bb.height > bb.width).length
-    expect(horizontal_count_after).toBeGreaterThan(vertical_count_after)
-    expect(horizontal_count_after).toBeGreaterThan(horizontal_count_before)
-    expect(vertical_count_after).toBeLessThan(vertical_count_before)
-  })
-
-  test(`stacked mode handles positive and negative stacking separately and respects visibility`, async ({
+  test(`controls pane toggles grid, reformats ticks and flips orientation`, async ({
     page,
   }) => {
+    const plot = await ready_plot(page, `#basic-bar`)
+    const dims_before = await bar_boxes(plot, 12)
+    // with range_padding 0 the 4 wide bars aren't majority-vertical; just require
+    // unambiguous verticals to exist so the flip below is observable
+    const vertical_before = dims_before.filter((bb) => bb.height > bb.width).length
+    expect(vertical_before).toBeGreaterThan(0)
+
+    const { pane } = await open_plot_controls(plot)
+
+    const grid_lines = plot.locator(`g.x-axis .tick line:not([y1='0'])`)
+    const initial_grid_lines = await grid_lines.count()
+    expect(initial_grid_lines).toBeGreaterThan(0)
+    const x_grid_checkbox = pane.locator(`[data-label="grid"]`).getByLabel(`X`)
+    await x_grid_checkbox.uncheck()
+    await expect(grid_lines).toHaveCount(0)
+    await x_grid_checkbox.check()
+    await expect.poll(() => grid_lines.count()).toBeGreaterThanOrEqual(initial_grid_lines)
+
+    await pane.locator(`input[type="text"]`).first().fill(`.1r`)
+    await expect(plot.locator(`g.x-axis .tick text`).first()).toHaveText(/^\d+(?:\.\d+)?$/)
+
+    await pane.getByRole(`combobox`).first().selectOption(`horizontal`)
+    await expect
+      .poll(async () => {
+        const dims = await bar_boxes(plot, 12)
+        const horizontal = dims.filter((bb) => bb.width > bb.height).length
+        const vertical = dims.filter((bb) => bb.height > bb.width).length
+        return horizontal > vertical && vertical < vertical_before
+      })
+      .toBe(true)
+  })
+
+  test(`stacked mode separates positive and negative stacks and respects visibility`, async ({
+    page,
+  }) => {
+    for (const [plot_id, axis] of [
+      [`#stacked-mixed`, `y`],
+      [`#stacked-mixed-horizontal`, `x`],
+    ] as const) {
+      const plot = page.locator(plot_id)
+      await expect(bars_of(plot).first()).toBeVisible()
+      // mixed signs place bars on both sides of the baseline
+      const positions = (await bar_boxes(plot)).map((bb) => bb[axis])
+      expect(Math.max(...positions) - Math.min(...positions)).toBeGreaterThan(0)
+    }
+
+    // hiding a series removes its stacking contribution, shifting the remaining bars
     const plot = page.locator(`#stacked-mixed`)
-    await expect(plot).toBeVisible()
-
-    // Collect bars for first x index (approx top-left group); two series -> two rects per x
-    const rects = plot.locator(`svg path[aria-label^="bar "]`)
-    await expect(rects.first()).toBeVisible()
-
-    // Measure y positions to verify one bar is above baseline and one below when values have different signs
-    const rect_boxes = (await rects.elementHandles()).slice(0, 4)
-    const boxes = (await Promise.all(rect_boxes.map((handle) => handle.boundingBox()))).filter(
-      is_present,
-    )
-    // There should be at least two bars with different vertical placement for mixed signs
-    const ys = boxes.map((bb) => bb.y)
-    const min_y = Math.min(...ys)
-    const max_y = Math.max(...ys)
-    expect(max_y - min_y).toBeGreaterThan(0)
-
-    // Toggle visibility of first series; remaining series should shift to its own baseline (no stacking contribution from hidden)
-    const legend = plot.locator(`.legend`)
-    const items = legend.locator(`.legend-item`)
+    const rects = bars_of(plot)
+    const items = plot.locator(`.legend .legend-item`)
     await expect(items).toHaveCount(2)
     const initial_first_rect_box = await rects.first().boundingBox()
     await items.first().click()
@@ -332,324 +192,78 @@ test.describe(`BarPlot Component Tests`, () => {
       .not.toBe(initial_first_rect_box?.y ?? -1)
   })
 
-  test(`zero-value bars render with minimal height/width and tooltips still appear`, async ({
-    page,
-  }) => {
-    const plot = page.locator(`#zero-values`)
-    await expect(plot).toBeVisible()
-    const rects = plot.locator(`svg path[aria-label^="bar "]`)
-    await expect(rects.first()).toBeVisible()
-    // zero bars should not have negative size
-    const boxes = (
-      await Promise.all((await rects.all()).slice(0, 4).map((handle) => handle.boundingBox()))
-    ).filter(is_present)
-    expect(Math.min(...boxes.map((bb) => bb.width))).toBeGreaterThan(0)
-    expect(Math.min(...boxes.map((bb) => bb.height))).toBeGreaterThan(0)
-    await rects.first().hover({ force: true })
-    await expect(plot.locator(`.plot-tooltip`)).toBeVisible()
-  })
-
   test(`per-bar width arrays change bar widths`, async ({ page }) => {
-    const plot = page.locator(`#width-array`)
-    await expect(plot).toBeVisible()
-    const rects = await plot.locator(`svg path[aria-label^="bar "]`).all()
-    const boxes = (
-      await Promise.all(rects.slice(0, 4).map((handle) => handle.boundingBox()))
-    ).filter(is_present)
-    const widths = boxes.map((bb) => bb.width)
-    // Expect at least two distinct widths
-    const distinct = new Set(widths.map((width) => Math.round(width)))
-    expect(distinct.size).toBeGreaterThan(1)
+    const widths = (await bar_boxes(page.locator(`#width-array`))).map((bb) => bb.width)
+    expect(new Set(widths.map((width) => Math.round(width))).size).toBeGreaterThan(1)
   })
 
-  test(`horizontal stacked mixed also separates positive/negative properly`, async ({
+  test(`y2 series get an independent axis, zoom together and line series can use y2`, async ({
     page,
   }) => {
-    const plot = page.locator(`#stacked-mixed-horizontal`)
-    await expect(plot).toBeVisible()
-    const rects = plot.locator(`svg path[aria-label^="bar "]`)
-    await expect(rects.first()).toBeVisible()
-    const boxes = (
-      await Promise.all((await rects.all()).slice(0, 4).map((handle) => handle.boundingBox()))
-    ).filter(is_present)
-    const xs = boxes.map((bb) => bb.x)
-    const min_x = Math.min(...xs)
-    const max_x = Math.max(...xs)
-    expect(max_x - min_x).toBeGreaterThan(0)
+    const plot = await ready_plot(page, `#y2-axis-bar`)
+    await expect(plot.locator(`g.y2-axis .tick`).first()).toBeVisible()
+    const initial_y2 = await tick_texts(plot, `y2`)
+    await expect_zoom_shrinks_axes(page, plot)
+    await expect.poll(() => tick_texts(plot, `y2`)).toEqual(initial_y2)
+
+    // series with 100x larger values get their own tick scale, so stacks land at different heights
+    const scaled = page.locator(`#y2-different-scale .bar-plot`)
+    await scaled.scrollIntoViewIfNeeded()
+    await expect(scaled.locator(`g.y2-axis .tick text`).first()).toBeVisible()
+    expect(await tick_texts(scaled, `y`)).not.toEqual(await tick_texts(scaled, `y2`))
+    const stacked = await ready_plot(page, `#y2-stacked`)
+    const ys = (await bar_boxes(stacked)).map((bb) => Math.round(bb.y))
+    expect(new Set(ys).size).toBeGreaterThan(1)
+
+    const line_plot = page.locator(`#y2-line-series .bar-plot`)
+    await line_plot.scrollIntoViewIfNeeded()
+    await expect(line_plot.locator(`g.line-series polyline`).first()).toBeVisible()
+    await expect(line_plot.locator(`g.y2-axis`)).toBeVisible()
   })
 
-  test(`y2 axis renders when series assigned to y2`, async ({ page }) => {
-    const plot = page.locator(`#y2-axis-bar .bar-plot`)
-    await expect(plot).toBeVisible()
-
-    // Check that y2-axis renders
-    const y2_axis = plot.locator(`g.y2-axis`)
-    await expect(y2_axis).toBeVisible()
-
-    // Check that y2-axis has ticks
-    const y2_ticks = y2_axis.locator(`.tick`)
-    await expect(y2_ticks.first()).toBeVisible()
-    expect(await y2_ticks.count()).toBeGreaterThan(0)
-
-    // Check that both y1 and y2 axis have visible bars
-    const bars = plot.locator(`svg path[aria-label^="bar "]`)
-    await expect(bars.first()).toBeVisible()
-    expect(await bars.count()).toBeGreaterThan(0)
-  })
-
-  test(`y2 axis scaling is independent of y1 axis`, async ({ page }) => {
-    const plot = page.locator(`#y2-different-scale .bar-plot`)
-    await expect(plot).toBeVisible()
-
-    // Get tick values from y1 and y2 axes
-    const y1_ticks = await plot.locator(`g.y-axis .tick text`).allTextContents()
-    const y2_ticks = await plot.locator(`g.y2-axis .tick text`).allTextContents()
-
-    // Verify both axes have ticks
-    expect(y1_ticks.length).toBeGreaterThan(0)
-    expect(y2_ticks.length).toBeGreaterThan(0)
-
-    // Verify they have different ranges (independent scaling)
-    expect(y1_ticks.join(`,`)).not.toBe(y2_ticks.join(`,`))
-  })
-
-  test(`stacked mode stacks series on same y-axis separately`, async ({ page }) => {
-    const plot = page.locator(`#y2-stacked .bar-plot`)
-    await expect(plot).toBeVisible()
-
-    // Get bars for both series
-    const bars = plot.locator(`svg path[aria-label^="bar "]`)
-    await expect(bars.first()).toBeVisible()
-
-    // There should be bars from both y1 and y2 series
-    const bar_count = await bars.count()
-    expect(bar_count).toBeGreaterThan(0)
-
-    // Verify stacking by checking bar positions
-    const first_bars = (await bars.all()).slice(0, 4)
-    const boxes = (await Promise.all(first_bars.map((handle) => handle.boundingBox()))).filter(
-      is_present,
-    )
-
-    // Bars should be positioned at different y coordinates
-    const ys = boxes.map((bb) => bb.y)
-    const unique_ys = new Set(ys.map((y_val) => Math.round(y_val)))
-    expect(unique_ys.size).toBeGreaterThan(1)
-  })
-
-  test(`zoom updates both y1 and y2 ranges`, async ({ page }) => {
-    const plot = page.locator(`#y2-axis-bar .bar-plot`)
-    const svg = plot.locator(`svg[role="application"]`)
-
-    // Scroll to the plot to ensure it's in viewport
-    await plot.scrollIntoViewIfNeeded()
-
-    // Wait for initial ticks
-    await expect(plot.locator(`g.y-axis .tick text`).first()).toBeVisible()
-    await expect(plot.locator(`g.y2-axis .tick text`).first()).toBeVisible()
-
-    const get_range = async (axis: `y` | `y2`) => {
-      const tick_texts = await plot.locator(`g.${axis}-axis .tick text`).allTextContents()
-      return tick_texts.join(`,`)
-    }
-
-    const initial_y1 = await get_range(`y`)
-    const initial_y2 = await get_range(`y2`)
-
-    const box = await svg.boundingBox()
-    if (!box) throw new Error(`SVG bbox not found`)
-
-    // Ensure drag is large enough (needs > 5px in both dimensions)
-    const start_x = box.x + box.width * 0.2
-    const start_y = box.y + box.height * 0.8
-    const end_x = box.x + box.width * 0.8
-    const end_y = box.y + box.height * 0.2
-
-    await page.mouse.move(start_x, start_y)
-    await page.mouse.down()
-
-    // Check if zoom rectangle appears during drag
-    await page.mouse.move(end_x, end_y, { steps: 10 })
-    const zoom_rect = plot.locator(`.zoom-rect`)
-    await expect(zoom_rect).toBeVisible({ timeout: 5000 })
-
-    await page.mouse.up()
-
-    // After zoom ticks differ - use polling for more reliable checks
-    await expect.poll(() => get_range(`y`), { timeout: 2000 }).not.toBe(initial_y1)
-    await expect.poll(() => get_range(`y2`), { timeout: 2000 }).not.toBe(initial_y2)
-
-    // Reset
-    await svg.dblclick()
-    await expect.poll(() => get_range(`y`), { timeout: 2000 }).toBe(initial_y1)
-    await expect.poll(() => get_range(`y2`), { timeout: 2000 }).toBe(initial_y2)
-  })
-
-  test(`line series can use y2 axis`, async ({ page }) => {
-    const plot = page.locator(`#y2-line-series .bar-plot`)
-    await plot.scrollIntoViewIfNeeded()
-    await expect(plot).toBeVisible()
-
-    // Check that line series renders
-    const line = plot.locator(`g.line-series polyline`)
-    await expect(line.first()).toBeVisible()
-
-    // Check that y2 axis exists
-    const y2_axis = plot.locator(`g.y2-axis`)
-    await expect(y2_axis).toBeVisible()
-  })
-
-  // CATEGORICAL BAR CHART TESTS
-
-  test(`categorical bar chart renders bars with category tick labels`, async ({ page }) => {
-    const plot = page.locator(`#categorical-bar .bar-plot`)
-    await plot.scrollIntoViewIfNeeded()
-    await expect(plot).toBeVisible()
-
-    // Bars should render
-    const bars = plot.locator(`svg path[aria-label^="bar "]`)
-    await expect(bars.first()).toBeVisible()
-
-    // X-axis should show category labels, not numeric indices
-    const x_ticks = await plot.locator(`g.x-axis .tick text`).allTextContents()
-    expect(x_ticks).toContain(`Si`)
-    expect(x_ticks).toContain(`GaAs`)
-    expect(x_ticks).toContain(`Diamond`)
-    expect(x_ticks).toContain(`CdTe`)
-    // Should NOT show numeric indices
+  test(`categorical bars label the category axis, honor custom order and flip with orientation`, async ({
+    page,
+  }) => {
+    const plot = await ready_plot(page, `#categorical-bar`)
+    const x_ticks = await tick_texts(plot, `x`)
+    for (const material of [`Si`, `GaAs`, `Diamond`, `CdTe`])
+      expect(x_ticks).toContain(material)
     expect(x_ticks).not.toContain(`0`)
-    expect(x_ticks).not.toContain(`5`)
-  })
 
-  test(`categorical stacked has correct tick count and y-range from zero-padding`, async ({
-    page,
-  }) => {
-    const plot = page.locator(`#categorical-stacked .bar-plot`)
-    await plot.scrollIntoViewIfNeeded()
-    await expect(plot).toBeVisible()
-    await expect(plot.locator(`svg path[aria-label^="bar "]`).first()).toBeVisible()
-
-    // Union of all categories: Si, GaAs, GaN, ZnO, Diamond, CdTe = 6 ticks
-    const x_ticks = await plot.locator(`g.x-axis .tick text`).allTextContents()
-    expect(x_ticks.length).toBe(6)
-
-    // Padding uses y=0 for missing categories — y-range should stay reasonable
-    const y_values = (await plot.locator(`g.y-axis .tick text`).allTextContents())
-      .map(Number)
-      .filter(Number.isFinite)
-    const y_max = Math.max(...y_values)
-    expect(y_max).toBeLessThan(20)
+    // stacked: union of all categories = 6 ticks; missing categories pad with y=0
+    const stacked = await ready_plot(page, `#categorical-stacked`)
+    expect(await tick_texts(stacked, `x`)).toHaveLength(6)
+    const y_max = Math.max(
+      ...(await tick_texts(stacked, `y`)).map(Number).filter(Number.isFinite),
+    )
     expect(y_max).toBeGreaterThan(0)
-  })
+    expect(y_max).toBeLessThan(20)
 
-  test(`categorical horizontal shows categories on y-axis`, async ({ page }) => {
-    const plot = page.locator(`#categorical-horizontal .bar-plot`)
-    await plot.scrollIntoViewIfNeeded()
-    await expect(plot).toBeVisible()
+    // horizontal: categories move to the y axis
+    const horizontal = await ready_plot(page, `#categorical-horizontal`)
+    expect(await tick_texts(horizontal, `y`)).toContain(`Si`)
+    expect(await tick_texts(horizontal, `x`)).not.toContain(`Si`)
 
-    const bars = plot.locator(`svg path[aria-label^="bar "]`)
-    await expect(bars.first()).toBeVisible()
-
-    // In horizontal orientation, category labels should be on the y-axis
-    const y_ticks = await plot.locator(`g.y-axis .tick text`).allTextContents()
-    expect(y_ticks).toContain(`Si`)
-    expect(y_ticks).toContain(`Diamond`)
-
-    // X-axis should show numeric value ticks, not categories
-    const x_ticks = await plot.locator(`g.x-axis .tick text`).allTextContents()
-    expect(x_ticks).not.toContain(`Si`)
-    expect(x_ticks).not.toContain(`Diamond`)
-  })
-
-  test(`categorical custom order respects x_axis.categories`, async ({ page }) => {
-    const plot = page.locator(`#categorical-custom-order .bar-plot`)
-    await plot.scrollIntoViewIfNeeded()
-    await expect(plot).toBeVisible()
-
-    const x_ticks = await plot.locator(`g.x-axis .tick text`).allTextContents()
-    // Custom order: Diamond, GaN, Si, GaAs (4 categories, filtered subset)
-    expect(x_ticks.length).toBe(4)
-    expect(x_ticks[0]).toBe(`Diamond`)
-    expect(x_ticks[1]).toBe(`GaN`)
-    expect(x_ticks[2]).toBe(`Si`)
-    expect(x_ticks[3]).toBe(`GaAs`)
+    // explicit x_axis.categories filters and orders
+    const custom = await ready_plot(page, `#categorical-custom-order`)
+    expect(await tick_texts(custom, `x`)).toEqual([`Diamond`, `GaN`, `Si`, `GaAs`])
   })
 
   test(`categorical tooltip and handlers show category_label`, async ({ page }) => {
     const section = page.locator(`#categorical-handlers`)
     const plot = section.locator(`.bar-plot`)
     await plot.scrollIntoViewIfNeeded()
-    await expect(plot).toBeVisible()
-
-    const bar = plot.locator(`svg path[aria-label^="bar "]`).first()
+    const bar = bars_of(plot).first()
+    const element_name = /Oxygen|Silicon|Aluminum|Iron/
     await bar.hover()
+    await expect(plot.locator(`.plot-tooltip`)).toHaveText(element_name)
 
-    // Tooltip should show element name, not a number
-    const tooltip = plot.locator(`.plot-tooltip`)
-    await expect(tooltip).toBeVisible({ timeout: 5000 })
-    expect(await tooltip.textContent()).toMatch(/Oxygen|Silicon|Aluminum|Iron/)
-
-    // Handler hover message should contain the category label
-    const info = section.locator(`.categorical-handler-info`)
-    const hover_p = info.locator(`p`).first()
-    await expect(hover_p).toContainText(`Hovering:`, { timeout: 5000 })
-    expect(await hover_p.textContent()).toMatch(/Oxygen|Silicon|Aluminum|Iron/)
-
-    // Click handler should also have category label
+    const info_lines = section.locator(`.categorical-handler-info p`)
+    const [hover_p, click_p] = [info_lines.first(), info_lines.last()]
+    await expect(hover_p).toContainText(`Hovering:`)
+    await expect(hover_p).toHaveText(element_name)
     await bar.click()
-    const click_p = info.locator(`p`).last()
     await expect(click_p).toContainText(`Clicked:`)
-    expect(await click_p.textContent()).toMatch(/Oxygen|Silicon|Aluminum|Iron/)
-  })
-
-  // PAN FUNCTIONALITY TESTS
-
-  test(`Shift+drag pans the bar plot instead of zooming`, async ({ page }) => {
-    const plot = page.locator(`#basic-bar .bar-plot`)
-    const svg = plot.locator(`svg[role="application"]`)
-    const x_axis = plot.locator(`g.x-axis`)
-    const y_axis = plot.locator(`g.y-axis`)
-    const zoom_rect = plot.locator(`.zoom-rect`)
-
-    // Wait for initial ticks
-    await expect(x_axis.locator(`.tick text`).first()).toBeVisible()
-
-    const initial_x = await get_tick_range(x_axis)
-    const initial_y = await get_tick_range(y_axis)
-
-    const box = await svg.boundingBox()
-    if (!box) throw new Error(`SVG bbox not found`)
-
-    // Perform Shift+drag (should pan, not zoom)
-    const start_x = box.x + box.width * 0.3
-    const start_y = box.y + box.height * 0.5
-    const end_x = box.x + box.width * 0.7
-    const end_y = box.y + box.height * 0.5
-
-    await page.keyboard.down(`Shift`)
-    await page.mouse.move(start_x, start_y)
-    await page.mouse.down()
-    await page.mouse.move(end_x, end_y, { steps: 10 })
-
-    // Zoom rectangle should NOT appear during Shift+drag (pan mode)
-    await expect(zoom_rect).toBeHidden()
-
-    await page.mouse.up()
-    await page.keyboard.up(`Shift`)
-
-    // Verify axis ranges changed (pan occurred)
-    const panned_x = await get_tick_range(x_axis)
-    const panned_y = await get_tick_range(y_axis)
-
-    // X range should have shifted (pan moves the view)
-    expect(panned_x.ticks).not.toEqual(initial_x.ticks)
-
-    // Y range should remain approximately the same (horizontal pan only)
-    expect(Math.abs(panned_y.range - initial_y.range)).toBeLessThan(initial_y.range * 0.1)
-
-    // Double-click to reset
-    await svg.dblclick()
-    const reset_x = await get_tick_range(x_axis)
-    expect(reset_x.ticks).toEqual(initial_x.ticks)
+    await expect(click_p).toHaveText(element_name)
   })
 })

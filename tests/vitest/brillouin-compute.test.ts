@@ -654,16 +654,12 @@ describe(`compute_irreducible_bz`, () => {
     (_label, order, real, ops) => {
       const full_bz = compute_brillouin_zone(recip_2pi(real), 1)
       const ibz = compute_irreducible_bz(full_bz, ops)
-      expect(ibz).not.toBeNull()
-      if (!ibz) return
       expect(Math.abs(ibz.volume * order - full_bz.volume)).toBeLessThan(1e-8 * full_bz.volume)
     },
   )
 
   test(`P1 (identity only) → full BZ`, () => {
     const ibz = compute_irreducible_bz(bz, [IDENTITY_MAT])
-    expect(ibz).not.toBeNull()
-    if (!ibz) return
     expect(ibz.vertices).toHaveLength(bz.vertices.length)
     expect(ibz.volume).toBeCloseTo(bz.volume, 6)
   })
@@ -690,8 +686,6 @@ describe(`compute_irreducible_bz`, () => {
     },
   ])(`$label → volume ratio $ratio`, ({ ops, ratio, digits, check_faces }) => {
     const ibz = compute_irreducible_bz(bz, ops)
-    expect(ibz).not.toBeNull()
-    if (!ibz) return
     expect(ibz.volume / bz.volume).toBeCloseTo(ratio, digits)
     expect(ibz.vertices.length).toBeGreaterThanOrEqual(4)
     if (check_faces) {
@@ -708,8 +702,6 @@ describe(`compute_irreducible_bz`, () => {
     for (const data of Object.values(reference_data)) {
       const crystal_bz = compute_brillouin_zone(data.reciprocal_lattice as Matrix3x3, 1)
       const ibz = compute_irreducible_bz(crystal_bz, [IDENTITY_MAT, INVERSION_MAT])
-      expect(ibz).not.toBeNull()
-      if (!ibz) continue
       expect(ibz.volume).toBeGreaterThan(0)
       expect(ibz.vertices.length).toBeGreaterThanOrEqual(4)
     }
@@ -721,8 +713,6 @@ describe(`compute_irreducible_bz`, () => {
       1,
     )
     const ibz = compute_irreducible_bz(hex_bz, [IDENTITY_MAT, C3_HEX, C3_HEX_SQ])
-    expect(ibz).not.toBeNull()
-    if (!ibz) return
     expect(ibz.volume / hex_bz.volume).toBeCloseTo(1 / 3, 6)
   })
 })

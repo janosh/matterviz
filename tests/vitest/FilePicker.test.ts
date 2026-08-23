@@ -1,4 +1,4 @@
-import { type FileInfo, FilePicker, file_type_paint } from '$lib'
+import { DEFAULT_FILE_TYPE_PAINTS, type FileInfo, FilePicker, file_type_paint } from '$lib'
 import { color as d3_color } from 'd3-color'
 import { flushSync, mount, unmount } from 'svelte'
 import { SvelteMap } from 'svelte/reactivity'
@@ -55,18 +55,35 @@ describe(`FilePicker`, () => {
     ).toEqual(active)
   })
 
-  // Type inference from the name when `type` is absent: trailing .gz is ignored, only the last
-  // extension counts, and extensionless names fall back to `file` with the fallback paint.
+  // Type inference from the name when `type` is absent: every compression suffix is ignored,
+  // only the last remaining extension counts, extensionless names (VASP inputs) are typed by
+  // their lowercased name so they hit the lowercase paint keys (`poscar` is orange out of the
+  // box, a caller-supplied `incar` paint is honoured), and an empty name falls back to `file`
+  // with the grey fallback paint.
+  const grey = `rgba(128, 128, 128, 0.08)`
   it.each([
-    [`compressed.cif.gz`, `CIF`],
-    [`file.name.with.dots.xyz`, `XYZ`],
-    [`POSCAR`, `POSCAR`],
-    [`edge case`, `EDGE CASE`],
-    [``, `FILE`],
-  ])(`infers the type of %j as %s`, (name, expected_type) => {
-    mount(FilePicker, { target: document.body, props: { files: [{ name, url: `` }] } })
+    [`compressed.cif.gz`, `CIF`, `rgba(100, 149, 237, 0.08)`],
+    [`data.json.gz`, `JSON`, `rgba(138, 43, 226, 0.08)`],
+    [`x.tar.xz`, `TAR`, grey],
+    [`traj.h5.gz.zip`, `H5`, grey],
+    [`file.name.with.dots.xyz`, `XYZ`, `rgba(50, 205, 50, 0.08)`],
+    [`POSCAR`, `POSCAR`, `rgba(255, 140, 0, 0.08)`],
+    [`CONTCAR.bz2`, `CONTCAR`, grey],
+    [`INCAR`, `INCAR`, `rgba(1, 2, 3, 0.08)`],
+    [`README`, `README`, grey],
+    [`edge case`, `EDGE CASE`, grey],
+    [``, `FILE`, grey],
+  ])(`infers the type of %j as %s painted %s`, (name, expected_type, expected_row_bg) => {
+    const file_type_paints = {
+      ...DEFAULT_FILE_TYPE_PAINTS,
+      incar: file_type_paint(`rgb(1, 2, 3)`),
+    }
+    mount(FilePicker, {
+      target: document.body,
+      props: { files: [{ name, url: `` }], file_type_paints },
+    })
     expect(legend_text().trim()).toBe(expected_type)
-    expect(doc_query(`.file-item`).style.backgroundColor).toMatch(/^rgba\(/)
+    expect(doc_query(`.file-item`).style.backgroundColor).toBe(expected_row_bg)
   })
 
   it(`uses custom type_mapper to override file type detection`, () => {
@@ -165,6 +182,29 @@ describe(`FilePicker`, () => {
     await vi.waitFor(() => expect(badge.style.color).toBe(`black`))
 
     void unmount(component)
+  })
+
+  it(`watches the DOM once per picker, not once per badge`, () => {
+    // happy-dom rejects a spied constructor, so count distinct observers via observe()
+    const count_observers = (n_files: number): number => {
+      const observe_spy = vi.spyOn(MutationObserver.prototype, `observe`)
+      const files = Array.from({ length: n_files }, (_, idx) => ({
+        name: `file-${idx}.cif`,
+        url: `/files/${idx}`,
+        label: `File ${idx}`,
+      }))
+      const component = mount(FilePicker, { target: document.body, props: { files } })
+      flushSync()
+      expect(document.querySelectorAll(`.file-type-badge`)).toHaveLength(n_files)
+      const n_observers = new Set(observe_spy.mock.contexts).size
+      observe_spy.mockRestore()
+      void unmount(component)
+      return n_observers
+    }
+    // backdrop token + shared badge-contrast epoch, each pairing an ancestor-attribute
+    // observer with a dark-mode watcher; the count must not scale with the badge count
+    expect(count_observers(5)).toBe(4)
+    expect(count_observers(20)).toBe(4)
   })
 
   const formats = [`CIF`, `XYZ`, `JSON`, `TRAJ`, `DAT`, `POSCAR_FILE`]

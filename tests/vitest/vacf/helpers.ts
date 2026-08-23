@@ -1,45 +1,27 @@
 // Shared fixtures for VACF/VDOS tests: analytic trajectory builders and error metrics.
-import type { ElementSymbol } from '$lib/element'
-import type { Matrix3x3 } from '$lib/math'
-import type { Pbc } from '$lib/structure'
+import { trajectory_from_frames, type TrajectoryRun } from '$lib/trajectory'
 import type { VacfInput } from '$lib/vacf'
+import { build_positions, type BuildPositionsOptions } from '../msd/helpers'
 import { flatten_xyz_frames, make_rng } from '../numeric-helpers'
+import { make_frame } from '../setup'
 
 export { make_rng, max_abs_error, max_rel_error } from '../numeric-helpers'
 
-export interface BuildVacfInputOptions {
-  elements?: ElementSymbol[]
-  lattice?: Matrix3x3 | null
-  coords_unwrapped?: boolean
-  pbc?: Pbc
-  frame_stride?: number
+export type BuildVacfInputOptions = BuildPositionsOptions & {
   // frames[frame_idx][atom_idx] = [vx, vy, vz], same shape as the positions
   velocity_frames?: number[][][]
   velocity_unit?: string
 }
 
 // frames[frame_idx][atom_idx] = [x, y, z]
-export function build_vacf_input(
+export const build_vacf_input = (
   frames: number[][][],
-  options: BuildVacfInputOptions = {},
-): VacfInput {
-  const n_frames = frames.length
-  const n_atoms = frames[0]?.length ?? 0
-  const { lattice = null, velocity_frames } = options
-  return {
-    positions: flatten_xyz_frames(frames),
-    velocities: velocity_frames ? flatten_xyz_frames(velocity_frames) : null,
-    velocity_unit: options.velocity_unit ?? null,
-    n_frames,
-    n_atoms,
-    elements: options.elements ?? Array.from({ length: n_atoms }, () => `H`),
-    lattice_matrices: lattice ? Array.from({ length: n_frames }, () => lattice) : null,
-    pbc: options.pbc ?? null,
-    coords_unwrapped: options.coords_unwrapped ?? false,
-    frame_stride: options.frame_stride ?? 1,
-    steps: Array.from({ length: n_frames }, (_unused, idx) => idx),
-  }
-}
+  { velocity_frames, velocity_unit, ...options }: BuildVacfInputOptions = {},
+): VacfInput => ({
+  ...build_positions(frames, options),
+  velocities: velocity_frames ? flatten_xyz_frames(velocity_frames) : null,
+  velocity_unit: velocity_unit ?? null,
+})
 
 // One atom on a circular orbit in the xy plane at `frequency` cycles per frame:
 //   r(n) = A (sin(w n), -cos(w n), 0),  v(n) = A w (cos(w n), sin(w n), 0),  w = 2 pi f
@@ -68,6 +50,26 @@ export function circular_motion(
     ])
   }
   return { positions, velocities }
+}
+
+// In-memory run of the circular orbit, with the analytic velocities stored per site unless
+// `with_velocities` is false (so calc_vacf has to differentiate the positions)
+export const orbit_run = (
+  n_frames: number,
+  frequency: number,
+  amplitude: number,
+  with_velocities = true,
+): TrajectoryRun => {
+  const { positions, velocities } = circular_motion(n_frames, frequency, amplitude)
+  return trajectory_from_frames(
+    positions.map((frame, frame_idx) =>
+      make_frame(
+        frame_idx,
+        frame,
+        with_velocities ? { velocities: velocities[frame_idx] } : {},
+      ),
+    ),
+  )
 }
 
 // Ideal gas: every atom draws an independent velocity each frame, so the VACF is a delta

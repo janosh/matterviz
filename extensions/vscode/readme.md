@@ -128,7 +128,7 @@ MatterViz provides extensive customization options through VSCode settings. Acce
 {
   "matterviz.scatter.point.size": 5,
   "matterviz.scatter.line.width": 3,
-  "matterviz.plot.grid_lines": true,
+  "matterviz.plot.display.x_grid": true,
   "matterviz.scatter.show_legend": "auto"
 }
 ```
@@ -149,7 +149,7 @@ MatterViz provides extensive customization options through VSCode settings. Acce
 - **General** — Global appearance and behavior: `color_scheme`, `background_color`
 - **Structure** — 3D structure visualization: `atom_radius`, `bond_thickness`, `show_cell_vectors`, `ambient_light`, `show_image_atoms`
 - **Trajectory** — Animation and playback controls: `fps`, `auto_play`, `display_mode`, `show_controls`
-- **Plots** — Scatter plots and histograms: `scatter.point.size`, `plot.grid_lines`, `plot.axis_labels`
+- **Plots** — Scatter plots and histograms: `scatter.point.size`, `plot.display.x_grid`, `histogram.mode`
 - **Performance** — Memory and processing options: `trajectory.index_above_bytes`, `structure.sphere_segments`
 
 ### Pro Tips

@@ -1,4 +1,5 @@
 import { SETTINGS_CONFIG, type DefaultSettings, type SettingType } from '../settings'
+import { is_plain_object } from '../utils'
 
 export const STRUCTURE_VIEW_STATE_VERSION = 1 as const
 export const STRUCTURE_VIEW_STATE_STORAGE_KEY = `matterviz:structure-view:v1`
@@ -26,11 +27,11 @@ export type StructureViewState = {
 
 type StructureViewStateSource = {
   scene_props?: object
-  lattice_props?: object
   color_scheme?: unknown
   background_color?: unknown
   background_opacity?: unknown
   show_image_atoms?: unknown
+  show_trajectory_lines?: unknown
   atom_color_config?: object
   supercell_scaling?: unknown
   cell_type?: unknown
@@ -47,12 +48,11 @@ type StructureViewStateParseResult =
 const is_non_portable_structure_key = (key: StructureSettingKey): boolean =>
   key === `camera_position` || key === `vector_configs`
 
-const is_record = (value: unknown): value is Record<string, unknown> =>
-  value !== null && typeof value === `object` && !Array.isArray(value)
-
+// Deep copy by hand rather than structuredClone: the values arrive through Svelte $state
+// proxies, which structuredClone rejects with DataCloneError.
 const clone_value = <Value>(value: Value): Value => {
   if (Array.isArray(value)) return value.map(clone_value) as Value
-  if (!is_record(value)) return value
+  if (!is_plain_object(value)) return value
   return Object.fromEntries(
     Object.entries(value).map(([key, nested]) => [key, clone_value(nested)]),
   ) as Value
@@ -103,8 +103,8 @@ const validate_setting_value = <Value>(value: unknown, setting: SettingType<Valu
       ? (clone_value(value) as Value)
       : fallback
   }
-  if (is_record(setting.value)) {
-    return is_record(value) ? (clone_value(value) as Value) : fallback
+  if (is_plain_object(setting.value)) {
+    return is_plain_object(value) ? (clone_value(value) as Value) : fallback
   }
   return same_primitive_type(value, setting.value) ? (value as Value) : fallback
 }
@@ -113,7 +113,7 @@ const in_range = (value: unknown, min: number, max: number): value is number =>
   typeof value === `number` && Number.isFinite(value) && value >= min && value <= max
 
 const normalize_pane_size = (value: unknown): StructurePaneSize | undefined => {
-  if (!is_record(value)) return undefined
+  if (!is_plain_object(value)) return undefined
   const { width, height } = value
   if (!in_range(width, 200, 10000) || !in_range(height, 100, 10000)) return undefined
   return { width, height }
@@ -132,12 +132,12 @@ const structure_setting_source = (
   source: StructureViewStateSource,
 ): unknown => {
   if (key === `show_image_atoms`) return source.show_image_atoms
+  if (key === `show_trajectory_lines`) return source.show_trajectory_lines
   if (key === `atom_color_mode`) return object_value(source.atom_color_config, `mode`)
   if (key === `atom_color_scale`) return object_value(source.atom_color_config, `scale`)
   if (key === `atom_color_scale_type`)
     return object_value(source.atom_color_config, `scale_type`)
-  const lattice_value = object_value(source.lattice_props, key)
-  return lattice_value === undefined ? object_value(source.scene_props, key) : lattice_value
+  return object_value(source.scene_props, key)
 }
 
 const normalize_structure_settings = (
@@ -195,11 +195,11 @@ export const create_structure_view_state = (
 const normalize_structure_view_state = (
   value: StructureViewState | Record<string, unknown>,
 ): StructureViewState => {
-  const settings = is_record(value.settings) ? value.settings : {}
-  const structure = is_record(settings.structure) ? settings.structure : {}
+  const settings = is_plain_object(value.settings) ? value.settings : {}
+  const structure = is_plain_object(settings.structure) ? settings.structure : {}
   return build_view_state(
     settings,
-    is_record(value.viewer) ? value.viewer : {},
+    is_plain_object(value.viewer) ? value.viewer : {},
     (key) => structure[key],
   )
 }
@@ -213,7 +213,7 @@ export const deserialize_structure_view_state = (
   } catch {
     return { error: `Invalid JSON` }
   }
-  if (!is_record(parsed)) return { error: `View state must be a JSON object` }
+  if (!is_plain_object(parsed)) return { error: `View state must be a JSON object` }
   if (parsed.version !== STRUCTURE_VIEW_STATE_VERSION) {
     return {
       error: `Unsupported view-state version ${String(parsed.version)}; expected ${STRUCTURE_VIEW_STATE_VERSION}`,

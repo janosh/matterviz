@@ -17,6 +17,9 @@ jobs:
         uses: actions/checkout@v6
       - name: Install dependencies
         uses: ./.github/actions/setup
+      # package-exports.test.ts inspects the svelte-package output, which `prepare` no longer builds
+      - name: Build component library
+        run: pnpm package:dist
       - name: Run unit tests
         run: pnpm exec vp test --run
 

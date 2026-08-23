@@ -1,11 +1,10 @@
 // Parsers for measured powder-diffraction files. Every parser either returns a pattern or
 // throws an Error naming the format and what was missing — no parser guesses a start angle
 // or step size, because a wrong x axis looks exactly like a real scan.
+import { ext_of, strip_compression_extensions } from '$lib/io'
+import { array_max } from '$lib/math'
 import { to_error } from '$lib/utils'
 import type { XrdPattern } from './index'
-
-// Maximum number of data points to keep after subsampling for rendering performance
-const MAX_POINTS = 1000
 
 const NUMBER_RE = /^[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?$/
 
@@ -60,49 +59,18 @@ function grid_pattern(values: number[], [start, step]: Grid, format: string, mis
   return finalize(uniform_grid(start, step, values.length), values, format)
 }
 
-// Normalize y to 0-100 and subsample long scans, preserving the strongest local maxima.
-// Shared final step so every format renders on the same scale.
+// Shared final step: check the two columns line up and normalize y to max = 100 like
+// compute_xrd_pattern does, so a measured scan (raw counts, often 1e4-1e6) dropped onto a
+// computed pattern overlays at the same scale under XrdPlot's shared global-max normalization.
+// No thinning here: every point is kept and the plot decimates for display.
 function finalize(x_values: number[], y_values: number[], format: string): XrdPattern {
   if (x_values.length === 0) throw new Error(`${format}: no intensity data found`)
   if (x_values.length !== y_values.length) {
     throw new Error(`${format}: ${x_values.length} angles but ${y_values.length} intensities`)
   }
-  let max_y = -Infinity
-  for (const val of y_values) if (val > max_y) max_y = val
+  const max_y = array_max(y_values)
   const scale = max_y > 0 ? 100 / max_y : 1
-  const norm_y = y_values.map((val) => val * scale)
-  return x_values.length > MAX_POINTS
-    ? subsample_preserve_peaks(x_values, norm_y, MAX_POINTS)
-    : { x: x_values, y: norm_y }
-}
-
-// Uniform sampling plus the strongest local maxima (up to 30% of the slots), so peaks that
-// fall between uniform samples survive
-function subsample_preserve_peaks(
-  x_vals: number[],
-  y_vals: number[],
-  target_points: number,
-): XrdPattern {
-  const num_points = x_vals.length
-  const peaks: number[] = []
-  // 5% of max as significance threshold; `finalize` has normalized the maximum to 100
-  // (spreading y_vals into Math.max overflows the call stack past ~120k points)
-  const threshold = 5
-  for (let idx = 1; idx < num_points - 1; idx++) {
-    const [prev, val, next] = [y_vals[idx - 1], y_vals[idx], y_vals[idx + 1]]
-    if (val > prev && val > next && val > threshold) peaks.push(idx)
-  }
-  const peak_slots = Math.min(peaks.length, Math.floor(target_points * 0.3))
-  const uniform_slots = target_points - peak_slots
-  const top_peaks = peaks
-    .toSorted((idx_a, idx_b) => y_vals[idx_b] - y_vals[idx_a])
-    .slice(0, peak_slots)
-  const step = (num_points - 1) / Math.max(1, uniform_slots - 1)
-  const uniform = Array.from({ length: uniform_slots }, (_, idx) => Math.round(idx * step))
-  const selected = [...new Set([...uniform, ...top_peaks])].toSorted(
-    (idx_a, idx_b) => idx_a - idx_b,
-  )
-  return { x: selected.map((idx) => x_vals[idx]), y: selected.map((idx) => y_vals[idx]) }
+  return { x: x_values, y: y_values.map((val) => val * scale) }
 }
 
 // Column data: every data row has at least two leading numbers (2θ, intensity[, error]).
@@ -514,7 +482,7 @@ const XRD_FILE_EXTENSIONS = [
 ] as const
 
 const base_extension = (filename: string): string =>
-  filename.toLowerCase().replace(/\.gz$/, ``).split(`.`).pop() ?? ``
+  ext_of(strip_compression_extensions(filename))
 
 // Check if a filename represents a supported XRD data file format (plain or gzipped)
 export const is_xrd_data_file = (filename: string): boolean =>

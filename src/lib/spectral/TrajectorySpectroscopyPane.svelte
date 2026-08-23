@@ -3,14 +3,21 @@
   import { format_num } from '$lib/labels'
   import { info_pane_icon, ViewerPane, type ViewerPaneOptions } from '$lib/overlays'
   import type { ParseProgress, TrajectoryRun } from '$lib/trajectory'
+  import {
+    DEFAULT_POSITION_STREAM_MAX_BYTES,
+    suggest_frame_stride,
+  } from '$lib/trajectory/runs/accumulate'
   import { to_error } from '$lib/utils'
   import { Graph } from 'svelte-widgets/icons'
   import {
     collect_trajectory_spectroscopy_input,
+    INFRARED_SIGNAL_KEYS,
     infrared_kind_from_key,
+    RAMAN_SIGNAL_KEYS,
+    spectroscopy_stream_channels,
     trajectory_signal_keys,
   } from './spectroscopy-collect'
-  import { create_trajectory_spectroscopy_async_runner } from './trajectory-spectroscopy-async.svelte'
+  import { compute_trajectory_spectroscopy_async } from './trajectory-spectroscopy-async.svelte'
   import type {
     SpectroscopyPreprocessing,
     TrajectorySpectroscopyInput,
@@ -54,19 +61,31 @@
   let progress = $state<ParseProgress | null>(null)
   let error_msg = $state<string>()
 
-  const spectroscopy_runner = create_trajectory_spectroscopy_async_runner()
-
   let infrared_keys = $derived(trajectory_signal_keys(run, [3]))
   let raman_keys = $derived(trajectory_signal_keys(run, [3, 3]))
   let has_physical_time = $derived(
     Boolean(analysis_time_step && analysis_time_step > 0 && analysis_time_unit.trim()),
   )
+  // Positions plus the channels the collector will stream (site velocities, frame signals)
+  // are budgeted like every other sweep: a run too large for the buffer is sub-sampled rather
+  // than refused. The strided steps carry their own spacing, so the frequency axis stays
+  // right; only the position Nyquist drops, which the peak table reports per mode.
+  let frame_stride = $derived(
+    run
+      ? suggest_frame_stride(
+          run.frame_count,
+          run.preview.structure.sites.length,
+          DEFAULT_POSITION_STREAM_MAX_BYTES,
+          spectroscopy_stream_channels(run, {
+            infrared_key: infrared_key || null,
+            raman_key: raman_key || null,
+          }),
+        )
+      : 1,
+  )
   let options = $derived<TrajectorySpectroscopyOptions>({
-    frequency_unit: has_physical_time ? `cm^-1` : `1/frame`,
+    frequency_unit: has_physical_time ? `cm^-1` : `1/step`,
     preprocessing,
-    // Raman requires an explicit geometry for periodic trajectories. Powder averaging is the
-    // only geometry the enclosing trajectory viewer can meaningfully configure.
-    raman_geometry: { kind: `powder` },
   })
   const settings_snapshot = () => ({
     infrared_key,
@@ -93,14 +112,13 @@
 
   let previous_run: TrajectoryRun | undefined
   let auto_calculation_owner: TrajectoryRun | undefined
-  let collect_controller: AbortController | undefined
-  let request_generation = 0
+  // Aborts the in-flight collect AND compute of the superseded request; a request whose
+  // signal is aborted is exactly one whose result nobody will read
+  let request_controller: AbortController | undefined
   $effect(() => {
     if (run === previous_run) return
     previous_run = run
-    request_generation++
-    collect_controller?.abort()
-    spectroscopy_runner.cancel(`Trajectory spectroscopy superseded by a new trajectory`)
+    request_controller?.abort()
     result = undefined
     auto_calculation_owner = undefined
     error_msg = undefined
@@ -108,12 +126,11 @@
     calculation_phase = `idle`
     progress = null
     details_open = false
-    const default_ir =
-      [`dipole`, `polarization`, `current`].find((key) => infrared_keys.includes(key)) ?? ``
+    const default_ir = INFRARED_SIGNAL_KEYS.find((key) => infrared_keys.includes(key)) ?? ``
     infrared_key = default_ir
     infrared_kind = default_ir ? infrared_kind_from_key(default_ir) : `dipole`
     polarization_branch_continuous = false
-    raman_key = raman_keys.includes(`polarizability`) ? `polarizability` : ``
+    raman_key = RAMAN_SIGNAL_KEYS.find((key) => raman_keys.includes(key)) ?? ``
     analysis_time_step = run?.time_step?.value
     analysis_time_unit = run?.time_step?.unit ?? `fs`
     const first_structure = run?.preview.structure
@@ -132,23 +149,24 @@
 
   async function calculate(): Promise<void> {
     if (!run) return
-    const generation = ++request_generation
     const request_run = run
     const request_settings = settings_snapshot()
-    const request_is_current = () => generation === request_generation
-    collect_controller?.abort()
+    request_controller?.abort()
     const controller = new AbortController()
-    collect_controller = controller
-    spectroscopy_runner.cancel(`Trajectory spectroscopy superseded by a newer request`)
+    request_controller = controller
+    const request_is_current = () => !controller.signal.aborted
     calculation_phase = `collecting`
     error_msg = undefined
     progress = null
     try {
       const collected_input = await collect_trajectory_spectroscopy_input(request_run, {
+        frame_stride,
+        max_bytes: DEFAULT_POSITION_STREAM_MAX_BYTES,
         infrared_key: request_settings.infrared_key || null,
         infrared_kind: request_settings.infrared_kind,
         polarization_branch_continuous: request_settings.polarization_branch_continuous,
         raman_key: request_settings.raman_key || null,
+        preprocessing: request_settings.options.preprocessing,
         signal: controller.signal,
         on_progress: (next_progress) => {
           if (request_is_current()) progress = next_progress
@@ -161,9 +179,10 @@
         time_unit: request_settings.time_unit,
       }
       calculation_phase = `computing`
-      const calculation_result = await spectroscopy_runner.compute(
+      const calculation_result = await compute_trajectory_spectroscopy_async(
         calculation_input,
         request_settings.options,
+        { signal: controller.signal },
       )
       if (request_is_current()) {
         result = calculation_result
@@ -175,7 +194,7 @@
         error_msg = to_error(error).message
       }
     } finally {
-      if (collect_controller === controller) collect_controller = undefined
+      if (request_controller === controller) request_controller = undefined
       if (request_is_current()) {
         calculation_phase = `idle`
         progress = null
@@ -183,10 +202,12 @@
     }
   }
 
+  // Unmount: abort this pane's request, then release the worker (the client pre-warms a
+  // replacement after every abort, which nothing would use once the pane is gone). Not
+  // `cancel()`: the client is shared, so another mounted pane's request must survive.
   $effect(() => () => {
-    request_generation++
-    collect_controller?.abort()
-    spectroscopy_runner.cancel(`Trajectory spectroscopy pane closed`)
+    request_controller?.abort()
+    compute_trajectory_spectroscopy_async.release()
   })
 
   // The inline trajectory analysis is ready on first entry. Remember attempted owners so
@@ -264,7 +285,9 @@
       >
     </fieldset>
     <p class="provenance">
-      {run.frame_count} total frames · timestep {has_physical_time
+      {run.frame_count} total frames{frame_stride > 1
+        ? ` · positions sampled 1 in ${frame_stride} to fit the memory budget`
+        : ``} · timestep {has_physical_time
         ? `${format_num(analysis_time_step ?? 0, `.5~g`)} ${analysis_time_unit}`
         : `not recorded`} · raw spectra remain unsmoothed and independently normalized only for display
     </p>

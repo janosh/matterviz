@@ -2,31 +2,23 @@ import { make_config } from 'svelte-widgets/vite-config'
 import { svelte } from '@sveltejs/vite-plugin-svelte'
 import { createRequire } from 'node:module'
 import { resolve } from 'node:path'
-import type { Plugin } from 'vite'
 import { defineConfig, type PluginOption } from 'vite-plus'
-import { three_compat_alias, vite_plugin_json_gz } from '../../src/vite-plugins.ts'
+import {
+  three_compat_alias,
+  vite_plugin_json_gz,
+  vite_plugin_moyo_wasm_source,
+} from '../../src/vite-plugins.ts'
 
 // Load moyo (spglib) symmetry WASM from jsDelivr by default. Hosts can set
 // globalThis.matterviz_moyo_wasm_url to a local/data URL before symmetry analysis.
 const moyo_version = createRequire(import.meta.url)(`@spglib/moyo-wasm/package.json`).version
 const moyo_wasm_cdn = `https://cdn.jsdelivr.net/npm/@spglib/moyo-wasm@${moyo_version}/moyo_wasm_bg.wasm`
-const moyo_glue_url = `new URL('moyo_wasm_bg.wasm', import.meta.url)`
 const moyo_wasm_source = `globalThis.matterviz_moyo_wasm_url ?? ${JSON.stringify(moyo_wasm_cdn)}`
-
-const moyo_wasm_cdn_plugin: Plugin = {
-  name: `moyo-wasm-cdn`,
-  enforce: `pre` as const,
-  transform(code: string, id: string) {
-    if (!id.includes(`@spglib/moyo-wasm`)) return null
-    const transformed = code.replace(moyo_glue_url, moyo_wasm_source)
-    return transformed === code ? null : { code: transformed, map: null }
-  },
-}
 
 // svelte() ships its own copy of Vite's Plugin type; inferring the array element
 // type deep-compares them and exceeds TypeScript's instantiation depth.
 const plugins = [
-  moyo_wasm_cdn_plugin as unknown,
+  vite_plugin_moyo_wasm_source(`moyo-wasm-cdn`, moyo_wasm_source) as unknown,
   vite_plugin_json_gz() as unknown,
   svelte() as unknown,
 ] as PluginOption[]

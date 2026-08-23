@@ -1,7 +1,6 @@
 import type { CompositionType } from '$lib/composition'
 import type { ElementSymbol } from '$lib/element'
 import type { Point2D, Point3D, Vec2 } from '$lib/math'
-import type { Sides } from '$lib/plot/core/layout'
 import type { AnyStructure } from '$lib/structure'
 
 export interface StructurePopupStats {
@@ -29,7 +28,7 @@ export interface PhaseData {
   is_stable?: boolean
   exclude_from_hull?: boolean // If true, entry is shown but not used in hull construction
   energy_per_atom?: number
-  e_form_per_atom?: number // Formation energy per atom from fetch-mp-pd-data.py
+  e_form_per_atom?: number // Formation energy per atom from src/scripts/fetch_mp_pd_data.py
   reduced_formula?: string
   name?: string
 
@@ -119,35 +118,16 @@ export interface ConvexHullEntry extends PhaseData, Point3D {
 
 // Configuration for convex hull display
 export interface ConvexHullConfig {
-  width?: number
-  height?: number
-  margin?: Sides
-  unstable_threshold?: number // eV/atom threshold for showing unstable entries
   show_labels?: boolean
   show_hull?: boolean
-  point_size?: number
-  line_width?: number
   font_size?: number
-  colors?: {
-    stable?: string
-    unstable?: string
-    hull_line?: string
-    background?: string
-    text?: string
-    edge?: string
-    tooltip_bg?: string
-    tooltip_text?: string
-    annotation?: string
-  }
+  colors?: { stable?: string; unstable?: string }
 }
 
 // Legend configuration
 export interface ConvexHullControlsType {
   title?: string
-  position?: `top-left` | `top-right` | `bottom-left` | `bottom-right`
-  width?: number
   show_counts?: boolean
-  show_color_toggle?: boolean
   show_label_controls?: boolean
 }
 

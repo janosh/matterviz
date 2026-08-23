@@ -1,7 +1,10 @@
 <script lang="ts">
+  import { ISO_COLORMAPS } from '$lib/isosurface/coloring'
   import { format_num } from '$lib/labels'
   import { SettingsGroup, SettingsSection } from '$lib/layout'
+  import { ColorScaleSelect } from '$lib/plot'
   import { ControlPane } from '$lib/overlays'
+  import type { SceneExportFormat } from '$lib/scene'
   import { DEFAULTS } from '$lib/settings'
   import { make_change_detector, parse_num_token } from '$lib/utils'
   import { untrack, type Snippet } from 'svelte'
@@ -34,46 +37,29 @@
     interpolation_factor = $bindable(defaults.interpolation_factor),
     // Camera
     camera_projection = $bindable(defaults.camera_projection),
-    on_mu_change,
-    on_interpolation_change,
     on_export,
     children,
   }: Partial<FermiSurfaceSettings> & {
     controls_open?: boolean
     fermi_data?: FermiSurfaceData
     band_data?: BandGridData
-    // Label for custom property coloring (e.g. "λ(k)", "DOS", etc.)
+    // Label for the per-vertex property (e.g. "Fermi velocity", "λ(k)", "DOS")
     custom_property_label?: string
     selected_bands?: number[]
-    on_mu_change?: (mu: number) => void
-    on_interpolation_change?: (factor: number) => void
-    on_export?: (format: `stl` | `obj` | `gltf`) => void
+    on_export?: (format: SceneExportFormat) => void
     children?: Snippet<[{ fermi_data?: FermiSurfaceData; band_data?: BandGridData }]>
   } = $props()
 
   const export_formats = [
     [`stl`, `3D printing`],
     [`obj`, `Wavefront`],
-    [`gltf`, `web/AR`],
+    [`glb`, `web/AR`],
   ] as const
 
-  // Color scale options
-  const color_scales = [
-    `Viridis`,
-    `Plasma`,
-    `Inferno`,
-    `Magma`,
-    `Cool`,
-    `Warm`,
-    `Rainbow`,
-    `Turbo`,
-    `RdYlBu`,
-    `Spectral`,
-  ].map((label) => ({ value: `interpolate${label}`, label }))
-
-  let has_custom_color = $derived(
-    Boolean(custom_property_label) ||
-      (fermi_data?.isosurfaces?.some((iso) => iso.properties?.length) ?? false),
+  // Per-vertex scalars (Fermi velocity, orbital character, …) are only colourable when some
+  // sheet carries them
+  let has_property = $derived(
+    fermi_data?.isosurfaces.some((iso) => iso.properties?.length) ?? false,
   )
 
   // Get unique band indices from Fermi surface data
@@ -87,7 +73,7 @@
   const available_bands_changed = make_change_detector()
 
   const sync_bindable_defaults = (bands_changed = false): void => {
-    if (color_property === `custom` && !has_custom_color)
+    if (color_property === `property` && !has_property)
       color_property = defaults.color_property
     if (available_bands.length > 0 && (selected_bands === undefined || bands_changed)) {
       selected_bands = [...available_bands]
@@ -104,20 +90,11 @@
       : [...bands, band_idx].toSorted((left, right) => left - right)
   }
 
-  const set_mu = (next_mu: number): void => {
-    mu = next_mu
-    on_mu_change?.(next_mu)
-  }
-  const set_interpolation_factor = (factor: number): void => {
-    interpolation_factor = factor
-    on_interpolation_change?.(factor)
-  }
-
   function handle_mu_change(event: Event & { currentTarget: HTMLInputElement }) {
     const parsed = parse_num_token(event.currentTarget.value)
     // Only update mu when input is valid; keep last valid value during transient
     // invalid states (e.g. empty string while user is typing a new value)
-    if (Number.isFinite(parsed)) set_mu(parsed)
+    if (Number.isFinite(parsed)) mu = parsed
   }
 </script>
 
@@ -133,7 +110,7 @@
     <SettingsSection
       title="Chemical potential"
       current_values={{ mu }}
-      on_reset={() => set_mu(defaults.mu)}
+      on_reset={() => (mu = defaults.mu)}
       layout="grid"
     >
       <label>
@@ -198,21 +175,26 @@
         <span>Color by</span>
         <select bind:value={color_property}>
           <option value="band">Band</option>
-          <option value="velocity">Velocity</option>
           <option value="spin">Spin</option>
-          {#if has_custom_color}
-            <option value="custom">{custom_property_label ?? `Custom`}</option>
+          {#if has_property}
+            <option value="property">{custom_property_label ?? `Property`}</option>
           {/if}
         </select>
       </label>
-      {#if color_property === `velocity` || color_property === `custom`}
+      {#if color_property === `property`}
         <label>
           <span>Color scale</span>
-          <select bind:value={color_scale}>
-            {#each color_scales as scale (scale.value)}
-              <option value={scale.value}>{scale.label}</option>
-            {/each}
-          </select>
+          <ColorScaleSelect
+            options={[...ISO_COLORMAPS]}
+            bind:value={color_scale}
+            selected={[color_scale]}
+            color_bar={{
+              bar_style: `height: 8px`,
+              title_style: `width: 4em; font-size: 1em;`,
+            }}
+            liSelectedStyle="width: 100%; margin: 0; padding: 0; background: transparent;"
+            aria-label="Fermi surface color scale"
+          />
         </label>
       {/if}
       <label>
@@ -294,19 +276,12 @@
       <SettingsSection
         title="Interpolation"
         current_values={{ interpolation_factor }}
-        on_reset={() => set_interpolation_factor(defaults.interpolation_factor)}
+        on_reset={() => (interpolation_factor = defaults.interpolation_factor)}
         layout="grid"
       >
         <label>
           <span>Grid density</span>
-          <select
-            value={interpolation_factor}
-            onchange={(event) => {
-              const val = parseFloat(event.currentTarget.value)
-              if (!Number.isFinite(val)) return
-              set_interpolation_factor(val)
-            }}
-          >
+          <select bind:value={interpolation_factor}>
             <option value={1}>1× (original)</option>
             <option value={1.5}>1.5×</option>
             <option value={2}>2×</option>

@@ -7,7 +7,7 @@ Bar styling with `border_radius` for rounded corners and `stroke_color`/`stroke_
 ```svelte example
 <script lang="ts">
   import { format_num, Histogram, type HistogramHandlerProps } from 'matterviz'
-  import { generate_normal } from '$site/plot-utils'
+  import { generate_normal } from '$site/histogram-data'
 
   let bins = $state(50)
   let sample_size = $state(1000)
@@ -17,7 +17,7 @@ Bar styling with `border_radius` for rounded corners and `stroke_color`/`stroke_
   let click_info = $state('Click on a bar to select it')
 
   let data = $derived({
-    y: generate_normal(sample_size, 50, 15),
+    values: generate_normal(sample_size, 50, 15),
     label: `Normal Distribution (N=${format_num(sample_size, `~s`)}, μ=50, σ=15)`,
   })
 
@@ -90,19 +90,19 @@ When sample sizes differ a lot, use **dual y-axes** for independent scaling. Tes
 ```svelte example
 <script lang="ts">
   import { Histogram } from 'matterviz'
-  import { generate_normal } from '$site/plot-utils'
+  import { generate_normal } from '$site/histogram-data'
 
   let display = $state({ x_grid: true, y_grid: false, y2_grid: false })
   let series = $state([
     {
-      y: generate_normal(1000, 75, 12),
+      values: generate_normal(1000, 75, 12),
       label: `Main Cohort (n=1000)`,
-      line_style: { stroke: `steelblue` },
+      color: `steelblue`,
     },
     {
-      y: generate_normal(200, 82, 10),
+      values: generate_normal(200, 82, 10),
       label: `Control Group (n=200)`,
-      line_style: { stroke: `coral` },
+      color: `coral`,
       y_axis: `y2`,
     },
   ])
@@ -145,7 +145,7 @@ Compare distributions with vastly different scales using **dual y-axes**. Some d
 ```svelte example
 <script lang="ts">
   import { Histogram } from 'matterviz'
-  import * as utils from '$site/plot-utils'
+  import * as utils from '$site/histogram-data'
 
   let x_axis = $state({ scale_type: `linear` })
   let y_axis = $state({ scale_type: `linear`, label: `Count (Normal/Uniform)` })
@@ -155,25 +155,25 @@ Compare distributions with vastly different scales using **dual y-axes**. Some d
 
   const base_series = [
     {
-      y: utils.generate_normal(1200, 5, 2),
+      values: utils.generate_normal(1200, 5, 2),
       label: `Normal (μ=5, σ=2)`,
-      line_style: { stroke: `crimson` },
+      color: `crimson`,
     },
     {
-      y: utils.generate_exponential(1200, 0.3),
+      values: utils.generate_exponential(1200, 0.3),
       label: `Exponential (λ=0.3)`,
-      line_style: { stroke: `royalblue` },
+      color: `royalblue`,
       y_axis: `y2`,
     },
     {
-      y: utils.generate_uniform(1200, 0, 15),
+      values: utils.generate_uniform(1200, 0, 15),
       label: `Uniform (0-15)`,
-      line_style: { stroke: `mediumseagreen` },
+      color: `mediumseagreen`,
     },
     {
-      y: utils.generate_gamma(1000, 2, 3),
+      values: utils.generate_gamma(1000, 2, 3),
       label: `Gamma (α=2, β=3)`,
-      line_style: { stroke: `darkorange` },
+      color: `darkorange`,
       y_axis: `y2`,
     },
   ]
@@ -223,7 +223,7 @@ Compare distributions with vastly different scales using **dual y-axes**. Some d
 {#each base_series as srs, idx (srs.label)}
   <label style="display: flex; align-items: center; gap: 4px">
     <input type="checkbox" bind:checked={visible[idx]} />
-    <span style="width: 16px; height: 16px; background: {srs.line_style.stroke}"></span>
+    <span style="width: 16px; height: 16px; background: {srs.color}"></span>
     {srs.label}
     {srs.y_axis === `y2` ? `(Y2)` : `(Y1)`}
   </label>
@@ -241,7 +241,7 @@ Compare distributions with vastly different scales using **dual y-axes**. Some d
   style="height: 450px; margin-block: 1em;"
 >
   {#snippet tooltip({ value, count, property })}
-    <strong style="color: {series.find((srs) => srs.label === property)?.line_style?.stroke}"
+    <strong style="color: {series.find((srs) => srs.label === property)?.color}"
       >{property}</strong
     ><br />
     Value: {value.toFixed(2)}<br />Count: {count}
@@ -256,7 +256,7 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
 ```svelte example
 <script lang="ts">
   import { Histogram } from 'matterviz'
-  import * as utils from '$site/plot-utils'
+  import * as utils from '$site/histogram-data'
 
   let x_axis = $state({ scale_type: `linear` })
   let y_axis = $state({ scale_type: `log` })
@@ -270,19 +270,19 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
 
   let series = $state([
     {
-      y: utils.generate_log_normal(1500, 2, 1),
+      values: utils.generate_log_normal(1500, 2, 1),
       label: `Log-Normal (μ=2, σ=1)`,
-      line_style: { stroke: `darkorange` },
+      color: `darkorange`,
     },
     {
-      y: utils.generate_power_law(1500, 2.5),
+      values: utils.generate_power_law(1500, 2.5),
       label: `Power Law (α=2.5)`,
-      line_style: { stroke: `darkgreen` },
+      color: `darkgreen`,
     },
     {
-      y: utils.generate_pareto(1200, 1, 3),
+      values: utils.generate_pareto(1200, 1, 3),
       label: `Pareto (α=3)`,
-      line_style: { stroke: `darkviolet` },
+      color: `darkviolet`,
     },
   ])
 </script>
@@ -325,35 +325,15 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
 ```svelte example
 <script lang="ts">
   import { Histogram } from 'matterviz'
-
-  // Generate data with both positive and negative values
-  function generate_mixed_data(n: number, seed = 42): number[] {
-    const data: number[] = []
-    let state = seed
-    const rng = () => {
-      state = (state * 1103515245 + 12345) & 0x7fffffff
-      return state / 0x7fffffff
-    }
-    for (let idx = 0; idx < n; idx++) {
-      // Mix of positive, negative, and near-zero values
-      const u = rng()
-      if (u < 0.4) {
-        data.push((rng() - 0.5) * 20) // Near zero: -10 to +10
-      } else if (u < 0.7) {
-        data.push(rng() * 1000) // Positive: 0 to 1000
-      } else {
-        data.push(-rng() * 1000) // Negative: -1000 to 0
-      }
-    }
-    return data
-  }
+  import { generate_signed_data, seeded_rng } from '$site/histogram-data'
 
   const scale_types = [`linear`, `log`, `arcsinh`]
   let x_scale_type = $state(`arcsinh`)
   let y_scale_type = $state(`linear`)
   let arcsinh_threshold = $state(10)
 
-  const mixed_data = generate_mixed_data(2000)
+  // Positive, negative and near-zero values from a fixed seed so the plot is stable on reload
+  const mixed_data = generate_signed_data(2000, seeded_rng(42))
 
   let x_axis = $derived({
     label: `Value (${x_scale_type})`,
@@ -408,9 +388,9 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
 <Histogram
   series={[
     {
-      y: mixed_data,
+      values: mixed_data,
       label: `Mixed Range Data`,
-      line_style: { stroke: `#4c6ef5` },
+      color: `#4c6ef5`,
     },
   ]}
   bins={60}
@@ -429,7 +409,7 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
 ```svelte example
 <script lang="ts">
   import { Histogram } from 'matterviz'
-  import * as utils from '$site/plot-utils'
+  import * as utils from '$site/histogram-data'
   import { format_num } from 'matterviz'
 
   let selected = $state(`bimodal`)
@@ -474,15 +454,15 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
     mode === `single`
       ? [
           {
-            y: current.data,
+            values: current.data,
             label: current.label,
-            line_style: { stroke: current.color },
+            color: current.color,
           },
         ]
       : Object.entries(distributions).map(([key, dist]) => ({
-          y: dist.data,
+          values: dist.data,
           label: dist.label,
-          line_style: { stroke: dist.color },
+          color: dist.color,
           visible: key === selected,
         })),
   )
@@ -529,20 +509,20 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
 ```svelte example
 <script lang="ts">
   import { Histogram } from 'matterviz'
-  import { generate_normal } from '$site/plot-utils'
+  import { generate_normal } from '$site/histogram-data'
 
   let normalize = $state(`density`)
   let bins = $state(40)
   const series = [
     {
-      y: generate_normal(5000, 0, 1),
+      values: generate_normal(5000, 0, 1),
       label: `N(0, 1), n=5000`,
-      line_style: { stroke: `steelblue` },
+      color: `steelblue`,
     },
     {
-      y: generate_normal(500, 1, 2),
+      values: generate_normal(500, 1, 2),
       label: `N(1, 2), n=500`,
-      line_style: { stroke: `darkorange` },
+      color: `darkorange`,
     },
   ]
 </script>
@@ -571,7 +551,7 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
 ```svelte example
 <script lang="ts">
   import { Histogram } from 'matterviz'
-  import * as utils from '$site/plot-utils'
+  import * as utils from '$site/histogram-data'
 
   let bin_counts = $state([10, 25, 50, 100])
   let data_type = $state(`mixed`)
@@ -602,7 +582,7 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0">
   {#each bin_counts as bins, idx (idx)}
     <Histogram
-      series={[{ y: base_data, label: `${bins} bins`, line_style: { stroke: colors[idx] } }]}
+      series={[{ values: base_data, label: `${bins} bins`, color: colors[idx] }]}
       {bins}
       bar={{ ...bar, color: colors[idx] }}
       x_axis={{ label: `Value` }}
@@ -618,7 +598,7 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
 ```svelte example
 <script lang="ts">
   import { Histogram } from 'matterviz'
-  import * as utils from '$site/plot-utils'
+  import * as utils from '$site/histogram-data'
 
   let color_scheme = $state(`default`)
   let x_format = $state(`number`)
@@ -658,9 +638,9 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
   )
   let series = $derived([
     {
-      y: data,
+      values: data,
       label: data_source === `financial` ? `Stock Prices` : `Scientific Measurements`,
-      line_style: { stroke: color_schemes[color_scheme][0] },
+      color: color_schemes[color_scheme][0],
     },
   ])
 </script>
@@ -721,7 +701,7 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
 ```svelte example
 <script lang="ts">
   import { Histogram } from 'matterviz'
-  import * as utils from '$site/plot-utils'
+  import * as utils from '$site/histogram-data'
 
   let dataset_size = $state(10000)
   let data_type = $state(`normal`)
@@ -738,17 +718,15 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
     mode === `single`
       ? [
           {
-            y: performance_data[data_type],
+            values: performance_data[data_type],
             label: `${data_type} (${dataset_size.toLocaleString()} points)`,
-            line_style: { stroke: `#2c3e50` },
+            color: `#2c3e50`,
           },
         ]
       : Object.entries(performance_data).map(([key, data]) => ({
-          y: data,
+          values: data,
           label: `${key} (${data.length.toLocaleString()} points)`,
-          line_style: {
-            stroke: key === `normal` ? `#e74c3c` : key === `uniform` ? `#3498db` : `#2ecc71`,
-          },
+          color: key === `normal` ? `#e74c3c` : key === `uniform` ? `#3498db` : `#2ecc71`,
           visible: key === data_type,
         })),
   )
@@ -799,7 +777,7 @@ Use `ref_lines` to show statistical reference values like mean, median, standard
 ```svelte example
 <script lang="ts">
   import { Histogram } from 'matterviz'
-  import { generate_normal } from '$site/plot-utils'
+  import { generate_normal } from '$site/histogram-data'
 
   let comparison_mode = $state(false)
 
@@ -820,14 +798,14 @@ Use `ref_lines` to show statistical reference values like mean, median, standard
   let series = $derived(
     comparison_mode
       ? [
-          { y: sample_a, label: `Control`, line_style: { stroke: `#3498db` } },
-          { y: sample_b, label: `Treatment`, line_style: { stroke: `#e74c3c` } },
+          { values: sample_a, label: `Control`, color: `#3498db` },
+          { values: sample_b, label: `Treatment`, color: `#e74c3c` },
         ]
       : [
           {
-            y: data,
+            values: data,
             label: `Normal Distribution`,
-            line_style: { stroke: `#4c6ef5` },
+            color: `#4c6ef5`,
           },
         ],
   )
@@ -940,22 +918,7 @@ Use `ref_lines` to show statistical reference values like mean, median, standard
 ```svelte example
 <script lang="ts">
   import { type DataSeries, Histogram } from 'matterviz'
-
-  // Seeded random number generator
-  function seeded_random(seed: number): () => number {
-    let state = seed
-    return () => {
-      state = (state * 1103515245 + 12345) & 0x7fffffff
-      return state / 0x7fffffff
-    }
-  }
-
-  // Box-Muller transform for normal distribution
-  function box_muller(rng: () => number): number {
-    const u1 = rng()
-    const u2 = rng()
-    return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2)
-  }
+  import { box_muller, seeded_rng } from '$site/histogram-data'
 
   type DistType =
     | `normal`
@@ -969,30 +932,31 @@ Use `ref_lines` to show statistical reference values like mean, median, standard
 
   // Generate various distributions
   function generate_distribution(type: DistType, n: number, seed: number): number[] {
-    const rng = seeded_random(seed)
+    const rng = seeded_rng(seed)
+    const normal = () => box_muller(0, 1, rng)
     const data: number[] = []
 
     for (let idx = 0; idx < n; idx++) {
       let val: number
       if (type === `normal`) {
-        val = box_muller(rng) * 1.5 - 2
+        val = normal() * 1.5 - 2
       } else if (type === `exponential`) {
         val = -Math.log(rng()) * 2
       } else if (type === `bimodal`) {
-        val = rng() < 0.4 ? box_muller(rng) * 0.8 - 3 : box_muller(rng) * 1.2 + 2
+        val = rng() < 0.4 ? normal() * 0.8 - 3 : normal() * 1.2 + 2
       } else if (type === `uniform`) {
         val = rng() * 10 - 2
       } else if (type === `log-normal`) {
-        val = Math.exp(box_muller(rng) * 0.8)
+        val = Math.exp(normal() * 0.8)
       } else if (type === `heavy-tail`) {
-        val = box_muller(rng) / (rng() + 0.1)
+        val = normal() / (rng() + 0.1)
       } else if (type === `skewed`) {
         const u = rng()
         val = Math.pow(u, 3) * 15 - 2
       } else {
         // multimodal
         const mode = Math.floor(rng() * 4)
-        val = box_muller(rng) * 0.5 + mode * 3 - 4
+        val = normal() * 0.5 + mode * 3 - 4
       }
       data.push(val)
     }
@@ -1074,9 +1038,9 @@ Use `ref_lines` to show statistical reference values like mean, median, standard
   // Build series for a property
   function build_series(prop_key: PropKey): DataSeries[] {
     return material_classes.map((name, idx) => ({
-      y: all_data[prop_key][idx],
+      values: all_data[prop_key][idx],
       label: name,
-      line_style: { stroke: colors[idx], stroke_width: 2 },
+      color: colors[idx],
       bar_style: { fill: colors[idx], opacity: 0.4 },
     }))
   }
@@ -1154,7 +1118,7 @@ Display multiple histograms in a responsive 2×2 grid:
 ```svelte example
 <script lang="ts">
   import { Histogram } from 'matterviz'
-  import * as utils from '$site/plot-utils'
+  import * as utils from '$site/histogram-data'
 
   const plots = [
     {
@@ -1193,7 +1157,7 @@ Display multiple histograms in a responsive 2×2 grid:
     <div class="cell">
       <h4>{title}</h4>
       <Histogram
-        series={[{ y: data, line_style: { stroke: color } }]}
+        series={[{ values: data, color: color }]}
         {bins}
         x_axis={{ label: x_label }}
         y_axis={{ label: `Count` }}
@@ -1233,30 +1197,24 @@ Compare distributions on different scales with dual y-axes. Use `y2_axis.sync` t
 ```svelte example
 <script lang="ts">
   import { Histogram } from 'matterviz'
+  import { generate_exponential, generate_normal } from '$site/histogram-data'
 
   const n_samples = 200
-  // Normal-ish distribution (Box-Muller transform)
-  const y1_values = Array.from({ length: n_samples }, () => {
-    const [u1, u2] = [Math.random(), Math.random()]
-    return 50 + 15 * Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2)
-  })
-  // Exponential-ish distribution
-  const y2_values = Array.from(
-    { length: n_samples },
-    () => 1000 + 500 * -Math.log(Math.random()),
-  )
+  const y1_values = generate_normal(n_samples, 50, 15)
+  // Exponential tail offset to 1000 so the two series need separate axes
+  const y2_values = generate_exponential(n_samples, 1 / 500).map((value) => 1000 + value)
 
   const series = [
     {
-      y: y1_values,
+      values: y1_values,
       label: `Sample A`,
-      line_style: { stroke: `#e74c3c` },
+      color: `#e74c3c`,
       y_axis: `y1`,
     },
     {
-      y: y2_values,
+      values: y2_values,
       label: `Sample B`,
-      line_style: { stroke: `#3498db` },
+      color: `#3498db`,
       y_axis: `y2`,
     },
   ]
@@ -1299,51 +1257,27 @@ Plot two distributions with independent x-scales on the same histogram. The prim
 ```svelte example
 <script lang="ts">
   import { Histogram } from 'matterviz'
+  import { generate_normal, seeded_rng } from '$site/histogram-data'
 
-  // Seeded random for reproducible normal distributions
-  function seeded_random(seed: number): () => number {
-    let state = seed
-    return () => {
-      state = (state * 1103515245 + 12345) & 0x7fffffff
-      return state / 0x7fffffff
-    }
-  }
-
-  function generate_normal(
-    rng: () => number,
-    count: number,
-    mean: number,
-    std: number,
-  ): number[] {
-    const values: number[] = []
-    for (let idx = 0; idx < count; idx++) {
-      // Box-Muller transform
-      const u1 = rng()
-      const u2 = rng()
-      const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2)
-      values.push(mean + std * z)
-    }
-    return values
-  }
-
-  const rng = seeded_random(42)
-  const kg_values = generate_normal(rng, 400, 70, 10)
-  const lbs_values = generate_normal(rng, 400, 154, 22)
+  // Seeded so the two mass distributions are reproducible on reload
+  const rng = seeded_rng(42)
+  const kg_values = generate_normal(400, 70, 10, rng)
+  const lbs_values = generate_normal(400, 154, 22, rng)
 
   const series = [
     {
       x: kg_values.map((_, idx) => idx),
-      y: kg_values,
+      values: kg_values,
       label: `Mass (kg)`,
-      line_style: { stroke: `#0ea5e9` },
+      color: `#0ea5e9`,
       point_style: { fill: `#0ea5e9` },
     },
     {
       x: lbs_values.map((_, idx) => idx),
-      y: lbs_values,
+      values: lbs_values,
       label: `Mass (lbs)`,
       x_axis: `x2`,
-      line_style: { stroke: `#f97316` },
+      color: `#f97316`,
       point_style: { fill: `#f97316` },
     },
   ]
@@ -1400,9 +1334,7 @@ Plot titles, subtitles, and axis-title blocks use measured font metrics. Resize 
 
 <div style={`width: min(100%, ${plot_width}px); margin: 1em auto`}>
   <Histogram
-    series={[
-      { y: volume_samples, label: `Relaxed structures`, line_style: { stroke: `#7950f2` } },
-    ]}
+    series={[{ values: volume_samples, label: `Relaxed structures`, color: `#7950f2` }]}
     bins={36}
     title={{
       text: `Distribution of symmetry-standardized atomic volumes after structural relaxation`,

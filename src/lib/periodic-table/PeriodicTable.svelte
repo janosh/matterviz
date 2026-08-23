@@ -14,7 +14,7 @@
     SplitLayout,
     TileSegment,
   } from '$lib/element'
-  import { element_data, ElementPhoto, ElementTile } from '$lib/element'
+  import { element_data, ElementPhoto, ElementTile, is_elem_symbol } from '$lib/element'
   import { ELEM_SYMBOLS } from '$lib/labels'
   import type { Point2D, Vec2 } from '$lib/math'
   import { ColorBar } from '$lib/plot'
@@ -60,7 +60,7 @@
     inset,
     bottom_left_inset,
     tooltip = false,
-    onactivate,
+    on_activate,
     children,
     onkeydown: on_table_keydown,
     ...rest
@@ -120,7 +120,7 @@
         >
       | boolean
     children?: Snippet
-    onactivate?: (element: ChemicalElement) => void
+    on_activate?: (element: ChemicalElement) => void
   } = $props()
 
   let heat_values = $derived.by(() => {
@@ -135,9 +135,7 @@
       return heatmap_values
     }
     if (typeof heatmap_values === `object`) {
-      const bad_keys = Object.keys(heatmap_values).filter(
-        (key) => !ELEM_SYMBOLS.includes(key as ElementSymbol),
-      )
+      const bad_keys = Object.keys(heatmap_values).filter((key) => !is_elem_symbol(key))
       if (bad_keys.length > 0) {
         console.error(
           `heatmap_values is an object, keys should be element symbols, got ${bad_keys}`,
@@ -162,7 +160,7 @@
         ? `/${element[links]}`.toLowerCase()
         : links[element.symbol]
   const element_is_interactive = (element: ChemicalElement): boolean =>
-    Boolean(element_href(element) || onactivate)
+    Boolean(element_href(element) || on_activate)
   let focused_symbol = $state<ElementSymbol | null>(null)
   let first_interactive_symbol = $derived(
     element_data.find(element_is_interactive)?.symbol ?? null,
@@ -174,9 +172,9 @@
         : first_interactive_symbol),
   )
   $effect(() => {
-    if (links && onactivate) {
+    if (links && on_activate) {
       console.warn(
-        `PeriodicTable links use native link activation; onactivate applies only to unlinked tiles.`,
+        `PeriodicTable links use native link activation; on_activate applies only to unlinked tiles.`,
       )
     }
   })
@@ -362,7 +360,7 @@
   {#each element_data as element (element.number)}
     {@const { column, row, category, name, symbol } = element}
     {@const href = element_href(element)}
-    {@const tile_activation = href ? undefined : onactivate}
+    {@const tile_activation = href ? undefined : on_activate}
     {@const value = heat_values[element.number - 1]}
     {@const override = color_overrides[symbol]}
     {@const tile_missing = heat_values.length > 0 && !override && value_is_missing(value)}

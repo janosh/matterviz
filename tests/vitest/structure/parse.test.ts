@@ -5,16 +5,17 @@ import type { AnyStructure } from '$lib/structure'
 import { explicit_only } from '$lib/structure/bonding'
 import {
   detect_structure_type,
-  is_optimade_raw,
   is_structure_file,
-  optimade_to_crystal,
+  optimade_structure_from_raw,
+  optimade_to_structure,
   parse_cif,
-  parse_optimade_from_raw,
   parse_phonopy_yaml,
   parse_poscar,
   parse_structure_file,
   parse_xyz,
 } from '$lib/structure/parse'
+import { structure_to_cif_str } from '$lib/structure/export'
+import { parse_coordinate, parse_float_token } from '$lib/structure/parsers/shared'
 import benzene_mol2 from '$site/molecules/benzene.mol2?raw'
 import benzene_sdf from '$site/molecules/benzene.sdf?raw'
 import c2ho_scientific_notation_xyz from '$site/molecules/C2HO-scientific-notation.xyz?raw'
@@ -53,12 +54,6 @@ beforeEach(() => {
 afterEach(() => {
   console_error_spy.mockRestore()
 })
-// The failure reason must be the only thing logged: a second console.error would mean the
-// parser recorded an extra (misleading) reason on the way out
-const expect_only_error = (expected: string) => {
-  expect(console_error_spy.mock.calls).toHaveLength(1)
-  expect(console_error_spy.mock.calls[0][0]).toContain(expected)
-}
 
 // Helpers to reduce duplication and strengthen invariants
 const TOL = 8
@@ -182,7 +177,8 @@ describe(`POSCAR Parser`, () => {
   })
 
   // Edge cases: Cartesian xyz must be recomputed from wrapped abc; a blank first
-  // (comment) line and a 3-component per-axis scale line are valid POSCAR headers
+  // (comment) line and a 3-component per-axis scale line are valid POSCAR headers, and
+  // like VASP a blank coordinate-mode line means Direct
   const scale3 = `Test\n2 1 3\n1 0 0\n0 1 0\n0 0 1\nH\n1\n`
   const cubic5 = `5 0 0\n0 5 0\n0 0 5`
   test.each([
@@ -192,6 +188,7 @@ describe(`POSCAR Parser`, () => {
     [`\n1.0\n${cubic5}\nSi\n1\nDirect\n0 0 0`, `Si`, [5, 5, 5], [0, 0, 0], [0, 0, 0]],
     [`${scale3}Direct\n0.5 0.5 0.5`, `H`, [2, 1, 3], [0.5, 0.5, 0.5], [1, 0.5, 1.5]],
     [`${scale3}Cartesian\n0.5 0.5 0.5`, `H`, [2, 1, 3], [0.5, 0.5, 0.5], [1, 0.5, 1.5]],
+    [`${scale3}\n0.5 0.5 0.5`, `H`, [2, 1, 3], [0.5, 0.5, 0.5], [1, 0.5, 1.5]],
   ])(`should handle POSCAR edge case %#`, (content, element, lattice_abc, abc, xyz) => {
     const result = parse_poscar(content)
     assert(result, `Failed to parse POSCAR`)
@@ -199,6 +196,20 @@ describe(`POSCAR Parser`, () => {
     expect([result.lattice?.a, result.lattice?.b, result.lattice?.c]).toEqual(lattice_abc)
     abc.forEach((val, idx) => expect(result.sites[0].abc[idx]).toBeCloseTo(val, TOL))
     xyz.forEach((val, idx) => expect(result.sites[0].xyz[idx]).toBeCloseTo(val, TOL))
+  })
+
+  // VASP reads only the first letter of the `Selective dynamics` line and the T/F flags
+  // case-insensitively, so files written that way must not lose their constraints
+  test.each([
+    [`Selective dynamics`, `T T F`, [true, true, false]],
+    [`Sel. dyn.`, `t f t`, [true, false, true]],
+    [`selective`, `.TRUE. .FALSE. .TRUE.`, [true, false, true]],
+  ])(`reads selective dynamics from '%s' with flags '%s'`, (sel_line, flags, expected) => {
+    const result = parse_poscar(
+      `Test\n1.0\n${cubic5}\nSi\n1\n${sel_line}\nDirect\n0 0 0 ${flags}`,
+    )
+    assert(result, `Failed to parse selective dynamics POSCAR`)
+    expect(result.sites[0].properties.selective_dynamics).toEqual(expected)
   })
 
   it(`keeps singular Cartesian POSCAR fractional coordinates finite`, () => {
@@ -328,10 +339,39 @@ describe(`XYZ Parser`, () => {
     expect_xyz_matches_abc(result.sites[0], result.lattice.matrix)
   })
 
-  it(`falls back to valid element symbol for invalid XYZ symbol`, () => {
-    const result = parse_xyz(`1\nTest\nXx 0 0 0\n`)
-    assert(result, `Failed to parse invalid symbol XYZ`)
-    expect(result.sites[0].species[0].element).toBe(`H`)
+  // Same rules as the trajectory reader: symbols are case-normalised, unknown ones (ASE's
+  // `X` dummy atoms, placeholder species) are skipped with a warning rather than invented,
+  // and a frame with no recognised atom at all is an error
+  it(`case-normalises symbols and skips atoms with unknown ones`, () => {
+    const result = parse_xyz(`3\nTest\nXx 0 0 0\nFE 1 1 1\nX 2 2 2\n`)
+    assert(result, `Failed to parse XYZ with dummy atoms`)
+    expect(result.sites.map((site) => site.species[0].element)).toEqual([`Fe`])
+    expect(parse_xyz(`1\nTest\nXx 0 0 0\n`)).toBeNull()
+  })
+
+  // A frame the writer was still appending (fewer atom lines than its count) is dropped
+  // with a warning; the last COMPLETE frame is what gets parsed, and a file with none is
+  // an error naming the torn frame rather than a silently empty structure
+  it.each([
+    [`2\nframe-1\nH 0 0 0\nH 0 0 1\n3\nframe-2\nHe 1 2 3\nHe 4 5 6\n`, 2, `H`],
+    [`3\nonly\nHe 1 2 3\nHe 4 5 6\n`, null, null],
+  ])(`drops a torn trailing frame: %#`, (content, n_sites, element) => {
+    const result = parse_xyz(content)
+    if (n_sites === null) {
+      expect(result).toBeNull()
+      expect(console_error_spy).toHaveBeenCalledWith(
+        `Error parsing XYZ file:`,
+        expect.objectContaining({
+          message: expect.stringMatching(
+            /no complete frame \(Dropping truncated final XYZ frame 0/,
+          ),
+        }),
+      )
+      return
+    }
+    assert(result, `Failed to parse multi-frame XYZ with torn tail`)
+    expect(result.sites).toHaveLength(n_sites)
+    expect(result.sites[0].species[0].element).toBe(element)
   })
 
   // ASE writes a bounding Lattice even for isolated molecules and marks them pbc="F F F".
@@ -514,8 +554,14 @@ describe(`Auto-detection & Error Handling`, () => {
   })
 })
 
+// `_cell_*` tags for a cell with edges a, b, c (Å) and angles (°); cubic unless told otherwise
+const cif_cell = (a: number | string, b = a, c = a, angles = [90, 90, 90]): string =>
+  [
+    ...[a, b, c].map((len, idx) => `_cell_length_${`abc`[idx]}  ${len}`),
+    ...angles.map((ang, idx) => `_cell_angle_${[`alpha`, `beta`, `gamma`][idx]}  ${ang}`),
+  ].join(`\n`)
 // Cubic 5 Å cell plus the standard label/symbol/fract_x/y/z atom-site loop header
-const cell5 = `_cell_length_a  5.000\n_cell_length_b  5.000\n_cell_length_c  5.000\n_cell_angle_alpha  90\n_cell_angle_beta  90\n_cell_angle_gamma  90`
+const cell5 = cif_cell(`5.000`)
 const site_loop = `loop_\n_atom_site_label\n_atom_site_type_symbol\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z`
 // same loop without _atom_site_type_symbol, so the element has to come from the label
 const label_loop = `loop_\n_atom_site_label\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\n_atom_site_occupancy`
@@ -566,7 +612,7 @@ O2   O   0.410  0.140  0.880  1.000`
     },
     {
       name: `monoclinic (β ≠ 90°)`,
-      cif: `data_monoclinic_test\n_cell_length_a                         10.000\n_cell_length_b                         5.000\n_cell_length_c                         8.000\n_cell_angle_alpha                      90\n_cell_angle_beta                       95\n_cell_angle_gamma                      90\nloop_\n_atom_site_label\n_atom_site_type_symbol\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\n_atom_site_occupancy\nRu1  Ru  0.000  0.000  0.000  1.000\nP1   P   0.250  0.250  0.250  1.000\nS1   S   0.500  0.500  0.500  1.000`,
+      cif: `data_monoclinic_test\n${cif_cell(10, 5, 8, [90, 95, 90])}\n${site_loop}\n_atom_site_occupancy\nRu1  Ru  0.000  0.000  0.000  1.000\nP1   P   0.250  0.250  0.250  1.000\nS1   S   0.500  0.500  0.500  1.000`,
       expected_lattice: { beta: 95 },
       expected_abc: [
         { element: `Ru`, abc: [0.0, 0.0, 0.0] },
@@ -600,17 +646,25 @@ O2   O   0.410  0.140  0.880  1.000`
     expect(result.lattice.a).toBeCloseTo(4.916, 6)
   })
 
-  // regression: tokens.at(-1) made trailing comments break cell-parameter parsing
-  test.each([`5.4309 # angstrom`, `5.4309(5)`, `5.4309(5) # angstrom`])(
-    `should parse cell parameter line with %s`,
-    (a_value) => {
-      const result = parse_cif(
-        `data_test\n_cell_length_a ${a_value}\n_cell_length_b 4\n_cell_length_c 3\n_cell_angle_alpha 90\n_cell_angle_beta 90\n_cell_angle_gamma 90\nloop_\n_atom_site_label\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\nSi1 0 0 0`,
-      )
-      assert(result, `Failed to parse CIF with ${a_value}`)
-      expect(result.lattice?.a).toBeCloseTo(5.4309, 4)
-    },
-  )
+  // Cell tags are matched exactly on the first token whatever their order, so a trailing
+  // comment, an uncertainty, an `_su` tag listed first (prefix match used to read it as a),
+  // c listed before a (used to be reordered) and leading whitespace all read the same cell
+  // oxfmt-ignore
+  test.each([
+    [`trailing comment`, `_cell_length_a 5.4309 # angstrom\n_cell_length_b 4\n_cell_length_c 3`],
+    [`uncertainty`, `_cell_length_a 5.4309(5)\n_cell_length_b 4\n_cell_length_c 3`],
+    [`uncertainty and comment`, `_cell_length_a 5.4309(5) # angstrom\n_cell_length_b 4\n_cell_length_c 3`],
+    [`_su tag listed first`, `_cell_length_a_su 0.0005\n_cell_length_a 5.4309\n_cell_length_b 4\n_cell_length_c 3`],
+    [`c listed before a`, `_cell_length_c 3\n_cell_length_b 4\n_cell_length_a 5.4309`],
+    [`leading whitespace`, `  _cell_length_a 5.4309\n\t_cell_length_b 4\n _cell_length_c 3`],
+    [`uppercase tags`, `_CELL_LENGTH_A 5.4309\n_Cell_Length_B 4\n_cell_length_c 3`],
+  ])(`should read the cell with %s`, (_name, lengths) => {
+    const result = parse_cif(
+      `data_test\n${lengths}\n_cell_angle_alpha 90\n_cell_angle_beta 90\n_cell_angle_gamma 90\nloop_\n_atom_site_label\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\nSi1 0 0 0`,
+    )
+    assert(result, `Failed to parse CIF with ${_name}`)
+    expect([result.lattice.a, result.lattice.b, result.lattice.c]).toEqual([5.4309, 4, 3])
+  })
 
   test(`parses P24Ru4H252C296S24N16.cif (COD 7008984) with correct totals and composition`, () => {
     const result = parse_cif(ru_p_complex_cif)
@@ -637,15 +691,9 @@ O2   O   0.410  0.140  0.880  1.000`
     type CifOpts = { angles?: string; atom_types?: string[]; atom_sites?: string[] }
     const make_cif = (symbol: string, opts: CifOpts = {}): string => {
       const { angles = `90 90 90`, atom_types = [], atom_sites = [`Fe1 Fe 0 0 0`] } = opts
-      const [alpha, beta, gamma] = angles.split(` `)
       return [
         `data_test`,
-        `_cell_length_a 5`,
-        `_cell_length_b 5`,
-        `_cell_length_c 5`,
-        `_cell_angle_alpha ${alpha}`,
-        `_cell_angle_beta ${beta}`,
-        `_cell_angle_gamma ${gamma}`,
+        cif_cell(5, 5, 5, angles.split(` `).map(Number)),
         `_symmetry_space_group_name_H-M '${symbol}'`,
         `loop_`,
         `_space_group_symop_operation_xyz`,
@@ -653,12 +701,7 @@ O2   O   0.410  0.140  0.880  1.000`
         ...(atom_types.length
           ? [`loop_`, `_atom_type_symbol`, `_atom_type_number_in_cell`, ...atom_types]
           : []),
-        `loop_`,
-        `_atom_site_label`,
-        `_atom_site_type_symbol`,
-        `_atom_site_fract_x`,
-        `_atom_site_fract_y`,
-        `_atom_site_fract_z`,
+        site_loop,
         ...atom_sites,
       ].join(`\n`)
     }
@@ -764,35 +807,104 @@ O2   O   0.410  0.140  0.880  1.000`
     expect(result.lattice?.volume).toBe(125.0)
   })
 
-  it.each([true, false])(
-    `should wrap/preserve fractional coordinates outside [0,1) when wrap_frac=%s`,
-    (wrap_frac: boolean) => {
-      const rows = `C1   C   1.250  0.750  0.500  1.000\nO1   O  -0.250  1.750  0.500  1.000\nH1   H   2.100  0.900  0.500  1.000`
-      const cif_with_outside_coords = `data_test_wrapping\n${cell5}\n${site_loop}\n_atom_site_occupancy\n${rows}`
-      const result = parse_cif(cif_with_outside_coords, wrap_frac)
-      assert(result, `Failed to parse CIF with outside coordinates`)
+  it(`should wrap fractional coordinates outside [0,1) into the cell`, () => {
+    const rows = `C1   C   1.250  0.750  0.500  1.000\nO1   O  -0.250  1.750  0.500  1.000\nH1   H   2.100  0.900  0.500  1.000`
+    const result = parse_cif(
+      `data_test_wrapping\n${cell5}\n${site_loop}\n_atom_site_occupancy\n${rows}`,
+    )
+    assert(result, `Failed to parse CIF with outside coordinates`)
+    expect(result.sites).toHaveLength(3)
 
-      expect(result.sites).toHaveLength(3)
+    const expected_coords = { C: [0.25, 0.75, 0.5], O: [0.75, 0.75, 0.5], H: [0.1, 0.9, 0.5] }
+    for (const [element, expected] of Object.entries(expected_coords)) {
+      const matching_site = result.sites.find((site) => site.species[0].element === element)
+      expect_vec3_close(matching_site?.abc, expected, 12)
+    }
+    // xyz must stay consistent with the wrapped abc
+    for (const site of result.sites) {
+      expect_abc_in_unit_cell(site)
+      expect_xyz_matches_abc(site, result.lattice.matrix)
+    }
+  })
 
-      const expected_coords = wrap_frac
-        ? { C: [0.25, 0.75, 0.5], O: [0.75, 0.75, 0.5], H: [0.1, 0.9, 0.5] }
-        : { C: [1.25, 0.75, 0.5], O: [-0.25, 1.75, 0.5], H: [2.1, 0.9, 0.5] }
+  // Uppercase symbols used to be read one letter at a time (`FE2+` -> F, `CL` -> C); the
+  // type symbol wins over the label, and the label fills in when the symbol names nothing.
+  // Labels are read first capital + trailing lowercase, and an all-caps label two letters
+  // first like pymatgen's `_parse_symbol` (`FE1` -> Fe); when both readings are elements
+  // (`CA`, `HO`, `FE`) the file warns once. Water, deuterium and polyatomic-group labels
+  // (pymatgen's special map plus common anions) name the atom they stand for without any
+  // ambiguity (`NO3` used to read as nobelium, `Ow1` as a per-row fallback element)
+  // oxfmt-ignore
+  test.each([
+    [`FE1 FE2+`, `Fe`, false], [`CL1 CL`, `Cl`, false], [`Na1 NA`, `Na`, false],
+    [`O1 O2-`, `O`, false], [`Si1 Xx`, `Si`, false], [`CA Ca`, `Ca`, false],
+    [`Fe1 .`, `Fe`, false], [`Ru(1) .`, `Ru`, false], [`O1a .`, `O`, false],
+    [`site1_Fe_center .`, `Fe`, false], [`OH2 .`, `O`, false], [`ZR1 .`, `Zr`, false],
+    [`CA .`, `Ca`, true], [`HO1 ?`, `Ho`, true], [`FE1 ?`, `Fe`, true], [`CL1 .`, `Cl`, true],
+    [`CD .`, `Cd`, true], [`ND1 .`, `Nd`, true], [`HG .`, `Hg`, true],
+    [`NO3 .`, `N`, false], [`CO3 .`, `C`, false], [`PO4 .`, `P`, false], [`SO4 .`, `S`, false],
+    [`NH4 .`, `N`, false], [`CN .`, `C`, false], [`OH .`, `O`, false], [`OH2 ?`, `O`, false],
+    [`Ow1 .`, `O`, false], [`Hw1 .`, `H`, false], [`Wat1 .`, `O`, false], [`wat .`, `O`, false],
+    [`D1 .`, `H`, false], [`D2 D`, `H`, false], [`Dy1 .`, `Dy`, false], [`CO1 .`, `Co`, true],
+    [`CO3 Co`, `Co`, false], [`Ow1 Ow`, `O`, false], [`Wat1 Wat`, `O`, false],
+  ])(`reads the element of CIF rows '%s' as %s`, (label_and_symbol, expected, ambiguous) => {
+    const warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
+    // the same label twice: an ambiguous reading must still warn only once per file
+    const rows = `${label_and_symbol} 0 0 0\n${label_and_symbol} 0.5 0.5 0.5`
+    const result = parse_cif(`data_test\n${cell5}\n${site_loop}\n${rows}`)
+    assert(result, `Failed to parse CIF rows ${rows}`)
+    expect(result.sites.map((site) => site.species[0].element)).toEqual([expected, expected])
+    // group/water rows must neither warn as ambiguous nor fall back to a default element
+    expect(warn_spy.mock.calls.filter(([msg]) => String(msg).includes(`fallback`))).toEqual([])
+    const ambiguity_warnings = warn_spy.mock.calls.filter(([msg]) =>
+      String(msg).includes(`ambiguous all-caps atom-site labels (no usable _atom_site_type_symbol)`),
+    )
+    expect(ambiguity_warnings).toHaveLength(ambiguous ? 1 : 0)
+    if (ambiguous) {
+      const label = label_and_symbol.split(` `)[0]
+      expect(ambiguity_warnings[0][0]).toContain(`'${label}' read as ${expected} (not `)
+    }
+    warn_spy.mockRestore()
+  })
 
-      // Check fractional coordinates (wrapped into [0,1) or preserved as-is)
-      for (const [element, expected] of Object.entries(expected_coords)) {
-        const matching_site = result.sites.find((site) => site.species[0].element === element)
-        expect_vec3_close(matching_site?.abc, expected, 12)
-      }
+  // Symops may be listed unquoted next to a site id (`1 x,y,z`, or sloppily `1 x, y, z`);
+  // joining the whole row used to read `1x,y,z` as an op with zero coefficients, which
+  // generated phantom atoms at the translation vector
+  // oxfmt-ignore
+  test.each([
+    [`quoted`, [`1 'x, y, z'`, `2 '-x, -y, -z'`]],
+    [`unquoted`, [`1 x,y,z`, `2 -x,-y,-z`]],
+    [`unquoted with spaces`, [`1 x, y, z`, `2 -x, -y, -z`]],
+    [`unquoted op column first`, [`x,y,z 1`, `-x,-y,-z 2`]],
+  ])(`expands %s two-column symop rows without phantom atoms`, (_name, symop_rows) => {
+    const op_first = symop_rows[0].startsWith(`x`)
+    const headers = op_first
+      ? `_symmetry_equiv_pos_as_xyz\n_symmetry_equiv_pos_site_id`
+      : `_symmetry_equiv_pos_site_id\n_symmetry_equiv_pos_as_xyz`
+    const cif = `data_test\n${cell5}\nloop_\n${headers}\n${symop_rows.join(`\n`)}\n${site_loop}\nNa1 Na 0.1 0.2 0.3`
+    const result = parse_cif(cif)
+    assert(result, `Failed to parse CIF with ${_name} symops`)
+    const coords = result.sites.map((site) => site.abc.map((coord) => Math.round(coord * 1e6) / 1e6))
+    expect(coords).toEqual([[0.1, 0.2, 0.3], [0.9, 0.8, 0.7]])
+    // the row keeps its label, symmetry-generated images get a unique `_k` suffix
+    expect(result.sites.map((site) => site.label)).toEqual([`Na1`, `Na1_1`])
+  })
 
-      // xyz must stay consistent with abc in both cases
-      const lattice = result.lattice?.matrix
-      assert(lattice, `Failed to get lattice matrix`)
-      for (const site of result.sites) {
-        if (wrap_frac) expect_abc_in_unit_cell(site)
-        expect_xyz_matches_abc(site, lattice)
-      }
-    },
-  )
+  // Disorder groups are mutually exclusive alternatives: only the lowest-numbered group is
+  // kept (groups 2 AND 3 used to survive alongside 1) while ungrouped rows always stay
+  test(`keeps one disorder group and drops the others`, () => {
+    const loop = `${site_loop}\n_atom_site_disorder_group`
+    const rows = [
+      `Na1 Na 0 0 0 .`,
+      `Cl1 Cl 0.5 0.5 0.5 1`,
+      `Br1 Br 0.5 0.5 0.5 2`,
+      `I1 I 0.5 0.5 0.5 3`,
+      `K1 K 0.25 0.25 0.25 -1`,
+    ]
+    const result = parse_cif(`data_test\n${cell5}\n${loop}\n${rows.join(`\n`)}`)
+    assert(result, `Failed to parse disordered CIF`)
+    expect(result.sites.map((site) => site.species[0].element)).toEqual([`Na`, `Cl`, `K`])
+  })
 
   describe(`CIF Error Handling`, () => {
     // oxfmt-ignore
@@ -806,20 +918,12 @@ O2   O   0.410  0.140  0.880  1.000`
       expect(console_error_spy).toHaveBeenCalledWith(expect.stringContaining(expected_error))
     })
 
-    // Rows the parser must drop or repair instead of failing the whole file
-    it.each([
-      // non-numeric x drops the Si1 row while the valid O1 row survives
-      [
-        `a non-numeric coordinate`,
-        `Si1  Si  abc  0.000  0.000\nO1   O   0.250  0.250  0.250`,
-        [`O`],
-      ],
-      // Xx is not an element; the type-symbol path falls back rather than dropping the site
-      [`an unknown element symbol`, `Si1  Xx  0.000  0.000  0.000`, [`H`]],
-    ])(`should keep parsing a CIF with %s`, (_test_name, rows, expected_elements) => {
+    // A row with a non-numeric coordinate is dropped (Si1) while the valid O1 row survives
+    it(`should keep parsing a CIF with a non-numeric coordinate`, () => {
+      const rows = `Si1  Si  abc  0.000  0.000\nO1   O   0.250  0.250  0.250`
       const result = parse_cif(`data_test\n${cell5}\n${site_loop}\n${rows}`)
-      assert(result, `Failed to parse CIF with ${_test_name}`)
-      expect(result.sites.map((site) => site.species[0].element)).toEqual(expected_elements)
+      assert(result, `Failed to parse CIF with a non-numeric coordinate`)
+      expect(result.sites.map((site) => site.species[0].element)).toEqual([`O`])
     })
 
     it(`should handle malformed loops and missing occupancy`, () => {
@@ -863,19 +967,16 @@ O2   O   0.410  0.140  0.880  1.000`
       [0.19567869, 0.80432131, 0.0], [0.80432131, 0.19567869, 0.0], [0.30432131, 0.30432131, 0.5],
     ]
 
-    // rutile has no coordinates outside [0,1), so wrapping must be a no-op here
-    test.each([true, false])(`parses TiO2 CIF with wrap_frac=%s`, (wrap_frac) => {
-      const result = parse_cif(tio2_cif, wrap_frac)
-      assert(
-        result && `lattice` in result,
-        `Failed to parse TiO2 CIF with wrap_frac=${wrap_frac}`,
-      )
+    test(`parses TiO2 CIF`, () => {
+      const result = parse_cif(tio2_cif)
+      assert(result && `lattice` in result, `Failed to parse TiO2 CIF`)
 
       const { a, b, c, alpha, beta, gamma, volume } = result.lattice
       expect_vec3_close([a, b, c], [4.59983732, 4.59983732, 2.95921356], 8)
       expect_vec3_close([alpha, beta, gamma], [90, 90, 90], 8)
       expect(volume).toBeCloseTo(4.59983732 * 4.59983732 * 2.95921356, 6)
 
+      // _atom_site_label is kept verbatim (the file numbers from 0)
       const labels = result.sites.map((site) => site.label)
       expect(labels).toEqual([`Ti0`, `Ti1`, `O2`, `O3`, `O4`, `O5`])
       const elements = result.sites.map((site) => site.species[0].element)
@@ -892,12 +993,7 @@ O2   O   0.410  0.140  0.880  1.000`
 
     test(`should normalize decorated _atom_type_symbol in _atom_type_number_in_cell loop`, () => {
       const cif_with_decorated_symbols = `data_test_decorated_symbols
-_cell_length_a 5.0
-_cell_length_b 5.0
-_cell_length_c 5.0
-_cell_angle_alpha 90
-_cell_angle_beta 90
-_cell_angle_gamma 90
+${cell5}
 loop_
 _atom_type_symbol
 _atom_type_oxidation_number
@@ -907,12 +1003,7 @@ _atom_type_scat_dispersion_imag
 Sn2+ 2 2 0.0 0.0
 Fe3+ 3 1 0.0 0.0
 O2- -2 3 0.0 0.0
-loop_
-_atom_site_label
-_atom_site_type_symbol
-_atom_site_fract_x
-_atom_site_fract_y
-_atom_site_fract_z
+${site_loop}
 Sn1 Sn2+ 0.0 0.0 0.0
 Sn2 Sn2+ 0.5 0.5 0.5
 Fe1 Fe3+ 0.25 0.25 0.25
@@ -930,7 +1021,7 @@ O3 O2- 0.75 0.25 0.75`
 
   describe(`CIF Parser Edge Cases`, () => {
     // 4 Å cubic cell with a label-only atom-site loop
-    const cell4 = `_cell_length_a 4.0\n_cell_length_b 4.0\n_cell_length_c 4.0\n_cell_angle_alpha 90\n_cell_angle_beta 90\n_cell_angle_gamma 90`
+    const cell4 = cif_cell(4)
     const label_cif = (...rows: string[]) =>
       `\ndata_test\n${cell4}\n${label_loop}\n${rows.join(`\n`)}\n`
 
@@ -948,6 +1039,31 @@ O3 O2- 0.75 0.25 0.75`
       expect(result.sites.map((site) => site.label)).toEqual(labels)
       expect(result.lattice?.volume).toBe(64.0)
     })
+
+    // Without a label column sites are named `${element}${idx + 1}` like every other parser
+    test(`names sites by element and index when the loop has no _atom_site_label`, () => {
+      const loop = `loop_\n_atom_site_type_symbol\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z`
+      const result = parse_cif(`data_test\n${cell4}\n${loop}\nFe 0 0 0\nO 0.5 0.5 0.5`)
+      assert(result, `Failed to parse CIF without label column`)
+      expect(result.sites.map((site) => site.label)).toEqual([`Fe1`, `O2`])
+    })
+
+    // Refinement labels (`Fe1`/`Fe2` for two Fe sites, `OH2` for a hydroxyl O) survive a
+    // parse -> structure_to_cif_str -> parse round trip instead of being renumbered
+    test(`round-trips _atom_site_label through structure_to_cif_str`, () => {
+      const labels = [`Fe1`, `Fe2`, `O1a`, `OH2`]
+      const rows = [
+        `Fe1 Fe 0 0 0`,
+        `Fe2 Fe 0.5 0.5 0.5`,
+        `O1a O 0.25 0.25 0.25`,
+        `OH2 O 0.75 0.75 0.75`,
+      ]
+      const parsed = parse_cif(`data_test\n${cell4}\n${site_loop}\n${rows.join(`\n`)}`)
+      assert(parsed, `Failed to parse labelled CIF`)
+      expect(parsed.sites.map((site) => site.label)).toEqual(labels)
+      const reparsed = parse_cif(structure_to_cif_str(parsed))
+      expect(reparsed?.sites.map((site) => site.label)).toEqual(labels)
+    })
   })
 
   // Rows sharing a position are ONE disordered site (pymatgen CifParser semantics): its
@@ -955,12 +1071,7 @@ O3 O2- 0.75 0.25 0.75`
   // symmetry image landing on an existing image of the same row is dropped, not doubled.
   test(`merges CIF rows at one position into a disordered site and expands them by symmetry`, () => {
     const mixed_occupancy_cif = `data_mixed_occupancy
-_cell_length_a                         5.50000
-_cell_length_b                         5.50000
-_cell_length_c                         5.50000
-_cell_angle_alpha                      90
-_cell_angle_beta                       90
-_cell_angle_gamma                      90
+${cif_cell(5.5)}
 
 loop_
 _space_group_symop_operation_xyz
@@ -1076,12 +1187,7 @@ Se6 Se2- 2 a 0.0050(4) 0.4480(6) 0.9025(6) 0.9102(6) 1. 0`
   test(`parses CIF with compound symmetry operations (x-y, -x+y) correctly`, () => {
     // P-3 space group has compound expressions: '-y, x-y, z', 'y, -x+y, -z', etc.
     const cif = `data_CsKB8
-_cell_length_a 6.6611
-_cell_length_b 6.6611
-_cell_length_c 8.184
-_cell_angle_alpha 90
-_cell_angle_beta 90
-_cell_angle_gamma 120
+${cif_cell(6.6611, 6.6611, 8.184, [90, 90, 120])}
 loop_
  _symmetry_equiv_pos_site_id
  _symmetry_equiv_pos_as_xyz
@@ -1119,7 +1225,7 @@ loop_
   // P1 CIF with a 5 Å cubic cell whose symop loop and single atom-site row are supplied
   const p1_cif = (symops: string[], atom_row: string) => {
     const symop_rows = symops.map((symop) => `   '${symop}'`).join(`\n`)
-    return `data_test\n_cell_length_a 5.0\n_cell_length_b 5.0\n_cell_length_c 5.0\n_cell_angle_alpha 90\n_cell_angle_beta 90\n_cell_angle_gamma 90\n_space_group_name_H-M_alt 'P 1'\n_space_group_IT_number 1\n\nloop_\n_space_group_symop_operation_xyz\n${symop_rows}\n\nloop_\n_atom_site_label\n_atom_site_type_symbol\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\n${atom_row}`
+    return `data_test\n${cell5}\n_space_group_name_H-M_alt 'P 1'\n_space_group_IT_number 1\n\nloop_\n_space_group_symop_operation_xyz\n${symop_rows}\n\n${site_loop}\n${atom_row}`
   }
 
   // `?` is CIF's unknown-value token, so neither the label nor the symbol names an element
@@ -1162,8 +1268,9 @@ loop_
       `O3`,
       `OH2`,
     ])
-    const hydroxyl = oxygen_sites.find((site) => site.label === `OH2`)
-    expect(hydroxyl?.species).toEqual([{ element: `O`, occu: 1, oxidation_state: 0 }])
+    for (const site of oxygen_sites) {
+      expect(site.species).toEqual([{ element: `O`, occu: 1, oxidation_state: 0 }])
+    }
 
     // 4 O + 1 As + 1 disordered Zn/Fe/Pb + 1 Pb
     expect(result.sites).toHaveLength(7)
@@ -1303,17 +1410,9 @@ unit_cell:
     expect(parse_structure_file(content)?.sites.length).toBe(expected_sites)
   })
 
-  it.each([
-    [`primitive_cell`, 2],
-    [`unit_cell`, 2],
-    [`auto`, 2],
-    // the fixture declares no supercell, and an explicit request must not silently
-    // fall back to another cell
-    [`supercell`, null],
-  ] as const)(`should handle a requested %s`, (cell_type, expected_sites) => {
-    const result = parse_phonopy_yaml(simple_phonopy_yaml, cell_type)
-    if (expected_sites === null) expect(result).toBeNull()
-    else expect(result?.sites).toHaveLength(expected_sites)
+  it(`labels phonopy sites like every other parser`, () => {
+    const structure = parse_phonopy_yaml(simple_phonopy_yaml)
+    expect(structure?.sites.map((site) => site.label)).toEqual([`Ag1`, `I2`])
   })
 })
 
@@ -1467,7 +1566,7 @@ describe(`parse_structure_file`, () => {
             ],
           },
         },
-        /JSON lattice matrix row 3/,
+        /Expected 3x3 matrix for JSON lattice matrix, got 2 rows/,
       ],
     ])(`fails fast on %s`, (_description, input, message) => {
       expect(() => parse_structure_file(JSON.stringify(input), `test.json`)).toThrow(message)
@@ -1532,8 +1631,7 @@ const optimade_structure_from = (lattice_vectors: number[][], positions: number[
     species_at_sites: positions.map(() => `Fe`),
   })
 
-// Cartesian→fractional conversion cases shared by the parse_optimade_from_raw and
-// optimade_to_crystal coordinate tests (both go through build_optimade_sites)
+// Cartesian→fractional conversion cases for optimade_to_structure
 // oxfmt-ignore
 const OPTIMADE_COORD_CASES = [
   {
@@ -1562,7 +1660,7 @@ const OPTIMADE_COORD_CASES = [
   },
 ]
 
-describe(`OPTIMADE JSON parser`, () => {
+describe(`optimade_to_structure`, () => {
   // oxfmt-ignore
   it.each([
     { name: `crystalline structure with lattice`, first_element: `Si`, attributes: {
@@ -1586,9 +1684,9 @@ describe(`OPTIMADE JSON parser`, () => {
       cartesian_site_positions: [[0, 0, 0]],
       species_at_sites: [`C`],
     } },
-  ])(`should parse $name`, ({ name, attributes, first_element, wrap = (obj: object) => obj }) => {
-    const result = parse_optimade_from_raw(wrap({ id: name, type: `structures`, attributes }))
-    assert(result, `Failed to parse OPTIMADE JSON`)
+  ])(`parses $name from JSON`, ({ name, attributes, first_element, wrap = (obj: object) => obj }) => {
+    const json = JSON.stringify(wrap({ id: name, type: `structures`, attributes }))
+    const result = parse_structure_file(json, `${name}.json`)
 
     const { lattice_vectors, cartesian_site_positions } = attributes as {
       lattice_vectors?: number[][]
@@ -1596,13 +1694,14 @@ describe(`OPTIMADE JSON parser`, () => {
     }
     expect(result.sites).toHaveLength(cartesian_site_positions.length)
     expect(result.sites[0].species[0].element).toBe(first_element)
-
+    expect(result.id).toBe(name)
     if (!lattice_vectors) {
       expect(`lattice` in result).toBe(false)
       return
     }
     assert(`lattice` in result)
     expect(result.lattice.matrix).toEqual(lattice_vectors)
+    expect(result.lattice.pbc).toEqual([true, true, true])
     expect_sites_reconstruct(result)
   })
 
@@ -1613,129 +1712,50 @@ describe(`OPTIMADE JSON parser`, () => {
     [[{ name: `A`, chemical_symbols: [`Fe`, `Ni`], concentration: [1, 3] }], [`A`], [`Ni`]],
     [[{ name: `v`, chemical_symbols: [`vacancy`, `O`], concentration: [9, 1] }], [`v`], [`O`]],
     [undefined, [`Fe`, `O`], [`Fe`, `O`]],
-    // null entry (missing species) is skipped in skip mode, not crashed on (was a null.replace throw)
-    [undefined, [`Fe`, null], [`Fe`]],
   ])(`should resolve species_at_sites %#`, (species, species_at_sites, expected) => {
-    const result = parse_optimade_from_raw({
-      id: `test-species`,
-      type: `structures`,
-      attributes: {
+    const result = optimade_to_structure(
+      optimade(`test-species`, {
         cartesian_site_positions: species_at_sites.map((_, idx) => [idx, 0, 0]),
         species_at_sites,
         species,
-      },
-    })
-    assert(result, `Failed to parse OPTIMADE JSON`)
+      }),
+    )
     expect(result.sites.map((site) => site.species[0].element)).toEqual(expected)
   })
 
+  // Invalid site data throws instead of silently dropping atoms: a structure rendered with
+  // missing sites is worse than an error the UI can show
   // oxfmt-ignore
   it.each([
-    [`missing required fields`, { elements: [`Fe`] }, `OPTIMADE JSON missing required position or species data`],
-    // only one species for two positions
-    [`mismatched positions and species count`, { cartesian_site_positions: [[0, 0, 0], [1, 1, 1]], species_at_sites: [`Fe`] }, `OPTIMADE JSON position/species count mismatch`],
-    // too few components, a non-numeric component and a non-finite one
-    [`no valid sites after filtering invalid positions`, { cartesian_site_positions: [[0, 0], [0, `bad`, 0], [Infinity, 0, 0]], species_at_sites: [`Fe`, `Fe`, `Fe`] }, `No valid sites found in OPTIMADE JSON`],
-  ])(`should handle %s gracefully`, (_name, attributes, expected_error) => {
-    expect(parse_optimade_from_raw({ id: `x`, type: `structures`, attributes })).toBeNull()
-    expect_only_error(expected_error)
+    [`missing positions and species`, { elements: [`Fe`] }, /missing cartesian_site_positions or species_at_sites/],
+    [`missing species_at_sites`, { cartesian_site_positions: [[0, 0, 0]] }, /missing cartesian_site_positions or species_at_sites/],
+    [`mismatched positions and species count`, { cartesian_site_positions: [[0, 0, 0], [1, 1, 1]], species_at_sites: [`Fe`] }, /2 positions but 1 species_at_sites/],
+    [`a null species entry`, { cartesian_site_positions: [[0, 0, 0], [1, 0, 0]], species_at_sites: [`Fe`, null] }, /site 1 has no species name/],
+    [`a position with too few components`, { cartesian_site_positions: [[0, 0]], species_at_sites: [`Fe`] }, /position 1: expected 3 coordinates, got 2/],
+    [`a non-numeric position`, { cartesian_site_positions: [[0, `bad`, 0]], species_at_sites: [`Fe`] }, /position 1: expected 3 finite coordinates/],
+    [`a non-finite position`, { cartesian_site_positions: [[Infinity, 0, 0]], species_at_sites: [`Fe`] }, /position 1: expected 3 finite coordinates/],
+    [`a 2-row lattice`, { lattice_vectors: [[1, 0, 0], [0, 1, 0]], cartesian_site_positions: [[0, 0, 0]], species_at_sites: [`Fe`] }, /Expected 3x3 matrix for OPTIMADE lattice_vectors, got 2 rows/],
+  ])(`throws on %s`, (_name, attributes, expected_error) => {
+    const entry = optimade(`x`, attributes as OptimadeStructure[`attributes`])
+    expect(() => optimade_to_structure(entry)).toThrow(expected_error)
+    // through the JSON dispatcher the same reason reaches the aggregated parse error
+    expect(() => parse_structure_file(JSON.stringify(entry), `x.json`)).toThrow(expected_error)
   })
 
   it.each(OPTIMADE_COORD_CASES)(
     `should handle $name`,
     ({ lattice_vectors, positions, expected_abc }) => {
-      const result = parse_optimade_from_raw(
-        optimade_structure_from(lattice_vectors, positions),
-      )
-      assert(result && `lattice` in result, `Failed to parse OPTIMADE JSON`)
+      const result = optimade_to_structure(optimade_structure_from(lattice_vectors, positions))
+      assert(`lattice` in result, `expected OPTIMADE lattice`)
       expect(result.sites).toHaveLength(positions.length)
       expect(result.lattice.matrix).toEqual(lattice_vectors)
       result.sites.forEach((site, idx) => expect_vec3_close(site.abc, expected_abc[idx], 12))
       expect_sites_reconstruct(result)
     },
   )
-})
-
-describe(`OPTIMADE JSON Detection`, () => {
-  const attributes = { cartesian_site_positions: [[0, 0, 0]], species_at_sites: [`Fe`] }
-  it.each([
-    [`valid OPTIMADE structure`, { id: `test`, type: `structures`, attributes }, true],
-    [`OPTIMADE structure array`, [{ id: `test`, type: `structures`, attributes }], true],
-    [`missing type field`, { id: `test`, attributes }, false],
-    [`wrong type field`, { id: `test`, type: `links`, attributes }, false],
-    [`missing id field`, { type: `structures`, attributes }, false],
-    [`missing attributes field`, { id: `test`, type: `structures` }, false],
-    [`wrapped response with empty data array`, { data: [] }, false],
-    [`null value`, null, false],
-    [`non-structure JSON`, { name: `test`, value: 123 }, false],
-  ])(`should detect %s correctly`, (_name, data, expected) => {
-    expect(is_optimade_raw(data)).toBe(expected)
-  })
-})
-
-describe(`OPTIMADE to Pymatgen Conversion`, () => {
-  // oxfmt-ignore
-  it.each([
-    { name: `crystalline structure with lattice`, first_element: `Si`, attributes: {
-      elements: [`Si`, `O`],
-      lattice_vectors: [[4.91, 0, 0], [0, 4.91, 0], [0, 0, 5.43]],
-      cartesian_site_positions: [[0, 0, 0], [2.455, 2.455, 1.3575]],
-      species_at_sites: [`Si`, `O`],
-    } },
-    { name: `molecular structure with lattice`, first_element: `O`, attributes: {
-      elements: [`H`, `O`],
-      lattice_vectors: [[10, 0, 0], [0, 10, 0], [0, 0, 10]],
-      cartesian_site_positions: [[0, 0, 0], [0.957, 0, 0]],
-      species_at_sites: [`O`, `H`],
-    } },
-  ])(`should convert $name`, ({ name, attributes, first_element }) => {
-    const result = optimade_to_crystal({ id: name, type: `structures`, attributes })
-    assert(result, `Failed to convert OPTIMADE structure`)
-
-    expect(result.sites).toHaveLength(attributes.cartesian_site_positions.length)
-    expect(result.sites[0].species[0].element).toBe(first_element)
-    expect(result.id).toBe(name)
-    expect(result.lattice?.matrix).toEqual(attributes.lattice_vectors)
-    expect(result.lattice?.pbc).toEqual([true, true, true])
-  })
-
-  const full_attrs = {
-    lattice_vectors: cubic_vectors(1),
-    cartesian_site_positions: [[0, 0, 0]],
-    species_at_sites: [`Fe`],
-  }
-  it.each([`lattice_vectors`, `cartesian_site_positions`, `species_at_sites`] as const)(
-    `should handle a missing %s gracefully`,
-    (missing_key) => {
-      const attrs = { ...full_attrs, [missing_key]: undefined }
-      expect(optimade_to_crystal(optimade(`test`, attrs))).toBeNull()
-      expect_only_error(`Missing required OPTIMADE structure data`)
-    },
-  )
-
-  it(`should handle mismatched positions and species count gracefully`, () => {
-    // Only one species for two positions
-    // oxfmt-ignore
-    const positions = [[0, 0, 0], [1, 1, 1]]
-    const attrs = { ...full_attrs, cartesian_site_positions: positions }
-    expect(optimade_to_crystal(optimade(`test`, attrs))).toBeNull()
-    expect_only_error(`Error converting OPTIMADE to Crystal format`)
-  })
-
-  it.each(OPTIMADE_COORD_CASES)(
-    `should handle $name`,
-    ({ lattice_vectors, positions, expected_abc }) => {
-      const result = optimade_to_crystal(optimade_structure_from(lattice_vectors, positions))
-      assert(result, `Failed to convert OPTIMADE structure`)
-
-      expect(result.sites).toHaveLength(expected_abc.length)
-      result.sites.forEach((site, idx) => expect_vec3_close(site.abc, expected_abc[idx], 12))
-      expect_sites_reconstruct(result)
-    },
-  )
 
   it(`should extract metadata properties from attributes`, () => {
-    const result = optimade_to_crystal(
+    const result = optimade_to_structure(
       optimade(`mp-7000`, {
         lattice_vectors: cubic_vectors(4.91),
         cartesian_site_positions: [[0, 0, 0]],
@@ -1748,23 +1768,19 @@ describe(`OPTIMADE to Pymatgen Conversion`, () => {
         _mp_stability: { energy_above_hull: 0.0 },
       }),
     )
-    assert(result, `Failed to convert OPTIMADE structure`)
-
-    expect(result.properties).toBeDefined()
-    expect(result.properties?.chemical_formula_descriptive).toBe(`SiO2`)
-    expect(result.properties?.nelements).toBe(2)
-    expect(result.properties?.last_modified).toBe(`2023-03-11`)
-    expect(result.properties?._mp_stability).toEqual({ energy_above_hull: 0.0 })
-    // Verify structural fields are NOT in properties
-    expect(result.properties?.lattice_vectors).toBeUndefined()
-    expect(result.properties?.cartesian_site_positions).toBeUndefined()
-    expect(result.properties?.species_at_sites).toBeUndefined()
+    expect(result.id).toBe(`mp-7000`)
+    expect(result.properties).toEqual({
+      chemical_formula_descriptive: `SiO2`,
+      nelements: 2,
+      last_modified: `2023-03-11`,
+      _mp_stability: { energy_above_hull: 0.0 },
+    })
   })
 
   it(`should extract species properties (mass) and resolve named species`, () => {
     // oxfmt-ignore
     const positions = [[0, 0, 0], [2.5, 2.5, 2.5]]
-    const result = optimade_to_crystal(
+    const result = optimade_to_structure(
       optimade(`test`, {
         lattice_vectors: cubic_vectors(5),
         cartesian_site_positions: positions,
@@ -1775,8 +1791,6 @@ describe(`OPTIMADE to Pymatgen Conversion`, () => {
         ],
       }),
     )
-    assert(result, `Failed to convert OPTIMADE structure`)
-
     expect(result.sites[0].properties.mass).toBe(55.845)
     expect(result.sites[0].properties.concentration).toBeUndefined() // 1.0 is default, not stored
     // named species 'O1' resolves to element O through chemical_symbols
@@ -1795,7 +1809,7 @@ describe(`OPTIMADE to Pymatgen Conversion`, () => {
         concentration: [0.3, 0.7],
       },
     ]
-    const result = optimade_to_crystal(
+    const result = optimade_to_structure(
       optimade(`disordered`, {
         lattice_vectors: cubic_vectors(5),
         cartesian_site_positions: [[0, 0, 0]],
@@ -1803,10 +1817,26 @@ describe(`OPTIMADE to Pymatgen Conversion`, () => {
         species,
       }),
     )
-    assert(result, `Failed to convert OPTIMADE structure`)
     expect(result.sites[0].species[0].element).toBe(`Ni`) // highest concentration wins
     expect(result.sites[0].properties.mass).toBe(58.693) // mass[1], not mass[0]
     expect(result.sites[0].properties.concentration).toBe(0.7) // concentration[1], not [0]
+  })
+})
+
+describe(`OPTIMADE JSON Detection`, () => {
+  const attributes = { cartesian_site_positions: [[0, 0, 0]], species_at_sites: [`Fe`] }
+  it.each([
+    [`valid OPTIMADE structure`, { id: `test`, type: `structures`, attributes }, true],
+    [`OPTIMADE structure array`, [{ id: `test`, type: `structures`, attributes }], true],
+    [`missing type field`, { id: `test`, attributes }, false],
+    [`wrong type field`, { id: `test`, type: `links`, attributes }, false],
+    [`missing id field`, { type: `structures`, attributes }, false],
+    [`missing attributes field`, { id: `test`, type: `structures` }, false],
+    [`wrapped response with empty data array`, { data: [] }, false],
+    [`null value`, null, false],
+    [`non-structure JSON`, { name: `test`, value: 123 }, false],
+  ])(`should detect %s correctly`, (_name, data, expected) => {
+    expect(optimade_structure_from_raw(data) !== null).toBe(expected)
   })
 })
 
@@ -1816,66 +1846,67 @@ describe(`Structure File Detection`, () => {
   // trajectory one.
   // oxfmt-ignore
   test.each([
-    // structure extensions, VASP filenames, compressed variants and case insensitivity
-    [`test.cif`, true], [`test.poscar`, true], [`test.vasp`, true], [`test.xyz`, true],
-    [`test.extxyz`, true], [`test.lmp`, true], [`test.data`, true], [`test.dump`, true],
-    [`test.pdb`, true], [`test.mol`, true], [`test.mol2`, true], [`test.sdf`, true],
-    [`test.mmcif`, true], [`POSCAR`, true], [`CONTCAR`, true],
-    // Unsupported VASP outputs and run inputs are not structure files
-    [`OUTCAR`, false], [`POTCAR`, false], [`INCAR`, false], [`KPOINTS`, false],
-    [`structure.cif.gz`, true], [`molecule.xyz.gz`, true], [`crystal.poscar.gz`, true],
-    [`molecule.pdb.gz`, true], [`compound.mol.gz`, true], [`structure.mol2.gz`, true],
-    [`data.sdf.gz`, true], [`crystal.mmcif.gz`, true], [`structure.extxyz.gz`, true],
-    [`STRUCTURE.CIF`, true], [`MOLECULE.XYZ`, true], [`CRYSTAL.POSCAR`, true],
-    // YAML/XML: structure keyword required
-    [`structure.yaml`, true], [`phonopy.yml`, true], [`crystal.yaml`, true],
-    [`material.yml`, true], [`geometry.yaml`, true], [`lattice.yml`, true],
-    [`vasp.yaml`, true], [`structure.xml.gz`, true],
-    [`test.yaml`, false], [`test.yml`, false], [`config.yaml`, false], [`input.yml`, false],
-    [`general.yaml`, false], [`random.yml`, false], [`test.xml`, false],
-    [`CONFIG.YAML`, false], [`config.yaml.gz`, false],
-    // JSON: structure keyword required (the strict list, so no generic `data`)
-    [`structure.json`, true], [`structure.json.gz`, true], [`crystal.json`, true],
-    [`crystal.json.gz`, true], [`my-structure.json`, true], [`lattice.json.gz`, true],
-    [`phonopy.json`, true], [`phono3py.json.gz`, true], [`material.json`, true],
-    [`test.json`, false], [`config.json`, false], [`settings.json`, false],
-    [`results.json`, false], [`output.json`, false], [`data.json.gz`, false],
-    [`DATA.JSON`, false], [`mp-756175.json`, false], [`Мой_файл.json`, false],
-    [`nested-Hf36Mo36Nb36Ta36W36-hcp-mace-omat.json.gz`, false],
-    // trajectory keywords and extensions never count as structures
-    [`test.traj`, false], [`test.h5`, false], [`test.hdf5`, false],
-    [`trajectory.traj`, false], [`md.xyz.gz`, false], [`simulation.h5`, false],
-    [`XDATCAR`, false], [`relax.extxyz`, false],
-    // unicode names, edge cases and a 1000-char name
-    [`مەركەزیstructure.cif`, true], [`日本語.xyz`, true], [`file🔥emoji.poscar`, true],
-    [`Li4Fe3Mn1(PO4)4.cif`, true], [`BaTiO3-tetragonal.poscar`, true],
-    [`cyclohexane.xyz`, true], [`cyclohexane.extxyz`, true], [`quartz.extxyz`, true],
-    [`AgI-fq978185p-phono3py.yaml.gz`, true], [`BeO-zw12zc18p-phono3py.yaml.gz`, true],
+    // structure extensions (any case, optionally compressed) and bare VASP structure files
+    [`test.cif`, true], [`test.poscar`, true], [`test.xyz`, true], [`test.extxyz`, true],
+    [`test.data`, true], [`test.mmcif`, true], [`structure.cif.gz`, true], [`STRUCTURE.CIF`, true],
+    [`POSCAR`, true], [`CONTCAR`, true], [`BaTiO3-tetragonal.poscar`, true], [`日本語.xyz`, true],
     [`${`a`.repeat(1000)}.cif`, true],
+    // unsupported VASP run files
+    [`OUTCAR`, false], [`INCAR`, false],
+    // trajectory extensions and keywords never count, even with a structure extension
+    [`test.traj`, false], [`test.h5`, false], [`XDATCAR`, false], [`md.xyz.gz`, false],
+    [`relax.extxyz`, false],
+    // YAML/XML: structure keyword required
+    [`structure.yaml`, true], [`phonopy.yml`, true], [`structure.xml.gz`, true],
+    [`AgI-fq978185p-phono3py.yaml.gz`, true],
+    [`test.yaml`, false], [`config.yaml.gz`, false], [`test.xml`, false],
+    // JSON: strict structure keyword required (so no generic `data`)
+    [`structure.json`, true], [`crystal.json.gz`, true], [`phonopy.json`, true],
+    [`test.json`, false], [`data.json.gz`, false], [`mp-756175.json`, false],
+    // no or unknown extension
     [`random.txt`, false], [`test.xyz.backup`, false], [``, false], [`no.extension`, false],
-    [`.`, false], [`file.xyz.`, false],
+    [`file.xyz.`, false],
   ])(`structure detection: "%s" → %s`, (filename, expected) => {
     expect(is_structure_file(filename)).toBe(expected)
   })
 })
 
-describe(`CIF strict mode`, () => {
+describe(`CIF cell parameter errors`, () => {
   // replaces only the first 5.000, i.e. the _cell_length_a value
-  const cif_invalid_length = `data_test\n${cell5.replace(`5.000`, `invalid`)}\n${site_loop}\nC1 C 0 0 0`
+  const cif_with_length_a = (value: string) =>
+    `data_test\n${cell5.replace(`5.000`, value)}\n${site_loop}\nC1 C 0 0 0`
 
-  it(`should return null and log an error in strict mode (default)`, () => {
-    expect(parse_cif(cif_invalid_length)).toBeNull()
-    expect(console_error_spy).toHaveBeenCalledWith(
-      `Error parsing CIF file:`,
-      new Error(`Invalid CIF cell parameter in line: _cell_length_a  invalid`),
-    )
+  // oxfmt-ignore
+  it.each([
+    [`invalid`, `Invalid CIF cell parameter in line: _cell_length_a  invalid`],
+    [`0`, `CIF cell has non-positive edge lengths: [0, 5, 5, 90, 90, 90]`],
+  ])(`rejects _cell_length_a %s naming the offending value`, (value, message) => {
+    expect(parse_cif(cif_with_length_a(value))).toBeNull()
+    expect(console_error_spy).toHaveBeenCalledWith(`Error parsing CIF file:`, new Error(message))
   })
 
-  // non-strict mode reports the missing cell rather than the offending line, but still
-  // refuses to invent a lattice
-  it(`should return null in non-strict mode`, () => {
-    expect(parse_cif(cif_invalid_length, true, false)).toBeNull()
+  // `.` / `?` mean unset, so the cell is missing rather than corrupt
+  it(`treats a placeholder value as a missing cell`, () => {
+    expect(parse_cif(cif_with_length_a(`?`))).toBeNull()
     expect(console_error_spy).toHaveBeenCalledWith(`Insufficient cell parameters in CIF file`)
+  })
+})
+
+describe(`shared numeric coercion`, () => {
+  // A blank token is NaN (Number(``) would be 0); parse_coordinate rejects what
+  // parse_float_token cannot read as a finite number
+  test.each([
+    [`1.5`, 1.5],
+    [`1.0D-3`, 0.001],
+    [`   `, NaN],
+    [``, NaN],
+    [`1.0abc`, NaN],
+  ])(`parse_float_token(%j) is %d`, (token, expected) => {
+    expect(parse_float_token(token)).toBe(expected)
+  })
+
+  test.each([`   `, ``, `abc`, `Infinity`, `NaN`])(`parse_coordinate(%j) throws`, (token) => {
+    expect(() => parse_coordinate(token)).toThrow(`Invalid coordinate value: '${token}'`)
   })
 })
 
@@ -2233,13 +2264,28 @@ describe(`molecular and LAMMPS structure formats`, () => {
     expect(bond_tuples(result)).toEqual([[0, 1, 1], [0, 2, 1]])
   })
 
-  test(`MOL2 CRYSIN section yields a lattice`, () => {
-    const content = `@<TRIPOS>MOLECULE\ncrystal\n 1 0 1 0 0\nSMALL\nNO_CHARGES\n\n@<TRIPOS>ATOM\n      1 C1     1.0000 2.0000 3.0000 C.3    1 RES1  0.0000\n@<TRIPOS>CRYSIN\n 4.0000 5.0000 6.0000 90.0000 90.0000 90.0000 1 1`
+  // Detection and the parser must agree even when a comment or blank line sits between the
+  // CRYSIN header and its row (the parser skips those; detection used to regex the next line)
+  test.each([
+    [`bare`, ``],
+    [`commented`, `# a b c alpha beta gamma spgr setting\n\n`],
+  ])(`MOL2 CRYSIN section yields a lattice (%s)`, (_kind, preamble) => {
+    const content = `@<TRIPOS>MOLECULE\ncrystal\n 1 0 1 0 0\nSMALL\nNO_CHARGES\n\n@<TRIPOS>ATOM\n      1 C1     1.0000 2.0000 3.0000 C.3    1 RES1  0.0000\n@<TRIPOS>CRYSIN\n${preamble} 4.0000 5.0000 6.0000 90.0000 90.0000 90.0000 1 1`
+    expect(detect_structure_type(`crystal.mol2`, content)).toBe(`crystal`)
     const result = parse_structure_file(content, `crystal.mol2`)
     assert(`lattice` in result, `expected CRYSIN lattice`)
     expect([result.lattice.a, result.lattice.b, result.lattice.c]).toEqual([4, 5, 6])
     expect_vec3_close(result.sites[0].abc, [0.25, 0.4, 0.5], 6)
     expect_sites_reconstruct(result)
+  })
+
+  test(`MOL2 placeholder CRYSIN cell is ignored`, () => {
+    // MD and docking tools write 1 1 1 90 90 90 for aperiodic systems, like a PDB CRYST1
+    const content = `@<TRIPOS>MOLECULE\ncrystal\n 1 0 1 0 0\nSMALL\nNO_CHARGES\n\n@<TRIPOS>ATOM\n      1 C1     1.0000 2.0000 3.0000 C.3    1 RES1  0.0000\n@<TRIPOS>CRYSIN\n 1.0000 1.0000 1.0000 90.0000 90.0000 90.0000 1 1`
+    const result = parse_structure_file(content, `dummy.mol2`)
+    expect(`lattice` in result).toBe(false)
+    expect(result.sites[0].abc).toEqual([0, 0, 0])
+    expect(detect_structure_type(`dummy.mol2`, content)).toBe(`molecule`)
   })
 
   test(`mmCIF dot-notation tags are not swallowed by the CIF parser`, () => {
@@ -2253,12 +2299,13 @@ describe(`molecular and LAMMPS structure formats`, () => {
   })
 
   test.each([
-    // type_symbol is an element symbol, so `CA` there is calcium
-    [`type_symbol`, `_atom_site.type_symbol`, [`Ca`, `C`, `N`]],
-    // label_atom_id is a PDB atom name: `CA` is the alpha carbon, `CB` the beta carbon
-    [`label_atom_id`, `_atom_site.label_atom_id`, [`C`, `C`, `N`]],
+    // type_symbol is an element symbol, so `CA` there is calcium and `FE` iron
+    [`type_symbol`, `_atom_site.type_symbol`, [`Ca`, `C`, `N`, `Fe`]],
+    // label_atom_id is a PDB atom name: `CA` is the alpha carbon, `CB` the beta carbon, and
+    // without the PDB's column alignment `FE` can only be read one letter at a time
+    [`label_atom_id`, `_atom_site.label_atom_id`, [`C`, `C`, `N`, `F`]],
   ])(`mmCIF reads elements from %s by its own naming rule`, (_name, tag, expected) => {
-    const content = `data_x\nloop_\n${tag}\n_atom_site.Cartn_x\n_atom_site.Cartn_y\n_atom_site.Cartn_z\nCA 0.0 0.0 0.0\nCB 1.0 0.0 0.0\nN 2.0 0.0 0.0`
+    const content = `data_x\nloop_\n${tag}\n_atom_site.Cartn_x\n_atom_site.Cartn_y\n_atom_site.Cartn_z\nCA 0.0 0.0 0.0\nCB 1.0 0.0 0.0\nN 2.0 0.0 0.0\nFE 3.0 0.0 0.0`
     const result = parse_structure_file(content, `atoms.mmcif`)
     expect(result.sites.map((site) => site.species[0].element)).toEqual(expected)
   })
@@ -2476,12 +2523,12 @@ describe(`molecular and LAMMPS structure formats`, () => {
     expect(structure.lattice.pbc).toEqual(expected_pbc)
   })
 
-  test(`LAMMPS dump maps numeric atom types when no element column is present`, () => {
-    const rows = [`1 1 0.0 0.0 0.0`, `2 2 0.5 0.5 0.5`]
-    const result = parse_structure_file(
-      lammps_dump(`pp pp pp`, `id type xs ys zs`, rows),
-      `types.dump`,
-    )
+  test.each([
+    [`element column`, `id element xs ys zs`, [`1 H 0.0 0.0 0.0`, `2 He 0.5 0.5 0.5`]],
+    // No element column: types read as atomic numbers (ASE's default)
+    [`bare numeric types`, `id type xs ys zs`, [`1 1 0.0 0.0 0.0`, `2 2 0.5 0.5 0.5`]],
+  ])(`LAMMPS dump reads elements from the %s`, (_label, columns, rows) => {
+    const result = parse_structure_file(lammps_dump(`pp pp pp`, columns, rows), `types.dump`)
     expect(result.sites.map((site) => site.species[0].element)).toEqual([`H`, `He`])
     expect_vec3_close(result.sites[1].xyz, [2, 2, 2], 8)
   })

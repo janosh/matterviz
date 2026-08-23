@@ -3,6 +3,7 @@
 // the shared sequence player) and the imperative controller hosts use. No DOM, so it is
 // unit-testable on its own; Trajectory.svelte only renders what it exposes.
 import { create_sequence_player } from '$lib/layout/sequence-player.svelte'
+import { clamp } from '$lib/math'
 import type { AnyStructure } from '$lib/structure'
 import { to_error } from '$lib/utils'
 import { untrack } from 'svelte'
@@ -220,7 +221,7 @@ export function create_trajectory_session(
   $effect(() => {
     const idx = inputs.index()
     if (frame_count === 0) return
-    const clamped = Math.min(Math.max(Math.floor(idx), 0), frame_count - 1)
+    const clamped = clamp(Math.floor(idx), 0, frame_count - 1)
     if (clamped !== idx) {
       untrack(() => {
         inputs.set_index(clamped)
@@ -260,7 +261,7 @@ export function create_trajectory_session(
 
   function commit_index(idx: number): void {
     if (!Number.isFinite(idx) || frame_count === 0) return
-    const bounded = Math.min(Math.max(Math.round(idx), 0), frame_count - 1)
+    const bounded = clamp(Math.round(idx), 0, frame_count - 1)
     if (bounded === inputs.index()) return
     inputs.set_index(bounded)
     inputs.on_step_change?.(bounded)
@@ -328,7 +329,7 @@ export function create_trajectory_session(
       if (!Number.isFinite(step_idx)) {
         throw new TypeError(`Step index must be finite, got ${step_idx}`)
       }
-      const bounded = Math.min(Math.max(Math.floor(step_idx), 0), Math.max(frame_count - 1, 0))
+      const bounded = clamp(Math.floor(step_idx), 0, Math.max(frame_count - 1, 0))
       player.go_to(bounded)
       return bounded
     },

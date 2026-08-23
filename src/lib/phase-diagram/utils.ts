@@ -1,7 +1,7 @@
 import { add_alpha } from '$lib/colors'
 import { DEFAULT_PNG_DPI } from '$lib/constants'
 import { format_num } from '$lib/labels'
-import { point_in_polygon, type Vec2 } from '$lib/math'
+import { array_extent, point_in_polygon, type Vec2 } from '$lib/math'
 import type { Sides } from '$lib/plot/core/layout'
 import { line } from 'd3-shape'
 import type {
@@ -19,10 +19,8 @@ import type {
 // Convert temperature between units (K, °C, °F)
 export function convert_temp(value: number, from: TempUnit, to: TempUnit): number {
   if (from === to) return value
-  // Convert to Kelvin first
   const kelvin =
     from === `°C` ? value + 273.15 : from === `°F` ? (value - 32) * (5 / 9) + 273.15 : value
-  // Convert from Kelvin to target
   return to === `K` ? kelvin : to === `°C` ? kelvin - 273.15 : (kelvin - 273.15) * (9 / 5) + 32
 }
 
@@ -162,7 +160,6 @@ export const find_phase_at_point = (
     point_in_polygon(composition, temperature, region.vertices),
   ) ?? null
 
-// SVG path generator using d3-shape
 const path_line = line()
   .x((point) => point[0])
   .y((point) => point[1])
@@ -402,6 +399,41 @@ export function calculate_vertical_lever_rule(
   }
 }
 
+// Lever rule of the active mode as one [phase, fraction, location] row per tie-line end
+// (compositions for the horizontal rule, temperatures for the vertical one); null when the
+// hover info carries no lever rule for that mode
+export function lever_rule_rows(
+  info: PhaseHoverInfo,
+  mode: LeverRuleMode,
+  comp_unit: CompUnit,
+  temp_unit: TempUnit,
+  data_temp_unit: TempUnit = temp_unit,
+): { vertical: boolean; rows: [string, number, string][] } | null {
+  const { lever_rule: lr, vertical_lever_rule: vlr } = info
+  if (mode === `vertical` && vlr) {
+    const temp = (val: number) =>
+      format_temperature(convert_temp(val, data_temp_unit, temp_unit), temp_unit)
+    return {
+      vertical: true,
+      rows: [
+        [vlr.bottom_phase, vlr.fraction_bottom, temp(vlr.bottom_temperature)],
+        [vlr.top_phase, vlr.fraction_top, temp(vlr.top_temperature)],
+      ],
+    }
+  }
+  if (mode === `horizontal` && lr) {
+    const comp = (val: number) => format_composition(val, comp_unit)
+    return {
+      vertical: false,
+      rows: [
+        [lr.left_phase, lr.fraction_left, comp(lr.left_composition)],
+        [lr.right_phase, lr.fraction_right, comp(lr.right_composition)],
+      ],
+    }
+  }
+  return null
+}
+
 // Format hover info as copyable text for clipboard
 // Only includes lever rule data for the active mode to match tooltip display
 export function format_hover_info_text(
@@ -425,25 +457,12 @@ export function format_hover_info_text(
     )} ${component_a})`,
   ]
 
-  const { lever_rule: lr, vertical_lever_rule: vlr } = info
-  const lever_line = (phase: string, fraction: number, location: string) =>
-    `  ${phase}: ${format_num(fraction * 100, `.1f`)}% (at ${location})`
-  if (lever_rule_mode === `horizontal` && lr) {
-    const comp = (val: number) => format_composition(val, comp_unit)
-    lines.push(
-      ``,
-      `Lever Rule:`,
-      lever_line(lr.left_phase, lr.fraction_left, comp(lr.left_composition)),
-      lever_line(lr.right_phase, lr.fraction_right, comp(lr.right_composition)),
-    )
-  } else if (lever_rule_mode === `vertical` && vlr) {
-    const temp = (val: number) => format_temperature(to_display(val), temp_unit)
-    lines.push(
-      ``,
-      `Vertical Lever Rule:`,
-      lever_line(vlr.bottom_phase, vlr.fraction_bottom, temp(vlr.bottom_temperature)),
-      lever_line(vlr.top_phase, vlr.fraction_top, temp(vlr.top_temperature)),
-    )
+  const lever = lever_rule_rows(info, lever_rule_mode, comp_unit, temp_unit, data_temp_unit)
+  if (lever) {
+    lines.push(``, lever.vertical ? `Vertical Lever Rule:` : `Lever Rule:`)
+    for (const [phase, fraction, location] of lever.rows) {
+      lines.push(`  ${phase}: ${format_num(fraction * 100, `.1f`)}% (at ${location})`)
+    }
   }
 
   return lines.join(`\n`)
@@ -454,152 +473,8 @@ export function get_phase_stability_range(
   region: PhaseRegion,
 ): { t_min: number; t_max: number } | null {
   if (!region.vertices?.length) return null
-  const temps = region.vertices.map(([, temp]) => temp)
-  return { t_min: Math.min(...temps), t_max: Math.max(...temps) }
-}
-
-// Extract reference/citation from TDB comments
-export function extract_tdb_reference(comments: string[]): string | null {
-  const ref_keywords = [`reference`, `citation`, `database`, `assessed by`]
-  for (const comment of comments) {
-    const lower = comment.toLowerCase()
-    if (ref_keywords.some((kw) => lower.includes(kw))) {
-      const ref = comment.replace(/^\$\s*/, ``).trim()
-      // Skip incomplete references (must have substantial content after keyword)
-      if (ref.length > 30 && !ref.endsWith(`from`)) return ref
-    }
-  }
-  return null
-}
-
-// Summarize sublattice models from TDB phases
-export function summarize_models(
-  phases: { sublattice_count: number; sublattice_sites: number[] }[],
-): string {
-  const counts = new Map<number, number>()
-  for (const phase of phases) {
-    counts.set(phase.sublattice_count, (counts.get(phase.sublattice_count) ?? 0) + 1)
-  }
-  return [...counts.entries()]
-    .toSorted(([sl_a], [sl_b]) => sl_a - sl_b)
-    .map(([sublattices, count]) => `${count}×${sublattices}-SL`)
-    .join(`, `)
-}
-
-// Chemical Formula Parsing Utilities (for pseudo-binary phase diagrams)
-
-// Markup token for rendering a formula - plain text, subscript, or superscript run.
-// (Not $lib/composition's FormulaSpecies, which is an element/amount pair.)
-interface FormulaMarkupToken {
-  text?: string
-  sub?: string
-  sup?: string
-}
-
-// Check if a component name is a compound (vs single element)
-// Returns true if name contains digits (e.g., "Fe3C", "SiO2") or multiple uppercase letters
-// that indicate multiple elements (e.g., "MgO", "CaO")
-// Single elements like "Fe", "Ca", "He" return false
-export function is_compound(name: string): boolean {
-  if (!name) return false
-  // Contains digits -> likely a compound (Fe3C, SiO2, Al2O3)
-  if (/\d/.test(name)) return true
-  // Single element pattern: one uppercase followed by optional lowercase (Fe, Ca, He, C)
-  if (/^[A-Z][a-z]?$/.test(name)) return false
-  return (name.match(/[A-Z]/g)?.length ?? 0) >= 2
-}
-
-// Tokenize a chemical formula for rendering with subscripts/superscripts
-// Examples:
-//   "Fe3C" -> [{text: "Fe"}, {sub: "3"}, {text: "C"}]
-//   "SiO2" -> [{text: "Si"}, {text: "O"}, {sub: "2"}]
-//   "Al2O3" -> [{text: "Al"}, {sub: "2"}, {text: "O"}, {sub: "3"}]
-//   "Fe" -> [{text: "Fe"}]
-//   "α-Fe" -> [{text: "α-Fe"}] (Greek phases pass through unchanged)
-// Token classes: digit runs become subscripts; a '-' at the end of the string or followed by
-// digits is a charge superscript ("O2-", "Cl-2"), any other '-' stays a text hyphen ("Fe-Fe3C");
-// element symbols (uppercase + lowercase run) are separate text tokens; any other run of
-// characters merges into the preceding text token. '+' never gets here (early return above).
-const FORMULA_TOKEN_RE =
-  /(?<sub>\d+)|(?<sup>-(?:\d+|$))|(?<element>[A-Z][a-z]*)|(?<other>-|[^A-Z\d-]+)/g
-
-export function tokenize_formula(formula: string): FormulaMarkupToken[] {
-  if (!formula) return []
-  // Greek letters or multi-phase notation pass through unchanged
-  if (/[α-ωΑ-Ω]/.test(formula) || formula.includes(`+`)) return [{ text: formula }]
-
-  const tokens: FormulaMarkupToken[] = []
-  for (const { groups } of formula.matchAll(FORMULA_TOKEN_RE)) {
-    const { sub, sup, element, other } = groups ?? {}
-    const prev = tokens.at(-1)
-    if (sub) tokens.push({ sub })
-    else if (sup) tokens.push({ sup })
-    else if (element) tokens.push({ text: element })
-    else if (other !== `-` && prev?.text !== undefined) prev.text += other
-    else tokens.push({ text: other })
-  }
-  return tokens
-}
-
-// Baseline shifts for sub/superscript (SVG dy values are cumulative across tspans)
-const DY = { sub: 0.25, sup: -0.4 } as const
-
-// Format chemical formula as SVG tspan elements with subscripts
-// Tracks cumulative baseline offset and adds trailing reset so concatenated text aligns
-export function format_formula_svg(formula: string, use_subscripts = true): string {
-  if (!use_subscripts || !is_compound(formula)) return formula
-
-  let result = ``
-  let offset = 0
-
-  for (const token of tokenize_formula(formula)) {
-    if (token.text !== undefined) {
-      result += offset ? `<tspan dy="${-offset}em">${token.text}</tspan>` : token.text
-      offset = 0
-    } else {
-      const dy = token.sub !== undefined ? DY.sub : DY.sup
-      result += `<tspan dy="${dy}em" font-size="0.75em">${token.sub ?? token.sup}</tspan>`
-      offset += dy
-    }
-  }
-
-  // Reset baseline after trailing subscript/superscript using a zero-width space
-  // (empty tspans may not apply dy in all SVG renderers)
-  if (offset) result += `<tspan dy="${-offset}em">\u200B</tspan>`
-  return result
-}
-
-// Split a multi-phase label on " + " and format each part with the given formatter
-function format_label_parts(
-  label: string,
-  use_subscripts: boolean,
-  formatter: (formula: string, use_sub: boolean) => string,
-): string {
-  if (!use_subscripts) return label
-  return label
-    .split(/(?<separator>\s*\+\s*)/)
-    .map((part) => (part.trim() === `+` ? part : formatter(part.trim(), use_subscripts)))
-    .join(``)
-}
-
-// Format a phase region label (e.g. "La2NiO4 + NiO") as SVG with subscripts
-export const format_label_svg = (label: string, use_subscripts = true): string =>
-  format_label_parts(label, use_subscripts, format_formula_svg)
-
-// Format a phase region label as HTML with subscripts (splits on " + ")
-export const format_label_html = (label: string, use_subscripts = true): string =>
-  format_label_parts(label, use_subscripts, format_formula_html)
-
-// Format chemical formula as HTML with <sub> and <sup> tags
-export function format_formula_html(formula: string, use_subscripts = true): string {
-  if (!use_subscripts || !is_compound(formula)) return formula
-
-  return tokenize_formula(formula)
-    .map(
-      (token) =>
-        token.text ?? (token.sub ? `<sub>${token.sub}</sub>` : `<sup>${token.sup}</sup>`),
-    )
-    .join(``)
+  const [t_min, t_max] = array_extent(region.vertices.map(([, temp]) => temp))
+  return { t_min, t_max }
 }
 
 // Compute the x-axis domain for a binary phase diagram.
@@ -613,17 +488,13 @@ export function compute_x_domain(
   if (lo != null && hi != null) return [lo, hi]
   if (!data) return [lo ?? 0, hi ?? 1]
 
-  let data_min = Infinity
-  let data_max = -Infinity
-  const x_values = [
-    ...data.regions.flatMap((region) => region.vertices),
-    ...data.boundaries.flatMap((boundary) => boundary.points),
-    ...(data.special_points ?? []).map((point) => point.position),
-  ]
-  for (const [x_val] of x_values) {
-    if (x_val < data_min) data_min = x_val
-    if (x_val > data_max) data_max = x_val
-  }
+  const [data_min, data_max] = array_extent(
+    [
+      ...data.regions.flatMap((region) => region.vertices),
+      ...data.boundaries.flatMap((boundary) => boundary.points),
+      ...(data.special_points ?? []).map((point) => point.position),
+    ].map(([x_val]) => x_val),
+  )
   if (data_min > data_max) return [lo ?? 0, hi ?? 1] // no finite data
 
   // Auto-extend to 0/1 when an edge region is named after the pure component AND the

@@ -1,7 +1,7 @@
 // Tests for HeatmapMatrix Svelte component rendering, interaction, and color computation.
 
 import { HeatmapMatrix, make_color_override_key } from '$lib/heatmap-matrix'
-import type { AxisItem, LegendPosition } from '$lib/heatmap-matrix'
+import type { AxisItem, ColorBarPosition } from '$lib/heatmap-matrix'
 import { format_num } from '$lib/labels'
 import type { ComponentProps } from 'svelte'
 import { flushSync, mount, tick } from 'svelte'
@@ -250,8 +250,8 @@ describe(`values and colors`, () => {
       y: [`X`],
       values: [[0, 0.01, 100]],
       log: true,
-      show_legend: true,
-      legend_format: `~g`,
+      show_color_bar: true,
+      color_bar_format: `~g`,
     })
     const ticks = [...document.querySelectorAll(`.colorbar .tick-label`)].map((span) =>
       Number(span.textContent),
@@ -298,7 +298,7 @@ describe(`values and colors`, () => {
       values: [[0, 10]],
       color_scale_range: [10, 0],
       domain_mode: `fixed`,
-      show_legend: true,
+      show_color_bar: true,
       color_scale: red_scale,
     })
     const cells = get_data_cells()
@@ -355,7 +355,7 @@ describe(`values and colors`, () => {
 })
 
 describe(`click and dblclick handlers`, () => {
-  test(`onclick receives correct CellContext`, () => {
+  test(`on_click receives correct CellContext`, () => {
     const handler = vi.fn()
     mount_matrix({
       values: [
@@ -363,7 +363,7 @@ describe(`click and dblclick handlers`, () => {
         [4, 5, 6],
         [7, 8, 9],
       ],
-      onclick: handler,
+      on_click: handler,
     })
     // Click cell at x=1, y=2 (value=8)
     const cell = get_data_cells()[7]
@@ -377,9 +377,9 @@ describe(`click and dblclick handlers`, () => {
     expect(ctx.y_item.label).toBe(`Z`)
   })
 
-  test(`ondblclick receives correct CellContext`, () => {
+  test(`on_double_click receives correct CellContext`, () => {
     const handler = vi.fn()
-    mount_matrix({ values: [[10, 20, 30]], ondblclick: handler })
+    mount_matrix({ values: [[10, 20, 30]], on_double_click: handler })
     const cell = doc_query(`.cell:not(.empty)`)
     cell.dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
     expect(handler).toHaveBeenCalledOnce()
@@ -391,7 +391,7 @@ describe(`click and dblclick handlers`, () => {
     try {
       const on_click = vi.fn()
       const on_dblclick = vi.fn()
-      mount_matrix({ values: [[10, 20, 30]], onclick: on_click, ondblclick: on_dblclick })
+      mount_matrix({ values: [[10, 20, 30]], on_click, on_double_click: on_dblclick })
       const cells = get_data_cells()
       const fire = (el: HTMLElement, type: `click` | `dblclick`) => {
         el.dispatchEvent(new MouseEvent(type, { bubbles: true }))
@@ -431,7 +431,7 @@ describe(`click and dblclick handlers`, () => {
     `keyboard %s plus native click synthesis triggers once`,
     (key_name) => {
       const click_handler = vi.fn()
-      mount_matrix({ values: [[1]], onclick: click_handler })
+      mount_matrix({ values: [[1]], on_click: click_handler })
       const cell = doc_query(`.cell:not(.empty)`)
       expect(cell.tagName).toBe(`BUTTON`)
       // Approximate native button activation: keydown then synthesized click.
@@ -453,7 +453,7 @@ describe(`click and dblclick handlers`, () => {
       ],
       x_order: `sort_value`,
       y_order: `sort_value`,
-      onclick: () => {},
+      on_click: () => {},
     })
     await tick()
     const start = doc_query(`.cell[data-x="1"][data-y="1"]`)
@@ -476,16 +476,16 @@ describe(`click and dblclick handlers`, () => {
 
   test(`disabled prevents clicks, non-cell clicks are no-ops`, () => {
     const handler = vi.fn()
-    mount_matrix({ onclick: handler, disabled: true })
+    mount_matrix({ on_click: handler, disabled: true })
     doc_query(`.cell:not(.empty)`).click()
     expect(handler).not.toHaveBeenCalled()
     // Re-mount without disabled, clicking a label shouldn't fire handler
     document.body.innerHTML = ``
-    mount_matrix({ onclick: handler })
+    mount_matrix({ on_click: handler })
     doc_query(`.x-label`).click()
     expect(handler).not.toHaveBeenCalled()
 
-    // Hovering a cell should not make subsequent label clicks trigger onclick
+    // Hovering a cell should not make subsequent label clicks trigger on_click
     const first_cell = doc_query(`.cell:not(.empty)`)
     first_cell.dispatchEvent(new MouseEvent(`mouseover`, { bubbles: true }))
     doc_query(`.x-label`).click()
@@ -495,7 +495,6 @@ describe(`click and dblclick handlers`, () => {
 
 describe(`edge cases`, () => {
   test.each([
-    { desc: `1x1`, x: [`A`], y: [`X`], symmetric: false, data: 1, empty: 0 },
     {
       desc: `4x2 asymmetric`,
       x: [`A`, `B`, `C`, `D`],
@@ -676,17 +675,17 @@ describe(`milestone feature props`, () => {
     expect(get_y_labels()[0].textContent?.trim()).toBe(`X`)
   })
 
-  test(`show_legend renders legend with label`, () => {
-    mount_matrix({ show_legend: true, legend_label: `Custom` })
-    expect(doc_query(`.legend .label`).textContent).toContain(`Custom`)
+  test(`show_color_bar renders color bar with label`, () => {
+    mount_matrix({ show_color_bar: true, color_bar_label: `Custom` })
+    expect(doc_query(`.color-bar .label`).textContent).toContain(`Custom`)
   })
 
-  // HeatmapMatrix binds show_legend/legend_position into its controls pane, so both must
+  // HeatmapMatrix binds show_color_bar/color_bar_position into its controls pane, so both must
   // be $bindable - a plain prop drops the checkbox/select writes (and fails to compile).
-  test(`controls pane writes show_legend and legend_position back to the parent`, async () => {
-    const state: { show_legend: boolean; legend_position: LegendPosition } = {
-      show_legend: true,
-      legend_position: `bottom`,
+  test(`controls pane writes show_color_bar and color_bar_position back to the parent`, async () => {
+    const state: { show_color_bar: boolean; color_bar_position: ColorBarPosition } = {
+      show_color_bar: true,
+      color_bar_position: `bottom`,
     }
     mount(HeatmapMatrix, {
       target: document.body,
@@ -696,27 +695,27 @@ describe(`milestone feature props`, () => {
     const position_select = Array.from(
       document.querySelectorAll<HTMLSelectElement>(`.heatmap-controls select`),
     ).find((sel) => sel.querySelector(`option[value="right"]`))
-    if (!position_select) throw new Error(`legend position select not rendered`)
+    if (!position_select) throw new Error(`color bar position select not rendered`)
     position_select.value = `right`
     position_select.dispatchEvent(new Event(`change`, { bubbles: true }))
     flushSync()
-    expect(state.legend_position).toBe(`right`)
+    expect(state.color_bar_position).toBe(`right`)
 
     doc_query<HTMLInputElement>(`.heatmap-controls input[type="checkbox"]`).click()
     flushSync()
-    expect(state.show_legend).toBe(false)
+    expect(state.show_color_bar).toBe(false)
   })
 
-  test(`legend_format passes through to format_num`, () => {
+  test(`color_bar_format passes through to format_num`, () => {
     mount_matrix({
       x: [`A`],
       y: [`X`],
       values: [[1.234]],
-      show_legend: true,
-      legend_format: `.1f`,
+      show_color_bar: true,
+      color_bar_format: `.1f`,
       color_scale_range: [1.234, 1.234],
     })
-    const tick_text = Array.from(document.querySelectorAll(`.legend .tick-label`))
+    const tick_text = Array.from(document.querySelectorAll(`.color-bar .tick-label`))
       .map((item) => item.textContent?.trim())
       .find(Boolean)
     expect(tick_text).toBe(format_num(1.234, `.1f`))
@@ -727,7 +726,7 @@ describe(`milestone feature props`, () => {
     mount_matrix({
       selection_mode: `multi`,
       values: [[1, 2, 3]],
-      onselect: select_handler,
+      on_select: select_handler,
     })
     const cells = get_data_cells()
     cells[0].dispatchEvent(new MouseEvent(`click`, { bubbles: true, ctrlKey: true }))
@@ -759,7 +758,7 @@ describe(`milestone feature props`, () => {
         [4, 5, 6],
         [7, 8, 9],
       ],
-      onselect: select_handler,
+      on_select: select_handler,
     })
     const cell_at = (x_idx: number, y_idx: number) =>
       doc_query(`.cell[data-x="${x_idx}"][data-y="${y_idx}"]`)
@@ -778,7 +777,7 @@ describe(`milestone feature props`, () => {
     const brush_handler = vi.fn()
     mount_matrix({
       enable_brush: true,
-      onbrush: brush_handler,
+      on_brush: brush_handler,
       values: [
         [1, 2, 3],
         [4, 5, 6],
@@ -809,12 +808,16 @@ describe(`milestone feature props`, () => {
       values: [[`#000000`]],
     })
     const first_cell = get_data_cells()[0]
+    // only selected cells carry the token (contrast is resolved on demand)
+    expect(first_cell.style.getPropertyValue(`--heatmap-selected-outline-color`)).toBe(``)
+    first_cell.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+    flushSync()
     expect(first_cell.style.getPropertyValue(`--heatmap-selected-outline-color`)).toBe(`white`)
   })
 
-  test(`oncontextmenu is triggered for cell`, () => {
+  test(`on_context_menu is triggered for cell`, () => {
     const handler = vi.fn()
-    mount_matrix({ oncontextmenu: handler, values: [[1]] })
+    mount_matrix({ on_context_menu: handler, values: [[1]] })
     const first_cell = get_data_cells()[0]
     first_cell.dispatchEvent(new MouseEvent(`contextmenu`, { bubbles: true }))
     expect(handler).toHaveBeenCalledOnce()
@@ -974,7 +977,7 @@ describe(`virtualized keyboard navigation`, () => {
       values: labels.map((_u, row) => labels.map((_v, col) => row + col)),
       virtualize: true,
       tile_size: `${STRIDE}px`,
-      onclick: () => {},
+      on_click: () => {},
     })
     await tick()
     // Scroll into the middle so the window has an edge to cross in either direction

@@ -40,7 +40,7 @@
     toggle_props = {},
     pane_props = {},
     ...rest
-  }: Omit<HTMLAttributes<HTMLDivElement>, `onclose`> & {
+  }: HTMLAttributes<HTMLDivElement> & {
     phase_stats: PhaseStats | null
     stable_entries: ConvexHullEntry[]
     unstable_entries: ConvexHullEntry[]

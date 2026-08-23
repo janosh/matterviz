@@ -1,8 +1,6 @@
 import type { SortDir, TableSort } from '$lib/table'
 import { parse_num_token } from '$lib/utils'
 
-export type { SortDir, TableSort } from '$lib/table'
-
 // To preserve an intentional `key=` value, pass a non-empty default as the third item.
 export type UrlParamEntry = [key: string, value: string, default_value?: string]
 type ReadonlySetLike<Value> = Pick<ReadonlySet<Value>, `has`>

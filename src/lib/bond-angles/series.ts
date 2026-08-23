@@ -1,4 +1,4 @@
-import { PLOT_COLORS } from '$lib/colors'
+import { plot_color } from '$lib/colors'
 import type { BarSeries } from '$lib/plot/core/types'
 import { SvelteMap } from 'svelte/reactivity'
 import type { BondAngleData } from './calc-bond-angles'
@@ -34,7 +34,7 @@ export function to_angle_bar_series(
       ...shared,
       y: entry.data.total.counts.map((count) => count * weight_of(entry.data)),
       label: entry.label,
-      color: entry.color ?? PLOT_COLORS[idx % PLOT_COLORS.length],
+      color: entry.color ?? plot_color(idx),
       metadata: { structure_label: entry.label, bin_width },
     }))
   }
@@ -57,7 +57,7 @@ export function to_angle_bar_series(
       ...shared,
       y: counts,
       label,
-      color: PLOT_COLORS[idx % PLOT_COLORS.length],
+      color: plot_color(idx),
       metadata: { bin_width, ...(split_mode === `by_triplet` && { triplet: label }) },
     }))
 }

@@ -1,13 +1,16 @@
+import { colors } from '$lib/state.svelte'
 import type { WyckoffPos } from '$lib/symmetry'
 import { WyckoffTable } from '$lib/symmetry'
 import type { MoyoWyckoffPosition } from '@spglib/moyo-wasm'
-import { mount } from 'svelte'
-import { describe, expect, test } from 'vitest'
+import { type ComponentProps, mount } from 'svelte'
+import { describe, expect, onTestFinished, test } from 'vitest'
 import { doc_query } from '../setup'
 
 describe(`WyckoffTable`, () => {
-  const mount_table = (wyckoff_positions: WyckoffPos[]) =>
-    mount(WyckoffTable, { target: document.body, props: { wyckoff_positions } })
+  const mount_table = (
+    wyckoff_positions: WyckoffPos[],
+    extra: Partial<ComponentProps<typeof WyckoffTable>> = {},
+  ) => mount(WyckoffTable, { target: document.body, props: { wyckoff_positions, ...extra } })
 
   test(`renders nothing without rows`, () => {
     mount_table([])
@@ -36,6 +39,22 @@ describe(`WyckoffTable`, () => {
     expect(rendered_rows).toHaveLength(2)
   })
 
+  // Element badge text contrast: a translucent user override must composite against the
+  // page backdrop (white in jsdom) instead of throwing mid-render
+  test.each([
+    [`#000000`, `white`],
+    [`rgba(0, 0, 0, 0.5)`, `black`],
+    [`var(--elem-color)`, `currentcolor`],
+  ])(`element color %s renders badge text %s`, (elem_color, text_color) => {
+    const original_color = colors.element.Ac
+    onTestFinished(() => {
+      colors.element.Ac = original_color
+    })
+    colors.element.Ac = elem_color
+    mount_table([{ wyckoff: `1a`, elem: `Ac`, abc: [0, 0, 0], site_indices: [0] }])
+    expect(doc_query(`tbody td span`).style.color).toBe(text_color)
+  })
+
   describe(`space-group Wyckoff database integration`, () => {
     const occupied: WyckoffPos[] = [
       { wyckoff: `1a`, elem: `Sr`, abc: [0, 0, 0], site_indices: [0] },
@@ -54,20 +73,14 @@ describe(`WyckoffTable`, () => {
     const unoccupied_selector = `tbody tr[title^="Wyckoff position not occupied"]`
 
     test(`renders without ITA columns when no db_positions given`, () => {
-      mount(WyckoffTable, {
-        target: document.body,
-        props: { wyckoff_positions: occupied },
-      })
+      mount_table(occupied)
       expect(header_cells()).toEqual([`Wyckoff`, `Element`, `Fractional Coords`])
       expect(document.querySelectorAll(`tbody tr`)).toHaveLength(2)
       expect(doc_query(`tbody tr td:nth-child(3)`).textContent).toBe(`(0, 0, 0)`)
     })
 
     test(`adds ITA coords + site symmetry columns from db_positions`, () => {
-      mount(WyckoffTable, {
-        target: document.body,
-        props: { wyckoff_positions: occupied, db_positions },
-      })
+      mount_table(occupied, { db_positions })
       expect(header_cells()).toEqual([
         `Wyckoff`,
         `Element`,
@@ -84,10 +97,7 @@ describe(`WyckoffTable`, () => {
     })
 
     test(`show_unoccupied lists empty Wyckoff positions as muted non-interactive rows`, () => {
-      mount(WyckoffTable, {
-        target: document.body,
-        props: { wyckoff_positions: occupied, db_positions, show_unoccupied: true },
-      })
+      mount_table(occupied, { db_positions, show_unoccupied: true })
       const unoccupied_rows = Array.from(document.querySelectorAll(unoccupied_selector))
       expect(unoccupied_rows.map((row) => row.textContent?.trim().slice(0, 2))).toEqual([
         `1b`,

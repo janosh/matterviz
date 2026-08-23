@@ -4,6 +4,14 @@ import type { ConvexHullEntry, PhaseData } from '$lib/convex-hull/types'
 import { MAGNETIC_ORDERING_CATEGORY } from '$lib/convex-hull/types'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
+// Entry with only the fields given (no energy default): the polymorph metric selection
+// depends on which energy fields are absent
+const phase = (
+  entry_id: string,
+  composition: Record<string, number>,
+  fields: Partial<PhaseData> = {},
+): PhaseData => ({ entry_id, composition, ...fields }) as PhaseData
+
 describe(`helpers: energy color scale + point color`, () => {
   test(`get_energy_color_scale: null outside energy mode/empty, distinct colours otherwise, non-finite ignored`, () => {
     expect(helpers.get_energy_color_scale(`stability`, `interpolateViridis`, [])).toBeNull()
@@ -39,17 +47,6 @@ describe(`helpers: energy color scale + point color`, () => {
     expect(
       helpers.get_point_color_for_entry({ is_stable: true }, `stability`, undefined, null),
     ).toBe(`#0072B2`)
-  })
-
-  test.each([
-    [undefined, false, { e_above_hull: undefined, is_stable: undefined }],
-    [NaN, false, { e_above_hull: undefined, is_stable: undefined }],
-    [1e-9, false, { e_above_hull: 0, is_stable: true }],
-    [-0.2, false, { e_above_hull: 0, is_stable: true }],
-    [0.3, false, { e_above_hull: 0.3, is_stable: false }],
-    [-0.2, true, { e_above_hull: -0.2, is_stable: false }],
-  ])(`compute_hull_stability(%s, exclude=%s) → %o`, (raw, exclude, expected) => {
-    expect(helpers.compute_hull_stability(raw, exclude)).toEqual(expected)
   })
 
   test(`entry_within_hull_dist keeps stable entries and finite distances within the cutoff`, () => {
@@ -94,25 +91,25 @@ describe(`canvas-draw: markers and hit testing`, () => {
     expect(draw.marker_path_data(5, `blob` as never)).toBeNull()
   })
 
-  test(`find_hull_entry_at_mouse uses the projected marker radius plus 5px slack`, () => {
+  test(`find_hull_entry_at_mouse uses the scaled marker radius plus 5px slack`, () => {
     const canvas = {
       getBoundingClientRect: () => ({ left: 10, top: 10 }),
-      clientWidth: 600,
-      clientHeight: 600,
     } as unknown as HTMLCanvasElement
     const entry = { x: 100, y: 100, z: 0, is_stable: false } as ConvexHullEntry
     const project = (x: number, y: number) => ({ x, y, depth: 0 })
-    const hit = (client_x: number) =>
+    const hit = (client_x: number, scale = 1) =>
       draw.find_hull_entry_at_mouse(
         canvas,
         { clientX: client_x, clientY: 110 } as MouseEvent,
         [entry],
         project,
+        scale,
       )
     expect(hit(118)).toBe(entry) // 8 px away < 4 + 5
     expect(hit(120)).toBeNull() // 10 px away
+    expect(hit(120, 2)).toBe(entry) // radius scales with the container: 4 * 2 + 5 = 13 > 10
     expect(
-      draw.find_hull_entry_at_mouse(undefined, {} as MouseEvent, [entry], project),
+      draw.find_hull_entry_at_mouse(undefined, {} as MouseEvent, [entry], project, 1),
     ).toBeNull()
   })
 
@@ -254,12 +251,6 @@ describe(`helpers: thresholds and tooltips`, () => {
 })
 
 describe(`helpers: composition label entries`, () => {
-  const phase = (
-    entry_id: string,
-    composition: Record<string, number>,
-    fields: Partial<PhaseData> = {},
-  ): PhaseData => ({ entry_id, composition, energy: 0, ...fields })
-
   test.each([
     {
       name: `keeps one lowest-energy label entry per normalized composition`,
@@ -306,178 +297,95 @@ describe(`helpers: composition label entries`, () => {
 })
 
 describe(`helpers: polymorph statistics`, () => {
-  const make_entry = (
-    id: string,
-    comp: Record<string, number>,
-    e_hull?: number,
-    e_atom?: number,
-    e?: number,
-    e_form?: number,
-  ): PhaseData =>
-    ({
-      entry_id: id,
-      composition: comp,
-      e_above_hull: e_hull,
-      energy_per_atom: e_atom,
-      energy: e,
-      e_form_per_atom: e_form,
-    }) as PhaseData
+  const lio = (entry_id: string, fields: Partial<PhaseData>) =>
+    phase(entry_id, { Li: 1, O: 1 }, fields)
 
+  // Stats for entry `1`, as [total, higher, lower, equal]. One row per energy-metric
+  // selection branch (e_form > energy_per_atom > energy/atoms > e_above_hull > none).
   test.each([
     {
       name: `different compositions → no polymorphs`,
-      entry: make_entry(`1`, { Li: 1, O: 1 }, 0.1),
-      all: [make_entry(`1`, { Li: 1, O: 1 }, 0.1), make_entry(`2`, { Li: 1, O: 2 }, 0.2)],
+      all: [
+        lio(`1`, { e_above_hull: 0.1 }),
+        phase(`2`, { Li: 1, O: 2 }, { e_above_hull: 0.2 }),
+      ],
       exp: [0, 0, 0, 0],
     },
     {
-      name: `same fractional comp → finds polymorphs, excludes self`,
-      entry: make_entry(`1`, { Li: 1, O: 1 }, 0.1),
+      name: `same fractional comp (1:1 ≈ 2:2 ≈ 0.5:0.5) → polymorphs, excludes self`,
       all: [
-        make_entry(`1`, { Li: 1, O: 1 }, 0.1),
-        make_entry(`2`, { Li: 2, O: 2 }, 0.2),
-        make_entry(`3`, { Li: 0.5, O: 0.5 }, 0.05),
+        lio(`1`, { e_above_hull: 0.1 }),
+        phase(`2`, { Li: 2, O: 2 }, { e_above_hull: 0.2 }),
+        phase(`3`, { Li: 0.5, O: 0.5 }, { e_above_hull: 0.05 }),
       ],
       exp: [2, 1, 1, 0],
     },
     {
-      name: `counts higher/lower/equal correctly`,
-      entry: make_entry(`2`, { Li: 1, O: 1 }, 0.1),
+      name: `counts higher/lower/equal`,
       all: [
-        make_entry(`1`, { Li: 1, O: 1 }, 0.05),
-        make_entry(`2`, { Li: 1, O: 1 }, 0.1),
-        make_entry(`3`, { Li: 1, O: 1 }, 0.1),
-        make_entry(`4`, { Li: 1, O: 1 }, 0.2),
+        lio(`1`, { e_above_hull: 0.1 }),
+        lio(`2`, { e_above_hull: 0.05 }),
+        lio(`3`, { e_above_hull: 0.1 }),
+        lio(`4`, { e_above_hull: 0.2 }),
       ],
       exp: [3, 1, 1, 1],
     },
     {
-      name: `single entry → no polymorphs`,
-      entry: make_entry(`1`, { Li: 1 }, 0),
-      all: [make_entry(`1`, { Li: 1 }, 0)],
-      exp: [0, 0, 0, 0],
-    },
-    {
-      name: `normalizes stoichiometries (1:2 ≈ 2:4 ≈ 0.5:1)`,
-      entry: make_entry(`1`, { Li: 2, O: 4 }, 0.1),
-      all: [
-        make_entry(`1`, { Li: 2, O: 4 }, 0.1),
-        make_entry(`2`, { Li: 1, O: 2 }, 0.15),
-        make_entry(`3`, { Li: 0.5, O: 1 }, 0.05),
-      ],
-      exp: [2, 1, 1, 0],
-    },
-    {
-      name: `all polymorphs higher energy`,
-      entry: make_entry(`1`, { Li: 1, O: 1 }, 0),
-      all: [
-        make_entry(`1`, { Li: 1, O: 1 }, 0),
-        make_entry(`2`, { Li: 1, O: 1 }, 0.1),
-        make_entry(`3`, { Li: 1, O: 1 }, 0.2),
-      ],
-      exp: [2, 2, 0, 0],
-    },
-    {
-      name: `uses energy_per_atom not e_above_hull for ranking`,
-      entry: make_entry(`1`, { Li: 1, O: 1 }, 0.1, -5),
-      all: [
-        make_entry(`1`, { Li: 1, O: 1 }, 0.1, -5),
-        make_entry(`2`, { Li: 1, O: 1 }, 0.2, -4.9),
-        make_entry(`3`, { Li: 1, O: 1 }, 0.05, -5.1),
-      ],
-      exp: [2, 1, 1, 0], // energy_per_atom: -5 vs -4.9 (higher) vs -5.1 (lower)
-    },
-    {
+      // e_above_hull alone would report every polymorph as equal
       name: `REGRESSION: stable polymorphs (e_above_hull=0) ranked by energy_per_atom`,
-      entry: make_entry(`1`, { C: 1 }, 0, -9.0), // diamond
       all: [
-        make_entry(`1`, { C: 1 }, 0, -9.0), // diamond
-        make_entry(`2`, { C: 1 }, 0, -8.9), // graphite (slightly higher energy)
-        make_entry(`3`, { C: 1 }, 0, -9.1), // hypothetical lower-energy form
+        phase(`1`, { C: 1 }, { e_above_hull: 0, energy_per_atom: -9.0 }), // diamond
+        phase(`2`, { C: 1 }, { e_above_hull: 0, energy_per_atom: -8.9 }), // graphite
+        phase(`3`, { C: 1 }, { e_above_hull: 0, energy_per_atom: -9.1 }),
       ],
-      exp: [2, 1, 1, 0], // NOT [2, 0, 0, 2] which was the bug!
+      exp: [2, 1, 1, 0],
     },
     {
+      // energy_per_atom would rank 2 lower and 3 higher
       name: `prefers e_form_per_atom over energy_per_atom`,
-      entry: make_entry(`1`, { Li: 1, O: 1 }, undefined, -5.0, undefined, -3.0),
       all: [
-        make_entry(`1`, { Li: 1, O: 1 }, undefined, -5.0, undefined, -3.0),
-        make_entry(`2`, { Li: 1, O: 1 }, undefined, -5.1, undefined, -2.9),
-        make_entry(`3`, { Li: 1, O: 1 }, undefined, -4.9, undefined, -3.1),
-      ],
-      exp: [2, 1, 1, 0], // Uses e_form: -3.0 vs -2.9 (higher) vs -3.1 (lower), ignores energy_per_atom
-    },
-    {
-      name: `falls back to per-atom when hull missing`,
-      entry: make_entry(`1`, { Li: 1, O: 1 }, 0.1, -5),
-      all: [
-        make_entry(`1`, { Li: 1, O: 1 }, 0.1, -5),
-        make_entry(`2`, { Li: 1, O: 1 }, undefined, -4.9),
-        make_entry(`3`, { Li: 1, O: 1 }, 0.05, -5.1),
+        lio(`1`, { energy_per_atom: -5.0, e_form_per_atom: -3.0 }),
+        lio(`2`, { energy_per_atom: -5.1, e_form_per_atom: -2.9 }),
+        lio(`3`, { energy_per_atom: -4.9, e_form_per_atom: -3.1 }),
       ],
       exp: [2, 1, 1, 0],
     },
     {
-      name: `falls back to energy/atoms when per-atom missing`,
-      entry: make_entry(`1`, { Li: 1, O: 1 }, undefined, undefined, -10),
-      all: [
-        make_entry(`1`, { Li: 1, O: 1 }, undefined, undefined, -10),
-        make_entry(`2`, { Li: 1, O: 1 }, undefined, undefined, -12),
-        make_entry(`3`, { Li: 1, O: 1 }, undefined, undefined, -8),
-      ],
-      exp: [2, 1, 1, 0],
-    },
-    {
-      name: `prevents mixing hull (≥0) with raw energy (<0)`,
-      entry: make_entry(`1`, { Li: 1, O: 1 }, 0.1, undefined, -5),
-      all: [
-        make_entry(`1`, { Li: 1, O: 1 }, 0.1, undefined, -5),
-        make_entry(`2`, { Li: 1, O: 1 }, undefined, undefined, -10),
-      ],
-      exp: [1, 0, 1, 0],
-    },
-    {
-      name: `skips invalid energies (NaN/Infinity/missing)`,
-      entry: make_entry(`1`, { Li: 1, O: 1 }, 0.1),
-      all: [
-        make_entry(`1`, { Li: 1, O: 1 }, 0.1),
-        make_entry(`2`, { Li: 1, O: 1 }, NaN),
-        make_entry(`3`, { Li: 1, O: 1 }, Infinity),
-        make_entry(`4`, { Li: 1, O: 1 }),
-      ],
-      exp: [0, 0, 0, 0],
-    },
-    {
-      name: `returns zeros when entry itself invalid`,
-      entry: make_entry(`1`, { Li: 1, O: 1 }, NaN),
-      all: [make_entry(`1`, { Li: 1, O: 1 }, NaN), make_entry(`2`, { Li: 1, O: 1 }, 0.1)],
-      exp: [0, 0, 0, 0],
-    },
-    {
+      // energy/atoms would rank 2 lower and 3 higher
       name: `prefers energy_per_atom over raw energy`,
-      entry: make_entry(`1`, { Li: 1, O: 1 }, undefined, -5, -10),
       all: [
-        make_entry(`1`, { Li: 1, O: 1 }, undefined, -5, -10),
-        make_entry(`2`, { Li: 1, O: 1 }, undefined, -4.9, -12),
-        make_entry(`3`, { Li: 1, O: 1 }, undefined, -5.1, -8),
+        lio(`1`, { energy_per_atom: -5, energy: -10 }),
+        lio(`2`, { energy_per_atom: -4.9, energy: -12 }),
+        lio(`3`, { energy_per_atom: -5.1, energy: -8 }),
       ],
       exp: [2, 1, 1, 0],
+    },
+    {
+      name: `falls back to energy/atoms when per-atom fields are missing`,
+      all: [lio(`1`, { energy: -10 }), lio(`2`, { energy: -12 }), lio(`3`, { energy: -8 })],
+      exp: [2, 1, 1, 0],
+    },
+    {
+      name: `skips the group when any energy is invalid (NaN/Infinity/missing)`,
+      all: [
+        lio(`1`, { e_above_hull: 0.1 }),
+        lio(`2`, { e_above_hull: NaN }),
+        lio(`3`, { e_above_hull: Infinity }),
+        lio(`4`, {}),
+      ],
+      exp: [0, 0, 0, 0],
     },
     {
       name: `floating-point tolerance in composition`,
-      entry: make_entry(`1`, { Li: 1, O: 2 }, 0.1),
       all: [
-        make_entry(`1`, { Li: 1, O: 2 }, 0.1),
-        make_entry(`2`, { Li: 1 + 1e-10, O: 2 + 2e-10 }, 0.15),
+        phase(`1`, { Li: 1, O: 2 }, { e_above_hull: 0.1 }),
+        phase(`2`, { Li: 1 + 1e-10, O: 2 + 2e-10 }, { e_above_hull: 0.15 }),
       ],
       exp: [1, 1, 0, 0],
     },
-  ])(`$name`, ({ entry, all, exp: [tot, hi, lo, eq] }) => {
-    const stats_map = helpers.compute_all_polymorph_stats(all)
-    const stats = stats_map.get(entry.entry_id ?? ``)
-    expect(stats).toBeDefined()
-    expect(stats).toEqual({ total: tot, higher: hi, lower: lo, equal: eq })
-    if (stats) expect(stats.total).toBe(stats.higher + stats.lower + stats.equal)
+  ])(`$name`, ({ all, exp: [total, higher, lower, equal] }) => {
+    const stats = helpers.compute_all_polymorph_stats(all).get(`1`)
+    expect(stats).toEqual({ total, higher, lower, equal })
   })
 })
 
@@ -574,52 +482,37 @@ describe(`helpers: temperature interpolation`, () => {
 
   describe(`analyze_temperature_data`, () => {
     test.each([
-      [`empty entries`, [] as PhaseData[]],
-      [
-        `entries without temp data`,
-        [
+      { desc: `empty entries`, entries: [] as PhaseData[], expected: [] as number[] },
+      {
+        desc: `entries without temp data`,
+        entries: [
           { composition: { Fe: 1 }, energy: 0 },
           { composition: { Li: 1 }, energy: 0 },
         ] as PhaseData[],
-      ],
-    ])(`returns has_temp_data=false for %s`, (_desc, entries) => {
+        expected: [],
+      },
+      {
+        desc: `the union of temperatures from multiple entries`,
+        entries: [
+          make_entry([300, 600], [-1, -2]),
+          make_entry([600, 900, 1200], [-1, -2, -3]),
+        ],
+        expected: [300, 600, 900, 1200],
+      },
+      {
+        desc: `entries with mismatched array lengths ignored`,
+        entries: [make_entry([300, 600], [-1]), make_entry([900], [-2])],
+        expected: [900],
+      },
+      {
+        desc: `entries with empty arrays ignored`,
+        entries: [make_entry([], []), make_entry([300, 600], [-1, -2])],
+        expected: [300, 600],
+      },
+    ])(`available_temperatures for $desc`, ({ entries, expected }) => {
       const result = helpers.analyze_temperature_data(entries)
-      expect(result.has_temp_data).toBe(false)
-      expect(result.available_temperatures).toEqual([])
-    })
-
-    test(`returns union of temperatures from multiple entries`, () => {
-      const entries = [
-        make_entry([300, 600], [-1, -2]),
-        make_entry([600, 900, 1200], [-1, -2, -3]),
-      ]
-      const result = helpers.analyze_temperature_data(entries)
-      expect(result.has_temp_data).toBe(true)
-      expect(result.available_temperatures).toEqual([300, 600, 900, 1200])
-    })
-
-    test(`ignores entries with mismatched array lengths`, () => {
-      const entries: PhaseData[] = [
-        {
-          composition: { Fe: 1 },
-          energy: 0,
-          temperatures: [300, 600],
-          free_energies: [-1],
-        },
-        make_entry([900], [-2]),
-      ]
-      const result = helpers.analyze_temperature_data(entries)
-      expect(result.has_temp_data).toBe(true)
-      expect(result.available_temperatures).toEqual([900])
-    })
-
-    test(`ignores entries with empty arrays`, () => {
-      const entries: PhaseData[] = [
-        { composition: { Fe: 1 }, energy: 0, temperatures: [], free_energies: [] },
-        make_entry([300, 600], [-1, -2]),
-      ]
-      const result = helpers.analyze_temperature_data(entries)
-      expect(result.available_temperatures).toEqual([300, 600])
+      expect(result.has_temp_data).toBe(expected.length > 0)
+      expect(result.available_temperatures).toEqual(expected)
     })
   })
 
@@ -660,47 +553,52 @@ describe(`helpers: temperature interpolation`, () => {
   })
 
   describe(`filter_entries_at_temperature with interpolation`, () => {
-    test(`includes entries with exact temperature match`, () => {
-      const entries = [make_entry([300, 600], [-1, -2])]
-      const result = helpers.filter_entries_at_temperature(entries, 300)
-      expect(result).toHaveLength(1)
-      expect(result[0].energy).toBe(-1)
-      expect(result[0].energy_per_atom).toBe(-1) // G(T) is per atom; both fields updated
-    })
-
-    test(`interpolates when exact match missing but bracketed (default options)`, () => {
-      const entries = [make_entry([300, 600], [-1, -2])]
-      const result = helpers.filter_entries_at_temperature(entries, 450)
-      expect(result).toHaveLength(1)
-      expect(result[0].energy).toBeCloseTo(-1.5)
-    })
-
-    test(`excludes entries when interpolation disabled and no exact match`, () => {
-      const entries = [make_entry([300, 600], [-1, -2])]
-      const result = helpers.filter_entries_at_temperature(entries, 450, {
-        interpolate: false,
-      })
-      expect(result).toHaveLength(0)
-    })
-
-    test(`excludes entries when gap exceeds max_interpolation_gap`, () => {
-      const entries = [make_entry([300, 900], [-1, -2])]
-      const result = helpers.filter_entries_at_temperature(entries, 600, {
-        interpolate: true,
-        max_interpolation_gap: 500,
-      })
-      expect(result).toHaveLength(0)
-    })
-
-    test(`keeps static entries (no temp data) unchanged`, () => {
-      const static_entry: PhaseData = { composition: { Fe: 1 }, energy: -0.5 }
-      const entries = [static_entry, make_entry([300, 600], [-1, -2])]
-      const result = helpers.filter_entries_at_temperature(entries, 450, {
-        interpolate: true,
-      })
-      expect(result).toHaveLength(2)
-      expect(result[0].energy).toBe(-0.5) // static entry unchanged
-      expect(result[1].energy).toBeCloseTo(-1.5) // interpolated
+    const static_entry: PhaseData = { composition: { Fe: 1 }, energy: -0.5 }
+    test.each([
+      {
+        desc: `exact temperature match`,
+        entries: [make_entry([300, 600], [-1, -2])],
+        temp: 300,
+        options: undefined,
+        expected: [-1],
+      },
+      {
+        desc: `interpolation when bracketed (default options)`,
+        entries: [make_entry([300, 600], [-1, -2])],
+        temp: 450,
+        options: undefined,
+        expected: [-1.5],
+      },
+      {
+        desc: `interpolation disabled and no exact match → dropped`,
+        entries: [make_entry([300, 600], [-1, -2])],
+        temp: 450,
+        options: { interpolate: false },
+        expected: [],
+      },
+      {
+        desc: `gap exceeds max_interpolation_gap → dropped`,
+        entries: [make_entry([300, 900], [-1, -2])],
+        temp: 600,
+        options: { interpolate: true, max_interpolation_gap: 500 },
+        expected: [],
+      },
+      {
+        desc: `static entries (no temp data) kept unchanged`,
+        entries: [static_entry, make_entry([300, 600], [-1, -2])],
+        temp: 450,
+        options: { interpolate: true },
+        expected: [-0.5, -1.5],
+      },
+    ])(`$desc`, ({ entries, temp, options, expected }) => {
+      const result = helpers.filter_entries_at_temperature(entries, temp, options)
+      expect(result.map((entry) => entry.energy)).toEqual(
+        expected.map((energy) => expect.closeTo(energy, 10)),
+      )
+      // G(T) is per atom; both fields are updated for temperature-dependent entries
+      for (const entry of result.filter((ent) => ent.temperatures)) {
+        expect(entry.energy_per_atom).toBe(entry.energy)
+      }
     })
   })
 

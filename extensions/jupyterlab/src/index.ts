@@ -15,6 +15,7 @@ import { ABCWidgetFactory, Base64ModelFactory, DocumentWidget } from '@jupyterla
 import type { DocumentRegistry } from '@jupyterlab/docregistry'
 import { LabIcon } from '@jupyterlab/ui-components'
 import { Widget } from '@lumino/widgets'
+import { format_bytes } from '$lib/utils'
 import { BASE64_FILE_TYPES, type FileTypeSpec, TEXT_FILE_TYPES } from './file-types'
 // Type-only, so it is erased at build time and pulls nothing into the entry chunk.
 import type * as viewer_module from './viewer'
@@ -39,9 +40,6 @@ const matterviz_icon = new LabIcon({
 })
 
 const type_names = (specs: FileTypeSpec[]): string[] => specs.map((spec) => spec.name)
-
-const format_bytes = (bytes: number): string =>
-  bytes >= 2 ** 30 ? `${(bytes / 2 ** 30).toFixed(1)} GB` : `${Math.round(bytes / 2 ** 20)} MB`
 
 export class MatterVizViewer extends Widget {
   private mounted_app: viewer_module.MatterVizApp | null = null

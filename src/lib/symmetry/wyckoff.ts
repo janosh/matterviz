@@ -6,6 +6,7 @@ import { superscript_digits } from '$lib/labels'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { Crystal } from '$lib/structure'
+import { wrap_frac_coord, wrap_to_unit_cell } from '$lib/structure/pbc'
 import type { MoyoDataset, MoyoWyckoffPosition } from '@spglib/moyo-wasm'
 import type { SymmetryDataset } from './analyze'
 import { mat3_from_flat_col_major } from './symmetry-elements'
@@ -22,47 +23,36 @@ export type WyckoffPos = {
   coordinates?: string
 }
 
-const to_unit = (value: number) => value - Math.floor(value)
-const position_key = (pos: Vec3) => pos.map((coord) => to_unit(coord).toFixed(8)).join(`,`)
-
-// Wrap fractional coordinates into [0, 1), snapping values within 1e-9 of 1 back to 0.
-// NOTE on epsilon: 1e-9 is deliberately looser than wrap_frac_coord @1e-10
-// [[src/lib/structure/pbc.ts:26]] because inputs here passed through moyo
-// standardization plus a P⁻¹(x − p) matrix transform (frac_coord_mapper),
-// accumulating more float error than freshly parsed coords. It is tighter than
-// wrap_point @1e-8 [[src/lib/symmetry/symmetry-elements.ts:214]], which must
-// keep dedup keys stable for fixed points solved from linear systems. Do not
-// unify: each epsilon matches the noise level of its inputs.
-const wrap_frac = (pos: Vec3): Vec3 =>
-  pos.map((coord) => {
-    const wrapped = coord - Math.floor(coord)
-    return wrapped > 1 - 1e-9 ? 0 : wrapped
-  }) as Vec3
+// Dedup key of a wrapped position at 8 decimals. wrap_to_unit_cell only snaps within 1e-10 of
+// 1, so a coordinate just below that rounds up to 1e8 and is folded back onto 0 by the modulo
+// to key like its lattice-equivalent partner at 0.
+const position_key = (pos: Vec3) =>
+  wrap_to_unit_cell(pos)
+    .map((coord) => Math.round(coord * 1e8) % 1e8)
+    .join(`,`)
 
 // Mapper from input-cell to standardized-cell fractional coordinates. moyo's (std_linear P,
 // std_origin_shift p) follow the ITA convention for the transformation from the input cell
-// to the standardized cell: x_std = P⁻¹ (x_input − p). Null if P is absent or singular.
+// to the standardized cell: x_std = P⁻¹ (x_input − p). Null when P is absent (a dataset
+// without standardization); a singular P is a moyo bug and throws from matrix_inverse_3x3.
 function frac_coord_mapper(
   linear_flat: readonly number[] | undefined,
   origin_shift: readonly number[] | undefined,
 ): { to_std: (pos: Vec3) => Vec3; linear: Matrix3x3 } | null {
   if (linear_flat?.length !== 9) return null
-  try {
-    const linear = mat3_from_flat_col_major(linear_flat)
-    const linear_inv = math.matrix_inverse_3x3(linear)
-    const shift = (origin_shift ?? [0, 0, 0]) as Vec3
-    const to_std = (pos: Vec3): Vec3 =>
-      math.mat3x3_vec3_multiply(linear_inv, math.subtract(pos, shift))
-    return { to_std, linear }
-  } catch {
-    return null
-  }
+  const linear = mat3_from_flat_col_major(linear_flat)
+  const linear_inv = math.matrix_inverse_3x3(linear)
+  const shift = (origin_shift ?? [0, 0, 0]) as Vec3
+  const to_std = (pos: Vec3): Vec3 =>
+    math.mat3x3_vec3_multiply(linear_inv, math.subtract(pos, shift))
+  return { to_std, linear }
 }
 
-// Lower is simpler: coordinates near 0 score 0, near 1/2 score 1/2, generic ones up to 1
+// Lower is simpler. Per coordinate u ∈ [0, 1): 0 scores 0, 1/2 scores 1/2, and the score
+// peaks at 3/4 for u = 1/4 or 3/4, so special positions (0, 1/2) win over generic ones.
 const simplicity_score = (pos: Vec3): number =>
   pos.reduce((sum, coord) => {
-    const unit = to_unit(coord)
+    const unit = wrap_frac_coord(coord)
     return sum + Math.min(unit, 1 - unit) + 0.5 * Math.abs(unit - 0.5)
   }, 0)
 
@@ -71,18 +61,19 @@ const simplicity_score = (pos: Vec3): number =>
 export const wyckoff_letter = (wyckoff: string): string =>
   /[a-zA-Z]+$/.exec(wyckoff)?.[0] ?? ``
 
-// Numeric multiplicity prefix of a Wyckoff label like `4a` (NaN when absent)
-const wyckoff_multiplicity = (label: string): number => Number(/^\d+/.exec(label)?.[0] ?? NaN)
+// Numeric multiplicity prefix of a Wyckoff label like `4a`; rows built here always carry one
+const wyckoff_multiplicity = (label: string): number => Number(/^\d+/.exec(label)?.[0])
 
 // Wyckoff table rows from moyo's input-cell orbits. moyo's per-site arrays (wyckoffs, orbits,
 // site_symmetry_symbols) index the INPUT cell — not std_cell — so rows are built by grouping
 // input sites into crystallographic orbits. Multiplicity in the conventional cell is the orbit
 // size scaled by the std/input cell size ratio (a 1-atom primitive fcc input has orbit size 1
 // but multiplicity 4). Rows sort by ascending multiplicity, then Wyckoff label. Returns []
-// for a bare MoyoDataset (only analyze_structure_symmetry attaches the input cell the grouping
-// needs), a singular std_linear, or per-site arrays that do not match the input cell.
+// without symmetry data, for a plain MoyoDataset that never went through analyze_structure
+// (no input_cell; this runs inside $derived, so it must not throw), without a
+// standardization (no std_linear) or when the per-site arrays do not match the input cell.
 export function wyckoff_positions_from_moyo(
-  sym_data: MoyoDataset | SymmetryDataset | null,
+  sym_data: SymmetryDataset | MoyoDataset | null,
 ): WyckoffPos[] {
   if (!sym_data || !(`input_cell` in sym_data)) return []
   const {
@@ -111,10 +102,14 @@ export function wyckoff_positions_from_moyo(
   const rows = [...orbit_members.entries()].map(([rep, members]) => {
     const letter = wyckoff_letter(wyckoffs[rep] ?? ``)
     const multiplicity = Math.round((members.length * n_std) / n_input)
-    // Representative coordinate in the standardized frame, simplest first (ties keep first)
+    // Representative coordinate in the standardized frame, simplest first. Symmetry-equivalent
+    // members (x,y,z vs y,x,z) tie up to float noise, so ties are broken by member order rather
+    // than by whichever rounding happened to land lower.
     const abc = members
-      .map((idx) => wrap_frac(mapper.to_std(input_cell.positions[idx])))
-      .reduce((best, pos) => (simplicity_score(pos) < simplicity_score(best) ? pos : best))
+      .map((idx) => wrap_to_unit_cell(mapper.to_std(input_cell.positions[idx])))
+      .reduce((best, pos) =>
+        simplicity_score(pos) < simplicity_score(best) - 1e-9 ? pos : best,
+      )
     const site_indices = [
       ...new Set(members.flatMap((idx) => orig_site_indices_by_input_idx[idx])),
     ].toSorted((idx_a, idx_b) => idx_a - idx_b)
@@ -202,7 +197,7 @@ export function apply_symmetry_operations(
           rotation[dim + 6] * position[2] +
           translation[dim],
       ) as Vec3
-      return new_pos.map(to_unit) as Vec3
+      return wrap_to_unit_cell(new_pos)
     })
     .filter((pos) => {
       const pos_key = position_key(pos)
@@ -338,16 +333,13 @@ export function map_wyckoff_to_all_atoms(
   if (!sym_data?.operations) return wyckoff_positions
 
   const map_in_frame = (frame: DisplayFrame): WyckoffPos[] | null => {
-    // Supercell factor S = L_disp·L_F⁻¹ must be a near-integer matrix with |det| ≥ 1
-    let scaling: Matrix3x3
-    try {
-      scaling = math.dot(
-        displayed_structure.lattice.matrix,
-        math.matrix_inverse_3x3(frame.lattice),
-      )
-    } catch {
-      return null
-    }
+    // Supercell factor S = L_disp·L_F⁻¹ must be a near-integer matrix with |det| ≥ 1. A
+    // degenerate frame lattice (zero-volume cell) fits nothing.
+    if (Math.abs(math.det_3x3(frame.lattice)) < 1e-12) return null
+    const scaling = math.dot(
+      displayed_structure.lattice.matrix,
+      math.matrix_inverse_3x3(frame.lattice),
+    )
     const is_integer_scaling = scaling.every((row) =>
       row.every((val) => Math.abs(val - Math.round(val)) < tolerance),
     )
@@ -385,7 +377,7 @@ export function map_wyckoff_to_all_atoms(
         const element = species[0]?.element
         const equivalents = equiv_by_element.get(element) ?? new Map<string, Vec3>()
         equiv_by_element.set(element, equivalents)
-        const member_key = position_key(frame.map_equiv(orig_abc.map(to_unit) as Vec3))
+        const member_key = position_key(frame.map_equiv(wrap_to_unit_cell(orig_abc)))
         if (equivalents.has(member_key)) continue
         for (const equiv_pos of apply_symmetry_operations(orig_abc, sym_data.operations)) {
           const frame_pos = frame.map_equiv(equiv_pos)

@@ -24,10 +24,6 @@ import {
   with_vacancy,
 } from './lattices'
 
-// Tolerances are stated as multiples of machine epsilon for f64 (2.22e-16) where the quantity
-// is exactly zero in exact arithmetic, and as physically argued absolute values otherwise.
-const F64_EPS = Number.EPSILON
-
 // CSP is a sum of 6 squared vector sums. The neighbor deltas are differences of coordinates
 // that span the whole 4x3.615 = 14.5 Å supercell and pass through a frac->cart round trip, so
 // one coordinate carries ~14.5 * f64_eps ~ 3.2e-15 Å of rounding; the pair sum doubles it and
@@ -155,7 +151,6 @@ describe(`common neighbor analysis`, () => {
     const result = calc_structure_id(build(), { skip_csp: true })
     expect(result.n_atoms).toBe(n_atoms)
     expect(result.populations[expected]).toBe(n_atoms)
-    expect(result.cutoff).toBeNull() // adaptive: no global cutoff
   })
 
   test.each([
@@ -166,7 +161,8 @@ describe(`common neighbor analysis`, () => {
     (_label, build, cutoff, expected, n_atoms) => {
       const result = calc_structure_id(build(), { cna_mode: `fixed`, cutoff, skip_csp: true })
       expect(result.populations[expected]).toBe(n_atoms)
-      expect(result.cutoff).toBe(cutoff)
+      // with CSP skipped the cutoff query is the only one run
+      expect(result.neighbor_cutoff).toBe(cutoff)
     },
   )
 
@@ -195,42 +191,48 @@ describe(`common neighbor analysis`, () => {
     },
   )
 
-  test(`a vacancy leaves its 12 neighbors unclassified and raises their CSP`, () => {
-    const perfect = make_fcc([4, 4, 4])
-    const removed_idx = 130 // an atom well away from the cell corner
-    const distances = distances_to(perfect, removed_idx)
-    const nn_dist = fcc_nn_distance()
-    // Indices in the defective structure of the atoms that bordered the vacancy
-    const neighbor_indices = new Set(
-      distances
-        .map((dist, idx) => ({ dist, idx }))
-        .filter(({ dist }) => dist > 1e-9 && dist < nn_dist * 1.01)
-        .map(({ idx }) => (idx > removed_idx ? idx - 1 : idx)),
-    )
-    expect(neighbor_indices.size).toBe(12)
+  // In fixed mode CSP must not run on the cutoff list: the vacancy's neighbors have only 11
+  // atoms inside the fcc cutoff, which used to make their CSP NaN instead of the large value
+  // the 12 nearest (one from the second shell) give.
+  test.each([
+    [`adaptive`, {}],
+    [`fixed`, { cna_mode: `fixed` as const, cutoff: 0.854 * FCC_LATTICE_CONST }],
+  ])(
+    `a vacancy leaves its 12 neighbors unclassified and raises their CSP (%s CNA)`,
+    (_mode, options) => {
+      const perfect = make_fcc([4, 4, 4])
+      const removed_idx = 130 // an atom well away from the cell corner
+      const distances = distances_to(perfect, removed_idx)
+      const nn_dist = fcc_nn_distance()
+      // Indices in the defective structure of the atoms that bordered the vacancy
+      const neighbor_indices = new Set(
+        distances
+          .map((dist, idx) => ({ dist, idx }))
+          .filter(({ dist }) => dist > 1e-9 && dist < nn_dist * 1.01)
+          .map(({ idx }) => (idx > removed_idx ? idx - 1 : idx)),
+      )
+      expect(neighbor_indices.size).toBe(12)
 
-    const result = calc_structure_id(with_vacancy(perfect, removed_idx))
-    expect(result.n_atoms).toBe(255)
-    expect(result.populations.other).toBe(12)
-    expect(result.populations.fcc).toBe(243)
-    if (!result.centrosymmetry) throw new Error(`centrosymmetry was not computed`)
-    const csp = result.centrosymmetry
-    const affected = [...neighbor_indices].map((idx) => csp[idx])
-    const untouched = [...csp.keys()]
-      .filter((idx) => !neighbor_indices.has(idx))
-      .map((idx) => csp[idx])
-    const min_affected = Math.min(...affected)
-    const max_untouched = Math.max(...untouched)
-    console.info(
-      `vacancy: min CSP on the 12 neighbors = ${min_affected.toFixed(4)} Å², ` +
-        `max CSP elsewhere = ${max_untouched.toExponential(3)} Å²`,
-    )
-    // A missing 1/2<110> bond of length 2.556 Å leaves its opposite unpaired, so the term is
-    // |r|² = 6.53 Å². The smallest-sums pairing recovers part of that by reusing a neighbor in
-    // more than one term, so require a clear separation rather than the ideal value.
-    expect(min_affected).toBeGreaterThan(1)
-    expect(max_untouched).toBeLessThan(PERFECT_CSP_TOLERANCE)
-  })
+      const result = calc_structure_id(with_vacancy(perfect, removed_idx), options)
+      expect(result.n_atoms).toBe(255)
+      expect(result.populations.other).toBe(12)
+      expect(result.populations.fcc).toBe(243)
+      expect(result.n_csp_undefined).toBe(0)
+      if (!result.centrosymmetry) throw new Error(`centrosymmetry was not computed`)
+      const csp = result.centrosymmetry
+      const affected = [...neighbor_indices].map((idx) => csp[idx])
+      const untouched = [...csp.keys()]
+        .filter((idx) => !neighbor_indices.has(idx))
+        .map((idx) => csp[idx])
+      const min_affected = Math.min(...affected)
+      const max_untouched = Math.max(...untouched)
+      // A missing 1/2<110> bond of length 2.556 Å leaves its opposite unpaired, so the term is
+      // |r|² = 6.53 Å². The smallest-sums pairing recovers part of that by reusing a neighbor in
+      // more than one term, so require a clear separation rather than the ideal value.
+      expect(min_affected).toBeGreaterThan(1)
+      expect(max_untouched).toBeLessThan(PERFECT_CSP_TOLERANCE)
+    },
+  )
 
   test(`the center of a 13-atom icosahedron is the only ICO atom`, () => {
     // Exercises the 12 x (5,5,5) branch: each neighbor of the center shares exactly its five
@@ -266,17 +268,11 @@ describe(`centrosymmetry`, () => {
     [`fcc`, () => make_fcc([4, 4, 4]), 12],
     [`bcc`, () => make_bcc([4, 4, 4]), 8],
     [`dilated fcc`, () => make_fcc([3, 3, 3], FCC_LATTICE_CONST * 1.15), 12],
-  ])(`a perfect %s lattice has CSP = 0 to round-off`, (label, build, n_csp_neighbors) => {
+  ])(`a perfect %s lattice has CSP = 0 to round-off`, (_label, build, n_csp_neighbors) => {
     const result = calc_structure_id(build(), { skip_cna: true, n_csp_neighbors })
     if (!result.centrosymmetry) throw new Error(`centrosymmetry was not computed`)
-    const observed_max = max_finite(result.centrosymmetry)
-    // Printed so the report can quote the measured number rather than the bound
-    console.info(
-      `perfect ${label} max CSP = ${observed_max.toExponential(3)} Å² ` +
-        `(${(observed_max / F64_EPS).toExponential(2)} x f64 eps)`,
-    )
     expect(result.n_csp_undefined).toBe(0)
-    expect(observed_max).toBeLessThan(PERFECT_CSP_TOLERANCE)
+    expect(max_finite(result.centrosymmetry)).toBeLessThan(PERFECT_CSP_TOLERANCE)
   })
 
   test(`displacing a perfect lattice raises CSP well clear of round-off`, () => {
@@ -285,9 +281,7 @@ describe(`centrosymmetry`, () => {
     if (!result.centrosymmetry) throw new Error(`centrosymmetry was not computed`)
     // 0.35 Å is ~14% of the 2.556 Å nearest-neighbor distance, so every site loses its
     // inversion symmetry and no site may still read as centrosymmetric.
-    const min_csp = Math.min(...result.centrosymmetry)
-    console.info(`displaced fcc: min CSP = ${min_csp.toFixed(4)} Å²`)
-    expect(min_csp).toBeGreaterThan(0.1)
+    expect(Math.min(...result.centrosymmetry)).toBeGreaterThan(0.1)
   })
 
   test.each([
@@ -362,23 +356,15 @@ describe(`calc_structure_id plumbing`, () => {
     expect(result.centrosymmetry?.every(Number.isNaN)).toBe(true)
   })
 
-  test(`a ~10k atom supercell stays interactive`, { timeout: 30_000 }, () => {
+  // Large-N path: the grid has to hold a ~10k-site supercell without thrashing. Timing lives
+  // in perf-baselines.test.ts; this only pins the result.
+  test(`a ~10k atom supercell is classified exactly`, { timeout: 30_000 }, () => {
     const crystal = make_fcc([14, 14, 14]) // 4 atoms per cell
     expect(crystal.sites).toHaveLength(10976)
-    const started = performance.now()
     const result = calc_structure_id(crystal)
-    const elapsed_ms = performance.now() - started
-    console.info(
-      `10976-atom fcc: CNA + CSP in ${elapsed_ms.toFixed(0)} ms ` +
-        `(${((elapsed_ms * 1000) / crystal.sites.length).toFixed(1)} µs/atom), ` +
-        `neighbor cutoff ${result.neighbor_cutoff.toFixed(2)} Å`,
-    )
     expect(result.populations.fcc).toBe(10976)
     if (!result.centrosymmetry) throw new Error(`centrosymmetry was not computed`)
     expect(max_finite(result.centrosymmetry)).toBeLessThan(PERFECT_CSP_TOLERANCE)
-    // Generous ceiling: this guards against an accidental O(N²) regression, not against
-    // machine-to-machine variation.
-    expect(elapsed_ms).toBeLessThan(20000)
   })
 
   test(`a non-periodic cluster has CSP well above a periodic crystal`, () => {

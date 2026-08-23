@@ -19,7 +19,7 @@ const mount_controls = (
 const get_toggle = () =>
   document.querySelector(`button.heatmap-matrix-controls-toggle`) as HTMLButtonElement
 
-// Find the legend position select by its option values (right/bottom)
+// Find the color bar position select by its option values (right/bottom)
 const find_position_select = () =>
   [...document.querySelectorAll<HTMLSelectElement>(`.heatmap-controls select`)].find(
     (select) => select.querySelector(`option[value="right"]`),
@@ -106,22 +106,22 @@ describe(`HeatmapMatrixControls`, () => {
     expect(all_options).toContain(`fixed`)
   })
 
-  test(`legend position select only visible when show_legend is true`, async () => {
-    mount_controls({ controls_open: true, show_legend: false })
+  test(`color bar position select only visible when show_color_bar is true`, async () => {
+    mount_controls({ controls_open: true, show_color_bar: false })
     await tick()
     expect(find_position_select()).toBeUndefined()
 
-    const legend_checkbox = doc_query<HTMLInputElement>(
+    const color_bar_checkbox = doc_query<HTMLInputElement>(
       `.heatmap-controls input[type="checkbox"]`,
     )
-    legend_checkbox.click()
+    color_bar_checkbox.click()
     await tick()
     expect(find_position_select()).toBeDefined()
   })
 
   test(`export buttons render with text and fire handler with format`, () => {
     const export_handler = vi.fn()
-    mount_controls({ onexport: export_handler, export_formats: [`csv`, `json`] })
+    mount_controls({ on_export: export_handler, export_formats: [`csv`, `json`] })
     const buttons = Array.from(
       document.querySelectorAll<HTMLButtonElement>(`.pane-row button`),
     )

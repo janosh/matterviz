@@ -2,13 +2,16 @@
   import { format_num } from '$lib/labels'
   import type { StructurePlotProps } from '$lib/plot/bar'
   import StructureBarPlot from '$lib/plot/bar/StructureBarPlot.svelte'
-  import { to_structure_entries } from '$lib/plot/core/structure-input'
+  import {
+    compute_structure_entries,
+    to_structure_entries,
+  } from '$lib/plot/core/structure-input'
   import type { StructureEntry } from '$lib/plot/core/structure-input'
   import type { BarHandlerProps } from '$lib/plot/core/types'
   import { to_error } from '$lib/utils'
   import {
     bin_bond_angles,
-    compute_bond_angles,
+    calc_bond_angles,
     BOND_ANGLE_DEFAULT_BIN_WIDTH,
     MAX_BOND_ANGLE,
   } from './calc-bond-angles'
@@ -40,13 +43,14 @@
   let dropped_entries = $state<StructureEntry[]>([])
 
   // Geometry and binning are separate deriveds so dragging the bin-width slider re-bins an
-  // unchanged triplet list instead of re-running the whole periodic bond search.
+  // unchanged triplet list instead of re-running the whole periodic bond search. A structure
+  // the neighbor search rejects is reported, not thrown through the render.
   const opts = $derived({ strategy, center_elements, neighbor_elements })
-  const entries_with_triplets = $derived(
-    [...to_structure_entries(structures), ...dropped_entries].map((entry) => ({
-      ...entry,
-      triplets: compute_bond_angles(entry.structure, opts),
-    })),
+  const computed = $derived(
+    compute_structure_entries(
+      [...to_structure_entries(structures), ...dropped_entries],
+      (structure) => calc_bond_angles(structure, opts),
+    ),
   )
 
   // resolve_angle_bins throws for a bin_width outside (0, 180], and bin_width is public.
@@ -54,9 +58,9 @@
   // $derived is state_unsafe_mutation.
   const binned = $derived.by(() => {
     try {
-      const entries = entries_with_triplets.map((entry) => ({
+      const entries = computed.entries.map((entry) => ({
         ...entry,
-        data: bin_bond_angles(entry.triplets, {
+        data: bin_bond_angles(entry.data, {
           bin_width,
           split_by_triplet: split_mode === `by_triplet`,
         }),
@@ -67,7 +71,7 @@
     }
   })
   $effect(() => {
-    error_msg = binned.failure
+    error_msg = computed.error ?? binned.failure
   })
 
   const bar_series = $derived(to_angle_bar_series(binned.entries, split_mode, normalize))

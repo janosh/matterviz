@@ -1,5 +1,4 @@
 import type { DataSeries } from '$lib/plot'
-import { create_legend_visibility } from '$lib/plot/core/utils/series-visibility'
 import type { TrajectoryMetadata } from '$lib/trajectory'
 import {
   available_x_quantities,
@@ -65,8 +64,8 @@ describe(`generate_plot_series`, () => {
   it(`omits frame, step, and time coordinates from eager trajectory series`, () => {
     const series = generate_plot_series(
       create_rows([
-        { energy: -10, frame_id: 0, production_step: 0, [`Time (ps)`]: 0 },
-        { energy: -11, frame_id: 1, production_step: 10, [`Time (ps)`]: 0.25 },
+        { energy: -10, frame_id: 0, production_step: 0, time_ps: 0, [`Time (ps)`]: 0 },
+        { energy: -11, frame_id: 1, production_step: 10, time_ps: 0.25, [`Time (ps)`]: 0.25 },
       ]),
       { property_config: DEFAULT_PROPERTY_CONFIG },
     )
@@ -171,6 +170,11 @@ describe(`generate_plot_series`, () => {
         series.map(({ label, visible, y_axis }) => [label, { visible, y_axis }]),
       ),
     ).toEqual(expected)
+    // visible series lead the legend regardless of property order
+    const visibility = series.map(({ visible }) => visible)
+    expect(visibility).toEqual(
+      visibility.toSorted((left, right) => Number(right) - Number(left)),
+    )
   })
 
   it(`keeps sparse property values aligned to their source frames`, () => {
@@ -211,6 +215,12 @@ describe(`generate_plot_series`, () => {
     expect(Math.max(...smoothed.y)).toBeLessThan(20)
     expect(Math.max(...underlay.y)).toBe(100)
     expect(raw_y).toEqual(smoothed.x.map((x) => raw_series[0].y[x]))
+    expect(smoothed.line_style).toMatchObject({ stroke_width: 2.5, curve: `monotone` })
+    expect(underlay.line_style).toEqual({
+      stroke: `color-mix(in srgb, #63b3ed 18%, transparent)`,
+      stroke_width: 1,
+      curve: `linear`,
+    })
 
     const [resampled] = prepare_trajectory_scatter_series([smoothed], 250)
     const resampled_underlay = resampled.line_underlays?.[0]
@@ -345,150 +355,6 @@ describe(`generate_axis_scale_types`, () => {
   ])(`$name`, ({ series, expected }) => {
     expect(generate_axis_scale_types(series)).toEqual(expected)
   })
-})
-
-describe(`auto-assigned legend visibility`, () => {
-  it.each([
-    {
-      name: `automatic axes preserve a dual-axis partner`,
-      axes: [undefined, undefined],
-      expected_after_restore: [true, true],
-    },
-    {
-      name: `explicit same-axis assignments hide an incompatible partner`,
-      axes: [`y1`, `y1`] as const,
-      expected_after_restore: [true, false],
-    },
-  ])(`round-trips visibility when $name`, ({ axes, expected_after_restore }) => {
-    let series: DataSeries[] = [
-      { x: [0, 1], y: [1, 2], unit: `eV`, visible: true, y_axis: axes[0] },
-      { x: [0, 1], y: [3, 4], unit: `GPa`, visible: true, y_axis: axes[1] },
-    ]
-    const legend_visibility = create_legend_visibility(
-      () => series,
-      (next_series) => (series = next_series),
-    )
-
-    legend_visibility.on_toggle(0)
-    expect(series.map((srs) => srs.visible)).toEqual([false, true])
-    legend_visibility.on_toggle(0)
-    expect(series.map((srs) => srs.visible)).toEqual(expected_after_restore)
-  })
-})
-
-describe(`streaming visibility characterization`, () => {
-  const property_frames = [
-    { temperature: 300, volume: 100, energy: -10 },
-    { temperature: 301, volume: 101, energy: -11 },
-  ]
-  const property_config = {
-    temperature: { label: `Temperature`, unit: `K` },
-    volume: { label: `Volume`, unit: `Å³` },
-    energy: { label: `Energy`, unit: `eV` },
-  }
-  const plot_metadata = property_frames.map((properties, frame_number) => ({
-    frame_number,
-    step: frame_number,
-    properties,
-  }))
-  const assignments = (series: DataSeries[]) =>
-    series
-      .map(({ label, unit, visible, x, y, y_axis }) => ({
-        label,
-        unit,
-        visible,
-        x,
-        y,
-        y_axis,
-      }))
-      .toSorted((left, right) => left.label?.localeCompare(right.label ?? ``) ?? -1)
-
-  it(`keeps axis assignment stable for matching visibility inputs`, () => {
-    const default_visible_properties = new Set(Object.keys(property_config))
-    const from_frames = generate_plot_series(create_rows(property_frames), {
-      property_config,
-      default_visible_properties,
-    })
-    const from_metadata = generate_plot_series(plot_metadata, {
-      property_config,
-      default_visible_properties,
-    })
-    expect(assignments(from_metadata)).toEqual(assignments(from_frames))
-  })
-
-  // Streamed series follow the same rule as eager ones: only requested unit groups show, no
-  // "first two series are always visible" special case that put volume next to energy
-  it(`shows only the requested unit groups`, () => {
-    const series = generate_plot_series(plot_metadata, {
-      property_config,
-      default_visible_properties: new Set([`energy`]),
-    })
-    const axis_assignments = series
-      .map(({ label, visible, y_axis }) => ({ label, visible, y_axis }))
-      .toSorted((left, right) => left.label?.localeCompare(right.label ?? ``) ?? -1)
-
-    expect(axis_assignments).toEqual([
-      { label: `Energy`, visible: true, y_axis: `y1` },
-      { label: `Temperature`, visible: false, y_axis: `y1` },
-      { label: `Volume`, visible: false, y_axis: `y1` },
-    ])
-    // visible series lead the legend
-    expect(series[0].label).toBe(`Energy`)
-  })
-
-  it(`omits navigation coordinates instead of plotting time against time`, () => {
-    const coordinate_metadata = [0, 1, 2].map((frame_number) => ({
-      frame_number,
-      step: 10 * frame_number,
-      properties: {
-        time_ps: frame_number * 0.25,
-        production_step: 10 * frame_number,
-        energy: -10 - frame_number,
-        temperature: 300 + frame_number,
-      },
-    }))
-
-    const series = generate_plot_series(coordinate_metadata, {
-      property_config,
-    })
-    expect(
-      series
-        .map(({ label }) => label)
-        .toSorted((left, right) => (left ?? ``).localeCompare(right ?? ``)),
-    ).toEqual([`Energy`, `Temperature`])
-    expect(find_series_by_label(series, `energy`)?.visible).toBe(true)
-  })
-
-  it.each([`energy`, `total_energy`, `potential_energy`])(
-    `renders long noisy %s as a smoothed trend over a faint peak-preserving trace`,
-    (energy_key) => {
-      const energy_metadata = Array.from({ length: 24_001 }, (_unused, frame_number) => ({
-        frame_number,
-        step: frame_number,
-        properties: {
-          [energy_key]: frame_number === 12_000 ? 100 : Math.sin(frame_number),
-        },
-      }))
-
-      const raw_series = generate_plot_series(energy_metadata, {
-        property_config,
-      })
-      const [smoothed] = prepare_trajectory_scatter_series(raw_series, 64)
-      const underlay = smoothed.line_underlays?.[0]
-      if (!underlay) throw new Error(`Expected a raw line underlay`)
-      expect([smoothed.x.length, underlay.x.length]).toEqual([64, 64])
-      expect([smoothed.x[0], smoothed.x.at(-1)]).toEqual([0, 24_000])
-      expect([underlay.x[0], underlay.x.at(-1)]).toEqual([0, 24_000])
-      expect(Math.max(...smoothed.y)).toBeLessThan(2)
-      expect(Math.max(...underlay.y)).toBe(100)
-      expect(smoothed.line_style).toMatchObject({ stroke_width: 2.5, curve: `monotone` })
-      expect(underlay.line_style).toEqual({
-        stroke: `color-mix(in srgb, #63b3ed 18%, transparent)`,
-        stroke_width: 1,
-        curve: `linear`,
-      })
-    },
-  )
 })
 
 describe(`SCF convergence series axis grouping and log scale`, () => {

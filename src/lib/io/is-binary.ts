@@ -2,6 +2,8 @@
 // decompress.ts and url-drop.ts): (1) is_binary string heuristic, (2) has_*_magic byte
 // signatures, (3) extension/filename classification.
 
+import { BINARY_VIEWER_EXTENSIONS } from '$lib/constants'
+
 // === (1) string-content heuristic ===
 // Detect binary from decoded text: a NUL byte or a high ratio of non-printable chars. Only
 // the leading window is inspected (like file(1)): a 25 MB trajectory is classified in
@@ -67,7 +69,10 @@ export const has_binary_magic = (bytes: Uint8Array): boolean =>
 export const ext_of = (name: string): string => name.split(`.`).pop()?.toLowerCase() ?? ``
 
 // Binary data formats whose lossy UTF-8 decode would corrupt bytes (post-decompression)
-const BINARY_DATA_EXTENSIONS = new Set(`h5 hdf5 traj npz pkl dat brml raw`.split(` `))
+const BINARY_DATA_EXTENSIONS = new Set([
+  ...BINARY_VIEWER_EXTENSIONS,
+  ...`npz pkl dat brml raw`.split(` `),
+])
 export const is_binary_data_extension = (ext: string): boolean =>
   BINARY_DATA_EXTENSIONS.has(ext)
 

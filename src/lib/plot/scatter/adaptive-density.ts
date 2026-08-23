@@ -1,4 +1,5 @@
-import { LOG_EPS, type Point2D, type Vec2 } from '$lib/math'
+import { clamp, LOG_EPS, type Point2D, type Vec2 } from '$lib/math'
+import { range_bounds } from '$lib/plot/core/interactions'
 import {
   build_spatial_index,
   query_nearest,
@@ -118,9 +119,6 @@ const get_metadata_at = <Metadata>(
   point_idx: number,
 ): Metadata | undefined => (Array.isArray(metadata) ? metadata[point_idx] : metadata)
 
-export const range_bounds = (range: Vec2): Vec2 =>
-  range[0] <= range[1] ? range : [range[1], range[0]]
-
 const in_bounds = (value: number, min: number, max: number): boolean =>
   Number.isFinite(value) && value >= min && value <= max
 
@@ -147,8 +145,8 @@ const padded_extent = (
     return [inverse(t_min - 0.5), inverse(t_max + 0.5)]
   }
   const padding = (t_max - t_min) * range_padding
-  const clamp = (val: number) => Math.min(Number.MAX_VALUE, Math.max(-Number.MAX_VALUE, val))
-  return [clamp(inverse(t_min - padding)), clamp(inverse(t_max + padding))]
+  const finite = (val: number) => clamp(val, -Number.MAX_VALUE, Number.MAX_VALUE)
+  return [finite(inverse(t_min - padding)), finite(inverse(t_max + padding))]
 }
 
 export function series_extents(

@@ -37,7 +37,7 @@
 </script>
 
 <script lang="ts">
-  import { PLOT_COLORS } from '$lib/colors'
+  import { plot_color } from '$lib/colors'
   import { sanitize_html } from '$lib/sanitize'
   import { structures } from '$site/structures'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -68,10 +68,7 @@
   {#each structures as struct (struct.id)}
     {@const struct_id = struct.id ?? ``}
     {@const sel_idx = series_idx(struct_id)}
-    {@const color =
-      sel_idx >= 0 && Array.isArray(selected)
-        ? PLOT_COLORS[sel_idx % PLOT_COLORS.length]
-        : null}
+    {@const color = sel_idx >= 0 && Array.isArray(selected) ? plot_color(sel_idx) : null}
     <button
       class:selected={sel_idx >= 0}
       aria-pressed={sel_idx >= 0}

@@ -1,13 +1,8 @@
 // Shared utilities for interactive axis functionality
 
 import { to_error } from '$lib/utils'
-import type {
-  AxisConfig,
-  AxisLoadError,
-  BarSeries,
-  DataLoaderFn,
-  DataSeries,
-} from '$lib/plot/core/types'
+import { AXIS_TITLE_OFFSET } from '$lib/plot/core/layout'
+import type { AxisConfig, AxisLoadError, DataLoaderFn } from '$lib/plot/core/types'
 
 // Shared axis defaults across plot components (single source of truth)
 export const AXIS_DEFAULTS = {
@@ -18,12 +13,34 @@ export const AXIS_DEFAULTS = {
   tick: { label: { shift: { x: 0, y: 0 }, inside: false } },
   range: [null, null] as [number | null, number | null],
 }
+// The top (x2) axis title sits above the top edge by the tick-label band
+export const X2_AXIS_DEFAULTS = {
+  ...AXIS_DEFAULTS,
+  label_shift: { x: 0, y: AXIS_TITLE_OFFSET },
+}
 
 type AxisType = `x` | `x2` | `y` | `y2`
 
+// Tick labels of a categorical axis (slot index -> category name). A user-supplied label
+// mapping (a Record) wins; a tick count or tick positions don't apply to category slots
+// and are ignored. Undefined without categories so the axis falls back to generated ticks.
+export const category_tick_labels = (
+  categories: readonly string[],
+  user_ticks: AxisConfig[`ticks`],
+): AxisConfig[`ticks`] => {
+  if (categories.length === 0) return undefined
+  if (user_ticks != null && typeof user_ticks === `object` && !Array.isArray(user_ticks)) {
+    return user_ticks
+  }
+  return Object.fromEntries(categories.map((cat, idx) => [idx, cat]))
+}
+
+// Any chart series the axis loader can replace (DataSeries, BarSeries, HistogramSeries, ...)
+type LoadableSeries = { id?: string | number; visible?: boolean }
+
 // Merge new series with preserved UI state from old series.
 // Matches by stable id first, then by index only for ordered id-less series.
-export function merge_series_state<T extends DataSeries | BarSeries>(
+export function merge_series_state<T extends LoadableSeries>(
   old_series: T[],
   new_series: T[],
 ): T[] {
@@ -45,7 +62,7 @@ export function merge_series_state<T extends DataSeries | BarSeries>(
     result.visible ??= old_srs.visible
 
     // Preserve style properties only when key exists in BOTH series (guards against
-    // cross-type injection when T is a union like DataSeries | BarSeries)
+    // cross-type injection when T is a union of series types)
     for (const key of [`point_style`, `line_style`, `color`]) {
       if (key in old_srs && key in new_srs && result[key] === undefined) {
         result[key] = old_srs[key as keyof typeof old_srs]
@@ -58,7 +75,7 @@ export function merge_series_state<T extends DataSeries | BarSeries>(
 // Read/write accessors a plot supplies so the shared axis-change logic can drive its reactive
 // state. Each axis has independent get/set so a plot may read a merged $derived but write the raw
 // $bindable prop (e.g. BarPlot's secondary axes) without pushing library defaults into bound state.
-export interface AxisChangeState<T extends DataSeries | BarSeries> {
+export interface AxisChangeState<T extends LoadableSeries> {
   axes: Record<AxisType, { get: () => AxisConfig; set: (config: AxisConfig) => void }>
   series: { get: () => T[]; set: (series: T[]) => void }
   loading: { get: () => AxisType | null; set: (axis: AxisType | null) => void }
@@ -68,7 +85,7 @@ export interface AxisChangeState<T extends DataSeries | BarSeries> {
 // data_loader (reading `get_props` fresh each call so callbacks stay current), and `try_auto_load`
 // loads the first axis option once when series start empty. Reads state through getters so a
 // component `$effect(try_auto_load)` tracks them reactively.
-export function create_axis_loader<T extends DataSeries | BarSeries>(
+export function create_axis_loader<T extends LoadableSeries>(
   state: AxisChangeState<T>,
   get_props: () => {
     data_loader?: DataLoaderFn<Record<string, unknown>, T>

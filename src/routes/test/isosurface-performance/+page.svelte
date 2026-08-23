@@ -1,6 +1,7 @@
 <script lang="ts">
   import Isosurface from '$lib/isosurface/Isosurface.svelte'
-  import type { IsosurfaceProfileEvent, IsosurfaceProfiler } from '$lib/isosurface/profile'
+  import type { IsosurfaceProfileMeta } from '$lib/isosurface/profile'
+  import { ISOSURFACE_MEASURE_PREFIX, set_isosurface_profiling } from '$lib/isosurface/profile'
   import type {
     IsosurfaceLayer,
     IsosurfaceSettings,
@@ -37,11 +38,13 @@
   let range_mode = $state<RangeMode>(`unit`)
   let color_mode = $state<`cross_grid` | `same_grid`>(`cross_grid`)
   let volumes = $state.raw<VolumetricData[]>([])
-  let settings = $state<IsosurfaceSettings>({ ...DEFAULT_ISOSURFACE_SETTINGS, layers: [] })
-  // Unproxied so the profiler doesn't bill itself to what it measures; `event_count` is the
-  // reactive half that makes the markup re-read this array.
+  let settings = $state<IsosurfaceSettings>({ ...DEFAULT_ISOSURFACE_SETTINGS })
+  // Stage timings collected from the `isosurface:<stage>` User Timing measures the renderer
+  // publishes. Unproxied so the observer doesn't bill itself to what it measures;
+  // `event_count` is the reactive half that makes the markup re-read this array.
+  type ProfileEvent = { stage: string; duration_ms: number; meta: IsosurfaceProfileMeta }
   // svelte-ignore non_reactive_update
-  let profile_events: IsosurfaceProfileEvent[] = []
+  let profile_events: ProfileEvent[] = []
   let event_count = $state(0)
   let fps = $state<number | undefined>()
   let heap_bytes = $state<number | undefined>()
@@ -49,16 +52,18 @@
 
   function make_test_volume(size: number, kind: `density` | `color`): VolumetricData {
     const values = new Float64Array(size ** 3)
+    // periodic distance from the cell center along one fractional axis
+    const delta = (frac: number) => Math.min(Math.abs(frac - 0.5), 1 - Math.abs(frac - 0.5))
     let idx = 0
     for (let x_idx = 0; x_idx < size; x_idx++) {
       const x_frac = x_idx / size
-      const x_delta = Math.min(Math.abs(x_frac - 0.5), 1 - Math.abs(x_frac - 0.5))
+      const x_delta = delta(x_frac)
       for (let y_idx = 0; y_idx < size; y_idx++) {
         const y_frac = y_idx / size
-        const y_delta = Math.min(Math.abs(y_frac - 0.5), 1 - Math.abs(y_frac - 0.5))
+        const y_delta = delta(y_frac)
         for (let z_idx = 0; z_idx < size; z_idx++) {
           const z_frac = z_idx / size
-          const z_delta = Math.min(Math.abs(z_frac - 0.5), 1 - Math.abs(z_frac - 0.5))
+          const z_delta = delta(z_frac)
           values[idx++] =
             kind === `density`
               ? Math.exp(-(x_delta ** 2 + y_delta ** 2 + z_delta ** 2) / 0.045)
@@ -106,23 +111,30 @@
     }
   }
 
-  const profiler: IsosurfaceProfiler = (event) => {
-    profile_events.push(event)
+  const record_measure = (entry: PerformanceEntry) => {
+    if (!entry.name.startsWith(ISOSURFACE_MEASURE_PREFIX)) return
+    const stage = entry.name.slice(ISOSURFACE_MEASURE_PREFIX.length)
+    const { detail } = entry as PerformanceMeasure
+    profile_events.push({
+      stage,
+      duration_ms: entry.duration,
+      meta: (detail ?? {}) as IsosurfaceProfileMeta,
+    })
     event_count = profile_events.length
-    if (event.stage === `rebuild_total` || event.stage === `recolor_total`) {
+    if (stage === `rebuild_total` || stage === `recolor_total`) {
       heap_bytes = (performance as Performance & { memory?: { usedJSHeapSize: number } })
         .memory?.usedJSHeapSize
     }
   }
 
   function change_isovalue(): void {
-    const layers = settings.layers ?? []
+    const { layers } = settings
     if (!layers[0]) return
     layers[0].isovalue = layers[0].isovalue >= 0.24 ? 0.18 : layers[0].isovalue + 0.01
   }
 
   function recolor(): void {
-    const layers = settings.layers ?? []
+    const { layers } = settings
     if (!layers[0]) return
     layers[0].colormap =
       layers[0].colormap === `interpolateRdBu` ? `interpolateViridis` : `interpolateRdBu`
@@ -159,7 +171,16 @@
     if ([`same_grid`, `cross_grid`].includes(requested_color ?? ``)) {
       color_mode = requested_color as typeof color_mode
     }
+    const observer = new PerformanceObserver((list) => {
+      for (const entry of list.getEntries()) record_measure(entry)
+    })
+    observer.observe({ entryTypes: [`measure`] })
+    set_isosurface_profiling(true)
     rebuild_scenario()
+    return () => {
+      set_isosurface_profiling(false)
+      observer.disconnect()
+    }
   })
 </script>
 
@@ -174,7 +195,7 @@
       <T.AmbientLight intensity={1.4} />
       <T.DirectionalLight position={[5, 8, 10]} intensity={2} />
       <T.Group rotation={[0, animation_angle, 0]}>
-        <Isosurface {volumes} {settings} {profiler} />
+        <Isosurface {volumes} {settings} />
       </T.Group>
     </Canvas>
   {/if}

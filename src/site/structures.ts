@@ -1,23 +1,26 @@
 import type { AnyStructure, FileInfo } from '$lib'
 import {
   detect_structure_type,
-  is_optimade_raw,
   is_structure_like,
-  parse_optimade_from_raw,
+  optimade_structure_from_raw,
+  optimade_to_structure,
   structure_from_json,
 } from '$lib/structure/parse'
 import { is_crystal } from '$lib/structure/validation'
-import { glob_text } from '$site/imports'
+import { fixture_ext, glob_basename, glob_text, site_file_info } from '$site/imports'
 import { SvelteMap } from 'svelte/reactivity'
 
 export const structures = Object.entries(
   import.meta.glob<unknown>(`./structures/*.json`, { eager: true, import: `default` }),
 )
   .flatMap(([path, data]) => {
-    const id = path.split(`/`).at(-1)?.split(`.`)[0] as string
+    const id = glob_basename(path).split(`.`)[0]
+    const optimade = optimade_structure_from_raw(data)
+    // optimade_to_structure throws on a malformed fixture on purpose: that should fail loudly
+    // at build/test time rather than silently drop the structure from the demo list.
     // annotated: `Crystal | Molecule` would otherwise subtype-reduce to Molecule here
-    const structure: AnyStructure | null = is_optimade_raw(data)
-      ? parse_optimade_from_raw(data)
+    const structure: AnyStructure | null = optimade
+      ? optimade_to_structure(optimade)
       : is_structure_like(data)
         ? structure_from_json(data)
         : null
@@ -55,12 +58,9 @@ const category_icons: Record<ReturnType<typeof detect_structure_type>, string> =
 
 export const structure_files: FileInfo[] = Object.entries(raw_structure_modules).map(
   ([path, value]) => {
-    const filename = path.split(`/`).pop() ?? path
-    const uncompressed_filename = filename.replace(/\.gz$/i, ``)
-    const type = uncompressed_filename.split(`.`).pop()?.toUpperCase() ?? `FILE`
-    const url = path.replace(`/src/site`, ``)
+    const file = site_file_info(path, { type: fixture_ext(path).toUpperCase() })
     // raw_text_plugin decompresses eager `?raw` gzip imports before they reach this map.
-    const category = detect_structure_type(uncompressed_filename, glob_text(value))
-    return { name: filename, url, type, category, category_icon: category_icons[category] }
+    const category = detect_structure_type(file.name.replace(/\.gz$/i, ``), glob_text(value))
+    return { ...file, category, category_icon: category_icons[category] }
   },
 )

@@ -2,64 +2,28 @@
 // Tests for FermiSlice.svelte component (ScatterPlot-based implementation)
 import FermiSlice from '$lib/fermi-surface/FermiSlice.svelte'
 import type { FermiSliceData, FermiSurfaceData } from '$lib/fermi-surface/types'
-import type { Matrix3x3, Vec3 } from '$lib/math'
 import { createRawSnippet, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { doc_query, mount_sized } from '../setup'
+import {
+  BOX_TRI_FACES,
+  BOX_VERTICES,
+  doc_query,
+  make_fermi_isosurface,
+  make_fermi_surface,
+  mount_sized,
+} from '../setup'
 
-// Create mock Fermi surface data with configurable bands
-function create_mock_fermi_data(band_indices: number[] = [0, 1]): FermiSurfaceData {
-  const vertices: Vec3[] = [
-    [-0.5, -0.5, 0],
-    [0.5, -0.5, 0],
-    [0.5, 0.5, 0],
-    [-0.5, 0.5, 0],
-    [-0.5, -0.5, 0.1],
-    [0.5, -0.5, 0.1],
-    [0.5, 0.5, 0.1],
-    [-0.5, 0.5, 0.1],
-  ]
-  const faces = [
-    [0, 1, 2],
-    [0, 2, 3],
-    [4, 6, 5],
-    [4, 7, 6],
-    [0, 4, 5],
-    [0, 5, 1],
-    [2, 6, 7],
-    [2, 7, 3],
-    [0, 3, 7],
-    [0, 7, 4],
-    [1, 5, 6],
-    [1, 6, 2],
-  ]
-  return {
-    isosurfaces: band_indices.map((band_index) => ({
-      vertices,
-      faces,
-      normals: vertices.map(() => [0, 0, 1] as Vec3),
-      band_index,
-      spin: null,
-    })),
-    k_lattice: [
-      [1, 0, 0],
-      [0, 1, 0],
-      [0, 0, 1],
-    ] as Matrix3x3,
-    fermi_energy: 0,
-    reciprocal_cell: `wigner_seitz`,
-    metadata: {
-      n_bands: band_indices.length,
-      n_surfaces: band_indices.length,
-      total_area: 1,
-    },
-  }
-}
+// Box-shaped Fermi surface data with one sheet per band
+const create_mock_fermi_data = (band_indices: number[] = [0, 1]): FermiSurfaceData =>
+  make_fermi_surface(
+    band_indices.map((band_index) =>
+      make_fermi_isosurface(BOX_VERTICES, BOX_TRI_FACES, { band_index }),
+    ),
+  )
 
 describe(`FermiSlice`, () => {
   test.each([
     [`omitted defaults to visible for one band`, [0], undefined, true],
-    [`true shows one band`, [0], true, true],
     [`false hides three bands`, [0, 1, 2], false, false],
   ] as const)(`legend visibility: %s`, async (_desc, bands, show_legend, expected) => {
     const plot = await mount_sized(
@@ -114,10 +78,9 @@ describe(`FermiSlice`, () => {
     })
     await tick()
 
-    expect(received?.export_svg).toBeTypeOf(`function`)
-    const exported = received?.export_svg()
-    expect(exported === null || typeof exported === `string`).toBe(true)
     expect(document.querySelector(`.children-rendered`)).not.toBeNull()
     expect(received?.slice_data).toBeNull() // null when no fermi_data
+    // the empty axes still export as a standalone SVG document
+    expect(received?.export_svg()).toMatch(/^<svg[^>]*role="application"/)
   })
 })

@@ -56,37 +56,15 @@ describe(`extract_columns`, () => {
     (data) => expect(extract_columns(data).size).toBe(0),
   )
 
-  test(`single-column column-based data produces one column for histogram`, () => {
-    const cols = extract_columns({ energy: [1, 2, 3] })
-    expect(cols.size).toBe(1)
-    expect(cols.get(`energy`)?.type).toBe(`numeric`)
-  })
-
-  test(`handles null values in columns`, () => {
-    const data = { x: [1, null, 3], y: [4, 5, null] }
-    const cols = extract_columns(data)
-    expect(cols.get(`x`)?.n_valid).toBe(2)
-    expect(cols.get(`y`)?.n_valid).toBe(2)
-  })
-
-  test(`classifies mixed-type columns when below 80% threshold`, () => {
-    const data = [{ val: 1 }, { val: `two` }, { val: 3 }, { val: `four` }, { val: 5 }]
-    const cols = extract_columns(data)
-    expect(cols.get(`val`)?.type).toBe(`mixed`)
-  })
-
-  test(`classifies as numeric when >= 80% are numbers`, () => {
-    const data = { val: [1, 2, 3, 4, `outlier`], idx: [0, 1, 2, 3, 4] }
-    const cols = extract_columns(data)
-    expect(cols.get(`val`)?.type).toBe(`numeric`)
-    expect(cols.get(`val`)?.n_valid).toBe(5)
-  })
-
-  test(`classifies all-null column as mixed with n_valid=0`, () => {
-    const data = { x: [1, 2], y: [null, undefined] }
-    const cols = extract_columns(data)
-    expect(cols.get(`y`)?.type).toBe(`mixed`)
-    expect(cols.get(`y`)?.n_valid).toBe(0)
+  // type follows the 80% numeric threshold; n_valid counts non-null entries
+  test.each([
+    [`nulls`, [1, null, 3], `numeric`, 2],
+    [`>= 80% numbers`, [1, 2, 3, 4, `outlier`], `numeric`, 5],
+    [`< 80% numbers`, [1, `two`, 3, `four`, 5], `mixed`, 5],
+    [`all null`, [null, undefined], `mixed`, 0],
+  ])(`classifies column with %s`, (_label, values, type, n_valid) => {
+    const cols = extract_columns({ val: values, idx: values.map((_, idx) => idx) })
+    expect(cols.get(`val`)).toMatchObject({ type, n_valid })
   })
 })
 
@@ -159,16 +137,8 @@ describe(`suggest_mapping`, () => {
   })
 
   test(`single numeric column falls back to histogram`, () => {
-    const cols = new Map([
-      [
-        `a`,
-        {
-          values: [1, 2, 3],
-          type: `numeric` as const,
-          n_valid: 3,
-        },
-      ],
-    ])
+    const cols = extract_columns({ a: [1, 2, 3] })
+    expect(cols.size).toBe(1)
     const { plot_type, mapping } = suggest_mapping(cols)
     expect(plot_type).toBe(`histogram`)
     expect(mapping.x).toBe(`a`)
@@ -274,12 +244,15 @@ describe(`build functions return empty on missing columns`, () => {
     [`scatter`, () => build_scatter_series(cols, { x: `x`, y: `missing` })],
     [`scatter3d`, () => build_scatter3d_series(cols, { x: `x`, y: `y`, z: `missing` })],
     [`bar`, () => build_bar_series(cols, { x: `missing`, y: `y` })],
-    [`histogram`, () => build_histogram_series(cols, { y: `missing` })],
   ])(`%s returns empty arrays`, (name, build) => {
     const series = build()
     expect(series.x).toEqual([])
     expect(series.y).toEqual([])
     if (name === `scatter3d`) expect((series as unknown as { z: number[] }).z).toEqual([])
+  })
+
+  test(`histogram returns no values`, () => {
+    expect(build_histogram_series(cols, { y: `missing` })).toEqual({ values: [] })
   })
 })
 
@@ -287,14 +260,13 @@ describe(`build_histogram_series`, () => {
   test(`builds histogram from y column`, () => {
     const cols = extract_columns({ values: [1.5, 2.3, 3.1, 4.7], idx: [0, 1, 2, 3] })
     const series = build_histogram_series(cols, { y: `values` })
-    expect(series.y).toEqual([1.5, 2.3, 3.1, 4.7])
-    expect(series.x).toEqual([0, 1, 2, 3])
+    expect(series.values).toEqual([1.5, 2.3, 3.1, 4.7])
   })
 
   test(`falls back to x mapping when y is absent`, () => {
     const cols = extract_columns({ energy: [1.5, 2.3, 3.1], idx: [0, 1, 2] })
     const series = build_histogram_series(cols, { x: `energy` })
-    expect(series.y).toEqual([1.5, 2.3, 3.1])
+    expect(series.values).toEqual([1.5, 2.3, 3.1])
   })
 
   test(`filters non-numeric values`, () => {
@@ -303,6 +275,6 @@ describe(`build_histogram_series`, () => {
       idx: [0, 1, 2, 3, 4, 5],
     })
     const series = build_histogram_series(cols, { y: `values` })
-    expect(series.y).toEqual([1, 3, 5])
+    expect(series.values).toEqual([1, 3, 5])
   })
 })

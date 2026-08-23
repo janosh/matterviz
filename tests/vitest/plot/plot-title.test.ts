@@ -1,6 +1,7 @@
 import { resolve_plot_title, type PlotTitleMeasure } from '$lib/plot/core/plot-title'
 import { clear_text_metrics_cache } from '$lib/plot/core/text-metrics'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { mock_canvas_context } from '../setup'
 
 const fixed_width_measure =
   (pixels_per_character: number): PlotTitleMeasure =>
@@ -129,14 +130,13 @@ describe(`resolve_plot_title`, () => {
 
   it(`reflows when text metrics change`, () => {
     let pixels_per_character = 5
-    vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue({
-      font: ``,
+    mock_canvas_context({
       measureText: (text: string) => ({
         width: Array.from(text).length * pixels_per_character,
         actualBoundingBoxAscent: 8,
         actualBoundingBoxDescent: 2,
       }),
-    } as unknown as CanvasRenderingContext2D)
+    })
     const config = {
       text: `alpha beta`,
       font: { font_size: 10, line_height: 12 },

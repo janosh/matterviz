@@ -13,18 +13,18 @@ import type {
   WebviewBootstrapData,
   WebviewToHostMessage,
 } from '$lib/file-viewer/host-protocol'
-import { is_plain_object, to_error } from '$lib/utils'
-import { format_bytes } from '$lib/labels'
+import { format_bytes, is_plain_object, to_error } from '$lib/utils'
 import { DEFAULTS, type DefaultSettings, merge, SETTINGS_CONFIG } from '$lib/settings'
 import { AUTO_THEME, COLOR_THEMES, is_valid_theme_mode, type ThemeName } from '$lib/theme'
-import type { TrajectoryRun } from '$lib/trajectory'
-import { open_trajectory, summarize_run } from '$lib/trajectory'
+// Deep imports: the $lib/trajectory barrel re-exports Svelte components and worker-backed
+// modules, none of which belong in the Node host bundle
+import { open_trajectory } from '$lib/trajectory/open'
+import { summarize_run, type TrajectoryRun } from '$lib/trajectory/run'
 import { Buffer } from 'node:buffer'
 import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import * as vscode from 'vscode'
-import pkg_json from '../package.json' with { type: 'json' }
 import {
   MAX_STREAMING_FILE_SIZE,
   MAX_TEXT_TRAJECTORY_SIZE,
@@ -57,43 +57,37 @@ type ExtensionContextLike =
       subscriptions: { dispose(): void }[]
     }
 
-type WatcherMeta = { request_id?: string; filename?: string; frame_index?: number }
-
 // Track active file watchers by file path
 export const active_watchers = new Map<string, vscode.FileSystemWatcher>()
 // Track webviews subscribed to each watched file path
-export const active_watcher_subscribers = new Map<
-  string,
-  Map<WebviewLike, WatcherMeta | undefined>
->()
+export const active_watcher_subscribers = new Map<string, Set<WebviewLike>>()
 // Host-indexed trajectory runs by file path, serving request_frame until disposed
 export const active_runs = new Map<string, TrajectoryRun>()
 // Track auto-render timers to clear them on deactivate
 export const auto_render_timers = new Map<string, ReturnType<typeof setTimeout>>()
 // Track active panels by URI to prevent duplicate opens
 export const active_auto_render_panels = new Map<string, vscode.WebviewPanel>()
+// Set from context.extension.packageJSON on activation (importing ../package.json would embed
+// the whole manifest in the bundle)
+let extension_version = `unknown`
 
-let wasm_filename_cache: string | null = null
-
-function get_wasm_filename(ext_path: string): string | null {
-  if (wasm_filename_cache) return wasm_filename_cache
+// The hashed `<prefix>*<suffix>` file in dist/assets, if the build output is there (it is
+// not in tests)
+const find_asset = (ext_path: string, prefix: string, suffix: string): string | undefined => {
   const assets_dir = path.join(ext_path, `dist`, `assets`)
-
-  // In tests, the assets directory might not exist
-  if (!fs.existsSync(assets_dir)) {
-    console.warn(`Assets directory not found: ${assets_dir}`)
-    return null
-  }
-
-  const wasm_file = fs
+  if (!fs.existsSync(assets_dir)) return undefined
+  return fs
     .readdirSync(assets_dir)
-    .find((file: string) => file.startsWith(`moyo_wasm_bg-`) && file.endsWith(`.wasm`))
-  if (!wasm_file) {
-    console.warn(`moyo-wasm not found in ${assets_dir}`)
-    return null
-  }
-  wasm_filename_cache = wasm_file
-  return wasm_file
+    .find((name: string) => name.startsWith(prefix) && name.endsWith(suffix))
+}
+
+let wasm_filename_cache: string | undefined
+
+// Symmetry analysis needs the WASM; its absence is worth a warning, a missing stylesheet is not
+const get_wasm_filename = (ext_path: string): string | undefined => {
+  wasm_filename_cache ??= find_asset(ext_path, `moyo_wasm_bg-`, `.wasm`)
+  if (!wasm_filename_cache) console.warn(`moyo-wasm not found in ${ext_path}/dist/assets`)
+  return wasm_filename_cache
 }
 
 // Auto-open only unambiguous structure/trajectory files (not JSON/YAML keyword matches)
@@ -102,12 +96,8 @@ export const should_auto_render = is_auto_renderable_filename
 // Update the shared VS Code context for files MatterViz can open/view
 const update_supported_resource_context = (uri?: vscode.Uri): void => {
   // Prefer explicit URI; otherwise fall back to the active editor filename
-  const filename = uri?.fsPath
-    ? path.basename(uri.fsPath)
-    : vscode.window.activeTextEditor?.document?.fileName
-      ? path.basename(vscode.window.activeTextEditor.document.fileName)
-      : ``
-  const is_supported = is_matterviz_filename(filename)
+  const file_path = uri?.fsPath || vscode.window.activeTextEditor?.document?.fileName || ``
+  const is_supported = is_matterviz_filename(path.basename(file_path))
   vscode.commands.executeCommand(`setContext`, `matterviz.supported_resource`, is_supported)
 }
 
@@ -287,34 +277,20 @@ export const create_html = (
   data: WebviewBootstrapData,
 ): string => {
   const nonce = Math.random().toString(36).slice(2, 34)
-  const webview_uri = webview.asWebviewUri(
-    vscode.Uri.joinPath(context.extensionUri as vscode.Uri, `dist`, `webview.js`),
-  )
-  const js_uri = typeof webview_uri === `string` ? webview_uri : webview_uri.toString()
-  const assets_dir = path.join(context.extensionUri.fsPath, `dist`, `assets`)
-  const css_file = fs.existsSync(assets_dir)
-    ? fs
-        .readdirSync(assets_dir)
-        .find((file) => file.startsWith(`main-`) && file.endsWith(`.css`))
-    : undefined
-  const css_href = css_file
-    ? webview
-        .asWebviewUri(
-          vscode.Uri.joinPath(context.extensionUri as vscode.Uri, `dist`, `assets`, css_file),
-        )
-        .toString()
-    : undefined
-
-  // Resolve WASM URI for webview (enables symmetry analysis)
-  // Include in data object instead of global scope for cleaner functional approach
-  const wasm_filename = get_wasm_filename(context.extensionUri.fsPath)
-  let moyo_wasm_url: string | undefined
-  if (wasm_filename) {
-    const wasm_uri = webview.asWebviewUri(
-      vscode.Uri.joinPath(context.extensionUri as vscode.Uri, `dist`, `assets`, wasm_filename),
+  const ext_path = context.extensionUri.fsPath
+  // Webview-loadable URL for a file under dist/
+  const dist_uri = (...segments: string[]): string =>
+    String(
+      webview.asWebviewUri(
+        vscode.Uri.joinPath(context.extensionUri as vscode.Uri, `dist`, ...segments),
+      ),
     )
-    moyo_wasm_url = typeof wasm_uri === `string` ? wasm_uri : wasm_uri.toString()
-  }
+  const js_uri = dist_uri(`webview.js`)
+  const css_file = find_asset(ext_path, `main-`, `.css`)
+  const css_href = css_file && dist_uri(`assets`, css_file)
+  // The WASM URL rides in the bootstrap data (enables symmetry analysis)
+  const wasm_filename = get_wasm_filename(ext_path)
+  const moyo_wasm_url = wasm_filename && dist_uri(`assets`, wasm_filename)
 
   const webview_data = { ...data, moyo_wasm_url }
 
@@ -355,18 +331,7 @@ export const handle_msg = async (
       const { request_id, file_path } = msg
       if (typeof request_id !== `string` || !request_id) throw new Error(`Invalid request_id`)
       const filename = path.basename(file_path)
-      const indexed_file = await read_indexed_trajectory_file(
-        file_path,
-        filename,
-        (progress_data) => {
-          webview.postMessage({
-            command: `large_file_progress`,
-            request_id,
-            stage: `Reading file`,
-            progress: Math.round(progress_data.progress * 100),
-          })
-        },
-      )
+      const indexed_file = await read_indexed_trajectory_file(file_path, filename)
       // index_above_bytes: 0 forces the lazily decoded run regardless of the user setting
       const run = await open_trajectory(indexed_file.data, {
         filename: indexed_file.filename,
@@ -433,21 +398,6 @@ export const handle_msg = async (
       const error_type = is_binary_save ? `binary data` : `text file`
       vscode.window.showErrorMessage(`Failed to save ${error_type}: ${message}`)
     }
-  } else if (
-    msg.command === `startWatching` &&
-    webview &&
-    typeof msg.file_path === `string` &&
-    path.isAbsolute(msg.file_path)
-  ) {
-    // Handle request to start watching a file
-    start_watching_file(msg.file_path, webview, {
-      request_id: msg.request_id,
-      filename: msg.filename,
-      frame_index: msg.frame_index,
-    })
-  } else if (msg.command === `stopWatching` && webview && msg.file_path) {
-    // Handle request to stop watching a file
-    stop_watching_file(msg.file_path, webview)
   }
 }
 
@@ -472,16 +422,10 @@ function stream_plot_rows(run: TrajectoryRun, file_path: string, webview: Webvie
 }
 
 // Start watching a file using VS Code's built-in file system watcher
-function start_watching_file(
-  file_path: string,
-  webview: WebviewLike,
-  meta?: WatcherMeta,
-): void {
+function start_watching_file(file_path: string, webview: WebviewLike): void {
   try {
-    const subscribers =
-      active_watcher_subscribers.get(file_path) ??
-      new Map<WebviewLike, WatcherMeta | undefined>()
-    subscribers.set(webview, meta)
+    const subscribers = active_watcher_subscribers.get(file_path) ?? new Set<WebviewLike>()
+    subscribers.add(webview)
     active_watcher_subscribers.set(file_path, subscribers)
     if (active_watchers.has(file_path)) return // reuse the existing shared watcher
 
@@ -500,13 +444,8 @@ function start_watching_file(
     })
 
     watcher.onDidDelete(() => {
-      for (const [subscriber, subscriber_meta] of active_watcher_subscribers.get(file_path) ??
-        []) {
-        post_to_webview(
-          subscriber,
-          { command: `fileDeleted`, file_path, ...subscriber_meta },
-          `fileDeleted`,
-        )
+      for (const subscriber of active_watcher_subscribers.get(file_path) ?? []) {
+        post_to_webview(subscriber, { command: `fileDeleted`, file_path }, `fileDeleted`)
       }
       stop_watching_file(file_path)
     })
@@ -536,22 +475,22 @@ function post_to_webview(
 
 async function broadcast_file_updated(
   file_path: string,
-  subscribers: [WebviewLike, WatcherMeta | undefined][],
+  subscribers: WebviewLike[],
 ): Promise<void> {
   try {
     dispose_run(file_path)
     const data = await read_file(file_path)
     const theme = get_theme()
-    for (const [webview, meta] of subscribers) {
+    for (const webview of subscribers) {
       post_to_webview(
         webview,
-        { command: `fileUpdated`, file_path, data, theme, ...meta },
+        { command: `fileUpdated`, file_path, data, theme },
         `fileUpdated`,
       )
     }
   } catch (error) {
     console.error(`[MatterViz] Failed to read updated file ${file_path}:`, error)
-    for (const [webview] of subscribers) {
+    for (const webview of subscribers) {
       post_to_webview(
         webview,
         { command: `error`, text: `Failed to read updated file: ${error}` },
@@ -606,29 +545,30 @@ function setup_webview_panel(
 ): void {
   if (file_path) start_watching_file(file_path, panel.webview)
 
-  const set_html = (data: FileData) => {
-    panel.webview.html = create_html(panel.webview, context, {
-      data,
-      theme: get_theme(),
-      defaults: get_defaults(),
-    })
-  }
-  set_html(file_data)
+  panel.webview.html = create_html(panel.webview, context, {
+    data: file_data,
+    theme: get_theme(),
+    defaults: get_defaults(),
+  })
 
   const message_listener = panel.webview.onDidReceiveMessage(
     (msg: WebviewToHostMessage) => handle_msg(msg, panel.webview),
     undefined,
   )
 
-  // Re-render with fresh theme/settings (and file content, if backed by a file)
-  const update_theme = async () => {
-    if (panel.visible) set_html(file_path ? await read_file(file_path) : file_data)
-  }
+  // Push fresh theme/settings into the live webview. Rebuilding the HTML instead would
+  // re-read the file from disk (discarding an unsaved editor buffer) and re-parse it.
+  const post_settings = () =>
+    post_to_webview(
+      panel.webview,
+      { command: `settingsChanged`, theme: get_theme(), defaults: get_defaults() },
+      `settingsChanged`,
+    )
 
-  const theme_listener = vscode.window.onDidChangeActiveColorTheme(update_theme)
+  const theme_listener = vscode.window.onDidChangeActiveColorTheme(post_settings)
   const config_listener = vscode.workspace.onDidChangeConfiguration(
     (event: vscode.ConfigurationChangeEvent) => {
-      if (event.affectsConfiguration(`matterviz`)) void update_theme()
+      if (event.affectsConfiguration(`matterviz`)) post_settings()
     },
   )
 
@@ -672,8 +612,7 @@ export const render = async (
     // Use the same resolved path as get_file so active-tab fallbacks still get a watcher
     create_webview_panel(context, file, target?.fsPath)
   } catch (error: unknown) {
-    const message = to_error(error).message
-    vscode.window.showErrorMessage(`Failed: ${message}`)
+    vscode.window.showErrorMessage(`Failed: ${to_error(error).message}`)
   }
 }
 
@@ -729,15 +668,15 @@ class Provider implements vscode.CustomReadonlyEditorProvider {
       setup_webview_panel(this.context, webview_panel, await read_file(file_path), file_path)
       // Note: webview_panel disposal is managed by VSCode for custom editors
     } catch (error: unknown) {
-      const message = to_error(error).message
-      vscode.window.showErrorMessage(`Failed: ${message}`)
+      vscode.window.showErrorMessage(`Failed: ${to_error(error).message}`)
     }
   }
 }
 
 // Activate extension
 export const activate = (context: vscode.ExtensionContext) => {
-  console.info(`MatterViz extension activated (v${pkg_json.version})`)
+  extension_version = String(context.extension.packageJSON.version)
+  console.info(`MatterViz extension activated (v${extension_version})`)
 
   // Set initial context for currently active editor
   update_supported_resource_context(vscode.window.activeTextEditor?.document.uri)
@@ -837,7 +776,7 @@ async function collect_debug_info(): Promise<string> {
   let report = `### Environment\n\n`
   report += `- **Editor**: ${vscode.env.appName}\n`
   report += `- **Editor Version**: ${vscode.version}\n`
-  report += `- **MatterViz Version**: ${pkg_json.version}\n`
+  report += `- **MatterViz Version**: ${extension_version}\n`
   report += `- **OS**: ${os.type()} ${os.platform()} ${os.arch()}\n`
   report += `- **OS Version**: ${os.release()}\n`
   report += `- **UI Kind**: ${ui_kind}\n`
@@ -916,8 +855,9 @@ async function report_bug(): Promise<void> {
       )
     }
   } catch (error: unknown) {
-    const message = to_error(error).message
-    vscode.window.showErrorMessage(`Failed to collect debug information: ${message}`)
+    vscode.window.showErrorMessage(
+      `Failed to collect debug information: ${to_error(error).message}`,
+    )
   }
 }
 

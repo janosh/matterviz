@@ -2,7 +2,7 @@
   import { Icon } from 'svelte-widgets'
   import { Close } from 'svelte-widgets/icons'
   import { sanitize_html } from '$lib/sanitize'
-  import type { AxisConfig, DataSeries } from '$lib/plot'
+  import type { AxisConfig, HistogramSeries } from '$lib/plot'
   import { Histogram } from '$lib/plot'
   import type { HTMLAttributes } from 'svelte/elements'
 
@@ -18,8 +18,8 @@
     log = false,
     disabled = false,
     unit,
-    onchange,
-    onclear,
+    on_change,
+    on_clear,
     ...rest
   }: {
     label: string // Label text (supports HTML)
@@ -33,9 +33,9 @@
     log?: boolean // Use logarithmic scale for histogram y-axis
     disabled?: boolean // Disable all inputs
     unit?: string // Unit label to display after inputs
-    onchange?: (min: number | undefined, max: number | undefined) => void // Callback when filter values change
-    onclear?: () => void // Callback when clear button is clicked (fires before onchange)
-  } & Omit<HTMLAttributes<HTMLDivElement>, `onchange`> = $props()
+    on_change?: (min: number | undefined, max: number | undefined) => void // Callback when filter values change
+    on_clear?: () => void // Callback when clear button is clicked (fires before on_change)
+  } & HTMLAttributes<HTMLDivElement> = $props()
 
   // Where the histogram renders (none without data)
   const histogram_at = $derived(histogram_data?.length ? histogram_position : `none`)
@@ -56,8 +56,8 @@
   function clear_filter(): void {
     min_value = undefined
     max_value = undefined
-    onclear?.()
-    onchange?.(undefined, undefined)
+    on_clear?.()
+    on_change?.(undefined, undefined)
   }
 
   const axis_config: AxisConfig = {
@@ -68,17 +68,15 @@
     color: `color-mix(in srgb, currentColor 60%, transparent)`,
   }
 
-  // x: [] satisfies DataSeries type requirement; Histogram bins on y values only
-  const series: DataSeries[] = $derived.by(() => {
+  const series: HistogramSeries[] = $derived.by(() => {
     const all = histogram_data ?? []
     const [min, max] = [min_value ?? -Infinity, max_value ?? Infinity]
     return [
-      { y: all, color: `rgba(0, 0, 0, 0.2)`, label: `All`, x: [] },
+      { values: all, color: `rgba(0, 0, 0, 0.2)`, label: `All` },
       {
-        y: all.filter((val) => val >= min && val <= max),
+        values: all.filter((val) => val >= min && val <= max),
         color: `var(--accent-color, #228be6)`,
         label: `Filtered`,
-        x: [],
       },
     ]
   })
@@ -121,7 +119,7 @@
         step="any"
         placeholder={placeholders.min ?? `min`}
         {onkeydown}
-        onblur={() => onchange?.(min_value, max_value)}
+        onblur={() => on_change?.(min_value, max_value)}
         {disabled}
         aria-label="{plain_label} minimum"
       />
@@ -131,7 +129,7 @@
         step="any"
         placeholder={placeholders.max ?? `max`}
         {onkeydown}
-        onblur={() => onchange?.(min_value, max_value)}
+        onblur={() => on_change?.(min_value, max_value)}
         {disabled}
         aria-label="{plain_label} maximum"
       />

@@ -1,59 +1,21 @@
 import { get_d3_interpolator } from '$lib/colors'
 import type { ElementSymbol } from '$lib/element'
-import type { Matrix3x3 } from '$lib/math'
 import { parse_linear_rgb } from '$lib/scene/colors'
-import {
-  build_trajectory_lines,
-  collected_frame_idx,
-  unwrapped_stream_positions,
-} from '$lib/structure/trajectory-lines'
-import type { TrajectoryPositionStream } from '$lib/trajectory'
+import { build_trajectory_lines, collected_frame_idx } from '$lib/structure/trajectory-lines'
+import { unwrapped_positions_of } from '$lib/trajectory/positions'
 import { describe, expect, test } from 'vitest'
-
-const CUBIC_10: Matrix3x3 = [
-  [10, 0, 0],
-  [0, 10, 0],
-  [0, 0, 10],
-]
-
-// Positions are laid out frame-major: (frame * n_atoms + atom) * 3 + axis
-function make_stream(
-  frames: number[][][], // [frame][atom][axis]
-  elements: ElementSymbol[],
-  overrides: Partial<TrajectoryPositionStream> = {},
-): TrajectoryPositionStream {
-  const n_frames = frames.length
-  const n_atoms = elements.length
-  const positions = new Float64Array(n_frames * n_atoms * 3)
-  for (const [frame_idx, frame] of frames.entries()) {
-    for (const [atom_idx, xyz] of frame.entries()) {
-      positions.set(xyz, (frame_idx * n_atoms + atom_idx) * 3)
-    }
-  }
-  return {
-    positions,
-    n_frames,
-    n_atoms,
-    elements,
-    lattice_matrices: Array.from({ length: n_frames }, () => CUBIC_10),
-    pbc: [true, true, true],
-    coords_unwrapped: false,
-    frame_stride: 1,
-    steps: Array.from({ length: n_frames }, (_, idx) => idx),
-    ...overrides,
-  }
-}
+import { make_position_stream } from '../setup'
 
 // One atom drifting +1 Å along x per frame, wrapped into a 10 Å cell: 0,1,…,9,0,1,…
 // The wrap between frames 9 and 10 is the artefact unwrapping must remove.
 const wrapping_stream = (n_frames = 15, element: ElementSymbol = `Li`) =>
-  make_stream(
+  make_position_stream(
     Array.from({ length: n_frames }, (_, frame_idx) => [[frame_idx % 10, 0, 0]]),
     [element],
   )
 
 const two_atom_stream = (n_frames = 3) =>
-  make_stream(
+  make_position_stream(
     Array.from({ length: n_frames }, (_, frame_idx) => [
       [frame_idx, 0, 0],
       [0, frame_idx, 0],
@@ -91,7 +53,7 @@ describe(`build_trajectory_lines vertex counts`, () => {
     `%i frames x %i atoms, trail %s stride %i -> %i sampled frames`,
     (n_frames, n_atoms, trail_frames, frame_stride, expected_sampled) => {
       const elements: ElementSymbol[] = Array.from({ length: n_atoms }, () => `Li`)
-      const stream = make_stream(
+      const stream = make_position_stream(
         Array.from({ length: n_frames }, (_frame, frame_idx) =>
           Array.from({ length: n_atoms }, (_atom, atom_idx) => [frame_idx * 0.1, atom_idx, 0]),
         ),
@@ -194,10 +156,10 @@ describe(`periodic boundary handling`, () => {
     // 12 Å of drift per step: re-applying the minimum image to a 10 Å cell would fold this
     // to -8 Å and silently destroy the displacement (LAMMPS xu/yu/zu are already unwrapped)
     const frames = Array.from({ length: 5 }, (_, frame_idx) => [[frame_idx * 12, 0, 0]])
-    const stream = make_stream(frames, [`Li`], { coords_unwrapped: true })
+    const stream = make_position_stream(frames, [`Li`], { coords_unwrapped: true })
 
     // Identity, not just equality: no copy is allocated for an already-unwrapped stream
-    expect(unwrapped_stream_positions(stream)).toBe(stream.positions)
+    expect(unwrapped_positions_of(stream).coords).toBe(stream.positions)
 
     const built = build_trajectory_lines(stream, { wrap_mode: `unwrap` })
     expect(built.segment_count).toBe(4)
@@ -211,15 +173,15 @@ describe(`periodic boundary handling`, () => {
 
   test(`an aperiodic stream is used as-is, with no unwrap pass`, () => {
     const frames = Array.from({ length: 4 }, (_, frame_idx) => [[frame_idx, 0, 0]])
-    const stream = make_stream(frames, [`C`], { lattice_matrices: null, pbc: null })
-    expect(unwrapped_stream_positions(stream)).toBe(stream.positions)
+    const stream = make_position_stream(frames, [`C`], { lattice_matrices: null, pbc: null })
+    expect(unwrapped_positions_of(stream).coords).toBe(stream.positions)
     expect(build_trajectory_lines(stream).max_segment_length).toBeCloseTo(1, 5)
   })
 
   test(`unwrapping is computed once per stream and reused`, () => {
     const stream = wrapping_stream(15)
-    const first = unwrapped_stream_positions(stream)
-    expect(unwrapped_stream_positions(stream)).toBe(first)
+    const first = unwrapped_positions_of(stream).coords
+    expect(unwrapped_positions_of(stream).coords).toBe(first)
     // …and it is a distinct buffer from the wrapped source
     expect(first).not.toBe(stream.positions)
   })
@@ -227,7 +189,7 @@ describe(`periodic boundary handling`, () => {
 
 describe(`element filter`, () => {
   const mixed_stream = () =>
-    make_stream(
+    make_position_stream(
       Array.from({ length: 6 }, (_, frame_idx) => [
         [frame_idx, 0, 0],
         [0, frame_idx, 0],

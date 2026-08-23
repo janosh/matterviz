@@ -3,8 +3,7 @@
   import { Check } from 'svelte-widgets/icons'
   import Spinner from '$lib/feedback/Spinner.svelte'
   import { is_valid_supercell_input } from '$lib/structure/supercell'
-  import type { CellType } from '$lib/symmetry'
-  import type { MoyoDataset } from '@spglib/moyo-wasm'
+  import type { CellType, SymmetryDataset } from '$lib/symmetry'
   import { click_outside, tooltip } from 'svelte-widgets/attachments'
   import { fade } from 'svelte/transition'
 
@@ -14,15 +13,13 @@
     sym_data = null,
     loading = $bindable(false),
     direction = `down`,
-    align = `right`,
     suppress_hover = false,
   }: {
     supercell_scaling: string
     cell_type?: CellType
-    sym_data?: MoyoDataset | null
+    sym_data?: SymmetryDataset | null
     loading?: boolean
     direction?: `up` | `down`
-    align?: `left` | `right`
     suppress_hover?: boolean // don't auto-open the menu on hover/focus (e.g. while a sibling popover is open)
   } = $props()
 
@@ -138,7 +135,7 @@
 
   {#if menu_open}
     <div
-      class={['dropdown', { 'open-up': direction === `up`, 'align-left': align === `left` }]}
+      class={['dropdown', { 'open-up': direction === `up` }]}
       transition:fade={{ duration: 100 }}
     >
       <div class="cell-type-row">
@@ -281,10 +278,6 @@
   .dropdown.open-up::before {
     top: auto;
     bottom: -10px;
-  }
-  .dropdown.align-left {
-    right: auto;
-    left: 0;
   }
 
   .cell-type-row {

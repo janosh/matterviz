@@ -45,8 +45,8 @@ Filter with histogram, logarithmic scale toggle, and callbacks:
   histogram_height={50}
   log={log_scale}
   unit="eV"
-  onchange={() => log_event(`change`)}
-  onclear={() => log_event(`clear`)}
+  on_change={() => log_event(`change`)}
+  on_clear={() => log_event(`clear`)}
 />
 
 <div style="display: flex; justify-content: space-between; margin-top: 8pt; font-size: 0.85em">

@@ -8,12 +8,5 @@ export { default as PropertyFilter } from './PropertyFilter.svelte'
 export { default as SubpageGrid } from './SubpageGrid.svelte'
 export { default as ViewerChrome } from './ViewerChrome.svelte'
 
-export type InfoItem = Readonly<{
-  label: string
-  value: string | number
-  key?: string
-  tooltip?: string
-}>
-
 export type InfoTagVariant = `default` | `success` | `warning` | `error` | `info`
 export type InfoTagSize = `sm` | `md` | `lg`

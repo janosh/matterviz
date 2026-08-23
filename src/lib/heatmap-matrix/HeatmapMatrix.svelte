@@ -1,17 +1,13 @@
 <script lang="ts">
   import type { D3InterpolateName } from '$lib/colors'
-  import {
-    is_color,
-    is_concrete_color,
-    pick_contrast_color,
-    resolve_backdrop,
-  } from '$lib/colors'
+  import { contrast_color_memo, is_color, resolve_backdrop } from '$lib/colors'
   import { format_num } from '$lib/labels'
   import { quantile_unordered, type Vec2 } from '$lib/math'
   import type { AxisConfig, ColorBarScale } from '$lib/plot/core/types'
   import { type ColorRamp, resolve_color_ramp } from '$lib/plot/core/color-ramp'
   import ColorBar from '$lib/plot/core/components/ColorBar.svelte'
   import { virtual_window } from '$lib/table/virtual'
+  import { rows_to_csv } from '$lib/utils'
   import { type ComponentProps, onDestroy, onMount, type Snippet, tick } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
@@ -23,11 +19,11 @@
     HeatmapExportFormat,
     HeatmapNormalizeMode,
     HeatmapTooltipProp,
-    LegendPosition,
+    ColorBarPosition,
     MissingCellStyle,
     SymmetricMode,
   } from './index'
-  import { make_color_override_key, matrix_to_rows, rows_to_csv } from './index'
+  import { make_color_override_key, matrix_to_rows } from './index'
 
   type CellValue = number | string | null
   type SelectionMode = `single` | `multi` | `range`
@@ -47,10 +43,10 @@
     log = false,
     normalize = $bindable(`linear`),
     domain_mode = $bindable(`auto`),
-    show_legend = $bindable(false),
-    legend_position = $bindable(`bottom`),
-    legend_label = `Value`,
-    legend_format = `.3~f`,
+    show_color_bar = $bindable(false),
+    color_bar_position = $bindable(`bottom`),
+    color_bar_label = `Value`,
+    color_bar_format = `.3~f`,
     // Interaction props
     active_cell = $bindable(null),
     selected_cells = $bindable([]),
@@ -58,12 +54,12 @@
     pinned_cell = $bindable(null),
     tooltip_mode = `hover`,
     disabled = false,
-    onclick,
-    ondblclick,
-    onselect,
-    oncontextmenu,
+    on_click,
+    on_double_click,
+    on_select,
+    on_context_menu,
     enable_brush = false,
-    onbrush,
+    on_brush,
     // Display props
     tile_size = `6px`,
     gap = `0px`,
@@ -80,7 +76,7 @@
     virtualize = false,
     overscan = 3,
     export_formats = [`csv`, `json`],
-    onexport,
+    on_export,
     show_row_summaries = $bindable(false),
     show_col_summaries = $bindable(false),
     show_values = $bindable(false),
@@ -93,7 +89,7 @@
     cell,
     children,
     ...rest
-  }: Omit<HTMLAttributes<HTMLDivElement>, `onclick` | `ondblclick`> & {
+  }: Omit<HTMLAttributes<HTMLDivElement>, `onclick` | `ondblclick` | `oncontextmenu`> & {
     x_items: AxisItem[]
     y_items: AxisItem[]
     // values[y_idx][x_idx], or nested records keyed by item key (y then x)
@@ -111,10 +107,10 @@
     log?: boolean
     normalize?: HeatmapNormalizeMode
     domain_mode?: HeatmapDomainMode
-    show_legend?: boolean
-    legend_position?: LegendPosition
-    legend_label?: string
-    legend_format?: string
+    show_color_bar?: boolean
+    color_bar_position?: ColorBarPosition
+    color_bar_label?: string
+    color_bar_format?: string
     active_cell?: CellPos | null
     selected_cells?: CellPos[]
     // single: click replaces; multi: Cmd/Ctrl+click toggles; range: Shift+click spans
@@ -123,13 +119,13 @@
     // hover: tooltip follows the pointer; pinned: click pins it; both
     tooltip_mode?: `hover` | `pinned` | `both`
     disabled?: boolean
-    onclick?: (cell: CellContext) => void
-    ondblclick?: (cell: CellContext) => void
-    onselect?: (cells: CellPos[]) => void
-    oncontextmenu?: (cell: CellContext, event: MouseEvent) => void
-    // Drag a rectangle of cells and report them through onbrush
+    on_click?: (cell: CellContext) => void
+    on_double_click?: (cell: CellContext) => void
+    on_select?: (cells: CellPos[]) => void
+    on_context_menu?: (cell: CellContext, event: MouseEvent) => void
+    // Drag a rectangle of cells and report them through on_brush
     enable_brush?: boolean
-    onbrush?: (payload: { x_range: Vec2; y_range: Vec2; cells: CellContext[] }) => void
+    on_brush?: (payload: { x_range: Vec2; y_range: Vec2; cells: CellContext[] }) => void
     tile_size?: string
     gap?: string
     // false: show all rows/cols. 'compact': remove all-null rows/cols.
@@ -153,7 +149,7 @@
     virtualize?: boolean
     overscan?: number
     export_formats?: HeatmapExportFormat[]
-    onexport?: (format: HeatmapExportFormat, payload: unknown) => void
+    on_export?: (format: HeatmapExportFormat, payload: unknown) => void
     // Mean of each visible row/column in an extra track
     show_row_summaries?: boolean
     show_col_summaries?: boolean
@@ -307,9 +303,9 @@
     }
     return resolve_color_ramp(color_bar_scale, [floor, hi], use_log ? `log` : `linear`)
   })
-  // Legend span in the caller's bound order: the cell ramp's domain, so a lifted log floor
+  // Color bar span in the caller's bound order: the cell ramp's domain, so a lifted log floor
   // shows on the bar too instead of the raw cs_min <= 0 flooring it at LOG_EPS
-  let legend_range = $derived.by((): Vec2 => {
+  let color_bar_range = $derived.by((): Vec2 => {
     if (!ramp) return [cs_min, cs_max]
     const [lo, hi] = ramp.domain
     return cs_min <= cs_max ? [lo, hi] : [hi, lo]
@@ -348,15 +344,10 @@
   // Cell fills may be translucent (color overrides, missing-cell fills), so contrast needs to
   // know what is painted behind them
   const page_backdrop = resolve_backdrop(() => matrix_el, { override: () => backdrop })
-  // Contrast color per cell: the selected-cell outline, and the text color when cells carry
-  // content (a cell snippet or show_values)
-  let contrast_flat = $derived(
-    bg_flat.map((bg_color) =>
-      is_concrete_color(bg_color)
-        ? pick_contrast_color({ background: bg_color, backdrop: page_backdrop.current })
-        : null,
-    ),
-  )
+  // Contrast color per cell, resolved on demand: every cell needs one only when cells carry
+  // content (a cell snippet or show_values), otherwise just the selected cells' outlines do.
+  const contrast_for_bg = contrast_color_memo({ backdrop: () => page_backdrop.current })
+  const contrast_at = (idx: number): string | null => contrast_for_bg(bg_flat[idx])
 
   const build_cell_context = (x_idx: number, y_idx: number): CellContext => ({
     x_item: x_items[x_idx],
@@ -508,7 +499,7 @@
       selected_cells = [clicked]
       last_selected_cell = clicked
     }
-    onselect?.(selected_cells)
+    on_select?.(selected_cells)
   }
 
   // Hover is fully imperative: zero $state writes during mouseover, all DOM updates direct.
@@ -608,7 +599,7 @@
     clear_pending_click()
     pending_click_key = cell_pos_key(context.x_idx, context.y_idx)
     click_timeout = setTimeout(() => {
-      onclick?.(context)
+      on_click?.(context)
       clear_pending_click()
     }, DBLCLICK_DELAY_MS)
   }
@@ -620,24 +611,25 @@
       pinned_cell = { x_idx, y_idx }
       show_tooltip(event, context)
     }
-    if (!onclick) return
-    if (ondblclick) schedule_single_click(context)
-    else onclick(context)
+    if (!on_click) return
+    if (on_double_click) schedule_single_click(context)
+    else on_click(context)
   })
 
   const handle_dblclick = on_cell((context) => {
-    if (!ondblclick) return
+    if (!on_double_click) return
     const pending = pending_click_key
     clear_pending_click()
-    // without onclick nothing is pending, so orphaned dblclicks still fire
-    if (!onclick || pending === cell_pos_key(context.x_idx, context.y_idx)) ondblclick(context)
+    // without on_click nothing is pending, so orphaned dblclicks still fire
+    if (!on_click || pending === cell_pos_key(context.x_idx, context.y_idx))
+      on_double_click(context)
     else schedule_single_click(context)
   })
 
   const handle_contextmenu = on_cell((context, event) => {
-    if (!oncontextmenu) return
+    if (!on_context_menu) return
     event.preventDefault()
-    oncontextmenu(context, event)
+    on_context_menu(context, event)
   })
 
   const handle_mousedown = on_cell(({ x_idx, y_idx }) => {
@@ -646,9 +638,9 @@
     brush_end = brush_start
   })
   function handle_mouseup(): void {
-    if (enable_brush && brush_start && brush_end && onbrush) {
+    if (enable_brush && brush_start && brush_end && on_brush) {
       const { x_range, y_range, cells } = cells_between(brush_start, brush_end)
-      onbrush({
+      on_brush({
         x_range,
         y_range,
         cells: cells.map(({ x_idx, y_idx }) => build_cell_context(x_idx, y_idx)),
@@ -697,7 +689,7 @@
   function handle_keydown(event: KeyboardEvent): void {
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === `e`) {
       const format = export_formats[0]
-      if (format && onexport) onexport(format, build_export_payload(format))
+      if (format && on_export) on_export(format, build_export_payload(format))
       return
     }
     const step = ARROW_STEPS[event.key]
@@ -750,9 +742,9 @@
   let has_interaction_handlers = $derived(
     !disabled &&
       Boolean(
-        onclick ||
-        ondblclick ||
-        oncontextmenu ||
+        on_click ||
+        on_double_click ||
+        on_context_menu ||
         selection_mode !== `single` ||
         tooltip_mode !== `hover`,
       ),
@@ -791,7 +783,7 @@
 <svelte:window onmouseup={handle_mouseup} />
 
 <div
-  class={[`heatmap`, `legend-${legend_position}`]}
+  class={[`heatmap`, `color-bar-${color_bar_position}`]}
   style:padding-left={y_axis.label ? `1.8em` : undefined}
 >
   {#if show_controls}
@@ -799,16 +791,16 @@
       bind:controls_open
       bind:normalize
       bind:domain_mode
-      bind:show_legend
-      bind:legend_position
+      bind:show_color_bar
+      bind:color_bar_position
       bind:search_query
       bind:symmetric
       bind:show_values
       bind:show_row_summaries
       bind:show_col_summaries
       {export_formats}
-      onexport={onexport
-        ? (fmt: HeatmapExportFormat) => onexport(fmt, build_export_payload(fmt))
+      on_export={on_export
+        ? (fmt: HeatmapExportFormat) => on_export(fmt, build_export_payload(fmt))
         : undefined}
       toggle_visible
       {...controls_props}
@@ -829,7 +821,6 @@
     onmouseover={handle_mouseover}
     onmouseout={handle_mouseout}
     onmousedown={handle_mousedown}
-    onmouseup={handle_mouseup}
     onclick={handle_click}
     ondblclick={handle_dblclick}
     oncontextmenu={handle_contextmenu}
@@ -871,16 +862,17 @@
         {:else}
           {@const raw = get_value(x_idx, y_idx)}
           {@const cell_missing = cell_is_missing(raw)}
+          {@const selected = selected_key_set.has(cell_pos_key(x_idx, y_idx))}
           <svelte:element
             this={has_interaction_handlers ? `button` : `div`}
             class={[`cell`, { interactive: has_interaction_handlers }]}
-            class:selected={selected_key_set.has(cell_pos_key(x_idx, y_idx))}
+            class:selected
             data-x={x_idx}
             data-y={y_idx}
             style={cell_missing ? missing.style : undefined}
             style:background-color={bg_flat[idx]}
-            style:color={cell || show_values ? contrast_flat[idx] : undefined}
-            style:--heatmap-selected-outline-color={contrast_flat[idx]}
+            style:color={cell || show_values ? contrast_at(idx) : undefined}
+            style:--heatmap-selected-outline-color={selected ? contrast_at(idx) : undefined}
             style:grid-column={grid_line(`x`, x_idx)}
             style:grid-row={grid_line(`y`, y_idx)}
           >
@@ -930,17 +922,17 @@
     {@render children?.()}
   </div>
 
-  {#if show_legend}
+  {#if show_color_bar}
     <ColorBar
-      class={[`legend`, `legend-${legend_position}`]}
-      title={legend_label}
-      orientation={legend_position === `right` ? `vertical` : `horizontal`}
+      class={[`color-bar`, `color-bar-${color_bar_position}`]}
+      title={color_bar_label}
+      orientation={color_bar_position === `right` ? `vertical` : `horizontal`}
       tick_labels={5}
-      tick_format={legend_format}
-      range={legend_range}
+      tick_format={color_bar_format}
+      range={color_bar_range}
       scale_type={use_log ? `log` : `linear`}
       scale={color_bar_scale}
-      wrapper_style={legend_position === `right`
+      wrapper_style={color_bar_position === `right`
         ? `--cbar-height: 120px; --cbar-min-height: 120px; --cbar-max-height: 120px;`
         : `--cbar-width: 180px;`}
     />
@@ -956,20 +948,20 @@
     max-width: var(--heatmap-max-width, 1200px);
     box-sizing: border-box;
     container-type: inline-size;
-    &.legend-bottom {
+    &.color-bar-bottom {
       padding-bottom: 44px;
     }
-    :global(.legend) {
+    :global(.color-bar) {
       position: absolute;
       background: color-mix(in srgb, var(--page-bg, #fff) 80%, transparent);
       padding: 0.3rem 0.4rem;
       border-radius: var(--border-radius, 3pt);
     }
-    &.legend-right :global(.legend-right) {
+    &.color-bar-right :global(.color-bar-right) {
       right: 8px;
       top: 8px;
     }
-    &.legend-bottom :global(.legend-bottom) {
+    &.color-bar-bottom :global(.color-bar-bottom) {
       left: 50%;
       bottom: 80px;
       transform: translateX(-50%);

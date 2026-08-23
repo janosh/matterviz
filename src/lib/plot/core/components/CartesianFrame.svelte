@@ -14,6 +14,7 @@
   import PlotMarginals from '$lib/plot/core/components/PlotMarginals.svelte'
   import PlotTitle from '$lib/plot/core/components/PlotTitle.svelte'
   import ZoomRect from '$lib/plot/core/components/ZoomRect.svelte'
+  import type { UserContentProps } from '$lib/plot/core/types'
   import type { Snippet } from 'svelte'
   import { onDestroy } from 'svelte'
   import type { ClassValue, HTMLAttributes } from 'svelte/elements'
@@ -51,6 +52,7 @@
     css_prefix: string
     // Per-chart fallbacks for CSS_VAR_DEFAULTS entries whose default differs
     css_var_fallbacks?: Record<string, string>
+    // Accessible name when neither the title nor the x/y axis labels give one (`Bar chart`)
     aria_label: string
     fullscreen?: boolean
     fullscreen_toggle?: boolean
@@ -66,6 +68,8 @@
     on_mouse_move?: (event: MouseEvent) => void
     on_mouse_click?: (event: MouseEvent) => void
     header_controls?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
+    // Caller-drawn SVG rendered first inside the plot SVG, with the scales and ranges
+    user_content?: Snippet<[UserContentProps]>
     // Marks, axes, zero lines and reference lines, in the chart's own paint order
     layers?: Snippet
     // Legend, tooltip and controls pane, rendered after the SVG
@@ -92,6 +96,7 @@
     on_mouse_move,
     on_mouse_click,
     header_controls,
+    user_content,
     layers,
     overlays,
     children,
@@ -99,6 +104,13 @@
   }: Props = $props()
 
   const pan_zoom = $derived(frame.pan_zoom)
+  // An explicit aria-label wins; otherwise the title, then `X label vs Y label`, then the fallback
+  const svg_aria_label = $derived(
+    aria_label_override ??
+      (frame.title_config?.text ||
+        [frame.axes.x.label, frame.axes.y.label].filter(Boolean).join(` vs `) ||
+        aria_label),
+  )
 
   const css_vars = $derived(
     Object.entries(css_var_defaults(css_prefix))
@@ -164,7 +176,7 @@
     <svg
       bind:this={frame.svg_element}
       role="application"
-      aria-label={aria_label_override ?? aria_label}
+      aria-label={svg_aria_label}
       tabindex="0"
       onfocusin={() => pan_zoom.set_focused(true)}
       onfocusout={() => pan_zoom.set_focused(false)}
@@ -203,6 +215,20 @@
         </clipPath>
       </defs>
 
+      {@render user_content?.({
+        height: frame.height,
+        width: frame.width,
+        x_scale_fn: frame.scales.x,
+        x2_scale_fn: frame.scales.x2,
+        y_scale_fn: frame.scales.y,
+        y2_scale_fn: frame.scales.y2,
+        pad: frame.pad,
+        x_range: frame.ranges.current.x,
+        x2_range: frame.ranges.current.x2,
+        y_range: frame.ranges.current.y,
+        y2_range: frame.ranges.current.y2,
+        fullscreen,
+      })}
       {@render layers?.()}
 
       <!-- After the marks so the drag rect stays visible over dense points and canvases -->

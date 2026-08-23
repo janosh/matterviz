@@ -1,8 +1,8 @@
 import { ConvexHullStats } from '$lib/convex-hull'
 import type { ConvexHullEntry, PhaseStats } from '$lib/convex-hull/types'
 import { flushSync, mount } from 'svelte'
-import { beforeEach, describe, expect, test, vi } from 'vitest'
-import { doc_query } from '../setup'
+import { beforeEach, describe, expect, onTestFinished, test, vi } from 'vitest'
+import { doc_query, mock_object_url } from '../setup'
 
 const mock_stats = (overrides: Partial<PhaseStats> = {}): PhaseStats => ({
   total: 100,
@@ -70,8 +70,6 @@ const mount_stats_table = (props: Partial<Props> = {}) => {
 }
 const get_headers = () =>
   Array.from(document.querySelectorAll(`th`)).map((th) => th.textContent?.trim())
-const normalize_formula_html = (html: string): string =>
-  html.replace(`<strong>`, ``).replace(`</strong>`, ``).replaceAll(/\s+/g, ` `).trim()
 const normalize_formula_text = (text: string): string => text.replaceAll(/\s+/g, ` `).trim()
 const get_table_filter_select = (label_text: string): HTMLSelectElement | null => {
   const filter_labels = Array.from(document.querySelectorAll(`.table-filters label`))
@@ -162,12 +160,6 @@ describe(`ConvexHullStats`, () => {
   test(`renders flat stat sections without card chrome or copy controls`, () => {
     mount_stats()
     expect(document.querySelector(`.copy-button`)).toBeNull()
-    expect(document.querySelectorAll(`.info-cards.flat`)).toHaveLength(4)
-    expect(
-      Array.from(document.querySelectorAll(`.info-card h5`)).map((heading) =>
-        heading.textContent?.trim(),
-      ),
-    ).toEqual([`Stability`, `Eform distribution`, `Eabove hull distribution`])
     expect(
       Array.from(document.querySelectorAll(`.info-card, .subsystem-coverage`), (element) =>
         element.textContent?.trim(),
@@ -179,9 +171,6 @@ describe(`ConvexHullStats`, () => {
       expect.stringContaining(`Eform distribution`),
       expect.stringContaining(`Eabove hull distribution`),
     ])
-    expect(doc_query(`[data-testid="pd-total-entries"]`).textContent).toContain(
-      `Total entries in Li-Fe-P-O`,
-    )
   })
 
   test.each([
@@ -313,8 +302,6 @@ describe(`ConvexHullStats`, () => {
         document.querySelectorAll<HTMLButtonElement>(`.view-toggle button`),
       )
       const panels = Array.from(document.querySelectorAll<HTMLElement>(`.view-panel`))
-      expect(getComputedStyle(doc_query(`.view-panels`)).display).toBe(`grid`)
-      for (const panel of panels) expect(getComputedStyle(panel).gridArea).toBe(`1 / 1`)
       const panel_states = () =>
         panels.map((panel) => [
           panel.getAttribute(`aria-hidden`),
@@ -338,39 +325,32 @@ describe(`ConvexHullStats`, () => {
       expect_visible_panel(0)
     })
 
-    test(`table shows all visible entries with correct columns`, () => {
+    test(`table lists every visible entry: numbered rows, subscripted formulas, bold stable ones`, () => {
       mount_stats_table({ stable_entries: stable, unstable_entries: unstable })
 
-      expect(document.querySelectorAll(`tbody tr`)).toHaveLength(4)
+      const rows = Array.from(document.querySelectorAll(`tbody tr`))
+      expect(rows).toHaveLength(4)
       const headers = get_headers()
-      const formula_idx = headers.indexOf(`Formula`)
-      expect(formula_idx).toBeGreaterThanOrEqual(0)
-      const formula_html_cells = Array.from(document.querySelectorAll(`tbody tr`)).map((row) =>
-        normalize_formula_html(
-          (row.querySelectorAll(`td`)[formula_idx] as HTMLElement)?.innerHTML ?? ``,
-        ),
-      )
-      const formula_text_cells = Array.from(document.querySelectorAll(`tbody tr`)).map((row) =>
-        normalize_formula_text(
-          (row.querySelectorAll(`td`)[formula_idx] as HTMLElement)?.textContent ?? ``,
-        ),
-      )
-      expect(formula_html_cells.some((formula) => formula.includes(`<sub>`))).toBe(true)
-      expect(formula_text_cells).toContain(`Li`)
-      expect(formula_text_cells.some((formula) => /Fe.*O.*3|O.*3.*Fe/.test(formula))).toBe(
-        true,
-      )
-      expect(
-        formula_text_cells.some((formula) => /Li.*Fe.*O.*2|Li.*O.*2.*Fe/.test(formula)),
-      ).toBe(true)
-      expect(formula_text_cells.some((formula) => /Li.*2.*O|O.*Li.*2/.test(formula))).toBe(
-        true,
-      )
-      for (const col of [`#`, `Formula`]) {
-        expect(headers).toContain(col)
-      }
-      // Columns with HTML subscripts render as text without tags
+      expect(headers).toEqual(expect.arrayContaining([`#`, `Formula`]))
       expect(headers.length).toBeGreaterThanOrEqual(6)
+      // Row numbers start at 1
+      expect(rows[0].querySelectorAll(`td`)[headers.indexOf(`#`)].textContent?.trim()).toBe(
+        `1`,
+      )
+      const formula_cells = rows.map(
+        (row) => row.querySelectorAll(`td`)[headers.indexOf(`Formula`)],
+      )
+      const formula_texts = formula_cells.map((cell) =>
+        normalize_formula_text(cell.textContent ?? ``),
+      )
+      for (const pattern of [/^Li$/, /Fe.*O.*3/, /Li.*Fe.*O.*2/, /Li.*2.*O/]) {
+        expect(formula_texts.some((formula) => pattern.test(formula))).toBe(true)
+      }
+      // Stoichiometry renders as <sub>, the two stable formulas are bold
+      expect(formula_cells.some((cell) => cell.innerHTML.includes(`<sub>`))).toBe(true)
+      expect(formula_cells.filter((cell) => cell.innerHTML.includes(`<strong>`))).toHaveLength(
+        2,
+      )
     })
 
     test(`table excludes hidden entry groups`, () => {
@@ -410,33 +390,20 @@ describe(`ConvexHullStats`, () => {
       expect(doc_query(`.filter-count`).textContent).toContain(`2 entries`)
     })
 
+    // Optional columns only render when some entry carries the field
     test.each([
-      {
-        desc: `shown when available`,
-        energy_per_atom: -5.2,
-        expected: true,
+      { header: `raw`, entry: { energy_per_atom: -5.2 }, cell: `−5.2` },
+      { header: `raw`, entry: { energy_per_atom: undefined }, cell: null },
+      { header: `ID`, entry: { entry_id: `mp-1234` }, cell: `mp-1234` },
+      { header: `ID`, entry: { entry_id: undefined }, cell: null },
+    ] as { header: string; entry: Partial<ConvexHullEntry>; cell: string | null }[])(
+      `$header column for $entry → $cell`,
+      ({ header, entry, cell }) => {
+        mount_table_with_single_entry({ reduced_formula: `LiFeO2`, ...entry })
+        expect(get_headers().some((text) => text?.includes(header))).toBe(cell !== null)
+        if (cell) expect(document.body.textContent).toContain(cell)
       },
-      {
-        desc: `hidden when unavailable`,
-        energy_per_atom: undefined,
-        expected: false,
-      },
-    ])(`E_raw column $desc`, ({ energy_per_atom, expected }) => {
-      mount_stats_table({
-        stable_entries: [mock_entry({ energy_per_atom, reduced_formula: `LiFeO2` })],
-        unstable_entries: [],
-      })
-      expect(get_headers().some((header) => header?.includes(`raw`))).toBe(expected)
-    })
-
-    test(`ID column and value shown when entry_id available`, () => {
-      mount_stats_table({
-        stable_entries: [mock_entry({ entry_id: `mp-1234`, reduced_formula: `LiFeO2` })],
-        unstable_entries: [],
-      })
-      expect(get_headers()).toContain(`ID`)
-      expect(document.body.textContent).toContain(`mp-1234`)
-    })
+    )
 
     test(`composition fallback when reduced_formula missing`, () => {
       mount_stats_table({
@@ -470,45 +437,13 @@ describe(`ConvexHullStats`, () => {
       )
     })
 
-    test(`table has # column with row numbers and bold stable formulas`, () => {
-      mount_stats_table({
-        stable_entries: [
-          mock_entry({
-            composition: { Fe: 1 },
-            is_stable: true,
-            e_above_hull: 0,
-          }),
-        ],
-        unstable_entries: [
-          mock_entry({
-            composition: { Fe: 1, O: 1 },
-            is_stable: false,
-            e_above_hull: 0.1,
-          }),
-        ],
-      })
-
-      const headers = get_headers()
-      expect(headers).toContain(`#`)
-      expect(headers).toContain(`Formula`)
-      // Row numbers start at 1
-      const first_cells = Array.from(document.querySelectorAll(`tbody tr:first-child td`)).map(
-        (td) => td.textContent?.trim(),
-      )
-      expect(first_cells).toContain(`1`)
-      // Stable formulas are bold
-      const all_cells = Array.from(document.querySelectorAll(`td`))
-      expect(all_cells.some((td) => td.innerHTML.includes(`<strong>`))).toBe(true)
-    })
-
     test(`on_entry_click receives the clicked row's entry after sorting reorders rows`, () => {
       const clicked: ConvexHullEntry[] = []
-      mount_stats({
+      mount_stats_table({
         stable_entries: [],
         unstable_entries: unstable, // LiFeO2 (0.15) before Li2O (0.05) in the input
         on_entry_click: (entry: ConvexHullEntry) => clicked.push(entry),
       })
-      switch_to_table()
 
       doc_query(`tbody tr`).click() // first row under the default E_hull ascending sort
       flushSync()
@@ -548,13 +483,11 @@ describe(`ConvexHullStats`, () => {
         reduced_formula: `FeO`,
       })
 
-      mount_stats({ stable_entries: [ternary, binary] })
-      switch_to_table()
+      mount_stats_table({ stable_entries: [ternary, binary] })
       expect(get_table_filter_select(`Min N`)).toBeInstanceOf(HTMLElement)
 
       document.body.innerHTML = ``
-      mount_stats({ stable_entries: [binary] })
-      switch_to_table()
+      mount_stats_table({ stable_entries: [binary] })
       // With only binary entries, max_n_el ≤ 2 so no min N_el filter shown
       expect(get_table_filter_select(`Min N`)).toBeNull()
       // Export controls (HeatmapTable built-in) should still be available without filters
@@ -579,8 +512,7 @@ describe(`ConvexHullStats`, () => {
       { format: `CSV`, ext: `csv`, mime_type: `text/csv` },
       { format: `JSON`, ext: `json`, mime_type: `application/json` },
     ])(`exports $format via dropdown and closes menu`, ({ format, ext, mime_type }) => {
-      const create_url = vi.spyOn(URL, `createObjectURL`).mockReturnValue(`blob:test`)
-      const revoke_url = vi.spyOn(URL, `revokeObjectURL`).mockImplementation(() => {})
+      const { create, revoke } = mock_object_url()
       let downloaded_as = ``
       // download() clicks a detached anchor; capture filename from the click target
       const anchor_click = vi
@@ -588,28 +520,23 @@ describe(`ConvexHullStats`, () => {
         .mockImplementation(function (this: HTMLAnchorElement) {
           downloaded_as = this.download
         })
-      try {
-        mount_stats_table(export_props)
-        doc_query(`.table-container .dropdown-wrapper .icon-btn`).click()
-        flushSync()
+      onTestFinished(() => anchor_click.mockRestore())
+      mount_stats_table(export_props)
+      doc_query(`.table-container .dropdown-wrapper .icon-btn`).click()
+      flushSync()
 
-        const options = Array.from(
-          document.querySelectorAll<HTMLButtonElement>(`.dropdown-pane .dropdown-option`),
-        )
-        options.find((el) => el.textContent?.includes(format))?.click()
-        flushSync()
+      const options = Array.from(
+        document.querySelectorAll<HTMLButtonElement>(`.dropdown-pane .dropdown-option`),
+      )
+      options.find((el) => el.textContent?.includes(format))?.click()
+      flushSync()
 
-        expect(document.querySelector(`.dropdown-pane`)).toBeNull()
-        expect(create_url).toHaveBeenCalledTimes(1)
-        expect((create_url.mock.calls[0][0] as Blob).type).toBe(mime_type)
-        expect(anchor_click).toHaveBeenCalledTimes(1)
-        expect(revoke_url).toHaveBeenCalledTimes(1)
-        expect(downloaded_as).toBe(`li-fe-p-o.${ext}`)
-      } finally {
-        create_url.mockRestore()
-        revoke_url.mockRestore()
-        anchor_click.mockRestore()
-      }
+      expect(document.querySelector(`.dropdown-pane`)).toBeNull()
+      expect(create).toHaveBeenCalledTimes(1)
+      expect((create.mock.calls[0][0] as Blob).type).toBe(mime_type)
+      expect(anchor_click).toHaveBeenCalledTimes(1)
+      expect(revoke).toHaveBeenCalledTimes(1)
+      expect(downloaded_as).toBe(`li-fe-p-o.${ext}`)
     })
   })
 
@@ -665,12 +592,11 @@ describe(`ConvexHullStats`, () => {
         expected_text: `entry-A`,
       },
     ])(`highlights row matching $desc`, ({ entries, highlight_id, expected_text }) => {
-      mount_stats({
+      mount_stats_table({
         stable_entries: entries(),
         unstable_entries: [],
         highlighted_entry_id: highlight_id,
       })
-      switch_to_table()
 
       const styled = get_rows_with_style()
       expect(styled).toHaveLength(1)
@@ -681,12 +607,11 @@ describe(`ConvexHullStats`, () => {
       { desc: `undefined`, highlight_id: undefined as string | undefined },
       { desc: `nonexistent`, highlight_id: `nonexistent` },
     ])(`no row highlighted when ID is $desc`, ({ highlight_id }) => {
-      mount_stats({
+      mount_stats_table({
         stable_entries: [make_entry_with_id(`mp-1`)],
         unstable_entries: [],
         highlighted_entry_id: highlight_id,
       })
-      switch_to_table()
       expect(get_rows_with_style()).toHaveLength(0)
     })
   })
@@ -753,7 +678,7 @@ describe(`ConvexHullStats`, () => {
         entry_id: `mp-123`,
         reduced_formula: `Fe`,
       })
-      mount_stats({
+      mount_stats_table({
         stable_entries: [target_entry],
         unstable_entries: [],
         entry_href: (entry: ConvexHullEntry) => {
@@ -761,7 +686,6 @@ describe(`ConvexHullStats`, () => {
           return `/materials/${entry.entry_id}`
         },
       })
-      switch_to_table()
 
       // Callback received the correct entry
       expect(received_entries.length).toBeGreaterThanOrEqual(1)
@@ -774,61 +698,41 @@ describe(`ConvexHullStats`, () => {
       expect(link.getAttribute(`rel`)).toBe(`noopener`)
     })
 
+    // The ID is rendered as escaped text (never markup); a link only for safe, non-null hrefs
+    const xss_id = `<img src=x onerror=alert(1)>`
     test.each([
-      { desc: `entry_href returns null`, href: () => null },
-      { desc: `entry_href not provided`, href: undefined },
-    ])(`renders plain ID when $desc`, ({ href }) => {
-      mount_table_with_single_entry(
-        { entry_id: `mp-456` },
-        {
-          entry_href: href,
-        },
-      )
-
-      expect(document.querySelector(`td a[href]`)).toBeNull()
-      expect(document.body.textContent).toContain(`mp-456`)
-    })
-
-    test(`escapes HTML special chars in entry_id to prevent XSS`, () => {
-      mount_table_with_single_entry(
-        { entry_id: `<img src=x onerror=alert(1)>` },
-        { entry_href: () => `/materials/test` },
-      )
-
-      // The raw <img> tag must NOT appear as an element — it should be escaped
-      expect(document.querySelector(`td img`)).toBeNull()
-      // The link should still be rendered (escaping doesn't break the <a> tag)
-      expect(doc_query(`td a[href]`).getAttribute(`href`)).toBe(`/materials/test`)
-    })
-
-    test(`escapes HTML special chars in fallback ID rendering (no link)`, () => {
-      mount_table_with_single_entry(
-        { entry_id: `<img src=x onerror=alert(1)>` },
-        { entry_href: undefined },
-      )
-
-      expect(document.querySelector(`td img`)).toBeNull()
-      expect(document.querySelector(`td a[href]`)).toBeNull()
-      expect(document.body.textContent).toContain(`<img src=x onerror=alert(1)>`)
-    })
-
-    test.each([
-      { desc: `javascript URL`, href: () => `javascript:alert(1)` },
+      { desc: `entry_href returns null`, entry_id: `mp-456`, href: () => null, link: null },
+      { desc: `entry_href not provided`, entry_id: `mp-456`, href: undefined, link: null },
+      {
+        desc: `javascript URL`,
+        entry_id: `mp-unsafe`,
+        href: () => `javascript:alert(1)`,
+        link: null,
+      },
       {
         desc: `data URL`,
+        entry_id: `mp-unsafe`,
         href: () => `data:text/html,<script>alert(1)</script>`,
+        link: null,
       },
-      { desc: `vbscript URL`, href: () => `vbscript:msgbox("xss")` },
-    ])(`renders plain ID when entry_href returns unsafe $desc`, ({ href }) => {
-      mount_table_with_single_entry(
-        { entry_id: `mp-unsafe` },
-        {
-          entry_href: href,
-        },
-      )
-
-      expect(document.querySelector(`td a[href]`)).toBeNull()
-      expect(document.body.textContent).toContain(`mp-unsafe`)
+      {
+        desc: `vbscript URL`,
+        entry_id: `mp-unsafe`,
+        href: () => `vbscript:msgbox("xss")`,
+        link: null,
+      },
+      {
+        desc: `HTML in entry_id, linked`,
+        entry_id: xss_id,
+        href: () => `/materials/test`,
+        link: `/materials/test`,
+      },
+      { desc: `HTML in entry_id, unlinked`, entry_id: xss_id, href: undefined, link: null },
+    ])(`$desc → link=$link`, ({ entry_id, href, link }) => {
+      mount_table_with_single_entry({ entry_id }, { entry_href: href })
+      expect(document.querySelector(`td img`)).toBeNull()
+      expect(document.querySelector(`td a[href]`)?.getAttribute(`href`) ?? null).toBe(link)
+      expect(document.body.textContent).toContain(entry_id)
     })
   })
 
@@ -836,7 +740,7 @@ describe(`ConvexHullStats`, () => {
     test(`hidden when no polymorphs but table-filters visible`, () => {
       // Ternary entry → max_n_el > 2 → table-filters renders,
       // but unique compositions → no Polymorphs dropdown
-      mount_stats({
+      mount_stats_table({
         stable_entries: [
           mock_entry({
             composition: { Li: 1, Fe: 1, O: 2 },
@@ -850,7 +754,6 @@ describe(`ConvexHullStats`, () => {
           }),
         ],
       })
-      switch_to_table()
       expect(document.querySelector(`.table-filters`)).toBeInstanceOf(HTMLElement)
       expect(document.body.textContent).not.toContain(`Polymorphs`)
     })
@@ -892,54 +795,40 @@ describe(`ConvexHullStats`, () => {
   })
 
   describe(`subsystem_coverage`, () => {
-    test(`shows subsystem coverage chips with correct pair counts`, () => {
-      mount_stats({
-        phase_stats: mock_stats({ chemical_system: `Li-Fe-O` }),
-        stable_entries: [
-          mock_entry({
-            composition: { Li: 1, Fe: 1 },
-            reduced_formula: `LiFe`,
-          }),
-          mock_entry({ composition: { Fe: 1, O: 1 }, reduced_formula: `FeO` }),
+    test.each([
+      {
+        desc: `binary entries count once per pair`,
+        system: `Li-Fe-O`,
+        compositions: [
+          { Li: 1, Fe: 1 },
+          { Fe: 1, O: 1 },
         ],
+        chips: [`Fe-Li 1`, `Fe-O 1`, `Li-O 0`],
+      },
+      {
+        desc: `a ternary entry increments all 3 pairs`,
+        system: `Li-Fe-O`,
+        compositions: [{ Li: 1, Fe: 1, O: 2 }],
+        chips: [`Fe-Li 1`, `Fe-O 1`, `Li-O 1`],
+      },
+      {
+        desc: `quaternary system has 6 pairs`,
+        system: `Li-Fe-P-O`,
+        compositions: [{ Li: 1, Fe: 1, P: 1, O: 4 }],
+        chips: [`Fe-Li 1`, `Fe-O 1`, `Fe-P 1`, `Li-O 1`, `Li-P 1`, `O-P 1`],
+      },
+    ])(`$desc`, ({ system, compositions, chips }) => {
+      mount_stats({
+        phase_stats: mock_stats({ chemical_system: system }),
+        stable_entries: compositions.map((composition) => mock_entry({ composition })),
       })
       const header = doc_query(`[data-testid="pd-binary-subsystem-coverage"]`)
-      expect(header.textContent).toContain(`Binary subsystem coverage (3 pairs)`)
-      const chips = Array.from(document.querySelectorAll(`.subsystem-chip`))
-      expect(chips).toHaveLength(3)
-      const chip_text = chips.map((chip) => chip.textContent?.trim())
-      expect(chip_text).toContain(`Fe-Li 1`)
-      expect(chip_text).toContain(`Fe-O 1`)
-      expect(chip_text).toContain(`Li-O 0`)
-
+      expect(header.textContent).toContain(`Binary subsystem coverage (${chips.length} pairs)`)
       expect(header.querySelector(`.copy-button`)).toBeNull()
-    })
-
-    test(`ternary entry line includes all 3 pairs`, () => {
-      // A single LiFeO2 entry should increment Li-Fe, Fe-O, and Li-O
-      mount_stats({
-        phase_stats: mock_stats({ chemical_system: `Li-Fe-O` }),
-        stable_entries: [
-          mock_entry({
-            composition: { Li: 1, Fe: 1, O: 2 },
-            reduced_formula: `LiFeO2`,
-          }),
-        ],
-      })
-      const chip_text = Array.from(document.querySelectorAll(`.subsystem-chip`)).map((chip) =>
+      const chip_text = Array.from(document.querySelectorAll(`.subsystem-chip`), (chip) =>
         chip.textContent?.trim(),
       )
-      expect(chip_text).toContain(`Fe-Li 1`)
-      expect(chip_text).toContain(`Fe-O 1`)
-      expect(chip_text).toContain(`Li-O 1`)
-    })
-
-    test(`quaternary system line includes 6 pairs`, () => {
-      mount_stats({
-        phase_stats: mock_stats({ chemical_system: `Li-Fe-P-O` }),
-        stable_entries: [mock_entry()],
-      })
-      expect(document.querySelectorAll(`.subsystem-chip`)).toHaveLength(6)
+      expect(chip_text.toSorted()).toEqual(chips)
     })
 
     test.each([

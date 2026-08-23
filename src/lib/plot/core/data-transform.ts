@@ -1,5 +1,5 @@
 import type { D3SymbolName } from '$lib/labels'
-import type { DataSeries, LegendItem } from '$lib/plot/core/types'
+import type { DataSeries, LegendItem, PointStyle } from '$lib/plot/core/types'
 import { DEFAULT_SERIES_COLORS, DEFAULT_SERIES_SYMBOLS } from '$lib/plot/core/types'
 import { DEFAULTS } from '$lib/settings'
 
@@ -11,17 +11,21 @@ export const get_series_color = (series_idx: number): string =>
 export const get_series_symbol = (series_idx: number): D3SymbolName =>
   DEFAULT_SERIES_SYMBOLS[series_idx % DEFAULT_SERIES_SYMBOLS.length]
 
+// The style a series shows as a whole: its single PointStyle, or the first entry of a
+// per-point array (nullish series yield undefined)
+export const first_point_style = (
+  series_data: { point_style?: PointStyle[] | PointStyle } | null | undefined,
+): PointStyle | undefined =>
+  Array.isArray(series_data?.point_style)
+    ? series_data.point_style[0]
+    : series_data?.point_style
+
 // Extract the primary color from a series data object.
 // Checks line stroke, then point fill (handling arrays), with fallback to default blue.
-export const extract_series_color = (series_data: DataSeries): string => {
-  const color =
-    series_data.line_style?.stroke ??
-    (Array.isArray(series_data.point_style)
-      ? series_data.point_style[0]?.fill
-      : series_data.point_style?.fill)
-  if (color) return color
-  return DEFAULTS.scatter.point.color
-}
+export const extract_series_color = (series_data: DataSeries): string =>
+  series_data.line_style?.stroke ??
+  first_point_style(series_data)?.fill ??
+  DEFAULTS.scatter.point.color
 
 // Minimal series shape every chart's legend entry is derived from.
 type LegendSeries = { label?: string | null; visible?: boolean; legend_group?: string }

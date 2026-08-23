@@ -8,7 +8,6 @@ import { symbol_names } from '$lib/labels'
 import type { Vec2, Vec3 } from '$lib/math'
 import type { GizmoOptions } from '$lib/scene/gizmo'
 import type { LegendVisibilityMode } from '$lib/plot/core/utils/series-visibility'
-import { is_plain_object, merge_nested } from './utils'
 
 // One leaf of the settings schema. `web_only` settings (fullscreen toggles) are skipped
 // when the schema is synced into the VS Code extension's contributed configuration.
@@ -698,8 +697,10 @@ export const SETTINGS_CONFIG = define_settings({
     },
     color_property: {
       value: `band`,
-      description: `Quantity mapped onto the Fermi surface color scale`,
-      enum: { band: `Band`, velocity: `Velocity`, spin: `Spin`, custom: `Custom` },
+      // VS Code's configuration schema carries no per-value deprecation, so the removed values
+      // are called out in the description
+      description: `Quantity mapped onto the Fermi surface color scale ('velocity' and 'custom' were removed; use 'property')`,
+      enum: { band: `Band`, spin: `Spin`, property: `Property` },
     },
     color_scale: typed_setting<D3InterpolateName>({
       value: `interpolateViridis`,
@@ -1131,42 +1132,12 @@ export const SETTINGS_CONFIG = define_settings({
 
   // Plot general (shared by scatter, bar, box and histogram plots)
   plot: {
-    grid_lines: { value: true, description: `Show grid lines in plots` },
-    axis_labels: { value: true, description: `Show axis labels in plots` },
     display: {
       x_grid: { value: true, description: `Show X-axis grid lines` },
       y_grid: { value: true, description: `Show Y-axis grid lines` },
       y2_grid: { value: false, description: `Show Y2-axis grid lines` },
       x_zero_line: { value: true, description: `Show X-axis zero reference line` },
       y_zero_line: { value: true, description: `Show Y-axis zero reference line` },
-    },
-    x_format: {
-      value: `.2~s`,
-      description: `Number format for X-axis ticks (D3 format specifier)`,
-    },
-    x2_format: {
-      value: ``,
-      description: `Number format for secondary X-axis ticks (D3 format specifier)`,
-    },
-    y_format: {
-      value: `d`,
-      description: `Number format for Y-axis ticks (D3 format specifier)`,
-    },
-    y2_format: {
-      value: ``,
-      description: `Number format for secondary Y-axis ticks (D3 format specifier)`,
-    },
-    x_ticks: {
-      value: 8,
-      description: `Number of ticks on X-axis`,
-      minimum: 2,
-      maximum: 20,
-    },
-    y_ticks: {
-      value: 6,
-      description: `Number of ticks on Y-axis`,
-      minimum: 2,
-      maximum: 20,
     },
   },
 
@@ -1250,27 +1221,40 @@ export const get_convex_hull_defaults = (element_count: 2 | 3 | 4) =>
     element_count === 2 ? `binary` : element_count === 3 ? `ternary` : `quaternary`
   ]
 
-// Partial settings where nested groups (structure, trajectory, ...) may also
-// be partial; merge() fills gaps from DEFAULTS at both levels.
-export type PartialSettings = {
-  [Key in keyof DefaultSettings]?: DefaultSettings[Key] extends Record<string, unknown>
-    ? Partial<DefaultSettings[Key]>
-    : DefaultSettings[Key]
+type DeepPartial<T> = {
+  [Key in keyof T]?: T[Key] extends Record<string, unknown> ? DeepPartial<T[Key]> : T[Key]
 }
 
-// Merge all top-level setting groups to the schema's full nesting depth.
-export const merge = (user: PartialSettings = {}): DefaultSettings => {
-  const merged = { ...DEFAULTS, ...user } as DefaultSettings
-  for (const key of Object.keys(DEFAULTS) as (keyof DefaultSettings)[]) {
-    const defaults = DEFAULTS[key]
-    if (!is_plain_object(defaults)) continue
-    const overrides = user[key]
-    Object.assign(merged, {
-      [key]: merge_nested(defaults, is_plain_object(overrides) ? overrides : undefined),
-    })
-  }
-  return merged
+// Partial settings at every nesting level (`{ scatter: { point: { size: 5 } } }`): merge()
+// fills the gaps from DEFAULTS at every level, so the type and the runtime agree whatever
+// depth the schema grows to.
+export type PartialSettings = DeepPartial<DefaultSettings>
+
+// Plain records only (object literals, JSON.parse output, null-prototype objects): a Date, Map
+// or typed array is a leaf value, not a group of settings to recurse into
+const is_plain_record = (val: unknown): val is Record<string, unknown> => {
+  if (typeof val !== `object` || val === null) return false
+  const proto: unknown = Object.getPrototypeOf(val)
+  return proto === Object.prototype || proto === null
 }
+
+// Recurse wherever both sides are plain records; anything else the user supplies (a primitive,
+// array, null, Date, ...) replaces the default, and an undefined user value keeps it
+const merge_deep = <T>(defaults: T, user: unknown): T => {
+  if (!is_plain_record(defaults) || !is_plain_record(user)) {
+    return (user === undefined ? defaults : user) as T
+  }
+  const merged: Record<string, unknown> = { ...defaults }
+  for (const [key, value] of Object.entries(user)) {
+    // JSON.parse yields an own `__proto__` key; assigning it would rewire merged's prototype
+    if (key === `__proto__`) continue
+    merged[key] = merge_deep(defaults[key], value)
+  }
+  return merged as T
+}
+
+export const merge = (user: PartialSettings = {}): DefaultSettings =>
+  merge_deep(DEFAULTS, user)
 
 // Group the structure defaults into the prop bundles <Structure> expects. Used by embedders
 // (file viewer, VS Code webview) that build a viewer from settings alone.
@@ -1278,17 +1262,10 @@ export const build_structure_props_from_settings = (defaults: DefaultSettings) =
   const { structure } = defaults
   return {
     scene_props: { ...structure },
-    lattice_props: {
-      cell_edge_opacity: structure.cell_edge_opacity,
-      cell_surface_opacity: structure.cell_surface_opacity,
-      cell_edge_color: structure.cell_edge_color,
-      cell_surface_color: structure.cell_surface_color,
-      cell_edge_width: structure.cell_edge_width,
-      show_cell_vectors: structure.show_cell_vectors,
-    },
     color_scheme: defaults.color_scheme,
     background_color: defaults.background_color,
     background_opacity: defaults.background_opacity,
     show_image_atoms: structure.show_image_atoms,
+    show_trajectory_lines: structure.show_trajectory_lines,
   }
 }

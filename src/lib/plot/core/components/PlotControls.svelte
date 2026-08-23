@@ -37,7 +37,6 @@
     auto_y2_range = undefined,
     has_x2_points = false,
     has_y2_points = false,
-    show_ticks = false,
     controls_title = `plot`,
     controls_name = `plot`,
     toggle_props = {},
@@ -69,18 +68,37 @@
       ]),
     )
   const display_reset_values = untrack(display_values)
-  const tick_axes = [
-    { axis: `x`, label: `X-axis`, fallback: DEFAULTS.plot.x_ticks },
-    { axis: `y`, label: `Y-axis`, fallback: DEFAULTS.plot.y_ticks },
-  ] as const
   const axis_labels = { x: `X`, x2: `X2`, y: `Y`, y2: `Y2` } as const
   const axis_config = (axis: AxisKey): AxisConfig =>
     axis === `x` ? x_axis : axis === `x2` ? x2_axis : axis === `y` ? y_axis : y2_axis
-  const initial_ranges = untrack(() => axis_record((axis) => axis_config(axis).range))
-  const initial_ticks = untrack(() => ({
-    x: x_axis.ticks ?? DEFAULTS.plot.x_ticks,
-    y: y_axis.ticks ?? DEFAULTS.plot.y_ticks,
-  }))
+  // Each axis-field section (range, ticks, format) keys its values by axis; SettingsSection
+  // snapshots them at mount and hands the changed ones back on Reset, so the pane keeps no
+  // mount-time copies of the axis configs itself. Ticks is the exception: its section diffs
+  // the numeric projection (`tick_count`), which cannot carry a mount-time tick list/interval,
+  // so Reset restores the full mount-time `ticks` value kept here instead
+  const is_axis_key = (key: string): key is AxisKey =>
+    (all_axes as readonly string[]).includes(key)
+  const mount_ticks = untrack(() => axis_record((axis) => axis_config(axis).ticks))
+  const reset_axis_field =
+    <Field extends keyof AxisConfig>(field: Field) =>
+    (key: string, value: unknown) => {
+      if (!is_axis_key(key)) return
+      if (field === `ticks`) update_axis(key, { ticks: mount_ticks[key] })
+      else update_axis(key, { [field]: value as AxisConfig[Field] })
+    }
+  // The Ticks inputs only edit numeric tick counts; an explicit tick list/map/interval set on
+  // the axis is left alone (and shown as `custom`), and an empty input hands back to auto
+  const tick_count = (axis: AxisKey): number | undefined => {
+    const { ticks } = axis_config(axis)
+    return typeof ticks === `number` ? ticks : undefined
+  }
+  const MAX_TICK_COUNT = 100
+  const update_tick_count = (axis: AxisKey, value: string) => {
+    if (value === ``) return update_axis(axis, { ticks: undefined })
+    const parsed = Number(value)
+    if (!Number.isInteger(parsed) || parsed < 1 || parsed > MAX_TICK_COUNT) return
+    update_axis(axis, { ticks: parsed })
+  }
   const update_axis = (axis: AxisKey, updates: Partial<AxisConfig>): void => {
     if (axis === `x`) x_axis = { ...x_axis, ...updates }
     else if (axis === `x2`) x2_axis = { ...x2_axis, ...updates }
@@ -112,12 +130,12 @@
       )
     }),
   )
-  const axis_format = {
-    x: { fallback: DEFAULTS.plot.x_format, placeholder: `.2~s / .0% / %Y-%m-%d` },
-    x2: { fallback: DEFAULTS.plot.x2_format, placeholder: `.2~s / .0% / %Y-%m-%d` },
-    y: { fallback: DEFAULTS.plot.y_format, placeholder: `d / .1e / .0%` },
-    y2: { fallback: DEFAULTS.plot.y2_format, placeholder: `.2f / .1e / .0%` },
-  } satisfies Record<AxisKey, { fallback: string | undefined; placeholder: string }>
+  const format_placeholders: Record<AxisKey, string> = {
+    x: `.2~s / .0% / %Y-%m-%d`,
+    x2: `.2~s / .0% / %Y-%m-%d`,
+    y: `d / .1e / .0%`,
+    y2: `.2f / .1e / .0%`,
+  }
 
   // Validation function for format specifiers
   function is_valid_format(format_string: string): boolean {
@@ -246,10 +264,8 @@
     <SettingsSection
       title="Axis range"
       class="ctrl-line axis-fields"
-      current_values={axis_values(`range`, (axis) => axis_config(axis).range)}
-      on_reset={() => {
-        for (const axis of all_axes) update_axis(axis, { range: initial_ranges[axis] })
-      }}
+      current_values={axis_record((axis) => axis_config(axis).range)}
+      on_reset_key={reset_axis_field(`range`)}
       layout="flow"
     >
       {#each visible_axes as [axis, label] (axis)}
@@ -272,45 +288,6 @@
         </label>
       {/each}
     </SettingsSection>
-
-    {#if show_ticks}
-      {@const [min_ticks, max_ticks] = [2, 20]}
-      <SettingsSection
-        title="Ticks"
-        class="ctrl-line axis-fields"
-        current_values={{
-          x_ticks: x_axis.ticks ?? DEFAULTS.plot.x_ticks,
-          y_ticks: y_axis.ticks ?? DEFAULTS.plot.y_ticks,
-        }}
-        on_reset={() => {
-          for (const { axis } of tick_axes) {
-            update_axis(axis, { ticks: initial_ticks[axis] })
-          }
-        }}
-        layout="flow"
-      >
-        {#each tick_axes as { axis, label, fallback } (axis)}
-          {@const ticks = axis_config(axis).ticks}
-          <label>
-            <span>{label}</span>
-            <input
-              type="number"
-              min={min_ticks}
-              max={max_ticks}
-              step="1"
-              value={typeof ticks === `number` ? ticks : fallback}
-              oninput={(evt) => {
-                const parsed = parseInt(evt.currentTarget.value, 10)
-                if (isNaN(parsed)) return
-                update_axis(axis, {
-                  ticks: Math.max(min_ticks, Math.min(max_ticks, parsed)),
-                })
-              }}
-            />
-          </label>
-        {/each}
-      </SettingsSection>
-    {/if}
 
     <SettingsSection
       title="Scale type"
@@ -411,15 +388,40 @@
     {/if}
 
     <SettingsSection
+      title="Ticks"
+      data-testid="ticks-section"
+      class="ctrl-line axis-fields"
+      current_values={axis_record(tick_count)}
+      on_reset_key={reset_axis_field(`ticks`)}
+      layout="flow"
+    >
+      {#each visible_axes as [axis, label] (axis)}
+        {@const count = tick_count(axis)}
+        {@const custom = count === undefined && axis_config(axis).ticks !== undefined}
+        <label>
+          <span>{label}</span>
+          <input
+            type="number"
+            min="1"
+            max={MAX_TICK_COUNT}
+            step="1"
+            value={count ?? ``}
+            placeholder={custom ? `custom` : `auto`}
+            disabled={custom}
+            aria-label="{label} axis tick count"
+            oninput={(evt) => update_tick_count(axis, evt.currentTarget.value)}
+            onkeydown={(evt) => evt.key === `Enter` && evt.currentTarget.blur()}
+          />
+        </label>
+      {/each}
+    </SettingsSection>
+
+    <SettingsSection
       title="Tick format"
       data-testid="tick-format-section"
       class="ctrl-line formats tick-format-section"
-      current_values={axis_values(`format`, (axis) => axis_config(axis).format)}
-      on_reset={() => {
-        for (const axis of all_axes) {
-          update_axis(axis, { format: axis_format[axis].fallback })
-        }
-      }}
+      current_values={axis_record((axis) => axis_config(axis).format)}
+      on_reset_key={reset_axis_field(`format`)}
       layout="flow"
     >
       {#each visible_axes as [axis, label] (axis)}
@@ -427,8 +429,8 @@
           <span>{label}-axis</span>
           <input
             type="text"
-            value={axis_config(axis).format ?? axis_format[axis].fallback}
-            placeholder={axis_format[axis].placeholder}
+            value={axis_config(axis).format ?? ``}
+            placeholder={format_placeholders[axis]}
             oninput={format_input_handler(axis)}
           />
         </label>

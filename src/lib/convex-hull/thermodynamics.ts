@@ -1,5 +1,5 @@
 import { sort_by_electronegativity } from '$lib/composition/format'
-import { element_symbols_in } from '$lib/composition/parse'
+import { is_elem_symbol } from '$lib/element/helpers'
 import { count_atoms_in_composition } from '$lib/composition/reduce'
 import type { ElementSymbol } from '$lib/element'
 import * as math from '$lib/math'
@@ -7,30 +7,46 @@ import { composition_to_barycentric_nd } from './barycentric-coords'
 import { get_arity, HULL_STABILITY_TOL, is_on_hull, is_unary_entry } from './helpers'
 import type { ConvexHullEntry, PhaseData, PhaseStats, ProcessedPhaseData } from './types'
 
-// Track warned keys to avoid log spam on large datasets with repeated invalid keys
-const warned_keys = new Set<string>()
+// A pymatgen species key as emitted by Composition.as_dict(): an element symbol with optional
+// oxidation state ("Fe3+", "O2-", "Fe2.5+") and optional spin ("Fe2+,spin=5")
+const SPECIES_KEY_REGEX = /^(?<symbol>[A-Z][a-z]?)(?:\d*\.?\d*[+-])?(?:,spin=[-+\d.]+)?$/
+// Hydrogen isotopes pymatgen treats as their own species
+const ISOTOPE_TO_ELEMENT: Record<string, ElementSymbol> = { D: `H`, T: `H` }
 
-// Normalize convex hull composition keys by stripping oxidation states (e.g. "V4+" -> "V")
-// and merging amounts for keys that map to the same element. Filters non-positive amounts.
-// Only extracts FIRST valid element from each key (e.g. "Fe2O3" -> "Fe", not both Fe and O).
+// Normalize convex hull composition keys by stripping oxidation states and spins (e.g.
+// "V4+" -> "V", "Fe2+,spin=5" -> "Fe"), mapping D/T to H and merging amounts for keys that map
+// to the same element. Filters non-positive amounts. pymatgen DummySpecies ("X0+", "Xa") carry
+// no element and are skipped with a warning. Throws on keys that are not a single element
+// species ("Fe2O3", "12345"): silently mapping a compound key to its first element would
+// corrupt every downstream formation energy.
 export function normalize_hull_composition_keys(
   composition: Record<string, number>,
 ): Partial<Record<ElementSymbol, number>> {
   const normalized: Partial<Record<ElementSymbol, number>> = {}
   for (const [key, amount] of Object.entries(composition)) {
     if (typeof amount !== `number` || !Number.isFinite(amount) || amount <= 0) continue
-    const elem = element_symbols_in(key)[0]
-    if (!elem) {
-      if (!warned_keys.has(key)) {
-        warned_keys.add(key)
-        console.warn(`Skipping unrecognized composition key: "${key}"`)
-      }
-      continue
+    const raw_symbol = SPECIES_KEY_REGEX.exec(key)?.groups?.symbol ?? ``
+    const symbol = ISOTOPE_TO_ELEMENT[raw_symbol] ?? raw_symbol
+    if (is_elem_symbol(symbol)) normalized[symbol] = (normalized[symbol] ?? 0) + amount
+    // DummySpecies symbols start with X and are not real elements (Xe is)
+    else if (raw_symbol.startsWith(`X`)) {
+      console.warn(
+        `Skipping pymatgen DummySpecies key "${key}" in ${JSON.stringify(composition)}: it carries no element`,
+      )
+    } else {
+      throw new Error(
+        `Unrecognized composition key "${key}" in ${JSON.stringify(composition)}: expected an element symbol with optional oxidation state (e.g. "Fe", "Fe3+")`,
+      )
     }
-    normalized[elem] = (normalized[elem] ?? 0) + amount
   }
   return normalized
 }
+
+// Sorted element symbols present in a set of (normalized) entries
+export const collect_hull_elements = (entries: PhaseData[]): ElementSymbol[] =>
+  [
+    ...new Set(entries.flatMap((entry) => Object.keys(entry.composition))),
+  ].toSorted() as ElementSymbol[]
 
 // Normalize composition keys and drop entries whose composition normalizes to {}.
 export function process_hull_entries(entries: PhaseData[]): ProcessedPhaseData {
@@ -40,10 +56,7 @@ export function process_hull_entries(entries: PhaseData[]): ProcessedPhaseData {
       composition: normalize_hull_composition_keys(entry.composition),
     }))
     .filter((entry) => Object.keys(entry.composition).length > 0)
-  const elements = [
-    ...new Set(normalized.flatMap((entry) => Object.keys(entry.composition))),
-  ].toSorted() as ElementSymbol[]
-  return { entries: normalized, elements }
+  return { entries: normalized, elements: collect_hull_elements(normalized) }
 }
 
 // Energy per atom with the (total-energy, eV) correction applied — the Materials Project
@@ -119,16 +132,24 @@ export function calculate_e_above_hull(
   reference_entries: PhaseData[],
 ): number | Record<string, number> {
   const is_single = !Array.isArray(input)
-  const entries_of_interest = is_single ? [input] : input
+  const raw_entries = is_single ? [input] : input
 
-  if (entries_of_interest.length === 0) return {} // Empty input → empty result (not an error)
+  if (raw_entries.length === 0) return {} // Empty input → empty result (not an error)
   if (reference_entries.length === 0) {
     throw new Error(`Reference entries cannot be empty`)
   }
+  // Result keys come from the caller's entries; the geometry runs on normalized copies so
+  // oxidation-state keys ("Fe3+") line up with the reference system. Zero-atom entries are
+  // kept (they yield NaN below) rather than dropped like process_hull_entries would.
+  const result_ids = raw_entries.map(id_of)
+  const normalize = (entry: PhaseData): PhaseData => ({
+    ...entry,
+    composition: normalize_hull_composition_keys(entry.composition),
+  })
+  const entries_of_interest = raw_entries.map(normalize)
+  reference_entries = reference_entries.map(normalize)
 
-  const elements = [
-    ...new Set(reference_entries.flatMap((entry) => Object.keys(entry.composition))),
-  ].toSorted() as ElementSymbol[]
+  const elements = collect_hull_elements(reference_entries)
   const element_set = new Set<string>(elements)
   for (const entry of entries_of_interest) {
     for (const el of Object.keys(entry.composition)) {
@@ -149,9 +170,7 @@ export function calculate_e_above_hull(
   const to_result = (distances: number[]): number | Record<string, number> =>
     is_single
       ? Math.max(0, distances[0])
-      : Object.fromEntries(
-          entries_of_interest.map((entry, idx) => [id_of(entry), Math.max(0, distances[idx])]),
-        )
+      : Object.fromEntries(result_ids.map((id, idx) => [id, Math.max(0, distances[idx])]))
 
   const arity = elements.length
   // The stable element sits at E_form = 0, so E_form is the hull distance
@@ -215,8 +234,6 @@ export function get_convex_hull_stats(
     )
     .filter(Number.isFinite)
   const [min_energy, max_energy] = math.array_extent(energies)
-  const mean = (values: number[]): number =>
-    values.reduce((sum, val) => sum + val, 0) / values.length
   const hull_distances = processed_entries
     .map((entry) => entry.e_above_hull)
     .filter((val): val is number => typeof val === `number` && val >= 0)
@@ -234,11 +251,11 @@ export function get_convex_hull_stats(
     unstable: processed_entries.length - stable,
     energy_range:
       energies.length > 0
-        ? { min: min_energy, max: max_energy, avg: mean(energies) }
+        ? { min: min_energy, max: max_energy, avg: math.mean(energies) }
         : { min: 0, max: 0, avg: 0 },
     hull_distance:
       hull_distances.length > 0
-        ? { max: math.array_max(hull_distances), avg: mean(hull_distances) }
+        ? { max: math.array_max(hull_distances), avg: math.mean(hull_distances) }
         : { max: 0, avg: 0 },
     elements: elements.length,
     chemical_system: sort_by_electronegativity([...elements]).join(`-`),

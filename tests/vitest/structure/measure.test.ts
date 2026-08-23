@@ -12,6 +12,7 @@ import {
   rolls_measured_sites,
 } from '$lib/structure/measure'
 import { describe, expect, test } from 'vitest'
+import { make_molecule } from '../setup'
 
 // oxfmt-ignore
 const cubic = (a_len: number): Matrix3x3 => [[a_len, 0, 0], [0, a_len, 0], [0, 0, a_len]]
@@ -33,16 +34,7 @@ const expect_vec3_close = (
 // compute_displacements takes sites (not bare positions) so it can refuse to pair up atoms of
 // different species; only xyz and species matter here.
 const sites = (positions: Vec3[], elements: string[] = []): Site[] =>
-  positions.map((xyz, idx) => {
-    const element = elements[idx] ?? `Si`
-    return {
-      xyz,
-      abc: xyz,
-      species: [{ element, occu: 1, oxidation_state: 0 }],
-      label: element,
-      properties: {},
-    } as Site
-  })
+  make_molecule(positions.map((xyz, idx) => [elements[idx] ?? `Si`, xyz])).sites
 
 describe(`measure: distances`, () => {
   test(`pbc displacement`, () => {

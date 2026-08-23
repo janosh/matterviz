@@ -1,11 +1,17 @@
 // Format detection for trajectory files
-import { CONFIG_DIRS_REGEX, ext_regex, XYZ_EXTENSIONS, XYZ_EXTXYZ_REGEX } from '$lib/constants'
+import {
+  CONFIG_DIRS_REGEX,
+  ext_regex,
+  HDF5_EXT_REGEX,
+  XYZ_EXTENSIONS,
+  XYZ_EXTXYZ_REGEX,
+} from '$lib/constants'
 import { strip_compression_extensions } from '$lib/io/decompress'
 import { has_ase_traj_magic, has_hdf5_magic, magic_head } from '$lib/io/is-binary'
 import { is_lammps_data_content } from '$lib/structure/format-detect'
 import { parse_leading_num } from '$lib/utils'
 import { count_xyz_frames } from './helpers'
-import { HDF5_EXT_REGEX, is_trajectory_filename } from './filename'
+import { is_trajectory_filename } from './filename'
 
 // Extensions that explicitly identify a format — when present, format detection trusts
 // the extension instead of sniffing content

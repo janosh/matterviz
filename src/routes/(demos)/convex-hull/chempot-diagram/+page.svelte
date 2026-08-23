@@ -1,6 +1,7 @@
 <script lang="ts">
   import { ChemPotDiagram, ChemPotDiagram2D, ChemPotDiagram3D } from '$lib/chempot-diagram'
   import type { PhaseData } from '$lib/convex-hull'
+  import { quaternary_files } from '$site/convex-hull'
   import { create_temp_ternary_entries_li_fe_o } from '$site/convex-hull/demo-temperature'
   import Spinner from '$lib/feedback/Spinner.svelte'
   import { onMount } from 'svelte'
@@ -14,10 +15,6 @@
     eager: true,
     import: `default`,
   })
-  const quaternary_files = import.meta.glob<{ default: PhaseData[] }>(
-    `$site/convex-hull/quaternaries/*.json.gz`,
-    { eager: false },
-  )
 
   function get_chempot_data(filename: string): PhaseData[] {
     const data = Object.entries(chempot_files).find(([path]) => path.endsWith(filename))?.[1]

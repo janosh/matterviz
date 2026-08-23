@@ -18,7 +18,7 @@
     removable = false,
     disabled = false,
     onclick,
-    onremove,
+    on_remove,
     children,
     ...rest
   }: {
@@ -31,7 +31,7 @@
     removable?: boolean // Show remove/close button
     disabled?: boolean // Disable interactions
     onclick?: (event: MouseEvent) => void // Custom click handler (overrides copy-to-clipboard default)
-    onremove?: () => void // Callback when remove button is clicked
+    on_remove?: () => void // Callback when remove button is clicked
     children?: Snippet<[]> // Additional content to render inside the tag
   } & Omit<HTMLAttributes<HTMLSpanElement>, `onclick` | `onkeydown`> = $props()
 
@@ -53,7 +53,7 @@
 
   function handle_remove(event: MouseEvent): void {
     event.stopPropagation()
-    onremove?.()
+    on_remove?.()
   }
 </script>
 

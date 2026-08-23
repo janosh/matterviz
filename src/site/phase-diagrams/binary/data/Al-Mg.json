@@ -19,7 +19,7 @@
     {
       "id": "liquid",
       "name": "Liquid",
-      "color": "liquid",
+      "color": "rgba(135, 206, 250, 0.6)",
       "bounds": [
         [0, 1100],
         [1, 1100],
@@ -31,31 +31,31 @@
     {
       "id": "fcc_al",
       "name": "α (FCC Al)",
-      "color": "fcc_a1",
+      "color": "rgba(144, 238, 144, 0.6)",
       "bounds": [[0, 933], "solidus_al[1:]", "solvus_al[1:]", [0, 300]]
     },
     {
       "id": "hcp_mg",
       "name": "β (HCP Mg)",
-      "color": "hcp_a3",
+      "color": "rgba(221, 160, 221, 0.6)",
       "bounds": [[1, 923], "~solidus_mg[1:]", "solvus_mg[1:]", [1, 300]]
     },
     {
       "id": "fcc_liquid",
       "name": "FCC + L",
-      "color": "two_phase_fcc_liquid",
+      "color": "rgba(180, 230, 180, 0.5)",
       "bounds": [[0, 933], "liquidus_left[1:]", [0.12, 710], "~solidus_al[1:-1]"]
     },
     {
       "id": "hcp_liquid",
       "name": "HCP + L",
-      "color": "two_phase_hcp_liquid",
+      "color": "rgba(230, 180, 230, 0.5)",
       "bounds": [[1, 923], "~liquidus_right[1:]", [0.88, 710], "solidus_mg[1:-1]"]
     },
     {
       "id": "fcc_hcp",
       "name": "FCC + HCP",
-      "color": "two_phase",
+      "color": "rgba(255, 235, 156, 0.5)",
       "bounds": [
         [0.12, 710],
         [0.88, 710],

@@ -9,7 +9,8 @@
 import type { Matrix3x3, Vec2, Vec3 } from '$lib/math'
 import { broaden_peaks } from '$lib/lineshape'
 import { SvelteSet } from 'svelte/reactivity'
-import { ACOUSTIC_FREQ_THRESHOLD, convert_frequencies } from './helpers'
+import { convert_frequencies } from './frequency-units'
+import { ACOUSTIC_FREQ_THRESHOLD, is_gamma_point } from './helpers'
 import type {
   BornChargeData,
   Complex,
@@ -22,17 +23,10 @@ import type {
   VibrationalSpectrum,
 } from './types'
 
-// A q-point counts as Gamma when every fractional coordinate is within this of an integer.
-// Same tolerance as find_gamma_indices in helpers.ts.
-const GAMMA_COORD_TOL = 0.01
-
 // Number of acoustic branches at Gamma.
 const N_ACOUSTIC = 3
 
 export type SpectrumCurve = { x: number[]; y: number[] }
-
-export const is_gamma_point = (q_position: Vec3): boolean =>
-  q_position.every((coord) => Math.abs(coord - Math.round(coord)) < GAMMA_COORD_TOL)
 
 // IR intensity of one mode: sum over cartesian alpha of |dipole derivative|^2, in e^2/amu.
 // The mode-effective dipole derivative is the sum over atoms kappa and directions beta of
@@ -236,7 +230,7 @@ export function spectrum_sticks(
     include_imaginary?: boolean
   } = {},
 ): SpectrumCurve {
-  const { unit = `cm-1`, include_acoustic = false, include_imaginary = false } = options
+  const { unit = `cm^-1`, include_acoustic = false, include_imaginary = false } = options
   if (kind === `raman` && !spectrum.has_raman) {
     throw new Error(
       `spectrum_sticks: Raman requested but this spectrum has no polarizability data. ` +

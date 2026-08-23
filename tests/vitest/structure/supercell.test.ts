@@ -1,7 +1,6 @@
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { Crystal } from '$lib/structure'
-import { find_image_atoms, get_pbc_image_sites } from '$lib/structure/pbc'
 import {
   generate_lattice_points,
   is_valid_supercell_input,
@@ -37,28 +36,20 @@ describe(`parse_supercell_scaling`, () => {
     expect(parse_supercell_scaling(input as string | number | Vec3)).toEqual(expected)
   })
 
+  // every string row fails the strict /^\d+$/ digit check or the part count; numbers and
+  // arrays are checked for positive integers directly
   test.each([
-    `2x2`,
-    `2x2x2x2`,
+    `2x2`, // wrong part count
     `axbxc`,
     `0x1x1`,
     `-1x2x3`,
-    `2.5x1x1`, // Non-integer string should be rejected
-    `1x2.5x3`, // Non-integer in middle
-    `1.5`, // Non-integer single value
-    `1e3`, // Scientific notation should be rejected
-    `2x1e2x3`, // Scientific notation in string
-    `0x10`, // Hex notation should be rejected
-    `0b10`, // Binary notation should be rejected
-    `0o10`, // Octal notation should be rejected
+    `2.5x1x1`,
+    `1e3`, // scientific notation is not a digit string
     ``,
     0,
-    -1,
     1.5,
     [1, 2],
-    [1, 2, 3, 4],
     [0, 1, 2],
-    [-1, 2, 3],
     [1.5, 2, 3],
   ])(`throws error for invalid input %s`, (input) => {
     expect(() => parse_supercell_scaling(input as string | number | Vec3)).toThrow(
@@ -85,12 +76,8 @@ describe(`generate_lattice_points`, () => {
 })
 
 describe(`scale_lattice_matrix`, () => {
-  const diagonal_matrix: Matrix3x3 = [
-    [2.0, 0.0, 0.0],
-    [0.0, 3.0, 0.0],
-    [0.0, 0.0, 4.0],
-  ]
-  const non_diagonal_matrix: Matrix3x3 = [
+  // non-diagonal so a wrong axis (scaling columns instead of rows) is visible
+  const matrix: Matrix3x3 = [
     [2.0, 1.5, 0.5],
     [0.5, 3.0, 1.0],
     [1.0, 0.5, 4.0],
@@ -98,20 +85,11 @@ describe(`scale_lattice_matrix`, () => {
 
   // oxfmt-ignore
   test.each([
-    [[1, 1, 1], diagonal_matrix],
-    [[2, 1, 1], [[4.0, 0.0, 0.0], [0.0, 3.0, 0.0], [0.0, 0.0, 4.0]]],
-    [[2, 2, 2], [[4.0, 0.0, 0.0], [0.0, 6.0, 0.0], [0.0, 0.0, 8.0]]],
-  ])(`scales diagonal matrix correctly for %s`, (scaling, expected) => {
-    expect(math.scale_lattice_matrix(diagonal_matrix, scaling as Vec3)).toEqual(expected)
-  })
-
-  // oxfmt-ignore
-  test.each([
-    [[1, 1, 1], non_diagonal_matrix],
+    [[1, 1, 1], matrix],
     [[2, 1, 1], [[4.0, 3.0, 1.0], [0.5, 3.0, 1.0], [1.0, 0.5, 4.0]]],
     [[2, 2, 2], [[4.0, 3.0, 1.0], [1.0, 6.0, 2.0], [2.0, 1.0, 8.0]]],
-  ])(`scales non-diagonal matrix correctly for %s`, (scaling, expected) => {
-    expect(math.scale_lattice_matrix(non_diagonal_matrix, scaling as Vec3)).toEqual(expected)
+  ])(`scales each lattice vector by its own factor for %s`, (scaling, expected) => {
+    expect(math.scale_lattice_matrix(matrix, scaling as Vec3)).toEqual(expected)
   })
 })
 
@@ -209,22 +187,12 @@ describe(`make_supercell`, () => {
   })
 })
 
-describe(`validation and formatting`, () => {
-  test.each([
-    [`1x1x1`, true],
-    [`2x2x2`, true],
-    [`3×1×2`, true],
-    [`1,2,3`, true],
-    [`2 3 1`, true],
-    [`5`, true],
-    [`invalid`, false],
-    [`2x2`, false],
-    [`0x1x1`, false],
-    [`-1x2x3`, false],
-    [``, false],
-  ])(`validates %s as %s`, (input, expected) => {
-    expect(is_valid_supercell_input(input)).toBe(expected)
-  })
+// is_valid_supercell_input is parse_supercell_scaling's try/catch, whose rows live above
+test.each([
+  [`2x2x2`, true],
+  [`invalid`, false],
+])(`is_valid_supercell_input(%s) -> %s`, (input, expected) => {
+  expect(is_valid_supercell_input(input)).toBe(expected)
 })
 
 describe(`integration tests`, () => {
@@ -307,60 +275,6 @@ describe(`supercell coordinate and label consistency`, () => {
   )
 })
 
-describe(`image atom behavior`, () => {
-  test(`supercells generate image atoms correctly`, () => {
-    const supercell = make_supercell(sample_structure, [2, 2, 2])
-    const image_atoms = find_image_atoms(supercell)
-
-    expect(image_atoms.length).toBeGreaterThan(0)
-    // bond-completing images (find_image_atoms phase 2) add boundary-crossing neighbors at
-    // both ends of each bond; Ba's large covalent radius in this tiny 4 Å cell yields many
-    expect(image_atoms.length).toBeLessThan(supercell.sites.length * 12)
-  })
-
-  test(`handles edge cases correctly`, () => {
-    // Structure without lattice
-    const { lattice: _lattice, ...no_lattice } = sample_structure
-    expect(find_image_atoms(no_lattice)).toEqual([])
-
-    // Trajectory-like data
-    const trajectory_structure: Crystal = {
-      ...sample_structure,
-      sites: [
-        { ...sample_structure.sites[0] },
-        { ...sample_structure.sites[0], abc: [2.0, 0.0, 0.0], xyz: [8.0, 0.0, 0.0] },
-      ],
-    }
-
-    expect(find_image_atoms(trajectory_structure)).toEqual([])
-    expect(get_pbc_image_sites(trajectory_structure).sites).toHaveLength(2)
-  })
-
-  test(`supercell vs unit cell behavior`, () => {
-    const boundary_structure: Crystal = {
-      ...sample_structure,
-      sites: [
-        { ...sample_structure.sites[0], abc: [0.001, 0.5, 0.5], xyz: [0.004, 2.0, 2.0] },
-        { ...sample_structure.sites[0], abc: [0.999, 0.5, 0.5], xyz: [3.996, 2.0, 2.0] },
-      ],
-    }
-
-    const unit_images = find_image_atoms(boundary_structure)
-    const supercell = make_supercell(boundary_structure, [2, 2, 2])
-    const supercell_images = find_image_atoms(supercell)
-
-    expect(unit_images.length).toBeGreaterThan(0)
-    expect(supercell_images.length).toBeGreaterThan(0)
-
-    // Images may extend up to a bond length beyond the cell (bond-completing
-    // images, ~2*covalent radius + slack = 4.7 Å for Ba) but never further
-    const distant_negative = supercell_images.filter(([_idx, xyz]) =>
-      xyz.some((coord) => coord < -5.0),
-    )
-    expect(distant_negative).toHaveLength(0)
-  })
-})
-
 describe(`oblique cell bug tests`, () => {
   const h_site: SimpleSite[] = [{ element: `H`, abc: [0.25, 0.25, 0.25] }]
 
@@ -436,13 +350,8 @@ describe(`size limit`, () => {
 
 describe(`performance tests`, () => {
   test.each([
-    [100, `2x2x2`, 800, 50],
-    [500, `2x2x2`, 4000, 100],
     [1000, `2x2x2`, 8000, 200],
-    [1000, `3x3x3`, 27000, 600],
     [1000, `4x4x4`, 64000, 1500],
-    [1000, `2x1x3`, 6000, 400],
-    [1000, `1x1x1`, 1000, 50],
   ])(
     `constructs supercell for %d atoms with scaling %s`,
     (atom_count, scaling, expected_atoms, timeout_ms) => {

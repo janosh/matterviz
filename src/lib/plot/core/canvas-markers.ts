@@ -2,6 +2,7 @@
 // path, keeping dense scatter plots efficient.
 
 import { type D3SymbolName, symbol_map } from '$lib/labels'
+import { clamp01 } from '$lib/utils'
 import { color as d3_color } from 'd3-color'
 import { symbol as d3_symbol, symbolCircle } from 'd3-shape'
 
@@ -34,7 +35,7 @@ const OPAQUE_COLOR = /^(?:rgb\(|hsl\(|#[\da-f]{3}$|#[\da-f]{6}$)/i
 const color_opacity = (color: string): number =>
   OPAQUE_COLOR.test(color) ? 1 : (d3_color(color)?.opacity ?? 1)
 const normalize_alpha = (value: number): number =>
-  Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0
+  Number.isFinite(value) ? clamp01(value) : 0
 
 const symbol_path = (
   symbol_type: D3SymbolName | undefined,

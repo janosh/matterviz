@@ -1,7 +1,7 @@
 import type { Vec3 } from '$lib/math'
 import type { CameraProjection } from '$lib/settings'
 import { untrack } from 'svelte'
-import type { Camera, Scene, Vector3 } from 'three/webgpu'
+import { type Camera, OrthographicCamera, type Scene, type Vector3 } from 'three/webgpu'
 import type { GizmoOptions } from './gizmo'
 
 // Reactive page visibility — pause auto-rotation while the tab/window is
@@ -78,8 +78,8 @@ export const resize_orthographic_zoom = (
 }
 
 // Orthographic zoom that follows the auto-fit across resizes but yields to the user's wheel.
-// Callers assign `.zoom` when a gesture ends so the zoom the user landed on becomes the
-// baseline the next resize rescales from.
+// Pass `.zoom` to the camera and spread `orbit_zoom_props()` into build_orbit_props: the
+// gesture-end hook stores the zoom the user landed on as the baseline the next resize rescales.
 export function create_orthographic_zoom(opts: {
   fit_zoom: () => number
   min_zoom: () => number | undefined
@@ -89,9 +89,17 @@ export function create_orthographic_zoom(opts: {
   // reports 0 — the placeholder fit inflates the zoom into the clamp, and the return trip
   // cannot recover it.
   measured: () => boolean
+  // The live camera. A fit change rescales the zoom the camera is actually at rather than the
+  // stored one: hosts also write camera.zoom directly (StructureViewport's reset and device-loss
+  // recovery), and a resize mid-gesture arrives before the end hook has stored the wheel.
+  camera: () => Camera | undefined
 }) {
   let zoom = $state(untrack(opts.fit_zoom))
   let previous_fit_zoom = 0
+  const live_zoom = (): number => {
+    const camera = untrack(opts.camera)
+    return camera instanceof OrthographicCamera ? camera.zoom : zoom
+  }
   // Destructured into scalars, not exposed as the bounds object: callers spread these into
   // Threlte, which re-applies every prop when any one changes identity — including `target`,
   // which would snap a panned view back to the scene center on each resize.
@@ -105,7 +113,10 @@ export function create_orthographic_zoom(opts: {
     const next_min = opts.min_zoom()
     const next_max = opts.max_zoom()
     untrack(() => {
-      zoom = resize_orthographic_zoom(zoom, previous_fit_zoom, next_fit, next_min, next_max)
+      // A pure limits change keeps the stored zoom: the camera may sit at a value a host wrote
+      // directly, and re-clamping that would apply it as a prop change to a camera already there.
+      const current = previous_fit_zoom === next_fit ? zoom : live_zoom()
+      zoom = resize_orthographic_zoom(current, previous_fit_zoom, next_fit, next_min, next_max)
       previous_fit_zoom = next_fit
     })
   })
@@ -113,19 +124,31 @@ export function create_orthographic_zoom(opts: {
     get zoom() {
       return zoom
     },
-    set zoom(value: number) {
-      zoom = value
-    },
     get min_zoom() {
       return min_zoom
     },
     get max_zoom() {
       return max_zoom
     },
+    // Snap to the current fit and make it the rescale baseline (camera reset / new structure),
+    // so the effect above sees an unchanged fit instead of rescaling the old zoom by the ratio.
+    reset_to_fit() {
+      previous_fit_zoom = untrack(opts.fit_zoom)
+      zoom = previous_fit_zoom
+    },
+    // Bounds plus the gesture-end sync, for spreading into build_orbit_props
+    orbit_zoom_props: () => ({
+      min_zoom,
+      max_zoom,
+      on_end_extra: () => {
+        const camera = opts.camera()
+        if (camera instanceof OrthographicCamera) zoom = camera.zoom
+      },
+    }),
   }
 }
 
-// Shared OrbitControls config; `onstart_extra` runs extra cleanup when the camera starts moving
+// Shared OrbitControls config; `on_start_extra` runs extra cleanup when the camera starts moving
 // (e.g. StructureScene closes hover tooltips/context menus).
 export function build_orbit_props(opts: {
   camera_projection: CameraProjection
@@ -139,9 +162,9 @@ export function build_orbit_props(opts: {
   auto_rotate: number
   rotation_damping: number
   set_camera_is_moving?: (moving: boolean) => void
-  onstart_extra?: () => void
-  // runs when a gesture settles (e.g. BZ/Fermi capture the zoom the user wheeled to)
-  onend_extra?: () => void
+  on_start_extra?: () => void
+  // runs when a gesture settles (create_orthographic_zoom stores the zoom the user wheeled to)
+  on_end_extra?: () => void
 }) {
   const is_ortho = opts.camera_projection === `orthographic`
   return {
@@ -164,11 +187,11 @@ export function build_orbit_props(opts: {
     dampingFactor: opts.rotation_damping,
     onstart: () => {
       opts.set_camera_is_moving?.(true)
-      opts.onstart_extra?.()
+      opts.on_start_extra?.()
     },
     onend: () => {
       opts.set_camera_is_moving?.(false)
-      opts.onend_extra?.()
+      opts.on_end_extra?.()
     },
   }
 }

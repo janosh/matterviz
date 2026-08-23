@@ -1,13 +1,20 @@
+import { DEFAULT_FONT_SPEC, type FontSpec } from '$lib/plot/core/text-metrics'
 import {
   analyze_tick_label_geometry,
   axis_edge_overflow,
+  clear_tick_metrics_cache,
   default_tick_label_anchor,
+  measure_text_width,
+  type MeasuredAxis,
   resolve_tick_layout,
   suggest_tick_count,
   thin_tick_indices,
+  TICK_LABEL_GAP,
+  TICK_STRATEGIES,
   tick_label_aabb,
   type TickLabelDimensions,
   type TickLabelItem,
+  type TickLayoutSide,
 } from '$lib/plot/core/tick-layout'
 import { afterEach, beforeEach, describe, expect, it, test, vi } from 'vitest'
 
@@ -357,4 +364,160 @@ describe(`strategy candidates through resolve_tick_layout`, () => {
       }).collisions.count,
     ).toBe(0)
   })
+
+  // Cross-feature regressions: every strategy is allowed and the chosen layout must be
+  // deterministic, within the band budget, keep both endpoints and neither collide nor
+  // overflow the axis once re-measured with the same font
+  const font = (font_size: number, line_height: number): FontSpec => ({
+    ...DEFAULT_FONT_SPEC,
+    font_size,
+    line_height,
+  })
+  const dense_labels = (count: number): string[] =>
+    Array.from({ length: count }, (_unused, label_idx) => {
+      const labels = [
+        `Formation energy per atom`,
+        `Average temperature (K)`,
+        `Maximum pressure [GPa]`,
+        `Coordination environment`,
+      ]
+      return `${labels[label_idx % labels.length]} ${label_idx + 1}`
+    })
+  const greek = [`Alpha`, `Beta`, `Gamma`, `Delta`, `Epsilon`, `Zeta`]
+  test.each([
+    {
+      name: `small clustered bottom axis`,
+      side: `x`,
+      size: 120,
+      positions: [4, 22, 27, 64, 92, 116],
+      labels: greek,
+      tick_font: font(10, 13),
+      max_band: 55,
+    },
+    {
+      name: `wide nonmonotonic top axis`,
+      side: `x2`,
+      size: 480,
+      positions: [4, 190, 76, 205, 362, 476],
+      labels: [
+        `Formation energy`,
+        `Average temperature`,
+        `Pressure`,
+        `Coordination`,
+        `Frequency`,
+        `Band gap`,
+      ],
+      tick_font: font(16, 20),
+      max_band: 100,
+    },
+    {
+      name: `short reversed left axis`,
+      side: `y`,
+      size: 150,
+      positions: [138, 125, 120, 78, 31, 12],
+      labels: [`A`, ...greek.slice(1)],
+      tick_font: font(11, 15),
+      max_band: 75,
+    },
+    {
+      name: `tall clustered right axis`,
+      side: `y2`,
+      size: 320,
+      positions: [12, 38, 141, 147, 238, 308],
+      labels: greek,
+      tick_font: font(14, 18),
+      max_band: 110,
+      expected_strategy: `stagger`,
+    },
+    {
+      name: `large 24-tick axis`,
+      side: `x`,
+      size: 720,
+      positions: Array.from({ length: 24 }, (_unused, tick_idx) =>
+        tick_idx === 0
+          ? 4
+          : tick_idx === 23
+            ? 716
+            : tick_idx === 11
+              ? 348
+              : tick_idx === 12
+                ? 353
+                : 4 + (712 * tick_idx) / 23,
+      ),
+      tick_font: font(12, 16),
+      max_band: 80,
+    },
+  ] satisfies {
+    name: string
+    side: TickLayoutSide
+    size: number
+    positions: number[]
+    labels?: string[]
+    tick_font: FontSpec
+    max_band: number
+    expected_strategy?: `stagger`
+  }[])(
+    `selects a feasible tick layout for $name`,
+    ({ side, size, positions, labels, tick_font, max_band, expected_strategy }) => {
+      const tick_values = labels ?? dense_labels(positions.length)
+      const reversed = side === `y`
+      const axis_extent = reversed ? { start: size, end: 0 } : { start: 0, end: size }
+      const axis: MeasuredAxis = {
+        tick_values,
+        tick_positions: positions,
+        axis_extent,
+        tick_font,
+        tick: {
+          label: {
+            max_lines: 3,
+            auto_layout: {
+              strategies: TICK_STRATEGIES,
+              max_angle: 90,
+              max_band,
+              min_visible_ticks: 2,
+              edge_gap: 2,
+              endpoint_policy: `preserve`,
+            },
+          },
+        },
+      }
+
+      const first = resolve_tick_layout(axis, size, side)
+      clear_tick_metrics_cache()
+      expect(resolve_tick_layout(axis, size, side)).toEqual(first)
+      expect(first.band).toBeLessThanOrEqual(max_band)
+      expect(first.labels.map(({ full_text }) => full_text)).toEqual(tick_values)
+      expect(first.labels[0].visible).toBe(true)
+      expect(first.labels.at(-1)?.visible).toBe(true)
+      if (expected_strategy) expect(first.strategy).toBe(expected_strategy)
+
+      const outward_direction = side === `x` || side === `y2` ? 1 : -1
+      const items: TickLabelItem[] = first.labels
+        .filter(({ visible }) => visible)
+        .map((label) => ({
+          id: label.tick_index,
+          lines: label.lines,
+          position: {
+            axis: positions[label.tick_index],
+            cross_axis: outward_direction * label.stagger_row * first.stagger_step,
+          },
+          rotation: label.rotation,
+          anchor: label.anchor,
+          stagger_row: label.stagger_row,
+          dimensions: {
+            line_widths: label.lines.map((line) => measure_text_width(line, tick_font)),
+            line_height: tick_font.line_height,
+          },
+        }))
+      const geometry = analyze_tick_label_geometry({
+        items,
+        side,
+        axis_extent,
+        gap: TICK_LABEL_GAP,
+        edge_gap: 2,
+      })
+      expect(geometry.collisions.count).toBe(0)
+      expect(geometry.edge_overflow_px).toBe(0)
+    },
+  )
 })

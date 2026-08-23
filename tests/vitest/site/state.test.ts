@@ -1,5 +1,30 @@
-import { group_demo_routes } from '$site/state.svelte'
-import { describe, expect, test } from 'vitest'
+import { goto } from '$app/navigation'
+import { file_param, group_demo_routes, set_file_param } from '$site/state.svelte'
+import { describe, expect, test, vi } from 'vitest'
+
+vi.mock(`$app/navigation`, () => ({ goto: vi.fn() }))
+vi.mock(`$app/environment`, () => ({ browser: true }))
+vi.mock(`$app/state`, () => ({
+  page: { url: new URL(`https://example.test/structure/index.html?file=old.cif&view=slice`) },
+}))
+
+describe(`?file= helpers`, () => {
+  test(`file_param reads, set_file_param replaces on a copy of page.url`, () => {
+    expect(file_param()).toBe(`old.cif`)
+    set_file_param(`new.cif`)
+    expect(goto).toHaveBeenLastCalledWith(
+      `https://example.test/structure/?file=new.cif&view=slice`,
+      { replaceState: true, keepFocus: true, noScroll: true },
+    )
+    // page.url is read-only reactive state and must not have been mutated in place
+    expect(file_param()).toBe(`old.cif`)
+    set_file_param(null)
+    expect(goto).toHaveBeenLastCalledWith(
+      `https://example.test/structure/?view=slice`,
+      expect.any(Object),
+    )
+  })
+})
 
 describe(`group_demo_routes`, () => {
   test.each([

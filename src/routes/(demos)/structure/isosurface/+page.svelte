@@ -3,19 +3,24 @@
   import { page } from '$app/state'
   import { DragOverlay, StatusMessage } from '$lib/feedback'
   import FilePicker from '$lib/FilePicker.svelte'
-  import { load_from_url, type FileLoadMeta } from '$lib/io'
+  import { as_text, load_from_url, type FileLoadMeta } from '$lib/io'
   import { parse_volumetric_file } from '$lib/isosurface/parse'
   import { format_num } from '$lib/labels'
   import { parse_structure_file } from '$lib/structure/parse'
   import { volumetric_files } from '$site/isosurfaces'
-  import { replace_url } from '$site/state.svelte'
+  import { file_param, replace_url } from '$site/state.svelte'
   import type {
     AnyStructure,
     IsosurfaceSettings,
     StructureDisplayMode,
     VolumetricData,
   } from 'matterviz'
-  import { auto_isosurface_settings, DEFAULT_ISOSURFACE_SETTINGS, Structure } from 'matterviz'
+  import {
+    auto_isosurface_settings,
+    auto_volume_layer,
+    DEFAULT_ISOSURFACE_SETTINGS,
+    Structure,
+  } from 'matterviz'
   import { onMount } from 'svelte'
   import { to_error } from '$lib/utils'
 
@@ -36,9 +41,6 @@
   let data_range = $derived(volumetric_data?.[active_volume_idx]?.data_range)
   let active_volume = $derived(volumetric_data?.[active_volume_idx])
 
-  const decode_content = (content: string | ArrayBuffer): string =>
-    content instanceof ArrayBuffer ? new TextDecoder().decode(content) : content
-
   function reset_loaded_content() {
     structure = undefined
     volumetric_data = undefined
@@ -53,9 +55,7 @@
         volumetric_data = vol_result.volumes
         active_volume_idx = 0
         const vol = vol_result.volumes[0]
-        if (vol) {
-          isosurface_settings = auto_isosurface_settings(vol.data_range)
-        }
+        if (vol) isosurface_settings = auto_isosurface_settings(vol)
         return
       }
 
@@ -70,11 +70,18 @@
     if (!browser || !active_file) return
     const params = new URLSearchParams()
     params.set(`file`, active_file)
-    if (isosurface_settings.isovalue !== DEFAULT_ISOSURFACE_SETTINGS.isovalue) {
-      params.set(`isovalue`, isosurface_settings.isovalue.toPrecision(4))
-    }
-    if (isosurface_settings.show_negative !== DEFAULT_ISOSURFACE_SETTINGS.show_negative) {
-      params.set(`show_negative`, String(isosurface_settings.show_negative))
+    // The first layer's isovalue/negative lobe are the URL-shareable knobs, written only when
+    // they differ from what a fresh load of the file would pick anyway
+    const [layer] = isosurface_settings.layers
+    const first_volume = volumetric_data?.[0]
+    if (layer && first_volume) {
+      const defaults = auto_volume_layer(first_volume, 0)
+      if (layer.isovalue !== defaults.isovalue) {
+        params.set(`isovalue`, layer.isovalue.toPrecision(4))
+      }
+      if (layer.show_negative !== defaults.show_negative) {
+        params.set(`show_negative`, String(layer.show_negative))
+      }
     }
     if (display_mode === `slice`) params.set(`view`, display_mode)
     // Use window.location instead of page.url to avoid creating a reactive
@@ -92,7 +99,7 @@
     try {
       const parse_start = performance.now()
       await load_from_url(url, (content, filename) => {
-        parse_and_apply(decode_content(content), filename)
+        parse_and_apply(as_text(content), filename)
       })
       parse_time_ms = Math.round(performance.now() - parse_start)
     } catch (error) {
@@ -107,10 +114,10 @@
 
   // Load file from URL param or default on mount
   onMount(() => {
-    const file_param = page.url.searchParams.get(`file`)
+    const requested = file_param()
     display_mode = page.url.searchParams.get(`view`) === `slice` ? `slice` : `structure`
-    const target = file_param
-      ? volumetric_files.find((file) => file.name === file_param)
+    const target = requested
+      ? volumetric_files.find((file) => file.name === requested)
       : volumetric_files[0]
 
     if (target) {
@@ -119,15 +126,11 @@
       const show_neg_param = page.url.searchParams.get(`show_negative`)
 
       load_file(target.name, target.url).then(() => {
-        if (isovalue_param) {
-          const parsed = Number(isovalue_param)
-          if (!isNaN(parsed)) {
-            isosurface_settings.isovalue = parsed
-          }
-        }
-        if (show_neg_param) {
-          isosurface_settings.show_negative = show_neg_param === `true`
-        }
+        const [layer] = isosurface_settings.layers
+        if (!layer) return
+        const parsed = Number(isovalue_param)
+        if (isovalue_param && !isNaN(parsed)) layer.isovalue = parsed
+        if (show_neg_param) layer.show_negative = show_neg_param === `true`
       })
     }
   })
@@ -142,8 +145,7 @@
     parse_time_ms = undefined
     reset_loaded_content()
     const parse_start = performance.now()
-    const text = decode_content(content)
-    parse_and_apply(text, filename)
+    parse_and_apply(as_text(content), filename)
     parse_time_ms = Math.round(performance.now() - parse_start)
   }
 </script>

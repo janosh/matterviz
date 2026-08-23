@@ -4,7 +4,7 @@ import { clear_text_metrics_cache } from '$lib/plot/core/text-metrics'
 import type { ComponentProps } from 'svelte'
 import { mount, unmount } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { mock_text_measurement } from '../setup'
+import { mock_canvas_context, mock_text_measurement } from '../setup'
 
 const mount_title = (
   config: PlotTitleConfig | null | undefined,
@@ -97,14 +97,13 @@ describe(`PlotTitle`, () => {
   test(`remeasures after document fonts become ready`, async () => {
     vi.restoreAllMocks()
     let pixels_per_character = 5
-    vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue({
-      font: ``,
+    mock_canvas_context({
       measureText: (text: string) => ({
         width: Array.from(text).length * pixels_per_character,
         actualBoundingBoxAscent: 8,
         actualBoundingBoxDescent: 2,
       }),
-    } as unknown as CanvasRenderingContext2D)
+    })
     let resolve_fonts: (() => void) | undefined
     const ready = new Promise<void>((resolve) => {
       resolve_fonts = resolve

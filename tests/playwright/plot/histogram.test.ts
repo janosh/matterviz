@@ -1,1257 +1,326 @@
 import { expect, type Locator, type Page, test } from '@playwright/test'
 import {
+  bounding_boxes,
+  expect_shift_drag_pans,
+  expect_zoom_shrinks_axes,
   get_axis_range_inputs,
   get_tick_range,
-  is_present,
+  open_plot_controls,
   set_input_value,
   set_range_input,
+  tick_texts,
+  wait_for_bars,
 } from '../helpers'
 
-// Click a radio button within a scoped container (more specific than page-wide selectors)
-const click_radio_in_section = async (
-  page: Page,
-  section_testid: string,
-  input_selector: string,
-) => {
-  const section = page.locator(`[data-testid="${section_testid}"]`)
-  const radio = section.locator(input_selector)
-  await radio.waitFor({ state: `attached`, timeout: 5000 })
-  await radio.click()
-}
-
-// Set a range value within a scoped container (preferred for test maintainability)
-const set_range_value_in_section = async (
+// Move a test-page range slider (scoped to its section) to the given value
+const set_section_range = async (
   page: Page,
   section_testid: string,
   label_text: string,
   value: number,
 ) => {
-  const section = page.locator(`[data-testid="${section_testid}"]`)
-  const input = section.locator(`label:has-text("${label_text}") input[type="range"]`)
-  await input.waitFor({ state: `attached`, timeout: 5000 })
+  const input = page
+    .locator(`[data-testid="${section_testid}"]`)
+    .locator(`label:has-text("${label_text}") input[type="range"]`)
   await set_input_value(input, value.toString())
 }
 
-const get_bar_count = async (histogram_locator: Locator) => {
-  // Look for bars with fill or stroke (for overlay mode)
-  const bars_with_fill = await histogram_locator
-    .locator(`path[role="button"][fill]:not([fill="none"])`)
-    .count()
-  const bars_with_stroke = await histogram_locator
-    .locator(`path[role="button"][stroke]:not([stroke="none"])`)
-    .count()
-
-  // Return the maximum count to handle both single and overlay modes
-  return Math.max(bars_with_fill, bars_with_stroke)
-}
-
-// Get tick values and calculate range for histogram axes
-const get_histogram_tick_range = async (axis_locator: Locator) => {
-  const tick_elements = await axis_locator.locator(`.tick text`).all()
-  const tick_texts = await Promise.all(tick_elements.map((tick) => tick.textContent()))
-  const ticks = tick_texts
-    .map((text) => (text ? Number(text.replaceAll(/[^\deE.+-]/g, ``)) : NaN))
-    .filter((num) => !isNaN(num))
-
-  if (ticks.length < 2) return { ticks, range: 0 }
-  const range = Math.abs(Math.max(...ticks) - Math.min(...ticks))
-  return { ticks, range }
+const bar_count = (plot: Locator) => plot.locator(`path[role="button"]`).count()
+const series_groups = (plot: Locator) => plot.locator(`g.histogram-series`)
+// re-binning changes bar counts, so count the series that still render any bar
+const visible_series_count = async (plot: Locator): Promise<number> => {
+  const groups = await series_groups(plot).all()
+  const counts = await Promise.all(
+    groups.map((group) => group.locator(`path[role="button"]`).count()),
+  )
+  return counts.filter((count) => count > 0).length
 }
 
 test.describe(`Histogram Component Tests`, () => {
-  // Use retries instead of blanket skip for flaky CI runs (CSS module loading can be transient)
-  test.describe.configure({ retries: 2 })
-
   test.beforeEach(async ({ page }) => {
     await page.goto(`/test/histogram`, { waitUntil: `networkidle` })
   })
 
-  test(`renders basic histogram with correct structure`, async ({ page }) => {
-    const histogram = page.locator(`#basic-single-series > svg[role="application"]`)
-    await expect(histogram).toBeVisible()
+  test(`renders bars and axes, bin count and sample size re-bin the data`, async ({
+    page,
+  }) => {
+    const histogram = page.locator(`#basic-single-series`)
+    const bars = await wait_for_bars(histogram)
+    await expect.poll(() => bar_count(histogram)).toBeGreaterThan(5)
+    await expect(histogram.locator(`g.x-axis .tick`).first()).toBeVisible()
+    await expect(histogram.locator(`g.y-axis .tick`).first()).toBeVisible()
+    // no click handler -> no pointer cursor
+    await expect(bars.first()).not.toHaveCSS(`cursor`, `pointer`)
 
-    // Wait for histogram to render bars properly
-    await expect(
-      histogram.locator(`path[role="button"][fill]:not([fill="none"])`).first(),
-    ).toBeVisible({
-      timeout: 5000,
-    })
+    // fewer bins -> fewer bars; 50 narrow bins keep the 1px minimum bar width
+    const initial = await bar_count(histogram)
+    await set_section_range(page, `basic-single-series-section`, `Bin Count`, 5)
+    await expect.poll(() => bar_count(histogram)).toBeLessThan(initial)
+    await set_section_range(page, `basic-single-series-section`, `Bin Count`, 50)
+    await expect.poll(() => bar_count(histogram)).toBeGreaterThan(initial)
+    for (const box of await bounding_boxes(bars)) {
+      expect(box.width).toBeGreaterThanOrEqual(1)
+      expect(box.height).toBeGreaterThan(0)
+    }
 
-    // Wait for multiple bars to render (at least 5 bars for a proper histogram)
-    await expect(async () => {
-      const bar_count = await histogram
-        .locator(`path[role="button"][fill]:not([fill="none"])`)
-        .count()
-      expect(bar_count).toBeGreaterThan(5)
-    }).toPass({ timeout: 5000 })
-
-    // Check cursor is not pointer (no click handler)
-    const bar = histogram.locator(`path[role="button"]`).first()
-    const cursor = await bar.evaluate((el) => globalThis.getComputedStyle(el).cursor)
-    expect(cursor).not.toBe(`pointer`)
-
-    const [bar_count, x_tick_count, y_tick_count] = await Promise.all([
-      get_bar_count(histogram),
-      histogram.locator(`g.x-axis .tick`).count(),
-      histogram.locator(`g.y-axis .tick`).count(),
-    ])
-
-    // Core functionality tests
-    expect(bar_count).toBeGreaterThan(0)
-    expect(x_tick_count).toBeGreaterThan(0)
-    expect(y_tick_count).toBeGreaterThan(0)
+    // rapid sample-size changes keep the plot rendering
+    for (const sample_size of [100, 2000, 5000]) {
+      await set_section_range(page, `basic-single-series-section`, `Sample Size`, sample_size)
+      await expect(bars.first()).toBeVisible()
+    }
   })
 
-  test(`responds to control changes`, async ({ page }) => {
-    const histogram = page.locator(`#basic-single-series > svg[role="application"]`)
+  test(`log scale combinations render bars and positive-only log ticks`, async ({ page }) => {
+    const section = page.locator(`[data-testid="logarithmic-scales-section"]`)
+    const histogram = page.locator(`#logarithmic-scales`)
+    await wait_for_bars(histogram)
 
-    // Wait for histogram to render with bars (D3 may adjust bin count slightly)
-    await expect(histogram.locator(`path[role="button"]`).first()).toBeVisible({
-      timeout: 5000,
-    })
-
-    // Controls are in a section with data-testid for scoped selection
-    const controls = [
-      { control: `bin count`, label: `Bin Count`, values: [5, 50] },
-      { control: `sample size`, label: `Sample Size`, values: [100, 5000] },
-    ]
-
-    for (const { control, label, values } of controls) {
-      let prev_bar_count = await get_bar_count(histogram)
-      for (const value of values) {
-        await set_range_value_in_section(page, `basic-single-series-section`, label, value)
-        const bar_count = await get_bar_count(histogram)
-        expect(bar_count).toBeGreaterThan(0)
-
-        // For bin count changes, verify it affects the histogram
-        if (control === `bin count` && value !== values[0]) {
-          expect(bar_count).not.toBe(prev_bar_count)
-        }
-        prev_bar_count = bar_count
+    for (const [x_scale, y_scale] of [
+      [`log`, `linear`],
+      [`log`, `log`],
+      [`linear`, `log`],
+      [`linear`, `linear`],
+    ] as const) {
+      await section.locator(`input[name="x-scale"][value="${x_scale}"]`).click()
+      await section.locator(`input[name="y-scale"][value="${y_scale}"]`).click()
+      await expect(histogram.locator(`g.x-axis .tick text`).first()).toBeVisible()
+      await expect(histogram.locator(`g.y-axis .tick text`).first()).toBeVisible()
+      await expect.poll(() => bar_count(histogram)).toBeGreaterThan(0)
+      for (const [axis, scale] of [
+        [`x`, x_scale],
+        [`y`, y_scale],
+      ] as const) {
+        const { ticks } = await get_tick_range(histogram.locator(`g.${axis}-axis`))
+        expect(ticks.length, `${axis} ticks`).toBeGreaterThan(0)
+        if (scale === `log`)
+          expect(
+            ticks.every((tick) => tick > 0),
+            `${axis} log`,
+          ).toBe(true)
       }
     }
   })
 
-  test(`multiple series overlay functionality`, async ({ page }) => {
-    const histogram = page.locator(`#multiple-series-overlay > svg[role="application"]`)
-    await expect(histogram).toBeVisible()
+  test(`overlay mode draws stroked series, shows tooltip and a toggling legend`, async ({
+    page,
+  }) => {
+    const histogram = page.locator(`#multiple-series-overlay`)
+    const bars = await wait_for_bars(histogram)
+    expect(await series_groups(histogram).count()).toBeGreaterThan(1)
+    expect(Number(await bars.first().getAttribute(`stroke-width`))).toBeGreaterThan(0)
 
-    // Wait for histogram to render bars and axes
-    await expect(histogram.locator(`path[role="button"]`).first()).toBeVisible({
-      timeout: 5000,
-    })
+    await bars.first().hover({ force: true })
+    const tooltip = histogram.locator(`.plot-tooltip`)
+    await expect(tooltip).toBeVisible()
+    await expect(tooltip).toContainText(`Value:`)
+    await expect(tooltip).toContainText(`Count:`)
+
+    const legend = histogram.locator(`.legend`)
+    await expect(legend).toBeVisible()
+    const items = legend.locator(`.legend-item`)
+    const item_count = await items.count()
+    expect(item_count).toBeGreaterThan(1)
+    await expect(items.first()).toHaveCSS(`cursor`, `pointer`)
+    // single-series histogram shows no legend
+    await expect(page.locator(`#basic-single-series .legend`)).toHaveCount(0)
+
+    // toggle each series off and on, then all off: no bars but legend and axes remain
+    const visible_series = () => visible_series_count(histogram)
+    expect(await visible_series()).toBe(item_count)
+    for (let idx = 0; idx < item_count; idx++) {
+      await items.nth(idx).click()
+      await expect(items.nth(idx)).toHaveClass(/hidden/)
+      await expect.poll(visible_series).toBe(item_count - 1)
+      await items.nth(idx).click()
+      await expect(items.nth(idx)).not.toHaveClass(/hidden/)
+      await expect.poll(visible_series).toBe(item_count)
+    }
+    for (let idx = 0; idx < item_count; idx++) await items.nth(idx).click()
+    await expect(bars).toHaveCount(0)
+    await expect(legend).toBeVisible()
+    await expect(items).toHaveCount(item_count)
     await expect(histogram.locator(`g.x-axis`)).toBeVisible()
     await expect(histogram.locator(`g.y-axis`)).toBeVisible()
-
-    const [series_count, series_bars] = await Promise.all([
-      histogram.locator(`g.histogram-series`).count(),
-      histogram.locator(`g.histogram-series path[role="button"]`).all(),
-    ])
-
-    expect(series_count).toBeGreaterThan(0)
-    expect(series_bars.length).toBeGreaterThan(0)
-
-    const stroke_width = await series_bars[0].getAttribute(`stroke-width`)
-    expect(Number(stroke_width ?? `0`)).toBeGreaterThan(0)
+    for (let idx = 0; idx < item_count; idx++) await items.nth(idx).click()
+    await expect.poll(visible_series).toBe(item_count)
   })
 
-  test(`logarithmic scale combinations`, async ({ page }) => {
-    const histogram = page.locator(`#logarithmic-scales > svg[role="application"]`)
+  test(`controls pane re-bins and switches scale type`, async ({ page }) => {
+    const histogram = page.locator(`#basic-single-series`)
+    await wait_for_bars(histogram)
+    const initial_bars = await bar_count(histogram)
+    const { pane } = await open_plot_controls(histogram)
 
-    // Wait for initial histogram to render
-    await expect(histogram.locator(`path[role="button"]`).first()).toBeVisible({
-      timeout: 5000,
-    })
+    const bins_input = pane
+      .locator(`label`)
+      .filter({ hasText: /Bins/i })
+      .locator(`input[type="number"]`)
+    await bins_input.fill(`5`)
+    await expect.poll(() => bar_count(histogram)).not.toBe(initial_bars)
 
-    const scale_combinations = [
-      { x_scale: `linear`, y_scale: `linear` },
-      { x_scale: `log`, y_scale: `linear` },
-      { x_scale: `log`, y_scale: `log` },
-      { x_scale: `linear`, y_scale: `log` },
-    ]
-
-    for (const { x_scale, y_scale } of scale_combinations) {
-      // Use scoped selectors within the logarithmic-scales section
-      await click_radio_in_section(
-        page,
-        `logarithmic-scales-section`,
-        `input[name="x-scale"][value="${x_scale}"]`,
-      )
-      await click_radio_in_section(
-        page,
-        `logarithmic-scales-section`,
-        `input[name="y-scale"][value="${y_scale}"]`,
-      )
-
-      // Wait for axes to be rendered with ticks
-      await expect(histogram.locator(`g.x-axis .tick`).first()).toBeVisible({
-        timeout: 3000,
-      })
-      await expect(histogram.locator(`g.y-axis .tick`).first()).toBeVisible({
-        timeout: 3000,
-      })
-
-      const [x_tick_count, y_tick_count, bar_count] = await Promise.all([
-        histogram.locator(`g.x-axis .tick`).count(),
-        histogram.locator(`g.y-axis .tick`).count(),
-        get_bar_count(histogram),
-      ])
-
-      expect(x_tick_count).toBeGreaterThan(0)
-      expect(y_tick_count).toBeGreaterThan(0)
-      expect(bar_count).toBeGreaterThan(0)
-    }
+    const initial_y = await get_tick_range(histogram.locator(`g.y-axis`))
+    const y_scale_select = pane
+      .locator(`[data-testid="scale-type-section"] label:has(span:text-is("Y"))`)
+      .locator(`select`)
+    await y_scale_select.selectOption(`log`)
+    await expect
+      .poll(async () => (await get_tick_range(histogram.locator(`g.y-axis`))).ticks)
+      .not.toEqual(initial_y.ticks)
+    await y_scale_select.selectOption(`linear`)
   })
 
-  test(`distribution types`, async ({ page }) => {
-    const histogram = page.locator(`#real-world-distributions > svg[role="application"]`)
-
-    const distributions = [
-      { type: `bimodal`, min_bars: 5 },
-      { type: `skewed`, min_bars: 5 },
-      { type: `discrete`, max_bars: 10 },
-      { type: `age`, min_bars: 5 },
-    ]
-
-    for (const { type, min_bars, max_bars } of distributions) {
-      const distribution_select = page.locator(`label:has-text("Distribution Type:") select`)
-      await distribution_select.selectOption(type)
-
-      // Wait for histogram to re-render with new data
-      await expect(histogram).toBeVisible()
-      await expect(histogram.locator(`path[role="button"]`).first()).toBeVisible({
-        timeout: 5000,
-      })
-
-      const bar_count = await get_bar_count(histogram)
-      expect(bar_count).toBeGreaterThanOrEqual(0) // Allow 0 bars for some distributions
-
-      if (min_bars) expect(bar_count).toBeGreaterThan(min_bars)
-      if (max_bars) expect(bar_count).toBeLessThanOrEqual(max_bars)
-    }
+  test(`controls pane opens with Enter on its toggle and closes with Escape`, async ({
+    page,
+  }) => {
+    const histogram = page.locator(`#basic-single-series`)
+    await wait_for_bars(histogram)
+    await histogram.hover()
+    await histogram.locator(`button.pane-toggle`).focus()
+    await page.keyboard.press(`Enter`)
+    const pane = histogram.locator(`.draggable-pane`)
+    await expect(pane).toBeVisible()
+    await page.keyboard.press(`Escape`)
+    await expect(pane).toBeHidden()
   })
 
-  test(`bin size comparison modes`, async ({ page }) => {
-    const section = page.locator(`[data-testid="bin-size-comparison-section"]`)
-    const histogram = section.locator(`#bin-size-comparison > svg[role="application"]`)
+  test(`controls pane mode/property selects and bar style inputs drive the overlay`, async ({
+    page,
+  }) => {
+    const histogram = page.locator(`#multiple-series-overlay`)
+    const bars = await wait_for_bars(histogram)
+    const { pane } = await open_plot_controls(histogram)
 
-    // Wait for histogram to render initially
-    await expect(histogram.locator(`path[role="button"]`).first()).toBeVisible({
-      timeout: 5000,
-    })
-
-    // Test that the histogram renders with bars
-    const bar_count = await get_bar_count(histogram)
-    expect(bar_count).toBeGreaterThan(0)
-
-    // Test that changing bin count works - use the specific "Bin Count" control
-    // (not the Histogram's internal controls pane which also has range inputs)
-    const bin_count_input = section.locator(`label:has-text("Bin Count") input[type="range"]`)
-    if ((await bin_count_input.count()) > 0) {
-      await set_input_value(bin_count_input, `50`)
-      const new_bar_count = await get_bar_count(histogram)
-      expect(new_bar_count).toBeGreaterThan(0)
-    }
-  })
-
-  test(`tooltips and legend functionality`, async ({ page }) => {
-    // Test tooltips - wait for histogram to render first
-    // Increased timeout to handle slower CI environments and Svelte reactivity
-    const basic_histogram = page.locator(`#basic-single-series > svg[role="application"]`)
-    await expect(basic_histogram.locator(`path[role="button"]`).first()).toBeVisible({
-      timeout: 10000,
-    })
-
-    const first_bar = basic_histogram.locator(`path[role="button"]`).first()
-    await first_bar.hover({ force: true })
-
-    // Tooltip visibility is optional - histograms may not have tooltips configured,
-    // or tooltip positioning may fail silently. If visible, verify content is correct.
-    const tooltip = basic_histogram.locator(`.plot-tooltip`)
-    if (await tooltip.isVisible()) {
-      await expect(tooltip).toContainText(`Value:`)
-      await expect(tooltip).toContainText(`Count:`)
-    }
-
-    // Test legend visibility - multiple-series-overlay has show_legend enabled
-    const multiple_legend = page.locator(`#multiple-series-overlay .legend`)
-    const single_legend = page.locator(`#basic-single-series .legend`)
-
-    // Legend should be visible for the multi-series overlay histogram
-    await expect(multiple_legend).toBeVisible()
-    const legend_items = await multiple_legend.locator(`.legend-item`).count()
-    expect(legend_items).toBeGreaterThan(1)
-
-    // Test that legend items are clickable and have proper styling
-    const first_legend_item = multiple_legend.locator(`.legend-item`).first()
-    await expect(first_legend_item).toBeVisible()
-
-    // Verify legend item has clickable appearance (cursor pointer or similar)
-    const cursor_style = await first_legend_item.evaluate((el) => getComputedStyle(el).cursor)
-    expect(cursor_style).toBe(`pointer`)
-
-    // Test that clicking a legend item doesn't break the legend
-    await first_legend_item.click()
-    await expect(multiple_legend).toBeVisible()
-    const after_click_count = await multiple_legend.locator(`.legend-item`).count()
-    expect(after_click_count).toBe(legend_items)
-
-    // Single-series histogram should not show legend
-    await expect(single_legend).toBeHidden()
-  })
-
-  test(`legend toggle functionality properly hides and shows series`, async ({ page }) => {
-    // Use the multiple-series-overlay histogram which already has a legend
-    const histogram = page.locator(`#multiple-series-overlay > svg[role="application"]`)
-    const legend = page.locator(`#multiple-series-overlay .legend`)
-
-    // Wait for histogram bars to render first
-    await expect(histogram.locator(`path[role="button"]`).first()).toBeVisible({
-      timeout: 10000,
-    })
-    await expect(legend).toBeVisible()
-
-    const legend_items = legend.locator(`.legend-item`)
-    const initial_item_count = await legend_items.count()
-    expect(initial_item_count).toBeGreaterThan(1)
-
-    // Get initial series count and bar count
-    const initial_series_count = await histogram.locator(`g.histogram-series`).count()
-    expect(initial_series_count).toBeGreaterThan(1)
-    expect(await get_bar_count(histogram)).toBeGreaterThan(0)
-
-    // Toggle each series off and back on individually
-    for (let idx = 0; idx < initial_item_count; idx++) {
-      const legend_item = legend_items.nth(idx)
-      await legend_item.click()
-      await expect(legend_item).toHaveClass(/hidden/)
-
-      await legend_item.click()
-      await expect(legend_item).not.toHaveClass(/hidden/)
-      expect(await get_bar_count(histogram)).toBeGreaterThan(0)
-    }
-
-    // Turn all series off - no bars, but legend and axes must remain functional
-    for (let idx = 0; idx < initial_item_count; idx++) {
-      await legend_items.nth(idx).click()
-    }
-    expect(await get_bar_count(histogram)).toBe(0)
-    await expect(legend).toBeVisible()
-    await expect(legend_items).toHaveCount(initial_item_count)
-    expect(await histogram.locator(`g.x-axis`).count()).toBeGreaterThan(0)
-    expect(await histogram.locator(`g.y-axis`).count()).toBeGreaterThan(0)
-
-    // Turn all series back on
-    for (let idx = 0; idx < initial_item_count; idx++) {
-      await legend_items.nth(idx).click()
-    }
-    expect(await get_bar_count(histogram)).toBeGreaterThan(0)
-
-    // Verify legend remains functional
-    await expect(legend).toBeVisible()
-    await expect(legend_items).toHaveCount(initial_item_count)
-  })
-
-  test(`maintains minimum bar width for very narrow bins`, async ({ page }) => {
-    const histogram = page.locator(`#basic-single-series > svg[role="application"]`)
-
-    // Wait for histogram to be rendered first
-    await expect(histogram.locator(`path[role="button"]`).first()).toBeVisible({
-      timeout: 5000,
-    })
-
-    // Set a high bin count to create narrow bins (but not too high to avoid empty bins)
-    await set_range_value_in_section(page, `basic-single-series-section`, `Bin Count`, 50)
-
-    const bars = histogram.locator(`path[role="button"]`)
-    await expect.poll(() => bars.count(), { timeout: 5000 }).toBeGreaterThan(0)
-
-    // All bars should have minimum width of 1 pixel (as enforced by Math.max(1, ...))
-    for (const bar of await bars.all()) {
-      const box = await bar.boundingBox()
-      expect(box).toBeTruthy()
-      if (!box) continue
-      expect(box.width).toBeGreaterThanOrEqual(1)
-    }
-  })
-
-  test(`histogram controls pane functionality`, async ({ page }) => {
-    // Wait for histogram to be fully rendered
-    const histogram = page.locator(`#basic-single-series > svg[role="application"]`)
-    await expect(histogram.locator(`path[role="button"]`).first()).toBeVisible({
-      timeout: 10000,
-    })
-
-    const toggle_button = page.locator(`#basic-single-series .pane-toggle`)
-    await toggle_button.click()
-
-    const control_pane = page.locator(`#basic-single-series .draggable-pane`)
-    await expect(control_pane).toBeVisible()
-
-    const bins_row = control_pane.locator(`label`).filter({ hasText: /Bins/i })
-    const bins_number_input = bins_row.locator(`input[type="number"]`)
-    const initial_bar_count = await get_bar_count(histogram)
-    await bins_number_input.fill(`5`)
-
-    await expect.poll(() => get_bar_count(histogram)).not.toBe(initial_bar_count)
-
-    // Test grid toggles - checkbox is inside span[data-label="grid"]
-    const grid_group = control_pane.locator(`[data-label="grid"]`)
-    const x_grid_checkbox = grid_group.getByLabel(`X`)
-    await x_grid_checkbox.uncheck()
-    await x_grid_checkbox.check()
-
-    // Test scale type selects - scope to Scale Type section to avoid matching other X: labels
-    const scale_type_section = control_pane.locator(`[data-testid="scale-type-section"]`)
-    const x_scale_label = scale_type_section.locator(`label:has(span:text-is("X"))`)
-    const x_scale_select = x_scale_label.locator(`select`)
-    await x_scale_select.selectOption(`log`)
-    await x_scale_select.selectOption(`linear`)
-
-    // Test format inputs - scope to Tick Format section to avoid matching other X-axis labels
-    const tick_format_section = control_pane.locator(`[data-testid="tick-format-section"]`)
-    const x_axis_format_label = tick_format_section.locator(
-      `label:has(span:text-is("X-axis"))`,
-    )
-    await expect(x_axis_format_label).toHaveCount(1)
-
-    const x_format_input = x_axis_format_label.locator(`input[type="text"]`)
-    await x_format_input.fill(`.3r`)
-
-    // Test invalid format handling
-    await x_format_input.fill(`invalid`)
-    await expect(x_format_input).toHaveClass(/invalid/)
-
-    // Restore valid format
-    await x_format_input.fill(`.2r`)
-
-    // Close controls pane
-    await toggle_button.click()
-  })
-
-  test(`histogram controls with multiple series`, async ({ page }) => {
-    // Wait for histogram to be fully rendered
-    const histogram = page.locator(`#multiple-series-overlay > svg[role="application"]`)
-    await expect(histogram.locator(`path[role="button"]`).first()).toBeVisible({
-      timeout: 10000,
-    })
-
-    // Move legend out of the way if it exists (it might be blocking the toggle button)
-    await page
-      .locator(`#multiple-series-overlay .legend`)
-      .evaluate((legend) => {
-        if (legend) {
-          ;(legend as HTMLElement).style.transform = `translateX(-200px)`
-        }
-      })
-      .catch(() => {
-        // Legend might not exist, that's okay
-      })
-
-    const toggle_button = page.locator(`#multiple-series-overlay .pane-toggle`)
-    await toggle_button.click()
-
-    const control_pane = page.locator(`#multiple-series-overlay .draggable-pane`)
-    await expect(control_pane).toBeVisible()
-
-    // Test mode selection
-    const mode_select = control_pane.getByRole(`combobox`, { name: `Mode` })
-    await expect(mode_select).toBeVisible()
+    const mode_select = pane.getByRole(`combobox`, { name: `Mode` })
     await mode_select.selectOption(`single`)
-
-    const property_select = control_pane.getByRole(`combobox`, { name: `Property` })
+    const property_select = pane.getByRole(`combobox`, { name: `Property` })
     await expect(property_select).toBeVisible()
-    const property_options = property_select.locator(`option`)
-    expect(await property_options.count()).toBeGreaterThan(1)
+    expect(await property_select.locator(`option`).count()).toBeGreaterThan(1)
     await property_select.selectOption({ index: 1 })
     await expect(property_select).not.toHaveValue(``)
-
+    await expect.poll(() => series_groups(histogram).count()).toBe(1)
     await mode_select.selectOption(`overlay`)
+    await expect.poll(() => series_groups(histogram).count()).toBeGreaterThan(1)
 
-    // Test legend toggle
-    const legend_checkbox = control_pane.getByLabel(`Show legend`)
+    const legend_checkbox = pane.getByLabel(`Show legend`)
     await legend_checkbox.uncheck()
-    await expect(legend_checkbox).not.toBeChecked()
+    await expect(histogram.locator(`.legend`)).toHaveCount(0)
     await legend_checkbox.check()
-    await expect(legend_checkbox).toBeChecked()
+    await expect(histogram.locator(`.legend`)).toBeVisible()
 
-    // Test opacity and stroke controls for multiple series - use label-based selectors
-    const first_bar = histogram.locator(`path[role="button"]`).first()
     for (const [label, value, attribute] of [
       [`Opacity`, `0.8`, `opacity`],
       [`Stroke width`, `1.5`, `stroke-width`],
     ] as const) {
-      const input = control_pane.locator(
-        `label:has(span:text-is("${label}")) input[type="number"]`,
-      )
-      await input.fill(value)
-      await expect(first_bar).toHaveAttribute(attribute, value)
+      await pane
+        .locator(`label:has(span:text-is("${label}")) input[type="number"]`)
+        .fill(value)
+      await expect(bars.first()).toHaveAttribute(attribute, value)
     }
   })
 
-  test(`histogram controls with different scale types`, async ({ page }) => {
-    // Wait for histogram to be fully rendered
-    const histogram = page.locator(`#logarithmic-scales > svg[role="application"]`)
-    await expect(histogram.locator(`path[role="button"]`).first()).toBeVisible({
-      timeout: 5000,
-    })
-
-    // Move legend out of the way if it exists (it might be blocking the toggle button)
-    await page
-      .locator(`#logarithmic-scales .legend`)
-      .evaluate((legend) => {
-        if (legend) {
-          ;(legend as HTMLElement).style.transform = `translateX(-200px)`
-        }
-      })
-      .catch(() => {
-        // Legend might not exist, that's okay
-      })
-
-    // Test controls with logarithmic scales
-    // Click the toggle button to open the controls pane
-    const toggle_button = page.locator(`#logarithmic-scales .pane-toggle`)
-    await expect(toggle_button).toBeVisible()
-    await expect(toggle_button).toBeEnabled()
-    await toggle_button.click()
-
-    const control_pane = page.locator(`#logarithmic-scales .draggable-pane`)
-    await expect(control_pane).toBeVisible()
-
-    // Test scale type changes (use specific IDs to avoid confusion with mode select)
-    const x_scale_select = control_pane.locator(`select#x-scale-select`)
-    const y_scale_select = control_pane.locator(`select#y-scale-select`)
-
-    if ((await x_scale_select.isVisible()) && (await y_scale_select.isVisible())) {
-      // Test X-axis scale
-      await x_scale_select.selectOption(`log`)
-
-      // Test Y-axis scale
-      await y_scale_select.selectOption(`log`)
-
-      // Verify histogram renders with log scales
-      await expect(histogram.locator(`g.x-axis .tick`).first()).toBeVisible({
-        timeout: 3000,
-      })
-      await expect(histogram.locator(`g.y-axis .tick`).first()).toBeVisible({
-        timeout: 3000,
-      })
-
-      // Switch back to linear
-      await x_scale_select.selectOption(`linear`)
-      await y_scale_select.selectOption(`linear`)
-    }
-
-    // Test tick controls (use specific IDs)
-    const x_tick_input = control_pane.locator(`input#x-ticks-input`)
-    const y_tick_input = control_pane.locator(`input#y-ticks-input`)
-
-    if ((await x_tick_input.isVisible()) && (await y_tick_input.isVisible())) {
-      // Test X-axis ticks
-      await x_tick_input.fill(`12`)
-
-      // Test Y-axis ticks
-      await y_tick_input.fill(`8`)
-
-      // Verify histogram still renders
-      const bar_count = await get_bar_count(histogram)
-      expect(bar_count).toBeGreaterThan(0)
-    }
+  test(`drag zoom shrinks both axes and double-click resets`, async ({ page }) => {
+    const histogram = page.locator(`#basic-single-series`)
+    await wait_for_bars(histogram)
+    await expect(histogram.locator(`> svg[role="application"]`)).toHaveCSS(
+      `cursor`,
+      `crosshair`,
+    )
+    await expect_zoom_shrinks_axes(page, histogram)
   })
 
-  test(`histogram controls format validation`, async ({ page }) => {
-    // Wait for histogram to be fully rendered
-    const histogram = page.locator(`#tick-configuration > svg[role="application"]`)
-    await expect(histogram.locator(`path[role="button"]`).first()).toBeVisible({
-      timeout: 5000,
-    })
-
-    // Test format validation in controls
-    // Click the toggle button to open the controls pane
-    const toggle_button = page.locator(`#tick-configuration .pane-toggle`)
-    await expect(toggle_button).toBeVisible()
-    await expect(toggle_button).toBeEnabled()
-    await toggle_button.click()
-
-    const control_pane = page.locator(`#tick-configuration .draggable-pane`)
-    await expect(control_pane).toBeVisible()
-
-    // Test format inputs
-    const format_inputs = control_pane.locator(`input.format-input`)
-    const format_count = await format_inputs.count()
-
-    if (format_count >= 2) {
-      const x_format_input = format_inputs.nth(0)
-      const y_format_input = format_inputs.nth(1)
-
-      // Test valid formats
-      const valid_formats = [`.2r`, `.1e`, `.0%`, `,.2r`, `d`]
-      for (const format of valid_formats) {
-        await x_format_input.fill(format)
-
-        // Should not have invalid class
-        await expect(x_format_input).not.toHaveClass(/invalid/)
-      }
-
-      // Test invalid formats
-      const invalid_formats = [`invalid`, `abc123`, `@#$%`]
-      for (const format of invalid_formats) {
-        await x_format_input.fill(format)
-
-        // Should have invalid class
-        await expect(x_format_input).toHaveClass(/invalid/)
-      }
-
-      // Test time formats
-      const time_formats = [`%Y-%m-%d`, `%H:%M:%S`, `%B %Y`]
-      for (const format of time_formats) {
-        await y_format_input.fill(format)
-
-        // Should not have invalid class for time formats
-        await expect(y_format_input).not.toHaveClass(/invalid/)
-      }
-
-      // Restore valid formats
-      await x_format_input.fill(`.2~s`)
-      await y_format_input.fill(`d`)
-    }
-  })
-
-  test(`histogram controls keyboard navigation`, async ({ page }) => {
-    // Wait for histogram to be fully rendered
-    const histogram = page.locator(`#basic-single-series > svg[role="application"]`)
-    await expect(histogram.locator(`path[role="button"]`).first()).toBeVisible({
-      timeout: 5000,
-    })
-
-    // Open controls with keyboard
-    const control_toggle = page.locator(`#basic-single-series .pane-toggle`)
-    await expect(control_toggle).toBeVisible()
-    await control_toggle.focus()
-    await page.keyboard.press(`Enter`)
-
-    const control_pane = page.locator(`#basic-single-series .draggable-pane`)
-    await expect(control_pane).toBeVisible()
-
-    // Close controls with Escape
-    await page.keyboard.press(`Escape`)
-    await expect(control_pane).toBeHidden()
-  })
-
-  test(`histogram controls responsive behavior`, async ({ page }) => {
-    // Wait for histogram to be fully rendered first
-    const histogram = page.locator(`#basic-single-series > svg[role="application"]`)
-    await expect(histogram.locator(`path[role="button"]`).first()).toBeVisible({
-      timeout: 5000,
-    })
-
-    // Test controls at different viewport sizes
-    // Click the toggle button to open the controls pane
-    const toggle_button = page.locator(`#basic-single-series .pane-toggle`)
-    await expect(toggle_button).toBeVisible()
-    await expect(toggle_button).toBeEnabled()
-    await toggle_button.click()
-
-    const control_pane = page.locator(`#basic-single-series .draggable-pane`)
-    await expect(control_pane).toBeVisible()
-
-    // Test at different viewport sizes
-    const viewports = [
-      { width: 400, height: 300 },
-      { width: 800, height: 600 },
-      { width: 1280, height: 720 },
-    ]
-
-    for (const viewport of viewports) {
-      await page.setViewportSize(viewport)
-
-      // Controls should remain accessible
-      await expect(control_pane).toBeVisible()
-
-      // Test slider interaction at different sizes
-      const bins_slider = control_pane.locator(`#bins-input`)
-      if (await bins_slider.isVisible()) {
-        await bins_slider.fill(`25`)
-
-        // Verify histogram still renders
-        const bar_count = await get_bar_count(histogram)
-        expect(bar_count).toBeGreaterThan(0)
-      }
-    }
-
-    // Reset viewport
-    await page.setViewportSize({ width: 1280, height: 720 })
-  })
-
-  test(`handles very small viewport dimensions`, async ({ page }) => {
-    // Test with extremely small viewport
-    await page.setViewportSize({ width: 200, height: 150 })
-
-    const histogram = page.locator(`#basic-single-series > svg[role="application"]`)
-    await expect(histogram).toBeVisible()
-
-    // Check that any rendered bars have positive dimensions
-    const bars = histogram.locator(`path[role="button"]`)
-    const bar_elements = await bars.all()
-    for (const bar of bar_elements) {
-      const box = await bar.boundingBox()
-      if (!box) continue
-      expect(box.width).toBeGreaterThan(0)
-      expect(box.height).toBeGreaterThan(0)
-    }
-
-    // Reset viewport
-    await page.setViewportSize({ width: 1280, height: 720 })
-  })
-
-  test(`handles rapid data updates without rendering errors`, async ({ page }) => {
-    const histogram = page.locator(`#basic-single-series > svg[role="application"]`)
-
-    // Rapidly change bin count and sample size (use more reasonable values)
-    for (let idx = 0; idx < 5; idx++) {
-      await set_range_value_in_section(
-        page,
-        `basic-single-series-section`,
-        `Bin Count`,
-        10 + idx * 5,
-      )
-      await set_range_value_in_section(
-        page,
-        `basic-single-series-section`,
-        `Sample Size`,
-        500 + idx * 200,
-      )
-      // Wait for histogram to update after each change
-      await expect(histogram.locator(`path[role="button"]`).first()).toBeVisible({
-        timeout: 2000,
-      })
-    }
-
-    // After rapid updates, should still be functional
-    await expect(histogram).toBeVisible()
-
-    // Wait for final render to complete by checking for bars
-    await expect(histogram.locator(`path[role="button"]`).first()).toBeVisible({
-      timeout: 5000,
-    })
-
-    const bar_count = await get_bar_count(histogram)
-    expect(bar_count).toBeGreaterThan(0)
-
-    // All bars should have valid dimensions
-    const bars = histogram.locator(`path[role="button"]`)
-    const bar_elements = await bars.all()
-    for (const bar of bar_elements) {
-      const box = await bar.boundingBox()
-      expect(box).toBeTruthy()
-      if (!box) continue
-      expect(box.width).toBeGreaterThan(0)
-      expect(box.height).toBeGreaterThan(0)
-    }
-  })
-
-  test(`tick configuration and dynamic updates`, async ({ page }) => {
-    // Helper to wait for and validate histogram render
-    const wait_for_histogram = async (selector: string) => {
-      const histogram = page.locator(`${selector} > svg[role="application"]`)
-      await expect(histogram).toBeVisible()
-      await expect(histogram.locator(`path[role="button"]`).first()).toBeVisible()
-      return histogram
-    }
-
-    // Test configurable tick counts
-    const tick_config_histogram = await wait_for_histogram(`#tick-configuration`)
-    const x_axis = tick_config_histogram.locator(`g.x-axis`)
-    const y_axis = tick_config_histogram.locator(`g.y-axis`)
-
-    // Adjust tick counts and verify changes using scoped selectors
-    await set_range_value_in_section(page, `tick-configuration-section`, `X-axis Ticks`, 15)
-    await set_range_value_in_section(page, `tick-configuration-section`, `Y-axis Ticks`, 10)
-
-    const [adjusted_x, adjusted_y] = await Promise.all([
-      get_histogram_tick_range(x_axis),
-      get_histogram_tick_range(y_axis),
-    ])
-
-    // Verify tick adjustments and spacing
-    expect(adjusted_x.ticks.length).toBeGreaterThan(0)
-    expect(adjusted_y.ticks.length).toBeGreaterThan(0)
-    expect(adjusted_x.range).toBeGreaterThan(0)
-    expect(adjusted_y.range).toBeGreaterThan(0)
-
-    // Verify tick configuration produces reasonable tick counts
-    // D3 may not produce exactly the requested number of ticks, but should be in a reasonable range
-    expect(adjusted_x.ticks.length).toBeGreaterThanOrEqual(4)
-    expect(adjusted_x.ticks.length).toBeLessThanOrEqual(20)
-    expect(adjusted_y.ticks.length).toBeGreaterThanOrEqual(3)
-    expect(adjusted_y.ticks.length).toBeLessThanOrEqual(15)
-  })
-
-  test(`logarithmic scale tick generation and validation`, async ({ page }) => {
-    const histogram = page.locator(`#logarithmic-scales > svg[role="application"]`)
-    await expect(histogram.locator(`path[role="button"]`).first()).toBeVisible({
-      timeout: 5000,
-    })
-
-    const scale_tests = [
-      { x_scale: `log`, y_scale: `linear` },
-      { x_scale: `linear`, y_scale: `log` },
-      { x_scale: `log`, y_scale: `log` },
-    ]
-
-    for (const { x_scale, y_scale } of scale_tests) {
-      // Use scoped selectors within the logarithmic-scales section
-      await click_radio_in_section(
-        page,
-        `logarithmic-scales-section`,
-        `input[name="x-scale"][value="${x_scale}"]`,
-      )
-      await click_radio_in_section(
-        page,
-        `logarithmic-scales-section`,
-        `input[name="y-scale"][value="${y_scale}"]`,
-      )
-
-      const x_axis = histogram.locator(`g.x-axis`)
-      const y_axis = histogram.locator(`g.y-axis`)
-
-      await Promise.all([
-        expect(x_axis.locator(`.tick text`).first()).toBeVisible({ timeout: 3000 }),
-        expect(y_axis.locator(`.tick text`).first()).toBeVisible({ timeout: 3000 }),
-      ])
-
-      const [x_ticks, y_ticks] = await Promise.all([
-        get_histogram_tick_range(x_axis),
-        get_histogram_tick_range(y_axis),
-      ])
-
-      expect(x_ticks.ticks.length).toBeGreaterThan(0)
-      expect(y_ticks.ticks.length).toBeGreaterThan(0)
-
-      // Validate log scale constraints
-      if (x_scale === `log` && x_ticks.ticks.length > 0) {
-        const positive_ticks = x_ticks.ticks.filter((tick) => tick > 0)
-        expect(positive_ticks.length).toBeGreaterThan(0)
-      }
-      if (y_scale === `log` && y_ticks.ticks.length > 0) {
-        const positive_ticks = y_ticks.ticks.filter((tick) => tick > 0)
-        expect(positive_ticks.length).toBeGreaterThan(0)
-      }
-
-      // Verify ticks are all valid numbers (D3 doesn't guarantee DOM ordering)
-      for (const tick of x_ticks.ticks) {
-        expect(typeof tick).toBe(`number`)
-        expect(Number.isFinite(tick)).toBe(true)
-      }
-      for (const tick of y_ticks.ticks) {
-        expect(typeof tick).toBe(`number`)
-        expect(Number.isFinite(tick)).toBe(true)
-      }
-    }
-  })
-
-  test(`zoom rectangle positioning fix is applied correctly`, async ({ page }) => {
-    // Test actual zoom functionality with mouse interactions
-    const histogram = page.locator(`#basic-single-series > svg[role="application"]`)
-    await expect(histogram).toBeVisible()
-
-    await expect(histogram.locator(`path[role="button"]`).first()).toBeVisible({
-      timeout: 5000,
-    })
-
-    const cursor_style = await histogram.evaluate((el) => getComputedStyle(el).cursor)
-    expect(cursor_style).toBe(`crosshair`)
-
-    // Get histogram bounding box for precise mouse positioning
-    const box = await histogram.boundingBox()
-    if (!box) throw new Error(`Histogram bounding box not found`)
-
-    // Start drag operation using coordinates inside the chart area
-    const start_x = box.x + box.width * 0.3
-    const start_y = box.y + box.height * 0.3
-    const end_x = box.x + box.width * 0.7
-    const end_y = box.y + box.height * 0.7
-
-    await page.mouse.move(start_x, start_y)
-    await page.mouse.down()
-    await page.mouse.move(end_x, end_y, { steps: 5 })
-
-    // Verify zoom rectangle appears during drag
-    const zoom_rect = histogram.locator(`.zoom-rect`)
-    await expect(zoom_rect).toBeVisible({ timeout: 2000 })
-
-    // Complete drag operation
-    await page.mouse.up()
-
-    // Test double-click reset
-    await histogram.dblclick()
-    await expect(zoom_rect).toBeHidden({ timeout: 2000 })
+  test(`Shift+drag pans the histogram instead of zooming`, async ({ page }) => {
+    const histogram = page.locator(`#basic-single-series`)
+    await wait_for_bars(histogram)
+    await expect_shift_drag_pans(page, histogram)
   })
 
   test(`one-sided axis range pins via controls`, async ({ page }) => {
-    const histogram = page.locator(`#basic-single-series > svg[role="application"]`)
-    // Wait for histogram bars to render
-    await expect(histogram.locator(`path[role="button"]`).first()).toBeVisible({
-      timeout: 10000,
-    })
-
-    const toggle = page.locator(`#basic-single-series .pane-toggle`)
-    await toggle.click()
-    const pane = page.locator(`#basic-single-series .draggable-pane`)
+    const histogram = page.locator(`#basic-single-series`)
+    await wait_for_bars(histogram)
+    const { pane } = await open_plot_controls(histogram)
     await expect(pane.getByText(`Axis range`)).toBeVisible()
 
-    const [x_axis_el, y_axis_el] = [
-      histogram.locator(`g.x-axis`),
-      histogram.locator(`g.y-axis`),
-    ]
+    const x_axis_el = histogram.locator(`g.x-axis`)
+    const y_axis_el = histogram.locator(`g.y-axis`)
     const [baseline_x, baseline_y] = await Promise.all([
-      get_histogram_tick_range(x_axis_el),
-      get_histogram_tick_range(y_axis_el),
+      get_tick_range(x_axis_el),
+      get_tick_range(y_axis_el),
     ])
-    const [x_min, x_max, y_min, y_max] = [
-      Math.min(...baseline_x.ticks),
-      Math.max(...baseline_x.ticks),
-      Math.min(...baseline_y.ticks),
-      Math.max(...baseline_y.ticks),
-    ]
+    const [x_min, x_max] = [Math.min(...baseline_x.ticks), Math.max(...baseline_x.ticks)]
+    const [y_min, y_max] = [Math.min(...baseline_y.ticks), Math.max(...baseline_y.ticks)]
 
-    // Use shared helpers for range inputs
-    const x_inputs = get_axis_range_inputs(pane, `X`)
-    const y_inputs = get_axis_range_inputs(pane, `Y`)
-
-    // Test: set specific min/max values and verify axis updates
-    // X-axis: set a specific min value
+    // X-axis: pin only the min; ticks must not extend below it (5% tick rounding slack)
     const x_new_min = x_min + (x_max - x_min) * 0.3
-    await set_range_input(x_inputs.min, String(x_new_min))
-
-    // Wait for axis to update and verify
+    await set_range_input(get_axis_range_inputs(pane, `X`).min, String(x_new_min))
     await expect
-      .poll(
-        async () => {
-          const { ticks } = await get_histogram_tick_range(x_axis_el)
-          if (ticks.length === 0) throw new Error(`No ticks found on x-axis`)
-          return Math.min(...ticks)
-        },
-        { timeout: 3000 },
-      )
+      .poll(async () => Math.min(...(await get_tick_range(x_axis_el)).ticks))
       .toBeGreaterThanOrEqual(x_new_min - (x_max - x_min) * 0.05)
 
-    // Y-axis: set a specific max value
+    // Y-axis: pin only the max
     const y_new_max = y_max - (y_max - y_min) * 0.3
-    await set_range_input(y_inputs.max, String(y_new_max))
-
-    // Wait for axis to update and verify
+    await set_range_input(get_axis_range_inputs(pane, `Y`).max, String(y_new_max))
     await expect
-      .poll(
-        async () => {
-          const { ticks } = await get_histogram_tick_range(y_axis_el)
-          if (ticks.length === 0) throw new Error(`No ticks found on y-axis`)
-          return Math.max(...ticks)
-        },
-        { timeout: 3000 },
-      )
+      .poll(async () => Math.max(...(await get_tick_range(y_axis_el)).ticks))
       .toBeLessThanOrEqual(y_new_max + (y_max - y_min) * 0.05)
-
-    await toggle.click()
   })
 
-  test(`on_bar_hover and on_bar_click handlers`, async ({ page }) => {
-    // Navigate to demo page instead of test page to access interactive handler UI elements
-    // The demo page includes status divs that display handler state for testing behavior
+  test(`on_bar_hover and on_bar_click handlers fire from real pointer events`, async ({
+    page,
+  }) => {
+    // the demo page wires handlers to status divs; the test page has none
     await page.goto(`/plot/histogram`, { waitUntil: `networkidle` })
-
-    // Find the first histogram with bar interaction handlers (first code example)
-    const histogram_section = page.locator(`.histogram`).first()
-    await expect(histogram_section).toBeVisible({ timeout: 10000 })
-
-    // Find the info divs that display hover/click state using stable data-testid selectors
+    const histogram = page.locator(`.histogram`).first()
     const hover_div = page.locator(`[data-testid="hover-status"]`)
     const click_div = page.locator(`[data-testid="click-status"]`)
-
-    await expect(hover_div).toBeVisible({ timeout: 10000 })
-    await expect(click_div).toBeVisible()
-
     await expect(hover_div).toContainText(`Hover over a bar`)
     await expect(click_div).toContainText(`Click on a bar`)
 
-    // Use the main histogram SVG, not icon SVGs
-    const svg = histogram_section.locator(`> svg[role="application"]`)
-    await expect(svg).toBeVisible({ timeout: 10000 })
-    const bars = svg.locator(`path[role="button"]`)
-    // Wait for bars to be rendered
-    await expect(bars.first()).toBeVisible({ timeout: 10000 })
-    const bar_count = await bars.count()
-    expect(bar_count).toBeGreaterThan(0)
-
-    const first_bar = bars.first()
-
-    // Check cursor is pointer (click handler is defined)
-    const cursor = await first_bar.evaluate((el) => globalThis.getComputedStyle(el).cursor)
-    expect(cursor).toBe(`pointer`)
-
-    // Test hover
-    await first_bar.hover()
-    await expect(hover_div).toContainText(`Hovering:`, { timeout: 5000 })
+    const bars = await wait_for_bars(histogram.locator(`> svg[role="application"]`))
+    await expect(bars.first()).toHaveCSS(`cursor`, `pointer`)
+    await bars.first().hover()
+    await expect(hover_div).toContainText(`Hovering:`)
     await expect(hover_div).toContainText(`Normal Distribution`)
-
-    // Test click
-    await first_bar.click()
-    await expect(click_div).toContainText(`Clicked:`, { timeout: 5000 })
-    await expect(click_div).toContainText(`Normal Distribution`)
-
-    // Test hover clears on mouse leave
+    await bars.first().click()
+    await expect(click_div).toContainText(`Clicked:`)
     await page.mouse.move(0, 0)
-    await expect(hover_div).toContainText(`Hover over a bar`, { timeout: 5000 })
+    await expect(hover_div).toContainText(`Hover over a bar`)
   })
 
-  test(`y2 axis renders with bars binned separately per series`, async ({ page }) => {
-    const histogram = page.locator(`#y2-axis-histogram .histogram`)
-    await histogram.scrollIntoViewIfNeeded()
-    await expect(histogram).toBeVisible()
-
-    // Check that y2-axis renders with ticks
-    const y2_axis = histogram.locator(`g.y2-axis`)
-    await expect(y2_axis).toBeVisible()
-    await expect(y2_axis.locator(`.tick`).first()).toBeVisible()
-
-    // Each series (one y1, one y2) should have its own bars
-    const series_groups = histogram.locator(`g.histogram-series`)
-    expect(await series_groups.count()).toBeGreaterThanOrEqual(2)
-    expect(await series_groups.nth(0).locator(`path[role="button"]`).count()).toBeGreaterThan(
-      0,
-    )
-    expect(await series_groups.nth(1).locator(`path[role="button"]`).count()).toBeGreaterThan(
-      0,
-    )
-  })
-
-  test(`y2 axis scaling is independent of y1 axis`, async ({ page }) => {
-    const histogram = page.locator(`#y2-different-scale .histogram`)
-    await histogram.scrollIntoViewIfNeeded()
-    // Wait for histogram bars to render
-    await expect(histogram.locator(`svg path[role="button"]`).first()).toBeVisible({
-      timeout: 10000,
-    })
-
-    // Get tick values from y1 and y2 axes
-    const y1_ticks = await histogram.locator(`g.y-axis .tick text`).allTextContents()
-    const y2_ticks = await histogram.locator(`g.y2-axis .tick text`).allTextContents()
-
-    // Verify both axes have ticks
-    expect(y1_ticks.length).toBeGreaterThan(0)
-    expect(y2_ticks.length).toBeGreaterThan(0)
-
-    // Verify they have different ranges (independent scaling) - compare arrays to avoid locale effects
-    expect(y1_ticks).not.toEqual(y2_ticks)
-  })
-
-  test(`zoom updates both y1 and y2 ranges in histogram`, async ({ page }) => {
-    const histogram = page.locator(`#y2-axis-histogram .histogram`)
-    await histogram.scrollIntoViewIfNeeded()
-    // Use the main interactive SVG with role="application", not icon SVGs
-    const svg = histogram.locator(`> svg[role="application"]`)
-    await expect(svg).toBeVisible()
-
-    // Wait for initial ticks
-    await expect(histogram.locator(`g.y-axis .tick text`).first()).toBeVisible()
-    await expect(histogram.locator(`g.y2-axis .tick text`).first()).toBeVisible()
-
-    const get_range = async (axis: `y` | `y2`) => {
-      const tick_texts = await histogram.locator(`g.${axis}-axis .tick text`).allTextContents()
-      return tick_texts
-    }
-
-    const initial_y1 = await get_range(`y`)
-    const initial_y2 = await get_range(`y2`)
-
-    const box = await svg.boundingBox()
-    if (!box) throw new Error(`SVG bbox not found`)
-
-    // Perform zoom
-    const start_x = box.x + box.width * 0.3
-    const start_y = box.y + box.height * 0.7
-    const end_x = box.x + box.width * 0.7
-    const end_y = box.y + box.height * 0.3
-
-    await page.mouse.move(start_x, start_y)
-    await page.mouse.down()
-
-    // Check if zoom rectangle appears during drag
-    await page.mouse.move(end_x, end_y, { steps: 10 })
-    const zoom_rect = histogram.locator(`.zoom-rect`)
-    await expect(zoom_rect).toBeVisible({ timeout: 5000 })
-
-    await page.mouse.up()
-
-    // After zoom, both axes should have changed
-    await expect
-      .poll(
-        async () => {
-          const range = await get_range(`y`)
-          return JSON.stringify(range) !== JSON.stringify(initial_y1)
-        },
-        { timeout: 2000 },
-      )
-      .toBe(true)
-    await expect
-      .poll(
-        async () => {
-          const range = await get_range(`y2`)
-          return JSON.stringify(range) !== JSON.stringify(initial_y2)
-        },
-        { timeout: 2000 },
-      )
-      .toBe(true)
-
-    // Reset
-    await svg.dblclick()
-    await expect
-      .poll(
-        async () => {
-          const range = await get_range(`y`)
-          return JSON.stringify(range)
-        },
-        { timeout: 2000 },
-      )
-      .toBe(JSON.stringify(initial_y1))
-    await expect
-      .poll(
-        async () => {
-          const range = await get_range(`y2`)
-          return JSON.stringify(range)
-        },
-        { timeout: 2000 },
-      )
-      .toBe(JSON.stringify(initial_y2))
-  })
-
-  test(`histogram bars use correct y-scale based on series y_axis property`, async ({
+  test(`y2 series bin separately, scale independently, zoom together and toggle via legend`, async ({
     page,
   }) => {
-    const histogram = page.locator(`#y2-different-scale .histogram`)
-    await histogram.scrollIntoViewIfNeeded()
-    await expect(histogram).toBeVisible()
-
-    // Get bars from both series (using path, not rect)
-    const series_groups = histogram.locator(`g.histogram-series`)
-    await expect(series_groups.first()).toBeVisible()
-
-    const first_series_bars = await series_groups.nth(0).locator(`path[role="button"]`).all()
-    const second_series_bars = await series_groups.nth(1).locator(`path[role="button"]`).all()
-
-    expect(first_series_bars.length).toBeGreaterThan(0)
-    expect(second_series_bars.length).toBeGreaterThan(0)
-
-    // Get bounding boxes
-    const first_boxes = (
-      await Promise.all(first_series_bars.slice(0, 3).map((bar) => bar.boundingBox()))
-    ).filter(is_present)
-    const second_boxes = (
-      await Promise.all(second_series_bars.slice(0, 3).map((bar) => bar.boundingBox()))
-    ).filter(is_present)
-
-    // Bars from different series should have different y positions due to different scales
-    const first_ys = first_boxes.map((bb) => bb.y)
-    const second_ys = second_boxes.map((bb) => bb.y)
-
-    // At least some bars should be at different positions
-    const all_ys = [...first_ys, ...second_ys]
-    const unique_ys = new Set(all_ys.map((y_val) => Math.round(y_val)))
-    expect(unique_ys.size).toBeGreaterThan(1)
-  })
-
-  test(`legend toggles visibility for y2 series`, async ({ page }) => {
     const histogram = page.locator(`#y2-axis-histogram .histogram`)
     await histogram.scrollIntoViewIfNeeded()
-    // Wait for histogram bars to render
-    await expect(histogram.locator(`svg path[role="button"]`).first()).toBeVisible({
-      timeout: 10000,
-    })
+    await wait_for_bars(histogram)
+    await expect(histogram.locator(`g.y2-axis .tick`).first()).toBeVisible()
+    await expect(series_groups(histogram)).toHaveCount(2)
+    expect(await visible_series_count(histogram)).toBe(2)
 
-    const legend = histogram.locator(`.legend`)
-    await expect(legend).toBeVisible()
+    // zoom changes both count axes, reset restores both
+    const initial_y1 = await tick_texts(histogram, `y`)
+    const initial_y2 = await tick_texts(histogram, `y2`)
+    await expect_zoom_shrinks_axes(page, histogram)
+    await expect.poll(() => tick_texts(histogram, `y2`)).toEqual(initial_y2)
+    await expect.poll(() => tick_texts(histogram, `y`)).toEqual(initial_y1)
 
-    const items = legend.locator(`.legend-item`)
-    expect(await items.count()).toBeGreaterThanOrEqual(2)
+    // legend hides one series' bars and restores them
+    const items = histogram.locator(`.legend .legend-item`)
+    await expect(items).toHaveCount(2)
+    await items.first().click()
+    await expect.poll(() => visible_series_count(histogram)).toBe(1)
+    await items.first().click()
+    await expect.poll(() => visible_series_count(histogram)).toBe(2)
 
-    // Count bars in each series group separately
-    const series_groups = histogram.locator(`g.histogram-series`)
-    const initial_series_count = await series_groups.count()
-    expect(initial_series_count).toBeGreaterThanOrEqual(2)
-
-    // Get initial visible series count
-    const get_visible_series_count = async () => {
-      const groups = await series_groups.all()
-      let count = 0
-      for (const group of groups) {
-        const bars = await group.locator(`path[role="button"]`).count()
-        if (bars > 0) count++
-      }
-      return count
+    // different magnitudes get different count axes, so bars sit at distinct heights
+    const scaled = page.locator(`#y2-different-scale .histogram`)
+    await scaled.scrollIntoViewIfNeeded()
+    await wait_for_bars(scaled)
+    expect(await tick_texts(scaled, `y`)).not.toEqual(await tick_texts(scaled, `y2`))
+    const top_ys = new Set<number>()
+    for (const idx of [0, 1]) {
+      const bars = series_groups(scaled).nth(idx).locator(`path[role="button"]`)
+      for (const box of await bounding_boxes(bars, 3)) top_ys.add(Math.round(box.y))
     }
-
-    const initial_visible = await get_visible_series_count()
-    expect(initial_visible).toBe(2)
-
-    // Toggle first series -> visible series count should decrease
-    await items.first().click()
-    await expect.poll(() => get_visible_series_count(), { timeout: 3000 }).toBe(1)
-
-    // Toggle back -> visible series count should be restored
-    await items.first().click()
-    await expect.poll(() => get_visible_series_count(), { timeout: 3000 }).toBe(2)
-  })
-
-  // PAN FUNCTIONALITY TESTS
-
-  test(`Shift+drag pans the histogram instead of zooming`, async ({ page }) => {
-    const histogram = page.locator(`#basic-single-series > svg[role="application"]`)
-    const zoom_rect = histogram.locator(`.zoom-rect`)
-
-    // Wait for histogram to render
-    await expect(histogram.locator(`path[role="button"]`).first()).toBeVisible({
-      timeout: 5000,
-    })
-
-    const x_axis = histogram.locator(`g.x-axis`)
-    const y_axis = histogram.locator(`g.y-axis`)
-
-    const initial_x = await get_tick_range(x_axis)
-    const initial_y = await get_tick_range(y_axis)
-
-    const box = await histogram.boundingBox()
-    if (!box) throw new Error(`Histogram bbox not found`)
-
-    // Perform Shift+drag (should pan, not zoom)
-    const start_x = box.x + box.width * 0.3
-    const start_y = box.y + box.height * 0.5
-    const end_x = box.x + box.width * 0.7
-    const end_y = box.y + box.height * 0.5
-
-    await page.keyboard.down(`Shift`)
-    await page.mouse.move(start_x, start_y)
-    await page.mouse.down()
-    await page.mouse.move(end_x, end_y, { steps: 10 })
-
-    // Zoom rectangle should NOT appear during Shift+drag (pan mode)
-    await expect(zoom_rect).toBeHidden()
-
-    await page.mouse.up()
-    await page.keyboard.up(`Shift`)
-
-    // Verify axis ranges changed (pan occurred)
-    const panned_x = await get_tick_range(x_axis)
-    const panned_y = await get_tick_range(y_axis)
-
-    // X range should have shifted (pan moves the view)
-    expect(panned_x.ticks).not.toEqual(initial_x.ticks)
-
-    // Y range should remain approximately the same (horizontal pan only)
-    expect(Math.abs(panned_y.range - initial_y.range)).toBeLessThan(initial_y.range * 0.1)
-
-    // Double-click to reset
-    await histogram.dblclick()
-    const reset_x = await get_tick_range(x_axis)
-    expect(reset_x.ticks).toEqual(initial_x.ticks)
+    expect(top_ys.size).toBeGreaterThan(1)
   })
 })

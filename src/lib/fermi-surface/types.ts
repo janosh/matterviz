@@ -15,30 +15,27 @@ export type SpinChannel = `up` | `down` | null
 // Representation modes for rendering
 export type RepresentationMode = `solid` | `wireframe` | `transparent`
 
-// Property types for coloring
-export type ColorProperty = `band` | `velocity` | `spin` | `custom`
+// Property types for coloring: flat colour per band or spin channel, or the per-vertex
+// scalar `properties` (Fermi velocity, orbital character, …) mapped through a colour scale
+export type ColorProperty = `band` | `spin` | `property`
 
 // Reciprocal cell type
 type ReciprocalCellType = `wigner_seitz` | `parallelepiped`
 
-// Dimensionality classification (following IFermi conventions)
-export type SurfaceDimensionality = `1D` | `2D` | `quasi-2D` | `3D`
-
-// Core isosurface data (output of marching cubes algorithm)
+// One closed sheet of the Fermi surface as an indexed triangle mesh in the layout
+// three.js BufferGeometry consumes directly: flat xyz positions/normals and triangle index
+// triples. Vertex `idx` lives at positions[3*idx .. 3*idx+2].
 export interface FermiIsosurface {
-  vertices: Vec3[]
-  faces: number[][] // triangle indices (each array has 3 indices)
-  normals: Vec3[] // per-vertex normals
-  properties?: number[] // per-vertex scalar values (e.g. Fermi velocity magnitude)
-  vector_properties?: Vec3[] // per-vertex vector values (e.g. spin texture)
+  positions: Float32Array
+  indices: Uint32Array
+  normals: Float32Array
+  properties?: Float32Array // per-vertex scalar values (e.g. Fermi velocity magnitude)
   band_index: number
   spin: SpinChannel
-  // Analysis results (computed on demand)
-  area?: number
-  dimensionality?: SurfaceDimensionality
-  orientation?: Vec3 | null // principal orientation vector for 2D surfaces
-  avg_velocity?: number
 }
+
+export const vertex_count = (surface: Pick<FermiIsosurface, `positions`>): number =>
+  surface.positions.length / 3
 
 // Complete Fermi surface with multiple bands/isosurfaces
 export interface FermiSurfaceData {
@@ -49,24 +46,15 @@ export interface FermiSurfaceData {
   metadata: FermiSurfaceMetadata
 }
 
-// Metadata for Fermi surface
 export interface FermiSurfaceMetadata {
   n_bands: number
   n_surfaces: number
-  total_area: number // total surface area in Å⁻²
   source_format?: string // e.g. 'bxsf', 'frmsf', 'json'
-  source_file?: string
-  has_spin?: boolean
-  has_velocities?: boolean
-  has_spin_texture?: boolean
-  is_irreducible?: boolean // true if data covers only irreducible BZ wedge (needs tiling)
 }
 
 // One band's energies on the k-grid as a flat z-fastest Float64Array: the value at grid
 // point (ix, iy, iz) sits at index (ix * ny + iy) * nz + iz, with dims = k_grid.
 export type BandEnergyGrid = ScalarGrid3D<Float64Array>
-// Vector quantities (velocities, spin texture) indexed `[spin][band][kx][ky][kz]`
-type VectorGrid5D = Vec3[][][][][]
 
 // Input band energies on a 3D k-point grid (from BXSF/FRMSF files)
 export interface BandGridData {
@@ -75,16 +63,15 @@ export interface BandGridData {
   k_grid: Vec3 // grid dimensions
   k_lattice: Matrix3x3 // reciprocal lattice vectors
   fermi_energy: number
-  // Optional property grids (same shape as energies)
-  velocities?: VectorGrid5D // Fermi velocity vectors [spin][band][kx][ky][kz]
-  spin_texture?: VectorGrid5D // spin expectation values [spin][band][kx][ky][kz]
-  // Metadata
   n_bands: number
   n_spins: number // 1 or 2
   origin?: Vec3 // k-space origin (default [0,0,0])
   // true: points sit at k=i/n with no duplicated endpoint (FRMSF); false/undefined:
   // endpoint-inclusive grid storing both equivalent k=0 and k=1 (BXSF)
   periodic?: boolean
+  // Fractional grid shift per axis: grid point i sits at (i + grid_shift)/n. FRMSF lshift=2
+  // (Γ + half step) gives 0.5; unset/0 for Γ-centred meshes.
+  grid_shift?: Vec3
 }
 
 // 2D Fermi slice data (cross-section through the BZ)
@@ -112,12 +99,7 @@ export interface Isoline {
 // Options for Fermi surface extraction
 export interface FermiSurfaceOptions {
   mu?: number // chemical potential offset from fermi_energy (default 0)
-  wigner_seitz?: boolean // mark as Wigner-Seitz representation in metadata (default true)
-  compute_velocities?: boolean // compute Fermi velocities (default false)
-  compute_dimensionality?: boolean // analyze surface topology (default false)
-  selected_bands?: number[] // only process specific bands (default: all)
-  selected_spins?: SpinChannel[] // only process specific spin channels
-  interpolation_factor?: number // interpolation density (default 1, no interpolation)
+  interpolation_factor?: number // tricubic upsampling factor (default 1, no interpolation)
 }
 
 // Options for Fermi slice computation
@@ -148,7 +130,7 @@ export interface FermiHoverData {
   screen_position: Point2D
   surface_color?: string
   property_value?: number // nearest vertex property value
-  property_name?: string // "velocity" | "custom" | undefined
+  property_name?: string // label of the per-vertex property (custom_property_label or "Property")
   is_tiled?: boolean // true if from symmetry copy
   // Index into lattice_point_group_matrices(k_lattice) (0 = identity; up to 47 for cubic)
   symmetry_index?: number

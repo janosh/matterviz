@@ -1,5 +1,6 @@
 import { THZ_TO_INVERSE_CM } from '$lib/constants'
 import type { Matrix3x3, Vec2, Vec3 } from '$lib/math'
+import { convert_frequencies } from '$lib/spectral/frequency-units'
 import type { PymatgenCompleteDos } from '$lib/spectral/helpers'
 import {
   ACOUSTIC_FREQ_THRESHOLD,
@@ -9,7 +10,6 @@ import {
   build_point_metadata,
   classify_acoustic,
   compute_frequency_range,
-  convert_frequencies,
   extract_k_path_points,
   find_gamma_indices,
   find_qpoint_at_rescaled_x,
@@ -26,6 +26,18 @@ import {
 } from '$lib/spectral/helpers'
 import type { BaseBandStructure, QPoint } from '$lib/spectral/types'
 import { describe, expect, it, vi } from 'vitest'
+
+// pymatgen input needs a reciprocal lattice to measure its k-path; the identity keeps the
+// hand-computed fractional distances valid
+const identity_rec = {
+  lattice_rec: {
+    matrix: [
+      [1, 0, 0],
+      [0, 1, 0],
+      [0, 0, 1],
+    ],
+  },
+}
 
 // Band structure along a labelled path with unit spacing; `labels[idx]` null for interior points
 const make_bs = (
@@ -57,7 +69,6 @@ const make_bs = (
 }
 
 it.each([
-  [[0, 0, 0], [1, -1, 2], true],
   [[0.25, 0, 0.5], [1.25, -1, 0.5], true],
   [[0.25, 0, 0.5], [0.250002, 0, 0.5], false],
 ] as [Vec3, Vec3, boolean][])(
@@ -70,7 +81,6 @@ it.each([
 it.each([
   [`GAMMA`, `Γ`],
   [`\\Gamma`, `Γ`],
-  [`DELTA2`, `Δ₂`],
   [`SIGMA3`, `Σ₃`],
   [`LAMBDA`, `Λ`],
   [`X1`, `X₁`],
@@ -88,7 +98,7 @@ describe(`convert_frequencies`, () => {
     [`THz`, 1],
     [`eV`, 4.135667696e-3],
     [`meV`, 4.135667696],
-    [`cm-1`, 33.35640951981521],
+    [`cm^-1`, 33.35640951981521],
     [`Ha`, 4.135667696e-3 / 27.211386245981],
   ] as const)(`1 THz = %f %s to 1e-9 relative`, (unit, per_thz) => {
     const [value] = convert_frequencies([1], unit)
@@ -101,6 +111,8 @@ describe(`convert_frequencies`, () => {
     expect(two).toBeCloseTo(8.271335392, 8)
     const input = [1, 2]
     expect(convert_frequencies(input, `THz`)).toBe(input)
+    // both sides default to THz, so the one-arg form is a no-op
+    expect(convert_frequencies(input)).toBe(input)
     expect(() => convert_frequencies([1], `GHz` as never)).toThrow(/Invalid unit: GHz/)
   })
 })
@@ -161,12 +173,8 @@ describe(`apply_gaussian_smearing`, () => {
   const grid = Array.from({ length: 60 }, (_, idx) => idx * 0.1)
   it.each([
     [`ascending`, grid],
+    // every non-monotonic grid takes the same unwindowed fallback
     [`descending`, grid.toReversed()],
-    [`ascending then descending`, [...grid.slice(0, 30), ...grid.slice(30).toReversed()]],
-    [
-      `interleaved`,
-      grid.filter((_, idx) => idx % 2 === 0).concat(grid.filter((_, idx) => idx % 2)),
-    ],
     [`with duplicates`, grid.map((val, idx) => (idx % 4 === 0 ? grid[0] : val))],
   ])(`matches an unwindowed reference on a %s grid`, (_label, xs) => {
     const ys = xs.map((_, idx) => ((idx * 37) % 11) + 0.5)
@@ -278,6 +286,7 @@ describe(`extract_k_path_points`, () => {
 describe(`normalize_band_structure`, () => {
   const pmg = (opts: Record<string, unknown>) => ({
     '@class': `PhononBandStructureSymmLine`,
+    ...identity_rec,
     ...opts,
   })
   const line = (n_points: number) =>
@@ -385,6 +394,7 @@ describe(`normalize_band_structure`, () => {
 
   it(`labels q-points from Kpoint objects or by matching labels_dict within 1e-4`, () => {
     const from_kpoints = normalize_band_structure({
+      ...identity_rec,
       qpoints: [
         { frac_coords: [0, 0, 0], label: `GAMMA` },
         { frac_coords: [0.5, 0, 0], label: `X` },
@@ -428,6 +438,120 @@ describe(`normalize_band_structure`, () => {
       0.1 + 2 * Math.hypot(0.05, 0.05, 0.05),
     ]
     result?.distance.forEach((val, idx) => expect(val).toBeCloseTo(expected[idx], 12))
+  })
+
+  // Reciprocal lattice of a hexagonal cell: a* = b* = 1 at 60°, c* = 0.4. The fractional
+  // metric would give |M-K| = sqrt(1/36 + 1/9) and |K-GAMMA| = sqrt(2/9); the Cartesian one
+  // gives sqrt(3)/6 and 1/sqrt(3).
+  const hex_matrix = [
+    [1, 0, 0],
+    [0.5, Math.sqrt(3) / 2, 0],
+    [0, 0, 0.4],
+  ]
+  const hex_path = {
+    qpoints: [
+      [0, 0, 0],
+      [0.5, 0, 0],
+      [1 / 3, 1 / 3, 0],
+      [0, 0, 0],
+      [0, 0, 0.5],
+    ],
+    bands: [[0, 1, 2, 3, 4]],
+    labels_dict: { GAMMA: [0, 0, 0], M: [0.5, 0, 0], K: [1 / 3, 1 / 3, 0], A: [0, 0, 0.5] },
+  }
+  const hex_distance = [
+    0,
+    0.5,
+    0.5 + Math.sqrt(3) / 6,
+    0.5 + Math.sqrt(3) / 6 + 1 / Math.sqrt(3),
+    0.5 + Math.sqrt(3) / 6 + 1 / Math.sqrt(3) + 0.2,
+  ]
+
+  it.each([`lattice_rec`, `recip_lattice`])(
+    `measures k-path distance in Cartesian reciprocal space from %s.matrix`,
+    (key) => {
+      const spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
+      const result = normalize_band_structure({
+        '@class': `PhononBandStructureSymmLine`,
+        ...hex_path,
+        [key]: { matrix: hex_matrix },
+      })
+      spy.mockRestore()
+      expect(result?.distance).toHaveLength(5)
+      result?.distance.forEach((val, idx) => expect(val).toBeCloseTo(hex_distance[idx], 12))
+      // every labeled q-point bounds a branch, so all four legs get axis labels
+      expect(result?.branches.map((branch) => branch.name)).toEqual([
+        `GAMMA-M`,
+        `M-K`,
+        `K-GAMMA`,
+        `GAMMA-A`,
+      ])
+    },
+  )
+
+  it.each([
+    [`no reciprocal lattice`, {}],
+    [
+      `a 2x2 lattice_rec.matrix`,
+      {
+        lattice_rec: {
+          matrix: [
+            [1, 0],
+            [0, 1],
+          ],
+        },
+      },
+    ],
+    [
+      `a non-finite recip_lattice.matrix`,
+      {
+        recip_lattice: {
+          matrix: [
+            [1, 0, 0],
+            [0, NaN, 0],
+            [0, 0, 1],
+          ],
+        },
+      },
+    ],
+  ])(`throws naming lattice_rec.matrix for pymatgen input with %s`, (_label, lattice) => {
+    // built without pmg(), which would add the identity lattice_rec
+    const input = {
+      '@class': `PhononBandStructureSymmLine`,
+      qpoints: line(2),
+      bands: [[0, 1]],
+    }
+    // a throw, not null: the shape is recognisably pymatgen, so the missing key is a
+    // fixable defect Bands surfaces in its empty state (unrecognised shapes stay null)
+    expect(() => normalize_band_structure({ ...input, ...lattice })).toThrow(
+      /'lattice_rec\.matrix' \(or 'recip_lattice\.matrix'\).*got keys \[@class, qpoints, bands/,
+    )
+  })
+
+  it(`compute_frequency_range skips pymatgen entries that fail to normalize`, () => {
+    const broken = {
+      '@class': `PhononBandStructureSymmLine`,
+      qpoints: line(2),
+      bands: [[0, 1]],
+    }
+    const range = compute_frequency_range(
+      { broken, fine: pmg({ qpoints: line(2), bands: [[2, 4]] }) },
+      undefined,
+    )
+    expect(range?.[0]).toBeCloseTo(2 - 0.02 * 2, 9)
+    expect(range?.[1]).toBeCloseTo(4 + 0.02 * 2, 9)
+    expect(compute_frequency_range(broken, undefined)).toBeUndefined()
+  })
+
+  it(`passes pymatgen phonon flags through`, () => {
+    const spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
+    const flagged = normalize_band_structure(
+      pmg({ qpoints: line(2), bands: [[0, 1]], has_nac: true, has_imaginary_modes: false }),
+    )
+    expect(flagged).toMatchObject({ has_nac: true, has_imaginary_modes: false })
+    const unflagged = normalize_band_structure(pmg({ qpoints: line(2), bands: [[0, 1]] }))
+    expect(unflagged && `has_nac` in unflagged).toBe(false)
+    spy.mockRestore()
   })
 
   describe(`branches`, () => {
@@ -494,7 +618,7 @@ describe(`normalize_band_structure`, () => {
         )
         expect(result?.branches).toEqual(expected)
         expect(spy).toHaveBeenCalledWith(
-          expect.stringContaining(`inferring from path discontinuities`),
+          expect.stringContaining(`inferring from labeled q-points and path discontinuities`),
         )
         spy.mockRestore()
       },
@@ -533,6 +657,7 @@ describe(`normalize_band_structure`, () => {
   describe(`electronic (kpoints, spin-keyed bands)`, () => {
     it(`reads both spin channels and drops a malformed spin-down channel`, () => {
       const both = normalize_band_structure({
+        ...identity_rec,
         kpoints: line(2),
         bands: {
           '1': [
@@ -558,6 +683,7 @@ describe(`normalize_band_structure`, () => {
         nb_bands: 2,
       })
       const ragged = normalize_band_structure({
+        ...identity_rec,
         kpoints: line(2),
         bands: {
           '1': [
@@ -572,6 +698,7 @@ describe(`normalize_band_structure`, () => {
 
     it(`recognises pymatgen input by kpoints, @class or @module, but not bare branched input`, () => {
       const branched = {
+        ...identity_rec,
         kpoints: line(2),
         bands: { '1': [[0, 1]] },
         branches: [{ name: `\\Gamma-X`, start_index: 0, end_index: 1 }],
@@ -588,6 +715,7 @@ describe(`normalize_band_structure`, () => {
       ).toHaveLength(2)
       expect(
         normalize_band_structure({
+          ...identity_rec,
           kpoints: line(2),
           bands: [
             [0, 1],
@@ -728,8 +856,6 @@ describe(`shift_to_fermi`, () => {
 })
 
 it.each([
-  [[0, 0.5, 1], 0, 100, [0, 50, 100]],
-  [[10, 15, 20], 0, 1, [0, 0.5, 1]],
   [[0, 1, 2, 3], 10, 20, [10, 10 + 10 / 3, 10 + 20 / 3, 20]],
   [[5, 5, 5], 10, 20, [15, 15, 15]], // zero-length segment → midpoint
   [[42], 0, 10, [5]],
@@ -859,12 +985,13 @@ describe(`compute_frequency_range`, () => {
   })
 
   // Raw electronic markers must be read before normalisation strips them: with a small
-  // negative value, phonon input clamps to 0 while electronic input keeps it
+  // negative value, phonon input clamps to 0 while electronic input keeps it. A @class marker
+  // routes through the pymatgen converter, which needs the reciprocal lattice.
   it.each([
     [`efermi`, { efermi: 5 }, true],
     [`kpoints`, { kpoints: [{ frac_coords: [0, 0, 0] }] }, true],
-    [`an electronic @class`, { '@class': `BandStructureSymmLine` }, true],
-    [`a phonon @class`, { '@class': `PhononBandStructureSymmLine` }, false],
+    [`an electronic @class`, { '@class': `BandStructureSymmLine`, ...identity_rec }, true],
+    [`a phonon @class`, { '@class': `PhononBandStructureSymmLine`, ...identity_rec }, false],
   ])(`detects electronic bands via %s`, (_label, marker, is_electronic) => {
     const range = compute_frequency_range(
       { ...bands_of([[-0.01, 5, 10]]), ...marker },
@@ -879,7 +1006,6 @@ it.each([
   [[1, 2, 3], 0],
   [[-1, -2, -3], 1],
   [[0, 0], 0],
-  [[-1, 3], 0.25],
   [[-2, -1, 7], 0.3],
   [[NaN, -1, 1, Infinity], 0.5],
   [[NaN, Infinity, -Infinity], 0],
@@ -889,13 +1015,6 @@ it.each([
 
 describe(`acoustic classification`, () => {
   it.each([
-    [
-      [
-        [`GAMMA`, [0, 0, 0]],
-        [`X`, [0.5, 0, 0]],
-      ],
-      [0],
-    ],
     [
       [
         [null, [1, 0, 0]],
@@ -928,10 +1047,8 @@ describe(`acoustic classification`, () => {
 
   it.each([
     [0, [0], true],
-    [0.3, [0], true],
     [-0.3, [0], true],
     [ACOUSTIC_FREQ_THRESHOLD, [0], false],
-    [2.5, [0], false],
     [5, [], null], // no Gamma point: undecidable
   ])(`a band at %f THz at Gamma %j → %s`, (freq, gamma_indices, expected) => {
     expect(

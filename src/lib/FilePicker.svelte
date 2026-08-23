@@ -1,7 +1,12 @@
 <script lang="ts">
   import { contrast_text_color, resolve_backdrop, watch_css_color } from '$lib/colors'
   import type { FileInfo, FileTypePaint } from '$lib/io'
-  import { DEFAULT_FILE_TYPE_PAINTS, FALLBACK_FILE_TYPE_PAINT } from '$lib/io'
+  import {
+    DEFAULT_FILE_TYPE_PAINTS,
+    ext_of,
+    FALLBACK_FILE_TYPE_PAINT,
+    strip_compression_extensions,
+  } from '$lib/io'
   import { tooltip } from 'svelte-widgets/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
 
@@ -31,16 +36,19 @@
 
   let root: HTMLDivElement | undefined = $state()
   const backdrop = resolve_backdrop(() => root)
+  // One theme/ancestor observer for the whole picker rather than one per badge: it bumps a
+  // counter every badge attachment reads, so all badges re-read their computed color at once
+  let style_epoch = $state(0)
+  $effect(() => {
+    if (!root) return
+    return watch_css_color(root, () => style_epoch++)
+  })
   const badge_contrast = (bg_color: string) => (node: HTMLElement) => {
-    const update = () => {
-      const color = contrast_text_color({
-        background: getComputedStyle(node).backgroundColor || bg_color,
-        backdrop: backdrop.current,
-      })
-      if (node.style.color !== color) node.style.color = color
-    }
-    update()
-    return watch_css_color(node, update)
+    void style_epoch
+    node.style.color = contrast_text_color({
+      background: getComputedStyle(node).backgroundColor || bg_color,
+      backdrop: backdrop.current,
+    })
   }
   // At most one filter is active at a time: category and type filters are mutually exclusive
   let active_filter = $state<{ kind: `category` | `type`; value: string } | null>(null)
@@ -50,12 +58,12 @@
     active_filter = is_filter_active(kind, value) ? null : { kind, value }
   }
 
-  // File type from the explicit `type`, else the extension (ignoring a trailing .gz)
+  // File type from the explicit `type`, else the extension (ignoring compression suffixes);
+  // ext_of returns an extensionless name (POSCAR, INCAR, ...) whole, so it is its own type
   const get_base_file_type = (file: FileInfo): string => {
     if (type_mapper) return type_mapper(file)
     if (file.type) return file.type.toLowerCase()
-    const base_name = file.name.toLowerCase().replace(/\.gz$/, ``)
-    return base_name.split(`.`).pop() || `file`
+    return ext_of(strip_compression_extensions(file.name)) || `file`
   }
   const get_category_id = (file: FileInfo): string =>
     file.category ? `${file.category_icon ?? ``} ${file.category}`.trim() : `(uncategorized)`

@@ -1,4 +1,8 @@
-import { COMPRESSION_EXTENSIONS_REGEX, COMPRESSION_FORMATS } from '$lib/constants'
+import {
+  COMPRESSION_EXTENSIONS_REGEX,
+  COMPRESSION_FORMATS,
+  HDF5_EXT_REGEX,
+} from '$lib/constants'
 import { has_gzip_magic, has_hdf5_magic, is_binary_payload } from './is-binary'
 
 // Lowercase a filename and strip all trailing compression extensions (.gz, .zip, ...)
@@ -145,7 +149,7 @@ export const content_byte_size = (content: string | ArrayBuffer | Blob): number 
       ? content.byteLength
       : new Blob([content]).size
 
-const is_hdf5_filename = (filename: string): boolean => /\.(?:h5|hdf5)$/i.test(filename)
+const is_hdf5_filename = (filename: string): boolean => HDF5_EXT_REGEX.test(filename)
 
 export const hdf5_compression_format = (filename: string): CompressionFormat | null => {
   const clean_filename = filename.split(/[?#]/)[0]

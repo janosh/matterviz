@@ -11,7 +11,6 @@
     Search,
   } from 'svelte-widgets/icons'
   import { download } from '$lib/io/fetch'
-  import { parse_path } from '$lib/json-path'
   import { make_change_detector } from '$lib/utils'
   import { tick } from 'svelte'
   import { highlight_matches, tooltip } from 'svelte-widgets/attachments'
@@ -32,6 +31,7 @@
     format_preview,
     get_ancestor_paths,
     get_value_at_path,
+    relative_path_segments,
     serialize_for_copy,
   } from './utils'
 
@@ -54,14 +54,14 @@
     sort_keys = false,
     max_string_length = 200,
     highlight_changes = true,
-    onselect,
-    oncopy,
+    on_select,
+    on_copy,
     download_filename,
     compare_value,
     editable = false,
-    onchange,
+    on_change,
     ...rest
-  }: JsonTreeProps & Omit<HTMLAttributes<HTMLDivElement>, `onselect` | `onchange`> = $props()
+  }: JsonTreeProps & HTMLAttributes<HTMLDivElement> = $props()
 
   let search_query = $state(``)
   let search_input_value = $state(``)
@@ -195,9 +195,7 @@
     const new_collapsed = new SvelteSet<string>()
     const new_expanded = new SvelteSet<string>()
     for (const path of collect_all_paths(value, root_path)) {
-      const segments = parse_path(path)
-      const depth =
-        root_label && segments[0] === root_label ? segments.length - 1 : segments.length
+      const depth = relative_path_segments(path, root_label).length
       ;(depth >= level ? new_collapsed : new_expanded).add(path)
     }
     collapsed_paths = new_collapsed
@@ -208,7 +206,7 @@
 
   function set_focused(path: string | null): void {
     focused_path = path
-    if (path !== null) onselect?.(path, value_at(path))
+    if (path !== null) on_select?.(path, value_at(path))
   }
 
   // Move DOM focus to the focused node (one effect for the tree instead of one per node)
@@ -235,7 +233,7 @@
     let error = false
     try {
       await navigator.clipboard.writeText(text)
-      oncopy?.(path, text)
+      on_copy?.(path, text)
     } catch {
       error = true // show feedback regardless, but flag the failure
     }
@@ -361,8 +359,8 @@
     copy_value: (path, val, event) => copy_to_clipboard(path, serialize_for_copy(val), event),
     copy_path: (path, event) => copy_to_clipboard(path, path, event),
     show_context_menu,
-    get onchange() {
-      return onchange
+    get on_change() {
+      return on_change
     },
   }
   set_json_tree_context(context)

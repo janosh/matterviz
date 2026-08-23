@@ -32,44 +32,6 @@
     },
   ]
 
-  const modes_series_overlay: BarSeries[] = [
-    {
-      x: [1, 2, 3],
-      y: [5, 10, 7],
-      label: `A`,
-      color: `#59a14f`,
-      bar_width: 0.8,
-      visible: true,
-    },
-    {
-      x: [1, 2, 3],
-      y: [4, 6, 8],
-      label: `B`,
-      color: `#f28e2b`,
-      bar_width: 0.8,
-      visible: true,
-    },
-  ]
-
-  const modes_series_stacked: BarSeries[] = [
-    {
-      x: [1, 2, 3],
-      y: [2, 3, 4],
-      label: `S1`,
-      color: `#edc948`,
-      bar_width: 0.8,
-      visible: true,
-    },
-    {
-      x: [1, 2, 3],
-      y: [3, 4, 5],
-      label: `S2`,
-      color: `#b07aa1`,
-      bar_width: 0.8,
-      visible: true,
-    },
-  ]
-
   // Mixed positive/negative values for stacked-mode testing
   const stacked_mixed_series: BarSeries[] = [
     {
@@ -86,17 +48,6 @@
       label: `Snegpos`,
       color: `#76b7b2`,
       bar_width: 0.8,
-      visible: true,
-    },
-  ]
-
-  const zero_value_series: BarSeries[] = [
-    {
-      x: [1, 2, 3, 4],
-      y: [0, 5, 0, 10],
-      label: `Zeros`,
-      color: `#9c755f`,
-      bar_width: 0.6,
       visible: true,
     },
   ]
@@ -256,27 +207,6 @@
   ]
   let cat_hover_msg = $state(`Hover over a bar`)
   let cat_click_msg = $state(`Click on a bar`)
-
-  // X2 axis demo — two series with different x scales (e.g. Celsius vs Fahrenheit)
-  const x2_axis_series: BarSeries[] = [
-    {
-      x: [10, 20, 30, 40],
-      y: [5, 12, 8, 15],
-      label: `Celsius`,
-      color: `#2563eb`,
-      bar_width: 3,
-      visible: true,
-    },
-    {
-      x: [50, 68, 86, 104],
-      y: [3, 9, 6, 11],
-      label: `Fahrenheit`,
-      color: `#dc2626`,
-      bar_width: 5,
-      x_axis: `x2`,
-      visible: true,
-    },
-  ]
 </script>
 
 <svelte:head>
@@ -314,37 +244,11 @@
 <section id="modes-bar">
   <h2>Modes and Orientation</h2>
   <BarPlot
-    id="overlay"
-    series={modes_series_overlay}
-    x_axis={{ label: `X` }}
-    y_axis={{ label: `Y` }}
-    mode="overlay"
-    controls_toggle_props={{ class: `bar-controls-toggle` }}
-    style="height: 300px"
-  />
-  <BarPlot
-    id="stacked"
-    series={modes_series_stacked}
-    x_axis={{ label: `X` }}
-    y_axis={{ label: `Y` }}
-    mode="stacked"
-    controls_toggle_props={{ class: `bar-controls-toggle` }}
-    style="height: 300px"
-  />
-  <BarPlot
     id="stacked-mixed"
     series={stacked_mixed_series}
     x_axis={{ label: `X` }}
     y_axis={{ label: `Y` }}
     mode="stacked"
-    controls_toggle_props={{ class: `bar-controls-toggle` }}
-    style="height: 300px"
-  />
-  <BarPlot
-    id="zero-values"
-    series={zero_value_series}
-    x_axis={{ label: `X` }}
-    y_axis={{ label: `Y` }}
     controls_toggle_props={{ class: `bar-controls-toggle` }}
     style="height: 300px"
   />
@@ -362,15 +266,6 @@
     x_axis={{ label: `Y` }}
     y_axis={{ label: `X` }}
     mode="stacked"
-    orientation="horizontal"
-    controls_toggle_props={{ class: `bar-controls-toggle` }}
-    style="height: 300px"
-  />
-  <BarPlot
-    id="horizontal"
-    series={modes_series_overlay}
-    x_axis={{ label: `Y` }}
-    y_axis={{ label: `X` }}
     orientation="horizontal"
     controls_toggle_props={{ class: `bar-controls-toggle` }}
     style="height: 300px"
@@ -446,20 +341,6 @@
     x_axis={{ label: `X` }}
     y_axis={{ label: `Bars` }}
     y2_axis={{ label: `Line` }}
-    controls_toggle_props={{ class: `bar-controls-toggle` }}
-    style="height: 360px"
-  />
-</section>
-
-<section id="x2-axis-bar">
-  <h2>X2 Axis (Dual X-Axes)</h2>
-  <p>Bottom axis shows °C, top axis shows °F — each series mapped to its own x-scale.</p>
-  <BarPlot
-    series={x2_axis_series}
-    x_axis={{ label: `Temperature (°C)` }}
-    x2_axis={{ label: `Temperature (°F)` }}
-    y_axis={{ label: `Count` }}
-    show_legend
     controls_toggle_props={{ class: `bar-controls-toggle` }}
     style="height: 360px"
   />

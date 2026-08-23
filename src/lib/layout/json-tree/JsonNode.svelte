@@ -1,6 +1,6 @@
 <script lang="ts">
   import { build_path } from '$lib/json-path'
-  import { format_bytes } from '$lib/labels'
+  import { format_bytes } from '$lib/utils'
   // oxlint-disable-next-line import/no-self-import -- recursive Svelte component
   import JsonNode from './JsonNode.svelte'
   import JsonValue from './JsonValue.svelte'

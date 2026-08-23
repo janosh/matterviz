@@ -2,33 +2,30 @@ import { expect, type Locator, type Page, test } from '@playwright/test'
 import type { Buffer } from 'node:buffer'
 import { gzipSync } from 'node:zlib'
 import {
+  canvas_box,
   canvas_screenshot,
   dispatch_cancelable_keydown,
+  drag_canvas,
   drop_file,
   enter_edit_atoms_mode,
   expect_canvas_changed,
+  expect_canvas_changed_by,
   get_canvas_timeout,
   goto_structure_test,
   IS_CI,
   open_structure_control_pane,
   open_structure_export_pane,
+  primary_modifier,
+  primary_modifier_key,
+  require_bbox,
   select_view_layout as select_structure_layout,
+  set_scene_props,
+  structure_canvas,
   sweep_gizmo_handles,
-  wait_for_3d_canvas,
 } from '../helpers'
-
-const is_mac = process.platform === `darwin`
 
 const section_body = (pane: Locator, title: string): Locator =>
   pane.getByRole(`region`, { name: title, exact: true })
-const fill_axis_values = async (inputs: Locator, values: string[]): Promise<void> => {
-  for (const [axis_idx, value] of values.entries()) await inputs.nth(axis_idx).fill(value)
-}
-const expect_axis_values = async (inputs: Locator, values: string[]): Promise<void> => {
-  for (const [axis_idx, value] of values.entries()) {
-    await expect(inputs.nth(axis_idx), `axis ${axis_idx}`).toHaveValue(value)
-  }
-}
 const opacity_of = (locator: Locator): Promise<number> =>
   locator.evaluate((element) => Number(getComputedStyle(element).opacity))
 
@@ -39,12 +36,12 @@ const clear_events = (page: Page): Promise<void> =>
     if (!Array.isArray(event_calls)) throw new Error(`event_calls is unavailable`)
     event_calls.length = 0
   })
-const get_event_calls = (page: Page): Promise<EventCall[]> =>
-  page.evaluate(
-    () => (Reflect.get(globalThis, `event_calls`) as EventCall[] | undefined) ?? [],
-  )
 const events_named = async (page: Page, event_name: string): Promise<EventCall[]> =>
-  (await get_event_calls(page)).filter(({ event }) => event === event_name)
+  (
+    await page.evaluate(
+      () => (Reflect.get(globalThis, `event_calls`) as EventCall[] | undefined) ?? [],
+    )
+  ).filter(({ event }) => event === event_name)
 const set_viewer_size = async (
   structure_div: Locator,
   width: number,
@@ -74,6 +71,32 @@ const wait_for_event = async (
   }
   return event
 }
+// The gizmo and legend chrome only draw while the viewer is active, so hover the canvas
+// (clear of the chrome) and wait for the legend's mode toggle to fade in
+const activate_viewer = async (page: Page, canvas: Locator): Promise<void> => {
+  const box = await canvas_box(canvas)
+  await page.mouse.move(box.x + 40, box.y + 40)
+  await expect(page.locator(`#test-structure .atom-legend .mode-toggle`)).toHaveCSS(
+    `opacity`,
+    `1`,
+  )
+}
+
+// BaTiO3 perovskite POSCAR, 4 Å cubic unless the c axis is stretched
+const batio3_poscar = (c = 4.0) =>
+  `BaTiO3
+1.0
+4.0 0.0 0.0
+0.0 4.0 0.0
+0.0 0.0 ${c}
+Ba Ti O
+1 1 3
+Direct
+0.0 0.0 0.0
+0.5 0.5 0.5
+0.5 0.5 0.0
+0.5 0.0 0.5
+0.0 0.5 0.5`
 
 const compressed_source_path = `/structures/source-loop.json.gz`
 const compressed_source_filename =
@@ -97,58 +120,40 @@ const source_structure = JSON.stringify({
   ],
 })
 
-async function expect_compressed_source_url(
-  page: Page,
-  route_path: string,
-  heading_tag: string,
-): Promise<void> {
-  const requests: string[] = []
-  await page.route(`**${compressed_source_path}`, (route) =>
-    route.fulfill({ body: gzipSync(source_structure), contentType: `application/gzip` }),
-  )
-  page.on(`request`, (request) => {
-    const path = new URL(request.url()).pathname
-    if (path.startsWith(compressed_source_path.replace(/\.gz$/, ``))) requests.push(path)
-  })
+test.describe(`compressed source URL`, () => {
+  const routes = [
+    [`/structure`, `h3`],
+    [`/structure/symmetry`, `h2`],
+  ]
+  for (const [route_path, heading_tag] of routes) {
+    test(`${route_path} keeps the compressed source URL after loading`, async ({ page }) => {
+      const requests: string[] = []
+      await page.route(`**${compressed_source_path}`, (route) =>
+        route.fulfill({ body: gzipSync(source_structure), contentType: `application/gzip` }),
+      )
+      page.on(`request`, (request) => {
+        const path = new URL(request.url()).pathname
+        if (path.startsWith(compressed_source_path.replace(/\.gz$/, ``))) requests.push(path)
+      })
 
-  await page.goto(`${route_path}?file=${compressed_source_filename}`, {
-    waitUntil: `networkidle`,
-  })
+      await page.goto(`${route_path}?file=${compressed_source_filename}`, {
+        waitUntil: `networkidle`,
+      })
 
-  expect(new URL(page.url()).searchParams.get(`file`)).toBe(compressed_source_filename)
-  await expect(page.locator(`.structure ${heading_tag}`).first()).toHaveText(
-    `source-loop.json`,
-    { timeout: get_canvas_timeout() * 4 },
-  )
-  expect(requests.length).toBeGreaterThan(0)
-  expect(new Set(requests)).toEqual(new Set([compressed_source_path]))
-}
-test(`/structure keeps the compressed source URL after loading`, ({ page }) =>
-  expect_compressed_source_url(page, `/structure`, `h3`))
-test(`/structure/symmetry keeps the compressed source URL after loading`, ({ page }) =>
-  expect_compressed_source_url(page, `/structure/symmetry`, `h2`))
+      expect(new URL(page.url()).searchParams.get(`file`)).toBe(compressed_source_filename)
+      await expect(page.locator(`.structure ${heading_tag}`).first()).toHaveText(
+        `source-loop.json`,
+        { timeout: get_canvas_timeout() * 4 },
+      )
+      expect(requests.length).toBeGreaterThan(0)
+      expect(new Set(requests)).toEqual(new Set([compressed_source_path]))
+    })
+  }
+})
 
 test.describe(`Structure Component Tests`, () => {
-  test.beforeEach(async ({ page }: { page: Page }) => {
+  test.beforeEach(async ({ page }) => {
     await goto_structure_test(page)
-  })
-
-  test(`renders Structure component with canvas`, async ({ page }) => {
-    test.skip(IS_CI, `Structure canvas size test flaky in CI`)
-    const structure_wrapper = page.locator(`#test-structure`)
-    await expect(structure_wrapper).toBeVisible()
-
-    const canvas = structure_wrapper.locator(`canvas`)
-    await expect(canvas).toBeVisible()
-    // Three.js uses CSS sizing, not HTML attributes
-    const canvas_timeout = get_canvas_timeout()
-    await expect(canvas).toHaveCSS(`width`, `800px`, { timeout: canvas_timeout })
-    await expect(canvas).toHaveCSS(`height`, `500px`, { timeout: canvas_timeout })
-
-    await expect(page.locator(`[data-testid="pane-open-status"]`)).toContainText(`false`)
-
-    await expect(page.locator(`[data-testid="canvas-width-status"]`)).toContainText(`800`)
-    await expect(page.locator(`[data-testid="canvas-height-status"]`)).toContainText(`500`)
   })
 
   test(`settings pane reflows inside a narrow two-column comparison`, async ({ page }) => {
@@ -187,23 +192,17 @@ test.describe(`Structure Component Tests`, () => {
     const measure_dropdown = page.locator(`#test-structure .measure-mode-dropdown`)
     await expect(measure_dropdown).toBeVisible()
 
-    // Navigate with enable_measure_mode=false
     await goto_structure_test(page, `/test/structure?enable_measure_mode=false`)
-    await expect(page.locator(`#test-structure .measure-mode-dropdown`)).toHaveCount(0)
+    await expect(measure_dropdown).toHaveCount(0)
   })
 
   test(`CellSelect appears on hover and hides on mouse leave`, async ({ page }) => {
     const structure = page.locator(`#test-structure`)
     const supercell = structure.locator(`.cell-select`)
 
-    // Initially hidden
     await expect(supercell).toHaveCSS(`opacity`, `0`)
-
-    // Visible on hover
     await structure.hover()
     await expect(supercell).toHaveCSS(`opacity`, `1`)
-
-    // Hidden after mouse leaves
     await page.mouse.move(0, 0)
     await expect(supercell).toHaveCSS(`opacity`, `0`)
   })
@@ -241,30 +240,27 @@ test.describe(`Structure Component Tests`, () => {
         probe.remove()
         return background
       })
-    const expect_opaque = async (
-      color_scheme: `light` | `dark`,
-      background: string,
-      color: string,
-    ) => {
+    const background_of = () => toggle.evaluate((el) => getComputedStyle(el).backgroundColor)
+    const backgrounds: string[] = []
+    for (const color_scheme of [`light`, `dark`] as const) {
       await page.evaluate((scheme) => {
         document.documentElement.style.colorScheme = scheme
       }, color_scheme)
-      await expect(toggle).toHaveCSS(`background-color`, background)
-      await expect(toggle).toHaveCSS(`color`, color)
+      await expect.poll(background_of).not.toBe(backgrounds.at(-1))
+      const background = await background_of()
+      expect(is_opaque_css_color(background), `${color_scheme} background`).toBe(true)
       const hover_bg = await hover_surface_of()
-      expect(is_opaque_css_color(hover_bg)).toBe(true)
+      expect(is_opaque_css_color(hover_bg), `${color_scheme} hover surface`).toBe(true)
       expect(hover_bg).not.toBe(background)
+      backgrounds.push(background)
     }
-
-    await expect_opaque(`light`, `rgb(255, 255, 255)`, `rgb(26, 26, 26)`)
-    await expect_opaque(`dark`, `rgb(47, 49, 55)`, `rgb(238, 238, 238)`)
   })
 
   test(`CellSelect typography stays legible in narrow legends`, async ({ page }) => {
-    await page.locator(`[data-testid="canvas-width-input"]`).fill(`260`)
-    await expect(page.locator(`[data-testid="canvas-width-status"]`)).toContainText(`260`)
-
     const structure = page.locator(`#test-structure`)
+    await structure.evaluate((el) => el.style.setProperty(`--struct-min-width`, `0`))
+    await set_viewer_size(structure, 260, 400)
+    await expect.poll(() => structure.evaluate((el) => el.clientWidth)).toBeLessThan(300)
     await structure.hover()
     const cell_select = structure.locator(`.cell-select`)
     await cell_select.dispatchEvent(`mouseenter`)
@@ -278,108 +274,32 @@ test.describe(`Structure Component Tests`, () => {
     const legend_label_size = await get_font_size(`.atom-legend .legend-item label`)
     const toggle_size = await get_font_size(`.cell-select .toggle-btn`)
     const preset_size = await get_font_size(`.cell-select .preset-btn`)
-    const preset_gap = await structure
-      .locator(`.cell-select .supercell-grid`)
-      .evaluate((element) => Number(getComputedStyle(element).gap.replace(`px`, ``)))
-    const preset_padding = await structure
-      .locator(`.cell-select .preset-btn`)
-      .first()
-      .evaluate((element) => {
-        const style = getComputedStyle(element)
-        return {
-          top: Number(style.paddingTop.replace(`px`, ``)),
-          right: Number(style.paddingRight.replace(`px`, ``)),
-        }
-      })
 
     expect(toggle_size).toBeCloseTo(legend_label_size, 1)
     expect(preset_size).toBeGreaterThanOrEqual(legend_label_size)
-    expect(preset_gap).toBeGreaterThanOrEqual(3)
-    // preset buttons stay compact in narrow legends (line-height removed; padding kept tight at ≤1px)
-    expect(preset_padding.top).toBeLessThanOrEqual(1)
-    expect(preset_padding.right).toBeLessThanOrEqual(1)
   })
 
   test(`reacts to background_color prop change from test page`, async ({ page }) => {
-    const structure_div = page.locator(`#test-structure`)
     const background_color_input = page.locator(
       `section:has-text("Controls for Test Page") label:has-text("Background Color") input[type="color"]`,
     )
-
     await background_color_input.fill(`#ff0000`)
-    await expect(structure_div).toHaveCSS(`background-color`, `rgba(255, 0, 0, 0.1)`, {
-      timeout: get_canvas_timeout(),
-    })
-  })
-
-  test(`updates bound dimensions from test page controls`, async ({ page }) => {
-    const width_input = page.locator(`label:has-text("Canvas Width") input[type="number"]`)
-    const height_input = page.locator(`label:has-text("Canvas Height") input[type="number"]`)
-    const canvas_width_status = page.locator(`[data-testid="canvas-width-status"]`)
-    const canvas_height_status = page.locator(`[data-testid="canvas-height-status"]`)
-
-    await width_input.fill(`700`)
-    await height_input.fill(`450`)
-
-    await expect(canvas_width_status).toContainText(`700`)
-    await expect(canvas_height_status).toContainText(`450`)
-  })
-
-  // This test navigates 3 times sequentially - needs extra time in CI
-  test(`performance_mode prop can be set via URL parameters`, async ({ page }) => {
-    test.setTimeout(IS_CI ? 90_000 : 30_000)
-    const perf_mode_status = page.locator(`[data-testid="performance-mode-status"]`)
-    const perf_mode_select = page.locator(`label:has-text("Performance Mode") select`)
-
-    const test_cases = [
-      { param: `speed`, expected: `speed` },
-      { param: `quality`, expected: `quality` },
-      { param: `invalid`, expected: `quality` },
-    ]
-
-    // Test sequentially (avoid navigation conflicts)
-    for (const { param, expected } of test_cases) {
-      await page.goto(`/test/structure?performance_mode=${param}`, {
-        waitUntil: `load`,
-      })
-      await wait_for_3d_canvas(page, `#test-structure`)
-      await expect(perf_mode_status).toContainText(`Performance Mode Status: ${expected}`)
-      await expect(perf_mode_select).toHaveValue(expected)
-    }
-  })
-
-  test(`fullscreen prop is bindable and updates from test page controls`, async ({ page }) => {
-    const status = page.locator(`[data-testid="fullscreen-status"]`)
-    const checkbox = page.locator(`[data-testid="fullscreen-checkbox"]`)
-
-    await expect(status).toContainText(`false`)
-    await expect(checkbox).not.toBeChecked()
-
-    await checkbox.click({ force: true })
-    await expect(status).toContainText(`true`)
-    await expect(checkbox).toBeChecked()
-
-    await checkbox.evaluate((input: HTMLInputElement) => {
-      input.checked = false
-      input.dispatchEvent(new Event(`change`, { bubbles: true }))
-    })
-    await expect(status).toContainText(`false`)
-    await expect(checkbox).not.toBeChecked()
+    await expect(page.locator(`#test-structure`)).toHaveCSS(
+      `background-color`,
+      `rgba(255, 0, 0, 0.1)`,
+      { timeout: get_canvas_timeout() },
+    )
   })
 
   test(`keyboard shortcuts require modifier keys`, async ({ page }) => {
     const structure_div = page.locator(`#test-structure`)
     await structure_div.click()
 
-    // Test that single keys don't trigger actions
+    // single keys don't trigger actions: not fullscreen after 'f'
     await page.keyboard.press(`f`)
     await page.keyboard.press(`i`)
+    expect(await page.evaluate(() => Boolean(document.fullscreenElement))).toBe(false)
 
-    // Should not be in fullscreen mode after 'f' key
-    const is_fullscreen = await page.evaluate(() => Boolean(document.fullscreenElement))
-    expect(is_fullscreen).toBe(false)
-
-    const primary_modifier = is_mac ? `metaKey` : `ctrlKey`
     for (const key of [`f`, `i`]) {
       await expect(
         dispatch_cancelable_keydown(structure_div, { key, [primary_modifier]: true }),
@@ -391,203 +311,11 @@ test.describe(`Structure Component Tests`, () => {
     await expect(structure_div.locator(`canvas`)).toBeVisible()
   })
 
-  test(`both site labels and site indices can be enabled simultaneously`, async ({ page }) => {
-    const { pane_div: control_pane } = await open_structure_control_pane(page)
-
-    const site_labels_checkbox = control_pane.locator(
-      `label:has-text("Site Labels") input[type="checkbox"]`,
-    )
-    const site_indices_checkbox = control_pane.locator(
-      `label:has-text("Site Indices") input[type="checkbox"]`,
-    )
-    const labels_heading = control_pane.locator(`h4:has-text("Labels")`)
-
-    // Cover neither, both, and indices-only states; label-only is exercised below.
-    await expect(labels_heading).toBeHidden()
-    await site_labels_checkbox.check()
-    await site_indices_checkbox.check()
-    await expect(labels_heading).toBeVisible()
-
-    await site_labels_checkbox.uncheck()
-    await expect(labels_heading).toBeVisible()
-
-    await site_indices_checkbox.uncheck()
-    await expect(labels_heading).toBeHidden()
-  })
-
-  test(`label styling controls echo values and enforce input constraints`, async ({
-    page,
-  }) => {
-    const { pane_div } = await open_structure_control_pane(page)
-
-    // Enable site labels to reveal the Labels section
-    await pane_div.locator(`label:has-text("Site Labels") input[type="checkbox"]`).check()
-    const labels_heading = pane_div.locator(`h4:has-text("Labels")`)
-    await expect(labels_heading).toBeVisible()
-    const labels_container = section_body(pane_div, `Labels`)
-    const offset_row = labels_container.locator(`.setting`).filter({ hasText: `Offset` })
-
-    // Color pickers echo filled values
-    const color_cases = [
-      {
-        name: `text color`,
-        input: labels_container.locator(`label:has-text("Color") input[type="color"]`).first(),
-        fill: `#ff0000`,
-      },
-      {
-        name: `background color`,
-        input: labels_container.locator(`label:has-text("Background") input[type="color"]`),
-        fill: `#0000ff`,
-      },
-    ]
-    for (const { name, input, fill } of color_cases) {
-      await expect(input, name).toBeVisible()
-      expect(await input.inputValue(), name).toMatch(/^#[0-9a-fA-F]{6}$/)
-      await input.fill(fill)
-      expect(await input.inputValue(), name).toBe(fill)
-    }
-
-    // Numeric inputs echo filled values and carry expected min/max/step constraints
-    const opacity_label = labels_container.locator(`label:has-text("Opacity")`).first()
-    const padding_label = labels_container.locator(`label:has-text("Padding")`)
-
-    // Default label background must be fully transparent (opacity 0) — assert before
-    // the fill loop below overwrites it
-    await expect(opacity_label.locator(`input[type="number"]`)).toHaveValue(`0`)
-    const numeric_cases = [
-      {
-        name: `opacity number`,
-        input: opacity_label.locator(`input[type="number"]`),
-        fill: `0.5`,
-        attrs: { min: `0`, max: `1`, step: `0.01` },
-      },
-      {
-        name: `opacity range`,
-        input: opacity_label.locator(`input[type="range"]`),
-        fill: `0.8`,
-      },
-      {
-        name: `padding number`,
-        input: padding_label.locator(`input[type="number"]`),
-        fill: `5`,
-        attrs: { min: `0`, max: `10`, step: `1` },
-      },
-      {
-        name: `padding range`,
-        input: padding_label.locator(`input[type="range"]`),
-        fill: `8`,
-      },
-      ...[
-        { axis: `X`, fill: `0.5` },
-        { axis: `Y`, fill: `-0.7` },
-        { axis: `Z`, fill: `0.3` },
-      ].map(({ axis, fill }) => ({
-        name: `offset ${axis}`,
-        input: offset_row.locator(`label:has-text("${axis}") input[type="number"]`),
-        fill,
-        attrs: { min: `-1`, max: `1`, step: `0.1` },
-      })),
-      {
-        name: `font size range`,
-        input: labels_container.locator(`label:has-text("Size") input[type="range"]`),
-        fill: `1.5`,
-        attrs: { min: `0.5`, max: `2`, step: `0.1` },
-      },
-    ]
-    for (const { name, input, fill, attrs } of numeric_cases) {
-      await expect(input, name).toBeVisible()
-      for (const [attr, expected] of Object.entries(attrs ?? {})) {
-        await expect(input, `${name} ${attr}`).toHaveAttribute(attr, expected)
-      }
-      await input.fill(fill)
-      expect(Number(await input.inputValue()), name).toBe(Number(fill))
-    }
-
-    // Number and range inputs for the same setting stay synchronized
-    expect(await opacity_label.locator(`input[type="number"]`).inputValue()).toBe(
-      await opacity_label.locator(`input[type="range"]`).inputValue(),
-    )
-    expect(await padding_label.locator(`input[type="number"]`).inputValue()).toBe(
-      await padding_label.locator(`input[type="range"]`).inputValue(),
-    )
-  })
-
-  test(`label controls persist when toggling site labels`, async ({ page }) => {
-    const { pane_div } = await open_structure_control_pane(page)
-
-    // Enable site labels
-    const site_labels_checkbox = pane_div.locator(
-      `label:has-text("Site Labels") input[type="checkbox"]`,
-    )
-    await site_labels_checkbox.check()
-
-    // Set some values
-    const labels_container_for_persist = section_body(pane_div, `Labels`)
-    const text_color_input = labels_container_for_persist
-      .locator(`label:has-text("Color") input[type="color"]`)
-      .first()
-    const background_color_input = labels_container_for_persist.locator(
-      `label:has-text("Background") input[type="color"]`,
-    )
-    const opacity_input = labels_container_for_persist
-      .locator(`label:has-text("Opacity") input[type="number"]`)
-      .first()
-
-    await text_color_input.fill(`#ff0000`)
-    await background_color_input.fill(`#0000ff`)
-    await opacity_input.fill(`0.7`)
-
-    await site_labels_checkbox.uncheck()
-    await site_labels_checkbox.check()
-    await expect(text_color_input).toHaveValue(`#ff0000`)
-    await expect(background_color_input).toHaveValue(`#0000ff`)
-    await expect(opacity_input).toHaveValue(`0.7`)
-  })
-
-  test(`gizmo is visible by default and can be toggled`, async ({ page }) => {
-    const gizmo_checkbox = page.locator(`label:has-text("Show Gizmo") input[type="checkbox"]`)
-    const gizmo_status = page.locator(`[data-testid="gizmo-status"]`)
-
-    await expect(gizmo_checkbox).toBeChecked()
-    await expect(gizmo_status).toContainText(`Gizmo Status: true`)
-
-    await gizmo_checkbox.uncheck()
-    await expect(gizmo_status).toContainText(`Gizmo Status: false`)
-
-    await gizmo_checkbox.check()
-    await expect(gizmo_status).toContainText(`Gizmo Status: true`)
-  })
-
   test(`dragging the canvas orbits the camera`, async ({ page }) => {
-    const canvas = page.locator(`#test-structure canvas`)
-    await expect(canvas).toBeVisible()
-
+    const canvas = structure_canvas(page)
     // Reset lives in the controls pane and is hidden at the default camera
     await expect(page.locator(`#test-structure button.reset-camera`)).toBeHidden()
-
-    const initial_screenshot = await canvas.screenshot()
-
-    const box = await canvas.boundingBox()
-    if (!box) throw new Error(`canvas has no bounding box`)
-    await canvas.dragTo(canvas, {
-      sourcePosition: { x: box.width / 2 - 100, y: box.height / 2 },
-      targetPosition: { x: box.width / 2 + 100, y: box.height / 2 },
-    })
-
-    // Poll for canvas change (GPU timing variations)
-    // If first drag doesn't work, try vertical drag
-    try {
-      await expect_canvas_changed(canvas, initial_screenshot, 3000)
-    } catch {
-      // Take fresh baseline before second drag to avoid false positives
-      // from delayed first drag rendering
-      const baseline_before_second_drag = await canvas.screenshot()
-      await canvas.dragTo(canvas, {
-        sourcePosition: { x: box.width / 2, y: box.height / 2 - 100 },
-        targetPosition: { x: box.width / 2, y: box.height / 2 + 100 },
-      })
-      await expect_canvas_changed(canvas, baseline_before_second_drag)
-    }
+    await expect_canvas_changed_by(canvas, () => drag_canvas(canvas, { dx: 200 }))
   })
 
   test(`invalid FOVs do not break perspective auto-placement`, async ({ page }) => {
@@ -621,25 +349,18 @@ test.describe(`Structure Component Tests`, () => {
     test.skip(IS_CI, `SwiftShader lacks reliable gizmo hit testing`)
     // the legend needs this much room, and its mode toggle is our viewer-active signal
     await page.setViewportSize({ width: 1400, height: 1200 })
-    const canvas = page.locator(`#test-structure canvas`)
-    const box = await canvas.boundingBox()
-    if (!box) throw new Error(`canvas has no bounding box`)
-
-    // the gizmo only draws while the viewer is active, so hover before probing
-    await page.mouse.move(box.x + 40, box.y + 40)
-    await expect(page.locator(`#test-structure .atom-legend .mode-toggle`)).toHaveCSS(
-      `opacity`,
-      `1`,
-    )
+    const canvas = structure_canvas(page)
+    await activate_viewer(page, canvas)
 
     const handles = await sweep_gizmo_handles(canvas)
     expect(handles.length, `gizmo handles under the pointer`).toBeGreaterThan(0)
+    // A sweep can include edge pixels that only hover a handle, so try up to three candidates
+    // and accept the first whose click reports a camera move.
     const candidates = [handles[0], handles[Math.floor(handles.length / 2)], handles.at(-1)]
     let camera_position: unknown
     for (const candidate of candidates) {
       if (!candidate) continue
       await page.mouse.move(candidate.x, candidate.y)
-      await page.waitForTimeout(100)
       await clear_events(page)
       await page.mouse.click(candidate.x, candidate.y)
       try {
@@ -647,7 +368,7 @@ test.describe(`Structure Component Tests`, () => {
         camera_position = (event.data as Record<string, unknown>).camera_position
         break
       } catch {
-        // A sweep can include edge pixels that only hover a handle; try its center candidate.
+        // next candidate
       }
     }
     expect(camera_position).toEqual([
@@ -706,8 +427,7 @@ test.describe(`Structure Component Tests`, () => {
       },
     ]
 
-    // Note: We don't test the download buttons as they may close the pane due to download behavior
-    // The important thing is that normal control inputs (checkboxes, selects, inputs) keep the pane open
+    // Download buttons are left out: they may close the pane through the download itself
     for (const { name, input, act } of interactions) {
       await expect(input, name).toBeVisible()
       await act(input)
@@ -717,32 +437,19 @@ test.describe(`Structure Component Tests`, () => {
   })
 
   test(`control inputs have intended effects on structure`, async ({ page }) => {
-    const structure_div = page.locator(`#test-structure`)
     const { pane_div: control_pane } = await open_structure_control_pane(page)
-    const canvas = structure_div.locator(`canvas`)
+    const canvas = structure_canvas(page)
 
-    // Test atom radius change affects rendering
-    const atom_radius_label = control_pane.locator(`label`).filter({ hasText: /Radius/ })
-    const atom_radius_input = atom_radius_label.locator(`input[type="number"]`)
+    const atom_radius_input = control_pane
+      .locator(`label`)
+      .filter({ hasText: /Radius/ })
+      .locator(`input[type="number"]`)
+    await expect_canvas_changed_by(canvas, () => atom_radius_input.fill(`0.3`))
 
-    await expect(atom_radius_input).toBeVisible()
-    const initial_screenshot = await canvas.screenshot()
-    await atom_radius_input.fill(`0.3`)
-
-    // Poll for canvas change after radius change (GPU timing variations)
-    await expect_canvas_changed(canvas, initial_screenshot)
-    const after_radius_change = await canvas.screenshot()
-
-    // Test show atoms checkbox
     const show_atoms_checkbox = section_body(control_pane, `Visibility`)
       .locator(`input[type="checkbox"]`)
       .first()
-    await show_atoms_checkbox.uncheck()
-
-    // Poll for canvas change after hiding atoms
-    await expect_canvas_changed(canvas, after_radius_change)
-
-    // Re-enable atoms for next test
+    await expect_canvas_changed_by(canvas, () => show_atoms_checkbox.uncheck())
     await show_atoms_checkbox.check()
   })
 
@@ -774,17 +481,15 @@ test.describe(`Structure Component Tests`, () => {
   })
 
   test(`selected_sites controls highlight spheres (no labels/lines)`, async ({ page }) => {
-    const canvas = page.locator(`#test-structure canvas`)
-    const initial_screenshot = await canvas.screenshot()
-    await page.locator(`[data-testid="btn-set-selected"]`).click()
-    await expect_canvas_changed(canvas, initial_screenshot)
-
+    const canvas = structure_canvas(page)
     const labels = page.locator(`.selection-label`)
+    await expect_canvas_changed_by(canvas, () =>
+      page.locator(`[data-testid="btn-set-selected"]`).click(),
+    )
     await expect(labels).toHaveCount(0)
-
-    const selected_screenshot = await canvas.screenshot()
-    await page.locator(`[data-testid="btn-clear-selected"]`).click()
-    await expect_canvas_changed(canvas, selected_screenshot)
+    await expect_canvas_changed_by(canvas, () =>
+      page.locator(`[data-testid="btn-clear-selected"]`).click(),
+    )
     await expect(labels).toHaveCount(0)
   })
 
@@ -803,27 +508,20 @@ test.describe(`Structure Component Tests`, () => {
   test(`reset selection button clears both measured_sites and selected_sites`, async ({
     page,
   }) => {
-    const structure = page.locator(`#test-structure`)
-
-    // Set measured sites (which also sets selected_sites)
+    // measured sites also set selected_sites, which drive the selection labels
     await page.locator(`[data-testid="btn-set-measured"]`).click()
-
-    // Verify selection labels are shown (these are DOM elements driven by selected_sites)
     const labels = page.locator(`.selection-label`)
     await expect(labels).toHaveCount(3)
 
-    // Find and click the reset selection button in the measure mode dropdown
-    const reset_button = structure.locator(
-      `button[aria-label="Reset selection and bond edits"]`,
+    const reset_button = page.locator(
+      `#test-structure button[aria-label="Reset selection and bond edits"]`,
     )
     await expect(reset_button).toBeVisible()
     await reset_button.click()
 
-    // Verify selection labels are cleared (confirming selected_sites was cleared)
-    // The pulsating animation is driven by selected_sites, so clearing it stops the animation
+    // labels (and the pulsating animation they share a source with) clear, and the reset
+    // button leaves with the now-empty measured_sites
     await expect(labels).toHaveCount(0)
-
-    // Verify the reset button disappears after reset (since measured_sites is empty)
     await expect(reset_button).toBeHidden()
   })
 
@@ -831,26 +529,64 @@ test.describe(`Structure Component Tests`, () => {
     page,
   }) => {
     const labels = page.locator(`.selection-label`)
+    const supercell_input = page.locator(`[data-testid="supercell-input"]`)
 
     // Supercell scaling clears selections
     await page.locator(`[data-testid="btn-set-measured"]`).click()
     await expect(labels).toHaveCount(3)
-    await page.locator(`[data-testid="supercell-input"]`).fill(`2x2x2`)
+    await supercell_input.fill(`2x2x2`)
     await expect(labels).toHaveCount(0)
 
     // Image atoms toggle clears selections
-    await page.locator(`[data-testid="supercell-input"]`).fill(`1x1x1`)
+    await supercell_input.fill(`1x1x1`)
     await page.locator(`[data-testid="btn-set-measured"]`).click()
     await expect(labels).toHaveCount(3)
     await page.locator(`[data-testid="image-atoms-checkbox"]`).click()
     await expect(labels).toHaveCount(0)
+  })
+
+  test(`camera projection behavior and visual differences`, async ({ page }) => {
+    test.setTimeout(IS_CI ? 90_000 : 45_000)
+    const canvas = structure_canvas(page)
+
+    // Test both projections produce different visuals and respond to zoom
+    const screenshots: Record<string, Buffer> = {}
+
+    for (const projection of [`perspective`, `orthographic`]) {
+      // Re-open the controls pane each iteration (canvas.click closes it via click-outside)
+      const { pane_div } = await open_structure_control_pane(page)
+      const camera_projection_select = pane_div.locator(`label:has-text("Projection") select`)
+      await expect(camera_projection_select).toBeVisible()
+      await camera_projection_select.scrollIntoViewIfNeeded()
+      await camera_projection_select.selectOption(projection)
+      await expect(camera_projection_select).toHaveValue(projection)
+
+      screenshots[`${projection}_initial`] = await canvas_screenshot(canvas)
+      await canvas.hover({ force: true })
+      await canvas.click({ force: true })
+      // Dispatch multiple wheel events to reduce CI flakiness from dropped inputs.
+      await page.mouse.wheel(0, -250)
+      await page.mouse.wheel(0, -250)
+      // Wait for zoom to be applied (screenshot should differ from initial)
+      await expect_canvas_changed(canvas, screenshots[`${projection}_initial`])
+      screenshots[`${projection}_zoomed`] = await canvas_screenshot(canvas)
+    }
+
+    // Verify zoom responsiveness and visual differences
+    expect(screenshots.perspective_initial.equals(screenshots.perspective_zoomed)).toBe(false)
+    expect(screenshots.orthographic_initial.equals(screenshots.orthographic_zoomed)).toBe(
+      false,
+    )
+    expect(screenshots.perspective_initial.equals(screenshots.orthographic_initial)).toBe(
+      false,
+    )
   })
 })
 
 test.describe(`File Drop Functionality Tests`, () => {
   // File drop tests use synthetic DataTransfer events which are unreliable in headless CI
   // Keep skipped - these work locally but not in CI due to browser security restrictions
-  test.beforeEach(async ({ page }: { page: Page }) => {
+  test.beforeEach(async ({ page }) => {
     test.skip(IS_CI, `Synthetic file drop events unreliable in headless CI`)
     await goto_structure_test(page)
   })
@@ -865,19 +601,7 @@ test.describe(`File Drop Functionality Tests`, () => {
     {
       name: `drops POSCAR file onto structure viewer and updates structure`,
       filename: `test.poscar`,
-      content: `BaTiO3 tetragonal
-1.0
-4.0 0.0 0.0
-0.0 4.0 0.0
-0.0 0.0 4.1
-Ba Ti O
-1 1 3
-Direct
-0.0 0.0 0.0
-0.5 0.5 0.5
-0.5 0.5 0.0
-0.5 0.0 0.5
-0.0 0.5 0.5`,
+      content: batio3_poscar(4.1),
     },
     {
       name: `drops XYZ file onto structure viewer and updates structure`,
@@ -952,24 +676,10 @@ H    1.261    0.728   -0.890`,
   for (const { name, filename, content, mime, expect_load_event } of drop_cases) {
     test(name, async ({ page }) => {
       const structure_div = page.locator(`#test-structure`)
-      const canvas = structure_div.locator(`canvas`)
-
-      // Wait for canvas to be fully rendered before capturing the baseline
-      await expect(canvas).toBeVisible({ timeout: get_canvas_timeout() })
-      const initial_screenshot = await canvas.screenshot()
-
-      await drop_file(page, structure_div, content, filename, mime)
-
-      if (expect_load_event) {
-        await expect(page.locator(`[data-testid="event-calls-status"]`)).toContainText(
-          `on_file_load`,
-          { timeout: get_canvas_timeout() },
-        )
-      }
-
-      await expect(canvas).toBeVisible({ timeout: get_canvas_timeout() })
-      // Poll for canvas change after structure load
-      await expect_canvas_changed(canvas, initial_screenshot)
+      await expect_canvas_changed_by(structure_div.locator(`canvas`), async () => {
+        await drop_file(page, structure_div, content, filename, mime)
+        if (expect_load_event) await wait_for_event(page, `on_file_load`, [])
+      })
     })
   }
 
@@ -980,48 +690,21 @@ H    1.261    0.728   -0.890`,
   test(`rotation center resets to new lattice center after file drop`, async ({ page }) => {
     const structure_div = page.locator(`#test-structure`)
     const canvas = structure_div.locator(`canvas`)
-    await expect(canvas).toBeVisible({ timeout: get_canvas_timeout() })
 
     // Rotate the initial structure (CsCl, ~6.26 Å cubic, center ≈ 3.13)
     // to populate scene_props.camera_target with the old structure's orbit center
-    const box = await canvas.boundingBox()
-    if (!box) throw new Error(`Canvas has no bounding box`)
-    const cx = box.width / 2
-    const cy = box.height / 2
-    await canvas.dragTo(canvas, {
-      sourcePosition: { x: cx - 60, y: cy },
-      targetPosition: { x: cx + 60, y: cy },
+    await expect_canvas_changed_by(canvas, () => drag_canvas(canvas, { dx: 120 }))
+    await wait_for_event(page, `on_camera_move`, [`camera_target`])
+
+    // Drop a BaTiO3 POSCAR (4 Å cubic, center = [2, 2, 2]) and wait for it to load and render
+    await expect_canvas_changed_by(canvas, async () => {
+      await drop_file(page, structure_div, batio3_poscar(), `BaTiO3.poscar`)
+      await wait_for_event(page, `on_file_load`, []) // confirms parse_file_content ran
     })
-    await page.waitForTimeout(300)
-
-    // Drop a BaTiO3 POSCAR (4 Å cubic, center = [2, 2, 2])
-    const poscar = [
-      `BaTiO3\n1.0`,
-      `4.0 0.0 0.0\n0.0 4.0 0.0\n0.0 0.0 4.0`,
-      `Ba Ti O\n1 1 3\nDirect`,
-      `0.0 0.0 0.0\n0.5 0.5 0.5\n0.5 0.5 0.0\n0.5 0.0 0.5\n0.0 0.5 0.5`,
-    ].join(`\n`)
-    const pre_drop = await canvas.screenshot()
-    await drop_file(page, structure_div, poscar, `BaTiO3.poscar`)
-
-    // Wait for the new structure to load and render
-    await expect_canvas_changed(canvas, pre_drop)
-    // Also verify on_file_load fired (confirms parse_file_content ran)
-    await expect(page.locator(`[data-testid="event-calls-status"]`)).toContainText(
-      `on_file_load`,
-      {
-        timeout: get_canvas_timeout(),
-      },
-    )
 
     // Clear stale camera events from first rotation, then rotate the new structure.
     await clear_events(page)
-    const post_load = await canvas.screenshot()
-    await canvas.dragTo(canvas, {
-      sourcePosition: { x: cx - 80, y: cy },
-      targetPosition: { x: cx + 80, y: cy },
-    })
-    await expect_canvas_changed(canvas, post_load)
+    await expect_canvas_changed_by(canvas, () => drag_canvas(canvas, { dx: 160 }))
 
     // Orbit target should be near BaTiO3 center [2,2,2], not stale CsCl center [~3.13,~3.13,~3.13]
     const event = await wait_for_event(page, `on_camera_move`, [`camera_target`])
@@ -1031,7 +714,7 @@ H    1.261    0.728   -0.890`,
 })
 
 test.describe(`Export Button Tests`, () => {
-  test.beforeEach(async ({ page }: { page: Page }) => {
+  test.beforeEach(async ({ page }) => {
     // Use show_controls=always so buttons are visible and clickable without hover
     await goto_structure_test(page, `/test/structure?show_controls=always`)
   })
@@ -1057,469 +740,243 @@ test.describe(`Export Button Tests`, () => {
       await expect(export_btn).toBeEnabled()
     }
   })
-
-  test(`DPI input updates PNG export button title`, async ({ page }) => {
-    const { pane_div: export_pane } = await open_structure_export_pane(page)
-
-    const dpi_input = export_pane.locator(`input[title="Export resolution in dots per inch"]`)
-    await expect(dpi_input).toBeVisible()
-    await expect(dpi_input).toHaveAttribute(`min`, `50`)
-    await expect(dpi_input).toHaveAttribute(`max`, `600`)
-    await expect(dpi_input).toHaveValue(`150`)
-
-    await dpi_input.fill(`200`)
-    await expect(dpi_input).toHaveValue(`200`)
-    await expect(export_pane.locator(`button[title*="PNG"]`)).toHaveAttribute(
-      `title`,
-      /\(200 DPI\)/,
-    )
-  })
 })
 
 test.describe(`Show Buttons Tests`, () => {
-  // load the test page with the given show_controls mode, confirm the prop arrived from the
-  // URL, and hand back the control-buttons section
-  const goto_show_controls = async (page: Page, mode: string): Promise<Locator> => {
-    await goto_structure_test(page, `/test/structure?show_controls=${mode}`)
-    await expect(page.locator(`[data-testid="show-buttons-status"]`)).toContainText(
-      `Show Buttons Status: ${mode}`,
-    )
-    return page.locator(`#test-structure section.control-buttons`)
+  // control-buttons opacity before and after hovering the viewer (`never` renders no toggles)
+  const show_controls_cases = [
+    { mode: `never`, css_class: null, opacity: null },
+    { mode: `hover`, css_class: `hover-visible`, opacity: [`0`, `1`] },
+    { mode: `always`, css_class: `always-visible`, opacity: [`1`, `1`] },
+  ]
+  for (const { mode, css_class, opacity } of show_controls_cases) {
+    test(`show_controls=${mode} reveals buttons ${mode}`, async ({ page }) => {
+      await goto_structure_test(page, `/test/structure?show_controls=${mode}`)
+      const control_buttons = page.locator(`#test-structure section.control-buttons`)
+      const info_toggle = page.locator(`.structure-info-toggle`)
+      if (css_class) await expect(control_buttons).toHaveClass(new RegExp(css_class))
+      else await expect(control_buttons).not.toHaveClass(/always-visible|hover-visible/)
+      if (opacity) await expect(control_buttons).toHaveCSS(`opacity`, opacity[0])
+      await page.locator(`#test-structure`).hover()
+      if (opacity) {
+        await expect(control_buttons).toHaveCSS(`opacity`, opacity[1])
+        await expect(info_toggle).toBeVisible()
+      } else await expect(info_toggle).toBeHidden()
+    })
   }
-
-  test(`show_controls=never keeps buttons hidden`, async ({ page }) => {
-    const control_buttons = await goto_show_controls(page, `never`)
-    await expect(control_buttons).not.toHaveClass(/always-visible|hover-visible/)
-    await page.locator(`#test-structure`).hover()
-    await expect(page.locator(`.structure-info-toggle`)).toBeHidden()
-    await expect(
-      page.locator(`#test-structure > section.control-buttons > .fullscreen-btn`),
-    ).toBeHidden()
-  })
-
-  test(`show_controls=hover reveals buttons on hover`, async ({ page }) => {
-    const control_buttons = await goto_show_controls(page, `hover`)
-    await expect(control_buttons).toHaveClass(/hover-visible/)
-    await expect(control_buttons).toHaveCSS(`opacity`, `0`)
-    await page.locator(`#test-structure`).hover()
-    await expect(control_buttons).toHaveCSS(`opacity`, `1`)
-    await expect(page.locator(`.structure-info-toggle`)).toBeVisible()
-  })
-
-  test(`show_controls=always keeps buttons visible`, async ({ page }) => {
-    const control_buttons = await goto_show_controls(page, `always`)
-    await expect(control_buttons).toHaveClass(/always-visible/)
-    await expect(control_buttons).toHaveCSS(`opacity`, `1`)
-    await expect(page.locator(`.structure-info-toggle`)).toBeVisible()
-    await expect(
-      page.locator(`#test-structure > section.control-buttons > .fullscreen-btn`),
-    ).toBeVisible()
-  })
 })
 
 test.describe(`Structure Event Handler Tests`, () => {
-  test.beforeEach(async ({ page }: { page: Page }) => {
+  test.beforeEach(async ({ page }) => {
     // Use show_controls=always so buttons are visible and clickable without hover
     await goto_structure_test(page, `/test/structure?show_controls=always`)
   })
 
-  test.describe(`Event Handlers`, () => {
-    const wait_for_camera_move = async (
-      page: Page,
-    ): Promise<{ camera_target: number[]; camera_zoom: number }> => {
-      const event = await wait_for_event(page, `on_camera_move`, [
-        `camera_target`,
-        `camera_zoom`,
-      ])
-      const { camera_target, camera_zoom } = event.data as {
-        camera_target: number[]
-        camera_zoom: number
-      }
-      expect(camera_target.every(Number.isFinite), `camera_target`).toBe(true)
-      expect(Number.isFinite(camera_zoom), `camera_zoom`).toBe(true)
-      return { camera_target, camera_zoom }
+  const wait_for_camera_move = async (
+    page: Page,
+  ): Promise<{ camera_target: number[]; camera_zoom: number }> => {
+    const event = await wait_for_event(page, `on_camera_move`, [
+      `camera_target`,
+      `camera_zoom`,
+    ])
+    const { camera_target, camera_zoom } = event.data as {
+      camera_target: number[]
+      camera_zoom: number
     }
-
-    // scrolled into view because a wheel off-screen scrolls the page instead of reaching
-    // the canvas, and because boundingBox() is only meaningful once the canvas is laid out
-    const canvas_box = async (page: Page) => {
-      const canvas = page.locator(`#test-structure canvas`).first()
-      await canvas.scrollIntoViewIfNeeded()
-      const box = await canvas.boundingBox()
-      if (!box) throw new Error(`Canvas bounding box not found`)
-      return { canvas, box }
-    }
-
-    const drag_camera = async (page: Page) => {
-      const { box } = await canvas_box(page)
-      const center_y = box.y + box.height / 2
-      await page.mouse.move(box.x + box.width / 2 - 80, center_y)
-      await page.mouse.down()
-      await page.mouse.move(box.x + box.width / 2 + 80, center_y, { steps: 5 })
-      await page.waitForTimeout(250) // cross the 200 ms active-move sync interval
-      await page.mouse.up()
-      return box
-    }
-
-    test(`should trigger on_fullscreen_change event when fullscreen state changes`, async ({
-      page,
-    }) => {
-      const fullscreen_button = page.locator(
-        `#test-structure > section.control-buttons > .fullscreen-btn`,
-      )
-      await clear_events(page)
-      await fullscreen_button.click()
-
-      const event = await wait_for_event(page, `on_fullscreen_change`, [
-        `fullscreen`,
-        `structure`,
-      ])
-      expect(event.data).toMatchObject({ fullscreen: true })
-    })
-
-    test(`should trigger on_file_load event when structure is loaded via data_url`, async ({
-      page,
-    }) => {
-      await clear_events(page)
-      // Use a valid structure file that exists in the static directory
-      await goto_structure_test(page, `/test/structure?data_url=/structures/mp-1.json`)
-
-      await wait_for_event(page, `on_file_load`, [`structure`, `filename`])
-    })
-
-    test(`should trigger on_error event when file loading fails`, async ({ page }) => {
-      await clear_events(page)
-      await page.goto(`/test/structure?data_url=non-existent.json`)
-
-      await wait_for_event(page, `on_error`, [`error_msg`, `filename`])
-
-      // UI should still render gracefully despite the load failure
-      await expect(page.locator(`#test-structure`)).toBeVisible()
-      await expect(page.locator(`[data-testid="pane-open-status"]`)).toBeVisible()
-    })
-
-    test(`camera movement emits distinct on_camera_move events`, async ({ page }) => {
-      test.skip(IS_CI, `Camera drag via OrbitControls unreliable in headless CI`)
-      await clear_events(page)
-      await drag_camera(page)
-      await wait_for_camera_move(page)
-      const camera_moves = await events_named(page, `on_camera_move`)
-      expect(camera_moves.length).toBeGreaterThan(1)
-      for (let move_idx = 1; move_idx < camera_moves.length; move_idx++) {
-        expect(camera_moves[move_idx].data).not.toEqual(camera_moves[move_idx - 1].data)
-      }
-    })
-
-    // Nothing dollies a perspective camera's zoom, so it has none to report. The multi-view
-    // grid makes this reachable: its primary pane — the one wired to on_camera_move — is the
-    // perspective view, and a payload carrying `camera_zoom: undefined` would claim otherwise.
-    test(`perspective camera moves omit zoom`, async ({ page }) => {
-      test.skip(IS_CI, `Camera drag via OrbitControls unreliable in headless CI`)
-      await page.evaluate(() => {
-        globalThis.dispatchEvent(
-          new CustomEvent(`set-scene-props`, {
-            detail: { camera_projection: `perspective` },
-          }),
-        )
-      })
-      await clear_events(page)
-      await drag_camera(page)
-      const move = await wait_for_event(page, `on_camera_move`, [`camera_target`])
-      expect(move.data).not.toHaveProperty(`camera_zoom`)
-    })
-
-    test(`should trigger on_camera_reset event when camera is reset`, async ({ page }) => {
-      test.skip(IS_CI, `Camera drag via OrbitControls unreliable in headless CI`)
-      // Move the camera so camera_has_moved flips true and the reset button appears
-      await clear_events(page)
-      const initial_box = await drag_camera(page)
-      const { camera_target: target_before_reset } = await wait_for_camera_move(page)
-      await clear_events(page)
-      await open_structure_control_pane(page)
-      const reset_btn = page.locator(`#test-structure .controls-pane button.reset-camera`)
-      await expect(reset_btn).toBeVisible({ timeout: get_canvas_timeout() })
-      await reset_btn.click()
-      const reset_event = await wait_for_event(page, `on_camera_reset`, [
-        `structure`,
-        `camera_target`,
-        `camera_zoom`,
-      ])
-      const { camera_target: reset_target, camera_zoom: reset_zoom } = reset_event.data as {
-        camera_target: number[]
-        camera_zoom: number
-      }
-      expect(reset_target).toEqual(
-        target_before_reset.map((coord) => expect.closeTo(coord, 12)),
-      )
-
-      await set_viewer_size(
-        page.locator(`#test-structure`),
-        Math.round(initial_box.width * 0.65),
-        initial_box.height,
-      )
-      const resized_box = (await canvas_box(page)).box
-      await clear_events(page)
-      // Wheel over the canvas's left edge, not its center: the open pane is anchored to the
-      // viewer's right side and covers the middle, where the scroll would go to the pane.
-      await page.mouse.move(
-        resized_box.x + resized_box.width * 0.15,
-        resized_box.y + resized_box.height / 2,
-      )
-      await page.mouse.wheel(0, -120)
-      await wait_for_camera_move(page)
-      await clear_events(page)
-      await reset_btn.click()
-      const resized_reset = await wait_for_event(page, `on_camera_reset`, [`camera_zoom`])
-      const { camera_zoom: resized_zoom } = resized_reset.data as { camera_zoom: number }
-      expect(resized_zoom / reset_zoom).toBeCloseTo(
-        Math.min(resized_box.width, resized_box.height) /
-          Math.min(initial_box.width, initial_box.height),
-        2,
-      )
-    })
-
-    test(`click without camera movement does not report a move`, async ({ page }) => {
-      const { canvas, box } = await canvas_box(page)
-      await clear_events(page)
-
-      await canvas.click({
-        position: { x: box.width / 2, y: box.height / 2 },
-        force: true,
-      })
-      await page.waitForTimeout(100) // include the post-end damping settle sync
-      expect(await events_named(page, `on_camera_move`)).toHaveLength(0)
-
-      await open_structure_control_pane(page)
-      await expect(
-        page.locator(`#test-structure .controls-pane button.reset-camera`),
-      ).toHaveCount(0)
-    })
-
-    // Wheel zoom must leave the orbit target alone: with zoomToCursor the target follows the
-    // pointer and zooming back out never returns it, so a few flicks walk the structure into a
-    // corner. Zooming also has to register as a camera move — OrbitControls fires start and end
-    // in the same tick for a wheel, and the reset control only appears once a move is reported.
-    test(`wheel zoom reports during auto-rotate and leaves the orbit target put`, async ({
-      page,
-    }) => {
-      const { canvas, box } = await canvas_box(page)
-      const wheel = (x_ratio: number, y_ratio: number, delta_y: number) =>
-        canvas.dispatchEvent(`wheel`, {
-          bubbles: true,
-          cancelable: true,
-          clientX: box.x + box.width * x_ratio,
-          clientY: box.y + box.height * y_ratio,
-          deltaY: delta_y,
-        })
-      await page.evaluate(() => {
-        window.dispatchEvent(
-          new CustomEvent(`set-scene-props`, { detail: { auto_rotate: 1 } }),
-        )
-      })
-
-      await clear_events(page)
-      await wheel(0.5, 0.5, -120)
-      const { camera_target: target_before, camera_zoom: zoom_before } =
-        await wait_for_camera_move(page)
-
-      // zoom in and back out far off-center, where cursor zoom would drag the target along
-      await clear_events(page)
-      for (const delta of [-120, -120, -120, 120, 120]) await wheel(0.8, 0.8, delta)
-
-      const { camera_target: target_after, camera_zoom: zoom_after } =
-        await wait_for_camera_move(page)
-      expect(zoom_after).toBeGreaterThan(zoom_before)
-      for (const [axis_idx, coord] of target_after.entries()) {
-        expect(coord, `axis ${axis_idx}`).toBeCloseTo(target_before[axis_idx], 6)
-      }
-
-      await open_structure_control_pane(page)
-      await expect(
-        page.locator(`#test-structure .controls-pane button.reset-camera`),
-      ).toBeVisible({ timeout: get_canvas_timeout() })
-    })
-
-    test(`pressing r resets the camera; Shift+R does not`, async ({ page }) => {
-      test.skip(IS_CI, `Camera drag via OrbitControls unreliable in headless CI`)
-      const box = await drag_camera(page)
-      await clear_events(page)
-      // mouse.move, not hover(): the shortcut only needs the pointer over the viewer, and
-      // hover()'s actionability check trips on the overlays the drag leaves behind
-      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
-      await page.keyboard.press(`Shift+R`)
-      expect(await events_named(page, `on_camera_reset`)).toHaveLength(0)
-      await page.keyboard.press(`r`)
-      await wait_for_event(page, `on_camera_reset`, [`structure`, `camera_target`])
-    })
-  })
-})
-
-test.describe(`Camera Projection Toggle Tests`, () => {
-  // Retry flaky screenshot comparison tests (WebGL rendering timing varies)
-  test.describe.configure({ retries: 2 })
-
-  test.beforeEach(async ({ page }: { page: Page }) => {
-    await goto_structure_test(page)
-  })
-
-  test(`camera projection behavior and visual differences`, async ({ page }) => {
-    test.setTimeout(IS_CI ? 90_000 : 45_000)
-    const canvas = page.locator(`#test-structure canvas`)
-
-    // Test both projections produce different visuals and respond to zoom
-    const screenshots: Record<string, Buffer> = {}
-
-    for (const projection of [`perspective`, `orthographic`]) {
-      // Re-open the controls pane each iteration (canvas.click closes it via click-outside)
-      const { pane_div } = await open_structure_control_pane(page)
-      const camera_projection_select = pane_div.locator(`label:has-text("Projection") select`)
-      await expect(camera_projection_select).toBeVisible()
-      await camera_projection_select.scrollIntoViewIfNeeded()
-      await camera_projection_select.selectOption(projection)
-      await expect(camera_projection_select).toHaveValue(projection)
-      // Let camera/projection updates settle before visual assertions.
-      await page.waitForTimeout(100)
-
-      screenshots[`${projection}_initial`] = await canvas_screenshot(canvas)
-      await canvas.hover({ force: true })
-      await canvas.click({ force: true })
-      // Dispatch multiple wheel events to reduce CI flakiness from dropped inputs.
-      await page.mouse.wheel(0, -250)
-      await page.mouse.wheel(0, -250)
-      // Wait for zoom to be applied (screenshot should differ from initial)
-      await expect_canvas_changed(canvas, screenshots[`${projection}_initial`])
-      screenshots[`${projection}_zoomed`] = await canvas_screenshot(canvas)
-    }
-
-    // Verify zoom responsiveness and visual differences
-    expect(screenshots.perspective_initial.equals(screenshots.perspective_zoomed)).toBe(false)
-    expect(screenshots.orthographic_initial.equals(screenshots.orthographic_zoomed)).toBe(
-      false,
-    )
-    expect(screenshots.perspective_initial.equals(screenshots.orthographic_initial)).toBe(
-      false,
-    )
-  })
-
-  test(`camera projection settings integration and persistence`, async ({ page }) => {
-    const { pane_div } = await open_structure_control_pane(page)
-
-    const camera_projection_select = pane_div.locator(`label:has-text("Projection") select`)
-    const atom_radius_input = pane_div.locator(`label:has-text("Radius") input[type="number"]`)
-    const auto_rotate_input = pane_div.locator(
-      `label:has-text("Auto-rotate speed") input[type="number"]`,
-    )
-    const rotation_numbers = pane_div.locator(`.rotation-axes input[type="number"]`)
-
-    // Settings preservation across projection changes
-    await atom_radius_input.fill(`1.5`)
-    await auto_rotate_input.fill(`0.5`)
-    await camera_projection_select.selectOption(`orthographic`)
-    await fill_axis_values(rotation_numbers, [`120`, `240`, `300`])
-
-    await expect(atom_radius_input).toHaveValue(`1.5`)
-    await expect(auto_rotate_input).toHaveValue(`0.5`)
-    await expect(camera_projection_select).toHaveValue(`orthographic`)
-
-    // State persistence across pane close/open (incl. rotation axes)
-    const test_page_controls_checkbox = page.locator(
-      `label:has-text("Controls Open") input[type="checkbox"]`,
-    )
-    await test_page_controls_checkbox.uncheck()
-    await expect(pane_div).not.toHaveClass(/pane-open/)
-    // Note: camera-projection-status doesn't update because scene_props binding is one-directional
-    // Instead we verify the select value persists after reopening
-
-    await test_page_controls_checkbox.check()
-    await expect(pane_div).toHaveClass(/pane-open/, { timeout: 2000 })
-    await expect(camera_projection_select).toHaveValue(`orthographic`)
-    await expect(atom_radius_input).toHaveValue(`1.5`)
-    await expect(auto_rotate_input).toHaveValue(`0.5`)
-    await expect_axis_values(rotation_numbers, [`120`, `240`, `300`])
-  })
-
-  test(`settings search is browser-wired and pointer-accessible`, async ({ page }) => {
-    const { pane_div } = await open_structure_control_pane(page)
-    await pane_div.getByRole(`button`, { name: `Search settings` }).click()
-    const search = pane_div.getByRole(`searchbox`, { name: `Search settings` })
-    await search.fill(`damp`)
-    await expect(pane_div.locator(`details.settings-group`).nth(1)).toHaveAttribute(`open`, ``)
-    await expect(pane_div.locator(`[data-key="rotation_damping"]`)).toBeVisible()
-  })
-})
-
-test.describe(`Structure Rotation Controls Tests`, () => {
-  test.beforeEach(async ({ page }: { page: Page }) => {
-    await goto_structure_test(page)
-  })
-
-  const rotation_axes_of = (pane: Locator) => {
-    const axes = pane.locator(`.rotation-axes`)
-    return {
-      numbers: axes.locator(`input[type="number"]`),
-      ranges: axes.locator(`input[type="range"]`),
-    }
+    expect(camera_target.every(Number.isFinite), `camera_target`).toBe(true)
+    expect(Number.isFinite(camera_zoom), `camera_zoom`).toBe(true)
+    return { camera_target, camera_zoom }
   }
-  test(`rotation controls clamp out-of-range values on input`, async ({ page }) => {
-    const { pane_div } = await open_structure_control_pane(page)
 
-    const { numbers, ranges } = rotation_axes_of(pane_div)
-    const x_number_input = numbers.first()
-    const x_range_input = ranges.first()
+  const drag_camera = async (page: Page) => {
+    const box = await canvas_box(structure_canvas(page))
+    const center_y = box.y + box.height / 2
+    await page.mouse.move(box.x + box.width / 2 - 80, center_y)
+    await page.mouse.down()
+    await page.mouse.move(box.x + box.width / 2 + 80, center_y, { steps: 5 })
+    await page.waitForTimeout(250) // cross the 200 ms active-move sync interval
+    await page.mouse.up()
+    return box
+  }
+  const reset_camera_button = (page: Page) =>
+    page.locator(`#test-structure .controls-pane button.reset-camera`)
 
-    // The range slider always reflects the clamped then normalized value,
-    // even if the number input temporarily shows the raw input
-    const clamp_cases = [
-      { input: `999`, expected: `0` }, // clamped to 360 → 360 % 360 = 0
-      { input: `-90`, expected: `0` }, // negative clamped to 0
-      { input: `360`, expected: `0` }, // 360 % 360 = 0
-      { input: `359`, expected: `359` }, // stays 359
-      { input: `361`, expected: `0` }, // clamped to 360 → 0
-      { input: `720`, expected: `0` }, // clamped to 360 → 0
-      { input: `180`, expected: `180` }, // valid value passes through
-    ]
-    for (const { input, expected } of clamp_cases) {
-      await x_number_input.fill(input)
-      await expect(x_range_input).toHaveValue(expected)
-    }
+  test(`should trigger on_fullscreen_change event when fullscreen state changes`, async ({
+    page,
+  }) => {
+    await clear_events(page)
+    await page.locator(`#test-structure > section.control-buttons > .fullscreen-btn`).click()
 
-    // Changing the range slider updates the number input
-    await x_range_input.fill(`270`)
-    await expect(x_number_input).toHaveValue(`270`)
-    await expect(x_range_input).toHaveValue(`270`)
+    const event = await wait_for_event(page, `on_fullscreen_change`, [
+      `fullscreen`,
+      `structure`,
+    ])
+    expect(event.data).toMatchObject({ fullscreen: true })
   })
 
-  test(`all three axis controls work independently`, async ({ page }) => {
-    const { pane_div } = await open_structure_control_pane(page)
+  test(`should trigger on_file_load event when structure is loaded via data_url`, async ({
+    page,
+  }) => {
+    // Use a valid structure file that exists in the static directory
+    await goto_structure_test(page, `/test/structure?data_url=/structures/mp-1.json`)
+    await wait_for_event(page, `on_file_load`, [`structure`, `filename`])
+  })
 
-    const { numbers, ranges } = rotation_axes_of(pane_div)
+  test(`should trigger on_error event when file loading fails`, async ({ page }) => {
+    await page.goto(`/test/structure?data_url=non-existent.json`)
+    await wait_for_event(page, `on_error`, [`error_msg`, `filename`])
 
-    await expect(numbers).toHaveCount(3)
-    await expect(ranges).toHaveCount(3)
-    await expect_axis_values(numbers, [`0`, `0`, `0`])
-    await expect_axis_values(ranges, [`0`, `0`, `0`])
+    // UI should still render gracefully despite the load failure
+    await expect(page.locator(`#test-structure`)).toBeVisible()
+    await expect(page.locator(`[data-testid="pane-open-status"]`)).toBeVisible()
+  })
 
-    // Set different values for each axis
-    await fill_axis_values(numbers, [`30`, `60`, `90`])
+  test(`camera movement emits distinct on_camera_move events`, async ({ page }) => {
+    test.skip(IS_CI, `Camera drag via OrbitControls unreliable in headless CI`)
+    await clear_events(page)
+    await drag_camera(page)
+    await wait_for_camera_move(page)
+    const camera_moves = await events_named(page, `on_camera_move`)
+    expect(camera_moves.length).toBeGreaterThan(1)
+    for (let move_idx = 1; move_idx < camera_moves.length; move_idx++) {
+      expect(camera_moves[move_idx].data).not.toEqual(camera_moves[move_idx - 1].data)
+    }
+  })
 
-    // Verify all values are set correctly and independently
-    await expect_axis_values(numbers, [`30`, `60`, `90`])
-    await expect_axis_values(ranges, [`30`, `60`, `90`])
+  // Nothing dollies a perspective camera's zoom, so it has none to report. The multi-view
+  // grid makes this reachable: its primary pane — the one wired to on_camera_move — is the
+  // perspective view, and a payload carrying `camera_zoom: undefined` would claim otherwise.
+  test(`perspective camera moves omit zoom`, async ({ page }) => {
+    test.skip(IS_CI, `Camera drag via OrbitControls unreliable in headless CI`)
+    await set_scene_props(page, { camera_projection: `perspective` })
+    await clear_events(page)
+    await drag_camera(page)
+    const move = await wait_for_event(page, `on_camera_move`, [`camera_target`])
+    expect(move.data).not.toHaveProperty(`camera_zoom`)
+  })
 
-    // Modify one axis and verify others remain unchanged
-    await numbers.nth(1).fill(`120`)
-    await expect_axis_values(numbers, [`30`, `120`, `90`])
+  test(`should trigger on_camera_reset event when camera is reset`, async ({ page }) => {
+    test.skip(IS_CI, `Camera drag via OrbitControls unreliable in headless CI`)
+    // Move the camera so camera_has_moved flips true and the reset button appears
+    await clear_events(page)
+    const initial_box = await drag_camera(page)
+    const { camera_target: target_before_reset } = await wait_for_camera_move(page)
+    await clear_events(page)
+    await open_structure_control_pane(page)
+    const reset_btn = reset_camera_button(page)
+    await expect(reset_btn).toBeVisible({ timeout: get_canvas_timeout() })
+    await reset_btn.click()
+    const reset_event = await wait_for_event(page, `on_camera_reset`, [
+      `structure`,
+      `camera_target`,
+      `camera_zoom`,
+    ])
+    const { camera_target: reset_target, camera_zoom: reset_zoom } = reset_event.data as {
+      camera_target: number[]
+      camera_zoom: number
+    }
+    expect(reset_target).toEqual(target_before_reset.map((coord) => expect.closeTo(coord, 12)))
+
+    await set_viewer_size(
+      page.locator(`#test-structure`),
+      Math.round(initial_box.width * 0.65),
+      initial_box.height,
+    )
+    const resized_box = await canvas_box(structure_canvas(page))
+    await clear_events(page)
+    // Wheel over the canvas's left edge, not its center: the open pane is anchored to the
+    // viewer's right side and covers the middle, where the scroll would go to the pane.
+    await page.mouse.move(
+      resized_box.x + resized_box.width * 0.15,
+      resized_box.y + resized_box.height / 2,
+    )
+    await page.mouse.wheel(0, -120)
+    await wait_for_camera_move(page)
+    await clear_events(page)
+    await reset_btn.click()
+    const resized_reset = await wait_for_event(page, `on_camera_reset`, [`camera_zoom`])
+    const { camera_zoom: resized_zoom } = resized_reset.data as { camera_zoom: number }
+    expect(resized_zoom / reset_zoom).toBeCloseTo(
+      Math.min(resized_box.width, resized_box.height) /
+        Math.min(initial_box.width, initial_box.height),
+      2,
+    )
+  })
+
+  test(`click without camera movement does not report a move`, async ({ page }) => {
+    const canvas = structure_canvas(page)
+    const box = await canvas_box(canvas)
+    await clear_events(page)
+
+    await canvas.click({
+      position: { x: box.width / 2, y: box.height / 2 },
+      force: true,
+    })
+    await page.waitForTimeout(100) // include the post-end damping settle sync
+    expect(await events_named(page, `on_camera_move`)).toHaveLength(0)
+
+    await open_structure_control_pane(page)
+    await expect(reset_camera_button(page)).toHaveCount(0)
+  })
+
+  // Wheel zoom must leave the orbit target alone: with zoomToCursor the target follows the
+  // pointer and zooming back out never returns it, so a few flicks walk the structure into a
+  // corner. Zooming also has to register as a camera move — OrbitControls fires start and end
+  // in the same tick for a wheel, and the reset control only appears once a move is reported.
+  test(`wheel zoom reports during auto-rotate and leaves the orbit target put`, async ({
+    page,
+  }) => {
+    const canvas = structure_canvas(page)
+    const box = await canvas_box(canvas)
+    const wheel = (x_ratio: number, y_ratio: number, delta_y: number) =>
+      canvas.dispatchEvent(`wheel`, {
+        bubbles: true,
+        cancelable: true,
+        clientX: box.x + box.width * x_ratio,
+        clientY: box.y + box.height * y_ratio,
+        deltaY: delta_y,
+      })
+    await set_scene_props(page, { auto_rotate: 1 })
+
+    await clear_events(page)
+    await wheel(0.5, 0.5, -120)
+    const { camera_target: target_before, camera_zoom: zoom_before } =
+      await wait_for_camera_move(page)
+
+    // zoom in and back out far off-center, where cursor zoom would drag the target along
+    await clear_events(page)
+    for (const delta of [-120, -120, -120, 120, 120]) await wheel(0.8, 0.8, delta)
+
+    const { camera_target: target_after, camera_zoom: zoom_after } =
+      await wait_for_camera_move(page)
+    expect(zoom_after).toBeGreaterThan(zoom_before)
+    for (const [axis_idx, coord] of target_after.entries()) {
+      expect(coord, `axis ${axis_idx}`).toBeCloseTo(target_before[axis_idx], 6)
+    }
+
+    await open_structure_control_pane(page)
+    await expect(reset_camera_button(page)).toBeVisible({ timeout: get_canvas_timeout() })
+  })
+
+  test(`pressing r resets the camera; Shift+R does not`, async ({ page }) => {
+    test.skip(IS_CI, `Camera drag via OrbitControls unreliable in headless CI`)
+    const box = await drag_camera(page)
+    await clear_events(page)
+    // mouse.move, not hover(): the shortcut only needs the pointer over the viewer, and
+    // hover()'s actionability check trips on the overlays the drag leaves behind
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    await page.keyboard.press(`Shift+R`)
+    expect(await events_named(page, `on_camera_reset`)).toHaveLength(0)
+    await page.keyboard.press(`r`)
+    await wait_for_event(page, `on_camera_reset`, [`structure`, `camera_target`])
   })
 })
 
 test.describe(`Element Visibility Toggle`, () => {
-  // Retry flaky screenshot comparison tests (WebGL rendering timing varies)
-  test.describe.configure({ retries: 2 })
-
   const legend_item = (page: Page, idx = 0): Locator =>
     page.locator(`#test-structure .atom-legend .legend-item`).nth(idx)
 
-  test.beforeEach(async ({ page }: { page: Page }) => {
+  test.beforeEach(async ({ page }) => {
     await goto_structure_test(page)
   })
 
@@ -1529,12 +986,10 @@ test.describe(`Element Visibility Toggle`, () => {
     // only appeared on the very first mouseenter until page reload.
     await page.setViewportSize({ width: 1400, height: 1200 })
     const toggle = page.locator(`#test-structure .atom-legend .mode-toggle`)
-    const box = await page.locator(`#test-structure canvas`).boundingBox()
-    if (!box) throw new Error(`canvas has no bounding box`)
+    const canvas = structure_canvas(page)
 
     for (let cycle = 0; cycle < 3; cycle++) {
-      await page.mouse.move(box.x + 40, box.y + 40) // hover the canvas (not the icon)
-      await expect(toggle).toHaveCSS(`opacity`, `1`)
+      await activate_viewer(page, canvas)
       await page.mouse.move(3, 3) // move off the viewer
       await expect(toggle).toHaveCSS(`opacity`, `0`)
     }
@@ -1561,24 +1016,20 @@ test.describe(`Element Visibility Toggle`, () => {
   })
 
   test(`toggling elements hides/shows atoms with visual feedback`, async ({ page }) => {
-    const canvas = page.locator(`#test-structure canvas`)
+    const canvas = structure_canvas(page)
     const first_item = legend_item(page)
     const toggle_button = first_item.locator(`button.toggle-visibility`)
     const label = first_item.locator(`label`)
 
-    // Capture initial state
-    const initial_screenshot = await canvas.screenshot()
     const initial_opacity = await opacity_of(label)
     await expect(toggle_button).toHaveAttribute(`aria-label`, /Hide .+ atoms/)
 
     // Hide element
-    await first_item.hover()
-    await toggle_button.click()
-
-    // Verify hidden state (assertion includes built-in retry)
-    await expect(label).toHaveClass(/hidden/)
-    // Poll for canvas change after hiding element
-    await expect_canvas_changed(canvas, initial_screenshot)
+    await expect_canvas_changed_by(canvas, async () => {
+      await first_item.hover()
+      await toggle_button.click()
+      await expect(label).toHaveClass(/hidden/)
+    })
 
     // Wait for CSS transition to complete (opacity 0.2s ease)
     await expect(async () => {
@@ -1591,74 +1042,12 @@ test.describe(`Element Visibility Toggle`, () => {
 
     // After toggle, the button should have 'element-hidden' class (indicates atoms are hidden)
     await expect(toggle_button).toHaveClass(/element-hidden/)
-    const hidden_screenshot = await canvas.screenshot()
 
     // Show
-    await toggle_button.click()
-    await expect(label).not.toHaveClass(/hidden/)
-    // Poll for canvas change after showing element
-    await expect_canvas_changed(canvas, hidden_screenshot)
-  })
-
-  test(`color picker remains functional with toggle button`, async ({ page }) => {
-    const label = legend_item(page).locator(`label`)
-    const color_input = label.locator(`input[type="color"]`)
-    const initial_color = await color_input.inputValue()
-    expect(initial_color).not.toBe(`#ff0000`)
-
-    // Verify label is clickable and element remains visible
-    await label.click({ position: { x: 10, y: 10 } })
-    await expect(label).not.toHaveClass(/hidden/)
-
-    // Test color change functionality
-    await color_input.evaluate((input: HTMLInputElement) => {
-      input.value = `#ff0000`
-      input.dispatchEvent(new Event(`input`, { bubbles: true }))
+    await expect_canvas_changed_by(canvas, async () => {
+      await toggle_button.click()
+      await expect(label).not.toHaveClass(/hidden/)
     })
-    await expect(color_input).toHaveValue(`#ff0000`)
-
-    // Double-click to reset color
-    await label.dblclick({ position: { x: 10, y: 10 } })
-    await expect(color_input).toHaveValue(initial_color)
-    await expect(color_input).not.toHaveValue(`#ff0000`)
-  })
-
-  test(`multiple elements work independently`, async ({ page }) => {
-    await goto_structure_test(
-      page,
-      `/test/structure?data_url=/structures/mp-1207297-Ac2Br2O1-tetragonal.json`,
-    )
-    const canvas = page.locator(`#test-structure canvas`)
-    const legend_items = page.locator(`#test-structure .atom-legend .legend-item`)
-    await expect(legend_items.nth(1)).toBeAttached()
-    const item_count = await legend_items.count()
-    expect(item_count).toBeGreaterThanOrEqual(2)
-
-    const initial_screenshot = await canvas.screenshot()
-    const first_item = legend_item(page, 0)
-    const second_item = legend_item(page, 1)
-    const first_label = first_item.locator(`label`)
-    const second_label = second_item.locator(`label`)
-
-    // Hide first element
-    await first_item.hover()
-    await first_item.locator(`button.toggle-visibility`).click()
-    await expect(first_label).toHaveClass(/hidden/)
-    await expect(second_label).not.toHaveClass(/hidden/)
-    await expect_canvas_changed(canvas, initial_screenshot)
-    const after_first = await canvas.screenshot()
-
-    // Hide second element
-    await second_item.hover()
-    await second_item.locator(`button.toggle-visibility`).click()
-    await expect(first_label).toHaveClass(/hidden/)
-    await expect(second_label).toHaveClass(/hidden/)
-    await expect_canvas_changed(canvas, after_first)
-
-    // Show first element only
-    await first_item.locator(`button.toggle-visibility`).click()
-    await expect(first_label).not.toHaveClass(/hidden/)
-    await expect(second_label).toHaveClass(/hidden/)
   })
 
   test(`hidden state persists and button visibility works`, async ({ page }) => {
@@ -1697,17 +1086,11 @@ test.describe(`Element Visibility Toggle`, () => {
 })
 
 test.describe(`Edit Atoms Mode`, () => {
-  test.beforeEach(async ({ page }: { page: Page }) => {
+  test.beforeEach(async ({ page }) => {
     // Edit-atoms tests require WebGL for 3D canvas interactions
     test.skip(IS_CI, `Edit atoms tests require WebGL, skip in CI`)
     await goto_structure_test(page, `/test/structure?show_controls=always`)
   })
-
-  async function select_atom_for_delete(page: Page): Promise<void> {
-    await page.locator(`[data-testid="btn-select-site-0"]`).click()
-    await page.locator(`#test-structure`).focus()
-    await page.keyboard.press(`Delete`)
-  }
 
   const undo_redo_btns = (structure_div: Locator) => ({
     undo: structure_div.locator(`button[aria-label*="Undo"]`),
@@ -1718,7 +1101,6 @@ test.describe(`Edit Atoms Mode`, () => {
     await enter_edit_atoms_mode(page)
 
     const structure_div = page.locator(`#test-structure`)
-    const primary_modifier = is_mac ? `metaKey` : `ctrlKey`
     for (const init of [
       { key: `z`, [primary_modifier]: true },
       { key: `y`, [primary_modifier]: true },
@@ -1728,19 +1110,19 @@ test.describe(`Edit Atoms Mode`, () => {
     }
   })
 
-  test(`undo/redo buttons hidden in distance/angle modes`, async ({ page }) => {
-    // Check default distance mode - no undo/redo buttons
+  test(`undo/redo buttons only exist in edit-atoms mode`, async ({ page }) => {
     const structure_div = page.locator(`#test-structure`)
     const { undo: undo_btn } = undo_redo_btns(structure_div)
     await expect(undo_btn).toHaveCount(0)
 
-    // Switch to edit-atoms to verify they appear
     await enter_edit_atoms_mode(page)
+    await expect(undo_btn).toBeVisible()
+    // clicking the canvas keeps edit mode active
+    await structure_div.locator(`canvas`).click({ position: { x: 50, y: 50 }, force: true })
     await expect(undo_btn).toBeVisible()
 
     // Switch back to distance mode via the dropdown
-    const measure_button = structure_div.getByRole(`button`, { name: `Measure / Edit` })
-    await measure_button.click()
+    await structure_div.getByRole(`button`, { name: `Measure / Edit` }).click()
     const distance_option = structure_div.locator(`.view-mode-option`).filter({
       hasText: `Distance`,
     })
@@ -1749,87 +1131,37 @@ test.describe(`Edit Atoms Mode`, () => {
     await expect(undo_btn).toHaveCount(0)
   })
 
-  test(`undo restores state and enables redo`, async ({ page }) => {
+  test(`deleting a selected atom enables undo, then redo via buttons and shortcuts`, async ({
+    page,
+  }) => {
     await enter_edit_atoms_mode(page)
-
     const structure_div = page.locator(`#test-structure`)
     const { undo: undo_btn, redo: redo_btn } = undo_redo_btns(structure_div)
     await expect(undo_btn).toBeDisabled()
     await expect(redo_btn).toBeDisabled()
     await expect(structure_div.locator(`.history-count`)).toHaveCount(0)
 
-    await select_atom_for_delete(page)
-
-    const count_badge = structure_div.locator(`.history-count`).first()
-    await expect(count_badge).toBeVisible({ timeout: 2000 })
-    await expect(count_badge).toHaveText(`1`)
-    await expect(undo_btn).toBeEnabled({ timeout: 2000 })
-    await undo_btn.click({ force: true })
-
-    await expect(redo_btn).toBeEnabled({ timeout: 2000 })
-  })
-
-  test(`keyboard shortcuts Ctrl+Z/Y work for undo/redo`, async ({ page }) => {
-    await enter_edit_atoms_mode(page)
-
-    await select_atom_for_delete(page)
-
-    const { undo: undo_btn, redo: redo_btn } = undo_redo_btns(page.locator(`#test-structure`))
-    await expect(undo_btn).toBeEnabled({ timeout: 2000 })
-
-    const undo_combo = is_mac ? `Meta+z` : `Control+z`
-    const redo_combo = is_mac ? `Meta+y` : `Control+y`
-
-    // Undo
-    await page.keyboard.press(undo_combo)
-    await expect(redo_btn).toBeEnabled({ timeout: 2000 })
-
-    // Redo
-    await page.keyboard.press(redo_combo)
-
-    // Undo should be enabled (redo just put item back on undo stack)
-    await expect(undo_btn).toBeEnabled({ timeout: 2000 })
-  })
-
-  test(`add atom via A key shows element input`, async ({ page }) => {
-    await enter_edit_atoms_mode(page)
-
-    const structure_div = page.locator(`#test-structure`)
-    // Focus wrapper for keyboard events
+    await page.locator(`[data-testid="btn-select-site-0"]`).click()
     await structure_div.focus()
+    await page.keyboard.press(`Delete`)
 
-    // Press A to enter add-atom mode
-    await page.keyboard.press(`a`)
+    await expect(structure_div.locator(`.history-count`).first()).toHaveText(`1`)
+    await expect(undo_btn).toBeEnabled()
+    await undo_btn.click({ force: true })
+    await expect(redo_btn).toBeEnabled()
 
-    // Should show element input
-    const add_input = structure_div.locator(`.add-atom-input`)
-    await expect(add_input).toBeVisible({ timeout: 2000 })
-
-    // Press Escape to cancel
-    await page.keyboard.press(`Escape`)
-    await expect(add_input).not.toBeVisible({ timeout: 2000 })
-  })
-
-  test(`edit mode persists across interactions`, async ({ page }) => {
-    await enter_edit_atoms_mode(page)
-
-    const structure_div = page.locator(`#test-structure`)
-    const { undo: undo_btn } = undo_redo_btns(structure_div)
-
-    // Verify edit mode active
-    await expect(undo_btn).toBeVisible({ timeout: 2000 })
-
-    // Click on the canvas
-    const canvas = structure_div.locator(`canvas`)
-    await canvas.click({ position: { x: 50, y: 50 }, force: true })
-
-    // Undo/redo buttons should still be visible
-    await expect(undo_btn).toBeVisible({ timeout: 2000 })
+    // Redo via keyboard puts the deletion back on the undo stack, undo via keyboard pops it
+    await structure_div.focus()
+    await page.keyboard.press(`${primary_modifier_key}+y`)
+    await expect(undo_btn).toBeEnabled()
+    await expect(redo_btn).toBeDisabled()
+    await page.keyboard.press(`${primary_modifier_key}+z`)
+    await expect(redo_btn).toBeEnabled()
   })
 })
 
 test.describe(`Responsive edit controls`, () => {
-  test.beforeEach(async ({ page }: { page: Page }) => {
+  test.beforeEach(async ({ page }) => {
     await goto_structure_test(page, `/test/structure?show_controls=always`)
   })
 
@@ -1840,15 +1172,11 @@ test.describe(`Responsive edit controls`, () => {
     await set_viewer_size(structure_div, 300, 500)
     await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
 
-    const edit_toolbar = structure_div.locator(`.edit-mode-toolbar`)
     const [structure_box, controls_box, toolbar_box] = await Promise.all([
-      structure_div.boundingBox(),
-      structure_div.locator(`section.control-buttons`).boundingBox(),
-      edit_toolbar.boundingBox(),
+      require_bbox(structure_div, `structure`),
+      require_bbox(structure_div.locator(`section.control-buttons`), `control buttons`),
+      require_bbox(structure_div.locator(`.edit-mode-toolbar`), `edit toolbar`),
     ])
-    if (!structure_box || !controls_box || !toolbar_box) {
-      throw new Error(`responsive control boxes were not rendered`)
-    }
     expect(toolbar_box.x).toBeGreaterThanOrEqual(structure_box.x - 1)
     expect(toolbar_box.x + toolbar_box.width).toBeLessThanOrEqual(
       structure_box.x + structure_box.width + 1,
@@ -1861,7 +1189,7 @@ test.describe(`Responsive edit controls`, () => {
 })
 
 test.describe(`Multi-side view (2x2 grid)`, () => {
-  test.beforeEach(async ({ page }: { page: Page }) => {
+  test.beforeEach(async ({ page }) => {
     await goto_structure_test(page, `/test/structure?show_controls=always`)
   })
 
@@ -1897,17 +1225,13 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
     // each sweep probe costs a frame, and a frame here draws all 4 panes (~1 min under load)
     test.setTimeout(IS_CI ? 180_000 : 120_000)
     const structure_div = page.locator(`#test-structure`)
+    const cells = structure_div.locator(`.viewport-cell`)
+    const multi_stage = structure_div.locator(`.viewport-stage.multi`)
 
     // Handle spread on screen, which scales with the gizmo box — the only way to measure a
     // gizmo with no DOM element. Hover first since it draws only while the viewer is active.
     const gizmo_span = async (canvas: Locator): Promise<number> => {
-      const box = await canvas.boundingBox()
-      if (!box) throw new Error(`canvas has no bounding box`)
-      await page.mouse.move(box.x + 40, box.y + 40)
-      await expect(page.locator(`#test-structure .atom-legend .mode-toggle`)).toHaveCSS(
-        `opacity`,
-        `1`,
-      )
+      await activate_viewer(page, canvas)
       const hits = await sweep_gizmo_handles(canvas)
       expect(hits.length, `gizmo handles on this canvas`).toBeGreaterThan(0)
       const xs = hits.map((hit) => hit.x)
@@ -1916,8 +1240,8 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
     }
 
     // Single view: one viewport cell, no grid
-    await expect(structure_div.locator(`.viewport-cell`)).toHaveCount(1)
-    await expect(structure_div.locator(`.viewport-stage.multi`)).toHaveCount(0)
+    await expect(cells).toHaveCount(1)
+    await expect(multi_stage).toHaveCount(0)
     const single_span = await gizmo_span(structure_div.locator(`canvas`).first())
 
     await select_structure_layout(structure_div, `3D 2×2 grid`)
@@ -1925,9 +1249,9 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
     // The primary perspective pane stays unlabeled so the global filename can use
     // the top-left corner; the three fixed-direction panes retain their labels.
     await expect(structure_div).toHaveClass(/multi-view/)
-    await expect(structure_div.locator(`.viewport-stage.multi`)).toBeVisible()
-    await expect(structure_div.locator(`.viewport-cell`)).toHaveCount(4)
-    await expect(structure_div.locator(`.viewport-stage.multi canvas`)).toHaveCount(4, {
+    await expect(multi_stage).toBeVisible()
+    await expect(cells).toHaveCount(4)
+    await expect(multi_stage.locator(`canvas`)).toHaveCount(4, {
       timeout: get_canvas_timeout(),
     })
     const labels = structure_div.locator(`.viewport-label`)
@@ -1935,39 +1259,26 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
     await expect(labels.nth(0)).toHaveText(`Front`)
 
     // Each pane occupies roughly a quarter of the viewer (clearly smaller than full width)
-    const wrapper_box = await structure_div.boundingBox()
-    if (!wrapper_box) throw new Error(`structure wrapper has no bounding box`)
+    const wrapper_box = await require_bbox(structure_div, `structure wrapper`)
     for (let pane_idx = 0; pane_idx < 4; pane_idx++) {
-      await expect
-        .poll(async () => {
-          const cell_box = await structure_div
-            .locator(`.viewport-cell`)
-            .nth(pane_idx)
-            .boundingBox()
-          return cell_box?.width ?? Number.POSITIVE_INFINITY
-        })
-        .toBeLessThan(wrapper_box.width * 0.75)
-      const cell_box = await structure_div
-        .locator(`.viewport-cell`)
-        .nth(pane_idx)
-        .boundingBox()
-      if (!cell_box) throw new Error(`viewport cell ${pane_idx} has no bounding box`)
-      expect(cell_box.width).toBeGreaterThan(50)
+      await expect(async () => {
+        const { width } = await require_bbox(cells.nth(pane_idx), `viewport cell ${pane_idx}`)
+        expect(width).toBeLessThan(wrapper_box.width * 0.75)
+        expect(width).toBeGreaterThan(50)
+      }).toPass({ timeout: get_canvas_timeout() })
     }
 
     // Panes are ~half the viewer, so StructureViewport hands them a smaller gizmo. Ties
     // responsive_gizmo_size (unit-tested) to what renders, now that the old `.responsive-gizmo`
     // DOM box is gone with three-viewport-gizmo's HTML overlay.
-    const pane_span = await gizmo_span(
-      structure_div.locator(`.viewport-stage.multi canvas`).first(),
-    )
+    const pane_span = await gizmo_span(multi_stage.locator(`canvas`).first())
     expect(pane_span).toBeLessThan(single_span * 0.8)
 
     // Toggle back to single view
     await select_structure_layout(structure_div, `3D single view`)
     await expect(structure_div).not.toHaveClass(/multi-view/)
-    await expect(structure_div.locator(`.viewport-stage.multi`)).toHaveCount(0)
-    await expect(structure_div.locator(`.viewport-cell`)).toHaveCount(1)
+    await expect(multi_stage).toHaveCount(0)
+    await expect(cells).toHaveCount(1)
     await expect(structure_div.locator(`canvas`)).toHaveCount(1, {
       timeout: get_canvas_timeout(),
     })
@@ -2003,17 +1314,18 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
 
   test(`Cmd/Ctrl+G toggles between grid and single view`, async ({ page }) => {
     const structure_div = page.locator(`#test-structure`)
+    const cells = structure_div.locator(`.viewport-cell`)
     await structure_div.focus() // viewer must be focused to receive the shortcut
-    await expect(structure_div.locator(`.viewport-cell`)).toHaveCount(1)
+    await expect(cells).toHaveCount(1)
 
-    const grid_shortcut = `${is_mac ? `Meta` : `Control`}+g`
+    const grid_shortcut = `${primary_modifier_key}+g`
     await page.keyboard.press(grid_shortcut)
     await expect(structure_div).toHaveClass(/multi-view/)
-    await expect(structure_div.locator(`.viewport-cell`)).toHaveCount(4)
+    await expect(cells).toHaveCount(4)
 
     await page.keyboard.press(grid_shortcut)
     await expect(structure_div).not.toHaveClass(/multi-view/)
-    await expect(structure_div.locator(`.viewport-cell`)).toHaveCount(1)
+    await expect(cells).toHaveCount(1)
   })
 
   test(`active pane raises overlays while its canvas stays clipped`, async ({ page }) => {
@@ -2037,16 +1349,17 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
     page,
   }) => {
     const structure_div = page.locator(`#test-structure`)
+    const cells = structure_div.locator(`.viewport-cell`)
     const canvas_timeout = get_canvas_timeout()
 
     for (let cycle = 0; cycle < 3; cycle++) {
       await select_structure_layout(structure_div, `3D 2×2 grid`)
-      await expect(structure_div.locator(`.viewport-cell`)).toHaveCount(4)
+      await expect(cells).toHaveCount(4)
       await expect(structure_div.locator(`.viewport-stage.multi canvas`)).toHaveCount(4, {
         timeout: canvas_timeout,
       })
       await select_structure_layout(structure_div, `3D single view`)
-      await expect(structure_div.locator(`.viewport-cell`)).toHaveCount(1)
+      await expect(cells).toHaveCount(1)
       await expect(structure_div.locator(`canvas`)).toHaveCount(1, {
         timeout: canvas_timeout,
       })

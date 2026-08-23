@@ -2,8 +2,8 @@
 // ColorBarScale into a data→color function and sample it evenly in scale space (linear,
 // log or arcsinh spacing) for a CSS gradient.
 import { get_d3_interpolator } from '$lib/colors'
-import { LOG_EPS, type Vec2 } from '$lib/math'
-import { create_scale } from '$lib/plot/core/scales'
+import type { Vec2 } from '$lib/math'
+import { create_scale, log_color_domain } from '$lib/plot/core/scales'
 import type { ColorBarScale, ScaleType } from '$lib/plot/core/types'
 import { get_scale_type_name } from '$lib/plot/core/types'
 import { clamp01 } from '$lib/utils'
@@ -14,15 +14,12 @@ export interface ColorRamp {
   domain: Vec2 // data span the ramp covers, in the caller's bound order
 }
 
-// Scale for positioning colors and ticks along a ramp. Unlike create_scale, log keeps any
-// positive bound (diffusivities, rates etc. sit far below the LOG_EPS axis floor) and the
-// bound order (a descending range runs high-to-low); only non-positive bounds fall back to
-// LOG_EPS, so a domain entirely <= 0 collapses to a flat ramp instead of going NaN.
+// Scale for positioning colors and ticks along a ramp. Unlike create_scale's axis floor,
+// log uses log_color_domain (keeps tiny positive bounds and their order).
 export const color_ramp_scale = (scale_type: ScaleType, domain: Vec2, output: Vec2) => {
   if (get_scale_type_name(scale_type) !== `log`)
     return create_scale(scale_type, domain, output)
-  const log_domain = domain.map((bound) => (bound > 0 ? bound : LOG_EPS)) as Vec2
-  return scaleLog().domain(log_domain).range(output)
+  return scaleLog().domain(log_color_domain(domain)).range(output)
 }
 
 // A prebuilt `fn` scale maps data itself over the domain it declares (else `range`);

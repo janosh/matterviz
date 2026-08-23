@@ -2,45 +2,21 @@
 // tests that fail when the rule is removed - deleting `messageerror` or `terminate()` used
 // to leave every module's suite green.
 import { create_worker_client } from '$lib/worker-client.svelte'
+import { serve_worker } from '$lib/worker-serve'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
+import { install_stub_worker, type StubWorkerInstance, type StubWorkerMessage } from './setup'
 
-type Listener = (event: unknown) => void
-
-// Minimal Worker stand-in: records posts, never replies unless told to, counts terminations
-class FakeWorker {
-  static instances: FakeWorker[] = []
-  posted: { id: number; input: unknown; options: unknown }[] = []
-  transfers: Transferable[][] = []
-  terminated = 0
-  listeners = new Map<string, Listener[]>()
-
-  constructor() {
-    FakeWorker.instances.push(this)
-  }
-  addEventListener(type: string, listener: Listener): void {
-    this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener])
-  }
-  postMessage(
-    message: { id: number; input: unknown; options: unknown },
-    transfer: Transferable[],
-  ): void {
-    this.posted.push(message)
-    this.transfers.push(transfer)
-  }
-  terminate(): void {
-    this.terminated++
-  }
-  emit(type: string, event: unknown): void {
-    for (const listener of this.listeners.get(type) ?? []) listener(event)
-  }
-}
+// Installed without a `compute`, so the stub records posts and never replies unless told to
+let stub: ReturnType<typeof install_stub_worker<StubWorkerMessage>>
+const workers = (): StubWorkerInstance[] => stub.instances
+const first_post = (worker: StubWorkerInstance) => worker.posted[0].message
 
 const make_client = <Result = string>(
   compute_sync: () => Result = (() => `sync`) as () => Result,
 ) =>
   create_worker_client<{ tag: string }, Record<string, unknown>, Result>({
     label: `Test`,
-    create_worker: () => new FakeWorker() as unknown as Worker,
+    create_worker: () => new Worker(`stub`),
     compute_sync,
     build_payload: (input) => input,
   })
@@ -50,25 +26,33 @@ const posted_count = (...options_list: Record<string, unknown>[]): number => {
   const run = make_client()
   const input = { tag: `a` }
   for (const options of options_list) void run(input, options).catch(() => {})
-  return FakeWorker.instances[0].posted.length
+  return workers()[0].posted.length
 }
 
 beforeEach(() => {
-  FakeWorker.instances = []
-  vi.stubGlobal(`Worker`, FakeWorker)
+  stub = install_stub_worker()
 })
 describe(`worker teardown`, () => {
   test.each([
     {
       desc: `messageerror`,
-      emit: (worker: FakeWorker) => worker.emit(`messageerror`, {}),
+      emit: (worker: StubWorkerInstance) => worker.emit(`messageerror`, {}),
       expected: /could not be deserialized/,
     },
     {
       desc: `error`,
-      emit: (worker: FakeWorker) =>
+      emit: (worker: StubWorkerInstance) =>
         worker.emit(`error`, { message: `boom`, preventDefault: () => {} }),
       expected: /boom/,
+    },
+    {
+      // serve_worker's reply when the REQUEST failed to deserialize on the worker side
+      desc: `id-less error reply`,
+      emit: (worker: StubWorkerInstance) =>
+        worker.emit(`message`, {
+          data: { id: null, result: null, error: `request could not be deserialized` },
+        }),
+      expected: /request could not be deserialized/,
     },
   ])(
     `a $desc event rejects pending work and terminates the worker`,
@@ -76,7 +60,7 @@ describe(`worker teardown`, () => {
       const run = make_client()
       const input = { tag: `a` }
       const pending = run(input, {})
-      const [worker] = FakeWorker.instances
+      const [worker] = workers()
       expect(worker.posted).toHaveLength(1)
 
       emit(worker)
@@ -86,8 +70,8 @@ describe(`worker teardown`, () => {
 
       // the poisoned key must be gone: the same request has to reach a NEW worker
       const retry = run(input, {})
-      expect(FakeWorker.instances).toHaveLength(2)
-      expect(FakeWorker.instances[1].posted).toHaveLength(1)
+      expect(workers()).toHaveLength(2)
+      expect(workers()[1].posted).toHaveLength(1)
       void retry.catch(() => {})
     },
   )
@@ -96,18 +80,36 @@ describe(`worker teardown`, () => {
     const run = make_client()
     const input = { tag: `same` }
     const first = run(input, {})
-    const first_worker = FakeWorker.instances[0]
+    const first_worker = workers()[0]
 
     run.cancel(`superseded`)
     const second = run(input, {})
     await expect(first).rejects.toThrow(`superseded`)
     expect(first_worker.terminated).toBe(1)
 
-    expect(FakeWorker.instances).toHaveLength(2)
-    expect(FakeWorker.instances[1].posted[0].input).toEqual(input)
+    expect(workers()).toHaveLength(2)
+    expect(first_post(workers()[1]).input).toEqual(input)
     expect(run(input, {})).toBe(second)
-    expect(FakeWorker.instances[1].posted).toHaveLength(1)
+    expect(workers()[1].posted).toHaveLength(1)
     void second.catch(() => {})
+  })
+
+  test(`release terminates an idle worker but leaves in-flight requests alone`, async () => {
+    const run = make_client()
+    const pending = run({ tag: `busy` }, {})
+    const [worker] = workers()
+    // Another pane unmounting must not reject this pane's request
+    run.release()
+    expect(worker.terminated).toBe(0)
+    worker.emit(`message`, {
+      data: { id: first_post(worker).id, result: `done`, error: null },
+    })
+    await expect(pending).resolves.toBe(`done`)
+    run.release()
+    expect(worker.terminated).toBe(1)
+    // the next request constructs a fresh worker
+    void run({ tag: `next` }, {}).catch(() => {})
+    expect(workers()).toHaveLength(2)
   })
 })
 
@@ -150,7 +152,7 @@ describe(`request dedupe`, () => {
     void run({ tag: `a` }, {}).catch(() => {})
     void run({ tag: `a` }, {}).catch(() => {})
     // same shape, different object: a content hash would merge these, identity must not
-    expect(FakeWorker.instances[0].posted).toHaveLength(2)
+    expect(workers()[0].posted).toHaveLength(2)
   })
 })
 
@@ -158,7 +160,20 @@ test(`falls back to compute_sync when Worker is missing`, async () => {
   vi.stubGlobal(`Worker`, undefined)
   const run = make_client()
   await expect(run({ tag: `a` }, {})).resolves.toBe(`sync`)
-  expect(FakeWorker.instances).toHaveLength(0)
+  expect(workers()).toHaveLength(0)
+})
+
+test(`a throwing compute_sync rejects asynchronously and frees the dedupe key`, async () => {
+  vi.stubGlobal(`Worker`, undefined)
+  const run = make_client(() => {
+    throw new Error(`bad input`)
+  })
+  const input = { tag: `a` }
+  let promise: Promise<unknown> | undefined
+  expect(() => (promise = run(input, {}))).not.toThrow()
+  await expect(promise).rejects.toThrow(`bad input`)
+  // A retry must be a fresh promise, not the settled rejection
+  await expect(run(input, {})).rejects.toThrow(`bad input`)
 })
 
 test(`falls back to compute_sync when the worker constructor throws, and stops retrying it`, async () => {
@@ -182,8 +197,8 @@ test(`falls back to compute_sync when the worker constructor throws, and stops r
 test(`an explicit null result is delivered rather than reported as missing`, async () => {
   const run = make_client<number | null>(() => 0)
   const pending = run({ tag: `a` }, {})
-  const [worker] = FakeWorker.instances
-  worker.emit(`message`, { data: { id: worker.posted[0].id, result: null, error: null } })
+  const [worker] = workers()
+  worker.emit(`message`, { data: { id: first_post(worker).id, result: null, error: null } })
   await expect(pending).resolves.toBeNull()
 })
 
@@ -201,8 +216,8 @@ test.each([
 ])(`a $desc rejects with the expected message`, async ({ response, expected }) => {
   const run = make_client()
   const pending = run({ tag: `a` }, {})
-  const [worker] = FakeWorker.instances
-  worker.emit(`message`, { data: { id: worker.posted[0].id, ...response } })
+  const [worker] = workers()
+  worker.emit(`message`, { data: { id: first_post(worker).id, ...response } })
   await expect(pending).rejects.toThrow(expected)
 })
 
@@ -213,9 +228,9 @@ describe(`per-request options`, () => {
     const seen: unknown[][] = [[], []]
     const first = run(input, {}, { on_progress: (progress) => seen[0].push(progress) })
     const second = run(input, {}, { on_progress: (progress) => seen[1].push(progress) })
-    const [worker] = FakeWorker.instances
+    const [worker] = workers()
     expect(worker.posted).toHaveLength(1)
-    const { id } = worker.posted[0]
+    const { id } = first_post(worker)
     worker.emit(`message`, { data: { id, progress: 0.5 } })
     worker.emit(`message`, { data: { id, progress: 1 } })
     worker.emit(`message`, { data: { id, result: `done`, error: null } })
@@ -226,19 +241,71 @@ describe(`per-request options`, () => {
     ])
   })
 
-  test(`aborting the only waiter terminates the worker and frees the key`, async () => {
+  test(`aborting the only waiter frees the key and terminates the busy worker at once`, async () => {
     const run = make_client()
     const input = { tag: `a` }
     const controller = new AbortController()
     const pending = run(input, {}, { signal: controller.signal })
-    const [worker] = FakeWorker.instances
-    controller.abort()
-    await expect(pending).rejects.toMatchObject({ name: `AbortError` })
+    const [worker] = workers()
+    controller.abort(new Error(`superseded`))
+    await expect(pending).rejects.toThrow(`superseded`)
+    // the abandoned compute is still running inside the worker: keeping it alive would make
+    // the next request queue behind it
     expect(worker.terminated).toBe(1)
+    // a replacement is pre-warmed immediately so the next request does not pay a cold start
+    expect(workers()).toHaveLength(2)
+    expect(workers()[1].posted).toHaveLength(0)
     // the dropped request must not be handed out again
     void run(input, {}).catch(() => {})
-    expect(FakeWorker.instances).toHaveLength(2)
-    expect(FakeWorker.instances[1].posted).toHaveLength(1)
+    expect(workers()).toHaveLength(2)
+    expect(workers()[1].posted).toHaveLength(1)
+  })
+
+  test(`an abort followed by a new request reuses the pre-warmed worker`, async () => {
+    // The option-keystroke pattern of use_async_result: abort the superseded compute, then
+    // request again in the same tick
+    const run = make_client()
+    const input = { tag: `a` }
+    const controller = new AbortController()
+    const aborted = run(input, { lag: 1 }, { signal: controller.signal })
+    controller.abort()
+    await expect(aborted).rejects.toMatchObject({ name: `AbortError` })
+    const kept = run(input, { lag: 2 })
+    // exactly two workers ever: the terminated one and its eager replacement; no third
+    expect(workers()).toHaveLength(2)
+    const [old_worker, worker] = workers()
+    expect(old_worker.terminated).toBe(1)
+    expect(old_worker.posted).toHaveLength(1)
+    expect(worker.terminated).toBe(0)
+    expect(worker.posted).toHaveLength(1)
+    expect(first_post(worker).options).toEqual({ lag: 2 })
+    worker.emit(`message`, {
+      data: { id: first_post(worker).id, result: `done`, error: null },
+    })
+    await expect(kept).resolves.toBe(`done`)
+  })
+
+  test(`a reply from the terminated worker does not settle the replacement's request`, async () => {
+    const run = make_client()
+    const controller = new AbortController()
+    const aborted = run({ tag: `a` }, {}, { signal: controller.signal })
+    controller.abort()
+    await expect(aborted).rejects.toMatchObject({ name: `AbortError` })
+    const kept = run({ tag: `b` }, {})
+    const [old_worker, worker] = workers()
+    // a late reply for the aborted id (real workers never deliver after terminate, but the
+    // id must be forgotten regardless) leaves the live request pending
+    old_worker.emit(`message`, {
+      data: { id: first_post(old_worker).id, result: `stale`, error: null },
+    })
+    let settled = false
+    void kept.then(() => (settled = true))
+    await Promise.resolve()
+    expect(settled).toBe(false)
+    worker.emit(`message`, {
+      data: { id: first_post(worker).id, result: `done`, error: null },
+    })
+    await expect(kept).resolves.toBe(`done`)
   })
 
   test(`aborting one of two waiters keeps the shared request and worker alive`, async () => {
@@ -247,11 +314,13 @@ describe(`per-request options`, () => {
     const controller = new AbortController()
     const aborted = run(input, {}, { signal: controller.signal })
     const kept = run(input, {})
-    const [worker] = FakeWorker.instances
+    const [worker] = workers()
     controller.abort(new Error(`no longer needed`))
     await expect(aborted).rejects.toThrow(`no longer needed`)
     expect(worker.terminated).toBe(0)
-    worker.emit(`message`, { data: { id: worker.posted[0].id, result: `done`, error: null } })
+    worker.emit(`message`, {
+      data: { id: first_post(worker).id, result: `done`, error: null },
+    })
     await expect(kept).resolves.toBe(`done`)
   })
 
@@ -259,8 +328,10 @@ describe(`per-request options`, () => {
     const run = make_client()
     const controller = new AbortController()
     const pending = run({ tag: `a` }, {}, { signal: controller.signal })
-    const [worker] = FakeWorker.instances
-    worker.emit(`message`, { data: { id: worker.posted[0].id, result: `done`, error: null } })
+    const [worker] = workers()
+    worker.emit(`message`, {
+      data: { id: first_post(worker).id, result: `done`, error: null },
+    })
     await expect(pending).resolves.toBe(`done`)
     controller.abort()
     expect(worker.terminated).toBe(0)
@@ -272,7 +343,7 @@ describe(`per-request options`, () => {
     await expect(run({ tag: `a` }, {}, { signal })).rejects.toMatchObject({
       name: `AbortError`,
     })
-    expect(FakeWorker.instances[0]?.posted ?? []).toHaveLength(0)
+    expect(workers()[0]?.posted ?? []).toHaveLength(0)
   })
 
   test(`transfer lists are forwarded to postMessage`, () => {
@@ -280,6 +351,24 @@ describe(`per-request options`, () => {
     const buffer = new ArrayBuffer(8)
     void run({ tag: `a` }, {}, { transfer: [buffer] }).catch(() => {})
     void run({ tag: `b` }, {}).catch(() => {})
-    expect(FakeWorker.instances[0].transfers).toEqual([[buffer], []])
+    expect(workers()[0].posted.map(({ transfer }) => transfer)).toEqual([[buffer], []])
   })
+})
+
+test(`serve_worker answers an undeserializable request with an id-less error reply`, () => {
+  // Stand in for the worker global scope: record listeners and posted replies
+  const listeners = new Map<string, (event: unknown) => void>()
+  const posted: unknown[] = []
+  vi.stubGlobal(`self`, {
+    addEventListener: (type: string, handler: (event: unknown) => void) =>
+      listeners.set(type, handler),
+    postMessage: (message: unknown) => posted.push(message),
+  })
+  serve_worker((input: number) => input * 2)
+  listeners.get(`message`)?.({ data: { id: 7, input: 21, options: {} } })
+  listeners.get(`messageerror`)?.({})
+  expect(posted).toEqual([
+    { id: 7, result: 42, error: null },
+    { id: null, result: null, error: expect.stringMatching(/could not be deserialized/) },
+  ])
 })

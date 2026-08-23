@@ -1,8 +1,10 @@
 import {
   CONFIG_DIRS_REGEX,
+  HDF5_EXT_REGEX,
   STRUCT_KEYWORDS_REGEX,
   STRUCT_KEYWORDS_STRICT_REGEX,
   STRUCTURE_EXTENSIONS_REGEX,
+  TRAJ_EXTENSIONS_REGEX,
   TRAJ_KEYWORDS_REGEX,
   VASP_FILES_REGEX,
   XDATCAR_REGEX,
@@ -24,7 +26,13 @@ export const is_lammps_dump_content = (content: string): boolean =>
 export function is_structure_file(filename: string): boolean {
   const name = strip_compression_extensions(filename)
 
-  if (/\.(?:traj|xtc|h5|hdf5)$/i.test(name) || XDATCAR_REGEX.test(name)) return false
+  if (
+    TRAJ_EXTENSIONS_REGEX.test(name) ||
+    HDF5_EXT_REGEX.test(name) ||
+    XDATCAR_REGEX.test(name)
+  ) {
+    return false
+  }
   if (STRUCTURE_EXTENSIONS_REGEX.test(name) || VASP_FILES_REGEX.test(name)) {
     return true
   }

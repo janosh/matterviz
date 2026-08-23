@@ -40,12 +40,7 @@
     type StructureViewState,
   } from '$lib/settings/viewer-state'
   import type { AnyStructure, StructureDisplayMode } from '$lib/structure'
-  import {
-    get_structure_vector_keys,
-    Lattice,
-    StructureScene,
-    VECTOR_PALETTE,
-  } from '$lib/structure'
+  import { get_structure_vector_keys, StructureScene, VECTOR_PALETTE } from '$lib/structure'
   import type { ElementSymbol } from '$lib/element'
   import {
     DEFAULT_ATOM_COLOR_CONFIG,
@@ -58,9 +53,8 @@
   import type { TrajectoryLinesStats } from '$lib/structure/trajectory-lines'
   import { get_majority_element } from '$lib/structure/bonding'
   import { is_valid_supercell_input } from '$lib/structure/supercell'
-  import type { CellType } from '$lib/symmetry'
+  import type { CellType, SymmetryDataset } from '$lib/symmetry'
   import { to_error } from '$lib/utils'
-  import type { MoyoDataset } from '@spglib/moyo-wasm'
   import { untrack, type ComponentProps } from 'svelte'
   import { createAttachmentKey } from 'svelte/attachments'
   import { SvelteSet } from 'svelte/reactivity'
@@ -71,14 +65,6 @@
   let {
     controls_open = $bindable(false),
     scene_props = $bindable({}),
-    lattice_props = $bindable({
-      show_cell_vectors: DEFAULTS.structure.show_cell_vectors,
-      cell_edge_color: DEFAULTS.structure.cell_edge_color,
-      cell_edge_opacity: DEFAULTS.structure.cell_edge_opacity,
-      cell_surface_color: DEFAULTS.structure.cell_surface_color,
-      cell_surface_opacity: DEFAULTS.structure.cell_surface_opacity,
-      cell_edge_width: DEFAULTS.structure.cell_edge_width,
-    }),
     show_image_atoms = $bindable(DEFAULTS.structure.show_image_atoms),
     supercell_scaling = $bindable(`1x1x1`),
     background_color = $bindable(),
@@ -111,7 +97,6 @@
   }: Omit<ComponentProps<typeof ControlPane>, `children`> & {
     controls_open?: boolean // Control pane state
     scene_props?: ComponentProps<typeof StructureScene>
-    lattice_props?: ComponentProps<typeof Lattice>
     show_image_atoms?: boolean
     supercell_scaling?: string
     background_color?: string
@@ -120,7 +105,7 @@
     atom_color_config?: AtomColorConfig
     structure?: AnyStructure
     supercell_loading?: boolean
-    sym_data?: MoyoDataset | null
+    sym_data?: SymmetryDataset | null
     cell_type?: CellType // Cell type: original, conventional, or primitive
     volumetric_data?: VolumetricData[] // Volumetric data volumes for isosurface controls
     isosurface_settings?: IsosurfaceSettings // Isosurface rendering settings
@@ -144,14 +129,6 @@
     toggle_props?: PaneToggleProps
   } = $props()
 
-  const lattice_setting_keys = [
-    `cell_edge_color`,
-    `cell_edge_opacity`,
-    `cell_surface_color`,
-    `cell_surface_opacity`,
-    `cell_edge_width`,
-    `show_cell_vectors`,
-  ] as const
   let controls_pane = $state<HTMLDivElement | null>(null)
   let controls_pane_size = $state<StructurePaneSize>()
   let settings_import_status = $state<{ message: string; error: boolean }>()
@@ -174,10 +151,6 @@
   const apply_view_state = (state: StructureViewState): void => {
     const structure_settings = structuredClone(state.settings.structure)
     Object.assign(scene_props, structure_settings)
-    for (const key of lattice_setting_keys) {
-      const value = structure_settings[key]
-      if (value !== undefined) Object.assign(lattice_props, { [key]: value })
-    }
     show_image_atoms =
       structure_settings.show_image_atoms ?? DEFAULTS.structure.show_image_atoms
     show_trajectory_lines =
@@ -216,7 +189,7 @@
   let current_view_state = $derived(
     create_structure_view_state({
       scene_props,
-      lattice_props,
+      show_trajectory_lines,
       color_scheme,
       background_color,
       background_opacity,
@@ -310,9 +283,9 @@
   // === Schema-driven rows ===
   // Every uniform control is a Row: the schema entry's value type picks the widget (enum →
   // select, boolean → checkbox, number → slider + number input, string → color swatch).
-  // Rows default to reading/writing scene_props[key]; `get`/`set` point one elsewhere
-  // (lattice_props, a local bindable). `pair` adds a dependent color swatch beside the
-  // primary control, and `data_key` names the pseudo-setting the pair resets as one.
+  // Rows default to reading/writing scene_props[key]; `get`/`set` point one elsewhere (a
+  // top-level bindable such as show_image_atoms). `pair` adds a dependent color swatch beside
+  // the primary control, and `data_key` names the pseudo-setting the pair resets as one.
   type StructureSettingKey = keyof typeof SETTINGS_CONFIG.structure
   type Row = {
     key: StructureSettingKey
@@ -338,16 +311,6 @@
     if (current.set) current.set(value)
     else scene_record()[current.key] = value
   }
-  const lattice_row = (
-    key: StructureSettingKey & keyof typeof lattice_props,
-    label: string,
-    step?: number,
-  ): Row => ({
-    ...row(key, label, step),
-    get: () => lattice_props[key],
-    set: (value) => Object.assign(lattice_props, { [key]: value }),
-  })
-
   const visibility_rows: Row[] = [
     row(`show_atoms`, `Atoms`),
     {
@@ -357,7 +320,7 @@
     },
     row(`show_site_labels`, `Site labels`),
     row(`show_site_indices`, `Site indices`),
-    lattice_row(`show_cell_vectors`, `Lattice vectors`),
+    row(`show_cell_vectors`, `Lattice vectors`),
   ]
   // Enum pickers rendered below the toggle grid, same section
   const visibility_mode_rows = [row(`show_bonds`, `Bonds`), row(`show_polyhedra`, `Polyhedra`)]
@@ -417,10 +380,10 @@
     },
   ]
   const cell_rows = [
-    lattice_row(`cell_edge_color`, `Edge color`),
-    lattice_row(`cell_edge_opacity`, `Edge opacity`, 0.05),
-    lattice_row(`cell_surface_color`, `Surface color`),
-    lattice_row(`cell_surface_opacity`, `Surface opacity`, 0.01),
+    row(`cell_edge_color`, `Edge color`),
+    row(`cell_edge_opacity`, `Edge opacity`, 0.05),
+    row(`cell_surface_color`, `Surface color`),
+    row(`cell_surface_opacity`, `Surface opacity`, 0.01),
   ]
   const view_rows = [
     row(`camera_projection`, `Projection`),
@@ -539,10 +502,6 @@
       setting_metadata: structure_setting_metadata,
     }
   }
-
-  $effect(() => {
-    scene_props.show_trajectory_lines = show_trajectory_lines
-  })
 
   const controls_id = $props.id()
   const multi_view_hint_id = `multi-view-hint-${controls_id}`

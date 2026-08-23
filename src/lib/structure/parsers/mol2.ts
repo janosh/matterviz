@@ -12,8 +12,10 @@ import {
   diag_warn,
   element_from_candidates,
   guard_parse,
+  is_placeholder_cell,
   parsed_result,
   parse_coordinate,
+  parse_float_token,
   record_atom_id,
   row_tokens,
   resolve_bonds,
@@ -50,6 +52,22 @@ const split_mol2_sections = (content: string): Map<string, string[]> => {
     current?.push(trimmed)
   }
   return sections
+}
+
+// CRYSIN row: `a b c alpha beta gamma space_group setting`; null when there is no row or
+// the six cell parameters are not all finite numbers
+const read_crysin_cell = (row: string | undefined): number[] | null => {
+  const params = row?.trim().split(/\s+/).slice(0, 6).map(parse_float_token) ?? []
+  return params.length === 6 && params.every(Number.isFinite) ? params : null
+}
+
+// Whether a MOL2 file declares a real cell: a CRYSIN section whose parameters are not the
+// 1 1 1 90 90 90 placeholder. Goes through the same section splitter as parse_mol2 (so a
+// comment or blank line after the header is skipped identically) and structure-type
+// detection agrees with the parser on what is a crystal.
+export const mol2_has_lattice = (content: string): boolean => {
+  const params = read_crysin_cell(split_mol2_sections(content).get(`CRYSIN`)?.[0])
+  return params !== null && !is_placeholder_cell(params)
 }
 
 // SYBYL atom types are `element.hybridization` (`C.3`, `N.ar`, `Fe`); the atom name
@@ -89,18 +107,21 @@ export const parse_mol2 = (content: string): AnyStructure | null =>
       return null
     }
 
-    // CRYSIN: a b c alpha beta gamma space_group setting
+    const crysin_row = sections.get(`CRYSIN`)?.[0]
+    const cell_params = read_crysin_cell(crysin_row)
+    if (crysin_row !== undefined && cell_params === null) {
+      diag_error(`MOL2 @<TRIPOS>CRYSIN row has invalid cell parameters: '${crysin_row}'`)
+      return null
+    }
     let lattice_matrix: math.Matrix3x3 | null = null
     let cell_lengths: Vec3 | undefined
-    const crysin_row = sections.get(`CRYSIN`)?.[0]
-    if (crysin_row) {
-      const params = crysin_row.split(/\s+/).slice(0, 6).map(Number)
-      if (params.length !== 6 || !params.every(Number.isFinite)) {
-        diag_error(`MOL2 @<TRIPOS>CRYSIN row has invalid cell parameters: '${crysin_row}'`)
-        return null
-      }
-      cell_lengths = [params[0], params[1], params[2]]
-      lattice_matrix = cell_params_to_matrix(params)
+    if (cell_params && is_placeholder_cell(cell_params)) {
+      diag_warn(
+        `MOL2: ignoring placeholder CRYSIN cell (1 1 1 90 90 90), treating as molecule`,
+      )
+    } else if (cell_params) {
+      cell_lengths = [cell_params[0], cell_params[1], cell_params[2]]
+      lattice_matrix = cell_params_to_matrix(cell_params)
     }
     // Cartesian coordinates stay authoritative and are not wrapped into the cell so
     // molecules are not torn apart across periodic boundaries

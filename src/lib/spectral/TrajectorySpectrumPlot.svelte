@@ -8,6 +8,7 @@
   } from '$lib/plot'
   import { FacetGrid, ScatterPlot } from '$lib/plot'
   import type { ComponentProps } from 'svelte'
+  import { frequency_unit_label } from './frequency-units'
   import type {
     RamanChannel,
     TrajectorySpectrumCurve,
@@ -178,7 +179,7 @@
     header_controls={facet_layout.index === 0 ? header_controls : undefined}
     controls_extra={facet_layout.index === 0 ? controls_extra : undefined}
     x_axis={{
-      label: `Frequency (${result.frequency_unit === `cm^-1` ? `cm⁻¹` : result.frequency_unit})`,
+      label: `Frequency (${frequency_unit_label(result.frequency_unit)})`,
       range: visible_frequency_range,
     }}
     y_axis={{

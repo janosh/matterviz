@@ -1,6 +1,14 @@
 import { is_elem_symbol } from '$lib/element/helpers'
 import type { ElementSymbol } from '$lib/element/types'
-import type { Matrix3x3 } from '$lib/math'
+import { transpose_3x3_matrix, type Matrix3x3 } from '$lib/math'
+import { validate_3x3_matrix } from '$lib/trajectory/helpers'
+import type {
+  PositionStreamOptions,
+  TrajectoryFrame,
+  TrajectoryMetadata,
+  TrajectorySignal,
+  TrajectorySignalDescriptor,
+} from '$lib/trajectory/index'
 import type { Dataset, Entity, Group } from 'h5wasm'
 import type * as h5wasm from 'h5wasm'
 
@@ -35,6 +43,84 @@ export const string_value = (value: unknown): string | undefined => {
   if (value instanceof Uint8Array) return new TextDecoder().decode(value).trim() || undefined
   if (Array.isArray(value) && value.length === 1) return string_value(value[0])
   return undefined
+}
+
+// The dataset at `path`, or null when the entity is missing or is a group
+export const dataset_at = (h5_file: h5wasm.File, path: string | undefined): Dataset | null => {
+  if (!path) return null
+  const entity = h5_file.get(path)
+  return is_hdf5_dataset(entity) ? entity : null
+}
+
+// A dataset's shape, rejecting scalars and degenerate axes: every dataset the trajectory
+// parsers read is indexed along at least one axis of positive length
+export const dataset_shape = (dataset: Dataset, path: string, format: string): number[] => {
+  const shape = dataset.shape ?? []
+  if (shape.length === 0 || shape.some((size) => !Number.isInteger(size) || size < 1)) {
+    throw new Error(`${format} dataset ${path} has invalid shape [${shape.join(`, `)}]`)
+  }
+  return shape
+}
+
+// Exactly `count` numbers along a single axis (step axes, per-replica ids)
+export const read_numeric_1d = (
+  dataset: Dataset,
+  path: string,
+  count: number,
+  format: string,
+): number[] => {
+  const shape = dataset_shape(dataset, path, format)
+  if (shape.length !== 1 || shape[0] !== count) {
+    throw new Error(
+      `${format} dataset ${path} has shape [${shape.join(`, `)}], expected [${count}]`,
+    )
+  }
+  return Array.from(read_numeric_samples(dataset, path, count, 1))
+}
+
+// HDF5 stores cells as row-major [3, 3] with lattice vectors along the first axis; the
+// structure convention keeps them as columns, hence the transpose
+export const lattice_from_values = (values: ArrayLike<number>, offset = 0): Matrix3x3 =>
+  transpose_3x3_matrix(
+    validate_3x3_matrix(
+      Array.from({ length: 3 }, (_unused, row_idx) =>
+        Array.from(
+          { length: 3 },
+          (_unused_2, column_idx) => values[offset + row_idx * 3 + column_idx],
+        ),
+      ),
+    ),
+  )
+
+// Write a per-atom vec3 channel (velocities) onto a frame's sites
+export const attach_site_vectors = (
+  frame: TrajectoryFrame,
+  key: string,
+  values: ArrayLike<number>,
+): void => {
+  for (const [atom_idx, site] of frame.structure.sites.entries()) {
+    site.properties = {
+      ...site.properties,
+      [key]: Array.from({ length: 3 }, (_unused, axis) => values[atom_idx * 3 + axis]),
+    }
+  }
+}
+
+// Plot rows for at most ~1000 evenly spaced frames: the plot is sampled, never the run.
+// `read_properties` receives the sampled frame indices and the stride to read them with.
+export const sampled_property_rows = (
+  n_frames: number,
+  step_of: (frame_idx: number) => number,
+  read_properties: (frame_indices: number[], stride: number) => Record<string, number>[],
+): TrajectoryMetadata[] => {
+  const stride = Math.max(1, Math.ceil(n_frames / 1000))
+  const frame_indices = sampled_indices(n_frames, stride)
+  const properties = read_properties(frame_indices, stride)
+  return frame_indices.map((frame_number, sample_idx) => ({
+    frame_number,
+    step: step_of(frame_number),
+    properties: properties[sample_idx],
+  }))
 }
 
 export const read_dataset = (h5_file: h5wasm.File, path: string): unknown => {
@@ -200,9 +286,9 @@ export const to_scalar_number = (data: unknown): number | null => {
   return to_finite_number(Array.isArray(data) ? data[0] : data)
 }
 
-export const unique_strings = (values: string[] | undefined): string[] => [...new Set(values)]
+const unique_strings = (values: string[] | undefined): string[] => [...new Set(values)]
 
-export const positive_integer_stride = (value: number | undefined, label: string): number => {
+const positive_integer_stride = (value: number | undefined, label: string): number => {
   const stride = value ?? 1
   if (!Number.isFinite(stride) || !Number.isInteger(stride) || stride < 1) {
     throw new Error(`${label} must be a positive integer, got ${stride}`)
@@ -210,8 +296,71 @@ export const positive_integer_stride = (value: number | undefined, label: string
   return stride
 }
 
-export const sampled_indices = (item_count: number, stride: number): number[] =>
+const sampled_indices = (item_count: number, stride: number): number[] =>
   Array.from({ length: Math.ceil(item_count / stride) }, (_unused, idx) => idx * stride)
+
+export const trajectory_signal = (
+  values: Float64Array,
+  { sample_shape, unit }: { sample_shape: number[]; unit?: string },
+  steps: number[],
+): TrajectorySignal => ({ values, sample_shape, steps, ...(unit ? { unit } : {}) })
+
+export const signal_descriptors = <Manifest extends { sample_shape: number[]; unit?: string }>(
+  manifest: Record<string, Manifest>,
+  sample_count_of: (signal: Manifest) => number,
+): Record<string, TrajectorySignalDescriptor> =>
+  Object.fromEntries(
+    Object.entries(manifest).map(([key, signal]) => [
+      key,
+      {
+        sample_shape: signal.sample_shape,
+        sample_count: sample_count_of(signal),
+        ...(signal.unit ? { unit: signal.unit } : {}),
+      },
+    ]),
+  )
+
+// The option handling every HDF5 `collect_positions` shares: stride, channel selection and
+// the memory budget. `is_vector` / `is_signal` say which keys the file can stream (and may
+// throw their own shape errors); `values_per_frame(n_vectors)` sizes one selected frame and
+// `signal_values(key)` a whole native-cadence signal.
+export const resolve_stream_channels = (
+  format: string,
+  options: PositionStreamOptions,
+  n_frames: number,
+  channels: {
+    is_vector: (key: string) => boolean
+    is_signal: (key: string) => boolean
+    values_per_frame: (n_vectors: number) => number
+    signal_values: (key: string) => number
+  },
+): {
+  frame_stride: number
+  vector_keys: string[]
+  signal_keys: string[]
+  frame_indices: number[]
+} => {
+  const frame_stride = positive_integer_stride(options.frame_stride, `${format} frame_stride`)
+  const vector_keys = unique_strings(options.vector_keys)
+  const signal_keys = unique_strings(options.signal_keys)
+  const unknown_keys = [
+    ...vector_keys.filter((key) => !channels.is_vector(key)),
+    ...signal_keys.filter((key) => !channels.is_signal(key)),
+  ]
+  if (unknown_keys.length > 0) {
+    throw new Error(`${format} has no channels named ${unknown_keys.join(`, `)}`)
+  }
+  const frame_indices = sampled_indices(n_frames, frame_stride)
+  assert_hdf5_stream_budget(
+    format,
+    n_frames,
+    frame_indices.length,
+    channels.values_per_frame(vector_keys.length),
+    signal_keys.reduce((total, key) => total + channels.signal_values(key), 0),
+    options.max_bytes ?? Number.POSITIVE_INFINITY,
+  )
+  return { frame_stride, vector_keys, signal_keys, frame_indices }
+}
 
 export const read_numeric_first_axis = (
   dataset: Dataset,
@@ -265,7 +414,7 @@ export const read_numeric_samples = (
   return values
 }
 
-export const assert_hdf5_stream_budget = (
+const assert_hdf5_stream_budget = (
   format: string,
   total_frames: number,
   selected_frames: number,

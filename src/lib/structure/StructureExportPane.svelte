@@ -4,6 +4,7 @@
   import type { ExportSection } from '$lib/io'
   import ExportPane from '$lib/io/ExportPane.svelte'
   import { export_canvas_as_png, observe_canvas_presence } from '$lib/io/export'
+  import { export_scene_as } from '$lib/scene'
   import type { AnyStructure } from '$lib/structure'
   import * as exports from '$lib/structure/export'
   import type { StructTextFormat } from '$lib/structure/export'
@@ -84,14 +85,13 @@
     }
   }
 
-  function handle_3d_export(format: `glb` | `obj`) {
+  async function handle_3d_export(format: `glb` | `obj`) {
     if (!scene) {
       console.warn(`No scene available for ${format.toUpperCase()} export`)
       return
     }
     try {
-      if (format === `glb`) exports.export_structure_as_glb(scene, structure)
-      else if (format === `obj`) exports.export_structure_as_obj(scene, structure)
+      await export_scene_as(scene, format, exports.create_structure_filename(structure))
     } catch (error) {
       console.error(`Failed to export ${format.toUpperCase()}:`, error)
     }
@@ -102,14 +102,26 @@
   $effect(() => observe_canvas_presence(wrapper, (val) => (wrapper_has_canvas = val)))
   let has_canvas = $derived(Boolean(image_canvas) || wrapper_has_canvas)
 
+  // CIF and POSCAR cannot express a molecule (no lattice), so their rows are disabled for one
+  let has_lattice = $derived(Boolean(structure && `lattice` in structure))
+
+  function handle_text_export(format: StructTextFormat) {
+    if (!structure) return
+    try {
+      exports.export_structure_as(format, structure)
+    } catch (error) {
+      console.error(`Failed to export ${format.toUpperCase()}:`, error)
+    }
+  }
+
   const sections = $derived<ExportSection[]>([
     {
       title: `Export as text`,
       items: text_export_formats.map(({ label, format, hint }) => ({
         label,
         hint,
-        disabled: !structure,
-        on_download: () => structure && exports.export_structure_as(format, structure),
+        disabled: !structure || ([`cif`, `poscar`].includes(format) && !has_lattice),
+        on_download: () => handle_text_export(format),
         copy_text: () => get_text_content(format),
       })),
     },

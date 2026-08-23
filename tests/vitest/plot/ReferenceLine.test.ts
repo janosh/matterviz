@@ -2,8 +2,6 @@
 import ReferenceLine from '$lib/plot/core/components/ReferenceLine.svelte'
 import type { Vec4 } from '$lib/math'
 import type { RefLine } from '$lib/plot'
-import ReferenceLinesLayer from '$lib/plot/core/components/ReferenceLinesLayer.svelte'
-import { solve_decorations } from '$lib/plot/core/decorations'
 import { create_reference_annotation_candidates } from '$lib/plot/core/reference-line'
 import { mount } from 'svelte'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
@@ -14,13 +12,13 @@ const query_all = <T extends Element>(selector: string): T[] =>
   Array.from(document.querySelectorAll<T>(selector))
 
 describe(`ReferenceLine`, () => {
-  const default_bounds = { x_min: 0, x_max: 100, y_min: 0, y_max: 100 }
   // Scale functions mapping data to pixels
   const x_scale = (val: number) => 50 + (val / 100) * 700 // 0-100 -> 50-750
   const y_scale = (val: number) => 550 - (val / 100) * 500 // 0-100 -> 550-50 (inverted)
+  const axes = { x_min: 0, x_max: 100, y_min: 0, y_max: 100, x_scale, y_scale }
   const horizontal_endpoints: Vec4 = [x_scale(0), y_scale(50), x_scale(100), y_scale(50)]
 
-  // Mount into the pre-created <svg> with shared scales/bounds; extra overrides per test
+  // Mount into the pre-created <svg> with shared axes; extra overrides per test
   const mount_line = (
     ref_line: RefLine,
     extra: Record<string, unknown> = {},
@@ -28,15 +26,7 @@ describe(`ReferenceLine`, () => {
     const target = doc_query<SVGSVGElement>(`svg`)
     mount(ReferenceLine, {
       target,
-      props: {
-        ref_line,
-        line_idx: 0,
-        ...default_bounds,
-        x_scale,
-        y_scale,
-        clip_path_id: `test-clip`,
-        ...extra,
-      },
+      props: { ref_line, line_idx: 0, axes, clip_path_id: `test-clip`, ...extra },
     })
     return target
   }
@@ -54,38 +44,22 @@ describe(`ReferenceLine`, () => {
     document.body.innerHTML = `<div style="width: 800px; height: 600px"><svg width="800" height="600"></svg></div>`
   })
 
-  test.each<{ ref_line: RefLine; attr: string; expected: number }>([
-    { ref_line: { type: `horizontal`, y: 50 }, attr: `y1`, expected: y_scale(50) },
-    { ref_line: { type: `vertical`, x: 50 }, attr: `x1`, expected: x_scale(50) },
-  ])(`renders $ref_line.type line at the scaled position`, ({ ref_line, attr, expected }) => {
+  // Expected endpoint attributes of the visible line, in pixels
+  test.each<{ ref_line: RefLine; expected: Record<string, number> }>([
+    { ref_line: { type: `horizontal`, y: 50 }, expected: { y1: y_scale(50) } },
+    { ref_line: { type: `vertical`, x: 50 }, expected: { x1: x_scale(50) } },
+    {
+      ref_line: { type: `horizontal`, y: 50, x_span: [20, 80] },
+      expected: { x1: x_scale(20), x2: x_scale(80) },
+    },
+    { ref_line: { type: `line`, p1: [20, 20], p2: [80, 80] }, expected: {} },
+  ])(`renders $ref_line.type line at the scaled position`, ({ ref_line, expected }) => {
     mount_line(ref_line)
     expect(doc_query(`.reference-line`)).toBeInstanceOf(SVGGElement)
     expect(query_all(`line`)).toHaveLength(2) // Hit area + visible line
-    expect(Number(visible_line()?.getAttribute(attr) ?? `0`)).toBeCloseTo(expected, 0)
-  })
-
-  test(`renders lines with duplicate public IDs`, () => {
-    mount(ReferenceLinesLayer, {
-      target: doc_query<SVGSVGElement>(`svg`),
-      props: {
-        lines: [
-          { type: `horizontal`, y: 25, id: `duplicate`, idx: 0 },
-          { type: `horizontal`, y: 75, id: `duplicate`, idx: 1 },
-        ],
-        ranges: { x: [0, 100], y: [0, 100] },
-        scales: { x: x_scale, y: y_scale },
-        clip_path_id: `test-clip`,
-        decoration_solution: solve_decorations({
-          base_pad: { t: 0, r: 0, b: 0, l: 0 },
-          width: 800,
-          height: 600,
-          obstacles_norm: [],
-          items: [],
-        }),
-      },
-    })
-
-    expect(query_all(`.reference-line`)).toHaveLength(2)
+    for (const [attr, value] of Object.entries(expected)) {
+      expect(Number(visible_line()?.getAttribute(attr) ?? `0`)).toBeCloseTo(value, 0)
+    }
   })
 
   test(`applies custom style`, () => {
@@ -156,18 +130,6 @@ describe(`ReferenceLine`, () => {
     expect(on_hover).toHaveBeenLastCalledWith(null)
   })
 
-  test(`respects x_span constraint`, () => {
-    mount_line({ type: `horizontal`, y: 50, x_span: [20, 80] })
-    const line = visible_line()
-    expect(Number(line?.getAttribute(`x1`) ?? `0`)).toBeCloseTo(x_scale(20), 0)
-    expect(Number(line?.getAttribute(`x2`) ?? `0`)).toBeCloseTo(x_scale(80), 0)
-  })
-
-  test(`renders a point-defined line`, () => {
-    mount_line({ type: `line`, p1: [20, 20], p2: [80, 80] })
-    expect(query_all(`line`)).toHaveLength(2)
-  })
-
   test.each([
     {
       desc: `label prop`,
@@ -182,11 +144,5 @@ describe(`ReferenceLine`, () => {
   ] as const)(`aria-label uses $desc`, ({ ref_line, expected }) => {
     mount_line(ref_line)
     expect(doc_query(`.reference-line`).getAttribute(`aria-label`)).toBe(expected)
-  })
-
-  test(`uses y2_scale when y_axis is y2`, () => {
-    const y2_scale = (val: number) => 550 - (val / 200) * 500 // Different scale
-    mount_line({ type: `horizontal`, y: 50, y_axis: `y2` }, { y2_scale })
-    expect(Number(visible_line()?.getAttribute(`y1`) ?? `0`)).toBeCloseTo(y2_scale(50), 0)
   })
 })

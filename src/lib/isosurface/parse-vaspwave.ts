@@ -9,6 +9,7 @@
 // is already covered by OSZICAR's rms(c) column in the vaspout.h5 parser
 // (scf_charge_rms frame metadata); diffing charge grids between live reloads
 // is explicitly out of scope here.
+import { HDF5_EXT_REGEX } from '$lib/constants'
 import { calc_lattice_params, create_frac_to_cart, type Vec3 } from '$lib/math'
 import type { Crystal, Site } from '$lib/structure'
 import { wrap_to_unit_cell } from '$lib/structure/pbc'
@@ -36,7 +37,7 @@ const STRUCTURE_PREFIX = `structure/positions`
 // file-open routing to divert from the HDF5 trajectory dispatcher.
 export const is_vaspwave_filename = (filename: string): boolean => {
   const basename = filename.split(`/`).pop() ?? filename
-  return /vaspwave.*\.(?:h5|hdf5)$/i.test(basename)
+  return /vaspwave/i.test(basename) && HDF5_EXT_REGEX.test(basename)
 }
 
 const read_embedded_structure = (h5_file: h5wasm.File): Crystal => {

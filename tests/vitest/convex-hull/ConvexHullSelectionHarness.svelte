@@ -1,13 +1,13 @@
 <script lang="ts">
-  import { ConvexHull, ConvexHull2D, ConvexHull3D, ConvexHull4D } from '$lib/convex-hull'
+  import { ConvexHull, ConvexHull2D, ConvexHullCanvas } from '$lib/convex-hull'
   import type { ConvexHullEntry, PhaseData } from '$lib/convex-hull'
+  import type { Component, ComponentProps } from 'svelte'
 
   const elements_by_dim = {
     '2d': [`Li`, `O`],
     '3d': [`Li`, `O`, `Na`],
     '4d': [`Li`, `O`, `Na`, `Cl`],
   } as const
-  const components = { '2d': ConvexHull2D, '3d': ConvexHull3D, '4d': ConvexHull4D }
 
   let {
     dim,
@@ -22,7 +22,13 @@
     start_missing?: boolean
     use_wrapper?: boolean
   } = $props()
-  let Hull = $derived(use_wrapper ? ConvexHull : components[dim])
+  // The prop superset cast mirrors ConvexHull.svelte's dynamic component; 2D ignores `dim`
+  const Hull = $derived(
+    (use_wrapper ? ConvexHull : dim === `2d` ? ConvexHull2D : ConvexHullCanvas) as Component<
+      ComponentProps<typeof ConvexHullCanvas>
+    >,
+  )
+  const canvas_dim = $derived(dim === `3d` ? 3 : 4)
 
   const entries_for = (prefix: string): PhaseData[] => {
     const elements = elements_by_dim[dim]
@@ -93,9 +99,11 @@
 </button>
 
 <Hull
+  dim={canvas_dim}
   {entries}
   {config}
   {allow_file_drop}
+  on_file_drop={(dropped) => (entries = dropped)}
   bind:selected_entry
   bind:stable_entries
   bind:unstable_entries

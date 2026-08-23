@@ -16,7 +16,7 @@ import type { Polyhedron } from '$lib/structure/polyhedra'
 import { make_supercell } from '$lib/structure/supercell'
 import { Color } from 'three/webgpu'
 import { describe, expect, test } from 'vitest'
-import { make_crystal } from '../setup'
+import { make_crystal, make_rocksalt } from '../setup'
 
 const CI_MULTIPLIER = [`true`, `1`].includes(process.env.CI ?? ``) ? 5 : 1
 
@@ -291,19 +291,6 @@ describe(`build_adjacency`, () => {
 // Na octahedrally coordinated by 6 Cl (rocksalt-like local environment)
 const make_nacl_cluster = () => make_crystal(10, octahedron_sites(`Na`, `Cl`, [5, 5, 5], 2))
 const octahedral_bonds = bonds_from(0, [1, 2, 3, 4, 5, 6])
-
-// Conventional rocksalt NaCl cell (4 Na + 4 Cl)
-const make_rocksalt = () =>
-  make_crystal(5.64, [
-    { element: `Na`, abc: [0, 0, 0] },
-    { element: `Na`, abc: [0.5, 0.5, 0] },
-    { element: `Na`, abc: [0.5, 0, 0.5] },
-    { element: `Na`, abc: [0, 0.5, 0.5] },
-    { element: `Cl`, abc: [0.5, 0, 0] },
-    { element: `Cl`, abc: [0, 0.5, 0] },
-    { element: `Cl`, abc: [0, 0, 0.5] },
-    { element: `Cl`, abc: [0.5, 0.5, 0.5] },
-  ])
 
 describe(`compute_polyhedra`, () => {
   test(`NaCl cluster: Na center forms octahedron, Cl does not`, () => {

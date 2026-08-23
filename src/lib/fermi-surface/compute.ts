@@ -6,27 +6,21 @@ import {
   CLOSED_CONTOUR_TOLERANCE,
   IRREDUCIBLE_BZ_MIN_VERTICES,
   IRREDUCIBLE_BZ_TOLERANCE,
-  SPANNING_THRESHOLD,
 } from './constants'
 import { grid_dimensions, scalar_grid_strides } from '$lib/isosurface/grid'
 import { marching_cubes } from '$lib/marching-cubes'
-// clamp01 guards float jitter at the cell boundary
-import { clamp01 } from '$lib/utils'
 import type {
   BandEnergyGrid,
   BandGridData,
   FermiSliceData,
   FermiSliceOptions,
   FermiSurfaceData,
-  FermiSurfaceMetadata,
   FermiSurfaceOptions,
   Isoline,
   FermiIsosurface,
   SpinChannel,
-  SurfaceDimensionality,
 } from './types'
-
-const safe_mod = (val: number, dim: number) => ((val % dim) + dim) % dim
+import { vertex_count } from './types'
 
 // Catmull-Rom weights for the 4-point stencil at fractional offset t, written into `out`
 // (result = out[0]*p0 + out[1]*p1 + out[2]*p2 + out[3]*p3)
@@ -148,269 +142,78 @@ export function upsample_grid(
   return { values: out, dims: [new_nx, new_ny, new_nz], order: `z_fastest` }
 }
 
-// Extract Fermi surface from band grid data
+// Cartesian shift that centres marching-cubes output on Γ: vertices come out at
+// k_latticeᵀ·frac with frac ∈ [0, 1], so subtract ½(a* + b* + c*). A half-step grid shift
+// (FRMSF lshift=2) puts grid point i at (i + ½)/n rather than i/n, which moves the whole
+// surface by +½·(a*/n + b*/n + c*/n) on top of that.
+const centering_offset = (k_lattice: Matrix3x3, k_grid: Vec3, grid_shift?: Vec3): Vec3 => {
+  const offset: Vec3 = [0, 0, 0]
+  for (let axis = 0; axis < 3; axis++) {
+    const weight = -0.5 + (grid_shift?.[axis] ?? 0) / k_grid[axis]
+    for (let comp = 0; comp < 3; comp++) offset[comp] += weight * k_lattice[axis][comp]
+  }
+  return offset
+}
+
+// Extract the Fermi surface of every band the level E_F + mu crosses
 export function extract_fermi_surface(
   band_data: BandGridData,
   options: FermiSurfaceOptions = {},
 ): FermiSurfaceData {
-  const {
-    mu = 0,
-    wigner_seitz = true,
-    compute_velocities = false,
-    compute_dimensionality = false,
-    selected_bands,
-    interpolation_factor = 1,
-    selected_spins,
-  } = options
-
-  const iso_value = band_data.fermi_energy + mu
+  const { mu = 0, interpolation_factor = 1 } = options
+  const isovalue = band_data.fermi_energy + mu
   const isosurfaces: FermiIsosurface[] = []
-  let total_area = 0
+  // BXSF grids are endpoint-inclusive (store both equivalent k=0 and k=1 → false);
+  // FRMSF grids store k=i/n without the duplicated endpoint (→ true)
+  const periodic = band_data.periodic ?? false
+  const position_offset = centering_offset(
+    band_data.k_lattice,
+    band_data.k_grid,
+    band_data.grid_shift,
+  )
 
-  // Process each spin channel and band
   for (let spin_idx = 0; spin_idx < band_data.n_spins; spin_idx++) {
     const spin: SpinChannel = band_data.n_spins === 2 ? (spin_idx === 0 ? `up` : `down`) : null
 
-    // Skip if spin not selected
-    if (selected_spins && !selected_spins.includes(spin)) continue
-
     for (let band_idx = 0; band_idx < band_data.n_bands; band_idx++) {
-      // Skip if band not selected
-      if (selected_bands && !selected_bands.includes(band_idx)) continue
-
       const raw_energies = band_data.energies[spin_idx][band_idx]
+      if (!band_intersects_fermi(raw_energies.values, isovalue)) continue
 
-      // Check if Fermi level intersects this band
-      if (!band_intersects_fermi(raw_energies.values, iso_value)) continue
-
-      // BXSF grids are endpoint-inclusive (store both equivalent k=0 and k=1 → false);
-      // FRMSF grids store k=i/n without the duplicated endpoint (→ true)
-      const periodic = band_data.periodic ?? false
-
-      // Apply interpolation for smoother surfaces
       const energies =
         interpolation_factor > 1
           ? upsample_grid(raw_energies, interpolation_factor, periodic)
           : raw_energies
 
-      // Extract isosurface using marching cubes
-      const mc_result = marching_cubes(energies, iso_value, band_data.k_lattice, {
+      // Marching cubes output stays in the centred parallelepiped cell; the renderer's
+      // symmetry tiling covers the full Wigner-Seitz zone.
+      const mesh = marching_cubes(energies, isovalue, band_data.k_lattice, {
         periodic,
-        interpolate: true,
+        position_offset,
       })
-
-      if (mc_result.vertices.length === 0) continue
-
-      // Build isosurface
-      // Note: We don't clip to Wigner-Seitz BZ here because marching cubes output is in
-      // a centered parallelepiped cell. BZ symmetry tiling in renderer handles full BZ.
-      const isosurface: FermiIsosurface = {
-        vertices: mc_result.vertices,
-        faces: mc_result.faces,
-        normals: mc_result.normals,
-        band_index: band_idx,
-        spin,
-      }
-
-      // Compute surface area
-      isosurface.area = compute_surface_area(isosurface)
-      total_area += isosurface.area
-
-      // Compute Fermi velocities if requested
-      if (compute_velocities && band_data.velocities) {
-        isosurface.properties = compute_fermi_velocities(
-          isosurface,
-          band_data.velocities[spin_idx][band_idx],
-          band_data.k_lattice,
-          band_data.k_grid,
-          periodic,
-        )
-        isosurface.avg_velocity =
-          isosurface.properties.reduce((sum, velocity) => sum + velocity, 0) /
-          isosurface.properties.length
-      }
-
-      // Compute dimensionality if requested
-      if (compute_dimensionality) {
-        const { dimensionality, orientation } = analyze_surface_topology(
-          isosurface,
-          band_data.k_lattice,
-        )
-        isosurface.dimensionality = dimensionality
-        isosurface.orientation = orientation
-      }
-
-      isosurfaces.push(isosurface)
+      if (mesh.positions.length === 0) continue
+      isosurfaces.push({ ...mesh, band_index: band_idx, spin })
     }
-  }
-
-  const metadata: FermiSurfaceMetadata = {
-    n_bands: band_data.n_bands,
-    n_surfaces: isosurfaces.length,
-    total_area,
-    has_spin: band_data.n_spins === 2,
-    has_velocities: compute_velocities && band_data.velocities !== undefined,
   }
 
   return {
     isosurfaces,
     k_lattice: band_data.k_lattice,
     fermi_energy: band_data.fermi_energy,
-    reciprocal_cell: wigner_seitz ? `wigner_seitz` : `parallelepiped`,
-    metadata,
+    reciprocal_cell: `parallelepiped`,
+    metadata: { n_bands: band_data.n_bands, n_surfaces: isosurfaces.length },
   }
 }
 
 // Check if Fermi level intersects a band (has values both above and below)
-function band_intersects_fermi(energies: Float64Array, iso_value: number): boolean {
+function band_intersects_fermi(energies: Float64Array, isovalue: number): boolean {
   let has_below = false
   let has_above = false
   for (const energy of energies) {
-    if (energy < iso_value) has_below = true
-    else if (energy > iso_value) has_above = true
+    if (energy < isovalue) has_below = true
+    else if (energy > isovalue) has_above = true
     if (has_below && has_above) return true
   }
   return false
-}
-
-// Compute surface area of an isosurface (assumes triangular faces from marching cubes)
-export function compute_surface_area(surface: FermiIsosurface): number {
-  let total_area = 0
-  const verts = surface.vertices
-
-  for (const face of surface.faces) {
-    if (face.length < 3) continue
-    const [v0x, v0y, v0z] = verts[face[0]]
-    const [v1x, v1y, v1z] = verts[face[1]]
-    const [v2x, v2y, v2z] = verts[face[2]]
-
-    // Inlined edge subtraction and cross product
-    const [e1x, e1y, e1z] = [v1x - v0x, v1y - v0y, v1z - v0z]
-    const [e2x, e2y, e2z] = [v2x - v0x, v2y - v0y, v2z - v0z]
-    const cx = e1y * e2z - e1z * e2y
-    const cy = e1z * e2x - e1x * e2z
-    const cz = e1x * e2y - e1y * e2x
-
-    // Area is half the magnitude of cross product
-    total_area += Math.hypot(cx, cy, cz) * 0.5
-  }
-
-  return total_area
-}
-
-// Compute Fermi velocities at surface vertices
-function compute_fermi_velocities(
-  surface: FermiIsosurface,
-  velocity_grid: Vec3[][][],
-  k_lattice: Matrix3x3,
-  k_grid: Vec3,
-  periodic = false,
-): number[] {
-  const [nx, ny, nz] = k_grid
-  const velocities: number[] = []
-
-  // Invert the marching-cubes transform cart = k_latticeᵀ·(frac − 0.5): frac =
-  // (k_latticeᵀ)⁻¹·cart + 0.5. Omitting the transpose samples wrong k-points for
-  // non-symmetric lattices; skipping the +0.5 is off by half a reciprocal cell.
-  const k_inv = math.matrix_inverse_3x3(math.transpose_3x3_matrix(k_lattice))
-  // Grid point i sits at frac i/(n−1) (endpoint-inclusive BXSF) or i/n (periodic)
-  const [sx, sy, sz] = periodic ? [nx, ny, nz] : [nx - 1, ny - 1, nz - 1]
-  for (const vertex of surface.vertices) {
-    const frac = math.mat3x3_vec3_multiply(k_inv, vertex) // centered, in [-0.5, 0.5]
-    const gx = clamp01(frac[0] + 0.5) * sx
-    const gy = clamp01(frac[1] + 0.5) * sy
-    const gz = clamp01(frac[2] + 0.5) * sz
-
-    // Trilinear interpolation of velocity
-    const velocity = trilinear_interpolate_vec3(velocity_grid, gx, gy, gz)
-    velocities.push(Math.hypot(...velocity)) // magnitude
-  }
-
-  return velocities
-}
-
-// Trilinear interpolation for Vec3 grid
-// Note: Assumes x, y, z are non-negative (e.g. from wrapped fractional coordinates)
-function trilinear_interpolate_vec3(grid: Vec3[][][], x: number, y: number, z: number): Vec3 {
-  const nx = grid.length
-  const ny = grid[0]?.length || 0
-  const nz = grid[0]?.[0]?.length || 0
-
-  // Guard against empty or malformed grids to prevent division by zero in modulo
-  if (nx === 0 || ny === 0 || nz === 0) return [0, 0, 0]
-
-  // Use safe modulo pattern to handle negative values from floating-point edge cases
-  const x0 = safe_mod(Math.floor(x), nx)
-  const y0 = safe_mod(Math.floor(y), ny)
-  const z0 = safe_mod(Math.floor(z), nz)
-  const x1 = (x0 + 1) % nx
-  const y1 = (y0 + 1) % ny
-  const z1 = (z0 + 1) % nz
-
-  const xd = x - Math.floor(x)
-  const yd = y - Math.floor(y)
-  const zd = z - Math.floor(z)
-
-  const c000 = grid[x0][y0][z0]
-  const c001 = grid[x0][y0][z1]
-  const c010 = grid[x0][y1][z0]
-  const c011 = grid[x0][y1][z1]
-  const c100 = grid[x1][y0][z0]
-  const c101 = grid[x1][y0][z1]
-  const c110 = grid[x1][y1][z0]
-  const c111 = grid[x1][y1][z1]
-
-  const c00 = math.lerp_vec3(c000, c100, xd)
-  const c01 = math.lerp_vec3(c001, c101, xd)
-  const c10 = math.lerp_vec3(c010, c110, xd)
-  const c11 = math.lerp_vec3(c011, c111, xd)
-
-  const c0 = math.lerp_vec3(c00, c10, yd)
-  const c1 = math.lerp_vec3(c01, c11, yd)
-
-  return math.lerp_vec3(c0, c1, zd)
-}
-
-// Analyze surface topology to determine dimensionality
-function analyze_surface_topology(
-  surface: FermiIsosurface,
-  k_lattice: Matrix3x3,
-): { dimensionality: SurfaceDimensionality; orientation: Vec3 | null } {
-  if (surface.vertices.length === 0) {
-    return { dimensionality: `3D`, orientation: null }
-  }
-
-  // Vertices live in the centered parallelepiped k_latticeᵀ·[-0.5, 0.5]³, whose bounding
-  // box along Cartesian axis j has half-extent 0.5·Σᵢ|k_lattice[i][j]| (a hardcoded box
-  // would make dimensionality depend on the absolute lattice scale)
-  const half_extent = [0, 1, 2].map(
-    (axis_idx) => 0.5 * k_lattice.reduce((sum, row) => sum + Math.abs(row[axis_idx]), 0),
-  ) as Vec3
-  const bz_extent = { min: half_extent.map((ext) => -ext) as Vec3, max: half_extent }
-
-  const surface_extent = math.compute_bounding_box(surface.vertices)
-
-  // Check spanning in each direction
-  const spans: [boolean, boolean, boolean] = [false, false, false]
-  for (let axis_idx = 0; axis_idx < 3; axis_idx++) {
-    const bz_size = bz_extent.max[axis_idx] - bz_extent.min[axis_idx]
-    const surface_size = surface_extent.max[axis_idx] - surface_extent.min[axis_idx]
-    // Consider spanning if surface covers significant fraction of BZ extent
-    spans[axis_idx] = surface_size > SPANNING_THRESHOLD * bz_size
-  }
-
-  const n_spanning = spans.filter(Boolean).length
-
-  // 0 spanning = closed 3D pocket; 3 spanning = complex warped network
-  if (n_spanning === 0) return { dimensionality: `3D`, orientation: null }
-  if (n_spanning === 3) return { dimensionality: `quasi-2D`, orientation: null }
-
-  // 1 spanning = 2D sheet (oriented along the spanning axis);
-  // 2 spanning = 1D noodle-like tube (oriented along the bounded axis)
-  const axis_idx = n_spanning === 1 ? spans.indexOf(true) : spans.indexOf(false)
-  const orientation: Vec3 = [0, 0, 0]
-  orientation[axis_idx] = 1
-  return { dimensionality: n_spanning === 1 ? `2D` : `1D`, orientation }
 }
 
 // Compute 2D Fermi slice along a specified plane
@@ -463,41 +266,9 @@ export function compute_fermi_slice(
   }
 }
 
-// Compute intersection point on an edge
-function compute_edge_intersection(
-  surface: FermiIsosurface,
-  vertex_distances: number[],
-  v0_idx: number,
-  v1_idx: number,
-): { point: Vec3; property?: number } | null {
-  const d0 = vertex_distances[v0_idx]
-  const d1 = vertex_distances[v1_idx]
-
-  // Edge must cross the plane (opposite signs)
-  if (d0 * d1 >= 0) return null
-
-  const frac = d0 / (d0 - d1)
-  const v0 = surface.vertices[v0_idx]
-  const v1 = surface.vertices[v1_idx]
-
-  const point: Vec3 = [
-    v0[0] + frac * (v1[0] - v0[0]),
-    v0[1] + frac * (v1[1] - v0[1]),
-    v0[2] + frac * (v1[2] - v0[2]),
-  ]
-
-  let property: number | undefined
-  if (surface.properties) {
-    property =
-      surface.properties[v0_idx] +
-      frac * (surface.properties[v1_idx] - surface.properties[v0_idx])
-  }
-
-  return { point, property }
-}
-
-// Slice a surface with a plane to get isolines
-// Uses contour tracing to produce properly ordered line segments
+// Slice a surface with a plane to get isolines. Traces connected contours by following
+// adjacent triangles across shared edges. Edges are keyed by the numeric pair
+// min·n_vertices + max so the map never builds strings in the per-triangle hot loop.
 function slice_surface_with_plane(
   surface: FermiIsosurface,
   plane_normal: Vec3,
@@ -505,176 +276,143 @@ function slice_surface_with_plane(
   in_plane_u: Vec3,
   in_plane_v: Vec3,
 ): Isoline[] {
-  if (surface.vertices.length === 0 || surface.faces.length === 0) return []
+  const { positions, indices, properties } = surface
+  const n_vertices = vertex_count(surface)
+  if (n_vertices === 0 || indices.length === 0) return []
+  const [nx, ny, nz] = plane_normal
 
-  // Compute signed distance of each vertex to plane
-  const vertex_distances = surface.vertices.map(
-    (vert) => math.dot(vert, plane_normal) - plane_distance,
-  )
+  // Signed distance of each vertex to the plane
+  const vertex_distances = new Float64Array(n_vertices)
+  for (let idx = 0; idx < n_vertices; idx++) {
+    vertex_distances[idx] =
+      positions[3 * idx] * nx +
+      positions[3 * idx + 1] * ny +
+      positions[3 * idx + 2] * nz -
+      plane_distance
+  }
 
-  // Build edge-to-faces map and collect face segments
-  // Each face that intersects the plane produces exactly one line segment
+  const edge_key = (v0_idx: number, v1_idx: number): number =>
+    v0_idx < v1_idx ? v0_idx * n_vertices + v1_idx : v1_idx * n_vertices + v0_idx
+
+  // Crossing point (and interpolated property) of edge v0→v1, or null when it doesn't cross
+  const edge_intersection = (
+    v0_idx: number,
+    v1_idx: number,
+  ): { point: Vec3; property: number } | null => {
+    const d0 = vertex_distances[v0_idx]
+    const d1 = vertex_distances[v1_idx]
+    if (d0 * d1 >= 0) return null // needs opposite signs
+    const frac = d0 / (d0 - d1)
+    const point: Vec3 = [0, 0, 0]
+    for (let comp = 0; comp < 3; comp++) {
+      const from = positions[3 * v0_idx + comp]
+      point[comp] = from + frac * (positions[3 * v1_idx + comp] - from)
+    }
+    const property = properties
+      ? properties[v0_idx] + frac * (properties[v1_idx] - properties[v0_idx])
+      : 0
+    return { point, property }
+  }
+
+  // Each triangle the plane cuts yields one segment between two of its edges
   type FaceSegment = {
     face_idx: number
-    edge_keys: [string, string]
+    edge_keys: [number, number]
     points: [Vec3, Vec3]
-    properties?: Vec2
+    properties: Vec2
   }
-
   const face_segments: FaceSegment[] = []
-  const edge_to_faces = new Map<string, number[]>() // edge_key -> face indices
+  const edge_to_faces = new Map<number, number[]>()
+  const face_to_segment = new Map<number, FaceSegment>()
 
-  for (let face_idx = 0; face_idx < surface.faces.length; face_idx++) {
-    const face = surface.faces[face_idx]
-    if (face.length < 3) continue
-
-    // Find which edges of this face cross the plane
-    const crossing_edges: {
-      edge_key: string
-      intersection: { point: Vec3; property?: number }
-    }[] = []
-
-    for (let edge_idx = 0; edge_idx < face.length; edge_idx++) {
-      const v0_idx = face[edge_idx]
-      const v1_idx = face[(edge_idx + 1) % face.length]
-      const edge_key = `${Math.min(v0_idx, v1_idx)},${Math.max(v0_idx, v1_idx)}`
-
-      const intersection = compute_edge_intersection(surface, vertex_distances, v0_idx, v1_idx)
-
-      if (intersection) {
-        crossing_edges.push({ edge_key, intersection })
-
-        // Register this face with the edge
-        const faces = edge_to_faces.get(edge_key) ?? []
-        faces.push(face_idx)
-        edge_to_faces.set(edge_key, faces)
-      }
+  for (let tri = 0; tri < indices.length; tri += 3) {
+    const face_idx = tri / 3
+    const crossings: { key: number; point: Vec3; property: number }[] = []
+    for (let corner = 0; corner < 3; corner++) {
+      const v0_idx = indices[tri + corner]
+      const v1_idx = indices[tri + ((corner + 1) % 3)]
+      const intersection = edge_intersection(v0_idx, v1_idx)
+      if (!intersection) continue
+      const key = edge_key(v0_idx, v1_idx)
+      crossings.push({ key, ...intersection })
+      const faces = edge_to_faces.get(key)
+      if (faces) faces.push(face_idx)
+      else edge_to_faces.set(key, [face_idx])
     }
-
-    // A face intersected by a plane has exactly 2 crossing edges
-    if (crossing_edges.length === 2) {
-      face_segments.push({
-        face_idx,
-        edge_keys: [crossing_edges[0].edge_key, crossing_edges[1].edge_key],
-        points: [crossing_edges[0].intersection.point, crossing_edges[1].intersection.point],
-        properties: surface.properties
-          ? [
-              crossing_edges[0].intersection.property ?? 0,
-              crossing_edges[1].intersection.property ?? 0,
-            ]
-          : undefined,
-      })
+    if (crossings.length !== 2) continue
+    const segment: FaceSegment = {
+      face_idx,
+      edge_keys: [crossings[0].key, crossings[1].key],
+      points: [crossings[0].point, crossings[1].point],
+      properties: [crossings[0].property, crossings[1].property],
     }
+    face_segments.push(segment)
+    face_to_segment.set(face_idx, segment)
   }
-
   if (face_segments.length === 0) return []
 
-  // Build face_idx -> segment map for O(1) lookup
-  const face_to_segment = new Map<number, (typeof face_segments)[0]>()
-  for (const seg of face_segments) {
-    face_to_segment.set(seg.face_idx, seg)
-  }
-
-  // Precompute in-plane basis dot products for faster 2D projection
   const [ux, uy, uz] = in_plane_u
   const [vx, vy, vz] = in_plane_v
-
-  // Trace connected contours by following adjacent faces
   const used_faces = new Set<number>()
   const isolines: Isoline[] = []
 
   for (const start_segment of face_segments) {
     if (used_faces.has(start_segment.face_idx)) continue
-
-    // Start a new contour from this segment
-    // Use arrays that we'll reverse at the end instead of unshift (O(1) vs O(n))
-    const forward_points: Vec3[] = [start_segment.points[1]]
-    const backward_points: Vec3[] = []
-    const forward_props: number[] | undefined = start_segment.properties
-      ? [start_segment.properties[1]]
-      : undefined
-    const backward_props: number[] | undefined = start_segment.properties ? [] : undefined
-
     used_faces.add(start_segment.face_idx)
 
-    // Helper to trace in one direction
-    const trace_direction = (
-      initial_edge: string,
-      points: Vec3[],
-      props: number[] | undefined,
-    ) => {
+    // Walk from one end of the segment across adjacent faces until the contour closes or
+    // reaches a boundary; collected in traversal order and reversed for the backward half
+    const trace_direction = (initial_edge: number): { points: Vec3[]; props: number[] } => {
+      const points: Vec3[] = []
+      const props: number[] = []
       let current_edge = initial_edge
       let found_next = true
-
       while (found_next) {
         found_next = false
-        const adjacent_faces = edge_to_faces.get(current_edge)
-        if (!adjacent_faces) break
-
-        for (const adj_face_idx of adjacent_faces) {
+        for (const adj_face_idx of edge_to_faces.get(current_edge) ?? []) {
           if (used_faces.has(adj_face_idx)) continue
-
-          const adj_segment = face_to_segment.get(adj_face_idx)
-          if (!adj_segment) continue
-
-          // Find which end connects to current_edge
-          let next_point_idx: number
-          let next_edge: string
-          if (adj_segment.edge_keys[0] === current_edge) {
-            next_point_idx = 1
-            next_edge = adj_segment.edge_keys[1]
-          } else if (adj_segment.edge_keys[1] === current_edge) {
-            next_point_idx = 0
-            next_edge = adj_segment.edge_keys[0]
-          } else {
-            continue
-          }
-
-          points.push(adj_segment.points[next_point_idx])
-          if (props && adj_segment.properties) {
-            props.push(adj_segment.properties[next_point_idx])
-          }
-
+          const adj = face_to_segment.get(adj_face_idx)
+          if (!adj) continue
+          let next_end: 0 | 1
+          if (adj.edge_keys[0] === current_edge) next_end = 1
+          else if (adj.edge_keys[1] === current_edge) next_end = 0
+          else continue
+          points.push(adj.points[next_end])
+          props.push(adj.properties[next_end])
           used_faces.add(adj_face_idx)
-          current_edge = next_edge
+          current_edge = adj.edge_keys[next_end]
           found_next = true
           break
         }
       }
+      return { points, props }
     }
 
-    // Trace forward and backward
-    trace_direction(start_segment.edge_keys[1], forward_points, forward_props)
-    trace_direction(start_segment.edge_keys[0], backward_points, backward_props)
-
-    // Combine: backward (reversed) + start_point[0] + forward
-    backward_points.reverse()
-    if (backward_props) backward_props.reverse()
-
+    const forward = trace_direction(start_segment.edge_keys[1])
+    const backward = trace_direction(start_segment.edge_keys[0])
     const contour_points: Vec3[] = [
-      ...backward_points,
+      ...backward.points.toReversed(),
       start_segment.points[0],
-      ...forward_points,
+      start_segment.points[1],
+      ...forward.points,
     ]
-    const contour_props: number[] | undefined =
-      backward_props && forward_props && start_segment.properties
-        ? [...backward_props, start_segment.properties[0], ...forward_props]
-        : undefined
+    const contour_props = properties
+      ? [
+          ...backward.props.toReversed(),
+          start_segment.properties[0],
+          start_segment.properties[1],
+          ...forward.props,
+        ]
+      : undefined
 
-    // Check if contour is closed
     const first = contour_points[0]
     const last = contour_points[contour_points.length - 1]
     const is_closed = math.euclidean_dist(first, last) < CLOSED_CONTOUR_TOLERANCE
 
-    // Project to 2D (inlined dot product for speed)
-    const points_2d: Vec2[] = Array(contour_points.length)
-    for (let idx = 0; idx < contour_points.length; idx++) {
-      const point = contour_points[idx]
-      points_2d[idx] = [
-        point[0] * ux + point[1] * uy + point[2] * uz,
-        point[0] * vx + point[1] * vy + point[2] * vz,
-      ]
-    }
+    const points_2d: Vec2[] = contour_points.map((point) => [
+      point[0] * ux + point[1] * uy + point[2] * uz,
+      point[0] * vx + point[1] * vy + point[2] * vz,
+    ])
 
     isolines.push({
       points: contour_points,
@@ -693,16 +431,14 @@ function slice_surface_with_plane(
 // For cubic Oh symmetry, this is the region where all vertices are in the first octant
 // (x >= 0, y >= 0, z >= 0) with some tolerance. Such data needs tiling to show the full BZ.
 export function detect_irreducible_bz(fermi_data: FermiSurfaceData): boolean {
-  const vertex_count = fermi_data.isosurfaces.reduce(
-    (sum, surface) => sum + surface.vertices.length,
+  const n_vertices = fermi_data.isosurfaces.reduce(
+    (sum, surface) => sum + vertex_count(surface),
     0,
   )
   // Only consider it irreducible if we have significant data and all vertices are
   // in the positive octant (with small tolerance for numerical error)
-  if (vertex_count <= IRREDUCIBLE_BZ_MIN_VERTICES) return false
+  if (n_vertices <= IRREDUCIBLE_BZ_MIN_VERTICES) return false
   return fermi_data.isosurfaces.every((surface) =>
-    surface.vertices.every((vertex) =>
-      vertex.every((coord) => coord >= -IRREDUCIBLE_BZ_TOLERANCE),
-    ),
+    surface.positions.every((coord) => coord >= -IRREDUCIBLE_BZ_TOLERANCE),
   )
 }

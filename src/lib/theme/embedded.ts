@@ -57,20 +57,15 @@ export function detect_parent_theme(target_element?: HTMLElement): ThemeType {
       }
     }
 
-    const body_theme = declared_theme(document.body)
-    if (body_theme) return body_theme
-
-    // System preference
-    if (globalThis.matchMedia) {
-      if (globalThis.matchMedia(`(prefers-color-scheme: dark)`).matches) return `dark`
-      if (globalThis.matchMedia(`(prefers-color-scheme: light)`).matches) return `light`
-    }
+    // Hosts mark either root: VS Code/marimo put the theme class on <body>, JupyterLab and
+    // many sites on <html> (data-theme)
+    const declared = declared_theme(document.documentElement) ?? declared_theme(document.body)
+    if (declared) return declared
 
     // Jupyter Lab theme API
     const jupyter_theme = globalThis.jupyterlab?.application?.shell?.dataset?.theme
-    if (jupyter_theme) {
-      return jupyter_theme.includes(`dark`) ? `dark` : `light`
-    }
+    // Theme names are title-cased (`JupyterLab Dark`), so match case-insensitively
+    if (jupyter_theme) return /dark/i.test(jupyter_theme) ? `dark` : `light`
 
     // Jupyter CSS custom properties
     const jp_bg = getComputedStyle(document.documentElement).getPropertyValue(
@@ -81,12 +76,19 @@ export function detect_parent_theme(target_element?: HTMLElement): ThemeType {
       if (is_dark !== null) return is_dark ? `dark` : `light`
     }
 
-    // Analyze background colors
+    // Explicit host signals above win over the OS preference (dark JupyterLab on a light OS
+    // is dark), but the OS preference is still an explicit choice, so it beats the generic
+    // page-background sniff below: a page styling its body must not override the user's OS theme
+    if (globalThis.matchMedia) {
+      if (globalThis.matchMedia(`(prefers-color-scheme: dark)`).matches) return `dark`
+      if (globalThis.matchMedia(`(prefers-color-scheme: light)`).matches) return `light`
+    }
+
+    // Weakest signal: the page's own background color
     const backgrounds = [
       getComputedStyle(document.body).backgroundColor,
       getComputedStyle(document.documentElement).backgroundColor,
     ]
-
     for (const bg of backgrounds) {
       const is_dark = is_dark_color(bg)
       if (is_dark !== null) return is_dark ? `dark` : `light`

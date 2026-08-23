@@ -1,13 +1,13 @@
 <script lang="ts">
-  import { element_symbols_in } from '$lib/composition/parse'
+  import type { ElementSymbol } from '$lib/element'
   import type { AxisConfig } from '$lib/plot'
   import { get_convex_hull_defaults } from '$lib/settings'
   import type { Component } from 'svelte'
-  import { SvelteSet } from 'svelte/reactivity'
   import ConvexHull2D from './ConvexHull2D.svelte'
-  import ConvexHull3D from './ConvexHull3D.svelte'
-  import ConvexHull4D from './ConvexHull4D.svelte'
+  import ConvexHullCanvas from './ConvexHullCanvas.svelte'
   import type { BaseConvexHullProps, Hull3DProps } from './index'
+  import MissingConvexHullData from './MissingConvexHullData.svelte'
+  import { process_hull_entries } from './thermodynamics'
 
   // Union type combining all possible props from 2D, 3D, and 4D components
   // each specific component will only use its relevant props from this super set
@@ -51,23 +51,25 @@
     ...rest
   }: ConvexHullProps = $props()
 
-  // Lightweight element extraction - count unique elements, stripping oxidation states
-  // (e.g. "V4+" -> "V") to avoid counting the same element multiple times
-  function extract_unique_elements(
-    hull_entries: { composition: Record<string, number> }[],
-  ): string[] {
-    const elements = new SvelteSet<string>()
-    for (const entry of hull_entries) {
-      for (const key of Object.keys(entry.composition)) {
-        // Extract valid element symbols, stripping oxidation states
-        for (const elem of element_symbols_in(key)) elements.add(elem)
-      }
-    }
-    return Array.from(elements).toSorted()
-  }
+  // An empty array is the usual "not loaded yet" shape (the anywidget bridge sends [] before
+  // the data arrives), so it gets the neutral missing-data state like `undefined`
+  const entries = $derived(entries_prop?.length ? entries_prop : undefined)
 
-  // Detect dimensionality by counting unique elements (lightweight operation)
-  const elements = $derived(extract_unique_elements(entries_prop ?? []))
+  // Detect dimensionality from the same key parser the hull pipeline uses (oxidation states
+  // stripped, compound-like keys rejected) so routing and processing can't disagree. Like the
+  // pipeline's own arity check this runs on the raw entries, before any temperature or gas
+  // filtering, so a temperature that drops every entry of one element can't reroute the
+  // diagram. A rejected key is an `entries` prop problem, so instead of throwing mid-render
+  // the error routes to ConvexHull2D, whose pipeline renders the same message as its empty
+  // state.
+  const parsed = $derived.by((): { elements: ElementSymbol[]; invalid: boolean } => {
+    try {
+      return { elements: process_hull_entries(entries ?? []).elements, invalid: false }
+    } catch {
+      return { elements: [], invalid: true }
+    }
+  })
+  const elements = $derived(parsed.elements)
   const element_count = $derived(elements.length)
 
   const hull_defaults = $derived(
@@ -90,80 +92,94 @@
   })
 
   // Map element count to component. Deliberate cast: the wrapper passes the prop superset
-  // while each component declares only its dimension's props (2D lacks Hull3DProps, 3D/4D
-  // lack x/y_axis), so a constructor union wouldn't compile. Svelte ignores extra props.
-  // Missing entries (data not loaded yet) go to 2D, which renders the missing-data state
-  // and zeroes the bound outputs like every dimension does.
+  // while each component declares only its dimension's props (2D lacks Hull3DProps and dim,
+  // the canvas lacks x/y_axis), so a constructor union wouldn't compile. Svelte ignores extra
+  // props. Missing entries (data not loaded yet) and invalid ones go to 2D, which renders the
+  // missing-data/error state and zeroes the bound outputs like every dimension does.
+  const canvas_dim = $derived(
+    element_count === 3 || element_count === 4 ? element_count : null,
+  )
   const ConvexHullComponent = $derived(
-    entries_prop === undefined
+    entries === undefined || parsed.invalid || element_count === 2
       ? ConvexHull2D
-      : ({ 2: ConvexHull2D, 3: ConvexHull3D, 4: ConvexHull4D }[element_count] ?? null),
-  ) as Component<ConvexHullProps> | null
+      : canvas_dim
+        ? ConvexHullCanvas
+        : null,
+  ) as Component<ConvexHullProps & { dim?: 3 | 4 }> | null
+
+  // `rest` carries the non-bindable component props too (controls, config, callbacks, …).
+  // Only the DOM attributes may reach the empty state, while `hidden`, `onclick`, aria-* and
+  // data-* must all survive, so the component props are named and everything else passes.
+  const HULL_PROP_KEYS = new Set<string>([
+    `controls`,
+    `config`,
+    `show_controls`,
+    `on_point_click`,
+    `on_point_hover`,
+    `fullscreen_toggle`,
+    `enable_info_pane`,
+    `label_threshold`,
+    `entry_category`,
+    `allow_file_drop`,
+    `on_file_drop`,
+    `enable_click_selection`,
+    `enable_structure_preview`,
+    `highlight_style`,
+    `tooltip`,
+    `interpolate_temperature`,
+    `max_interpolation_gap`,
+    `gas_config`,
+    `hull_face_color_mode`,
+    `element_colors`,
+    `gizmo`,
+    `x_axis`,
+    `y_axis`,
+  ] satisfies (keyof ConvexHullProps)[])
+  const dom_attrs = $derived(
+    Object.fromEntries(Object.entries(rest).filter(([key]) => !HULL_PROP_KEYS.has(key))),
+  )
 </script>
 
+<!-- keyed so a 3 ↔ 4 element switch remounts the canvas with its new dimension -->
 {#if ConvexHullComponent}
-  <ConvexHullComponent
-    entries={entries_prop}
-    {...rest}
-    bind:fullscreen
-    bind:wrapper
-    bind:show_stable
-    bind:show_unstable
-    bind:hidden_categories
-    bind:show_hull_faces
-    bind:hull_face_opacity
-    bind:color_mode
-    bind:color_scale
-    bind:info_pane_open
-    bind:controls_open
-    bind:max_hull_dist_show_phases
-    bind:max_hull_dist_show_labels
-    bind:show_stable_labels
-    bind:show_unstable_labels
-    bind:energy_source_mode
-    bind:phase_stats
-    bind:display
-    bind:stable_entries
-    bind:unstable_entries
-    bind:highlighted_entries
-    bind:selected_entry
-    bind:temperature
-    bind:gas_pressures
-    {children}
-  />
+  {#key canvas_dim}
+    <ConvexHullComponent
+      {entries}
+      dim={canvas_dim ?? undefined}
+      {...rest}
+      bind:fullscreen
+      bind:wrapper
+      bind:show_stable
+      bind:show_unstable
+      bind:hidden_categories
+      bind:show_hull_faces
+      bind:hull_face_opacity
+      bind:color_mode
+      bind:color_scale
+      bind:info_pane_open
+      bind:controls_open
+      bind:max_hull_dist_show_phases
+      bind:max_hull_dist_show_labels
+      bind:show_stable_labels
+      bind:show_unstable_labels
+      bind:energy_source_mode
+      bind:phase_stats
+      bind:display
+      bind:stable_entries
+      bind:unstable_entries
+      bind:highlighted_entries
+      bind:selected_entry
+      bind:temperature
+      bind:gas_pressures
+      {children}
+    />
+  {/key}
 {:else}
-  <!-- Error state for unsupported dimensionalities -->
-  <div class="convex-hull-error">
-    <h3>Unsupported Chemical System</h3>
-    <p>
-      Convex hulls require 2, 3, or 4 elements. Found {element_count} element{element_count ===
-      1
-        ? ``
-        : `s`}:
-    </p>
-    <strong>{elements.join(`, `)}</strong>
-  </div>
+  <MissingConvexHullData
+    {...dom_attrs}
+    error="Convex hulls require 2, 3 or 4 elements, found {element_count}: {elements.join(
+      `, `,
+    )}"
+    style="{rest.style ?? ``}; height: var(--hull-height, 500px)"
+  />
 {/if}
-
-<style>
-  .convex-hull-error {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    box-sizing: border-box;
-    height: var(--hull-height, 500px);
-    padding: 2em;
-    text-align: center;
-    color: var(--convex-hull-text-color, #666);
-    border: 1px solid var(--convex-hull-border-color, #ccc);
-    border-radius: var(--border-radius, 3pt);
-    background: var(--convex-hull-bg, transparent);
-    h3 {
-      margin: 0 0 1em;
-    }
-    p {
-      margin: 0 0 0.5em;
-    }
-  }
-</style>

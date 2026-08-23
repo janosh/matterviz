@@ -1,36 +1,47 @@
+import { is_finite_vec3_like } from '$lib/math'
 import { collect_trajectory_positions } from '$lib/trajectory/analysis'
-import type { ParseProgress, TrajectoryPositionStream, TrajectoryRun } from '$lib/trajectory'
+import { values_per_sample } from '$lib/trajectory/helpers'
+import type { CollectPositionsOptions, TrajectoryRun, TrajectorySignal } from '$lib/trajectory'
 import {
   DEFAULT_POSITION_STREAM_MAX_BYTES,
   parse_frame_signal,
 } from '$lib/trajectory/runs/accumulate'
 import { SvelteSet } from 'svelte/reactivity'
 import {
+  arrays_equal,
   standard_masses_for_elements,
   type InfraredSignal,
-  type RamanSignal,
+  type SpectroscopyPreprocessing,
   type TrajectorySpectroscopyInput,
 } from './trajectory-spectroscopy'
 
-interface SpectroscopyCollectOptions {
-  frame_stride?: number
-  max_bytes?: number
-  on_progress?: (progress: ParseProgress) => void
-  signal?: AbortSignal
+// Signal keys a trajectory may carry for each response; the first present is the default
+export const INFRARED_SIGNAL_KEYS = [`dipole`, `polarization`, `current`] as const
+export const RAMAN_SIGNAL_KEYS = [`polarizability`] as const
+
+type SpectroscopyCollectOptions = Pick<
+  CollectPositionsOptions,
+  `frame_stride` | `max_bytes` | `on_progress` | `signal`
+> & {
   velocity_key?: string | null
   infrared_key?: string | null
   infrared_kind?: InfraredSignal[`kind`]
   polarization_branch_continuous?: boolean
   raman_key?: string | null
-  raman_signal?: RamanSignal | null
   mass_source?: `auto` | `recorded` | `standard`
+  // The preprocessing the calculation will run with; decides which strided signals must be
+  // aligned to the kept position steps (see `signal_of`)
+  preprocessing?: SpectroscopyPreprocessing
 }
 
-const is_vec3 = (value: unknown): boolean =>
-  Array.isArray(value) && value.length === 3 && value.every(Number.isFinite)
-
 const has_site_velocities = (run: TrajectoryRun, key: string): boolean =>
-  is_vec3(run.preview.structure.sites[0]?.properties?.[key])
+  is_finite_vec3_like(run.preview.structure.sites[0]?.properties?.[key])
+
+// Response-signal vocabulary for the IR/Raman candidate filter. Dipole and polarizability
+// names vary freely across writers (`electronic_dipole`, `dipole_debye`, LAMMPS `c_dipole`,
+// `polarizability_tensor`), so any key mentioning them counts; `current` stays anchored so
+// `current_time` and other bookkeeping do not
+const RESPONSE_SIGNAL_KEY = /dipole|polariz|^(?:total_)?current(?:_density)?$/i
 
 export const infrared_kind_from_key = (key: string): InfraredSignal[`kind`] => {
   const normalized_key = key.toLowerCase()
@@ -38,9 +49,68 @@ export const infrared_kind_from_key = (key: string): InfraredSignal[`kind`] => {
   return normalized_key.includes(`current`) ? `current` : `dipole`
 }
 
-const matching_shape = (shape: number[] | undefined, expected_shape: number[]): boolean =>
-  shape?.length === expected_shape.length &&
-  shape.every((size, idx) => size === expected_shape[idx])
+// Per-site vector and frame-signal channels a collect streams alongside positions, so the
+// pane's memory budget (suggest_frame_stride) and the collector size the same buffers
+export const spectroscopy_stream_channels = (
+  run: TrajectoryRun,
+  keys: {
+    velocity_key?: string | null
+    infrared_key: string | null
+    raman_key: string | null
+  },
+): { vector_keys: string[]; signal_keys: string[] } => {
+  const { velocity_key = `velocity`, infrared_key, raman_key } = keys
+  const trajectory_velocity = velocity_key ? run.signals?.[velocity_key] : null
+  const descriptor_velocity = velocity_key ? run.signal_descriptors?.[velocity_key] : null
+  const signal_keys = [
+    descriptor_velocity ? velocity_key : null,
+    infrared_key,
+    raman_key,
+  ].filter((key): key is string => Boolean(key && !run.signals?.[key]))
+  const vector_keys =
+    velocity_key &&
+    !trajectory_velocity &&
+    !descriptor_velocity &&
+    has_site_velocities(run, velocity_key)
+      ? [velocity_key]
+      : []
+  return { vector_keys, signal_keys }
+}
+
+// Strided positions keep every Nth frame, but run-level and HDF5-streamed signals arrive on
+// their native step axis, so rigid-motion removal and body-frame rotation would find samples
+// with no position. Drop the skipped steps; a signal already on the kept steps (frame-backed
+// metadata) passes through by identity.
+const align_signal_to_steps = (
+  signal: TrajectorySignal,
+  steps: number[],
+  key: string,
+  frame_stride: number,
+): TrajectorySignal => {
+  const kept_steps = new Set(steps)
+  const kept_indices = signal.steps.flatMap((step, sample_idx) =>
+    kept_steps.has(step) ? [sample_idx] : [],
+  )
+  if (kept_indices.length === signal.steps.length) return signal
+  // A signal on its own cadence (a dipole every step beside positions every 20) is decimated
+  // by the stride; one fully off the kept steps would silently become an empty spectrum
+  if (kept_indices.length < 2) {
+    throw new Error(
+      `Signal '${key}' has no samples on the strided position steps (frame_stride=${frame_stride}); use stride 1`,
+    )
+  }
+  const sample_size = values_per_sample(signal.sample_shape)
+  const values = new Float64Array(kept_indices.length * sample_size)
+  for (const [out_idx, sample_idx] of kept_indices.entries()) {
+    const start = sample_idx * sample_size
+    values.set(signal.values.subarray(start, start + sample_size), out_idx * sample_size)
+  }
+  return {
+    ...signal,
+    values,
+    steps: kept_indices.map((sample_idx) => signal.steps[sample_idx]),
+  }
+}
 
 export const trajectory_signal_keys = (
   run: TrajectoryRun | undefined,
@@ -52,20 +122,23 @@ export const trajectory_signal_keys = (
     ...run.signals,
   }
   const declared_keys = Object.entries(declared_signals).flatMap(([key, { sample_shape }]) =>
-    !expected_shape || matching_shape(sample_shape, expected_shape) ? [key] : [],
+    !expected_shape || arrays_equal(sample_shape, expected_shape) ? [key] : [],
   )
+  // Frame metadata is only a response signal when it is named like one: LAMMPS box origins
+  // and other vec3 bookkeeping would otherwise show up as IR candidates
   const metadata = run.preview.metadata ?? {}
   const n_atoms = run.preview.structure.sites.length
   const metadata_keys = Object.entries(metadata).flatMap(([key, value]) =>
-    !expected_shape ||
-    matching_shape(parse_frame_signal(value, key, n_atoms)?.sample_shape, expected_shape)
+    RESPONSE_SIGNAL_KEY.test(key) &&
+    (!expected_shape ||
+      arrays_equal(parse_frame_signal(value, key, n_atoms)?.sample_shape, expected_shape))
       ? [key]
       : [],
   )
   return [...new SvelteSet([...declared_keys, ...metadata_keys])].toSorted()
 }
 
-const select_default_key = (keys: string[], preferred: string[]): string | null =>
+const select_default_key = (keys: string[], preferred: readonly string[]): string | null =>
   preferred.find((key) => keys.includes(key)) ?? null
 
 const recorded_masses = (run: TrajectoryRun): number[] | null => {
@@ -77,14 +150,12 @@ const recorded_masses = (run: TrajectoryRun): number[] | null => {
     )
   }
   if (masses.every((mass) => mass === undefined)) return null
-  const validated_masses: number[] = []
-  for (const [atom_idx, mass] of masses.entries()) {
+  return masses.map((mass, atom_idx) => {
     if (typeof mass !== `number` || !Number.isFinite(mass) || mass <= 0) {
       throw new Error(`Recorded mass ${atom_idx} must be finite and > 0, got ${mass}`)
     }
-    validated_masses.push(mass)
-  }
-  return validated_masses
+    return mass
+  })
 }
 
 // Collect positions plus selected response channels from a trajectory. HDF5 signals retain
@@ -101,61 +172,66 @@ export async function collect_trajectory_spectroscopy_input(
     signal,
     velocity_key = `velocity`,
     mass_source = `auto`,
+    preprocessing,
   } = options
   const available_keys = trajectory_signal_keys(run)
   const infrared_key =
     options.infrared_key === undefined
-      ? select_default_key(available_keys, [`dipole`, `polarization`, `current`])
+      ? select_default_key(available_keys, INFRARED_SIGNAL_KEYS)
       : options.infrared_key
   const raman_key =
     options.raman_key === undefined
-      ? select_default_key(available_keys, [`polarizability`])
+      ? select_default_key(available_keys, RAMAN_SIGNAL_KEYS)
       : options.raman_key
-  const trajectory_velocity = velocity_key ? run.signals?.[velocity_key] : null
-  const descriptor_velocity = velocity_key ? run.signal_descriptors?.[velocity_key] : null
-  const frame_signal_keys = [
-    descriptor_velocity ? velocity_key : null,
+  const { vector_keys, signal_keys } = spectroscopy_stream_channels(run, {
+    velocity_key,
     infrared_key,
-    options.raman_signal ? null : raman_key,
-  ].filter((key): key is string => Boolean(key && !run.signals?.[key]))
-  const collect_options = {
+    raman_key,
+  })
+  const stream = await collect_trajectory_positions(run, {
     frame_stride,
     max_bytes,
-    ...(velocity_key &&
-    !trajectory_velocity &&
-    !descriptor_velocity &&
-    has_site_velocities(run, velocity_key)
-      ? { vector_keys: [velocity_key] }
-      : {}),
-    ...(frame_signal_keys.length > 0 ? { signal_keys: frame_signal_keys } : {}),
-  }
-  const stream: TrajectoryPositionStream = await collect_trajectory_positions(
-    run,
-    collect_options,
+    ...(vector_keys.length > 0 ? { vector_keys } : {}),
+    ...(signal_keys.length > 0 ? { signal_keys } : {}),
     on_progress,
-    `Spectroscopy`,
     signal,
-  )
+    analysis_name: `Spectroscopy`,
+  })
+  // A named signal, eager on the run or streamed by the collect. Only a stride can leave
+  // samples at skipped steps, and only analyses that look a signal step up in the positions
+  // care: rigid-motion removal for velocities, body-frame rotation for IR/Raman. Every other
+  // signal keeps its native cadence, so a dipole sampled every step beside positions kept
+  // every 20th is not decimated or emptied by the stride
+  const signal_of = (key: string, align: boolean): TrajectorySignal | undefined => {
+    const series = run.signals?.[key] ?? stream.signals?.[key]
+    return series && align && frame_stride > 1
+      ? align_signal_to_steps(series, stream.steps, key, frame_stride)
+      : series
+  }
+  const align_responses = preprocessing === `body_fixed`
 
-  const streamed_velocities = velocity_key ? stream.vectors?.[velocity_key] : null
-  const streamed_velocity_signal = velocity_key ? stream.signals?.[velocity_key] : null
+  const velocity_signal = velocity_key ? signal_of(velocity_key, true) : undefined
+  const site_velocities = velocity_key ? stream.vectors?.[velocity_key] : undefined
   const velocities =
-    trajectory_velocity ??
-    streamed_velocity_signal ??
-    (streamed_velocities
+    velocity_signal ??
+    (site_velocities
       ? {
-          values: streamed_velocities,
+          values: site_velocities,
           sample_shape: [stream.n_atoms, 3],
           steps: [...stream.steps],
         }
       : null)
-  const velocity_source = trajectory_velocity
-    ? velocity_key
-    : streamed_velocity_signal
-      ? `stream:${velocity_key}`
-      : streamed_velocities
-        ? `site:${velocity_key}`
-        : null
+  // Provenance label for the metadata, distinct from calc_trajectory_spectroscopy's
+  // `velocity_source` (stored vs central_difference)
+  const velocity_provenance = !velocity_key
+    ? null
+    : run.signals?.[velocity_key]
+      ? velocity_key
+      : velocity_signal
+        ? `stream:${velocity_key}`
+        : site_velocities
+          ? `site:${velocity_key}`
+          : null
   const mass_values = mass_source === `standard` ? null : recorded_masses(run)
   if (mass_source === `recorded` && !mass_values) {
     throw new Error(`Recorded masses were requested, but the trajectory carries none`)
@@ -166,7 +242,7 @@ export async function collect_trajectory_spectroscopy_input(
 
   let infrared_signal: InfraredSignal | null = null
   if (infrared_key) {
-    const series = run.signals?.[infrared_key] ?? stream.signals?.[infrared_key]
+    const series = signal_of(infrared_key, align_responses)
     if (!series) throw new Error(`No trajectory signal named '${infrared_key}'`)
     const kind = options.infrared_kind ?? infrared_kind_from_key(infrared_key)
     if (kind === `polarization` && options.polarization_branch_continuous !== true) {
@@ -184,10 +260,9 @@ export async function collect_trajectory_spectroscopy_input(
         : { kind, series }
   }
 
-  let raman_signal = options.raman_signal ?? null
-  const raman_source_key = raman_signal ? null : raman_key
-  if (!raman_signal && raman_key) {
-    const series = run.signals?.[raman_key] ?? stream.signals?.[raman_key]
+  let raman_signal: TrajectorySpectroscopyInput[`raman_signal`] = null
+  if (raman_key) {
+    const series = signal_of(raman_key, align_responses)
     if (!series) throw new Error(`No trajectory signal named '${raman_key}'`)
     raman_signal = { kind: `polarizability`, series }
   }
@@ -203,14 +278,9 @@ export async function collect_trajectory_spectroscopy_input(
       ...run.metadata,
       mass_source: mass_values ? `recorded` : `standard`,
       signal_sources: {
-        velocity: velocity_source,
+        velocity: velocity_provenance,
         infrared: infrared_signal ? { key: infrared_key, kind: infrared_signal.kind } : null,
-        raman: raman_signal
-          ? {
-              key: raman_source_key,
-              kind: raman_signal.kind,
-            }
-          : null,
+        raman: raman_signal ? { key: raman_key, kind: raman_signal.kind } : null,
       },
     },
   }

@@ -3,6 +3,7 @@
     contrast_text_color,
     default_element_colors,
     perceived_brightness,
+    resolve_backdrop,
   } from '$lib/colors'
   import type { CompositionType } from '$lib/composition'
   import { element_by_symbol, is_elem_symbol, type ElementSymbol } from '$lib/element'
@@ -13,7 +14,7 @@
   import { SETTINGS_CONFIG } from '$lib/settings'
   import { colors } from '$lib/state.svelte'
   import type { AnyStructure } from '$lib/structure'
-  import { atomic_radii } from '$lib/structure'
+  import { atomic_radii, site_display_radius } from '$lib/structure'
   import type { AtomColorMode } from '$lib/settings'
   import type { AtomColorConfig, AtomPropertyColors } from '$lib/structure/atom-properties'
   import {
@@ -21,7 +22,7 @@
     get_colorable_property_keys,
     next_atom_color_config,
   } from '$lib/structure/atom-properties'
-  import type { MoyoDataset } from '@spglib/moyo-wasm'
+  import type { SymmetryDataset } from '$lib/symmetry'
   import { type Snippet, untrack } from 'svelte'
   import { click_outside, tooltip } from 'svelte-widgets/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -31,10 +32,6 @@
     atom_color_config = $bindable<AtomColorConfig>({ ...DEFAULT_ATOM_COLOR_CONFIG }),
     property_colors = null,
     elements,
-    elem_color_picker_title = `Double click to reset color`,
-    amount_format = `.3~f`,
-    show_amounts = true,
-    get_element_label,
     hidden_elements = $bindable(new SvelteSet()),
     hidden_prop_vals = $bindable(new SvelteSet<number | string>()),
     // Element remapping: maps original element symbols to new ones
@@ -43,7 +40,6 @@
     element_radius_overrides = $bindable<Partial<Record<ElementSymbol, number>>>({}),
     site_radius_overrides = $bindable<SvelteMap<number, number>>(new SvelteMap()),
     selected_sites = [] as number[],
-    title = ``,
     sym_data = null,
     structure = undefined,
     show_mode_toggle = true,
@@ -53,10 +49,6 @@
     atom_color_config?: AtomColorConfig
     property_colors?: AtomPropertyColors | null
     elements?: CompositionType
-    elem_color_picker_title?: string
-    amount_format?: string // Float formatting for element amounts (default: 3 significant digits)
-    show_amounts?: boolean // Whether to show element amounts
-    get_element_label?: (element: string, amount: number) => string // Custom label function
     hidden_elements?: Set<ElementSymbol>
     hidden_prop_vals?: Set<number | string> // Track hidden property values (e.g. Wyckoff positions, coordination numbers)
     // Element remapping: maps original element symbols to new ones (e.g. {'H': 'Na', 'He': 'Cl'})
@@ -65,8 +57,7 @@
     element_radius_overrides?: Partial<Record<ElementSymbol, number>>
     site_radius_overrides?: Map<number, number> | SvelteMap<number, number>
     selected_sites?: number[] // Currently selected site indices
-    title?: string
-    sym_data?: MoyoDataset | null
+    sym_data?: SymmetryDataset | null
     structure?: AnyStructure | null
     show_mode_toggle?: boolean
     children?: Snippet<[{ mode_menu_open: boolean; structure?: AnyStructure | null }]>
@@ -87,8 +78,7 @@
   )
   // Property mode has no fixed title — the key being colored by is the useful label
   let legend_title = $derived(
-    title ||
-      (atom_color_config.mode === `property` && atom_color_config.property_key) ||
+    (atom_color_config.mode === `property` && atom_color_config.property_key) ||
       titles[atom_color_config.mode as keyof typeof titles] ||
       ``,
   )
@@ -113,19 +103,14 @@
       site_radius_overrides = new SvelteMap(site_radius_overrides)
     }
   })
-  // Format display values based on mode
+  // Format display values based on mode. Wyckoff orbit ids are `${multiplicity}${letter}|${element}`
+  // (see get_wyckoff_colors) and read as `Fe:4a` — the conventional-cell multiplicity, not a
+  // count of displayed atoms, which supercells and image atoms would inflate.
   const format_value = (val: number | string): string => {
     if (typeof val === `number`) return format_num(val, `.3~f`)
-
-    if (typeof val === `string` && val.includes(`|`)) {
-      // Format Wyckoff orbit IDs
-      const [wyckoff, element] = val.split(`|`, 2)
-      // Count how many sites have this wyckoff+element combination
-      const count =
-        property_colors?.values.filter((property_value) => property_value === val).length ?? 0
-      return `${element}:${count}${wyckoff}`
-    }
-    return String(val)
+    if (!val.includes(`|`)) return val
+    const [wyckoff, element] = val.split(`|`, 2)
+    return `${element}:${wyckoff}`
   }
 
   // Map each property value to its first color in a single O(n) pass (reused in
@@ -147,6 +132,11 @@
       throw new Error(`Missing legend color for property value ${value}`)
     return color
   }
+
+  // Property swatches may be translucent (user color overrides), so their text contrast is
+  // computed against the page color behind the legend
+  let property_legend_node = $state<HTMLDivElement>()
+  const backdrop = resolve_backdrop(() => property_legend_node)
 
   // The legend filter darkens saturated swatches, so their perceived brightness is a
   // better text-color signal than maximum contrast against the unfiltered CSS color.
@@ -249,13 +239,12 @@
     site_radius_overrides?.delete(site_idx)
   }
 
+  // Same rule the scene renders with: site override, else occupancy-weighted element radius
   const get_site_radius = (site_idx: number): number => {
     const override = site_radius_overrides?.get(site_idx)
     if (override !== undefined) return override
-    const element = structure?.sites?.[site_idx]?.species[0]?.element as
-      | ElementSymbol
-      | undefined
-    return element ? get_element_radius(element) : 1
+    const site = structure?.sites?.[site_idx]
+    return site ? site_display_radius(site, element_radius_overrides) : 1
   }
 </script>
 
@@ -370,18 +359,12 @@
             remap_search = ``
           }}
         >
-          {#if get_element_label}
-            {get_element_label(displayed_elem, amt)}
-          {:else}
-            {displayed_elem}
-            {#if show_amounts}
-              <sub>{format_num(amt, amount_format)}</sub>
-            {/if}
-          {/if}
+          {displayed_elem}
+          <sub>{format_num(amt, `.3~f`)}</sub>
           <input
             type="color"
             bind:value={colors.element[elem]}
-            title={elem_color_picker_title}
+            title="Double click to reset color"
           />
         </label>
         <button
@@ -496,6 +479,7 @@
     class="atom-legend property-legend atom-color-legend"
     class:categorical-legend={atom_color_config.scale_type === `categorical`}
     style="font-size: var(--struct-legend-font, clamp(9pt, 3cqmin, 14pt))"
+    bind:this={property_legend_node}
     {...rest}
   >
     {@render mode_selector_snippet()}
@@ -519,7 +503,10 @@
               ? `Show ${format_value(value)}`
               : `Hide ${format_value(value)}`}
             {@attach tooltip({ placement: `top` })}
-            style:color={contrast_text_color({ background: color })}
+            style:color={contrast_text_color({
+              background: color,
+              backdrop: backdrop.current,
+            })}
           >
             {format_value(value)}
           </button>
@@ -548,7 +535,10 @@
           <span
             class={['category-label color-swatch', { hidden: is_hidden }]}
             style:background-color={color}
-            style:color={contrast_text_color({ background: color })}
+            style:color={contrast_text_color({
+              background: color,
+              backdrop: backdrop.current,
+            })}
           >
             {format_value(value)}
           </span>

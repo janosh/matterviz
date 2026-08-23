@@ -6,7 +6,7 @@
   import { is_dark_mode, watch_dark_mode } from '$lib/colors'
   import { get_electro_neg_formula } from '$lib/composition'
   import { normalize_show_controls, type ShowControlsProp } from '$lib/controls'
-  import { canvas_text_color } from '$lib/convex-hull/canvas-interactions.svelte'
+  import { canvas_text_color } from '$lib/canvas-surface.svelte'
   import {
     DEFAULT_ELEMENT_TO_GAS,
     GAS_STOICHIOMETRY,
@@ -16,7 +16,7 @@
   import { create_file_drop_handler, drag_over_handlers } from '$lib/io/file-drop'
   import { format_num } from '$lib/labels'
   import { FullscreenButton } from '$lib/layout'
-  import type { Vec2 } from '$lib/math'
+  import { clamp, type Vec2 } from '$lib/math'
   import { PlotTooltip } from '$lib/plot'
   import { sanitize_html } from '$lib/sanitize'
   import { create_renderer, webgpu_available } from '$lib/scene'
@@ -219,9 +219,8 @@
   // === Temperature ===
 
   const [t_min, t_max] = $derived<Vec2>(model?.t_range ?? [300, 1500])
-  const clamp_t = (value: number) => Math.min(t_max, Math.max(t_min, value))
   const current_t = $derived(
-    Number.isFinite(temperature) ? clamp_t(temperature ?? t_min) : t_min,
+    Number.isFinite(temperature) ? clamp(temperature ?? t_min, t_min, t_max) : t_min,
   )
   $effect(() => {
     if (temperature !== current_t) temperature = current_t // keep the binding inside the sweep
@@ -232,7 +231,7 @@
   let scrub_frame = 0
   const set_temperature = (next: number) => {
     pending_t = null
-    temperature = clamp_t(next)
+    temperature = clamp(next, t_min, t_max)
   }
   const scrub_temperature = (next: number) => {
     if (pending_t === null) {
@@ -270,7 +269,7 @@
     let frame = requestAnimationFrame(function step(now: number) {
       const next = untrack(() => current_t) + (settings.play_speed * (now - last)) / 1000
       last = now
-      temperature = clamp_t(next)
+      temperature = clamp(next, t_min, t_max)
       if (next >= t_max) playing = false
       else frame = requestAnimationFrame(step)
     })

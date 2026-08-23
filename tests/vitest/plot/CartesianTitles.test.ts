@@ -14,7 +14,7 @@ const title = {
 const xy_series = () => [{ x: [0, 1, 2], y: [1, 2, 3] }]
 const xy_props = () => ({ series: xy_series() })
 const y_series = () => [{ y: [1, 2, 3] }]
-const histogram_series = () => [{ x: [], y: [1, 2, 3] }]
+const histogram_series = () => [{ values: [1, 2, 3] }]
 const shared_props = {
   title,
   padding: { t: 17 },

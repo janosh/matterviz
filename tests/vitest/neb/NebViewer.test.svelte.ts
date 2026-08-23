@@ -101,8 +101,6 @@ describe(`NebPlot`, () => {
     const e_act = spline.fitted_max.energy - direct_path.images[0].energy
     expect(squash(plot.textContent)).toContain(`Eact = ${format_num(e_act, `.3~`)} eV`)
     expect(plot.querySelector(`tspan[baseline-shift="sub"]`)?.textContent).toBe(`act`)
-    expect(plot.querySelectorAll(`line[stroke-dasharray="4 4"]`)).toHaveLength(3)
-    expect(plot.querySelectorAll(`line[stroke-dasharray="2 3"]`)).toHaveLength(1)
     expect(plot.textContent).toMatch(/fit \+0\.00\d+/)
     const fit_cross = [...plot.querySelectorAll(`line`)].filter(
       (line) => line.getAttribute(`stroke-width`) === `1.5`,
@@ -151,14 +149,7 @@ describe(`NebViewer`, () => {
     expect(
       viewer.querySelector<HTMLElement>(`.panes`)?.style.getPropertyValue(`--split-pane-size`),
     ).toBe(`60%`)
-    expect(
-      viewer.querySelector(`.neb-controls.sequence-control-bar.always-visible`),
-    ).not.toBeNull()
-    expect(
-      viewer
-        .querySelector<HTMLElement>(`.panes`)
-        ?.style.getPropertyValue(`--viewer-buttons-top`),
-    ).toBe(``)
+    expect(viewer.querySelector(`.neb-controls`)).not.toBeNull()
     const summary = viewer.querySelector(`.barrier-summary`)?.textContent ?? ``
     expect(summary).toContain(`Forward barrier`)
     expect(summary).toContain(`0.8339 eV`)

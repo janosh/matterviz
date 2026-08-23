@@ -135,7 +135,7 @@ Use `units` to convert phonon frequencies on the y-axis, and `highlight_regions`
 
 <Bands
   band_structs={phonon_bands['mp-2758-Sr4Se4-pbe']}
-  units="cm-1"
+  units="cm^-1"
   highlight_regions={[
     { y_min: 40, y_max: 120, color: 'rgba(255, 193, 7, 0.35)', label: 'Target window' },
   ]}
@@ -249,8 +249,10 @@ When comparing multiple band structures, each can have its own `band_widths`. Th
 
 The `Bands` component automatically detects and handles:
 
-| Format              | Key Fields                                                          | Description                                 |
-| ------------------- | ------------------------------------------------------------------- | ------------------------------------------- |
-| Pymatgen Electronic | `@class: "BandStructureSymmLine"`, `kpoints`, `bands` (dict)        | Standard pymatgen electronic band structure |
-| Pymatgen Phonon     | `@class: "PhononBandStructureSymmLine"`, `qpoints`, `bands` (array) | Pymatgen phonon band structure              |
-| Native matterviz    | `qpoints`, `bands` (array), `branches`                              | Internal matterviz format                   |
+| Format              | Key Fields                                                                         | Description                                                                          |
+| ------------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| Pymatgen Electronic | `@class: "BandStructureSymmLine"`, `kpoints`, `bands` (dict), `lattice_rec`        | Standard pymatgen electronic band structure                                          |
+| Pymatgen Phonon     | `@class: "PhononBandStructureSymmLine"`, `qpoints`, `bands` (array), `lattice_rec` | Pymatgen phonon band structure (`recip_lattice` is accepted for the lattice as well) |
+| Native matterviz    | `qpoints`, `bands` (array), `branches`, `distance`                                 | Internal matterviz format                                                            |
+
+Pymatgen inputs need the reciprocal lattice because k-path distances are measured in Cartesian reciprocal space (`|Mᵀ·Δq|`, like pymatgen and phonopy); the native format carries precomputed `distance` values instead. A pymatgen-shaped input without `lattice_rec.matrix` (or `recip_lattice.matrix`) is rejected with an error naming the missing key, which `Bands` shows in place of the plot.

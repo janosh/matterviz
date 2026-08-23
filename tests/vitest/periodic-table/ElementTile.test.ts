@@ -13,200 +13,95 @@ const mount_tile = (
   mount(ElementTile, { target: document.body, props: { element: rand_element, ...props } })
 
 describe(`ElementTile`, () => {
-  describe(`basic rendering`, () => {
-    test(`renders element name, symbol and atomic number by default`, () => {
-      mount_tile()
-
-      const name = doc_query(`.name`)
-      expect(name.textContent).toBe(rand_element.name)
-
-      const symbol = doc_query(`.symbol`)
-      expect(symbol.textContent).toBe(rand_element.symbol)
-
-      const number = doc_query(`.number`)
-      expect(number.textContent).toBe(rand_element.number.toString())
-      expect(document.querySelector(`.value`)).toBeNull()
-    })
-
-    test(`renders as anchor when href is provided`, () => {
-      const href = `/element/${rand_element.symbol}`
-      mount_tile({ href })
-
-      const node = doc_query(`.element-tile`)
-      expect(node.tagName).toBe(`A`)
-      expect(node.getAttribute(`href`)).toBe(href)
-    })
+  test(`renders name, symbol, number, category and forwards rest props`, () => {
+    mount_tile({ 'data-testid': `custom-test-id`, 'aria-label': `Custom aria label` })
+    expect(doc_query(`.name`).textContent).toBe(rand_element.name)
+    expect(doc_query(`.symbol`).textContent).toBe(rand_element.symbol)
+    expect(doc_query(`.number`).textContent).toBe(rand_element.number.toString())
+    expect(document.querySelector(`.value`)).toBeNull()
+    const node = doc_query(`.element-tile`)
+    expect(node.getAttribute(`data-category`)).toBe(rand_element.category)
+    expect(node.getAttribute(`data-testid`)).toBe(`custom-test-id`)
+    expect(node.getAttribute(`aria-label`)).toBe(`Custom aria label`)
+    // a plain tile is not interactive
+    expect(node.getAttribute(`tabindex`)).toBeNull()
+    expect(node.getAttribute(`role`)).toBeNull()
   })
 
-  describe(`show_* props`, () => {
-    test.each([
-      [true, true, true, `${rand_element.number} ${rand_element.symbol} ${rand_element.name}`],
-      [false, false, false, ``],
-      [true, false, true, `${rand_element.number} ${rand_element.symbol}`],
-      [false, true, false, rand_element.name],
-      [true, true, false, `${rand_element.number} ${rand_element.name}`],
-      [false, false, true, rand_element.symbol],
-      [true, false, false, String(rand_element.number)],
-      [false, true, true, `${rand_element.symbol} ${rand_element.name}`],
-    ])(
-      `show_number=%s, show_name=%s, show_symbol=%s renders expected content`,
-      (show_number, show_name, show_symbol, expected) => {
-        mount_tile({ show_number, show_name, show_symbol })
-
-        const tile = doc_query(`.element-tile`)
-        // Clean up extra whitespace from text content
-        const actual_text = tile.textContent?.replaceAll(/\s+/g, ` `).trim() || ``
-        expect(actual_text).toBe(expected.trim())
-      },
-    )
+  test(`renders as anchor when href is provided`, () => {
+    const href = `/element/${rand_element.symbol}`
+    mount_tile({ href })
+    const node = doc_query(`.element-tile`)
+    expect(node.tagName).toBe(`A`)
+    expect(node.getAttribute(`href`)).toBe(href)
   })
 
-  describe(`segment values`, () => {
-    test.each([
-      [42.5, `42.5`],
-      [0, `0`],
-    ])(`shows value %s instead of the name`, (value, expected) => {
-      mount_tile({ segments: [{ value }] })
-
-      const value_element = doc_query(`.value`)
-      expect(value_element.textContent).toBe(expected)
-      expect(document.querySelector(`.name`)).toBeNull()
-    })
-
-    test(`formats value with float_fmt`, () => {
-      const value = 42.123456
-      mount_tile({ segments: [{ value }], float_fmt: `.2f` })
-
-      const value_element = doc_query(`.value`)
-      expect(value_element.textContent).toBe(`42.12`)
-    })
+  // each show_* flag independently toggles its span; label replaces the element name
+  test.each([
+    [{}, `${rand_element.number} ${rand_element.symbol} ${rand_element.name}`],
+    [{ show_number: false, show_name: false, show_symbol: false }, ``],
+    [{ show_name: false }, `${rand_element.number} ${rand_element.symbol}`],
+    [{ show_number: false, show_symbol: false }, rand_element.name],
+    [{ label: `Custom Label` }, `${rand_element.number} ${rand_element.symbol} Custom Label`],
+  ])(`props %j render text %j`, (props, expected) => {
+    mount_tile(props)
+    const actual_text = doc_query(`.element-tile`).textContent?.replaceAll(/\s+/g, ` `).trim()
+    expect(actual_text).toBe(expected)
   })
 
-  describe(`styling props`, () => {
-    test(`applies a segment color as background`, () => {
-      mount_tile({ segments: [{ color: `red` }] })
-
-      const node = doc_query(`.element-tile`)
-      expect(node.style.backgroundColor).toBe(`red`)
-    })
-
-    test(`applies text_color when provided`, () => {
-      mount_tile({ text_color: `blue` })
-
-      const node = doc_query(`.element-tile`)
-      expect(node.style.color).toBe(`blue`)
-    })
-
-    test(`applies custom style`, () => {
-      const custom_style = `border: 2px solid green; padding: 10px;`
-      mount_tile({ style: custom_style })
-
-      const node = doc_query(`.element-tile`)
-      expect(node.getAttribute(`style`)).toContain(`border: 2px solid green`)
-      expect(node.getAttribute(`style`)).toContain(`padding: 10px`)
-    })
-
-    test(`applies symbol_style to symbol span`, () => {
-      const symbol_style = `font-weight: bold; color: purple;`
-      mount_tile({ symbol_style })
-
-      const symbol = doc_query(`.symbol`)
-      expect(symbol.getAttribute(`style`)).toBe(symbol_style)
-    })
-
-    test.each([true, false])(`applies active class when active=%s`, (active) => {
-      mount_tile({ active, text_color: `white` })
-
-      const node = doc_query(`.element-tile`)
-      expect(node.classList.contains(`active`)).toBe(active)
-      expect(getComputedStyle(node).color).toBe(`white`)
-      if (active) {
-        // Keep the reserved 1px border (unset --elem-tile-active-border must not wipe it,
-        // or cqw text inflates and the tile looks scaled). Color is --text-color in CSS;
-        // happy-dom does not always resolve nested var() in the border shorthand.
-        expect(getComputedStyle(node).borderWidth).toBe(`1px`)
-        expect(getComputedStyle(node).borderStyle).toBe(`solid`)
-      }
-    })
-
-    test(`applies category as data attribute`, () => {
-      mount_tile()
-
-      const node = doc_query(`.element-tile`)
-      expect(node.getAttribute(`data-category`)).toBe(rand_element.category)
-    })
+  // a segment value replaces the name; float_fmt formats it (empty string = format_num default)
+  test.each([
+    [42.5, undefined, `42.5`],
+    [0, undefined, `0`],
+    [42.123456, `.2f`, `42.12`],
+    [42.123, ``, `42.1`],
+  ])(`segment value %s with float_fmt %j shows %s`, (value, float_fmt, expected) => {
+    mount_tile({ segments: [{ value }], float_fmt })
+    expect(doc_query(`.value`).textContent).toBe(expected)
+    expect(document.querySelector(`.name`)).toBeNull()
   })
 
-  describe(`label prop`, () => {
-    test(`shows label instead of element name when provided`, () => {
-      const custom_label = `Custom Label`
-      mount_tile({ label: custom_label })
-
-      const name_element = doc_query(`.name`)
-      expect(name_element.textContent).toBe(custom_label)
+  test(`applies segment color, explicit text_color, style and symbol_style`, () => {
+    const symbol_style = `font-weight: bold; color: purple;`
+    mount_tile({
+      segments: [{ color: `#000000` }], // dark background would otherwise get white text
+      text_color: `#ff0000`,
+      style: `border: 2px solid green; padding: 10px;`,
+      symbol_style,
     })
+    const node = doc_query(`.element-tile`)
+    expect(node.style.backgroundColor).toBe(`#000000`)
+    expect(node.style.color).toBe(`#ff0000`)
+    expect(node.getAttribute(`style`)).toContain(`border: 2px solid green`)
+    expect(node.getAttribute(`style`)).toContain(`padding: 10px`)
+    expect(doc_query(`.symbol`).getAttribute(`style`)).toBe(symbol_style)
   })
 
-  describe(`event handling`, () => {
-    test.each([
-      [`onmouseenter`, `mouseenter`],
-      [`onmouseleave`, `mouseleave`],
-    ])(`forwards %s events`, (event_prop, event_type) => {
-      const spy = vi.fn()
-      mount_tile({ [event_prop]: spy })
+  test.each([true, false])(`applies active class when active=%s`, (active) => {
+    mount_tile({ active, text_color: `white` })
 
-      const node = doc_query(`.element-tile`)
-      const event = new Event(event_type)
-      node.dispatchEvent(event)
-
-      expect(spy).toHaveBeenCalledTimes(1)
-      expect(spy).toHaveBeenCalledWith(event)
-    })
-
-    test(`has no role/tabindex without href`, () => {
-      mount_tile()
-
-      const node = doc_query(`.element-tile`)
-      expect(node.getAttribute(`tabindex`)).toBeNull()
-      expect(node.getAttribute(`role`)).toBeNull()
-    })
+    const node = doc_query(`.element-tile`)
+    expect(node.classList.contains(`active`)).toBe(active)
+    expect(getComputedStyle(node).color).toBe(`white`)
+    if (active) {
+      // Keep the reserved 1px border (unset --elem-tile-active-border must not wipe it,
+      // or cqw text inflates and the tile looks scaled). Color is --text-color in CSS;
+      // happy-dom does not always resolve nested var() in the border shorthand.
+      expect(getComputedStyle(node).borderWidth).toBe(`1px`)
+      expect(getComputedStyle(node).borderStyle).toBe(`solid`)
+    }
   })
 
-  describe(`rest props`, () => {
-    test(`forwards additional props to element`, () => {
-      mount_tile({
-        'data-testid': `custom-test-id`,
-        'aria-label': `Custom aria label`,
-      })
-
-      const node = doc_query(`.element-tile`)
-      expect(node.getAttribute(`data-testid`)).toBe(`custom-test-id`)
-      expect(node.getAttribute(`aria-label`)).toBe(`Custom aria label`)
-    })
-  })
-
-  describe(`text color`, () => {
-    test(`explicit text_color overrides automatic contrast calculation`, () => {
-      const explicit_color = `#ff0000`
-
-      mount_tile({
-        segments: [{ color: `#000000` }], // Dark background (would normally get white text)
-        text_color: explicit_color, // But we override with red
-      })
-
-      const node = doc_query(`.element-tile`)
-      expect(node.style.color).toBe(explicit_color)
-    })
-  })
-
-  describe(`edge cases`, () => {
-    test(`handles empty string float_fmt`, () => {
-      mount_tile({ segments: [{ value: 42.123 }], float_fmt: `` })
-
-      const value_element = doc_query(`.value`)
-      // Empty float_fmt defaults to format_num default behavior
-      expect(value_element.textContent).toBe(`42.1`)
-    })
+  test.each([
+    [`onmouseenter`, `mouseenter`],
+    [`onmouseleave`, `mouseleave`],
+  ])(`forwards %s events`, (event_prop, event_type) => {
+    const spy = vi.fn()
+    mount_tile({ [event_prop]: spy })
+    const event = new Event(event_type)
+    doc_query(`.element-tile`).dispatchEvent(event)
+    expect(spy).toHaveBeenCalledTimes(1)
+    expect(spy).toHaveBeenCalledWith(event)
   })
 
   describe(`multi-value support`, () => {

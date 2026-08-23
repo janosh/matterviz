@@ -41,8 +41,8 @@
     {#if gizmo}
       <Gizmo
         {...typeof gizmo === `object` ? gizmo : {}}
-        onstart={orbit_props.onstart}
-        onend={orbit_props.onend}
+        on_start={orbit_props.onstart}
+        on_end={orbit_props.onend}
       />
     {/if}
   </extras.OrbitControls>

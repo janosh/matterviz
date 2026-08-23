@@ -1,5 +1,4 @@
 import type { D3InterpolateName } from '$lib/colors'
-import type { PhaseData } from '$lib/convex-hull/types'
 import type { Point2D, Vec2 } from '$lib/math'
 
 // Per-element chemical potential bounds [min, max] in eV
@@ -52,16 +51,8 @@ export interface ChemPotDiagramConfig {
 export interface ChemPotDiagramData {
   // Stability domains keyed by reduced formula
   domains: Record<string, number[][]>
-  // Sorted element list for this diagram
+  // Display elements (axis order) for this diagram
   elements: string[]
-  // Elemental reference entries keyed by element symbol
-  el_refs: Record<string, PhaseData>
-  // Minimum-energy entries per composition
-  min_entries: PhaseData[]
-  // Hyperplane data: rows of [x_1, ..., x_n, -E_per_atom]
-  hyperplanes: number[][]
-  // Entries corresponding to hyperplanes (same order)
-  hyperplane_entries: PhaseData[]
   // Axis limits array: [[min, max], ...] per element
   lims: Vec2[]
 }

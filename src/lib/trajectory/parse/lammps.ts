@@ -1,5 +1,4 @@
 import type { ElementSymbol } from '$lib/element/types'
-import { ELEM_SYMBOLS } from '$lib/labels'
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { Pbc } from '$lib/structure/pbc'
@@ -8,6 +7,7 @@ import { coerce_elem_symbol } from '$lib/element/helpers'
 import { capitalize_symbol } from '$lib/structure/parsers/shared'
 import { count_elements, create_trajectory_frame } from '$lib/trajectory/helpers'
 import type { AtomTypeMapping } from '$lib/trajectory/types'
+import { ELEM_SYMBOLS } from '$lib/labels'
 import type { ParsedTrajectory, WarnFn } from './shared'
 
 const is_periodic = (token: string): boolean => token.toLowerCase().startsWith(`p`)
@@ -113,9 +113,20 @@ export function parse_lammps_trajectory(
     )
   }
 
+  // LAMMPS atom types are bare integers whose meaning lives in the input script, not the
+  // dump. Unmapped types fall back to atomic number N like ASE's read_lammps_dump and the
+  // LAMMPS data parser, since most dumps carry no element column; warn once per file so a
+  // Si/O dump showing up as H/He is traceable.
+  // Types are validated to be >= 1 before lookup; the clamp keeps the lookup total (H rather
+  // than `ELEM_SYMBOLS[-1]` = undefined) should a future column path skip that check.
+  const guessed_types = new Set<number>()
+  const guess_element = (atom_type: number): ElementSymbol =>
+    ELEM_SYMBOLS[Math.max(0, atom_type - 1) % ELEM_SYMBOLS.length]
   const get_element = (atom_type: number): ElementSymbol => {
-    if (atom_type_mapping?.[atom_type]) return atom_type_mapping[atom_type]
-    return ELEM_SYMBOLS[Math.max(0, atom_type - 1) % ELEM_SYMBOLS.length]
+    const mapped = atom_type_mapping?.[atom_type]
+    if (mapped) return mapped
+    guessed_types.add(atom_type)
+    return guess_element(atom_type)
   }
 
   const parse_frame = (): void => {
@@ -365,6 +376,14 @@ export function parse_lammps_trajectory(
 
   if (frames.length === 0) {
     throw new Error(`No valid frames found in LAMMPS trajectory`)
+  }
+  if (guessed_types.size > 0) {
+    const guesses = Array.from(guessed_types)
+      .toSorted((left, right) => left - right)
+      .map((atom_type) => `${atom_type}→${guess_element(atom_type)}`)
+    warn(
+      `LAMMPS dump has no element column; read atom types as atomic numbers (${guesses.join(`, `)}). Pass atom_type_mapping (e.g. { 1: 'Si', 2: 'O' }) to name them.`,
+    )
   }
   if (frames.length > 1 && identity_uses_ids === false) {
     throw new Error(

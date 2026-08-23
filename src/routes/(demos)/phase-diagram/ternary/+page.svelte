@@ -1,6 +1,4 @@
 <script lang="ts">
-  import { browser } from '$app/environment'
-  import { page } from '$app/state'
   import type { PhaseData } from '$lib/convex-hull/types'
   import FilePicker from '$lib/FilePicker.svelte'
   import { format_num } from '$lib/labels'
@@ -11,7 +9,8 @@
   } from '$lib/phase-diagram'
   import { to_error } from '$lib/utils'
   import { ternary_system_files } from '$site/phase-diagrams/ternary'
-  import { replace_url } from '$site/state.svelte'
+  import { file_param, set_file_param } from '$site/state.svelte'
+  import { onMount } from 'svelte'
 
   const DEFAULT_FILE = `Li-Mn-O.json.gz`
 
@@ -22,15 +21,6 @@
   let error_message = $state<string | null>(null)
   // Stale-load guard: only the newest request may write state
   let active_load: symbol | null = null
-
-  // A dropped user file has no picker entry, so it clears the parameter instead of naming itself
-  function update_url(filename: string | null): void {
-    if (!browser) return
-    const url = new URL(page.url) // page.url is read-only state: never mutate it in place
-    if (filename) url.searchParams.set(`file`, filename)
-    else url.searchParams.delete(`file`)
-    void replace_url(url)
-  }
 
   async function load_system(filename: string, update_url_param = true): Promise<void> {
     const file = ternary_system_files.find((info) => info.name === filename)
@@ -47,7 +37,7 @@
       if (active_load !== token) return
       current_entries = entries
       current_file = filename
-      if (update_url_param) update_url(filename)
+      if (update_url_param) set_file_param(filename)
     } catch (exc) {
       if (active_load === token) {
         error_message = `Failed to load ${filename}: ${to_error(exc).message}`
@@ -68,18 +58,11 @@
     void load_system(picked.name)
   }
 
-  $effect(() => {
-    if (!browser) return
-    const file_param = page.url.searchParams.get(`file`)
-    if (
-      file_param &&
-      file_param !== current_file &&
-      ternary_system_files.some((file) => file.name === file_param)
-    ) {
-      void load_system(file_param, false)
-      return
-    }
-    if (!current_entries && !loading) void load_system(DEFAULT_FILE, false)
+  // ?file= deep link, else the default system
+  onMount(() => {
+    const requested = file_param()
+    const known = ternary_system_files.some((file) => file.name === requested)
+    void load_system(known && requested ? requested : DEFAULT_FILE, false)
   })
 
   let temperature = $state(300)
@@ -125,7 +108,7 @@
 <p>
   Pick a system below, drag one onto the viewer, or drop your own <code>.json</code> /
   <code>.json.gz</code> array of convex-hull entries. The Alexandria sets hold every binary and
-  ternary PBE entry within 0.3 eV/atom of the hull (<code>fetch-alexandria-ternaries.py</code
+  ternary PBE entry within 0.3 eV/atom of the hull (<code>fetch_alexandria_ternaries.py</code
   >); the Materials Project sets are ternary slices of the quaternaries used on the convex-hull
   page.
 </p>
@@ -162,7 +145,7 @@
       on_file_drop={(entries, filename) => {
         current_entries = entries
         current_file = filename
-        update_url(null)
+        set_file_param(null) // a dropped user file has no picker entry to name
       }}
     />
   {/if}

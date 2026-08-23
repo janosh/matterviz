@@ -15,7 +15,6 @@ import { create_lattice_converters, min_image_displacement } from '$lib/math'
 import type { AnyStructure } from '$lib/structure'
 import type { Pbc } from '$lib/structure/pbc'
 import type {
-  EnergyReference,
   NamedReactionPath,
   NebImage,
   PathMetricOptions,
@@ -134,16 +133,6 @@ export function reaction_coordinate(
   return coords
 }
 
-// Energies as displayed: raw, or shifted so the initial state sits at zero.
-export function relative_energies(
-  path: ReactionPath | NebImage[],
-  reference: EnergyReference = `absolute`,
-): number[] {
-  const images = assert_path(path, `relative_energies`)
-  const offset = reference === `initial` ? images[0].energy : 0
-  return images.map((image) => image.energy - offset)
-}
-
 export type BarrierAnalysis = {
   initial_energy: number
   final_energy: number
@@ -161,10 +150,13 @@ export type BarrierAnalysis = {
   energy_unit: string
 }
 
-// Barrier arithmetic from the computed images only (no interpolation).
+// Barrier arithmetic from the computed images only (no interpolation). `coords` are the
+// images' reaction coordinates; pass them when already computed (path_profile does) so the
+// path metric is evaluated once.
 export function analyze_barrier(
   path: ReactionPath | NebImage[],
   options: ReactionCoordOptions = {},
+  coords: readonly number[] = reaction_coordinate(path, options),
 ): BarrierAnalysis {
   const energies = assert_path(path, `analyze_barrier`).map((image) => image.energy)
   const ts_image_idx = arg_max(energies)
@@ -176,7 +168,7 @@ export function analyze_barrier(
     final_energy,
     ts_image_idx,
     ts_energy,
-    ts_coordinate: reaction_coordinate(path, options)[ts_image_idx],
+    ts_coordinate: coords[ts_image_idx],
     forward_barrier: ts_energy - initial_energy,
     reverse_barrier: ts_energy - final_energy,
     reaction_energy: final_energy - initial_energy,
@@ -320,22 +312,6 @@ const hermite_at = (
     Math.min(1, Math.max(0, (coord - xs[seg]) / width)),
   )
 
-// Evaluate the piecewise Hermite curve at an arbitrary coordinate, clamped to the knots.
-export function eval_hermite(
-  xs: readonly number[],
-  ys: readonly number[],
-  slopes: readonly number[],
-  coord: number,
-): number {
-  const widths = knot_widths(xs, ys)
-  const last = xs.length - 1
-  if (coord <= xs[0]) return ys[0]
-  if (coord >= xs[last]) return ys[last]
-  let seg = 0
-  while (seg < last - 1 && coord > xs[seg + 1]) seg++
-  return hermite_at(xs, ys, slopes, seg, widths[seg], coord)
-}
-
 // Interior critical points of one Hermite segment, as t-values in (0, 1).
 function segment_critical_points(p0: number, p1: number, m0: number, m1: number): number[] {
   // d/dt of the Hermite cubic is the quadratic quad_a·t² + quad_b·t + quad_c
@@ -450,14 +426,15 @@ export type PathSplineOptions = ReactionCoordOptions & {
 }
 
 // Fit the conventional smooth NEB curve through the images, preferring the
-// force-projected Hermite spline when forces are available.
+// force-projected Hermite spline when forces are available. `coords` are the images'
+// reaction coordinates under `options` (computed here when not supplied).
 export function path_spline(
   path: ReactionPath | NebImage[],
   options: PathSplineOptions = {},
+  coords: readonly number[] = reaction_coordinate(path, options),
 ): PathSpline {
   const { ignore_forces, mode, n_samples } = options
   const energies = assert_path(path, `path_spline`).map((image) => image.energy)
-  const coords = reaction_coordinate(path, options)
   let slopes = ignore_forces ? null : projected_force_slopes(path, options)
   // projected_force_slopes always returns dE/ds in energy per Å of arc length. Grafting
   // those onto the unitless bead-number axis would scale every Hermite tangent by the arc
@@ -474,17 +451,28 @@ export function path_spline(
   return fit_path_spline(coords, energies, { n_samples, slopes: slopes ?? undefined })
 }
 
+export type PathProfile = {
+  coords: number[]
+  energies: number[]
+  analysis: BarrierAnalysis
+  spline: PathSpline
+}
+
 // Everything a viewer needs about one path under ONE set of options, so a summary table
 // and a plot annotation of the same path cannot drift apart via separate option literals.
-export const path_profile = (
+// The reaction coordinate is computed once and shared by the barrier analysis and spline.
+export function path_profile(
   path: ReactionPath | NebImage[],
   options: PathSplineOptions = {},
-) => ({
-  coords: reaction_coordinate(path, options),
-  energies: path_images(path).map((image) => image.energy),
-  analysis: analyze_barrier(path, options),
-  spline: path_spline(path, options),
-})
+): PathProfile {
+  const coords = reaction_coordinate(path, options)
+  return {
+    coords,
+    energies: path_images(path).map((image) => image.energy),
+    analysis: analyze_barrier(path, options, coords),
+    spline: path_spline(path, options, coords),
+  }
+}
 
 // Index of the image whose reaction coordinate is closest to `coord`. Reaction
 // coordinates are not indices, so a hovered plot position maps back by nearest

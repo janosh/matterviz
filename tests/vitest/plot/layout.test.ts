@@ -1,7 +1,6 @@
 import {
   type AutoPaddingConfig,
   AXIS_LABEL_HEIGHT,
-  AXIS_LABEL_OUTER,
   AXIS_TITLE_OFFSET,
   calc_auto_padding,
   centered_rect,
@@ -25,7 +24,7 @@ import {
   y2_axis_label_x,
 } from '$lib/plot/core/layout'
 import { afterEach, beforeEach, describe, expect, it, test, vi } from 'vitest'
-import { mock_text_measurement } from '../setup'
+import { mock_canvas_context, mock_text_measurement } from '../setup'
 
 describe(`layout utility functions`, () => {
   // tick_positions is required: layout reads real geometry rather than guessing equal slots.
@@ -84,27 +83,14 @@ describe(`layout utility functions`, () => {
   describe(`filter_padding`, () => {
     const defaults = { t: 20, b: 60, l: 60, r: 20 }
 
+    // missing/undefined sides fall back to the defaults; 0 and negatives are kept as given
     it.each([
       [undefined, defaults],
-      [null, defaults],
       [{}, defaults],
       [
-        { t: 10, l: 30 },
-        { t: 10, b: 60, l: 30, r: 20 },
+        { t: 0, b: undefined, r: -5 },
+        { t: 0, b: 60, l: 60, r: -5 },
       ],
-      [
-        { t: 5, b: 10, l: 15, r: 25 },
-        { t: 5, b: 10, l: 15, r: 25 },
-      ],
-      [
-        { t: 10, b: undefined, r: 5 },
-        { t: 10, b: 60, l: 60, r: 5 },
-      ],
-      [
-        { t: 0, b: 0 },
-        { t: 0, b: 0, l: 60, r: 20 },
-      ],
-      [{ t: -5 }, { t: -5, b: 60, l: 60, r: 20 }],
     ])(`filter_padding(%j) -> %j`, (padding, expected) => {
       expect(filter_padding(padding, defaults)).toEqual(expected)
     })
@@ -382,10 +368,7 @@ describe(`layout utility functions`, () => {
 
     it(`memoizes wrap measurements to a quadratic bound`, () => {
       const measure_text = vi.fn((label: string) => ({ width: label.length * px_per_char }))
-      vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue({
-        font: ``,
-        measureText: measure_text,
-      } as unknown as CanvasRenderingContext2D)
+      mock_canvas_context({ measureText: measure_text })
       clear_tick_metrics_cache()
       const segments = [
         `alpha`,
@@ -582,7 +565,7 @@ describe(`layout utility functions`, () => {
           400 - l - r,
           `x`,
         )
-        const needed = band + title_room + AXIS_LABEL_OUTER
+        const needed = band + title_room
         expect(reserved).toBe(needed)
         expect(reserved).toBeGreaterThan(DEFAULT_PLOT_PADDING.b)
       },
@@ -609,7 +592,7 @@ describe(`layout utility functions`, () => {
       ).band
       expect(band).toBeGreaterThan(TICK_LABEL_HEIGHT)
       expect(t).toBeGreaterThan(TICK_LABEL_HEIGHT + 8)
-      expect(t).toBeLessThanOrEqual(band + 8 + AXIS_LABEL_OUTER)
+      expect(t).toBeLessThanOrEqual(band + 8)
     })
 
     it(`reserves room for wrapped labels above an x2 axis`, () => {
@@ -631,7 +614,7 @@ describe(`layout utility functions`, () => {
       ).band
       expect(band).toBeGreaterThan(TICK_LABEL_HEIGHT)
       expect(t).toBeGreaterThan(TICK_LABEL_HEIGHT + 8)
-      expect(t).toBeLessThanOrEqual(band + 8 + AXIS_LABEL_OUTER)
+      expect(t).toBeLessThanOrEqual(band + 8)
     })
 
     const default_b = DEFAULT_PLOT_PADDING.b
@@ -915,13 +898,13 @@ describe(`layout utility functions`, () => {
       run: () => T,
     ): { result: T; measured_labels: string[] } => {
       const measured_labels: string[] = []
-      const context_spy = vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue({
-        font: ``,
+      mock_canvas_context({
         measureText: (label: string) => {
           measured_labels.push(label)
           return { width: label.length * px_per_char }
         },
-      } as unknown as CanvasRenderingContext2D)
+      })
+      const context_spy = vi.mocked(HTMLCanvasElement.prototype.getContext)
       // Self-contained so two calls in one test cannot read each other's cached widths.
       clear_tick_metrics_cache()
       try {
@@ -1013,7 +996,7 @@ describe(`layout utility functions`, () => {
     })
 
     it.each([
-      [`ticks`, [0, 1, 2], TICK_LABEL_HEIGHT + 8 + AXIS_LABEL_OUTER],
+      [`ticks`, [0, 1, 2], TICK_LABEL_HEIGHT + 8],
       [`no ticks`, [], defaults.t],
     ])(`sets top padding for x2 with %s`, (_label, tick_values, expected) => {
       const { t } = calc_auto_padding({
@@ -1031,7 +1014,7 @@ describe(`layout utility functions`, () => {
           x2_axis: slot_axis(tick_values, axis),
         }).t
       const title_axis = { label: `Energy` }
-      const default_title_pad = AXIS_TITLE_OFFSET + AXIS_LABEL_HEIGHT / 2 + AXIS_LABEL_OUTER
+      const default_title_pad = AXIS_TITLE_OFFSET + AXIS_LABEL_HEIGHT / 2
       expect([top_padding([], title_axis), top_padding([1, 2], title_axis)]).toEqual([
         default_title_pad,
         default_title_pad,
@@ -1039,7 +1022,7 @@ describe(`layout utility functions`, () => {
       expect([
         top_padding([1, 2], { ...title_axis, label_shift: { y: 60 } }),
         top_padding([1, 2], { ...title_axis, label_shift: { y: -14 } }),
-      ]).toEqual([60 + AXIS_LABEL_HEIGHT / 2 + AXIS_LABEL_OUTER, top_padding([1, 2])])
+      ]).toEqual([60 + AXIS_LABEL_HEIGHT / 2, top_padding([1, 2])])
     })
 
     it(`top padding accounts for an outward x2 tick shift`, () => {
@@ -1047,7 +1030,7 @@ describe(`layout utility functions`, () => {
         ...no_padding,
         x2_axis: slot_axis([1], { tick: { label: { shift: { y: -10 } } } }),
       })
-      expect(result.t).toBe(TICK_LABEL_HEIGHT + 8 + 10 + AXIS_LABEL_OUTER)
+      expect(result.t).toBe(TICK_LABEL_HEIGHT + 8 + 10)
     })
 
     it(`bottom padding accounts for an outward x title shift`, () => {
@@ -1070,9 +1053,7 @@ describe(`layout utility functions`, () => {
         ...no_padding,
         [axis_key]: slot_axis([1, 2], { label: `Energy (eV)` }),
       })
-      expect(with_label[side] - without[side]).toBe(
-        LABEL_GAP_DEFAULT + AXIS_LABEL_HEIGHT + AXIS_LABEL_OUTER,
-      )
+      expect(with_label[side] - without[side]).toBe(LABEL_GAP_DEFAULT + AXIS_LABEL_HEIGHT)
     })
 
     it(`left pad grows when y label_shift pushes the title outward`, () => {
@@ -1094,7 +1075,7 @@ describe(`layout utility functions`, () => {
         ...no_padding,
         y2_axis: axis,
       })
-      expect(result.r).toBe(resolve_axis_title_layout(axis).height + AXIS_LABEL_OUTER)
+      expect(result.r).toBe(resolve_axis_title_layout(axis).height)
     })
 
     it(`right pad grows with an outward y2 tick-label shift`, () => {
@@ -1171,7 +1152,7 @@ describe(`layout utility functions`, () => {
   })
 
   describe(`y_axis_label_x / y2_axis_label_x`, () => {
-    const title_center = AXIS_LABEL_OUTER + AXIS_LABEL_HEIGHT / 2
+    const title_center = AXIS_LABEL_HEIGHT / 2
     test.each([
       [`left auto-padding`, () => y_axis_label_x({}, 90, 30), 22],
       [`left explicit padding`, () => y_axis_label_x({}, 120, 30), 52],

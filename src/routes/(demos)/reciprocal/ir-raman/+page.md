@@ -153,7 +153,7 @@ Selected computed quantities are available per mode, so the raw numbers can be t
   )
   const frequencies = convert_frequencies(
     spectrum.modes.map((mode) => mode.frequency),
-    `cm-1`,
+    `cm^-1`,
   )
   const mode_data = spectrum.modes.map((mode, idx) => {
     const activity = [

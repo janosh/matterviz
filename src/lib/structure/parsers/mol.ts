@@ -179,20 +179,18 @@ const parse_v3000 = (lines: string[]): MolBlock | null => {
 export const parse_mol = (content: string): Molecule | null =>
   guard_parse(`MOL/SDF`, () => {
     const all_lines = content.split(/\r?\n/)
-    // SDF concatenates records separated by `$$$$`; only the first is parsed
-    const record_end = all_lines.findIndex((line) => line.trim() === `$$$$`)
-    const lines = record_end === -1 ? all_lines : all_lines.slice(0, record_end)
-    if (record_end !== -1) {
-      // Every further `$$$$` is one more record, plus an unterminated final record if the
-      // file ends with content after the last one (writers often omit the last `$$$$`)
-      const rest = all_lines.slice(record_end + 1)
-      const last_terminator = rest.findLastIndex((line) => line.trim() === `$$$$`)
-      const skipped =
-        rest.filter((line) => line.trim() === `$$$$`).length +
-        Number(rest.slice(last_terminator + 1).some((line) => line.trim() !== ``))
-      if (skipped > 0) {
+    // SDF concatenates records terminated by `$$$$`; only the first is parsed. Every
+    // terminator ends one record, plus an unterminated final record when content follows
+    // the last one (writers often omit the last `$$$$`).
+    const terminators = all_lines.flatMap((line, idx) => (line.trim() === `$$$$` ? [idx] : []))
+    const lines = terminators.length === 0 ? all_lines : all_lines.slice(0, terminators[0])
+    if (terminators.length > 0) {
+      const trailing = all_lines.slice(terminators[terminators.length - 1] + 1)
+      const n_records =
+        terminators.length + Number(trailing.some((line) => line.trim() !== ``))
+      if (n_records > 1) {
         diag_warn(
-          `SDF contains ${skipped + 1} records; parsed the first and skipped ${skipped}`,
+          `SDF contains ${n_records} records; parsed the first and skipped ${n_records - 1}`,
         )
       }
     }

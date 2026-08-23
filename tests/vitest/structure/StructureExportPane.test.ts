@@ -1,11 +1,16 @@
 import type { AnyStructure } from '$lib'
 import { export_canvas_as_png } from '$lib/io/export'
+import { export_scene_as } from '$lib/scene'
 import { StructureExportPane } from '$lib/structure'
 import * as export_funcs from '$lib/structure/export'
-import { mount } from 'svelte'
+import { mount, tick } from 'svelte'
+import type { ComponentProps } from 'svelte'
 import type { Camera, Scene } from 'three/webgpu'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { doc_query, simple_structure } from '../setup'
+
+const mount_pane = (props: ComponentProps<typeof StructureExportPane>) =>
+  mount(StructureExportPane, { target: document.body, props })
 
 // Mock the export functions
 vi.mock(`$lib/structure/export`, () => {
@@ -14,9 +19,8 @@ vi.mock(`$lib/structure/export`, () => {
   const structure_to_cif_str = vi.fn(() => `data_test\n_cell_length_a 1.0`)
   const structure_to_poscar_str = vi.fn(() => `test\n1.0\n1 0 0`)
   return {
+    create_structure_filename: vi.fn(() => `structure-basename`),
     export_structure_as: vi.fn(),
-    export_structure_as_glb: vi.fn(),
-    export_structure_as_obj: vi.fn(),
     structure_to_json_str,
     structure_to_xyz_str,
     structure_to_cif_str,
@@ -34,6 +38,7 @@ vi.mock(`$lib/io/export`, async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   export_canvas_as_png: vi.fn(),
 }))
+vi.mock(`$lib/scene/export`, () => ({ export_scene_as: vi.fn(() => Promise.resolve()) }))
 
 describe(`StructureExportPane`, () => {
   let wrapper_div: HTMLDivElement
@@ -61,10 +66,7 @@ describe(`StructureExportPane`, () => {
   }
 
   test(`displays all text export format buttons`, () => {
-    mount(StructureExportPane, {
-      target: document.body,
-      props: { structure: simple_structure },
-    })
+    mount_pane({ structure: simple_structure })
 
     const format_labels = [`JSON`, `XYZ`, `CIF`, `POSCAR`]
     for (const label of format_labels) {
@@ -86,10 +88,7 @@ describe(`StructureExportPane`, () => {
     { format: `poscar`, label: `POSCAR` },
   ])(`calls correct export function for $label download`, async ({ format, label }) => {
     vi.mocked(export_funcs.export_structure_as).mockClear() // shared across test.each runs
-    mount(StructureExportPane, {
-      target: document.body,
-      props: { structure: simple_structure },
-    })
+    mount_pane({ structure: simple_structure })
 
     expect(export_funcs.export_structure_as).not.toHaveBeenCalled()
 
@@ -126,10 +125,7 @@ describe(`StructureExportPane`, () => {
   ])(
     `copies $label content to clipboard`,
     async ({ label, str_fn_name, expected_content }) => {
-      mount(StructureExportPane, {
-        target: document.body,
-        props: { structure: simple_structure },
-      })
+      mount_pane({ structure: simple_structure })
 
       const str_fn = export_funcs[str_fn_name as keyof typeof export_funcs]
       const copy_btn = get_button(`Copy ${label}`)
@@ -146,10 +142,7 @@ describe(`StructureExportPane`, () => {
 
   test(`shows checkmark feedback after successful copy`, async () => {
     vi.useFakeTimers()
-    mount(StructureExportPane, {
-      target: document.body,
-      props: { structure: simple_structure },
-    })
+    mount_pane({ structure: simple_structure })
 
     const copy_btn = get_button(`Copy JSON`)
     expect(copy_btn?.textContent).toContain(`📋`)
@@ -167,10 +160,7 @@ describe(`StructureExportPane`, () => {
   test(`text export buttons are disabled and copy no-ops without structure`, async () => {
     vi.mocked(navigator.clipboard.writeText).mockClear()
 
-    mount(StructureExportPane, {
-      target: document.body,
-      props: { structure: undefined },
-    })
+    mount_pane({ structure: undefined })
 
     const copy_btn = get_button(`Copy JSON`)
     const download_btn = get_button(`Download JSON`)
@@ -184,15 +174,8 @@ describe(`StructureExportPane`, () => {
     expect(navigator.clipboard.writeText).not.toHaveBeenCalled()
   })
 
-  test(`PNG export section renders with default DPI`, () => {
-    mount(StructureExportPane, {
-      target: document.body,
-      props: {
-        structure: simple_structure,
-        wrapper: wrapper_div,
-        png_dpi: 150,
-      },
-    })
+  test(`PNG DPI input seeds the download title and updates it on edit`, async () => {
+    mount_pane({ structure: simple_structure, wrapper: wrapper_div, png_dpi: 150 })
 
     const dpi_input = doc_query<HTMLInputElement>(
       `input[type="number"][title*="dots per inch"]`,
@@ -200,13 +183,17 @@ describe(`StructureExportPane`, () => {
     expect(dpi_input.value).toBe(`150`)
     expect(dpi_input.min).toBe(`50`)
     expect(dpi_input.max).toBe(`600`)
+    expect(get_button(`PNG`).title).toContain(`(150 DPI)`)
+
+    // editing the DPI updates the download button's title
+    dpi_input.value = `200`
+    dpi_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+    await tick()
+    expect(get_button(`PNG`).title).toContain(`(200 DPI)`)
   })
 
   test(`PNG export button is enabled with canvas`, async () => {
-    mount(StructureExportPane, {
-      target: document.body,
-      props: { structure: simple_structure, wrapper: wrapper_div },
-    })
+    mount_pane({ structure: simple_structure, wrapper: wrapper_div })
 
     const png_btn = get_button(`PNG`)
     await vi.waitFor(() => expect(png_btn?.disabled).toBe(false))
@@ -214,10 +201,7 @@ describe(`StructureExportPane`, () => {
 
   test(`PNG export button disabled when canvas absent or removed`, async () => {
     wrapper_div.innerHTML = ``
-    mount(StructureExportPane, {
-      target: document.body,
-      props: { structure: simple_structure, wrapper: wrapper_div },
-    })
+    mount_pane({ structure: simple_structure, wrapper: wrapper_div })
 
     const png_btn = get_button(`PNG`)
     expect(png_btn?.disabled).toBe(true)
@@ -231,15 +215,12 @@ describe(`StructureExportPane`, () => {
 
   test(`slice export uses its explicit canvas and hides 3D formats`, async () => {
     const slice_canvas = document.createElement(`canvas`)
-    mount(StructureExportPane, {
-      target: document.body,
-      props: {
-        structure: simple_structure,
-        wrapper: wrapper_div,
-        image_canvas: slice_canvas,
-        image_filename: `charge-density-slice`,
-        enable_3d_export: false,
-      },
+    mount_pane({
+      structure: simple_structure,
+      wrapper: wrapper_div,
+      image_canvas: slice_canvas,
+      image_filename: `charge-density-slice`,
+      enable_3d_export: false,
     })
 
     get_button(`PNG`).click()
@@ -256,31 +237,28 @@ describe(`StructureExportPane`, () => {
   })
 
   test.each([
-    { format: `glb`, label: `GLB`, fn_name: `export_structure_as_glb` },
-    { format: `obj`, label: `OBJ`, fn_name: `export_structure_as_obj` },
-  ])(`calls correct export function for $label 3D export`, async ({ label, fn_name }) => {
-    mount(StructureExportPane, {
-      target: document.body,
-      props: { structure: simple_structure, scene: mock_scene },
-    })
+    { format: `glb`, label: `GLB` },
+    { format: `obj`, label: `OBJ` },
+  ] as const)(
+    `$label 3D export hands the scene to export_scene_as`,
+    async ({ format, label }) => {
+      vi.mocked(export_scene_as).mockClear()
+      mount_pane({ structure: simple_structure, scene: mock_scene })
 
-    const export_fn = export_funcs[fn_name as keyof typeof export_funcs]
+      const download_btn = get_button(`Download ${label}`)
+      expect(download_btn).toBeDefined()
+      expect(download_btn?.disabled).toBe(false)
 
-    const download_btn = get_button(`Download ${label}`)
-    expect(download_btn).toBeDefined()
-    expect(download_btn?.disabled).toBe(false)
-
-    download_btn?.dispatchEvent(new Event(`click`, { bubbles: true }))
-    await vi.waitFor(() =>
-      expect(export_fn).toHaveBeenCalledWith(mock_scene, simple_structure),
-    )
-  })
+      download_btn?.dispatchEvent(new Event(`click`, { bubbles: true }))
+      await vi.waitFor(() =>
+        expect(export_scene_as).toHaveBeenCalledWith(mock_scene, format, `structure-basename`),
+      )
+      expect(export_funcs.create_structure_filename).toHaveBeenCalledWith(simple_structure)
+    },
+  )
 
   test(`3D export buttons are disabled without scene`, () => {
-    mount(StructureExportPane, {
-      target: document.body,
-      props: { structure: simple_structure, scene: undefined },
-    })
+    mount_pane({ structure: simple_structure, scene: undefined })
 
     const models_section = Array.from(document.querySelectorAll(`h4`)).find((h4) =>
       h4.textContent?.includes(`Export as 3D model`),
@@ -294,10 +272,7 @@ describe(`StructureExportPane`, () => {
     [false, `Export Structure`],
     [true, ``],
   ])(`toggle button title when export_pane_open=%s`, (export_pane_open, expected_title) => {
-    mount(StructureExportPane, {
-      target: document.body,
-      props: { export_pane_open },
-    })
+    mount_pane({ export_pane_open })
     expect(doc_query(`.structure-export-toggle`).title).toBe(expected_title)
   })
 
@@ -309,10 +284,7 @@ describe(`StructureExportPane`, () => {
       clipboard: { writeText: vi.fn().mockRejectedValueOnce(clipboard_error) },
     })
 
-    mount(StructureExportPane, {
-      target: document.body,
-      props: { structure: simple_structure },
-    })
+    mount_pane({ structure: simple_structure })
 
     const copy_btn = get_button(`Copy JSON`)
     copy_btn?.dispatchEvent(new Event(`click`, { bubbles: true }))
@@ -326,42 +298,40 @@ describe(`StructureExportPane`, () => {
     console_error_spy.mockRestore()
   })
 
-  test(`handles structures without lattice for CIF and POSCAR formats`, async () => {
-    const structure_without_lattice: AnyStructure = {
-      id: `test_no_lattice`,
-      sites: simple_structure.sites,
-    }
+  test(`molecule disables the crystal-only CIF and POSCAR rows, keeps JSON and XYZ`, () => {
+    const molecule: AnyStructure = { id: `test_no_lattice`, sites: simple_structure.sites }
+    mount_pane({ structure: molecule })
 
-    vi.mocked(export_funcs.structure_to_cif_str).mockImplementationOnce(() => {
-      throw new Error(`No lattice found`)
+    for (const label of [`CIF`, `POSCAR`]) {
+      expect(get_button(`Download ${label}`).disabled, label).toBe(true)
+      expect(get_button(`Copy ${label}`).disabled, label).toBe(true)
+    }
+    for (const label of [`JSON`, `XYZ`]) {
+      expect(get_button(`Download ${label}`).disabled, label).toBe(false)
+      expect(get_button(`Copy ${label}`).disabled, label).toBe(false)
+    }
+  })
+
+  test(`a throwing serializer on download is logged, not thrown from the click handler`, () => {
+    vi.mocked(export_funcs.export_structure_as).mockImplementationOnce(() => {
+      throw new Error(`serializer exploded`)
     })
     const console_error_spy = vi.spyOn(console, `error`).mockImplementation(() => {})
+    mount_pane({ structure: simple_structure })
 
-    mount(StructureExportPane, {
-      target: document.body,
-      props: { structure: structure_without_lattice },
-    })
-
-    const copy_btn = get_button(`Copy CIF`)
-    copy_btn?.dispatchEvent(new Event(`click`, { bubbles: true }))
-
-    await vi.waitFor(() => {
-      expect(console_error_spy).toHaveBeenCalledWith(
-        expect.stringContaining(`Failed to copy CIF to clipboard`),
-        expect.any(Error),
-      )
-    })
+    expect(() => get_button(`Download CIF`).click()).not.toThrow()
+    expect(console_error_spy).toHaveBeenCalledWith(
+      expect.stringContaining(`Failed to export CIF`),
+      expect.any(Error),
+    )
     console_error_spy.mockRestore()
   })
 
   test(`custom props are applied correctly`, () => {
-    mount(StructureExportPane, {
-      target: document.body,
-      props: {
-        pane_props: { style: `max-height: 400px`, class: `custom-export-pane` },
-        export_pane_open: false,
-        toggle_props: { class: `custom-export-toggle` },
-      },
+    mount_pane({
+      pane_props: { style: `max-height: 400px`, class: `custom-export-pane` },
+      export_pane_open: false,
+      toggle_props: { class: `custom-export-toggle` },
     })
 
     const pane = doc_query(`.export-pane`)
@@ -370,9 +340,7 @@ describe(`StructureExportPane`, () => {
 
     const toggle = doc_query(`.structure-export-toggle`)
     expect(toggle.classList.contains(`custom-export-toggle`)).toBe(true)
-    expect(toggle.querySelector(`path`)?.getAttribute(`d`)).toBe(
-      `M12,1L8,5H11V14H13V5H16M18,23H6C4.89,23 4,22.1 4,21V9A2,2 0 0,1 6,7H9V9H6V21H18V9H15V7H18A2,2 0 0,1 20,9V21A2,2 0 0,1 18,23Z`,
-    )
+    expect(toggle.querySelector(`svg`)).not.toBeNull()
   })
 
   const mock_camera = { type: `PerspectiveCamera` } as Camera
@@ -380,14 +348,11 @@ describe(`StructureExportPane`, () => {
     { desc: `explicit dpi + camera`, props: { png_dpi: 200, camera: mock_camera } },
     { desc: `default dpi (150), no camera`, props: {} },
   ])(`PNG export button invokes export_canvas_as_png with $desc`, async ({ props }) => {
-    mount(StructureExportPane, {
-      target: document.body,
-      props: {
-        structure: simple_structure,
-        wrapper: wrapper_div,
-        scene: mock_scene,
-        ...props,
-      },
+    mount_pane({
+      structure: simple_structure,
+      wrapper: wrapper_div,
+      scene: mock_scene,
+      ...props,
     })
 
     const png_btn = get_button(`PNG`)

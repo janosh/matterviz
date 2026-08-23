@@ -1,12 +1,12 @@
 <script lang="ts">
-  import { add_alpha, PLOT_COLORS } from '$lib/colors'
+  import { add_alpha, plot_color } from '$lib/colors'
   import EmptyState from '$lib/EmptyState.svelte'
   import StatusMessage from '$lib/feedback/StatusMessage.svelte'
   import * as io from '$lib/io'
   import { format_value } from '$lib/labels'
   import { sanitize_html } from '$lib/sanitize'
   import { SettingsSection } from '$lib/layout'
-  import type { Vec2 } from '$lib/math'
+  import { array_extent, array_max, type Vec2 } from '$lib/math'
   import type {
     AxisConfig,
     BarHandlerProps,
@@ -20,8 +20,12 @@
   import type { RadiationType } from '$lib/scattering'
   import type { BroadeningParams } from './broadening'
   import { compute_broadened_pattern, DEFAULT_BROADENING } from './broadening'
-  import { format_hkl } from './index'
+  import { decimate_pattern, format_hkl } from './index'
   import type { Hkl, HklFormat, PatternEntry, XrdPattern } from './index'
+
+  // Measured scans can run to 10⁵ points; the stick/profile views stay responsive at this
+  // budget while the peak-preserving thinning keeps every significant maximum
+  const MAX_RENDERED_POINTS = 1000
 
   function is_xrd_pattern(obj: unknown): obj is XrdPattern {
     const { x: x_vals, y: y_vals } = (obj ?? {}) as { x?: unknown; y?: unknown }
@@ -87,7 +91,7 @@
   const series_style = (entry: PatternEntry, entry_idx: number) => ({
     label: pattern_entries.length > 1 ? entry.label : ``,
     color: add_alpha(
-      entry.color ?? PLOT_COLORS[entry_idx % PLOT_COLORS.length],
+      entry.color ?? plot_color(entry_idx),
       pattern_entries.length > 1 ? 0.6 : 1,
     ),
   })
@@ -104,29 +108,27 @@
           ).map(([label, value]) =>
             `pattern` in value ? { label, ...value } : { label, pattern: value as XrdPattern },
           )
-    // Merge user-provided patterns with any dropped-on-the-fly entries
-    return [...base_entries, ...dropped_entries]
+    // Merge user-provided patterns with any dropped-on-the-fly entries. Only measured scans
+    // (no hkls) are thinned: every reflection of a computed stick pattern is a labelled peak
+    return [...base_entries, ...dropped_entries].map((entry) => ({
+      ...entry,
+      pattern: entry.pattern.hkls
+        ? entry.pattern
+        : decimate_pattern(entry.pattern, MAX_RENDERED_POINTS),
+    }))
   })
 
-  // Compute global max intensity for normalization (as in pymatviz xrd_pattern)
-  const global_max_intensity = $derived.by(() => {
-    let max_val = 0
-    for (const entry of pattern_entries) {
-      for (const intensity of entry.pattern.y) if (intensity > max_val) max_val = intensity
-    }
-    return max_val || 1
-  })
+  // Global max intensity for normalization (as in pymatviz xrd_pattern); 1 when every
+  // pattern is empty or flat so the division below stays finite
+  const global_max_intensity = $derived(
+    Math.max(0, ...pattern_entries.map((entry) => array_max(entry.pattern.y))) || 1,
+  )
 
-  // Overall 2θ domain (degrees). Looped rather than spread: Math.min(...xs) over a
-  // multi-thousand-point profile can overflow the argument stack.
+  // Overall 2θ domain (degrees)
   const angle_range = $derived.by((): Vec2 => {
-    let [min_x, max_x] = [Infinity, 0]
-    for (const entry of pattern_entries) {
-      for (const angle of entry.pattern.x) {
-        if (angle < min_x) min_x = angle
-        if (angle > max_x) max_x = angle
-      }
-    }
+    const extents = pattern_entries.map((entry) => array_extent(entry.pattern.x))
+    const min_x = Math.min(...extents.map(([lo]) => lo))
+    const max_x = Math.max(0, ...extents.map(([, hi]) => hi))
     if (!Number.isFinite(min_x)) return [0, 90] // every pattern was empty
     return [min_x > 10 ? Math.floor(min_x) : 0, Math.ceil(max_x)]
   })
