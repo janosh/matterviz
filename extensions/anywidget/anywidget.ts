@@ -380,6 +380,12 @@ export const WIDGETS: Record<string, WidgetSpec> = {
         }
       }),
       derived_prop(`src`, [`data_url`], (model) => get_prop(model, `data_url`)),
+      // atom_type_mapping ({ "1": "Si", "2": "O" }) names the atom types of a LAMMPS dump
+      // fetched from data_url; it rides in the file viewer's loading_options
+      derived_prop(`loading_options`, [`atom_type_mapping`], (model) => {
+        const atom_type_mapping = get_prop(model, `atom_type_mapping`)
+        return atom_type_mapping === undefined ? undefined : { atom_type_mapping }
+      }),
       // current_step_idx links widgets; display_mode changes from the view-mode menu.
       writeback_prop(`current_step_idx`, 0),
       writeback_prop(`display_mode`, `structure+scatter`),

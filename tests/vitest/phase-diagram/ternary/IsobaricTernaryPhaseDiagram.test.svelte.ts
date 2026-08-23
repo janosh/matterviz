@@ -215,6 +215,69 @@ test.each([
   },
 )
 
+// Hovering repaints only the overlay canvas: the base (faces, points, labels) is several
+// hundred paths and used to be redrawn on every pointer move. clearRect opens every repaint,
+// so counting it per layer says which canvas redrew.
+test(`TernarySectionCanvas: hover and selection repaint the overlay, not the section`, async () => {
+  const clears = { base: 0, overlay: 0 }
+  vi.stubGlobal(
+    `Path2D`,
+    class {
+      arc(): void {}
+    },
+  )
+  const get_context = vi
+    .spyOn(HTMLCanvasElement.prototype, `getContext`)
+    .mockImplementation(function (this: HTMLCanvasElement) {
+      const layer = this.classList.contains(`pulse-overlay`) ? `overlay` : `base`
+      return new Proxy({} as CanvasRenderingContext2D, {
+        get: (_target, prop) => {
+          if (prop === `canvas`) return this
+          if (prop === `measureText`) return () => ({ width: 20 })
+          if (prop === `clearRect`) return () => clears[layer]++
+          return vi.fn()
+        },
+      })
+    })
+  const let_frames_run = () => new Promise((resolve) => setTimeout(resolve, 40))
+  try {
+    const model = prepare_diagram(toy_entries, { elements: toy_elements })
+    const state = $state({ selected_phase: null as number | null })
+    mount_it(
+      TernarySectionCanvas,
+      bind_props(
+        { model, section: compute_section(model, 300), settings: TERNARY_DISPLAY_DEFAULTS },
+        state,
+      ),
+    )
+    await let_frames_run()
+    const painted = { ...clears }
+    expect(painted.base).toBeGreaterThan(0)
+    // 5 hovers over compositions inside the triangle (xy → px via the mocked 800×600 canvas)
+    const canvas = doc_query(`.ternary-section canvas`)
+    for (const frac of [0.3, 0.35, 0.4, 0.45, 0.5]) {
+      canvas.dispatchEvent(
+        new PointerEvent(`pointermove`, {
+          clientX: 92.85 + frac * 614.3,
+          clientY: 566 - 0.2 * 614.3,
+          bubbles: true,
+        }),
+      )
+      flushSync()
+      await let_frames_run()
+    }
+    state.selected_phase = 0
+    flushSync()
+    await let_frames_run()
+    // was 6 base repaints (one per hover + the selection) before the overlay split
+    expect(clears.base - painted.base).toBe(0)
+    expect(clears.overlay - painted.overlay).toBe(6)
+  } finally {
+    get_context.mockRestore()
+    vi.unstubAllGlobals()
+  }
+})
+
 test(`TernarySectionCanvas: a section change rebuilds entries without mutating the model`, () => {
   // AB is tabulated 300-1500 K: stable at 300 K, undefined (NaN distance) at 2000 K
   const model = prepare_diagram(toy_entries, { elements: toy_elements })

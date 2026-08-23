@@ -10,9 +10,18 @@ import type {
   TrajectoryFrame,
   TrajectoryMetadata,
   TrajectoryPositionStream,
+  TrajectoryRunSignal,
   TrajectorySignal,
   TrajectorySignalDescriptor,
 } from './index'
+
+// `values` is what separates a signal held in memory from one the run streams on request
+export const is_loaded_signal = (signal: TrajectoryRunSignal): signal is TrajectorySignal =>
+  `values` in signal
+
+export const is_signal_descriptor = (
+  signal: TrajectoryRunSignal,
+): signal is TrajectorySignalDescriptor => !(`values` in signal)
 
 export interface TrajectoryProvenance {
   filename?: string
@@ -93,10 +102,10 @@ export interface TrajectoryRun {
   readonly properties: TrajectoryProperties
   readonly time_step?: { value: number; unit: string }
   readonly atom_masses?: readonly number[]
-  // Eager frame-level signals (whole series in memory)
-  readonly signals?: Record<string, TrajectorySignal>
-  // Lazily streamed signals, delivered by collect_positions({ signal_keys })
-  readonly signal_descriptors?: Record<string, TrajectorySignalDescriptor>
+  // Run-level signals on their own step axes, keyed by name. A `TrajectorySignal` is loaded
+  // (whole series in memory); a `TrajectorySignalDescriptor` is streamed on request by
+  // collect_positions({ signal_keys }) (or `vector_keys` for a per-frame [n_atoms, 3] one)
+  readonly signals?: Record<string, TrajectoryRunSignal>
   // Free-form file metadata (electronic results, units, discovered dataset paths, …)
   readonly metadata: Record<string, unknown>
   // Non-fatal parse warnings, returned on the run rather than collected globally
@@ -120,8 +129,7 @@ export interface TrajectoryRunSummary {
   properties: { rows: TrajectoryMetadata[]; complete: boolean }
   time_step?: { value: number; unit: string }
   atom_masses?: number[]
-  signals?: Record<string, TrajectorySignal>
-  signal_descriptors?: Record<string, TrajectorySignalDescriptor>
+  signals?: Record<string, TrajectoryRunSignal>
   metadata: Record<string, unknown>
   warnings: string[]
   has_collect_positions: boolean
@@ -135,7 +143,6 @@ export const summarize_run = (run: TrajectoryRun): TrajectoryRunSummary => ({
   ...(run.time_step ? { time_step: run.time_step } : {}),
   ...(run.atom_masses ? { atom_masses: [...run.atom_masses] } : {}),
   ...(run.signals ? { signals: run.signals } : {}),
-  ...(run.signal_descriptors ? { signal_descriptors: run.signal_descriptors } : {}),
   metadata: run.metadata,
   warnings: [...run.warnings],
   has_collect_positions: run.collect_positions !== undefined,

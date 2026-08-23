@@ -6,7 +6,8 @@
   import { format_value } from '$lib/labels'
   import { FullscreenButton } from '$lib/layout'
   import type { BasePlotProps, LegendConfig, Orientation } from '$lib/plot'
-  import { DEFAULT_SERIES_COLORS, PlotLegend, PlotTooltip, SankeyControls } from '$lib/plot'
+  import { plot_color } from '$lib/colors'
+  import { PlotLegend, PlotTooltip, SankeyControls } from '$lib/plot'
   import {
     closest_data_idx,
     is_activation_key,
@@ -125,11 +126,7 @@
   let inner_height = $derived(Math.max(0, height - pad.t - pad.b))
 
   // Resolved node colors (per node_idx), explicit color or cycled palette
-  let node_colors = $derived(
-    data.nodes.map(
-      (node, idx) => node.color ?? DEFAULT_SERIES_COLORS[idx % DEFAULT_SERIES_COLORS.length],
-    ),
-  )
+  let node_colors = $derived(data.nodes.map((node, idx) => node.color ?? plot_color(idx)))
 
   // Invalid graphs (cycles, unknown node refs) render an error message in place
   // of the diagram instead of crashing the host page

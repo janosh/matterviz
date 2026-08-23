@@ -118,9 +118,12 @@ MatterViz provides extensive customization options through VSCode settings. Acce
   "matterviz.trajectory.auto_play": true,
   "matterviz.trajectory.fps": 10,
   "matterviz.trajectory.display_mode": "structure+scatter",
-  "matterviz.trajectory.show_controls": true
+  "matterviz.trajectory.show_controls": true,
+  "matterviz.trajectory.atom_type_mapping": { "1": "Si", "2": "O" }
 }
 ```
+
+`matterviz.trajectory.atom_type_mapping` names the bare integer atom types of LAMMPS dumps (`.lammpstrj`), which rarely carry an element column. Unmapped types are read as atomic numbers (type 1 = H, 2 = He, ...) with a warning, so set it per workspace (`.vscode/settings.json`) to match the simulation's input script.
 
 #### 📊 **Plot Customization**
 
@@ -178,6 +181,8 @@ If you encounter any issues with MatterViz, you can use the built-in bug reporti
    - System resources and memory usage
    - Extension configuration
 4. Copy the information and include it when [creating a GitHub issue](https://github.com/janosh/matterviz/issues/new)
+
+Render confirmations (which file was rendered, how many sites/frames) are logged to the **MatterViz** channel in the Output panel (`View → Output`) rather than shown as notifications; errors still appear as notifications.
 
 ## 📄 License
 

@@ -849,7 +849,7 @@ const parse_torch_sim_datasets = (
     read_frame: load_frame,
     properties: sampled_properties(),
     collect_positions,
-    ...(Object.keys(signal_descriptors).length > 0 ? { signal_descriptors } : {}),
+    ...(Object.keys(signal_descriptors).length > 0 ? { signals: signal_descriptors } : {}),
   }
 }
 

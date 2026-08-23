@@ -2,16 +2,12 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
-  import type { D3InterpolateName } from '$lib/colors'
+  import { type D3InterpolateName, plot_color } from '$lib/colors'
   import { FullscreenButton } from '$lib/layout'
   import type { Vec2, Vec3 } from '$lib/math'
   import ColorBar from '$lib/plot/core/components/ColorBar.svelte'
   import PlotLegend from '$lib/plot/core/components/PlotLegend.svelte'
-  import {
-    build_legend_items,
-    first_point_style,
-    get_series_color,
-  } from '$lib/plot/core/data-transform'
+  import { build_legend_items, first_point_style } from '$lib/plot/core/data-transform'
   import type { Sides } from '$lib/plot/core/layout'
   import type {
     AxisConfig3D,
@@ -193,7 +189,7 @@
   let legend_data = $derived(
     build_legend_items(series, (srs, series_idx) => ({
       symbol_type: `Circle` as const,
-      symbol_color: first_point_style(srs)?.fill ?? get_series_color(series_idx),
+      symbol_color: first_point_style(srs)?.fill ?? plot_color(series_idx),
     })),
   )
   // Lift the gizmo above the color bar when one is shown; otherwise pass `gizmo` through as-is

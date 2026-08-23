@@ -5,14 +5,20 @@
 // without loosening it into a band no real regression would ever hit. Sub-2x slowdowns pass.
 // Opt in locally with MATTERVIZ_PERF=1; CI runs it in its own job (see test.yml). The file is
 // excluded from the default run in vite.config.ts, so it never pays its import cost there.
-import { JsonTree } from '$lib/layout/json-tree'
-import { calculate_e_above_hull } from '$lib/convex-hull/thermodynamics'
+import { composition_to_barycentric_nd } from '$lib/convex-hull/barycentric-coords'
+import { calculate_e_above_hull, compute_lower_hull_nd } from '$lib/convex-hull/thermodynamics'
 import type { PhaseData } from '$lib/convex-hull/types'
+import type { ElementSymbol } from '$lib/element'
 import { parse_chgcar } from '$lib/isosurface/parse'
+import { JsonTree } from '$lib/layout/json-tree'
 import { marching_cubes } from '$lib/marching-cubes'
 import type { Vec3 } from '$lib/math'
 import ScatterPlot from '$lib/plot/scatter/ScatterPlot.svelte'
-import { neighbor_query } from '$lib/structure/bonding'
+import { bin_points } from '$lib/plot/scatter/adaptive-density'
+import { get_coordination_colors } from '$lib/structure/atom-properties'
+import { electroneg_ratio, neighbor_query } from '$lib/structure/bonding'
+import { compute_polyhedra, merge_polyhedra_buffers } from '$lib/structure/polyhedra'
+import { make_supercell } from '$lib/structure/supercell'
 import { HeatmapTable, type RowData } from '$lib/table'
 import { Trajectory, type TrajectoryController, trajectory_from_frames } from '$lib/trajectory'
 import { compute_xrd_pattern } from '$lib/xrd/calc-xrd'
@@ -20,7 +26,14 @@ import process from 'node:process'
 import { flushSync, mount, tick, unmount } from 'svelte'
 import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from 'vitest'
 import { make_rng } from './numeric-helpers'
-import { IDENTITY_MATRIX3, make_crystal, mount_sized } from './setup'
+import {
+  IDENTITY_MATRIX3,
+  make_crystal,
+  make_molecule,
+  make_rocksalt,
+  make_struct,
+  mount_sized,
+} from './setup'
 import { make_fcc, with_random_displacements } from './structure-id/lattices'
 
 // Medians over 5 suite runs on the baseline machine: Apple M3 Max, macOS 26.5, Node 24.19,
@@ -39,6 +52,14 @@ const BASELINES = {
   'marching cubes 64^3': 6.3,
   'neighbor_query 1792 sites': 4.6,
   'XRD 444 sites': 86,
+  // Wall-clock guards moved here from the default suite (they failed under CPU contention)
+  'polyhedra 8000-site detect': 55,
+  'polyhedra 8000-site buffer merge': 14,
+  'quickhull 4D 775 entries': 14,
+  'density binning 1M points': 17,
+  'neighbor_query 39304 sites + flyaway atom': 45,
+  'coordination colors 27000 atoms': 8,
+  'make_supercell 1000 sites x 3x3x3': 25,
 } as const
 type Case = keyof typeof BASELINES
 const BAND = 2
@@ -114,9 +135,11 @@ const make_table = (n_rows: number, n_cols: number) => {
   return { columns, data }
 }
 
-const make_entries = (n_entries: number): PhaseData[] => {
+const make_entries = (
+  n_entries: number,
+  elements: ElementSymbol[] = [`Li`, `Fe`, `O`],
+): PhaseData[] => {
   const rng = make_rng(5)
-  const elements = [`Li`, `Fe`, `O`]
   const entries: PhaseData[] = elements.map((element) => ({
     composition: { [element]: 1 },
     energy: -2 - rng(),
@@ -197,6 +220,44 @@ const make_disordered_cell = (n_sites: number) => {
       abc: [rng(), rng(), rng()] as Vec3,
     })),
   )
+}
+
+// 4D hull input: barycentric composition (3 free coordinates) plus energy per atom. The
+// energy is a bowl (deepest at equal mixing) plus noise, so the lower hull has many facets
+// rather than the single simplex a random cloud above the elements would give.
+const make_hull_points = (n_entries: number): number[][] => {
+  const elements: ElementSymbol[] = [`Li`, `Co`, `Ni`, `O`]
+  const rng = make_rng(7)
+  return make_entries(n_entries, elements).map((entry) => {
+    const fractions = composition_to_barycentric_nd(entry.composition, elements)
+    const bowl = 1 - fractions.reduce((sum, frac) => sum + frac ** 2, 0)
+    return [...fractions.slice(1), -2.5 - 1.5 * bowl + 0.2 * rng()]
+  })
+}
+
+// 1M points spread over a 512x512 bin grid: every bin row sees traffic
+const make_dense_series = (n_points: number) => {
+  const x = new Float32Array(n_points)
+  const y = new Float32Array(n_points)
+  for (let idx = 0; idx < n_points; idx++) {
+    x[idx] = (idx % 10_000) / 10_000
+    y[idx] = ((idx * 48_271) % 1_000_000) / 1_000_000
+  }
+  return [{ x, y }]
+}
+
+// A cubic cluster of `edge`^3 atoms at 1.1 A plus one atom ejected `far` A away along x (an
+// MD blow-up frame). The stretched bounding box must not degrade the neighbour grid: a
+// cubic bin widened until the grid fits put the whole cluster in one bin and made the sweep
+// O(n^2) (50k atoms: 0.1 -> 4 s).
+const make_flyaway_cloud = (edge: number, far: number) => {
+  const xyzs: Vec3[] = Array.from({ length: edge ** 3 }, (_, idx) => [
+    (idx % edge) * 1.1,
+    (Math.floor(idx / edge) % edge) * 1.1,
+    Math.floor(idx / edge ** 2) * 1.1,
+  ])
+  xyzs.push([far, 0, 0])
+  return make_molecule(xyzs.map((xyz) => [`C`, xyz]))
 }
 
 // === harness ===
@@ -425,6 +486,84 @@ describe(`perf baselines`, { timeout: 120_000 }, () => {
     await measure(`XRD 444 sites`, () => {
       const pattern = compute_xrd_pattern(structure, { wavelength: `CuKa` })
       expect(pattern.x.length).toBeGreaterThan(0)
+    })
+  })
+
+  // Detection is linear in site count; an accidental O(N^2) over sites or bonds lands near
+  // 8x the 1000-site cost per site, far outside the 2x band
+  test(`polyhedra 10x10x10 rocksalt supercell (8000 sites)`, async () => {
+    const supercell = make_supercell(make_rocksalt(), [10, 10, 10])
+    const bonds = electroneg_ratio(supercell)
+    const polyhedra = compute_polyhedra(supercell, bonds)
+    expect(polyhedra.length).toBeGreaterThan(500) // most interior Na render
+    await measure(`polyhedra 8000-site detect`, () => {
+      expect(compute_polyhedra(supercell, bonds)).toHaveLength(polyhedra.length)
+    })
+    await measure(`polyhedra 8000-site buffer merge`, () => {
+      expect(
+        merge_polyhedra_buffers(polyhedra, () => `#ff0000`).triangle_count,
+      ).toBeGreaterThan(0)
+    })
+  })
+
+  test(`quickhull 4D 775 entries`, async () => {
+    const points = make_hull_points(775)
+    await measure(`quickhull 4D 775 entries`, () => {
+      expect(compute_lower_hull_nd(points).length).toBeGreaterThan(20)
+    })
+  })
+
+  test(`density binning 1M points`, async () => {
+    const series = make_dense_series(1_000_000)
+    await measure(`density binning 1M points`, () => {
+      const result = bin_points(series, [0, 1], [0, 1], 512, 512)
+      expect(result.visible_count).toBe(1_000_000)
+    })
+  })
+
+  test(`neighbor_query 39304 sites + flyaway atom`, async () => {
+    const edge = 34
+    const cloud = make_flyaway_cloud(edge, 1e9)
+    await measure(`neighbor_query 39304 sites + flyaway atom`, () => {
+      const list = neighbor_query(cloud, { cutoff: 1.2 })
+      // cubic grid at 1.1 A: 3 edge^2 (edge - 1) axis-adjacent pairs, each listed from both ends
+      expect(list.neighbors).toHaveLength(6 * edge ** 2 * (edge - 1))
+    })
+  })
+
+  // 1000 atoms took 60 s before the coordination rewrite and ~0.4 ms after, too little to
+  // time above GC noise; a 30^3 grid keeps the same code path measurable. The first calls
+  // run unoptimized (measured 217, 26, 9.5, 162, 41 ... 6 ms), so two warm-ups precede timing.
+  test(`coordination colors 27000 atoms`, async () => {
+    const edge = 30
+    const structure = make_struct(
+      Array.from({ length: edge ** 3 }, (_, idx) => ({
+        xyz: [
+          (idx % edge) * 1.5,
+          (Math.floor(idx / edge) % edge) * 1.5,
+          Math.floor(idx / edge ** 2) * 1.5,
+        ],
+        element: ([`C`, `O`] as const)[idx % 2],
+      })),
+      edge * 1.5,
+    )
+    for (let warm_up = 0; warm_up < 2; warm_up++) get_coordination_colors(structure)
+    await measure(`coordination colors 27000 atoms`, () => {
+      expect(get_coordination_colors(structure).colors).toHaveLength(edge ** 3)
+    })
+  })
+
+  // 3x3x3 of 1000 sites: 4x4x4 (64k sites) spent most reps in major GC (18 ms to 2.9 s)
+  test(`make_supercell 1000 sites x 3x3x3`, async () => {
+    const structure = make_crystal(
+      1,
+      Array.from({ length: 1000 }, (_, idx) => ({
+        element: `H`,
+        abc: [(idx % 10) / 10, (idx % 100) / 100, idx / 1000] as Vec3,
+      })),
+    )
+    await measure(`make_supercell 1000 sites x 3x3x3`, () => {
+      expect(make_supercell(structure, `3x3x3`).sites).toHaveLength(27_000)
     })
   })
 })

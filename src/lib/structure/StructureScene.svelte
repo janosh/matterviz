@@ -248,7 +248,6 @@
     isosurface_settings = DEFAULT_ISOSURFACE_SETTINGS,
     active_volume_idx = 0,
     volume_scaling = [1, 1, 1],
-    on_isosurface_error = undefined,
     interactive = true,
     fly_to_request = $bindable(undefined),
     reference_structure = undefined,
@@ -381,8 +380,6 @@
     isosurface_settings?: IsosurfaceSettings // Isosurface rendering settings
     active_volume_idx?: number // Volume implicit single-isovalue settings apply to
     volume_scaling?: Vec3 // Supercell tiling applied to isosurface geometry
-    // Isosurface geometry-worker failures (the surfaces stay stale), for a host notice
-    on_isosurface_error?: (message: string) => void
     // When false, render the scene without hover/edit raycast helpers. Used by multi-side
     // view so inactive panes skip interaction-only work while the active pane stays editable.
     interactive?: boolean
@@ -2464,7 +2461,6 @@
           settings={isosurface_settings}
           {active_volume_idx}
           tiling={volume_scaling}
-          on_error={on_isosurface_error}
         />
       {/if}
 

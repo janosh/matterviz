@@ -46,6 +46,35 @@ pnpm install
 pnpm build        # -> build/matterviz.js + build/matterviz.css
 ```
 
+### Building from a matterviz checkout in downstream CI
+
+Python consumers that want to test against unreleased matterviz `main` (instead of the
+`matterviz-anywidget@<version>` npm release they pin) build the bundle themselves. The root
+`build:anywidget` script chains the three steps above (`package:dist`, the anywidget install, the
+bundle build); `MATTERVIZ_SKIP_PREPARE=1` stops the root `prepare` hook from building `dist/` a
+first time during `pnpm install`:
+
+```sh
+git clone --depth 1 https://github.com/janosh/matterviz
+cd matterviz
+corepack enable # picks up the pinned pnpm from package.json
+MATTERVIZ_SKIP_PREPARE=1 pnpm install --config.strict-dep-builds=false
+pnpm build:anywidget
+# bundle: extensions/anywidget/build/matterviz.js + build/matterviz.css
+```
+
+pymatviz reads that directory when `MATTERVIZ_ANYWIDGET_DIR` points at it
+(`export MATTERVIZ_ANYWIDGET_DIR="$PWD/extensions/anywidget/build"`), bypassing its
+pinned CDN version. `.github/workflows/downstream.yml` runs exactly this against pymatviz and
+matbench-discovery `main` on every push to `main`.
+
+JS consumers can depend on the component library straight from git: the root `prepare` hook
+(`src/scripts/prepare.mjs`) builds `dist/` inside the clone, so `npm install github:janosh/matterviz#main`
+works as is. pnpm >= 11.9 only runs git-dependency build scripts for an exact `allowBuilds` key
+(`matterviz@https://codeload.github.com/janosh/matterviz/tar.gz/<sha>: true` in
+`pnpm-workspace.yaml`, so pin a commit), or install a locally built checkout with
+`pnpm add file:../matterviz` as `downstream.yml` does for matbench-discovery.
+
 ## Publish (CDN distribution)
 
 Published to npm as `matterviz-anywidget`; the prebuilt bundle is then served with

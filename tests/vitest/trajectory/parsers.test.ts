@@ -6,6 +6,7 @@ import type { ElementSymbol } from '$lib'
 import { structure_to_xyz_str } from '$lib/structure/export'
 import { parse_xyz } from '$lib/structure/parse'
 import type { TrajectoryFrame, TrajectoryRun } from '$lib/trajectory'
+import { is_loaded_signal, is_signal_descriptor } from '$lib/trajectory'
 import {
   Hdf5GroupSelectionRequiredError,
   open_trajectory,
@@ -1190,12 +1191,13 @@ describe(`HDF5`, () => {
     expect(run.provenance.format).toBe(`hdf5`)
     expect(await steps_of(run)).toEqual([0, 1, 2, 3])
     expect(run.atom_masses).toEqual([1.008, 15.999])
-    expect(run.signals).toBeUndefined()
-    expect(run.signal_descriptors).toEqual({
+    // Lazy HDF5 signals are descriptors (no `values`) until collect_positions streams them
+    expect(run.signals).toEqual({
       velocity: { sample_shape: [2, 3], sample_count: 4, unit: `A/fs` },
       dipole: { sample_shape: [3], sample_count: 2 },
       polarizability: { sample_shape: [3, 3], sample_count: 3 },
     })
+    expect(Object.values(run.signals ?? {}).every(is_signal_descriptor)).toBe(true)
     const frame = await run.read_frame(3)
     expect(frame.structure.sites.map(({ properties }) => properties.velocity)).toEqual([
       [1.8, 1.9, 2],
@@ -1234,6 +1236,36 @@ describe(`HDF5`, () => {
     })
   })
 
+  it(`streams a frame-aligned TorchSim velocity strided through vector_keys but not one on its own step axis`, async () => {
+    const aligned = await open(await make_torch_sim_signal_buffer(), `torch-sim.h5`)
+    const native = await collect(aligned, { signal_keys: [`velocity`] })
+    const strided = await collect(aligned, { frame_stride: 2, vector_keys: [`velocity`] })
+    expect(strided.steps).toEqual([0, 2])
+    // the strided per-frame read is the native series with the odd frames dropped
+    expect(strided.vectors?.velocity).toEqual(
+      Float64Array.from([
+        ...(native.signals?.velocity.values.subarray(0, 6) ?? []),
+        ...(native.signals?.velocity.values.subarray(12, 18) ?? []),
+      ]),
+    )
+    // the same [n_atoms, 3] dataset sampled every other geometry step has no per-frame layout
+    const offset = await open(
+      await make_torch_sim_signal_buffer({ velocity_steps: [0, 2] }),
+      `offset-velocities.h5`,
+    )
+    expect(offset.signals?.velocity).toEqual({
+      sample_shape: [2, 3],
+      sample_count: 2,
+      unit: `A/fs`,
+    })
+    await expect(collect(offset, { vector_keys: [`velocity`] })).rejects.toThrow(
+      `TorchSim HDF5 vector velocity does not share geometry steps`,
+    )
+    const { signals } = await collect(offset, { signal_keys: [`velocity`] })
+    expect(signals?.velocity).toMatchObject({ steps: [0, 2] })
+    expect(signals?.velocity.values).toHaveLength(12)
+  })
+
   it(`materialises singleton TorchSim and Reference MD inputs with eager signals`, async () => {
     const torch = await open(
       await h_walk_h5(`singleton-torch`, [0], (data, steps) => {
@@ -1243,15 +1275,15 @@ describe(`HDF5`, () => {
       `singleton.h5`,
     )
     expect(await steps_of(torch)).toEqual([0])
-    expect(torch.signal_descriptors).toBeUndefined()
     expect(torch.signals?.dipole).toMatchObject({
       steps: [0],
       values: Float64Array.from([1, 2, 3]),
     })
     const reference = await open_replica(1)
     expect(reference.frame_count).toBe(1)
-    expect(reference.signal_descriptors).toBeUndefined()
-    expect(reference.signals?.velocity.values).toEqual(Float64Array.from([1, 0, 0, 0, 2, 0]))
+    const reference_velocity = reference.signals?.velocity
+    expect(reference_velocity && is_loaded_signal(reference_velocity)).toBe(true)
+    expect(reference_velocity).toMatchObject({ values: Float64Array.from([1, 0, 0, 0, 2, 0]) })
   })
 
   it(`recovers zero-filled step tails after structural validation`, async () => {
@@ -1335,7 +1367,7 @@ describe(`HDF5`, () => {
     })
     const run = await open(content, `torn-response-steps.h5`)
     expect((await frames_of(run)).map(({ metadata }) => metadata?.energy)).toEqual([-1, -2])
-    expect(run.signal_descriptors?.velocity).toMatchObject({ sample_count: 2 })
+    expect(run.signals?.velocity).toMatchObject({ sample_count: 2 })
     const { signals } = await collect(run, { signal_keys: [`velocity`] })
     expect(signals?.velocity.steps).toEqual([0, 1])
   })
@@ -1418,8 +1450,7 @@ describe(`HDF5`, () => {
     ])
     expect(run.time_step).toEqual({ value: 0.25, unit: `ps` })
     expect(run.atom_masses).toEqual([1.008, 15.999])
-    expect(run.signals).toBeUndefined()
-    expect(run.signal_descriptors).toEqual({
+    expect(run.signals).toEqual({
       velocity: { sample_shape: [2, 3], sample_count: 3, unit: `A/ps` },
       dipole: { sample_shape: [3], sample_count: 3, unit: `e*A` },
     })
@@ -1519,7 +1550,6 @@ describe(`HDF5`, () => {
     expect(run.metadata.temperature).toBe(301)
     expect(run.atom_masses).toBeUndefined()
     expect(run.signals).toBeUndefined()
-    expect(run.signal_descriptors).toBeUndefined()
   })
 
   it(`prefers the canonical TorchSim /data structure over unrelated complete groups`, async () => {
@@ -1568,7 +1598,7 @@ describe(`HDF5`, () => {
       species: [{ element: `H` }],
     })
     expect(run.atom_masses).toEqual([1])
-    expect(run.signal_descriptors?.dipole).toEqual({ sample_shape: [3], sample_count: 2 })
+    expect(run.signals?.dipole).toEqual({ sample_shape: [3], sample_count: 2 })
     const { signals } = await collect(run, { signal_keys: [`dipole`] })
     expect(signals?.dipole).toMatchObject({
       steps: [0, 2],
@@ -1648,8 +1678,8 @@ describe(`HDF5`, () => {
         ds(file, `atomic_numbers`, [1], [1])
         file.create_attribute(`pbc`, [0, 2, 1])
       }), undefined, `HDF5 PBC attribute pbc/periodic_boundary_conditions must contain only 0/1 values`],
-    [`non-increasing independent signal steps`, () => make_torch_sim_signal_buffer([2, 2]), undefined, /\/steps\/dipole must increase strictly/],
-    [`a known signal without its step axis`, () => make_torch_sim_signal_buffer([0, 2], false), undefined, /signal \/data\/dipole is missing \/steps\/dipole/],
+    [`non-increasing independent signal steps`, () => make_torch_sim_signal_buffer({ dipole_steps: [2, 2] }), undefined, /\/steps\/dipole must increase strictly/],
+    [`a known signal without its step axis`, () => make_torch_sim_signal_buffer({ include_dipole_steps: false }), undefined, /signal \/data\/dipole is missing \/steps\/dipole/],
     [`a truncated Reference MD replica id array`, () => make_reference_md_h5_buffer([100]), REPLICA_1, /\/replicas\/global_ids.*expected \[2\]/],
     [`a singular Reference MD cell`, () => make_reference_md_h5_buffer([100, 101], 3, [10, 0, 0, 0, 10, 0, 0, 0, 0]), `/molecules/h2o/replicas/0`,
       `Reference MD HDF5 cell volume must be positive`],

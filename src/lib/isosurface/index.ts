@@ -8,6 +8,7 @@ export { flatten_grid, grid_dimensions, scalar_grid_strides } from './grid'
 export type { ScalarGrid3D, ScalarGridArray, ScalarGridLike, ScalarGridOrder } from './grid'
 
 export * from './coloring'
+export * from './context'
 export * from './parse'
 export * from './parse-vaspwave'
 export * from './sampling'

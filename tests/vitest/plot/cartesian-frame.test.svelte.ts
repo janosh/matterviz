@@ -7,7 +7,7 @@ import type { Vec2 } from '$lib/math'
 import { type AxisConfig, COLOR_BAR_DEFAULTS } from '$lib/plot/core/types'
 import { AXIS_LABEL_HEIGHT, DEFAULT_PLOT_PADDING } from '$lib/plot/core/layout'
 import BinnedScatterPlot from '$lib/plot/scatter/BinnedScatterPlot.svelte'
-import { type Component, createRawSnippet, tick } from 'svelte'
+import { type Component, createRawSnippet, flushSync, tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
   axis_label_pivot_y,
@@ -328,17 +328,33 @@ describe(`cartesian frame`, () => {
 
   // The frame owns legend dragging: a dropped legend keeps the drop position (clamped to the
   // plot) and leaves solver ownership, so the data-decoration-* stamps go away
+  // The drag measures the legend and the SVG once at grab time: re-measuring the SVG after
+  // every position write forced a reflow per mousemove (21 rect reads for this drag, now 2),
+  // and the legend box itself is measured in an effect, never in the handlers or derivations
   test.each(frame_charts)(`$name legend drag pins it where it was dropped`, async (chart) => {
     await mount_chart(chart, { ...chart.props(), show_legend: true })
     const legend = doc_query(`.legend`)
     expect(legend.getAttribute(`data-decoration-x`)).not.toBeNull()
-    // jsdom reports zero-origin rects, so the drop lands at cursor minus the grab offset
-    legend.dispatchEvent(
-      new MouseEvent(`mousedown`, { bubbles: true, clientX: 100, clientY: 50 }),
-    )
-    window.dispatchEvent(new MouseEvent(`mousemove`, { clientX: 300, clientY: 200 }))
-    window.dispatchEvent(new MouseEvent(`mouseup`, { clientX: 300, clientY: 200 }))
-    await tick()
+    const rect_spy = vi.spyOn(Element.prototype, `getBoundingClientRect`)
+    const offset_spy = vi.spyOn(HTMLElement.prototype, `offsetWidth`, `get`)
+    try {
+      // jsdom reports zero-origin rects, so the drop lands at cursor minus the grab offset
+      legend.dispatchEvent(
+        new MouseEvent(`mousedown`, { bubbles: true, clientX: 100, clientY: 50 }),
+      )
+      for (let step = 1; step <= 20; step++) {
+        window.dispatchEvent(
+          new MouseEvent(`mousemove`, { clientX: 100 + step * 10, clientY: 50 + step * 7.5 }),
+        )
+        flushSync()
+      }
+      window.dispatchEvent(new MouseEvent(`mouseup`, { clientX: 300, clientY: 200 }))
+      await tick()
+      expect([rect_spy.mock.calls.length, offset_spy.mock.calls.length]).toEqual([2, 0])
+    } finally {
+      rect_spy.mockRestore()
+      offset_spy.mockRestore()
+    }
     const pinned = doc_query(`.legend`)
     expect({ left: pinned.style.left, top: pinned.style.top }).toEqual({
       left: `200px`,

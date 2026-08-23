@@ -1,6 +1,6 @@
 import { Treemap } from '$lib'
 import type { SunburstNodeHandlerProps, TreemapArc, TreemapNode } from '$lib/plot'
-import { DEFAULT_SERIES_COLORS } from '$lib/plot'
+import { PLOT_COLORS } from '$lib/colors'
 import { type ComponentProps, flushSync, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { mount_sized, resize_element, trigger_resize_observer } from '../setup'
@@ -62,7 +62,7 @@ describe(`Treemap`, () => {
     const fill = (label: keyof typeof IDX) => cell_rect(plot, label).getAttribute(`fill`)
     expect(fill(`A`)).toBe(`#e15759`) // explicit
     expect(fill(`A1`)).toBe(`#e15759`) // inherited
-    expect(fill(`B`)).toBe(DEFAULT_SERIES_COLORS[0]) // palette
+    expect(fill(`B`)).toBe(PLOT_COLORS[0]) // palette
     // A and B have equal value -> equal area
     const size_of = (label: keyof typeof IDX) => {
       const rect = cell_rect(plot, label)
@@ -413,7 +413,7 @@ describe(`Treemap`, () => {
     expect(500 - drawable_right).toBeGreaterThanOrEqual(80)
     // branches keep categorical colors, leaves get metric colors
     expect(cell_rect(plot, `A`).getAttribute(`fill`)).toBe(`#e15759`)
-    expect(cell_rect(plot, `B`).getAttribute(`fill`)).not.toBe(DEFAULT_SERIES_COLORS[0])
+    expect(cell_rect(plot, `B`).getAttribute(`fill`)).not.toBe(PLOT_COLORS[0])
   })
 
   test(`hatch flag overlays a pattern rect on that cell only`, async () => {

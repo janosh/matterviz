@@ -13,16 +13,27 @@ import {
   type PlotTitleLineKind,
 } from '$lib/plot'
 import { execFileSync } from 'node:child_process'
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { describe, expect, expectTypeOf, test } from 'vitest'
+import { afterAll, describe, expect, expectTypeOf, test } from 'vitest'
 
 const repo_root = resolve(import.meta.dirname, `../..`)
 const lib_dir = join(repo_root, `src/lib`)
 const dist_dir = join(repo_root, `dist`)
-// `prepare` only runs svelte-kit sync; the svelte-package output is an explicit build step.
-// Locally the built-output checks skip; CI builds dist first, so a missing dist there means
-// the checks would silently stop running
+// `prepare` skips the svelte-package build whenever dist/ already exists (and always under
+// MATTERVIZ_SKIP_PREPARE, which CI sets), so dist/ is an explicit build step there. Locally the
+// built-output checks skip; CI builds dist first, so a missing dist there means the checks
+// would silently stop running
 const has_dist = existsSync(join(dist_dir, `index.js`))
 if (!has_dist) {
   if (process.env.CI)
@@ -32,6 +43,7 @@ if (!has_dist) {
 const pkg = JSON.parse(readFileSync(join(repo_root, `package.json`), `utf8`)) as {
   exports: Record<string, string | Record<string, string>>
   sideEffects: string[]
+  scripts: Record<string, string>
 }
 
 // Extensions svelte-package compiles (.ts/.svelte -> .js/.svelte) or copies verbatim into ./dist
@@ -258,5 +270,55 @@ describe(`package.json exports`, () => {
       pkg.exports[`./${dir}`],
       `src/lib/${dir}/index.ts exists but "./${dir}" is missing from package.json exports`,
     ).toBeDefined()
+  })
+})
+
+// A `github:janosh/matterviz#main` dependency has no dist/ (gitignored), so the root `prepare`
+// hook must build it there, while dev-checkout and CI installs (dist present or
+// MATTERVIZ_SKIP_PREPARE set) must stay at a bare `svelte-kit sync`. The script resolves the
+// repo root from its own location, so a copy in a scratch tree exercises both dist states
+// without touching the real dist/; `--dry-run` prints the commands instead of running them.
+describe(`prepare hook`, () => {
+  const scratch_root = mkdtempSync(join(tmpdir(), `matterviz-prepare-`))
+  const script = join(scratch_root, `src/scripts/prepare.mjs`)
+  cpSync(join(repo_root, `src/scripts/prepare.mjs`), script)
+  afterAll(() => rmSync(scratch_root, { recursive: true, force: true }))
+
+  const dry_run = (env: Record<string, string> = {}) => {
+    const base_env = { ...process.env }
+    delete base_env.MATTERVIZ_SKIP_PREPARE // the outer shell may set it
+    return execFileSync(process.execPath, [script, `--dry-run`], {
+      encoding: `utf8`,
+      env: { ...base_env, ...env },
+    })
+      .trim()
+      .split(`\n`)
+  }
+  const build_cmds = [`svelte-package`, `node src/scripts/package-dist-assets.mjs`]
+
+  test(`package.json runs the script as its prepare hook`, () => {
+    expect(pkg.scripts.prepare).toBe(`node src/scripts/prepare.mjs`)
+    // the hook's build half must stay in lockstep with the explicit rebuild script
+    expect(pkg.scripts[`package:dist`]).toBe(build_cmds.join(` && `))
+  })
+
+  test(`syncs svelte-kit and builds dist/ when it is missing`, () => {
+    expect(dry_run()).toEqual([`svelte-kit sync`, ...build_cmds])
+  })
+
+  test.each([
+    [`dist/index.js present`, { MATTERVIZ_SKIP_PREPARE: `` }, true],
+    [`MATTERVIZ_SKIP_PREPARE=1 (CI setup action)`, { MATTERVIZ_SKIP_PREPARE: `1` }, false],
+  ])(`only syncs svelte-kit with %s`, (_label, env, seed_dist) => {
+    const dist_entry = join(scratch_root, `dist/index.js`)
+    if (seed_dist) {
+      mkdirSync(join(scratch_root, `dist`), { recursive: true })
+      writeFileSync(dist_entry, `export {}\n`)
+    }
+    try {
+      expect(dry_run(env)).toEqual([`svelte-kit sync`])
+    } finally {
+      rmSync(dist_entry, { force: true })
+    }
   })
 })

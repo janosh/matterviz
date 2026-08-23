@@ -605,7 +605,7 @@ export const parse_reference_md_h5_file = (
     time_step: integration_timestep_ps,
     time_unit: `ps`,
     atom_masses,
-    signal_descriptors,
+    signals: signal_descriptors,
     metadata: trajectory_metadata,
   }
 }

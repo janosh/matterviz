@@ -8,6 +8,7 @@ import {
   VASP_VOLUMETRIC_FILES,
 } from '$lib/constants'
 import { SETTINGS_CONFIG, type SettingType } from '$lib/settings'
+import { is_plain_object } from '$lib/utils'
 
 // VS Code settings read by extension.ts directly rather than forwarded to the webview
 const HOST_SETTING_KEYS = [`matterviz.theme`, `matterviz.auto_render`, `matterviz.open_beside`]
@@ -56,8 +57,12 @@ const brace = (names: string[]) => `{${[...new Set(names)].sort().join(`,`)}}`
 const with_gzip = (pattern: string): string[] => [pattern, `${pattern}.gz`]
 const vscode_scalar_type = (value: unknown) =>
   typeof value === `boolean` || typeof value === `number` ? typeof value : `string`
-const vscode_setting_type = (value: unknown) =>
-  Array.isArray(value) ? `array` : vscode_scalar_type(value)
+// Leaf kinds: scalar, array, or a free-form map whose default is a plain object
+const vscode_setting_type = (value: unknown) => {
+  if (Array.isArray(value)) return `array`
+  if (is_plain_object(value)) return `object`
+  return vscode_scalar_type(value)
+}
 const is_setting_type = (value: object): value is SettingType => `value` in value
 
 const case_variants = (stems: readonly string[]): string[] =>
@@ -125,6 +130,9 @@ export const build_vscode_settings = (
     // Empty-array defaults cannot reveal an item type, so default those to string.
     if (Array.isArray(schema.value)) {
       config.items = { type: vscode_scalar_type(schema.value[0]), ...schema.items }
+    } else if (is_plain_object(schema.value)) {
+      // Free-form map: any key, values of one scalar type (string unless the leaf says otherwise)
+      config.additionalProperties = schema.additionalProperties ?? { type: `string` }
     }
     vscode_config[key_path] = config
   }

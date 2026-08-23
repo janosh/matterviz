@@ -15,6 +15,10 @@ runs:
     - shell: bash
       env:
         EXTENSIONS: ${{ inputs.extensions }}
+        # Root `prepare` (src/scripts/prepare.mjs) builds dist/ when it is missing so git
+        # dependencies (github:janosh/matterviz#main) install usable; jobs here build it
+        # explicitly where they need it, so skip the ~20 s svelte-package run on install.
+        MATTERVIZ_SKIP_PREPARE: 1
       run: |
         corepack enable
         # Registry packages ship their generated artifacts, so their prepare scripts do not
@@ -22,7 +26,7 @@ runs:
         pnpm install --config.strict-dep-builds=false
         # anywidget depends on `matterviz: file:../..`, which pnpm copies (hard-links) at install
         # time, so the svelte-package output must exist before that install or the copy has no
-        # dist/ (root `prepare` only runs svelte-kit sync).
+        # dist/ (dependencies never run `prepare`, only the root project does).
         case " $EXTENSIONS " in *" anywidget "*) pnpm package:dist ;; esac
         # --ignore-workspace: a freshly released dep trips pnpm's cooldown
         # (minimumReleaseAge), auto-creating a pnpm-workspace.yaml that makes these

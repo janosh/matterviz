@@ -1,6 +1,7 @@
 import PaneDivider from '$lib/layout/PaneDivider.svelte'
 import { flushSync, mount, unmount } from 'svelte'
 import { expect, onTestFinished, test } from 'vitest'
+import { trigger_resize_observer } from '../setup'
 
 const pointer_event = (
   type: string,
@@ -8,19 +9,24 @@ const pointer_event = (
 ): PointerEvent =>
   new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 1, ...init })
 
-type PixelClamps = { min_px?: number; max_px?: number; second_min_px?: number }
+type PixelClamps = {
+  min_px?: number
+  max_px?: number
+  second_min_px?: number
+  first_px?: number
+}
 const mount_divider = (
   orientation: `horizontal` | `vertical`,
   direction: `ltr` | `rtl` = `ltr`,
   ratio?: number,
   clamps: PixelClamps = {},
+  size = { width: 400, height: 200 },
 ) => {
   const parent = document.createElement(`div`)
   parent.dir = direction
   parent.style.direction = direction
   document.body.append(parent)
-  parent.getBoundingClientRect = () =>
-    DOMRect.fromRect({ x: 100, y: 50, width: 400, height: 200 })
+  parent.getBoundingClientRect = () => DOMRect.fromRect({ x: 100, y: 50, ...size })
   const component = mount(PaneDivider, {
     target: parent,
     props: { orientation, ratio, ...clamps },
@@ -123,4 +129,108 @@ test(`an initial ratio outside the pixel clamps is shown clamped`, () => {
   const { divider, parent } = mount_divider(`horizontal`, `ltr`, 0.2, { min_px: 160 })
   expect(parent.style.getPropertyValue(`--split-pane-size`)).toBe(`40%`)
   expect(divider.getAttribute(`aria-valuenow`)).toBe(`40`)
+})
+
+// Pixel mode (first_px set): the first pane is sized in px with no ratio clamps, so a 320 px
+// sidebar stays 320 px in a 400 px or a 4000 px container; min_px/max_px/second_min_px clamp
+// against the measured container and the clamped value is what gets written (and bound back)
+test.each([
+  [{ first_px: 320 }, 1000, `320px`, 320],
+  [{ first_px: 320 }, 4000, `320px`, 320],
+  [{ first_px: 320, second_min_px: 200 }, 400, `200px`, 200],
+  [{ first_px: 320, min_px: 150, second_min_px: 200 }, 300, `150px`, 150],
+  [{ first_px: 50, min_px: 150 }, 1000, `150px`, 150],
+  [{ first_px: 900, max_px: 600 }, 1000, `600px`, 600],
+] as const)(`%j in a %i px container shows %s`, (clamps, width, expected, aria_now) => {
+  const { divider, parent } = mount_divider(`horizontal`, `ltr`, undefined, clamps, {
+    width,
+    height: 200,
+  })
+  expect(parent.style.getPropertyValue(`--split-pane-size`)).toBe(expected)
+  expect(divider.getAttribute(`aria-valuenow`)).toBe(`${aria_now}`)
+})
+
+// Mounts a pixel-mode divider whose bound first_px can be read back through a plain accessor
+// (Svelte writes bindable props through the prop descriptor's setter)
+const mount_px_divider = (clamps: Omit<PixelClamps, `first_px`>, get_width: () => number) => {
+  let bound_px = 320
+  const props = {
+    orientation: `horizontal` as const,
+    ...clamps,
+    get first_px() {
+      return bound_px
+    },
+    set first_px(value: number) {
+      bound_px = value
+    },
+  }
+  const parent = document.createElement(`div`)
+  document.body.append(parent)
+  parent.getBoundingClientRect = () =>
+    DOMRect.fromRect({ x: 100, y: 50, width: get_width(), height: 200 })
+  const component = mount(PaneDivider, { target: parent, props })
+  onTestFinished(() => unmount(component).finally(() => parent.remove()))
+  flushSync()
+  const divider = parent.querySelector<HTMLElement>(`[role="separator"]`)
+  if (!divider) throw new Error(`Pane divider not found`)
+  return { divider, parent, bound_px: () => bound_px }
+}
+
+test(`pixel-mode drags move the first pane in px and bind the clamped value back`, () => {
+  const { divider, parent, bound_px } = mount_px_divider(
+    { min_px: 150, second_min_px: 200 },
+    () => 1000,
+  )
+  divider.dispatchEvent(pointer_event(`pointerdown`, { pointerId: 2 }))
+  // container starts at x=100: pointer at 600 puts the divider 500 px in
+  divider.dispatchEvent(pointer_event(`pointermove`, { clientX: 600, pointerId: 2 }))
+  expect(parent.style.getPropertyValue(`--split-pane-size`)).toBe(`500px`)
+  expect(bound_px()).toBe(500)
+  // past the second pane's floor clamps to 800 px; below the first pane's floor to 150 px
+  divider.dispatchEvent(pointer_event(`pointermove`, { clientX: 1500, pointerId: 2 }))
+  expect(bound_px()).toBe(800)
+  divider.dispatchEvent(pointer_event(`pointermove`, { clientX: 120, pointerId: 2 }))
+  expect(bound_px()).toBe(150)
+  divider.dispatchEvent(pointer_event(`pointerup`, { pointerId: 2 }))
+})
+
+// Keyboard steps 5% of the container (50 px here) and never drop below the first pane's floor
+test(`pixel-mode keyboard resizing steps in px within the clamps`, () => {
+  const { divider, parent } = mount_divider(
+    `horizontal`,
+    `ltr`,
+    undefined,
+    { first_px: 320, min_px: 150, second_min_px: 200 },
+    { width: 1000, height: 200 },
+  )
+  const press = (key: string) =>
+    divider.dispatchEvent(new KeyboardEvent(`keydown`, { key, bubbles: true }))
+  press(`ArrowLeft`)
+  expect(parent.style.getPropertyValue(`--split-pane-size`)).toBe(`270px`)
+  for (let repeat = 0; repeat < 4; repeat++) press(`ArrowLeft`)
+  expect(parent.style.getPropertyValue(`--split-pane-size`)).toBe(`150px`)
+  press(`ArrowRight`)
+  expect(parent.style.getPropertyValue(`--split-pane-size`)).toBe(`200px`)
+  flushSync()
+  expect(divider.getAttribute(`aria-valuemin`)).toBe(`150`)
+  expect(divider.getAttribute(`aria-valuemax`)).toBe(`800`)
+  expect(divider.getAttribute(`aria-valuenow`)).toBe(`200`)
+})
+
+// A pixel-sized first pane follows the container: a shrink re-clamps what's shown without
+// touching the bound preference, and growing back restores it
+test(`pixel mode re-clamps on container resize without overwriting first_px`, () => {
+  let width = 1000
+  const { parent, bound_px } = mount_px_divider({ second_min_px: 200 }, () => width)
+  expect(parent.style.getPropertyValue(`--split-pane-size`)).toBe(`320px`)
+
+  width = 400
+  trigger_resize_observer(parent)
+  flushSync()
+  expect(parent.style.getPropertyValue(`--split-pane-size`)).toBe(`200px`)
+  expect(bound_px()).toBe(320)
+  width = 1000
+  trigger_resize_observer(parent)
+  flushSync()
+  expect(parent.style.getPropertyValue(`--split-pane-size`)).toBe(`320px`)
 })

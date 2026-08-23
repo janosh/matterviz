@@ -1,7 +1,8 @@
 <script lang="ts">
   // Structure viewer: panes, toolbar, keyboard shortcuts, symmetry and the single/2x2 viewport
   // layout. Selection, editing, undo/redo and the display pipeline live in session.svelte.ts;
-  // data_url / structure_string / drop acquisition in loader.svelte.ts.
+  // data_url / structure_string / drop acquisition in the shared scene/viewer-loader, fed by
+  // loader.ts's document parser.
   import type { ColorSchemeName } from '$lib/colors'
   import { ELEMENT_COLOR_SCHEMES } from '$lib/colors'
   import { DEFAULT_PNG_DPI } from '$lib/constants'
@@ -11,9 +12,10 @@
   import Spinner from '$lib/feedback/Spinner.svelte'
   import { Icon } from 'svelte-widgets'
   import { BrillouinZone, Grid2x2, HeatmapMatrix, Reset } from 'svelte-widgets/icons'
-  import type * as io from '$lib/io'
+  import * as io from '$lib/io'
   import { handle_and_prevent, is_editable_target } from '$lib/utils'
-  import { webgpu_available } from '$lib/scene'
+  import { create_viewer_loader, webgpu_available } from '$lib/scene'
+  import { set_isosurface_error_handler } from '$lib/isosurface/context'
   import type { VolumeSliceSettings } from '$lib/isosurface/slice-settings'
   import type { IsosurfaceSettings, VolumetricData } from '$lib/isosurface/types'
   import VolumeSliceView from '$lib/isosurface/VolumeSliceView.svelte'
@@ -43,7 +45,7 @@
     get_element_counts,
     get_structure_vector_keys,
   } from '$lib/structure'
-  import type { CellType, SymmetryDataset, SymmetrySettings } from '$lib/symmetry'
+  import type { CellType, SymmetryDataset, SymmetrySettings, WyckoffPos } from '$lib/symmetry'
   import * as symmetry from '$lib/symmetry'
   import type { ComponentProps, Snippet } from 'svelte'
   import { untrack } from 'svelte'
@@ -58,7 +60,7 @@
   } from './atom-properties'
   import AtomLegend from './AtomLegend.svelte'
   import CellSelect from './CellSelect.svelte'
-  import { create_structure_loader } from './loader.svelte'
+  import { open_structure_text } from './loader'
   import type { DisplacementSummary } from './measure'
   import { mirror_scene_props } from '$lib/scene/props.svelte'
   import { StructureSession } from './session.svelte'
@@ -152,6 +154,7 @@
     hovered_site_idx = $bindable(null),
     measured_sites = $bindable([]),
     displayed_structure = $bindable(),
+    wyckoff_positions = $bindable([]),
     hidden_elements = $bindable(new SvelteSet<ElementSymbol>()),
     sym_data = $bindable(null),
     symmetry_settings = $bindable(symmetry.default_sym_settings),
@@ -234,6 +237,9 @@
     measured_sites?: number[] // ordered picks for distance/angle/dihedral overlays
     // Output: the structure as rendered (supercell + image atoms). Writes are overwritten.
     displayed_structure?: AnyStructure
+    // Output: Wyckoff rows of the analyzed cell with `site_indices` re-expressed onto
+    // `displayed_structure` (empty until symmetry analysis finishes). Writes are overwritten.
+    wyckoff_positions?: WyckoffPos[]
     hidden_elements?: Set<ElementSymbol>
     sym_data?: SymmetryDataset | null
     symmetry_settings?: Partial<SymmetrySettings>
@@ -258,12 +264,51 @@
     toast_timer = setTimeout(() => (toast_msg = null), duration_ms)
   }
 
+  // === acquisition: data_url, structure_string, drops ===
+  const loader = create_viewer_loader<AnyStructure, ReturnType<typeof open_structure_text>>({
+    data_url: () => data_url,
+    inline_string: () => structure_string,
+    current_value: () => structure,
+    allow_file_drop: () => allow_file_drop,
+    on_file_drop: () => on_file_drop,
+    set_loading: (value) => (loading = value),
+    set_error: (message) => (error_msg = message),
+    set_dragover: (over) => (dragover = over),
+    // Merges volumes into the cell on screen, so it reads the current document
+    parse: (content, filename, metadata) =>
+      open_structure_text(
+        { structure, volumetric_data, isosurface_settings, active_volume_idx },
+        io.as_text(content),
+        filename,
+        metadata?.source_filename,
+      ),
+    commit: ({ document, notice }, filename, metadata, file_size) => {
+      ;({ structure, volumetric_data, isosurface_settings, active_volume_idx } = document)
+      if (notice) show_toast(notice)
+      on_file_load?.({
+        structure: document.structure,
+        filename,
+        ...metadata,
+        file_size,
+        total_atoms: document.structure?.sites.length ?? 0,
+      })
+    },
+    report_error: (message, filename, metadata) => {
+      error_msg = message
+      on_error?.({ error_msg: message, filename, ...metadata })
+    },
+  })
+
   // === session: display pipeline, selection, editing, cameras ===
   // Coordinate-only updates (trajectory frames) share one key; otherwise every structure is new
   let series_key = $derived(structure_series_key ?? structure)
   const session = new StructureSession({
     structure: () => structure,
-    set_structure: (value) => (structure = value),
+    set_structure: (value) => {
+      structure = value
+      // An edit of a URL-loaded structure stays attributed to its URL
+      loader.claim()
+    },
     bonds: () => bonds,
     set_bonds: (value) => (bonds = value),
     series_key: () => series_key,
@@ -289,40 +334,6 @@
     sym_data: () => sym_data,
     atom_color_config: () => atom_color_config,
     bonding_strategy: () => scene_props.bonding_strategy,
-    on_notice: show_toast,
-  })
-
-  // === acquisition: data_url, structure_string, drops ===
-  const loader = create_structure_loader({
-    // Getters so the loader's effects track only the fields they read: the data_url request
-    // reads just `structure`, and must not restart an in-flight fetch on an isosurface tweak
-    document: () => ({
-      get structure() {
-        return structure
-      },
-      get volumetric_data() {
-        return volumetric_data
-      },
-      get isosurface_settings() {
-        return isosurface_settings
-      },
-      get active_volume_idx() {
-        return active_volume_idx
-      },
-    }),
-    set_document: (document) => {
-      ;({ structure, volumetric_data, isosurface_settings, active_volume_idx } = document)
-    },
-    set_loading: (value) => (loading = value),
-    set_error: (message) => (error_msg = message),
-    set_dragover: (over) => (dragover = over),
-    data_url: () => data_url,
-    structure_string: () => structure_string,
-    allow_file_drop: () => allow_file_drop,
-    last_edited_structure: () => session.last_edited_structure,
-    on_file_drop: () => on_file_drop,
-    on_file_load: (data) => on_file_load?.(data),
-    on_error: (data) => on_error?.(data),
     on_notice: show_toast,
   })
 
@@ -371,8 +382,10 @@
   })
 
   // Isosurface geometry-worker failures (chunk 404, OOM): the scene keeps its previous
-  // surfaces, so without this notice the user would only see an unchanged view
+  // surfaces, so without this notice the user would only see an unchanged view. Isosurface
+  // sits several layers down (viewport, scene), so it picks the handler up from context
   let isosurface_error = $state<string>()
+  set_isosurface_error_handler((message) => (isosurface_error = message))
 
   // === symmetry ===
   let symmetry_run_id = 0
@@ -546,7 +559,6 @@
     volumetric_data,
     active_volume_idx,
     isosurface_settings,
-    on_isosurface_error: (message: string) => (isosurface_error = message),
     property_colors: session.property_colors,
     active_sites: active_scene_sites,
   })
@@ -556,6 +568,9 @@
   // hand consumers a new identity for the same structure
   $effect(() => {
     displayed_structure = session.displayed_structure
+  })
+  $effect(() => {
+    wyckoff_positions = session.wyckoff_rows
   })
   $effect(() => {
     displacement_rmsd = displacement_summary?.rmsd

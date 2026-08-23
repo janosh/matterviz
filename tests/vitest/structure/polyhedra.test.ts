@@ -18,23 +18,6 @@ import { Color } from 'three/webgpu'
 import { describe, expect, test } from 'vitest'
 import { make_crystal, make_rocksalt } from '../setup'
 
-const CI_MULTIPLIER = [`true`, `1`].includes(process.env.CI ?? ``) ? 5 : 1
-
-// Fastest of `reps` runs. A single cold call is dominated by JIT warm-up and GC, not by
-// the algorithm: repeated cold processes on one machine timed the 8000-site detect below
-// anywhere from 32 to 170 ms, and a GitHub runner measured 259 ms against a flat 250 ms
-// cap. The minimum is the machine's actual throughput and held within 12-20 ms over the
-// same runs, so it is the only wall-clock number worth asserting on.
-const best_of = (reps: number, run: () => void): number => {
-  let best = Infinity
-  for (let rep = 0; rep < reps; rep++) {
-    const start = performance.now()
-    run()
-    best = Math.min(best, performance.now() - start)
-  }
-  return best
-}
-
 // Minimal BondPair stub (only fields polyhedra code reads)
 const make_bond = (site_idx_1: number, site_idx_2: number): BondPair => ({
   pos_1: [0, 0, 0],
@@ -504,35 +487,15 @@ describe(`compute_polyhedra`, () => {
     expect(compute_polyhedra(structure, octahedral_bonds)).toHaveLength(0)
   })
 
-  test(`performance: 10x10x10 rocksalt supercell (8000 sites) stays fast`, () => {
-    const small = make_supercell(make_rocksalt(), [5, 5, 5]) // 1000 sites
-    const supercell = make_supercell(make_rocksalt(), [10, 10, 10]) // 8000 sites
-    const small_bonds = electroneg_ratio(small)
-    const bonds = electroneg_ratio(supercell)
-
-    const polyhedra = compute_polyhedra(supercell, bonds)
+  // Timing (linear scaling in site count, absolute budgets) lives in perf-baselines.test.ts;
+  // a wall-clock ratio here failed under CPU contention from parallel workers
+  test(`10x10x10 rocksalt supercell (8000 sites) detects and merges at scale`, () => {
+    const supercell = make_supercell(make_rocksalt(), [10, 10, 10])
+    const polyhedra = compute_polyhedra(supercell, electroneg_ratio(supercell))
     expect(polyhedra.length).toBeGreaterThan(500) // most interior Na render
-
-    // Primary guard, and the only one independent of machine speed: detection is linear
-    // in site count, so 8x the sites must cost ~8x. Measured 6.8-10.2 across 6 runs; an
-    // accidental O(N^2) over sites or bonds would land near 64.
-    const small_ms = best_of(5, () => void compute_polyhedra(small, small_bonds))
-    const detect_ms = best_of(5, () => void compute_polyhedra(supercell, bonds))
-    const ratio = detect_ms / small_ms
-    expect(ratio, `8000/1000-site detect ratio ${ratio.toFixed(1)}`).toBeLessThan(24)
-
-    const merge_ms = best_of(5, () => {
-      const buffers = merge_polyhedra_buffers(polyhedra, () => `#ff0000`)
-      expect(buffers.triangle_count).toBeGreaterThan(0)
-    })
-
-    // Absolute backstops. Best-of-5 measured 12-20ms (detect) and 5-11ms (merge) locally,
-    // so these only trip on an order-of-magnitude slowdown - see best_of on why a tighter
-    // wall-clock bound is not assertable here.
-    expect(detect_ms, `8000-site detect ${detect_ms.toFixed(1)}ms`).toBeLessThan(
-      150 * CI_MULTIPLIER,
+    expect(merge_polyhedra_buffers(polyhedra, () => `#ff0000`).triangle_count).toBeGreaterThan(
+      0,
     )
-    expect(merge_ms, `buffer merge ${merge_ms.toFixed(1)}ms`).toBeLessThan(100 * CI_MULTIPLIER)
   })
 })
 

@@ -4,13 +4,16 @@
 import type { D3InterpolateName } from '$lib/colors'
 import { DEFAULT_FPS_RANGE, ELEMENT_COLOR_SCHEME_NAMES, FPS_STEP } from '$lib/constants'
 import type { HullFaceColorMode } from '$lib/convex-hull/types'
+import type { ElementSymbol } from '$lib/element/types'
 import { symbol_names } from '$lib/labels'
 import type { Vec2, Vec3 } from '$lib/math'
 import type { GizmoOptions } from '$lib/scene/gizmo'
 import type { LegendVisibilityMode } from '$lib/plot/core/utils/series-visibility'
 
 // One leaf of the settings schema. `web_only` settings (fullscreen toggles) are skipped
-// when the schema is synced into the VS Code extension's contributed configuration.
+// when the schema is synced into the VS Code extension's contributed configuration. A leaf
+// whose `value` is a plain object is a free-form map (JSON-schema `object`); `additionalProperties`
+// names its value type (string unless set).
 export interface SettingType<T = unknown> {
   value: T
   description: string
@@ -21,6 +24,7 @@ export interface SettingType<T = unknown> {
   minItems?: number
   maxItems?: number
   items?: { minimum?: number; maximum?: number; multipleOf?: number }
+  additionalProperties?: { type: `string` | `number` | `boolean` | `object` }
   web_only?: true
 }
 
@@ -540,6 +544,7 @@ export const SETTINGS_CONFIG = define_settings({
     vector_configs: typed_setting<Record<string, VectorLayerConfig>>({
       value: {},
       description: `Per-key configuration for site vector layers. Keys map to site property names (e.g. force, magmom, force_DFT). Auto-populated when a structure with vector data loads.`,
+      additionalProperties: { type: `object` },
     }),
     vector_scale: {
       value: 0.75,
@@ -810,6 +815,13 @@ export const SETTINGS_CONFIG = define_settings({
       minimum: 1000000,
       maximum: 2000000000,
     },
+    // Keys are the integer atom types of a LAMMPS dump (JSON object keys are strings);
+    // AtomTypeMapping indexes them by number, which resolves to the same properties
+    atom_type_mapping: typed_setting<Readonly<Record<string, ElementSymbol>>>({
+      value: {},
+      description: `Element symbol for each LAMMPS dump atom type, e.g. { "1": "Si", "2": "O" }. Dumps rarely carry an element column; unmapped types are read as atomic numbers (type 1 = H, 2 = He, ...)`,
+      additionalProperties: { type: `string` },
+    }),
   },
 
   // Histogram specific

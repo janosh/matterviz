@@ -346,6 +346,25 @@ describe(`widget config wiring`, () => {
     expect(stub.read().trajectory).toBeUndefined()
   })
 
+  // The mapping names a LAMMPS dump's atom types for the data_url load; it travels inside
+  // the file viewer's loading_options (never as a top-level prop, which the viewer would
+  // spread onto its wrapper div) and an unset trait leaves loading_options at its default
+  test(`trajectory folds atom_type_mapping into loading_options`, () => {
+    const mapping = { 1: `Si`, 2: `O` }
+    const model = new MockModel({ widget_type: `trajectory`, data_url: `/dump.lammpstrj` })
+    const stub = run_widget(`trajectory`, model)
+    expect(`loading_options` in stub.read()).toBe(false)
+    expect(`atom_type_mapping` in stub.read()).toBe(false)
+    model.push_from_python(`atom_type_mapping`, mapping)
+    flushSync()
+    expect(stub.read().loading_options).toEqual({ atom_type_mapping: mapping })
+    expect(`atom_type_mapping` in stub.read()).toBe(false)
+    model.push_from_python(`atom_type_mapping`, null)
+    flushSync()
+    expect(`loading_options` in stub.read()).toBe(false)
+    expect(WIDGET_MODEL_KEYS.trajectory).toContain(`atom_type_mapping`)
+  })
+
   test.each([
     [`trajectory`, `property_labels`, { energy: `Energy (eV)` }],
     [`band_structure`, `band_structs`, { branches: [] }],

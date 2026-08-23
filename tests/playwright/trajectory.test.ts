@@ -327,7 +327,7 @@ test.describe(`Trajectory Component`, () => {
         stream_metadata(workerfs_stream),
       )
       const random_frames_equal = exact(memfs_frames, workerfs_frames)
-      const descriptors_equal = exact(memfs.signal_descriptors, workerfs.signal_descriptors)
+      const descriptors_equal = exact(memfs.signals, workerfs.signals)
       const oracle_frames_equal = exact(memfs_frames, oracle_frames)
       const oracle_metadata_equal = exact(stream_metadata(memfs_stream), oracle_metadata)
       const oracle_plot_metadata_equal = exact(memfs.properties.rows, oracle_plot_metadata)
@@ -346,8 +346,11 @@ test.describe(`Trajectory Component`, () => {
         stream_value_counts_equal: stream_value_counts.every(
           (value_count) => value_count === expected.length,
         ),
-        loaded_signals: Boolean(memfs.signals ?? workerfs.signals),
-        descriptors: Object.keys(workerfs.signal_descriptors ?? {}).toSorted(),
+        // lazy HDF5 signals cross the worker boundary as descriptors, never with `values`
+        loaded_signals: Object.values({ ...memfs.signals, ...workerfs.signals }).some(
+          (signal) => `values` in signal,
+        ),
+        descriptors: Object.keys(workerfs.signals ?? {}).toSorted(),
         descriptors_equal,
         oracle_frames_equal,
         oracle_metadata_equal,

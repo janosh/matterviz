@@ -297,21 +297,42 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
     if (!sides_equal(base_pad, new_pad)) base_pad = new_pad
   })
 
-  const legend_footprint = $derived.by(() => {
-    void legend_size_revision
-    return measured_footprint(
-      legend_element,
+  const legend_has_explicit_pos = $derived(has_explicit_position(opts.legend()?.style))
+  // Legend box, measured in an effect (after the flush's DOM writes) rather than lazily in
+  // the derivations that consume it, where an offset read landing between two DOM writes
+  // forces a reflow. Re-measured when the legend's content resizes (placed-tween's
+  // ResizeObserver bumps the revision), when the plot resizes (an explicitly styled legend
+  // anchored `right:`/`bottom:` moves with it) and when the legend style changes.
+  let legend_footprint = $state(opts.legend_footprint_fallback ?? { width: 120, height: 60 })
+  let legend_offset = $state({ x: 0, y: 0 })
+  $effect(() => {
+    void [legend_size_revision, width, height, opts.legend()?.style]
+    const element = legend_element
+    const size = measured_footprint(
+      element,
       opts.legend_footprint_fallback ?? { width: 120, height: 60 },
     )
+    const offset =
+      element && legend_has_explicit_pos
+        ? { x: element.offsetLeft, y: element.offsetTop }
+        : { x: 0, y: 0 }
+    untrack(() => {
+      if (size.width !== legend_footprint.width || size.height !== legend_footprint.height) {
+        legend_footprint = size
+      }
+      if (offset.x !== legend_offset.x || offset.y !== legend_offset.y) legend_offset = offset
+    })
   })
-  const legend_has_explicit_pos = $derived(has_explicit_position(opts.legend()?.style))
 
   // Legend drag: a legend the user grabbed or dropped owns its position; the solver only
   // routes around it (via exclusion rects) from then on.
   let legend_is_dragging = $state(false)
   let legend_manual_position = $state<{ x: number; y: number } | null>(null)
-  // Cursor offset inside the legend at drag start; plain since only the handlers read it
+  // Cursor offset inside the legend and the SVG's client origin, both captured at drag start
+  // (the SVG doesn't move during a drag, and measuring it after every position write would
+  // force a reflow per mousemove); plain since only the handlers read them
   let legend_drag_offset = { x: 0, y: 0 }
+  let legend_drag_origin = { x: 0, y: 0 }
   const constrain_legend_position = (
     position: { x: number; y: number },
     footprint: { width: number; height: number },
@@ -332,18 +353,19 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
     legend_is_dragging = true
     // Offset from the cursor to the legend's rendered corner (accounts for transforms)
     const legend_rect = legend_el.getBoundingClientRect()
+    const svg_rect = svg_element.getBoundingClientRect()
     legend_drag_offset = {
       x: event.clientX - legend_rect.left,
       y: event.clientY - legend_rect.top,
     }
+    legend_drag_origin = { x: svg_rect.left, y: svg_rect.top }
   }
   const legend_drag = (event: MouseEvent): void => {
     if (!legend_is_dragging || !svg_element || !legend_element) return
-    const svg_rect = svg_element.getBoundingClientRect()
     legend_manual_position = constrain_legend_position(
       {
-        x: event.clientX - svg_rect.left - legend_drag_offset.x,
-        y: event.clientY - svg_rect.top - legend_drag_offset.y,
+        x: event.clientX - legend_drag_origin.x - legend_drag_offset.x,
+        y: event.clientY - legend_drag_origin.y - legend_drag_offset.y,
       },
       legend_footprint,
     )
@@ -360,11 +382,7 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
     ) {
       return []
     }
-    const position = legend_manual_position ?? {
-      x: legend_element.offsetLeft,
-      y: legend_element.offsetTop,
-    }
-    return [{ ...position, ...legend_footprint }]
+    return [{ ...(legend_manual_position ?? legend_offset), ...legend_footprint }]
   })
 
   const legend_item = $derived(

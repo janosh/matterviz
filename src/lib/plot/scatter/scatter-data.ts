@@ -1,11 +1,11 @@
 // Pure data-transform helpers extracted from ScatterPlot.svelte. Everything here is
 // stateless: component $state/$derived values are passed in as parameters.
 import type { D3SymbolName } from '$lib/labels'
+import { plot_color } from '$lib/colors'
 import { symbol_names } from '$lib/labels'
 import {
   build_legend_items,
   first_point_style,
-  get_series_color,
   get_series_symbol,
 } from '$lib/plot/core/data-transform'
 import { is_fill_gradient } from '$lib/plot/core/fill-utils'
@@ -169,7 +169,7 @@ export function build_legend_data<Metadata = Record<string, unknown>>(
     series,
     (data_series, series_idx) => {
       // Series-index defaults give auto-cycled colors/symbols
-      const series_default_color = get_series_color(series_idx)
+      const series_default_color = plot_color(series_idx)
       const display_style: LegendDisplayStyle = {
         symbol_type: default_symbol ?? get_series_symbol(series_idx),
         symbol_color: series_default_color,

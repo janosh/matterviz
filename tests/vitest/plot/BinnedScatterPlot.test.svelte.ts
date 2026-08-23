@@ -3,7 +3,7 @@ import type { FacetLayoutContext } from '$lib/plot/core/facets'
 import { COLOR_BAR_DEFAULTS } from '$lib/plot/core/types'
 import type { BinnedDensityConfig } from '$lib/plot/scatter/binned-scatter-types'
 import BinnedScatterPlot from '$lib/plot/scatter/BinnedScatterPlot.svelte'
-import { get_series_color } from '$lib/plot/core/data-transform'
+import { plot_color } from '$lib/colors'
 import { interpolateViridis } from 'd3-scale-chromatic'
 import { createRawSnippet, mount, tick, type ComponentProps } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
@@ -950,7 +950,7 @@ describe(`BinnedScatterPlot`, () => {
   })
 
   // Regression: colorless multi-series must use the series index color everywhere. This catches the
-  // old get_series_color(0)-for-all fallback in both point rendering and per-series marginals.
+  // old plot_color(0)-for-all fallback in both point rendering and per-series marginals.
   test(`colorless series use distinct per-index colors`, async () => {
     const fill_styles: string[] = []
     const ctx = mock_canvas_context()
@@ -970,15 +970,13 @@ describe(`BinnedScatterPlot`, () => {
     await settle()
     expect(render_mode()).toBe(`points`)
     // draw_points paints each colorless series with its index color (canvas fillStyle)
-    expect(fill_styles).toContain(get_series_color(0))
-    expect(fill_styles).toContain(get_series_color(1))
+    expect(fill_styles).toContain(plot_color(0))
+    expect(fill_styles).toContain(plot_color(1))
     // per-series marginals get the same index colors so they're visually distinguishable
     const marginal_fills = [...document.querySelectorAll(`.marginal-top rect`)].map((rect) =>
       rect.getAttribute(`fill`),
     )
-    expect(marginal_fills).toEqual(
-      expect.arrayContaining([get_series_color(0), get_series_color(1)]),
-    )
+    expect(marginal_fills).toEqual(expect.arrayContaining([plot_color(0), plot_color(1)]))
   })
 
   test(`does not paint canvas markers whose color is none`, async () => {
@@ -1135,7 +1133,7 @@ describe(`BinnedScatterPlot`, () => {
     expect(on_point_click).toHaveBeenCalledWith(
       expect.objectContaining({
         series_idx: 1,
-        color: get_series_color(1),
+        color: plot_color(1),
         point_data: { label: `label-wbm-1` },
       }),
     )

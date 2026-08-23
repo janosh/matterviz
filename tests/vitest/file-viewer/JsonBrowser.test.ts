@@ -254,11 +254,11 @@ test(`a selection pending when the browser unmounts never renders`, async () => 
   expect(mount_viewer).not.toHaveBeenCalled()
 })
 
-// The tree wants ~320 px whatever the editor width: the default ratio is seeded from that,
-// and dragging can shrink neither the tree below 150 px nor the viewer below 200 px
+// The tree wants ~320 px whatever the editor width (the divider runs in pixel mode, clamped to
+// the browser), and dragging can shrink neither the tree below 150 px nor the viewer below 200 px
 test.each([
-  [1000, `32%`, 50, `15%`, 950, `80%`],
-  [500, `60%`, 50, `30%`, 450, `60%`],
+  [1000, `320px`, 50, `150px`, 950, `800px`],
+  [500, `300px`, 50, `150px`, 450, `300px`],
 ])(
   `sidebar in a %i px browser starts at %s and drags clamp to [%s, %s]`,
   (width, seeded, min_client_x, min_size, max_client_x, max_size) => {

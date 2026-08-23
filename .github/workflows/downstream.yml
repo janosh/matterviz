@@ -1,0 +1,73 @@
+name: Downstream
+
+# Informational (not a required check): builds dist/ and the anywidget bundle from this checkout
+# and runs the consumers' own test suites against it, so widget-bridge or export drift surfaces
+# before a release rather than when pymatviz/matbench-discovery bump their matterviz pin.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  pymatviz:
+    name: pymatviz widget tests
+    runs-on: ubuntu-latest
+    continue-on-error: false
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+      - name: Install dependencies
+        uses: ./.github/actions/setup
+        with:
+          extensions: anywidget # also builds dist/, which the anywidget `file:../..` dep copies
+      - name: Build anywidget bundle
+        run: pnpm -C extensions/anywidget build
+      - name: Checkout pymatviz main
+        uses: actions/checkout@v6
+        with:
+          repository: janosh/pymatviz
+          path: pymatviz
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v8
+      # MATTERVIZ_ANYWIDGET_DIR makes pymatviz.widgets.matterviz.fetch_widget_asset read this
+      # build instead of its pinned matterviz-anywidget CDN release; playwright + chromium so the
+      # headless export and JS prop parity tests run rather than skip.
+      - name: Run widget tests against this bundle
+        working-directory: pymatviz
+        env:
+          MATTERVIZ_ANYWIDGET_DIR: ${{ github.workspace }}/extensions/anywidget/build
+        run: |
+          uv pip install -e '.[test,brillouin,export]' --system
+          playwright install --with-deps chromium
+          pytest tests/widgets
+
+  matbench-discovery:
+    name: matbench-discovery site tests
+    runs-on: ubuntu-latest
+    continue-on-error: false
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+      - name: Install dependencies
+        uses: ./.github/actions/setup
+      - name: Build component library
+        run: pnpm package:dist
+      - name: Checkout matbench-discovery main
+        uses: actions/checkout@v6
+        with:
+          repository: janosh/matbench-discovery
+          path: matbench-discovery
+      # `file:` copies dist/ (package.json `files`) and resolves matterviz's own dependencies from
+      # the registry, unlike `link:`, which would drag in this checkout's node_modules and a
+      # second svelte runtime. pnpm never runs `prepare` for dependencies, so the `dist/` built
+      # above is what the site tests import.
+      - name: Run site tests against this checkout
+        working-directory: matbench-discovery/site
+        run: |
+          pnpm install
+          pnpm add -D "file:$GITHUB_WORKSPACE"
+          pnpm test

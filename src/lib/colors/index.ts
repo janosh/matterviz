@@ -160,18 +160,20 @@ export const is_concrete_color = (val: unknown): val is string =>
 export const is_opaque_color = (val: unknown): val is string =>
   typeof val === `string` && to_rendered_rgb(val.trim())?.opacity === 1
 
+// The single series palette shared by every plot (d3 schemeTableau10): core plots
+// (ScatterPlot, BarPlot, Histogram, BoxPlot, Sunburst, Sankey, …) and domain plots
+// (RDF, XRD, bands, DOS, trajectory panes, …) all cycle through it by series index
 export const PLOT_COLORS = [
-  // Color series for e.g. line plots
-  `#63b3ed`,
-  `#68d391`,
-  `#fbd38d`,
-  `#fc8181`,
-  `#d6bcfa`,
-  `#4fd1c7`,
-  `#f687b3`,
-  `#fed7d7`,
-  `#bee3f8`,
-  `#c6f6d5`,
+  `#4e79a7`, // blue
+  `#f28e2c`, // orange
+  `#e15759`, // red
+  `#76b7b2`, // teal
+  `#59a14f`, // green
+  `#edc949`, // yellow
+  `#af7aa1`, // purple
+  `#ff9da7`, // pink
+  `#9c755f`, // brown
+  `#bab0ab`, // gray
 ] as const
 
 // Series color for the idx-th trace, cycling through PLOT_COLORS

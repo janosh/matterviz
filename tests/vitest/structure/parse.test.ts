@@ -867,6 +867,53 @@ O2   O   0.410  0.140  0.880  1.000`
     warn_spy.mockRestore()
   })
 
+  // A plain CIF derived from a PDB keeps PDB atom names as labels (`CD` is a carbon, `NE2` a
+  // nitrogen, `HG11` a hydrogen) and marks itself with a residue / record-type column. With
+  // that column the first letter is the element and two letters are read only when one letter
+  // names nothing, like parse_mmcif; without it the all-caps label still reads two letters
+  // first (Cd, Ne, Hg) with the per-file ambiguity warning
+  // oxfmt-ignore
+  test.each([
+    [`CD`, `C`, `Cd`], [`NE2`, `N`, `Ne`], [`ND1`, `N`, `Nd`], [`CE1`, `C`, `Ce`],
+    [`OG`, `O`, `Og`], [`HG11`, `H`, `Hg`], [`CA`, `C`, `Ca`], [`HO1`, `H`, `Ho`],
+    [`ZN`, `Zn`, `Zn`], [`MG`, `Mg`, `Mg`], [`N`, `N`, `N`], [`O1`, `O`, `O`], [`OH`, `O`, `O`],
+  ])(`reads PDB-style CIF label '%s' as %s with a residue column and %s without`, (label, with_residue, without_residue) => {
+    const warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
+    const parse_with_loop = (loop: string, row: string) => {
+      const result = parse_cif(`data_test\n${cell5}\n${loop}\n${row}`)
+      assert(result, `Failed to parse CIF row ${row}`)
+      return result.sites.map((site) => site.species[0].element)
+    }
+    const ambiguity_warnings = () =>
+      warn_spy.mock.calls.filter(([msg]) =>
+        String(msg).includes(`ambiguous all-caps atom-site labels`),
+      )
+    const residue_loops = [
+      `${label_loop}\n_atom_site_label_comp_id`,
+      `loop_\n_atom_site_group_PDB\n_atom_site_label\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\n_atom_site_occupancy`,
+    ]
+    for (const [idx, loop] of residue_loops.entries()) {
+      const row = idx === 0 ? `${label} 0 0 0 1 HIS` : `ATOM ${label} 0 0 0 1`
+      expect(parse_with_loop(loop, row), loop).toEqual([with_residue])
+    }
+    expect(ambiguity_warnings()).toEqual([])
+    expect(parse_with_loop(label_loop, `${label} 0 0 0 1`)).toEqual([without_residue])
+    expect(ambiguity_warnings()).toHaveLength(with_residue === without_residue ? 0 : 1)
+    warn_spy.mockRestore()
+  })
+
+  // pymatgen maps the water/hydroxyl labels `OH`/`OH2` to '' and drops the row; here each is
+  // one O site that keeps its occupancy, and an OH2/OH pair sharing a position merges
+  test(`OH2 / OH labels are oxygen sites with their occupancy, not dropped`, () => {
+    const rows = `OH2 0.5 0.5 0.5 0.655\nOH2 0.25 0.25 0.25 0.655\nOH 0.25 0.25 0.25 0.345`
+    const result = parse_cif(`data_test\n${cell5}\n${label_loop}\n${rows}`)
+    assert(result, `Failed to parse OH2 rows`)
+    expect(result.sites.map((site) => [site.label, site.species])).toEqual([
+      [`OH2`, [{ element: `O`, occu: 0.655, oxidation_state: 0 }]],
+      [`OH2`, [{ element: `O`, occu: 1, oxidation_state: 0 }]],
+    ])
+  })
+
   // Symops may be listed unquoted next to a site id (`1 x,y,z`, or sloppily `1 x, y, z`);
   // joining the whole row used to read `1x,y,z` as an op with zero coefficients, which
   // generated phantom atoms at the translation vector

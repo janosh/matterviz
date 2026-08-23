@@ -69,7 +69,10 @@ const resolve_large_file = async (
 
 // Host-configurable loading knobs forwarded to open_trajectory (VS Code settings reach the
 // webview this way; the defaults otherwise come from DEFAULTS.trajectory)
-export type TrajectoryLoadOptions = Pick<OpenTrajectoryOptions, `index_above_bytes`>
+export type TrajectoryLoadOptions = Pick<
+  OpenTrajectoryOptions,
+  `index_above_bytes` | `atom_type_mapping`
+>
 
 const trajectory_result = async (
   source: string | ArrayBuffer,

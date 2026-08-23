@@ -1,24 +1,22 @@
 <script lang="ts">
   import EmptyState from '$lib/EmptyState.svelte'
   import FilePicker from '$lib/FilePicker.svelte'
-  import type { AnyStructure } from '$lib/structure'
   import { Structure } from '$lib/structure'
   import type {
     CellType,
     ShowSymmetryKinds,
     SymmetryDataset,
     SymmetrySettings,
+    WyckoffPos,
   } from '$lib/symmetry'
   import {
     DEFAULT_SHOW_SYM_KINDS,
     default_sym_settings,
     ensure_moyo_wasm_ready,
-    map_wyckoff_to_all_atoms,
     spacegroup_wyckoff_positions,
     symmetry_elements_from_ops,
     SymmetryElementControls,
     SymmetryStats,
-    wyckoff_positions_from_moyo,
     WyckoffTable,
   } from '$lib/symmetry'
   import { structure_files } from '$site/structures'
@@ -30,8 +28,9 @@
   const default_filename = `Bi2Zr2O8-Fm3m.json`
   let source_filename = $state(default_filename)
   let display_filename = $state(default_filename)
-  let current_structure = $state<AnyStructure | null>(null)
-  let displayed_structure = $state<AnyStructure>()
+  // Wyckoff rows already re-expressed onto whatever cell the viewer renders
+  // (conventional/primitive/supercell), bound from the viewer
+  let wyckoff_positions = $state<WyckoffPos[]>([])
   let hovered_wyckoff_sites = $state<number[]>([])
   let active_wyckoff_sites = $state<number[]>([])
   // Symmetry data for each example
@@ -73,28 +72,12 @@
     }
   })
 
-  const base_wyckoff_positions = $derived(wyckoff_positions_from_moyo(top_ex_sym_data))
   // Full Wyckoff-position database of the detected space-group setting: adds ITA
   // representative coordinates and lets the table list unoccupied positions
   const wyckoff_db = $derived(
     wasm_ready && top_ex_sym_data
       ? spacegroup_wyckoff_positions(top_ex_sym_data.hall_number)
       : [],
-  )
-  // Rows re-expressed onto whatever cell the viewer renders (conventional/primitive/supercell)
-  const wyckoff_positions = $derived(
-    top_ex_sym_data &&
-      displayed_structure &&
-      current_structure &&
-      `lattice` in current_structure &&
-      `lattice` in displayed_structure
-      ? map_wyckoff_to_all_atoms(
-          base_wyckoff_positions,
-          displayed_structure,
-          current_structure,
-          top_ex_sym_data,
-        )
-      : base_wyckoff_positions,
   )
 </script>
 
@@ -154,7 +137,7 @@
 
   <Structure
     data_url="/structures/{source_filename}"
-    bind:displayed_structure
+    bind:wyckoff_positions
     bind:sym_data={top_ex_sym_data}
     bind:symmetry_settings={wide_example_symmetry_settings}
     bind:cell_type={top_ex_cell_type}
@@ -164,11 +147,10 @@
       symmetry_elements: sym_elements,
       symmetry_elements_props: { show_kinds: show_sym_kinds },
     }}
-    on_file_load={({ structure, filename = ``, source_filename: loaded_source_filename }) => {
+    on_file_load={({ filename = ``, source_filename: loaded_source_filename }) => {
       display_filename = filename || source_filename
       source_filename = loaded_source_filename ?? source_filename
       set_file_param(source_filename)
-      current_structure = structure || null
     }}
     style="height: 100%; min-height: 500px"
   >

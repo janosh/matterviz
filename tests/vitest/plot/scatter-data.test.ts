@@ -1,5 +1,6 @@
 import type { AxisRanges, DataSeries } from '$lib/plot'
-import { get_series_color, get_series_symbol } from '$lib/plot/core/data-transform'
+import { plot_color } from '$lib/colors'
+import { get_series_symbol } from '$lib/plot/core/data-transform'
 import type { LegendFill } from '$lib/plot/scatter/scatter-data'
 import {
   build_legend_data,
@@ -168,8 +169,8 @@ describe(`build_legend_data`, () => {
         visible: true,
         display_style: {
           symbol_type: `Square`,
-          symbol_color: get_series_color(0),
-          line_color: get_series_color(0),
+          symbol_color: plot_color(0),
+          line_color: plot_color(0),
         },
       },
       {

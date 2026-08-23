@@ -111,11 +111,17 @@ export interface TrajectorySignal {
   unit?: string
 }
 
+// A signal the run can stream on request (collect_positions `signal_keys`, or `vector_keys`
+// for a per-atom [n_atoms, 3] signal with one sample per frame) but has not loaded
 export interface TrajectorySignalDescriptor {
   sample_shape: number[]
   sample_count: number
   unit?: string
 }
+
+// One entry of `TrajectoryRun.signals`: loaded (`values` present) or a lazy descriptor. Use
+// `is_loaded_signal` / `is_signal_descriptor` from run.ts to tell them apart.
+export type TrajectoryRunSignal = TrajectorySignal | TrajectorySignalDescriptor
 
 export type TrajectorySource = string | ArrayBuffer | Blob
 

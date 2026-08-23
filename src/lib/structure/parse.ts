@@ -353,13 +353,17 @@ const apply_symmetry_ops = (
   return equivalent_atoms
 }
 
-// Atom-site tag suffix -> field name (supports fract and Cartn coordinates)
+// Atom-site tag suffix -> field name (supports fract and Cartn coordinates). The residue /
+// record-type columns of a PDB-derived CIF (`_atom_site_label_comp_id`, `_atom_site_group_PDB`)
+// all map to `residue`: their presence means labels are PDB atom names (see cif_row_element)
 // oxfmt-ignore
 const CIF_ATOM_SITE_FIELDS = [
   [`_atom_site_label`, `label`], [`_atom_site_type_symbol`, `symbol`],
   [`_atom_site_fract_x`, `x`], [`_atom_site_fract_y`, `y`], [`_atom_site_fract_z`, `z`],
   [`_atom_site_cartn_x`, `cart_x`], [`_atom_site_cartn_y`, `cart_y`], [`_atom_site_cartn_z`, `cart_z`],
   [`_atom_site_occupancy`, `occupancy`], [`_atom_site_disorder_group`, `disorder`],
+  [`_atom_site_label_comp_id`, `residue`], [`_atom_site_auth_comp_id`, `residue`],
+  [`_atom_site_group_pdb`, `residue`],
 ]
 
 const build_cif_atom_site_header_indices = (headers: string[]): Record<string, number> => {
@@ -402,6 +406,10 @@ type CifAtom = {
 // common groups; read before the element readings so `NO3` is N rather than nobelium and
 // `PO4` P rather than polonium. A key must be followed by a non-letter so `D1` is deuterium
 // but `Dy1` dysprosium, and `CO3` is carbonate while all-caps `CO1` stays cobalt.
+// Deliberate departure from pymatgen: it maps hydroxyl/water labels `OH`/`OH2` to '' and drops
+// those rows, which loses a real oxygen site (hydrogens are rarely listed anyway). Here they
+// are O and keep their occupancy, so an `OH2 0.655` / `OH 0.345` pair on one position merges
+// into a single fully occupied O site like any other partially occupied pair.
 const CIF_GROUP_ELEMENTS: Readonly<Record<string, ElementSymbol>> = {
   Hw: `H`,
   D: `H`,
@@ -432,10 +440,14 @@ const cif_group_element = (text = ``): ElementSymbol | undefined => {
 // all-caps label is read two letters first like pymatgen's CifParser._parse_symbol (`FE1` ->
 // Fe, `CA` -> Ca, `HO1` -> Ho); when the one-letter reading is an element too (PDB-style `CA`
 // alpha carbon, hydroxyl `HO1`) it is returned as `ambiguity` so parse_cif can warn once per file.
+// `pdb_names` (the loop carries a residue / group_PDB column, so labels are PDB atom names)
+// resolves that ambiguity the way parse_mmcif does: the first letter is the element (`CD` ->
+// C, `NE2` -> N, `HG11` -> H) and two letters only when one letter names nothing (`ZN` -> Zn).
 const cif_row_element = (
   raw_symbol: string | undefined,
   raw_label: string | undefined,
   atom_idx: number,
+  pdb_names = false,
 ): { element: ElementSymbol; ambiguity?: string } => {
   const symbol_letters = /^[A-Za-z]+/.exec(raw_symbol ?? ``)?.[0] ?? ``
   const element =
@@ -454,10 +466,12 @@ const cif_row_element = (
   }
   const two_letter = coerce_elem_symbol(capitalize_symbol(all_caps))
   if (two_letter) {
-    const ambiguity = is_elem_symbol(label_letters)
-      ? `'${raw_label}' read as ${two_letter} (not ${label_letters})`
-      : undefined
-    return { element: two_letter, ambiguity }
+    if (!is_elem_symbol(label_letters)) return { element: two_letter }
+    if (pdb_names) return { element: label_letters }
+    return {
+      element: two_letter,
+      ambiguity: `'${raw_label}' read as ${two_letter} (not ${label_letters})`,
+    }
   }
   return { element: element_from_candidates([symbol_letters, label_letters], atom_idx) }
 }
@@ -494,6 +508,7 @@ const parse_cif_atom_data = (
     symbol >= 0 ? raw_data[symbol] : undefined,
     raw_data[label],
     atom_idx,
+    indices.residue !== undefined,
   )
   // Only a real label column names the site; `.`/`?` are CIF's unset placeholders
   const raw_id = indices.label === undefined ? undefined : raw_data[indices.label]

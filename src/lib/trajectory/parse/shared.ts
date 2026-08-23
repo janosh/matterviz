@@ -6,8 +6,8 @@ import type {
   TrajectoryFrame,
   TrajectoryMetadata,
   TrajectoryPositionStream,
+  TrajectoryRunSignal,
   TrajectorySignal,
-  TrajectorySignalDescriptor,
 } from '$lib/trajectory/index'
 
 export type WarnFn = (message: string, error?: unknown) => void
@@ -50,8 +50,8 @@ export interface ParsedTrajectory {
   time_step?: number
   time_unit?: string
   atom_masses?: number[]
+  // Frames are all in memory, so every run-level signal is too
   signals?: Record<string, TrajectorySignal>
-  signal_descriptors?: Record<string, TrajectorySignalDescriptor>
   // Pre-extracted per-frame scalars; omitted when the frames themselves are the source
   properties?: TrajectoryMetadata[]
 }
@@ -69,6 +69,7 @@ export interface LazyTrajectorySource {
   time_step?: number
   time_unit?: string
   atom_masses?: number[]
-  signal_descriptors?: Record<string, TrajectorySignalDescriptor>
+  // Descriptors for what collect_positions can stream, plus any signal read eagerly
+  signals?: Record<string, TrajectoryRunSignal>
   dispose?: () => void
 }

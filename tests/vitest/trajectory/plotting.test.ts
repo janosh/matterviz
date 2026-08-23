@@ -217,7 +217,7 @@ describe(`generate_plot_series`, () => {
     expect(raw_y).toEqual(smoothed.x.map((x) => raw_series[0].y[x]))
     expect(smoothed.line_style).toMatchObject({ stroke_width: 2.5, curve: `monotone` })
     expect(underlay.line_style).toEqual({
-      stroke: `color-mix(in srgb, #63b3ed 18%, transparent)`,
+      stroke: `color-mix(in srgb, #4e79a7 18%, transparent)`,
       stroke_width: 1,
       curve: `linear`,
     })

@@ -654,30 +654,16 @@ describe(`get_atom_colors`, () => {
   })
 })
 
-describe(`Performance`, () => {
-  const CI = 3 // CI multiplier
-
-  // Budgets are the pre-optimization runtimes cut by >10x: 500 atoms took 4s+, 1000 atoms
-  // 60s+. The 10s suite timeout fails fast overall.
-  // oxfmt-ignore
-  test.each<[string, number, (idx: number) => { xyz: Vec3; element: ElementSymbol }, number]>([
-    [`500 atoms`, 500, (idx) => ({
-      xyz: [idx % 10, Math.floor(idx / 10) % 10, Math.floor(idx / 100)],
-      element: ([`C`, `O`, `N`, `H`] as const)[idx % 4],
-    }), 1000 * CI],
-    [`1000 atoms`, 1000, (idx) => ({
+// Coordination colouring once took 60 s for 1000 atoms; its timing lives in
+// perf-baselines.test.ts, this only checks the result shape at scale
+test(`get_coordination_colors colours every site of a 1000-atom grid`, () => {
+  const structure = make_struct(
+    Array.from({ length: 1000 }, (_, idx) => ({
       xyz: [(idx % 10) * 1.5, (Math.floor(idx / 10) % 10) * 1.5, Math.floor(idx / 100) * 1.5],
       element: ([`C`, `O`] as const)[idx % 2],
-    }), 3000 * CI],
-  ])(`%s fast`, (_name, count, make_site, budget_ms) => {
-    const structure = make_struct(Array.from({ length: count }, (_, idx) => make_site(idx)))
-    const start = performance.now()
-    const { colors } = ap.get_coordination_colors(structure)
-    const elapsed = performance.now() - start
-
-    expect(colors).toHaveLength(count)
-    expect(elapsed).toBeLessThan(budget_ms)
-  }, 10000)
+    })),
+  )
+  expect(ap.get_coordination_colors(structure).colors).toHaveLength(1000)
 })
 
 describe(`Selective dynamics`, () => {
