@@ -94,10 +94,12 @@ export const vite_plugin_moyo_wasm_source = (
   },
 })
 
-// `virtual:source-symbols`: every exported top-level definition under src/lib (functions,
-// consts, classes, interfaces, types, enums) mapped to `path#Lline`, plus the git ref the
-// lines were read at, so docs can link a mention like `TrajectoryRun` straight to its
-// definition. Names defined in more than one file are dropped rather than guessed at.
+// `virtual:source-symbols`: every source file under src/lib, every exported top-level
+// definition in them (functions, consts, classes, interfaces, types, enums) mapped to
+// `path#Lline`, plus the git ref the lines were read at, so docs can link a mention like
+// `Structure` or `TrajectoryRun` straight to its source. Names defined in more than one file
+// are dropped rather than guessed at. A plugin rather than import.meta.glob in the site: a
+// lazy glob over src/lib makes the build emit a dynamic-import chunk per file.
 const SYMBOL_MODULE_ID = `virtual:source-symbols`
 const EXPORT_DEFINITION_RE =
   /^export (?:async function|function|abstract class|class|const|let|interface|type|enum) (?<name>[A-Za-z_$][\w$]*)/
@@ -107,11 +109,20 @@ export const vite_plugin_source_symbols = (root = process.cwd()): Plugin => ({
   load(id) {
     if (id !== `\0${SYMBOL_MODULE_ID}`) return null
     const lib_dir = join(root, `src/lib`)
+    const files: string[] = []
     const symbols = new Map<string, string | null>()
     for (const entry of readdirSync(lib_dir, { recursive: true, withFileTypes: true })) {
       const file = join(entry.parentPath, entry.name)
-      if (!entry.isFile() || !file.endsWith(`.ts`) || /\.(?:test|d)\.ts$/.test(file)) continue
+      if (
+        !entry.isFile() ||
+        !/\.(?:svelte|ts)$/.test(file) ||
+        /\.(?:test|d)\.ts$/.test(file)
+      ) {
+        continue
+      }
       const path = `/${relative(root, file).replaceAll(`\\`, `/`)}`
+      files.push(path)
+      if (!file.endsWith(`.ts`)) continue
       for (const [idx, line] of readFileSync(file, `utf-8`).split(`\n`).entries()) {
         const name = EXPORT_DEFINITION_RE.exec(line)?.groups?.name
         if (name) symbols.set(name, symbols.has(name) ? null : `${path}#L${idx + 1}`)
@@ -124,6 +135,10 @@ export const vite_plugin_source_symbols = (root = process.cwd()): Plugin => ({
       // no git (tarball build): links follow main instead of a pinned commit
     }
     const unique = Object.fromEntries([...symbols].filter(([, loc]) => loc !== null))
-    return `export const ref = ${JSON.stringify(ref)}\nexport const symbols = ${JSON.stringify(unique)}\n`
+    return [
+      `export const ref = ${JSON.stringify(ref)}`,
+      `export const files = ${JSON.stringify(files)}`,
+      `export const symbols = ${JSON.stringify(unique)}`,
+    ].join(`\n`)
   },
 })

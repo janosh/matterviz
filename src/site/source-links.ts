@@ -4,16 +4,14 @@
 // exact, unambiguous names match: `index.ts` exists in many folders and `src` is a prop, so
 // neither links. Links pin the commit the site was built from so line numbers stay right.
 import pkg from '$root/package.json'
-import { ref, symbols } from 'virtual:source-symbols'
-
-const SOURCE_PATHS = Object.keys(import.meta.glob(`$lib/**/*.{svelte,ts}`))
+import { files, ref, symbols } from 'virtual:source-symbols'
 
 // name → repo path (with `#Lline` for definitions), or null once two files claim the name
 const location_by_name = new Map<string, string | null>()
 const register = (name: string, location: string): void => {
   location_by_name.set(name, location_by_name.has(name) ? null : location)
 }
-for (const path of SOURCE_PATHS) {
+for (const path of files) {
   const basename = path.split(`/`).pop() ?? path
   register(basename, path)
   // Components are referred to by bare name far more often than by file name
