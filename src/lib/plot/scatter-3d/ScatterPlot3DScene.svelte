@@ -41,7 +41,7 @@
   import { normalize_to_scene } from '$lib/plot/core/reference-line'
   import ReferenceLine3D from '$lib/plot/core/components/ReferenceLine3D.svelte'
   import ReferencePlane from '$lib/plot/core/components/ReferencePlane.svelte'
-  import { create_size_scale } from '$lib/plot/core/scales'
+  import { collect_size_values, create_size_scale } from '$lib/plot/core/scales'
   import Surface3D from '$lib/plot/scatter-3d/Surface3D.svelte'
 
   let {
@@ -127,6 +127,8 @@
 
   extras.interactivity()
 
+  type AxisKey = `x` | `y` | `z`
+
   // Scene dimensions: x/y are horizontal (2:2), z is vertical (1)
   // Note: In Three.js, Y is vertical. We map user's Z → Three.js Y (vertical)
   // and user's Y → Three.js Z (depth). So scene_z here refers to Three.js Y.
@@ -175,25 +177,6 @@
   // Sign helpers for tick/label offsets (point outward from cube center)
   const sign_x = $derived(pos.x < 0 ? -1 : 1)
   const sign_y = $derived(pos.y < 0 ? -1 : 1)
-
-  // Flatten all points from series
-  let all_points = $derived(
-    series.filter(Boolean).flatMap((srs, series_idx) =>
-      srs.x.map((x_val, point_idx) => ({
-        x: x_val,
-        y: srs.y[point_idx],
-        z: srs.z[point_idx],
-        series_idx,
-        point_idx,
-        color_value: srs.color_values?.[point_idx] ?? null,
-        size_value: srs.size_values?.[point_idx] ?? null,
-        metadata: Array.isArray(srs.metadata) ? srs.metadata[point_idx] : srs.metadata,
-        point_style: Array.isArray(srs.point_style)
-          ? srs.point_style[point_idx]
-          : srs.point_style,
-      })),
-    ),
-  )
 
   // Sample surface points for range calculation (10x10 grid)
   function sample_surface(surface: Surface3DConfig): { x: number; y: number; z: number }[] {
@@ -245,7 +228,8 @@
       .domain() as Vec2
   }
 
-  // Collect xyz extents from points and surfaces in one pass (no intermediate arrays)
+  // xyz extents straight off the series arrays (hidden series included, so a legend toggle
+  // never re-scales the cube) plus the sampled surfaces; no per-point objects are built here
   let surface_samples = $derived(surfaces.flatMap(sample_surface))
   let data_extents = $derived.by(() => {
     const extents = {
@@ -253,16 +237,24 @@
       y: [Infinity, -Infinity] as Vec2,
       z: [Infinity, -Infinity] as Vec2,
     }
-    for (const points of [all_points, surface_samples]) {
-      for (const pt of points) {
-        for (const axis of [`x`, `y`, `z`] as const) {
-          const val = pt[axis]
-          if (!isFinite(val)) continue
-          const extent = extents[axis]
-          if (val < extent[0]) extent[0] = val
-          if (val > extent[1]) extent[1] = val
-        }
+    const extend = (axis: AxisKey, val: number) => {
+      if (!isFinite(val)) return
+      const extent = extents[axis]
+      if (val < extent[0]) extent[0] = val
+      if (val > extent[1]) extent[1] = val
+    }
+    for (const srs of series) {
+      if (!srs) continue
+      for (let idx = 0; idx < srs.x.length; idx++) {
+        extend(`x`, srs.x[idx])
+        extend(`y`, srs.y[idx])
+        extend(`z`, srs.z[idx])
       }
+    }
+    for (const pt of surface_samples) {
+      extend(`x`, pt.x)
+      extend(`y`, pt.y)
+      extend(`z`, pt.z)
     }
     return extents
   })
@@ -275,21 +267,32 @@
   const normalize_z = (value: number) => normalize_to_scene(value, z_range, scene_z)
 
   // Size scale (the color scale is computed by the wrapper and passed as a prop)
-  let all_size_values = $derived(
-    all_points.map((pt) => pt.size_value).filter((val): val is number => val != null),
-  )
-  let size_scale_fn = $derived(create_size_scale(size_scale, all_size_values))
+  let size_scale_fn = $derived(create_size_scale(size_scale, collect_size_values(series)))
 
-  // Process points with normalized positions
-  // Swap Y/Z for Three.js: user Z → Three.js Y (vertical), user Y → Three.js Z (depth)
-  let processed_points = $derived(
-    all_points.map((pt): InternalPoint3D<Metadata> => ({
-      ...pt,
-      x: normalize_x(pt.x), // user X → Three.js X
-      y: normalize_z(pt.z), // user Z → Three.js Y (vertical)
-      z: normalize_y(pt.y), // user Y → Three.js Z (depth)
-    })),
-  )
+  // Every point of every visible series in scene coordinates, built in one pass and in
+  // (series_idx, point_idx) order. Swap Y/Z for Three.js: user Z → Three.js Y (vertical),
+  // user Y → Three.js Z (depth).
+  let processed_points = $derived.by(() => {
+    const points: InternalPoint3D<Metadata>[] = []
+    series.forEach((srs, series_idx) => {
+      if (!srs || !(srs.visible ?? true)) return
+      const { metadata, point_style } = srs
+      for (let point_idx = 0; point_idx < srs.x.length; point_idx++) {
+        points.push({
+          x: normalize_x(srs.x[point_idx]),
+          y: normalize_z(srs.z[point_idx]),
+          z: normalize_y(srs.y[point_idx]),
+          series_idx,
+          point_idx,
+          color_value: srs.color_values?.[point_idx] ?? null,
+          size_value: srs.size_values?.[point_idx] ?? null,
+          metadata: Array.isArray(metadata) ? metadata[point_idx] : metadata,
+          point_style: Array.isArray(point_style) ? point_style[point_idx] : point_style,
+        })
+      }
+    })
+    return points
+  })
 
   // Group points by radius, with per-instance colors
   type RadiusGroup = {
@@ -306,7 +309,6 @@
     const groups: Record<string, RadiusGroup> = {}
     const radii = new Map<string, number>()
     for (const pt of processed_points) {
-      if (!(series[pt.series_idx]?.visible ?? true)) continue
       const color =
         pt.color_value != null
           ? color_scale_fn(pt.color_value)
@@ -380,7 +382,7 @@
         dashed: Boolean(line_style.line_dash),
       })
     }
-    // processed_points are emitted in (series_idx, point_idx) order, so one ordered pass replaces the old per-series filter + sort
+    // processed_points are in (series_idx, point_idx) order, so one pass fills every polyline
     for (const pt of processed_points) {
       positions_by_series.get(pt.series_idx)?.push(pt.x, pt.y, pt.z)
     }
@@ -519,7 +521,6 @@
 
   // Axis configuration for rendering
   const tick_length = 0.15
-  type AxisKey = `x` | `y` | `z`
 
   // Axis rendering config - all positions use backside `pos` values. Each entry also owns its
   // line geometries (main axis, ticks, grid), rebuilt as a whole when pos/ticks/ranges change.

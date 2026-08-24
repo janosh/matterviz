@@ -11,7 +11,7 @@
   } from '$lib/plot'
   import { ScatterPlot } from '$lib/plot'
   import { DEFAULTS } from '$lib/settings'
-  import { marker_d3_name } from './canvas-draw'
+  import { marker_d3_name, point_radius } from './canvas-draw'
   import { create_hull_selection } from './canvas-interactions.svelte'
   import ConvexHullChrome from './ConvexHullChrome.svelte'
   import ConvexHullTooltip from './ConvexHullTooltip.svelte'
@@ -173,8 +173,7 @@
     const is_energy_mode = color_mode === `energy`
     const point_style = visible_entries.map((entry): PointStyle => {
       const is_stable = entry_is_stable(entry)
-      // oxlint-disable-next-line typescript/prefer-nullish-coalescing -- size=0 → default
-      const base_radius = entry.size || (is_stable ? 6 : 4)
+      const base_radius = point_radius(entry)
       const hl = is_highlighted(entry) ? merged_highlight_style : null
       const colored = hl?.effect === `color` || hl?.effect === `both`
       const sized = hl?.effect === `size` || hl?.effect === `both`

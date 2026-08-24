@@ -1,7 +1,7 @@
-import { AXIS_LABEL_CONTAINER } from '$lib/plot/core/axis-utils'
 import PlotAxis from '$lib/plot/core/components/PlotAxis.svelte'
-import { AXIS_LABEL_HEIGHT, AXIS_TITLE_OFFSET, TICK_LABEL_HEIGHT } from '$lib/plot/core/layout'
+import { AXIS_LABEL_HEIGHT, AXIS_TITLE_OFFSET } from '$lib/plot/core/layout'
 import { get_text_metrics_revision } from '$lib/plot/core/text-metrics'
+import { TICK_LABEL_HEIGHT } from '$lib/plot/core/tick-layout'
 import { type ComponentProps, mount, tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { mock_text_measurement } from '../setup'
@@ -306,7 +306,7 @@ describe(`PlotAxis`, () => {
     expect(Number(foreign_obj.getAttribute(`width`))).toBeGreaterThan(
       `Long volume property (Å³)`.length * 7,
     )
-    expect(Number(foreign_obj.getAttribute(`height`))).toBe(AXIS_LABEL_CONTAINER.height)
+    expect(Number(foreign_obj.getAttribute(`height`))).toBe(24) // closed PortalSelect trigger
     // Clicks on the title must not start a pan/zoom drag on the host plot (Svelte delegates
     // mousedown, so the stop is observable on the event rather than via a native ancestor)
     const stop_spy = vi.spyOn(MouseEvent.prototype, `stopPropagation`)

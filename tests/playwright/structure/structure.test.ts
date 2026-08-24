@@ -15,6 +15,7 @@ import {
   IS_CI,
   open_structure_control_pane,
   open_structure_export_pane,
+  opacity_of,
   primary_modifier,
   primary_modifier_key,
   require_bbox,
@@ -26,9 +27,6 @@ import {
 
 const section_body = (pane: Locator, title: string): Locator =>
   pane.getByRole(`region`, { name: title, exact: true })
-const opacity_of = (locator: Locator): Promise<number> =>
-  locator.evaluate((element) => Number(getComputedStyle(element).opacity))
-
 type EventCall = { event: string; data?: unknown }
 const clear_events = (page: Page): Promise<void> =>
   page.evaluate(() => {

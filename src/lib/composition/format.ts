@@ -10,13 +10,28 @@ import { parse_composition } from './parse'
 const is_structure_like = (input: CompositionType | AnyStructure): input is AnyStructure =>
   `sites` in input || `lattice` in input
 
+// Default d3 format for stoichiometric amounts: fixed notation with trailing zeros trimmed.
+// Not `s`: SI prefixes render C1000 as C1k, which no formula parser reads back.
+export const AMOUNT_FORMAT = `.3~f`
+
+// Stoichiometric amount as text. Sub-1 amounts under the default or an `s` format use
+// significant digits instead: fixed decimals would turn 0.0625 into 0.063 and SI prefixes
+// would render 0.5 as 500m.
+export const format_amount = (amount: number, amount_format = AMOUNT_FORMAT): string => {
+  const sig_digits_below_one = amount_format === AMOUNT_FORMAT || amount_format.endsWith(`s`)
+  return format_num(
+    amount,
+    sig_digits_below_one && Math.abs(amount) < 1 ? `.3~g` : amount_format,
+  )
+}
+
 // Format composition into chemical formula string
 export const format_composition_formula = (
   composition: CompositionType,
   sort_fn: (symbols: ElementSymbol[]) => ElementSymbol[],
   plain_text = false,
   delim = ` `,
-  amount_format = `.3~s`,
+  amount_format = AMOUNT_FORMAT,
 ): string => {
   const symbols = Object.keys(composition).filter(is_elem_symbol)
 
@@ -25,9 +40,7 @@ export const format_composition_formula = (
     .map((el) => {
       const amount = Number(composition[el])
       if (amount === 1) return el
-      // avoid d3 SI prefixes for sub-1 amounts (`s` formats render 0.5 as 500m)
-      const fmt = amount_format.endsWith(`s`) && Math.abs(amount) < 1 ? `.3~g` : amount_format
-      const formatted_amount = format_num(amount, fmt)
+      const formatted_amount = format_amount(amount, amount_format)
       return plain_text ? `${el}${formatted_amount}` : `${el}<sub>${formatted_amount}</sub>`
     })
     .join(delim)
@@ -38,7 +51,7 @@ const format_formula_generic = (
   sort_fn: (symbols: ElementSymbol[]) => ElementSymbol[],
   plain_text = false,
   delim = ` `,
-  amount_format = `.3~s`,
+  amount_format = AMOUNT_FORMAT,
 ): string => {
   const composition =
     typeof input === `string`
@@ -54,7 +67,7 @@ export const get_alphabetical_formula = (
   input: string | CompositionType | AnyStructure,
   plain_text = false,
   delim = ` `,
-  amount_format = `.3~s`,
+  amount_format = AMOUNT_FORMAT,
 ): string =>
   format_formula_generic(
     input,
@@ -74,23 +87,12 @@ export const sort_by_electronegativity = (symbols: ElementSymbol[]): ElementSymb
       electronegativity(el_1) - electronegativity(el_2) || el_1.localeCompare(el_2),
   )
 
-// Sort element symbols according to Hill notation (C first, H second, then alphabetical).
-// This is the standard notation for organic compounds in chemistry.
+// Hill notation (organic chemistry): C first, then H if carbon is present, then alphabetical
 export const sort_by_hill_notation = (symbols: ElementSymbol[]): ElementSymbol[] => {
   const has_carbon = symbols.includes(`C`)
-  return symbols.toSorted((el_a, el_b) => {
-    // Equal elements must return 0 (sort invariant)
-    if (el_a === el_b) return 0
-    // Carbon always comes first
-    if (el_a === `C`) return -1
-    if (el_b === `C`) return 1
-    // If carbon present, hydrogen comes second
-    if (has_carbon) {
-      if (el_a === `H`) return -1
-      if (el_b === `H`) return 1
-    }
-    return el_a.localeCompare(el_b) // All other elements alphabetically
-  })
+  const rank = (symbol: ElementSymbol) =>
+    symbol === `C` ? 0 : has_carbon && symbol === `H` ? 1 : 2
+  return symbols.toSorted((el_a, el_b) => rank(el_a) - rank(el_b) || el_a.localeCompare(el_b))
 }
 
 // Create electronegativity-sorted formula
@@ -98,7 +100,7 @@ export const get_electro_neg_formula = (
   input: string | CompositionType | AnyStructure,
   plain_text = false,
   delim = ` `,
-  amount_format = `.3~f`,
+  amount_format = AMOUNT_FORMAT,
 ): string =>
   format_formula_generic(input, sort_by_electronegativity, plain_text, delim, amount_format)
 

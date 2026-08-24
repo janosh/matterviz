@@ -17,7 +17,7 @@ import { ase_calculator_data, read_ase_header } from '$lib/trajectory/parse/ase'
 import {
   HDF5_MAX_LOGICAL_SLICE_BYTES,
   hdf5_frames_per_slice,
-  read_numeric_first_axis,
+  read_numeric_1d,
   read_numeric_hyperslab,
   read_numeric_samples,
   to_number_array,
@@ -92,22 +92,22 @@ const expect_close = (actual: readonly number[], expected: readonly number[], di
 // === Checked-in fixtures: every sample file, counts through to pinned parser output ===
 
 // steps/abc/volume are [first frame, last frame]; species counts the preview's elements;
-// site0_xyz is the first atom of frame 0
+// site0_xyz is the first atom of frame 0. Every frame with a lattice carries its volume in
+// metadata, whatever the format.
 // oxfmt-ignore
 const FIXTURES = [
   { file: `vasp-XDATCAR.MD.gz`, format: `xdatcar`, frame_count: 5, n_atoms: 80, steps: [1, 5], species: { O: 48, Fe: 32 },
     abc: [[9.39, 9.39, 9.39], [9.39, 9.39, 9.39]], volume: [827.936019, 827.936019],
-    site0_xyz: [8.0500211775, 4.1886668799, 3.6800131152], metadata: { elements: [`O`, `Fe`], element_counts: [48, 32] } },
+    site0_xyz: [8.0500211775, 4.1886668799, 3.6800131152] },
   { file: `vasp-XDATCAR-traj.gz`, format: `xdatcar`, frame_count: 100, n_atoms: 76, steps: [1, 100], species: { Li: 38, Si: 38 },
     abc: [[10.805799, 10.805799, 10.805799], [10.805799, 10.805799, 10.805799]],
-    volume: [1261.7422758352, 1261.7422758352], site0_xyz: [5.320580923218, 4.589363310687, 0.900901074228],
-    metadata: { elements: [`Li`, `Si`], element_counts: [38, 38] } },
+    volume: [1261.7422758352, 1261.7422758352], site0_xyz: [5.320580923218, 4.589363310687, 0.900901074228] },
   // semi-grand-canonical MC swaps H<->He on fixed atom IDs, so species change per frame
   { file: `lammps-sample.lammpstrj.gz`, format: `lammps`, frame_count: 5, n_atoms: 864, steps: [0, 40000], species: { H: 778, He: 86 },
     abc: [[21.12, 21.12, 21.12], [21.33040849885696, 21.33040849885696, 21.33040849885696]],
     volume: [9420.668928, 9705.044210504973], site0_xyz: [0, 0, 0],
     frame0_metadata: { timestep: 0, coords_unwrapped: false, box_origin: [0, 0, 0] },
-    metadata: { atom_types: [1, 2], element_counts: { H: 778, He: 86 } } },
+    metadata: { atom_types: [1, 2] } },
   { file: `mdanalysis-chain-dump.lammpstrj`, format: `lammps`, frame_count: 6, n_atoms: 22, steps: [0, 5], species: { H: 2, He: 20 },
     abc: [[10, 10, 10], [10, 10, 10]], volume: [1000, 1000],
     site0_xyz: [5.19899, 5.00015, 5.48947], frame0_metadata: { coords_unwrapped: true },
@@ -137,11 +137,11 @@ const FIXTURES = [
     last_metadata: { energy: -38.10605112, force_max: 6.724155634724704e-5 }, site0_properties: { force: [0, 0, 0], magmoms: 0.756 } },
   { file: `pymatgen-LiMnO2-chgnet-relax.json.gz`, format: `pymatgen-json`, frame_count: 2, n_atoms: 8, steps: [0, 1], species: { Li: 2, Mn: 2, O: 4 },
     abc: [[2.868779, 4.634475, 5.832507], [2.868779, 4.634475, 5.832507]],
-    volume: [77.54484024, 77.54484024], site0_xyz: [1.4343895, 2.3172375, 2.2148974495035], frame_volume: false,
+    volume: [77.54484024, 77.54484024], site0_xyz: [1.4343895, 2.3172375, 2.2148974495035],
     frame0_metadata: { energy: -58.97273254394531, force_max: 0.025402992964072665, force_norm: 0.021125332177999983,
       stress_max: 0.0021019913256168365, pressure: -0.0012979226206274082 },
     last_metadata: { energy: -58.59364700317383, force_max: 1.2433049712799658 },
-    site0_properties: { momenta: [0, 0, 0], final_magmom: 0.005215555429458618 }, metadata: { species_list: [`Li`, `Mn`, `O`] } },
+    site0_properties: { momenta: [0, 0, 0], final_magmom: 0.005215555429458618 } },
   // Same relaxation written by ASE: frame 1 has the relaxed (larger) cell
   { file: `ase-LiMnO2-chgnet-relax.traj`, format: `ase`, frame_count: 2, n_atoms: 8, steps: [0, 1], species: { Li: 2, Mn: 2, O: 4 },
     abc: [[2.868779, 4.634475, 5.832507], [2.876379428410527, 4.646357458548224, 5.846033084452466]],
@@ -149,12 +149,10 @@ const FIXTURES = [
     frame0_metadata: { step: 0, name: `chgnetcalculator`, energy: -58.97273254394531 }, last_metadata: { energy: -58.59364700317383 } },
   { file: `gold-nanoparticle-md.h5`, format: `hdf5`, frame_count: 100, n_atoms: 55, steps: [1, 991], species: { Au: 55 },
     pbc: [false, false, false], abc: [[25.816495895385742, 25.816495895385742, 25.816495895385742], [25.816495895385742, 25.816495895385742, 25.816495895385742]],
-    volume: [17206.47404956977, 17206.47404956977], site0_xyz: [12.910871505737305, 12.91317081451416, 12.907877922058105],
-    metadata: { element_counts: { Au: 55 }, has_cell_info: true } },
+    volume: [17206.47404956977, 17206.47404956977], site0_xyz: [12.910871505737305, 12.91317081451416, 12.907877922058105] },
   { file: `flame-gold-cluster-55-atoms.h5`, format: `hdf5`, frame_count: 20, n_atoms: 55, steps: [25, 500], species: { Au: 55 },
     pbc: [false, false, false], abc: [[25.816495895385742, 25.816495895385742, 25.816495895385742], [25.816495895385742, 25.816495895385742, 25.816495895385742]],
-    volume: [17206.47404956977, 17206.47404956977], site0_xyz: [12.878666877746582, 12.954689025878906, 12.833800315856934],
-    metadata: { element_counts: { Au: 55 } } },
+    volume: [17206.47404956977, 17206.47404956977], site0_xyz: [12.878666877746582, 12.954689025878906, 12.833800315856934] },
 ]
 
 const count_species = (frame: TrajectoryFrame): Record<string, number> => {
@@ -183,8 +181,7 @@ describe(`site fixtures`, () => {
       const lattice = lattice_of(frame)
       expect_close([lattice.a, lattice.b, lattice.c], abc[idx], 8)
       expect(lattice.volume).toBeCloseTo(volume[idx], 6)
-      if (fixture.frame_volume !== false)
-        expect(frame.metadata?.volume).toBeCloseTo(volume[idx], 6)
+      expect(frame.metadata?.volume).toBeCloseTo(volume[idx], 6)
     }
     expect_close(first.structure.sites[0].xyz, fixture.site0_xyz, 9)
     if (fixture.frame0_metadata) expect(first.metadata).toMatchObject(fixture.frame0_metadata)
@@ -347,11 +344,8 @@ describe(`LAMMPS`, () => {
     expect(run.provenance.format).toBe(`lammps`)
     expect(run.frame_count).toBe(2)
     expect(run.preview.structure.sites).toHaveLength(3)
-    expect(run.metadata).toMatchObject({
-      periodic_boundary_conditions: [false, true, true],
-      atom_types: [1, 2],
-      element_counts: { H: 2, He: 1 },
-    })
+    expect(run.metadata).toEqual({ atom_types: [1, 2] })
+    expect(lattice_of(run.preview).pbc).toEqual([false, true, true])
     const frames = await frames_of(run)
     expect(frames.map(({ step }) => step)).toEqual([0, 100])
     expect(frames[1].structure.sites.map(({ xyz }) => xyz[0])).toEqual([0, 1, 2])
@@ -1103,14 +1097,8 @@ describe(`HDF5 slice budgets`, () => {
     expect(slice).not.toHaveBeenCalled()
     // and an overlong step axis is rejected before a hyperslab read could truncate it
     expect(() =>
-      read_numeric_first_axis(
-        { shape: [3] } as H5Dataset,
-        `/steps/positions`,
-        2,
-        1,
-        `TorchSim HDF5 steps`,
-      ),
-    ).toThrow(`steps /steps/positions has 3 entries, expected 2`)
+      read_numeric_1d({ shape: [3] } as H5Dataset, `/steps/positions`, 2, `TorchSim HDF5`),
+    ).toThrow(`TorchSim HDF5 dataset /steps/positions has shape [3], expected [2]`)
   })
 
   it(`copies large axis chunks and sampled hyperslabs without spreading into the call stack`, () => {
@@ -1119,7 +1107,7 @@ describe(`HDF5 slice budgets`, () => {
       shape: [entry_count],
       slice: () => Float64Array.from({ length: entry_count }, (_unused, idx) => idx),
     } as unknown as H5Dataset
-    const values = read_numeric_first_axis(axis, `/steps/positions`, entry_count, 1, `HDF5`)
+    const values = read_numeric_1d(axis, `/steps/positions`, entry_count, `HDF5`)
     expect(values).toHaveLength(entry_count)
     expect(values.at(-1)).toBe(entry_count - 1)
 
@@ -1666,10 +1654,7 @@ describe(`HDF5`, () => {
   it.each<[string, H5Spec[], (run: TrajectoryRun) => Promise<void> | void]>([
     [`an explicit non-periodic PBC dataset next to a cell`,
       [[`positions`, frame_positions, [1, 2, 3]], [`atomic_numbers`, two_gold_atoms, [2]], [`cell`, cubic_cell, [3, 3]], [`pbc`, [0, 0, 0], [3]]],
-      (run) => {
-        expect(lattice_of(run.preview).pbc).toEqual([false, false, false])
-        expect(run.metadata.periodic_boundary_conditions).toEqual([false, false, false])
-      }],
+      (run) => expect(lattice_of(run.preview).pbc).toEqual([false, false, false])],
     [`a singleton framed cell reused across every position frame`,
       [three_frames, [`atomic_numbers`, two_gold_atoms, [2]], [`cell`, cubic_cell, [1, 3, 3]]],
       async (run) => {

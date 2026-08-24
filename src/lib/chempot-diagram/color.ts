@@ -1,6 +1,7 @@
 import { type D3InterpolateName, get_d3_interpolator } from '$lib/colors'
 import { extract_formula_elements } from '$lib/composition/parse'
 import type { PhaseData } from '$lib/convex-hull/types'
+import { array_extent } from '$lib/math'
 import { group } from 'd3-array'
 import { scaleSequential } from 'd3-scale'
 import {
@@ -10,8 +11,18 @@ import {
 import type { FormulaEnergyStats } from './compute'
 import type { ChemPotColorMode } from './types'
 
-// Categorical palette for arity mode (element count)
+// Categorical palette for arity mode (element count), one swatch per ARITY_LABELS row
 export const ARITY_COLORS = [`#3498db`, `#2ecc71`, `#e67e22`, `#9b59b6`] as const
+const ARITY_LABELS = [`Unary`, `Binary`, `Ternary`, `4+`] as const
+
+// Legend rows for arity mode, up to the highest element count among the drawn domains
+export const arity_legend_labels = (formulas: string[]): string[] => {
+  const max_arity = Math.max(
+    1,
+    ...formulas.map((formula) => extract_formula_elements(formula).length),
+  )
+  return ARITY_LABELS.slice(0, Math.min(max_arity, ARITY_LABELS.length))
+}
 
 // Exhaustively typed over the numeric color modes so adding a new mode
 // fails compilation here instead of rendering an undefined colorbar title
@@ -30,30 +41,16 @@ export function get_chempot_interpolator(
   return reverse ? (frac: number) => raw(1 - frac) : raw
 }
 
-// Build sequential color scale from values and D3 interpolator name.
-function make_chempot_color_scale(
-  values: number[],
-  interpolator_name: D3InterpolateName,
-  reverse: boolean,
-): ((val: number) => string) | null {
-  const finite_values = values.filter(Number.isFinite)
-  if (finite_values.length === 0) return null
-  let [min_value, max_raw_value] = [finite_values[0], finite_values[0]]
-  for (let idx = 1; idx < finite_values.length; idx++) {
-    if (finite_values[idx] < min_value) min_value = finite_values[idx]
-    if (finite_values[idx] > max_raw_value) max_raw_value = finite_values[idx]
-  }
-  const max_value = Math.max(max_raw_value, min_value + 1e-6)
-  return scaleSequential(get_chempot_interpolator(interpolator_name, reverse)).domain([
-    min_value,
-    max_value,
-  ])
+// min/max of the active numeric mode's values with the colour-bar title
+export interface ChemPotColorRange {
+  min: number
+  max: number
+  label: string
 }
 
 interface ChemPotDomainColorData {
   colors: Map<string, string>
-  // min/max of the active numeric mode's values, null for none/arity (categorical)
-  color_range: { min: number; max: number; label: string } | null
+  color_range: ChemPotColorRange | null // null for none/arity (categorical)
 }
 
 // Per-formula domain colors plus color-bar range for the active color mode.
@@ -97,28 +94,24 @@ export function get_domain_color_data(opts: {
   const value_by_formula = new Map<string, number>()
   for (const formula of formulas) {
     const value = get_value(formula)
-    if (value == null || !Number.isFinite(value)) continue
-    value_by_formula.set(formula, value)
+    if (value !== null && Number.isFinite(value)) value_by_formula.set(formula, value)
   }
   const values = [...value_by_formula.values()]
-  const scale = make_chempot_color_scale(values, opts.color_scale, opts.reverse_color_scale)
+  if (values.length === 0) {
+    for (const formula of formulas) colors.set(formula, `#999`)
+    return { colors, color_range: null }
+  }
+  const [min_val, max_raw] = array_extent(values)
+  const max_val = Math.max(max_raw, min_val + 1e-6) // a flat range still needs a domain
+  const scale = scaleSequential(
+    get_chempot_interpolator(opts.color_scale, opts.reverse_color_scale),
+  ).domain([min_val, max_val])
   for (const formula of formulas) {
     const value = value_by_formula.get(formula)
-    colors.set(formula, value != null && scale ? scale(value) : `#999`)
-  }
-
-  if (values.length === 0) return { colors, color_range: null }
-  let [min_val, max_val] = [values[0], values[0]]
-  for (const value of values) {
-    if (value < min_val) min_val = value
-    if (value > max_val) max_val = value
+    colors.set(formula, value === undefined ? `#999` : scale(value))
   }
   return {
     colors,
-    color_range: {
-      min: min_val,
-      max: Math.max(max_val, min_val + 1e-6),
-      label: COLOR_MODE_LABELS[color_mode],
-    },
+    color_range: { min: min_val, max: max_val, label: COLOR_MODE_LABELS[color_mode] },
   }
 }

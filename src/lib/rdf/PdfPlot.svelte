@@ -7,6 +7,7 @@
   import { ScatterPlot } from '$lib/plot'
   import type { RadiationType } from '$lib/scattering'
   import type { Crystal, Pbc } from '$lib/structure'
+  import { to_error } from '$lib/utils'
   import type { ComponentProps } from 'svelte'
   import {
     calculate_total_pdf,
@@ -72,7 +73,7 @@
           total: calculate_total_pdf(struct, { radiation, cutoff, n_bins, pbc }),
         })
       } catch (exc) {
-        failure = exc instanceof Error ? exc.message : String(exc)
+        failure = to_error(exc).message
       }
     }
     return { totals, failure }

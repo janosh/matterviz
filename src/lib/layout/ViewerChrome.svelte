@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { ShowControlsState } from '$lib/controls'
-  // Shared control-buttons row (filename chip + fullscreen toggle + snippet buttons/panes) for BrillouinZone/FermiSurface/Structure viewers; themed via neutral --viewer-* CSS vars
+  // Shared control-buttons row (filename chip + fullscreen toggle + snippet buttons/panes) that
+  // viewers render as a direct child of their root; themed via neutral --viewer-* CSS vars.
   // Full-width sequence viewers use SequenceControlBar instead.
   import type { Snippet } from 'svelte'
   import { createAttachmentKey } from 'svelte/attachments'
@@ -26,7 +27,6 @@
     fullscreen_bg_css_var?: string
     on_fullscreen_change?: (fullscreen: boolean) => void
     wrapper?: HTMLDivElement
-    style?: string // extra styles/CSS vars for the section (user config style wins)
     children?: Snippet // rendered after the fullscreen toggle (panes, controls, ...)
   } = $props()
 
@@ -74,8 +74,7 @@
     align-items: var(--viewer-buttons-align, center);
     /* always: visible; hover: visible while the parent viewer is hovered/focused; never: hidden */
     &.always-visible,
-    :global(:is(.structure, .brillouin-zone, .fermi-surface):is(:hover, :focus-within))
-      > &.hover-visible {
+    :global(:is(:hover, :focus-within)) > &.hover-visible {
       opacity: 1;
       pointer-events: auto;
     }

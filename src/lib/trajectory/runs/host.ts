@@ -5,7 +5,7 @@ import type { TrajectoryFrame } from '../index'
 import {
   assert_frame_idx,
   disposed_error,
-  TrajectoryProperties,
+  run_fields_from_summary,
   type TrajectoryRun,
   type TrajectoryRunSummary,
 } from '../run'
@@ -15,21 +15,11 @@ export const host_run = (
   request_frame: (frame_idx: number, signal?: AbortSignal) => Promise<TrajectoryFrame>,
   release: () => void = () => {},
 ): TrajectoryRun => {
-  const properties = new TrajectoryProperties(
-    summary.properties.rows,
-    summary.properties.complete,
-  )
+  const fields = run_fields_from_summary(summary)
   let disposed = false
   return {
-    frame_count: summary.frame_count,
-    preview: summary.preview,
+    ...fields,
     provenance: { ...summary.provenance, format: summary.provenance.format ?? `host` },
-    properties,
-    ...(summary.time_step ? { time_step: summary.time_step } : {}),
-    ...(summary.atom_masses ? { atom_masses: summary.atom_masses } : {}),
-    ...(summary.signals ? { signals: summary.signals } : {}),
-    metadata: summary.metadata,
-    warnings: summary.warnings,
     read_frame: (frame_idx, signal) => {
       assert_frame_idx(summary, frame_idx)
       if (disposed) return Promise.reject(disposed_error(`Host-served trajectory`))
@@ -39,7 +29,7 @@ export const host_run = (
     dispose: () => {
       if (disposed) return
       disposed = true
-      properties.finish()
+      fields.properties.finish()
       release()
     },
   }

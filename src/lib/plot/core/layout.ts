@@ -8,14 +8,6 @@ import {
 import type { FontSpec, TextLineMetrics } from '$lib/plot/core/text-metrics'
 import type { AxisConfig } from '$lib/plot/core/types'
 
-export {
-  clear_tick_metrics_cache,
-  measured_axis,
-  resolve_tick_layout,
-  TICK_LABEL_HEIGHT,
-  type MeasuredAxis,
-} from '$lib/plot/core/tick-layout'
-
 export type Sides = { t?: number; b?: number; l?: number; r?: number }
 
 export const sides_equal = (left: Required<Sides>, right: Required<Sides>): boolean =>
@@ -23,11 +15,10 @@ export const sides_equal = (left: Required<Sides>, right: Required<Sides>): bool
 
 // Default gap between tick labels and axis labels
 export const LABEL_GAP_DEFAULT = 20
-// Default single-line title height. Kept as a public constant for callers that position
-// titles manually; auto-padding below uses measured title blocks instead.
+// Single-line axis title height (the title font's line height)
 export const AXIS_LABEL_HEIGHT = 20
-// Axis titles historically used a 200px foreignObject. Retain that as the deterministic
-// wrapping span for vertical titles, whose available height is not forwarded through PlotAxis.
+// Wrapping span for axis titles whose available extent the caller doesn't know (vertical
+// titles, whose plot height PlotAxis does not forward) and the floor for horizontal ones
 export const AXIS_TITLE_WRAP_WIDTH = 200
 // Distance from an x/x2 axis baseline to the title center.
 export const AXIS_TITLE_OFFSET = TICK_LABEL_HEIGHT + LABEL_GAP_DEFAULT
@@ -595,8 +586,6 @@ interface ElementPlacementConfig {
   exclude_rects?: Rect[]
   // Data points to avoid overlapping
   points: { x: number; y: number }[]
-  // Number of samples per axis (default: 10, meaning 10x10 = 100 candidates)
-  grid_resolution?: number
 }
 
 interface ElementPlacementResult {
@@ -611,6 +600,8 @@ const DISTANCE_WEIGHT = 0.001
 // Strong corner preference: corners can have 3-4 more overlapping points and still win
 const CORNER_WEIGHT = 5.0
 const MAX_SAMPLE_POINTS = 500
+// Candidate positions sampled per axis (GRID_RESOLUTION² candidates per placement)
+const GRID_RESOLUTION = 10
 
 // Check if a point is inside a rectangle
 export const point_in_rect = (point: { x: number; y: number }, rect: Rect): boolean =>
@@ -687,10 +678,7 @@ export function compute_element_placement(
     axis_clearance = 12,
     exclude_rects = [],
     points,
-    grid_resolution: raw_resolution = 10,
   } = config
-
-  const grid_resolution = Math.max(2, raw_resolution)
 
   // Include overflowing descendants such as colorbar tick labels after first render.
   const {
@@ -722,13 +710,13 @@ export function compute_element_placement(
     score: -Infinity,
   }
 
-  const x_step = (effective_x_max - effective_x_min) / (grid_resolution - 1)
-  const y_step = (effective_y_max - effective_y_min) / (grid_resolution - 1)
+  const x_step = (effective_x_max - effective_x_min) / (GRID_RESOLUTION - 1)
+  const y_step = (effective_y_max - effective_y_min) / (GRID_RESOLUTION - 1)
 
   const max_corner_dist = Math.hypot(plot_right - plot_left, plot_bottom - plot_top)
 
-  for (let grid_x = 0; grid_x < grid_resolution; grid_x++) {
-    for (let grid_y = 0; grid_y < grid_resolution; grid_y++) {
+  for (let grid_x = 0; grid_x < GRID_RESOLUTION; grid_x++) {
+    for (let grid_y = 0; grid_y < GRID_RESOLUTION; grid_y++) {
       const cand_x = effective_x_min + grid_x * x_step
       const cand_y = effective_y_min + grid_y * y_step
       const rect_left = cand_x + offset_x
@@ -752,7 +740,7 @@ export function compute_element_placement(
       let min_distance_sq = Infinity
       const center_x = rect_left + elem_width / 2
       const center_y = rect_top + elem_height / 2
-      // Containment inlined rather than via point_in_rect: this loop runs grid_resolution²
+      // Containment inlined rather than via point_in_rect: this loop runs GRID_RESOLUTION²
       // times over the sampled field, so per-point call overhead dominates.
       for (const point of sampled_points) {
         const { x: point_x, y: point_y } = point

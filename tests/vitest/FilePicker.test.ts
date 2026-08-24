@@ -86,15 +86,9 @@ describe(`FilePicker`, () => {
     expect(doc_query(`.file-item`).style.backgroundColor).toBe(expected_row_bg)
   })
 
-  it(`uses custom type_mapper to override file type detection`, () => {
-    const files = [mock_file(`foo.custom`)]
-    mount(FilePicker, {
-      target: document.body,
-      props: {
-        files,
-        type_mapper: (file: FileInfo) => (file.name.endsWith(`.custom`) ? `xyz` : `dat`),
-      },
-    })
+  it(`renders the chip from an explicit FileInfo.type over the extension`, () => {
+    const files = [{ ...mock_file(`foo.custom`), type: `xyz` }]
+    mount(FilePicker, { target: document.body, props: { files } })
     expect(legend_text().trim()).toBe(`XYZ`)
     expect(doc_query(`.file-item`).style.backgroundColor).toContain(`50, 205, 50`) // xyz green
   })

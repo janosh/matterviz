@@ -2,7 +2,7 @@
   import EmptyState from '$lib/EmptyState.svelte'
   import { format_num } from '$lib/labels'
   import { SettingsSection } from '$lib/layout'
-  import type { Vec2 } from '$lib/math'
+  import { array_max, type Vec2 } from '$lib/math'
   import type { AxisConfig, DataSeries } from '$lib/plot/core/types'
   import ScatterPlot from '$lib/plot/scatter/ScatterPlot.svelte'
   import { sync_axis_range } from '$lib/plot/core/shared-axes'
@@ -110,11 +110,11 @@
   })
 
   // Sticks share the curve's y-scale so both are legible on one axis. In transmittance the
-  // sticks hang down from the baseline at 1.
+  // sticks hang down from the baseline at 1. (array_max: the curve grid can be huge.)
   let stick_scale = $derived.by(() => {
-    const max_stick = Math.max(...sticks.y, 0)
+    const max_stick = Math.max(array_max(sticks.y), 0)
     if (max_stick <= 0) return 0
-    const max_curve = Math.max(...curve_y, 0)
+    const max_curve = Math.max(array_max(curve_y), 0)
     if (is_transmittance) return 1 / max_stick
     return (max_curve > 0 ? max_curve : 1) / max_stick
   })

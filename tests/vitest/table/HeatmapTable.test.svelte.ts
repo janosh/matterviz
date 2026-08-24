@@ -45,7 +45,7 @@ describe(`HeatmapTable`, () => {
     color_scale: `interpolateViridis`,
   }
 
-  // 50-row dataset shared by the Pagination and Page Size Selector tests.
+  // 50-row dataset shared by the Pagination tests.
   // Scores are deterministic but shuffled (37 is coprime to 50).
   const large_data = Array.from({ length: 50 }, (_, idx) => ({
     Model: `Model ${idx + 1}`,
@@ -217,7 +217,7 @@ describe(`HeatmapTable`, () => {
           { label: `Start Time`, datetime_format: `time` },
           { label: `Created`, datetime_format: `datetime` },
           { label: `Ancient`, datetime_format: `datetime` },
-          { label: `Unix`, format_type: `datetime` },
+          { label: `Unix`, datetime_format: `datetime` },
         ]
 
         mount_table({ data, columns })
@@ -1010,31 +1010,6 @@ describe(`HeatmapTable`, () => {
     })
   })
 
-  describe(`Sort Indicator Rendering`, () => {
-    const render_table = (
-      columns: Label[] = sample_columns,
-      data: RowData[] = sample_data,
-    ) => {
-      mount_table({ data, columns })
-      return document.querySelectorAll(`th`)
-    }
-
-    it(`renders arrows as sorting cycles`, async () => {
-      const headers = render_table()
-      expect(headers).toHaveLength(3)
-      for (const header of headers) {
-        expect(header.textContent).not.toMatch(/[↑↓]/)
-      }
-
-      const value_header = headers[2]
-      for (const expected_arrow of [`↓`, `↑`]) {
-        value_header.click()
-        await tick()
-        expect(value_header.textContent).toContain(expected_arrow)
-      }
-    })
-  })
-
   describe(`Pagination`, () => {
     it(`renders controls, caps rows at page_size, and disables prev/first on page 1`, () => {
       mount_table({
@@ -1108,6 +1083,31 @@ describe(`HeatmapTable`, () => {
       // Pagination should not appear when data fits on one page
       const pagination = document.querySelector(`.pagination`)
       expect(pagination).toBeNull()
+    })
+
+    it(`renders configured options and applies page-size changes`, async () => {
+      const on_page_size_change = vi.fn()
+      mount_table({
+        data: large_data,
+        columns: sample_columns,
+        pagination: { page_size: 10, page_sizes: [10, 25, 50], on_page_size_change },
+      })
+
+      const options = document.querySelectorAll(`.page-size-select option`)
+      expect(options).toHaveLength(3)
+      expect(Array.from(options).map((opt) => opt.textContent?.trim())).toEqual([
+        `10 / page`,
+        `25 / page`,
+        `50 / page`,
+      ])
+
+      const select = document.querySelector(`.page-size-select`) as HTMLSelectElement
+      select.value = `25`
+      select.dispatchEvent(new Event(`change`, { bubbles: true }))
+      await tick()
+
+      expect(on_page_size_change).toHaveBeenCalledWith(25)
+      expect(document.querySelectorAll(`tbody tr`)).toHaveLength(25)
     })
   })
 
@@ -1673,16 +1673,19 @@ describe(`HeatmapTable`, () => {
       ]
       mount_table({ data: unsorted, columns: metrics })
       const score_header = document.querySelectorAll(`thead th`)[1] as HTMLElement
-      for (const expected of [
-        [`C`, `A`, `B`],
-        [`B`, `A`, `C`],
-        [`A`, `B`, `C`],
-      ]) {
+      expect(score_header.textContent).not.toMatch(/[↑↓]/)
+      // the header arrow follows the cycle: desc first (no `better`), then asc, then none
+      for (const [expected, arrow] of [
+        [[`C`, `A`, `B`], `↑`],
+        [[`B`, `A`, `C`], `↓`],
+        [[`A`, `B`, `C`], null],
+      ] as const) {
         score_header.click()
         await tick()
         expect(rendered_models()).toEqual(expected)
+        if (arrow) expect(score_header.textContent).toContain(arrow)
+        else expect(score_header.textContent).not.toMatch(/[↑↓]/)
       }
-      expect(score_header.textContent).not.toMatch(/[↑↓]/)
     })
 
     // an initial_sort has no "unsorted" state to return to, so the cycle stays two-step
@@ -2027,33 +2030,6 @@ describe(`HeatmapTable`, () => {
       reset.click()
       await tick()
       expect(cell_at(0, 0).style.getPropertyValue(`--cell-bg`)).not.toBe(``)
-    })
-  })
-
-  describe(`Page Size Selector`, () => {
-    it(`renders configured options and applies page-size changes`, async () => {
-      const on_page_size_change = vi.fn()
-      mount_table({
-        data: large_data,
-        columns: sample_columns,
-        pagination: { page_size: 10, page_sizes: [10, 25, 50], on_page_size_change },
-      })
-
-      const options = document.querySelectorAll(`.page-size-select option`)
-      expect(options).toHaveLength(3)
-      expect(Array.from(options).map((opt) => opt.textContent?.trim())).toEqual([
-        `10 / page`,
-        `25 / page`,
-        `50 / page`,
-      ])
-
-      const select = document.querySelector(`.page-size-select`) as HTMLSelectElement
-      select.value = `25`
-      select.dispatchEvent(new Event(`change`, { bubbles: true }))
-      await tick()
-
-      expect(on_page_size_change).toHaveBeenCalledWith(25)
-      expect(document.querySelectorAll(`tbody tr`)).toHaveLength(25)
     })
   })
 

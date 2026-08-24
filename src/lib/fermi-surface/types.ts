@@ -9,17 +9,14 @@ import type { TooltipConfig, TooltipProp } from '$lib/tooltip'
 // (read-only); defaults live in DEFAULTS.fermi
 export type FermiSurfaceSettings = Omit<DefaultSettings[`fermi`], `fullscreen_toggle`>
 
-// Spin channel type
 export type SpinChannel = `up` | `down` | null
 
-// Representation modes for rendering
 export type RepresentationMode = `solid` | `wireframe` | `transparent`
 
 // Property types for coloring: flat colour per band or spin channel, or the per-vertex
 // scalar `properties` (Fermi velocity, orbital character, …) mapped through a colour scale
 export type ColorProperty = `band` | `spin` | `property`
 
-// Reciprocal cell type
 type ReciprocalCellType = `wigner_seitz` | `parallelepiped`
 
 // One closed sheet of the Fermi surface as an indexed triangle mesh in the layout

@@ -356,7 +356,7 @@
   function handle_pointer_move(event: MouseEvent): void {
     if (!canvas) return
     const position: Vec2 = [event.clientX, event.clientY]
-    const entry = find_hull_entry_at_mouse(canvas, event, by_stability, project, layout.scale)
+    const entry = find_hull_entry_at_mouse(canvas, event, points, layout.scale)
     hover_phase = entry ? entry.phase_idx : null
     canvas.style.cursor = entry ? `pointer` : ``
     if (hover_phase !== null) {

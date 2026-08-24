@@ -1,21 +1,15 @@
-import { expect, type Locator, type Page, test } from '@playwright/test'
+import { expect, type Page, test } from '@playwright/test'
 import { MAGNETIC_ORDERING_CATEGORY } from '$lib/convex-hull/types'
-import { IS_CI, require_bbox } from '../helpers'
-import { dom_click, get_canvas_hash, open_controls_pane, open_info_pane } from './utils'
+import { IS_CI, opacity_of, require_bbox } from '../helpers'
+import {
+  dom_click,
+  get_canvas_hash,
+  goto_perf_page,
+  open_controls_pane,
+  open_info_pane,
+} from './utils'
 
 const ternary_diagram = (page: Page) => page.locator(`.ternary-grid .convex-hull-3d`).first()
-const opacity_of = async (locator: Locator) =>
-  Number(await locator.evaluate((el) => getComputedStyle(el).opacity))
-
-// The performance test page generates synthetic data client-side (no network requests),
-// so shorter timeouts are appropriate
-const goto_perf_page = async (page: Page, query: string) => {
-  await page.goto(`/test/convex-hull-performance?dim=3d&${query}`, {
-    waitUntil: `networkidle`,
-    timeout: 15000,
-  })
-  return page.locator(`.convex-hull-3d`)
-}
 
 // Probe a grid around the canvas center until `hit` reports an entry under the pointer
 const scan_for_entry = async (
@@ -66,7 +60,7 @@ test.describe(`ConvexHullCanvas dim=3 (Ternary)`, () => {
 
   test(`enable_click_selection=false prevents entry selection`, async ({ page }) => {
     test.setTimeout(30000)
-    const diagram = await goto_perf_page(page, `count=100&click_selection=false`)
+    const diagram = await goto_perf_page(page, `3d`, `count=100&click_selection=false`)
     await expect(diagram).toHaveAttribute(`data-has-selection`, `false`)
     const canvas = diagram.locator(`canvas`).first()
     const box = await canvas.boundingBox()
@@ -86,7 +80,7 @@ test.describe(`ConvexHullCanvas dim=3 (Ternary)`, () => {
     // Guards the visible_entries dep in the 3D re-render effect — without it the canvas
     // silently freezes when category (or stable/unstable) visibility toggles change.
     test.setTimeout(45000)
-    const diagram = await goto_perf_page(page, `count=60&magnetic=true`)
+    const diagram = await goto_perf_page(page, `3d`, `count=60&magnetic=true`)
     const canvas = diagram.locator(`canvas`).first()
     await expect(canvas).toBeVisible()
 

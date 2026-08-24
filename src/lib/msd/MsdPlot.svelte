@@ -6,9 +6,10 @@
   import { ScatterPlot } from '$lib/plot'
   import AnalysisSummary from '$lib/trajectory/AnalysisSummary.svelte'
   import { use_async_result } from '$lib/trajectory/async-result.svelte'
+  import type { TrajectoryPositionStream } from '$lib/trajectory'
   import type { ComponentProps } from 'svelte'
   import { compute_msd_async } from './async-compute.svelte'
-  import type { MsdOptions, MsdPositions, MsdResult } from './index'
+  import type { MsdOptions, MsdResult } from './index'
 
   let {
     result = $bindable(),
@@ -28,7 +29,7 @@
     // Precomputed curves. Bindable so a parent can read back what `positions` produced.
     result?: MsdResult
     // Supply positions instead of `result` to have this component compute (in a worker)
-    positions?: MsdPositions
+    positions?: TrajectoryPositionStream
     msd_options?: MsdOptions
     show_fit?: boolean
     show_summary?: boolean

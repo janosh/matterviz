@@ -11,7 +11,7 @@
     ScatterPlot3D,
     SpacegroupBarPlot,
   } from 'svelte-widgets/icons'
-  import { SubpageGrid } from '$lib/layout'
+  import SubpageGrid from '$site/SubpageGrid.svelte'
 
   const subpages = [
     {

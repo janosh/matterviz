@@ -106,10 +106,7 @@ export const solve_decorations = (scene: DecorationScene): DecorationSolution =>
     width: scene.width - pad.l - pad.r,
     height: scene.height - pad.t - pad.b,
   }
-  const obstacles = [
-    ...project_obstacles(scene.obstacles_norm, plot_bounds),
-    ...(scene.obstacles_px ?? []),
-  ]
+  const obstacles = project_obstacles(scene.obstacles_norm, plot_bounds)
   const placements: DecorationPlacement[] = []
   const decoration_rects: Rect[] = [...(scene.exclusion_rects ?? [])]
 
@@ -154,7 +151,6 @@ export const solve_decorations = (scene: DecorationScene): DecorationSolution =>
       axis_clearance: item.clearance,
       exclude_rects: [...decoration_rects],
       points: obstacles,
-      grid_resolution: scene.grid_resolution,
     })
     const placement: DecorationPlacement = {
       id: item.id,

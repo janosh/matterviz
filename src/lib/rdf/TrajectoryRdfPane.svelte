@@ -5,8 +5,12 @@
   import { format_num } from '$lib/labels'
   import type { ViewerPaneOptions } from '$lib/overlays'
   import type { TrajectoryRun } from '$lib/trajectory'
-  import { positive_int, sweep_frame_plan, sweep_progress } from '$lib/trajectory/analysis'
-  import type { AnalysisCollectOptions } from '$lib/trajectory/analysis-pane'
+  import {
+    type AnalysisCollectOptions,
+    positive_int,
+    sweep_frame_plan,
+    sweep_progress,
+  } from '$lib/trajectory/analysis'
   import AnalysisSummary from '$lib/trajectory/AnalysisSummary.svelte'
   import TrajectoryAnalysisPane from '$lib/trajectory/TrajectoryAnalysisPane.svelte'
   import {

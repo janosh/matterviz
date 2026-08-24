@@ -7,7 +7,6 @@ import {
   type VolumetricData,
 } from '$lib/isosurface/types'
 import * as math from '$lib/math'
-import { clear_tick_metrics_cache } from '$lib/plot/core/tick-layout'
 import { clear_text_metrics_cache } from '$lib/plot/core/text-metrics'
 import type { Crystal, Molecule, Pbc, Site } from '$lib/structure'
 import type {
@@ -118,9 +117,9 @@ beforeEach(() => {
     document.dispatchEvent(new Event(`fullscreenchange`))
     return Promise.resolve()
   }
-  // Tick measurement is memoised across calls, so cases stubbing canvas text metrics
-  // differently (or not at all) would otherwise read each other's widths.
-  clear_tick_metrics_cache()
+  // Text measurement (and the tick layouts keyed on its revision) is memoised across calls, so
+  // cases stubbing canvas text metrics differently (or not at all) would otherwise read each
+  // other's widths.
   clear_text_metrics_cache()
   // Mock clientWidth/clientHeight (happy-dom has no layout engine, returns 0 by default)
   Object.defineProperty(HTMLElement.prototype, `clientWidth`, {

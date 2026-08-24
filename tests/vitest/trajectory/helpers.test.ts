@@ -1,12 +1,12 @@
+import type { ElementSymbol } from '$lib/element'
+import type { Matrix3x3 } from '$lib/math'
+import { columns_to_csv } from '$lib/trajectory/analysis'
 import {
   convert_atomic_numbers,
   create_structure,
   parse_float_token,
-  read_ndarray_from_view,
 } from '$lib/trajectory/helpers'
-import type { ElementSymbol } from '$lib/element'
-import type { Matrix3x3 } from '$lib/math'
-import { columns_to_csv } from '$lib/trajectory/analysis'
+import { read_ndarray_from_view } from '$lib/trajectory/parse/ase'
 import { describe, expect, it } from 'vitest'
 
 describe(`trajectory helpers`, () => {

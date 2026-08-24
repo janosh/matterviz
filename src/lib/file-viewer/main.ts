@@ -38,8 +38,6 @@ import { escape_html, is_plain_object, to_error } from '$lib/utils'
 
 export type { VSCodeAPI } from './host-bridge'
 
-type MatterVizData = WebviewBootstrapData
-
 export type MatterVizApp = ReturnType<typeof mount>
 
 // Host-provided options for create_display. Only the trajectory branch consumes
@@ -54,17 +52,12 @@ interface DisplayOptions {
   on_trajectory_controller?: (controller: TrajectoryController | null) => void
 }
 
-// Extend globalThis interface for MatterViz data
+// The host's bootstrap script inlines `window.matterviz_data = ...` and calls the two
+// lifecycle functions this module installs below
 declare global {
-  interface Window {
-    matterviz_data?: MatterVizData
-    initializeMatterViz?: () => Promise<MatterVizApp | null>
-    cleanupMatterViz?: () => Promise<void>
-    download?: (data: string | Blob, filename: string) => void
-  }
-  // Also declare as global var for direct access via globalThis.matterviz_data
-  // Both are needed: Window.matterviz_data is set by extension.ts, accessed via globalThis
-  var matterviz_data: MatterVizData | undefined
+  var matterviz_data: WebviewBootstrapData | undefined
+  var initializeMatterViz: (() => Promise<MatterVizApp | null>) | undefined
+  var cleanupMatterViz: (() => Promise<void>) | undefined
 }
 
 // host-bridge.ts owns the single acquireVsCodeApi() call; VS Code throws on a
@@ -123,7 +116,6 @@ const replace_parse_controller = (): AbortController => {
   active_parse_controller?.abort()
   return (active_parse_controller = new AbortController())
 }
-const global_window = globalThis as unknown as Window
 const is_current = (gen: number): boolean => gen === generation
 const get_container = (): HTMLElement | null =>
   document.querySelector<HTMLElement>(`#matterviz-app`)
@@ -133,10 +125,10 @@ const post_to_host = (command: `info` | `error`, text: string): void => {
   vscode_api?.postMessage({ command, text })
 }
 
-// Set up VSCode-specific download override for file exports
+// Route `download` ($lib/io/fetch checks for this global override) through the host's save dialog
 export const setup_vscode_download = (): void => {
   if (!vscode_api) return
-  global_window.download = (data: string | Blob, filename: string): void => {
+  const download = (data: string | Blob, filename: string): void => {
     if (!filename?.trim()) {
       console.error(`Invalid filename provided to download`)
       return
@@ -168,6 +160,7 @@ export const setup_vscode_download = (): void => {
       post_to_host(`error`, `Download failed: ${error}`)
     }
   }
+  Object.assign(globalThis, { download })
 }
 
 // Runs behind mounted trajectory displays: a worker-served run holds a worker and a port, a
@@ -572,8 +565,7 @@ async function cleanup_matterviz(): Promise<void> {
   await unmount_current_app()
 }
 
-// Export initialization and cleanup functions to global scope
-global_window.initializeMatterViz = async (): Promise<MatterVizApp | null> => {
+globalThis.initializeMatterViz = async (): Promise<MatterVizApp | null> => {
   if (!globalThis.matterviz_data) {
     console.warn(`No matterviz_data found on window`)
     return null
@@ -593,4 +585,4 @@ global_window.initializeMatterViz = async (): Promise<MatterVizApp | null> => {
     return null
   }
 }
-global_window.cleanupMatterViz = cleanup_matterviz
+globalThis.cleanupMatterViz = cleanup_matterviz

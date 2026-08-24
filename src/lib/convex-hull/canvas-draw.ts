@@ -39,7 +39,7 @@ export const simplex_centroid = (corners: readonly (readonly number[])[]): numbe
   )
 
 // Marker radius in CSS px before the container scale (stable points are larger)
-const point_radius = (entry: ConvexHullEntry): number =>
+export const point_radius = (entry: ConvexHullEntry): number =>
   // `||` (not ??) on purpose: size=0 falls back to the default
   // oxlint-disable-next-line typescript/prefer-nullish-coalescing
   entry.size || (entry_is_stable(entry) ? 6 : 4)
@@ -225,21 +225,21 @@ export function draw_pulse_overlay(
   }
 }
 
-// Mouse hit-testing against projected points (first hit wins). `container_scale` is the
-// same canvas_dims.scale the markers were drawn with, so hit radii match drawn radii.
+// Mouse hit-testing against the already-projected points in paint order, walked back to
+// front so the point drawn on top wins. `container_scale` is the same canvas_dims.scale the
+// markers were drawn with, so hit radii match drawn radii.
 export function find_hull_entry_at_mouse<Entry extends ConvexHullEntry>(
   canvas: HTMLCanvasElement | undefined,
   event: MouseEvent,
-  plot_entries: Entry[],
-  project_point: ProjectPoint,
+  painted_points: readonly { entry: Entry; projected: Projected }[],
   container_scale: number,
 ): Entry | null {
   if (!canvas) return null
   const rect = canvas.getBoundingClientRect()
   const mouse_x = event.clientX - rect.left
   const mouse_y = event.clientY - rect.top
-  for (const entry of plot_entries) {
-    const projected = project_point(entry.x, entry.y, entry.z)
+  for (let idx = painted_points.length - 1; idx >= 0; idx--) {
+    const { entry, projected } = painted_points[idx]
     const distance = Math.hypot(mouse_x - projected.x, mouse_y - projected.y)
     if (distance < point_radius(entry) * container_scale + 5) return entry
   }

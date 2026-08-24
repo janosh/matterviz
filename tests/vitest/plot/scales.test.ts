@@ -10,7 +10,7 @@ import {
   generate_arcsinh_ticks,
   generate_log_ticks,
   generate_ticks,
-  get_nice_data_range,
+  log_floor_scale,
   nice_range_from_extent,
   scale_arcsinh,
 } from '$lib/plot/core/scales'
@@ -24,7 +24,21 @@ import {
 import { scaleLinear, scaleLog, scaleTime } from 'd3-scale'
 import { describe, expect, test } from 'vitest'
 
-const sample_points = [1, 2, 3, 4, 5].map((x) => ({ x, y: x * 10 }))
+const sample_values = [1, 2, 3, 4, 5]
+const nice_range = (
+  values: number[],
+  limits: [number | null, number | null],
+  scale_type: ScaleType,
+  padding: number,
+  is_time = false,
+): Vec2 =>
+  nice_range_from_extent(
+    accumulate_extent(empty_extent(), values),
+    limits,
+    scale_type,
+    padding,
+    is_time,
+  )
 
 describe(`scales`, () => {
   describe(`create_scale`, () => {
@@ -69,10 +83,10 @@ describe(`scales`, () => {
     })
   })
 
-  describe(`get_nice_data_range`, () => {
+  describe(`nice_range_from_extent`, () => {
     test.each([
       {
-        points: sample_points,
+        values: sample_values,
         limits: [null, null],
         scale_type: `linear`,
         is_time: false,
@@ -83,7 +97,7 @@ describe(`scales`, () => {
         },
       },
       {
-        points: sample_points,
+        values: sample_values,
         limits: [0, 10],
         scale_type: `linear`,
         is_time: false,
@@ -91,11 +105,7 @@ describe(`scales`, () => {
         check: (range: Vec2) => expect(range).toEqual([0, 10]),
       },
       {
-        points: [
-          { x: 1, y: 10 },
-          { x: 10, y: 20 },
-          { x: 100, y: 30 },
-        ],
+        values: [1, 10, 100],
         limits: [null, null],
         scale_type: `log`,
         is_time: false,
@@ -106,13 +116,7 @@ describe(`scales`, () => {
         },
       },
       {
-        points: [
-          { x: new Date(2023, 0, 1).getTime(), y: 10 },
-          {
-            x: new Date(2023, 11, 1).getTime(),
-            y: 30,
-          },
-        ],
+        values: [new Date(2023, 0, 1).getTime(), new Date(2023, 11, 1).getTime()],
         limits: [null, null],
         scale_type: `linear`,
         is_time: true,
@@ -123,7 +127,7 @@ describe(`scales`, () => {
         },
       },
       {
-        points: [{ x: 42, y: 100 }],
+        values: [42],
         limits: [null, null],
         scale_type: `linear`,
         is_time: false,
@@ -134,7 +138,7 @@ describe(`scales`, () => {
         },
       },
       {
-        points: [],
+        values: [],
         limits: [null, null],
         scale_type: `linear`,
         is_time: false,
@@ -142,7 +146,7 @@ describe(`scales`, () => {
         check: (range: Vec2) => expect(range).toEqual([0, 1]),
       },
       {
-        points: sample_points,
+        values: sample_values,
         limits: [null, 1000],
         scale_type: `linear`,
         is_time: false,
@@ -153,7 +157,7 @@ describe(`scales`, () => {
         },
       },
       {
-        points: sample_points,
+        values: sample_values,
         limits: [0, null],
         scale_type: `linear`,
         is_time: false,
@@ -164,11 +168,10 @@ describe(`scales`, () => {
         },
       },
     ])(
-      `nice range: $scale_type, $points.length points`,
-      ({ points, limits, scale_type, is_time, padding, check }) => {
-        const range = get_nice_data_range(
-          points,
-          (point) => point.x,
+      `nice range: $scale_type, $values.length values`,
+      ({ values, limits, scale_type, is_time, padding, check }) => {
+        const range = nice_range(
+          values,
           limits as [number | null, number | null],
           scale_type as ScaleType,
           padding,
@@ -179,51 +182,18 @@ describe(`scales`, () => {
       },
     )
 
-    test(`keeps an observed zero lower bound even with requested padding`, () => {
-      const [min, max] = get_nice_data_range(
-        [
-          { x: 0, y: 0 },
-          { x: 4.7, y: 0 },
-        ],
-        (point) => point.x,
-        [null, null],
-        `linear`,
-        0.05,
-      )
-      expect(min).toBe(0)
-      expect(max).toBeGreaterThanOrEqual(4.7)
-    })
-
-    test(`keeps an observed zero upper bound even with requested padding`, () => {
-      const [min, max] = get_nice_data_range(
-        [
-          { x: -4.7, y: 0 },
-          { x: 0, y: 0 },
-        ],
-        (point) => point.x,
-        [null, null],
-        `linear`,
-        0.05,
-      )
-      expect(min).toBeLessThanOrEqual(-4.7)
-      expect(max).toBe(0)
-    })
-
-    test(`does not collapse an all-zero range when snapping observed zero edges`, () => {
-      const [min, max] = get_nice_data_range(
-        [{ x: 0, y: 0 }],
-        (point) => point.x,
-        [null, null],
-        `linear`,
-        0,
-      )
-      expect(min).toBeLessThan(0)
-      expect(max).toBeGreaterThan(0)
+    // an observed zero edge snaps to exactly 0 despite padding; an all-zero range still widens
+    test.each([
+      { xs: [0, 4.7], padding: 0.05, check: ([min, max]: Vec2) => min === 0 && max >= 4.7 },
+      { xs: [-4.7, 0], padding: 0.05, check: ([min, max]: Vec2) => min <= -4.7 && max === 0 },
+      { xs: [0], padding: 0, check: ([min, max]: Vec2) => min < 0 && max > 0 },
+    ])(`snaps observed zero edges for x=$xs`, ({ xs, padding, check }) => {
+      expect(check(nice_range(xs, [null, null], `linear`, padding))).toBe(true)
     })
   })
 
   describe(`accumulate_extent / nice_range_from_extent`, () => {
-    test(`tracks finite extent; multi-pass; agrees with get_nice_data_range`, () => {
+    test(`tracks finite extent; multi-pass; every niced range is finite`, () => {
       for (const values of [
         [3, 1, 4, 1, 5],
         [-2, 7, -9, 0, 3],
@@ -268,16 +238,39 @@ describe(`scales`, () => {
               [0, 10],
               [-5, null],
             ] as [number | null, number | null][]) {
-              const args = [limits, scale_type, padding] as const
-              const accumulated = accumulate_extent(empty_extent(), values)
-              const extent_range = nice_range_from_extent(accumulated, ...args)
-              const points = values.map((x) => ({ x, y: 0 }))
-              const data_range = get_nice_data_range(points, (point) => point.x, ...args)
-              expect(extent_range).toEqual(data_range)
+              // limits are niced too (log clamps 0 to LOG_EPS), so only finiteness is fixed; a
+              // log axis pinned below zero over non-positive data comes back as [LOG_EPS, 0]
+              const [low, high] = nice_range(values, limits, scale_type, padding)
+              expect(Number.isFinite(low) && Number.isFinite(high)).toBe(true)
             }
           }
         }
       }
+    })
+  })
+
+  describe(`log_floor_scale`, () => {
+    test(`returns non-log scales untouched`, () => {
+      const scale = scaleLinear().domain([-5, 5]).range([0, 100])
+      for (const scale_type of [`linear`, `arcsinh`] as const) {
+        expect(log_floor_scale(scale, scale_type, scale.domain())).toBe(scale)
+      }
+    })
+
+    test.each([
+      [`in range`, 10, 10],
+      [`at floor`, 1, 1],
+      [`below floor`, 0.5, 1],
+      [`zero`, 0, 1],
+      [`negative`, -3, 1],
+    ])(`log: %s value %d maps like %d`, (_desc, value, clamped) => {
+      const scale = scaleLog().domain([1, 1000]).range([300, 0])
+      expect(log_floor_scale(scale, `log`, scale.domain())(value)).toBe(scale(clamped))
+    })
+
+    test(`takes the floor from an unordered domain`, () => {
+      const scale = scaleLog().domain([1000, 1]).range([0, 300])
+      expect(log_floor_scale(scale, `log`, [1000, 1])(0)).toBe(scale(1))
     })
   })
 
@@ -631,6 +624,13 @@ describe(`scales`, () => {
       expect(() => scale_arcsinh(threshold)).toThrow(error_msg)
       expect(() => get_arcsinh_threshold({ type: `arcsinh`, threshold })).toThrow(error_msg)
     })
+
+    test(`degenerate domain (d_min === d_max) returns midpoints`, () => {
+      const scale = scale_arcsinh(1).domain([50, 50]).range([0, 100])
+      for (const val of [0, 50, 100, -100]) expect(scale(val)).toBe(50) // range midpoint
+      const scale2 = scale_arcsinh(1).domain([42, 42]).range([0, 100])
+      for (const val of [0, 50, 100]) expect(scale2.invert(val)).toBe(42) // domain midpoint
+    })
   })
 
   describe(`generate_arcsinh_ticks`, () => {
@@ -760,17 +760,6 @@ describe(`scales`, () => {
       [undefined, 1],
     ])(`get_arcsinh_threshold(%s) = %s`, (input, expected) => {
       expect(get_arcsinh_threshold(input as ScaleType | undefined)).toBe(expected)
-    })
-  })
-
-  describe(`scale_arcsinh identical domain edge cases`, () => {
-    test(`degenerate domain (d_min === d_max) returns midpoints`, () => {
-      const scale = scale_arcsinh(1).domain([50, 50]).range([0, 100])
-      // Forward: any input → midpoint of range
-      for (const val of [0, 50, 100, -100]) expect(scale(val)).toBe(50)
-      // Invert: any input → midpoint of domain
-      const scale2 = scale_arcsinh(1).domain([42, 42]).range([0, 100])
-      for (const val of [0, 50, 100]) expect(scale2.invert(val)).toBe(42)
     })
   })
 

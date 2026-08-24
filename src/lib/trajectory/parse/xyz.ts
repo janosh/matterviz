@@ -1,5 +1,5 @@
 import type { ElementSymbol } from '$lib/element/types'
-import * as math from '$lib/math'
+import type { Matrix3x3 } from '$lib/math'
 import { coerce_elem_symbol } from '$lib/element/helpers'
 import { capitalize_symbol } from '$lib/structure/parsers/shared'
 import type { Pbc } from '$lib/structure/pbc'
@@ -48,14 +48,14 @@ function parse_extxyz_columns(comment: string): {
   }
 }
 
-export function parse_extxyz_lattice(comment: string): math.Matrix3x3 | undefined {
+export function parse_extxyz_lattice(comment: string): Matrix3x3 | undefined {
   const raw = /Lattice\s*=\s*"(?<lattice>[^"]*)"/i.exec(comment)?.[1]
   if (raw === undefined) return undefined
   const vals = raw.trim().split(/\s+/).filter(Boolean).map(parse_float_token)
   if (vals.length !== 9 || !vals.every(Number.isFinite)) {
     throw new Error(`Invalid EXTXYZ Lattice: expected 9 finite numbers, got "${raw}"`)
   }
-  return [vals.slice(0, 3), vals.slice(3, 6), vals.slice(6, 9)] as math.Matrix3x3
+  return [vals.slice(0, 3), vals.slice(3, 6), vals.slice(6, 9)] as Matrix3x3
 }
 
 const EXTXYZ_BOOL = new Map([
@@ -324,7 +324,6 @@ export function build_xyz_frame(
   }
   const force_stats = calc_force_stats(forces)
   if (force_stats) Object.assign(metadata, { forces, ...force_stats })
-  if (lattice_matrix) metadata.volume = math.calc_lattice_params(lattice_matrix).volume
   return create_trajectory_frame(
     positions,
     elements,

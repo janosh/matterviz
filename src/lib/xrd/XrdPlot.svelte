@@ -170,12 +170,8 @@
       }
 
       for (let idx = 0; idx < xs.length; idx++) {
-        const hkls_objs = entry.pattern.hkls?.[idx] ?? []
-        const hkls: Hkl[] = hkls_objs
-          .map((hkl_obj) => (Array.isArray(hkl_obj?.hkl) ? hkl_obj.hkl : null))
-          .filter((hkl_val): hkl_val is Hkl => Array.isArray(hkl_val) && hkl_val.length === 3)
-        const d_hkl = entry.pattern.d_hkls?.[idx]
-        metadata.push({ hkls, d: d_hkl, label: entry.label })
+        const hkls: Hkl[] = entry.pattern.hkls?.[idx]?.map((hkl_obj) => hkl_obj.hkl) ?? []
+        metadata.push({ hkls, d: entry.pattern.d_hkls?.[idx], label: entry.label })
 
         if (selected_indices.includes(idx)) {
           // Angles are shown by default only while the plot holds at most two patterns

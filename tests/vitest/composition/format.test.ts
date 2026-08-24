@@ -44,9 +44,13 @@ describe(`get_alphabetical_formula`, () => {
     [{ Fe: 0.001, O: 0.002 }, false, ` `, `.3~g`, `Fe<sub>0.001</sub> O<sub>0.002</sub>`],
     [`Fe2.5O3.75`, false, ` `, `.1f`, `Fe<sub>2.5</sub> O<sub>3.8</sub>`],
     [`Fe2.5O3.75`, false, ` `, `.2f`, `Fe<sub>2.50</sub> O<sub>3.75</sub>`],
-    // SI format must not render sub-1 amounts with SI prefixes (0.5 -> 500m)
+    // an explicit SI format must not render sub-1 amounts with SI prefixes (0.5 -> 500m)
     [`Li0.5FeO2`, true, ``, undefined, `FeLi0.5O2`],
     [{ Li: 0.001, Fe: 1, O: 2 }, true, ``, `.3~s`, `FeLi0.001O2`],
+    // the default keeps large counts as plain digits (C1k would not parse back) and trims
+    // float noise to 3 decimals
+    [`C1000H2000`, true, ``, undefined, `C1000H2000`],
+    [{ H: 0.1 + 0.2, O: 1 }, true, ``, undefined, `H0.3O`],
   ])(
     `input=%p, plain_text=%p, delim=%p, amount_format=%p → %p`,
     (input, plain_text, delim, amount_format, expected) => {

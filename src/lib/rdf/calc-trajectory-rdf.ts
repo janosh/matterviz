@@ -159,7 +159,14 @@ export async function collect_trajectory_rdf(
       const patterns = await calc_frame_rdfs_async(structure, { cutoff, n_bins }, { signal })
       if (sums.length === 0) {
         r = patterns[0]?.r ?? []
-        pairs = patterns.map((pattern) => pattern.element_pair ?? [`X`, `X`])
+        pairs = patterns.map((pattern) => {
+          if (!pattern.element_pair) {
+            throw new Error(
+              `collect_trajectory_rdf: frame ${frame_number} returned an unlabelled g(r)`,
+            )
+          }
+          return pattern.element_pair
+        })
         sums = patterns.map(() => new Float64Array(n_bins))
       }
       for (const [pair_idx, pattern] of patterns.entries()) {

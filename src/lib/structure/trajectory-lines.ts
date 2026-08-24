@@ -131,17 +131,14 @@ function make_wrap_jump_test(
   stream: TrajectoryPositionStream,
 ): (step: Vec3, frame_idx: number) => boolean {
   const periodic = stream.pbc ?? [true, true, true]
-  let cached_lattice: Matrix3x3 | null = null
-  let cart_to_frac: ((cart: Vec3) => Vec3) | null = null
+  let cached: { lattice: Matrix3x3; cart_to_frac: (cart: Vec3) => Vec3 } | null = null
   return (step, frame_idx) => {
-    const lattice = stream.lattice_matrices?.[frame_idx] ?? null
+    const lattice = stream.lattice_matrices?.[frame_idx]
     if (!lattice) return false
-    if (lattice !== cached_lattice) {
-      cached_lattice = lattice
-      cart_to_frac = create_cart_to_frac(lattice)
+    if (cached?.lattice !== lattice) {
+      cached = { lattice, cart_to_frac: create_cart_to_frac(lattice) }
     }
-    if (!cart_to_frac) return false
-    const frac_step = cart_to_frac(step)
+    const frac_step = cached.cart_to_frac(step)
     return [0, 1, 2].some((axis) => periodic[axis] && Math.abs(frac_step[axis]) > 0.5)
   }
 }

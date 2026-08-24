@@ -8,7 +8,7 @@ const SCENARIO_LOAD_TIMEOUT = 20_000
 // once volumes are fetched + parsed, so waiting on it is sufficient
 async function wait_for_scenario(page: Page, url: string) {
   await page.goto(url)
-  await expect(page.locator(`.stats-bar`)).toBeVisible({ timeout: SCENARIO_LOAD_TIMEOUT })
+  await expect(page.locator(`.demo-stats-bar`)).toBeVisible({ timeout: SCENARIO_LOAD_TIMEOUT })
 }
 
 test.describe(`Multi-volume isosurface demo`, () => {
@@ -20,8 +20,8 @@ test.describe(`Multi-volume isosurface demo`, () => {
   ] as const) {
     test(`scenario ${id} loads volumes and renders`, async ({ page }) => {
       await wait_for_scenario(page, `${DEMO_URL}?scenario=${id}`)
-      await expect(page.locator(`.stats-bar`)).toContainText(`Volumes: 2`)
-      if (surfaces) await expect(page.locator(`.stats-bar`)).toContainText(surfaces)
+      await expect(page.locator(`.demo-stats-bar`)).toContainText(`Volumes: 2`)
+      if (surfaces) await expect(page.locator(`.demo-stats-bar`)).toContainText(surfaces)
       await wait_for_3d_canvas(page, `.structure`)
       await expect(page.locator(`.status-message.error`)).toHaveCount(0)
     })
@@ -30,7 +30,7 @@ test.describe(`Multi-volume isosurface demo`, () => {
   test(`clicking a scenario card loads it and updates the URL`, async ({ page }) => {
     await wait_for_scenario(page, `${DEMO_URL}?scenario=glycine-esp`)
     await page.locator(`.scenario-card`, { hasText: `Charge × magnetization` }).click()
-    await expect(page.locator(`.stats-bar`)).toContainText(`Fe-spin-CHGCAR`, {
+    await expect(page.locator(`.demo-stats-bar`)).toContainText(`Fe-spin-CHGCAR`, {
       timeout: SCENARIO_LOAD_TIMEOUT,
     })
     await expect(page).toHaveURL(/scenario=fe-spin/)
@@ -73,6 +73,6 @@ test.describe(`Multi-volume isosurface demo`, () => {
     const groups = pane.locator(`.volume-group`)
     await expect(groups.nth(1).locator(`.layer-row`)).toHaveCount(1)
     // ESP is a signed field so its auto layer shows +/- lobes: 1 + 2 surfaces
-    await expect(page.locator(`.stats-bar`)).toContainText(`Surfaces: 3`)
+    await expect(page.locator(`.demo-stats-bar`)).toContainText(`Surfaces: 3`)
   })
 })

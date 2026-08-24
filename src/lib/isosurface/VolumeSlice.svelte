@@ -24,14 +24,10 @@
     color_range,
     symmetric = `auto`,
     contour_levels = 10,
-    contour_color = `currentColor`,
-    contour_width = 1,
-    flip_y = true,
     show_colorbar = true,
     colorbar_title = `Value`,
     colorbar_orientation = `vertical`,
     canvas = $bindable(),
-    on_render,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     slice?: SliceResult | null
@@ -40,19 +36,10 @@
     color_range?: Vec2
     symmetric?: boolean | `auto`
     contour_levels?: number | number[]
-    contour_color?: string
-    contour_width?: number
-    flip_y?: boolean
     show_colorbar?: boolean
     colorbar_title?: string
     colorbar_orientation?: Orientation
     canvas?: HTMLCanvasElement
-    on_render?: (detail: {
-      canvas: HTMLCanvasElement
-      color_range: Vec2
-      contour_thresholds: number[]
-      slice: SliceResult
-    }) => void
   } = $props()
 
   let resolved_color_range = $derived<Vec2>(
@@ -71,14 +58,12 @@
       return interpolator(normalized)
     }
   })
+  // Contours are stroked in the canvas's CSS `color` (--volume-slice-contour-color).
   // getComputedStyle forces a style flush and the contour pass repaints on every slider
-  // frame, so resolve the CSS colour per theme/style change instead.
-  const canvas_color = resolve_computed_color(() => canvas, `color`, {
+  // frame, so resolve the colour per theme/style change instead.
+  const contour_color = resolve_computed_color(() => canvas, `color`, {
     fallback: `currentColor`,
   })
-  let resolved_contour_color = $derived(
-    contour_color === `currentColor` ? canvas_color.current : contour_color,
-  )
 
   let image_data: ImageData | undefined
   let contour_values = new Float64Array()
@@ -89,14 +74,14 @@
     return v_span > 0 ? u_span / v_span : 1
   })
 
-  // Trace a closed ring of sampled pixel coordinates, mirroring y when the image is flipped
+  // Trace a closed ring of sampled pixel coordinates, mirroring y like the flipped pixel rows
   function trace_ring(
     context: CanvasRenderingContext2D,
     ring: number[][],
     height: number,
   ): void {
     for (const [point_idx, [point_x, sampled_y]] of ring.entries()) {
-      const point_y = flip_y ? height - sampled_y : sampled_y
+      const point_y = height - sampled_y
       if (point_idx === 0) context.moveTo(point_x, point_y)
       else context.lineTo(point_x, point_y)
     }
@@ -145,8 +130,8 @@
 
     context.save()
     clip_to_slice_polygon(context, current_slice)
-    context.strokeStyle = resolved_contour_color
-    context.lineWidth = Math.max(0.1, contour_width)
+    context.strokeStyle = contour_color.current
+    context.lineWidth = 1
     context.lineJoin = `round`
     for (const shape of shapes) {
       context.beginPath()
@@ -176,19 +161,10 @@
       if (image_data?.width !== slice.width || image_data?.height !== slice.height) {
         image_data = context.createImageData(slice.width, slice.height)
       }
-      slice_to_rgba(slice, colormap, resolved_color_range, {
-        flip_y,
-        out: image_data.data,
-      })
+      slice_to_rgba(slice, colormap, resolved_color_range, image_data.data)
       context.putImageData(image_data, 0, 0)
     }
     if (mode !== `filled`) draw_contours(context, slice)
-    on_render?.({
-      canvas,
-      color_range: resolved_color_range,
-      contour_thresholds,
-      slice,
-    })
   }
 
   $effect(render_slice)

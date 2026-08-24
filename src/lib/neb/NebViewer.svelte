@@ -76,9 +76,9 @@
     on_fullscreen_change?: (fullscreen: boolean) => void
   } = $props()
 
-  let dropped_paths = $state(new SvelteMap<string, ReactionPath>())
+  const dropped_paths = new SvelteMap<string, ReactionPath>()
   let controls_height = $state(0)
-  let controls_config = $derived(normalize_show_controls(show_controls, `always`))
+  const controls_config = $derived(normalize_show_controls(show_controls, `always`))
 
   const merged: ReactionPathInput = $derived({
     ...(paths

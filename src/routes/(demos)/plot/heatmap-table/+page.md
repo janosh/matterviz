@@ -126,7 +126,7 @@
     },
     {
       label: `Last Updated`,
-      format_type: `datetime`,
+      datetime_format: `datetime`,
       description: `Millisecond timestamp; click the calendar button to show age since now`,
     },
     {
@@ -470,7 +470,7 @@ ML model benchmark with a sticky first column. Scroll horizontally to compare mo
     },
     {
       label: `Last Run`,
-      format_type: `datetime`,
+      datetime_format: `datetime`,
       style: `min-width: 115px;`,
       description: `Numeric timestamp from the latest benchmark run`,
     },

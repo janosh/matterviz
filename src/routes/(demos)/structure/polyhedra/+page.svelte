@@ -3,14 +3,9 @@
   import { DEFAULTS } from '$lib/settings'
   import type { AnyStructure, Molecule } from '$lib/structure'
   import { Structure } from '$lib/structure'
-  import { parse_structure_file } from '$lib/structure/parse'
   import type { Vec3 } from '$lib/math'
   import { file_param } from '$site/state.svelte'
-  import { structure_file_text } from '$site/structures'
-  import batio3_poscar from '$site/structures/BaTiO3-tetragonal.poscar?raw'
-  import lifepo4_cif from '$site/structures/LiFePO4.cif?raw'
-  import nacl_poscar from '$site/structures/NaCl-cubic.poscar?raw'
-  import rutile_cif from '$site/structures/TiO2.cif?raw'
+  import { parse_structure_fixture } from '$site/structures'
   import { onMount } from 'svelte'
 
   // Load any site structure fixture via ?file=<name> URL param (e.g.
@@ -20,10 +15,8 @@
     // prerender (would 500 the static build), so only read them client-side
     const requested = file_param()
     if (!requested) return null
-    const text = structure_file_text(requested)
-    if (!text) return null
     try {
-      return parse_structure_file(text, requested)
+      return parse_structure_fixture(requested)
     } catch {
       return null
     }
@@ -37,39 +30,33 @@
     supercell?: string
   }
 
-  const parse = (content: string, filename: string): AnyStructure => {
-    const structure = parse_structure_file(content, filename)
-    if (!structure) throw new Error(`Failed to parse ${filename}`)
-    return structure
-  }
-
   const examples: Example[] = [
     {
       id: `NaCl`,
       label: `NaCl (rocksalt)`,
       description: `Image atoms complete polyhedra at cell boundaries.`,
-      structure: parse(nacl_poscar, `NaCl-cubic.poscar`),
+      structure: parse_structure_fixture(`NaCl-cubic.poscar`),
       supercell: `2x2x2`,
     },
     {
       id: `rutile`,
       label: `TiO₂ (rutile)`,
       description: `TiO₆ chains along the c-axis.`,
-      structure: parse(rutile_cif, `TiO2.cif`),
+      structure: parse_structure_fixture(`TiO2.cif`),
       supercell: `2x2x2`,
     },
     {
       id: `BaTiO3`,
       label: `BaTiO₃ (perovskite)`,
       description: `Ba polyhedra are hidden by default; toggle Ba below to show them.`,
-      structure: parse(batio3_poscar, `BaTiO3-tetragonal.poscar`),
+      structure: parse_structure_fixture(`BaTiO3-tetragonal.poscar`),
       supercell: `2x2x2`,
     },
     {
       id: `LiFePO4`,
       label: `LiFePO₄ (olivine)`,
       description: `Spectator Li⁺ remains visible as spheres in the diffusion channels.`,
-      structure: parse(lifepo4_cif, `LiFePO4.cif`),
+      structure: parse_structure_fixture(`LiFePO4.cif`),
     },
   ]
 
@@ -162,7 +149,7 @@
 
   <p class="description">{active.description}</p>
 
-  <div class="controls">
+  <div class="demo-controls">
     <label>
       Opacity
       <input
@@ -244,17 +231,5 @@
     color: var(--text-color-muted);
     margin: 0.5em auto;
     max-width: 50em;
-  }
-  .controls {
-    display: flex;
-    flex-wrap: wrap;
-    place-content: center;
-    gap: 1.5em;
-    margin: 0.5em 0 1em;
-  }
-  .controls label {
-    display: flex;
-    align-items: center;
-    gap: 0.5em;
   }
 </style>

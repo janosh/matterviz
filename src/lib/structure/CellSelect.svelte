@@ -11,7 +11,7 @@
     supercell_scaling = $bindable(`1x1x1`),
     cell_type = $bindable(`original`),
     sym_data = null,
-    loading = $bindable(false),
+    loading = false,
     direction = `down`,
     suppress_hover = false,
   }: {

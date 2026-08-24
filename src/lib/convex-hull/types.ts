@@ -124,6 +124,9 @@ export interface ConvexHullConfig {
   colors?: { stable?: string; unstable?: string }
 }
 
+// Point colours in stability mode (Okabe-Ito blue / orange), the one place they are spelled
+export const DEFAULT_HULL_COLORS = { stable: `#0072B2`, unstable: `#E69F00` }
+
 // Legend configuration
 export interface ConvexHullControlsType {
   title?: string
@@ -196,7 +199,7 @@ export const DEFAULT_GAS_PRESSURES: Readonly<Record<GasSpecies, number>> = {
 export interface GasThermodynamicsProvider {
   // Get standard chemical potential μ°(T) at reference pressure P₀=1 bar
   // Returns value in eV/molecule (not per atom)
-  get_standard_chemical_potential(gas: GasSpecies, T: number): number
+  get_standard_chemical_potential(gas: GasSpecies, temperature: number): number
 
   // Get list of supported gas species
   get_supported_gases(): GasSpecies[]
@@ -232,6 +235,5 @@ export interface GasAnalysis {
   relevant_gases: GasSpecies[]
 }
 
-// Position options for UI control panels (e.g., GasPressureControls)
-const GAS_CONTROL_POSITIONS = [`top-left`, `top-right`, `bottom-left`, `bottom-right`] as const
-export type GasControlPosition = (typeof GAS_CONTROL_POSITIONS)[number]
+// Corner a standalone GasPressureControls panel is pinned to
+export type GasControlPosition = `top-left` | `top-right` | `bottom-left` | `bottom-right`

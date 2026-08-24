@@ -11,27 +11,23 @@ import { compute_ternary_phase_diagram } from './compute'
 import { get_volume_per_atom } from './free-energy'
 import type { DiagramProgress, TernaryPhaseDiagram, TernaryPhaseDiagramOptions } from './types'
 
-// Only what the computation reads, so megabyte structures never get cloned into the worker.
-// phases[idx].entry in the result is this slim record; hosts keep their own entries by index.
-function slim_entry(entry: PhaseData): PhaseData {
-  const volume_per_atom = get_volume_per_atom(entry)
-  return {
-    composition: { ...entry.composition },
-    energy: entry.energy,
-    ...(entry.energy_per_atom !== undefined && { energy_per_atom: entry.energy_per_atom }),
-    ...(entry.correction !== undefined && { correction: entry.correction }),
-    ...(entry.e_form_per_atom !== undefined && { e_form_per_atom: entry.e_form_per_atom }),
-    ...(entry.entry_id !== undefined && { entry_id: entry.entry_id }),
-    ...(entry.reduced_formula !== undefined && { reduced_formula: entry.reduced_formula }),
-    ...(entry.name !== undefined && { name: entry.name }),
-    ...(entry.temperatures && { temperatures: [...entry.temperatures] }),
-    ...(entry.free_energies && { free_energies: [...entry.free_energies] }),
-    ...(volume_per_atom !== null && { volume_per_atom }),
-    ...(entry.exclude_from_hull !== undefined && {
-      exclude_from_hull: entry.exclude_from_hull,
-    }),
-  }
-}
+// Only what the computation reads, so megabyte structures never get cloned into the worker
+// (the volume SISSO needs is extracted from the structure here). phases[idx].entry in the
+// result is this slim record; hosts keep their own entries by index.
+const slim_entry = (entry: PhaseData): PhaseData => ({
+  composition: { ...entry.composition },
+  energy: entry.energy,
+  energy_per_atom: entry.energy_per_atom,
+  correction: entry.correction,
+  e_form_per_atom: entry.e_form_per_atom,
+  entry_id: entry.entry_id,
+  reduced_formula: entry.reduced_formula,
+  name: entry.name,
+  temperatures: entry.temperatures,
+  free_energies: entry.free_energies,
+  volume_per_atom: get_volume_per_atom(entry) ?? undefined,
+  exclude_from_hull: entry.exclude_from_hull,
+})
 
 const run_diagram = create_worker_client<
   PhaseData[],

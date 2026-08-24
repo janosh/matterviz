@@ -238,13 +238,12 @@ export const canonicalize_bond_target = (
 // Key of a bond exactly as its endpoints are given (no canonicalisation)
 export const rendered_bond_key_for = (bond: BondKeyTarget): string =>
   get_bond_key(bond.site_idx_1, bond.site_idx_2, bond.cell_shift)
-const bond_key_for = rendered_bond_key_for
 
 const matches_bond_key = (bond: BondKeyTarget, key: string): boolean =>
-  bond_key_for(bond) === key
+  rendered_bond_key_for(bond) === key
 
 const replace_bond = (bonds: StructureBond[], next_bond: StructureBond): StructureBond[] => {
-  const key = bond_key_for(next_bond)
+  const key = rendered_bond_key_for(next_bond)
   return [...bonds.filter((bond) => !matches_bond_key(bond, key)), next_bond]
 }
 
@@ -270,10 +269,8 @@ export function has_visible_bond(
   bond: BondKeyTarget,
   calculated_bonds: BondOrderTarget[],
 ): boolean {
-  const key = bond_key_for(bond)
-  if (includes_bond_key(edit_state.removed_bonds, key)) {
-    return false
-  }
+  const key = rendered_bond_key_for(bond)
+  if (includes_bond_key(edit_state.removed_bonds, key)) return false
   if (includes_bond_key(edit_state.added_bonds, key)) return true
   return includes_bond_key(calculated_bonds, key)
 }
@@ -285,7 +282,7 @@ export function add_or_restore_bond(
   order: BondOrder,
 ): BondEditResult {
   const record = make_bond_record(bond, order)
-  const key = bond_key_for(record)
+  const key = rendered_bond_key_for(record)
   const removed_bond = find_bond_by_key(edit_state.removed_bonds, key)
   if (removed_bond) {
     return {
@@ -322,7 +319,7 @@ export function delete_bond(
   calculated_bonds: BondOrderTarget[],
 ): BondEditResult {
   const record = make_bond_record(bond, 1)
-  const key = bond_key_for(record)
+  const key = rendered_bond_key_for(record)
   if (includes_bond_key(edit_state.added_bonds, key)) {
     return {
       action: `deleted-added`,
@@ -359,7 +356,7 @@ export function set_bond_order(
   order: BondOrder,
 ): BondEditResult {
   const record = make_bond_record(bond, order)
-  const key = bond_key_for(record)
+  const key = rendered_bond_key_for(record)
   const calculated = find_bond_by_key(calculated_bonds, key)
   if (calculated) {
     const visible_order = get_bond_order(calculated)
@@ -399,23 +396,13 @@ export const merge_bond_edits = (
   removed: StructureBond[],
   overrides: StructureBond[],
 ): StructureBond[] => {
-  const key_for = (bond: StructureBond): string =>
-    get_bond_key(bond.site_idx_1, bond.site_idx_2, bond.cell_shift)
-  const normalize_record = (bond: StructureBond): StructureBond =>
-    normalize_structure_bond(bond.site_idx_1, bond.site_idx_2, bond.order, bond.cell_shift)
-  const removed_keys = new Set(removed.map(key_for))
-  const merged = new Map(
-    base_bonds
-      .filter((bond) => !removed_keys.has(key_for(bond)))
-      .map((bond) => [key_for(bond), normalize_record(bond)]),
-  )
-  // Apply additions before overrides so user-set bond orders win even if
-  // callers accidentally pass overlapping edit lists.
-  for (const bond of added) {
-    if (!removed_keys.has(key_for(bond))) merged.set(key_for(bond), normalize_record(bond))
-  }
-  for (const bond of overrides) {
-    if (!removed_keys.has(key_for(bond))) merged.set(key_for(bond), normalize_record(bond))
+  const removed_keys = new Set(removed.map(rendered_bond_key_for))
+  const merged = new Map<string, StructureBond>()
+  // Base first, then additions, then overrides, so user-set bond orders win even if callers
+  // accidentally pass overlapping edit lists
+  for (const bond of [...base_bonds, ...added, ...overrides]) {
+    const key = rendered_bond_key_for(bond)
+    if (!removed_keys.has(key)) merged.set(key, make_bond_record(bond, bond.order))
   }
   return [...merged.values()]
 }
@@ -1302,53 +1289,62 @@ export function electroneg_ratio(
   // distances turns the candidate loop's cutoff into two array reads and lets the neighbor
   // search run at the true reach instead of max_distance_ratio. For rocksalt that is
   // 4.2 A rather than 6.6, and Na-Na becomes unreachable outright.
-  // expected bond length, the distance-independent strength factor, and the acceptance
-  // band, per ordered pair (symmetric, but indexing both ways is cheaper)
+  // expected bond length and the distance-independent strength factor per ordered pair
+  // (symmetric, but indexing both ways is cheaper). The factor carries no cation-cation
+  // penalty: pass 2 applies that conditionally once the anion shells are counted.
   const pair_expected = new Float64Array(n_elem * n_elem)
   const pair_factor = new Float64Array(n_elem * n_elem)
-  const build_pair_reach = (apply_cation_penalty: boolean) => {
-    const reach_hi = new Float64Array(n_elem * n_elem)
-    const reach_lo = new Float64Array(n_elem * n_elem)
-    let max_reach = 0
-    for (let id_a = 0; id_a < n_elem; id_a++) {
-      for (let id_b = 0; id_b < n_elem; id_b++) {
-        const expected = elem_radius[id_a] + elem_radius[id_b]
-        pair_expected[id_a * n_elem + id_b] = expected
-        if (elem_radius[id_a] === 0 || elem_radius[id_b] === 0) continue
-        const en_diff = Math.abs(elem_en[id_a] - elem_en[id_b])
-        let strength = 1
-        if (elem_metal[id_a] && elem_metal[id_b]) strength *= metal_metal_penalty
-        else if (
-          (elem_metal[id_a] && elem_nonmetal[id_b]) ||
-          (elem_nonmetal[id_a] && elem_metal[id_b])
-        ) {
-          strength *= metal_nonmetal_bonus
-          if (en_diff > electronegativity_threshold) strength *= 1.3
-        } else if (en_diff < 0.5) strength *= similar_electronegativity_bonus
-        if (apply_cation_penalty && elem_cation[id_a] && elem_cation[id_b]) {
-          strength *= cation_cation_penalty
-        }
-        strength *= 1 - 0.3 * (en_diff / (elem_en[id_a] + elem_en[id_b]))
-        pair_factor[id_a * n_elem + id_b] = strength
-        // dist_weight <= 1, so nothing in this pair can clear the threshold
-        if (strength <= strength_threshold) continue
-        const spread = Math.sqrt(-0.18 * Math.log(strength_threshold / strength))
-        const reach = expected * Math.min(1 + spread, max_distance_ratio)
-        reach_hi[id_a * n_elem + id_b] = reach
-        reach_lo[id_a * n_elem + id_b] = spread >= 1 ? 0 : expected * (1 - spread)
-        if (reach > max_reach) max_reach = reach
-      }
-    }
-    return { reach_hi, reach_lo, max_reach }
+  // The cation-cation penalty normally rides in the pass-1 reach band so the early strength
+  // cutoff can reject a damped contact before it costs a candidate slot. It only NEEDS
+  // deferring when some cation lacks a full anion shell, which is rare (metal-rich compounds)
+  // and cannot be known until the shells are counted. So sweep once with the penalized band,
+  // and replay with the unpenalized one only if that census turns up an unsaturated cation.
+  // The census counts cation-anion contacts, which the penalty never touches, so it is
+  // identical either way.
+  type PairReach = { reach_hi: Float64Array; reach_lo: Float64Array; max_reach: number }
+  const pair_reach = (): PairReach => ({
+    reach_hi: new Float64Array(n_elem * n_elem),
+    reach_lo: new Float64Array(n_elem * n_elem),
+    max_reach: 0,
+  })
+  const penalized = pair_reach()
+  const unpenalized = pair_reach()
+  const set_reach = (table: PairReach, pair: number, strength: number): void => {
+    // dist_weight <= 1, so nothing in this pair can clear the threshold
+    if (strength <= strength_threshold) return
+    const expected = pair_expected[pair]
+    const spread = Math.sqrt(-0.18 * Math.log(strength_threshold / strength))
+    const reach = expected * Math.min(1 + spread, max_distance_ratio)
+    table.reach_hi[pair] = reach
+    table.reach_lo[pair] = spread >= 1 ? 0 : expected * (1 - spread)
+    if (reach > table.max_reach) table.max_reach = reach
   }
-  // The cation-cation penalty normally rides in pass 1 so the early strength cutoff can
-  // reject a damped contact before it costs a candidate slot. It only NEEDS deferring when
-  // some cation lacks a full anion shell, which is rare (metal-rich compounds) and cannot
-  // be known until the shells are counted. So sweep once with the penalty applied, and
-  // replay only if that census turns up an unsaturated cation. The census counts
-  // cation-anion contacts, which the penalty never touches, so it is identical either way.
-  const penalized = build_pair_reach(true)
-  const unpenalized = build_pair_reach(false)
+  for (let id_a = 0; id_a < n_elem; id_a++) {
+    for (let id_b = 0; id_b < n_elem; id_b++) {
+      const pair = id_a * n_elem + id_b
+      pair_expected[pair] = elem_radius[id_a] + elem_radius[id_b]
+      if (elem_radius[id_a] === 0 || elem_radius[id_b] === 0) continue
+      const en_diff = Math.abs(elem_en[id_a] - elem_en[id_b])
+      let strength = 1
+      if (elem_metal[id_a] && elem_metal[id_b]) strength *= metal_metal_penalty
+      else if (
+        (elem_metal[id_a] && elem_nonmetal[id_b]) ||
+        (elem_nonmetal[id_a] && elem_metal[id_b])
+      ) {
+        strength *= metal_nonmetal_bonus
+        if (en_diff > electronegativity_threshold) strength *= 1.3
+      } else if (en_diff < 0.5) strength *= similar_electronegativity_bonus
+      const en_term = 1 - 0.3 * (en_diff / (elem_en[id_a] + elem_en[id_b]))
+      pair_factor[pair] = strength * en_term
+      set_reach(unpenalized, pair, pair_factor[pair])
+      const both_cations = elem_cation[id_a] && elem_cation[id_b]
+      set_reach(
+        penalized,
+        pair,
+        both_cations ? strength * cation_cation_penalty * en_term : pair_factor[pair],
+      )
+    }
+  }
   // One geometric search covers both sweeps. A zero/non-finite reach (no known radius, or
   // a degenerate ratio) still needs a positive cutoff for the query to be well-formed.
   const max_reach = Math.max(penalized.max_reach, unpenalized.max_reach)
@@ -1369,7 +1365,7 @@ export function electroneg_ratio(
   // 1. Collect all potential bonds and determine closest neighbor distance for each unique atom (orig_idx)
   // 2. Filter bonds based on penalties using the fully populated closest distances
   // Returns the candidate count.
-  const sweep_candidates = ({ reach_hi, reach_lo }: typeof penalized): number => {
+  const sweep_candidates = ({ reach_hi, reach_lo }: PairReach): number => {
     let n_cand = 0
     site_anion_neighbors.fill(0)
     closest.fill(Infinity)

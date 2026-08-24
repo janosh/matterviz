@@ -61,11 +61,6 @@
       label: `Monoclinic`,
       description: `Ac₄Mg₂ - oblique prism BZ`,
     },
-    // {
-    //   id: `mp-1183057-Ac3-trigonal`,
-    //   label: `Trigonal`,
-    //   description: `Ac - rhombohedral BZ`,
-    // },
     {
       id: `mp-686119-Ag13Bi14I56-triclinic`,
       label: `Triclinic`,

@@ -1,3 +1,4 @@
+import type { TrajectoryFrame } from '$lib/trajectory'
 import { full_data_extractor } from '$lib/trajectory/extract'
 import { open_trajectory, VaspoutElectronicOnlyError } from '$lib/trajectory/open'
 import { expand_ion_types, with_h5_file } from '$lib/trajectory/parse/h5-utils'
@@ -12,6 +13,8 @@ import { read_binary_test_file, rejection_of } from '../setup'
 const VASPOUT_FIXTURE_DIR = `tests/vitest/fixtures/vasp-hdf5`
 const read_vaspout = (filename: string): ArrayBuffer =>
   read_binary_test_file(filename, VASPOUT_FIXTURE_DIR)
+const elements_of = (frame: TrajectoryFrame) =>
+  frame.structure.sites.map((site) => site.species[0].element)
 const parse_fixture = (fixture: string, potim_override?: number) =>
   with_h5_file(read_vaspout(fixture), `vaspout.h5`, (h5_file) => {
     if (potim_override === undefined) return parse_vaspout_h5_file(h5_file, () => {})
@@ -28,8 +31,7 @@ describe(`vaspout.h5 parsing`, () => {
 
     expect(trajectory.format).toBe(`vaspout-h5`)
     expect(trajectory.frames).toHaveLength(5)
-    expect(trajectory.frames[0].structure.sites).toHaveLength(2)
-    expect(trajectory.metadata?.element_counts).toEqual({ Si: 2 })
+    expect(elements_of(trajectory.frames[0])).toEqual([`Si`, `Si`])
     expect(trajectory.metadata?.energy_tag).toBe(`free energy    TOTEN`)
     expect(trajectory.metadata?.electronic).toBeUndefined()
 
@@ -68,7 +70,7 @@ describe(`vaspout.h5 parsing`, () => {
     const trajectory = await parse_fixture(`vaspout-gasb-static.h5`)
 
     expect(trajectory.frames).toHaveLength(1)
-    expect(trajectory.metadata?.element_counts).toEqual({ Ga: 1, Sb: 1 })
+    expect(elements_of(trajectory.frames[0])).toEqual([`Ga`, `Sb`])
     expect(trajectory.frames[0].metadata?.energy).toBeCloseTo(-8.95303508, 6)
     const structure = trajectory.frames[0].structure
     expect(structure.sites[1].abc.map((coord) => Math.round(coord * 1e6) / 1e6)).toEqual([
@@ -81,7 +83,7 @@ describe(`vaspout.h5 parsing`, () => {
 
     expect(trajectory.frames).toHaveLength(1)
     expect(trajectory.frames[0].step).toBe(0)
-    expect(trajectory.metadata?.element_counts).toEqual({ Si: 2 })
+    expect(elements_of(trajectory.frames[0])).toEqual([`Si`, `Si`])
     expect(trajectory.metadata?.frames_are_scf_steps).toBeUndefined()
     expect(trajectory.frames[0].metadata?.n_scf_steps).toBeUndefined()
   })
@@ -126,15 +128,15 @@ describe(`vaspout.h5 parsing`, () => {
   })
 
   it.each([
-    [`vaspout-si-potim.h5`, undefined, 2.5, `fs`],
-    [`vaspout-si-static.h5`, undefined, undefined, undefined],
-    [`vaspout-si-static.h5`, 2.5, 2.5, `fs`],
-    [`vaspout-si-static-scf.h5`, 2.5, undefined, undefined],
+    [`vaspout-si-potim.h5`, undefined, { value: 2.5, unit: `fs` }],
+    [`vaspout-si-static.h5`, undefined, undefined],
+    [`vaspout-si-static.h5`, 2.5, { value: 2.5, unit: `fs` }],
+    [`vaspout-si-static-scf.h5`, 2.5, undefined],
   ])(
-    `%s with POTIM override %s -> time_step %s %s`,
-    async (fixture, potim_override, time_step, time_unit) => {
+    `%s with POTIM override %s -> time_step %j`,
+    async (fixture, potim_override, time_step) => {
       const trajectory = await parse_fixture(fixture, potim_override)
-      expect([trajectory.time_step, trajectory.time_unit]).toEqual([time_step, time_unit])
+      expect(trajectory.time_step).toEqual(time_step)
     },
   )
 

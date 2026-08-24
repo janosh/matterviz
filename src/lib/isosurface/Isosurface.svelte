@@ -8,22 +8,16 @@
   // colormap LUT.
   import { clamp, type Matrix3x3, type Vec3 } from '../math'
   import { to_error } from '../utils'
+  import { indexed_mesh_geometry } from '$lib/scene/geometry.svelte'
   import { T, useThrelte } from '@threlte/core'
   import { untrack } from 'svelte'
   import { SvelteSet } from 'svelte/reactivity'
-  import {
-    BackSide,
-    BufferAttribute,
-    BufferGeometry,
-    DoubleSide,
-    FrontSide,
-    Uint32BufferAttribute,
-  } from 'three/webgpu'
+  import { BackSide, type BufferGeometry, DoubleSide, FrontSide } from 'three/webgpu'
   import {
     compute_scalar_range,
     DEFAULT_ISO_COLORMAP,
     is_signed_range,
-    scalars_to_vertex_colors,
+    set_vertex_colors,
   } from './coloring'
   import { compute_geometries_async } from './async-geometry.svelte'
   import {
@@ -35,7 +29,11 @@
   import { get_isosurface_error_handler, type IsosurfaceErrorHandler } from './context'
   import { record_stage, time_stage } from './profile'
   import type { DisplayRange } from './sampling'
-  import { resolve_volume_display_range, sample_volume_at_positions } from './sampling'
+  import {
+    range_sample_counts,
+    resolve_volume_display_range,
+    sample_volume_at_positions,
+  } from './sampling'
   import type { IsosurfaceLayer, IsosurfaceSettings, VolumetricData } from './types'
   import { DEFAULT_ISOSURFACE_SETTINGS, MAX_GRID_POINTS, pin_layers } from './types'
 
@@ -141,22 +139,15 @@
       geometry.getIndex()?.array.byteLength ?? 0,
     )
 
-  // Build an indexed BufferGeometry from marching-cubes output (null for empty surfaces)
+  // Indexed BufferGeometry from marching-cubes output (null for empty surfaces); normals
+  // are computed here on the main thread rather than in the worker
   const build_geometry = (
     positions: Float32Array,
     indices: Uint32Array,
   ): BufferGeometry | null =>
     time_stage(
       `build_geometry`,
-      () => {
-        if (positions.length === 0 || indices.length === 0) return null
-        const geometry = new BufferGeometry()
-        geometry.setAttribute(`position`, new BufferAttribute(positions, 3))
-        geometry.setIndex(new Uint32BufferAttribute(indices, 1))
-        geometry.computeVertexNormals()
-        geometry.computeBoundingSphere()
-        return geometry
-      },
+      () => indexed_mesh_geometry(positions, indices),
       (geometry) => ({ buffer_bytes: geometry ? geometry_buffer_bytes(geometry) : 0 }),
     )
 
@@ -227,12 +218,10 @@
 
   const estimated_prepared_points = (vol: VolumetricData): number => {
     const range = effective_range(vol)
-    if (!range) return Math.min(vol.values.length, MAX_GRID_POINTS)
-    const estimate = range.reduce((total, [lower, upper], axis) => {
-      const intervals = vol.periodic ? vol.dims[axis] : Math.max(vol.dims[axis] - 1, 1)
-      return total * Math.max(2, Math.round((upper - lower) * intervals) + 1)
-    }, 1)
-    return Math.min(estimate, MAX_GRID_POINTS)
+    const points = range
+      ? range_sample_counts(vol, range).reduce((total, count) => total * count, 1)
+      : vol.values.length
+    return Math.min(points, MAX_GRID_POINTS)
   }
 
   // Large grids that still need preparing go to the geometry worker; small ones and
@@ -536,26 +525,19 @@
       )
     }
 
-    // Second pass: map scalars through the colormap LUT, reusing the existing
-    // color attribute's array where possible to avoid GPU buffer churn
+    // Second pass: map scalars through the colormap LUT (the existing color attribute's
+    // array is reused, so recolors cause no GPU buffer churn)
     for (const entry of entries) {
       const layer = layers[entry.layer_idx]
       if (!layer || !entry.scalars) continue
-      const color_range = layer.color_range ?? auto_ranges.get(entry.layer_idx) ?? [0, 1]
-      const existing = entry.geometry.getAttribute(`color`) as BufferAttribute | undefined
-      const colors = time_stage(`apply_colormap`, () =>
-        scalars_to_vertex_colors(
-          entry.scalars as Float32Array,
-          {
-            colormap: layer.colormap ?? DEFAULT_ISO_COLORMAP,
-            color_range,
-            fallback_color: entry.sign > 0 ? layer.color : layer.negative_color,
-          },
-          existing?.array instanceof Float32Array ? existing.array : undefined,
-        ),
+      const scalars = entry.scalars
+      time_stage(`apply_colormap`, () =>
+        set_vertex_colors(entry.geometry, scalars, {
+          colormap: layer.colormap ?? DEFAULT_ISO_COLORMAP,
+          color_range: layer.color_range ?? auto_ranges.get(entry.layer_idx) ?? [0, 1],
+          fallback_color: entry.sign > 0 ? layer.color : layer.negative_color,
+        }),
       )
-      if (existing && existing.array === colors) existing.needsUpdate = true
-      else entry.geometry.setAttribute(`color`, new BufferAttribute(colors, 3))
       colored_keys.add(entry.key)
     }
     record_stage(`recolor_total`, performance.now() - profile_start, {

@@ -31,10 +31,9 @@ import type {
   Site,
   StructureBond,
 } from './index'
-import { get_pbc_image_sites } from './index'
 import { normalize_fractional_coords } from './parse'
 import { capitalize_symbol } from './parsers/shared'
-import { wrap_to_unit_cell } from './pbc'
+import { get_pbc_image_sites, wrap_to_unit_cell } from './pbc'
 import { get_orig_site_idx, is_image_site } from './site'
 import { make_supercell, parse_supercell_scaling } from './supercell'
 

@@ -45,8 +45,8 @@
   pane_props={{
     ...pane_props,
     class: [pane_class, pane_props.class],
-    // Prepend compact defaults so a caller's pane_style can override individual vars
-    // without dropping padding/gap the way a full-style replace used to.
+    // Prepend compact defaults so a caller's pane_style overrides individual vars without
+    // dropping padding/gap
     style: [`--pane-padding: 8px 10px; --pane-gap: 0`, pane_style, pane_props.style]
       .filter(Boolean)
       .join(`; `),

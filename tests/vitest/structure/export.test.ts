@@ -392,6 +392,25 @@ describe(`Export functionality`, () => {
       )
     })
 
+    // An extXYZ `Lattice="... 0 0 0"` parses (axis-length fallback) but has no cart->frac
+    // inverse; sites already carry abc, so the inverse must not be built unless one needs it
+    it.each([`CIF`, `POSCAR`] as const)(
+      `%s export of a singular lattice uses the sites' abc`,
+      (format) => {
+        // oxfmt-ignore
+        const matrix: Matrix3x3 = [[5, 0, 0], [0, 5, 0], [0, 0, 0]]
+        const structure: AnyStructure = {
+          sites: [make_site(`H`, [0.2, 0.4, 0], [1, 2, 0])],
+          lattice: { ...diag_lattice(5), matrix },
+        }
+        const content =
+          format === `CIF`
+            ? structure_to_cif_str(structure)
+            : structure_to_poscar_str(structure)
+        expect(content).toContain(`0.20000000 0.40000000 0.00000000`)
+      },
+    )
+
     it(`handles non-finite lattice values`, () => {
       // oxfmt-ignore
       const matrix: Matrix3x3 = [[NaN, 0, 0], [0, Infinity, 0], [0, 0, 1]]

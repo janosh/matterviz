@@ -52,7 +52,7 @@ interface MergedPolyhedraBuffers {
   edge_count: number
 }
 
-// --- Convex hull (quickhull) ---
+// === Convex hull (quickhull) ===
 
 // Faces store unit normal components as scalars (nx, ny, nz) to avoid Vec3
 // allocations in the visibility scans that dominate hull runtime.
@@ -331,7 +331,7 @@ export function convex_hull_3d(points: readonly Vec3[], eps_scale = 1e-7): Conve
   return { vertices, input_idxs, faces: remapped, volume: Math.abs(volume) }
 }
 
-// --- Bond graph adjacency ---
+// === Bond graph adjacency ===
 
 interface PolyhedronNeighbor {
   site_idx: number // index into the displayed structure's sites
@@ -384,7 +384,7 @@ export function build_adjacency(
   return adjacency
 }
 
-// --- Center selection ---
+// === Center selection ===
 
 // A bonded neighbor counts as a polyhedron vertex only if it's an anion-former:
 // a nonmetal or metalloid that is more electronegative than the center. This keeps
@@ -407,7 +407,7 @@ function is_anion_vertex(
   return center_is_metal && n_data?.nonmetal === true
 }
 
-// --- Top-level polyhedra computation ---
+// === Top-level polyhedra computation ===
 
 // Detect coordination polyhedra from the rendered bond graph, VESTA-style:
 // vertices are anion-former neighbors (nonmetals/metalloids more electronegative
@@ -437,8 +437,8 @@ export function compute_polyhedra(
     weak_bond_norm = 1.15,
     volume_eps = 1e-3,
   } = options
-  const sites = structure?.sites
-  if (!sites?.length || bonds.length === 0) return []
+  const { sites } = structure
+  if (sites.length === 0 || bonds.length === 0) return []
 
   // Only bonds carrying a cell_shift can name a neighbor the graph already reaches under
   // another site index (an explicit record against the base atom vs a proximity match
@@ -645,7 +645,7 @@ export function compute_polyhedra(
   return polyhedra
 }
 
-// --- Merged render buffers ---
+// === Merged render buffers ===
 
 // Merge all polyhedra into single non-indexed position/color arrays (one draw call)
 // plus crease-edge segments for outlines. Edges interior to coplanar face groups

@@ -31,6 +31,7 @@
     compute_section,
     create_section_evaluator,
     decompose_phase,
+    DEFAULT_N_SAMPLES,
     prepare_diagram,
   } from './compute'
   import PhaseEventList from './PhaseEventList.svelte'
@@ -64,7 +65,7 @@
     display = $bindable({}),
     free_energy_mode = $bindable(`auto`),
     t_range = $bindable(),
-    n_samples = $bindable(64),
+    n_samples = $bindable(DEFAULT_N_SAMPLES),
     gas_enabled = $bindable(false),
     gas_pressures = $bindable({}),
     show_controls,

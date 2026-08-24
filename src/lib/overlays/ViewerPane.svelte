@@ -127,28 +127,4 @@
       font-size: 1.5em;
     }
   }
-  :global(.analysis-controls) {
-    display: flex;
-    flex-direction: column;
-    gap: 4pt;
-    font-size: 0.85em;
-  }
-  :global(.analysis-controls label) {
-    display: flex;
-    align-items: center;
-    gap: 4pt;
-  }
-  :global(.analysis-controls input:is([type='number'], [type='text'])) {
-    width: 5em;
-    text-align: center;
-  }
-  :global(.analysis-controls button) {
-    align-self: flex-start;
-    padding: 2pt 8pt;
-  }
-  :global(.analysis-controls .hint) {
-    opacity: 0.7;
-    font-size: 0.9em;
-    margin: 0;
-  }
 </style>

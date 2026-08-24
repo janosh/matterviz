@@ -19,6 +19,12 @@ const ATOMIC_NUMBER_BY_SYMBOL: ReadonlyMap<string, number> = new Map(
 export const symbol_to_atomic_number = (symbol: string): number | undefined =>
   ATOMIC_NUMBER_BY_SYMBOL.get(symbol)
 
+// LAMMPS atom type -> element by atomic number (type 1 = H), the convention of ASE's
+// read_lammps_dump when a file carries no element info. Wraps past the table so any integer
+// type resolves to a symbol; types below 1 clamp to H rather than indexing `ELEM_SYMBOLS[-1]`
+export const element_from_lammps_type = (atom_type: number): ElementSymbol =>
+  ELEM_SYMBOLS[Math.max(0, atom_type - 1) % ELEM_SYMBOLS.length]
+
 // Default element symbols used when a file omits or mangles element info
 export const FALLBACK_ELEMENTS = [
   `H`,

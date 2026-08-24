@@ -2,7 +2,6 @@
 import type { ElementSymbol } from '$lib/element/types'
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
-import type { Pbc } from '$lib/structure/pbc'
 import type { TrajectoryFrame } from '$lib/trajectory/index'
 import { lines_cursor, parse_vasp_header } from '$lib/structure/parsers/vasp-header'
 import { create_trajectory_frame, parse_float_token } from '$lib/trajectory/helpers'
@@ -45,8 +44,8 @@ export function parse_vasp_xdatcar(content: string, warn: WarnFn): ParsedTraject
   let frac_to_cart = math.create_frac_to_cart(lattice_matrix)
 
   while (line_idx < lines.length) {
-    // Scan forward from the cursor: `lines.findIndex` restarts at 0 every frame, making this
-    // O(F x total_lines) — quadratic in frame count on long MD runs.
+    // Scan forward from the cursor, never from line 0: a whole-file search per frame would be
+    // quadratic in the frame count on long MD runs
     let config_idx = line_idx
     while (config_idx < lines.length) {
       if (lines[config_idx].includes(`Direct configuration=`)) break
@@ -81,7 +80,6 @@ export function parse_vasp_xdatcar(content: string, warn: WarnFn): ParsedTraject
     const positions: Vec3[] = []
     let torn_last_line = false
     for (let idx = 0; idx < elements.length; idx++, line_idx++) {
-      // Read the tokens directly: slice().map(Number) allocated two throwaway arrays per line
       const tokens = lines[line_idx].trim().split(/\s+/)
       const coords: Vec3 = [
         parse_float_token(tokens[0]),
@@ -110,16 +108,14 @@ export function parse_vasp_xdatcar(content: string, warn: WarnFn): ParsedTraject
       break
     }
 
-    const pbc: Pbc = [true, true, true]
-    const { volume } = math.calc_lattice_params(lattice_matrix)
     frames.push(
       create_trajectory_frame(
         positions,
         elements,
         lattice_matrix,
-        pbc,
+        [true, true, true],
         step,
-        { volume },
+        {},
         undefined,
         warn,
       ),
@@ -127,13 +123,5 @@ export function parse_vasp_xdatcar(content: string, warn: WarnFn): ParsedTraject
   }
   if (frames.length === 0) throw new Error(`XDATCAR contains no complete frame`)
 
-  return {
-    format: `xdatcar`,
-    frames,
-    metadata: {
-      periodic_boundary_conditions: [true, true, true],
-      elements: element_names,
-      element_counts,
-    },
-  }
+  return { format: `xdatcar`, frames, metadata: {} }
 }

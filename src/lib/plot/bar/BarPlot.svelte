@@ -57,8 +57,9 @@
     create_axis_scales,
     create_color_scale,
     create_size_scale,
+    log_floor_scale,
   } from '$lib/plot/core/scales'
-  import { DEFAULT_MARKERS, get_scale_type_name, SCALE_DEFAULTS } from '$lib/plot/core/types'
+  import { DEFAULT_MARKERS, SCALE_DEFAULTS } from '$lib/plot/core/types'
   import { build_legend_items, first_point_style } from '$lib/plot/core/data-transform'
   import { DEFAULTS } from '$lib/settings'
   import { clamp01 } from '$lib/utils'
@@ -328,12 +329,8 @@
   const value_scale_for = (
     axis: `x` | `x2` | `y` | `y2`,
     scales: typeof frame.scales = frame.scales,
-  ): ((val: number) => number) => {
-    const scale = scales[axis]
-    if (get_scale_type_name(plot_axes[axis].scale_type) !== `log`) return scale
-    const floor = Math.min(...frame.ranges.current[axis])
-    return (val) => scale(Math.max(val, floor))
-  }
+  ): ((val: number) => number) =>
+    log_floor_scale(scales[axis], plot_axes[axis].scale_type, frame.ranges.current[axis])
 
   // Obstacle field in normalized [0,1] plot coords (y=0 at top). Geometry is computed
   // against the decoration-independent base plot so outside padding cannot feed back into
@@ -436,10 +433,7 @@
       y: marginal_is_vertical ? undefined : (srs?.x ?? []),
       // magnitude weights so negative bars still yield a monotonic cumulative (CDF) marginal
       weight: srs?.y?.map((value) => Math.abs(value)) ?? [],
-      color:
-        srs?.color ??
-        (srs?.render_mode === `line` ? line_state.color : bar_state.color) ??
-        `steelblue`,
+      color: srs?.color ?? (srs?.render_mode === `line` ? line_state.color : bar_state.color),
       label: srs?.label,
       visible: srs?.visible ?? true,
       x_axis: srs?.x_axis,
@@ -647,8 +641,8 @@
           >
             {#if is_line}
               <!-- Render as line -->
-              {@const color = srs.color ?? line_state.color ?? `steelblue`}
-              {@const stroke_width = srs.line_style?.stroke_width ?? line_state.width ?? 2}
+              {@const color = srs.color ?? line_state.color}
+              {@const stroke_width = srs.line_style?.stroke_width ?? line_state.width}
               {@const line_dash = srs.line_style?.line_dash ?? `none`}
               {@const y_scale = srs.y_axis === `y2` ? frame.scales.y2 : frame.scales.y}
               {@const x_scale = srs.x_axis === `x2` ? frame.scales.x2 : frame.scales.x}
@@ -807,7 +801,7 @@
                 {@const y_val = srs.y[bar_idx]}
                 {@const base =
                   mode === `stacked` ? (stacked_offsets[series_idx]?.[bar_idx] ?? 0) : 0}
-                {@const color = srs.color ?? bar_state.color ?? `steelblue`}
+                {@const color = srs.color ?? bar_state.color}
                 {@const bar_width_val = Array.isArray(srs.bar_width)
                   ? (srs.bar_width[bar_idx] ?? 0.5)
                   : (srs.bar_width ?? 0.5)}

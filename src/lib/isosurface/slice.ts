@@ -136,13 +136,18 @@ const intersect_plane_cell = (
   )
 }
 
-const point_in_convex_polygon = (point: Vec2, polygon: Vec2[]): boolean => {
+// Scalar (u, v) rather than a Vec2: this runs once per slice pixel
+const point_in_convex_polygon = (
+  u_coord: number,
+  v_coord: number,
+  polygon: Vec2[],
+): boolean => {
   let orientation = 0
   for (let point_idx = 0; point_idx < polygon.length; point_idx++) {
     const start = polygon[point_idx]
     const end = polygon[(point_idx + 1) % polygon.length]
     const cross =
-      (end[0] - start[0]) * (point[1] - start[1]) - (end[1] - start[1]) * (point[0] - start[0])
+      (end[0] - start[0]) * (v_coord - start[1]) - (end[1] - start[1]) * (u_coord - start[0])
     if (Math.abs(cross) <= PLANE_TOLERANCE) continue
     const current_orientation = Math.sign(cross)
     if (orientation && current_orientation !== orientation) return false
@@ -234,7 +239,7 @@ export function sample_plane_slice(
     const v_value = v_range[0] + row * v_step
     for (let col = 0; col < width; col++) {
       const u_value = u_range[0] + col * u_step
-      if (!point_in_convex_polygon([u_value, v_value], polygon)) continue
+      if (!point_in_convex_polygon(u_value, v_value, polygon)) continue
       const data_idx = row * width + col
       mask[data_idx] = 1
 

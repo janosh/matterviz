@@ -8,7 +8,6 @@ import type { TrajectoryRun } from './run'
 
 export * from './analysis'
 export * from './positions'
-export type * from './analysis-pane'
 export {
   Hdf5GroupSelectionRequiredError,
   open_trajectory,
@@ -46,11 +45,11 @@ export type {
   TrajectoryXQuantity,
 } from './plotting'
 
-export type TrajectoryFormat = `hdf5` | `json` | `xyz` | `xdatcar` | `traj` | `unknown`
-
 // Tabs of TrajectoryDataInspectorPane: per-frame scalars vs per-atom rows
 export type TrajectoryInspectorTab = `frames` | `atoms`
-export type { AtomTypeMapping } from './types'
+
+// LAMMPS atom type -> element symbol, e.g. { 1: 'Na', 2: 'Cl' }
+export type AtomTypeMapping = Record<number, ElementSymbol>
 
 // Splitting side by side halves the width but keeps the full height, so the
 // panes come out twice as tall relative to their width as the container is.

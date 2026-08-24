@@ -7,11 +7,12 @@
   import type { ExportSection } from '$lib/io'
   import ExportPane from '$lib/io/ExportPane.svelte'
   import { export_svg_as_png, export_svg_as_svg } from '$lib/io/export'
-  import { ColorBar, ScatterPlot } from '$lib/plot'
+  import { ScatterPlot } from '$lib/plot'
   import type { DataSeries, UserContentProps } from '$lib/plot/core/types'
   import { compute_chempot_async } from './async-compute.svelte'
+  import ChemPotLegend from './ChemPotLegend.svelte'
   import ChemPotTooltip from './ChemPotTooltip.svelte'
-  import { ARITY_COLORS, get_chempot_interpolator, get_domain_color_data } from './color'
+  import { get_domain_color_data } from './color'
   import {
     CHEMPOT_COLOR_MODE_OPTIONS,
     CHEMPOT_COLOR_SCALE_OPTIONS,
@@ -38,8 +39,6 @@
     height = $bindable(600),
     // Auto-corrected to a valid available temperature when needed.
     temperature = $bindable<number | undefined>(undefined),
-    interpolate_temperature = CHEMPOT_DEFAULTS.interpolate_temperature,
-    max_interpolation_gap = CHEMPOT_DEFAULTS.max_interpolation_gap,
     hover_info = $bindable<ChemPotHoverInfo | null>(null),
     wrapper = $bindable(),
     fullscreen = $bindable(false),
@@ -50,8 +49,6 @@
     width?: number
     height?: number
     temperature?: number
-    interpolate_temperature?: boolean
-    max_interpolation_gap?: number
     hover_info?: ChemPotHoverInfo | null
     // bindable: plot wrapper element (used for export and pointer hit-testing)
     wrapper?: HTMLDivElement
@@ -94,23 +91,14 @@
     default_min_limit,
   })
   const { has_temp_data, available_temperatures, temp_filtered_entries } = $derived(
-    get_temp_filter_payload(entries, temperature, config, {
-      interpolate_temperature,
-      max_interpolation_gap,
-    }),
+    get_temp_filter_payload(entries, temperature, config),
   )
 
+  // Keep bound temperature aligned with available data points.
   $effect(() => {
-    // Keep bound temperature aligned with available data points.
-    const next_temperature = get_valid_temperature(
-      temperature,
-      has_temp_data,
-      available_temperatures,
-    )
+    const next_temperature = get_valid_temperature(temperature, available_temperatures)
     if (next_temperature !== temperature) temperature = next_temperature
   })
-
-  const show_temperature_slider = $derived(has_temp_data && available_temperatures.length > 0)
 
   // === Diagram computation (off main thread via Web Worker) ===
   let diagram_data = $state<ChemPotDiagramData | null>(null)
@@ -488,26 +476,14 @@
       on_point_click={handle_click}
       style="--scatter-width: 100%; --scatter-height: {render_height}px; --fullscreen-btn-offset: 68px"
     />
-    {#if color_range}
-      <ColorBar
-        title={color_range.label}
-        range={[color_range.min, color_range.max]}
-        scale={{ interpolator: get_chempot_interpolator(color_scale, reverse_color_scale) }}
-        wrapper_style="position: absolute; bottom: 70px; left: 50px; width: 180px; z-index: 10;"
-        bar_style="height: 10px;"
-        title_style="margin-bottom: 3px;"
-      />
-    {/if}
-    {#if color_mode === `arity`}
-      <div class="arity-legend">
-        {#each [`Unary`, `Binary`, `Ternary`, `4+`] as label_text, color_idx (label_text)}
-          <span>
-            <span style:background={ARITY_COLORS[color_idx]}></span>
-            {label_text}
-          </span>
-        {/each}
-      </div>
-    {/if}
+    <ChemPotLegend
+      {color_mode}
+      {color_scale}
+      {reverse_color_scale}
+      {color_range}
+      formulas={Object.keys(draw_domains)}
+      style="bottom: 60px; left: 50px"
+    />
     {#if show_tooltip && hover_info?.view === `2d`}
       <ChemPotTooltip
         {hover_info}
@@ -516,7 +492,7 @@
         constrain_to={{ width: render_width, height: render_height }}
       />
     {/if}
-    {#if show_temperature_slider && temperature !== undefined}
+    {#if has_temp_data && temperature !== undefined}
       <TemperatureSlider
         class="chempot-temp-slider"
         {available_temperatures}
@@ -574,26 +550,5 @@
     fill: var(--text-color, currentColor);
     opacity: 0.7;
     pointer-events: none;
-  }
-  .arity-legend {
-    position: absolute;
-    bottom: 52px;
-    left: 24px;
-    display: flex;
-    gap: 10px;
-    font-size: 12px;
-    z-index: 10;
-    pointer-events: none;
-  }
-  .arity-legend > span {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-  }
-  .arity-legend > span > span {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    flex-shrink: 0;
   }
 </style>

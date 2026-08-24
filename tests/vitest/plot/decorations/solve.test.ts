@@ -308,21 +308,6 @@ describe(`decoration solver`, () => {
     expect(reference?.reference_annotation).toEqual(clear_candidate)
   })
 
-  test(`scores normalized and pixel obstacles together`, () => {
-    const candidates = [
-      reference_candidate(290, 190),
-      reference_candidate(150, 100),
-      reference_candidate(400, 100),
-    ]
-    const reference = reference_item(`reference`, candidates)
-    const solution = solve_decorations({
-      ...scene_for([reference]),
-      obstacles_norm: [{ x: 0.5, y: 0.5 }],
-      obstacles_px: [{ x: 150, y: 100 }],
-    })
-    expect(solution.placements[0].reference_annotation?.x).toBe(400)
-  })
-
   test(`preserves a pinned reference annotation despite exclusions`, () => {
     const pinned_candidate = reference_candidate(200, 100)
     const fallback_candidate = reference_candidate(300, 100)

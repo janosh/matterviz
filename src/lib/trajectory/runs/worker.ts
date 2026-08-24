@@ -16,7 +16,7 @@ import type {
 import {
   assert_frame_idx,
   disposed_error,
-  TrajectoryProperties,
+  run_fields_from_summary,
   type TrajectoryRun,
   type TrajectoryRunSummary,
 } from '../run'
@@ -128,10 +128,8 @@ export const worker_run = (
   summary: TrajectoryRunSummary,
   release: () => void = () => {},
 ): TrajectoryRun => {
-  const properties = new TrajectoryProperties(
-    summary.properties.rows,
-    summary.properties.complete,
-  )
+  const fields = run_fields_from_summary(summary)
+  const { properties } = fields
   let next_id = 0
   let disposed_reason: Error | null = null
   type Pending = {
@@ -220,15 +218,7 @@ export const worker_run = (
   }
 
   return {
-    frame_count: summary.frame_count,
-    preview: summary.preview,
-    provenance: summary.provenance,
-    properties,
-    ...(summary.time_step ? { time_step: summary.time_step } : {}),
-    ...(summary.atom_masses ? { atom_masses: summary.atom_masses } : {}),
-    ...(summary.signals ? { signals: summary.signals } : {}),
-    metadata: summary.metadata,
-    warnings: summary.warnings,
+    ...fields,
     read_frame: (frame_idx, signal) => {
       assert_frame_idx(summary, frame_idx)
       if (frame_idx === 0 && !disposed_reason) return summary.preview

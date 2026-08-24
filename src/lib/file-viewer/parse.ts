@@ -1,5 +1,9 @@
 // Worker-safe file parsing with no Svelte or DOM imports.
-import { BINARY_VIEWER_EXT_REGEX, COMPRESSION_EXTENSIONS_REGEX } from '$lib/constants'
+import {
+  BINARY_VIEWER_EXT_REGEX,
+  COMPRESSION_EXTENSIONS_REGEX,
+  VASP_VOLUMETRIC_REGEX,
+} from '$lib/constants'
 import { parse_fermi_file } from '$lib/fermi-surface/parse'
 import {
   decompress_data,
@@ -10,18 +14,21 @@ import { parse_volumetric_file } from '$lib/isosurface/parse'
 import { is_vaspwave_filename, parse_vaspwave_charge } from '$lib/isosurface/parse-vaspwave'
 import { parse_structure_file } from '$lib/structure/parse'
 import { is_indexable_trajectory_filename } from '$lib/trajectory/format-detect'
+import { to_error } from '$lib/utils'
 import {
   is_trajectory_file,
   open_trajectory,
   type OpenTrajectoryOptions,
   VaspoutElectronicOnlyError,
 } from '$lib/trajectory/parse'
-import type { LargeFileMarker } from './host-transfer'
-import { parse_large_file_marker } from './host-transfer'
+import { type LargeFileMarker, parse_large_file_marker } from './host-transfer'
 import type { ViewType } from './types'
-import { FERMI_FILE_RE, VOLUMETRIC_EXT_RE, VOLUMETRIC_VASP_RE } from './types'
-import type { RenderableType } from './detect'
-import { detect_view_type, volume_json_to_isosurface_input } from './detect'
+import { FERMI_FILE_RE, VOLUMETRIC_EXT_RE } from './types'
+import {
+  detect_view_type,
+  type RenderableType,
+  volume_json_to_isosurface_input,
+} from './detect'
 
 // Maps detect.ts RenderableType to ViewType for direct rendering.
 // Types not listed here fall through to json_browser (which can render all types
@@ -90,17 +97,10 @@ const trajectory_result = async (
   }
 }
 
-// Convert base64 to ArrayBuffer for binary files
-export function base64_to_array_buffer(base64: string): ArrayBuffer {
-  const binary = atob(base64)
-  const bytes = new Uint8Array(binary.length)
-  for (let idx = 0; idx < binary.length; idx++) {
-    bytes[idx] = binary.charCodeAt(idx)
-  }
-  return bytes.buffer
-}
+export const base64_to_array_buffer = (base64: string): ArrayBuffer =>
+  Uint8Array.from(atob(base64), (char) => char.charCodeAt(0)).buffer
 
-// Parse file content and determine if it's a structure or trajectory
+// Route file content to the parser for its format and wrap the result with its view type
 export const parse_file_content = async (
   content: string,
   filename: string,
@@ -147,84 +147,72 @@ export const parse_file_content = async (
     }
   }
 
-  // Fermi surface files (.bxsf, .frmsf)
-  // Use basename for regex matching in case filename retains a directory prefix
-  const basename = filename.split(`/`).pop() ?? filename
+  // Match on the basename in case filename retains a directory prefix
+  const basename = filename.split(/[\\/]/).pop() ?? filename
   if (FERMI_FILE_RE.test(basename)) {
-    // parse_fermi_file throws a descriptive error when parsing fails
     return { type: `fermi_surface`, data: parse_fermi_file(content, filename), filename }
   }
-
-  // Volumetric data files (.cube, CHGCAR, AECCAR*, ELFCAR, LOCPOT, PARCHG)
-  if (VOLUMETRIC_EXT_RE.test(basename) || VOLUMETRIC_VASP_RE.test(basename)) {
+  // .cube, CHGCAR, AECCAR*, ELFCAR, LOCPOT, PARCHG
+  if (VOLUMETRIC_EXT_RE.test(basename) || VASP_VOLUMETRIC_REGEX.test(basename)) {
     const data = parse_volumetric_file(content, filename)
     if (data) return { type: `isosurface`, data, filename }
     throw new Error(`Failed to parse volumetric file: ${filename}`)
   }
 
-  let parsed_json: unknown
-  let has_parsed_json = false
-
+  const structure_id = filename.replace(/\.[^/.]+$/, ``)
   // JSON files: render typed JSON before filename heuristics. Otherwise names like
   // convex-hull.json can be mistaken for trajectory keywords such as nve.
-  if (/\.json$/i.test(filename)) {
+  const is_json = /\.json$/i.test(filename)
+  let parsed_json: unknown
+  if (is_json) {
     try {
       parsed_json = JSON.parse(content)
-      has_parsed_json = true
-      // Check if the top-level value matches a known visualization type
-      const detected = detect_view_type(parsed_json)
-      if (detected) {
-        // Structure JSON needs normalization (OPTIMADE, fractional coords, etc.)
-        if (detected === `structure`) {
-          try {
-            const structure = parse_structure_file(content, filename)
-            return {
-              type: `structure`,
-              data: { ...structure, id: filename.replace(/\.[^/.]+$/, ``) },
-              filename,
-            }
-          } catch {
-            // Detailed parse failed despite structure-like shape — fall through to
-            // generic JSON handling below
-          }
-        }
-        if (detected === `volumetric`) {
-          return {
-            type: `isosurface`,
-            data: volume_json_to_isosurface_input(parsed_json),
-            filename,
-          }
-        }
-        return {
-          type: DETECTION_TO_VIEW_TYPE[detected] ?? `json_browser`,
-          data: parsed_json,
-          filename,
-        }
+    } catch (error) {
+      throw new Error(`Invalid JSON in ${filename}: ${to_error(error).message}`, {
+        cause: error,
+      })
+    }
+    const detected = detect_view_type(parsed_json)
+    if (detected === `structure`) {
+      // Structure JSON needs normalization (OPTIMADE, fractional coords, etc.); a shape that
+      // looks like a structure but fails the detailed parse still gets the JSON browser
+      try {
+        const structure = parse_structure_file(content, filename)
+        return { type: `structure`, data: { ...structure, id: structure_id }, filename }
+      } catch {
+        return { type: `json_browser`, data: parsed_json, filename }
       }
-    } catch {
-      // JSON parse failed, fall through to structure parser
+    }
+    if (detected === `volumetric`) {
+      return {
+        type: `isosurface`,
+        data: volume_json_to_isosurface_input(parsed_json),
+        filename,
+      }
+    }
+    if (detected) {
+      return {
+        type: DETECTION_TO_VIEW_TYPE[detected] ?? `json_browser`,
+        data: parsed_json,
+        filename,
+      }
     }
   }
 
-  // Try trajectory parsing if it looks like a trajectory
   if (is_trajectory_file(filename, content)) {
     try {
       return await trajectory_result(content, filename, load_options)
     } catch (error) {
       // Trajectory-looking filename but not trajectory-shaped JSON (e.g. nve-config.json):
       // fall through to the JSON browser instead of failing the render
-      if (!has_parsed_json) throw error
+      if (!is_json) throw error
     }
   }
+  if (is_json) return { type: `json_browser`, data: parsed_json, filename }
 
-  // No top-level match -- show JSON browser for navigation
-  if (has_parsed_json) return { type: `json_browser`, data: parsed_json, filename }
-
-  // Parse as structure (CIF, POSCAR, XYZ, etc.) — throws descriptive reasons on failure
+  // CIF, POSCAR, XYZ, ...: parse_structure_file throws descriptive reasons on failure but can
+  // still return zero atoms (a CIF with cell params but no _atom_site records)
   const structure = parse_structure_file(content, filename)
-  // parse_structure_file throws on parse failure but can still return zero atoms (e.g. a
-  // CIF with cell params but no _atom_site records), which is invalid downstream
   if (!structure.sites?.length) throw new Error(`No atoms found in ${filename}`)
-  const data = { ...structure, id: filename.replace(/\.[^/.]+$/, ``) }
-  return { type: `structure`, data, filename }
+  return { type: `structure`, data: { ...structure, id: structure_id }, filename }
 }

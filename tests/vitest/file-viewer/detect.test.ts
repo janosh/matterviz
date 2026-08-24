@@ -5,9 +5,9 @@ import { describe, expect, test } from 'vitest'
 import {
   detect_view_type,
   is_plottable_data,
-  resolve_path,
   scan_renderable_paths,
 } from '$lib/file-viewer/detect'
+import { resolve_path } from '$lib/json-path'
 
 const fixture = JSON.parse(
   gunzipSync(
@@ -406,8 +406,8 @@ describe(`scan_renderable_paths`, () => {
 
   test(`respects max_depth`, () => {
     const deep = { a: { b: { c: si_structure } } }
-    expect(scan_renderable_paths(deep, ``, 2).size).toBe(0)
-    expect(scan_renderable_paths(deep, ``, 4).size).toBe(1)
+    expect(scan_renderable_paths(deep, 2).size).toBe(0)
+    expect(scan_renderable_paths(deep, 4).size).toBe(1)
   })
 
   test(`scans array elements`, () => {
@@ -451,6 +451,18 @@ describe(`scan_renderable_paths`, () => {
       // Re-detect should return the same type
       expect(detect_view_type(resolved)).toBe(fixture_paths.get(path)?.type)
     }
+  })
+
+  // a plottable table registers a second badge under a \x00-suffixed path at the same node
+  test.each([
+    [{ x: [1, 2, 3], y: [4, 5, 6], z: [7, 8, 9] }, [`table`, `plot`]],
+    [{ name: [`Si`, `Ge`, `C`], energy: [-5.4, -4.6, -7.4] }, [`table`]],
+  ])(`%j registers badges %j`, (data, expected_types) => {
+    const paths = scan_renderable_paths(data)
+    expect([...paths.values()].map((info) => info.type)).toEqual(expected_types)
+    expect(paths.get(`\u0000plot`)?.type).toBe(
+      expected_types.includes(`plot`) ? `plot` : undefined,
+    )
   })
 })
 
@@ -501,27 +513,6 @@ describe(`is_plottable_data`, () => {
     [`boolean`, false, true],
   ] as [string, boolean, unknown][])(`%s -> %s`, (_, expected, val) => {
     expect(is_plottable_data(val)).toBe(expected)
-  })
-})
-
-describe(`scan_renderable_paths with plot`, () => {
-  test(`registers both table and plot badges for plottable tabular data`, () => {
-    const data = { x: [1, 2, 3], y: [4, 5, 6], z: [7, 8, 9] }
-    const paths = scan_renderable_paths(data)
-    const types = [...paths.values()].map((info) => info.type)
-    expect(types).toContain(`table`)
-    expect(types).toContain(`plot`)
-    // plot path uses \x00 suffix to co-exist with table at same data path
-    expect(paths.has(`\u0000plot`)).toBe(true)
-    expect(paths.get(`\u0000plot`)?.type).toBe(`plot`)
-  })
-
-  test(`registers only table badge for non-plottable tabular data`, () => {
-    const data = { name: [`Si`, `Ge`, `C`], energy: [-5.4, -4.6, -7.4] }
-    const paths = scan_renderable_paths(data)
-    const types = [...paths.values()].map((info) => info.type)
-    expect(types).toContain(`table`)
-    expect(types).not.toContain(`plot`)
   })
 })
 

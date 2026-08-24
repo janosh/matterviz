@@ -1,8 +1,8 @@
 // Shared fixtures for MSD tests: flat-position builders and a deterministic RNG.
 import type { ElementSymbol } from '$lib/element'
 import type { Matrix3x3, Vec3 } from '$lib/math'
-import type { MsdPositions } from '$lib/msd'
 import type { Pbc } from '$lib/structure'
+import type { TrajectoryPositionStream } from '$lib/trajectory'
 import { make_position_stream } from '../setup'
 
 export { make_rng, max_rel_error } from '../numeric-helpers'
@@ -20,7 +20,7 @@ export interface BuildPositionsOptions {
 export const build_positions = (
   frames: number[][][],
   { lattice = null, elements, pbc = null, ...overrides }: BuildPositionsOptions = {},
-): MsdPositions =>
+): TrajectoryPositionStream =>
   make_position_stream(
     frames,
     elements ?? Array.from({ length: frames[0]?.length ?? 0 }, () => `H`),
@@ -42,7 +42,7 @@ export const ballistic_frames = (velocity: Vec3, n_frames: number): number[][][]
   ])
 
 // Two atoms drifting along x at a constant rate, so MSD(lag) is exactly (velocity * lag)^2
-export const drift_positions = (n_frames = 30, velocity = 0.2): MsdPositions =>
+export const drift_positions = (n_frames = 30, velocity = 0.2): TrajectoryPositionStream =>
   build_positions(
     Array.from({ length: n_frames }, (_unused, frame_idx) => [
       [velocity * frame_idx, 0, 0],

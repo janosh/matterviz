@@ -498,7 +498,7 @@ describe(`writeback wiring`, () => {
 
 describe(`render() lifecycle`, () => {
   // Drive through the real entry point (not mount_spec directly) so this also covers
-  // cleanup_element + reactive_disposers wiring: the returned disposer must
+  // cleanup_element + cleanups wiring: the returned disposer must
   // unregister every model listener, else re-rendering an element leaks them.
   test(`the render() disposer unregisters all model listeners`, () => {
     const model = new MockModel({

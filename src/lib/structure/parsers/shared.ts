@@ -184,6 +184,36 @@ export const is_placeholder_cell = (params: readonly number[]): boolean =>
   params.slice(0, 3).every((length) => Math.abs(length - 1) < 1e-6) &&
   params.slice(3).every((angle) => Math.abs(angle - 90) < 1e-6)
 
+// Null (with a warning, since the file does declare a cell) for the placeholder cell, so the
+// structure parses as a molecule
+export const drop_placeholder_cell = (
+  params: readonly number[],
+  format: string,
+  cell_name: string,
+): readonly number[] | null => {
+  if (!is_placeholder_cell(params)) return params
+  diag_warn(
+    `${format}: ignoring placeholder ${cell_name} (1 1 1 90 90 90), treating as molecule`,
+  )
+  return null
+}
+
+// Lattice and cart→frac converter of an optional [a, b, c, alpha, beta, gamma] cell (PDB
+// CRYST1, MOL2 CRYSIN, mmCIF _cell). Without a cell the fractional coordinates are the
+// [0, 0, 0] placeholder every molecule's sites carry.
+export const cell_frame = (
+  params: readonly number[] | null,
+  context: string,
+): { lattice_matrix: math.Matrix3x3 | null; to_frac: (xyz: Vec3) => Vec3 } => {
+  if (!params) return { lattice_matrix: null, to_frac: () => [0, 0, 0] }
+  const lattice_matrix = cell_params_to_matrix(params)
+  const { convert } = cart_to_frac_with_fallback(lattice_matrix, {
+    axis_lengths: [params[0], params[1], params[2]],
+    context,
+  })
+  return { lattice_matrix, to_frac: convert }
+}
+
 // The one lattice shape every parser emits: matrix + derived scalar params + pbc. Formats
 // that don't declare periodicity (the vast majority) are fully periodic.
 export const make_lattice = (
@@ -217,7 +247,7 @@ export function validate_element_symbol(symbol: string, index: number): ElementS
   if (is_elem_symbol(clean_symbol)) return clean_symbol
 
   // Fallback to default elements by atomic number
-  const fallback = FALLBACK_ELEMENTS[index % FALLBACK_ELEMENTS.length] ?? `H`
+  const fallback = FALLBACK_ELEMENTS[index % FALLBACK_ELEMENTS.length]
   diag_warn(`Invalid element symbol '${symbol}', using fallback '${fallback}'`)
   return fallback
 }

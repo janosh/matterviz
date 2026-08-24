@@ -6,10 +6,7 @@ import {
 import { values_per_sample } from '$lib/trajectory/helpers'
 import type { TrajectoryRun, TrajectorySignal } from '$lib/trajectory'
 import { is_loaded_signal, is_signal_descriptor } from '$lib/trajectory/run'
-import {
-  DEFAULT_POSITION_STREAM_MAX_BYTES,
-  parse_frame_signal,
-} from '$lib/trajectory/runs/accumulate'
+import { parse_frame_signal } from '$lib/trajectory/runs/accumulate'
 import { SvelteSet } from 'svelte/reactivity'
 import {
   arrays_equal,
@@ -179,7 +176,7 @@ export async function collect_trajectory_spectroscopy_input(
 ): Promise<TrajectorySpectroscopyInput> {
   const {
     frame_stride = 1,
-    max_bytes = DEFAULT_POSITION_STREAM_MAX_BYTES,
+    max_bytes,
     on_progress,
     signal,
     velocity_key = `velocity`,

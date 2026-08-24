@@ -11,7 +11,7 @@
   import { unique_id } from '$lib/plot/core/utils'
   import { to_error } from '$lib/utils'
   import { scaleLinear } from 'd3-scale'
-  import { type ComponentProps, type Snippet, untrack } from 'svelte'
+  import { type Snippet, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { build_diagram } from './build-diagram'
   import type { DiagramInput } from './diagram-input'
@@ -66,7 +66,6 @@
     show_controls = true,
     display_temp_unit = $bindable(),
     controls_open = $bindable(false),
-    controls_props = {},
     export_pane_open = $bindable(false),
     png_dpi = $bindable(DEFAULT_PNG_DPI),
     export_filename = `phase-diagram`,
@@ -98,9 +97,7 @@
     show_controls?: boolean
     // Temperature display unit (can differ from data.temperature_unit)
     display_temp_unit?: `K` | `°C` | `°F`
-    // Controls pane
     controls_open?: boolean
-    controls_props?: Partial<ComponentProps<typeof PhaseDiagramControls>>
     // Export options
     export_pane_open?: boolean
     png_dpi?: number
@@ -138,8 +135,8 @@
   // other's gradients (first-in-document wins, with that instance's pixel coords)
   const gradient_uid = unique_id(`pd-gradient`)
 
-  // Rebuild diagram data when diagram_input changes ($derived auto-recomputes). A failed
-  // build is surfaced as an error banner rather than silently falling back to the data prop.
+  // A diagram_input that fails to build is surfaced as an error banner rather than silently
+  // falling back to the data prop.
   const rebuilt = $derived.by((): { data: PhaseDiagramData | null; error: string | null } => {
     if (!diagram_input) return { data: null, error: null }
     try {
@@ -224,7 +221,6 @@
         { width: box_width, height: box_height },
         merged_config.font_size,
       )
-      // Get gradient stops for multi-phase regions (2+, supports 3+ phases)
       const gradient = get_multi_phase_gradient(region.name)
       const x_coords = svg_vertices.map(([vx]) => vx)
       return {
@@ -278,14 +274,10 @@
     })
   })
 
+  // Click toggles the tooltip lock
   function handle_click() {
-    if (locked_hover_info) {
-      // Unlock if already locked
-      locked_hover_info = null
-    } else if (hover_info) {
-      // Lock current hover info
-      locked_hover_info = { ...hover_info }
-    }
+    if (locked_hover_info) locked_hover_info = null
+    else if (hover_info) locked_hover_info = { ...hover_info }
   }
 
   const effective_hover_info = $derived(locked_hover_info ?? hover_info)
@@ -326,15 +318,14 @@
     if (!info) return
     try {
       await navigator.clipboard.writeText(
-        format_hover_info_text(
-          info,
+        format_hover_info_text(info, {
           temp_unit,
           comp_unit,
           component_a,
           component_b,
           data_temp_unit,
           lever_rule_mode,
-        ),
+        }),
       )
       clearTimeout(copy_feedback_timeout)
       copy_feedback_pos = { x: event.clientX, y: event.clientY }
@@ -362,8 +353,6 @@
     const svg_x = event.clientX - rect.left
     const svg_y = event.clientY - rect.top
     const in_plot = svg_x >= left && svg_x <= right && svg_y >= top && svg_y <= bottom
-
-    // Convert to data coordinates and find phase
     const composition = x_scale.invert(svg_x)
     const temperature = y_scale.invert(svg_y)
     const region = in_plot
@@ -483,7 +472,6 @@
           bind:png_dpi
           data={effective_data}
           {enable_export}
-          {...controls_props}
           {...pane_props}
         />
       {/if}
@@ -798,8 +786,6 @@
       {/if}
     </svg>
 
-    <!-- Tooltip (uses effective_hover_info which respects locked state) -->
-    <!-- tooltip={false} disables tooltip entirely -->
     {#if effective_hover_info && tooltip !== false}
       <PlotTooltip
         x={effective_hover_info.position.x}

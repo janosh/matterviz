@@ -69,8 +69,8 @@ export type ChemicalElement = {
 // for valid pairings and rejects the rest.
 export type SplitLayout = `diagonal` | `horizontal` | `vertical` | `triangular` | `quadrant`
 
-// One slice of an ElementTile's fill. Color and value live in the same object so they
-// cannot get out of step, which the old parallel `bg_colors` / `value` arrays allowed.
+// One slice of an ElementTile's fill; color and value travel together so they cannot get
+// out of step
 export interface TileSegment {
   // Fill for this slice. Falls back to the element's category color.
   color?: string

@@ -14,57 +14,7 @@ import type { FillGradient } from '$lib/plot/core/types/fills'
 
 export type { TweenOptions } from 'svelte/motion'
 
-// Chart-family types live next to their chart code; re-exported here (type-only,
-// erased at runtime) so existing `$lib/plot/core/types` import paths keep working.
-export type {
-  BandwidthOption,
-  BoxHandlerProps,
-  BoxPlotSeries,
-  ViolinKind,
-  ViolinSide,
-  WhiskerMode,
-} from '$lib/plot/box/box-plot'
-export type {
-  CleaningConfig,
-  CleaningQuality,
-  CleaningResult,
-  InstabilityResult,
-  InvalidValueMode,
-  LocalOutlierConfig,
-  OscillationWeights,
-  PhysicalBounds,
-  SmoothingConfig,
-  TruncationMode,
-} from '$lib/plot/core/data-cleaning'
-export type {
-  SankeyData,
-  SankeyHandlerProps,
-  SankeyLink,
-  SankeyLinkColorMode,
-  SankeyLinkHandlerProps,
-  SankeyNode,
-  SankeyNodeAlign,
-  SankeyNodeHandlerProps,
-} from '$lib/plot/sankey/sankey-types'
-export type {
-  SunburstLabelRotation,
-  SunburstLabelText,
-  SunburstNode,
-  SunburstNodeHandlerProps,
-  SunburstShape,
-  SunburstSort,
-  SunburstValueMode,
-} from '$lib/plot/sunburst/sunburst'
-
 type XyShift = { x?: number; y?: number } // For optional shift/offset values
-
-// Snapshot of axis ranges at interaction start (shared by pan/zoom/touch handlers)
-export type InitialRanges = {
-  initial_x_range: Vec2
-  initial_x2_range: Vec2
-  initial_y_range: Vec2
-  initial_y2_range: Vec2
-}
 
 // Current [min, max] range of each of the four axes
 export type AxisRanges = { x: Vec2; x2: Vec2; y: Vec2; y2: Vec2 }
@@ -302,8 +252,7 @@ export type ScaleType = `linear` | `log` | `arcsinh` | `time` | ArcsinhScaleConf
 // Color/size mapping configs shared by scatter, scatter-3d and binned-scatter plots
 export type ColorScaleConfig = {
   type?: ScaleType
-  // Prefixed d3 interpolator name. Bare names like `Viridis` used to typecheck here but
-  // silently fell through to the default in create_color_scale.
+  // Prefixed d3 interpolator name (`interpolateViridis`, not `Viridis`)
   scheme?: D3InterpolateName
   value_range?: Vec2
 }
@@ -411,7 +360,6 @@ export type LegendConfig = Omit<
   ComponentProps<typeof PlotLegend>,
   `series_data` | `on_drag_start` | `on_drag` | `on_drag_end`
 > & {
-  margin?: number | Sides
   tween?: TweenOptions<Point2D>
   responsive?: boolean // Allow legend to move if density changes (default: false)
   draggable?: boolean // Allow legend to be dragged (default: true)
@@ -611,9 +559,7 @@ export interface AxisLoadError {
   message: string
 }
 
-// How a ColorBar gets its colors. The old API took a name, a bare function and a
-// separate `color_scale_fn` that silently outranked both, with the two function forms
-// meaning different things. Spelling the three cases out keeps them distinguishable:
+// How a ColorBar gets its colors:
 //   - a d3 interpolator name, sampled across the bar's `range`
 //   - `interpolator`: a unit function of t in [0, 1], also sampled across `range`
 //   - `fn`: maps data values straight to colors over the domain it declares
@@ -687,23 +633,18 @@ export interface PanConfig {
   touch_enabled?: boolean // default: true - whether touch gestures are enabled
 }
 
-type ControlsState = Required<PlotConfig> & {
-  show_controls: boolean
-  controls_open: boolean
-  range_inputs: Record<string, [number | null, number | null]>
-}
-
 export interface PlotControlsProps extends PlotConfig {
   // Control pane visibility
   show_controls?: boolean
   controls_open?: boolean
-  // Custom snippets for additional controls
-  children?: Snippet<[ControlsState]>
-  // Rendered inside the Display row (points/lines toggles and similar)
+  // Custom sections rendered before / after the shared axis sections
+  children?: Snippet
+  post_children?: Snippet
+  // Rendered inside the Display row (points/lines toggles and similar); the extra values
+  // join the row's reset snapshot so its reset button also restores them
   display_children?: Snippet
   display_extra_values?: Record<string, unknown>
   on_display_extra_reset?: () => void
-  post_children?: Snippet<[ControlsState]>
   // Auto ranges for reset functionality
   auto_x_range?: Vec2
   auto_x2_range?: Vec2

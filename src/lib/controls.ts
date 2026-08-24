@@ -17,8 +17,7 @@ export type ShowControlsProp<ControlName extends string = string> =
   | ShowControlsConfig<ControlName>
   | boolean
 
-// Normalize show_controls prop into consistent config with helper methods
-// Normalized result of a ShowControlsProp, passed to viewer chrome components
+// Normalized ShowControlsProp, passed to viewer chrome components
 export type ShowControlsState = ReturnType<typeof normalize_show_controls>
 
 export function normalize_show_controls(

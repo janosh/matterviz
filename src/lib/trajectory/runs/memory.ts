@@ -146,24 +146,33 @@ export function trajectory_from_frame_source(
     signals,
     properties,
   } = extras
+  if (
+    time_step &&
+    !(Number.isFinite(time_step.value) && time_step.value > 0 && time_step.unit)
+  ) {
+    throw new Error(
+      `time_step needs a positive value and a unit, got ${JSON.stringify(time_step)}`,
+    )
+  }
   let disposed = false
   const live = (): void => {
     if (disposed) throw disposed_error(`In-memory trajectory`)
   }
+  const preview = read(0)
   return {
     frame_count,
-    preview: read(0),
+    preview,
     provenance,
     properties: new TrajectoryProperties(properties, true),
-    ...(time_step ? { time_step } : {}),
-    ...(atom_masses ? { atom_masses } : {}),
-    ...(signals ? { signals } : {}),
+    time_step,
+    atom_masses,
+    signals,
     metadata,
     warnings,
     read_frame: (frame_idx) => {
       live()
       assert_frame_idx({ frame_count }, frame_idx)
-      return read(frame_idx)
+      return frame_idx === 0 ? preview : read(frame_idx)
     },
     collect_positions: async (options) => {
       live()

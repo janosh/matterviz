@@ -27,6 +27,7 @@
     SankeyNodeHandlerProps,
   } from '$lib/plot/sankey/sankey-types'
   import { DEFAULTS } from '$lib/settings'
+  import { to_error } from '$lib/utils'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'
@@ -145,7 +146,7 @@
         }),
       }
     } catch (err) {
-      return { nodes: [], links: [], error: err instanceof Error ? err.message : String(err) }
+      return { nodes: [], links: [], error: to_error(err).message }
     }
   })
 

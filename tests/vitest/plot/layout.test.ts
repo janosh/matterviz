@@ -4,25 +4,27 @@ import {
   AXIS_TITLE_OFFSET,
   calc_auto_padding,
   centered_rect,
-  clear_tick_metrics_cache,
   compute_element_placement,
   DEFAULT_PLOT_PADDING,
   filter_padding,
   full_footprint_or,
   LABEL_GAP_DEFAULT,
-  type MeasuredAxis,
   pad_rect,
   point_in_rect,
   rect_within_rect,
   resolve_axis_title_layout,
-  resolve_tick_layout,
   sample_series_obstacle_points,
   type Sides,
   stride_sample,
-  TICK_LABEL_HEIGHT,
   y_axis_label_x,
   y2_axis_label_x,
 } from '$lib/plot/core/layout'
+import { clear_text_metrics_cache } from '$lib/plot/core/text-metrics'
+import {
+  type MeasuredAxis,
+  resolve_tick_layout,
+  TICK_LABEL_HEIGHT,
+} from '$lib/plot/core/tick-layout'
 import { afterEach, beforeEach, describe, expect, it, test, vi } from 'vitest'
 import { mock_canvas_context, mock_text_measurement } from '../setup'
 
@@ -379,7 +381,7 @@ describe(`layout utility functions`, () => {
     it(`memoizes wrap measurements to a quadratic bound`, () => {
       const measure_text = vi.fn((label: string) => ({ width: label.length * px_per_char }))
       mock_canvas_context({ measureText: measure_text })
-      clear_tick_metrics_cache()
+      clear_text_metrics_cache()
       const segments = [
         `alpha`,
         `beta`,
@@ -948,7 +950,7 @@ describe(`layout utility functions`, () => {
       })
       const context_spy = vi.mocked(HTMLCanvasElement.prototype.getContext)
       // Self-contained so two calls in one test cannot read each other's cached widths.
-      clear_tick_metrics_cache()
+      clear_text_metrics_cache()
       try {
         return { result: run(), measured_labels }
       } finally {

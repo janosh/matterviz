@@ -2,7 +2,7 @@
   import { WINDOW_TYPES, type WindowType } from '$lib/fft'
   import type { ViewerPaneOptions } from '$lib/overlays'
   import type { TrajectoryRun } from '$lib/trajectory'
-  import type { AnalysisPaneContext } from '$lib/trajectory/analysis-pane'
+  import type { AnalysisPaneContext } from '$lib/trajectory/analysis'
   import TrajectoryAnalysisPane from '$lib/trajectory/TrajectoryAnalysisPane.svelte'
   import {
     frequency_unit_label,

@@ -1,18 +1,3 @@
-// Constants and thresholds for Fermi surface computation
-
-// Maximum triangles for BZ symmetry tiling (up to 48 copies for a cubic lattice)
-// Above this, tiling is auto-disabled for performance
-export const MAX_TRIANGLES_FOR_TILING = 50_000
-
-// Throttle interval (ms) for pointer move events during hover
-// Prevents expensive nearest-vertex O(n) lookups from causing UI jank
-export const HOVER_THROTTLE_MS = 16 // ~60fps
-
-// Numerical tolerances
-export const CLOSED_CONTOUR_TOLERANCE = 1e-6 // Distance threshold for detecting closed contours
-export const IRREDUCIBLE_BZ_TOLERANCE = 0.01 // Threshold for detecting irreducible BZ (vertices in positive octant)
-export const IRREDUCIBLE_BZ_MIN_VERTICES = 10 // Minimum significant vertex count for irreducible BZ detection
-
 // Band colors (ColorBrewer Set1 palette for categorical data)
 export const BAND_COLORS = [
   `#e41a1c`, // red
@@ -26,3 +11,6 @@ export const BAND_COLORS = [
   `#999999`, // gray
   `#66c2a5`, // teal
 ] as const
+
+// Flat colours of the spin channels in `spin` colouring mode, also FermiSurfaceTooltip's badge
+export const SPIN_COLORS = { up: BAND_COLORS[0], down: BAND_COLORS[1] } as const

@@ -192,7 +192,7 @@
     message="Drop CHGCAR, AECCAR, ELFCAR, LOCPOT, PARCHG, or .cube"
   />
   {#if active_file}
-    <p class="filename-label">
+    <p class="demo-overlay-label">
       {active_file.replace(/\.gz$/, ``)}
     </p>
   {/if}
@@ -204,7 +204,7 @@
 
 {#if data_range && volumetric_data}
   {@const vol = active_volume}
-  <div class="stats-bar">
+  <div class="demo-stats-bar">
     {#if vol}
       <span title="Grid dimensions">Grid: {vol.dims.join(` × `)}</span>
       <span title="Data minimum">Min: {format_num(data_range.min, `.3~g`)}</span>
@@ -227,33 +227,5 @@
   p {
     margin-bottom: 1em;
     max-width: 60em;
-  }
-  .filename-label {
-    position: absolute;
-    top: 0;
-    left: 0;
-    margin: 1ex 1em;
-    font-family: monospace;
-    z-index: 1;
-    background: light-dark(rgba(220, 224, 230, 0.9), rgba(0, 0, 0, 0.5));
-    color: light-dark(#222, white);
-    padding: 2px 8px;
-    border-radius: 4px;
-    font-size: 0.9em;
-  }
-  .stats-bar {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.4em 1.2em;
-    padding: 0.5em 0.8em;
-    margin-top: 0.5em;
-    background: var(--surface-bg, #f5f5f5);
-    border-radius: 6px;
-    font-size: 0.8em;
-    font-family: monospace;
-    span {
-      white-space: nowrap;
-      opacity: 0.85;
-    }
   }
 </style>

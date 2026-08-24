@@ -99,6 +99,8 @@ function split_fragments(n_atoms: number, edges: Vec2[]): number[][] {
 }
 
 type Edge = { from: number; to: number; bond: BondPair }
+// Bond order per edge and the valence each atom uses under those orders
+type BondOrderSolution = { orders: number[]; valence: number[] }
 
 // Enumerate one target valence per atom, all combinations, lowest total
 // valence-sum first (xyz2mol prefers the least-saturated solution).
@@ -119,41 +121,40 @@ function* valence_combinations(valence_lists: number[][]): Generator<number[]> {
   for (const combo of combos) yield combo.pick
 }
 
-const atom_valence = (atom: number, edges: Edge[], orders: number[]): number =>
-  edges.reduce(
-    (sum, edge, edge_idx) =>
-      sum + (edge.from === atom || edge.to === atom ? orders[edge_idx] : 0),
-    0,
-  )
-
-// Greedily raise bond orders toward each atom's target valence; succeeds
-// only if every atom's used valence ends exactly at its target.
-function assign_bond_orders(edges: Edge[], target_valence: number[]): number[] | null {
+// Greedily raise bond orders toward each atom's target valence; succeeds only if every
+// atom's used valence ends exactly at its target. The per-atom valence is updated with each
+// raised order, so a pass costs O(edges) instead of re-summing every atom's edges.
+function assign_bond_orders(
+  edges: Edge[],
+  target_valence: number[],
+): BondOrderSolution | null {
   const orders = Array.from({ length: edges.length }, () => 1)
-  const used = (atom: number) => atom_valence(atom, edges, orders)
-  let progressed = true
-  while (progressed) {
-    progressed = false
+  const valence = Array.from({ length: target_valence.length }, () => 0)
+  // a self-bond (periodic image of the atom itself) counts once, like any other edge
+  const add_valence = (from: number, to: number): void => {
+    valence[from]++
+    if (to !== from) valence[to]++
+  }
+  for (const { from, to } of edges) add_valence(from, to)
+  for (;;) {
     let best = -1
     let best_deficit = 0
-    edges.forEach((edge, edge_idx) => {
-      const deficit_1 = target_valence[edge.from] - used(edge.from)
-      const deficit_2 = target_valence[edge.to] - used(edge.to)
-      const shared_deficit = Math.min(deficit_1, deficit_2)
+    for (const [edge_idx, { from, to }] of edges.entries()) {
+      const shared_deficit = Math.min(
+        target_valence[from] - valence[from],
+        target_valence[to] - valence[to],
+      )
       if (shared_deficit > best_deficit && orders[edge_idx] < 3) {
         best_deficit = shared_deficit
         best = edge_idx
       }
-    })
-    if (best >= 0) {
-      orders[best] += 1
-      progressed = true
     }
+    if (best < 0) break
+    orders[best]++
+    add_valence(edges[best].from, edges[best].to)
   }
-  for (let atom_idx = 0; atom_idx < target_valence.length; atom_idx++) {
-    if (used(atom_idx) !== target_valence[atom_idx]) return null
-  }
-  return orders
+  const solved = valence.every((used, atom_idx) => used === target_valence[atom_idx])
+  return solved ? { orders, valence } : null
 }
 
 // Spanning-tree cycle basis, deduplicated by sorted vertex set.
@@ -282,38 +283,43 @@ export function perceive_bond_orders(
     sites.length,
     edges.map((edge) => [edge.from, edge.to] as Vec2),
   )
+  // Every edge joins two atoms of one fragment: bucket edges by fragment and renumber their
+  // endpoints to fragment-local indices in one pass over the edges
+  const frag_of_atom = new Int32Array(sites.length)
+  const local_idx_of = new Int32Array(sites.length)
+  for (const [frag_idx, frag] of frags.entries()) {
+    for (const [local_idx, site_idx] of frag.entries()) {
+      frag_of_atom[site_idx] = frag_idx
+      local_idx_of[site_idx] = local_idx
+    }
+  }
+  const edges_by_frag: Edge[][] = frags.map(() => [])
+  for (const { from, to, bond } of edges) {
+    edges_by_frag[frag_of_atom[from]].push({
+      from: local_idx_of[from],
+      to: local_idx_of[to],
+      bond,
+    })
+  }
+  const want_charge = opts.total_charge ?? 0
   let ring_id = 0
-  for (const frag of frags) {
-    const atom_set = new Set(frag)
-    const frag_edges = edges.filter((edge) => atom_set.has(edge.from))
+  for (const [frag_idx, frag] of frags.entries()) {
     const symbols = frag.map((atom_idx) => primary_element(sites[atom_idx]))
     if (!symbols.every(is_main_group)) continue
-    const idx_of = Array.from({ length: sites.length }, () => -1)
-    frag.forEach((site_idx, local_idx) => {
-      idx_of[site_idx] = local_idx
-    })
-    const local_edges: Edge[] = frag_edges.map((edge) => ({
-      from: idx_of[edge.from],
-      to: idx_of[edge.to],
-      bond: edge.bond,
-    }))
+    const local_edges = edges_by_frag[frag_idx]
     const valence_lists = symbols.map((symbol) => ATOMIC_VALENCE[symbol])
     const combo_count = valence_lists.reduce(
       (product, valence_list) => product * valence_list.length,
       1,
     )
     if (combo_count > MAX_VALENCE_COMBOS) continue
-    let solved: number[] | null = null
-    const want_charge = opts.total_charge ?? 0
+    let solved: BondOrderSolution | null = null
     for (const target of valence_combinations(valence_lists)) {
       const candidate = assign_bond_orders(local_edges, target)
       if (!candidate) continue
       let sum_fc = 0
-      for (let local_atom_idx = 0; local_atom_idx < frag.length; local_atom_idx++) {
-        sum_fc += formal_charge(
-          symbols[local_atom_idx],
-          atom_valence(local_atom_idx, local_edges, candidate),
-        )
+      for (const [local_atom_idx, symbol] of symbols.entries()) {
+        sum_fc += formal_charge(symbol, candidate.valence[local_atom_idx])
       }
       if (sum_fc === want_charge) {
         solved = candidate
@@ -321,8 +327,9 @@ export function perceive_bond_orders(
       }
     }
     if (!solved) continue
+    const { orders } = solved
     local_edges.forEach((edge, edge_idx) => {
-      const solved_order = solved[edge_idx]
+      const solved_order = orders[edge_idx]
       const order: BondOrder = solved_order >= 3 ? 3 : solved_order === 2 ? 2 : 1
       result.set(edge.bond, { ...edge.bond, bond_order: order, perceived: true })
     })
@@ -344,7 +351,7 @@ export function perceive_bond_orders(
         ring_set.has(edge.from) && ring_set.has(edge.to)
       const has_ring_multiple = new Set<number>()
       local_edges.forEach((edge, edge_idx) => {
-        if (edge_is_in_ring(edge) && solved[edge_idx] > 1) {
+        if (edge_is_in_ring(edge) && orders[edge_idx] > 1) {
           has_ring_multiple.add(edge.from)
           has_ring_multiple.add(edge.to)
         }
@@ -352,7 +359,7 @@ export function perceive_bond_orders(
       const has_any_multiple_bond = (atom_idx: number): boolean =>
         local_edges.some((edge, edge_idx) => {
           if (edge.from !== atom_idx && edge.to !== atom_idx) return false
-          return solved[edge_idx] > 1
+          return orders[edge_idx] > 1
         })
       const has_non_ring_neighbor = (atom_idx: number): boolean =>
         local_edges.some((edge) => {

@@ -147,7 +147,7 @@ export function build_diagram(input: DiagramInput): PhaseDiagramData {
       id: region.id,
       name: region.name,
       vertices,
-      ...(region.color ? { color: region.color } : {}),
+      ...(region.color && { color: region.color }),
       ...(region.label_position && { label_position: region.label_position }),
     }
   })
@@ -158,7 +158,6 @@ export function build_diagram(input: DiagramInput): PhaseDiagramData {
     return { id: name, type: btype, points, style }
   })
 
-  // Build the full diagram data (spread optional fields conditionally)
   return {
     components: meta.components,
     temperature_range: meta.temp_range,

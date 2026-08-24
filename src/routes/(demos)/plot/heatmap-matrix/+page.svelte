@@ -27,17 +27,6 @@
   let last_export_status = $state<string | null>(null)
   let brush_info = $state<string | null>(null)
 
-  function set_controls_toggle(
-    controls_group: `primary` | `secondary`,
-    is_visible: boolean,
-  ): void {
-    if (controls_group === `primary`) {
-      show_primary_controls_toggle = is_visible
-      return
-    }
-    show_secondary_controls_toggle = is_visible
-  }
-
   function format_cell_value(value: number | string | null | undefined): string {
     if (value === null || value === undefined) return `N/A`
     return typeof value === `number` ? format_num(value) : value
@@ -107,10 +96,10 @@
 <div
   class="heatmap-controls-anchor"
   role="group"
-  onmouseenter={() => set_controls_toggle(`primary`, true)}
-  onmouseleave={() => set_controls_toggle(`primary`, false)}
-  onfocusin={() => set_controls_toggle(`primary`, true)}
-  onfocusout={() => set_controls_toggle(`primary`, false)}
+  onmouseenter={() => (show_primary_controls_toggle = true)}
+  onmouseleave={() => (show_primary_controls_toggle = false)}
+  onfocusin={() => (show_primary_controls_toggle = true)}
+  onfocusout={() => (show_primary_controls_toggle = false)}
 >
   <div class="scroll-container">
     <HeatmapMatrix
@@ -193,10 +182,10 @@
 <div
   class="heatmap-controls-anchor"
   role="group"
-  onmouseenter={() => set_controls_toggle(`secondary`, true)}
-  onmouseleave={() => set_controls_toggle(`secondary`, false)}
-  onfocusin={() => set_controls_toggle(`secondary`, true)}
-  onfocusout={() => set_controls_toggle(`secondary`, false)}
+  onmouseenter={() => (show_secondary_controls_toggle = true)}
+  onmouseleave={() => (show_secondary_controls_toggle = false)}
+  onfocusin={() => (show_secondary_controls_toggle = true)}
+  onfocusout={() => (show_secondary_controls_toggle = false)}
 >
   <HeatmapMatrix
     x_items={small_axis}

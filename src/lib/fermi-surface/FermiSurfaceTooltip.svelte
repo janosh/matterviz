@@ -3,6 +3,7 @@
   // Displays band index, spin, k-coordinates, and optional property values
   import { format_num } from '$lib/labels'
   import { KCoords, TooltipContent } from '$lib/tooltip'
+  import { SPIN_COLORS } from './constants'
   import type { FermiHoverData, FermiTooltipProp } from './types'
 
   let {
@@ -19,7 +20,9 @@
     <div class="tooltip-title">
       <strong>Band {hover_data.band_index}</strong>
       {#if hover_data.spin}
-        <span class={[`spin-badge`, `spin-${hover_data.spin}`]}>{hover_data.spin}</span>
+        <span class="spin-badge" style:background-color={SPIN_COLORS[hover_data.spin]}>
+          {hover_data.spin}
+        </span>
       {/if}
     </div>
 
@@ -60,13 +63,6 @@
     padding: 1px 4px;
     border-radius: 3px;
     font-weight: 500;
-  }
-  .spin-badge.spin-up {
-    background: #e41a1c;
-    color: white;
-  }
-  .spin-badge.spin-down {
-    background: #377eb8;
     color: white;
   }
   .nearest-note {

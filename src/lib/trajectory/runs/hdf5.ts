@@ -4,7 +4,6 @@ import type { LazyTrajectorySource } from '../parse/shared'
 import {
   assert_frame_idx,
   disposed_error,
-  time_step_of,
   TrajectoryProperties,
   type TrajectoryProvenance,
   type TrajectoryRun,
@@ -15,10 +14,9 @@ export const hdf5_run = (
   provenance: TrajectoryProvenance,
   warnings: readonly string[],
 ): TrajectoryRun => {
-  const { frame_count, atom_masses, signals, metadata } = source
+  const { frame_count, time_step, atom_masses, signals, metadata } = source
   if (frame_count < 1) throw new Error(`HDF5 trajectory has no frames`)
   const preview = source.read_frame(0)
-  const time_step = time_step_of(source.time_step, source.time_unit)
   let disposed = false
   const live = (): LazyTrajectorySource => {
     if (disposed) throw disposed_error(`HDF5 trajectory`)
@@ -29,9 +27,9 @@ export const hdf5_run = (
     preview,
     provenance: { ...provenance, format: source.format },
     properties: new TrajectoryProperties(source.properties, true),
-    ...(time_step ? { time_step } : {}),
-    ...(atom_masses ? { atom_masses } : {}),
-    ...(signals ? { signals } : {}),
+    time_step,
+    atom_masses,
+    signals,
     metadata,
     warnings,
     read_frame: (frame_idx) => {

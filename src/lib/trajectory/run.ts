@@ -140,12 +140,39 @@ export const summarize_run = (run: TrajectoryRun): TrajectoryRunSummary => ({
   preview: run.preview,
   provenance: run.provenance,
   properties: { rows: [...run.properties.rows], complete: run.properties.complete },
-  ...(run.time_step ? { time_step: run.time_step } : {}),
-  ...(run.atom_masses ? { atom_masses: [...run.atom_masses] } : {}),
-  ...(run.signals ? { signals: run.signals } : {}),
+  time_step: run.time_step,
+  atom_masses: run.atom_masses && [...run.atom_masses],
+  signals: run.signals,
   metadata: run.metadata,
   warnings: [...run.warnings],
   has_collect_positions: run.collect_positions !== undefined,
+})
+
+// The run fields a summary carries verbatim; host_run and worker_run add frame access and
+// disposal on top. `properties` is a fresh live instance the caller pushes later batches into.
+export const run_fields_from_summary = (
+  summary: TrajectoryRunSummary,
+): Pick<
+  TrajectoryRun,
+  | `frame_count`
+  | `preview`
+  | `provenance`
+  | `properties`
+  | `time_step`
+  | `atom_masses`
+  | `signals`
+  | `metadata`
+  | `warnings`
+> => ({
+  frame_count: summary.frame_count,
+  preview: summary.preview,
+  provenance: summary.provenance,
+  properties: new TrajectoryProperties(summary.properties.rows, summary.properties.complete),
+  time_step: summary.time_step,
+  atom_masses: summary.atom_masses,
+  signals: summary.signals,
+  metadata: summary.metadata,
+  warnings: summary.warnings,
 })
 
 export const assert_frame_idx = (run: { frame_count: number }, frame_idx: number): void => {
@@ -156,12 +183,3 @@ export const assert_frame_idx = (run: { frame_count: number }, frame_idx: number
 
 export const disposed_error = (what: string): Error =>
   new Error(`${what} was disposed; frames can no longer be read`)
-
-// Every time_step a parser records comes with a unit; a bare number is meaningless
-export const time_step_of = (
-  value: number | undefined,
-  unit: string | undefined,
-): { value: number; unit: string } | undefined =>
-  value !== undefined && Number.isFinite(value) && value > 0 && unit
-    ? { value, unit }
-    : undefined

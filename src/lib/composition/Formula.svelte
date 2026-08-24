@@ -4,9 +4,15 @@
   import type { ElementSymbol } from '$lib/element'
   import { element_by_symbol } from '$lib/element'
   import ElementTile from '$lib/element/ElementTile.svelte'
-  import { format_num } from '$lib/labels'
+  import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { format_oxi_state, sort_by_electronegativity, sort_by_hill_notation } from './format'
+  import {
+    AMOUNT_FORMAT,
+    format_amount,
+    format_oxi_state,
+    sort_by_electronegativity,
+    sort_by_hill_notation,
+  } from './format'
   import type { FormulaSpecies, OxiComposition } from './parse'
   import { parse_formula_with_oxidation } from './parse'
 
@@ -17,7 +23,7 @@
     color_scheme = `Vesta`,
     ordering = `original`,
     as = `span`,
-    amount_format = `.3~s`,
+    amount_format = AMOUNT_FORMAT,
     tooltip_side = `bottom`,
     tooltip_offset = 5,
     on_click,
@@ -35,11 +41,9 @@
 
   const parsed_elements = $derived.by((): FormulaSpecies[] => {
     if (typeof formula !== `string`) {
-      return Object.entries(formula).map(([element, { amount, oxidation_state }]) => ({
-        element: element as ElementSymbol,
-        amount,
-        oxidation_state,
-      }))
+      return Object.entries(formula).flatMap(([element, species]) =>
+        species ? [{ element: element as ElementSymbol, ...species }] : [],
+      )
     }
     try {
       return parse_formula_with_oxidation(formula)
@@ -60,8 +64,8 @@
   }
   const sorted_elements = $derived.by(() => {
     if (ordering === `original`) return parsed_elements
-    const symbols = [...new Set(parsed_elements.map((token) => token.element))]
-    const rank = new Map(SORTERS[ordering](symbols).map((symbol, idx) => [symbol, idx]))
+    const symbols = [...new SvelteSet(parsed_elements.map((token) => token.element))]
+    const rank = new SvelteMap(SORTERS[ordering](symbols).map((symbol, idx) => [symbol, idx]))
     return parsed_elements.toSorted(
       (tok_a, tok_b) => (rank.get(tok_a.element) ?? 0) - (rank.get(tok_b.element) ?? 0),
     )
@@ -83,7 +87,7 @@
           // Use parentheses to avoid ambiguity like "Fe+32" looking like oxidation +32
           text += `(${format_oxi_state(oxidation_state)})`
         }
-        if (amount !== 1) text += format_num(amount, amount_format)
+        if (amount !== 1) text += format_amount(amount, amount_format)
         return text
       })
       .join(` `),
@@ -156,7 +160,7 @@
           {/if}
           {#if amount !== 1}
             <sub class="amt" class:no-sup={!has_oxidation}
-              >{format_num(amount, amount_format)}</sub
+              >{format_amount(amount, amount_format)}</sub
             >
           {/if}
         </span>

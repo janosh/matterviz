@@ -7,6 +7,7 @@
   import { ColorScaleSelect } from '$lib/plot'
   import type { ComponentProps } from 'svelte'
   import { tooltip } from 'svelte-widgets/attachments'
+  import { DEFAULT_N_SAMPLES } from './compute'
   import type { FreeEnergyMode, FreeEnergySource, TernaryDisplay } from './types'
 
   let {
@@ -15,7 +16,7 @@
     set_display,
     free_energy_mode = $bindable(`auto`),
     t_range = $bindable(),
-    n_samples = $bindable(64),
+    n_samples = $bindable(DEFAULT_N_SAMPLES),
     relevant_gases = [],
     gas_enabled = $bindable(false),
     gas_pressures = $bindable({}),

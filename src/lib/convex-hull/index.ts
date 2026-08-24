@@ -4,17 +4,18 @@ import type { TooltipConfig } from '$lib/tooltip'
 import type { Snippet } from 'svelte'
 import type { HTMLAttributes } from 'svelte/elements'
 import type { EnergySourceMode } from './hull-state.svelte'
-import type {
-  ConvexHullConfig,
-  ConvexHullControlsType,
-  EntryCategoryConfig,
-  GasSpecies,
-  GasThermodynamicsConfig,
-  HighlightStyle,
-  HoverData3D,
-  HullFaceColorMode,
-  PhaseData,
-  PhaseStats,
+import {
+  type ConvexHullConfig,
+  type ConvexHullControlsType,
+  DEFAULT_HULL_COLORS,
+  type EntryCategoryConfig,
+  type GasSpecies,
+  type GasThermodynamicsConfig,
+  type HighlightStyle,
+  type HoverData3D,
+  type HullFaceColorMode,
+  type PhaseData,
+  type PhaseStats,
 } from './types'
 
 export {
@@ -216,7 +217,7 @@ export const default_hull_config: ConvexHullConfig = {
   show_labels: true,
   show_hull: true,
   font_size: 12,
-  colors: { stable: `#0072B2`, unstable: `#E69F00` },
+  colors: { ...DEFAULT_HULL_COLORS },
 }
 
 // User config over default_hull_config, colors merged one level deep

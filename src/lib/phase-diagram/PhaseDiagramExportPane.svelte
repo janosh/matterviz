@@ -34,9 +34,11 @@
       : filename,
   )
 
-  const svg = $derived(
-    wrapper?.querySelector<SVGSVGElement>(`svg.binary-phase-diagram`) ?? null,
-  )
+  // Looked up per action: the SVG mounts after this pane (a sibling further down the diagram
+  // template) and re-mounts when the diagram is cleared and reloaded, so a cached element
+  // would be stale or missing
+  const get_svg = (): SVGSVGElement | null =>
+    wrapper?.querySelector<SVGSVGElement>(`svg.binary-phase-diagram`) ?? null
 
   const json_string = (): string | null => (data ? JSON.stringify(data, null, 2) : null)
 
@@ -47,15 +49,22 @@
       items: [
         {
           label: `SVG`,
-          disabled: !svg,
-          on_download: () => svg && export_svg_as_svg(svg, `${full_filename}.svg`),
-          copy_text: () => (svg ? new XMLSerializer().serializeToString(svg) : null),
+          on_download: () => {
+            const svg = get_svg()
+            if (svg) export_svg_as_svg(svg, `${full_filename}.svg`)
+          },
+          copy_text: () => {
+            const svg = get_svg()
+            return svg ? new XMLSerializer().serializeToString(svg) : null
+          },
         },
         {
           label: `PNG`,
-          disabled: !svg,
           show_dpi: true,
-          on_download: () => svg && export_svg_as_png(svg, `${full_filename}.png`, png_dpi),
+          on_download: () => {
+            const svg = get_svg()
+            if (svg) export_svg_as_png(svg, `${full_filename}.png`, png_dpi)
+          },
         },
       ],
     },

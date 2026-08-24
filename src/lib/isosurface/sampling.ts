@@ -14,16 +14,20 @@ import {
 
 const safe_mod = (val: number, dim: number) => ((val % dim) + dim) % dim
 
-// Lower/upper voxel indices for one axis of a trilinear sample. Singleton axes
-// (n===1) pin both corners to 0 so nx-2 clamping never goes negative.
-const voxel_corners = (n: number, floor_g: number, periodic: boolean): [number, number] => {
-  if (n === 1) return [0, 0]
-  const lower = periodic ? safe_mod(floor_g, n) : Math.max(0, Math.min(floor_g, n - 2))
-  return [lower, periodic ? (lower + 1) % n : Math.min(lower + 1, n - 1)]
+// Lower voxel index along one axis of a trilinear sample. Singleton axes (n === 1) pin
+// both corners to 0 so the n - 2 clamp never goes negative.
+const lower_corner = (n: number, floor_g: number, periodic: boolean): number => {
+  if (n === 1) return 0
+  return periodic ? safe_mod(floor_g, n) : Math.max(0, Math.min(floor_g, n - 2))
+}
+const upper_corner = (n: number, lower: number, periodic: boolean): number => {
+  if (n === 1) return 0
+  return periodic ? (lower + 1) % n : Math.min(lower + 1, n - 1)
 }
 
 // Trilinear interpolation of a z-fastest scalar grid at fractional coordinates.
-// Periodic grids wrap with modulo; non-periodic return 0 for out-of-bounds.
+// Periodic grids wrap with modulo; non-periodic return 0 for out-of-bounds. Scalar
+// arithmetic only: this runs once per slice pixel and per isosurface vertex.
 export function trilinear_interpolate(
   grid: ScalarGrid3D,
   fx: number,
@@ -35,18 +39,34 @@ export function trilinear_interpolate(
   if (nx === 0 || ny === 0 || nz === 0) return 0
   if (!periodic && (fx < 0 || fx > 1 || fy < 0 || fy > 1 || fz < 0 || fz > 1)) return 0
 
-  // Convert fractional to grid coordinates
+  // Fractional → grid coordinates: periodic point i sits at i/n, finite at i/(n-1)
   const gx = periodic ? fx * nx : fx * (nx - 1)
   const gy = periodic ? fy * ny : fy * (ny - 1)
   const gz = periodic ? fz * nz : fz * (nz - 1)
-  const [x0, x1] = voxel_corners(nx, Math.floor(gx), periodic)
-  const [y0, y1] = voxel_corners(ny, Math.floor(gy), periodic)
-  const [z0, z1] = voxel_corners(nz, Math.floor(gz), periodic)
-  // deltas from clamped lower index (non-periodic x0 clamps to nx-2 so floor(gx) may != x0)
-  const xd = periodic ? gx - Math.floor(gx) : gx - x0
-  const yd = periodic ? gy - Math.floor(gy) : gy - y0
-  const zd = periodic ? gz - Math.floor(gz) : gz - z0
-  return interpolate_cell(grid.values, ny * nz, nz, x0, x1, y0, y1, z0, z1, xd, yd, zd)
+  const floor_x = Math.floor(gx)
+  const floor_y = Math.floor(gy)
+  const floor_z = Math.floor(gz)
+  const x0 = lower_corner(nx, floor_x, periodic)
+  const y0 = lower_corner(ny, floor_y, periodic)
+  const z0 = lower_corner(nz, floor_z, periodic)
+  // deltas from the clamped lower index (non-periodic x0 clamps to nx-2 so floor(gx) may != x0)
+  const xd = periodic ? gx - floor_x : gx - x0
+  const yd = periodic ? gy - floor_y : gy - y0
+  const zd = periodic ? gz - floor_z : gz - z0
+  return interpolate_cell(
+    grid.values,
+    ny * nz,
+    nz,
+    x0,
+    upper_corner(nx, x0, periodic),
+    y0,
+    upper_corner(ny, y0, periodic),
+    z0,
+    upper_corner(nz, z0, periodic),
+    xd,
+    yd,
+    zd,
+  )
 }
 
 // 8-corner trilinear blend on a z-fastest value array with the given strides
@@ -95,37 +115,35 @@ interface BulkVolumeSamplerOptions extends VolumeSamplerOptions {
 // (e.g. marching-cubes output at fractional coordinate 1.0 + 1e-16) still sample.
 const OOB_TOL = 1e-6
 
-// Create a sampler that maps absolute Cartesian positions (in the same physical
-// frame as the volume's `origin`) to trilinearly-interpolated scalar values.
-// Handles non-orthogonal lattices, origin offsets, and periodic wrapping, so it
-// works both for strictly matching grids and for general resampling between
-// volumes that share a Cartesian coordinate system.
-// The hot callback uses scalar arithmetic only (no per-call array allocations)
-// since it runs once per isosurface vertex.
-export function create_volume_sampler(
+// Absolute Cartesian (x, y, z) in the volume's frame → trilinearly interpolated value.
+// Handles non-orthogonal lattices, origin offsets and periodic wrapping; scalar arithmetic
+// only since it runs once per isosurface vertex / slice pixel.
+function volume_sampler_xyz(
   volume: VolumeGrid,
-  options: VolumeSamplerOptions = {},
-): (position: Vec3) => number {
-  const { out_of_bounds = `clamp` } = options
+  out_of_bounds: OutOfBoundsPolicy,
+): (x: number, y: number, z: number) => number {
   // Cartesian→fractional matrix (reciprocal lattice rows)
-  const inv = reciprocal_lattice(volume.lattice)
+  const [[i00, i01, i02], [i10, i11, i12], [i20, i21, i22]] = reciprocal_lattice(
+    volume.lattice,
+  )
   const { periodic } = volume
-  const [ox, oy, oz] = volume.origin
+  const [origin_x, origin_y, origin_z] = volume.origin
+  const fallback = out_of_bounds === `fallback`
 
-  return (position: Vec3): number => {
-    const cx = position[0] - ox
-    const cy = position[1] - oy
-    const cz = position[2] - oz
-    let fx = inv[0][0] * cx + inv[0][1] * cy + inv[0][2] * cz
-    let fy = inv[1][0] * cx + inv[1][1] * cy + inv[1][2] * cz
-    let fz = inv[2][0] * cx + inv[2][1] * cy + inv[2][2] * cz
+  return (x, y, z) => {
+    const cart_x = x - origin_x
+    const cart_y = y - origin_y
+    const cart_z = z - origin_z
+    let fx = i00 * cart_x + i01 * cart_y + i02 * cart_z
+    let fy = i10 * cart_x + i11 * cart_y + i12 * cart_z
+    let fz = i20 * cart_x + i21 * cart_y + i22 * cart_z
     if (periodic) {
       fx = safe_mod(fx, 1)
       fy = safe_mod(fy, 1)
       fz = safe_mod(fz, 1)
     } else {
       if (
-        out_of_bounds === `fallback` &&
+        fallback &&
         (fx < -OOB_TOL ||
           fx > 1 + OOB_TOL ||
           fy < -OOB_TOL ||
@@ -144,54 +162,38 @@ export function create_volume_sampler(
   }
 }
 
-// Sample a volume at many Cartesian positions (flat xyz triplets).
-// Returns one scalar per position; NaN marks out-of-bounds under 'fallback' policy.
+// Sampler from absolute Cartesian positions (same physical frame as the volume's `origin`)
+// to scalar values; works for strictly matching grids and for general resampling between
+// volumes that share a Cartesian coordinate system.
+export function create_volume_sampler(
+  volume: VolumeGrid,
+  { out_of_bounds = `clamp` }: VolumeSamplerOptions = {},
+): (position: Vec3) => number {
+  const sample = volume_sampler_xyz(volume, out_of_bounds)
+  return (position) => sample(position[0], position[1], position[2])
+}
+
+// Sample a volume at many Cartesian positions (flat xyz triplets, shifted by
+// `position_offset`). Returns one scalar per position; NaN marks out-of-bounds under the
+// 'fallback' policy. Pass `out` of the right size to fill it in place.
 export function sample_volume_at_positions(
   volume: VolumeGrid,
   positions: Float32Array | Float64Array,
-  options: BulkVolumeSamplerOptions = {},
+  { out_of_bounds = `clamp`, position_offset = [0, 0, 0], out }: BulkVolumeSamplerOptions = {},
 ): Float32Array {
-  const { out_of_bounds = `clamp`, position_offset = [0, 0, 0] } = options
-  const inv = reciprocal_lattice(volume.lattice)
-  const { periodic } = volume
   const [offset_x, offset_y, offset_z] = position_offset
-  const [origin_x, origin_y, origin_z] = volume.origin
   const n_points = Math.floor(positions.length / 3)
-  const out = options.out?.length === n_points ? options.out : new Float32Array(n_points)
-  if (volume.dims.some((dim) => dim === 0)) return out.fill(0)
+  const scalars = out?.length === n_points ? out : new Float32Array(n_points)
+  const sample = volume_sampler_xyz(volume, out_of_bounds)
   for (let idx = 0; idx < n_points; idx++) {
     const position_idx = idx * 3
-    const cart_x = positions[position_idx] + offset_x - origin_x
-    const cart_y = positions[position_idx + 1] + offset_y - origin_y
-    const cart_z = positions[position_idx + 2] + offset_z - origin_z
-    let frac_x = inv[0][0] * cart_x + inv[0][1] * cart_y + inv[0][2] * cart_z
-    let frac_y = inv[1][0] * cart_x + inv[1][1] * cart_y + inv[1][2] * cart_z
-    let frac_z = inv[2][0] * cart_x + inv[2][1] * cart_y + inv[2][2] * cart_z
-
-    if (periodic) {
-      frac_x = safe_mod(frac_x, 1)
-      frac_y = safe_mod(frac_y, 1)
-      frac_z = safe_mod(frac_z, 1)
-    } else {
-      if (
-        out_of_bounds === `fallback` &&
-        (frac_x < -OOB_TOL ||
-          frac_x > 1 + OOB_TOL ||
-          frac_y < -OOB_TOL ||
-          frac_y > 1 + OOB_TOL ||
-          frac_z < -OOB_TOL ||
-          frac_z > 1 + OOB_TOL)
-      ) {
-        out[idx] = Number.NaN
-        continue
-      }
-      frac_x = Math.min(1, Math.max(0, frac_x))
-      frac_y = Math.min(1, Math.max(0, frac_y))
-      frac_z = Math.min(1, Math.max(0, frac_z))
-    }
-    out[idx] = trilinear_interpolate(volume, frac_x, frac_y, frac_z, periodic)
+    scalars[idx] = sample(
+      positions[position_idx] + offset_x,
+      positions[position_idx + 1] + offset_y,
+      positions[position_idx + 2] + offset_z,
+    )
   }
-  return out
+  return scalars
 }
 
 // Result of a strict VESTA-style grid compatibility check between two volumes.
@@ -307,6 +309,14 @@ export function resolve_volume_display_range(
   return range.map(([lo, hi]) => [lo - padding, hi + padding]) as DisplayRange
 }
 
+// Endpoint-inclusive sample counts per axis for a (sanitized) fractional window at the
+// source voxel density: periodic volumes have n intervals per cell, finite ones n - 1
+export const range_sample_counts = (volume: VolumeGrid, range: DisplayRange): Vec3 =>
+  range.map(([lo, hi], axis) => {
+    const intervals = volume.periodic ? volume.dims[axis] : Math.max(volume.dims[axis] - 1, 1)
+    return Math.max(2, Math.round((hi - lo) * intervals) + 1)
+  }) as Vec3
+
 interface AxisInterpolation {
   lower: Int32Array
   upper: Int32Array
@@ -359,18 +369,14 @@ export function extract_volume_range(
   range: DisplayRange,
   max_points: number = MAX_GRID_POINTS,
 ): VolumetricData {
-  const [rx, ry, rz] = sanitize_display_range(range, volume.periodic)
+  const sanitized = sanitize_display_range(range, volume.periodic)
+  const [rx, ry, rz] = sanitized
   const widths: Vec3 = [rx[1] - rx[0], ry[1] - ry[0], rz[1] - rz[0]]
 
-  // Sample counts follow the source voxel density (inclusive endpoints), capped
-  // to the point budget. The reduction loop guards against cbrt undershoot when
-  // the min-2 floor prevents an axis from shrinking.
-  let counts = widths.map((width, axis) => {
-    const source_intervals = volume.periodic
-      ? volume.dims[axis]
-      : Math.max(volume.dims[axis] - 1, 1)
-    return Math.max(2, Math.round(width * source_intervals) + 1)
-  }) as Vec3
+  // Sample counts follow the source voxel density, capped to the point budget. The
+  // reduction loop guards against cbrt undershoot when the min-2 floor prevents an axis
+  // from shrinking.
+  let counts = range_sample_counts(volume, sanitized)
   const total = counts[0] * counts[1] * counts[2]
   if (total > max_points) {
     const shrink = Math.cbrt(max_points / total)
@@ -458,5 +464,5 @@ export function prepare_geometry_grid(
     const extracted = extract_volume_range(volume, range)
     return { grid: extracted, lattice: extracted.lattice, origin: extracted.origin }
   }
-  return { grid: downsample_grid(volume).grid, lattice: volume.lattice, origin: volume.origin }
+  return { grid: downsample_grid(volume), lattice: volume.lattice, origin: volume.origin }
 }

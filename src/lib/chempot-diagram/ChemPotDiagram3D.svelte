@@ -5,7 +5,6 @@
   import type { D3InterpolateName } from '$lib/colors'
   import { get_electro_neg_formula, get_formula_label_segments } from '$lib/composition/format'
   import type { FormulaLabelSegment } from '$lib/composition/format'
-  import { extract_formula_elements } from '$lib/composition/parse'
   import TemperatureSlider from '$lib/convex-hull/TemperatureSlider.svelte'
   import type { PhaseData } from '$lib/convex-hull/types'
   import Spinner from '$lib/feedback/Spinner.svelte'
@@ -14,8 +13,15 @@
   import { FullscreenButton, SettingsSection } from '$lib/layout'
   import { ViewerPane } from '$lib/overlays'
   import type { Vec2, Vec3 } from '$lib/math'
-  import { add, cross_3d, merge_coplanar_triangles, normalize_vec, subtract } from '$lib/math'
-  import { ColorBar, ScatterPlot3DControls } from '$lib/plot'
+  import {
+    add,
+    array_extent,
+    cross_3d,
+    merge_coplanar_triangles,
+    normalize_vec,
+    subtract,
+  } from '$lib/math'
+  import { ScatterPlot3DControls } from '$lib/plot'
   import { create_renderer, dispose_on_change, webgpu_available } from '$lib/scene'
   import { pad_rect, rects_overlap } from '$lib/plot/core/layout'
   import type {
@@ -31,9 +37,10 @@
   import * as THREE from 'three/webgpu'
   import { ConvexGeometry } from 'three/examples/jsm/geometries/ConvexGeometry.js'
   import { compute_chempot_async } from './async-compute.svelte'
+  import ChemPotLegend from './ChemPotLegend.svelte'
   import ChemPotScene3D from './ChemPotScene3D.svelte'
   import ChemPotTooltip from './ChemPotTooltip.svelte'
-  import { ARITY_COLORS, get_chempot_interpolator, get_domain_color_data } from './color'
+  import { get_domain_color_data } from './color'
   import { rescale_zoom_to_fit } from './camera'
   import {
     CHEMPOT_COLOR_MODE_OPTIONS,
@@ -65,11 +72,7 @@
     type VisibleDomainLabel,
   } from './compute'
   import { with_hover_pointer } from './pointer'
-  import {
-    get_projection_source_entries,
-    get_temp_filter_payload,
-    get_valid_temperature,
-  } from './temperature'
+  import { get_temp_filter_payload, get_valid_temperature } from './temperature'
   import type {
     ChemPotColorMode,
     ChemPotDiagramConfig,
@@ -101,8 +104,6 @@
     height = $bindable(600),
     // Auto-corrected to a valid available temperature when needed.
     temperature = $bindable<number | undefined>(undefined),
-    interpolate_temperature = CHEMPOT_DEFAULTS.interpolate_temperature,
-    max_interpolation_gap = CHEMPOT_DEFAULTS.max_interpolation_gap,
     hover_info = $bindable<ChemPotHoverInfo | null>(null),
     wrapper = $bindable(),
     fullscreen = $bindable(false),
@@ -115,8 +116,6 @@
     width?: number
     height?: number
     temperature?: number
-    interpolate_temperature?: boolean
-    max_interpolation_gap?: number
     hover_info?: ChemPotHoverInfo | null
     // bindable: top-level wrapper element
     wrapper?: HTMLDivElement
@@ -238,32 +237,20 @@
     return new THREE.Vector3(x_val, y_val, z_val)
   }
 
-  // Compute diagram data (requires >= 3 elements for 3D rendering)
   const { has_temp_data, available_temperatures, temp_filtered_entries } = $derived(
-    get_temp_filter_payload(entries, temperature, config, {
-      interpolate_temperature,
-      max_interpolation_gap,
-    }),
+    get_temp_filter_payload(entries, temperature, config),
   )
 
   // Keep bound temperature aligned with available data points.
   $effect(() => {
-    const next_temperature = get_valid_temperature(
-      temperature,
-      has_temp_data,
-      available_temperatures,
-    )
+    const next_temperature = get_valid_temperature(temperature, available_temperatures)
     if (next_temperature !== temperature) temperature = next_temperature
   })
 
-  const show_temperature_slider = $derived(has_temp_data && available_temperatures.length > 0)
-
-  const projection_source_entries = $derived(
-    get_projection_source_entries(entries, temp_filtered_entries),
-  )
-
+  // The chemical system comes from every entry, not the temperature slice: a slice can be
+  // empty or miss an element, and the projection axes must stay selectable either way
   const all_entry_elements = $derived.by(() => {
-    const elements = projection_source_entries.flatMap((entry) =>
+    const elements = entries.flatMap((entry) =>
       Object.entries(entry.composition)
         .filter(([, amount]) => amount > 0)
         .map(([element]) => element),
@@ -467,47 +454,17 @@
     }),
   )
 
-  const arity_legend_labels = $derived.by((): string[] => {
-    let has_four_plus_regions = false
-    for (const domain of render_domains) {
-      if (extract_formula_elements(domain.formula).length >= 4) {
-        has_four_plus_regions = true
-        break
-      }
-    }
-    return has_four_plus_regions
-      ? [`Unary`, `Binary`, `Ternary`, `4+`]
-      : [`Unary`, `Binary`, `Ternary`]
-  })
-
-  // Stretch short axes to improve screen-space utilization for highly anisotropic systems.
-  // Mapping is in rendered axis order: X=data[1], Y=data[2], Z=data[0].
+  // Stretch short axes (up to 4x) to improve screen-space utilization for highly anisotropic
+  // systems. Mapping is in rendered axis order: X=data[1], Y=data[2], Z=data[0].
   const render_axis_scale = $derived.by((): Vec3 => {
     const points = render_domains.flatMap((domain) => domain.points_3d)
     if (points.length === 0) return [1, 1, 1]
-    let min0 = Infinity,
-      max0 = -Infinity
-    let min1 = Infinity,
-      max1 = -Infinity
-    let min2 = Infinity,
-      max2 = -Infinity
-    for (const point of points) {
-      if (point[0] < min0) min0 = point[0]
-      if (point[0] > max0) max0 = point[0]
-      if (point[1] < min1) min1 = point[1]
-      if (point[1] > max1) max1 = point[1]
-      if (point[2] < min2) min2 = point[2]
-      if (point[2] > max2) max2 = point[2]
-    }
-    const span_x = Math.max(max1 - min1, 1e-6) // render X from data axis 1
-    const span_y = Math.max(max2 - min2, 1e-6) // render Y from data axis 2
-    const span_z = Math.max(max0 - min0, 1e-6) // render Z from data axis 0
-    const max_span = Math.max(span_x, span_y, span_z)
-    return [
-      Math.min(Math.max(max_span / span_x, 1), 4),
-      Math.min(Math.max(max_span / span_y, 1), 4),
-      Math.min(Math.max(max_span / span_z, 1), 4),
-    ]
+    const spans = [1, 2, 0].map((axis) => {
+      const [lo, hi] = array_extent(points.map((point) => point[axis]))
+      return Math.max(hi - lo, 1e-6)
+    })
+    const max_span = Math.max(...spans)
+    return spans.map((span) => Math.min(Math.max(max_span / span, 1), 4)) as Vec3
   })
 
   // Swizzle a data-coord triple to Three.js coords; ChemPotScene3D frames the axes with the same
@@ -1787,7 +1744,7 @@
       <FullscreenButton bind:fullscreen {wrapper} bg_css_var="--chempot-3d-bg-fullscreen" />
     {/if}
   </section>
-  {#if show_temperature_slider && temperature !== undefined}
+  {#if has_temp_data && temperature !== undefined}
     <TemperatureSlider class="chempot-temp-slider" {available_temperatures} bind:temperature />
   {/if}
   {#if !diagram_data}
@@ -1842,28 +1799,14 @@
         />
       </Canvas>
     </div>
-    <!-- Color bar for continuous modes -->
-    {#if color_range}
-      <ColorBar
-        title={color_range.label}
-        range={[color_range.min, color_range.max]}
-        scale={{ interpolator: get_chempot_interpolator(color_scale, reverse_color_scale) }}
-        wrapper_style="position: absolute; bottom: 16px; left: 1em; width: 200px; z-index: 10;"
-        bar_style="height: 12px;"
-        title_style="margin-bottom: 4px;"
-      />
-    {/if}
-    <!-- Categorical legend for arity mode -->
-    {#if color_mode === `arity`}
-      <div class="arity-legend">
-        {#each arity_legend_labels as label, idx (label)}
-          <span>
-            <span style:background={ARITY_COLORS[idx]}></span>
-            {label}
-          </span>
-        {/each}
-      </div>
-    {/if}
+    <ChemPotLegend
+      {color_mode}
+      {color_scale}
+      {reverse_color_scale}
+      {color_range}
+      formulas={render_domains.map((domain) => domain.formula)}
+      style="bottom: 16px; left: 1em"
+    />
   {/if}
   {#if show_tooltip && hover_info?.view === `3d`}
     <ChemPotTooltip
@@ -2059,28 +2002,5 @@
     justify-content: center;
     height: 100%;
     color: var(--text-color, #666);
-  }
-  .arity-legend {
-    position: absolute;
-    bottom: 16px;
-    left: 1em;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 2px 10px;
-    max-width: calc(100% - 2em);
-    font-size: 12px;
-    z-index: 10;
-    pointer-events: none;
-  }
-  .arity-legend > span {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-  }
-  .arity-legend > span > span {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    flex-shrink: 0;
   }
 </style>

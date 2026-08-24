@@ -3,7 +3,7 @@
   import EmptyState from '$lib/EmptyState.svelte'
   import { format_num } from '$lib/labels'
   import { sanitize_html } from '$lib/sanitize'
-  import { is_plain_object, to_error } from '$lib/utils'
+  import { to_error } from '$lib/utils'
   import { SettingsSection } from '$lib/layout'
   import type { Vec2 } from '$lib/math'
   import ScatterPlot from '$lib/plot/scatter/ScatterPlot.svelte'
@@ -17,6 +17,7 @@
     parse_frequency_unit,
   } from '$lib/spectral/frequency-units'
   import type {
+    BandLineStyle,
     BandsSpinMode,
     BandStructureType,
     BaseBandStructure,
@@ -71,7 +72,7 @@
     highlighted_qpoint_index?: number | null
     // Band index to emphasize together with the selected q-point marker
     highlighted_band_index?: number | null
-    ribbon_config?: RibbonConfig | Record<string, RibbonConfig>
+    ribbon_config?: RibbonConfig
     fermi_level?: number // Fermi level for electronic bands (auto-detected if not provided)
     units?: FrequencyUnit // Phonon frequency display units (electronic always eV)
     band_spin_mode?: BandsSpinMode // Electronic spin display: overlay (default), up_only, down_only
@@ -89,23 +90,21 @@
     'data-testid'?: string
   } = $props()
 
-  type LineStyle = { stroke: string; stroke_width: number }
-
+  const is_per_mode_style = (
+    kwargs: LineKwargs,
+  ): kwargs is { acoustic?: BandLineStyle; optical?: BandLineStyle } =>
+    `acoustic` in kwargs || `optical` in kwargs
   function get_line_style(
     color: string,
     is_acoustic: boolean,
-    frequencies: number[],
     band_idx: number,
-  ): LineStyle {
-    let custom: Record<string, unknown> = {}
-    if (typeof line_kwargs === `function`) custom = line_kwargs(frequencies, band_idx)
-    else if (is_plain_object(line_kwargs)) {
-      const mode_kwargs = line_kwargs[is_acoustic ? `acoustic` : `optical`]
-      custom = is_plain_object(mode_kwargs) ? mode_kwargs : line_kwargs
-    }
+  ): Required<BandLineStyle> {
+    const custom: BandLineStyle = is_per_mode_style(line_kwargs)
+      ? (line_kwargs[is_acoustic ? `acoustic` : `optical`] ?? {})
+      : line_kwargs
     const style = {
-      stroke: (custom.stroke as string) ?? color,
-      stroke_width: (custom.stroke_width as number) ?? (is_acoustic ? 1.5 : 1),
+      stroke: custom.stroke ?? color,
+      stroke_width: custom.stroke_width ?? (is_acoustic ? 1.5 : 1),
     }
     if (highlighted_band_index === null) return style
     const selected = highlighted_band_index === band_idx
@@ -130,24 +129,32 @@
     key: string
   }
 
-  // Normalized structures in plot order, each with its per-branch segment keys (aligned with
-  // bs.branches). A single structure is recognised by its marker fields (matterviz: qpoints +
-  // branches; pymatgen: @class/@module with qpoints/kpoints + bands). Entries whose
-  // normalization throws (pymatgen shape missing its reciprocal lattice) are collected as
-  // parse errors so the empty state can name the defect instead of a generic message.
-  let { structures, parse_errors } = $derived.by(() => {
-    const parsed: { label: string; bs: BaseBandStructure; keys: string[] }[] = []
-    const errors: string[] = []
-    if (!band_structs) return { structures: parsed, parse_errors: errors }
+  // A single structure is recognised by its marker fields (matterviz: qpoints + branches;
+  // pymatgen: @class/@module with qpoints/kpoints + bands); anything else is a dict of them
+  let is_single = $derived.by(() => {
+    if (!band_structs) return false
     const raw = band_structs as Record<string, unknown>
     const has_points = [raw.qpoints, raw.kpoints].some(
       (points) => Array.isArray(points) && points.length > 0,
     )
     const is_pymatgen = `@class` in raw || `@module` in raw
-    const is_single =
+    return (
       (!is_pymatgen && has_points && `branches` in raw) ||
       (is_pymatgen && has_points && (`bands` in raw || Array.isArray(raw.frequencies_cm)))
-    const entries: [string, unknown][] = is_single ? [[`default`, raw]] : Object.entries(raw)
+    )
+  })
+
+  // Normalized structures in plot order, each with its per-branch segment keys (aligned with
+  // bs.branches). Entries whose normalization throws (pymatgen shape missing its reciprocal
+  // lattice) are collected as parse errors so the empty state can name the defect instead
+  // of a generic message.
+  let { structures, parse_errors } = $derived.by(() => {
+    const parsed: { label: string; bs: BaseBandStructure; keys: string[] }[] = []
+    const errors: string[] = []
+    if (!band_structs) return { structures: parsed, parse_errors: errors }
+    const entries: [string, unknown][] = is_single
+      ? [[`default`, band_structs]]
+      : Object.entries(band_structs)
     for (const [label, input] of entries) {
       try {
         const bs = helpers.normalize_band_structure(input)
@@ -160,29 +167,12 @@
   })
   let num_structures = $derived(structures.length)
 
+  // Same raw-input markers compute_frequency_range reads, so the plot and a shared bands+DOS
+  // range agree on which bands are electronic
   let detected_band_type = $derived.by((): BandStructureType => {
     if (band_type) return band_type
-    if (!band_structs) return `phonon`
-
-    // Single structure has marker fields; dict of structures has label keys
-    const is_single = [`@class`, `@module`, `kpoints`, `qpoints`].some(
-      (key) => key in band_structs,
-    )
-    const source = (is_single ? band_structs : Object.values(band_structs)[0]) as
-      | Record<string, unknown>
-      | undefined
-    if (!source) return `phonon`
-
-    // Electronic: has kpoints, BandStructure* class (not Phonon*), or electronic_structure module
-    const py_class_name = String(source[`@class`] ?? ``)
-    if (
-      (Array.isArray(source.kpoints) && source.kpoints.length > 0) ||
-      (py_class_name.startsWith(`BandStructure`) && !py_class_name.startsWith(`Phonon`)) ||
-      String(source[`@module`] ?? ``).includes(`electronic_structure`)
-    )
-      return `electronic`
-
-    return `phonon`
+    const source: unknown = is_single ? band_structs : Object.values(band_structs ?? {})[0]
+    return helpers.is_electronic_band_struct(source) ? `electronic` : `phonon`
   })
 
   let effective_fermi_level = $derived(
@@ -266,7 +256,7 @@
       const gamma_indices =
         detected_band_type === `phonon` ? helpers.find_gamma_indices(bs) : []
       const ribbon = bs.band_widths?.length
-        ? helpers.get_ribbon_config(ribbon_config, label)
+        ? { opacity: 0.3, max_width: 6, scale: 1, ...ribbon_config }
         : null
 
       for (const [branch_idx, branch] of bs.branches.entries()) {
@@ -286,7 +276,7 @@
         for (let band_idx = 0; band_idx < bs.nb_bands; band_idx++) {
           const y_up = convert_band_values(bs.bands[band_idx].slice(start_idx, end_idx))
           const is_acoustic = helpers.classify_acoustic(bs, band_idx, gamma_indices)
-          const style_up = get_line_style(color, is_acoustic === true, y_up, band_idx)
+          const style_up = get_line_style(color, is_acoustic === true, band_idx)
           const spin_down_band = bs.spin_down_bands?.[band_idx]
           const y_down =
             detected_band_type === `electronic` &&

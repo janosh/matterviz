@@ -1,8 +1,11 @@
-import { DEFAULT_FONT_SPEC, type FontSpec } from '$lib/plot/core/text-metrics'
+import {
+  clear_text_metrics_cache,
+  DEFAULT_FONT_SPEC,
+  type FontSpec,
+} from '$lib/plot/core/text-metrics'
 import {
   analyze_tick_label_geometry,
   axis_edge_overflow,
-  clear_tick_metrics_cache,
   default_tick_label_anchor,
   measure_text_width,
   type MeasuredAxis,
@@ -483,7 +486,7 @@ describe(`strategy candidates through resolve_tick_layout`, () => {
       }
 
       const first = resolve_tick_layout(axis, size, side)
-      clear_tick_metrics_cache()
+      clear_text_metrics_cache()
       expect(resolve_tick_layout(axis, size, side)).toEqual(first)
       expect(first.band).toBeLessThanOrEqual(max_band)
       expect(first.labels.map(({ full_text }) => full_text)).toEqual(tick_values)

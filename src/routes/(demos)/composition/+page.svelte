@@ -17,7 +17,7 @@
 <CompositionDemo show_grid />
 
 <h2>Chart Controls</h2>
-<div class="controls">
+<div class="demo-controls">
   <label><input type="checkbox" bind:checked={show_labels} /> Labels</label>
   <label><input type="checkbox" bind:checked={show_amounts} /> Amounts</label>
   <label><input type="checkbox" bind:checked={show_percentages} /> %</label>
@@ -60,14 +60,6 @@
 <style>
   h2:not(:first-of-type) {
     margin: 2em 0 1ex;
-  }
-  .controls {
-    display: flex;
-    gap: 8pt;
-    flex-wrap: wrap;
-    align-items: center;
-    place-content: center;
-    margin-bottom: 1em;
   }
   .chart-row {
     display: flex;

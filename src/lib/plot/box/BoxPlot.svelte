@@ -49,7 +49,12 @@
   } from '$lib/plot/core/axis-utils'
   import { index_ref_lines } from '$lib/plot/core/reference-line'
   import { get_relative_coords, is_activation_key } from '$lib/plot/core/interactions'
-  import { get_nice_data_range } from '$lib/plot/core/scales'
+  import {
+    accumulate_extent,
+    empty_extent,
+    log_floor_scale,
+    nice_range_from_extent,
+  } from '$lib/plot/core/scales'
   import { get_scale_type_name } from '$lib/plot/core/types'
   import { create_category_display } from '$lib/plot/core/display.svelte'
   import { DEFAULTS } from '$lib/settings'
@@ -121,7 +126,7 @@
     bandwidth = DEFAULTS.box.bandwidth,
     violin_width = DEFAULTS.box.violin_width,
     violin_style = {},
-    kde_clip = undefined,
+    kde_clip,
     tooltip,
     user_content,
     hovered = $bindable(false),
@@ -380,7 +385,7 @@
   // Collect value-axis points (whiskers, quartiles, outliers, KDE tails) for auto-range. On a
   // log axis non-positive stats (a whisker_low of exactly 0, negative outliers) are dropped:
   // nicing them would pin the floor at LOG_EPS and stretch the axis across a dozen decades.
-  const value_points = (boxes: Box[], log_axis: boolean): { x: number; y: number }[] =>
+  const range_values = (boxes: Box[], log_axis: boolean): number[] =>
     boxes.flatMap((box_item) => {
       const { whisker_low, whisker_high, q1, q3, median, mean, outliers } = box_item.stats
       const vals = [whisker_low, whisker_high, q1, q3, median]
@@ -393,9 +398,7 @@
       }
       const kde = violin_kdes.get(box_item.idx)
       if (kde && kde.grid.length > 0) vals.push(kde.grid[0], kde.grid[kde.grid.length - 1])
-      return vals
-        .filter((val) => Number.isFinite(val) && (!log_axis || val > 0))
-        .map((val) => ({ x: 0, y: val }))
+      return vals.filter((val) => Number.isFinite(val) && (!log_axis || val > 0))
     })
 
   let auto_ranges = $derived.by(() => {
@@ -417,17 +420,15 @@
       limit: [number | null, number | null],
       scale_type: ScaleType,
     ): Vec2 => {
-      const pts = value_points(boxes, get_scale_type_name(scale_type) === `log`)
-      if (pts.length === 0) return [0, 1]
+      const values = range_values(boxes, get_scale_type_name(scale_type) === `log`)
+      if (values.length === 0) return [0, 1]
       const has_outliers =
         show_outliers && boxes.some((box_item) => box_item.stats.outliers.length > 0)
-      return get_nice_data_range(
-        pts,
-        (point) => point.y,
+      return nice_range_from_extent(
+        accumulate_extent(empty_extent(), values),
         limit,
         scale_type,
         has_outliers ? Math.max(range_padding, outlier_range_padding) : range_padding,
-        false,
       )
     }
     const value_primary = calc_value_range(
@@ -512,10 +513,11 @@
     const vertical = orientation === `vertical`
     const secondary = is_secondary(srs)
     const axis_key = vertical ? (secondary ? `y2` : `y`) : secondary ? `x2` : `x`
-    const scale = frame.scales[axis_key]
-    if (get_scale_type_name(plot_axes[axis_key].scale_type) !== `log`) return scale
-    const floor = Math.min(...frame.ranges.current[axis_key])
-    return (val) => scale(Math.max(val, floor))
+    return log_floor_scale(
+      frame.scales[axis_key],
+      plot_axes[axis_key].scale_type,
+      frame.ranges.current[axis_key],
+    )
   }
 
   let effective_cat_ticks = $derived(

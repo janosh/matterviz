@@ -7,50 +7,28 @@
   import { ColorBar } from '$lib/plot'
   import { MultiValueHeatmapDemo, PeriodicTableDemo } from '$site'
 
-  let four_fold_data = $derived(
-    element_data.map((el) => [
-      el.atomic_radius || 0,
-      (el.electronegativity || 0) * 100,
-      el.covalent_radius || 0,
-      Math.abs(el.electron_affinity || 0),
-    ]),
+  // Quadrant heatmap: one color bar per quadrant, ranged over the elements that have a value
+  const four_fold_quadrants = [
+    [`Atomic Radius (pm)`, (el: ChemicalElement) => el.atomic_radius || 0],
+    [`Electronegativity × 100`, (el: ChemicalElement) => (el.electronegativity || 0) * 100],
+    [`Covalent Radius (pm)`, (el: ChemicalElement) => el.covalent_radius || 0],
+    [
+      `|Electron Affinity| (kJ/mol)`,
+      (el: ChemicalElement) => Math.abs(el.electron_affinity || 0),
+    ],
+  ] as const
+  const four_fold_data = element_data.map((el) =>
+    four_fold_quadrants.map(([, value_of]) => value_of(el)),
   )
+  const four_fold_ranges = four_fold_quadrants.map(([title], quadrant_idx): [string, Vec2] => {
+    const values = four_fold_data.map((quadrants) => quadrants[quadrant_idx])
+    return [title, [Math.min(...values.filter((val) => val > 0)), Math.max(...values)]]
+  })
 
   const on_activate = (element: ChemicalElement) => {
     if (!element?.name) return
     goto(`/${element.name.toLowerCase()}`)
   }
-
-  let atomic_radius_range = $derived([
-    Math.min(
-      ...element_data.map((el) => el.atomic_radius || 0).filter((radius) => radius > 0),
-    ),
-    Math.max(...element_data.map((el) => el.atomic_radius || 0)),
-  ] as Vec2)
-  let electronegativity_range = $derived([
-    Math.min(
-      ...element_data
-        .map((el) => (el.electronegativity || 0) * 100)
-        .filter((elec_neg) => elec_neg > 0),
-    ),
-    Math.max(...element_data.map((el) => (el.electronegativity || 0) * 100)),
-  ] as Vec2)
-
-  let covalent_radius_range = $derived([
-    Math.min(
-      ...element_data.map((el) => el.covalent_radius || 0).filter((radius) => radius > 0),
-    ),
-    Math.max(...element_data.map((el) => el.covalent_radius || 0)),
-  ] as Vec2)
-
-  let electron_affinity_range = $derived([
-    Math.min(
-      ...element_data
-        .map((el) => Math.abs(el.electron_affinity || 0))
-        .filter((elec_aff) => elec_aff > 0),
-    ),
-    Math.max(...element_data.map((el) => Math.abs(el.electron_affinity || 0))),
-  ] as Vec2)
 
   let window_width: number = $state(0)
 
@@ -117,42 +95,17 @@
     <TableInset
       style="display: grid; grid-template-columns: max-content max-content; gap: 2em; place-content: center"
     >
-      <ColorBar
-        title="Atomic Radius (pm)"
-        scale="interpolateViridis"
-        range={atomic_radius_range}
-        orientation="horizontal"
-        bar_style="width: 135px; height: 12px"
-        tick_labels={3}
-        title_side="top"
-      />
-      <ColorBar
-        title="Electronegativity × 100"
-        scale="interpolateViridis"
-        range={electronegativity_range}
-        orientation="horizontal"
-        bar_style="width: 135px; height: 12px"
-        tick_labels={3}
-        title_side="top"
-      />
-      <ColorBar
-        title="Covalent Radius (pm)"
-        scale="interpolateViridis"
-        range={covalent_radius_range}
-        orientation="horizontal"
-        bar_style="width: 135px; height: 12px"
-        tick_labels={3}
-        title_side="top"
-      />
-      <ColorBar
-        title="|Electron Affinity| (kJ/mol)"
-        scale="interpolateViridis"
-        range={electron_affinity_range}
-        orientation="horizontal"
-        bar_style="width: 135px; height: 12px"
-        tick_labels={3}
-        title_side="top"
-      />
+      {#each four_fold_ranges as [title, range] (title)}
+        <ColorBar
+          {title}
+          scale="interpolateViridis"
+          {range}
+          orientation="horizontal"
+          bar_style="width: 135px; height: 12px"
+          tick_labels={3}
+          title_side="top"
+        />
+      {/each}
     </TableInset>
   {/snippet}
 </PeriodicTable>

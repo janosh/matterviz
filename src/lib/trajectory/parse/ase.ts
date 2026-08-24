@@ -1,9 +1,8 @@
-import * as math from '$lib/math'
 import {
   convert_atomic_numbers,
   create_trajectory_frame,
-  read_ndarray_from_view,
   validate_3x3_matrix,
+  values_per_sample,
 } from '$lib/trajectory/helpers'
 import type { TrajectoryFrame } from '$lib/trajectory/index'
 import { to_error } from '$lib/utils'
@@ -15,6 +14,49 @@ export const read_ase_header = (view: DataView): { n_items: number; offsets_pos:
   n_items: Number(view.getBigInt64(32, true)),
   offsets_pos: Number(view.getBigInt64(40, true)),
 })
+
+// Decode one ULM ndarray item `[shape, dtype, absolute byte offset]` out of the frame's view.
+// `base_offset` is the absolute offset `view` starts at when the caller holds only a slice.
+export const read_ndarray_from_view = (
+  view: DataView,
+  ref: { ndarray: unknown[] },
+  base_offset: number = 0,
+): number[][] => {
+  const [shape, dtype, absolute_offset] = ref.ndarray as [number[], string, number]
+  const array_offset = absolute_offset - base_offset
+  const total = values_per_sample(shape)
+
+  const readers: Record<string, { bytes: number; read: (pos: number) => number }> = {
+    int64: { bytes: 8, read: (pos) => Number(view.getBigInt64(pos, true)) },
+    int32: { bytes: 4, read: (pos) => view.getInt32(pos, true) },
+    float64: { bytes: 8, read: (pos) => view.getFloat64(pos, true) },
+    float32: { bytes: 4, read: (pos) => view.getFloat32(pos, true) },
+  }
+  const reader = readers[dtype]
+  if (!reader) throw new Error(`Unsupported dtype: ${dtype}`)
+
+  if (!Number.isInteger(array_offset) || array_offset < 0) {
+    throw new Error(
+      `Invalid array_offset: expected non-negative integer, got ${array_offset}${base_offset ? ` (absolute ${absolute_offset} minus base ${base_offset})` : ``}`,
+    )
+  }
+  if (array_offset + total * reader.bytes > view.byteLength) {
+    throw new Error(`Out-of-bounds read: array_offset + bytesNeeded exceeds view.byteLength`)
+  }
+
+  const data: number[] = []
+  for (let idx = 0; idx < total; idx++) {
+    data.push(reader.read(array_offset + idx * reader.bytes))
+  }
+
+  if (shape.length === 1) return [data]
+  if (shape.length === 2) {
+    return Array.from({ length: shape[0] }, (_, idx) =>
+      data.slice(idx * shape[1], (idx + 1) * shape[1]),
+    )
+  }
+  throw new Error(`Unsupported shape`)
+}
 
 export interface AseFrameOptions {
   fallback_numbers?: number[]
@@ -96,20 +138,13 @@ export function decode_ase_frame(
   }
 
   const cell = frame_data.cell ? validate_3x3_matrix(frame_data.cell) : undefined
-  const metadata: Record<string, unknown> = {
-    step,
-    ...ase_calculator_data(frame_data, read_ndarray),
-    ...frame_data.info,
-  }
-  if (cell) metadata.volume = Math.abs(math.det_3x3(cell))
-
   const frame = create_trajectory_frame(
     positions,
     convert_atomic_numbers(numbers),
     cell,
     frame_data.pbc ?? [true, true, true],
     step,
-    metadata,
+    { step, ...ase_calculator_data(frame_data, read_ndarray), ...frame_data.info },
   )
   return { frame, numbers }
 }
@@ -153,11 +188,5 @@ export function parse_ase_trajectory(buffer: ArrayBuffer): ParsedTrajectory {
       )
     }
   }
-
-  const first_struct = frames[0].structure
-  const metadata = {
-    periodic_boundary_conditions:
-      `lattice` in first_struct ? first_struct.lattice.pbc : [true, true, true],
-  }
-  return { format: `ase`, frames, metadata }
+  return { format: `ase`, frames, metadata: {} }
 }

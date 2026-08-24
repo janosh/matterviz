@@ -105,7 +105,7 @@ test.describe(`Isosurface page`, () => {
       for (const overlay of [
         colorbar,
         viewer.locator(`section.control-buttons`),
-        page.locator(`.filename-label`),
+        page.locator(`.demo-overlay-label`),
       ]) {
         const overlay_box = await overlay.boundingBox()
         if (!overlay_box) throw new Error(`Missing slice overlay bounding box`)

@@ -5,9 +5,7 @@ import {
   TRAJ_EXTENSIONS,
   TRAJ_KEYWORDS,
   VASP_VIEWER_STEMS,
-  VASP_VOLUMETRIC_REGEX,
 } from '$lib/constants'
-import { VOLUMETRIC_VASP_RE } from '$lib/file-viewer/types'
 import { DEFAULTS } from '$lib/settings'
 import type { ThemeName } from '$lib/theme/index'
 import { is_trajectory_file } from '$lib/trajectory/parse'
@@ -203,11 +201,6 @@ describe(`MatterViz Extension`, () => {
     expect(pkg_json.devDependencies[`@types/vscode`]).toBe(
       pkg_json.engines.vscode.replace(/^\^/, `~`),
     )
-  })
-
-  test(`extension volumetric regex stays in sync with app detection`, () => {
-    expect(VOLUMETRIC_VASP_RE.source).toBe(VASP_VOLUMETRIC_REGEX.source)
-    expect(VOLUMETRIC_VASP_RE.flags).toBe(VASP_VOLUMETRIC_REGEX.flags)
   })
 
   describe(`Custom Editor File Patterns`, () => {
@@ -1362,7 +1355,7 @@ describe(`MatterViz Extension`, () => {
         false,
       ],
     ])(`document-open callback is a no-op for %s`, async (_label, uri, auto_render) => {
-      // should_auto_render only inspects the filename, so an eligible name still schedules
+      // is_auto_renderable_filename only inspects the filename, so an eligible name still schedules
       // the 100ms render timer; the auto_render config is read inside it. Without advancing
       // past the delay this asserts nothing about the disabled case.
       vi.useFakeTimers()

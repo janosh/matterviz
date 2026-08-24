@@ -157,28 +157,6 @@
   }
 </script>
 
-{#snippet color_source_select(
-  selected: number,
-  on_pick: (idx: number | null) => void,
-  tip: string,
-)}
-  <label {@attach tooltip({ content: tip })}>
-    <span>Color by</span>
-    <select
-      value={selected}
-      onchange={(event) => {
-        const idx = Number(event.currentTarget.value)
-        on_pick(idx < 0 ? null : idx)
-      }}
-    >
-      <option value={-1}>None (solid)</option>
-      {#each volumes as _color_vol, color_idx (color_idx)}
-        <option value={color_idx}>{vol_label(color_idx)}</option>
-      {/each}
-    </select>
-  </label>
-{/snippet}
-
 {#snippet range_bound_input(layer_idx: number, bound: 0 | 1, explicit_range?: Vec2)}
   <input
     type="number"
@@ -352,11 +330,21 @@
           >
         </div>
         <div class="color-row">
-          {@render color_source_select(
-            layer.color_volume_idx ?? -1,
-            (idx) => set_color_source(layer_idx, idx),
-            `Color surface by another volume's values`,
-          )}
+          <label {@attach tooltip({ content: `Color surface by another volume's values` })}>
+            <span>Color by</span>
+            <select
+              value={layer.color_volume_idx ?? -1}
+              onchange={(event) => {
+                const idx = Number(event.currentTarget.value)
+                set_color_source(layer_idx, idx < 0 ? null : idx)
+              }}
+            >
+              <option value={-1}>None (solid)</option>
+              {#each volumes as _color_vol, color_idx (color_idx)}
+                <option value={color_idx}>{vol_label(color_idx)}</option>
+              {/each}
+            </select>
+          </label>
           {#if color_vol}
             {@const explicit_range = layer.color_range}
             {@const auto_colormap = auto_color_config(color_vol.data_range).colormap}

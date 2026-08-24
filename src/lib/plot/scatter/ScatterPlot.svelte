@@ -42,6 +42,7 @@
     create_scale,
     create_size_scale,
     empty_extent,
+    log_floor_scale,
     nice_range_from_extent,
     type RunningExtent,
   } from '$lib/plot/core/scales'
@@ -66,7 +67,6 @@
   import {
     COLOR_BAR_DEFAULTS,
     DEFAULT_MARKERS,
-    get_scale_type_name,
     is_time_scale,
     SCALE_DEFAULTS,
   } from '$lib/plot/core/types'
@@ -188,7 +188,6 @@
       size_scale?: SizeScaleConfig
       color_bar?:
         | (ComponentProps<typeof ColorBar> & {
-            margin?: number | Sides
             tween?: TweenOptions<Point2D>
             responsive?: boolean // Allow colorbar to reposition if density changes (default: false)
             axis_clearance?: number // Min distance kept from plot edges/axes (default: 8)
@@ -577,11 +576,12 @@
   // and only picked by range on each pan/zoom frame
   const materialized_series = $derived(materialize_series_points(series_with_ids))
   let filtered_series = $derived(
-    filter_series_to_ranges(
-      series_with_ids,
-      { x: [x_min, x_max], x2: [x2_min, x2_max], y: [y_min, y_max], y2: [y2_min, y2_max] },
-      materialized_series,
-    ),
+    filter_series_to_ranges(materialized_series, {
+      x: [x_min, x_max],
+      x2: [x2_min, x2_max],
+      y: [y_min, y_max],
+      y2: [y2_min, y2_max],
+    }),
   )
   type FilteredSeries = (typeof filtered_series)[number]
 
@@ -696,8 +696,7 @@
     const x_scale = series_data.x_axis === `x2` ? x2_scale_fn : x_scale_fn
     const y_scale = use_y2 ? y2_scale_fn : y_scale_fn
     const y_axis_config = use_y2 ? final_y2_axis : final_y_axis
-    const y_floor =
-      get_scale_type_name(y_axis_config.scale_type) === `log` ? y_scale.domain()[0] : -Infinity
+    const y_line_scale = log_floor_scale(y_scale, y_axis_config.scale_type, y_scale.domain())
     return {
       x_scale,
       point: (point: InternalPoint<Metadata>): Vec2 => [
@@ -708,7 +707,7 @@
         const screen: Vec2[] = []
         for (let idx = 0; idx < line.x.length; idx++) {
           const screen_x = x_scale(line.x[idx])
-          const screen_y = y_scale(Math.max(line.y[idx], y_floor))
+          const screen_y = y_line_scale(line.y[idx])
           if (Number.isFinite(screen_x) && Number.isFinite(screen_y)) {
             screen.push([screen_x, screen_y])
           }

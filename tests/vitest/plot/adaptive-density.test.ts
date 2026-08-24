@@ -4,11 +4,11 @@ import {
   bin_points,
   density_bin_at_point,
   first_point_in_bin,
-  pick_from_index,
   scale_bin_transform,
   series_extents,
   should_render_points,
 } from '$lib/plot/scatter/adaptive-density'
+import { query_nearest } from '$lib/plot/core/spatial-index'
 import type { DensePointSeries } from '$lib/plot/scatter/adaptive-density'
 import { describe, expect, it } from 'vitest'
 
@@ -77,7 +77,7 @@ describe(`adaptive density utilities`, () => {
 
   it(`indexes visible points for fast nearest-neighbor picking`, () => {
     const index = build_pick_index(series, pick_options)
-    const picked = pick_from_index(index, { x: 12, y: 9 })
+    const picked = query_nearest(index, { x: 12, y: 9 })
 
     expect(index.cells.size).toBe(3)
     expect(picked?.point_id).toBe(`b`)
@@ -209,11 +209,11 @@ describe(`adaptive density utilities`, () => {
   })
 
   it(`does not pick outside visible ranges or radius`, () => {
-    const hidden = pick_from_index(
+    const hidden = query_nearest(
       build_pick_index(series, { ...pick_options, radius_px: 30 }),
       { x: 210, y: 220 },
     )
-    const far = pick_from_index(build_pick_index(series, { ...pick_options, radius_px: 10 }), {
+    const far = query_nearest(build_pick_index(series, { ...pick_options, radius_px: 10 }), {
       x: 140,
       y: 0,
     })

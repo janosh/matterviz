@@ -13,7 +13,7 @@
   } from './index'
 
   let {
-    ordering = $bindable(`atomic_number`),
+    ordering = $bindable(),
     orderings = ELEMENT_ORDERINGS,
     controls_open = $bindable(false),
     toggle_visible = $bindable(false),
@@ -33,6 +33,8 @@
     toggle_props = {},
     children,
   }: {
+    // Element-axis ordering, shown only when a host binds it: HeatmapMatrix itself is axis-
+    // agnostic and never passes one, so its built-in pane would otherwise offer a dead select
     ordering?: ElementAxisOrderingKey
     orderings?: ElementAxisOrderingKey[]
     controls_open?: boolean
@@ -93,14 +95,16 @@
     {pane_props}
   >
     <SettingsSection title="Heatmap" layout="grid">
-      <label>
-        <span>Ordering</span>
-        <select bind:value={ordering}>
-          {#each orderings as ord (ord)}
-            <option value={ord}>{ORDERING_LABELS[ord]}</option>
-          {/each}
-        </select>
-      </label>
+      {#if ordering !== undefined}
+        <label>
+          <span>Ordering</span>
+          <select bind:value={ordering}>
+            {#each orderings as ord (ord)}
+              <option value={ord}>{ORDERING_LABELS[ord]}</option>
+            {/each}
+          </select>
+        </label>
+      {/if}
       <label>
         <span>Search</span>
         <input bind:value={search_query} placeholder="Filter labels/keys" />

@@ -492,8 +492,7 @@ describe(`broaden_spectrum`, () => {
     const sigma = 40 / (2 * Math.sqrt(2 * Math.LN2))
     const expected =
       Math.exp(-(gap ** 2) / (2 * sigma ** 2)) / (sigma * Math.sqrt(2 * Math.PI))
-    // 1e-3 relative: broaden_peaks builds its grid in Float32, so x carries ~1e-4 absolute
-    // error, which the exponent amplifies to ~4e-5 relative at the farthest offset here
+    // 1e-3 relative covers the grid discretisation of the nearest-point lookup
     expect(Math.max(...curve.y) / expected).toBeCloseTo(1, 3)
   })
 
@@ -629,6 +628,9 @@ it.each([
 it(`to_transmittance puts the baseline at 1 and the strongest absorption at 0`, () => {
   expect(to_transmittance([1, 2, 4])).toEqual([0.75, 0.5, 0])
   expect(to_transmittance([0, 0, 5])).toEqual([1, 1, 0])
+  // broadened grids run to 1e7 points, past what Math.max(...values) accepts
+  const wide = Array.from({ length: 300_000 }, (_, idx) => idx % 1000)
+  expect(to_transmittance(wide)[999]).toBe(0)
 })
 
 it(`spectrum_from_phonon_data selects the Gamma point automatically`, () => {

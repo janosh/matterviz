@@ -10,23 +10,33 @@ const mount_formula = (props: ComponentProps<typeof Formula>): HTMLElement | nul
   return document.querySelector<HTMLElement>(`.formula`)
 }
 
-test(`Formula component renders with string formula`, () => {
-  const element = mount_formula({ formula: `H2O` })
+// Rendered element symbols and oxidation-state superscripts for string and OxiComposition
+// input: both charge syntaxes render, same-element species of different valence stay
+// separate, and a zero oxidation state draws no superscript
+test.each<[string | OxiComposition, string[], string[]]>([
+  [`H2O`, [`H`, `O`], []],
+  [`Fe^2+O3`, [`Fe`, `O`], [`+2`]],
+  [`Fe[2+]O3`, [`Fe`, `O`], [`+2`]],
+  [`Fe^2+O^2-`, [`Fe`, `O`], [`+2`, `-2`]],
+  [`Fe^2+Fe^3+2O^2-4`, [`Fe`, `Fe`, `O`], [`+2`, `+3`, `-2`]],
+  [
+    { Fe: { amount: 2, oxidation_state: 3 }, O: { amount: 3, oxidation_state: -2 } },
+    [`Fe`, `O`],
+    [`+3`, `-2`],
+  ],
+  [
+    { Fe: { amount: 1, oxidation_state: 0 }, O: { amount: 1, oxidation_state: 0 } },
+    [`Fe`, `O`],
+    [],
+  ],
+])(`Formula renders %j`, (formula, symbols, sups) => {
+  const element = mount_formula({ formula })
   expect(element).toBeInstanceOf(HTMLElement)
-  expect(element?.textContent).toContain(`H`)
-  expect(element?.textContent).toContain(`O`)
+  expect(
+    [...document.querySelectorAll(`.element-symbol`)].map((el) => el.textContent),
+  ).toEqual(symbols)
+  expect([...document.querySelectorAll(`sup`)].map((el) => el.textContent)).toEqual(sups)
 })
-
-test.each([`Fe^2+O3`, `Fe[2+]O3`])(
-  `Formula component renders oxidation states for %s`,
-  (formula) => {
-    const element = mount_formula({ formula })
-    expect(element).toBeInstanceOf(HTMLElement)
-    expect(element?.textContent).toContain(`Fe`)
-    expect(element?.textContent).toContain(`+2`)
-    expect(element?.textContent).toContain(`O`)
-  },
-)
 
 test.each([
   [`OHFe`, `original`, `OHFe`],
@@ -50,60 +60,9 @@ test.each([
   expect(subscripts.map((sub) => sub.textContent)).toEqual(expected)
 })
 
-test(`Formula component renders superscripts for oxidation states`, () => {
-  mount_formula({ formula: `Fe^2+O^2-` })
-  const superscripts = document.querySelectorAll(`sup`)
-  expect(superscripts).toHaveLength(2)
-
-  const oxidation_values = Array.from(superscripts as NodeListOf<Element>).map(
-    (sup) => sup.textContent,
-  )
-  expect(oxidation_values).toContain(`+2`)
-  expect(oxidation_values).toContain(`-2`)
-})
-
-test(`Formula renders mixed-valence species separately`, () => {
-  mount_formula({ formula: `Fe^2+Fe^3+2O^2-4` })
-  const symbols = [...document.querySelectorAll(`.element-symbol`)].map((el) => el.textContent)
-  const sups = [...document.querySelectorAll(`sup`)].map((el) => el.textContent)
-  expect(symbols).toEqual([`Fe`, `Fe`, `O`])
-  expect(sups).toEqual([`+2`, `+3`, `-2`])
-})
-
-test(`Formula component does not render superscripts for zero oxidation`, () => {
-  const composition = {
-    Fe: { amount: 1, oxidation_state: 0 },
-    O: { amount: 1, oxidation_state: 0 },
-  } as OxiComposition
-  mount_formula({ formula: composition })
-  const superscripts = document.querySelectorAll(`sup`)
-  expect(superscripts).toHaveLength(0)
-})
-
-test(`Formula component accepts OxiComposition input`, () => {
-  const composition = {
-    Fe: { amount: 2, oxidation_state: 3 },
-    O: { amount: 3, oxidation_state: -2 },
-  } as OxiComposition
-  const element = mount_formula({ formula: composition })
-  expect(element).toBeInstanceOf(HTMLElement)
-  expect(element?.textContent).toContain(`Fe`)
-  expect(element?.textContent).toContain(`O`)
-  expect(element?.textContent).toContain(`+3`)
-  expect(element?.textContent).toContain(`-2`)
-})
-
-test.each([
-  { as_value: `span` },
-  { as_value: `div` },
-  { as_value: `h1` },
-  { as_value: `h2` },
-  { as_value: `strong` },
-  { as_value: `em` },
-  { as_value: `p` },
-])(`Formula renders with as="$as_value"`, ({ as_value }) => {
-  mount_formula({ formula: `H2O`, as: as_value })
-  const element = document.querySelector(as_value)
+test.each([`span`, `div`, `h1`, `strong`, `p`])(`Formula renders with as="%s"`, (as) => {
+  mount_formula({ formula: `H2O`, as })
+  const element = document.querySelector(as)
   expect(element).toBeInstanceOf(HTMLElement)
   expect(element?.classList.contains(`formula`)).toBe(true)
   expect(element?.textContent).toContain(`H`)
@@ -238,19 +197,18 @@ test.each([
   expect(text).toBe(expected)
 })
 
-test(`Formula copy skipped when selection collapsed`, () => {
-  mount_formula({ formula: `H2O` })
-  const { text, prevented } = simulate_copy(true)
-  expect(prevented).toBe(false)
-  expect(text).toBe(``)
-})
-
-test(`Formula copy skipped when selection extends outside formula`, () => {
-  mount_formula({ formula: `H2O` })
-  const { text, prevented } = simulate_copy(false, true) // selection_outside = true
-  expect(prevented).toBe(false)
-  expect(text).toBe(``)
-})
+test.each([
+  [`collapsed`, true, false],
+  [`extends outside the formula`, false, true],
+])(
+  `Formula copy is left to the browser when the selection %s`,
+  (_desc, collapsed, outside) => {
+    mount_formula({ formula: `H2O` })
+    const { text, prevented } = simulate_copy(collapsed, outside)
+    expect(prevented).toBe(false)
+    expect(text).toBe(``)
+  },
+)
 
 test(`Formula copy respects ordering prop`, () => {
   mount_formula({ formula: `OHFe`, ordering: `alphabetical` })

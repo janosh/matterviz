@@ -1,10 +1,6 @@
 import { clamp, LOG_EPS, type Point2D, type Vec2 } from '$lib/math'
 import { range_bounds } from '$lib/plot/core/interactions'
-import {
-  build_spatial_index,
-  query_nearest,
-  type SpatialIndex,
-} from '$lib/plot/core/spatial-index'
+import { build_spatial_index, type SpatialIndex } from '$lib/plot/core/spatial-index'
 import type { ScaleType } from '$lib/plot/core/types'
 import {
   assert_series_lengths,
@@ -346,11 +342,6 @@ export function build_pick_index<Metadata>(
     radius_px,
   )
 }
-
-export const pick_from_index = <Metadata>(
-  index: PickIndex<Metadata>,
-  pointer: Point2D,
-): DenseInternalPoint<Metadata> | null => query_nearest(index, pointer)
 
 export function first_point_in_bin<Metadata>(
   series: readonly DensePointSeries<Metadata>[],

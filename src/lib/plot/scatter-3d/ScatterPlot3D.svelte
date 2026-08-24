@@ -8,7 +8,6 @@
   import ColorBar from '$lib/plot/core/components/ColorBar.svelte'
   import PlotLegend from '$lib/plot/core/components/PlotLegend.svelte'
   import { build_legend_items, first_point_style } from '$lib/plot/core/data-transform'
-  import type { Sides } from '$lib/plot/core/layout'
   import type {
     AxisConfig3D,
     BasePlotProps,
@@ -115,7 +114,7 @@
     display?: DisplayConfig3D
     styles?: StyleOverrides3D
     color_scale?: ColorScaleConfig | D3InterpolateName
-    color_bar?: (ComponentProps<typeof ColorBar> & { margin?: number | Sides }) | null
+    color_bar?: ComponentProps<typeof ColorBar> | null
     size_scale?: SizeScaleConfig
     legend?: LegendConfig | null
     show_legend?: boolean
@@ -303,7 +302,7 @@
         tick_side="primary"
         scale={{ fn: color_scale_fn, domain: color_domain }}
         scale_type={normalized_color_scale.type}
-        range={color_domain?.every((val) => val != null) ? color_domain : undefined}
+        range={color_domain}
         wrapper_style="position: absolute; bottom: 2em; left: 2em; {color_bar?.wrapper_style ??
           ``}"
         bar_style="width: 200px; height: 16px; {color_bar?.style ?? ``}"

@@ -40,7 +40,12 @@
     type StructureViewState,
   } from '$lib/settings/viewer-state'
   import type { AnyStructure, StructureDisplayMode } from '$lib/structure'
-  import { get_structure_vector_keys, StructureScene, VECTOR_PALETTE } from '$lib/structure'
+  import {
+    get_structure_vector_keys,
+    RESET_VIEW_TITLE,
+    StructureScene,
+    VECTOR_PALETTE,
+  } from '$lib/structure'
   import type { ElementSymbol } from '$lib/element'
   import {
     DEFAULT_ATOM_COLOR_CONFIG,
@@ -72,14 +77,14 @@
     color_scheme = $bindable(DEFAULTS.color_scheme),
     atom_color_config = $bindable<AtomColorConfig>({ ...DEFAULT_ATOM_COLOR_CONFIG }),
     structure = undefined,
-    supercell_loading = $bindable(false),
+    supercell_loading = false,
     sym_data = null,
     cell_type = $bindable(`original`),
     volumetric_data = $bindable<VolumetricData[]>(),
     isosurface_settings = $bindable<IsosurfaceSettings>(),
     slice_settings = $bindable<Partial<VolumeSliceSettings>>(),
     active_volume_idx = $bindable(0),
-    display_mode = $bindable<StructureDisplayMode>(`structure`),
+    display_mode = `structure`,
     multi_view = $bindable(false),
     multi_view_control_visible = true,
     multi_view_unavailable_reason = undefined,
@@ -88,7 +93,6 @@
     trajectory_lines_result = null,
     show_trajectory_lines = $bindable(DEFAULTS.structure.show_trajectory_lines),
     on_reset_camera,
-    reset_text = `Reset view (r, or double-click)`,
     fly_to_request = $bindable(undefined),
     persist_settings = false,
     pane_props = {},
@@ -122,7 +126,6 @@
     trajectory_lines_result?: TrajectoryLinesStats | null
     show_trajectory_lines?: boolean
     on_reset_camera?: () => void // undefined while camera at home (hides button)
-    reset_text?: string
     fly_to_request?: Vec3 // (output) one-shot zone-axis camera command
     persist_settings?: boolean // Opt-in browser persistence for safely scoped single-view usage
     pane_props?: PaneProps
@@ -839,7 +842,12 @@
   {#if on_reset_camera}
     <!-- Hoisted out of the Camera group: the one action people reach for repeatedly should
       not sit behind a disclosure triangle -->
-    <button type="button" class="reset-camera" title={reset_text} onclick={on_reset_camera}>
+    <button
+      type="button"
+      class="reset-camera"
+      title={RESET_VIEW_TITLE}
+      onclick={on_reset_camera}
+    >
       <Icon icon={Reset} />
       <span>Reset view</span>
       <kbd>r</kbd>
@@ -1508,7 +1516,7 @@
       </div>
       {#if settings_import_status}
         <small
-          class={['settings-import-status', { error: settings_import_status.error }]}
+          class={['settings-import-status', settings_import_status.error && `control-error`]}
           role={settings_import_status.error ? `alert` : `status`}
         >
           {settings_import_status.message}
@@ -1593,9 +1601,6 @@
     input {
       max-width: 13em;
     }
-  }
-  small.error {
-    color: var(--error-color, #e74c3c);
   }
   /* Boolean toggles read faster as a wrapped two-column block than as one row each */
   .toggle-grid {

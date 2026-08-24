@@ -5,7 +5,7 @@
   // Users can click tree nodes to render in the main panel, or drag nodes
   // to specific edges to create horizontal/vertical splits.
   import { contrast_text_color, pick_contrast_color, resolve_backdrop } from '$lib/colors'
-  import { format_path } from '$lib/json-path'
+  import { format_path, resolve_path } from '$lib/json-path'
   import JsonTree from '$lib/layout/json-tree/JsonTree.svelte'
   import { relative_path_segments } from '$lib/layout/json-tree/utils'
   import PaneDivider from '$lib/layout/PaneDivider.svelte'
@@ -22,7 +22,6 @@
   import { type mount, onDestroy, unmount } from 'svelte'
   import {
     detect_view_type,
-    resolve_path,
     scan_renderable_paths,
     TYPE_COLORS,
     TYPE_LABELS,
@@ -570,7 +569,7 @@
     split_directions.length > 0 ? split_directions[0] : `vertical`,
   )
 
-  const type_color = (key: string) => TYPE_COLORS[key as RenderableType] ?? `#888`
+  const type_color = (key: string) => TYPE_COLORS[key as RenderableType]
 </script>
 
 {#snippet type_list(header: string, extra_style?: string)}

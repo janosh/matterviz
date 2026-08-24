@@ -284,6 +284,8 @@ export const SCF_AXIS_GROUP = `eV (SCF)`
 // axis_group (optional) overrides the unit as the y-axis grouping key: series with
 // the same unit normally share an axis, but e.g. log-scaled |ΔE_SCF| (all-positive,
 // spanning many decades) must not share the linear energy axis despite both being eV.
+// Keys are lowercase: every consumer falls back to `config[key.toLowerCase()]`, so
+// `Energy`, `Fmax`, `Alpha`, ... resolve without their own entries.
 export interface TrajPropertyConfig {
   label: string
   unit: string
@@ -292,7 +294,6 @@ export interface TrajPropertyConfig {
 export const trajectory_property_config: Record<string, TrajPropertyConfig> = {
   // Energy properties
   energy: { label: `Energy`, unit: `eV` },
-  Energy: { label: `Energy`, unit: `eV` },
   energy_per_atom: { label: `Energy per atom`, unit: `eV/atom` },
   potential_energy: { label: `Potential energy`, unit: `eV` },
   kinetic_energy: { label: `Kinetic energy`, unit: `eV` },
@@ -300,7 +301,6 @@ export const trajectory_property_config: Record<string, TrajPropertyConfig> = {
 
   // Force properties (common variations)
   force_max: { label: `F<sub>max</sub>`, unit: `eV/Å` },
-  Fmax: { label: `F<sub>max</sub>`, unit: `eV/Å` },
   fmax: { label: `F<sub>max</sub>`, unit: `eV/Å` },
   'Force Max': { label: `Force Max`, unit: `eV/Å` },
   force_norm: { label: `F<sub>norm</sub>`, unit: `eV/Å` },
@@ -308,29 +308,19 @@ export const trajectory_property_config: Record<string, TrajPropertyConfig> = {
 
   // Structural properties
   volume: { label: `Volume`, unit: `Å³` },
-  Volume: { label: `Volume`, unit: `Å³` },
   density: { label: `Density`, unit: `g/cm³` },
-  Density: { label: `Density`, unit: `g/cm³` },
 
-  // Lattice parameters (common variations)
+  // Lattice parameters
   a: { label: `A`, unit: `Å` },
-  A: { label: `A`, unit: `Å` },
   b: { label: `B`, unit: `Å` },
-  B: { label: `B`, unit: `Å` },
   c: { label: `C`, unit: `Å` },
-  C: { label: `C`, unit: `Å` },
   alpha: { label: `α`, unit: `°` },
-  Alpha: { label: `α`, unit: `°` },
   beta: { label: `β`, unit: `°` },
-  Beta: { label: `β`, unit: `°` },
   gamma: { label: `γ`, unit: `°` },
-  Gamma: { label: `γ`, unit: `°` },
 
   // Thermodynamic properties
   temperature: { label: `Temperature`, unit: `K` },
-  Temperature: { label: `Temperature`, unit: `K` },
   pressure: { label: `Pressure`, unit: `GPa` },
-  Pressure: { label: `Pressure`, unit: `GPa` },
   stress_max: { label: `σ<sub>max</sub>`, unit: `GPa` },
   stress_frobenius: { label: `σ<sub>F</sub>`, unit: `GPa` },
 

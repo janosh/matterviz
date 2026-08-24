@@ -105,9 +105,8 @@
     const rows = frame_source.entries.map(({ frame_number, step, properties }) => {
       const row: RowData = { frame_idx: frame_number, step }
       for (const [key, value] of Object.entries(properties)) {
-        // `Step` duplicates the step column; `constant_*` are markers full_data_extractor
-        // sets for non-varying lattice params, not measurements
-        if (key === `Step` || key.startsWith(`constant_`)) continue
+        // `Step` duplicates the step column
+        if (key === `Step`) continue
         row[`${PROP_PREFIX}${key}`] = value
         property_keys.add(key)
       }

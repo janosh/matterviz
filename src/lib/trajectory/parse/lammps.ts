@@ -1,13 +1,10 @@
 import type { ElementSymbol } from '$lib/element/types'
-import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { Pbc } from '$lib/structure/pbc'
-import type { TrajectoryFrame } from '$lib/trajectory/index'
-import { coerce_elem_symbol } from '$lib/element/helpers'
+import type { AtomTypeMapping, TrajectoryFrame } from '$lib/trajectory/index'
+import { coerce_elem_symbol, element_from_lammps_type } from '$lib/element/helpers'
 import { capitalize_symbol } from '$lib/structure/parsers/shared'
-import { count_elements, create_trajectory_frame } from '$lib/trajectory/helpers'
-import type { AtomTypeMapping } from '$lib/trajectory/types'
-import { ELEM_SYMBOLS } from '$lib/labels'
+import { create_trajectory_frame } from '$lib/trajectory/helpers'
 import type { ParsedTrajectory, WarnFn } from './shared'
 
 const is_periodic = (token: string): boolean => token.toLowerCase().startsWith(`p`)
@@ -36,7 +33,7 @@ type LammpsBoxKind = `orthogonal` | `restricted_triclinic` | `general_triclinic`
 function parse_lammps_box(
   box_lines: string[],
   box_kind: LammpsBoxKind,
-): { lattice_matrix: math.Matrix3x3; origin: Vec3 } | null {
+): { lattice_matrix: math.Matrix3x3; origin: math.Vec3 } | null {
   if (box_lines.length !== 3) return null
   const bounds = box_lines.map((line) => line.split(/\s+/).map(Number))
   const min_cols = box_kind === `orthogonal` ? 2 : box_kind === `restricted_triclinic` ? 3 : 4
@@ -118,11 +115,7 @@ export function parse_lammps_trajectory(
   // then an `element` column (`dump_modify element Si O`), then atomic number N like ASE's
   // read_lammps_dump and the LAMMPS data parser; the guess warns once per file so a Si/O dump
   // showing up as H/He is traceable.
-  // Types are validated to be >= 1 before lookup; the clamp keeps the lookup total (H rather
-  // than `ELEM_SYMBOLS[-1]` = undefined) should a future column path skip that check.
   const guessed_types = new Set<number>()
-  const guess_element = (atom_type: number): ElementSymbol =>
-    ELEM_SYMBOLS[Math.max(0, atom_type - 1) % ELEM_SYMBOLS.length]
   const coerce_symbol = (raw: string): ElementSymbol | undefined =>
     coerce_elem_symbol(raw) ?? coerce_elem_symbol(capitalize_symbol(raw))
 
@@ -237,7 +230,11 @@ export function parse_lammps_trajectory(
         const message = `LAMMPS atom line ${line_number} (timestep ${timestep}) has ${parts.length} columns, expected ${cols.length}`
         throw torn_tail ? new TornLammpsFrameError(message) : new Error(message)
       }
-      const coords: Vec3 = [Number(parts[x_col]), Number(parts[y_col]), Number(parts[z_col])]
+      const coords: math.Vec3 = [
+        Number(parts[x_col]),
+        Number(parts[y_col]),
+        Number(parts[z_col]),
+      ]
       if (
         !Number.isFinite(coords[0]) ||
         !Number.isFinite(coords[1]) ||
@@ -246,7 +243,7 @@ export function parse_lammps_trajectory(
         const message = `LAMMPS atom line ${line_number} (timestep ${timestep}) has non-numeric coordinates: "${lines[idx - 1]}"`
         throw torn_tail ? new TornLammpsFrameError(message) : new TypeError(message)
       }
-      const xyz: Vec3 = frac_to_cart
+      const xyz: math.Vec3 = frac_to_cart
         ? frac_to_cart(coords)
         : [coords[0] - box_origin[0], coords[1] - box_origin[1], coords[2] - box_origin[2]]
       let atom_type: number | undefined
@@ -274,7 +271,7 @@ export function parse_lammps_trajectory(
       if (!element_symbol) {
         // atom_type is set: a frame with neither column was rejected at the header
         guessed_types.add(atom_type as number)
-        element_symbol = guess_element(atom_type as number)
+        element_symbol = element_from_lammps_type(atom_type as number)
       }
       positions.push(xyz)
       elements.push(element_symbol)
@@ -344,7 +341,6 @@ export function parse_lammps_trajectory(
       elements = order.map((atom_idx) => elements[atom_idx])
       site_properties = order.map((atom_idx) => site_properties[atom_idx])
     }
-    const { volume } = math.calc_lattice_params(lattice_matrix)
     frames.push(
       create_trajectory_frame(
         positions,
@@ -353,7 +349,6 @@ export function parse_lammps_trajectory(
         pbc,
         timestep,
         {
-          volume,
           timestep,
           coords_unwrapped: pos_variant.unwrapped,
           box_origin,
@@ -382,7 +377,7 @@ export function parse_lammps_trajectory(
   if (guessed_types.size > 0) {
     const guesses = Array.from(guessed_types)
       .toSorted((left, right) => left - right)
-      .map((atom_type) => `${atom_type}→${guess_element(atom_type)}`)
+      .map((atom_type) => `${atom_type}→${element_from_lammps_type(atom_type)}`)
     warn(
       `LAMMPS dump names no element for some atom types; read them as atomic numbers (${guesses.join(`, `)}). Pass atom_type_mapping (e.g. { 1: 'Si', 2: 'O' }) to name them.`,
     )
@@ -400,18 +395,11 @@ export function parse_lammps_trajectory(
       )
     }
   }
-
-  const first_structure = frames[0].structure
   return {
     format: `lammps`,
     frames,
     metadata: {
-      periodic_boundary_conditions:
-        `lattice` in first_structure ? first_structure.lattice.pbc : [true, true, true],
       atom_types: Array.from(atom_types_found).toSorted((left, right) => left - right),
-      element_counts: count_elements(
-        first_structure.sites.map((site) => site.species[0].element),
-      ),
     },
   }
 }

@@ -1,76 +1,80 @@
 import { get_electro_neg_formula } from '$lib/composition'
 import { download } from '$lib/io/fetch'
-import type { Vec3 } from '$lib/math'
+import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { AnyStructure, Site } from '$lib/structure'
 import { is_plain_object } from '$lib/utils'
 
-// Sanitize string for use in filenames by removing problematic characters.
+// Filename-safe text: HTML tags stripped, filesystem-invalid characters replaced by `_`,
+// underscore runs condensed, no leading or trailing underscore
 const sanitize_filename_part = (text: string): string =>
   text
-    .replaceAll(/<\/?[^>]+>/g, ``) // strip HTML tags
-    .replaceAll(/[/\\:*?"<>|]/g, `_`) // replace filesystem-invalid chars
-    .replaceAll(/_+/g, `_`) // condense consecutive underscores
-    .replaceAll(/^_|_$/g, ``) // remove leading/trailing underscores
+    .replaceAll(/<\/?[^>]+>/g, ``)
+    .replaceAll(/[/\\:*?"<>|]/g, `_`)
+    .replaceAll(/_+/g, `_`)
+    .replaceAll(/^_|_$/g, ``)
 
-// Generate a filename for structure exports based on structure metadata; no extension
-// yields the bare basename (for exporters that append their own, e.g. OBJ + MTL pairs).
+// Plain-text formula (HTML subscripts would land in filenames and file headers), or undefined
+// when the composition is unknown
+const plain_formula = (structure: AnyStructure): string | undefined => {
+  const formula = get_electro_neg_formula(structure, true)
+  return formula && formula !== `Unknown` ? formula : undefined
+}
+
+// `<id>-<formula>-<space group>-<lattice system>-<n>sites.<extension>` from whatever metadata
+// the structure carries; no extension yields the bare basename (for exporters that append
+// their own, e.g. OBJ + MTL pairs)
 export function create_structure_filename(
   structure: AnyStructure | undefined,
   extension?: string,
 ): string {
   const suffix = extension ? `.${extension}` : ``
   if (!structure) return `structure${suffix}`
-
-  const parts: string[] = []
-  // Helper to sanitize and push non-empty parts
-  const safe_push = (value: string | undefined) => {
-    const sanitized = value ? sanitize_filename_part(value) : ``
-    if (sanitized) parts.push(sanitized)
-  }
-  safe_push(structure.id)
-
-  // Add formula (plain text to avoid HTML in filenames)
-  const formula = get_electro_neg_formula(structure, true)
-  if (formula && formula !== `Unknown`) {
-    safe_push(formula.replaceAll(` `, ``))
-  }
-
-  // Add space group and lattice system if available
   const symmetry =
     `symmetry` in structure && is_plain_object(structure.symmetry)
       ? structure.symmetry
       : undefined
-  if (typeof symmetry?.space_group_symbol === `string`) {
-    safe_push(symmetry.space_group_symbol.replaceAll(` `, ``))
-  }
-  const lattice =
+  // widened: lattice_system is optional metadata that LatticeType does not declare
+  const lattice: Record<string, unknown> | undefined =
     `lattice` in structure && is_plain_object(structure.lattice)
       ? structure.lattice
       : undefined
-  if (lattice && `lattice_system` in lattice && typeof lattice.lattice_system === `string`)
-    safe_push(lattice.lattice_system)
-
-  // Add number of sites
-  if (structure.sites?.length) parts.push(`${structure.sites.length}sites`)
-
-  const base_name = parts.length > 0 ? parts.join(`-`) : `structure`
-  return `${base_name}${suffix}`
+  const parts = [
+    structure.id,
+    plain_formula(structure)?.replaceAll(` `, ``),
+    typeof symmetry?.space_group_symbol === `string`
+      ? symmetry.space_group_symbol.replaceAll(` `, ``)
+      : undefined,
+    typeof lattice?.lattice_system === `string` ? lattice.lattice_system : undefined,
+  ]
+    .map((part) => (part ? sanitize_filename_part(part) : ``))
+    .filter(Boolean)
+  if (structure.sites.length > 0) parts.push(`${structure.sites.length}sites`)
+  return `${parts.length > 0 ? parts.join(`-`) : `structure`}${suffix}`
 }
 
 // First species' element of a site, or `X` when the site has no species
 const site_element = (site: Site): string => site.species?.[0]?.element || `X`
 
-// Fractional coordinates from abc, falling back to converting xyz; throws when neither
-// is available. idx (when given) is included in the error message.
+// cart→frac converter built on first use: a singular lattice (extXYZ `Lattice="... 0 0 0"`)
+// has no inverse, and a site that already carries abc never needs one
+const lazy_cart_to_frac = (matrix: Matrix3x3): ((xyz: Vec3) => Vec3) => {
+  let convert: ((xyz: Vec3) => Vec3) | undefined
+  return (xyz) => (convert ??= math.create_cart_to_frac(matrix))(xyz)
+}
+
+// Fractional coordinates from abc, else converted from xyz. A site with neither is
+// unexportable: writing it at the origin would pass off a placeholder as a measured position.
 function get_frac_coords(
   site: Site,
-  cart_to_frac: ((xyz: Vec3) => Vec3) | null,
-  idx?: number,
+  cart_to_frac: (xyz: Vec3) => Vec3,
+  idx: number,
 ): number[] {
   if (Array.isArray(site.abc) && site.abc.length >= 3) return site.abc.slice(0, 3)
-  if (site.xyz?.length >= 3 && cart_to_frac) return cart_to_frac(site.xyz.slice(0, 3) as Vec3)
-  throw new Error(`No valid coordinates found for site${idx === undefined ? `` : ` ${idx}`}`)
+  if (Array.isArray(site.xyz) && site.xyz.length >= 3) {
+    return cart_to_frac(site.xyz.slice(0, 3) as Vec3)
+  }
+  throw new Error(`No valid coordinates found for site ${idx}`)
 }
 
 // A site's force vector, or null when it carries none. Non-finite components disqualify the
@@ -87,12 +91,11 @@ const site_force = (site: Site): number[] | null => {
 const has_move_flags = (structure: AnyStructure): boolean =>
   structure.sites.some((site) => Array.isArray(site.properties?.selective_dynamics))
 
-// Per-axis motion flags, defaulting to free. Padded to exactly three so a truncated array
-// can't emit a short line, which both POSCAR and extXYZ readers would mis-column.
-const site_move_flags = (site: Site): [boolean, boolean, boolean] => {
+// Per-axis motion flags as POSCAR/extXYZ `T`/`F` columns, defaulting to free. Always exactly
+// three, so a truncated array can't emit a short line that both readers would mis-column.
+const move_flag_columns = (site: Site): string[] => {
   const flags = site.properties?.selective_dynamics
-  const read = (axis: number) => (Array.isArray(flags) ? flags[axis] !== false : true)
-  return [read(0), read(1), read(2)]
+  return [0, 1, 2].map((axis) => (Array.isArray(flags) && flags[axis] === false ? `F` : `T`))
 }
 
 // Bare words in an extXYZ comment are read as valueless flags, and an `=` or `"` inside one
@@ -101,44 +104,30 @@ const site_move_flags = (site: Site): [boolean, boolean, boolean] => {
 const sanitize_comment_label = (label: string): string =>
   label.replaceAll(/["=]/g, ``).replaceAll(/\s+/g, ` `).trim()
 
-// Generate extended XYZ content string without saving. Emits a Properties= header so the
-// columns beyond `species x y z` (forces, motion constraints) survive a round trip.
+// Extended XYZ with a Properties= header so the columns beyond `species x y z` (forces,
+// motion constraints) and the cell survive a round trip
 export function structure_to_xyz_str(structure?: AnyStructure): string {
   if (!structure?.sites) throw new Error(`No structure or sites to export`)
-
-  const lines: string[] = []
-
-  // First line: number of atoms
-  lines.push(String(structure.sites.length))
-
-  // Second line: comment (structure ID, formula, or default)
-  const comment_parts: string[] = []
-  if (structure.id) comment_parts.push(sanitize_comment_label(structure.id))
-  const formula = get_electro_neg_formula(structure, true)
-  if (formula && formula !== `Unknown`) comment_parts.push(sanitize_comment_label(formula))
-
-  const lattice_matrix =
-    `lattice` in structure && structure.lattice?.matrix?.length === 3
-      ? structure.lattice.matrix
-      : null
-
-  // Include extended XYZ lattice information when available so round-trips preserve lattice
-  if (lattice_matrix) {
-    const lattice_values = lattice_matrix
-      .flatMap((row) =>
-        row.map((value: number) => (Number.isFinite(value) ? value : 0).toFixed(8)),
-      )
-      .join(` `)
-    comment_parts.push(`Lattice="${lattice_values}"`)
-  }
+  const lattice = `lattice` in structure ? structure.lattice : undefined
+  const lattice_matrix = lattice?.matrix?.length === 3 ? lattice.matrix : null
 
   // Forces are all-or-nothing: padding the sites that lack one with zeros would report a
   // relaxed atom where the data simply says nothing. Constraints do have a meaningful default
   // (free to move), which is the same assumption the POSCAR exporter makes.
   const forces = structure.sites.map(site_force)
-  const has_forces = forces.every((force) => force !== null) && forces.length > 0
+  const has_forces = forces.length > 0 && forces.every((force) => force !== null)
   const has_constraints = has_move_flags(structure)
 
+  const comment_parts: string[] = []
+  if (structure.id) comment_parts.push(sanitize_comment_label(structure.id))
+  const formula = plain_formula(structure)
+  if (formula) comment_parts.push(sanitize_comment_label(formula))
+  if (lattice_matrix) {
+    const values = lattice_matrix
+      .flat()
+      .map((value) => (Number.isFinite(value) ? value : 0).toFixed(8))
+    comment_parts.push(`Lattice="${values.join(` `)}"`)
+  }
   const property_cols = [`species:S:1`, `pos:R:3`]
   if (has_forces) property_cols.push(`forces:R:3`)
   // Per-axis `move_mask:L:3`, which is what ASE itself writes for a FixCartesian constraint
@@ -146,116 +135,72 @@ export function structure_to_xyz_str(structure?: AnyStructure): string {
   // ASE collapses it to "this atom may move" and yields FixAtoms([]), i.e. no constraint.
   if (has_constraints) property_cols.push(`move_mask:L:3`)
   comment_parts.push(`Properties=${property_cols.join(`:`)}`)
-
+  // pbc rides along with the cell: an aperiodic axis is only meaningful when there is one
   if (lattice_matrix) {
-    const pbc = (`lattice` in structure && structure.lattice?.pbc) || [true, true, true]
+    const pbc = lattice?.pbc ?? [true, true, true]
     comment_parts.push(`pbc="${pbc.map((flag) => (flag ? `T` : `F`)).join(` `)}"`)
   }
 
-  const comment =
-    comment_parts.length > 0 ? comment_parts.join(` `) : `Generated from structure`
-  lines.push(comment)
-
-  // Cache converter for fractional→Cartesian (if lattice available)
   const frac_to_cart = lattice_matrix ? math.create_frac_to_cart(lattice_matrix) : null
-
-  // Atom lines: element symbol followed by x, y, z coordinates
+  const lines = [String(structure.sites.length), comment_parts.join(` `)]
   for (const [site_idx, site] of structure.sites.entries()) {
-    const element_symbol = site_element(site)
-
-    // Prefer xyz; fall back to abc (converted to Cartesian if a lattice is available). A site
-    // with neither is unexportable — writing it at the origin would look like real data.
+    // xyz is authoritative; abc is converted when xyz is missing (see get_frac_coords for
+    // why a site with neither throws)
     let coords: number[]
-    if (site.xyz && Array.isArray(site.xyz) && site.xyz.length >= 3) {
-      coords = site.xyz.slice(0, 3)
-    } else if (site.abc?.length >= 3 && frac_to_cart) {
-      coords = frac_to_cart(site.abc)
-    } else throw new Error(`No valid coordinates found for site ${site_idx}`)
+    if (Array.isArray(site.xyz) && site.xyz.length >= 3) coords = site.xyz.slice(0, 3)
+    else if (site.abc?.length >= 3 && frac_to_cart) coords = frac_to_cart(site.abc)
+    else throw new Error(`No valid coordinates found for site ${site_idx}`)
 
-    // Format coordinates to reasonable precision
     const columns = coords.map((coord) => coord.toFixed(6))
     if (has_forces) columns.push(...(forces[site_idx] ?? []).map((val) => val.toFixed(6)))
-    // T = free to move along that axis, matching ASE and POSCAR selective dynamics
-    if (has_constraints) {
-      columns.push(...site_move_flags(site).map((free) => (free ? `T` : `F`)))
-    }
-    lines.push(`${element_symbol} ${columns.join(` `)}`)
+    if (has_constraints) columns.push(...move_flag_columns(site))
+    lines.push(`${site_element(site)} ${columns.join(` `)}`)
   }
-
   return lines.join(`\n`)
 }
 
-// Generate a valid CIF data block name from structure formula
-// CIF block names can contain alphanumerics, underscores, but no spaces or special chars
+// CIF data block name: the alphabetical formula with occupancies rounded to integers
+// (`FeLiO4P`), else the id reduced to the alphanumerics and underscores a block name allows,
+// else `structure`
 function get_cif_block_name(structure: AnyStructure): string {
-  try {
-    // Count atoms per element (rounded to nearest integer for occupancy)
-    const element_counts: Record<string, number> = {}
-    for (const site of structure.sites) {
-      if (!site.species || !Array.isArray(site.species)) continue
-      for (const species of site.species) {
-        if (!species.element) continue
-        const count = species.occu ?? 1
-        element_counts[species.element] = (element_counts[species.element] ?? 0) + count
-      }
+  const element_counts: Record<string, number> = {}
+  for (const site of structure.sites) {
+    for (const { element, occu } of site.species) {
+      if (element) element_counts[element] = (element_counts[element] ?? 0) + (occu ?? 1)
     }
-
-    // Sort elements alphabetically and build formula string
-    const elements = Object.keys(element_counts).toSorted()
-    if (elements.length === 0) throw new Error(`No elements found`)
-
-    const formula = elements
-      .map((el) => {
-        const count = Math.round(element_counts[el])
-        if (count === 0) return null // filter out near-zero occupancies
-        return count === 1 ? el : `${el}${count}`
-      })
-      .filter((part): part is string => part !== null)
-      .join(``)
-
-    if (!formula) throw new Error(`All occupancies round to zero`)
-    return formula
-  } catch {
-    // Fall back to structure.id (sanitized) or generic name
-    if (structure.id) {
-      // Remove invalid CIF characters (keep alphanumerics and underscores)
-      // and condense consecutive underscores for cleaner block names
-      return structure.id.replaceAll(/[^a-zA-Z0-9_]/g, `_`).replaceAll(/_+/g, `_`)
-    }
-    return `structure`
   }
+  const formula = Object.keys(element_counts)
+    .toSorted()
+    .map((element) => {
+      const count = Math.round(element_counts[element])
+      return count === 0 ? `` : count === 1 ? element : `${element}${count}`
+    })
+    .join(``)
+  if (formula) return formula
+  return structure.id
+    ? structure.id.replaceAll(/[^a-zA-Z0-9_]/g, `_`).replaceAll(/_+/g, `_`)
+    : `structure`
 }
 
-// Generate CIF content string without saving
 export function structure_to_cif_str(structure?: AnyStructure): string {
   if (!structure?.sites) throw new Error(`No structure or sites to export`)
   if (!(`lattice` in structure) || !structure.lattice) {
     throw new Error(`No lattice information for CIF export`)
   }
+  const { lattice } = structure
+  // The data block header is required by the CIF spec (and pymatgen)
+  const lines = [
+    `# CIF file generated by MatterViz`,
+    `data_${get_cif_block_name(structure)}`,
+    ``,
+    `_cell_length_a ${lattice.a.toFixed(6)}`,
+    `_cell_length_b ${lattice.b.toFixed(6)}`,
+    `_cell_length_c ${lattice.c.toFixed(6)}`,
+    `_cell_angle_alpha ${lattice.alpha.toFixed(6)}`,
+    `_cell_angle_beta ${lattice.beta.toFixed(6)}`,
+    `_cell_angle_gamma ${lattice.gamma.toFixed(6)}`,
+  ]
 
-  const lines: string[] = []
-
-  // CIF header with data block (required by pymatgen and CIF spec)
-  lines.push(`# CIF file generated by MatterViz`, `data_${get_cif_block_name(structure)}`, ``)
-
-  // Cell parameters
-  const lattice = structure.lattice
-  if (lattice.a && lattice.b && lattice.c) {
-    lines.push(
-      `_cell_length_a ${lattice.a.toFixed(6)}`,
-      `_cell_length_b ${lattice.b.toFixed(6)}`,
-      `_cell_length_c ${lattice.c.toFixed(6)}`,
-    )
-  }
-  if (lattice.alpha && lattice.beta && lattice.gamma) {
-    lines.push(
-      `_cell_angle_alpha ${lattice.alpha.toFixed(6)}`,
-      `_cell_angle_beta ${lattice.beta.toFixed(6)}`,
-      `_cell_angle_gamma ${lattice.gamma.toFixed(6)}`,
-    )
-  }
-
-  // Space group information
   if (`symmetry` in structure && is_plain_object(structure.symmetry)) {
     const { space_group_number, space_group_symbol } = structure.symmetry
     if (typeof space_group_symbol === `string` && space_group_symbol) {
@@ -278,7 +223,6 @@ export function structure_to_cif_str(structure?: AnyStructure): string {
     `_symmetry_equiv_pos_as_xyz`,
     `  'x, y, z'`,
     ``,
-    // Atom site loop header
     `loop_`,
     `_atom_site_label`,
     `_atom_site_type_symbol`,
@@ -288,24 +232,16 @@ export function structure_to_cif_str(structure?: AnyStructure): string {
     `_atom_site_occupancy`,
   )
 
-  // Cache inverse transpose for Cartesian→fractional conversion (avoids recomputing per site)
-  const cart_to_frac =
-    lattice.matrix?.length === 3 ? math.create_cart_to_frac(lattice.matrix) : null
-
-  // Atom sites: one row per species entry so disordered (multi-species) sites
-  // keep every component with its own occupancy instead of only species[0]
-  for (let idx = 0; idx < structure.sites.length; idx++) {
-    const site = structure.sites[idx]
-    if (!site) continue // Skip if site is undefined
-
-    const frac_coords = get_frac_coords(site, cart_to_frac, idx)
-    const coords_str = frac_coords.map((coord) => coord.toFixed(8)).join(` `)
-
-    const species_list = site.species?.length ? site.species : [{ element: `X`, occu: 1 }]
+  const cart_to_frac = lazy_cart_to_frac(lattice.matrix)
+  // One row per species entry so disordered (multi-species) sites keep every component with
+  // its own occupancy; labels must be unique per row, so those get a per-species suffix
+  for (const [idx, site] of structure.sites.entries()) {
+    const coords_str = get_frac_coords(site, cart_to_frac, idx)
+      .map((coord) => coord.toFixed(8))
+      .join(` `)
+    const species_list = site.species.length ? site.species : [{ element: `X`, occu: 1 }]
     for (const [spec_idx, species] of species_list.entries()) {
       const elem = species?.element || `X`
-      // Row format: label element x y z occupancy. Labels must be unique per row,
-      // so disordered sites get a per-species suffix.
       const label =
         species_list.length > 1
           ? `${elem}${idx + 1}_${spec_idx}`
@@ -317,84 +253,57 @@ export function structure_to_cif_str(structure?: AnyStructure): string {
   return lines.join(`\n`)
 }
 
-// Generate VASP POSCAR content string without saving
 export function structure_to_poscar_str(structure?: AnyStructure): string {
   if (!structure?.sites) throw new Error(`No structure or sites to export`)
   if (!(`lattice` in structure) || !structure.lattice) {
     throw new Error(`No lattice information for POSCAR export`)
   }
-  const lines: string[] = []
-
-  // Use plain text formula for POSCAR title to avoid HTML tags
-  const formula = get_electro_neg_formula(structure, true)
-  const title =
-    structure.id || // oxlint-disable-line @typescript-eslint/prefer-nullish-coalescing -- first non-empty string
-    (formula && formula !== `Unknown` ? formula : null) || // oxlint-disable-line @typescript-eslint/prefer-nullish-coalescing -- first non-empty string
-    `Generated from structure`
-  lines.push(title, `1.0`) // Scale factor (1.0 for direct coordinates)
-
-  const lattice = structure.lattice
-  if (lattice.matrix && Array.isArray(lattice.matrix) && lattice.matrix.length >= 3) {
-    // One line per lattice vector, exactly 3 components at 8-decimal fixed precision
-    for (const vec of lattice.matrix.slice(0, 3)) {
-      lines.push([vec[0], vec[1], vec[2]].map((coord) => coord.toFixed(8)).join(` `))
-    }
-  } else {
+  const { lattice } = structure
+  if (!Array.isArray(lattice.matrix) || lattice.matrix.length < 3) {
     throw new Error(`No valid lattice matrix for POSCAR export`)
   }
 
-  // Group sites by element in one pass, preserving first-appearance element order
-  const sites_by_element = new Map<string, Site[]>()
-  for (const site of structure.sites) {
-    const element_symbol = site_element(site)
-    const group = sites_by_element.get(element_symbol)
-    if (group) group.push(site)
-    else sites_by_element.set(element_symbol, [site])
-  }
+  // Title line: the id, else the plain-text formula; scale factor 1.0 since coordinates are
+  // written as Direct (fractional)
+  const title =
+    [structure.id, plain_formula(structure)].find(Boolean) ?? `Generated from structure`
+  const lines = [
+    title,
+    `1.0`,
+    ...lattice.matrix
+      .slice(0, 3)
+      .map((vec) => [vec[0], vec[1], vec[2]].map((coord) => coord.toFixed(8)).join(` `)),
+  ]
 
-  // Element symbols and atom counts
+  // VASP wants one block per species: site indices grouped by element in first-appearance order
+  const sites_by_element = new Map<string, number[]>()
+  for (const [idx, site] of structure.sites.entries()) {
+    const element = site_element(site)
+    const group = sites_by_element.get(element)
+    if (group) group.push(idx)
+    else sites_by_element.set(element, [idx])
+  }
   lines.push(
     [...sites_by_element.keys()].join(` `),
     [...sites_by_element.values()].map((group) => group.length).join(` `),
   )
-
   const has_selective_dynamics = has_move_flags(structure)
-  if (has_selective_dynamics) {
-    lines.push(`Selective dynamics`)
-  }
-
-  // Coordinate mode (Direct = fractional coordinates)
+  if (has_selective_dynamics) lines.push(`Selective dynamics`)
   lines.push(`Direct`)
 
-  // Cache inverse transpose for Cartesian→fractional conversion (avoids recomputing per site)
-  const cart_to_frac =
-    lattice.matrix?.length === 3 ? math.create_cart_to_frac(lattice.matrix) : null
-
-  // Atom coordinates grouped by element
+  const cart_to_frac = lazy_cart_to_frac(lattice.matrix)
   for (const group of sites_by_element.values()) {
-    for (const site of group) {
-      const frac_coords = get_frac_coords(site, cart_to_frac)
-      const coords_str = frac_coords
-        .slice(0, 3)
-        .map((coord) => coord.toFixed(8))
-        .join(` `)
-
-      // Always three flags: a shorter selective_dynamics array would emit a truncated line
-      // that VASP reads as missing constraints rather than the ones actually recorded.
-      const sel_dyn_str = has_selective_dynamics
-        ? ` ${site_move_flags(site)
-            .map((free) => (free ? `T` : `F`))
-            .join(` `)}`
-        : ``
-
-      lines.push(`${coords_str}${sel_dyn_str}`)
+    for (const idx of group) {
+      const site = structure.sites[idx]
+      const columns = get_frac_coords(site, cart_to_frac, idx).map((coord) => coord.toFixed(8))
+      if (has_selective_dynamics) columns.push(...move_flag_columns(site))
+      lines.push(columns.join(` `))
     }
   }
 
   return lines.join(`\n`)
 }
 
-// Generate JSON content string without saving
 export function structure_to_json_str(structure?: AnyStructure): string {
   if (!structure) throw new Error(`No structure to export`)
   return JSON.stringify(structure, null, 2)

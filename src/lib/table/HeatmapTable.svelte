@@ -83,7 +83,7 @@
     Search as SearchIcon,
   } from 'svelte-widgets/icons'
   import { onMount, type Snippet, tick, untrack } from 'svelte'
-  import type { ClassValue, HTMLAttributes } from 'svelte/elements'
+  import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
 
   let {
@@ -97,7 +97,6 @@
     sort = $bindable({ column: ``, dir: `asc` }),
     default_num_format = `.3`,
     show_heatmap = $bindable(true),
-    heatmap_class = `heatmap`,
     on_row_click,
     on_row_double_click,
     column_order = $bindable([]),
@@ -123,7 +122,6 @@
     allow_better_toggle = false,
     show_controls = $bindable(false),
     controls_open = $bindable(false),
-    header_cell,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     data: RowData[]
@@ -140,7 +138,6 @@
     sort?: TableSort
     default_num_format?: string
     show_heatmap?: boolean
-    heatmap_class?: ClassValue
     on_row_click?: (event: MouseEvent | KeyboardEvent, row: RowData) => void
     on_row_double_click?: (event: MouseEvent, row: RowData) => void
     // Column IDs (see get_column_id) in display order. Bindable so drag reorders persist.
@@ -190,8 +187,6 @@
     // Whether the gear icon for the controls pane is visible / the pane is expanded
     show_controls?: boolean
     controls_open?: boolean
-    // Custom header renderer. Falls back to {@html col.label}.
-    header_cell?: Snippet<[{ col: Label }]>
   } = $props()
 
   // DOMPurify and the DOM-free SSR sanitizer can serialize equivalent markup differently.
@@ -1509,7 +1504,7 @@
     onscroll={virtual_config ? () => sync_viewport() : undefined}
   >
     <table
-      class={heatmap_class}
+      class="heatmap"
       style:--group-header-height="{has_group_header ? group_header_height : 0}px"
     >
       <thead>
@@ -1581,11 +1576,7 @@
               ondragend={reset_drag_state}
               {@attach col.sticky ? track_sticky_width : undefined}
             >
-              {#if header_cell}
-                {@render header_cell({ col })}
-              {:else}
-                {@html render_html(col.label)}
-              {/if}
+              {@html render_html(col.label)}
               {#if sorted_by}
                 <span style="font-size: 0.8em"
                   >{sorted_by.ascending ? `↓` : `↑`}{#if sorted_by.rank}<sup

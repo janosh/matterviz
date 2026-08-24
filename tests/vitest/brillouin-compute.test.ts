@@ -506,20 +506,20 @@ describe(`extract_point_group_from_operations`, () => {
 })
 
 describe(`compute_ibz_clipping_planes`, () => {
-  test(`identity-only → no planes`, () => {
-    expect(compute_ibz_clipping_planes([IDENTITY_MAT])).toHaveLength(0)
-  })
-
-  test(`non-trivial symmetry → planes through origin`, () => {
-    const planes = compute_ibz_clipping_planes([IDENTITY_MAT, ROT_Z_90])
-    expect(planes.length).toBeGreaterThan(0)
-    planes.forEach((plane) => expect(plane.dist).toBe(0))
-  })
-
-  test(`C4 group deduplicates planes`, () => {
-    const planes = compute_ibz_clipping_planes([IDENTITY_MAT, ROT_Z_90, ROT_Z_180, ROT_Z_270])
-    expect(planes.length).toBeLessThanOrEqual(3)
-  })
+  // one plane per non-identity op (through the origin), minus duplicates
+  test.each([
+    [`identity only`, [IDENTITY_MAT], 0, 0],
+    [`C4z generator`, [IDENTITY_MAT, ROT_Z_90], 1, 1],
+    [`C4 group`, [IDENTITY_MAT, ROT_Z_90, ROT_Z_180, ROT_Z_270], 1, 3],
+  ] as [string, Matrix3x3[], number, number][])(
+    `%s → between %d and %d planes through the origin`,
+    (_label, ops, min_planes, max_planes) => {
+      const planes = compute_ibz_clipping_planes(ops)
+      expect(planes.length).toBeGreaterThanOrEqual(min_planes)
+      expect(planes.length).toBeLessThanOrEqual(max_planes)
+      for (const plane of planes) expect(plane.dist).toBe(0)
+    },
+  )
 
   // Regression: when every curated reference direction is fixed by some operation, the
   // construction must fall back to a generic direction instead of silently reusing a

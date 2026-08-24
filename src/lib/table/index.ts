@@ -44,7 +44,7 @@ export type Label = {
   group?: string
   description?: string
   format?: string
-  format_type?: `datetime`
+  // Render cells as dates/times in this mode; also makes bare numbers read as epoch timestamps
   datetime_format?: DateTimeFormatMode
   better?: `higher` | `lower`
   color_scale?: D3InterpolateName | null

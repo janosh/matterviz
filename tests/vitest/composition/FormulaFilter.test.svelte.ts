@@ -681,6 +681,9 @@ describe(`FormulaFilter`, () => {
       [`unicode subscripts normalize`, {}, `Fe₂O₃`, `Fe2O3`],
       // deleting the hydrate dot in normalization would glue digits: CuSO45H2O
       [`hydrate dot survives normalization`, {}, `CuSO4·5H2O`, `CuH10O9S`],
+      // an SI amount format would canonicalize to C1kH2k, which no longer parses
+      [`large counts stay plain digits`, {}, `H2000C1000`, `C1000H2000`],
+      [`wildcard amounts are merged and formatted`, {}, `*2Li0.1Li0.2*`, `Li0.3*2*`],
     ])(`exact mode: %s`, (_name, props, input, expected) => {
       const on_change = vi.fn()
       mount_filter({ value: ``, on_change, ...props })

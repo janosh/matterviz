@@ -381,7 +381,7 @@
     message="Drop one or more volumetric files (same-cell files append as extra volumes)"
   />
   {#if active_scenario}
-    <p class="scenario-label">
+    <p class="demo-overlay-label">
       {scenarios.find((entry) => entry.id === active_scenario)?.title}
     </p>
   {/if}
@@ -392,7 +392,7 @@
 {/if}
 
 {#if volumetric_data?.length}
-  <div class="stats-bar">
+  <div class="demo-stats-bar">
     <span title="Number of loaded volumes">Volumes: {volumetric_data.length}</span>
     {#each volumetric_data as vol, idx (idx)}
       <span title="Grid dimensions and value range">
@@ -482,34 +482,6 @@
     font-size: 0.72em;
     opacity: 0.75;
     line-height: 1.35;
-  }
-  .scenario-label {
-    position: absolute;
-    top: 4px;
-    left: 0;
-    margin: 1ex 1em;
-    font-family: monospace;
-    z-index: 1;
-    background: light-dark(rgba(220, 224, 230, 0.9), rgba(0, 0, 0, 0.5));
-    color: light-dark(#222, white);
-    padding: 2px 8px;
-    border-radius: 4px;
-    font-size: 0.85em;
-  }
-  .stats-bar {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.4em 1.2em;
-    padding: 0.5em 0.8em;
-    margin-top: 0.5em;
-    background: var(--surface-bg, #f5f5f5);
-    border-radius: 6px;
-    font-size: 0.8em;
-    font-family: monospace;
-    span {
-      white-space: nowrap;
-      opacity: 0.85;
-    }
   }
   .features {
     margin-top: 1.5em;

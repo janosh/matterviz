@@ -209,20 +209,12 @@ describe(`ElementTile`, () => {
   })
 
   describe(`background color fallback`, () => {
-    test(`uses default category color without segments`, () => {
-      mount_tile()
-
-      const node = doc_query(`.element-tile`)
-      const expected_color = DEFAULT_CATEGORY_COLORS[rand_element.category]
-      expect(node.style.backgroundColor).toBe(expected_color)
-    })
-
-    test(`a solid segment overrides the category color`, () => {
-      const custom_color = `#123456`
-      mount_tile({ segments: [{ color: custom_color }] })
-
-      const node = doc_query(`.element-tile`)
-      expect(node.style.backgroundColor).toBe(custom_color)
+    test.each([
+      [`no segments`, [], DEFAULT_CATEGORY_COLORS[rand_element.category]],
+      [`a solid segment`, [{ color: `#123456` }], `#123456`],
+    ])(`%s paints the tile %s`, (_desc, segments, expected_color) => {
+      mount_tile({ segments })
+      expect(doc_query(`.element-tile`).style.backgroundColor).toBe(expected_color)
     })
 
     test(`segment values and omitted colors are explicit`, () => {

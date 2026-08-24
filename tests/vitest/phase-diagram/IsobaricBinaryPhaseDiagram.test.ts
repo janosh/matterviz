@@ -303,13 +303,11 @@ describe(`format_hover_info_text`, () => {
     { composition: 1, unit: `at%`, expected: `Composition: 100 at% Cu (0 at% Al)` },
     { composition: 0.333, unit: `at%`, expected: `Composition: 33.3 at% Cu (66.7 at% Al)` },
   ] as const)(`composition $composition as $unit`, ({ composition, unit, expected }) => {
-    const text = format_hover_info_text(
-      create_hover_info({ composition }),
-      `K`,
-      unit,
-      `Al`,
-      `Cu`,
-    )
+    const text = format_hover_info_text(create_hover_info({ composition }), {
+      comp_unit: unit,
+      component_a: `Al`,
+      component_b: `Cu`,
+    })
     expect(text).toContain(expected)
   })
 
@@ -323,7 +321,7 @@ describe(`format_hover_info_text`, () => {
     `temperature $temperature: $data data shown as $display`,
     ({ temperature, display, data, expected }) => {
       const info = create_hover_info({ temperature })
-      const text = format_hover_info_text(info, display, `at%`, `A`, `B`, data)
+      const text = format_hover_info_text(info, { temp_unit: display, data_temp_unit: data })
       expect(text).toContain(expected)
     },
   )
@@ -354,7 +352,7 @@ describe(`format_hover_info_text`, () => {
         fraction_top: 0.3,
       },
     })
-    const text = format_hover_info_text(info, `K`, unit)
+    const text = format_hover_info_text(info, { comp_unit: unit })
     const lines = text.split(`\n`)
     expect(lines).toContain(`Lever Rule:`)
     for (const line of expected) expect(lines).toContain(line)
@@ -374,9 +372,11 @@ describe(`format_hover_info_text`, () => {
         fraction_top: 0.75,
       },
     })
-    const lines = format_hover_info_text(info, `°C`, `at%`, `A`, `B`, `K`, `vertical`).split(
-      `\n`,
-    )
+    const lines = format_hover_info_text(info, {
+      temp_unit: `°C`,
+      data_temp_unit: `K`,
+      lever_rule_mode: `vertical`,
+    }).split(`\n`)
     expect(lines).toContain(`Vertical Lever Rule:`)
     expect(lines).toContain(`  α: 25.0% (at 527 °C)`) // 800 K -> 526.85 °C
     expect(lines).toContain(`  L: 75.0% (at 727 °C)`)

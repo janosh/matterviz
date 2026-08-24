@@ -29,12 +29,11 @@
   let columns = $derived(extract_columns(data))
   let suggestion = $derived(suggest_mapping(columns))
 
-  let plot_type = $state<PlotType>(`scatter`)
+  // Writable: the toolbar overrides both until the columns (and so the suggestion) change.
+  // mapping stays $state so the per-axis selects can bind into it
+  let plot_type = $derived(initial_type ?? suggestion.plot_type)
   let mapping = $state<AxisMapping>({})
-
-  // Initialize from suggestion (or explicit initial_type) when columns change
   $effect(() => {
-    plot_type = initial_type ?? suggestion.plot_type
     mapping = { ...suggestion.mapping }
     zoom_level = 1
   })

@@ -1,10 +1,13 @@
 <script lang="ts">
   import type { ViewerPaneOptions } from '$lib/overlays'
-  import type { TrajectoryRun } from '$lib/trajectory'
-  import type { AnalysisPaneContext } from '$lib/trajectory/analysis-pane'
+  import type { TrajectoryPositionStream, TrajectoryRun } from '$lib/trajectory'
+  import {
+    type AnalysisPaneContext,
+    suggest_analysis_frame_stride,
+  } from '$lib/trajectory/analysis'
   import TrajectoryAnalysisPane from '$lib/trajectory/TrajectoryAnalysisPane.svelte'
-  import { collect_msd_positions, suggest_msd_frame_stride } from './collect'
-  import type { MsdOptions, MsdPositions, MsdResult } from './index'
+  import { collect_msd_positions } from './collect'
+  import type { MsdOptions, MsdResult } from './index'
   import MsdPlot from './MsdPlot.svelte'
 
   let {
@@ -27,13 +30,13 @@
   let max_lag_fraction = $state(0.5)
   let fit_start_fraction = $state(0.2)
   let fit_end_fraction = $state(0.8)
-  let positions = $state<MsdPositions | undefined>(undefined)
+  let positions = $state<TrajectoryPositionStream | undefined>(undefined)
   let plotting = $state(false)
   let error_msg = $state<string | undefined>(undefined)
 
   // Not destructured: the context fields are getters and MsdPlot recomputes on every new
   // options object, so dt/time_unit are only read once a timestep is actually in use
-  const msd_options = (ctx: AnalysisPaneContext<MsdPositions>): MsdOptions => ({
+  const msd_options = (ctx: AnalysisPaneContext<TrajectoryPositionStream>): MsdOptions => ({
     ...(ctx.has_valid_dt ? { dt: ctx.dt_collected, time_unit: ctx.time_unit } : {}),
     max_lag_fraction,
     fit: { start_fraction: fit_start_fraction, end_fraction: fit_end_fraction },
@@ -51,7 +54,7 @@
   class_prefix="trajectory-msd"
   analysis_name="MSD"
   collect={collect_msd_positions}
-  suggest_stride={suggest_msd_frame_stride}
+  suggest_stride={suggest_analysis_frame_stride}
   compute_label="Compute MSD"
   recollect_label="Recollect positions"
   {default_dt}

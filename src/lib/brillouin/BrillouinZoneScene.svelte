@@ -5,6 +5,7 @@
     bind_renderer,
     build_orbit_props,
     create_orthographic_zoom,
+    HOVER_THROTTLE_MS,
     SceneCamera,
     SceneLights,
   } from '$lib/scene'
@@ -151,7 +152,6 @@
   // Throttle state for pointer move events
   let last_hover_time = 0
   let last_hover_mesh: `bz` | `ibz` | null = null
-  const HOVER_THROTTLE_MS = 16 // ~60fps
 
   // Reset throttle when bz_data changes to ensure immediate response
   $effect(() => {

@@ -53,9 +53,10 @@
     hidden_prop_vals?: Set<number | string> // Track hidden property values (e.g. Wyckoff positions, coordination numbers)
     // Element remapping: maps original element symbols to new ones (e.g. {'H': 'Na', 'He': 'Cl'})
     element_mapping?: Partial<Record<ElementSymbol, ElementSymbol>>
-    // Per-element and per-site radius overrides (absolute values in Angstroms)
+    // Per-element and per-site radius overrides (absolute values in Angstroms). The site map
+    // is mutated in place so the binding keeps its identity.
     element_radius_overrides?: Partial<Record<ElementSymbol, number>>
-    site_radius_overrides?: Map<number, number> | SvelteMap<number, number>
+    site_radius_overrides?: SvelteMap<number, number>
     selected_sites?: number[] // Currently selected site indices
     sym_data?: SymmetryDataset | null
     structure?: AnyStructure | null
@@ -96,13 +97,6 @@
     untrack(() => hidden_prop_vals.clear())
   })
 
-  // Normalize incoming Map to SvelteMap at boundary for reactivity
-  // This preserves identity for bindings while ensuring SvelteMap methods work
-  $effect(() => {
-    if (site_radius_overrides && !(site_radius_overrides instanceof SvelteMap)) {
-      site_radius_overrides = new SvelteMap(site_radius_overrides)
-    }
-  })
   // Format display values based on mode. Wyckoff orbit ids are `${multiplicity}${letter}|${element}`
   // (see get_wyckoff_colors) and read as `Fe:4a` — the conventional-cell multiplicity, not a
   // count of displayed atoms, which supercells and image atoms would inflate.
@@ -221,22 +215,16 @@
   }
 
   function clear_element_radius(elem: ElementSymbol) {
-    const { [elem]: _removed_radius, ...radii } = element_radius_overrides ?? {}
+    const { [elem]: _removed_radius, ...radii } = element_radius_overrides
     element_radius_overrides = radii
   }
 
   const get_element_radius = (elem: ElementSymbol): number =>
-    element_radius_overrides?.[elem] ?? atomic_radii[elem] ?? 1
+    element_radius_overrides[elem] ?? atomic_radii[elem] ?? 1
 
-  // Mutate in-place to preserve map identity for bindings (aligns with Structure.svelte pattern)
   function update_site_radius(site_idx: number, value: string) {
     const radius = parse_radius(value)
-    if (radius === null) return
-    site_radius_overrides?.set(site_idx, radius)
-  }
-
-  function clear_site_radius(site_idx: number) {
-    site_radius_overrides?.delete(site_idx)
+    if (radius !== null) site_radius_overrides.set(site_idx, radius)
   }
 
   // Same rule the scene renders with
@@ -244,7 +232,7 @@
     const site = structure?.sites?.[site_idx]
     return site
       ? site_base_radius(site, site_idx, { element_radius_overrides, site_radius_overrides })
-      : (site_radius_overrides?.get(site_idx) ?? 1)
+      : (site_radius_overrides.get(site_idx) ?? 1)
   }
 </script>
 
@@ -319,10 +307,10 @@
           />
           <span class="unit">Å</span>
         </label>
-        {#if site_radius_overrides?.has(site_idx)}
+        {#if site_radius_overrides.has(site_idx)}
           <button
             class="reset-btn"
-            onclick={() => clear_site_radius(site_idx)}
+            onclick={() => site_radius_overrides.delete(site_idx)}
             title="Reset to element default"
             {@attach tooltip({ placement: `top` })}
           >
@@ -419,7 +407,7 @@
                 />
                 <span class="unit">Å</span>
               </label>
-              {#if element_radius_overrides?.[elem as ElementSymbol] !== undefined}
+              {#if element_radius_overrides[elem as ElementSymbol] !== undefined}
                 <button
                   class="reset-btn"
                   onclick={() => clear_element_radius(elem as ElementSymbol)}

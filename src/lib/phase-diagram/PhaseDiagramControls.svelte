@@ -1,6 +1,5 @@
 <script lang="ts">
   import { ControlPane } from '$lib/overlays'
-  // NOTE: Axis config objects must be reassigned (not mutated) to trigger $bindable reactivity.
   import { css_color_to_hex } from '$lib/colors'
   import { format_num } from '$lib/labels'
   import { NumberRangeInput, SettingsGroup, SettingsSection } from '$lib/layout'
@@ -30,12 +29,7 @@
     // Export
     enable_export = true,
     png_dpi = $bindable(PHASE_DIAGRAM_DEFAULTS.png_dpi),
-    // Pane props
-    pane_props = {},
-    toggle_props = {},
-    // Snippets
     children,
-    post_children,
     ...rest
   }: Omit<ComponentProps<typeof ControlPane>, `children`> & {
     // Visibility toggles
@@ -56,15 +50,13 @@
     // Export settings
     enable_export?: boolean
     png_dpi?: number
-    // Custom content snippets
+    // Custom content rendered above the built-in sections
     children?: Snippet<[{ controls_open: boolean }]>
-    post_children?: Snippet<[{ controls_open: boolean }]>
   } = $props()
 
-  // Merged config using shared helper
   const merged_config = $derived(merge_phase_diagram_config(config))
 
-  // Helper to update top-level config properties (e.g., font_size, special_point_radius)
+  // Config and axis objects are reassigned, not mutated, so the $bindable props notify
   function update_config<K extends keyof PhaseDiagramConfig>(
     key: K,
     value: PhaseDiagramConfig[K],
@@ -72,7 +64,6 @@
     config = { ...config, [key]: value }
   }
 
-  // Helper to update nested config properties
   function update_nested<K extends keyof Pick<PhaseDiagramConfig, `colors` | `tie_line`>>(
     key: K,
     prop: string,
@@ -112,8 +103,6 @@
   pane_style=""
   toggle_style=""
   toggle_title="Phase diagram"
-  {toggle_props}
-  {pane_props}
   {...rest}
 >
   <h4 style="margin: 0 0 8pt 0">{title}</h4>
@@ -326,8 +315,6 @@
       </label>
     </SettingsSection>
   {/if}
-
-  {@render post_children?.({ controls_open })}
 </ControlPane>
 
 <style>

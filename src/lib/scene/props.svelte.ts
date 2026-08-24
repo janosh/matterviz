@@ -17,6 +17,10 @@ if (typeof document !== `undefined`) {
   })
 }
 
+// Pointer-move throttle (~60 fps) for hover handlers whose per-event work is O(mesh), e.g.
+// the nearest-vertex lookup on a Fermi sheet
+export const HOVER_THROTTLE_MS = 16
+
 // Threlte pointer event type for mesh interactions. stopPropagation() stops Threlte's own
 // dispatch to farther hits along the ray (nativeEvent.stopPropagation only stops the DOM event)
 export type ThreltePointerEvent = {

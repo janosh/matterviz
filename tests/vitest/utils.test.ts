@@ -1,12 +1,22 @@
 import {
   decode_url_safe_base64,
   escape_csv_field,
+  escape_html,
   format_bytes,
   parse_leading_num,
   parse_num_token,
   rows_to_csv,
 } from '$lib'
 import { describe, expect, test } from 'vitest'
+
+test.each([
+  [`<script>alert('xss')</script>`, `&lt;script&gt;alert(&#39;xss&#39;)&lt;/script&gt;`],
+  [`&<>"'`, `&amp;&lt;&gt;&quot;&#39;`],
+  [`Hello World`, `Hello World`],
+  [``, ``],
+])(`escape_html(%s) = %s`, (input, expected) => {
+  expect(escape_html(input)).toBe(expected)
+})
 
 describe(`parse_num_token / parse_leading_num`, () => {
   test.each([

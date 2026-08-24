@@ -5,8 +5,7 @@ import type { ElementSymbol } from '$lib/element'
 // `$lib/element/data`, not the index: the index re-exports Svelte components, which the
 // parse worker bundle (no svelte plugin) cannot compile
 import { default as element_data } from '$lib/element/data'
-import { coerce_elem_symbol } from '$lib/element/helpers'
-import { ELEM_SYMBOLS } from '$lib/labels'
+import { coerce_elem_symbol, element_from_lammps_type } from '$lib/element/helpers'
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { AnyStructure, Crystal, Site } from '$lib/structure'
@@ -280,8 +279,7 @@ export const parse_lammps_data = (content: string): Crystal | null =>
         )
         return null
       }
-      const element =
-        element_by_type.get(atom_type) ?? ELEM_SYMBOLS[(atom_type - 1) % ELEM_SYMBOLS.length]
+      const element = element_by_type.get(atom_type) ?? element_from_lammps_type(atom_type)
       if (!element_by_type.has(atom_type)) {
         diag_warn(
           `LAMMPS data: no mass for atom type ${atom_type}, falling back to element '${element}' by atomic number`,

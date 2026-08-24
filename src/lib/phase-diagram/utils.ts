@@ -434,18 +434,29 @@ export function lever_rule_rows(
   return null
 }
 
+export interface HoverTextOptions {
+  temp_unit?: TempUnit // display unit, default K
+  comp_unit?: CompUnit
+  component_a?: string
+  component_b?: string
+  data_temp_unit?: TempUnit // unit of info.temperature, defaults to temp_unit
+  lever_rule_mode?: LeverRuleMode
+}
+
 // Format hover info as copyable text for clipboard
 // Only includes lever rule data for the active mode to match tooltip display
 export function format_hover_info_text(
   info: PhaseHoverInfo,
-  temp_unit: TempUnit = `K`,
-  comp_unit: CompUnit = `at%`,
-  component_a: string = `A`,
-  component_b: string = `B`,
-  data_temp_unit: TempUnit = temp_unit,
-  lever_rule_mode: LeverRuleMode = `horizontal`,
+  options: HoverTextOptions = {},
 ): string {
-  // Convert temperature from data unit to display unit
+  const {
+    temp_unit = `K`,
+    comp_unit = `at%`,
+    component_a = `A`,
+    component_b = `B`,
+    data_temp_unit = temp_unit,
+    lever_rule_mode = `horizontal`,
+  } = options
   const to_display = (temp: number) => convert_temp(temp, data_temp_unit, temp_unit)
 
   const lines: string[] = [
@@ -472,7 +483,7 @@ export function format_hover_info_text(
 export function get_phase_stability_range(
   region: PhaseRegion,
 ): { t_min: number; t_max: number } | null {
-  if (!region.vertices?.length) return null
+  if (region.vertices.length === 0) return null
   const [t_min, t_max] = array_extent(region.vertices.map(([, temp]) => temp))
   return { t_min, t_max }
 }

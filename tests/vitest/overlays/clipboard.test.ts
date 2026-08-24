@@ -19,23 +19,18 @@ describe(`create_clipboard_feedback`, () => {
 
   // The library helper rejects when given no on_error, but our re-export defaults to logging
   // so that a denied clipboard cannot take down the pane a copy button sits in.
-  it(`logs and does not flag the key when the write fails`, async () => {
+  it.each([
+    [`logs`, undefined],
+    [`calls on_error`, vi.fn()],
+  ])(`a failed write %s and does not flag the key`, async (_desc, on_error) => {
     vi.spyOn(navigator.clipboard, `writeText`).mockRejectedValueOnce(new Error(`denied`))
     const err = vi.spyOn(console, `error`).mockImplementation(() => {})
-    const { copied, copy } = create_clipboard_feedback()
-    await expect(copy(`x`, `k`)).resolves.toBe(false)
-    expect(copied.has(`k`)).toBe(false)
-    expect(err).toHaveBeenCalled()
-    err.mockRestore()
-  })
-
-  it(`routes a failed write to on_error and does not flag the key`, async () => {
-    vi.spyOn(navigator.clipboard, `writeText`).mockRejectedValueOnce(new Error(`denied`))
-    const on_error = vi.fn()
     const { copied, copy } = create_clipboard_feedback(1000, on_error)
     await expect(copy(`x`, `k`)).resolves.toBe(false)
     expect(copied.has(`k`)).toBe(false)
-    expect(on_error).toHaveBeenCalledWith(expect.any(Error), `x`)
+    if (on_error) expect(on_error).toHaveBeenCalledWith(expect.any(Error), `x`)
+    else expect(err).toHaveBeenCalled()
+    err.mockRestore()
   })
 
   it(`isolates copied state between instances`, async () => {

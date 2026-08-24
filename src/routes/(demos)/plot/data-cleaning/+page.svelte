@@ -2,17 +2,15 @@
   import { sanitize_html } from '$lib/sanitize'
   import { ScatterPlot } from '$lib'
   import {
+    type CleaningConfig,
     clean_multi_series,
     clean_series,
     clean_xyz,
     detect_instability,
+    type InvalidValueMode,
+    type TruncationMode,
   } from '$lib/plot/core/data-cleaning'
-  import type {
-    CleaningConfig,
-    DataSeries,
-    InvalidValueMode,
-    TruncationMode,
-  } from '$lib/plot/core/types'
+  import type { DataSeries } from '$lib/plot/core/types'
 
   // --- Synthetic Data Generators ---
 

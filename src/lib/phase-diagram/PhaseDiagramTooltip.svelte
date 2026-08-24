@@ -16,6 +16,7 @@
     convert_temp,
     format_composition,
     format_temperature,
+    get_phase_color,
     get_phase_stability_range,
     lever_rule_rows,
   } from './utils'
@@ -202,6 +203,7 @@
           {#each rows as [phase, fraction], idx (idx)}
             <div
               style:width="{fraction * 100}%"
+              style:background={get_phase_color(phase, `hex`)}
               title="{phase}: {format_num(fraction * 100, `.1f`)}%"
             ></div>
           {/each}
@@ -312,13 +314,9 @@
     display: flex;
     margin-top: 3px;
     background: light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.15));
-    & > div:first-child {
+    & > div {
       height: 100%;
-      background: rgba(144, 238, 144, 0.8);
-    }
-    & > div:nth-child(2) {
-      height: 100%;
-      background: rgba(255, 182, 193, 0.8);
+      opacity: 0.8;
     }
     & > i {
       position: absolute;

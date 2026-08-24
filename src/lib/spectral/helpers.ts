@@ -3,6 +3,7 @@ import { SUBSCRIPT_MAP } from '$lib/labels'
 import { is_plain_object } from '$lib/utils'
 import {
   array_extent,
+  array_max,
   euclidean_dist,
   mat3x3_vec3_multiply,
   subtract,
@@ -15,7 +16,6 @@ import {
   type FrequencyUnit,
 } from './frequency-units'
 import type * as types from './types'
-import type { RibbonConfig } from './types'
 
 const is_subscript_key = (key: string): key is keyof typeof SUBSCRIPT_MAP =>
   key in SUBSCRIPT_MAP
@@ -102,37 +102,14 @@ export function scale_segment_distances(
   )
 }
 
-// Get ribbon config for a specific band structure label.
-// Supports both single global config (with primitive keys like opacity, max_width, scale, color)
-// and per-structure config (keyed by structure label).
-// Distinguishes between a global config and a per-structure config by checking if any
-// primitive-typed keys (opacity, max_width, scale, color) exist at the top level.
-export function get_ribbon_config(
-  ribbon_config: RibbonConfig | Record<string, RibbonConfig>,
-  label: string,
-): { color?: string; opacity: number; max_width: number; scale: number } {
-  const config_record = ribbon_config as Record<string, unknown>
-  // Primitive-valued keys mean a single global config; otherwise look the label up
-  const has_primitive = [`opacity`, `max_width`, `scale`, `color`].some((key) => {
-    const value = config_record[key]
-    return value !== undefined && typeof value !== `object`
-  })
-  const label_config = label ? config_record[label] : undefined
-  const source: RibbonConfig = has_primitive
-    ? ribbon_config
-    : is_plain_object(label_config)
-      ? label_config
-      : {}
-  return { opacity: 0.3, max_width: 6, scale: 1, ...source }
-}
-
+// array_max, not Math.max(...densities): DOS grids reach 1e7 points, past the argument limit
 export function normalize_densities(
   densities: number[],
   freqs_or_energies: number[],
   mode: types.NormalizationMode,
 ): number[] {
   if (mode === `max`) {
-    const max_val = Math.max(...densities)
+    const max_val = array_max(densities)
     return max_val === 0 ? densities : densities.map((dens) => dens / max_val)
   }
   if (mode === `sum`) {
@@ -223,9 +200,9 @@ const is_pymatgen_format = (obj: Record<string, unknown>): boolean => {
   return false
 }
 
-// Extract frac_coords/label from pymatgen qpoint, matching label from labels_dict if needed
-// `label_entries` is Object.entries(labels_dict) hoisted by the caller: it is the same for
-// every qpoint, and rebuilding it per qpoint allocated an array of pairs per point.
+// Extract frac_coords/label from pymatgen qpoint, matching label from labels_dict if needed.
+// `label_entries` is Object.entries(labels_dict), hoisted by the caller since it is the same
+// for every qpoint.
 const parse_qpoint = (qpt: unknown, label_entries: [string, Vec3][]): types.QPoint | null => {
   const frac_coords = is_vec3(qpt)
     ? ([qpt[0], qpt[1], qpt[2]] as Vec3)
@@ -349,8 +326,7 @@ function convert_pymatgen_band_structure(
   const disc_indices = steps.flatMap((step, idx) => (step > threshold ? [idx + 1] : []))
   const disc_set = new Set(disc_indices)
 
-  // Cumulative distance (skip discontinuities). Spreading the accumulator per step would
-  // copy the whole array n times, i.e. O(n²) for what is one pass.
+  // Cumulative distance, not advanced across discontinuities
   const distance = [0]
   for (const [idx, step] of steps.entries()) {
     distance.push(disc_set.has(idx + 1) ? distance[idx] : distance[idx] + step)
@@ -788,7 +764,7 @@ export function generate_ribbon_path(
     (width) => Number.isFinite(width) && width > 0,
   )
   if (finite_positive_widths.length === 0) return ``
-  const max_width_val = Math.max(...finite_positive_widths)
+  const max_width_val = array_max(finite_positive_widths)
 
   // Build upper edge path (forward direction)
   const upper_points: string[] = []
@@ -852,21 +828,21 @@ export function negative_fraction(values: number[]): number {
   return total > 0 ? neg / total : 0
 }
 
-// Check if raw band structure input has electronic markers (efermi, kpoints, or electronic @class).
-// Must be called on raw input before normalization since these fields aren't preserved.
-function is_electronic_band_struct(bs: unknown): boolean {
-  if (!is_plain_object(bs)) return false
-  // Electronic band structures have efermi field
-  if (typeof bs.efermi === `number`) return true
-  // Pymatgen electronic format uses kpoints (not qpoints)
-  if (Array.isArray(bs.kpoints) && bs.kpoints.length > 0) return true
-  // Pymatgen @class: BandStructure* but not Phonon*
-  const raw_class = bs[`@class`]
-  const py_class_name = typeof raw_class === `string` ? raw_class : ``
-  if (py_class_name.startsWith(`BandStructure`) && !py_class_name.includes(`Phonon`)) {
-    return true
-  }
-  return false
+// Whether raw band structure input carries electronic markers: an efermi field, pymatgen
+// kpoints (phonon input has qpoints), a BandStructure* (not Phonon*) @class or an
+// electronic_structure @module. Must run on the raw input: normalization strips these fields.
+export function is_electronic_band_struct(band_struct: unknown): boolean {
+  if (!is_plain_object(band_struct)) return false
+  if (typeof band_struct.efermi === `number`) return true
+  if (Array.isArray(band_struct.kpoints) && band_struct.kpoints.length > 0) return true
+  const py_class = band_struct[`@class`]
+  const py_module = band_struct[`@module`]
+  return (
+    (typeof py_class === `string` &&
+      py_class.startsWith(`BandStructure`) &&
+      !py_class.includes(`Phonon`)) ||
+    (typeof py_module === `string` && py_module.includes(`electronic_structure`))
+  )
 }
 
 // A single object (recognised by any of `marker_keys`) as a one-element list, a dict of
@@ -936,21 +912,21 @@ export function parse_axis_label(label: string): { name: string; unit?: string }
 const format_tooltip_line = (name: string, value: string, unit?: string) =>
   `${name}: ${value}${unit ? ` ${unit}` : ``}`
 
-// Format DOS tooltip content from axis labels and values
-export function format_dos_tooltip(
-  x_formatted: string,
-  y_formatted: string,
-  label: string | null,
-  is_horizontal: boolean,
-  is_phonon: boolean,
-  units: FrequencyUnit,
-  x_axis_label: string,
-  y_axis_label: string,
-  num_series: number,
-): { title?: string; lines: string[] } {
-  // Horizontal DOS puts frequency/energy on y and density on x; the tooltip always lists
-  // the y axis first
-  const [x_parsed, y_parsed] = [x_axis_label, y_axis_label].map(parse_axis_label)
+// DOS tooltip content from the axis labels and the hovered point's formatted values. The
+// series label is the title only when several DOS are plotted.
+export function format_dos_tooltip(opts: {
+  x_formatted: string
+  y_formatted: string
+  label: string | null
+  is_horizontal: boolean // frequency/energy on y and density on x
+  is_phonon: boolean
+  units: FrequencyUnit
+  x_axis_label: string
+  y_axis_label: string
+  num_series: number
+}): { title?: string; lines: string[] } {
+  const { x_formatted, y_formatted, label, is_horizontal, is_phonon, units } = opts
+  const [x_parsed, y_parsed] = [opts.x_axis_label, opts.y_axis_label].map(parse_axis_label)
   const freq_line = (parsed: { name: string; unit?: string }, value: string) =>
     format_tooltip_line(
       parsed.name || (is_phonon ? `Frequency` : `Energy`),
@@ -959,10 +935,11 @@ export function format_dos_tooltip(
     )
   const density_line = (parsed: { name: string }, value: string) =>
     format_tooltip_line(parsed.name || `Density`, value)
+  // the frequency/energy line always comes first
   const lines = is_horizontal
     ? [freq_line(y_parsed, y_formatted), density_line(x_parsed, x_formatted)]
     : [density_line(y_parsed, y_formatted), freq_line(x_parsed, x_formatted)]
-  return { title: num_series > 1 && label ? label : undefined, lines }
+  return { title: opts.num_series > 1 && label ? label : undefined, lines }
 }
 
 // Spin mode options for DOS visualization

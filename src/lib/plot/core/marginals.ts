@@ -328,8 +328,8 @@ export function marginal_hit(
   return hover(best.curve, { pos: best.pos })
 }
 
-// Co-located defaults (mirrors REF_LINE_STYLE_DEFAULTS in types.ts). Deliberately NOT part of
-// settings.ts DEFAULTS to avoid pulling marginals into the settings-UI JSON schema.
+// Deliberately NOT part of settings.ts DEFAULTS, which would pull marginals into the
+// settings-UI JSON schema.
 export const MARGINAL_DEFAULTS = {
   type: `histogram` as MarginalType,
   size: 64,

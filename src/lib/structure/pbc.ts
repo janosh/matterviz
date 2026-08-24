@@ -51,10 +51,10 @@ const is_scattered_trajectory = (sites: Site[]): boolean => {
   return atoms_outside_cell.length > sites.length * 0.1
 }
 
+// Image atoms for PBC as [atom_idx, image_xyz, image_abc, is_completion?] tuples; is_completion
+// marks phase-2 images that only complete bonds / coordination polyhedra at cell faces
+// (renderers may hide them). Skips scattered trajectories.
 export function find_image_atoms(structure: AnyStructure): [number, Vec3, Vec3, boolean?][] {
-  // Find image atoms for PBC. Returns [atom_idx, image_xyz, image_abc, is_completion?]
-  // tuples; is_completion marks phase-2 images that only complete bonds / coordination
-  // polyhedra at cell faces (renderers may hide them). Skips scattered trajectories.
   if (!(`lattice` in structure) || structure.sites.length === 0) return []
   if (is_scattered_trajectory(structure.sites)) return []
 
@@ -101,21 +101,20 @@ export function find_image_atoms(structure: AnyStructure): [number, Vec3, Vec3, 
           selected_shift[Math.abs(edge_dims[bit]) - 1] += Math.sign(edge_dims[bit])
         }
       }
-      if (selected_shift.every((val) => val === 0)) continue
+      if (selected_shift[0] === 0 && selected_shift[1] === 0 && selected_shift[2] === 0)
+        continue
 
-      const [s_a, s_b, s_c] = site.abc
       const img_abc: Vec3 = [
-        s_a + selected_shift[0],
-        s_b + selected_shift[1],
-        s_c + selected_shift[2],
+        site.abc[0] + selected_shift[0],
+        site.abc[1] + selected_shift[1],
+        site.abc[2] + selected_shift[2],
       ]
-      if (img_abc[0] === s_a && img_abc[1] === s_b && img_abc[2] === s_c) continue
-
       const img_xyz = frac_to_cart(img_abc)
-      // Skip zero-displacement images (guards against FP edge cases)
-      const displacement = math.subtract(img_xyz, site.xyz)
-      const displacement_len_sq = displacement.reduce((sum, val) => sum + val * val, 0)
-      if (displacement_len_sq < displacement_eps_sq) continue
+      // A shift along a zero-length lattice vector (degenerate cell) lands on the atom itself
+      const diff_x = img_xyz[0] - site.xyz[0]
+      const diff_y = img_xyz[1] - site.xyz[1]
+      const diff_z = img_xyz[2] - site.xyz[2]
+      if (diff_x * diff_x + diff_y * diff_y + diff_z * diff_z < displacement_eps_sq) continue
 
       image_sites.push([idx, img_xyz, img_abc])
     }
@@ -220,15 +219,16 @@ export function find_image_atoms(structure: AnyStructure): [number, Vec3, Vec3, 
       return false
     }
 
-    // Dedupe against phase-1 images via (site, integer shift) keys
-    const seen_images = new Set(
-      image_sites.map(
-        ([idx, _xyz, img_abc]) =>
-          `${idx}|${img_abc
-            .map((coord, axis) => Math.round(coord - structure.sites[idx].abc[axis]))
-            .join(`,`)}`,
-      ),
-    )
+    // Dedupe against phase-1 images via (site, integer shift) keys. Shifts are -1/0/1 per
+    // axis, so site index and shift pack into one integer (no string per candidate).
+    const image_key = (idx: number, shift_a: number, shift_b: number, shift_c: number) =>
+      idx * 27 + (shift_a + 1) * 9 + (shift_b + 1) * 3 + shift_c + 1
+    const seen_images = new Set<number>()
+    for (const [idx, , img_abc] of image_sites) {
+      const { abc } = structure.sites[idx]
+      const shift = (axis: number) => Math.round(img_abc[axis] - abc[axis])
+      seen_images.add(image_key(idx, shift(0), shift(1), shift(2)))
+    }
 
     // reused scratch: shifts[axis] holds [0, +1?, -1?], counts[axis] how many are live
     const shifts = [
@@ -260,7 +260,7 @@ export function find_image_atoms(structure: AnyStructure): [number, Vec3, Vec3, 
           for (let idx_c = 0; idx_c < counts[2]; idx_c++) {
             const shift_c = shifts[2][idx_c]
             if (shift_a === 0 && shift_b === 0 && shift_c === 0) continue
-            const key = `${idx}|${shift_a},${shift_b},${shift_c}`
+            const key = image_key(idx, shift_a, shift_b, shift_c)
             if (seen_images.has(key)) continue
             const img_abc: Vec3 = [
               site.abc[0] + shift_a,

@@ -155,28 +155,32 @@ function intersect_bragg_planes(planes: BraggPlane[], order: number): Vec3[] {
 
         const dist_k = distances[idx_k]
         const off_ik = (idx_i * n_planes + idx_k) * 3 // nₖ × nᵢ = −(nᵢ × nₖ)
-        const vertex: Vec3 = [0, 1, 2].map(
-          (axis) =>
-            (dist_i * cross[off_jk + axis] -
-              dist_j * cross[off_ik + axis] +
-              dist_k * cross[off_ij + axis]) /
-            det,
-        ) as Vec3
+        const vx =
+          (dist_i * cross[off_jk] - dist_j * cross[off_ik] + dist_k * cross[off_ij]) / det
+        const vy =
+          (dist_i * cross[off_jk + 1] -
+            dist_j * cross[off_ik + 1] +
+            dist_k * cross[off_ij + 1]) /
+          det
+        const vz =
+          (dist_i * cross[off_jk + 2] -
+            dist_j * cross[off_ik + 2] +
+            dist_k * cross[off_ij + 2]) /
+          det
 
         // Count how many planes this vertex is beyond (with early termination)
         let beyond_count = 0
         for (let p_idx = 0; p_idx < n_planes; p_idx++) {
-          const dot =
-            vertex[0] * normals[p_idx][0] +
-            vertex[1] * normals[p_idx][1] +
-            vertex[2] * normals[p_idx][2]
-          if (dot > distances[p_idx] + TOL) {
+          const [px, py, pz] = normals[p_idx]
+          if (vx * px + vy * py + vz * pz > distances[p_idx] + TOL) {
             beyond_count++
             if (beyond_count >= order) break
           }
         }
+        if (beyond_count >= order) continue
 
-        if (beyond_count < order && !dedup.has_duplicate(vertex)) {
+        const vertex: Vec3 = [vx, vy, vz]
+        if (!dedup.has_duplicate(vertex)) {
           vertices.push(vertex)
           dedup.add(vertex)
         }

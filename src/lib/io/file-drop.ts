@@ -90,9 +90,7 @@ export const create_file_drop_handler = (
       }
       if (failures.length > 0) {
         opts.on_error?.(
-          `Failed to load ${failures.length} file${failures.length > 1 ? `s` : ``} — ${failures.join(
-            `; `,
-          )}`,
+          `Failed to load ${plural(failures.length, `file`)} — ${failures.join(`; `)}`,
         )
       }
     } catch (exc) {

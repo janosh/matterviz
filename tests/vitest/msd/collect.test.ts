@@ -1,10 +1,11 @@
-import type { MsdPositions } from '$lib/msd'
-import { calc_msd, collect_msd_positions, MsdPlot, suggest_msd_frame_stride } from '$lib/msd'
+import { calc_msd, collect_msd_positions, MsdPlot } from '$lib/msd'
 import TrajectoryMsdPane from '$lib/msd/TrajectoryMsdPane.svelte'
 import {
-  trajectory_from_frames,
   type CollectPositionsOptions,
   type ParseProgress,
+  suggest_analysis_frame_stride,
+  trajectory_from_frames,
+  type TrajectoryPositionStream,
   type TrajectoryRun,
 } from '$lib/trajectory'
 import { mount, tick, unmount } from 'svelte'
@@ -60,7 +61,7 @@ describe(`collect_msd_positions`, () => {
       return backing.collect_positions?.({
         ...options,
         on_progress: undefined,
-      }) as Promise<MsdPositions>
+      }) as Promise<TrajectoryPositionStream>
     })
     const run = { ...backing, collect_positions }
     await collect_msd_positions(run, {
@@ -78,20 +79,23 @@ describe(`collect_msd_positions`, () => {
     expect(progress).toHaveBeenCalledWith({ current: 1, total: 4, stage: `Collecting` })
   })
 
-  it(`rejects runs too short for displacement analysis`, async () => {
-    await expect(collect_msd_positions(make_run(1))).rejects.toThrow(`need at least 2 frames`)
-  })
-
-  it(`reports when a host run cannot make a full position pass`, async () => {
-    const { collect_positions: _collect_positions, ...frame_only } = make_run(4)
-    await expect(collect_msd_positions(frame_only)).rejects.toThrow(
+  it.each([
+    [`a single-frame run`, () => make_run(1), `need at least 2 frames`],
+    [
+      `a host run without a full position pass`,
+      () => {
+        const { collect_positions: _collect_positions, ...frame_only } = make_run(4)
+        return frame_only
+      },
       `only serves frames one at a time`,
-    )
+    ],
+  ])(`rejects %s`, async (_label, run, error) => {
+    await expect(collect_msd_positions(run())).rejects.toThrow(error)
   })
 
   it(`enforces the memory budget and suggests the minimum fitting stride`, async () => {
     const run = make_run(100)
-    expect(suggest_msd_frame_stride(run, 1000)).toBe(5)
+    expect(suggest_analysis_frame_stride(run, 1000)).toBe(5)
     await expect(collect_msd_positions(run, { max_bytes: 1000 })).rejects.toThrow(
       `Use frame_stride >= 5`,
     )

@@ -2,6 +2,7 @@
 // Enables atmosphere-controlled phase diagram analysis
 
 import { count_atoms_in_composition } from '$lib/composition/reduce'
+import type { ElementSymbol } from '$lib/element'
 import type { Vec2 } from '$lib/math'
 import type {
   GasAnalysis,
@@ -9,9 +10,8 @@ import type {
   GasThermodynamicsConfig,
   GasThermodynamicsProvider,
   PhaseData,
-} from '$lib/convex-hull/types'
-import { DEFAULT_GAS_PRESSURES, GAS_SPECIES } from '$lib/convex-hull/types'
-import type { ElementSymbol } from '$lib/element'
+} from './types'
+import { DEFAULT_GAS_PRESSURES, GAS_SPECIES } from './types'
 
 // Physical constants
 export const R_EV_PER_K = 8.617333262e-5 // Gas constant in eV/K (k_B)
@@ -72,28 +72,26 @@ const DEFAULT_ENTHALPY: Readonly<Partial<Record<GasSpecies, number>>> = {
   // O2, N2, H2, F2 are reference states with H_f = 0
 }
 
-// Linearly interpolate T*S value at given temperature (clamped to the tabulated range)
-function interpolate_ts(values: number[], T: number): number {
+// Linearly interpolate a T*S value at `temperature` (clamped to the tabulated range)
+function interpolate_ts(values: number[], temperature: number): number {
   const temps = TS_TEMPERATURES
-  if (T <= temps[0]) return values[0]
-  if (T >= temps[temps.length - 1]) return values[values.length - 1]
+  if (temperature <= temps[0]) return values[0]
+  if (temperature >= temps[temps.length - 1]) return values[values.length - 1]
 
   // Find bracketing indices
   let idx = 0
-  while (idx < temps.length - 1 && temps[idx + 1] < T) idx++
+  while (idx < temps.length - 1 && temps[idx + 1] < temperature) idx++
 
-  const fraction = (T - temps[idx]) / (temps[idx + 1] - temps[idx])
+  const fraction = (temperature - temps[idx]) / (temps[idx + 1] - temps[idx])
   return values[idx] + fraction * (values[idx + 1] - values[idx])
 }
 
 // Default provider backed by the built-in tables above. Stateless, so one shared instance.
 const DEFAULT_GAS_PROVIDER: GasThermodynamicsProvider = {
-  get_standard_chemical_potential(gas: GasSpecies, T: number): number {
-    // μ°(T) = H_f - T*S
-    // For elemental gases (O2, N2, H2, F2), H_f = 0
-    const H_f = DEFAULT_ENTHALPY[gas] ?? 0
-    const TS = interpolate_ts(DEFAULT_TS_DATA[gas], T)
-    return H_f - TS
+  // μ°(T) = H_f - T*S; the elemental gases (O2, N2, H2, F2) have H_f = 0
+  get_standard_chemical_potential(gas: GasSpecies, temperature: number): number {
+    const formation_enthalpy = DEFAULT_ENTHALPY[gas] ?? 0
+    return formation_enthalpy - interpolate_ts(DEFAULT_TS_DATA[gas], temperature)
   },
 
   get_supported_gases(): GasSpecies[] {
@@ -120,29 +118,20 @@ const GAS_NUM_ATOMS: Readonly<Record<GasSpecies, number>> = {
   H2O: 3,
 }
 
-// Compute gas chemical potential at given temperature and pressure
-// Following PIRO's convention, all values are per atom:
-// μ_per_atom(T, P) = H_per_atom - (TS)_per_atom + k_B·T·ln(P/P₀) / num_atoms
-// provider - Thermodynamic data provider
-// gas - Gas species
-// T - Temperature in Kelvin
-// P - Pressure in bar
-// Returns chemical potential in eV/atom
+// Gas chemical potential per atom at temperature (K) and pressure (bar), PIRO's convention:
+// μ_per_atom(T, P) = μ°_per_atom(T) + k_B·T·ln(P/P₀) / num_atoms, in eV/atom. An invalid or
+// non-finite pressure counts as the reference pressure.
 export function compute_gas_chemical_potential(
   provider: GasThermodynamicsProvider,
   gas: GasSpecies,
-  T: number,
-  P: number,
+  temperature: number,
+  pressure: number,
 ): number {
-  const mu_standard = provider.get_standard_chemical_potential(gas, T)
-
-  // Clamp invalid/infinite pressure to reference pressure
-  const effective_P = Number.isFinite(P) && P > 0 ? P : P_REF
-
-  // μ_per_atom(T, P) = μ°_per_atom(T) + k_B·T·ln(P/P₀) / num_atoms
-  // The RT·ln(P) term must be divided by num_atoms to match PIRO's per-atom convention
-  const num_atoms = GAS_NUM_ATOMS[gas]
-  return mu_standard + (R_EV_PER_K * T * Math.log(effective_P / P_REF)) / num_atoms
+  const mu_standard = provider.get_standard_chemical_potential(gas, temperature)
+  const effective_pressure = Number.isFinite(pressure) && pressure > 0 ? pressure : P_REF
+  // The RT·ln(P) term is per molecule, hence divided by the atoms per molecule
+  const pressure_term = R_EV_PER_K * temperature * Math.log(effective_pressure / P_REF)
+  return mu_standard + pressure_term / GAS_NUM_ATOMS[gas]
 }
 
 // Gas Analysis and Corrections
@@ -198,31 +187,25 @@ export function analyze_gas_data(
   }
 }
 
-// Get effective pressures for gases, using defaults for unspecified values
+// Pressures for every gas: the config's finite positive values over the defaults
 export function get_effective_pressures(
   config: GasThermodynamicsConfig,
 ): Record<GasSpecies, number> {
   const pressures = { ...DEFAULT_GAS_PRESSURES }
-  if (config.pressures) {
-    for (const [gas, P] of Object.entries(config.pressures)) {
-      if (Number.isFinite(P) && P > 0) {
-        pressures[gas as GasSpecies] = P
-      }
-    }
+  for (const [gas, pressure] of Object.entries(config.pressures ?? {})) {
+    if (Number.isFinite(pressure) && pressure > 0) pressures[gas as GasSpecies] = pressure
   }
   return pressures
 }
 
-// Compute gas chemical potential correction for an entry's energy
-// The correction accounts for the difference between the gas chemical potential
-// at the given (T, P) and the reference state (0 K, 1 bar).
-// For a compound A_x B_y where B comes from gas B2:
-// ΔE_correction = (y/2) * [μ(B2, T, P) - μ(B2, 0K, 1bar)]
-// This shifts the formation energy based on the gas atmosphere.
+// Chemical potential correction (eV/atom of compound) for an entry's energy: the difference
+// between the gas chemical potential at (T, P) and at the reference state (0 K, 1 bar). For a
+// compound A_x B_y where B comes from gas B2: ΔE = (y/2) * [μ(B2, T, P) - μ(B2, 0K, 1bar)],
+// shifting the formation energy with the gas atmosphere.
 export function compute_gas_correction(
   entry: PhaseData,
   config: GasThermodynamicsConfig,
-  T: number,
+  temperature: number,
   pressures: Record<GasSpecies, number>,
 ): number {
   const provider = config.provider ?? get_default_gas_provider()
@@ -242,19 +225,20 @@ export function compute_gas_correction(
     const gas = element_to_gas[el]
     if (!gas || !enabled_gases.has(gas)) continue
 
-    const P = pressures[gas]
     const stoich = GAS_STOICHIOMETRY[gas][el] ?? 1
     const num_atoms = GAS_NUM_ATOMS[gas]
 
-    // Chemical potential per atom of gas at current (T, P)
-    const mu_TP = compute_gas_chemical_potential(provider, gas, T, P)
-
-    // Chemical potential per atom of gas at reference (0K, 1bar) - just H_f since T*S = 0 at 0K
+    // Per atom of gas at (T, P) versus the reference (0 K, 1 bar), where T*S vanishes
+    const mu_at_conditions = compute_gas_chemical_potential(
+      provider,
+      gas,
+      temperature,
+      pressures[gas],
+    )
     const mu_ref = provider.get_standard_chemical_potential(gas, 0)
 
-    // Correction per atom of this element
-    // Convert from per-atom-of-gas to per-atom-of-element: multiply by num_atoms, divide by stoich
-    const delta_mu = ((mu_TP - mu_ref) * num_atoms) / stoich
+    // Per atom of gas → per atom of this element: multiply by num_atoms, divide by stoich
+    const delta_mu = ((mu_at_conditions - mu_ref) * num_atoms) / stoich
 
     // Total correction for this element in the compound (per atom of compound)
     correction += (amount / n_atoms) * delta_mu
@@ -276,7 +260,7 @@ export function compute_gas_correction(
 export function apply_gas_corrections(
   entries: PhaseData[],
   config: GasThermodynamicsConfig | undefined,
-  T: number,
+  temperature: number,
 ): PhaseData[] {
   if (!config?.enabled_gases?.length) return entries
 
@@ -295,7 +279,7 @@ export function apply_gas_corrections(
     )
     if (elements_in_entry.length !== 1) return entry // Not unary, skip
 
-    const correction = compute_gas_correction(entry, config, T, pressures)
+    const correction = compute_gas_correction(entry, config, temperature, pressures)
 
     // If no correction needed, return entry unchanged
     if (Math.abs(correction) < 1e-12) return entry
@@ -311,11 +295,3 @@ export function apply_gas_corrections(
 // Format chemical potential for display (e.g., "-1.23 eV")
 export const format_chemical_potential = (mu: number, decimals = 3): string =>
   `${mu >= 0 ? `+` : ``}${mu.toFixed(decimals)} eV`
-
-// Format pressure for display (scientific notation for very small/large values)
-export function format_pressure(P: number): string {
-  if (P >= 0.01 && P < 100) {
-    return `${P.toPrecision(3)} bar`
-  }
-  return `${P.toExponential(2)} bar`
-}

@@ -91,26 +91,33 @@ describe(`canvas-draw: markers and hit testing`, () => {
     expect(draw.marker_path_data(5, `blob` as never)).toBeNull()
   })
 
-  test(`find_hull_entry_at_mouse uses the scaled marker radius plus 5px slack`, () => {
+  test(`find_hull_entry_at_mouse uses the scaled marker radius plus 5px slack, front point first`, () => {
     const canvas = {
       getBoundingClientRect: () => ({ left: 10, top: 10 }),
     } as unknown as HTMLCanvasElement
     const entry = { x: 100, y: 100, z: 0, is_stable: false } as ConvexHullEntry
-    const project = (x: number, y: number) => ({ x, y, depth: 0 })
+    const point = { entry, projected: { x: 100, y: 100, depth: 0 } }
     const hit = (client_x: number, scale = 1) =>
       draw.find_hull_entry_at_mouse(
         canvas,
         { clientX: client_x, clientY: 110 } as MouseEvent,
-        [entry],
-        project,
+        [point],
         scale,
       )
     expect(hit(118)).toBe(entry) // 8 px away < 4 + 5
     expect(hit(120)).toBeNull() // 10 px away
     expect(hit(120, 2)).toBe(entry) // radius scales with the container: 4 * 2 + 5 = 13 > 10
+    expect(draw.find_hull_entry_at_mouse(undefined, {} as MouseEvent, [point], 1)).toBeNull()
+    // points are painted in array order, so the last one at the cursor is the one on top
+    const behind = { ...point, entry: { ...entry, entry_id: `behind` } }
     expect(
-      draw.find_hull_entry_at_mouse(undefined, {} as MouseEvent, [entry], project, 1),
-    ).toBeNull()
+      draw.find_hull_entry_at_mouse(
+        canvas,
+        { clientX: 110, clientY: 110 } as MouseEvent,
+        [behind, point],
+        1,
+      ),
+    ).toBe(entry)
   })
 
   test(`draw_corner_labels offsets 2D and 3D corners away from their centroid`, () => {

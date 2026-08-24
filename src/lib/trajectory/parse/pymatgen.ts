@@ -162,10 +162,7 @@ export function parse_pymatgen_trajectory(
   return {
     format: `pymatgen-json`,
     frames,
-    ...(time_step === null ? {} : { time_step, time_unit: `fs` }),
-    metadata: {
-      species_list: [...new Set(frame_elements)],
-      periodic_boundary_conditions: [true, true, true],
-    },
+    ...(time_step === null ? {} : { time_step: { value: time_step, unit: `fs` } }),
+    metadata: {},
   }
 }

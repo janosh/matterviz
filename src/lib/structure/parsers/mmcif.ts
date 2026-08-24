@@ -2,19 +2,17 @@
 // (`_atom_site.Cartn_x`) rather than the underscore tags (`_atom_site_fract_x`) that
 // parse_cif understands, which is why it needs its own atom-site loop reader.
 import type { ElementSymbol } from '$lib/element'
-import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { AnyStructure, Site } from '$lib/structure'
 import { wrap_to_unit_cell } from '$lib/structure/pbc'
 import { make_site } from '$lib/structure/site'
 import {
-  cart_to_frac_with_fallback,
-  cell_params_to_matrix,
+  cell_frame,
   diag_error,
   diag_warn,
+  drop_placeholder_cell,
   element_from_candidates,
   guard_parse,
-  is_placeholder_cell,
   iter_cif_loops,
   parsed_result,
   parse_cif_uncertain_number,
@@ -64,13 +62,9 @@ const build_atom_site_indices = (headers: string[]): Record<string, number> => {
 
 // The `_cell` block, or null for a molecule: absent cell tags, or the 1 1 1 90 90 90
 // placeholder MD and docking tools write for aperiodic systems
-const read_mmcif_cell = (lines: string[]): number[] | null => {
+const read_mmcif_cell = (lines: string[]): readonly number[] | null => {
   const params = read_cell_params(lines, `mmCIF`)
-  if (params && is_placeholder_cell(params)) {
-    diag_warn(`mmCIF: ignoring placeholder _cell (1 1 1 90 90 90), treating as molecule`)
-    return null
-  }
-  return params
+  return params && drop_placeholder_cell(params, `mmCIF`, `_cell`)
 }
 
 // type_symbol is an element symbol, so its two-character reading wins (`FE` is iron).
@@ -207,24 +201,14 @@ export const parse_mmcif = (content: string): AnyStructure | null =>
       )
     }
 
-    const cell_params = read_mmcif_cell(lines)
-    const lattice_matrix = cell_params ? cell_params_to_matrix(cell_params) : null
+    const { lattice_matrix, to_frac } = cell_frame(read_mmcif_cell(lines), `mmCIF _cell`)
     if (is_fractional && !lattice_matrix) {
       diag_error(`mmCIF has fractional coordinates but no usable _cell parameters`)
       return null
     }
     // Cartesian mmCIF coordinates are left unwrapped so macromolecules stay intact;
     // fractional input is wrapped into the primary cell like parse_cif does
-    const converters =
-      lattice_matrix && cell_params
-        ? {
-            cart_to_frac: cart_to_frac_with_fallback(lattice_matrix, {
-              axis_lengths: [cell_params[0], cell_params[1], cell_params[2]],
-              context: `mmCIF _cell`,
-            }),
-            frac_to_cart: math.create_frac_to_cart(lattice_matrix),
-          }
-        : null
+    const frac_to_cart = lattice_matrix && math.create_frac_to_cart(lattice_matrix)
 
     // Read a row's value for a field the loop may not declare at all
     const text_at = (row: string[], field: string): string | undefined =>
@@ -247,12 +231,8 @@ export const parse_mmcif = (content: string): AnyStructure | null =>
 
       const element = mmcif_element(text_at(row, `symbol`), text_at(row, `label`), atom_idx)
 
-      let abc: Vec3 = [0, 0, 0]
-      let xyz: Vec3 = coords
-      if (is_fractional && converters) {
-        abc = wrap_to_unit_cell(coords)
-        xyz = converters.frac_to_cart(abc)
-      } else if (converters) abc = converters.cart_to_frac.convert(coords)
+      const abc = is_fractional ? wrap_to_unit_cell(coords) : to_frac(coords)
+      const xyz = is_fractional && frac_to_cart ? frac_to_cart(abc) : coords
 
       const occupancy = number_at(row, `occupancy`)
       const b_factor = number_at(row, `b_factor`)

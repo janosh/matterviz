@@ -15,13 +15,9 @@
 //
 // Schema reference: ferrox src/io/vasp/hdf5/mod.rs (which follows py4vasp's
 // VASP 6.x schema definitions).
-import { calc_lattice_params, create_frac_to_cart, type Vec3 } from '$lib/math'
+import { create_frac_to_cart, type Vec3 } from '$lib/math'
 import type * as h5wasm from 'h5wasm'
-import {
-  count_elements,
-  create_trajectory_frame,
-  validate_3x3_matrix,
-} from '$lib/trajectory/helpers'
+import { create_trajectory_frame, validate_3x3_matrix } from '$lib/trajectory/helpers'
 import type { TrajectoryFrame } from '$lib/trajectory/index'
 import {
   expand_ion_types,
@@ -255,10 +251,7 @@ export function parse_vaspout_h5_file(h5_file: h5wasm.File, warn: WarnFn): Parse
     const lattice = scale_matrix(validate_3x3_matrix(lattice_data), frame_scale)
     const frac_to_cart = create_frac_to_cart(lattice)
     const positions = frac_positions.map((frac) => frac_to_cart(frac as Vec3))
-    const metadata: Record<string, unknown> = {
-      volume: calc_lattice_params(lattice).volume,
-      ...scf_frame_metadata(scf),
-    }
+    const metadata: Record<string, unknown> = { ...scf_frame_metadata(scf) }
     const energy = finite_or_null(raw_energy)
     if (energy !== null) metadata.energy = energy
     if (Array.isArray(forces)) metadata.forces = forces
@@ -371,12 +364,9 @@ export function parse_vaspout_h5_file(h5_file: h5wasm.File, warn: WarnFn): Parse
     format: `vaspout-h5`,
     frames,
     ...(potim !== null && potim > 0 && is_md_run && !frames_are_scf_steps
-      ? { time_step: potim, time_unit: `fs` }
+      ? { time_step: { value: potim, unit: `fs` } }
       : {}),
     metadata: {
-      element_counts: count_elements(elements),
-      periodic_boundary_conditions: [true, true, true],
-      has_cell_info: true,
       ...(energy_tag ? { energy_tag } : {}),
       ...(dropped_steps > 0 ? { dropped_steps } : {}),
       ...(frames_are_scf_steps ? { frames_are_scf_steps: true } : {}),

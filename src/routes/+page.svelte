@@ -9,10 +9,9 @@
     PeriodicTableDemo,
     PhononSpectraDemo,
   } from '$site'
-  import { site_file_info } from '$site/imports'
   import { molecule_files } from '$site/molecules'
   import { structure_files } from '$site/structures'
-  import { get_trajectory_type, trajectory_files } from '$site/trajectories'
+  import { trajectory_files } from '$site/trajectories'
   import { CopyButton, Icon } from 'svelte-widgets'
   import { Cursor, NPM, VSCode } from 'svelte-widgets/icons'
   import { tooltip } from 'svelte-widgets/attachments'
@@ -132,9 +131,8 @@
 </p>
 
 <FilePicker
-  files={Object.keys(trajectory_files).map((path) => site_file_info(path))}
+  files={trajectory_files}
   show_category_filters={false}
-  type_mapper={get_trajectory_type}
   active_files={[active_trajectory_file]}
 />
 

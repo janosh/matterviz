@@ -1,40 +1,19 @@
-<script module lang="ts">
-  import { clear_tick_metrics_cache } from '$lib/plot/core/layout'
-  import { invalidate_text_metrics_after_fonts_ready } from '$lib/plot/core/text-metrics'
-
-  // Share one invalidation per FontFaceSet readiness cycle; browsers replace `ready` whenever
-  // a later font load starts.
-  let observed_fonts_ready: PromiseLike<unknown> | undefined
-  let fonts_ready_metrics = Promise.resolve()
-  const after_fonts_ready_metrics = (): Promise<void> => {
-    const fonts_ready = document.fonts?.ready
-    if (fonts_ready !== observed_fonts_ready) {
-      observed_fonts_ready = fonts_ready
-      // Fonts that never resolve leave the fallback measurements in place, which is fine
-      fonts_ready_metrics = invalidate_text_metrics_after_fonts_ready({
-        ready: fonts_ready,
-      }).then(clear_tick_metrics_cache, () => {})
-    }
-    return fonts_ready_metrics
-  }
-</script>
-
 <script lang="ts">
   import { format_tick_values } from '$lib/labels'
   import type { Vec2 } from '$lib/math'
-  import { AXIS_LABEL_CONTAINER } from '$lib/plot/core/axis-utils'
   import AxisLabel from '$lib/plot/core/components/AxisLabel.svelte'
   import {
+    AXIS_TITLE_WRAP_WIDTH,
     resolve_axis_title_layout,
-    resolve_tick_layout,
     type Sides,
-    TICK_LABEL_HEIGHT,
   } from '$lib/plot/core/layout'
   import {
     DEFAULT_FONT_SPEC,
-    resolve_font_spec,
     type FontSpec,
+    invalidate_text_metrics_after_fonts_ready,
+    resolve_font_spec,
   } from '$lib/plot/core/text-metrics'
+  import { resolve_tick_layout, TICK_LABEL_HEIGHT } from '$lib/plot/core/tick-layout'
   import type { AxisConfig } from '$lib/plot/core/types'
   import { DEFAULT_GRID_STYLE } from '$lib/plot/core/types'
   import { onMount, tick as svelte_tick } from 'svelte'
@@ -112,7 +91,9 @@
       on_tick_font?.(tick_font)
     }
     void resolve_rendered_font()
-    void after_fonts_ready_metrics().then(resolve_rendered_font)
+    // Re-resolve once web fonts land; the shared invalidation bumps the metrics revision the
+    // tick-layout memo is keyed on. Fonts that never resolve keep the fallback measurements.
+    void invalidate_text_metrics_after_fonts_ready().then(resolve_rendered_font, () => {})
     return () => {
       mounted = false
     }
@@ -146,9 +127,7 @@
   )
 
   // Same wrap width AxisLabel gets below, so both resolve the same line count
-  const title_wrap_width = $derived(
-    is_x ? Math.max(plot_w, AXIS_LABEL_CONTAINER.width) : undefined,
-  )
+  const title_wrap_width = $derived(is_x ? Math.max(plot_w, AXIS_TITLE_WRAP_WIDTH) : undefined)
   // Outside x-axis titles move past the rendered tick-label band. AxisLabel also centers its
   // block on the title point, which calc_auto_padding reserves for the first line only, so a
   // wrapped title is pushed outward by the extra lines and its first line stays where a single

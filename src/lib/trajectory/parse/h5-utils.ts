@@ -11,6 +11,7 @@ import type {
 } from '$lib/trajectory/index'
 import type { Dataset, Entity, Group } from 'h5wasm'
 import type * as h5wasm from 'h5wasm'
+import { DEFAULT_POSITION_STREAM_MAX_BYTES } from '../runs/accumulate'
 
 export const is_hdf5_dataset = (entity: Entity | null): entity is Dataset =>
   entity !== null && `to_array` in entity
@@ -92,17 +93,15 @@ export const lattice_from_values = (values: ArrayLike<number>, offset = 0): Matr
     ),
   )
 
-// Write a per-atom vec3 channel (velocities) onto a frame's sites
+// Write a per-atom vec3 channel (velocities) onto the sites of a freshly built frame
 export const attach_site_vectors = (
   frame: TrajectoryFrame,
   key: string,
   values: ArrayLike<number>,
 ): void => {
   for (const [atom_idx, site] of frame.structure.sites.entries()) {
-    site.properties = {
-      ...site.properties,
-      [key]: Array.from({ length: 3 }, (_unused, axis) => values[atom_idx * 3 + axis]),
-    }
+    const off = atom_idx * 3
+    site.properties[key] = [values[off], values[off + 1], values[off + 2]]
   }
 }
 
@@ -361,24 +360,9 @@ export const resolve_stream_channels = (
     frame_indices.length,
     channels.values_per_frame(vector_keys.length),
     signal_keys.reduce((total, key) => total + channels.signal_values(key), 0),
-    options.max_bytes ?? Number.POSITIVE_INFINITY,
+    options.max_bytes ?? DEFAULT_POSITION_STREAM_MAX_BYTES,
   )
   return { frame_stride, vector_keys, signal_keys, frame_indices }
-}
-
-export const read_numeric_first_axis = (
-  dataset: Dataset,
-  path: string,
-  entry_count: number,
-  values_per_entry: number,
-  error_label: string,
-): number[] => {
-  if (dataset.shape?.[0] !== entry_count) {
-    throw new Error(
-      `${error_label} ${path} has ${dataset.shape?.[0]} entries, expected ${entry_count}`,
-    )
-  }
-  return Array.from(read_numeric_samples(dataset, path, entry_count, values_per_entry))
 }
 
 export const read_numeric_samples = (

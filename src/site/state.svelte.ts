@@ -79,8 +79,6 @@ export function group_demo_routes(demos: string[]): RouteEntry[] {
   })
 }
 
-export const demo_routes = $state(
-  group_demo_routes(
-    routes.filter(({ filename }) => filename.includes(`/(demos)/`)).map(({ route }) => route),
-  ),
+export const demo_routes = group_demo_routes(
+  routes.filter(({ filename }) => filename.includes(`/(demos)/`)).map(({ route }) => route),
 )

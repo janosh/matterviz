@@ -119,7 +119,7 @@ describe(`package.json exports`, () => {
     expectTypeOf<DecorationSide>().toEqualTypeOf<`top` | `right` | `bottom` | `left`>()
     expectTypeOf<FreeAnnotationDecorationItem[`kind`]>().toEqualTypeOf<`free-annotation`>()
     expectTypeOf<PlotTitleLineKind>().toEqualTypeOf<`title` | `subtitle`>()
-    expect(resolve_plot_title({ text: `Title` }, { width: 100 }).lines[0]?.kind).toBe(`title`)
+    expect(resolve_plot_title({ text: `Title` }, { width: 100 }).title?.kind).toBe(`title`)
   })
 
   // The changelog promises the three worker clients and their shared `WorkerClient` type on
@@ -182,7 +182,7 @@ describe(`package.json exports`, () => {
   // structure export pulls in three.js) shares disk and CPU with every other worker under a
   // full-suite run, where 15 s was not always enough.
   test.skipIf(!has_dist)(
-    `built structure and element entry points retain strict public exports`,
+    `built structure export entry point retains strict public exports`,
     { timeout: 60_000 },
     async () => {
       const structure_export = await import(`../../dist/structure/export.js`)
@@ -200,25 +200,6 @@ describe(`package.json exports`, () => {
           `structure_to_poscar_str`,
           `structure_to_xyz_str`,
         ].toSorted(),
-      )
-
-      const element_data = await import(`../../dist/element/data.js`)
-      const expected_group_keys = [
-        `all`,
-        `alkali`,
-        `alkaline_earth`,
-        `transition`,
-        `post_transition`,
-        `metalloid`,
-        `nonmetal`,
-        `halogen`,
-        `noble_gas`,
-        `lanthanide`,
-        `actinide`,
-      ]
-      expect(element_data.element_group_keys).toEqual(new Set(expected_group_keys))
-      expect(element_data.element_groups.map((group) => group.value)).toEqual(
-        expected_group_keys,
       )
     },
   )

@@ -56,7 +56,7 @@ export type WebviewToHostMessage =
       command: `saveAs`
       filename: string
       content: string
-      is_binary?: boolean
+      is_binary: boolean
     }
 
 // Replies carry the request_id of the WebviewToHostMessage they answer

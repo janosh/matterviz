@@ -113,16 +113,19 @@ interface PhonopyCell {
   reciprocal_lattice?: number[][]
 }
 
+type OptimadeSpecies = NonNullable<OptimadeStructure[`attributes`][`species`]>[number]
+
 // Per OPTIMADE spec, species_at_sites holds species NAMES (e.g. 'Si1') resolved via the
 // species list: highest-concentration entry in chemical_symbols wins, non-element entries
 // like 'vacancy' are skipped, and unresolved names are treated as element symbols.
-// Returns the chosen element plus its index into the species' chemical_symbols
-// (sym_idx = -1 on fallback), so callers can read the matching mass/concentration entry.
+// Returns the chosen element, the species entry it came from and its index into that entry's
+// chemical_symbols (sym_idx = -1 on fallback), so callers can read the matching
+// mass/concentration entry.
 function resolve_optimade_element(
   species_name: string,
-  species_list: OptimadeStructure[`attributes`][`species`],
+  species_list: OptimadeSpecies[] | undefined,
   index: number,
-): { symbol: ElementSymbol; sym_idx: number } {
+): { symbol: ElementSymbol; sym_idx: number; spec: OptimadeSpecies | undefined } {
   const spec = species_list?.find((entry) => entry.name === species_name)
   let best: { symbol: ElementSymbol; conc: number; sym_idx: number } | undefined
   for (const [sym_idx, symbol] of (spec?.chemical_symbols ?? []).entries()) {
@@ -130,12 +133,12 @@ function resolve_optimade_element(
     const conc = spec?.concentration?.[sym_idx] ?? 0
     if (!best || conc > best.conc) best = { symbol, conc, sym_idx }
   }
-  if (best) return { symbol: best.symbol, sym_idx: best.sym_idx }
+  if (best) return { symbol: best.symbol, sym_idx: best.sym_idx, spec }
   // Fallback: the name may be an element with a trailing atom index (e.g. 'O1');
   // element symbols never contain digits, so stripping them is safe
   const stripped = species_name.replace(/\d+$/, ``)
-  if (is_elem_symbol(stripped)) return { symbol: stripped, sym_idx: -1 }
-  return { symbol: validate_element_symbol(species_name, index), sym_idx: -1 }
+  if (is_elem_symbol(stripped)) return { symbol: stripped, sym_idx: -1, spec }
+  return { symbol: validate_element_symbol(species_name, index), sym_idx: -1, spec }
 }
 
 export const parse_poscar = (content: string): Crystal | null =>
@@ -432,6 +435,17 @@ const cif_group_element = (text = ``): ElementSymbol | undefined => {
   return group === undefined ? undefined : CIF_GROUP_ELEMENTS[group]
 }
 
+// The element a CIF type symbol (`Fe2+`, `FE2+`, `O2-`, `NO3`) names: a group, then its
+// leading letters read two-then-one case-normalized; undefined when it names nothing
+const cif_type_symbol_element = (raw_symbol = ``): ElementSymbol | undefined => {
+  const letters = /^[A-Za-z]+/.exec(raw_symbol)?.[0] ?? ``
+  return (
+    cif_group_element(raw_symbol) ??
+    coerce_elem_symbol(capitalize_symbol(letters.slice(0, 2))) ??
+    coerce_elem_symbol(capitalize_symbol(letters.slice(0, 1)))
+  )
+}
+
 // The element a CIF atom-site row names, read in priority order. _atom_site_type_symbol is an
 // element symbol plus an optional charge (`Fe2+`, `O2-`, sometimes uppercase `FE2+`): a group
 // (CIF_GROUP_ELEMENTS), then its leading letters two-then-one case-normalized. The label only
@@ -450,11 +464,7 @@ const cif_row_element = (
   pdb_names = false,
 ): { element: ElementSymbol; ambiguity?: string } => {
   const symbol_letters = /^[A-Za-z]+/.exec(raw_symbol ?? ``)?.[0] ?? ``
-  const element =
-    cif_group_element(raw_symbol) ??
-    coerce_elem_symbol(capitalize_symbol(symbol_letters.slice(0, 2))) ??
-    coerce_elem_symbol(capitalize_symbol(symbol_letters.slice(0, 1))) ??
-    cif_group_element(raw_label)
+  const element = cif_type_symbol_element(raw_symbol) ?? cif_group_element(raw_label)
   if (element) return { element }
   // an all-caps label reads two letters first; `label_letters` is then its one-letter reading
   const { all_caps = ``, letters: label_letters = all_caps[0] ?? `` } =
@@ -476,7 +486,7 @@ const cif_row_element = (
   return { element: element_from_candidates([symbol_letters, label_letters], atom_idx) }
 }
 
-// Parse atom data from CIF with robust error handling
+// One atom-site row as a CifAtom; throws on an unreadable coordinate (the caller drops the row)
 const parse_cif_atom_data = (
   raw_data: string[],
   indices: Record<string, number>,
@@ -653,22 +663,15 @@ export const parse_cif = (content: string): Crystal | null =>
       const sym_idx = hdrs.findIndex((hdr) => hdr.endsWith(`_atom_type_symbol`))
       const num_idx = hdrs.findIndex((hdr) => hdr.endsWith(`_atom_type_number_in_cell`))
       if (sym_idx === -1 || num_idx === -1) continue
-      for (let lj = data_start; lj < lines.length; lj++) {
-        const line = lines[lj].trim()
-        if (!line || line === `loop_` || line.startsWith(`data_`)) break
-        if (line.startsWith(`#`)) continue
+      for (const line of cif_loop_lines(lines, data_start)) {
         const toks = split_cif_tokens(line)
-        if (toks.length > Math.max(sym_idx, num_idx)) {
-          // Normalize type symbol to bare element (e.g. 'Sn2+' -> 'Sn')
-          const match = /^(?<element>[A-Z][a-z]*)/.exec(toks[sym_idx])
-          const sym = match ? match[1] : toks[sym_idx]
-          // Strip standard-uncertainty parentheses (`8(0)` -> `8`) like other CIF
-          // readers; empty prefixes like `(8)` parse as NaN and get skipped
-          const num = Math.trunc(parse_float_token(toks[num_idx].split(`(`)[0]))
-          // sum rows that normalize to the same element (e.g. Fe2+ and Fe3+ → Fe)
-          if (sym && !Number.isNaN(num)) {
-            atom_type_counts[sym] = (atom_type_counts[sym] ?? 0) + num
-          }
+        if (toks.length <= Math.max(sym_idx, num_idx)) continue
+        // Rows that normalize to the same element (Fe2+ and Fe3+) sum; the count drops a
+        // standard uncertainty (`8(0)`) like any CIF number and a non-element row is skipped
+        const sym = cif_type_symbol_element(toks[sym_idx])
+        const num = parse_cif_uncertain_number(toks[num_idx])
+        if (sym && num !== null) {
+          atom_type_counts[sym] = (atom_type_counts[sym] ?? 0) + Math.trunc(num)
         }
       }
       break
@@ -1107,17 +1110,16 @@ export function optimade_to_structure(optimade: OptimadeStructure): AnyStructure
       throw new Error(`OPTIMADE site ${idx} has no species name`)
     }
     const xyz = vec3_from_values(position, `OPTIMADE atom position ${idx + 1}`)
-    const { symbol: element, sym_idx } = resolve_optimade_element(
-      species_name,
-      species_list,
-      idx,
-    )
+    const {
+      symbol: element,
+      sym_idx,
+      spec,
+    } = resolve_optimade_element(species_name, species_list, idx)
     const abc: Vec3 = cart_to_frac ? cart_to_frac(xyz) : [0, 0, 0]
 
     // Mass/concentration of the chosen element. sym_idx indexes the (parallel)
     // chemical_symbols/mass/concentration arrays; -1 (name resolved directly, without
     // chemical_symbols) falls back to index 0, the single-element entry.
-    const spec = species_list?.find((entry) => entry.name === species_name)
     const spec_idx = Math.max(sym_idx, 0)
     const mass = spec?.mass?.[spec_idx]
     const concentration = spec?.concentration?.[spec_idx]

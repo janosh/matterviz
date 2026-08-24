@@ -41,12 +41,12 @@
   let hidden_bands = new SvelteSet<number>()
 
   // Compute axis labels from Miller indices (subscript z doesn't exist in Unicode)
+  const K_AXIS_LABELS = [`kₓ`, `kᵧ`, `kz`] as const
   let labels = $derived.by((): [string, string] => {
     if (axis_labels) return axis_labels
-    const K = [`kₓ`, `kᵧ`, `kz`] as const
     const zeros = miller_indices.flatMap((val, idx) => (val === 0 ? [idx] : []))
-    if (zeros.length === 2) return [K[zeros[0]], K[zeros[1]]]
-    if (zeros.length === 1) return [`k⊥`, K[zeros[0]]]
+    if (zeros.length === 2) return [K_AXIS_LABELS[zeros[0]], K_AXIS_LABELS[zeros[1]]]
+    if (zeros.length === 1) return [`k⊥`, K_AXIS_LABELS[zeros[0]]]
     return [`k₁`, `k₂`]
   })
 
@@ -78,32 +78,25 @@
     })) ?? [],
   )
 
-  // Compute padded data bounds (single-pass to avoid stack overflow on large arrays)
+  // Data bounds padded by 10% (single pass: spreading 10^5 points into Math.min overflows)
   let bounds = $derived.by(() => {
     const isolines = slice_data?.isolines
     if (!isolines?.length) return { min: [-1, -1], max: [1, 1] }
 
-    let xmin = Infinity,
-      xmax = -Infinity,
-      ymin = Infinity,
-      ymax = -Infinity
+    let [x_min, x_max, y_min, y_max] = [Infinity, -Infinity, Infinity, -Infinity]
     for (const iso of isolines) {
-      for (const pt of iso.points_2d) {
-        if (pt[0] < xmin) xmin = pt[0]
-        if (pt[0] > xmax) xmax = pt[0]
-        if (pt[1] < ymin) ymin = pt[1]
-        if (pt[1] > ymax) ymax = pt[1]
+      for (const [px, py] of iso.points_2d) {
+        if (px < x_min) x_min = px
+        if (px > x_max) x_max = px
+        if (py < y_min) y_min = py
+        if (py > y_max) y_max = py
       }
     }
-    if (!isFinite(xmin)) return { min: [-1, -1], max: [1, 1] }
+    if (!Number.isFinite(x_min)) return { min: [-1, -1], max: [1, 1] }
 
-    const pad = 0.1,
-      rx = xmax - xmin || 1,
-      ry = ymax - ymin || 1
-    return {
-      min: [xmin - rx * pad, ymin - ry * pad],
-      max: [xmax + rx * pad, ymax + ry * pad],
-    }
+    const pad_x = 0.1 * (x_max - x_min || 1)
+    const pad_y = 0.1 * (y_max - y_min || 1)
+    return { min: [x_min - pad_x, y_min - pad_y], max: [x_max + pad_x, y_max + pad_y] }
   })
   function toggle_band(series_idx: number) {
     const band = slice_data?.isolines[series_idx]?.band_index
@@ -115,13 +108,11 @@
   function isolate_band(series_idx: number) {
     const band = slice_data?.isolines[series_idx]?.band_index
     if (band === undefined) return
-    const all_bands = [...new Set(slice_data?.isolines.map((iso) => iso.band_index))]
-    const is_solo = all_bands.every((bid) => bid === band || hidden_bands.has(bid))
+    const all_bands = [...new SvelteSet(slice_data?.isolines.map((iso) => iso.band_index))]
+    const is_solo = all_bands.every((other) => other === band || hidden_bands.has(other))
     hidden_bands.clear()
     if (!is_solo) {
-      for (const bid of all_bands) {
-        if (bid !== band) hidden_bands.add(bid)
-      }
+      for (const other of all_bands) if (other !== band) hidden_bands.add(other)
     }
   }
 

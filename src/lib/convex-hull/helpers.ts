@@ -1,5 +1,6 @@
 import { type D3InterpolateName, get_d3_interpolator } from '$lib/colors'
 import type { ElementSymbol } from '$lib/element'
+import { count_atoms_in_composition } from '$lib/composition/reduce'
 import { element_by_symbol } from '$lib/element/data'
 import { format_fractional, format_num } from '$lib/labels'
 import { array_extent, array_max } from '$lib/math'
@@ -11,7 +12,7 @@ import type {
   MarkerSymbol,
   PhaseData,
 } from './types'
-import { MAGNETIC_ORDERING_CATEGORY } from './types'
+import { DEFAULT_HULL_COLORS, MAGNETIC_ORDERING_CATEGORY } from './types'
 
 // Tolerance for classifying a phase as on the convex hull (eV/atom)
 export const HULL_STABILITY_TOL = 1e-6
@@ -166,7 +167,10 @@ export function get_point_color_for_entry(
 ): string {
   const is_stable = entry_is_stable(entry)
   if (color_mode === `stability`) {
-    return is_stable ? (colors?.stable ?? `#0072B2`) : (colors?.unstable ?? `#E69F00`)
+    return (
+      colors?.[is_stable ? `stable` : `unstable`] ??
+      DEFAULT_HULL_COLORS[is_stable ? `stable` : `unstable`]
+    )
   }
   return energy_scale && typeof entry.e_above_hull === `number`
     ? energy_scale(entry.e_above_hull)
@@ -283,7 +287,7 @@ export function build_entry_tooltip_text(
 
 // Shared CSS custom-property block for hull wrapper styling (2D/3D/4D)
 export const hull_style_css = (colors: ConvexHullConfig[`colors`] | undefined): string =>
-  `--hull-stable-color: ${colors?.stable ?? `#0072B2`}; --hull-unstable-color: ${colors?.unstable ?? `#E69F00`}`
+  `--hull-stable-color: ${colors?.stable ?? DEFAULT_HULL_COLORS.stable}; --hull-unstable-color: ${colors?.unstable ?? DEFAULT_HULL_COLORS.unstable}`
 
 const DEFAULT_HIGHLIGHT_STYLE: Required<HighlightStyle> = {
   effect: `pulse`,
@@ -506,52 +510,47 @@ function entry_has_temp_data(entry: PhaseData): boolean {
   )
 }
 
-// Find bracketing temperatures for interpolation (T_low < T < T_high)
-// Returns null if T is outside the range or no valid bracket exists
+// Tightest tabulated temperatures bracketing `temperature` (below < T < above) with their
+// free energies, or null when either side is missing. Scans every entry: arrays may be unsorted.
 function find_bracket_temperatures(
   entry: PhaseData,
-  T: number,
-): { T_low: number; T_high: number; E_low: number; E_high: number } | null {
+  temperature: number,
+): {
+  temp_below: number
+  temp_above: number
+  energy_below: number
+  energy_above: number
+} | null {
   const temps = entry.temperatures ?? []
   const energies = entry.free_energies ?? []
   if (temps.length < 2) return null
-
-  // Find the largest T_low < T and smallest T_high > T
-  let T_low = -Infinity
-  let T_high = Infinity
-  let E_low = 0
-  let E_high = 0
-
-  // Must scan all temperatures to find the tightest bracket (arrays may be unsorted)
+  let [temp_below, temp_above] = [-Infinity, Infinity]
+  let [energy_below, energy_above] = [0, 0]
   for (const [idx, temp] of temps.entries()) {
-    if (temp < T && temp > T_low) {
-      T_low = temp
-      E_low = energies[idx]
-    } else if (temp > T && temp < T_high) {
-      T_high = temp
-      E_high = energies[idx]
+    if (temp < temperature && temp > temp_below) {
+      temp_below = temp
+      energy_below = energies[idx]
+    } else if (temp > temperature && temp < temp_above) {
+      temp_above = temp
+      energy_above = energies[idx]
     }
   }
-
-  // Must have valid brackets on both sides
-  if (!isFinite(T_low) || !isFinite(T_high)) return null
-  return { T_low, T_high, E_low, E_high }
+  if (!Number.isFinite(temp_below) || !Number.isFinite(temp_above)) return null
+  return { temp_below, temp_above, energy_below, energy_above }
 }
 
-// Linearly interpolate energy at temperature T
-// Returns null if interpolation is not possible
+// Linearly interpolated G(T) between the bracketing tabulated temperatures; null when T is
+// outside the tabulated range or the bracket is wider than `max_gap`
 export function interpolate_energy_at_temperature(
   entry: PhaseData,
-  T: number,
+  temperature: number,
   max_gap: number,
 ): number | null {
-  const bracket = find_bracket_temperatures(entry, T)
-  if (!bracket) return null
-  if (bracket.T_high - bracket.T_low > max_gap) return null
-
-  // Linear interpolation: E(T) = E_low + (E_high - E_low) * (T - T_low) / (T_high - T_low)
-  const fraction = (T - bracket.T_low) / (bracket.T_high - bracket.T_low)
-  return bracket.E_low + (bracket.E_high - bracket.E_low) * fraction
+  const bracket = find_bracket_temperatures(entry, temperature)
+  if (!bracket || bracket.temp_above - bracket.temp_below > max_gap) return null
+  const { temp_below, temp_above, energy_below, energy_above } = bracket
+  const fraction = (temperature - temp_below) / (temp_above - temp_below)
+  return energy_below + (energy_above - energy_below) * fraction
 }
 
 // Options for temperature filtering
@@ -568,22 +567,23 @@ export interface TemperatureFilterOptions {
 // - Entries WITH temp data but MISSING T: interpolate if enabled and possible, else excluded
 export function filter_entries_at_temperature(
   entries: PhaseData[],
-  T: number,
+  temperature: number,
   { interpolate = true, max_interpolation_gap = 500 }: TemperatureFilterOptions = {},
 ): PhaseData[] {
   return entries.flatMap((entry) => {
     if (!entry_has_temp_data(entry)) return [entry] // no temp data: keep static energy
-    // free_energies stores per-atom values (E_0K/atom + F_vib/atom), so both energy
-    // fields get the same value and downstream formation energies use G(T), not stale
-    // 0 K energies
-    const exact_idx = entry.temperatures?.indexOf(T) ?? -1
-    const energy =
+    // free_energies stores per-atom G(T) = E_0K/atom + F_vib/atom; `energy` stays a total so
+    // downstream formation energies use G(T) under the same contract as 0 K entries
+    const exact_idx = entry.temperatures?.indexOf(temperature) ?? -1
+    const energy_per_atom =
       exact_idx !== -1
         ? entry.free_energies?.[exact_idx]
         : interpolate
-          ? interpolate_energy_at_temperature(entry, T, max_interpolation_gap)
+          ? interpolate_energy_at_temperature(entry, temperature, max_interpolation_gap)
           : null
-    return energy == null ? [] : [{ ...entry, energy, energy_per_atom: energy }]
+    if (energy_per_atom == null) return []
+    const energy = energy_per_atom * count_atoms_in_composition(entry.composition)
+    return [{ ...entry, energy, energy_per_atom }]
   })
 }
 

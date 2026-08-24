@@ -240,8 +240,7 @@ export function build_hyperplanes(
     const row = Array(n_elems + 1).fill(0)
     let ref_energy = 0
     for (let elem_idx = 0; elem_idx < n_elems; elem_idx++) {
-      const element = elements[elem_idx]
-      const fraction = atom_count > 0 ? (composition[element] ?? 0) / atom_count : 0
+      const fraction = (composition[elements[elem_idx]] ?? 0) / atom_count
       row[elem_idx] = fraction
       ref_energy += fraction * element_ref_energies[elem_idx]
     }

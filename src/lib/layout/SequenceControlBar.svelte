@@ -74,8 +74,7 @@
       flex-wrap: wrap;
     }
   }
-  :global(.sequence-viewer:hover) > .sequence-control-bar.hover-visible,
-  :global(.sequence-viewer:focus-within) > .sequence-control-bar.hover-visible {
+  :global(:is(:hover, :focus-within)) > .sequence-control-bar.hover-visible {
     opacity: 1;
     pointer-events: auto;
   }

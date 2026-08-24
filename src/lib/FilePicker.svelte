@@ -16,7 +16,6 @@
     show_category_filters = false,
     on_drag_start,
     on_click,
-    type_mapper,
     file_type_paints = DEFAULT_FILE_TYPE_PAINTS,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
@@ -25,7 +24,6 @@
     show_category_filters?: boolean
     on_drag_start?: (file: FileInfo, event: DragEvent) => void
     on_click?: (file: FileInfo, event: MouseEvent | KeyboardEvent) => void
-    type_mapper?: (file: FileInfo) => string
     // Per-file-type fills. `badge` paints the uppercase type chip, `item` the file row.
     // Build them with `file_type_paint(badge)` to derive the row wash from the badge.
     file_type_paints?: Record<string, FileTypePaint>
@@ -61,7 +59,6 @@
   // File type from the explicit `type`, else the extension (ignoring compression suffixes);
   // ext_of returns an extensionless name (POSCAR, INCAR, ...) whole, so it is its own type
   const get_base_file_type = (file: FileInfo): string => {
-    if (type_mapper) return type_mapper(file)
     if (file.type) return file.type.toLowerCase()
     return ext_of(strip_compression_extensions(file.name)) || `file`
   }

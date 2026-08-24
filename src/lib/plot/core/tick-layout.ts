@@ -6,8 +6,8 @@
 import { format_tick_values } from '$lib/labels'
 import { get_tick_label } from '$lib/plot/core/scales'
 import {
-  clear_text_metrics_cache,
   DEFAULT_FONT_SPEC,
+  get_text_metrics_revision,
   measure_text_line,
 } from '$lib/plot/core/text-metrics'
 import type { FontSpec } from '$lib/plot/core/text-metrics'
@@ -1160,7 +1160,7 @@ type CacheEntry = {
 }
 // Small per-side LRU so interleaved plots do not evict one another's padding/render lookup,
 // while still bounding geometry retained across resizes and zooms.
-let cached_layouts: Partial<Record<TickLayoutSide, CacheEntry[]>> = {}
+const cached_layouts: Partial<Record<TickLayoutSide, CacheEntry[]>> = {}
 
 const arrays_equal = (
   left: readonly (number | string)[],
@@ -1168,15 +1168,9 @@ const arrays_equal = (
 ): boolean =>
   left.length === right.length && left.every((value, idx) => Object.is(value, right[idx]))
 
-// Drop memoised layouts and the text metrics they were derived from. Call after the rendering
-// font changes (web font load) or, in tests, between cases that stub canvas measurement.
-export const clear_tick_metrics_cache = (): void => {
-  cached_layouts = {}
-  clear_text_metrics_cache()
-}
-
 // calc_auto_padding and PlotAxis call this same resolver. Memo keys include every geometric and
-// strategy input, so a resize or font change cannot reuse a stale label decision.
+// strategy input plus the text-metrics revision, so a resize, font change or web-font load
+// (clear_text_metrics_cache) cannot reuse a stale label decision.
 export const resolve_tick_layout = (
   axis: MeasuredAxis,
   axis_size: number,
@@ -1188,6 +1182,7 @@ export const resolve_tick_layout = (
   const auto_layout = label?.auto_layout
   const font = axis.tick_font ?? DEFAULT_FONT_SPEC
   const key = [
+    get_text_metrics_revision(),
     axis_size,
     label?.rotation ?? ``,
     label?.max_lines ?? ``,

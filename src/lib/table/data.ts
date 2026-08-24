@@ -222,9 +222,6 @@ const DATE_ONLY_RE = /^(?<year>\d{4})-(?<month>\d{2})-(?<day>\d{2})$/
 const DATE_TIME_RE =
   /^\d{4}-\d{2}-\d{2}(?:[T\s]\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:?\d{2})?)?$/
 
-const has_explicit_datetime_format = (col: Label): boolean =>
-  col.format_type === `datetime` || Boolean(col.datetime_format)
-
 // Epoch seconds (2001–2286) or milliseconds; anything else is not a timestamp
 const normalize_timestamp = (val: number): number | null => {
   if (!Number.isFinite(val)) return null
@@ -257,12 +254,12 @@ const parse_datetime_string = (val: string): number | null => {
 export const parse_datetime_val = (val: CellVal, col: Label): number | null => {
   if (val instanceof Date) return Number.isNaN(val.getTime()) ? null : val.getTime()
   if (typeof val === `number`) {
-    return has_explicit_datetime_format(col) ? normalize_timestamp(val) : null
+    return col.datetime_format ? normalize_timestamp(val) : null
   }
   if (typeof val !== `string`) return null
   const parsed_text = parse_datetime_string(val)
   if (parsed_text !== null) return parsed_text
-  if (!has_explicit_datetime_format(col)) return null
+  if (!col.datetime_format) return null
   const sort_attr = get_data_sort_value(val)
   return normalize_timestamp(Number(sort_attr ?? strip_html(val).trim()))
 }
@@ -273,7 +270,7 @@ export const parse_datetime_val = (val: CellVal, col: Label): number | null => {
 export function infer_datetime_kind(col: Label, sample: CellVal[]): DateTimeColumnKind | null {
   if (col.datetime_format === `date`) return `date`
   if (col.datetime_format === `time`) return `time`
-  if (col.datetime_format || col.format_type === `datetime`) return `datetime`
+  if (col.datetime_format) return `datetime`
   let has_date_value = false
   for (const val of sample) {
     if (is_date_only_string(val)) has_date_value = true

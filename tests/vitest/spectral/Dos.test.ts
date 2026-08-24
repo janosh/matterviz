@@ -258,36 +258,56 @@ describe(`extract_pdos`, () => {
 })
 
 describe(`format_dos_tooltip`, () => {
-  it(`formats vertical phonon tooltip with label`, () => {
-    const result = format_dos_tooltip(
-      `5.00`,
-      `0.50`,
-      `DOS 1`,
-      false,
-      true,
-      `THz`,
-      `Frequency (THz)`,
-      `Density`,
-      2,
-    )
-    expect(result.title).toBe(`DOS 1`)
-    expect(result.lines.join(` `)).toMatch(/Density.*THz/)
-  })
-
-  it(`formats horizontal electronic tooltip without label`, () => {
-    const result = format_dos_tooltip(
-      `0.50`,
-      `-2.00`,
-      null,
-      true,
-      false,
-      `THz`,
-      `Density`,
-      `Energy (eV)`,
-      1,
-    )
-    expect(result.title).toBeUndefined()
-    expect(result.lines.join(` `)).toMatch(/Energy.*Density/)
+  // The series label titles the tooltip only when several DOS are plotted; the axis that
+  // carries frequency/energy is listed first whichever orientation it is on
+  it.each([
+    {
+      opts: {
+        x_formatted: `5.00`,
+        y_formatted: `0.50`,
+        label: `DOS 1`,
+        is_horizontal: false,
+        is_phonon: true,
+        x_axis_label: `Frequency (THz)`,
+        y_axis_label: `Density`,
+        num_series: 2,
+      },
+      title: `DOS 1`,
+      lines: [`Density: 0.50`, `Frequency: 5.00 THz`],
+    },
+    {
+      opts: {
+        x_formatted: `0.50`,
+        y_formatted: `-2.00`,
+        label: null,
+        is_horizontal: true,
+        is_phonon: false,
+        x_axis_label: `Density`,
+        y_axis_label: `Energy (eV)`,
+        num_series: 1,
+      },
+      title: undefined,
+      lines: [`Energy: -2.00 eV`, `Density: 0.50`],
+    },
+    // bare axis labels fall back to the quantity name and the display unit
+    {
+      opts: {
+        x_formatted: `1`,
+        y_formatted: `2`,
+        label: `only`,
+        is_horizontal: false,
+        is_phonon: true,
+        x_axis_label: ``,
+        y_axis_label: ``,
+        num_series: 1,
+      },
+      title: undefined,
+      lines: [`Density: 2`, `Frequency: 1 cm^-1`],
+    },
+  ])(`$opts.label / horizontal=$opts.is_horizontal`, ({ opts, title, lines }) => {
+    const result = format_dos_tooltip({ units: `cm^-1`, ...opts })
+    expect(result.title).toBe(title)
+    expect(result.lines).toEqual(lines)
   })
 })
 

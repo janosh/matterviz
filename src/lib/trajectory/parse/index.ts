@@ -10,11 +10,12 @@ export {
   trajectory_from_json,
   VaspoutElectronicOnlyError,
 } from '$lib/trajectory/open'
-export type { AtomTypeMapping } from '$lib/trajectory/types'
+export type { AtomTypeMapping } from '$lib/trajectory/index'
 export {
   indexed_trajectory_format,
   is_indexable_trajectory_filename,
   is_trajectory_file,
+  is_trajectory_filename,
 } from '$lib/trajectory/format-detect'
 export { parse_ase_trajectory } from './ase'
 export { open_hdf5_trajectory } from './hdf5'

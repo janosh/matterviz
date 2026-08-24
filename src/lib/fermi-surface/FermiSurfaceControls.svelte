@@ -66,7 +66,7 @@
   let available_bands = $derived(
     fermi_data
       ? [...new SvelteSet(fermi_data.isosurfaces.map((iso) => iso.band_index))].toSorted(
-          (a, b) => a - b,
+          (left, right) => left - right,
         )
       : [],
   )

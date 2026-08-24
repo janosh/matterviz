@@ -13,82 +13,82 @@ import {
   superscript_digits,
   symbol_map,
   symbol_names,
+  trajectory_property_config,
 } from '$lib/labels'
 import { format as d3_format } from 'd3-format'
 import * as d3_symbols from 'd3-shape'
 import { describe, expect, test } from 'vitest'
 
-describe(`labels utils`, () => {
-  test(`ELEM_HEATMAP_LABELS maps each label to a valid heatmap key`, () => {
-    const mapped_keys = new Set(Object.values(ELEM_HEATMAP_LABELS))
-    ELEM_HEATMAP_KEYS.forEach((key) => {
-      expect(mapped_keys.has(key)).toBe(true)
-    })
-    // Ensure 1:1 mapping (no duplicate labels collapsing entries)
-    expect(Object.values(ELEM_HEATMAP_LABELS)).toHaveLength(ELEM_HEATMAP_KEYS.length)
-  })
+test(`ELEM_HEATMAP_LABELS maps each heatmap key to exactly one label`, () => {
+  const by_text = (left: unknown, right: unknown) => String(left).localeCompare(String(right))
+  expect(Object.values(ELEM_HEATMAP_LABELS).toSorted(by_text)).toEqual(
+    ELEM_HEATMAP_KEYS.toSorted(by_text),
+  )
 })
 
-test(`format_num uses defaults and respects overrides`, () => {
-  const [gt_1_fmt, lt_1_fmt] = DEFAULT_FMT
-  // Default-format path (no explicit format arg) selects gt_1 / lt_1 from DEFAULT_FMT
-  expect(format_num(1234)).toBe(d3_format(gt_1_fmt)(1234))
-  expect(format_num(0.123)).toBe(d3_format(lt_1_fmt)(0.123))
-  // Explicit format overrides still win
-  expect(format_num(1234, gt_1_fmt)).toBe(d3_format(gt_1_fmt)(1234))
-  expect(format_num(0.123, lt_1_fmt)).toBe(d3_format(lt_1_fmt)(0.123))
-  expect(format_num(1.2, `.3f`)).toBe(`1.200`)
-
-  expect(format_num(0)).toBe(`0`)
-  expect(format_num(0)).toBe(format_num(0, lt_1_fmt))
-  expect(format_num(0, `.2~e`)).toBe(`0`)
-  expect(format_num(-0, `.2~e`)).toBe(`0`)
-  expect(format_num(0, `$.2e`)).toBe(`$0`)
-  expect(format_num(0, `.2~%`)).toBe(`0%`)
-  expect(format_num(1)).toBe(`1`)
-  expect(format_num(10)).toBe(`10`)
-  expect(format_num(100)).toBe(`100`)
-  expect(format_num(1000)).toBe(`1k`)
-  expect(format_num(10_000)).toBe(`10k`)
-  expect(format_num(100_000)).toBe(`100k`)
-  expect(format_num(1_000_000)).toBe(`1M`)
-  expect(format_num(10_000_000)).toBe(`10M`)
-  expect(format_num(100_000_000)).toBe(`100M`)
-  expect(format_num(1_000_000_000)).toBe(`1G`)
-
-  expect(format_num(0.1)).toBe(`0.1`)
-  expect(format_num(0.01)).toBe(`0.01`)
-  expect(format_num(0.001)).toBe(`0.001`)
-  expect(format_num(-0.0001)).toBe(`−0.0001`)
-  expect(format_num(-0.00001)).toBe(`−0.00001`)
-  expect(format_num(-0.000001)).toBe(`−0.000001`)
-  expect(format_num(-0.0000001)).toBe(`−1e-7`)
-
-  expect(format_num(-1.1)).toBe(`−1.1`)
-  expect(format_num(-1.14123)).toBe(`−1.14`)
-  expect(format_num(-1.14123e-7, `.5~g`)).toBe(`−1.1412e-7`)
+test.each([
+  [`ELEM_HEATMAP_KEYS`, ELEM_HEATMAP_KEYS],
+  [`ELEM_PROPERTY_LABELS`, Object.keys(ELEM_PROPERTY_LABELS)],
+])(`%s are valid element data keys`, (_name, keys) => {
+  expect(Object.keys(element_data[0])).toEqual(expect.arrayContaining(keys))
 })
 
-test(`format_tick_values increases default precision until distinct values have distinct labels`, () => {
-  expect(format_tick_values([-1539, -1538, -1537])).toEqual([`−1539`, `−1538`, `−1537`])
-  expect(format_tick_values([-1539.000001, -1539.000002])).toEqual([
-    `−1539.000001`,
-    `−1539.000002`,
-  ])
-  expect(format_tick_values([-1539, -1000, -1538])).toEqual([`−1.54k`, `−1k`, `−1.54k`])
-  expect(format_tick_values([1000, 1000])).toEqual([`1k`, `1k`])
-  expect(format_tick_values([-1539, -1538], `.3~s`)).toEqual([`-1.54k`, `-1.54k`])
+// Consumers resolve property keys case-insensitively (`config[key] ?? config[key.toLowerCase()]`),
+// so capitalised duplicates (`Energy`, `Fmax`, `Alpha`) must not creep back in
+test(`trajectory_property_config keys are lowercase`, () => {
+  const keys = Object.keys(trajectory_property_config)
+  expect(keys.filter((key) => key !== key.toLowerCase() && !key.includes(` `))).toEqual([])
 })
 
-const element_data_keys = Object.keys(element_data[0])
-
-test(`ELEM_HEATMAP_KEYS are valid element data keys`, () => {
-  expect(element_data_keys).toEqual(expect.arrayContaining(ELEM_HEATMAP_KEYS))
+const [gt_1_fmt, lt_1_fmt] = DEFAULT_FMT
+test.each([
+  // no explicit format: DEFAULT_FMT picks the SI form at |x| >= 1 and plain decimals below
+  [1234, undefined, d3_format(gt_1_fmt)(1234)],
+  [0.123, undefined, d3_format(lt_1_fmt)(0.123)],
+  [1234, gt_1_fmt, d3_format(gt_1_fmt)(1234)],
+  [0.123, lt_1_fmt, d3_format(lt_1_fmt)(0.123)],
+  [1.2, `.3f`, `1.200`],
+  [0, undefined, `0`],
+  [0, lt_1_fmt, `0`],
+  // d3 scientific formats render 0 as "0e+0"; collapse to a plain 0 (keeping any prefix/suffix)
+  [0, `.2~e`, `0`],
+  [-0, `.2~e`, `0`],
+  [0, `$.2e`, `$0`],
+  [0, `.2~%`, `0%`],
+  [1, undefined, `1`],
+  [10, undefined, `10`],
+  [100, undefined, `100`],
+  [1000, undefined, `1k`],
+  [10_000, undefined, `10k`],
+  [100_000, undefined, `100k`],
+  [1_000_000, undefined, `1M`],
+  [10_000_000, undefined, `10M`],
+  [100_000_000, undefined, `100M`],
+  [1_000_000_000, undefined, `1G`],
+  [0.1, undefined, `0.1`],
+  [0.01, undefined, `0.01`],
+  [0.001, undefined, `0.001`],
+  [-0.0001, undefined, `−0.0001`],
+  [-0.00001, undefined, `−0.00001`],
+  [-0.000001, undefined, `−0.000001`],
+  [-0.0000001, undefined, `−1e-7`],
+  [-1.1, undefined, `−1.1`],
+  [-1.14123, undefined, `−1.14`],
+  [-1.14123e-7, `.5~g`, `−1.1412e-7`],
+])(`format_num(%s, %s) = %s`, (num, fmt, expected) => {
+  expect(format_num(num, fmt)).toBe(expected)
 })
 
-test(`ELEM_PROPERTY_LABELS are valid element data keys`, () => {
-  const prop_keys = Object.keys(ELEM_PROPERTY_LABELS)
-  expect(element_data_keys).toEqual(expect.arrayContaining(prop_keys))
+// adaptive labels gain precision only until adjacent distinct values render distinctly;
+// an explicit format is authoritative even when it collides
+test.each([
+  [[-1539, -1538, -1537], undefined, [`−1539`, `−1538`, `−1537`]],
+  [[-1539.000001, -1539.000002], undefined, [`−1539.000001`, `−1539.000002`]],
+  [[-1539, -1000, -1538], undefined, [`−1.54k`, `−1k`, `−1.54k`]],
+  [[1000, 1000], undefined, [`1k`, `1k`]],
+  [[-1539, -1538], `.3~s`, [`-1.54k`, `-1.54k`]],
+])(`format_tick_values(%j, %s) = %j`, (values, formatter, expected) => {
+  expect(format_tick_values(values, formatter)).toEqual(expected)
 })
 
 test(`symbol_names lists d3's fill-then-stroke symbols once each, symbol_map resolves them`, () => {
@@ -115,11 +115,13 @@ test(`symbol_names lists d3's fill-then-stroke symbols once each, symbol_map res
   expect(symbol_map.Diamond2).toBe(d3_symbols.symbolDiamond2)
 })
 
-test(`superscript_digits`, () => {
-  expect(superscript_digits(`Cr3+ O2- Ac3+`)).toBe(`Cr³⁺ O²⁻ Ac³⁺`)
-  expect(superscript_digits(`1234567890`)).toBe(`¹²³⁴⁵⁶⁷⁸⁹⁰`)
-  expect(superscript_digits(`+123-456+789-0`)).toBe(`⁺¹²³⁻⁴⁵⁶⁺⁷⁸⁹⁻⁰`)
-  expect(superscript_digits(`No digits here`)).toBe(`No digits here`)
+test.each([
+  [`Cr3+ O2- Ac3+`, `Cr³⁺ O²⁻ Ac³⁺`],
+  [`1234567890`, `¹²³⁴⁵⁶⁷⁸⁹⁰`],
+  [`+123-456+789-0`, `⁺¹²³⁻⁴⁵⁶⁺⁷⁸⁹⁻⁰`],
+  [`No digits here`, `No digits here`],
+])(`superscript_digits(%s) = %s`, (input, expected) => {
+  expect(superscript_digits(input)).toBe(expected)
 })
 
 test.each([
@@ -133,87 +135,58 @@ test.each([
   },
 )
 
-describe(`format_fractional function`, () => {
-  test.each([
-    [0, `0`], // exact zero
-    [1, `0`], // integer wraps to 0
-    [0.5, `½`], // exact half
-    [1.5, `½`], // wraps to 0.5
-    [0.25, `¼`], // exact quarter
-    [0.75, `¾`], // exact three-quarters
-    [0.333333333, `⅓`], // one-third
-    [0.666666667, `⅔`], // two-thirds
-    [0.2, `⅕`], // exact fifth
-    [0.4, `⅖`], // exact two-fifths
-    [0.6, `⅗`], // exact three-fifths
-    [0.8, `⁴⁄₅`], // exact four-fifths
-    [0.166666667, `⅙`], // one-sixth
-    [0.125, `⅛`], // exact eighth
-    [0.083333333, `¹⁄₁₂`], // one-twelfth
-    [0.1, `0.1`], // not a special fraction
-    [0.65, `0.65`], // not a special fraction
-    [0.85, `0.85`], // not a special fraction
-    [Infinity, `Infinity`], // non-finite preserved
-    [-Infinity, `-Infinity`], // non-finite preserved
-    [NaN, `NaN`], // non-finite preserved
-  ])(`format_fractional(%s) should return %s`, (input, expected) => {
-    expect(format_fractional(input)).toBe(expected)
-  })
-
-  test(`zero case uses <= for exact epsilon values while others use <`, () => {
-    const eps = 1e-3
-    // Zero case: should now work with exact epsilon (0.001)
-    expect(format_fractional(0.001)).toBe(`0`)
-    expect(format_fractional(0.001 - 1e-6)).toBe(`0`) // slightly less than eps
-    expect(format_fractional(0.001 + 1e-6)).toBe(`0.001001`) // slightly more than eps (not zero)
-
-    // Other targets: should still use < (preserving existing behavior)
-    expect(format_fractional(0.5 + eps - 1e-6)).toBe(`½`) // 0.499 works
-    expect(format_fractional(0.5 + eps + 1e-6)).toBe(`0.501`) // 0.501 doesn't work (preserved)
-    expect(format_fractional(0.25 + eps - 1e-6)).toBe(`¼`) // 0.249 works
-    expect(format_fractional(0.25 + eps + 1e-6)).toBe(`0.251`) // 0.251 doesn't work (preserved)
-  })
-
-  test(`handles negative inputs and boundary values with proper wrapping`, () => {
-    // Special fractions wrap to positive equivalents
-    expect(format_fractional(-0.5)).toBe(`½`)
-    expect(format_fractional(-0.25)).toBe(`¾`)
-    expect(format_fractional(-0.75)).toBe(`¼`)
-    expect(format_fractional(-0.333333333)).toBe(`⅔`)
-    expect(format_fractional(-0.125)).toBe(`⁷⁄₈`)
-
-    // Non-special fractions remain negative
-    expect(format_fractional(-0.1)).toBe(`−0.1`)
-    expect(format_fractional(-0.9)).toBe(`−0.9`)
-
-    // Values near 1 boundary
-    expect(format_fractional(0.999)).toBe(`0.999`)
-    expect(format_fractional(1)).toBe(`0`)
-    expect(format_fractional(1.001)).toBe(`0`)
-    expect(format_fractional(1.001 - 1e-6)).toBe(`0`)
-
-    // Large negative values
-    expect(format_fractional(-1.5)).toBe(`½`)
-    expect(format_fractional(-2.25)).toBe(`¾`)
-    expect(format_fractional(-10.5)).toBe(`½`)
-  })
-
-  test(`formats phase diagram composition ratios correctly`, () => {
-    // Test case from bug report: Mn666.67Sc333.33 should display nicely
-    // After GCD reduction: Mn has ratio 666.67/333.33 = 2, Sc has ratio 333.33/333.33 = 1
-    // But when normalized: Mn = 2/3, Sc = 1/3 of total
-    expect(format_fractional(666.67 / 1000)).toBe(`⅔`)
-    expect(format_fractional(333.33 / 1000)).toBe(`⅓`)
-
-    // Common stoichiometric ratios
-    expect(format_fractional(2)).toBe(`0`) // integers wrap to zero fraction
-    expect(format_fractional(1.5)).toBe(`½`)
-    expect(format_fractional(2.5)).toBe(`½`)
-    expect(format_fractional(1.333333333)).toBe(`⅓`)
-    expect(format_fractional(1.666666667)).toBe(`⅔`)
-    expect(format_fractional(2.333333333)).toBe(`⅓`)
-    expect(format_fractional(2.666666667)).toBe(`⅔`)
-  })
+// The integer part is dropped and negatives wrap into [0, 1), so -0.25 reads as ¾. The zero
+// glyph matches up to and including eps (1e-3); every other fraction strictly below eps.
+test.each([
+  [0, `0`],
+  [1, `0`],
+  [2, `0`],
+  [0.5, `½`],
+  [1.5, `½`],
+  [2.5, `½`],
+  [-1.5, `½`],
+  [-10.5, `½`],
+  [0.25, `¼`],
+  [0.75, `¾`],
+  [-2.25, `¾`],
+  [0.333333333, `⅓`],
+  [0.666666667, `⅔`],
+  [1.333333333, `⅓`],
+  [2.666666667, `⅔`],
+  [666.67 / 1000, `⅔`], // Mn666.67Sc333.33 normalised composition
+  [333.33 / 1000, `⅓`],
+  [0.2, `⅕`],
+  [0.4, `⅖`],
+  [0.6, `⅗`],
+  [0.8, `⁴⁄₅`],
+  [0.166666667, `⅙`],
+  [0.125, `⅛`],
+  [0.083333333, `¹⁄₁₂`],
+  [-0.5, `½`],
+  [-0.25, `¾`],
+  [-0.75, `¼`],
+  [-0.333333333, `⅔`],
+  [-0.125, `⁷⁄₈`],
+  [0.1, `0.1`],
+  [0.65, `0.65`],
+  [0.85, `0.85`],
+  [0.999, `0.999`],
+  [-0.1, `−0.1`],
+  [-0.9, `−0.9`],
+  [0.001, `0`],
+  [0.001 - 1e-6, `0`],
+  [0.001 + 1e-6, `0.001001`],
+  [1.001, `0`],
+  [1.001 - 1e-6, `0`],
+  [0.5 + 1e-3 - 1e-6, `½`],
+  [0.5 + 1e-3 + 1e-6, `0.501`],
+  [0.25 + 1e-3 - 1e-6, `¼`],
+  [0.25 + 1e-3 + 1e-6, `0.251`],
+  [Infinity, `Infinity`],
+  [-Infinity, `-Infinity`],
+  [NaN, `NaN`],
+])(`format_fractional(%s) = %s`, (input, expected) => {
+  expect(format_fractional(input)).toBe(expected)
 })
 
 describe(`format_value`, () => {

@@ -274,8 +274,7 @@ export const SETTINGS_CONFIG = define_settings({
     value: `#000000`,
     description: `Background color of the 3D viewport`,
   },
-  // 0.1 is what Structure rendered for years via its own prop default; the schema said 0,
-  // so embedded viewers (which spread DEFAULTS) got a transparent background instead.
+  // 0.1, not 0: embedded viewers spread DEFAULTS, and 0 renders their background transparent
   background_opacity: opacity_setting(
     0.1,
     `Opacity of the background (0.0 = transparent, 1.0 = opaque)`,

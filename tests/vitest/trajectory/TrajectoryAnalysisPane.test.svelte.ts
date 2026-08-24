@@ -2,10 +2,7 @@
 // timestep seeding, stride normalisation, indexed-trajectory warnings and stale-state rules
 // are tested once here against a stub collector rather than once per analysis.
 import type { ParseProgress, TrajectoryRun } from '$lib/trajectory'
-import type {
-  AnalysisCollectOptions,
-  AnalysisPaneContext,
-} from '$lib/trajectory/analysis-pane'
+import type { AnalysisCollectOptions, AnalysisPaneContext } from '$lib/trajectory/analysis'
 import TrajectoryAnalysisPane from '$lib/trajectory/TrajectoryAnalysisPane.svelte'
 import { to_error } from '$lib/utils'
 import { type ComponentProps, createRawSnippet, mount, unmount } from 'svelte'

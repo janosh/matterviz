@@ -13,25 +13,24 @@
     missing_msg?: string
   } = $props()
 
-  let { name, number } = $derived(element ?? {})
-  let file = $derived(`elements/${number}-${name?.toLowerCase()}.avif`)
+  const src = $derived(
+    `https://github.com/janosh/matterviz/raw/main/static/elements/${element.number}-${element.name.toLowerCase()}.avif`,
+  )
+  // set by onerror; reset whenever the photo URL changes
   let hidden = $state(false)
   $effect.pre(() => {
-    if (file) hidden = false
-  }) // reset hidden to false when file changes
+    if (src) hidden = false
+  })
 </script>
 
-{#if name && number}
-  {@const src = `https://github.com/janosh/matterviz/raw/main/static/${file}`}
-  <img {src} alt={name} onerror={() => (hidden = true)} {hidden} {...rest} />
-  {#if hidden && missing_msg}
-    <div {...rest}>
-      <span>
-        <Icon icon={NoImage} />&nbsp;{missing_msg}
-        {name}
-      </span>
-    </div>
-  {/if}
+<img {src} alt={element.name} onerror={() => (hidden = true)} {hidden} {...rest} />
+{#if hidden && missing_msg}
+  <div {...rest}>
+    <span>
+      <Icon icon={NoImage} />&nbsp;{missing_msg}
+      {element.name}
+    </span>
+  </div>
 {/if}
 
 <style>

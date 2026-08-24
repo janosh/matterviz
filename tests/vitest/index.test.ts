@@ -1,6 +1,6 @@
 import * as lib from '$lib'
 import * as labels from '$lib/labels'
-import { describe, expect, test } from 'vitest'
+import { expect, test } from 'vitest'
 
 test(`library exports all Svelte components from $lib/*.svelte`, () => {
   const svelte_files = Object.keys(import.meta.glob(`$lib/*.svelte`))
@@ -31,15 +31,4 @@ test(`element labels and categories are consistent with element_data`, () => {
 test(`root exports is_binary without misclassifying sparse high bytes`, () => {
   expect(lib.is_binary).toBeTypeOf(`function`)
   expect(lib.is_binary(`\u00FF${`a`.repeat(20)}`)).toBe(false)
-})
-
-describe(`Utility Functions`, () => {
-  test.each([
-    [`<script>alert('xss')</script>`, `&lt;script&gt;alert(&#39;xss&#39;)&lt;/script&gt;`],
-    [`&<>"'`, `&amp;&lt;&gt;&quot;&#39;`],
-    [`Hello World`, `Hello World`],
-    [``, ``],
-  ])(`escape_html: %s → %s`, (input, expected) => {
-    expect(lib.escape_html(input)).toBe(expected)
-  })
 })

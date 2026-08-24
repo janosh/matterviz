@@ -88,7 +88,8 @@ function component_only_class_selectors(file: string): string[] {
   return [...offending]
 }
 
+// parses every component in src, which outgrows the default 5 s budget on a loaded machine
 test(`no scoped CSS rule targets a class that only reaches a child component as a prop`, () => {
   expect(svelte_files.length).toBeGreaterThan(100)
   expect(svelte_files.flatMap(component_only_class_selectors)).toEqual([])
-})
+}, 30_000)

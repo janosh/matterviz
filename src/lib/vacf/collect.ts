@@ -6,13 +6,12 @@ import {
   suggest_analysis_frame_stride,
 } from '$lib/trajectory/analysis'
 import type { TrajectoryFrame, TrajectoryPositionStream, TrajectoryRun } from '$lib/trajectory'
-import { DEFAULT_POSITION_STREAM_MAX_BYTES } from '$lib/trajectory/runs/accumulate'
 import type { VacfInput } from './index'
 
 // Site property the parsers write per-atom velocities to (extXYZ vx/vy/vz, LAMMPS dump
-// vx vy vz). A vec3 in the site's own units; nothing here converts it. Parsers and
-// TrajectoryRun does not currently expose a velocity unit, so collect_vacf_input leaves
-// VacfInput.velocity_unit unset and calc_vacf labels stored VACF as file velocity units.
+// vx vy vz), and the run signal an HDF5 file declares them under. A vec3 in the file's own
+// units; nothing here converts it. Only HDF5 runs record the unit (on the signal
+// descriptor), so for text formats calc_vacf labels the stored VACF as file velocity units.
 export const VELOCITY_SITE_PROPERTY = `velocity`
 
 // Frame stride that keeps positions AND velocities inside `max_bytes` (two buffers whenever
@@ -69,11 +68,13 @@ export async function collect_vacf_input(
     )
   }
   const stream = await collect_trajectory_positions(run, {
-    frame_stride: 1,
-    max_bytes: DEFAULT_POSITION_STREAM_MAX_BYTES,
     ...options,
     ...(has_velocities(run.preview) ? { vector_keys: [VELOCITY_SITE_PROPERTY] } : {}),
     analysis_name: `VACF`,
   })
-  return { ...stream, velocities: stream_velocities(stream) }
+  return {
+    ...stream,
+    velocities: stream_velocities(stream),
+    velocity_unit: run.signals?.[VELOCITY_SITE_PROPERTY]?.unit ?? null,
+  }
 }

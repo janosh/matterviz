@@ -2,6 +2,7 @@ import { calc_lattice_params } from '$lib/math'
 import type { PdfWeighting } from '$lib/scattering'
 import { pdf_scattering_weights } from '$lib/scattering'
 import type { Crystal } from '$lib/structure'
+import { to_error } from '$lib/utils'
 import { calculate_all_pair_rdfs, calculate_rdf } from './calc-rdf'
 import type {
   PdfPattern,
@@ -125,7 +126,7 @@ export function calculate_total_pdf(
     const formula = Object.entries(composition)
       .map(([element, count]) => `${element}${count}`)
       .join(``)
-    const reason = exc instanceof Error ? exc.message : String(exc)
+    const reason = to_error(exc).message
     throw new Error(`Cannot weight a total ${radiation} PDF for ${formula}: ${reason}`, {
       cause: exc,
     })

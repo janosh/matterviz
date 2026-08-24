@@ -11,13 +11,8 @@ import {
 } from 'd3-sankey'
 import type { SankeyLink as D3Link, SankeyNode as D3Node } from 'd3-sankey'
 import type { Vec2 } from '$lib/math'
-import type {
-  SankeyData,
-  SankeyLink,
-  SankeyNode,
-  SankeyNodeAlign,
-  Orientation,
-} from '$lib/plot/core/types'
+import type { Orientation } from '$lib/plot/core/types'
+import type { SankeyData, SankeyLink, SankeyNode, SankeyNodeAlign } from './sankey-types'
 import { DEFAULTS } from '$lib/settings'
 
 // User-carried node props that survive the d3-sankey layout pass
@@ -211,26 +206,26 @@ export function compute_sankey_layout<Metadata = Record<string, unknown>>(
 
   // Resolve ids -> indices and clone into fresh objects (d3 mutates these).
   // Links may reference a node by explicit `id`, or by `label` when no id is set,
-  // or by zero-based index (handled as a fallback in resolve_node_ref).
+  // or by zero-based index (handled as a fallback in resolve_node_ref). The id map is
+  // only populated when some ref can't be an index, so index-only data skips the scan.
   const needs_ref_lookup =
     data.links.some(
       (link) => typeof link.source !== `number` || typeof link.target !== `number`,
     ) || data.nodes.some((node, idx) => typeof node.id === `number` && node.id !== idx)
 
-  let id_to_idx: Map<string | number, number> | undefined
+  const id_to_idx = new Map<string | number, number>()
   if (needs_ref_lookup) {
-    id_to_idx = new Map<string | number, number>()
     data.nodes.forEach((node, idx) => {
       const key = node.id ?? node.label
       if (key === undefined) return // index-only node, resolved via fallback
-      if (id_to_idx?.has(key)) {
+      if (id_to_idx.has(key)) {
         console.warn(
           `Sankey: duplicate node ${
             node.id !== undefined ? `id` : `label`
           } "${key}" — links resolve to the last occurrence. Set unique \`id\`s.`,
         )
       }
-      id_to_idx?.set(key, idx)
+      id_to_idx.set(key, idx)
     })
   }
 
@@ -240,33 +235,12 @@ export function compute_sankey_layout<Metadata = Record<string, unknown>>(
     label: node.label,
     color: node.color,
   }))
-  // Resolve a source/target ref to a node index: id/label lookup when any link uses
-  // non-numeric refs, otherwise a cheap numeric-range check (no map built).
-  const resolve_ref = (ref: number | string): number => {
-    if (needs_ref_lookup) {
-      return resolve_node_ref(
-        ref,
-        id_to_idx as Map<string | number, number>,
-        data.nodes.length,
-      )
-    }
-    if (
-      typeof ref === `number` &&
-      Number.isInteger(ref) &&
-      ref >= 0 &&
-      ref < data.nodes.length
-    ) {
-      return ref
-    }
-    throw new Error(`Sankey link references unknown node: ${JSON.stringify(ref)}`)
-  }
-
   const link_copies = data.links.map((link, idx) => ({
     link_idx: idx,
     color: link.color,
     label: link.label,
-    source: resolve_ref(link.source),
-    target: resolve_ref(link.target),
+    source: resolve_node_ref(link.source, id_to_idx, data.nodes.length),
+    target: resolve_node_ref(link.target, id_to_idx, data.nodes.length),
     value: link.value,
   }))
 

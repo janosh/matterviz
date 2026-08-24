@@ -1,14 +1,13 @@
 // PDB (Protein Data Bank) format: fixed-column ATOM/HETATM records, an optional CRYST1
 // unit cell and CONECT connectivity records.
 import type { ElementSymbol } from '$lib/element'
-import type { Vec3 } from '$lib/math'
 import type { AnyStructure, Site } from '$lib/structure'
 import { make_site } from '$lib/structure/site'
 import {
-  cart_to_frac_with_fallback,
-  cell_params_to_matrix,
+  cell_frame,
   diag_error,
   diag_warn,
+  drop_placeholder_cell,
   element_from_candidates,
   guard_parse,
   is_placeholder_cell,
@@ -72,7 +71,7 @@ export const parse_pdb = (content: string): AnyStructure | null =>
   guard_parse(`PDB`, () => {
     const lines = content.split(/\r?\n/)
 
-    let cell_params: number[] | null = null
+    let cell_params: readonly number[] | null = null
     let model_count = 0
     let skipped_alt_locs = 0
     const atom_lines: string[] = []
@@ -88,11 +87,7 @@ export const parse_pdb = (content: string): AnyStructure | null =>
           diag_error(`PDB CRYST1 record has invalid cell parameters: '${line.trim()}'`)
           return null
         }
-        if (is_placeholder_cell(params)) {
-          diag_warn(
-            `PDB: ignoring placeholder CRYST1 cell (1 1 1 90 90 90), treating as molecule`,
-          )
-        } else cell_params = params
+        cell_params = drop_placeholder_cell(params, `PDB`, `CRYST1 cell`)
         continue
       }
 
@@ -160,16 +155,9 @@ export const parse_pdb = (content: string): AnyStructure | null =>
       diag_warn(`PDB: skipped ${skipped_alt_locs} atom(s) with alternate location indicators`)
     }
 
-    const lattice_matrix = cell_params ? cell_params_to_matrix(cell_params) : null
     // Cartesian coordinates stay authoritative and are NOT wrapped into the cell:
     // wrapping would tear molecules apart across periodic boundaries
-    const cart_to_frac =
-      lattice_matrix && cell_params
-        ? cart_to_frac_with_fallback(lattice_matrix, {
-            axis_lengths: [cell_params[0], cell_params[1], cell_params[2]],
-            context: `PDB CRYST1 cell`,
-          })
-        : null
+    const { lattice_matrix, to_frac } = cell_frame(cell_params, `PDB CRYST1 cell`)
 
     const sites: Site[] = []
     const site_idx_by_serial = new Map<number, number>()
@@ -180,7 +168,7 @@ export const parse_pdb = (content: string): AnyStructure | null =>
         [num_field(line, 30, 38), num_field(line, 38, 46), num_field(line, 46, 54)],
         `PDB atom coordinates on '${line.trim()}'`,
       )
-      const abc: Vec3 = cart_to_frac ? cart_to_frac.convert(xyz) : [0, 0, 0]
+      const abc = to_frac(xyz)
 
       const occupancy = num_field(line, 54, 60)
       const b_factor = num_field(line, 60, 66)

@@ -12,9 +12,6 @@ export interface ScalarGrid3D<ArrayType extends ScalarGridArray = ScalarGridArra
   order: ScalarGridOrder
 }
 
-// Nested [x][y][z] arrays are accepted at JSON boundaries and by marching cubes
-export type ScalarGridLike = ScalarGrid3D | number[][][]
-
 const is_scalar_grid = (grid: unknown): grid is ScalarGrid3D =>
   typeof grid === `object` &&
   grid !== null &&
@@ -23,10 +20,8 @@ const is_scalar_grid = (grid: unknown): grid is ScalarGrid3D =>
   `dims` in grid &&
   `order` in grid
 
-export const grid_dimensions = (grid: ScalarGridLike): Vec3 => {
-  if (Array.isArray(grid)) {
-    return [grid.length, grid[0]?.length ?? 0, grid[0]?.[0]?.length ?? 0]
-  }
+// Validated copy of a grid's dims; throws on anything that is not a well-formed ScalarGrid3D
+export function grid_dimensions(grid: ScalarGrid3D): Vec3 {
   if (!is_scalar_grid(grid)) {
     throw new TypeError(`Scalar grid must define values, dims, and order`)
   }
@@ -61,9 +56,9 @@ export function scalar_grid_strides({ dims: [nx, ny, nz], order }: ScalarGrid3D)
 // Copy a nested [x][y][z] array into a z-fastest Float64Array. Rows must all have the
 // same length; ragged input throws instead of silently producing a misaligned grid.
 export function flatten_grid(grid: number[][][]): ScalarGrid3D<Float64Array> {
-  const dims = grid_dimensions(grid)
-  const [, ny, nz] = dims
-  const values = new Float64Array(dims[0] * ny * nz)
+  const [nx, ny, nz] = [grid.length, grid[0]?.length ?? 0, grid[0]?.[0]?.length ?? 0]
+  const dims: Vec3 = [nx, ny, nz]
+  const values = new Float64Array(nx * ny * nz)
   let offset = 0
   for (const plane of grid) {
     if (plane.length !== ny) {

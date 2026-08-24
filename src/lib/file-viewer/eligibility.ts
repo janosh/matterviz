@@ -4,11 +4,12 @@ import {
   CONFIG_DIRS_REGEX,
   HDF5_EXT_REGEX,
   TRAJ_KEYWORDS_REGEX,
+  VASP_VOLUMETRIC_REGEX,
 } from '$lib/constants'
-import { FERMI_FILE_RE, VOLUMETRIC_EXT_RE, VOLUMETRIC_VASP_RE } from '$lib/file-viewer/types'
+import { FERMI_FILE_RE, VOLUMETRIC_EXT_RE } from '$lib/file-viewer/types'
 import { detect_compression_format, is_stream_compression_format } from '$lib/io/decompress'
 import { is_structure_file } from '$lib/structure/format-detect'
-import { is_trajectory_filename } from '$lib/trajectory/filename'
+import { is_trajectory_filename } from '$lib/trajectory/format-detect'
 
 // Return the browser-visible filename after removing one supported compression
 // wrapper. Nested and unsupported wrappers are deliberately rejected because the
@@ -33,7 +34,7 @@ const normalize_eligible_filename = (filename: unknown): string | null => {
 const is_fermi_or_volumetric = (normalized: string): boolean =>
   FERMI_FILE_RE.test(normalized) ||
   VOLUMETRIC_EXT_RE.test(normalized) ||
-  VOLUMETRIC_VASP_RE.test(normalized)
+  VASP_VOLUMETRIC_REGEX.test(normalized)
 
 // Broad: MatterViz can open/view this file (JSON/YAML structures, keyword trajs, …). Hosts
 // that need a literal extension list use the viewer vocabularies in $lib/constants.

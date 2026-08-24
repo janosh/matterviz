@@ -97,9 +97,6 @@ const get_wasm_filename = (ext_path: string): string | undefined => {
   return wasm_filename_cache
 }
 
-// Auto-open only unambiguous structure/trajectory files (not JSON/YAML keyword matches)
-export const should_auto_render = is_auto_renderable_filename
-
 // Update the shared VS Code context for files MatterViz can open/view
 const update_supported_resource_context = (uri?: vscode.Uri): void => {
   // Prefer explicit URI; otherwise fall back to the active editor filename
@@ -141,7 +138,6 @@ export const read_file = async (file_path: string): Promise<FileData> => {
   try {
     file_size = (await vscode.workspace.fs.stat(uri)).size
   } catch (error) {
-    console.warn(`Failed to get file stats for ${filename}:`, error)
     throw new Error(`Failed to access file ${filename}: ${to_error(error).message}`, {
       cause: error,
     })
@@ -699,9 +695,10 @@ export const activate = (context: vscode.ExtensionContext) => {
     vscode.workspace.onDidOpenTextDocument((document: vscode.TextDocument) => {
       // Update context on any document open
       update_supported_resource_context(document.uri)
+      // Auto-open only unambiguous structure/trajectory files (not JSON/YAML keyword matches)
       if (
         document.uri.scheme === `file` &&
-        should_auto_render(path.basename(document.uri.fsPath))
+        is_auto_renderable_filename(path.basename(document.uri.fsPath))
       ) {
         const file_path = document.uri.fsPath
 

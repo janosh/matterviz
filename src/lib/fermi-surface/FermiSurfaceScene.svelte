@@ -17,6 +17,7 @@
     bind_renderer,
     build_orbit_props,
     create_orthographic_zoom,
+    HOVER_THROTTLE_MS,
     SceneCamera,
     SceneLights,
   } from '$lib/scene'
@@ -37,7 +38,7 @@
     Plane,
     Vector3,
   } from 'three/webgpu'
-  import * as constants from './constants'
+  import { BAND_COLORS, SPIN_COLORS } from './constants'
   import {
     apply_vertex_colors,
     build_isosurface_geometry,
@@ -67,10 +68,7 @@
     selected_bands,
     // BZ styling
     show_bz = DEFAULTS.fermi.show_bz,
-    bz_color = `#888888`,
     bz_opacity = DEFAULTS.fermi.bz_opacity,
-    bz_edge_color = `#333333`,
-    bz_edge_width = 0.002,
     show_vectors = DEFAULTS.fermi.show_vectors,
     tile_bz = DEFAULTS.fermi.tile_bz,
     // Clipping plane
@@ -78,7 +76,6 @@
     clip_axis = DEFAULTS.fermi.clip_axis,
     clip_position = DEFAULTS.fermi.clip_position,
     clip_flip = DEFAULTS.fermi.clip_flip,
-    vector_scale = 1.0,
     // Camera controls
     rotation_damping = DEFAULTS.structure.rotation_damping,
     max_zoom = DEFAULTS.structure.max_zoom,
@@ -110,17 +107,13 @@
     surface_opacity?: number
     selected_bands?: number[]
     show_bz?: boolean
-    bz_color?: string
     bz_opacity?: number
-    bz_edge_color?: string
-    bz_edge_width?: number
     show_vectors?: boolean
     tile_bz?: boolean
     clip_enabled?: boolean
     clip_axis?: `x` | `y` | `z`
     clip_position?: number
     clip_flip?: boolean
-    vector_scale?: number
     hover_data?: FermiHoverData | null
   } = $props()
 
@@ -216,10 +209,8 @@
 
   // Flat colour for a surface (material colour, tooltip background)
   function get_surface_color(surface: FermiIsosurface): string {
-    if (color_property === `spin` && surface.spin) {
-      return surface.spin === `up` ? `#e41a1c` : `#377eb8`
-    }
-    return constants.BAND_COLORS[surface.band_index % constants.BAND_COLORS.length]
+    if (color_property === `spin` && surface.spin) return SPIN_COLORS[surface.spin]
+    return BAND_COLORS[surface.band_index % BAND_COLORS.length]
   }
 
   // One BufferGeometry per visible surface object, built once and kept for as long as the
@@ -265,13 +256,12 @@
     threlte.invalidate()
   })
 
-  // Count total triangles and auto-disable tiling for very large surfaces
+  // Tiling draws up to 48 copies (cubic), so it is auto-disabled above this triangle count
+  const MAX_TRIANGLES_FOR_TILING = 50_000
   let total_triangles = $derived(
     visible_surfaces.reduce((sum, surface) => sum + surface.indices.length / 3, 0),
   )
-  let effective_tile_bz = $derived(
-    tile_bz && total_triangles < constants.MAX_TRIANGLES_FOR_TILING,
-  )
+  let effective_tile_bz = $derived(tile_bz && total_triangles < MAX_TRIANGLES_FOR_TILING)
 
   // Warn user when tiling is auto-disabled
   $effect(() => {
@@ -420,7 +410,7 @@
     sym_idx: number,
   ): void {
     const now = performance.now()
-    if (now - last_hover_time < constants.HOVER_THROTTLE_MS) return
+    if (now - last_hover_time < HOVER_THROTTLE_MS) return
     last_hover_time = now
 
     // event.point is in world space (after sym_matrix transformation)
@@ -474,16 +464,16 @@
   {#if show_bz && bz_data}
     <PolyhedronMesh
       polyhedron={bz_data}
-      color={bz_color}
+      color="#888888"
       opacity={bz_opacity}
-      edge_color={bz_edge_color}
-      edge_width={bz_edge_width}
+      edge_color="#333333"
+      edge_width={0.002}
     />
   {/if}
 
   <!-- Reciprocal lattice vectors -->
   {#if show_vectors && fermi_data?.k_lattice}
-    <ReciprocalVectors k_lattice={fermi_data.k_lattice} {vector_scale} size={scene_size} />
+    <ReciprocalVectors k_lattice={fermi_data.k_lattice} size={scene_size} />
   {/if}
 
   <!-- Fermi surfaces (with optional symmetry tiling) -->
