@@ -21,7 +21,6 @@ import type { AtomColorConfig, AtomPropertyColors } from './atom-properties'
 import { get_property_colors } from './atom-properties'
 import type { BondingStrategy } from './bonding'
 import { merge_bond_edits, remap_bonds_after_deletion } from './bonding'
-import { push_edit, step_history } from './edit-history'
 import type {
   AnyStructure,
   BondEditMode,
@@ -31,11 +30,10 @@ import type {
   Site,
   StructureBond,
 } from './index'
-import { get_pbc_image_sites } from './index'
 import { normalize_fractional_coords } from './parse'
 import { capitalize_symbol } from './parsers/shared'
-import { wrap_to_unit_cell } from './pbc'
-import { get_orig_site_idx, is_image_site } from './site'
+import { get_pbc_image_sites, wrap_to_unit_cell } from './pbc'
+import { get_image_source_idx, get_orig_site_idx, is_image_site } from './site'
 import { make_supercell, parse_supercell_scaling } from './supercell'
 
 // State the component owns as (bindable) props, read and written through these accessors so
@@ -104,26 +102,28 @@ const build_supercell = (base: Crystal, scaling: string): SupercellBuild => {
   }
 }
 
-// Undo/redo over push_edit/step_history. $state.raw: entries hold whole structures and
-// deep-proxying them would route every restored site read through proxy traps.
+// Undo/redo stacks, replaced rather than mutated. $state.raw: entries hold whole structures
+// and deep-proxying them would route every restored site read through proxy traps.
 class History<Entry> {
   undo_stack = $state.raw<Entry[]>([])
   redo_stack = $state.raw<Entry[]>([])
+  // Record an edit: push onto undo (capped at MAX_HISTORY entries) and invalidate redo
   push(entry: Entry): void {
-    ;[this.undo_stack, this.redo_stack] = push_edit(
-      [this.undo_stack, this.redo_stack],
-      entry,
-      MAX_HISTORY,
-    )
+    const kept = this.undo_stack.slice(Math.max(0, this.undo_stack.length - MAX_HISTORY + 1))
+    this.undo_stack = [...kept, entry]
+    this.redo_stack = []
   }
-  // Restore the top of `direction`'s stack, moving `current` to the opposite one
+  // Restore the top of `direction`'s stack, moving `current()` (read lazily, snapshots are
+  // expensive) to the opposite one; undefined when there is nothing to step to
   step(direction: `undo` | `redo`, current: () => Entry): Entry | undefined {
-    if ((direction === `undo` ? this.undo_stack : this.redo_stack).length === 0)
-      return undefined
-    const result = step_history([this.undo_stack, this.redo_stack], direction, current())
-    if (!result) return undefined
-    ;[this.undo_stack, this.redo_stack] = result.stacks
-    return result.restored
+    const undo = direction === `undo`
+    const source = undo ? this.undo_stack : this.redo_stack
+    const restored = source.at(-1)
+    if (restored === undefined) return undefined
+    const remaining = source.slice(0, -1)
+    const opposite = [...(undo ? this.redo_stack : this.undo_stack), current()]
+    ;[this.undo_stack, this.redo_stack] = undo ? [remaining, opposite] : [opposite, remaining]
+    return restored
   }
   clear(): void {
     if (this.undo_stack.length > 0 || this.redo_stack.length > 0) {
@@ -630,8 +630,7 @@ export class StructureSession {
     if (this.supercell_structure !== this.base_structure) {
       return get_orig_site_idx(site, site_idx)
     }
-    const { orig_site_idx } = site.properties ?? {}
-    return typeof orig_site_idx === `number` ? orig_site_idx : site_idx
+    return get_image_source_idx(site, site_idx)
   }
 
   // === edit-atoms operations ===

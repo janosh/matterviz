@@ -2,14 +2,11 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
-  // Shared markup shell for the hierarchical part-of-whole charts (Sunburst,
-  // Treemap): header controls, breadcrumb trail, the svg with its delegated
-  // pointer/keyboard handling, tooltip, legend and color bar. Each chart keeps
-  // its own wrapper element - so its scoped CSS and CSS variable namespace stay
-  // put - and renders its geometry into the `body` snippet. All shared state
-  // lives on the HierarchyChartState the chart passes in.
+  // Shared markup for the hierarchical part-of-whole charts (Sunburst, Treemap), rendered
+  // inside a ChartShell: breadcrumb trail, the svg with its delegated pointer/keyboard
+  // handling, tooltip, legend and color bar. Each chart renders its geometry into the
+  // `marks` snippet; all shared state lives on the HierarchyChartState it passes in.
   import { format_value } from '$lib/labels'
-  import { FullscreenButton } from '$lib/layout'
   import ColorBar from '$lib/plot/core/components/ColorBar.svelte'
   import PlotLegend from '$lib/plot/core/components/PlotLegend.svelte'
   import PlotTooltip from '$lib/plot/core/components/PlotTooltip.svelte'
@@ -17,7 +14,7 @@
   import { observe_size } from '$lib/plot/core/utils'
   import { COLOR_BAR_GAP } from '$lib/plot/core/utils/hierarchy-chart'
   import type { HierarchyChartState } from '$lib/plot/core/utils/hierarchy-state.svelte'
-  import type { SunburstNodeHandlerProps } from '$lib/plot/sunburst/sunburst'
+  import type { SunburstNodeHandlerProps } from '$lib/plot/core/utils/hierarchy-layout'
   import type { Snippet } from 'svelte'
 
   let {
@@ -27,13 +24,9 @@
     show_breadcrumbs = true,
     crumb_separator = false,
     dblclick_target = `group`,
-    fullscreen_toggle = true,
-    controls,
-    header_controls,
     extra_defs,
-    body,
+    marks,
     tooltip,
-    children,
   }: {
     chart_state: HierarchyChartState<Metadata>
     aria_label: string
@@ -43,13 +36,9 @@
     // Sunburst listens on the chart group, treemap on the svg (whose background
     // is the only real empty-space hit target once cells tile the full area)
     dblclick_target?: `svg` | `group`
-    fullscreen_toggle?: boolean
-    controls: Snippet
-    header_controls?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
     extra_defs?: Snippet
-    body: Snippet
+    marks: Snippet
     tooltip?: Snippet<[SunburstNodeHandlerProps<Metadata>]>
-    children?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
   } = $props()
 
   let legend_element = $state<HTMLDivElement | undefined>()
@@ -81,83 +70,64 @@
     }
     return `position: absolute; bottom: ${cbar_var(`bottom`, `${COLOR_BAR_GAP}px`)}; left: ${cbar_var(`left`, `50%`)}; transform: ${cbar_var(`transform`, `translateX(-50%)`)}; width: ${cbar_var(`width`, `40%`)}; min-width: 120px; pointer-events: auto;`
   })
-
-  let slot_args = $derived({
-    height: chart_state.height,
-    width: chart_state.width,
-    fullscreen: chart_state.fullscreen,
-  })
 </script>
 
 <svelte:window onkeydown={chart_state.handle_escape} />
 
-{#if chart_state.width && chart_state.height}
-  <div class="header-controls">
-    {@render header_controls?.(slot_args)}
-    {@render controls()}
-    {#if fullscreen_toggle}
-      <FullscreenButton
-        bind:fullscreen={chart_state.fullscreen}
-        wrapper={chart_state.wrapper}
-        bg_css_var="--{chart_state.chart}-fullscreen-bg"
-      />
-    {/if}
-  </div>
-  {#if show_breadcrumbs && chart_state.breadcrumb_arcs.length > 0}
-    <nav class="breadcrumbs" aria-label="zoom path">
-      {#each chart_state.breadcrumb_arcs as crumb, crumb_idx (crumb.node_idx)}
-        {#if crumb_separator && crumb_idx > 0}
-          <span style="opacity: 0.6" aria-hidden="true">›</span>
-        {/if}
-        <button
-          type="button"
-          class="breadcrumb"
-          disabled={crumb_idx === chart_state.breadcrumb_arcs.length - 1}
-          onclick={() => chart_state.zoom_to(crumb)}
-        >
-          {crumb.depth === 0 ? `all` : (crumb.label ?? crumb.id)}
-        </button>
-      {/each}
-    </nav>
-  {/if}
-  <svg
-    bind:this={chart_state.svg_element}
-    viewBox="0 0 {chart_state.width} {chart_state.height}"
-    role="application"
-    aria-label={aria_label}
-    onmouseleave={chart_state.clear_hover}
-    ondblclick={dblclick_target === `svg` ? chart_state.handle_dblclick : undefined}
-  >
-    <defs>
-      <!-- inert unless some node references it via fill -->
-      <pattern
-        id={chart_state.hatch_pattern_id}
-        patternUnits="userSpaceOnUse"
-        width="8"
-        height="8"
+{#if show_breadcrumbs && chart_state.breadcrumb_arcs.length > 0}
+  <nav class="breadcrumbs" aria-label="zoom path">
+    {#each chart_state.breadcrumb_arcs as crumb, crumb_idx (crumb.node_idx)}
+      {#if crumb_separator && crumb_idx > 0}
+        <span style="opacity: 0.6" aria-hidden="true">›</span>
+      {/if}
+      <button
+        type="button"
+        class="breadcrumb"
+        disabled={crumb_idx === chart_state.breadcrumb_arcs.length - 1}
+        onclick={() => chart_state.zoom_to(crumb)}
       >
-        <path class="hatch-pattern-line" d="M-1,1 l2,-2 M0,8 l8,-8 M7,9 l2,-2" />
-      </pattern>
-      {@render extra_defs?.()}
-    </defs>
-    <!-- Hover/click delegation sits on the chart group (not the node group) so
-    labels - which carry the same data-<chart>-node-idx and are selectable text -
-    forward interactions to their node instead of swallowing them -->
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <g
-      transform={chart_transform}
-      onmousemove={chart_state.handle_hover_event}
-      onmouseleave={chart_state.clear_hover}
-      onfocusin={chart_state.handle_hover_event}
-      onfocusout={chart_state.clear_hover}
-      onclick={chart_state.handle_click}
-      onkeydown={chart_state.handle_keydown}
-      ondblclick={dblclick_target === `group` ? chart_state.handle_dblclick : undefined}
-    >
-      {@render body()}
-    </g>
-  </svg>
+        {crumb.depth === 0 ? `all` : (crumb.label ?? crumb.id)}
+      </button>
+    {/each}
+  </nav>
 {/if}
+<svg
+  bind:this={chart_state.svg_element}
+  viewBox="0 0 {chart_state.width} {chart_state.height}"
+  role="application"
+  aria-label={aria_label}
+  onmouseleave={chart_state.clear_hover}
+  ondblclick={dblclick_target === `svg` ? chart_state.handle_dblclick : undefined}
+>
+  <defs>
+    <!-- inert unless some node references it via fill -->
+    <pattern
+      id={chart_state.hatch_pattern_id}
+      patternUnits="userSpaceOnUse"
+      width="8"
+      height="8"
+    >
+      <path class="hatch-pattern-line" d="M-1,1 l2,-2 M0,8 l8,-8 M7,9 l2,-2" />
+    </pattern>
+    {@render extra_defs?.()}
+  </defs>
+  <!-- Hover/click delegation sits on the chart group (not the node group) so
+  labels - which carry the same data-<chart>-node-idx and are selectable text -
+  forward interactions to their node instead of swallowing them -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <g
+    transform={chart_transform}
+    onmousemove={chart_state.handle_hover_event}
+    onmouseleave={chart_state.clear_hover}
+    onfocusin={chart_state.handle_hover_event}
+    onfocusout={chart_state.clear_hover}
+    onclick={chart_state.handle_click}
+    onkeydown={chart_state.handle_keydown}
+    ondblclick={dblclick_target === `group` ? chart_state.handle_dblclick : undefined}
+  >
+    {@render marks()}
+  </g>
+</svg>
 
 {#if chart_state.hover_info}
   {@const info = chart_state.hover_info}
@@ -214,26 +184,3 @@
     {@attach observe_size((size) => (chart_state.colorbar_size = size))}
   />
 {/if}
-
-{@render children?.(slot_args)}
-
-<style>
-  .header-controls {
-    position: absolute;
-    top: var(--ctrl-btn-top, 5pt);
-    right: var(--fullscreen-btn-right, 4px);
-    z-index: var(--fullscreen-btn-z-index, 10);
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    opacity: 0;
-    transition:
-      opacity 0.2s,
-      background-color 0.2s;
-  }
-  :global(:is(.sunburst, .treemap):hover) .header-controls,
-  .header-controls:has(:global([aria-expanded='true'])),
-  .header-controls:focus-within {
-    opacity: 1;
-  }
-</style>

@@ -2,7 +2,6 @@ import { calc_lattice_params, first_non_increasing_index } from '$lib/math'
 import type { Pbc } from '$lib/structure/pbc'
 import {
   convert_atomic_numbers,
-  count_elements,
   create_trajectory_frame,
   values_per_sample,
 } from '$lib/trajectory/helpers'
@@ -19,7 +18,6 @@ import {
   is_hdf5_dataset,
   is_hdf5_group,
   lattice_from_values,
-  read_numeric_first_axis,
   read_numeric_hyperslab,
   read_numeric_samples,
   resolve_stream_channels,
@@ -58,17 +56,6 @@ const values_of = (dataset: Dataset, path: string): number[] => {
   const values = to_number_array(dataset.to_array())
   if (!values) throw new Error(`Reference MD HDF5 dataset ${path} must contain finite numbers`)
   return values
-}
-
-const values_of_first_axis = (dataset: Dataset, path: string): number[] => {
-  const shape = shape_of(dataset, path)
-  return read_numeric_first_axis(
-    dataset,
-    path,
-    shape[0],
-    values_per_sample(shape.slice(1)),
-    `Reference MD HDF5 dataset`,
-  )
 }
 
 const ensure_shape = (shape: number[], expected: number[], path: string): void => {
@@ -260,11 +247,11 @@ export const parse_reference_md_h5_file = (
     )
   }
   const pbc = as_pbc(required_dataset(h5_file, pbc_path), pbc_path)
-  const production_steps = values_of_first_axis(
+  const production_steps = values_of(
     required_dataset(h5_file, production_steps_path),
     production_steps_path,
   )
-  const times_ps = values_of_first_axis(required_dataset(h5_file, times_path), times_path)
+  const times_ps = values_of(required_dataset(h5_file, times_path), times_path)
   if (production_steps.length === 0 || times_ps.length !== production_steps.length) {
     throw new Error(
       `Reference MD HDF5 frames require matching non-empty ${production_steps_path} and ${times_path}`,
@@ -468,7 +455,6 @@ export const parse_reference_md_h5_file = (
     manifest ? read_replica_frames(manifest, frame_number, frame_number + 1)[0] : undefined
   const metadata_for_frame = (frame_number: number): Record<string, number> => ({
     time_ps: times_ps[frame_number],
-    volume,
     ...(energy ? { energy: selected_scalar(energy, frame_number) } : {}),
     ...(temperature ? { temperature: selected_scalar(temperature, frame_number) } : {}),
   })
@@ -516,9 +502,6 @@ export const parse_reference_md_h5_file = (
     reconstructed_positions: `trapezoidal integration of atomic_velocity_angstrom_per_ps`,
     position_checkpoint_interval: checkpoint_interval,
     position_checkpoint_bytes: checkpoint_positions.length * checkpoint_bytes,
-    periodic_boundary_conditions: pbc,
-    element_counts: count_elements(elements),
-    has_cell_info: true,
   }
   if (n_frames === 1) {
     const signals = Object.fromEntries(
@@ -530,8 +513,7 @@ export const parse_reference_md_h5_file = (
     return {
       format: `reference-md-hdf5`,
       frames: [load_frame(0)],
-      time_step: integration_timestep_ps,
-      time_unit: `ps`,
+      time_step: { value: integration_timestep_ps, unit: `ps` },
       atom_masses,
       signals,
       metadata: trajectory_metadata,
@@ -608,8 +590,7 @@ export const parse_reference_md_h5_file = (
     dispose: () => {
       checkpoint_positions.length = 0
     },
-    time_step: integration_timestep_ps,
-    time_unit: `ps`,
+    time_step: { value: integration_timestep_ps, unit: `ps` },
     atom_masses,
     signals: signal_descriptors,
     metadata: trajectory_metadata,

@@ -1,5 +1,5 @@
-"""Fetch quaternary phase diagram data from Materials Project and calculate
-e_above_hull for tetrahedron visualization on /phase-diagrams page.
+"""Fetch quaternary chemical systems from the Materials Project and annotate every entry with
+its hull distance for the /convex-hull demo (src/site/convex-hull/quaternaries/<system>.json.gz).
 
 Run with: uv run src/scripts/fetch_mp_pd_data.py
 """
@@ -12,38 +12,33 @@ import os
 
 from mp_api.client import MPRester
 from pymatgen.analysis.phase_diagram import PhaseDiagram
-from pymatgen.entries.computed_entries import ComputedStructureEntry
 
 out_dir = f"{os.path.dirname(os.path.abspath(__file__))}/../site/convex-hull/quaternaries"
-os.makedirs(out_dir, exist_ok=True)
-chemical_systems = (
-    "Li-Fe-P-O",
-    "Li-Co-Ni-O",
-    "Na-Fe-P-O",
-    # "Li-Mn-P-O", # well explored, gives large number of entries
-    "Si-O-K-Al",
-)
-all_entries = dict.fromkeys(chemical_systems, None)
-mpr = MPRester()
+# Li-Mn-P-O is left out: well explored, gives a very large number of entries
+chemical_systems = ("Li-Fe-P-O", "Li-Co-Ni-O", "Na-Fe-P-O", "Si-O-K-Al")
 
 
-# %%
-for chem_sys in chemical_systems:
-    if all_entries[chem_sys] is None:
-        entries: list[ComputedStructureEntry] = mpr.get_entries_in_chemsys(chem_sys)
-        all_entries[chem_sys] = entries
+def main() -> None:
+    """Write one gzipped JSON file of hull-annotated ComputedStructureEntry dicts per system."""
+    os.makedirs(out_dir, exist_ok=True)
+    with MPRester() as mpr:
+        for chem_sys in chemical_systems:
+            entries = mpr.get_entries_in_chemsys(chem_sys)
+            phase_diagram = PhaseDiagram(entries)
+            json_data = [
+                entry.as_dict()
+                | {
+                    "e_above_hull": phase_diagram.get_e_above_hull(entry),
+                    "is_stable": entry in phase_diagram.stable_entries,
+                    "e_form_per_atom": phase_diagram.get_form_energy_per_atom(entry),
+                }
+                for entry in entries
+            ]
+            filename = f"{out_dir}/{chem_sys}.json.gz"
+            with gzip.open(filename, mode="wt", encoding="utf-8") as file:
+                json.dump(json_data, file, indent=2)
+            print(f"{chem_sys}: wrote {len(entries)} entries to {filename}")
 
-    pd = PhaseDiagram(entries)
 
-    filename = f"{out_dir}/{chem_sys}.json.gz"
-    json_data = [
-        entry.as_dict()
-        | {
-            "e_above_hull": pd.get_e_above_hull(entry),
-            "is_stable": entry in pd.stable_entries,
-            "e_form_per_atom": pd.get_form_energy_per_atom(entry),
-        }
-        for entry in entries
-    ]
-    with gzip.open(filename, mode="wt", encoding="utf-8") as file:
-        json.dump(json_data, file, indent=2)
+if __name__ == "__main__":
+    main()

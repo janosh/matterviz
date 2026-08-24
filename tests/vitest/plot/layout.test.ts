@@ -4,25 +4,27 @@ import {
   AXIS_TITLE_OFFSET,
   calc_auto_padding,
   centered_rect,
-  clear_tick_metrics_cache,
   compute_element_placement,
   DEFAULT_PLOT_PADDING,
   filter_padding,
   full_footprint_or,
   LABEL_GAP_DEFAULT,
-  type MeasuredAxis,
   pad_rect,
   point_in_rect,
   rect_within_rect,
   resolve_axis_title_layout,
-  resolve_tick_layout,
   sample_series_obstacle_points,
   type Sides,
   stride_sample,
-  TICK_LABEL_HEIGHT,
   y_axis_label_x,
   y2_axis_label_x,
 } from '$lib/plot/core/layout'
+import { clear_text_metrics_cache } from '$lib/plot/core/text-metrics'
+import {
+  type MeasuredAxis,
+  resolve_tick_layout,
+  TICK_LABEL_HEIGHT,
+} from '$lib/plot/core/tick-layout'
 import { afterEach, beforeEach, describe, expect, it, test, vi } from 'vitest'
 import { mock_canvas_context, mock_text_measurement } from '../setup'
 
@@ -346,16 +348,14 @@ describe(`layout utility functions`, () => {
     ])(`crowding at %s`, (_label, pitch, expected) => {
       const layout = x_layout(crowded, pitch * crowded.length, {
         ...overhang(pitch * crowded.length),
-        tick: {
-          label: { max_lines: 1, auto_layout: { strategies: [`upright`, `rotate`] } },
-        },
+        tick_label: { max_lines: 1, auto_layout: { strategies: [`upright`, `rotate`] } },
       })
       expect(layout.rotation).toBe(expected)
     })
 
     it(`costs less height the shallower it tilts`, () => {
       const bands = [0, -30, -45, -60, -90].map(
-        (rotation) => x_layout([`QUEUE_HOLD`], 100, { tick: { label: { rotation } } }).band,
+        (rotation) => x_layout([`QUEUE_HOLD`], 100, { tick_label: { rotation } }).band,
       )
       expect(bands[0]).toBe(TICK_LABEL_HEIGHT)
       expect(bands.slice(1).every((band, idx) => band > bands[idx])).toBe(true)
@@ -371,7 +371,7 @@ describe(`layout utility functions`, () => {
       const width = labels.length * (max_width + 6)
       const layout = x_layout(labels, width, {
         axis_extent: { start: 0, end: width },
-        tick: { label: { auto_layout: { strategies: [`wrap`], max_band: 100 } } },
+        tick_label: { auto_layout: { strategies: [`wrap`], max_band: 100 } },
       })
       expect(layout.labels[1].lines).toEqual(expected)
     })
@@ -379,7 +379,7 @@ describe(`layout utility functions`, () => {
     it(`memoizes wrap measurements to a quadratic bound`, () => {
       const measure_text = vi.fn((label: string) => ({ width: label.length * px_per_char }))
       mock_canvas_context({ measureText: measure_text })
-      clear_tick_metrics_cache()
+      clear_text_metrics_cache()
       const segments = [
         `alpha`,
         `beta`,
@@ -395,11 +395,9 @@ describe(`layout utility functions`, () => {
         `mu`,
       ]
       x_layout([segments.join(` `)], 80, {
-        tick: {
-          label: {
-            max_lines: segments.length,
-            auto_layout: { strategies: [`wrap`] },
-          },
+        tick_label: {
+          max_lines: segments.length,
+          auto_layout: { strategies: [`wrap`] },
         },
       })
 
@@ -418,9 +416,7 @@ describe(`layout utility functions`, () => {
 
       const wrapping_disabled = x_layout(state_labels, 160, {
         ...overhang(160),
-        tick: {
-          label: { max_lines: 1, auto_layout: { strategies: [`upright`, `rotate`] } },
-        },
+        tick_label: { max_lines: 1, auto_layout: { strategies: [`upright`, `rotate`] } },
       })
       expect(wrapping_disabled.rotation).toBe(-30)
       expect(resolved_lines(wrapping_disabled)).toEqual(state_labels.map((label) => [label]))
@@ -433,7 +429,7 @@ describe(`layout utility functions`, () => {
       `wraps a lone long label instead of letting "%s" overflow`,
       (label, width, lines) => {
         const layout = x_layout([label], width, {
-          tick: { label: { auto_layout: { strategies: [`upright`, `wrap`] } } },
+          tick_label: { auto_layout: { strategies: [`upright`, `wrap`] } },
         })
         expect(layout.rotation).toBe(0)
         expect(layout.band).toBe(lines.length * TICK_LABEL_HEIGHT)
@@ -444,13 +440,13 @@ describe(`layout utility functions`, () => {
     it(`wraps labels more compactly than rotating one long line`, () => {
       const labels = [`Formation Energy Per Atom`, `Band Gap PBE Value`]
       const wrap_and_rotate = {
-        tick: { label: { auto_layout: { strategies: [`wrap`, `rotate`] as const } } },
+        tick_label: { auto_layout: { strategies: [`wrap`, `rotate`] as const } },
       }
       const layout = x_layout(labels, 320, wrap_and_rotate)
       expect(layout.strategy).toBe(`wrap`)
       expect(layout.labels[0].lines.length).toBeGreaterThan(1)
       const unwrapped = x_layout(labels, 320, {
-        tick: { label: { max_lines: 1, auto_layout: { strategies: [`rotate`] as const } } },
+        tick_label: { max_lines: 1, auto_layout: { strategies: [`rotate`] as const } },
       })
       expect(layout.band).toBeLessThan(unwrapped.band)
     })
@@ -460,7 +456,7 @@ describe(`layout utility functions`, () => {
       // no stagger: two upright rows would fit here and win on band; this case is about the angle
       const layout = x_layout(labels, 680, {
         ...overhang(680, 100),
-        tick: { label: { auto_layout: { strategies: [`upright`, `wrap`, `rotate`] } } },
+        tick_label: { auto_layout: { strategies: [`upright`, `wrap`, `rotate`] } },
       })
       expect(layout.rotation).toBe(-30)
       expect(resolved_lines(layout)).toEqual(labels.map((label) => [label]))
@@ -469,12 +465,12 @@ describe(`layout utility functions`, () => {
     it(`caps wrapping and keeps separators attached`, () => {
       expect(
         x_layout([`one two three four`], 50, {
-          tick: { label: { max_lines: 2, auto_layout: { strategies: [`upright`, `wrap`] } } },
+          tick_label: { max_lines: 2, auto_layout: { strategies: [`upright`, `wrap`] } },
         }).labels[0].lines,
       ).toEqual([`one two`, `three four`])
       expect(
         x_layout([`alpha - beta`, `alpha - beta`], 120, {
-          tick: { label: { max_lines: 4, auto_layout: { strategies: [`upright`, `wrap`] } } },
+          tick_label: { max_lines: 4, auto_layout: { strategies: [`upright`, `wrap`] } },
         }).labels[0].lines,
       ).toEqual([`alpha`, `- beta`])
       expect(resolved_lines(x_layout([`-alpha`], 10))).toEqual([[`-alpha`]])
@@ -492,9 +488,9 @@ describe(`layout utility functions`, () => {
 
     it(`preserves explicit whitespace and newline breaks`, () => {
       expect(
-        resolved_lines(x_layout([`  padded  `], 100, { tick: { label: { rotation: 0 } } })),
+        resolved_lines(x_layout([`  padded  `], 100, { tick_label: { rotation: 0 } })),
       ).toEqual([[`  padded  `]])
-      const multiline = x_layout([`top\nbottom\n`], 100, { tick: { label: { rotation: 45 } } })
+      const multiline = x_layout([`top\nbottom\n`], 100, { tick_label: { rotation: 45 } })
       expect(resolved_lines(multiline)).toEqual([[`top`, `bottom`]])
       expect(multiline.band).toBeGreaterThan(2 * TICK_LABEL_HEIGHT)
       for (const side of [`y`, `y2`] as const) {
@@ -510,7 +506,7 @@ describe(`layout utility functions`, () => {
         100,
         {
           ...overhang(100),
-          tick: { label: { auto_layout: { strategies: [`upright`, `rotate`] as const } } },
+          tick_label: { auto_layout: { strategies: [`upright`, `rotate`] as const } },
         },
       )
       expect(crowded_multiline.rotation).toBe(-45)
@@ -524,7 +520,7 @@ describe(`layout utility functions`, () => {
       const label = `SUPERCALIFRAGILISTIC`
       const layout = x_layout([label, label], 220, {
         ...overhang(220, 100),
-        tick: { label: { auto_layout: { strategies: [`upright`, `rotate`] } } },
+        tick_label: { auto_layout: { strategies: [`upright`, `rotate`] } },
       })
       expect(layout.rotation).toBe(-30)
       expect(resolved_lines(layout)).toEqual([[label], [label]])
@@ -538,9 +534,9 @@ describe(`layout utility functions`, () => {
     // Rotation follows the label side; vertical axes and lone labels stay upright.
     it.each([
       [`x labels`, {}, `x`, -1],
-      [`inside x labels`, { tick: { label: { inside: true } } }, `x`, 1],
+      [`inside x labels`, { tick_label: { inside: true } }, `x`, 1],
       [`x2 labels`, {}, `x2`, 1],
-      [`inside x2 labels`, { tick: { label: { inside: true } } }, `x2`, -1],
+      [`inside x2 labels`, { tick_label: { inside: true } }, `x2`, -1],
       [`y labels`, dense_numeric_axis, `y`, 0],
       [`y2 labels`, dense_numeric_axis, `y2`, 0],
       [`a lone label`, { tick_values: [`SOME_VERY_LONG_LABEL`] }, `x`, 0],
@@ -561,12 +557,9 @@ describe(`layout utility functions`, () => {
         // tilting them, and this case is about the band a tilt reserves.
         const axis: Partial<MeasuredAxis> = {
           ...base_axis,
-          tick: {
-            ...base_axis.tick,
-            label: {
-              ...base_axis.tick?.label,
-              auto_layout: { strategies: [`upright`, `rotate`] as const },
-            },
+          tick_label: {
+            ...base_axis.tick_label,
+            auto_layout: { strategies: [`upright`, `rotate`] as const },
           },
         }
         const tick_values = axis.tick_values ?? crowded
@@ -594,7 +587,7 @@ describe(`layout utility functions`, () => {
 
     it(`mirrors the tilt on x2 and reserves the room above`, () => {
       const rotate_only = {
-        tick: { label: { auto_layout: { strategies: [`upright`, `rotate`] as const } } },
+        tick_label: { auto_layout: { strategies: [`upright`, `rotate`] as const } },
       }
       const angle = rotation_for(rotate_only, `x2`)
       expect(angle).toBe(-rotation_for(rotate_only, `x`))
@@ -641,12 +634,8 @@ describe(`layout utility functions`, () => {
     const default_b = DEFAULT_PLOT_PADDING.b
     it.each([
       [`labels that already fit upright`, { x_axis: slot_axis([`a`, `b`]) }, default_b],
-      [
-        `an explicit rotation of 0`,
-        { x_axis: { tick: { label: { rotation: 0 } } } },
-        default_b,
-      ],
-      [`labels rendered inside`, { x_axis: { tick: { label: { inside: true } } } }, default_b],
+      [`an explicit rotation of 0`, { x_axis: { tick_label: { rotation: 0 } } }, default_b],
+      [`labels rendered inside`, { x_axis: { tick_label: { inside: true } } }, default_b],
       [`a bottom padding the caller set`, { padding: { b: 30 } }, 30],
     ])(`leaves the bottom padding alone with %s`, (_label, config, expected) => {
       expect(pad_for(config as Partial<AutoPaddingConfig>).b).toBe(expected)
@@ -683,13 +672,11 @@ describe(`layout utility functions`, () => {
       const layout = resolve_tick_layout(
         {
           ...positioned_axis(tick_values, [0, 42, 47, 200], 200),
-          tick: {
-            label: {
-              auto_layout: {
-                strategies: [`upright`, `thin`],
-                min_visible_ticks: 2,
-                endpoint_policy: `preserve`,
-              },
+          tick_label: {
+            auto_layout: {
+              strategies: [`upright`, `thin`],
+              min_visible_ticks: 2,
+              endpoint_policy: `preserve`,
             },
           },
         },
@@ -711,13 +698,11 @@ describe(`layout utility functions`, () => {
       const layout = resolve_tick_layout(
         {
           ...uniform_axis(tick_values, axis_size),
-          tick: {
-            label: {
-              auto_layout: {
-                strategies: [`thin`],
-                min_visible_ticks: 2,
-                endpoint_policy: `preserve`,
-              },
+          tick_label: {
+            auto_layout: {
+              strategies: [`thin`],
+              min_visible_ticks: 2,
+              endpoint_policy: `preserve`,
             },
           },
         },
@@ -746,15 +731,13 @@ describe(`layout utility functions`, () => {
             start: -DEFAULT_PLOT_PADDING.l,
             end: axis_size + DEFAULT_PLOT_PADDING.r,
           },
-          tick: {
-            label: {
-              auto_layout: {
-                strategies: [`thin`, `rotate`],
-                min_visible_ticks: 4,
-                max_angle: 90,
-                max_band: 140,
-                endpoint_policy: `preserve`,
-              },
+          tick_label: {
+            auto_layout: {
+              strategies: [`thin`, `rotate`],
+              min_visible_ticks: 4,
+              max_angle: 90,
+              max_band: 140,
+              endpoint_policy: `preserve`,
             },
           },
         },
@@ -774,7 +757,7 @@ describe(`layout utility functions`, () => {
             [0, Number.NaN, Number.POSITIVE_INFINITY, 100],
             100,
           ),
-          tick: { label: { auto_layout: { strategies: [`upright`] } } },
+          tick_label: { auto_layout: { strategies: [`upright`] } },
         },
         100,
         `x`,
@@ -798,7 +781,7 @@ describe(`layout utility functions`, () => {
       const layout = resolve_tick_layout(
         {
           ...uniform_axis([`Bottom edge`, `Top edge`], 100),
-          tick: { label: { rotation: 90 } },
+          tick_label: { rotation: 90 },
         },
         100,
         `y`,
@@ -812,7 +795,7 @@ describe(`layout utility functions`, () => {
       const layout = resolve_tick_layout(
         {
           ...uniform_axis([`Left edge`, `Right edge`], 100),
-          tick: { label: { auto_layout: { strategies: [`upright`] } } },
+          tick_label: { auto_layout: { strategies: [`upright`] } },
         },
         100,
         `x`,
@@ -824,10 +807,8 @@ describe(`layout utility functions`, () => {
       const layout = resolve_tick_layout(
         {
           ...uniform_axis([`temperature`, `temperature`, `temperature`], 100),
-          tick: {
-            label: {
-              auto_layout: { max_angle: 45, max_band: 40 },
-            },
+          tick_label: {
+            auto_layout: { max_angle: 45, max_band: 40 },
           },
         },
         100,
@@ -851,11 +832,9 @@ describe(`layout utility functions`, () => {
             tick_values: [`Formation Energy`],
             tick_positions: [50],
             axis_extent: { start: 100, end: 0 },
-            tick: {
-              label: {
-                max_lines: 2,
-                auto_layout: { strategies: [`wrap`] },
-              },
+            tick_label: {
+              max_lines: 2,
+              auto_layout: { strategies: [`wrap`] },
             },
           },
           100,
@@ -872,7 +851,7 @@ describe(`layout utility functions`, () => {
       const layout = resolve_tick_layout(
         {
           ...uniform_axis(tick_values, 120),
-          tick: { label: { auto_layout: { strategies: [`ellipsis`] } } },
+          tick_label: { auto_layout: { strategies: [`ellipsis`] } },
         },
         120,
         `x`,
@@ -887,7 +866,7 @@ describe(`layout utility functions`, () => {
         {
           tick_values: [`Jan`, `Feb`],
           tick_positions: [50, 50],
-          tick: { label: { rotation: 45 } },
+          tick_label: { rotation: 45 },
         },
         0,
         `x`,
@@ -906,7 +885,7 @@ describe(`layout utility functions`, () => {
         {
           tick_values: [`Label`],
           tick_positions: [0],
-          tick: { label: { inside } },
+          tick_label: { inside },
         },
         0,
         side,
@@ -923,7 +902,7 @@ describe(`layout utility functions`, () => {
           {
             tick_values: [`Jan`, `Feb`],
             tick_positions: [50, 50],
-            tick: { label: { auto_layout: { strategies: [`unknown`] } } },
+            tick_label: { auto_layout: { strategies: [`unknown`] } },
           } as unknown as MeasuredAxis,
           0,
           `x`,
@@ -948,7 +927,7 @@ describe(`layout utility functions`, () => {
       })
       const context_spy = vi.mocked(HTMLCanvasElement.prototype.getContext)
       // Self-contained so two calls in one test cannot read each other's cached widths.
-      clear_tick_metrics_cache()
+      clear_text_metrics_cache()
       try {
         return { result: run(), measured_labels }
       } finally {
@@ -1006,7 +985,7 @@ describe(`layout utility functions`, () => {
           tick_values: Array<string>(4).fill(`formation energy per atom`),
           tick_positions: [0, 33, 66, 100],
           axis_extent: { start: 0, end: 100 },
-          tick: { label: { auto_layout: { strategies: [`thin`, `rotate`] as const } } },
+          tick_label: { auto_layout: { strategies: [`thin`, `rotate`] as const } },
         },
       }
       // Collapsing every tick onto 0 would under-reserve compared with the sized layout.
@@ -1070,7 +1049,7 @@ describe(`layout utility functions`, () => {
     it(`top padding accounts for an outward x2 tick shift`, () => {
       const result = calc_auto_padding({
         ...no_padding,
-        x2_axis: slot_axis([1], { tick: { label: { shift: { y: -10 } } } }),
+        x2_axis: slot_axis([1], { tick_label: { shift: { y: -10 } } }),
       })
       expect(result.t).toBe(TICK_LABEL_HEIGHT + 8 + 10)
     })
@@ -1128,7 +1107,7 @@ describe(`layout utility functions`, () => {
       const unshifted = calc_auto_padding(base)
       const shifted = calc_auto_padding({
         ...base,
-        y2_axis: { ...base.y2_axis, tick: { label: { shift: { x: 20 } } } },
+        y2_axis: { ...base.y2_axis, tick_label: { shift: { x: 20 } } },
       })
       expect(shifted.r - unshifted.r).toBeCloseTo(20, 10)
     })
@@ -1204,7 +1183,7 @@ describe(`layout utility functions`, () => {
       [`left clamped to the title band`, () => y_axis_label_x({}, 40, 30), title_center],
       [
         `left inside ticks`,
-        () => y_axis_label_x({ tick: { label: { inside: true } } }, 60, 30),
+        () => y_axis_label_x({ tick_label: { inside: true } }, 60, 30),
         30,
       ],
       [`right auto-padding`, () => y2_axis_label_x({}, 400, 90, 30), 378],
@@ -1216,7 +1195,7 @@ describe(`layout utility functions`, () => {
       ],
       [
         `right inside ticks`,
-        () => y2_axis_label_x({ tick: { label: { inside: true } } }, 400, 60, 30),
+        () => y2_axis_label_x({ tick_label: { inside: true } }, 400, 60, 30),
         370,
       ],
     ])(`positions %s`, (_, get_position, expected) => {

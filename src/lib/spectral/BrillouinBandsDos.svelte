@@ -3,15 +3,14 @@
   import { reciprocal_lattice } from '$lib/math'
   import type { Vec2, Vec3 } from '$lib/math'
   import type { InternalPoint, ScatterHandlerEvent } from '$lib/plot'
-  import { axis_with_range, max_side_padding } from '$lib/plot/core/shared-axes'
-  import type { AxisConfig } from '$lib/plot/core/types'
+  import { axis_with_range } from '$lib/plot/core/shared-axes'
   import type { Crystal } from '$lib/structure'
   import type { ComponentProps, Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import Bands from './Bands.svelte'
   import Dos from './Dos.svelte'
   import * as helpers from './helpers'
-  import { create_synced_y_axes, shared_resolved_padding_floor } from './synced-axes.svelte'
+  import { create_bands_dos_sync } from './synced-axes.svelte'
   import type { BaseBandStructure, DosData, HoveredData } from './types'
 
   let {
@@ -35,27 +34,17 @@
     children?: Snippet<[HoveredData]>
   } = $props()
 
-  // Get the first normalized band structure for path calculations
-  // Support both qpoints (phonon) and kpoints (electronic) to detect single vs dict. A
-  // malformed pymatgen input throws from normalization; the nested Bands reports it, so the
-  // k-path just stays empty here.
+  // First normalized band structure, for the k-path. A malformed pymatgen input throws from
+  // normalization; the nested Bands reports it, so the k-path just stays empty here.
   let first_band_struct = $derived.by((): BaseBandStructure | null => {
     try {
       return helpers.normalize_band_structure(
-        `qpoints` in (band_structs as object) || `kpoints` in (band_structs as object)
-          ? band_structs
-          : Object.values(band_structs)[0],
+        helpers.band_struct_entries(band_structs)[0]?.[1],
       )
     } catch {
       return null
     }
   })
-
-  let shared_frequency_range = $derived(helpers.compute_frequency_range(band_structs, doses))
-
-  let fermi_level = $derived(
-    helpers.extract_efermi(band_structs) ?? helpers.extract_efermi(doses),
-  )
 
   // Convert fractional k-point coordinates to Cartesian reciprocal space
   // using the structure's reciprocal lattice (consistent with BZ computation)
@@ -90,36 +79,21 @@
   let is_mobile = $derived(clientWidth < tablet_width)
   let screen_class = $derived(is_desktop ? `desktop` : is_mobile ? `phone` : `tablet`)
 
-  const default_y_axes = (): AxisConfig[] => [
-    axis_with_range(bands_props.y_axis, shared_frequency_range),
-    is_desktop
-      ? axis_with_range(dos_props.y_axis, shared_frequency_range, ``)
-      : { ...dos_props.y_axis },
-  ]
-
-  // A vertical DOS uses y for density, so cross-plot range linking only applies to the
-  // desktop layout where both frequency/energy dimensions are y axes
-  const synced = create_synced_y_axes({
-    default_axes: default_y_axes,
-    sources: () => [band_structs, doses, is_desktop, bands_props.y_axis, dos_props.y_axis],
-    shared_range: () => shared_frequency_range,
+  // Only the desktop layout puts the DOS horizontal beside the bands, sharing the vertical
+  // frequency/energy dimension
+  const sync = create_bands_dos_sync({
+    band_structs: () => band_structs,
+    doses: () => doses,
+    bands_y_axis: () => bands_props.y_axis,
+    dos_y_axis: () => dos_props.y_axis,
+    bands_padding: () => bands_props.padding,
+    dos_padding: () => dos_props.padding,
+    side_by_side: () => is_desktop,
     sync_zoom: () => sync_y_zoom,
-    linked_count: () => (is_desktop ? 2 : 1),
+    base_padding: { t: 5, b: 50 },
   })
 
   let hovered_frequency = $state<number | null>(null)
-
-  // Match ScatterPlot's baseline and honor the larger caller value on each side.
-  // Only desktop panels share the vertical frequency/energy dimension.
-  // The padding each panel settled on is fed back (see BandsAndDos) so a DOS legend pushed
-  // below its plot widens the bands panel's bottom margin as well
-  const resolved_floor = shared_resolved_padding_floor()
-  let shared_tb_padding = $derived(
-    max_side_padding(
-      [{ t: 5, b: 50 }, bands_props.padding, dos_props.padding, resolved_floor.value],
-      [`t`, `b`],
-    ),
-  )
 </script>
 
 <div {...rest} class={[`bands-dos-brillouin`, screen_class, rest.class]} bind:clientWidth>
@@ -131,15 +105,11 @@
   <Bands
     style="grid-area: bands; min-width: 0; min-height: 0; overflow: visible"
     {band_structs}
-    {fermi_level}
+    fermi_level={sync.fermi_level}
     {...bands_props}
-    padding={{
-      r: is_desktop ? 10 : 5,
-      ...bands_props.padding,
-      ...(is_desktop ? shared_tb_padding : {}),
-    }}
-    bind:y_axis={synced.y_axes[0]}
-    bind:resolved_padding={() => undefined, resolved_floor.raise}
+    padding={{ r: is_desktop ? 10 : 5, ...bands_props.padding, ...sync.shared_padding }}
+    bind:y_axis={sync.y_axes[0]}
+    bind:resolved_padding={() => undefined, sync.raise_padding}
     bind:x_positions={bands_x_positions}
     reference_frequency={hovered_frequency}
     highlighted_qpoint_index={active_qpoint_index}
@@ -172,22 +142,22 @@
   <Dos
     style="grid-area: dos; min-width: 0; min-height: 0; overflow: visible"
     {doses}
-    {fermi_level}
+    fermi_level={sync.fermi_level}
     {...dos_props}
     orientation={is_desktop ? `horizontal` : `vertical`}
     x_axis={{
-      ...axis_with_range(undefined, is_desktop ? undefined : shared_frequency_range),
+      ...axis_with_range(undefined, is_desktop ? undefined : sync.shared_range),
       ...dos_props.x_axis,
     }}
-    bind:y_axis={synced.y_axes[1]}
-    bind:resolved_padding={() => undefined, resolved_floor.raise}
+    bind:y_axis={sync.y_axes[1]}
+    bind:resolved_padding={() => undefined, sync.raise_padding}
     bind:hovered_frequency
     reference_frequency={hovered_frequency}
     padding={{
       l: is_desktop ? 20 : undefined,
       r: is_mobile ? 0 : undefined,
       ...dos_props.padding,
-      ...(is_desktop ? shared_tb_padding : {}),
+      ...sync.shared_padding,
     }}
   />
 </div>

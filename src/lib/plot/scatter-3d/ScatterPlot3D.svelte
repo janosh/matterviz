@@ -3,12 +3,11 @@
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
   import { type D3InterpolateName, plot_color } from '$lib/colors'
-  import { FullscreenButton } from '$lib/layout'
   import type { Vec2, Vec3 } from '$lib/math'
+  import ChartShell from '$lib/plot/core/components/ChartShell.svelte'
   import ColorBar from '$lib/plot/core/components/ColorBar.svelte'
   import PlotLegend from '$lib/plot/core/components/PlotLegend.svelte'
   import { build_legend_items, first_point_style } from '$lib/plot/core/data-transform'
-  import type { Sides } from '$lib/plot/core/layout'
   import type {
     AxisConfig3D,
     BasePlotProps,
@@ -32,7 +31,7 @@
   import type { ComponentProps, Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { Camera, Scene } from 'three/webgpu'
-  import { accumulate_extent, create_color_scale, empty_extent } from '$lib/plot/core/scales'
+  import { collect_scale_values, create_color_scale } from '$lib/plot/core/scales'
   import {
     create_legend_visibility,
     resolve_legend_visibility,
@@ -115,7 +114,7 @@
     display?: DisplayConfig3D
     styles?: StyleOverrides3D
     color_scale?: ColorScaleConfig | D3InterpolateName
-    color_bar?: (ComponentProps<typeof ColorBar> & { margin?: number | Sides }) | null
+    color_bar?: ComponentProps<typeof ColorBar> | null
     size_scale?: SizeScaleConfig
     legend?: LegendConfig | null
     show_legend?: boolean
@@ -176,13 +175,8 @@
       : color_scale,
   )
 
-  let color_extent = $derived.by(() => {
-    const extent = empty_extent()
-    for (const srs of series) accumulate_extent(extent, srs?.color_values ?? [])
-    return extent
-  })
-  let auto_color_range = $derived([color_extent.min ?? 0, color_extent.max ?? 1] as Vec2)
-
+  // Finite colour extent across all series; [0, 1] when no series carries colour values
+  let { color_extent, color_range: auto_color_range } = $derived(collect_scale_values(series))
   let color_scale_fn = $derived(create_color_scale(normalized_color_scale, auto_color_range))
 
   // Legend data
@@ -209,21 +203,45 @@
   }
 </script>
 
-<div
-  bind:this={wrapper}
-  bind:clientWidth={width}
-  bind:clientHeight={height}
+<ChartShell
+  chart_class="scatter-3d"
+  css_prefix="scatter3d"
+  css_var_fallbacks={{ 'min-height': `400px`, 'border-radius': `var(--border-radius, 3pt)` }}
+  bind:wrapper
+  bind:width
+  bind:height
+  bind:fullscreen
+  {fullscreen_toggle}
+  {controls_toggle_props}
+  {header_controls}
+  {children}
   {...rest}
-  class={[`scatter-3d`, rest.class, { fullscreen }]}
 >
-  {#if width && height}
-    <div class="header-controls">
-      {@render header_controls?.({ height, width, fullscreen })}
-      {#if fullscreen_toggle}
-        <FullscreenButton bind:fullscreen {wrapper} bg_css_var="--scatter3d-bg-fullscreen" />
-      {/if}
-    </div>
+  {#snippet controls(toggle_props)}
+    <ScatterPlot3DControls
+      bind:show_controls
+      bind:controls_open
+      {toggle_props}
+      pane_props={{
+        ...controls_pane_props,
+        // z-index must exceed fullscreen z-index to remain clickable in fullscreen mode
+        style: `--pane-z-index: var(--z-index-overlay-dialog, 100000002); ${
+          controls_pane_props?.style ?? ``
+        }`,
+      }}
+      bind:x_axis={() => resolved_x_axis, (value) => (x_axis = value)}
+      bind:y_axis={() => resolved_y_axis, (value) => (y_axis = value)}
+      bind:z_axis={() => resolved_z_axis, (value) => (z_axis = value)}
+      bind:display={() => resolved_display, (value) => (display = value)}
+      bind:camera_projection
+      bind:auto_rotate
+      {series}
+      {surfaces}
+      children={controls_extra}
+    />
+  {/snippet}
 
+  {#snippet body()}
     <!-- Prevent Canvas from rendering during SSR to avoid hydration mismatch -->
     {#if mounted && webgpu_available()}
       <Canvas createRenderer={create_renderer}>
@@ -267,31 +285,6 @@
       </Canvas>
     {/if}
 
-    <!-- Control pane -->
-    {#if show_controls}
-      <ScatterPlot3DControls
-        bind:show_controls
-        bind:controls_open
-        toggle_props={controls_toggle_props}
-        pane_props={{
-          ...controls_pane_props,
-          // z-index must exceed fullscreen z-index to remain clickable in fullscreen mode
-          style: `--pane-z-index: var(--z-index-overlay-dialog, 100000002); ${
-            controls_pane_props?.style ?? ``
-          }`,
-        }}
-        bind:x_axis={() => resolved_x_axis, (value) => (x_axis = value)}
-        bind:y_axis={() => resolved_y_axis, (value) => (y_axis = value)}
-        bind:z_axis={() => resolved_z_axis, (value) => (z_axis = value)}
-        bind:display={() => resolved_display, (value) => (display = value)}
-        bind:camera_projection
-        bind:auto_rotate
-        {series}
-        {surfaces}
-        children={controls_extra}
-      />
-    {/if}
-
     <!-- Color Bar -->
     {#if has_color_bar && color_bar}
       {@const color_domain = [
@@ -303,7 +296,7 @@
         tick_side="primary"
         scale={{ fn: color_scale_fn, domain: color_domain }}
         scale_type={normalized_color_scale.type}
-        range={color_domain?.every((val) => val != null) ? color_domain : undefined}
+        range={color_domain}
         wrapper_style="position: absolute; bottom: 2em; left: 2em; {color_bar?.wrapper_style ??
           ``}"
         bar_style="width: 200px; height: 16px; {color_bar?.style ?? ``}"
@@ -324,81 +317,17 @@
         style={`position: absolute; top: 2.5em; right: 1em; ${legend?.style ?? ``}`}
       />
     {/if}
-
-    <!-- User-provided children -->
-    {@render children?.({ height, width, fullscreen })}
-  {/if}
-</div>
+  {/snippet}
+</ChartShell>
 
 <style>
-  div.scatter-3d {
-    --ctrl-btn-top: 5pt;
-    --ctrl-btn-default-right: 32px;
-    position: relative;
-    width: var(--scatter3d-width, 100%);
-    height: var(--scatter3d-height, auto);
-    min-height: var(--scatter3d-min-height, 400px);
-    container-type: size;
-    container-name: scatter-plot-3d;
-    z-index: var(--scatter3d-z-index);
-    flex: var(--scatter3d-flex, 1);
-    display: var(--scatter3d-display, flex);
-    flex-direction: column;
-    background: var(--scatter3d-bg, var(--plot-bg));
-    border-radius: var(--scatter3d-border-radius, var(--border-radius, 3pt));
-  }
-  div.scatter-3d.fullscreen {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw !important;
-    height: 100vh !important;
-    z-index: var(--scatter3d-fullscreen-z-index, var(--z-index-overlay-nav, 100000001));
-    margin: 0;
-    border-radius: 0;
-    max-height: none !important;
-    overflow: hidden;
-    background: var(--scatter3d-bg-fullscreen, var(--scatter3d-bg, var(--plot-bg)));
-    /* border-top (not padding-top): bind:clientHeight includes padding but excludes
-    borders - padding made the chart overflow + clip its bottom 2em (x-axis title) */
-    border-top: var(--plot-fullscreen-padding-top, 2em) solid
-      var(--scatter3d-bg, var(--plot-bg, transparent));
-    box-sizing: border-box;
-  }
-  div.scatter-3d > :global(div:has(> canvas)) {
+  :global(.scatter-3d > div:has(> canvas)) {
     flex: 1;
   }
-  div.scatter-3d :global(canvas) {
+  :global(.scatter-3d canvas) {
     width: 100% !important;
     height: 100% !important;
     flex: 1;
     outline: none;
-  }
-  .header-controls {
-    position: absolute;
-    top: var(--ctrl-btn-top, 5pt);
-    right: var(--fullscreen-btn-right, 4px);
-    z-index: var(--fullscreen-btn-z-index, 10);
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  div.scatter-3d :global(.pane-toggle) {
-    z-index: var(--pane-toggle-z-index, 10);
-  }
-  /* Hide controls on default, show on hover */
-  div.scatter-3d :global(.pane-toggle),
-  div.scatter-3d .header-controls {
-    opacity: 0;
-    transition:
-      opacity 0.2s,
-      background-color 0.2s;
-  }
-  div.scatter-3d:hover :global(.pane-toggle),
-  div.scatter-3d:hover .header-controls,
-  div.scatter-3d :global(.pane-toggle:focus-visible),
-  div.scatter-3d :global(.pane-toggle[aria-expanded='true']),
-  div.scatter-3d .header-controls:focus-within {
-    opacity: 1;
   }
 </style>

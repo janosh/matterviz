@@ -3,7 +3,8 @@
   // Supports gradients, hover/click interactions, and animated path transitions
   import { interpolatePath } from 'd3-interpolate-path'
   import type { TweenOptions } from 'svelte/motion'
-  import type { FillGradient, FillHandlerEvent, FillRegion } from '$lib/plot/core/types'
+  import { is_fill_gradient } from '$lib/plot/core/fill-utils'
+  import type { FillHandlerEvent, FillRegion } from '$lib/plot/core/types'
   import { create_settling_tween } from '$lib/plot/core/settling-tween.svelte'
   import { unique_id } from '$lib/plot/core/utils'
 
@@ -114,10 +115,6 @@
     const { left, right, top, bottom } = target.getBoundingClientRect()
     emit_click(make_event(event, (left + right) / 2, (top + bottom) / 2))
   }
-
-  // Type guard for gradient fill
-  const is_gradient = (fill: string | FillGradient | undefined): fill is FillGradient =>
-    typeof fill === `object` && fill !== null && `type` in fill
 </script>
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
@@ -142,7 +139,7 @@
   {/snippet}
 
   <!-- Gradient defs -->
-  {#if is_gradient(region.fill)}
+  {#if is_fill_gradient(region.fill)}
     <defs>
       {#if region.fill.type === `linear`}
         <linearGradient

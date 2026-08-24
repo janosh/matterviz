@@ -102,7 +102,7 @@ export function fft_in_place(re: Float64Array, im: Float64Array): void {
 export const WINDOW_TYPES = [`hann`, `gaussian`, `none`] as const
 export type WindowType = (typeof WINDOW_TYPES)[number]
 
-export interface WindowOptions {
+interface WindowOptions {
   // Gaussian only: sigma = (n_lags - 1) / gaussian_alpha, so the window reaches
   // exp(-alpha^2 / 2) at the last lag. 3 leaves 1.1% there, close to Hann's 0.
   gaussian_alpha?: number

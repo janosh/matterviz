@@ -22,12 +22,18 @@
     demo_temperatures,
     make_demo_phase,
   } from '$site/convex-hull/demo-temperature'
-  import { hull_system_name, quaternary_files, quinary_files } from '$site/convex-hull'
+  import {
+    filter_by_elements,
+    hull_system_name,
+    quaternary_files,
+    quinary_files,
+  } from '$site/convex-hull'
   import { onMount } from 'svelte'
   import { SvelteMap } from 'svelte/reactivity'
 
-  let entries_map = $state(new SvelteMap<string, PhaseData[]>())
-  let loaded_data = $state(new SvelteMap<string, PhaseData[]>())
+  // Dropped replacements per quaternary path, and every fixture loaded so far
+  const entries_map = new SvelteMap<string, PhaseData[]>()
+  const loaded_data = new SvelteMap<string, PhaseData[]>()
 
   // State for the 3D example with stats display
   let phase_stats = $state<PhaseStats | null>(null)
@@ -59,9 +65,7 @@
     loader: () => Promise<{ default: PhaseData[] }>,
   ): Promise<void> {
     if (loaded_data.has(path)) return
-    const data = (await loader()).default
-    loaded_data.set(path, data)
-    loaded_data = new SvelteMap(loaded_data)
+    loaded_data.set(path, (await loader()).default)
   }
 
   function log_load_error(path: string, error: unknown): void {
@@ -98,20 +102,8 @@
     }
   })
 
-  const handle_file_drop = (path: string) => (entries: PhaseData[]) => {
+  const handle_file_drop = (path: string) => (entries: PhaseData[]) =>
     entries_map.set(path, entries)
-    entries_map = new SvelteMap(entries_map)
-  }
-
-  // Filter entries to only include those with compositions from target elements
-  const filter_by_elements = (entries: PhaseData[], elements: string[]) => {
-    const element_set = new Set(elements)
-    return entries.filter((entry) =>
-      (Object.keys(entry.composition) as ElementSymbol[])
-        .filter((el) => (entry.composition?.[el] ?? 0) > 0)
-        .every((el) => element_set.has(el)),
-    )
-  }
 
   // Create ternary subsets from quaternary data
   const na_fe_o_entries = $derived(

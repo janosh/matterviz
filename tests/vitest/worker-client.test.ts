@@ -345,14 +345,6 @@ describe(`per-request options`, () => {
     })
     expect(workers()[0]?.posted ?? []).toHaveLength(0)
   })
-
-  test(`transfer lists are forwarded to postMessage`, () => {
-    const run = make_client()
-    const buffer = new ArrayBuffer(8)
-    void run({ tag: `a` }, {}, { transfer: [buffer] }).catch(() => {})
-    void run({ tag: `b` }, {}).catch(() => {})
-    expect(workers()[0].posted.map(({ transfer }) => transfer)).toEqual([[buffer], []])
-  })
 })
 
 test(`serve_worker answers an undeserializable request with an id-less error reply`, () => {

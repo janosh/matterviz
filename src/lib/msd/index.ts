@@ -1,14 +1,8 @@
-import type { TrajectoryPositionStream } from '$lib/trajectory'
-
 export { compute_msd_async } from './async-compute.svelte'
 export * from './calc-msd'
 export * from './collect'
 export { default as MsdPlot } from './MsdPlot.svelte'
 export { default as TrajectoryMsdPane } from './TrajectoryMsdPane.svelte'
-
-// MSD consumes exactly what a whole-trajectory position sweep produces, so the two
-// share one shape rather than converting between near-identical structs.
-export type MsdPositions = TrajectoryPositionStream
 
 export interface EinsteinFitOptions {
   // Fit window as a fraction of the largest lag. Defaults exclude the ballistic

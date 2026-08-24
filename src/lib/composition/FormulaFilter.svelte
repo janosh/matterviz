@@ -1,14 +1,13 @@
 <script lang="ts">
   import { Icon } from 'svelte-widgets'
   import { Circle, Close, Info, Lock, Star, Unlock } from 'svelte-widgets/icons'
-  import { get_alphabetical_formula } from '$lib/composition/format'
   import { is_elem_symbol, type ElementSymbol } from '$lib/element'
   import { tooltip } from 'svelte-widgets/attachments'
+  import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import type { HTMLAttributes } from 'svelte/elements'
+  import { format_amount, get_alphabetical_formula } from './format'
   import type { FormulaSearchMode } from './index'
   import {
-    extract_formula_elements,
-    normalize_element_symbols,
     normalize_formula_unicode,
     parse_formula,
     parse_formula_with_wildcards,
@@ -31,7 +30,6 @@
 
   export type FormulaFilterParseResult = {
     value: string
-    normalized_value: string
     search_mode: FormulaSearchMode
     tokens: FormulaFilterToken[]
     has_wildcards: boolean
@@ -63,6 +61,23 @@
   ]
 
   const has_wildcards = (input: string): boolean => input.includes(`*`)
+  // Token separator per mode (exact formulas have none)
+  const MODE_SEPARATOR: Record<FormulaSearchMode, string> = {
+    elements: `,`,
+    chemsys: `-`,
+    exact: ``,
+  }
+  const MODE_CYCLE: FormulaSearchMode[] = [`elements`, `chemsys`, `exact`]
+  const MODE_LABELS: Record<FormulaSearchMode, string> = {
+    elements: `has elements`,
+    chemsys: `chemical system`,
+    exact: `exact formula`,
+  }
+  const PLACEHOLDERS: Record<FormulaSearchMode, string> = {
+    elements: `Li,Fe,O or Li,*,*`,
+    chemsys: `Li-Fe-O or Li-*-*`,
+    exact: `LiFePO4 or LiFe*2*`,
+  }
 
   let {
     value = $bindable(``),
@@ -70,8 +85,6 @@
     input_element = $bindable(null),
     show_clear_button = true,
     show_examples = true,
-    show_mode_lock = true,
-    show_chip_editor = true,
     normalize_exact = true,
     examples = DEFAULT_SEARCH_EXAMPLES,
     disabled = false,
@@ -90,8 +103,6 @@
     input_element?: HTMLInputElement | null // Reference to the input element for programmatic focus
     show_clear_button?: boolean // Show clear button when value is non-empty
     show_examples?: boolean // Show the help button and examples dropdown
-    show_mode_lock?: boolean // Show mode lock toggle button
-    show_chip_editor?: boolean // Show token chip editor for tokenized modes
     normalize_exact?: boolean // Canonicalize exact formulas on submit
     examples?: SearchExampleCategory[] // Override built-in search example categories
     disabled?: boolean // Disable all inputs
@@ -235,9 +246,10 @@
     if (restore_focus) input_element?.focus({ preventScroll: true })
   }
 
-  // Track last synced value to detect external changes (e.g. from URL params)
-  // and re-infer mode accordingly. Without this, mode would only be set on first render.
-  let last_synced = $state<string | null>(null)
+  // Last value this component wrote or synced from the prop, so the effect below only reacts
+  // to external changes (e.g. URL params) and re-infers the mode for those. Plain variable:
+  // it is bookkeeping for the effect, not state anything renders from.
+  let last_synced: string | null = null
   $effect(() => {
     if (value !== last_synced) {
       last_synced = value
@@ -263,75 +275,58 @@
     })
   })
 
-  // Infer search mode from input format
+  // Infer search mode from input format: a leading +/-/! operator, any +/! or a comma means a
+  // list of elements; a dash outside a range constraint ("Fe:1-2" has one inside) separates a
+  // chemical system (Li-Fe-O, Fe:1-2-Li); a lone constraint (Fe:2) is still an element list;
+  // anything else is an exact formula (LiFePO4)
   function infer_mode(input: string): FormulaSearchMode {
     const trimmed = input.trim()
-    if (!trimmed) return `elements`
-    if (/^[+\-!]\s*\w/.test(trimmed)) return `elements`
-    if (trimmed.includes(`+`) || trimmed.includes(`!`)) return `elements`
-    if (trimmed.includes(`,`)) return `elements` // Li,Fe,O → has elements
-    // A range constraint like "Fe:1-2" contains '-' inside the range; only dashes left after
-    // stripping the ranges are chemsys separators (Li-Fe-O, Fe:1-2-Li)
+    if (!trimmed || /^[-+!]|[+!,]/.test(trimmed)) return `elements`
     if (trimmed.replaceAll(/:\s*\d+-\d+/g, ``).includes(`-`)) return `chemsys`
-    if (trimmed.includes(`:`)) return `elements` // Fe:1-2, Fe:2 → single constrained element
-    return `exact` // LiFePO4 → exact formula
+    return trimmed.includes(`:`) ? `elements` : `exact`
   }
 
-  // Cycle through modes: elements → chemsys → exact → elements
-  const MODE_CYCLE: FormulaSearchMode[] = [`elements`, `chemsys`, `exact`]
-
-  function normalize_exact_formula(input: string): string {
-    const sanitized_input = normalize_formula_unicode(input)
-    if (!sanitize_exact_formula(sanitized_input).is_valid) return sanitized_input
-
-    if (!has_wildcards(sanitized_input)) {
-      const canonical = get_alphabetical_formula(sanitized_input, true, ``)
-      return canonical || sanitized_input
-    }
-
+  // Parse error of an exact formula (with or without wildcards), null when it parses
+  function exact_formula_error(input: string): string | null {
+    const trimmed = input.trim()
+    if (!trimmed) return null
     try {
-      const tokens = parse_formula_with_wildcards(sanitized_input)
-      // Merge explicit element amounts, then sort alphabetically; wildcards trail
-      const merged = new Map<ElementSymbol, number>()
-      for (const { element, amount } of tokens) {
-        if (element) merged.set(element, (merged.get(element) ?? 0) + amount)
-      }
-      const with_amount = (symbol: string, amount: number) =>
-        amount === 1 ? symbol : `${symbol}${amount}`
-      const explicit_str = [...merged]
-        .toSorted(([elem_a], [elem_b]) => elem_a.localeCompare(elem_b))
-        .map(([element, amount]) => with_amount(element, amount))
-        .join(``)
-      const wildcard_str = tokens
-        .filter((token) => token.element === null)
-        .map((token) => with_amount(`*`, token.amount))
-        .join(``)
-      return `${explicit_str}${wildcard_str}`
-    } catch {
-      return sanitized_input
+      if (has_wildcards(trimmed)) parse_formula_with_wildcards(trimmed)
+      else parse_formula(trimmed)
+      return null
+    } catch (error) {
+      return error instanceof Error ? error.message : `Invalid exact formula`
     }
   }
 
-  function is_valid_constraint(constraint: string): boolean {
-    if (!constraint) return true
-    return (
-      /^\d+$/.test(constraint) ||
-      /^\d+-\d+$/.test(constraint) ||
-      /^(?:>=|<=|>|<)\d+$/.test(constraint)
-    )
+  // Canonical form of a valid exact formula: elements alphabetical with merged amounts,
+  // wildcards trailing in source order (LiFe*2* -> FeLi*2*). Invalid input passes through.
+  function normalize_exact_formula(input: string): string {
+    if (exact_formula_error(input) !== null) return input
+    // zero amounts (H0) parse but format to nothing; keep the text rather than clear the field
+    if (!has_wildcards(input))
+      return get_alphabetical_formula(input, { plain_text: true, delim: `` }) || input
+    const tokens = parse_formula_with_wildcards(input)
+    const merged = new SvelteMap<ElementSymbol, number>()
+    for (const { element, amount } of tokens) {
+      if (element) merged.set(element, (merged.get(element) ?? 0) + amount)
+    }
+    const with_amount = (symbol: string, amount: number) =>
+      amount === 1 ? symbol : `${symbol}${format_amount(amount)}`
+    const explicit_str = [...merged]
+      .toSorted(([elem_a], [elem_b]) => elem_a.localeCompare(elem_b))
+      .map(([element, amount]) => with_amount(element, amount))
+      .join(``)
+    const wildcard_str = tokens
+      .filter((token) => token.element === null)
+      .map((token) => with_amount(`*`, token.amount))
+      .join(``)
+    return `${explicit_str}${wildcard_str}`
   }
 
-  function strip_operator_prefix(token: string): {
-    operator: FormulaFilterToken[`operator`]
-    value: string
-  } {
-    const operator = token.startsWith(`-`) || token.startsWith(`!`) ? `exclude` : `include`
-    const stripped_value =
-      token.startsWith(`+`) || token.startsWith(`-`) || token.startsWith(`!`)
-        ? token.slice(1)
-        : token
-    return { operator, value: stripped_value }
-  }
+  // Amount constraints: a count, a range or a comparison (2, 1-2, >=3)
+  const is_valid_constraint = (constraint: string): boolean =>
+    /^(?:\d+|\d+-\d+|(?:>=|<=|>|<)\d+)$/.test(constraint)
 
   function serialize_token(
     token: Pick<FormulaFilterToken, `operator` | `element` | `constraint`>,
@@ -346,26 +341,19 @@
     token: Pick<FormulaFilterToken, `operator` | `element` | `constraint`>,
   ): string => (token.operator === `include` ? `+` : ``) + serialize_token(token)
 
+  // `+Li`, `-O`, `!O`, `Fe:1-2`: an optional include/exclude operator, an element or `*`
+  // wildcard, and an optional amount constraint
   function parse_token(raw_token: string): FormulaFilterToken {
     const token = raw_token.trim()
-    const { operator, value: without_operator } = strip_operator_prefix(token)
-    const [element_part, constraint] = without_operator.split(`:`)
+    const operator = /^[-!]/.test(token) ? `exclude` : `include`
+    const [element_part, constraint_part] = token.replace(/^[-+!]/, ``).split(`:`)
     const element = element_part.trim()
     const is_wildcard = element === `*`
-    const is_valid_element = is_wildcard || is_elem_symbol(element)
-    const normalized_constraint = constraint?.trim() || null
+    const constraint = constraint_part?.trim() || null
     const is_valid =
-      is_valid_element &&
-      (normalized_constraint === null || is_valid_constraint(normalized_constraint))
-
-    return {
-      raw: raw_token,
-      element,
-      operator,
-      constraint: normalized_constraint,
-      is_wildcard,
-      is_valid,
-    }
+      (is_wildcard || is_elem_symbol(element)) &&
+      (constraint === null || is_valid_constraint(constraint))
+    return { raw: raw_token, element, operator, constraint, is_wildcard, is_valid }
   }
 
   function tokenize_query(input: string, mode: FormulaSearchMode): FormulaFilterToken[] {
@@ -379,90 +367,50 @@
           operator: `include`,
           constraint: null,
           is_wildcard: has_wildcards(trimmed),
-          is_valid: sanitize_exact_formula(trimmed).is_valid,
+          is_valid: exact_formula_error(trimmed) === null,
         },
       ]
     }
-    const normalized = mode === `chemsys` ? trimmed.replaceAll(`,`, `-`) : trimmed
+    // chemsys also accepts commas; a dash followed by a digit is inside a range (Fe:1-2)
     const tokens =
-      mode === `chemsys`
-        ? // Keep range constraints like Fe:1-2 intact while splitting token separators.
-          normalized.split(/-(?!\d)/)
-        : normalized.split(`,`)
+      mode === `chemsys` ? trimmed.replaceAll(`,`, `-`).split(/-(?!\d)/) : trimmed.split(`,`)
     return tokens
       .map((token) => token.trim())
       .filter(Boolean)
       .map(parse_token)
   }
 
-  function sanitize_exact_formula(input: string): {
-    is_valid: boolean
-    error_message: string | null
-  } {
-    const trimmed = input.trim()
-    if (!trimmed) return { is_valid: true, error_message: null }
-    try {
-      if (has_wildcards(trimmed)) {
-        parse_formula_with_wildcards(trimmed)
-      } else {
-        parse_formula(trimmed)
-      }
-      return { is_valid: true, error_message: null }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : `Invalid exact formula`
-      return { is_valid: false, error_message: message }
-    }
-  }
-
+  // Valid tokens serialized in canonical order: includes before excludes, wildcards last,
+  // elements alphabetical
   function normalize_tokenized_input(input: string, mode: FormulaSearchMode): string {
-    const separator = mode === `chemsys` ? `-` : `,`
-    const parsed_tokens = tokenize_query(input, mode)
-    if (parsed_tokens.length === 0) return ``
-
-    const normalized_tokens = parsed_tokens
+    return tokenize_query(input, mode)
       .filter((token) => token.is_valid)
-      .map((token) => ({
-        ...token,
-        element: token.is_wildcard
-          ? `*`
-          : normalize_element_symbols(token.element).at(0) || token.element,
-      }))
-      .toSorted((token_a, token_b) => {
-        if (token_a.operator !== token_b.operator) {
-          return token_a.operator === `include` ? -1 : 1
-        }
-        if (token_a.is_wildcard !== token_b.is_wildcard) {
-          return token_a.is_wildcard ? 1 : -1
-        }
-        return token_a.element.localeCompare(token_b.element)
-      })
-
-    return normalized_tokens.map(serialize_token).join(separator)
+      .toSorted(
+        (token_a, token_b) =>
+          Number(token_a.operator === `exclude`) - Number(token_b.operator === `exclude`) ||
+          Number(token_a.is_wildcard) - Number(token_b.is_wildcard) ||
+          token_a.element.localeCompare(token_b.element),
+      )
+      .map(serialize_token)
+      .join(MODE_SEPARATOR[mode])
   }
 
-  function parse_query(
-    normalized_value: string,
-    mode: FormulaSearchMode,
-  ): FormulaFilterParseResult {
-    const tokens = tokenize_query(normalized_value, mode)
+  function parse_query(query: string, mode: FormulaSearchMode): FormulaFilterParseResult {
+    const tokens = tokenize_query(query, mode)
     const first_invalid_token = tokens.find((token) => !token.is_valid)
-    const exact_validation =
+    const error_message =
       mode === `exact`
-        ? sanitize_exact_formula(normalized_value)
-        : {
-            is_valid: !first_invalid_token,
-            error_message: first_invalid_token
-              ? `Invalid token: ${first_invalid_token.raw}`
-              : null,
-          }
+        ? exact_formula_error(query)
+        : first_invalid_token
+          ? `Invalid token: ${first_invalid_token.raw}`
+          : null
     return {
-      value: normalized_value,
-      normalized_value,
+      value: query,
       search_mode: mode,
       tokens,
       has_wildcards: tokens.some((token) => token.is_wildcard),
-      is_valid: exact_validation.is_valid,
-      error_message: exact_validation.error_message,
+      is_valid: error_message === null,
+      error_message,
     }
   }
 
@@ -478,78 +426,56 @@
     on_validation?.(validation)
   }
 
-  // Extract elements from any input format (formula, comma-separated, dash-separated)
-  // Always returns elements in alphabetical order for consistency, preserving wildcards (*)
+  // Distinct valid elements of any input format (formula, comma- or dash-separated list),
+  // alphabetical, with one trailing `*` per wildcard. Invalid formulas yield nothing: an
+  // invalid exact formula is committed verbatim and this runs on it from a $derived.
   function extract_elements(input: string): string[] {
     const trimmed = input.trim()
     if (!trimmed) return []
-    // If contains commas or dashes, split by those and sort alphabetically
-    if (trimmed.includes(`,`) || trimmed.includes(`-`)) {
-      const parts = trimmed
-        .split(/[-,]/)
-        .map((str) => str.trim())
-        .filter(Boolean)
-      // Separate wildcards from regular elements
-      const wildcards = parts.filter((part) => part === `*`)
-      const regular_parts = parts.filter((part) => part !== `*`)
-      // Filter valid elements and sort alphabetically, then append wildcards
-      const valid_elements = normalize_element_symbols(regular_parts.join(`,`)).toSorted()
-      return [...valid_elements, ...wildcards]
-    }
-    // Otherwise parse as formula (already returns sorted by default)
-    // For formulas with wildcards, we can't parse them normally
-    if (has_wildcards(trimmed)) {
-      const tokens = parse_formula_with_wildcards(trimmed)
-      const elements = [...new Set(tokens.flatMap((token) => token.element ?? []))].toSorted()
-      const wildcards = tokens.filter((token) => token.element === null).map(() => `*`)
-      return [...elements, ...wildcards]
+    if (/[-,]/.test(trimmed)) {
+      const parts = trimmed.split(/[-,]/).map((part) => part.trim())
+      const elements = [...new SvelteSet(parts.filter(is_elem_symbol))].toSorted()
+      return [...elements, ...parts.filter((part) => part === `*`)]
     }
     try {
-      return extract_formula_elements(trimmed, { sorted: true })
+      const tokens = parse_formula_with_wildcards(trimmed)
+      const elements = [...new SvelteSet(tokens.flatMap((token) => token.element ?? []))]
+      return [
+        ...elements.toSorted(),
+        ...tokens.filter((tok) => tok.element === null).map(() => `*`),
+      ]
     } catch {
       return []
     }
   }
 
-  // Format elements for the given mode
-  function format_for_mode(elements: string[], mode: FormulaSearchMode): string {
-    if (elements.length === 0) return ``
-    if (mode === `elements`) return elements.join(`,`)
-    if (mode === `chemsys`) return elements.join(`-`)
-    // For exact mode, just join without separator (user will need to add counts)
-    return elements.join(``)
-  }
+  // Re-express the elements of `value` in another mode (exact mode drops the amounts)
+  const format_for_mode = (input: string, mode: FormulaSearchMode): string =>
+    extract_elements(input).join(MODE_SEPARATOR[mode])
 
-  function cycle_mode(): void {
-    if (mode_locked) return
-    const current_idx = MODE_CYCLE.indexOf(search_mode)
-    const next_idx = (current_idx + 1) % MODE_CYCLE.length
-    const next_mode = MODE_CYCLE[next_idx]
-
-    // Extract elements from current value and reformat for new mode
-    const elements = extract_elements(value)
-    const reformatted = format_for_mode(elements, next_mode)
-
-    search_mode = next_mode
-    // set last_synced too to prevent effect re-inference
-    last_synced = reformatted
-    value = reformatted
-    input_value = reformatted
-    run_validation(reformatted, next_mode)
-    on_change?.(reformatted, next_mode)
-  }
-
-  function set_value(new_value: string, forced_mode?: FormulaSearchMode): void {
-    const mode = forced_mode ?? (mode_locked ? search_mode : infer_mode(new_value))
-    // set last_synced too to prevent effect re-inference
+  // Write a value and mode to every output: the input box, the bound props, validation and
+  // on_change. last_synced keeps the prop-sync effect from re-inferring the mode for it.
+  function commit(new_value: string, mode: FormulaSearchMode): void {
     last_synced = new_value
     value = new_value
     input_value = new_value
     search_mode = mode
+    run_validation(new_value, mode)
+    on_change?.(new_value, mode)
+  }
+
+  // elements -> chemsys -> exact -> elements, reformatting the current value on the way
+  function cycle_mode(): void {
+    if (mode_locked) return
+    const next_mode = MODE_CYCLE[(MODE_CYCLE.indexOf(search_mode) + 1) % MODE_CYCLE.length]
+    commit(format_for_mode(value, next_mode), next_mode)
+  }
+
+  function set_value(new_value: string, forced_mode?: FormulaSearchMode): void {
+    const mode = forced_mode ?? (mode_locked ? search_mode : infer_mode(new_value))
     if (new_value.trim()) add_to_history(new_value)
     close_history()
-    run_validation(value, mode)
-    on_change?.(value, mode)
+    commit(new_value, mode)
   }
 
   function sync_value(): void {
@@ -562,16 +488,13 @@
       return set_value(exact_value, mode)
     }
 
-    const parsed = parse_query(trimmed, mode)
-    if (!parsed.is_valid) {
+    if (!parse_query(trimmed, mode).is_valid) {
       // Preserve user input on invalid tokens instead of silently dropping them.
       input_value = trimmed
       run_validation(trimmed, mode)
       return
     }
-
-    const normalized = normalize_tokenized_input(trimmed, mode)
-    set_value(normalized, mode)
+    set_value(normalize_tokenized_input(trimmed, mode), mode)
   }
 
   function onkeydown(event: KeyboardEvent): void {
@@ -646,19 +569,12 @@
     }
   }
 
-  function toggle_mode_lock(): void {
-    mode_locked = !mode_locked
-  }
-
   function remove_token(token_idx: number): void {
     if (search_mode === `exact`) return
-    const separator = search_mode === `chemsys` ? `-` : `,`
     const tokens = tokenize_query(input_value, search_mode).filter(
       (_, idx) => idx !== token_idx,
     )
-    const next_value = tokens.map(serialize_token).join(separator)
-    input_value = next_value
-    set_value(next_value, search_mode)
+    set_value(tokens.map(serialize_token).join(MODE_SEPARATOR[search_mode]), search_mode)
   }
 
   // Focus the active menu item when index changes
@@ -668,31 +584,11 @@
     items?.[focused_item_idx]?.focus({ preventScroll: true })
   })
 
-  let placeholder = $derived(
-    search_mode === `chemsys`
-      ? `Li-Fe-O or Li-*-*`
-      : search_mode === `exact`
-        ? `LiFePO4 or LiFe*2*`
-        : `Li,Fe,O or Li,*,*`,
-  )
-
-  const MODE_LABELS: Record<FormulaSearchMode, string> = {
-    elements: `has elements`,
-    chemsys: `chemical system`,
-    exact: `exact formula`,
-  }
-
-  let mode_hint = $derived(MODE_LABELS[search_mode])
   let parsed_tokens = $derived(tokenize_query(input_value, search_mode))
-  let show_chip_row = $derived(
-    show_chip_editor && search_mode !== `exact` && parsed_tokens.length > 0,
-  )
-  // Preview of next mode cycle step for tooltip
+  // Preview of the next mode cycle step for the mode-hint tooltip
   let next_mode = $derived.by(() => {
     const next = MODE_CYCLE[(MODE_CYCLE.indexOf(search_mode) + 1) % MODE_CYCLE.length]
-    const mode = MODE_LABELS[next]
-    const next_value = format_for_mode(extract_elements(value), next)
-    return { mode, value: next_value }
+    return { mode: MODE_LABELS[next], value: format_for_mode(value, next) }
   })
 </script>
 
@@ -709,15 +605,12 @@
   <!-- Chips and validation live inside the root: as siblings they became separate grid/flex
        items in any host that lays filters out side by side -->
   <div class="filter-row">
+    <!-- history items preventDefault their mousedown, so blur only fires when focus genuinely
+    leaves (tab out, click outside); sync_value closes the history itself -->
     <input
       bind:this={input_element}
       bind:value={input_value}
-      onblur={() => {
-        // mousedown preventDefault on history items prevents blur, so this only
-        // fires when focus genuinely leaves (tab out, click outside, etc.)
-        // sync_value → set_value → close_history, so no separate close needed
-        sync_value()
-      }}
+      onblur={sync_value}
       onfocus={open_history}
       {oninput}
       onpaste={() => {
@@ -727,7 +620,7 @@
         })
       }}
       {onkeydown}
-      {placeholder}
+      placeholder={PLACEHOLDERS[search_mode]}
       {disabled}
       aria-label="Formula filter"
     />
@@ -804,14 +697,14 @@
         {@attach tooltip()}
         aria-label="Change search mode"
       >
-        {mode_hint}
+        {MODE_LABELS[search_mode]}
       </button>
     {/if}
-    {#if show_mode_lock && !disabled}
+    {#if !disabled}
       <button
         type="button"
         class={['icon-btn lock-btn', { active: mode_locked }]}
-        onclick={toggle_mode_lock}
+        onclick={() => (mode_locked = !mode_locked)}
         title={mode_locked ? `Unlock mode inference` : `Lock current mode`}
         {@attach tooltip()}
         aria-label={mode_locked ? `Unlock mode` : `Lock mode`}
@@ -874,7 +767,7 @@
       </div>
     {/if}
   </div>
-  {#if show_chip_row}
+  {#if search_mode !== `exact` && parsed_tokens.length > 0}
     <div class="token-chip-row">
       {#each parsed_tokens as token, idx (`${token.operator}:${token.element}:${token.constraint ?? ``}:${idx}`)}
         <button

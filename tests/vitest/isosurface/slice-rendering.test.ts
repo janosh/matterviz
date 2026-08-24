@@ -29,24 +29,19 @@ describe(`slice rendering helpers`, () => {
     expect(resolve_slice_color_range(make_slice(), [3, -1], `auto`)).toEqual([3, -1])
   })
 
-  test(`maps finite values to opaque sRGB and masked values to transparency`, () => {
-    const pixels = slice_to_rgba(make_slice(), `interpolateViridis`, [-2, 2])
-    // flip_y moves source row 0 to target row 1, so its masked pixel is at byte 8.
+  test(`maps finite values to opaque sRGB, masked values to transparency, flipping rows into a reused buffer`, () => {
+    const slice = make_slice()
+    const output = new Uint8ClampedArray(slice.data.length * 4)
+    const pixels = slice_to_rgba(slice, `interpolateViridis`, [-2, 2], output)
+    expect(pixels).toBe(output)
+    // rows are flipped: source row 0 lands in target row 1, so its masked pixel is at byte 8
     expect(pixels[8 + 3]).toBe(0)
     expect([pixels[3], pixels[7], pixels[15]]).toEqual([255, 255, 255])
     expect(pixels.slice(0, 3)).not.toEqual(pixels.slice(4, 7))
-  })
-
-  test(`reuses a correctly sized output buffer and supports unflipped rows`, () => {
-    const slice = make_slice()
-    const output = new Uint8ClampedArray(slice.data.length * 4)
-    const pixels = slice_to_rgba(slice, `interpolatePlasma`, [-2, 2], {
-      flip_y: false,
-      out: output,
-    })
-    expect(pixels).toBe(output)
-    expect(pixels[3]).toBe(0)
-    expect(pixels[7]).toBe(255)
+    // a wrongly sized buffer is replaced rather than written out of bounds
+    expect(
+      slice_to_rgba(slice, `interpolateViridis`, [-2, 2], new Uint8ClampedArray(4)),
+    ).not.toBe(output)
   })
 
   test.each([

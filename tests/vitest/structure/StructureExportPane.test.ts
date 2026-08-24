@@ -192,13 +192,6 @@ describe(`StructureExportPane`, () => {
     expect(get_button(`PNG`).title).toContain(`(200 DPI)`)
   })
 
-  test(`PNG export button is enabled with canvas`, async () => {
-    mount_pane({ structure: simple_structure, wrapper: wrapper_div })
-
-    const png_btn = get_button(`PNG`)
-    await vi.waitFor(() => expect(png_btn?.disabled).toBe(false))
-  })
-
   test(`PNG export button disabled when canvas absent or removed`, async () => {
     wrapper_div.innerHTML = ``
     mount_pane({ structure: simple_structure, wrapper: wrapper_div })

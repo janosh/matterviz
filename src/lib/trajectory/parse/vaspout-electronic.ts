@@ -12,7 +12,7 @@ import type { Matrix3x3, Vec3 } from '$lib/math'
 import { pretty_sym_point } from '$lib/spectral/helpers'
 import type { Branch, ElectronicBandStructure, ElectronicDos, QPoint } from '$lib/spectral'
 import type * as h5wasm from 'h5wasm'
-import { validate_3x3_matrix } from '$lib/trajectory/helpers'
+import { matrix3x3_from_rows } from '$lib/structure/parsers/shared'
 import { read_dataset, scale_matrix, to_scalar_number, to_string_array } from './h5-utils'
 
 const DOS_GROUPS = [`results/electron_dos`, `results/electron_dos_kpoints_opt`]
@@ -93,7 +93,7 @@ const read_lattice = (h5_file: h5wasm.File): Matrix3x3 | null => {
     if (!lattice_data) continue
     try {
       const scale = to_scalar_number(read_dataset(h5_file, scale_path)) ?? 1
-      return scale_matrix(validate_3x3_matrix(lattice_data), scale)
+      return scale_matrix(matrix3x3_from_rows(lattice_data, `lattice matrix`), scale)
     } catch {
       continue
     }

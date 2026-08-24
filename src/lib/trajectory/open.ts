@@ -10,7 +10,12 @@ import { is_structure_like, parse_xyz, structure_from_json } from '$lib/structur
 import { get_parse_errors, reset_parse_diagnostics } from '$lib/structure/parsers/shared'
 import { FORMAT_PATTERNS, xyz_ext_hint } from './format-detect'
 import { count_xyz_frames } from './helpers'
-import type { ParseProgress, TrajectoryFrame, TrajectorySource } from './index'
+import type {
+  AtomTypeMapping,
+  ParseProgress,
+  TrajectoryFrame,
+  TrajectorySource,
+} from './index'
 import { parse_ase_trajectory } from './parse/ase'
 import { open_hdf5_trajectory } from './parse/hdf5'
 import { parse_lammps_trajectory } from './parse/lammps'
@@ -22,11 +27,10 @@ import {
 } from './parse/shared'
 import { parse_vasp_xdatcar } from './parse/vasp'
 import { parse_xyz_trajectory } from './parse/xyz'
-import { time_step_of, type TrajectoryProvenance, type TrajectoryRun } from './run'
+import type { TrajectoryProvenance, TrajectoryRun } from './run'
 import { hdf5_run } from './runs/hdf5'
 import { indexed_text_run } from './runs/indexed-text'
 import { trajectory_from_frames } from './runs/memory'
-import type { AtomTypeMapping } from './types'
 
 export { Hdf5GroupSelectionRequiredError } from './parse/h5-utils'
 export { VaspoutElectronicOnlyError } from './parse/vaspout-h5'
@@ -66,7 +70,7 @@ const run_from_parsed = (
   trajectory_from_frames(parsed.frames, {
     provenance: { ...provenance, format: parsed.format },
     metadata: parsed.metadata,
-    time_step: time_step_of(parsed.time_step, parsed.time_unit),
+    time_step: parsed.time_step,
     atom_masses: parsed.atom_masses,
     signals: parsed.signals,
     properties: parsed.properties,

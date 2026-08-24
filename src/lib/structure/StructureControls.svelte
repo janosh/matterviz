@@ -40,11 +40,17 @@
     type StructureViewState,
   } from '$lib/settings/viewer-state'
   import type { AnyStructure, StructureDisplayMode } from '$lib/structure'
-  import { get_structure_vector_keys, StructureScene, VECTOR_PALETTE } from '$lib/structure'
+  import {
+    get_structure_vector_keys,
+    RESET_VIEW_TITLE,
+    StructureScene,
+    VECTOR_PALETTE,
+  } from '$lib/structure'
   import type { ElementSymbol } from '$lib/element'
   import {
     DEFAULT_ATOM_COLOR_CONFIG,
     get_colorable_property_keys,
+    is_atom_color_mode_available,
     next_atom_color_config,
     structure_has_selective_dynamics,
     type AtomColorConfig,
@@ -72,14 +78,14 @@
     color_scheme = $bindable(DEFAULTS.color_scheme),
     atom_color_config = $bindable<AtomColorConfig>({ ...DEFAULT_ATOM_COLOR_CONFIG }),
     structure = undefined,
-    supercell_loading = $bindable(false),
+    supercell_loading = false,
     sym_data = null,
     cell_type = $bindable(`original`),
     volumetric_data = $bindable<VolumetricData[]>(),
     isosurface_settings = $bindable<IsosurfaceSettings>(),
     slice_settings = $bindable<Partial<VolumeSliceSettings>>(),
     active_volume_idx = $bindable(0),
-    display_mode = $bindable<StructureDisplayMode>(`structure`),
+    display_mode = `structure`,
     multi_view = $bindable(false),
     multi_view_control_visible = true,
     multi_view_unavailable_reason = undefined,
@@ -88,7 +94,6 @@
     trajectory_lines_result = null,
     show_trajectory_lines = $bindable(DEFAULTS.structure.show_trajectory_lines),
     on_reset_camera,
-    reset_text = `Reset view (r, or double-click)`,
     fly_to_request = $bindable(undefined),
     persist_settings = false,
     pane_props = {},
@@ -122,7 +127,6 @@
     trajectory_lines_result?: TrajectoryLinesStats | null
     show_trajectory_lines?: boolean
     on_reset_camera?: () => void // undefined while camera at home (hides button)
-    reset_text?: string
     fly_to_request?: Vec3 // (output) one-shot zone-axis camera command
     persist_settings?: boolean // Opt-in browser persistence for safely scoped single-view usage
     pane_props?: PaneProps
@@ -509,7 +513,11 @@
 
   // Selective-dynamics coloring needs at least one site declaring the property (POSCAR
   // "Selective dynamics" block); without it every atom would land in one `unknown` bucket.
-  let has_selective_dynamics = $derived(structure_has_selective_dynamics(structure))
+  let color_mode_context = $derived({
+    has_sym_data: Boolean(sym_data),
+    has_selective_dynamics: structure_has_selective_dynamics(structure),
+    colorable_property_keys,
+  })
 
   // A newly loaded structure may not carry the property being colored by, in which case
   // the mode drops back to element colors.
@@ -764,6 +772,28 @@
   {/each}
 {/snippet}
 
+<!-- One checkbox chip per element (polyhedra centers, trail species) -->
+{#snippet element_chips(
+  key: SettingKey,
+  label: string,
+  elements: readonly ElementSymbol[],
+  is_on: (element: ElementSymbol) => boolean,
+  toggle: (element: ElementSymbol) => void,
+  tip?: string,
+)}
+  <div class="setting" {...setting_row(key, tip)}>
+    <span>{label}</span>
+    <div class="chip-row">
+      {#each elements as element (element)}
+        <label>
+          <input type="checkbox" checked={is_on(element)} onchange={() => toggle(element)} />
+          {element}
+        </label>
+      {/each}
+    </div>
+  </div>
+{/snippet}
+
 {#snippet setting_rows(rows: readonly Row[])}
   {#each rows as current (current.key)}
     {@const { key, label, step, aria_label, pair } = current}
@@ -839,7 +869,12 @@
   {#if on_reset_camera}
     <!-- Hoisted out of the Camera group: the one action people reach for repeatedly should
       not sit behind a disclosure triangle -->
-    <button type="button" class="reset-camera" title={reset_text} onclick={on_reset_camera}>
+    <button
+      type="button"
+      class="reset-camera"
+      title={RESET_VIEW_TITLE}
+      onclick={on_reset_camera}
+    >
       <Icon icon={Reset} />
       <span>Reset view</span>
       <kbd>r</kbd>
@@ -981,10 +1016,10 @@
               set_atom_color_mode(event.currentTarget.value as AtomColorMode)}
           >
             {#each Object.entries(SETTINGS_CONFIG.structure.atom_color_mode.enum || {}) as [value, label] (value)}
-              {@const disabled =
-                (value === `wyckoff` && !sym_data) ||
-                (value === `selective_dynamics` && !has_selective_dynamics) ||
-                (value === `property` && colorable_property_keys.length === 0)}
+              {@const disabled = !is_atom_color_mode_available(
+                value as AtomColorMode,
+                color_mode_context,
+              )}
               <option
                 {value}
                 {disabled}
@@ -1042,29 +1077,16 @@
         >
           {@render setting_rows(polyhedra_rows)}
           {#if structure_elements.length > 0}
-            <div
-              class="setting"
-              {...setting_row(
-                `polyhedra_centers`,
-                `${description_for(`polyhedra_excluded_elements`)}. Force-including a spectator ` +
-                  `center (alkali or heavy alkaline-earth, e.g. Li, Na, Ba) may render its ` +
-                  `polyhedra truncated at cell boundaries.`,
-              )}
-            >
-              <span>Centers</span>
-              <div class="chip-row">
-                {#each structure_elements as element (element)}
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={is_polyhedra_center_enabled(element)}
-                      onchange={() => toggle_polyhedra_element(element)}
-                    />
-                    {element}
-                  </label>
-                {/each}
-              </div>
-            </div>
+            {@render element_chips(
+              `polyhedra_centers`,
+              `Centers`,
+              structure_elements,
+              is_polyhedra_center_enabled,
+              toggle_polyhedra_element,
+              `${description_for(`polyhedra_excluded_elements`)}. Force-including a spectator ` +
+                `center (alkali or heavy alkaline-earth, e.g. Li, Na, Ba) may render its ` +
+                `polyhedra truncated at cell boundaries.`,
+            )}
           {/if}
         </SettingsSection>
       {/if}
@@ -1359,11 +1381,9 @@
           />
         </label>
         <NumberRangeInput
-          data-key="background_opacity"
-          min={0}
-          max={1}
+          setting="background_opacity"
+          schema={{ background_opacity: SETTINGS_CONFIG.background_opacity }}
           step={0.02}
-          title={description_for(`background_opacity`)}
           bind:value={background_opacity}>Opacity</NumberRangeInput
         >
       </SettingsSection>
@@ -1422,21 +1442,13 @@
             {@render setting_rows([trail_toggle_row])}
             {#if show_trajectory_lines && scene_props.trajectory_position_stream}
               {#if trail_elements.length > 1}
-                <div class="setting" {...setting_row(`trajectory_line_elements`)}>
-                  <span>Species</span>
-                  <div class="chip-row">
-                    {#each trail_elements as element (element)}
-                      <label>
-                        <input
-                          type="checkbox"
-                          checked={is_trail_element_on(element)}
-                          onchange={() => toggle_trail_element(element)}
-                        />
-                        {element}
-                      </label>
-                    {/each}
-                  </div>
-                </div>
+                {@render element_chips(
+                  `trajectory_line_elements`,
+                  `Species`,
+                  trail_elements,
+                  is_trail_element_on,
+                  toggle_trail_element,
+                )}
               {/if}
               <NumberRangeInput
                 setting="trajectory_line_trail_frames"
@@ -1508,7 +1520,7 @@
       </div>
       {#if settings_import_status}
         <small
-          class={['settings-import-status', { error: settings_import_status.error }]}
+          class={['settings-import-status', settings_import_status.error && `control-error`]}
           role={settings_import_status.error ? `alert` : `status`}
         >
           {settings_import_status.message}
@@ -1593,9 +1605,6 @@
     input {
       max-width: 13em;
     }
-  }
-  small.error {
-    color: var(--error-color, #e74c3c);
   }
   /* Boolean toggles read faster as a wrapped two-column block than as one row each */
   .toggle-grid {

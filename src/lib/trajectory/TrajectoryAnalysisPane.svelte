@@ -12,11 +12,12 @@
   import { format_num } from '$lib/labels'
   import { ViewerPane, type ViewerPaneOptions } from '$lib/overlays'
   import type { ParseProgress, TrajectoryRun } from '$lib/trajectory'
-  import { analysis_pane_setup, no_full_pass_message } from '$lib/trajectory/analysis'
-  import type {
-    AnalysisCollectOptions,
-    AnalysisPaneContext,
-  } from '$lib/trajectory/analysis-pane'
+  import {
+    type AnalysisCollectOptions,
+    type AnalysisPaneContext,
+    analysis_pane_setup,
+    no_full_pass_message,
+  } from '$lib/trajectory/analysis'
   import { format_bytes, to_error } from '$lib/utils'
   import { type Snippet, untrack } from 'svelte'
   import { Graph, type IconData } from 'svelte-widgets/icons'
@@ -319,3 +320,32 @@
     {@render children(context)}
   {/if}
 </ViewerPane>
+
+<style>
+  /* descendants are :global because the controls / hint snippets render inside this div
+     from the analysis panes' own component scopes */
+  .analysis-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 4pt;
+    font-size: 0.85em;
+    :global(label) {
+      display: flex;
+      align-items: center;
+      gap: 4pt;
+    }
+    :global(input:is([type='number'], [type='text'])) {
+      width: 5em;
+      text-align: center;
+    }
+    :global(button) {
+      align-self: flex-start;
+      padding: 2pt 8pt;
+    }
+    :global(.hint) {
+      opacity: 0.7;
+      font-size: 0.9em;
+      margin: 0;
+    }
+  }
+</style>

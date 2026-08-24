@@ -5,9 +5,9 @@ import { describe, expect, test } from 'vitest'
 import {
   detect_view_type,
   is_plottable_data,
-  resolve_path,
   scan_renderable_paths,
 } from '$lib/file-viewer/detect'
+import { resolve_path } from '$lib/json-path'
 
 const fixture = JSON.parse(
   gunzipSync(
@@ -373,7 +373,7 @@ describe(`scan_renderable_paths`, () => {
 
   test(`finds all expected types in test fixture`, () => {
     expect(fixture_paths.size).toBeGreaterThanOrEqual(9)
-    const types = new Set([...fixture_paths.values()].map((info) => info.type))
+    const types = new Set(fixture_paths.values())
     for (const expected of [
       `structure`,
       `fermi_surface`,
@@ -387,7 +387,7 @@ describe(`scan_renderable_paths`, () => {
   })
 
   test(`finds nested structures at correct paths without recursing into them`, () => {
-    expect(fixture_paths.get(`structures.Cu_FCC`)?.type).toBe(`structure`)
+    expect(fixture_paths.get(`structures.Cu_FCC`)).toBe(`structure`)
     // Should NOT find children like structures.Cu_FCC.sites
     expect([...fixture_paths.keys()].some((key) => key.startsWith(`structures.Cu_FCC.`))).toBe(
       false,
@@ -406,13 +406,13 @@ describe(`scan_renderable_paths`, () => {
 
   test(`respects max_depth`, () => {
     const deep = { a: { b: { c: si_structure } } }
-    expect(scan_renderable_paths(deep, ``, 2).size).toBe(0)
-    expect(scan_renderable_paths(deep, ``, 4).size).toBe(1)
+    expect(scan_renderable_paths(deep, 2).size).toBe(0)
+    expect(scan_renderable_paths(deep, 4).size).toBe(1)
   })
 
   test(`scans array elements`, () => {
     const data = { items: [{ composition: { Li: 1 }, energy: -1.5 }, si_structure] }
-    expect(scan_renderable_paths(data).get(`items[1]`)?.type).toBe(`structure`)
+    expect(scan_renderable_paths(data).get(`items[1]`)).toBe(`structure`)
   })
 
   test.each([
@@ -422,7 +422,7 @@ describe(`scan_renderable_paths`, () => {
     `handles %s via bracket notation`,
     (_, data, expected_path) => {
       const paths = scan_renderable_paths(data)
-      expect(paths.get(expected_path)?.type).toBe(`structure`)
+      expect(paths.get(expected_path)).toBe(`structure`)
     },
   )
 
@@ -449,8 +449,18 @@ describe(`scan_renderable_paths`, () => {
       const resolved = resolve_path(fixture, path)
       expect(resolved, `resolve_path failed for '${path}'`).toBeDefined()
       // Re-detect should return the same type
-      expect(detect_view_type(resolved)).toBe(fixture_paths.get(path)?.type)
+      expect(detect_view_type(resolved)).toBe(fixture_paths.get(path))
     }
+  })
+
+  // a plottable table registers a second badge under a \x00-suffixed path at the same node
+  test.each([
+    [{ x: [1, 2, 3], y: [4, 5, 6], z: [7, 8, 9] }, [`table`, `plot`]],
+    [{ name: [`Si`, `Ge`, `C`], energy: [-5.4, -4.6, -7.4] }, [`table`]],
+  ])(`%j registers badges %j`, (data, expected_types) => {
+    const paths = scan_renderable_paths(data)
+    expect([...paths.values()]).toEqual(expected_types)
+    expect(paths.get(`\u0000plot`)).toBe(expected_types.includes(`plot`) ? `plot` : undefined)
   })
 })
 
@@ -501,27 +511,6 @@ describe(`is_plottable_data`, () => {
     [`boolean`, false, true],
   ] as [string, boolean, unknown][])(`%s -> %s`, (_, expected, val) => {
     expect(is_plottable_data(val)).toBe(expected)
-  })
-})
-
-describe(`scan_renderable_paths with plot`, () => {
-  test(`registers both table and plot badges for plottable tabular data`, () => {
-    const data = { x: [1, 2, 3], y: [4, 5, 6], z: [7, 8, 9] }
-    const paths = scan_renderable_paths(data)
-    const types = [...paths.values()].map((info) => info.type)
-    expect(types).toContain(`table`)
-    expect(types).toContain(`plot`)
-    // plot path uses \x00 suffix to co-exist with table at same data path
-    expect(paths.has(`\u0000plot`)).toBe(true)
-    expect(paths.get(`\u0000plot`)?.type).toBe(`plot`)
-  })
-
-  test(`registers only table badge for non-plottable tabular data`, () => {
-    const data = { name: [`Si`, `Ge`, `C`], energy: [-5.4, -4.6, -7.4] }
-    const paths = scan_renderable_paths(data)
-    const types = [...paths.values()].map((info) => info.type)
-    expect(types).toContain(`table`)
-    expect(types).not.toContain(`plot`)
   })
 })
 

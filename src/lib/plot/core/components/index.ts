@@ -1,8 +1,7 @@
 // Components reached through this barrel. The rest of core/components (AxisLabel,
 // CartesianFrame, ColorBarDecoration, Hierarchy{Controls,Shell}, PlotAxes, PlotLegendLayer,
-// PlotMarginals, PlotTitle, PortalSelect, ReferenceLine{,3D}, ReferenceLinesLayer,
-// ReferencePlane and ZoomRect) are imported from their .svelte path by the few files that
-// use them.
+// PlotMarginals, PlotTitle, PortalSelect, ReferenceLine, ReferenceLinesLayer and ZoomRect)
+// are imported from their .svelte path by the few files that use them.
 export { default as ColorBar } from './ColorBar.svelte'
 export { default as ColorScaleSelect } from './ColorScaleSelect.svelte'
 export { default as FacetGrid } from './FacetGrid.svelte'

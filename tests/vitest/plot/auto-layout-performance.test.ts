@@ -1,8 +1,5 @@
-import {
-  clear_tick_metrics_cache,
-  resolve_tick_layout,
-  type MeasuredAxis,
-} from '$lib/plot/core/layout'
+import { clear_text_metrics_cache } from '$lib/plot/core/text-metrics'
+import { type MeasuredAxis, resolve_tick_layout } from '$lib/plot/core/tick-layout'
 import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest'
 import { mock_canvas_context } from '../setup'
 
@@ -26,12 +23,10 @@ const generated_axis = (tick_count: number, axis_size = AXIS_SIZE): MeasuredAxis
   tick_values: generated_labels(tick_count),
   tick_positions: generated_positions(tick_count, axis_size),
   axis_extent: { start: 0, end: axis_size },
-  tick: {
-    label: {
-      max_lines: 3,
-      // Exercise the real default strategy set, including bounded thin+rotate composition.
-      auto_layout: { endpoint_policy: `preserve` },
-    },
+  tick_label: {
+    max_lines: 3,
+    // Exercise the real default strategy set, including bounded thin+rotate composition.
+    auto_layout: { endpoint_policy: `preserve` },
   },
 })
 
@@ -41,13 +36,13 @@ describe(`adaptive layout performance`, { timeout: 10_000 * CI_MULTIPLIER }, () 
   })
 
   afterAll(() => {
-    clear_tick_metrics_cache()
+    clear_text_metrics_cache()
     vi.restoreAllMocks()
   })
 
   test(`default strategies keep text measurement work near-linear`, () => {
     const results = [100, 500].map((tick_count) => {
-      clear_tick_metrics_cache()
+      clear_text_metrics_cache()
       measure_text.mockClear()
       const layout = resolve_tick_layout(generated_axis(tick_count), AXIS_SIZE, `x`)
       const measure_text_calls = measure_text.mock.calls.length
@@ -69,7 +64,7 @@ describe(`adaptive layout performance`, { timeout: 10_000 * CI_MULTIPLIER }, () 
 
   test(`cache hits and translated resize layouts add no text measurements`, () => {
     const axis = generated_axis(500)
-    clear_tick_metrics_cache()
+    clear_text_metrics_cache()
     measure_text.mockClear()
     const cold_result = resolve_tick_layout(axis, AXIS_SIZE, `x`)
     const cold_measurements = measure_text.mock.calls.length

@@ -19,5 +19,6 @@ export {
   format_hover_info_text,
   format_temperature,
   get_phase_color,
+  type HoverTextOptions,
   PHASE_DIAGRAM_DEFAULTS,
 } from './utils'

@@ -1,9 +1,10 @@
 import type { ChemicalElement, ElementCategory } from '$lib'
-import { element_data, PeriodicTable, PeriodicTableControls } from '$lib'
+import { element_data, PeriodicTable } from '$lib'
 import { DEFAULT_CATEGORY_COLORS } from '$lib/colors'
 import { ELEM_HEATMAP_LABELS } from '$lib/labels'
 import type { Vec2 } from '$lib/math'
 import { colors, selected } from '$lib/state.svelte'
+import PeriodicTableControls from '$site/PeriodicTableControls.svelte'
 import PeriodicTableDemo from '$site/PeriodicTableDemo.svelte'
 import { createRawSnippet, flushSync, mount, tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
@@ -65,10 +66,7 @@ describe(`PeriodicTable`, () => {
     const category = `noble gas`
     const mounted_category_color = `#123456`
     colors.category[category] = mounted_category_color
-    mount(PeriodicTableControls, {
-      target: document.body,
-      props: { tile_border_radius: 2, hover_border_width: 2 },
-    })
+    mount(PeriodicTableControls, { target: document.body })
     expect(document.querySelector(`[aria-label="Reset font sizes to defaults"]`)).toBeNull()
     const number_input = (key: string) =>
       doc_query<HTMLInputElement>(`[data-key="${key}"] input[type="number"]`)
@@ -359,19 +357,14 @@ describe(`PeriodicTable`, () => {
     )
   })
 
-  test(`gap is forwarded and a positive inner_transition_metal_offset inserts a spacer row`, () => {
-    mount(PeriodicTable, {
-      target: document.body,
-      props: { gap: `10px`, inner_transition_metal_offset: 0.5 },
-    })
+  test(`gap prop overrides --ptable-gap and the f-block spacer sits in grid row 8`, () => {
+    mount(PeriodicTable, { target: document.body, props: { gap: `10px` } })
     expect(getComputedStyle(doc_query(`.periodic-table`)).gap).toBe(`10px`)
     expect(getComputedStyle(doc_query(`div.spacer`)).gridRow).toBe(`8`)
     document.body.innerHTML = ``
-    mount(PeriodicTable, {
-      target: document.body,
-      props: { inner_transition_metal_offset: 0 },
-    })
-    expect(document.querySelector(`div.spacer`)).toBeNull()
+    // without the prop the inline style stays empty so the CSS variable can take effect
+    mount(PeriodicTable, { target: document.body })
+    expect(doc_query(`.periodic-table`).style.gap).toBe(``)
   })
 
   test.each([`lanthanide`, `transition metal`] satisfies ElementCategory[])(
@@ -626,7 +619,6 @@ describe(`PeriodicTable`, () => {
       color_scale_range: [0, 10] as Vec2,
       color_overrides: { H: `#ff0000`, He: `#00ff00` },
       tile_props: { show_name: false }, // Use show_name: false to test labels prop
-      lanth_act_style: `background-color: red;`,
     }
 
     mount(PeriodicTable, { target: document.body, props })

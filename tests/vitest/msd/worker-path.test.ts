@@ -5,14 +5,17 @@
 // worker-client.test.ts; only the MSD-specific contract is asserted here.
 import type { compute_msd_async as ComputeMsdAsync } from '$lib/msd/async-compute.svelte'
 import { calc_msd } from '$lib/msd/calc-msd'
-import type { MsdOptions, MsdPositions } from '$lib/msd/index'
+import type { MsdOptions } from '$lib/msd/index'
+import type { TrajectoryPositionStream } from '$lib/trajectory'
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { expect_module_worker, install_stub_worker } from '../setup'
 import { drift_positions } from './helpers'
 
-const stub = install_stub_worker<{ id: number; input: MsdPositions; options: MsdOptions }>(
-  ({ input, options }) => calc_msd(input, options),
-)
+const stub = install_stub_worker<{
+  id: number
+  input: TrajectoryPositionStream
+  options: MsdOptions
+}>(({ input, options }) => calc_msd(input, options))
 let compute_msd_async: typeof ComputeMsdAsync
 
 beforeAll(async () => {

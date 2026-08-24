@@ -10,7 +10,11 @@
   import { clamp, type Vec2 } from '$lib/math'
   import { ColorScaleSelect } from '$lib/plot'
   import { tooltip } from 'svelte-widgets/attachments'
-  import { auto_color_config, DEFAULT_ISO_COLORMAP, ISO_COLORMAPS } from './coloring'
+  import {
+    auto_color_config,
+    DEFAULT_ISO_COLORMAP,
+    ISO_COLORMAP_SELECT_PROPS,
+  } from './coloring'
   import type { DisplayRange } from './sampling'
   import { compare_volume_grids } from './sampling'
   import type { IsosurfaceLayer, IsosurfaceSettings, VolumetricData } from './types'
@@ -156,28 +160,6 @@
     settings.display_range = is_default ? undefined : range
   }
 </script>
-
-{#snippet color_source_select(
-  selected: number,
-  on_pick: (idx: number | null) => void,
-  tip: string,
-)}
-  <label {@attach tooltip({ content: tip })}>
-    <span>Color by</span>
-    <select
-      value={selected}
-      onchange={(event) => {
-        const idx = Number(event.currentTarget.value)
-        on_pick(idx < 0 ? null : idx)
-      }}
-    >
-      <option value={-1}>None (solid)</option>
-      {#each volumes as _color_vol, color_idx (color_idx)}
-        <option value={color_idx}>{vol_label(color_idx)}</option>
-      {/each}
-    </select>
-  </label>
-{/snippet}
 
 {#snippet range_bound_input(layer_idx: number, bound: 0 | 1, explicit_range?: Vec2)}
   <input
@@ -352,25 +334,30 @@
           >
         </div>
         <div class="color-row">
-          {@render color_source_select(
-            layer.color_volume_idx ?? -1,
-            (idx) => set_color_source(layer_idx, idx),
-            `Color surface by another volume's values`,
-          )}
+          <label {@attach tooltip({ content: `Color surface by another volume's values` })}>
+            <span>Color by</span>
+            <select
+              value={layer.color_volume_idx ?? -1}
+              onchange={(event) => {
+                const idx = Number(event.currentTarget.value)
+                set_color_source(layer_idx, idx < 0 ? null : idx)
+              }}
+            >
+              <option value={-1}>None (solid)</option>
+              {#each volumes as _color_vol, color_idx (color_idx)}
+                <option value={color_idx}>{vol_label(color_idx)}</option>
+              {/each}
+            </select>
+          </label>
           {#if color_vol}
             {@const explicit_range = layer.color_range}
             {@const auto_colormap = auto_color_config(color_vol.data_range).colormap}
             <ColorScaleSelect
-              options={[...ISO_COLORMAPS]}
+              {...ISO_COLORMAP_SELECT_PROPS}
               value={layer.colormap ?? DEFAULT_ISO_COLORMAP}
               selected={[layer.colormap ?? DEFAULT_ISO_COLORMAP]}
               onadd={({ option }) =>
                 update_layer(layer_idx, { colormap: option as D3InterpolateName })}
-              color_bar={{
-                bar_style: `height: 8px`,
-                title_style: `width: 4em; font-size: 1em;`,
-              }}
-              liSelectedStyle="width: 100%; margin: 0; padding: 0; background: transparent;"
               aria-label="Colormap for sampled values"
               {@attach tooltip({ content: `Colormap for sampled values` })}
             />

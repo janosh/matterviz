@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { tooltip } from 'svelte-widgets/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
+  import VerticalSlider from './VerticalSlider.svelte'
 
   let {
     available_temperatures,
@@ -11,31 +11,8 @@
     temperature: number
   } = $props()
 
-  // Local preview state for smooth slider interaction without causing full re-renders
-  let preview_index = $state<number | null>(null)
-  let last_update_time = 0
-  const THROTTLE_MS = 100
-
+  // The slider runs over indices into the tabulated temperatures
   const temp_index = $derived(Math.max(0, available_temperatures.indexOf(temperature)))
-  const display_index = $derived(preview_index ?? temp_index)
-  const display_temp = $derived(available_temperatures[display_index] ?? temperature)
-
-  function handle_slider_input(event: Event & { currentTarget: HTMLInputElement }): void {
-    const new_index = Number(event.currentTarget.value)
-    preview_index = new_index
-    // Throttle parent updates during drag to prevent scene flashing
-    const now = Date.now()
-    if (now - last_update_time >= THROTTLE_MS) {
-      last_update_time = now
-      temperature = available_temperatures[new_index] ?? temperature
-    }
-  }
-
-  function handle_slider_end(event: Event & { currentTarget: HTMLInputElement }): void {
-    const new_temp = available_temperatures[Number(event.currentTarget.value)]
-    if (new_temp !== undefined) temperature = new_temp
-    preview_index = null
-  }
 
   function set_closest_temp(value: number): void {
     temperature = available_temperatures.reduce(
@@ -45,90 +22,29 @@
   }
 </script>
 
-<div
+<VerticalSlider
   {...rest}
   class={[`temperature-slider`, rest.class]}
-  {@attach tooltip({ content: `Temperature for G(T) free energies` })}
+  bind:value={
+    () => temp_index, (idx) => (temperature = available_temperatures[idx] ?? temperature)
+  }
+  min={0}
+  max={available_temperatures.length - 1}
+  aria_label="Temperature (Kelvin)"
+  tooltip_content="Temperature for G(T) free energies"
 >
-  <label class="temp-label">
+  {#snippet header(index)}
     <input
       type="number"
-      class="temp-input"
-      value={display_temp}
+      value={available_temperatures[index] ?? temperature}
       min={available_temperatures[0] ?? 0}
       max={available_temperatures.at(-1) ?? 1000}
       onchange={(evt) => set_closest_temp(+evt.currentTarget.value)}
       aria-label="Temperature (Kelvin)"
     />
     <span>K</span>
-  </label>
-  {#if available_temperatures.length > 0}
-    <div class="slider-wrapper">
-      <span class="temp-range">
-        {available_temperatures[0]}–{available_temperatures.at(-1)} K
-      </span>
-      <input
-        type="range"
-        min="0"
-        max={available_temperatures.length - 1}
-        value={display_index}
-        oninput={handle_slider_input}
-        onchange={handle_slider_end}
-        onmouseup={handle_slider_end}
-        ontouchend={handle_slider_end}
-        aria-label="Temperature (Kelvin)"
-      />
-    </div>
-  {/if}
-</div>
-
-<style>
-  .temperature-slider {
-    position: absolute;
-    top: calc(1ex + 50px);
-    right: 1ex;
-    z-index: 2;
-    pointer-events: auto;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 4px;
-    background: color-mix(in srgb, var(--hull-bg, transparent) 80%, transparent);
-    padding: 3px 5px;
-    border-radius: var(--border-radius, 6pt);
-    backdrop-filter: blur(2px);
-  }
-  .slider-wrapper {
-    display: flex;
-    place-items: center;
-    justify-content: var(--slider-justify, center);
-    line-height: 1;
-  }
-  .temperature-slider input[type='range'] {
-    writing-mode: vertical-lr;
-    direction: rtl;
-  }
-  .temp-label {
-    display: flex;
-    align-items: center;
-    gap: 2px;
-  }
-  .temp-input {
-    border: 1px solid color-mix(in srgb, currentColor 5%, transparent);
-    border-radius: 3px;
-    background: transparent;
-    text-align: center;
-  }
-  .temp-input::-webkit-outer-spin-button,
-  .temp-input::-webkit-inner-spin-button {
-    -webkit-appearance: none;
-    margin: 0;
-  }
-  .temp-range {
-    font-size: 0.7em;
-    opacity: 0.7;
-    white-space: nowrap;
-    writing-mode: vertical-rl;
-    transform: rotate(180deg);
-  }
-</style>
+  {/snippet}
+  {#snippet range_label()}
+    {available_temperatures[0]}–{available_temperatures.at(-1)} K
+  {/snippet}
+</VerticalSlider>

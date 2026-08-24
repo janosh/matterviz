@@ -294,59 +294,51 @@ describe(`site coverage verification`, () => {
 
   // empty/null single-site letters are covered in `handles various input scenarios`
 
-  test(`handles edge cases in Wyckoff position parsing`, () => {
-    const edge_cases: {
-      positions: number[][]
-      numbers: number[]
-      wyckoffs: (string | null)[]
-      expected: WyckoffPos[]
-    }[] = [
-      // Mixed valid and invalid wyckoff letters
-      {
-        positions: [
-          [0, 0, 0],
-          [0.5, 0.5, 0.5],
-        ],
-        numbers: [1, 8],
-        wyckoffs: [`a`, null],
-        expected: [
-          { wyckoff: `1`, elem: `O`, abc: [0.5, 0.5, 0.5], site_indices: [1] },
-          { wyckoff: `1a`, elem: `H`, abc: [0, 0, 0], site_indices: [0] },
-        ],
-      },
-      // Multi-letter notation keeps all trailing letters
-      {
-        positions: [[0, 0, 0]],
-        numbers: [26],
-        wyckoffs: [`24abc`],
-        expected: [{ wyckoff: `1abc`, elem: `Fe`, abc: [0, 0, 0], site_indices: [0] }],
-      },
-      // Very large multiplicity
-      {
-        positions: Array.from({ length: 48 }, (_, idx) => [
-          idx * 0.02,
-          idx * 0.02,
-          idx * 0.02,
-        ]),
-        numbers: Array(48).fill(1),
-        wyckoffs: Array(48).fill(`48a`),
-        expected: [
-          {
-            wyckoff: `48a`,
-            elem: `H`,
-            abc: [0, 0, 0],
-            site_indices: Array.from({ length: 48 }, (_, idx) => idx),
-          },
-        ],
-      },
-    ]
-
-    edge_cases.forEach(({ positions, numbers, wyckoffs, expected }) => {
-      const result = wyckoff_positions_from_moyo(
-        make_wyckoff_dataset(positions, numbers, wyckoffs),
-      )
-      expect(result).toEqual(expected)
-    })
+  test.each<{
+    desc: string
+    positions: number[][]
+    numbers: number[]
+    wyckoffs: (string | null)[]
+    expected: WyckoffPos[]
+  }>([
+    {
+      desc: `mixed valid and missing Wyckoff letters`,
+      positions: [
+        [0, 0, 0],
+        [0.5, 0.5, 0.5],
+      ],
+      numbers: [1, 8],
+      wyckoffs: [`a`, null],
+      expected: [
+        { wyckoff: `1`, elem: `O`, abc: [0.5, 0.5, 0.5], site_indices: [1] },
+        { wyckoff: `1a`, elem: `H`, abc: [0, 0, 0], site_indices: [0] },
+      ],
+    },
+    {
+      desc: `multi-letter notation keeps all trailing letters`,
+      positions: [[0, 0, 0]],
+      numbers: [26],
+      wyckoffs: [`24abc`],
+      expected: [{ wyckoff: `1abc`, elem: `Fe`, abc: [0, 0, 0], site_indices: [0] }],
+    },
+    {
+      desc: `very large multiplicity`,
+      positions: Array.from({ length: 48 }, (_, idx) => [idx * 0.02, idx * 0.02, idx * 0.02]),
+      numbers: Array(48).fill(1),
+      wyckoffs: Array(48).fill(`48a`),
+      expected: [
+        {
+          wyckoff: `48a`,
+          elem: `H`,
+          abc: [0, 0, 0],
+          site_indices: Array.from({ length: 48 }, (_, idx) => idx),
+        },
+      ],
+    },
+  ])(`$desc`, ({ positions, numbers, wyckoffs, expected }) => {
+    expect(
+      wyckoff_positions_from_moyo(make_wyckoff_dataset(positions, numbers, wyckoffs)),
+    ).toEqual(expected)
   })
 })
 

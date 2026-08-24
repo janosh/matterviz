@@ -74,7 +74,7 @@
   let range = $derived(`${start_frame}-${end_frame}`)
   let data_export_disabled = $derived(running !== null || !run || export_frame_count === 0)
 
-  let canvas = $derived(wrapper?.querySelector(`canvas`) as HTMLCanvasElement)
+  let canvas = $derived(wrapper?.querySelector<HTMLCanvasElement>(`canvas`) ?? null)
   let has_canvas = $state(false)
   $effect(() => observe_canvas_presence(wrapper, (val) => (has_canvas = val)))
   let is_video_supported = $derived(

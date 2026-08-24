@@ -17,6 +17,23 @@ export type AxisItem<T = Record<string, unknown>> = {
   category?: string // optional grouping (for label coloring)
   data?: T // arbitrary metadata
 }
+export const axis_key = (item: AxisItem): string => item.key ?? item.label
+
+export type CellValue = number | string | null
+// values[y_idx][x_idx], or nested records keyed by item key (y then x)
+export type HeatmapValues = CellValue[][] | Record<string, Record<string, CellValue>>
+
+// Resolve either `values` shape by cell index; missing entries read as null
+export const cell_value_getter = (
+  values: HeatmapValues,
+  x_items: AxisItem[],
+  y_items: AxisItem[],
+): ((x_idx: number, y_idx: number) => CellValue) => {
+  if (Array.isArray(values)) return (x_idx, y_idx) => values[y_idx]?.[x_idx] ?? null
+  const x_keys = x_items.map(axis_key)
+  const y_keys = y_items.map(axis_key)
+  return (x_idx, y_idx) => values[y_keys[y_idx]]?.[x_keys[x_idx]] ?? null
+}
 
 // Context passed to tooltip, cell, and event handler snippets
 export type CellContext = {
@@ -24,7 +41,7 @@ export type CellContext = {
   y_item: AxisItem
   x_idx: number
   y_idx: number
-  value: number | string | null
+  value: CellValue
   bg_color: string | null
 }
 
@@ -80,23 +97,13 @@ export const ELEMENT_ORDERINGS = Object.keys(ORDERING_LABELS) as ElementAxisOrde
 export function matrix_to_rows(
   x_items: AxisItem[],
   y_items: AxisItem[],
-  values:
-    | (number | string | null)[][]
-    | Record<string, Record<string, number | string | null>>,
-): Record<string, number | string | null>[] {
-  const get_value = Array.isArray(values)
-    ? (x_idx: number, y_idx: number) => values[y_idx]?.[x_idx] ?? null
-    : (x_idx: number, y_idx: number) => {
-        const y_key = y_items[y_idx].key ?? y_items[y_idx].label
-        const x_key = x_items[x_idx].key ?? x_items[x_idx].label
-        return values[y_key]?.[x_key] ?? null
-      }
+  values: HeatmapValues,
+): Record<string, CellValue>[] {
+  const get_value = cell_value_getter(values, x_items, y_items)
   return y_items.map((y_item, y_idx) => {
-    const row: Record<string, number | string | null> = {
-      y_key: y_item.key ?? y_item.label,
-    }
+    const row: Record<string, CellValue> = { y_key: axis_key(y_item) }
     for (const [x_idx, x_item] of x_items.entries()) {
-      row[x_item.key ?? x_item.label] = get_value(x_idx, y_idx)
+      row[axis_key(x_item)] = get_value(x_idx, y_idx)
     }
     return row
   })

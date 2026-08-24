@@ -1,8 +1,6 @@
-// Node.js I/O utilities for VS Code extension
-//
-// Provides Node.js file streaming that can't be in lib/trajectory/ (which must stay browser-compatible for web builds).
-// Clean separation: this handles file I/O in NodeJs environments like VSCode,
-// while lib/trajectory/ handles parsing.
+// Node-side file reading for the VS Code host: lib/trajectory/ stays browser-only and does
+// the parsing, this reads (and decompresses) the bytes through the vscode.workspace.fs API so
+// remote (SSH) workspaces work too.
 
 import { normalize_browser_supported_filename } from '$lib/file-viewer/eligibility'
 import { detect_compression_format, is_stream_compression_format } from '$lib/io/decompress'
@@ -11,17 +9,17 @@ import {
   indexed_trajectory_format,
   is_indexable_trajectory_filename,
 } from '$lib/trajectory/format-detect'
+import { format_bytes } from '$lib/utils'
 import { constants as buffer_constants } from 'node:buffer'
 import { Readable } from 'node:stream'
 import { createGunzip, createInflate, createInflateRaw } from 'node:zlib'
 import * as vscode from 'vscode'
 
-// Memory management constants for streaming
-// NOTE: vscode.workspace.fs.readFile() loads entire file into memory (no streaming support yet)
-// Consider making this a user setting: matterviz.max_file_size_mb (default 1024)
-export const MAX_STREAMING_FILE_SIZE = 1024 * 1024 * 1024 // set low at 1GB to prevent OOM
+// vscode.workspace.fs.readFile() has no streaming API, so the whole file lands in memory: cap
+// it at 1 GiB to keep the extension host from OOMing
+export const MAX_STREAMING_FILE_SIZE = 1024 * 1024 * 1024
 export const MAX_TEXT_TRAJECTORY_SIZE = buffer_constants.MAX_STRING_LENGTH
-const LARGE_FILE_WARNING_SIZE = 512 * 1024 * 1024 // 512MB - warn user
+const LARGE_FILE_WARNING_SIZE = 512 * 1024 * 1024
 const TEXT_DECODING_BYTES_PER_OUTPUT_BYTE = 2
 
 const to_array_buffer = (data: Uint8Array): ArrayBuffer =>
@@ -104,18 +102,14 @@ export const stream_file_to_buffer = async (file_path: string): Promise<ArrayBuf
   }
 
   if (total_size > MAX_STREAMING_FILE_SIZE) {
-    const size_gb = Math.round(total_size / 1024 / 1024 / 1024)
-    const max_gb = Math.round(MAX_STREAMING_FILE_SIZE / 1024 / 1024 / 1024)
-    throw new Error(`File too large (${size_gb}GB). Maximum: ${max_gb}GB`)
+    throw new Error(
+      `File too large (${format_bytes(total_size)}). Maximum: ${format_bytes(MAX_STREAMING_FILE_SIZE)}`,
+    )
   }
-
   if (total_size > LARGE_FILE_WARNING_SIZE) {
-    const size_gb = Math.round(total_size / 1024 / 1024 / 1024)
-    console.warn(`Large file detected: ${size_gb}GB. Processing may be slow.`)
+    console.warn(`Large file detected: ${format_bytes(total_size)}. Processing may be slow.`)
   }
 
-  // Read entire file using VSCode API (works with both local and remote files)
-  // note: loads entire file into memory - no per-chunk progress available. if common user need, check if vscode.workspace.fs.readFile() could support streaming.
   const uint8array = await vscode.workspace.fs.readFile(uri)
 
   // Keep the return type a true ArrayBuffer. This intentionally excludes

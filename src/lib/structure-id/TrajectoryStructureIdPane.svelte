@@ -3,7 +3,7 @@
   import type { ViewerPaneOptions } from '$lib/overlays'
   import type { TrajectoryRun } from '$lib/trajectory'
   import { positive_int, sweep_frame_plan, sweep_progress } from '$lib/trajectory/analysis'
-  import type { AnalysisCollectOptions } from '$lib/trajectory/analysis-pane'
+  import type { AnalysisCollectOptions } from '$lib/trajectory/analysis'
   import TrajectoryAnalysisPane from '$lib/trajectory/TrajectoryAnalysisPane.svelte'
   import { Lattice } from 'svelte-widgets/icons'
   import type { StructureIdSweep } from './collect'

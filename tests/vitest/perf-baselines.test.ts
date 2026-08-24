@@ -412,13 +412,16 @@ describe(`perf baselines`, { timeout: 120_000 }, () => {
   // #438 timed 10k keys in a browser; happy-dom spends ~30 KB of heap per rendered element
   // (7 per key), so 10k keys would blow the 4 GB worker heap. 2k keys is the same code path.
   test(`JsonTree 2k keys mount`, async () => {
-    const value = make_json(2000)
+    // JsonNode pages children 100 at a time, so spread the 2k keys over 20 expanded groups
+    const value = Object.fromEntries(
+      Array.from({ length: 20 }, (_, idx) => [`group_${idx}`, make_json(100)]),
+    )
     await measure(`JsonTree 2k keys mount`, () => {
-      // default auto_fold_objects (20) would collapse the root and render one node
+      // default auto_fold_objects (20) would collapse the groups and render one node each
       mounted.push(
         mount(JsonTree, {
           target: target(),
-          props: { value, default_fold_level: 1, auto_fold_objects: Infinity },
+          props: { value, default_fold_level: 2, auto_fold_objects: Infinity },
         }),
       )
       flushSync()

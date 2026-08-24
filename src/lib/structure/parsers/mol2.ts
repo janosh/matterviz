@@ -1,15 +1,13 @@
 // Tripos MOL2: `@<TRIPOS>` delimited sections. ATOM rows carry SYBYL atom types
 // (`C.ar`, `N.4`), BOND rows carry bond orders, and the optional CRYSIN section a cell.
 import type { ElementSymbol } from '$lib/element'
-import type { Vec3 } from '$lib/math'
-import type * as math from '$lib/math'
 import type { AnyStructure, BondOrder, Site } from '$lib/structure'
 import { make_site } from '$lib/structure/site'
 import {
-  cart_to_frac_with_fallback,
-  cell_params_to_matrix,
+  cell_frame,
   diag_error,
   diag_warn,
+  drop_placeholder_cell,
   element_from_candidates,
   guard_parse,
   is_placeholder_cell,
@@ -108,29 +106,17 @@ export const parse_mol2 = (content: string): AnyStructure | null =>
     }
 
     const crysin_row = sections.get(`CRYSIN`)?.[0]
-    const cell_params = read_crysin_cell(crysin_row)
-    if (crysin_row !== undefined && cell_params === null) {
+    const crysin = read_crysin_cell(crysin_row)
+    if (crysin_row !== undefined && crysin === null) {
       diag_error(`MOL2 @<TRIPOS>CRYSIN row has invalid cell parameters: '${crysin_row}'`)
       return null
     }
-    let lattice_matrix: math.Matrix3x3 | null = null
-    let cell_lengths: Vec3 | undefined
-    if (cell_params && is_placeholder_cell(cell_params)) {
-      diag_warn(
-        `MOL2: ignoring placeholder CRYSIN cell (1 1 1 90 90 90), treating as molecule`,
-      )
-    } else if (cell_params) {
-      cell_lengths = [cell_params[0], cell_params[1], cell_params[2]]
-      lattice_matrix = cell_params_to_matrix(cell_params)
-    }
     // Cartesian coordinates stay authoritative and are not wrapped into the cell so
     // molecules are not torn apart across periodic boundaries
-    const cart_to_frac = lattice_matrix
-      ? cart_to_frac_with_fallback(lattice_matrix, {
-          axis_lengths: cell_lengths,
-          context: `MOL2 CRYSIN cell`,
-        })
-      : null
+    const { lattice_matrix, to_frac } = cell_frame(
+      crysin && drop_placeholder_cell(crysin, `MOL2`, `CRYSIN cell`),
+      `MOL2 CRYSIN cell`,
+    )
 
     const sites: Site[] = []
     const site_idx_by_atom_id = new Map<number, number>()
@@ -143,7 +129,7 @@ export const parse_mol2 = (content: string): AnyStructure | null =>
         `MOL2 atom coordinates on row '${row}'`,
       )
       const element = mol2_element(tokens[5] ?? ``, tokens[1], atom_idx)
-      const abc: Vec3 = cart_to_frac ? cart_to_frac.convert(xyz) : [0, 0, 0]
+      const abc = to_frac(xyz)
       sites.push(make_site(element, abc, xyz, `${element}${atom_idx + 1}`))
       record_atom_id(site_idx_by_atom_id, Number(tokens[0]), atom_idx)
     }

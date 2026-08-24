@@ -6,11 +6,9 @@ import { open_trajectory } from '$lib/trajectory/open'
 import { Hdf5GroupSelectionRequiredError } from '$lib/trajectory/parse'
 import { summarize_run } from '$lib/trajectory/run'
 import { dispose_run_port, serve_run_over_port } from '$lib/trajectory/runs/worker'
+import { to_error } from '$lib/utils'
 import type { ParseWorkerRequest, ParseWorkerResponse } from './parse-worker-protocol'
 import { parse_file_content, type ParseResult } from './parse'
-
-const error_message = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error)
 
 const prepare_parse_result = (
   id: number,
@@ -53,7 +51,7 @@ export const handle_parse_worker_request = async (
     return {
       response: {
         id,
-        error: error_message(error),
+        error: to_error(error).message,
         ...(error instanceof Hdf5GroupSelectionRequiredError && {
           hdf5_group_paths: error.groups,
         }),
@@ -73,7 +71,10 @@ self.addEventListener(`message`, (event: MessageEvent<ParseWorkerRequest>) => {
       self.postMessage(response, { transfer })
     } catch (error) {
       dispose_run_port(response.run_port)
-      self.postMessage({ id, error: `Failed to clone parse result: ${error_message(error)}` })
+      self.postMessage({
+        id,
+        error: `Failed to clone parse result: ${to_error(error).message}`,
+      })
     }
   })()
 })

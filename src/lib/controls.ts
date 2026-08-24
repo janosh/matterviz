@@ -1,7 +1,6 @@
 import { SvelteSet } from 'svelte/reactivity'
 
-// Controls visibility configuration for visualization components
-// Manages visibility of control buttons in Structure, Trajectory, BrillouinZone
+// Normalises the `show_controls` prop every viewer accepts into one shape for its chrome
 
 type ControlsVisibility = `always` | `hover` | `never`
 
@@ -17,8 +16,7 @@ export type ShowControlsProp<ControlName extends string = string> =
   | ShowControlsConfig<ControlName>
   | boolean
 
-// Normalize show_controls prop into consistent config with helper methods
-// Normalized result of a ShowControlsProp, passed to viewer chrome components
+// Normalized ShowControlsProp, passed to viewer chrome components
 export type ShowControlsState = ReturnType<typeof normalize_show_controls>
 
 export function normalize_show_controls(
@@ -37,9 +35,7 @@ export function normalize_show_controls(
   const hidden = new SvelteSet(config?.hidden)
   return {
     mode,
-    hidden,
     style: config?.style,
-    // Helper: check if a control should be visible
     visible: (name: string) => !hidden.has(name),
     // CSS class for visibility mode
     class: mode === `never` ? `` : `${mode}-visible`,

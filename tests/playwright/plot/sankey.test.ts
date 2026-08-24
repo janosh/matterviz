@@ -32,8 +32,9 @@ test.describe(`Sankey Component Tests`, () => {
 
   test(`opens the controls pane`, async ({ page }) => {
     const section = page.locator(`#vertical-sankey`)
+    // the toggle sits in the chart header row (ChartShell), not at a fixed offset
     const toggle = section.locator(`.sankey-controls-toggle`)
-    await expect(toggle).toHaveCSS(`right`, `30px`)
+    await expect(toggle).toBeVisible()
     await toggle.click()
     await expect(section.locator(`.sankey-controls-pane`)).toBeVisible()
   })

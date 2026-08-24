@@ -8,8 +8,6 @@ import { make_lattice } from '$lib/structure/parsers/shared'
 import type { Pbc } from '$lib/structure/pbc'
 import { is_plain_object } from '$lib/utils'
 
-export { resolve_path } from '$lib/json-path'
-
 // Visualization types supported by the file viewer and their badge labels.
 export const TYPE_LABELS = {
   structure: `Structure`,
@@ -346,51 +344,35 @@ export const volume_json_to_isosurface_input = (raw: unknown): VolumetricFileDat
 
 // === Renderable Path Scanner ===
 
-export interface RenderablePath {
-  type: RenderableType
-  label: string
-}
-
-// Recursively scan a JSON object to find all paths that contain renderable data.
-// Returns a Map of JSON path strings to their detected type.
-// Used to show badges on JsonTree nodes indicating which subtrees contain visualizable data.
+// Map of JSON path -> detected type for every renderable subtree, for the badges JsonTree nodes
+// show. A renderable value is not walked further: its children are part of the data.
 export function scan_renderable_paths(
   obj: unknown,
-  prefix: string = ``,
   max_depth: number = 10,
-): Map<string, RenderablePath> {
-  const results = new Map<string, RenderablePath>()
+): Map<string, RenderableType> {
+  const results = new Map<string, RenderableType>()
   const visited = new WeakSet<object>()
 
   function walk(value: unknown, path: string, depth: number): void {
-    if (depth > max_depth) return
-    if (value == null) return
-    if (typeof value !== `object`) return
+    if (depth > max_depth || value == null || typeof value !== `object`) return
 
-    // Circular reference protection
-    const obj_ref = value
-    if (visited.has(obj_ref)) return
-    visited.add(obj_ref)
+    if (visited.has(value)) return // cycle
+    visited.add(value)
 
-    // Check if this value itself is renderable
     const detected_type = detect_view_type(value)
     if (detected_type) {
-      results.set(path, { type: detected_type, label: TYPE_LABELS[detected_type] })
+      results.set(path, detected_type)
       // If tabular data is also plottable, register a plot badge too
       if (detected_type === `table` && is_plottable_data(value)) {
         const plot_path = path ? `${path}\u0000plot` : `\u0000plot`
-        results.set(plot_path, { type: `plot`, label: TYPE_LABELS.plot })
+        results.set(plot_path, `plot`)
       }
-      // Don't recurse into renderable objects -- their children are part of the data
       return
     }
-
-    // Recurse into children
+    // Only the first few elements of an array: renderable items repeat their shape
     if (Array.isArray(value)) {
-      // For arrays, only scan first few elements to avoid huge arrays
-      const scan_count = Math.min(value.length, 20)
-      for (let idx = 0; idx < scan_count; idx++) {
-        walk(value[idx], build_path(path, idx), depth + 1)
+      for (const [idx, item] of value.slice(0, 20).entries()) {
+        walk(item, build_path(path, idx), depth + 1)
       }
     } else {
       for (const [key, child_value] of Object.entries(value as Record<string, unknown>)) {
@@ -399,6 +381,6 @@ export function scan_renderable_paths(
     }
   }
 
-  walk(obj, prefix, 0)
+  walk(obj, ``, 0)
   return results
 }

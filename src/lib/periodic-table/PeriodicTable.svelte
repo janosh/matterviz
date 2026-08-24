@@ -16,7 +16,7 @@
   } from '$lib/element'
   import { element_data, ElementPhoto, ElementTile, is_elem_symbol } from '$lib/element'
   import { ELEM_SYMBOLS } from '$lib/labels'
-  import type { Point2D, Vec2 } from '$lib/math'
+  import { array_extent, type Point2D, type Vec2 } from '$lib/math'
   import { ColorBar } from '$lib/plot'
   import { resolve_color_ramp } from '$lib/plot/core/color-ramp'
   import { colors } from '$lib/state.svelte'
@@ -44,12 +44,10 @@
     active_element = $bindable(null),
     active_category = $bindable(null),
     active_elements = $bindable([]),
-    gap = `0.3cqw`,
-    inner_transition_metal_offset = 0.5,
+    gap,
     lanth_act_tiles = tile_props?.show_symbol === false
       ? []
       : [...default_f_block_inset_tiles],
-    lanth_act_style = ``,
     color_scale_range = [null, null],
     color_overrides = {},
     labels = {},
@@ -58,10 +56,8 @@
     show_color_bar = true,
     color_bar_props = {},
     inset,
-    bottom_left_inset,
     tooltip = false,
     on_activate,
-    children,
     onkeydown: on_table_keydown,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
@@ -84,8 +80,9 @@
     active_category?: ElementCategory | null
     // array of element symbols or ChemicalElement objects to highlight
     active_elements?: (ElementSymbol | ChemicalElement)[]
-    gap?: string // gap between element tiles, default is 0.3% of container width
-    inner_transition_metal_offset?: number
+    // gap between element tiles; overrides the --ptable-gap CSS variable (default 0.3cqw, i.e.
+    // 0.3% of the container width)
+    gap?: string
     // show lanthanides and actinides as tiles
     lanth_act_tiles?: {
       name: string
@@ -93,7 +90,6 @@
       number: string
       category: ElementCategory
     }[]
-    lanth_act_style?: string
     color_scale_range?: [number | null, number | null]
     color_overrides?: Partial<Record<ElementSymbol, string>>
     labels?: Partial<Record<ElementSymbol, string>>
@@ -105,7 +101,6 @@
     // props to pass to the ColorBar component (e.g. { title: 'Bar Title', tick_labels: 5 })
     color_bar_props?: Partial<ComponentProps<typeof ColorBar>>
     inset?: Snippet<[{ active_element: ChemicalElement | null }]>
-    bottom_left_inset?: Snippet<[{ active_element: ChemicalElement | null }]>
     tooltip?:
       | Snippet<
           [
@@ -119,7 +114,6 @@
           ]
         >
       | boolean
-    children?: Snippet
     on_activate?: (element: ChemicalElement) => void
   } = $props()
 
@@ -294,10 +288,8 @@
   let heat_range = $derived.by((): Vec2 => {
     const [min_override, max_override] = color_scale_range
     const min_lifted = log && min_override !== null && min_override <= 0 ? null : min_override
-    return [
-      min_lifted ?? (heat_nums.length > 0 ? Math.min(...heat_nums) : 0),
-      max_override ?? (heat_nums.length > 0 ? Math.max(...heat_nums) : 1),
-    ]
+    const [data_min, data_max] = heat_nums.length > 0 ? array_extent(heat_nums) : [0, 1]
+    return [min_lifted ?? data_min, max_override ?? data_max]
   })
   let color_bar_scale = $derived(
     typeof color_scale === `string` ? color_scale : { interpolator: color_scale },
@@ -454,9 +446,7 @@
   {/each}
   <!-- show tile for lanthanides and actinides with text La-Lu and Ac-Lr respectively -->
   {#each lanth_act_tiles as lanth_act_element, idx (lanth_act_element.symbol)}
-    {@const style = `opacity: 0.8; grid-column: 3; grid-row: ${6 + idx}; ${lanth_act_style}; ${
-      tile_props?.style ?? ``
-    }`}
+    {@const style = `opacity: 0.8; grid-column: 3; grid-row: ${6 + idx}; ${tile_props?.style ?? ``}`}
     <ElementTile
       {...tile_props}
       element={lanth_act_element as unknown as ChemicalElement}
@@ -467,14 +457,10 @@
       symbol_style="font-size: 30cqw;"
     />
   {/each}
-  {#if inner_transition_metal_offset}
-    <!-- provide vertical offset for lanthanides + actinides -->
-    <div class="spacer" style:aspect-ratio={1 / inner_transition_metal_offset}></div>
-  {/if}
+  <!-- vertical offset between the main block and the lanthanide/actinide rows -->
+  <div class="spacer"></div>
 
-  {#if bottom_left_inset}
-    {@render bottom_left_inset({ active_element })}
-  {:else if show_photo && active_element}
+  {#if show_photo && active_element}
     <ElementPhoto element={active_element} style="grid-area: 9/1/span 2/span 2" />
   {/if}
 
@@ -507,8 +493,6 @@
       {/if}
     </div>
   {/if}
-
-  {@render children?.()}
 </div>
 
 <style>
@@ -545,6 +529,9 @@
   }
   div.spacer {
     grid-row: 8;
+    /* the variable is the spacer height in tile widths; 0 degenerates the ratio to auto, i.e.
+       no offset */
+    aspect-ratio: 1 / var(--ptable-inner-transition-offset, 0.5);
   }
   .tooltip {
     --_bg: var(--tooltip-bg, light-dark(rgba(255, 255, 255, 0.95), rgba(0, 0, 0, 0.85)));

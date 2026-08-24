@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { AXIS_COLORS } from '$lib/colors'
   import { format_num } from '$lib/labels'
   import type { Vec3 } from '$lib/math'
   import * as math from '$lib/math'
@@ -35,9 +36,9 @@
     show_cell_vectors?: boolean // whether to show the lattice vectors
   } = $props()
 
-  // Lattice vector arrows all start from this corner, just outside the cell, colored a/b/c
+  // Lattice vector arrows all start from this corner, just outside the cell, in the same a/b/c
+  // colors as the orientation gizmo and the rotation sliders
   const VECTOR_ORIGIN: Vec3 = [-1, -1, -1]
-  const VECTOR_COLORS = [`red`, `green`, `blue`]
 
   const { invalidate } = useThrelte()
   let hovered_idx = $state<number | null>(null) // track hovered vector
@@ -138,7 +139,7 @@
         position={VECTOR_ORIGIN}
         vector={vec}
         scale={0.5}
-        color={VECTOR_COLORS[idx]}
+        color={AXIS_COLORS[idx][hovered_idx === idx ? 2 : 1]}
         shaft_radius={0.1}
         arrow_head_radius={0.2}
         arrow_head_length={0.8}

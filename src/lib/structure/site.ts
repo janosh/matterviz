@@ -17,6 +17,12 @@ export const make_site = (
 export const is_image_site = (site: Site | undefined): boolean =>
   typeof site?.properties?.orig_site_idx === `number`
 
+// Index of the site a PBC image copies; every other site is its own source
+export const get_image_source_idx = (site: Site | undefined, site_idx: number): number =>
+  typeof site?.properties?.orig_site_idx === `number`
+    ? site.properties.orig_site_idx
+    : site_idx
+
 // Index of the unit-cell site a displayed site descends from: make_supercell stamps
 // `orig_unit_cell_idx` (into the cell it tiled), get_pbc_image_sites stamps `orig_site_idx`
 // (into the structure it imaged, inheriting any `orig_unit_cell_idx`). Sites with neither are
@@ -24,6 +30,4 @@ export const is_image_site = (site: Site | undefined): boolean =>
 export const get_orig_site_idx = (site: Site | undefined, site_idx: number): number =>
   typeof site?.properties?.orig_unit_cell_idx === `number`
     ? site.properties.orig_unit_cell_idx
-    : typeof site?.properties?.orig_site_idx === `number`
-      ? site.properties.orig_site_idx
-      : site_idx
+    : get_image_source_idx(site, site_idx)

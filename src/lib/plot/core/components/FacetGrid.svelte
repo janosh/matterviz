@@ -19,6 +19,7 @@
     type ResolvedFacetGridGeometry,
   } from '$lib/plot/core/facets'
   import { is_valid_range } from '$lib/plot/core/shared-axes'
+  import { observe_size } from '$lib/plot/core/utils'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
@@ -372,16 +373,10 @@
   )
   const content_row = $derived(title ? 2 : 1)
   const color_bar_column = $derived(legend ? 3 : 2)
-  const observe_grid_size = (element: HTMLElement) => {
-    const update_size = () => {
-      grid_width = element.clientWidth
-      grid_height = element.clientHeight
-    }
-    update_size()
-    const observer = new ResizeObserver(update_size)
-    observer.observe(element)
-    return () => observer.disconnect()
-  }
+  const observe_grid_size = observe_size<HTMLDivElement>(({ width, height }) => {
+    grid_width = width
+    grid_height = height
+  })
 </script>
 
 <div

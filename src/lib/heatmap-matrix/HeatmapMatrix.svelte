@@ -15,17 +15,23 @@
   import type {
     AxisItem,
     CellContext,
+    CellValue,
     HeatmapDomainMode,
     HeatmapExportFormat,
     HeatmapNormalizeMode,
     HeatmapTooltipProp,
+    HeatmapValues,
     ColorBarPosition,
     MissingCellStyle,
     SymmetricMode,
   } from './index'
-  import { make_color_override_key, matrix_to_rows } from './index'
+  import {
+    axis_key,
+    cell_value_getter,
+    make_color_override_key,
+    matrix_to_rows,
+  } from './index'
 
-  type CellValue = number | string | null
   type SelectionMode = `single` | `multi` | `range`
   type AxisOrder = `label` | `key` | `sort_value` | ((a: AxisItem, b: AxisItem) => number)
   type CellPos = { x_idx: number; y_idx: number }
@@ -92,8 +98,7 @@
   }: Omit<HTMLAttributes<HTMLDivElement>, `onclick` | `ondblclick` | `oncontextmenu`> & {
     x_items: AxisItem[]
     y_items: AxisItem[]
-    // values[y_idx][x_idx], or nested records keyed by item key (y then x)
-    values?: CellValue[][] | Record<string, Record<string, CellValue>>
+    values?: HeatmapValues
     color_scale?: D3InterpolateName | ((val: number) => string)
     // Per-end override of the color domain; null keeps the data-derived bound
     color_scale_range?: [number | null, number | null]
@@ -172,17 +177,9 @@
     symmetric === `lower` ? x_idx > y_idx : symmetric === `upper` ? x_idx < y_idx : false
 
   // === Value resolution ===
-  let x_keys = $derived(x_items.map((item) => item.key ?? item.label))
-  let y_keys = $derived(y_items.map((item) => item.key ?? item.label))
-  let get_value = $derived.by(() => {
-    if (Array.isArray(values)) {
-      const matrix_values = values
-      return (x_idx: number, y_idx: number): CellValue => matrix_values[y_idx]?.[x_idx] ?? null
-    }
-    const record = values
-    return (x_idx: number, y_idx: number): CellValue =>
-      record[y_keys[y_idx]]?.[x_keys[x_idx]] ?? null
-  })
+  let x_keys = $derived(x_items.map(axis_key))
+  let y_keys = $derived(y_items.map(axis_key))
+  let get_value = $derived(cell_value_getter(values, x_items, y_items))
 
   // === Visible rows/columns: search filter, empty removal, ordering ===
   function sort_indices(indices: number[], items: AxisItem[], order?: AxisOrder): number[] {
@@ -196,7 +193,7 @@
           (items[idx_a].sort_value ?? Infinity) - (items[idx_b].sort_value ?? Infinity),
       )
     }
-    const text = (item: AxisItem) => (order === `key` ? (item.key ?? item.label) : item.label)
+    const text = order === `key` ? axis_key : (item: AxisItem) => item.label
     return indices.toSorted((idx_a, idx_b) =>
       text(items[idx_a]).localeCompare(text(items[idx_b])),
     )
@@ -204,7 +201,7 @@
   let search_query_norm = $derived(search_query.trim().toLowerCase())
   const matches_search = (item: AxisItem): boolean =>
     !search_query_norm ||
-    (item.key ?? item.label).toLowerCase().includes(search_query_norm) ||
+    axis_key(item).toLowerCase().includes(search_query_norm) ||
     item.label.toLowerCase().includes(search_query_norm)
 
   let { vis_x, vis_y } = $derived.by(() => {

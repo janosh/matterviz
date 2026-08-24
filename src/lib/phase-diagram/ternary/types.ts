@@ -5,6 +5,7 @@
 // those transitions.
 import type { D3InterpolateName } from '$lib/colors'
 import type { GasSpecies, GasThermodynamicsConfig, PhaseData } from '$lib/convex-hull/types'
+import { DEFAULT_HULL_COLORS } from '$lib/convex-hull/types'
 import type { ElementSymbol } from '$lib/element'
 import type { Vec2, Vec3 } from '$lib/math'
 
@@ -167,7 +168,7 @@ export const TERNARY_DISPLAY_DEFAULTS: Readonly<TernaryDisplay> = Object.freeze(
 })
 
 export const TERNARY_COLORS = Object.freeze({
-  stable: `#0072B2`,
+  stable: DEFAULT_HULL_COLORS.stable,
   face: `#4caf50`,
   selected: `#66f0ff`,
   highlight: `#ff9800`,

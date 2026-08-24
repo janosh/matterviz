@@ -11,7 +11,7 @@
 // interpolated value as if it were a computed image is a common reporting error.
 
 import type { LatticeConverters, Vec3 } from '$lib/math'
-import { create_lattice_converters, min_image_displacement } from '$lib/math'
+import { clamp, create_lattice_converters, min_image_displacement } from '$lib/math'
 import type { AnyStructure } from '$lib/structure'
 import type { Pbc } from '$lib/structure/pbc'
 import type {
@@ -309,7 +309,7 @@ const hermite_at = (
     ys[seg + 1],
     slopes[seg] * width,
     slopes[seg + 1] * width,
-    Math.min(1, Math.max(0, (coord - xs[seg]) / width)),
+    clamp((coord - xs[seg]) / width, 0, 1),
   )
 
 // Interior critical points of one Hermite segment, as t-values in (0, 1).

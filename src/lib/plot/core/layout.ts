@@ -8,14 +8,6 @@ import {
 import type { FontSpec, TextLineMetrics } from '$lib/plot/core/text-metrics'
 import type { AxisConfig } from '$lib/plot/core/types'
 
-export {
-  clear_tick_metrics_cache,
-  measured_axis,
-  resolve_tick_layout,
-  TICK_LABEL_HEIGHT,
-  type MeasuredAxis,
-} from '$lib/plot/core/tick-layout'
-
 export type Sides = { t?: number; b?: number; l?: number; r?: number }
 
 export const sides_equal = (left: Required<Sides>, right: Required<Sides>): boolean =>
@@ -23,11 +15,10 @@ export const sides_equal = (left: Required<Sides>, right: Required<Sides>): bool
 
 // Default gap between tick labels and axis labels
 export const LABEL_GAP_DEFAULT = 20
-// Default single-line title height. Kept as a public constant for callers that position
-// titles manually; auto-padding below uses measured title blocks instead.
+// Single-line axis title height (the title font's line height)
 export const AXIS_LABEL_HEIGHT = 20
-// Axis titles historically used a 200px foreignObject. Retain that as the deterministic
-// wrapping span for vertical titles, whose available height is not forwarded through PlotAxis.
+// Wrapping span for axis titles whose available extent the caller doesn't know (vertical
+// titles, whose plot height PlotAxis does not forward) and the floor for horizontal ones
 export const AXIS_TITLE_WRAP_WIDTH = 200
 // Distance from an x/x2 axis baseline to the title center.
 export const AXIS_TITLE_OFFSET = TICK_LABEL_HEIGHT + LABEL_GAP_DEFAULT
@@ -245,8 +236,8 @@ export function y_axis_label_x(
   pad_l: number,
   max_tick_width: number,
 ): number {
-  const inside = axis.tick?.label?.inside ?? false
-  const tick_shift = inside ? 0 : (axis.tick?.label?.shift?.x ?? 0)
+  const inside = axis.tick_label?.inside ?? false
+  const tick_shift = inside ? 0 : (axis.tick_label?.shift?.x ?? 0)
   const tick_extent = inside ? 0 : max_tick_width + 8 - tick_shift
   const title_height = resolve_axis_title_layout(axis).height || AXIS_LABEL_HEIGHT
   const title_center = title_height / 2
@@ -263,8 +254,8 @@ export function y2_axis_label_x(
   pad_r: number,
   max_tick_width: number,
 ): number {
-  const inside = axis.tick?.label?.inside ?? false
-  const tick_shift = inside ? 0 : (axis.tick?.label?.shift?.x ?? 0) + 8
+  const inside = axis.tick_label?.inside ?? false
+  const tick_shift = inside ? 0 : (axis.tick_label?.shift?.x ?? 0) + 8
   const title_height = resolve_axis_title_layout(axis).height || AXIS_LABEL_HEIGHT
   const label_offset =
     (inside ? 0 : max_tick_width) +
@@ -426,8 +417,8 @@ export const calc_auto_padding = ({
     const ticks = axis.tick_values ?? []
     const has_title = title_layout.height > 0
     if (ticks.length === 0 && !has_title) return default_side
-    const inside = axis.tick?.label?.inside ?? false
-    const tick_shift = axis.tick?.label?.shift?.x ?? 0
+    const inside = axis.tick_label?.inside ?? false
+    const tick_shift = axis.tick_label?.shift?.x ?? 0
     const has_outside_ticks = ticks.length > 0 && !inside
     const tick_width = has_outside_ticks
       ? resolve_tick_layout(
@@ -475,9 +466,9 @@ export const calc_auto_padding = ({
     const title_layout = title_layout_for(x2_axis, available_width)
     const has_title = title_layout.height > 0
     if (ticks.length === 0 && !has_title) return default_padding.t
-    const inside = x2_axis.tick?.label?.inside ?? false
+    const inside = x2_axis.tick_label?.inside ?? false
     const has_outside_ticks = ticks.length > 0 && !inside
-    const tick_shift = x2_axis.tick?.label?.shift?.y ?? 0
+    const tick_shift = x2_axis.tick_label?.shift?.y ?? 0
     const tick_band = has_outside_ticks
       ? horizontal_tick_layout(x2_axis, available_width, `x2`).band
       : 0
@@ -498,7 +489,7 @@ export const calc_auto_padding = ({
   // its own width downward. Reserving exactly what the title placement will use is what
   // keeps the surplus from becoming dead space.
   const bottom_pad = (available_width: number): number => {
-    const inside = x_axis.tick?.label?.inside ?? false
+    const inside = x_axis.tick_label?.inside ?? false
     const tick_values = x_axis.tick_values ?? []
     const has_outside_ticks = tick_values.length > 0 && !inside
     const title_layout = title_layout_for(x_axis, available_width)
@@ -507,7 +498,7 @@ export const calc_auto_padding = ({
     const band = has_outside_ticks
       ? horizontal_tick_layout(x_axis, available_width, `x`).band
       : TICK_LABEL_HEIGHT
-    const tick_shift = Math.max(0, x_axis.tick?.label?.shift?.y ?? 0)
+    const tick_shift = Math.max(0, x_axis.tick_label?.shift?.y ?? 0)
     // The title's first line sits one gap past the labels and is centered there, so half a
     // line reaches further still; wrapped lines stack below it in full. LABEL_GAP_DEFAULT,
     // not `label_gap`: PlotAxis places it via AXIS_TITLE_OFFSET.
@@ -595,8 +586,6 @@ interface ElementPlacementConfig {
   exclude_rects?: Rect[]
   // Data points to avoid overlapping
   points: { x: number; y: number }[]
-  // Number of samples per axis (default: 10, meaning 10x10 = 100 candidates)
-  grid_resolution?: number
 }
 
 interface ElementPlacementResult {
@@ -611,6 +600,8 @@ const DISTANCE_WEIGHT = 0.001
 // Strong corner preference: corners can have 3-4 more overlapping points and still win
 const CORNER_WEIGHT = 5.0
 const MAX_SAMPLE_POINTS = 500
+// Candidate positions sampled per axis (GRID_RESOLUTION² candidates per placement)
+const GRID_RESOLUTION = 10
 
 // Check if a point is inside a rectangle
 export const point_in_rect = (point: { x: number; y: number }, rect: Rect): boolean =>
@@ -687,10 +678,7 @@ export function compute_element_placement(
     axis_clearance = 12,
     exclude_rects = [],
     points,
-    grid_resolution: raw_resolution = 10,
   } = config
-
-  const grid_resolution = Math.max(2, raw_resolution)
 
   // Include overflowing descendants such as colorbar tick labels after first render.
   const {
@@ -722,13 +710,13 @@ export function compute_element_placement(
     score: -Infinity,
   }
 
-  const x_step = (effective_x_max - effective_x_min) / (grid_resolution - 1)
-  const y_step = (effective_y_max - effective_y_min) / (grid_resolution - 1)
+  const x_step = (effective_x_max - effective_x_min) / (GRID_RESOLUTION - 1)
+  const y_step = (effective_y_max - effective_y_min) / (GRID_RESOLUTION - 1)
 
   const max_corner_dist = Math.hypot(plot_right - plot_left, plot_bottom - plot_top)
 
-  for (let grid_x = 0; grid_x < grid_resolution; grid_x++) {
-    for (let grid_y = 0; grid_y < grid_resolution; grid_y++) {
+  for (let grid_x = 0; grid_x < GRID_RESOLUTION; grid_x++) {
+    for (let grid_y = 0; grid_y < GRID_RESOLUTION; grid_y++) {
       const cand_x = effective_x_min + grid_x * x_step
       const cand_y = effective_y_min + grid_y * y_step
       const rect_left = cand_x + offset_x
@@ -752,7 +740,7 @@ export function compute_element_placement(
       let min_distance_sq = Infinity
       const center_x = rect_left + elem_width / 2
       const center_y = rect_top + elem_height / 2
-      // Containment inlined rather than via point_in_rect: this loop runs grid_resolution²
+      // Containment inlined rather than via point_in_rect: this loop runs GRID_RESOLUTION²
       // times over the sampled field, so per-point call overhead dominates.
       for (const point of sampled_points) {
         const { x: point_x, y: point_y } = point

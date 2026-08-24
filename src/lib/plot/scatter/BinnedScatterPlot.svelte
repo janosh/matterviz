@@ -25,6 +25,7 @@
   } from '$lib/plot/core/decorations'
   import type { FacetLayoutContext } from '$lib/plot/core/facets'
   import { get_relative_coords, range_bounds } from '$lib/plot/core/interactions'
+  import { query_nearest } from '$lib/plot/core/spatial-index'
   import { create_placed_tween } from '$lib/plot/core/placed-tween.svelte'
   import { element_position_for_footprint, full_footprint_or } from '$lib/plot/core/layout'
   import { plot_color } from '$lib/colors'
@@ -39,7 +40,6 @@
     bin_points,
     density_bin_at_point,
     first_point_in_bin,
-    pick_from_index,
     scale_bin_transform,
     series_extents,
     should_render_points,
@@ -81,7 +81,6 @@
     BinnedPointDataFn,
     BinnedPointLabelsConfig,
     BinnedPointPayload,
-    BinnedPointTooltipPayload,
     BinnedSizeScaleConfig,
   } from '$lib/plot/scatter/binned-scatter-types'
   import { DEFAULT_BINNED_SIZE_SCALE } from '$lib/plot/scatter/binned-scatter-types'
@@ -142,7 +141,7 @@
       color_bar?: ComponentProps<typeof ColorBar> | null
       density?: BinnedDensityConfig
       overlays?: BinnedOverlaysConfig
-      tooltip?: Snippet<[BinnedPointTooltipPayload<Metadata, PointData>]>
+      tooltip?: Snippet<[BinnedPointPayload<Metadata, PointData>]>
       point_data?: BinnedPointDataFn<Metadata, PointData>
       point_labels?: BinnedPointLabelsConfig<Metadata, PointData>
       selected_point_id?: string | number | null
@@ -611,7 +610,7 @@
   $effect(() => paint(overlay_canvas, draw_marked_points))
 
   const pick_at = (coords: Point2D): DenseInternalPoint<Metadata> | null =>
-    pick_index ? pick_from_index(pick_index, coords) : null
+    pick_index ? query_nearest(pick_index, coords) : null
 
   function clear_hover() {
     hovered_bin = null

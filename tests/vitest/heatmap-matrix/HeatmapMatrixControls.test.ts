@@ -47,6 +47,17 @@ describe(`HeatmapMatrixControls`, () => {
     expect(document.querySelector(`.heatmap-controls`)).toBeNull()
   })
 
+  // HeatmapMatrix's built-in pane never binds an element ordering, so no dead select there
+  test(`omits the ordering select when no ordering is bound`, () => {
+    mount_controls({ ordering: undefined })
+    const selects = [
+      ...document.querySelectorAll<HTMLSelectElement>(`.heatmap-controls select`),
+    ]
+    expect(
+      selects.some((select) => select.querySelector(`option[value="atomic_number"]`)),
+    ).toBe(false)
+  })
+
   test(`toggle_props class is merged with required heatmap class`, () => {
     mount_controls({ toggle_props: { class: `custom-toggle-class` } })
     const toggle = get_toggle()

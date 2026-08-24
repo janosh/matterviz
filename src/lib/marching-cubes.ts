@@ -33,8 +33,7 @@ const EDGE_TABLE = new Uint16Array([
   0xe09, 0xd03, 0xc0a, 0xb06, 0xa0f, 0x905, 0x80c, 0x70c, 0x605, 0x50f, 0x406, 0x30a,
   0x203, 0x109, 0x0,
 ])
-// Triangle table: for each cube configuration, list of edge triplets forming triangles
-// -1 marks the end of the triangle list for that configuration
+// Triangle table: for each cube configuration, the edge-index triplets of its triangles
 const TRI_TABLE: number[][] = [
   [],
   [0, 8, 3],
@@ -600,17 +599,17 @@ export function compute_vertex_normals(
   const n_vertices = positions.length / 3
   const normals = new Float32Array(positions.length)
   for (let tri = 0; tri < indices.length; tri += 3) {
-    const [idx0, idx1, idx2] = [indices[tri], indices[tri + 1], indices[tri + 2]]
+    const idx0 = indices[tri]
+    const idx1 = indices[tri + 1]
+    const idx2 = indices[tri + 2]
     if (idx0 >= n_vertices || idx1 >= n_vertices || idx2 >= n_vertices) {
       throw new RangeError(
         `Triangle ${tri / 3} references vertex ${Math.max(idx0, idx1, idx2)} of ${n_vertices}`,
       )
     }
-    const [v0_x, v0_y, v0_z] = [
-      positions[3 * idx0],
-      positions[3 * idx0 + 1],
-      positions[3 * idx0 + 2],
-    ]
+    const v0_x = positions[3 * idx0]
+    const v0_y = positions[3 * idx0 + 1]
+    const v0_z = positions[3 * idx0 + 2]
     const e1_x = positions[3 * idx1] - v0_x
     const e1_y = positions[3 * idx1 + 1] - v0_y
     const e1_z = positions[3 * idx1 + 2] - v0_z
@@ -621,10 +620,11 @@ export function compute_vertex_normals(
     const nx = e1_y * e2_z - e1_z * e2_y
     const ny = e1_z * e2_x - e1_x * e2_z
     const nz = e1_x * e2_y - e1_y * e2_x
-    for (const idx of [idx0, idx1, idx2]) {
-      normals[3 * idx] += nx
-      normals[3 * idx + 1] += ny
-      normals[3 * idx + 2] += nz
+    for (let corner = 0; corner < 3; corner++) {
+      const idx = 3 * indices[tri + corner]
+      normals[idx] += nx
+      normals[idx + 1] += ny
+      normals[idx + 2] += nz
     }
   }
   for (let idx = 0; idx < normals.length; idx += 3) {

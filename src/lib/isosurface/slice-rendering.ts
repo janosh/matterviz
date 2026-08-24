@@ -1,5 +1,6 @@
 import type { D3InterpolateName } from '$lib/colors'
-import type { Vec2 } from '$lib/math'
+import { clamp, type Vec2 } from '$lib/math'
+import { clamp01 } from '$lib/utils'
 import { rgb } from 'd3-color'
 import type { ColorRangeSymmetry } from './coloring'
 import { build_colormap_lut, COLORMAP_LUT_SIZE, fit_color_range } from './coloring'
@@ -28,12 +29,14 @@ export function resolve_slice_color_range(
   return fit_color_range(slice.min, slice.max, symmetric)
 }
 
-// Convert a sampled slice to browser-sRGB RGBA pixels, preserving its exact mask.
+// Convert a sampled slice to browser-sRGB RGBA pixels, preserving its exact mask. Rows are
+// flipped so the slice's +v axis points up on the canvas. Pass `out` of the right size to
+// fill it in place.
 export function slice_to_rgba(
   slice: Pick<SliceResult, `data` | `mask` | `width` | `height`>,
   colormap: D3InterpolateName,
   color_range: Vec2,
-  { flip_y = true, out }: { flip_y?: boolean; out?: Uint8ClampedArray } = {},
+  out?: Uint8ClampedArray,
 ): Uint8ClampedArray {
   const pixels =
     out?.length === slice.data.length * 4 ? out : new Uint8ClampedArray(slice.data.length * 4)
@@ -43,7 +46,7 @@ export function slice_to_rgba(
   const inv_span = span === 0 ? 0 : 1 / span
 
   for (let row_idx = 0; row_idx < slice.height; row_idx++) {
-    const target_row = flip_y ? slice.height - 1 - row_idx : row_idx
+    const target_row = slice.height - 1 - row_idx
     for (let col_idx = 0; col_idx < slice.width; col_idx++) {
       const source_idx = row_idx * slice.width + col_idx
       const pixel_idx = (target_row * slice.width + col_idx) * 4
@@ -55,9 +58,7 @@ export function slice_to_rgba(
         continue
       }
       const normalized =
-        span === 0
-          ? 0.5
-          : Math.max(0, Math.min(1, (slice.data[source_idx] - range_min) * inv_span))
+        span === 0 ? 0.5 : clamp01((slice.data[source_idx] - range_min) * inv_span)
       const lut_idx = Math.round(normalized * (COLORMAP_LUT_SIZE - 1)) * 3
       pixels[pixel_idx] = lut[lut_idx]
       pixels[pixel_idx + 1] = lut[lut_idx + 1]
@@ -82,7 +83,7 @@ export function resolve_contour_thresholds(
     return thresholds.slice(0, MAX_CONTOUR_LEVELS)
   }
   const count = Number.isFinite(contour_levels)
-    ? Math.min(MAX_CONTOUR_LEVELS, Math.max(0, Math.floor(contour_levels)))
+    ? clamp(Math.floor(contour_levels), 0, MAX_CONTOUR_LEVELS)
     : 0
   const [range_min, range_max] = color_range
   if (count === 0 || range_min === range_max) return []

@@ -100,11 +100,12 @@ export type DosData = PhononDos | ElectronicDos
 // Union type for component props that accept both normalized and pymatgen DOS formats
 export type DosInput = DosData | PymatgenCompleteDos
 
-// Line styling configuration
-export type LineKwargs =
-  | Record<string, unknown> // Single dict for all lines
-  | { acoustic?: Record<string, unknown>; optical?: Record<string, unknown> } // Per mode
-  | ((frequencies: number[], band_idx: number) => Record<string, unknown>) // Callable
+// Band line styling: one style for every band, or one per acoustic/optical mode
+export interface BandLineStyle {
+  stroke?: string
+  stroke_width?: number
+}
+export type LineKwargs = BandLineStyle | { acoustic?: BandLineStyle; optical?: BandLineStyle }
 
 export interface HoveredData {
   hovered_frequency?: number | null

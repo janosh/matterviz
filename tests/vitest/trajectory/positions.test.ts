@@ -8,8 +8,9 @@ import {
   validate_position_stream_layout,
 } from '$lib/trajectory/positions'
 import type { TrajectoryPositionStream } from '$lib/trajectory'
+import { accumulate_positions } from '$lib/trajectory/runs/accumulate'
 import { describe, expect, it } from 'vitest'
-import { make_position_stream } from '../setup'
+import { make_frame, make_position_stream } from '../setup'
 
 describe(`curve_slots`, () => {
   it.each([
@@ -111,5 +112,38 @@ describe(`validate_position_stream_layout`, () => {
     ],
   ])(`rejects %s`, (_label, stream, expected) => {
     expect(() => validate_position_stream_layout(stream, `calc_msd`, 2)).toThrow(expected)
+  })
+})
+
+describe(`accumulate_positions step plausibility`, () => {
+  // 10 A cubic cell, four atoms; `shift` moves every atom by the same vector between frames
+  const frames_with_shift = (shift: number, coords_unwrapped?: boolean) => {
+    const start = [1, 2, 3, 4].map((val) => [val, val, val])
+    const moved = start.map((xyz) => xyz.map((coord) => coord + shift))
+    return [start, moved, moved.map((xyz) => xyz.map((coord) => coord + shift))].map(
+      (xyz_list, step) => make_frame(step, xyz_list, { box_length: 10, coords_unwrapped }),
+    )
+  }
+  const collect = (frames: ReturnType<typeof make_frame>[], frame_stride = 1) =>
+    accumulate_positions(frames.length, (idx) => frames[idx] ?? null, { frame_stride })
+
+  it.each([
+    { label: `half-cell jump of wrapped coords`, shift: 5, unwrapped: false, stride: 1 },
+    { label: `half-cell jump of unwrapped coords`, shift: 5, unwrapped: true, stride: 1 },
+  ])(`rejects a $label`, async ({ shift, unwrapped, stride }) => {
+    await expect(collect(frames_with_shift(shift, unwrapped), stride)).rejects.toThrow(
+      /moved more than a quarter of the cell/,
+    )
+  })
+
+  it.each([
+    { label: `small step`, shift: 1, unwrapped: false, stride: 1 },
+    // 9 A through the boundary is a 1 A minimum-image step for wrapped coordinates
+    { label: `wrap-around of wrapped coords`, shift: 9, unwrapped: false, stride: 1 },
+    // a stride weakens the bound, so unwrapped coordinates skip the check
+    { label: `strided unwrapped coords`, shift: 5, unwrapped: true, stride: 2 },
+  ])(`accepts a $label`, async ({ shift, unwrapped, stride }) => {
+    const stream = await collect(frames_with_shift(shift, unwrapped), stride)
+    expect(stream.n_frames).toBe(Math.ceil(3 / stride))
   })
 })

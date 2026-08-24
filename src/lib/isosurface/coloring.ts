@@ -4,6 +4,7 @@ import type { D3InterpolateName } from '$lib/colors'
 import { get_d3_interpolator } from '$lib/colors'
 import type { Vec2 } from '$lib/math'
 import { css_to_linear_rgb, parse_linear_rgb } from '$lib/scene/colors'
+import { BufferAttribute, type BufferGeometry } from 'three/webgpu'
 import type { DataRange } from './types'
 
 // Curated continuous colormaps offered in the isosurface controls UI.
@@ -26,6 +27,14 @@ export const ISO_COLORMAPS = [
 type IsoColormap = (typeof ISO_COLORMAPS)[number]
 
 export const DEFAULT_ISO_COLORMAP: IsoColormap = `interpolateViridis`
+
+// ColorScaleSelect props for picking one of ISO_COLORMAPS inside a compact settings grid
+// (isosurface layer colouring, Fermi surface property colouring)
+export const ISO_COLORMAP_SELECT_PROPS = {
+  options: [...ISO_COLORMAPS],
+  color_bar: { bar_style: `height: 8px`, title_style: `width: 4em; font-size: 1em;` },
+  liSelectedStyle: `width: 100%; margin: 0; padding: 0; background: transparent;`,
+}
 
 // A field counts as signed when it has significant values of both signs
 // (e.g. ESP, magnetization, orbitals) — drives diverging-colormap defaults.
@@ -82,7 +91,7 @@ export function fit_color_range(
   return [min, max]
 }
 
-interface VertexColorOptions {
+export interface VertexColorOptions {
   colormap: D3InterpolateName
   color_range: Vec2 // [min, max]; inverted ranges (min > max) flip the colormap
   fallback_color?: string // used for non-finite scalars (out-of-bounds under 'fallback' policy)
@@ -123,6 +132,24 @@ export function scalars_to_vertex_colors(
     colors[idx * 3 + 2] = lut[lut_idx + 2]
   }
   return colors
+}
+
+// Set or refresh a geometry's per-vertex `color` attribute from scalars without touching
+// positions or the index, so colormap/range changes never rebuild the mesh. An existing
+// attribute's buffer is rewritten in place and flagged for re-upload.
+export function set_vertex_colors(
+  geometry: BufferGeometry,
+  scalars: Float32Array,
+  options: VertexColorOptions,
+): void {
+  const existing = geometry.getAttribute(`color`) as BufferAttribute | undefined
+  const colors = scalars_to_vertex_colors(
+    scalars,
+    options,
+    existing?.array instanceof Float32Array ? existing.array : undefined,
+  )
+  if (existing?.array === colors) existing.needsUpdate = true
+  else geometry.setAttribute(`color`, new BufferAttribute(colors, 3))
 }
 
 // Suggest a colormap and value range for coloring by a volume with the given

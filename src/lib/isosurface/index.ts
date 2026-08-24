@@ -5,7 +5,7 @@ export { default as VolumeSlice } from './VolumeSlice.svelte'
 export { default as VolumeSliceControls } from './VolumeSliceControls.svelte'
 export { default as VolumeSliceView } from './VolumeSliceView.svelte'
 export { flatten_grid, grid_dimensions, scalar_grid_strides } from './grid'
-export type { ScalarGrid3D, ScalarGridArray, ScalarGridLike, ScalarGridOrder } from './grid'
+export type { ScalarGrid3D, ScalarGridArray, ScalarGridOrder } from './grid'
 
 export * from './coloring'
 export * from './context'

@@ -2,11 +2,6 @@
 import * as math from '$lib/math'
 import { EPS } from '$lib/math'
 import type { Matrix3x3, Vec2, Vec3 } from '$lib/math'
-import {
-  CLOSED_CONTOUR_TOLERANCE,
-  IRREDUCIBLE_BZ_MIN_VERTICES,
-  IRREDUCIBLE_BZ_TOLERANCE,
-} from './constants'
 import { grid_dimensions, scalar_grid_strides } from '$lib/isosurface/grid'
 import { marching_cubes } from '$lib/marching-cubes'
 import type {
@@ -21,6 +16,13 @@ import type {
   SpinChannel,
 } from './types'
 import { vertex_count } from './types'
+
+// Distance below which a traced contour's ends count as joined
+const CLOSED_CONTOUR_TOLERANCE = 1e-6
+// Irreducible-wedge detection: every vertex in the positive octant within this tolerance,
+// and enough vertices for that to be meaningful
+const IRREDUCIBLE_BZ_TOLERANCE = 0.01
+const IRREDUCIBLE_BZ_MIN_VERTICES = 10
 
 // Catmull-Rom weights for the 4-point stencil at fractional offset t, written into `out`
 // (result = out[0]*p0 + out[1]*p1 + out[2]*p2 + out[3]*p3)

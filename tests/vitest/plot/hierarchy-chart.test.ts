@@ -13,8 +13,8 @@ import {
   node_label_variants,
   toggle_muted,
 } from '$lib/plot/core/utils/hierarchy-chart'
-import type { PositionedArc, SunburstNode } from '$lib/plot/sunburst/sunburst'
-import { compute_sunburst_layout } from '$lib/plot/sunburst/sunburst'
+import type { PositionedArc, SunburstNode } from '$lib/plot/core/utils/hierarchy-layout'
+import { compute_sunburst_layout } from '$lib/plot/core/utils/hierarchy-layout'
 import { SvelteSet } from 'svelte/reactivity'
 import { describe, expect, test } from 'vitest'
 

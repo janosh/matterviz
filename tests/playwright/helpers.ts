@@ -20,6 +20,10 @@ export const is_present = <Value>(value: Value | null | undefined): value is Val
 
 type Box = { x: number; y: number; width: number; height: number }
 
+// Computed CSS opacity, for hover-visible chrome that fades rather than unmounts
+export const opacity_of = (locator: Locator): Promise<number> =>
+  locator.evaluate((element) => Number(getComputedStyle(element).opacity))
+
 // boundingBox() of an element that must be laid out
 export const require_bbox = async (locator: Locator, label = `element`): Promise<Box> => {
   const box = await locator.boundingBox()

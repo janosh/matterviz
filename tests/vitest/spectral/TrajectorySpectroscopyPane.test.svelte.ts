@@ -134,10 +134,11 @@ test(`recomputes from changed settings and marks the prior result as stale`, asy
       infrared_key: null,
       raman_key: null,
       frame_stride: 1,
-      max_bytes: 512 * 1024 * 1024,
       preprocessing: `body_fixed`,
     }),
   )
+  // the collect's default budget applies; the pane does not restate it
+  expect(mocks.collect.mock.calls[0][1]).not.toHaveProperty(`max_bytes`)
   expect(target.textContent).toContain(`24001 total frames · timestep 1 fs`)
   const fieldset = target.querySelector<HTMLFieldSetElement>(`.spectroscopy-controls`)
   expect(fieldset?.disabled).toBe(false)

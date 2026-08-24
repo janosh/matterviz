@@ -178,17 +178,6 @@
 </div>
 
 <style>
-  .demo-controls {
-    display: flex;
-    align-items: center;
-    gap: 0.6em;
-    margin-block: 1em;
-  }
-  .demo-controls label {
-    display: flex;
-    align-items: center;
-    gap: 0.5em;
-  }
   .shared-title {
     display: grid;
     place-content: center;

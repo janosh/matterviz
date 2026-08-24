@@ -74,9 +74,10 @@ describe(`resolve_plot_title`, () => {
       fixed_width_measure(5),
     )
 
-    expect(layout.anchor_x).toBe(expected_x)
-    expect(layout.text_anchor).toBe(align)
-    expect(layout.lines.every(({ x }) => x === expected_x)).toBe(true)
+    expect(layout.align).toBe(align)
+    const lines = [...(layout.title?.lines ?? []), ...(layout.subtitle?.lines ?? [])]
+    expect(lines).toHaveLength(2)
+    expect(lines.every(({ x }) => x === expected_x)).toBe(true)
   })
 
   it(`positions a separately styled subtitle after the measured title block and gap`, () => {
@@ -122,7 +123,6 @@ describe(`resolve_plot_title`, () => {
     [`blank strings`, { text: `  `, subtitle: `\n` }],
   ] as const)(`returns an empty zero-height layout for %s config`, (_name, config) => {
     const layout = resolve_plot_title(config, { width: 100 }, fixed_width_measure(5))
-    expect(layout.lines).toEqual([])
     expect(layout.title).toBeNull()
     expect(layout.subtitle).toBeNull()
     expect(layout.block_height).toBe(0)
@@ -141,17 +141,16 @@ describe(`resolve_plot_title`, () => {
       text: `alpha beta`,
       font: { font_size: 10, line_height: 12 },
     }
-    const compact = resolve_plot_title(config, { width: 50, metrics_revision: 1 })
+    const compact = resolve_plot_title(config, { width: 50 })
     pixels_per_character = 6
-    // metrics_revision stamps the result; changing mocked glyph widths still needs invalidation.
+    // measurements are memoised, so changed glyph widths only land after an invalidation
     clear_text_metrics_cache()
-    const expanded = resolve_plot_title(config, { width: 50, metrics_revision: 2 })
+    const expanded = resolve_plot_title(config, { width: 50 })
 
     expect(compact.title?.lines.map(({ text }) => text)).toEqual([`alpha beta`])
     expect(expanded.title?.lines.map(({ text }) => text)).toEqual([`alpha`, `beta`])
     expect(compact.block_height).toBe(12)
     expect(expanded.block_height).toBe(24)
-    expect(expanded.metrics_revision).toBe(2)
   })
 
   it(`uses deterministic text-metrics fallbacks during SSR`, () => {

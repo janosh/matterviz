@@ -16,6 +16,15 @@ describe(`collect_vacf_input`, () => {
     const collected = await collect_vacf_input(make_run(50, true))
     expect(collected.velocities).toBeInstanceOf(Float64Array)
     expect(collected.velocities).toHaveLength(50 * 3)
+    // text formats record no velocity unit; an HDF5 run declares one on its signal
+    expect(collected.velocity_unit).toBeNull()
+    const declared = {
+      ...make_run(5, true),
+      signals: {
+        velocity: { sample_shape: [1, 3], sample_count: 5, frame_aligned: true, unit: `A/ps` },
+      },
+    }
+    expect((await collect_vacf_input(declared)).velocity_unit).toBe(`A/ps`)
     const omega = 2 * Math.PI * 0.03
     expect(collected.velocities?.[0]).toBeCloseTo(1.5 * omega, 12)
     const result = calc_vacf(collected)
@@ -56,11 +65,7 @@ describe(`collect_vacf_input`, () => {
       backing_collect(options),
     )
     const collected = await collect_vacf_input({ ...backing, collect_positions })
-    expect(collect_positions).toHaveBeenCalledWith({
-      frame_stride: 1,
-      max_bytes: 512 * 1024 * 1024,
-      vector_keys: [VELOCITY_SITE_PROPERTY],
-    })
+    expect(collect_positions).toHaveBeenCalledWith({ vector_keys: [VELOCITY_SITE_PROPERTY] })
     expect(collected.velocities).toBeInstanceOf(Float64Array)
   })
 

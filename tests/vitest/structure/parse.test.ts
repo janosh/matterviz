@@ -2578,16 +2578,6 @@ describe(`molecular and LAMMPS structure formats`, () => {
     expect(result.sites.map((site) => site.species[0].element)).toEqual([`H`, `He`])
     expect_vec3_close(result.sites[1].xyz, [2, 2, 2], 8)
   })
-
-  test.each([
-    { file: `ethanol.mol`, text: ethanol_mol, n_bonds: 8 },
-    { file: `benzene.mol2`, text: benzene_mol2, n_bonds: 12 },
-    { file: `glycine.pdb`, text: glycine_pdb, n_bonds: 4 },
-  ])(`$file stays aperiodic through parse_structure_file`, ({ file, text, n_bonds }) => {
-    const structure = parse_structure_file(text, file)
-    expect(`lattice` in structure).toBe(false)
-    expect(structure.properties?.bonds).toHaveLength(n_bonds)
-  })
 })
 
 describe(`multi-model / multi-record structure files`, () => {

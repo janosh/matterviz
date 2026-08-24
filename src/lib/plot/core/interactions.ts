@@ -1,11 +1,5 @@
 import { LOG_EPS, type Point2D, type Vec2 } from '$lib/math'
-import type {
-  AxisRanges,
-  InitialRanges,
-  ScaleType,
-  Y2SyncConfig,
-  Y2SyncMode,
-} from '$lib/plot/core/types'
+import type { AxisRanges, ScaleType, Y2SyncConfig, Y2SyncMode } from '$lib/plot/core/types'
 import { get_arcsinh_threshold, get_scale_type_name } from '$lib/plot/core/types'
 
 // Get coordinates of a mouse event relative to an element (the event's
@@ -126,11 +120,11 @@ function axis_transform(scale_type: ScaleType | undefined): {
 }
 
 // Snapshot the four axis ranges as fresh tuples at pan/zoom/touch interaction start
-export const snapshot_ranges = ({ x, x2, y, y2 }: AxisRanges): InitialRanges => ({
-  initial_x_range: [...x],
-  initial_x2_range: [...x2],
-  initial_y_range: [...y],
-  initial_y2_range: [...y2],
+export const snapshot_ranges = ({ x, x2, y, y2 }: AxisRanges): AxisRanges => ({
+  x: [...x],
+  x2: [...x2],
+  y: [...y],
+  y2: [...y2],
 })
 
 // Pan a range by a pixel delta, uniformly in screen space: linear axes shift by a

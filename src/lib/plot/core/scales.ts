@@ -3,7 +3,6 @@ import type { Vec2 } from '$lib/math'
 import * as math from '$lib/math'
 import type {
   ColorScaleConfig,
-  Point,
   ScaleType,
   SizeScaleConfig,
   TimeInterval,
@@ -141,18 +140,14 @@ export function generate_arcsinh_ticks(
   threshold = 1,
   count = 10,
 ): number[] {
-  // Guard against invalid/non-positive threshold to prevent division issues
-  const safe_threshold = Math.max(threshold, Number.EPSILON)
   // Normalize reversed domains (min > max)
   const [lo, hi] = min <= max ? [min, max] : [max, min]
 
   // For purely positive or purely negative ranges, use log-like spacing
-  if (lo >= 0) {
-    return generate_positive_arcsinh_ticks(lo, hi, safe_threshold, count)
-  }
+  if (lo >= 0) return generate_positive_arcsinh_ticks(lo, hi, threshold, count)
   if (hi <= 0) {
     // Negative range: mirror the positive logic
-    return generate_positive_arcsinh_ticks(-hi, -lo, safe_threshold, count)
+    return generate_positive_arcsinh_ticks(-hi, -lo, threshold, count)
       .map((tick) => -tick)
       .toReversed()
   }
@@ -164,11 +159,11 @@ export function generate_arcsinh_ticks(
   const ticks: number[] = [0]
 
   // Add positive ticks
-  const pos_ticks = generate_positive_arcsinh_ticks(0, hi, safe_threshold, half_count)
+  const pos_ticks = generate_positive_arcsinh_ticks(0, hi, threshold, half_count)
   ticks.push(...pos_ticks.filter((tick) => tick > 0))
 
   // Add negative ticks (mirror of positive)
-  const neg_ticks = generate_positive_arcsinh_ticks(0, -lo, safe_threshold, half_count)
+  const neg_ticks = generate_positive_arcsinh_ticks(0, -lo, threshold, half_count)
   ticks.push(...neg_ticks.filter((tick) => tick > 0).map((tick) => -tick))
 
   return dedupe_sort(ticks)
@@ -288,12 +283,9 @@ export function generate_ticks(
   scale_type: ScaleType,
   ticks_option: TicksOption | undefined,
   scale_fn: PlotScaleFn, // D3 scale function with .ticks() method
-  options: {
-    default_count?: number // Default tick count
-    interval_padding?: number // Padding for interval mode
-  } = {},
+  options: { default_count?: number } = {},
 ): number[] {
-  const { default_count = 8, interval_padding = 0.1 } = options
+  const { default_count = 8 } = options
   const [min_val, max_val] = domain
 
   // If ticks_option is an object (value-to-label mapping), extract values
@@ -353,11 +345,12 @@ export function generate_ticks(
     return generate_arcsinh_ticks(min_val, max_val, threshold, tick_count)
   }
 
-  // Linear scale with interval (negative number indicates interval)
+  // Linear scale with interval (negative number indicates interval). The end is padded by a
+  // tenth of an interval so a max that lands on a tick (modulo float dust) still gets it.
   if (typeof ticks_option === `number` && ticks_option < 0) {
     const interval = Math.abs(ticks_option)
     const start = Math.ceil(min_val / interval) * interval
-    return range(start, max_val + interval * interval_padding, interval)
+    return range(start, max_val + interval * 0.1, interval)
   }
 
   // Default ticks using scale function
@@ -431,6 +424,27 @@ export function collect_size_values(series: readonly ScaleValueSeries[]): number
   return size_values
 }
 
+// Pixel scale that holds values below a log axis's domain floor at the floor: 0 and negatives
+// (bar baselines, whisker lows, line vertices) have no finite log pixel, so they land on the
+// plot edge instead of producing NaN geometry. Non-log scales are returned unchanged.
+export const log_floor_scale = (
+  scale: (val: number) => number,
+  scale_type: ScaleType | undefined,
+  domain: readonly number[],
+): ((val: number) => number) => {
+  if (get_scale_type_name(scale_type) !== `log`) return scale
+  const floor = Math.min(...domain)
+  return (val) => scale(Math.max(val, floor))
+}
+
+// Ascending log domain floored at LOG_EPS. The upper bound is widened from the *floored* lower
+// bound, so a non-positive `lo` (explicit negative range bound, all-zero data) cannot leave an
+// inverted [LOG_EPS, hi <= 0] domain behind; equal bounds widen by 10% so the scale isn't degenerate.
+const positive_log_domain = (lo: number, hi: number): Vec2 => {
+  const floor = Math.max(lo, math.LOG_EPS)
+  return [floor, Math.max(hi, floor * 1.1)]
+}
+
 export const nice_range_from_extent = (
   { min, max, n_finite }: RunningExtent,
   limits: [number | null, number | null],
@@ -438,30 +452,6 @@ export const nice_range_from_extent = (
   padding_factor: number,
   is_time = false,
 ): Vec2 => nice_range(min, max, n_finite > 0, limits, scale_type, padding_factor, is_time)
-
-// Advanced domain calculation with padding and nice boundaries (from ScatterPlot)
-export function get_nice_data_range(
-  points: Point[],
-  get_value: (point: Point) => number,
-  limits: [number | null, number | null],
-  scale_type: ScaleType,
-  padding_factor: number,
-  is_time = false,
-): Vec2 {
-  const [min_ext, max_ext] = extent(points, (point) => {
-    const value = get_value(point)
-    return Number.isFinite(value) ? value : undefined
-  })
-  return nice_range(
-    min_ext,
-    max_ext,
-    min_ext !== undefined,
-    limits,
-    scale_type,
-    padding_factor,
-    is_time,
-  )
-}
 
 function nice_range(
   min_ext: number | undefined,
@@ -502,8 +492,7 @@ function nice_range(
         data_max = 10 ** (log_max + log_span * padding_factor)
       } else if (type_name === `arcsinh`) {
         // Arcsinh: apply padding in arcsinh-transformed space
-        // Guard against extremely small thresholds that could cause precision issues
-        const threshold = Math.max(get_arcsinh_threshold(scale_type), Number.EPSILON)
+        const threshold = get_arcsinh_threshold(scale_type)
         const asinh_min = Math.asinh(data_min / threshold)
         const asinh_max = Math.asinh(data_max / threshold)
         const asinh_span = asinh_max - asinh_min
@@ -524,8 +513,7 @@ function nice_range(
       data_max *= 1.1
     } else if (type_name === `arcsinh`) {
       // Arcsinh: 10% padding in transformed space
-      // Guard against extremely small thresholds that could cause precision issues
-      const threshold = Math.max(get_arcsinh_threshold(scale_type), Number.EPSILON)
+      const threshold = get_arcsinh_threshold(scale_type)
       const asinh_val = Math.asinh(data_min / threshold)
       const padding = Math.abs(asinh_val) * 0.1 || 0.1 // Use 0.1 if transformed value is 0 (i.e. data_min = 0)
       data_min = Math.sinh(asinh_val - padding) * threshold
@@ -549,10 +537,7 @@ function nice_range(
   // Create the scale with the *padded* data domain
   const scale =
     type_name === `log`
-      ? scaleLog().domain([
-          Math.max(data_min, math.LOG_EPS),
-          Math.max(data_max, data_min * 1.1),
-        ]) // Ensure log domain > 0
+      ? scaleLog().domain(positive_log_domain(data_min, data_max))
       : scaleLinear().domain([data_min, data_max])
 
   scale.nice()
@@ -651,8 +636,6 @@ function create_arcsinh_color_scale(
   initial_domain: Vec2,
   threshold: number,
 ) {
-  // Guard against extremely small thresholds that could cause precision issues
-  const safe_threshold = Math.max(threshold, Number.EPSILON)
   let current_domain = initial_domain
 
   type ArcsinhColorScale = ((value: number) => string) & {
@@ -668,9 +651,9 @@ function create_arcsinh_color_scale(
     // Handle identical domain endpoints - return middle of color range
     if (d_max === d_min) return interpolator(0.5)
 
-    const t_min = Math.asinh(d_min / safe_threshold)
-    const t_max = Math.asinh(d_max / safe_threshold)
-    const t_val = Math.asinh(value / safe_threshold)
+    const t_min = Math.asinh(d_min / threshold)
+    const t_max = Math.asinh(d_max / threshold)
+    const t_val = Math.asinh(value / threshold)
     // Normalize to [0, 1]
     const normalized = t_max === t_min ? 0.5 : (t_val - t_min) / (t_max - t_min)
     return interpolator(clamp01(normalized))
@@ -704,7 +687,7 @@ export function create_size_scale(
 
   if (type_name === `log`) {
     return scaleLog()
-      .domain([Math.max(safe_min, math.LOG_EPS), Math.max(safe_max, safe_min * 1.1)])
+      .domain(positive_log_domain(safe_min, safe_max))
       .range([min_radius, max_radius])
       .clamp(true)
   }

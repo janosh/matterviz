@@ -1,20 +1,18 @@
+import { coerce_elem_symbol, is_elem_symbol } from '$lib/element/helpers'
 import { ELEM_SYMBOLS, type ElementSymbol } from '$lib/element/types'
 import type { Vec3 } from '$lib/math'
 import type * as math from '$lib/math'
 import type { AnyStructure } from '$lib/structure/index'
 import {
+  capitalize_symbol,
   cart_to_frac_with_fallback,
   make_lattice,
-  matrix3x3_from_rows,
   parse_float_token,
 } from '$lib/structure/parsers/shared'
 import type { Pbc } from '$lib/structure/pbc'
 import { make_site } from '$lib/structure/site'
 import type { TrajectoryFrame, TrajectoryPositionStream } from './index'
 import type { WarnFn } from './parse/shared'
-
-// Numeric/element helpers shared with the structure parsers live in structure/parsers/shared
-export { count_elements, parse_float_token } from '$lib/structure/parsers/shared'
 
 // Number of values in one sample of the given shape (1 for a scalar)
 export const values_per_sample = (shape: number[]): number =>
@@ -30,15 +28,39 @@ export const is_supported_trajectory_signal_shape = (
     ((sample_shape[0] === 3 && sample_shape[1] === 3) ||
       (sample_shape[0] === n_atoms && sample_shape[1] === 3)))
 
-export const validate_3x3_matrix = (data: unknown): math.Matrix3x3 =>
-  matrix3x3_from_rows(data, `lattice matrix`)
-
 export const convert_atomic_numbers = (numbers: number[]): ElementSymbol[] =>
   numbers.map((num) => {
     const symbol = Number.isInteger(num) ? ELEM_SYMBOLS[num - 1] : undefined
     if (!symbol) throw new Error(`Unknown atomic number in trajectory data: ${num}`)
     return symbol
   })
+
+// Element symbol of a species token as written (`Fe`) or case-mangled (`FE`, `fe`); undefined
+// for anything else (`X`, `Type1`)
+export const elem_symbol_from_token = (token: string): ElementSymbol | undefined =>
+  coerce_elem_symbol(token) ?? coerce_elem_symbol(capitalize_symbol(token))
+
+// "Na Cl" + [2, 2] -> [Na, Na, Cl, Cl] (XDATCAR header, vaspout/vaspwave ion_types)
+export const expand_ion_types = (
+  ion_types: readonly string[],
+  ion_counts: readonly number[],
+): ElementSymbol[] => {
+  if (ion_types.length !== ion_counts.length) {
+    throw new Error(
+      `ion_types (${ion_types.length}) and ion_counts (${ion_counts.length}) length mismatch`,
+    )
+  }
+  return ion_types.flatMap((symbol, type_idx) => {
+    if (!is_elem_symbol(symbol)) {
+      throw new Error(`Unknown element symbol in ion_types: ${symbol}`)
+    }
+    const ion_count = ion_counts[type_idx]
+    if (!Number.isInteger(ion_count) || ion_count < 0) {
+      throw new Error(`Invalid ion count for ${symbol}: ${ion_count}`)
+    }
+    return Array<ElementSymbol>(ion_count).fill(symbol)
+  })
+}
 
 export const create_structure = (
   positions: number[][],
@@ -101,11 +123,24 @@ export const create_trajectory_frame = (
   metadata: Record<string, unknown> = {},
   site_properties?: Record<string, unknown>[],
   warn?: WarnFn,
-): TrajectoryFrame => ({
-  structure: create_structure(positions, elements, lattice_matrix, pbc, site_properties, warn),
-  step,
-  metadata,
-})
+): TrajectoryFrame => {
+  const structure = create_structure(
+    positions,
+    elements,
+    lattice_matrix,
+    pbc,
+    site_properties,
+    warn,
+  )
+  // The cell volume is the one per-frame scalar every periodic format plots, so it is read
+  // off the lattice here once instead of being recomputed by each parser
+  return {
+    structure,
+    step,
+    metadata:
+      `lattice` in structure ? { ...metadata, volume: structure.lattice.volume } : metadata,
+  }
+}
 
 // Buffers backing a position stream, for zero-copy postMessage out of a worker
 export const position_stream_transferables = (
@@ -117,47 +152,6 @@ export const position_stream_transferables = (
   for (const values of Object.values(data.vectors ?? {})) add(values)
   for (const signal of Object.values(data.signals ?? {})) add(signal.values)
   return [...buffers]
-}
-
-export const read_ndarray_from_view = (
-  view: DataView,
-  ref: { ndarray: unknown[] },
-  base_offset: number = 0,
-): number[][] => {
-  const [shape, dtype, absolute_offset] = ref.ndarray as [number[], string, number]
-  const array_offset = absolute_offset - base_offset
-  const total = values_per_sample(shape)
-
-  const readers: Record<string, { bytes: number; read: (pos: number) => number }> = {
-    int64: { bytes: 8, read: (pos) => Number(view.getBigInt64(pos, true)) },
-    int32: { bytes: 4, read: (pos) => view.getInt32(pos, true) },
-    float64: { bytes: 8, read: (pos) => view.getFloat64(pos, true) },
-    float32: { bytes: 4, read: (pos) => view.getFloat32(pos, true) },
-  }
-  const reader = readers[dtype]
-  if (!reader) throw new Error(`Unsupported dtype: ${dtype}`)
-
-  if (!Number.isInteger(array_offset) || array_offset < 0) {
-    throw new Error(
-      `Invalid array_offset: expected non-negative integer, got ${array_offset}${base_offset ? ` (absolute ${absolute_offset} minus base ${base_offset})` : ``}`,
-    )
-  }
-  if (array_offset + total * reader.bytes > view.byteLength) {
-    throw new Error(`Out-of-bounds read: array_offset + bytesNeeded exceeds view.byteLength`)
-  }
-
-  const data: number[] = []
-  for (let idx = 0; idx < total; idx++) {
-    data.push(reader.read(array_offset + idx * reader.bytes))
-  }
-
-  if (shape.length === 1) return [data]
-  if (shape.length === 2) {
-    return Array.from({ length: shape[0] }, (_, idx) =>
-      data.slice(idx * shape[1], (idx + 1) * shape[1]),
-    )
-  }
-  throw new Error(`Unsupported shape`)
 }
 
 export const copy_numeric_fields = (

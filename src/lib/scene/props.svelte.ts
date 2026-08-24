@@ -1,5 +1,5 @@
 import type { Vec3 } from '$lib/math'
-import type { CameraProjection } from '$lib/settings'
+import { type CameraProjection, DEFAULTS } from '$lib/settings'
 import { untrack } from 'svelte'
 import { type Camera, OrthographicCamera, type Scene, type Vector3 } from 'three/webgpu'
 import type { GizmoOptions } from './gizmo'
@@ -16,6 +16,10 @@ if (typeof document !== `undefined`) {
     page_visibility.visible = document.visibilityState === `visible`
   })
 }
+
+// Pointer-move throttle (~60 fps) for hover handlers whose per-event work is O(mesh), e.g.
+// the nearest-vertex lookup on a Fermi sheet
+export const HOVER_THROTTLE_MS = 16
 
 // Threlte pointer event type for mesh interactions. stopPropagation() stops Threlte's own
 // dispatch to farther hits along the ray (nativeEvent.stopPropagation only stops the DOM event)
@@ -44,6 +48,47 @@ export type SceneControlProps = {
   scene?: Scene // bindable: Threlte scene for external use (e.g. export pane)
   camera?: Camera // bindable: active camera for external use
 }
+
+// The camera/lighting/interaction props above minus the bindables and the projection (whose
+// default differs per viewer), resolved against the structure viewer's tuned values so every
+// scene feels the same. Scenes destructure their own props and hand the rest to
+// resolve_scene_controls; `undefined` means "use the default", like a Svelte prop default.
+export type SceneControls = Required<
+  Omit<SceneControlProps, `scene` | `camera` | `camera_projection` | `min_zoom` | `max_zoom`>
+> &
+  Pick<SceneControlProps, `min_zoom` | `max_zoom`> // unset = unlimited
+export const SCENE_CONTROL_DEFAULTS: SceneControls = {
+  rotation_damping: DEFAULTS.structure.rotation_damping,
+  max_zoom: DEFAULTS.structure.max_zoom,
+  min_zoom: DEFAULTS.structure.min_zoom,
+  rotate_speed: DEFAULTS.structure.rotate_speed,
+  zoom_speed: DEFAULTS.structure.zoom_speed,
+  pan_speed: DEFAULTS.structure.pan_speed,
+  zoom_to_cursor: DEFAULTS.structure.zoom_to_cursor,
+  fov: DEFAULTS.structure.fov,
+  initial_zoom: DEFAULTS.structure.initial_zoom,
+  ambient_light: DEFAULTS.structure.ambient_light,
+  directional_light: DEFAULTS.structure.directional_light,
+  gizmo: DEFAULTS.structure.gizmo,
+  auto_rotate: DEFAULTS.structure.auto_rotate,
+}
+
+// Generic so the per-key write type-checks (a union-keyed index on a concrete type would
+// demand the intersection of every value type)
+function with_defaults<Shape extends object>(
+  defaults: Shape,
+  overrides: Partial<Shape>,
+): Shape {
+  const resolved = { ...defaults }
+  for (const key of Object.keys(defaults) as (keyof Shape)[]) {
+    const value = overrides[key]
+    if (value !== undefined) resolved[key] = value
+  }
+  return resolved
+}
+
+export const resolve_scene_controls = (props: SceneControlProps): SceneControls =>
+  with_defaults(SCENE_CONTROL_DEFAULTS, props)
 
 // Fit must stay reachable: it becomes the zoom-out floor and lifts a too-low ceiling.
 // Infinity (OrbitControls' own default) rather than undefined, which would clamp to NaN.
@@ -193,6 +238,60 @@ export function build_orbit_props(opts: {
       opts.set_camera_is_moving?.(false)
       opts.on_end_extra?.()
     },
+  }
+}
+
+// Orthographic auto-fit zoom plus the OrbitControls props of a camera orbiting `target`: the
+// wiring BrillouinZoneScene, FermiSurfaceScene, ScatterPlot3DScene and StructureScene share.
+// `fit_zoom` is the orthographic zoom framing the scene at the current viewport and `measured`
+// is false while the container has no size (see create_orthographic_zoom). Pass `.zoom` to the
+// camera and `.orbit_props` to SceneCamera; `reset_to_fit` snaps back to the fit.
+export function create_scene_camera(opts: {
+  controls: () => Pick<
+    SceneControls,
+    | `rotate_speed`
+    | `zoom_speed`
+    | `zoom_to_cursor`
+    | `pan_speed`
+    | `auto_rotate`
+    | `rotation_damping`
+    | `min_zoom`
+    | `max_zoom`
+  > & { camera_projection: CameraProjection }
+  target: () => Vec3
+  fit_zoom: () => number
+  measured: () => boolean
+  camera: () => Camera | undefined
+  set_camera_is_moving?: (moving: boolean) => void
+  on_start_extra?: () => void
+}) {
+  const ortho_zoom = create_orthographic_zoom({
+    fit_zoom: opts.fit_zoom,
+    min_zoom: () => opts.controls().min_zoom,
+    max_zoom: () => opts.controls().max_zoom,
+    measured: opts.measured,
+    camera: opts.camera,
+  })
+  const orbit_props = $derived(
+    build_orbit_props({
+      ...opts.controls(),
+      target: opts.target(),
+      // fit-aware zoom limits (the fit may sit below the interaction floor for large scenes)
+      // replace the raw min/max above, plus the gesture-end sync that keeps the user's zoom as
+      // the resize baseline
+      ...ortho_zoom.orbit_zoom_props(),
+      set_camera_is_moving: opts.set_camera_is_moving,
+      on_start_extra: opts.on_start_extra,
+    }),
+  )
+  return {
+    get zoom() {
+      return ortho_zoom.zoom
+    },
+    get orbit_props() {
+      return orbit_props
+    },
+    reset_to_fit: () => ortho_zoom.reset_to_fit(),
   }
 }
 

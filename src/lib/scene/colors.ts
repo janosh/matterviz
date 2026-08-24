@@ -3,6 +3,7 @@
 import { rgb as parse_rgb } from 'd3-color'
 import { Color, SRGBColorSpace } from 'three/webgpu'
 import { clamp } from '$lib/math'
+import { clamp01 } from '$lib/utils'
 
 type LinearRgb = readonly [number, number, number]
 
@@ -68,7 +69,6 @@ const brighten_white = new Color(0xffffff)
 // amount=0 keeps the input; 1 → white. Parsed by d3 (see parse_linear_rgb) so an unparsable
 // color glows grey rather than in whatever hue the previous call left in the scratch.
 export function brighten_hex(css_color = `#cccccc`, amount = 0.55): string {
-  const mix = Math.min(1, Math.max(0, amount))
-  brighten_scratch.setRGB(...parse_linear_rgb(css_color)).lerp(brighten_white, mix)
+  brighten_scratch.setRGB(...parse_linear_rgb(css_color)).lerp(brighten_white, clamp01(amount))
   return `#${brighten_scratch.getHexString()}`
 }

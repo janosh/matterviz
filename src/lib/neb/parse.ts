@@ -35,7 +35,7 @@ import { create_warning_collector } from '$lib/trajectory/parse/shared'
 import { build_xyz_frame, parse_xyz_comment_metadata } from '$lib/trajectory/parse/xyz'
 import type { NebImage, ReactionPath } from './index'
 import { assert_path } from './reaction-path'
-import { is_plain_object } from '$lib/utils'
+import { is_plain_object, to_error } from '$lib/utils'
 
 export const REACTION_PATH_FORMAT = `matterviz-reaction-path`
 
@@ -113,10 +113,7 @@ export function parse_reaction_path_json(
   try {
     raw = JSON.parse(content)
   } catch (exc) {
-    throw new Error(
-      `${filename} is not valid JSON: ${exc instanceof Error ? exc.message : String(exc)}`,
-      { cause: exc },
-    )
+    throw new Error(`${filename} is not valid JSON: ${to_error(exc).message}`, { cause: exc })
   }
   if (!is_plain_object(raw)) {
     throw new Error(`${filename} must contain a JSON object, got ${typeof raw}`)

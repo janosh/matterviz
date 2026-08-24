@@ -191,17 +191,6 @@
         : ([min ?? auto?.[0] ?? 0, max ?? auto?.[1] ?? 1] as Vec2)
     update_axis(axis, { range: next_range })
   }
-
-  let ctrl_state = $derived({
-    show_controls,
-    controls_open,
-    x_axis,
-    x2_axis,
-    y_axis,
-    y2_axis,
-    display,
-    range_inputs,
-  })
 </script>
 
 {#snippet axis_checks(
@@ -239,7 +228,7 @@
     {toggle_props}
     {pane_props}
   >
-    {@render children?.(ctrl_state)}
+    {@render children?.()}
 
     <SettingsSection
       title="Display"
@@ -437,7 +426,7 @@
       {/each}
     </SettingsSection>
 
-    {@render post_children?.(ctrl_state)}
+    {@render post_children?.()}
   </ControlPane>
 {/if}
 

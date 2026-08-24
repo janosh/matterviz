@@ -2,11 +2,8 @@
 import type { ElementSymbol } from '$lib/element/types'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
-import {
-  calc_force_stats,
-  create_trajectory_frame,
-  validate_3x3_matrix,
-} from '$lib/trajectory/helpers'
+import { matrix3x3_from_rows } from '$lib/structure/parsers/shared'
+import { calc_force_stats, create_trajectory_frame } from '$lib/trajectory/helpers'
 import type { TrajectoryFrame } from '$lib/trajectory/index'
 import { is_plain_object } from '$lib/utils'
 import type { ParsedTrajectory, WarnFn } from './shared'
@@ -69,8 +66,8 @@ export function parse_pymatgen_trajectory(
     )
   }
   const lattices: Matrix3x3[] = per_frame_lattice
-    ? lattice.map((matrix) => validate_3x3_matrix(matrix))
-    : Array(n_frames).fill(validate_3x3_matrix(lattice))
+    ? lattice.map((matrix) => matrix3x3_from_rows(matrix, `lattice matrix`))
+    : Array(n_frames).fill(matrix3x3_from_rows(lattice, `lattice matrix`))
   const frame_properties = Array.isArray(obj.frame_properties)
     ? (obj.frame_properties as Record<string, unknown>[])
     : []
@@ -162,10 +159,7 @@ export function parse_pymatgen_trajectory(
   return {
     format: `pymatgen-json`,
     frames,
-    ...(time_step === null ? {} : { time_step, time_unit: `fs` }),
-    metadata: {
-      species_list: [...new Set(frame_elements)],
-      periodic_boundary_conditions: [true, true, true],
-    },
+    ...(time_step === null ? {} : { time_step: { value: time_step, unit: `fs` } }),
+    metadata: {},
   }
 }

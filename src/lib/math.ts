@@ -913,27 +913,6 @@ export function merge_coplanar_triangles(
   return new Float32Array(output)
 }
 
-// Compute axis-aligned bounding box of Vec3 vertices
-export function compute_bounding_box(vertices: Vec3[]): { min: Vec3; max: Vec3 } {
-  if (vertices.length === 0) {
-    return { min: [0, 0, 0], max: [0, 0, 0] }
-  }
-
-  const min: Vec3 = [...vertices[0]]
-  const max: Vec3 = [...vertices[0]]
-
-  for (const vert of vertices) {
-    if (vert[0] < min[0]) min[0] = vert[0]
-    if (vert[1] < min[1]) min[1] = vert[1]
-    if (vert[2] < min[2]) min[2] = vert[2]
-    if (vert[0] > max[0]) max[0] = vert[0]
-    if (vert[1] > max[1]) max[1] = vert[1]
-    if (vert[2] > max[2]) max[2] = vert[2]
-  }
-
-  return { min, max }
-}
-
 // Check if a matrix is a finite-numeric square matrix of dimension NxN (type predicate
 // so callers get number[][] narrowing without assertions). Rejects NaN/Infinity entries.
 export function is_square_matrix(matrix: unknown, dim: number): matrix is number[][] {
@@ -1127,14 +1106,12 @@ export function array_extent(values: readonly number[]): Vec2 {
   return [min, max]
 }
 
-// Shared quantile + selection helpers used by box-plot.ts and kde.ts.
-// quickselect partially sorts in place; quantile_unordered mutates its input
-// (quantile_sorted assumes an already-ascending array and never mutates).
+// Shared quantile + selection helpers used by box-plot.ts and kde.ts. quickselect partially
+// sorts in place, so quantile_unordered mutates its input.
 //
-// Unguarded contract: quickselect, quantile_sorted and quantile_unordered all assume
-// values.length > 0 and 0 <= p <= 1. Out-of-range inputs index past the array and
-// yield undefined/NaN — callers (box-plot.ts, kde.ts) must length- and p-range-check
-// before calling.
+// Unguarded contract: both assume values.length > 0 and 0 <= p <= 1. Out-of-range inputs
+// index past the array and yield undefined/NaN — callers (box-plot.ts, kde.ts) must length-
+// and p-range-check before calling.
 
 export function quickselect(values: number[], kth: number): number {
   let left = 0
@@ -1166,12 +1143,6 @@ export function quickselect(values: number[], kth: number): number {
 // magnitude where their difference overflows, and still returns each endpoint exactly.
 const lerp_quantile = (lo_val: number, hi_val: number, frac: number): number =>
   frac === 0 ? lo_val : lo_val * (1 - frac) + hi_val * frac
-
-export function quantile_sorted(values: readonly number[], p: number): number {
-  const idx = (values.length - 1) * p
-  const lo = Math.floor(idx)
-  return lerp_quantile(values[lo], values[Math.ceil(idx)], idx - lo)
-}
 
 export function quantile_unordered(values: number[], p: number): number {
   const idx = (values.length - 1) * p

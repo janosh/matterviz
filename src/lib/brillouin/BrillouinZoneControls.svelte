@@ -2,7 +2,8 @@
   import { SettingsGroup, SettingsSection } from '$lib/layout'
   import { format_num } from '$lib/labels'
   import { ControlPane } from '$lib/overlays'
-  import { type CameraProjection, DEFAULTS } from '$lib/settings'
+  import { DEFAULTS } from '$lib/settings'
+  import type { BrillouinZoneSettings } from './types'
 
   const defaults = DEFAULTS.brillouin
 
@@ -19,19 +20,8 @@
     show_ibz = $bindable(defaults.show_ibz),
     ibz_color = $bindable(defaults.ibz_color),
     ibz_opacity = $bindable(defaults.ibz_opacity),
-  }: {
+  }: Partial<Omit<BrillouinZoneSettings, `vector_scale`>> & {
     controls_open?: boolean
-    bz_order?: number
-    surface_color?: string
-    surface_opacity?: number
-    edge_color?: string
-    edge_width?: number
-    show_vectors?: boolean
-    camera_projection?: CameraProjection
-    // Irreducible BZ options
-    show_ibz?: boolean
-    ibz_color?: string
-    ibz_opacity?: number
   } = $props()
 </script>
 

@@ -40,9 +40,8 @@ const element_radius = (
 
 // Display radius of a site in Å before the global atom_radius scale: the per-element
 // override or atomic radius, occupancy-weighted over a disordered site's species. Normalized
-// by total occupancy so vacancy-containing sites render at full size. The one radius rule for
-// rendering (StructureScene), camera framing and the legend's radius readout.
-export const site_display_radius = (
+// by total occupancy so vacancy-containing sites render at full size.
+const site_display_radius = (
   site: Site,
   element_radius_overrides?: Partial<Record<ElementSymbol, number>>,
 ): number => {

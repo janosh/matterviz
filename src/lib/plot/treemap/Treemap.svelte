@@ -4,6 +4,7 @@
 >
   import type { BasePlotProps } from '$lib/plot'
   import { TreemapControls } from '$lib/plot'
+  import ChartShell from '$lib/plot/core/components/ChartShell.svelte'
   import HierarchyShell from '$lib/plot/core/components/HierarchyShell.svelte'
   import type { Rect, Sides } from '$lib/plot/core/layout'
   import { create_settling_tween } from '$lib/plot/core/settling-tween.svelte'
@@ -12,7 +13,7 @@
     HierarchyChartState,
     type HierarchyChartProps,
   } from '$lib/plot/core/utils/hierarchy-state.svelte'
-  import type { PositionedArc } from '$lib/plot/sunburst/sunburst'
+  import type { PositionedArc } from '$lib/plot/core/utils/hierarchy-layout'
   import {
     measure_treemap_label_block,
     normalize_treemap_label_lines,
@@ -345,195 +346,162 @@
   let label_placements = $derived(new Map(visible_idxs.map((idx) => [idx, place_label(idx)])))
 </script>
 
-<div
-  bind:this={chart_state.wrapper}
-  bind:clientWidth={width}
-  bind:clientHeight={height}
+<ChartShell
+  chart_class="treemap"
+  css_prefix="treemap"
+  css_var_fallbacks={{ flex: `1 1 auto`, bg: `transparent` }}
+  bind:wrapper={chart_state.wrapper}
+  bind:width
+  bind:height
+  bind:fullscreen
+  {fullscreen_toggle}
+  {controls_toggle_props}
+  {header_controls}
+  {children}
   {...rest}
-  class={[`treemap`, rest.class, { fullscreen }]}
 >
-  <HierarchyShell
-    {chart_state}
-    aria_label={rest[`aria-label`] ?? `Treemap chart`}
-    chart_transform={`translate(${chart_state.plot_left}, ${chart_state.pad.t})`}
-    {show_breadcrumbs}
-    dblclick_target="svg"
-    {fullscreen_toggle}
-    {header_controls}
-    {tooltip}
-    {children}
-  >
-    {#snippet controls()}
-      <TreemapControls
-        chart="treemap"
-        toggle_props={{
-          ...controls_toggle_props,
-          // join the header flex row instead of absolute positioning
-          style: `position: static; ${controls_toggle_props?.style ?? ``}`,
-        }}
-        pane_props={controls_pane_props}
-        bind:show_controls
-        bind:controls_open
-        bind:value_mode
-        bind:max_depth
-        bind:padding_inner
-        bind:padding_top
-        bind:padding_outer
-        bind:min_fraction
-        bind:show_labels
-        bind:label_text
-        bind:zoom_on_click
-        bind:show_breadcrumbs
-        {export_buttons}
-        on_export={chart_state.export_chart}
-      >
-        {@render controls_extra?.({ zoom_root_id })}
-      </TreemapControls>
-    {/snippet}
+  {#snippet controls(toggle_props)}
+    <TreemapControls
+      chart="treemap"
+      {toggle_props}
+      pane_props={controls_pane_props}
+      bind:show_controls
+      bind:controls_open
+      bind:value_mode
+      bind:max_depth
+      bind:padding_inner
+      bind:padding_top
+      bind:padding_outer
+      bind:min_fraction
+      bind:show_labels
+      bind:label_text
+      bind:zoom_on_click
+      bind:show_breadcrumbs
+      {export_buttons}
+      on_export={chart_state.export_chart}
+    >
+      {@render controls_extra?.({ zoom_root_id })}
+    </TreemapControls>
+  {/snippet}
 
-    {#snippet extra_defs()}
-      {#if show_labels && !cell_content && clip_labels}
-        {#each visible_idxs as idx (idx)}
-          {@const label = label_placements.get(idx)}
-          {#if label}
-            <clipPath id={label_clip_id(idx)}>
-              <rect {...label_clip_rect(rects[idx], label.header)} />
-            </clipPath>
-          {/if}
-        {/each}
-      {/if}
-    {/snippet}
+  {#snippet body()}
+    <HierarchyShell
+      {chart_state}
+      aria_label={rest[`aria-label`] ?? `Treemap chart`}
+      chart_transform={`translate(${chart_state.plot_left}, ${chart_state.pad.t})`}
+      {show_breadcrumbs}
+      dblclick_target="svg"
+      {tooltip}
+    >
+      {#snippet extra_defs()}
+        {#if show_labels && !cell_content && clip_labels}
+          {#each visible_idxs as idx (idx)}
+            {@const label = label_placements.get(idx)}
+            {#if label}
+              <clipPath id={label_clip_id(idx)}>
+                <rect {...label_clip_rect(rects[idx], label.header)} />
+              </clipPath>
+            {/if}
+          {/each}
+        {/if}
+      {/snippet}
 
-    {#snippet body()}
-      <!-- Cells: pre-order document order paints parents first, children on top -->
-      <g class="cells">
-        {#each visible_idxs as idx (idx)}
-          {@const rect = rects[idx]}
-          {#if cell_content}
-            {@render cell_content({ arc: chart_state.arcs[idx], rect })}
-          {:else}
-            {@const info = chart_state.node_infos[idx]}
-            {@const opacity = chart_state.node_dim[idx].opacity}
-            <!-- svelte-ignore a11y_no_static_element_interactions, a11y_no_noninteractive_tabindex -->
-            <rect
-              x={rect.x}
-              y={rect.y}
-              width={rect.width}
-              height={rect.height}
-              data-treemap-node-idx={idx}
-              fill={info.fill}
-              fill-opacity={opacity}
-              role={cells_clickable ? `button` : undefined}
-              tabindex={idx === roving_idx ? 0 : -1}
-              aria-label={info.aria}
-              style:cursor={cells_clickable ? `pointer` : `default`}
-            />
-            {#if chart_state.arcs[idx].hatch}
-              <!-- Decorative texture overlay; ignores pointer events -->
+      {#snippet marks()}
+        <!-- Cells: pre-order document order paints parents first, children on top -->
+        <g class="cells">
+          {#each visible_idxs as idx (idx)}
+            {@const rect = rects[idx]}
+            {#if cell_content}
+              {@render cell_content({ arc: chart_state.arcs[idx], rect })}
+            {:else}
+              {@const info = chart_state.node_infos[idx]}
+              {@const opacity = chart_state.node_dim[idx].opacity}
+              <!-- svelte-ignore a11y_no_static_element_interactions, a11y_no_noninteractive_tabindex -->
               <rect
-                class="cell-hatch"
-                aria-hidden="true"
                 x={rect.x}
                 y={rect.y}
                 width={rect.width}
                 height={rect.height}
-                fill="url(#{chart_state.hatch_pattern_id})"
+                data-treemap-node-idx={idx}
+                fill={info.fill}
                 fill-opacity={opacity}
+                role={cells_clickable ? `button` : undefined}
+                tabindex={idx === roving_idx ? 0 : -1}
+                aria-label={info.aria}
+                style:cursor={cells_clickable ? `pointer` : `default`}
               />
-            {/if}
-          {/if}
-        {/each}
-      </g>
-
-      <!-- Cell labels: selectable text; data-treemap-node-idx forwards hover/click
-      to the underlying cell via the chart-group delegation in the shell -->
-      {#if show_labels && !cell_content}
-        <g>
-          {#each visible_idxs as idx (idx)}
-            {@const lbl = label_placements.get(idx)}
-            {#if lbl}
-              <!-- Keep the clip on this untransformed wrapper. Applying it to
-              rotated text rotates the clipping region and crops the wrong area. -->
-              <g clip-path={clip_labels ? `url(#${label_clip_id(idx)})` : undefined}>
-                <text
-                  class={['cell-label', { header: lbl.header }]}
-                  data-treemap-node-idx={idx}
-                  x={lbl.x}
-                  y={lbl.lines[0].y}
-                  dominant-baseline={lbl.dominant_baseline}
-                  transform={lbl.transform}
-                  fill={chart_state.node_infos[idx].label_fill}
-                  fill-opacity={chart_state.node_dim[idx].label_opacity}
-                  font-size={lbl.font_size}
-                  style:cursor={cells_clickable ? `pointer` : `text`}
-                >
-                  {#each lbl.lines as line}
-                    <tspan
-                      class={line.class}
-                      x={lbl.x}
-                      y={line.y}
-                      font-size={lbl.font_size * (line.font_scale ?? 1)}
-                      font-weight={line.font_weight}
-                      opacity={line.opacity}
-                      fill={line.fill}
-                    >
-                      {line.text}
-                    </tspan>
-                  {/each}
-                </text>
-              </g>
+              {#if chart_state.arcs[idx].hatch}
+                <!-- Decorative texture overlay; ignores pointer events -->
+                <rect
+                  class="cell-hatch"
+                  aria-hidden="true"
+                  x={rect.x}
+                  y={rect.y}
+                  width={rect.width}
+                  height={rect.height}
+                  fill="url(#{chart_state.hatch_pattern_id})"
+                  fill-opacity={opacity}
+                />
+              {/if}
             {/if}
           {/each}
         </g>
-      {/if}
-    {/snippet}
-  </HierarchyShell>
-</div>
+
+        <!-- Cell labels: selectable text; data-treemap-node-idx forwards hover/click
+      to the underlying cell via the chart-group delegation in the shell -->
+        {#if show_labels && !cell_content}
+          <g>
+            {#each visible_idxs as idx (idx)}
+              {@const lbl = label_placements.get(idx)}
+              {#if lbl}
+                <!-- Keep the clip on this untransformed wrapper. Applying it to
+              rotated text rotates the clipping region and crops the wrong area. -->
+                <g clip-path={clip_labels ? `url(#${label_clip_id(idx)})` : undefined}>
+                  <text
+                    class={['cell-label', { header: lbl.header }]}
+                    data-treemap-node-idx={idx}
+                    x={lbl.x}
+                    y={lbl.lines[0].y}
+                    dominant-baseline={lbl.dominant_baseline}
+                    transform={lbl.transform}
+                    fill={chart_state.node_infos[idx].label_fill}
+                    fill-opacity={chart_state.node_dim[idx].label_opacity}
+                    font-size={lbl.font_size}
+                    style:cursor={cells_clickable ? `pointer` : `text`}
+                  >
+                    {#each lbl.lines as line}
+                      <tspan
+                        class={line.class}
+                        x={lbl.x}
+                        y={line.y}
+                        font-size={lbl.font_size * (line.font_scale ?? 1)}
+                        font-weight={line.font_weight}
+                        opacity={line.opacity}
+                        fill={line.fill}
+                      >
+                        {line.text}
+                      </tspan>
+                    {/each}
+                  </text>
+                </g>
+              {/if}
+            {/each}
+          </g>
+        {/if}
+      {/snippet}
+    </HierarchyShell>
+  {/snippet}
+</ChartShell>
 
 <style>
-  .treemap {
-    position: relative;
-    width: var(--treemap-width, 100%);
-    height: var(--treemap-height, auto);
-    min-height: var(--treemap-min-height, 300px);
-    container-type: size;
-    z-index: var(--treemap-z-index, auto);
-    /* flex-basis auto (not 1 = 0%) so an authored height wins over flex sizing in
-    column-flex parents while the chart still grows/shrinks to fill fixed layouts */
-    flex: var(--treemap-flex, 1 1 auto);
-    display: var(--treemap-display, flex);
-    flex-direction: column;
-    /* no bg shading by default: the cells are the chart; set --treemap-bg to
-    add a panel background */
-    background: var(--treemap-bg, transparent);
-    border-radius: var(--treemap-border-radius, 0);
-  }
-  .treemap.fullscreen {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw !important;
-    height: 100vh !important;
-    z-index: var(--treemap-fullscreen-z-index, var(--z-index-overlay-nav, 100000001));
-    margin: 0;
-    border-radius: 0;
-    background: var(--treemap-fullscreen-bg, var(--treemap-bg, var(--plot-bg)));
-    max-height: none !important;
-    overflow: hidden;
-    /* border-top (not padding-top): bind:clientHeight includes padding but excludes
-    borders */
-    border-top: var(--plot-fullscreen-padding-top, 2em) solid
-      var(--treemap-fullscreen-bg, var(--treemap-bg, var(--plot-bg, transparent)));
-    box-sizing: border-box;
-  }
-  /* :global for everything HierarchyShell renders (header row, breadcrumbs, the
-  chart svg and the hatch pattern): those elements carry the shell's scope, not
-  this component's, but their theming stays in the chart's variable namespace.
+  /* fully :global: the wrapper is ChartShell's element and breadcrumbs, chart svg and
+  hatch pattern are HierarchyShell's, so none carry this component's scope - but
+  their theming stays in the chart's variable namespace.
   plotly-pathbar look: right-pointing chevron segments with a matching left
   notch on all but the first, slightly overlapped so they read as one bar.
   Opaque background: the pathbar overlays arbitrarily-colored cells, and a
   translucent one would be illegible over dark fills */
-  .treemap :global(.breadcrumb) {
+  :global(.treemap .breadcrumb) {
     background: var(--treemap-btn-bg, light-dark(#e3e6ea, #33383f));
     color: inherit;
     border: none;
@@ -549,23 +517,23 @@
       7px 50%
     );
   }
-  .treemap :global(.breadcrumb:first-child) {
+  :global(.treemap .breadcrumb:first-child) {
     border-radius: 3pt 0 0 3pt;
     padding-inline-start: 8px;
     clip-path: polygon(0 0, calc(100% - 7px) 0, 100% 50%, calc(100% - 7px) 100%, 0 100%);
   }
-  .treemap :global(.breadcrumb:hover:not(:disabled)) {
+  :global(.treemap .breadcrumb:hover:not(:disabled)) {
     background: var(--treemap-btn-hover-bg, light-dark(#d0d5db, #454b54));
   }
   /* inset focus ring: native outlines get clipped by the chevron clip-path and
   hidden under the next overlapped segment */
-  .treemap :global(.breadcrumb:focus-visible) {
+  :global(.treemap .breadcrumb:focus-visible) {
     position: relative;
     z-index: 1;
     outline: none;
     box-shadow: inset 0 0 0 2px var(--accent-color, Highlight);
   }
-  .treemap :global(.breadcrumbs) {
+  :global(.treemap .breadcrumbs) {
     position: absolute;
     top: var(--treemap-breadcrumbs-top, 5pt);
     left: var(--treemap-breadcrumbs-left, 8px);
@@ -577,14 +545,14 @@
     font-size: var(--treemap-breadcrumbs-font-size, 0.85em);
   }
   /* negative gap: each chevron tip tucks into the next segment's left notch */
-  .treemap :global(.breadcrumb + .breadcrumb) {
+  :global(.treemap .breadcrumb + .breadcrumb) {
     margin-left: -6px;
   }
-  .treemap :global(.breadcrumb:disabled) {
+  :global(.treemap .breadcrumb:disabled) {
     cursor: default;
     font-weight: bold;
   }
-  .treemap :global(svg[role='application']) {
+  :global(.treemap svg[role='application']) {
     width: var(--treemap-svg-width, 100%);
     height: var(--treemap-svg-height, 100%);
     flex: var(--treemap-svg-flex, 1);
@@ -616,7 +584,7 @@
   /* subtle by default: thin stripes inheriting the cell border color (itself
   defaulting to the chart bg) at low opacity, so hatching matches the gaps
   between cells instead of reading as solid white */
-  .treemap :global(.hatch-pattern-line) {
+  :global(.treemap .hatch-pattern-line) {
     stroke: var(
       --treemap-hatch-stroke,
       color-mix(

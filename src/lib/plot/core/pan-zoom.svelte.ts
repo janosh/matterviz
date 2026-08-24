@@ -13,7 +13,7 @@ import {
   zoom_range_by_factor,
 } from '$lib/plot/core/interactions'
 import { point_in_rect, type Rect } from '$lib/plot/core/layout'
-import type { AxisRanges, InitialRanges, PanConfig, ScaleType } from '$lib/plot/core/types'
+import type { AxisRanges, PanConfig, ScaleType } from '$lib/plot/core/types'
 
 type Axis = `x` | `x2` | `y` | `y2`
 type RectDragState = { start: Point2D; current: Point2D; bounds: DOMRect }
@@ -63,8 +63,8 @@ export function create_pan_zoom(opts: PanZoomOptions): {
   // Pan state
   let is_focused = $state(false)
   let shift_held = $state(false)
-  let pan_drag_state = $state<(InitialRanges & { start: Point2D }) | null>(null)
-  let touch_state = $state<(InitialRanges & { start_touches: Point2D[] }) | null>(null)
+  let pan_drag_state = $state<(AxisRanges & { start: Point2D }) | null>(null)
+  let touch_state = $state<(AxisRanges & { start_touches: Point2D[] }) | null>(null)
 
   const cancel_rect_drag = () => {
     drag_state = null
@@ -106,14 +106,14 @@ export function create_pan_zoom(opts: PanZoomOptions): {
 
   // Pan/zoom all four axes from an interaction-start snapshot, each in its own
   // scale's transform space (log axes pan by a constant factor, linear by a shift)
-  const pan_all_axes = (init: InitialRanges, dx_px: number, dy_px: number) => {
+  const pan_all_axes = (init: AxisRanges, dx_px: number, dy_px: number) => {
     const dims = opts.plot_bounds()
     for (const axis of AXES) {
       const horizontal = axis === `x` || axis === `x2`
       opts.set_range(
         axis,
         pan_range_by_pixels(
-          init[`initial_${axis}_range`],
+          init[axis],
           horizontal ? dx_px : dy_px,
           horizontal ? dims.width : dims.height,
           opts.scale_type(axis),
@@ -121,12 +121,9 @@ export function create_pan_zoom(opts: PanZoomOptions): {
       )
     }
   }
-  const zoom_all_axes = (init: InitialRanges, factor: number) => {
+  const zoom_all_axes = (init: AxisRanges, factor: number) => {
     for (const axis of AXES) {
-      opts.set_range(
-        axis,
-        zoom_range_by_factor(init[`initial_${axis}_range`], factor, opts.scale_type(axis)),
-      )
+      opts.set_range(axis, zoom_range_by_factor(init[axis], factor, opts.scale_type(axis)))
     }
   }
 

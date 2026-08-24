@@ -130,7 +130,6 @@
     `max_interpolation_gap`,
     `gas_config`,
     `hull_face_color_mode`,
-    `element_colors`,
     `gizmo`,
     `x_axis`,
     `y_axis`,

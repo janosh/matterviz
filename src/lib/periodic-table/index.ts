@@ -1,7 +1,6 @@
 import type { D3InterpolateName } from '$lib/colors'
 
 export { default, default as PeriodicTable } from './PeriodicTable.svelte'
-export { default as PeriodicTableControls } from './PeriodicTableControls.svelte'
 export { default as PropertySelect } from './PropertySelect.svelte'
 export { default as TableInset } from './TableInset.svelte'
 

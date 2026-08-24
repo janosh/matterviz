@@ -5,9 +5,9 @@
   import type { BarStyle, HistogramSeries, PlotConfig } from '$lib/plot'
   import { PlotControls } from '$lib/plot'
   import type { PlotControlsProps } from '$lib/plot/core/types'
-  import { HISTOGRAM_NORMALIZE, type HistogramNormalize } from '$lib/plot/histogram/histogram'
+  import type { HistogramNormalize } from '$lib/plot/histogram/histogram'
   import { legend_mode_to_prop } from '$lib/plot/core/utils/series-visibility'
-  import { DEFAULTS } from '$lib/settings'
+  import { DEFAULTS, enum_labels, SETTINGS_CONFIG } from '$lib/settings'
   import type { Snippet } from 'svelte'
 
   let {
@@ -62,6 +62,13 @@
     (bar = { ...bar, [key]: value })
 </script>
 
+<!-- select options come from the settings schema so labels/values have a single source of truth -->
+{#snippet options(enum_map: Record<string, string>)}
+  {#each Object.entries(enum_map) as [value, label] (value)}
+    <option {value}>{label}</option>
+  {/each}
+{/snippet}
+
 <PlotControls
   bind:show_controls
   bind:controls_open
@@ -93,17 +100,14 @@
       <label>
         <span>Normalize</span>
         <select bind:value={normalize}>
-          {#each HISTOGRAM_NORMALIZE as option (option)}
-            <option value={option}>{option}</option>
-          {/each}
+          {@render options(enum_labels(SETTINGS_CONFIG.histogram.normalize))}
         </select>
       </label>
       {#if has_multiple_series}
         <label>
           <span>Mode</span>
           <select bind:value={mode}>
-            <option value="single">Single</option>
-            <option value="overlay">Overlay</option>
+            {@render options(enum_labels(SETTINGS_CONFIG.histogram.mode))}
           </select>
         </label>
         {#if mode === `single`}

@@ -25,7 +25,6 @@
   } from '$lib/isosurface/types'
   import { ViewerChrome } from '$lib/layout'
   import { ToolbarMenu } from '$lib/overlays'
-  import type { Vec3 } from '$lib/math'
   import { DEFAULTS } from '$lib/settings'
   import { colors } from '$lib/state.svelte'
   import type {
@@ -44,6 +43,7 @@
     default_vector_configs,
     get_element_counts,
     get_structure_vector_keys,
+    RESET_VIEW_TITLE,
   } from '$lib/structure'
   import type { CellType, SymmetryDataset, SymmetrySettings, WyckoffPos } from '$lib/symmetry'
   import * as symmetry from '$lib/symmetry'
@@ -91,7 +91,6 @@
   const MULTI_VIEW_MIN_WIDTH =
     MULTI_VIEW_COLUMNS * MULTI_VIEW_MIN_PANE.width +
     (MULTI_VIEW_COLUMNS - 1) * MULTI_VIEW_MIN_PANE.gap
-  const RESET_TEXT = `Reset view (r, or double-click)`
   const STRUCTURE_LAYOUTS = {
     single: { mode: `single`, icon: BrillouinZone, label: `3D single view` },
     multi: { mode: `multi`, icon: Grid2x2, label: `3D 2×2 grid` },
@@ -636,36 +635,27 @@
     const plain = !has_modifier && !event.altKey
     const is_undo = has_modifier && key === `z` && !event.shiftKey
     const is_redo = has_modifier && (key === `y` || (key === `z` && event.shiftKey))
+    const editing_bonds = measure_mode === `edit-bonds`
+    const editing_atoms = measure_mode === `edit-atoms`
 
-    if (measure_mode === `edit-bonds`) {
-      if (is_undo || is_redo) {
-        const stepped = is_undo ? session.undo_bond_edit() : session.redo_bond_edit()
-        if (!stepped) return false
-        const left = is_undo
-          ? session.bond_history.undo_stack.length
-          : session.bond_history.redo_stack.length
-        show_toast(`${is_undo ? `Undo` : `Redo`} bond edit (${left} left)`)
-        return true
-      }
-      if (plain && (key === `a` || key === `d`)) {
-        bond_edit_mode = key === `a` ? `add` : `delete`
-        return true
-      }
-      if (event.key === `Escape` && selected_sites.length > 0) {
-        session.clear_selection()
-        return true
-      }
+    if ((editing_bonds || editing_atoms) && (is_undo || is_redo)) {
+      const [step, history, what] = editing_bonds
+        ? [
+            is_undo ? session.undo_bond_edit : session.redo_bond_edit,
+            session.bond_history,
+            ` bond edit`,
+          ]
+        : [is_undo ? session.undo : session.redo, session.history, ``]
+      if (!step()) return false
+      const left = (is_undo ? history.undo_stack : history.redo_stack).length
+      show_toast(`${is_undo ? `Undo` : `Redo`}${what} (${left} left)`)
+      return true
     }
-    if (measure_mode === `edit-atoms`) {
-      if (is_undo || is_redo) {
-        const stepped = is_undo ? session.undo() : session.redo()
-        if (!stepped) return false
-        const left = is_undo
-          ? session.history.undo_stack.length
-          : session.history.redo_stack.length
-        show_toast(`${is_undo ? `Undo` : `Redo`} (${left} left)`)
-        return true
-      }
+    if (editing_bonds && plain && (key === `a` || key === `d`)) {
+      bond_edit_mode = key === `a` ? `add` : `delete`
+      return true
+    }
+    if (editing_atoms) {
       if (event.key === `Delete` || event.key === `Backspace`) return session.delete_selected()
       if (key === `a` && plain) {
         session.add_atom_mode = !session.add_atom_mode
@@ -676,16 +666,18 @@
         return true
       }
       if (key === `d` && has_modifier) return session.duplicate_selected()
-      if (event.key === `Escape`) {
-        if (session.change_element_mode) {
-          session.change_element_mode = false
-          return true
-        }
-        if (selected_sites.length > 0) {
-          session.clear_selection()
-          return true
-        }
+      if (event.key === `Escape` && session.change_element_mode) {
+        session.change_element_mode = false
+        return true
       }
+    }
+    if (
+      (editing_bonds || editing_atoms) &&
+      event.key === `Escape` &&
+      selected_sites.length > 0
+    ) {
+      session.clear_selection()
+      return true
     }
     // Plain `r` (Cmd/Ctrl+R is browser reload; Shift+R left free)
     if (key === `r` && plain && !event.shiftKey && reset_camera_available) {
@@ -813,7 +805,7 @@
             <button
               type="button"
               class="view-mode-option reset-camera"
-              title={RESET_TEXT}
+              title={RESET_VIEW_TITLE}
               aria-keyshortcuts="r"
               onclick={() => {
                 session.reset_all_cameras()
@@ -892,7 +884,6 @@
           {displacement_summary}
           {trajectory_lines_result}
           on_reset_camera={reset_camera_available ? session.reset_all_cameras : undefined}
-          reset_text={RESET_TEXT}
           bind:fly_to_request={session.fly_to_request}
           {persist_settings}
         />
@@ -948,7 +939,7 @@
         bind:displacement_summary
         bind:scene
         bind:camera
-        bind:hidden_elements
+        {hidden_elements}
         bind:polyhedra_rendered_elements
         bind:trajectory_lines_result
       />
@@ -961,7 +952,7 @@
         {...shared_viewport_props}
         camera_direction={view.direction}
         camera_projection={view.projection ?? scene_props.camera_projection}
-        bind:hidden_elements
+        {hidden_elements}
       />
     {/snippet}
 
@@ -1097,14 +1088,17 @@
       opacity: 0;
     }
   }
-  /* CellSelect: position at left of legend, show on hover */
+  /* CellSelect sits left of the legend and, like the legend's mode toggle, only shows while the
+    viewer is hovered or focused. Focus matters: the control is tabbable while hidden, and its
+    menu opens on focus. ViewerChrome's generic hover-visible rule only covers its own button
+    row, so this stays here. */
   .structure :global(.cell-select) {
-    order: -1; /* Move to left side of AtomLegend flex container */
+    order: -1;
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.3s ease;
   }
-  .structure:hover :global(.cell-select) {
+  .structure:is(:hover, :focus-within) :global(.cell-select) {
     opacity: 1;
     pointer-events: auto;
   }

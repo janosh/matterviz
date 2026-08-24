@@ -61,11 +61,8 @@ export const series_symbol_swatch = (
   symbol_color: extract_series_color(series_data),
 })
 
-// Process array or scalar properties for indexed access.
-// If prop is an array, returns the element at the given index.
-// If prop is a scalar, returns the scalar (applied to all indices).
-// Returns undefined if prop is null/undefined.
-export function process_prop<T>(prop: T[] | T | undefined | null, idx: number): T | undefined {
-  if (prop == null) return undefined
-  return Array.isArray(prop) ? prop[idx] : prop
-}
+// Per-point value of an array-or-scalar prop: the element at idx, or the scalar for every idx
+export const process_prop = <T>(
+  prop: T[] | T | undefined | null,
+  idx: number,
+): T | undefined => (Array.isArray(prop) ? prop[idx] : (prop ?? undefined))

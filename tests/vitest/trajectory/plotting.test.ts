@@ -352,16 +352,10 @@ describe(`should_hide_plot`, () => {
     { name: `NaN values`, frames: multi, series: [create_series([1.0, NaN, 1.0])], expected: true },
     { name: `Infinity values`, frames: multi, series: [create_series([1.0, Infinity, 1.0])], expected: false },
     { name: `all NaN values`, frames: multi, series: [create_series([NaN, NaN, NaN])], expected: true },
-  ])(`$name → hide=$expected`, ({ frames, series, expected }) => {
-    expect(should_hide_plot(frames.length, series)).toBe(expected)
-  })
-
-  it.each([
-    { name: `very loose`, tolerance: 1e10, expected: true },
-    { name: `zero tolerance`, tolerance: 0, expected: false },
-  ])(`tolerance: $name → hide=$expected`, ({ tolerance, expected }) => {
-    const series = [create_series([1.0, 1.0000001, 1.0])]
-    expect(should_hide_plot(multi.length, series, tolerance)).toBe(expected)
+    { name: `near-constant under a loose tolerance`, frames: multi, series: [create_series([1.0, 1.0000001, 1.0])], tolerance: 1e10, expected: true },
+    { name: `near-constant under zero tolerance`, frames: multi, series: [create_series([1.0, 1.0000001, 1.0])], tolerance: 0, expected: false },
+  ])(`$name → hide=$expected`, ({ frames, series, tolerance, expected }) => {
+    expect(should_hide_plot(frames.length, series, tolerance)).toBe(expected)
   })
 })
 

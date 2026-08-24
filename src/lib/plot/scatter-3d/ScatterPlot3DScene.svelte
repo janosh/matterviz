@@ -21,8 +21,7 @@
   import type { GizmoOptions } from '$lib/scene'
   import {
     bind_renderer,
-    build_orbit_props,
-    create_orthographic_zoom,
+    create_scene_camera,
     dispose_on_change,
     line_geometry,
     SceneCamera,
@@ -38,10 +37,17 @@
   import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js'
   import { plot_color } from '$lib/colors'
   import { first_point_style } from '$lib/plot/core/data-transform'
-  import { normalize_to_scene } from '$lib/plot/core/reference-line'
-  import ReferenceLine3D from '$lib/plot/core/components/ReferenceLine3D.svelte'
-  import ReferencePlane from '$lib/plot/core/components/ReferencePlane.svelte'
-  import { create_size_scale } from '$lib/plot/core/scales'
+  import ReferenceLine3D from '$lib/plot/scatter-3d/ReferenceLine3D.svelte'
+  import ReferencePlane from '$lib/plot/scatter-3d/ReferencePlane.svelte'
+  import { normalize_to_scene } from '$lib/plot/scatter-3d/scene-coords'
+  import {
+    accumulate_extent,
+    collect_size_values,
+    create_size_scale,
+    empty_extent,
+    nice_range_from_extent,
+    type RunningExtent,
+  } from '$lib/plot/core/scales'
   import Surface3D from '$lib/plot/scatter-3d/Surface3D.svelte'
 
   let {
@@ -127,6 +133,8 @@
 
   extras.interactivity()
 
+  type AxisKey = `x` | `y` | `z`
+
   // Scene dimensions: x/y are horizontal (2:2), z is vertical (1)
   // Note: In Three.js, Y is vertical. We map user's Z → Three.js Y (vertical)
   // and user's Y → Three.js Z (depth). So scene_z here refers to Three.js Y.
@@ -137,10 +145,21 @@
   const half_y = scene_y / 2
   const half_z = scene_z / 2
   let fit_zoom = $derived(Math.min(width, height) / Math.max(scene_x, scene_y) / 2 || 50)
-  const ortho_zoom = create_orthographic_zoom({
+  // Orbit controls - snappy with minimal inertia; the orbit target is the cube center
+  const scene_camera = create_scene_camera({
+    controls: () => ({
+      camera_projection,
+      rotate_speed,
+      zoom_speed,
+      zoom_to_cursor: false,
+      pan_speed,
+      auto_rotate,
+      rotation_damping,
+      min_zoom,
+      max_zoom,
+    }),
+    target: () => [0, 0, 0],
     fit_zoom: () => fit_zoom,
-    min_zoom: () => min_zoom,
-    max_zoom: () => max_zoom,
     measured: () => width > 0 && height > 0,
     camera: () => camera,
   })
@@ -176,25 +195,6 @@
   const sign_x = $derived(pos.x < 0 ? -1 : 1)
   const sign_y = $derived(pos.y < 0 ? -1 : 1)
 
-  // Flatten all points from series
-  let all_points = $derived(
-    series.filter(Boolean).flatMap((srs, series_idx) =>
-      srs.x.map((x_val, point_idx) => ({
-        x: x_val,
-        y: srs.y[point_idx],
-        z: srs.z[point_idx],
-        series_idx,
-        point_idx,
-        color_value: srs.color_values?.[point_idx] ?? null,
-        size_value: srs.size_values?.[point_idx] ?? null,
-        metadata: Array.isArray(srs.metadata) ? srs.metadata[point_idx] : srs.metadata,
-        point_style: Array.isArray(srs.point_style)
-          ? srs.point_style[point_idx]
-          : srs.point_style,
-      })),
-    ),
-  )
-
   // Sample surface points for range calculation (10x10 grid)
   function sample_surface(surface: Surface3DConfig): { x: number; y: number; z: number }[] {
     const grid_steps = 10
@@ -228,41 +228,30 @@
     return pts.filter((pt) => isFinite(pt.x) && isFinite(pt.y) && isFinite(pt.z))
   }
 
-  // Compute axis range with D3's nice(); data_min/data_max are the finite extent (Infinity/-Infinity when empty)
-  function compute_range(
-    [data_min, data_max]: Vec2,
-    range?: [number | null, number | null],
-  ): Vec2 {
-    if (range?.[0] != null && range?.[1] != null) return range as Vec2
-    if (data_min > data_max) return [0, 1] // no finite values
-    let [min, max] = [data_min, data_max]
-    const pad = min === max ? (min === 0 ? 1 : Math.abs(min * 0.1)) : (max - min) * 0.05
-    if (range?.[0] == null) min -= pad
-    if (range?.[1] == null) max += pad
-    return scaleLinear()
-      .domain([range?.[0] ?? min, range?.[1] ?? max])
-      .nice()
-      .domain() as Vec2
-  }
+  // Axis range: explicit bounds win as given; otherwise the finite extent is padded (5% of the
+  // span, or 10% of a lone value) and niced like every 2D axis
+  const compute_range = (
+    extent: RunningExtent,
+    range: [number | null, number | null] = [null, null],
+  ): Vec2 =>
+    range[0] != null && range[1] != null
+      ? [range[0], range[1]]
+      : nice_range_from_extent(extent, range, `linear`, 0.05)
 
-  // Collect xyz extents from points and surfaces in one pass (no intermediate arrays)
+  // xyz extents straight off the series arrays (hidden series included, so a legend toggle
+  // never re-scales the cube) plus the sampled surfaces; no per-point objects are built here
   let surface_samples = $derived(surfaces.flatMap(sample_surface))
   let data_extents = $derived.by(() => {
-    const extents = {
-      x: [Infinity, -Infinity] as Vec2,
-      y: [Infinity, -Infinity] as Vec2,
-      z: [Infinity, -Infinity] as Vec2,
+    const extents = { x: empty_extent(), y: empty_extent(), z: empty_extent() }
+    for (const srs of series) {
+      if (!srs) continue
+      for (const axis of [`x`, `y`, `z`] as const) accumulate_extent(extents[axis], srs[axis])
     }
-    for (const points of [all_points, surface_samples]) {
-      for (const pt of points) {
-        for (const axis of [`x`, `y`, `z`] as const) {
-          const val = pt[axis]
-          if (!isFinite(val)) continue
-          const extent = extents[axis]
-          if (val < extent[0]) extent[0] = val
-          if (val > extent[1]) extent[1] = val
-        }
-      }
+    for (const axis of [`x`, `y`, `z`] as const) {
+      accumulate_extent(
+        extents[axis],
+        surface_samples.map((pt) => pt[axis]),
+      )
     }
     return extents
   })
@@ -275,21 +264,32 @@
   const normalize_z = (value: number) => normalize_to_scene(value, z_range, scene_z)
 
   // Size scale (the color scale is computed by the wrapper and passed as a prop)
-  let all_size_values = $derived(
-    all_points.map((pt) => pt.size_value).filter((val): val is number => val != null),
-  )
-  let size_scale_fn = $derived(create_size_scale(size_scale, all_size_values))
+  let size_scale_fn = $derived(create_size_scale(size_scale, collect_size_values(series)))
 
-  // Process points with normalized positions
-  // Swap Y/Z for Three.js: user Z → Three.js Y (vertical), user Y → Three.js Z (depth)
-  let processed_points = $derived(
-    all_points.map((pt): InternalPoint3D<Metadata> => ({
-      ...pt,
-      x: normalize_x(pt.x), // user X → Three.js X
-      y: normalize_z(pt.z), // user Z → Three.js Y (vertical)
-      z: normalize_y(pt.y), // user Y → Three.js Z (depth)
-    })),
-  )
+  // Every point of every visible series in scene coordinates, built in one pass and in
+  // (series_idx, point_idx) order. Swap Y/Z for Three.js: user Z → Three.js Y (vertical),
+  // user Y → Three.js Z (depth).
+  let processed_points = $derived.by(() => {
+    const points: InternalPoint3D<Metadata>[] = []
+    series.forEach((srs, series_idx) => {
+      if (!srs || !(srs.visible ?? true)) return
+      const { metadata, point_style } = srs
+      for (let point_idx = 0; point_idx < srs.x.length; point_idx++) {
+        points.push({
+          x: normalize_x(srs.x[point_idx]),
+          y: normalize_z(srs.z[point_idx]),
+          z: normalize_y(srs.y[point_idx]),
+          series_idx,
+          point_idx,
+          color_value: srs.color_values?.[point_idx] ?? null,
+          size_value: srs.size_values?.[point_idx] ?? null,
+          metadata: Array.isArray(metadata) ? metadata[point_idx] : metadata,
+          point_style: Array.isArray(point_style) ? point_style[point_idx] : point_style,
+        })
+      }
+    })
+    return points
+  })
 
   // Group points by radius, with per-instance colors
   type RadiusGroup = {
@@ -306,7 +306,6 @@
     const groups: Record<string, RadiusGroup> = {}
     const radii = new Map<string, number>()
     for (const pt of processed_points) {
-      if (!(series[pt.series_idx]?.visible ?? true)) continue
       const color =
         pt.color_value != null
           ? color_scale_fn(pt.color_value)
@@ -380,7 +379,7 @@
         dashed: Boolean(line_style.line_dash),
       })
     }
-    // processed_points are emitted in (series_idx, point_idx) order, so one ordered pass replaces the old per-series filter + sort
+    // processed_points are in (series_idx, point_idx) order, so one pass fills every polyline
     for (const pt of processed_points) {
       positions_by_series.get(pt.series_idx)?.push(pt.x, pt.y, pt.z)
     }
@@ -501,25 +500,8 @@
     if (data) on_point_click?.(data)
   }
 
-  // Orbit controls - snappy with minimal inertia; the orbit target is the cube center
-  const orbit_target: Vec3 = [0, 0, 0]
-  let orbit_props = $derived(
-    build_orbit_props({
-      camera_projection,
-      target: orbit_target,
-      rotate_speed,
-      zoom_speed,
-      zoom_to_cursor: false,
-      pan_speed,
-      auto_rotate,
-      rotation_damping,
-      ...ortho_zoom.orbit_zoom_props(),
-    }),
-  )
-
   // Axis configuration for rendering
   const tick_length = 0.15
-  type AxisKey = `x` | `y` | `z`
 
   // Axis rendering config - all positions use backside `pos` values. Each entry also owns its
   // line geometries (main axis, ticks, grid), rebuilt as a whole when pos/ticks/ranges change.
@@ -644,11 +626,11 @@
   {camera_projection}
   position={camera_position}
   {fov}
-  zoom={ortho_zoom.zoom}
+  zoom={scene_camera.zoom}
   near={0.1}
   ortho_near={-100}
   far={1000}
-  {orbit_props}
+  orbit_props={scene_camera.orbit_props}
   {gizmo}
   bind:orbit_controls
 />

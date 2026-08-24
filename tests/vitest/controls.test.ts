@@ -3,10 +3,10 @@ import { describe, expect, it } from 'vitest'
 import { normalize_show_controls } from '$lib/controls'
 
 describe(`normalize_show_controls`, () => {
-  it(`returns hover mode with empty hidden set when undefined`, () => {
+  it(`returns hover mode with every control visible when undefined`, () => {
     const config = normalize_show_controls(undefined)
     expect(config.mode).toBe(`hover`)
-    expect(config.hidden.size).toBe(0)
+    expect(config.visible(`fullscreen`)).toBe(true)
     expect(config.style).toBeUndefined()
     expect(config.class).toBe(`hover-visible`)
   })
@@ -36,7 +36,11 @@ describe(`normalize_show_controls`, () => {
       style: `top: 10px;`,
     })
     expect(config.style).toBe(`top: 10px;`)
-    expect([...config.hidden]).toEqual([`controls`, `fullscreen`])
+    expect([`controls`, `fullscreen`, `info-pane`].map(config.visible)).toEqual([
+      false,
+      false,
+      true,
+    ])
   })
 
   it.each([

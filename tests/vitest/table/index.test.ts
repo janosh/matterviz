@@ -483,7 +483,7 @@ describe(`search and filters`, () => {
 
 describe(`date/time columns`, () => {
   const plain: Label = { label: `When` }
-  const explicit: Label = { label: `When`, format_type: `datetime` }
+  const explicit: Label = { label: `When`, datetime_format: `datetime` }
 
   it.each<[CellVal, Label, number | null]>([
     [`2024-01-02`, plain, new Date(2024, 0, 2).getTime()], // local midnight, not UTC

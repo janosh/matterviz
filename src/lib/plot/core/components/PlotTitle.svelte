@@ -35,9 +35,10 @@
   })
 
   // Re-measured when geometry changes or a metrics revision (fonts ready) invalidates the cache
-  const layout = $derived(
-    resolve_plot_title(config, { width, x, y, metrics_revision: font_metrics_revision }),
-  )
+  const layout = $derived.by(() => {
+    void font_metrics_revision
+    return resolve_plot_title(config, { width, x, y })
+  })
 </script>
 
 {#snippet title_block(block: PlotTitleBlockLayout)}

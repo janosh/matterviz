@@ -52,6 +52,35 @@ const ternary_temp_entries: PhaseData[] = [
   },
 ]
 
+// Fe, Li, O carry 300 K data; P only 700 K, so the 300 K slice drops it
+const quaternary_temp_entries: PhaseData[] = [
+  ...[
+    [`Fe`, -6.7],
+    [`Li`, -1.9],
+    [`O`, -8.0],
+  ].map(([element, energy]) => ({
+    composition: { [String(element)]: 1 },
+    energy: Number(energy),
+    energy_per_atom: Number(energy),
+    temperatures: [300, 900],
+    free_energies: [Number(energy) - 0.2, Number(energy) + 0.2],
+  })),
+  {
+    composition: { Li: 1, Fe: 1, O: 2 },
+    energy: -24,
+    energy_per_atom: -6,
+    temperatures: [300, 900],
+    free_energies: [-6.3, -5.7],
+  },
+  {
+    composition: { P: 1 },
+    energy: -5.4,
+    energy_per_atom: -5.4,
+    temperatures: [700],
+    free_energies: [-5.4],
+  },
+]
+
 const base_config = { default_min_limit: -20, formal_chempots: false }
 const mounted_components: ReturnType<typeof mount>[] = []
 
@@ -74,15 +103,12 @@ async function mount_2d_with_config(config: {
   interpolate_temperature: boolean
   max_interpolation_gap: number
 }): Promise<void> {
-  const { interpolate_temperature, max_interpolation_gap } = config
   const mounted_component = mount(ChemPotDiagram2D, {
     target: document.body,
     props: {
       entries: binary_temp_entries,
       temperature: 700,
-      config: base_config,
-      interpolate_temperature,
-      max_interpolation_gap,
+      config: { ...base_config, ...config },
     },
   })
   mounted_components.push(mounted_component)
@@ -141,9 +167,7 @@ describe(`ChemPot temperature config wiring`, () => {
       props: {
         entries: ternary_temp_entries,
         temperature: 700,
-        config: base_config,
-        interpolate_temperature: false,
-        max_interpolation_gap: 700,
+        config: { ...base_config, interpolate_temperature: false, max_interpolation_gap: 700 },
       },
     })
     mounted_components.push(mounted_component)
@@ -152,5 +176,23 @@ describe(`ChemPot temperature config wiring`, () => {
     // the dataset still has temperature data to pick from
     expect(document.querySelector(`.error-state`)).toBeInstanceOf(HTMLElement)
     expect(document.querySelector(`.temperature-slider`)).toBeInstanceOf(HTMLElement)
+  })
+
+  test(`3D projection axes list every element of the system, not just the temperature slice`, async () => {
+    const mounted_component = mount(ChemPotDiagram3D, {
+      target: document.body,
+      props: {
+        entries: quaternary_temp_entries,
+        temperature: 300,
+        config: { ...base_config, interpolate_temperature: false },
+      },
+    })
+    mounted_components.push(mounted_component)
+    await settled()
+    expect(document.querySelector(`.error-state`)).toBeNull()
+    const options = [...document.querySelectorAll(`#chempot-proj-x option`)].map(
+      (option) => option.textContent,
+    )
+    expect(options).toEqual([`Fe`, `Li`, `O`, `P`])
   })
 })

@@ -4,8 +4,8 @@ import {
   build_isosurface_geometry,
   nearest_vertex_index,
 } from '$lib/fermi-surface/geometry'
-import type { VertexColorSpec } from '$lib/fermi-surface/geometry'
 import type { FermiIsosurface } from '$lib/fermi-surface/types'
+import type { VertexColorOptions } from '$lib/isosurface/coloring'
 import { css_to_linear_rgb } from '$lib/scene/colors'
 import { get_d3_interpolator } from '$lib/colors'
 import type { Vec3 } from '$lib/math'
@@ -30,7 +30,7 @@ const make_surface = (overrides: Partial<FermiIsosurface> = {}): FermiIsosurface
     ],
     overrides,
   )
-const viridis: VertexColorSpec = { colormap: `interpolateViridis`, color_range: [0, 1] }
+const viridis: VertexColorOptions = { colormap: `interpolateViridis`, color_range: [0, 1] }
 
 describe(`build_isosurface_geometry`, () => {
   test(`wraps the surface buffers without copying`, () => {

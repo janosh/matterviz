@@ -1,9 +1,8 @@
 // Frame-major position accumulation shared by every run that reads frames one at a time
 // (memory, indexed text, worker-served). Budgets the buffer up front, validates atom identity
 // across frames and folds optional per-site channels and frame-level signals into the sweep.
-import * as math from '$lib/math'
 import type { ElementSymbol } from '$lib/element'
-import type { Matrix3x3, Vec3 } from '$lib/math'
+import { type Matrix3x3, reciprocal_lattice } from '$lib/math'
 import type { Pbc } from '$lib/structure/index'
 import { values_per_sample } from '../helpers'
 import type {
@@ -101,11 +100,10 @@ class PositionAccumulator {
   private pbc: Pbc | null = null
   private coords_unwrapped = false
   private frame_count = 0
-  // Cartesian -> fractional converter of the last lattice seen; a fixed cell hands back the
-  // same matrix every frame, so only NPT runs rebuild the inverse
+  // Reciprocal rows of the last lattice seen (frac_i = b_i · cart); a fixed cell hands back
+  // the same matrix every frame, so only NPT runs rebuild the inverse
   private cached_lattice: Matrix3x3 | null = null
-  private cart_to_frac: ((cart: Vec3) => Vec3) | null = null
-  private readonly step_scratch: Vec3 = [0, 0, 0]
+  private reciprocal: Matrix3x3 | null = null
 
   get collected_frames(): number {
     return this.frame_count
@@ -261,27 +259,28 @@ class PositionAccumulator {
     if (!lattice || this.frame_count < 1 || this.n_atoms < 2) return
     // A stride weakens the displacement bound for already-unwrapped coordinates.
     if (this.coords_unwrapped && this.frame_stride > 1) return
-    if (lattice !== this.cached_lattice || !this.cart_to_frac) {
+    if (lattice !== this.cached_lattice || !this.reciprocal) {
       this.cached_lattice = lattice
-      this.cart_to_frac = math.create_cart_to_frac(lattice)
+      this.reciprocal = reciprocal_lattice(lattice)
     }
-    const { cart_to_frac, step_scratch: step } = this
+    // Scalar arithmetic throughout: this runs per atom per frame, so no Vec3 is allocated
+    const { reciprocal, positions } = this
     const pbc = this.pbc ?? [true, true, true]
     const prev_base = (this.frame_count - 1) * this.n_atoms * 3
     const base = this.frame_count * this.n_atoms * 3
     let far_atoms = 0
     for (let atom_idx = 0; atom_idx < this.n_atoms; atom_idx++) {
-      const [prev_off, off] = [prev_base + atom_idx * 3, base + atom_idx * 3]
-      for (let axis = 0; axis < 3; axis++) {
-        step[axis] = this.positions[off + axis] - this.positions[prev_off + axis]
-      }
-      const frac_step = cart_to_frac(step)
+      const prev_off = prev_base + atom_idx * 3
+      const off = base + atom_idx * 3
+      const step_x = positions[off] - positions[prev_off]
+      const step_y = positions[off + 1] - positions[prev_off + 1]
+      const step_z = positions[off + 2] - positions[prev_off + 2]
       let far = false
       for (let axis = 0; axis < 3 && !far; axis++) {
         if (!pbc[axis]) continue
-        const component = this.coords_unwrapped
-          ? frac_step[axis]
-          : frac_step[axis] - Math.round(frac_step[axis])
+        const [b_x, b_y, b_z] = reciprocal[axis]
+        const frac = b_x * step_x + b_y * step_y + b_z * step_z
+        const component = this.coords_unwrapped ? frac : frac - Math.round(frac)
         far = Math.abs(component) > FAR_STEP_FRACTIONAL
       }
       if (far) far_atoms++
@@ -349,15 +348,14 @@ export const parse_frame_signal = (
   }
   const flat_values = ArrayBuffer.isView(value)
     ? Array.from(value as unknown as ArrayLike<number>)
-    : Array.isArray(value) &&
-        value.every((entry) => typeof entry === `number` && Number.isFinite(entry))
+    : Array.isArray(value) && value.every((entry) => typeof entry === `number`)
       ? value
       : null
   const tensor_key = /polarizability|tensor/i.test(key)
   const response_key = /dipole|polarization|current/i.test(key)
   const per_atom_key = /mass|charge|atom|site/i.test(key)
   if (flat_values) {
-    const values = flat_values as number[]
+    const values = flat_values
     if (!values.every(Number.isFinite)) return null
     if (values.length === 9 && (n_atoms !== 3 || tensor_key)) {
       return { values, sample_shape: [3, 3] }

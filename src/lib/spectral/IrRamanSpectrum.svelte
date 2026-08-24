@@ -2,7 +2,7 @@
   import EmptyState from '$lib/EmptyState.svelte'
   import { format_num } from '$lib/labels'
   import { SettingsSection } from '$lib/layout'
-  import type { Vec2 } from '$lib/math'
+  import { array_max, type Vec2 } from '$lib/math'
   import type { AxisConfig, DataSeries } from '$lib/plot/core/types'
   import ScatterPlot from '$lib/plot/scatter/ScatterPlot.svelte'
   import { sync_axis_range } from '$lib/plot/core/shared-axes'
@@ -10,10 +10,10 @@
   import { untrack, type ComponentProps } from 'svelte'
   import {
     convert_frequencies,
-    FREQUENCY_UNITS,
     frequency_unit_label,
     parse_frequency_unit,
   } from './frequency-units'
+  import FrequencyUnitSelect from './FrequencyUnitSelect.svelte'
   import { NORMALIZATION_MODES, normalize_densities } from './helpers'
   import { broaden_spectrum, spectrum_sticks, to_transmittance } from './ir-raman'
   import type {
@@ -110,11 +110,11 @@
   })
 
   // Sticks share the curve's y-scale so both are legible on one axis. In transmittance the
-  // sticks hang down from the baseline at 1.
+  // sticks hang down from the baseline at 1. (array_max: the curve grid can be huge.)
   let stick_scale = $derived.by(() => {
-    const max_stick = Math.max(...sticks.y, 0)
+    const max_stick = Math.max(array_max(sticks.y), 0)
     if (max_stick <= 0) return 0
-    const max_curve = Math.max(...curve_y, 0)
+    const max_curve = Math.max(array_max(curve_y), 0)
     if (is_transmittance) return 1 / max_stick
     return (max_curve > 0 ? max_curve : 1) / max_stick
   })
@@ -213,19 +213,7 @@
             <option value="raman" disabled={!spectrum.has_raman}>Raman</option>
           </select>
         </label>
-        <label>
-          <span>Frequency</span>
-          <select
-            id="ir-raman-units"
-            value={unit}
-            onchange={(event) =>
-              (units = parse_frequency_unit(event.currentTarget.value) ?? unit)}
-          >
-            {#each FREQUENCY_UNITS as option (option)}
-              <option value={option}>{frequency_unit_label(option)}</option>
-            {/each}
-          </select>
-        </label>
+        <FrequencyUnitSelect id="ir-raman-units" bind:units />
         {#if !is_transmittance}
           <label>
             <span>Norm</span>

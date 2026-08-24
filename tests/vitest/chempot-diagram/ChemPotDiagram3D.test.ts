@@ -113,3 +113,44 @@ test(`toggling a formula overlay builds only that domain's hull`, async () => {
   expect(meshes_at_dispose).toEqual([removed.formula_meshes.map(({ geometry }) => geometry)])
   expect(meshes_at_dispose[0]).not.toContain(fe2o3_geometry)
 })
+
+// Only formal_chempots/default_min_limit/limits/elements reach the worker, so label and overlay
+// toggles must not recompute (or rebuild any hull); a half-typed number (`-`) is NaN and must
+// not reach the computation either.
+test(`display toggles and partial number input never recompute the diagram`, async () => {
+  vi.spyOn(console, `error`).mockImplementation(() => undefined)
+  mounted = mount(ChemPotDiagram3D, {
+    target: document.body,
+    props: { entries, config: { default_min_limit: -25 } },
+  })
+  await tick()
+  await vi.waitFor(() => expect(document.querySelector(`.spinner`)).toBeNull())
+  document.querySelector<HTMLButtonElement>(`.chempot-controls-toggle`)?.click()
+  flushSync()
+  const pane_inputs = [...document.querySelectorAll<HTMLInputElement>(`.draggable-pane input`)]
+  const by_label = (text: string) =>
+    pane_inputs.find((input) => input.closest(`label`)?.textContent?.includes(text))
+  const scene_labels = () => {
+    const node = threlte_stub.nodes.find(({ tag }) => tag === `Scene`)
+    if (!node) throw new Error(`Scene node not rendered`)
+    return (node.props as { domain_labels: unknown[] }).domain_labels.length
+  }
+  expect(scene_labels()).toBeGreaterThan(0)
+  const before = convex_builds.count
+  for (const label of [`Label stable`, `Meshes`, `Lines`]) {
+    const checkbox = by_label(label)
+    if (!checkbox) throw new Error(`no "${label}" checkbox`)
+    checkbox.click()
+    flushSync()
+  }
+  const min_limit = by_label(`Min limit`)
+  if (!min_limit) throw new Error(`no min-limit input`)
+  min_limit.value = `-`
+  min_limit.dispatchEvent(new Event(`input`, { bubbles: true }))
+  flushSync()
+  await tick()
+  expect(convex_builds.count - before).toBe(0)
+  expect(document.querySelector(`.spinner`)).toBeNull()
+  expect(document.querySelector(`.error-state`)).toBeNull()
+  expect(scene_labels()).toBe(0) // labels hidden without touching the geometry
+})

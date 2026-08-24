@@ -1,7 +1,5 @@
 // One persistent Web Worker per analysis module, with the request dedupe and teardown
-// semantics they all need. Extracted after a fourth copy appeared: the three rules below
-// were each learned from a bug, and keeping them in one place is the only way a fix reaches
-// every caller. chempot-diagram's copy had drifted and was missing two of them.
+// semantics they all need in one place so a fix reaches every caller.
 //
 // Wire protocol (worker side): every request arrives as `{ id, input, options }`. The worker
 // replies with `{ id, result, error }` once, and may post any number of `{ id, progress }`
@@ -34,10 +32,6 @@ export interface WorkerRequestOptions<Progress = unknown> {
   signal?: AbortSignal
   // Receives every `{ id, progress }` message the worker posts for this request
   on_progress?: (progress: Progress) => void
-  // Buffers inside the payload to move instead of copy. They are detached on the main
-  // thread afterwards, so the caller must not read them again (nor rely on identity dedupe
-  // re-posting the same input later).
-  transfer?: Transferable[]
 }
 
 // The module's async entry point: modules export the client itself (e.g. `compute_vacf_async`)
@@ -121,13 +115,12 @@ export function create_worker_client<
   const input_token = make_tokenizer()
   const non_plain_token = make_tokenizer()
 
-  // Identity for the input, canonical serialization for the options. Hashing megabytes of positions
-  // would cost more than the compute, so identity stands in for contents. A content hash is
-  // not a safe substitute: chempot briefly keyed on a thermodynamic fingerprint that omitted
-  // name and entry_id, so two runs differing only in labels shared a promise and the second
-  // caller got the first one's entries back in min_entries and el_refs.
-  // Plain-object keys are sorted at every depth and arrays retain order. Non-plain values
-  // use identity: no current worker option schema needs value semantics for them.
+  // Identity for the input, canonical serialization for the options. Hashing megabytes of
+  // positions would cost more than the compute, so identity stands in for contents; a partial
+  // content fingerprint is not a safe substitute, since two inputs differing only in a field it
+  // omits (labels, ids) would share one promise and the second caller would get the first one's
+  // result. Plain-object keys are sorted at every depth and arrays retain order. Non-plain
+  // values use identity: no current worker option schema needs value semantics for them.
   const canonical_key_of = (value: unknown): string => {
     const seen = new WeakMap<object, number>()
     let next_reference = 0
@@ -342,13 +335,10 @@ export function create_worker_client<
     const id = ++next_id
     const request = track(request_key, id)
     try {
-      // Empty transfer list by default: callers keep ownership of typed-array buffers
-      // (dedupe reuses the same input). Transferring would detach them.
+      // Copied, never transferred: identity dedupe re-posts the same input later, and a
+      // transferred typed-array buffer would be detached by then.
       // oxlint-disable-next-line unicorn/require-post-message-target-origin
-      wkr.postMessage(
-        { id, input: payload, options: $state.snapshot(options) },
-        request_options.transfer ?? [],
-      )
+      wkr.postMessage({ id, input: payload, options: $state.snapshot(options) })
     } catch (err) {
       request.reject(to_error(err))
     }

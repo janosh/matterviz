@@ -87,6 +87,9 @@ describe(`FormulaFilter`, () => {
     [`NaCl`, `exact`, `ClNa`],
     [`LiFe*2*`, `exact`, `FeLi*2*`],
     [`*2O3`, `exact`, `O3*2`],
+    [`H0`, `exact`, `H0`], // zero amount formats to nothing; the text survives
+    // invalid wildcard formula: kept verbatim, and the mode-hint preview must not throw
+    [`Li*2x`, `exact`, `Li*2x`],
   ] as const)(
     `"%s" infers mode %s, shows its hint and normalizes to "%s" on blur`,
     async (input, mode, normalized) => {
@@ -681,6 +684,9 @@ describe(`FormulaFilter`, () => {
       [`unicode subscripts normalize`, {}, `Fe₂O₃`, `Fe2O3`],
       // deleting the hydrate dot in normalization would glue digits: CuSO45H2O
       [`hydrate dot survives normalization`, {}, `CuSO4·5H2O`, `CuH10O9S`],
+      // an SI amount format would canonicalize to C1kH2k, which no longer parses
+      [`large counts stay plain digits`, {}, `H2000C1000`, `C1000H2000`],
+      [`wildcard amounts are merged and formatted`, {}, `*2Li0.1Li0.2*`, `Li0.3*2*`],
     ])(`exact mode: %s`, (_name, props, input, expected) => {
       const on_change = vi.fn()
       mount_filter({ value: ``, on_change, ...props })

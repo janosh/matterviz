@@ -20,5 +20,5 @@
   editor_open
   enable_export={false}
   fullscreen_toggle={false}
-  show_controls={false}
+  show_controls={{ hidden: [`controls`] }}
 />

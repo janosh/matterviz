@@ -4,10 +4,10 @@
 >
   import { StatusMessage } from '$lib/feedback'
   import { format_value } from '$lib/labels'
-  import { FullscreenButton } from '$lib/layout'
   import type { BasePlotProps, LegendConfig, Orientation } from '$lib/plot'
   import { plot_color } from '$lib/colors'
   import { PlotLegend, PlotTooltip, SankeyControls } from '$lib/plot'
+  import ChartShell from '$lib/plot/core/components/ChartShell.svelte'
   import {
     closest_data_idx,
     is_activation_key,
@@ -27,6 +27,7 @@
     SankeyNodeHandlerProps,
   } from '$lib/plot/sankey/sankey-types'
   import { DEFAULTS } from '$lib/settings'
+  import { to_error } from '$lib/utils'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'
@@ -145,7 +146,7 @@
         }),
       }
     } catch (err) {
-      return { nodes: [], links: [], error: err instanceof Error ? err.message : String(err) }
+      return { nodes: [], links: [], error: to_error(err).message }
     }
   })
 
@@ -343,20 +344,37 @@
   }
 </script>
 
-<div
-  bind:this={wrapper}
-  bind:clientWidth={width}
-  bind:clientHeight={height}
+<ChartShell
+  chart_class="sankey"
+  css_prefix="sankey"
+  bind:wrapper
+  bind:width
+  bind:height
+  bind:fullscreen
+  {fullscreen_toggle}
+  {controls_toggle_props}
+  {header_controls}
+  {children}
   {...rest}
-  class={[`sankey`, rest.class, { fullscreen }]}
 >
-  {#if width && height}
-    <div class="header-controls">
-      {@render header_controls?.({ height, width, fullscreen })}
-      {#if fullscreen_toggle}
-        <FullscreenButton bind:fullscreen {wrapper} bg_css_var="--sankey-fullscreen-bg" />
-      {/if}
-    </div>
+  {#snippet controls(toggle_props)}
+    <SankeyControls
+      {toggle_props}
+      pane_props={controls_pane_props}
+      bind:show_controls
+      bind:controls_open
+      bind:orientation
+      bind:node_width
+      bind:node_padding
+      bind:node_align
+      bind:link_opacity
+      bind:show_node_labels
+    >
+      {@render controls_extra?.({ orientation })}
+    </SankeyControls>
+  {/snippet}
+
+  {#snippet body()}
     {#if layout.error}
       <StatusMessage message={layout.error} type="error" style="margin: auto 1em" />
     {/if}
@@ -462,127 +480,53 @@
         </g>
       </g>
     </svg>
-  {/if}
 
-  {#if hover_info}
-    <!-- Solid chip bg (PlotTooltip auto-contrasts text). Links use the source node
+    {#if hover_info}
+      <!-- Solid chip bg (PlotTooltip auto-contrasts text). Links use the source node
     color so gradient/static ribbons (url(...)/var(...)) still get a readable color. -->
-    <PlotTooltip
-      x={hover_pos.x}
-      y={hover_pos.y}
-      offset={{ x: 10, y: 5 }}
-      constrain_to={{ width, height }}
-      fallback_size={{ width: 140, height: 44 }}
-      bg_color={hover_info.type === `node`
-        ? hover_info.color
-        : node_colors[hover_info.source_idx]}
-    >
-      {#if tooltip}
-        {@render tooltip(hover_info)}
-      {:else if hover_info.type === `node`}
-        <strong>{hover_info.label ?? hover_info.id}</strong>: {format_value(
-          hover_info.value,
-          value_format,
-        )}
-      {:else}
-        {hover_info.source_label ?? hover_info.source_idx} &rarr; {hover_info.target_label ??
-          hover_info.target_idx}: {format_value(hover_info.value, value_format)}
-      {/if}
-    </PlotTooltip>
-  {/if}
+      <PlotTooltip
+        x={hover_pos.x}
+        y={hover_pos.y}
+        offset={{ x: 10, y: 5 }}
+        constrain_to={{ width, height }}
+        fallback_size={{ width: 140, height: 44 }}
+        bg_color={hover_info.type === `node`
+          ? hover_info.color
+          : node_colors[hover_info.source_idx]}
+      >
+        {#if tooltip}
+          {@render tooltip(hover_info)}
+        {:else if hover_info.type === `node`}
+          <strong>{hover_info.label ?? hover_info.id}</strong>: {format_value(
+            hover_info.value,
+            value_format,
+          )}
+        {:else}
+          {hover_info.source_label ?? hover_info.source_idx} &rarr; {hover_info.target_label ??
+            hover_info.target_idx}: {format_value(hover_info.value, value_format)}
+        {/if}
+      </PlotTooltip>
+    {/if}
 
-  {#if legend_visible}
-    {@const legend_left = legend_placement?.x ?? pad.l + 10}
-    {@const legend_top = legend_placement?.y ?? pad.t + 10}
-    <PlotLegend
-      bind:root_element={legend_element}
-      {...legend}
-      series_data={legend_data}
-      on_toggle={legend?.on_toggle ?? toggle_node}
-      on_item_hover={(item) =>
-        (legend_hover_idx = item != null && item.series_idx >= 0 ? item.series_idx : null)}
-      style={`position: absolute; left: ${legend_left}px; top: ${legend_top}px; pointer-events: auto; ${
-        legend?.style ?? ``
-      }`}
-    />
-  {/if}
-
-  {#if show_controls}
-    <SankeyControls
-      toggle_props={controls_toggle_props}
-      pane_props={controls_pane_props}
-      bind:show_controls
-      bind:controls_open
-      bind:orientation
-      bind:node_width
-      bind:node_padding
-      bind:node_align
-      bind:link_opacity
-      bind:show_node_labels
-    >
-      {@render controls_extra?.({ orientation })}
-    </SankeyControls>
-  {/if}
-
-  {@render children?.({ height, width, fullscreen })}
-</div>
+    {#if legend_visible}
+      {@const legend_left = legend_placement?.x ?? pad.l + 10}
+      {@const legend_top = legend_placement?.y ?? pad.t + 10}
+      <PlotLegend
+        bind:root_element={legend_element}
+        {...legend}
+        series_data={legend_data}
+        on_toggle={legend?.on_toggle ?? toggle_node}
+        on_item_hover={(item) =>
+          (legend_hover_idx = item != null && item.series_idx >= 0 ? item.series_idx : null)}
+        style={`position: absolute; left: ${legend_left}px; top: ${legend_top}px; pointer-events: auto; ${
+          legend?.style ?? ``
+        }`}
+      />
+    {/if}
+  {/snippet}
+</ChartShell>
 
 <style>
-  .sankey {
-    --ctrl-btn-default-right: 30px;
-    position: relative;
-    width: var(--sankey-width, 100%);
-    height: var(--sankey-height, auto);
-    min-height: var(--sankey-min-height, 300px);
-    container-type: size;
-    z-index: var(--sankey-z-index, auto);
-    flex: var(--sankey-flex, 1);
-    display: var(--sankey-display, flex);
-    flex-direction: column;
-    background: var(--sankey-bg, var(--plot-bg));
-    border-radius: var(--sankey-border-radius, 0);
-  }
-  .sankey.fullscreen {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw !important;
-    height: 100vh !important;
-    z-index: var(--sankey-fullscreen-z-index, var(--z-index-overlay-nav, 100000001));
-    margin: 0;
-    border-radius: 0;
-    background: var(--sankey-fullscreen-bg, var(--sankey-bg, var(--plot-bg)));
-    max-height: none !important;
-    overflow: hidden;
-    /* border-top (not padding-top): bind:clientHeight includes padding but excludes
-    borders - padding made the chart overflow + clip its bottom 2em (x-axis title) */
-    border-top: var(--plot-fullscreen-padding-top, 2em) solid
-      var(--sankey-fullscreen-bg, var(--sankey-bg, var(--plot-bg, transparent)));
-    box-sizing: border-box;
-  }
-  .header-controls {
-    position: absolute;
-    top: var(--ctrl-btn-top, 5pt);
-    right: var(--fullscreen-btn-right, 4px);
-    z-index: var(--fullscreen-btn-z-index, 10);
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  .sankey :global(.pane-toggle),
-  .sankey .header-controls {
-    opacity: 0;
-    transition:
-      opacity 0.2s,
-      background-color 0.2s;
-  }
-  .sankey:hover :global(.pane-toggle),
-  .sankey:hover .header-controls,
-  .sankey :global(.pane-toggle:focus-visible),
-  .sankey :global(.pane-toggle[aria-expanded='true']),
-  .sankey .header-controls:focus-within {
-    opacity: 1;
-  }
   svg {
     width: var(--sankey-svg-width, 100%);
     height: var(--sankey-svg-height, 100%);

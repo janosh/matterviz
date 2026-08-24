@@ -5,11 +5,11 @@ import {
   type Matrix3x3,
 } from '$lib/math'
 import type { Pbc } from '$lib/structure/pbc'
+import { to_error } from '$lib/utils'
 import type { Dataset, Group } from 'h5wasm'
 import type * as h5wasm from 'h5wasm'
 import {
   convert_atomic_numbers,
-  count_elements,
   create_trajectory_frame,
   is_supported_trajectory_signal_shape,
   values_per_sample,
@@ -123,7 +123,10 @@ const torch_sim_context = (inherited_attribute: (names: string[]) => unknown) =>
     string_value(inherited_attribute([`time_unit`, `time_units`])) ??
     (dt_fs != null ? `fs` : undefined)
   return {
-    timing: time_step != null && time_unit ? { time_step, time_unit } : {},
+    timing:
+      time_step != null && time_step > 0 && time_unit
+        ? { time_step: { value: time_step, unit: time_unit } }
+        : {},
     source_metadata: Object.fromEntries(
       [
         [
@@ -487,7 +490,7 @@ const parse_torch_sim_datasets = (
         } catch (error) {
           return {
             frame_idx,
-            reason: error instanceof Error ? error.message : String(error),
+            reason: to_error(error).message,
           }
         }
       }
@@ -678,10 +681,7 @@ const parse_torch_sim_datasets = (
       lattice,
       pbc_for_frame(frame_idx),
       steps[frame_idx],
-      {
-        ...(energy !== undefined ? { energy } : {}),
-        ...(lattice ? { volume: calc_lattice_params(lattice).volume } : {}),
-      },
+      energy === undefined ? {} : { energy },
     )
     for (const [key, signal] of Object.entries(signal_manifest)) {
       if (!is_per_atom_vector(signal)) continue
@@ -725,8 +725,6 @@ const parse_torch_sim_datasets = (
     ...timing,
     ...(atom_masses ? { atom_masses } : {}),
     metadata: {
-      periodic_boundary_conditions: pbc_for_frame(0),
-      element_counts: count_elements(elements),
       discovered_datasets: {
         positions: position_path,
         atomic_numbers: atomic_number_path,
@@ -737,7 +735,6 @@ const parse_torch_sim_datasets = (
         signals: signal_paths,
       },
       total_groups_found,
-      has_cell_info: Boolean(cells_dataset),
       ...source_metadata,
       ...(dropped_steps > 0 ? { dropped_steps } : {}),
     },

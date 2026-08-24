@@ -6,9 +6,10 @@
   import { is_d3_interpolate_name } from '$lib/colors'
   import { ELEM_PROPERTY_LABELS } from '$lib/labels'
   import type { ScaleContext } from '$lib/periodic-table'
-  import { PeriodicTableControls, TableInset } from '$lib/periodic-table'
+  import { TableInset } from '$lib/periodic-table'
   import { ColorScaleSelect, ElementScatter } from '$lib/plot'
   import { selected } from '$lib/state.svelte'
+  import PeriodicTableControls from '$site/PeriodicTableControls.svelte'
   import { replace_url } from '$site/state.svelte'
   import { Icon } from 'svelte-widgets'
   import { ChevronDown, ChevronRight } from 'svelte-widgets/icons'
@@ -51,16 +52,8 @@
     if (query !== search) void replace_url(`${pathname}${query}${hash}`)
   })
 
-  // Appearance control state
-  let tile_gap: string = $state(`0.3cqw`)
-  let symbol_font_size: number = $state(40)
-  let number_font_size: number = $state(22)
-  let name_font_size: number = $state(12)
-  let value_font_size: number = $state(18)
-  let tooltip_font_size: number = $state(14)
-  let tooltip_bg_color: string = $state(`rgba(0, 0, 0, 0.8)`)
-  let tile_border_radius: number = $state(1)
-  let inner_transition_offset: number = $state(0.5)
+  // Forced tile font color from the controls panel (null = automatic contrast); every other
+  // appearance control there writes a CSS variable the table picks up on its own
   let tile_font_color: string | null = $state(null)
   let controls_open = $state(false)
 
@@ -135,8 +128,6 @@
   bind:active_category={selected.category}
   links="name"
   tooltip={heatmap_key ? custom_tooltip : true}
-  gap={tile_gap}
-  inner_transition_metal_offset={inner_transition_offset}
   show_photo
 >
   {#snippet inset()}
@@ -175,19 +166,7 @@
   </button>
   {#if controls_open}
     <div transition:slide>
-      <PeriodicTableControls
-        bind:tile_gap
-        bind:symbol_font_size
-        bind:number_font_size
-        bind:name_font_size
-        bind:value_font_size
-        bind:tooltip_font_size
-        bind:tooltip_bg_color
-        bind:tile_border_radius
-        bind:inner_transition_offset
-        bind:tile_font_color
-        style="--ptable-ctrl-margin: 1em auto 0"
-      />
+      <PeriodicTableControls bind:tile_font_color style="--ptable-ctrl-margin: 1em auto 0" />
     </div>
   {/if}
 </div>

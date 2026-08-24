@@ -3,6 +3,7 @@
 // accounting the analysis panes display before a sweep starts.
 import type {
   CollectPositionsOptions,
+  ParseProgress,
   TrajectoryFrame,
   TrajectoryPositionStream,
 } from './index'
@@ -27,14 +28,22 @@ export function suggest_analysis_frame_stride(
 }
 
 export type CollectTrajectoryPositionsOptions = CollectPositionsOptions & {
-  // Names the analysis in the error a frame-at-a-time run raises, e.g. `MSD`
+  // Names the analysis in the errors below, e.g. `MSD`
   analysis_name: string
+  // Frames the analysis needs at all (2 for a displacement, 3 for a central difference)
+  min_frames?: number
 }
 
-export const collect_trajectory_positions = (
+// Async so the guards below reject like a failing sweep does, and one catch covers both
+export const collect_trajectory_positions = async (
   run: TrajectoryRun,
-  { analysis_name, ...options }: CollectTrajectoryPositionsOptions,
+  { analysis_name, min_frames = 1, ...options }: CollectTrajectoryPositionsOptions,
 ): Promise<TrajectoryPositionStream> => {
+  if (run.frame_count < min_frames) {
+    throw new Error(
+      `${analysis_name}: need at least ${min_frames} frames, got ${run.frame_count}`,
+    )
+  }
   if (!run.collect_positions) throw new Error(no_full_pass_message(run, analysis_name))
   return run.collect_positions(options)
 }
@@ -46,7 +55,6 @@ export const no_full_pass_message = (run: TrajectoryRun, analysis_name: string):
   `${run.provenance.format ?? `host-served`} trajectory only serves frames one at a time. ` +
   `Open the file directly (not through the host) to analyse it.`
 
-// Frame counts and stride advice for the analysis panes
 // Integer >= 1 from a numeric input, else `fallback`: <input type="number"> writes null when
 // cleared and Infinity for a `1e999` entry, and the sweep/stride helpers reject both outright
 export const positive_int = (value: number | null | undefined, fallback: number): number =>
@@ -57,6 +65,33 @@ export const sweep_progress =
   (on_progress: (progress: { current: number; total: number; stage: string }) => void) =>
   (done: number, total: number): void =>
     on_progress({ current: done, total, stage: `frame ${done} of ${total}` })
+
+// === TrajectoryAnalysisPane contract ===
+
+// What the pane hands to a module's `controls`, `hint` and `children` snippets. Every field
+// is a live getter onto its own signal, so read only what you need: reading `dt_collected`
+// subscribes to the frame stride, and a fresh options object re-runs the module's compute.
+export type AnalysisPaneContext<Input> = {
+  input: Input | undefined
+  // True once a usable timestep is entered; `dt_collected` is then the time between two
+  // COLLECTED frames (source dt × frame stride) in `time_unit`
+  has_valid_dt: boolean
+  dt_collected: number
+  time_unit: string
+  collected_frames: number
+  n_atoms: number
+  // True while `collect` is running, for plots that show their own in-progress state
+  collecting: boolean
+}
+
+// What the pane passes to a module's collector
+export type AnalysisCollectOptions = {
+  frame_stride: number
+  on_progress: (progress: ParseProgress) => void
+  // Aborted once the answer can no longer be used (a newer collect, a trajectory swap, or the
+  // pane unmounting), so collectors that honour it stop reading frames early
+  signal: AbortSignal
+}
 
 export function analysis_pane_setup(
   run: TrajectoryRun | undefined,

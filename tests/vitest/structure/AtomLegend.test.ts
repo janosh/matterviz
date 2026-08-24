@@ -186,7 +186,7 @@ describe(`AtomLegend Component`, () => {
   })
 
   describe(`Mode Selector`, () => {
-    test(`dropdown opens with every mode, disables Wyckoff without sym_data, and closes`, async () => {
+    test(`dropdown opens with every mode, disables modes the structure cannot feed, and closes`, async () => {
       mount_legend({ elements: { Fe: 2 }, sym_data: null })
 
       const mode_toggle = doc_query<HTMLButtonElement>(`button.mode-toggle`)
@@ -198,8 +198,15 @@ describe(`AtomLegend Component`, () => {
       expect(option_texts).toEqual(
         expect.arrayContaining([`Element`, `Coordination`, `Wyckoff Position`]),
       )
-      const wyckoff_option = options.find((opt) => opt.textContent?.includes(`Wyckoff`))
-      expect(wyckoff_option?.disabled).toBe(true)
+      // no sym_data, no site declaring selective dynamics, no colorable property
+      const option_disabled = (text: string) =>
+        options.find((opt) => opt.textContent?.includes(text))?.disabled
+      for (const text of [`Wyckoff`, `Selective Dynamics`, `Site Property`]) {
+        expect(option_disabled(text), text).toBe(true)
+      }
+      for (const text of [`Element`, `Coordination`]) {
+        expect(option_disabled(text), text).toBe(false)
+      }
 
       mode_toggle.click()
       await tick()

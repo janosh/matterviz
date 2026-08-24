@@ -10,8 +10,7 @@ import type {
   TrajectorySignal,
 } from '../index'
 import {
-  assert_frame_idx,
-  disposed_error,
+  sync_run,
   TrajectoryProperties,
   type TrajectoryProvenance,
   type TrajectoryRun,
@@ -134,43 +133,16 @@ export function trajectory_from_frame_source(
   read: (frame_idx: number) => TrajectoryFrame,
   extras: Omit<MemoryRunExtras, `data_extractor`> & { properties: TrajectoryMetadata[] },
 ): TrajectoryRun {
-  if (!Number.isInteger(frame_count) || frame_count < 1) {
-    throw new Error(`Trajectory must have at least one frame, got ${frame_count}`)
-  }
-  const {
-    provenance = {},
-    metadata = {},
-    warnings = [],
-    time_step,
-    atom_masses,
-    signals,
-    properties,
-  } = extras
-  let disposed = false
-  const live = (): void => {
-    if (disposed) throw disposed_error(`In-memory trajectory`)
-  }
-  return {
+  const { provenance = {}, metadata = {}, warnings = [], properties, ...fields } = extras
+  return sync_run({
+    ...fields,
+    label: `In-memory trajectory`,
     frame_count,
-    preview: read(0),
+    read,
     provenance,
-    properties: new TrajectoryProperties(properties, true),
-    ...(time_step ? { time_step } : {}),
-    ...(atom_masses ? { atom_masses } : {}),
-    ...(signals ? { signals } : {}),
     metadata,
     warnings,
-    read_frame: (frame_idx) => {
-      live()
-      assert_frame_idx({ frame_count }, frame_idx)
-      return read(frame_idx)
-    },
-    collect_positions: async (options) => {
-      live()
-      return accumulate_positions(frame_count, read, options)
-    },
-    dispose: () => {
-      disposed = true
-    },
-  }
+    properties: new TrajectoryProperties(properties, true),
+    collect_positions: (options) => accumulate_positions(frame_count, read, options),
+  })
 }

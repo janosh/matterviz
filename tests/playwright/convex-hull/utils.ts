@@ -1,5 +1,19 @@
 import type { Locator, Page } from '@playwright/test'
 
+// The performance page builds synthetic entries client-side (no fixture download), so it is
+// the fast route to a hull of a given size; resolves to the rendered diagram
+export const goto_perf_page = async (
+  page: Page,
+  dim: `3d` | `4d`,
+  query: string,
+): Promise<Locator> => {
+  await page.goto(`/test/convex-hull-performance?dim=${dim}&${query}`, {
+    waitUntil: `networkidle`,
+    timeout: 15_000,
+  })
+  return page.locator(`.convex-hull-${dim}`).first()
+}
+
 export async function ensure_pane_visible(pane: Locator, opener_btn: Locator): Promise<void> {
   // Try to make pane visible by clicking its opener button if needed
   try {

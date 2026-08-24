@@ -14,6 +14,7 @@
     apply_gaussian_smearing,
     calculate_sigma_step,
     closed_edge_path,
+    dos_entries,
     extract_efermi,
     extract_pdos,
     format_dos_tooltip,
@@ -28,10 +29,10 @@
   } from './helpers'
   import {
     convert_frequencies,
-    FREQUENCY_UNITS,
     frequency_unit_label,
     parse_frequency_unit,
   } from './frequency-units'
+  import FrequencyUnitSelect from './FrequencyUnitSelect.svelte'
   import type {
     DosData,
     DosInput,
@@ -61,7 +62,6 @@
     // Controls configuration
     show_controls = $bindable(true),
     controls_open = $bindable(false),
-    show_sigma_control = true,
     show_normalize_control = false,
     show_units_control = false,
     sigma_range = undefined,
@@ -86,7 +86,6 @@
     pdos_filter?: string[] // Filter projected DOS to specific keys (e.g., ["Fe", "O"] for atoms or ["s", "p", "d"] for orbitals)
     // Controls configuration
     show_controls?: boolean // Show the controls pane
-    show_sigma_control?: boolean // Show sigma/smearing control
     show_normalize_control?: boolean // Show normalization selector
     show_units_control?: boolean // Show units selector (phonon DOS only)
     sigma_range?: Vec2 // Min/max range for sigma slider (auto-detected if not provided)
@@ -97,22 +96,15 @@
   // below uses the canonical unit so no $derived throws on an alias
   let unit = $derived(parse_frequency_unit(units) ?? units)
 
-  // Normalize input to dict format - converts any DosInput format to DosData
-  // If pdos_type is set, extract projected DOS from the input instead
+  // Normalized DOS by label (`` for a single DOS). With pdos_type set, the projected DOS of
+  // the input (a single CompleteDos) or of the first dict entry replace the totals.
   let doses_dict = $derived.by((): Record<string, DosData> => {
-    if (!doses) return {}
-
-    // If pdos_type is set, try to extract projected DOS
+    const entries = dos_entries(doses)
     if (pdos_type) {
-      // Try extracting from the doses object directly (single CompleteDos)
-      const pdos = extract_pdos(doses, pdos_type, pdos_filter)
-      if (pdos) return pdos
-
-      // Try extracting from first entry if doses is a dict
-      if (typeof doses === `object` && !(`densities` in doses)) {
-        const first_dos = Object.values(doses)[0]
-        const pdos_from_first = extract_pdos(first_dos, pdos_type, pdos_filter)
-        if (pdos_from_first) return pdos_from_first
+      const first_entry = entries[0]?.[1]
+      for (const candidate of first_entry === doses ? [doses] : [doses, first_entry]) {
+        const pdos = extract_pdos(candidate, pdos_type, pdos_filter)
+        if (pdos) return pdos
       }
       // PDOS extraction was requested but failed - warn and revert to normal processing
       console.warn(
@@ -120,16 +112,8 @@
           `Falling back to total DOS. Ensure input has atom_dos (for atom) or spd_dos (for orbital) data.`,
       )
     }
-
-    if (`densities` in doses && (`frequencies` in doses || `energies` in doses)) {
-      // Single DOS
-      const normalized = normalize_dos(doses)
-      return normalized ? { '': normalized } : {}
-    }
-
-    // Already a dict - normalize each DOS
     const result: Record<string, DosData> = {}
-    for (const [key, dos] of Object.entries(doses as Record<string, DosInput>)) {
+    for (const [key, dos] of entries) {
       const normalized = normalize_dos(dos)
       if (normalized) result[key] = normalized
     }
@@ -378,17 +362,17 @@
     bind:controls_open
   >
     {#snippet tooltip({ x_formatted, y_formatted, label })}
-      {@const tooltip_data = format_dos_tooltip(
+      {@const tooltip_data = format_dos_tooltip({
         x_formatted,
         y_formatted,
-        label ?? null,
+        label: label ?? null,
         is_horizontal,
         is_phonon,
-        unit,
-        final_x_axis.label ?? ``,
-        internal_y_axis.label ?? ``,
-        Object.keys(doses_dict).length,
-      )}
+        units: unit,
+        x_axis_label: final_x_axis.label ?? ``,
+        y_axis_label: internal_y_axis.label ?? ``,
+        num_series: Object.keys(doses_dict).length,
+      })}
       {#if tooltip_data.title}<strong>{tooltip_data.title}</strong><br />{/if}
       {#each tooltip_data.lines as line, line_idx (line_idx)}
         {line}{#if line_idx < tooltip_data.lines.length - 1}<br />{/if}
@@ -419,27 +403,25 @@
         </SettingsSection>
       {/if}
 
-      {#if show_sigma_control}
-        <SettingsSection
-          title="Smearing"
-          current_values={{ sigma }}
-          on_reset={() => (sigma = 0)}
-          layout="flow"
-        >
-          <label title="Gaussian smearing width (σ)">
-            <span>σ</span>
-            <span class="sigma-value">{format_sigma(sigma)}</span>
-            <input
-              id="dos-sigma"
-              type="range"
-              min={safe_sigma_range[0]}
-              max={safe_sigma_range[1]}
-              step={sigma_step}
-              bind:value={sigma}
-            />
-          </label>
-        </SettingsSection>
-      {/if}
+      <SettingsSection
+        title="Smearing"
+        current_values={{ sigma }}
+        on_reset={() => (sigma = 0)}
+        layout="flow"
+      >
+        <label title="Gaussian smearing width (σ)">
+          <span>σ</span>
+          <span class="sigma-value">{format_sigma(sigma)}</span>
+          <input
+            id="dos-sigma"
+            type="range"
+            min={safe_sigma_range[0]}
+            max={safe_sigma_range[1]}
+            step={sigma_step}
+            bind:value={sigma}
+          />
+        </label>
+      </SettingsSection>
 
       {#if show_normalize_control || (show_units_control && is_phonon)}
         <SettingsSection
@@ -466,19 +448,7 @@
             </label>
           {/if}
           {#if show_units_control && is_phonon}
-            <label>
-              <span>Frequency</span>
-              <select
-                id="dos-units"
-                value={unit}
-                onchange={(event) =>
-                  (units = parse_frequency_unit(event.currentTarget.value) ?? unit)}
-              >
-                {#each FREQUENCY_UNITS as option (option)}
-                  <option value={option}>{frequency_unit_label(option)}</option>
-                {/each}
-              </select>
-            </label>
+            <FrequencyUnitSelect id="dos-units" bind:units />
           {/if}
         </SettingsSection>
       {/if}

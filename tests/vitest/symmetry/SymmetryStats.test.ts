@@ -206,17 +206,13 @@ describe(`SymmetryStats`, () => {
       },
     )
 
-    test(`displays "?" in space group when Hermann-Mauguin symbol is missing`, () => {
-      mount_stats({ sym_data: create_mock_sym_data({ hm_symbol: undefined }) })
-      const text = doc_query(`.stats-grid`).textContent
-      // HM symbol is now shown inline with space group number as "225 (?)"
-      expect(text).toContain(`225 (?)`)
-    })
-
-    test(`removes whitespace in Hermann-Mauguin symbol display`, () => {
-      mount_stats({ sym_data: create_mock_sym_data({ number: 227, hm_symbol: `F d -3 m` }) })
-      const text = doc_query(`.stats-grid`).textContent
-      expect(text).toContain(`227 (Fd-3m)`)
+    // the Hermann-Mauguin symbol follows the space group number, condensed; `?` when missing
+    test.each([
+      [{ hm_symbol: undefined }, `225 (?)`],
+      [{ number: 227, hm_symbol: `F d -3 m` }, `227 (Fd-3m)`],
+    ])(`space group tile shows %j as %s`, (overrides, expected) => {
+      mount_stats({ sym_data: create_mock_sym_data(overrides) })
+      expect(doc_query(`.stats-grid`).textContent).toContain(expected)
     })
 
     test.each([

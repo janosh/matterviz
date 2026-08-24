@@ -3,6 +3,7 @@ import { type ColorSchemeName, ELEMENT_COLOR_SCHEMES, pick_contrast_color } from
 import type { CompositionType } from '$lib/composition'
 import type { ElementSymbol } from '$lib/element'
 import { format_num } from '$lib/labels'
+import { format_amount } from './format'
 import { fractional_composition } from './parse'
 
 export type ChartSegment = {
@@ -13,7 +14,7 @@ export type ChartSegment = {
   text_color: string // contrast color for text drawn on top of the segment fill
 }
 
-type ChartLabelOptions = { show_amounts: boolean; show_percentages: boolean }
+export type ChartLabelOptions = { show_amounts: boolean; show_percentages: boolean }
 
 // Positive-amount elements in insertion order with their atomic fraction and scheme color
 export const composition_segments = (
@@ -37,13 +38,12 @@ export const composition_segments = (
 }
 
 // Amount/percentage suffix rendered after the element symbol; `=` separates amount from
-// percentage when both are shown (Fe2=20%). Same format convention as
-// format_composition_formula subscripts (`.3~s`, avoiding SI prefixes for sub-1 amounts)
+// percentage when both are shown (Fe2=20%)
 export const segment_suffix = (
   { amount, fraction }: ChartSegment,
   { show_amounts, show_percentages }: ChartLabelOptions,
 ): string =>
-  (show_amounts ? format_num(amount, Math.abs(amount) < 1 ? `.3~g` : `.3~s`) : ``) +
+  (show_amounts ? format_amount(amount) : ``) +
   (show_amounts && show_percentages ? `=` : ``) +
   (show_percentages ? format_num(fraction, `.1~%`) : ``)
 

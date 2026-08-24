@@ -12,9 +12,8 @@
   import {
     bind_renderer,
     brighten_hex,
-    build_orbit_props,
     create_fly_to,
-    create_orthographic_zoom,
+    create_scene_camera,
     DEFAULT_FLY_TO_DURATION_MS,
     SceneCamera,
     SceneLights,
@@ -68,6 +67,7 @@
   } from '$lib/structure/partial-occupancy'
   import { T, useTask } from '@threlte/core'
   import * as extras from '@threlte/extras'
+  import { rgb } from 'd3-color'
   import { type ComponentProps, type Snippet, untrack } from 'svelte'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import {
@@ -123,17 +123,14 @@
     position: Vec3
   }
 
-  type BondPointerEvent = PointerEvent & {
-    nativeEvent?: PointerEvent
+  // Threlte wraps the DOM event and adds the intersection (hit object and world point)
+  type ThrelteEvent<DomEvent extends Event> = DomEvent & {
+    nativeEvent?: DomEvent
     object?: Object3D
     point?: Vector3
   }
-
-  type BondContextMenuEvent = MouseEvent & {
-    nativeEvent?: MouseEvent
-    object?: Object3D
-    point?: Vector3
-  }
+  type BondPointerEvent = ThrelteEvent<PointerEvent>
+  type BondContextMenuEvent = ThrelteEvent<MouseEvent>
 
   let {
     structure = undefined,
@@ -159,11 +156,11 @@
     show_site_labels = DEFAULTS.structure.show_site_labels,
     show_site_indices = DEFAULTS.structure.show_site_indices,
     site_label_size = DEFAULTS.structure.site_label_size,
-    site_label_offset = $bindable(DEFAULTS.structure.site_label_offset),
+    site_label_offset = DEFAULTS.structure.site_label_offset,
     site_label_bg_color = DEFAULTS.structure.site_label_bg_color,
     site_label_color = DEFAULTS.structure.site_label_color,
     site_label_padding = DEFAULTS.structure.site_label_padding,
-    vector_configs = $bindable<Record<string, VectorLayerConfig>>({}),
+    vector_configs = {},
     vector_scale = DEFAULTS.structure.vector_scale,
     vector_color = DEFAULTS.structure.vector_color,
     vector_color_mode = DEFAULTS.structure.vector_color_mode as VectorColorMode,
@@ -224,7 +221,7 @@
     bond_edit_order = 1,
     selection_highlight_color = `#6cf0ff`,
     // Active highlight group with different color
-    active_sites = $bindable([]),
+    active_sites = [],
     active_highlight_color = `var(--struct-active-highlight-color, #2563eb)`,
     rotation = DEFAULTS.structure.rotation,
     scene = $bindable(),
@@ -232,7 +229,7 @@
     orbit_controls = $bindable(),
     rotation_target_ref = $bindable(),
     initial_computed_zoom = $bindable(),
-    hidden_elements = $bindable(new SvelteSet()),
+    hidden_elements = new SvelteSet(),
     hidden_prop_vals = $bindable(new SvelteSet<number | string>()),
     element_radius_overrides = $bindable<Partial<Record<ElementSymbol, number>>>({}),
     site_radius_overrides = $bindable<SvelteMap<number, number>>(new SvelteMap()),
@@ -364,7 +361,7 @@
     hidden_elements?: Set<ElementSymbol>
     hidden_prop_vals?: Set<number | string> // Track hidden property values (e.g. Wyckoff positions, coordination numbers)
     element_radius_overrides?: Partial<Record<ElementSymbol, number>> // Per-element absolute radius in Angstroms
-    site_radius_overrides?: Map<number, number> | SvelteMap<number, number> // Per-site absolute radius in Angstroms
+    site_radius_overrides?: SvelteMap<number, number> // Per-site absolute radius in Angstroms
     // Per-site colors/values for the active non-element coloring mode, indexed by the sites of
     // `structure` (see StructureSession.property_colors). Null = color atoms by element.
     property_colors?: AtomPropertyColors | null
@@ -423,7 +420,7 @@
   // off-screen viewport every frame — once per pane in the 2x2 multi-side view.
   const pulse = create_pulse_animation(
     () => selected_sites.length > 0 || active_sites.length > 0,
-    { step: 0.015, frequency: 5, element: () => threlte.renderer?.domElement },
+    { step: 0.015, element: () => threlte.renderer?.domElement },
   )
   let pulse_opacity = $derived(pulsing_highlight_opacity(pulse.unit))
 
@@ -612,9 +609,6 @@
       !is_image_bond_site(target.site_idx_2)
     )
   }
-
-  const format_bond_order = (order: BondOrder | undefined): string =>
-    order === undefined ? `1` : `${order}`
 
   function get_current_bond_order(
     site_idx_1: number,
@@ -1095,28 +1089,19 @@
   // Excludes PBC image atoms (orig_site_idx) so toggling image atoms doesn't affect arrow sizing.
   let char_atom_spacing = $derived.by(() => {
     if (!lattice || !structure?.sites?.length) return structure_size
-    const n_real = structure.sites.filter((site) => !is_image_site(site)).length
+    // counted, not filtered: this re-runs on every trajectory frame of a supercell
+    let n_real = 0
+    for (const site of structure.sites) if (!is_image_site(site)) n_real += 1
     return n_real > 0 ? Math.cbrt(lattice.volume / n_real) : structure_size
   })
 
-  // When uniform thickness is on, convert negative (length-relative) radii to
-  // positive (absolute) values scaled by inter-atomic spacing.
-  // Already-positive (absolute) values are preserved as-is.
-  let eff_shaft_radius = $derived(
-    vector_uniform_thickness && vector_shaft_radius < 0
-      ? char_atom_spacing * -vector_shaft_radius
-      : vector_shaft_radius,
-  )
-  let eff_head_radius = $derived(
-    vector_uniform_thickness && vector_arrow_head_radius < 0
-      ? char_atom_spacing * -vector_arrow_head_radius
-      : vector_arrow_head_radius,
-  )
-  let eff_head_length = $derived(
-    vector_uniform_thickness && vector_arrow_head_length < 0
-      ? char_atom_spacing * -vector_arrow_head_length
-      : vector_arrow_head_length,
-  )
+  // Uniform thickness turns negative (length-relative) arrow sizes into absolute ones scaled
+  // by the inter-atomic spacing; positive (already absolute) values pass through
+  const uniform_arrow_size = (size: number): number =>
+    vector_uniform_thickness && size < 0 ? char_atom_spacing * -size : size
+  let eff_shaft_radius = $derived(uniform_arrow_size(vector_shaft_radius))
+  let eff_head_radius = $derived(uniform_arrow_size(vector_arrow_head_radius))
+  let eff_head_length = $derived(uniform_arrow_size(vector_arrow_head_length))
 
   // Compute dynamic camera clipping planes based on structure size
   // This prevents z-fighting and disappearing objects when zooming in close on large supercells
@@ -1144,12 +1129,33 @@
     fit_zoom = next_fit_zoom
     initial_computed_zoom = next_fit_zoom
   })
-  const ortho_zoom = create_orthographic_zoom({
+  const scene_camera = create_scene_camera({
+    controls: () => ({
+      camera_projection,
+      rotate_speed,
+      zoom_speed,
+      zoom_to_cursor,
+      pan_speed,
+      auto_rotate,
+      rotation_damping,
+      min_zoom,
+      max_zoom,
+    }),
+    target: () => camera_target ?? rotation_target,
     fit_zoom: () => fit_zoom,
-    min_zoom: () => min_zoom,
-    max_zoom: () => max_zoom,
     measured: () => width > 0 && height > 0,
     camera: () => camera,
+    set_camera_is_moving: (moving) => (camera_is_moving = moving),
+    // Close hover tooltips + bond context menu while the camera moves. Only hide the
+    // VISIBLE menu (not bond_context_target): clicking a menu button fires this
+    // orbit-controls start handler before the button's own handler runs, which still
+    // needs the target bond to apply the edit (see bond_context_target comment).
+    on_start_extra: () => {
+      cancel_atom_hover_clear()
+      hovered_idx = null
+      hovered_bond_key = null
+      bond_context_menu = null
+    },
   })
 
   $effect.pre(() => {
@@ -1162,7 +1168,7 @@
       const next_fit_zoom = zoom_for(fit_extent)
       fit_zoom = next_fit_zoom
       initial_computed_zoom = next_fit_zoom
-      ortho_zoom.reset_to_fit()
+      scene_camera.reset_to_fit()
       // Orthographic framing is controlled by zoom; its camera only needs a safe standoff.
       const distance =
         camera_projection === `perspective`
@@ -1580,8 +1586,8 @@
   )
 
   // Radius of a site that atom_data may have filtered out (highlight fallback)
-  const get_site_radius = (site: Site, site_idx: number | null): number =>
-    site_base_radius(site, site_idx ?? -1, {
+  const get_site_radius = (site: Site, site_idx: number): number =>
+    site_base_radius(site, site_idx, {
       same_size_atoms,
       element_radius_overrides,
       site_radius_overrides,
@@ -1594,54 +1600,41 @@
   type HighlightTarget = {
     kind: `hover` | `selected` | `active`
     site: Site
-    site_idx: number | null
+    site_idx: number
     color: string
     radius: number
   }
   let highlight_targets: HighlightTarget[] = $derived.by(() => {
     const targets: HighlightTarget[] = []
-    const add = (
-      kind: HighlightTarget[`kind`],
-      site: Site | null,
-      site_idx: number | null,
-      color: string,
-    ) => {
+    const add = (kind: HighlightTarget[`kind`], site_idx: number, color: string) => {
+      const site = structure?.sites?.[site_idx]
       if (!site) return
       const radius =
-        site_idx !== null
-          ? (atom_groups.first_by_site.get(site_idx)?.radius ??
-            get_site_radius(site, site_idx))
-          : get_site_radius(site, site_idx)
+        atom_groups.first_by_site.get(site_idx)?.radius ?? get_site_radius(site, site_idx)
       targets.push({ kind, site, site_idx, color, radius })
     }
-    const hover_color =
-      hovered_idx !== null
-        ? brighten_hex(
-            atom_groups.first_by_site.get(hovered_idx)?.color ??
-              (hovered_site?.species[0] && colors.element?.[hovered_site.species[0].element]),
-          )
-        : brighten_hex(undefined)
-    add(`hover`, hovered_site, hovered_idx, hover_color)
-    for (const idx of selected_sites ?? []) {
-      add(`selected`, structure?.sites?.[idx] ?? null, idx, selection_highlight_color)
+    if (hovered_idx !== null) {
+      const hover_color =
+        atom_groups.first_by_site.get(hovered_idx)?.color ??
+        (hovered_site?.species[0] && colors.element?.[hovered_site.species[0].element])
+      add(`hover`, hovered_idx, brighten_hex(hover_color))
     }
-    for (const idx of active_sites ?? []) {
-      add(`active`, structure?.sites?.[idx] ?? null, idx, active_highlight_color)
-    }
+    for (const idx of selected_sites) add(`selected`, idx, selection_highlight_color)
+    for (const idx of active_sites) add(`active`, idx, active_highlight_color)
     return targets
   })
 
-  // Interpolate between spin-down (#3498db blue) and spin-up (#e74c3c red)
-  // based on the z-component direction of a magnetic vector
+  // sRGB blend from spin-down blue to spin-up red by the z-component direction of a magnetic
+  // vector (0 = down, 1 = up; a zero vector sits in the middle)
+  const [spin_down_rgb, spin_up_rgb] = [rgb(`#3498db`), rgb(`#e74c3c`)]
   function spin_direction_color(vec: Vec3): string {
     const mag = Math.hypot(...vec)
-    const z_frac = mag > 1e-10 ? (vec[2] / mag + 1) / 2 : 0.5 // 0=down, 1=up
-    const red = Math.round(52 + (231 - 52) * z_frac)
-    const grn = Math.round(152 + (76 - 152) * z_frac)
-    const blu = Math.round(219 + (60 - 219) * z_frac)
-    return `#${red.toString(16).padStart(2, `0`)}${grn
-      .toString(16)
-      .padStart(2, `0`)}${blu.toString(16).padStart(2, `0`)}`
+    const z_frac = mag > 1e-10 ? (vec[2] / mag + 1) / 2 : 0.5
+    return rgb(
+      math.lerp(spin_down_rgb.r, spin_up_rgb.r, z_frac),
+      math.lerp(spin_down_rgb.g, spin_up_rgb.g, z_frac),
+      math.lerp(spin_down_rgb.b, spin_up_rgb.b, z_frac),
+    ).formatHex()
   }
 
   // Build one arrow layer per visible vector key. Auto-scales the longest
@@ -1862,32 +1855,24 @@
       : [],
   )
 
-  let orbit_controls_props = $derived(
-    build_orbit_props({
-      camera_projection,
-      target: camera_target ?? rotation_target,
-      rotate_speed,
-      zoom_speed,
-      zoom_to_cursor,
-      pan_speed,
-      auto_rotate,
-      rotation_damping,
-      // zoom limits (the initial fit may sit below the interaction floor for large structures)
-      // plus the gesture-end sync that keeps the user's zoom as the resize baseline
-      ...ortho_zoom.orbit_zoom_props(),
-      set_camera_is_moving: (moving) => (camera_is_moving = moving),
-      // Close hover tooltips + bond context menu while the camera moves. Only hide the
-      // VISIBLE menu (not bond_context_target): clicking a menu button fires this
-      // orbit-controls start handler before the button's own handler runs, which still
-      // needs the target bond to apply the edit (see bond_context_target comment).
-      on_start_extra: () => {
-        cancel_atom_hover_clear()
-        hovered_idx = null
-        hovered_bond_key = null
-        bond_context_menu = null
-      },
-    }),
-  )
+  // Hovered site's bonded neighbours for the tooltip, e.g. `3 (N: 2, O: 1)`; null when none
+  let hovered_bond_summary = $derived.by((): string | null => {
+    if (hovered_idx === null || !structure?.sites) return null
+    const counts: Record<string, number> = {}
+    let total = 0
+    for (const { site_idx_1, site_idx_2 } of filtered_bond_pairs) {
+      if (site_idx_1 !== hovered_idx && site_idx_2 !== hovered_idx) continue
+      const neighbor_idx = site_idx_1 === hovered_idx ? site_idx_2 : site_idx_1
+      const element = structure.sites[neighbor_idx]?.species[0]?.element ?? `?`
+      counts[element] = (counts[element] ?? 0) + 1
+      total += 1
+    }
+    if (total === 0) return null
+    const parts = Object.entries(counts)
+      .toSorted(([elem_a], [elem_b]) => elem_a.localeCompare(elem_b))
+      .map(([elem, count]) => `${elem}: ${count}`)
+    return `${total} (${parts.join(`, `)})`
+  })
 
   let measure_line_color = $derived.by(() => {
     if (typeof window === `undefined`) return
@@ -1898,7 +1883,7 @@
 </script>
 
 {#snippet site_label_snippet(site_idx: number)}
-  {@const site = structure!.sites[site_idx]}
+  {@const site = structure?.sites[site_idx]}
   {#if site}
     {#if atom_label}
       {@render atom_label({ site, site_idx })}
@@ -1945,10 +1930,10 @@
   {camera_projection}
   position={camera_position}
   fov={effective_fov}
-  zoom={ortho_zoom.zoom}
+  zoom={scene_camera.zoom}
   near={camera_near}
   far={camera_far}
-  orbit_props={orbit_controls_props}
+  orbit_props={scene_camera.orbit_props}
   {gizmo}
   bind:orbit_controls
 />
@@ -2204,7 +2189,7 @@
         )}
         <extras.HTML autoRender={false} position={bond_context_menu.position}>
           <div class="bond-context-menu">
-            <strong>Bond Order ({format_bond_order(current_order)})</strong>
+            <strong>Bond Order ({current_order ?? 1})</strong>
             {#each BOND_ORDER_OPTIONS as { order, label } (label)}
               <button
                 type="button"
@@ -2265,33 +2250,9 @@
       {#if hovered_site && !camera_is_moving && (atom_tooltip_active || active_sites.includes(hovered_idx ?? -1))}
         {@const abc = hovered_site.abc.map((val) => format_num(val, FLOAT_FMT)).join(`, `)}
         {@const xyz = hovered_site.xyz.map((val) => format_num(val, FLOAT_FMT)).join(`, `)}
-        {@const bond_neighbors = (() => {
-          if (hovered_idx == null || !structure?.sites) return []
-          return filtered_bond_pairs
-            .filter(
-              (bond) => bond.site_idx_1 === hovered_idx || bond.site_idx_2 === hovered_idx,
-            )
-            .map((bond) => {
-              const neighbor_idx =
-                bond.site_idx_1 === hovered_idx ? bond.site_idx_2 : bond.site_idx_1
-              return structure.sites[neighbor_idx]?.species[0]?.element ?? `?`
-            })
-        })()}
-        {@const bond_summary = (() => {
-          if (bond_neighbors.length === 0) return ``
-          const counts: Record<string, number> = {}
-          for (const elem of bond_neighbors) {
-            counts[elem] = (counts[elem] ?? 0) + 1
-          }
-          const parts = Object.entries(counts)
-            .sort(([a], [b]) => a.localeCompare(b))
-            .map(([elem, count]) => `${elem}: ${count}`)
-          return ` (${parts.join(`, `)})`
-        })()}
         {@const tooltip_species =
           render_sites.find((rs) => rs.site_idx === hovered_idx)?.site.species ??
-          hovered_site.species ??
-          []}
+          hovered_site.species}
         <CanvasTooltip position={hovered_site.xyz}>
           <!-- Element symbols with occupancies for disordered sites -->
           <div class="elements" style="margin-bottom: var(--canvas-tooltip-elements-margin)">
@@ -2311,8 +2272,8 @@
           </div>
           <div class="coordinates">abc: ({abc})</div>
           <div class="coordinates">xyz: ({xyz}) Å</div>
-          {#if bond_neighbors.length > 0}
-            <div class="coordinates">Bonds: {bond_neighbors.length}{bond_summary}</div>
+          {#if hovered_bond_summary}
+            <div class="coordinates">Bonds: {hovered_bond_summary}</div>
           {/if}
         </CanvasTooltip>
       {/if}

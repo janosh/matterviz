@@ -1,7 +1,7 @@
 <script lang="ts">
   import { ChemPotDiagram, ChemPotDiagram2D, ChemPotDiagram3D } from '$lib/chempot-diagram'
   import type { PhaseData } from '$lib/convex-hull'
-  import { quaternary_files } from '$site/convex-hull'
+  import { filter_by_elements, quaternary_loader } from '$site/convex-hull'
   import { create_temp_ternary_entries_li_fe_o } from '$site/convex-hull/demo-temperature'
   import Spinner from '$lib/feedback/Spinner.svelte'
   import { onMount } from 'svelte'
@@ -60,30 +60,12 @@
 
   async function load_quaternary_entries(): Promise<void> {
     try {
-      const li_co_ni_o_path = Object.keys(quaternary_files).find((path) =>
-        path.includes(`Li-Co-Ni-O`),
-      )
-      if (!li_co_ni_o_path) {
-        quaternary_error = `Li-Co-Ni-O data file not found`
-        return
-      }
-
-      all_entries = (await quaternary_files[li_co_ni_o_path]()).default
+      all_entries = (await quaternary_loader(`Li-Co-Ni-O`)()).default
     } catch (error) {
       quaternary_error = `Failed to load data: ${to_error(error).message}`
     } finally {
       quaternary_loading = false
     }
-  }
-
-  // Filter entries to only include those with compositions from target elements
-  function filter_by_elements(entries: PhaseData[], elements: string[]): PhaseData[] {
-    const element_set = new SvelteSet(elements)
-    return entries.filter((entry) =>
-      Object.entries(entry.composition)
-        .filter(([, amt]) => amt > 0)
-        .every(([el]) => element_set.has(el)),
-    )
   }
 
   // Binary subset for 2D demo

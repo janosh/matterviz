@@ -128,70 +128,48 @@ describe(`Line`, () => {
     ])
   })
 
-  test(`calculates line path correctly for 2 and 3 points`, () => {
-    const origin: Vec2 = [0, 100]
-
-    // Test with 3 points (expects curve 'C')
-    const points_3: Vec2[] = [
-      [0, 100],
-      [100, 0],
-      [200, 100],
-    ]
-    mount(Line, {
-      target: document.body,
-      props: { points: points_3, origin, line_tween: { duration: 0 } },
-    })
-
-    const paths_3 = document.querySelectorAll(`path`)
-    expect(paths_3[0].getAttribute(`d`)).toMatch(/^M0,100C.*100,0.*C.*200,100$/)
-
-    // Clean up target before remounting
-    document.body.innerHTML = ``
-
-    // Test with 2 points (expects line 'L')
-    const points_2: Vec2[] = [
-      [0, 100],
-      [100, 0],
-    ]
-    mount(Line, {
-      target: document.body, // Reuse the cleaned div
-      props: { points: points_2, origin, line_tween: { duration: 0 } },
-    })
-
-    const paths_2 = document.querySelectorAll(`path`)
-    expect(paths_2[0].getAttribute(`d`)).toMatch(/^M0,100L100,0$/)
-  })
-
+  const three_points: Vec2[] = [
+    [0, 100],
+    [100, 0],
+    [200, 100],
+  ]
+  // line path per curve and point count; the area closes the line along y = origin[1]
   test.each([
-    [`linear`, /^M0,100L100,0L200,100$/], // straight segments between points
-    [`monotone`, /^M0,100C/], // default cubic spline (curveMonotoneX)
-  ] as const)(`curve=%s sets line interpolation`, (curve, expected) => {
-    const points: Vec2[] = [
-      [0, 100],
-      [100, 0],
-      [200, 100],
-    ]
+    {
+      name: `monotone over 3 points`,
+      points: three_points,
+      curve: undefined,
+      line: /^M0,100C.*100,0.*C.*200,100$/,
+    },
+    {
+      name: `linear over 3 points`,
+      points: three_points,
+      curve: `linear`,
+      line: /^M0,100L100,0L200,100$/,
+    },
+    {
+      name: `2 points (a straight segment)`,
+      points: [
+        [0, 50],
+        [100, 0],
+      ],
+      curve: undefined,
+      line: /^M0,50L100,0$/,
+      area: /^M0,50L100,0L100,100L0,100Z$/,
+    },
+  ] as const)(`draws $name`, ({ points, curve, line, area }) => {
     mount(Line, {
       target: document.body,
-      props: { points, origin: [0, 100], curve, line_tween: { duration: 0 } },
+      props: {
+        points: points.map((pt): Vec2 => [...pt]),
+        origin: [0, 100],
+        curve,
+        line_tween: { duration: 0 },
+      },
     })
-    expect(document.querySelectorAll(`path`)[0].getAttribute(`d`)).toMatch(expected)
-  })
-
-  test(`calculates area path correctly with 2 points`, () => {
-    const points: Vec2[] = [
-      [0, 50],
-      [100, 0],
-    ]
-    const origin: Vec2 = [0, 100] // Y origin at 100
-
-    mount(Line, {
-      target: document.body,
-      props: { points, origin, line_tween: { duration: 0 } },
-    })
-
-    const area_path = document.querySelectorAll(`path`)[1]
-    expect(area_path.getAttribute(`d`)).toMatch(/^M0,50L100,0L100,100L0,100Z$/)
+    const paths = document.querySelectorAll(`path`)
+    expect(paths[0].getAttribute(`d`)).toMatch(line)
+    if (area) expect(paths[1].getAttribute(`d`)).toMatch(area)
   })
 
   test.each([`transparent`, `none`])(
@@ -211,21 +189,6 @@ describe(`Line`, () => {
       expect(paths[1].getAttribute(`d`)).toBe(``)
     },
   )
-
-  test(`handles empty points array`, () => {
-    const points: Vec2[] = []
-    const origin: Vec2 = [0, 100]
-
-    mount(Line, {
-      target: document.body,
-      props: { points, origin, line_tween: { duration: 0 } },
-    })
-
-    const paths = document.querySelectorAll(`path`)
-    expect(paths).toHaveLength(2)
-    expect(paths[0].getAttribute(`d`)).toBe(``)
-    expect(paths[1].getAttribute(`d`)).toBe(``)
-  })
 
   // While morphing is off the template binds the raw path, but the tween keeps its own value.
   // Left frozen at whatever it last animated to, re-enabling would snap the line back there
@@ -262,19 +225,27 @@ describe(`Line`, () => {
     }
   })
 
-  test(`handles single point array`, () => {
-    const points: Vec2[] = [[50, 50]]
-    const origin: Vec2 = [0, 100]
-
+  test.each([
+    { name: `no points`, points: [], line: /^$/, area: /^$/ },
+    {
+      name: `a single point`,
+      points: [[50, 50]],
+      line: /^M50,50Z?$/,
+      area: /^M50,50Z?L50,100L50,100Z$/,
+    },
+  ] as const)(`renders both paths for $name`, ({ points, line, area }) => {
     mount(Line, {
       target: document.body,
-      props: { points, origin, line_tween: { duration: 0 } },
+      props: {
+        points: points.map((pt): Vec2 => [...pt]),
+        origin: [0, 100],
+        line_tween: { duration: 0 },
+      },
     })
-
     const paths = document.querySelectorAll(`path`)
     expect(paths).toHaveLength(2)
-    expect(paths[0].getAttribute(`d`)).toMatch(/^M50,50Z?$/)
-    expect(paths[1].getAttribute(`d`)).toMatch(/^M50,50Z?L50,100L50,100Z$/)
+    expect(paths[0].getAttribute(`d`)).toMatch(line)
+    expect(paths[1].getAttribute(`d`)).toMatch(area)
   })
 
   test(`passes additional props to path elements`, () => {

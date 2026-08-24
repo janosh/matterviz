@@ -1,11 +1,12 @@
 <script lang="ts">
   import { NumberRangeInput, SettingsSection } from '$lib/layout'
   import PlotControls from '$lib/plot/core/components/PlotControls.svelte'
-  import type {
-    DataSeries,
-    PlotConfig,
-    PlotControlsProps,
-    StyleOverrides,
+  import {
+    type DataSeries,
+    DEFAULT_MARKERS,
+    type PlotConfig,
+    type PlotControlsProps,
+    type StyleOverrides,
   } from '$lib/plot/core/types'
   import { DEFAULTS } from '$lib/settings'
   import type { Snippet } from 'svelte'
@@ -45,7 +46,7 @@
 
   // Derive what marker types are present, and whether color/size are data-driven
   const markers_include = (mode: string) =>
-    visible_series.some((srs) => (srs?.markers ?? `line+points`).includes(mode))
+    visible_series.some((srs) => (srs?.markers ?? DEFAULT_MARKERS).includes(mode))
   let has_any_lines = $derived(markers_include(`line`))
   let has_any_points = $derived(markers_include(`points`))
   let has_color_data = $derived(

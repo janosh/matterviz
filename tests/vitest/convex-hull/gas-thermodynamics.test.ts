@@ -5,7 +5,6 @@ import {
   compute_gas_correction,
   DEFAULT_ELEMENT_TO_GAS,
   format_chemical_potential,
-  format_pressure,
   GAS_STOICHIOMETRY,
   get_default_gas_provider,
   get_effective_pressures,
@@ -242,19 +241,6 @@ describe(`gas-thermodynamics: formatting`, () => {
     [-1.23456, 4, `-1.2346 eV`],
   ])(`format_chemical_potential(%s, %s) = %s`, (mu, decimals, expected) => {
     expect(format_chemical_potential(mu, decimals)).toBe(expected)
-  })
-
-  test.each([
-    [0.21, /bar/, true],
-    [1e-6, /e/, true],
-    [1e5, /e/, true],
-    [0.5, /e/, false],
-    [10, /e/, false],
-  ])(`format_pressure(%s) %s pattern`, (P, pattern, should_match) => {
-    const result = format_pressure(P)
-    expect(result).toMatch(/bar/)
-    if (should_match) expect(result).toMatch(pattern)
-    else expect(result).not.toMatch(pattern)
   })
 })
 

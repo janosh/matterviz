@@ -1,9 +1,10 @@
-// Layout helpers for Sunburst charts, wrapping d3-hierarchy's partition.
-// Single source of truth for the hierarchy/angle math so the component stays
-// declarative and the layout is independently unit-testable. The partition is
-// computed in normalized coordinates (angle as fraction of full circle in [0, 1],
-// radius in integer ring units where y0 === depth) independent of pixel size and
-// zoom — the component maps these to screen space per frame (zoomable-sunburst trick).
+// Hierarchy layout shared by the part-of-whole charts (Sunburst, Treemap), wrapping
+// d3-hierarchy's partition. Single source of truth for the tree semantics (value modes,
+// sorting, 'Other' bucketing, color inheritance, stable ids, pre-order indexing) so the
+// components stay declarative and the layout is independently unit-testable. The partition
+// is computed in normalized coordinates (angle as fraction of full circle in [0, 1], radius
+// in integer ring units where y0 === depth) independent of pixel size and zoom — Sunburst
+// maps these to screen space per frame (zoomable-sunburst trick), Treemap re-tiles them.
 
 import { hsl } from 'd3-color'
 import type { HierarchyRectangularNode } from 'd3-hierarchy'

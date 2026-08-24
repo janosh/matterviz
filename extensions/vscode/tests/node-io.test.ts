@@ -48,7 +48,9 @@ describe(`stream_file_to_buffer`, () => {
   test(`rejects files above the shared host buffer limit`, async () => {
     mock_vscode.workspace.fs.stat.mockResolvedValue({ size: MAX_STREAMING_FILE_SIZE + 1 })
 
-    await expect(stream_file_to_buffer(`/tmp/too-large.traj`)).rejects.toThrow(`Maximum: 1GB`)
+    await expect(stream_file_to_buffer(`/tmp/too-large.traj`)).rejects.toThrow(
+      `Maximum: 1.00 GiB`,
+    )
     expect(mock_vscode.workspace.fs.readFile).not.toHaveBeenCalled()
   })
 })

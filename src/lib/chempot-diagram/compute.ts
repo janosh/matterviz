@@ -7,6 +7,8 @@ import { compute_quickhull_nd, get_energy_per_atom } from '$lib/convex-hull/ther
 import type { PhaseData } from '$lib/convex-hull/types'
 import {
   array_extent,
+  array_max,
+  array_min,
   combinations,
   convex_hull_2d,
   cross_3d,
@@ -67,6 +69,17 @@ export function formula_key_from_composition(composition: Record<string, number>
     .join(``)
   formula_cache.set(composition, key)
   return key
+}
+
+// Sorted elements present (positive amount) in any entry: the chemical system of a dataset
+export function entry_elements(entries: PhaseData[]): string[] {
+  const elements = new Set<string>()
+  for (const entry of entries) {
+    for (const [element, amount] of Object.entries(entry.composition)) {
+      if (amount > 0) elements.add(element)
+    }
+  }
+  return [...elements].toSorted()
 }
 
 // === Core Algorithm ===
@@ -240,8 +253,7 @@ export function build_hyperplanes(
     const row = Array(n_elems + 1).fill(0)
     let ref_energy = 0
     for (let elem_idx = 0; elem_idx < n_elems; elem_idx++) {
-      const element = elements[elem_idx]
-      const fraction = atom_count > 0 ? (composition[element] ?? 0) / atom_count : 0
+      const fraction = (composition[elements[elem_idx]] ?? 0) / atom_count
       row[elem_idx] = fraction
       ref_energy += fraction * element_ref_energies[elem_idx]
     }
@@ -365,7 +377,7 @@ export function chebyshev_centre(
     const ratios = tableau.map((line) =>
       line[enter] > LP_TOL ? line[rhs_col] / line[enter] : Infinity,
     )
-    const min_ratio = Math.min(...ratios)
+    const min_ratio = array_min(ratios)
     // Unreachable in practice: r is bounded by the upper borders (each axis contributes a row
     // with +1 in the r column), so every improving column has a positive pivot candidate
     if (min_ratio === Infinity) break
@@ -423,7 +435,7 @@ export function compute_domains(
   const slacks = all_hs.map((halfspace) => -halfspace_value(halfspace, centre, dim))
   // Scale dual points so the nearest halfspace maps to unit distance (keeps quickhull's
   // absolute tolerance meaningful regardless of the eV scale of the limits)
-  const scale = Math.min(...slacks)
+  const scale = array_min(slacks)
   const dual_points = all_hs.map((halfspace, idx) =>
     halfspace.slice(0, dim).map((coeff) => (coeff * scale) / slacks[idx]),
   )
@@ -552,7 +564,7 @@ export function simple_pca(
     // own axis), where power iteration stalls on the first step and returns a spurious
     // zero-eigenvalue direction ahead of the real principal axes.
     const row_norms = work_cov.map((row) => Math.hypot(...row))
-    const seed_idx = row_norms.indexOf(Math.max(...row_norms))
+    const seed_idx = row_norms.indexOf(array_max(row_norms))
     let vec: number[] =
       row_norms[seed_idx] > EPS
         ? work_cov[seed_idx].map((val) => val / row_norms[seed_idx])
@@ -739,8 +751,7 @@ export function scale_to_font_range(
   min_font: number,
   max_font: number,
 ): number[] {
-  const min_size = Math.min(...sizes)
-  const max_size = Math.max(...sizes)
+  const [min_size, max_size] = array_extent(sizes)
   const range = max_size - min_size
   const mid = (min_font + max_font) / 2
   return sizes.map((size) =>
@@ -908,14 +919,7 @@ export function compute_chempot_diagram(
     limits,
   } = config
 
-  // Detect all unique elements across all input entries (single pass, low allocation)
-  const all_data_elements_set = new Set<string>()
-  for (const entry of entries) {
-    for (const [element, amount] of Object.entries(entry.composition)) {
-      if (amount > 0) all_data_elements_set.add(element)
-    }
-  }
-  const all_data_elements = Array.from(all_data_elements_set).toSorted()
+  const all_data_elements = entry_elements(entries)
 
   // Display elements: user-specified order (controls axis mapping), or auto-detect
   const display_elements = config.elements?.length ? [...config.elements] : all_data_elements

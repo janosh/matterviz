@@ -44,39 +44,38 @@ describe(`compute_box_stats`, () => {
     )
   })
 
-  test(`tukey flags a high outlier and shrinks the upper whisker`, () => {
-    const stats = compute_box_stats([1, 2, 3, 4, 5, 6, 7, 8, 9, 100], {
-      whisker_mode: `tukey`,
-    })
-    // q3 = 7.75, IQR = 4.5, high_bound = 14.5 => 100 is an outlier, whisker at 9
-    expect(stats.outliers).toEqual([100])
-    expect(stats.whisker_high).toBe(9)
-    expect(stats.whisker_low).toBe(1)
-  })
-
-  test(`can skip outlier materialization while preserving whiskers`, () => {
-    const values = [1, 2, 3, 4, 5, 6, 7, 8, 9, 100]
-    const full = compute_box_stats(values, { whisker_mode: `tukey` })
-    const skipped = compute_box_stats(values, {
-      whisker_mode: `tukey`,
-      collect_outliers: false,
-    })
-    expect(skipped.outliers).toEqual([])
-    expect(skipped.whisker_low).toBe(full.whisker_low)
-    expect(skipped.whisker_high).toBe(full.whisker_high)
-    expect(skipped.q1).toBe(full.q1)
-    expect(skipped.median).toBe(full.median)
-    expect(skipped.q3).toBe(full.q3)
-  })
-
-  test(`minmax: whiskers reach data extremes, no outliers`, () => {
-    const stats = compute_box_stats([1, 2, 3, 4, 5, 6, 7, 8, 9, 100], {
-      whisker_mode: `minmax`,
-    })
-    expect(stats.whisker_low).toBe(1)
-    expect(stats.whisker_high).toBe(100)
-    expect(stats.outliers).toEqual([])
-  })
+  // One skewed sample [1..9, 100] under each whisker mode. tukey: q3 = 7.75, IQR = 4.5 ->
+  // upper fence 14.5, so 100 is an outlier and the whisker stops at 9. std (range 1): mean
+  // 14.5 + sample std sqrt(8182.5 / 9) ~ 44.65 caps the whisker below the outlier; the low
+  // whisker clamps to the data minimum in every mode.
+  const skewed = [1, 2, 3, 4, 5, 6, 7, 8, 9, 100]
+  test.each([
+    { whisker_mode: `tukey`, whisker_high: 9, outliers: [100] },
+    { whisker_mode: `minmax`, whisker_high: 100, outliers: [] },
+    {
+      whisker_mode: `std`,
+      whisker_range: 1,
+      whisker_high: 14.5 + Math.sqrt(8182.5 / 9),
+      outliers: [100],
+    },
+  ] as const)(
+    `$whisker_mode whiskers on a skewed sample`,
+    ({ whisker_high, outliers, ...opts }) => {
+      const stats = compute_box_stats(skewed, opts)
+      expect(stats.whisker_low).toBe(1)
+      expect(stats.whisker_high).toBeCloseTo(whisker_high, 10)
+      expect(stats.outliers).toEqual(outliers)
+      // collect_outliers: false skips materializing the outlier array but changes nothing else
+      const { outliers: full_outliers, ...full } = stats
+      const { outliers: skipped_outliers, ...skipped } = compute_box_stats(skewed, {
+        ...opts,
+        collect_outliers: false,
+      })
+      expect(full_outliers).toEqual(outliers)
+      expect(skipped_outliers).toEqual([])
+      expect(skipped).toEqual(full)
+    },
+  )
 
   test(`percentile mode uses 5th/95th by default and is order-insensitive`, () => {
     const data = Array.from({ length: 100 }, (_, idx) => idx + 1) // 1..100
@@ -111,15 +110,6 @@ describe(`compute_box_stats`, () => {
     expect(stats.whisker_low).toBe(1)
     expect(stats.whisker_high).toBe(10)
     expect(stats.outliers).toEqual([])
-  })
-
-  test(`std mode flags points beyond mean ± range*std`, () => {
-    const stats = compute_box_stats([1, 2, 3, 4, 5, 6, 7, 8, 9, 100], {
-      whisker_mode: `std`,
-      whisker_range: 1,
-    })
-    expect(stats.outliers).toContain(100)
-    expect(stats.whisker_high).toBeLessThan(100)
   })
 
   test.each<[string, number[], number]>([

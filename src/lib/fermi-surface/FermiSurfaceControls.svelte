@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ISO_COLORMAPS } from '$lib/isosurface/coloring'
+  import { ISO_COLORMAP_SELECT_PROPS } from '$lib/isosurface/coloring'
   import { format_num } from '$lib/labels'
   import { SettingsGroup, SettingsSection } from '$lib/layout'
   import { ColorScaleSelect } from '$lib/plot'
@@ -66,7 +66,7 @@
   let available_bands = $derived(
     fermi_data
       ? [...new SvelteSet(fermi_data.isosurfaces.map((iso) => iso.band_index))].toSorted(
-          (a, b) => a - b,
+          (left, right) => left - right,
         )
       : [],
   )
@@ -185,14 +185,9 @@
         <label>
           <span>Color scale</span>
           <ColorScaleSelect
-            options={[...ISO_COLORMAPS]}
+            {...ISO_COLORMAP_SELECT_PROPS}
             bind:value={color_scale}
             selected={[color_scale]}
-            color_bar={{
-              bar_style: `height: 8px`,
-              title_style: `width: 4em; font-size: 1em;`,
-            }}
-            liSelectedStyle="width: 100%; margin: 0; padding: 0; background: transparent;"
             aria-label="Fermi surface color scale"
           />
         </label>

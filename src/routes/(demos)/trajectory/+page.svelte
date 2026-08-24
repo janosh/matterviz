@@ -1,6 +1,6 @@
 <script lang="ts">
   import FilePicker from '$lib/FilePicker.svelte'
-  import { get_trajectory_type, trajectory_files } from '$site/trajectories'
+  import { trajectory_files } from '$site/trajectories'
   import { TrajectoryFileViewer, type TrajHandlerData } from 'matterviz/trajectory'
 
   let active_file = $state(``) // last drag-and-dropped trajectory file
@@ -93,13 +93,9 @@
 </p>
 
 <FilePicker
-  files={Object.keys(trajectory_files).map((file_path) => ({
-    name: file_path.split(`/`).pop() || file_path,
-    url: file_path.split(`/site`).at(-1) || ``,
-  }))}
+  files={trajectory_files}
   active_files={[active_file]}
   show_category_filters={false}
-  type_mapper={get_trajectory_type}
 />
 
 <style>

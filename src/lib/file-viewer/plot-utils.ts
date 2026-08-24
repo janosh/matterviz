@@ -7,7 +7,6 @@ export type PlotType = `scatter` | `scatter3d` | `bar` | `histogram` | `table`
 interface ColumnInfo {
   values: unknown[]
   type: `numeric` | `string` | `mixed`
-  n_valid: number
 }
 
 export interface AxisMapping {
@@ -77,7 +76,7 @@ function classify_column(values: unknown[]): ColumnInfo {
     if (n_numeric >= n_valid * 0.8) type = `numeric`
     else if (n_string >= n_valid * 0.8) type = `string`
   }
-  return { values, type, n_valid }
+  return { values, type }
 }
 
 // Extract column keys of a given type from a column map

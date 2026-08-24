@@ -58,7 +58,6 @@
     hull_face_color_mode = $bindable(
       hull_defaults(dim).hull_face_color_mode as HullFaceColorMode,
     ),
-    element_colors = default_element_colors,
     color_mode = $bindable(hull_defaults(dim).color_mode),
     color_scale = $bindable(hull_defaults(dim).color_scale as D3InterpolateName),
     info_pane_open = $bindable(hull_defaults(dim).info_pane_open),
@@ -177,7 +176,7 @@
     project_point,
     render_frame,
     // oxfmt-ignore
-    repaint_deps: () => [show_hull_faces, hull_facets, hull_face_color, hull_face_opacity, hull_face_color_mode, element_colors, energy_range, merged_config],
+    repaint_deps: () => [show_hull_faces, hull_facets, hull_face_color, hull_face_opacity, hull_face_color_mode, energy_range, merged_config],
     actions: (): Record<string, () => void> => ({
       r: interactions.reset_camera,
       b: () => (color_mode = color_mode === `stability` ? `energy` : `stability`),
@@ -209,7 +208,7 @@
         mode: hull_face_color_mode,
         uniform_color: hull_face_color,
         color_scale,
-        element_colors,
+        element_colors: default_element_colors,
         elements,
         opacity: hull_face_opacity,
         e_form_min: energy_range.min,
@@ -358,6 +357,7 @@
       bind:fullscreen
       {fullscreen_toggle}
       on_fullscreen_change={interactions.recenter_camera}
+      {wrapper}
       {camera}
       {merged_controls}
       {stable_entries}

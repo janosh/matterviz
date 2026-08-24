@@ -3,6 +3,7 @@
   import type { CompositionType } from '$lib/composition'
   import type { SVGAttributes } from 'svelte/elements'
   import { composition_segments, fit_font_scale, segment_suffix, segment_title } from './chart'
+  import SegmentLabel from './SegmentLabel.svelte'
 
   // label placement tiers by slice angle (degrees)
   const THIN_SLICE = 20 // label outside the pie
@@ -121,24 +122,14 @@
 
   {#if show_labels}
     {#each segments as segment (segment.element)}
-      {@const [width, height] = [size * 0.15, size * 0.075].map(
-        (len) => len * segment.font_scale,
-      )}
-      <foreignObject
-        x={segment.label_x - width / 2}
-        y={segment.label_y - height / 2}
-        {width}
-        {height}
-      >
-        <div class="pie-label" style:color={segment.text_color}>
-          <span style:font-size="{14 * segment.font_scale}px">{segment.element}</span>
-          {#if show_amounts || show_percentages}
-            <sub style:font-size="{8 * segment.font_scale}px"
-              >{segment_suffix(segment, label_opts)}</sub
-            >
-          {/if}
-        </div>
-      </foreignObject>
+      <SegmentLabel
+        x={segment.label_x}
+        y={segment.label_y}
+        {segment}
+        font_scale={segment.font_scale}
+        text_color={segment.text_color}
+        {label_opts}
+      />
     {/each}
   {/if}
 </svg>
@@ -154,21 +145,5 @@
   }
   .pie-segment:hover {
     filter: brightness(1.1);
-  }
-  foreignobject {
-    pointer-events: none;
-    overflow: visible;
-  }
-  .pie-label {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 100%;
-    height: 100%;
-    white-space: nowrap;
-  }
-  sub {
-    margin-left: 1px;
-    transform: translateY(5pt);
   }
 </style>

@@ -1,8 +1,6 @@
 type PulseAnimationOptions = {
-  step?: number
-  frequency?: number
+  step?: number // phase advance per frame
   on_tick?: () => void
-  reset_when_inactive?: boolean
   // Element the pulse decorates. When given, the loop pauses while it is off screen, since
   // on_tick callers repaint a whole canvas or invalidate a 3D scene on every frame.
   element?: () => Element | null | undefined
@@ -10,24 +8,27 @@ type PulseAnimationOptions = {
 
 type PulseAnimation = { readonly time: number; readonly unit: number }
 
+// `unit` swings through one full cycle every 2π/PULSE_FREQUENCY units of `time`
+const PULSE_FREQUENCY = 4
+
 export const pulsing_highlight_opacity = (pulse_unit: number): number =>
   0.2 + 0.15 * pulse_unit
 
 export function create_pulse_animation(
   active: () => boolean,
-  options: PulseAnimationOptions = {},
+  { step = 0.02, on_tick, element }: PulseAnimationOptions = {},
 ): PulseAnimation {
   let time = $state(0)
   let frame_id: number | null = null
-  const { step = 0.02, frequency = 4, on_tick, reset_when_inactive = true, element } = options
   const cancel_frame = () => {
     if (frame_id == null) return
     cancelAnimationFrame(frame_id)
     frame_id = null
   }
+  // Inactive pulses restart from phase zero when they next light up
   const stop = () => {
     cancel_frame()
-    if (reset_when_inactive) time = 0
+    time = 0
   }
 
   // Optimistic until an observer says otherwise: a pulse with no `element` (or no
@@ -69,7 +70,7 @@ export function create_pulse_animation(
       return time
     },
     get unit() {
-      return 0.5 + 0.5 * Math.sin(time * frequency)
+      return 0.5 + 0.5 * Math.sin(time * PULSE_FREQUENCY)
     },
   }
 }

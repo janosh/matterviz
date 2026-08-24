@@ -4,6 +4,7 @@
   import { StatusMessage } from '$lib/feedback'
   import type { FileLoadCallback } from '$lib/io'
   import { as_text, file_drop_zone } from '$lib/io'
+  import { array_max } from '$lib/math'
   import type { DataSeries, RefLine } from '$lib/plot'
   import { ScatterPlot } from '$lib/plot'
   import type { Crystal, Pbc } from '$lib/structure'
@@ -98,8 +99,11 @@
     return [...(patterns ? [patterns].flat() : []), ...computed]
   })
 
-  const max_r = $derived(Math.max(...entries.flatMap((entry) => entry.pattern.r), 0))
-  const max_g = $derived(Math.max(1.2, ...entries.flatMap((entry) => entry.pattern.g_r)))
+  // array_max, not Math.max(...): a fine RDF grid across many pairs exceeds the argument limit
+  const all_r = $derived(entries.flatMap((entry) => entry.pattern.r))
+  const all_g = $derived(entries.flatMap((entry) => entry.pattern.g_r))
+  const max_r = $derived(Math.max(array_max(all_r), 0))
+  const max_g = $derived(Math.max(1.2, array_max(all_g)))
   const series = $derived<DataSeries[]>(
     entries.map((entry, idx) => ({
       x: entry.pattern.r,
@@ -157,28 +161,28 @@
 
 <style>
   :global(.dragover) {
-    outline: 2px dashed #4e79a7;
+    outline: 2px dashed var(--accent-color, #4e79a7);
     outline-offset: 4px;
   }
   .empty-drop {
-    outline: 2px dashed #ccc;
+    outline: 2px dashed var(--border-color, #ccc);
     border-radius: var(--border-radius, 3pt);
     text-align: center;
   }
   .dropped-info {
     padding: 0.5em;
     margin-bottom: 0.5em;
-    background: #f0f0f0;
+    background: var(--surface-bg, rgba(128, 128, 128, 0.1));
     border-radius: 4px;
     button {
       margin-left: 1em;
       padding: 0.25em 0.75em;
-      background: #e0e0e0;
-      border: 1px solid #ccc;
+      background: var(--btn-bg, rgba(128, 128, 128, 0.2));
+      border: 1px solid var(--border-color, #ccc);
       border-radius: 3px;
       cursor: pointer;
       &:hover {
-        background: #d0d0d0;
+        background: var(--btn-bg-hover, rgba(128, 128, 128, 0.3));
       }
     }
   }

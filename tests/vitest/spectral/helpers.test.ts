@@ -1,5 +1,5 @@
 import { THZ_TO_INVERSE_CM } from '$lib/constants'
-import type { Matrix3x3, Vec2, Vec3 } from '$lib/math'
+import { array_max, type Matrix3x3, type Vec2, type Vec3 } from '$lib/math'
 import { convert_frequencies } from '$lib/spectral/frequency-units'
 import type { PymatgenCompleteDos } from '$lib/spectral/helpers'
 import {
@@ -14,7 +14,7 @@ import {
   find_gamma_indices,
   find_qpoint_at_rescaled_x,
   generate_ribbon_path,
-  get_ribbon_config,
+  is_electronic_band_struct,
   negative_fraction,
   normalize_band_structure,
   normalize_densities,
@@ -134,6 +134,12 @@ describe(`normalize_densities`, () => {
     expect(half_step.reduce((acc, val) => acc + val, 0) * 0.5).toBeCloseTo(1, 12)
     expect(normalize_densities([0, 0], [0, 1], `max`)).toEqual([0, 0])
     expect(normalize_densities([1], [0], `integral`)).toEqual([1])
+  })
+
+  // Math.max(...densities) overflows the argument limit; DOS grids reach 1e7 points
+  it(`max mode handles grids beyond the spread-argument limit`, () => {
+    const large = Array.from({ length: 300_000 }, (_, idx) => (idx % 97) + 1)
+    expect(array_max(normalize_densities(large, large, `max`))).toBe(1)
   })
 })
 
@@ -864,21 +870,6 @@ it.each([
   expected.forEach((val, idx) => expect(result[idx]).toBeCloseTo(val, 12))
 })
 
-describe(`get_ribbon_config`, () => {
-  const defaults = { opacity: 0.3, max_width: 6, scale: 1 }
-  it.each([
-    [{}, `A`, defaults],
-    [{ opacity: 0.5, color: `red` }, `A`, { ...defaults, opacity: 0.5, color: `red` }],
-    [{ A: { opacity: 0.4 } }, `A`, { ...defaults, opacity: 0.4 }],
-    [{ A: { opacity: 0.4 } }, `B`, defaults],
-    [{ A: { opacity: 0.4 } }, ``, defaults],
-    // a structure named like a primitive key is still a per-structure config
-    [{ opacity: { color: `red` } }, `opacity`, { ...defaults, color: `red` }],
-  ])(`%j for label "%s"`, (config, label, expected) => {
-    expect(get_ribbon_config(config, label)).toEqual(expected)
-  })
-})
-
 describe(`generate_ribbon_path`, () => {
   const id = (val: number) => val
   it(`traces the upper edge forward and the lower edge back, widths normalised to the max`, () => {
@@ -984,17 +975,22 @@ describe(`compute_frequency_range`, () => {
 
   // Raw electronic markers must be read before normalisation strips them: with a small
   // negative value, phonon input clamps to 0 while electronic input keeps it. A @class marker
-  // routes through the pymatgen converter, which needs the reciprocal lattice.
+  // routes through the pymatgen converter, which needs the reciprocal lattice. Bands.svelte
+  // classifies its input with the same predicate, so the two cannot disagree.
   it.each([
     [`efermi`, { efermi: 5 }, true],
     [`kpoints`, { kpoints: [{ frac_coords: [0, 0, 0] }] }, true],
     [`an electronic @class`, { '@class': `BandStructureSymmLine`, ...identity_rec }, true],
+    [
+      `an electronic @module`,
+      { '@module': `pymatgen.electronic_structure.bandstructure`, ...identity_rec },
+      true,
+    ],
     [`a phonon @class`, { '@class': `PhononBandStructureSymmLine`, ...identity_rec }, false],
   ])(`detects electronic bands via %s`, (_label, marker, is_electronic) => {
-    const range = compute_frequency_range(
-      { ...bands_of([[-0.01, 5, 10]]), ...marker },
-      undefined,
-    )
+    const input = { ...bands_of([[-0.01, 5, 10]]), ...marker }
+    expect(is_electronic_band_struct(input)).toBe(is_electronic)
+    const range = compute_frequency_range(input, undefined)
     expect(range?.[0]).toBeCloseTo(is_electronic ? -0.01 - 10.01 * 0.02 : 0, 9)
   })
 })

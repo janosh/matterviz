@@ -15,10 +15,13 @@ elements are dashed/striped):
 - inversion centers / rotoinversion markers: small faceted octahedra — themselves
   centrosymmetric, and clearly distinct from the smooth spheres used for atoms
 
+Sizes, opacities and colors are fixed below (colors in SYM_ELEM_COLORS, shared with the legend
+swatches of SymmetryElementControls); the only runtime knob is which kinds to show.
+
 For performance, geometries are merged per material group (one draw call per distinct
 color/opacity instead of one mesh per element) and disposed on change/unmount. -->
 <script lang="ts">
-  import type { Matrix3x3, Vec2, Vec3 } from '$lib/math'
+  import type { Matrix3x3, Vec3 } from '$lib/math'
   import * as math from '$lib/math'
   import { quaternion_from_direction } from '$lib/structure/geometry'
   import type { ShowSymmetryKinds, SymmetryElement } from './symmetry-elements'
@@ -30,6 +33,7 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
     frac_to_cart_direction,
     SYM_ELEM_COLORS,
   } from './symmetry-elements'
+
   import { T } from '@threlte/core'
   import {
     BufferAttribute,
@@ -47,6 +51,19 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
   } from 'three/webgpu'
   import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 
+  const AXIS_RADIUS = 0.04
+  const SCREW_RADIUS = 0.03
+  // [dash, gap] in Å for dashed screw axes: gap narrower than dash so the line reads as
+  // continuous-but-broken rather than sparse
+  const SCREW_DASH: [number, number] = [0.25, 0.1]
+  const INVERSION_RADIUS = 0.12
+  const PLANE_OPACITY = 0.2
+  const GLIDE_OPACITY = 0.15
+  // opaque polygon outlines make overlapping translucent planes legible
+  const PLANE_EDGE_OPACITY = 0.9
+  // stripe period in Å for glide-plane fills (stripes run along the glide direction)
+  const GLIDE_STRIPE_PERIOD = 0.7
+
   let {
     elements = [],
     lattice,
@@ -54,43 +71,10 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
     // buries the structure under overlays for high-symmetry cells. Toggle additional
     // kinds individually (e.g. via SymmetryElementControls).
     show_kinds = DEFAULT_SHOW_SYM_KINDS,
-    // hide 2-fold axes that are sub-elements of higher-order axes on the same line
-    hide_redundant_axes = true,
-    axis_radius = 0.04,
-    screw_radius = 0.03,
-    // [dash, gap] in Å for dashed screw axes — gap narrower than dash so the line
-    // reads as continuous-but-broken rather than sparse
-    screw_dash = [0.25, 0.1] as Vec2,
-    inversion_radius = 0.12,
-    plane_opacity = 0.2,
-    glide_opacity = 0.15,
-    // opaque polygon outlines make overlapping translucent planes legible
-    show_plane_edges = true,
-    plane_edge_opacity = 0.9,
-    // stripe period in Å for glide-plane fills (stripes run along the glide direction)
-    glide_stripe_period = 0.7,
-    axis_colors = SYM_ELEM_COLORS.axis_by_order,
-    mirror_color = SYM_ELEM_COLORS.mirror,
-    glide_color = SYM_ELEM_COLORS.glide,
-    inversion_color = SYM_ELEM_COLORS.inversion,
   }: {
     elements?: SymmetryElement[]
     lattice: Matrix3x3
     show_kinds?: ShowSymmetryKinds
-    hide_redundant_axes?: boolean
-    axis_radius?: number
-    screw_radius?: number
-    screw_dash?: Vec2
-    inversion_radius?: number
-    plane_opacity?: number
-    glide_opacity?: number
-    show_plane_edges?: boolean
-    plane_edge_opacity?: number
-    glide_stripe_period?: number
-    axis_colors?: Record<number, string>
-    mirror_color?: string
-    glide_color?: string
-    inversion_color?: string
   } = $props()
 
   const UNIT_SCALE = new Vector3(1, 1, 1)
@@ -145,9 +129,9 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
         show_kinds[elem.kind] &&
         elem.axis,
     )
-    // Drop 2-fold axes coincident with a higher-order axis (4 contains 2, 6 contains
-    // 2 and 3, -4 contains 2, …) to reduce visual clutter. Computed over the VISIBLE
-    // elements only, so 2-folds reappear when their enclosing higher-order kind is
+    // Drop axes that are sub-elements of a higher-order axis on the same line (4 contains 2,
+    // 6 contains 2 and 3, -4 contains 2, …) to reduce visual clutter. Computed over the
+    // VISIBLE elements only, so 2-folds reappear when their enclosing higher-order kind is
     // toggled off. Lines are identified by the lattice-invariant `locus` key: a
     // perpendicular-foot intercept would key lattice-equivalent parallel lines differently
     // in non-standard (primitive fcc, ...) frames and leave their sub-axes drawn.
@@ -159,8 +143,7 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
 
     const parts_by_group = new Map<string, BufferGeometry[]>()
     for (const elem of axis_elements) {
-      if (hide_redundant_axes && elem.order < (max_order_by_line.get(elem.locus) ?? 0))
-        continue
+      if (elem.order < (max_order_by_line.get(elem.locus) ?? 0)) continue
       const clipped = clip_line_to_cell(elem.point, elem.axis as Vec3, lattice)
       if (!clipped) continue
       const [start, end] = clipped
@@ -171,22 +154,22 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
       const start_vec = new Vector3(...start)
 
       // Radius is baked into each geometry, so one merged group per color suffices
-      const color = axis_colors[elem.order] ?? `#777777`
+      const color = SYM_ELEM_COLORS.axis_by_order[elem.order] ?? `#777777`
       const group = parts_by_group.get(color) ?? []
 
       if (elem.kind === `screw`) {
         // Dashed cylinder: segments along the axis, touching both cell faces
-        for (const dash of dash_segments(length, screw_dash[0], screw_dash[1])) {
+        for (const dash of dash_segments(length, ...SCREW_DASH)) {
           const center = start_vec.clone().addScaledVector(dir_unit, dash.center)
-          group.push(oriented_cylinder(center, dir_unit, screw_radius, dash.length))
+          group.push(oriented_cylinder(center, dir_unit, SCREW_RADIUS, dash.length))
         }
       } else {
         const center = start_vec.clone().addScaledVector(dir_unit, length / 2)
-        group.push(oriented_cylinder(center, dir_unit, axis_radius, length))
+        group.push(oriented_cylinder(center, dir_unit, AXIS_RADIUS, length))
       }
       if (elem.kind === `rotoinversion`) {
         const [cx, cy, cz] = frac_to_cart_direction(elem.point, lattice)
-        group.push(new OctahedronGeometry(inversion_radius * 0.8).translate(cx, cy, cz))
+        group.push(new OctahedronGeometry(INVERSION_RADIUS * 0.8).translate(cx, cy, cz))
       }
       parts_by_group.set(color, group)
     }
@@ -216,8 +199,8 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
       const is_mirror = elem.kind === `mirror`
       planes.push({
         polygon,
-        color: is_mirror ? mirror_color : glide_color,
-        opacity: is_mirror ? plane_opacity : glide_opacity,
+        color: is_mirror ? SYM_ELEM_COLORS.mirror : SYM_ELEM_COLORS.glide,
+        opacity: is_mirror ? PLANE_OPACITY : GLIDE_OPACITY,
         stripe_dir: elem.translation
           ? math.normalize_vec(frac_to_cart_direction(elem.translation, lattice))
           : null,
@@ -238,7 +221,7 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
       const group = groups.get(group_key) ?? { positions: [], uvs: [] }
       // Stripe coordinate: Cartesian distance along the glide direction / period
       const stripe_u = (vert: Vec3): number =>
-        stripe_dir ? math.dot(vert, stripe_dir) / glide_stripe_period : 0
+        stripe_dir ? math.dot(vert, stripe_dir) / GLIDE_STRIPE_PERIOD : 0
       // Fan triangulation of the convex polygon
       for (let idx = 1; idx < polygon.length - 1; idx++) {
         for (const vert of [polygon[0], polygon[idx], polygon[idx + 1]]) {
@@ -261,7 +244,6 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
   // Opaque plane OUTLINES (line segments per color): crisp borders keep overlapping
   // translucent planes individually legible instead of blending into a single wash.
   const plane_edge_groups: MaterialGroup[] = $derived.by(() => {
-    if (!show_plane_edges) return []
     const segments_by_color = new Map<string, number[]>()
     for (const { polygon, color } of visible_planes) {
       const positions = segments_by_color.get(color) ?? []
@@ -285,12 +267,12 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
       .filter((elem) => elem.kind === `inversion`)
       .map((elem) => {
         const [cx, cy, cz] = frac_to_cart_direction(elem.point, lattice)
-        return new OctahedronGeometry(inversion_radius).translate(cx, cy, cz)
+        return new OctahedronGeometry(INVERSION_RADIUS).translate(cx, cy, cz)
       })
     if (markers.length === 0) return null
     const merged = mergeGeometries(markers)
     markers.forEach((geo) => geo.dispose())
-    return merged ? { geometry: merged, color: inversion_color } : null
+    return merged ? { geometry: merged, color: SYM_ELEM_COLORS.inversion } : null
   })
 
   // Dispose each group's merged geometries when that group recomputes or on unmount. One
@@ -329,11 +311,7 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
 
 {#each plane_edge_groups as group, idx (idx)}
   <T.LineSegments geometry={group.geometry}>
-    <T.LineBasicMaterial
-      color={group.color}
-      transparent={plane_edge_opacity < 1}
-      opacity={plane_edge_opacity}
-    />
+    <T.LineBasicMaterial color={group.color} transparent opacity={PLANE_EDGE_OPACITY} />
   </T.LineSegments>
 {/each}
 

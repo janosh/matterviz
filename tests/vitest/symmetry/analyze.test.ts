@@ -153,9 +153,14 @@ describe(`transform_cell`, () => {
   test.each<[string, CellType, MoyoDataset | null]>([
     [`original cell_type`, `original`, sym_data],
     [`null sym_data`, `conventional`, null],
-    [`unknown runtime cell_type`, `bogus` as CellType, sym_data],
   ])(`returns original structure for %s`, (_label, cell_type, sym_data_arg) => {
     expect(transform_cell(original, cell_type, sym_data_arg)).toBe(original)
+  })
+
+  test(`throws for an unknown cell_type instead of silently returning the input`, () => {
+    expect(() => transform_cell(original, `bogus` as CellType, sym_data)).toThrow(
+      `Unknown cell_type "bogus"`,
+    )
   })
 
   test.each([

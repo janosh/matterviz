@@ -35,6 +35,12 @@ export interface MountViewerOptions {
   on_close?: () => void
 }
 
+// Every embedded viewer fills its host and leaves fullscreen to the host window
+export const VIEWER_COMMON_PROPS = {
+  style: `height: 100%; border-radius: 0`,
+  fullscreen_toggle: false,
+} as const
+
 // Mount the viewer for `type` into `target` and return the component handle. Throws on a
 // type this table does not know so a new RenderableType cannot silently render nothing.
 export function mount_viewer(
@@ -45,7 +51,7 @@ export function mount_viewer(
 ): ReturnType<typeof mount> {
   target.innerHTML = ``
   void target.offsetHeight // force layout so Three.js measures real dimensions
-  const common_props = { style: `height: 100%; border-radius: 0`, fullscreen_toggle: false }
+  const common_props = VIEWER_COMMON_PROPS
   // Only viewers with a drop zone declare allow_file_drop; elsewhere it would land on the div
   const no_file_drop = { ...common_props, allow_file_drop: false }
   const structure_props = {

@@ -6,7 +6,7 @@
 // LEPSILON finite-difference workflow, vasp_raman.py, phonopy-spectroscopy, ...) or
 // precomputed activities. Nothing in this file invents Raman data from eigenvectors.
 
-import type { Matrix3x3, Vec2, Vec3 } from '$lib/math'
+import { array_extent, type Matrix3x3, type Vec2, type Vec3 } from '$lib/math'
 import { broaden_peaks } from '$lib/lineshape'
 import { SvelteSet } from 'svelte/reactivity'
 import { convert_frequencies } from './frequency-units'
@@ -313,8 +313,8 @@ export function broaden_spectrum(
     }
     return width
   })
-  const [min_width, max_width] = [Math.min(...widths), Math.max(...widths)]
-  const [min_stick, max_stick] = [Math.min(...sticks.x), Math.max(...sticks.x)]
+  const [min_width, max_width] = array_extent(widths)
+  const [min_stick, max_stick] = array_extent(sticks.x)
   const [range_lo, range_hi] =
     options.range ?? ([min_stick - 10 * max_width, max_stick + 10 * max_width] as Vec2)
   const step_size = options.step_size ?? min_width / 20
@@ -336,9 +336,14 @@ export function broaden_spectrum(
 
 // Scale a curve so its maximum is 1. Used for the transmittance presentation, which inverts
 // the result, so an unbounded or all-zero absorbance would silently render a flat line at 1
-// instead of failing.
+// instead of failing. A loop, not Math.max(...values): broadened grids run to MAX_GRID_POINTS,
+// far past the spread-argument limit.
 export function scale_to_max(values: number[]): number[] {
-  const max_val = Math.max(...values)
+  let max_val = -Infinity
+  for (const val of values) {
+    if (!Number.isFinite(val)) max_val = NaN
+    if (val > max_val) max_val = val
+  }
   if (!Number.isFinite(max_val) || max_val <= 0) {
     throw new Error(
       `scale_to_max needs a positive finite maximum over ${values.length} values, got ${max_val}`,

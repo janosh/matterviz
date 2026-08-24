@@ -92,14 +92,13 @@ export function materialize_series_points<Metadata = Record<string, unknown>>(
   return out
 }
 
-// Filter series data to only include points within bounds. Full x/y arrays are kept on each
+// Filter materialized series to the points within bounds. Full x/y arrays are kept on each
 // returned series (via spread) so connecting lines can continue through off-range points;
-// only filtered_data (rendered markers) is range-limited. Pass the materialized points when
-// the caller can cache them across frames; otherwise they are built here.
+// only filtered_data (rendered markers) is range-limited. Takes the output of
+// materialize_series_points so callers cache it across pan/zoom frames.
 export function filter_series_to_ranges<Metadata = Record<string, unknown>>(
-  series: readonly (DataSeries<Metadata> | null | undefined)[],
+  materialized: readonly MaterializedSeries<Metadata>[],
   ranges: AxisRanges,
-  materialized: readonly MaterializedSeries<Metadata>[] = materialize_series_points(series),
 ): (DataSeries<Metadata> & { filtered_data: InternalPoint<Metadata>[] })[] {
   const x_bounds = sorted_bounds(ranges.x)
   const x2_bounds = sorted_bounds(ranges.x2)

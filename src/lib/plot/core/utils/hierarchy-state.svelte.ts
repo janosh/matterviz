@@ -37,8 +37,8 @@ import type {
   SunburstNodeHandlerProps,
   SunburstSort,
   SunburstValueMode,
-} from '$lib/plot/sunburst/sunburst'
-import { compute_sunburst_layout } from '$lib/plot/sunburst/sunburst'
+} from '$lib/plot/core/utils/hierarchy-layout'
+import { compute_sunburst_layout } from '$lib/plot/core/utils/hierarchy-layout'
 import type { ComponentProps, Snippet } from 'svelte'
 import { tick, untrack } from 'svelte'
 import { SvelteSet } from 'svelte/reactivity'

@@ -64,7 +64,7 @@
     ticks: 0,
     label: ``,
     grid_style: { style: `opacity: 0` },
-    tick: { label: { inside: true } },
+    tick_label: { inside: true },
     color: `color-mix(in srgb, currentColor 60%, transparent)`,
   }
 

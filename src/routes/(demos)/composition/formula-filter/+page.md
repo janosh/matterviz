@@ -51,7 +51,7 @@ An interactive search filter for chemical formulas. The search mode is automatic
   }
 
   // Use library function for proper formula formatting (handles count=1 correctly)
-  const to_str = (comp) => get_alphabetical_formula(comp, true, ``)
+  const to_str = (comp) => get_alphabetical_formula(comp, { plain_text: true, delim: `` })
   const quick_examples = [`Li,Fe`, `+Li,-O`, `Fe:1-2,Ni:>=1`, `Li-Fe-O`, `NaCl`]
   const quick_btn_style = `font-family: monospace; font-size: 0.8em; border: 1px solid rgba(128,128,128,0.25); border-radius: 4px; padding: 2pt 6pt; background: rgba(77,182,255,0.08); cursor: pointer`
 
@@ -242,7 +242,7 @@ Additional features in `FormulaFilter`:
     }
   }
 
-  const to_str = (comp) => get_alphabetical_formula(comp, true, ``)
+  const to_str = (comp) => get_alphabetical_formula(comp, { plain_text: true, delim: `` })
   const strip_prefix = (token) => (/^[+\-!]/.test(token) ? token.slice(1) : token)
   const split_csv_tokens = (query) =>
     query

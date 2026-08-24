@@ -1,11 +1,9 @@
 import type { CompositionType } from '$lib'
 import {
   count_atoms_in_composition,
-  element_symbols_in,
   extract_formula_elements,
   fractional_composition,
   get_reduced_formula,
-  normalize_element_symbols,
   normalize_formula_unicode,
   parse_composition,
   parse_formula,
@@ -170,7 +168,7 @@ describe(`parse_formula_with_wildcards`, () => {
   })
 })
 
-describe(`extract_formula_elements / element_symbols_in`, () => {
+describe(`extract_formula_elements`, () => {
   test.each([
     [`NbZr2Nb`, {}, [`Nb`, `Zr`]],
     [`Ca(OH)2`, {}, [`Ca`, `H`, `O`]],
@@ -180,31 +178,8 @@ describe(`extract_formula_elements / element_symbols_in`, () => {
     expect(extract_formula_elements(formula, opts)).toEqual(expected)
   })
 
-  test(`extract_formula_elements throws on invalid symbols`, () => {
+  test(`throws on invalid symbols`, () => {
     expect(() => extract_formula_elements(`ABC`)).toThrow(`Invalid element symbol: A`)
-  })
-
-  // lenient scan for dirty keys: order kept, duplicates kept, junk skipped
-  test.each([
-    [`V4+`, [`V`]],
-    [`Fe[2+]`, [`Fe`]],
-    [`CH3CH2OH`, [`C`, `H`, `C`, `H`, `O`, `H`]],
-    [`AbCdEf`, [`Cd`]],
-    [`Xx2`, []],
-  ])(`element_symbols_in(%s) -> %j`, (text, expected) => {
-    expect(element_symbols_in(text)).toEqual(expected)
-  })
-})
-
-describe(`normalize_element_symbols`, () => {
-  test.each([
-    [``, []],
-    [`  ,  ,  `, []],
-    [`Zr, Nb, H, O`, [`H`, `O`, `Zr`, `Nb`]], // periodic order
-    [`H, Xx, O, BadSymbol`, [`H`, `O`]],
-    [`H,O,H,N,O`, [`H`, `N`, `O`]],
-  ])(`%s -> %j`, (input, expected) => {
-    expect(normalize_element_symbols(input)).toEqual(expected)
   })
 })
 

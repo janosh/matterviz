@@ -2,6 +2,7 @@ import {
   build_structure_props_from_settings,
   DEFAULTS,
   get_convex_hull_defaults,
+  is_valid_setting_value,
   merge,
   type PartialSettings,
   SETTINGS_CONFIG,
@@ -24,7 +25,7 @@ import {
 import { globSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { SvelteSet } from 'svelte/reactivity'
-import { describe, expect, test } from 'vitest'
+import { beforeAll, describe, expect, test } from 'vitest'
 
 const settings_module = join(`src`, `lib`, `settings.ts`)
 // Schema/DEFAULTS leaf: anything that is not a nested group object
@@ -50,6 +51,38 @@ describe(`Settings`, () => {
       ),
   )
 
+  // The one admissibility rule behind the persisted viewer state and the VS Code settings reader
+  test.each([
+    [`enum member`, SETTINGS_CONFIG.structure.show_bonds, `never`, true],
+    [`off-enum string`, SETTINGS_CONFIG.structure.show_bonds, `sometimes`, false],
+    [`number in range`, SETTINGS_CONFIG.structure.atom_radius, 1.5, true],
+    [`number above maximum`, SETTINGS_CONFIG.structure.atom_radius, 99, false],
+    [`non-finite number`, SETTINGS_CONFIG.structure.atom_radius, NaN, false],
+    [`off-grid multipleOf`, SETTINGS_CONFIG.trajectory.fps, 7.25, false],
+    [`on-grid multipleOf`, SETTINGS_CONFIG.trajectory.fps, 7.3, true],
+    [`Vec3 of numbers`, SETTINGS_CONFIG.structure.rotation, [0, 1, 2], true],
+    [`Vec3 with a string`, SETTINGS_CONFIG.structure.rotation, [0, `bad`, 0], false],
+    [`too-short tuple`, SETTINGS_CONFIG.structure.rotation, [0, 1], false],
+    [`element list`, SETTINGS_CONFIG.structure.polyhedra_excluded_elements, [`Li`, `O`], true],
+    [
+      `element list with a number`,
+      SETTINGS_CONFIG.structure.polyhedra_excluded_elements,
+      [8],
+      false,
+    ],
+    [
+      `free-form map`,
+      SETTINGS_CONFIG.structure.vector_configs,
+      { force: { visible: true } },
+      true,
+    ],
+    [`array for a map`, SETTINGS_CONFIG.structure.vector_configs, [], false],
+    [`boolean`, SETTINGS_CONFIG.structure.show_atoms, false, true],
+    [`string for a boolean`, SETTINGS_CONFIG.structure.show_atoms, `yes`, false],
+  ] as const)(`is_valid_setting_value: %s`, (_label, setting, value, valid) => {
+    expect(is_valid_setting_value(value, setting)).toBe(valid)
+  })
+
   describe(`merge function`, () => {
     test(`returns DEFAULTS for empty inputs`, () => {
       expect(merge()).toEqual(DEFAULTS)
@@ -64,6 +97,7 @@ describe(`Settings`, () => {
         structure: { atom_radius: 1.5 },
         brillouin: { bz_order: 2 },
         fermi: { mu: 0.25 },
+        symmetry: { symprec: 1e-2 },
         trajectory: { auto_play: true },
         scatter: { point: { size: 9 } },
       })
@@ -73,16 +107,19 @@ describe(`Settings`, () => {
       expect(result.structure.atom_radius).toBe(1.5)
       expect(result.brillouin.bz_order).toBe(2)
       expect(result.fermi.mu).toBe(0.25)
+      expect(result.symmetry.symprec).toBe(1e-2)
       expect(result.trajectory.auto_play).toBe(true)
       expect(result.scatter.point.size).toBe(9)
 
-      // Defaults preserved
+      // Sibling leaves and untouched groups keep their defaults
       expect(result.structure.show_atoms).toBe(DEFAULTS.structure.show_atoms)
       expect(result.brillouin.edge_color).toBe(DEFAULTS.brillouin.edge_color)
       expect(result.fermi.representation).toBe(DEFAULTS.fermi.representation)
+      expect(result.symmetry.algo).toBe(DEFAULTS.symmetry.algo)
       expect(result.trajectory.fps).toBe(DEFAULTS.trajectory.fps)
       expect(result.scatter.point.color).toBe(DEFAULTS.scatter.point.color)
       expect(result.scatter.line).toEqual(DEFAULTS.scatter.line)
+      expect(result.plot).toEqual(DEFAULTS.plot)
     })
 
     // The merge recurses wherever both sides are plain objects: a level-3 leaf override keeps
@@ -132,22 +169,6 @@ describe(`Settings`, () => {
       }
       expect(result.structure.atom_radius).toBe(DEFAULTS.structure.atom_radius)
       expect(`polluted` in {}).toBe(false)
-    })
-
-    test(`merges symmetry overrides while preserving symmetry defaults`, () => {
-      const result = merge({ symmetry: { symprec: 1e-2 } })
-      expect(result.symmetry.symprec).toBe(1e-2)
-      expect(result.symmetry.algo).toBe(DEFAULTS.symmetry.algo)
-    })
-
-    test(`partial updates don't affect other sections`, () => {
-      const result = merge({
-        structure: { atom_radius: 2.0 },
-      })
-
-      expect(result.structure.atom_radius).toBe(2.0)
-      expect(result.trajectory).toEqual(DEFAULTS.trajectory)
-      expect(result.plot).toEqual(DEFAULTS.plot)
     })
   })
 
@@ -239,6 +260,11 @@ describe(`Settings`, () => {
   // mount: Threlte scenes and components with required props can't mount propless in
   // happy-dom, and it covers every prop either way.
   describe(`component prop defaults match the schema`, () => {
+    // one compiler load for the whole table, awaited up front: the first `svelte/compiler`
+    // import is the slow step and under a loaded worker pool it alone pushes the first row
+    // past its timeout
+    const compiler = import(`svelte/compiler`)
+    beforeAll(() => compiler.then(() => undefined), 120_000)
     const at_path = (root: unknown, path: string[]): unknown =>
       path.reduce<unknown>(
         (node, key) => (node as Record<string, unknown> | undefined)?.[key],
@@ -279,9 +305,6 @@ describe(`Settings`, () => {
         hull_face_opacity: `undefined resolves per dimension through get_convex_hull_defaults (ternary 0.3, quaternary 0.03)`,
         max_hull_dist_show_phases: `undefined resolves per dimension through get_convex_hull_defaults (binary 0.1, ternary 0.5)`,
       },
-      'fermi-surface/FermiSurfaceScene': {
-        vector_scale: `reciprocal-lattice vector length as in DEFAULTS.brillouin.vector_scale (1), not structure.vector_scale`,
-      },
       'scene/SceneCamera': {
         camera_projection: `shared camera primitive; every scene passes its own schema value`,
         gizmo: `shared camera primitive; every scene passes its own schema value`,
@@ -319,9 +342,6 @@ describe(`Settings`, () => {
     // classified as drift (differs or cannot be evaluated), stale (a deliberate entry whose prop
     // is gone or now matches) or fine. Fail-closed: any expression the evaluator cannot reduce
     // to a value is drift, so arithmetic, ternaries or interpolation on a schema value fail.
-    // one compiler load for the whole table: the first `svelte/compiler` import is the slow
-    // step and under a loaded worker pool it alone could push a row past the default timeout
-    const compiler = import(`svelte/compiler`)
     const analyze = async (component: string, source: string) => {
       const { parse } = await compiler
       // `const defaults = DEFAULTS.<group>` aliases used by Controls and hull components
@@ -542,18 +562,6 @@ describe(`Settings`, () => {
         drift: [],
         stale: [`show_controls`],
       })
-    })
-  })
-
-  describe(`Convex hull settings`, () => {
-    test.each([
-      [`ternary`, DEFAULTS.convex_hull.ternary, `uniform`],
-      [`quaternary`, DEFAULTS.convex_hull.quaternary, `dominant_element`],
-    ])(`%s has valid 3D hull face properties`, (_, settings, expected_color_mode) => {
-      // Default color mode (ternary=uniform, quaternary=dominant_element)
-      expect(settings.hull_face_color_mode).toBe(expected_color_mode)
-      expect(settings.hull_face_opacity).toBeGreaterThanOrEqual(0)
-      expect(settings.hull_face_opacity).toBeLessThanOrEqual(1)
     })
   })
 })

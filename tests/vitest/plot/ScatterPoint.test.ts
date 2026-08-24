@@ -13,18 +13,45 @@ describe(`ScatterPoint`, () => {
     document.body.append(container)
   })
 
-  test(`renders with default props`, () => {
-    const target = doc_query(`div`)
-    mount(ScatterPoint, { target, props: { x: 100, y: 100 } })
-
+  // the fill rides on a CSS variable so a parent can recolor the marker; every other paint
+  // attribute falls back to a visible default when the style omits it
+  test.each<{ desc: string; style?: PointStyle; attrs: Record<string, string> }>([
+    {
+      desc: `default style`,
+      attrs: {
+        fill: `var(--point-fill-color, black)`,
+        'fill-opacity': `1`,
+        stroke: `transparent`,
+        'stroke-width': `1`,
+        'stroke-opacity': `1`,
+      },
+    },
+    {
+      desc: `custom style`,
+      style: {
+        fill: `red`,
+        radius: 5,
+        stroke: `blue`,
+        stroke_width: 2,
+        fill_opacity: 0.5,
+        stroke_opacity: 0.8,
+      },
+      attrs: {
+        fill: `var(--point-fill-color, red)`,
+        'fill-opacity': `0.5`,
+        stroke: `blue`,
+        'stroke-width': `2`,
+        'stroke-opacity': `0.8`,
+      },
+    },
+  ])(`renders marker paint attributes for $desc`, ({ style, attrs }) => {
+    mount(ScatterPoint, { target: doc_query(`div`), props: { x: 100, y: 100, style } })
     const path = doc_query(`path`)
     expect(path).toBeInstanceOf(SVGPathElement)
-    expect(path.getAttribute(`fill`)).toBe(`var(--point-fill-color, black)`) // Default fill with fallback
-    expect(path.getAttribute(`fill-opacity`)).toBe(`1`) // Default opacity with fallback
-    expect(path.getAttribute(`stroke`)).toBe(`transparent`)
-    expect(path.getAttribute(`stroke-width`)).toBe(`1`)
-    expect(path.getAttribute(`stroke-opacity`)).toBe(`1`) // Default opacity with fallback
     expect(path.getAttribute(`d`)).not.toBeNull()
+    for (const [attr, value] of Object.entries(attrs)) {
+      expect(path.getAttribute(attr), attr).toBe(value)
+    }
     expect_transition_properties(path, [
       `transform`,
       `stroke`,
@@ -35,26 +62,6 @@ describe(`ScatterPoint`, () => {
       `filter`,
       `opacity`,
     ])
-  })
-
-  test(`applies custom point styles`, () => {
-    const style: PointStyle = {
-      fill: `red`,
-      radius: 5,
-      stroke: `blue`,
-      stroke_width: 2,
-      fill_opacity: 0.5,
-      stroke_opacity: 0.8,
-    }
-    const target = doc_query(`div`)
-    mount(ScatterPoint, { target, props: { x: 100, y: 100, style } })
-
-    const path = doc_query(`path`)
-    expect(path).toBeInstanceOf(SVGPathElement)
-    expect(path.getAttribute(`stroke`)).toBe(style.stroke)
-    expect(path.getAttribute(`stroke-width`)).toBe(String(style.stroke_width))
-    expect(path.getAttribute(`fill-opacity`)).toBe(String(style.fill_opacity))
-    expect(path.getAttribute(`stroke-opacity`)).toBe(String(style.stroke_opacity))
   })
 
   test(`extends the transparent hit radius without changing the visible marker`, () => {

@@ -195,14 +195,14 @@ const partition_ranges = (n_out: number, n_src: number): Vec2[] =>
 export const MAX_GRID_POINTS = 500_000
 
 // Downsample a z-fastest grid to keep its point count under a budget via block
-// averaging. Returns the input grid unchanged (factor 1) when already within budget.
+// averaging. Returns the input grid itself when already within budget.
 export function downsample_grid(
   grid: ScalarGrid3D<Float64Array>,
   max_points: number = MAX_GRID_POINTS,
-): { grid: ScalarGrid3D<Float64Array>; factor: number } {
+): ScalarGrid3D<Float64Array> {
   const [nx, ny, nz] = grid.dims
   const total = nx * ny * nz
-  if (total <= max_points) return { grid, factor: 1 }
+  if (total <= max_points) return grid
   if (grid.order !== `z_fastest`) {
     throw new RangeError(`downsample_grid expects z_fastest values, got ${grid.order}`)
   }
@@ -254,7 +254,7 @@ export function downsample_grid(
     }
   }
 
-  return { grid: { values: out, dims: [new_nx, new_ny, new_nz], order: `z_fastest` }, factor }
+  return { values: out, dims: [new_nx, new_ny, new_nz], order: `z_fastest` }
 }
 
 // Default isosurface rendering settings (no layers: nothing renders until a volume adds one)

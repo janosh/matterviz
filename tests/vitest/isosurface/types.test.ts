@@ -16,7 +16,7 @@ import {
   volume_from_json,
 } from '$lib/isosurface/types'
 import type { IsosurfaceLayer, VolumetricData } from '$lib/isosurface/types'
-import { flatten_grid } from '$lib/isosurface/grid'
+import { flatten_grid, type ScalarGrid3D } from '$lib/isosurface/grid'
 import type { Vec3 } from '$lib/math'
 import { describe, expect, test } from 'vitest'
 import { grid_value, make_grid, make_volume as make_volume_fixture } from '../setup'
@@ -398,12 +398,24 @@ describe(`merge_imported_volumes`, () => {
   })
 })
 
+// z-fastest Float64Array grid built directly (nested arrays for 10^6 points are slow)
 const flat_grid = (
   nx: number,
   ny: number,
   nz: number,
   fill: number | ((ix: number, iy: number, iz: number) => number) = 1,
-) => flatten_grid(make_grid(nx, ny, nz, fill))
+): ScalarGrid3D<Float64Array> => {
+  const values = new Float64Array(nx * ny * nz)
+  let idx = 0
+  for (let ix = 0; ix < nx; ix++) {
+    for (let iy = 0; iy < ny; iy++) {
+      for (let iz = 0; iz < nz; iz++) {
+        values[idx++] = typeof fill === `number` ? fill : fill(ix, iy, iz)
+      }
+    }
+  }
+  return { values, dims: [nx, ny, nz], order: `z_fastest` }
+}
 
 describe(`downsample_grid`, () => {
   test.each([
@@ -412,9 +424,7 @@ describe(`downsample_grid`, () => {
     { dims: [10, 10, 10] as Vec3, label: `under custom budget`, max_points: 2000 },
   ])(`$label: returns original grid reference`, ({ dims, max_points }) => {
     const grid = flat_grid(...dims)
-    const result = downsample_grid(grid, max_points)
-    expect(result.factor).toBe(1)
-    expect(result.grid).toBe(grid)
+    expect(downsample_grid(grid, max_points)).toBe(grid)
   })
 
   test.each([
@@ -422,12 +432,13 @@ describe(`downsample_grid`, () => {
     { dims: [80, 80, 80] as Vec3, fill: -3, label: `negative uniform` },
     { dims: [3, 500, 500] as Vec3, fill: 42, label: `small axis uniform` },
   ])(`$label: preserves constant $fill after downsampling`, ({ dims, fill }) => {
-    const { grid } = downsample_grid(flat_grid(...dims, fill))
-    for (const val of grid.values) expect(val).toBeCloseTo(fill, 10)
+    const grid = downsample_grid(flat_grid(...dims, fill))
+    // one assertion over ~500K values (a per-element expect takes seconds)
+    expect(grid.values.every((val) => Math.abs(val - fill) < 1e-10)).toBe(true)
   })
 
   test(`preserves global mean of non-uniform data`, () => {
-    const { grid } = downsample_grid(flat_grid(100, 100, 100, (ix, iy, iz) => ix + iy + iz))
+    const grid = downsample_grid(flat_grid(100, 100, 100, (ix, iy, iz) => ix + iy + iz))
     expect(grid_data_range(grid.values).mean).toBeCloseTo(148.5, 0)
   })
 
@@ -435,7 +446,7 @@ describe(`downsample_grid`, () => {
     const [nx, ny, nz] = [100, 80, 90]
     const grid = flat_grid(nx, ny, nz, (ix, iy, iz) => ix + iy + iz)
     const src_total = grid.values.reduce((acc, val) => acc + val, 0)
-    const { grid: out } = downsample_grid(grid)
+    const out = downsample_grid(grid)
     const [out_nx, out_ny, out_nz] = out.dims
     // Weighted reconstruction: sum(block_mean * block_size) must equal source total
     const block = (idx: number, n_out: number, n_src: number) =>
@@ -456,14 +467,15 @@ describe(`downsample_grid`, () => {
   })
 
   test(`dims >= 2 and all values finite for extreme aspect ratios`, () => {
-    const result = downsample_grid(flat_grid(500, 500, 3, 1))
-    expect(result.factor).toBeGreaterThan(1)
-    for (const dim of result.grid.dims) expect(dim).toBeGreaterThanOrEqual(2)
-    expect(result.grid.values.every(Number.isFinite)).toBe(true)
+    const source = flat_grid(500, 500, 3, 1)
+    const result = downsample_grid(source)
+    expect(result).not.toBe(source)
+    for (const dim of result.dims) expect(dim).toBeGreaterThanOrEqual(2)
+    expect(result.values.every(Number.isFinite)).toBe(true)
   })
 
   test(`output dims never exceed source dims`, () => {
-    const { grid } = downsample_grid(flat_grid(1, 1000, 1000, 7))
+    const grid = downsample_grid(flat_grid(1, 1000, 1000, 7))
     expect(grid.dims[0]).toBe(1)
     expect(grid.values[0]).toBeCloseTo(7)
   })
@@ -475,19 +487,17 @@ describe(`downsample_grid`, () => {
     { dims: [50, 50, 50] as Vec3, label: `custom 10K budget`, max_points: 10_000 },
   ])(`$label: stays within budget with correct shape`, ({ dims, max_points = 500_000 }) => {
     const result = downsample_grid(flat_grid(...dims, 1), max_points)
-    const [rnx, rny, rnz] = result.grid.dims
+    const [rnx, rny, rnz] = result.dims
     expect(rnx * rny * rnz).toBeLessThanOrEqual(max_points)
-    expect(result.factor).toBeGreaterThan(1)
-    expect(result.grid.values).toHaveLength(rnx * rny * rnz)
+    expect(rnx * rny * rnz).toBeLessThan(dims[0] * dims[1] * dims[2])
+    expect(result.values).toHaveLength(rnx * rny * rnz)
   })
 
   test.each([0, 1, 7])(
     `max_points=%d below minimum output terminates without hanging`,
     (max_points) => {
       const result = downsample_grid(flat_grid(4, 4, 4), max_points)
-      expect(result.grid.dims.every((dim) => dim >= 2)).toBe(true)
-      expect(result.factor).toBeGreaterThan(1)
-      expect(Number.isFinite(result.factor)).toBe(true)
+      expect(result.dims).toEqual([2, 2, 2])
     },
   )
 

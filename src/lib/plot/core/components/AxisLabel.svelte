@@ -1,6 +1,5 @@
 <script lang="ts">
   import Spinner from '$lib/feedback/Spinner.svelte'
-  import { AXIS_LABEL_CONTAINER } from '$lib/plot/core/axis-utils'
   import PortalSelect from '$lib/plot/core/components/PortalSelect.svelte'
   import { AXIS_TITLE_WRAP_WIDTH, resolve_axis_title_layout } from '$lib/plot/core/layout'
   import type { AxisOption } from '$lib/plot/core/types'
@@ -19,7 +18,7 @@
     loading = false,
     axis_type,
     on_select,
-    width = AXIS_LABEL_CONTAINER.width,
+    width = AXIS_TITLE_WRAP_WIDTH,
   }: {
     x: number
     y: number
@@ -31,8 +30,8 @@
     loading?: boolean
     axis_type: `x` | `x2` | `y` | `y2`
     on_select?: (key: string) => void
-    // Maximum line width. Vertical titles use the deterministic 200px fallback because
-    // PlotAxis does not forward the plot height.
+    // Maximum line width (0 falls back to AXIS_TITLE_WRAP_WIDTH, like vertical titles, whose
+    // plot height PlotAxis does not forward)
     width?: number
   } = $props()
 

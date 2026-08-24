@@ -2,7 +2,7 @@
 // Pure and unit-tested; mirrors the style of box-plot.ts. Never mutates inputs.
 
 import type { Vec2 } from '$lib/math'
-import { quantile_sorted, quantile_unordered, sample_std } from '$lib/math'
+import { quantile_unordered, sample_std } from '$lib/math'
 
 export interface KdeResult {
   grid: number[] // evaluation points along the value axis
@@ -32,21 +32,16 @@ const silverman_from_stats = (n_vals: number, std: number, iqr: number): number 
   return 0.9 * sigma * n_vals ** (-1 / 5)
 }
 
-export function silverman_bandwidth(sorted: readonly number[]): number {
-  if (sorted.length < 2) return 1
-  const iqr = quantile_sorted(sorted, 0.75) - quantile_sorted(sorted, 0.25)
-  return silverman_from_stats(sorted.length, sample_std(sorted), iqr)
-}
-
-function silverman_bandwidth_unordered(samples: number[]): number {
+// `samples` need not be sorted; quartile selection reorders a scratch copy, not the input
+export function silverman_bandwidth(samples: readonly number[]): number {
   if (samples.length < 2) return 1
-  const q1 = quantile_unordered(samples, 0.25)
-  const q3 = quantile_unordered(samples, 0.75)
+  const scratch = [...samples]
+  const q1 = quantile_unordered(scratch, 0.25)
+  const q3 = quantile_unordered(scratch, 0.75)
   return silverman_from_stats(samples.length, sample_std(samples), q3 - q1)
 }
 
-// Scott's rule: std * n^(-1/5) for 1-D data.
-// `samples` need not be sorted (only uses sample_std, unlike silverman_bandwidth)
+// Scott's rule: std * n^(-1/5) for 1-D data (order-independent, never touches `samples`)
 export function scott_bandwidth(samples: readonly number[]): number {
   const n_vals = samples.length
   if (n_vals < 2) return 1
@@ -153,7 +148,7 @@ export function gaussian_kde(samples: readonly number[], opts: KdeOptions = {}):
       ? bandwidth
       : bandwidth === `scott`
         ? scott_bandwidth(finite)
-        : silverman_bandwidth_unordered(finite)
+        : silverman_bandwidth(finite)
   band = Math.max(band, 1e-12) // guard against zero/negative bandwidth
 
   const n_eval = eval_samples.length

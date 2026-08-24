@@ -17,7 +17,6 @@
     text_color = undefined,
     backdrop: backdrop_color = undefined,
     float_fmt = undefined,
-    node = $bindable(null),
     label = undefined,
     split_layout = undefined, // auto-determined from segment count
     onclick,
@@ -37,7 +36,6 @@
     // Opaque surface behind the tile. Supplying it avoids a per-tile theme observer.
     backdrop?: string
     float_fmt?: string
-    node?: HTMLElement | null
     label?: string
     // Which split to use. Invalid layouts fall back to the default for the segment count.
     split_layout?: SplitLayout
@@ -103,6 +101,7 @@
     has_split_background ? `transparent` : (segment_colors[0] ?? category_color),
   )
 
+  let node = $state<HTMLElement | null>(null)
   const backdrop = resolve_backdrop(() => node, { override: () => backdrop_color })
   const auto_text_color = (background: string): string =>
     contrast_text_color({ background, backdrop: backdrop.current })

@@ -3,15 +3,15 @@
   import { plural } from '$lib/labels'
   import ChemPotDiagram2D from './ChemPotDiagram2D.svelte'
   import ChemPotDiagram3D from './ChemPotDiagram3D.svelte'
-  import { get_ternary_combinations } from './compute'
+  import { entry_elements, get_ternary_combinations } from './compute'
   import type { ChemPotDiagramConfig, ChemPotHoverInfo } from './types'
   import { CHEMPOT_DEFAULTS } from './types'
 
   let {
     entries = [],
     config = {},
-    width = $bindable(600),
-    height = $bindable(600),
+    width = 600,
+    height = 600,
     // Bound temperature may be auto-corrected by 2D/3D child components.
     temperature = $bindable(),
     hover_info = $bindable<ChemPotHoverInfo | null>(null),
@@ -24,18 +24,7 @@
     hover_info?: ChemPotHoverInfo | null
   } = $props()
 
-  // Extract unique elements from all entries (composition keys are element symbols)
-  const all_elements = $derived(
-    [
-      ...new Set(
-        entries.flatMap((entry) =>
-          Object.entries(entry.composition)
-            .filter(([, amount]) => amount > 0)
-            .map(([element]) => element),
-        ),
-      ),
-    ].toSorted(),
-  )
+  const all_elements = $derived(entry_elements(entries))
 
   // How many display axes (2 = binary/2D, 3+ = ternary/3D)
   const display_elements = $derived(config.elements ?? all_elements)
@@ -73,23 +62,9 @@
       </p>
     </div>
   {:else if n_display === 2}
-    <ChemPotDiagram2D
-      {entries}
-      {config}
-      bind:width
-      bind:height
-      bind:temperature
-      bind:hover_info
-    />
+    <ChemPotDiagram2D {entries} {config} {width} {height} bind:temperature bind:hover_info />
   {:else if n_display === 3 || !show_grid}
-    <ChemPotDiagram3D
-      {entries}
-      {config}
-      bind:width
-      bind:height
-      bind:temperature
-      bind:hover_info
-    />
+    <ChemPotDiagram3D {entries} {config} {width} {height} bind:temperature bind:hover_info />
   {:else}
     <p class="projection-info">
       Showing all {ternary_combos.length} ternary projections of the

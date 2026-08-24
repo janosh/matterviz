@@ -64,35 +64,33 @@ export function parse_supercell_scaling(scaling: string | number | Vec3): Vec3 {
     return scaling
   }
   if (typeof scaling === `string`) {
-    // Parse "2x2x2" format
+    // "2x2x2", "2×2×2", "2,2,2", "2 2 2" or a lone "2"; only plain digit runs count, so
+    // scientific notation and hex never reach Number()
     const parts = scaling
       .trim()
       .toLowerCase()
       .split(/[x×,\s]+/)
       .filter((part) => part.length > 0)
-
-    if (parts.length === 1 || parts.length === 3) {
-      // Check that all parts are strictly digits to avoid scientific notation/hex/etc per tests
-      if (parts.every((part) => /^\d+$/.test(part))) {
-        const values = parts.map(Number)
-        if (values.every((val) => val > 0)) {
-          return (parts.length === 1 ? [values[0], values[0], values[0]] : values) as Vec3
-        }
-      }
+    const values = parts.map(Number)
+    if (
+      (parts.length === 1 || parts.length === 3) &&
+      parts.every((part) => /^\d+$/.test(part)) &&
+      values.every((val) => val > 0)
+    ) {
+      return parts.length === 1 ? [values[0], values[0], values[0]] : (values as Vec3)
     }
   }
   throw new Error(`Invalid supercell scaling: ${scaling}`)
 }
 
-// Generate all lattice points for a supercell. Takes [scale_x, scale_y, scale_z] scaling factors
-// and returns array of fractional coordinates for lattice points
+// Integer cell offsets of a [scale_x, scale_y, scale_z] supercell, x fastest then y then z:
+// the same flat order make_supercell tiles sites in and site_offset above indexes by
 export function generate_lattice_points(scaling_factors: Vec3): Vec3[] {
   const [scale_x, scale_y, scale_z] = scaling_factors
   const count = scale_x * scale_y * scale_z
   const points: Vec3[] = Array(count)
 
   let write_idx = 0
-  // Generate in x, y, z order to match expected test results
   for (let kk = 0; kk < scale_z; kk++) {
     for (let jj = 0; jj < scale_y; jj++) {
       for (let ii = 0; ii < scale_x; ii++) {
@@ -108,9 +106,8 @@ export function generate_lattice_points(scaling_factors: Vec3): Vec3[] {
 // tab on allocation alone, and nothing downstream (rendering, bonding) could use the result
 const MAX_SUPERCELL_SITES = 1_000_000
 
-// Create a supercell from a Crystal
-// Takes original structure, scaling factors, and whether to fold coordinates back to unit cell (default: true)
-// Returns new supercell structure
+// Tile a Crystal by `scaling`, folding fractional coordinates back into the supercell unless
+// `to_unit_cell` is false
 export function make_supercell(
   structure: Crystal,
   scaling: string | number | Vec3,
@@ -128,13 +125,13 @@ export function make_supercell(
   }
 
   const orig_matrix = structure.lattice.matrix
-  // Create new scaled lattice
   const new_matrix = math.scale_lattice_matrix(orig_matrix, supercell_scaling)
-  const lattice_params = math.calc_lattice_params(new_matrix)
+  const new_lattice = {
+    ...structure.lattice,
+    matrix: new_matrix,
+    ...math.calc_lattice_params(new_matrix),
+  }
 
-  const new_lattice = { ...structure.lattice, matrix: new_matrix, ...lattice_params }
-
-  // Pre-allocate sites array
   const n_sites = structure.sites.length
   const new_sites: Site[] = Array(n_sites * total_cells)
 
@@ -147,38 +144,32 @@ export function make_supercell(
   // wrap_frac_coord rounds via toFixed, which costs more than the rest of the loop body.
   // A coordinate only depends on its own axis' cell index, so precomputing per axis runs
   // it n_sites * (scale_x + scale_y + scale_z) times instead of 3 * n_sites * total_cells.
-  const wrapped_frac = supercell_scaling.map((scale, axis) => {
+  // frac_shift is how far the wrap moved each coordinate, in units of the ORIGINAL lattice
+  // vector (the supercell-fractional shift times `scale`), so the Cartesian offset below is
+  // just the shift against the already-destructured lattice rows. Zero unless the input `abc`
+  // lay outside [0,1) — but when it did, `abc` was wrapped while `xyz` was not, so the two
+  // described cells a lattice vector apart and consumers reading `abc` (PBC image generation,
+  // symmetry) disagreed with those reading `xyz` (rendering, bonding) about where the atom
+  // is. Applied to `xyz` so both always name the same position.
+  const wrapped_frac: Float64Array[] = []
+  const frac_shift: Float64Array[] = []
+  let any_frac_shift = false
+  for (const [axis, scale] of supercell_scaling.entries()) {
     const coords = new Float64Array(n_sites * scale)
-    for (let cell_idx = 0; cell_idx < scale; cell_idx++) {
-      for (let site_idx = 0; site_idx < n_sites; site_idx++) {
-        const coord = (sites[site_idx].abc[axis] + cell_idx) / scale
-        coords[cell_idx * n_sites + site_idx] = to_unit_cell ? wrap_frac_coord(coord) : coord
-      }
-    }
-    return coords
-  })
-  // How far the wrap moved each coordinate, in units of the ORIGINAL lattice vector (the
-  // supercell-fractional shift times `scale`), so the Cartesian offset below is just the
-  // shift against the already-destructured lattice rows. Zero unless the input `abc` lay
-  // outside [0,1) — but when it did, `abc` was wrapped while `xyz` was not, so the two
-  // described cells a lattice vector apart and consumers reading `abc` (PBC image
-  // generation, symmetry) disagreed with those reading `xyz` (rendering, bonding) about
-  // where the atom is. Applied to `xyz` so both always name the same position.
-  const frac_shift = supercell_scaling.map((scale, axis) => {
     const shifts = new Float64Array(n_sites * scale)
-    if (!to_unit_cell) return shifts
     for (let cell_idx = 0; cell_idx < scale; cell_idx++) {
       for (let site_idx = 0; site_idx < n_sites; site_idx++) {
         const flat_idx = cell_idx * n_sites + site_idx
         const coord = (sites[site_idx].abc[axis] + cell_idx) / scale
-        shifts[flat_idx] = (wrapped_frac[axis][flat_idx] - coord) * scale
+        const wrapped = to_unit_cell ? wrap_frac_coord(coord) : coord
+        coords[flat_idx] = wrapped
+        shifts[flat_idx] = (wrapped - coord) * scale
+        if (shifts[flat_idx] !== 0) any_frac_shift = true
       }
     }
-    return shifts
-  })
-  const any_frac_shift = frac_shift.some((axis_shifts) =>
-    axis_shifts.some((shift) => shift !== 0),
-  )
+    wrapped_frac.push(coords)
+    frac_shift.push(shifts)
+  }
 
   // Identical for every image of a base site, so build once and share the reference —
   // supercell sites already share their base site's `species` array the same way.

@@ -53,32 +53,20 @@ describe(`Color Scales`, () => {
 })
 
 describe(`Coordination`, () => {
-  // C-O pair 1.5 Å apart, i.e. within bonding range
-  const co_pair = (): Crystal =>
-    make_struct([
-      { xyz: [0, 0, 0], element: `C` },
-      { xyz: [1.5, 0, 0], element: `O` },
-    ])
-
-  test(`bonded pair shares positive coordination and color`, () => {
-    const { values, colors } = ap.get_coordination_colors(co_pair())
-    expect(values.every((val) => typeof val === `number` && val > 0)).toBe(true)
-    expect(values[0]).toBe(values[1])
-    expect(colors[0]).toBe(colors[1])
-  })
-
-  test(`isolated atoms have zero coordination`, () => {
-    const structure = make_struct([{ xyz: [0, 0, 0] }, { xyz: [100, 100, 100] }])
-    expect(ap.get_coordination_colors(structure).values).toEqual([0, 0])
-  })
-
-  test(`linear chain middle has more neighbors than its ends`, () => {
-    // oxfmt-ignore
-    const structure = make_struct([
-      { xyz: [0, 0, 0], element: `C` }, { xyz: [1.5, 0, 0], element: `C` },
-      { xyz: [3, 0, 0], element: `C` },
-    ])
-    expect(ap.get_coordination_colors(structure).values).toEqual([1, 2, 1])
+  // oxfmt-ignore
+  test.each([
+    [`bonded C-O pair (1.5 Å)`, [{ xyz: [0, 0, 0], element: `C` }, { xyz: [1.5, 0, 0], element: `O` }], [1, 1]],
+    [`isolated atoms`, [{ xyz: [0, 0, 0] }, { xyz: [100, 100, 100] }], [0, 0]],
+    [`linear chain (middle has two neighbors)`, [{ xyz: [0, 0, 0], element: `C` }, { xyz: [1.5, 0, 0], element: `C` }, { xyz: [3, 0, 0], element: `C` }], [1, 2, 1]],
+  ] as [string, Parameters<typeof make_struct>[0], number[]][])(`%s coordination`, (_name, sites, expected) => {
+    const { values, colors } = ap.get_coordination_colors(make_struct(sites))
+    expect(values).toEqual(expected)
+    // equal coordination numbers share a color
+    for (const [idx, value] of values.entries()) {
+      for (const [other_idx, other] of values.entries()) {
+        if (value === other) expect(colors[idx]).toBe(colors[other_idx])
+      }
+    }
   })
 
   describe(`PBC-aware coordination`, () => {

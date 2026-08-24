@@ -15,7 +15,7 @@
   import { Spinner } from '$lib/feedback'
   import { create_file_drop_handler, drag_over_handlers } from '$lib/io/file-drop'
   import { format_num } from '$lib/labels'
-  import { FullscreenButton } from '$lib/layout'
+  import { ViewerChrome } from '$lib/layout'
   import { clamp, type Vec2 } from '$lib/math'
   import { PlotTooltip } from '$lib/plot'
   import { sanitize_html } from '$lib/sanitize'
@@ -31,6 +31,7 @@
     compute_section,
     create_section_evaluator,
     decompose_phase,
+    DEFAULT_N_SAMPLES,
     prepare_diagram,
   } from './compute'
   import PhaseEventList from './PhaseEventList.svelte'
@@ -40,7 +41,6 @@
   import TernarySectionCanvas from './TernarySectionCanvas.svelte'
   import type {
     Decomposition,
-    DiagramPhase,
     DiagramProgress,
     FreeEnergyMode,
     PhaseTemperatureHover,
@@ -64,7 +64,7 @@
     display = $bindable({}),
     free_energy_mode = $bindable(`auto`),
     t_range = $bindable(),
-    n_samples = $bindable(64),
+    n_samples = $bindable(DEFAULT_N_SAMPLES),
     gas_enabled = $bindable(false),
     gas_pressures = $bindable({}),
     show_controls,
@@ -72,9 +72,7 @@
     fullscreen = $bindable(false),
     fullscreen_toggle = true,
     wrapper = $bindable(),
-    allow_file_drop = true,
     on_file_drop,
-    on_phase_click,
     title,
     children,
     ...rest
@@ -98,11 +96,7 @@
     fullscreen?: boolean
     fullscreen_toggle?: boolean
     wrapper?: HTMLDivElement
-    allow_file_drop?: boolean
     on_file_drop?: (entries: PhaseData[], filename: string) => void
-    // Click on the 2D section (phase.entry is the source entry); bind:selected_phase sees
-    // selections from every view
-    on_phase_click?: (phase: DiagramPhase | null) => void
     title?: string
     children?: Snippet<[{ diagram: TernaryPhaseDiagram | null; temperature: number }]>
   } = $props()
@@ -310,7 +304,7 @@
         : null,
   )
   const formula_html = (phase: number) =>
-    sanitize_html(get_electro_neg_formula(model?.phases[phase].label ?? ``, false, ``))
+    sanitize_html(get_electro_neg_formula(model?.phases[phase].label ?? ``, { delim: `` }))
   const windows_text = (phase: number) =>
     (diagram_raw?.stability_windows[phase] ?? [])
       .map(([lo, hi]) => `${format_num(lo, `.0f`)}–${format_num(hi, `.0f`)} K`)
@@ -325,7 +319,7 @@
   let dragover = $state(false)
   let drop_error = $state<string | null>(null)
   const handle_drop = create_file_drop_handler({
-    allow: () => allow_file_drop,
+    allow: () => true,
     on_error: (message) => (drop_error = message),
     on_drop: (content, filename) => {
       try {
@@ -366,38 +360,32 @@
     dragover = false
     void handle_drop(event)
   }}
-  {...drag_over_handlers({
-    allow: () => allow_file_drop,
-    set_dragover: (over) => (dragover = over),
-  })}
+  {...drag_over_handlers({ set_dragover: (over) => (dragover = over) })}
 >
-  {#if controls_config.mode !== `never`}
-    <div class={[`header-controls`, controls_config.class]} style={controls_config.style}>
-      {#if controls_config.visible(`controls`)}
-        <TernaryPhaseDiagramControls
-          bind:controls_open
-          display={settings}
-          {set_display}
-          bind:free_energy_mode
-          bind:t_range={() => t_range ?? [t_min, t_max], (value) => (t_range = value)}
-          bind:n_samples
-          {relevant_gases}
-          bind:gas_enabled
-          bind:gas_pressures
-          sources={diagram_raw?.sources ?? []}
-          n_phases={diagram_raw?.phases.length ?? 0}
-          n_events={events.length}
-        />
-      {/if}
-      {#if fullscreen_toggle && controls_config.visible(`fullscreen`)}
-        <FullscreenButton
-          bind:fullscreen
-          {wrapper}
-          bg_css_var="--phase-diagram-bg-fullscreen"
-        />
-      {/if}
-    </div>
-  {/if}
+  <ViewerChrome
+    {controls_config}
+    bind:fullscreen
+    {fullscreen_toggle}
+    {wrapper}
+    fullscreen_bg_css_var="--phase-diagram-bg-fullscreen"
+  >
+    {#if controls_config.visible(`controls`)}
+      <TernaryPhaseDiagramControls
+        bind:controls_open
+        display={settings}
+        {set_display}
+        bind:free_energy_mode
+        bind:t_range={() => t_range ?? [t_min, t_max], (value) => (t_range = value)}
+        bind:n_samples
+        {relevant_gases}
+        bind:gas_enabled
+        bind:gas_pressures
+        sources={diagram_raw?.sources ?? []}
+        n_phases={diagram_raw?.phases.length ?? 0}
+        n_events={events.length}
+      />
+    {/if}
+  </ViewerChrome>
 
   {#if title}<h3 class="diagram-title">{@html sanitize_html(title)}</h3>{/if}
   {#if drop_error ?? model_result.error ?? compute_error}
@@ -426,7 +414,6 @@
             highlighted_phases={hovered_phase === null ? [] : [hovered_phase]}
             {emphasized_phases}
             on_hover={(data) => (hover = data && { kind: `section`, data })}
-            on_click={(phase) => on_phase_click?.(phase)}
           />
         {:else if !mounted || !webgpu_available()}
           <div class="prism-fallback">WebGPU is required for the 3D prism view.</div>
@@ -792,26 +779,6 @@
         text-decoration: underline;
       }
     }
-  }
-  .header-controls {
-    position: absolute;
-    top: var(--ctrl-btn-top, 6px);
-    right: var(--ctrl-btn-right, 6px);
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    z-index: 10;
-    transition: opacity 0.2s ease;
-    &.hover-visible {
-      opacity: 0;
-    }
-    :global(.pane-toggle) {
-      position: static;
-    }
-  }
-  .ternary-phase-diagram:is(:hover, :focus-within) .header-controls,
-  .header-controls:has(:global([aria-expanded='true'])) {
-    opacity: 1;
   }
   .error {
     margin: 0.5em;

@@ -1,12 +1,12 @@
 import type { CompositionType } from '$lib/composition'
 import { ELEMENTARY_CHARGE_C, PLANCK_J_S, SPEED_OF_LIGHT_M_S } from '$lib/constants'
-import type { ElementSymbol } from '$lib/element'
-import { element_data } from '$lib/element'
+import { symbol_to_atomic_number } from '$lib/element/helpers'
 import * as math from '$lib/math'
 import type { Vec2 } from '$lib/math'
 import type { RadiationType } from '$lib/scattering'
 import {
   ELECTRON_FORM_FACTOR_CONST,
+  gaussian_params,
   gaussian_turning_point,
   neutron_scattering_length,
   XRAY_GAUSSIAN_PREFACTOR,
@@ -14,14 +14,9 @@ import {
 import type { Crystal } from '$lib/structure/index'
 import { parse_structure_file } from '$lib/structure/parse'
 import { is_crystal } from '$lib/structure/validation'
-// Single source of truth for atomic scattering params
-import ATOMIC_SCATTERING_PARAMS from './atomic_scattering_params.json' with { type: 'json' }
+import { to_error } from '$lib/utils'
 import type { Hkl, HklObj, PatternEntry, RecipPoint, XrdOptions, XrdPattern } from './index'
 import { is_xrd_data_file, parse_xrd_file } from './parse'
-import { to_error } from '$lib/utils'
-
-// JSON import yields Record<string, number[][]>; type for element-keyed scattering params
-type ScatteringParamsRecord = Partial<Record<ElementSymbol, number[][]>>
 
 // XRD wavelengths in Angstrom (Å)
 export const WAVELENGTHS = {
@@ -152,10 +147,6 @@ export function resolve_wavelength(
 const TWO_THETA_TOL = 1e-5
 const SCALED_INTENSITY_TOL = 1e-3
 
-const ELEMENT_Z = Object.fromEntries(
-  element_data.map((entry) => [entry.symbol, entry.number]),
-) as CompositionType
-
 // Sorted absolute indices, so every permutation and sign variant of a family collides.
 // Spelled out arithmetically on purpose: a map/toSorted/join version allocates two arrays per
 // call and benchmarked 25x slower, enough to time out the largest pymatgen parity fixture.
@@ -255,51 +246,41 @@ export function structure_factors_squared(
   debye_waller_factors: CompositionType,
   reflections: readonly RecipPoint[],
 ): Float64Array {
-  // Flatten species with occupancies. Scattering factors and Debye-Waller corrections depend
-  // only on the element, so keep one entry per distinct element and have each site-species
-  // index into it — per-atom, the 9-term exponential sum repeats identical work per site.
-  type ScatteringCoeffs = {
-    a: number[]
-    b: number[]
+  const is_neutron = radiation === `neutron`
+  const is_electron = radiation === `electron`
+
+  // Scattering factors and Debye-Waller damping depend only on the element, so the sum is
+  // F = Σ_e f_e(s)·dw_e(s)·S_e with S_e = Σ_{j∈e} occu_j·exp(2πi·hkl·r_j) the per-element
+  // geometric sum. Species are therefore grouped by element: one (f, dw) evaluation per
+  // element per reflection and an inner loop that is a bare complex multiply-accumulate.
+  type ElementCoeffs = {
+    a: Float64Array
+    b: Float64Array
     z: number
     dw: number
     // s² past which the X-ray Gaussian fit turns back up toward Z instead of decaying
-    // (see gaussian_turning_point in $lib/scattering). Resolved once per element.
+    // (see gaussian_turning_point in $lib/scattering)
     s_sq_max: number
-    // Bound coherent neutron scattering length in fm. Carries no s dependence whatsoever, so
-    // it is resolved once here rather than re-read for every reciprocal point.
+    // Bound coherent neutron scattering length in fm (s-independent)
     b_coh: number
+    // site-species of this element: fractional coords and occupancies
+    coords: math.Vec3[]
+    occus: number[]
   }
-  const element_coeffs: ScatteringCoeffs[] = []
-  const element_ids: number[] = [] // per site-species -> index into element_coeffs
-  const element_index = new Map<string, number>()
-  const frac_coords: math.Vec3[] = []
-  const occus: number[] = []
-
+  const by_element = new Map<string, ElementCoeffs>()
   for (const site of structure.sites) {
-    for (const species of site.species) {
-      const element_symbol = species.element
-      // Only the X-ray and electron branches read z; neutrons scatter off the nucleus and
-      // use b_coh alone. Gating the throw on radiation keeps a species that has a neutron
-      // scattering length but no atomic number (deuterium, once Site.species can carry it
-      // - ElementSymbol excludes `D` today) from being rejected before it reaches the
-      // branch that would have worked.
-      const z = ELEMENT_Z[element_symbol]
-      if (z === undefined && radiation !== `neutron`) {
-        throw new Error(`Unknown atomic number for element ${element_symbol}`)
-      }
-      let element_id = element_index.get(element_symbol)
-      if (element_id === undefined) {
-        // Neutrons scatter off nuclei and need no electron-density Gaussian fit, so only the
-        // X-ray and electron paths require ATOMIC_SCATTERING_PARAMS
-        const raw_coeff = (ATOMIC_SCATTERING_PARAMS as ScatteringParamsRecord)[element_symbol]
-        if (!raw_coeff && radiation !== `neutron`) {
-          throw new Error(
-            `No atomic scattering coefficients for ${element_symbol}. Extend ATOMIC_SCATTERING_PARAMS.`,
-          )
+    for (const { element: element_symbol, occu } of site.species) {
+      let coeffs = by_element.get(element_symbol)
+      if (coeffs === undefined) {
+        // Neutrons scatter off the nucleus and read neither Z nor the electron-density fit, so
+        // only the X-ray and electron paths require them (deuterium has b_coh but no Z)
+        const z = symbol_to_atomic_number(element_symbol)
+        if (z === undefined && !is_neutron) {
+          throw new Error(`Unknown atomic number for element ${element_symbol}`)
         }
+        const fit = is_neutron ? [] : gaussian_params(element_symbol)
         let b_coh = 0
-        if (radiation === `neutron`) {
+        if (is_neutron) {
           try {
             b_coh = neutron_scattering_length(element_symbol)
           } catch (exc) {
@@ -311,128 +292,122 @@ export function structure_factors_squared(
             )
           }
         }
-        element_id = element_coeffs.length
-        element_index.set(element_symbol, element_id)
-        element_coeffs.push({
-          a: raw_coeff ? raw_coeff.map((row) => row[0]) : [],
-          b: raw_coeff ? raw_coeff.map((row) => row[1]) : [],
-          z: z ?? 0, // unreachable on the x-ray/electron paths; neutrons never read it
+        coeffs = {
+          a: Float64Array.from(fit, (row) => row[0]),
+          b: Float64Array.from(fit, (row) => row[1]),
+          z: z ?? 0,
           dw: debye_waller_factors[element_symbol] ?? 0,
-          s_sq_max: raw_coeff ? gaussian_turning_point(element_symbol) : Infinity,
+          s_sq_max: is_neutron ? Infinity : gaussian_turning_point(element_symbol),
           b_coh,
-        })
+          coords: [],
+          occus: [],
+        }
+        by_element.set(element_symbol, coeffs)
       }
-      element_ids.push(element_id)
-      frac_coords.push(site.abc)
-      occus.push(species.occu)
+      coeffs.coords.push(site.abc)
+      coeffs.occus.push(occu)
     }
   }
-
-  // Scratch reused across reciprocal points to keep the loop allocation-free
-  const n_species = element_ids.length
-  const n_elements = element_coeffs.length
-  const f_by_element = new Float64Array(n_elements)
-  const dw_by_element = new Float64Array(n_elements)
-
-  const is_neutron = radiation === `neutron`
-  const is_electron = radiation === `electron`
-  // b_coh carries no s dependence at all, so the whole amplitude table is final here and the
-  // per-reflection loop below never has to touch it again
-  if (is_neutron) {
-    for (let elem = 0; elem < n_elements; elem++) {
-      f_by_element[elem] = element_coeffs[elem].b_coh
-    }
+  const elements = [...by_element.values()]
+  const n_elements = elements.length
+  // species laid out element by element: element e owns [elem_start[e], elem_start[e + 1])
+  const elem_start = new Int32Array(n_elements + 1)
+  for (let elem = 0; elem < n_elements; elem++) {
+    elem_start[elem + 1] = elem_start[elem] + elements[elem].coords.length
   }
+  const n_species = elem_start[n_elements]
+  const coords = elements.flatMap((coeffs) => coeffs.coords)
+  const occus = elements.flatMap((coeffs) => coeffs.occus)
+
   // exp(−0·s²) is exactly 1 for every finite s, so with no Debye-Waller factors supplied the
-  // damping table is likewise final and the per-element Math.exp can be skipped entirely
-  const has_debye_waller = element_coeffs.some((coeffs) => coeffs.dw !== 0)
-  if (!has_debye_waller) dw_by_element.fill(1)
+  // per-element Math.exp is skipped entirely
+  const has_debye_waller = elements.some((coeffs) => coeffs.dw !== 0)
 
   // exp(2πi·hkl·r) = exp(2πi·h·x)·exp(2πi·k·y)·exp(2πi·l·z): tabulate the three factors per
   // species over the index range the reflections span, so the inner loop below does three
   // complex multiplies instead of a cos and a sin. Halves the time of a 444-site pattern.
+  // The occupancy rides on the h-axis table, so the inner loop carries no weights at all.
   let [h_max, k_max, l_max] = [0, 0, 0]
   for (const { hkl } of reflections) {
     h_max = Math.max(h_max, Math.abs(hkl[0]))
     k_max = Math.max(k_max, Math.abs(hkl[1]))
     l_max = Math.max(l_max, Math.abs(hkl[2]))
   }
-  const phase_table = (axis: number, max_idx: number) => {
+  const phase_table = (axis: number, max_idx: number, weights: readonly number[]) => {
     const span = 2 * max_idx + 1
     const cos_table = new Float64Array(n_species * span)
     const sin_table = new Float64Array(n_species * span)
     for (let idx = 0; idx < n_species; idx++) {
       for (let miller = -max_idx; miller <= max_idx; miller++) {
-        const phase = 2 * Math.PI * miller * frac_coords[idx][axis]
-        cos_table[idx * span + miller + max_idx] = Math.cos(phase)
-        sin_table[idx * span + miller + max_idx] = Math.sin(phase)
+        const phase = 2 * Math.PI * miller * coords[idx][axis]
+        cos_table[idx * span + miller + max_idx] = weights[idx] * Math.cos(phase)
+        sin_table[idx * span + miller + max_idx] = weights[idx] * Math.sin(phase)
       }
     }
     return { cos_table, sin_table, span }
   }
-  const table_h = phase_table(0, h_max)
-  const table_k = phase_table(1, k_max)
-  const table_l = phase_table(2, l_max)
+  const unit_weights = occus.map(() => 1)
+  const { cos_table: cos_h, sin_table: sin_h, span: span_h } = phase_table(0, h_max, occus)
+  const {
+    cos_table: cos_k,
+    sin_table: sin_k,
+    span: span_k,
+  } = phase_table(1, k_max, unit_weights)
+  const {
+    cos_table: cos_l,
+    sin_table: sin_l,
+    span: span_l,
+  } = phase_table(2, l_max, unit_weights)
 
   const intensities = new Float64Array(reflections.length)
 
   for (let point_idx = 0; point_idx < reflections.length; point_idx++) {
     const { hkl, g_norm } = reflections[point_idx]
-    const [h_idx, k_idx, l_idx] = hkl
-    const h_offset = h_idx + h_max
-    const k_offset = k_idx + k_max
-    const l_offset = l_idx + l_max
-    const sin_theta_over_lambda = g_norm / 2
-    const sin_theta_over_lambda_sq = sin_theta_over_lambda * sin_theta_over_lambda
+    const h_offset = hkl[0] + h_max
+    const k_offset = hkl[1] + k_max
+    const l_offset = hkl[2] + l_max
+    const s_sq_point = (g_norm / 2) ** 2
 
-    // Atomic scattering factors, once per element rather than per atom. X-rays see
-    // f = Z − XRAY_GAUSSIAN_PREFACTOR·s²·Σ aᵢ·exp(−bᵢ·s²) (pymatgen fitted params); the
-    // Mott–Bethe electron form cancels that s² analytically (see $lib/scattering), so both
-    // share one sum_terms. Neutrons see an s-independent b_coh, leaving nothing to update.
-    if (!is_neutron || has_debye_waller) {
-      for (let elem = 0; elem < n_elements; elem++) {
-        const { a: a_arr, b: b_arr, z: atomic_number, dw, s_sq_max } = element_coeffs[elem]
-        if (!is_neutron) {
-          // The X-ray fit is only valid below its turning point; past it the expression
-          // climbs back to +Z instead of decaying to 0 (see xray_form_factor in
-          // $lib/scattering). Hold it flat there and floor at 0. The Mott-Bethe electron
-          // form has no such issue - the s² cancels, leaving a monotone Gaussian sum.
-          const s_sq = is_electron
-            ? sin_theta_over_lambda_sq
-            : Math.min(sin_theta_over_lambda_sq, s_sq_max)
-          let sum_terms = 0
-          for (let term = 0; term < a_arr.length; term++) {
-            sum_terms += a_arr[term] * Math.exp(-b_arr[term] * s_sq)
-          }
-          f_by_element[elem] = is_electron
-            ? ELECTRON_FORM_FACTOR_CONST * sum_terms
-            : Math.max(0, atomic_number - XRAY_GAUSSIAN_PREFACTOR * s_sq * sum_terms)
-        }
-        // Thermal damping is geometric, not electronic: it applies to every radiation
-        if (has_debye_waller) dw_by_element[elem] = Math.exp(-dw * sin_theta_over_lambda_sq)
-      }
-    }
-
-    // Structure factor sum: sum(fs * occu * exp(2πi g·r) * DW), accumulated into scalars in
-    // the original order, with the phase factor assembled from the per-axis tables above
     let f_real = 0
     let f_imag = 0
-    for (let idx = 0; idx < n_species; idx++) {
-      const elem = element_ids[idx]
-      const weight = f_by_element[elem] * occus[idx] * dw_by_element[elem]
-      const h_at = idx * table_h.span + h_offset
-      const k_at = idx * table_k.span + k_offset
-      const l_at = idx * table_l.span + l_offset
-      const cos_h = table_h.cos_table[h_at]
-      const sin_h = table_h.sin_table[h_at]
-      const cos_k = table_k.cos_table[k_at]
-      const sin_k = table_k.sin_table[k_at]
-      const re_hk = cos_h * cos_k - sin_h * sin_k
-      const im_hk = cos_h * sin_k + sin_h * cos_k
-      const cos_l = table_l.cos_table[l_at]
-      const sin_l = table_l.sin_table[l_at]
-      f_real += weight * (re_hk * cos_l - im_hk * sin_l)
-      f_imag += weight * (re_hk * sin_l + im_hk * cos_l)
+    for (let elem = 0; elem < n_elements; elem++) {
+      const { a: a_arr, b: b_arr, z: atomic_number, dw, s_sq_max, b_coh } = elements[elem]
+      // Atomic scattering factor. X-rays see f = Z − XRAY_GAUSSIAN_PREFACTOR·s²·Σ aᵢ·exp(−bᵢ·s²)
+      // (pymatgen fitted params); the Mott–Bethe electron form cancels that s² analytically
+      // (see $lib/scattering), so both share one sum_terms. Neutrons see the constant b_coh.
+      let factor = b_coh
+      if (!is_neutron) {
+        // The X-ray fit is only valid below its turning point; past it the expression climbs
+        // back to +Z instead of decaying to 0 (see xray_form_factor in $lib/scattering). Hold it
+        // flat there and floor at 0. The Mott-Bethe electron form has no such issue - the s²
+        // cancels, leaving a monotone Gaussian sum.
+        const s_sq = is_electron ? s_sq_point : Math.min(s_sq_point, s_sq_max)
+        let sum_terms = 0
+        for (let term = 0; term < a_arr.length; term++) {
+          sum_terms += a_arr[term] * Math.exp(-b_arr[term] * s_sq)
+        }
+        factor = is_electron
+          ? ELECTRON_FORM_FACTOR_CONST * sum_terms
+          : Math.max(0, atomic_number - XRAY_GAUSSIAN_PREFACTOR * s_sq * sum_terms)
+      }
+      // Thermal damping is geometric, not electronic: it applies to every radiation
+      if (has_debye_waller) factor *= Math.exp(-dw * s_sq_point)
+
+      // S_e = Σ occu·exp(2πi·hkl·r) over this element's species, phase factor assembled from
+      // the per-axis tables (occupancy already folded into the h table)
+      let sum_real = 0
+      let sum_imag = 0
+      for (let idx = elem_start[elem]; idx < elem_start[elem + 1]; idx++) {
+        const h_at = idx * span_h + h_offset
+        const k_at = idx * span_k + k_offset
+        const l_at = idx * span_l + l_offset
+        const re_hk = cos_h[h_at] * cos_k[k_at] - sin_h[h_at] * sin_k[k_at]
+        const im_hk = cos_h[h_at] * sin_k[k_at] + sin_h[h_at] * cos_k[k_at]
+        sum_real += re_hk * cos_l[l_at] - im_hk * sin_l[l_at]
+        sum_imag += re_hk * sin_l[l_at] + im_hk * cos_l[l_at]
+      }
+      f_real += factor * sum_real
+      f_imag += factor * sum_imag
     }
     intensities[point_idx] = f_real * f_real + f_imag * f_imag
   }
@@ -558,41 +533,36 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
   return { x: xs, y: ys, hkls: hkls_out, d_hkls: d_out }
 }
 
-// Process dropped file content and return an XRD pattern: measured data files (.xy, .brml, …)
-// are parsed, structure files (CIF, POSCAR, JSON, …) get a computed pattern.
+// Dropped file content as a plot entry: measured data files (.xy, .brml, …) are parsed,
+// structure files (CIF, POSCAR, JSON, …) get a computed pattern. Throws on anything it cannot
+// read; the drop handler that calls this reports the error with the filename.
 export async function add_xrd_pattern(
   content: string | ArrayBufferLike,
   filename: string,
   wavelength: number | null, // Probe wavelength in Angstrom for structure-based calculation
   radiation: RadiationType = `xray`, // Probe particle for structure-based calculation
-): Promise<{ pattern?: PatternEntry; error?: string }> {
-  try {
-    if (is_xrd_data_file(filename)) {
-      // SharedArrayBuffer-backed content is copied into a plain ArrayBuffer
-      const buffer_content: string | ArrayBuffer =
-        typeof content === `string` || content instanceof ArrayBuffer
-          ? content
-          : new Uint8Array(content).slice().buffer
-      const pattern = await parse_xrd_file(buffer_content, filename)
-      return { pattern: { label: filename, pattern } }
-    }
-
-    const text_content =
-      typeof content === `string` ? content : new TextDecoder().decode(content)
-    const parsed_structure = parse_structure_file(text_content, filename)
-    if (!is_crystal(parsed_structure)) {
-      return {
-        error:
-          `Cannot compute XRD: structure must have a lattice and atomic sites. ` +
-          `Supported formats: CIF, POSCAR, JSON, XYZ`,
-      }
-    }
-    const pattern = compute_xrd_pattern(parsed_structure, {
-      wavelength: typeof wavelength === `number` ? wavelength : undefined,
-      radiation,
-    })
-    return { pattern: { label: filename || `Dropped structure`, pattern } }
-  } catch (exc) {
-    return { error: `Failed to load ${filename}: ${to_error(exc).message}` }
+): Promise<PatternEntry> {
+  if (is_xrd_data_file(filename)) {
+    // SharedArrayBuffer-backed content is copied into a plain ArrayBuffer
+    const buffer_content: string | ArrayBuffer =
+      typeof content === `string` || content instanceof ArrayBuffer
+        ? content
+        : new Uint8Array(content).slice().buffer
+    return { label: filename, pattern: await parse_xrd_file(buffer_content, filename) }
   }
+
+  const text_content =
+    typeof content === `string` ? content : new TextDecoder().decode(content)
+  const parsed_structure = parse_structure_file(text_content, filename)
+  if (!is_crystal(parsed_structure)) {
+    throw new Error(
+      `Cannot compute XRD: structure must have a lattice and atomic sites. ` +
+        `Supported formats: CIF, POSCAR, JSON, XYZ`,
+    )
+  }
+  const pattern = compute_xrd_pattern(parsed_structure, {
+    wavelength: typeof wavelength === `number` ? wavelength : undefined,
+    radiation,
+  })
+  return { label: filename || `Dropped structure`, pattern }
 }

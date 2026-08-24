@@ -308,12 +308,12 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
     camera.zoom = clamp(zoomed, zoom_min, zoom_max)
   }
 
+  // Against the cached projections, so a hover costs no re-projection
   const find_entry_at_mouse = (event: MouseEvent): ConvexHullEntry | null =>
     draw.find_hull_entry_at_mouse(
       inputs.canvas(),
       event,
-      inputs.visible_entries(),
-      inputs.project_point,
+      sorted_points_cache,
       canvas_dims.scale,
     )
 

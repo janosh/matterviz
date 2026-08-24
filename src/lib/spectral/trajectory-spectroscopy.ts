@@ -660,14 +660,20 @@ const prepare_positions = (
       } else rotation = horn_rotation(centered, first_centered, masses)
     }
     rotations.push(rotation)
+    // Hot loop (n_frames × n_atoms): rotate in place instead of allocating two vectors per atom
+    const [[rot_xx, rot_xy, rot_xz], [rot_yx, rot_yy, rot_yz], [rot_zx, rot_zy, rot_zz]] =
+      rotation
+    const [center_x, center_y, center_z] = reference_center
     const frame_base = frame_idx * stream.n_atoms * 3
     for (let atom_idx = 0; atom_idx < stream.n_atoms; atom_idx++) {
       const atom_base = atom_idx * 3
-      const rotated = rotate_vec(rotation, centered.subarray(atom_base, atom_base + 3))
-      prepared.set(
-        rotated.map((value, axis) => value + reference_center[axis]),
-        frame_base + atom_base,
-      )
+      const pos_x = centered[atom_base]
+      const pos_y = centered[atom_base + 1]
+      const pos_z = centered[atom_base + 2]
+      const out = frame_base + atom_base
+      prepared[out] = rot_xx * pos_x + rot_xy * pos_y + rot_xz * pos_z + center_x
+      prepared[out + 1] = rot_yx * pos_x + rot_yy * pos_y + rot_yz * pos_z + center_y
+      prepared[out + 2] = rot_zx * pos_x + rot_zy * pos_y + rot_zz * pos_z + center_z
     }
   }
   return {

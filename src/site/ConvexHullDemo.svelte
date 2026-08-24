@@ -1,28 +1,29 @@
 <script lang="ts">
-  import type { ElementSymbol, FileInfo } from '$lib'
+  import type { FileInfo } from '$lib'
   import type { PhaseData } from '$lib/convex-hull'
   import { ConvexHullCanvas } from '$lib/convex-hull'
   import FilePicker from '$lib/FilePicker.svelte'
-  import { hull_system_name, quaternary_files } from '$site/convex-hull'
+  import { filter_by_elements, hull_system_name, quaternary_files } from '$site/convex-hull'
   import { onMount } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap } from 'svelte/reactivity'
 
   let { ...rest }: HTMLAttributes<HTMLDivElement> = $props()
 
-  // Map each system (e.g. `Li-Co-Ni-O`) to its glob path + lazy loader
-  const systems = Object.entries(quaternary_files)
-    .map(([path, loader]) => ({ name: hull_system_name(path), path, loader }))
-    .toSorted((sys_a, sys_b) => sys_a.name.localeCompare(sys_b.name))
-
+  // System name (e.g. `Li-Co-Ni-O`) -> lazy loader of its entries
+  const systems = new SvelteMap(
+    Object.entries(quaternary_files)
+      .map(([path, loader]) => [hull_system_name(path), loader] as const)
+      .toSorted(([name_a], [name_b]) => name_a.localeCompare(name_b)),
+  )
   const loaded_data = new SvelteMap<string, PhaseData[]>()
-  let active_name = $state(systems[0]?.name ?? ``)
+  let active_name = $state([...systems.keys()][0] ?? ``)
 
   const load_system = async (name: string) => {
-    const system = systems.find((sys) => sys.name === name)
-    if (!system || loaded_data.has(system.path)) return
+    const loader = systems.get(name)
+    if (!loader || loaded_data.has(name)) return
     try {
-      loaded_data.set(system.path, (await system.loader()).default)
+      loaded_data.set(name, (await loader()).default)
     } catch (error) {
       console.error(`Failed to load convex hull data ${name}`, error)
     }
@@ -37,18 +38,7 @@
     if (active_name) void load_system(active_name)
   })
 
-  // Keep entries whose composition only spans the given elements
-  const filter_by_elements = (entries: PhaseData[], elements: string[]) => {
-    const element_set = new Set(elements)
-    return entries.filter((entry) =>
-      (Object.keys(entry.composition) as ElementSymbol[])
-        .filter((el) => (entry.composition?.[el] ?? 0) > 0)
-        .every((el) => element_set.has(el)),
-    )
-  }
-
-  const active_path = $derived(systems.find((sys) => sys.name === active_name)?.path ?? ``)
-  const quaternary_entries = $derived(loaded_data.get(active_path) ?? [])
+  const quaternary_entries = $derived(loaded_data.get(active_name) ?? [])
   // Ternary subset of the same system: drop the 3rd element (e.g. Li-Co-Ni-O -> Li-Co-O)
   const system_elements = $derived(active_name.split(`-`))
   const ternary_elements = $derived(
@@ -58,18 +48,17 @@
   )
   const ternary_entries = $derived(filter_by_elements(quaternary_entries, ternary_elements))
 
-  const picker_files = systems.map((sys): FileInfo => ({
-    name: sys.name,
+  const picker_files = [...systems.keys()].map((name): FileInfo => ({
+    name,
     url: ``,
     type: `json`,
   }))
-  let active_files = $derived(active_name ? [active_name] : [])
 </script>
 
-{#if systems.length}
+{#if systems.size}
   <FilePicker
     files={picker_files}
-    {active_files}
+    active_files={active_name ? [active_name] : []}
     on_click={handle_click}
     style="margin-block: 1em"
   />
@@ -84,7 +73,7 @@
       dim={4}
       entries={quaternary_entries}
       controls={{ title: active_name }}
-      on_file_drop={(dropped) => loaded_data.set(active_path, dropped)}
+      on_file_drop={(dropped) => loaded_data.set(active_name, dropped)}
       style="height: 500px"
     />
   </div>

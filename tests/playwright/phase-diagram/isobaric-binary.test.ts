@@ -90,7 +90,7 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
     const { diagram } = get_diagram_elements(page)
     await diagram.hover()
 
-    const btn = diagram.locator(`.header-controls button`).last()
+    const btn = diagram.locator(`section.control-buttons .fullscreen-btn`)
     await btn.click()
     await expect(diagram).toHaveClass(/fullscreen/)
 

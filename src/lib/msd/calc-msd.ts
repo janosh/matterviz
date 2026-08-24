@@ -15,14 +15,8 @@ import {
   unwrapped_positions_of,
   validate_position_stream_layout,
 } from '$lib/trajectory/positions'
-import type {
-  EinsteinFit,
-  EinsteinFitOptions,
-  MsdCurve,
-  MsdOptions,
-  MsdPositions,
-  MsdResult,
-} from './index'
+import type { TrajectoryPositionStream } from '$lib/trajectory'
+import type { EinsteinFit, EinsteinFitOptions, MsdCurve, MsdOptions, MsdResult } from './index'
 
 // Rough (origin x atom) operation budget the origin sub-sampling is tuned against, so a
 // 100k-frame run stays interactive. MSD can thin origins because it averages a monotone
@@ -114,7 +108,10 @@ export function fit_einstein_diffusion(
   }
 }
 
-export function calc_msd(input: MsdPositions, options: MsdOptions = {}): MsdResult {
+export function calc_msd(
+  input: TrajectoryPositionStream,
+  options: MsdOptions = {},
+): MsdResult {
   const { n_frames, n_atoms, elements } = input
   const {
     dt = 1,

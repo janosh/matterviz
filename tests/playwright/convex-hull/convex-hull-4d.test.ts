@@ -1,19 +1,16 @@
 import { expect, type Locator, type Page, test } from '@playwright/test'
 import { IS_CI, require_bbox } from '../helpers'
-import { ensure_pane_visible, get_canvas_hash, open_info_and_controls } from './utils'
+import {
+  ensure_pane_visible,
+  get_canvas_hash,
+  goto_perf_page,
+  open_info_and_controls,
+} from './utils'
 
 const quaternary_diagram = (page: Page) =>
   page.locator(`.quaternary-grid .convex-hull-4d`).first()
 // the hull canvas comes before the gizmo's own canvas
 const hull_canvas = (diagram: Locator) => diagram.locator(`canvas`).first()
-
-// The performance page has controlled synthetic data and none of the slow data loading
-const goto_perf_page = async (page: Page, query: string) => {
-  await page.goto(`/test/convex-hull-performance?dim=4d&${query}`, {
-    waitUntil: `networkidle`,
-  })
-  return page.locator(`.convex-hull-4d`).first()
-}
 
 const open_pane = async (diagram: Locator, kind: `info` | `controls`) => {
   await diagram.locator(kind === `info` ? `.info-btn` : `.legend-controls-btn`).click()
@@ -50,7 +47,7 @@ test.describe(`ConvexHullCanvas dim=4 (Quaternary)`, () => {
   })
 
   test(`enable_click_selection=false prevents entry selection`, async ({ page }) => {
-    const diagram = await goto_perf_page(page, `count=100&click_selection=false`)
+    const diagram = await goto_perf_page(page, `4d`, `count=100&click_selection=false`)
     await expect(diagram).toBeVisible({ timeout: 15000 })
     await expect(diagram).toHaveAttribute(`data-has-selection`, `false`)
     const canvas = hull_canvas(diagram)
@@ -114,7 +111,7 @@ test.describe(`ConvexHullCanvas dim=4 (Quaternary)`, () => {
   })
 
   test(`computes hull distances on-the-fly when data is incomplete`, async ({ page }) => {
-    const diagram = await goto_perf_page(page, `count=20`)
+    const diagram = await goto_perf_page(page, `4d`, `count=20`)
     await expect(diagram).toBeVisible()
     const info = await open_pane(diagram, `info`)
 
@@ -258,7 +255,7 @@ test.describe(`ConvexHullCanvas dim=4 drag rotation`, () => {
     test(`drag-${direction} ${expect_increase ? `increases` : `decreases`} rotation_${axis} (natural direction)`, async ({
       page,
     }) => {
-      const diagram = await goto_perf_page(page, `count=20`)
+      const diagram = await goto_perf_page(page, `4d`, `count=20`)
       // the hull stacks a second, non-interactive canvas on top for the pulse rings
       const canvas = diagram.locator(`canvas:not(.pulse-overlay)`)
       await expect(canvas).toBeVisible({ timeout: 15000 })

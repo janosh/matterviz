@@ -613,10 +613,9 @@ describe(`add_xrd_pattern`, () => {
     [`JSON string`, cubic_json],
     [`ArrayBuffer`, new TextEncoder().encode(cubic_json).buffer],
   ])(`computes a pattern from a %s`, async (_label, content) => {
-    const result = await add_xrd_pattern(content, `test.json`, null)
-    expect(result.error).toBeUndefined()
-    expect(result.pattern?.label).toBe(`test.json`)
-    expect(result.pattern?.pattern.x.length).toBeGreaterThan(0)
+    const entry = await add_xrd_pattern(content, `test.json`, null)
+    expect(entry.label).toBe(`test.json`)
+    expect(entry.pattern.x.length).toBeGreaterThan(0)
   })
 
   test.each([
@@ -627,17 +626,15 @@ describe(`add_xrd_pattern`, () => {
       JSON.stringify({ ...make_simple_cubic_structure(3), lattice: undefined }),
       /must have a lattice/,
     ],
-  ])(`returns an error for %s`, async (_label, content, pattern) => {
-    const result = await add_xrd_pattern(content, `test.json`, null)
-    expect(result.error).toMatch(pattern)
-    expect(result.pattern).toBeUndefined()
+  ])(`throws for %s`, async (_label, content, pattern) => {
+    await expect(add_xrd_pattern(content, `test.json`, null)).rejects.toThrow(pattern)
   })
 
   test(`respects wavelength parameter`, async () => {
     const res_cu = await add_xrd_pattern(cubic_json, `cu.json`, WAVELENGTHS.CuKa)
     const res_mo = await add_xrd_pattern(cubic_json, `mo.json`, WAVELENGTHS.MoKa)
-    const peaks_cu = res_cu.pattern?.pattern.x ?? []
-    const peaks_mo = res_mo.pattern?.pattern.x ?? []
+    const peaks_cu = res_cu.pattern.x
+    const peaks_mo = res_mo.pattern.x
 
     // Bragg: 2θ = 2·asin(λ/2d), so halving λ has to move the first (100) line of a = 3 Å
     expect(peaks_cu.length).toBeGreaterThan(0)

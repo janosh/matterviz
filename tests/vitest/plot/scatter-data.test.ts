@@ -5,17 +5,23 @@ import type { LegendFill } from '$lib/plot/scatter/scatter-data'
 import {
   build_legend_data,
   filter_series_to_ranges,
+  materialize_series_points,
   pick_tooltip_bg,
 } from '$lib/plot/scatter/scatter-data'
 import { describe, expect, test } from 'vitest'
 
 const color_scale = (val: number) => `scale(${val})`
 const ranges: AxisRanges = { x: [0, 10], x2: [100, 200], y: [0, 10], y2: [-50, 50] }
+// materialize + range-filter in one step, the way ScatterPlot chains them per frame
+const filter_to_ranges = (
+  series: readonly (DataSeries | null | undefined)[],
+  axis_ranges: AxisRanges,
+) => filter_series_to_ranges(materialize_series_points(series), axis_ranges)
 
 describe(`filter_series_to_ranges`, () => {
   test(`includes points exactly on range edges, excludes outside`, () => {
     const series: DataSeries[] = [{ x: [0, 5, 10, 10.001, -0.001], y: [0, 5, 10, 5, 5] }]
-    const [result] = filter_series_to_ranges(series, ranges)
+    const [result] = filter_to_ranges(series, ranges)
     expect(result.filtered_data.map((pt) => pt.x)).toEqual([0, 5, 10])
     expect(result.filtered_data[2]).toMatchObject({ x: 10, y: 10, point_idx: 2 })
     // full x array preserved so connecting lines can continue off-range
@@ -28,14 +34,14 @@ describe(`filter_series_to_ranges`, () => {
       { x: [1, 2], y: [1, 2], label: `in-range` },
       { x: [3], y: [3], label: `hidden`, visible: false },
     ]
-    const result = filter_series_to_ranges(series, ranges)
+    const result = filter_to_ranges(series, ranges)
     // orig_series_idx 1 (not 0) keeps color cycling stable after dropping series
     expect(result).toMatchObject([{ label: `in-range`, orig_series_idx: 1 }])
   })
 
   test(`retains off-range line series with full arrays and no marker data`, () => {
     const series: DataSeries[] = [{ x: [20, 30], y: [4, 6], label: `line`, markers: `line` }]
-    const [result] = filter_series_to_ranges(series, ranges)
+    const [result] = filter_to_ranges(series, ranges)
     expect(result).toMatchObject({
       x: [20, 30],
       y: [4, 6],
@@ -51,14 +57,14 @@ describe(`filter_series_to_ranges`, () => {
       { x: [1, 2, 3], y: [40, -40, 60], y_axis: `y2` },
       { x: [150, 250], y: [5, 5], x_axis: `x2` },
     ]
-    const [y2_series, x2_series] = filter_series_to_ranges(series, ranges)
+    const [y2_series, x2_series] = filter_to_ranges(series, ranges)
     expect(y2_series.filtered_data.map((pt) => pt.y)).toEqual([40, -40]) // 60 > 50 excluded
     expect(x2_series.filtered_data.map((pt) => pt.x)).toEqual([150]) // 250 > 200 excluded
   })
 
   test(`handles inverted ranges via min/max of the bounds`, () => {
     const series: DataSeries[] = [{ x: [1, 5, 15], y: [2, 8, 3] }]
-    const [result] = filter_series_to_ranges(series, { ...ranges, x: [10, 0], y: [10, 0] })
+    const [result] = filter_to_ranges(series, { ...ranges, x: [10, 0], y: [10, 0] })
     expect(result.filtered_data.map((pt) => pt.x)).toEqual([1, 5]) // 15 outside effective [0, 10]
   })
 
@@ -80,18 +86,18 @@ describe(`filter_series_to_ranges`, () => {
             y2: [0, 1],
           }
     const series = [{ x: [1, bad_val, 3], y: [2, 2, bad_val] }] as unknown as DataSeries[]
-    const [result] = filter_series_to_ranges(series, axis_ranges)
+    const [result] = filter_to_ranges(series, axis_ranges)
     expect(result.filtered_data.map((pt) => pt.x)).toEqual([1])
   })
 
   test(`rejects NaN range bounds; tolerates missing series arrays`, () => {
     expect(
-      filter_series_to_ranges([{ x: [-1, 1], y: [2, 2], markers: `points` }], {
+      filter_to_ranges([{ x: [-1, 1], y: [2, 2], markers: `points` }], {
         ...ranges,
         x: [0, NaN],
       }),
     ).toEqual([])
-    const result = filter_series_to_ranges(
+    const result = filter_to_ranges(
       [undefined, { y: [1] }, { x: [1] }, { x: [1], y: [4] }] as unknown as DataSeries[],
       ranges,
     )
@@ -113,13 +119,13 @@ describe(`filter_series_to_ranges`, () => {
       ` line_underlays[0]`,
     ],
   ])(`rejects %s`, (_name, series, lengths, group = ``) => {
-    expect(() => filter_series_to_ranges([series], ranges)).toThrow(
+    expect(() => filter_to_ranges([series], ranges)).toThrow(
       `Series "energy"${group}: aligned arrays must have equal lengths, got ${lengths}`,
     )
   })
 
   test(`augments points with array or scalar per-point props`, () => {
-    const arrayed = filter_series_to_ranges(
+    const arrayed = filter_to_ranges(
       [
         {
           x: [1, 2],
@@ -142,7 +148,7 @@ describe(`filter_series_to_ranges`, () => {
       metadata: { tag: `b` },
     })
     expect(
-      filter_series_to_ranges(
+      filter_to_ranges(
         [{ x: [1, 2], y: [3, 4], point_style: { fill: `red` }, metadata: { tag: `shared` } }],
         ranges,
       )[0].filtered_data,

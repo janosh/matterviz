@@ -102,8 +102,16 @@ describe(`PieChart`, () => {
     [false, 0],
   ])(`show_labels=%s renders %d labels`, (show_labels, expected) => {
     mount_chart(PieChart, { composition: lfp, show_labels })
-    expect(document.querySelectorAll(`foreignObject`)).toHaveLength(expected)
+    expect(document.querySelectorAll(`text`)).toHaveLength(expected)
     expect(document.querySelectorAll(`path[role="button"]`)).toHaveLength(0)
+  })
+
+  test(`labels are plain SVG text (exportable) with element symbol and amount subscript`, () => {
+    mount_chart(PieChart, { composition: { Fe: 2, O: 3 } })
+    const [fe_label] = document.querySelectorAll(`text`)
+    const [symbol, amount] = fe_label.querySelectorAll(`tspan`)
+    expect([symbol.textContent, amount.textContent]).toEqual([`Fe`, `2`])
+    expect(document.querySelector(`foreignObject`)).toBeNull()
   })
 })
 

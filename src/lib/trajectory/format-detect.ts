@@ -3,6 +3,11 @@ import {
   CONFIG_DIRS_REGEX,
   ext_regex,
   HDF5_EXT_REGEX,
+  MD_SIM_EXCLUDE_REGEX,
+  TRAJ_EXTENSIONS_REGEX,
+  TRAJ_FALLBACK_EXTENSIONS_REGEX,
+  TRAJ_KEYWORDS_REGEX,
+  XDATCAR_REGEX,
   XYZ_EXTENSIONS,
   XYZ_EXTXYZ_REGEX,
 } from '$lib/constants'
@@ -11,7 +16,19 @@ import { has_ase_traj_magic, has_hdf5_magic, magic_head } from '$lib/io/is-binar
 import { is_lammps_data_content } from '$lib/structure/format-detect'
 import { parse_leading_num } from '$lib/utils'
 import { count_xyz_frames } from './helpers'
-import { is_trajectory_filename } from './filename'
+
+export const is_trajectory_filename = (filename: string): boolean => {
+  if (CONFIG_DIRS_REGEX.test(filename)) return false
+  const base_name = strip_compression_extensions(filename)
+
+  if (XYZ_EXTXYZ_REGEX.test(base_name)) return TRAJ_KEYWORDS_REGEX.test(base_name)
+  if (TRAJ_EXTENSIONS_REGEX.test(base_name) || XDATCAR_REGEX.test(base_name)) return true
+  if (MD_SIM_EXCLUDE_REGEX.test(base_name)) return false
+  if (HDF5_EXT_REGEX.test(base_name)) {
+    return /vaspout/i.test(base_name) || TRAJ_KEYWORDS_REGEX.test(base_name)
+  }
+  return TRAJ_KEYWORDS_REGEX.test(base_name) && TRAJ_FALLBACK_EXTENSIONS_REGEX.test(base_name)
+}
 
 // Extensions that explicitly identify a format — when present, format detection trusts
 // the extension instead of sniffing content

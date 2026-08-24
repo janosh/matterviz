@@ -77,13 +77,10 @@ export type DecorationScene = {
   // in that room instead of on top of it. Defaults to base_pad.
   axis_pad?: Required<Sides>
   obstacles_norm: readonly DecorationPoint[]
-  // Pixel obstacles are already expressed in the final SVG coordinate system.
-  obstacles_px?: readonly DecorationPoint[]
   // Host-owned exclusions such as in-plot controls or previously reserved labels.
   exclusion_rects?: readonly Rect[]
   items: readonly DecorationItem[]
   gap?: number
-  grid_resolution?: number
 }
 
 export type DecorationPlacement = {

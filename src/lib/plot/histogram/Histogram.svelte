@@ -24,6 +24,7 @@
   } from '$lib/plot/core/axis-utils'
   import type { AxisChangeState } from '$lib/plot/core/axis-utils'
   import { create_cartesian_frame } from '$lib/plot/core/cartesian-frame.svelte'
+  import { resolve_plot_display } from '$lib/plot/core/display.svelte'
   import { plot_color } from '$lib/colors'
   import { build_legend_items } from '$lib/plot/core/data-transform'
   import type { FacetLayoutContext } from '$lib/plot/core/facets'
@@ -187,7 +188,7 @@
     ...value_axis_defaults,
     ...y2_axis,
   })
-  const resolved_display = $derived({ ...DEFAULTS.plot.display, ...display })
+  const resolved_display = $derived(resolve_plot_display(display, DEFAULTS.plot.display))
   const resolved_bar = $derived({ ...DEFAULTS.histogram.bar, ...bar })
 
   let hover_info = $state<HistogramHandlerProps | null>(null)

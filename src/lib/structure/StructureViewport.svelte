@@ -105,7 +105,7 @@
     // scene + camera are bound out for the primary pane (consumed by the export pane)
     scene = $bindable(undefined),
     camera = $bindable(undefined),
-    hidden_elements = $bindable(new SvelteSet<ElementSymbol>()),
+    hidden_elements = new SvelteSet<ElementSymbol>(),
     polyhedra_rendered_elements = $bindable([]),
     trajectory_lines_result = $bindable(null),
   }: {
@@ -440,7 +440,7 @@
         bind:orbit_controls
         bind:rotation_target_ref
         bind:initial_computed_zoom
-        bind:hidden_elements
+        {hidden_elements}
         bind:hidden_prop_vals={
           () => session.hidden_prop_vals, (value) => (session.hidden_prop_vals = value)
         }

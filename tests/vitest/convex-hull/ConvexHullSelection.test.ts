@@ -14,8 +14,8 @@ vi.mock(`$lib/convex-hull/canvas-draw`, async (import_actual) => {
     find_hull_entry_at_mouse: (
       _canvas: unknown,
       _event: unknown,
-      entries: readonly unknown[],
-    ) => entries[0] ?? null,
+      points: readonly { entry: unknown }[],
+    ) => points[0]?.entry ?? null,
   }
 })
 

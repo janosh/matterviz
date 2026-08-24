@@ -313,7 +313,6 @@ export function create_trajectory_session(
     count: () => frame_count,
     index: inputs.index,
     set_index: commit,
-    set_step_index: commit,
     fps: inputs.fps,
     set_fps: inputs.set_fps,
     fps_range: inputs.fps_range,

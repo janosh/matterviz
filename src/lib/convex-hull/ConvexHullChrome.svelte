@@ -6,7 +6,7 @@
   import type { D3InterpolateName } from '$lib/colors'
   import type { ShowControlsState } from '$lib/controls'
   import { ClickFeedback, DragOverlay, Spinner } from '$lib/feedback'
-  import { FullscreenButton } from '$lib/layout'
+  import { ViewerChrome } from '$lib/layout'
   import { PlotTooltip } from '$lib/plot'
   import { sanitize_html } from '$lib/sanitize'
   import { DEFAULTS } from '$lib/settings'
@@ -29,8 +29,6 @@
 
   type ControlsProps = ComponentProps<typeof ConvexHullControls>
 
-  let chrome = $state<HTMLElement>()
-
   let {
     kind,
     selection,
@@ -45,6 +43,7 @@
     fullscreen = $bindable(false),
     fullscreen_toggle = true,
     on_fullscreen_change,
+    wrapper,
     camera,
     merged_controls,
     stable_entries,
@@ -94,6 +93,7 @@
       fullscreen?: boolean
       fullscreen_toggle?: boolean
       on_fullscreen_change?: (fullscreen: boolean) => void
+      wrapper?: HTMLDivElement // the host's root, sent fullscreen by the toggle
       get_point_color: (entry: ConvexHullEntry) => string
       merged_highlight_style: HighlightStyle
       is_highlighted: (entry: ConvexHullEntry) => boolean
@@ -147,74 +147,70 @@
 {/if}
 
 <!-- Control buttons (top-right corner) -->
-{#if controls_config.mode !== `never`}
-  <section bind:this={chrome} class={[`control-buttons`, controls_config.class]}>
-    {#if controls_config.visible(`reset`)}
-      <button
-        type="button"
-        onclick={reset_all}
-        title="Reset view and settings"
-        class="reset-camera-btn"
-      >
-        <Icon icon={Reset} />
-      </button>
-    {/if}
+<ViewerChrome
+  {controls_config}
+  bind:fullscreen
+  {fullscreen_toggle}
+  {wrapper}
+  fullscreen_bg_css_var="--hull-bg-fullscreen"
+  {on_fullscreen_change}
+>
+  {#if controls_config.visible(`reset`)}
+    <button
+      type="button"
+      onclick={reset_all}
+      title="Reset view and settings"
+      class="reset-camera-btn"
+    >
+      <Icon icon={Reset} />
+    </button>
+  {/if}
 
-    {#if enable_info_pane && phase_stats && controls_config.visible(`info-pane`)}
-      <ConvexHullInfoPane
-        bind:pane_open={info_pane_open}
-        {phase_stats}
-        {stable_entries}
-        {unstable_entries}
-        {show_stable}
-        {show_unstable}
-        {entry_category}
-        {hidden_categories}
-        {max_hull_dist_show_phases}
-        {max_hull_dist_show_labels}
-        {label_threshold}
-        toggle_props={{ class: `info-btn` }}
-      />
-    {/if}
+  {#if enable_info_pane && phase_stats && controls_config.visible(`info-pane`)}
+    <ConvexHullInfoPane
+      bind:pane_open={info_pane_open}
+      {phase_stats}
+      {stable_entries}
+      {unstable_entries}
+      {show_stable}
+      {show_unstable}
+      {entry_category}
+      {hidden_categories}
+      {max_hull_dist_show_phases}
+      {max_hull_dist_show_labels}
+      {label_threshold}
+      toggle_props={{ class: `info-btn` }}
+    />
+  {/if}
 
-    {#if fullscreen_toggle && controls_config.visible(`fullscreen`)}
-      <FullscreenButton
-        bind:fullscreen
-        wrapper={chrome?.parentElement ?? undefined}
-        bg_css_var="--hull-bg-fullscreen"
-        on_change={on_fullscreen_change}
-      />
-    {/if}
-
-    {#if controls_config.visible(`controls`)}
-      <ConvexHullControls
-        bind:controls_open
-        bind:color_mode
-        bind:color_scale
-        bind:show_stable
-        bind:show_unstable
-        {entry_category}
-        bind:hidden_categories
-        bind:show_stable_labels
-        bind:show_unstable_labels
-        bind:max_hull_dist_show_phases
-        bind:max_hull_dist_show_labels
-        max_hull_dist_in_data={hull_data.max_hull_dist_in_data}
-        {stable_entries}
-        {unstable_entries}
-        {camera}
-        {merged_controls}
-        toggle_props={{ class: `legend-controls-btn` }}
-        bind:show_hull_faces
-        bind:hull_face_color
-        bind:hull_face_opacity
-        bind:hull_face_color_mode
-        bind:energy_source_mode
-        energy_info={hull_data.energy_info}
-      />
-    {/if}
-  </section>
-{/if}
+  {#if controls_config.visible(`controls`)}
+    <ConvexHullControls
+      bind:controls_open
+      bind:color_mode
+      bind:color_scale
+      bind:show_stable
+      bind:show_unstable
+      {entry_category}
+      bind:hidden_categories
+      bind:show_stable_labels
+      bind:show_unstable_labels
+      bind:max_hull_dist_show_phases
+      bind:max_hull_dist_show_labels
+      max_hull_dist_in_data={hull_data.max_hull_dist_in_data}
+      {stable_entries}
+      {unstable_entries}
+      {camera}
+      {merged_controls}
+      toggle_props={{ class: `legend-controls-btn` }}
+      bind:show_hull_faces
+      bind:hull_face_color
+      bind:hull_face_opacity
+      bind:hull_face_color_mode
+      bind:energy_source_mode
+      energy_info={hull_data.energy_info}
+    />
+  {/if}
+</ViewerChrome>
 
 {#if show_tooltip && selection.hover_data}
   {@const { entry, position } = selection.hover_data}
@@ -289,47 +285,6 @@
     margin: 0;
     font-weight: 500;
   }
-  .control-buttons {
-    position: absolute;
-    top: 1ex;
-    right: 1ex;
-    display: flex;
-    gap: 8px;
-    transition: opacity 0.2s ease-in-out;
-  }
-  .control-buttons.hover-visible {
-    opacity: 0;
-    pointer-events: none;
-  }
-  :global(:is(.convex-hull-2d, .convex-hull-3d, .convex-hull-4d):is(:hover, :focus-within))
-    .control-buttons.hover-visible,
-  .control-buttons.always-visible {
-    opacity: 1;
-    pointer-events: auto;
-  }
-  @media (pointer: coarse) {
-    .control-buttons > :global(button) {
-      min-width: 32px;
-      min-height: 32px;
-    }
-  }
-  .control-buttons :global(.draggable-pane) {
-    z-index: 1001 !important;
-  }
-  .control-buttons :global(button) {
-    background: transparent;
-    border: none;
-    padding: 4px;
-    cursor: pointer;
-    border-radius: 3px;
-    color: var(--text-color, currentColor);
-    transition: background-color 0.2s;
-    display: flex;
-    font-size: var(--ctrl-btn-icon-size, clamp(0.7rem, 2cqmin, 0.85rem));
-  }
-  .control-buttons :global(button):hover {
-    background-color: color-mix(in srgb, currentColor 8%, transparent);
-  }
   .right-controls {
     position: absolute;
     top: calc(1ex + 50px);
@@ -339,12 +294,5 @@
     flex-direction: column;
     align-items: flex-end;
     gap: 6px;
-  }
-  .right-controls :global(:is(.temperature-slider, .pressure-controls)) {
-    position: static;
-  }
-  /* align both vertical range inputs at the same x position */
-  .right-controls :global(.slider-wrapper) {
-    justify-content: flex-end;
   }
 </style>

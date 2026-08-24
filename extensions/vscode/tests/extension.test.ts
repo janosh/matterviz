@@ -5,9 +5,7 @@ import {
   TRAJ_EXTENSIONS,
   TRAJ_KEYWORDS,
   VASP_VIEWER_STEMS,
-  VASP_VOLUMETRIC_REGEX,
 } from '$lib/constants'
-import { VOLUMETRIC_VASP_RE } from '$lib/file-viewer/types'
 import { DEFAULTS } from '$lib/settings'
 import type { ThemeName } from '$lib/theme/index'
 import { is_trajectory_file } from '$lib/trajectory/parse'
@@ -112,6 +110,7 @@ const mock_vscode = vi.hoisted(() => ({
   workspace: {
     getConfiguration: vi.fn(() => ({
       get: vi.fn((_key: string, default_val: string) => default_val),
+      inspect: vi.fn((_key: string) => undefined),
     })),
     onDidChangeConfiguration: vi.fn(() => ({ dispose: vi.fn() })),
     openTextDocument: vi.fn(),
@@ -161,6 +160,12 @@ describe(`MatterViz Extension`, () => {
   >
   beforeEach(() => {
     vi.clearAllMocks()
+    // clearAllMocks keeps implementations, so a test's stubbed configuration (an invalid
+    // theme, explicit overrides) would otherwise leak into every later test
+    mock_vscode.workspace.getConfiguration.mockReset().mockImplementation(() => ({
+      get: vi.fn((_key: string, default_val: string) => default_val),
+      inspect: vi.fn((_key: string) => undefined),
+    }))
 
     for (const run of active_runs.values()) run.dispose()
     for (const state of [
@@ -203,11 +208,6 @@ describe(`MatterViz Extension`, () => {
     expect(pkg_json.devDependencies[`@types/vscode`]).toBe(
       pkg_json.engines.vscode.replace(/^\^/, `~`),
     )
-  })
-
-  test(`extension volumetric regex stays in sync with app detection`, () => {
-    expect(VOLUMETRIC_VASP_RE.source).toBe(VASP_VOLUMETRIC_REGEX.source)
-    expect(VOLUMETRIC_VASP_RE.flags).toBe(VASP_VOLUMETRIC_REGEX.flags)
   })
 
   describe(`Custom Editor File Patterns`, () => {
@@ -700,7 +700,7 @@ describe(`MatterViz Extension`, () => {
     `saveAs writes text content verbatim: %s`,
     async (content) => {
       mock_vscode.window.showSaveDialog.mockResolvedValue({ fsPath: `/test/save.cif` })
-      await handle_msg({ command: `saveAs`, content, filename: `test.cif` })
+      await handle_msg({ command: `saveAs`, content, filename: `test.cif`, is_binary: false })
       expect(mock_vscode.workspace.fs.writeFile).toHaveBeenCalledWith(
         { fsPath: `/test/save.cif` },
         new TextEncoder().encode(content),
@@ -735,6 +735,7 @@ describe(`MatterViz Extension`, () => {
       write_error: `Write failed`,
       content: `content`,
       filename: `test.cif`,
+      is_binary: false,
       error: `Failed to save text file: Write failed`,
     },
     {
@@ -742,6 +743,7 @@ describe(`MatterViz Extension`, () => {
       dialog: undefined,
       content: `content`,
       filename: `test.cif`,
+      is_binary: false,
     },
     {
       label: `empty base64`,
@@ -1043,11 +1045,12 @@ describe(`MatterViz Extension`, () => {
   describe(`Theme functionality`, () => {
     // Stub vscode.workspace.getConfiguration so get(`theme`, default) returns theme_value
     const stub_theme_config = (theme_value: string) => {
-      mock_vscode.workspace.getConfiguration = vi.fn(() => ({
-        get: vi.fn((key: string, default_value?: string) =>
+      mock_vscode.workspace.getConfiguration.mockImplementation(() => ({
+        get: vi.fn((key: string, default_value: string) =>
           key === `theme` ? theme_value : default_value,
         ),
-      })) as unknown as typeof mock_vscode.workspace.getConfiguration
+        inspect: vi.fn((_key: string) => undefined),
+      }))
     }
 
     test.each<[number, string, ThemeName]>([
@@ -1088,14 +1091,12 @@ describe(`MatterViz Extension`, () => {
     // high-contrast auto mappings (HighContrast → black, HighContrastLight → white)
     // are covered by the theme detection test.each above
 
-    test(`invalid theme setting falls back to auto`, () => {
+    test(`invalid theme setting warns and follows the VS Code theme`, () => {
+      const warn = vi.spyOn(console, `warn`).mockImplementation(() => undefined)
       stub_theme_config(`invalid-theme`)
-      mock_vscode.window.activeColorTheme = {
-        kind: mock_vscode.ColorThemeKind.Light,
-      }
-
-      const result = get_theme()
-      expect(result).toBe(`light`) // Should fall back to system theme
+      mock_vscode.window.activeColorTheme = { kind: mock_vscode.ColorThemeKind.Dark }
+      expect(get_theme()).toBe(`dark`)
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining(`invalid-theme`))
     })
   })
 
@@ -1362,7 +1363,7 @@ describe(`MatterViz Extension`, () => {
         false,
       ],
     ])(`document-open callback is a no-op for %s`, async (_label, uri, auto_render) => {
-      // should_auto_render only inspects the filename, so an eligible name still schedules
+      // is_auto_renderable_filename only inspects the filename, so an eligible name still schedules
       // the 100ms render timer; the auto_render config is read inside it. Without advancing
       // past the delay this asserts nothing about the disabled case.
       vi.useFakeTimers()
@@ -1444,45 +1445,59 @@ describe(`MatterViz Extension`, () => {
       expect(get_defaults().structure.atom_radius).toBe(DEFAULTS.structure.atom_radius)
     })
 
+    // Out-of-range, off-enum and mistyped values are reported and the schema default applies,
+    // the same rule the persisted viewer state uses (is_valid_setting_value)
     test.each([
-      [`bond_thickness`, 0.2, 0.2],
-      [`site_label_padding`, -1, 0],
-      [`rotation_damping`, 1, 0.3],
-    ] as const)(`bounds structure.%s override %s to %s`, (key, value, expected) => {
-      const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
-      apply_overrides({ [`structure.${key}`]: value })
-      expect(get_defaults().structure[key]).toBe(expected)
-      expect(warn).toHaveBeenCalledTimes(value === expected ? 0 : 1)
+      [`bond_thickness`, 0.2, 0.2, 0],
+      [`site_label_padding`, -1, DEFAULTS.structure.site_label_padding, 1],
+      [`rotation_damping`, 1, DEFAULTS.structure.rotation_damping, 1],
+      [`show_bonds`, `sometimes`, DEFAULTS.structure.show_bonds, 1],
+      [`show_atoms`, `yes`, DEFAULTS.structure.show_atoms, 1],
+    ] as const)(
+      `structure.%s override %s resolves to %s`,
+      (key, value, expected, n_warnings) => {
+        const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
+        apply_overrides({ [`structure.${key}`]: value })
+        expect(get_defaults().structure[key]).toBe(expected)
+        expect(warn).toHaveBeenCalledTimes(n_warnings)
+      },
+    )
+
+    test(`missing inspect yields the schema defaults`, () => {
+      apply_config({ get: vi.fn(), inspect: vi.fn(() => undefined) })
+      expect(get_defaults()).toEqual(DEFAULTS)
     })
 
-    test.each([
-      [`missing inspect`, () => ({ get: vi.fn(), inspect: vi.fn(() => undefined) })],
-      [
-        `invalid structure values`,
-        () => ({
-          get: vi.fn(),
-          inspect: vi.fn((key: unknown) =>
-            typeof key === `string` && key.startsWith(`structure.`)
-              ? { key, workspaceValue: `invalid` }
-              : undefined,
-          ),
-        }),
-      ],
-      [
-        `getConfiguration throws`,
-        () => {
-          throw new Error(`Config access failed`)
-        },
-      ],
-    ])(`handles %s without throwing`, (_label, make_config) => {
-      mock_vscode.workspace.getConfiguration.mockImplementation(() => make_config())
-      expect(get_defaults()).toEqual(
-        expect.objectContaining({
-          structure: expect.any(Object),
-          trajectory: expect.any(Object),
-          plot: expect.any(Object),
-        }),
-      )
+    // Every structure.* key set to the string `invalid`: typed leaves (number, boolean, enum,
+    // array, map) reject it and keep their default, free-form string leaves take it as-is
+    test(`rejects mistyped structure values per leaf`, () => {
+      vi.spyOn(console, `warn`).mockImplementation(() => {})
+      apply_config({
+        get: vi.fn(),
+        inspect: vi.fn((key: string) =>
+          key.startsWith(`structure.`) ? { key, workspaceValue: `invalid` } : undefined,
+        ),
+      })
+      const { structure } = get_defaults()
+      const { atom_radius, show_atoms, show_bonds, camera_position, vector_configs } =
+        DEFAULTS.structure
+      expect(structure).toMatchObject({
+        atom_radius,
+        show_atoms,
+        show_bonds,
+        camera_position,
+        vector_configs,
+        bond_color: `invalid`,
+      })
+    })
+
+    // A host whose configuration API fails is a bug to surface, not a reason to render with
+    // silently guessed settings
+    test(`propagates a throwing getConfiguration`, () => {
+      mock_vscode.workspace.getConfiguration.mockImplementation(() => {
+        throw new Error(`Config access failed`)
+      })
+      expect(get_defaults).toThrow(`Config access failed`)
     })
   })
 })

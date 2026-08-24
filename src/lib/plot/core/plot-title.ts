@@ -43,8 +43,6 @@ interface PlotTitleLayoutInput {
   width: number
   x?: number
   y?: number
-  // Include the current text-metrics revision to make cache invalidation reactive in Svelte.
-  metrics_revision?: number
 }
 
 export type PlotTitleMeasure = (text: string, font: Readonly<FontSpec>) => TextLineMetrics
@@ -74,16 +72,11 @@ export interface PlotTitleBlockLayout {
 }
 
 interface ResolvedPlotTitle {
+  // SVG text-anchor of every line
   readonly align: PlotTitleAlign
-  readonly text_anchor: PlotTitleAlign
-  readonly anchor_x: number
-  readonly top_y: number
-  readonly available_width: number
   readonly block_height: number
-  readonly metrics_revision: number
   readonly title: PlotTitleBlockLayout | null
   readonly subtitle: PlotTitleBlockLayout | null
-  readonly lines: readonly PlotTitleLine[]
 }
 
 const DEFAULT_PLOT_TITLE_FONT: Readonly<FontSpec> = Object.freeze({
@@ -241,7 +234,7 @@ export function resolve_plot_title(
   measure: PlotTitleMeasure = measure_text_line,
 ): ResolvedPlotTitle {
   const { gap, max_lines } = validate_layout_input(config, input)
-  const { width: available_width, x = 0, y: top_y = 0, metrics_revision = 0 } = input
+  const { width: available_width, x = 0, y: top_y = 0 } = input
   const { align = `middle` } = config ?? {}
   const anchor_x =
     align === `start` ? x : align === `end` ? x + available_width : x + available_width / 2
@@ -273,17 +266,5 @@ export function resolve_plot_title(
   )
   const block_height =
     (title?.height ?? 0) + (title && subtitle ? gap : 0) + (subtitle?.height ?? 0)
-
-  return {
-    align,
-    text_anchor: align,
-    anchor_x,
-    top_y,
-    available_width,
-    block_height,
-    metrics_revision,
-    title,
-    subtitle,
-    lines: [...(title?.lines ?? []), ...(subtitle?.lines ?? [])],
-  }
+  return { align, block_height, title, subtitle }
 }

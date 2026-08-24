@@ -1,5 +1,6 @@
 <script lang="ts">
   import { DEFAULT_PNG_DPI } from '$lib/constants'
+  import { clamp } from '$lib/math'
   import type { PaneProps, PaneToggleProps } from '$lib/overlays'
   import { ViewerPane, create_clipboard_feedback } from '$lib/overlays'
   import type { ExportItem, ExportSection } from './types'
@@ -43,7 +44,7 @@
   function clamp_dpi(): void {
     const [min_dpi, max_dpi] = dpi_range
     if (typeof png_dpi !== `number` || !Number.isFinite(png_dpi)) png_dpi = DEFAULT_PNG_DPI
-    else png_dpi = Math.round(Math.min(max_dpi, Math.max(min_dpi, png_dpi)))
+    else png_dpi = Math.round(clamp(png_dpi, min_dpi, max_dpi))
   }
 
   // Copy-to-clipboard with temporary ✅ feedback. Clicks don't overlap, so one label

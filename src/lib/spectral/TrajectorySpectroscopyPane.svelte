@@ -161,7 +161,6 @@
     try {
       const collected_input = await collect_trajectory_spectroscopy_input(request_run, {
         frame_stride,
-        max_bytes: DEFAULT_POSITION_STREAM_MAX_BYTES,
         infrared_key: request_settings.infrared_key || null,
         infrared_kind: request_settings.infrared_kind,
         polarization_branch_continuous: request_settings.polarization_branch_continuous,

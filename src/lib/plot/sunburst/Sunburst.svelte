@@ -11,6 +11,7 @@
     SunburstShape,
   } from '$lib/plot'
   import { SunburstControls } from '$lib/plot'
+  import ChartShell from '$lib/plot/core/components/ChartShell.svelte'
   import HierarchyShell from '$lib/plot/core/components/HierarchyShell.svelte'
   import { is_activation_key } from '$lib/plot/core/interactions'
   import type { Sides } from '$lib/plot/core/layout'
@@ -27,7 +28,7 @@
     type ScreenArc as ScreenArcOf,
     type ViewWindow,
   } from '$lib/plot/sunburst/render'
-  import type { PositionedArc } from '$lib/plot/sunburst/sunburst'
+  import type { PositionedArc } from '$lib/plot/core/utils/hierarchy-layout'
   import { DEFAULTS } from '$lib/settings'
   import { arc as d3_arc } from 'd3-shape'
   import { type Snippet, untrack } from 'svelte'
@@ -327,207 +328,175 @@
   })
 </script>
 
-<div
-  bind:this={chart_state.wrapper}
-  bind:clientWidth={width}
-  bind:clientHeight={height}
+<ChartShell
+  chart_class="sunburst"
+  css_prefix="sunburst"
+  css_var_fallbacks={{ flex: `1 1 auto` }}
+  bind:wrapper={chart_state.wrapper}
+  bind:width
+  bind:height
+  bind:fullscreen
+  {fullscreen_toggle}
+  {controls_toggle_props}
+  {header_controls}
+  {children}
   {...rest}
-  class={[`sunburst`, rest.class, { fullscreen, icicle: shape === `icicle` }]}
+  class={[rest.class, { icicle: shape === `icicle` }]}
 >
-  <HierarchyShell
-    {chart_state}
-    aria_label={rest[`aria-label`] ?? `${shape === `icicle` ? `Icicle` : `Sunburst`} chart`}
-    {chart_transform}
-    {show_breadcrumbs}
-    crumb_separator
-    dblclick_target="group"
-    {fullscreen_toggle}
-    {header_controls}
-    {tooltip}
-    {children}
-  >
-    {#snippet controls()}
-      <SunburstControls
-        chart="sunburst"
-        toggle_props={{
-          ...controls_toggle_props,
-          // join the header flex row instead of absolute positioning (overrides
-          // ControlPane's default; flex layout can't overlap with the other buttons)
-          style: `position: static; ${controls_toggle_props?.style ?? ``}`,
-        }}
-        pane_props={controls_pane_props}
-        bind:show_controls
-        bind:controls_open
-        bind:shape
-        bind:value_mode
-        bind:max_depth
-        bind:inner_radius
-        bind:pad_angle
-        bind:min_fraction
-        bind:show_labels
-        bind:label_rotation
-        bind:label_text
-        bind:zoom_on_click
-        bind:show_breadcrumbs
-        {export_buttons}
-        on_export={chart_state.export_chart}
-      >
-        {@render controls_extra?.({ zoom_root_id })}
-      </SunburstControls>
-    {/snippet}
+  {#snippet controls(toggle_props)}
+    <SunburstControls
+      chart="sunburst"
+      {toggle_props}
+      pane_props={controls_pane_props}
+      bind:show_controls
+      bind:controls_open
+      bind:shape
+      bind:value_mode
+      bind:max_depth
+      bind:inner_radius
+      bind:pad_angle
+      bind:min_fraction
+      bind:show_labels
+      bind:label_rotation
+      bind:label_text
+      bind:zoom_on_click
+      bind:show_breadcrumbs
+      {export_buttons}
+      on_export={chart_state.export_chart}
+    >
+      {@render controls_extra?.({ zoom_root_id })}
+    </SunburstControls>
+  {/snippet}
 
-    {#snippet body()}
-      <!-- Arcs -->
-      <g class="arcs">
-        {#each visible_arcs as screen (screen.arc.node_idx)}
-          {#if arc_content}
-            {@render arc_content(screen)}
-          {:else}
-            <!-- @const so the path is generated (and info looked up) once per
-            arc per frame, shared by the base path and the hatch overlay -->
-            {@const info = chart_state.node_infos[screen.arc.node_idx]}
-            {@const opacity = chart_state.node_dim[screen.arc.node_idx].opacity}
-            {@const path_d = screen_path(screen)}
-            <!-- svelte-ignore a11y_no_static_element_interactions, a11y_no_noninteractive_tabindex -->
-            <path
-              d={path_d}
-              data-sunburst-node-idx={screen.arc.node_idx}
-              fill={info.fill}
-              fill-opacity={opacity}
-              role={info.clickable ? `button` : undefined}
-              tabindex={info.clickable
-                ? screen.arc.node_idx === roving_idx
-                  ? 0
-                  : -1
-                : undefined}
-              aria-label={info.clickable ? info.aria : undefined}
-              style:cursor={info.clickable ? `pointer` : `default`}
-            />
-            {#if screen.arc.hatch}
-              <!-- Decorative texture overlay (e.g. preemptible jobs); rendered as
-              the base path's next sibling so the hover 'pull' can track it -->
-              <path
-                class="arc-hatch"
-                aria-hidden="true"
-                d={path_d}
-                fill="url(#{chart_state.hatch_pattern_id})"
-                fill-opacity={opacity}
-              />
-            {/if}
-          {/if}
-        {/each}
-      </g>
-
-      <!-- Arc labels: selectable text; data-sunburst-node-idx forwards hover/click
-      to the underlying arc via the chart-group delegation in the shell -->
-      {#if show_labels}
-        <g class="arc-labels">
+  {#snippet body()}
+    <HierarchyShell
+      {chart_state}
+      aria_label={rest[`aria-label`] ?? `${shape === `icicle` ? `Icicle` : `Sunburst`} chart`}
+      {chart_transform}
+      {show_breadcrumbs}
+      crumb_separator
+      dblclick_target="group"
+      {tooltip}
+    >
+      {#snippet marks()}
+        <!-- Arcs -->
+        <g class="arcs">
           {#each visible_arcs as screen (screen.arc.node_idx)}
-            {@const lbl = label_attrs(screen)}
-            {#if lbl}
+            {#if arc_content}
+              {@render arc_content(screen)}
+            {:else}
+              <!-- @const so the path is generated (and info looked up) once per
+            arc per frame, shared by the base path and the hatch overlay -->
               {@const info = chart_state.node_infos[screen.arc.node_idx]}
-              <text
-                class="arc-label"
+              {@const opacity = chart_state.node_dim[screen.arc.node_idx].opacity}
+              {@const path_d = screen_path(screen)}
+              <!-- svelte-ignore a11y_no_static_element_interactions, a11y_no_noninteractive_tabindex -->
+              <path
+                d={path_d}
                 data-sunburst-node-idx={screen.arc.node_idx}
-                transform={lbl.transform}
-                fill={info.label_fill}
-                fill-opacity={chart_state.node_dim[screen.arc.node_idx].label_opacity}
-                style="cursor: {info.clickable ? `pointer` : `text`}{lbl.font_scale === 1
-                  ? ``
-                  : `; font-size: ${lbl.font_scale}em`}"
-              >
-                {lbl.text}
-              </text>
+                fill={info.fill}
+                fill-opacity={opacity}
+                role={info.clickable ? `button` : undefined}
+                tabindex={info.clickable
+                  ? screen.arc.node_idx === roving_idx
+                    ? 0
+                    : -1
+                  : undefined}
+                aria-label={info.clickable ? info.aria : undefined}
+                style:cursor={info.clickable ? `pointer` : `default`}
+              />
+              {#if screen.arc.hatch}
+                <!-- Decorative texture overlay (e.g. preemptible jobs); rendered as
+              the base path's next sibling so the hover 'pull' can track it -->
+                <path
+                  class="arc-hatch"
+                  aria-hidden="true"
+                  d={path_d}
+                  fill="url(#{chart_state.hatch_pattern_id})"
+                  fill-opacity={opacity}
+                />
+              {/if}
             {/if}
           {/each}
         </g>
-      {/if}
 
-      {#if shape === `sunburst`}
-        <!-- Center: zoom-out button + current-root summary -->
-        <!-- svelte-ignore a11y_no_static_element_interactions, a11y_no_noninteractive_tabindex -->
-        <circle
-          bind:this={center_el}
-          class="center-circle"
-          r={hole_r}
-          role={chart_state.zoomed ? `button` : undefined}
-          tabindex={chart_state.zoomed ? 0 : undefined}
-          aria-label={chart_state.zoomed ? `zoom out to ${zoom_out_label}` : undefined}
-          style="cursor: {chart_state.zoomed
-            ? `pointer`
-            : `default`}; pointer-events: {chart_state.zoomed ? `auto` : `none`}"
-          onclick={chart_state.zoom_out}
-          onkeydown={handle_center_keydown}
-        />
-        {#if center_content}
-          {@render center_content({
-            root: chart_state.zoom_root,
-            radius: hole_r,
-            zoomed: chart_state.zoomed,
-          })}
-        {:else if hole_r >= 18 && chart_state.zoom_root}
-          <!-- Selectable text overlaying the center circle; clicks forward to the
-          same zoom-out action as the circle (which also handles keyboard) -->
-          <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-          <text
-            class="center-label"
-            style:cursor={chart_state.zoomed ? `pointer` : `text`}
-            onclick={chart_state.zoom_out}
-          >
-            {#if center_label}
-              <tspan x="0" dy={chart_state.zoom_root.value ? `-0.3em` : `0.35em`}>
-                {center_label}
-              </tspan>
-            {/if}
-            <tspan x="0" dy={center_label ? `1.2em` : `0.35em`} class="center-value">
-              {format_value(chart_state.zoom_root.value, value_format)}
-            </tspan>
-          </text>
+        <!-- Arc labels: selectable text; data-sunburst-node-idx forwards hover/click
+      to the underlying arc via the chart-group delegation in the shell -->
+        {#if show_labels}
+          <g class="arc-labels">
+            {#each visible_arcs as screen (screen.arc.node_idx)}
+              {@const lbl = label_attrs(screen)}
+              {#if lbl}
+                {@const info = chart_state.node_infos[screen.arc.node_idx]}
+                <text
+                  class="arc-label"
+                  data-sunburst-node-idx={screen.arc.node_idx}
+                  transform={lbl.transform}
+                  fill={info.label_fill}
+                  fill-opacity={chart_state.node_dim[screen.arc.node_idx].label_opacity}
+                  style="cursor: {info.clickable ? `pointer` : `text`}{lbl.font_scale === 1
+                    ? ``
+                    : `; font-size: ${lbl.font_scale}em`}"
+                >
+                  {lbl.text}
+                </text>
+              {/if}
+            {/each}
+          </g>
         {/if}
-      {/if}
-    {/snippet}
-  </HierarchyShell>
-</div>
+
+        {#if shape === `sunburst`}
+          <!-- Center: zoom-out button + current-root summary -->
+          <!-- svelte-ignore a11y_no_static_element_interactions, a11y_no_noninteractive_tabindex -->
+          <circle
+            bind:this={center_el}
+            class="center-circle"
+            r={hole_r}
+            role={chart_state.zoomed ? `button` : undefined}
+            tabindex={chart_state.zoomed ? 0 : undefined}
+            aria-label={chart_state.zoomed ? `zoom out to ${zoom_out_label}` : undefined}
+            style="cursor: {chart_state.zoomed
+              ? `pointer`
+              : `default`}; pointer-events: {chart_state.zoomed ? `auto` : `none`}"
+            onclick={chart_state.zoom_out}
+            onkeydown={handle_center_keydown}
+          />
+          {#if center_content}
+            {@render center_content({
+              root: chart_state.zoom_root,
+              radius: hole_r,
+              zoomed: chart_state.zoomed,
+            })}
+          {:else if hole_r >= 18 && chart_state.zoom_root}
+            <!-- Selectable text overlaying the center circle; clicks forward to the
+          same zoom-out action as the circle (which also handles keyboard) -->
+            <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+            <text
+              class="center-label"
+              style:cursor={chart_state.zoomed ? `pointer` : `text`}
+              onclick={chart_state.zoom_out}
+            >
+              {#if center_label}
+                <tspan x="0" dy={chart_state.zoom_root.value ? `-0.3em` : `0.35em`}>
+                  {center_label}
+                </tspan>
+              {/if}
+              <tspan x="0" dy={center_label ? `1.2em` : `0.35em`} class="center-value">
+                {format_value(chart_state.zoom_root.value, value_format)}
+              </tspan>
+            </text>
+          {/if}
+        {/if}
+      {/snippet}
+    </HierarchyShell>
+  {/snippet}
+</ChartShell>
 
 <style>
-  .sunburst {
-    position: relative;
-    width: var(--sunburst-width, 100%);
-    height: var(--sunburst-height, auto);
-    min-height: var(--sunburst-min-height, 300px);
-    container-type: size;
-    z-index: var(--sunburst-z-index, auto);
-    /* flex-basis auto (not 1 = 0%) so an authored height wins over flex sizing in
-    column-flex parents while the chart still grows/shrinks to fill fixed layouts */
-    flex: var(--sunburst-flex, 1 1 auto);
-    display: var(--sunburst-display, flex);
-    flex-direction: column;
-    /* Use the plot background by default; set --sunburst-bg to override it. */
-    background: var(--sunburst-bg, var(--plot-bg));
-    border-radius: var(--sunburst-border-radius, 0);
-  }
-  .sunburst.fullscreen {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw !important;
-    height: 100vh !important;
-    z-index: var(--sunburst-fullscreen-z-index, var(--z-index-overlay-nav, 100000001));
-    margin: 0;
-    border-radius: 0;
-    background: var(--sunburst-fullscreen-bg, var(--sunburst-bg, var(--plot-bg)));
-    max-height: none !important;
-    overflow: hidden;
-    /* border-top (not padding-top): bind:clientHeight includes padding but excludes
-    borders - padding made the chart overflow + clip its bottom 2em (x-axis title) */
-    border-top: var(--plot-fullscreen-padding-top, 2em) solid
-      var(--sunburst-fullscreen-bg, var(--sunburst-bg, var(--plot-bg, transparent)));
-    box-sizing: border-box;
-  }
-  /* :global for everything HierarchyShell renders (header row, breadcrumbs, the
-  chart svg and the hatch pattern): those elements carry the shell's scope, not
-  this component's, but their theming stays in the chart's variable namespace */
-  .sunburst :global(.breadcrumb) {
+  /* fully :global: the wrapper is ChartShell's element and breadcrumbs, chart svg and
+  hatch pattern are HierarchyShell's, so none carry this component's scope - but
+  their theming stays in the chart's variable namespace */
+  :global(.sunburst .breadcrumb) {
     background: var(--sunburst-btn-bg, rgba(128, 128, 128, 0.15));
     color: inherit;
     border: none;
@@ -536,10 +505,10 @@
     cursor: pointer;
     font: inherit;
   }
-  .sunburst :global(.breadcrumb:hover:not(:disabled)) {
+  :global(.sunburst .breadcrumb:hover:not(:disabled)) {
     background: var(--sunburst-btn-hover-bg, rgba(128, 128, 128, 0.35));
   }
-  .sunburst :global(.breadcrumbs) {
+  :global(.sunburst .breadcrumbs) {
     position: absolute;
     top: var(--sunburst-breadcrumbs-top, 5pt);
     left: var(--sunburst-breadcrumbs-left, 8px);
@@ -551,12 +520,12 @@
     max-width: 75%;
     font-size: var(--sunburst-breadcrumbs-font-size, 0.85em);
   }
-  .sunburst :global(.breadcrumb:disabled) {
+  :global(.sunburst .breadcrumb:disabled) {
     cursor: default;
     font-weight: bold;
     background: transparent;
   }
-  .sunburst :global(svg[role='application']) {
+  :global(.sunburst svg[role='application']) {
     width: var(--sunburst-svg-width, 100%);
     height: var(--sunburst-svg-height, 100%);
     flex: var(--sunburst-svg-flex, 1);
@@ -576,8 +545,8 @@
     transform-origin: 0 0;
   }
   /* the hatch overlay (an arc's next sibling) rides along with its hover 'pull' */
-  .sunburst:not(.icicle) .arcs path:hover,
-  .sunburst:not(.icicle) .arcs path:hover + path.arc-hatch {
+  :global(.sunburst:not(.icicle)) .arcs path:hover,
+  :global(.sunburst:not(.icicle)) .arcs path:hover + path.arc-hatch {
     transform: scale(var(--sunburst-hover-scale, 1.02));
   }
   /* decorative overlay: never intercepts pointer events, no border of its own */
@@ -588,7 +557,7 @@
   /* subtle by default: thin stripes inheriting the arc border color (itself
   defaulting to the chart bg) at low opacity, so hatching matches the gaps
   between slices instead of reading as solid white */
-  .sunburst :global(.hatch-pattern-line) {
+  :global(.sunburst .hatch-pattern-line) {
     stroke: var(
       --sunburst-hatch-stroke,
       color-mix(in srgb, var(--sunburst-arc-stroke, var(--page-bg, white)) 30%, transparent)

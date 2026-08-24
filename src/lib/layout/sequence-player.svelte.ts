@@ -9,7 +9,6 @@ type SequencePlayerInputs = {
   count: () => number
   index: () => number
   set_index: (index: number) => void
-  set_step_index?: (index: number) => void
   fps: () => number
   set_fps: (fps: number) => void
   fps_range: () => readonly [number, number]
@@ -47,21 +46,18 @@ export function create_sequence_player(inputs: SequencePlayerInputs) {
     if (playback_fps !== inputs.fps()) inputs.set_fps(playback_fps)
   })
 
-  function set_valid_index(index: number, setter: (index: number) => void): void {
+  function seek(index: number): void {
     const count = inputs.count()
     if (count < 1 || !Number.isFinite(index)) return
     const next_index = clamp(Math.round(index), 0, count - 1)
-    if (next_index !== inputs.index()) setter(next_index)
+    if (next_index !== inputs.index()) inputs.set_index(next_index)
   }
-
-  const seek = (index: number) => set_valid_index(index, inputs.set_index)
   const go_to = (index: number) => {
     set_playing(false)
     seek(index)
   }
-  const set_step_index = inputs.set_step_index ?? inputs.set_index
-  const previous = () => set_valid_index(inputs.index() - 1, set_step_index)
-  const next = () => set_valid_index(inputs.index() + 1, set_step_index)
+  const previous = () => seek(inputs.index() - 1)
+  const next = () => seek(inputs.index() + 1)
   const can_play = $derived(inputs.count() > 1 && playback_fps > 0)
 
   function set_playing(playing: boolean): void {
@@ -87,7 +83,7 @@ export function create_sequence_player(inputs: SequencePlayerInputs) {
   function advance(): void {
     if (inputs.index() < inputs.count() - 1) return next()
     inputs.on_end?.()
-    set_valid_index(0, inputs.set_index)
+    seek(0)
     inputs.on_loop?.()
   }
 

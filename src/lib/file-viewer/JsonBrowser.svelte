@@ -5,10 +5,11 @@
   // Users can click tree nodes to render in the main panel, or drag nodes
   // to specific edges to create horizontal/vertical splits.
   import { contrast_text_color, pick_contrast_color, resolve_backdrop } from '$lib/colors'
-  import { format_path } from '$lib/json-path'
+  import { format_path, resolve_path } from '$lib/json-path'
   import JsonTree from '$lib/layout/json-tree/JsonTree.svelte'
   import { relative_path_segments } from '$lib/layout/json-tree/utils'
   import PaneDivider from '$lib/layout/PaneDivider.svelte'
+  import { clamp } from '$lib/math'
   import { merge } from '$lib/settings'
   import type { DefaultSettings } from '$lib/settings'
   import type { AnyStructure } from '$lib/structure'
@@ -22,13 +23,12 @@
   import { type mount, onDestroy, unmount } from 'svelte'
   import {
     detect_view_type,
-    resolve_path,
     scan_renderable_paths,
     TYPE_COLORS,
     TYPE_LABELS,
     volume_json_to_isosurface_input,
   } from './detect'
-  import type { RenderablePath, RenderableType } from './detect'
+  import type { RenderableType } from './detect'
   import { mount_viewer, type ViewerMountType } from './mount-viewer'
 
   let {
@@ -67,7 +67,7 @@
 
   // Scan for renderable paths after the tree has rendered so large JSON files don't block
   // the first paint (setTimeout rather than requestIdleCallback, which Safari lacks).
-  let renderable_paths = $state(new Map<string, RenderablePath>())
+  let renderable_paths = $state(new Map<string, RenderableType>())
   let auto_rendered = false
   $effect(() => {
     const current_value = value
@@ -75,10 +75,10 @@
       renderable_paths = scan_renderable_paths(current_value)
       // Auto-render if the root value itself is a single renderable type
       // (avoids forcing the user to click for single-type JSON files)
-      const root = renderable_paths.get(``)
-      if (root && !auto_rendered) {
+      const root_type = renderable_paths.get(``)
+      if (root_type && !auto_rendered) {
         auto_rendered = true
-        replace_or_add_panel({ data_path: ``, detected_type: root.type, val: current_value })
+        replace_or_add_panel({ data_path: ``, detected_type: root_type, val: current_value })
       }
     }, 0)
     return () => clearTimeout(scan_handle)
@@ -90,32 +90,9 @@
   const SIDEBAR_MIN_PX = 150
   const CANVAS_MIN_PX = 200
   let sidebar_px = $state(320)
-  let finish_drag: (() => void) | undefined
 
-  onDestroy(() => {
-    finish_drag?.()
-    clearTimeout(select_timer) // a pending selection must not render into a dead browser
-  })
-
-  // Split-divider drag helper -- in a webview iframe the cursor can leave the
-  // document entirely, so we listen for mouseup, blur, and pointerleave to ensure
-  // the drag always terminates.
-  function start_drag(on_move: (event: MouseEvent) => void, on_done: () => void): void {
-    finish_drag?.()
-    const controller = new AbortController()
-    const { signal } = controller
-    function cleanup(): void {
-      if (signal.aborted) return
-      controller.abort()
-      finish_drag = undefined
-      on_done()
-    }
-    finish_drag = cleanup
-    globalThis.addEventListener(`mousemove`, on_move, { signal })
-    globalThis.addEventListener(`mouseup`, cleanup, { signal })
-    globalThis.addEventListener(`blur`, cleanup, { signal })
-    document.documentElement.addEventListener(`mouseleave`, cleanup, { signal })
-  }
+  // a pending selection must not render into a dead browser
+  onDestroy(() => clearTimeout(select_timer))
 
   // === Drag-and-drop from tree ===
   let drop_zone = $state<`top` | `bottom` | `left` | `right` | `center` | null>(null)
@@ -163,7 +140,7 @@
     new Map(
       [...renderable_paths]
         .filter(([data_path]) => !data_path.includes(`\u0000`))
-        .map(([data_path, info]) => [data_to_tree_path(data_path), { data_path, ...info }]),
+        .map(([data_path, type]) => [data_to_tree_path(data_path), { data_path, type }]),
     ),
   )
 
@@ -207,7 +184,7 @@
     for (const existing of sidebar_element.querySelectorAll(`.renderable-badge`)) {
       existing.remove()
     }
-    const badges_by_tree_path = new Map<string, [string, RenderablePath][]>()
+    const badges_by_tree_path = new Map<string, [string, RenderableType][]>()
     for (const entry of renderable_paths) {
       const tree_path = data_to_tree_path(entry[0])
       const badges = badges_by_tree_path.get(tree_path)
@@ -219,15 +196,15 @@
       node.draggable = renderable_tree_paths.has(tree_path)
       const insert_after =
         node.querySelector(`.colon`) ?? node.querySelector(`.node-key`) ?? node
-      for (const [data_path, info] of badges_by_tree_path.get(tree_path) ?? []) {
+      for (const [data_path, type] of badges_by_tree_path.get(tree_path) ?? []) {
         const badge = document.createElement(`span`)
         badge.className = `renderable-badge`
-        badge.textContent = info.label
+        badge.textContent = TYPE_LABELS[type]
         badge.title = `Drag to canvas or click to render`
         badge.dataset.renderable_path = data_path
-        badge.dataset.renderable_type = info.type
-        badge.style.background = TYPE_COLORS[info.type]
-        badge.style.color = pick_contrast_color({ background: TYPE_COLORS[info.type] })
+        badge.dataset.renderable_type = type
+        badge.style.background = TYPE_COLORS[type]
+        badge.style.color = pick_contrast_color({ background: TYPE_COLORS[type] })
         badge.draggable = true
         insert_after.after(badge)
       }
@@ -511,44 +488,51 @@
   }
 
   // === Panel split divider dragging ===
-  let split_dragging_idx = $state(-1)
+  // The divider captures the pointer, so moves and the release reach it wherever the cursor
+  // goes (even outside a webview iframe), with no document listeners to unregister. The two
+  // panels either side share their flex weight; the drag moves weight between them.
+  let split_drag = $state<{
+    idx: number
+    pointer_id: number
+    start_pos: number
+    container_size: number
+    total_flex: number
+    start_left: number
+  } | null>(null)
 
-  function on_split_divider_mousedown(event: MouseEvent, split_idx: number): void {
-    event.preventDefault()
+  function start_split_drag(
+    event: PointerEvent & { currentTarget: HTMLElement },
+    split_idx: number,
+  ): void {
     const direction = split_directions[split_idx]
-    if (!direction) return
-    const panel_container = canvas_element?.querySelector(
-      `.panel-container`,
-    ) as HTMLElement | null
-    if (!panel_container) return
+    const panel_container = event.currentTarget.parentElement
+    if (split_drag || event.button !== 0 || !direction || !panel_container) return
+    event.preventDefault()
+    event.currentTarget.setPointerCapture(event.pointerId)
     const container_rect = panel_container.getBoundingClientRect()
-
     const is_vertical = direction === `vertical`
-    const start_pos = is_vertical ? event.clientY : event.clientX
-    const container_size = is_vertical ? container_rect.height : container_rect.width
-    // Total flex of the two adjacent panels
-    const left_idx = split_idx
-    const right_idx = split_idx + 1
-    const total_flex = (panel_sizes[left_idx] ?? 1) + (panel_sizes[right_idx] ?? 1)
-    const start_left_size = panel_sizes[left_idx] ?? total_flex / 2
-
-    start_drag(
-      (move_event) => {
-        const current_pos = is_vertical ? move_event.clientY : move_event.clientX
-        const delta_fraction = (current_pos - start_pos) / container_size
-        const delta_flex = delta_fraction * total_flex
-        const new_left = Math.max(
-          total_flex * 0.1,
-          Math.min(total_flex * 0.9, start_left_size + delta_flex),
-        )
-        panel_sizes[left_idx] = new_left
-        panel_sizes[right_idx] = total_flex - new_left
-      },
-      () => {
-        split_dragging_idx = -1
-      },
-    )
-    split_dragging_idx = split_idx
+    const total_flex = (panel_sizes[split_idx] ?? 1) + (panel_sizes[split_idx + 1] ?? 1)
+    split_drag = {
+      idx: split_idx,
+      pointer_id: event.pointerId,
+      start_pos: is_vertical ? event.clientY : event.clientX,
+      container_size: is_vertical ? container_rect.height : container_rect.width,
+      total_flex,
+      start_left: panel_sizes[split_idx] ?? total_flex / 2,
+    }
+  }
+  function move_split_drag(event: PointerEvent): void {
+    if (!split_drag || event.pointerId !== split_drag.pointer_id) return
+    const { idx, start_pos, container_size, total_flex, start_left } = split_drag
+    if (container_size <= 0) return
+    const current_pos = split_directions[idx] === `vertical` ? event.clientY : event.clientX
+    const moved_flex = ((current_pos - start_pos) / container_size) * total_flex
+    const new_left = clamp(start_left + moved_flex, total_flex * 0.1, total_flex * 0.9)
+    panel_sizes[idx] = new_left
+    panel_sizes[idx + 1] = total_flex - new_left
+  }
+  function end_split_drag(event: PointerEvent): void {
+    if (split_drag?.pointer_id === event.pointerId) split_drag = null
   }
 
   // === Helpers ===
@@ -570,7 +554,7 @@
     split_directions.length > 0 ? split_directions[0] : `vertical`,
   )
 
-  const type_color = (key: string) => TYPE_COLORS[key as RenderableType] ?? `#888`
+  const type_color = (key: string) => TYPE_COLORS[key as RenderableType]
 </script>
 
 {#snippet type_list(header: string, extra_style?: string)}
@@ -586,7 +570,7 @@
 {/snippet}
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="json-browser" class:dragging={split_dragging_idx >= 0}>
+<div class="json-browser" class:dragging={split_drag !== null}>
   <aside class="sidebar" bind:this={sidebar_element}>
     <JsonTree
       {value}
@@ -632,20 +616,20 @@
           <div
             style="margin-top: 12px; display: flex; flex-wrap: wrap; gap: 6px; justify-content: center;"
           >
-            {#each [...renderable_paths] as [data_path, info] (data_path)}
+            {#each [...renderable_paths] as [data_path, type] (data_path)}
               <button
                 type="button"
                 class="renderable-chip"
-                style="background: {type_color(info.type)}22; border: 1px solid {type_color(
-                  info.type,
-                )}66;"
+                style="background: {TYPE_COLORS[type]}22; border: 1px solid {TYPE_COLORS[
+                  type
+                ]}66;"
                 onclick={() => {
-                  const spec = resolve_renderable(data_path, info.type)
+                  const spec = resolve_renderable(data_path, type)
                   if (spec) replace_or_add_panel(spec)
                 }}
               >
-                <span class="chip-dot" style="background: {type_color(info.type)};"></span>
-                {info.label}: <code>{strip_type_suffix(data_path) || `root`}</code>
+                <span class="chip-dot" style="background: {TYPE_COLORS[type]};"></span>
+                {TYPE_LABELS[type]}: <code>{strip_type_suffix(data_path) || `root`}</code>
               </button>
             {/each}
           </div>
@@ -667,8 +651,12 @@
               class="split-divider"
               class:vertical={split_directions[idx - 1] === `vertical`}
               class:horizontal={split_directions[idx - 1] === `horizontal`}
-              class:active={split_dragging_idx === idx - 1}
-              onmousedown={(event) => on_split_divider_mousedown(event, idx - 1)}
+              class:active={split_drag?.idx === idx - 1}
+              onpointerdown={(event) => start_split_drag(event, idx - 1)}
+              onpointermove={move_split_drag}
+              onpointerup={end_split_drag}
+              onpointercancel={end_split_drag}
+              onlostpointercapture={end_split_drag}
             ></div>
           {/if}
           <div class="viz-panel" style="flex: {panel_sizes[idx] ?? 1}">
@@ -775,6 +763,7 @@
     background: var(--vscode-panel-border, rgba(255, 255, 255, 0.15));
     transition: background 0.15s;
     z-index: 5;
+    touch-action: none;
   }
   .split-divider.vertical {
     height: 5px;

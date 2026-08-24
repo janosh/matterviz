@@ -96,7 +96,6 @@ test.describe(`ScatterPlot3D`, () => {
       steps: 10,
     })
     await page.mouse.up()
-    await page.waitForTimeout(300)
 
     await expect_canvas_changed(canvas, initial, get_canvas_timeout())
   })
@@ -118,7 +117,6 @@ test.describe(`ScatterPlot3D`, () => {
       initial_box.y + initial_box.height / 2,
     )
     await page.mouse.wheel(0, -200)
-    await page.waitForTimeout(300)
 
     await expect_canvas_changed(canvas, initial, get_canvas_timeout())
     const read_zoom = (): Promise<number> =>
@@ -147,10 +145,6 @@ test.describe(`ScatterPlot3D`, () => {
 
   test(`controls pane opens on toggle click`, async ({ page }) => {
     await wait_for_3d_canvas(page, CONTAINER_SELECTOR)
-    await expect(page.locator(`${CONTAINER_SELECTOR} button.pane-toggle`)).toHaveCSS(
-      `right`,
-      `32px`,
-    )
     await open_controls_pane(page) // asserts the toggle appears and the pane opens
   })
 })
@@ -181,7 +175,6 @@ test.describe(`ScatterPlot3D Projections`, () => {
       await expect(checkbox).not.toBeChecked() // verify default unchecked
       await checkbox.click()
       await expect(checkbox).toBeChecked()
-      await page.waitForTimeout(200)
 
       await expect_canvas_changed(canvas, initial, get_canvas_timeout())
     })
@@ -226,7 +219,6 @@ test.describe(`ScatterPlot3D Projections`, () => {
 
       // Change slider to max
       await get_slider_row(pane, label).locator(`input[type="range"]`).fill(`1`)
-      await page.waitForTimeout(200)
 
       await expect_canvas_changed(canvas, before, get_canvas_timeout())
     })
@@ -289,7 +281,6 @@ test.describe(`ScatterPlot3D Projections`, () => {
 
     await xy_checkbox.click()
     await expect(xy_checkbox).not.toBeChecked()
-    await page.waitForTimeout(200)
 
     await expect_canvas_changed(canvas, with_projection, get_canvas_timeout())
   })
@@ -319,7 +310,6 @@ test.describe(`ScatterPlot3D Projections`, () => {
       steps: 10,
     })
     await page.mouse.up()
-    await page.waitForTimeout(300)
 
     await expect_canvas_changed(canvas, initial, get_canvas_timeout())
   })

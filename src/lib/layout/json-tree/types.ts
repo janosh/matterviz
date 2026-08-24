@@ -19,7 +19,6 @@ export type JsonValueType =
   | `bigint`
   | `error`
   | `function`
-  | `circular`
 
 // Props for the main JsonTree component
 export interface JsonTreeProps {

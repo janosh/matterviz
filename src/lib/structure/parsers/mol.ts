@@ -11,6 +11,7 @@ import {
   is_num_token,
   parse_coordinate,
   parsed_result,
+  record_atom_id,
   row_tokens,
   resolve_bonds,
   vec3_from_values,
@@ -151,14 +152,13 @@ const parse_v3000 = (lines: string[]): MolBlock | null => {
   for (const [atom_idx, row] of atom_rows.entries()) {
     const tokens = row_tokens(row, 5, `MOL V3000 atom row (need 'index symbol x y z')`)
     if (!tokens) return null
-    const atom_id = Number(tokens[0])
     const element = mol_element(tokens[1], atom_idx)
     const xyz = vec3_from_values(
       tokens.slice(2, 5).map(parse_coordinate),
       `MOL V3000 atom coordinates on row '${row}'`,
     )
     sites.push(make_site(element, [0, 0, 0], xyz, `${element}${atom_idx + 1}`))
-    if (Number.isInteger(atom_id)) site_idx_by_atom_id.set(atom_id, atom_idx)
+    record_atom_id(site_idx_by_atom_id, Number(tokens[0]), atom_idx)
   }
 
   const bonds: RawBond[] = []

@@ -171,7 +171,7 @@
   })
   // === Table ===
   const composition_key = (comp: Record<string, number>): string =>
-    get_electro_neg_formula(get_reduced_formula(comp), true, ``)
+    get_electro_neg_formula(get_reduced_formula(comp), { plain_text: true, delim: `` })
   const polymorph_counts = $derived.by(() => {
     const counts = new SvelteMap<string, number>()
     for (const entry of all_entries) {

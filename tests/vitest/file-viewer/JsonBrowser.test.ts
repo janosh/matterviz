@@ -43,8 +43,10 @@ const drag_event = (type: `dragover` | `drop`, payload = ``): DragEvent => {
   return event
 }
 
-const mouse_down = (element: Element): void => {
-  element.dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true, clientX: 5 }))
+const pointer = (element: Element, type: `pointerdown` | `pointerup`): void => {
+  element.dispatchEvent(
+    new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 1, clientX: 5 }),
+  )
   flushSync()
 }
 
@@ -80,19 +82,19 @@ const drop_table_onto_panel = async (data_path: string): Promise<void> => {
   )
 }
 
-test(`split divider drag activates and terminates on mouseup`, async () => {
+test(`split divider drag activates and terminates on pointer release`, async () => {
   mount_browser({ value: { first: table_rows(1, 3), second: table_rows(4, 4) } })
   await click_first_chip()
   await drop_table_onto_panel(`second`)
 
   const split_divider = await vi.waitFor(() => doc_query(`.split-divider`))
-  mouse_down(split_divider)
+  pointer(split_divider, `pointerdown`)
   const browser = doc_query(`.json-browser`)
   expect(split_divider.classList.contains(`active`)).toBe(true)
   expect(browser.classList.contains(`dragging`)).toBe(true)
 
-  globalThis.dispatchEvent(new MouseEvent(`mouseup`))
-  flushSync()
+  // the divider captures the pointer, so the release is delivered to it, not the window
+  pointer(split_divider, `pointerup`)
   expect(split_divider.classList.contains(`active`)).toBe(false)
   expect(browser.classList.contains(`dragging`)).toBe(false)
   // the sidebar is resized by the shared PaneDivider, not a bespoke mouse handler
@@ -270,15 +272,15 @@ test.each([
     expect(browser.style.getPropertyValue(`--split-pane-size`)).toBe(seeded)
 
     const divider = doc_query(`.pane-divider`)
-    const pointer = (type: string, clientX: number) =>
+    const fire_pointer = (type: string, clientX: number) =>
       divider.dispatchEvent(
         new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 3, clientX }),
       )
-    pointer(`pointerdown`, width / 2)
-    pointer(`pointermove`, min_client_x)
+    fire_pointer(`pointerdown`, width / 2)
+    fire_pointer(`pointermove`, min_client_x)
     expect(browser.style.getPropertyValue(`--split-pane-size`)).toBe(min_size)
-    pointer(`pointermove`, max_client_x)
+    fire_pointer(`pointermove`, max_client_x)
     expect(browser.style.getPropertyValue(`--split-pane-size`)).toBe(max_size)
-    pointer(`pointerup`, max_client_x)
+    fire_pointer(`pointerup`, max_client_x)
   },
 )

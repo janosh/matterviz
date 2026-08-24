@@ -14,9 +14,8 @@ export type FormulaSpecies = {
 type WildcardFormulaToken = { element: ElementSymbol | null; amount: number }
 
 // Composition with per-element oxidation states (input form of the Formula component)
-export type OxiComposition = Record<
-  ElementSymbol,
-  { amount: number; oxidation_state?: number }
+export type OxiComposition = Partial<
+  Record<ElementSymbol, { amount: number; oxidation_state?: number }>
 >
 
 // Float noise from multiplying fractional counts ((H0.1)3 -> 0.30000000000000004) would
@@ -165,22 +164,6 @@ export const extract_formula_elements = (
 ): ElementSymbol[] => {
   const symbols = Object.keys(parse_formula(formula)) as ElementSymbol[]
   return sorted ? symbols.toSorted() : symbols
-}
-
-// Lenient scan for element symbols in arbitrary text ("V4+" -> ["V"], "Fe2O3" -> ["Fe", "O"]),
-// ignoring everything that is not a valid symbol. For sanitizing dirty keys, not parsing.
-export const element_symbols_in = (text: string): ElementSymbol[] => {
-  const symbols: ElementSymbol[] = []
-  for (const token of text.match(/[A-Z][a-z]?/g) ?? []) {
-    if (is_elem_symbol(token)) symbols.push(token)
-  }
-  return symbols
-}
-
-// Valid element symbols from a comma-separated list, deduplicated, in periodic order
-export const normalize_element_symbols = (csv: string): ElementSymbol[] => {
-  const wanted = new Set(csv.split(`,`).map((symbol) => symbol.trim()))
-  return ELEM_SYMBOLS.filter((symbol) => wanted.has(symbol))
 }
 
 // Parse a composition from a formula string, a JSON object string ({"Fe": 2, "O": 3} or

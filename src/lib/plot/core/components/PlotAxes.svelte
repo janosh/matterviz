@@ -3,7 +3,7 @@
   import type { FacetAxis } from '$lib/plot/core/facets'
   import PlotAxis from '$lib/plot/core/components/PlotAxis.svelte'
   import { AXIS_TITLE_OFFSET, y_axis_label_x, y2_axis_label_x } from '$lib/plot/core/layout'
-  import { get_tick_label, type TicksOption } from '$lib/plot/core/scales'
+  import type { TicksOption } from '$lib/plot/core/scales'
   import type { DisplayConfig } from '$lib/plot/core/types'
 
   // The four Cartesian axes of a CartesianFrame, each gated on its data and on the
@@ -62,7 +62,7 @@
     show_grid={display[`${side}_grid`]}
     {show_baseline}
     unit_on_first_tick={unit_on_first_tick && (side === `y` || side === `y2`)}
-    tick_label={(tick) => get_tick_label(tick, label_ticks[side] ?? axis.ticks)}
+    label_ticks={label_ticks[side]}
     tick_color={tick_color[side]}
     on_tick_font={side === `x` ? (font) => (frame.tick_font = font) : undefined}
     axis_loading={axis_loading === side}

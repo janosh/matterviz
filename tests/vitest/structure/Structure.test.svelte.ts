@@ -138,6 +138,22 @@ const mock_fetch_response = (content: string, headers?: HeadersInit): void => {
   vi.stubGlobal(`fetch`, vi.fn().mockResolvedValue(new Response(content, { headers })))
 }
 
+// Stub the Fullscreen API on the mounted viewer; `set_fullscreen_element` plays the browser
+// entering/leaving fullscreen
+const stub_fullscreen_api = () => {
+  const request_fullscreen = vi.fn().mockResolvedValue(undefined)
+  const exit_fullscreen = vi.fn().mockResolvedValue(undefined)
+  const wrapper = doc_query(`.structure`)
+  wrapper.requestFullscreen = request_fullscreen
+  document.exitFullscreen = exit_fullscreen
+  const set_fullscreen_element = async (value: Element | null) => {
+    Object.defineProperty(document, `fullscreenElement`, { value, configurable: true })
+    document.dispatchEvent(new Event(`fullscreenchange`))
+    await tick()
+  }
+  return { wrapper, request_fullscreen, exit_fullscreen, set_fullscreen_element }
+}
+
 // Tests for Structure component functionality
 describe(`Structure`, () => {
   // Regression: bond-edit identity tokens (structure_identity) were stored in
@@ -836,27 +852,17 @@ describe(`Structure`, () => {
   })
 
   test(`preserves control chrome overrides and toggles fullscreen`, async () => {
-    const requestFullscreenMock = vi.fn().mockResolvedValue(undefined)
-    const exitFullscreenMock = vi.fn().mockResolvedValue(undefined)
     const on_fullscreen_change = vi.fn()
-    requestFullscreenMock.mockRejectedValueOnce(new Error(`fullscreen denied`))
     vi.spyOn(console, `error`).mockImplementation(() => undefined)
-    const set_fullscreen_element = async (value: Element | null) => {
-      Object.defineProperty(document, `fullscreenElement`, { value, configurable: true })
-      document.dispatchEvent(new Event(`fullscreenchange`))
-      await tick()
-    }
-
     mount_structure({
       structure,
       show_controls: `always`,
       style: `--ctrl-btn-icon-size: 32px`,
       on_fullscreen_change,
     })
-
-    const wrapper = doc_query(`.structure`)
-    wrapper.requestFullscreen = requestFullscreenMock
-    document.exitFullscreen = exitFullscreenMock
+    const { wrapper, request_fullscreen, exit_fullscreen, set_fullscreen_element } =
+      stub_fullscreen_api()
+    request_fullscreen.mockRejectedValueOnce(new Error(`fullscreen denied`))
     await tick()
 
     expect(wrapper.style.getPropertyValue(`--ctrl-btn-icon-size`)).toBe(`32px`)
@@ -866,19 +872,22 @@ describe(`Structure`, () => {
     )
 
     fullscreen_button.click()
-    await tick()
-    expect(fullscreen_button.getAttribute(`aria-pressed`)).toBe(`false`)
+    // the flag flips on click and reverts once the browser rejects the request
+    await vi.waitFor(() => expect(request_fullscreen).toHaveBeenCalledOnce())
+    await vi.waitFor(() =>
+      expect(fullscreen_button.getAttribute(`aria-pressed`)).toBe(`false`),
+    )
     expect(on_fullscreen_change).not.toHaveBeenCalled()
 
     fullscreen_button.click()
-    await vi.waitFor(() => expect(requestFullscreenMock).toHaveBeenCalledTimes(2))
+    await vi.waitFor(() => expect(request_fullscreen).toHaveBeenCalledTimes(2))
 
     await set_fullscreen_element(wrapper)
     expect(fullscreen_button.getAttribute(`aria-pressed`)).toBe(`true`)
     expect(on_fullscreen_change).toHaveBeenLastCalledWith({ structure, fullscreen: true })
 
     fullscreen_button.click()
-    expect(exitFullscreenMock).toHaveBeenCalledOnce()
+    await vi.waitFor(() => expect(exit_fullscreen).toHaveBeenCalledOnce())
 
     await set_fullscreen_element(null)
     expect(fullscreen_button.getAttribute(`aria-pressed`)).toBe(`false`)
@@ -889,18 +898,10 @@ describe(`Structure`, () => {
   // `fullscreen` is bindable: the parent's value follows the browser's fullscreen element, and
   // setting it from the parent requests/exits fullscreen like the button does
   test(`bind:fullscreen follows the fullscreen element and drives it`, async () => {
-    const request_fullscreen = vi.fn().mockResolvedValue(undefined)
-    const exit_fullscreen = vi.fn().mockResolvedValue(undefined)
-    const set_fullscreen_element = async (value: Element | null) => {
-      Object.defineProperty(document, `fullscreenElement`, { value, configurable: true })
-      document.dispatchEvent(new Event(`fullscreenchange`))
-      await tick()
-    }
     const props = $state({ fullscreen: false })
     mount_structure(bind_props({ structure, show_controls: `always` as const }, props))
-    const wrapper = doc_query(`.structure`)
-    wrapper.requestFullscreen = request_fullscreen
-    document.exitFullscreen = exit_fullscreen
+    const { wrapper, request_fullscreen, exit_fullscreen, set_fullscreen_element } =
+      stub_fullscreen_api()
     await tick()
 
     doc_query<HTMLButtonElement>(

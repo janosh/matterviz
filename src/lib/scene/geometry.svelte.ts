@@ -1,6 +1,24 @@
-// Shared two-point line construction and derived-geometry disposal for Threlte scenes.
+// Shared geometry construction and derived-geometry disposal for Threlte scenes.
 import type { Vec3 } from '$lib/math'
 import { BufferAttribute, BufferGeometry } from 'three/webgpu'
+
+// Indexed triangle mesh from flat xyz positions and index triples (marching-cubes output,
+// parsed Fermi sheets). The typed arrays are shared with the geometry, not copied; normals
+// are taken when given and computed from the faces otherwise. Null when nothing is drawable.
+export function indexed_mesh_geometry(
+  positions: Float32Array,
+  indices: Uint32Array,
+  normals?: Float32Array,
+): BufferGeometry | null {
+  if (positions.length === 0 || indices.length === 0) return null
+  const geometry = new BufferGeometry()
+  geometry.setAttribute(`position`, new BufferAttribute(positions, 3))
+  geometry.setIndex(new BufferAttribute(indices, 1))
+  if (normals) geometry.setAttribute(`normal`, new BufferAttribute(normals, 3))
+  else geometry.computeVertexNormals()
+  geometry.computeBoundingSphere()
+  return geometry
+}
 
 export function line_geometry(start: Vec3, end: Vec3): BufferGeometry {
   const geometry = new BufferGeometry()

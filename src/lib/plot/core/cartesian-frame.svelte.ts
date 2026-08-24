@@ -31,9 +31,7 @@ import {
   calc_auto_padding,
   DEFAULT_PLOT_PADDING,
   filter_padding,
-  measured_axis,
   type Rect,
-  resolve_tick_layout,
   sides_equal,
   type Sides,
 } from '$lib/plot/core/layout'
@@ -53,6 +51,7 @@ import type { IndexedRefLine } from '$lib/plot/core/reference-line'
 import { solve_reference_annotations } from '$lib/plot/core/reference-line'
 import { create_axis_scales, generate_ticks } from '$lib/plot/core/scales'
 import type { FontSpec } from '$lib/plot/core/text-metrics'
+import { measured_axis, resolve_tick_layout } from '$lib/plot/core/tick-layout'
 import type { AxisConfig, AxisRanges, LegendConfig, PanConfig } from '$lib/plot/core/types'
 import { unique_id } from '$lib/plot/core/utils'
 import { untrack } from 'svelte'

@@ -21,10 +21,6 @@
     run,
     current_step_idx,
     current_frame = null,
-    current_filename,
-    current_file_path,
-    file_size,
-    file_object,
     pane_open = $bindable(false),
     toggle_props,
     ...pane_options
@@ -32,10 +28,6 @@
     run: TrajectoryRun
     current_step_idx: number
     current_frame?: TrajectoryFrame | null
-    current_filename?: string | null
-    current_file_path?: string | null
-    file_size?: number | null
-    file_object?: File | null
     pane_open?: boolean
   } = $props()
 
@@ -173,21 +165,15 @@
         ? displayed_frame.step * simulation_time_step
         : null
     const { step_span, duration, stat_sections } = run_summary
+    const { filename, source_bytes, format } = run.provenance
 
     return [
       section(`File`, [
-        current_filename &&
-          safe_item(`Name`, current_filename, `file-name`, current_file_path || undefined),
-        file_size &&
-          file_size > 0 &&
-          safe_item(`File Size`, format_bytes(file_size), `file-size`),
-        file_object?.lastModified &&
-          safe_item(
-            `Modified`,
-            new Date(file_object.lastModified).toLocaleString(),
-            `file-modified`,
-          ),
-        run.provenance.format && safe_item(`Format`, run.provenance.format, `file-format`),
+        filename && safe_item(`Name`, filename, `file-name`),
+        source_bytes &&
+          source_bytes > 0 &&
+          safe_item(`File Size`, format_bytes(source_bytes), `file-size`),
+        format && safe_item(`Format`, format, `file-format`),
       ]),
       section(`Trajectory`, [
         safe_item(

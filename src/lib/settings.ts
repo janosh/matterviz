@@ -28,6 +28,12 @@ export interface SettingType<T = unknown> {
   web_only?: true
 }
 
+// The option labels of an enum setting, for controls that render their <select> from the schema
+export function enum_labels(setting: SettingType): Readonly<Record<string, string>> {
+  if (!setting.enum) throw new Error(`Setting "${setting.description}" has no enum`)
+  return setting.enum
+}
+
 export const SHOW_BONDS_OPTIONS = [`never`, `always`, `crystals`, `molecules`] as const
 export type ShowBonds = (typeof SHOW_BONDS_OPTIONS)[number]
 // Shared enum labels for never|always|crystals|molecules settings (bonds, polyhedra)
@@ -274,8 +280,7 @@ export const SETTINGS_CONFIG = define_settings({
     value: `#000000`,
     description: `Background color of the 3D viewport`,
   },
-  // 0.1 is what Structure rendered for years via its own prop default; the schema said 0,
-  // so embedded viewers (which spread DEFAULTS) got a transparent background instead.
+  // 0.1, not 0: embedded viewers spread DEFAULTS, and 0 renders their background transparent
   background_opacity: opacity_setting(
     0.1,
     `Opacity of the background (0.0 = transparent, 1.0 = opaque)`,
@@ -1228,6 +1233,72 @@ const extract_values = <Config extends object>(config: Config): SettingsValues<C
 // Runtime defaults - extracted values for use in components
 export const DEFAULTS = extract_values(SETTINGS_CONFIG)
 
+// Plain records only (object literals, JSON.parse output, null-prototype objects): a Date, Map
+// or typed array is a leaf value, not a group of settings to recurse into
+const is_plain_record = (val: unknown): val is Record<string, unknown> => {
+  if (typeof val !== `object` || val === null) return false
+  const proto: unknown = Object.getPrototypeOf(val)
+  return proto === Object.prototype || proto === null
+}
+
+// === Validation of stored / host-supplied values ===
+// One admissibility rule for every place a setting value arrives from outside the program:
+// localStorage view state (settings/viewer-state.ts) and VS Code settings.json (the extension).
+
+const valid_number = (value: unknown, setting: SettingType): value is number => {
+  if (typeof value !== `number` || !Number.isFinite(value)) return false
+  if (setting.minimum !== undefined && value < setting.minimum) return false
+  if (setting.maximum !== undefined && value > setting.maximum) return false
+  if (setting.multipleOf !== undefined) {
+    const quotient = value / setting.multipleOf
+    const tolerance = Number.EPSILON * Math.max(1, Math.abs(quotient)) * 4
+    if (Math.abs(quotient - Math.round(quotient)) > tolerance) return false
+  }
+  return true
+}
+
+const same_primitive_type = (value: unknown, reference: unknown): boolean =>
+  typeof value === typeof reference && (typeof value !== `number` || Number.isFinite(value))
+
+const valid_array = (value: unknown, setting: SettingType, reference: readonly unknown[]) => {
+  if (!Array.isArray(value)) return false
+  if (setting.minItems !== undefined && value.length < setting.minItems) return false
+  if (setting.maxItems !== undefined && value.length > setting.maxItems) return false
+  // The only empty-array settings in the schema are element-symbol lists.
+  if (reference.length === 0) return value.every((item) => typeof item === `string`)
+  return value.every((item, item_idx) =>
+    same_primitive_type(item, reference[item_idx] ?? reference[0]),
+  )
+}
+
+// Whether `value` may stand in for the schema default: enum membership, a finite number inside
+// minimum/maximum/multipleOf, an array of the default's item types inside minItems/maxItems, a
+// plain object for free-form maps, else the default's primitive type.
+export const is_valid_setting_value = (value: unknown, setting: SettingType): boolean => {
+  if (setting.enum) return typeof value === `string` && Object.hasOwn(setting.enum, value)
+  if (typeof setting.value === `number`) return valid_number(value, setting)
+  if (Array.isArray(setting.value)) return valid_array(value, setting, setting.value)
+  if (is_plain_record(setting.value)) return is_plain_record(value)
+  return same_primitive_type(value, setting.value)
+}
+
+// Deep copy by hand rather than structuredClone: values arrive through Svelte $state proxies,
+// which structuredClone rejects with DataCloneError.
+const clone_value = <Value>(value: Value): Value => {
+  if (Array.isArray(value)) return value.map(clone_value) as Value
+  if (!is_plain_record(value)) return value
+  return Object.fromEntries(
+    Object.entries(value).map(([key, nested]) => [key, clone_value(nested)]),
+  ) as Value
+}
+
+// A copy of `value` when it is admissible for `setting`, else a copy of the schema default
+export const validate_setting_value = <Value>(
+  value: unknown,
+  setting: SettingType<Value>,
+): Value =>
+  clone_value(is_valid_setting_value(value, setting) ? (value as Value) : setting.value)
+
 export const get_convex_hull_defaults = (element_count: 2 | 3 | 4) =>
   DEFAULTS.convex_hull[
     element_count === 2 ? `binary` : element_count === 3 ? `ternary` : `quaternary`
@@ -1241,14 +1312,6 @@ type DeepPartial<T> = {
 // fills the gaps from DEFAULTS at every level, so the type and the runtime agree whatever
 // depth the schema grows to.
 export type PartialSettings = DeepPartial<DefaultSettings>
-
-// Plain records only (object literals, JSON.parse output, null-prototype objects): a Date, Map
-// or typed array is a leaf value, not a group of settings to recurse into
-const is_plain_record = (val: unknown): val is Record<string, unknown> => {
-  if (typeof val !== `object` || val === null) return false
-  const proto: unknown = Object.getPrototypeOf(val)
-  return proto === Object.prototype || proto === null
-}
 
 // Recurse wherever both sides are plain records; anything else the user supplies (a primitive,
 // array, null, Date, ...) replaces the default, and an undefined user value keeps it

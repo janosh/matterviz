@@ -4,7 +4,7 @@
 
 import type { ElementSymbol } from '$lib/element'
 import { element_by_symbol, element_data } from '$lib/element'
-import { element_groups } from '$lib/element/data'
+import { element_from_lammps_type } from '$lib/element/helpers'
 import { describe, expect, test } from 'vitest'
 import { CATEGORY_COUNTS as expected_counts } from '../setup'
 
@@ -50,16 +50,6 @@ test(`category counts`, () => {
     counts[category] = (counts[category] ?? 0) + 1
   }
   expect(counts).toEqual(expected_counts)
-})
-
-test.each([
-  [`transition`, `Fe`, `O`],
-  [`nonmetal`, `C`, `Ne`],
-  [`halogen`, `Cl`, `O`],
-] as const)(`%s includes %s but excludes %s`, (group_key, included, excluded) => {
-  const group = element_groups.find(({ value }) => value === group_key)
-  expect(group?.includes(get_element(included))).toBe(true)
-  expect(group?.includes(get_element(excluded))).toBe(false)
 })
 
 describe(`atomic_radius`, () => {
@@ -328,5 +318,20 @@ describe(`data completeness`, () => {
       if (element.symbol === `At` || element.symbol === `Fr`) continue
       expect(element.atomic_radius, `${element.symbol} atomic_radius`).not.toBeNull()
     }
+  })
+})
+
+describe(`element_from_lammps_type`, () => {
+  // LAMMPS types read as atomic numbers, wrapping past Og and clamping below 1 to H
+  test.each([
+    [1, `H`],
+    [14, `Si`],
+    [118, `Og`],
+    [119, `H`],
+    [120, `He`],
+    [0, `H`],
+    [-3, `H`],
+  ])(`type %d -> %s`, (atom_type, expected) => {
+    expect(element_from_lammps_type(atom_type)).toBe(expected)
   })
 })

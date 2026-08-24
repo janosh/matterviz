@@ -1,10 +1,9 @@
-// JSON Tree utility functions
 import { build_path, format_path, parse_path } from '../../json-path'
 import type { DiffEntry, JsonValueType } from './types'
 
 type JsonChild = { key: string | number; value: unknown }
 
-// Circular-safe JSON.stringify helper (hoisted for reuse)
+// Circular-safe JSON.stringify
 function safe_stringify(val: unknown): string {
   const seen = new WeakSet()
   return JSON.stringify(
@@ -24,7 +23,6 @@ function safe_stringify(val: unknown): string {
   )
 }
 
-// Detect the type of a value for rendering purposes
 export function get_value_type(value: unknown): JsonValueType {
   if (value === null) return `null`
   if (value === undefined) return `undefined`
@@ -42,14 +40,14 @@ export function get_value_type(value: unknown): JsonValueType {
   return `object`
 }
 
-// Check if a value type is expandable (has children)
+// Container types whose children render as nodes
 export const is_expandable_type = (value_type: JsonValueType): boolean =>
   value_type === `object` ||
   value_type === `array` ||
   value_type === `map` ||
   value_type === `set`
 
-// Check if a value type is a primitive (searchable as string)
+// Types whose String() form is searchable
 const is_primitive_type = (value_type: JsonValueType): boolean =>
   value_type === `string` ||
   value_type === `number` ||
@@ -58,11 +56,9 @@ const is_primitive_type = (value_type: JsonValueType): boolean =>
   value_type === `undefined` ||
   value_type === `bigint`
 
-// Check if a value is expandable
 export const is_expandable = (value: unknown): boolean =>
   is_expandable_type(get_value_type(value))
 
-// Get the number of children for a value
 export function get_child_count(value: unknown): number {
   const type = get_value_type(value)
   if (type === `array`) return (value as unknown[]).length
@@ -126,7 +122,7 @@ export function get_value_at_path(root: unknown, path: string, root_label?: stri
   return current
 }
 
-// Format a primitive/special value to string (shared by serialize and preview)
+// String form of a non-container value, or null for strings/functions/containers
 function format_special_value(value: unknown, type: JsonValueType): string | null {
   if (type === `undefined`) return `undefined`
   if (type === `null`) return `null`
@@ -139,7 +135,7 @@ function format_special_value(value: unknown, type: JsonValueType): string | nul
   return null // not a special type
 }
 
-// Serialize a value for copying to clipboard
+// Clipboard text for a value: strings verbatim, containers as indented JSON
 export function serialize_for_copy(value: unknown): string {
   const type = get_value_type(value)
   if (type === `string`) return value as string
@@ -162,11 +158,9 @@ export function serialize_for_copy(value: unknown): string {
   }
 }
 
-// Format a value for inline preview (collapsed view)
+// Inline preview of a collapsed node or leaf
 export function format_preview(value: unknown, max_length: number = 50): string {
   const type = get_value_type(value)
-
-  // Collection summaries
   if (type === `array`) return `Array(${(value as unknown[]).length})`
   if (type === `object`) {
     const len = Object.keys(value as object).length
@@ -174,23 +168,17 @@ export function format_preview(value: unknown, max_length: number = 50): string 
   }
   if (type === `map`) return `Map(${(value as Map<unknown, unknown>).size})`
   if (type === `set`) return `Set(${(value as Set<unknown>).size})`
-
-  // String with truncation
   if (type === `string`) {
     const str = value as string
     return str.length > max_length ? `"${str.slice(0, max_length)}..."` : `"${str}"`
   }
-
-  // Function has special format
   if (type === `function`) {
     return `ƒ ${(value as (...args: unknown[]) => unknown).name || `anonymous`}()`
   }
-
-  // Use shared formatter for other special types
   return format_special_value(value, type) ?? String(value)
 }
 
-// Check if a path/key/value matches a search query (case-insensitive)
+// Case-insensitive match of query against the path, the key or a primitive value
 export function matches_search(
   path: string,
   key: string | number | null,
@@ -202,7 +190,6 @@ export function matches_search(
   const lower_query = query.toLowerCase()
   if (path.toLowerCase().includes(lower_query)) return true
   if (key !== null && String(key).toLowerCase().includes(lower_query)) return true
-  // Check value (only primitives are searchable as strings)
   return (
     is_primitive_type(get_value_type(value)) &&
     String(value).toLowerCase().includes(lower_query)
@@ -261,26 +248,21 @@ export function find_matching_paths(
   return matches
 }
 
-// Get all ancestor paths for a given path
-// e.g., "users[0].name" -> ["users", "users[0]"]
+// Ancestor paths, outermost first: "users[0].name" -> ["users", "users[0]"]
 export function get_ancestor_paths(path: string): string[] {
   const ancestors: string[] = []
   let current = ``
-
-  // Parse the path to extract segments
-  const segments = parse_path(path)
-  for (let idx = 0; idx < segments.length - 1; idx++) {
-    current = build_path(current, segments[idx])
+  for (const segment of parse_path(path).slice(0, -1)) {
+    current = build_path(current, segment)
     ancestors.push(current)
   }
-
   return ancestors
 }
 
-// Check if two values are deeply equal (for change detection)
+// Equality for change detection: NaN equals NaN, containers compare by size only (deep
+// changes are detected at the child level)
 export function values_equal(val_a: unknown, val_b: unknown): boolean {
   if (val_a === val_b) return true
-  // NaN !== NaN in JS, but we want NaN === NaN for change detection
   if (typeof val_a === `number` && typeof val_b === `number`) {
     return Number.isNaN(val_a) && Number.isNaN(val_b)
   }
@@ -291,8 +273,6 @@ export function values_equal(val_a: unknown, val_b: unknown): boolean {
   if (is_primitive_type(type) || type === `symbol`) return false // strict equality failed above
   if (type === `date`) return (val_a as Date).getTime() === (val_b as Date).getTime()
   if (type === `regexp`) return (val_a as RegExp).toString() === (val_b as RegExp).toString()
-  // Objects and arrays use shallow size comparison for performance —
-  // deep changes are detected at the child level
   if (type === `array`) return (val_a as unknown[]).length === (val_b as unknown[]).length
   if (type === `object`) {
     return Object.keys(val_a as object).length === Object.keys(val_b as object).length
@@ -300,8 +280,7 @@ export function values_equal(val_a: unknown, val_b: unknown): boolean {
   return false
 }
 
-// Parse a raw edited string into a typed JSON value
-// Numbers, booleans, and null are auto-detected; everything else stays as string
+// Typed value of an edited string: numbers, booleans and null are detected, the rest stays text
 export function parse_edited_value(text: string): unknown {
   const trimmed = text.trim()
   if (trimmed === `null`) return null
@@ -312,8 +291,7 @@ export function parse_edited_value(text: string): unknown {
   return text
 }
 
-// Set a value at a dot/bracket path in a deep-cloned copy of root
-// root_label is stripped from the path prefix if present
+// Deep-cloned root with the value at a dot/bracket path (optionally root_label-prefixed) replaced
 export function set_at_path(
   root: unknown,
   path_str: string,
@@ -333,26 +311,21 @@ export function set_at_path(
   return cloned
 }
 
-// URL regex for auto-detection in string values
 const URL_RE = /^https?:\/\/\S+$/
 
-// CSS color patterns for swatch rendering
 const HEX_COLOR_RE = /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i
 const FUNC_COLOR_RE = /^(?:rgba?|hsla?|oklch|oklab|lch|lab|color)\([^)]*\)$/i
 
-// Check if a string is a URL
 export const is_url = (str: string): boolean => URL_RE.test(str.trim())
 
-// Check if a string looks like a CSS color value
-// Rejects strings with semicolons to prevent CSS injection
+// Swatch-worthy CSS color; semicolons are rejected so the value can't inject declarations
 export function is_css_color(str: string): boolean {
   const trimmed = str.trim()
   if (trimmed.includes(`;`)) return false
   return HEX_COLOR_RE.test(trimmed) || FUNC_COLOR_RE.test(trimmed)
 }
 
-// Estimate the serialized byte size of a value (rough approximation)
-// Uses max_depth to avoid expensive deep recursion on large trees
+// Rough serialized byte size; subtrees past max_depth count a flat 10 so large trees stay cheap
 export function estimate_byte_size(
   value: unknown,
   max_depth: number = 4,
@@ -386,15 +359,14 @@ export function estimate_byte_size(
   return size
 }
 
-// Ghost entry for removed diff children
+// A child removed between compare_value and value, rendered struck through under its parent
 export interface GhostEntry {
   key: string | number
   value: unknown
   path: string
 }
 
-// Pre-compute a map of parent_path -> removed children from a diff map
-// This avoids O(diff_size) iteration per expanded node
+// parent path -> removed children, so an expanded node reads its ghosts in O(1)
 export function build_ghost_map(diff_map: Map<string, DiffEntry>): Map<string, GhostEntry[]> {
   const ghost_map = new Map<string, GhostEntry[]>()
   for (const [diff_path, entry] of diff_map) {
@@ -410,8 +382,7 @@ export function build_ghost_map(diff_map: Map<string, DiffEntry>): Map<string, G
   return ghost_map
 }
 
-// Compute diff between old and new values, returning path -> DiffEntry map
-// Only paths that differ are included (unchanged paths are omitted)
+// path -> DiffEntry for every path that differs between old_val and new_val
 export function compute_diff(
   old_val: unknown,
   new_val: unknown,
@@ -429,13 +400,11 @@ export function compute_diff(
       new_value: new_val,
     })
 
-  // Different types = changed
   if (old_type !== new_type) {
     mark_changed()
     return result
   }
 
-  // Both primitive: compare values (values_equal treats NaN === NaN)
   if (is_primitive_type(old_type)) {
     if (!values_equal(old_val, new_val)) mark_changed()
     return result
@@ -447,8 +416,7 @@ export function compute_diff(
     return result
   }
 
-  // Prevent circular references
-  if (seen.has(old_val as object)) return result
+  if (seen.has(old_val as object)) return result // cycle
   seen.add(old_val as object)
 
   // Objects diff by key; arrays, Maps and Sets diff by index (Map entries wrapped as

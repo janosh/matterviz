@@ -13,25 +13,22 @@
     missing_msg?: string
   } = $props()
 
-  let { name, number } = $derived(element ?? {})
-  let file = $derived(`elements/${number}-${name?.toLowerCase()}.avif`)
-  let hidden = $state(false)
-  $effect.pre(() => {
-    if (file) hidden = false
-  }) // reset hidden to false when file changes
+  const src = $derived(
+    `https://github.com/janosh/matterviz/raw/main/static/elements/${element.number}-${element.name.toLowerCase()}.avif`,
+  )
+  // URL whose load failed; a new element (new URL) is shown again until it fails too
+  let failed_src = $state<string | null>(null)
+  const hidden = $derived(failed_src === src)
 </script>
 
-{#if name && number}
-  {@const src = `https://github.com/janosh/matterviz/raw/main/static/${file}`}
-  <img {src} alt={name} onerror={() => (hidden = true)} {hidden} {...rest} />
-  {#if hidden && missing_msg}
-    <div {...rest}>
-      <span>
-        <Icon icon={NoImage} />&nbsp;{missing_msg}
-        {name}
-      </span>
-    </div>
-  {/if}
+<img {src} alt={element.name} onerror={() => (failed_src = src)} {hidden} {...rest} />
+{#if hidden && missing_msg}
+  <div {...rest}>
+    <span>
+      <Icon icon={NoImage} />&nbsp;{missing_msg}
+      {element.name}
+    </span>
+  </div>
 {/if}
 
 <style>

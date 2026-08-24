@@ -11,12 +11,12 @@
     PolyhedronMesh,
     ReciprocalVectors,
   } from '$lib/brillouin'
-  import type { D3InterpolateName } from '$lib/colors'
   import type { Vec2, Vec3 } from '$lib/math'
   import {
     bind_renderer,
-    build_orbit_props,
-    create_orthographic_zoom,
+    create_scene_camera,
+    HOVER_THROTTLE_MS,
+    resolve_scene_controls,
     SceneCamera,
     SceneLights,
   } from '$lib/scene'
@@ -37,7 +37,7 @@
     Plane,
     Vector3,
   } from 'three/webgpu'
-  import * as constants from './constants'
+  import { BAND_COLORS, SPIN_COLORS } from './constants'
   import {
     apply_vertex_colors,
     build_isosurface_geometry,
@@ -46,31 +46,27 @@
   } from './geometry'
   import { IDENTITY_4x4, lattice_point_group_matrices } from './symmetry'
   import type {
-    ColorProperty,
     FermiHoverData,
-    FermiSurfaceData,
     FermiIsosurface,
-    RepresentationMode,
+    FermiSurfaceData,
+    FermiSurfaceSettings,
   } from './types'
 
   let {
-    fermi_data = $bindable(),
-    bz_data = $bindable(),
-    camera_projection = $bindable(DEFAULTS.fermi.camera_projection),
+    fermi_data,
+    bz_data,
+    camera_projection = DEFAULTS.fermi.camera_projection,
     // Fermi surface styling
     color_property = DEFAULTS.fermi.color_property,
     color_scale = DEFAULTS.fermi.color_scale,
     // Name of the per-vertex property shown in the hover tooltip
     property_label = `Property`,
     representation = DEFAULTS.fermi.representation,
-    surface_opacity = $bindable(DEFAULTS.fermi.surface_opacity),
+    surface_opacity = DEFAULTS.fermi.surface_opacity,
     selected_bands,
     // BZ styling
     show_bz = DEFAULTS.fermi.show_bz,
-    bz_color = `#888888`,
     bz_opacity = DEFAULTS.fermi.bz_opacity,
-    bz_edge_color = `#333333`,
-    bz_edge_width = 0.002,
     show_vectors = DEFAULTS.fermi.show_vectors,
     tile_bz = DEFAULTS.fermi.tile_bz,
     // Clipping plane
@@ -78,51 +74,25 @@
     clip_axis = DEFAULTS.fermi.clip_axis,
     clip_position = DEFAULTS.fermi.clip_position,
     clip_flip = DEFAULTS.fermi.clip_flip,
-    vector_scale = 1.0,
-    // Camera controls
-    rotation_damping = DEFAULTS.structure.rotation_damping,
-    max_zoom = DEFAULTS.structure.max_zoom,
-    min_zoom = DEFAULTS.structure.min_zoom,
-    rotate_speed = DEFAULTS.structure.rotate_speed,
-    zoom_speed = DEFAULTS.structure.zoom_speed,
-    pan_speed = DEFAULTS.structure.pan_speed,
-    zoom_to_cursor = DEFAULTS.structure.zoom_to_cursor,
-    fov = DEFAULTS.structure.fov,
-    initial_zoom = DEFAULTS.structure.initial_zoom,
-    ambient_light = DEFAULTS.structure.ambient_light,
-    directional_light = DEFAULTS.structure.directional_light,
-    gizmo = DEFAULTS.structure.gizmo,
-    auto_rotate = DEFAULTS.structure.auto_rotate,
     scene = $bindable(),
     camera = $bindable(),
     hover_data = $bindable<FermiHoverData | null>(null),
     width = 0,
     height = 0,
-  }: SceneControlProps & {
-    fermi_data?: FermiSurfaceData
-    bz_data?: BrillouinZoneData
-    width?: number // viewport size, needed to turn the relative initial_zoom into a fit
-    height?: number
-    color_property?: ColorProperty
-    color_scale?: D3InterpolateName
-    property_label?: string
-    representation?: RepresentationMode
-    surface_opacity?: number
-    selected_bands?: number[]
-    show_bz?: boolean
-    bz_color?: string
-    bz_opacity?: number
-    bz_edge_color?: string
-    bz_edge_width?: number
-    show_vectors?: boolean
-    tile_bz?: boolean
-    clip_enabled?: boolean
-    clip_axis?: `x` | `y` | `z`
-    clip_position?: number
-    clip_flip?: boolean
-    vector_scale?: number
-    hover_data?: FermiHoverData | null
-  } = $props()
+    // camera/lighting/interaction props, resolved against the shared defaults below
+    ...scene_controls
+  }: SceneControlProps &
+    Partial<Omit<FermiSurfaceSettings, `mu` | `interpolation_factor`>> & {
+      fermi_data?: FermiSurfaceData
+      bz_data?: BrillouinZoneData
+      width?: number // viewport size, needed to turn the relative initial_zoom into a fit
+      height?: number
+      property_label?: string
+      selected_bands?: number[]
+      hover_data?: FermiHoverData | null
+    } = $props()
+
+  const controls = $derived(resolve_scene_controls(scene_controls))
 
   // Transparent surfaces depth-sort correctly because renderer.sortObjects defaults to true
   const threlte = bind_renderer((threlte_scene, threlte_camera) => {
@@ -216,10 +186,8 @@
 
   // Flat colour for a surface (material colour, tooltip background)
   function get_surface_color(surface: FermiIsosurface): string {
-    if (color_property === `spin` && surface.spin) {
-      return surface.spin === `up` ? `#e41a1c` : `#377eb8`
-    }
-    return constants.BAND_COLORS[surface.band_index % constants.BAND_COLORS.length]
+    if (color_property === `spin` && surface.spin) return SPIN_COLORS[surface.spin]
+    return BAND_COLORS[surface.band_index % BAND_COLORS.length]
   }
 
   // One BufferGeometry per visible surface object, built once and kept for as long as the
@@ -265,13 +233,12 @@
     threlte.invalidate()
   })
 
-  // Count total triangles and auto-disable tiling for very large surfaces
+  // Tiling draws up to 48 copies (cubic), so it is auto-disabled above this triangle count
+  const MAX_TRIANGLES_FOR_TILING = 50_000
   let total_triangles = $derived(
     visible_surfaces.reduce((sum, surface) => sum + surface.indices.length / 3, 0),
   )
-  let effective_tile_bz = $derived(
-    tile_bz && total_triangles < constants.MAX_TRIANGLES_FOR_TILING,
-  )
+  let effective_tile_bz = $derived(tile_bz && total_triangles < MAX_TRIANGLES_FOR_TILING)
 
   // Warn user when tiling is auto-disabled
   $effect(() => {
@@ -300,32 +267,17 @@
       k_cell_fit_extent(fermi_data?.k_lattice),
     ),
   )
-  const fit_zoom = $derived(
-    width > 0 && height > 0
-      ? ortho_zoom_for_extent(fit_extent, width, height, initial_zoom)
-      : initial_zoom,
-  )
-  const ortho_zoom = create_orthographic_zoom({
-    fit_zoom: () => fit_zoom,
-    min_zoom: () => min_zoom,
-    max_zoom: () => max_zoom,
-    measured: () => width > 0 && height > 0,
+  const measured = $derived(width > 0 && height > 0)
+  const scene_camera = create_scene_camera({
+    controls: () => ({ ...controls, camera_projection }),
+    target: () => rotation_target,
+    fit_zoom: () =>
+      measured
+        ? ortho_zoom_for_extent(fit_extent, width, height, controls.initial_zoom)
+        : controls.initial_zoom,
+    measured: () => measured,
     camera: () => camera,
   })
-
-  const orbit_controls_props = $derived(
-    build_orbit_props({
-      camera_projection,
-      target: rotation_target,
-      rotate_speed,
-      zoom_speed,
-      zoom_to_cursor,
-      pan_speed,
-      auto_rotate,
-      rotation_damping,
-      ...ortho_zoom.orbit_zoom_props(),
-    }),
-  )
 
   // Render passes per surface: transparent surfaces draw back faces first and front faces on
   // top (two passes), opaque and wireframe surfaces draw both sides in one. Only the
@@ -420,7 +372,7 @@
     sym_idx: number,
   ): void {
     const now = performance.now()
-    if (now - last_hover_time < constants.HOVER_THROTTLE_MS) return
+    if (now - last_hover_time < HOVER_THROTTLE_MS) return
     last_hover_time = now
 
     // event.point is in world space (after sym_matrix transformation)
@@ -461,29 +413,33 @@
 <SceneCamera
   {camera_projection}
   position={computed_camera_position}
-  {fov}
-  zoom={ortho_zoom.zoom}
-  orbit_props={orbit_controls_props}
-  {gizmo}
+  fov={controls.fov}
+  zoom={scene_camera.zoom}
+  orbit_props={scene_camera.orbit_props}
+  gizmo={controls.gizmo}
 />
 
-<SceneLights ambient={ambient_light} directional={directional_light} fill={0.5} />
+<SceneLights
+  ambient={controls.ambient_light}
+  directional={controls.directional_light}
+  fill={0.5}
+/>
 
 <T is={clipping_group} position={rotation_target}>
   <!-- Brillouin zone overlay -->
   {#if show_bz && bz_data}
     <PolyhedronMesh
       polyhedron={bz_data}
-      color={bz_color}
+      color="#888888"
       opacity={bz_opacity}
-      edge_color={bz_edge_color}
-      edge_width={bz_edge_width}
+      edge_color="#333333"
+      edge_width={0.002}
     />
   {/if}
 
   <!-- Reciprocal lattice vectors -->
   {#if show_vectors && fermi_data?.k_lattice}
-    <ReciprocalVectors k_lattice={fermi_data.k_lattice} {vector_scale} size={scene_size} />
+    <ReciprocalVectors k_lattice={fermi_data.k_lattice} size={scene_size} />
   {/if}
 
   <!-- Fermi surfaces (with optional symmetry tiling) -->

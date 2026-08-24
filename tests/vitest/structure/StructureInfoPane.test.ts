@@ -273,13 +273,17 @@ describe(`StructureInfoPane`, () => {
     scroll_spy.mockRestore()
   })
 
-  test(`renders symmetry section only when sym_data exists`, () => {
+  test(`renders the symmetry section only with sym_data, between Cell and Sites`, () => {
     const periodic_structure = get_dummy_structure(`H`, 4, true)
+    // card and section headings in document order (site cards follow the Sites summary)
+    const headings = (count: number) =>
+      [...document.querySelectorAll(`.structure-info h4, .sites summary`)]
+        .slice(0, count)
+        .map((heading) => heading.textContent?.trim())
 
     mount_info_pane({ structure: periodic_structure, pane_open: true })
-    const no_sym_content = document.body.textContent || ``
-    expect(no_sym_content).not.toContain(`Symmetry`)
-    expect(no_sym_content).not.toContain(`Space Group`)
+    expect(document.body.textContent).not.toContain(`Space Group`)
+    expect(headings(3)).toEqual([`Structure`, `Cell`, `Sites`])
 
     document.body.innerHTML = ``
     mount_info_pane({
@@ -287,29 +291,9 @@ describe(`StructureInfoPane`, () => {
       pane_open: true,
       sym_data: make_sym_data(),
     })
-    const with_sym_content = document.body.textContent || ``
-    expect(with_sym_content).toContain(`Symmetry`)
-    expect(with_sym_content).toContain(`Space Group`)
+    expect(headings(4)).toEqual([`Structure`, `Cell`, `Symmetry`, `Sites`])
+    const with_sym_content = document.body.textContent ?? ``
     expect(with_sym_content).toContain(`227 (Fd-3m)`)
-    expect(with_sym_content).toContain(`Symmetry Ops`)
     expect(with_sym_content).toContain(`1 (0 trans, 1 rot, 0 roto-trans)`)
-  })
-
-  test(`places symmetry section between Cell and Sites content`, () => {
-    const structure = get_dummy_structure(`H`, 2, true)
-    mount_info_pane({ structure, pane_open: true, sym_data: make_sym_data() })
-
-    const section_titles = Array.from(
-      document.querySelectorAll(`.structure-info h4, .sites summary`),
-    ).map((heading) => heading.textContent?.trim() ?? ``)
-    const cell_idx = section_titles.indexOf(`Cell`)
-    const symmetry_idx = section_titles.indexOf(`Symmetry`)
-    const sites_idx = section_titles.indexOf(`Sites`)
-
-    expect(cell_idx).toBeGreaterThan(-1)
-    expect(symmetry_idx).toBeGreaterThan(-1)
-    expect(sites_idx).toBeGreaterThan(-1)
-    expect(cell_idx).toBeLessThan(symmetry_idx)
-    expect(symmetry_idx).toBeLessThan(sites_idx)
   })
 })

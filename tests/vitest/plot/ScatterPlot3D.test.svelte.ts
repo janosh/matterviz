@@ -1,6 +1,6 @@
 import { ScatterPlot3D, ScatterPlot3DControls } from '$lib/plot'
 import type { DataSeries3D, Surface3DConfig } from '$lib/plot/core/types'
-import scatter_plot_3d_source from '$lib/plot/scatter-3d/ScatterPlot3D.svelte?raw'
+import { normalize_to_scene, span_or } from '$lib/plot/scatter-3d/scene-coords'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { bind_props, expect_plot_controls } from '../setup'
@@ -139,9 +139,10 @@ describe(`ScatterPlot3D smoke tests`, () => {
     expect(Boolean(container.querySelector(`.colorbar`))).toBe(expected)
   })
 
-  test(`uses the configured fullscreen background`, () => {
-    expect(scatter_plot_3d_source).toMatch(
-      /div\.scatter-3d\.fullscreen[\s\S]+background: var\(--scatter3d-bg-fullscreen/,
+  test(`maps the chart's fullscreen background onto the shared shell`, async () => {
+    await mount_plot({ series: [basic_series] })
+    expect(container.querySelector(`.scatter-3d`)?.getAttribute(`style`)).toContain(
+      `--chart-shell-fullscreen-bg: var(--scatter3d-fullscreen-bg, var(--scatter3d-bg, var(--plot-bg, transparent)))`,
     )
   })
 
@@ -260,5 +261,38 @@ describe(`ScatterPlot3D smoke tests`, () => {
     })
     await tick()
     expect(container.querySelector(`.draggable-pane`)).toBeNull()
+  })
+})
+
+describe(`scene coordinates`, () => {
+  test.each<[[number | null, number | null] | undefined, [number, number]]>([
+    [undefined, [0, 100]],
+    [
+      [20, 80],
+      [20, 80],
+    ],
+    [
+      [null, 80],
+      [0, 80],
+    ],
+    [
+      [20, null],
+      [20, 100],
+    ],
+    [
+      [null, null],
+      [0, 100],
+    ],
+  ])(`span_or(%j) fills nullish bounds from the range`, (span, expected) => {
+    expect(span_or(span, [0, 100])).toEqual(expected)
+  })
+
+  test.each([
+    [0, 10],
+    [5, 0],
+    [10, -10],
+  ])(`normalize_to_scene centers %s in a [0, 10] range at %s`, (value, expected) => {
+    expect(normalize_to_scene(value, [0, 10], 20)).toBeCloseTo(-expected)
+    expect(normalize_to_scene(value, [3, 3], 20)).toBe(0) // degenerate range collapses
   })
 })

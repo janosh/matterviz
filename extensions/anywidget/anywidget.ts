@@ -82,25 +82,13 @@ function inject_app_css(target_element: HTMLElement): void {
   document.head.append(style)
 }
 
-const instances = new WeakMap<HTMLElement, ReturnType<typeof mount>>()
-const theme_unsubs = new WeakMap<HTMLElement, () => void>()
-// Disposers that unregister model listeners + stop writeback effects for each
-// mounted widget (see mount_spec). Kept separate from theme_unsubs so a single
-// element can carry both.
-const reactive_disposers = new WeakMap<HTMLElement, () => void>()
+// Per-element teardown of the mounted widget: theme observer, model listeners + writeback
+// effects, interaction throttles and the Svelte instance itself
+const cleanups = new WeakMap<HTMLElement, () => void>()
 
 const cleanup_element = (element: HTMLElement): void => {
-  theme_unsubs.get(element)?.()
-  theme_unsubs.delete(element)
-
-  reactive_disposers.get(element)?.()
-  reactive_disposers.delete(element)
-
-  const instance = instances.get(element)
-  if (instance) {
-    void unmount(instance)
-    instances.delete(element)
-  }
+  cleanups.get(element)?.()
+  cleanups.delete(element)
 }
 
 // Build an object of { key: model.get(key) } for each key in the list
@@ -281,9 +269,14 @@ const style_base_drive: readonly DrivenProp[] = [drive_prop(`style`)]
 const no_file_drop = { allow_file_drop: false }
 
 // Mount a widget from its spec: build a two-way reactive $state props object (Python
-// trait changes -> live view, component interaction -> model) and wire teardown.
+// trait changes -> live view, component interaction -> model). Returns the teardown that
+// unregisters the model listeners, stops the writeback effects and unmounts the component.
 // Exported so tests can mount a single widget's wiring directly.
-export const mount_spec = (model: AnyModel, el: HTMLElement, spec: WidgetSpec): void => {
+export const mount_spec = (
+  model: AnyModel,
+  el: HTMLElement,
+  spec: WidgetSpec,
+): (() => void) => {
   el.style.boxSizing = `border-box`
   el.style.maxWidth = `100%`
   el.style.marginRight = `2em` // avoid overflow in vscode-interactive cell container
@@ -293,14 +286,12 @@ export const mount_spec = (model: AnyModel, el: HTMLElement, spec: WidgetSpec): 
     [...(spec.base_drive ?? top_level_base_drive), ...spec.drive],
     { ...spec.static_props, ...interaction?.props },
   )
-  reactive_disposers.set(el, () => {
+  const instance = mount(spec.component as Parameters<typeof mount>[0], { target: el, props })
+  return () => {
     interaction?.cleanup?.()
     dispose()
-  })
-  instances.set(
-    el,
-    mount(spec.component as Parameters<typeof mount>[0], { target: el, props }),
-  )
+    void unmount(instance)
+  }
 }
 
 // === Widget registry ===
@@ -663,10 +654,7 @@ export const WIDGET_MODEL_KEYS: Record<string, readonly string[]> = Object.fromE
     const model_keys = driven_props.flatMap(({ deps }) => deps)
     return [
       widget_type,
-      // built right here, so sorting in place mutates nothing a caller can see, and
-      // toSorted needs lib es2023 which this package has no tsconfig to set
-      // oxlint-disable-next-line unicorn/no-array-sort
-      [...new Set([...model_keys, ...(spec.interaction_model_keys ?? [])])].sort(),
+      [...new Set([...model_keys, ...(spec.interaction_model_keys ?? [])])].toSorted(),
     ]
   }),
 )
@@ -685,13 +673,13 @@ const render: Render = (props) => {
   inject_app_css(el)
   // The widget's theme is its own color-scheme, now and as the host's changes: light-dark()
   // tokens, native form controls and svelte-widgets all resolve against it, and setting it on
-  // the element (not the host page's root) leaves the notebook's own scheme alone. The disposer
-  // (invoked by cleanup_element) tears down this widget's theme observers.
-  theme_unsubs.set(
-    el,
-    watch_theme(el, (theme) => (el.style.colorScheme = theme)),
-  )
-  mount_spec(model, el, spec)
+  // the element (not the host page's root) leaves the notebook's own scheme alone.
+  const stop_theme = watch_theme(el, (theme) => (el.style.colorScheme = theme))
+  const unmount_widget = mount_spec(model, el, spec)
+  cleanups.set(el, () => {
+    stop_theme()
+    unmount_widget()
+  })
   return () => cleanup_element(el)
 }
 

@@ -7,6 +7,7 @@
   import { ScatterPlot } from '$lib/plot'
   import type { RadiationType } from '$lib/scattering'
   import type { Crystal, Pbc } from '$lib/structure'
+  import { to_error } from '$lib/utils'
   import type { ComponentProps } from 'svelte'
   import {
     calculate_total_pdf,
@@ -72,7 +73,7 @@
           total: calculate_total_pdf(struct, { radiation, cutoff, n_bins, pbc }),
         })
       } catch (exc) {
-        failure = exc instanceof Error ? exc.message : String(exc)
+        failure = to_error(exc).message
       }
     }
     return { totals, failure }
@@ -186,20 +187,20 @@ the whole story and claiming there was nothing to plot would contradict it -->
   }
   button {
     padding: 2px 10px;
-    border: 1px solid #999;
+    border: 1px solid var(--border-color, #999);
     background: transparent;
     border-radius: 4px;
     cursor: pointer;
     &:hover,
     &.active {
-      border-color: #4e79a7;
+      border-color: var(--accent-color, #4e79a7);
     }
     &.active {
       border-width: 2px;
     }
   }
   .separator {
-    color: #ccc;
+    color: var(--border-color, #ccc);
     user-select: none;
   }
   .weights {

@@ -52,13 +52,6 @@ export type BinnedPointPayload<
   point_data?: PointData
 }
 
-export type BinnedPointTooltipPayload<
-  Metadata extends Record<string, unknown> = Record<string, unknown>,
-  PointData extends Record<string, unknown> = Record<string, unknown>,
-> = BinnedPointPayload<Metadata, PointData>
-
-export type BinnedPointLabelPlacementConfig = Partial<LabelPlacementConfig>
-
 export type BinnedPointLabelsConfig<
   Metadata extends Record<string, unknown> = Record<string, unknown>,
   PointData extends Record<string, unknown> = Record<string, unknown>,
@@ -68,7 +61,7 @@ export type BinnedPointLabelsConfig<
   font_size?: string
   max_count?: number
   gap_px?: number
-  placement?: BinnedPointLabelPlacementConfig
+  placement?: Partial<LabelPlacementConfig>
   leaders?: {
     min_length_px?: number
   }

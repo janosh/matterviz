@@ -34,12 +34,6 @@ describe(`PlotTooltip`, () => {
     expect(getComputedStyle(tooltip).whiteSpace).toBe(`nowrap`)
   })
 
-  test(`applies custom offset`, () => {
-    const tooltip = mount_tooltip({ x: 50, y: 75, offset: { x: 10, y: -10 } })
-    expect(tooltip.style.left).toBe(`60px`)
-    expect(tooltip.style.top).toBe(`65px`)
-  })
-
   // Contrast ratios are covered in colors.test.ts; here only the wiring + null skip.
   test.each([
     [`#000000`, `white`, `rgb(0, 0, 0)`, `rgb(255, 255, 255)`],
@@ -136,20 +130,32 @@ describe(`PlotTooltip`, () => {
     expect(getComputedStyle(tooltip).whiteSpace).toBe(`normal`)
   })
 
+  // Without a constraining box the signed offset is applied verbatim, absolute or fixed
   test.each([
-    { fixed: false, position: `absolute` },
-    { fixed: true, position: `fixed` },
-  ])(`preserves $position placement without exclusions`, ({ fixed, position }) => {
-    const tooltip = mount_tooltip({
-      x: 50,
-      y: 40,
-      fixed,
+    {
+      fixed: false,
+      position: `absolute`,
       offset: { x: -10, y: -5 },
-    })
-    expect(tooltip.style.position).toBe(position)
-    expect(tooltip.style.left).toBe(`40px`)
-    expect(tooltip.style.top).toBe(`35px`)
-  })
+      left: `40px`,
+      top: `35px`,
+    },
+    { fixed: true, position: `fixed`, offset: { x: -10, y: -5 }, left: `40px`, top: `35px` },
+    {
+      fixed: false,
+      position: `absolute`,
+      offset: { x: 10, y: -10 },
+      left: `60px`,
+      top: `30px`,
+    },
+  ])(
+    `$position placement applies offset $offset`,
+    ({ fixed, position, offset, left, top }) => {
+      const tooltip = mount_tooltip({ x: 50, y: 40, fixed, offset })
+      expect(tooltip.style.position).toBe(position)
+      expect(tooltip.style.left).toBe(left)
+      expect(tooltip.style.top).toBe(top)
+    },
+  )
 
   // Fixed tooltips are bounded by the viewport: anchors near its right/bottom edges flip the
   // tooltip to the other side instead of letting it overflow off-screen.

@@ -555,10 +555,8 @@ test.each([
     `velocities_mace`,
     { scale: 0.05, shaft_radius: 0.2, arrow_head_radius: 0.1, arrow_head_length: 0.1 },
   ],
-  [
-    `VELOCITY`,
-    { scale: 0.05, shaft_radius: 0.2, arrow_head_radius: 0.1, arrow_head_length: 0.1 },
-  ],
+  // case-sensitive like is_vector_key, which gates every key that reaches this
+  [`VELOCITY`, { scale: null, shaft_radius: 1, arrow_head_radius: 1, arrow_head_length: 1 }],
 ])(`vector display defaults for %s`, (key, expected) => {
   expect(vector_display_defaults(key)).toEqual(expected)
 })

@@ -1,6 +1,6 @@
 # Violin Plot
 
-`Violin` wraps [BoxPlot](/plot/box-plot) with `kind="violin"`, drawing a smoothed kernel-density estimate of each raw `y[]` distribution instead of the quartile box, and shares its orientation, axes, controls, and interactions.
+A violin plot is a [BoxPlot](/plot/box-plot) with `kind="violin"`: it draws a smoothed kernel-density estimate of each raw `y[]` distribution instead of the quartile box and shares the box plot's orientation, axes, controls, and interactions.
 
 ## Basic Usage
 
@@ -11,7 +11,7 @@ across all 2D plots ([full reference](/plot/scatter-plot#marginal-distributions)
 
 ```svelte example
 <script lang="ts">
-  import { Violin } from 'matterviz'
+  import { BoxPlot } from 'matterviz'
 
   const make_dist = (seed, n = 200, center = 0, spread = 1) => {
     let state = seed
@@ -29,8 +29,9 @@ across all 2D plots ([full reference](/plot/scatter-plot#marginal-distributions)
   ]
 </script>
 
-<Violin
+<BoxPlot
   {series}
+  kind="violin"
   x_axis={{ label: `Model` }}
   y_axis={{ label: `Error` }}
   marginals={{ right: { type: `histogram`, size: 90 } }}
@@ -45,7 +46,7 @@ inside the violin, the way `plotly.express.violin(box=True)` does.
 
 ```svelte example
 <script lang="ts">
-  import { Violin } from 'matterviz'
+  import { BoxPlot } from 'matterviz'
 
   const make_dist = (seed, n = 250, center = 0, spread = 1) => {
     let state = seed
@@ -62,7 +63,7 @@ inside the violin, the way `plotly.express.violin(box=True)` does.
   ]
 </script>
 
-<Violin
+<BoxPlot
   {series}
   kind="violin+box"
   x_axis={{ label: `Group` }}
@@ -79,7 +80,7 @@ keeps the density physical; `show_value_labels` with `value_label_stat="mean"` p
 
 ```svelte example
 <script lang="ts">
-  import { Violin } from 'matterviz'
+  import { BoxPlot } from 'matterviz'
 
   // Half-normal-ish positive samples (RMSD is >= 0)
   const make_rmsd = (seed, n = 250, scale = 0.05) => {
@@ -100,7 +101,7 @@ keeps the density physical; `show_value_labels` with `value_label_stat="mean"` p
   }))
 </script>
 
-<Violin
+<BoxPlot
   {series}
   kind="violin+box"
   side="positive"
@@ -121,7 +122,7 @@ slot. Series in a shared slot are identified by the legend rather than colored a
 
 ```svelte example
 <script lang="ts">
-  import { Violin } from 'matterviz'
+  import { BoxPlot } from 'matterviz'
 
   const make_dist = (seed, n = 200, center = 0, spread = 1) => {
     let state = seed
@@ -156,8 +157,9 @@ slot. Series in a shared slot are identified by the legend rather than colored a
   ]
 </script>
 
-<Violin
+<BoxPlot
   {series}
+  kind="violin"
   show_legend
   legend={{ style: `left: auto; right: 4px; top: 50%; transform: translateY(-50%)` }}
   padding={{ t: 20, b: 50, l: 50, r: 120 }}

@@ -150,9 +150,6 @@ export function create_canvas_surface(inputs: {
     get text_color() {
       return text_color
     },
-    get dark_mode() {
-      return dark_mode
-    },
     schedule,
   }
 }

@@ -192,9 +192,9 @@ export async function fetch_suggested_structures(
   limit: number = 12,
 ): Promise<OptimadeStructure[]> {
   try {
-    // Keep get_api_base inside try: suggestions are optional, so unknown providers and
-    // URL-resolution failures both soft-fail to []. Note: unknown provider threw
-    // pre-cleanup, which left the sole caller's loading state stuck on rejection.
+    // get_api_base stays inside the try: suggestions are optional, so an unknown provider and
+    // a URL-resolution failure both soft-fail to [] instead of leaving the caller's loading
+    // state stuck on a rejection
     const api_base = await get_api_base(provider, providers)
     const response = await fetch_with_cors_proxy(
       `${api_base}/structures?page_limit=${limit}&page_offset=0`,

@@ -4,14 +4,15 @@
   import { ClickFeedback } from '$lib/feedback'
   import { create_file_drop_handler } from '$lib/io/file-drop'
   import { format_num } from '$lib/labels'
-  import { FullscreenButton } from '$lib/layout'
+  import { normalize_show_controls, type ShowControlsProp } from '$lib/controls'
+  import { ViewerChrome } from '$lib/layout'
   import { sanitize_svg } from '$lib/sanitize'
-  import { compute_bounding_box_2d, polygon_centroid } from '$lib/math'
+  import { array_extent, compute_bounding_box_2d, polygon_centroid } from '$lib/math'
   import { type AxisConfig, PlotTooltip } from '$lib/plot'
   import { unique_id } from '$lib/plot/core/utils'
   import { to_error } from '$lib/utils'
   import { scaleLinear } from 'd3-scale'
-  import { type ComponentProps, type Snippet, untrack } from 'svelte'
+  import { type Snippet, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { build_diagram } from './build-diagram'
   import type { DiagramInput } from './diagram-input'
@@ -63,10 +64,9 @@
     show_component_labels = $bindable(true),
     fullscreen_toggle = true,
     enable_export = true,
-    show_controls = true,
+    show_controls,
     display_temp_unit = $bindable(),
     controls_open = $bindable(false),
-    controls_props = {},
     export_pane_open = $bindable(false),
     png_dpi = $bindable(DEFAULT_PNG_DPI),
     export_filename = `phase-diagram`,
@@ -95,12 +95,10 @@
     show_component_labels?: boolean
     fullscreen_toggle?: boolean
     enable_export?: boolean
-    show_controls?: boolean
+    show_controls?: ShowControlsProp<`controls` | `export` | `editor` | `fullscreen`>
     // Temperature display unit (can differ from data.temperature_unit)
     display_temp_unit?: `K` | `°C` | `°F`
-    // Controls pane
     controls_open?: boolean
-    controls_props?: Partial<ComponentProps<typeof PhaseDiagramControls>>
     // Export options
     export_pane_open?: boolean
     png_dpi?: number
@@ -127,6 +125,8 @@
     boundaries: [],
   }
 
+  // `always` by default: the editor and export toggles are how users discover those features
+  const controls_config = $derived(normalize_show_controls(show_controls, `always`))
   // Shared icon/toggle styling for the controls, export and editor panes
   const pane_props = {
     icon_style: `width: 14px; height: 14px`,
@@ -138,8 +138,8 @@
   // other's gradients (first-in-document wins, with that instance's pixel coords)
   const gradient_uid = unique_id(`pd-gradient`)
 
-  // Rebuild diagram data when diagram_input changes ($derived auto-recomputes). A failed
-  // build is surfaced as an error banner rather than silently falling back to the data prop.
+  // A diagram_input that fails to build is surfaced as an error banner rather than silently
+  // falling back to the data prop.
   const rebuilt = $derived.by((): { data: PhaseDiagramData | null; error: string | null } => {
     if (!diagram_input) return { data: null, error: null }
     try {
@@ -224,9 +224,8 @@
         { width: box_width, height: box_height },
         merged_config.font_size,
       )
-      // Get gradient stops for multi-phase regions (2+, supports 3+ phases)
       const gradient = get_multi_phase_gradient(region.name)
-      const x_coords = svg_vertices.map(([vx]) => vx)
+      const [x_min, x_max] = array_extent(svg_vertices.map(([vx]) => vx))
       return {
         ...region,
         svg_path: generate_region_path(svg_vertices),
@@ -237,8 +236,8 @@
         label_lines: label_props.lines,
         label_scale: label_props.scale,
         gradient,
-        x_min: Math.min(...x_coords),
-        x_max: Math.max(...x_coords),
+        x_min,
+        x_max,
       }
     }),
   )
@@ -278,14 +277,10 @@
     })
   })
 
+  // Click toggles the tooltip lock
   function handle_click() {
-    if (locked_hover_info) {
-      // Unlock if already locked
-      locked_hover_info = null
-    } else if (hover_info) {
-      // Lock current hover info
-      locked_hover_info = { ...hover_info }
-    }
+    if (locked_hover_info) locked_hover_info = null
+    else if (hover_info) locked_hover_info = { ...hover_info }
   }
 
   const effective_hover_info = $derived(locked_hover_info ?? hover_info)
@@ -326,15 +321,14 @@
     if (!info) return
     try {
       await navigator.clipboard.writeText(
-        format_hover_info_text(
-          info,
+        format_hover_info_text(info, {
           temp_unit,
           comp_unit,
           component_a,
           component_b,
           data_temp_unit,
           lever_rule_mode,
-        ),
+        }),
       )
       clearTimeout(copy_feedback_timeout)
       copy_feedback_pos = { x: event.clientX, y: event.clientY }
@@ -362,8 +356,6 @@
     const svg_x = event.clientX - rect.left
     const svg_y = event.clientY - rect.top
     const in_plot = svg_x >= left && svg_x <= right && svg_y >= top && svg_y <= bottom
-
-    // Convert to data coordinates and find phase
     const composition = x_scale.invert(svg_x)
     const temperature = y_scale.invert(svg_y)
     const region = in_plot
@@ -466,9 +458,15 @@
       <p>Provide diagram data through the <code>data</code> prop.</p>
     </EmptyState>
   {:else if width > 0 && height > 0}
-    <!-- Header controls -->
-    <div class="header-controls">
-      {#if show_controls}
+    <ViewerChrome
+      {controls_config}
+      bind:fullscreen
+      {fullscreen_toggle}
+      {wrapper}
+      fullscreen_bg_css_var="--phase-diagram-bg-fullscreen"
+      style="--viewer-buttons-top: var(--ctrl-btn-top, 30px); --viewer-buttons-right: var(--ctrl-btn-right, 20px)"
+    >
+      {#if controls_config.visible(`controls`)}
         <PhaseDiagramControls
           bind:controls_open
           bind:show_boundaries
@@ -483,11 +481,10 @@
           bind:png_dpi
           data={effective_data}
           {enable_export}
-          {...controls_props}
           {...pane_props}
         />
       {/if}
-      {#if enable_export}
+      {#if enable_export && controls_config.visible(`export`)}
         <PhaseDiagramExportPane
           bind:export_pane_open
           bind:png_dpi
@@ -497,21 +494,16 @@
           {...pane_props}
         />
       {/if}
-      <PhaseDiagramEditorPane
-        bind:editor_open
-        bind:diagram_input
-        data={effective_data}
-        on_data={(edited) => (source_data = edited)}
-        {...pane_props}
-      />
-      {#if fullscreen_toggle}
-        <FullscreenButton
-          bind:fullscreen
-          {wrapper}
-          bg_css_var="--phase-diagram-bg-fullscreen"
+      {#if controls_config.visible(`editor`)}
+        <PhaseDiagramEditorPane
+          bind:editor_open
+          bind:diagram_input
+          data={effective_data}
+          on_data={(edited) => (source_data = edited)}
+          {...pane_props}
         />
       {/if}
-    </div>
+    </ViewerChrome>
 
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
@@ -798,8 +790,6 @@
       {/if}
     </svg>
 
-    <!-- Tooltip (uses effective_hover_info which respects locked state) -->
-    <!-- tooltip={false} disables tooltip entirely -->
     {#if effective_hover_info && tooltip !== false}
       <PlotTooltip
         x={effective_hover_info.position.x}
@@ -869,33 +859,6 @@
     @container (max-width: 500px) {
       min-height: 300px;
     }
-  }
-  .header-controls {
-    position: absolute;
-    top: var(--ctrl-btn-top, 30px);
-    right: var(--ctrl-btn-right, 20px);
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    z-index: 10;
-  }
-  /* Override absolute positioning since container handles it */
-  .header-controls :global(.phase-diagram-controls-toggle) {
-    position: static;
-  }
-  /* Hide controls and fullscreen toggles by default, show on hover/focus */
-  .binary-phase-diagram :global(:is(.pane-toggle, .header-controls)) {
-    opacity: 0;
-    transition: opacity 0.2s ease;
-  }
-  /* Keep editor toggle always visible so users discover the edit feature */
-  .binary-phase-diagram :global(.pd-editor-toggle) {
-    opacity: 1;
-  }
-  .binary-phase-diagram:is(:hover, :focus-within) :is(:global(.pane-toggle), .header-controls),
-  .binary-phase-diagram :global(.pane-toggle:is(:focus-visible, [aria-expanded='true'])),
-  .header-controls:has(:global(.pane-open)) {
-    opacity: 1;
   }
   .phase-regions path {
     transition: opacity 0.15s ease;

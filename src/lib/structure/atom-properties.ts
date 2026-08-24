@@ -451,3 +451,20 @@ export function get_property_colors(
   const result = get_atom_colors(structure, config, sources)
   return result.colors.length > 0 ? result : null
 }
+
+// What the current structure can feed each coloring mode with. Shared by the legend dropdown
+// and the controls pane so the two pickers never disagree about which modes are selectable.
+export type AtomColorModeContext = {
+  has_sym_data: boolean
+  has_selective_dynamics: boolean
+  colorable_property_keys: readonly string[]
+}
+export const is_atom_color_mode_available = (
+  mode: AtomColorMode,
+  { has_sym_data, has_selective_dynamics, colorable_property_keys }: AtomColorModeContext,
+): boolean => {
+  if (mode === `wyckoff`) return has_sym_data
+  if (mode === `selective_dynamics`) return has_selective_dynamics
+  if (mode === `property`) return colorable_property_keys.length > 0
+  return true
+}

@@ -3,6 +3,7 @@
 // energy above hull → thresholds/visibility → bound outputs. Components only render.
 import type { CompositionType } from '$lib/composition'
 import { DEFAULTS } from '$lib/settings'
+import { to_error } from '$lib/utils'
 import { composition_to_simplex_coords } from './barycentric-coords'
 import { analyze_gas_data, apply_gas_corrections } from './gas-thermodynamics'
 import * as helpers from './helpers'
@@ -155,7 +156,7 @@ export function create_hull_data_pipeline(inputs: HullDataPipelineInputs) {
     try {
       return { entries: thermo.process_hull_entries(inputs.entries()).entries, error: null }
     } catch (err) {
-      return { entries: [], error: err instanceof Error ? err.message : String(err) }
+      return { entries: [], error: to_error(err).message }
     }
   })
   const source_entries = $derived(normalized_source.entries)

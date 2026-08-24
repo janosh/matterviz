@@ -421,18 +421,21 @@ describe(`load_from_url`, () => {
     expect(received_filename).toBe(`8a3bf2c4-d1e2-4f5a-9b8c-7d6e5f4a3b2c`)
   })
 
-  test(`fetch error`, async () => {
-    globalThis.fetch = vi.fn().mockRejectedValue(new Error(`Network error`))
-    await expect(load_from_url(`https://example.com/data.txt`, () => {})).rejects.toThrow(
+  test.each([
+    [
+      `a network failure`,
+      vi.fn().mockRejectedValue(new Error(`Network error`)),
       `Network error`,
-    )
-  })
-
-  test(`fetch error with status`, async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue(new Response(null, { status: 404 }))
-
-    await expect(load_from_url(`https://example.com/missing.json`, () => {})).rejects.toThrow(
+    ],
+    [
+      `an HTTP error status`,
+      vi.fn().mockResolvedValue(new Response(null, { status: 404 })),
       `Failed to fetch https://example.com/missing.json: HTTP 404`,
+    ],
+  ])(`rejects on %s`, async (_label, fetch_mock, message) => {
+    globalThis.fetch = fetch_mock
+    await expect(load_from_url(`https://example.com/missing.json`, () => {})).rejects.toThrow(
+      message,
     )
   })
 

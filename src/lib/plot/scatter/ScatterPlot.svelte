@@ -42,6 +42,7 @@
     create_scale,
     create_size_scale,
     empty_extent,
+    log_floor_scale,
     nice_range_from_extent,
     type RunningExtent,
   } from '$lib/plot/core/scales'
@@ -66,7 +67,6 @@
   import {
     COLOR_BAR_DEFAULTS,
     DEFAULT_MARKERS,
-    get_scale_type_name,
     is_time_scale,
     SCALE_DEFAULTS,
   } from '$lib/plot/core/types'
@@ -90,6 +90,7 @@
   } from '$lib/plot/core/fill-utils'
   import { get_relative_coords, is_activation_key } from '$lib/plot/core/interactions'
   import { create_cartesian_frame } from '$lib/plot/core/cartesian-frame.svelte'
+  import { resolve_plot_display } from '$lib/plot/core/display.svelte'
   import type { Rect, Sides } from '$lib/plot/core/layout'
   import { stride_sample } from '$lib/plot/core/layout'
   import { index_ref_lines } from '$lib/plot/core/reference-line'
@@ -118,7 +119,8 @@
     x2_axis = $bindable({}),
     y_axis = $bindable({}),
     y2_axis = $bindable({}),
-    display = $bindable(DEFAULTS.plot.display),
+    // Clone so the controls' checkbox writes never mutate the shared DEFAULTS
+    display = $bindable({ ...DEFAULTS.plot.display }),
     styles: styles_init = {},
     show_controls = $bindable(true),
     controls_open = $bindable(false),
@@ -188,7 +190,6 @@
       size_scale?: SizeScaleConfig
       color_bar?:
         | (ComponentProps<typeof ColorBar> & {
-            margin?: number | Sides
             tween?: TweenOptions<Point2D>
             responsive?: boolean // Allow colorbar to reposition if density changes (default: false)
             axis_clearance?: number // Min distance kept from plot edges/axes (default: 8)
@@ -311,7 +312,7 @@
   // Time axes only differ in range nicing; their scales are linear over epoch milliseconds
   const is_time_x = $derived(is_time_scale(final_x_axis.scale_type))
   const is_time_x2 = $derived(is_time_scale(final_x2_axis.scale_type))
-  const final_display = $derived({ ...DEFAULTS.plot.display, ...display })
+  const final_display = $derived(resolve_plot_display(display, DEFAULTS.plot.display))
   // Local state for styles (initialized from prop, owned by this component for controls)
   // Using $state because styles has bindings in ScatterPlotControls
   // untrack() explicitly captures initial prop value (intentional - props provide initial config)
@@ -577,11 +578,12 @@
   // and only picked by range on each pan/zoom frame
   const materialized_series = $derived(materialize_series_points(series_with_ids))
   let filtered_series = $derived(
-    filter_series_to_ranges(
-      series_with_ids,
-      { x: [x_min, x_max], x2: [x2_min, x2_max], y: [y_min, y_max], y2: [y2_min, y2_max] },
-      materialized_series,
-    ),
+    filter_series_to_ranges(materialized_series, {
+      x: [x_min, x_max],
+      x2: [x2_min, x2_max],
+      y: [y_min, y_max],
+      y2: [y2_min, y2_max],
+    }),
   )
   type FilteredSeries = (typeof filtered_series)[number]
 
@@ -622,7 +624,9 @@
   // Marker appearance shared by the canvas and SVG paths so they can't drift. Everything that
   // is constant across a series (control overrides, defaults, scales, the plot colour) is read
   // once here; the returned closure only touches the point's own style/colour/size. Reading
-  // those reactive values per point cost more than all the geometry at 100k points.
+  // those reactive values per point cost more than all the geometry at 100k points. It
+  // builds the CanvasMarker directly (position + opacity included) so the canvas path
+  // allocates one object per point instead of an appearance object spread into a marker.
   const series_appearance = (series_data: FilteredSeries) => {
     const series_idx = series_data.orig_series_idx ?? 0
     const control_touched = applies_style_controls(series_data) ? touched : null
@@ -651,10 +655,18 @@
       DEFAULTS.scatter.point
     const [size_fn, color_fn] = [size_scale_fn, color_scale_fn]
     return {
-      appearance_of: (point: InternalPoint<Metadata>) => {
+      marker_of: (
+        point: InternalPoint<Metadata>,
+        cx = 0,
+        cy = 0,
+        opacity = 1,
+      ): CanvasMarker => {
         const pt = point.point_style
         const stroke = ctrl_stroke ?? pt?.stroke
         return {
+          cx,
+          cy,
+          opacity,
           radius: is_finite_num(point.size_value)
             ? size_fn(point.size_value)
             : (ctrl_radius ?? pt?.radius ?? default_radius),
@@ -696,8 +708,7 @@
     const x_scale = series_data.x_axis === `x2` ? x2_scale_fn : x_scale_fn
     const y_scale = use_y2 ? y2_scale_fn : y_scale_fn
     const y_axis_config = use_y2 ? final_y2_axis : final_y_axis
-    const y_floor =
-      get_scale_type_name(y_axis_config.scale_type) === `log` ? y_scale.domain()[0] : -Infinity
+    const y_line_scale = log_floor_scale(y_scale, y_axis_config.scale_type, y_scale.domain())
     return {
       x_scale,
       point: (point: InternalPoint<Metadata>): Vec2 => [
@@ -708,7 +719,7 @@
         const screen: Vec2[] = []
         for (let idx = 0; idx < line.x.length; idx++) {
           const screen_x = x_scale(line.x[idx])
-          const screen_y = y_scale(Math.max(line.y[idx], y_floor))
+          const screen_y = y_line_scale(line.y[idx])
           if (Number.isFinite(screen_x) && Number.isFinite(screen_y)) {
             screen.push([screen_x, screen_y])
           }
@@ -758,14 +769,14 @@
     const markers: CanvasMarker[] = []
     for (const series_data of filtered_series) {
       if (!(series_data.markers ?? DEFAULT_MARKERS).includes(`points`)) continue
-      const { appearance_of, canvas_safe } = series_appearance(series_data)
+      const { marker_of, canvas_safe } = series_appearance(series_data)
       const project = series_projector(series_data)
       const opacity = is_legend_dimmed(series_data.orig_series_idx) ? 0.25 : 1
       for (const point of series_data.filtered_data) {
         if (!canvas_safe(point)) return null
         if (needs_static_svg_overlay(point, selected)) continue
         const [cx, cy] = project.point(point)
-        markers.push({ cx, cy, opacity, ...appearance_of(point) })
+        markers.push(marker_of(point, cx, cy, opacity))
       }
     }
     return markers
@@ -1451,13 +1462,13 @@
           {@const rendered_points = use_canvas_markers
             ? (svg_overlay_points_by_series[series_pos] ?? [])
             : series_data.filtered_data}
-          {@const { appearance_of } = series_appearance(series_data)}
+          {@const { marker_of } = series_appearance(series_data)}
           {@const project = series_projector(series_data)}
           <g data-series-id={series_data._id}>
             {#each rendered_points as point (`${point.series_idx}-${point.point_idx}`)}
               {@const [cx, cy] = project.point(point)}
               {@const offset = point.point_offset ?? ZERO_OFFSET}
-              {@const appearance = appearance_of(point)}
+              {@const appearance = marker_of(point)}
               <ScatterPoint
                 x={cx - offset.x}
                 y={cy - offset.y}

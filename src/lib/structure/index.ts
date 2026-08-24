@@ -2,15 +2,14 @@ import type { CompositionType } from '$lib/composition'
 import type { ElementSymbol } from '$lib/element'
 import { element_by_symbol, element_data } from '$lib/element'
 import type { FileLoadData } from '$lib/io/types'
-import type { Vec3 } from '$lib/math'
-import * as math from '$lib/math'
+import type { Matrix3x3, Vec3 } from '$lib/math'
 import type { CameraProjection } from '$lib/settings'
 import type { Pbc } from './pbc'
 
 export { default as Arrow } from './Arrow.svelte'
 export * from './atom-properties'
 export { default as AtomLegend } from './AtomLegend.svelte'
-export * as bonding_strategies from './bonding'
+export * from './bonding'
 export { default as CanvasTooltip } from './CanvasTooltip.svelte'
 export { default as Cylinder } from './Cylinder.svelte'
 export { default as Lattice } from './Lattice.svelte'
@@ -84,7 +83,7 @@ export type Site = {
 export type LatticeParams = Record<`a` | `b` | `c` | `alpha` | `beta` | `gamma`, number>
 
 export type LatticeType = {
-  matrix: math.Matrix3x3
+  matrix: Matrix3x3
   pbc: Pbc
   volume: number
 } & LatticeParams
@@ -133,23 +132,18 @@ export const atomic_radii: CompositionType = Object.fromEntries(
 )
 
 export function get_center_of_mass(structure: AnyStructure): Vec3 {
-  let center: Vec3 = [0, 0, 0]
-  let total_weight = 0
-
-  for (const site of structure.sites) {
-    // Handle disordered sites by summing contributions from all species
-    for (const species of site.species) {
-      const atomic_weight = element_by_symbol.get(species.element)?.atomic_mass ?? 1
-      const weight = atomic_weight * species.occu
-
-      const scaled_pos = math.scale(site.xyz, weight)
-      center = math.add(center, scaled_pos)
-
+  let [sum_x, sum_y, sum_z, total_weight] = [0, 0, 0, 0]
+  for (const { species, xyz } of structure.sites) {
+    // a disordered site contributes every species, weighted by its occupancy
+    for (const { element, occu } of species) {
+      const weight = (element_by_symbol.get(element)?.atomic_mass ?? 1) * occu
+      sum_x += weight * xyz[0]
+      sum_y += weight * xyz[1]
+      sum_z += weight * xyz[2]
       total_weight += weight
     }
   }
-
-  return math.scale(center, 1 / total_weight)
+  return [sum_x / total_weight, sum_y / total_weight, sum_z / total_weight]
 }
 
 // Recognized prefixes for per-site vector data (force, magnetic moment, spin, velocity).
@@ -182,6 +176,8 @@ export const is_vector_key = (key: string): boolean => {
   return is_vector
 }
 
+export const RESET_VIEW_TITLE = `Reset view (r, or double-click)`
+
 // Default color palette for distinguishing multiple vector layers
 export const VECTOR_PALETTE = [
   `#e74c3c`,
@@ -192,12 +188,9 @@ export const VECTOR_PALETTE = [
   `#1abc9c`,
 ] as const
 
-const is_velocity_vector_key = (key: string): boolean => {
-  const normalized_key = key.toLowerCase()
-  return [`velocity`, `velocities`].some(
-    (prefix) => normalized_key === prefix || normalized_key.startsWith(`${prefix}_`),
-  )
-}
+// Same key shape as is_vector_key, restricted to the velocity prefixes
+const is_velocity_vector_key = (key: string): boolean =>
+  [`velocity`, `velocities`].some((prefix) => key === prefix || key.startsWith(`${prefix}_`))
 
 // MD velocities are much larger than typical force-vector values in supported file units.
 // Shorter, thinner defaults keep velocity arrows from overwhelming the structure or cell.

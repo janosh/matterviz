@@ -1,11 +1,6 @@
 <script lang="ts">
-  import type {
-    GasControlPosition,
-    GasSpecies,
-    GasThermodynamicsConfig,
-  } from '$lib/convex-hull/types'
+  import type { GasSpecies, GasThermodynamicsConfig } from '$lib/convex-hull/types'
   import { sanitize_html } from '$lib/sanitize'
-  import { tooltip } from 'svelte-widgets/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import {
     compute_gas_chemical_potential,
@@ -13,18 +8,17 @@
     get_default_gas_provider,
     get_effective_pressures,
   } from './gas-thermodynamics'
+  import VerticalSlider from './VerticalSlider.svelte'
 
   let {
     config,
     pressures = $bindable({}),
     temperature,
-    position = `top-right`,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     config: GasThermodynamicsConfig
     pressures: Partial<Record<GasSpecies, number>>
     temperature: number
-    position?: GasControlPosition
   } = $props()
 
   // Log scale range for pressure slider: 10^-10 to 10^2 bar
@@ -32,20 +26,15 @@
   const LOG_P_MAX = 2
   const LOG_P_RANGE = LOG_P_MAX - LOG_P_MIN
   const MIN_PRESSURE = 1e-15 // Safe minimum to avoid log(0) or NaN
-  const THROTTLE_MS = 100
-
-  // Local preview state for smooth slider interaction without causing full hull re-renders
-  let preview_pressures = $state<Partial<Record<GasSpecies, number>>>({})
-  let last_update_time = 0
 
   const provider = $derived(config.provider ?? get_default_gas_provider())
   const enabled_gases = $derived(config.enabled_gases ?? [])
   // Effective pressures including defaults
   const effective_pressures = $derived(get_effective_pressures(config))
 
-  // Current pressure for a gas (preview during drag, committed, or default)
+  // Committed pressure for a gas, else the config/default pressure
   function get_pressure(gas: GasSpecies): number {
-    const pressure = preview_pressures[gas] ?? pressures[gas] ?? effective_pressures[gas]
+    const pressure = pressures[gas] ?? effective_pressures[gas]
     return Number.isFinite(pressure) && pressure > 0 ? pressure : MIN_PRESSURE
   }
 
@@ -70,41 +59,33 @@
     return pressure.toExponential(1)
   }
 
-  function set_pressure(gas: GasSpecies, value: number): void {
-    const pressure = slider_to_pressure(value)
-    preview_pressures = { ...preview_pressures, [gas]: pressure }
-    // Throttle parent updates during drag to prevent hull recomputation on every pixel
-    const now = Date.now()
-    if (now - last_update_time >= THROTTLE_MS) {
-      last_update_time = now
-      pressures = { ...pressures, [gas]: pressure }
-    }
-  }
-
-  function handle_slider_end(
-    gas: GasSpecies,
-    event: Event & { currentTarget: HTMLInputElement },
-  ): void {
-    pressures = { ...pressures, [gas]: slider_to_pressure(Number(event.currentTarget.value)) }
-    // Clear only this gas's preview (don't reset other sliders being dragged simultaneously)
-    const { [gas]: _removed_preview, ...remaining_previews } = preview_pressures
-    preview_pressures = remaining_previews
+  const set_pressure = (gas: GasSpecies, pressure: number): void => {
+    pressures = { ...pressures, [gas]: pressure }
   }
 
   function set_pressure_direct(gas: GasSpecies, value: number): void {
-    const clamped = Math.max(10 ** LOG_P_MIN, Math.min(10 ** LOG_P_MAX, value))
-    pressures = { ...pressures, [gas]: clamped }
+    set_pressure(gas, Math.max(10 ** LOG_P_MIN, Math.min(10 ** LOG_P_MAX, value)))
   }
 </script>
 
 {#if enabled_gases.length > 0}
-  <div {...rest} class={[`pressure-controls`, position, rest.class]}>
+  <div {...rest} class={[`pressure-controls`, rest.class]}>
     {#each enabled_gases as gas (gas)}
-      {@const pressure = get_pressure(gas)}
       {@const mu = get_mu(gas)}
-      {@const tooltip_content = `${gas} partial pressure for μ(T,P)\nμ = ${format_chemical_potential(mu, 3)}`}
-      <div class="pressure-slider" {@attach tooltip({ content: tooltip_content })}>
-        <label class="pressure-label">
+      <VerticalSlider
+        class="pressure-slider"
+        bind:value={
+          () => pressure_to_slider(get_pressure(gas)),
+          (position) => set_pressure(gas, slider_to_pressure(position))
+        }
+        min={0}
+        max={100}
+        step={0.5}
+        aria_label="{gas} partial pressure"
+        tooltip_content={`${gas} partial pressure for μ(T,P)\nμ = ${format_chemical_potential(mu, 3)}`}
+      >
+        {#snippet header(position)}
+          {@const pressure = slider_to_pressure(position)}
           <input
             type="text"
             class="pressure-input"
@@ -120,54 +101,23 @@
           <span class="gas-name"
             >{@html sanitize_html(gas.replaceAll(/(?<digits>\d+)/g, `<sub>$1</sub>`))}</span
           >
-        </label>
-        <div class="slider-wrapper">
-          <span class="pressure-range">
-            10<sup>{LOG_P_MIN}</sup>–10<sup>{LOG_P_MAX}</sup>
-          </span>
-          <input
-            type="range"
-            min="0"
-            max="100"
-            step="0.5"
-            value={pressure_to_slider(pressure)}
-            oninput={(evt) => set_pressure(gas, +evt.currentTarget.value)}
-            onchange={(evt) => handle_slider_end(gas, evt)}
-            onmouseup={(evt) => handle_slider_end(gas, evt)}
-            ontouchend={(evt) => handle_slider_end(gas, evt)}
-            aria-label="{gas} partial pressure"
-          />
-        </div>
-        <span class="sr-only" aria-live="polite">
-          {gas} chemical potential: {format_chemical_potential(mu, 2)}
-        </span>
-      </div>
+        {/snippet}
+        {#snippet range_label()}
+          10<sup>{LOG_P_MIN}</sup>–10<sup>{LOG_P_MAX}</sup>
+        {/snippet}
+      </VerticalSlider>
+      <span class="sr-only" aria-live="polite">
+        {gas} chemical potential: {format_chemical_potential(mu, 2)}
+      </span>
     {/each}
   </div>
 {/if}
 
 <style>
   .pressure-controls {
-    position: absolute;
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
-    &.top-left,
-    &.top-right {
-      top: calc(1ex + 50px);
-    }
-    &.bottom-left,
-    &.bottom-right {
-      bottom: calc(1ex + 50px);
-    }
-    &.top-left,
-    &.bottom-left {
-      left: calc(1ex + 10px);
-    }
-    &.top-right,
-    &.bottom-right {
-      right: calc(1ex + 75px);
-    }
   }
   .sr-only {
     position: absolute;
@@ -180,42 +130,8 @@
     white-space: nowrap;
     border: 0;
   }
-  .pressure-slider {
-    display: flex;
-    flex-direction: column;
-    align-items: var(--pressure-slider-align, center);
-    gap: 4px;
-    background: color-mix(in srgb, var(--hull-bg, transparent) 80%, transparent);
-    padding: 3px 5px;
-    border-radius: var(--border-radius, 6pt);
-    backdrop-filter: blur(2px);
-  }
-  .slider-wrapper {
-    display: flex;
-    place-items: center;
-    justify-content: var(--slider-justify, center);
-    line-height: 1;
-  }
-  .pressure-slider input[type='range'] {
-    writing-mode: vertical-lr;
-    direction: rtl;
-  }
-  .pressure-label {
-    display: flex;
-    align-items: center;
-    gap: 2px;
-  }
   .pressure-input {
     width: 5.5ch;
-    border: 1px solid color-mix(in srgb, currentColor 5%, transparent);
-    border-radius: 3px;
-    background: transparent;
-    text-align: center;
-  }
-  .pressure-input::-webkit-outer-spin-button,
-  .pressure-input::-webkit-inner-spin-button {
-    -webkit-appearance: none;
-    margin: 0;
   }
   .gas-name {
     font-size: 0.9em;
@@ -223,12 +139,5 @@
   .gas-name :global(sub) {
     font-size: 0.7em;
     vertical-align: sub;
-  }
-  .pressure-range {
-    font-size: 0.7em;
-    opacity: 0.7;
-    white-space: nowrap;
-    writing-mode: vertical-rl;
-    transform: rotate(180deg);
   }
 </style>

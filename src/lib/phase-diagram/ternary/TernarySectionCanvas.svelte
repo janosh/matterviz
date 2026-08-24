@@ -23,7 +23,6 @@
   import { decompose_composition, type DiagramModel } from './compute'
   import {
     type Decomposition,
-    type DiagramPhase,
     type IsothermalSection,
     type SectionHover,
     TERNARY_COLORS,
@@ -38,7 +37,6 @@
     highlighted_phases = [],
     emphasized_phases = [],
     on_hover,
-    on_click,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     model: Pick<DiagramModel, `phases` | `elements`>
@@ -48,7 +46,6 @@
     highlighted_phases?: number[]
     emphasized_phases?: number[] // ringed, e.g. phases that change at the next transition
     on_hover?: (hover: SectionHover | null) => void
-    on_click?: (phase: DiagramPhase | null, event: MouseEvent) => void
   } = $props()
 
   let canvas = $state<HTMLCanvasElement>()
@@ -356,7 +353,7 @@
   function handle_pointer_move(event: MouseEvent): void {
     if (!canvas) return
     const position: Vec2 = [event.clientX, event.clientY]
-    const entry = find_hull_entry_at_mouse(canvas, event, by_stability, project, layout.scale)
+    const entry = find_hull_entry_at_mouse(canvas, event, points, layout.scale)
     hover_phase = entry ? entry.phase_idx : null
     canvas.style.cursor = entry ? `pointer` : ``
     if (hover_phase !== null) {
@@ -383,10 +380,9 @@
     if (canvas) canvas.style.cursor = ``
     on_hover?.(null)
   }
-  function handle_click(event: MouseEvent): void {
-    const phase = hover_phase === null ? null : model.phases[hover_phase]
-    selected_phase = phase && selected_phase !== phase.idx ? phase.idx : null
-    on_click?.(phase, event)
+  const handle_click = () => {
+    selected_phase =
+      hover_phase !== null && selected_phase !== hover_phase ? hover_phase : null
   }
 </script>
 

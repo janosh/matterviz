@@ -61,7 +61,6 @@ const AXIS_COORDINATE_PROPERTIES = new Set([
 
 export interface PlotSeriesOptions {
   property_config?: Record<string, TrajPropertyConfig>
-  colors?: readonly string[]
   default_visible_properties?: Set<string>
   // Maps frame index to x coordinate. Defaults to the frame index itself.
   x_map?: TrajectoryXMap
@@ -391,7 +390,6 @@ function calculate_priority(unit: string, group_series: readonly DataSeries[]): 
 function build_series(stats: PropertyStats, options: PlotSeriesOptions): DataSeries[] {
   const {
     property_config = trajectory_property_config,
-    colors = PLOT_COLORS,
     default_visible_properties = DEFAULT_VISIBLE,
     x_map = FRAME_X_MAP,
   } = options
@@ -399,7 +397,7 @@ function build_series(stats: PropertyStats, options: PlotSeriesOptions): DataSer
   for (const [key, stat] of stats) {
     const n_values = stat.values.length
     const { clean_label, unit, axis_group } = extract_label_and_unit(key, property_config)
-    const color = colors[series.length % colors.length]
+    const color = PLOT_COLORS[series.length % PLOT_COLORS.length]
     series.push({
       x: stat.frame_indices.map(x_map.to_x),
       y: stat.values,

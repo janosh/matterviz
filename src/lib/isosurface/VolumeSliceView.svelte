@@ -1,5 +1,6 @@
 <script lang="ts">
   import { StatusMessage } from '$lib/feedback'
+  import { format_num } from '$lib/labels'
   import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { resolve_slice_cartesian_point, sample_hkl_slice, sample_plane_slice } from './slice'
@@ -83,7 +84,7 @@
     />
     {#if resolved_settings.plane_mode === `hkl`}
       <label class="slice-position-control">
-        <span>d = {resolved_settings.position.toFixed(2)}</span>
+        <span>d = {format_num(resolved_settings.position, `.2f`)}</span>
         <input
           type="range"
           min={0}

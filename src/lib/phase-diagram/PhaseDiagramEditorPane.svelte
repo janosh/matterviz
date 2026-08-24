@@ -34,19 +34,20 @@
   let rejection_timer: ReturnType<typeof setTimeout> | undefined
 
   function show_rejection(msg: string) {
-    if (rejection_timer) clearTimeout(rejection_timer)
+    clearTimeout(rejection_timer)
     rejection_msg = msg
     rejection_timer = setTimeout(() => (rejection_msg = null), 3000)
   }
+  $effect(() => () => clearTimeout(rejection_timer))
 
-  // Shared format detection: true if obj looks like a DiagramInput
+  // True if obj looks like a DiagramInput rather than PhaseDiagramData
   function is_diagram_input(obj: Record<string, unknown>): boolean {
     const meta = obj.meta as Record<string, unknown> | undefined
     return Boolean(meta && Array.isArray(meta.components) && `curves` in obj)
   }
 
-  // Handle inline value edits from JsonTree
-  function handle_change(path: string, new_value: unknown, _old_value: unknown) {
+  // Inline value edits from JsonTree
+  function handle_change(path: string, new_value: unknown) {
     if (!display_source) return
     const updated = set_at_path(display_source, path, new_value, root_label)
 
@@ -55,12 +56,11 @@
         build_diagram(updated as DiagramInput)
         diagram_input = updated as DiagramInput
       } catch (error) {
-        const msg = to_error(error).message
-        show_rejection(msg)
+        show_rejection(to_error(error).message)
       }
       return
     }
-    // PhaseDiagramData format — clear diagram_input so rebuilt_data doesn't shadow
+    // PhaseDiagramData format: clear diagram_input so the rebuilt diagram doesn't shadow it
     diagram_input = null
     on_data?.(updated as PhaseDiagramData)
   }

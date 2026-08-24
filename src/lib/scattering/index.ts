@@ -55,8 +55,10 @@ const assert_valid_s = (s_val: number): void => {
   }
 }
 
-// Σ aᵢ·exp(−bᵢ·s²), shared by the X-ray and electron form factors
-const require_gaussian_params = (element: ScatteringSpecies) => {
+// [[a1, b1], ..., [a4, b4]] of the four-Gaussian fit Σ aᵢ·exp(−bᵢ·s²) behind the X-ray and
+// electron form factors. Throws for species without a fit rather than returning a zero
+// factor that would silently drop the species from a pattern.
+export function gaussian_params(element: ScatteringSpecies): number[][] {
   const params = GAUSSIAN_PARAMS[element]
   if (!params) {
     throw new Error(
@@ -67,7 +69,7 @@ const require_gaussian_params = (element: ScatteringSpecies) => {
 }
 
 const gaussian_sum = (element: ScatteringSpecies, s_sq: number): number => {
-  const params = require_gaussian_params(element)
+  const params = gaussian_params(element)
   let total = 0
   for (const [amplitude, decay] of params) total += amplitude * Math.exp(-decay * s_sq)
   return total
@@ -104,7 +106,7 @@ export const gaussian_turning_point = (element: ScatteringSpecies): number => {
   // Without this an unknown species gets an all-zero slope, and the bisection below
   // "converges" on ~1e-24 and caches it, so this exported function hands back a number
   // where gaussian_sum would have said which element is missing
-  const params = require_gaussian_params(element)
+  const params = gaussian_params(element)
   const slope = (u_val: number) => {
     let total = 0
     for (const [amplitude, decay] of params) {

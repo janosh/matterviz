@@ -8,7 +8,7 @@
     SunburstLabelText,
     SunburstShape,
     SunburstValueMode,
-  } from '$lib/plot'
+  } from '$lib/plot/core/utils/hierarchy-layout'
   import { DEFAULTS, SETTINGS_CONFIG } from '$lib/settings'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'

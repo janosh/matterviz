@@ -47,7 +47,6 @@ describe(`extract_columns`, () => {
     expect(cols.get(`value`)).toEqual({
       values: [1, undefined, undefined, undefined, 2],
       type: `numeric`,
-      n_valid: 2,
     })
   })
 
@@ -56,15 +55,15 @@ describe(`extract_columns`, () => {
     (data) => expect(extract_columns(data).size).toBe(0),
   )
 
-  // type follows the 80% numeric threshold; n_valid counts non-null entries
+  // type follows the 80% numeric threshold over the non-null entries
   test.each([
-    [`nulls`, [1, null, 3], `numeric`, 2],
-    [`>= 80% numbers`, [1, 2, 3, 4, `outlier`], `numeric`, 5],
-    [`< 80% numbers`, [1, `two`, 3, `four`, 5], `mixed`, 5],
-    [`all null`, [null, undefined], `mixed`, 0],
-  ])(`classifies column with %s`, (_label, values, type, n_valid) => {
+    [`nulls`, [1, null, 3], `numeric`],
+    [`>= 80% numbers`, [1, 2, 3, 4, `outlier`], `numeric`],
+    [`< 80% numbers`, [1, `two`, 3, `four`, 5], `mixed`],
+    [`all null`, [null, undefined], `mixed`],
+  ])(`classifies column with %s`, (_label, values, type) => {
     const cols = extract_columns({ val: values, idx: values.map((_, idx) => idx) })
-    expect(cols.get(`val`)).toMatchObject({ type, n_valid })
+    expect(cols.get(`val`)?.type).toBe(type)
   })
 })
 
