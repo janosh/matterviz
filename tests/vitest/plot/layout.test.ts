@@ -793,6 +793,22 @@ describe(`layout utility functions`, () => {
       expect(layout.visible_tick_indices).toEqual([0, 3])
     })
 
+    it(`rotated y labels trade their anchor at the axis ends like upright x labels`, () => {
+      // a 90° y label runs along the axis, so the edge labels anchor inward instead of
+      // spilling past the first and last tick
+      const layout = resolve_tick_layout(
+        {
+          ...uniform_axis([`Bottom edge`, `Top edge`], 100),
+          tick: { label: { rotation: 90 } },
+        },
+        100,
+        `y`,
+      )
+      const anchors = layout.labels.map(({ anchor }) => anchor)
+      expect(new Set(anchors).size).toBe(2)
+      expect(anchors).not.toContain(`middle`)
+    })
+
     it(`chooses inward edge anchors from actual axis bounds`, () => {
       const layout = resolve_tick_layout(
         {

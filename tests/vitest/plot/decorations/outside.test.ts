@@ -5,6 +5,7 @@ import {
   type DecorationItem,
   type DecorationScene,
   type DecorationSize,
+  get_outside_placement,
   place_outside_decorations,
 } from '$lib/plot/core/decorations'
 import { describe, expect, test } from 'vitest'
@@ -96,6 +97,16 @@ describe(`place_outside_decorations`, () => {
       axis_pad: base_pad,
     })
     expect(roomy.pad.b).toBe(stacked.pad.b)
+    // the padding did not grow, yet the legend still sits below: the side is not inferred from it
+    const roomy_scene: DecorationScene = {
+      base_pad: { ...base_pad, b: stacked.pad.b },
+      width,
+      height,
+      obstacles_norm: dense,
+      items: [{ id: `legend`, kind: `legend`, ...legend }],
+    }
+    const placement = get_outside_placement(roomy_scene.items[0], roomy_scene, roomy)
+    expect(placement).toMatchObject({ side: `bottom`, ...roomy.legend_pos })
     // a caller padding short of the band still grows to fit the legend
     const short = place({ legend, base_pad: { ...base_pad, b: 60 }, axis_pad: base_pad })
     expect(short.pad.b).toBe(stacked.pad.b)

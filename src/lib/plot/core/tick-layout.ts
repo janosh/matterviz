@@ -229,10 +229,12 @@ const best_anchor = (
 ): { anchor: TickLabelAnchor; aabb: TickAabb } => {
   let anchor = default_tick_label_anchor(side, rotation)
   let aabb = tick_label_aabb({ position, side, anchor, rotation, dimensions })
-  // Only upright labels on a horizontal axis can trade anchors. A rotated label trails away
-  // from the plot only with its default anchor (flipping it sends the text up through the
-  // bars), and y/y2 anchors point at the spine, so no alternative reduces vertical overflow.
-  if (!is_horizontal_side(side) || normalized_rotation(rotation) !== 0) return { anchor, aabb }
+  // An anchor can only trade overflow along the axis when the text runs along it: upright on
+  // x/x2, rotated on y/y2. A rotated x label trails away from the plot only with its default
+  // anchor (flipping it sends the text up through the bars); an upright y anchor points at
+  // the spine and never changes the vertical extent.
+  const rotated = normalized_rotation(rotation) !== 0
+  if (is_horizontal_side(side) === rotated) return { anchor, aabb }
   let least_overflow = axis_edge_overflow(aabb, side, axis_extent, edge_gap).total
   if (least_overflow === 0) return { anchor, aabb }
   for (const candidate of ANCHORS) {

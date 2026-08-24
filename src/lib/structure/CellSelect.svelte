@@ -113,7 +113,6 @@
   {@attach click_outside({ callback: close_menu })}
   onmouseenter={schedule_hover_open}
   onmouseleave={close_menu}
-  onpointerdown={() => (pointer_press_pending = true)}
   onfocusin={() => {
     if (!pointer_press_pending) menu_open = !suppress_hover
   }}
@@ -121,6 +120,7 @@
 >
   <button
     type="button"
+    onpointerdown={() => (pointer_press_pending = true)}
     onclick={() => {
       clearTimeout(hover_timer)
       pointer_press_pending = false

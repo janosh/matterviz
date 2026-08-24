@@ -1869,15 +1869,18 @@
     cursor: pointer;
     line-height: 1;
   }
-  /* the 14px glyph stays put; on touch screens an invisible halo makes it a ~32px target */
+  /* touch: the 14px glyph stays put inside a 24px button (adjacent triggers sit 3px apart, so
+     a wider halo would overlap the neighbour); a vertical halo completes the ~32px target */
   @media (pointer: coarse) {
     :global(.header-popover > button) {
       position: relative;
+      width: 24px;
+      height: 24px;
     }
     :global(.header-popover > button::before) {
       content: '';
       position: absolute;
-      inset: -9px;
+      inset: -4px 0;
     }
   }
   :global(.header-popover > button:is(:hover, [aria-expanded='true'])) {

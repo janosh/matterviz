@@ -43,14 +43,24 @@
     on_item_hover?: (item: LegendItem | null) => void
   } = $props()
 
+  const outside_side = $derived(
+    frame.legend_placement?.location === `outside` ? frame.legend_placement.side : undefined,
+  )
+  const is_strip = $derived(outside_side === `bottom` || outside_side === `top`)
   // A strip below/above the plot scrolls past half the frame height rather than leaving a
   // sliver of plot. 50% stays above the solver's too-tall fraction of the plot area, so a
   // capped legend never shrinks enough to flip back inside and re-expand.
   const strip_style = $derived(
-    frame.legend_placement?.location === `outside` &&
-      (frame.legend_placement.side === `bottom` || frame.legend_placement.side === `top`)
-      ? `max-height: min(var(--plot-legend-max-height, 80%), 50%); `
-      : ``,
+    is_strip ? `max-height: min(var(--plot-legend-max-height, 80%), 50%); ` : ``,
+  )
+  // The solver counts auto tracks as columns for a strip and rows beside the plot (solve.ts),
+  // so the legend must render in that orientation or the count lands on the wrong axis
+  const layout = $derived(
+    legend?.layout_tracks === `auto` && outside_side
+      ? is_strip
+        ? `horizontal`
+        : `vertical`
+      : legend?.layout,
   )
 </script>
 
@@ -79,6 +89,7 @@
     {...legend}
     bind:filter_query={frame.legend_filter_query}
     layout_tracks={resolve_legend_layout_tracks(legend.layout_tracks, frame.legend_placement)}
+    {layout}
     {series_data}
     {active_series_idx}
     draggable={legend.draggable ?? true}

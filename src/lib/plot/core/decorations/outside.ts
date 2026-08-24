@@ -20,6 +20,7 @@ const CROWDING_RATIO = 0.5
 type OutsideLayout = {
   pad: Required<Sides> // base_pad plus reservations for whatever moved outside
   legend_outside: boolean
+  legend_side: `right` | `bottom` // valid when legend_outside
   legend_pos: DecorationPoint // outside position (right or bottom margin; valid when legend_outside)
   colorbar_outside: boolean
 }
@@ -143,7 +144,8 @@ export function place_outside_decorations(scene: DecorationScene): OutsideLayout
     ? { x: width - legend_width - gap, y: base_pad.t + (base_h - legend_height) / 2 }
     : { x: base_pad.l + (base_w - legend_width) / 2, y: height - legend_height - gap }
 
-  return { pad, legend_outside, legend_pos, colorbar_outside }
+  const legend_side = legend_right ? `right` : `bottom`
+  return { pad, legend_outside, legend_side, legend_pos, colorbar_outside }
 }
 
 export const get_outside_placement = (
@@ -162,8 +164,7 @@ export const get_outside_placement = (
     location: `outside` as const,
   }
   if (item.kind === `legend` && layout.legend_outside) {
-    const side = layout.pad.b > base_pad.b ? `bottom` : `right`
-    return { ...placement, ...layout.legend_pos, side }
+    return { ...placement, ...layout.legend_pos, side: layout.legend_side }
   }
   if (item.kind === `colorbar` && layout.colorbar_outside) {
     const horizontal = item.horizontal ?? false
