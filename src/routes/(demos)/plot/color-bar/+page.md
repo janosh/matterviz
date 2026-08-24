@@ -75,6 +75,7 @@ You can make fat and skinny bars:
 <style>
   form {
     display: flex;
+    flex-wrap: wrap;
     place-items: center;
     place-content: center;
     gap: 1em;
@@ -190,19 +191,21 @@ You can format tick labels for date/time ranges by providing a D3 format string 
   ]
 </script>
 
-<div style="display: flex; column; gap: 2em; align-items: center;">
+<div
+  style="display: flex; flex-wrap: wrap; justify-content: center; gap: 2em 4em; align-items: center; padding-inline: 1.5em"
+>
   <ColorBar
     title="YYYY-MM-DD"
     range={date_range}
     tick_format="%Y-%m-%d"
-    bar_style="width: 200px; margin-left: 3em;"
+    bar_style="width: 200px"
     tick_labels={2}
   />
 
   <ColorBar
     title="Month Day"
     range={date_range}
-    bar_style="width: 500px; margin-left: 3em;"
+    bar_style="width: 500px"
     tick_format="%b %d"
     tick_labels={7}
   />
@@ -338,7 +341,9 @@ Vertical orientation with the title on different sides:
   }
 </script>
 
-<div style="display: flex; gap: 4em; justify-content: center; align-items: center">
+<div
+  style="display: flex; flex-wrap: wrap; gap: 4em; justify-content: center; align-items: center"
+>
   <ColorBar
     title="Energy"
     range={range_left}
@@ -377,7 +382,7 @@ Large numeric ranges on linear and log scales (`scale_type='log'`). Log needs a 
 </script>
 
 <div
-  style="display: grid; grid-template-columns: 1fr 1fr; gap: 4em; place-items: center; margin: 2em 0"
+  style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 20em), 1fr)); gap: 4em; place-items: center; margin: 2em 0; padding-inline: 1em"
 >
   <ColorBar
     title="Large Linear Range (0 to 1e6)"
@@ -450,7 +455,7 @@ Large numeric ranges on linear and log scales (`scale_type='log'`). Log needs a 
 </div>
 
 <div
-  style="display: grid; grid-template-columns: 1fr 1fr; gap: 3em; place-items: center; margin: 1em 0"
+  style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 20em), 1fr)); gap: 3em; place-items: center; margin: 1em 0; padding-inline: 1em"
 >
   <ColorBar
     title="Symmetric Range (-1000 to 1000)"

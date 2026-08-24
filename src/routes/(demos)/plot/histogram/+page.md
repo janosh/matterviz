@@ -350,7 +350,7 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
 </script>
 
 <div
-  style="display: flex; align-items: center; gap: 1em; margin-bottom: 1em; white-space: nowrap; font-size: 0.9em"
+  style="display: flex; flex-wrap: wrap; align-items: center; gap: 1em; margin-bottom: 1em; font-size: 0.9em"
 >
   <fieldset>
     <legend>X-axis Scale</legend>

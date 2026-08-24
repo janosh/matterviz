@@ -644,7 +644,7 @@
       </SettingsSection>
     {/snippet}
 
-    {#snippet user_content({ height, x_scale_fn, y_scale_fn, pad })}
+    {#snippet user_content({ height, width, x_scale_fn, y_scale_fn, pad })}
       <!-- Fat band ribbons (rendered behind band lines) -->
       {#each ribbon_data as ribbon (ribbon.key)}
         {@const path_d = helpers.generate_ribbon_path(
@@ -781,11 +781,15 @@
             opacity="0.7"
           />
         {/each}
+        <!-- The ~60px label only fits in the right margin when the caller padded for it;
+             otherwise anchor it inside the plot so it is not clipped by the SVG edge -->
+        {@const gap_label_fits_right = width - bands_x_end >= 70}
         <text
-          x={bands_x_end + 4}
+          x={gap_label_fits_right ? bands_x_end + 4 : bands_x_end - 4}
           y={gap_mid_y}
           dy="0.35em"
           font-size="10"
+          text-anchor={gap_label_fits_right ? `start` : `end`}
           fill="var(--text-color)"
         >
           E<tspan dy="2" font-size="8">g:</tspan>

@@ -41,4 +41,17 @@
     --scatter-font-size: var(--ptable-inset-font-size, 12px);
     --scatter-fullscreen-font-size: var(--ptable-inset-fullscreen-font-size, 16px);
   }
+  /* On phone-width tables the inset area is ~200px wide by ~60px tall, so controls, stats
+     and headings spill over the tiles. Drop custom insets into their own full-width row below
+     the table instead (.periodic-table is the inline-size container). The built-in colorbar
+     is compact enough to stay put. 380px catches 360-393px phones (table = 94vw) while the
+     384px tables of a two-column grid in a 50em main column keep their inset. */
+  @container (max-width: 380px) {
+    .table-inset:not(.auto-colorbar-inset) {
+      position: static;
+      grid-row: 11;
+      grid-column: 1 / -1;
+      margin-top: 1em;
+    }
+  }
 </style>

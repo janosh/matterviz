@@ -66,6 +66,13 @@
     margin: 1ex;
     border-radius: 1ex;
   }
+  /* phones: the largest atoms are ~300px wide, so a single one per row makes a very long
+     page; the SVG scales to its <li>, so cap that at two per row */
+  @container (max-width: 600px) {
+    li {
+      width: calc(50% - 2ex);
+    }
+  }
   strong {
     position: absolute;
     margin: 0;

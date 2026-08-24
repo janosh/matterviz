@@ -275,7 +275,7 @@ the RMSD through the bindable `displacement_rmsd` prop.
 <style>
   ul.crystal-systems {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(500px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(500px, 100%), 1fr));
     gap: 1.5em;
     list-style: none;
     padding: 0;

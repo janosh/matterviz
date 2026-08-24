@@ -44,6 +44,18 @@ const place = ({
   })
 }
 
+// A legend wider than ~45% of the plot (a phone-width frame) goes below the plot even when
+// nothing is crowded: inside it would cover most of the data, on the right it would leave no
+// plot width
+test(`a legend too wide for its frame always goes below the plot`, () => {
+  const legend = { footprint: { width: 140, height: 40 } }
+  const roomy = place({ legend, obstacles_norm: [] }) // 140 / 330 = 42%: stays interior
+  expect(roomy.pad).toEqual(base_pad)
+  const narrow = place({ legend, obstacles_norm: [], width: 360 }) // 140 / 290 = 48%
+  expect(narrow.pad.b).toBeGreaterThan(base_pad.b)
+  expect(narrow.pad.r).toBe(base_pad.r)
+})
+
 describe(`place_outside_decorations`, () => {
   test.each([
     { horizontal: true, edge: `top` },

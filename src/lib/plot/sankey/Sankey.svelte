@@ -591,6 +591,13 @@
     fill: var(--text-color);
     font-size: var(--sankey-font-size, 11px);
   }
+  /* .sankey is a size container; node labels sit beside nodes and collide fast when a
+     multi-column diagram is squeezed into a phone-width host */
+  @container (max-width: 480px) {
+    svg {
+      font-size: var(--sankey-font-size, 9px);
+    }
+  }
   .links path {
     transition: stroke-opacity 0.15s ease;
   }

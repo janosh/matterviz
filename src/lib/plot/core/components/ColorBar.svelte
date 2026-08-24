@@ -10,6 +10,11 @@
   } from '$lib/plot/core/color-ramp'
   import PortalSelect from '$lib/plot/core/components/PortalSelect.svelte'
   import { generate_arcsinh_ticks } from '$lib/plot/core/scales'
+  import {
+    DEFAULT_FONT_SPEC,
+    measure_text_line,
+    resolve_font_spec,
+  } from '$lib/plot/core/text-metrics'
   import type {
     AxisOption,
     ColorBarDataLoaderFn,
@@ -138,8 +143,6 @@
     }
     return tick_scale.ticks(n_ticks)
   })
-  // Tick values are unique (deduped above, or generated), so they key the rendered labels
-  const visible_ticks = $derived(tick_side === `inside` ? ticks.slice(1, -1) : ticks)
   $effect.pre(() => {
     const [lo, hi] = tick_scale.domain()
     nice_range = snap_ticks && !Array.isArray(tick_labels) ? [lo, hi] : range
@@ -163,6 +166,34 @@
     if (tick_format.startsWith(`%`)) return timeFormat(tick_format)(new Date(value))
     return format(tick_format)(value)
   }
+
+  // Rendered bar length and font, so generated tick labels can be thinned once a narrow
+  // host squeezes the bar below the width its labels need. Width stays 0 until measured
+  // (and in environments without layout), which leaves the tick list untouched.
+  let bar_px = $state(0)
+  let bar_font = $state(DEFAULT_FONT_SPEC)
+  const observe_bar = (node: HTMLDivElement) => {
+    const observer = new ResizeObserver(() => {
+      bar_px = node.clientWidth
+      bar_font = resolve_font_spec(node)
+    })
+    observer.observe(node)
+    return () => observer.disconnect()
+  }
+  // Tick values are unique (deduped above, or generated), so they key the rendered labels
+  const visible_ticks = $derived.by(() => {
+    const base = tick_side === `inside` ? ticks.slice(1, -1) : ticks
+    // explicit tick arrays are the caller's choice; vertical labels stack and never collide
+    if (Array.isArray(tick_labels) || orientation !== `horizontal` || !bar_px) return base
+    if (base.length < 3) return base
+    // labels are centered on their tick, so n labels need ~(n - 1) label widths of bar
+    const label_px =
+      Math.max(...base.map((tick) => measure_text_line(format_tick(tick), bar_font).width)) + 8 // breathing room between neighbours
+    const max_fit = Math.floor(bar_px / label_px) + 1
+    if (base.length <= max_fit) return base
+    const stride = Math.ceil((base.length - 1) / Math.max(max_fit - 1, 1))
+    return base.filter((_, idx) => idx % stride === 0)
+  })
 
   const wrapper_flex_dir = $derived(
     { left: `row`, right: `row-reverse`, top: `column`, bottom: `column-reverse` }[
@@ -287,6 +318,7 @@
     </div>
   {/if}
   <div
+    {@attach observe_bar}
     style={final_bar_style}
     class={[
       `bar`,
@@ -318,6 +350,9 @@
     margin: var(--cbar-margin);
     padding: var(--cbar-padding);
     width: var(--cbar-width, auto);
+    /* a fixed --cbar-width/bar_style must shrink to narrow hosts instead of widening them */
+    max-width: 100%;
+    min-width: 0;
     font-size: var(--cbar-font-size, 9pt);
     /* align-items based on title side for vertical layout */
     align-items: var(--cbar-wrapper-align-items);
@@ -329,6 +364,8 @@
     /* Use CSS variables set inline */
     width: var(--cbar-width);
     height: var(--cbar-height);
+    /* column layouts (title top/bottom) don't flex-shrink the bar, so cap it explicitly */
+    max-width: 100%;
   }
   /* Tick labels are `position: absolute` and otherwise overflow the bar. */
   div.bar.horizontal.tick-primary {
@@ -410,9 +447,15 @@
     gap: var(--cbar-select-gap, 0.3em);
     white-space: nowrap;
     width: auto;
+    max-width: 100%;
     &:is(.left, .right) {
       flex-direction: column;
       justify-content: center; /* center title vertically along the bar height */
+    }
+    /* long horizontal titles wrap rather than overflow; the row itself stays nowrap so
+       the property/color-scale selects keep sitting on one line */
+    &:is(.top, .bottom) .label {
+      white-space: normal;
     }
     /* Rotate only the label element, not the entire row (keeps selects usable) */
     /* Only rotate when orientation is vertical AND title is on left/right side */

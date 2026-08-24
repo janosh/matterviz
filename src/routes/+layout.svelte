@@ -95,7 +95,9 @@
   )
 </script>
 
-<!-- z-index: above nav dropdown and Structure control toggles -->
+<!-- z-index: above nav dropdown and Structure control toggles.
+     --text: svelte-widgets paints the mobile burger bars with var(--text), which matterviz
+     does not define (it uses --text-color), leaving the burger invisible on phones. -->
 <CommandMenu
   bind:open={cmd_palette_open}
   {actions}
@@ -109,7 +111,11 @@
     style: `left: 50%; margin: 0; transform: translateX(-50%); z-index: var(--z-index-overlay-dialog); --sms-width: min(42em, 90vw); --sms-options-li-padding: 2pt 1ex`,
   }}
 />
-<GitHubCorner href={pkg.repository} --github-corner-bg-hover="var(--github-corner-bg-hover)" />
+<GitHubCorner
+  id="github-corner"
+  href={pkg.repository}
+  --github-corner-bg-hover="var(--github-corner-bg-hover)"
+/>
 <CopyButton
   global
   style="top: 9pt; inset-inline-end: 9pt; background: var(--btn-bg); color: var(--btn-color)"
@@ -137,6 +143,7 @@
   aria-label="Main navigation"
   {page}
   --nav-dropdown-z-index="var(--z-index-overlay-nav)"
+  --text="var(--text-color)"
 >
   <!-- Nav dropdown uses --z-index-overlay-nav to sit above overlay controls. -->
   <button
@@ -165,6 +172,32 @@
 <Footer />
 
 <style>
+  /* Mobile nav: svelte-widgets ships a 1.4rem burger and 2pt-tall menu rows, both well under
+     the ~32px touch-target floor. Padding grows the hit area without moving the bars. */
+  :global(nav.mobile .burger) {
+    box-sizing: content-box;
+    padding: 0.5rem;
+    top: 0.5rem;
+    inset-inline-start: 0.5rem;
+  }
+  :global(nav.mobile .menu > span > a),
+  :global(nav.mobile .dropdown > div:first-child > :is(a, span)) {
+    padding-block: 5pt;
+  }
+  /* The fixed corner sits exactly where viewers put their fullscreen/controls toggles; on a
+     phone a tap there opens GitHub instead. The footer still links to the repo. */
+  @media (max-width: 600px) {
+    :global(#github-corner) {
+      display: none;
+    }
+  }
+  /* On phones the fixed theme select covers demo content (treemap tiles, hover readouts);
+     `auto` follows the OS there and the control returns on wider screens */
+  @media (max-width: 480px) {
+    :global(.theme-control) {
+      display: none;
+    }
+  }
   :global(dialog.site-search-dialog :is(.cmd-label, .cmd-description)) {
     min-width: 0;
     overflow: hidden;

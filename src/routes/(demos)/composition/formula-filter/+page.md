@@ -293,7 +293,9 @@ Additional features in `FormulaFilter`:
   })
 </script>
 
-<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1em; margin-bottom: 1em">
+<div
+  style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14em), 1fr)); gap: 1em; margin-bottom: 1em"
+>
   <FormulaFilter bind:value={include} history_key="formula-filter-include" />
   <FormulaFilter
     bind:value={exclude}

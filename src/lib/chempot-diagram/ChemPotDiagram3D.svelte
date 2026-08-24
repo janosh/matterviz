@@ -2065,7 +2065,9 @@
     bottom: 16px;
     left: 1em;
     display: flex;
-    gap: 10px;
+    flex-wrap: wrap;
+    gap: 2px 10px;
+    max-width: calc(100% - 2em);
     font-size: 12px;
     z-index: 10;
     pointer-events: none;
