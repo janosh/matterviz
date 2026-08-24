@@ -62,9 +62,14 @@ export function create_canvas_surface(inputs: {
   draw_overlay?: (frame: CanvasFrame) => void // overlay layer, every frame; clears itself
   repaint_deps: () => unknown // reactive values the draw code reads (rAF reads are untracked)
 }) {
-  // Root guess before mount; watch_dark_mode re-reads from the canvas itself once it exists
+  // Root guess before mount; once the canvas exists, read the scheme it inherits (a widget's
+  // own color-scheme in a notebook) and follow changes to it
   let dark_mode = $state(is_dark_mode())
-  $effect(() => watch_dark_mode((dark) => (dark_mode = dark), inputs.canvas()))
+  $effect(() => {
+    const canvas = inputs.canvas()
+    dark_mode = is_dark_mode(canvas)
+    return watch_dark_mode((dark) => (dark_mode = dark), canvas)
+  })
   const text_color = $derived(canvas_text_color(inputs.canvas(), dark_mode))
   let ctx: CanvasRenderingContext2D | null = null
   let overlay_ctx: CanvasRenderingContext2D | null = null

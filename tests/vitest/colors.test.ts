@@ -378,18 +378,23 @@ describe(`is_dark_mode + watch_dark_mode`, () => {
     widget.remove()
   })
 
-  it(`watch_dark_mode reports the element's scheme on subscribe, on change, and stops after cleanup`, async () => {
+  it(`watch_dark_mode reports changes for the element's scheme, never on subscribe, and stops after cleanup`, async () => {
+    // silent on subscribe: callers subscribe inside effects that write state in the callback
     const widget = document.createElement(`div`)
-    widget.style.colorScheme = `dark`
     document.body.append(widget)
     const widget_calls: boolean[] = []
-    watch_dark_mode((dark) => widget_calls.push(dark), widget)()
-    expect(widget_calls).toEqual([true]) // read from the element, not the (light) root
+    const stop_widget = watch_dark_mode((dark) => widget_calls.push(dark), widget)
+    expect(widget_calls).toEqual([])
+    widget.style.colorScheme = `dark` // the element's own scheme is not watched, its roots are
+    document.documentElement.style.colorScheme = `light`
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(widget_calls.at(-1)).toBe(true) // re-read from the element, not the (light) root
+    stop_widget()
     widget.remove()
 
     const calls: boolean[] = []
     const cleanup = watch_dark_mode((dark) => calls.push(dark))
-    expect(calls).toEqual([false])
+    expect(calls).toEqual([])
     document.documentElement.style.colorScheme = `dark`
     await new Promise((resolve) => setTimeout(resolve, 0))
     expect(calls.at(-1)).toBe(true)

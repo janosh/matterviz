@@ -324,11 +324,11 @@ export function is_dark_mode(
   return scheme ? scheme === `dark` : get_system_mode() === COLOR_THEMES.dark
 }
 
-// Call `on_change` with the scheme `element` renders in: once on subscribe (a component's
-// initial state is read before its element exists, so the root's answer may be wrong for a
-// widget with its own scheme) and whenever it may have changed — the root's theme
-// attributes/inline style (apply_theme_to_dom), a shadow host's (embedded widgets), or the OS
-// preference. Returns the cleanup function.
+// Call `on_change` whenever the scheme `element` renders in may have changed: the root's
+// theme attributes/inline style (apply_theme_to_dom), a shadow host's (embedded widgets), or
+// the OS preference. Not on subscribe — callers subscribe inside effects whose callback writes
+// state, and a synchronous first call would re-trigger that effect. Read is_dark_mode(element)
+// for the initial value. Returns the cleanup function.
 export function watch_dark_mode(
   on_change: (dark: boolean) => void,
   element: Element | undefined = globalThis.document?.documentElement,
@@ -342,7 +342,6 @@ export function watch_dark_mode(
   if (root instanceof ShadowRoot) observer.observe(root.host, options)
   const media_query = globalThis.matchMedia?.(`(prefers-color-scheme: dark)`)
   media_query?.addEventListener(`change`, notify)
-  notify()
   return () => {
     observer.disconnect()
     media_query?.removeEventListener(`change`, notify)

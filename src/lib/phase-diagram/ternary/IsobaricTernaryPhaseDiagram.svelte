@@ -112,10 +112,13 @@
   const controls_config = $derived(normalize_show_controls(show_controls))
   let mounted = $state(false)
   onMount(() => (mounted = true))
-  // Root guess before mount; watch_dark_mode re-reads the scheme the wrapper inherits (a
-  // widget's own color-scheme in a notebook) as soon as it is bound
+  // Root guess before mount; once the wrapper is bound, read the scheme it inherits (a
+  // widget's own color-scheme in a notebook) and follow changes to it
   let dark_mode = $state(is_dark_mode())
-  $effect(() => watch_dark_mode((dark) => (dark_mode = dark), wrapper))
+  $effect(() => {
+    dark_mode = is_dark_mode(wrapper)
+    return watch_dark_mode((dark) => (dark_mode = dark), wrapper)
+  })
   let dropped_entries = $state.raw<PhaseData[] | null>(null)
   let hover = $state<Hover | null>(null)
   let hovered_phase = $state<number | null>(null)
