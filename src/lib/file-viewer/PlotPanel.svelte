@@ -31,7 +31,11 @@
 
   // Writable: the toolbar overrides both until the columns (and so the suggestion) change.
   // mapping stays $state so the per-axis selects can bind into it
-  let plot_type = $derived(initial_type ?? suggestion.plot_type)
+  let plot_type = $derived.by(() => {
+    // read the suggestion even when initial_type wins, so new columns still clear an override
+    const { plot_type: suggested } = suggestion
+    return initial_type ?? suggested
+  })
   let mapping = $state<AxisMapping>({})
   $effect(() => {
     mapping = { ...suggestion.mapping }

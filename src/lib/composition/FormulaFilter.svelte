@@ -304,7 +304,8 @@
   // wildcards trailing in source order (LiFe*2* -> FeLi*2*). Invalid input passes through.
   function normalize_exact_formula(input: string): string {
     if (exact_formula_error(input) !== null) return input
-    if (!has_wildcards(input)) return get_alphabetical_formula(input, true, ``)
+    // zero amounts (H0) parse but format to nothing; keep the text rather than clear the field
+    if (!has_wildcards(input)) return get_alphabetical_formula(input, true, ``) || input
     const tokens = parse_formula_with_wildcards(input)
     const merged = new SvelteMap<ElementSymbol, number>()
     for (const { element, amount } of tokens) {
