@@ -378,9 +378,18 @@ describe(`is_dark_mode + watch_dark_mode`, () => {
     widget.remove()
   })
 
-  it(`watch_dark_mode fires when the root scheme changes and stops after cleanup`, async () => {
+  it(`watch_dark_mode reports the element's scheme on subscribe, on change, and stops after cleanup`, async () => {
+    const widget = document.createElement(`div`)
+    widget.style.colorScheme = `dark`
+    document.body.append(widget)
+    const widget_calls: boolean[] = []
+    watch_dark_mode((dark) => widget_calls.push(dark), widget)()
+    expect(widget_calls).toEqual([true]) // read from the element, not the (light) root
+    widget.remove()
+
     const calls: boolean[] = []
     const cleanup = watch_dark_mode((dark) => calls.push(dark))
+    expect(calls).toEqual([false])
     document.documentElement.style.colorScheme = `dark`
     await new Promise((resolve) => setTimeout(resolve, 0))
     expect(calls.at(-1)).toBe(true)
