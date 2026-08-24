@@ -49,9 +49,9 @@ import {
 
 const adopted_sheets = new WeakMap<ShadowRoot, CSSStyleSheet>()
 
-// Static widget chrome + bundled app styles. Only the theme-variable block
-// (get_theme_css) changes between calls, so keep this constant rather than
-// rebuilding the full ~150 KB string on every theme change.
+// Static widget chrome + bundled app styles. Only the color-scheme rule (get_theme_css)
+// changes between calls, so keep this constant rather than rebuilding the full ~150 KB string
+// on every theme change.
 const widget_base_css = `
     .cell-output-ipywidget-background { background: transparent !important; }
     :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]), textarea, select) {
@@ -76,9 +76,7 @@ function inject_app_css(theme_type?: ThemeType, target_element?: HTMLElement): v
   // Remove existing style element (if any)
   ;(in_shadow ? root_node : document).querySelector(`#${style_id}`)?.remove()
 
-  // Only the theme-variable block varies per call; the rest is widget_base_css. The theme
-  // block comes last: app.css carries dark :root defaults (--text-color: #eee, ...) at the
-  // same specificity, and emitting it after the theme would have those win in light hosts.
+  // Only the color-scheme rule varies per call; the rest is widget_base_css
   const style_content = `${widget_base_css}${get_theme_css(detected_theme, in_shadow)}`
 
   // Apply styles via adoptedStyleSheets (reuse existing sheet to avoid accumulation)

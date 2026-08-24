@@ -246,9 +246,7 @@ describe(`package.json exports`, () => {
   test(`embedded theme side effects stay isolated from the normal theme barrel`, () => {
     const source = readFileSync(join(lib_dir, `theme/index.ts`), `utf8`)
     expect(source).not.toContain(`./embedded`)
-    expect(pkg.sideEffects).toEqual(
-      expect.arrayContaining([`**/theme/embedded.*`, `**/theme/themes.*`]),
-    )
+    expect(pkg.sideEffects).toEqual(expect.arrayContaining([`**/theme/embedded.*`]))
   })
 
   test(`every export target points into ./dist`, () => {

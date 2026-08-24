@@ -7,8 +7,6 @@ vi.mock(`$lib/colors`, () => ({
   perceived_brightness: (color: string) =>
     [`rgba(0,0,0,0)`, `rgb(0,0,0)`, `#000`].includes(color.replaceAll(` `, ``)) ? 0 : 1,
 }))
-vi.mock(`$lib/theme`, () => ({ COLOR_THEMES: { light: `light`, dark: `dark` } }))
-vi.mock(`$lib/theme/themes.mjs`, () => ({}))
 
 let live_observers = 0
 const observers: FakeMutationObserver[] = []
@@ -56,8 +54,6 @@ afterEach(() => {
   document.documentElement.removeAttribute(`style`)
   delete document.documentElement.dataset.theme
   globalThis.jupyterlab = undefined
-  globalThis.MATTERVIZ_THEMES = undefined
-  globalThis.MATTERVIZ_CSS_MAP = undefined
 })
 
 const make_shadow_element = (): { host: HTMLElement; inner: HTMLElement } => {
@@ -179,15 +175,10 @@ describe(`embedded theme helpers`, () => {
   test.each([
     [false, `:root`],
     [true, `:host`],
-  ])(`generates theme CSS with shadow=%s`, async (is_shadow_dom, selector) => {
+  ])(`theme CSS pins only the color-scheme (shadow=%s)`, async (is_shadow_dom, selector) => {
     const { get_theme_css } = await import(`$lib/theme/embedded`)
-    globalThis.MATTERVIZ_THEMES = { dark: { surface: `#000` } }
-    globalThis.MATTERVIZ_CSS_MAP = { surface: `--surface-bg` }
-
-    // color-scheme first: the library's light-dark() tokens and native form controls follow it
-    expect(get_theme_css(`dark`, is_shadow_dom)).toBe(
-      `${selector} {\n\tcolor-scheme: dark;\n\t--surface-bg: #000;\n}`,
-    )
+    // every token in app.css is light-dark(), so this one rule themes the whole widget
+    expect(get_theme_css(`dark`, is_shadow_dom)).toBe(`${selector} { color-scheme: dark; }`)
   })
 })
 

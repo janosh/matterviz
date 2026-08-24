@@ -1,9 +1,7 @@
 // Theme Detection for Embedded MatterViz Views
 
 import { perceived_brightness } from '$lib/colors'
-import { COLOR_THEMES, type ThemeType } from '$lib/theme'
-// oxlint-disable-next-line import/no-unassigned-import -- registers built-in themes
-import '$lib/theme/themes.mjs'
+import type { ThemeType } from '$lib/theme'
 
 // Extend globalThis with our custom properties
 declare global {
@@ -225,26 +223,8 @@ export function watch_theme(target_element: HTMLElement, callback: ThemeCallback
   }
 }
 
-export function get_theme_css(theme_type: ThemeType, is_shadow_dom = false): string {
-  const theme_name = COLOR_THEMES[theme_type]
-
-  // Get theme data (matterviz/themes.js sets this)
-  const theme = globalThis.MATTERVIZ_THEMES?.[theme_name]
-  const css_map = globalThis.MATTERVIZ_CSS_MAP
-
-  if (!theme || !css_map) {
-    console.warn(`Theme data not available, skipping theme application`)
-    return ``
-  }
-
-  const css_vars = Object.entries(theme)
-    .map(([key, value]) => (css_map[key] ? `${css_map[key]}: ${value};` : ``))
-    .filter(Boolean)
-    .join(`\n\t`)
-
-  // Use :host for Shadow DOM, :root for regular DOM. `color-scheme` is what the library's
-  // light-dark() tokens and the browser's form controls resolve against: without it a widget
-  // in a dark notebook would carry dark theme variables but light menus, inputs and scrollbars.
-  const selector = is_shadow_dom ? `:host` : `:root`
-  return `${selector} {\n\tcolor-scheme: ${theme_type};\n\t${css_vars}\n}`
-}
+// The one rule an embedded widget needs on top of app.css: every token there is light-dark(),
+// so pinning the root's color-scheme to the detected theme themes the whole widget (and the
+// browser's own menus, inputs and scrollbars) regardless of the host page's scheme.
+export const get_theme_css = (theme_type: ThemeType, is_shadow_dom = false): string =>
+  `${is_shadow_dom ? `:host` : `:root`} { color-scheme: ${theme_type}; }`

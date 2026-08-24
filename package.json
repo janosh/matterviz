@@ -22,8 +22,7 @@
   "sideEffects": [
     "**/*.css",
     "**/file-viewer/main.*",
-    "**/theme/embedded.*",
-    "**/theme/themes.*"
+    "**/theme/embedded.*"
   ],
   "exports": {
     ".": {
@@ -233,9 +232,6 @@
     "./theme/embedded": {
       "types": "./dist/theme/embedded.d.ts",
       "default": "./dist/theme/embedded.js"
-    },
-    "./theme/themes": {
-      "default": "./dist/theme/themes.mjs"
     },
     "./tooltip": {
       "types": "./dist/tooltip/index.d.ts",

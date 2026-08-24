@@ -1,6 +1,5 @@
+import app_css from '$lib/app.css?raw'
 import type { ThemeMode, ThemeName } from '$lib/theme'
-// oxlint-disable-next-line eslint-plugin-import/no-unassigned-import -- initializes theme globals
-import '$lib/theme/themes.mjs'
 import {
   apply_theme_to_dom,
   COLOR_THEMES,
@@ -14,22 +13,10 @@ import {
 } from '$lib/theme'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
-const bundled_themes = globalThis.MATTERVIZ_THEMES
-
 describe(`Theme System`, () => {
   beforeEach(() => {
-    // Mock global theme data
-    globalThis.MATTERVIZ_THEMES = {
-      light: { surface_bg: `#ffffff`, text_color: `#000000` },
-      dark: { surface_bg: `#1a1a1a`, text_color: `#ffffff` },
-      white: { surface_bg: `#ffffff`, text_color: `#000000` },
-      black: { surface_bg: `#000000`, text_color: `#ffffff` },
-    }
-
-    globalThis.MATTERVIZ_CSS_MAP = {
-      surface_bg: `--surface-bg`,
-      text_color: `--text-color`,
-    }
+    document.documentElement.removeAttribute(`style`)
+    delete document.documentElement.dataset.theme
   })
 
   describe(`Theme constants and validation`, () => {
@@ -139,31 +126,39 @@ describe(`Theme System`, () => {
   })
 
   describe(`DOM theme application`, () => {
+    // The whole runtime contract: the palette name and the scheme light-dark() resolves against
     test.each(Object.keys(COLOR_THEMES))(
-      `apply_theme_to_dom("%s") sets CSS variables, data-theme and color-scheme`,
+      `apply_theme_to_dom("%s") sets data-theme and color-scheme and nothing else`,
       (theme) => {
         apply_theme_to_dom(theme as ThemeName)
-
         const root = document.documentElement
-        const expected = globalThis.MATTERVIZ_THEMES?.[theme as ThemeName] as {
-          surface_bg: string
-          text_color: string
-        }
-        expect(root.style.getPropertyValue(`--surface-bg`)).toBe(expected.surface_bg)
-        expect(root.style.getPropertyValue(`--text-color`)).toBe(expected.text_color)
-        expect(root.getAttribute(`data-theme`)).toBe(theme)
-        expect(root.style.getPropertyValue(`color-scheme`)).toBe(
-          THEME_TYPE[theme as ThemeName],
-        )
+        expect(root.dataset.theme).toBe(theme)
+        expect(root.style.colorScheme).toBe(THEME_TYPE[theme as ThemeName])
+        expect(root.style).toHaveLength(1)
       },
     )
 
-    test.each([`dark`, `black`] as const)(`%s uses the dark button palette`, (theme) => {
-      expect(bundled_themes?.[theme]).toMatchObject({
-        'btn-bg': `rgba(255, 255, 255, 0.09)`,
-        'btn-bg-hover': `rgba(255, 255, 255, 0.17)`,
-        'btn-disabled-bg': `rgba(255, 255, 255, 0.04)`,
-      })
+    test(`app.css defines every token once as light-dark() with white/black overrides`, () => {
+      const tokens = /:root,\s*:host \{(?<body>[^}]+)\}/.exec(app_css)?.groups?.body ?? ``
+      expect(tokens).toContain(`color-scheme: light dark;`)
+      expect(tokens).toContain(
+        `--btn-bg: light-dark(rgba(0, 0, 0, 0.12), rgba(255, 255, 255, 0.09));`,
+      )
+      expect(tokens).toContain(`--text-color: light-dark(#374151, #eee);`)
+      // same in both schemes: a plain value, not a light-dark() pair
+      expect(tokens).toContain(`--plot-bg: transparent;`)
+      for (const [variant, page_bg] of [
+        [`white`, `#ffffff`],
+        [`black`, `#000000`],
+      ]) {
+        const override = new RegExp(
+          `:root\\[data-theme='${variant}'\\],\\s*:host\\(\\[data-theme='${variant}'\\]\\) \\{[^}]*--page-bg: ${page_bg};`,
+        )
+        expect(app_css).toMatch(override)
+      }
+      // no token is defined twice at the root
+      const names = [...tokens.matchAll(/^\s+(?<name>--[\w-]+):/gm)].map((m) => m.groups?.name)
+      expect(new Set(names).size).toBe(names.length)
     })
 
     test.each([
@@ -192,14 +187,6 @@ describe(`Theme System`, () => {
       expect(() => apply_theme_to_dom(`unknown` as ThemeName)).toThrow(
         `Invalid theme mode: unknown`,
       )
-    })
-
-    test(`apply_theme_to_dom still sets data-theme when global theme data is missing`, () => {
-      globalThis.MATTERVIZ_THEMES = undefined
-      globalThis.MATTERVIZ_CSS_MAP = undefined
-
-      apply_theme_to_dom(`light`)
-      expect(document.documentElement.getAttribute(`data-theme`)).toBe(`light`)
     })
   })
 })
