@@ -177,7 +177,8 @@ export function assign_facet_panels<Datum>(
     column_span: number,
   ): void => {
     for (let offset_row = 0; offset_row < row_span; offset_row++) {
-      const occupied_row = (occupied[row_idx + offset_row] ??= [])
+      occupied[row_idx + offset_row] ??= []
+      const occupied_row = occupied[row_idx + offset_row]
       for (let offset_column = 0; offset_column < column_span; offset_column++) {
         occupied_row[column_idx + offset_column] = true
       }

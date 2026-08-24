@@ -23,16 +23,16 @@
     "prepublishOnly": "pnpm run build"
   },
   "devDependencies": {
-    "@spglib/moyo-wasm": "^0.15.0",
+    "@spglib/moyo-wasm": "^0.16.0",
     "@sveltejs/vite-plugin-svelte": "^7.3.0",
     "@types/node": "^26.2.0",
     "anywidget": "^0.11.0",
     "matterviz": "file:../..",
-    "svelte": "^5.56.9",
+    "svelte": "^5.56.10",
     "svelte-widgets": "^1.6.0",
     "typescript": "^6.0.3",
-    "vite": "^8.2.1",
-    "vite-plus": "0.2.9"
+    "vite": "^8.2.2",
+    "vite-plus": "0.3.0"
   },
   "packageManager": "pnpm@11.5.0"
 }

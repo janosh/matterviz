@@ -27,6 +27,31 @@ import { type Component, type ComponentProps, flushSync, mount, tick } from 'sve
 import { SvelteMap, SvelteSet } from 'svelte/reactivity'
 import { beforeEach, expect, onTestFinished, vi } from 'vitest'
 
+// happy-dom implements `nodeName` per subclass and its base Node.prototype getter returns ''.
+// DOMPurify >= 3.4.13 reads nodeName through that base getter (so a clobbering child named
+// "nodeName" cannot shadow it), which makes every element look like an unknown tag here and
+// the sanitizer strip all markup. Dispatch the base getter to the subclass getter instead;
+// browsers and jsdom define it once on Node.prototype and need nothing.
+const node_proto = globalThis.Node?.prototype
+const base_node_name =
+  node_proto && Object.getOwnPropertyDescriptor(node_proto, `nodeName`)?.get
+if (node_proto && base_node_name) {
+  Object.defineProperty(node_proto, `nodeName`, {
+    configurable: true,
+    get(this: Node): string {
+      for (
+        let proto = Object.getPrototypeOf(this);
+        proto && proto !== node_proto;
+        proto = Object.getPrototypeOf(proto)
+      ) {
+        const getter = Object.getOwnPropertyDescriptor(proto, `nodeName`)?.get
+        if (getter) return getter.call(this)
+      }
+      return base_node_name.call(this)
+    },
+  })
+}
+
 // Node 22+ has a built-in localStorage Proxy that lacks the standard Storage
 // API (getItem/setItem/etc). Vitest's populateGlobal skips overriding globals
 // already present unless explicitly allowlisted — localStorage isn't.

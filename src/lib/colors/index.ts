@@ -132,9 +132,10 @@ function to_rendered_rgb(color: string): RGBColor | undefined {
     /^(?:var\(|currentcolor$)/i.test(color)
   )
     return undefined
-  const context = (color_canvas_context ??= document
+  color_canvas_context ??= document
     .createElement(`canvas`)
-    .getContext(`2d`, { willReadFrequently: true }))
+    .getContext(`2d`, { willReadFrequently: true })
+  const context = color_canvas_context
   if (!context) return undefined
   context.fillStyle = `black`
   context.fillStyle = color

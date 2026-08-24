@@ -359,8 +359,8 @@
     const add_label = (pos: number, label: string | null | undefined) => {
       if (!label) return
       const pretty = helpers.pretty_sym_point(label)
-      const labels = (labels_at[pos] ??= [])
-      if (!labels.includes(pretty)) labels.push(pretty)
+      labels_at[pos] ??= []
+      if (!labels_at[pos].includes(pretty)) labels_at[pos].push(pretty)
     }
     for (const [segment_key, [x_start, x_end]] of Object.entries(internal_x_positions)) {
       const [bs, branch] = all_segments[segment_key][0]
