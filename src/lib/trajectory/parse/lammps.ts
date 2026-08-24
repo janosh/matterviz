@@ -114,9 +114,9 @@ export function parse_lammps_trajectory(
   }
 
   // LAMMPS atom types are bare integers whose meaning lives in the input script, not the
-  // dump. Unmapped types fall back to atomic number N like ASE's read_lammps_dump and the
-  // LAMMPS data parser, since most dumps carry no element column; warn once per file so a
-  // Si/O dump showing up as H/He is traceable.
+  // dump. With no element column and no mapping they fall back to atomic number N like
+  // ASE's read_lammps_dump and the LAMMPS data parser; warn once per file so a Si/O dump
+  // showing up as H/He is traceable.
   // Types are validated to be >= 1 before lookup; the clamp keeps the lookup total (H rather
   // than `ELEM_SYMBOLS[-1]` = undefined) should a future column path skip that check.
   const guessed_types = new Set<number>()
@@ -252,7 +252,7 @@ export function parse_lammps_trajectory(
       const xyz: Vec3 = frac_to_cart
         ? frac_to_cart(coords)
         : [coords[0] - box_origin[0], coords[1] - box_origin[1], coords[2] - box_origin[2]]
-      let element_symbol: ElementSymbol
+      let element_symbol: ElementSymbol | undefined
       if (type_col !== undefined) {
         const raw_atom_type = parts[type_col]
         const atom_type = Number(raw_atom_type)
@@ -262,8 +262,10 @@ export function parse_lammps_trajectory(
           )
         }
         atom_types_found.add(atom_type)
-        element_symbol = get_element(atom_type)
-      } else {
+        element_symbol =
+          element_col === undefined ? get_element(atom_type) : atom_type_mapping?.[atom_type]
+      }
+      if (!element_symbol) {
         const raw_symbol = parts[element_col]
         const coerced =
           coerce_elem_symbol(raw_symbol) ?? coerce_elem_symbol(capitalize_symbol(raw_symbol))

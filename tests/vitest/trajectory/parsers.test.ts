@@ -359,6 +359,19 @@ describe(`LAMMPS`, () => {
     expect(run.time_step).toBeUndefined()
   })
 
+  // A dump written by `dump_modify element` names its species, so those names beat guessing
+  // an element from the type number
+  it(`reads the element column when a type column is also present`, async () => {
+    const run = await open(
+      lammps_frame(`id type element x y z`, [`1 1 Si 0 0 0`, `2 2 O 1 1 1`]),
+      `t.lammpstrj`,
+      { atom_type_mapping: undefined },
+    )
+    expect(elements_of(run.preview)).toEqual([`Si`, `O`])
+    expect(run.metadata).toMatchObject({ atom_types: [1, 2], element_counts: { Si: 1, O: 1 } })
+    expect(run.warnings).toEqual([])
+  })
+
   // Corruption inside a frame is an error naming its line and timestep; it used to skip the
   // atom or frame silently and surface only as "No valid frames found"
   // oxfmt-ignore
