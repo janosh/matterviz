@@ -15,6 +15,7 @@
   import pkg from '$root/package.json'
   import { Footer } from '$site'
   import { create_site_search_loader, type SiteSearchAction } from '$site/search'
+  import { link_source_mentions } from '$site/source-links'
   import type { RouteEntry } from '$site/state.svelte'
   import { demo_routes, routes } from '$site/state.svelte'
   import type { Snippet } from 'svelte'
@@ -156,6 +157,7 @@
   {@attach heading_anchors({
     selector: `:scope > :is(h2, h3, h4, h5, h6), :scope > * > :is(h2, h3, h4, h5, h6)`,
   })}
+  {@attach link_source_mentions}
 >
   {@render children?.()}
 </main>

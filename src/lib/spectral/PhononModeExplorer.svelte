@@ -357,8 +357,9 @@
       </select>
     </label>
     <label class="amplitude-control">
-      <span>Amplitude <output>{format_num(amplitude, `.3~`)} Å</output></span>
+      Amplitude
       <input type="range" min="0.02" max="1" step="0.02" bind:value={amplitude} />
+      <output>{format_num(amplitude, `.3~`)} Å</output>
     </label>
     <label class="checkbox"
       ><input type="checkbox" bind:checked={show_vectors} />Eigenvectors</label
@@ -445,32 +446,29 @@
     min-width: 0;
     min-height: 0;
   }
+  /* Every control is one inline row: label text, then its input, on the same line */
   .toolbar {
     display: flex;
-    align-items: end;
+    align-items: center;
     flex-wrap: wrap;
-    gap: 0.35em 0.8em;
+    gap: 0.35em 1.2em;
     padding: 0.35em 0 0;
     label {
-      display: grid;
-      gap: 0.2em;
+      display: flex;
+      align-items: center;
+      gap: 0.4em;
+      white-space: nowrap;
     }
     select {
       max-width: 18em;
     }
-    .checkbox {
-      display: flex;
-      align-items: center;
-      gap: 0.35em;
-      padding-bottom: 0.25em;
-    }
   }
   .amplitude-control {
-    min-width: 11em;
-    span {
-      display: flex;
-      justify-content: space-between;
-      gap: 1em;
+    input {
+      width: 9em;
+    }
+    output {
+      min-width: 4.5em;
     }
   }
   .mode-list {
@@ -519,9 +517,9 @@
     .tabs button {
       flex: 1;
     }
-    .toolbar > label:not(.checkbox),
     .toolbar select {
-      width: 100%;
+      flex: 1;
+      min-width: 0;
     }
   }
 </style>

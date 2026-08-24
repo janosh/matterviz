@@ -29,21 +29,24 @@
   disposes anything itself.
 </p>
 
-<h2>Mean Squared Displacement</h2>
-<p>
-  Every viewer below carries an MSD / diffusion pane (the orbit icon in the controls bar). It
-  averages |r(t₀+Δt) − r(t₀)|² over all atoms and all time origins, unwraps trajectories across
-  periodic boundaries first (honouring LAMMPS <code>xu/yu/zu</code> coordinates, which are
-  already unwrapped), decomposes by element, and fits <code>D = slope / 2d</code> over an adjustable
-  lag window. The lag axis is labelled in frames unless the file records a timestep (seeded into
-  the pane) or you enter one. Indexed (streamed) trajectories are swept in full rather than analysed
-  over the handful of frames kept in memory. The VACF / vibrational-DOS pane shares the same controls;
-  the RDF pane averages every element pair's g(r) over a capped sample of frames (each normalised
-  by its own cell volume, so NPT runs work) and reads the first-shell position and coordination numbers
-  off each curve. Every analysis table offers its curves as CSV, and the info pane reports mean ±
-  σ, range and least-squares drift for up to eight prioritised properties (energy, temperature, pressure,
-  volume, density, forces first), so equilibration can be judged at a glance.
-</p>
+<details class="analysis-notes">
+  <summary>What the analysis panes compute</summary>
+  <p>
+    <strong>MSD / diffusion</strong> (the orbit icon) averages |r(t₀+Δt) − r(t₀)|² over all
+    atoms and time origins after unwrapping across periodic boundaries (LAMMPS
+    <code>xu/yu/zu</code>
+    coordinates are taken as already unwrapped), decomposes by element and fits
+    <code>D = slope / 2d</code> over an adjustable lag window; the lag axis is in frames unless
+    the file records a timestep or you enter one. Indexed (streamed) trajectories are swept in
+    full.
+    <strong>VACF / vibrational DOS</strong> shares those controls. <strong>RDF</strong> averages
+    every element pair's g(r) over a capped sample of frames, each normalised by its own cell volume
+    (so NPT runs work), and reads the first-shell position and coordination numbers off each curve.
+    Every analysis table exports its curves as CSV, and the info pane reports mean ± σ, range and
+    least-squares drift for up to eight prioritised properties so equilibration can be judged at
+    a glance.
+  </p>
+</details>
 
 <div class="full-bleed traj-pair">
   <TrajectoryFileViewer
